@@ -77,6 +77,37 @@ describe('Charges dialog in Drafts Mode', () => {
   })
 })
 
+// R3 fix 1 (D-14): the dialog shows the charges of the tiles it sits beside. Switch ON: paper tiles (paid + close). Switch OFF:
+// the open-legs summary tiles = the plan's round trip at entry prices.
+describe('Charges dialog follows the Add Booked switch', () => {
+  it('switch OFF: the round trip at entry prices and its sentence, not paid + close', async () => {
+    const w = await open({ strategy: '63' }, { ...BOOK, ...C2 })
+    await t(w, 'add-booked-switch').setValue(false)
+    await flushPromises()
+    await t(w, 'charges-action').trigger('click')
+    await flushPromises()
+    expect(t(w, 'charges-total').text()).toBe(`Total Rs ${ROUND_TRIP.total}`)
+    const panel = t(w, 'charges-panel').text()
+    expect(panel).toContain(SENTENCE)
+    expect(panel).not.toContain('Rs 97.35')
+    expect(panel).not.toContain('Rs 94.90')
+  })
+
+  it('switch ON: paid + cost to close', async () => {
+    const w = await open({ strategy: '63' }, { ...BOOK, ...C2 })
+    await t(w, 'add-booked-switch').setValue(false)
+    await flushPromises()
+    await t(w, 'add-booked-switch').setValue(true)
+    await flushPromises()
+    await t(w, 'charges-action').trigger('click')
+    await flushPromises()
+    const panel = t(w, 'charges-panel').text()
+    expect(panel).toContain('Rs 97.35')
+    expect(panel).toContain('Rs 94.90')
+    expect(t(w, 'charges-total').text()).toBe('Total Rs 192.25')
+  })
+})
+
 // finding 3: a paused book (`extremes: null` before) shows Max Profit before charges; the server's sentence says so beside it
 import SummaryCards from '@/components/strategy/SummaryCards.vue'
 import { paperLeftOf } from '@/lib/paperDrafts'

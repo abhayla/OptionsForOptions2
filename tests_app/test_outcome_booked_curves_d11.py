@@ -62,3 +62,25 @@ async def test_d11_switch_on_every_table_row_is_open_legs_plus_booked(provider):
     for name, rows in off.items():
         assert rows.keys() == on[name].keys(), name
         assert {lv: on[name][lv] - v for lv, v in rows.items()} == dict.fromkeys(rows, booked), name
+
+
+async def test_d11_switch_on_zero_pnl_columns_and_total_be_cells_are_on_the_booked_in_basis(provider):  # noqa: F811
+    """R3 fix 2 (D-11 / D-16): with the switch ON the TOTAL cells are open legs + booked, so the column headed 0-P&L and
+    the TOTAL Lower / Upper BE cells must be the levels where THAT total is 0 (the chart's breakevens), not the open
+    legs' breakevens: TOTAL at a 0-P&L column reads 0.00 and the BE cells are 0-P&L levels. OFF is unchanged."""
+    booked = _book_63_booked()
+    on = await _post(provider, booked, paper_strategy_id=63)
+    off = await _post(provider, booked, paper_strategy_id=63, include_booked=False)
+    for body, shifted in ((on, True), (off, False)):
+        total = next(r for r in body["table"]["rows"] if r["row_id"] == "TOTAL")["cells"]
+        zero = [x["level"] for x in body["scenario"]["levels"] if x["zero_pnl"]]
+        assert zero, shifted
+        for lv in zero:  # the cell at a 0-P&L column is 0.00 (the table's own rounding)
+            assert abs(D(total[lv]["value"])) <= D("0.01"), (shifted, lv, total[lv]["value"])
+        marked = {c["level"] for c in body["table"]["columns"] if "ZERO_PNL" in c["markers"] or "0-P&L" in c["markers"]}
+        assert marked == set(zero) or not marked, (marked, zero)
+        be = [D(total[k]["value"]) for k in ("lower_be", "upper_be") if total.get(k) and total[k]["value"] is not None]
+        assert be and all(b in {D(z) for z in zero} for b in be), (shifted, be, zero)
+    off_zero = [x["level"] for x in off["scenario"]["levels"] if x["zero_pnl"]]
+    on_zero = [x["level"] for x in on["scenario"]["levels"] if x["zero_pnl"]]
+    assert off_zero != on_zero  # booked +962 moves them
