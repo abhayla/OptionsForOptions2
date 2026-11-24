@@ -535,8 +535,7 @@ def test_ac6_no_order_basket_margin_or_execute_reachable_from_the_chain_code():
                    "ofo_app.live_push", "ofo_app.routes.outcome", "ofo_app", "ofo_app.db", "ofo_app.chain_push",
                    "ofo_app.errors", "ofo_app.routes", "ofo_app.underlying",
                    "ofo.engine.chain_values",  # row 33: the engine's IV/Greeks maths only
-                   "ofo.settings.calc", "fastapi.exceptions",
-                   "ofo.timeutil"}  # D-19: the IST zone the last-trade time is shown in
+                   "ofo.settings.calc", "fastapi.exceptions"}
         assert set(imports) <= allowed, (path.name, set(imports) - allowed)
 
 
