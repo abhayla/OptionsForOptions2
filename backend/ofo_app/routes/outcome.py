@@ -358,8 +358,11 @@ class LegIn(BaseModel):
     captured_at: AwareDatetime = Field(description="when the planned entry was captured (ADR-068)")
     plan_entry: str | None = Field(
         default=None, pattern=r"^\d+(\.\d{1,2})?$", examples=["23.85"],
-        description="GC-ICLIVE-B D-15: with price_basis paper_fills, the PLAN's entry price of this leg (planned_entry "
-                    "then holds the paper fill); the reply states the plan's credit beside the fills'")
+        description="GC-ICLIVE-B D-15: of a paper trade (paper_strategy_id), the PLAN's entry price of this leg; with "
+                    "plan_lots the reply states the plan's credit beside the fills'. Never read as a basis claim: the "
+                    "server derives the basis from the paper book")
+    plan_lots: int | None = Field(default=None, strict=True, gt=0, le=INT_ABS_MAX,
+                                  description="D-15: the plan's lots of this leg (with plan_entry)")
 
 
 #: the one request key a client may still send after ADR-168; it is dropped, never read
@@ -377,6 +380,10 @@ class Booked:
 
     amount: Decimal | None = None
     unreadable: bool = False
+    #: D-15: the paper book's open positions (instrument id -> (signed net quantity, average)); None with no paper id or an
+    #: unreadable book. ``paper``: the request names a paper strategy at all.
+    fills: Mapping[str, tuple[int, Decimal]] | None = None
+    paper: bool = False
 
 
 BookedReader = Callable[[int], Awaitable[Decimal | None]]  # strategy id -> booked P&L; None: the book could not be read
@@ -404,12 +411,53 @@ def get_booked_reader() -> BookedReader:
     return read_booked
 
 
-async def get_booked(req: OutcomeRequest, reader: Annotated[BookedReader, Depends(get_booked_reader)]) -> Booked:
-    """ADR-209: nothing for a plan or the switch off; else the paper strategy's booked P&L or "could not be read"."""
-    if req.paper_strategy_id is None or not req.include_booked:
+FillsReader = Callable[[int], Awaitable[Mapping[str, tuple[int, Decimal]] | None]]
+
+
+async def read_fills(strategy_id: int) -> Mapping[str, tuple[int, Decimal]] | None:
+    """D-15: the paper book's OPEN positions by exchange identity ("NSE_FO:44624") with signed net quantity and average,
+    from the same owner-checked read as the booked P&L. None: not this user's, no orders, or a read that fails."""
+    from ofo.engine.orderbook import net_positions as engine_net
+
+    from ofo_app import catalogue_store, paper_book
+    from ofo_app.db import get_sessionmaker
+    from ofo_app.routes.broker import current_user_ref
+    try:
+        async with get_sessionmaker()() as db:
+            orders = await paper_book.load_owned(db, current_user_ref(), strategy_id)
+            if not orders:
+                return None
+            view = engine_net([o.order.as_paper() for o in orders], {})
+            open_ = [p for p in view.positions if p.net_quantity != 0]
+            conn = await db.connection()
+            found = await catalogue_store.load_contracts(conn, [int(p.instrument_id) for p in open_])
+            out: dict[str, tuple[int, Decimal]] = {}
+            for p in open_:
+                c = found.get(int(p.instrument_id))
+                if c is None or isinstance(c, Exception) or p.average is None:
+                    return None
+                key = c.listed.contract
+                out[f"{key.exchange_segment}:{key.exchange_token}"] = (p.net_quantity, p.average)
+            return out
+    except Exception:  # noqa: BLE001 - any read failure is the one answer "could not be read"
+        return None
+
+
+def get_fills_reader() -> FillsReader:
+    return read_fills
+
+
+async def get_booked(req: OutcomeRequest, reader: Annotated[BookedReader, Depends(get_booked_reader)],
+                     fills_reader: Annotated[FillsReader, Depends(get_fills_reader)] = read_fills) -> Booked:
+    """ADR-209: nothing for a plan or the switch off; else the paper strategy's booked P&L or "could not be read".
+    D-15: with a paper strategy id it also carries the book's open positions, whatever the switch (the basis label)."""
+    if req.paper_strategy_id is None:
         return Booked()
+    fills = await (fills_reader if callable(fills_reader) else read_fills)(req.paper_strategy_id)
+    if not req.include_booked:
+        return Booked(fills=fills, paper=True)
     amount = await reader(req.paper_strategy_id)
-    return Booked(None, True) if amount is None else Booked(amount)
+    return Booked(None, True, fills, True) if amount is None else Booked(amount, False, fills, True)
 
 
 class OutcomeRequest(BaseModel):
@@ -461,11 +509,6 @@ class OutcomeRequest(BaseModel):
         default=None,
         description="REQ-084 AC-2: the what-if date-time; the server clamps it between now and the strategy's first "
                     "expiry at 15:30 IST (`target.at_clamped`, `target.clamp`). Analysis only (AC-6)")
-    price_basis: Literal["plan", "paper_fills"] = Field(
-        default="plan",
-        description="GC-ICLIVE-B D-15: which prices `planned_entry` holds: the plan's, or a paper trade's fills. The "
-                    "summary says so (`price_basis_text`); with paper_fills and every leg's `plan_entry` it also carries "
-                    "the plan's credit (`plan_line`)")
     paper_strategy_id: StrictInt | None = Field(
         default=None, ge=1, le=INTEGER_MAX,
         description="ADR-209: the paper strategy these legs are the net position of (Drafts Mode); the server reads its "
@@ -822,6 +865,7 @@ class LegQuoteOut(ApiModel):
     bid_display: CatalogueText | None = None  # GC-UI D-PX: two-decimal text
     ask_display: CatalogueText | None = None
     health: HealthCode | None
+    quote_at: datetime.datetime | None = None  # GC-ICLIVE-B D-18: when THIS leg's quote was made (its own time)
 
 
 class OiRowOut(ApiModel):
@@ -1008,7 +1052,8 @@ def _leg_quotes(snapshot, definition: StrategyDefinition, symbols: dict[str, str
                      "ask": None if q is None or q.ask is None else f"{q.ask:f}",
                      "bid_display": None if q is None else price_text(q.bid),
                      "ask_display": None if q is None else price_text(q.ask),
-                     "health": None if q is None else q.health.value})
+                     "health": None if q is None else q.health.value,
+                     "quote_at": None if q is None else q.price_at})
     return rows
 
 
@@ -1091,20 +1136,50 @@ def checked_choice(req: OutcomeRequest, settings: Mapping[str, Decimal]) -> tupl
         refuse_request(("body",), "value_error")  # the ValueError's text is never shown (the 422 shows no msg)
 
 
-def _with_price_basis(out: Outcome, req: OutcomeRequest) -> Outcome:
-    """GC-ICLIVE-B D-15 / D-17: the summary names the prices its Get and time value use; a paper trade's summary (the
-    fills) carries the plan's credit as one line, from the plan prices the request names (none kept: no line)."""
+def _is_fill(leg: Any, fills: Mapping[str, tuple[int, Decimal]]) -> bool:
+    """D-15: a leg is a paper fill only when the paper book holds that contract OPEN on the same side, for the same
+    quantity, at exactly this entry price (the book's average). The client's say-so is never read."""
+    held = fills.get(leg.instrument_id)
+    if held is None or leg.quantity is None or leg.planned_entry is None:
+        return False
+    net, average = held
+    side_ok = (net > 0) == (leg.action is Action.BUY)
+    return side_ok and abs(net) == leg.quantity and average == leg.planned_entry
+
+
+def _with_price_basis(out: Outcome, req: OutcomeRequest, booked: Booked | None) -> Outcome:
+    """GC-ICLIVE-B D-15: the summary names the prices its Get uses, DERIVED from the paper book (no client claim): plan
+    prices with no paper strategy; paper fill prices when every leg matches the book's open position; else which legs
+    are not fills. A paper trade whose legs are all fills also carries the plan's credit as one line, from the plan's own
+    lots and prices (none kept, or the plan's lots differ from the position: no figure is made up)."""
     if out.summary is None:
         return out
-    line = None
     held = out.legs
-    if req.price_basis == money_module.PAPER_FILLS and all(
-            x.quantity is not None and x.instrument is not None and x.planned_entry is not None for x in held):
-        engine_legs = [Leg(x.action, x.instrument, x.strike, x.expiry, x.quantity, x.planned_entry) for x in held]
-        plan = {leg.instrument_id: None if leg.plan_entry is None else Decimal(leg.plan_entry) for leg in req.legs}
-        line = money_module.plan_line(engine_legs, plan, [x.instrument_id for x in held])
-    summary = dataclasses.replace(out.summary, price_basis_text=money_module.basis_text(req.price_basis), plan_line=line)
+    line, text = None, money_module.basis_text(money_module.PLAN)
+    if booked is not None and booked.paper:
+        if booked.fills is None:
+            text = money_module.basis_text(money_module.UNREAD)
+        else:
+            fills = sum(1 for x in held if _is_fill(x, booked.fills))
+            text = money_module.basis_text(money_module.PAPER_FILLS, fills=fills, total=len(held))
+            if fills == len(held):
+                line = _plan_line_of(held, req)
+    summary = dataclasses.replace(out.summary, price_basis_text=text, plan_line=line)
     return dataclasses.replace(out, summary=summary)
+
+
+def _plan_line_of(held: Any, req: OutcomeRequest) -> Any:
+    """The plan's credit of a paper trade: from each leg's plan price AND plan lots; the plan's lots differing from the
+    position's (a partial exit, a changed size) says so instead of pricing the fill quantity at plan prices."""
+    by_id = {leg.instrument_id: leg for leg in req.legs}
+    plan_legs = [by_id.get(x.instrument_id) for x in held]
+    if any(p is None or p.plan_entry is None or p.plan_lots is None for p in plan_legs):
+        return None
+    if any(p.plan_lots != x.lots for p, x in zip(plan_legs, held, strict=True)):
+        return money_module.plan_changed_text()
+    engine_legs = [Leg(x.action, x.instrument, x.strike, x.expiry, x.quantity, x.planned_entry) for x in held]
+    plan = {p.instrument_id: Decimal(p.plan_entry) for p in plan_legs}
+    return money_module.plan_line(engine_legs, plan, [x.instrument_id for x in held])
 
 
 def outcome_response(req: OutcomeRequest, ctx: MarketContext | None,  # noqa: PLR0913 - one shared computation; rates is the sixth input
@@ -1153,7 +1228,7 @@ def outcome_response(req: OutcomeRequest, ctx: MarketContext | None,  # noqa: PL
         out, curve_booked = with_booked_curves(out, booked.amount), booked.amount
     if ctx is not None and margin is not None:  # ADR-099: read by the caller (async, off the loop); no context = login
         out = dataclasses.replace(out, margin=margin, summary=with_funds(out.summary, margin))  # REQ-081 AC-9, AC-10
-    out = _with_price_basis(out, req)  # GC-ICLIVE-B D-15 / D-17
+    out = _with_price_basis(out, req, booked)  # GC-ICLIVE-B D-15
     body = outcome_to_dict(out, today=answered_at.astimezone(IST).date())  # REQ-135 AC-2
     body["answered_at"] = answered_at
     if curve_booked is not None:

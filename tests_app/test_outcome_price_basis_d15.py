@@ -2,8 +2,8 @@
 
 Core: the replay condor. With no paper strategy the summary says plan prices. With a paper strategy whose open positions
 match every leg (contract, side, quantity, entry = the book's average) it says paper fill prices and carries the plan's
-credit as one line (hand: two SELL legs planned 0.10 above their fills = +2 x 0.10 x 65 = +13.00). An edited leg at a live
-price, a book that cannot be read, a plan with other lots and a client-sent basis are each their own answer.
+credit as one line (hand: two SELL legs planned 0.10 above their fills = +2 x 0.10 x 65 = +13.00). An edited leg at a
+live price, a book that cannot be read, a plan with other lots and a client-sent basis are each their own answer.
 """
 from __future__ import annotations
 
@@ -19,13 +19,12 @@ ROOT = pathlib.Path(__file__).resolve().parent.parent
 sys.path.insert(0, str(ROOT / "tests"))
 sys.path.insert(0, str(ROOT / "tests_app"))
 
-from marketdata._kite_fixture import all_instrument_ids, new_provider, replay  # noqa: E402
-from ofo_app.routes import outcome as outcome_route  # noqa: E402
-from test_outcome_margin import Transport, _body, source  # noqa: E402,I001
-from test_outcome_margin import RATE, VALUATION  # noqa: E402,I001
 from httpx import ASGITransport, AsyncClient  # noqa: E402
+from marketdata._kite_fixture import all_instrument_ids, new_provider, replay  # noqa: E402
 from ofo_app.main import create_app  # noqa: E402
+from ofo_app.routes import outcome as outcome_route  # noqa: E402
 from ofo_app.routes.outcome import MarketContext, get_market_context  # noqa: E402
+from test_outcome_margin import RATE, VALUATION, Transport, _body, source  # noqa: E402
 
 
 @pytest.fixture(scope="module")
@@ -119,4 +118,4 @@ async def test_a_book_that_cannot_be_read_claims_no_basis(replayed):
 async def test_the_leg_quotes_carry_each_legs_own_quote_time(replayed):
     out = json.loads((await _post(replayed, _body(replayed), None)).text)
     quotes = out["leg_quotes"]
-    assert len(quotes) == 4 and all(isinstance(q["quote_at"], str) for q in quotes)
+    assert len(quotes) == len(_body(replayed)["legs"]) and all(isinstance(q["quote_at"], str) for q in quotes)

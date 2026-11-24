@@ -199,8 +199,8 @@ const spotLive = computed(() => (strikesData.value?.centre === 'LIVE_SPOT' && st
 const spotTitle = computed(() => (spotLive.value && strikesData.value?.answered_at ? `Index price, read ${istTime(strikesData.value.answered_at)}` : ''))
 const centreStrike = computed(() => (strikesData.value?.centre === 'MIDDLE_STRIKE' ? null : (strikesData.value?.rows ?? []).find((r) => r.is_atm)?.strike ?? null))
 const centreLine = computed(() => centreText(strikesData.value, istTime))
-// D-18: the chain's LTPs are as of the reply's own answer time; a reply without one says so
-const chainAsOf = computed(() => (strikesData.value ? (istClock(strikesData.value.answered_at) ? `Chain prices as of ${istClock(strikesData.value.answered_at)} IST` : 'Chain prices: time not given') : null))
+// D-18: the chain's LTPs are as of the OLDEST quote time the server made them from (prices_at), never the reply time
+const chainAsOf = computed(() => (strikesData.value ? (istClock(strikesData.value.prices_at) ? `Oldest chain price as of ${istClock(strikesData.value.prices_at)} IST` : 'Chain prices: time not given') : null))
 const strikesReason = computed(() => listReasonText(strikesData.value?.reason))
 const futuresReason = computed(() => futuresListReasonText(futuresData.value?.reason))
 const pickedCount = computed(() => Object.keys(picked.value).length)

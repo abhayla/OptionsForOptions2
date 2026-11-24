@@ -45,7 +45,7 @@ const props = defineProps({
   strategyName: { type: String, default: null }, // the open saved strategy's name, else the card reads "New Strategy"
   // GC-TP step 3b2 (R-11): paperFillKey of each leg the Drafts Mode net position loaded; such a leg reads "Paper average" (no time)
   paperFills: { type: Array, default: () => [] },
-  priceAt: { type: String, default: null }, // the outcome reply's last_price_at: when the leg prices shown were quoted (D-18)
+  quoteAtById: { type: Object, default: () => ({}) }, // the outcome reply's leg_quotes[].quote_at by instrument id: each leg's OWN quote time (D-18)
 })
 // GC-UI 3a D-A07: 'include-all' asks the page to run the existing per-leg include edit for every leg that differs
 const emit = defineEmits(['edit', 'add-leg', 'pick-chain', 'remove', 'edit-leg', 'clear-all', 'undo-clear', 'include-all'])
@@ -87,9 +87,17 @@ const sameContractAs = (leg, i) => {
 const duplicateLegText = (leg, other) => `Leg ${leg} is the same contract as leg ${other}. The legs have not been combined; edit the strategy to keep one or combine them yourself.`
 const replacedNotes = computed(() => props.legs.flatMap((l, i) => (l.replaced_typed === true ? [replacedPriceNote(i + 1, l)] : [])))
 const needsReprice = (l) => l.planned_entry == null && l.reason_code === 'needs_reprice'
-// D-18: every panel that shows a leg's live price says when it was quoted (the reply's own time; none sent says so)
+// D-18: every leg price states its own quote time (the reply's per-leg time); the summary line is the OLDEST of them, and a leg
+// with a price but no time makes the line say so rather than borrow another time
 const hasLegPrice = computed(() => Object.keys(props.ltpById ?? {}).length > 0)
-const legPricesAsOf = computed(() => { const at = istClock(props.priceAt); return at ? `Leg prices as of ${at} IST` : 'Leg prices: time not given' })
+const legQuoteAt = (l) => istClock(props.quoteAtById?.[l.instrument_id] ?? null)
+const legPricesAsOf = computed(() => {
+  const ids = Object.keys(props.ltpById ?? {})
+  const times = ids.map((id) => props.quoteAtById?.[id] ?? null)
+  if (times.some((x) => !istClock(x))) return 'Leg prices: time not given'
+  const oldest = times.reduce((a, b) => (Date.parse(a) <= Date.parse(b) ? a : b))
+  return `Oldest leg price as of ${istClock(oldest)} IST`
+})
 const moved = (l) => movedMarker(l, props.ltpById[l.instrument_id], props.priceTextById[l.instrument_id])
 // GC-UI 3a D-A15 (ADR-202 (2)): one icon by the price heading while any leg's price has moved
 const anyMoved = computed(() => props.legs.some((l) => !!moved(l)))
@@ -220,9 +228,10 @@ function setMultiplier(index) {
             <span v-else class="flex h-8 items-center justify-center rounded border border-line px-1" data-testid="leg-lots">{{ leg.lots }} lot</span>
             <span :ref="(el) => (menuRoots[i] = el)" class="leg-line2-price relative flex h-8 items-center justify-end rounded border" :class="leg.typed === true ? 'border-accent' : 'border-line'" data-testid="price-box" @keydown.esc="closeMenu">
               <span v-if="moved(leg)" class="absolute -right-1 -top-1 z-10 leading-none" data-testid="price-moved-dot">
-                <Tooltip :text="moved(leg)" label="Price has moved"><template #trigger><span class="block h-2 w-2 rounded-full bg-warn" aria-hidden="true"></span></template></Tooltip>
+                <Tooltip :text="`${moved(leg)}${legQuoteAt(leg) ? `, quoted ${legQuoteAt(leg)} IST` : ''}`" label="Price has moved"><template #trigger><span class="block h-2 w-2 rounded-full bg-warn" aria-hidden="true"></span></template></Tooltip>
               </span>
               <span v-if="moved(leg)" class="sr-only" data-testid="price-moved">{{ moved(leg) }}</span>
+              <span v-if="ltpById[leg.instrument_id] != null" class="sr-only" data-testid="leg-quote-at">{{ legQuoteAt(leg) ?? 'time n/a' }}</span>
               <input
                 :value="priceText(leg, i)" type="text" inputmode="decimal" class="num h-full w-[8ch] min-w-0 flex-1 bg-transparent px-1 text-right text-ink"
                 :title="isPaperFill(leg) ? PAPER_AVERAGE_LABEL : leg.planned_entry != null && leg.captured_at != null ? `${entryLabel(leg)}, ${capturedText(leg)}` : undefined"

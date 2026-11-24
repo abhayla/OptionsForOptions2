@@ -303,18 +303,18 @@ export function legsAfterExit(net, legs, contractId, lots) {
 /** R-11: a leg is the book's paper fill while its entry and its time are still the ones the net position loaded. */
 export const paperFillKey = (l) => [l?.contract_id, l?.planned_entry, l?.captured_at].join('|') // an identity key, never shown
 
-/** GC-ICLIVE-B D-15: instrument id -> the plan's entry price (a string as the plan holds it), kept when a plan becomes a paper
- *  trade. An instrument on two legs has no single plan price: it is left out. No arithmetic. */
+/** GC-ICLIVE-B D-15: instrument id -> { price, lots } of the PLAN, kept when a plan becomes a paper trade (the legs then hold
+ *  the paper fills). An instrument on two legs has no single plan price: it is left out. No arithmetic. */
 export function planPricesOf(legs) {
   const seen = new Map()
-  for (const l of legs ?? []) seen.set(l.instrument_id, seen.has(l.instrument_id) ? null : (typeof l.planned_entry === 'string' ? l.planned_entry : null))
+  for (const l of legs ?? []) seen.set(l.instrument_id, seen.has(l.instrument_id) || typeof l.planned_entry !== 'string' || !Number.isInteger(l.lots) ? null : { price: l.planned_entry, lots: l.lots })
   return Object.fromEntries([...seen].filter(([, v]) => v !== null))
 }
 
-/** The outcome request's extra fields for a paper trade: its legs hold the FILL prices, so the request says so and sends each
- *  leg's plan price beside it (the server states the plan's credit); {} for a plan (the default basis). */
+/** The outcome request's plan fields for a paper trade: each leg's plan price and plan lots beside the leg's own price. The
+ *  request claims NO price basis: the server derives it from the paper book. {} for a plan. */
 export function paperBasisFields(paper, draft) {
   if (!paper || !draft) return {}
   const plan = paper.plan ?? {}
-  return { price_basis: 'paper_fills', legs: draft.legs.map((l) => (typeof plan[l.instrument_id] === 'string' ? { ...l, plan_entry: plan[l.instrument_id] } : l)) }
+  return { legs: draft.legs.map((l) => (plan[l.instrument_id] ? { ...l, plan_entry: plan[l.instrument_id].price, plan_lots: plan[l.instrument_id].lots } : l)) }
 }

@@ -20,6 +20,7 @@ CHECKED: Final = "CHECKED"  # the margin state that carries Zerodha's figures (s
 GET: Final = "get"
 PAY: Final = "pay"
 PLAN: Final = "plan"  # the request's price basis: the legs carry the plan's prices
+UNREAD: Final = "unread"  # the paper book could not be read: no basis is claimed
 PAPER_FILLS: Final = "paper_fills"  # ... or the paper trade's fill prices (D-15)
 
 
@@ -79,9 +80,20 @@ def time_and_intrinsic(legs: Sequence[Any], spot: Any) -> ValueSplit:
     return ValueSplit(intrinsic, time, render_explanation("money_value_label"), None)
 
 
-def basis_text(basis: str) -> ExplanationText:
-    """D-15, D-16, D-17: which prices the Get, the time value and the maximums beside it use (plan or paper fills)."""
-    return render_explanation("money_basis_paper" if basis == PAPER_FILLS else "money_basis_plan")
+def basis_text(basis: str, *, fills: int = 0, total: int = 0) -> ExplanationText:
+    """D-15: which prices the Get uses. ``basis`` plan (no paper strategy), UNREAD (its book could not be read) or
+    PAPER_FILLS with how many of ``total`` legs are fills (all: paper fill prices; some or none: said so)."""
+    if basis == PAPER_FILLS:
+        if fills == total:
+            return render_explanation("money_basis_paper")
+        if fills:
+            return render_explanation("money_basis_mixed", fills=fills, total=total)
+        return render_explanation("money_basis_none", total=total)
+    return render_explanation("money_basis_unread" if basis == UNREAD else "money_basis_plan")
+
+
+def plan_changed_text() -> ExplanationText:
+    return render_explanation("money_plan_changed")
 
 
 def plan_line(legs: Sequence[Any], plan_prices: Mapping[str, Any], ids: Sequence[str]) -> ExplanationText | None:
