@@ -155,3 +155,21 @@ def test_expiry_day_a_within_tick_leg_is_estimated_with_the_basis_line():
     assert BASIS in (curve.output_label or "")
     plain = _curve(_model())  # no leg valued at intrinsic: no basis line
     assert BASIS not in (plain.output_label or "")
+
+
+# --- D-08 round 3: the answer's own label (Outcome.output_label = model.label) and the table's label carry the line ---
+from ofo.engine.model import market_closed_model  # noqa: E402
+
+
+def test_the_model_label_the_outcome_and_the_table_show_carries_the_basis_line_when_the_rule_applies():
+    late = datetime.datetime(2026, 11, 25, 15, 25, tzinfo=IST)
+    m = _with_short("49.96", "25250", late)  # the within-tick no-IV leg of the round-2 test: valued at intrinsic
+    assert BASIS in (m.label or "")  # Outcome.output_label is model.label (outcome/service.py)
+    assert BASIS in (build_table(m).output_label or "")
+    assert BASIS in (market_closed_model(m).label or "")
+
+
+def test_a_normal_day_label_has_no_basis_line():
+    for m in (_model(), _model(when=datetime.datetime(2026, 11, 24, 12, 30, tzinfo=IST))):
+        assert BASIS not in (m.label or "")
+        assert BASIS not in (build_table(m).output_label or "")
