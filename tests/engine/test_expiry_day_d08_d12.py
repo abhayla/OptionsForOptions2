@@ -20,6 +20,7 @@ money, so every live price is all time value). Hand sums:
 """
 from __future__ import annotations
 
+import dataclasses
 import datetime
 from decimal import Decimal as D
 
@@ -106,3 +107,50 @@ def test_other_days_unchanged():
     assert expiry_day_close(m) is None
     heading = next(c for c in build_table(m).columns if c.id == ColumnId.THETA).label
     assert str(heading) == "Theta"
+
+
+# --- D-08 round 2: the tick rule only on the leg's own expiry day, only within one tick, and labelled -------------------
+from ofo.scenario.config import ScenarioSettings  # noqa: E402
+from ofo.scenario.levels import build_level_set  # noqa: E402
+from ofo.scenario.views import View, scenario_values  # noqa: E402
+from ofo.settings import defaults as _defaults  # noqa: E402
+
+BASIS = "a leg with no time value left at the live price is valued at its intrinsic value"
+ITM_SHORT = (Action.SELL, Instrument.PE, "25300", "22.05")
+
+
+def _with_short(ltp, spot, when):
+    return _model((C2[0], (*ITM_SHORT, ltp), C2[2], C2[3]), spot, when)
+
+
+def _curve(m):
+    return scenario_values(build_level_set(m, ScenarioSettings.from_values(_defaults()).for_index("NIFTY")), m,
+                           View.ESTIMATED_NOW)
+
+
+def test_another_day_a_no_iv_leg_at_intrinsic_is_still_not_available():
+    week = datetime.datetime(2026, 11, 18, 12, 30, tzinfo=IST)  # 7 days before the 25 Nov expiry
+    m = _with_short("49.98", "25250", week)  # 25300 PE within a tick of intrinsic 50.00 a week out, its IV absent
+    legs = tuple(dataclasses.replace(x, iv=None) if i == 1 else x for i, x in enumerate(m.legs))
+    m = gated(dataclasses.replace(m.inputs, legs=legs))
+    assert m.legs[1].iv is None
+    assert legs_without_estimate(m) == [m.legs[1].contract]
+    assert _curve(m).available is False
+
+
+def test_expiry_day_an_ltp_more_than_a_tick_under_intrinsic_keeps_the_refusal():
+    m = _with_short("30.00", "25250", NOON)  # intrinsic 50.00: a 30.00 price is not "at intrinsic" (ADR-019)
+    assert m.legs[1].iv is None
+    assert legs_without_estimate(m) == [m.legs[1].contract]
+    assert _curve(m).available is False
+
+
+def test_expiry_day_a_within_tick_leg_is_estimated_with_the_basis_line():
+    late = datetime.datetime(2026, 11, 25, 15, 25, tzinfo=IST)  # 5 min left: discounted intrinsic about 49.98
+    m = _with_short("49.96", "25250", late)  # within one tick of intrinsic 50.00 and under its discounted value: no IV
+    assert m.legs[1].iv is None and legs_without_estimate(m) == []
+    curve = _curve(m)
+    assert curve.available is True
+    assert BASIS in (curve.output_label or "")
+    plain = _curve(_model())  # no leg valued at intrinsic: no basis line
+    assert BASIS not in (plain.output_label or "")
