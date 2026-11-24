@@ -83,7 +83,10 @@ def buys_first(orders: Sequence[NewOrder]) -> list[NewOrder]:
     """D-02 (REQ-159 AC-6, REQ-058 Q238): BUY exits, BUY adds, SELL exits, SELL adds, stable inside each group. Every
     BUY precedes every SELL, so a short is never naked between two fills; an exit stays before an add of its side so
     the reducing check sees the book it reduces. ``place`` applies it only to a batch against an open position (an entry
-    on an empty book has nothing to protect and keeps the trader's leg order)."""
+    on an empty book has nothing to protect and keeps the trader's leg order).
+
+    Plainly: a paper ENTRY is recorded as sent, in the trader's leg order, so it may show a sale before its hedge. Only
+    a batch against an open position (an adjustment, an exit, a stop-out) is reordered, buys first."""
     return sorted(orders, key=lambda o: (o.side != "BUY", o.kind not in REDUCING_KINDS))  # sorted is stable
 
 
