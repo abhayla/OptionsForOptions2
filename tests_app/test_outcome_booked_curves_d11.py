@@ -1,13 +1,12 @@
-"""D-11 (ADR-209 "Same basis as Max Profit / Max Loss", GC-ICLIVE-B): the Add Booked P&L switch ON puts the booked P&L into the
-at-expiry and estimated-now curves too (not only the target block): every point of the drawn curve = open legs + booked, with the
-line "includes +Rs 962.00 booked"; OFF is open legs only, no line. Real book: strategy 63 (booked +962.00 from the engine)."""
+"""D-11 (ADR-209 "Same basis as Max Profit / Max Loss", GC-ICLIVE-B): the Add Booked P&L switch ON puts the booked P&L
+into the at-expiry and estimated-now curves too (not only the target block): every point of the drawn curve = open
+legs + booked, with the line "includes +Rs 962.00 booked"; OFF is open legs only, no line. Real book: strategy 63
+(booked +962.00 from the engine)."""
 from __future__ import annotations
 
 import pathlib
 import sys
 from decimal import Decimal
-
-import pytest
 
 sys.path.insert(0, str(pathlib.Path(__file__).resolve().parent))
 from test_outcome_target_booked import LINE, _book_63_booked, _post, provider  # noqa: F401

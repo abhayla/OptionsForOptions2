@@ -188,13 +188,15 @@ class BookBreakevens:
     reason: ExtremesReason | None
 
 
-def book_breakevens(view: BookView, terms: Mapping[str, ContractTerms], charges: Decimal = Decimal(0)) -> BookBreakevens:
+def book_breakevens(view: BookView, terms: Mapping[str, ContractTerms],
+                    charges: Decimal = Decimal(0)) -> BookBreakevens:
     """The levels where the book's at-expiry P&L is 0: booked + the open contracts' payoff at their exact average (the
     same definition as Max Profit / Max Loss above: ``view.cash`` + the open contracts' value at expiry). Needs no live
     price. D-16 (ADR-263): ``charges`` (the round-trip charges Max Profit / Max Loss carry, from
     ``extremes_charges.open_round_trip_charges``) is a flat amount taken off the P&L, so the levels are the ones after
     charges; 0 is the old answer. The adjustment pages reach the same levels through ``whole_trade_after`` (the same
-    ``breakevens_with_shift`` kernel, shift = booked - every charge line). Open contracts on more than one expiry: absent, ``multi_expiry`` (no exact breakevens, as Drafts Mode)."""
+    ``breakevens_with_shift`` kernel, shift = booked - every charge line). Open contracts on more than one expiry:
+    absent, ``multi_expiry`` (no exact breakevens, as Drafts Mode)."""
     open_ = [p for p in view.positions if p.net_quantity != 0]
     if not open_:
         return BookBreakevens(None, None)

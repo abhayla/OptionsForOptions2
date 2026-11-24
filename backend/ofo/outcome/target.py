@@ -298,10 +298,11 @@ def entries_target(ask: TargetAsk, model: ModelInputs, step: Decimal, span: Deci
 
 
 def with_booked_curves(out: Any, booked: Decimal | None) -> Any:
-    """D-11 (ADR-209, GC-ICLIVE-B): the Add Booked P&L switch ON puts the booked P&L into the drawn curves as well as the
-    target block: every point of the payoff line and of each view's curve is open legs + booked (the one engine function
-    ``add_booked_all``, the same amount the target block adds). None or 0: the answer as it was (a plan, switch off, book
-    unreadable). Levels, the table rows (``scenario``, ``other_view``) and the summary are not touched; the reply says the curve includes it."""
+    """D-11 (ADR-209, GC-ICLIVE-B): the Add Booked P&L switch ON puts the booked P&L into the drawn curves as well as
+    the target block: every point of the payoff line and of each view's curve is open legs + booked (the one engine
+    function ``add_booked_all``, the same amount the target block adds). None or 0: the answer as it was (a plan,
+    switch off, book unreadable). Levels, the table rows (``scenario``, ``other_view``) and the summary are not
+    touched; the reply says the curve includes it."""
     if booked is None or booked == 0:
         return out
 

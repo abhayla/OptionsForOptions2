@@ -310,7 +310,8 @@ class PaperBreakevens(ApiModel):
     breakevens_display: list[CatalogueText] | None
     breakevens_reason: FigureReason | None
     breakevens_reason_text: CatalogueText | None = None  # ADR-211 (5): the sentence beside the dash
-    breakevens_basis_text: CatalogueText | None = None  # D-16 (ADR-263): booked P&L and charges are in the levels, or before charges
+    # D-16 (ADR-263): booked P&L and charges are in the levels, or before charges
+    breakevens_basis_text: CatalogueText | None = None
 
 
 class GreekFigures(ApiModel):
@@ -644,9 +645,10 @@ def _breakevens(orders: Sequence[paper_store.StoredOrder], found: dict[int, trac
                 spot: Decimal | None, charges: Decimal | None = None) -> dict:
     """GC-TP R-19b: the book's at-expiry breakevens from the one engine (ofo.engine.extremes.book_breakevens), each with
     its level text and the signed percent from spot (REQ-153) when the spot is usable. Needs no live price.
-    D-16 (ADR-263): on the same basis as Max Profit / Max Loss beside them: the booked P&L is in and so are the round-trip
-    ``charges`` they carry (``extremes_charges``); None = those could not be priced, and ``breakevens_basis_text`` says
-    the levels are before charges."""
+    D-16 (ADR-263): on the same basis as Max Profit / Max Loss beside them: the booked P&L is in and so are the
+    round-trip ``charges`` they carry (``extremes_charges``); None = those could not be priced, and
+    ``breakevens_basis_text`` says the levels are before charges.
+"""
     terms = {}
     for cid in {o.order.contract_id for o in orders}:
         _, instrument, strike, expiry = _identity(found[cid])
@@ -719,7 +721,8 @@ def _summary(orders: Sequence[paper_store.StoredOrder],  # noqa: PLR0913
         return dict(_ABSENT)
     spot = _spot(snapshot) if figures["state"] == "LIVE" else None  # no percent from a spot that is not live
     extremes = _extremes(orders, found, prices, underlying, rates, _today(snapshot))
-    return (extremes | _breakevens(orders, found, spot, extremes["extremes_charges"])  # D-16: the charges Max Profit carries
+    # D-16: the charges Max Profit carries
+    return (extremes | _breakevens(orders, found, spot, extremes["extremes_charges"])
             | _greeks(figures, found, snapshot, underlying))
 
 
