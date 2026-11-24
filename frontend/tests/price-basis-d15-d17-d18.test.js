@@ -14,10 +14,10 @@ const t = (w, id) => w.find(`[data-testid="${id}"]`)
 const NET = { amount: '1540.50', amount_display: '1,541', side: 'get', per_unit: '23.70', per_unit_display: '23.70', text: 'Get ₹1,540.50', reason: null }
 
 describe('D-15 the Get says which prices it uses; the plan stays visible as the plan', () => {
-  it('prints the basis and the server plan line under the Get', () => {
+  it('prints the basis under the Get and renders no plan line even when one is passed (withdrawn, D-15 parked)', () => {
     const w = mount(MoneySummary, { props: { netPremium: NET, basisText: 'At paper fill prices', planLine: 'Plan: Get ₹1,550.25 at plan prices' } })
     expect(t(w, 'money-basis').text()).toBe('At paper fill prices')
-    expect(t(w, 'plan-line').text()).toBe('Plan: Get ₹1,550.25 at plan prices')
+    expect(t(w, 'plan-line').exists()).toBe(false)
   })
   it('a reply with no basis text or plan line prints neither (an older reply, a plan not kept)', () => {
     const w = mount(MoneySummary, { props: { netPremium: NET } })

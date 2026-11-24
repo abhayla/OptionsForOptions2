@@ -82,18 +82,30 @@ async def _units_of(provider):
     return {x["instrument_id"]: x["quantity"] for x in json.loads(resp.text)["legs"]}
 
 
-async def test_every_leg_a_fill_says_paper_fill_prices_and_states_the_plan_credit_from_the_stored_plan(replayed):
+async def test_every_leg_a_fill_says_paper_fill_prices_and_serves_no_plan_line(replayed):
     fills = await _fills_of(replayed)
     units = await _units_of(replayed)
     body = _paper_body(replayed)
-    base = json.loads((await _post(replayed, _body(replayed), None)).text)
-    credit = Decimal(base["summary"]["net_premium"]["amount"])
     plan = {x["instrument_id"]: (x["action"], units[x["instrument_id"]],
                                  Decimal(x["planned_entry"]) + (Decimal("0.10") if x["action"] == "SELL" else 0))
             for x in body["legs"]}
     s = json.loads((await _post(replayed, body, fills, plan)).text)["summary"]
     assert s["price_basis_text"] == "At paper fill prices"
-    assert s["plan_line"] == f"Plan: Get ₹{credit + Decimal('13.00'):,} at plan prices"
+    assert s["plan_line"] is None  # D-15 parked: the plan credit line is withdrawn
+
+
+async def test_an_exited_plan_leg_never_prices_the_held_subset_as_the_plan_credit(replayed):
+    """Plan has one more leg than the book holds (the 23 Nov exited-wing case): no plan line, no made-up credit."""
+    fills = await _fills_of(replayed)
+    units = await _units_of(replayed)
+    body = _paper_body(replayed)
+    plan = {x["instrument_id"]: (x["action"], units[x["instrument_id"]], Decimal(x["planned_entry"]))
+            for x in body["legs"]}
+    held_ids = list(fills)
+    assert len(held_ids) > 1
+    plan_all = {**plan, "NSE_FO:EXITED-WING": ("BUY", 65, Decimal("1.00"))}  # a planned leg no longer on the book
+    s = json.loads((await _post(replayed, body, fills, plan_all)).text)["summary"]
+    assert s["plan_line"] is None
 
 
 async def test_a_client_sent_plan_figure_is_refused_not_read(replayed):
@@ -108,17 +120,6 @@ async def test_a_client_sent_plan_figure_is_refused_not_read(replayed):
 async def test_no_stored_plan_gives_no_plan_line(replayed):
     s = json.loads((await _post(replayed, _paper_body(replayed), await _fills_of(replayed), None)).text)["summary"]
     assert s["price_basis_text"] == "At paper fill prices" and s["plan_line"] is None
-
-
-async def test_a_stored_plan_with_other_lots_does_not_price_the_fill_quantity_at_plan_prices(replayed):
-    fills = await _fills_of(replayed)
-    units = await _units_of(replayed)
-    body = _paper_body(replayed)
-    acts = {x["instrument_id"]: x["action"] for x in body["legs"]}
-    plan = {i: (acts[i], u * 2, Decimal("1.00")) for i, u in units.items()}
-    s = json.loads((await _post(replayed, body, fills, plan)).text)["summary"]
-    assert s["price_basis_text"] == "At paper fill prices"
-    assert s["plan_line"] == "Plan credit not shown: the plan's lots differ from the paper position"
 
 
 async def test_uneven_fills_average_is_compared_as_the_paper_reply_rounds_it(replayed):

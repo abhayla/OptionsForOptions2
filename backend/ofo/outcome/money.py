@@ -7,7 +7,7 @@ decides which figure is present, which catalogue sentence or reason goes with it
 from __future__ import annotations
 
 import dataclasses
-from collections.abc import Mapping, Sequence
+from collections.abc import Sequence
 from dataclasses import dataclass
 from decimal import Decimal
 from typing import Any, Final
@@ -90,26 +90,6 @@ def basis_text(basis: str, *, fills: int = 0, total: int = 0) -> ExplanationText
             return render_explanation("money_basis_mixed", fills=fills, total=total)
         return render_explanation("money_basis_none", total=total)
     return render_explanation("money_basis_unread" if basis == UNREAD else "money_basis_plan")
-
-
-def plan_changed_text() -> ExplanationText:
-    return render_explanation("money_plan_changed")
-
-
-def plan_line(legs: Sequence[Any], plan_prices: Mapping[str, Any], ids: Sequence[str]) -> ExplanationText | None:
-    """D-15: for a paper trade (legs priced at its fills) the plan's own credit, from the plan entry prices of the same
-    legs (``plan_prices``: instrument id -> price), as one line. None when any leg has no plan price (the plan was not
-    kept), a futures leg is present, or the plan nets to exactly zero: no figure is made up."""
-    if not legs or any(leg.instrument is Instrument.FUT for leg in legs):
-        return None
-    prices = [plan_prices.get(i) for i in ids]
-    if len(prices) != len(legs) or any(p is None for p in prices):
-        return None
-    at_plan = [dataclasses.replace(leg, entry_price=p) for leg, p in zip(legs, prices, strict=True)]
-    net = engine.net_premium_amount(at_plan)
-    if net == 0:
-        return None
-    return render_explanation("money_plan_get" if net > 0 else "money_plan_pay", amount=abs(net))
 
 
 @dataclass(frozen=True)

@@ -1195,36 +1195,21 @@ def _is_fill(leg: Any, fills: Mapping[str, tuple[int, Decimal]]) -> bool:
 def _with_price_basis(out: Outcome, booked: Booked | None) -> Outcome:
     """GC-ICLIVE-B D-15: the summary names the prices its Get uses, DERIVED from the paper book (no client claim): plan
     prices with no paper strategy; paper fill prices when every leg matches the book's open position; else which legs
-    are not fills. A paper trade whose legs are all fills also carries the plan's credit as one line, from the plan the server
-    stored (none stored, or its lots differ from the position: no figure is made up)."""
+    are not fills. The plan's own credit line is WITHDRAWN (D-15
+    parked): after a planned leg is fully exited it priced only the held subset and printed a made-up credit, so
+    ``plan_line`` is never served until it checks that every plan leg is still held."""
     if out.summary is None:
         return out
     held = out.legs
-    line, text = None, money_module.basis_text(money_module.PLAN)
+    text = money_module.basis_text(money_module.PLAN)
     if booked is not None and booked.paper:
         if booked.fills is None:
             text = money_module.basis_text(money_module.UNREAD)
         else:
             fills = sum(1 for x in held if _is_fill(x, booked.fills))
             text = money_module.basis_text(money_module.PAPER_FILLS, fills=fills, total=len(held))
-            if fills == len(held):
-                line = _plan_line_of(held, booked)
-    summary = dataclasses.replace(out.summary, price_basis_text=text, plan_line=line)
+    summary = dataclasses.replace(out.summary, price_basis_text=text, plan_line=None)
     return dataclasses.replace(out, summary=summary)
-
-
-def _plan_line_of(held: Any, booked: Booked) -> Any:
-    """The plan's credit of a paper trade, from the plan the SERVER stored for that strategy (never a client figure): each
-    leg's stored plan price and units. No stored plan, or a held leg it does not name: no line. The plan's units or
-    side differing from the position's (a partial exit, a changed size) says so instead of pricing the fill quantity at
-    plan prices."""
-    plan = booked.plan
-    if not plan or any(x.instrument_id not in plan for x in held):
-        return None
-    if any(plan[x.instrument_id][:2] != (x.action.value, x.quantity) for x in held):
-        return money_module.plan_changed_text()
-    engine_legs = [Leg(x.action, x.instrument, x.strike, x.expiry, x.quantity, x.planned_entry) for x in held]
-    return money_module.plan_line(engine_legs, {i: p[2] for i, p in plan.items()}, [x.instrument_id for x in held])
 
 
 def outcome_response(req: OutcomeRequest, ctx: MarketContext | None,  # noqa: PLR0913 - one shared computation; rates is the sixth input
