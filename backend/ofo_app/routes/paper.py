@@ -72,7 +72,7 @@ from ofo.strategy.definition import describe_contract, display_contract
 from ofo.table.model import display_number
 from ofo.timeutil import IST
 from ofo.tracking import paper, paper_decay, paper_greeks, stops
-from ofo.tracking.orderbook import NetPosition, PaperOrder, is_typed_price, net_positions
+from ofo.tracking.orderbook import ClosedLeg, NetPosition, PaperOrder, is_typed_price, lifecycles, net_positions
 from ofo.tracking.paper_alert import restore_alert_body
 from pydantic import AwareDatetime, BaseModel, ConfigDict, Field, field_validator
 
@@ -192,6 +192,28 @@ class PaperNetOut(ApiModel):
     no_price_text: CatalogueText | None = None  # ADR-311: "no price" on an open contract with no live price
 
 
+class PaperClosedOut(ApiModel):
+    """D-10 (ADR-207 (2)): one CLOSED lifecycle of a contract (open to flat) with its own entry, exit and booked P&L; a
+    contract bought back and opened again has this row AND an open row whose booked starts at 0."""
+    contract_id: int
+    contract_text: CatalogueText
+    instrument: Literal["CE", "PE", "FUT"]
+    strike: Money | None
+    expiry: datetime.date
+    side: Literal["BUY", "SELL"]  # the side that opened it: SELL = a short that was bought back
+    quantity: int
+    lot_size: int
+    lots: int | None  # None when the quantity is not whole lots
+    average_entry: Money
+    average_entry_text: CatalogueText
+    average_exit: Money  # 0.00 for an option that expired worthless (settled)
+    average_exit_text: CatalogueText
+    booked: Money
+    booked_text: CatalogueText
+    opened_at: datetime.datetime
+    closed_at: datetime.datetime
+
+
 class UnpricedLegOut(ApiModel):
     """ADR-311: an open leg with no live price, named by its contract; ``expired`` says the contract has expired."""
     leg_index: int
@@ -239,6 +261,7 @@ class PaperFigures(UnpricedFields):
     unbooked_text: CatalogueText | None
     total_text: CatalogueText | None
     positions: list[PaperNetOut]
+    closed: list[PaperClosedOut] = []  # D-10: every closed lifecycle; booked here + open positions' booked = booked
     # GC-TP step 8a (REQ-109 AC-10, ADR-207 (7), Sensibull 050): the charges engine's sum over every paper order, BESIDE
     # the P&L above (never subtracted from it); absent with ``charges_reason`` (never 0) when it cannot be computed
     charges: Money | None = None
@@ -535,6 +558,20 @@ def _position(p: NetPosition, found: tracked_contracts.TrackedContract, price: p
             "no_price_text": no_price_text() if p.net_quantity != 0 and not live else None}
 
 
+def _closed_row(leg: ClosedLeg, found: tracked_contracts.TrackedContract) -> dict:
+    underlying, instrument, strike, expiry = _identity(found)
+    lot = found.stored.listed.contract.lot_size
+    entry = leg.average_entry.quantize(PAISE, rounding=ROUND_HALF_UP)
+    exit_ = leg.average_exit.quantize(PAISE, rounding=ROUND_HALF_UP)
+    return {"contract_id": found.contract_id, "contract_text": describe_contract((underlying, instrument, strike, expiry)),
+            "instrument": instrument.value, "strike": strike, "expiry": expiry, "side": leg.side,
+            "quantity": leg.quantity, "lot_size": lot, "lots": leg.quantity // lot if leg.quantity % lot == 0 else None,
+            "average_entry": entry, "average_entry_text": price_text(entry),
+            "average_exit": exit_, "average_exit_text": price_text(exit_),
+            "booked": _exact(leg.booked), "booked_text": _signed(leg.booked),
+            "opened_at": leg.opened_at, "closed_at": leg.closed_at}
+
+
 def _state_text(price: paper.Price | None) -> Any:
     """ADR-210: the sentence for a contract that is not shown (retired, delisted, ...); None for a price state."""
     if price is None or price.state not in get_args(paper.ContractReason):
@@ -567,8 +604,9 @@ def _figures(orders: Sequence[paper_store.StoredOrder], found: dict[int, tracked
              prices: dict[int, paper.Price], connected: bool, today: datetime.date | None = None) -> dict:
     """The strategy's figures from the one engine at the live prices of its open contracts."""
     live = {str(cid): p.price for cid, p in prices.items() if paper.is_live(p) and p.price is not None}
-    view = net_positions(_paper(orders), live)
+    view = lifecycles(_paper(orders), live)  # D-10: the net_positions totals, split at every flat point
     positions = [_position(p, found[int(p.instrument_id)], prices.get(int(p.instrument_id))) for p in view.positions]
+    closed = [_closed_row(leg, found[int(leg.instrument_id)]) for leg in view.closed]
     reason = next((found[c].state for c in prices if found[c].state != tracked_contracts.LIVE), None)
     paused = view.unbooked is None
     as_of = None
@@ -592,7 +630,7 @@ def _figures(orders: Sequence[paper_store.StoredOrder], found: dict[int, tracked
             "state": state, "pause_reason": pause, "pause_reason_text": reason_text(pause), "as_of": as_of,
             "booked": _exact(view.booked), "unbooked": _exact(view.unbooked),
             "total": _exact(view.total), "booked_text": _signed(view.booked), "unbooked_text": _signed(view.unbooked),
-            "total_text": _signed(view.total), "positions": positions}
+            "total_text": _signed(view.total), "positions": positions, "closed": closed}
 
 
 def _extreme(value: Any) -> tuple[Decimal | str | None, Any]:

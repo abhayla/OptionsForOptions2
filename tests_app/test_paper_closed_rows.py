@@ -42,7 +42,7 @@ def test_c1_155_one_closed_short_row_and_one_open_long_row_booked_zero():
     assert len(got["closed"]) == 1
     row = got["closed"][0]
     assert (row["contract_text"], row["side"], row["lots"], row["quantity"]) == (
-        "NIFTY 24 Nov 25400 PE", "SELL", 2, 150)
+        "NIFTY 25400 PE 2026-11-24", "SELL", 2, 150)
     assert (row["average_entry"], row["average_exit"], row["booked"]) == (D("120.00"), D("115.71"), D("643.50"))
     assert row["booked_text"] and row["average_exit_text"]
     [position] = got["positions"]
