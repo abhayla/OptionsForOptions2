@@ -45,6 +45,7 @@ const props = defineProps({
   strategyName: { type: String, default: null }, // the open saved strategy's name, else the card reads "New Strategy"
   // GC-TP step 3b2 (R-11): paperFillKey of each leg the Drafts Mode net position loaded; such a leg reads "Paper average" (no time)
   paperFills: { type: Array, default: () => [] },
+  oldestQuoteAt: { type: String, default: null }, // the reply's oldest_quote_at: picked by the server, null when any leg quote has no time (D-18)
   quoteAtById: { type: Object, default: () => ({}) }, // the outcome reply's leg_quotes[].quote_at by instrument id: each leg's OWN quote time (D-18)
 })
 // GC-UI 3a D-A07: 'include-all' asks the page to run the existing per-leg include edit for every leg that differs
@@ -87,17 +88,11 @@ const sameContractAs = (leg, i) => {
 const duplicateLegText = (leg, other) => `Leg ${leg} is the same contract as leg ${other}. The legs have not been combined; edit the strategy to keep one or combine them yourself.`
 const replacedNotes = computed(() => props.legs.flatMap((l, i) => (l.replaced_typed === true ? [replacedPriceNote(i + 1, l)] : [])))
 const needsReprice = (l) => l.planned_entry == null && l.reason_code === 'needs_reprice'
-// D-18: every leg price states its own quote time (the reply's per-leg time); the summary line is the OLDEST of them, and a leg
-// with a price but no time makes the line say so rather than borrow another time (the server's times share one UTC format)
+// D-18: every leg price states its own quote time (the reply's per-leg time); the summary line prints the reply's oldest_quote_at
+// (the server picks it), and says "time not given" when the server has none: no date arithmetic here
 const hasLegPrice = computed(() => Object.keys(props.ltpById ?? {}).length > 0)
 const legQuoteAt = (l) => istClock(props.quoteAtById?.[l.instrument_id] ?? null)
-const legPricesAsOf = computed(() => {
-  const ids = Object.keys(props.ltpById ?? {})
-  const times = ids.map((id) => props.quoteAtById?.[id] ?? null)
-  if (times.some((x) => !istClock(x))) return 'Leg prices: time not given'
-  const oldest = [...times].sort()[0]
-  return `Oldest leg price as of ${istClock(oldest)} IST`
-})
+const legPricesAsOf = computed(() => (istClock(props.oldestQuoteAt) ? `Oldest leg price as of ${istClock(props.oldestQuoteAt)} IST` : 'Leg prices: time not given'))
 const moved = (l) => movedMarker(l, props.ltpById[l.instrument_id], props.priceTextById[l.instrument_id])
 // GC-UI 3a D-A15 (ADR-202 (2)): one icon by the price heading while any leg's price has moved
 const anyMoved = computed(() => props.legs.some((l) => !!moved(l)))

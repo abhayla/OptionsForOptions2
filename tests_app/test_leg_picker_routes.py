@@ -22,6 +22,7 @@ from decimal import Decimal
 import pytest
 from ofo.engine.executable_price import Depth, DepthLevel
 from ofo.engine.legs import Instrument
+from ofo.marketdata import quote as quote_module
 from ofo.marketdata.fanout import FanOut
 from ofo.marketdata.provider import (
     NOT_OFFERED,
@@ -913,9 +914,7 @@ def test_d18_the_strikes_reply_carries_the_oldest_quote_time_of_its_prices_not_t
 
 
 def test_d18_round3_a_used_quote_without_a_price_time_gives_no_prices_at_not_a_500(monkeypatch):
-    """A usable quote whose price time is None (the calendar has no data for its date) must not crash the min: the screen
-    says "time not given" for prices_at None."""
-    from ofo.marketdata import quote as quote_module
+    """A usable quote with no price time (no calendar data for its date) must not crash the min: prices_at None."""
     provider, feed = priced_provider()
     some = next(k for k, q in provider.quotes.items() if q.instrument_type is not None)
     odd = dataclasses.replace(provider.quotes[some], timestamp=T0 - datetime.timedelta(seconds=3))

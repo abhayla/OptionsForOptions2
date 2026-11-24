@@ -37,6 +37,7 @@ from ofo.marketdata.provider import MarketDataProvider
 from ofo.marketdata.quote import NormalizedQuote
 from ofo.marketdata.shared_compute import FeedScope, SharedCompute
 from ofo.marketdata.spot_source import resolve_spot
+from ofo.money import shown_price
 from ofo.outcome import (
     OutcomeState,
     PlannedLeg,
@@ -356,13 +357,6 @@ class LegIn(BaseModel):
     planned_entry: str = Field(pattern=r"^\d+(\.\d{1,2})?$", examples=["104.65"],
                                description="the planned entry price, a decimal string (never a float)")
     captured_at: AwareDatetime = Field(description="when the planned entry was captured (ADR-068)")
-    plan_entry: str | None = Field(
-        default=None, pattern=r"^\d+(\.\d{1,2})?$", examples=["23.85"],
-        description="GC-ICLIVE-B D-15: of a paper trade (paper_strategy_id), the PLAN's entry price of this leg; with "
-                    "plan_lots the reply states the plan's credit beside the fills'. Never read as a basis claim: the "
-                    "server derives the basis from the paper book")
-    plan_lots: int | None = Field(default=None, strict=True, gt=0, le=INT_ABS_MAX,
-                                  description="D-15: the plan's lots of this leg (with plan_entry)")
 
 
 #: the one request key a client may still send after ADR-168; it is dropped, never read
@@ -384,6 +378,9 @@ class Booked:
     #: unreadable book. ``paper``: the request names a paper strategy at all.
     fills: Mapping[str, tuple[int, Decimal]] | None = None
     paper: bool = False
+    #: D-15: the plan the SERVER stored for that paper strategy: instrument id -> (action, units, plan entry price); None
+    #: when none is stored or it cannot be read. Never a client-sent figure.
+    plan: Mapping[str, tuple[str, int, Decimal]] | None = None
 
 
 BookedReader = Callable[[int], Awaitable[Decimal | None]]  # strategy id -> booked P&L; None: the book could not be read
@@ -447,17 +444,55 @@ def get_fills_reader() -> FillsReader:
     return read_fills
 
 
+PlanReader = Callable[[int], Awaitable[Mapping[str, tuple[str, int, Decimal]] | None]]
+
+
+async def read_plan(strategy_id: int) -> Mapping[str, tuple[str, int, Decimal]] | None:
+    """D-15: the plan this paper strategy was saved with, by exchange identity: (action, units, plan entry price) per
+    leg, from the owner-checked read of the stored definition. None: not this user's, nothing stored, a leg without a
+    price, or a read that fails (no plan line is made up)."""
+    from ofo_app import catalogue_store, paper_book
+    from ofo_app.db import get_sessionmaker
+    from ofo_app.routes.broker import current_user_ref
+    try:
+        async with get_sessionmaker()() as db:
+            legs = await paper_book.load_plan_owned(db, current_user_ref(), strategy_id)
+            if not legs or any("planned_entry" not in leg for leg in legs):
+                return None
+            conn = await db.connection()
+            found = await catalogue_store.load_contracts(conn, [int(leg["contract_id"]) for leg in legs])
+            out: dict[str, tuple[str, int, Decimal]] = {}
+            for leg in legs:
+                c = found.get(int(leg["contract_id"]))
+                if c is None or isinstance(c, Exception):
+                    return None
+                key = c.listed.contract
+                ident = f"{key.exchange_segment}:{key.exchange_token}"
+                if ident in out:  # one contract on two legs has no single plan price
+                    return None
+                out[ident] = (str(leg["action"]), int(leg["quantity"]), Decimal(str(leg["planned_entry"])))
+            return out
+    except Exception:  # noqa: BLE001 - any read failure is the one answer "no plan shown"
+        return None
+
+
+def get_plan_reader() -> PlanReader:
+    return read_plan
+
+
 async def get_booked(req: OutcomeRequest, reader: Annotated[BookedReader, Depends(get_booked_reader)],
-                     fills_reader: Annotated[FillsReader, Depends(get_fills_reader)] = read_fills) -> Booked:
+                     fills_reader: Annotated[FillsReader, Depends(get_fills_reader)] = read_fills,
+                     plan_reader: Annotated[PlanReader, Depends(get_plan_reader)] = read_plan) -> Booked:
     """ADR-209: nothing for a plan or the switch off; else the paper strategy's booked P&L or "could not be read".
     D-15: with a paper strategy id it also carries the book's open positions, whatever the switch (the basis label)."""
     if req.paper_strategy_id is None:
         return Booked()
     fills = await (fills_reader if callable(fills_reader) else read_fills)(req.paper_strategy_id)
+    plan = await (plan_reader if callable(plan_reader) else read_plan)(req.paper_strategy_id)
     if not req.include_booked:
-        return Booked(fills=fills, paper=True)
+        return Booked(fills=fills, paper=True, plan=plan)
     amount = await reader(req.paper_strategy_id)
-    return Booked(None, True, fills, True) if amount is None else Booked(amount, False, fills, True)
+    return Booked(None, True, fills, True, plan) if amount is None else Booked(amount, False, fills, True, plan)
 
 
 class OutcomeRequest(BaseModel):
@@ -998,6 +1033,9 @@ class OutcomeResponse(ApiModel):
     summary: SummaryOut | None
     #: present whenever a snapshot was read and the answer is live (absent, not empty, when not connected or not live)
     leg_quotes: list[LegQuoteOut] | None = None
+    #: D-18: the oldest of the leg quotes' own times, picked here so the screen does no date arithmetic; None when any leg
+    #: quote has no time (the screen says "time not given") or there are no leg quotes
+    oldest_quote_at: datetime.datetime | None = None
     #: GC-LIVE: the dividend yield q each option expiry was priced with (expiry date -> q); a read-only echo for the checker
     dividend_yields: dict[Identifier, Money] | None = None
     #: FROM_ENTRIES only (REQ-077 AC-9): where the level grid is centred when there is no live index price, and why
@@ -1039,6 +1077,12 @@ def entry_guide_fields(out: Outcome, ctx: MarketContext | None) -> dict:
     if found is None:  # a shape the guide does not suit, or an unknown one: no line, no state
         return {}
     return {"entry_guide_state": found.state, "entry_guide_line": found.line}
+
+
+def _oldest_quote_at(rows: list[dict]) -> datetime.datetime | None:
+    """D-18: the oldest leg quote time; None when a leg quote has no time (no other leg's time stands in for it)."""
+    times = [r["quote_at"] for r in rows]
+    return None if not times or any(t is None for t in times) else min(times)
 
 
 def _leg_quotes(snapshot, definition: StrategyDefinition, symbols: dict[str, str | None]) -> list[dict]:
@@ -1138,20 +1182,20 @@ def checked_choice(req: OutcomeRequest, settings: Mapping[str, Decimal]) -> tupl
 
 def _is_fill(leg: Any, fills: Mapping[str, tuple[int, Decimal]]) -> bool:
     """D-15: a leg is a paper fill only when the paper book holds that contract OPEN on the same side, for the same
-    quantity, at exactly this entry price (the book's average). The client's say-so is never read."""
+    quantity, at exactly this entry price (the book's average as the paper reply SHOWS it, rounded half up to the paisa). The client's say-so is never read."""
     held = fills.get(leg.instrument_id)
     if held is None or leg.quantity is None or leg.planned_entry is None:
         return False
     net, average = held
     side_ok = (net > 0) == (leg.action is Action.BUY)
-    return side_ok and abs(net) == leg.quantity and average == leg.planned_entry
+    return side_ok and abs(net) == leg.quantity and shown_price(average) == leg.planned_entry
 
 
-def _with_price_basis(out: Outcome, req: OutcomeRequest, booked: Booked | None) -> Outcome:
+def _with_price_basis(out: Outcome, booked: Booked | None) -> Outcome:
     """GC-ICLIVE-B D-15: the summary names the prices its Get uses, DERIVED from the paper book (no client claim): plan
     prices with no paper strategy; paper fill prices when every leg matches the book's open position; else which legs
-    are not fills. A paper trade whose legs are all fills also carries the plan's credit as one line, from the plan's own
-    lots and prices (none kept, or the plan's lots differ from the position: no figure is made up)."""
+    are not fills. A paper trade whose legs are all fills also carries the plan's credit as one line, from the plan the server
+    stored (none stored, or its lots differ from the position: no figure is made up)."""
     if out.summary is None:
         return out
     held = out.legs
@@ -1163,23 +1207,23 @@ def _with_price_basis(out: Outcome, req: OutcomeRequest, booked: Booked | None) 
             fills = sum(1 for x in held if _is_fill(x, booked.fills))
             text = money_module.basis_text(money_module.PAPER_FILLS, fills=fills, total=len(held))
             if fills == len(held):
-                line = _plan_line_of(held, req)
+                line = _plan_line_of(held, booked)
     summary = dataclasses.replace(out.summary, price_basis_text=text, plan_line=line)
     return dataclasses.replace(out, summary=summary)
 
 
-def _plan_line_of(held: Any, req: OutcomeRequest) -> Any:
-    """The plan's credit of a paper trade: from each leg's plan price AND plan lots; the plan's lots differing from the
-    position's (a partial exit, a changed size) says so instead of pricing the fill quantity at plan prices."""
-    by_id = {leg.instrument_id: leg for leg in req.legs}
-    plan_legs = [by_id.get(x.instrument_id) for x in held]
-    if any(p is None or p.plan_entry is None or p.plan_lots is None for p in plan_legs):
+def _plan_line_of(held: Any, booked: Booked) -> Any:
+    """The plan's credit of a paper trade, from the plan the SERVER stored for that strategy (never a client figure): each
+    leg's stored plan price and units. No stored plan, or a held leg it does not name: no line. The plan's units or
+    side differing from the position's (a partial exit, a changed size) says so instead of pricing the fill quantity at
+    plan prices."""
+    plan = booked.plan
+    if not plan or any(x.instrument_id not in plan for x in held):
         return None
-    if any(p.plan_lots != x.lots for p, x in zip(plan_legs, held, strict=True)):
+    if any(plan[x.instrument_id][:2] != (x.action.value, x.quantity) for x in held):
         return money_module.plan_changed_text()
     engine_legs = [Leg(x.action, x.instrument, x.strike, x.expiry, x.quantity, x.planned_entry) for x in held]
-    plan = {p.instrument_id: Decimal(p.plan_entry) for p in plan_legs}
-    return money_module.plan_line(engine_legs, plan, [x.instrument_id for x in held])
+    return money_module.plan_line(engine_legs, {i: p[2] for i, p in plan.items()}, [x.instrument_id for x in held])
 
 
 def outcome_response(req: OutcomeRequest, ctx: MarketContext | None,  # noqa: PLR0913 - one shared computation; rates is the sixth input
@@ -1228,7 +1272,7 @@ def outcome_response(req: OutcomeRequest, ctx: MarketContext | None,  # noqa: PL
         out, curve_booked = with_booked_curves(out, booked.amount), booked.amount
     if ctx is not None and margin is not None:  # ADR-099: read by the caller (async, off the loop); no context = login
         out = dataclasses.replace(out, margin=margin, summary=with_funds(out.summary, margin))  # REQ-081 AC-9, AC-10
-    out = _with_price_basis(out, req, booked)  # GC-ICLIVE-B D-15
+    out = _with_price_basis(out, booked)  # GC-ICLIVE-B D-15
     body = outcome_to_dict(out, today=answered_at.astimezone(IST).date())  # REQ-135 AC-2
     body["answered_at"] = answered_at
     if curve_booked is not None:
@@ -1247,6 +1291,7 @@ def outcome_response(req: OutcomeRequest, ctx: MarketContext | None,  # noqa: PL
             streams=None if ctx is None else (lambda ids: inputs_streaming(ctx, streaming, ids)))
     if out.state is OutcomeState.COMPUTED:  # only a live computed answer: never a held, refused or not-live one
         body["leg_quotes"] = _leg_quotes(snapshot, definition, {l["instrument_id"]: l["symbol"] for l in body["legs"]})
+        body["oldest_quote_at"] = _oldest_quote_at(body["leg_quotes"])
     # REQ-119 AC-1 / REQ-133 AC-2: the REST route and the live push pass the seq they were sent; none -> no key
     return echo_seq(OutcomeResponse.model_validate(body), seq)
 

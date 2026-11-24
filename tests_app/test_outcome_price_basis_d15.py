@@ -22,6 +22,7 @@ sys.path.insert(0, str(ROOT / "tests_app"))
 
 from httpx import ASGITransport, AsyncClient  # noqa: E402
 from marketdata._kite_fixture import all_instrument_ids, new_provider, replay  # noqa: E402
+from ofo.marketdata import quote as quote_module  # noqa: E402
 from ofo_app.main import create_app  # noqa: E402
 from ofo_app.routes import outcome as outcome_route  # noqa: E402
 from ofo_app.routes.outcome import MarketContext, get_market_context  # noqa: E402
@@ -113,15 +114,16 @@ async def test_a_stored_plan_with_other_lots_does_not_price_the_fill_quantity_at
     fills = await _fills_of(replayed)
     units = await _units_of(replayed)
     body = _paper_body(replayed)
-    plan = {i: (a, u * 2, Decimal("1.00")) for (i, u), a in zip(units.items(), (x["action"] for x in body["legs"]), strict=True)}
+    acts = {x["instrument_id"]: x["action"] for x in body["legs"]}
+    plan = {i: (acts[i], u * 2, Decimal("1.00")) for i, u in units.items()}
     s = json.loads((await _post(replayed, body, fills, plan)).text)["summary"]
     assert s["price_basis_text"] == "At paper fill prices"
     assert s["plan_line"] == "Plan credit not shown: the plan's lots differ from the paper position"
 
 
 async def test_uneven_fills_average_is_compared_as_the_paper_reply_rounds_it(replayed):
-    """Fills 23.85 and 23.86 average 23.855 exactly; GET /paper/strategies/{id} shows 23.86 (half up) and the client sends
-    that as the leg's price: the leg is still the book's fill. Hand: (23.85 + 23.86) / 2 = 23.855 -> 23.86."""
+    """Fills 23.85 and 23.86 average 23.855; the paper reply shows 23.86 (half up) and the client sends that: still
+    the book's fill. Hand: (23.85 + 23.86) / 2 = 23.855 -> 23.86."""
     fills = await _fills_of(replayed)
     body = _paper_body(replayed)
     first = body["legs"][0]
@@ -168,7 +170,6 @@ async def test_the_reply_serves_the_oldest_leg_quote_time_so_the_screen_does_no_
 
 
 async def test_a_leg_quote_without_a_time_leaves_the_oldest_time_empty(replayed, monkeypatch):
-    from ofo.marketdata import quote as quote_module
     monkeypatch.setattr(quote_module, "price_time", lambda _ts: None)  # a calendar with no data for the date
     out = json.loads((await _post(replayed, _body(replayed), None)).text)
     assert out["leg_quotes"] and all(q["quote_at"] is None for q in out["leg_quotes"])

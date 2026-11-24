@@ -9,7 +9,6 @@ import SummaryCards from '@/components/strategy/SummaryCards.vue'
 import LegList from '@/components/strategy/LegList.vue'
 import PaperBookPanel from '@/components/strategy/PaperBookPanel.vue'
 import { entryPriceFor } from '@/lib/tracking'
-import { paperBasisFields, planPricesOf } from '@/lib/paperDrafts'
 
 const t = (w, id) => w.find(`[data-testid="${id}"]`)
 const NET = { amount: '1540.50', amount_display: '1,541', side: 'get', per_unit: '23.70', per_unit_display: '23.70', text: 'Get ₹1,540.50', reason: null }
@@ -24,19 +23,6 @@ describe('D-15 the Get says which prices it uses; the plan stays visible as the 
     const w = mount(MoneySummary, { props: { netPremium: NET } })
     expect(t(w, 'money-basis').exists()).toBe(false)
     expect(t(w, 'plan-line').exists()).toBe(false)
-  })
-  it('a paper trade sends each leg its plan price and plan lots, and claims no basis (the server derives it)', () => {
-    const plan = planPricesOf([{ instrument_id: 'NSE_FO:1', planned_entry: '23.85', lots: 2 }, { instrument_id: 'NSE_FO:2', planned_entry: '10.00', lots: 1 }])
-    expect(plan).toEqual({ 'NSE_FO:1': { price: '23.85', lots: 2 }, 'NSE_FO:2': { price: '10.00', lots: 1 } })
-    const draft = { underlying: 'NIFTY', legs: [{ instrument_id: 'NSE_FO:1', planned_entry: '23.70', lots: 1 }, { instrument_id: 'NSE_FO:2', planned_entry: '10.05', lots: 1 }] }
-    const sent = paperBasisFields({ plan }, draft)
-    expect(sent.price_basis).toBeUndefined()
-    expect(sent.legs.map((l) => [l.planned_entry, l.plan_entry, l.plan_lots])).toEqual([['23.70', '23.85', 2], ['10.05', '10.00', 1]])
-    expect(paperBasisFields(null, draft)).toEqual({}) // a plan: nothing added
-    expect(paperBasisFields({ plan: null }, draft).legs.every((l) => l.plan_entry === undefined)).toBe(true) // plan not kept
-  })
-  it('the same instrument twice has no single plan price: none is sent for it', () => {
-    expect(planPricesOf([{ instrument_id: 'NSE_FO:1', planned_entry: '1.00', lots: 1 }, { instrument_id: 'NSE_FO:1', planned_entry: '2.00', lots: 1 }])).toEqual({})
   })
 })
 

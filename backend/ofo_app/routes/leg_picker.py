@@ -459,7 +459,8 @@ def strikes_answer(feed: LiveFeed | None, underlying: str, expiry: datetime.date
     reason = "NOT_CONNECTED" if ctx is None else _list_reason(centre.kind, list(cell_of.values()), closed)
     if closed:  # ADR-200 (4): the label time is the used quotes' own time (in hours: no banner, no time)
         head["last_price_at"] = label_time(mstate, (q.price_at for q in (*usable, engine_spot) if q is not None))
-    head["prices_at"] = min((q.price_at for q in usable), default=None)
+    times = [q.price_at for q in usable]  # a quote may have no price time (no calendar data for its date)
+    head["prices_at"] = None if any(t is None for t in times) else min(times, default=None)  # D-18: "time not given"
     return StrikesOut(state=state, reason=reason, spot=None if centre.spot is None else centre.spot.quantize(PAISE),
                       spot_at=centre.spot_at, centre=centre.kind,
                       atm_strike=None if centre.atm is None else centre.atm.quantize(PAISE), rows=rows, **head)

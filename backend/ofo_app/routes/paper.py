@@ -25,7 +25,7 @@ from __future__ import annotations
 import datetime
 import logging
 from collections.abc import Mapping, Sequence
-from decimal import ROUND_HALF_EVEN, ROUND_HALF_UP, Decimal
+from decimal import ROUND_HALF_EVEN, Decimal
 from typing import Annotated, Any, Literal, get_args
 
 from fastapi import APIRouter, Depends, Query
@@ -62,7 +62,7 @@ from ofo.errors import render
 from ofo.errors.explanations import render_explanation, restore_explanation
 from ofo.instruments.models import FUTURE_TYPE, is_lot_aligned
 from ofo.limits import INTEGER_MAX
-from ofo.money import PAISE
+from ofo.money import PAISE, shown_price
 from ofo.outcome import read_snapshot
 from ofo.outcome.price_text import price_text
 from ofo.outcome.serialize import breakevens_display
@@ -550,7 +550,7 @@ def _signed(value: Decimal | None) -> str | None:
 
 def _position(p: NetPosition, found: tracked_contracts.TrackedContract, price: paper.Price | None) -> dict:
     underlying, instrument, strike, expiry = _identity(found)
-    average = None if p.average is None else p.average.quantize(PAISE, rounding=ROUND_HALF_UP)
+    average = None if p.average is None else shown_price(p.average)
     live = price is not None and paper.is_live(price)
     text_ = describe_contract((underlying, instrument, strike, expiry))
     return {"contract_id": found.contract_id, "contract_text": text_,
@@ -570,8 +570,8 @@ def _position(p: NetPosition, found: tracked_contracts.TrackedContract, price: p
 def _closed_row(leg: ClosedLeg, found: tracked_contracts.TrackedContract) -> dict:
     underlying, instrument, strike, expiry = _identity(found)
     lot = found.stored.listed.contract.lot_size
-    entry = leg.average_entry.quantize(PAISE, rounding=ROUND_HALF_UP)
-    exit_ = leg.average_exit.quantize(PAISE, rounding=ROUND_HALF_UP)
+    entry = shown_price(leg.average_entry)
+    exit_ = shown_price(leg.average_exit)
     text_ = describe_contract((underlying, instrument, strike, expiry))
     return {"contract_id": found.contract_id, "contract_text": text_,
             "instrument": instrument.value, "strike": strike, "expiry": expiry, "side": leg.side,
