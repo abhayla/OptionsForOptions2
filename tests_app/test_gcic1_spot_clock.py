@@ -118,17 +118,27 @@ class _Stop(Exception):
     pass
 
 
+def _watch_judged_spot(monkeypatch, route_module, seen):
+    """Spy on the route's ``judge_spot``: record the spot it really judged (the classifier no longer takes a spot, D-04)."""
+    real = route_module.judge_spot
+
+    def spy(market, rest, ctx):
+        seen["spot"] = real(market, rest, ctx)
+        return seen["spot"]
+    monkeypatch.setattr(route_module, "judge_spot", spy)
+
+
 async def test_check_route_judges_the_spot_at_the_later_clock(monkeypatch):
     clock = Clock(T0)
     monkeypatch.setattr(outcome, "server_now", clock)
     _feed, rest = _readings(T0)
     seen = {}
+    _watch_judged_spot(monkeypatch, check_route, seen)
 
-    def stop(_position, spot, _listed):
-        seen["spot"] = spot
+    def stop(_position, _listed):  # the route's next step after judging the spot (D-04: classification is spot-free)
         raise _Stop
 
-    monkeypatch.setattr(check, "strategy_type", stop)
+    monkeypatch.setattr(check, "entry_type", stop)
 
     async def tracked(_sid, _rates):
         return SimpleNamespace(position=SimpleNamespace(underlying="NIFTY"), entry_position=None)
@@ -144,7 +154,7 @@ async def test_check_route_judges_the_spot_at_the_later_clock(monkeypatch):
     with pytest.raises(_Stop):
         await check_route.adjustment_check(
             1, None, "u", tracked, market, _rest_reader(clock, rest), None, None, None, None, None)
-    assert seen["spot"] == SPOT
+    assert seen["spot"].value == SPOT and seen["spot"].source == "rest_quote"
 
 
 async def test_plan_route_judges_the_spot_at_the_later_clock(monkeypatch):
@@ -157,14 +167,15 @@ async def test_plan_route_judges_the_spot_at_the_later_clock(monkeypatch):
 
     monkeypatch.setattr(plan_route.store, "plan_for", no_plan)
     seen = {}
-    monkeypatch.setattr(plan_route.check, "strategy_type", lambda _p, spot, _l: seen.setdefault("spot", spot))
+    _watch_judged_spot(monkeypatch, plan_route, seen)
+    monkeypatch.setattr(plan_route.check, "entry_type", lambda _t, _l: "stub")  # the classifier takes no spot (D-04)
 
     async def market(_t, _c):
         return _market(T0, SourceReading(SourceState.ABSENT))
 
     tracked = SimpleNamespace(position=SimpleNamespace(underlying="NIFTY"), entry_position=None)
     await plan_route._type_of(None, "u", 1, tracked, market, _rest_reader(clock, rest), None)
-    assert seen["spot"] == SPOT
+    assert seen["spot"].value == SPOT and seen["spot"].source == "rest_quote"
 
 
 async def test_playbook_preview_judges_the_spot_at_the_later_clock(monkeypatch):
