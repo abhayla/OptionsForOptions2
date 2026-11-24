@@ -333,3 +333,28 @@ async def test_a_settings_store_that_cannot_answer_holds_the_fire_and_the_next_t
     market.tick(INDEX, "22849.90")
     assert await monitor.step() == 1
     assert await _trigger_state(db, tid) == (True, False)
+
+
+async def test_the_stop_out_alert_lists_the_legs_in_the_recorded_buys_first_order(db):
+    """D-02: a long on the LOWER contract id and a short on the higher one; the stop-out basket is stored buys first
+    (the short is bought back before the long is sold), and the alert names the legs in that same order."""
+    market = Market()
+    user = _user()
+    _, stored = await _with_draft(db, user)
+    ids = stored.saved.contract_ids[:2]
+    await paper_store.place(db, user, stored.id, [
+        paper_store.NewOrder(ids[0], "BUY", 65, D("12.95"), "open", OPEN_AT),
+        paper_store.NewOrder(ids[1], "SELL", 65, D("39.15"), "open", OPEN_AT)])
+    found = {c.contract_id: c for c in await tracked_contracts.resolve(db, ids)}
+    await _exit_below(db, stored.id)
+    monitor = _monitor(db, market)
+    assert await monitor.step() == 0
+    market.tick(found[ids[0]].feed_key, "12.50")
+    market.tick(found[ids[1]].feed_key, "41.00")
+    market.tick(INDEX, "22849.95")
+    assert await monitor.step() == 1
+    stops = await _stops(db, stored.id)
+    assert [(c, side) for c, side, *_ in stops] == [(ids[1], "BUY"), (ids[0], "SELL")]  # buys first, not by contract id
+    [(_, body)] = await _alerts(db, stored.id)
+    texts = [str(paper_monitor._contract_text(found[c])) for c, *_ in stops]
+    assert body.index(texts[0]) < body.index(texts[1])
