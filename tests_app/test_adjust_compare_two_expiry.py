@@ -131,7 +131,7 @@ def test_no_rate_says_so():
 
 
 def test_d14_a_held_leg_the_chain_does_not_quote_is_not_closed_at_its_entry() -> None:
-    """D-14 round 2: the cost to close prices each HELD leg at its live chain LTP. A held leg with no LTP is not closed at
+    """D-14 round 2: cost to close prices each HELD leg at its live chain LTP. A held leg with no LTP is not closed at
     its average entry (that figure would differ from the trade page's): the charges are not known, so no after-charges
     figure is given and the reply says "Charges not available"."""
     sc = load("ADJ-02")
