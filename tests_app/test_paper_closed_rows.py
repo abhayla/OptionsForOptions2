@@ -13,6 +13,8 @@ from ofo.tracking.orderbook import PaperOrder
 from ofo_app import tracked_contracts
 from ofo_app.routes import paper as P
 
+from tests_app.test_paper_totals import RATES  # the Kite-reproduced rate set
+
 D = Decimal
 AT = datetime.datetime(2026, 11, 23, 4, 0, tzinfo=datetime.UTC)
 LOT = 75
@@ -93,7 +95,6 @@ def test_greeks_across_two_expiries_are_labelled_one_expiry_is_not():
 
 def test_a_fully_closed_book_with_known_charges_says_after_charges():
     """D-63 round 3: the same book as above with the charge rates known: the maximum is after charges and says so."""
-    from tests_app.test_paper_totals import RATES  # the Kite-reproduced rate set
     orders = [_order(0, "SELL", 75, "50.00", "open"), _order(1, "BUY", 75, "48.74", "exit")]
     got = P._extremes(orders, {7: _found(7)}, {}, "NIFTY", RATES)
     assert got["closed_text"] is not None
