@@ -728,7 +728,12 @@ async function editLeg(edit) {
 }
 // D-60: the page's own question (the picker's wording and answers), asked for a leg a move landed on a held contract.
 const dupAsk = ref(null)
-const askDuplicate = (leg) => new Promise((resolve) => { dupAsk.value = { name: contractName(leg), resolve } })
+// Exactly one live question: a new ask, or a newer edit starting, settles the open one as Cancel and closes its dialog, so
+// every sendEdit settles and the answer on screen always belongs to the newest move.
+const askDuplicate = (leg) => new Promise((resolve) => {
+  answerDuplicate('cancel')
+  dupAsk.value = { name: contractName(leg), resolve }
+})
 function answerDuplicate(choice) {
   const d = dupAsk.value
   dupAsk.value = null
@@ -741,11 +746,17 @@ async function askMovedDuplicates(baseLegs, landed) {
   if (!moved.length) return { legs: landed, increased: false }
   const movedIds = new Set(moved.map((l) => l.id))
   const held = landed.filter((l) => !movedIds.has(l.id))
-  const admitted = await admitLegs(held, moved, { ask: askDuplicate, maxLots: served.integer(MAX_LOTS_KEY) })
-  if (!admitted || admitted.error) return admitted
-  const byId = new Map(admitted.legs.map((l) => [l.id, l]))
-  const kept = new Set(admitted.kept.map((l) => l.id))
-  const out = landed.flatMap((l) => (movedIds.has(l.id) ? (kept.has(l.id) ? [l] : []) : [byId.get(l.id) ?? l]))
+  // each moved leg is checked against the held legs AND the moved legs already admitted (a Width or Shift that lands two
+  // same-action legs on one contract asks too); an Increase may fold into either
+  let cur = held
+  const opts = { ask: askDuplicate, maxLots: served.integer(MAX_LOTS_KEY) }
+  for (const x of moved) {
+    const r = await admitLegs(cur, [x], opts)
+    if (!r || r.error) return r
+    cur = r.kept.length ? [...r.legs, x] : r.legs
+  }
+  const byId = new Map(cur.map((l) => [l.id, l]))
+  const out = landed.flatMap((l) => (byId.has(l.id) ? [byId.get(l.id)] : []))
   return { legs: out, increased: out.length !== landed.length }
 }
 async function sendEdit(edit, baseLegs, shiftTotal, owner) {
@@ -755,6 +766,7 @@ async function sendEdit(edit, baseLegs, shiftTotal, owner) {
     return
   }
   const mine = guard.next('leg-edit') // aborts the edit still in flight (its reply would be stale)
+  answerDuplicate('cancel') // a question left open by the older move closes: the old edit settles as Cancel
   editError.value = null
   editErrorIndex.value = null
   try {
