@@ -33,7 +33,7 @@ import LoadFailed from '@/components/common/LoadFailed.vue'
 import { PAPER_REREAD_FAILED_TEXT } from '@/lib/sharedStateText'
 import {
   DISCARD_LABEL, PAPER_BOOK_UNREADABLE, PAPER_MODE_LABEL, PAPER_PENDING_UNREADABLE, PAPER_REREAD_DELAYS_MS, REVIEW_AND_ADD_LABEL, confirmRowsFor, paperOrdersFor, pendingText, readPaperBook,
-  legsAfterExit, paperFillKey, paperLeftOf, paperChargesOf,
+  legsAfterExit, paperFillKey, paperLeftOf, paperChargesOf, paperBasisFields, planPricesOf,
 } from '@/lib/paperDrafts'
 import { withAsOf } from '@/lib/paperList'
 import PaperBookPanel from '@/components/strategy/PaperBookPanel.vue'
@@ -245,7 +245,7 @@ async function load() {
   if (!(fallback && state.value === 'not-connected')) state.value = 'loading'
   slowTimer = setTimeout(() => (slow.value = true), 3000)
   try {
-    const res = await api.post('/strategies/outcome', { ...draft, ...choiceFields(choice.value), ...CHART_FLAGS, ...target, ...booked, fallback, seq: mine.seq }, { signal: mine.signal })
+    const res = await api.post('/strategies/outcome', { ...draft, ...choiceFields(choice.value), ...CHART_FLAGS, ...target, ...booked, ...paperBasisFields(paper.value, draft), fallback, seq: mine.seq }, { signal: mine.signal })
     if (!guard.claim('outcome', res.data, mine)) return
     // A reply for legs or a choice that are no longer on screen is dropped and asked again; one for the inputs still on
     // screen is the answer to them (also when the server echoes its own spelling), so asking again could never end.
@@ -338,7 +338,7 @@ function syncLive() {
   // server computes the target block in every push (ADR-008: the browser computes none)
   const target = targetFields(targetPick.value, dateStopList.value)
   const booked = bookedFields(paper.value?.book?.strategy_id, includeBooked.value)
-  if (draft) live.follow({ ...draft, ...choiceFields(choice.value), ...CHART_FLAGS, ...target, ...booked })
+  if (draft) live.follow({ ...draft, ...choiceFields(choice.value), ...CHART_FLAGS, ...target, ...booked, ...paperBasisFields(paper.value, draft) })
   else live.stop()
 }
 
@@ -406,11 +406,14 @@ const paperStale = ref(false)
 const showOrdersTick = ref(0) // bumped to switch the book panel to its Orderbook view
 const unreadableParts = (e) => ({ ...(e?.parts ?? NEUTRAL_PARTS), what_happened: PAPER_BOOK_UNREADABLE })
 const copyLegs = (net) => net.map((l) => ({ ...l }))
+// GC-ICLIVE-B D-15: the plan's prices the paper trade was made from, kept beside the book so the summary can show the plan's credit
+// (the legs now hold the paper fills). Set when a plan is added to paper or a saved plan is opened; none for a book opened by URL.
+let planHeld = null
 function enterDrafts(id, read) {
   if (String(id) !== String(rereadId)) cancelReread() // another strategy opens: a re-read of the old one ends here
   paperContractsChanged.value = false // a good read of the book: a poll's earlier "contracts changed" mark is out of date
   paperStale.value = false
-  paper.value = { id, book: read.book, net: read.net }
+  paper.value = { id, book: read.book, net: read.net, plan: planHeld && planHeld.id === String(id) ? planHeld.prices : null }
   openSaved(copyLegs(read.net), id, null, read.book.name ?? null)
 }
 const leaveDrafts = () => { paper.value = null; paperStale.value = false; cancelReread() }
@@ -563,6 +566,7 @@ async function openPaperOrderbook() {
 // the Saved tab's Open goes through the same check: a strategy with paper orders opens as its net position, never its plan
 async function openFromBar(next, id, revision, name) {
   if (Number.isInteger(id)) {
+    planHeld = { id: String(id), prices: planPricesOf(next) } // the saved plan's own prices
     try {
       const read = await readPaperBook(api, id)
       if (read.kind === 'paper') return enterDrafts(id, read)
@@ -577,6 +581,7 @@ async function openFromBar(next, id, revision, name) {
 // GC-TP step 3c: after Add to Paper confirms, the strategy is a paper strategy: re-read the book and enter Drafts Mode through the same
 // enterDrafts as opening ?strategy=N. A failed read is said plainly (the bar keeps Add to Paper locked); the plan is not left live.
 async function onPaperAdded(id) {
+  planHeld = { id: String(id), prices: planPricesOf(legs.value) } // the plan on screen when Add to Paper was confirmed
   await rereadAfterPlace(id, () => { openError.value = unreadableParts(null) })
 }
 async function openFromUrl() {
@@ -1041,12 +1046,12 @@ const pricesStamp = computed(() => {
         <div :class="paper ? 'rounded-lg border-2 border-dashed border-warn p-2' : 'contents'" data-testid="legs-frame" :data-paper-mode="paper ? 'true' : 'false'">
         <p v-if="paper" class="mb-2 text-xs font-semibold text-warn" data-testid="paper-mode-label">{{ PAPER_MODE_LABEL }}</p>
         <LegList
-          :multiplier-max="served.integer(MULTIPLIER_MAX_KEY)" :legs="legs" :pending-steps="pendingSteps" :paper-fills="paperFills" :shape-name="shapeName" :has-reply="hasReply" :controls="controls" :updating="updating" :error-parts="editError" :error-index="editErrorIndex" :ltp-by-id="ltpById" :price-text-by-id="priceTextById"
+          :multiplier-max="served.integer(MULTIPLIER_MAX_KEY)" :legs="legs" :pending-steps="pendingSteps" :paper-fills="paperFills" :price-at="data?.last_price_at ?? null" :shape-name="shapeName" :has-reply="hasReply" :controls="controls" :updating="updating" :error-parts="editError" :error-index="editErrorIndex" :ltp-by-id="ltpById" :price-text-by-id="priceTextById"
           :undo-offered="undoHeld !== null" :leg-unit="legUnit" :strategy-name="openStrategy?.name ?? null"
           @edit="editLeg" @edit-leg="openInPicker" @include-all="includeAll" @remove="removeLeg" @add-leg="focusPicker" @pick-chain="pickFromChain" @clear-all="clearAll" @undo-clear="undoClear"
         >
           <template #money>
-            <div v-if="showNumbers" :class="updating ? 'opacity-60' : ''"><MoneySummary class="!mt-0 !px-0" :net-premium="data.summary.net_premium ?? null" :charges="data.charges_breakdown ?? null" :paper-charges="paperCharges" /></div>
+            <div v-if="showNumbers" :class="updating ? 'opacity-60' : ''"><MoneySummary class="!mt-0 !px-0" :net-premium="data.summary.net_premium ?? null" :charges="data.charges_breakdown ?? null" :paper-charges="paperCharges" :basis-text="data.summary.price_basis_text ?? null" :plan-line="data.summary.plan_line ?? null" /></div>
           </template>
         </LegList>
         <!-- GC-ICFIX P3 u513: while the confirm dialog is open its list is a preview, not "N pending changes" the user made -->
@@ -1184,6 +1189,7 @@ const pricesStamp = computed(() => {
             :estimate-label="data.output_label || null"
             :risk-reward="data.summary.risk_reward ?? null"
             :value-label="data.summary.value_label ?? null"
+            :price-basis="data.summary.price_basis_text ?? null"
             :value-reason="data.summary.value_reason ?? null"
             :funds-share="paperLeft ? null : data.summary.funds_share ?? null"
           >

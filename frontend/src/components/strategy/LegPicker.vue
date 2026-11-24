@@ -13,7 +13,7 @@ import Modal from '@/components/common/Modal.vue'
 import { DUP_QUESTION, admitLegs, lotsRangeText } from '@/lib/legDoor'
 import DepthPopup from '@/components/strategy/DepthPopup.vue'
 import MarketClosedBanner from '@/components/states/MarketClosedBanner.vue'
-import { capturedCaption, contractName, daysByExpiry, expiryText, expiryWithDays, istTime, setShownDate, strikeLabel } from '@/lib/displayFormat'
+import { capturedCaption, contractName, daysByExpiry, expiryText, expiryWithDays, istClock, istTime, setShownDate, strikeLabel } from '@/lib/displayFormat'
 import { marketClosedText } from '@/lib/sharedStateText'
 import { healthSentence } from '@/lib/dataHealthText'
 import { oiBarMax, oiBarWidth as barWidthOf } from '@/lib/oiBars'
@@ -199,6 +199,8 @@ const spotLive = computed(() => (strikesData.value?.centre === 'LIVE_SPOT' && st
 const spotTitle = computed(() => (spotLive.value && strikesData.value?.answered_at ? `Index price, read ${istTime(strikesData.value.answered_at)}` : ''))
 const centreStrike = computed(() => (strikesData.value?.centre === 'MIDDLE_STRIKE' ? null : (strikesData.value?.rows ?? []).find((r) => r.is_atm)?.strike ?? null))
 const centreLine = computed(() => centreText(strikesData.value, istTime))
+// D-18: the chain's LTPs are as of the reply's own answer time; a reply without one says so
+const chainAsOf = computed(() => (strikesData.value ? (istClock(strikesData.value.answered_at) ? `Chain prices as of ${istClock(strikesData.value.answered_at)} IST` : 'Chain prices: time not given') : null))
 const strikesReason = computed(() => listReasonText(strikesData.value?.reason))
 const futuresReason = computed(() => futuresListReasonText(futuresData.value?.reason))
 const pickedCount = computed(() => Object.keys(picked.value).length)
@@ -752,6 +754,7 @@ defineExpose({ startEdit, showStrikes })
           <MarketClosedBanner v-if="strikesData.market_closed === true" class="mb-2" :prices-at="strikesData.last_price_at" />
           <p v-if="strikesReason" data-testid="strikes-reason">{{ strikesReason }}</p>
           <p v-if="centreLine" data-testid="strikes-centre">{{ centreLine }}</p>
+          <p v-if="chainAsOf" class="text-xs text-ink-muted" data-testid="chain-prices-as-of">{{ chainAsOf }}</p>
           <!-- UI-202 column heads: Call side | Strike | Put side, the same columns as every row below -->
           <div class="sticky top-0 z-10 mt-2 grid items-end gap-x-[3px] border-b border-line bg-surface pb-1 text-[9px] leading-tight text-ink-muted" :style="gridStyle" data-testid="strike-head">
             <span v-for="col in sideColumns('ce')" :key="`ce-${col}`" class="whitespace-nowrap text-right">{{ col === 'act' ? '' : `Call ${COLUMN_LABEL[col]}` }}</span>
@@ -854,6 +857,7 @@ defineExpose({ startEdit, showStrikes })
         <p v-else-if="!strikesData.rows?.length" data-testid="strikes-reason">{{ strikesReason || 'No strikes are listed for this expiry.' }}</p>
         <template v-else>
           <p v-if="centreLine" data-testid="strikes-centre">{{ centreLine }}</p>
+          <p v-if="chainAsOf" class="text-xs text-ink-muted" data-testid="chain-prices-as-of">{{ chainAsOf }}</p>
           <div class="grid grid-cols-[1fr_70px_1fr] border-b border-line pb-1 text-[10px] text-ink-muted" data-testid="type-head">
             <span class="text-right">Call LTP</span><span class="text-center">Strike</span><span>Put LTP</span>
           </div>

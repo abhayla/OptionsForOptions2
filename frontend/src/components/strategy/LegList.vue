@@ -9,6 +9,7 @@
 <script setup>
 import { computed, nextTick, ref } from 'vue'
 import { sameContract } from '@/lib/legDoor'
+import { istClock } from '@/lib/displayFormat'
 import ErrorMessage from '@/components/common/ErrorMessage.vue'
 import Tooltip from '@/components/common/Tooltip.vue'
 import Icon from '@/components/common/Icon.vue'
@@ -44,6 +45,7 @@ const props = defineProps({
   strategyName: { type: String, default: null }, // the open saved strategy's name, else the card reads "New Strategy"
   // GC-TP step 3b2 (R-11): paperFillKey of each leg the Drafts Mode net position loaded; such a leg reads "Paper average" (no time)
   paperFills: { type: Array, default: () => [] },
+  priceAt: { type: String, default: null }, // the outcome reply's last_price_at: when the leg prices shown were quoted (D-18)
 })
 // GC-UI 3a D-A07: 'include-all' asks the page to run the existing per-leg include edit for every leg that differs
 const emit = defineEmits(['edit', 'add-leg', 'pick-chain', 'remove', 'edit-leg', 'clear-all', 'undo-clear', 'include-all'])
@@ -85,6 +87,9 @@ const sameContractAs = (leg, i) => {
 const duplicateLegText = (leg, other) => `Leg ${leg} is the same contract as leg ${other}. The legs have not been combined; edit the strategy to keep one or combine them yourself.`
 const replacedNotes = computed(() => props.legs.flatMap((l, i) => (l.replaced_typed === true ? [replacedPriceNote(i + 1, l)] : [])))
 const needsReprice = (l) => l.planned_entry == null && l.reason_code === 'needs_reprice'
+// D-18: every panel that shows a leg's live price says when it was quoted (the reply's own time; none sent says so)
+const hasLegPrice = computed(() => Object.keys(props.ltpById ?? {}).length > 0)
+const legPricesAsOf = computed(() => { const at = istClock(props.priceAt); return at ? `Leg prices as of ${at} IST` : 'Leg prices: time not given' })
 const moved = (l) => movedMarker(l, props.ltpById[l.instrument_id], props.priceTextById[l.instrument_id])
 // GC-UI 3a D-A15 (ADR-202 (2)): one icon by the price heading while any leg's price has moved
 const anyMoved = computed(() => props.legs.some((l) => !!moved(l)))
@@ -279,7 +284,10 @@ function setMultiplier(index) {
             <option v-for="n in multiplierList" :key="n" :value="n">{{ n }}</option>
           </select>
         </label>
-        <div class="min-w-0 max-[639px]:w-full"><slot name="money" /></div>
+        <div class="min-w-0 max-[639px]:w-full">
+          <p v-if="hasLegPrice" class="text-xs text-ink-muted" data-testid="leg-prices-as-of">{{ legPricesAsOf }}</p>
+          <slot name="money" />
+        </div>
       </div>
     </template>
   </div>

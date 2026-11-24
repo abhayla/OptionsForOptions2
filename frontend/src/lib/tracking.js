@@ -59,8 +59,9 @@ export function paperPostOutcome(e) {
  *  planned entry with a note saying so. The planned-entry field itself is never changed. */
 export function entryPriceFor(leg, livePriceById = {}) {
   const live = livePriceById?.[leg?.instrument_id]
-  if (typeof live === 'string' && live.trim() !== '') return { price: live.trim(), price_note: '' }
   const planned = typeof leg?.planned_entry === 'string' ? leg.planned_entry : ''
+  // GC-ICLIVE-B D-15 (c): a live price that is not the plan's says so ("plan 36.45"): no re-quote is hidden
+  if (typeof live === 'string' && live.trim() !== '') return { price: live.trim(), price_note: planned && planned !== live.trim() ? `plan ${planned}` : '' }
   return { price: planned, price_note: planned ? PAPER_PLANNED_PRICE_NOTE : '' }
 }
 

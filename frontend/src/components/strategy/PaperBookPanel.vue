@@ -52,7 +52,7 @@
             <td class="py-1 pr-2" data-testid="net-contract">{{ p.contract_text }}</td>
             <td class="num text-center" data-testid="net-lots">{{ lotsOf(p) }}</td>
             <td class="num text-right" data-testid="net-avg">{{ p.average_text ?? '-' }}</td>
-            <td class="num text-right" data-testid="net-ltp">{{ p.ltp_text ?? '-' }}</td>
+            <td class="num text-right"><span data-testid="net-ltp">{{ p.ltp_text ?? '-' }}</span><span v-if="p.ltp_text" class="ml-1 text-ink-muted" data-testid="net-ltp-at">{{ istClock(p.price_at ?? null) ?? 'time n/a' }}</span></td>
             <td class="num text-right" data-testid="net-booked">{{ p.booked_text }}</td>
             <td class="num text-right" data-testid="net-unbooked">{{ p.unbooked_text ?? '-' }}</td>
             <td class="num text-right" data-testid="net-pnl">{{ p.total_text ?? '-' }}</td>
