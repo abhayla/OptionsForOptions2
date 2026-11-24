@@ -55,6 +55,7 @@ const props = defineProps({
   payoffTable: { type: Object, default: null },
   // GC-UI step 5 (D-B40 / D-B41): the saved strategy's id, which the Strategy Chart tab asks the server about (null = unsaved)
   savedId: { type: Number, default: null },
+  charges: { type: Object, default: null }, // D-63 round 3: the paper reply's charges texts {paid, close}, as sent; shown only beside an after-charges TOTAL
   closed: { type: Array, default: null }, // D-63 (a): the paper reply's closed rows; its TOTAL includes their booked P&L, so they are listed under the table
   paperTotal: { type: Object, default: null }, // GC-ICFIX round 2 (F4): sharedTotal() of the page's one paper read; the TOTAL row's P&L shows it, not the socket's figure
   savedRevision: { type: [Number, String], default: null }, // changes on every re-save: the Strategy Chart re-asks
@@ -70,6 +71,11 @@ const cellText = (r, c) => (r.isTotal && c.id === 'unrealized_pnl' && props.pape
   : r.isTotal && c.id === 'pnl_percent' && props.paperTotal ? '—' : r.values[c.id].display)
 // a paper trade's per-row P&L cells are before charges: said once, in the column header (the TOTAL cell carries its own label)
 const headText = (c) => (c.id === 'unrealized_pnl' && props.paperTotal ? `${c.label} ${BEFORE_CHARGES}` : c.label)
+// D-63 round 3: with an after-charges TOTAL, the reply's paid and to-close charges texts are shown as sent (no sum here);
+// charges unknown means the TOTAL is before charges and no line shows
+const chargeLines = computed(() => (props.paperTotal?.kind === 'after' && props.charges
+  ? [{ id: 'paid', label: 'Charges paid', text: props.charges.paid }, { id: 'close', label: 'Estimated cost to close', text: props.charges.close }].filter((l) => l.text)
+  : []))
 const TABS = [
   { key: 'payoff', label: 'Payoff Graph' }, // GC-UI b1 D-B01 (Sensibull 012 tab labels)
   { key: 'pnl', label: 'P&L Table' },
@@ -242,7 +248,15 @@ const toneOf = (v) => ({ profit: 'text-profit', loss: 'text-loss' })[signOf(v)] 
             </tr>
           </thead>
           <tbody>
-            <tr v-for="r in compact" :key="r.rowId" :class="['border-b border-line', r.isTotal ? 'font-semibold' : '']" :data-row="r.rowId" data-testid="compact-row">
+            <template v-for="r in compact" :key="r.rowId">
+            <!-- D-63 round 3: the rows are before charges, the TOTAL is after: the server's two charges lines sit between them -->
+            <template v-if="r.isTotal && chargeLines.length">
+              <tr v-for="l in chargeLines" :key="l.id" class="border-b border-line text-ink-muted" :data-testid="`pnl-charges-${l.id}`">
+                <td class="py-1.5">{{ l.label }}</td>
+                <td v-for="c in COMPACT_COLUMNS" :key="c.id" class="py-1.5 text-right tabular-nums">{{ c.id === 'unrealized_pnl' ? l.text : '' }}</td>
+              </tr>
+            </template>
+            <tr :class="['border-b border-line', r.isTotal ? 'font-semibold' : '']" :data-row="r.rowId" data-testid="compact-row">
               <td class="py-1.5">
                 <span v-if="r.isTotal">Total</span>
                 <span v-else class="inline-flex flex-wrap items-center gap-1.5">
@@ -258,6 +272,7 @@ const toneOf = (v) => ({ profit: 'text-profit', loss: 'text-loss' })[signOf(v)] 
                 data-testid="compact-cell"
               >{{ cellText(r, c) }}</td>
             </tr>
+            </template>
           </tbody>
         </table>
         <EmptyState v-else message="The per-leg P&L is not in this answer. Open the full table to see every column." data-testid="compact-empty" />

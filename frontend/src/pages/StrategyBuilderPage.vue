@@ -1221,6 +1221,7 @@ const pricesStamp = computed(() => {
             :saved-id="savedId"
             :paper-total="paperTotal"
             :closed="paper?.book?.closed ?? null"
+            :charges="paper ? { paid: paper.book.charges_paid_text ?? paper.book.charges_text ?? null, close: paper.book.charges_to_close_text ?? null } : null"
             :saved-revision="savedRevision"
             @zoom="zoomTo"
             @update:include-booked="pickBooked"
