@@ -128,4 +128,3 @@ def test_no_rate_says_so():
     cell = {c["id"]: c["values"] for c in body["criteria"]}["move_p1"]["A-04"]
     assert cell["value"] is None
     assert cell["unavailable_reason"] == "Not available: no interest rate was read to value the later expiry's legs."
-

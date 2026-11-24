@@ -20,7 +20,7 @@ vi.mock('@/services/api', async (importActual) => {
 })
 import StrategyBuilderPage from '@/pages/StrategyBuilderPage.vue'
 import ChartCard from '@/components/strategy/ChartCard.vue'
-import { BOOKED_SWITCH_LABEL, OPEN_LEGS_ONLY_TEXT, bookedFields } from '@/lib/targetBlock'
+import { BOOKED_SWITCH_LABEL, OPEN_LEGS_ONLY_BEFORE_CHARGES_TEXT, OPEN_LEGS_ONLY_TEXT, bookedFields } from '@/lib/targetBlock'
 import on from './fixtures/outcome-target-booked-on.json'
 import off from './fixtures/outcome-target-booked-off.json'
 import plain from './fixtures/outcome-target-plain.json'
@@ -189,7 +189,18 @@ describe('D-11: the tiles follow the switch', () => {
     await settle()
     expect(t(w, 'max-profit').text()).toBe(plain.summary.max_profit_display)
     expect(t(w, 'max-loss').text()).toBe(plain.summary.max_loss_display)
-    expect(t(w, 'tiles-basis').text()).toBe(OPEN_LEGS_ONLY_TEXT)
+    expect(plain.summary.charges).toBeNull() // the plain reply has no charges figure: the tiles are before charges, and the line says so
+    expect(t(w, 'tiles-basis').text()).toBe(OPEN_LEGS_ONLY_BEFORE_CHARGES_TEXT)
     for (const fact of ['booked P&L is not included', 'after charges estimated at entry prices', 'breakevens are before charges']) expect(OPEN_LEGS_ONLY_TEXT).toContain(fact)
+    expect(OPEN_LEGS_ONLY_BEFORE_CHARGES_TEXT).not.toContain('after charges')
+  })
+  it('OFF with a served charges figure: the line says the tiles are after charges at entry prices', async () => {
+    const base = outcome
+    outcome = (body) => Promise.resolve({ data: { ...plain, summary: { ...plain.summary, charges: '80.00' } } })
+    const w = await openDrafts()
+    await t(w, 'add-booked-switch').setValue(false)
+    await settle()
+    expect(t(w, 'tiles-basis').text()).toBe(OPEN_LEGS_ONLY_TEXT)
+    outcome = base
   })
 })

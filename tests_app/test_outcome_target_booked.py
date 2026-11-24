@@ -67,6 +67,10 @@ def _pnl(out: dict) -> Decimal:
     return D(out["target"]["pnl"]["value"])
 
 
+def _curve_by_level(out: dict) -> dict[str, Decimal]:
+    return {p["level"]: D(p["pnl"]) for p in out["target"]["curve"]["points"]}
+
+
 def _curve(out: dict) -> list[Decimal]:
     return [D(p["pnl"]) for p in out["target"]["curve"]["points"]]
 
@@ -80,7 +84,9 @@ async def test_core_paper_target_pnl_is_open_legs_plus_booked_with_the_line(prov
     off = await _post(provider, booked, paper_strategy_id=63, include_booked=False)
     on = await _post(provider, booked, paper_strategy_id=63)  # include_booked defaults to true
     assert _pnl(on) == _pnl(off) + booked  # open + booked = shown
-    assert [c - o for c, o in zip(_curve(on), _curve(off), strict=True)] == [booked] * len(_curve(on))  # every point
+    a, b = _curve_by_level(off), _curve_by_level(on)  # shared levels; only the 0-P&L columns differ (R3)
+    shared = a.keys() & b.keys()
+    assert len(shared) >= len(a) - 2 and {b[lv] - a[lv] for lv in shared} == {booked}
     assert D(on["target"]["badge"]["amount"]) == _pnl(off) + booked  # the badge is the same whole figure
     t = on["target"]
     assert t["booked_display"] == "+962.00" and t["includes_booked_text"] == LINE

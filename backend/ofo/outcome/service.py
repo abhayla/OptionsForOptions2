@@ -71,6 +71,7 @@ from ofo.scenario.levels import (
     LevelColumn,
     LevelSet,
     RangeOverride,
+    booked_level_set,
     build_level_set,
     first_multiple_at_or_above,
     graph_level_set,
@@ -761,7 +762,8 @@ def from_entries(definition: StrategyDefinition, snapshot: MarketSnapshot | None
         forwards = {leg.expiry: spot_fallback_forward(leg.expiry, centre, valuation, valuation, rate)
                     for leg in inputs}
         model = model_inputs(StrategyInput(definition.underlying, reading, valuation, rate, tuple(inputs)), forwards)
-        level_set = _no_current(build_level_set(model, config, override=override))
+        open_set = _no_current(build_level_set(model, config, override=override))
+        level_set = booked_level_set(open_set, model, target and target.booked)  # D-11: booked-in 0-P&L
     except (MultiExpiryError, ForwardUnavailable):
         return None
     breakdown = _charges_breakdown(model, definition.underlying, rates)
@@ -797,7 +799,7 @@ def from_entries(definition: StrategyDefinition, snapshot: MarketSnapshot | None
         reason=None, legs=tuple(legs), margin=MARGIN, valuation=valuation, output_label=FROM_ENTRIES_LABEL,
         spot_level=None, spot_at=None, level_set=level_set, scenario=shown, table=table,
         visible_columns=visible_columns(table), payoff_points=points,
-        summary=_summary(_metrics_of(model.strategy), level_set, model, charges, charges is None),
+        summary=_summary(_metrics_of(model.strategy), open_set, model, charges, charges is None),
         charges_breakdown=breakdown, centre_label=render_explanation("outcome_from_entries_centre", level=centre),
         curves=curves, other_view=other, payoff_table=table_p,
         standard_deviation=standard_deviation(None, None) if sd_bands else None,
@@ -925,7 +927,8 @@ def build_outcome(definition: StrategyDefinition, snapshot: MarketSnapshot | Non
     config = config or ScenarioSettings.from_values(settings).for_index(definition.underlying)
     solved = {x.instrument_id: x.iv for x in legs if x.iv is not None}
     move = _expected_move(inputs, snapshot, valuation, shared, solved)
-    level_set = build_level_set(model, config, expected_move=move, override=override)
+    open_set = build_level_set(model, config, expected_move=move, override=override)
+    level_set = booked_level_set(open_set, model, target and target.booked)  # D-11: booked-in 0-P&L
     breakdown = _charges_breakdown(model, definition.underlying, rates)
     charges = None if breakdown is None else breakdown.total
     # the ONE computation (AC-8)
@@ -957,7 +960,7 @@ def build_outcome(definition: StrategyDefinition, snapshot: MarketSnapshot | Non
         spot_at=model.spot_at,
         level_set=level_set, scenario=values, table=table, visible_columns=visible_columns(table),
         payoff_points=points,
-        summary=_summary(_metrics_of(model.strategy), level_set, model, charges, charges is None,
+        summary=_summary(_metrics_of(model.strategy), open_set, model, charges, charges is None,
                          spot=model.spot_level),
         charges_breakdown=breakdown, curves=curves, other_view=other, payoff_table=table_p,
         standard_deviation=sd, dividend_yields=yields_of(model), sold_deltas=_sold_deltas(model, leg_greeks),

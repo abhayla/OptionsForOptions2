@@ -63,7 +63,7 @@ import { matchesLegs } from '@/lib/liveMatch'
 import { INVALID_LINK_PARTS, canonicalLegs } from '@/lib/draftLink'
 import ScenarioControls from '@/components/strategy/ScenarioControls.vue'
 import TargetBlock from '@/components/strategy/TargetBlock.vue'
-import { OPEN_LEGS_ONLY_TEXT, bookedFields, dateStops, debounced, firstExpiry, targetFields } from '@/lib/targetBlock'
+import { OPEN_LEGS_ONLY_BEFORE_CHARGES_TEXT, OPEN_LEGS_ONLY_TEXT, bookedFields, dateStops, debounced, firstExpiry, targetFields } from '@/lib/targetBlock'
 import { CHART_FLAGS, DEFAULT_CHOICE, choiceFields, matchesChoice } from '@/lib/scenarioChoice'
 import { contractName, istClock, istTime, nameFromPool } from '@/lib/displayFormat'
 import { summaryFigure } from '@/lib/summaryFigures'
@@ -450,7 +450,7 @@ function exitPaper(contractId, lots) {
 // the drawn curve's own basis, before charges, so they sit where the line crosses zero) with the switch ON, the open legs only (the
 // outcome's own summary) with it OFF; the server computes both, this only picks which served figure to show
 const wholeTrade = computed(() => !!paperLeft.value && includeBooked.value)
-const paperCharges = computed(() => (paper.value ? paperChargesOf(paper.value.book) : null)) // D-13/D-14: Drafts Mode shows the paper reply's charges
+const paperCharges = computed(() => (paper.value && includeBooked.value ? paperChargesOf(paper.value.book) : null)) // D-13/D-14: the charges of the tiles beside it: switch ON = the paper tiles (paid + close); OFF = the open-legs tiles, the plan's round trip at entry prices (data.charges_breakdown)
 const paperLeft = computed(() => { // GC-ICFIX u124: after-charges forms, labelled (lib/paperDrafts paperLeftOf)
   const b = paper.value?.book
   return b ? paperLeftOf(b, withAsOf(typeof b.pause_reason_text === 'string' && b.pause_reason_text.trim() !== '' ? b.pause_reason_text.trim() : null, b.as_of)) : null
@@ -1046,7 +1046,7 @@ const pricesStamp = computed(() => {
           @edit="editLeg" @edit-leg="openInPicker" @include-all="includeAll" @remove="removeLeg" @add-leg="focusPicker" @pick-chain="pickFromChain" @clear-all="clearAll" @undo-clear="undoClear"
         >
           <template #money>
-            <div v-if="showNumbers" :class="updating ? 'opacity-60' : ''"><MoneySummary class="!mt-0 !px-0" :net-premium="data.summary.net_premium ?? null" :charges="paper ? null : data.charges_breakdown ?? null" :paper-charges="paperCharges" /></div>
+            <div v-if="showNumbers" :class="updating ? 'opacity-60' : ''"><MoneySummary class="!mt-0 !px-0" :net-premium="data.summary.net_premium ?? null" :charges="data.charges_breakdown ?? null" :paper-charges="paperCharges" /></div>
           </template>
         </LegList>
         <!-- GC-ICFIX P3 u513: while the confirm dialog is open its list is a preview, not "N pending changes" the user made -->
@@ -1161,7 +1161,7 @@ const pricesStamp = computed(() => {
           </div>
 
           <!-- D-11/D-16 (ADR-209): the tiles follow the Add Booked switch; this line says which basis they are on -->
-          <p v-if="paperLeft" class="mt-4 text-xs text-ink-muted" data-testid="tiles-basis">{{ wholeTrade ? (paper.book.breakevens_basis_text ?? '') : OPEN_LEGS_ONLY_TEXT }}</p>
+          <p v-if="paperLeft" class="mt-4 text-xs text-ink-muted" data-testid="tiles-basis">{{ wholeTrade ? (paper.book.breakevens_basis_text ?? '') : (data.summary?.charges != null ? OPEN_LEGS_ONLY_TEXT : OPEN_LEGS_ONLY_BEFORE_CHARGES_TEXT) }}</p>
           <SummaryCards
             v-model:flipped="ratioFlipped"
             class="mt-4"

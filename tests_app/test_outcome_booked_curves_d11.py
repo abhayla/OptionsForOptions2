@@ -18,6 +18,15 @@ def _pts(points: list[dict]) -> list[Decimal]:
     return [D(p["pnl"]) for p in points]
 
 
+def _common_shift(off: list[dict], on: list[dict]) -> set[Decimal]:
+    """ON minus OFF at every level both curves have. R3: with the switch ON the 0-P&L levels are the booked-in
+    breakevens, so the ON curve has those levels and not the open legs' own; every shared level moves by booked."""
+    a, b = {p["level"]: D(p["pnl"]) for p in off}, {p["level"]: D(p["pnl"]) for p in on}
+    shared = a.keys() & b.keys()
+    assert len(shared) >= len(a) - 2 and shared, (len(shared), len(a))  # only the breakeven columns differ
+    return {b[lv] - a[lv] for lv in shared}
+
+
 async def test_core_switch_on_adds_booked_to_every_curve_point(provider):  # noqa: F811
     booked = _book_63_booked()
     off = await _post(provider, booked, paper_strategy_id=63, include_booked=False)
@@ -26,9 +35,8 @@ async def test_core_switch_on_adds_booked_to_every_curve_point(provider):  # noq
         a, b = off["curves"][key], on["curves"][key]
         if not a["available"]:
             continue
-        assert [y - x for x, y in zip(_pts(a["points"]), _pts(b["points"]), strict=True)] == [booked] * len(a["points"])
-    assert [y - x for x, y in zip(_pts(off["payoff"]["points"]), _pts(on["payoff"]["points"]), strict=True)] \
-        == [booked] * len(off["payoff"]["points"])
+        assert _common_shift(a["points"], b["points"]) == {booked}
+    assert _common_shift(off["payoff"]["points"], on["payoff"]["points"]) == {booked}
     assert on["curve_includes_booked_text"] == LINE
     assert off.get("curve_includes_booked_text") is None
 
@@ -60,8 +68,9 @@ async def test_d11_switch_on_every_table_row_is_open_legs_plus_booked(provider):
     on = _level_values(await _post(provider, booked, paper_strategy_id=63))
     assert off.keys() == on.keys() and off["table"] and off["payoff_table.at_expiry"]
     for name, rows in off.items():
-        assert rows.keys() == on[name].keys(), name
-        assert {lv: on[name][lv] - v for lv, v in rows.items()} == dict.fromkeys(rows, booked), name
+        shared = rows.keys() & on[name].keys()
+        assert len(shared) >= len(rows) - 2 and shared, name  # R3: only the 0-P&L (breakeven) columns move
+        assert {lv: on[name][lv] - rows[lv] for lv in shared} == dict.fromkeys(shared, booked), name
 
 
 async def test_d11_switch_on_zero_pnl_columns_and_total_be_cells_are_on_the_booked_in_basis(provider):  # noqa: F811
@@ -77,8 +86,8 @@ async def test_d11_switch_on_zero_pnl_columns_and_total_be_cells_are_on_the_book
         assert zero, shifted
         for lv in zero:  # the cell at a 0-P&L column is 0.00 (the table's own rounding)
             assert abs(D(total[lv]["value"])) <= D("0.01"), (shifted, lv, total[lv]["value"])
-        marked = {c["level"] for c in body["table"]["columns"] if "ZERO_PNL" in c["markers"] or "0-P&L" in c["markers"]}
-        assert marked == set(zero) or not marked, (marked, zero)
+        marked = {c["id"] for c in body["table"]["columns"] if "ZERO_PNL" in c["markers"]}
+        assert marked == set(zero), (marked, zero)
         be = [D(total[k]["value"]) for k in ("lower_be", "upper_be") if total.get(k) and total[k]["value"] is not None]
         assert be and all(b in {D(z) for z in zero} for b in be), (shifted, be, zero)
     off_zero = [x["level"] for x in off["scenario"]["levels"] if x["zero_pnl"]]

@@ -56,6 +56,8 @@ export function targetFields(pick, stops) {
 export const BOOKED_SWITCH_LABEL = 'Add Booked P&L' // Sensibull screen 020, catalogue line 46
 /** D-11 (ADR-209): the line under the tiles of a paper trade with the Add Booked switch OFF: they are the open legs alone. */
 export const OPEN_LEGS_ONLY_TEXT = 'Open legs only: the booked P&L is not included. Max Profit and Max Loss are after charges estimated at entry prices; breakevens are before charges.'
+/** The same line when the served summary has no charges figure (no rates, a futures leg): the tiles are before charges. */
+export const OPEN_LEGS_ONLY_BEFORE_CHARGES_TEXT = 'Open legs only: the booked P&L is not included. Max Profit, Max Loss and breakevens are before charges.'
 export function bookedFields(paperId, includeBooked) {
   if (!paperId) return {}
   return includeBooked ? { paper_strategy_id: paperId } : { paper_strategy_id: paperId, include_booked: false }
