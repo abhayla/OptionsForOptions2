@@ -72,7 +72,7 @@ const ROWS = [
         <p class="mt-3 text-xs text-ink-muted">
           <span data-testid="charges-label">Charges and taxes ({{ breakdown.label }})</span>: entering and leaving every
           leg at its planned price. The payoff curves and the table are before
-          these charges.
+          these charges; Max Profit and Max Loss are after them.
         </p>
         <p class="text-xs text-ink-muted" data-testid="charges-rates-date">
           Rates read on {{ breakdown.rates_read_on }}

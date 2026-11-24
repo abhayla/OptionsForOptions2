@@ -66,8 +66,8 @@
             <!-- GC-TP R-19b (Sensibull 090): Breakeven, Max Profit and Max Loss on the card, and a Greeks toggle (off) with per-leg and
                  net Greeks. All server texts; a figure the reply lacks is a dash with its reason, never 0. -->
             <dl class="mt-2 flex flex-wrap items-start gap-6" data-testid="paper-summary">
-              <div v-for="f in summaryFigures" :key="f.id" class="min-w-0">
-                <dt class="text-xs text-ink-muted">{{ f.label }}</dt>
+              <div v-for="f in summaryFigures.filter((x) => !x.only || x.only(g))" :key="f.id" class="min-w-0">
+                <dt class="text-xs text-ink-muted">{{ typeof f.label === 'function' ? f.label(g) : f.label }}</dt>
                 <dd class="font-semibold" :data-testid="`paper-${f.id}`">{{ pnlText(f.value(g)) }}</dd>
                 <p v-if="f.value(g) === null && f.reason(g)" class="text-xs text-ink-muted" :data-testid="`paper-${f.id}-reason`">{{ f.reason(g) }}</p>
               </div>
@@ -143,6 +143,7 @@ import PaperConfirmDialog from '@/components/strategy/PaperConfirmDialog.vue'
 import HeldNote from '@/components/strategy/HeldNote.vue'
 import { ALL_CLOSED_TEXT, GREEK_COLUMNS, PAPER_NO_FIGURE, PAPER_PAUSED, SHOW_CLOSED_LABEL, exitRowsFor, readPaperList, visibleGroups } from '@/lib/paperList'
 import { usePaperRefresh } from '@/lib/usePaperRefresh'
+import { EXITED_NOW_LABEL, HELD_TO_EXPIRY_LABEL } from '@/lib/paperDrafts'
 import { PAPER_STATE, paperPostOutcome } from '@/lib/tracking'
 import { useRouter } from 'vue-router'
 import { signOf } from '@/lib/chartCard'
@@ -163,12 +164,14 @@ const figures = [
   { field: 'total', label: 'Total P&L', testid: 'paper-total', reason: 'pauseReason', reasonId: 'paper-total-reason' },
   { field: 'unbooked', label: 'Unbooked P&L', testid: 'paper-unbooked', reason: 'pauseReason', reasonId: 'paper-unbooked-reason' },
   { field: 'booked', label: 'Booked P&L', testid: 'paper-booked', reasonId: 'paper-booked-reason' },
-  { field: 'charges', label: 'Charges', testid: 'paper-charges', reason: 'chargesReason', reasonId: 'paper-charges-reason' }, // beside, never subtracted
+  { field: 'charges', label: 'Charges paid', testid: 'paper-charges', reason: 'chargesReason', reasonId: 'paper-charges-reason' }, // beside, never subtracted
 ]
 // GC-TP R-19b: the card's summary line; each reads one server text and says why when it is absent
 const summaryFigures = [
   { id: 'breakeven', label: 'Breakeven', value: (g) => (g.breakevens ? g.breakevens.join(', ') : null), reason: (g) => g.breakevensReason },
-  { id: 'max-profit', label: 'Max Profit', value: (g) => g.maxProfit, reason: (g) => g.maxProfitReason },
+  // D-14 (ADR-320 (2)): on the expiry day of the trade the server sends the held figure too; both are labelled, else unchanged
+  { id: 'max-profit-hold', label: 'Max Profit ' + HELD_TO_EXPIRY_LABEL.toLowerCase(), value: (g) => g.maxProfitHold, reason: () => null, only: (g) => g.maxProfitHold !== null },
+  { id: 'max-profit', label: (g) => (g.maxProfitHold !== null ? 'Max Profit ' + EXITED_NOW_LABEL.toLowerCase() : 'Max Profit'), value: (g) => g.maxProfit, reason: (g) => g.maxProfitReason },
   { id: 'max-loss', label: 'Max Loss', value: (g) => g.maxLoss, reason: (g) => g.maxLossReason },
 ]
 const greeksOpen = ref({})
@@ -178,7 +181,7 @@ const totalFigures = [
   { id: 'booked', field: 'booked', reason: 'totalReason', reasonId: 'totals-booked-reason', label: 'Booked P&L' },
   { id: 'unbooked', field: 'unbooked', reason: 'totalReason', reasonId: 'totals-unbooked-reason', label: 'Unbooked P&L' },
   { id: 'decay', field: 'decay', reason: 'decayReason', reasonId: 'totals-decay-reason', label: 'Total Decay' },
-  { id: 'charges', field: 'charges', reason: 'chargesReason', reasonId: 'totals-charges-reason', label: 'Charges' },
+  { id: 'charges', field: 'charges', reason: 'chargesReason', reasonId: 'totals-charges-reason', label: 'Charges paid' }, // D-14: says which charges
 ]
 // the server's text, printed as sent (a missing figure is a dash); the colour follows the server's sign, read from its text
 // GC-ICFIX u123 (ADR-263): the Total P&L figure is the reply's after-charges text with "(after charges)", or the before text with

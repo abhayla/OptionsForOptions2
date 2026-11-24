@@ -50,6 +50,7 @@ from ofo.engine.extremes_charges import (
     BookAfterCharges,
     after_split,
     book_after_charges,
+    expiry_hold,
     max_after_charges,
     open_exit_charges,
     open_round_trip_charges,
@@ -291,6 +292,12 @@ class PaperExtremes(ApiModel):
     # ``recover`` = minus Total after when negative. Absent when the book has no after total (see after_charges_reason).
     profit_left_after: Extreme = None
     loss_left_after: Extreme = None
+    # ADR-320 (2), D-14: on the trade's expiry day only, Max profit / Profit left "If held to expiry" (paid charges
+    # only, as settlement books it); the max_profit / profit_left above are then the "If exited now" pair. Else None.
+    max_profit_hold: Extreme = None
+    profit_left_hold: Extreme = None
+    max_profit_hold_text: CatalogueText | None = None
+    profit_left_hold_text: CatalogueText | None = None
     profit_left_after_text: CatalogueText | None = None
     loss_left_after_text: CatalogueText | None = None
     recover: Money | None = None
@@ -592,21 +599,29 @@ def _extreme(value: Any) -> tuple[Decimal | str | None, Any]:
     return _exact(value), _signed(value)
 
 
-def _extremes(orders: Sequence[paper_store.StoredOrder], found: dict[int, tracked_contracts.TrackedContract],
-              prices: dict[int, paper.Price], underlying: str = "", rates: ChargeRates | None = None) -> dict:
-    """Profit left / Loss left and the original Max Profit / Max Loss from the one engine (ofo.engine.extremes)."""
+def _extremes(orders: Sequence[paper_store.StoredOrder], found: dict[int, tracked_contracts.TrackedContract],  # noqa: PLR0913
+              prices: dict[int, paper.Price], underlying: str = "", rates: ChargeRates | None = None,
+              today: datetime.date | None = None) -> dict:
+    """Max Profit / Max Loss from the one engine (ofo.engine.extremes_charges.max_after_charges) and Profit left / Loss
+    left AFTER charges (ADR-306 (1)-(3), D-13): the ``after_split`` figures, the same ones as ``profit_left_after``, so
+    Total after + Profit left = Max profit on the served fields. Absent with the after-charges reason when the book
+    has no after total (ADR-306 (6): never a gross range beside a net maximum). ``today`` = the trade's nearest open
+    expiry (ADR-320 (2), D-14): the "If held to expiry" pair (``max_profit_hold`` / ``profit_left_hold``) is served
+    beside the usual figures, which are the "If exited now" pair; other days it is absent."""
     live = {str(cid): p.price for cid, p in prices.items() if paper.is_live(p) and p.price is not None}
-    terms = {}
-    for cid in {o.order.contract_id for o in orders}:
-        _, instrument, strike, expiry = _identity(found[cid])
-        terms[str(cid)] = ContractTerms(instrument, strike, expiry)
+    terms = terms_of(orders, found)
     view = net_positions(_paper(orders), live)
     paid = paid_exact_of(orders, found, underlying, rates)  # ADR-263: the charges really paid on every filled order
     got = max_after_charges(view, terms, live, underlying, rates, paid) if paid is not None else \
         book_extremes(view, terms, live)  # unpriced: before charges, and says so
-    charges = None if paid is None else open_round_trip_charges(view, terms, underlying, rates, paid)
-    figures = {"profit_left": got.profit_left, "loss_left": got.loss_left, "max_profit": got.max_profit,
-               "max_loss": got.max_loss}
+    charges = None if paid is None else open_round_trip_charges(view, terms, underlying, rates, paid, live)
+    shown = _charges(orders, found, underlying, rates)
+    after = after_charges(view, terms, live, shown["charges"], shown["charges_reason"], underlying, rates)
+    split = after_split(view, terms, live, underlying, rates, after, paid)
+    closed = not any(p.net_quantity for p in view.positions)  # ADR-306 (5): 0 and 0 on any basis
+    left = (got.profit_left, got.loss_left) if closed else (split.profit_left_after, split.loss_left_after)
+    figures = {"profit_left": left[0], "loss_left": left[1],
+               "max_profit": got.max_profit, "max_loss": got.max_loss}
     out: dict[str, Any] = {"extremes_reason": got.reason, "extremes_reason_text": extremes_reason_text(got.reason)}
     for name, value in figures.items():
         out[name], out[f"{name}_text"] = _extreme(value)
@@ -615,6 +630,12 @@ def _extremes(orders: Sequence[paper_store.StoredOrder], found: dict[int, tracke
     out["extremes_charges_text"] = (
         None if not is_open else render_explanation("paper_extremes_before_charges") if charges is None else
         render_explanation("paper_extremes_with_charges", charges=charges))
+    held = None
+    nearest = min((terms[p.instrument_id].expiry for p in view.positions if p.net_quantity), default=None)
+    if today is not None and nearest == today and split.profit_left_after is not None:
+        held = expiry_hold(book_extremes(view, terms, live), after)
+    for i, name in enumerate(("max_profit_hold", "profit_left_hold")):
+        out[name], out[f"{name}_text"] = _extreme(None if held is None else held[i])
     return out
 
 
@@ -674,7 +695,8 @@ def _spot(snapshot: Any) -> Decimal | None:
 _ABSENT = {"profit_left": None, "loss_left": None, "max_profit": None, "max_loss": None, "profit_left_text": None,
            "loss_left_text": None, "max_profit_text": None, "max_loss_text": None, "extremes_reason": EXITED,
            "extremes_reason_text": extremes_reason_text(EXITED),
-           "extremes_charges": None, "extremes_charges_text": None,
+           "extremes_charges": None, "extremes_charges_text": None, "max_profit_hold": None,
+           "max_profit_hold_text": None, "profit_left_hold": None, "profit_left_hold_text": None,
            "breakevens": None, "breakevens_display": None, "breakevens_reason": EXITED,
            "breakevens_reason_text": breakevens_reason_text(EXITED), "greeks": None,
            "greeks_reason": EXITED, "greeks_reason_text": greeks_reason_text(EXITED)}
@@ -690,7 +712,7 @@ def _summary(orders: Sequence[paper_store.StoredOrder],  # noqa: PLR0913
     if exited_absent and figures["state"] == "EXITED":
         return dict(_ABSENT)
     spot = _spot(snapshot) if figures["state"] == "LIVE" else None  # no percent from a spot that is not live
-    return (_extremes(orders, found, prices, underlying, rates) | _breakevens(orders, found, spot)
+    return (_extremes(orders, found, prices, underlying, rates, _today(snapshot)) | _breakevens(orders, found, spot)
             | _greeks(figures, found, snapshot, underlying))
 
 

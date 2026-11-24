@@ -41,6 +41,15 @@
           </template>
           <p v-else class="text-xs text-ink-muted" data-testid="extremes-reason">{{ left.reason }}</p>
         </div>
+        <!-- D-14 (ADR-320 (2)): on the trade's expiry day only, Max profit and Profit left twice, each labelled; server texts as sent -->
+        <dl v-if="left?.expiryPair" class="mb-2 grid grid-cols-[auto_auto_auto] gap-x-3 text-xs" data-testid="expiry-pair">
+          <dt></dt><dt class="text-ink-muted">Max profit</dt><dt class="text-ink-muted">{{ PROFIT_LEFT_LABEL }}</dt>
+          <template v-for="row in [['held', HELD_TO_EXPIRY_LABEL], ['exited', EXITED_NOW_LABEL]]" :key="row[0]">
+            <dt class="text-ink-muted" :data-testid="`expiry-pair-${row[0]}-label`">{{ row[1] }}</dt>
+            <dd class="num font-semibold" :data-testid="`expiry-pair-${row[0]}-max`">{{ left.expiryPair[row[0]].maxProfit ?? '-' }}</dd>
+            <dd class="num font-semibold" :data-testid="`expiry-pair-${row[0]}-left`">{{ left.expiryPair[row[0]].profitLeft ?? '-' }}</dd>
+          </template>
+        </dl>
         <!-- GC-UI D-PX item 2: both pills in ONE row that never wraps (Sensibull sb-01: side by side); the percent is a smaller
              second line INSIDE its pill, so each pill is only as wide as its figure -->
         <div class="flex flex-nowrap items-start gap-x-3" data-testid="summary-pills-row">
@@ -128,7 +137,7 @@ import { istTime, groupMoney } from '@/lib/displayFormat'
 import { displayOrDash, exactLine } from '@/lib/summaryFigures'
 import FigureHint from '@/components/common/FigureHint.vue'
 import Tooltip from '@/components/common/Tooltip.vue'
-import { LOSS_LEFT_LABEL, PROFIT_LEFT_LABEL } from '@/lib/paperDrafts'
+import { EXITED_NOW_LABEL, HELD_TO_EXPIRY_LABEL, LOSS_LEFT_LABEL, PROFIT_LEFT_LABEL } from '@/lib/paperDrafts'
 import { AFTER_CHARGES } from '@/lib/tracking'
 const props = defineProps({
   maxProfit: { type: String, default: '-' }, // summaryFigure(summary, 'profit'): the server's display string

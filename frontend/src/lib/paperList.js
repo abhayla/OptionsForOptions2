@@ -79,6 +79,8 @@ function readSummary(s) {
     breakevens: hasBe ? s.breakevens_display.map((t) => t.trim()) : null,
     breakevensReason: hasBe ? null : (Array.isArray(s.breakevens) && s.breakevens.length === 0 ? null : absent(s.breakevens_reason_text)),
     maxProfit: profit.text, maxProfitReason: profit.reason,
+    // D-14 (ADR-320 (2)): on the trade's expiry day only, the server's "If held to expiry" Max profit; null other days
+    maxProfitHold: text(s.max_profit_hold_text),
     maxLoss: loss.text, maxLossReason: loss.reason,
     greeks: greeksOk ? { legs, net } : null,
     greeksReason: greeksOk ? null : (s.state === 'PAUSED' && s.greeks_reason === 'prices_not_live' ? withAsOf(absent(s.greeks_reason_text), s.as_of) : absent(s.greeks_reason_text)),

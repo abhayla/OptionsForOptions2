@@ -29,9 +29,14 @@
         <dd class="num text-sm font-semibold" data-testid="book-total"><AfterChargesTap :breakdown="total.breakdown">{{ total.text ?? '-' }}</AfterChargesTap></dd>
         <p v-if="total.reason" class="max-w-xs text-ink-muted" data-testid="book-after-reason">{{ total.reason }}</p>
       </div>
+      <!-- D-14: the line says which charges it shows: those paid, and beside them the estimate to close now (both inside the total) -->
       <div>
-        <dt class="text-ink-muted">Charges</dt>
+        <dt class="text-ink-muted" data-testid="book-charges-label">Charges paid</dt>
         <dd class="num text-sm font-semibold" data-testid="book-charges">{{ book.charges_text ?? '-' }}</dd>
+      </div>
+      <div v-if="book.charges_to_close_text">
+        <dt class="text-ink-muted" data-testid="book-charges-close-label">Estimated cost to close</dt>
+        <dd class="num text-sm font-semibold" data-testid="book-charges-close">{{ book.charges_to_close_text }}</dd>
       </div>
     </dl>
 

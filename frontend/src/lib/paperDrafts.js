@@ -198,6 +198,9 @@ export const PAPER_REREAD_DELAYS_MS = Object.freeze([0, 400, 1200])
 /** R-11: a leg loaded from the book carries the paper fill's average, not a price the user typed (no time beside it). */
 export const PAPER_AVERAGE_LABEL = 'Paper average'
 export const PROFIT_LEFT_LABEL = 'Profit left'
+// D-14 (ADR-320 (2)): on the trade's expiry day only, Max profit and Profit left are shown twice under these two labels
+export const HELD_TO_EXPIRY_LABEL = 'If held to expiry'
+export const EXITED_NOW_LABEL = 'If exited now'
 export const LOSS_LEFT_LABEL = 'Loss left'
 // ADR-302: when Profit left (after charges) is larger than Max profit the server sends `recover_text`; this one sentence says why
 export const RECOVER_LINE_PREFIX = 'includes Rs '
@@ -230,6 +233,11 @@ export function paperLeftOf(book, pausedText = null) {
     // F-94: the server's sentence on whether the round-trip charges are inside Max Profit / Max Loss; `after` = the server sent the
     // charges amount (its presence, not a number made here). Nothing beside a paused figure.
     extremes: profit.kind === 'paused' ? null : { text: serverText(book.extremes_charges_text), after: serverText(book.extremes_charges) !== null },
+    // D-14 (ADR-320 (2)): the server sends the held pair on the trade's expiry day only; the exited pair is the usual figures
+    expiryPair: serverText(book.max_profit_hold_text) === null || profit.kind !== 'after' ? null : {
+      held: { maxProfit: serverText(book.max_profit_hold_text), profitLeft: serverText(book.profit_left_hold_text) },
+      exited: { maxProfit: serverText(book.max_profit_text), profitLeft: profit.text },
+    },
   }
 }
 export const EXIT_ALL_LABEL = 'Exit all'

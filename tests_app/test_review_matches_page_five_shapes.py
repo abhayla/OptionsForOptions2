@@ -13,7 +13,7 @@ from decimal import Decimal as D
 from types import SimpleNamespace
 
 import pytest
-from ofo.adjustment.approaches import Position, PositionLeg
+from ofo.adjustment.approaches import ChainRow, Position, PositionLeg
 from ofo.charges import ChargeRates
 from ofo.charges.paper_charges import PaperFill, paper_charges
 from ofo.engine.extremes import ContractTerms, book_extremes
@@ -31,7 +31,9 @@ RATES = ChargeRates(
     transaction_rates={"NSE_FO": D("0.0003553"), "BSE_FO": D("0.000325")}, sebi_rate=D("0.000001"),
     stamp_buy_rate=D("0.00003"), gst_rate=D("0.18"), read_on=datetime.date(2026, 10, 15),
     source_url="https://zerodha.com/charges")
-MARKET = route.MarketInputs((), {}, None, None, None, None, None,
+# D-14: the review prices the cost to close at the chain's live LTP, the price the page uses (50 for every leg)
+CHAIN = tuple(ChainRow(D(0), "CE", EXPIRY, "X" + str(i), D("50")) for i in range(1, 5))
+MARKET = route.MarketInputs(CHAIN, {}, None, None, None, None, None,
                             datetime.datetime(2026, 11, 2, 5, 0, tzinfo=datetime.UTC))
 TERMS = {"1": ContractTerms(Instrument.PE, D("22400"), EXPIRY), "2": ContractTerms(Instrument.PE, D("22500"), EXPIRY),
          "3": ContractTerms(Instrument.CE, D("23050"), EXPIRY), "4": ContractTerms(Instrument.CE, D("23100"), EXPIRY)}
