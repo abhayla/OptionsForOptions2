@@ -1212,3 +1212,37 @@ async def test_d19_a_previous_session_last_trade_is_served_unchanged_with_its_ow
     ce = await _pushed_ce(_stats(trade))
     assert ce["last_trade_at"] == "2026-10-16T15:29:58+05:30"
     assert ce["at"] == T0.isoformat()
+
+
+# --- D-12 (ADR-320 (1)): on the chain's own expiry day each priced cell carries its per-unit Decay left today ---------
+
+def _rig_at(at: datetime.datetime):
+    provider = FakeProvider()
+    wall = Clock(at)
+    feed = LiveFeed(MarketContext(provider, wall, Decimal("0.065")), FanOut(provider))
+    channel, mono = FakeChannel(), Clock(1000.0)
+    push = ChainPush(channel, feed, monotonic=mono, now=wall, reader=Reader(), poll=0.005, read_settings=settings_with())
+    return provider, channel, push
+
+
+async def _cells_at(at: datetime.datetime) -> dict:
+    provider, channel, push = _rig_at(at)
+    provider.tick(index_quote("25162.30", at=at))
+    tick_window(provider, at=at)
+    task = await start(push, channel)
+    await close(channel, task)
+    return channel.sent[-1]["rows"][2]  # the 25150 strike (ATM): CE 102.50, PE 202.25
+
+
+async def test_d12_expiry_day_cells_carry_decay_left_today_other_days_none():
+    """12:30 IST on the 27 Oct expiry: the 25150 CE (102.50, intrinsic 12.30 at spot 25,162.30) has about 90.20 of time
+    value, all of it lost by the close: decay left today is negative, at most the price, about minus its time value.
+    On 19 Oct (T0) the same cell has no decay left today and keeps its theta."""
+    today = await _cells_at(datetime.datetime(2026, 10, 27, 12, 30, tzinfo=IST))
+    ce = today["ce"]
+    assert ce["theta"] is not None and ce["decay_left_today"] is not None
+    left = Decimal(str(ce["decay_left_today"]))
+    assert Decimal("-102.50") <= left < 0
+    assert abs(left + (Decimal("102.50") - Decimal("12.30"))) <= Decimal("1.00")  # the model's value now = the price
+    other = await _cells_at(T0)
+    assert other["ce"]["decay_left_today"] is None and other["ce"]["theta"] is not None

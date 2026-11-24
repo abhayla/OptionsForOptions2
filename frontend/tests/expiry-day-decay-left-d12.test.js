@@ -22,3 +22,33 @@ describe('D-12 expiry-day decay left today', () => {
     expect(onExpiryDay(fieldsFor(true), other)).toEqual(fieldsFor(true))
   })
 })
+
+// D-12 paper: the recorded r19b list reply, with the server's expiry-day fields added to every Greeks row
+import LIVE from './fixtures/paper-list-r19b/live.json'
+import { readPaperList } from '@/lib/paperList'
+
+const withLeft = (data) => {
+  const copy = JSON.parse(JSON.stringify(data))
+  for (const s of copy.strategies) {
+    if (!s.greeks) continue
+    for (const r of [...s.greeks.legs, s.greeks.net]) Object.assign(r, { decay_left_today: '100.75', decay_left_today_text: 'Decay left today: ₹100.75' })
+  }
+  return copy
+}
+
+describe('D-12 paper Greeks pick', () => {
+  const firstWithGreeks = (list) => list.groups.find((g) => g.greeks)
+  it('on expiry day the theta place reads the server Decay left today text, leg and net', () => {
+    const g = firstWithGreeks(readPaperList(withLeft(LIVE)))
+    expect(g).toBeTruthy()
+    expect(g.decayLeftToday).toBe(true)
+    expect(g.greeks.net.theta).toBe('Decay left today: ₹100.75')
+    expect(g.greeks.legs.every((l) => l.theta === 'Decay left today: ₹100.75')).toBe(true)
+  })
+  it('on another day (no field) theta is the server theta text', () => {
+    const s = LIVE.strategies.find((x) => x.greeks)
+    const g = firstWithGreeks(readPaperList(LIVE))
+    expect(g.decayLeftToday).toBe(false)
+    expect(g.greeks.net.theta).toBe(s.greeks.net.theta_text)
+  })
+})
