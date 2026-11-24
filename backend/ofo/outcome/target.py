@@ -345,6 +345,6 @@ def _total_row_with_booked(row: Any, columns: Any, booked: Decimal) -> Any:
     for col in columns:
         cell = cells.get(col.id)
         if col.is_scenario_level and cell is not None and isinstance(cell.value, Decimal):
-            total = cell.value + booked
+            total = add_booked(cell.value, booked)
             cells[col.id] = Cell(total, render_explanation("cell_rupees", amount=total), CellKind.MONEY)
     return dataclasses.replace(row, cells=cells)
