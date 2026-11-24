@@ -55,7 +55,7 @@ export function targetFields(pick, stops) {
  *  `paperId` set) names itself; the server reads its booked P&L (nothing is computed here). A plan sends nothing. */
 export const BOOKED_SWITCH_LABEL = 'Add Booked P&L' // Sensibull screen 020, catalogue line 46
 /** D-11 (ADR-209): the line under the tiles of a paper trade with the Add Booked switch OFF: they are the open legs alone. */
-export const OPEN_LEGS_ONLY_TEXT = 'Open legs only: the booked P&L is not included'
+export const OPEN_LEGS_ONLY_TEXT = 'Open legs only: the booked P&L is not included. Max Profit and Max Loss are after charges estimated at entry prices; breakevens are before charges.'
 export function bookedFields(paperId, includeBooked) {
   if (!paperId) return {}
   return includeBooked ? { paper_strategy_id: paperId } : { paper_strategy_id: paperId, include_booked: false }

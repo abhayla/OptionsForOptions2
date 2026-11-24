@@ -19,6 +19,7 @@ vi.mock('@/services/api', async (importActual) => {
   return { ...actual, default: { get: (url) => respond('GET', url), post: (url, body) => respond('POST', url, body) } }
 })
 import StrategyBuilderPage from '@/pages/StrategyBuilderPage.vue'
+import ChartCard from '@/components/strategy/ChartCard.vue'
 import { BOOKED_SWITCH_LABEL, OPEN_LEGS_ONLY_TEXT, bookedFields } from '@/lib/targetBlock'
 import on from './fixtures/outcome-target-booked-on.json'
 import off from './fixtures/outcome-target-booked-off.json'
@@ -172,6 +173,7 @@ describe('the request on a paper strategy (Drafts Mode, strategy 63) and on a pl
 describe('D-11: the tiles follow the switch', () => {
   const WHOLE = { max_profit_text: '+2,380.32', max_loss_text: '−4,119.68', max_profit: '2380.32', max_loss: '-4119.68',
     breakevens: ['25457.00', '25693.00'], breakevens_display: ['25,457 (−0.4%)', '25,693 (+0.5%)'],
+    breakevens_curve: ['25455.50', '25694.50'],
     breakevens_basis_text: 'Breakevens include the booked P&L and about Rs 61.00 of charges and taxes.' }
   const saved = {}
   beforeEach(() => { for (const k of Object.keys(WHOLE)) saved[k] = BOOK[k]; Object.assign(BOOK, WHOLE) })
@@ -181,10 +183,13 @@ describe('D-11: the tiles follow the switch', () => {
     expect(t(w, 'max-profit').text()).toBe('+2,380.32')
     expect(t(w, 'max-loss').text()).toBe('−4,119.68')
     expect(t(w, 'tiles-basis').text()).toBe(WHOLE.breakevens_basis_text)
+    // D-11 / D-16: the chart's triangles are on the drawn curve's basis (served as breakevens_curve), not the tiles' after-charges levels
+    expect(w.findComponent(ChartCard).props('breakevens')).toEqual(WHOLE.breakevens_curve)
     await t(w, 'add-booked-switch').setValue(false)
     await settle()
     expect(t(w, 'max-profit').text()).toBe(plain.summary.max_profit_display)
     expect(t(w, 'max-loss').text()).toBe(plain.summary.max_loss_display)
     expect(t(w, 'tiles-basis').text()).toBe(OPEN_LEGS_ONLY_TEXT)
+    for (const fact of ['booked P&L is not included', 'after charges estimated at entry prices', 'breakevens are before charges']) expect(OPEN_LEGS_ONLY_TEXT).toContain(fact)
   })
 })

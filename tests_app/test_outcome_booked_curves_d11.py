@@ -61,4 +61,4 @@ async def test_d11_switch_on_every_table_row_is_open_legs_plus_booked(provider):
     assert off.keys() == on.keys() and off["table"] and off["payoff_table.at_expiry"]
     for name, rows in off.items():
         assert rows.keys() == on[name].keys(), name
-        assert {lv: on[name][lv] - v for lv, v in rows.items()} == {lv: booked for lv in rows}, name
+        assert {lv: on[name][lv] - v for lv, v in rows.items()} == dict.fromkeys(rows, booked), name

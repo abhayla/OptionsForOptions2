@@ -312,6 +312,9 @@ class PaperBreakevens(ApiModel):
     breakevens_reason_text: CatalogueText | None = None  # ADR-211 (5): the sentence beside the dash
     # D-16 (ADR-263): booked P&L and charges are in the levels, or before charges
     breakevens_basis_text: CatalogueText | None = None
+    # D-11 / D-16: the levels where the DRAWN curve (booked in, before charges: ADR-167 (1)) crosses zero; the chart's
+    # triangles read these, the tiles read ``breakevens`` (after charges, with their basis line)
+    breakevens_curve: list[Money] | None = None
 
 
 class GreekFigures(ApiModel):
@@ -653,15 +656,19 @@ def _breakevens(orders: Sequence[paper_store.StoredOrder], found: dict[int, trac
     for cid in {o.order.contract_id for o in orders}:
         _, instrument, strike, expiry = _identity(found[cid])
         terms[str(cid)] = ContractTerms(instrument, strike, expiry)
-    got = book_breakevens(net_positions(_paper(orders), {}), terms, charges or Decimal(0))
+    view = net_positions(_paper(orders), {})
+    got = book_breakevens(view, terms, charges or Decimal(0))
     if got.levels is None:
         return {"breakevens": None, "breakevens_display": None, "breakevens_reason": got.reason,
-                "breakevens_reason_text": breakevens_reason_text(got.reason), "breakevens_basis_text": None}
+                "breakevens_reason_text": breakevens_reason_text(got.reason), "breakevens_basis_text": None,
+                "breakevens_curve": None}
+    curve = got.levels if not charges else book_breakevens(view, terms, Decimal(0)).levels
     texts = breakevens_display(got.levels, spot)  # GC-TPD R-34: the outcome summary's own function and shape
     basis = (render_explanation("paper_breakevens_before_charges") if charges is None else
              render_explanation("paper_breakevens_with_charges", charges=charges))
     return {"breakevens": [_exact(x) for x in got.levels], "breakevens_display": texts, "breakevens_reason": got.reason,
-            "breakevens_reason_text": None, "breakevens_basis_text": basis}
+            "breakevens_reason_text": None, "breakevens_basis_text": basis,
+            "breakevens_curve": None if curve is None else [_exact(x) for x in curve]}
 
 
 def _open_contracts(figures: dict,
@@ -706,7 +713,8 @@ _ABSENT = {"profit_left": None, "loss_left": None, "max_profit": None, "max_loss
            "extremes_charges": None, "extremes_charges_text": None, "max_profit_hold": None,
            "max_profit_hold_text": None, "profit_left_hold": None, "profit_left_hold_text": None,
            "breakevens": None, "breakevens_display": None, "breakevens_reason": EXITED,
-           "breakevens_reason_text": breakevens_reason_text(EXITED), "breakevens_basis_text": None, "greeks": None,
+           "breakevens_reason_text": breakevens_reason_text(EXITED), "breakevens_basis_text": None,
+           "breakevens_curve": None, "greeks": None,
            "greeks_reason": EXITED, "greeks_reason_text": greeks_reason_text(EXITED)}
 
 

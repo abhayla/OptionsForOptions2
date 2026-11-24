@@ -446,7 +446,8 @@ function exitPaper(contractId, lots) {
 }
 // Drafts Mode summary: the book's Profit left / Loss left first (or the words for its extremes_reason), its original Max Profit /
 // Max Loss below; every figure the book reply's text as sent. Null outside Drafts Mode: the summary is unchanged.
-// D-11: the tiles and the chart's marks are the WHOLE trade (booked in, the paper reply) with the switch ON, the open legs only (the
+// D-11: the tiles and the chart's marks are the WHOLE trade (booked in, the paper reply: the tiles after charges, the marks on
+// the drawn curve's own basis, before charges, so they sit where the line crosses zero) with the switch ON, the open legs only (the
 // outcome's own summary) with it OFF; the server computes both, this only picks which served figure to show
 const wholeTrade = computed(() => !!paperLeft.value && includeBooked.value)
 const paperCharges = computed(() => (paper.value ? paperChargesOf(paper.value.book) : null)) // D-13/D-14: Drafts Mode shows the paper reply's charges
@@ -1211,7 +1212,7 @@ const pricesStamp = computed(() => {
             :include-booked="includeBooked"
             :target-booked-text="targetShown?.includes_booked_text ?? ''"
             :target-badge="targetShown?.badge ?? null" :target-stale="targetStale" :target-stale-text="targetShown?.stale_text ?? ''" :show-badge="!!targetShown"
-            :breakevens="wholeTrade ? paper.book.breakevens ?? [] : data.summary.breakevens ?? []"
+            :breakevens="wholeTrade ? paper.book.breakevens_curve ?? [] : data.summary.breakevens ?? []"
             :curve-booked-text="data.curve_includes_booked_text ?? ''"
             :sd="data.standard_deviation ?? null"
             :oi="data.open_interest ?? null"

@@ -34,7 +34,15 @@ from ofo.errors.explanations import ExplanationText, render_explanation
 from ofo.money import PAISE
 from ofo.scenario.levels import LevelSet
 from ofo.scenario.views import ScenarioValues, View, scenario_values
-from ofo.table.model import FUTURES_PER_UNIT_GREEKS, display_number, position_greeks, round_greek
+from ofo.table.model import (
+    FUTURES_PER_UNIT_GREEKS,
+    TOTAL_ROW_ID,
+    Cell,
+    CellKind,
+    display_number,
+    position_greeks,
+    round_greek,
+)
 from ofo.timeutil import IST
 
 ClampCode = Literal["before_now", "after_first_expiry"]
@@ -301,8 +309,9 @@ def with_booked_curves(out: Any, booked: Decimal | None) -> Any:
     """D-11 (ADR-209, GC-ICLIVE-B): the Add Booked P&L switch ON puts the booked P&L into the drawn curves as well as
     the target block: every point of the payoff line and of each view's curve is open legs + booked (the one engine
     function ``add_booked_all``, the same amount the target block adds). None or 0: the answer as it was (a plan,
-    switch off, book unreadable). Levels, the table rows (``scenario``, ``other_view``) and the summary are not
-    touched; the reply says the curve includes it."""
+    switch off, book unreadable). The same amount goes into every table the reply serves (the TOTAL row's scenario
+    cells of ``table``, ``scenario``, ``other_view`` and the payoff table's views), so one level reads the same on
+    every screen; levels and the summary are not touched; the reply says the figures include it."""
     if booked is None or booked == 0:
         return out
 
@@ -315,4 +324,27 @@ def with_booked_curves(out: Any, booked: Decimal | None) -> Any:
     if points:
         levels = tuple(p[0] for p in points)
         points = tuple(zip(levels, add_booked_all(tuple(p[1] for p in points), booked) or (), strict=True))
-    return dataclasses.replace(out, payoff_points=points, curves=tuple(shifted(c) for c in out.curves or ()))
+    table = out.table
+    if table is not None:
+        rows = tuple(_total_row_with_booked(r, table.columns, booked) for r in table.rows)
+        table = dataclasses.replace(table, rows=rows)
+    payoff_table = out.payoff_table
+    if payoff_table is not None:
+        payoff_table = dataclasses.replace(payoff_table, views=tuple(shifted(v) for v in payoff_table.views))
+    return dataclasses.replace(out, payoff_points=points, curves=tuple(shifted(c) for c in out.curves or ()),
+                               scenario=shifted(out.scenario), other_view=shifted(out.other_view), table=table,
+                               payoff_table=payoff_table)
+
+
+def _total_row_with_booked(row: Any, columns: Any, booked: Decimal) -> Any:
+    """The TOTAL row's scenario-level cells plus the booked P&L (exact, ``cell_rupees`` text); leg rows are one leg's
+    P&L each and stay as they are."""
+    if row.row_id != TOTAL_ROW_ID:
+        return row
+    cells = dict(row.cells)
+    for col in columns:
+        cell = cells.get(col.id)
+        if col.is_scenario_level and cell is not None and isinstance(cell.value, Decimal):
+            total = cell.value + booked
+            cells[col.id] = Cell(total, render_explanation("cell_rupees", amount=total), CellKind.MONEY)
+    return dataclasses.replace(row, cells=cells)
