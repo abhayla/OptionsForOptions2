@@ -256,6 +256,19 @@ describe('Option Chain screen', () => {
     }
   })
 
+  it('D-19: a cell with a last trade time shows it under its LTP; a cell without shows nothing extra', async () => {
+    script({ chain: () => Promise.resolve({ data: notConnected() }) })
+    const w = await mountPage()
+    sock().serverOpen()
+    const a = answer('63.10')
+    a.rows[1].ce = { ...a.rows[1].ce, bid: '63.90', ask: '64.10', last_trade_at: '2026-10-19T09:19:53+05:30' }
+    a.rows[1].pe = { ...a.rows[1].pe, last_trade_at: null }
+    sock().serverPush({ ...a, expiry: '2026-10-20' })
+    await flushPromises()
+    expect(w.findAll('[data-testid="ce-last-trade"]').map((x) => x.text())).toEqual(['Last trade 09:19:53'])
+    expect(w.find('[data-testid="pe-last-trade"]').exists()).toBe(false)
+  })
+
   it('shows the reason when the server sends no rows, the cell health word, and the unreadable catalogue', async () => {
     script({ chain: () => Promise.resolve({ data: notConnected() }) })
     const w = await mountPage()

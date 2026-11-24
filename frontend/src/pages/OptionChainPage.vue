@@ -20,7 +20,7 @@ import { UNAVAILABLE_LABEL, isPermitted, reasonLine } from '@/lib/chainUnavailab
 import { UNDERLYINGS } from '@/lib/underlyings'
 import api from '@/services/api'
 import { healthSentence, missingCode, missingReason, shownHealth } from '@/lib/dataHealthText'
-import { setShownDate, strikeLabel } from '@/lib/displayFormat'
+import { istClock, setShownDate, strikeLabel } from '@/lib/displayFormat'
 import MarketClosedBanner from '@/components/states/MarketClosedBanner.vue'
 import { useSettingsValues } from '@/stores/settingsValues'
 import { strikeRangesOf } from '@/lib/settingsValues'
@@ -154,6 +154,8 @@ const spotTime = computed(() => {
 // RD-048: a missing value carries its short reason in place (tooltip + data-reason), per code in lib/dataHealthText.js.
 const text = (v) => (typeof v === 'string' || typeof v === 'number' ? String(v) : VALUE_UNAVAILABLE)
 const healthWord = (cell) => shownHealth(cell?.health, view.value?.market_closed)
+// D-19: the time of the cell's last trade as the server gave it (HH:MM:SS, India time); nothing when the server sent none
+const lastTrade = (cell) => (cell?.last_trade_at ? istClock(cell.last_trade_at) : null)
 const socketStatus = computed(() => (view.value?.market_closed === true && status.value === 'live' ? '' : status.value))
 const isAtm = (row) => view.value?.atm_strike != null && row.strike === view.value.atm_strike
 const shownRows = computed(() => (view.value ? filterRows(view.value.rows, filters.value.moneyness) : []))
@@ -269,11 +271,11 @@ const resetFilters = () => (filters.value = { ...NO_FILTERS })
               </template>
             </td>
             <td v-for="[key] in SIDE_FIELDS" :key="'c' + key" class="ui-num px-2 py-1" :data-testid="'ce-' + key" :title="missingReason(row.ce, key) || greeksStaleLabel(view, key) || undefined" :data-reason="missingCode(row.ce, key)" :data-stale="greeksStaleLabel(view, key) || null">
-              {{ row.ce ? text(row.ce[key]) : VALUE_UNAVAILABLE }}<span v-if="key === 'ltp' && healthWord(row.ce)" class="ml-1 text-xs text-ink-muted" data-testid="ce-health">{{ healthSentence(healthWord(row.ce)) }}</span>
+              {{ row.ce ? text(row.ce[key]) : VALUE_UNAVAILABLE }}<span v-if="key === 'ltp' && healthWord(row.ce)" class="ml-1 text-xs text-ink-muted" data-testid="ce-health">{{ healthSentence(healthWord(row.ce)) }}</span><span v-if="key === 'ltp' && lastTrade(row.ce)" class="block text-xs text-ink-muted" data-testid="ce-last-trade">Last trade {{ lastTrade(row.ce) }}</span>
             </td>
             <td class="num px-3 py-1 text-center font-medium" :class="isAtm(row) ? 'bg-accent-soft text-accent' : 'bg-surface-muted'" data-testid="strike">{{ strikeLabel(row.strike) }}</td>
             <td v-for="[key] in SIDE_FIELDS" :key="'p' + key" class="ui-num px-2 py-1" :data-testid="'pe-' + key" :title="missingReason(row.pe, key) || greeksStaleLabel(view, key) || undefined" :data-reason="missingCode(row.pe, key)" :data-stale="greeksStaleLabel(view, key) || null">
-              {{ row.pe ? text(row.pe[key]) : VALUE_UNAVAILABLE }}<span v-if="key === 'ltp' && healthWord(row.pe)" class="ml-1 text-xs text-ink-muted" data-testid="pe-health">{{ healthSentence(healthWord(row.pe)) }}</span>
+              {{ row.pe ? text(row.pe[key]) : VALUE_UNAVAILABLE }}<span v-if="key === 'ltp' && healthWord(row.pe)" class="ml-1 text-xs text-ink-muted" data-testid="pe-health">{{ healthSentence(healthWord(row.pe)) }}</span><span v-if="key === 'ltp' && lastTrade(row.pe)" class="block text-xs text-ink-muted" data-testid="pe-last-trade">Last trade {{ lastTrade(row.pe) }}</span>
             </td>
             <td class="whitespace-nowrap px-1 py-1" data-testid="sel-pe">
               <template v-if="row.pe">

@@ -245,8 +245,9 @@ async def test_ac1_core_two_pushes_for_a_five_strike_chain_with_changing_ltps_an
     atm_row = second["rows"][2]
     assert atm_row["ce"] == {"instrument_id": cid("25150", "CE"), "ltp": "131.00", "bid": None, "ask": None,
                              "change": None, "oi": 1000, "oi_change": None, "volume": 500, "health": "stale",
-                             "at": T0.isoformat(), "permitted": False, "unavailable_reason": "unknown",
-                             "iv": None, "delta": None, "gamma": None, "theta": None, "vega": None}
+                             "at": T0.isoformat(), "last_trade_at": None, "permitted": False,
+                             "unavailable_reason": "unknown", "iv": None, "delta": None, "gamma": None, "theta": None,
+                             "vega": None}
     assert second["rows"][2]["pe"]["health"] == "available"
 
 
@@ -260,7 +261,8 @@ async def test_ac2_default_columns_present_and_change_null_without_a_previous_cl
     await close(channel, task)
     cells = [row[s] for row in channel.sent[0]["rows"] for s in ("ce", "pe")]
     assert {frozenset(c) for c in cells} == {frozenset({"instrument_id", "ltp", "bid", "ask", "change", "oi",
-                                                        "oi_change", "volume", "health", "at", "permitted",
+                                                        "oi_change", "volume", "health", "at", "last_trade_at",
+                                                        "permitted",
                                                         "unavailable_reason", "iv", "delta", "gamma", "theta",
                                                         "vega"})}
     assert [c["change"] for c in cells] == [None] * 10
@@ -354,6 +356,7 @@ async def test_ac2_a_held_contract_without_a_quote_reads_unavailable():
     assert channel.sent[0]["rows"][0]["ce"] == {"instrument_id": cid("25050", "CE"), "ltp": None, "bid": None,
                                                 "ask": None, "change": None, "oi": None, "oi_change": None,
                                                 "volume": None, "health": "unavailable", "at": None,
+                                                "last_trade_at": None,
                                                     "permitted": False, "unavailable_reason": "unknown",
                                                 "iv": None, "delta": None, "gamma": None, "theta": None, "vega": None}
 
@@ -532,7 +535,8 @@ def test_ac6_no_order_basket_margin_or_execute_reachable_from_the_chain_code():
                    "ofo_app.live_push", "ofo_app.routes.outcome", "ofo_app", "ofo_app.db", "ofo_app.chain_push",
                    "ofo_app.errors", "ofo_app.routes", "ofo_app.underlying",
                    "ofo.engine.chain_values",  # row 33: the engine's IV/Greeks maths only
-                   "ofo.settings.calc", "fastapi.exceptions"}
+                   "ofo.settings.calc", "fastapi.exceptions",
+                   "ofo.timeutil"}  # D-19: the IST zone the last-trade time is shown in
         assert set(imports) <= allowed, (path.name, set(imports) - allowed)
 
 
@@ -1155,7 +1159,7 @@ def _one_cell_push(ce_stats=None, ce_quote=True):
 
 
 async def _pushed_ce(ce_stats=None, ce_quote=True):
-    provider, channel, push, _ce_id = _one_cell_push(ce_stats, ce_quote)
+    _provider, channel, push, _ce_id = _one_cell_push(ce_stats, ce_quote)
     task = await start(push, channel)
     await close(channel, task)
     row = next(r for r in channel.sent[0]["rows"] if r["strike"] == "25150.00")

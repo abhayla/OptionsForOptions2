@@ -75,6 +75,7 @@ from ofo.instruments.eligibility import EligibilityStatus
 from ofo.marketdata.quote import NormalizedQuote, is_live_price, planning_price_usable
 from ofo.money import PAISE  # money leaves the API as a 2-decimal string
 from ofo.settings.calc import chain_strikes_each_side
+from ofo.timeutil import IST
 from pydantic import BaseModel, ConfigDict, Field, StrictBool, StrictInt, ValidationError
 from sqlalchemy.exc import SQLAlchemyError
 
@@ -151,6 +152,8 @@ class ChainCellOut(ApiModel):
     volume: int | None
     health: HealthCode | None  # the quote's own health; None in the not-live answer
     at: datetime.datetime | None  # the quote's own time (aware)
+    #: D-19: when the last price was made (the feed's day stats, IST); None when none: never a made-up time
+    last_trade_at: datetime.datetime | None
     #: REQ-030 AC-16: True only when Zerodha's eligibility says this contract is tradable now (fail closed)
     permitted: bool
     unavailable_reason: UnavailableReason | None  # why not, when it is not permitted (ADR-132 (3)); else None
@@ -380,18 +383,32 @@ def _greek_fields(quote: NormalizedQuote | None, model: ChainModel | None, instr
             "vega": g.vega.quantize(GREEK_STEP)}
 
 
+def _last_trade_at(ctx: MarketContext, instrument_id: str, *, market_closed: bool) -> datetime.datetime | None:
+    """D-19: the time of the contract's last trade from the feed's day stats (the one source the depth popup reads);
+    closed, the held after-close day values. None for: no stats, a packet without day fields, no trade yet."""
+    now = ctx.clock()
+    stats = ctx.provider.latest_day_stats(instrument_id, now).stats
+    if stats is None and market_closed:
+        held = ctx.provider.depth_after_close(instrument_id, now)
+        stats = None if held is None else held[1]
+    ts = None if stats is None else stats.last_trade_ts
+    return None if ts is None else datetime.datetime.fromtimestamp(ts, IST)
+
+
 def _cell(contract: PickableContract, quote: NormalizedQuote | None, slow: SlowValues | None,  # noqa: PLR0913
-          catalogue: ChainCatalogue, model: ChainModel | None, *, market_closed: bool = False) -> ChainCellOut:
+          catalogue: ChainCatalogue, model: ChainModel | None, *, market_closed: bool = False,
+          last_trade_at: datetime.datetime | None = None) -> ChainCellOut:
     permitted, reason = _permission(catalogue, contract)
     if quote is None:  # held, but no quote yet, or a contract the provider does not know: shown as such
         return ChainCellOut(instrument_id=contract.instrument_id, ltp=None, bid=None, ask=None, change=None, oi=None,
-                            oi_change=None, volume=None, health="unavailable", at=None, permitted=permitted,
-                            unavailable_reason=reason, **_NO_GREEKS)
+                            oi_change=None, volume=None, health="unavailable", at=None, last_trade_at=None,
+                            permitted=permitted, unavailable_reason=reason, **_NO_GREEKS)
     oi, oi_change = (quote.oi, quote.oi_change) if slow is None else slow.get(contract.instrument_id,
                                                                               (quote.oi, quote.oi_change))
     return ChainCellOut(instrument_id=contract.instrument_id, ltp=_given_money(quote.ltp), bid=_given_money(quote.bid),
                         ask=_given_money(quote.ask), change=None, oi=oi, oi_change=oi_change, volume=quote.volume,
-                        health=quote.health.value, at=quote.timestamp, permitted=permitted, unavailable_reason=reason,
+                        health=quote.health.value, at=quote.timestamp, last_trade_at=last_trade_at,
+                        permitted=permitted, unavailable_reason=reason,
                         **_greek_fields(quote, model, contract.instrument_id, market_closed=market_closed))
 
 
@@ -440,11 +457,17 @@ def _rows(ctx: MarketContext, req: ChainRequest, catalogue: ChainCatalogue,  # n
     for strike in window:
         sides = by_strike[strike]
         ce, pe = sides.get("CE"), sides.get("PE")
+
+        def trade_at(c: PickableContract | None) -> datetime.datetime | None:
+            return None if c is None or c.instrument_id not in quotes else _last_trade_at(
+                ctx, c.instrument_id, market_closed=market_closed)
         out.append(ChainRowOut(strike=strike.quantize(PAISE), moneyness=None if atm is None else moneyness(strike, atm),
                                ce=None if ce is None else _cell(ce, quotes.get(ce.instrument_id), slow, catalogue,
-                                                                model, market_closed=market_closed),
+                                                                model, market_closed=market_closed,
+                                                                last_trade_at=trade_at(ce)),
                                pe=None if pe is None else _cell(pe, quotes.get(pe.instrument_id), slow, catalogue,
-                                                                model, market_closed=market_closed)))
+                                                                model, market_closed=market_closed,
+                                                                last_trade_at=trade_at(pe))))
     return [r for r in out if row_passes(r, req)]
 
 
