@@ -480,6 +480,7 @@ decisions:
   ADR-318: S6.7         # at the adjustment limit, only risk-cutting routes, with the true count
   ADR-319: S6.7         # a duplicate leg blocks until the user fixes it; legs are never merged silently
   ADR-320: S6.7         # owner decisions for the remaining items of the 23 Nov live iron condor test
+  ADR-321: S6.7         # one basis per money number, labelled (Part B of the 23 Nov live test, pending owner read)
 
 questions:
   Q210: 4a              # external: Zerodha's written answer; ADR-051 covers the owner's own account
