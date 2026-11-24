@@ -63,8 +63,10 @@ function script({ chain } = {}) {
 // SETTLE_ROUNDS times (a test whose settings read fails on purpose stops after them, never hangs). 2026-11-01: rows 33
 // and attack 6 failed once under the full parallel gate run (sent 15 instead of 5; no request) and passed in 7 reruns.
 const SETTLE_ROUNDS = 10
+const mounted = [] // every page this file mounts: unmounted in afterEach so no reconnect timer outlives its test
 async function mountPage() {
   const w = mount(OptionChainPage)
+  mounted.push(w)
   await flushPromises()
   const settings = useSettingsValues()
   for (let round = 0; round < SETTLE_ROUNDS && settings.values === null; round += 1) await flushPromises()
@@ -80,7 +82,12 @@ beforeEach(() => {
   reads.length = 0
   vi.stubGlobal('WebSocket', FakeSocket)
 })
-afterEach(() => vi.unstubAllGlobals())
+afterEach(() => {
+  // A test that closes its socket without unmounting leaves a reconnect timer (1 s+); under load it fired in a LATER test,
+  // opened a stale FakeSocket that became sock(), and the later test read that page's request (row 33: sent 15, not 5).
+  for (const w of mounted.splice(0)) { try { w.unmount() } catch { /* already unmounted by the test */ } }
+  vi.unstubAllGlobals()
+})
 
 describe('Option Chain screen', () => {
   it('AC-1: lays out Calls | Strike | Puts, ascending, for the chosen underlying and expiry', async () => {
