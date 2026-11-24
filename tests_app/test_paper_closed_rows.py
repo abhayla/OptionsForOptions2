@@ -83,7 +83,8 @@ def test_greeks_across_two_expiries_are_labelled_one_expiry_is_not():
     mod = P
     real = mod.paper_greeks.book_greeks
     g = SimpleNamespace(delta=D(1), gamma=D(1), theta=D(1), vega=D(1))
-    mod.paper_greeks.book_greeks = lambda *a: SimpleNamespace(net=g, legs=[g] * len(a[2]), reason=None)
+    mod.paper_greeks.book_greeks = lambda *a: SimpleNamespace(
+        net=g, legs=[g] * len(a[2]), reason=None, legs_left_today=None, net_left_today=None)
     try:
         two = P._greeks(figures, {7: _found(7), 8: _found(8)}, snap, "NIFTY")["greeks"]
         one = P._greeks(figures | {"positions": held[:1]}, {7: _found(7)}, snap, "NIFTY")["greeks"]

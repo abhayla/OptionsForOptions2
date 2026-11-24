@@ -953,6 +953,7 @@ class TargetGreeksOut(ApiModel):
     unavailable_text: CatalogueText | None  # REQ-084 AC-2: "No Greeks at expiry: the options have no time left."
     basis_text: CatalogueText  # u507: "Per position, 65 units" ("Per position": legs differ)
     total_display: dict[Identifier, CatalogueText] | None = None  # u507: total as text: 2 places, gamma 4
+    decay_left_today_text: CatalogueText | None = None  # D-12: expiry day "Decay left today: Rs X"
     dividend_yields: dict[Identifier, Money] = {}  # expiry date -> the q the engine priced it with (checker input, not shown)
 
 
