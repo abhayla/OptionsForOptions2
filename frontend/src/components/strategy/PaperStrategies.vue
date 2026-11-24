@@ -70,6 +70,7 @@
                 <dt class="text-xs text-ink-muted">{{ typeof f.label === 'function' ? f.label(g) : f.label }}</dt>
                 <dd class="font-semibold" :data-testid="`paper-${f.id}`">{{ pnlText(f.value(g)) }}</dd>
                 <p v-if="f.value(g) === null && f.reason(g)" class="text-xs text-ink-muted" :data-testid="`paper-${f.id}-reason`">{{ f.reason(g) }}</p>
+                <p v-if="f.id === 'max-profit' && g.extremesBasis && g.maxProfit !== null && g.state === 'PAUSED'" class="max-w-xs text-xs text-ink-muted" data-testid="paper-max-profit-basis">{{ g.extremesBasis }}</p>
               </div>
               <button type="button" class="rounded border border-line px-2 py-1" :aria-pressed="!!greeksOpen[g.id]" :data-testid="`greeks-toggle-${g.id}`" @click="greeksOpen = { ...greeksOpen, [g.id]: !greeksOpen[g.id] }">Greeks</button>
             </dl>

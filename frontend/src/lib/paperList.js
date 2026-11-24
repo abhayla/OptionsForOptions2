@@ -79,6 +79,8 @@ function readSummary(s) {
     breakevens: hasBe ? s.breakevens_display.map((t) => t.trim()) : null,
     breakevensReason: hasBe ? null : (Array.isArray(s.breakevens) && s.breakevens.length === 0 ? null : absent(s.breakevens_reason_text)),
     maxProfit: profit.text, maxProfitReason: profit.reason,
+    // D-14 round 2: the server's sentence on whether charges are inside Max Profit / Max Loss (before charges when they could not be priced)
+    extremesBasis: text(s.extremes_charges_text),
     // D-14 (ADR-320 (2)): on the trade's expiry day only, the server's "If held to expiry" Max profit; null other days
     maxProfitHold: text(s.max_profit_hold_text),
     maxLoss: loss.text, maxLossReason: loss.reason,

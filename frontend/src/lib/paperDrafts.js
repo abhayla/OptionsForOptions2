@@ -232,13 +232,22 @@ export function paperLeftOf(book, pausedText = null) {
     reason: serverText(book.extremes_reason_text), // R-20: the server's sentence for extremes_reason, never written here
     // F-94: the server's sentence on whether the round-trip charges are inside Max Profit / Max Loss; `after` = the server sent the
     // charges amount (its presence, not a number made here). Nothing beside a paused figure.
-    extremes: profit.kind === 'paused' ? null : { text: serverText(book.extremes_charges_text), after: serverText(book.extremes_charges) !== null },
+    // D-14 round 2: a paused book's Max Profit is before charges: the server's sentence says so beside it (after: false)
+    extremes: { text: serverText(book.extremes_charges_text), after: profit.kind !== 'paused' && serverText(book.extremes_charges) !== null },
     // D-14 (ADR-320 (2)): the server sends the held pair on the trade's expiry day only; the exited pair is the usual figures
     expiryPair: serverText(book.max_profit_hold_text) === null || profit.kind !== 'after' ? null : {
       held: { maxProfit: serverText(book.max_profit_hold_text), profitLeft: serverText(book.profit_left_hold_text) },
       exited: { maxProfit: serverText(book.max_profit_text), profitLeft: profit.text },
     },
   }
+}
+/** D-13/D-14 round 2: what the Charges dialog shows in Drafts Mode, the paper reply's own texts as sent (no sum made here):
+ *  charges paid, the estimated cost to close at the live price, and `total` = extremes_charges (the charges inside Max Profit and
+ *  Max Loss; null when those are before charges). Null when the reply has no paid-charges text (the dialog then has nothing to show). */
+export function paperChargesOf(book) {
+  const paid = serverText(book?.charges_paid_text ?? book?.charges_text)
+  if (paid === null) return null
+  return { paid, toClose: serverText(book.charges_to_close_text), total: serverText(book.extremes_charges), sentence: serverText(book.extremes_charges_text) }
 }
 export const EXIT_ALL_LABEL = 'Exit all'
 export const EXIT_LABEL = 'Exit'

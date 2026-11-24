@@ -432,11 +432,17 @@ def price_after(legs: Sequence[PositionLeg], position: Position, booked: Decimal
     if known:
         try:
             # D-14: the cost to close is priced at each leg's LIVE price (the chain's LTP), as the trade page's
-            # max_after_charges and Total after price it; a leg the chain does not quote (a new leg of the approach)
-            # closes at its entry, which is the quote it is entered at now
+            # max_after_charges and Total after price it. Only a NEW leg of the approach (one the position does not hold)
+            # closes at its entry, the quote it is entered at now; a HELD leg the chain does not quote has no cost to
+            # close, so the charges are not known (never its average entry: the page and the review must agree)
             now = {r.tradingsymbol: r.ltp for r in market.chain if r.ltp is not None}
-            closing = [ChargeOrder(segment, "SELL" if x.side == "BUY" else "BUY", x.lots * position.lot,
-                                   now.get(x.tradingsymbol, x.entry)) for x in legs]
+            held = {x.tradingsymbol for x in position.legs}
+            closing = []
+            for x in legs:
+                if x.tradingsymbol not in now and x.tradingsymbol in held:
+                    raise ValueError(x.tradingsymbol)
+                closing.append(ChargeOrder(segment, "SELL" if x.side == "BUY" else "BUY", x.lots * position.lot,
+                                           now.get(x.tradingsymbol, x.entry)))
             adjustment, exits = review_charge_lines(paid, paid_exact, own_orders, closing, rates)  # type: ignore[arg-type]
         except ValueError:
             known = False

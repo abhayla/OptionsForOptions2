@@ -33,7 +33,7 @@ import LoadFailed from '@/components/common/LoadFailed.vue'
 import { PAPER_REREAD_FAILED_TEXT } from '@/lib/sharedStateText'
 import {
   DISCARD_LABEL, PAPER_BOOK_UNREADABLE, PAPER_MODE_LABEL, PAPER_PENDING_UNREADABLE, PAPER_REREAD_DELAYS_MS, REVIEW_AND_ADD_LABEL, confirmRowsFor, paperOrdersFor, pendingText, readPaperBook,
-  legsAfterExit, paperFillKey, paperLeftOf,
+  legsAfterExit, paperFillKey, paperLeftOf, paperChargesOf,
 } from '@/lib/paperDrafts'
 import { withAsOf } from '@/lib/paperList'
 import PaperBookPanel from '@/components/strategy/PaperBookPanel.vue'
@@ -449,6 +449,7 @@ function exitPaper(contractId, lots) {
 // D-11: the tiles and the chart's marks are the WHOLE trade (booked in, the paper reply) with the switch ON, the open legs only (the
 // outcome's own summary) with it OFF; the server computes both, this only picks which served figure to show
 const wholeTrade = computed(() => !!paperLeft.value && includeBooked.value)
+const paperCharges = computed(() => (paper.value ? paperChargesOf(paper.value.book) : null)) // D-13/D-14: Drafts Mode shows the paper reply's charges
 const paperLeft = computed(() => { // GC-ICFIX u124: after-charges forms, labelled (lib/paperDrafts paperLeftOf)
   const b = paper.value?.book
   return b ? paperLeftOf(b, withAsOf(typeof b.pause_reason_text === 'string' && b.pause_reason_text.trim() !== '' ? b.pause_reason_text.trim() : null, b.as_of)) : null
@@ -1044,7 +1045,7 @@ const pricesStamp = computed(() => {
           @edit="editLeg" @edit-leg="openInPicker" @include-all="includeAll" @remove="removeLeg" @add-leg="focusPicker" @pick-chain="pickFromChain" @clear-all="clearAll" @undo-clear="undoClear"
         >
           <template #money>
-            <div v-if="showNumbers" :class="updating ? 'opacity-60' : ''"><MoneySummary class="!mt-0 !px-0" :net-premium="data.summary.net_premium ?? null" :charges="data.charges_breakdown ?? null" /></div>
+            <div v-if="showNumbers" :class="updating ? 'opacity-60' : ''"><MoneySummary class="!mt-0 !px-0" :net-premium="data.summary.net_premium ?? null" :charges="paper ? null : data.charges_breakdown ?? null" :paper-charges="paperCharges" /></div>
           </template>
         </LegList>
         <!-- GC-ICFIX P3 u513: while the confirm dialog is open its list is a preview, not "N pending changes" the user made -->

@@ -14,6 +14,7 @@ const SIDE_WORD = { get: "Get", pay: "Pay" };
 const props = defineProps({
   netPremium: { type: Object, default: null }, // summary.net_premium: {amount, side, per_unit, text, reason}; null with no legs
   charges: { type: Object, default: null }, // charges_breakdown; null when no rates or a leg cannot be priced
+  paperCharges: { type: Object, default: null }, // Drafts Mode: the paper reply's charges (paid, cost to close, inside Max Profit); wins over `charges`
 });
 const netText = computed(() => {
   const shown = displayOrDash(props.netPremium?.amount_display);
@@ -24,7 +25,7 @@ const netText = computed(() => {
 
 <template>
   <div
-    v-if="netPremium || charges"
+    v-if="netPremium || charges || paperCharges"
     class="mt-4 px-4 text-sm min-w-0"
     data-testid="money-summary"
   >
@@ -62,7 +63,7 @@ const netText = computed(() => {
           >
         </template>
       </div>
-      <ChargesBreakdown v-if="charges" :breakdown="charges" />
+      <ChargesBreakdown v-if="paperCharges || charges" :breakdown="paperCharges ? null : charges" :paper="paperCharges" />
     </div>
   </div>
 </template>
