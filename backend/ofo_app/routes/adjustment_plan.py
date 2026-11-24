@@ -52,8 +52,8 @@ from ofo_app.routes.adjustment import (
     TrackedReader,
     get_market_reader,
     get_rest_spot_reader,
-    judge_spot,
     get_tracked_reader,
+    judge_spot,
 )
 from ofo_app.routes.adjustment_preferences import UserValuesIn
 from ofo_app.routes.broker import current_user_ref

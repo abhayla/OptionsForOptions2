@@ -69,4 +69,5 @@ async def test_another_users_or_a_missing_strategy_is_refused_by_armed_exits(db,
         reply = await c.get(f"/paper/strategies/{stored.id}/armed-exits", params=params)
     assert reply.status_code == HTTPStatus.NOT_FOUND and "lines" not in reply.json()
     async with _client(app) as c:
-        assert (await c.get("/paper/strategies/999999999/armed-exits", params=params)).status_code == HTTPStatus.NOT_FOUND
+        missing = await c.get("/paper/strategies/999999999/armed-exits", params=params)
+        assert missing.status_code == HTTPStatus.NOT_FOUND
