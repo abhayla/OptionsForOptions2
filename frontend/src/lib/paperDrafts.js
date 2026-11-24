@@ -81,6 +81,19 @@ const order = (contractId, side, units, lotSize, kind, leg) => ({
   contract_id: contractId, side, quantity: units, lots: units / lotSize, lot_size: lotSize, kind, leg,
 })
 
+/** The contract ids that more than one row holds with the same action (a kept duplicate); rows with lots 0 do not count. */
+function keptDuplicateIds(legs) {
+  const seen = new Set()
+  const out = new Set()
+  for (const l of legs ?? []) {
+    if (!(l.lots > 0)) continue
+    const key = `${l.contract_id}:${l.action}`
+    if (seen.has(key)) out.add(l.contract_id)
+    seen.add(key)
+  }
+  return out
+}
+
 /** THE one diff of Drafts Mode: the paper orders that turn the net position (`net`, builder legs) into the edited legs.
  *  Per contract, comparing signed units: same side and larger -> one `add` (the position's side); same side and smaller ->
  *  one `exit` (opposite side) of the difference; to zero -> `exit` of the whole held quantity; crossing zero -> `exit` of the
@@ -93,7 +106,16 @@ export function paperOrdersFor(net, edited) {
   if (!before || !after) return null
   const exits = []
   const adds = []
-  const ids = [...new Set([...before.keys(), ...after.keys()])]
+  // D-60 (ADR-319 (3), A4 review 3 finding 1): two rows of one contract and action are a KEPT duplicate. It is never summed into
+  // one order: each row goes as its own `add`, so the server's duplicate check (the one refusal source) sees both and refuses
+  // with its gate sentence. Netting stays per contract for every other edit (one row's lots changed, a buy and a sell).
+  const dups = keptDuplicateIds(edited)
+  for (const id of dups) {
+    for (const l of edited) {
+      if (l.contract_id === id && l.lots > 0) adds.push(order(id, l.action, l.lots * l.lot_size, l.lot_size, 'add', l))
+    }
+  }
+  const ids = [...new Set([...before.keys(), ...after.keys()])].filter((id) => !dups.has(id))
   for (const id of ids) {
     const held = before.get(id)?.units ?? 0
     const want = after.get(id)?.units ?? 0

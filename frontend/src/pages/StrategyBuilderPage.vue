@@ -52,6 +52,8 @@ import { UNDERLYINGS } from '@/lib/underlyings'
 import PopFigure from '@/components/strategy/PopFigure.vue'
 import ActivityPanel from '@/components/strategy/ActivityPanel.vue'
 import Drawer from '@/components/common/Drawer.vue'
+import Modal from '@/components/common/Modal.vue'
+import { DUP_QUESTION, admitLegs } from '@/lib/legDoor'
 import SaveDraftBar from '@/components/strategy/SaveDraftBar.vue'
 import LegList from '@/components/strategy/LegList.vue'
 import { applyEditReply, buildEditRequest, controlsFrom, moveKey, MAX_STEPS, RELATIVE_CONTROLS, executeRefusal, CLEAR_UNDO_SECONDS_KEY, MULTIPLIER_MAX_KEY, EXECUTE_WAITS_FOR_LATEST, NO_CONTROLS } from '@/lib/legEdit'
@@ -724,6 +726,28 @@ async function editLeg(edit) {
   while (move) await move.done
   return sendEdit(edit, legs.value, controls.value.shiftTotal, null)
 }
+// D-60: the page's own question (the picker's wording and answers), asked for a leg a move landed on a held contract.
+const dupAsk = ref(null)
+const askDuplicate = (leg) => new Promise((resolve) => { dupAsk.value = { name: contractName(leg), resolve } })
+function answerDuplicate(choice) {
+  const d = dupAsk.value
+  dupAsk.value = null
+  d?.resolve(choice)
+}
+/** The legs after a move, through admitLegs: only a leg whose contract the move changed is asked about, against the legs it
+ *  did not move. Null on Cancel; `{ error }` for an Increase past the lots limit; else `{ legs, increased }` in row order. */
+async function askMovedDuplicates(baseLegs, landed) {
+  const moved = landed.filter((l, i) => l.instrument_id !== baseLegs[i]?.instrument_id)
+  if (!moved.length) return { legs: landed, increased: false }
+  const movedIds = new Set(moved.map((l) => l.id))
+  const held = landed.filter((l) => !movedIds.has(l.id))
+  const admitted = await admitLegs(held, moved, { ask: askDuplicate, maxLots: served.integer(MAX_LOTS_KEY) })
+  if (!admitted || admitted.error) return admitted
+  const byId = new Map(admitted.legs.map((l) => [l.id, l]))
+  const kept = new Set(admitted.kept.map((l) => l.id))
+  const out = landed.flatMap((l) => (movedIds.has(l.id) ? (kept.has(l.id) ? [l] : []) : [byId.get(l.id) ?? l]))
+  return { legs: out, increased: out.length !== landed.length }
+}
 async function sendEdit(edit, baseLegs, shiftTotal, owner) {
   const body = buildEditRequest(baseLegs[0]?.underlying, baseLegs, edit, shiftTotal)
   if (!body) {
@@ -747,7 +771,22 @@ async function sendEdit(edit, baseLegs, shiftTotal, owner) {
       return
     }
     const keep = edit.control === 'include'
-    legs.value = applyEditReply(legs.value, reply)
+    let landed = applyEditReply(legs.value, reply)
+    let increased = false
+    if (RELATIVE_CONTROLS.includes(edit.control)) {
+      // D-60 (ADR-319, review finding 2): a move that lands a leg on a contract another leg holds with the same action asks
+      // through the one shared door; Cancel keeps the legs as before the step, a refused Increase says why.
+      const door = await askMovedDuplicates(baseLegs, landed)
+      if (!guard.isNewest('leg-edit', mine)) return // a newer edit took over while the question was open
+      if (!door) return
+      if (door.error) {
+        editError.value = { ...NEUTRAL_PARTS, what_happened: door.error }
+        return
+      }
+      increased = door.increased
+      landed = door.legs
+    }
+    legs.value = landed
     if (!keep) {
       savedId.value = null
       savedRevision.value = null
@@ -757,7 +796,9 @@ async function sendEdit(edit, baseLegs, shiftTotal, owner) {
     hasReply.value = true
     // The embedded outcome is the server's At Expiry on its default range, so it is drawn only when it matches the legs and
     // choice on screen and no outcome request is pending (that one is never cancelled here: its reply is checked the same way).
-    if (reply.outcome && drawable(reply.outcome) && !guard.pending.outcome) {
+    if (increased) {
+      load() // Increase quantity changed the legs the reply priced: the numbers for the legs now on screen
+    } else if (reply.outcome && drawable(reply.outcome) && !guard.pending.outcome) {
       guard.cancel('outcome')
       clearTimeout(slowTimer)
       slow.value = false
@@ -917,6 +958,15 @@ const pricesStamp = computed(() => {
     <!-- W-193 (UI-005): the visible title block is gone (the top bar breadcrumb names the page); the heading stays for screen
          readers. The planning sentence moved into the Important info note under the summary card. -->
     <h1 class="sr-only" data-testid="page-title">Strategy Builder</h1>
+    <!-- D-60 (ADR-319): the question for a move onto a held contract; outside every v-if chain, so no state hides it -->
+    <Modal :open="dupAsk !== null" title="Already in this strategy" @close="answerDuplicate('cancel')">
+      <div data-testid="dup-dialog"><p data-testid="dup-question">{{ dupAsk ? DUP_QUESTION(dupAsk.name) : '' }}</p></div>
+      <template #actions>
+        <button type="button" class="rounded border border-line px-2 py-1" data-testid="dup-increase" @click="answerDuplicate('increase')">Increase quantity</button>
+        <button type="button" class="rounded border border-line px-2 py-1" data-testid="dup-separate" @click="answerDuplicate('separate')">Keep separate</button>
+        <button type="button" class="col-span-2 rounded border border-line px-2 py-1" data-testid="dup-cancel" @click="answerDuplicate('cancel')">Cancel</button>
+      </template>
+    </Modal>
 
     <MarketClosedBanner v-if="closedBanner" class="mt-2" :prices-at="closedBanner.at" />
     <p v-if="orderPathNotice" class="mt-2 text-sm text-ink-muted" data-testid="order-path-off-notice">{{ ORDER_PATH_OFF_SENTENCE }}</p>
