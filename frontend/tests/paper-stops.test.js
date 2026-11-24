@@ -1,6 +1,6 @@
 // GC-TP step 7b (REQ-109 AC-8; ADR-207 (5); screens 221-224): arming a Conditional exit or a leg Stop on a paper strategy,
 // listing and cancelling its triggers. Levels are sent as typed strings; every figure shown is the server's text.
-import { describe, it, expect, vi, beforeEach } from 'vitest'
+import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest'
 import { mount, flushPromises } from '@vue/test-utils'
 import { createRouter, createMemoryHistory } from 'vue-router'
 
@@ -17,6 +17,7 @@ vi.mock('@/services/api', async (importActual) => {
   return { ...actual, default: { get: reply('GET'), post: reply('POST'), delete: reply('DELETE') } }
 })
 
+import { TRACKING_REFRESH_MS } from '@/lib/tracking'
 import { withPriceTexts } from './_priceTexts'
 import PaperStrategies from '@/components/strategy/PaperStrategies.vue'
 
@@ -312,5 +313,52 @@ describe('Stops panel: a mixed save says which level is which (D-05 r2)', () => 
     await t(w, `stop-save-${id}`).trigger('click')
     await flushPromises()
     expect(t(w, 'stops-saved').text()).toBe('Already set: stop above 110')
+  })
+})
+
+describe('Stops panel: the Not saved line and the empty-level hint (D-05, ADR-317 (5))', () => {
+  afterEach(() => { vi.useRealTimers() })
+  const failSave = (w) => {
+    answers[`POST ${TRIG}`] = () => Promise.reject({ message: 'x', status: null, parts: null })
+    return t(w, 'ce-save').trigger('click').then(() => flushPromises())
+  }
+  const tick = async () => { await vi.advanceTimersByTimeAsync(TRACKING_REFRESH_MS); await flushPromises() }
+
+  it('Not saved is gone after the next good refresh; the typed levels stay', async () => {
+    vi.useFakeTimers()
+    const w = await open()
+    await t(w, 'ce-above').setValue('24500')
+    await failSave(w)
+    expect(t(w, 'stops-error').text().startsWith('Not saved:')).toBe(true)
+    await tick() // the list's own refresh answers well
+    expect(has(w, 'stops-error')).toBe(false)
+    expect(t(w, 'ce-above').element.value).toBe('24500')
+  })
+  it('a failed refresh leaves the Not saved line on screen', async () => {
+    vi.useFakeTimers()
+    const w = await open()
+    await t(w, 'ce-above').setValue('24500')
+    await failSave(w)
+    answers['GET /tracking'] = () => Promise.reject({ message: 'x', status: null, parts: null })
+    await tick()
+    expect(t(w, 'stops-error').text().startsWith('Not saved:')).toBe(true)
+    expect(t(w, 'ce-above').element.value).toBe('24500')
+  })
+  it('a good Save shows Saved and never Enter at least one level beside it', async () => {
+    const w = await open()
+    await t(w, 'ce-above').setValue('24500')
+    answers[`POST ${TRIG}`] = ok({ triggers: [trig(1)] })
+    await t(w, 'ce-save').trigger('click')
+    await flushPromises()
+    expect(t(w, 'stops-saved').text()).toBe('Saved: exit above 24500')
+    expect(w.text()).not.toContain('Enter at least one level')
+  })
+  it('Save with both boxes empty shows the hint', async () => {
+    const w = await open()
+    expect(t(w, 'ce-reason').text()).toBe('Enter at least one level')
+    await t(w, 'ce-save').trigger('click')
+    await flushPromises()
+    expect(t(w, 'ce-reason').text()).toBe('Enter at least one level')
+    expect(posts()).toHaveLength(0)
   })
 })
