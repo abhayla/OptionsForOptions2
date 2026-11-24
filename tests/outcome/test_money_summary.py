@@ -130,7 +130,7 @@ def test_a_sold_leg_flips_the_sign_and_a_put_uses_strike_minus_spot():
 
 
 def test_no_spot_makes_both_absent_with_the_reason():
-    # D-17: a leg with an entry price and no live price still has its value split (on the entry prices); no spot has none
+    # D-17: a leg with an entry price and no live price still has its value split; no spot has none
     v = money.time_and_intrinsic((leg(Action.BUY, Instrument.CE, "22900", "1", ltp="1"),), None)
     assert (v.intrinsic, v.time, v.label) == (None, None, None)
     assert v.reason == "a price is missing for at least one leg or for the index"
@@ -258,7 +258,7 @@ def test_ratio_is_never_taken_from_the_figures_before_charges(replayed):
 def test_time_value_uses_the_planned_entry_not_the_live_price():
     bought = leg(Action.BUY, Instrument.CE, "22900", "150.00", ltp="180.00")  # planned 150, live 180
     v = money.time_and_intrinsic((bought,), D("22976.85"))
-    # D-17: on the credit's prices. per unit: intrinsic 76.85, time 150 - 76.85 = 73.15 (live 180 would give 103.15); x 65
+    # D-17: on the credit prices. per unit: intrinsic 76.85, time 150 - 76.85 = 73.15 (live 180 gives 103.15); x 65
     assert (v.intrinsic, v.time) == (D("4995.25"), D("4754.75"))
 
 

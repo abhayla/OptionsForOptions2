@@ -260,6 +260,13 @@ def _yield_fields(out: Any) -> dict[str, Any]:
     return {"dividend_yields": {e.isoformat(): _s(q) for e, q in out.dividend_yields}} if out.dividend_yields else {}
 
 
+def _basis_fields(s: Any) -> dict[str, Any]:
+    """GC-ICLIVE-B D-15: the prices the Get and time value use, set by the route; absent keeps every recorded reply as it was."""
+    if s.price_basis_text is None:
+        return {}
+    return {"price_basis_text": s.price_basis_text, "plan_line": s.plan_line}
+
+
 def outcome_to_dict(out: Outcome, today: datetime.date | None = None) -> dict[str, Any]:
     """``today``: the IST date of the answer's own clock (REQ-135 AC-2); the legs' days to expiry count from it."""
     scenario = payoff = summary = table = None
@@ -302,9 +309,8 @@ def outcome_to_dict(out: Outcome, today: datetime.date | None = None) -> dict[st
             "intrinsic_value_display": _whole(s.intrinsic_value, signed=True),
             "risk_reward": _s(s.risk_reward), "value_label": s.value_label, "value_reason": s.value_reason,
             "net_premium": _net_premium(s.net_premium), "funds_share": _funds_share(s.funds_share),
+            **_basis_fields(s),
         }
-        if s.price_basis_text is not None:  # GC-ICLIVE-B D-15: set by the route; absent keeps every recorded reply as it was
-            summary["price_basis_text"], summary["plan_line"] = s.price_basis_text, s.plan_line
     if out.table is not None:
         table = _table(out.table, out.visible_columns)
     body = {

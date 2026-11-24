@@ -87,7 +87,7 @@ def basis_text(basis: str) -> ExplanationText:
 
 
 def plan_line(legs: Sequence[Any], plan_prices: Mapping[str, Any], ids: Sequence[str]) -> ExplanationText | None:
-    """D-15: for a paper trade (legs priced at its fills) the plan's own credit, from the plan's entry prices of the same
+    """D-15: for a paper trade (legs priced at its fills) the plan's own credit, from the plan entry prices of the same
     legs (``plan_prices``: instrument id -> price), as one line. None when any leg has no plan price (the plan was not
     kept), a futures leg is present, or the plan nets to exactly zero: no figure is made up."""
     if not legs or any(leg.instrument is Instrument.FUT for leg in legs):
@@ -95,7 +95,8 @@ def plan_line(legs: Sequence[Any], plan_prices: Mapping[str, Any], ids: Sequence
     prices = [plan_prices.get(i) for i in ids]
     if len(prices) != len(legs) or any(p is None for p in prices):
         return None
-    net = engine.net_premium_amount([dataclasses.replace(leg, entry_price=p) for leg, p in zip(legs, prices, strict=True)])
+    at_plan = [dataclasses.replace(leg, entry_price=p) for leg, p in zip(legs, prices, strict=True)]
+    net = engine.net_premium_amount(at_plan)
     if net == 0:
         return None
     return render_explanation("money_plan_get" if net > 0 else "money_plan_pay", amount=abs(net))

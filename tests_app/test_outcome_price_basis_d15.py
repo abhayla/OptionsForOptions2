@@ -10,6 +10,7 @@ import json
 import pathlib
 import sys
 from decimal import Decimal
+from http import HTTPStatus
 
 import pytest
 
@@ -18,7 +19,7 @@ sys.path.insert(0, str(ROOT / "tests"))
 sys.path.insert(0, str(ROOT / "tests_app"))
 
 from marketdata._kite_fixture import all_instrument_ids, new_provider, replay  # noqa: E402
-from test_outcome_margin import _body, _post, source, Transport  # noqa: E402
+from test_outcome_margin import Transport, _body, _post, source  # noqa: E402
 
 
 @pytest.fixture(scope="module")
@@ -32,7 +33,7 @@ def replayed():
 async def _summary(provider, **extra):
     body = {**_body(provider), **extra}
     [resp] = await _post(body, provider, source(Transport()))
-    assert resp.status_code == 200, resp.text
+    assert resp.status_code == HTTPStatus.OK, resp.text
     return json.loads(resp.text)["summary"]
 
 

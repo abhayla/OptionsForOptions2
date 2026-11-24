@@ -1097,12 +1097,12 @@ def _with_price_basis(out: Outcome, req: OutcomeRequest) -> Outcome:
     if out.summary is None:
         return out
     line = None
-    if req.price_basis == money_module.PAPER_FILLS and all(leg.quantity is not None and leg.instrument is not None
-                                                           for leg in out.legs):
-        engine_legs = [Leg(l.action, l.instrument, l.strike, l.expiry, l.quantity, l.planned_entry) for l in out.legs]
+    held = out.legs
+    if req.price_basis == money_module.PAPER_FILLS and all(
+            x.quantity is not None and x.instrument is not None and x.planned_entry is not None for x in held):
+        engine_legs = [Leg(x.action, x.instrument, x.strike, x.expiry, x.quantity, x.planned_entry) for x in held]
         plan = {leg.instrument_id: None if leg.plan_entry is None else Decimal(leg.plan_entry) for leg in req.legs}
-        if all(l.planned_entry is not None for l in out.legs):
-            line = money_module.plan_line(engine_legs, plan, [l.instrument_id for l in out.legs])
+        line = money_module.plan_line(engine_legs, plan, [x.instrument_id for x in held])
     summary = dataclasses.replace(out.summary, price_basis_text=money_module.basis_text(req.price_basis), plan_line=line)
     return dataclasses.replace(out, summary=summary)
 
