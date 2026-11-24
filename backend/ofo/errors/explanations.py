@@ -1845,6 +1845,13 @@ _EXPLANATIONS: tuple[ExplanationTemplate, ...] = (
     ExplanationTemplate("paper_extremes_before_charges", "values_seen",
                         "Maximum profit and maximum loss are before charges and taxes: the charges could not be "
                         "priced."),
+    # D-16 (ADR-263): the paper book's breakevens say what is inside them (the booked P&L always; the charges Max Profit carries)
+    ExplanationTemplate("paper_breakevens_with_charges", "values_seen",
+                        "Breakevens include the booked P&L and about {charges} of charges and taxes.",
+                        {"charges": Rupees}),
+    ExplanationTemplate("paper_breakevens_before_charges", "values_seen",
+                        "Breakevens include the booked P&L and are before charges and taxes: the charges could not be "
+                        "priced."),
     # ADR-256: the exit confirm list, when the legs left open can lose more than before (a sold option lost its bought one)
     ExplanationTemplate("paper_exit_widens_loss", "values_seen",
                         "After these orders, maximum loss: {before} before, {after} after.",

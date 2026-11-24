@@ -4290,5 +4290,13 @@
   "paper_trigger_leg_already_crossed": {
     "sha256": "9fce35fa22d13bba002ac14177014bd82174db1d4b1092d59c76cbc42ae21524",
     "reviewed": "pending owner read"
+  },
+  "explanation:paper_breakevens_with_charges": {
+    "sha256": "93abe1e127f6a953b9eec29ca4211b899e0173795e367f3a302113d029f16372",
+    "reviewed": "pending owner read"
+  },
+  "explanation:paper_breakevens_before_charges": {
+    "sha256": "c2db81735f247b05c4f4f847c688e1dbbc6d6125378233f025b67dbe83fcfcdc",
+    "reviewed": "pending owner read"
   }
 }

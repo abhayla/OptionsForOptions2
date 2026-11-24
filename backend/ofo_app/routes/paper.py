@@ -310,6 +310,7 @@ class PaperBreakevens(ApiModel):
     breakevens_display: list[CatalogueText] | None
     breakevens_reason: FigureReason | None
     breakevens_reason_text: CatalogueText | None = None  # ADR-211 (5): the sentence beside the dash
+    breakevens_basis_text: CatalogueText | None = None  # D-16 (ADR-263): booked P&L and charges are in the levels, or before charges
 
 
 class GreekFigures(ApiModel):
@@ -640,20 +641,25 @@ def _extremes(orders: Sequence[paper_store.StoredOrder], found: dict[int, tracke
 
 
 def _breakevens(orders: Sequence[paper_store.StoredOrder], found: dict[int, tracked_contracts.TrackedContract],
-                spot: Decimal | None) -> dict:
+                spot: Decimal | None, charges: Decimal | None = None) -> dict:
     """GC-TP R-19b: the book's at-expiry breakevens from the one engine (ofo.engine.extremes.book_breakevens), each with
-    its level text and the signed percent from spot (REQ-153) when the spot is usable. Needs no live price."""
+    its level text and the signed percent from spot (REQ-153) when the spot is usable. Needs no live price.
+    D-16 (ADR-263): on the same basis as Max Profit / Max Loss beside them: the booked P&L is in and so are the round-trip
+    ``charges`` they carry (``extremes_charges``); None = those could not be priced, and ``breakevens_basis_text`` says
+    the levels are before charges."""
     terms = {}
     for cid in {o.order.contract_id for o in orders}:
         _, instrument, strike, expiry = _identity(found[cid])
         terms[str(cid)] = ContractTerms(instrument, strike, expiry)
-    got = book_breakevens(net_positions(_paper(orders), {}), terms)
+    got = book_breakevens(net_positions(_paper(orders), {}), terms, charges or Decimal(0))
     if got.levels is None:
         return {"breakevens": None, "breakevens_display": None, "breakevens_reason": got.reason,
-                "breakevens_reason_text": breakevens_reason_text(got.reason)}
+                "breakevens_reason_text": breakevens_reason_text(got.reason), "breakevens_basis_text": None}
     texts = breakevens_display(got.levels, spot)  # GC-TPD R-34: the outcome summary's own function and shape
+    basis = (render_explanation("paper_breakevens_before_charges") if charges is None else
+             render_explanation("paper_breakevens_with_charges", charges=charges))
     return {"breakevens": [_exact(x) for x in got.levels], "breakevens_display": texts, "breakevens_reason": got.reason,
-            "breakevens_reason_text": None}
+            "breakevens_reason_text": None, "breakevens_basis_text": basis}
 
 
 def _open_contracts(figures: dict,
@@ -698,7 +704,7 @@ _ABSENT = {"profit_left": None, "loss_left": None, "max_profit": None, "max_loss
            "extremes_charges": None, "extremes_charges_text": None, "max_profit_hold": None,
            "max_profit_hold_text": None, "profit_left_hold": None, "profit_left_hold_text": None,
            "breakevens": None, "breakevens_display": None, "breakevens_reason": EXITED,
-           "breakevens_reason_text": breakevens_reason_text(EXITED), "greeks": None,
+           "breakevens_reason_text": breakevens_reason_text(EXITED), "breakevens_basis_text": None, "greeks": None,
            "greeks_reason": EXITED, "greeks_reason_text": greeks_reason_text(EXITED)}
 
 
@@ -712,7 +718,8 @@ def _summary(orders: Sequence[paper_store.StoredOrder],  # noqa: PLR0913
     if exited_absent and figures["state"] == "EXITED":
         return dict(_ABSENT)
     spot = _spot(snapshot) if figures["state"] == "LIVE" else None  # no percent from a spot that is not live
-    return (_extremes(orders, found, prices, underlying, rates, _today(snapshot)) | _breakevens(orders, found, spot)
+    extremes = _extremes(orders, found, prices, underlying, rates, _today(snapshot))
+    return (extremes | _breakevens(orders, found, spot, extremes["extremes_charges"])  # D-16: the charges Max Profit carries
             | _greeks(figures, found, snapshot, underlying))
 
 
