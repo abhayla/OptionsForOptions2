@@ -36,3 +36,6 @@ node_modules/
 
 # Local secrets (project .env) - never commit
 .env
+
+# GC-ICLIVE run progress logs (local only)
+docs/process/.run/
