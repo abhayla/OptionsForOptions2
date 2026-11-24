@@ -62,12 +62,16 @@ describe('D-18 each panel that shows a leg price says when it was quoted', () =>
 describe('D-18 (round 2) each leg shows its own quote time; the summary line is the OLDEST', () => {
   const leg = (n) => ({ id: `a${n}`, instrument_id: `NSE_FO:${n}`, underlying: 'NIFTY', action: 'SELL', lots: 1, planned_entry: '7.00', captured_at: '2026-11-23T05:00:00Z', expiry: '2026-11-25', instrument_type: 'PE', strike: '25300.00' })
   it('names the older of two leg quote times and each leg its own', () => {
-    const w = mount(LegList, { props: { legs: [leg(1), leg(2)], ltpById: { 'NSE_FO:1': '7.45', 'NSE_FO:2': '7.10' }, quoteAtById: { 'NSE_FO:1': '2026-11-23T05:31:09Z', 'NSE_FO:2': '2026-11-23T05:31:02Z' }, priceAt: '2026-11-23T05:31:09Z' } })
+    const w = mount(LegList, { props: { legs: [leg(1), leg(2)], ltpById: { 'NSE_FO:1': '7.45', 'NSE_FO:2': '7.10' }, quoteAtById: { 'NSE_FO:1': '2026-11-23T05:31:09Z', 'NSE_FO:2': '2026-11-23T05:31:02Z' }, oldestQuoteAt: '2026-11-23T05:31:02Z', priceAt: '2026-11-23T05:31:09Z' } })
     expect(t(w, 'leg-prices-as-of').text()).toBe('Oldest leg price as of 11:01:02 IST')
     expect(w.findAll('[data-testid="leg-quote-at"]').map((n) => n.text())).toEqual(['11:01:09', '11:01:02'])
   })
+  it('prints the oldest time the server served, not one worked out from the strings it sorts', () => {
+    const w = mount(LegList, { props: { legs: [leg(1), leg(2)], ltpById: { 'NSE_FO:1': '7.45', 'NSE_FO:2': '7.10' }, quoteAtById: { 'NSE_FO:1': '2026-11-23T05:31:09Z', 'NSE_FO:2': '2026-11-23T11:01:02+05:30' }, oldestQuoteAt: '2026-11-23T11:01:02+05:30' } })
+    expect(t(w, 'leg-prices-as-of').text()).toBe('Oldest leg price as of 11:01:02 IST')
+  })
   it('a leg with a price and no time says so, and the summary line does not borrow another time', () => {
-    const w = mount(LegList, { props: { legs: [leg(1), leg(2)], ltpById: { 'NSE_FO:1': '7.45', 'NSE_FO:2': '7.10' }, quoteAtById: { 'NSE_FO:1': '2026-11-23T05:31:09Z' }, priceAt: '2026-11-23T05:31:09Z' } })
+    const w = mount(LegList, { props: { legs: [leg(1), leg(2)], ltpById: { 'NSE_FO:1': '7.45', 'NSE_FO:2': '7.10' }, quoteAtById: { 'NSE_FO:1': '2026-11-23T05:31:09Z' }, oldestQuoteAt: null, priceAt: '2026-11-23T05:31:09Z' } })
     expect(t(w, 'leg-prices-as-of').text()).toBe('Leg prices: time not given')
     expect(w.findAll('[data-testid="leg-quote-at"]').map((n) => n.text())).toEqual(['11:01:09', 'time n/a'])
   })

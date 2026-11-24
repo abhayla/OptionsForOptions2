@@ -7,6 +7,7 @@ live price, a book that cannot be read, a plan with other lots and a client-sent
 """
 from __future__ import annotations
 
+import datetime
 import json
 import pathlib
 import sys
@@ -35,7 +36,7 @@ def replayed():
     return provider
 
 
-async def _post(provider, body, fills):
+async def _post(provider, body, fills, plan=None):
     app = create_app()
     app.dependency_overrides[get_market_context] = lambda: MarketContext(provider, lambda: VALUATION, RATE)
     app.dependency_overrides[outcome_route.get_margin_source] = lambda: source(Transport())
@@ -44,6 +45,11 @@ async def _post(provider, body, fills):
         return fills
 
     app.dependency_overrides[outcome_route.get_fills_reader] = lambda: reader
+
+    async def plan_reader(_id):  # D-15 round 3: the plan the SERVER stored for that paper strategy (owner-checked read)
+        return plan
+
+    app.dependency_overrides[outcome_route.get_plan_reader] = lambda: plan_reader
     async with AsyncClient(transport=ASGITransport(app=app), base_url="http://test") as ac:
         return await ac.post("/api/strategies/outcome", json=body)
 
@@ -70,28 +76,60 @@ async def test_a_client_sent_basis_is_refused_not_read(replayed):
     assert resp.status_code == HTTPStatus.UNPROCESSABLE_ENTITY
 
 
-async def test_every_leg_a_fill_says_paper_fill_prices_and_states_the_plan_credit(replayed):
+async def _units_of(provider):
+    resp = await _post(provider, _body(provider), None)
+    return {x["instrument_id"]: x["quantity"] for x in json.loads(resp.text)["legs"]}
+
+
+async def test_every_leg_a_fill_says_paper_fill_prices_and_states_the_plan_credit_from_the_stored_plan(replayed):
     fills = await _fills_of(replayed)
+    units = await _units_of(replayed)
     body = _paper_body(replayed)
     base = json.loads((await _post(replayed, _body(replayed), None)).text)
     credit = Decimal(base["summary"]["net_premium"]["amount"])
-    for leg in body["legs"]:
-        fill = Decimal(leg["planned_entry"])
-        leg["plan_entry"] = f"{fill + Decimal('0.10') if leg['action'] == 'SELL' else fill:f}"
-        leg["plan_lots"] = 1
-    s = json.loads((await _post(replayed, body, fills)).text)["summary"]
+    plan = {x["instrument_id"]: (x["action"], units[x["instrument_id"]],
+                                 Decimal(x["planned_entry"]) + (Decimal("0.10") if x["action"] == "SELL" else 0))
+            for x in body["legs"]}
+    s = json.loads((await _post(replayed, body, fills, plan)).text)["summary"]
     assert s["price_basis_text"] == "At paper fill prices"
     assert s["plan_line"] == f"Plan: Get ₹{credit + Decimal('13.00'):,} at plan prices"
 
 
-async def test_a_plan_with_other_lots_does_not_price_the_fill_quantity_at_plan_prices(replayed):
-    fills = await _fills_of(replayed)
+async def test_a_client_sent_plan_figure_is_refused_not_read(replayed):
     body = _paper_body(replayed)
-    for leg in body["legs"]:
-        leg["plan_entry"], leg["plan_lots"] = leg["planned_entry"], 2  # the plan was 2 lots, the position holds 1
-    s = json.loads((await _post(replayed, body, fills)).text)["summary"]
+    body["legs"][0]["plan_entry"] = "9.99"
+    assert (await _post(replayed, body, await _fills_of(replayed))).status_code == HTTPStatus.UNPROCESSABLE_ENTITY
+    body = _paper_body(replayed)
+    body["legs"][0]["plan_lots"] = 1
+    assert (await _post(replayed, body, await _fills_of(replayed))).status_code == HTTPStatus.UNPROCESSABLE_ENTITY
+
+
+async def test_no_stored_plan_gives_no_plan_line(replayed):
+    s = json.loads((await _post(replayed, _paper_body(replayed), await _fills_of(replayed), None)).text)["summary"]
+    assert s["price_basis_text"] == "At paper fill prices" and s["plan_line"] is None
+
+
+async def test_a_stored_plan_with_other_lots_does_not_price_the_fill_quantity_at_plan_prices(replayed):
+    fills = await _fills_of(replayed)
+    units = await _units_of(replayed)
+    body = _paper_body(replayed)
+    plan = {i: (a, u * 2, Decimal("1.00")) for (i, u), a in zip(units.items(), (x["action"] for x in body["legs"]), strict=True)}
+    s = json.loads((await _post(replayed, body, fills, plan)).text)["summary"]
     assert s["price_basis_text"] == "At paper fill prices"
     assert s["plan_line"] == "Plan credit not shown: the plan's lots differ from the paper position"
+
+
+async def test_uneven_fills_average_is_compared_as_the_paper_reply_rounds_it(replayed):
+    """Fills 23.85 and 23.86 average 23.855 exactly; GET /paper/strategies/{id} shows 23.86 (half up) and the client sends
+    that as the leg's price: the leg is still the book's fill. Hand: (23.85 + 23.86) / 2 = 23.855 -> 23.86."""
+    fills = await _fills_of(replayed)
+    body = _paper_body(replayed)
+    first = body["legs"][0]
+    net, _ = fills[first["instrument_id"]]
+    first["planned_entry"] = "23.86"
+    fills[first["instrument_id"]] = (net, (Decimal("23.85") + Decimal("23.86")) / 2)
+    s = json.loads((await _post(replayed, body, fills)).text)["summary"]
+    assert s["price_basis_text"] == "At paper fill prices"
 
 
 async def test_an_edited_leg_at_a_live_price_is_not_called_a_paper_fill(replayed):
@@ -119,3 +157,19 @@ async def test_the_leg_quotes_carry_each_legs_own_quote_time(replayed):
     out = json.loads((await _post(replayed, _body(replayed), None)).text)
     quotes = out["leg_quotes"]
     assert len(quotes) == len(_body(replayed)["legs"]) and all(isinstance(q["quote_at"], str) for q in quotes)
+
+
+async def test_the_reply_serves_the_oldest_leg_quote_time_so_the_screen_does_no_date_arithmetic(replayed):
+    out = json.loads((await _post(replayed, _body(replayed), None)).text)
+    times = [q["quote_at"] for q in out["leg_quotes"]]
+    assert all(times) and out["oldest_quote_at"] is not None
+    parsed = [datetime.datetime.fromisoformat(t) for t in times]
+    assert datetime.datetime.fromisoformat(out["oldest_quote_at"]) == min(parsed)
+
+
+async def test_a_leg_quote_without_a_time_leaves_the_oldest_time_empty(replayed, monkeypatch):
+    from ofo.marketdata import quote as quote_module
+    monkeypatch.setattr(quote_module, "price_time", lambda _ts: None)  # a calendar with no data for the date
+    out = json.loads((await _post(replayed, _body(replayed), None)).text)
+    assert out["leg_quotes"] and all(q["quote_at"] is None for q in out["leg_quotes"])
+    assert out["oldest_quote_at"] is None

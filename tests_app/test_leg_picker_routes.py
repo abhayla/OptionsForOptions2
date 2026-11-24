@@ -910,3 +910,17 @@ def test_d18_the_strikes_reply_carries_the_oldest_quote_time_of_its_prices_not_t
     provider.quotes[some] = older
     out = answer(feed)
     assert out.prices_at == older.price_at and out.prices_at < out.answered_at
+
+
+def test_d18_round3_a_used_quote_without_a_price_time_gives_no_prices_at_not_a_500(monkeypatch):
+    """A usable quote whose price time is None (the calendar has no data for its date) must not crash the min: the screen
+    says "time not given" for prices_at None."""
+    from ofo.marketdata import quote as quote_module
+    provider, feed = priced_provider()
+    some = next(k for k, q in provider.quotes.items() if q.instrument_type is not None)
+    odd = dataclasses.replace(provider.quotes[some], timestamp=T0 - datetime.timedelta(seconds=3))
+    provider.quotes[some] = odd
+    real = quote_module.price_time
+    monkeypatch.setattr(quote_module, "price_time", lambda ts: None if ts == odd.timestamp else real(ts))
+    out = answer(feed)
+    assert out.prices_at is None
