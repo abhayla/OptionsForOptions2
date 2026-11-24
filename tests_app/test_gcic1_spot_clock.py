@@ -119,7 +119,9 @@ class _Stop(Exception):
 
 
 def _watch_judged_spot(monkeypatch, route_module, seen):
-    """Spy on the route's ``judge_spot``: record the spot it really judged (the classifier no longer takes a spot, D-04)."""
+    """Spy on the route's ``judge_spot``: record the spot it really judged.
+
+    The classifier no longer takes a spot (D-04), so the judged spot is the observable."""
     real = route_module.judge_spot
 
     def spy(market, rest, ctx):
