@@ -1853,8 +1853,9 @@ _EXPLANATIONS: tuple[ExplanationTemplate, ...] = (
                         "Breakevens include the booked P&L and are before charges and taxes: the charges could not be "
                         "priced."),
     # D-10 (ADR-306 (5)): a fully closed trade shows its result, not two equal maxima
-    # (the result is the book's after-charges maximum when its charges are known, else the before-charges one: each says so)
-    ExplanationTemplate("paper_closed_result", "values_seen", "Closed: result {result} after charges.", {"result": Rupees}),
+    # (the result is the after-charges maximum when the charges are known, else the before-charges one: each says so)
+    ExplanationTemplate("paper_closed_result", "values_seen", "Closed: result {result} after charges.",
+                        {"result": Rupees}),
     ExplanationTemplate("paper_closed_result_before", "values_seen", "Closed: result {result} before charges.",
                         {"result": Rupees}),
     # D-63: the net Greeks of a two-expiry trade add legs of different expiries

@@ -67,7 +67,8 @@ def test_a_fully_closed_book_says_closed_with_its_result_not_two_equal_maxima():
     """D-10 (ADR-306 (5)): C3 158 closed, max profit = max loss = booked; the reply carries the sentence."""
     orders = [_order(0, "SELL", 75, "50.00", "open"), _order(1, "BUY", 75, "48.74", "exit")]
     got = P._extremes(orders, {7: _found(7)}, {}, "NIFTY")
-    assert got["closed_text"] == "Closed: result ₹94.50 before charges."  # no rates in this test: before charges (50.00 - 48.74) x 75
+    # no rates here: before charges; (50.00 - 48.74) x 75
+    assert got["closed_text"] == "Closed: result ₹94.50 before charges."
 
 
 def test_greeks_across_two_expiries_are_labelled_one_expiry_is_not():

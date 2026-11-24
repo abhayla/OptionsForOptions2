@@ -261,9 +261,8 @@ class PaperFigures(UnpricedFields):
     unbooked_text: CatalogueText | None
     total_text: CatalogueText | None
     positions: list[PaperNetOut]
-    # D-10: every closed lifecycle; booked here + the open positions' booked = booked. A contract that went flat appears in
-    # ``positions`` with net 0 (booked its lifecycle total) AND here, so consumers sum the OPEN positions + closed, never every
-    # position + closed
+    # D-10: every closed lifecycle; booked here + the open positions' booked = booked. A contract that went flat
+    # appears in ``positions`` with net 0 AND here, so consumers sum the OPEN positions + closed, never all + closed
     closed: list[PaperClosedOut] = Field(default_factory=list)
     # GC-TP step 8a (REQ-109 AC-10, ADR-207 (7), Sensibull 050): the charges engine's sum over every paper order, BESIDE
     # the P&L above (never subtracted from it); absent with ``charges_reason`` (never 0) when it cannot be computed
@@ -682,8 +681,8 @@ def _extremes(orders: Sequence[paper_store.StoredOrder], found: dict[int, tracke
     out["extremes_charges_text"] = (
         None if not is_open else render_explanation("paper_extremes_before_charges") if charges is None else
         render_explanation("paper_extremes_with_charges", charges=charges))
-    out["closed_text"] = (render_explanation("paper_closed_result" if paid is not None else "paper_closed_result_before",
-                                             result=got.max_profit)
+    closed_id = "paper_closed_result" if paid is not None else "paper_closed_result_before"
+    out["closed_text"] = (render_explanation(closed_id, result=got.max_profit)
                           if closed and isinstance(got.max_profit, Decimal) else None)
     held = None
     nearest = min((terms[p.instrument_id].expiry for p in view.positions if p.net_quantity), default=None)
