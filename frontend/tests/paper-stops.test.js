@@ -353,6 +353,35 @@ describe('Stops panel: the Not saved line and the empty-level hint (D-05, ADR-31
     expect(t(w, 'stops-saved').text()).toBe('Saved: exit above 24500')
     expect(w.text()).not.toContain('Enter at least one level')
   })
+  it('a refresh that started before the failed Save does not clear Not saved; a later good refresh does', async () => {
+    vi.useFakeTimers()
+    const w = await open()
+    await t(w, 'ce-above').setValue('24500')
+    let release
+    const good = { strategies: [item], answered_at: '2026-10-28T06:00:00Z' }
+    answers['GET /tracking'] = () => new Promise((resolve) => { release = () => resolve({ data: good }) })
+    await tick() // a refresh starts and waits
+    await failSave(w)
+    expect(t(w, 'stops-error').text().startsWith('Not saved:')).toBe(true)
+    release()
+    await flushPromises() // the older refresh lands, good
+    expect(t(w, 'stops-error').text().startsWith('Not saved:')).toBe(true)
+    answers['GET /tracking'] = ok(good)
+    await tick() // a refresh that started after the failure
+    expect(has(w, 'stops-error')).toBe(false)
+    expect(t(w, 'ce-above').element.value).toBe('24500')
+  })
+  it('after Saved, a bad price still shows its reason; empty boxes show no at-least-one hint', async () => {
+    const w = await open()
+    await t(w, 'ce-above').setValue('24500')
+    answers[`POST ${TRIG}`] = ok({ triggers: [trig(1)] })
+    await t(w, 'ce-save').trigger('click')
+    await flushPromises()
+    expect(t(w, 'stops-saved').text()).toBe('Saved: exit above 24500')
+    expect(has(w, 'ce-reason')).toBe(false)
+    await t(w, 'ce-above').setValue('24500.03')
+    expect(t(w, 'ce-reason').text()).toContain('multiple of 0.05')
+  })
   it('Save with both boxes empty shows the hint', async () => {
     const w = await open()
     expect(t(w, 'ce-reason').text()).toBe('Enter at least one level')
