@@ -89,3 +89,13 @@ def test_greeks_across_two_expiries_are_labelled_one_expiry_is_not():
         mod.paper_greeks.book_greeks = real
     assert (two["expiry_count"], two["basis_text"]) == (2, "Greeks are summed across 2 expiries.")
     assert (one["expiry_count"], one["basis_text"]) == (1, None)
+
+
+def test_a_fully_closed_book_with_known_charges_says_after_charges():
+    """D-63 round 3: the same book as above with the charge rates known: the maximum is after charges and says so."""
+    from tests_app.test_paper_totals import RATES  # the Kite-reproduced rate set
+    orders = [_order(0, "SELL", 75, "50.00", "open"), _order(1, "BUY", 75, "48.74", "exit")]
+    got = P._extremes(orders, {7: _found(7)}, {}, "NIFTY", RATES)
+    assert got["closed_text"] is not None
+    assert got["closed_text"].endswith(" after charges.") and got["closed_text"].startswith("Closed: result ")
+    assert "before charges" not in got["closed_text"]
