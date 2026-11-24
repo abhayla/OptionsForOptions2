@@ -111,7 +111,7 @@ async def test_booked_zero_shows_no_line_and_changes_nothing(provider):
 async def test_max_profit_loss_and_scenario_figures_do_not_move_with_the_switch(provider):
     on = await _post(provider, D("962.00"), paper_strategy_id=63)
     off = await _post(provider, D("962.00"), paper_strategy_id=63, include_booked=False)
-    for key in ("summary", "scenario", "payoff", "curves", "table"):
+    for key in ("summary", "scenario", "table"):  # D-11: the drawn curves now carry the booked P&L (test_outcome_booked_curves_d11)
         assert on[key] == off[key], key
 
 

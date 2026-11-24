@@ -22,7 +22,7 @@ import dataclasses
 import datetime
 from dataclasses import dataclass
 from decimal import ROUND_HALF_EVEN, Decimal
-from typing import Literal
+from typing import Any, Literal
 
 from ofo.engine import scenario_grid
 from ofo.engine.black_scholes import Greeks
@@ -295,3 +295,23 @@ def entries_target(ask: TargetAsk, model: ModelInputs, step: Decimal, span: Deci
     level, level_clamped = _level(ask, model.spot_level, limits)
     reason = render_explanation("outcome_from_entries_no_estimate")
     return _exact_only(limits, level, level_clamped, model, reason, None, ask)
+
+
+def with_booked_curves(out: Any, booked: Decimal | None) -> Any:
+    """D-11 (ADR-209, GC-ICLIVE-B): the Add Booked P&L switch ON puts the booked P&L into the drawn curves as well as the
+    target block: every point of the payoff line and of each view's curve is open legs + booked (the one engine function
+    ``add_booked_all``, the same amount the target block adds). None or 0: the answer as it was (a plan, switch off, book
+    unreadable). Levels, the table rows (``scenario``, ``other_view``) and the summary are not touched; the reply says the curve includes it."""
+    if booked is None or booked == 0:
+        return out
+
+    def shifted(view: Any) -> Any:
+        if view is None or view.totals is None:
+            return view
+        return dataclasses.replace(view, totals=add_booked_all(view.totals, booked))
+
+    points = out.payoff_points
+    if points:
+        levels = tuple(p[0] for p in points)
+        points = tuple(zip(levels, add_booked_all(tuple(p[1] for p in points), booked) or (), strict=True))
+    return dataclasses.replace(out, payoff_points=points, curves=tuple(shifted(c) for c in out.curves or ()))

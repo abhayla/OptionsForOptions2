@@ -26,6 +26,7 @@ from ofo.adjustment.strategy_type import strike_gap_of, type_of
 from ofo.charges import ChargeRates
 from ofo.engine.legs import Action, Leg
 from ofo.errors import render
+from ofo.errors.explanations import render_explanation
 from ofo.errors.slots import INT_ABS_MAX
 from ofo.instruments.models import InstrumentId as ContractKey
 from ofo.instruments.models import ListedContract
@@ -50,7 +51,7 @@ from ofo.outcome.money import with_funds
 from ofo.outcome.price_text import price_text
 from ofo.outcome.serialize import outcome_to_dict
 from ofo.outcome.service import Margin, Outcome, waiting_first_price
-from ofo.outcome.target import TargetAsk
+from ofo.outcome.target import TargetAsk, with_booked_curves
 from ofo.scenario.config import ScenarioConfig, ScenarioSettings
 from ofo.scenario.levels import RangeOverride, resolve_range
 from ofo.scenario.views import View
@@ -949,6 +950,9 @@ class OutcomeResponse(ApiModel):
     curves: CurvesOut | None = None
     payoff_table: PayoffTableOut | None = None  # REQ-137 AC-1: absent unless payoff_step or both_views
     standard_deviation: StandardDeviationOut | None = None  # REQ-083 AC-4 / REQ-137 AC-3: absent unless sd_bands
+    #: D-11 (ADR-209): present only when the Add Booked P&L switch is ON for a paper strategy with booked P&L: the curves
+    #: (payoff line, At Expiry, Estimated Now) include it, and this is the sentence saying so ("includes +Rs 962.00 booked")
+    curve_includes_booked_text: CatalogueText | None = None
     open_interest: OpenInterestOut | None = None  # REQ-083 AC-5 / AC-6: absent unless open_interest
     target: TargetOut | None = None  # REQ-084 AC-1/AC-4: limits alone unless target_level or target_at
     #: REQ-119 AC-1 / REQ-133 AC-2: the request's (or the socket follow message's) ``seq``, unchanged; absent when none
@@ -1115,10 +1119,15 @@ def outcome_response(req: OutcomeRequest, ctx: MarketContext | None,  # noqa: PL
             out = build_outcome(definition, snapshot, snapshot.valuation, view=View(req.view), rates=rates,
                                 config=config, override=override, shared=shared, both_views=req.both_views,
                                 payoff_step=req.table_step(), sd_bands=req.sd_bands, target=ask, settings=settings)
+    curve_booked = None  # D-11 (ADR-209): the Add Booked switch ON also moves the drawn curves
+    if booked is not None and booked.amount not in (None, 0) and out.state in (OutcomeState.COMPUTED, OutcomeState.FROM_ENTRIES):
+        out, curve_booked = with_booked_curves(out, booked.amount), booked.amount
     if ctx is not None and margin is not None:  # ADR-099: read by the caller (async, off the loop); no context = login
         out = dataclasses.replace(out, margin=margin, summary=with_funds(out.summary, margin))  # REQ-081 AC-9, AC-10
     body = outcome_to_dict(out, today=answered_at.astimezone(IST).date())  # REQ-135 AC-2
     body["answered_at"] = answered_at
+    if curve_booked is not None:
+        body["curve_includes_booked_text"] = render_explanation("target_includes_booked", amount=curve_booked)
     body.update(entry_guide_fields(out, ctx))  # ADR-300
     state = market_state(ctx, answered_at)
     body["market_closed"] = state.closed
