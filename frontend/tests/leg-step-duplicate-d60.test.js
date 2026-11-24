@@ -302,6 +302,7 @@ describe('D-60 round 4: replacing the legs closes the open question; an equal-co
   it('route change to another strategy (new ?draft=) closes the question and settles the edit', async () => {
     const w = await openPage()
     const p = await openQuestion(w)
+    answers['POST /strategies/leg-edit'] = READ // the shape read that follows the new legs
     const other = { underlying: 'NIFTY', legs: DRAFT.legs.slice(0, 2) }
     await w.vm.$router.push({ path: '/strategy/builder', query: { draft: JSON.stringify(other) } })
     await flushPromises()
@@ -314,6 +315,7 @@ describe('D-60 round 4: replacing the legs closes the open question; an equal-co
     const w = await openPage()
     const p = await openQuestion(w)
     const s = w.vm.$.setupState
+    answers['POST /strategies/leg-edit'] = READ // the shape read that follows the restored legs
     s.undoHeld = { legs: s.legs.map((l) => ({ ...l })), savedId: null, savedRevision: null, openStrategy: null }
     s.undoClear()
     await flushPromises()

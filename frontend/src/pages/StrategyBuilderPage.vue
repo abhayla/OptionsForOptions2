@@ -623,6 +623,7 @@ watch(() => route.query.draft, (v) => {
   }
 })
 const setLegs = (next) => {
+  cancelDuplicate() // D-60: every legs replacement passes here; a question about the replaced legs closes (its edit settles as Cancel)
   dropUndo() // any new leg list supersedes an Undo still on offer: it can never restore over new legs
   savedId.value = null
   savedRevision.value = null
@@ -736,6 +737,11 @@ const askDuplicate = (leg) => new Promise((resolve) => {
   dupAsk.value = { name: contractName(leg), resolve }
 })
 /** The one way to cancel a pending ask: closes the dialog and settles its edit as Cancel. */
+// D-60: the move's base is still current when the legs on screen equal the ones it was computed from by content
+// (an equal-content refresh, e.g. link-opened legs named by a reply, keeps the answer; a real replacement already cancelled).
+function sameLegs(a, b) {
+  return a.length === b.length && a.every((l, i) => l.id === b[i].id && l.instrument_id === b[i].instrument_id && l.action === b[i].action && l.lots === b[i].lots)
+}
 function cancelDuplicate() { answerDuplicate('cancel') }
 function answerDuplicate(choice) {
   const d = dupAsk.value
@@ -794,7 +800,7 @@ async function sendEdit(edit, baseLegs, shiftTotal, owner) {
       // through the one shared door; Cancel keeps the legs as before the step, a refused Increase says why.
       const door = await askMovedDuplicates(baseLegs, landed)
       if (!guard.isNewest('leg-edit', mine)) return // a newer edit took over while the question was open
-      if (legs.value !== shown) return // the legs changed while the question was open: never overwrite them (Cancel)
+      if (!sameLegs(legs.value, shown)) return // the move's base is no longer current: never overwrite the legs (Cancel)
       if (!door) return
       if (door.error) {
         editError.value = { ...NEUTRAL_PARTS, what_happened: door.error }
@@ -908,6 +914,7 @@ const zoomGrid = computed(() => {
   return sc?.step && sc.start && sc.end ? { step: sc.step, start: sc.start, end: sc.end } : null
 })
 onBeforeUnmount(() => {
+  cancelDuplicate() // the pending edit settles
   clearTimeout(slowTimer)
   clearTimeout(undoTimer)
 })
