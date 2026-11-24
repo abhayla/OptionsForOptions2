@@ -47,6 +47,7 @@ from ofo.outcome import (
     not_live,
     read_snapshot,
 )
+from ofo.outcome import money as money_module
 from ofo.outcome.money import with_funds
 from ofo.outcome.price_text import price_text
 from ofo.outcome.serialize import outcome_to_dict
@@ -355,6 +356,10 @@ class LegIn(BaseModel):
     planned_entry: str = Field(pattern=r"^\d+(\.\d{1,2})?$", examples=["104.65"],
                                description="the planned entry price, a decimal string (never a float)")
     captured_at: AwareDatetime = Field(description="when the planned entry was captured (ADR-068)")
+    plan_entry: str | None = Field(
+        default=None, pattern=r"^\d+(\.\d{1,2})?$", examples=["23.85"],
+        description="GC-ICLIVE-B D-15: with price_basis paper_fills, the PLAN's entry price of this leg (planned_entry "
+                    "then holds the paper fill); the reply states the plan's credit beside the fills'")
 
 
 #: the one request key a client may still send after ADR-168; it is dropped, never read
@@ -456,6 +461,11 @@ class OutcomeRequest(BaseModel):
         default=None,
         description="REQ-084 AC-2: the what-if date-time; the server clamps it between now and the strategy's first "
                     "expiry at 15:30 IST (`target.at_clamped`, `target.clamp`). Analysis only (AC-6)")
+    price_basis: Literal["plan", "paper_fills"] = Field(
+        default="plan",
+        description="GC-ICLIVE-B D-15: which prices `planned_entry` holds: the plan's, or a paper trade's fills. The "
+                    "summary says so (`price_basis_text`); with paper_fills and every leg's `plan_entry` it also carries "
+                    "the plan's credit (`plan_line`)")
     paper_strategy_id: StrictInt | None = Field(
         default=None, ge=1, le=INTEGER_MAX,
         description="ADR-209: the paper strategy these legs are the net position of (Drafts Mode); the server reads its "
@@ -761,6 +771,9 @@ class SummaryOut(ApiModel):
     value_reason: CatalogueText | None = None
     net_premium: NetPremiumOut | None = None
     funds_share: FundsShareOut | None = None
+    # GC-ICLIVE-B D-15/D-17: the prices the Get / time value use, and a paper trade's plan credit as one line
+    price_basis_text: CatalogueText | None = None
+    plan_line: CatalogueText | None = None
 
 
 class MarginOut(ApiModel):
@@ -1078,6 +1091,22 @@ def checked_choice(req: OutcomeRequest, settings: Mapping[str, Decimal]) -> tupl
         refuse_request(("body",), "value_error")  # the ValueError's text is never shown (the 422 shows no msg)
 
 
+def _with_price_basis(out: Outcome, req: OutcomeRequest) -> Outcome:
+    """GC-ICLIVE-B D-15 / D-17: the summary names the prices its Get and time value use; a paper trade's summary (the
+    fills) carries the plan's credit as one line, from the plan prices the request names (none kept: no line)."""
+    if out.summary is None:
+        return out
+    line = None
+    if req.price_basis == money_module.PAPER_FILLS and all(leg.quantity is not None and leg.instrument is not None
+                                                           for leg in out.legs):
+        engine_legs = [Leg(l.action, l.instrument, l.strike, l.expiry, l.quantity, l.planned_entry) for l in out.legs]
+        plan = {leg.instrument_id: None if leg.plan_entry is None else Decimal(leg.plan_entry) for leg in req.legs}
+        if all(l.planned_entry is not None for l in out.legs):
+            line = money_module.plan_line(engine_legs, plan, [l.instrument_id for l in out.legs])
+    summary = dataclasses.replace(out.summary, price_basis_text=money_module.basis_text(req.price_basis), plan_line=line)
+    return dataclasses.replace(out, summary=summary)
+
+
 def outcome_response(req: OutcomeRequest, ctx: MarketContext | None,  # noqa: PLR0913 - one shared computation; rates is the sixth input
                      streaming: Callable[[str], bool] | None = None, *, now: AnswerClock = server_now,
                      stored: Mapping[str, ListedContract] | None = None,
@@ -1124,6 +1153,7 @@ def outcome_response(req: OutcomeRequest, ctx: MarketContext | None,  # noqa: PL
         out, curve_booked = with_booked_curves(out, booked.amount), booked.amount
     if ctx is not None and margin is not None:  # ADR-099: read by the caller (async, off the loop); no context = login
         out = dataclasses.replace(out, margin=margin, summary=with_funds(out.summary, margin))  # REQ-081 AC-9, AC-10
+    out = _with_price_basis(out, req)  # GC-ICLIVE-B D-15 / D-17
     body = outcome_to_dict(out, today=answered_at.astimezone(IST).date())  # REQ-135 AC-2
     body["answered_at"] = answered_at
     if curve_booked is not None:

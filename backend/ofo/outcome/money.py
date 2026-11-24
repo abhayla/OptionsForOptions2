@@ -7,7 +7,7 @@ decides which figure is present, which catalogue sentence or reason goes with it
 from __future__ import annotations
 
 import dataclasses
-from collections.abc import Sequence
+from collections.abc import Mapping, Sequence
 from dataclasses import dataclass
 from decimal import Decimal
 from typing import Any, Final
@@ -19,6 +19,8 @@ from ofo.errors.explanations import ExplanationText, render_explanation
 CHECKED: Final = "CHECKED"  # the margin state that carries Zerodha's figures (service.MARGIN_CHECKED)
 GET: Final = "get"
 PAY: Final = "pay"
+PLAN: Final = "plan"  # the request's price basis: the legs carry the plan's prices
+PAPER_FILLS: Final = "paper_fills"  # ... or the paper trade's fill prices (D-15)
 
 
 @dataclass(frozen=True)
@@ -67,14 +69,36 @@ class ValueSplit:
 
 
 def time_and_intrinsic(legs: Sequence[Any], spot: Any) -> ValueSplit:
-    """A leg without an LTP, or no spot, makes both figures absent with the reason (REQ-081 AC-3, AC-8)."""
+    """GC-ICLIVE-B D-17: on the legs' ENTRY prices, the same prices as the net premium beside them (a live price would
+    move the time value every second beside a credit that stays still). A leg without an entry price, or no spot, makes
+    both figures absent with the reason (REQ-081 AC-3, AC-8)."""
     options = [leg for leg in legs if leg.instrument is not Instrument.FUT]
     if not options:
         return ValueSplit(None, None, None, None)
-    if spot is None or any(leg.ltp is None for leg in options):
+    if spot is None or any(leg.entry_price is None for leg in options):
         return ValueSplit(None, None, None, render_explanation("money_value_price_missing"))
     intrinsic, time = engine.intrinsic_and_time(options, spot)
     return ValueSplit(intrinsic, time, render_explanation("money_value_label"), None)
+
+
+def basis_text(basis: str) -> ExplanationText:
+    """D-15, D-16, D-17: which prices the Get, the time value and the maximums beside it use (plan or paper fills)."""
+    return render_explanation("money_basis_paper" if basis == PAPER_FILLS else "money_basis_plan")
+
+
+def plan_line(legs: Sequence[Any], plan_prices: Mapping[str, Any], ids: Sequence[str]) -> ExplanationText | None:
+    """D-15: for a paper trade (legs priced at its fills) the plan's own credit, from the plan's entry prices of the same
+    legs (``plan_prices``: instrument id -> price), as one line. None when any leg has no plan price (the plan was not
+    kept), a futures leg is present, or the plan nets to exactly zero: no figure is made up."""
+    if not legs or any(leg.instrument is Instrument.FUT for leg in legs):
+        return None
+    prices = [plan_prices.get(i) for i in ids]
+    if len(prices) != len(legs) or any(p is None for p in prices):
+        return None
+    net = engine.net_premium_amount([dataclasses.replace(leg, entry_price=p) for leg, p in zip(legs, prices, strict=True)])
+    if net == 0:
+        return None
+    return render_explanation("money_plan_get" if net > 0 else "money_plan_pay", amount=abs(net))
 
 
 @dataclass(frozen=True)

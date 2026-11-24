@@ -191,6 +191,10 @@ class Summary:
     value_label: ExplanationText | None = None
     value_reason: ExplanationText | None = None
     funds_share: money.FundsShare | None = None
+    # GC-ICLIVE-B D-15/D-17: which prices the Get, the time value and the intrinsic value use ("At plan prices" / "At
+    # paper fill prices"), and for a paper trade the plan's own credit as one line. Set by the route from the request.
+    price_basis_text: ExplanationText | None = None
+    plan_line: ExplanationText | None = None
 
 
 @dataclass(frozen=True)

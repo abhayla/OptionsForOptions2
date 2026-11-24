@@ -303,6 +303,8 @@ def outcome_to_dict(out: Outcome, today: datetime.date | None = None) -> dict[st
             "risk_reward": _s(s.risk_reward), "value_label": s.value_label, "value_reason": s.value_reason,
             "net_premium": _net_premium(s.net_premium), "funds_share": _funds_share(s.funds_share),
         }
+        if s.price_basis_text is not None:  # GC-ICLIVE-B D-15: set by the route; absent keeps every recorded reply as it was
+            summary["price_basis_text"], summary["plan_line"] = s.price_basis_text, s.plan_line
     if out.table is not None:
         table = _table(out.table, out.visible_columns)
     body = {

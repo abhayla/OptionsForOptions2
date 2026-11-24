@@ -1652,8 +1652,8 @@
     "reviewed": "owner read 2026-11-02 (accepted after independent screen, not read line by line)"
   },
   "explanation:money_value_price_missing": {
-    "sha256": "eeffca39fce7599b1eadd51dc7927802de0dd0360d11e3fa878fc6bd4f858eb4",
-    "reviewed": "owner read 2026-11-02 (accepted after independent screen, not read line by line)"
+    "sha256": "29f375c35481dee79910a97483def51755710b5071c860aa4cee0aaaec03ab4e",
+    "reviewed": "pending owner read"
   },
   "explanation:money_value_label": {
     "sha256": "1e3c6f16109fc32ab9f969b7a91f6c68608e18d2ebdb9810322b78d7edc25277",
@@ -4321,6 +4321,22 @@
   },
   "explanation:estimate_intrinsic_basis": {
     "sha256": "b54ecf15a44b81bf0016cce376dbc42de7f0086c80d3872b3f87ae04178372d5",
+    "reviewed": "pending owner read"
+  },
+  "explanation:money_basis_plan": {
+    "sha256": "c7cce05733908910a71e3199e9ea137ed72e1bfe7c371b3022a3692996320648",
+    "reviewed": "pending owner read"
+  },
+  "explanation:money_basis_paper": {
+    "sha256": "bd34b9aa561d0ebdd48537d552d3ada61f9196f99581ab61c09b96934fc07c07",
+    "reviewed": "pending owner read"
+  },
+  "explanation:money_plan_get": {
+    "sha256": "3983e4696fdf7f4bbaec30ff6c3f321256d3e3858379046666fd9883dcf6552f",
+    "reviewed": "pending owner read"
+  },
+  "explanation:money_plan_pay": {
+    "sha256": "1d5a5b5bf48ac5e98907f04544db812868188c3bf5e6bfa11ddf55850d69f9d5",
     "reviewed": "pending owner read"
   }
 }
