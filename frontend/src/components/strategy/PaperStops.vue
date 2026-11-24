@@ -4,7 +4,7 @@
      judged on its text (a multiple of 0.05, not zero) and sent as typed; every level and contract shown is the server's text
      (ADR-008). A refusal shows the server's words, never swallowed. -->
 <script setup>
-import { computed, onMounted, ref } from 'vue'
+import { computed, onMounted, ref, watch } from 'vue'
 import api, { NEUTRAL_ERROR } from '@/services/api'
 import { PAPER_PRICE_REASON, paperPriceOk } from '@/lib/tracking'
 
@@ -13,6 +13,8 @@ const props = defineProps({
   underlying: { type: String, default: '' },
   // the strategy's open legs: { index, label, contractId }
   legs: { type: Array, default: () => [] },
+  // D-05: counts the parent list's good refreshes; a new count clears a "Not saved" line (a failed refresh does not move it)
+  goodReads: { type: Number, default: 0 },
 })
 
 const LABEL = 'Paper - exits are recorded in the app, not sent to Zerodha'
@@ -67,6 +69,7 @@ async function run(call, saving = false) {
 }
 
 onMounted(() => run(() => api.get(path)))
+watch(() => props.goodReads, () => { if (!busy.value && error.value.startsWith('Not saved')) error.value = '' })
 
 async function saveExit() {
   if (ceReason.value) return
@@ -119,7 +122,7 @@ async function keep(t) {
         <label class="text-xs">Below<input v-model="below" type="text" inputmode="decimal" class="ml-1 w-28 rounded border border-line px-1 py-0.5 text-sm" data-testid="ce-below" /></label>
         <button type="button" class="rounded border border-line px-3 py-1" :disabled="busy || !!ceReason" data-testid="ce-save" @click="saveExit">{{ busy ? 'Saving...' : 'Save' }}</button>
       </div>
-      <p v-if="ceReason" class="text-xs text-ink-muted" data-testid="ce-reason">{{ ceReason }}</p>
+      <p v-if="ceReason && !saved" class="text-xs text-ink-muted" data-testid="ce-reason">{{ ceReason }}</p>
     </div>
 
     <div v-if="legs.length" class="mt-2" data-testid="leg-stops">
