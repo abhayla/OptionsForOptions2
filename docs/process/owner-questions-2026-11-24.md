@@ -5,6 +5,8 @@ Nothing here was decided by the run.
 
 ## Q1 (D-17): which prices does "Time value" use in the builder summary?
 
+**Answered by the owner 25 Nov 2026: time value at live prices, labelled (ADR-322 point 2).**
+
 Business call: two owner requirements give different answers; the run stopped D-17 and built nothing for it.
 
 - **REQ-081 AC-3:** "The summary shows the strategy's intrinsic value (each option leg's value if it expired at the
