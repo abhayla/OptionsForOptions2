@@ -5,6 +5,7 @@ CE / PE / FUT, each in, at and out of the money, equal to ``_long_value_at`` and
 """
 from __future__ import annotations
 
+import datetime
 from decimal import Decimal
 
 import pytest
@@ -32,7 +33,8 @@ def test_intrinsic_value_is_the_old_settle_price(instrument, strike, level, want
 
 @pytest.mark.parametrize(("instrument", "strike", "level", "_want"), ROWS)
 def test_the_engine_marks_a_leg_at_expiry_through_the_same_function(instrument, strike, level, _want):
-    leg = Leg(Action.BUY, instrument, D(strike), None, 1, D("1"))  # type: ignore[arg-type] - expiry is not read
+    leg_strike = None if instrument is Instrument.FUT else D(strike)  # a futures leg has no strike
+    leg = Leg(Action.BUY, instrument, leg_strike, datetime.date(2026, 10, 29), 1, D("1"))
     assert legs._long_value_at(leg, D(level)) == intrinsic_value(instrument, D(strike), D(level))
     assert legs.expiry_value(leg, D(level)) == intrinsic_value(instrument, D(strike), D(level))
 

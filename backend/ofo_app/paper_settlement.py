@@ -41,7 +41,7 @@ from decimal import Decimal
 from typing import Any, Final
 
 from ofo import market_calendar
-from ofo.engine.legs import Instrument
+from ofo.engine.legs import Instrument, intrinsic_value
 from ofo.errors.explanations import ExplanationText, render_explanation
 from ofo.instruments.models import INDEX_ROWS, ZERODHA
 from ofo.settings import calc
@@ -59,7 +59,6 @@ SKIP_REASON: Final = "settlement price not available"
 #: the closing value after its 15:30 close). While a group had no close, the job retries every RETRY_MINUTES until the
 #: ``facts.paper_retry_until`` setting (default 18:00 IST). Both are read at each run (REQ-167 AC-4), never held.
 RETRY_MINUTES: Final = 15
-_ZERO: Final = Decimal(0)
 _MIDDAY: Final = datetime.time(12, 0)
 
 #: (underlying, expiry date) -> the index's official close that day, or None when it is not available.
@@ -120,15 +119,6 @@ def last_due_day(now: datetime.datetime, settle_from: datetime.time) -> datetime
     return local.date() if local.time() >= settle_from else local.date() - datetime.timedelta(days=1)
 
 
-def settle_price(instrument: Instrument, strike: Decimal, close: Decimal) -> Decimal:
-    """The intrinsic value at expiry (REQ-109 AC-7): CE max(0, close - strike), PE max(0, strike - close), FUT close."""
-    if instrument is Instrument.CE:
-        return max(_ZERO, close - strike)
-    if instrument is Instrument.PE:
-        return max(_ZERO, strike - close)
-    return close
-
-
 def settle_reason(underlying: str, close: Decimal) -> ExplanationText:
     """D-71: the settle order's reason: the AC-7 label and the official close it was priced from."""
     return render_explanation("paper_settle_reason", underlying=underlying, level=close)
@@ -166,7 +156,7 @@ async def _settle_strategy(conn: Any, due: Sequence[DueContract], closes: dict[t
     by_id = {d.contract_id: d for d in due}
     done = await paper_exit.exit_strategy(
         conn, user_ref=first.user_ref, strategy_id=first.strategy_id, kind=SETTLE,
-        prices={d.contract_id: settle_price(d.instrument, d.strike, closes[(d.underlying, d.expiry)]) for d in due},
+        prices={d.contract_id: intrinsic_value(d.instrument, d.strike, closes[(d.underlying, d.expiry)]) for d in due},
         placed_at={d.contract_id: settle_time(d.expiry) for d in due},
         reason={d.contract_id: str(settle_reason(d.underlying, closes[(d.underlying, d.expiry)])) for d in due},
         only=[d.contract_id for d in due],  # a contract already flat (another run, or exited by the user) is skipped
