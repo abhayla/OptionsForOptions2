@@ -10,7 +10,7 @@ import { defineStore } from 'pinia'
 export const netKeyOf = (net) => (Array.isArray(net) ? net.map((l) => `${l.contract_id}|${l.action}|${l.lots}`) : null)
 
 export const useBuilderHold = defineStore('builderHold', () => {
-  /** null, or { legs, openStrategy, savedId, savedRevision, shapeName, paperId, netKey } (copies). */
+  /** null, or { legs, openStrategy, savedId, savedRevision, shapeName, paperId, netKey, addedDraft } (copies); addedDraft = the ?draft= text already added to these legs (F3). */
   const held = ref(null)
   const count = computed(() => held.value?.legs.length ?? 0)
 
@@ -29,6 +29,7 @@ export const useBuilderHold = defineStore('builderHold', () => {
       shapeName: snapshot.shapeName ?? null,
       paperId: snapshot.paperId ?? null,
       netKey: snapshot.netKey ?? null,
+      addedDraft: snapshot.addedDraft ?? null,
     }
   }
   /** Return the hold and empty the store in the same step: a hold is taken exactly once. */

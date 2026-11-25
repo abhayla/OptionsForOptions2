@@ -672,7 +672,11 @@ const sameDraftContent = (canon) => canon.length === legs.value.length
   && canon.every((l, i) => l.instrument_id === legs.value[i].instrument_id && l.action === legs.value[i].action && l.lots === legs.value[i].lots)
 watch(() => route.query.draft, async (v, old) => {
   if (ignoreDraftWrites > 0) { ignoreDraftWrites -= 1; return } // our own restore of the previous link
-  if (!v) return // dropped from the URL by Save
+  if (!v) { // dropped from the URL by Save: an open replace question is Cancel, and its late answer must not apply the stale link
+    replaceSeq += 1
+    settleReplace(false)
+    return
+  }
   const mine = ++replaceSeq
   settleReplace(false) // a second question settles the first as Cancel
   const nextDraft = readDraft()
@@ -781,8 +785,16 @@ async function restoreDrafts(h) {
 // (a same-action clash asks, an opposite side is a deliberate add), never through the draft-replace question. Returns true when
 // it replaced the legs (setLegs already reloaded the numbers).
 let chainError = null
+let addedDraft = heldBack?.addedDraft ?? null
 async function addFromChain() {
   const fresh = legsFromQuery()
+  // F1: a strategy has one underlying; ticked contracts of another underlying than the held legs are refused, nothing is added
+  const heldUnderlying = legs.value[0]?.underlying
+  const tickedUnderlying = fresh[0]?.underlying
+  if (heldUnderlying && tickedUnderlying && heldUnderlying !== tickedUnderlying) {
+    chainError = { ...NEUTRAL_PARTS, what_happened: `These contracts are on ${tickedUnderlying}; the legs in the builder are on ${heldUnderlying}. Nothing was added.` }
+    return false
+  }
   const used = new Set(legs.value.map((l) => l.id))
   let n = 0
   const incoming = fresh.map((l) => {
@@ -797,12 +809,14 @@ async function addFromChain() {
     return false
   }
   setLegs([...r.legs, ...r.kept])
+  addedDraft = route.query.draft ?? null // F3: Back into this same ?draft= entry must not add the same ticks again
   return true
 }
 onMounted(async () => {
   index.start() // the page holds the index itself (its own socket), so an empty builder still has a spot
   if (heldBack?.paperId != null) await restoreDrafts(heldBack)
-  const added = heldBack && draftQuery && canonicalQueryLegs ? await addFromChain() : false
+  const sameAdd = heldBack?.addedDraft != null && heldBack.addedDraft === (route.query.draft ?? null) // F3: already added to this hold
+  const added = heldBack && draftQuery && canonicalQueryLegs && !sameAdd ? await addFromChain() : false
   if (!added) {
     load()
     syncLive()
@@ -1001,6 +1015,8 @@ const zoomGrid = computed(() => {
   return sc?.step && sc.start && sc.end ? { step: sc.step, start: sc.start, end: sc.end } : null
 })
 onBeforeUnmount(() => {
+  replaceSeq += 1
+  settleReplace(false) // F7: no dangling replace question
   cancelDuplicate() // the pending edit settles
   clearTimeout(slowTimer)
   clearTimeout(undoTimer)
@@ -1071,7 +1087,7 @@ const leaveGuard = useLeaveBuilder({
   unsaved: () => unsavedCount({ legCount: legs.value.length, savedId: savedId.value, inDrafts: paper.value !== null, pendingCount: pendingOrders.value?.length ?? 0 }),
   snapshot: () => (legs.value.length
     ? { legs: legs.value, openStrategy: openStrategy.value, savedId: savedId.value, savedRevision: savedRevision.value, shapeName: shapeName.value,
-      paperId: paper.value?.book?.strategy_id ?? null, netKey: paper.value ? netKeyOf(paper.value.net) : null }
+      paperId: paper.value?.book?.strategy_id ?? null, netKey: paper.value ? netKeyOf(paper.value.net) : null, addedDraft }
     : null),
 })
 </script>

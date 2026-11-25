@@ -37,7 +37,7 @@ describe('H2 the hold: hold, take (once), clear', () => {
     s.hold(snap)
     expect(s.count).toBe(3)
     const got = s.take()
-    expect(got).toEqual({ paperId: null, netKey: null, ...snap })
+    expect(got).toEqual({ paperId: null, netKey: null, addedDraft: null, ...snap })
     expect(got.legs).not.toBe(legs3) // a copy: later page edits never change what was held
     expect(got.legs[0]).not.toBe(legs3[0])
     expect(s.held).toBeNull()
