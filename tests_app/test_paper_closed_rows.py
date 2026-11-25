@@ -30,7 +30,8 @@ def _found(cid: int):
 def _order(n: int, side: str, qty: int, price: str, kind: str):
     paper_order = PaperOrder("7", side, qty, D(price), kind, AT + datetime.timedelta(minutes=n))
     return SimpleNamespace(order=SimpleNamespace(contract_id=7, as_paper=lambda: paper_order, side=side, quantity=qty,
-                                                  price=D(price), kind=kind, placed_at=paper_order.placed_at))
+                                                  price=D(price), kind=kind, placed_at=paper_order.placed_at,
+                                                  reason=None))  # NewOrder.reason: None when none is stored
 
 
 def _figures(orders):
