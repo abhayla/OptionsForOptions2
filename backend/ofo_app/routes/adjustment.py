@@ -23,6 +23,7 @@ held-switch environment (``held_switches``' own ``environ`` seam).
 """
 from __future__ import annotations
 
+import asyncio
 import dataclasses
 import datetime
 import functools
@@ -81,7 +82,7 @@ from ofo_app.api_models import AdjustApproachesOut
 from ofo_app.config import app_env
 from ofo_app.db import get_db
 from ofo_app.errors import ClosedRoute, Failure
-from ofo_app.outcome_margin import OutcomeMargin, PlannedOrderIn, margin_answer
+from ofo_app.outcome_margin import OutcomeMargin, PlannedOrderIn, RequestFunds, margin_answer
 from ofo_app.routes.adjustment_preferences import UserPreferences, UserValuesIn
 from ofo_app.routes.outcome import (
     MarketContext,
@@ -302,8 +303,10 @@ def get_rest_spot_reader() -> RestSpotReader:
 def get_approach_margin(ctx: Annotated[MarketContext | None, Depends(get_market_context)],
                         source: Annotated[OutcomeMargin | None, Depends(get_margin_source)]) -> ApproachMargin:
     """Zerodha's basket margin for one approach's After legs, through the outcome's own margin path (ADR-099)."""
+    funds = RequestFunds()  # D-36 (a): this request's one available-funds read, shared by all its basket reads
+
     async def read(legs: list[PlannedOrderIn]) -> Margin:
-        return await margin_answer(source, ctx, legs)
+        return await margin_answer(source, ctx, legs, funds)
     return read
 
 
@@ -559,7 +562,8 @@ async def adjustment_approaches(  # noqa: PLR0913, PLR0915 - FastAPI dependencie
         prefs: UserPreferences,
         more_reader: Annotated[MoreMarketReader, Depends(get_more_market_reader)],
         user_values: UserValuesIn,
-        roll_inputs: Annotated[RollInputsReader, Depends(get_roll_inputs_reader)]) -> AdjustApproachesOut:
+        roll_inputs: Annotated[RollInputsReader, Depends(get_roll_inputs_reader)],
+        db: Annotated[Any, Depends(get_db)]) -> AdjustApproachesOut:
     started = time.perf_counter()
     from ofo_app import adjustment_check as check  # noqa: PLC0415 - it imports this module's dataclasses
     from ofo_app.adjustment_readers import TrackedUnreadable  # noqa: PLC0415 - as above
@@ -576,6 +580,7 @@ async def adjustment_approaches(  # noqa: PLR0913, PLR0915 - FastAPI dependencie
     plan_layer, facts = await roll_inputs(strategy_id)
     basis = check.basis_in_force(user_values, plan_layer, facts)  # the same resolution as the adjustment check
     cfg = with_basis(prefs.approach, basis)
+    await release_connection(db)  # D-36 (c): market and REST reads wait on the broker
     market = await market_reader(tracked, ctx)
     tracked = as_of_market(tracked, market)
     spot = judge_spot(market, await rest_reader(tracked.position.underlying), ctx)
@@ -615,6 +620,8 @@ async def adjustment_approaches(  # noqa: PLR0913, PLR0915 - FastAPI dependencie
         # GC-IC1 round 3: the landing strikes nobody held are held ONCE more and everything is built again; never a
         # third read, whatever is still unpriced after it (bounded: at most one more LEG_WAIT_S)
         extra = second_pass_ids([b for _, (b, _) in answers], market, position, cfg)
+        if extra:
+            await release_connection(db)  # D-36 (c): the second market read waits on the broker too
         more = await more_reader(tracked, ctx, extra) if extra else None
         if more is not None:
             market = more
@@ -625,8 +632,12 @@ async def adjustment_approaches(  # noqa: PLR0913, PLR0915 - FastAPI dependencie
         engine = time.perf_counter() - t0
         out = []
         columns: list[Column] = []
+        # D-36 (c): every database read of this request is done; the request's session gives its connection back
+        # BEFORE the broker is waited on (the pool is small: a held connection is a 503 for the next request)
+        await release_connection(db)
+        margins = await _margins_of(built_list, margin_of, market)  # D-36 (d): the independent reads together
         for a, built in built_list:
-            item = await _approach_item(a, built, priced, pop_on, margin_of, market)
+            item = _approach_item(a, built, priced, pop_on, margins.get(a))
             item["liquidity_flags"] = strike_flags(built, position, market.chain, limits)
             if built is not None and built.refusal_message is None:
                 columns.append(Column(built, priced[a].after, priced[a].reason, priced[a].charges_known,
@@ -746,10 +757,40 @@ def take_profit_block(built: ApproachLegs | None, priced: Priced | None) -> dict
             "text": render_explanation("adjust_take_profit_basis", before=before, after=after)}
 
 
-async def _approach_item(a: str, built: ApproachLegs | None, priced: Mapping[str, Priced], pop_on: bool,  # noqa: PLR0913
-                         margin_of: ApproachMargin, market: MarketInputs) -> dict[str, Any]:
+async def release_connection(db: Any) -> None:
+    """D-36 (c): end the request session's read-only transaction so its pooled connection goes back BEFORE the broker is
+    waited on (DB_POOL_SIZE is small: a connection held across a Kite call is a 503 for the next request). The session
+    stays usable (its next statement starts a new transaction; ``expire_on_commit`` is off, so rows read stay readable).
+    A request with no real session (a test double without ``commit``) has nothing to give back."""
+    commit = getattr(db, "commit", None)
+    if commit is not None:
+        await commit()
+
+
+#: D-36 (d): the most basket reads asked of Zerodha together. Kite's "other" group allows 10 a second and a call waits
+#: at most 5 s for its turn (ofo/broker/rate_limit.py), so 4 together stay inside both; more would only queue.
+MARGIN_TOGETHER = 4
+
+
+async def _margins_of(built_list: Sequence[tuple[str, ApproachLegs | None]], margin_of: ApproachMargin,
+                      market: MarketInputs) -> dict[str, dict]:
+    """The margin block of every built approach, read together under ``MARGIN_TOGETHER``. Each read's failure stays its
+    own (``_margin`` turns it into that approach's "not available"; no retry, nothing guessed); a basket asked by two
+    approaches is asked once (OutcomeMargin's in-flight read). Keyed by approach id."""
+    gate = asyncio.Semaphore(MARGIN_TOGETHER)
+
+    async def one(built: ApproachLegs) -> dict:
+        async with gate:
+            return await _margin(margin_of, built, market)
+    todo = [(a, b) for a, b in built_list if b is not None and b.refusal_message is None]
+    blocks = await asyncio.gather(*(one(b) for _a, b in todo))
+    return {a: block for (a, _b), block in zip(todo, blocks, strict=True)}
+
+
+def _approach_item(a: str, built: ApproachLegs | None, priced: Mapping[str, Priced], pop_on: bool,
+                   margin: dict | None) -> dict[str, Any]:
     """One approach of the reply: unknown id -> refused by name (attack 2); refused -> its reason; else the full
-    answer with its margin."""
+    answer with its margin (read beforehand by ``_margins_of``)."""
     if built is None:
         return {"id": a, "refusal": render_explanation("adjust_unknown_approach", approach=a)}
     item: dict[str, Any] = {"id": built.id, "name": render_explanation(approach_name_id(built.id)),
@@ -760,7 +801,7 @@ async def _approach_item(a: str, built: ApproachLegs | None, priced: Mapping[str
     if built.refusal_message is None:
         item |= {"trades": [_leg_out(t) for t in built.trades], "after_legs": [_leg_out(x) for x in built.after],
                  "closed_legs": [_leg_out(c) for c in built.closed], **_after_block(priced[a], pop_on)}
-        item["margin"] = await _margin(margin_of, built, market)
+        item["margin"] = margin
         item["take_profit"] = take_profit_block(built, priced[a])
     return item
 

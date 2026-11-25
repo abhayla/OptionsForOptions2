@@ -20,7 +20,8 @@ sequential Kite calls, and the pool (DB_POOL_SIZE=2, no overflow) was held acros
 
 The replies of both routes for these inputs are the goldens in tests_app/golden_d36/ (recorded BEFORE the fix); the
 reply-unchanged tests compare the full JSON, every number and the order, after any change.
-Run: /root/ofo-db-fresh.sh python -m pytest -q -p no:cacheprovider -c pytest-app.ini tests_app/test_d36_adjustment_counts.py
+Run: /root/ofo-db-fresh.sh python -m pytest -q -p no:cacheprovider -c pytest-app.ini \
+  tests_app/test_d36_adjustment_counts.py
 """
 from __future__ import annotations
 
@@ -31,15 +32,18 @@ import threading
 import time
 from dataclasses import dataclass, field
 
-import pytest
+import test_adjustment_check as base
 from httpx import ASGITransport, AsyncClient
 from ofo_app import db as app_db
 from ofo_app import scenario_mode
 from sqlalchemy import event
-from test_adjustment_check import _reset_engine, _seeded, app_db_url  # noqa: F401 - fixtures and helpers
+
+_reset_engine, _seeded = base._reset_engine, base._seeded
+app_db_url = base.app_db_url  # the fixture, by name
 
 GOLDEN = pathlib.Path(__file__).resolve().parent / "golden_d36"
 SCENARIO = "ADJ-02"
+OK = 200
 SLEEP = 0.03  # each fake Kite call takes this long, so an overlap shows as in-flight > 1
 
 
@@ -118,7 +122,7 @@ def _golden(name: str, reply: dict) -> None:
     assert _clean(reply) == json.loads(path.read_text(encoding="utf-8")), f"{name}: the reply changed"
 
 
-async def _counted(app_db_url, monkeypatch, method, fail=None):  # noqa: F811
+async def _counted(app_db_url, monkeypatch, method, fail=None):
     sid = await _seeded(app_db_url, monkeypatch, SCENARIO)
     counts = Counts()
     _wrap_transport(monkeypatch, counts, fail)
@@ -128,7 +132,7 @@ async def _counted(app_db_url, monkeypatch, method, fail=None):  # noqa: F811
 
 async def test_approaches_counts_and_reply(app_db_url, monkeypatch, capsys):
     counts, status, body = await _counted(app_db_url, monkeypatch, "POST")
-    assert status == 200, body
+    assert status == OK, body
     with capsys.disabled():
         print(f"\nD36 APPROACHES funds={counts.funds} basket={counts.basket} kite={counts.kite} sql={counts.sql} "
               f"held={counts.held_in_wait} max_in_flight={counts.max_in_flight} "
@@ -138,7 +142,7 @@ async def test_approaches_counts_and_reply(app_db_url, monkeypatch, capsys):
 
 async def test_check_counts_and_reply(app_db_url, monkeypatch, capsys):
     counts, status, body = await _counted(app_db_url, monkeypatch, "GET")
-    assert status == 200, body
+    assert status == OK, body
     with capsys.disabled():
         print(f"\nD36 CHECK funds={counts.funds} basket={counts.basket} kite={counts.kite} sql={counts.sql} "
               f"held={counts.held_in_wait} max_in_flight={counts.max_in_flight}")
@@ -150,31 +154,33 @@ async def test_check_counts_and_reply(app_db_url, monkeypatch, capsys):
 # every basket is still asked once, no connection is held while the broker is waited on, and the independent basket
 # reads run together but bounded (the limiter's 10/s and 5 s rules; MAX_TOGETHER below).
 MAX_TOGETHER = 4
+FUNDS_READS = 2  # one for the margins (this request) + the regime read
+MIN_TOGETHER = 2
 DISTINCT_BASKETS = 6
 
 
 async def test_after_approaches_one_funds_read_for_margins_no_connection_held_reads_together(
-        app_db_url, monkeypatch):  # noqa: F811
+        app_db_url, monkeypatch):
     counts, status, _body = await _counted(app_db_url, monkeypatch, "POST")
-    assert status == 200
-    assert counts.funds <= 2, "funds: one for the margins (this request) + the regime read"  # noqa: PLR2004
+    assert status == OK
+    assert counts.funds <= FUNDS_READS, "one funds read for the margins + the regime read"
     assert counts.basket == DISTINCT_BASKETS, "a basket asked N times is asked once, none is skipped"
     assert counts.held_in_wait == 0, "no database connection is checked out while the broker is waited on"
-    assert 2 <= counts.max_in_flight <= MAX_TOGETHER, "independent reads together, bounded"  # noqa: PLR2004
+    assert MIN_TOGETHER <= counts.max_in_flight <= MAX_TOGETHER, "independent reads together, bounded"
 
 
-async def test_after_check_no_connection_held_in_the_broker_wait(app_db_url, monkeypatch):  # noqa: F811
+async def test_after_check_no_connection_held_in_the_broker_wait(app_db_url, monkeypatch):
     counts, status, _body = await _counted(app_db_url, monkeypatch, "GET")
-    assert status == 200
+    assert status == OK
     assert counts.held_in_wait == 0
     assert (counts.basket, counts.funds) == (1, 2)  # one margin read + the regime read, unchanged
 
 
-async def test_after_a_failed_basket_read_is_its_own_figure_not_available_no_retry(app_db_url, monkeypatch):  # noqa: F811
+async def test_after_a_failed_basket_read_is_its_own_figure_not_available_no_retry(app_db_url, monkeypatch):
     """One basket call fails (HTTP 503 from Kite): that approach says plainly it could not be read, no figure, the
     others keep their golden figures, and the failed basket is not asked again (ADR-016 to ADR-019)."""
     counts, status, body = await _counted(app_db_url, monkeypatch, "POST", fail=3)
-    assert status == 200, body
+    assert status == OK, body
     assert counts.basket == DISTINCT_BASKETS, "no automatic retry"
     golden = {a["id"]: a for a in json.loads((GOLDEN / "approaches.json").read_text(encoding="utf-8"))["approaches"]}
     failed = [a for a in body["approaches"] if (a.get("margin") or {}).get("state") not in

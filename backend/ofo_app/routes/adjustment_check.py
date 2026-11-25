@@ -47,6 +47,7 @@ from ofo_app.routes.adjustment import (
     get_rest_spot_reader,
     get_tracked_reader,
     margin_block,
+    release_connection,
 )
 from ofo_app.routes.adjustment_opportunities import condition_text
 from ofo_app.routes.adjustment_preferences import UserPreferences, UserValuesIn
@@ -450,6 +451,7 @@ async def adjustment_check(  # noqa: PLR0913 - FastAPI dependencies, one per inp
         raise StrategyRefused(_NOT_AVAILABLE, Failure.CONFLICT) from None
     if tracked is None:
         raise StrategyRefused(_NOT_AVAILABLE, Failure.NOT_FOUND)
+    await release_connection(db)  # D-36 (c): market and REST reads wait on the broker
     market = await market_reader(tracked, ctx)
     spot = judge_spot(market, await rest_reader(tracked.position.underlying), ctx)
     listed = check.listed_of(ctx)
@@ -466,6 +468,9 @@ async def adjustment_check(  # noqa: PLR0913 - FastAPI dependencies, one per inp
     reply["paused"] = await pause_in_force(db, user_ref, strategy_id, market.now)
     if resolved.body is None or reply["paused"] is not None:  # A-38: paused -> shown with its end, not evaluated
         return AdjustmentCheckOut.model_validate(reply)
+    # D-36 (c): the reads above are done; give the request's connection back BEFORE the broker is waited on (the next
+    # statement below starts a new transaction on a fresh checkout; rows read so far stay readable, no expiry on commit)
+    await release_connection(db)
     margin = await current_margin(margin_of, tracked, market)
     # ADR-245: the carry gap in force (plan, else the user's own, else the admin default) is resolved inside state_of
     # ADR-243: the roll basis in force is resolved inside state_of too, from the same layers and the stored entry facts

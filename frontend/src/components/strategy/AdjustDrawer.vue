@@ -34,7 +34,10 @@
           <p class="mt-1 text-xs text-ink-muted" data-testid="drawer-pick-note">{{ PICK_NOTE }}</p>
           <p v-if="reply?.limit" class="mt-1 text-sm font-semibold text-warn" data-testid="drawer-limit">{{ reply.limit.text }}</p>
           <p v-if="state === 'loading'" class="mt-2 text-sm text-ink-muted" data-testid="drawer-loading">{{ LOADING_TEXT }}</p>
-          <ErrorMessage v-else-if="state === 'error'" :parts="errorParts" compact prefix="drawer-error" data-testid="drawer-error" />
+          <template v-else-if="state === 'error'">
+            <ErrorMessage :parts="errorParts" compact prefix="drawer-error" data-testid="drawer-error" />
+            <button type="button" class="mt-1 rounded border border-line px-2 py-1 text-sm" data-testid="drawer-retry" @click="load">{{ RETRY_LABEL }}</button>
+          </template>
           <ul class="mt-2 flex flex-col gap-2">
             <li v-for="a in approaches" :key="a.id" class="rounded border border-line p-2" :data-applicable="a.applicable ? 'true' : 'false'">
               <label class="flex items-start gap-2">
@@ -76,6 +79,7 @@ import ErrorMessage from '@/components/common/ErrorMessage.vue'
 import { NO_CHANGE_ID, refusalText } from '@/lib/adjustCompare'
 import AfterChargesTap from '@/components/common/AfterChargesTap.vue'
 import { CURRENT_STATE_BODY, LAPSED_TEXT, LOADING_TEXT, PICK_NOTE, availableOf, compareUrl, replyRows } from '@/lib/adjustDrawer'
+import { RETRY_LABEL } from '@/lib/sharedStateText'
 
 const props = defineProps({
   open: { type: Boolean, default: false },
