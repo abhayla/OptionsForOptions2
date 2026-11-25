@@ -4354,5 +4354,25 @@
   "explanation:money_plan_changed": {
     "sha256": "80571b2ba39c3a0930fbfb5b6d8df336e8e7f8e7c4234e694c9c7892adb2fb03",
     "reviewed": "pending owner read"
+  },
+  "explanation:paper_stop_reason_index_at": {
+    "sha256": "c3884506767764ddb93a00a309c31144935d9741e7b561770a0c1d998551e694",
+    "reviewed": "pending owner read"
+  },
+  "explanation:paper_stop_reason_index_unknown": {
+    "sha256": "c878f843042a21c8aff76dcb689624db48677d3448f042f0f07f40bac46ef6a0",
+    "reviewed": "pending owner read"
+  },
+  "explanation:paper_settle_reason": {
+    "sha256": "556ebb6392079cf7f50deb549f91e97e10e9a5ed13be1b5e7cfacd26662e87d2",
+    "reviewed": "pending owner read"
+  },
+  "explanation:paper_settle_reason_plain": {
+    "sha256": "82dfcba03e55b7d88d9d48d35e1e97a06a9250f6b12954f708dbe153d825addd",
+    "reviewed": "pending owner read"
+  },
+  "explanation:paper_settle_history_body": {
+    "sha256": "562c25b53228df085b02a035533d0db0cd19b172a75448f9cca8b25e81ed9354",
+    "reviewed": "pending owner read"
   }
 }

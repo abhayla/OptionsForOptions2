@@ -44,7 +44,7 @@ from ofo.strategy import stored_form as sf
 from ofo.strategy.definition import display_contract
 from ofo.tracking import paper, stops
 from ofo.tracking.orderbook import net_positions
-from ofo.tracking.paper_alert import alert_body
+from ofo.tracking.paper_alert import alert_body, stop_reason_at
 
 from ofo_app import paper_store, tracked_contracts
 from ofo_app import paper_trigger_store as triggers
@@ -227,7 +227,7 @@ class PaperMonitor:
             if not await triggers.claim_fire(session, t.id):
                 return {"fired": set(), "cancelled": {t.id}}  # fired before (another tick, monitor or run)
             texts = {c: _contract_text(found[c]) for c in targets}
-            reason = self._reason(t, texts)
+            reason = stop_reason_at(self._reason(t, texts), a.underlying, self._index_now(feed, a.underlying))
             stored = await paper_store.place(session, a.user_ref, t.strategy_id, [
                 paper_store.NewOrder(c, "SELL" if open_net[c] > 0 else "BUY", abs(open_net[c]), prices[c], "stop",
                                      now, str(reason), t.id) for c in targets], entry=None)  # a stop: never first
@@ -257,6 +257,17 @@ class PaperMonitor:
                 return None
             out[c] = p.price
         return out
+
+    @staticmethod
+    def _index_now(feed: LiveFeed, underlying: str) -> Decimal | None:
+        """D-22: the index's live value at this fire (the provider's spot quote); None when it has no live price."""
+        try:
+            key = feed.ctx.provider.index_id(underlying)  # type: ignore[attr-defined]
+            quote = feed.ctx.provider.underlying_quote(underlying)  # type: ignore[attr-defined]
+            answer = paper.price_of(quote, key or underlying)
+        except Exception:  # noqa: BLE001 - the value is a record detail: never block a stop on it
+            return None
+        return answer.price if paper.is_live(answer) else None
 
     @staticmethod
     def _reason(t: stops.Trigger, texts: Mapping[int, ExplanationText]) -> ExplanationText:

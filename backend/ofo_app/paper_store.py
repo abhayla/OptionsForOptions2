@@ -65,6 +65,22 @@ _SELECT_USER = text(
 
 
 
+_SETTLED_SQL = ("SELECT o.id, o.strategy_id, o.contract_id, o.side, o.quantity, o.price, o.kind, o.placed_at, "
+                "o.created_at, o.reason, o.trigger_id, s.name FROM public.paper_orders AS o "
+                "JOIN public.strategies AS s ON s.id = o.strategy_id "
+                "WHERE s.user_ref = :user_ref AND s.deleted_at IS NULL AND o.kind = 'settle' AND {scope} "
+                "ORDER BY o.placed_at DESC, o.strategy_id, o.id LIMIT :limit")
+
+
+async def settlements(conn: Any, user_ref: str, limit: int = 200) -> list[tuple[str | None, StoredOrder]]:
+    """D-71: the user's expiry-settlement orders, newest first, each with its strategy's saved name (scope: this
+    process's live or scenario strategies only, like every other alert reader)."""
+    from ofo_app.scenario_mode import scope_clause  # noqa: PLC0415 - the one isolation helper
+    clause, params = scope_clause("s")
+    rows = (await conn.execute(text(_SETTLED_SQL.format(scope=clause)),
+                               {"user_ref": user_ref, "limit": limit, **params})).all()
+    return [(r.name, _row(r)) for r in rows]
+
 
 def _check_reducing(book: list[PaperOrder], order: PaperOrder) -> None:
     net = 0

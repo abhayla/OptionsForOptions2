@@ -1856,6 +1856,18 @@ _EXPLANATIONS: tuple[ExplanationTemplate, ...] = (
                         {"underlying": UnderlyingName, "direction": Recorded, "level": IndexLevel}),
     ExplanationTemplate("paper_stop_reason_leg", "what_triggered", "Stop-loss: {contract} crossed {direction} {level}",
                         {"contract": Explained, "direction": Recorded, "level": IndexLevel}),
+    # D-22 / D-71 (owner decision 2026-11-24; REQ-109 AC-7, AC-8): a stop's and a settlement's record names the index value
+    # at that moment, or says it was not available (never a guess)
+    ExplanationTemplate("paper_stop_reason_index_at", "values_seen", "{what}; {underlying} was at {level} at that moment",
+                        {"what": Explained, "underlying": UnderlyingName, "level": IndexLevel}),
+    ExplanationTemplate("paper_stop_reason_index_unknown", "values_seen",
+                        "{what}; the index value at that moment was not available", {"what": Explained}),
+    ExplanationTemplate("paper_settle_reason", "values_seen", "Paper - settled at expiry: {underlying} closed at {level}",
+                        {"underlying": UnderlyingName, "level": IndexLevel}),
+    ExplanationTemplate("paper_settle_reason_plain", "values_seen", "Paper - settled at expiry"),
+    ExplanationTemplate("paper_settle_history_body", "values_seen",
+                        "{what}; settled {prices}. A paper settlement only: no order was sent to Zerodha.",
+                        {"what": Explained, "prices": Explained}),
     # F-94 (ADR-082 (2)): the paper book's Max Profit / Max Loss say whether the round-trip charges are inside them
     ExplanationTemplate("paper_extremes_with_charges", "values_seen",
                         "Maximum profit and maximum loss include about {charges} of charges and taxes.",

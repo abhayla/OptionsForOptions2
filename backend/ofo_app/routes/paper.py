@@ -73,7 +73,7 @@ from ofo.table.model import display_number
 from ofo.timeutil import IST
 from ofo.tracking import paper, paper_decay, paper_greeks, stops
 from ofo.tracking.orderbook import ClosedLeg, NetPosition, PaperOrder, is_typed_price, lifecycles, net_positions
-from ofo.tracking.paper_alert import restore_alert_body
+from ofo.tracking.paper_alert import restore_alert_body, restore_order_reason, settle_history_body
 from pydantic import AwareDatetime, BaseModel, ConfigDict, Field, field_validator
 
 from ofo_app import (
@@ -239,6 +239,9 @@ class PaperOrderOut(ApiModel):
     price: Money
     price_text: CatalogueText
     kind: Literal["open", "add", "exit", "settle", "stop"]
+    #: D-22 / D-71: why a stop or settle order was recorded, with the index value at that moment (stored reason, read back
+    #: through its reviewed wording); None for an order with no reason or a reason no wording fits
+    reason_text: CatalogueText | None = None
 
 
 #: Why a Charges figure is absent: no charge rate set could be read, or an order the rate table cannot price (a futures
@@ -802,7 +805,8 @@ def _order_rows(orders: Sequence[paper_store.StoredOrder], found: dict[int, trac
         o = stored.order
         rows.append({"id": stored.id, "placed_at": o.placed_at, "side": o.side, "contract_id": o.contract_id,
                      "contract_text": describe_contract(_identity(found[o.contract_id])), "quantity": o.quantity,
-                     "price": o.price, "price_text": price_text(o.price), "kind": o.kind})
+                     "price": o.price, "price_text": price_text(o.price), "kind": o.kind,
+                     "reason_text": restore_order_reason(o.reason)})
     return rows
 
 
@@ -1607,6 +1611,56 @@ async def _alerts_out(db: Any, user_ref: str) -> AlertsOut:
 async def list_paper_alerts(db: Annotated[Any, Depends(get_db)],
                             user_ref: Annotated[str, Depends(current_user_ref)]) -> AlertsOut:
     return await _alerts_out(db, user_ref)
+
+
+class HistoryRecordOut(ApiModel):
+    """D-22 / D-71: one record of Alerts > History: a fired stop or an expiry settlement, with time, what happened, the
+    index value at that moment and the prices (all in the stored wording's text)."""
+    kind: Literal["stop", "settled"]
+    strategy_id: int
+    strategy_name: CatalogueText
+    at: datetime.datetime
+    title: CatalogueText
+    body: CatalogueText
+
+
+class HistoryOut(ApiModel):
+    records: list[HistoryRecordOut]  # newest first
+
+
+async def _settled_records(db: Any, user_ref: str) -> list[dict[str, Any]]:
+    """One record per (strategy, settle time, reason): the legs the settlement closed, with each price."""
+    rows = await paper_store.settlements(db, user_ref)
+    found = {c.contract_id: c for c in await tracked_contracts.resolve(db, sorted({o.order.contract_id for _, o in rows}))}
+    groups: dict[tuple[int, datetime.datetime, str | None], list[tuple[str | None, paper_store.StoredOrder]]] = {}
+    for name, o in rows:
+        groups.setdefault((o.strategy_id, o.order.placed_at, o.order.reason), []).append((name, o))
+    out: list[dict[str, Any]] = []
+    for (sid, at, reason), items in groups.items():
+        what = restore_order_reason(reason)
+        if what is None:
+            _LOG.warning("paper settlement of strategy %s left out of history: stored reason fits no wording", sid)
+            continue
+        name = items[0][0]
+        legs = [(describe_contract(_identity(found[o.order.contract_id])), o.order.price) for _, o in items]
+        out.append({"kind": "settled", "strategy_id": sid, "strategy_name": sf.shown_name(name), "at": at,
+                    "title": render_explanation("paper_alert_title", name=sf.shown_name(name) if name
+                                                else render_explanation("cell_dash")),
+                    "body": settle_history_body(what, legs)})
+    return out
+
+
+@router.get("/paper/alerts/history", response_model=HistoryOut)
+async def paper_alerts_history(db: Annotated[Any, Depends(get_db)],
+                               user_ref: Annotated[str, Depends(current_user_ref)]) -> HistoryOut:
+    """D-22 / D-71 (owner decision): every fired stop (the alert rows, read or not) and every expiry settlement, newest
+    first. No new table: the stop's alert and the settle orders are already stored with their text."""
+    stops_ = (await _alerts_out(db, user_ref)).alerts
+    records = [{"kind": "stop", "strategy_id": a.strategy_id, "strategy_name": a.strategy_name, "at": a.created_at,
+                "title": a.title, "body": a.body} for a in stops_]
+    records += await _settled_records(db, user_ref)
+    records.sort(key=lambda r: r["at"], reverse=True)
+    return HistoryOut.model_validate({"records": records})
 
 
 @router.post("/paper/alerts/read", response_model=AlertsOut)

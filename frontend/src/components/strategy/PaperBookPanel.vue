@@ -80,7 +80,7 @@
         <tr v-for="o in book.orders" :key="o.id" class="border-t border-line" data-testid="order-row">
           <td class="num py-1" data-testid="order-time">{{ istClock(o.placed_at) ?? '-' }}</td>
           <td class="text-center" data-testid="order-side">{{ o.side === 'BUY' ? 'B' : 'S' }}</td>
-          <td data-testid="order-contract">{{ o.contract_text }}</td>
+          <td data-testid="order-contract">{{ o.contract_text }}<span v-if="o.reason_text" class="block text-[11px] text-ink-muted" data-testid="order-reason">{{ o.reason_text }}</span></td>
           <td class="num text-right" data-testid="order-qty">{{ o.quantity }}</td>
           <td class="num text-right" data-testid="order-price">{{ o.price_text }}</td>
           <td class="text-center" data-testid="order-kind">{{ kindText(o.kind) }}</td>

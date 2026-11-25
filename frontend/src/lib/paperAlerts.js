@@ -29,6 +29,20 @@ export function dropAlerts(e) {
   Object.assign(paperAlerts, { unread: 0, alerts: [], parts: e ? (e.parts ?? NEUTRAL_PARTS) : NEUTRAL_PARTS, loaded: true })
 }
 
+// D-22 / D-71: Alerts > History = the server's records of every fired stop and every expiry settlement, newest first, text as sent.
+export const HISTORY_EMPTY = 'No stops or expiry settlements yet.'
+export const paperHistory = reactive({ records: [], parts: null, loaded: false })
+const historyOk = (r) => r && typeof r.at === 'string' && typeof r.title === 'string' && typeof r.body === 'string' && Number.isInteger(r.strategy_id)
+export async function loadPaperHistory() {
+  try {
+    const data = (await api.get('/paper/alerts/history')).data
+    if (!data || !Array.isArray(data.records) || !data.records.every(historyOk)) throw new Error('unreadable')
+    Object.assign(paperHistory, { records: data.records, parts: null, loaded: true })
+  } catch (e) {
+    Object.assign(paperHistory, { records: [], parts: e?.parts ?? NEUTRAL_PARTS, loaded: true })
+  }
+}
+
 export const readPaperAlerts = async () => (await api.get('/paper/alerts')).data
 
 /** Mark every alert read (one POST). A failure keeps what is shown; the next read brings the server's count back. */
@@ -94,7 +108,7 @@ export function takeOpportunities(data) {
   for (const g of groups) {
     for (const r of Array.isArray(g?.records) ? g.records : []) {
       if (r && r.outcome === 'open' && Number.isInteger(r.id)) {
-        open.push({ id: r.id, strategy_id: g.strategy_id, strategy_name: g.strategy_name ?? null, text: r.condition || g.label || '' })
+        open.push({ id: r.id, strategy_id: g.strategy_id, strategy_name: g.strategy_name ?? null, text: r.condition || g.label || '', shown_at: r.shown_at ?? null })
       } else if (r && Number.isInteger(r.id) && r.outcome !== 'open') {
         (settled[g.strategy_id] ??= []).push({ id: r.id, text: r.condition || g.label || '', outcome_text: r.outcome_text ?? '', shown_at: r.shown_at ?? null })
       }

@@ -1,6 +1,7 @@
 <!-- W-117 (REQ-009 AC-6; ADR-114, ADR-003): the Alerts pages - Active, History, Notification settings.
      GC-TP step 7b (REQ-109 AC-8, ADR-207 (5)): Active lists the server's paper stop alerts, newest first, text as sent; opening
-     it marks them read (one POST). History and Notification settings stay honest empty states: no logic exists for them yet. -->
+     it marks them read (one POST). D-22 / D-71: History lists every fired stop and every expiry settlement (GET /paper/alerts/history).
+     Notification settings stays an honest empty state. -->
 <script setup>
 import PageHeader from '@/components/common/PageHeader.vue'
 import EmptyState from '@/components/states/EmptyState.vue'
@@ -10,7 +11,7 @@ import ErrorMessage from '@/components/common/ErrorMessage.vue'
 import { istTime } from '@/lib/displayFormat'
 import { plainName } from '@/lib/saveDraft'
 import { compareAllUrl } from '@/lib/adjustDrawer'
-import { EARLIER_HEADING, PAPER_ALERTS_EMPTY, attentionItems, dropAlerts, earlierAlerts, openRecords, markPaperAlertsRead, paperAlerts, readPaperAlerts, takeAlerts } from '@/lib/paperAlerts'
+import { EARLIER_HEADING, HISTORY_EMPTY, PAPER_ALERTS_EMPTY, attentionItems, loadPaperHistory, paperHistory, dropAlerts, earlierAlerts, openRecords, markPaperAlertsRead, paperAlerts, readPaperAlerts, takeAlerts } from '@/lib/paperAlerts'
 
 // U23: the title shows once; an older stored body still opens with it, so that repeat is dropped (display only)
 const alertBody = (a) => (a.body.startsWith(`${a.title}: `) ? a.body.slice(a.title.length + 2) : a.body)
@@ -22,9 +23,11 @@ const NO_CHANNELS = 'No notification channels are set up yet.'
 
 const route = useRoute()
 const isActive = computed(() => route.path.endsWith('/active'))
-const line = computed(() => (route.path.endsWith('/notification-settings') ? NO_CHANNELS : PAPER_ALERTS_EMPTY))
+const isHistory = computed(() => route.path.endsWith('/history'))
+const line = computed(() => (route.path.endsWith('/notification-settings') ? NO_CHANNELS : isHistory.value ? HISTORY_EMPTY : PAPER_ALERTS_EMPTY))
 
 onMounted(async () => {
+  if (isHistory.value) { await loadPaperHistory(); return }
   if (!isActive.value) return
   try {
     const ok = takeAlerts(await readPaperAlerts())
@@ -39,7 +42,17 @@ onMounted(async () => {
   <section data-testid="alerts">
     <!-- Owner 2026-10-30 (Sensibull 171 / 172): shared header; alerts as one card with a row each; empty = shared empty state -->
     <PageHeader parent="Alerts" :title="route.meta.title" />
-    <template v-if="isActive && paperAlerts.parts">
+    <template v-if="isHistory && paperHistory.parts">
+      <ErrorMessage :parts="paperHistory.parts" compact prefix="history-error" />
+    </template>
+    <ul v-else-if="isHistory && paperHistory.records.length" class="divide-y divide-line overflow-hidden rounded-lg border border-line bg-surface" data-testid="alerts-history">
+      <li v-for="(r, n) in paperHistory.records" :key="`${r.kind}${n}`" class="px-4 py-3 hover:bg-surface-muted" data-testid="history-row">
+        <p class="font-medium" data-testid="history-title">{{ r.title }}</p>
+        <p class="text-xs text-ink-muted"><span data-testid="history-time">{{ istTime(r.at) }}</span> - <span data-testid="history-strategy">{{ plainName(r.strategy_name) ?? `Strategy ${r.strategy_id}` }}</span></p>
+        <p class="mt-1 text-sm" data-testid="history-body">{{ alertBody({ title: r.title, body: r.body }) }}</p>
+      </li>
+    </ul>
+    <template v-else-if="isActive && paperAlerts.parts">
       <ErrorMessage :parts="paperAlerts.parts" compact prefix="alerts-error" />
     </template>
     <template v-else-if="isActive && (paperAlerts.alerts.length || openRecords.list.length)">
@@ -48,6 +61,7 @@ onMounted(async () => {
         <li v-for="i in attention" :key="`${i.kind}${i.id}`" class="px-4 py-3 hover:bg-surface-muted" :data-testid="i.kind === 'open' ? 'open-record-row' : 'alert-row'">
           <template v-if="i.kind === 'open'">
             <p class="font-medium" data-testid="open-record-strategy">{{ plainName(i.strategy_name) ?? `Strategy ${i.strategy_id}` }}</p>
+            <p v-if="i.shown_at" class="text-xs text-ink-muted" data-testid="open-record-time">{{ istTime(i.shown_at) }}</p>
             <p class="mt-1 text-sm" data-testid="open-record-text">{{ i.text }}</p>
             <RouterLink :to="compareAllUrl(i.strategy_id, [i.id])" class="text-sm text-accent underline" data-testid="open-record-compare">Compare approaches</RouterLink>
           </template>
