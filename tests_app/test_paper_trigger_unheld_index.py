@@ -8,8 +8,8 @@ Core: "Above 22,500" with NIFTY at 22,533.25 is refused even when nothing else i
 replay is the recorded Kite frames of 2026-10-08 09:20 IST through a real ``KiteProvider`` and a real ``FanOut``; in bus
 mode the API's provider drops every tick for a token nobody holds (``kite_provider.py`` ``on_frame``), so the frames are
 pushed only AFTER the hold has subscribed (``d01-root-cause.md`` section 5). The 3 s wait is an injected sleep and
-clock: no test sleeps, and no test reads the wall clock. No database: ``tracked_contracts.resolve`` is the only DB touch and is
-stubbed.
+clock: no test sleeps, and no test reads the wall clock. No database: ``tracked_contracts.resolve`` is the only DB
+touch and is stubbed.
 """
 from __future__ import annotations
 
@@ -244,3 +244,11 @@ async def test_read_market_gives_market_closed_for_every_price_and_reads_nothing
     got = await _read(rig)
     assert got.market_closed and (got.index.state, got.legs[LEG_ID].state) == ("market_closed", "market_closed")
     assert rig.slept == [] and rig.provider.subscribed_tokens() == []
+
+
+def test_the_production_wait_is_three_seconds_on_the_loops_own_sleep_and_clock():
+    import asyncio  # noqa: PLC0415
+
+    from ofo_app.market_read import DEFAULT_WAIT  # noqa: PLC0415
+
+    assert (DEFAULT_WAIT.seconds, DEFAULT_WAIT.now, DEFAULT_WAIT.sleep) == (3.0, None, asyncio.sleep)

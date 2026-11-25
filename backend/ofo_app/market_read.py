@@ -21,6 +21,7 @@ import logging
 from collections.abc import Awaitable, Callable, Mapping, Sequence
 from dataclasses import dataclass, field
 from decimal import Decimal
+from itertools import chain
 from typing import Final, Literal
 
 from ofo.outcome import read_snapshot
@@ -64,7 +65,7 @@ class MarketRead:
 
     @property
     def ready(self) -> bool:
-        return all(p.state == paper.LIVE for p in ([self.index] if self.index else []) + list(self.legs.values()))
+        return all(p.state == paper.LIVE for p in chain([self.index] if self.index else [], self.legs.values()))
 
 
 def _from(p: paper.Price) -> MarketPrice:
@@ -78,7 +79,14 @@ def live_price(answer: MarketPrice) -> paper.Price:
     return paper.Price(answer.instrument_id, paper.LIVE, answer.price, answer.at)  # type: ignore[arg-type]
 
 
-async def read_market(ctx: MarketContext, feed: LiveFeed | None, underlying: str, leg_keys: Sequence[str],  # noqa: PLR0913, PLR0917
+def _read(ctx: MarketContext, underlying: str, keys: Sequence[str], need_index: bool) -> MarketRead:
+    snap = read_snapshot(ctx.provider, underlying, list(keys), ctx.clock(), ctx.rate, feed_scope(ctx),
+                         quality=ctx.forward_quality)
+    return MarketRead(False, _from(paper.price_of(snap.spot, underlying)) if need_index else None,
+                      {k: _from(paper.leg_price(snap, k)) for k in keys})
+
+
+async def read_market(ctx: MarketContext, feed: LiveFeed | None, underlying: str, leg_keys: Sequence[str],  # noqa: PLR0913
                       need_index: bool, purpose: Purpose, *, wait: Wait = DEFAULT_WAIT) -> MarketRead:
     """Each of ``leg_keys`` (feed keys) and, with ``need_index``, the index of ``underlying``: one answer each.
 
@@ -93,10 +101,7 @@ async def read_market(ctx: MarketContext, feed: LiveFeed | None, underlying: str
                           {k: MarketPrice(k, MARKET_CLOSED, None) for k in keys})
 
     def read() -> MarketRead:
-        snap = read_snapshot(provider, underlying, keys, ctx.clock(), ctx.rate, feed_scope(ctx),
-                             quality=ctx.forward_quality)
-        return MarketRead(False, _from(paper.price_of(snap.spot, underlying)) if need_index else None,
-                          {k: _from(paper.leg_price(snap, k)) for k in keys})
+        return _read(ctx, underlying, keys, need_index)
 
     answer = read()
     if feed is None or answer.ready:

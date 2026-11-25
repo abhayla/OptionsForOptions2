@@ -291,6 +291,47 @@ async def test_f1_a_failed_price_read_in_market_hours_is_refused(db, notified, m
     assert await _stored(db, stored.id) == []
 
 
+async def test_d01_route_an_unheld_index_already_crossed_is_refused_through_the_live_feed_dependency(db, notified):
+    """D-01 on the real route: the API's provider holds nothing and the frames arrive only AFTER the save's own hold
+    subscribes (bus mode drops a tick for a token nobody holds). The recorded NIFTY is 22,533.25, so "above 22,500"
+    is crossed: 422 with the crossed code's sentence, nothing stored."""
+    from marketdata._kite_fixture import new_provider, recorded_frames  # noqa: PLC0415 - tests/ is on sys.path here
+    from ofo.marketdata.fanout import FanOut  # noqa: PLC0415
+    from ofo_app.live_push import LiveFeed  # noqa: PLC0415
+    from ofo_app.routes.outcome import MarketContext  # noqa: PLC0415
+    from ofo_app.routes.planned_entry import get_live_feed  # noqa: PLC0415
+
+    app, stored, _ids = await _open(db)
+    provider, clock, _items = new_provider()
+    frames = recorded_frames()
+    provider.on_connected(frames[0][0])
+    held_when_pushed: list[list[int]] = []
+
+    def push() -> None:
+        held_when_pushed.append(provider.subscribed_tokens())
+        for at, frame in frames:
+            clock.now = at
+            provider.on_frame(frame, at)
+
+    real_subscribe = provider.subscribe
+
+    def subscribe(ids):
+        real_subscribe(ids)
+        asyncio.get_running_loop().call_later(0.1, push)  # the feed answers after the hold exists
+
+    provider.subscribe = subscribe  # type: ignore[method-assign]
+    ctx = MarketContext(provider, clock, D("0.065"))
+    app.dependency_overrides[get_market_context] = lambda: ctx
+    app.dependency_overrides[get_live_feed] = lambda: LiveFeed(ctx, FanOut(provider))
+    assert provider.subscribed_tokens() == []
+    async with _client(app) as c:
+        reply = await c.post(_url(stored), json={"kind": "conditional_exit", "above": "22500"})
+    assert reply.status_code == HTTPStatus.UNPROCESSABLE_ENTITY, reply.text
+    assert CE_SENTENCE in reply.text
+    assert held_when_pushed == [[provider._token_of[provider.index_id("NIFTY")]]]  # only the index, held before frames
+    assert await _stored(db, stored.id) == [] and notified == []
+
+
 async def test_f1_a_closed_market_saves_as_before(db, notified):
     app, stored, _ids = await _open(db)
     _close_the_market(app)

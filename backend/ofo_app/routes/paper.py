@@ -1637,7 +1637,7 @@ def _new_triggers(body: TriggerIn, underlying: str, open_ids: Sequence[int]) -> 
     return new
 
 
-async def check_trigger_levels(db: Any, ctx: MarketContext | None, feed: LiveFeed | None, underlying: str,  # noqa: PLR0913, PLR0917
+async def check_trigger_levels(db: Any, ctx: MarketContext | None, feed: LiveFeed | None, underlying: str,  # noqa: PLR0913
                                new: Sequence[paper_trigger_store.NewTrigger], now: AnswerClock,
                                wait: market_read.Wait = market_read.DEFAULT_WAIT) -> str | None:
     """The refusal template id when a new level cannot be saved, else None (ADR-317 (1), ADR-327), judged on the ONE
@@ -1691,7 +1691,7 @@ async def _validated_triggers(db: Any, strategy_id: int, body: TriggerIn,
 
 @router.post("/paper/strategies/{strategy_id}/triggers", status_code=201, response_model=TriggersOut,
              dependencies=[Depends(guard_paper_order)])  # IC e2e 5: scenario mode = own scenario only
-async def add_paper_triggers(strategy_id: int, body: TriggerIn, db: Annotated[Any, Depends(get_db)],  # noqa: PLR0913, PLR0917
+async def add_paper_triggers(strategy_id: int, body: TriggerIn, db: Annotated[Any, Depends(get_db)],  # noqa: PLR0913
                              user_ref: Annotated[str, Depends(current_user_ref)],
                              ctx: Annotated[MarketContext | None, Depends(get_market_context)],
                              feed: Annotated[LiveFeed | None, Depends(get_live_feed)],
