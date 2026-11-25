@@ -8,6 +8,7 @@
     <p v-if="state === 'loading'" class="mt-2 text-sm text-ink-muted" data-testid="opp-loading">Loading.</p>
     <ErrorMessage v-else-if="state === 'error'" :parts="errorParts" prefix="opp-error" data-testid="opp-error" />
     <template v-else>
+      <p v-if="reply.totals" class="mt-2 text-xs text-ink-muted" data-testid="opp-totals">{{ reply.totals.text }}</p>
       <ul class="mt-2 flex flex-wrap gap-2" data-testid="opp-counts">
         <li v-for="c in reply.counts" :key="c.outcome" class="rounded border border-line px-2 py-0.5 text-xs" :data-testid="`opp-count-${c.outcome}`">{{ c.text }}: {{ c.count }}</li>
       </ul>

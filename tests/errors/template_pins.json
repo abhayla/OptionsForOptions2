@@ -4382,5 +4382,9 @@
   "explanation:adjust_take_profit_basis_no_charges": {
     "sha256": "dea61abc4e3b4a635c31a9d9e869f83dd4131a6432f5cccba725af717da66588",
     "reviewed": "pending owner read"
+  },
+  "explanation:suggestion_counts_units": {
+    "sha256": "c46d2ddef594540e5e7b25a60bd6fc473dad1dcae9ae71ec37474ffbd8c171b2",
+    "reviewed": "pending owner read"
   }
 }

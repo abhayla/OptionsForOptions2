@@ -93,6 +93,12 @@ class CountOut(ApiModel):
     count: int
 
 
+class TotalsOut(ApiModel):
+    conditions: int  # every record in the counters' sum
+    rows: int  # every row (group) the list shows
+    text: CatalogueText
+
+
 class ReasonOut(ApiModel):
     id: Identifier
     text: CatalogueText
@@ -116,6 +122,7 @@ class InboxOut(ApiModel):
     groups: list[GroupOut]
     held: list[HeldOut]
     counts: list[CountOut]
+    totals: TotalsOut  # D-30: conditions and rows, each on its own unit
     empty_text: CatalogueText | None
     dismiss_reasons: list[ReasonOut]
 
@@ -217,6 +224,8 @@ def inbox_body(rows: list[store.InboxRow], held: list[store.HeldInboxRow] | None
     return {"groups": list(groups.values()), "held": held_body(held or []),
             "counts": [{"outcome": o, "text": render_explanation(f"suggestion_outcome_{o}"), "count": counted[o]}
                        for o in OUTCOMES],
+            "totals": {"conditions": len(rows), "rows": len(groups),
+                       "text": render_explanation("suggestion_counts_units", conditions=len(rows), rows=len(groups))},
             "empty_text": None if rows else render_explanation("suggestion_inbox_empty"),
             "dismiss_reasons": [{"id": r, "text": render_explanation(f"suggestion_dismiss_{r}")}
                                 for r in store.DISMISS_REASONS]}
