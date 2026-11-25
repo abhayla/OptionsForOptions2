@@ -6,11 +6,10 @@ const newestFirst = computed(() => [...toasts].reverse())
 </script>
 
 <template>
-  <!-- D-67 (owner decision, binding; replaces the u506 fixed bottom-right overlay, which still covered page buttons): the pop-ups are an
-       ordinary block in the page flow, between the header and the page content, in the page's own column width. Being in the flow
-       it can overlay nothing: the page content is laid out below it (the same way the scenario and calendar banners are). It takes
-       no room with no pop-up. Newest first (top). -->
-  <div v-if="newestFirst.length" class="mx-auto flex w-full max-w-[1200px] flex-col gap-2 px-4 pt-3" aria-live="polite" data-testid="toast-host">
+  <!-- D-67 (owner decision, binding; replaces the u506 fixed bottom-right overlay): AppLayout renders this INSIDE the sticky header block,
+       so a pop-up raised while the trader is scrolled down is still on screen, and nothing is fixed over the page content. The
+       aria-live region is always rendered (empty with no pop-up) so the first announcement is read. Newest first (top). -->
+  <div class="mx-auto flex w-full max-w-[1200px] flex-col gap-2 px-4" :class="newestFirst.length ? 'py-2' : ''" aria-live="polite" data-testid="toast-host">
     <div
       v-for="t in newestFirst"
       :key="t.id"
