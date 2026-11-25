@@ -72,6 +72,10 @@ export const rowsRangeText = (from, to, total) => (total === 1 ? ROWS_ONE_TEXT :
 export const BROKER_BACK_LINK_TEXT = 'Back to Broker & Market Data' // the page /settings/broker-market-data is titled so
 export const EARLIER_SHOWN_MAX = 5
 export const earlierMoreText = (n) => `and ${n} earlier`
+// pending owner read (25 Nov 2026), GC-ICLIVE D-24: the Plan block lists the armed index exits (REQ-109 AC-8) with level and state
+export const EXITS_LOAD_FAILED_TEXT = 'Could not read the conditional exits. Nothing was changed.'
+export const exitLineText = (direction, levelText, state) =>
+  `Conditional exit: all legs exit if the index goes ${direction === 'below' ? 'below' : 'above'} ${levelText}. ${state === 'fired' ? 'Fired' : 'Armed'}.`
 export const LIMITS_NONE_TEXT = 'No rules are being checked for this trade'
 export const RETURN_DONE_TEXT = 'Zerodha confirmed your orders.' // ADR-129
 

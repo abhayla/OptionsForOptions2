@@ -51,7 +51,7 @@ describe('an armed conditional exit is on the tracking panel (D-24)', () => {
     triggers = { triggers: [trig()] }
     const w = await panel()
     const line = t(w, 'plan-entry-exit-31').text()
-    expect(line).toContain('Above')
+    expect(line).toBe('Conditional exit: all legs exit if the index goes above 25,720. Armed.')
     expect(line).toContain('25,720')
     expect(line).toContain('Armed')
     expect(t(w, 'plan-entry-limit-T-07').exists()).toBe(true) // the rule-based line still stands

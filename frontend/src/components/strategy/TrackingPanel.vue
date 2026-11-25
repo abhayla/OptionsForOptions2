@@ -73,7 +73,7 @@
     </div>
     <!-- GC-ADJ2 step 6 (REQ-163): the entry, every adjustment and the whole-trade totals; read when opened -->
     <AdjustSteps :strategy-id="savedId" />
-    <PlanEntry v-if="status === 'tracked'" :strategy-id="savedId" :check="check" :check-status="checkStatus" :check-stale="checkStale" :check-refusal="checkRefusal" @retry-check="retryCheck" />
+    <PlanEntry v-if="status === 'tracked'" :strategy-id="savedId" :check="check" :check-status="checkStatus" :check-stale="checkStale" :check-refusal="checkRefusal" :exits="exits" :exits-failed="exitsFailed" @retry-check="retryCheck" />
     <AdjustDrawer
       :open="drawerOpen" :strategy-id="savedId" :lines="drawerLines" :detected="!!view?.detections?.length || flags.length > 0" :card-rows="cardRows(raw)"
       :suggestion-ids="flagIds"
@@ -165,6 +165,19 @@ async function readCheck(id, background = false) {
     checkReading = false
   }
 }
+// GC-ICLIVE D-24: the armed / fired index exits of this strategy, read on the same rhythm as the check (never a second timer)
+const exits = ref([])
+const exitsFailed = ref(false)
+async function readExits(id) {
+  try {
+    const { data } = await api.get(`/paper/strategies/${id}/triggers`)
+    if (id !== props.savedId) return
+    exits.value = (Array.isArray(data?.triggers) ? data.triggers : []).filter((x) => x.kind === 'conditional_exit' && x.state !== 'cancelled')
+    exitsFailed.value = !Array.isArray(data?.triggers)
+  } catch {
+    if (id === props.savedId) exitsFailed.value = true // the last good lines stay
+  }
+}
 const retryCheck = () => readCheck(props.savedId)
 function onDismissed({ ids }) {
   dismissed.value = [...dismissed.value, ...ids]
@@ -204,6 +217,8 @@ async function load(id) {
   checkStatus.value = 'loading'
   checkStale.value = false
   checkRefusal.value = ''
+  exits.value = []
+  exitsFailed.value = false
   dismissed.value = []
   drawerOpen.value = false
   error.value = ''
@@ -214,7 +229,7 @@ async function load(id) {
     status.value = 'tracked'
     view.value = readTracking(data, props.legs)
     raw.value = data
-    await readCheck(id)
+    await Promise.all([readCheck(id), readExits(id)])
   } catch (e) {
     if (id !== props.savedId) return
     if (e?.status === 404) status.value = 'untracked'
@@ -232,7 +247,7 @@ usePaperRefresh({
     view.value = readTracking(data, props.legs)
     raw.value = data
     // GC-ICFIX u141: the rule check rides the same rhythm (no second timer); a closed trade's check is not re-read (as before)
-    if (view.value?.kind !== 'exited') readCheck(props.savedId, true)
+    if (view.value?.kind !== 'exited') { readCheck(props.savedId, true); readExits(props.savedId) }
   },
   onError: failed,
 })
