@@ -847,3 +847,31 @@ async def test_history_lists_a_fired_stop_and_an_expiry_settlement_with_time_ind
     stop = next(r for r in records if r["kind"] == "stop")
     assert "NIFTY was at 21,999.90 at that moment" in stop["body"]
     assert stop["strategy_id"] == settled["strategy_id"] == stored.id
+
+
+# D-29 (ADR-260): the alert list and the bell's unread count read this process's own strategies only. Real case: 17 old
+# "Scenario PATH-xx" alerts buried the 3 real stops of 23 Nov and inflated the bell (21-24 against 20 rows).
+async def test_a_scenario_strategys_alert_is_neither_listed_nor_counted_nor_marked_read(db, notified):
+    from test_strategy_store import _ids, _saved_in  # noqa: PLC0415
+    from ofo_app import strategy_store as store  # noqa: PLC0415
+    app, stored, ids = await _open(db)
+    scenario = await store.save_draft(db, stored.user_ref, await _saved_in(db, stored.user_ref, await _ids(db)),
+                                      scenario_id="PATH-01")
+    await paper_store.place(db, stored.user_ref, scenario.id, [_new(ids[0], "SELL", 65, "39.15"),
+                                                               _new(ids[1], "BUY", 65, "12.95")])
+    dash = render_explanation("cell_dash")
+    what = render_explanation("paper_stop_reason_index", underlying="NIFTY", direction="below", level=D("22000"))
+    body = str(alert_body(what, [(dash, D("41.00"))], names_contract=False))
+    title = str(render_explanation("paper_alert_title", name=dash))
+    for strategy in (stored, scenario):
+        tid = await paper_trigger_store.add(db, strategy.id, paper_trigger_store.NewTrigger(
+            "conditional_exit", "below", D("22000"), underlying="NIFTY"))
+        assert await paper_trigger_store.claim_fire(db, tid)
+        await paper_trigger_store.add_alert(db, strategy.id, tid, title, body)
+    async with _client(app) as c:
+        listed = (await c.get("/paper/alerts")).json()
+        assert [a["strategy_id"] for a in listed["alerts"]] == [stored.id] and listed["unread"] == 1
+        await c.post("/paper/alerts/read")
+    unread = (await db.execute(text("SELECT count(*) FROM public.paper_alerts WHERE strategy_id = :s AND read_at IS NULL"),
+                               {"s": scenario.id})).scalar_one()
+    assert unread == 1  # a live process never touches a scenario strategy's alerts
