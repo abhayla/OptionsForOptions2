@@ -967,6 +967,7 @@ def test_ac9_rest_read_applies_the_same_filters_and_refuses_bad_ones():
     provider.tick(index_quote("25162.30"))
     tick_window(provider)
     provider.tick(option_quote(cid("25200", "CE"), "103.50", oi=5000))
+    provider.tick(option_quote(cid("25200", "PE"), "203.25", oi=5000))  # D-55: both shown sides must pass Min OI
     client = _app_client(MarketContext(provider, Clock(T0), Decimal("0.065")), Reader())
     query = {"underlying": "NIFTY", "expiry": EXPIRY.isoformat(), "strikes_each_side": 2}
     ok = client.get("/api/market/chain", params={**query, "min_oi": "2000"})

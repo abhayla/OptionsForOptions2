@@ -34,6 +34,11 @@ export const GREEKS_MISSING_LINES = {
   FORWARD_UNAVAILABLE: 'IV and Greeks are not shown: the expiry forward could not be derived.',
 }
 
+/** D-55 (ADR-320 (6)): Change and OI Change are the feed's values; where the feed carries none the cell says so, in these words
+ *  (a side with no contract at all keeps the plain dash). */
+export const CHAIN_NOT_AVAILABLE = 'not available' // pending owner read (D-55; pinned by chain-filters-d55.test.js)
+export const FEED_VALUE_KEYS = ['change', 'oi_change']
+
 /** The columns the engine computes from the spot (IV and the four Greeks): the ones that carry the stale label. */
 export const GREEK_KEYS = ['iv', 'delta', 'gamma', 'theta', 'vega']
 

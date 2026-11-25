@@ -101,12 +101,12 @@ describe('Option Chain screen', () => {
     expect(heads).toEqual(['Calls', 'Strike', 'Puts'])
     const bodyRow = w.findAll('[data-testid="chain-row"]').at(1)
     const tds = bodyRow.findAll('td:not([data-testid^="sel-"])').map((t) => t.text())
-    expect(tds).toEqual(['120.50', '-', '1000', '50', '12.34', '24500', '95.25', '-', '1000', '50', '12.34'])
+    expect(tds).toEqual(['120.50', 'not available', '1000', '50', '12.34', '24500', '95.25', 'not available', '1000', '50', '12.34'])
     expect(cellsOf(w, 'strike')).toEqual(['24450', '24500', '24550'])
     expect(w.find('[data-testid="underlying-select"]').element.value).toBe('NIFTY')
   })
 
-  it('AC-2 (row 33): default columns per side are LTP, Change, OI, Volume and IV for every user; Change is "-"', async () => {
+  it('AC-2 (row 33): default columns per side are LTP, Change, OI, Volume and IV for every user; Change says "not available" while the feed has none (D-55)', async () => {
     script({ chain: () => Promise.resolve({ data: notConnected() }) })
     const w = await mountPage()
     sock().serverOpen()
@@ -116,8 +116,8 @@ describe('Option Chain screen', () => {
     expect(cols).toEqual(['LTP', 'Change', 'OI', 'Volume', 'IV', 'Strike', 'LTP', 'Change', 'OI', 'Volume', 'IV'])
     expect(cols.join(' ')).not.toMatch(/Delta|Bid|Ask/)
     expect(cellsOf(w, 'ce-iv')).toEqual(['12.34', '12.34', '12.34'])
-    expect(cellsOf(w, 'ce-change')).toEqual(['-', '-', '-'])
-    expect(cellsOf(w, 'pe-change')).toEqual(['-', '-', '-'])
+    expect(cellsOf(w, 'ce-change')).toEqual(['not available', 'not available', 'not available'])
+    expect(cellsOf(w, 'pe-change')).toEqual(['not available', 'not available', 'not available'])
   })
 
   it('AC-8: the server ATM row is marked, spot with time is shown, the expiry selector is present', async () => {

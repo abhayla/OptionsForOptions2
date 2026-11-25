@@ -4,12 +4,12 @@
   persists across expiries (AC-10). The W-118 text follows; its "no selection" now holds only for REQ-029 itself.
   W-118: the Option Chain, display only. Calls | Strike | Puts for a chosen underlying and
   expiry, from the server's chain socket. Every value is shown as the server gave it (a string); the ATM row is the
-  server's `atm_strike`; Change shows "-" (the feed carries no previous close, F-47). No order placement, selection or
+  server's `atm_strike`; Change and OI Change are the feed's values or say "not available" (D-55). No order placement, selection or
   import here (REQ-029 AC-6; REQ-030 is a later item). Adapted for layout only from abhayla/algochanakya@bf9faf7
   frontend/src/views/OptionChainView.vue (legacy-reuse row 144: no local ATM fallback, strike logic in the backend).
   Row 33 (REQ-029 AC-2/AC-3/AC-9): IV is a default column and a Details toggle adds Bid, Ask, OI Change and the Greeks,
   the same for every user (ADR-168: no UX level); all are the server's engine strings (ADR-008). The filters (strike
-  range sent to the server; ITM/ATM/OTM, OI, volume, premium and bid-and-ask over the rows it sent) only hide rows:
+  range sent to the server, Min OI / volume / premium re-sent as typed (D-55); ITM/ATM/OTM, OI, volume, premium and bid-and-ask over the rows it sent) only hide rows:
   never a number, never the selection (lib/chainDisplay.js). -->
 <script setup>
 import PageHeader from '@/components/common/PageHeader.vue'
@@ -25,7 +25,7 @@ import MarketClosedBanner from '@/components/states/MarketClosedBanner.vue'
 import { useSettingsValues } from '@/stores/settingsValues'
 import { strikeRangesOf } from '@/lib/settingsValues'
 import { NOT_LIVE_LABEL, VALUE_UNAVAILABLE, chainRequest, daysLeft, useChainAnswer } from '@/composables/useChainLive'
-import { GREEKS_BASIS_LINES, GREEKS_MISSING_LINES, MONEYNESS, NO_FILTERS, anyServerFilter, fieldsFor, filterParams, onExpiryDay, filterRows, greeksStaleLabel } from '@/lib/chainDisplay'
+import { CHAIN_NOT_AVAILABLE, FEED_VALUE_KEYS, GREEKS_BASIS_LINES, GREEKS_MISSING_LINES, MONEYNESS, NO_FILTERS, anyServerFilter, fieldsFor, filterParams, onExpiryDay, filterRows, greeksStaleLabel } from '@/lib/chainDisplay'
 const ROWS_MISSING_LABELS = {
   SPOT_MISSING: 'The underlying price is missing, so no strikes can be chosen yet.',
   EXPIRY_UNKNOWN: 'This expiry is not in the catalogue.',
@@ -153,6 +153,8 @@ const spotTime = computed(() => {
 
 // RD-048: a missing value carries its short reason in place (tooltip + data-reason), per code in lib/dataHealthText.js.
 const text = (v) => (typeof v === 'string' || typeof v === 'number' ? String(v) : VALUE_UNAVAILABLE)
+// D-55: Change / OI Change missing from the feed say "not available"; a side with no contract keeps the dash
+const cellText = (cell, key) => (!cell ? VALUE_UNAVAILABLE : FEED_VALUE_KEYS.includes(key) && cell[key] == null ? CHAIN_NOT_AVAILABLE : text(cell[key]))
 const healthWord = (cell) => shownHealth(cell?.health, view.value?.market_closed)
 // D-19: the time of the cell's last trade as the server gave it (HH:MM:SS, India time); nothing when the server sent none
 // a trade from another India day carries its date (istStamp); `at`, the cell's own quote time, names that day
@@ -209,9 +211,9 @@ const resetFilters = () => (filters.value = { ...NO_FILTERS })
           <option v-for="[code, label] in MONEYNESS" :key="code" :value="code">{{ label }}</option>
         </select>
       </label>
-      <label>Min OI <input v-model.lazy="filters.minOi" type="number" min="0" class="field ml-1 w-24" data-testid="filter-min-oi" /></label>
-      <label>Min volume <input v-model.lazy="filters.minVolume" type="number" min="0" class="field ml-1 w-24" data-testid="filter-min-volume" /></label>
-      <label>Min premium <input v-model.lazy="filters.minLtp" type="number" min="0" step="0.05" class="field ml-1 w-24" data-testid="filter-min-ltp" /></label>
+      <label>Min OI <input v-model="filters.minOi" type="number" min="0" class="field ml-1 w-24" data-testid="filter-min-oi" /></label>
+      <label>Min volume <input v-model="filters.minVolume" type="number" min="0" class="field ml-1 w-24" data-testid="filter-min-volume" /></label>
+      <label>Min premium <input v-model="filters.minLtp" type="number" min="0" step="0.05" class="field ml-1 w-24" data-testid="filter-min-ltp" /></label>
       <label><input v-model="filters.bidAndAsk" type="checkbox" data-testid="filter-bid-ask" /> Has bid and ask</label>
       <label><input v-model="details" type="checkbox" data-testid="details-toggle" /> Details</label>
       <button type="button" class="btn btn-sm" data-testid="filter-reset" @click="resetFilters">Clear filters</button>
@@ -272,11 +274,11 @@ const resetFilters = () => (filters.value = { ...NO_FILTERS })
               </template>
             </td>
             <td v-for="[key] in SIDE_FIELDS" :key="'c' + key" class="ui-num px-2 py-1" :data-testid="'ce-' + key" :title="missingReason(row.ce, key) || greeksStaleLabel(view, key) || undefined" :data-reason="missingCode(row.ce, key)" :data-stale="greeksStaleLabel(view, key) || null">
-              {{ row.ce ? text(row.ce[key]) : VALUE_UNAVAILABLE }}<span v-if="key === 'ltp' && healthWord(row.ce)" class="ml-1 text-xs text-ink-muted" data-testid="ce-health">{{ healthSentence(healthWord(row.ce)) }}</span><span v-if="key === 'ltp' && lastTrade(row.ce)" class="block text-xs text-ink-muted" data-testid="ce-last-trade">Last trade {{ lastTrade(row.ce) }}</span>
+              {{ cellText(row.ce, key) }}<span v-if="key === 'ltp' && healthWord(row.ce)" class="ml-1 text-xs text-ink-muted" data-testid="ce-health">{{ healthSentence(healthWord(row.ce)) }}</span><span v-if="key === 'ltp' && lastTrade(row.ce)" class="block text-xs text-ink-muted" data-testid="ce-last-trade">Last trade {{ lastTrade(row.ce) }}</span>
             </td>
             <td class="num px-3 py-1 text-center font-medium" :class="isAtm(row) ? 'bg-accent-soft text-accent' : 'bg-surface-muted'" data-testid="strike">{{ strikeLabel(row.strike) }}</td>
             <td v-for="[key] in SIDE_FIELDS" :key="'p' + key" class="ui-num px-2 py-1" :data-testid="'pe-' + key" :title="missingReason(row.pe, key) || greeksStaleLabel(view, key) || undefined" :data-reason="missingCode(row.pe, key)" :data-stale="greeksStaleLabel(view, key) || null">
-              {{ row.pe ? text(row.pe[key]) : VALUE_UNAVAILABLE }}<span v-if="key === 'ltp' && healthWord(row.pe)" class="ml-1 text-xs text-ink-muted" data-testid="pe-health">{{ healthSentence(healthWord(row.pe)) }}</span><span v-if="key === 'ltp' && lastTrade(row.pe)" class="block text-xs text-ink-muted" data-testid="pe-last-trade">Last trade {{ lastTrade(row.pe) }}</span>
+              {{ cellText(row.pe, key) }}<span v-if="key === 'ltp' && healthWord(row.pe)" class="ml-1 text-xs text-ink-muted" data-testid="pe-health">{{ healthSentence(healthWord(row.pe)) }}</span><span v-if="key === 'ltp' && lastTrade(row.pe)" class="block text-xs text-ink-muted" data-testid="pe-last-trade">Last trade {{ lastTrade(row.pe) }}</span>
             </td>
             <td class="whitespace-nowrap px-1 py-1" data-testid="sel-pe">
               <template v-if="row.pe">
