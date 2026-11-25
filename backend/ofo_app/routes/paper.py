@@ -970,7 +970,7 @@ async def _book(db: Any, stored: Any, orders: Sequence[paper_store.StoredOrder],
     charges = _charges(orders, found, underlying, rates)
     figures = (base | _summary(orders, found, prices, base, snapshot, underlying, exited_absent=False, rates=rates)
                | charges | _after(orders, found, prices, charges, underlying, rates))
-    figures |= await _after_close(db, answered_at, figures)
+    figures |= await settle_line_after_close(db, answered_at, figures)
     return PaperBookOut.model_validate(figures | {
         "strategy_id": stored.id, "name": sf.shown_name(stored.name), "underlying": underlying,
         "answered_at": answered_at, "orders": _order_rows(orders, found),
@@ -1027,7 +1027,7 @@ async def list_paper_strategies(db: Annotated[Any, Depends(get_db)],  # noqa: PL
         open_legs = sum(1 for p in figures["positions"] if p["net_quantity"] != 0)
         charges = _charges(b.orders, found, b.underlying, rates)
         figures |= charges | summary | _after(b.orders, found, prices, charges, b.underlying, rates)
-        figures |= await _after_close(db, answered, figures)
+        figures |= await settle_line_after_close(db, answered, figures)
         out.append(figures | {"strategy_id": b.strategy_id, "name": sf.shown_name(b.name), "underlying": b.underlying,
                               "held": _held_out(held_rows.get(b.strategy_id)),
                               "status_word": _paper_word(b.status, figures["positions"]),
@@ -1040,7 +1040,7 @@ async def list_paper_strategies(db: Annotated[Any, Depends(get_db)],  # noqa: PL
     return PaperListOut.model_validate({"strategies": out, "totals": totals, "today": today, "answered_at": now()})
 
 
-async def _after_close(db: Any, now: datetime.datetime, figures: Mapping[str, Any]) -> dict[str, Any]:
+async def settle_line_after_close(db: Any, now: datetime.datetime, figures: Mapping[str, Any]) -> dict[str, Any]:
     """D-64: the line that replaces the raw "prices not live" / "cannot be used: expired" texts after the 15:30 close,
     while a leg expiring today is still open (the settlement at ``facts.paper_settle_from`` closes it). The market clock
     is ``ofo.market_calendar``; the legs are the book's own open positions."""
