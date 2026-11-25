@@ -124,11 +124,13 @@ def test_d21_no_change_shows_before_equal_to_after_and_no_reason_line():
 
 
 def _all_blocks():
-    sc = load("ADJ-02")
-    guards = adjustment_check.guards_of_body(pe.body_from_fixture(json.loads((FIX / "_playbooks.json").read_text(
-        encoding="utf-8")), "ic"))
-    guards.pop("roll_debit_limit", None)
-    out = [("ADJ-02+playbook", post(client(sc, guards=guards)).json())]
+    def guards():
+        g = adjustment_check.guards_of_body(pe.body_from_fixture(json.loads((FIX / "_playbooks.json").read_text(
+            encoding="utf-8")), "ic"))
+        g.pop("roll_debit_limit", None)
+        return g
+    # ADJ-09 is in profit with the playbook's time reached: Take profit (A-24, A-25) and Time exit (A-35) are built there
+    out = [(f"{sid}+playbook", post(client(load(sid), guards=guards())).json()) for sid in ("ADJ-02", "ADJ-09")]
     out.extend((sid, post(client(load(sid))).json()) for sid in ("ADJ-02", "ADJ-13"))
     return out
 
@@ -148,7 +150,7 @@ def test_d21_every_approach_id_has_the_eight_measures_or_states_its_refusal():
                 assert r["direction"] in ("up", "down", "same", "not_available"), (label, a, r)
                 if r["direction"] == "not_available":  # never a filled default: the reason is stated
                     assert r["unavailable_reason"], (label, a, r)
-    assert seen_built >= {a for a in APPROACH_IDS if a not in ("A-24", "A-25", "A-35")}, seen_built
+    assert seen_built == set(APPROACH_IDS), set(APPROACH_IDS) - seen_built  # every one of the 15 shows its block somewhere
 
 
 def test_d21_a_measure_that_cannot_be_worked_out_says_not_available_with_its_reason():
