@@ -336,7 +336,7 @@ caller of `owns` exists; the text guard matches the exact bind names).
   (regenerated: digest 40984 bytes, register 1036 rows, ADR-330 in both). OpenAPI and reply inventory regenerate with no
   diff; ruff ratchet OK.
 
-## Phase 8: guards: DONE (see the Phase 8 review line below)
+## Phase 8: guards: DONE (Sonnet review FAIL on one major, fixed in one round)
 
 Built in two worktrees from `5354f722` before the Lane B merge (G1, G2, G4 in `tests/`; G3 rules 1-3 in
 `frontend/tests/one-door-screens.test.js`), merged and pushed at `ab2e61cc`; G3 rule 4 (one duplicate-leg dialog, one
@@ -344,15 +344,23 @@ Built in two worktrees from `5354f722` before the Lane B merge (G1, G2, G4 in `t
 
 | Guard | File | Exemptions (category) | Mutation proof |
 |---|---|---|---|
-| G1 price reads only in `read_market` | `tests/test_price_reads_one_door.py` | 43 keys: own_process 7, display 26, real_path 5, awaiting_phase_9 1 (`entry_facts_now`, deferred #735 family, plan row 13) | bad sample 1 problem; home none; alias, getattr, unparsable caught; stale entry; copytree of `routes/paper.py` names `_new_price_reader` |
+| G1 price reads only in `read_market` | `tests/test_price_reads_one_door.py` | 43 keys: own_process 7, display 27 (incl. `routes/tracking.py::_snapshot`: panel display read and, via `exit_snapshot`, the paper exit door's read), real_path 4, awaiting_phase_8 1 (`entry_facts_now`, plan section 6 row 13) | bad sample 1 problem; home none; alias, getattr, unparsable caught; stale entry; copytree of `routes/paper.py` names `_new_price_reader` |
 | G2 paper `NewOrder` only in the door and the store homes | `tests/test_paper_orders_one_door.py` | 1 (own_process: `routes/tracking.py::exit_tracking`, a signed held quantity, not a side) | 11 tests: bad build, home, alias, `x = NewOrder`, IfExp, `_opposite`, stale, a home that stopped building |
 | G3 screens: not-live wording, exit POST, one book reader, one dup dialog | `frontend/tests/one-door-screens.test.js` | 3 (PaperStrategies `NO_TOTAL` display; `paperDrafts.readPaperBook` own_process; `LiveStrategyCard.rereadBook` display) | per rule: bad sample, home, stale, fail closed |
 | G4 one caller per alert writer | `tests/test_alert_writers_one_caller.py` | 0 | each writer outside its home; four alias forms; `paper_monitor.notify` not matched |
 | G5 | existing D-57 guards | - | - |
 | Lane B emitter guard | `frontend/tests/leg-emitters-guard.test.js` (plan 5.5, Lane B row) | - | MISSING: the file does not exist on any branch (Lane B did not build it; `RESULTS-lane-b.md` does not name it); an `it.todo` in `one-door-screens.test.js` marks it, and the vitest include pattern would collect it. Left for Lane B (its ownership row) |
 
-Known limits (stated in the files): G3 is a text scan (a URL held in a variable first is not seen); the category names
-`real_path` for the paper exit read and `awaiting_phase_9` for `entry_facts_now` are the builder's labels.
+Review (Sonnet, fresh, adversarial): FAIL on one major, F1: G2 caught `NewOrder` only as a direct call or a plain
+assignment (`functools.partial(NewOrder, ...)`, `map(NewOrder, rows)`, a subclass, a constant `getattr` slipped
+through). Fix round (`5f00939c`..`fc1cb1eb`, merged `99788c62`): G2 flags every non-import reference (type hints
+excluded; 9 mutation forms, 10 tests red on the old scan); G1 labels corrected (`tracking._snapshot` is `display`,
+`entry_facts_now` `awaiting_phase_8`); G3 scans `.vue` template text, recognises method shorthand (a POST in another
+`tracking.js` method is no longer credited to `addToPaper`), `fetch(` forms, and `sameContract:` / `as sameContract`.
+Stated limits (in the files): non-constant `getattr` names; an exempt function imported and called from another module;
+keys do not count sites; side flips only as `IfExp`; `dataclasses.replace` copies; G3 is a text scan (a URL held in a
+variable is not seen). Gates after the fix: Python guards `54 passed`; `one-door-screens.test.js` `28 passed, 1 todo`;
+`-m repo_scan tests` `1525 passed`; ruff ratchet OK.
 
 ## Final state (26 Nov, Lane A)
 
