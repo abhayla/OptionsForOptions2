@@ -17,7 +17,7 @@ vi.mock('@/services/api', async (importActual) => {
   return { ...actual, default: { get: reply('GET'), post: reply('POST'), delete: reply('DELETE') } }
 })
 
-import { TRACKING_REFRESH_MS, PAPER_PRICE_REASON } from '@/lib/tracking'
+import { TRACKING_REFRESH_MS, PAPER_PRICE_REASON, PAPER_PRICE_ZERO_REASON } from '@/lib/tracking'
 import { withPriceTexts } from './_priceTexts'
 import PaperStrategies from '@/components/strategy/PaperStrategies.vue'
 
@@ -83,7 +83,8 @@ describe('Stops panel', () => {
     for (const bad of ['0', '-5', '24500.07', 'abc', '0.00']) {
       await t(w, 'ce-above').setValue(bad)
       expect(t(w, 'ce-save').attributes('disabled')).toBeDefined()
-      expect(t(w, 'ce-reason').text()).toBe('Enter a price in steps of 0.05')
+      // D-58: a zero price has its own reason, every other bad text keeps the steps reason
+      expect(t(w, 'ce-reason').text()).toBe(['0', '0.00'].includes(bad) ? PAPER_PRICE_ZERO_REASON : 'Enter a price in steps of 0.05')
     }
     await t(w, 'ce-above').setValue('')
     await t(w, 'ce-below').setValue('24000')

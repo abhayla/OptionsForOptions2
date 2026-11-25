@@ -185,7 +185,10 @@ def condition_text(s: store.Suggestion) -> Any:
     shown = s.threshold if s.limit is None else s.limit
     found = s.target if s.trigger_id == "T-07" else None  # ADR-294 (2): the figures it was shown with
     figures = None if found is None else TargetFigures(*found)
-    return condition_line(s.trigger_id, s.label, s.unit, format(s.value, "f"), format(shown, "f"), s.beyond, figures)
+    label = s.label
+    if is_day_rule_id(s.rule_id) and label in (None, s.rule_id):  # D-58: a valued day rule names itself, never its id
+        label = day_rule_words(s.rule_id)
+    return condition_line(s.trigger_id, label, s.unit, format(s.value, "f"), format(shown, "f"), s.beyond, figures)
 
 
 def _record(s: store.Suggestion, paper: bool) -> dict:

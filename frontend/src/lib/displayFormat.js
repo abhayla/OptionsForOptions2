@@ -132,6 +132,12 @@ export function istTime(iso) {
   return `${p.day} ${MONTHS[new Date(ms + 19800000).getUTCMonth()]} ${p.year}, ${p.hour}:${p.minute}:${p.second} IST`
 }
 
+/** D-57: today's date as 'YYYY-MM-DD' from the browser's calendar day. A date KEY for day arithmetic, never shown to a
+ *  reader; it lives here so that this file stays the only place a locale date function is called. */
+export function localDay(date = new Date()) {
+  return date.toLocaleDateString('en-CA')
+}
+
 /** An ISO instant (with an offset or Z) as 'HH:MM:SS' in India time, or null when it cannot be read (never the raw string,
  *  never the browser clock). The time part of istTime. */
 export function istClock(iso) {

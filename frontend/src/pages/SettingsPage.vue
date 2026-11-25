@@ -7,6 +7,7 @@
 import PageHeader from '@/components/common/PageHeader.vue'
 import { onMounted, reactive, ref } from 'vue'
 import api from '@/services/api'
+import { istTime } from '@/lib/displayFormat'
 import { SETTINGS_TIMED_OUT_TEXT } from '@/lib/sharedStateText'
 import ErrorMessage from '@/components/common/ErrorMessage.vue'
 
@@ -52,7 +53,7 @@ function formFor(key) {
 }
 
 function when(iso) {
-  return iso ? new Date(iso).toLocaleString('en-IN', { timeZone: 'Asia/Kolkata', dateStyle: 'medium', timeStyle: 'short' }) + ' IST' : ''
+  return iso ? istTime(iso) : '' // D-57: the one formatter
 }
 
 async function load() {

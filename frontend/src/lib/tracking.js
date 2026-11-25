@@ -20,6 +20,7 @@ export const PAPER_NOT_REAL_TEXT = 'This is not a real trade. Paper orders use n
 export const PAPER_EXIT_CHECKING_TEXT = 'Checking whether this exit leaves a sold option without protection...'
 export const PAPER_EXIT_UNCHECKED_TEXT = 'The app could not check whether this exit leaves a sold option without protection. You can still confirm.'
 export const PAPER_PRICE_REASON = 'Enter a price in steps of 0.05'
+export const PAPER_PRICE_ZERO_REASON = 'A price of 0 cannot be used. Enter 0.05 or more' // pending owner read (D-58): a zero is not a step problem
 export const PAPER_LOTS_REASON = 'Enter whole lots, 1 or more'
 export const PAPER_ADDED_TEXT = 'Added to Paper'
 // a typed price: digits with at most two decimals whose last decimal is 0 or 5 (a multiple of 0.05), and not zero. Judged on
@@ -29,6 +30,11 @@ const ZERO_TEXT = /^0+(?:\.0+)?$/
 export function paperPriceOk(text) {
   const typed = String(text ?? '').trim()
   return PRICE_TEXT.test(typed) && !ZERO_TEXT.test(typed)
+}
+/** The reason a typed price is refused, or '' when it is fine: zero has its own words (D-58), any other bad text the steps reason. */
+export function paperPriceReason(text) {
+  if (paperPriceOk(text)) return ''
+  return ZERO_TEXT.test(String(text ?? '').trim()) ? PAPER_PRICE_ZERO_REASON : PAPER_PRICE_REASON
 }
 export const paperLotsOk = (text) => /^[1-9]\d{0,5}$/.test(String(text ?? '').trim())
 

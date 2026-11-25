@@ -6,13 +6,16 @@
 <script setup>
 import { computed, onMounted, ref, watch } from 'vue'
 import api, { NEUTRAL_ERROR } from '@/services/api'
-import { PAPER_PRICE_REASON, paperPriceOk } from '@/lib/tracking'
+import { paperPriceOk, paperPriceReason } from '@/lib/tracking'
 
 const props = defineProps({
   strategyId: { type: Number, required: true },
   underlying: { type: String, default: '' },
   // the strategy's open legs: { index, label, contractId }
   legs: { type: Array, default: () => [] },
+  // D-44: contract id -> the leg label the form rows use (every position of the strategy, open or closed), so the list names a
+  // stop's leg the same way; a contract not in it keeps the server's contract text
+  legNames: { type: Object, default: () => ({}) },
   // D-05: the parent list's latest-started read token and the token of its last good read; a "Not saved" line clears only
   // when a good read is set and is not the token stamped at the failure (reads never overlap, so a different good token
   // means a read started after the failure; a failed refresh does not move goodReadToken)
@@ -39,9 +42,10 @@ const setStop = (i, patch) => { stop.value = { ...stop.value, [i]: { ...stopOf(i
 const ceReason = computed(() => {
   const set = [above.value, below.value].map(typed).filter(Boolean)
   if (!set.length) return AT_LEAST_ONE
-  return set.every(paperPriceOk) ? '' : PAPER_PRICE_REASON
+  const bad = set.find((x) => !paperPriceOk(x))
+  return bad === undefined ? '' : paperPriceReason(bad)
 })
-const stopReason = (i) => (paperPriceOk(stopOf(i).level) ? '' : PAPER_PRICE_REASON)
+const stopReason = (i) => paperPriceReason(stopOf(i).level)
 
 // D-05: a Save ends in exactly one line: "Saved: ...", "Already set: ..." or "Not saved: ..." (ADR-317 (5))
 const NO_ANSWER = 'Not saved: could not get an answer from the server. Your levels are still in the boxes, press Save again.'
@@ -153,7 +157,7 @@ async function keep(t) {
       <p v-if="triggers && !triggers.length" class="text-xs text-ink-muted" data-testid="stops-empty">No stops set.</p>
       <ul v-else-if="triggers">
         <li v-for="t in triggers" :key="t.id" class="flex flex-wrap items-center gap-2 border-b border-line py-1" data-testid="trigger-row">
-          <span>{{ t.kind === 'leg_stop' ? (t.contract_text ?? 'Leg stop') : 'Conditional exit' }}</span>
+          <span>{{ t.kind === 'leg_stop' ? (legNames[t.contract_id] ?? t.contract_text ?? 'Leg stop') : 'Conditional exit' }}</span>
           <span class="font-medium" data-testid="trigger-direction">{{ t.direction === 'above' ? 'Above' : t.direction === 'below' ? 'Below' : '' }}</span>
           <span data-testid="trigger-level">{{ t.level_text }}</span>
           <span class="rounded bg-surface-muted px-1" data-testid="trigger-state">{{ t.state }}</span>

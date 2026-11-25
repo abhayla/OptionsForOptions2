@@ -1695,7 +1695,7 @@ _EXPLANATIONS: tuple[ExplanationTemplate, ...] = (
     ExplanationTemplate("limit_already_true_after", "values_seen",
                         "{line}. Already true after adjustment {n}: alerts after it clears and crosses again",
                         {"line": Explained, "n": Amount}),
-    ExplanationTemplate("check_as_of", "values_seen", "As of {time} IST", {"time": ClockSeconds}),
+    ExplanationTemplate("check_as_of", "values_seen", "As of {time} IST", {"time": ClockHms}),
     ExplanationTemplate("stop_fired_loss", "values_seen",
                         "Stop reached: loss now {loss} ({loss_pct} % of max loss); stop line {stop} ({stop_pct} % of max loss)",
                         {"loss": Rupees, "loss_pct": Amount, "stop": Rupees, "stop_pct": Amount}),
@@ -2187,7 +2187,7 @@ _EXPLANATIONS: tuple[ExplanationTemplate, ...] = (
     ExplanationTemplate("adjust_prices_unknown_age", "values_seen",
                         "Prices are not live (no recent update): figures below are not live."),
     ExplanationTemplate("adjust_prices_as_of", "values_seen", "as of {time}", {"time": HourMinute}),
-    ExplanationTemplate("adjust_prices_from", "values_seen", "prices from {time}", {"time": ClockSeconds}),
+    ExplanationTemplate("adjust_prices_from", "values_seen", "prices from {time}", {"time": ClockHms}),
     # D-25 (ADR-294 (4)): Take profit's basis, both figures named
     ExplanationTemplate("adjust_take_profit_basis", "values_seen",
                         "Whole trade closed at the planned prices: {before} before charges (the figure the profit test "

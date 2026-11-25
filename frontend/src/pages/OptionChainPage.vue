@@ -20,7 +20,7 @@ import { UNAVAILABLE_LABEL, isPermitted, reasonLine } from '@/lib/chainUnavailab
 import { UNDERLYINGS } from '@/lib/underlyings'
 import api from '@/services/api'
 import { healthSentence, missingCode, missingReason, shownHealth } from '@/lib/dataHealthText'
-import { istStamp, setShownDate, strikeLabel } from '@/lib/displayFormat'
+import { istClock, istStamp, setShownDate, strikeLabel } from '@/lib/displayFormat'
 import MarketClosedBanner from '@/components/states/MarketClosedBanner.vue'
 import { useSettingsValues } from '@/stores/settingsValues'
 import { strikeRangesOf } from '@/lib/settingsValues'
@@ -159,7 +159,7 @@ const rowsMissing = computed(() => {
 const days = computed(() => (expiry.value ? daysLeft(expiry.value) : null))
 const spotTime = computed(() => {
   const at = (view.value ?? null)?.spot_at ?? null
-  return at ? new Date(at).toLocaleTimeString() : ''
+  return at ? (istClock(at) ?? '') : '' // D-57: 24-hour India time from the one formatter
 })
 
 // RD-048: a missing value carries its short reason in place (tooltip + data-reason), per code in lib/dataHealthText.js.

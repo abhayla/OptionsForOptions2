@@ -17,7 +17,8 @@ vi.mock('@/services/api', async (importActual) => {
   return { ...actual, default: { get: reply('GET'), post: reply('POST'), delete: reply('DELETE') } }
 })
 
-import { PAPER_PRICE_REASON, PAPER_PRICE_ZERO_REASON, heldView, paperPriceReason } from '@/lib/tracking'
+import HeldNote from '@/components/strategy/HeldNote.vue'
+import { PAPER_PRICE_REASON, PAPER_PRICE_ZERO_REASON, paperPriceReason } from '@/lib/tracking'
 import LegList from '@/components/strategy/LegList.vue'
 import { withPriceTexts } from './_priceTexts'
 import PaperStrategies from '@/components/strategy/PaperStrategies.vue'
@@ -88,8 +89,9 @@ describe('D-58: zero price and held broker', () => {
   })
   it('the held broker name is shown without the API quotes', () => {
     const held = { entry_at: '2026-11-23T04:00:00Z', rules_start_at: null, broker: '"Zerodha"' }
-    expect(heldView(held).broker).toBe('Zerodha')
-    expect(heldView({ ...held, broker: null }).broker).toBeNull()
+    const w = mount(HeldNote, { props: { held } })
+    expect(w.get('[data-testid="held-broker-name"]').text()).toBe('Zerodha')
+    expect(mount(HeldNote, { props: { held: { ...held, broker: null } } }).find('[data-testid="held-broker-name"]').exists()).toBe(false)
   })
 })
 

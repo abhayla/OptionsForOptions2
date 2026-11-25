@@ -1488,9 +1488,9 @@ _PLAYBOOK_TEMPLATES: tuple[MessageTemplate, ...] = (
           "No short leg is priced within the buy-back limit of {limit} your playbook sets for this stage.",
           _ADJ_REFUSED, _ADJ_BLOCKED, _ADJ_PICK_OTHER, {"limit": Money}),
     _gate("adjust_time_exit_not_set", _UI, 184,
-          "Your playbook sets no time exit, so this approach is not built.",
+          "This approach is not built because your playbook sets no exit time.",
           _ADJ_REFUSED, _ADJ_BLOCKED, _ADJ_PICK_OTHER, {}),
-    _gate("adjust_time_exit_not_yet", _UI, 185, "The time exit is offered on expiry day from {time}.",
+    _gate("adjust_time_exit_not_yet", _UI, 185, "This approach opens on the expiry day, from {time}; it is not offered before then.",
           _ADJ_REFUSED, _ADJ_BLOCKED, _ADJ_PICK_OTHER, {"time": ClockTime}),
     # ADR-239 (GC-IC1 step 3): the roll approaches A-02 and A-04
     _gate("adjust_roll_short_past_wing", _UI, 186,

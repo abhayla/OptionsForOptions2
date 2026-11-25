@@ -151,7 +151,7 @@
                 <p v-if="stale && g.openCount" class="text-xs text-ink-muted" data-testid="paper-exit-reason">{{ NOT_LIVE_EXIT }}</p>
               </div>
             </div>
-            <PaperStops v-if="stopsOpen[g.id]" :strategy-id="g.id" :underlying="g.underlying" :legs="stopLegs(g)" :latest-read-token="latestReadToken" :good-read-token="goodReadToken" />
+            <PaperStops v-if="stopsOpen[g.id]" :strategy-id="g.id" :underlying="g.underlying" :legs="stopLegs(g)" :leg-names="legNamesOf(g)" :latest-read-token="latestReadToken" :good-read-token="goodReadToken" />
           </template>
         </div>
       </template>
@@ -245,7 +245,8 @@ const latestReadToken = shallowRef(null)
 const goodReadToken = shallowRef(null)
 const stopsOpen = ref({})
 // R-10: a Stop row for each OPEN contract, keyed by the contract id the reply carries (a digit string sent as is)
-const stopLegs = (g) => g.positions.filter((p) => p.open).map((p) => ({ index: p.contractId, label: p.name, contractId: String(p.contractId) }))
+const legNamesOf = (g) => Object.fromEntries(g.positions.map((p) => [p.contractId, p.name])) // D-44: the one leg label, for the form and the list
+const stopLegs = (g) => g.positions.filter((p) => p.open).map((p) => ({ index: p.contractId, label: legNamesOf(g)[p.contractId], contractId: String(p.contractId) }))
 
 const ticks = ref({})
 const isTicked = (id, c) => !!ticks.value[id]?.includes(c)

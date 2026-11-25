@@ -6,6 +6,7 @@
 // reconnect backoff is the strategy socket's (imported from useStrategyLive.js, not copied).
 import { onBeforeUnmount, ref } from 'vue'
 import api from '@/services/api'
+import { localDay } from '@/lib/displayFormat'
 import { createLiveSocket, useReconnecting, useReconnectingText } from './useStrategyLive'
 
 export const CHAIN_LIVE_PATH = '/api/market/chain/live'
@@ -151,5 +152,5 @@ export function useChainAnswer({ url = chainLiveUrl(), WebSocketImpl } = {}) {
 /** Whole days from `today` to the expiry date (date parts only; a label, never a price). */
 export function daysLeft(expiry, today = new Date()) {
   const day = (iso) => Date.parse(`${iso}T00:00:00Z`) // both at UTC midnight: the difference is whole days
-  return (day(expiry) - day(today.toLocaleDateString('en-CA'))) / 86400000
+  return (day(expiry) - day(localDay(today))) / 86400000
 }
