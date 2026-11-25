@@ -2,7 +2,7 @@
 zero at the column's places (delta 2, gamma 4) showed "0.00" / "0.0000" / "-0.0001" and hid the real number. One
 formatter (ofo.table.model._display_number, the cell text of the table, the target readout and the paper card) keeps two
 significant digits for such a value, as the option chain's gamma already does (chain_push._gamma_shown). A value that
-rounds to something shows exactly as before; a true zero stays 0.00 / 0.0000."""
+rounds to more than one step shows exactly as before; a true zero stays 0.00 / 0.0000."""
 from decimal import Decimal as D
 
 import pytest
@@ -16,6 +16,7 @@ from ofo.table.model import display_number
     (D("0.00004"), 4, "0.000040"),      # gamma that rounds to 0.0000
     (D("-0.00006"), 4, "-0.000060"),    # what the screen showed as -0.0001, kept as the real two digits
     (D("0.000012345"), 4, "0.000012"),
+    (D("0.005"), 2, "0.0050"),          # would show as one step (0.01): also keeps its two digits
 ])
 def test_a_real_value_that_rounds_to_zero_shows_two_significant_digits(value: D, places: int, shown: str) -> None:
     assert str(display_number(value, places)) == shown
@@ -23,7 +24,7 @@ def test_a_real_value_that_rounds_to_zero_shows_two_significant_digits(value: D,
 
 @pytest.mark.parametrize(("value", "places", "shown"), [
     (D("0"), 2, "0.00"), (D("0.0000"), 4, "0.0000"), (D("-0.0000"), 4, "0.0000"),   # a true zero stays zero, never signed
-    (D("0.005"), 2, "0.01"), (D("0.0001"), 4, "0.0001"), (D("-0.0001"), 4, "-0.0001"),  # rounds to non-zero: as before
+    (D("0.0001"), 4, "0.0001"), (D("-0.0001"), 4, "-0.0001"), (D("0.0150"), 2, "0.02"),  # exact one step, or more than one step: as before
     (D("12.345"), 2, "12.35"), (D("-65.5"), 2, "-65.50"),
 ])
 def test_everything_else_shows_as_before(value: D, places: int, shown: str) -> None:
