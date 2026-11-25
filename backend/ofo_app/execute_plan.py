@@ -34,7 +34,6 @@ from ofo.execution.price_check import circuit_block
 from ofo.instruments.catalogue import Catalogue
 from ofo.instruments.models import ZERODHA, InstrumentId
 from ofo.marketdata.quote_stamp import quote_time
-from ofo.tracking.closing import open_legs_to_close
 
 #: Zerodha's order statuses after which an order can no longer fill (an allow-list; anything else is open).
 TERMINAL_ORDER_STATUSES = frozenset({"COMPLETE", "CANCELLED", "REJECTED"})
@@ -223,8 +222,8 @@ def version_state(action: str, held: Mapping[str, int]) -> VersionState:
 
 def exit_legs(held: Mapping[str, int], instrument_of: Callable[[str], InstrumentId]) -> list[LegToPrice]:
     """ADR-105: an exit closes exactly the net, opposite side, per contract (sorted for a stable basket order)."""
-    return [LegToPrice(instrument_of(c.key), Action(c.side), c.quantity, None)
-            for c in open_legs_to_close(dict(sorted(held.items())))]
+    return [LegToPrice(instrument_of(contract), Action.SELL if net > 0 else Action.BUY, abs(net), None)
+            for contract, net in sorted(held.items()) if net != 0]
 
 
 ContractKey = tuple  # (underlying, Instrument, strike | None, expiry): the W-091 reconcile key
