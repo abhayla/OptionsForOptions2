@@ -26,11 +26,12 @@ const row = (over) => ({ id: 1, name: 'Iron condor: system', type: 'ic', type_na
 const OWN = row({ id: 7, name: '"IC mine"', is_system: false, status: null, active: false, version: 3 })
 const PAST = 'Testing against past expiries is not in this version: it needs licensed historical option data.'
 
-async function open() {
+async function open(after = () => {}) {
   answers['GET /playbooks/labels'] = LABELS
   answers['GET /playbooks/types'] = { types: [{ key: 'ic', name: 'Iron condor', active_id: 1, has_system: true }] }
   answers['GET /playbooks'] = { playbooks: [row({}), OWN] }
   for (const p of [row({}), OWN]) answers[`GET /playbooks/${p.id}`] = { ...p, body: JSON.parse(JSON.stringify(BODY)) }
+  after()
   const w = mount(AdjustmentsPage, { global: { provide: { [routeLocationKey]: { query: {} } } } })
   await flushPromises()
   await w.get('[data-testid=pb-pick] option[value="7"]').setSelected()
@@ -89,5 +90,11 @@ describe('D-54 the Test button is gone, the line says why', () => {
     expect(w.find('[data-testid=pb-run-test]').exists()).toBe(false)
     expect(w.get('[data-testid=pb-past-note]').text()).toBe(PAST)
     expect(w.text()).not.toMatch(/Test this playbook|Test unsaved changes/)
+  })
+  it('when the labels read fails the line still shows, from the browser\'s own constant', async () => {
+    const w = await open(() => { answers['GET /playbooks/labels'] = { message: 'down', status: 503, parts: { what_happened: 'The labels could not be read.', impact: 'i', what_is_blocked: 'b', next_action: 'n' } } })
+    await w.get('[data-testid=pb-step-test]').trigger('click')
+    expect(w.find('[data-testid=pb-run-test]').exists()).toBe(false)
+    expect(w.get('[data-testid=pb-past-note]').text()).toBe(PAST)
   })
 })

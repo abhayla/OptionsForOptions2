@@ -87,3 +87,24 @@ def test_nothing_today_says_so_and_is_not_a_zero_figure():
     got = today([_item(_s("100.10"), _at(24)), _item(_s("1.00"), _at(25), scenario="PATH-01")])
     assert got["count"] == 0 and got["empty_text"] == "No trades opened or closed today."
     assert today([])["count"] == 0
+
+
+class _Snap:
+    def __init__(self, valuation):
+        self.valuation = valuation
+
+
+def test_the_day_is_the_trading_day_of_the_snapshot_so_a_saturday_answer_shows_fridays_trades():
+    saturday = datetime.datetime(2026, 11, 28, 6, 0, tzinfo=UTC)  # Sat 28 Nov, 11:30 IST
+    friday_close = datetime.datetime(2026, 11, 27, 10, 0, tzinfo=UTC)  # the last quote: Fri 27 Nov 15:30 IST
+    day = paper.today_day([_Snap(friday_close), None], saturday)
+    assert day == datetime.date(2026, 11, 27)
+    got = paper.today_totals([_item(_s("12.00"), _at(27, 5)), _item(_s("1.00"), _at(26, 5))], day)
+    assert (got["count"], got["total_after"]) == (1, D("12.00"))
+
+
+def test_a_weekday_answer_is_unchanged_and_no_snapshot_falls_back_to_the_answers_own_india_date():
+    live = datetime.datetime(2026, 11, 25, 9, 0, tzinfo=UTC)
+    assert paper.today_day([_Snap(live)], NOW) == datetime.date(2026, 11, 25)
+    assert paper.today_day([None], NOW) == datetime.date(2026, 11, 25)
+    assert paper.today_day([], NOW) == datetime.date(2026, 11, 25)

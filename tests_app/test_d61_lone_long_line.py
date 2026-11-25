@@ -10,6 +10,7 @@ from __future__ import annotations
 
 import datetime
 from decimal import Decimal as D
+from types import SimpleNamespace
 
 import pytest
 from ofo.adjustment import what_changes
@@ -67,3 +68,33 @@ def test_route_no_other_approach_carries_the_line():
 def test_route_a_full_exit_after_buy_back_gives_no_line(sid):
     block = post(client(load(sid))).json()["what_changes"].get("A-26")
     assert block is None or not (block["reason_line"] and "no short against it" in block["reason_line"])
+
+
+def _leg_of(x):
+    return PositionLeg(x["side"], x["type"], D(x["strike"]), DAY, 1, D("10"), "X")
+
+
+def test_a27_style_after_state_with_a_lone_long_shows_the_line_on_any_approach():
+    """Round 2: the line follows the resulting legs, not the approach id: A-27 (buy back the cheap shorts)
+    can leave a long call with no short call exactly like A-26."""
+    after = (leg("BUY", "PE", 22400), leg("SELL", "PE", 22600), leg("BUY", "CE", 23650))
+    assert what_changes.lone_long_line(after) == LINE.format(kind="call")
+    for approach_id in ("A-27", "A-26", "A-01"):  # any id: only the legs decide
+        col = SimpleNamespace(built=SimpleNamespace(id=approach_id, after=after))
+        assert what_changes._with_lone_long(col, None) == LINE.format(kind="call"), approach_id
+    kept_after = (leg("SELL", "CE", 1), leg("BUY", "CE", 2))
+    kept = SimpleNamespace(built=SimpleNamespace(id="A-01", after=kept_after))
+    assert what_changes._with_lone_long(kept, None) is None
+
+
+def test_route_the_line_is_on_exactly_the_approaches_whose_after_legs_leave_a_lone_long():
+    body = post(client(load("ADJ-14"))).json()
+    blocks, seen = body["what_changes"], {"with": set(), "without": set()}
+    for a in body["approaches"]:
+        if a.get("refusal") or a["id"] not in blocks:
+            continue
+        lone = what_changes.lone_long_line([_leg_of(x) for x in a["after_legs"]])
+        line = blocks[a["id"]]["reason_line"] or ""
+        assert ("no short against it" in line) == (lone is not None), a["id"]
+        seen["with" if lone else "without"].add(a["id"])
+    assert "A-26" in seen["with"] and {"A-28", "A-29"} <= seen["without"]  # a roll / spread keeps its shorts: no line
