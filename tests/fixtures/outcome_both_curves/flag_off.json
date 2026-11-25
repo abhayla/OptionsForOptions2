@@ -10273,6 +10273,7 @@
    "move_pct_display": null,
    "move_pct_reason": "The move from spot is not available: there is no live index price."
   },
+  "target_not_live_text": "not shown while prices are not live",
   "underlying": "NIFTY",
   "valuation": "2026-10-08T09:20:09+05:30"
  }
