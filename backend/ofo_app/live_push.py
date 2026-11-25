@@ -16,6 +16,7 @@ from __future__ import annotations
 
 import asyncio
 import contextlib
+from collections.abc import Awaitable
 from dataclasses import dataclass
 from typing import Any, Callable, Optional, Protocol
 
@@ -93,24 +94,27 @@ def no_listener(_quote: Any) -> None:
 
 
 async def hold_and_read(fanout: Any, ids: Any, read: Callable[[], Any], done: Callable[[Any], bool],  # noqa: PLR0913
-                        connected: Callable[[], bool], wait_s: float, poll_s: float) -> Any:
+                        connected: Callable[[], bool], wait_s: float, poll_s: float, *,
+                        sleep: Callable[[float], Awaitable[Any]] = asyncio.sleep,
+                        now: Callable[[], float] | None = None) -> Any:
     """THE one hold-and-read of a request read (the paper book's ``_hold_until_ready``, the adjustment check's
     ``adjustment_readers.held_read``): ONE hold of ``ids`` on the shared fan-out; ``read()`` is polled WHILE held and
     the last read taken while held is returned; the hold is ALWAYS released (timeout, error, cancel). Nothing is read
     after the release: a released contract is parked (``QuoteBook.park``), so a read after it answers "no quote"
     (GC-LIVE F-3, GC-IC1 round 3). The read is final when ``done(read)``, the provider disconnects, or ``wait_s``
-    passes. None: the fan-out has no token for an id (KeyError), nothing was held; the caller keeps its own read."""
+    passes. None: the fan-out has no token for an id (KeyError), nothing was held; the caller keeps its own read.
+    ``sleep`` and ``now`` are the wait's seams (the loop's own by default): a test injects both, so it never sleeps."""
     try:
         handle = fanout.subscribe(no_listener, list(dict.fromkeys(ids)), max_queue=1)
     except KeyError:
         return None
     try:
-        loop = asyncio.get_running_loop()
-        deadline = loop.time() + wait_s
+        clock = now or asyncio.get_running_loop().time
+        deadline = clock() + wait_s
         while True:
-            await asyncio.sleep(poll_s)
+            await sleep(poll_s)
             snap = read()
-            if done(snap) or not connected() or loop.time() >= deadline:
+            if done(snap) or not connected() or clock() >= deadline:
                 return snap
     finally:
         with contextlib.suppress(Exception):

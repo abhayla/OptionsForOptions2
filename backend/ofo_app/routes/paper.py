@@ -81,6 +81,7 @@ from pydantic import AwareDatetime, BaseModel, ConfigDict, Field, field_validato
 
 from ofo_app import (
     held_entry_store,
+    market_read,
     paper_limit,
     paper_monitor,
     paper_store,
@@ -110,6 +111,7 @@ from ofo_app.routes.outcome import (
     get_answer_clock,
     get_market_context,
     load_charge_rates,
+    market_state,
 )
 from ofo_app.routes.planned_entry import get_live_feed
 from ofo_app.routes.strategies import StrategyRefused, refused_answer
@@ -117,6 +119,7 @@ from ofo_app.scenario_guard import guard_paper_order
 from ofo_app.underlying import Underlying
 
 _LOG = logging.getLogger(__name__)
+_UNREADABLE = "paper_trigger_price_unreadable"  # ADR-327 (2)
 
 router = APIRouter(route_class=ClosedRoute)
 #: REQ-163 AC-1: a basket naming a suggestion record it may not link (the opportunities routes' own answers)
@@ -1634,49 +1637,75 @@ def _new_triggers(body: TriggerIn, underlying: str, open_ids: Sequence[int]) -> 
     return new
 
 
-async def _already_crossed(db: Any, ctx: MarketContext | None, underlying: str,
-                           new: Sequence[paper_trigger_store.NewTrigger]) -> str | None:
-    """ADR-317 (1): the refusal code when the live price the monitor would compare against has already crossed a new
-    level (the same ``stops.crossed``: at the level counts). Answer states: no market context, the market closed, a
-    read that fails, or a price that is not live -> None (saved, arms at the next live tick: REQ-109 AC-8)."""
-    if ctx is None:
+async def check_trigger_levels(db: Any, ctx: MarketContext | None, feed: LiveFeed | None, underlying: str,  # noqa: PLR0913, PLR0917
+                               new: Sequence[paper_trigger_store.NewTrigger], now: AnswerClock,
+                               wait: market_read.Wait = market_read.DEFAULT_WAIT) -> str | None:
+    """The refusal template id when a new level cannot be saved, else None (ADR-317 (1), ADR-327), judged on the ONE
+    price door ``market_read.read_market`` (the same price the monitor compares with: ``stops.crossed``, at the level
+    counts; a conditional exit on the index, a leg stop only on its own contract's price).
+    Answer states: market closed (the calendar, ``market_state``; no context uses ``now()``) -> None, saved, arms at the
+    next live tick (ADR-327 (3)); market open and no context, a leg with no feed key, a read that raises, or a price not
+    live after asking the feed and waiting up to 3 s (stale, missing) -> ``paper_trigger_price_unreadable`` (ADR-327
+    (2)); a live price at or beyond a level -> ``paper_trigger_already_crossed`` / ``paper_trigger_leg_already_crossed``
+    (a crossed level is reported before an unreadable one: the trader can act on it)."""
+    if market_state(ctx, now() if ctx is None else ctx.clock()).closed:
         return None
+    if ctx is None:
+        return _UNREADABLE
     keys = {c.contract_id: c.feed_key for c in await tracked_contracts.resolve(
         db, sorted({n.contract_id for n in new if n.contract_id is not None}))}
+    leg_keys = [keys.get(n.contract_id) for n in new if n.contract_id is not None]
+    if any(k is None for k in leg_keys):
+        return _UNREADABLE  # no feed key = no live leg price to check against (never the index)
     try:
-        snapshot = read_snapshot(ctx.provider, underlying, sorted({k for k in keys.values() if k is not None}),
-                                 ctx.clock(), ctx.rate, feed_scope(ctx), quality=ctx.forward_quality)
-        if snapshot.market_closed:
-            return None
-        for n in new:
-            if n.contract_id is None:
-                price = paper.price_of(snapshot.spot, underlying)  # a conditional exit is judged on the index
-            elif keys.get(n.contract_id):
-                price = paper.leg_price(snapshot, keys[n.contract_id])  # a leg stop only on its own contract's price
-            else:
-                continue  # no feed key = no live leg price: saved, armed at the next live tick (never the index)
-            if stops.crossed(stops.Trigger(0, 0, n.kind, n.direction, n.level, n.contract_id, n.underlying),  # type: ignore[arg-type]
-                             price):
-                return "paper_trigger_already_crossed" if n.contract_id is None else "paper_trigger_leg_already_crossed"
-    except Exception:  # noqa: BLE001 - any failed read is "no price": the trigger is saved as before
+        read = await market_read.read_market(ctx, feed, underlying, sorted({k for k in leg_keys if k is not None}),
+                                             any(n.contract_id is None for n in new), "trigger_check", wait=wait)
+        return _judge_levels(new, read, keys)
+    except Exception:  # noqa: BLE001 - a read that fails is "cannot be checked": refused in market hours (ADR-327)
         _LOG.exception("paper trigger price read failed")
-    return None
+        return _UNREADABLE
+
+
+def _judge_levels(new: Sequence[paper_trigger_store.NewTrigger], read: market_read.MarketRead,
+                  keys: Mapping[int, str | None]) -> str | None:
+    if read.market_closed:
+        return None
+    unreadable = False
+    for n in new:
+        answer = read.index if n.contract_id is None else read.legs[keys[n.contract_id]]  # type: ignore[index]
+        if answer is None or answer.state != paper.LIVE:
+            unreadable = True
+        elif stops.crossed(stops.Trigger(0, 0, n.kind, n.direction, n.level, n.contract_id, n.underlying),  # type: ignore[arg-type]
+                           market_read.live_price(answer)):
+            return "paper_trigger_already_crossed" if n.contract_id is None else "paper_trigger_leg_already_crossed"
+    return _UNREADABLE if unreadable else None
+
+
+async def _validated_triggers(db: Any, strategy_id: int, body: TriggerIn,
+                              underlying: str) -> list[paper_trigger_store.NewTrigger]:
+    open_ids = _open_ids(await paper_store.load(db, strategy_id))
+    if not open_ids:
+        raise StrategyRefused("paper_trigger_nothing_open")
+    return _new_triggers(body, underlying, open_ids)
 
 
 @router.post("/paper/strategies/{strategy_id}/triggers", status_code=201, response_model=TriggersOut,
              dependencies=[Depends(guard_paper_order)])  # IC e2e 5: scenario mode = own scenario only
-async def add_paper_triggers(strategy_id: int, body: TriggerIn, db: Annotated[Any, Depends(get_db)],
+async def add_paper_triggers(strategy_id: int, body: TriggerIn, db: Annotated[Any, Depends(get_db)],  # noqa: PLR0913, PLR0917
                              user_ref: Annotated[str, Depends(current_user_ref)],
-                             ctx: Annotated[MarketContext | None, Depends(get_market_context)]) -> TriggersOut:
+                             ctx: Annotated[MarketContext | None, Depends(get_market_context)],
+                             feed: Annotated[LiveFeed | None, Depends(get_live_feed)],
+                             now: Annotated[AnswerClock, Depends(get_answer_clock)]) -> TriggersOut:
     stored = await _load_strategy(db, user_ref, strategy_id)
+    underlying = stored.saved.definition.underlying
+    # ADR-327: the price read (up to 3 s) happens BEFORE the strategy row lock, so a slow feed never holds the lock the
+    # monitor's fire waits behind; what the read decided is re-validated under the lock below (D-05: the open legs)
+    if crossed := await check_trigger_levels(db, ctx, feed, underlying,
+                                             await _validated_triggers(db, strategy_id, body, underlying), now):
+        raise StrategyRefused(crossed)
     # D-05: two saves at one instant cannot both pass the read below
     await store.lock_strategy(db, user_ref, strategy_id)
-    open_ids = _open_ids(await paper_store.load(db, strategy_id))
-    if not open_ids:
-        raise StrategyRefused("paper_trigger_nothing_open")
-    new = _new_triggers(body, stored.saved.definition.underlying, open_ids)
-    if crossed := await _already_crossed(db, ctx, stored.saved.definition.underlying, new):
-        raise StrategyRefused(crossed)
+    new = await _validated_triggers(db, strategy_id, body, underlying)
     # ADR-317 (3): the same armed trigger is not stored twice (read under the strategy's row lock taken above)
     armed = {(r.trigger.kind, r.trigger.direction, r.trigger.level, r.trigger.contract_id)
              for r in await paper_trigger_store.list_for(db, strategy_id) if _state(r) == "armed"}

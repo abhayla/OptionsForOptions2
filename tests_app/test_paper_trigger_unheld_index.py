@@ -1,4 +1,4 @@
-"""D-01 (25 Nov 2026) and ADR-327: saving a paper trigger reads the live price it is compared with, ASKING the feed for it.
+"""D-01 (25 Nov 2026), ADR-327: saving a paper trigger reads the live price it is compared with, ASKING the feed.
 
 Spec basis: ADR-317 (1) (a level the live price has already crossed is refused); ADR-327 (market open and no live price
 after asking the feed and waiting up to 3 s: refused with "Not saved: the live price could not be read, so this level
@@ -7,8 +7,8 @@ cannot be checked. Try again in a moment."; market closed: saved, arms at the ne
 Core: "Above 22,500" with NIFTY at 22,533.25 is refused even when nothing else in the process holds the index. The
 replay is the recorded Kite frames of 2026-10-08 09:20 IST through a real ``KiteProvider`` and a real ``FanOut``; in bus
 mode the API's provider drops every tick for a token nobody holds (``kite_provider.py`` ``on_frame``), so the frames are
-pushed only AFTER the hold has subscribed (``d01-root-cause.md`` section 5). The 3 s wait is an injected sleep and clock:
-no test sleeps, and no test reads the wall clock. No database: ``tracked_contracts.resolve`` is the only DB touch and is
+pushed only AFTER the hold has subscribed (``d01-root-cause.md`` section 5). The 3 s wait is an injected sleep and
+clock: no test sleeps, and no test reads the wall clock. No database: ``tracked_contracts.resolve`` is the only DB touch and is
 stubbed.
 """
 from __future__ import annotations
@@ -24,11 +24,10 @@ ROOT = pathlib.Path(__file__).resolve().parent.parent
 sys.path.insert(0, str(ROOT / "tests"))
 
 from marketdata._kite_fixture import NIFTY_CE_ID, all_instrument_ids, new_provider, recorded_frames  # noqa: E402
-
 from ofo.errors.templates import render  # noqa: E402
 from ofo.marketdata.fanout import FanOut  # noqa: E402
 from ofo_app import paper_trigger_store, tracked_contracts  # noqa: E402
-from ofo_app.live_push import LiveFeed  # noqa: E402
+from ofo_app.live_push import POLL_SECONDS, LiveFeed  # noqa: E402
 from ofo_app.market_read import Wait  # noqa: E402
 from ofo_app.routes import paper as paper_routes  # noqa: E402
 from ofo_app.routes.outcome import MarketContext  # noqa: E402
@@ -39,6 +38,7 @@ UNREADABLE = "paper_trigger_price_unreadable"
 SPOT = D("22533.25")  # the recorded NIFTY at the last frame (repro_d01)
 LEG_ID = NIFTY_CE_ID  # NSE_FO:44614
 LEG_CONTRACT = 7
+WAIT_S = 3.0
 VERBATIM = "Not saved: the live price could not be read, so this level cannot be checked. Try again in a moment."
 
 
@@ -137,7 +137,7 @@ async def test_a_held_index_above_x_is_refused_with_the_same_code_and_asks_for_n
 # ---- ADR-327: market open and the price cannot be read ----------------------------------------------------------
 async def test_market_open_and_no_price_after_the_wait_is_refused_with_the_adr_327_code(rig):
     assert await _check(rig, [_exit("above", "22600")]) == UNREADABLE  # no frame ever arrives
-    assert rig.elapsed >= 3.0 and rig.elapsed < 3.2  # it waited the 3 s (injected clock) and no more than one poll more
+    assert WAIT_S <= rig.elapsed < WAIT_S + 2 * POLL_SECONDS  # it waited the 3 s (injected clock), then gave up
     assert rig.provider.subscribed_tokens() == []
 
 

@@ -1051,6 +1051,11 @@ _STRATEGY_DRAFT_TEMPLATES: tuple[MessageTemplate, ...] = (
           "No stop was set; nothing was exited.",
           "Setting this paper stop.",
           "Choose a level the price has not reached yet, or use Exit to close the leg now."),
+    _gate("paper_trigger_price_unreadable", _SV, 446,  # ADR-327 (2): market open, the live price cannot be read
+          "the live price could not be read, so this level cannot be checked. Try again in a moment.",
+          "No stop was set; nothing was exited.",
+          "Setting this paper stop.",
+          "Press Save again once the live prices are showing."),
     _gate("paper_trigger_already_fired", _SV, 443,
           "This stop has already fired (or was already cancelled) and cannot be cancelled.",
           "Nothing was changed; a fired stop has already exited its legs.",

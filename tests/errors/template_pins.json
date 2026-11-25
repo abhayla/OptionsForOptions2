@@ -4327,6 +4327,10 @@
     "sha256": "9fce35fa22d13bba002ac14177014bd82174db1d4b1092d59c76cbc42ae21524",
     "reviewed": "pending owner read"
   },
+  "paper_trigger_price_unreadable": {
+    "sha256": "58495b65968dea39c3f403817271fe2b23da2057ca7fb86ec4e8283dfd0aa4f0",
+    "reviewed": "pending owner read"
+  },
   "explanation:paper_breakevens_with_charges": {
     "sha256": "93abe1e127f6a953b9eec29ca4211b899e0173795e367f3a302113d029f16372",
     "reviewed": "owner read 2026-11-25 (ADR-322 point 4, answered by the owner in the question tool)"

@@ -9,8 +9,8 @@ catalogue_refresh pattern). It never reaches Zerodha: it records PAPER orders on
 (tests_app/test_paper_order_door.py walks this module's import graph).
 
 - Load: every armed trigger in ONE query (paper_trigger_store.armed), their strategies' orders in ONE query, their
-  contracts in one batch; subscribes on the market's fan-out the index of each conditional exit, the contract of each
-  leg stop and every open contract of a strategy with a conditional exit (its exit prices are read from the provider).
+  contracts in one batch; subscribes on the market's fan-out the index of every armed trigger (S-20: a leg stop's alert carries the index value),
+  the contract of each leg stop and every open contract of a strategy with a conditional exit (its exit prices are read from the provider).
   Reloads when a route adds or cancels a trigger (``notify``), every ``RELOAD_SECONDS``, and when the market's feed
   object changes (a new login).
 - On a quote: per-tick work is the armed triggers watching that instrument. Nothing fires outside market hours (a
@@ -136,11 +136,14 @@ class PaperMonitor:
             t = a.trigger
             if feed is None:
                 break
+            index_key = feed.ctx.provider.index_id(a.underlying)  # type: ignore[attr-defined]
             if t.kind == "conditional_exit":
-                key = feed.ctx.provider.index_id(t.underlying)  # type: ignore[attr-defined]
+                key = index_key
                 extra.update(k for k in (found[c].feed_key for c in open_ids[t.strategy_id]) if k is not None)
             else:
                 key = found[t.contract_id].feed_key  # type: ignore[index]
+            if index_key is not None:
+                extra.add(index_key)  # S-20: every armed trigger holds its index, so a fire's record carries its value
             if key is not None:
                 watch.setdefault(key, []).append(_Watch(a, key))
         self._watch = watch
