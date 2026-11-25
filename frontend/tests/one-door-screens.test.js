@@ -13,6 +13,7 @@
 //       Calls and imports of sameContract elsewhere are allowed: LegList.vue shows the D-60 duplicate warning by calling the door's
 //       own export, which is reading the door, not a second copy of the test. A second definition is the drift this rule stops.
 //
+// Keys name functions, not sites: a second hit of the same text in an exempt function is not counted (F7).
 // Exemptions are keyed by (file, enclosing function or const, matched text), never by line, each with a category and a reason.
 // A stale exemption fails ("shrink only"). Limits (not claims): a URL held in a variable first, a client reached through an alias
 // that is called with a computed path, and code built at run time are not seen. The scan reads text, it does not parse.

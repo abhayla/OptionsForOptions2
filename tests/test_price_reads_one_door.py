@@ -13,7 +13,11 @@ Rule: a call to (or a reference to) a provider/snapshot reader, ``underlying_quo
 The list is "shrink only": an entry whose site is gone fails (``stale exemption``). Fail closed: an aliased import of
 one of the names (``from x import underlying_quote as q``) is a problem, because a call through the alias would be
 invisible; so is a file that does not parse. ``getattr(obj, "<name>")`` and a bare reference (``q = read_snapshot``)
-count as a read. Tests are not scanned. Entries come from a fresh AST scan of the Phase 8 head (25 Nov 2026).
+count as a read. Tests are not scanned.
+Limits (not claims): ``getattr(obj, name)`` with a non-constant name is not seen (F3); an exempt function imported and
+called from a non-exempt module is not seen as a read of that module, the exemption is keyed to the function that
+holds the name (F4); keys name functions, not sites, so a second read of the same name in an exempt function is not
+counted (F7). Entries come from a fresh AST scan of the Phase 8 head (25 Nov 2026).
 """
 from __future__ import annotations
 

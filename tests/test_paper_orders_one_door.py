@@ -46,6 +46,7 @@ HOMES: dict[str, frozenset[str] | None] = {
     "ofo_app/routes/paper.py": frozenset({"place_paper_orders"}),
 }
 SIDE_FLIP = "BUY/SELL IfExp"
+WATCHED = ("NewOrder", "_opposite")
 CATEGORY = re.compile(r"own_process|display|real_path|awaiting_phase_\d+")
 Key = tuple[str, str, str]  # (file under backend/, enclosing function, name)
 
@@ -60,6 +61,35 @@ def _name_of(node: ast.expr) -> str | None:
     return node.id if isinstance(node, ast.Name) else node.attr if isinstance(node, ast.Attribute) else None
 
 
+def _annotation_ids(node: ast.AST) -> set[int]:
+    """Ids of the annotation children of ``node``: a type hint builds nothing."""
+    ann = None
+    if isinstance(node, (ast.FunctionDef, ast.AsyncFunctionDef)):
+        ann = node.returns
+    elif isinstance(node, (ast.arg, ast.AnnAssign)):
+        ann = node.annotation
+    return {id(ann)} if ann is not None else set()
+
+
+def _alias_issues(rel: str, node: ast.Import | ast.ImportFrom) -> list[str]:
+    return [f"aliased import: {rel}:{node.lineno} imports {a.name} as {a.asname}; import it by its own name"
+            for a in node.names
+            if a.asname and a.name.rsplit(".", 1)[-1] in WATCHED and a.asname != a.name]
+
+
+def _site_kind(node: ast.AST) -> str | None:
+    """NewOrder / _opposite for a Load of the name or a constant getattr of it, SIDE_FLIP for a BUY/SELL IfExp."""
+    if isinstance(node, (ast.Name, ast.Attribute)) and isinstance(node.ctx, ast.Load) and _name_of(node) in WATCHED:
+        return _name_of(node)
+    if (isinstance(node, ast.Call) and isinstance(node.func, ast.Name) and node.func.id in ("getattr", "hasattr")
+            and len(node.args) > 1 and isinstance(node.args[1], ast.Constant) and node.args[1].value in WATCHED):
+        return str(node.args[1].value)
+    if isinstance(node, ast.IfExp) and any(isinstance(c, ast.Constant) and c.value in ("BUY", "SELL")
+                                           for c in ast.walk(node)):
+        return SIDE_FLIP
+    return None
+
+
 def scan(rel: str, source: str) -> tuple[list[tuple[str, int, str]], list[str]]:
     """Sites ``(function, line, kind)`` (kind: NewOrder, SIDE_FLIP or _opposite) and fail-closed issues of one file."""
     try:
@@ -70,34 +100,17 @@ def scan(rel: str, source: str) -> tuple[list[tuple[str, int, str]], list[str]]:
     issues: list[str] = []
 
     def walk(node: ast.AST, func: str) -> None:
-        skip: set[int] = set()  # annotation contexts: a type hint builds nothing
-        if isinstance(node, (ast.FunctionDef, ast.AsyncFunctionDef)) and node.returns is not None:
-            skip.add(id(node.returns))
-        elif isinstance(node, (ast.arg, ast.AnnAssign)):
-            ann = node.annotation
-            if ann is not None:
-                skip.add(id(ann))
+        skip = _annotation_ids(node)
         for child in ast.iter_child_nodes(node):
             if id(child) in skip:
                 continue
             inner = child.name if isinstance(child, (ast.FunctionDef, ast.AsyncFunctionDef)) else func
             if isinstance(child, (ast.ImportFrom, ast.Import)):
-                issues.extend(f"aliased import: {rel}:{child.lineno} imports {a.name} as {a.asname}; import it by its "
-                              f"own name" for a in child.names
-                              if a.asname and a.name.rsplit(".", 1)[-1] in ("NewOrder", "_opposite")
-                              and a.asname != a.name)
+                issues.extend(_alias_issues(rel, child))
                 continue  # the names of an import are not uses
-            if isinstance(child, (ast.Name, ast.Attribute)) and isinstance(child.ctx, ast.Load):
-                name = _name_of(child)
-                if name in ("NewOrder", "_opposite"):  # a call, a reference, a base class, an argument: all count
-                    sites.append((inner, child.lineno, name))
-            elif (isinstance(child, ast.Call) and isinstance(child.func, ast.Name)
-                  and child.func.id in ("getattr", "hasattr") and len(child.args) > 1
-                  and isinstance(child.args[1], ast.Constant) and child.args[1].value in ("NewOrder", "_opposite")):
-                sites.append((inner, child.lineno, child.args[1].value))
-            elif isinstance(child, ast.IfExp) and any(
-                    isinstance(c, ast.Constant) and c.value in ("BUY", "SELL") for c in ast.walk(child)):
-                sites.append((inner, child.lineno, SIDE_FLIP))
+            kind = _site_kind(child)
+            if kind:
+                sites.append((inner, child.lineno, kind))
             walk(child, inner)
 
     walk(tree, "<module>")
