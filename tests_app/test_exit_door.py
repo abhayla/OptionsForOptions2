@@ -324,7 +324,7 @@ async def test_a_stale_price_refuses_the_whole_exit_and_nothing_is_stored(db, ca
 
 @pytest.mark.parametrize("caller", CALLERS)
 async def test_one_stale_leg_among_live_ones_refuses_the_whole_exit_and_nothing_is_stored(db, monkeypatch, caller):
-    """Row 8: two legs named, the first one's quote alone is not live (only its own feed key ages), the second is live."""
+    """Row 8: two legs named, the first one's quote alone is not live (only its own feed key), the second is live."""
     app, stored, provider, _clock, _last = await _opened(db)
     ids = list(stored.saved.contract_ids)
     key = (await db.execute(text("SELECT exchange_segment || ':' || exchange_token FROM public.catalogue_contracts "
