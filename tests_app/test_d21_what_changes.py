@@ -223,3 +223,15 @@ def test_d21_r2_the_side_line_needs_the_larger_loss_to_have_been_on_the_closed_s
     body = post(client(load("ADJ-02"))).json()
     assert body["what_changes"]["A-29"]["reason_line"] == (
         "This removes credit that was held against the loss, so the maximum loss is higher than before.")
+
+
+# ---- round 3: an open one-sided range is wider than any finite one, but not the profit-everywhere tie ----
+
+def test_d21_r3_adj09_a_range_open_on_one_side_does_not_lead_with_the_profit_everywhere_columns():
+    """ADJ-09 A-28 profits only above 22,560.58 and A-26 only below 23,489.37: wider than any finite range, but not
+    the same as A-31 / A-24 / A-27 / A-35, which profit at every level. Only those four lead."""
+    body = post(client(load("ADJ-09"), guards=_ic_guards())).json()
+    row = next(c for c in body["criteria"] if c["id"] == "breakevens")
+    assert row["values"]["A-28"]["text"] == "Profit above 22,560.58, no upper end"
+    assert row["values"]["A-27"]["text"] == "No breakeven: a profit at every level"
+    assert row["leaders"] == ["A-31", "A-24", "A-27", "A-35"], row["leaders"]
