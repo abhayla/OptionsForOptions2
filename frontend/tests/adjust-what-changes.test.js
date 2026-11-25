@@ -55,7 +55,7 @@ describe('Compare: What changes', () => {
     expect(rendered.length).toBeGreaterThan(200)
     expect(VERDICT.test(rendered)).toBe(false)
     expect(VERDICT.test(JSON.stringify(whatChanges))).toBe(false)
-    const source = readFileSync(new URL('../src/components/strategy/AdjustWhatChanges.vue', import.meta.url), 'utf8')
+    const source = readFileSync('src/components/strategy/AdjustWhatChanges.vue', 'utf8') // vitest runs in frontend/
     expect(VERDICT.test(source)).toBe(false)
   })
 

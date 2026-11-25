@@ -309,6 +309,11 @@ def _pnl_at(legs: Sequence[PositionLeg], lot: int, whole: WholeTradeAfter, level
     return whole_pnl_at(_strategy(legs, lot) if legs else None, whole, level)
 
 
+#: public names for the sibling module that words the "What changes" block (D-21): the SAME cells and the SAME engine
+#: P&L read, never a second copy (a module may not import another module's private name)
+pnl_at = _pnl_at
+
+
 def joined_token(items: Sequence[str], sep: str = "/") -> str:
     """#654 / #623 class: a list shown in a one-token ``Recorded`` slot (at most ``_TOKEN_MAX`` characters): as many
     items as fit, then ``+Nmore`` for the rest, so a long list never raises."""
@@ -583,6 +588,9 @@ class _Rows:
         return Cell(render_explanation("adjust_cmp_fresh", profit=shown(top), loss=shown(loss)), rank, None, rank)  # type: ignore[arg-type]
 
 
+Rows = _Rows  # D-21: see ``pnl_at`` above
+
+
 def _single(legs: Sequence[PositionLeg]) -> bool:
     return len({x.expiry for x in legs}) == 1
 
@@ -667,5 +675,5 @@ def _curves(columns: Sequence[Column], ctx: Context, before: WholeTradeAfter | N
 
 
 __all__ = ["NO_APPROACH_OFFERED", "NO_APPROACH_PRICED", "POP_TEXT", "Cell", "Cheapest", "Column", "Comparison",
-           "Context", "CostAnswer", "Criterion", "MarginRead", "approach_cost", "cheapest_approach", "column_order",
-           "compare", "leaders", "offered_approaches"]
+           "Context", "CostAnswer", "Criterion", "MarginRead", "Rows", "approach_cost", "cheapest_approach",
+           "column_order", "compare", "leaders", "offered_approaches", "pnl_at"]

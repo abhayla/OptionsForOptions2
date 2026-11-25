@@ -9,7 +9,7 @@ better or worse (ADR-003):
 3. probability of profit, 4. max profit, 5. max loss, 6. the credit or debit of the adjustment, 7. margin,
 8. net delta.
 
-Nothing is worked out a second time. Measures 1, 3, 4, 5 and 8 read the Compare's own cells (``compare._Rows``) of the
+Nothing is worked out a second time. Measures 1, 3, 4, 5 and 8 read the Compare's own cells (``compare.Rows``) of the
 before column and of the approach, so the block and the table can never differ; 6 reads the credit cell; 7 reads the
 margin of each side; 2 is ``adjust_money.index_distance`` per breakeven of the whole-trade After (all after charges).
 A measure that cannot be worked out on either side is "Not available" with that side's reason, never a filled default
@@ -29,7 +29,7 @@ from collections.abc import Mapping, Sequence
 from dataclasses import dataclass
 from decimal import ROUND_HALF_EVEN, Decimal
 
-from ofo.adjustment.compare import INFINITE, Cell, Column, Context, MarginRead, _pnl_at, _Rows
+from ofo.adjustment.compare import INFINITE, Cell, Column, Context, MarginRead, Rows, pnl_at
 from ofo.engine import adjust_money
 from ofo.errors.explanations import ExplanationText, render_explanation
 from ofo.money import PAISE
@@ -114,7 +114,7 @@ def _distance_text(index: Decimal, level: Decimal) -> ExplanationText:
     return render_explanation("adjust_wc_at", level=level)
 
 
-def _distances(col: Column, rows: _Rows, index: Decimal) -> Side:
+def _distances(col: Column, rows: Rows, index: Decimal) -> Side:
     """Measure 2: each breakeven's distance from the index; the nearest one orders the side (up = farther away)."""
     cell = rows.breakevens()
     if cell.unavailable_reason is not None:
@@ -155,7 +155,7 @@ def _loss_tail(col: Column, ctx: Context) -> str | None:
     if col.whole is None or not col.charges_known or not col.built.after:
         return None
     top = (max(x.strike for x in col.built.after) * 2).quantize(PAISE, rounding=ROUND_HALF_EVEN)
-    low, high = (_pnl_at(col.built.after, ctx.position.lot, col.whole, level) for level in (Decimal(0), top))
+    low, high = (pnl_at(col.built.after, ctx.position.lot, col.whole, level) for level in (Decimal(0), top))
     if low == high:
         return None
     return "PE" if low < high else "CE"
@@ -180,7 +180,7 @@ def reason_line(col: Column, ctx: Context, loss_before: Side, loss_after: Side) 
 
 def block(col: Column, ctx: Context, before_col: Column) -> Block:
     """The eight measures of one built approach against the position as it stands (``before_col``)."""
-    b, a = _Rows(before_col, ctx), _Rows(col, ctx)
+    b, a = Rows(before_col, ctx), Rows(col, ctx)
     loss_b, loss_a = _of_cell(b.max_loss()), _of_cell(a.max_loss())
     credit = a.credit()
     delta_b, delta_a = b.greeks(), a.greeks()

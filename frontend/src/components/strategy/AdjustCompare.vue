@@ -159,6 +159,11 @@
         </table>
       </div>
 
+      <!-- D-21 (ADR-320 (3)): what each approach changes, before against after; the server's block, no verdict -->
+      <div v-if="whatChanges.length" class="grid min-w-0 grid-cols-1 gap-3 min-[1100px]:grid-cols-2" data-testid="adjust-what-changes">
+        <AdjustWhatChanges v-for="x in whatChanges" :id="x.a.id" :key="x.a.id" :name="x.a.name ?? x.a.id" :block="x.block" />
+      </div>
+
       <div v-if="refused.length || notOffered.length" class="rounded-lg border border-line bg-surface p-3" data-testid="adjust-refused">
         <h3 class="text-sm font-semibold">Not offered for this strategy now</h3>
         <ul class="mt-1 text-sm">
@@ -189,6 +194,7 @@ import api, { NEUTRAL_PARTS } from '@/services/api'
 import ErrorMessage from '@/components/common/ErrorMessage.vue'
 import AdjustControls from '@/components/strategy/AdjustControls.vue'
 import AdjustPayoffChart from '@/components/strategy/AdjustPayoffChart.vue'
+import AdjustWhatChanges from '@/components/strategy/AdjustWhatChanges.vue'
 import { istTime } from '@/lib/displayFormat'
 import { plainName } from '@/lib/saveDraft'
 import { readTracking } from '@/lib/tracking'
@@ -306,6 +312,8 @@ const groups = computed(() => {
   }
   return order
 })
+// D-21: one block per approach in the table, in the table's order; an approach without a block (refused, or an older reply) draws none
+const whatChanges = computed(() => kept.value.map((x) => ({ a: x.a, block: reply.value?.what_changes?.[x.a.id] })).filter((x) => x.block))
 const cellOf = (c, id) => c.values?.[id]
 const isLeader = (c, id) => (c.leaders ?? []).includes(id) && cellOf(c, id)?.unavailable_reason == null && cellOf(c, id)?.text != null
 const prices = computed(() => reply.value?.prices ?? null)
