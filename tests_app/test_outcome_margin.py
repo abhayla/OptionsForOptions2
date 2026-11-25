@@ -718,3 +718,21 @@ async def test_d36_round2_one_overall_bound_covers_the_funds_and_the_basket_read
     src = source(Slow(), limits=MarginLimits(timeout=0.3))
     margin = await src.margin_for(OWNER_SESSION, outcome_margin.basket_orders(CTX.provider, plan()), RequestFunds())
     assert margin == outcome_margin.margin_unreadable()
+
+
+async def test_d36_round2_the_login_is_opened_once_for_a_request_not_once_per_basket() -> None:
+    """D-36 round 2 (note 5): every margin read opens the client (a stored-token read = one pooled connection live);
+    the reads of ONE request share one opened client: three different baskets, one open."""
+    from ofo_app.outcome_margin import RequestFunds  # noqa: PLC0415
+
+    opened = []
+
+    async def open_client():
+        opened.append(1)
+        return KiteMargin(api_key="key", access_token=FAKE_ACCESS, transport=Transport())
+
+    src = OutcomeMargin(lambda: OWNER_SESSION, open_client, clock=lambda: CHECKED_AT)
+    request = RequestFunds()
+    for price in ("45.55", "46.55", "47.55"):
+        await src.margin_for(OWNER_SESSION, outcome_margin.basket_orders(CTX.provider, plan(ce_price=price)), request)
+    assert len(opened) == 1
