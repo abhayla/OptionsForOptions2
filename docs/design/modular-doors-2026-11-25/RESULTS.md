@@ -2,10 +2,10 @@
 
 Plan: `PLAN.md`. Owner questions: `owner-questions.md`. Branch `refactor/modular-doors`.
 
-**Status (26 Nov night, Lane A, unattended run): Step 0 DONE (`4350f336`), Step 0b DONE and pushed (`a99730b8`, prepush
-TOTAL PASS), Phase 3 DONE (merged from `wt/phase3-a`, reviewed PASS; push state in the Phase 3 section). Phases 4-8:
-see the table.** This file is written so a fresh session can carry on from it alone. Read `PLAN-phases-3-8.md` for the
-build order and `PLAN.md` for the why.
+**Status (26 Nov night, Lane A, unattended run): Step 0, 0b, Phases 3, 4, 6, 7 DONE. Pushed: `a99730b8` (0b), `546c67d3`
+(Phase 3), `87a446bf` (Phase 4); Phases 6 and 7 merged after it (push state: see the last commit on the branch). Phase 8
+waits for the Lane B merge.** This file is written so a fresh session can carry on from it alone. Read
+`PLAN-phases-3-8.md` for the build order and `PLAN.md` for the why.
 
 | Phase | Scope | State | Where |
 |---|---|---|---|
@@ -14,8 +14,8 @@ build order and `PLAN.md` for the why.
 | 3 | F3 + F5 + B6 one paper book source (D-41 (two readers), ADR-328 (3)) | DONE (review PASS) | `e5622280` tests, `42c1f467`..`491ca7e2` code, merged into the branch |
 | 4 | B1 exit door + F2 exit gate (D-05, ADR-328 (4)) + R5 | DONE (Tier A Opus PASS; one fix round) | backend `81e0b561`..`e79857a2`, frontend `643f0bdd`, `440e0299`, `15fe3268`, fixes on `wt/phase4-fix` |
 | 5 | F6 `useLegDoor` (D-60) | NOT STARTED | `PLAN.md` Phase 5, OQ-1 |
-| 6 | B2, B7, F7, F8 (maintenance; B2 needs Tier A review) | NOT STARTED | `PLAN.md` Phase 6 |
-| 7 | 23 Nov helpers R2-R12 (R1 parked) | NOT STARTED | `PLAN.md` Phase 7 |
+| 6 | B2 close list (real path), F7, F8; B7 not built | DONE (B2 Tier A Opus PASS; F7/F8 Sonnet PASS) | `8862b957`..`bc4d8df1`, merged |
+| 7 | R2 `owns`, R3 browser, R1 comment; rest skipped/parked | DONE (Sonnet PASS) | `45fd9dfb`..`637ea5cc`, merged |
 | 8 | Guard test with exemption list and allowlist | NOT STARTED | `PLAN.md` Phase 8 |
 
 ## Step 0: merge of fix/ic-live-test-1123
@@ -263,7 +263,62 @@ read shows dashes in the builder panel, plan 5.4.2), commit `15fe3268` with old 
 gate is the local mirror: ci_local, the whole vitest suite, the `select_app_tests` DB run on fresh clones and prepush
 (coordinator, 26 Nov 00:50 IST). The same holds for every phase of this night.
 
-## Phases 6..8: see the table
+## Phase 6: B2 close list (real path), F7, F8; B7 not built: DONE
+
+Built on `wt/phase6-a` from the Phase 4 merge `b567a156` (in parallel with Phase 7; file-disjoint), merged `--no-ff`.
+
+- **B2.** `execute_plan.exit_legs` = `[LegToPrice(instrument_of(c.key), Action(c.side), c.quantity, None) for c in
+  open_legs_to_close(dict(sorted(held.items())))]`; one new import (stdlib-only `ofo.tracking.closing`); `sorted` kept at
+  the call site. `ofo/execution/**` and `routes/execute.py`: no diff. Oracle `tests_app/test_exit_legs_oracle.py` (the old
+  body copied character for character; "NFO-OPT:10" vs "NFO-OPT:9" order trap, zero nets, shorts, condors): green on both
+  trees. Basket golden `tests_app/test_exit_basket_golden.py`: the whole `KiteBasket` repr captured on the old code through
+  the real `_wanted` -> `price_legs` -> `checked_basket` with a replayed margin reply (no `/orders` call); the reviewer's
+  mutations (reversed order, flipped side, doubled qty) are all caught. Contract change pinned (review minor): a non-int net
+  (Decimal, bool, float) now raises `TypeError` where the old body accepted it; unreachable (the only caller's
+  `held_units` passes plain int, `execution_plan_store.py:374`, `order_book_store.py:78-79`) and fails closed before
+  pricing (`bc4d8df1`).
+- **F7.** `frontend/src/lib/paperTriggers.js` (`triggersPath`, `triggerListOf`, `armedIndexExits`); `PaperStops.vue` and
+  `TrackingPanel.vue` script only, each keeps its failure policy and timing.
+- **F8.** `MyStrategiesPage.vue` passes `null`; `renameStrategy` does the same revision read (one GET, one PATCH).
+- **B7: not built (evidence).** Each writer has one caller: `add_alert` <- `paper_monitor.py:246`; `open_suggestion` <-
+  `background.py:809`; `notifier.notify` <- `worker_watch.py:153`; different stores and transactions. Guard G4 (Phase 8)
+  pins them.
+
+| Claim | Evidence |
+|---|---|
+| Red first | `npx vitest run tests/paper-triggers-lib.test.js`: `Failed to resolve import "@/lib/paperTriggers"` |
+| Oracle + golden + checked basket | `pytest tests_app/test_exit_legs_oracle.py tests_app/test_exit_basket_golden.py tests_app/test_checked_basket.py`: `30 passed` |
+| Real-path tests unmodified, green | test_execute_route `31 passed`, test_exit_adopted_313b `9 passed`, tests/execution close_slices/close_refusals/partial `41 passed` (reviewer) |
+| vitest / DB / ci_local on the worktree | 226 files / 2656 tests; DB selection base `b567a156` 45 of 45 exit 0; `TOTAL: 16 passed, 0 failed` |
+| Review | B2: Tier A, fresh Opus: PASS (1 minor, pinned). F7/F8: Sonnet: PASS, no finding |
+
+## Phase 7: helpers: DONE
+
+Built on `wt/phase7-a` from `b567a156`, merged `--no-ff`.
+
+| Item | Verdict | Reason / where |
+|---|---|---|
+| R1 cut-offs | KEEP, documented | comment block in `ofo/timeutil.py`: 15:30 valuation, 15:39 reconciliation, 15:45 paper settlement (REQ-109 AC-7); no code line |
+| R2 ownership | DONE | `strategy_store.owns`; the 5 stores call it and keep their own errors (PauseNotFound, WatchNotFound, StyleNotFound, `real_book` None, PlanStoreError NOT_FOUND); `_OWNED_MANY` and `playbook_store` stay (other shapes) |
+| R3 browser | DONE | `groupedIndian` exported, `tracking.js` imports it, `groupIndian` deleted (reviewer probe: 103 inputs, 0 differences) |
+| R3 server | PARK | visible wording, template pins |
+| R4 | SKIP | fail-closed vs default differ |
+| R5 | DONE in Phase 4 | |
+| R6, R8, R9 | PARK | real-order / broker path |
+| R7 | SKIP | six copies with different errors; NaN gap is deferred row 18 |
+| R10 | DONE before this plan | D-57 |
+| R11, R12 | SKIP | two copies patched by tests; different inputs |
+
+Deviation: `tests_app/test_order_closure_all_routes.py` pins two more route edges (`routes.level_watch`,
+`routes.monitoring_pause` now reach the plan modules through `strategy_store`'s lazy imports), `PINNED_EDGE_COUNT` 37 -> 41
+(`637ea5cc`). Review: the same `STRATEGY_STORE` set nine routes already carry; no new edge to `routes.execute`, the
+execution return or any broker module. Tests: `test_strategy_owns.py` 6, `grouped-indian.test.js` 5,
+`tests/test_ownership_sql_one_home.py` 2 (a planted copy fails it). Gates on the worktree: vitest 226 / 2658; DB selection
+155 of 155 after the pin fix; ci_local 0 failed; ruff ratchet OK. Review: Sonnet: PASS (2 optional minors: no locked-read
+caller of `owns` exists; the text guard matches the exact bind names).
+
+## Phase 8: not started (waits for the Lane B merge)
+
 
 
 
