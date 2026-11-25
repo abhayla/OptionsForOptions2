@@ -45,7 +45,7 @@
           <p v-if="!g.readable" data-testid="paper-unreadable">{{ g.text }}</p>
           <RouterLink v-else :to="{ path: '/positions/current-positions', query: { tab: 'paper', strategy: String(g.id) } }" class="flex items-center gap-2" :data-testid="`paper-compact-link-${g.id}`">
             <span class="min-w-0 flex-1">
-              <span class="block truncate font-medium" data-testid="paper-group-name">{{ g.name ?? `Strategy ${g.id}` }}</span>
+              <span class="block truncate font-medium" :title="g.name ?? `Strategy ${g.id}`" data-testid="paper-group-name">{{ g.name ?? `Strategy ${g.id}` }}</span>
               <span class="block text-xs text-ink-muted" data-testid="paper-compact-legs">{{ legsText(g) }}</span>
             </span>
             <span class="shrink-0 text-right">

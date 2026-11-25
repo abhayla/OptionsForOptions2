@@ -155,7 +155,7 @@ function setMultiplier(index) {
 <template>
   <div class="rounded-t-lg border border-b-0 border-line bg-surface text-sm" data-testid="leg-edit-list" :data-updating="updating ? 'true' : 'false'">
     <div class="flex h-12 items-center justify-between border-b border-line" :style="cardPadding" data-testid="strategy-card-header">
-      <p role="heading" aria-level="2" class="truncate text-base font-semibold" data-testid="strategy-card-name">{{ cardName }}</p>
+      <p role="heading" aria-level="2" class="truncate text-base font-semibold" :title="cardName" data-testid="strategy-card-name">{{ cardName }}</p>
       <span v-if="legs.length" class="flex items-center gap-2">
         <button type="button" class="text-accent" data-testid="clear-all-legs" @click="confirmingClear = true">Clear all</button>
       </span>

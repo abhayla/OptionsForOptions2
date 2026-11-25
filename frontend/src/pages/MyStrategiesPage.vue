@@ -33,7 +33,7 @@ import { useSettingsValues } from '@/stores/settingsValues'
 
 // Owner 2026-10-30 (Sensibull 117): one column grid shared by the header row and every strategy row, so columns line up
 // User test 2026-10-30 round 2 widths: last saved 16rem holds "last saved 30 Oct 2026, 08:28:55 IST" on one line
-const COLS = 'lg:grid lg:grid-cols-[minmax(0,1fr)_4rem_minmax(0,2.4fr)_8rem_16rem_14rem]'
+const COLS = 'lg:grid lg:grid-cols-[minmax(9.5rem,1.4fr)_3.5rem_minmax(0,1fr)_5rem_13rem_12rem]'
 const HEADS = ['Name', 'Index', 'Legs', 'Status', 'Last saved', ''] // ADR-299: the Tracking column is gone (its words are retired)
 
 // W-121 (REQ-073 AC-6, ADR-165): the Execute link is absent (not disabled) unless the server said the order path is on.
@@ -134,11 +134,11 @@ async function confirmRename(row) {
     <template v-else>
       <p v-if="!visible.length" class="text-sm text-ink-muted" data-testid="search-no-match">{{ noMatchText(query) }}</p>
       <div v-else class="overflow-hidden rounded-lg border border-line bg-surface">
-      <div class="hidden gap-x-3 border-b border-line bg-surface-muted px-4 py-1.5 text-[11px] leading-4 font-medium text-ink-muted" :class="COLS" aria-hidden="true">
+      <div class="hidden gap-x-2 border-b border-line bg-surface-muted px-4 py-1.5 text-[11px] leading-4 font-medium text-ink-muted" :class="COLS" aria-hidden="true">
         <span v-for="(h, i) in HEADS" :key="i" :class="{ 'text-right': i === HEADS.length - 1 }">{{ h }}</span>
       </div>
       <ul class="divide-y divide-line" data-testid="strategy-list">
-        <li v-for="s in visible" :key="s.id" class="flex flex-wrap min-h-9 items-center gap-x-3 gap-y-1 px-4 py-1.5 text-[13px] hover:bg-surface-muted" :class="COLS" data-testid="strategy-row" :data-strategy-id="s.id">
+        <li v-for="s in visible" :key="s.id" class="flex flex-wrap min-h-9 items-center gap-x-2 gap-y-1 px-4 py-1.5 text-[13px] hover:bg-surface-muted" :class="COLS" data-testid="strategy-row" :data-strategy-id="s.id">
           <span class="min-w-0 max-w-full truncate font-medium" :title="strategyLabel(s, `Strategy ${s.id}`)" data-testid="row-name">{{ strategyLabel(s, `Strategy ${s.id}`) }}</span>
           <span data-testid="row-underlying">{{ s.underlying }}</span>
           <span v-if="legsLine(s)" class="min-w-0 max-w-full truncate text-ink-muted" :title="legsLine(s)" data-testid="row-legs">{{ legsLine(s) }}</span>
