@@ -6,6 +6,8 @@ from __future__ import annotations
 
 import datetime
 import logging
+import time
+from collections.abc import Callable
 from decimal import Decimal
 from http import HTTPStatus
 from types import SimpleNamespace
@@ -15,7 +17,6 @@ from ofo.adjustment import playbook_eval as pe
 from ofo_app import background, live_market, outcome_margin, scenario_mode
 from ofo_app.feed_main import StoredSession
 from ofo_app.outcome_margin import OutcomeMargin
-from ofo_app.routes.adjustment import get_approach_margin
 from test_background_cycle import Calls, Prov, _verdict, _worker
 from test_background_day_open_margin import GAP_SCENARIO, _gap_time, _ic_watched
 from test_outcome_margin import BASKET_TEXT, CHECKED_AT, CTX, FUNDS_TEXT, plan
@@ -68,7 +69,8 @@ def session(fp: bytes = FP1, expires_at: datetime.datetime | None = None) -> Sto
 class Rig:
     """The worker wired as ``_serve_live`` wires it, on the scenario provider; ``at`` drives refresh + check."""
 
-    def __init__(self, monkeypatch, gap_scn, store: Store, zerodha: Zerodha | None = None) -> None:
+    def __init__(self, monkeypatch, gap_scn, store: Store, zerodha: Zerodha | None = None,
+                 mono: Callable[[], float] = time.monotonic) -> None:
         self.zerodha = zerodha or Zerodha()
         monkeypatch.setattr(live_market, "urllib_transport", self.zerodha)
         monkeypatch.setattr(outcome_margin, "basket_orders", lambda _provider, _legs: ORDERS)
@@ -76,9 +78,8 @@ class Rig:
         self.t0 = _gap_time(self.prov)
         self.now, self.calls = [self.t0], Calls()
         self.login = background.StoredLogin(store, lambda: self.now[0])
-        source = OutcomeMargin(self.login.session, self.login.open_client, clock=lambda: CHECKED_AT)
-        margin_of = self.login.reading(background.screen_margin_reader(
-            get_approach_margin(SimpleNamespace(provider=None), source)))
+        source = OutcomeMargin(self.login.session, self.login.open_client, clock=lambda: CHECKED_AT, monotonic=mono)
+        margin_of = background.worker_margin_of(self.login, SimpleNamespace(provider=None), source)
         self.w = _ic_watched(gap_scn)
         self.worker = _worker(self.prov, [self.w], self.now, self.calls, margin_of=margin_of)
 
@@ -263,3 +264,33 @@ async def test_the_token_appears_in_no_log_and_no_repr(monkeypatch, gap_scn, cap
     await rig.login.reload()
     for shown in (repr(rig.login), repr(session()), repr(await failing.login.open_client())):
         assert FAKE_ACCESS not in shown
+
+
+class FlakyFunds(Zerodha):
+    """The FIRST available-funds read fails (HTTP 503); every later one and every basket answers as recorded."""
+
+    def __call__(self, method, url, headers, body, *, timeout):
+        if url.endswith("/user/margins") and not any(u.endswith("/user/margins") for u in self.calls):
+            self.calls.append(url)
+            return HTTPStatus.SERVICE_UNAVAILABLE, '{"status": "error", "error_type": "NetworkException"}'
+        return super().__call__(method, url, headers, body, timeout=timeout)
+
+    def funds(self) -> int:
+        return sum(u.endswith("/user/margins") for u in self.calls)
+
+
+async def test_d36_round2_a_failed_funds_read_does_not_poison_the_next_check_cycle(monkeypatch, gap_scn) -> None:
+    """D-36 round 2: the worker makes ONE funds read per margin read (one per check cycle here), and a failed first one
+    is that cycle's "not known" only: the next cycle asks again and states the margin (no retry inside a cycle)."""
+    clock = [100.0]
+    zerodha = FlakyFunds()
+    rig = Rig(monkeypatch, gap_scn, Store(session()), zerodha, mono=lambda: clock[0])
+    await rig.start()
+    assert_not_checked(rig, await rig.at(1))
+    assert zerodha.funds() == 1
+    assert zerodha.baskets() == 0
+    clock[0] += 1000.0  # past the failed read's retry wait
+    state = await rig.at(1 + STEP)
+    assert state.margin == NEEDED
+    assert zerodha.funds() == TWO_READS
+    assert zerodha.baskets() == 1

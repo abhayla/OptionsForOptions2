@@ -63,7 +63,8 @@ class Counts:
         return self.funds + self.basket
 
 
-def _wrap_transport(monkeypatch, counts: Counts, fail_basket_number: int | None = None) -> None:
+def _wrap_transport(monkeypatch, counts: Counts, fail_basket_number: int | None = None,
+                    fail_funds: bool = False) -> None:
     """The counting wrapper over the scenario's transport; ``fail_basket_number`` makes that one basket call a
     Kite network failure (HTTP 503) to prove a failed read stays its own."""
     real = scenario_mode.Scenario.margin_transport
@@ -83,6 +84,8 @@ def _wrap_transport(monkeypatch, counts: Counts, fail_basket_number: int | None 
                 number = counts.basket
         try:
             time.sleep(SLEEP)
+            if fail_funds and method == "GET":
+                return 503, '{"status": "error", "error_type": "NetworkException"}'
             if number is not None and number == fail_basket_number:
                 return 503, '{"status": "error", "error_type": "NetworkException"}'
             return real(self, method, url, headers, body)
@@ -122,10 +125,10 @@ def _golden(name: str, reply: dict) -> None:
     assert _clean(reply) == json.loads(path.read_text(encoding="utf-8")), f"{name}: the reply changed"
 
 
-async def _counted(app_db_url, monkeypatch, method, fail=None):
+async def _counted(app_db_url, monkeypatch, method, fail=None, fail_funds=False):
     sid = await _seeded(app_db_url, monkeypatch, SCENARIO)
     counts = Counts()
-    _wrap_transport(monkeypatch, counts, fail)
+    _wrap_transport(monkeypatch, counts, fail, fail_funds)
     status, body = await _run(method, sid, counts)
     return counts, status, body
 
@@ -194,3 +197,22 @@ async def test_after_a_failed_basket_read_is_its_own_figure_not_available_no_ret
         if a not in failed and a["id"] in stated_gold:
             assert a["margin"] == golden[a["id"]]["margin"]
             assert a["after_legs"] == golden[a["id"]]["after_legs"]  # the other figures stay
+
+
+async def test_round2_a_failed_funds_read_makes_every_approach_not_available_one_funds_call_no_retry(
+        app_db_url, monkeypatch):
+    """D-36 round 2: Kite's funds read fails. Every approach with an After leg says its margin could not be read (no
+    figure, nothing guessed); the margins asked Kite for funds exactly once (+ the regime read's own), no basket was
+    asked without the funds figure, and nothing was retried (ADR-016 to ADR-019)."""
+    counts, status, body = await _counted(app_db_url, monkeypatch, "POST", fail_funds=True)
+    assert status == OK, body
+    assert counts.funds == FUNDS_READS, "one for the margins (shared by all approaches) + the regime read, no retry"
+    assert counts.basket == 0
+    golden = json.loads((GOLDEN / "approaches.json").read_text(encoding="utf-8"))["approaches"]
+    stated = {a["id"] for a in golden if (a.get("margin") or {}).get("state") == "stated"}
+    shown = [a for a in body["approaches"] if a["id"] in stated]
+    assert len(shown) == len(stated) >= 1
+    for a in shown:
+        assert a["margin"]["state"] != "stated"
+        assert a["margin"]["value"] is None
+        assert "could not be read" in a["margin"]["reason"]

@@ -703,3 +703,18 @@ async def test_closing_basket_shows_zerodha_zero() -> None:
     m = await margin_answer(source(replies(basket_text=_basket(closing))), CTX, both_sell)
     assert (str(m.broker_needed), str(m.needed)) == ("0.00", "0.00")
     assert "Zerodha's own margin figure is ₹0.00" in str(m.reason)
+
+
+async def test_d36_round2_one_overall_bound_covers_the_funds_and_the_basket_read() -> None:
+    """D-36 round 2: with the request's shared funds read, a margin read is still bounded by ONE READ_TIMEOUT (here
+    0.3 s): funds 0.2 s then basket 0.2 s is 0.4 s together and must be "could not be read", though each alone fits."""
+    from ofo_app.outcome_margin import RequestFunds  # noqa: PLC0415
+
+    class Slow(Transport):
+        def __call__(self, method, url, headers, body):
+            time.sleep(0.2)
+            return super().__call__(method, url, headers, body)
+
+    src = source(Slow(), limits=MarginLimits(timeout=0.3))
+    margin = await src.margin_for(OWNER_SESSION, outcome_margin.basket_orders(CTX.provider, plan()), RequestFunds())
+    assert margin == outcome_margin.margin_unreadable()
