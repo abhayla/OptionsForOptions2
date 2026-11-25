@@ -36,3 +36,10 @@ tests_app/test_exit_basket_golden.py tests_app/test_checked_basket.py`: `62 pass
    "the real path must not move for a one-line saving" about `partial.py`).
 
 Recommendation: 2, unless Phase 8's guard G2 needs one home for the close rule; then 1 in its own round.
+
+## Closed by the coordinator: not to be built (26 Nov, 03:12 IST)
+
+The coordinator's technical decision: B2 stays OUT of this refactor for good. The spec guard (REQ-109 AC-1 / AC-2)
+forbids the order path importing the tracking code, so sharing the close list across that line is against the spec.
+The oracle test and the Kite basket golden stay as guards. (Phase 8's G2 does not need it: the real path is out of
+G2's scope by key.)

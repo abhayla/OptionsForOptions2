@@ -121,6 +121,10 @@ step 5.5.0 of Lane B (below), so the spec change and the code land together.
   other than the builder asks the same question from the chain page** - One-line reason: otherwise the trip would be a
   silent way to lose exactly what ADR-329 (2) protects; READING of ADR-329 (2), screen-checked
 
+- **Phase 6: B2 is NOT built (coordinator, 26 Nov 03:12 IST, after the park)** - One-line reason: `execute_plan`
+  importing `ofo.tracking.closing` breaks the REQ-109 AC-1 / AC-2 guard
+  (`tests_app/test_strategy_tracking_imports.py::test_ac1_no_order_path_module_imports_the_tracking_code`); the oracle and
+  the Kite basket golden stay as guards; `PARKED-phase6-B2.md`
 - **Phase 6: B7 `raise_alert` not built; guard G4 instead. F7 = one reader module; F8 = drop one pre-read** - One-line
   reason: three writers with one caller each, different stores and transactions; nothing to merge
 - **Phase 7: do R2, R5, R3 browser; skip R4, R7, R11, R12; park R6, R8, R9, R3 server; R1 kept and documented** -

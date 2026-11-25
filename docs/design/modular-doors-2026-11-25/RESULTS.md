@@ -14,7 +14,7 @@ waits for the Lane B merge.** This file is written so a fresh session can carry 
 | 3 | F3 + F5 + B6 one paper book source (D-41 (two readers), ADR-328 (3)) | DONE (review PASS) | `e5622280` tests, `42c1f467`..`491ca7e2` code, merged into the branch |
 | 4 | B1 exit door + F2 exit gate (D-05, ADR-328 (4)) + R5 | DONE (Tier A Opus PASS; one fix round) | backend `81e0b561`..`e79857a2`, frontend `643f0bdd`, `440e0299`, `15fe3268`, fixes on `wt/phase4-fix` |
 | 5 | F6 `useLegDoor` (D-60) | NOT STARTED | `PLAN.md` Phase 5, OQ-1 |
-| 6 | B2 close list (real path), F7, F8; B7 not built | PARTIAL: F7, F8 DONE (Sonnet PASS); B2 PARKED (breaks the REQ-109 AC-1 import guard; reverted) | `8862b957`..`3229e0a1`, merged; `PARKED-phase6-B2.md` |
+| 6 | B2 close list (real path), F7, F8; B7 not built | DONE (F7, F8; Sonnet PASS); B2 not built: parked, then closed by the coordinator (REQ-109 AC-1 import guard) | `8862b957`..`3229e0a1`, merged; `PARKED-phase6-B2.md` |
 | 7 | R2 `owns`, R3 browser, R1 comment; rest skipped/parked | DONE (Sonnet PASS) | `45fd9dfb`..`637ea5cc`, merged |
 | 8 | Guard test with exemption list and allowlist | NOT STARTED | `PLAN.md` Phase 8 |
 
