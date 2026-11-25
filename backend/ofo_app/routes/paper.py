@@ -239,8 +239,8 @@ class PaperOrderOut(ApiModel):
     price: Money
     price_text: CatalogueText
     kind: Literal["open", "add", "exit", "settle", "stop"]
-    #: D-22 / D-71: why a stop or settle order was recorded, with the index value at that moment (stored reason, read back
-    #: through its reviewed wording); None for an order with no reason or a reason no wording fits
+    #: D-22 / D-71: why a stop or settle order was recorded, with the index value at that moment (the stored reason read
+    #: back through its reviewed wording); None for an order with no reason or a reason no wording fits
     reason_text: CatalogueText | None = None
 
 
@@ -1631,7 +1631,8 @@ class HistoryOut(ApiModel):
 async def _settled_records(db: Any, user_ref: str) -> list[dict[str, Any]]:
     """One record per (strategy, settle time, reason): the legs the settlement closed, with each price."""
     rows = await paper_store.settlements(db, user_ref)
-    found = {c.contract_id: c for c in await tracked_contracts.resolve(db, sorted({o.order.contract_id for _, o in rows}))}
+    ids = sorted({o.order.contract_id for _, o in rows})
+    found = {c.contract_id: c for c in await tracked_contracts.resolve(db, ids)}
     groups: dict[tuple[int, datetime.datetime, str | None], list[tuple[str | None, paper_store.StoredOrder]]] = {}
     for name, o in rows:
         groups.setdefault((o.strategy_id, o.order.placed_at, o.order.reason), []).append((name, o))

@@ -48,7 +48,7 @@ def alert_body(what: ExplanationText | str, exits: Sequence[tuple[ExplanationTex
 
 def stop_reason_at(what: ExplanationText | str, underlying: str, index: Decimal | None) -> ExplanationText:
     """D-22: the stop's reason with the index value at the moment it fired; ``index`` None (no live index price) says
-    the value was not available, never a guess. The one wording of the stop order's reason and of the alert's first part."""
+    the value was not available, never a guess. One wording for the stop order's reason and the alert's first part."""
     if index is None:
         return render_explanation("paper_stop_reason_index_unknown", what=what)
     return render_explanation("paper_stop_reason_index_at", what=what, underlying=underlying, level=index)
@@ -56,11 +56,12 @@ def stop_reason_at(what: ExplanationText | str, underlying: str, index: Decimal 
 
 def settle_history_body(what: ExplanationText | str, legs: Sequence[tuple[ExplanationText | str, Decimal]],
                         ) -> ExplanationText:
-    """D-71: an expiry settlement's record for Alerts > History: the reason (with the official close) and each leg's price."""
+    """D-71: an expiry settlement's record for Alerts > History: the reason (with the close) and each leg's price."""
     joined = render_explanation("paper_alert_leg", contract=legs[0][0], price=price_text(legs[0][1]))
     for contract, price in legs[1:]:
         joined = render_explanation("paper_alert_legs", rest=joined,
-                                    leg=render_explanation("paper_alert_leg", contract=contract, price=price_text(price)))
+                                    leg=render_explanation("paper_alert_leg", contract=contract,
+                                                           price=price_text(price)))
     return render_explanation("paper_settle_history_body", what=what, prices=joined)
 
 

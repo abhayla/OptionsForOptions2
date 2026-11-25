@@ -52,12 +52,12 @@ _ALERT = text("INSERT INTO public.paper_alerts (strategy_id, trigger_id, title, 
 #: D-29: the alert readers and the mark-read write see this process's own strategies only (``{scope}`` =
 #: ``scenario_mode.scope_clause("s")``): a live process never lists, counts or marks a scenario strategy's alert, and a
 #: scenario process only its own scenario's.
-_ALERTS_SQL = ("SELECT a.id, a.strategy_id, a.trigger_id, a.created_at, a.title, a.body, a.read_at, s.name "  # noqa: S608
+_ALERTS_SQL = ("SELECT a.id, a.strategy_id, a.trigger_id, a.created_at, a.title, a.body, a.read_at, s.name "
                "FROM public.paper_alerts AS a JOIN public.strategies AS s ON s.id = a.strategy_id "
                "WHERE s.user_ref = :user_ref AND s.deleted_at IS NULL AND {scope} ORDER BY a.id DESC LIMIT :limit")
-_UNREAD_SQL = ("SELECT count(*) FROM public.paper_alerts AS a JOIN public.strategies AS s ON s.id = a.strategy_id "  # noqa: S608
+_UNREAD_SQL = ("SELECT count(*) FROM public.paper_alerts AS a JOIN public.strategies AS s ON s.id = a.strategy_id "
                "WHERE s.user_ref = :user_ref AND s.deleted_at IS NULL AND a.read_at IS NULL AND {scope}")
-_READ_ALL_SQL = ("UPDATE public.paper_alerts AS a SET read_at = clock_timestamp() FROM public.strategies AS s "  # noqa: S608
+_READ_ALL_SQL = ("UPDATE public.paper_alerts AS a SET read_at = clock_timestamp() FROM public.strategies AS s "
                  "WHERE s.id = a.strategy_id AND s.user_ref = :user_ref AND a.read_at IS NULL AND {scope}")
 
 

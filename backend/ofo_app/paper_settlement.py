@@ -55,7 +55,7 @@ from ofo_app import strategy_store as store
 log = logging.getLogger(__name__)
 
 SETTLE: Final = "settle"
-SETTLE_REASON: Final = "Paper - settled at expiry"  # REQ-109 AC-7's label; the stored reason adds the close (settle_reason)
+SETTLE_REASON: Final = "Paper - settled at expiry"  # REQ-109 AC-7's label; the stored reason adds the close
 SKIP_REASON: Final = "settlement price not available"
 #: The close is read from the ``facts.paper_settle_from`` setting in force (default 15:45 IST: the exchange publishes
 #: the closing value after its 15:30 close). While a group had no close, the job retries every RETRY_MINUTES until the
