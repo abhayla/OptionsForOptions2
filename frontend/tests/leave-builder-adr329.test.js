@@ -47,7 +47,7 @@ const makeRouter = (builder, chain) => createRouter({ history: createMemoryHisto
   { path: '/home/overview', name: HOME, component: Stub },
   { path: '/market/other', name: 'market-other', component: Stub },
 ] })
-const app = (router) => mount({ render: () => h(RouterView) }, { global: { plugins: [router] } })
+const app = (router) => mount({ render: () => h(RouterView) }, { global: { plugins: [router], stubs: { PayoffChart: true } } })
 const route = (r) => r.currentRoute.value.name
 const closers = [
   ['Escape', (w) => t(w, 'modal-root').trigger('keydown', { key: 'Escape' })],
