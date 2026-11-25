@@ -15,6 +15,7 @@ const props = defineProps({
   target: { type: Object, default: null }, // the reply's `target` block (the limits; the figures once a target was asked)
   pick: { type: Object, required: true }, // { level, dateIndex } the page keeps
   stopCount: { type: Number, default: 0 }, // how many positions the date slider has
+  notLiveText: { type: String, default: '' }, // D-37: the server's sentence, set only while the latest reply said prices are not live
   stale: { type: Boolean, default: false }, // the last request failed or was superseded by a push: the figures are the last good answer
 })
 const emit = defineEmits(['level', 'date', 'reset-level', 'reset-date'])
@@ -64,7 +65,7 @@ const onBox = (e) => {
         <div class="mt-1 text-xs text-ink-muted tabular-nums" data-testid="target-move">
           <span data-testid="target-move-text">{{ !stale && t?.move_pct_display ? t.move_pct_display : '-' }}</span>
           <span v-if="!t?.move_pct_display && t?.move_pct_reason" class="ml-2" data-testid="target-move-reason">{{ t.move_pct_reason }}</span>
-          <span v-if="stale && t?.not_live_text" class="ml-2" data-testid="target-move-not-live">{{ t.not_live_text }}</span>
+          <span v-if="stale && notLiveText" class="ml-2" data-testid="target-move-not-live">{{ notLiveText }}</span>
         </div>
       </div>
       <div data-testid="target-date-control">
@@ -82,7 +83,7 @@ const onBox = (e) => {
           <button type="button" class="rounded border border-line px-2" aria-label="Later" data-testid="target-date-forward" :disabled="dateOff || pick.dateIndex >= lastStop" @click="emit('date', pick.dateIndex + 1)">&gt;</button>
           <button type="button" class="text-sm text-accent" data-testid="target-date-reset" :disabled="pick.dateIndex <= 0" @click="emit('reset-date')">Reset</button>
         </div>
-        <div class="mt-1 text-xs text-ink-muted tabular-nums" data-testid="target-days">{{ !stale && t?.days_to_expiry_display ? t.days_to_expiry_display : '-' }}<span v-if="stale && t?.not_live_text" class="ml-2" data-testid="target-days-not-live">{{ t.not_live_text }}</span></div>
+        <div class="mt-1 text-xs text-ink-muted tabular-nums" data-testid="target-days">{{ !stale && t?.days_to_expiry_display ? t.days_to_expiry_display : '-' }}<span v-if="stale && notLiveText" class="ml-2" data-testid="target-days-not-live">{{ notLiveText }}</span></div>
         <p v-if="dateRefused" class="mt-1 text-xs text-ink-muted" data-testid="target-date-reason">{{ dateRefused }}</p>
       </div>
       <p v-for="c in clamps" :key="c" class="text-xs text-ink-muted md:col-span-2" data-testid="target-clamp">{{ c }}</p>

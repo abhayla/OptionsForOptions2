@@ -177,7 +177,6 @@ def _target(t: Any, margin: Any = None) -> dict[str, Any]:
             offer["at_refused_reason"] = t.at_refused_reason
         offer.update(move_fields(t.spot, t.spot), **days_fields(t.days))
         offer["badge"] = badge(t, margin)
-        offer["not_live_text"] = render_explanation("target_not_live")  # D-37: the reason beside a "-" readout
         return offer
     pnl = None if t.pnl is None else {"value": _s(t.pnl), "display": render_explanation("cell_rupees", amount=t.pnl)}
     greeks = None if t.greeks is None else {"legs": [_greeks_out(g) for g in t.greeks.legs],
@@ -195,7 +194,6 @@ def _target(t: Any, margin: Any = None) -> dict[str, Any]:
             "breakevens_display": None if t.breakevens is None else breakevens_display(t.breakevens, t.spot),
             "breakevens_reason": t.breakevens_reason,
             "stale_text": render_explanation("paper_reason_whatif_stale"),  # ADR-210 (7): shown if a later request fails
-            "not_live_text": render_explanation("target_not_live"),  # D-37
             "curve": None if t.curve is None else _curve(t.curve), "greeks": greeks,
             **move_fields(t.level, t.spot), **days_fields(t.days), "badge": badge(t, margin), **_booked_fields(t)}
 
@@ -334,4 +332,8 @@ def outcome_to_dict(out: Outcome, today: datetime.date | None = None) -> dict[st
         body["centre_label"] = out.centre_label
     if out.target is not None:  # REQ-084 AC-4: the limits alone unless a target level or time was sent
         body["target"] = _target(out.target, out.margin)
+    # D-37 (round 2): said only when THIS reply's prices are not live (not connected, no live data, no live spot); never on a
+    # live reply and never on a refusal, which has its own reason. The browser shows it beside a "-" Target / Date readout.
+    if out.state.value in ("NOT_CONNECTED", "FROM_ENTRIES") or (out.state.value == "COMPUTED" and out.spot_level is None):
+        body["target_not_live_text"] = render_explanation("target_not_live")
     return body

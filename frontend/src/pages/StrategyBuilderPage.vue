@@ -195,6 +195,7 @@ const guard = createNewestWins()
 const targetPick = ref({ level: '', dateIndex: 0 })
 const targetShown = ref(null)
 const targetStale = ref(false)
+const targetNotLiveText = ref('') // D-37: the latest reply's own sentence when its prices are not live; '' after a failed request or any other reply
 const dateStopList = computed(() => dateStops(data.value?.valuation, firstExpiry(data.value?.legs)))
 // GC-LIVE R-26: a pick goes to BOTH answer paths: the live socket's follow message (so every push of the new version
 // carries the target block, refreshed as prices move) and one REST request (the answer while the socket is not live).
@@ -255,6 +256,7 @@ async function load() {
     if (isSuperseded(e) || !guard.isNewest('outcome', mine)) return // a cancelled or older request shows nothing (AC-3)
     if ((target.target_level || target.target_at) && targetShown.value && data.value && prevState !== 'loading') {
       targetStale.value = true // a failed target request keeps the last good figures, marked stale
+      targetNotLiveText.value = '' // a failure says nothing about the prices: no not-live sentence
       state.value = prevState
       return
     }
@@ -297,6 +299,7 @@ function reask(kind, ticket) {
 // One outcome answer (REST or a live push) onto the page, as the server sent it: no number is computed here (ADR-008).
 function applyOutcome(body) {
   data.value = body
+  targetNotLiveText.value = typeof body.target_not_live_text === 'string' ? body.target_not_live_text : '' // D-37: only what this reply says
   const moved = !!targetPick.value.level || targetPick.value.dateIndex > 0
   if (body.target && (body.target.kind || !moved)) { // figures for the pick, or nothing picked: the reply's block as sent
     targetShown.value = body.target
@@ -1233,7 +1236,7 @@ const pricesStamp = computed(() => {
             <!-- GC-TP R-19a (Sensibull 020): the what-if Target block sits BELOW the payoff graph, inside the chart card -->
             <template #target>
               <TargetBlock
-                :target="targetShown" :pick="targetPick" :stop-count="dateStopList.length" :stale="targetStale"
+                :target="targetShown" :pick="targetPick" :stop-count="dateStopList.length" :stale="targetStale" :not-live-text="targetNotLiveText"
                 @level="(v) => pickTarget({ level: v })"
                 @date="(i) => pickTarget({ dateIndex: i })"
                 @reset-level="pickTarget({ level: '' })"

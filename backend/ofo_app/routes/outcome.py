@@ -995,7 +995,6 @@ class TargetOut(ApiModel):
     breakevens_display: list[CatalogueText] | None = None  # GC-TPD R-33: "22,578 (+0.1%)", same order as ``breakevens``
     breakevens_reason: CatalogueText | None = None
     stale_text: CatalogueText | None = None  # ADR-210 (7): the sentence for these figures if they go stale
-    not_live_text: CatalogueText | None = None  # D-37: the sentence beside a "-" Target / Date readout while prices are not live
     curve: CurveOut | None = None
     greeks: TargetGreeksOut | None = None
     #: R-19a (Sensibull 020): the level's move from the live spot ("+6.1%"), absent with its reason when no spot is known
@@ -1053,6 +1052,8 @@ class OutcomeResponse(ApiModel):
     curve_includes_booked_text: CatalogueText | None = None
     open_interest: OpenInterestOut | None = None  # REQ-083 AC-5 / AC-6: absent unless open_interest
     target: TargetOut | None = None  # REQ-084 AC-1/AC-4: limits alone unless target_level or target_at
+    #: D-37: present only when this reply's prices are not live: the sentence beside a "-" Target / Date readout
+    target_not_live_text: CatalogueText | None = None
     #: REQ-119 AC-1 / REQ-133 AC-2: the request's (or the socket follow message's) ``seq``, unchanged; absent when none
     seq: int | None = None
     #: ADR-300: present only for a computed answer with a sold option leg. ``breaks`` / ``within`` / ``cannot_tell``;
