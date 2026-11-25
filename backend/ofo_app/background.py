@@ -977,9 +977,7 @@ class Worker:
                 self._tick.pop(w.strategy_id, None)
         old = {w.strategy_id: w for w in self.monitors}
         today = self._clock().astimezone(IST).date()
-        for w in monitors:  # D-30: records of expired contracts lapse (the one writer, ADR-237 (6))
-            async with held(self.db_gate, GATE_REBUILD):
-                await self._gate_store.lapse_expired(w, today)
+        await self._lapse_expired_all(monitors, today)
         for w in monitors:
             if _count_of(w.tracked) is None:  # an unreadable count lapses nothing (and resets nothing)
                 continue
@@ -1005,6 +1003,18 @@ class Worker:
         self.monitors = [w for w in monitors if w.strategy_id in old or w.strategy_id in self._gate_load]
         self._rebuilt_at = self._clock()
         log.info("background: %s strategies monitored", len(self.monitors))
+
+    async def _lapse_expired_all(self, monitors: list[Watched], today: datetime.date) -> None:
+        """D-30: records of expired contracts lapse (the one writer, ADR-237 (6)); a failure is contained per strategy,
+        logged and retried at the next re-list (as ``_lapse_exited``), so the others and the rebuild go on."""
+        for w in monitors:
+            try:
+                async with held(self.db_gate, GATE_REBUILD):
+                    await self._gate_store.lapse_expired(w, today)
+            except Exception as exc:
+                log.exception("background: lapsing the expired records of strategy %s failed; the others go on",
+                              w.strategy_id)
+                _keep_recent(self.errors, (w.strategy_id, type(exc).__name__))
 
     def _drop_stale_writes(self, monitors: list[Watched]) -> None:
         """#636 r5 finding 2: a queued write whose strategy left the list (exited, deleted, no playbook) or whose plan

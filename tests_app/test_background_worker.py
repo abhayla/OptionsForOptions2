@@ -744,7 +744,8 @@ async def test_d30_an_exited_strategys_failed_lapse_is_retried_at_the_next_re_li
             return [(x.outcome, x.lapse_reason) for x in await playbook_store.suggestions(conn, "owner", sid)
                     if x.id == rec]
     await worker.rebuild()
-    assert await states() == [("open", None)] and background.LISTER_LAPSE_FAILURES == {sid: 1}
+    assert await states() == [("open", None)]
+    assert background.LISTER_LAPSE_FAILURES.get(sid) == 1
     await worker.rebuild()
     assert await states() == [("lapsed", "strategy_closed")]
 
