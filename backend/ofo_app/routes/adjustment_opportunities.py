@@ -44,6 +44,7 @@ from ofo_app.api_models import ApiModel, CatalogueText, Identifier, Money
 from ofo_app.db import get_db
 from ofo_app.errors import ClosedRoute, Failure
 from ofo_app.routes.broker import current_user_ref
+from ofo_app.routes.outcome import AnswerClock, get_answer_clock
 from ofo_app.strategy_refused import StrategyRefused
 from ofo_app.strategy_store import StrategyStoreError
 
@@ -224,15 +225,16 @@ class PopupFacts:
     """D-67: what ``popup_quiet.popup_due`` needs besides the record (``store.popup_facts``) and the clock."""
 
     entry: dict[int, datetime.datetime]
-    seen_clear: dict[tuple[int, str], bool]
+    seen_clear: dict[tuple[int, str], tuple[bool, datetime.datetime]]
     now: datetime.datetime
 
 
 def _popup_due(s: store.Suggestion, facts: PopupFacts | None) -> bool:
     if facts is None or s.outcome != "open":
         return True
-    return popup_due(entry_at=facts.entry.get(s.strategy_id), shown_at=s.shown_at,
-                     seen_clear=facts.seen_clear.get((s.strategy_id, s.rule_id)), now=facts.now)
+    clear, first_at = facts.seen_clear.get((s.strategy_id, s.rule_id), (None, None))
+    return popup_due(entry_at=facts.entry.get(s.strategy_id), shown_at=s.shown_at, seen_clear=clear,
+                     first_check_at=first_at, now=facts.now)
 
 
 def _record(s: store.Suggestion, paper: bool, popup: PopupFacts | None = None) -> dict:
@@ -322,10 +324,11 @@ async def _close(db: Any, work: Any) -> SuggestionOut:
 
 @router.get("/api/adjustment-opportunities", response_model=InboxOut)
 async def adjustment_opportunities(db: Annotated[Any, Depends(get_db)],
-                                   user_ref: Annotated[str, Depends(current_user_ref)]) -> InboxOut:
+                                   user_ref: Annotated[str, Depends(current_user_ref)],
+                                   now: Annotated[AnswerClock, Depends(get_answer_clock)]) -> InboxOut:
     rows = await store.inbox(db, user_ref)
     entry, clear = await store.popup_facts(db, user_ref, {r.suggestion.strategy_id for r in rows})
-    popup = PopupFacts(entry, clear, datetime.datetime.now(datetime.UTC))
+    popup = PopupFacts(entry, clear, now())
     return InboxOut.model_validate(inbox_body(rows, await store.held_inbox(db, user_ref), popup))
 
 
