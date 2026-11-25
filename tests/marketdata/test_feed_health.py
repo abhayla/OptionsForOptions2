@@ -74,4 +74,4 @@ def test_the_last_price_time_is_the_last_price_frame_not_a_heartbeat():
 
 
 def test_the_closed_text_is_the_catalogue_template_with_the_last_price_time():
-    assert market_closed_message(AFTER_CLOSE) == "Market closed. Prices are from 03:30:00 PM."
+    assert market_closed_message(AFTER_CLOSE) == "Market closed. Prices are from 15:30:00 IST."

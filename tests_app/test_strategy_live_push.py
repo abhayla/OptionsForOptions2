@@ -712,7 +712,7 @@ async def test_206_the_streaming_check_applies_only_to_the_live_markets_own_cont
 
 LIVE_SELL, LIVE_BUY = "NSE_FO:44626", "NSE_FO:44630"  # NIFTY 13-Oct 22850 CE / 22950 CE: used by no other replay test
 #: REQ-049 AC-5's text; 09:20:09 is the last recorded frame (09:20:09.879 IST, frames-2026-10-08-092000-10s.bin.gz)
-AC5_AFTER_DROP = "Live market data disconnected. Last updated: 09:20:09 AM. Live strategy monitoring is paused."
+AC5_AFTER_DROP = "Live market data disconnected. Last updated: 09:20:09 IST. Live strategy monitoring is paused."
 
 
 def _spread_request() -> dict:
