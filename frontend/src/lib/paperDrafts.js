@@ -253,6 +253,8 @@ export function paperChargesOf(book) {
 export const EXIT_ALL_LABEL = 'Exit all'
 export const EXIT_LABEL = 'Exit'
 export const ADD_KIND_LABEL = 'Add'
+export const STOP_KIND_LABEL = 'Stop'
+export const SETTLE_KIND_LABEL = 'Settled'
 export const NET_POSITIONS_LABEL = 'Net Positions'
 export const ORDERBOOK_LABEL = 'Orderbook'
 
@@ -267,8 +269,10 @@ export function paperDialogTitle(orders) {
   if (exits === 0) return PAPER_TITLE_ADD
   return exits === list.length ? PAPER_TITLE_EXIT : PAPER_TITLE_BOTH
 }
-/** Each row's kind beside B/S ('open' and 'add' both add to the position). */
-export const paperKindLabel = (kind) => (kind === 'exit' ? EXIT_LABEL : ADD_KIND_LABEL)
+/** Each row's kind beside B/S ('open' and 'add' both add to the position; D-23: a stop-out and an expiry settlement keep their own
+ *  kind, the server's `stop` and `settle`, so they never read as a new buy). */
+const KIND_LABELS = { exit: EXIT_LABEL, stop: STOP_KIND_LABEL, settle: SETTLE_KIND_LABEL }
+export const paperKindLabel = (kind) => KIND_LABELS[kind] ?? ADD_KIND_LABEL
 
 /** The open lots of `contractId` in the net position (a count), or 0. */
 export function openLots(net, contractId) {
