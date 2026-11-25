@@ -656,8 +656,9 @@ def _figures(orders: Sequence[paper_store.StoredOrder], found: dict[int, tracked
     cids = [int(p.instrument_id) for p in view.positions]
     open_ = [(n, str(c), _identity(found[c])[3], prices[c]) for n, c in enumerate(cids) if c in prices]
     day = today or (None if answered_at is None else answered_at.astimezone(paper.IST).date())  # D-40: no snapshot still knows the day
-    expired_open = any(u.expired for u in paper.unpriced_legs(open_, day))  # independent of the connection state
-    gone = paper.unpriced_legs(open_, today) if state == "PAUSED" else ()
+    named = paper.unpriced_legs(open_, day)  # independent of the connection state
+    expired_open = any(u.expired for u in named)
+    gone = named if state == "PAUSED" else tuple(u for u in named if u.expired)  # a book that is not paused names only the expired legs
     names = [(display_contract(_identity(found[cids[u.index]])), u.expired) for u in gone]
     return {"unpriced_legs": [{"leg_index": u.index, "contract_text": n, "expired": u.expired}
                               for u, (n, _) in zip(gone, names, strict=True)], "unpriced_text": unpriced_text(names),
