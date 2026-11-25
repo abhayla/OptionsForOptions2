@@ -33,7 +33,7 @@ from decimal import Decimal
 from typing import Annotated, Any
 
 from fastapi import APIRouter, Depends
-from ofo.adjustment import liquidity
+from ofo.adjustment import liquidity, what_changes
 from ofo.adjustment.approaches import (
     APPROACH_IDS,
     NO_CHANGE,
@@ -781,7 +781,22 @@ async def _compare_reply(columns: list[Column], tracked: Tracked, spot: Decimal,
     ctx = Context(position, spot, market.chain, rates, pop_on, before_margin, market.leg_greeks,
                   tracked.adjustments_used, prefs.compare, limits, plan_max(guards), warn_pct, warn_off,
                   leg_decay_left=market.leg_decay_left)
-    return _compare_block(compare(columns, ctx, before.after, before.charges_known, before.near))
+    out = _compare_block(compare(columns, ctx, before.after, before.charges_known, before.near))
+    # D-21 (ADR-320 (3)): the "What changes" block of each built approach, against the position as it stands (the Before
+    # priced above: the same legs as "No change", so the block and the table read one engine answer)
+    unchanged = next((c.built for c in columns if is_no_change(c.built)),
+                     None) or build_approach(position, market.chain, spot, NO_CHANGE, prefs.approach)
+    before_col = Column(unchanged, before.after, before.reason, before.charges_known, before_margin,
+                        before.adjustment_charges, before.near)
+    out["what_changes"] = {a: _what_changes_out(b) for a, b in what_changes.blocks(columns, ctx, before_col).items()}
+    return out
+
+
+def _what_changes_out(b: what_changes.Block) -> dict:
+    return {"title": b.title, "reason_line": b.reason_line,
+            "rows": [{"id": r.id, "label": r.label, "before_text": r.before_text, "after_text": r.after_text,
+                      "direction": r.direction, "direction_text": r.direction_text,
+                      "unavailable_reason": r.unavailable_reason} for r in b.rows]}
 
 
 def _margin_read(block: Mapping[str, Any]) -> MarginRead:

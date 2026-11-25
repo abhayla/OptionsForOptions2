@@ -12,6 +12,7 @@ Every input is exact Decimal; quantities are units (lots x lot size).
 - ``premium_left``: short legs' current price x quantity minus long legs' (the premium still left to earn).
 - ``cost_pct_of_premium_left`` and ``max_profit_change``: ADR-230 (3), the compare's two cost-side rows.
 - ``sum_amounts``: a sum of exact amounts (the charge components of the cost breakdown).
+- ``index_distance``: D-21 (ADR-320 (3)): a breakeven's signed distance from the index, in points.
 """
 from __future__ import annotations
 
@@ -50,6 +51,12 @@ def pct_of(amount: Decimal, pct: Decimal) -> Decimal:
 def cost_with_spread(charges: Decimal, quotes: Iterable[tuple[Decimal, Decimal, int]]) -> Decimal:
     """``charges`` plus (ask - bid) / 2 x quantity for each (bid, ask, quantity) traded."""
     return charges + sum(((ask - bid) / 2 * quantity for bid, ask, quantity in quotes), Decimal(0))
+
+
+def index_distance(index: Decimal, level: Decimal) -> Decimal:
+    """D-21: ``level`` minus ``index`` in points, exact: negative = the level lies below the index, positive = above,
+    0 = at the index. The browser never works this out (the money scan forbids front-end arithmetic)."""
+    return level - index
 
 
 def margin_change(after: Decimal, before: Decimal) -> Decimal:
