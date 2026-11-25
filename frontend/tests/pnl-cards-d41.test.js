@@ -120,6 +120,42 @@ describe('D-41 Live card: the P&L is the Positions page figure', () => {
   })
 })
 
+describe('D-41 round 2: a late success replaces the error', () => {
+  it('the error shows at 25 s; a read that succeeds later puts the figures back', async () => {
+    vi.useFakeTimers()
+    let release
+    bookAnswer = () => new Promise((resolve) => { release = () => resolve({ data: book() }) })
+    const w = await mountPage(LiveStrategiesPage)
+    await vi.advanceTimersByTimeAsync(30000)
+    expect(card(w).find('[data-testid="live-error"]').exists()).toBe(true)
+    release()
+    await vi.advanceTimersByTimeAsync(10)
+    FakeSocket.all.forEach((s) => s.serverOpen())
+    FakeSocket.all[0].serverPush(outcome())
+    await vi.advanceTimersByTimeAsync(10)
+    expect(card(w).find('[data-testid="live-error"]').exists()).toBe(false)
+    expect(card(w).find('[data-testid="live-max-profit"]').exists()).toBe(true)
+  })
+})
+
+describe('D-41 round 2: the paused decision is the Positions page one (stale read only)', () => {
+  it('a NOT_CONNECTED book whose reply carries a figure shows what Positions shows', async () => {
+    listAnswer = list({ state: 'NOT_CONNECTED' })
+    const fromPositions = readPaperList(listAnswer).groups[0].totalAfter
+    const c = card(await mountPage(LiveStrategiesPage))
+    expect(c.get('[data-testid="live-pnl-figure"]').text()).toBe(fromPositions.text)
+  })
+  it('a failed refresh after a good read pauses the figure, as Positions does', async () => {
+    vi.useFakeTimers({ toFake: ['setTimeout', 'setInterval', 'clearTimeout', 'clearInterval', 'Date'] })
+    const w = await mountPage(LiveStrategiesPage)
+    expect(card(w).get('[data-testid="live-pnl-figure"]').text()).toBe('+3.50')
+    listAnswer = () => Promise.reject(new Error('down'))
+    await vi.advanceTimersByTimeAsync(6000)
+    expect(card(w).get('[data-testid="live-pnl-figure"]').text()).toBe('—')
+    expect(card(w).get('[data-testid="live-pnl"]').text()).toContain('prices not live')
+  })
+})
+
 describe('D-41 My Strategies row: the same figure', () => {
   it('value', async () => {
     const w = await mountPage(MyStrategiesPage)
