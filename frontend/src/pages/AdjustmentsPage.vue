@@ -152,7 +152,7 @@
 
         <template v-else>
           <h2 class="h2">Test on my strategies</h2>
-          <p v-if="labels.pastNote" class="mb-3 text-sm text-ink-muted" data-testid="pb-past-note">{{ labels.pastNote }}</p>
+          <p class="mb-3 text-sm text-ink-muted" data-testid="pb-past-note">{{ labels.pastNote || PLAYBOOK_TEST_OUT_OF_V1_TEXT }}</p>
         </template>
       </div>
 
@@ -176,7 +176,7 @@ import PageHeader from '@/components/common/PageHeader.vue'
 import Tabs from '@/components/common/Tabs.vue'
 import PreferencesTab from '@/components/adjustments/PreferencesTab.vue'
 import SystemPlaybookAdmin from '@/components/adjustments/SystemPlaybookAdmin.vue'
-import { PLAYBOOK_DELETE_CONFIRM_TEXT } from '@/lib/sharedStateText'
+import { PLAYBOOK_DELETE_CONFIRM_TEXT, PLAYBOOK_TEST_OUT_OF_V1_TEXT } from '@/lib/sharedStateText'
 import { STEPS, EXPIRY_KINDS, addStage, clone, dayRuleNotChecked, isDirty, labelMaps, refusalText, removeStage, ruleMembers, said, stagesOf, summaryLines,
   valuesOf } from '@/lib/playbookEditor'
 

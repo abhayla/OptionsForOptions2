@@ -1029,7 +1029,7 @@ async def list_paper_strategies(db: Annotated[Any, Depends(get_db)],  # noqa: PL
     kept = [i for i, s in enumerate(out) if not _expired_open(s)]  # D-40: the strategies that can be priced
     totals = _totals([out[i] for i in kept], [decays[i] for i in kept], len(out) - len(kept))
     sorted_books = sorted(books, key=_newest_first, reverse=True)
-    day = answered.astimezone(paper.IST).date()
+    day = today_day([snapshots.get(b.underlying) for b in sorted_books], answered)
     today = today_totals([_today_item(out[i], decays[i], sorted_books[i]) for i in kept], day)
     return PaperListOut.model_validate({"strategies": out, "totals": totals, "today": today, "answered_at": now()})
 
@@ -1098,6 +1098,13 @@ class TodayItem:
 def _today_item(figures: dict, decay: paper_decay.Decay, book: paper_store.UserBook) -> TodayItem:
     times = [o.order.placed_at for o in book.orders]
     return TodayItem(figures, decay, min(times), max(times) if figures["open_count"] == 0 else None, book.scenario_id)
+
+
+def today_day(snapshots: Sequence[Any], answered: datetime.datetime) -> datetime.date:
+    """D-68: "the current trading day in IST": the India date of the newest market snapshot (``_book_day``'s rule, so on a
+    weekend or holiday it is the last session's day, not the calendar day); with no snapshot, the answer's own India date."""
+    days = [_today(s) for s in snapshots if s is not None]
+    return max((d for d in days if d is not None), default=answered.astimezone(paper.IST).date())
 
 
 def today_totals(items: Sequence[TodayItem], day: datetime.date) -> dict:

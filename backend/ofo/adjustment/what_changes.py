@@ -23,7 +23,7 @@ it is named; otherwise the plain "removes credit" line. Exit (kind ``exit``): ma
 after every charge) above max loss before gets the "books today's prices" line. Roll, Convert and No change carry no
 reason line: their names promise no direction.
 
-D-61 (ADR-320 point 5): for "Buy back the untested short" (A-26) the same line also carries the sentence naming a long
+D-61 (ADR-320 point 5): for every approach whose resulting legs leave one (the buy-backs A-26, A-27 among them) the same line also carries the sentence naming a long
 call or put left with no short of its type against it (``lone_long_line``, read from the approach's resulting legs).
 """
 from __future__ import annotations
@@ -44,7 +44,6 @@ UP, DOWN, SAME, NOT_AVAILABLE = "up", "down", "same", "not_available"
 _DIRECTION_TEXT = {UP: "adjust_wc_dir_up", DOWN: "adjust_wc_dir_down", SAME: "adjust_wc_dir_same",
                    NOT_AVAILABLE: "adjust_wc_dir_na"}
 _SIDE_WORD = {"PE": "put", "CE": "call"}
-_BUY_BACK_UNTESTED = frozenset({"A-26"})  # D-61: "Buy back the untested short"
 
 
 @dataclass(frozen=True)
@@ -203,8 +202,8 @@ def lone_long_line(after: Sequence[PositionLeg] | None) -> ExplanationText | Non
 
 
 def _with_lone_long(col: Column, reason: ExplanationText | None) -> ExplanationText | None:
-    """The reason line, then the D-61 line when the approach is "Buy back the untested short" (A-26) and it applies."""
-    lone = lone_long_line(col.built.after) if col.built.id in _BUY_BACK_UNTESTED else None
+    """The reason line, then the D-61 line when the approach's resulting legs leave a long with no short (any approach)."""
+    lone = lone_long_line(col.built.after)
     if lone is None or reason is None:
         return lone or reason
     return render_explanation("adjust_wc_lines", first=reason, second=lone)
