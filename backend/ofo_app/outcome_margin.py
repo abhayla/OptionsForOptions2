@@ -222,10 +222,11 @@ class OutcomeMargin:
             if funds is None:
                 available, needed, broker_needed, top_up = await asyncio.wait_for(
                     asyncio.to_thread(_read, client, orders), timeout)
-            else:  # D-36 (a): the request's one funds figure, then this basket (the same order as _read)
-                available = await funds.value(client)
-                needed, broker_needed, top_up = await asyncio.wait_for(
-                    asyncio.to_thread(_read_basket, client, orders), timeout)
+            else:  # D-36 (a): the request's one funds figure, then this basket; ONE bound covers both (round 2)
+                async def both() -> tuple[Decimal, Decimal, Decimal, Decimal]:
+                    got = await funds.value(client)
+                    return (got, *await asyncio.to_thread(_read_basket, client, orders))
+                available, needed, broker_needed, top_up = await asyncio.wait_for(both(), timeout)
         except KiteMarginError as exc:
             log.warning("outcome margin: Zerodha could not be read: %s", exc.code)
             if exc.code == MARGIN_BUSY_CODE:

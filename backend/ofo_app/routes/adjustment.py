@@ -302,7 +302,9 @@ def get_rest_spot_reader() -> RestSpotReader:
 
 def get_approach_margin(ctx: Annotated[MarketContext | None, Depends(get_market_context)],
                         source: Annotated[OutcomeMargin | None, Depends(get_margin_source)]) -> ApproachMargin:
-    """Zerodha's basket margin for one approach's After legs, through the outcome's own margin path (ADR-099)."""
+    """Zerodha's basket margin for one approach's After legs, through the outcome's own margin path (ADR-099).
+    Each call makes a NEW ``RequestFunds``: call it once per unit of work (FastAPI does, per request; the background
+    worker, per margin read via ``background.worker_margin_of``), never once for a long-lived caller."""
     funds = RequestFunds()  # D-36 (a): this request's one available-funds read, shared by all its basket reads
 
     async def read(legs: list[PlannedOrderIn]) -> Margin:

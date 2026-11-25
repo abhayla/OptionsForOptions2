@@ -36,7 +36,7 @@
           <p v-if="state === 'loading'" class="mt-2 text-sm text-ink-muted" data-testid="drawer-loading">{{ LOADING_TEXT }}</p>
           <template v-else-if="state === 'error'">
             <ErrorMessage :parts="errorParts" compact prefix="drawer-error" data-testid="drawer-error" />
-            <button type="button" class="mt-1 rounded border border-line px-2 py-1 text-sm" data-testid="drawer-retry" @click="load">{{ RETRY_LABEL }}</button>
+            <button type="button" class="mt-1 rounded border border-line px-2 py-1 text-sm" data-testid="drawer-retry" @click="retry">{{ RETRY_LABEL }}</button>
           </template>
           <ul class="mt-2 flex flex-col gap-2">
             <li v-for="a in approaches" :key="a.id" class="rounded border border-line p-2" :data-applicable="a.applicable ? 'true' : 'false'">
@@ -102,17 +102,25 @@ const rows = computed(() => [...props.cardRows, ...replyRows(reply.value)])
 // ADR-297: at the adjustment limit the server withholds some approaches; id -> its reason (shown, not selectable)
 const withheld = computed(() => new Map((reply.value?.not_offered ?? []).map((n) => [n.id, n.reason])))
 
+let newest = 0 // D-36 round 2: only the newest read's reply is shown
+async function retry() {
+  if (state.value === 'loading') return // one read in flight: a second click is ignored
+  await load()
+}
 async function load() {
+  const mine = ++newest
   state.value = 'loading'
   reply.value = null
   ticked.value = [NO_CHANGE_ID]
   try {
     const res = await props.client.post(`/strategies/${props.strategyId}/adjustment-approaches`, CURRENT_STATE_BODY)
+    if (mine !== newest) return
     reply.value = res.data
     state.value = 'ready'
     ticked.value = approaches.value.filter((a) => a.applicable && !withheld.value.has(a.id)).map((a) => a.id) // every applicable approach starts ticked
     if (!ticked.value.includes(NO_CHANGE_ID)) ticked.value.unshift(NO_CHANGE_ID)
   } catch (e) {
+    if (mine !== newest) return
     errorParts.value = e?.parts ?? NEUTRAL_PARTS
     state.value = 'error'
   }

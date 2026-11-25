@@ -275,7 +275,7 @@ class FlakyFunds(Zerodha):
             return HTTPStatus.SERVICE_UNAVAILABLE, '{"status": "error", "error_type": "NetworkException"}'
         return super().__call__(method, url, headers, body, timeout=timeout)
 
-    def funds(self) -> int:
+    def funds_calls(self) -> int:
         return sum(u.endswith("/user/margins") for u in self.calls)
 
 
@@ -287,10 +287,10 @@ async def test_d36_round2_a_failed_funds_read_does_not_poison_the_next_check_cyc
     rig = Rig(monkeypatch, gap_scn, Store(session()), zerodha, mono=lambda: clock[0])
     await rig.start()
     assert_not_checked(rig, await rig.at(1))
-    assert zerodha.funds() == 1
+    assert zerodha.funds_calls() == 1
     assert zerodha.baskets() == 0
     clock[0] += 1000.0  # past the failed read's retry wait
     state = await rig.at(1 + STEP)
     assert state.margin == NEEDED
-    assert zerodha.funds() == TWO_READS
+    assert zerodha.funds_calls() == TWO_READS
     assert zerodha.baskets() == 1
