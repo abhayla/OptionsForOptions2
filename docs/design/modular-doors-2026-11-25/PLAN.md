@@ -7,6 +7,34 @@ multiple other features" (example given: one exit function: given a strategy, ex
 Written 25 Nov 2026 ~16:40 IST from three read-only reviews (evidence/ folder). Base: branch `fix/ic-live-test-1123`
 at e98148e1 (= 5d9b53ca + one test-golden commit). Work branch: `refactor/modular-doors`.
 
+## Step 0 review (25 Nov), applied
+
+A fresh Opus reviewer checked this plan against the code. Item numbers are the reviewer's; owner questions are in
+`owner-questions.md`.
+
+- 1: B1 is `exit_strategy(strategy_id, reason, kind, price_source, only=None)` and builds sides and quantities only; the
+  price source is live (manual), given (leg stop) or intrinsic (settlement). Missing price: NotYet (monitor) or Refused (manual).
+- 2: builder Exit / Exit all keep today's Drafts-Mode diff (`paperOrdersFor`, `paperDrafts.js:103`) and the mixed-basket
+  route; F2 shrinks to one shared exit gate/button and one exit-POST helper. No new mixed-basket refusal.
+- 3: B1 refuses only the named legs, as a set, when one of them has no live price (ADR-322 (3)); Exit all is as today.
+- 4: D-05 builder half is the Positions rule (`listIsStale`); the read-only can-act endpoint is dropped (new API surface).
+- 5: D-60 as reported is what ADR-319 (4) / REQ-030 AC-11 ask for; the opposite-action case is owner question OQ-1; the
+  ADR-322 (1) mis-citation is fixed to ADR-319 (1).
+- 6: Phase 1 test timing, injected wait, and the feed dependency on `add_paper_triggers` written in.
+- 7: Phase 1 gains test rows for no feed, failed read and a leg with no feed key, a new template code with its pin, and
+  the lock-order question.
+- 8: S-20 structural fix moved to `reload` (add the strategy's index for every armed trigger).
+- 9: Phase 1 limited to trigger save, monitor and exit prices; the Phase 8 guard gets an explicit exemption list.
+- 10: more exit-order builders listed; Phase 8 allowlist; new modules go in `PAPER_MODULES`.
+- 11: B2 helper returns legs unordered; each caller keeps its own ordering.
+- 12: `POST /strategies/{id}/tracking/exit` kept (4 test files), moved onto the B1 door, behaviour unchanged; OQ-2 asks
+  whether to delete it later.
+- 13: D-41 basis, before/after charges proof and `lib/usePaperBookRead.js` named.
+- 14: F7 is now "share one `/triggers` read"; no new mounting.
+- 15: citations corrected; F1 string list extended.
+- 16: phases 3 and 4 swapped (one book source first, then exit); Phase 1 adds the ADR-327 spec-text step.
+- 17: Phase 1 test lives in `tests_app/` and runs without a database; the DB route twin runs in CI.
+
 ## Owner decisions that bound this plan (question tool, 25 Nov)
 
 | # | Decision | Effect on this plan |
@@ -34,12 +62,12 @@ Server (backend/):
 
 | # | Capability | Copies today | Door to build | Bug fixed inside |
 |---|---|---|---|---|
-| B3 | Read a live price (leg or index) | 9-11 readers, several hold mechanisms, 4-5 hold nothing; `live_push.hold_and_read` (live_push.py:95) is bypassed | `read_market(ctx, underlying, leg_keys, need_index, purpose)`: asks the feed to hold what it needs, waits up to 3 s, returns prices + a state per price (live / stale / missing / market closed) | D-01, S-20 |
-| B5 | Trigger save: "already crossed?" | `routes/paper.py:1637 _already_crossed` reads with no hold; keep route same shape | `check_trigger_levels(...)` on top of `read_market`; ADR-327 states | D-01 |
-| B4 | "May this act now?" (market open, prices live) | `paper_limit.refuse_when_closed` (paper_limit.py:119), `paper_monitor.on_quote` calendar (:177), `market_state` (outcome.py:224), `paper.is_live`, others | `may_act(ctx, action, at) -> Allowed | Refused(reason)`, plus a read-only answer the screens can show before a click | D-05 (server half) |
-| B1 | Exit legs (paper) | 4 server builders of "opposite side of the open book" (`routes/paper.py:1296`, `routes/tracking.py:513/550`, `paper_monitor.py:205/231`, `paper_settlement.py:164/171`) + the browser builds the basket (`frontend/src/lib/paperList.js:199 exitRowsFor`) | `exit_strategy(strategy_id, reason, only=None)`: reads the open net book under the strategy lock, builds opposite orders, buys first (ADR-117 / D-02), prices via `read_market`, refuses whole exit if a leg has no live price, writes through `paper_store.place` | D-05 (one rule for every Exit) |
-| B6 | Strategy money figures (P&L, booked, charges) assembled for the API | `routes/paper.py:651 _figures`, `routes/tracking.py:312 _figures`, `outcome.py:389`, `adjustment_history.py:333`, `routes/adjustment.py:428` | `strategy_money_view(strategy_id, prices)` (engine maths stays where it is; only the assembly is merged) | D-41 (server half) |
-| B2 | Real exit "close list" | `execute_plan.py:223 exit_legs`, `ofo/execution/partial.py:788`, + paper copies | share only `open_legs_to_close(book)`; the real gate stays separate. Tier A review | none (maintenance) |
+| B3 | Read a live price (leg or index) | 9-11 readers, several hold mechanisms, 4-5 hold nothing; `live_push.hold_and_read` (live_push.py:95) is bypassed. Phase 1 moves only trigger save, monitor and exit prices; display/advisory readers go to a deferred issue (RCA). Readers correct today stay: `background.py:272`, `:1192` (own process, own subscription), `adjustment_readers.py:611` (only centres a window) | `read_market(ctx, underlying, leg_keys, need_index, purpose)`: asks the feed to hold what it needs, waits up to 3 s, returns prices + a state per price (live / stale / missing / market closed) | D-01, S-20 |
+| B5 | Trigger save: "already crossed?" | `routes/paper.py:1637 _already_crossed` reads with no hold; keep route same shape. Today: no ctx saves (:1641), an exception saves (:1661), a leg with no feed key is skipped and saved (:1656) | `check_trigger_levels(...)` on top of `read_market`; ADR-327 states (no feed in market hours, failed read: refused; market-open comes from the calendar, not the snapshot). Read BEFORE taking the strategy row lock (:1675; monitor `_fire` waits behind it), or record why not | D-01 |
+| B4 | "May this act now?" (market open, prices live) | `paper_limit.refuse_when_closed` (paper_limit.py:117), `paper_monitor.on_quote` calendar (:177), `market_state` (`routes/outcome.py:224`), `paper.is_live`, others | `may_act(ctx, action, at) -> Allowed | Refused(reason)`, server-only (no new read-only endpoint: out of scope Q2). Screens use the book-read state instead (F1/F2) | D-05 (server half) |
+| B1 | Exit legs (paper) | 4 server builders of "opposite side of the open book" (`routes/paper.py:1296`, `routes/tracking.py:513/550`, `paper_monitor.py:205/231`, `paper_settlement.py:164/171`) + the browser builds the basket (`frontend/src/lib/paperList.js:199 exitRowsFor`). More exit-order builders outside paper, NOT merged (Phase 8 allowlist): `ofo/execution/send_guard.py:131,191` (real path), `ofo/execution/sequence.py:398 exit_orders`, `ofo/reconciliation/resolution.py:343`, `ofo/adjustment/approaches.py:412 close()` (preview), charge-estimate opposite sides (`extremes_charges.py:59`, `round_trip.py:63`, `routes/adjustment.py:446`) | `exit_strategy(strategy_id, reason, kind, price_source, only=None)`: reads the open net book under the strategy lock, builds sides and quantities only, buys first (ADR-117 / D-02). `price_source` is `live` (read_market, manual), `given` (the crossing tick, leg stop; `paper_monitor.py:247`) or `intrinsic(close)` (settlement, after close; `paper_settlement.py:125,:178`). A missing price returns NotYet (monitor stays armed, `:225-226`) or Refused (manual). Refuses the named legs as a set when any of them has no live price (ADR-322 (3); today `paper.py:1240`); Exit all on a trade with an unpriced wing behaves as today. Manual callers keep `paper_limit.place_checked` (`paper.py:1322`, `tracking.py:554`: market-hours refusal and adjustment-limit count); monitor and settlement keep `paper_store.place`. Serves the 4 server paths only: manual Positions exit route, tracking exit, monitor leg stop / conditional exit, settlement. `POST /strategies/{id}/tracking/exit` stays and moves onto this door, behaviour unchanged (closes from the entry legs, `tracking.py:550`) | D-05 (one rule for every Exit) |
+| B6 | Strategy money figures (P&L, booked, charges) assembled for the API | `routes/paper.py:651 _figures`, `routes/tracking.py:312 _figures`, `routes/outcome.py:389`, `routes/adjustment_history.py:333`, `routes/adjustment.py:428` | `strategy_money_view(strategy_id, prices)` (engine maths stays where it is; only the assembly is merged) | D-41 (server half) |
+| B2 | Real exit "close list" | `execute_plan.py:223 exit_legs`, `ofo/execution/partial.py:788`, + paper copies | share only `open_legs_to_close(book)`; the helper returns legs unordered (or contract-sorted) and each caller keeps its own ordering (Kite basket sorts by contract key, `execute_plan.py:223-226`; paper sorts buys first, `paper_store.py:98`). The real gate stays separate. Tier A review | none (maintenance) |
 | B7 | Raise an alert | `paper_trigger_store.add_alert`, `playbook_store.open_suggestion`, `notifier.notify` | `raise_alert(kind, strategy_id, facts)` | S-20 wording path |
 | B8 | Order recording | `paper_store.place` — already one door | none; B1 feeds it | — |
 
@@ -47,12 +75,12 @@ Screens (frontend/src/):
 
 | # | Shared thing | Copies today | Module | Bug fixed inside |
 |---|---|---|---|---|
-| F1 | Price freshness rule + wording | 6 separate checks, 8 strings (`tracking.js:108`, `paperList.js:16`, SummaryCards.vue:160 ...) | `lib/priceState.js` + `usePriceFreshness` | D-05, D-39 label (only where it is the same rule) |
-| F2 | Exit paper positions | 2 order builders, 2 POSTs, 2 gates: `PaperStrategies.vue:240` (blocks on failed read) vs `StrategyBuilderPage.vue:439,444` + `PaperBookPanel.vue:16` (Exit all never disabled) | `usePaperExit` + one `ExitButton`; calls server door B1 | D-05 |
-| F3 | Leg price per leg | builder alone polls 3 endpoints; Net Positions table vs `/tracking` panel (`TrackingPanel.vue:32`), each with its own 5 s timer | `usePaperBook` (one poll, one source) + `LegPrice` | D-41 |
-| F5 | P&L total / booked / unbooked / as-of | 3 parsers, 2 pollers of `/paper/strategies` | `PaperPnlBlock` + one reader (`usePaperBook`) | D-41 |
-| F6 | Add or move a leg | door exists (`lib/legDoor.js`); dialog copied (`LegPicker.vue:676`, `StrategyBuilderPage.vue:996`); strike step, ready-made, chain link and Compare entry points bypass it | `useLegDoor` + one `DuplicateLegDialog`; every entry point through it (ADR-322 (1)) | D-60 |
-| F7 | Stops panel | `PaperStops` mounted on Positions only | mount the same component in the builder (no copy) | — |
+| F1 | Price freshness rule + wording | 6 separate checks, 8+ strings (`tracking.js:108` and `paperList.js:16` hold the same text twice; also `PaperStrategies.vue:188,190`, `tracking.js:117`, `legPicker.js:7,100`, `CreateStrategyPage.vue:25`, `useChainLive.js:14`, `IndexStrip.vue:15`; `SummaryCards.vue:160` is the D-17 time-value basis prop, not a freshness string) | `lib/priceState.js` + `usePriceFreshness` | D-05, D-39 label (only where it is the same rule). D-05 builder half: builder Exit, Exit all and per-leg Exit disabled, and figures shown as a dash, when the last book read failed (`paperReadFailed`, `lib/usePaperBookRead.js:25`; the Positions rule `listIsStale`, `PaperStrategies.vue:249`). Today `paperReadFailed` is passed to `PaperBookPanel` but disables nothing (Exit all `PaperBookPanel.vue:16`; `exitAllPaper` checks only `paperStale`), and the panel only swaps one line (`:117`) |
+| F2 | Exit paper positions | 2 gates and 2 POSTs: `PaperStrategies.vue:240` (blocks on failed read) vs `StrategyBuilderPage.vue:438,443` (`exitAllPaper`/`exitPaper` only edit draft legs; checks only `paperStale`) + `PaperBookPanel.vue:16` (Exit all never disabled). Builder orders come from `paperOrdersFor` (`lib/paperDrafts.js:103`), the one Drafts-Mode diff: one mixed basket of exit and add orders, adjustments carry suggestion_ids (REQ-163), one transaction (`paper.py:1327-1339`); `legsAfterExit` (`paperDrafts.js:295`) keeps other pending edits, so a builder Exit also posts them. `exitRowsFor` (`paperList.js:199`) is the Positions copy | One shared exit gate/button (`usePaperExit` + one `ExitButton`) and one exit-POST helper. `paperOrdersFor` and the mixed-basket route `POST /paper/strategies/{id}/orders` stay unchanged (behaviour unchanged; pending edits still go with an Exit). B1 serves the 4 server paths only. No new server-side refusal of mixed baskets | D-05 |
+| F3 | Leg price per leg | builder alone polls 3 endpoints; Net Positions table vs `/tracking` panel (`TrackingPanel.vue:32`), each with its own 5 s timer. Panel leg rows come from `/strategies/{id}/tracking` (`TrackingPanel.vue:229,:246`), its total from the shared paper book (`sharedTotal`, `:121`); `AdjustCompare.vue:262` also reads `/tracking` | Extend `lib/usePaperBookRead.js` (no new `usePaperBook`): one poll, one source, + `LegPrice`. Name the basis and spec line first: `display_price` includes the last close after hours, `leg_price` is live only (`ofo/tracking/paper.py:110,:120`), so a source change alters the after-hours panel | D-41 |
+| F5 | P&L total / booked / unbooked / as-of | 3 parsers, 2 pollers of `/paper/strategies` | `PaperPnlBlock` + the same reader (`lib/usePaperBookRead.js`). Leg rows are before charges, the total after charges (`PaperBookPanel.vue:53`) | D-41 |
+| F6 | Add or move a leg | door exists (`lib/legDoor.js`); dialog copied (`LegPicker.vue:676`, `StrategyBuilderPage.vue:996`); strike step, ready-made, chain link and Compare entry points bypass it | `useLegDoor` + one `DuplicateLegDialog`; every entry point through it (ADR-319 (1); the earlier ADR-322 (1) citation was wrong, that one is about review rounds) | D-60 (see Phase 5 and OQ-1) |
+| F7 | Stops panel | `PaperStops` and `TrackingPanel` each read `/triggers` | share one `/triggers` read between them; no new mounting (a builder stops panel would be a new feature) | — |
 | F8 | Rename | 2 UIs, one write call | `useRename` | — |
 
 Helper-level duplicates from the 23 Nov review (`evidence/duplicates-2026-11-23.md`, RANK 1 RISK R1-R12): expiry
@@ -68,32 +96,63 @@ except tests that pin one of the 5 bugs (change those in the tests-first commit 
 
 1. **B3 read_market + B5 trigger check (D-01, S-20, ADR-327).**
    Core: a save of "Above X" with the index above X is refused even when nothing else holds the index.
-   Proof: `evidence/repro_d01.py.txt` (rename to .py to run) turned into a test (`tests_app/test_paper_trigger_unheld_index.py`): unheld index ->
-   refused `paper_trigger_already_crossed`; held -> refused; market open + no price after 3 s -> refused with the
-   ADR-327 line; market closed -> saved. Leg-stop alert carries the index value when the index ticks (S-20).
-   Move every reader that bypasses the hold onto `read_market` (list in evidence/review-backend.md section 3).
-2. **B4 may_act + F1 priceState (D-05 server half, D-39 where same rule).** One answer to "may I exit / place now?"
-   that both the route and the screen use. Proof: a test per action state (open+live, open+stale, open+missing,
-   closed) on the server; a vitest per state on `usePriceFreshness`.
-3. **B1 exit_strategy + F2 usePaperExit (D-05).** All 4 server exit paths call `exit_strategy`; the browser sends
-   "exit these contracts" (ids, lots for a partial) and the server builds sides, order and prices. Find whether
-   `POST /strategies/{id}/tracking/exit` has any caller (none found in frontend; check tests); delete it if dead.
-   Proof: one test per caller (manual all, manual subset, conditional exit, leg stop, settlement) asserting the same
-   stored rows (side, qty, kind, reason, buys-first order) as before; builder Exit and Exit all disabled with the
-   Positions wording when `may_act` refuses (vitest).
-4. **F3 + F5 + B6 one paper book source (D-41).** The builder's Net Positions table and Paper P&L panel read the same
-   prices from one poll. Proof: vitest rendering both panels from one fake book shows identical LTP per leg and leg
-   rows that add up to the total; server test that paper and tracking figures for one strategy come from
-   `strategy_money_view` and match.
-5. **F6 useLegDoor (D-60).** Strike step, Shift, Width, Hedge, picker, edit form, ready-made, chain link, Compare:
-   all through the door (ADR-322 (1): Increase / Keep separate / Cancel; one live question per move). Proof: vitest
-   per entry point: moving onto a held contract opens the question; Escape = Cancel leaves the draft unchanged.
+   Scope: trigger save, monitor and exit prices only. Display and advisory readers (`routes/outcome.py:1263`, pushes
+   `live_push.py:170`, `chain_push.py:305`, `index_push.py:84`) are NOT moved (they would add up to 3 s waits); they go
+   to a deferred issue.
+   Proof: `evidence/repro_d01.py.txt` (rename to .py to run; it hard-codes REPO = D:\..., use the repo root) turned into
+   a test (`tests_app/test_paper_trigger_unheld_index.py`, no database needed; `_kite_fixture` is already imported from
+   `tests_app`, e.g. `test_bus_socket.py`; the DB route twin runs only in CI or on local Postgres). Frames are pushed
+   only AFTER the hold subscribes (`d01-root-cause.md` section 5): ticks for unheld tokens are dropped
+   (`kite_provider.py:114-118`). The 3 s wait comes from an injected clock or wait function (no real sleep;
+   `tests/test_no_wall_clock_asserts.py`). The route also needs the feed dependency: `add_paper_triggers`
+   (`paper.py:1668`) has none today. Rows: unheld index -> refused `paper_trigger_already_crossed`; held -> refused;
+   market open + no price after 3 s -> refused with the ADR-327 line (new template code plus its pin in
+   `tests/errors/template_pins.json`); market closed -> saved; market open + no feed (ctx None) -> refused; market open
+   + read raises -> refused; a leg with no feed key -> refused in market hours (today skipped and saved). The read
+   happens before the strategy row lock, or the plan records why not.
+   S-20: `_index_now` is synchronous inside `_fire`'s transaction (`paper_monitor.py:229-230, :262`); do not put a 3 s
+   read there. Structural fix in `reload` (`:136-146`): add the strategy's index to `extra` for every armed trigger, not
+   only conditional exits. The leg-stop alert then carries the index value when the index ticks.
+   Spec text (same commit as the code): add ADR-327 to `views/spec-digest.md` by running
+   `python tools/build_spec_digest.py .` (views/ is generated; never hand-edit; the digest lacks ADR-327 today), and add
+   a one-line note on `spec/requirements/REQ-109.md` AC-8 and `spec/decisions/ADR-317.md` that ADR-327 supersedes (2) in
+   market hours (grep the exact lines first; if a hook refuses the ADR-317 edit, put the note only in REQ-109 and say so).
+2. **B4 may_act + F1 priceState (D-05 server half, D-39 where same rule).** `may_act` is server-only: the route and the
+   exit door use it. The screen uses the book-read state (`paperReadFailed` / `listIsStale`) through `usePriceFreshness`.
+   Proof: a test per action state (open+live, open+stale, open+missing, closed) on the server; a vitest per state on
+   `usePriceFreshness`.
+3. **F3 + F5 + B6 one paper book source (D-41).** The builder's Net Positions table and Paper P&L panel read the same
+   prices from one poll (`lib/usePaperBookRead.js` extended). Name the price basis and the spec line (after hours:
+   `display_price` vs `leg_price`) before changing the source. Proof: vitest rendering both panels from one fake book
+   shows identical LTP per leg and "sum of leg P&L == the before-charges total"; server test that paper and tracking
+   figures for one strategy come from `strategy_money_view` and match.
+4. **B1 exit_strategy + F2 shared exit gate (D-05).** The 4 server exit paths (manual Positions exit route, tracking
+   exit, monitor leg stop / conditional exit, settlement) call `exit_strategy`; the builder keeps its Drafts-Mode diff
+   and mixed-basket route. `POST /strategies/{id}/tracking/exit` stays (tests: `test_strategy_tracking_list.py` ~20
+   calls from :137, `test_paper_adjustment_limit.py:197`, `test_paper_save_paths_fx2.py:64,72,103`,
+   `test_scenario_isolation.py:99`; also `scenario_mode.py:93`, `paper_limit.py:3` docstring) and moves onto the door;
+   OQ-2 asks whether to delete it later. New modules (`read_market`, `exit_strategy`) are added to `PAPER_MODULES` in
+   `tests_app/test_paper_order_door.py:24`.
+   Proof: one test per caller (manual all, manual subset, conditional exit, leg stop, settlement, tracking exit)
+   asserting the same stored rows (side, qty, kind, reason, buys-first order) as before; settlement still prices at
+   intrinsic after close; a leg stop with a missing price stays armed; builder Exit, Exit all and per-leg Exit disabled,
+   figures a dash, when the last book read failed (vitest, same rule as Positions).
+5. **F6 useLegDoor (D-60).** Strike step, Shift, Width, Hedge, picker, edit form, ready-made, chain link, Compare: all
+   through the door (ADR-319 (1): same-action moves ask Increase / Keep separate / Cancel; one live question per move).
+   D-60's reported case (a Sell onto a held Buy of the same contract) is what ADR-319 (4) / REQ-030 AC-11 ask for today
+   (`legDoor.js:15 sameContract` needs the same action), and the strike step already goes through `admitLegs`
+   (`StrategyBuilderPage.vue:803-815`; `RELATIVE_CONTROLS` includes step, `lib/legEdit.js:54`), so that proof passes
+   today. The opposite-action step is owner question OQ-1; build ADR-319 (4) as written (no question for opposite
+   action) unless the owner answers otherwise. Proof: vitest per entry point: moving onto a held same-action contract
+   opens the question; Escape = Cancel leaves the draft unchanged.
 6. **B2, B7, F7, F8** (maintenance, behaviour unchanged). B2 touches the real-order path: Tier A review (fresh Opus,
-   adversarial) before it lands; it must not change what is posted to Kite.
+   adversarial) before it lands; it must not change what is posted to Kite (basket order stays contract-sorted).
 7. **23 Nov helpers R2-R12** where a phase above did not already absorb them (R1 parked for the owner).
 8. **Guard tests (keep it modular).** A repo test that fails when: a route/monitor calls `read_snapshot` or a
-   provider quote outside `read_market`; something other than `exit_strategy`/`paper_store` builds exit orders; a
-   frontend file defines its own not-live string or exit POST. Detector is the second layer; the door is the first.
+   provider quote outside `read_market`; something other than `exit_strategy`/`paper_store` builds paper exit orders; a
+   frontend file defines its own not-live string or exit POST. Explicit exemption lists: price readers correct today
+   (`background.py:272`, `:1192`, `adjustment_readers.py:611`) and the non-paper exit-order builders named in B1
+   (real path, reconciliation, preview, charge estimates). Detector is the second layer; the door is the first.
 
 ## How the cloud session works (rules)
 
