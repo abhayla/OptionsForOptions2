@@ -76,6 +76,8 @@ export const earlierMoreText = (n) => `and ${n} earlier`
 export const EXITS_LOAD_FAILED_TEXT = 'Could not read the conditional exits. Nothing was changed.'
 // pending owner read (25 Nov 2026), GC-ICLIVE D-32 (ADR-242): the watch box heading says what a watch does: it alerts, it never exits
 export const WATCH_LEVEL_LABEL = 'Watch an index level: it only alerts and does not exit'
+// pending owner read (25 Nov 2026), GC-ICLIVE D-33 (ADR-320 (5), ADR-298): the one visible short-funds line on the builder; the practice order is still allowed
+export const SHORT_FUNDS_LINE = 'Not enough funds. Paper trade: this practice order is still allowed; a real order of this size would be refused.'
 export const exitLineText = (direction, levelText, state) =>
   `Conditional exit: all legs exit if the index goes ${direction === 'below' ? 'below' : 'above'} ${levelText}. ${state === 'fired' ? 'Fired' : 'Armed'}.`
 export const LIMITS_NONE_TEXT = 'No rules are being checked for this trade'
