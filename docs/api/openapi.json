@@ -7807,6 +7807,15 @@
               }
             ]
           },
+          "target_not_live_text": {
+            "anyOf": [
+              {},
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Target Not Live Text"
+          },
           "underlying": {
             "enum": [
               "NIFTY",
@@ -8124,6 +8133,11 @@
               }
             ],
             "title": "Closed Text"
+          },
+          "expired_open": {
+            "default": false,
+            "title": "Expired Open",
+            "type": "boolean"
           },
           "extremes_charges": {
             "anyOf": [
@@ -9581,6 +9595,11 @@
             ],
             "title": "Closed Text"
           },
+          "expired_open": {
+            "default": false,
+            "title": "Expired Open",
+            "type": "boolean"
+          },
           "extremes_charges": {
             "anyOf": [
               {
@@ -10335,6 +10354,20 @@
               }
             ],
             "title": "Decay Text"
+          },
+          "left_out_count": {
+            "default": 0,
+            "title": "Left Out Count",
+            "type": "integer"
+          },
+          "left_out_text": {
+            "anyOf": [
+              {},
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Left Out Text"
           },
           "total": {
             "anyOf": [

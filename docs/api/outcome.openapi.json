@@ -1625,6 +1625,15 @@
               }
             ]
           },
+          "target_not_live_text": {
+            "anyOf": [
+              {},
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Target Not Live Text"
+          },
           "seq": {
             "anyOf": [
               {

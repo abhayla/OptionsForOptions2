@@ -483,6 +483,7 @@ decisions:
   ADR-321: S6.7         # one basis per money number, labelled (Part B of the 23 Nov live test, pending owner read)
   ADR-322: S6.7         # owner decisions of 25 Nov 2026 on the GC-ICLIVE run (rounds, time value, paper exits, spot gate)
   ADR-323: S6.7         # Part C of the 23 Nov live test: records, times, one word, one value (pending owner read)
+  ADR-324: S6.7         # Part D of the 23 Nov live test: paper header totals leave out expired strategies (pending owner read)
 
 questions:
   Q210: 4a              # external: Zerodha's written answer; ADR-051 covers the owner's own account
