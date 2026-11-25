@@ -74,6 +74,8 @@ export const EARLIER_SHOWN_MAX = 5
 export const earlierMoreText = (n) => `and ${n} earlier`
 // pending owner read (25 Nov 2026), GC-ICLIVE D-24: the Plan block lists the armed index exits (REQ-109 AC-8) with level and state
 export const EXITS_LOAD_FAILED_TEXT = 'Could not read the conditional exits. Nothing was changed.'
+// pending owner read (25 Nov 2026), GC-ICLIVE D-32 (ADR-242): the watch box heading says what a watch does: it alerts, it never exits
+export const WATCH_LEVEL_LABEL = 'Watch an index level: it only alerts and does not exit'
 export const exitLineText = (direction, levelText, state) =>
   `Conditional exit: all legs exit if the index goes ${direction === 'below' ? 'below' : 'above'} ${levelText}. ${state === 'fired' ? 'Fired' : 'Armed'}.`
 export const LIMITS_NONE_TEXT = 'No rules are being checked for this trade'
