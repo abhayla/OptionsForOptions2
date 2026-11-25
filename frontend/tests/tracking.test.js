@@ -290,3 +290,11 @@ describe('live #603 item 1: one minus character on the panel (REQ-152 AC-4, ADR-
     expect(readTracking(body({ paper_pnl: '-19.50', paper_pnl_text: null })).kind).toBe('invalid')
   })
 })
+
+describe('D-41 (modular doors, Phase 3): the contract id of a leg', () => {
+  it('readTracking carries contractId from the reply\'s contract_id; key stays the feed identity; an older reply without it has none', () => {
+    const r = readTracking(body({ legs: [{ ...legs[0], contract_id: 5001 }, legs[1]] }))
+    expect(r.legs.map((l) => l.contractId)).toEqual([5001, undefined])
+    expect(r.legs.map((l) => l.key)).toEqual(['NSE_FO:44624', 'NSE_FO:44604'])
+  })
+})

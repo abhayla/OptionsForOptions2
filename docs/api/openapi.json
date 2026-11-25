@@ -15492,6 +15492,10 @@
             "title": "Action",
             "type": "string"
           },
+          "contract_id": {
+            "title": "Contract Id",
+            "type": "integer"
+          },
           "current_price": {
             "anyOf": [
               {
@@ -15680,6 +15684,7 @@
         "required": [
           "leg_index",
           "instrument_id",
+          "contract_id",
           "action",
           "instrument",
           "strike",

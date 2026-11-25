@@ -44,7 +44,7 @@ from ofo.outcome.price_text import price_text
 from ofo.strategy import stored_form as sf
 from ofo.strategy.definition import display_contract
 from ofo.tracking import book, paper
-from ofo.tracking.orderbook import PaperOrder, net_positions
+from ofo.tracking.orderbook import PaperOrder
 from pydantic import BaseModel, ConfigDict, Field
 
 from ofo_app import may_act, paper_limit, paper_reasons
@@ -76,6 +76,7 @@ from ofo_app.routes.paper import (
 from ofo_app.routes.planned_entry import get_live_feed, hold_until_priced
 from ofo_app.routes.strategies import StrategyRefused, refused_answer
 from ofo_app.scenario_guard import guard_paper_order  # dev/test scenario guard; reaches no Execute code
+from ofo_app.strategy_money import strategy_money_view
 from ofo_app.underlying import Underlying
 
 router = APIRouter(route_class=ClosedRoute)
@@ -98,6 +99,7 @@ class TrackingExitIn(BaseModel):
 class TrackingLegOut(ApiModel):
     leg_index: int
     instrument_id: InstrumentId
+    contract_id: int  # D-41: the book's key for this leg (the screen joins on it); instrument_id is the feed identity
     action: Literal["BUY", "SELL"]
     instrument: Literal["CE", "PE", "FUT"]
     strike: Money | None
@@ -298,15 +300,13 @@ def _book_figures(bk: _Book, view: paper.TrackingView | None
     """REQ-109 AC-4: every figure from the one engine on the orders (ofo.engine.orderbook.net_positions), exact. The
     open legs are priced only when the view is live (not paused, connected): a paused or unconnected view gives no
     open leg a figure and no unbooked / total (AC-5); an exited leg keeps its booked figure."""
-    priced = {} if view is None else {
-        leg.instrument_id: view.legs[i].price for i, leg in enumerate(bk.legs)
-        if not leg.exited and paper.is_live(view.legs[i]) and view.legs[i].price is not None}
-    live = {} if view is None or view.paused else priced
-    figures = net_positions(bk.orders, live)  # every TOTAL (and the after-charges figures) stays paused, never a mix
-    by_id = {p.instrument_id: p for p in net_positions(bk.orders, priced).positions}  # ADR-311: per leg
+    prices = {} if view is None else {
+        leg.instrument_id: view.legs[i] for i, leg in enumerate(bk.legs) if not leg.exited}
+    money = strategy_money_view(bk.orders, prices, totals_priced=view is not None and not view.paused)
+    by_id = money.by_contract  # ADR-311: per leg, at the legs that have a price
     pnls: list[Decimal | None] = [by_id[leg.instrument_id].booked if leg.exited else by_id[leg.instrument_id].unbooked
                                   for leg in bk.legs]
-    return figures, pnls, live
+    return money.book, pnls, money.live  # every TOTAL (and the after-charges figures) stays paused, never a mix
 
 
 def _figures(bk: _Book, legs: list[paper.TrackedLeg], view: paper.TrackingView | None,  # noqa: PLR0913
@@ -320,7 +320,8 @@ def _figures(bk: _Book, legs: list[paper.TrackedLeg], view: paper.TrackingView |
         price = None if view is None else view.legs[i]
         done = held.exited
         state = price.state if price is not None else paper.EXITED if done else (reasons[i] or "missing")
-        rows.append({"leg_index": i, "instrument_id": leg.instrument_id, "action": leg.action.value,
+        rows.append({"leg_index": i, "instrument_id": leg.instrument_id, "contract_id": int(held.instrument_id),
+                     "action": leg.action.value,
                      "instrument": leg.instrument.value, "strike": leg.strike, "expiry": leg.expiry,
                      "quantity": leg.quantity, "entry_price": leg.entry_price,
                      "entry_price_display": price_text(leg.entry_price), "entry_at": leg.price_at,
