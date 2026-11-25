@@ -181,6 +181,9 @@ export function readPaperList(data) {
   return { groups: data.strategies.map(readPaperStrategy), totals: readTotals(data.totals), today: readToday(data.today) }
 }
 
+/** The ONE paused decision of every paper P&L screen (REQ-109 AC-5): a refresh failed or did not read while a list is held. */
+export const listIsStale = (failed, list) => !!failed && !!list
+
 /** A group is open when the server counts an open position in it (never a fully exited one). */
 export const isOpenGroup = (g) => g.readable && g.state !== 'EXITED' && g.openCount > 0
 

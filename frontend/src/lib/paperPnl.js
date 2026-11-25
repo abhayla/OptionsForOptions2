@@ -6,7 +6,7 @@
 // always ends, the client has a timeout, so this state never lasts).
 import { computed, onMounted, ref } from 'vue'
 import api from '@/services/api'
-import { PAPER_NO_FIGURE, PAPER_PAUSED, readPaperList } from '@/lib/paperList'
+import { PAPER_NO_FIGURE, PAPER_PAUSED, listIsStale, readPaperList } from '@/lib/paperList'
 import { UNREADABLE_TEXT } from '@/lib/tracking'
 import { usePaperRefresh } from '@/lib/usePaperRefresh'
 
@@ -16,8 +16,6 @@ export const HOME_RUNNING_LABEL = 'Running strategies' // pending owner read
 export const HOME_UNREAD_LABEL = 'Unread alerts' // pending owner read
 export const HOME_PNL_LABEL = 'Total P&L' // pending owner read
 export const FIGURE_READ_FAILED_TEXT = 'Could not be read right now.' // pending owner read
-
-const NOT_LIVE_STATES = ['PAUSED', 'NOT_CONNECTED']
 
 /** One P&L figure as the screen shows it. `fig` is an `afterFigure` result ({kind, text, label, reason}) from readPaperList, or null
  *  (not readable). `notLive`: the list itself is old (a failed refresh) or the strategy's state says prices are not live. */
@@ -45,7 +43,7 @@ export function usePaperPnl() {
     onError: () => { failed.value = true; loaded.value = true },
   })
   onMounted(refresh)
-  const stale = computed(() => failed.value && list.value !== null)
+  const stale = computed(() => listIsStale(failed.value, list.value))
   /** The cell of one strategy: {kind: loading | none | value | paused | failed, text, label, note}. */
   const cellFor = (id) => {
     if (!loaded.value) return { kind: 'loading' }
@@ -53,7 +51,7 @@ export function usePaperPnl() {
     const g = list.value.groups.find((x) => x.id === id)
     if (!g) return { kind: 'none' }
     if (!g.readable) return pnlFigure(null)
-    return pnlFigure(g.totalAfter, stale.value || NOT_LIVE_STATES.includes(g.state))
+    return pnlFigure(g.totalAfter, stale.value)
   }
   /** The total over every paper strategy (the Positions totals strip). */
   const totalCell = computed(() => {

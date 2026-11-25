@@ -45,7 +45,7 @@ const expiry = ref('')
 const catalogueFailed = ref(false)
 let expirySeq = 0 // the newest expiry read wins
 
-const { answer, status, reconnecting, reconnectingText, request, follow, clear, refresh, shown, notLive } = useChainAnswer()
+const { answer, status, reconnecting, reconnectingText, request, follow, refilter, clear, refresh, shown, notLive } = useChainAnswer()
 const details = ref(false) // REQ-029 AC-3: off = AC-2's default columns
 const limits = useSettingsValues()
 const maxEachSide = computed(() => limits.integer(STRIKES_KEY)) // null until GET /api/settings answers: the loading state
@@ -86,9 +86,20 @@ watch(expiry, (value) => {
 }, { flush: 'sync' })
 // The strike range and the numeric filters are request fields (the server applies them, ADR-008): a change re-asks.
 const serverKey = computed(() => JSON.stringify([strikesEachSide.value, filterParams(filters.value)]))
+// D-55 round 2: typing is sent once, FILTER_PAUSE_MS after the last key (a technical choice), and the rows stay on screen meanwhile
+const FILTER_PAUSE_MS = 300
+let filterTimer = null
 watch(serverKey, () => {
-  if (expiry.value && strikesEachSide.value !== null) ask(expiry.value)
+  clearTimeout(filterTimer)
+  if (request.value === null) { // nothing followed yet (the range just loaded): ask at once, no pause
+    if (expiry.value && strikesEachSide.value !== null) ask(expiry.value)
+    return
+  }
+  filterTimer = setTimeout(() => {
+    if (expiry.value && strikesEachSide.value !== null) refilter(chainRequest(underlying.value, expiry.value, strikesEachSide.value, maxEachSide.value, filterParams(filters.value)))
+  }, FILTER_PAUSE_MS)
 })
+onBeforeUnmount(() => clearTimeout(filterTimer))
 
 const router = useRouter()
 const selection = useChainSelection()

@@ -99,7 +99,7 @@ let loadingTimer = null
 let attempt = 0
 function giveUpLoading(mine) {
   if (gone || mine !== attempt || state.value !== 'loading') return
-  attempt++
+  // the attempt stays valid: a read that succeeds later replaces this error with the figures
   errorParts.value = NEUTRAL_PARTS
   state.value = 'error'
   settle()
@@ -145,7 +145,7 @@ async function begin() {
     state.value = 'error'
     settle()
   } finally {
-    if (mine === attempt) clearTimeout(loadingTimer)
+    if (mine === attempt && state.value !== 'loading') clearTimeout(loadingTimer)
   }
 }
 onMounted(() => {

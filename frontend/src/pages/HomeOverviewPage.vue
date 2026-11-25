@@ -13,7 +13,7 @@ import { istTime } from '@/lib/displayFormat'
 import { plainName } from '@/lib/saveDraft'
 import { isRunning, strategyStatusWord } from '@/lib/strategyStatus'
 import { FIGURE_READ_FAILED_TEXT, HOME_PNL_LABEL, HOME_RUNNING_LABEL, HOME_UNREAD_LABEL, usePaperPnl } from '@/lib/paperPnl'
-import { dropAlerts, paperAlerts, readPaperAlerts, takeAlerts } from '@/lib/paperAlerts'
+import { bellCount, dropAlerts, paperAlerts, readPaperAlerts, takeAlerts } from '@/lib/paperAlerts'
 import { PAPER_NO_FIGURE } from '@/lib/paperList'
 import { SECTIONS } from '@/router/nav'
 
@@ -52,7 +52,7 @@ const runningCell = computed(() => {
 const unreadCell = computed(() => {
   if (!paperAlerts.loaded) return { text: PAPER_NO_FIGURE, note: null }
   if (paperAlerts.parts) return { text: PAPER_NO_FIGURE, note: FIGURE_READ_FAILED_TEXT }
-  return { text: String(paperAlerts.unread), note: null }
+  return { text: String(bellCount()), note: null } // the bell badge's own number (unread stops plus open adjustment records)
 })
 const pnlCell = computed(() => {
   const c = pnl.totalCell.value

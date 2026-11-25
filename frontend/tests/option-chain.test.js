@@ -390,6 +390,7 @@ describe('Option Chain screen', () => {
     sock().serverOpen()
     await w.find('[data-testid="filter-strike-range"]').setValue('5')
     await flushPromises()
+    await new Promise((r) => setTimeout(r, 350)) // D-55 round 2: a change is sent after a short pause
     expect(JSON.parse(sock().sent.at(-1))).toEqual({ underlying: 'NIFTY', expiry: '2026-10-20', strikes_each_side: 5 })
   })
 
@@ -409,6 +410,7 @@ describe('Option Chain screen', () => {
     const sentBefore = sock().sent.length
     await w.find('[data-testid="filter-min-ltp"]').setValue('1000')
     await flushPromises()
+    await new Promise((r) => setTimeout(r, 350)) // D-55 round 2: a change is sent after a short pause
     expect(sock().sent.length).toBe(sentBefore + 1)
     expect(JSON.parse(sock().sent.at(-1))).toEqual({ underlying: 'NIFTY', expiry: '2026-10-20', strikes_each_side: 15, min_ltp: '1000' })
     sock().serverPush({ ...answer(), expiry: '2026-10-20', rows: [] })
@@ -418,6 +420,7 @@ describe('Option Chain screen', () => {
     expect(w.findAll('[data-testid="selected-leg"]')).toHaveLength(1)
     await w.find('[data-testid="filter-reset"]').trigger('click')
     await flushPromises()
+    await new Promise((r) => setTimeout(r, 350)) // D-55 round 2
     expect(JSON.parse(sock().sent.at(-1))).toEqual({ underlying: 'NIFTY', expiry: '2026-10-20', strikes_each_side: 15 })
     sock().serverPush({ ...answer(), expiry: '2026-10-20' })
     await flushPromises()
