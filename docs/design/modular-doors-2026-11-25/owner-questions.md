@@ -5,6 +5,11 @@ choice named under "Built meanwhile".
 
 ## OQ-1 D-60: ask a question when a strike step lands on an opposite-action held contract?
 
+**ANSWERED 25 Nov evening by the owner: ADR-328 (1).** A strike step or a move (step, Shift, Width, Hedge) onto a
+contract held on the opposite side asks "Keep both" / "Cancel"; a deliberate add from the strike picker stays silent.
+Spec change to ADR-319 (4) and the REQ-109 AC-9 sentence (the line this question did not cite). Built in Phase 5 of
+`PLAN-phases-3-8.md`. The text below is kept as asked.
+
 What: D-60 was reported as "B 26000 CE and S 26000 CE as two rows". Today's rule (ADR-319 (4), REQ-030 AC-11) asks the
 Increase / Keep separate / Cancel question only for the same action on the same contract; a deliberate add of the
 opposite action is allowed as two rows (`legDoor.js:15 sameContract` needs the same action). Moving a leg with the
@@ -29,6 +34,12 @@ through the one leg door, and same-action moves ask the question.
 
 ## OQ-2 Delete `POST /strategies/{id}/tracking/exit` as a dead door?
 
+**CLOSED 25 Nov evening by the coordinator (a technical choice the owner delegated): keep it** as the HTTP face of the
+exit door. Corrected facts: it closes the NET open quantity of the named legs (`book.contract_legs`,
+`backend/ofo/tracking/book.py:57-60`), not the entry legs; 9 test files and the IC end-to-end harness use it
+(`test_ic_exits_paper.py:122`, `test_ic_paper_loop_core.py:200`), not 4. The premise below is therefore wrong. Built in
+Phase 4 of `PLAN-phases-3-8.md`.
+
 What: the route has no frontend caller, but four test files use it (`tests_app/test_strategy_tracking_list.py`,
 `test_paper_adjustment_limit.py`, `test_paper_save_paths_fx2.py`, `test_scenario_isolation.py`), plus a mention in
 `scenario_mode.py` and the `paper_limit.py` docstring. It closes from the entry legs, not the net book
@@ -49,3 +60,36 @@ that is meant to leave behaviour unchanged.
 
 Built meanwhile: the route stays and is moved onto the B1 exit door, behaviour unchanged (closes from the entry legs);
 its tests stay as they are.
+
+## OQ-3 Wording of `paper_trigger_price_unreadable` (STRATEGY_VALIDATION_446)
+
+**ANSWERED 25 Nov evening by the owner: ADR-328 (5).** Approved as built: "the live price could not be read, so this
+level cannot be checked. Try again in a moment." / "No stop was set; nothing was exited." / "Setting this paper stop." /
+"Press Save again once the live prices are showing." The pin's "pending owner read" mark is cleared in
+`tests/errors/template_pins.json`.
+
+## OQ-4 Add Selected: the builder holds no legs when the chain's legs arrive (OPEN; nothing waits on it)
+
+What: ADR-328 (2) says Option Chain "Add Selected" asks "Replace the N legs?" when the builder already holds legs. In
+code the builder never holds legs at that moment: the chain is a separate route (`frontend/src/router/routes.js:12,23`),
+`App.vue:11-13` has a plain `router-view` (no keep-alive), and the builder starts from the link's legs only
+(`StrategyBuilderPage.vue:121`). The earlier unsaved legs were dropped, with no question, when the user left the builder
+for the chain (the builder writes no draft into its URL).
+
+Spec basis: ADR-328 (2); ADR-319 (1); REQ-079 AC-5 ("Replace the 2 legs in the builder?"); the spec says nothing about
+leaving the builder with unsaved legs (searched: leave, unsaved, navigate away, Add Selected).
+
+Real case (code, 25 Nov): build 3 legs, open Market > Option Chain, tick 2 contracts, Add Selected: the builder shows
+only the 2; the 3 are gone and nothing asked.
+
+Options:
+1. Ask when leaving the builder with unsaved legs: "Leave the builder? The N unsaved legs will be lost." (recommended)
+2. Keep the builder's unsaved legs across pages and ask "Replace the N legs?" on Add Selected (the owner's words; a
+   larger change, and a fresh builder would then open with the old legs).
+3. Only the in-page question (when the builder, already showing legs, receives another draft link).
+
+Recommendation: option 1. The loss happens on leaving, whatever page comes next; option 1 covers the chain and every
+other way out.
+
+Built meanwhile: option 3 (Phase 5 of `PLAN-phases-3-8.md`), plus a test that a fresh builder opened from the chain
+asks nothing.

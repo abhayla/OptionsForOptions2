@@ -7,6 +7,46 @@ multiple other features" (example given: one exit function: given a strategy, ex
 Written 25 Nov 2026 ~16:40 IST from three read-only reviews (evidence/ folder). Base: branch `fix/ic-live-test-1123`
 at e98148e1 (= 5d9b53ca + one test-golden commit). Work branch: `refactor/modular-doors`.
 
+## Corrections of 25 Nov evening (code-verified; the build order is now `PLAN-phases-3-8.md`)
+
+Phases 3 to 8 are built from `PLAN-phases-3-8.md`, which wins where it and this file differ. The owner's five answers
+of the evening are ADR-328. Each correction below names the code that proved this file wrong (lines at `b1055c5`).
+
+1. B1 row: `routes/paper.py:1296` builds no sides or quantities. The browser builds the basket (`paperList.js:197-206`,
+   `paperDrafts.js:103-143`); the route only prices exits (`_server_exit_prices`, `routes/paper.py:1221-1245`) and the
+   store re-checks they reduce (`paper_store.py:85-95`). So: 3 server builders (tracking exit, monitor, settlement) +
+   1 server pricer (manual route). The manual route shares only the pricing step.
+2. B1 / OQ-2: the tracking exit does NOT close "from the entry legs". Its legs are `book.contract_legs` (net per
+   contract, `ofo/tracking/book.py:57-60`). It is used by 9 test files and the IC harness (`test_ic_exits_paper.py:122`,
+   `test_ic_paper_loop_core.py:200`), not 4. OQ-2 is closed: the route is kept as the HTTP face of the exit door.
+3. B1 price sources: the conditional exit is a fourth kind (one provider read, no wait, `paper_monitor.py:252-262`).
+   The monitor reads its book with no lock and claims the trigger BEFORE the strategy lock (`:216-227`), the reverse of
+   the routes' order: the door takes the strategy lock first in every caller. The ADR-322 (3) refusal is at
+   `routes/paper.py:1244`, not `:1240`.
+4. B2: `exit_legs` sorts by the held map's instrument STRING (`execute_plan.py:225`), not a contract key; it stays
+   byte-identical with an oracle test. `ofo/execution/partial.py:788` is not shared (different inputs).
+5. B6: five copies, not four; the fifth is `routes/adjustment_history.py:256`. `_figures` is at `routes/paper.py:654`.
+6. F3: one SOURCE for the leg price, but two polls stay (the panel still needs `/tracking`). The join must be a new
+   `contract_id` on the tracking leg rows: the panel's `instrument_id` is `"NSE_FO:44624"` (`routes/tracking.py:413`,
+   `tracked_contracts.py:59-67`), so the Phase 3 patch's join never matches. Per-leg figure = total (ADR-328 (3)).
+   Call the bug "D-41 (two readers)"; the ledger's D-41 is another, fixed defect.
+7. F6 / Phase 5: `sameContract` is `legDoor.js:14`; the step's door call is `StrategyBuilderPage.vue:817` (in
+   `askMovedDuplicates`, `:769-791`); the page dialog is `:1004-1012`. Ready-made, chain link, Compare, URL and Undo
+   replace legs; they do not bypass the door. The opposite-side step is no longer "as ADR-319 (4) is written": ADR-328
+   (1) asks "Keep both" / "Cancel". The spec line OQ-1 missed is REQ-109 AC-9.
+8. Option Chain "Add Selected" opens the builder fresh (separate routes, `router/routes.js:12,23`; plain `router-view`,
+   `App.vue:11-13`), so no held legs are replaced at that moment; see `PLAN-phases-3-8.md` open point O-1.
+9. Phase 6: B7 `raise_alert` is not built (three writers, one caller each, different transactions); guard G4 replaces
+   it. F7 shares one reader module, not one network read (the two panels are never on one screen). F8 removes one
+   duplicated revision pre-read; no `useRename`.
+10. Phase 7: R1 is not parked for the owner: the three cut-offs (15:30 valuation, 15:39 reconciliation, 15:45 paper
+    settlement per REQ-109 AC-7) stay and are documented. R10 is already done (D-57). R2, R3 browser and R5 are done;
+    R4, R7, R11, R12 skipped; R6, R8, R9 and R3 server parked.
+11. "Who owns what" merge order: the fix branch is merged into this branch FIRST (Step 0), before Phase 3, not before
+    the final push. The coordinator's "known trap" (Part F calling `paper_limit.refuse_when_closed`) is not a conflict:
+    that line is diff context; `git merge-tree` on 25 Nov auto-merges it to `may_act.refuse_unless_allowed`.
+12. Phase order is now two lanes: Lane A Step 0, 3, 4, 6, 7, 8; Lane B Phase 5 (`PLAN-phases-3-8.md` section 3).
+
 ## Step 0 review (25 Nov), applied
 
 A fresh Opus reviewer checked this plan against the code. Item numbers are the reviewer's; owner questions are in

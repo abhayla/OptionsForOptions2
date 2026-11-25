@@ -4329,7 +4329,7 @@
   },
   "paper_trigger_price_unreadable": {
     "sha256": "58495b65968dea39c3f403817271fe2b23da2057ca7fb86ec4e8283dfd0aa4f0",
-    "reviewed": "pending owner read"
+    "reviewed": "owner read 2026-11-25 (ADR-328 point 5, answered by the owner in the question tool)"
   },
   "explanation:paper_breakevens_with_charges": {
     "sha256": "93abe1e127f6a953b9eec29ca4211b899e0173795e367f3a302113d029f16372",

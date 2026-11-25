@@ -45,7 +45,7 @@ repo scans) and two review pins. **Review:** Tier A, Opus: PASS, no critical or 
 `3b8ae9b7`: the production 3 s wait is pinned by a test, and a route twin test was added. **Prepush:** TOTAL PASS on
 `3b8ae9b7`.
 
-**Pending owner read.** The error template `paper_trigger_price_unreadable` (STRATEGY_VALIDATION_446, pin in
+**Owner read (25 Nov evening, ADR-328 (5)): approved, mark cleared.** Before that: the error template `paper_trigger_price_unreadable` (STRATEGY_VALIDATION_446, pin in
 `tests/errors/template_pins.json`): only its first sentence ("Not saved: the live price could not be read, so this level
 cannot be checked. Try again in a moment.") is ADR-327's. Its impact and next-action lines are builder wording and need the
 owner's read (open question 3 below).
@@ -194,15 +194,15 @@ what Phase 3 needs. If the resume branch is not based on `0e30edc1`, merge first
 
 ## Next step (exact)
 
-1. Resume Phase 3 from the patch (commands above), then commit the code as the green commit.
-2. Run the gates: repo scans, ruff ratchet, coverage, `python tools/ci_local.py` (see gate notes), the DB files for the
-   routes touched (paper routes, tracking, tracking list, adjustment, order door), whole vitest.
-3. Tier B review (fresh Sonnet, adversarial); fix findings; prepush; push.
-4. Phases 4-8 per `PLAN.md` (tests first as their own commit, then code; Phase 6 B2 gets a Tier A Opus review).
-5. Finish list of the owner's brief: merge the latest `origin/fix/ic-live-test-1123` into the branch; finish this RESULTS
-   file with the screen-check list for D-01, D-05, D-41, D-60, S-20 and the re-test list; `ci_local` TOTAL PASS; open a
-   DRAFT PR into `fix/ic-live-test-1123` with a Spec-deviation block, Class 3, for ADR-327. Do not merge this branch into
-   the fix branch until the owner says so (Q1).
+Superseded on 25 Nov evening. Build from `PLAN-phases-3-8.md` (code-verified plan for phases 3 to 8, with the owner's
+ADR-328 answers, the two lanes and the ownership table):
+
+1. Step 0 (section 4 of that file): merge `origin/fix/ic-live-test-1123` (head `6574e47` or newer, CI green) into
+   `refactor/modular-doors`; resolve `coverage-stages.yaml` and `views/spec-digest.md`; regenerate; run the checks.
+2. Step 0b: the ADR-328 spec notes in ADR-319 and REQ-109; push; CI green; cut Lane B (`refactor/leg-door`).
+3. Lane A: Phase 3 (resume the patch only as section 5.3 says; its join key is wrong), 4, 6, 7, merge Lane B, 8.
+   Lane B: Phase 5 only.
+4. The owner screen-tests `refactor/modular-doors` once Step 0b is green (section 8 of that file).
 
 ## Screen-check list so far (click by click), for what is fixed
 
@@ -241,6 +241,9 @@ what Phase 3 needs. If the resume branch is not based on `0e30edc1`, merge first
   `revoke all on database <clone> from public`). DB tests run one file at a time (see CLAUDE.md).
 
 ## Open owner questions
+
+Answered or closed on 25 Nov evening (see `owner-questions.md`): OQ-1 by ADR-328 (1), OQ-2 closed (keep the route),
+3 by ADR-328 (5). New: OQ-4 (Add Selected; nothing waits on it).
 
 1. **OQ-1 D-60 (opposite-action step).** Should a strike step or move that lands on a held contract of the OPPOSITE action
    ask Increase / Keep separate / Cancel? Spec basis: REQ-030 AC-11; ADR-319 (1) and (4); the spec is silent on a step as

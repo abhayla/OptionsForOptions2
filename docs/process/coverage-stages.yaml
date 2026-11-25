@@ -486,6 +486,7 @@ decisions:
   ADR-324: S6.7         # Part D of the 23 Nov live test: paper header totals leave out expired strategies (pending owner read)
   ADR-325: S6.7         # Part E of the 23 Nov live test: labels, small features and post-close messages (pending owner read)
   ADR-327: S6.7         # in market hours a paper trigger whose level cannot be checked against a live price is refused
+  ADR-328: S6.7         # owner 25 Nov evening: modular-doors phases 3-8 (opposite-side step, Add Selected, per-leg P&L, stale Exit, 446 wording)
 
 questions:
   Q210: 4a              # external: Zerodha's written answer; ADR-051 covers the owner's own account
