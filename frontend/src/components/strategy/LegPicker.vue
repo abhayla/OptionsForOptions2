@@ -6,11 +6,12 @@
      Adapted from the legacy StrategyBuilderView leg-row form shape only (client P&L, price fallbacks and the basket call
      are dropped). -->
 <script setup>
-import { computed, nextTick, onBeforeUnmount, onMounted, ref, watch } from 'vue'
+import { computed, inject, nextTick, onBeforeUnmount, onMounted, ref, watch } from 'vue'
 import api, { NEUTRAL_PARTS } from '@/services/api'
 import ErrorMessage from '@/components/common/ErrorMessage.vue'
-import Modal from '@/components/common/Modal.vue'
-import { DRAFT_HOLDS_TEXT, DUP_QUESTION, admitLegs, lotsRangeText } from '@/lib/legDoor'
+import DuplicateLegDialog from '@/components/strategy/DuplicateLegDialog.vue'
+import { useLegDoor } from '@/composables/useLegDoor'
+import { DRAFT_HOLDS_TEXT, lotsRangeText, sameLegs } from '@/lib/legDoor'
 import DepthPopup from '@/components/strategy/DepthPopup.vue'
 import MarketClosedBanner from '@/components/states/MarketClosedBanner.vue'
 import { capturedCaption, contractName, daysByExpiry, expiryText, expiryWithDays, istClock, istTime, setShownDate, strikeLabel } from '@/lib/displayFormat'
@@ -507,14 +508,19 @@ async function capture(id, und) {
   }
 }
 
-/** D-60 (REQ-030 AC-12): a contract already in the strategy with the SAME action is never added silently. The dialog is one
- *  promise: 'increase' | 'separate' | 'cancel'. The other action on the same contract is two legs, no question (AC-11). */
-const dup = ref(null)
-const askDuplicate = (leg) => new Promise((resolve) => { dup.value = { name: contractName(leg), resolve } })
-function answerDuplicate(choice) {
-  const d = dup.value
-  dup.value = null
-  d?.resolve(choice)
+/** D-60 (REQ-030 AC-12): a contract already in the strategy with the SAME action is never added silently. The question is the
+ *  page's ONE door (provided as `legDoor`, Phase 5); a picker mounted alone makes and renders its own. Every add here is a
+ *  deliberate add (`opposite: 'allow'`: the other action on the same contract is two legs, no question, AC-11). A question
+ *  answered after the page's legs changed underneath it is Cancel (the answer belongs to the old legs). */
+const injectedDoor = inject('legDoor', null)
+const door = injectedDoor ?? useLegDoor({ maxLots: () => maxLots.value })
+const ownDoor = injectedDoor === null
+onBeforeUnmount(() => { if (ownDoor) door.cancel() })
+/** door.admit against the legs as they are now; null (Cancel) when the legs changed while the question was open. */
+async function admitHere(incoming, opts = {}) {
+  const before = props.legs
+  const admitted = await door.admit(before, incoming, { opposite: 'allow', ...opts })
+  return sameLegs(before, props.legs) ? admitted : null
 }
 
 async function save() {
@@ -528,7 +534,7 @@ async function save() {
   const act = action.value
   const lotCount = lots.value
   const id = c ? instrumentId(c.exchange_segment, c.exchange_token) : old.instrument_id
-  const admitted = await admitLegs(props.legs, [{ instrument_id: id, action: act, lots: lotCount }], { ask: askDuplicate, maxLots: maxLots.value, skipId: old?.id })
+  const admitted = await admitHere([{ instrument_id: id, action: act, lots: lotCount }], { skipId: old?.id })
   if (!admitted || admitted.error) { // Cancel keeps the form as it is; a refused Increase says why
     busy.value = false
     if (admitted) doneError.value = admitted.error
@@ -597,7 +603,7 @@ async function done() {
 /** Ask once per chosen contract already held with the same action (the one door, lib/legDoor.js). Returns the contracts to
  *  add as their own rows, or null when nothing may change (Cancel, or an Increase past the lots limit: said in done-error). */
 async function resolveDuplicates(chosen) {
-  const admitted = await admitLegs(props.legs, chosen.map((x) => ({ ...x, instrument_id: x.id })), { ask: askDuplicate, maxLots: maxLots.value })
+  const admitted = await admitHere(chosen.map((x) => ({ ...x, instrument_id: x.id })))
   if (!admitted) return null
   if (admitted.error) { doneError.value = admitted.error; return null }
   if (admitted.legs !== props.legs) emit('update:legs', admitted.legs)
@@ -673,14 +679,7 @@ defineExpose({ startEdit, showStrikes })
   <section class="flex h-full min-h-0 flex-col gap-3 text-sm" data-testid="leg-picker">
     <!-- Compact and with its own test id: the page's ErrorMessage keeps error-what/impact/blocked/next to itself. -->
     <ErrorMessage v-if="errorParts" :parts="errorParts" compact prefix="picker-error" data-testid="picker-error" />
-    <Modal :open="dup !== null" title="Already in this strategy" @close="answerDuplicate('cancel')">
-      <div data-testid="dup-dialog"><p data-testid="dup-question">{{ dup ? DUP_QUESTION(dup.name) : '' }}</p></div>
-      <template #actions>
-        <button type="button" class="rounded border border-line px-2 py-1" data-testid="dup-increase" @click="answerDuplicate('increase')">Increase quantity</button>
-        <button type="button" class="rounded border border-line px-2 py-1" data-testid="dup-separate" @click="answerDuplicate('separate')">Keep separate</button>
-        <button type="button" class="col-span-2 rounded border border-line px-2 py-1" data-testid="dup-cancel" @click="answerDuplicate('cancel')">Cancel</button>
-      </template>
-    </Modal>
+    <DuplicateLegDialog v-if="ownDoor" :door="door" />
     <div class="flex flex-wrap items-center gap-2 pr-10" data-testid="picker-header">
       <select class="h-8 rounded border border-line px-1 font-semibold" aria-label="Underlying" data-testid="pick-underlying" :value="underlying" :disabled="underlyingLocked" @change="onUnderlying($event.target.value)">
         <option v-for="u in UNDERLYINGS" :key="u" :value="u">{{ u }}</option>

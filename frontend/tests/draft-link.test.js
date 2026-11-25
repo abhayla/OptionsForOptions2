@@ -9,6 +9,7 @@ import { createPinia, setActivePinia } from 'pinia'
 import { INVALID_LINK_PARTS, canonicalLeg, canonicalLegs } from '@/lib/draftLink'
 import StrategyBuilderPage from '@/pages/StrategyBuilderPage.vue'
 import real from './fixtures/outcome-condor.json'
+import { WIRED } from './helpers/phase5Wired'
 
 const leg = (over = {}) => ({ instrument_id: 'NSE_FO:44626', action: 'SELL', lots: '2', planned_entry: '042.70',
   captured_at: '2026-10-15T09:20:00+05:30', ...over })
@@ -262,9 +263,12 @@ describe('F-4: a new ?strategy= while the builder is mounted opens that strategy
     expect(w.findAll('[data-testid="leg-row"]')).toHaveLength(2)
     w.unmount()
   })
-  it('a new ?draft= link while mounted seeds that draft\'s legs', async () => {
+  // ADR-328 (2): the page shows strategy 54's legs, so a replacing draft link asks first and this answers Yes. The page asks since Phase 5 (5.5.4).
+  it.runIf(WIRED.draftReplace)('a new ?draft= link while mounted asks "Replace the N legs", and on Yes seeds that draft\'s legs', async () => {
     const { w, router } = await openBuilder({ strategy: '54' })
     await router.push({ path: '/strategy/builder', query: { draft: JSON.stringify(DRAFT_LINK) } })
+    await flushPromises()
+    await t(w, 'draft-replace-yes').trigger('click')
     await flushPromises()
     expect(w.findAll('[data-testid="leg-row"]')).toHaveLength(1)
     w.unmount()

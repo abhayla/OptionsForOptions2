@@ -14,7 +14,7 @@
      Below 1100 px the regions stack A, B, right, C, D. No value here is computed: each is a server reply field.
      New file; the legacy StrategyBuilderView computes P&L and falls back on prices in the browser, so it is not copied. -->
 <script setup>
-import { computed, nextTick, onBeforeUnmount, onMounted, ref, watch } from 'vue'
+import { computed, nextTick, onBeforeUnmount, onMounted, provide, ref, watch } from 'vue'
 import { useRoute, useRouter } from 'vue-router'
 import { useOutsideClose } from '@/composables/useOutsideClose'
 import api, { NEUTRAL_PARTS } from '@/services/api'
@@ -54,7 +54,13 @@ import PopFigure from '@/components/strategy/PopFigure.vue'
 import ActivityPanel from '@/components/strategy/ActivityPanel.vue'
 import Drawer from '@/components/common/Drawer.vue'
 import Modal from '@/components/common/Modal.vue'
-import { DUP_QUESTION, admitLegs } from '@/lib/legDoor'
+import { sameLegs } from '@/lib/legDoor'
+import { useLegDoor } from '@/composables/useLegDoor'
+import DuplicateLegDialog from '@/components/strategy/DuplicateLegDialog.vue'
+import { netKeyOf, useBuilderHold } from '@/stores/builderHold'
+import { unsavedCount, useLeaveBuilder } from '@/composables/useLeaveBuilder'
+import LeaveBuilderDialog from '@/components/strategy/LeaveBuilderDialog.vue'
+import { replacePrompt } from '@/lib/readyMade'
 import SaveDraftBar from '@/components/strategy/SaveDraftBar.vue'
 import LegList from '@/components/strategy/LegList.vue'
 import { applyEditReply, buildEditRequest, controlsFrom, moveKey, MAX_STEPS, RELATIVE_CONTROLS, executeRefusal, CLEAR_UNDO_SECONDS_KEY, MULTIPLIER_MAX_KEY, EXECUTE_WAITS_FOR_LATEST, NO_CONTROLS } from '@/lib/legEdit'
@@ -80,6 +86,10 @@ const route = useRoute()
 const router = useRouter()
 const served = useSettingsValues() // REQ-167 AC-5: the lot caps and the multiplier cap are served, never typed
 served.load()
+// F6 (Phase 5): the page's ONE door asks every add-or-move question; the picker and its forms reach it by inject('legDoor').
+const door = useLegDoor({ maxLots: () => served.integer(MAX_LOTS_KEY) })
+provide('legDoor', door)
+const cancelDuplicate = () => door.cancel() // D-60: a question about replaced legs closes (its edit settles as Cancel)
 const capabilities = useCapabilities() // REQ-117: the named broker flags; null until read, {} after a failure (all off)
 const state = ref('loading') // loading | computed | stale | not-connected | unpriced | refused | error | no-draft
 const data = ref(null)
@@ -118,7 +128,13 @@ function legsFromQuery() {
     source: null,
   }))
 }
-const legs = ref(legsFromQuery())
+// ADR-329 (1): the legs the builder held across an Option Chain trip come back (once). ?strategy= / ?adjust= name another thing to
+// open, so the hold is dropped and today's open path runs.
+const builderHold = useBuilderHold()
+let heldBack = null
+if (route.query.strategy !== undefined || route.query.adjust !== undefined) builderHold.clear()
+else heldBack = builderHold.take()
+const legs = ref(heldBack ? heldBack.legs : legsFromQuery())
 // GC-ADJ1 step 3 (REQ-156): `?adjust=<strategy id>` opens the approach compare instead of the builder's two columns.
 const adjustId = computed(() => (/^\d+$/.test(String(route.query.adjust ?? '')) ? String(route.query.adjust) : null))
 const pickedIds = computed(() => picksFromQuery(route.query.pick)) // the approaches ticked in the Review adjustment drawer
@@ -187,7 +203,7 @@ if (linkRefused.value) {
 }
 // W-148 (REQ-076): the leg-edit state. The shape name is the server's (null until a reply named it); `updating` marks the
 // old numbers while an edit is pending; `editError` is the server's refusal of the last edit.
-const shapeName = ref(null)
+const shapeName = ref(heldBack?.shapeName ?? null)
 const hasReply = ref(false)
 // W-158 (REQ-078 AC-2/AC-3): which of Shift / Width / Hedge work and the Shift total, exactly as the newest applied reply sent them.
 const controls = ref(NO_CONTROLS)
@@ -353,13 +369,13 @@ function syncLive() {
 }
 
 // W-104: the saved strategy behind the legs on screen (Save Draft or reopen); any edit makes the draft unsaved again.
-const savedId = ref(null)
+const savedId = ref(heldBack?.savedId ?? null)
 // W-122: the revision the page loaded or saved (kept for the chart's version)
-const savedRevision = ref(null)
+const savedRevision = ref(heldBack?.savedRevision ?? null)
 // REQ-134 AC-2: the saved strategy this screen is editing ({ id, revision, name }: the revision and name the page loaded or saved).
 // Unlike savedId it SURVIVES edits, so Save after an edit updates that strategy (PUT with this revision) instead of creating a
 // second row (RD-106). It is replaced on open/save, and dropped by Clear all (held for Undo).
-const openStrategy = ref(null)
+const openStrategy = ref(heldBack?.openStrategy ?? null)
 const openError = ref(null) // the catalogue message when ?strategy= cannot be opened; the screen is kept
 // REQ-134 AC-5: the URL names the strategy (?strategy=<id>) so a reload opens it again; a `draft` link is dropped from it.
 function nameInUrl(id) {
@@ -641,11 +657,45 @@ watch(() => route.query.strategy, (v) => {
   openError.value = null
   openFromUrl()
 })
-watch(() => route.query.draft, (v) => {
-  if (!v) return // dropped from the URL by Save
-  draftQuery = readDraft()
-  canonicalQueryLegs = draftQuery ? canonicalLegs(draftQuery.legs) : []
-  const refused = draftQuery !== null && canonicalQueryLegs === null
+// ADR-328 (2): a replacing ?draft= link while the builder shows legs asks first (replacePrompt, the same words as the ready-made
+// panel). Cancel keeps the legs, Drafts Mode and the open strategy and puts the previous link back in the URL (the one watch call
+// that write causes is ignored). A newer link settles an open question as Cancel; an unreadable link takes today's refusal path.
+const replaceAsk = ref(null) // null, or { count, resolve }
+let replaceSeq = 0
+let ignoreDraftWrites = 0
+const settleReplace = (yes) => {
+  const a = replaceAsk.value
+  replaceAsk.value = null
+  a?.resolve(yes)
+}
+const sameDraftContent = (canon) => canon.length === legs.value.length
+  && canon.every((l, i) => l.instrument_id === legs.value[i].instrument_id && l.action === legs.value[i].action && l.lots === legs.value[i].lots)
+watch(() => route.query.draft, async (v, old) => {
+  if (ignoreDraftWrites > 0) { ignoreDraftWrites -= 1; return } // our own restore of the previous link
+  if (!v) { // dropped from the URL by Save: an open replace question is Cancel, and its late answer must not apply the stale link
+    replaceSeq += 1
+    settleReplace(false)
+    return
+  }
+  const mine = ++replaceSeq
+  settleReplace(false) // a second question settles the first as Cancel
+  const nextDraft = readDraft()
+  const nextCanon = nextDraft ? canonicalLegs(nextDraft.legs) : []
+  const refused = nextDraft !== null && nextCanon === null
+  if (legs.value.length && nextDraft !== null && !refused) {
+    if (sameDraftContent(nextCanon)) return // the same content as shown: nothing to ask, nothing to reseed
+    cancelDuplicate() // one live question: an open leg-door question closes as Cancel
+    const yes = await new Promise((resolve) => { replaceAsk.value = { count: legs.value.length, resolve } })
+    if (mine !== replaceSeq) return // a newer link took over: it asks (or applies) on its own
+    if (!yes) {
+      ignoreDraftWrites += 1
+      const { draft: _shown, ...rest } = route.query
+      await router.replace({ path: route.path, query: old ? { ...rest, draft: old } : rest })
+      return
+    }
+  }
+  draftQuery = nextDraft
+  canonicalQueryLegs = nextCanon
   leaveDrafts()
   openStrategy.value = null
   openError.value = null
@@ -657,6 +707,7 @@ watch(() => route.query.draft, (v) => {
   }
 })
 const setLegs = (next) => {
+  restoreNote.value = null
   cancelDuplicate() // D-60: every legs replacement passes here; a question about the replaced legs closes (its edit settles as Cancel)
   dropUndo() // any new leg list supersedes an Undo still on offer: it can never restore over new legs
   savedId.value = null
@@ -711,11 +762,67 @@ function undoClear() {
 
 // W-121 (REQ-073 AC-6): the notice a redirect from an order page carries.
 const orderPathNotice = computed(() => route.query.notice === 'order_path_off')
-onMounted(() => {
+const DRAFTS_CHANGED_TEXT = 'The strategy changed while you were away. Your unsaved edits were not restored.'
+const restoreNote = ref(null) // ADR-329: said when the book changed while the user was away and the held edits were not restored
+// ADR-329 (1), Drafts Mode: the held legs belong to a paper strategy. Its book is read again (the net is the book's, never the held
+// copy); the held edits reappear only when the net is the one they were made on, else the book stands and the page says so.
+async function restoreDrafts(h) {
+  const before = legs.value
+  let read
+  try {
+    read = await readPaperBook(api, String(h.paperId))
+  } catch (e) {
+    openError.value = unreadableParts(e)
+    return
+  }
+  if (legs.value !== before) return // the legs changed while the read was out: never overwrite them
+  if (read.kind !== 'paper' || String(read.book.strategy_id) !== String(h.paperId)) { openError.value = unreadableParts(null); return }
+  enterDrafts(read.book.strategy_id, read)
+  if (h.netKey && JSON.stringify(netKeyOf(read.net)) === JSON.stringify(h.netKey)) setLegs(h.legs.map((l) => ({ ...l })))
+  else restoreNote.value = DRAFTS_CHANGED_TEXT
+}
+// ADR-329 (3): Add Selected arrives as a ?draft= link on the builder's held legs: the ticked contracts go through the one door
+// (a same-action clash asks, an opposite side is a deliberate add), never through the draft-replace question. Returns true when
+// it replaced the legs (setLegs already reloaded the numbers).
+let chainError = null
+let addedDraft = heldBack?.addedDraft ?? null
+async function addFromChain() {
+  const fresh = legsFromQuery()
+  // F1: a strategy has one underlying; ticked contracts of another underlying than the held legs are refused, nothing is added
+  const heldUnderlying = legs.value[0]?.underlying
+  const tickedUnderlying = fresh[0]?.underlying
+  if (heldUnderlying && tickedUnderlying && heldUnderlying !== tickedUnderlying) {
+    chainError = { ...NEUTRAL_PARTS, what_happened: `These contracts are on ${tickedUnderlying}; the legs in the builder are on ${heldUnderlying}. Nothing was added.` }
+    return false
+  }
+  const used = new Set(legs.value.map((l) => l.id))
+  let n = 0
+  const incoming = fresh.map((l) => {
+    while (used.has(`chain-${n}`)) n += 1
+    used.add(`chain-${n}`)
+    return { ...l, id: `chain-${n}` }
+  })
+  const r = await door.admit(legs.value, incoming, { opposite: 'allow' })
+  if (!r) return false // Cancel: the held legs stay as they were
+  if (r.error) {
+    chainError = { ...NEUTRAL_PARTS, what_happened: r.error } // shown after the held legs' first reads, which clear editError
+    return false
+  }
+  setLegs([...r.legs, ...r.kept])
+  addedDraft = route.query.draft ?? null // F3: Back into this same ?draft= entry must not add the same ticks again
+  return true
+}
+onMounted(async () => {
   index.start() // the page holds the index itself (its own socket), so an empty builder still has a spot
-  load()
-  syncLive()
-  readShape()
+  if (heldBack?.paperId != null) await restoreDrafts(heldBack)
+  const sameAdd = heldBack?.addedDraft != null && heldBack.addedDraft === (route.query.draft ?? null) // F3: already added to this hold
+  const added = heldBack && draftQuery && canonicalQueryLegs && !sameAdd ? await addFromChain() : false
+  if (!added) {
+    load()
+    syncLive()
+    readShape()
+  }
+  if (chainError) editError.value = chainError
   openFromUrl()
 })
 // REQ-076 AC-1/AC-4/AC-6/AC-8: ONE edit goes to the server; legs, name, marks and every number come from its reply.
@@ -762,46 +869,6 @@ async function editLeg(edit) {
   while (move) await move.done
   return sendEdit(edit, legs.value, controls.value.shiftTotal, null)
 }
-// D-60: the page's own question (the picker's wording and answers), asked for a leg a move landed on a held contract.
-const dupAsk = ref(null)
-// Exactly one live question: a new ask, or a newer edit starting, settles the open one as Cancel and closes its dialog, so
-// every sendEdit settles and the answer on screen always belongs to the newest move.
-const askDuplicate = (leg) => new Promise((resolve) => {
-  cancelDuplicate()
-  dupAsk.value = { name: contractName(leg), resolve }
-})
-/** The one way to cancel a pending ask: closes the dialog and settles its edit as Cancel. */
-// D-60: the move's base is still current when the legs on screen equal the ones it was computed from by content
-// (an equal-content refresh, e.g. link-opened legs named by a reply, keeps the answer; a real replacement already cancelled).
-function sameLegs(a, b) {
-  return a.length === b.length && a.every((l, i) => l.id === b[i].id && l.instrument_id === b[i].instrument_id && l.action === b[i].action && l.lots === b[i].lots)
-}
-function cancelDuplicate() { answerDuplicate('cancel') }
-function answerDuplicate(choice) {
-  const d = dupAsk.value
-  dupAsk.value = null
-  d?.resolve(choice)
-}
-/** The legs after a move, through admitLegs: only a leg whose contract the move changed is asked about, against the legs it
- *  did not move. Null on Cancel; `{ error }` for an Increase past the lots limit; else `{ legs, increased }` in row order. */
-async function askMovedDuplicates(baseLegs, landed) {
-  const moved = landed.filter((l, i) => l.instrument_id !== baseLegs[i]?.instrument_id)
-  if (!moved.length) return { legs: landed, increased: false }
-  const movedIds = new Set(moved.map((l) => l.id))
-  const held = landed.filter((l) => !movedIds.has(l.id))
-  // each moved leg is checked against the held legs AND the moved legs already admitted (a Width or Shift that lands two
-  // same-action legs on one contract asks too); an Increase may fold into either
-  let cur = held
-  const opts = { ask: askDuplicate, maxLots: served.integer(MAX_LOTS_KEY) }
-  for (const x of moved) {
-    const r = await admitLegs(cur, [x], opts)
-    if (!r || r.error) return r
-    cur = r.kept.length ? [...r.legs, x] : r.legs
-  }
-  const byId = new Map(cur.map((l) => [l.id, l]))
-  const out = landed.flatMap((l) => (byId.has(l.id) ? [byId.get(l.id)] : []))
-  return { legs: out, increased: out.length !== landed.length }
-}
 async function sendEdit(edit, baseLegs, shiftTotal, owner) {
   const body = buildEditRequest(baseLegs[0]?.underlying, baseLegs, edit, shiftTotal)
   if (!body) {
@@ -832,16 +899,16 @@ async function sendEdit(edit, baseLegs, shiftTotal, owner) {
     if (RELATIVE_CONTROLS.includes(edit.control)) {
       // D-60 (ADR-319, review finding 2): a move that lands a leg on a contract another leg holds with the same action asks
       // through the one shared door; Cancel keeps the legs as before the step, a refused Increase says why.
-      const door = await askMovedDuplicates(baseLegs, landed)
+      const moved = await door.admitMoved(baseLegs, landed)
       if (!guard.isNewest('leg-edit', mine)) return // a newer edit took over while the question was open
       if (!sameLegs(legs.value, shown)) return // the move's base is no longer current: never overwrite the legs (Cancel)
-      if (!door) return
-      if (door.error) {
-        editError.value = { ...NEUTRAL_PARTS, what_happened: door.error }
+      if (!moved) return
+      if (moved.error) {
+        editError.value = { ...NEUTRAL_PARTS, what_happened: moved.error }
         return
       }
-      increased = door.increased
-      landed = door.legs
+      increased = moved.increased
+      landed = moved.legs
     }
     legs.value = landed
     if (!keep) {
@@ -948,6 +1015,8 @@ const zoomGrid = computed(() => {
   return sc?.step && sc.start && sc.end ? { step: sc.step, start: sc.start, end: sc.end } : null
 })
 onBeforeUnmount(() => {
+  replaceSeq += 1
+  settleReplace(false) // F7: no dangling replace question
   cancelDuplicate() // the pending edit settles
   clearTimeout(slowTimer)
   clearTimeout(undoTimer)
@@ -1011,6 +1080,16 @@ const pricesStamp = computed(() => {
   const at = istClock(d.last_price_at)
   return at ? { kind: 'time', text: `Prices as of ${at} IST` } : null
 })
+// ADR-329 (1), (2): leaving the builder for the Option Chain holds what it shows; leaving for any other page with unsaved legs asks.
+// The guard registers only when the page is rendered by a <router-view> (the app); a page mounted directly has none.
+const leaveGuard = useLeaveBuilder({
+  role: 'builder',
+  unsaved: () => unsavedCount({ legCount: legs.value.length, savedId: savedId.value, inDrafts: paper.value !== null, pendingCount: pendingOrders.value?.length ?? 0 }),
+  snapshot: () => (legs.value.length
+    ? { legs: legs.value, openStrategy: openStrategy.value, savedId: savedId.value, savedRevision: savedRevision.value, shapeName: shapeName.value,
+      paperId: paper.value?.book?.strategy_id ?? null, netKey: paper.value ? netKeyOf(paper.value.net) : null, addedDraft }
+    : null),
+})
 </script>
 
 <template>
@@ -1018,15 +1097,18 @@ const pricesStamp = computed(() => {
     <!-- W-193 (UI-005): the visible title block is gone (the top bar breadcrumb names the page); the heading stays for screen
          readers. The planning sentence moved into the Important info note under the summary card. -->
     <h1 class="sr-only" data-testid="page-title">Strategy Builder</h1>
-    <!-- D-60 (ADR-319): the question for a move onto a held contract; outside every v-if chain, so no state hides it -->
-    <Modal :open="dupAsk !== null" title="Already in this strategy" @close="answerDuplicate('cancel')">
-      <div data-testid="dup-dialog"><p data-testid="dup-question">{{ dupAsk ? DUP_QUESTION(dupAsk.name) : '' }}</p></div>
+    <!-- F6 (ADR-319, ADR-328 (1)): the ONE leg-door question (picker, forms, steps, chain add); outside every v-if chain, so no state hides it -->
+    <DuplicateLegDialog :door="door" />
+    <!-- ADR-328 (2): a replacing draft link while legs are shown -->
+    <Modal :open="replaceAsk !== null" title="Replace the legs?" @close="settleReplace(false)">
+      <div data-testid="draft-replace-dialog"><p data-testid="draft-replace-text">{{ replaceAsk ? replacePrompt(replaceAsk.count) : '' }}</p></div>
       <template #actions>
-        <button type="button" class="rounded border border-line px-2 py-1" data-testid="dup-increase" @click="answerDuplicate('increase')">Increase quantity</button>
-        <button type="button" class="rounded border border-line px-2 py-1" data-testid="dup-separate" @click="answerDuplicate('separate')">Keep separate</button>
-        <button type="button" class="col-span-2 rounded border border-line px-2 py-1" data-testid="dup-cancel" @click="answerDuplicate('cancel')">Cancel</button>
+        <button type="button" class="rounded border border-line px-2 py-1" data-testid="draft-replace-yes" @click="settleReplace(true)">Replace</button>
+        <button type="button" class="rounded border border-line px-2 py-1" data-testid="draft-replace-cancel" @click="settleReplace(false)">Cancel</button>
       </template>
     </Modal>
+    <LeaveBuilderDialog :leave="leaveGuard" />
+    <p v-if="restoreNote" class="mt-2 text-sm text-ink-muted" data-testid="drafts-restore-note">{{ restoreNote }}</p>
 
     <MarketClosedBanner v-if="closedBanner" class="mt-2" :prices-at="closedBanner.at" />
     <p v-if="orderPathNotice" class="mt-2 text-sm text-ink-muted" data-testid="order-path-off-notice">{{ ORDER_PATH_OFF_SENTENCE }}</p>
