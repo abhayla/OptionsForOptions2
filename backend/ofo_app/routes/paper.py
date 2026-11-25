@@ -1651,8 +1651,8 @@ async def _settled_records(db: Any, user_ref: str) -> list[dict[str, Any]]:
     return out
 
 
-@router.get("/paper/alerts/history", response_model=HistoryOut)
-async def paper_alerts_history(db: Annotated[Any, Depends(get_db)],
+@router.get("/paper/alerts/records", response_model=HistoryOut)
+async def paper_alerts_records(db: Annotated[Any, Depends(get_db)],
                                user_ref: Annotated[str, Depends(current_user_ref)]) -> HistoryOut:
     """D-22 / D-71 (owner decision): every fired stop (the alert rows, read or not) and every expiry settlement, newest
     first. No new table: the stop's alert and the settle orders are already stored with their text."""

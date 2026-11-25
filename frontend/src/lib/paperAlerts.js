@@ -29,17 +29,17 @@ export function dropAlerts(e) {
   Object.assign(paperAlerts, { unread: 0, alerts: [], parts: e ? (e.parts ?? NEUTRAL_PARTS) : NEUTRAL_PARTS, loaded: true })
 }
 
-// D-22 / D-71: Alerts > History = the server's records of every fired stop and every expiry settlement, newest first, text as sent.
-export const HISTORY_EMPTY = 'No stops or expiry settlements yet.'
-export const paperHistory = reactive({ records: [], parts: null, loaded: false })
-const historyOk = (r) => r && typeof r.at === 'string' && typeof r.title === 'string' && typeof r.body === 'string' && Number.isInteger(r.strategy_id)
-export async function loadPaperHistory() {
+// D-22 / D-71: the Alerts page's third tab = the server's records of every fired stop and every expiry settlement, newest first, text as sent.
+export const RECORDS_EMPTY = 'No stops or expiry settlements yet.'
+export const paperRecords = reactive({ records: [], parts: null, loaded: false })
+const recordOk = (r) => r && typeof r.at === 'string' && typeof r.title === 'string' && typeof r.body === 'string' && Number.isInteger(r.strategy_id)
+export async function loadPaperRecords() {
   try {
-    const data = (await api.get('/paper/alerts/history')).data
-    if (!data || !Array.isArray(data.records) || !data.records.every(historyOk)) throw new Error('unreadable')
-    Object.assign(paperHistory, { records: data.records, parts: null, loaded: true })
+    const data = (await api.get('/paper/alerts/records')).data
+    if (!data || !Array.isArray(data.records) || !data.records.every(recordOk)) throw new Error('unreadable')
+    Object.assign(paperRecords, { records: data.records, parts: null, loaded: true })
   } catch (e) {
-    Object.assign(paperHistory, { records: [], parts: e?.parts ?? NEUTRAL_PARTS, loaded: true })
+    Object.assign(paperRecords, { records: [], parts: e?.parts ?? NEUTRAL_PARTS, loaded: true })
   }
 }
 

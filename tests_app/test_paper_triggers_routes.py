@@ -821,7 +821,7 @@ async def test_history_lists_a_fired_stop_and_an_expiry_settlement_with_time_ind
     from ofo_app import paper_settlement  # noqa: PLC0415
     app, stored, ids = await _open(db)
     async with _client(app) as c:
-        assert (await c.get("/paper/alerts/history")).json() == {"records": []}
+        assert (await c.get("/paper/alerts/records")).json() == {"records": []}
         reply = await c.post(_url(stored), json={"kind": "conditional_exit", "below": "22000"})
         tid = reply.json()["triggers"][0]["id"]
         assert await paper_trigger_store.claim_fire(db, tid)
@@ -837,7 +837,7 @@ async def test_history_lists_a_fired_stop_and_an_expiry_settlement_with_time_ind
         await paper_store.place(db, stored.user_ref, stored.id, [
             paper_store.NewOrder(ids[0], "BUY", 65, D("0.00"), "settle", at, why),
             paper_store.NewOrder(ids[1], "SELL", 65, D("246.03"), "settle", at, why)], entry=None)
-        records = (await c.get("/paper/alerts/history")).json()["records"]
+        records = (await c.get("/paper/alerts/records")).json()["records"]
     assert sorted(r["kind"] for r in records) == ["settled", "stop"]
     settled = next(r for r in records if r["kind"] == "settled")
     assert settled["at"].startswith("2026-11-24T10:00:00")

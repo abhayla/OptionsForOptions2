@@ -37,21 +37,21 @@ beforeEach(() => { answers = {}; resetPaperAlerts(); resetOpenRecords() })
 
 describe('Alerts > History (D-22, D-71)', () => {
   it('lists the fired stop and the expiry settlement with time, index value and prices as the server sent them', async () => {
-    answers['GET /paper/alerts/history'] = () => Promise.resolve({ data: { records: [SETTLED, STOP] } })
+    answers['GET /paper/alerts/records'] = () => Promise.resolve({ data: { records: [SETTLED, STOP] } })
     const w = await mountAt('/alerts/history')
-    const rows = w.findAll('[data-testid="history-row"]')
+    const rows = w.findAll('[data-testid="record-row"]')
     expect(rows).toHaveLength(2)
-    expect(rows[0].get('[data-testid="history-body"]').text()).toContain('Paper - settled at expiry: NIFTY closed at 25,641.35')
-    expect(rows[1].get('[data-testid="history-body"]').text()).toContain('NIFTY was at 25,721.40 at that moment')
-    expect(rows[1].get('[data-testid="history-time"]').text()).not.toBe('')
+    expect(rows[0].get('[data-testid="record-body"]').text()).toContain('Paper - settled at expiry: NIFTY closed at 25,641.35')
+    expect(rows[1].get('[data-testid="record-body"]').text()).toContain('NIFTY was at 25,721.40 at that moment')
+    expect(rows[1].get('[data-testid="record-time"]').text()).not.toBe('')
     expect(w.find('[data-testid="alerts-empty"]').exists()).toBe(false)
   })
   it('says so when there is nothing yet, and shows no rows and no empty line when the read fails', async () => {
-    answers['GET /paper/alerts/history'] = () => Promise.resolve({ data: { records: [] } })
+    answers['GET /paper/alerts/records'] = () => Promise.resolve({ data: { records: [] } })
     expect((await mountAt('/alerts/history')).get('[data-testid="alerts-empty"]').text()).toContain('No stops or expiry settlements yet')
     answers = {}
     const failed = await mountAt('/alerts/history')
-    expect(failed.find('[data-testid="history-row"]').exists()).toBe(false)
+    expect(failed.find('[data-testid="record-row"]').exists()).toBe(false)
     expect(failed.find('[data-testid="alerts-empty"]').exists()).toBe(false)
   })
 })
