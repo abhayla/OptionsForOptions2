@@ -33,3 +33,15 @@ describe('Net Positions: closed lifecycles (D-10)', () => {
     expect(none.find('[data-testid="closed-list"]').exists()).toBe(false)
   })
 })
+
+// D-22 / D-71 round 2: the closed trade's own page opens on Net Positions, so each closed row carries WHY it closed (the server's
+// reason text: a stop with the index value at that moment, or "Paper - settled at expiry: ... closed at ...") without a click.
+describe('Net Positions closed rows show the reason (D-22, D-71)', () => {
+  const stopRow = { ...closed, contract_id: 8, contract_text: 'NIFTY 25500 PE 2026-11-24', reason_text: 'Stop-loss on the index: NIFTY crossed above 25,720.00; NIFTY was at 25,721.40 at that moment' }
+  const settledRow = { ...closed, contract_id: 9, contract_text: 'NIFTY 25400 PE 2026-11-24', reason_text: 'Paper - settled at expiry: NIFTY closed at 25,641.35' }
+  const plain = { ...closed, contract_id: 10, contract_text: 'NIFTY 25300 PE 2026-11-24' }
+  it('in the panel default view, a fired stop and a settlement each show their reason; a manual exit shows none', () => {
+    const w = mount(PaperBookPanel, { props: { book: book({ positions: [], closed: [stopRow, settledRow, plain] }), net: [] } })
+    expect(w.findAll('[data-testid="closed-reason"]').map((n) => n.text())).toEqual([stopRow.reason_text, settledRow.reason_text])
+  })
+})

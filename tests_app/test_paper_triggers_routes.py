@@ -875,3 +875,26 @@ async def test_a_scenario_strategys_alert_is_neither_listed_nor_counted_nor_mark
     sql = "SELECT count(*) FROM public.paper_alerts WHERE strategy_id = :s AND read_at IS NULL"
     unread = (await db.execute(text(sql), {"s": scenario.id})).scalar_one()
     assert unread == 1  # a live process never touches a scenario strategy's alerts
+
+
+# D-22 / D-71 round 2: the closed row carries the reason; a scenario settlement is never listed.
+async def test_the_closed_row_carries_the_settlement_reason_and_a_scenario_settlement_is_not_listed(db, notified):
+    from test_strategy_store import _ids, _saved_in  # noqa: PLC0415
+    from ofo_app import paper_settlement  # noqa: PLC0415
+    from ofo_app import strategy_store as store  # noqa: PLC0415
+    app, stored, ids = await _open(db)
+    at = datetime.datetime(2026, 11, 24, 10, 0, tzinfo=datetime.UTC)
+    why = str(paper_settlement.settle_reason("NIFTY", D("25641.35")))
+    legs = [paper_store.NewOrder(ids[0], "BUY", 65, D("0.00"), "settle", at, why),
+            paper_store.NewOrder(ids[1], "SELL", 65, D("246.03"), "settle", at, why)]
+    await paper_store.place(db, stored.user_ref, stored.id, legs, entry=None)
+    scenario = await store.save_draft(db, stored.user_ref, await _saved_in(db, stored.user_ref, await _ids(db)),
+                                      scenario_id="PATH-01")
+    await paper_store.place(db, stored.user_ref, scenario.id, [_new(ids[0], "SELL", 65, "39.15"),
+                                                               _new(ids[1], "BUY", 65, "12.95")])
+    await paper_store.place(db, stored.user_ref, scenario.id, legs, entry=None)
+    async with _client(app) as c:
+        closed = (await c.get(f"/paper/strategies/{stored.id}")).json()["closed"]
+        records = (await c.get("/paper/alerts/records")).json()["records"]
+    assert sorted(r["reason_text"] for r in closed) == [why, why]
+    assert [r["strategy_id"] for r in records] == [stored.id]
