@@ -538,8 +538,9 @@ def screen_margin_reader(margin_of: Any) -> MarginOf:
 
 def worker_margin_of(login: StoredLogin, ctx: Any, source: Any) -> MarginOf:
     """The worker's T-16 margin seam. D-36 round 2: every read gets its OWN ``ApproachMargin`` (``get_approach_margin``
-    makes the unit of work's one ``RequestFunds``), so the available-funds figure, or its failure, is that read's only:
-    nothing a long-lived worker holds carries one read's funds into the next check cycle."""
+    makes the unit of work's one ``RequestFunds``), so no failed or stale funds read of that holder is reused by the
+    next read. The OutcomeMargin plan cache (ADR-099) still returns a successful read's figures for an unchanged
+    basket; a fresh read per refresh is not forced here (follow-up in the Part D report)."""
     from ofo_app.routes.adjustment import get_approach_margin  # noqa: PLC0415
     from ofo_app.routes.adjustment_check import current_margin  # noqa: PLC0415 - the route module, at run time
 
