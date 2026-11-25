@@ -49,22 +49,49 @@ Row 5 of the plan (picker add of the opposite side silent) is covered at the doo
 - `select_app_tests.py` on this lane's diff (backend/ is untouched): selects nothing, so no `tests_app` DB run. The CLI's default
   diff (`origin/main...HEAD`) lists 269 files because it includes Lane A's Step 0 backend work; none is from this lane.
 
+## Phase 5 page commit (5.5.4) and merge: DONE (25 Nov 2026, overnight)
+
+- Merge of Lane A Phase 4 (`87a446bf`): `0b5aff70`, no conflicts. Lane A's `exitOrigin` / `exitBlocked` gate in `reviewPending` /
+  `confirmPending` and the `pendingOrders` watch (ADR-328 (4)) are on the page and untouched. Digest, spec index, build order and
+  coverage checks current. Removed-vs-called grep (symbols either side removed, both directions): nothing dangling.
+- Page commit `463c9ad1`: one door (`useLegDoor`, `provide('legDoor')`, one `DuplicateLegDialog`); `door.admitMoved` in `sendEdit`;
+  old `dupAsk` / `askDuplicate` / `answerDuplicate` / `askMovedDuplicates` and the second "Already in this strategy" Modal removed;
+  ADR-328 (2) replace question (`draft-replace-dialog` / `-yes` / `-cancel`; a second link settles the first as Cancel; an open leg-door
+  question closes when the replace question opens); `useBuilderHold` `take()` before `legs`, `?strategy=` / `?adjust=` clears it;
+  Add Selected through `door.admit(..., { opposite: 'allow' })` as `chain-<n>` legs; `useLeaveBuilder` + `LeaveBuilderDialog`;
+  Drafts Mode restore with the `netKey` check (test C11 green in round 1, not parked).
+- Tests red to green: the 25 page-dependent tests (and the 7 skipped rows of the gated files) now run WITHOUT `LANE_B_FORCE` and pass.
+  Full vitest: 230 files, 2728 passed, 0 skipped (before the page commit: 2698 passed, 32 skipped). The two `skipIf` stand-ins are deleted.
+  Test-side fixes to never-run tests (all harness mistakes, none weakened an assertion): `editLeg` not awaited while its question is open;
+  reply legs carry `contract_id` / `lot_size`; a fresh chain selection per trip (C2); C4 starts the held leg at the served maximum
+  (10000) instead of editing the leg after the question opened; C12 allows the chain page's own `GET /market/chain`; the d60 round-4
+  "new ?draft=" test now answers the replace question with Yes (item 8; no other mounting test pushed a second `?draft=`).
+- Spec notes: ADR-007 Q34 and ADR-319 (1) dated notes landed (`5124d06f`); digest regenerated, unchanged.
+- Gates: `ci_local` 16 passed, 0 failed, 5 skipped. `select_app_tests` on this lane's own commits (merge to HEAD): 0 backend files, 0 files.
+  Against `75f7ae65..HEAD` it selects 160 `tests_app` files, all from Lane A's merged backend work (9 backend files), not from this lane;
+  they were not re-run here (Lane A's own Phase 4 gate covers them).
+
 ## Parked
 
-- Drafts Mode restore on the return from the chain (PLAN 5.5 may park it): part of the page commit; test C11 is written. Not attempted (page not editable).
-- Step 5.5.0 spec sentences (ADR-007 Q34, ADR-319 (1)): not done, Lane B may not edit `spec/`.
+- Nothing parked: the Drafts Mode restore (C11) is built and green.
+- Step 5.5.0 spec sentences: done (see above).
 
-## What the page commit still needs
+## Screen checks (owner, click by click)
 
-See `lane-b-page-commit-draft.md` (eight numbered steps, unvalidated draft code).
-
-## Screen checks (owner, click by click; placeholders)
-
-Wait on the page commit: all rows below except the first.
-1. Same-side step (a step onto a contract held with the same action): Increase quantity / Keep separate / Cancel. Works today and through the new dialog (picker alone): [ ] seen.
-2. Opposite-side step (SELL stepped onto a held BUY): "NIFTY ... is already in this strategy as a Buy." / "A Buy and a Sell of one contract cancel each other out." / "Keep both" / "Cancel". [ ] wait on page commit.
-3. Chain trip keeping legs: 3 unsaved legs, Market > Option Chain, tick 2, Add Selected: 5 legs, no question. [ ] wait on page commit.
-4. Chain trip adding legs with a clash (same action): the usual three-button question; Cancel adds nothing. [ ] wait on page commit.
-5. Leave question: "Leave the builder? The N unsaved legs will be lost." Stay / Leave, from the builder and from the chain with a hold. [ ] chain page half can be checked now (hold needs the builder half); builder half waits on page commit.
-6. Replace question on a draft link: "Replace the N legs in the builder?" [ ] wait on page commit.
-New wording to read: the opposite note, the singular "The 1 unsaved leg will be lost.", the Drafts Mode changed-book sentence (not yet in code).
+Paper only. Open the Strategy Builder (Strategies > Strategy Builder).
+1. Same-side step. Add SELL NIFTY 22800 CE and SELL 22700 CE (two legs). On the 22700 leg click the strike "+" until it would land on
+   22800. Expect "NIFTY ... 22800 CE is already in this strategy." with Increase quantity / Keep separate / Cancel. Cancel: legs unchanged. [ ]
+2. Opposite-side step. Add BUY 22800 CE and SELL 22700 CE. Step the SELL leg onto 22800. Expect "NIFTY ... 22800 CE is already in this
+   strategy as a Buy." and "A Buy and a Sell of one contract cancel each other out.", buttons Keep both / Cancel only. Keep both: two rows;
+   Cancel: as before. Escape, x and the overlay act as Cancel. [ ]
+3. Chain trip keeping and adding. Build 3 legs (unsaved). Market > Option Chain. Tick two contracts, choose Buy or Sell on each, click
+   Add Selected. Expect the Builder with 5 rows (your 3 first, then the 2), no question. [ ]
+4. Chain trip with a clash. Same, but tick a contract you already hold with the same action. Expect the usual three-button question;
+   Cancel adds nothing. Tick the opposite side of a held contract: added silently as a second row. [ ]
+5. Leave question. With 3 unsaved legs click Settings (any page but the Option Chain). Expect "Leave the builder? The 3 unsaved legs
+   will be lost." Stay / Leave (one leg reads "The 1 unsaved leg will be lost."). Same question from the Option Chain while it holds the legs. [ ]
+6. Replace question on a draft link. With legs shown, paste a different `?draft=` link into the address bar of the same tab (or use a link
+   from the chain). Expect "Replace the N legs in the builder?" with Replace / Cancel; Cancel keeps the legs and puts the old link back. [ ]
+7. Drafts Mode. Open a paper strategy, remove one leg (a pending change), go to the Option Chain and back: the pending change is still
+   there. If the book changed meanwhile: "The strategy changed while you were away. Your unsaved edits were not restored." [ ]
+New wording to read: the opposite note, the singular "The 1 unsaved leg will be lost.", the Drafts Mode changed-book sentence.
