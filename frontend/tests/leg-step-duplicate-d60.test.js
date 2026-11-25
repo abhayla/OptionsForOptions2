@@ -89,8 +89,8 @@ describe('D-60 A5: a step onto a contract another leg holds with the same action
     expect(ids(w)[0]).toBe(FREE.instrument_id)
   })
 
-  // ADR-328 (1) amends ADR-319 (4) for steps and moves: the OTHER side now asks (Keep both / Cancel). The page commit (5.5.4) turns
-  // this test on and deletes the `skipIf` one below it, which pins the old silence until then.
+  // ADR-328 (1) amends ADR-319 (4) for steps and moves: the OTHER side now asks (Keep both / Cancel). (Phase 5, page commit 5.5.4: the old
+  // silence test is gone.)
   it.runIf(WIRED.door)('a step onto a contract held with the OTHER action asks first: Keep both / Cancel (ADR-328 (1))', async () => {
     const w = await openPage()
     answers['POST /strategies/leg-edit'] = landing(real.legs[1])
@@ -100,15 +100,6 @@ describe('D-60 A5: a step onto a contract another leg holds with the same action
     expect(ids(w)).toEqual(BEFORE)
     await t(w, 'dup-separate').trigger('click')
     await flushPromises()
-    expect(ids(w)[0]).toBe(real.legs[1].instrument_id)
-  })
-
-  it.skipIf(WIRED.door)('a step onto a contract held with the OTHER action does not ask (two legs, REQ-030 AC-11)', async () => {
-    const w = await openPage()
-    answers['POST /strategies/leg-edit'] = landing(real.legs[1]) // BUY 23000 CE is held; the stepped leg is a SELL
-    await all(w, 'strike-plus')[0].trigger('click')
-    await flushPromises()
-    expect(t(w, 'dup-question').exists()).toBe(false)
     expect(ids(w)[0]).toBe(real.legs[1].instrument_id)
   })
 
@@ -321,8 +312,11 @@ describe('D-60 round 4: replacing the legs closes the open question; an equal-co
     const other = { underlying: 'NIFTY', legs: DRAFT.legs.slice(0, 2) }
     await w.vm.$router.push({ path: '/strategy/builder', query: { draft: JSON.stringify(other) } })
     await flushPromises()
+    // ADR-328 (2), Phase 5: the page shows legs, so the new link asks "Replace the 4 legs" first; that question closes the open one
     expect(t(w, 'dup-question').exists()).toBe(false)
     expect(p.done).toBe(true)
+    await t(w, 'draft-replace-yes').trigger('click')
+    await flushPromises()
     expect(ids(w)).toEqual(BEFORE.slice(0, 2))
   })
 

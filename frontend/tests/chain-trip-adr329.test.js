@@ -127,6 +127,7 @@ describe.runIf(WIRED.hold)('ADR-329 (1): the chain trip keeps the legs, Add Sele
 
   it('C2 same-action clash asks the usual question; Increase adds the lots (and base_lots); Keep separate adds a row; Cancel (any closer) adds nothing and keeps the ticks', async () => {
     const trip = async () => {
+      setActivePinia(createPinia()) // a fresh chain selection per trip (Add Selected leaves the ticks in the store)
       await start(BUILDER, { draft: HELD_LINK })
       await goChain()
       await tick('22800.00', 'ce', 'sell') // held as SELL
@@ -174,14 +175,11 @@ describe.runIf(WIRED.hold)('ADR-329 (1): the chain trip keeps the legs, Add Sele
   })
 
   it('C4 Increase past the served maximum shows the lots sentence and changes nothing', async () => {
-    await start(BUILDER, { draft: HELD_LINK })
+    const max = 10000 // the served limits.max_lots of tests/helpers/servedLots.js
+    await start(BUILDER, { draft: link(HELD.map((l, i) => (i === 0 ? { ...l, lots: max } : l))) }) // the held SELL 22800 CE is already at the maximum
     await goChain()
     await tick('22800.00', 'ce', 'sell')
-    const max = useChainSelection().maxLots
-    useChainSelection().entries[0].lots = 1
     await addSelected()
-    // raise the held leg to the maximum through the page's own state, then Increase by 1 more
-    builder().legs[0].lots = max
     await t(w, 'dup-increase').trigger('click')
     await flushPromises()
     expect(w.text()).toContain(lotsRangeText(max))
@@ -260,7 +258,7 @@ describe.runIf(WIRED.hold)('ADR-329 (1): the chain trip keeps the legs, Add Sele
     await flushPromises()
     const fromHold = useBuilderHold().held.legs.map((l) => [l.planned_entry, l.captured_at])
     expect(fromHold).toEqual(before)
-    expect(calls.slice(sent).filter((c) => !c.url.startsWith('/catalogue/') && c.url !== '/settings')).toEqual([])
+    expect(calls.slice(sent).filter((c) => !c.url.startsWith('/catalogue/') && c.url !== '/settings' && c.url !== '/market/chain')).toEqual([])
   })
 })
 

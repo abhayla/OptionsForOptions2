@@ -263,20 +263,12 @@ describe('F-4: a new ?strategy= while the builder is mounted opens that strategy
     expect(w.findAll('[data-testid="leg-row"]')).toHaveLength(2)
     w.unmount()
   })
-  // ADR-328 (2): the page shows strategy 54's legs, so a replacing draft link asks first and this answers Yes. Until the page
-  // commit (5.5.4) wires the question, the same link seeds at once (the `skipIf` test below; the page commit deletes it).
+  // ADR-328 (2): the page shows strategy 54's legs, so a replacing draft link asks first and this answers Yes. The page asks since Phase 5 (5.5.4).
   it.runIf(WIRED.draftReplace)('a new ?draft= link while mounted asks "Replace the N legs", and on Yes seeds that draft\'s legs', async () => {
     const { w, router } = await openBuilder({ strategy: '54' })
     await router.push({ path: '/strategy/builder', query: { draft: JSON.stringify(DRAFT_LINK) } })
     await flushPromises()
     await t(w, 'draft-replace-yes').trigger('click')
-    await flushPromises()
-    expect(w.findAll('[data-testid="leg-row"]')).toHaveLength(1)
-    w.unmount()
-  })
-  it.skipIf(WIRED.draftReplace)('a new ?draft= link while mounted seeds that draft\'s legs', async () => {
-    const { w, router } = await openBuilder({ strategy: '54' })
-    await router.push({ path: '/strategy/builder', query: { draft: JSON.stringify(DRAFT_LINK) } })
     await flushPromises()
     expect(w.findAll('[data-testid="leg-row"]')).toHaveLength(1)
     w.unmount()

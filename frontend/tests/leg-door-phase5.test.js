@@ -124,7 +124,7 @@ describe.runIf(WIRED.door)('Phase 5 row 1-4, 10: a move onto an opposite-held co
     for (const control of ['shift', 'width', 'hedge']) {
       const w = await openPage()
       answers['POST /strategies/leg-edit'] = landing(BUY_CE)
-      await w.vm.$.setupState.editLeg({ control, direction: 1 })
+      void w.vm.$.setupState.editLeg({ control, direction: 1 }) // not awaited: the edit waits for the answer
       await flushPromises()
       expect(t(w, 'dup-question').text(), control).toBe(OPPOSITE_QUESTION(NAME_CE, 'BUY'))
       expect(t(w, 'dup-increase').exists(), control).toBe(false)
@@ -166,7 +166,7 @@ describe.runIf(WIRED.door)('Phase 5 Drafts Mode (rows 2, 3): the opposite step o
     const legs = w.vm.$.setupState.legs
     answers['POST /strategies/leg-edit'] = (body) => Promise.resolve({ data: { seq: body.seq, shape: null, shape_name: null, outcome: null,
       controls: { shift: true, width: true, hedge: true }, shift_total: 0,
-      legs: legs.map((l, i) => ({ ...replyLeg({ ...l, instrument: l.instrument_type, quantity: null }), base_lots: l.lots,
+      legs: legs.map((l, i) => ({ ...replyLeg({ ...l, instrument: l.instrument_type, quantity: null }), base_lots: l.lots, contract_id: l.contract_id, lot_size: l.lot_size,
         ...(i === 0 ? { instrument_id: legs[1].instrument_id, strike: legs[1].strike, contract_id: legs[1].contract_id, lot_size: legs[1].lot_size } : {}) })) } })
   }
   it('2 Keep both: the diff still has the two exits (REQ-109 AC-9); 3 Cancel: pending changes unchanged', async () => {
@@ -174,13 +174,13 @@ describe.runIf(WIRED.door)('Phase 5 Drafts Mode (rows 2, 3): the opposite step o
     const pending = () => w.vm.$.setupState.pendingOrders.length
     expect(pending()).toBe(0)
     landOnLeg1(w)
-    await w.vm.$.setupState.editLeg({ control: 'step', index: 0, direction: 1 })
+    void w.vm.$.setupState.editLeg({ control: 'step', index: 0, direction: 1 }) // not awaited: the edit waits for the answer
     await flushPromises()
     expect(t(w, 'dup-question').text()).toContain('is already in this strategy as a Sell.')
     await t(w, 'dup-cancel').trigger('click')
     await flushPromises()
     expect(pending()).toBe(0)
-    await w.vm.$.setupState.editLeg({ control: 'step', index: 0, direction: 1 })
+    void w.vm.$.setupState.editLeg({ control: 'step', index: 0, direction: 1 }) // not awaited: the edit waits for the answer
     await flushPromises()
     await t(w, 'dup-separate').trigger('click')
     await flushPromises()
