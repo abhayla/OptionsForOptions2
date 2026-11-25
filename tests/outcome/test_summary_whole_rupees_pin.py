@@ -3,7 +3,6 @@
 from decimal import Decimal as D
 
 import pytest
-
 from ofo.engine.display import format_whole_rupees
 from ofo.outcome.serialize import _whole
 
