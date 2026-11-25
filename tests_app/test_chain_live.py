@@ -1251,11 +1251,12 @@ async def test_d12_expiry_day_cells_carry_decay_left_today_other_days_none():
     assert other["ce"]["decay_left_today"] is None and other["ce"]["theta"] is not None
 
 
-# ---- D-55 (ADR-320 point 6): Min OI keeps a row only when the side(s) shown pass; Change from the feed's previous close --------
+# ---- D-55 (ADR-320 point 6): Min OI needs every shown side to pass; Change from the feed's previous close ----------
 
 def _side(oi, ltp="100.00"):
-    return chain_push.ChainCellOut(instrument_id="NSE_FO:1001", ltp=Decimal(ltp), bid=None, ask=None, change=None, oi=oi, oi_change=None,
-                                   volume=10, health="available", at=T0, last_trade_at=None, permitted=True,
+    return chain_push.ChainCellOut(instrument_id="NSE_FO:1001", ltp=Decimal(ltp), bid=None, ask=None, change=None,
+                                   oi=oi, oi_change=None, volume=10, health="available", at=T0, last_trade_at=None,
+                                   permitted=True,
                                    unavailable_reason=None, **chain_push._NO_GREEKS)
 
 
@@ -1300,7 +1301,7 @@ async def test_d55_change_is_ltp_less_the_feed_previous_close():
 @pytest.mark.parametrize("stats", [None, DayStatsAnswer.unavailable("PACKET_WITHOUT_DAY_FIELDS"),
                                    DayStatsAnswer(DayStats(Decimal("60"), Decimal("70"), Decimal("55"), None, 1))])
 async def test_d55_change_is_null_without_a_previous_close(stats):
-    """No day stats, a packet without day fields, or no previous close: null (the screen says not available), never 0."""
+    """No day stats, a packet without day fields, or no previous close: null (not available on screen), never 0."""
     ce = await _pushed_ce(stats)
     assert ce["ltp"] == "63.10"
     assert ce["change"] is None

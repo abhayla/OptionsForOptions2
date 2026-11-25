@@ -47,7 +47,8 @@ Liveness is this connection's own: LIVE only while THIS push holds its subscript
 liveness-from-shared-subscribers); each cell carries its quote's OWN health as the provider gives it at the moment of
 the answer, so a quote that went stale is never shown as available (REQ-049 AC-2; no new staleness rule here: finding
 staleness-by-last-change-age). ``change`` (D-55) is the live price less the previous session close the feed's day stats
-carry (``ofo.engine.chain_values.price_change``); null when the feed carries no previous close, never computed from anything else. No order, basket, margin or execute call exists here
+carry (``ofo.engine.chain_values.price_change``); null when the feed carries no previous close, never computed from
+anything else. No order, basket, margin or execute call exists here
 (REQ-029 AC-6).
 """
 from __future__ import annotations
@@ -388,7 +389,7 @@ def _greek_fields(quote: NormalizedQuote | None, model: ChainModel | None, instr
 
 
 def _day_stats(ctx: MarketContext, instrument_id: str, *, market_closed: bool) -> Any:
-    """The contract's day values from the feed (the one source the depth popup reads); closed, the held after-close ones."""
+    """The contract's day values from the feed (the depth popup's source); closed, the held after-close ones."""
     now = ctx.clock()
     stats = ctx.provider.latest_day_stats(instrument_id, now).stats
     if stats is None and market_closed:
@@ -418,7 +419,8 @@ def _cell(contract: PickableContract, quote: NormalizedQuote | None, slow: SlowV
     oi, oi_change = (quote.oi, quote.oi_change) if slow is None else slow.get(contract.instrument_id,
                                                                               (quote.oi, quote.oi_change))
     return ChainCellOut(instrument_id=contract.instrument_id, ltp=_given_money(quote.ltp), bid=_given_money(quote.bid),
-                        ask=_given_money(quote.ask), change=price_change(quote.ltp, previous_close), oi=oi, oi_change=oi_change, volume=quote.volume,
+                        ask=_given_money(quote.ask), change=price_change(quote.ltp, previous_close), oi=oi,
+                        oi_change=oi_change, volume=quote.volume,
                         health=quote.health.value, at=quote.timestamp, last_trade_at=last_trade_at,
                         permitted=permitted, unavailable_reason=reason,
                         **_greek_fields(quote, model, contract.instrument_id, market_closed=market_closed))
@@ -437,8 +439,8 @@ def _meets(cell: ChainCellOut | None, req: ChainRequest) -> tuple[bool, bool, bo
 
 
 def row_passes(row: ChainRowOut, req: ChainRequest) -> bool:
-    """REQ-029 AC-9 + D-55 (ADR-320 (6)): Min OI keeps a row only when EVERY side the row shows meets it (a shown side with no
-    OI value does not); volume, premium and bid-and-ask keep it when either side meets them, as before."""
+    """REQ-029 AC-9 + D-55 (ADR-320 (6)): Min OI keeps a row only when EVERY side the row shows meets it (a shown
+    side with no OI value does not); volume, premium and bid-and-ask keep it when either side meets them, as before."""
     ce, pe = _meets(row.ce, req), _meets(row.pe, req)
     shown = [m[0] for cell, m in ((row.ce, ce), (row.pe, pe)) if cell is not None]
     oi_ok = req.min_oi is None or (bool(shown) and all(shown))
@@ -484,10 +486,12 @@ def _rows(ctx: MarketContext, req: ChainRequest, catalogue: ChainCatalogue,  # n
         out.append(ChainRowOut(strike=strike.quantize(PAISE), moneyness=None if atm is None else moneyness(strike, atm),
                                ce=None if ce is None else _cell(ce, quotes.get(ce.instrument_id), slow, catalogue,
                                                                 model, market_closed=market_closed,
-                                                                last_trade_at=trade_at(ce), previous_close=close_of(ce)),
+                                                                last_trade_at=trade_at(ce),
+                                                                previous_close=close_of(ce)),
                                pe=None if pe is None else _cell(pe, quotes.get(pe.instrument_id), slow, catalogue,
                                                                 model, market_closed=market_closed,
-                                                                last_trade_at=trade_at(pe), previous_close=close_of(pe))))
+                                                                last_trade_at=trade_at(pe),
+                                                                previous_close=close_of(pe))))
     return [r for r in out if row_passes(r, req)]
 
 

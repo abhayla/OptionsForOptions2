@@ -102,8 +102,9 @@ def cell_values(kind: str, strike: Decimal, ltp: Decimal | None, spot: Decimal |
 
 
 def price_change(ltp: Decimal | None, previous_close: Decimal | None) -> Decimal | None:
-    """D-55 (ADR-320 (6); REQ-029 AC-2): the chain's Change = the live price less the feed's previous session close, exact decimal,
-    to the paisa. None when either is absent or the price is not live: never 0 and never taken from anything else (F-47)."""
+    """D-55 (ADR-320 (6); REQ-029 AC-2): the chain's Change = the live price less the feed's previous session close,
+    exact decimal, to the paisa. None when either is absent or the price is not live: never 0, never taken from
+    anything else (F-47)."""
     if ltp is None or previous_close is None or not is_live_price(ltp) or not is_live_price(previous_close):
         return None
     return (ltp - previous_close).quantize(PAISE, rounding=ROUND_HALF_UP)
