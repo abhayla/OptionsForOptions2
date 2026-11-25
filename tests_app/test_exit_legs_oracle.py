@@ -3,12 +3,17 @@ the contract text. The ORACLE below is today's body copied verbatim; the functio
 four ``LegToPrice`` fields, element by element (no database, no network). Written first: it is green on today's code
 and must stay green when ``exit_legs`` reads ``ofo.tracking.closing.open_legs_to_close``.
 
+New contract (Tier A minor): ``exit_legs`` reads ``open_legs_to_close``, which accepts only plain ints, so a Decimal,
+bool or float net raises TypeError (the old body accepted them). Unreachable today: the only caller ``held_units``
+always passes plain int (execution_plan_store.py:374, order_book_store.py:78-79); it fails closed before any pricing.
+
 Spec basis: ADR-105 (an exit closes exactly the net, opposite side); ADR-281 (the real path is frozen except
 maintenance); ADR-016 to ADR-019.
 """
 from __future__ import annotations
 
 from collections.abc import Mapping
+from decimal import Decimal as D
 
 import pytest
 from ofo.engine import Action
@@ -62,3 +67,14 @@ def test_the_string_order_trap_is_pinned_not_numeric() -> None:
 def test_a_single_short_is_closed_by_a_buy_of_the_whole_quantity() -> None:
     (leg,) = ep.exit_legs({"NFO-OPT:47169": -65}, _of)
     assert (leg.action, leg.quantity, leg.planned_entry) == (Action.BUY, 65, None)
+
+
+@pytest.mark.parametrize("bad", [D("65"), True, 65.0], ids=["decimal", "bool", "float"])
+def test_a_net_that_is_not_a_plain_int_is_refused_before_pricing(bad) -> None:
+    with pytest.raises(TypeError):
+        ep.exit_legs({"NFO-OPT:1": bad}, _of)
+
+
+def test_a_zero_decimal_next_to_a_valid_int_leg_is_refused() -> None:
+    with pytest.raises(TypeError):
+        ep.exit_legs({"NFO-OPT:1": D("0"), "NFO-OPT:2": 65}, _of)
