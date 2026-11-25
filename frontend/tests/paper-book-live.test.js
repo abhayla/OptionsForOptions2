@@ -75,9 +75,9 @@ describe('paper book panel follows the live feed', () => {
   it('a failed read keeps the last values, shows the as-of line (time of the last good answer), and does not crash; a later good read clears it', async () => {
     const w = mount(Host, { props: { first: book() } })
     await tick()
-    expect(texts(w, 'net-ltp')).toEqual(['76.80', '111.85'])
+    expect(texts(w, 'net-ltp')).toEqual(['—', '—'])
     expect(t(w, 'book-as-of').text()).toBe('Paper P&L paused - prices not live, as of 13 Nov 2026, 09:31:00 IST')
-    expect(t(w, 'book-total').text()).toBe('+26.00')
+    expect(t(w, 'book-total').text()).toBe('—')
     reply = () => Promise.resolve({ data: book({ total_text: '+1.00', positions: [pos(1, '70.00', '1.00', '1.00'), pos(2, '111.85', '10.00', '10.00')] }) })
     await tick()
     expect(w.find('[data-testid="book-as-of"]').exists()).toBe(false)

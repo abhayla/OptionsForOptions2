@@ -11,6 +11,7 @@ import { istTime } from '@/lib/displayFormat'
 export const PAUSED_TEXT = 'Paper P&L paused - prices not live'
 export const NOT_CONNECTED_TEXT = 'Paper P&L paused - live prices are not connected'
 export const NOT_LIVE_EXIT = 'Prices are not live; try again when they update' // REQ-109 AC-5
+export const CHANGED_ELSEWHERE_EXIT = 'This trade changed elsewhere. Reload to see the current legs.' // ADR-328 (4), verbatim
 
 /** REQ-109 AC-5's paused text, with the time of the last price; null time reads as not available. */
 export const pausedText = (asOf) => `${PAUSED_TEXT}, as of ${istTime(asOf)}`

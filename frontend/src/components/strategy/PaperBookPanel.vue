@@ -12,7 +12,10 @@
         <button type="button" class="rounded-r-md px-2 py-1" :class="view === 'orders' ? 'bg-accent-soft font-medium text-accent' : ''" :aria-pressed="view === 'orders' ? 'true' : 'false'" data-testid="book-tab-orders" @click="view = 'orders'">{{ ORDERBOOK_LABEL }}</button>
       </div>
       <span class="flex-1"></span>
-      <button v-if="open.length" type="button" class="h-8 rounded-lg border border-line px-3 font-medium" data-testid="paper-exit-all" @click="emit('exit-all')">{{ EXIT_ALL_LABEL }}</button>
+      <!-- Phase 4 (D-05, ADR-328 (4)): no exit from old prices, none from an old net; the one sentence says which -->
+      <div v-if="open.length" class="flex flex-col items-end gap-1">
+        <ExitButton :blocked="exitGate.blocked.value" :reason="exitGate.reason.value" class="h-8 rounded-lg border border-line px-3 font-medium disabled:opacity-50" data-testid="paper-exit-all" @click="emit('exit-all')">{{ EXIT_ALL_LABEL }}</ExitButton>
+      </div>
     </div>
 
     <!-- GC-TP step 8b (REQ-109 AC-10; Sensibull Drafts Mode 278-279): the strategy's Charges beside its P&L, each the book reply's
@@ -25,9 +28,9 @@
     <dl class="mt-2 flex gap-6 text-xs" data-testid="book-strip">
       <!-- GC-ICFIX u123 (ADR-263): the headline total is the server's after-charges text, labelled; else the before text, labelled, with the reason -->
       <div>
-        <dt class="text-ink-muted" data-testid="book-total-label">Total P&amp;L {{ total.label }}</dt>
-        <dd class="num text-sm font-semibold" data-testid="book-total"><AfterChargesTap :breakdown="total.breakdown">{{ total.text ?? '-' }}</AfterChargesTap></dd>
-        <p v-if="total.reason" class="max-w-xs text-ink-muted" data-testid="book-after-reason">{{ total.reason }}</p>
+        <dt class="text-ink-muted" data-testid="book-total-label">Total P&amp;L {{ readFailed ? '' : total.label }}</dt>
+        <dd class="num text-sm font-semibold" data-testid="book-total"><template v-if="readFailed">{{ PAPER_NO_FIGURE }}</template><AfterChargesTap v-else :breakdown="total.breakdown">{{ total.text ?? '-' }}</AfterChargesTap></dd>
+        <p v-if="total.reason && !readFailed" class="max-w-xs text-ink-muted" data-testid="book-after-reason">{{ total.reason }}</p>
       </div>
       <!-- D-14: the line says which charges it shows: those paid, and beside them the estimate to close now (both inside the total) -->
       <div>
@@ -51,17 +54,17 @@
           <tr v-for="p in open" :key="p.contract_id" class="border-t border-line" data-testid="net-row" :data-contract-id="p.contract_id">
             <td class="py-1 pr-2" data-testid="net-contract">{{ p.contract_text }}</td>
             <td class="num text-center" data-testid="net-lots">{{ lotsOf(p) }}</td>
-            <td class="num text-right" data-testid="net-avg">{{ p.average_text ?? '-' }}</td>
-            <td class="num text-right"><span data-testid="net-ltp">{{ p.ltp_text ?? '-' }}</span><span v-if="p.ltp_text" class="ml-1 text-ink-muted" data-testid="net-ltp-at">{{ istClock(p.price_at ?? null) ?? 'time n/a' }}</span></td>
-            <td class="num text-right" data-testid="net-booked">{{ p.booked_text }}</td>
-            <td class="num text-right" data-testid="net-unbooked">{{ p.unbooked_text ?? '-' }}</td>
-            <td class="num text-right" data-testid="net-pnl">{{ p.total_text ?? '-' }}</td>
+            <td class="num text-right" data-testid="net-avg">{{ readFailed ? PAPER_NO_FIGURE : (p.average_text ?? '-') }}</td>
+            <td class="num text-right"><span data-testid="net-ltp">{{ readFailed ? PAPER_NO_FIGURE : (p.ltp_text ?? '-') }}</span><span v-if="p.ltp_text && !readFailed" class="ml-1 text-ink-muted" data-testid="net-ltp-at">{{ istClock(p.price_at ?? null) ?? 'time n/a' }}</span></td>
+            <td class="num text-right" data-testid="net-booked">{{ readFailed ? PAPER_NO_FIGURE : p.booked_text }}</td>
+            <td class="num text-right" data-testid="net-unbooked">{{ readFailed ? PAPER_NO_FIGURE : (p.unbooked_text ?? '-') }}</td>
+            <td class="num text-right" data-testid="net-pnl">{{ readFailed ? PAPER_NO_FIGURE : (p.total_text ?? '-') }}</td>
             <td class="whitespace-nowrap pl-2 text-right">
               <input
                 v-model="exitText[p.contract_id]" type="text" inputmode="numeric" class="h-7 w-10 rounded border border-line px-1 text-right"
                 :aria-label="`Lots to exit for ${p.contract_text}`" data-testid="net-exit-lots"
               />
-              <button type="button" class="ml-1 h-7 rounded border border-line px-2 disabled:opacity-50" :disabled="!exitLotsOk(exitText[p.contract_id], lotsOf(p))" data-testid="net-exit" @click="exitOne(p)">{{ EXIT_LABEL }}</button>
+              <ExitButton :blocked="exitGate.blocked.value" :extra-disabled="!exitLotsOk(exitText[p.contract_id], lotsOf(p))" :show-reason="false" class="ml-1 h-7 rounded border border-line px-2 disabled:opacity-50" data-testid="net-exit" @click="exitOne(p)">{{ EXIT_LABEL }}</ExitButton>
             </td>
           </tr>
         </tbody>
@@ -95,8 +98,10 @@ import { computed, ref, watch } from 'vue'
 import { istClock } from '@/lib/displayFormat'
 import { CONTRACTS_CHANGED_TEXT, afterFigure } from '@/lib/tracking'
 import { bookNotLive, pausedText } from '@/lib/priceState'
+import { usePaperExit } from '@/lib/usePaperExit'
+import ExitButton from '@/components/strategy/ExitButton.vue'
 import AfterChargesTap from '@/components/common/AfterChargesTap.vue'
-import { withAsOf } from '@/lib/paperList'
+import { PAPER_NO_FIGURE, withAsOf } from '@/lib/paperList'
 import ClosedRows from '@/components/strategy/ClosedRows.vue'
 import HeldNote from '@/components/strategy/HeldNote.vue'
 import { EXIT_ALL_LABEL, EXIT_LABEL, NET_POSITIONS_LABEL, ORDERBOOK_LABEL, exitLotsFrom, exitLotsOk, openLots, paperKindLabel } from '@/lib/paperDrafts'
@@ -118,6 +123,9 @@ const asOfLine = computed(() => {
   if (props.readFailed) return pausedText(props.book.answered_at ?? null)
   return bookNotLive(props.book) ? pausedText(props.book.as_of ?? null) : null
 })
+
+// Phase 4 (F2): the Exit gate of this panel (a failed read: no exit from old prices; the contracts changed: no exit from an old net)
+const exitGate = usePaperExit({ readFailed: () => props.readFailed, held: () => props.book, changed: () => props.contractsChanged })
 
 const readAt = computed(() => istClock(props.book.answered_at ?? null))
 
