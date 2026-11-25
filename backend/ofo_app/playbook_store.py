@@ -359,10 +359,17 @@ _LINK_ORDERS = text(
 _SUGGESTION_OF_STRATEGY = text(
     "SELECT g.outcome FROM public.adjustment_suggestions g JOIN public.strategies s ON s.id = g.strategy_id "
     "WHERE g.id = :id AND g.strategy_id = :strategy_id AND s.user_ref = :user_ref")
-_INBOX = text(f"SELECT {', '.join('g.' + c for c in _SG_COLUMNS.split(', '))}, s.name, "  # noqa: S608 constant
+#: D-29: ``{scope}`` = ``scenario_mode.scope_clause("s")``: the inbox readers see this process's own strategies only.
+_INBOX_SQL = (f"SELECT {', '.join('g.' + c for c in _SG_COLUMNS.split(', '))}, s.name, "  # noqa: S608 constant
               "EXISTS (SELECT 1 FROM public.paper_orders o WHERE o.strategy_id = s.id) "
               "FROM public.adjustment_suggestions g JOIN public.strategies s ON s.id = g.strategy_id "
-              "WHERE s.user_ref = :user_ref AND s.deleted_at IS NULL ORDER BY g.shown_at DESC, g.id DESC")
+              "WHERE s.user_ref = :user_ref AND s.deleted_at IS NULL AND {scope} ORDER BY g.shown_at DESC, g.id DESC")
+
+
+def _scoped(sql: str) -> tuple[Any, dict]:
+    from ofo_app.scenario_mode import scope_clause  # noqa: PLC0415 - the one isolation helper
+    clause, params = scope_clause("s")
+    return text(sql.format(scope=clause)), params
 _LIST_SUGGESTIONS = text(f"SELECT {', '.join('g.' + c for c in _SG_COLUMNS.split(', '))} "  # noqa: S608 constant
                          "FROM public.adjustment_suggestions g JOIN public.strategies s ON s.id = g.strategy_id "
                          "WHERE g.strategy_id = :strategy_id AND s.user_ref = :user_ref ORDER BY g.id")
@@ -849,7 +856,8 @@ async def lapse_changed(conn: Any, user_ref: str, strategy_id: int, current: int
 
 async def inbox(conn: Any, user_ref: str) -> list[InboxRow]:
     """REQ-162 AC-1: every record of the user's strategies, newest first."""
-    rows = (await conn.execute(_INBOX, {"user_ref": user_ref})).all()
+    query, scope = _scoped(_INBOX_SQL)
+    rows = (await conn.execute(query, {"user_ref": user_ref, **scope})).all()
     return [InboxRow(_suggestion(r), r[11], r[12] is True) for r in rows]
 
 
@@ -942,10 +950,10 @@ class HeldToday:
     held_at: datetime
 
 
-_HELD_INBOX = text(
+_HELD_INBOX_SQL = (
     "SELECT h.id, h.strategy_id, h.rule_id, h.trigger_id, h.reason, h.held_at, s.name "
     "FROM public.adjustment_held_crossings h JOIN public.strategies s ON s.id = h.strategy_id "
-    "WHERE s.user_ref = :user_ref AND s.deleted_at IS NULL ORDER BY h.held_at DESC, h.id DESC")
+    "WHERE s.user_ref = :user_ref AND s.deleted_at IS NULL AND {scope} ORDER BY h.held_at DESC, h.id DESC")
 
 
 @dataclass(frozen=True)
@@ -961,7 +969,8 @@ class HeldInboxRow:
 
 async def held_inbox(conn: Any, user_ref: str) -> list[HeldInboxRow]:
     """REQ-170 AC-4: every crossing the gate held on the user's strategies, newest first (the timeline's reader)."""
-    rows = (await conn.execute(_HELD_INBOX, {"user_ref": user_ref})).all()
+    query, scope = _scoped(_HELD_INBOX_SQL)
+    rows = (await conn.execute(query, {"user_ref": user_ref, **scope})).all()
     return [HeldInboxRow(*r) for r in rows]
 
 

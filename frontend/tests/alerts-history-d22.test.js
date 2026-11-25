@@ -76,4 +76,11 @@ describe('Active shows a time on an open adjustment record (D-29)', () => {
     const w = await mountAt('/alerts/active')
     expect(w.get('[data-testid="open-record-time"]').text()).toMatch(/\d/)
   })
+  it('an open record with no time of its own takes its group time', async () => {
+    takeOpportunities({ groups: [{ strategy_id: 7, strategy_name: '"Trade A"', label: 'x', shown_at: '2026-11-23T05:51:58Z', records: [{ id: 1, outcome: 'open', condition: 'Net delta above 40' }] }] })
+    answers['GET /paper/alerts'] = () => Promise.resolve({ data: { unread: 0, alerts: [] } })
+    answers['POST /paper/alerts/read'] = () => Promise.resolve({ data: { unread: 0, alerts: [] } })
+    const w = await mountAt('/alerts/active')
+    expect(w.get('[data-testid="open-record-time"]').text()).toMatch(/\d/)
+  })
 })
