@@ -212,6 +212,9 @@ class PaperClosedOut(ApiModel):
     booked_text: CatalogueText
     opened_at: datetime.datetime
     closed_at: datetime.datetime
+    #: D-22 / D-71: why it closed when a stop or an expiry settlement closed it (the reason with the index value at that
+    #: moment, or the close it settled at); None for an exit the trader made
+    reason_text: CatalogueText | None = None
 
 
 class UnpricedLegOut(ApiModel):
@@ -570,7 +573,13 @@ def _position(p: NetPosition, found: tracked_contracts.TrackedContract, price: p
             "no_price_text": no_price_text() if p.net_quantity != 0 and not live else None}
 
 
-def _closed_row(leg: ClosedLeg, found: tracked_contracts.TrackedContract) -> dict:
+def _closing_reasons(orders: Sequence[paper_store.StoredOrder]) -> dict[tuple[int, datetime.datetime], str]:
+    """The stored reason of each stop / settle order by (contract, time): the order that closed a lifecycle."""
+    return {(o.order.contract_id, o.order.placed_at): o.order.reason for o in orders
+            if o.order.kind in ("stop", "settle") and o.order.reason}
+
+
+def _closed_row(leg: ClosedLeg, found: tracked_contracts.TrackedContract, reason: str | None = None) -> dict:
     underlying, instrument, strike, expiry = _identity(found)
     lot = found.stored.listed.contract.lot_size
     entry = shown_price(leg.average_entry)
@@ -583,7 +592,7 @@ def _closed_row(leg: ClosedLeg, found: tracked_contracts.TrackedContract) -> dic
             "average_entry": entry, "average_entry_text": price_text(entry),
             "average_exit": exit_, "average_exit_text": price_text(exit_),
             "booked": _exact(leg.booked), "booked_text": _signed(leg.booked),
-            "opened_at": leg.opened_at, "closed_at": leg.closed_at}
+            "opened_at": leg.opened_at, "closed_at": leg.closed_at, "reason_text": restore_order_reason(reason)}
 
 
 def _state_text(price: paper.Price | None) -> Any:
@@ -620,7 +629,9 @@ def _figures(orders: Sequence[paper_store.StoredOrder], found: dict[int, tracked
     live = {str(cid): p.price for cid, p in prices.items() if paper.is_live(p) and p.price is not None}
     view = lifecycles(_paper(orders), live)  # D-10: the net_positions totals, split at every flat point
     positions = [_position(p, found[int(p.instrument_id)], prices.get(int(p.instrument_id))) for p in view.positions]
-    closed = [_closed_row(leg, found[int(leg.instrument_id)]) for leg in view.closed]
+    why = _closing_reasons(orders)
+    closed = [_closed_row(leg, found[int(leg.instrument_id)], why.get((int(leg.instrument_id), leg.closed_at)))
+              for leg in view.closed]
     reason = next((found[c].state for c in prices if found[c].state != tracked_contracts.LIVE), None)
     paused = view.unbooked is None
     as_of = None
