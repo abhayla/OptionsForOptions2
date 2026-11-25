@@ -49,6 +49,16 @@ one e2e mock, but not the shared e2e pattern `frontend/e2e/support/ac5.ts`, whic
 passed; e2e collection 16 tests in 3 files). Why missed: the grep looked for "AM." / "PM." text, not the regex
 spelling `[AP]M`.
 
+**Second miss after the push (CI api red on 0a5a4be3):** `tests_app/test_ic_exits_paper.py::...[A-24]` failed because
+its test database has no charge rates, so D-25's fail-closed "charges cannot be worked out" refusal fired (not an
+after-charges loss). With rates seeded (b55053e0, test only) F_PROFIT is a real profit: Rs 6,610.50 before charges,
+Rs 235.84 charges (99.04 this exit + 136.80 paid), Rs 6,374.66 after; A-24 builds. Why missed: this DB file was not
+selected locally. Class check: `select_app_tests.select()` on 1887e3a0..HEAD picked 216 files; each alone on a fresh
+clone: 204 passed; the 12 others fail only on their migration round-trip / role allow-list check ("has TEMPORARY on
+the database"), a local fresh-clone grant difference, not Part F. **Risk for the owner:** migration 0012 seeds no
+charge rates; if production has none, Take profit is refused on every trade (and history already shows no
+after-charges figure there). Confirm the rate rows exist on the server.
+
 ## Overlap with `refactor/modular-doors` (additive changes only; expect merge conflicts there)
 
 `backend/ofo_app/routes/paper.py`, `backend/ofo_app/routes/adjustment.py`, `frontend/src/lib/tracking.js`,
