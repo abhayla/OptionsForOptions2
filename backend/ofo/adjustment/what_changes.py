@@ -81,7 +81,9 @@ def _of_cell(cell: Cell) -> Side:
         return Side(None, None, cell.unavailable_reason)
     if cell.value is None and cell.text == render_explanation("adjust_cmp_dash"):
         return _unknown()
-    return Side(cell.text, INFINITE if cell.value is None else cell.value)
+    if cell.value is not None:
+        return Side(cell.text, cell.value)
+    return Side(cell.text, INFINITE if cell.rank is None else cell.rank)  # an open side ranks below INFINITE
 
 
 def _of_margin(read: MarginRead, before: bool) -> Side:

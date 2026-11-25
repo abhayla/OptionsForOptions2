@@ -28,6 +28,7 @@ from ofo.adjustment.approaches import (
     build_approach,
 )
 from ofo.adjustment.compare import (
+    OPEN_SIDE_RANK,
     Cell,
     Column,
     Context,
@@ -188,8 +189,8 @@ def test_ac2_breakevens_and_margin_change_and_adjustments_rows():
     cmp = compare(cols, ctx)
     be = row(cmp, "breakevens")
     legs, after = sc["expected"]["approach_legs"], sc["expected"]["approach_after"]
-    for a in ("A-36", "A-01", "A-11"):  # hand zeros of the intrinsic payoff less the charges, between strikes
-        def pnl(x, a=a):
+    def hand_zeros(a):  # hand zeros of the intrinsic payoff less the charges, between strikes
+        def pnl(x):
             return gen.hand_pnl_at(legs[a]["after"], Fraction(after[a]["booked_pnl"]), x) - Fraction(total(sc, a))
         points = sorted({Fraction(x["strike"]) for x in legs[a]["after"]})
         zeros = []
@@ -197,13 +198,24 @@ def test_ac2_breakevens_and_margin_change_and_adjustments_rows():
             if (pnl(lo) < 0) != (pnl(hi) < 0):
                 z = lo + (hi - lo) * pnl(lo) / (pnl(lo) - pnl(hi))
                 zeros.append((D(z.numerator) / D(z.denominator)).quantize(D("0.01")))
+        return zeros, pnl
+
+    for a in ("A-36", "A-01", "A-11"):
+        zeros, _ = hand_zeros(a)
         assert len(zeros) == 2, a
         cell = be.values[a]
         assert cell.text.startswith(f"{zeros[0]}/{zeros[1]} (profit range ") and cell.value == zeros[1] - zeros[0]
-    # D-21 round 2: a single breakeven is a range open on one side ("Profit below/above X"): unbounded
-    open_side = D("Infinity")
-    assert be.leaders == hand_leaders({a: open_side if be.values[a].text.startswith("Profit ") else be.values[a].value
-                                       for a in be.values}, True)
+
+    def hand_rank(a):  # D-21 round 3: two zeros -> the width; ONE zero -> open on the side the P&L at index 0 gives;
+        zeros, pnl = hand_zeros(a)  # no zero -> a loss everywhere (0) or a profit everywhere (above every width)
+        if len(zeros) >= 2:
+            return zeros[-1] - zeros[0]
+        if len(zeros) == 1:
+            word = "Profit below" if pnl(Fraction(0)) > 0 else "Profit above"
+            assert be.values[a].text.startswith(f"{word} {zeros[0]:,}") and be.values[a].value is None, a
+            return OPEN_SIDE_RANK
+        return D(0) if pnl(Fraction(0)) < 0 else D("Infinity")
+    assert be.leaders == hand_leaders({a: hand_rank(a) for a in be.values}, True)
     assert be.values["A-31"].text == "No breakeven: a loss at every level" and be.values["A-31"].value == 0
     mc = row(cmp, "margin_change")
     assert mc.values["A-36"].value == D(0) and mc.values["A-01"].value == D("-1999.50")

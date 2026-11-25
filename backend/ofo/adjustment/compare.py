@@ -25,8 +25,10 @@ Definitions (technical calls of the GC-ADJ1 contract, "Found during the run" row
 - Spot moves: whole-trade at-expiry P&L after charges at spot x (1 + p), p = -2, -1, +1, +2 %, the level rounded
   half-even to the paisa (finding interpolated-level-finer-than-paise-refused: a derived level never carries more
   than 2 decimals into the engine).
-- Breakevens: leader = the widest profit range: two or more breakevens -> upper minus lower; one -> its distance from
-  spot; none -> 0 when the trade loses at every level, unlimited when it profits at every level.
+- Breakevens: leader = the widest profit range: two or more breakevens -> upper minus lower; one -> a range open on one
+  side ("Profit below / above X", decided from the engine's loss regions), ranked above every finite width and below
+  profit at every level; one touching point (loss at both ends) -> its distance from spot; none -> 0 when the trade
+  loses at every level, unlimited when it profits at every level.
 - Premium still left to earn: over the After's open legs, short legs' current price x quantity minus long legs'
   (current price = the planned-price rule of ADR-068 (1)); a leg without a price -> "-".
 - POP: the whole-trade After's POP; held switch OFF or unavailable -> "-" with the reason (the route's POP words).
@@ -93,6 +95,9 @@ ROWS: tuple[tuple[str, str, str], ...] = (
 )
 #: The move rows' percents, the curve range and its steps are the user's preferences (REQ-168 AC-1), ``Context.view``.
 INFINITE = Decimal("Infinity")  # the rank of an unlimited figure in a "highest" row
+#: D-21 round 3: the rank of a profit range open on ONE side (a single breakeven): above every finite width, below
+#: "profit at every level" (INFINITE), so the two never tie for the widest range
+OPEN_SIDE_RANK = Decimal("1E+999")
 
 #: POP's named reasons -> the catalogue's words (shared with the route, one home)
 POP_TEXT: Mapping[Why, str] = {Why.NO_VOLATILITY: "adjust_pop_no_volatility", Why.NO_FORWARD: "adjust_pop_no_forward",
@@ -428,23 +433,24 @@ class _Rows:
                 return Cell(render_explanation("adjust_cmp_no_breakeven_loss"), Decimal(0), None, Decimal(0))
             return Cell(render_explanation("adjust_cmp_no_breakeven_profit"), None, None, INFINITE)
         if len(levels) == 1:  # D-21 round 2: one breakeven = a range open on one side, unbounded, never a narrow one
-            side = self._open_side()
+            side = self._open_side(f.loss_regions)
             if side is not None:
-                return Cell(render_explanation(side, level=levels[0]), None, None, INFINITE)
+                return Cell(render_explanation(side, level=levels[0]), None, None, OPEN_SIDE_RANK)
         width = levels[-1] - levels[0] if len(levels) > 1 else abs(levels[0] - self.ctx.spot)
         text = render_explanation("adjust_cmp_breakevens", levels=joined_token([format(x, "f") for x in levels]),
                                   width=width)
         return Cell(text, width, None, width)
 
-    def _open_side(self) -> str | None:
-        """The template of the side a single breakeven's profit runs to, from the engine's own at-expiry P&L after
-        charges at index 0 and at twice the highest strike; None when neither end profits (the old width stands)."""
-        if not self.b.after or self.col.whole is None:
+    @staticmethod
+    def _open_side(regions: Sequence[tuple[Decimal | None, Decimal | None]]) -> str | None:
+        """The template of the side a single breakeven's profit runs to, from the engine's loss regions (ADR-089): the
+        first region open below -> profit above; the last open above -> profit below; loss at both ends (one touching
+        point) or no region -> None, and the old width stands."""
+        low_open = bool(regions) and regions[0][0] is None
+        high_open = bool(regions) and regions[-1][1] is None
+        if low_open == high_open:
             return None
-        top = (max(x.strike for x in self.b.after) * 2).quantize(PAISE, rounding=ROUND_HALF_EVEN)
-        if _pnl_at(self.b.after, self.lot, self.col.whole, Decimal(0)) > 0:
-            return "adjust_cmp_breakeven_below"
-        return "adjust_cmp_breakeven_above" if _pnl_at(self.b.after, self.lot, self.col.whole, top) > 0 else None
+        return "adjust_cmp_breakeven_above" if low_open else "adjust_cmp_breakeven_below"
 
     def max_profit(self) -> Cell:
         reason = self._no_single("summary_make_mixed_expiry") or self._after_reason()
@@ -688,6 +694,6 @@ def _curves(columns: Sequence[Column], ctx: Context, before: WholeTradeAfter | N
     return out, tuple(estimated)
 
 
-__all__ = ["NO_APPROACH_OFFERED", "NO_APPROACH_PRICED", "POP_TEXT", "Cell", "Cheapest", "Column", "Comparison",
-           "Context", "CostAnswer", "Criterion", "MarginRead", "Rows", "approach_cost", "cheapest_approach",
-           "column_order", "compare", "leaders", "offered_approaches", "pnl_at"]
+__all__ = ["NO_APPROACH_OFFERED", "NO_APPROACH_PRICED", "OPEN_SIDE_RANK", "POP_TEXT", "Cell", "Cheapest", "Column",
+           "Comparison", "Context", "CostAnswer", "Criterion", "MarginRead", "Rows", "approach_cost",
+           "cheapest_approach", "column_order", "compare", "leaders", "offered_approaches", "pnl_at"]
