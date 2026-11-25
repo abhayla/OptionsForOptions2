@@ -95,7 +95,8 @@ describe('one read feeds the paper panel, the tracking box and the P&L table TOT
   it('a failed refresh after a good one: all three keep the last figure and say the same paused sentence', async () => {
     const w = await page(book())
     await tick() // the default reply rejects
-    for (const s of [panelTotal(w), boxTotal(w), tableTotal(w)]) expect(s).toContain('+24.50')
+    expect(panelTotal(w)).toBe('—')
+    for (const s of [boxTotal(w), tableTotal(w)]) expect(s).toContain('+24.50')
     const said = 'Paper P&L paused - prices not live, as of 13 Nov 2026, 09:31:00 IST'
     for (const id of ['book-as-of', 'paper-shared-line', 'total-line']) expect(t(w, id).text()).toBe(said)
   })
