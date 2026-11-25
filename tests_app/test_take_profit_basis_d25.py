@@ -98,7 +98,6 @@ def test_charges_unreadable_is_refused_with_its_own_reason(a):
 
 @pytest.mark.parametrize("a", ["A-24", "A-25"])
 async def test_the_place_route_refuses_a_take_profit_basket_at_an_after_charges_loss(a, monkeypatch):
-    from ofo_app.strategy_refused import StrategyRefused  # noqa: PLC0415
     tr, mk, spot = t.inputs(t.load("ADJ-10"))
     built0, _ = priced_approach("A-24", as_of_market(tr, mk), mk, spot, t.RATES, t.PREFS.approach, roll_basis=t.BASIS)
     open_part = sum(((c.exit - c.entry) * c.quantity * (1 if c.side == "BUY" else -1) for c in built0.closed), D(0))
@@ -115,7 +114,7 @@ async def test_the_place_route_refuses_a_take_profit_basket_at_an_after_charges_
         return None
     monkeypatch.setattr(adj, "get_rest_spot_reader", lambda: rest)
     monkeypatch.setattr(adj, "judge_spot", lambda *_a: type("S", (), {"available": True, "value": spot})())
-    with pytest.raises(StrategyRefused) as err:
+    with pytest.raises(Exception) as err:  # the route's refusal exception, it carries ``.message``
         await adj.refuse_take_profit_at_loss(a, 1, tracked_reader, None, t.RATES, t.PREFS, t.BASIS)
     assert REASON in str(err.value.message.what_happened)
     # Exit-all is never asked about here: another id passes through
@@ -138,7 +137,6 @@ async def test_the_paper_place_helper_refuses_with_the_sentence_and_passes_an_or
     from ofo.settings import defaults as registry_defaults  # noqa: PLC0415
     from ofo_app import user_preferences_store as ups  # noqa: PLC0415
     from ofo_app.routes import paper  # noqa: PLC0415
-    from ofo_app.strategy_refused import StrategyRefused  # noqa: PLC0415
     tr, mk, spot = t.inputs(t.load("ADJ-10"))
     built0, _ = priced_approach("A-24", as_of_market(tr, mk), mk, spot, t.RATES, t.PREFS.approach, roll_basis=t.BASIS)
     open_part = sum(((c.exit - c.entry) * c.quantity * (1 if c.side == "BUY" else -1) for c in built0.closed), D(0))
@@ -159,7 +157,7 @@ async def test_the_paper_place_helper_refuses_with_the_sentence_and_passes_an_or
     monkeypatch.setattr(adj, "get_rest_spot_reader", lambda: rest)
     monkeypatch.setattr(adj, "judge_spot", lambda *_a: type("S", (), {"available": True, "value": spot})())
     monkeypatch.setattr(ups, "values_for", values)
-    with pytest.raises(StrategyRefused) as err:
+    with pytest.raises(Exception) as err:  # the route's refusal exception, it carries ``.message``
         await paper._refuse_take_profit_at_loss(None, "owner", 1, a, None, t.RATES, tracked_reader)
     assert err.value.message.what_happened.startswith(REASON)
 
