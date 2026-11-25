@@ -419,7 +419,7 @@ def _legs_of(bk: _Book, contracts: Sequence[tracked_contracts.TrackedContract]) 
 async def _answer(db: Any, stored, bk: _Book, ctx: MarketContext | None,  # noqa: PLR0913
                   feed: LiveFeed | None, threshold: Decimal, answered_at: datetime.datetime,
                   rates: ChargeRates | None = None) -> TrackingOut:
-    """D-64: the tracking answer, with the one after-close line (``paper.settle_line_after_close``'s rule) in place of the paused
+    """D-64: the tracking answer, with the one after-close line (the paper book's rule) in place of the paused
     texts while an open leg expires today and the settlement time has not come."""
     legs, _ = await _entry_legs(db, bk)
     open_today = [{"net_quantity": 1, "expiry": leg.expiry} for i, leg in enumerate(legs) if i not in bk.exit_prices]
