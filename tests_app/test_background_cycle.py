@@ -1441,6 +1441,63 @@ async def test_the_db_gate_store_lapses_the_records_of_an_earlier_count_as_posit
     assert str(render_explanation("suggestion_lapsed_position_changed")) == "The position changed"
 
 
+class FailingExpiryGate(FakeGate):
+    """lapse_expired raises once for the first strategy it is asked about."""
+
+    def __init__(self) -> None:
+        super().__init__()
+        self.asked, self.fail = [], 1
+
+    async def lapse_changed(self, _w):
+        return False
+
+    async def lapse_expired(self, w, _today):
+        self.asked.append(w.strategy_id)
+        if self.fail:
+            self.fail -= 1
+            raise ConnectionError("database blip")
+        return False
+
+
+async def test_d30_one_failed_expiry_lapse_never_aborts_the_rebuild():
+    scn = scenario_mode.load("ADJ-60")
+    listed = _watched(scn, 2)
+    gate = FailingExpiryGate()
+    prov, now, calls = Prov(scn), [scn.clock_at], Calls()
+
+    async def lister():
+        return listed
+    w = Draining(provider_for=lambda _o: prov, lister=lister, clock=lambda: now[0], settings=_settings(),
+                 preferences=_prefs, recorder=calls, observe=calls.seen, gate_store=gate)
+    await w.rebuild()
+    assert gate.asked == [x.strategy_id for x in listed]  # the second strategy was still asked
+    assert [x.strategy_id for x in w.monitors] == [x.strategy_id for x in listed] and w.errors
+
+
+async def test_d30_the_real_store_lapses_nothing_while_a_far_leg_is_live(monkeypatch):
+    """A near leg expired on 16 Nov and a far leg expiring 30 Nov, read 23 Nov: the position is live, nothing lapses."""
+    lapsed: list = []
+
+    async def open_suggestions(_db, _user, _sid):
+        return [type("R", (), {"id": 1})()]
+
+    async def lapse(_db, _user, sid, reason="x"):
+        lapsed.append((sid, reason))
+    monkeypatch.setattr(db, "get_sessionmaker", lambda: _CommitSession)
+    monkeypatch.setattr(playbook_store, "open_suggestions", open_suggestions)
+    monkeypatch.setattr(playbook_store, "lapse", lapse)
+    w = _watched(scenario_mode.load("ADJ-60"))[0]
+    near, far = datetime.date(2026, 11, 16), datetime.date(2026, 11, 30)
+    legs = (dataclasses.replace(w.tracked.position.legs[0], expiry=near),
+            dataclasses.replace(w.tracked.position.legs[1], expiry=far))
+    w = dataclasses.replace(w, tracked=dataclasses.replace(
+        w.tracked, position=dataclasses.replace(w.tracked.position, legs=legs)))
+    today = datetime.date(2026, 11, 23)
+    assert await background.DbGateStore().lapse_expired(w, today) is False and lapsed == []
+    assert await background.DbGateStore().lapse_expired(w, datetime.date(2026, 12, 1)) is True
+    assert lapsed == [(1, "contract_expired")]
+
+
 def test_d30_the_contract_expired_lapse_reason_has_its_words():
     assert "contract_expired" in playbook_store.LAPSE_REASONS
     assert str(render_explanation("suggestion_lapsed_contract_expired")) == "The contracts have expired"
