@@ -44,7 +44,7 @@
         <li v-for="g in shown" :key="g.id" class="border-b border-line py-2" data-testid="paper-compact-row" :data-strategy="g.id">
           <p v-if="!g.readable" data-testid="paper-unreadable">{{ g.text }}</p>
           <RouterLink v-else :to="{ path: '/positions/current-positions', query: { tab: 'paper', strategy: String(g.id) } }" class="flex items-center gap-2" :data-testid="`paper-compact-link-${g.id}`">
-            <span class="min-w-0 flex-1">
+            <span class="flex-1" :class="NAME_FLOOR_CLASS">
               <span class="block truncate font-medium" :title="g.name ?? `Strategy ${g.id}`" data-testid="paper-group-name">{{ g.name ?? `Strategy ${g.id}` }}</span>
               <span class="block text-xs text-ink-muted" data-testid="paper-compact-legs">{{ legsText(g) }}</span>
             </span>
@@ -161,6 +161,7 @@
 </template>
 
 <script setup>
+import { NAME_FLOOR_CLASS } from '@/lib/nameFloor'
 import { computed, onMounted, ref, shallowRef } from 'vue'
 import api, { NEUTRAL_ERROR, NEUTRAL_PARTS } from '@/services/api'
 import ErrorMessage from '@/components/common/ErrorMessage.vue'
