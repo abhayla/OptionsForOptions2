@@ -200,7 +200,8 @@ def test_golden_a_strategies_route_answers_the_exact_bytes_with_exclude_unset(mo
     assert response.status_code == 200
     # REQ-038 AC-3 (row 16): versions is always written; an unversioned strategy answers an empty list.
     assert response.content == (
-        b'{"id":3,"name":"\\"NIFTY Oct condor\\"","status":"draft","status_word":"Draft","revision":2,"created_at":"2026-10-12T09:15:00Z",'
+        b'{"id":3,"name":"\\"NIFTY Oct condor\\"","status":"draft","status_word":"Draft","revision":2,'
+        b'"created_at":"2026-10-12T09:15:00Z",'
         b'"updated_at":"2026-10-12T09:15:00.250000Z","definition":{"schema_version":1,"underlying":"NIFTY","legs":'
         b'[{"contract_id":5,"action":"BUY","contract_state":"live","exchange_segment":"NSE_FO","exchange_token":44624,'
         b'"instrument":"NIFTY2610625000CE","strike":"25000","expiry":"2026-10-27",'
@@ -256,7 +257,8 @@ def test_golden_a_strategy_with_one_stored_version_answers_its_definition(monkey
                   b'"instrument":"NIFTY2610625000CE","strike":"25000","expiry":"2026-10-27","quantity":75}],'
                   b'"rules_ref":null,"risk_limits":{},"preferences":{}}')
     assert response.content == (
-        b'{"id":3,"name":"\\"NIFTY Oct condor\\"","status":"draft","status_word":"Draft","revision":2,"created_at":"2026-10-12T09:15:00Z",'
+        b'{"id":3,"name":"\\"NIFTY Oct condor\\"","status":"draft","status_word":"Draft","revision":2,'
+        b'"created_at":"2026-10-12T09:15:00Z",'
         b'"updated_at":"2026-10-12T09:15:00Z","definition":' + definition + b',"versions":[{"number":1,'
         b'"state":"active","based_on":null,"created_at":"2026-10-12T09:15:00Z","confirmed_at":"2026-10-12T09:15:00Z",'
         b'"reconciled_at":"2026-10-12T09:15:00Z","outcome":null,"reconciliation_required":true,"definition":'
