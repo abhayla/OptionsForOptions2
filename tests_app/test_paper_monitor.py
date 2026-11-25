@@ -242,6 +242,34 @@ async def test_a_leg_stop_with_no_live_index_value_says_so_and_still_fires(db):
     assert reason.endswith("crossed above 120.00; the index value at that moment was not available")
 
 
+class DropsUnheld(FakeProvider):
+    """The bus-mode API provider: a tick for a token nobody holds never reaches the book (kite_provider.on_frame)."""
+
+    def tick(self, q) -> None:
+        if q.instrument_id in self.vendor_subscribed:
+            super().tick(q)
+
+
+async def test_s20_a_leg_stop_alone_holds_the_index_and_its_alert_carries_the_index_value(db):
+    """S-20 (D-01 root cause 2): the watch held the index only for a conditional exit, so with only a leg stop armed the
+    index tick was dropped and the alert said "the index value at that moment was not available"."""
+    market = Market()
+    market.provider = DropsUnheld({"NIFTY": INDEX})
+    market.feed = LiveFeed(MarketContext(market.provider, lambda: market.at, D("0.065"), None), FanOut(market.provider))
+    stored, ids, keys = await _strategy(db)
+    await triggers.add(db, stored.id, triggers.NewTrigger("leg_stop", "above", D("120.00"), contract_id=ids[0]))
+    monitor = _monitor(db, market)
+    await monitor.step()
+    assert market.provider.vendor_subscribed >= {INDEX, keys[0]}  # the index is held for a leg stop too
+    market.tick(INDEX, "22849.95")
+    market.tick(keys[0], "120.40")
+    assert await monitor.step() == 1
+    [(*_, reason, _)] = await _stops(db, stored.id)
+    assert reason.endswith("crossed above 120.00; NIFTY was at 22,849.95 at that moment")
+    [(_, body)] = await _alerts(db, stored.id)
+    assert "not available" not in body
+
+
 async def test_a_fully_exited_strategy_cancels_its_triggers_and_places_nothing(db):
     market = Market()
     stored, ids, _ = await _strategy(db)
