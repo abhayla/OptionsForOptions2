@@ -95,3 +95,33 @@ Paper only. Open the Strategy Builder (Strategies > Strategy Builder).
 7. Drafts Mode. Open a paper strategy, remove one leg (a pending change), go to the Option Chain and back: the pending change is still
    there. If the book changed meanwhile: "The strategy changed while you were away. Your unsaved edits were not restored." [ ]
 New wording to read: the opposite note, the singular "The 1 unsaved leg will be lost.", the Drafts Mode changed-book sentence.
+
+## Review round (26 Nov 2026, overnight): independent reviewer's findings
+
+Tests first: commit `98ad3845`, red run `evidence/lane-b-review-red.txt` (7 failed, 28 passed in the two files). Green after the fix
+commits: the same files 35 passed; full vitest 230 files, 2735 passed, 0 skipped. Each claim was confirmed by its red test; none dropped.
+
+| Finding | Verdict | Red to green test | Fix (RCA) |
+|---|---|---|---|
+| F1 Add Selected merged another underlying | confirmed, FIXED | `chain-trip-adr329.test.js` "F1 held NIFTY legs + ticked SENSEX contracts" | `addFromChain` never compared underlyings; it now adds nothing, keeps the held legs and says "These contracts are on SENSEX; the legs in the builder are on NIFTY. Nothing was added." through the editError path. Owner question OQ-5 filed. |
+| F2 second navigation made the older question Leave | confirmed, FIXED | `leave-builder-adr329.test.js` "F2 a second navigation ..." and "F2 a navigation that needs no question ..." | `ask()` called `settle(false)` and `settle(stay)` resolves `!stay`, so the older guard proceeded (Leave); it now settles Stay, as does any newer `allow()`. |
+| F3 Back re-ran Add Selected | confirmed, FIXED | `chain-trip-adr329.test.js` "F3 Back from the chain ..." | The hold forgot which `?draft=` it had absorbed; the hold now carries `addedDraft` (set on a successful add, gone with the hold) and the page skips `addFromChain` for the same draft text on the same hold. `?draft=` stays in the URL. |
+| F5 stale replace answered after Save | confirmed, FIXED | `chain-trip-adr329.test.js` "F5 the draft query dropped ..." | the `!v` early return ran before `settleReplace`; it now settles the question as Cancel and bumps `replaceSeq`, so a late answer applies nothing and the old link is not written back. |
+| F7 dangling promises on unmount | confirmed, FIXED | `leave-builder-adr329.test.js` "F7 unmount ..." and `chain-trip-adr329.test.js` "F7 unmount ..." | neither question was settled when the page went away; `onBeforeUnmount` settles the leave question as Stay (in `useLeaveBuilder`, so the chain page too) and the replace question as Cancel. |
+
+Changed existing test: `builder-hold-adr329.test.js` H2 compares the whole held object; the hold now has the `addedDraft` field (null).
+Known edge of F3 (for the owner): a second Add Selected with exactly the same ticks on the same hold produces the same link text and is
+skipped; today those ticks would clash with the legs just added and ask, so nothing a trader would want is lost.
+
+### Review findings not fixed
+- F4 a cancelled Add Selected leaves `?draft=` in the URL, and a reload then applies it: today's behaviour, unchanged by ADR-329; left as is.
+- F6 Drafts Mode unsaved count is `pendingOrders.length`, the number the bar shows (the plan's chosen wording). Listed for the owner's screen check (item 7 and 5 below).
+
+### Screen check added
+8. Underlying refusal. Build 3 NIFTY legs (unsaved). Market > Option Chain, switch the chain to SENSEX, tick one contract, Add Selected.
+   Expect the Builder with your 3 NIFTY legs unchanged and the sentence "These contracts are on SENSEX; the legs in the builder are on
+   NIFTY. Nothing was added." [ ]
+9. Back after Add Selected. Add two contracts from the chain, then go to the chain again and press the browser Back: the Builder shows
+   the same legs, not the two added again. [ ]
+10. Drafts Mode count. In a paper strategy with one pending change, go to any page other than the chain: the question counts the same
+    number the bar shows. [ ]

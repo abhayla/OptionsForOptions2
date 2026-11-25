@@ -79,3 +79,15 @@ OTHER page with unsaved legs asks "Leave the builder? The N unsaved legs will be
 Phase 5, Lane B (`PLAN-phases-3-8.md` 5.5 "ADR-329 design"); the spec sentences of ADR-007 Q34 and ADR-319 (1) are Lane B's
 step 5.5.0. Four readings the plan makes (hold covers saved legs too; leaving the chain asks too; a paper strategy counts
 by its pending changes; tab close and reload do not ask) are on the owner's screen-check list (item 8, 8a), not questions.
+
+## Lane B
+
+### OQ-5 Add Selected with contracts of another underlying than the builder's held legs
+
+Spec basis: ADR-329 is silent on the underlying (searched: "underlying", "held", "Add Selected"); LegPicker.vue says a strategy has
+one underlying. Real case: the builder holds three NIFTY legs (the Oct condor, `outcome-condor.json`); the trader opens the chain,
+switches the chain to SENSEX, ticks BUY one SENSEX call and clicks Add Selected.
+Options: (a) refuse: nothing is added, the three NIFTY legs stay, the page says "These contracts are on SENSEX; the legs in the
+builder are on NIFTY. Nothing was added." (built, fail-closed); (b) replace the held legs with the SENSEX ones after the
+"Replace the N legs?" question; (c) lock the chain's underlying to the held legs' while a hold exists.
+Recommendation: (a), as built. Built meanwhile: (a).
