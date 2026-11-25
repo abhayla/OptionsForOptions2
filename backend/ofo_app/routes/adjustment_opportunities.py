@@ -16,6 +16,7 @@ UPDATE, guarded by the database). Suggest-only (ADR-003): no route here reaches 
 """
 from __future__ import annotations
 
+import dataclasses
 import datetime
 import logging
 from typing import Annotated, Any, Literal
@@ -24,6 +25,7 @@ from fastapi import APIRouter, Depends
 from ofo.adjustment import level_watch
 from ofo.adjustment.held_reasons import HELD_TEXT_IDS
 from ofo.adjustment.playbook_eval import TIME_TRIGGERS, is_day_rule_id, is_situation_rule_id
+from ofo.adjustment.popup_quiet import popup_due
 from ofo.errors import render
 from ofo.errors.explanations import DAY_RULE_GENERIC_TEXT, LEVEL_WATCH_LABEL_TEXT, render_explanation
 from ofo.strategy.stored_form import shown_name
@@ -74,6 +76,9 @@ class OpportunityOut(ApiModel):
     detail: CatalogueText | None  # a dismiss reason or why it lapsed
     can_act: bool  # open: Dismiss and acted on are allowed
     closed_at: datetime.datetime | None = None  # D-26: when it lapsed / was dismissed / acted on; None while open
+    # D-67 (ADR-326 (5)): the pop-up for this record is raised now. False only while a rule that was already true at
+    # entry is inside its first 5 minutes; the record and the bell's count do not wait (ofo.adjustment.popup_quiet)
+    popup_due: bool = True
 
 
 class GroupOut(ApiModel):
@@ -214,8 +219,24 @@ def condition_text(s: store.Suggestion) -> Any:
     return _valued_line(s, shown, figures)
 
 
-def _record(s: store.Suggestion, paper: bool) -> dict:
-    return {"id": s.id, "rule_id": s.rule_id, "trigger_id": s.trigger_id,
+@dataclasses.dataclass(frozen=True)
+class PopupFacts:
+    """D-67: what ``popup_quiet.popup_due`` needs besides the record (``store.popup_facts``) and the clock."""
+
+    entry: dict[int, datetime.datetime]
+    seen_clear: dict[tuple[int, str], bool]
+    now: datetime.datetime
+
+
+def _popup_due(s: store.Suggestion, facts: PopupFacts | None) -> bool:
+    if facts is None or s.outcome != "open":
+        return True
+    return popup_due(entry_at=facts.entry.get(s.strategy_id), shown_at=s.shown_at,
+                     seen_clear=facts.seen_clear.get((s.strategy_id, s.rule_id)), now=facts.now)
+
+
+def _record(s: store.Suggestion, paper: bool, popup: PopupFacts | None = None) -> dict:
+    return {"popup_due": _popup_due(s, popup), "id": s.id, "rule_id": s.rule_id, "trigger_id": s.trigger_id,
             "stage": stage_name_text(s.stage), "value": s.value, "threshold": s.threshold,
             "condition": condition_text(s), "shown_at": s.shown_at, "outcome": s.shown_outcome,
             "outcome_text": outcome_text(s, paper), "detail": _detail(s), "can_act": s.outcome == "open",
@@ -229,7 +250,8 @@ def held_body(rows: list[store.HeldInboxRow]) -> list[dict]:
              "text": render_explanation(HELD_TEXT_IDS[h.reason]), "held_at": h.held_at} for h in rows]
 
 
-def inbox_body(rows: list[store.InboxRow], held: list[store.HeldInboxRow] | None = None) -> dict:
+def inbox_body(rows: list[store.InboxRow], held: list[store.HeldInboxRow] | None = None,
+               popup: PopupFacts | None = None) -> dict:
     groups: dict[str, dict] = {}
     for row in rows:  # newest first; a group's first row seen is its newest record
         s = row.suggestion
@@ -240,7 +262,7 @@ def inbox_body(rows: list[store.InboxRow], held: list[store.HeldInboxRow] | None
             g = groups[key] = {"group": key, "strategy_id": s.strategy_id,
                                "strategy_name": shown_name(row.strategy_name), "shown_at": s.shown_at,
                                "label": render_explanation(label), "records": []}
-        g["records"].append(_record(s, row.paper))
+        g["records"].append(_record(s, row.paper, popup))
     for g in groups.values():
         g["records"].sort(key=lambda r: (r["rule_id"], r["id"]))
         n = len(g["records"])
@@ -301,7 +323,10 @@ async def _close(db: Any, work: Any) -> SuggestionOut:
 @router.get("/api/adjustment-opportunities", response_model=InboxOut)
 async def adjustment_opportunities(db: Annotated[Any, Depends(get_db)],
                                    user_ref: Annotated[str, Depends(current_user_ref)]) -> InboxOut:
-    return InboxOut.model_validate(inbox_body(await store.inbox(db, user_ref), await store.held_inbox(db, user_ref)))
+    rows = await store.inbox(db, user_ref)
+    entry, clear = await store.popup_facts(db, user_ref, {r.suggestion.strategy_id for r in rows})
+    popup = PopupFacts(entry, clear, datetime.datetime.now(datetime.UTC))
+    return InboxOut.model_validate(inbox_body(rows, await store.held_inbox(db, user_ref), popup))
 
 
 @router.post("/api/adjustment-opportunities/{suggestion_id}/dismiss", response_model=SuggestionOut)

@@ -20,7 +20,7 @@ def at(minutes: float) -> dt.datetime:
 
 
 def test_the_quiet_period_is_five_minutes_like_the_alert_cool_down():
-    assert QUIET_PERIOD == dt.timedelta(minutes=5)
+    assert dt.timedelta(minutes=5) == QUIET_PERIOD
 
 
 def test_c10_gamma_true_at_entry_is_quiet_at_one_and_three_minutes_and_due_at_five():
