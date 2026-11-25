@@ -23,8 +23,9 @@ it is named; otherwise the plain "removes credit" line. Exit (kind ``exit``): ma
 after every charge) above max loss before gets the "books today's prices" line. Roll, Convert and No change carry no
 reason line: their names promise no direction.
 
-D-61 (ADR-320 point 5): for every approach whose resulting legs leave one (the buy-backs A-26, A-27 among them) the same line also carries the sentence naming a long
-call or put left with no short of its type against it (``lone_long_line``, read from the approach's resulting legs).
+D-61 (ADR-320 point 5): for every approach whose resulting legs leave one (the buy-backs A-26, A-27 among them) the same
+line also carries the sentence naming a long call or put left with no short of its type against it
+(``lone_long_line``, read from the approach's resulting legs).
 """
 from __future__ import annotations
 
@@ -202,7 +203,7 @@ def lone_long_line(after: Sequence[PositionLeg] | None) -> ExplanationText | Non
 
 
 def _with_lone_long(col: Column, reason: ExplanationText | None) -> ExplanationText | None:
-    """The reason line, then the D-61 line when the approach's resulting legs leave a long with no short (any approach)."""
+    """The reason line, then the D-61 line when the resulting legs leave a long with no short (any approach)."""
     lone = lone_long_line(col.built.after)
     if lone is None or reason is None:
         return lone or reason

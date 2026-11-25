@@ -1101,8 +1101,8 @@ def _today_item(figures: dict, decay: paper_decay.Decay, book: paper_store.UserB
 
 
 def today_day(snapshots: Sequence[Any], answered: datetime.datetime) -> datetime.date:
-    """D-68: "the current trading day in IST": the India date of the newest market snapshot (``_book_day``'s rule, so on a
-    weekend or holiday it is the last session's day, not the calendar day); with no snapshot, the answer's own India date."""
+    """D-68: "the current trading day in IST": the India date of the newest market snapshot (``_book_day``'s rule,
+    so on a weekend or holiday it is the last session's day); with no snapshot, the answer's own India date."""
     days = [_today(s) for s in snapshots if s is not None]
     return max((d for d in days if d is not None), default=answered.astimezone(paper.IST).date())
 
