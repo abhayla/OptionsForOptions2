@@ -219,6 +219,7 @@ export function readTracking(body, replyLegs = null) {
     text: instrumentText({ quantity: String(leg.quantity ?? ''), expiry: leg.expiry, strike: leg.strike ?? '', instrument: leg.instrument }, lotsOf(replyLegs, leg)),
     entry: leg.entry_price_display ?? null, // GC-UI D-PX: the server's two-decimal text, printed as sent
     current: leg.price_state === 'live' ? (leg.current_price_display ?? null) : null,
+    quoteAt: leg.price_state === 'live' && typeof leg.price_at === 'string' ? leg.price_at : null, // D-18: when THIS leg's price was quoted (the server's price_at)
     exited: isExited(leg),
     exitPrice: leg.exit_price_display ?? null, // REQ-109 AC-4: the server's text of the exit price; null = a dash
     pnl: legPnlText(leg),

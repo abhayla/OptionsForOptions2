@@ -89,10 +89,11 @@ describe('D-18: Escape closes the depth popover', () => {
     const w = mount(DepthPopup, { props: { instrumentId: 'NSE_FO:44002', title: 'x' }, attachTo: document.body })
     await flushPromises()
     document.body.dispatchEvent(new KeyboardEvent('keydown', { key: 'Escape', bubbles: true }))
-    expect(w.emitted('close')).toHaveLength(1)
+    const events = w.emitted('close')
+    expect(events).toHaveLength(1)
     w.unmount()
     document.body.dispatchEvent(new KeyboardEvent('keydown', { key: 'Escape', bubbles: true }))
-    expect(w.emitted('close')).toHaveLength(1)
+    expect(events).toHaveLength(1)
   })
 })
 
