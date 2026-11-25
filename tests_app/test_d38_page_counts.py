@@ -32,6 +32,7 @@ _reset_engine, _seeded = base._reset_engine, base._seeded
 app_db_url = base.app_db_url
 GOLDEN = pathlib.Path(__file__).resolve().parent / "golden_d38"
 OK = 200
+SETTINGS_SQL_AFTER = 4  # was 5
 
 
 @dataclass
@@ -72,7 +73,11 @@ async def _get(url: str, counts: Counts):
     from ofo_app.main import create_app  # noqa: PLC0415
     _reset_engine()
     engine = app_db.get_engine()
-    event.listen(engine.sync_engine, "before_cursor_execute", lambda c, cur, st, *_a: (setattr(counts, "sql", counts.sql + 1), counts.statements.append(st[:90])))
+
+    def count_sql(_c, _cur, statement, *_a):
+        counts.sql += 1
+        counts.statements.append(statement[:90])
+    event.listen(engine.sync_engine, "before_cursor_execute", count_sql)
     app = create_app()
     async with AsyncClient(transport=ASGITransport(app=app), base_url="http://t") as ac:
         r = await ac.get(url)
@@ -148,5 +153,5 @@ async def test_after_settings_asks_the_database_clock_once(app_db_url, monkeypat
     _wrap(monkeypatch, counts)
     status, _body = await _get("/api/settings", counts)
     assert status == OK
-    assert counts.sql == 4, counts.statements
+    assert counts.sql == SETTINGS_SQL_AFTER, counts.statements
     assert sum("clock_timestamp" in s for s in counts.statements) == 1

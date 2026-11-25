@@ -43,6 +43,7 @@ from ofo.charges import ChargeRates
 from ofo.errors.explanations import ExplanationText, render_explanation
 from ofo.instruments.models import BSE_FO, NSE_FO
 from ofo.settings import SettingRefused
+from ofo.timeutil import IST
 from pydantic import BaseModel, ConfigDict, StrictStr
 from sqlalchemy import text
 from sqlalchemy.ext.asyncio import AsyncSession
@@ -205,7 +206,7 @@ async def _charges(db: AsyncSession, on: datetime.date | None = None) -> Charges
 def _ist_day(now: datetime.datetime) -> datetime.date:
     """The database clock's IST calendar day, from the instant already read (D-38: the rate set's day needs no second
     clock read; the same day the rates store's own ``_TODAY`` query would answer)."""
-    return now.astimezone(datetime.timezone(datetime.timedelta(hours=5, minutes=30))).date()
+    return now.astimezone(IST).date()
 
 
 async def _read_all(db: AsyncSession) -> tuple[dict[str, settings_store.StoredSetting],
