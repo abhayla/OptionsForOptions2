@@ -46,7 +46,7 @@ from ofo.tracking import paper, stops
 from ofo.tracking.orderbook import net_positions
 from ofo.tracking.paper_alert import alert_body, stop_reason_at
 
-from ofo_app import paper_store, tracked_contracts
+from ofo_app import paper_exit, paper_store, tracked_contracts
 from ofo_app import paper_trigger_store as triggers
 from ofo_app.live_push import LiveFeed
 from ofo_app.routes.outcome import SettingsReader, feed_scope, with_rate_in_force
@@ -227,13 +227,18 @@ class PaperMonitor:
             prices = self._exit_prices(feed, a, w, price, targets, found)
             if prices is None:
                 return None  # a contract without a live price: not yet, the trigger stays armed
-            if not await triggers.claim_fire(session, t.id):
-                return {"fired": set(), "cancelled": {t.id}}  # fired before (another tick, monitor or run)
             texts = {c: _contract_text(found[c]) for c in targets}
             reason = stop_reason_at(self._reason(t, texts), a.underlying, self._index_now(feed, a.underlying))
-            stored = await paper_store.place(session, a.user_ref, t.strategy_id, [
-                paper_store.NewOrder(c, "SELL" if open_net[c] > 0 else "BUY", abs(open_net[c]), prices[c], "stop",
-                                     now, str(reason), t.id) for c in targets], entry=None)  # a stop: never first
+            # the door: the strategy lock FIRST, the net read under it (a lot added since the look above is closed
+            # too), then the claim, then the write (a stop: never a first fill)
+            done = await paper_exit.exit_strategy(
+                session, user_ref=a.user_ref, strategy_id=t.strategy_id, kind="stop", prices=prices, placed_at=now,
+                only=[t.contract_id] if t.kind == "leg_stop" else sorted, reason=str(reason), trigger_id=t.id,
+                before_write=lambda: triggers.claim_fire(session, t.id),
+                write=lambda orders: paper_store.place(session, a.user_ref, t.strategy_id, orders, entry=None))
+            if not isinstance(done, paper_exit.Exited):
+                return await self._not_written(session, t, done)
+            stored = done.book
             # D-02: the stored (buys first) order
             recorded = [o.order.contract_id for o in stored if o.order.trigger_id == t.id]
             body = alert_body(reason, [(texts[c], prices[c]) for c in recorded], names_contract=t.kind == "leg_stop")
@@ -243,6 +248,17 @@ class PaperMonitor:
                                      str(body))
         self.fires += 1
         return {"fired": {t.id}, "cancelled": set()}
+
+    @staticmethod
+    async def _not_written(session: Any, t: stops.Trigger, done: Any) -> dict[str, set[int]] | None:
+        """The door wrote nothing: flat since the look (cancel), no live price (not yet: stays armed), or the trigger
+        fired before (another tick, monitor or run)."""
+        if isinstance(done, paper_exit.Flat):
+            gone = None if done.strategy_flat or t.kind != "leg_stop" else t.id
+            return {"cancelled": set(await triggers.cancel(session, t.strategy_id, gone)), "fired": set()}
+        if isinstance(done, paper_exit.NotYet):
+            return None
+        return {"fired": set(), "cancelled": {t.id}}
 
     def _exit_prices(self, feed: LiveFeed, a: triggers.ArmedTrigger, w: _Watch,  # noqa: PLR0913
                      price: paper.Price, targets: list[int],

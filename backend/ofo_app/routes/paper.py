@@ -83,6 +83,7 @@ from ofo_app import (
     held_entry_store,
     market_read,
     may_act,
+    paper_exit,
     paper_limit,
     paper_monitor,
     paper_store,
@@ -1230,22 +1231,16 @@ async def _server_exit_prices(ctx: MarketContext | None, feed: LiveFeed | None, 
     tracking_not_connected; a contract not live (token reassigned, delisted, retired, missing) ->
     tracking_exit_contract_not_live; a leg with no live price (missing, failed read) ->
     tracking_exit_prices_not_live; nothing is written on any refusal. The browser's price is never used."""
-    from ofo_app.routes.tracking import _snapshot  # noqa: PLC0415 - the exit route's own market read
     exits = [(i, state[o.contract_id]) for i, o in enumerate(orders) if o.kind == "exit"]
     if not exits:
         return {}
-    if ctx is None:
-        raise StrategyRefused("tracking_not_connected", Failure.CONFLICT)
-    if any(c.feed_key is None for _, c in exits):  # never priced from another contract's quote (token reused etc.)
-        raise StrategyRefused("tracking_exit_contract_not_live", Failure.CONFLICT)
-    try:
-        snapshot = await _snapshot(ctx, feed, underlying, sorted({c.feed_key for _, c in exits}))  # type: ignore[type-var]
-        prices = {i: paper.leg_price(snapshot, c.feed_key) for i, c in exits}  # type: ignore[arg-type]
-    except Exception:  # noqa: BLE001 - any failed read is "no price": refused by name, nothing written
-        _LOG.exception("paper exit price read failed")
-        raise StrategyRefused("tracking_exit_prices_not_live", Failure.CONFLICT) from None
-    may_act.require(may_act.prices_ok("exit", [may_act.state_of(p) for p in prices.values()]))
-    return {i: p.price for i, p in prices.items()}  # type: ignore[misc] - priced: price set
+    keys = [c.feed_key for _, c in exits]
+    # the one live exit read (paper_exit.live_exit_prices): the refusals and their order are the ones named above
+    live = await paper_exit.live_exit_prices(ctx, feed, underlying, [None] if None in keys else sorted(set(keys)),  # type: ignore[type-var]
+                                             connected_rule="ctx", on_read_error="refuse")
+    if isinstance(live, may_act.Refused):
+        may_act.require(live)
+    return {i: live[c.feed_key].price for i, c in exits}  # type: ignore[index, misc] - priced: price set
 
 
 async def entry_facts(ctx: MarketContext | None, underlying: str, orders: Sequence[Any],
