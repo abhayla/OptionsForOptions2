@@ -86,7 +86,7 @@ const walk = (dir) => readdirSync(dir).flatMap((n) => {
   const p = join(dir, n)
   return statSync(p).isDirectory() ? walk(p) : /\.(vue|js)$/.test(n) ? [p] : []
 })
-const LOCALE_DATE = /\.toLocale(?:Date|Time)?String\s*\(|Intl\.DateTimeFormat|['"`]en-US['"`]/
+const LOCALE_DATE = /\.toLocale(?:Date|Time)?String\s*\(|Intl\.DateTimeFormat|['"`]en-US['"`]|\bhour12\b|\.getHours\s*\(|\.getMinutes\s*\(/
 const FORMATTER = 'lib/displayFormat.js'
 
 describe('D-57: repo scan, one date formatter', () => {
@@ -96,7 +96,7 @@ describe('D-57: repo scan, one date formatter', () => {
     expect(hits.filter((h) => !h.startsWith(`${FORMATTER}:`))).toEqual([])
   })
   it('the scan matches a US date call, a locale time call and an Intl formatter', () => {
-    for (const bad of ["d.toLocaleDateString('en-US')", 'new Date(x).toLocaleString()', 'at.toLocaleTimeString()', 'new Intl.DateTimeFormat("en-IN")', "locale = 'en-US'"]) {
+    for (const bad of ["d.toLocaleDateString('en-US')", 'new Date(x).toLocaleString()', 'at.toLocaleTimeString()', 'new Intl.DateTimeFormat("en-IN")', "locale = 'en-US'", '{ hour12: true }', 'd.getHours() % 12', 'at.getMinutes()']) {
       expect(LOCALE_DATE.test(bad), bad).toBe(true)
     }
     for (const ok of ['istTime(x)', 'const n = price.toLocaleLowerCase()', 'toString()']) expect(LOCALE_DATE.test(ok), ok).toBe(false)

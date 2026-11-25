@@ -486,3 +486,21 @@ def test_a_valued_day_rule_record_names_the_rule_not_its_id(label):
     assert "day." not in text and "beforeHoliday" not in text, text
     assert text.startswith("The day before a market holiday, 15:00: Run the carry check"), text
     assert text.endswith(": 0.8 (rule 1.5)"), text
+
+
+# ---- D-58 (final round): one label function, so no rule id reaches the screen as a label, whatever the rule family ----
+def _valued(rule_id: str, label: str | None):
+    return playbook_store.Suggestion(
+        1, 143, rule_id, rule_id, None, Decimal("0.8"), Decimal("1.5"), dt.datetime(2026, 11, 24, 9, 30, tzinfo=dt.UTC),
+        "open", None, [{"cmp": "le", "label": label, "group": "g"}])
+
+
+def test_a_valued_level_watch_record_names_the_watch_not_its_id():
+    text = str(condition_text(_valued("watch.level.above", "watch.level.above")))
+    assert "watch.level" not in text and text.startswith("Watched level reached (at or above)"), text
+
+
+@pytest.mark.parametrize("rule_id", ["sit.S-02", "zzz.unknown"])
+def test_a_valued_record_with_no_wording_for_its_id_shows_no_id(rule_id):
+    text = condition_text(_valued(rule_id, rule_id))
+    assert text is None or rule_id not in str(text), text
