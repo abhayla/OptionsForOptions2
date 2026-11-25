@@ -813,3 +813,37 @@ async def test_d03r2_keep_while_the_monitor_fires_the_old_row_stores_no_new_row(
     # no stray armed row on the book (the claim itself is rolled back with this test's shared transaction, so the old
     # row's state is not asserted)
     assert [r["id"] for r in rows] == [first]
+
+
+# D-22 / D-71 (owner decision 2026-11-24, REQ-109 AC-7, AC-8): a fired stop and an expiry settlement each leave a record
+# in Alerts > History: time, what happened, the index value at that moment, the prices.
+async def test_history_lists_a_fired_stop_and_an_expiry_settlement_with_time_index_value_and_prices(db, notified):
+    from ofo_app import paper_settlement  # noqa: PLC0415
+    app, stored, ids = await _open(db)
+    async with _client(app) as c:
+        assert (await c.get("/paper/alerts/history")).json() == {"records": []}
+        reply = await c.post(_url(stored), json={"kind": "conditional_exit", "below": "22000"})
+        tid = reply.json()["triggers"][0]["id"]
+        assert await paper_trigger_store.claim_fire(db, tid)
+        dash = render_explanation("cell_dash")
+        what = render_explanation("paper_stop_reason_index_at", what=render_explanation(
+            "paper_stop_reason_index", underlying="NIFTY", direction="below", level=D("22000")),
+            underlying="NIFTY", level=D("21999.90"))
+        await paper_trigger_store.add_alert(
+            db, stored.id, tid, str(render_explanation("paper_alert_title", name=dash)),
+            str(alert_body(what, [(dash, D("41.00"))], names_contract=False)))
+        at = datetime.datetime(2026, 11, 24, 10, 0, tzinfo=datetime.UTC)  # 15:30 IST, the exchange close
+        why = str(paper_settlement.settle_reason("NIFTY", D("25641.35")))
+        await paper_store.place(db, stored.user_ref, stored.id, [
+            paper_store.NewOrder(ids[0], "BUY", 65, D("0.00"), "settle", at, why),
+            paper_store.NewOrder(ids[1], "SELL", 65, D("246.03"), "settle", at, why)], entry=None)
+        records = (await c.get("/paper/alerts/history")).json()["records"]
+    assert sorted(r["kind"] for r in records) == ["settled", "stop"]
+    settled = next(r for r in records if r["kind"] == "settled")
+    assert settled["at"].startswith("2026-11-24T10:00:00")
+    assert "Paper - settled at expiry: NIFTY closed at 25,641.35" in settled["body"]
+    assert "0.00" in settled["body"] and "246.03" in settled["body"]
+    assert "no order was sent to Zerodha" in settled["body"]
+    stop = next(r for r in records if r["kind"] == "stop")
+    assert "NIFTY was at 21,999.90 at that moment" in stop["body"]
+    assert stop["strategy_id"] == settled["strategy_id"] == stored.id
