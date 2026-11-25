@@ -998,11 +998,11 @@ class HeldInboxRow:
 _POPUP_ENTRY = text("SELECT o.strategy_id, MIN(o.placed_at) FROM public.paper_orders o "
                     "JOIN public.strategies s ON s.id = o.strategy_id "
                     "WHERE o.strategy_id = ANY(:ids) AND s.user_ref = :user_ref GROUP BY o.strategy_id")
-_POPUP_CLEAR = text("SELECT DISTINCT ON (r.strategy_id, r.rule_id) r.strategy_id, r.rule_id, r.seen_clear, "
-                    "r.updated_at FROM public.adjustment_rule_state r JOIN public.strategies s ON s.id = r.strategy_id "
+_POPUP_CLEAR = text("SELECT DISTINCT ON (r.strategy_id, r.rule_id) r.strategy_id, r.rule_id, r.seen_clear "
+                    "FROM public.adjustment_rule_state r JOIN public.strategies s ON s.id = r.strategy_id "
                     "WHERE r.strategy_id = ANY(:ids) AND s.user_ref = :user_ref "
                     "ORDER BY r.strategy_id, r.rule_id, r.adjustment_no DESC")
-PopupClear = dict[tuple[int, str], tuple[bool, datetime]]  # (strategy id, rule id) -> (seen_clear, memory write time)
+PopupClear = dict[tuple[int, str], bool]  # (strategy id, rule id) -> seen_clear
 
 
 async def popup_facts(conn: Any, user_ref: str, strategy_ids: Iterable[int]) -> tuple[dict[int, datetime], PopupClear]:
@@ -1014,7 +1014,7 @@ async def popup_facts(conn: Any, user_ref: str, strategy_ids: Iterable[int]) -> 
         return {}, {}
     args = {"ids": ids, "user_ref": user_ref}
     entry = {int(r[0]): r[1] for r in (await conn.execute(_POPUP_ENTRY, args)).all() if r[1] is not None}
-    clear = {(int(r[0]), r[1]): (bool(r[2]), r[3]) for r in (await conn.execute(_POPUP_CLEAR, args)).all()}
+    clear = {(int(r[0]), r[1]): bool(r[2]) for r in (await conn.execute(_POPUP_CLEAR, args)).all()}
     return entry, clear
 
 

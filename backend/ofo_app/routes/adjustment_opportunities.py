@@ -225,16 +225,15 @@ class PopupFacts:
     """D-67: what ``popup_quiet.popup_due`` needs besides the record (``store.popup_facts``) and the clock."""
 
     entry: dict[int, datetime.datetime]
-    seen_clear: dict[tuple[int, str], tuple[bool, datetime.datetime]]
+    seen_clear: dict[tuple[int, str], bool]
     now: datetime.datetime
 
 
 def _popup_due(s: store.Suggestion, facts: PopupFacts | None) -> bool:
     if facts is None or s.outcome != "open":
         return True
-    clear, first_at = facts.seen_clear.get((s.strategy_id, s.rule_id), (None, None))
-    return popup_due(entry_at=facts.entry.get(s.strategy_id), shown_at=s.shown_at, seen_clear=clear,
-                     first_check_at=first_at, now=facts.now)
+    return popup_due(entry_at=facts.entry.get(s.strategy_id), shown_at=s.shown_at,
+                     seen_clear=facts.seen_clear.get((s.strategy_id, s.rule_id)), now=facts.now)
 
 
 def _record(s: store.Suggestion, paper: bool, popup: PopupFacts | None = None) -> dict:
