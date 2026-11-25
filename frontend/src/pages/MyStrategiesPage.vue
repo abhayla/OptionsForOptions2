@@ -25,8 +25,10 @@ const netBreakdown = (s) => afterFigure(s, typeof s.final_pnl_text === 'string' 
 import AfterChargesTap from '@/components/common/AfterChargesTap.vue'
 const notAvailable = (s) => s.after_charges_reason_text ?? s.completed_reason_text ?? 'the server sent no figure'
 import { STRATEGY_NAME_MAX, legsLine, nameLimitText, noMatchText, plainName, renameStrategy, searchStrategies, strategyLabel } from '@/lib/saveDraft'
-import { isCompleted, strategyStatusWord } from '@/lib/strategyStatus'
+import { isCompleted, isRunning, strategyStatusWord } from '@/lib/strategyStatus'
 import { useOrderPath } from '@/lib/orderPath'
+import PnlLine from '@/components/live/PnlLine.vue'
+import { usePaperPnl } from '@/lib/paperPnl'
 import { useDeleteFlow } from '@/lib/strategyActivity'
 import { CLEAR_UNDO_SECONDS_KEY } from '@/lib/legEdit'
 import { useSettingsValues } from '@/stores/settingsValues'
@@ -38,6 +40,7 @@ const HEADS = ['Name', 'Index', 'Legs', 'Status', 'Last saved', ''] // ADR-299: 
 
 // W-121 (REQ-073 AC-6, ADR-165): the Execute link is absent (not disabled) unless the server said the order path is on.
 const orderPathOn = useOrderPath()
+const pnl = usePaperPnl() // D-41: the Positions page's P&L (one read of the paper list); only a running row shows it
 
 const route = useRoute()
 const router = useRouter()
@@ -151,6 +154,7 @@ async function confirmRename(row) {
           <DraftDelete :row="s" :flow="deleteFlow" />
           <router-link v-if="orderPathOn" :to="`/strategy/${s.id}/execute`" class="link" :data-testid="`open-execute-${s.id}`">Execute Strategy</router-link>
           </span>
+          <PnlLine v-if="isRunning(s)" class="col-span-full w-full" :cell="pnl.cellFor(s.id)" testid="row-pnl" />
           <p v-if="isCompleted(s)" class="col-span-full w-full text-ink-muted" data-testid="row-completed">
             <span data-testid="row-final-pnl">Final P&amp;L {{ s.final_pnl_text ?? s.completed_reason_text }}</span>
             <!-- GC-ICFIX u125 (ADR-259, ADR-263): charges paid and the net after charges, the server's fields as sent; absent -> "not available: <its reason>", never 0 -->

@@ -11,6 +11,9 @@ vi.mock('@/services/api', async (importActual) => {
   const actual = await importActual()
   const get = (url) => {
     if (url === '/strategies') return Promise.resolve({ data: { strategies: [{ id: 155, underlying: 'NIFTY', status: 'draft', status_word: 'Running', has_order: true, created_at: '2026-11-23T10:00:00+05:30', updated_at: '2026-11-23T10:00:00+05:30' }] } })
+    if (url === '/paper/strategies') return Promise.resolve({ data: { strategies: [{ strategy_id: 155, name: null, underlying: 'NIFTY', state: 'LIVE', status_word: 'Running', open_count: 1, position_count: 2,
+      positions: [{ contract_id: 5, net_quantity: -65, lot_size: 65, contract_text: 'NIFTY 25 Nov 25400 PE', average_text: '88.50', price_state: 'live', ltp_text: '80.00', booked_text: '+0.00', unbooked_text: '+3.50', total_text: '+3.50' }],
+      total_text: '+9.00', total_after_text: '+3.50', booked_text: '+0.00', unbooked_text: '+9.00', after_charges_reason: null }], totals: null, answered_at: '2026-11-23T11:18:00+05:30' } })
     if (/^\/paper\/strategies\/155$/.test(url)) return typeof bookAnswer === 'function' ? bookAnswer() : Promise.resolve({ data: bookAnswer })
     if (/^\/catalogue\/NIFTY\/contracts/.test(url)) {
       return Promise.resolve({ data: { contracts: [...Array(40).keys()].map((i) => ({ contract_id: i + 1, exchange_segment: 'NSE_FO', exchange_token: 1001 + i,
@@ -84,7 +87,7 @@ describe('D-06: the card of a paper trade reads the paper reply', () => {
     const lines = c.findAll('[data-testid="live-figures-basis"]').map((x) => x.text())
     expect(lines).toEqual(['Maximum profit and maximum loss include about Rs 61.00 of charges and taxes.',
       'Breakevens include the booked P&L and about Rs 61.00 of charges and taxes.'])
-    expect(c.get('[data-testid="live-total"]').text()).toContain('+3.50 (after charges)') // D-07: the one after-charges total, labelled
+    expect(c.get('[data-testid="live-pnl"]').text()).toContain('+3.50 (after charges)') // D-07 + D-41: the one after-charges total, labelled, from the Positions function
   })
   it('no maximum from the book (multi-expiry): dash and the server reason, not the outcome figure', async () => {
     bookAnswer = book({ max_profit_text: null, max_loss_text: null, max_profit: null, max_loss: null, extremes_reason_text: 'Legs on more than one expiry.',

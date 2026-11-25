@@ -99,7 +99,7 @@ describe('D-41 Live card: the P&L is the Positions page figure', () => {
     listAnswer = () => Promise.reject(new Error('down'))
     const c = card(await mountPage(LiveStrategiesPage))
     expect(c.get('[data-testid="live-pnl"]').text()).toContain('not available')
-    expect(c.find('[data-testid="live-pnl-figure"]').exists()).toBe(false)
+    expect(c.get('[data-testid="live-pnl-figure"]').text()).toBe('—') // a dash, never a number
     expect(c.text()).not.toContain('Loading')
   })
   it('nothing to show: a running trade absent from the list, and a draft, show no P&L line', async () => {

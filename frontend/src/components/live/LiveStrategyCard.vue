@@ -11,7 +11,7 @@ import ErrorMessage from '@/components/common/ErrorMessage.vue'
 import { LEG_NOT_LIVE_LABEL, NOT_CONNECTED_LABEL, buildDraft } from '@/lib/legPicker'
 import { fetchSavedLegs, strategyLabel } from '@/lib/saveDraft'
 import { PAPER_BOOK_UNREADABLE, readPaperBook } from '@/lib/paperDrafts'
-import { sharedTotal } from '@/lib/tracking'
+import PnlLine from '@/components/live/PnlLine.vue'
 import { CARD_LEGS_AS_SAVED_TEXT, CARD_QUEUED_TEXT } from '@/lib/sharedStateText'
 import { isRunning, strategyStatusWord } from '@/lib/strategyStatus'
 import { istTime, maxLine, nameFromPool } from '@/lib/displayFormat'
@@ -22,7 +22,7 @@ import { useStrategyLive } from '@/composables/useStrategyLive'
 
 // `start` false = waiting in the page's start queue (one card loads at a time); `settled` is emitted once, when this card
 // got its first answer, failed, or has nothing to follow - the page then starts the next card.
-const props = defineProps({ strategy: { type: Object, required: true }, start: { type: Boolean, default: true } })
+const props = defineProps({ strategy: { type: Object, required: true }, start: { type: Boolean, default: true }, pnl: { type: Object, default: null } })
 const emit = defineEmits(['settled', 'closed'])
 
 const state = ref(props.start ? 'loading' : 'queued') // queued | loading | ready | unpriced | error
@@ -92,15 +92,30 @@ const live = useStrategyLive({
   },
 })
 
+// D-41: a card never stays on "Loading this strategy...": if its first reads give no answer in this time it says it could not load
+// (the client's own timeout is 10 s per request; a card makes several in a row). A late answer after that is dropped.
+const LOADING_MAX_MS = 25000
+let loadingTimer = null
+let attempt = 0
+function giveUpLoading(mine) {
+  if (gone || mine !== attempt || state.value !== 'loading') return
+  attempt++
+  errorParts.value = NEUTRAL_PARTS
+  state.value = 'error'
+  settle()
+}
 async function begin() {
   if (begun || gone) return
   begun = true
+  const mine = ++attempt
+  clearTimeout(loadingTimer)
+  loadingTimer = setTimeout(() => giveUpLoading(mine), LOADING_MAX_MS)
   expiredText.value = null // D-40: a later begin() starts without the last expiry sentence
   state.value = 'loading'
   try {
     // issue 16: a running trade follows the legs it holds NOW (its paper book's net position), not the legs it was saved with
     const read = isRunning(props.strategy) ? await readPaperBook(api, props.strategy.id) : { kind: 'plan' }
-    if (gone) return
+    if (gone || mine !== attempt) return
     if (read.kind === 'unpriced') { // D-40: the open legs are on expired contracts; show the server's own reason, price nothing
       paperBook.value = read.book
       expiredText.value = serverText(read.book.unpriced_text) // only the expiry sentence; no other reason is borrowed
@@ -110,7 +125,7 @@ async function begin() {
       return
     }
     const legs = read.kind === 'paper' ? read.net : await fetchSavedLegs(api, props.strategy.id)
-    if (gone) return
+    if (gone || mine !== attempt) return
     // a real trade has no practice book and the server sends no current-legs field for it: the saved legs, said plainly
     paperBook.value = read.kind === 'paper' ? read.book : null
     bookReadAt = Date.now()
@@ -125,10 +140,12 @@ async function begin() {
     state.value = 'ready'
     live.follow({ ...draft })
   } catch (e) {
-    if (gone) return
+    if (gone || mine !== attempt) return
     errorParts.value = e?.parts ?? NEUTRAL_PARTS
     state.value = 'error'
     settle()
+  } finally {
+    if (mine === attempt) clearTimeout(loadingTimer)
   }
 }
 onMounted(() => {
@@ -139,6 +156,7 @@ watch(() => props.start, (v) => {
 })
 onBeforeUnmount(() => {
   gone = true
+  clearTimeout(loadingTimer)
   live.stop()
 })
 
@@ -163,7 +181,6 @@ const maxLoss = computed(() => (paperBook.value ? (bookFailed.value ? dash : pap
 const figuresReason = computed(() => (!paperBook.value ? null : bookFailed.value ? PAPER_BOOK_UNREADABLE
   : paperBook.value.max_profit_text == null ? serverText(paperBook.value.extremes_reason_text) : null))
 const figuresBasis = computed(() => (!paperBook.value || bookFailed.value ? [] : [serverText(paperBook.value.extremes_charges_text), serverText(paperBook.value.breakevens_basis_text)].filter(Boolean)))
-const paperTotal = computed(() => (paperBook.value && !bookFailed.value ? sharedTotal(paperBook.value) : null))
 // ADR-177 / ADR-200 (2): a closed market is one banner with the price's own time; the fetch time and the stale noise are not shown
 const closed = computed(() => data.value?.market_closed === true)
 // User test 2026-10-30: the page shows ONE market-closed banner (ADR-177); the card reports the closed state and price time
@@ -193,6 +210,8 @@ class="rounded border border-line bg-surface p-4" data-testid="live-strategy-car
       <p v-if="state === 'ready' && data" class="ml-auto text-xs text-ink-muted" data-testid="live-checked-at">Checked at {{ checkedAt }}</p>
     </header>
 
+    <!-- D-41: the trade's P&L from the Positions page's function, in every state of the card (the page reads it once for all cards) -->
+    <PnlLine v-if="isRunning(strategy)" class="mt-2" :cell="pnl" testid="live-pnl" />
     <p v-if="legsAsSaved" class="mt-2 text-xs text-ink-muted" data-testid="live-legs-as-saved">{{ CARD_LEGS_AS_SAVED_TEXT }}</p>
     <p v-if="live.reconnecting.value" class="mt-2 text-sm font-medium" data-testid="live-reconnecting">{{ live.reconnectingText.value }}</p>
     <p v-if="state === 'queued'" class="mt-2 text-sm text-ink-muted" data-testid="live-queued">{{ CARD_QUEUED_TEXT }}</p>
@@ -216,7 +235,6 @@ class="rounded border border-line bg-surface p-4" data-testid="live-strategy-car
         </p>
         <p v-if="figuresReason" class="text-xs text-ink-muted" data-testid="live-figures-reason">{{ figuresReason }}</p>
         <p v-for="line in figuresBasis" :key="line" class="text-xs text-ink-muted" data-testid="live-figures-basis">{{ line }}</p>
-        <p v-if="paperTotal && paperTotal.text" class="mt-1 text-sm" data-testid="live-total">Total P&amp;L <span class="font-semibold" data-testid="live-total-figure">{{ paperTotal.text }}</span> {{ paperTotal.label }}<span v-if="paperTotal.line" class="text-xs text-ink-muted" data-testid="live-total-as-of"> · {{ paperTotal.line }}</span></p>
         <table class="mt-2 w-full text-sm" data-testid="live-legs">
           <thead class="text-xs text-ink-muted">
             <tr><th class="text-left font-normal">Instrument</th><th v-if="hasLots" class="text-right font-normal">Lots</th><th v-if="hasEntry" class="text-right font-normal">Planned entry</th><th class="text-right font-normal">LTP</th></tr>
