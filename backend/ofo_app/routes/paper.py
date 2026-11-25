@@ -257,6 +257,7 @@ AfterChargesReason = Literal["rates_unavailable", "not_priced", "prices_not_live
 
 
 class PaperFigures(UnpricedFields):
+    expired_open: bool = False  # D-40 (ADR-324): an open leg is on an expired contract, whatever the connection state
     state: BookState
     pause_reason: paper.PauseReason | None
     as_of: datetime.datetime | None = None  # REQ-109 AC-5: PAUSED only: oldest known quote time of a contract not live
@@ -629,7 +630,8 @@ def _today(snapshot: Any) -> datetime.date | None:
 
 
 def _figures(orders: Sequence[paper_store.StoredOrder], found: dict[int, tracked_contracts.TrackedContract],
-             prices: dict[int, paper.Price], connected: bool, today: datetime.date | None = None) -> dict:
+             prices: dict[int, paper.Price], connected: bool, today: datetime.date | None = None,
+             answered_at: datetime.datetime | None = None) -> dict:
     """The strategy's figures from the one engine at the live prices of its open contracts."""
     live = {str(cid): p.price for cid, p in prices.items() if paper.is_live(p) and p.price is not None}
     view = lifecycles(_paper(orders), live)  # D-10: the net_positions totals, split at every flat point
@@ -653,11 +655,13 @@ def _figures(orders: Sequence[paper_store.StoredOrder], found: dict[int, tracked
     # leg_index = the leg's place among ALL the book's legs (closed ones count), as on the tracking page
     cids = [int(p.instrument_id) for p in view.positions]
     open_ = [(n, str(c), _identity(found[c])[3], prices[c]) for n, c in enumerate(cids) if c in prices]
+    day = today or (None if answered_at is None else answered_at.astimezone(paper.IST).date())  # D-40: no snapshot still knows the day
+    expired_open = any(u.expired for u in paper.unpriced_legs(open_, day))  # independent of the connection state
     gone = paper.unpriced_legs(open_, today) if state == "PAUSED" else ()
     names = [(display_contract(_identity(found[cids[u.index]])), u.expired) for u in gone]
     return {"unpriced_legs": [{"leg_index": u.index, "contract_text": n, "expired": u.expired}
                               for u, (n, _) in zip(gone, names, strict=True)], "unpriced_text": unpriced_text(names),
-            "state": state, "pause_reason": pause, "pause_reason_text": reason_text(pause), "as_of": as_of,
+            "expired_open": expired_open, "state": state, "pause_reason": pause, "pause_reason_text": reason_text(pause), "as_of": as_of,
             "booked": _exact(view.booked), "unbooked": _exact(view.unbooked),
             "total": _exact(view.total), "booked_text": _signed(view.booked), "unbooked_text": _signed(view.unbooked),
             "total_text": _signed(view.total), "positions": positions, "closed": closed}
@@ -943,7 +947,7 @@ async def _book(db: Any, stored: Any, orders: Sequence[paper_store.StoredOrder],
     if connected and keys:
         snapshot = await _snapshot(ctx, feed, underlying, keys)  # type: ignore[arg-type]
     prices = _prices(open_ids, found, snapshot)
-    base = _figures(orders, found, prices, connected, _today(snapshot))
+    base = _figures(orders, found, prices, connected, _today(snapshot), answered_at)
     charges = _charges(orders, found, underlying, rates)
     figures = (base | _summary(orders, found, prices, base, snapshot, underlying, exited_absent=False, rates=rates)
                | charges | _after(orders, found, prices, charges, underlying, rates))
@@ -981,6 +985,7 @@ async def list_paper_strategies(db: Annotated[Any, Depends(get_db)],  # noqa: PL
     ids = sorted({o.order.contract_id for b in books for o in b.orders})
     found = {c.contract_id: c for c in await tracked_contracts.resolve(db, ids)}
     connected = _connected(ctx)
+    answered = now()
     keys: dict[str, list[str]] = {}
     for b in books:
         for cid in _open_ids(b.orders):
@@ -996,7 +1001,7 @@ async def list_paper_strategies(db: Annotated[Any, Depends(get_db)],  # noqa: PL
     for b in sorted(books, key=_newest_first, reverse=True):
         snapshot = snapshots.get(b.underlying)
         prices = _prices(_open_ids(b.orders), found, snapshot)
-        figures = _figures(b.orders, found, prices, connected, _today(snapshot))
+        figures = _figures(b.orders, found, prices, connected, _today(snapshot), answered)
         summary = _summary(b.orders, found, prices, figures, snapshot, b.underlying, exited_absent=True, rates=rates)
         decays.append(_decay(figures, found, snapshot, b.underlying))
         open_legs = sum(1 for p in figures["positions"] if p["net_quantity"] != 0)
@@ -1013,7 +1018,7 @@ async def list_paper_strategies(db: Annotated[Any, Depends(get_db)],  # noqa: PL
 
 def _expired_open(strategy: Mapping[str, Any]) -> bool:
     """D-40 (ADR-324): an open leg is on an expired contract (ADR-311: retired, or its expiry is past)."""
-    return any(u["expired"] for u in strategy["unpriced_legs"])
+    return bool(strategy["expired_open"])
 
 
 def _paper_word(status: str, positions: Sequence[Mapping[str, Any]]) -> str:
