@@ -851,6 +851,7 @@ class SummaryOut(ApiModel):
     funds_share: FundsShareOut | None = None
     # GC-ICLIVE-B D-15/D-17: the prices the Get / time value use, and a paper trade's plan credit as one line
     price_basis_text: CatalogueText | None = None
+    time_value_basis_text: CatalogueText | None = None  # D-17 (ADR-322 point 2): "at live prices, as of HH:MM:SS"
     plan_line: CatalogueText | None = None
 
 
@@ -1086,6 +1087,16 @@ def _oldest_quote_at(rows: list[dict]) -> datetime.datetime | None:
     return None if not times or any(t is None for t in times) else min(times)
 
 
+def _with_time_value_basis(summary: dict | None, oldest: datetime.datetime | None) -> dict | None:
+    """D-17 (ADR-322 point 2): the time value is at live prices; the sentence names the oldest leg quote time the reply
+    already serves (no clock is read here). No time value, no sentence; a leg quote with no time says so."""
+    if summary is None or summary.get("time_value") is None:
+        return summary
+    text = (render_explanation("money_time_value_live", time=oldest) if oldest is not None
+            else render_explanation("money_time_value_live_untimed"))
+    return {**summary, "time_value_basis_text": text}
+
+
 def _leg_quotes(snapshot, definition: StrategyDefinition, symbols: dict[str, str | None]) -> list[dict]:
     rows = []
     for leg in definition.legs:
@@ -1278,6 +1289,7 @@ def outcome_response(req: OutcomeRequest, ctx: MarketContext | None,  # noqa: PL
     if out.state is OutcomeState.COMPUTED:  # only a live computed answer: never a held, refused or not-live one
         body["leg_quotes"] = _leg_quotes(snapshot, definition, {l["instrument_id"]: l["symbol"] for l in body["legs"]})
         body["oldest_quote_at"] = _oldest_quote_at(body["leg_quotes"])
+        body["summary"] = _with_time_value_basis(body.get("summary"), body["oldest_quote_at"])
     # REQ-119 AC-1 / REQ-133 AC-2: the REST route and the live push pass the seq they were sent; none -> no key
     return echo_seq(OutcomeResponse.model_validate(body), seq)
 

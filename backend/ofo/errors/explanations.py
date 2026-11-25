@@ -910,6 +910,19 @@ class ClockSeconds(SlotType):
         return Clock.format(value)
 
 
+class ClockHms(SlotType):
+    """A timezone-aware time as the 24-hour IST clock time with seconds, "14:12:05" (D-17, ADR-322 point 2)."""
+
+    @staticmethod
+    def validate(value: object) -> None:
+        from ofo.errors.gate_slots import Clock
+        Clock.validate(value)
+
+    @staticmethod
+    def format(value: datetime.datetime) -> str:
+        return value.astimezone(datetime.timezone(datetime.timedelta(hours=5, minutes=30))).strftime("%H:%M:%S")
+
+
 class UnderlyingName(SlotType):
     """An index name, closed to the catalogue's underlyings (NIFTY, SENSEX): never a free token (W-066 round 2)."""
 
@@ -1807,6 +1820,8 @@ _EXPLANATIONS: tuple[ExplanationTemplate, ...] = (
     ExplanationTemplate("money_plan_get", "values_seen", "Plan: Get {amount} at plan prices", {"amount": Rupees}),
     ExplanationTemplate("money_plan_pay", "values_seen", "Plan: Pay {amount} at plan prices", {"amount": Rupees}),
     ExplanationTemplate("money_value_label", "values_seen", "value of the options, not P&L"),
+    ExplanationTemplate("money_time_value_live", "values_seen", "at live prices, as of {time}", {"time": ClockHms}),
+    ExplanationTemplate("money_time_value_live_untimed", "values_seen", "at live prices, time not given"),
     ExplanationTemplate("money_charges_label", "values_seen", "estimate"),
     ExplanationTemplate("money_reward_risk_zero_loss", "values_seen", "max loss is 0"),
     ExplanationTemplate("money_reward_risk_no_charges", "values_seen",

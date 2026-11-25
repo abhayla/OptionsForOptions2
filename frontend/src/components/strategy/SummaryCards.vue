@@ -109,7 +109,7 @@
           <slot name="pop" />
           <div v-if="showValues" data-testid="value-split">
             <div class="flex min-h-6 items-center justify-between gap-2">
-              <dt class="flex items-center text-ink-muted">Time value<FigureHint v-if="timeValue != null" id="time_value" :lines="[valueLabel, exactLine(timeValueExact)]" /></dt>
+              <dt class="flex items-center text-ink-muted">Time value<span v-if="timeValueBasis && timeValue != null" class="ml-1 text-xs" data-testid="value-basis">{{ timeValueBasis }}</span><FigureHint v-if="timeValue != null" id="time_value" :lines="[valueLabel, timeValueBasis, exactLine(timeValueExact)].filter(Boolean)" /></dt>
               <dd class="num font-medium text-ink" data-testid="time-value">{{ displayOrDash(timeValue) }}</dd>
             </div>
             <div class="flex min-h-6 items-center justify-between gap-2">
@@ -157,6 +157,7 @@ const props = defineProps({
   intrinsicValueExact: { type: String, default: null },
   riskReward: { type: String, default: null },
   valueLabel: { type: String, default: null },
+  timeValueBasis: { type: String, default: null }, // summary.time_value_basis_text: "at live prices, as of HH:MM:SS" (D-17, ADR-322 point 2)
   valueReason: { type: String, default: null },
   fundsShare: { type: Object, default: null }, // summary.funds_share as sent (null unless the margin needed was read)
   estimateLabel: { type: String, default: null }, // the reply's output_label ("estimated from spot", ADR-061)

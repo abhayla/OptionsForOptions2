@@ -4391,5 +4391,13 @@
     "sha256": "555637ef88c67b94651c99048afae3d5c03b7d085735c08ef5af7f1f75e6e61d",
     "reviewed": "pending owner read",
     "reviewed": "owner read 2026-11-25 (ADR-322 point 4, answered by the owner in the question tool)"
+  },
+  "explanation:money_time_value_live": {
+    "sha256": "b76961081fb1bcbd918e9e536e8011abf7aeacca5e9ba937aff15331ed44313e",
+    "reviewed": "owner read 2026-11-25 (ADR-322 point 2, the sentence as the owner decided it)"
+  },
+  "explanation:money_time_value_live_untimed": {
+    "sha256": "c20c1e144ef37a146972497d78b302b5f60d1c2d7460f9622a681fa0e91eb70e",
+    "reviewed": "owner read 2026-11-25 (ADR-322 point 2, the sentence as the owner decided it)"
   }
 }
