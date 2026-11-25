@@ -773,10 +773,11 @@ async def _compare_reply(columns: list[Column], tracked: Tracked, spot: Decimal,
     """REQ-156: the compare over the built approaches; the current legs' margin is "No change"'s (read once more
     only when A-36 was not asked)."""
     position = tracked.position
-    before_margin = next((c.margin for c in columns if is_no_change(c.built)), None)
-    if before_margin is None:
-        unchanged = build_approach(position, market.chain, spot, NO_CHANGE, prefs.approach)
-        before_margin = _margin_read(await _margin(margin_of, unchanged, market))
+    no_change = next((c for c in columns if is_no_change(c.built)), None)
+    unchanged = no_change.built if no_change is not None else build_approach(position, market.chain, spot, NO_CHANGE,
+                                                                             prefs.approach)
+    before_margin = no_change.margin if no_change is not None else _margin_read(
+        await _margin(margin_of, unchanged, market))
     warn_pct, warn_off = warn_threshold(guards)  # REQ-159 AC-6: no playbook / no level -> no warning and a reason
     ctx = Context(position, spot, market.chain, rates, pop_on, before_margin, market.leg_greeks,
                   tracked.adjustments_used, prefs.compare, limits, plan_max(guards), warn_pct, warn_off,
@@ -784,8 +785,6 @@ async def _compare_reply(columns: list[Column], tracked: Tracked, spot: Decimal,
     out = _compare_block(compare(columns, ctx, before.after, before.charges_known, before.near))
     # D-21 (ADR-320 (3)): the "What changes" block of each built approach, against the position as it stands (the Before
     # priced above: the same legs as "No change", so the block and the table read one engine answer)
-    unchanged = next((c.built for c in columns if is_no_change(c.built)),
-                     None) or build_approach(position, market.chain, spot, NO_CHANGE, prefs.approach)
     before_col = Column(unchanged, before.after, before.reason, before.charges_known, before_margin,
                         before.adjustment_charges, before.near)
     out["what_changes"] = {a: _what_changes_out(b) for a, b in what_changes.blocks(columns, ctx, before_col).items()}
