@@ -267,6 +267,15 @@ def _basis_fields(s: Any) -> dict[str, Any]:
     return {"price_basis_text": s.price_basis_text, "plan_line": s.plan_line}
 
 
+def _not_live_fields(out: Outcome) -> dict[str, Any]:
+    """D-37: the sentence when this reply's prices are not live (not connected, no live data, no live spot); not on a
+    refusal, which has its own reason; nothing at all on a live reply."""
+    state = out.state.value
+    if state in ("NOT_CONNECTED", "FROM_ENTRIES") or (state == "COMPUTED" and out.spot_level is None):
+        return {"target_not_live_text": render_explanation("target_not_live")}
+    return {}
+
+
 def outcome_to_dict(out: Outcome, today: datetime.date | None = None) -> dict[str, Any]:
     """``today``: the IST date of the answer's own clock (REQ-135 AC-2); the legs' days to expiry count from it."""
     scenario = payoff = summary = table = None
@@ -334,6 +343,5 @@ def outcome_to_dict(out: Outcome, today: datetime.date | None = None) -> dict[st
         body["target"] = _target(out.target, out.margin)
     # D-37 (round 2): said only when THIS reply's prices are not live (not connected, no live data, no live spot); never on a
     # live reply and never on a refusal, which has its own reason. The browser shows it beside a "-" Target / Date readout.
-    if out.state.value in ("NOT_CONNECTED", "FROM_ENTRIES") or (out.state.value == "COMPUTED" and out.spot_level is None):
-        body["target_not_live_text"] = render_explanation("target_not_live")
+    body.update(_not_live_fields(out))
     return body
