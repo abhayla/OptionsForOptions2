@@ -27,7 +27,7 @@ import ProjectionsNote from '@/components/strategy/ProjectionsNote.vue'
 import StrategyActions from '@/components/strategy/StrategyActions.vue'
 import TrackingPanel from '@/components/strategy/TrackingPanel.vue'
 import AdjustSteps from '@/components/strategy/AdjustSteps.vue'
-import { ADD_TO_PAPER_LABEL, PAPER_PLACED_NOT_REFRESHED_TEXT, PAPER_STATE, addToPaper as postPaperOrders, paperPostOutcome, sharedTotal } from '@/lib/tracking'
+import { ADD_TO_PAPER_LABEL, PAPER_PLACED_NOT_REFRESHED_TEXT, PAPER_STATE, addToPaper as postPaperOrders, paperPostOutcome } from '@/lib/tracking'
 import PaperConfirmDialog from '@/components/strategy/PaperConfirmDialog.vue'
 import LoadFailed from '@/components/common/LoadFailed.vue'
 import { PAPER_REREAD_FAILED_TEXT } from '@/lib/sharedStateText'
@@ -37,7 +37,7 @@ import {
 } from '@/lib/paperDrafts'
 import { withAsOf } from '@/lib/paperList'
 import PaperBookPanel from '@/components/strategy/PaperBookPanel.vue'
-import { usePaperBookRead } from '@/lib/usePaperBookRead'
+import { paperPnlBlock, usePaperBookRead } from '@/lib/usePaperBookRead'
 import { usePriceFreshness } from '@/lib/priceState'
 import PaperStrategies from '@/components/strategy/PaperStrategies.vue'
 import AdjustCompare from '@/components/strategy/AdjustCompare.vue'
@@ -438,7 +438,7 @@ const { readFailed: paperBookFailed } = usePriceFreshness({
   held: () => paper.value?.book ?? null,
   serverState: () => paper.value?.book?.state,
 })
-const paperTotal = computed(() => (paper.value ? sharedTotal(paper.value.book, paperBookFailed.value) : null))
+const paperTotal = computed(() => (paper.value ? paperPnlBlock(paper.value.book, paperBookFailed.value) : null))
 function reviewPending() {
   if (!paper.value || paperStale.value || !pendingOrders.value?.length) return
   paperError.value = ''
