@@ -1991,6 +1991,10 @@
     "sha256": "1b33dd295e1d8f597df0a5f51b3e0c42345b2b0b0d9996946293f9cb3d62ede8",
     "reviewed": "owner read 2026-10-29 (ADR-211, question tool \"Approve all 8\")"
   },
+  "explanation:target_not_live": {
+    "sha256": "fe85734accde9bb39d17bc6217bbc63efe61562ffc7d3e1be5cda1458d91fee2",
+    "reviewed": "pending owner read"
+  },
   "explanation:target_includes_booked": {
     "sha256": "14d71d08d731b601ae2ac1aa22062ff41a97ab20ed84abeb24b4ee84e610b47a",
     "reviewed": "owner read 2026-10-29 (ADR-209, question tool \"Match REQ-089 + approve (2)\")"

@@ -64,6 +64,7 @@ const onBox = (e) => {
         <div class="mt-1 text-xs text-ink-muted tabular-nums" data-testid="target-move">
           <span data-testid="target-move-text">{{ !stale && t?.move_pct_display ? t.move_pct_display : '-' }}</span>
           <span v-if="!t?.move_pct_display && t?.move_pct_reason" class="ml-2" data-testid="target-move-reason">{{ t.move_pct_reason }}</span>
+          <span v-if="stale && t?.not_live_text" class="ml-2" data-testid="target-move-not-live">{{ t.not_live_text }}</span>
         </div>
       </div>
       <div data-testid="target-date-control">
@@ -81,7 +82,7 @@ const onBox = (e) => {
           <button type="button" class="rounded border border-line px-2" aria-label="Later" data-testid="target-date-forward" :disabled="dateOff || pick.dateIndex >= lastStop" @click="emit('date', pick.dateIndex + 1)">&gt;</button>
           <button type="button" class="text-sm text-accent" data-testid="target-date-reset" :disabled="pick.dateIndex <= 0" @click="emit('reset-date')">Reset</button>
         </div>
-        <div class="mt-1 text-xs text-ink-muted tabular-nums" data-testid="target-days">{{ !stale && t?.days_to_expiry_display ? t.days_to_expiry_display : '-' }}</div>
+        <div class="mt-1 text-xs text-ink-muted tabular-nums" data-testid="target-days">{{ !stale && t?.days_to_expiry_display ? t.days_to_expiry_display : '-' }}<span v-if="stale && t?.not_live_text" class="ml-2" data-testid="target-days-not-live">{{ t.not_live_text }}</span></div>
         <p v-if="dateRefused" class="mt-1 text-xs text-ink-muted" data-testid="target-date-reason">{{ dateRefused }}</p>
       </div>
       <p v-for="c in clamps" :key="c" class="text-xs text-ink-muted md:col-span-2" data-testid="target-clamp">{{ c }}</p>

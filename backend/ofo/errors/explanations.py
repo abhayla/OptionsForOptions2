@@ -1475,6 +1475,8 @@ _EXPLANATIONS: tuple[ExplanationTemplate, ...] = (
     ExplanationTemplate("target_days_to_expiry", "values_seen", "{days}D to expiry", {"days": Days}),
     ExplanationTemplate("target_move_no_spot", "values_seen",
                         "The move from spot is not available: there is no live index price."),
+    # D-37: beside a "-" Target / Date readout while the prices are not live (pending owner read)
+    ExplanationTemplate("target_not_live", "values_seen", "not shown while prices are not live"),
     # GC-TP R-18 (ADR-209): the line naming the booked P&L a paper strategy's target figures include
     ExplanationTemplate("target_includes_booked", "values_seen", "includes {amount} booked", {"amount": SignedRupeesPaisa}),
     ExplanationTemplate("target_booked_unreadable", "values_seen",

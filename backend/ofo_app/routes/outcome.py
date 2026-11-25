@@ -995,6 +995,7 @@ class TargetOut(ApiModel):
     breakevens_display: list[CatalogueText] | None = None  # GC-TPD R-33: "22,578 (+0.1%)", same order as ``breakevens``
     breakevens_reason: CatalogueText | None = None
     stale_text: CatalogueText | None = None  # ADR-210 (7): the sentence for these figures if they go stale
+    not_live_text: CatalogueText | None = None  # D-37: the sentence beside a "-" Target / Date readout while prices are not live
     curve: CurveOut | None = None
     greeks: TargetGreeksOut | None = None
     #: R-19a (Sensibull 020): the level's move from the live spot ("+6.1%"), absent with its reason when no spot is known
