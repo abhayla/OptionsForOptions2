@@ -227,12 +227,12 @@ def _percent_cell(value: Decimal | None, reason: str | None = None) -> Cell:
 
 
 def _display_number(value: Decimal, places: int) -> ExplanationText:
-    """The text of a number at its display precision: ROUND_HALF_UP, plain notation, no "-0.00" (the Amount slot); a real
-    value that would show as zero keeps two significant digits (D-46)."""
+    """The text of a number at its display precision: ROUND_HALF_UP, plain notation, no "-0.00" (the Amount slot); a
+    real value that would show as zero or one step keeps two significant digits (D-46)."""
     shown = value.quantize(Decimal(1).scaleb(-places), rounding=ROUND_HALF_UP)
     step = Decimal(1).scaleb(-places)
-    if shown != value and abs(shown) <= step:  # D-46: a real value shown as zero or one step keeps two significant digits (as the chain's gamma does)
-        shown = Context(prec=2, rounding=ROUND_HALF_UP).create_decimal(value)  # two significant digits, no arithmetic here
+    if shown != value and abs(shown) <= step:  # D-46: a real value shown as zero or one step keeps two digits
+        shown = Context(prec=2, rounding=ROUND_HALF_UP).create_decimal(value)  # two significant digits
     return render_explanation("cell_number", value=shown)
 
 

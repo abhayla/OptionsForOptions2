@@ -36,7 +36,7 @@ def _table_rows(model):
 
 def _text(value: Decimal, places: int) -> str:
     shown = value.quantize(Decimal(1).scaleb(-places), rounding=ROUND_HALF_UP)
-    if shown != value and abs(shown) <= Decimal(1).scaleb(-places):  # D-46: a real value shown as zero or one step keeps two digits
+    if shown != value and abs(shown) <= Decimal(1).scaleb(-places):  # D-46: zero or one step keeps two digits
         shown = Context(prec=2, rounding=ROUND_HALF_UP).create_decimal(value)
     text = f"{shown:f}"
     return text[1:] if text.startswith("-") and not text.strip("-0.") else text  # the app never prints "-0.00"

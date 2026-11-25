@@ -1,12 +1,11 @@
-"""D-46 (docs/process/ic-live-test-2026-11-23-issues.md, condors C5/C6): a Greek whose real value is not zero but rounds to
-zero at the column's places (delta 2, gamma 4) showed "0.00" / "0.0000" / "-0.0001" and hid the real number. One
-formatter (ofo.table.model._display_number, the cell text of the table, the target readout and the paper card) keeps up to two
-significant digits for such a value, as the option chain's gamma already does (chain_push._gamma_shown). A value that
+"""D-46 (docs/process/ic-live-test-2026-11-23-issues.md, condors C5/C6): a Greek whose real value is not zero but
+rounds to zero at the column's places (delta 2, gamma 4) showed "0.00" / "0.0000" / "-0.0001" and hid the real
+number. One formatter (ofo.table.model._display_number: table cell, target readout, paper card) keeps up to two
+significant digits for such a value, as the chain's gamma already does (chain_push._gamma_shown). A value that
 rounds to more than one step shows exactly as before; a true zero stays 0.00 / 0.0000."""
 from decimal import Decimal as D
 
 import pytest
-
 from ofo.table.model import display_number
 
 
@@ -23,8 +22,8 @@ def test_a_real_value_that_rounds_to_zero_shows_two_significant_digits(value: D,
 
 
 @pytest.mark.parametrize(("value", "places", "shown"), [
-    (D("0"), 2, "0.00"), (D("0.0000"), 4, "0.0000"), (D("-0.0000"), 4, "0.0000"),   # a true zero stays zero, never signed
-    (D("0.0001"), 4, "0.0001"), (D("-0.0001"), 4, "-0.0001"), (D("0.0150"), 2, "0.02"),  # exact one step, or more than one step: as before
+    (D("0"), 2, "0.00"), (D("0.0000"), 4, "0.0000"), (D("-0.0000"), 4, "0.0000"),   # a true zero, never signed
+    (D("0.0001"), 4, "0.0001"), (D("-0.0001"), 4, "-0.0001"), (D("0.0150"), 2, "0.02"),  # as before
     (D("12.345"), 2, "12.35"), (D("-65.5"), 2, "-65.50"),
 ])
 def test_everything_else_shows_as_before(value: D, places: int, shown: str) -> None:
