@@ -443,16 +443,19 @@ async def list_strategies(db: Annotated[Any, Depends(get_db)], user_ref: Annotat
     async def work():
         rows = await store.list_strategies(db, user_ref)
         from ofo_app.routes.adjustment_history import closed_figures_many  # noqa: PLC0415 - it imports routes.paper
+        from ofo_app.routes.paper import current_legs_many  # noqa: PLC0415 - routes.paper imports this module
         rates_ok = rates if isinstance(rates, ChargeRates) else None
         closed = await closed_figures_many(db, user_ref, [r.id for r in rows if r.status == "closed"], rates_ok)
         tracked = await _tracked_ids(db, [r.id for r in rows])
         opened = await _open_opportunities(db, user_ref)
+        current = await current_legs_many(db, user_ref)  # D-42: the legs and the word the Positions page reads
         return StrategyListOut.model_validate({"strategies": [
             {"id": r.id, "underlying": r.underlying, "status": r.status, "created_at": r.created_at,
-             "status_word": store.status_word(r.status, r.has_order),
-             "updated_at": r.updated_at, "name": sf.shown_name(r.name), "leg_count": r.leg_count,
-             "first_leg": {"instrument": r.first_leg.instrument, "strike": r.first_leg.strike,
-                           "expiry": r.first_leg.expiry},
+             "updated_at": r.updated_at, "name": sf.shown_name(r.name),
+             **{"status_word": store.status_word(r.status, r.has_order),
+                "leg_count": r.leg_count,
+                "first_leg": {"instrument": r.first_leg.instrument, "strike": r.first_leg.strike,
+                              "expiry": r.first_leg.expiry}} | current.get(r.id, {}),
              "tracked": None if tracked is None else r.id in tracked, "can_delete": r.can_delete,
              "has_paper_order": r.has_paper_order, "has_order": r.has_order,
              "open_opportunities": None if opened is None else opened.get(r.id, 0),

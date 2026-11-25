@@ -379,7 +379,9 @@ async def test_ac4_the_list_carries_underlying_first_leg_leg_count_and_the_track
                 listed = await ac.get("/strategies")
             by_id = {s["id"]: s for s in listed.json()["strategies"]}
             row = by_id[tracked.id]
-            assert row["underlying"] == "NIFTY" and row["leg_count"] == LEG_COUNT
+            assert row["underlying"] == "NIFTY"
+            assert row["leg_count"] == 1  # D-42: the one leg with a paper order, not the saved definition's LEG_COUNT
+            assert by_id[untracked.id]["leg_count"] == LEG_COUNT  # no paper order: the saved legs stand
             assert row["first_leg"] == {"instrument": "CE", "strike": "22800.00", "expiry": "2026-10-13"}
             assert datetime.datetime.fromisoformat(row["updated_at"]) == tracked.updated_at
             assert (row["tracked"], by_id[untracked.id]["tracked"]) == (True, False)

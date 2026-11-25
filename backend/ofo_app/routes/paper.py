@@ -1046,6 +1046,27 @@ def _paper_word(status: str, positions: Sequence[Mapping[str, Any]]) -> str:
     return word if word == "Unknown" or any(p["net_quantity"] != 0 for p in positions) else "Completed"
 
 
+async def current_legs_many(db: Any, user_ref: str) -> dict[int, dict[str, Any]]:
+    """GC-ICLIVE D-42 (ADR-299): per strategy with a paper book, the CURRENT legs and the status word, from the same book
+    the Positions page reads (open positions; a book with nothing open names the legs it traded) and the same
+    ``_paper_word`` as the paper list. ``leg_count`` and ``first_leg`` replace the saved definition's legs on the My
+    Strategies list; a strategy without a book is absent here (its saved legs stand). A read failure raises."""
+    books = await paper_store.load_all(db, user_ref)
+    found = {c.contract_id: c for c in await tracked_contracts.resolve(
+        db, sorted({o.order.contract_id for b in books for o in b.orders}))}
+    out: dict[int, dict[str, Any]] = {}
+    for b in books:
+        positions = net_positions(_paper(b.orders), {}).positions
+        legs = [p for p in positions if p.net_quantity != 0] or list(positions)
+        _, instrument, strike, expiry = _identity(found[int(legs[0].instrument_id)])
+        out[b.strategy_id] = {
+            "leg_count": len(legs),
+            "first_leg": {"instrument": instrument.value, "strike": None if strike is None else str(strike),
+                          "expiry": expiry.isoformat()},
+            "status_word": _paper_word(b.status, [{"net_quantity": p.net_quantity} for p in positions])}
+    return out
+
+
 def _newest_first(book: paper_store.UserBook) -> tuple[datetime.datetime, int]:
     """The sort key of the list (reversed): the book's first order time, then the strategy id."""
     return min(o.order.placed_at for o in book.orders), book.strategy_id

@@ -95,9 +95,9 @@ async def test_every_leg_exited_lists_the_strategy_completed_with_its_traded_leg
     assert row["leg_count"] == 4  # nothing is open: the legs it traded, not "0 legs"
 
 
-async def test_the_list_word_is_the_paper_list_word_when_the_row_is_not_yet_marked_closed(db):  # noqa: F811
-    """Every leg exited but the strategy row still 'draft' (the paper list says Completed): the My Strategies list must
-    say the same word, so the Completed page shows it."""
+async def test_the_list_word_is_the_paper_list_word_after_every_leg_is_exited(db):  # noqa: F811
+    """Every leg exited (the paper list says Completed): the My Strategies list says the same word, so the Completed
+    page shows it. (Placing the last exit marks the row closed too: alembic 0049.)"""
     app, stored, *_ = await _setup(db)
     async with _client(app) as c:
         placed = await c.post(f"/paper/strategies/{stored.id}/orders", json=_paper_body(stored, ENTRY_PRICES))
@@ -106,8 +106,7 @@ async def test_the_list_word_is_the_paper_list_word_when_the_row_is_not_yet_mark
     exits = [paper_store.NewOrder(cid, "BUY" if leg.action.value == "SELL" else "SELL", leg.quantity, D("1.00"),
                                   "exit", later)
              for cid, leg in zip(stored.saved.contract_ids, stored.saved.definition.legs, strict=True)]
-    await paper_store.place(db, stored.user_ref, stored.id, exits)  # straight to the store: the row stays 'draft'
-    assert (await _row(app, stored.id))["status"] == "draft"
+    await paper_store.place(db, stored.user_ref, stored.id, exits)
     paper = next(s for s in (await _get_ok(app, "/paper/strategies"))["strategies"] if s["strategy_id"] == stored.id)
     assert paper["status_word"] == "Completed"
     assert (await _row(app, stored.id))["status_word"] == paper["status_word"]
