@@ -68,7 +68,7 @@ except tests that pin one of the 5 bugs (change those in the tests-first commit 
 
 1. **B3 read_market + B5 trigger check (D-01, S-20, ADR-326).**
    Core: a save of "Above X" with the index above X is refused even when nothing else holds the index.
-   Proof: `evidence/repro_d01.py` turned into a test (`tests_app/test_paper_trigger_unheld_index.py`): unheld index ->
+   Proof: `evidence/repro_d01.py.txt` (rename to .py to run) turned into a test (`tests_app/test_paper_trigger_unheld_index.py`): unheld index ->
    refused `paper_trigger_already_crossed`; held -> refused; market open + no price after 3 s -> refused with the
    ADR-326 line; market closed -> saved. Leg-stop alert carries the index value when the index ticks (S-20).
    Move every reader that bypasses the hold onto `read_market` (list in evidence/review-backend.md section 3).
