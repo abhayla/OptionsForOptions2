@@ -22,8 +22,14 @@ vi.mock('@/services/api', async (importActual) => {
       if (expiredBook.has(Number(book[1]))) { // D-40: every open leg is on an expired contract the catalogue no longer lists
         return Promise.resolve({ data: { strategy_id: Number(book[1]), underlying: 'NIFTY', answered_at: '2026-10-19T10:00:00+05:30', orders: [{ id: 1 }],
           positions: [{ contract_id: 777, net_quantity: -65, average: '88.50', expiry: '2026-10-13', price_at: null }],
-          pause_reason: 'contract_retired', pause_reason_text: EXPIRED_REASON,
-          unpriced_legs: [{ leg_index: 0, contract_text: 'NIFTY 13 Oct 22800 CE', expired: true }], unpriced_text: EXPIRED_LINE } })
+          pause_reason: 'contract_retired', pause_reason_text: EXPIRED_REASON, expired_open: true,
+          unpriced_legs: [{ leg_index: 0, contract_text: 'NIFTY 13 Oct 22800 CE', expired: true }], unpriced_text: expiredNoLine ? null : EXPIRED_LINE } })
+      }
+      if (unreadableBook.has(Number(book[1]))) { // D-40 r2: a not-live leg that is NOT expired, and a catalogue without it: a genuine unreadable book
+        return Promise.resolve({ data: { strategy_id: Number(book[1]), underlying: 'NIFTY', answered_at: '2026-10-19T10:00:00+05:30', orders: [{ id: 1 }],
+          positions: [{ contract_id: 777, net_quantity: -65, average: '88.50', expiry: '2026-10-13', price_at: null }],
+          pause_reason: 'token_reassigned', pause_reason_text: 'This contract is not live.', expired_open: false,
+          unpriced_legs: [{ leg_index: 0, contract_text: 'NIFTY 13 Oct 22800 CE', expired: false }], unpriced_text: 'No price for: NIFTY 13 Oct 22800 CE.' } })
       }
       if (realOnly.has(Number(book[1]))) return Promise.reject({ status: 404, parts: { what_happened: 'No paper book', impact: 'i', what_is_blocked: 'b', next_action: 'n' } }) // a real trade has no practice book
       return Promise.resolve({ data: { strategy_id: Number(book[1]), underlying: 'NIFTY', answered_at: '2026-10-19T10:00:00+05:30',
@@ -116,6 +122,8 @@ const detailGets = []
 const paperGets = []
 const realOnly = new Set()
 const expiredBook = new Set()
+const unreadableBook = new Set()
+let expiredNoLine = false
 const EXPIRED_REASON = 'This contract has expired and is no longer traded.'
 const EXPIRED_LINE = 'Expired contracts have no price: NIFTY 13 Oct 22800 CE.'
 
@@ -126,6 +134,8 @@ beforeEach(() => {
   paperGets.length = 0
   realOnly.clear()
   expiredBook.clear()
+  unreadableBook.clear()
+  expiredNoLine = false
   vi.useRealTimers()
   vi.spyOn(Math, 'random').mockReturnValue(0) // no reconnect spread here: it has its own tests (reconnect-forever.test.js)
   failDetailFor = new Set()
@@ -607,6 +617,27 @@ describe('issue 16: status words and closed trades on Live Strategies', () => {
     expect(c.text()).toContain(EXPIRED_LINE)
     expect(c.text()).not.toContain('Something went wrong')
     expect(FakeSocket.all.every((s) => s.sent.length === 0)).toBe(true) // nothing is priced: no outcome follow
+  })
+  it('D-40 r2: a book with a not-live leg that has NOT expired and an unreadable catalogue still shows the error', async () => {
+    unreadableBook.add(9)
+    listAnswer = { strategies: [{ ...row(9), has_order: true }] }
+    const w = await mountPage()
+    openAll()
+    await flushPromises()
+    const c = w.get('[data-strategy-id="9"]')
+    expect(c.attributes('data-state')).toBe('error')
+    expect(c.text()).not.toContain('No price for')
+  })
+  it('D-40 r2: an expired trade shows only the expiry sentence, never the book\'s pause reason', async () => {
+    expiredBook.add(9)
+    expiredNoLine = true // the server sent no expiry sentence: nothing else is borrowed in its place
+    listAnswer = { strategies: [{ ...row(9), has_order: true }] }
+    const w = await mountPage()
+    openAll()
+    await flushPromises()
+    const c = w.get('[data-strategy-id="9"]')
+    expect(c.attributes('data-state')).toBe('unpriced')
+    expect(c.text()).not.toContain(EXPIRED_REASON)
   })
   it('a partly closed running trade follows the legs it holds NOW (the book), not the legs it was saved with', async () => {
     listAnswer = { strategies: [{ ...row(7), has_order: true }] }

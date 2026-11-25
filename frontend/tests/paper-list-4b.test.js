@@ -256,6 +256,17 @@ describe('Paper tab from GET /paper/strategies (the real reply)', () => {
     answers['GET /paper/strategies'] = ok(none)
     expect(has(await show(), 'totals-left-out')).toBe(false)
   })
+  it('D-40 r2: the compact list shows no header figure, so no left-out line is missing beside one', async () => {
+    const d = clone()
+    Object.assign(d.totals, { left_out_count: 2, left_out_text: '2 strategies left out: their contracts have expired.' })
+    answers['GET /paper/strategies'] = ok(d)
+    const w0 = await show()
+    const w = (() => { const m = mount(PaperStrategies, { props: { compact: true }, global: { plugins: [w0.vm.$router] } }); return m })()
+    await flushPromises()
+    expect(has(w, 'paper-totals')).toBe(false)
+    expect(has(w, 'totals-total')).toBe(false)
+    expect(has(w, 'totals-left-out')).toBe(false)
+  })
   it('totals_reason replaces a missing figure with the server reason', async () => {
     const d = clone()
     Object.assign(d.totals, { total_text: null, total: null, totals_reason: 'prices_not_live', totals_reason_text: 'Prices are not live', decay_text: null, decay: null, decay_reason: 'no_iv', decay_reason_text: 'No Greeks yet' })
