@@ -2,7 +2,7 @@
 
 # Coverage register
 
-Generated from commit 34317f92
+Generated from commit 2d4b96f
 
 ## Stage S0
 
@@ -853,6 +853,7 @@ Generated from commit 34317f92
 | S6.7 | decision | ADR-322 | - | Owner decisions of 25 Nov 2026 on the GC-ICLIVE run (rounds, time value, paper exits, ADR-321, spot gate) |
 | S6.7 | decision | ADR-323 | - | Suggestions and alerts of the 23 Nov live test: records, times, one word, one value (GC-ICLIVE Part C) - PENDING OWNER READ |
 | S6.7 | decision | ADR-324 | - | Paper page header totals leave out strategies whose open contract has expired (GC-ICLIVE Part D, D-40) - PENDING OWNER READ |
+| S6.7 | decision | ADR-325 | - | Labels, small features and post-close messages of the 23 Nov live test (GC-ICLIVE Part E) - PENDING OWNER READ |
 | S6.7 | finding | F-101 | - | Live alert discipline cut suggestion noise by three quarters; a 1-day SENSEX condor past its breakeven still flaps |
 | S6.7 | finding | F-102 | - | Kite's own basket runs in sequence; the Kite Publisher basket (our path) does not guarantee order |
 | S6.7 | finding | F-103 | - | The market calendar holds one year; outside it every day reads as closed |
@@ -925,6 +926,7 @@ Generated from commit 34317f92
 | S6.7 | issue | #716 | - |  |
 | S6.7 | issue | #717 | - |  |
 | S6.7 | issue | #719 | - |  |
+| S6.7 | issue | #723 | - |  |
 | S6.7 | requirement | REQ-051 | AC-6 | Simulation, when built, is simple strategy simulation (EOD default, intraday later), not quant backtesting (Q19, Q100). |
 | S6.7 | requirement | REQ-051 | AC-7 | Simulation results may show best/worst outcome, winning days, drawdown and historical behaviour, and are always labelled historical/simulation, never a future guarantee. |
 | S6.7 | requirement | REQ-113 | - | The live price feed and the broker order-update feed run in their own process, so an API deploy never cuts users' feeds |
@@ -1146,7 +1148,7 @@ Generated from commit 34317f92
 | S6.4 | 0 | 1 | 13 | 19 | 0 | 32 | 1 | 0 | 25 | 0 | 8 | 99 |
 | S6.5 | 0 | 0 | 1 | 0 | 0 | 0 | 0 | 0 | 3 | 0 | 1 | 5 |
 | S6.6 | 0 | 0 | 0 | 0 | 0 | 0 | 0 | 0 | 7 | 0 | 2 | 9 |
-| S6.7 | 0 | 0 | 104 | 9 | 0 | 63 | 0 | 0 | 14 | 0 | 19 | 209 |
+| S6.7 | 0 | 0 | 105 | 9 | 0 | 64 | 0 | 0 | 14 | 0 | 19 | 211 |
 | S7 | 1 | 0 | 0 | 0 | 0 | 1 | 1 | 0 | 5 | 0 | 0 | 8 |
 | S8 | 2 | 0 | 17 | 1 | 0 | 1 | 1 | 1 | 22 | 4 | 7 | 56 |
 | all | 0 | 0 | 15 | 0 | 0 | 0 | 0 | 0 | 10 | 0 | 0 | 25 |
