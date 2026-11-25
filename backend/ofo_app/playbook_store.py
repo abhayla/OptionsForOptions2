@@ -240,11 +240,15 @@ class Suggestion:
 
     @property
     def closed_at(self) -> datetime | None:
-        """D-26: when the record left "open" (its last timeline entry's ``at``, written by the store's UPDATE); None
+        """D-26: when the record left "open" (the last timeline entry with an ``outcome``: the close's own ``at``); None
         while open or when the stored time is missing or unreadable (never a guess)."""
-        if self.outcome == "open" or not self.timeline or not isinstance(self.timeline[-1], dict):
+        if self.outcome == "open":
             return None
-        raw = self.timeline[-1].get("at")
+        # the entry the close wrote carries "outcome"; later appends (condition_cleared, orders_placed) do not
+        closing = [e for e in self.timeline if isinstance(e, dict) and "outcome" in e]
+        if not closing:
+            return None
+        raw = closing[-1].get("at")
         try:
             found = datetime.fromisoformat(raw) if isinstance(raw, str) else None
         except ValueError:
