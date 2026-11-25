@@ -13,6 +13,10 @@ with a category and a reason is kept so a future one is a reviewed, "shrink only
 Fail closed: an aliased import of a writer or of the ``notifier`` module (``from x import add_alert as a``) and an
 unparsable file are problems. ``paper_monitor.notify`` (the monitor's own reload nudge) is another function and is
 not matched: ``notify`` counts only when read off ``notifier``.
+Limits (not claims): ``getattr(notifier, "notify")`` (the dotted ``notify`` is read only as an attribute of the
+``notifier`` name, the plain-name getattr rule covers the other writers) and ``importlib.import_module`` of the
+notifier are not caught (F9); keys name functions, not sites, so a second call in an allowed function is not counted
+(F7).
 """
 from __future__ import annotations
 

@@ -13,9 +13,15 @@
 //       Calls and imports of sameContract elsewhere are allowed: LegList.vue shows the D-60 duplicate warning by calling the door's
 //       own export, which is reading the door, not a second copy of the test. A second definition is the drift this rule stops.
 //
+// Keys name functions, not sites: a second hit of the same text in an exempt function is not counted (F7).
 // Exemptions are keyed by (file, enclosing function or const, matched text), never by line, each with a category and a reason.
 // A stale exemption fails ("shrink only"). Limits (not claims): a URL held in a variable first, a client reached through an alias
 // that is called with a computed path, and code built at run time are not seen. The scan reads text, it does not parse.
+// Also seen since review round 1: not-live text between tags of a .vue <template> (rule 1), method shorthand as the enclosing
+// function (`async leak() {` on one line), `fetch(` of the orders path with method POST (rule 2) and of the single book (rule 3),
+// and `sameContract:` / `as sameContract` (rule 4). Not seen: a fetch whose options come from a variable or sit after a `)`,
+// parameters of a method that span several lines (the enclosing name then falls back to the nearest function above), and
+// a shorthand `{ sameContract }` re-export.
 import { readdirSync, readFileSync, statSync } from 'node:fs'
 import { join, relative, sep } from 'node:path'
 import { describe, it, expect } from 'vitest'
@@ -66,19 +72,26 @@ function stripComments(src) {
 const FN_DECL = /^\s*(?:export\s+)?(?:default\s+)?(?:async\s+)?function\s*\*?\s*([A-Za-z_$][\w$]*)/
 const CONST_FN = /^\s*(?:export\s+)?(?:const|let)\s+([A-Za-z_$][\w$]*)\s*=\s*(?:async\s*)?(?:\([^)]*\)|[A-Za-z_$][\w$]*)\s*=>/
 const CONST_LIT = /^\s*(?:export\s+)?const\s+([A-Za-z_$][\w$]*)\s*=\s*['"`]/
+// method shorthand in an object or class: `async leak() {`, `leak(x) {`, `static async leak(x) {`, `get x() {` (one line of parameters)
+const METHOD = /^\s*(?:static\s+)?(?:async\s+)?(?:get\s+|set\s+)?\*?\s*([A-Za-z_$][\w$]*)\s*\([^()]*\)\s*\{/
+const NOT_A_METHOD = new Set(['if', 'for', 'while', 'switch', 'catch', 'with', 'function', 'return'])
 /** The nearest function declaration, arrow const or string const at or above the line; '<top>' when none. */
 function enclosing(lines, line) {
   for (let i = line; i > 0; i--) {
     const m = FN_DECL.exec(lines[i]) || CONST_FN.exec(lines[i]) || CONST_LIT.exec(lines[i])
     if (m) return m[1]
+    const meth = METHOD.exec(lines[i])
+    if (meth && !NOT_A_METHOD.has(meth[1])) return meth[1]
   }
   return '<top>'
 }
 
 const POST_ORDERS = /\.post\(\s*(?:`[^`]*?\/paper\/strategies\/\$\{[^}]*\}\/orders\b[^`]*`|['"]\/paper\/strategies\/[^'"]*['"]\s*\+[^,)]*?\+\s*['"]\/orders\b)/g
+const FETCH_POST_ORDERS = /\bfetch\(\s*`[^`]*?\/paper\/strategies\/\$\{[^}]*\}\/orders\b[^`]*`[^)]*?method\s*:\s*['"]POST['"]/gi
+const FETCH_BOOK = /\bfetch\(\s*`[^`]*?\/paper\/strategies\/\$\{[^}]*\}`\s*[,)]/g
 const GET_BOOK = /\.get\(\s*(`\/paper\/strategies\/\$\{[^}]*\}`|['"]\/paper\/strategies\/['"]\s*\+\s*[^,)]+)\s*[,)]/g
 const DUP_ID = /\bdup-(?:increase|separate)\b/g
-const SAME_CONTRACT_DEF = /\b(?:function\s+sameContract\b|(?:const|let|var)\s+sameContract\b|sameContract\s*\([^)]*\)\s*\{)/g
+const SAME_CONTRACT_DEF = /(?:^|[{,])\s*sameContract\s*:|\b(?:function\s+sameContract\b|(?:const|let|var)\s+sameContract\b|sameContract\s*\([^)]*\)\s*\{|as\s+sameContract\b)/gm
 const LITERAL = /'[^'\n]*'|"[^"\n]*"|`[^`]*`/g
 
 /** Every hit of the four rules in one source: [{rule, fn, line, text}]. */
@@ -94,9 +107,27 @@ function hitsOf(src) {
       out.push({ rule: 1, line, fn: enclosing(lines, line), text: body })
     }
   }
+  const open = code.indexOf('<template'), close = code.lastIndexOf('</template>')
+  if (open >= 0 && close > open) { // text between tags of a .vue template (comments are already blanked; {{ }} holds code, read as literals above)
+    const region = code.slice(open, close)
+    for (const m of region.matchAll(/>([^<>]+)</g)) {
+      const body = m[1].replace(/\{\{[\s\S]*?\}\}/g, (x) => blank(x))
+      if (NOT_LIVE_TEXTS.some((t) => body.includes(t)) || NOT_LIVE_WORDS.test(body)) {
+        out.push({ rule: 1, line: lineAt(open + m.index + 1), fn: '<template>', text: m[1].trim() })
+      }
+    }
+  }
   for (const m of code.matchAll(POST_ORDERS)) {
     const line = lineAt(m.index)
     out.push({ rule: 2, line, fn: enclosing(lines, line), text: m[0] })
+  }
+  for (const m of code.matchAll(FETCH_POST_ORDERS)) {
+    const line = lineAt(m.index)
+    out.push({ rule: 2, line, fn: enclosing(lines, line), text: m[0] })
+  }
+  for (const m of code.matchAll(FETCH_BOOK)) {
+    const line = lineAt(m.index)
+    out.push({ rule: 3, line, fn: enclosing(lines, line), text: m[0].replace(/^[^`]*`|`\s*[,)]$/g, '') })
   }
   for (const m of code.matchAll(GET_BOOK)) {
     const line = lineAt(m.index)
@@ -315,6 +346,55 @@ describe('G3 mutations: rule 4 (one duplicate-leg dialog, one sameContract)', ()
     expect(files[DUP_DIALOG_HOME]).toMatch(/dup-increase/)
     expect(files[DUP_DIALOG_HOME]).toMatch(/dup-separate/)
     expect(files[LEG_DOOR_HOME]).toMatch(SAME_CONTRACT_DEF)
+  })
+})
+
+describe('G3 mutations: review round 1 (template text, method shorthand, fetch, sameContract property and re-export)', () => {
+  it('rule 1: a not-live text typed between tags of a .vue template is one problem; in priceState.js none; in a comment none', () => {
+    const bad = problems({ 'src/pages/A.vue': '<template><p>Prices are not live</p></template>\n' }, [])
+    expect(bad).toHaveLength(1)
+    expect(bad[0]).toContain('not-live string outside priceState: src/pages/A.vue:1')
+    expect(problems({ 'src/lib/priceState.js': '<template><p>Prices are not live</p></template>\n' }, [])).toEqual([])
+    expect(problems({ 'src/pages/A.vue': '<template><!-- Prices are not live --><p>ok</p></template>\n' }, [])).toEqual([])
+    expect(problems({ 'src/pages/A.vue': `<template>\n  <p>${PAUSED_TEXT}</p>\n</template>\n` }, [])).toHaveLength(1)
+  })
+
+  it('rule 1: a literal inside a mustache is one problem, not two', () => {
+    expect(problems({ 'src/pages/A.vue': "<template><p>{{ 'Prices are not live' }}</p></template>\n" }, [])).toHaveLength(1)
+  })
+
+  it('rule 2: a POST in a method shorthand of tracking.js after addToPaper is not attributed to addToPaper', () => {
+    const post = "api.post(`/paper/strategies/${id}/orders`, b)"
+    const head = 'export async function addToPaper(api, id, b) {\n  return ' + post + '\n}\n'
+    expect(problems({ 'src/lib/tracking.js': head }, [])).toEqual([])
+    for (const m of ['async leak(api, id, b) {', 'leak(api, id, b) {', 'static async leak(api, id, b) {']) {
+      const bad = problems({ 'src/lib/tracking.js': head + 'const o = {\n  ' + m + '\n    return ' + post + '\n  },\n}\n' }, [])
+      expect(bad, m).toHaveLength(1)
+      expect(bad[0]).toContain('in leak')
+    }
+  })
+
+  it('rule 2: a fetch POST to the orders path is one problem; in addToPaper none; a fetch GET of it is not a POST', () => {
+    const f = "export async function sendIt(id) {\n  return fetch(`/paper/strategies/${id}/orders`, { method: 'POST', body: '{}' })\n}\n"
+    expect(problems({ 'src/pages/A.vue': f }, [])).toHaveLength(1)
+    expect(problems({ 'src/lib/tracking.js': f.replace('sendIt', 'addToPaper') }, [])).toEqual([])
+    expect(problems({ 'src/a.js': "fetch(`/paper/strategies/${id}/orders`)\n" }, [])).toEqual([])
+  })
+
+  it('rule 3: a fetch of the single book is one problem; the list and sub-resources are not', () => {
+    expect(problems({ 'src/a.js': "const r = await fetch(`/paper/strategies/${id}`)\n" }, [])).toHaveLength(1)
+    expect(problems({ 'src/lib/usePaperBookRead.js': "const r = await fetch(`/paper/strategies/${id}`)\n" }, [])).toEqual([])
+    expect(problems({ 'src/a.js': "fetch('/paper/strategies')\nfetch(`/paper/strategies/${id}/triggers`)\n" }, [])).toEqual([])
+  })
+
+  it('rule 4: a property definition and a re-export of sameContract are one problem each; a ternary and a call are not', () => {
+    for (const src of ['const o = { sameContract: (a, b) => a === b }\n', 'const o = {\n  sameContract: (a, b) => a === b,\n}\n',
+      'function s(a, b) { return a === b }\nexport { s as sameContract }\n']) {
+      const bad = problems({ 'src/components/strategy/LegList.vue': src }, [])
+      expect(bad, src).toHaveLength(1)
+      expect(problems({ [LEG_DOOR_HOME]: src }, [])).toEqual([])
+    }
+    expect(problems({ 'src/a.js': 'const f = ok ? sameContract : other\nconst g = sameContract(a, b)\n' }, [])).toEqual([])
   })
 })
 

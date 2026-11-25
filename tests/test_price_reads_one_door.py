@@ -7,13 +7,17 @@ Rule: a call to (or a reference to) a provider/snapshot reader, ``underlying_quo
 
 - ``own_process``: a reader inside the process that owns the feed or a transaction (no wait, by design);
 - ``display``: a screen or push that shows a price and decides nothing;
-- ``real_path``: the real-order path, or the one live exit read;
+- ``real_path``: the real-order path (ADR-016 to ADR-019);
 - ``awaiting_phase_N``: a decision read not yet moved (a deferred issue names it).
 
 The list is "shrink only": an entry whose site is gone fails (``stale exemption``). Fail closed: an aliased import of
 one of the names (``from x import underlying_quote as q``) is a problem, because a call through the alias would be
 invisible; so is a file that does not parse. ``getattr(obj, "<name>")`` and a bare reference (``q = read_snapshot``)
-count as a read. Tests are not scanned. Entries come from a fresh AST scan of the Phase 8 head (25 Nov 2026).
+count as a read. Tests are not scanned.
+Limits (not claims): ``getattr(obj, name)`` with a non-constant name is not seen (F3); an exempt function imported and
+called from a non-exempt module is not seen as a read of that module, the exemption is keyed to the function that
+holds the name (F4); keys name functions, not sites, so a second read of the same name in an exempt function is not
+counted (F7). Entries come from a fresh AST scan of the Phase 8 head (25 Nov 2026).
 """
 from __future__ import annotations
 
@@ -76,7 +80,8 @@ EXEMPT: dict[Key, tuple[str, str]] = {
                "routes/paper.py",
                {"_hold_until_ready": "underlying_quote read_snapshot", "_snapshot": "read_snapshot"}),
     # real path
-    **_entries("real_path", "the one live exit read: paper_exit.live_exit_prices -> exit_snapshot -> _snapshot",
+    **_entries("display", "tracking panel display read (_answer_core, list_tracking) and, via exit_snapshot, the paper "
+                          "exit door's live read (paper_exit.live_exit_prices)",
                "routes/tracking.py", {"_snapshot": "read_snapshot"}),
     **_entries("real_path", "real-order leg quote and index price (ADR-016 to ADR-019)", "routes/execute.py",
                {"leg_quote": "latest_depth", "underlying_price": "underlying_quote"}),
@@ -84,7 +89,8 @@ EXEMPT: dict[Key, tuple[str, str]] = {
     **_entries("real_path", "the depth reader the real-order leg quote asks for (getattr: a provider may lack depth)",
                "live_market.py", {"latest_depth": "latest_depth"}),
     # decision read not yet moved
-    **_entries("awaiting_phase_9", "first-fill entry facts are a decision read outside read_market (deferred issue 13)",
+    **_entries("awaiting_phase_8", "first-fill entry facts are a decision read outside read_market (deferred issue: "
+                                   "plan section 6 row 13 (entry_facts_now decision read))",
                "adjustment_readers.py", {"entry_facts_now": "underlying_quote"}),
 }
 
@@ -155,6 +161,15 @@ def test_every_price_read_goes_through_the_door():
 def test_exemptions_carry_a_category_and_a_reason():
     bad = [k for k, (category, reason) in EXEMPT.items() if not CATEGORY.fullmatch(category) or not reason.strip()]
     assert bad == []
+
+
+def test_the_shared_tracking_snapshot_is_display_and_the_open_decision_read_names_its_issue():
+    category, reason = EXEMPT[("ofo_app/routes/tracking.py", "_snapshot", "read_snapshot")]
+    assert category == "display"
+    assert "paper_exit.live_exit_prices" in reason
+    category, reason = EXEMPT[("ofo_app/adjustment_readers.py", "entry_facts_now", "underlying_quote")]
+    assert category == "awaiting_phase_8"
+    assert "plan section 6 row 13" in reason
 
 
 def test_the_door_itself_is_not_an_exemption():
