@@ -95,6 +95,7 @@ const live = useStrategyLive({
 async function begin() {
   if (begun || gone) return
   begun = true
+  expiredText.value = null // D-40: a later begin() starts without the last expiry sentence
   state.value = 'loading'
   try {
     // issue 16: a running trade follows the legs it holds NOW (its paper book's net position), not the legs it was saved with
@@ -102,7 +103,8 @@ async function begin() {
     if (gone) return
     if (read.kind === 'unpriced') { // D-40: the open legs are on expired contracts; show the server's own reason, price nothing
       paperBook.value = read.book
-      expiredText.value = serverText(read.book.unpriced_text) ?? serverText(read.book.pause_reason_text)
+      expiredText.value = serverText(read.book.unpriced_text) // only the expiry sentence; no other reason is borrowed
+      notLive.value = true // with no sentence the card still says the contract is no longer live, never "not connected"
       state.value = 'unpriced'
       settle()
       return
