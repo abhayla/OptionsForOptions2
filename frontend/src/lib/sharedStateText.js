@@ -103,3 +103,6 @@ export const EMPTY_S7_BUTTON = EMPTY_S4_BUTTON
 // ADR-130 (4): "Each button opens the Create Strategy screen." Addressed by route NAME (nav item `create-strategy` in
 // the `strategies` section, router/routes.js), so it follows the page whether it is the placeholder or the real screen.
 export const CREATE_STRATEGY_ROUTE = { name: 'strategies-create-strategy' }
+
+// pending owner read (D-54, ADR-320 point 6): the question before a playbook is deleted
+export const PLAYBOOK_DELETE_CONFIRM_TEXT = 'Delete this playbook?'
