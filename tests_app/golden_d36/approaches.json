@@ -3499,7 +3499,7 @@
    "title": "What changes"
   },
   "A-26": {
-   "reason_line": null,
+   "reason_line": "This trade now has a long put with no short against it; its result now depends on direction.",
    "rows": [
     {
      "after_text": "Not available",
@@ -3577,7 +3577,7 @@
    "title": "What changes"
   },
   "A-27": {
-   "reason_line": null,
+   "reason_line": "This trade now has a long put with no short against it; its result now depends on direction.",
    "rows": [
     {
      "after_text": "Not available",
