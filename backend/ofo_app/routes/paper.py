@@ -23,6 +23,7 @@ The user comes from the session (``current_user_ref``), never from the request.
 from __future__ import annotations
 
 import datetime
+from dataclasses import dataclass
 import logging
 from collections.abc import Mapping, Sequence
 from decimal import ROUND_HALF_EVEN, Decimal
@@ -463,9 +464,18 @@ class PaperTotalsOut(ApiModel):
     left_out_text: CatalogueText | None = None
 
 
+class PaperTodayOut(PaperTotalsOut):
+    """D-68 (ADR-320 point 6): the header's "Today" total: the same sums as ``totals`` (one function, ``_totals``), over the
+    real trades opened or closed today (IST) only. ``count`` 0 = nothing today (``empty_text`` says so; the figures are
+    then not shown)."""
+    count: int = 0
+    empty_text: CatalogueText | None = None
+
+
 class PaperListOut(ApiModel):
     strategies: list[PaperStrategyOut]  # newest strategy first (first order time, then id)
     totals: PaperTotalsOut
+    today: PaperTodayOut | None = None
     answered_at: datetime.datetime
 
 
@@ -1018,7 +1028,9 @@ async def list_paper_strategies(db: Annotated[Any, Depends(get_db)],  # noqa: PL
                               "open_count": open_legs, "position_count": len(figures["positions"])})
     kept = [i for i, s in enumerate(out) if not _expired_open(s)]  # D-40: the strategies that can be priced
     totals = _totals([out[i] for i in kept], [decays[i] for i in kept], len(out) - len(kept))
-    return PaperListOut.model_validate({"strategies": out, "totals": totals, "answered_at": now()})
+    sorted_books = sorted(books, key=_newest_first, reverse=True)
+    today = today_totals([_today_item(out[i], decays[i], sorted_books[i]) for i in kept], answered.astimezone(paper.IST).date())
+    return PaperListOut.model_validate({"strategies": out, "totals": totals, "today": today, "answered_at": now()})
 
 
 def _expired_open(strategy: Mapping[str, Any]) -> bool:
@@ -1069,6 +1081,34 @@ def _totals(strategies: Sequence[dict], decays: Sequence[paper_decay.Decay], lef
             "decay_reason_text": reason_text(decay_reason),
             "left_out_count": left_out, "left_out_text": _left_out_text(left_out),
             **_charges_total(strategies), **_after_total(strategies)}
+
+
+@dataclass(frozen=True)
+class TodayItem:
+    """One strategy for the Today total: its figures (as the list builds them), decay, first and closing order times and
+    its scenario marker. ``closed`` is None while any leg is open."""
+    figures: dict
+    decay: paper_decay.Decay
+    opened: datetime.datetime
+    closed: datetime.datetime | None
+    scenario_id: str | None
+
+
+def _today_item(figures: dict, decay: paper_decay.Decay, book: paper_store.UserBook) -> TodayItem:
+    times = [o.order.placed_at for o in book.orders]
+    return TodayItem(figures, decay, min(times), max(times) if figures["open_count"] == 0 else None, book.scenario_id)
+
+
+def today_totals(items: Sequence[TodayItem], day: datetime.date) -> dict:
+    """D-68 (ADR-320 point 6): the sums of ``_totals`` (the function the header already reads, so one reader; exact
+    Decimal) over the REAL strategies opened or closed on ``day`` (the India date). A scenario strategy is left out; so is a
+    trade opened on an earlier day that is still open or was closed on an earlier day. A paused strategy pauses the figure
+    (REQ-109 AC-5: absent with the reason, never partial). Nothing today: count 0 and the sentence, no figure."""
+    def on_day(at: datetime.datetime | None) -> bool:
+        return at is not None and at.astimezone(paper.IST).date() == day
+    chosen = [x for x in items if x.scenario_id is None and (on_day(x.opened) or on_day(x.closed))]
+    out = _totals([x.figures for x in chosen], [x.decay for x in chosen])
+    return out | {"count": len(chosen), "empty_text": None if chosen else render_explanation("paper_today_none")}
 
 
 def _left_out_text(count: int) -> Any:

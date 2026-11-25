@@ -23,6 +23,18 @@
           <p v-if="shownFig(totals, f).reason" class="text-xs text-ink-muted" :data-testid="f.reasonId">{{ shownFig(totals, f).reason }}</p>
         </div>
       </dl>
+      <!-- D-68 (ADR-320 point 6): the Today total (trades opened or closed today, no scenario strategies): the server's figure, paused like the others -->
+      <div v-if="today && !compact" class="mt-1 rounded bg-surface-muted px-3 py-2 text-right" data-testid="paper-today">
+        <template v-if="today.count > 0 || stale">
+          <p class="text-xs text-ink-muted" data-testid="totals-today-label">{{ shownFig(today, TODAY_FIGURE).label }}</p>
+          <p class="text-lg font-semibold" :class="toneOf(shownFig(today, TODAY_FIGURE).text)" data-testid="totals-today"><AfterChargesTap :breakdown="shownFig(today, TODAY_FIGURE).breakdown ?? null">{{ pnlText(shownFig(today, TODAY_FIGURE).text) }}</AfterChargesTap></p>
+          <p v-if="shownFig(today, TODAY_FIGURE).reason" class="text-xs text-ink-muted" data-testid="totals-today-reason">{{ shownFig(today, TODAY_FIGURE).reason }}</p>
+        </template>
+        <template v-else>
+          <p class="text-xs text-ink-muted" data-testid="totals-today-label">{{ TODAY_FIGURE.label }}</p>
+          <p class="text-sm" data-testid="totals-today-empty">{{ today.emptyText }}</p>
+        </template>
+      </div>
       <p v-if="totals && !compact && totals.leftOut" class="mt-1 text-xs text-ink-muted" data-testid="totals-left-out">{{ totals.leftOut }}</p>
       <label class="mt-2 flex items-center gap-2"><input v-model="showClosed" type="checkbox" data-testid="show-closed" /> {{ SHOW_CLOSED_LABEL }}</label>
       <p v-if="!shown.length" class="mt-2" data-testid="paper-all-closed">{{ ALL_CLOSED_TEXT }}</p>
@@ -201,6 +213,7 @@ const totalFigures = [
 // the server's text, printed as sent (a missing figure is a dash); the colour follows the server's sign, read from its text
 // GC-ICFIX u123 (ADR-263): the Total P&L figure is the reply's after-charges text with "(after charges)", or the before text with
 // "(before charges)" and the reason (lib/tracking afterFigure); every other figure is its own text and reason, unchanged
+const TODAY_FIGURE = { id: 'today', field: 'total', label: 'Today' } // D-68
 const AFTER_OF = { total: 'totalAfter', booked: 'bookedAfter', unbooked: 'unbookedAfter' } // u124: Booked / Unbooked follow the same rule
 const shownFig = (src, f) => {
   if (stale.value) return { label: f.label, text: null, reason: PAPER_PAUSED, breakdown: null }
@@ -216,6 +229,7 @@ const builderLink = (g) => ({ path: '/strategy/builder', query: { strategy: Stri
 
 const items = ref(null)
 const totals = ref(null)
+const today = ref(null)
 const showClosed = ref(false)
 const shown = computed(() => visibleGroups(items.value ?? [], showClosed.value))
 const errorParts = ref(null)
@@ -255,6 +269,7 @@ function show({ data, token }) {
   } else {
     items.value = read.groups
     totals.value = read.totals
+    today.value = read.today
     errorParts.value = null
     goodReadToken.value = token // the token travels with the answer from the read that made it
     settle(items.value)

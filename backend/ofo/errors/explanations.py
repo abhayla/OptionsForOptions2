@@ -2060,6 +2060,8 @@ _EXPLANATIONS: tuple[ExplanationTemplate, ...] = (
     ExplanationTemplate("unpriced_legs_expired", "values_seen", "Expired contracts have no price: {legs}.",
                         {"legs": Explained}),
     # D-40 (ADR-324): the practice page's header totals leave out a strategy whose open contract has expired
+    # D-68 (ADR-320 point 6; pending owner read): the header's Today total when no real trade was opened or closed today
+    ExplanationTemplate("paper_today_none", "values_seen", "No trades opened or closed today."),
     ExplanationTemplate("paper_totals_left_out_one", "values_seen", "1 strategy left out: its contract has expired."),
     ExplanationTemplate("paper_totals_left_out_many", "values_seen",
                         "{count} strategies left out: their contracts have expired.", {"count": Count}),

@@ -166,10 +166,19 @@ function readTotals(t) {
   }
 }
 
-/** The whole reply: {groups, totals}, or null when it does not read (the caller shows the neutral error, no figure). */
+/** D-68 (ADR-320 point 6): the header's "Today" block as the server sent it; null when the reply has none (older server). The
+ *  figure follows the totals' paused rule (afterFigure); `count` 0 shows the server's sentence and no figure. Nothing is summed here. */
+function readToday(t) {
+  if (!t || typeof t !== 'object' || !Number.isInteger(t.count) || t.count < 0) return null
+  const reason = withAsOf(text(t.totals_reason_text), t.totals_as_of)
+  return { count: t.count, emptyText: t.count === 0 ? text(t.empty_text) : null, total: text(t.total_text), totalReason: reason,
+    totalAfter: afterFigure(t, text(t.total_text), reason) }
+}
+
+/** The whole reply: {groups, totals, today}, or null when it does not read (the caller shows the neutral error, no figure). */
 export function readPaperList(data) {
   if (!data || !Array.isArray(data.strategies)) return null
-  return { groups: data.strategies.map(readPaperStrategy), totals: readTotals(data.totals) }
+  return { groups: data.strategies.map(readPaperStrategy), totals: readTotals(data.totals), today: readToday(data.today) }
 }
 
 /** A group is open when the server counts an open position in it (never a fully exited one). */

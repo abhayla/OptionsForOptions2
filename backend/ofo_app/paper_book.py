@@ -61,6 +61,7 @@ class UserBook:
     underlying: str
     orders: tuple[StoredOrder, ...]
     status: str = "draft"  # the row's stored status (draft | closed): with the orders, the status word's input
+    scenario_id: str | None = None  # D-68: the scenario marker of the strategy row (None = a real strategy)
 
 
 def order_from_row(r: Any) -> StoredOrder:

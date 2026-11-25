@@ -59,7 +59,7 @@ _SELECT_TRACKED = text("SELECT DISTINCT strategy_id FROM public.paper_orders "
                        "WHERE strategy_id = ANY(CAST(:ids AS BIGINT[]))")
 _SELECT_USER = text(
     "SELECT o.id, o.strategy_id, o.contract_id, o.side, o.quantity, o.price, o.kind, o.placed_at, o.created_at, "
-    "o.reason, o.trigger_id, s.name, s.underlying, s.status FROM public.paper_orders AS o "
+    "o.reason, o.trigger_id, s.name, s.underlying, s.status, s.scenario_id FROM public.paper_orders AS o "
     "JOIN public.strategies AS s ON s.id = o.strategy_id "
     "WHERE s.user_ref = :user_ref AND s.deleted_at IS NULL ORDER BY o.strategy_id, o.id")
 
@@ -165,11 +165,11 @@ async def load(conn: Any, strategy_id: int) -> tuple[StoredOrder, ...]:
 async def load_all(conn: Any, user_ref: str) -> list[UserBook]:
     """Every paper book of ``user_ref``'s visible strategies, oldest strategy first, in one query. A read failure
     raises: the caller refuses the whole list, never a partial one."""
-    heads: dict[int, tuple[str | None, str, str]] = {}
+    heads: dict[int, tuple[str | None, str, str, str | None]] = {}
     orders: dict[int, list[StoredOrder]] = {}
     for r in (await conn.execute(_SELECT_USER, {"user_ref": user_ref})).all():
         sid = int(r.strategy_id)
-        heads.setdefault(sid, (r.name, r.underlying, r.status))
+        heads.setdefault(sid, (r.name, r.underlying, r.status, getattr(r, "scenario_id", None)))
         orders.setdefault(sid, []).append(_row(r))
-    return [UserBook(sid, name, underlying, tuple(orders[sid]), status)
-            for sid, (name, underlying, status) in heads.items()]
+    return [UserBook(sid, name, underlying, tuple(orders[sid]), status, scenario_id)
+            for sid, (name, underlying, status, scenario_id) in heads.items()]
