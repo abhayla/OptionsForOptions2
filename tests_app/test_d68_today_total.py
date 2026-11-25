@@ -3,17 +3,19 @@ leaving out scenario strategies; "today" is the current day in IST; the figure f
 
 Real case: N-6 (condors C9 164, all): the header Booked P&L +7,496.11 (14:47) against the T1123 completed nets of
 -7,783.16 (9 rows): it took in old Scenario PATH-xx trades and the booked parts of trades still open. No real strategy
-rows are in a fixture, so the rule is driven on the route's own pure functions with the real shape of a strategy's figures.
+rows are in a fixture, so the rule is driven on the route's own pure functions with the real shape of the figures.
 
-Rule for a trade opened on an earlier day: it counts only if it was CLOSED today ("opened or closed today"); a trade opened
-yesterday and still open, and one closed yesterday, are out. The sum is ``paper._totals`` (the function the header's own
-totals use), so there is one reader and the sum is exact decimal; a paused strategy pauses the figure (never partial).
+Rule for a trade opened on an earlier day: it counts only if it was CLOSED today ("opened or closed today"); a
+trade opened yesterday and still open, and one closed yesterday, are out. The sum is ``paper._totals`` (the
+function the header's own totals use), so there is one reader and the sum is exact decimal; a paused
+strategy pauses the figure (never partial).
 """
 from __future__ import annotations
 
 import datetime
 from decimal import Decimal as D
 
+from ofo.tracking import paper_decay
 from ofo_app.routes import paper
 
 UTC = datetime.UTC
@@ -30,13 +32,9 @@ def _s(total_after: str | None, unbooked: str | None = "10.00", reason: str | No
             "booked_after": D("3.00"), "unbooked_after": D("9.00"), "as_of": None}
 
 
-def _item(figures: dict, opened: datetime.datetime, closed: datetime.datetime | None = None, scenario: str | None = None):
-    return paper.TodayItem(figures, paper_decay_zero(), opened, closed, scenario)
-
-
-def paper_decay_zero():
-    from ofo.tracking import paper_decay
-    return paper_decay.Decay(D(0), None)
+def _item(figures: dict, opened: datetime.datetime, closed: datetime.datetime | None = None,
+          scenario: str | None = None):
+    return paper.TodayItem(figures, paper_decay.Decay(D(0), None), opened, closed, scenario)
 
 
 def _at(day: int, hour: int = 4, minute: int = 0) -> datetime.datetime:
@@ -70,14 +68,17 @@ def test_closed_yesterday_is_left_out_and_opened_yesterday_closed_today_counts()
 
 
 def test_the_ist_day_boundary_not_the_utc_day():
-    # 24 Nov 23:50 UTC is 25 Nov 05:20 IST: today. 24 Nov 18:00 UTC is 24 Nov 23:30 IST: yesterday. 25 Nov 18:40 UTC is 26 Nov 00:10 IST: tomorrow
-    got = today([_item(_s("1.00"), _at(24, 23, 50)), _item(_s("2.00"), _at(24, 18, 0)), _item(_s("4.00"), _at(25, 18, 40))])
+    # 24 Nov 23:50 UTC is 25 Nov 05:20 IST: today. 24 Nov 18:00 UTC is 24 Nov 23:30 IST: yesterday.
+    # 25 Nov 18:40 UTC is 26 Nov 00:10 IST: tomorrow
+    got = today([_item(_s("1.00"), _at(24, 23, 50)), _item(_s("2.00"), _at(24, 18, 0)),
+                 _item(_s("4.00"), _at(25, 18, 40))])
     assert (got["count"], got["total_after"]) == (1, D("1.00"))
 
 
 def test_paused_one_trade_without_a_live_price_pauses_the_figure_with_the_reason_never_a_partial_sum():
-    got = today([_item(_s("100.10"), _at(25)), _item(_s(None, unbooked=None, reason="prices_not_live"), _at(25, 5))])
-    assert got["count"] == 2
+    items = [_item(_s("100.10"), _at(25)), _item(_s(None, unbooked=None, reason="prices_not_live"), _at(25, 5))]
+    got = today(items)
+    assert got["count"] == len(items)
     assert (got["total"], got["total_after"], got["totals_reason"]) == (None, None, "prices_not_live")
     assert got["after_charges_reason"] == "prices_not_live"
 

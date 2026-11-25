@@ -1,9 +1,10 @@
-"""D-61 (ADR-320 point 5, GC-ICLIVE-E): after "Buy back the untested short" leaves a long option with no short against it,
-the approach's What changes block says so in one line, decided from the server's resulting legs.
+"""D-61 (ADR-320 point 5, GC-ICLIVE-E): after "Buy back the untested short" leaves a long option with no short
+against it, the approach's What changes block says so in one line, decided from the server's resulting legs.
 
-Real case: C7 161: the buy-back of the 25700 CE leaves the long 25800 CE; the trade becomes a put spread plus a long call.
-Nearest fixtures (the recorded legs of 161 are not a fixture): ADJ-14 (call closed, long call stays) and ADJ-02 (put closed,
-long put stays). The sentence is the owner's, character for character; <call or put> is the long option's type.
+Real case: C7 161: the buy-back of the 25700 CE leaves the long 25800 CE; the trade becomes a put spread plus a
+long call. Nearest fixtures (the recorded legs of 161 are not a fixture): ADJ-14 (call closed, long call stays) and
+ADJ-02 (put closed, long put stays). The sentence is the owner's, character for character;
+<call or put> is the long option's type.
 """
 from __future__ import annotations
 

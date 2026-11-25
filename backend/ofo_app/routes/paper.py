@@ -465,9 +465,9 @@ class PaperTotalsOut(ApiModel):
 
 
 class PaperTodayOut(PaperTotalsOut):
-    """D-68 (ADR-320 point 6): the header's "Today" total: the same sums as ``totals`` (one function, ``_totals``), over the
-    real trades opened or closed today (IST) only. ``count`` 0 = nothing today (``empty_text`` says so; the figures are
-    then not shown)."""
+    """D-68 (ADR-320 point 6): the header's "Today" total: the same sums as ``totals`` (one function,
+    ``_totals``), over the real trades opened or closed today (IST) only. ``count`` 0 = nothing today
+    (``empty_text`` says so; the figures are then not shown)."""
     count: int = 0
     empty_text: CatalogueText | None = None
 
@@ -1029,7 +1029,8 @@ async def list_paper_strategies(db: Annotated[Any, Depends(get_db)],  # noqa: PL
     kept = [i for i, s in enumerate(out) if not _expired_open(s)]  # D-40: the strategies that can be priced
     totals = _totals([out[i] for i in kept], [decays[i] for i in kept], len(out) - len(kept))
     sorted_books = sorted(books, key=_newest_first, reverse=True)
-    today = today_totals([_today_item(out[i], decays[i], sorted_books[i]) for i in kept], answered.astimezone(paper.IST).date())
+    day = answered.astimezone(paper.IST).date()
+    today = today_totals([_today_item(out[i], decays[i], sorted_books[i]) for i in kept], day)
     return PaperListOut.model_validate({"strategies": out, "totals": totals, "today": today, "answered_at": now()})
 
 
@@ -1101,8 +1102,9 @@ def _today_item(figures: dict, decay: paper_decay.Decay, book: paper_store.UserB
 
 def today_totals(items: Sequence[TodayItem], day: datetime.date) -> dict:
     """D-68 (ADR-320 point 6): the sums of ``_totals`` (the function the header already reads, so one reader; exact
-    Decimal) over the REAL strategies opened or closed on ``day`` (the India date). A scenario strategy is left out; so is a
-    trade opened on an earlier day that is still open or was closed on an earlier day. A paused strategy pauses the figure
+    Decimal) over the REAL strategies opened or closed on ``day`` (the India date). A scenario strategy is left out;
+    so is a trade opened on an earlier day that is still open or was closed on an earlier day. A paused strategy
+    pauses the figure
     (REQ-109 AC-5: absent with the reason, never partial). Nothing today: count 0 and the sentence, no figure."""
     def on_day(at: datetime.datetime | None) -> bool:
         return at is not None and at.astimezone(paper.IST).date() == day

@@ -198,7 +198,7 @@ def lone_long_line(after: Sequence[PositionLeg] | None) -> ExplanationText | Non
     shorts = {x.type for x in after if x.side == "SELL"}
     lines = [render_explanation("adjust_lone_long", kind=_SIDE_WORD[t]) for t in ("CE", "PE")
              if t not in shorts and any(x.side == "BUY" and x.type == t for x in after)]
-    return render_explanation("adjust_wc_lines", first=lines[0], second=lines[1]) if len(lines) == 2 else next(
+    return render_explanation("adjust_wc_lines", first=lines[0], second=lines[1]) if len(lines) > 1 else next(
         iter(lines), None)
 
 
