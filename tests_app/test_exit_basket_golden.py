@@ -24,17 +24,28 @@ AT = datetime.datetime(2026, 10, 16, 15, 7, 20, tzinfo=datetime.timezone(datetim
 HELD = {"NSE_FO:47169": -65, "NSE_FO:47177": 65, "NSE_FO:47152": -65, "NSE_FO:47138": 65}
 LAST = {47169: D("53.30"), 47177: D("17.30"), 47152: D("65.15"), 47138: D("34.00")}
 GOLDEN = (
-    "KiteBasket(orders=(KiteOrder(instrument_id=InstrumentId(exchange_segment='NSE_FO', exchange_token=47138), exchange='NFO', tradingsymbol='NIFTY26O1922550PE', transaction_type='SELL', quantity=65, price=Decimal('33.95'), tag='Q0009030', order_type='LIMIT', product='NRML', variety='regular', readonly=True), "
-    "KiteOrder(instrument_id=InstrumentId(exchange_segment='NSE_FO', exchange_token=47152), exchange='NFO', tradingsymbol='NIFTY26O1922750PE', transaction_type='BUY', quantity=65, price=Decimal('65.20'), tag='Q0009031', order_type='LIMIT', product='NRML', variety='regular', readonly=True), "
-    "KiteOrder(instrument_id=InstrumentId(exchange_segment='NSE_FO', exchange_token=47169), exchange='NFO', tradingsymbol='NIFTY26O1923150CE', transaction_type='BUY', quantity=65, price=Decimal('53.35'), tag='Q0009032', order_type='LIMIT', product='NRML', variety='regular', readonly=True), "
-    "KiteOrder(instrument_id=InstrumentId(exchange_segment='NSE_FO', exchange_token=47177), exchange='NFO', tradingsymbol='NIFTY26O1923350CE', transaction_type='SELL', quantity=65, price=Decimal('17.25'), tag='Q0009033', order_type='LIMIT', product='NRML', variety='regular', readonly=True)))"
+    "KiteBasket(orders=(KiteOrder(instrument_id=InstrumentId(exchange_segment='NSE_FO', exchange_toke"
+    "n=47138), exchange='NFO', tradingsymbol='NIFTY26O1922550PE', transaction_type='SELL', quantity=6"
+    "5, price=Decimal('33.95'), tag='Q0009030', order_type='LIMIT', product='NRML', variety='regular'"
+    ", readonly=True), KiteOrder(instrument_id=InstrumentId(exchange_segment='NSE_FO', exchange_token"
+    "=47152), exchange='NFO', tradingsymbol='NIFTY26O1922750PE', transaction_type='BUY', quantity=65,"
+    " price=Decimal('65.20'), tag='Q0009031', order_type='LIMIT', product='NRML', variety='regular', "
+    "readonly=True), KiteOrder(instrument_id=InstrumentId(exchange_segment='NSE_FO', exchange_token=4"
+    "7169), exchange='NFO', tradingsymbol='NIFTY26O1923150CE', transaction_type='BUY', quantity=65, p"
+    "rice=Decimal('53.35'), tag='Q0009032', order_type='LIMIT', product='NRML', variety='regular', re"
+    "adonly=True), KiteOrder(instrument_id=InstrumentId(exchange_segment='NSE_FO', exchange_token=471"
+    "77), exchange='NFO', tradingsymbol='NIFTY26O1923350CE', transaction_type='SELL', quantity=65, pr"
+    "ice=Decimal('17.25'), tag='Q0009033', order_type='LIMIT', product='NRML', variety='regular', rea"
+    'donly=True)))'
 )
 
 
 def _quote_of(instrument_id, _token):
     last = LAST[instrument_id.exchange_token]
     tick = D("0.05")
-    depth = depth_from_levels([(last - tick * i, 1000) for i in range(1, 6)], [(last + tick * i, 1000) for i in range(1, 6)])
+    bids = [(last - tick * i, 1000) for i in range(1, 6)]
+    asks = [(last + tick * i, 1000) for i in range(1, 6)]
+    depth = depth_from_levels(bids, asks)
     return ep.LegQuote(depth, AT, last, (D("0.05"), D("500")))
 
 
