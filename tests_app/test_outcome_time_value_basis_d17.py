@@ -1,8 +1,8 @@
-"""D-17 (owner decided 25 Nov 2026, ADR-322 point 2): the builder summary's time value is at LIVE prices (REQ-081 AC-3) and
-says so: "at live prices, as of HH:MM:SS", the time being the oldest leg quote time the reply already serves
-(`oldest_quote_at`, IST). The credit beside it keeps its own basis label (`price_basis_text`, ADR-321 (8)).
+"""D-17 (owner decided 25 Nov 2026, ADR-322 point 2): the time value of the builder summary is at LIVE prices
+(REQ-081 AC-3) and says so: "at live prices, as of HH:MM:SS", the time being the oldest leg quote time the reply
+already serves (`oldest_quote_at`, IST). The credit beside it keeps its own basis label (`price_basis_text`).
 
-Core: the replay condor on the real route. Hand check: the sentence's clock equals oldest_quote_at read in IST; with a leg
+Core: the replay condor on the real route. Hand check: the sentence clock equals oldest_quote_at read in IST; with a leg
 quote that has no time the sentence says the time is not given instead of borrowing another time.
 """
 from __future__ import annotations
@@ -12,6 +12,8 @@ import json
 import pathlib
 import sys
 
+import pytest
+
 ROOT = pathlib.Path(__file__).resolve().parent.parent
 sys.path.insert(0, str(ROOT / "tests"))
 sys.path.insert(0, str(ROOT / "tests_app"))
@@ -19,7 +21,16 @@ sys.path.insert(0, str(ROOT / "tests_app"))
 from marketdata._kite_fixture import all_instrument_ids, new_provider, replay  # noqa: E402
 from ofo.marketdata import quote as quote_module  # noqa: E402
 from test_outcome_margin import _body  # noqa: E402
-from test_outcome_price_basis_d15 import _post, replayed  # noqa: E402, F401
+from test_outcome_price_basis_d15 import _post  # noqa: E402
+
+
+@pytest.fixture(scope="module")
+def replayed():
+    provider, clock, items = new_provider()
+    provider.subscribe(all_instrument_ids(items))
+    replay(provider, clock)
+    return provider
+
 
 IST = datetime.timezone(datetime.timedelta(hours=5, minutes=30))
 
