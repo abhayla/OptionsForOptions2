@@ -6,11 +6,11 @@ const newestFirst = computed(() => [...toasts].reverse())
 </script>
 
 <template>
-  <!-- u506: an overlay fixed at the BOTTOM RIGHT, where no page has a control (the Search boxes are top right). It takes no
-       room, so no page content moves; flex-col-reverse puts the newest (first in the DOM) nearest the corner and stacks the
-       older ones upward. bottom-24 clears a one-row sticky bar (OptionChainPage.vue:292). z-30 is below the modal and the
-       common drawer (z-50) and the adjust drawer (z-40), so a pop-up never covers a Confirm or Cancel. -->
-  <div class="fixed bottom-24 right-4 z-30 flex w-80 flex-col-reverse gap-2" aria-live="polite" data-testid="toast-host">
+  <!-- D-67 (owner decision, binding; replaces the u506 fixed bottom-right overlay, which still covered page buttons): the pop-ups are an
+       ordinary block in the page flow, between the header and the page content, in the page's own column width. Being in the flow
+       it can overlay nothing: the page content is laid out below it (the same way the scenario and calendar banners are). It takes
+       no room with no pop-up. Newest first (top). -->
+  <div v-if="newestFirst.length" class="mx-auto flex w-full max-w-[1200px] flex-col gap-2 px-4 pt-3" aria-live="polite" data-testid="toast-host">
     <div
       v-for="t in newestFirst"
       :key="t.id"
