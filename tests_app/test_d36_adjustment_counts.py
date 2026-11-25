@@ -143,3 +143,48 @@ async def test_check_counts_and_reply(app_db_url, monkeypatch, capsys):
         print(f"\nD36 CHECK funds={counts.funds} basket={counts.basket} kite={counts.kite} sql={counts.sql} "
               f"held={counts.held_in_wait} max_in_flight={counts.max_in_flight}")
     _golden("check", body)
+
+
+# ---- AFTER (Tests first: the targets of the fix, D-36) ----------------------------------------------------------
+# The margin reads' available-funds figure is read once per request (the regime read is one more, its own reader),
+# every basket is still asked once, no connection is held while the broker is waited on, and the independent basket
+# reads run together but bounded (the limiter's 10/s and 5 s rules; MAX_TOGETHER below).
+MAX_TOGETHER = 4
+DISTINCT_BASKETS = 6
+
+
+async def test_after_approaches_one_funds_read_for_margins_no_connection_held_reads_together(
+        app_db_url, monkeypatch):  # noqa: F811
+    counts, status, _body = await _counted(app_db_url, monkeypatch, "POST")
+    assert status == 200
+    assert counts.funds <= 2, "funds: one for the margins (this request) + the regime read"  # noqa: PLR2004
+    assert counts.basket == DISTINCT_BASKETS, "a basket asked N times is asked once, none is skipped"
+    assert counts.held_in_wait == 0, "no database connection is checked out while the broker is waited on"
+    assert 2 <= counts.max_in_flight <= MAX_TOGETHER, "independent reads together, bounded"  # noqa: PLR2004
+
+
+async def test_after_check_no_connection_held_in_the_broker_wait(app_db_url, monkeypatch):  # noqa: F811
+    counts, status, _body = await _counted(app_db_url, monkeypatch, "GET")
+    assert status == 200
+    assert counts.held_in_wait == 0
+    assert (counts.basket, counts.funds) == (1, 2)  # one margin read + the regime read, unchanged
+
+
+async def test_after_a_failed_basket_read_is_its_own_figure_not_available_no_retry(app_db_url, monkeypatch):  # noqa: F811
+    """One basket call fails (HTTP 503 from Kite): that approach says plainly it could not be read, no figure, the
+    others keep their golden figures, and the failed basket is not asked again (ADR-016 to ADR-019)."""
+    counts, status, body = await _counted(app_db_url, monkeypatch, "POST", fail=3)
+    assert status == 200, body
+    assert counts.basket == DISTINCT_BASKETS, "no automatic retry"
+    golden = {a["id"]: a for a in json.loads((GOLDEN / "approaches.json").read_text(encoding="utf-8"))["approaches"]}
+    failed = [a for a in body["approaches"] if (a.get("margin") or {}).get("state") not in
+              (None, "stated", "not_needed")]
+    assert len(failed) >= 1
+    for a in failed:
+        assert a["margin"]["value"] is None
+        assert "could not be read" in a["margin"]["reason"]
+    stated_gold = {i for i, a in golden.items() if (a.get("margin") or {}).get("state") == "stated"}
+    for a in body["approaches"]:
+        if a not in failed and a["id"] in stated_gold:
+            assert a["margin"] == golden[a["id"]]["margin"]
+            assert a["after_legs"] == golden[a["id"]]["after_legs"]  # the other figures stay
