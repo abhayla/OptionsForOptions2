@@ -4386,5 +4386,9 @@
   "explanation:suggestion_counts_units": {
     "sha256": "c46d2ddef594540e5e7b25a60bd6fc473dad1dcae9ae71ec37474ffbd8c171b2",
     "reviewed": "pending owner read"
+  },
+  "explanation:suggestion_lapsed_contract_expired": {
+    "sha256": "555637ef88c67b94651c99048afae3d5c03b7d085735c08ef5af7f1f75e6e61d",
+    "reviewed": "pending owner read"
   }
 }

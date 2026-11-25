@@ -51,6 +51,9 @@ class _Store:
     async def lapse_changed(self, _w):
         return False
 
+    async def lapse_expired(self, _w, _today):
+        return False
+
     async def apply(self, w, events):
         await asyncio.sleep(0)
         if self.fail:
@@ -380,6 +383,9 @@ class _IdStore:
         return background.GateLoad(background.alert_gate.GateRows((), 0))
 
     async def lapse_changed(self, _w):
+        return False
+
+    async def lapse_expired(self, _w, _today):
         return False
 
     async def apply(self, w, events):

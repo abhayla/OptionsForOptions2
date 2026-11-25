@@ -174,6 +174,9 @@ class FakeGate:
     async def lapse_changed(self, _w):
         return False
 
+    async def lapse_expired(self, _w, _today):
+        return False
+
 
 def _settings(values=None):
     """The worker's settings seam: ``values`` (a dict a test may change between cycles), else the registry defaults."""

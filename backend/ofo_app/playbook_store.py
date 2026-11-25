@@ -61,8 +61,10 @@ LAPSE_SUPERSEDED_BY_WORSE = "superseded_by_worse"
 LAPSE_NOT_MONITORED = "not_monitored"
 #: #685 item 3: a basket was booked, so the record was raised for a position the strategy no longer holds.
 LAPSE_POSITION_CHANGED = "position_changed"
+#: D-30: every contract of the strategy expired (its last expiry is before today, IST).
+LAPSE_CONTRACT_EXPIRED = "contract_expired"
 LAPSE_REASONS = (LAPSE_CONDITION_STOPPED, LAPSE_STRATEGY_CLOSED, LAPSE_SUPERSEDED_BY_WORSE, LAPSE_NOT_MONITORED,
-                 LAPSE_POSITION_CHANGED)
+                 LAPSE_POSITION_CHANGED, LAPSE_CONTRACT_EXPIRED)
 WORSE_MARKS = (None, "last", "dismissed")  # = migration 0036 WORSE plus none (a test asserts it)
 HELD_REASONS = ("daily_limit", "quiet_time")  # = alert_gate.HELD_DAILY_LIMIT / HELD_QUIET_TIME
 SOURCE_SYSTEM = "system"  # "Adjustment opportunity detected" (a system playbook's flag)
@@ -859,6 +861,15 @@ def changed_position(open_records: Iterable[Suggestion], current: int | None) ->
     if not isinstance(current, int) or isinstance(current, bool):
         return []
     return [s for s in open_records if s.adjustments is not None and s.adjustments != current]
+
+
+async def lapse_expired(conn: Any, user_ref: str, strategy_id: int, expiry: Any, today: Any) -> list[Suggestion]:
+    """D-30: the strategy's open records lapse as contract_expired once its last expiry is before ``today``. The expiry
+    day itself is still live; an unknown expiry or day lapses nothing (never a guess)."""
+    if expiry is None or today is None or not expiry < today:
+        return []
+    return [await lapse(conn, user_ref, s.id, LAPSE_CONTRACT_EXPIRED)
+            for s in await open_suggestions(conn, user_ref, strategy_id)]
 
 
 async def lapse_changed(conn: Any, user_ref: str, strategy_id: int, current: int | None) -> list[Suggestion]:

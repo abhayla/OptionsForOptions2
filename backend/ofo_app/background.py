@@ -815,6 +815,19 @@ class DbGateStore:
         return bool(lapsed)
 
 
+    async def lapse_expired(self, w: Watched, today: datetime.date) -> bool:
+        """D-30: the open records of a strategy whose last expiry is before ``today`` lapse as contract_expired
+        (``playbook_store.lapse_expired``); True when any did. A failure raises, as ``lapse_changed``."""
+        from ofo_app import playbook_store  # noqa: PLC0415 - database layer at run time
+        from ofo_app.db import get_sessionmaker  # noqa: PLC0415
+        legs = w.tracked.position.legs
+        expiry = max((x.expiry for x in legs), default=None)
+        async with get_sessionmaker()() as db:
+            lapsed = await playbook_store.lapse_expired(db, w.user_ref, w.strategy_id, expiry, today)
+            await db.commit()
+        return bool(lapsed)
+
+
 Lister = Callable[[], Awaitable[list[Watched]]]
 Recorder = Callable[[Watched, pe.StrategyState, Preferences], Awaitable[Any]]
 #: (underlying, IST trading day, expiry, ATM IV) -> stored (ADR-277 (4)); ``record_daily_iv`` is the real one
@@ -963,6 +976,10 @@ class Worker:
                 self._signature.pop(w.strategy_id, None)
                 self._tick.pop(w.strategy_id, None)
         old = {w.strategy_id: w for w in self.monitors}
+        today = self._clock().astimezone(IST).date()
+        for w in monitors:  # D-30: records of expired contracts lapse (the one writer, ADR-237 (6))
+            async with held(self.db_gate, GATE_REBUILD):
+                await self._gate_store.lapse_expired(w, today)
         for w in monitors:
             if _count_of(w.tracked) is None:  # an unreadable count lapses nothing (and resets nothing)
                 continue

@@ -1574,6 +1574,7 @@ _EXPLANATIONS: tuple[ExplanationTemplate, ...] = (
     ExplanationTemplate("suggestion_lapsed_condition_stopped", "values_seen", "The condition stopped holding"),
     ExplanationTemplate("suggestion_lapsed_strategy_closed", "values_seen", "The strategy closed"),
     ExplanationTemplate("suggestion_lapsed_not_monitored", "values_seen", "The strategy is no longer monitored"),
+    ExplanationTemplate("suggestion_lapsed_contract_expired", "values_seen", "The contracts have expired"),
     ExplanationTemplate("suggestion_lapsed_position_changed", "values_seen", "The position changed"),
     ExplanationTemplate("suggestion_lapsed_superseded_by_worse", "values_seen", "A worse reading of the same rule replaced it"),
     ExplanationTemplate("suggestion_dismiss_expected_within_plan", "values_seen", "Expected and within my plan"),
