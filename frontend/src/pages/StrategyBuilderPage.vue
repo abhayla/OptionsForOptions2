@@ -440,16 +440,18 @@ const { readFailed: paperBookFailed } = usePriceFreshness({
   serverState: () => paper.value?.book?.state,
 })
 const exitBlocked = computed(() => paperBookFailed.value || paperContractsChanged.value)
-const exitOrigin = ref(false) // the open confirm dialog was opened by Exit all or a per-leg Exit (not by "Review and add")
+const exitOrigin = ref(false) // the pending edits came from Exit all or a per-leg Exit; stays true until they are posted or discarded (ADR-328 (4))
 const paperTotal = computed(() => (paper.value ? paperPnlBlock(paper.value.book, paperBookFailed.value) : null))
 function reviewPending(fromExit = false) { // the "Review and add" button passes its click event: only `true` marks an Exit
   if (!paper.value || paperStale.value || !pendingOrders.value?.length) return
-  exitOrigin.value = fromExit === true
+  if (fromExit === true) exitOrigin.value = true // never reset here: "Review and add" of Exit edits is still an Exit
+  if (exitOrigin.value && exitBlocked.value) return // post nothing; the panel's reason line says why
   paperError.value = ''
   paperState.value = PAPER_STATE.READY
   paperRows.value = confirmRowsFor(pendingOrders.value, paper.value.book, contractName, livePriceById.value)
   paperDialog.value = true
 }
+watch(pendingOrders, (o) => { if (!o?.length) exitOrigin.value = false }) // posted, discarded or edited back: no Exit edits are left
 const discardPending = () => { if (paper.value) setLegs(copyLegs(paper.value.net)) }
 // GC-TP step 3b2 (Sensibull Drafts Mode 274-279): Exit all / a (partial) Exit only EDIT the legs (none / the contract less N lots),
 // then open the same confirm list: the orders are paperOrdersFor(net, legs) like every other edit, never built here.
