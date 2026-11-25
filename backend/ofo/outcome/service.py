@@ -428,6 +428,11 @@ def _feed_message(snapshot: MarketSnapshot) -> ExplanationText | None:
     """REQ-049 AC-5's message when the feed is not live; the last update is the newest input time we hold."""
     if snapshot.status.health is DataHealth.AVAILABLE:
         return None
+    # D-39: one source for "live": the message follows the freshness of the prices this reply shows. A feed status that
+    # reads disconnected while the spot and every leg price held are available is a read made at another instant.
+    held = [q for q in [snapshot.spot, *(lm.quote for lm in snapshot.legs.values())] if q is not None]
+    if snapshot.spot is not None and all(q.health is DataHealth.AVAILABLE for q in held):
+        return None
     return _not_live_label(snapshot)
 
 
