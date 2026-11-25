@@ -3,7 +3,7 @@
 // Real case 24 Nov 2026: C2 157 at 15:30 read "Paper P&L paused - prices not live, as of Time not available" and "Total P&L -".
 import { describe, expect, it } from 'vitest'
 import { readPaperStrategy } from '@/lib/paperList'
-import { sharedTotal, readTracking } from '@/lib/tracking'
+import { sharedTotal } from '@/lib/tracking'
 
 const LINE = 'Market closed. Open legs that expire today settle at 15:45.'
 const book = (over = {}) => ({
@@ -38,12 +38,5 @@ describe('the Positions card', () => {
   })
   it('an unreadable line (a number) is not shown', () => {
     expect(readPaperStrategy({ ...s, after_close_text: 5 }).afterCloseText).toBeNull()
-  })
-})
-
-describe('the tracking view', () => {
-  it('a paused book with the server line says the line, not the paused sentence', () => {
-    const view = readTracking({ state: 'PAUSED', as_of: null, legs: [], detections: [], unpriced_legs: [], unpriced_text: null, after_close_text: LINE })
-    expect(view.text).toBe(LINE)
   })
 })

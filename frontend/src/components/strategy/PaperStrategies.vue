@@ -108,6 +108,7 @@
             <p v-if="g.closedText" class="mt-1 font-semibold" data-testid="paper-closed-result">{{ g.closedText }}</p>
             <p v-if="g.stateText" class="mt-1" data-testid="paper-state">{{ g.stateText }}</p>
             <!-- ADR-311: the open legs with no price, named by the server; the totals above stay paused -->
+            <p v-if="g.afterCloseText" class="mt-1 text-xs text-ink-muted" data-testid="paper-after-close">{{ g.afterCloseText }}</p>
             <p v-if="g.unpricedText" class="mt-1 text-xs text-ink-muted" data-testid="paper-unpriced">{{ g.unpricedText }}</p>
             <div class="mt-2 flex gap-3">
               <table v-if="g.positions.length || g.closed.length" class="w-full min-w-0 flex-1 text-left">

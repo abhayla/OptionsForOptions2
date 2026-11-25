@@ -140,7 +140,8 @@ export function readPaperStrategy(s, index = 0) {
     charges: text(s.charges_text), // GC-TP step 8b: beside the P&L, never subtracted from it (REQ-109 AC-10)
     chargesReason: text(s.charges_reason_text),
     pauseReason,
-    unpricedText: text(s.unpriced_text), // ADR-311: the open legs with no price, named by the server
+    afterCloseText: text(s.after_close_text), // D-64: after the close the server's line replaces the unpriced naming
+    unpricedText: text(s.after_close_text) !== null ? null : text(s.unpriced_text), // ADR-311: the open legs with no price, named by the server
     totalAfter: afterFigure(s, text(s.total_text), pauseReason), // GC-ICFIX u123: the headline total, labelled
     bookedAfter: afterFigure(s, text(s.booked_text), pauseReason, 'booked_after_text', ['paid']), // u124 (ADR-303): the same rule per figure; u127: Booked carries the charges paid
     unbookedAfter: afterFigure(s, text(s.unbooked_text), pauseReason, 'unbooked_after_text', ['close']), // ... Unbooked the estimate to close

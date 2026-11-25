@@ -71,6 +71,8 @@ from ofo.outcome.snapshot import forward_strike_ids
 from ofo.strategy import stored_form as sf
 from ofo.strategy.definition import describe_contract, display_contract
 from ofo.table.model import display_number
+from ofo.market_calendar import after_close_before_settlement
+from ofo.settings import calc
 from ofo.timeutil import IST
 from ofo.tracking import paper, paper_decay, paper_greeks, stops
 from ofo.tracking.orderbook import ClosedLeg, NetPosition, PaperOrder, is_typed_price, lifecycles, net_positions
@@ -230,6 +232,8 @@ class UnpricedFields(ApiModel):
     one line naming them (reviewed templates), absent when every open leg has a price."""
     unpriced_legs: list[UnpricedLegOut] = Field(default_factory=list)
     unpriced_text: CatalogueText | None = None
+    # D-64: set after the close and before the settlement time while an open leg expires today (server clock, one place)
+    after_close_text: CatalogueText | None = None
 
 
 class PaperOrderOut(ApiModel):
@@ -966,6 +970,7 @@ async def _book(db: Any, stored: Any, orders: Sequence[paper_store.StoredOrder],
     charges = _charges(orders, found, underlying, rates)
     figures = (base | _summary(orders, found, prices, base, snapshot, underlying, exited_absent=False, rates=rates)
                | charges | _after(orders, found, prices, charges, underlying, rates))
+    figures |= await _after_close(db, answered_at, figures)
     return PaperBookOut.model_validate(figures | {
         "strategy_id": stored.id, "name": sf.shown_name(stored.name), "underlying": underlying,
         "answered_at": answered_at, "orders": _order_rows(orders, found),
@@ -1022,6 +1027,7 @@ async def list_paper_strategies(db: Annotated[Any, Depends(get_db)],  # noqa: PL
         open_legs = sum(1 for p in figures["positions"] if p["net_quantity"] != 0)
         charges = _charges(b.orders, found, b.underlying, rates)
         figures |= charges | summary | _after(b.orders, found, prices, charges, b.underlying, rates)
+        figures |= await _after_close(db, answered, figures)
         out.append(figures | {"strategy_id": b.strategy_id, "name": sf.shown_name(b.name), "underlying": b.underlying,
                               "held": _held_out(held_rows.get(b.strategy_id)),
                               "status_word": _paper_word(b.status, figures["positions"]),
@@ -1032,6 +1038,21 @@ async def list_paper_strategies(db: Annotated[Any, Depends(get_db)],  # noqa: PL
     day = today_day([snapshots.get(b.underlying) for b in sorted_books], answered)
     today = today_totals([_today_item(out[i], decays[i], sorted_books[i]) for i in kept], day)
     return PaperListOut.model_validate({"strategies": out, "totals": totals, "today": today, "answered_at": now()})
+
+
+async def _after_close(db: Any, now: datetime.datetime, figures: Mapping[str, Any]) -> dict[str, Any]:
+    """D-64: the line that replaces the raw "prices not live" / "cannot be used: expired" texts after the 15:30 close,
+    while a leg expiring today is still open (the settlement at ``facts.paper_settle_from`` closes it). The market clock
+    is ``ofo.market_calendar``; the legs are the book's own open positions."""
+    from ofo_app import settings_store  # noqa: PLC0415 - one read, only when the clock says after close
+    today = now.astimezone(IST).date()
+    if not any(p["net_quantity"] != 0 and p["expiry"] == today for p in figures["positions"]):
+        return {}
+    settle_from = calc.paper_settle_from(await settings_store.settings_in_force(db))
+    if not after_close_before_settlement(now, settle_from):
+        return {}
+    return {"after_close_text": render_explanation("market_closed_settles", time=settle_from),
+            "unpriced_text": None}
 
 
 def _expired_open(strategy: Mapping[str, Any]) -> bool:

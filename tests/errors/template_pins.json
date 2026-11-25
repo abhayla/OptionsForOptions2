@@ -2011,6 +2011,10 @@
     "sha256": "5fc2370ab969c942d422bda5a3f2a6f827413d51d1cd910f82dbe277d2c76014",
     "reviewed": "owner read 2026-10-29 (ADR-210, question tool \"Approve all 7\")"
   },
+  "explanation:market_closed_settles": {
+    "sha256": "acfd7acaaeae7ad9da5804f51eccb93a001e32678c59453de61a0f500da377eb",
+    "reviewed": "pending owner read"
+  },
   "explanation:paper_reason_contract_retired": {
     "sha256": "4bcb1927b911126b4adcdafb415176c48e961a76af83a640d6116e2fa9a0fbb1",
     "reviewed": "owner read 2026-10-29 (ADR-210, question tool \"Approve all 7\")"

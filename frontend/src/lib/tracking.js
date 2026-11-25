@@ -176,9 +176,10 @@ export function sharedTotal(book, failed = false) {
   const notLive = book.state === 'PAUSED' || book.state === 'NOT_CONNECTED'
   const shown = afterFigure(book, serverText(book.total_text), pausedText(book.as_of ?? null))
   const at = istClock(book.answered_at ?? null)
-  const line = failed ? pausedText(book.answered_at ?? null) : notLive ? pausedText(book.as_of ?? null) : at === null ? null : `As of ${at} IST`
+  const closedLine = serverText(book.after_close_text) // D-64: after the close the server's sentence says why, in place of "prices not live"
+  const line = failed ? pausedText(book.answered_at ?? null) : closedLine !== null && notLive ? closedLine : notLive ? pausedText(book.as_of ?? null) : at === null ? null : `As of ${at} IST`
   // ADR-311: the legs that pause the total, named by the server (null when none); a paused total is never a number
-  return { kind: shown.kind, text: shown.text, label: shown.label, reason: shown.reason, breakdown: shown.breakdown, line, unpriced: serverText(book.unpriced_text) }
+  return { kind: shown.kind, text: shown.text, label: shown.label, reason: shown.reason, breakdown: shown.breakdown, line, unpriced: closedLine !== null ? null : serverText(book.unpriced_text) }
 }
 
 const STATES = new Set(['LIVE', 'PAUSED', 'NOT_CONNECTED', 'EXITED'])
