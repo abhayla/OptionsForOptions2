@@ -1,6 +1,22 @@
 # Results: one door per capability (modular clean-up)
 
-Plan: `PLAN.md`. Branch `refactor/modular-doors`. Updated per phase.
+Plan: `PLAN.md`. Owner questions: `owner-questions.md`. Branch `refactor/modular-doors`.
+
+**Status: PAUSED 25 Nov 2026 on the owner's instruction (relayed by the GC-ICLIVE orchestrating session) after
+Phase 2. Pushed head `0e30edc1`. Phases 1 and 2 are done and pushed; Phase 3 is part-way, saved as a patch
+(`phase3-wip.patch.txt`); Phases 4-8 are not started.** This file is written so a fresh session can carry on from it alone.
+Read `PLAN.md` for the why and the per-phase Core / Proof, then this file for what is done.
+
+| Phase | Scope | State | Where |
+|---|---|---|---|
+| 1 | B3 `read_market` + B5 `check_trigger_levels` (D-01, S-20, ADR-327) | DONE, pushed | `fce27095`, `58bd51d9`, `3b8ae9b7` |
+| 2 | B4 `may_act` + F1 `priceState` (D-05 server half, D-39) | DONE, pushed | `707bc5d4`, `0e30edc1` |
+| 3 | F3 + F5 + B6 one paper book source (D-41) | PARTIAL: red tests committed in the patch; code written but unreviewed and ungated | `phase3-wip.patch.txt` (not on the branch) |
+| 4 | B1 `exit_strategy` + F2 shared exit gate (D-05) | NOT STARTED | `PLAN.md` Phase 4 |
+| 5 | F6 `useLegDoor` (D-60) | NOT STARTED | `PLAN.md` Phase 5, OQ-1 |
+| 6 | B2, B7, F7, F8 (maintenance; B2 needs Tier A review) | NOT STARTED | `PLAN.md` Phase 6 |
+| 7 | 23 Nov helpers R2-R12 (R1 parked) | NOT STARTED | `PLAN.md` Phase 7 |
+| 8 | Guard test with exemption list and allowlist | NOT STARTED | `PLAN.md` Phase 8 |
 
 ## Phase 1: B3 read_market + B5 trigger check (D-01, S-20, ADR-327)
 
@@ -24,8 +40,15 @@ template `paper_trigger_price_unreadable` (ADR-327); a live crossed price keeps 
 unheld-feed route twin); `test_paper_monitor.py`: 23 (DB, incl. S-20); `test_paper_order_door.py` (`market_read` added to
 `PAPER_MODULES`); `tests/errors`: 710 (new template pin, "pending owner read").
 
-**Commits.** `fce27095` tests (red), `58bd51d9` code (green), then the gates commit (ruff ratchet, ADR-327 coverage
-stage, repo scans, two review test pins). Tier A review (Opus): PASS.
+**Commits.** `fce27095` tests (red), `58bd51d9` code (green), `3b8ae9b7` gates (ruff ratchet, ADR-327 coverage stage,
+repo scans) and two review pins. **Review:** Tier A, Opus: PASS, no critical or major finding. Minors fixed in
+`3b8ae9b7`: the production 3 s wait is pinned by a test, and a route twin test was added. **Prepush:** TOTAL PASS on
+`3b8ae9b7`.
+
+**Pending owner read.** The error template `paper_trigger_price_unreadable` (STRATEGY_VALIDATION_446, pin in
+`tests/errors/template_pins.json`): only its first sentence ("Not saved: the live price could not be read, so this level
+cannot be checked. Try again in a moment.") is ADR-327's. Its impact and next-action lines are builder wording and need the
+owner's read (open question 3 below).
 
 **Deferred.**
 - The Keep-this-level route (`keep_paper_trigger`) has no price check (review finding 4; ADR-317 treats it as low risk).
@@ -100,6 +123,132 @@ server exit price, adjustment limit, save paths, batch buys first, triggers rout
 tracking, tracking list, IC exits, monitor); whole vitest suite green. One pin updated:
 `tests/orchestrator/test_select_app_tests.py` PR241_SELECTION gains the new test file (it imports modules that diff changes).
 
-**Commits.** `707bc5d4` tests (red), then the code commit (see `git log`).
+**Not wired yet.** `readOk` / `exitReason` (`usePriceFreshness`) and `NOT_LIVE_EXIT` are ready for the Phase 4 Exit gate;
+no Exit button changed in Phase 2.
 
-## Phase 3..8: not started
+**Commits.** `707bc5d4` tests (red), `0e30edc1` code (green). **Review:** Tier B, Sonnet: PASS, no critical or major
+finding. **Prepush:** TOTAL PASS on `0e30edc1`.
+
+## Phase 3: PARTIAL (F3 + F5 + B6, D-41), saved as `phase3-wip.patch.txt`
+
+**What the patch holds.** One file, two parts, separated by the line `# ---- uncommitted green-attempt diff on top of 8de187b4 ----`:
+1. A `git format-patch` of commit `8de187b4` (Phase 3 tests first, red): `frontend/tests/one-source-d41.test.js` (5 tests:
+   same LTP per leg on both builder panels, rows add up to the before-charges total on both, headline stays the
+   after-charges text, `legPricesOf`, `paperPnlBlock`) and `tests_app/test_strategy_money_view.py` (13 tests, no DB: engine
+   parity, paper page and tracking page agree at one price set, the four routes call the door and no engine function, no
+   arithmetic in the module).
+2. An uncommitted, UNREVIEWED code diff on top (green attempt): new `backend/ofo_app/strategy_money.py`
+   (`strategy_money_view(orders, prices, *, totals_priced=True)` -> `MoneyView`; the signature differs from the plan's
+   `(strategy_id, prices)` because callers already hold the orders and the paper `_figures` signature is pinned by
+   `test_paper_unpriced_names.py`); edits to `routes/paper.py` (`_figures`, `_extremes`, `_after`), `routes/tracking.py`
+   (`_book_figures`), `TrackingPanel.vue`, `lib/usePaperBookRead.js` (`legPricesOf`, `paperPnlBlock`),
+   `StrategyBuilderPage.vue`, `ChartCard.vue`, `tests_app/test_paper_order_door.py` (`strategy_money` added to
+   `PAPER_MODULES`), `tests_app/test_strategy_money_view.py`, and a Phase 3 draft of this RESULTS file (superseded by the
+   section you are reading; its facts are kept here).
+
+**State at the stop.** The builder reported: whole vitest 2613 passed; the DB test files it ran green. NOT run: repo scans,
+ruff ratchet, coverage, `ci_local`. NO review. Nothing from Phase 3 is on the branch or pushed. A copy of the work may
+exist in the machine-local worktree `/home/user/wt-p3` (branch `wt/phase3`, at `8de187b4` plus uncommitted files); it is
+gone on a new container, the patch file is the durable copy.
+
+**Price basis (decided before the source changed).** The Paper P&L panel's leg rows now use the paper book's own price,
+`ofo.tracking.paper.display_price` (book route `_prices`, `routes/paper.py`), the price the Net Positions table, the Total
+and the P&L table already use. Before, the rows came from `/strategies/{id}/tracking`, which prices each leg with
+`leg_price` (live only) on its own poll. Spec: ADR-212 ("After market hours, paper positions show LTP and P&L from the last
+close, as the builder does"); REQ-109 AC-5 unchanged in market hours (`display_price` is exactly `leg_price` then). Visible
+change: only the after-hours panel rows (a dash before, the last close now). Fills, stops and triggers keep `leg_price`.
+
+**Callers, before -> after (as written in the patch).** Server "price answers -> live map -> engine call": `_figures`,
+`_extremes`, `_after` (paper), `_book_figures` (tracking) = 4 copies -> 1 door. Screen: the panel's `/tracking` leg rows
+(a second poll of the same legs) -> the book's `LegPrice`; headline and the builder's `paperTotal` -> `paperPnlBlock`.
+
+**Left, with the reason (as written in the patch).** `routes/outcome.py read_booked`, `routes/adjustment_history.py
+closed_figures`, `routes/adjustment.py price_after`: other questions. Rounding stays per route (`_exact` on the book page,
+`to_paise` on tracking): reply shapes must not change. `PaperBookPanel` total, `readPaperList` / `usePaperPnl`,
+`readTracking`, `AdjustCompare.vue :262`: other replies or wording. The `/paper/strategies` list pollers stay separate from
+the builder's per-strategy read. The panel's `/tracking` poll still runs for detections, rules and exits.
+
+**How to resume.** These commands were verified on 25 Nov in a throwaway worktree at `0e30edc1`: the first part applied with
+`git am`, the second with `git apply`, and `git status` showed the 10 entries below; the worktree was then removed. The
+first part's sha changes on `am` (it was `8de187b4`). Run the `sed` lines as their own command first: a hook refuses
+`git am` / `git apply` of a patch file created in the same command.
+
+```
+git checkout -b wt/phase3-resume 0e30edc1
+sed -n '1,/^# ---- uncommitted/p' docs/design/modular-doors-2026-11-25/phase3-wip.patch.txt | head -n -1 > /tmp/p3a.patch
+sed -n '/^# ---- uncommitted/,$p' docs/design/modular-doors-2026-11-25/phase3-wip.patch.txt | tail -n +2 > /tmp/p3b.patch
+git am /tmp/p3a.patch
+git apply /tmp/p3b.patch
+git status --short
+```
+
+Expected `git status --short` (10 entries): modified `backend/ofo_app/routes/paper.py`, `backend/ofo_app/routes/tracking.py`,
+`docs/design/modular-doors-2026-11-25/RESULTS.md`, `frontend/src/components/strategy/ChartCard.vue`,
+`frontend/src/components/strategy/TrackingPanel.vue`, `frontend/src/lib/usePaperBookRead.js`,
+`frontend/src/pages/StrategyBuilderPage.vue`, `tests_app/test_paper_order_door.py`, `tests_app/test_strategy_money_view.py`;
+untracked `backend/ofo_app/strategy_money.py`. Note: the `RESULTS.md` change in the patch is a draft that replaces the
+"Phases 4..8" line of an older RESULTS; on the resume branch (which already has this file) keep this file and fold in only
+what Phase 3 needs. If the resume branch is not based on `0e30edc1`, merge first, then re-apply.
+
+## Phases 4..8: not started
+
+## Next step (exact)
+
+1. Resume Phase 3 from the patch (commands above), then commit the code as the green commit.
+2. Run the gates: repo scans, ruff ratchet, coverage, `python tools/ci_local.py` (see gate notes), the DB files for the
+   routes touched (paper routes, tracking, tracking list, adjustment, order door), whole vitest.
+3. Tier B review (fresh Sonnet, adversarial); fix findings; prepush; push.
+4. Phases 4-8 per `PLAN.md` (tests first as their own commit, then code; Phase 6 B2 gets a Tier A Opus review).
+5. Finish list of the owner's brief: merge the latest `origin/fix/ic-live-test-1123` into the branch; finish this RESULTS
+   file with the screen-check list for D-01, D-05, D-41, D-60, S-20 and the re-test list; `ci_local` TOTAL PASS; open a
+   DRAFT PR into `fix/ic-live-test-1123` with a Spec-deviation block, Class 3, for ADR-327. Do not merge this branch into
+   the fix branch until the owner says so (Q1).
+
+## Screen-check list so far (click by click), for what is fixed
+
+- **D-01 (Phase 1).** Positions > Paper > Stops > Conditional exit. Choose "Above a level the index is already beyond",
+  in market hours, Save: "Not saved: the live price is already at or beyond this level ..." (the already-crossed text).
+  With the price feed stopped (market hours), Save: "Not saved: the live price could not be read, so this level cannot be
+  checked. Try again in a moment." With the market closed, Save: saved (arms at the next live tick).
+- **S-20 (Phase 1).** Arm only a leg stop (no conditional exit) on a paper strategy in market hours, let it fire: the
+  alert carries the NIFTY value, not "not available".
+- **D-05, D-41, D-60:** not fixed yet (Phases 3-5). Once Phase 3 lands: the builder's Net Positions table and the Paper
+  P&L panel show the same LTP per leg, the leg P&L rows add up to the before-charges total; after hours the panel rows
+  show the last close.
+
+## Re-test list (screens touched so far)
+
+- Positions > Paper > Stops (trigger save).
+- Paper alerts for leg stops.
+- Paper exit from Positions (the market-closed refusal path now goes through `may_act`).
+- Builder paper panels (`paperBookFailed` rename, no visible change).
+- Every place showing "Paper P&L paused - prices not live" or the not-connected text (constants merged, no text change).
+- With Phase 3 resumed: builder Net Positions and Paper P&L panel, and the after-hours panel rows.
+
+## Gate notes for the next session
+
+- Run python gates with the proxy variables unset: `env -u HTTPS_PROXY -u HTTP_PROXY -u https_proxy -u http_proxy
+  -u ALL_PROXY -u all_proxy python tools/ci_local.py`.
+- Prepush takes about 31-33 minutes per head, and a hook refuses a push without it.
+- Known guard traps: the money-outside-engine scan flags `+` in new backend files; the settings-reader guard;
+  line-pinned exceptions in `paper_monitor.py`; the `tests/orchestrator/test_select_app_tests.py` PR241 selection set
+  (new test files that import changed modules); `PAPER_MODULES` in `tests_app/test_paper_order_door.py` (add every new
+  paper module).
+- Hooks refuse `git worktree remove --force`, `git stash` in a worktree and `git reset --hard`; commit scratch changes in
+  the throwaway worktree, then run a plain `git worktree remove`.
+- `/root/ofo-dbtest.sh` and `/root/ofo-db-start.sh` are machine-local and gone on a new container: set up the test
+  database per `docs/process/GC-ICLIVE-cloud-setup.md` section 1 (a template clone needs
+  `revoke all on database <clone> from public`). DB tests run one file at a time (see CLAUDE.md).
+
+## Open owner questions
+
+1. **OQ-1 D-60 (opposite-action step).** Should a strike step or move that lands on a held contract of the OPPOSITE action
+   ask Increase / Keep separate / Cancel? Spec basis: REQ-030 AC-11; ADR-319 (1) and (4); the spec is silent on a step as
+   distinct from a deliberate add. Recommendation: yes for a step or move, no question for a deliberate add (picker,
+   ready-made), since two opposite rows on one contract net to nothing. Built meanwhile: ADR-319 (4) as written, no
+   question for opposite action.
+2. **OQ-2 `POST /strategies/{id}/tracking/exit`.** No frontend caller, four test files use it. Recommendation: keep it for
+   now, moved onto the B1 exit door with behaviour unchanged (closes from the entry legs); delete in a later round with its
+   tests moved onto the Positions exit route. Built meanwhile: kept and moved (Phase 4).
+3. **Wording of `paper_trigger_price_unreadable` (STRATEGY_VALIDATION_446).** Only the first sentence is ADR-327's; the
+   impact and next-action lines are builder wording and need the owner's read before they are final.
