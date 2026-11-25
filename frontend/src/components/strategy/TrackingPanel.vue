@@ -104,6 +104,7 @@ import { istClock, istStamp } from '@/lib/displayFormat'
 import { openRecords, settledRecords } from '@/lib/paperAlerts'
 import { said } from '@/lib/playbookEditor'
 import { usePaperRefresh } from '@/lib/usePaperRefresh'
+import { armedIndexExits, triggerListOf, triggersPath } from '@/lib/paperTriggers'
 
 const props = defineProps({
   savedId: { type: Number, default: null },
@@ -186,10 +187,11 @@ const exits = ref([])
 const exitsFailed = ref(false)
 async function readExits(id) {
   try {
-    const { data } = await api.get(`/paper/strategies/${id}/triggers`)
+    const { data } = await api.get(triggersPath(id))
     if (id !== props.savedId) return
-    exits.value = (Array.isArray(data?.triggers) ? data.triggers : []).filter((x) => x.kind === 'conditional_exit' && x.state !== 'cancelled')
-    exitsFailed.value = !Array.isArray(data?.triggers)
+    const list = triggerListOf(data)
+    exits.value = armedIndexExits(list ?? [])
+    exitsFailed.value = list === null
   } catch {
     if (id === props.savedId) exitsFailed.value = true // the last good lines stay
   }

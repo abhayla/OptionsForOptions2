@@ -101,8 +101,8 @@ async function openInBuilder(id) {
   }
 }
 
-// REQ-134 AC-3: rename in the list. The list row carries no revision, so the strategy is read once for the one it has now and
-// the name goes to PATCH /strategies/{id}/name with it (a rename never changes legs, status, revision or last-saved time).
+// REQ-134 AC-3: rename in the list. The list row carries no revision: renameStrategy reads the strategy once for the one it has
+// now and sends the name to PATCH /strategies/{id}/name with it (a rename never changes legs, status, revision or last-saved time).
 function startRename(row) {
   renaming.value = { id: row.id, text: plainName(row.name) ?? '' }
   renameError.value = null
@@ -113,9 +113,7 @@ async function confirmRename(row) {
   busy.value = true
   renameError.value = null
   try {
-    const revision = (await api.get(`/strategies/${id}`)).data?.revision
-    if (!Number.isInteger(revision)) throw new Error('unreadable answer') // fail closed: no rename is sent
-    const done = await renameStrategy(api, id, revision, text)
+    const done = await renameStrategy(api, id, null, text) // reads the revision itself; unreadable -> throws, nothing sent
     rows.value = rows.value.map((r) => (r.id === id ? { ...r, name: done.name } : r)) // only the name changes in the row
     renaming.value = null
   } catch (e) {
