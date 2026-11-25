@@ -15,7 +15,7 @@ import PageHeader from '@/components/common/PageHeader.vue'
 import EmptyState from '@/components/states/EmptyState.vue'
 import DraftDelete from '@/components/strategy/DraftDelete.vue'
 import DraftDeleteStatus from '@/components/strategy/DraftDeleteStatus.vue'
-import { istTime } from '@/lib/displayFormat'
+import { TIME_UNAVAILABLE, istTime } from '@/lib/displayFormat'
 import { afterFigure } from '@/lib/tracking'
 // u125: the server's sentence for why charges / the net are absent (an older server sends none: the Completed reason, else a plain word)
 // the net counts only when the helper calls it an after figure (a reply that also sends a reason is not trusted)
@@ -36,11 +36,18 @@ import { useSettingsValues } from '@/stores/settingsValues'
 // Owner 2026-10-30 (Sensibull 117): one column grid shared by the header row and every strategy row, so columns line up
 // User test 2026-10-30 round 2 widths: last saved 16rem holds "last saved 30 Oct 2026, 08:28:55 IST" on one line
 const COLS = 'lg:grid lg:grid-cols-[minmax(9.5rem,1.4fr)_3.5rem_minmax(0,1fr)_5rem_13rem_12rem]'
-const HEADS = ['Name', 'Index', 'Legs', 'Status', 'Last saved', ''] // ADR-299: the Tracking column is gone (its words are retired)
+const HEADS = computed(() => ['Name', 'Index', 'Legs', 'Status', completedOnly.value ? 'Closed' : 'Last saved', '']) // ADR-299: the Tracking column is gone (its words are retired)
 
 // W-121 (REQ-073 AC-6, ADR-165): the Execute link is absent (not disabled) unless the server said the order path is on.
 const orderPathOn = useOrderPath()
 const pnl = usePaperPnl() // D-41: the Positions page's P&L (one read of the paper list); only a running row shows it
+
+// pending owner read (25 Nov 2026), D-66: the Completed page shows when the trade closed (the server's close time), never the last save
+const closedText = (s) => {
+  const time = istTime(s.closed_at)
+  return time === TIME_UNAVAILABLE ? CLOSED_UNAVAILABLE_TEXT : `closed ${time}`
+}
+const CLOSED_UNAVAILABLE_TEXT = 'closed: time not available'
 
 const route = useRoute()
 const router = useRouter()
@@ -147,7 +154,7 @@ async function confirmRename(row) {
           <span v-if="legsLine(s)" class="min-w-0 max-w-full truncate text-ink-muted" :title="legsLine(s)" data-testid="row-legs">{{ legsLine(s) }}</span>
           <span v-else class="hidden lg:block" aria-hidden="true"></span>
           <span data-testid="row-status">{{ strategyStatusWord(s) }}</span>
-          <span class="num whitespace-nowrap text-ink-muted" data-testid="row-saved">last saved {{ istTime(s.updated_at) }}</span>
+          <span class="num whitespace-nowrap text-ink-muted" data-testid="row-saved">{{ isCompleted(s) ? closedText(s) : `last saved ${istTime(s.updated_at)}` }}</span>
           <span class="flex flex-wrap items-center justify-end gap-x-3 gap-y-1" data-testid="row-actions">
           <button type="button" class="link" :disabled="busy" :data-testid="`open-builder-${s.id}`" @click="openInBuilder(s.id)">Open in Builder</button>
           <button v-if="'name' in s" type="button" class="link" :disabled="busy" :data-testid="`rename-${s.id}`" @click="startRename(s)">Rename</button>

@@ -218,6 +218,7 @@ class SummaryOut(ApiModel):
     # GC-ICGUIDE g23 (Completed tab): set only for a closed strategy, all from the engine; None + reason when unreadable
     final_pnl: Optional[Money]  # noqa: UP045
     final_pnl_text: Optional[CatalogueText]  # noqa: UP045
+    closed_at: Optional[datetime.datetime] = None  # noqa: UP045 - D-66: the last closing fill / settlement; Completed only
     adjustments_made: Optional[int]  # noqa: UP045 - the history page's ADR-255 counter
     adjustment_cost: Optional[Money]  # noqa: UP045 - charges of the adjustment rows
     adjustment_cost_text: Optional[CatalogueText]  # noqa: UP045

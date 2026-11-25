@@ -1064,6 +1064,10 @@ async def current_legs_many(db: Any, user_ref: str) -> dict[int, dict[str, Any]]
             "first_leg": {"instrument": instrument.value, "strike": None if strike is None else str(strike),
                           "expiry": expiry.isoformat()},
             "status_word": _paper_word(b.status, [{"net_quantity": p.net_quantity} for p in positions])}
+        if out[b.strategy_id]["status_word"] == "Completed":
+            # D-66: the close time is the last closing fill or settlement record of the book, never the last save
+            out[b.strategy_id]["closed_at"] = max((o.order.placed_at for o in b.orders
+                                                    if o.order.kind in paper_store.REDUCING_KINDS), default=None)
     return out
 
 
