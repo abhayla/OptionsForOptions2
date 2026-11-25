@@ -548,7 +548,6 @@ async def test_popup_facts_read_the_first_order_time_and_the_newest_rule_memory(
     await pb.put_rule_state(db, user, stored.id, "T-02", held_at_entry=False, seen_clear=True)
     entry, clear = await pb.popup_facts(db, user, [stored.id, other.id])
     assert entry == {stored.id: dt.datetime(2026, 11, 23, 9, 20, tzinfo=dt.UTC)}  # no order -> absent
-    assert {k: v[0] for k, v in clear.items()} == {(stored.id, "T-01"): False, (stored.id, "T-02"): True}
-    assert all(isinstance(v[1], dt.datetime) for v in clear.values())  # the rule memory's own write time
+    assert clear == {(stored.id, "T-01"): False, (stored.id, "T-02"): True}
     assert await pb.popup_facts(db, "someone-else", [stored.id]) == ({}, {})
     assert await pb.popup_facts(db, user, []) == ({}, {})
