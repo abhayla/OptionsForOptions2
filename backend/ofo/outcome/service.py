@@ -404,7 +404,7 @@ def not_live(definition: StrategyDefinition, snapshot: MarketSnapshot) -> Outcom
     the REST fallback while the socket is down; ADR-068 (2) "labelled as not live"). No number is shown as live
     (REQ-049 AC-4): the state carries REQ-049 AC-5's message with the newest input time held, per leg too. Each leg
     names its contract (ADR-086), from the same snapshot lookup the computed answer uses."""
-    label = _not_live_label(snapshot)
+    label = _feed_message(snapshot, shown_live=False) or NOT_CONNECTED_LABEL  # D-39: the one decision
     legs = _unpriced_legs(definition, snapshot, label)
     return Outcome(OutcomeState.NOT_CONNECTED, definition.underlying, label, None, legs, MARGIN)
 
@@ -449,14 +449,17 @@ def _problem_leg(snapshot: MarketSnapshot, instrument_id: str, why: ExplanationT
     return render_explanation("outcome_problem_leg_named", leg=name, why=why)
 
 
-def _feed_message(snapshot: MarketSnapshot) -> ExplanationText | None:
+def _feed_message(snapshot: MarketSnapshot, *, shown_live: bool = True) -> ExplanationText | None:
     """REQ-049 AC-5's message when the feed is not live; the last update is the newest input time we hold."""
-    if snapshot.status.health is DataHealth.AVAILABLE:
+    if shown_live and snapshot.status.health is DataHealth.AVAILABLE:
         return None
-    # D-39: one source for "live": the message follows the freshness of the prices this reply shows. A feed status that
+    # D-39 (``shown_live``: the reply shows live prices; the not-live and from-entries replies show none, so they always
+    # carry the message): one source for "live": the message follows the freshness of the prices this reply shows.
+    # A feed status that
     # reads disconnected while the spot and every leg price held are available is a read made at another instant.
-    held = [q for q in [snapshot.spot, *(lm.quote for lm in snapshot.legs.values())] if q is not None]
-    if snapshot.spot is not None and all(q.health is DataHealth.AVAILABLE for q in held):
+    # A leg with no quote has no price: it counts as not live.
+    held = [snapshot.spot, *(lm.quote for lm in snapshot.legs.values())]
+    if shown_live and all(q is not None and q.health is DataHealth.AVAILABLE for q in held):
         return None
     return _not_live_label(snapshot)
 
@@ -825,7 +828,7 @@ def from_entries(definition: StrategyDefinition, snapshot: MarketSnapshot | None
     table = dataclasses.replace(build_table(model, level_set=level_set, scenario=shown), spot_level=None, spot_at=None,
                                 output_label=FROM_ENTRIES_LABEL)
     points = _graph_points(graph) if shown.available else ()
-    dropped = None if snapshot is None else _not_live_label(snapshot)
+    dropped = None if snapshot is None else _feed_message(snapshot, shown_live=False)
     if dropped is NOT_CONNECTED_LABEL:  # no quote was ever held: nothing dropped, no last update to name
         dropped = None
     return Outcome(

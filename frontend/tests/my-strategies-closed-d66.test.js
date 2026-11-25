@@ -45,3 +45,14 @@ describe('Completed page time', () => {
     expect(saved(await page(false))).toBe('last saved 23 Nov 2026, 11:06:39 IST')
   })
 })
+
+describe('D-42: a row whose current legs could not be read', () => {
+  it('shows the server sentence beside the saved legs; a normal row shows none', async () => {
+    rows = [{ ...C1, status: 'draft', status_word: 'Running', current_legs_text: 'The current legs could not be read. The legs shown are as saved.' }]
+    const w = await page(false)
+    expect(w.get('[data-testid="row-legs-note"]').text()).toBe('The current legs could not be read. The legs shown are as saved.')
+    expect(w.get('[data-testid="row-legs"]').text()).toContain('25300')
+    rows = [{ ...C1, status: 'draft', status_word: 'Running' }]
+    expect((await page(false)).find('[data-testid="row-legs-note"]').exists()).toBe(false)
+  })
+})

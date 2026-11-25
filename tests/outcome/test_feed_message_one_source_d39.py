@@ -48,14 +48,16 @@ def test_a_leg_with_no_quote_is_not_live_so_the_message_stays():
     assert _feed_message(snap) is not None
 
 
-def test_the_not_live_state_follows_the_same_decision(monkeypatch):
+def test_the_not_live_state_asks_the_one_decision(monkeypatch):
     from ofo.outcome import service  # noqa: PLC0415
+    asked = []
+    real = service._feed_message
     monkeypatch.setattr(service, "_unpriced_legs", lambda definition, snapshot, label: ())
+    monkeypatch.setattr(service, "_feed_message", lambda snap, **kw: asked.append(kw) or real(snap, **kw))
     snap = _snapshot(DataHealth.UNAVAILABLE, DataHealth.AVAILABLE, DataHealth.AVAILABLE)
-    live = service.not_live(SimpleNamespace(underlying="NIFTY"), snap)
-    assert "disconnected" not in str(live.status_label)  # prices are live: no "disconnected" claim beside them
-    snap.legs["NSE_FO:9"] = SimpleNamespace(quote=None)
-    assert "disconnected" in str(service.not_live(SimpleNamespace(underlying="NIFTY"), snap).status_label)
+    out = service.not_live(SimpleNamespace(underlying="NIFTY"), snap)
+    assert asked == [{"shown_live": False}]  # a reply that shows no live price always carries the message
+    assert "disconnected" in str(out.status_label)
 
 
 def test_the_label_builder_is_called_from_one_function_only():

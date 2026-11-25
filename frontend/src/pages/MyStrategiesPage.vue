@@ -153,6 +153,7 @@ async function confirmRename(row) {
           <span data-testid="row-underlying">{{ s.underlying }}</span>
           <span v-if="legsLine(s)" class="min-w-0 max-w-full truncate text-ink-muted" :title="legsLine(s)" data-testid="row-legs">{{ legsLine(s) }}</span>
           <span v-else class="hidden lg:block" aria-hidden="true"></span>
+          <span v-if="typeof s.current_legs_text === 'string' && s.current_legs_text" class="col-span-full w-full text-xs text-ink-muted" data-testid="row-legs-note">{{ s.current_legs_text }}</span>
           <span data-testid="row-status">{{ strategyStatusWord(s) }}</span>
           <span class="num whitespace-nowrap text-ink-muted" data-testid="row-saved">{{ isCompleted(s) ? closedText(s) : `last saved ${istTime(s.updated_at)}` }}</span>
           <span class="flex flex-wrap items-center justify-end gap-x-3 gap-y-1" data-testid="row-actions">

@@ -421,17 +421,19 @@ async def _answer(db: Any, stored, bk: _Book, ctx: MarketContext | None,  # noqa
                   rates: ChargeRates | None = None) -> TrackingOut:
     """D-64: the tracking answer, with the one after-close line (the paper book's rule) in place of the paused
     texts while an open leg expires today and the settlement time has not come."""
-    legs, _ = await _entry_legs(db, bk)
+    entry = await _entry_legs(db, bk)
+    legs = entry[0]
     open_today = [{"net_quantity": 1, "expiry": leg.expiry} for i, leg in enumerate(legs) if i not in bk.exit_prices]
     from ofo_app.routes.paper import settle_line_after_close  # noqa: PLC0415 - routes.paper imports routes.strategies
     extra = await settle_line_after_close(db, answered_at, {"positions": open_today})
-    return await _answer_core(db, stored, bk, ctx, feed, threshold, answered_at, rates, extra)
+    return await _answer_core(db, stored, bk, ctx, feed, threshold, answered_at, rates, extra, entry)
 
 
 async def _answer_core(db: Any, stored, bk: _Book, ctx: MarketContext | None,  # noqa: PLR0913
                        feed: LiveFeed | None, threshold: Decimal, answered_at: datetime.datetime,
-                       rates: ChargeRates | None = None, extra: dict | None = None) -> TrackingOut:
-    legs, reasons = await _entry_legs(db, bk)
+                       rates: ChargeRates | None = None, extra: dict | None = None,
+                       entry: tuple | None = None) -> TrackingOut:
+    legs, reasons = entry if entry is not None else await _entry_legs(db, bk)
     underlying = stored.saved.definition.underlying  # fixed for the strategy's life (strategy_store UNDERLYING_FIXED)
     exits = bk.exit_prices
     if len(exits) == len(legs):  # every leg exited: frozen at its exit prices, no market read (EXITED)

@@ -2044,6 +2044,7 @@ _EXPLANATIONS: tuple[ExplanationTemplate, ...] = (
                         "Charges not shown: an order's value could not be worked out."),
     ExplanationTemplate("paper_reason_model_refused", "values_seen",
                         "Decay not shown: the pricing model could not value a leg."),
+    ExplanationTemplate("current_legs_unreadable", "values_seen", "The current legs could not be read. The legs shown are as saved."),
     ExplanationTemplate("market_closed_settles", "values_seen",
                         "Market closed. Open legs that expire today settle at {time}.", {"time": ClockHm}),
     ExplanationTemplate("paper_reason_contract_retired", "values_seen",
