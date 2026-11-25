@@ -200,7 +200,10 @@ def test_ac2_breakevens_and_margin_change_and_adjustments_rows():
         assert len(zeros) == 2, a
         cell = be.values[a]
         assert cell.text.startswith(f"{zeros[0]}/{zeros[1]} (profit range ") and cell.value == zeros[1] - zeros[0]
-    assert be.leaders == hand_leaders({a: be.values[a].value for a in be.values}, True)
+    # D-21 round 2: a single breakeven is a range open on one side ("Profit below/above X"): unbounded
+    open_side = D("Infinity")
+    assert be.leaders == hand_leaders({a: open_side if be.values[a].text.startswith("Profit ") else be.values[a].value
+                                       for a in be.values}, True)
     assert be.values["A-31"].text == "No breakeven: a loss at every level" and be.values["A-31"].value == 0
     mc = row(cmp, "margin_change")
     assert mc.values["A-36"].value == D(0) and mc.values["A-01"].value == D("-1999.50")

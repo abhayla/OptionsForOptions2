@@ -4523,5 +4523,13 @@
   "explanation:adjust_wc_reason_exit": {
     "sha256": "7faf2f61991d03494f784c4604b11b4d49994e6594099d280055f51594f7f780",
     "reviewed": "pending owner read"
+  },
+  "explanation:adjust_cmp_breakeven_below": {
+    "sha256": "3eaf86fddeb3bf8e8a8d150310154c4abc5df29b0af47f3b0011d084b389780a",
+    "reviewed": "pending owner read"
+  },
+  "explanation:adjust_cmp_breakeven_above": {
+    "sha256": "bb2af31238f122493d005044b736314a3d0153b00d2c683e4cfee826080a2d6a",
+    "reviewed": "pending owner read"
   }
 }

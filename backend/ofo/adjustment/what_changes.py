@@ -161,7 +161,8 @@ def _loss_tail(col: Column, ctx: Context) -> str | None:
     return "PE" if low < high else "CE"
 
 
-def reason_line(col: Column, ctx: Context, loss_before: Side, loss_after: Side) -> ExplanationText | None:
+def reason_line(col: Column, ctx: Context, before_col: Column, loss_before: Side,
+                loss_after: Side) -> ExplanationText | None:
     """The module docstring's rule, by approach kind; None when no number moves against the action's name."""
     if loss_before.number is None or loss_after.number is None or loss_after.number <= loss_before.number:
         return None
@@ -172,7 +173,10 @@ def reason_line(col: Column, ctx: Context, loss_before: Side, loss_after: Side) 
         return None
     closed = {c.type for c in col.built.closed}
     tail = _loss_tail(col, ctx)
-    if len(closed) == 1 and tail is not None and tail not in closed:
+    # the side line says the other side "becomes" the largest loss: true only if before the closed side carried the
+    # larger loss or the two ends tied (D-21 round 2); otherwise it already was, and the plain line stands
+    was = _loss_tail(before_col, ctx)
+    if len(closed) == 1 and tail is not None and tail not in closed and (was is None or was in closed):
         return render_explanation("adjust_wc_reason_side", closed=_SIDE_WORD[next(iter(closed))],
                                   remaining=_SIDE_WORD[tail])
     return render_explanation("adjust_wc_reason_credit")
@@ -195,7 +199,7 @@ def block(col: Column, ctx: Context, before_col: Column) -> Block:
         _row("net_delta", _of_cell(delta_b if isinstance(delta_b, Cell) else delta_b["delta"]),
              _of_cell(delta_a if isinstance(delta_a, Cell) else delta_a["delta"])),
     )
-    return Block(render_explanation("adjust_wc_title"), rows, reason_line(col, ctx, loss_b, loss_a))
+    return Block(render_explanation("adjust_wc_title"), rows, reason_line(col, ctx, before_col, loss_b, loss_a))
 
 
 def blocks(columns: Sequence[Column], ctx: Context, before_col: Column) -> Mapping[str, Block]:

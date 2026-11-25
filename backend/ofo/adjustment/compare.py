@@ -427,10 +427,24 @@ class _Rows:
             if f.loss_regions:
                 return Cell(render_explanation("adjust_cmp_no_breakeven_loss"), Decimal(0), None, Decimal(0))
             return Cell(render_explanation("adjust_cmp_no_breakeven_profit"), None, None, INFINITE)
+        if len(levels) == 1:  # D-21 round 2: one breakeven = a range open on one side, unbounded, never a narrow one
+            side = self._open_side()
+            if side is not None:
+                return Cell(render_explanation(side, level=levels[0]), None, None, INFINITE)
         width = levels[-1] - levels[0] if len(levels) > 1 else abs(levels[0] - self.ctx.spot)
         text = render_explanation("adjust_cmp_breakevens", levels=joined_token([format(x, "f") for x in levels]),
                                   width=width)
         return Cell(text, width, None, width)
+
+    def _open_side(self) -> str | None:
+        """The template of the side a single breakeven's profit runs to, from the engine's own at-expiry P&L after
+        charges at index 0 and at twice the highest strike; None when neither end profits (the old width stands)."""
+        if not self.b.after or self.col.whole is None:
+            return None
+        top = (max(x.strike for x in self.b.after) * 2).quantize(PAISE, rounding=ROUND_HALF_EVEN)
+        if _pnl_at(self.b.after, self.lot, self.col.whole, Decimal(0)) > 0:
+            return "adjust_cmp_breakeven_below"
+        return "adjust_cmp_breakeven_above" if _pnl_at(self.b.after, self.lot, self.col.whole, top) > 0 else None
 
     def max_profit(self) -> Cell:
         reason = self._no_single("summary_make_mixed_expiry") or self._after_reason()
