@@ -35,7 +35,7 @@ of the evening are ADR-328. Each correction below names the code that proved thi
    replace legs; they do not bypass the door. The opposite-side step is no longer "as ADR-319 (4) is written": ADR-328
    (1) asks "Keep both" / "Cancel". The spec line OQ-1 missed is REQ-109 AC-9.
 8. Option Chain "Add Selected" opens the builder fresh (separate routes, `router/routes.js:12,23`; plain `router-view`,
-   `App.vue:11-13`), so no held legs are replaced at that moment; see `PLAN-phases-3-8.md` open point O-1.
+   `App.vue:11-13`), so no held legs were replaced at that moment. ADR-329 answered it: the builder's legs are kept across the chain trip, Add Selected adds to them, leaving elsewhere asks (`PLAN-phases-3-8.md`, 5.5 "ADR-329 design").
 9. Phase 6: B7 `raise_alert` is not built (three writers, one caller each, different transactions); guard G4 replaces
    it. F7 shares one reader module, not one network read (the two panels are never on one screen). F8 removes one
    duplicated revision pre-read; no `useRename`.

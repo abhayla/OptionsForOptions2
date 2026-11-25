@@ -68,28 +68,14 @@ level cannot be checked. Try again in a moment." / "No stop was set; nothing was
 "Press Save again once the live prices are showing." The pin's "pending owner read" mark is cleared in
 `tests/errors/template_pins.json`.
 
-## OQ-4 Add Selected: the builder holds no legs when the chain's legs arrive (OPEN; nothing waits on it)
+## OQ-4 Add Selected: the builder holds no legs when the chain's legs arrive
 
-What: ADR-328 (2) says Option Chain "Add Selected" asks "Replace the N legs?" when the builder already holds legs. In
-code the builder never holds legs at that moment: the chain is a separate route (`frontend/src/router/routes.js:12,23`),
-`App.vue:11-13` has a plain `router-view` (no keep-alive), and the builder starts from the link's legs only
-(`StrategyBuilderPage.vue:121`). The earlier unsaved legs were dropped, with no question, when the user left the builder
-for the chain (the builder writes no draft into its URL).
-
-Spec basis: ADR-328 (2); ADR-319 (1); REQ-079 AC-5 ("Replace the 2 legs in the builder?"); the spec says nothing about
-leaving the builder with unsaved legs (searched: leave, unsaved, navigate away, Add Selected).
-
-Real case (code, 25 Nov): build 3 legs, open Market > Option Chain, tick 2 contracts, Add Selected: the builder shows
-only the 2; the 3 are gone and nothing asked.
-
-Options:
-1. Ask when leaving the builder with unsaved legs: "Leave the builder? The N unsaved legs will be lost." (recommended)
-2. Keep the builder's unsaved legs across pages and ask "Replace the N legs?" on Add Selected (the owner's words; a
-   larger change, and a fresh builder would then open with the old legs).
-3. Only the in-page question (when the builder, already showing legs, receives another draft link).
-
-Recommendation: option 1. The loss happens on leaving, whatever page comes next; option 1 covers the chain and every
-other way out.
-
-Built meanwhile: option 3 (Phase 5 of `PLAN-phases-3-8.md`), plus a test that a fresh builder opened from the chain
-asks nothing.
+**ANSWERED 25 Nov late evening by the owner: ADR-329** (he first answered option 2 "always ask", then changed it to the
+chain-trip reading, which stands). Decision: (1) going from the builder to the Option Chain KEEPS the builder's unsaved
+legs and "Add Selected" ADDS the ticked contracts to them (a same-action clash asks the usual Increase / Keep separate /
+Cancel question; a ticked opposite-side contract is a deliberate add and is not asked); (2) leaving the builder for any
+OTHER page with unsaved legs asks "Leave the builder? The N unsaved legs will be lost." with Stay / Leave; (3) ADR-328
+(2) "Replace the N legs?" stays only for a replacing draft link (pasted or shared), not the chain's Add Selected. Built in
+Phase 5, Lane B (`PLAN-phases-3-8.md` 5.5 "ADR-329 design"); the spec sentences of ADR-007 Q34 and ADR-319 (1) are Lane B's
+step 5.5.0. Four readings the plan makes (hold covers saved legs too; leaving the chain asks too; a paper strategy counts
+by its pending changes; tab close and reload do not ask) are on the owner's screen-check list (item 8, 8a), not questions.

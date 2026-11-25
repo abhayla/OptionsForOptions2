@@ -45,8 +45,7 @@ Strategies cards show no P&L, ADR-325 (6), fixed in Part E, `pnl-cards-d41.test.
 - **(1)** - Decision: A strike step or a move (step, Shift, Width, Hedge) that lands a leg on a contract held on the
   OPPOSITE side asks first: "Keep both" / "Cancel". A deliberate add from the strike picker stays silent. SPEC CHANGE to
   ADR-319 (4) and the REQ-109 AC-9 sentence; Built in: Step 0b (spec text), Phase 5
-- **(2)** - Decision: Option Chain "Add Selected" asks "Replace the N legs?" before it replaces the builder's legs;
-  Cancel keeps them; Built in: Phase 5 (and open point O-1, section 7)
+- **(2)** - Decision: a builder that already shows legs and receives a REPLACING draft link (pasted or shared; the `?draft=` watch, `StrategyBuilderPage.vue:626-640`) asks "Replace the N legs?"; Cancel keeps them. NARROWED by ADR-329 (3): it is not the chain's Add Selected (the premise "the builder holds legs when Add Selected arrives" was false, `:121`); Built in: Phase 5
 - **(3)** - Decision: The Paper P&L panel shows, per leg, the leg's TOTAL (booked + open), the same figure as the table
   beside it; Built in: Phase 3
 - **(4)** - Decision: While the builder shows that the trade changed elsewhere, Exit all and every per-leg Exit are
@@ -54,7 +53,22 @@ Strategies cards show no P&L, ADR-325 (6), fixed in Part E, `pnl-cards-d41.test.
 - **(5)** - Decision: The wording of `paper_trigger_price_unreadable` (446) is approved; its "pending owner read" mark
   is cleared; Built in: done in this docs change (`tests/errors/template_pins.json`)
 
+### 2.1b Owner, ADR-329 (25 Nov late evening; binding, not reopened; answers O-1 / OQ-4)
+
+- **(1)** - Decision: going from the builder to the Option Chain KEEPS the builder's unsaved legs; "Add Selected" ADDS the
+  ticked contracts to them; a ticked contract that clashes (same contract, same action) asks the usual question
+  (Increase / Keep separate / Cancel, ADR-319 (1)); a ticked OPPOSITE-side contract is a deliberate add and is not
+  asked; Built in: Phase 5 (Lane B)
+- **(2)** - Decision: leaving the builder for any OTHER page while it holds unsaved legs asks "Leave the builder? The N
+  unsaved legs will be lost." with "Stay" (keeps page and legs) and "Leave" (discards them); Built in: Phase 5 (Lane B)
+- **(3)** - Decision: ADR-328 (2) "Replace the N legs?" stays only for a replacing draft link, never the chain's Add
+  Selected; Built in: Phase 5 (Lane B)
+
+Spec text for ADR-007 Q34 and the ADR-319 (1) clause "Option Chain Add Selected asks" is NOT edited now; it is plan
+step 5.5.0 of Lane B (below), so the spec change and the code land together.
+
 ### 2.2 Coordinator's technical decisions (the owner delegated these)
+
 
 - **Step 0 merges `origin/fix/ic-live-test-1123` (Part F, head `6574e47` or newer with green CI) into
   `refactor/modular-doors` before any phase** - One-line reason: Phase 3 and 6 edit files Part F changed
@@ -83,6 +97,30 @@ Strategies cards show no P&L, ADR-325 (6), fixed in Part E, `pnl-cards-d41.test.
   `opposite` option** - One-line reason: one live question across picker and moves; existing selectors keep every test
 - **Phase 5: a pasted `?draft=` with duplicate rows is not asked; ready-made, remove, Undo, saved load keep their
   flows** - One-line reason: they replace or remove, they do not add onto a held contract
+- **Phase 5 (ADR-329): the chain trip is held in a new in-memory pinia store `stores/builderHold.js`; no `keep-alive`, no
+  `sessionStorage`, nothing sent to the server** - One-line reason: Pinia is already the app's cross-page memory and the
+  chain's own ticks already survive route changes in it (`stores/chainSelection.js:27`, `main.js:15`); `keep-alive`
+  would keep the whole builder mounted (feeds, timers) behind the chain and would make every builder visit "held"
+  (`App.vue:11-13` is a plain `router-view`); `sessionStorage` would also survive a reload, which ADR-329 does not ask
+  for, and needs try/catch everywhere (no page uses it for state today: `grep` finds only `SessionEndedCard.vue:15`
+  and `lib/execute.js:60,70`)
+- **Phase 5 (ADR-329): the leave question is a router-leave guard (`onBeforeRouteLeave`) on the builder page and on the
+  chain page, from one composable and one dialog; `beforeunload` is OUT** - One-line reason: ADR-329 (2) says "any other
+  page"; a browser tab close or reload is not a page change, and the browser's own `beforeunload` box cannot show the
+  ADR sentence or the Stay / Leave labels (it ignores custom text), so it would be a different, worse question; a
+  reload loses the unsaved legs silently, as today (stated on the screen-check list). One line to add later if the
+  owner wants it (nothing in `src` uses `beforeunload` or `onBeforeRouteLeave` today: `grep`)
+- **Phase 5 (ADR-329): "unsaved" = shown legs with no saved copy (`savedId === null`); in Drafts Mode = pending changes
+  (`pendingOrders.length > 0`)** - One-line reason: the page already tracks it (`StrategyBuilderPage.vue:350`, `:384`,
+  `:644`, `:830`); no new dirty flag
+- **Phase 5 (ADR-329): the chain trip holds the legs the builder shows, saved or not; the leave question uses "unsaved"
+  only** - One-line reason: the trader opens the chain for the same reason either way; a hold of saved legs is the same
+  record and the same code path, and "Add Selected" onto them makes them an edited (unsaved) strategy. READING of
+  ADR-329 (1) (it names unsaved legs only): confirmed on the screen-check list, one `if` to narrow
+- **Phase 5 (ADR-329): the held legs stay "the builder's" while the user is on the chain, so leaving the chain for a page
+  other than the builder asks the same question from the chain page** - One-line reason: otherwise the trip would be a
+  silent way to lose exactly what ADR-329 (2) protects; READING of ADR-329 (2), screen-checked
+
 - **Phase 6: B7 `raise_alert` not built; guard G4 instead. F7 = one reader module; F8 = drop one pre-read** - One-line
   reason: three writers with one caller each, different stores and transactions; nothing to merge
 - **Phase 7: do R2, R5, R3 browser; skip R4, R7, R11, R12; park R6, R8, R9, R3 server; R1 kept and documented** -
@@ -131,6 +169,9 @@ Paths: `be/` = `backend/ofo_app/`, `fe/` = `frontend/src/`, `ft/` = `frontend/te
 | **`fe/pages/StrategyBuilderPage.vue`** | **A, then B** | 3, 4 (A); 5 (B) | **shared: see 3.2** |
 | `fe/lib/legDoor.js`, `fe/components/strategy/LegPicker.vue` | B | 5 | |
 | `fe/composables/useLegDoor.js` (new), `fe/components/strategy/DuplicateLegDialog.vue` (new) | B | 5 | |
+| `fe/stores/builderHold.js` (new), `fe/composables/useLeaveBuilder.js` (new), `fe/components/strategy/LeaveBuilderDialog.vue` (new) | B | 5 (ADR-329) | the chain-trip hold and the leave question |
+| **`fe/pages/OptionChainPage.vue`** | B | 5 (ADR-329) | was "neither lane"; leave guard only, Add Selected itself is unchanged (`:123-126`) |
+| `ft/builder-hold-adr329.test.js`, `ft/leave-builder-adr329.test.js`, `ft/chain-trip-adr329.test.js` | B | 5 | new |
 | `ft/leg-duplicate-d60.test.js`, `ft/leg-step-duplicate-d60.test.js` | B | 5 | new `it`s; `:91` changed |
 | `ft/leg-door-phase5.test.js`, `ft/leg-emitters-guard.test.js`, `ft/builder-draft-replace.test.js` | B | 5 | new |
 | `docs/design/modular-doors-2026-11-25/RESULTS-lane-b.md` | B | 5 | Lane A folds it in at the merge |
@@ -143,11 +184,14 @@ Paths: `be/` = `backend/ofo_app/`, `fe/` = `frontend/src/`, `ft/` = `frontend/te
 | `docs/design/modular-doors-2026-11-25/RESULTS.md`, `owner-questions.md` | A | all | |
 
 Files neither lane edits: `paperDrafts.js` (`paperOrdersFor`, `legsAfterExit`, `confirmRowsFor`), `LegList.vue`,
-`OptionChainPage.vue`, `ReadyMadePanel.vue`, `ofo/execution/**`, `routes/execute.py`, kit files (`.claude/kit/GUIDE.md`
+`ReadyMadePanel.vue`, `stores/chainSelection.js`, `router/routes.js`, `App.vue`, `ofo/execution/**`, `routes/execute.py`, kit files (`.claude/kit/GUIDE.md`
 list: `.claude/rules/kit/`, `.claude/kit/`, `.claude/hooks/`, `tools/`, `.github/workflows/ci.yml`, ...).
 
 ### 3.2 The one shared file: `frontend/src/pages/StrategyBuilderPage.vue`
 
+- ADR-329 (25 Nov late evening) adds to this page only on Lane B's side (hold, leave guard, chain-add), and Lane B owns
+  `OptionChainPage.vue`; no Lane A file is needed for it (checked: Lane A's rows touch paper, tracking and exit files;
+  none touches the chain page, `stores/`, `router/` or `App.vue`). The only overlap stays this page, handled below.
 - Lane A owns it from Step 0 until Lane A's Phase 4 is pushed with green CI (Phase 3: `paperTotal`; Phase 4: the exit
   gates, `confirmPending`, the ADR-328 (4) wiring).
 - Then it passes to Lane B. Lane B merges `origin/refactor/modular-doors` (at the Phase 4 head) into
@@ -170,9 +214,9 @@ list: `.claude/rules/kit/`, `.claude/kit/`, `.claude/hooks/`, `tools/`, `.github
 
 ### 3.4 ADR numbers
 
-Next free on both branches: ADR-329 (checked with `git ls-tree` of both on 25 Nov: highest ADR-326 on the fix branch,
-ADR-328 here). No phase below needs a new decision row (every product point is in ADR-328 or older rows). If one is
-needed: Lane A may use ADR-329, Lane B ADR-330; any further number comes from the coordinator. Before writing one, run
+ADR-329 is taken (owner, 25 Nov late evening: unsaved builder legs; written in this docs commit). Next free: ADR-330.
+No phase below needs a new decision row (every product point is in ADR-328, ADR-329 or older rows). If one is needed:
+Lane A may use ADR-330, Lane B ADR-331; any further number comes from the coordinator. Before writing one, run
 `git ls-tree --name-only origin/fix/ic-live-test-1123 spec/decisions/` and the same for both lane branches.
 
 ## 4. Step 0: merge the fix branch (Lane A)
@@ -659,14 +703,15 @@ deferred issues of 6.1 filed.
 
 **Size:** about 14 files, 700-900 lines with tests.
 
-### 5.5 Phase 5: one leg door (F6), D-60, ADR-328 (1) and (2) - Lane B
+### 5.5 Phase 5: one leg door (F6), D-60, ADR-328 (1) and (2), ADR-329 (chain trip and leave question) - Lane B
 
 **Core:** one door instance per builder page asks every add-or-move question; a step onto an opposite-held contract
 asks "Keep both" / "Cancel"; a picker add of the opposite side asks nothing. **Proof:** on the real recorded condor
 of `leg-step-duplicate-d60.test.js`, step a SELL onto the held BUY of the same contract: the dialog opens with
 exactly "Keep both" and "Cancel"; Escape leaves the legs equal to before and sends no further `leg-edit`.
 
-**Spec basis:** ADR-319 (1) (quoted in the Phase 5 report: "Every way of adding or moving a leg ... that lands on a
+**Spec basis (ADR-329 added):** ADR-329 (1)-(3) (the hold, the leave question, Add Selected adds); ADR-007 Q34 ("all
+ticked contracts arrive in the Builder as legs"); ADR-319 (1) (quoted in the Phase 5 report: "Every way of adding or moving a leg ... that lands on a
 contract another leg already holds with the same action asks ..."); ADR-319 (4) as amended by ADR-328 (1); REQ-030
 AC-11 ("The same contract with opposite actions stays as two separate legs; no auto-netting"), AC-12; REQ-109 AC-9
 ("onto a contract held on the other side = two exits, because the positions net", now with the question first);
@@ -684,7 +729,8 @@ keep-alive). The builder is mounted fresh and `legs = ref(legsFromQuery())` (`St
 arrival from the chain there are no held legs to replace. The earlier unsaved legs were already dropped when the user
 left the builder (no leave question; the builder writes no draft into the URL, `router.replace` only at `:138`, `:174`,
 `:361`, `:387`). The only in-page replacement is the `watch(() => route.query.draft)` at `:626-640` (the page stays
-mounted when only its query changes, F-4 comment `:617-619`). See open point O-1 (section 7).
+mounted when only its query changes, F-4 comment `:617-619`). ADR-329 answered the question this raised (O-1, section 7): see "ADR-329 design" below; the 5.5 design list above
+this paragraph (door, moves, the draft-watch question) is unchanged by it.
 
 **Design.**
 - `lib/legDoor.js` stays pure: add `oppositeContract(a, b)` (same `instrument_id`, other action) and an `opposite`
@@ -706,14 +752,134 @@ mounted when only its query changes, F-4 comment `:617-619`). See open point O-1
   `opposite: 'ask'`, asked BEFORE `legs.value = landed` (same place as `:817`), in Drafts Mode too. Ready-made, chain
   link, URL / pasted `?draft=` (duplicate rows not asked), saved load, Compare, Undo, remove, Exit keep their flows.
 - ADR-328 (2): in the `route.query.draft` watch, when the builder shows legs and the incoming legs differ, ask
-  `replaceQuestion(n)` (`lib/readyMade.js:46`, the REQ-079 AC-5 sentence) in a small confirm (test ids
+  `replacePrompt(count)` (`lib/readyMade.js:44-46`, the REQ-079 AC-5 sentence, singular handled; the earlier name
+`replaceQuestion` was wrong) in a small confirm (test ids
   `draft-replace-dialog`, `draft-replace-yes`, `draft-replace-cancel`); Yes = today's path; Cancel = legs, Drafts Mode
   and `openStrategy` unchanged and the previous query put back with `router.replace` so the URL matches the legs.
-  A fresh mount (from the chain, a pasted link, a reload) asks nothing: it holds no legs.
+  A fresh mount (a pasted link, a reload) asks nothing: it holds no legs. A mount that arrives from the chain trip is
+  not this question: it is the ADR-329 add (below). This question is only for the page that is already mounted.
 - Guard: `frontend/tests/leg-emitters-guard.test.js`: scan `components/**/*.vue`, `pages/**/*.vue` for
   `emit('update:legs'` and `legs.value =`; each hit must be in a function that calls `door.admit*` or on a named
   allow-list (setLegs replacements, `applyEditReply`, ready-made `run`, Undo, remove, Exit, `nameLegsFrom`), with a
   reason each; a stale allow-list entry fails; a pure `problems(files)` with in-memory mutations.
+
+### ADR-329 design (Lane B): the chain trip and the leave question
+
+**Core:** build 3 legs (unsaved), go to Market > Option Chain, tick 2 contracts, Add Selected: the builder shows 5 legs.
+**Proof:** the chain-trip vitest below on the 3 legs of `leg-step-duplicate-d60.test.js`'s recorded condor plus two ticked
+contracts: 5 rows, the 3 held ones first, then the 2 ticked, no question; a ticked contract equal to a held leg asks the
+usual three-button question.
+
+**Verified facts today (`4428e16`, file:line).**
+- Legs live only in the page: `const legs = ref(legsFromQuery())` (`StrategyBuilderPage.vue:121`). The builder and the
+  chain are two lazy routes (`router/routes.js:12-23` map: `strategies-strategy-builder`, `market-option-chain`; a second
+  builder name `strategy-builder-screen` at `routes.js:87`, `/strategy/builder`); `App.vue:11-13` is a plain
+  `router-view`; no `keep-alive`, no `onBeforeRouteLeave`, no `beforeunload`, no `router.beforeEach` anywhere in `src`
+  (grep). The builder is unmounted on every leave and mounted fresh on every arrival.
+- There is no store of builder legs. The only cross-page store of this kind is `stores/chainSelection.js:27` (Pinia,
+  `main.js:15`); it keeps the chain's ticks across route changes, and "Add Selected" does not clear them
+  (`OptionChainPage.vue:123-126` only pushes the route; the `clear()` at `:80,:85` is the chain's data clear).
+  Browser storage: `sessionStorage` only in `SessionEndedCard.vue:15`, `localStorage` only in `lib/execute.js:60,70`.
+- "Unsaved" has no flag of its own, but it is derivable: `savedId` (`:350`) is set when a strategy is opened or saved
+  (`openSaved` `:370-371`, `onSaved` `:390-391`) and nulled by any edit (`setLegs` `:644`; the leg-edit reply `:830` unless
+  the edit was only the include tick, `:704`; delete `:384`); `openStrategy` (`:356`) SURVIVES edits, so a saved-but-edited
+  strategy has `openStrategy` set and `savedId === null`. Drafts Mode: `paper` (`:400`); its legs start as the book's net
+  (`enterDrafts` `:413-418`), and the unsaved part is `pendingOrders` (`:401`, `paperOrdersFor(net, legs)`), the number the
+  bar shows as "N pending changes".
+- How the chain is opened from the builder today: there is NO link. "Pick from Option Chain" (`LegList.vue:180`,
+  `pickFromChain` `:901`) opens the strike picker drawer on the same page. The chain page is reached by the nav
+  (`router/nav.js:40`), Home (`HomeOverviewPage.vue:100`) or Index View (`IndexViewPage.vue:51`): a router navigation to
+  route name `market-option-chain`, which leaves (unmounts) the builder. The new leave guard keys on that route name.
+- Add Selected: `openBuilder` pushes `{ name: BUILDER_ROUTE, query: { draft: JSON.stringify(selection.draftOf(u)) } }`
+  (`OptionChainPage.vue:123-126`, `BUILDER_ROUTE` `:38`); `draftOf` reads `legsOf`, the one choke point (permitted legs with
+  an action). That hand-over is KEPT: the `?draft=` link stays the carrier (same JSON, so a pasted or reloaded link and
+  `chain-selection.test.js:71-93` are unchanged).
+- The door: `admitLegs(held, incoming, { ask, maxLots, skipId })` (`legDoor.js:19-35`) asks only on the SAME contract with
+  the SAME action (`sameContract` `:14`); an opposite-side incoming leg is not a clash and is returned in `kept`: it is
+  added silently, which is exactly ADR-329 (1) (no new rule). Cancel returns `null` (nothing added); Increase past the
+  lots limit returns `{ error }` (nothing changed).
+- Pinned today: `chain-selection.test.js:71-93` (Add Selected -> builder route + the `?draft=` legs), `draft-link.test.js:92-`
+  (`openBuilder` mounts the real page on a query), `:114` (a `?draft=` opens its own legs), `:265` (a new `?draft=` on a
+  mounted page replaces the legs with no question), e2e `chain-selection.spec.ts:72-93` (chain -> Add -> builder url and
+  `data-state`). No test navigates the mounted builder to another route with legs.
+
+**Mechanism (one): `stores/builderHold.js`, an in-memory Pinia store.** State: `held` = null or
+`{ legs, openStrategy, savedId, savedRevision, shapeName, paperId, netKey }` (copies; legs are the page's own leg
+objects; `paperId` and `netKey` only in Drafts Mode, `netKey` = the list of `contract_id|action|lots` of the book's net as
+strings, compared for equality, never summed). Actions: `hold(snapshot)`, `take()` (returns and clears at once), `clear()`;
+getter `count` (the N of the sentence). Why this one: see section 2.2 (Pinia is where the chain's ticks already live;
+`keep-alive` and `sessionStorage` rejected there). Properties the tests pin: the browser does no money arithmetic and
+computes nothing (it keeps what the page had; the shape, the outcome and every figure are re-asked from the server by the
+page's existing paths when its legs are set, as after any `setLegs`); NOTHING is sent to the server by the hold; the held
+legs keep their `planned_entry` and `captured_at` (a price states its time, ADR-321 (9)). **A full page reload (F5, a
+closed tab, typing an address) empties the store: the unsaved legs are lost with no question (`beforeunload` is OUT, 2.2),
+and a reload on `?draft=` re-opens the ticked legs only, exactly as today.** Hold dies with the tab; nothing survives a
+new sign-in because a new load is a new store.
+
+**Which navigations do what** (`useLeaveBuilder(...)`, one composable, `onBeforeRouteLeave` in the builder and in the chain
+page; the target is `to.name`):
+- Builder -> `market-option-chain`: never asks. If the page shows any legs: `hold(snapshot)`; allow. (No legs: nothing
+  held.)
+- Builder -> any other route (a route NAME other than the chain; the builder's own two names are not "leaving"): if
+  unsaved (below): ask; Stay = cancel the navigation (page, legs, Drafts Mode untouched); Leave = `clear()` and allow. If not
+  unsaved: `clear()` and allow, no question.
+- Chain page -> builder (either name): allow, never asks (the hold waits for the builder to take it).
+- Chain page -> any other route while `held` is set: ask the same question (the held legs are still the builder's,
+  2.2); Stay = the user stays on the chain with the hold kept; Leave = `clear()`, allow. With no hold: no question
+  (today's chain page).
+- Never ask: Save, Save As, Add to Paper (they end with `savedId` set or `pendingOrders` empty, so "not unsaved"; none of
+  them navigates, `:138,:174,:361,:387` are same-route `router.replace`), opening the chain, a `?strategy=` or `?draft=`
+  change while the page stays mounted (not a leave: `onBeforeRouteLeave` does not fire; the `?draft=` one is the
+  ADR-328 (2) question above; a `?strategy=` link replacing unsaved edits keeps today's silent replace, `:613-615`: a
+  deferred issue, not ADR-329), `router.replace` writes of the page itself.
+- "Unsaved" (`unsavedCount(page)`, a pure function of the page's refs, tested alone): not in Drafts Mode =
+  `legs.length > 0 && savedId === null` (so a draft link's legs, ready-made legs, and a saved-but-edited strategy all
+  count; N = `legs.length`); in Drafts Mode (`paper` set) = `pendingOrders.length` (a paper strategy shown unchanged
+  asks nothing; one with edits asks with N = the pending changes the bar shows). A saved strategy with no edits: not
+  unsaved.
+- The held record is made for ANY shown legs on the chain trip (saved or not): 2.2.
+
+**Return from the chain (builder mount; `useBuilderHold().take()` runs in `setup` before `legs = ref(...)`, `:121`).**
+Cases, by query:
+- no `?draft=`, no `?strategy=` / `?adjust=` (nav link, Back): the held legs and context come back (`legs`, `openStrategy`,
+  `savedId`, `savedRevision`, `shapeName`), as the page was: "legs still there". Drafts Mode: replace the URL query with
+  `?strategy=<paperId>` (the existing watch re-reads the book, `:620-624`); when that read lands, if its `netKey` equals the
+  held one the held legs are set (`setLegs`: pending changes reappear), else they are dropped and the page says: "The
+  strategy changed while you were away. Your unsaved edits were not restored." (new wording, screen-check list). If this
+  Drafts Mode restore costs more than 2 rounds, Lane B ships the plain-builder hold, parks the Drafts Mode restore with a
+  `deferred` issue and says so in `RESULTS-lane-b.md`; the leave question covers Drafts Mode regardless.
+- `?draft=` with a held record (Add Selected after a trip): the held legs come back first; then the draft's legs go through
+  the door (below). `?draft=` with no held record (chain opened directly, a pasted or reloaded link): today's seed
+  (`legsFromQuery`, `:121`): fresh builder, no question.
+- `?strategy=<id>` or `?adjust=` with a held record: the held record is dropped (`clear()`), today's open path runs and
+  replaces unsaved edits without a prompt as it does now (not ADR-329).
+
+**Add Selected adds through the door** (`StrategyBuilderPage.vue`, once, after mount): the incoming legs are
+`legsFromQuery()` (`:122-135`), re-id'd `chain-<n>` so they never share an id with a held leg; `door.admit(held, incoming,
+{ opposite: 'allow' })`, i.e. `admitLegs` with the page's one dialog (5.5.2). One live question per clash, asked in the
+ticked order; "Increase quantity" adds the lots to the held leg (and `base_lots`, `legDoor.js:30-31`); "Keep separate" adds
+the ticked leg as its own row; "Cancel" ends the whole add: the held legs stay as they were and none of the ticked legs is
+added (the ticks stay in the chain store, so the trader can go back and untick); Increase past `max_lots` shows the lots
+sentence through the page's existing `editError` path (same as a moved-leg Increase, `:822-823`), nothing changed. A ticked
+OPPOSITE-side contract is not a clash (`sameContract` needs the same action) and is added silently, as ADR-329 (1) says.
+Result legs = `result.legs` followed by `result.kept` through `setLegs` (it nulls `savedId`: the page is unsaved now,
+`openStrategy` stays, so Save updates the open strategy, REQ-134 AC-2). The `?draft=` stays in the URL, as today.
+**This is the only place Add Selected asks, and ADR-328 (2) "Replace the N legs?" never appears for it.**
+
+**The sentences (exact).** Leave question, ADR-329 verbatim: `Leave the builder? The N unsaved legs will be lost.`
+(`leaveQuestion(n)` in `lib/readyMade.js`-style pure text in `useLeaveBuilder.js`; N = 1 reads "The 1 unsaved leg will be
+lost." following `replacePrompt`'s singular, `readyMade.js:44-46`; a plan choice, flagged on the screen-check list);
+buttons `Stay` and `Leave`; Escape, x and overlay = Stay. Test ids: `leave-dialog`, `leave-question`, `leave-stay`,
+`leave-leave`. Clash questions: the existing `DUP_QUESTION` and three buttons (`dup-increase`, `dup-separate`,
+`dup-cancel`). Drafts Mode changed-book note: the sentence above. Replacing draft link: `replacePrompt(n)` (ADR-328 (2)).
+
+**Answer states (each is a test row below).** No legs: no question. Legs saved, no edit: no question. Unsaved + Stay:
+navigation cancelled, legs, URL and Drafts Mode untouched. Unsaved + Leave: left, hold empty, the next builder is fresh.
+Chain trip + Add Selected with no clash: held legs + ticked legs, no question. Same-action clash: Increase / Keep separate /
+Cancel as above. Opposite-side tick: added silently. Chain trip + return without Add Selected: the legs are there. Chain
+opened directly, nothing behind it: fresh builder (today). Chain trip then leaving the chain elsewhere: the question from
+the chain page. Paper strategy in Drafts Mode: unsaved = pending changes; chain trip holds it; return re-reads the book.
+Replacing draft link on a mounted page: the ADR-328 (2) question, unchanged by ADR-329.
 
 **Tests-first commit (red).** `frontend/tests/leg-door-phase5.test.js` (new):
 
@@ -749,36 +915,113 @@ mounted when only its query changes, F-4 comment `:617-619`). See open point O-1
 `draft-replace-dialog` shows "Replace the 3 legs in the builder?"; Cancel keeps the 3 legs and the URL's draft is the
 old one; Yes shows the new legs; same draft as shown -> no question; a builder with no legs -> no question; a fresh
 mount with `?draft=` -> no question; an unreadable `?draft=` while legs are shown -> today's refusal path unchanged.
-`frontend/tests/leg-emitters-guard.test.js` (new). Changed, with the reason: `leg-step-duplicate-d60.test.js:91`
-("a step onto a contract held with the OTHER action does not ask") now expects the row-1 question; reason "ADR-328 (1)
-amends ADR-319 (4) for steps and moves".
 
-**Code commits, in order.** 5.5.1 `lib/legDoor.js` (+ unit rows in `leg-duplicate-d60.test.js`'s door describe, new
+**ADR-329 tests (same red commit; new files; real page, real router, real Pinia, the existing mocks of
+`draft-link.test.js`'s `openBuilder`; no mock of the hold store).**
+
+`frontend/tests/builder-hold-adr329.test.js` (the store and the pure rule, no page):
+- **H1** `unsavedCount`: no legs -> 0; 3 legs, `savedId` null -> 3; 3 legs, `savedId` 7 -> 0; saved-but-edited
+  (`openStrategy` set, `savedId` null) -> 3; Drafts Mode with equal legs -> 0, with 2 pending orders -> 2.
+- **H2** `hold` then `take` returns an equal copy and empties the store; a second `take` -> null; `clear` empties.
+- **H3** `leaveQuestion(3)` === "Leave the builder? The 3 unsaved legs will be lost."; `leaveQuestion(1)` has "1 unsaved
+  leg will".
+- **H4** the store holds no number field and sends nothing: it imports no `api`; source scan (ADR-008).
+
+`frontend/tests/leave-builder-adr329.test.js` (the leave question):
+- **L1** no legs -> `router.push('/home/overview')` resolves with no `leave-dialog` (no legs).
+- **L2** saved legs (open `?strategy=7`, unedited) -> push to Home: no dialog (saved).
+- **L3** unsaved (3 legs from a `?draft=`) -> push to Home: `leave-dialog` open, `leave-question` text ===
+  "Leave the builder? The 3 unsaved legs will be lost.", buttons exactly `leave-stay` "Stay" and `leave-leave` "Leave";
+  the route is still the builder (navigation pending).
+- **L4** Stay (and Escape, x, overlay): route unchanged, `leg-row` count 3, URL query equal to before, no request sent.
+- **L5** Leave: route is Home, `builderHold.held` null; mounting the builder again shows 0 legs (fresh).
+- **L6** saved-but-edited (open `?strategy=7`, remove a leg) -> Home: the question with N = the legs now shown.
+- **L7** never asks: Save (then push Home: no dialog); Add to Paper confirm done (`pendingOrders` empty); a push to the
+  chain; a `router.replace` of the page's own query.
+- **L8** Drafts Mode, `?strategy=<paper id>` unedited -> Home: no dialog; after one edit (a step) -> Home: the question with N
+  = the "N pending changes" number shown on the bar.
+- **L9** a `?draft=` replaced while mounted (ADR-328 (2)) shows `draft-replace-dialog`, never `leave-dialog`.
+- **L10** the tab close is not asked: source scan, `src` has no `beforeunload` (pins the decision of 2.2).
+- **L11** the chain page: with `held` set, push chain -> Home: the same dialog (Stay keeps the chain and the hold; Leave
+  empties the hold); with `held` empty: no dialog (today).
+
+`frontend/tests/chain-trip-adr329.test.js` (chain trip and Add Selected; one router, both pages mounted in turn):
+- **C1** (Core) 3 unsaved legs -> push chain: no dialog; `held.legs` has the 3; chain: tick 2 (BUY 24000 CE, SELL 24200
+  CE), Add Selected -> builder: 5 `leg-row`, the first 3 are the held ones in order, the last 2 the ticked ones; no
+  `dup-dialog`, no `draft-replace-dialog`, no `leave-dialog`; the builder holds nothing (`held` null).
+- **C2** same-action clash: a ticked BUY of a contract held as BUY: `dup-dialog` with `dup-question` "<name> is already in
+  this strategy."; Increase -> the held row's lots are the sum and `base_lots` rises too, 4 rows total (3 + 2 - 1); Keep
+  separate -> 5 rows, two rows of that contract; Cancel (Escape, x, overlay too) -> exactly the 3 held legs, none of the
+  ticked ones, and the chain store still has its ticks.
+- **C3** two clashes: two questions, one at a time, in ticked order; Cancel on the second leaves the first's Increase
+  unapplied (all-or-nothing).
+- **C4** Increase past `max_lots`: the lots sentence (`lotsRangeText`) shows, legs unchanged.
+- **C5** opposite-side tick: a ticked SELL of a contract held as BUY: no dialog of any kind; two rows of that contract (B and
+  S); in Drafts Mode `paperOrdersFor` still gives both orders (REQ-109 AC-9).
+- **C6** chain trip, return by nav (push `/strategies/strategy-builder`, no query) and by `router.back()`: the same 3 legs,
+  `openStrategy` and `savedId` as before (a saved-but-edited strategy comes back edited and Save still PUTs with its
+  revision).
+- **C7** chain opened directly (no builder behind it), tick 2, Add Selected: exactly 2 rows, no question (today's
+  behaviour; `chain-selection.test.js:71-93` stays green unmodified).
+- **C8** chain trip with no legs shown: `held` stays null; Add Selected opens the ticked legs only.
+- **C9** reload: `setActivePinia(createPinia())` + a mount on the same `?draft=` -> only the ticked legs (the hold is gone,
+  no question).
+- **C10** held legs and `?strategy=` / `?adjust=` query: the held record is dropped, today's open path runs.
+- **C11** Drafts Mode: paper strategy, one pending edit, push chain, tick 1, Add Selected: net legs + the edit + the
+  ticked leg (pending changes = edit + add), no question; when the re-read net differs (`netKey` changed) the held edits
+  are dropped and "The strategy changed while you were away. Your unsaved edits were not restored." shows.
+- **C12** the held legs keep `planned_entry` and `captured_at` unchanged; no request is sent by the trip itself
+  (request log equal before and after the push to the chain, apart from the chain's own).
+
+`frontend/tests/leg-emitters-guard.test.js` (new). Changed, with the reason: `leg-step-duplicate-d60.test.js:91`
+("a step onto a contract held with the OTHER action does not ask") now expects the row-1 question; reason "ADR-328 (1) amends ADR-319 (4) for steps and moves". Also changed: `draft-link.test.js:265` ("a new ?draft= link
+while mounted seeds that draft's legs"): the page shows strategy 54's legs, so ADR-328 (2) now asks first; the test
+answers `draft-replace-yes` and then expects 1 row; reason "ADR-328 (2): a replacing draft link asks" (the earlier
+plan listed `draft-link.test.js` as unchanged: wrong for this one `it`; the other `it`s of the file stay). Expected
+unchanged (Lane B greps the 40 test files that mount `StrategyBuilderPage` for a push to another route with legs on screen
+and, if one exists, adds the `leave-leave` click with the reason named in the commit message; none was found by `grep` of
+the route pushes in `chain-selection`, `draft-link`, `clear-legs`): `chain-selection.test.js` (hold empty, the chain guard
+asks nothing) and e2e `chain-selection.spec.ts:72-93` (a fresh builder after Add Selected).
+
+**Code commits, in order.** 5.5.0 spec text first, same push: ADR-007 Q34 and ADR-319 (1) get one sentence each saying
+the builder's own legs are kept across the chain trip and Add Selected adds to them (SPEC CHANGE notes, from ADR-329; Lane
+B edits only these two sentences, with `python tools/spec_similar.py` run first and the digest regenerated; coordinator
+approves the wording). 5.5.1 `lib/legDoor.js` (+ unit rows in `leg-duplicate-d60.test.js`'s door describe, new
 `it`s only). 5.5.2 `composables/useLegDoor.js` + `DuplicateLegDialog.vue` (+ composable unit tests). 5.5.3
-`LegPicker.vue` (inject or own door; stale guard; `doneError` kept). 5.5.4 `StrategyBuilderPage.vue` - ONLY after the
-hand-over of 3.2 (merge `origin/refactor/modular-doors` first): door + one dialog + `provide`; `:748-791` and
+`LegPicker.vue` (inject or own door; stale guard; `doneError` kept). 5.5.2a (before the hand-over, so Lane B is never idle) `stores/builderHold.js`, `composables/useLeaveBuilder.js`,
+`components/strategy/LeaveBuilderDialog.vue` (+ `builder-hold-adr329.test.js` green). 5.5.3a `OptionChainPage.vue`: the
+leave guard only (rows L11); `openBuilder` / `addSelected` (`:123-126`) untouched. 5.5.4 `StrategyBuilderPage.vue` - ONLY
+after the hand-over of 3.2 (merge `origin/refactor/modular-doors` first): door + one dialog + `provide`; ADR-329: `take()`
+in `setup`, the leave guard (snapshot to the chain, question elsewhere), the chain-add through the door; `:748-791` and
 `:1004-1012` removed; the draft-watch question. 5.5.5 guard green; `RESULTS-lane-b.md` (door, callers before -> after,
 tests, the new wording, the O-1 note).
 
 **Generated files:** none. **Stays unmodified:** `paperOrdersFor` and `keptDuplicateIds` (`paperDrafts.js`), the server
 duplicate refusal (`routes/paper.py` `_refuse_duplicate_legs`), `LegList.vue` (`duplicateLegText` copy stays; deferred),
-`ReadyMadePanel.vue`, `OptionChainPage.vue`. Tests unchanged: `leg-duplicate-d60.test.js` (existing), the rest of
+`ReadyMadePanel.vue`, `stores/chainSelection.js`, `router/*`, `App.vue`, and the `openBuilder` / `addSelected` code of
+`OptionChainPage.vue` (`:123-126`; only its leave guard is added). Tests unchanged: `leg-duplicate-d60.test.js` (existing), the rest of
 `leg-step-duplicate-d60.test.js` (`:72-:338`), `builder-paper-duplicate-refusal-d60.test.js`,
 `paper-drafts-diff.test.js`,
-`ready-made.test.js`, `chain-selection.test.js`, `draft-link.test.js`, `clear-legs.test.js`.
+`ready-made.test.js`, `chain-selection.test.js`, `draft-link.test.js` (except `:265`), `clear-legs.test.js`.
 
 **Risks and guards:** Increase must raise `base_lots` too (`leg-duplicate-d60.test.js:265,271`,
 `leg-step-duplicate-d60.test.js:254`); a closer lost in the merge (setLegs, net-zero, newer edit, unmount, route change:
 `:173-:338` green); Drafts Mode diff merged by accident (do not touch `paperOrdersFor`; row 2); the draft-watch question
 breaking F-4 (`draft-link.test.js:229-` green); `included:false` held legs still ask (leave; deferred).
 
-**Review:** Sonnet, adversarial: one live question, every closer, the opposite rule only on moves, Cancel identity in
+**ADR-329 risks:** the hold must be taken exactly once (a second mount or a double `take` must not duplicate legs); a stale
+hold must never open a different strategy (`?strategy=` / `?adjust=` drop it); Drafts Mode restore against a changed book
+(`netKey`); the guard must not fire for the page's own `router.replace` / same-route query changes; `onBeforeRouteLeave` only
+runs for a route component, which both pages are; the Escape / overlay of the leave dialog must be Stay, never Leave; the
+ADR-328 (2) watch and the ADR-329 mount-time add must never both ask for one arrival; held legs and `planned_entry`
+times stay as captured. **Review:** Sonnet, adversarial: one live question, every closer, the opposite rule only on moves, Cancel identity in
 Drafts Mode, the draft-watch Cancel URL.
 
-**Done when:** rows red then green; whole vitest green; `ci_local` TOTAL PASS; CI green on `refactor/leg-door`;
+**Done when:** (ADR-329) the three new test files red then green, `draft-link.test.js:265` changed with its reason; rows red then green; whole vitest green; `ci_local` TOTAL PASS; CI green on `refactor/leg-door`;
 `RESULTS-lane-b.md` written. Lane B then stops; Lane A merges it before Phase 8.
 
-**Size:** about 9 files, 500-650 lines with tests.
+**Size:** about 9 files, 500-650 lines with tests; ADR-329 adds 3 source files, 2 edited pages and 3 test files, about
+350 lines (the Drafts Mode restore is the part that may park).
 
 ### 5.6 Phase 6: B2 close list (real path), F7, F8; B7 not built - Lane A
 
@@ -997,20 +1240,19 @@ with reason: R4, R7, R11, R12.
 
 ## 7. Open points
 
-One business question found; nothing waits on it.
+No open point waits on the owner.
 
-**O-1. Add Selected: the builder holds no legs when the chain's legs arrive; the earlier legs are lost on leaving the
-builder.** Spec basis: ADR-328 (2) ("when the builder already holds legs, it asks 'Replace the N legs?' ... before
-replacing them; Cancel keeps the legs"); ADR-319 (1); REQ-079 AC-5 ("Replace the 2 legs in the builder?"). Real
-case (code, 25 Nov): build 3 legs in the builder, open Market > Option Chain from the nav, tick 2 contracts, Add
-Selected: the builder opens with only the 2 ticked legs; the 3 legs were dropped when the builder page unmounted
-(`App.vue:11-13`, `router/routes.js:12,23`, `StrategyBuilderPage.vue:121`), with no question at any
-point. Options: (1) ask when leaving the builder with unsaved legs ("Leave the builder? The N unsaved legs will be
-lost.") - catches every way they are lost; (2) keep the builder's unsaved legs across navigation and ask "Replace the N
-legs?" on Add Selected - the owner's words, a larger change (a kept draft also changes what a fresh builder opens with);
-(3) only the in-page question (built meanwhile). Recommendation: (1), because the loss happens on leaving, whatever the
-next page is. Built meanwhile: (3), ADR-328 (2) at the one place the builder replaces shown legs by a draft link (5.5),
-plus a test that a fresh mount from the chain asks nothing. Owner-questions.md carries it as OQ-4.
+**O-1. ANSWERED by ADR-329 (25 Nov late evening; was OQ-4).** The owner chose: the builder's unsaved legs are KEPT across
+the chain trip and Add Selected ADDS the ticked contracts to them (a same-action clash asks the usual question; an
+opposite-side tick is added silently); leaving the builder for any other page with unsaved legs asks "Leave the builder?
+The N unsaved legs will be lost." (Stay / Leave); ADR-328 (2) "Replace the N legs?" stays only for a replacing draft
+link. Built in Phase 5 (5.5, "ADR-329 design"). Nothing is built "meanwhile" any more. Four READINGS of ADR-329 are made
+in the plan (not owner questions, each a one-line change if the owner reads it otherwise; each is on the screen-check list):
+(a) the hold covers the legs the builder shows, saved or not; (b) leaving the chain for another page while the hold is set
+asks the same question; (c) a paper strategy counts as unsaved when it has pending changes, with N = the pending changes
+the bar shows; (d) closing or reloading the tab does not ask (`beforeunload` out: its box cannot show the sentence).
+No genuine business question was found: each reading is the one the ADR's own words give, and the opposite reading would
+lose or ask in a way the ADR does not name.
 
 ## 8. Screen-check list (owner, on `refactor/modular-doors`) and re-test list
 
@@ -1036,8 +1278,26 @@ After Step 0b the branch holds Part F and Phases 1-2; each phase below adds its 
    the question "... is already in this strategy as a Buy." with Keep both / Cancel; Cancel: legs as before; Keep both:
    two rows, and "N pending changes" shows two exits. Add a Sell of a held Buy from the strike picker: no question.
    Shift, Width and Hedge onto an opposite-held contract: the same question.
-8. **Add Selected, ADR-328 (2)** (Phase 5). Option Chain: tick 2, Add Selected: the builder opens with those 2 (no
-   question; see O-1 for the legs left behind). With the builder showing legs, open a builder link with another
+8. **Add Selected adds to the builder's legs, ADR-329 (1)** (Phase 5). Build 3 legs in the builder (a Short Strangle from
+   ready-made, then edit one lot: unsaved). Open Market > Option Chain from the nav: NO question; the chain opens. Tick 2
+   contracts, choose Buy / Sell for each, "Add Selected (2)": the builder shows 5 legs, the 3 you built first, then the 2
+   ticked; no question. Repeat, but tick a contract you already hold with the same action (e.g. the held Sell 24200 CE,
+   tick it and press Sell): "... is already in this strategy." with Increase quantity / Keep separate / Cancel; Increase:
+   the lots add up on that row; Keep separate: two rows; Cancel: the 3 held legs only, nothing added. Repeat with the
+   OPPOSITE side (tick the held Sell 24200 CE and press Buy): no question, two rows of that contract. Back in the builder
+   after a chain trip WITHOUT Add Selected (nav link Strategy Builder, or the browser Back): the 3 legs are still there.
+   Open the chain with NO builder behind it (fresh tab): tick 2, Add Selected: the builder opens with only those 2, as
+   before. Paper strategy: open `?strategy=170`, step one leg (a pending change), go to the chain, tick 1, Add Selected:
+   the book's legs, your step and the new leg all show as pending changes. Reload the builder tab (F5): the added legs are
+   gone and nothing asks (stated behaviour).
+8a. **Leave question, ADR-329 (2)** (Phase 5). Empty builder: click Home: no question. Open a saved strategy unchanged,
+   click Home: no question. With 3 unsaved legs click Home: "Leave the builder? The 3 unsaved legs will be lost." with Stay
+   and Leave; Stay (and Escape): you are still on the builder with the 3 legs; Leave: Home opens; the builder from the nav
+   is empty. Edit a saved strategy (remove a leg), click Positions: the question. Save, then click Home: no question. With
+   unsaved legs open the chain: no question; on the chain click Home: the same question (Stay returns you to the chain,
+   Leave drops the legs). Paper strategy with no change: click Home: no question; after one step: the question.
+   One leg: "The 1 unsaved leg will be lost." (wording choice). Close the tab with unsaved legs: no question (decision d).
+8b. **Replace question, ADR-328 (2)** (Phase 5). With the builder showing legs, open a builder link with another
    `?draft=` in the same tab via the app (or Back to a builder entry with another draft): "Replace the N legs in the
    builder?"; Cancel keeps the legs and the address.
 
@@ -1058,7 +1318,12 @@ must be the same as before).
   that verifies it: `npx vitest run tests/one-source-d41.test.js` after the tests-first commit (must be red)
 - **4** - Confidence: 75%; Unverified: A3 deadlock not run; goldens not captured; `read_market` switch; First command
   that verifies it: on a fresh clone (4.1): `python -m pytest -c pytest-app.ini tests_app/test_exit_door.py -k deadlock`
-- **5** - Confidence: 80%; Unverified: vitest not run; the draft-watch Cancel with `router.replace`; First command that
+- **5** - Confidence: 75% (was 80%: ADR-329 adds the hold, two guards and the Drafts Mode restore); Unverified: vitest not
+  run; the draft-watch Cancel with `router.replace`; that no existing test pushes the mounted builder to another route
+  with legs (grep of 3 files only: the 40 files that mount the page are not all read); `onBeforeRouteLeave` behaviour
+  with the page's own `router.replace` and with both builder route names in the test router; the Drafts Mode restore
+  (netKey equality, the re-read racing the held `setLegs`); the four READINGS of section 7; the singular wording; that
+  Escape on the leave dialog maps to Stay in the shared Modal; First command that
   verifies it: `npx vitest run tests/leg-step-duplicate-d60.test.js tests/leg-duplicate-d60.test.js` on the merged head
 - **6** - Confidence: 85%; Unverified: the basket golden fit in `test_checked_basket.py`; First command that verifies
   it: `python -m pytest tests_app/test_execute_route.py -k exit_legs -q`

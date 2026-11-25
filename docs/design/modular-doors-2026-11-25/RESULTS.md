@@ -243,7 +243,7 @@ ADR-328 answers, the two lanes and the ownership table):
 ## Open owner questions
 
 Answered or closed on 25 Nov evening (see `owner-questions.md`): OQ-1 by ADR-328 (1), OQ-2 closed (keep the route),
-3 by ADR-328 (5). New: OQ-4 (Add Selected; nothing waits on it).
+3 by ADR-328 (5), OQ-4 by ADR-329 (unsaved builder legs kept for the chain trip; leaving elsewhere asks).
 
 1. **OQ-1 D-60 (opposite-action step).** Should a strike step or move that lands on a held contract of the OPPOSITE action
    ask Increase / Keep separate / Cancel? Spec basis: REQ-030 AC-11; ADR-319 (1) and (4); the spec is silent on a step as
