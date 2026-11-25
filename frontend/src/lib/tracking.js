@@ -1,7 +1,7 @@
 // W-122 (REQ-109 AC-1, AC-2, AC-5; REQ-045 AC-1; REQ-046 AC-1; ADR-166): the paper-tracking panel's words and the one
 // reading of the tracking answer. The browser computes no money: every figure is the server's Decimal string, only
 // re-grouped for display. An answer this module cannot read shows no figure (fail closed).
-import { instrumentText, istClock, istTime, strikeLabel } from '@/lib/displayFormat'
+import { groupedIndian, instrumentText, istClock, istTime, strikeLabel } from '@/lib/displayFormat'
 
 /** GC-UI b2 D-B48 (REQ-109 AC-1, REQ-152): one leg's paper P&L as the server wrote it (`pnl_text`, signed, to the paisa),
  *  "booked" added for a leg the server marks booked (paper-exited); no text -> "—", never a browser figure (ADR-008). */
@@ -117,19 +117,13 @@ export { NOT_CONNECTED_TEXT, pausedText } // the one wording lives in lib/priceS
 
 const MONEY = /^(-?)(\d+)\.(\d{2})$/
 
-function groupIndian(digits) {
-  if (digits.length <= 3) return digits
-  const head = digits.slice(0, -3)
-  return `${head.replace(/\B(?=(\d{2})+(?!\d))/g, ',')},${digits.slice(-3)}`
-}
-
 /** A 2-decimal money string as "+1,240.50" / "-390.00" (zero reads "+0.00"); null for anything else. */
 export function signedRupees(text) {
   const m = typeof text === 'string' ? MONEY.exec(text) : null
   if (!m) return null
   const [, minus, whole, paise] = m
   const zero = /^0+$/.test(whole) && paise === '00'
-  return `${minus && !zero ? '-' : '+'}${groupIndian(String(BigInt(whole)))}.${paise}`
+  return `${minus && !zero ? '-' : '+'}${groupedIndian(String(BigInt(whole)))}.${paise}`
 }
 
 /** Exited is the server's own marker (exited_at, or a booked P&L), never the presence of a price text. */

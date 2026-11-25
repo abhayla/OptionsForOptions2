@@ -201,7 +201,7 @@ export function groupMoney(text) {
 // nothing is parsed to a float and no money is computed (ADR-008); the server's own forms are "₹1,865.50", "−₹916.50" and "65.18%".
 const RUPEE = '₹'
 const MINUS = '−' // U+2212, the sign the server prints before the rupee sign
-const groupedIndian = (digits) => (digits.length <= 3 ? digits : `${digits.slice(0, -3).replace(/\B(?=(\d{2})+$)/g, ',')},${digits.slice(-3)}`)
+export const groupedIndian = (digits) => (digits.length <= 3 ? digits : `${digits.slice(0, -3).replace(/\B(?=(\d{2})+$)/g, ',')},${digits.slice(-3)}`)
 
 /** A plain decimal text as rupees with Indian grouping: '720252.00' -> '₹7,20,252.00', '-2453.75' -> '−₹2,453.75'. Digits after the
  *  point are kept as sent (a whole number gets '.00'). Anything that is not a plain decimal comes back unchanged. */
