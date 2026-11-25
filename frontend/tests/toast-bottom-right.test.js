@@ -43,26 +43,39 @@ describe('D-67 (was u506): the pop-up area is in the page flow under the header,
   // bottom right) still covered buttons there (C10 166, C11 167, each toast covered buttons). The new contract: the host is an
   // ordinary block IN the page flow between the header and the page content, so it can overlay nothing; the page content is
   // laid out below it. The z order against modals therefore no longer matters (an in-flow block is under every layer).
-  it('the host is in the page flow: no fixed / absolute / sticky class, no z-index, no offset; it sits between the header and the page content', async () => {
+  // Round 2: the host sits INSIDE the sticky header block, so a toast raised while the trader is scrolled down is still on screen.
+  it('the host is a descendant of the sticky header block, directly after the header, not fixed and not in the page content', async () => {
     useToast().showToast('First one', 'info')
     const w = await layout()
     const host = w.get('[data-testid="toast-host"]')
-    const cls = host.classes()
-    expect(cls.filter((c) => /^(fixed|absolute|sticky)$/.test(c))).toEqual([])
-    expect(cls.filter((c) => /^(top|bottom|left|right|inset|inset-x|inset-y|z)-/.test(c))).toEqual([])
+    expect(host.classes().filter((c) => /^(fixed|absolute)$/.test(c))).toEqual([])
+    const block = host.element.closest('[data-testid="app-header-block"]')
+    expect(block).not.toBeNull()
+    expect(block.classList.contains('sticky')).toBe(true)
+    expect(block.classList.contains('fixed')).toBe(false)
     const header = w.get('[data-testid="app-header"]').element
-    const content = w.get('[data-testid="app-content"]').element
-    expect(host.element.parentElement).toBe(content.parentElement)
+    expect(block.contains(header)).toBe(true)
     expect(header.compareDocumentPosition(host.element) & Node.DOCUMENT_POSITION_FOLLOWING).toBeTruthy()
-    expect(host.element.compareDocumentPosition(content) & Node.DOCUMENT_POSITION_FOLLOWING).toBeTruthy()
-    expect(content.contains(host.element)).toBe(false)
+    expect(w.get('[data-testid="app-content"]').element.contains(host.element)).toBe(false)
+    w.unmount()
+  })
+
+  it('the aria-live region is always rendered, empty with no pop-up, so the first announcement is read', async () => {
+    const w = await layout()
+    const live = w.get('[data-testid="toast-host"]')
+    expect(live.attributes('aria-live')).toBe('polite')
+    expect(live.text()).toBe('')
+    useToast().showToast('Late one', 'info')
+    await flushPromises()
+    expect(w.get('[data-testid="toast-host"]').attributes('aria-live')).toBe('polite')
+    expect(w.get('[data-testid="toast-host"]').text()).toContain('Late one')
     w.unmount()
   })
 
   it('with no pop-up the host draws nothing and takes no room; with 5 it lists them newest first, each with Dismiss', async () => {
     const w0 = await layout()
     expect(w0.findAll('[data-testid="toast"]')).toHaveLength(0)
-    expect(w0.find('[data-testid="toast-host"]').exists() ? w0.get('[data-testid="toast-host"]').text() : '').toBe('')
+    expect(w0.get('[data-testid="toast-host"]').text()).toBe('')
     w0.unmount()
     const { showToast } = useToast()
     for (const m of ['One', 'Two', 'Three', 'Four', 'Five']) showToast(m, 'info')
