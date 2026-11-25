@@ -1090,7 +1090,7 @@ def _oldest_quote_at(rows: list[dict]) -> datetime.datetime | None:
 def _time_value_as_of(rows: list[dict], spot: NormalizedQuote | None) -> datetime.datetime | None:
     """D-17: the time value is the leg prices minus intrinsic AT THE SPOT, so its time is the oldest of the leg quote
     times and the spot's price time; None when any of them is missing (no other time stands in for it)."""
-    times = [r["quote_at"] for r in rows] + [None if spot is None else spot.price_at]
+    times = [*(r["quote_at"] for r in rows), None if spot is None else spot.price_at]
     return None if not rows or any(t is None for t in times) else min(times)
 
 
