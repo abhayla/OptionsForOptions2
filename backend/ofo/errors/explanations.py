@@ -1763,6 +1763,10 @@ _EXPLANATIONS: tuple[ExplanationTemplate, ...] = (
     ExplanationTemplate("outcome_problem_leg", "values_seen", "Instrument {leg} cannot be used: {why}", {"leg": InstrumentRef, "why": Explained}),
     ExplanationTemplate("outcome_why_not_in_snapshot", "values_seen", "not in today's instrument list"),
     ExplanationTemplate("outcome_why_unknown_instrument", "values_seen", "unknown instrument"),
+    # D-64: an unusable leg named as the trader knows it ("NIFTY 13 Oct 22600 CE"), never by its raw instrument id
+    ExplanationTemplate("outcome_problem_leg_named", "values_seen", "{leg} cannot be used: {why}",
+                        {"leg": Explained, "why": Explained}),
+    ExplanationTemplate("outcome_problem_leg_unknown", "values_seen", "A leg cannot be used: {why}", {"why": Explained}),
     ExplanationTemplate("outcome_why_expired", "values_seen", "expired"),
     ExplanationTemplate("outcome_why_other_underlying", "values_seen",
                         "the contract is on {contract_on}, the strategy is on {underlying}",

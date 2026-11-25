@@ -2011,6 +2011,14 @@
     "sha256": "5fc2370ab969c942d422bda5a3f2a6f827413d51d1cd910f82dbe277d2c76014",
     "reviewed": "owner read 2026-10-29 (ADR-210, question tool \"Approve all 7\")"
   },
+  "explanation:outcome_problem_leg_named": {
+    "sha256": "ff64ec9000b101629b741c1c61065706c729def5e960ed757e0c3deb02ffe5d8",
+    "reviewed": "pending owner read"
+  },
+  "explanation:outcome_problem_leg_unknown": {
+    "sha256": "ab7e0629e6dd4b2f72a37218f46f6e22de720e503130227325ca3976ebc85334",
+    "reviewed": "pending owner read"
+  },
   "explanation:market_closed_settles": {
     "sha256": "acfd7acaaeae7ad9da5804f51eccb93a001e32678c59453de61a0f500da377eb",
     "reviewed": "pending owner read"

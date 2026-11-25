@@ -80,6 +80,8 @@ from ofo.scenario.spot import spot_reading
 from ofo.scenario.views import DEFAULT_VIEW, LABELS, ScenarioValues, View, on_levels, scenario_values
 from ofo.settings import calc
 from ofo.table import ColumnSpec, Table, build_table, visible_columns
+from ofo.market_calendar import after_close_before_settlement
+from ofo.strategy.definition import display_contract
 from ofo.timeutil import IST
 
 NOT_CONNECTED_LABEL: Final = render_explanation("outcome_not_connected")
@@ -422,6 +424,27 @@ def _not_live_label(snapshot: MarketSnapshot) -> ExplanationText:
 def _quote_label(q: NormalizedQuote) -> ExplanationText | None:
     """The one stale/delayed wording (ofo.engine.model.data_label) applied to a leg quote's own time and health."""
     return data_label(SpotReading(Decimal(1), q.timestamp, q.health))
+
+
+def _problem_leg(snapshot: MarketSnapshot, instrument_id: str, why: ExplanationText,
+                 settings: Mapping[str, Decimal]) -> ExplanationText:
+    """D-64: the ONE place a refusal names an unusable leg: as the trader knows it ("NIFTY 13 Oct 22600 CE"), never by the
+    raw instrument id. An expired leg on its expiry day after the close, before the settlement time, says when it settles."""
+    lm = snapshot.legs.get(instrument_id)
+    listed = None if lm is None else lm.contract
+    if listed is None:
+        return render_explanation("outcome_problem_leg_unknown", why=why)
+    c = listed.contract
+    clock = snapshot.clock
+    if (clock is not None and c.expiry == clock.astimezone(IST).date() and why == render_explanation("outcome_why_expired")):
+        settle_from = calc.paper_settle_from(settings)
+        if after_close_before_settlement(clock, settle_from):
+            return render_explanation("market_closed_settles", time=settle_from)
+    if c.expiry is None:
+        return render_explanation("outcome_problem_leg_unknown", why=why)
+    name = display_contract((c.name, Instrument(c.instrument_type), None if c.instrument_type == Instrument.FUT.value
+                             else c.strike, c.expiry))
+    return render_explanation("outcome_problem_leg_named", leg=name, why=why)
 
 
 def _feed_message(snapshot: MarketSnapshot) -> ExplanationText | None:
@@ -863,14 +886,14 @@ def build_outcome(definition: StrategyDefinition, snapshot: MarketSnapshot | Non
         lm = snapshot.legs.get(p.instrument_id)
         if p.planned_entry is None:  # an unpriced leg (ADR-085) is never computed
             why = render_explanation("draft_leg_needs_reprice")
-            problems.append(render_explanation("outcome_problem_leg", leg=p.instrument_id, why=why))
+            problems.append(_problem_leg(snapshot, p.instrument_id, why, settings))
             legs.append(OutcomeLeg(p.instrument_id, None, p.action, None, None, None, p.lots, None, None,
                                    None, p.captured_at, None, None, None, why))
             continue
         if lm is None or lm.contract is None or lm.problem is not None:
             why = (lm.problem if lm is not None and lm.problem is not None
                    else render_explanation("outcome_why_not_in_snapshot"))
-            problems.append(render_explanation("outcome_problem_leg", leg=p.instrument_id, why=why))
+            problems.append(_problem_leg(snapshot, p.instrument_id, why, settings))
             legs.append(OutcomeLeg(p.instrument_id, None, p.action, None, None, None, p.lots, None, None,
                                    p.planned_entry, p.captured_at, None, None, None, why))
             continue
@@ -906,8 +929,8 @@ def build_outcome(definition: StrategyDefinition, snapshot: MarketSnapshot | Non
             inputs.append(LegInput(definition.underlying, symbol or p.instrument_id, p.action, kind, strike,
                                    c.expiry, quantity, p.planned_entry, ltp, iv))
         except ValueError:  # the cause goes to no user (W-066): a closed reason
-            problems.append(render_explanation("outcome_problem_leg", leg=p.instrument_id,
-                                               why=render_explanation("outcome_why_leg_input")))
+            problems.append(_problem_leg(snapshot, p.instrument_id, render_explanation("outcome_why_leg_input"),
+                                               settings))
     for expiry, why in snapshot.forward_errors.items():
         if any(leg.expiry == expiry for leg in inputs):
             problems.append(render_explanation("outcome_forward_error", expiry=expiry, why=why))

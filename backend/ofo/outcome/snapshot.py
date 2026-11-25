@@ -65,6 +65,9 @@ class MarketSnapshot:
     #: (``feed_health.market_closed_for``, the one every quote health reads). Then a STALE quote is the last close
     #: held from the session (priced for planning, labelled by the market-closed banner), never a live price.
     market_closed: bool = False
+    #: D-64: the clock reading the snapshot was read at (the real time, not the newest frame's instant): the one time
+    #: the expired and after-the-close decisions are made on. None = unknown (a hand-built snapshot).
+    clock: datetime.datetime | None = None
 
 
 #: A leg is one of the three engine types; any other catalogue row (the index rows) is not a leg.
@@ -209,4 +212,4 @@ def read_snapshot(provider: MarketDataProvider, underlying: str, instrument_ids:
             ended[iid] = t
     return MarketSnapshot(underlying, instant, rate, status, spot, legs, forwards, errors, ended,
                           {expiry: tuple(chain) for expiry, chain in chains.items()},
-                          market_closed=market_closed_for(provider, valuation))
+                          market_closed=market_closed_for(provider, valuation), clock=valuation)
