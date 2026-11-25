@@ -12,23 +12,23 @@ const offer = (extra = {}) => ({
   ...extra,
 })
 const t = (w, id) => w.find(`[data-testid="${id}"]`)
-const mountStale = (target) => mount(TargetBlock, { props: { target, pick: { level: '25350', dateIndex: 0 }, stopCount: 2, stale: true } })
+const mountStale = (target, notLiveText = null) => mount(TargetBlock, { props: { target, pick: { level: '25350', dateIndex: 0 }, stopCount: 2, stale: true, notLiveText } })
 
 describe('D-37: the what-if readouts say why they are "-" when prices are not live', () => {
   it('stale with the plain offer (no stale_text): both readouts are "-" and each carries the reply sentence', () => {
-    const w = mountStale(offer({ not_live_text: SENTENCE }))
+    const w = mountStale(offer(), SENTENCE)
     expect(t(w, 'target-move-text').text()).toBe('-')
     expect(t(w, 'target-days').text()).toContain('-')
     expect(t(w, 'target-move-not-live').text()).toBe(SENTENCE)
     expect(t(w, 'target-days-not-live').text()).toBe(SENTENCE)
   })
-  it('the reply without the sentence shows none (nothing is made up here)', () => {
+  it('a stale block whose latest reply did not say prices are not live shows none (a failed request, a refusal) (nothing is made up here)', () => {
     const w = mountStale(offer())
     expect(t(w, 'target-move-not-live').exists()).toBe(false)
     expect(t(w, 'target-days-not-live').exists()).toBe(false)
   })
   it('not stale: the figures show and no not-live sentence', () => {
-    const w = mount(TargetBlock, { props: { target: offer({ not_live_text: SENTENCE }), pick: { level: '', dateIndex: 0 }, stopCount: 2 } })
+    const w = mount(TargetBlock, { props: { target: offer(), pick: { level: '', dateIndex: 0 }, stopCount: 2, notLiveText: SENTENCE } })
     expect(t(w, 'target-move-text').text()).toBe('0.0%')
     expect(t(w, 'target-move-not-live').exists()).toBe(false)
   })
