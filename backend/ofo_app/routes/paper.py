@@ -171,6 +171,9 @@ class PaperOrdersIn(BaseModel):
     #: REQ-112 (IC e2e 11): how many legs the prepared basket held; with it the linked records read completed (all
     #: placed) or partly completed (some); without it they stay acted on
     basket_legs: int | None = Field(default=None, gt=0, le=64)
+    #: ADR-326 (1) (D-25): the approach this basket was prepared as; a Take profit (A-24, A-25) is refused at an
+    #: after-charges loss by the build path that offers it (offered and accepted agree). Other ids: nothing checked
+    approach_id: Literal["A-24", "A-25"] | None = None
 
 
 class PaperNetOut(ApiModel):
@@ -1293,9 +1296,25 @@ def _refuse_duplicate_legs(underlying: str, orders: Sequence[PaperOrderIn], stat
         raise StrategyRefused("gate_duplicate_leg", message=failure)
 
 
+async def _refuse_take_profit_at_loss(db: Any, user_ref: str, strategy_id: int, approach_id: str,  # noqa: PLR0913
+                                      ctx: MarketContext | None, rates: ChargeRates | None,
+                                      tracked_reader: TrackedReader) -> None:
+    """ADR-326 (1): the preferences and the default roll basis are read here only for a Take profit (the basis is not
+    used by A-24 / A-25), then ``adjustment.refuse_take_profit_at_loss`` asks the offer's own build path."""
+    from ofo.adjustment.preferences import from_values  # noqa: PLC0415 - only a Take profit basket needs it
+
+    from ofo_app import adjustment_check as check  # noqa: PLC0415 - it imports the route layer
+    from ofo_app.routes.adjustment import refuse_take_profit_at_loss  # noqa: PLC0415 - as above
+    from ofo_app.user_preferences_store import values_for  # noqa: PLC0415 - as above
+    prefs = from_values(await values_for(db, user_ref))
+    await refuse_take_profit_at_loss(approach_id, strategy_id, tracked_reader, ctx,
+                                     rates if isinstance(rates, ChargeRates) else None, prefs,
+                                     check.basis_in_force(None, None, None))
+
+
 @router.post("/paper/strategies/{strategy_id}/orders", status_code=201, response_model=PaperBookOut,
              dependencies=[Depends(guard_paper_order)])  # IC e2e 5: scenario mode = own scenario only
-async def place_paper_orders(strategy_id: int, body: PaperOrdersIn,  # noqa: PLR0913 - FastAPI dependencies
+async def place_paper_orders(strategy_id: int, body: PaperOrdersIn,  # noqa: PLR0913, C901 - FastAPI dependencies
                              db: Annotated[Any, Depends(get_db)], user_ref: Annotated[str, Depends(current_user_ref)],
                              ctx: Annotated[MarketContext | None, Depends(get_market_context)],
                              feed: Annotated[LiveFeed | None, Depends(get_live_feed)],
@@ -1314,6 +1333,8 @@ async def place_paper_orders(strategy_id: int, body: PaperOrdersIn,  # noqa: PLR
            for o in body.orders):
         raise StrategyRefused("paper_contract_not_tradable")
     _refuse_duplicate_legs(stored.saved.definition.underlying, body.orders, state)  # ADR-319 (3)
+    if body.approach_id is not None:  # ADR-326 (1): the offer's own build path decides, before any price read
+        await _refuse_take_profit_at_loss(db, user_ref, strategy_id, body.approach_id, ctx, rates, tracked_reader)
     placed_at = now()
     may_act.refuse_unless_allowed(ctx, "place", placed_at)  # ADR-212: before any price read
     exit_prices = await _server_exit_prices(ctx, feed, stored.saved.definition.underlying, body.orders, state)

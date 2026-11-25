@@ -73,10 +73,11 @@ export function entryPriceFor(leg, livePriceById = {}) {
 }
 
 /** POST the confirmed orders in ONE request (the server stores them in one transaction or none). Throws the client error. */
-export async function addToPaper(client, strategyId, orders, suggestionIds = [], basketLegs = null, held = null) {
+export async function addToPaper(client, strategyId, orders, suggestionIds = [], basketLegs = null, held = null, approachId = null) {
   // REQ-163 AC-1: the acted-on records this basket answers (Compare -> Open in builder); omitted when none
   const body = suggestionIds.length ? { orders, suggestion_ids: suggestionIds } : { orders }
   if (suggestionIds.length && basketLegs) body.basket_legs = basketLegs // REQ-112: the prepared basket's size
+  if (approachId) body.approach_id = approachId // D-25 (ADR-326 (1)): a Take profit basket (A-24 / A-25), checked by the server
   if (held) body.held = held // GC-TRACK1 k10: only on the first basket, only when the user ticked "Held at my broker"
   const { data } = await client.post(`/paper/strategies/${strategyId}/orders`, body)
   return data
@@ -216,6 +217,7 @@ export function readTracking(body, replyLegs = null) {
     text: instrumentText({ quantity: String(leg.quantity ?? ''), expiry: leg.expiry, strike: leg.strike ?? '', instrument: leg.instrument }, lotsOf(replyLegs, leg)),
     entry: leg.entry_price_display ?? null, // GC-UI D-PX: the server's two-decimal text, printed as sent
     current: leg.price_state === 'live' ? (leg.current_price_display ?? null) : null,
+    quoteAt: leg.price_state === 'live' && typeof leg.price_at === 'string' ? leg.price_at : null, // D-18: when THIS leg's price was quoted (the server's price_at)
     exited: isExited(leg),
     exitPrice: leg.exit_price_display ?? null, // REQ-109 AC-4: the server's text of the exit price; null = a dash
     pnl: legPnlText(leg),

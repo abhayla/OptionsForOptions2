@@ -2,7 +2,7 @@
 
 # Coverage register
 
-Generated from commit 4428e16
+Generated from commit aeea56ed
 
 ## Stage S0
 
@@ -854,6 +854,7 @@ Generated from commit 4428e16
 | S6.7 | decision | ADR-323 | - | Suggestions and alerts of the 23 Nov live test: records, times, one word, one value (GC-ICLIVE Part C) - PENDING OWNER READ |
 | S6.7 | decision | ADR-324 | - | Paper page header totals leave out strategies whose open contract has expired (GC-ICLIVE Part D, D-40) - PENDING OWNER READ |
 | S6.7 | decision | ADR-325 | - | Labels, small features and post-close messages of the 23 Nov live test (GC-ICLIVE Part E) - PENDING OWNER READ |
+| S6.7 | decision | ADR-326 | - | Owner answers of 25 Nov 2026 to the GC-ICLIVE questions Q2 to Q8 (Take profit, header totals, timeouts, 24-hour time, pop-up quiet period, Today, lots box) |
 | S6.7 | decision | ADR-327 | - | In market hours a paper trigger whose level cannot be checked against a live price is refused, not saved |
 | S6.7 | decision | ADR-328 | - | Owner decisions of 25 Nov 2026 evening for the modular-doors plan, phases 3 to 8 (opposite-side step, Add Selected, per-leg P&L, stale Exit, unreadable-price wording) |
 | S6.7 | decision | ADR-329 | - | Unsaved builder legs: kept across the Option Chain trip and added to by Add Selected; leaving for any other page asks first (S-08) |
@@ -1151,7 +1152,7 @@ Generated from commit 4428e16
 | S6.4 | 0 | 1 | 13 | 19 | 0 | 32 | 1 | 0 | 25 | 0 | 8 | 99 |
 | S6.5 | 0 | 0 | 1 | 0 | 0 | 0 | 0 | 0 | 3 | 0 | 1 | 5 |
 | S6.6 | 0 | 0 | 0 | 0 | 0 | 0 | 0 | 0 | 7 | 0 | 2 | 9 |
-| S6.7 | 0 | 0 | 108 | 9 | 0 | 64 | 0 | 0 | 14 | 0 | 19 | 214 |
+| S6.7 | 0 | 0 | 109 | 9 | 0 | 64 | 0 | 0 | 14 | 0 | 19 | 215 |
 | S7 | 1 | 0 | 0 | 0 | 0 | 1 | 1 | 0 | 5 | 0 | 0 | 8 |
 | S8 | 2 | 0 | 17 | 1 | 0 | 1 | 1 | 1 | 22 | 4 | 7 | 56 |
 | all | 0 | 0 | 15 | 0 | 0 | 0 | 0 | 0 | 10 | 0 | 0 | 25 |

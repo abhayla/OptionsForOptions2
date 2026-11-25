@@ -297,7 +297,7 @@ class Symbol(SlotType):
 
 
 class Clock(SlotType):
-    """A timezone-aware time shown as the IST clock time with seconds, "10:42:17 AM" (ADR-015's own example)."""
+    """A timezone-aware time shown as the 24-hour IST clock time with seconds, "10:42:17 IST" (ADR-326 (4))."""
 
     @staticmethod
     def validate(value: object) -> None:
@@ -305,12 +305,7 @@ class Clock(SlotType):
 
     @staticmethod
     def format(value: datetime) -> str:
-        ist = value.astimezone(_IST)
-        # owner question: ADR-015 Q182 12-hour vs ADR-320 D-57 24-hour
-        hour = ist.hour % 12 or 12
-        # owner question: ADR-015 Q182 12-hour vs ADR-320 D-57 24-hour
-        half = "AM" if ist.hour < 12 else "PM"
-        return f"{hour:02d}:{ist.minute:02d}:{ist.second:02d} {half}"
+        return f"{value.astimezone(_IST).strftime('%H:%M:%S')} IST"
 
 
 # --- Round 9 part 4: Strategy Guard rows and exchange contract symbols ------------------------------------------------

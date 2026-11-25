@@ -37,6 +37,8 @@ export const STATUS_COMPLETED = 'Completed'
 export const CLOSED_HEADER = 'Closed'
 export const CLOSED_PREFIX = 'closed '
 export const CLOSED_UNAVAILABLE_TEXT = 'closed: time not available'
+// pending owner read (25 Nov 2026), D-18 round 1: a leg price whose quote time the server did not send says so, never a blank
+export const QUOTE_TIME_UNAVAILABLE_TEXT = 'time not available'
 export const STATUS_UNKNOWN = 'Status not available'
 // pending owner read (15 Nov 2026): a Live Strategies card waiting in the page's start queue (ADR-299 (2): "Waiting to start" is retired)
 export const CARD_QUEUED_TEXT = 'Loading next...'

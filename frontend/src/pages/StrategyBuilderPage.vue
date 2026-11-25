@@ -130,12 +130,16 @@ const actedSuggestionIds = computed(() => opportunitiesFromQuery(route.query.act
 // REQ-112: how many orders the prepared basket held (`basket=4`, set by prepare, travels with `acted`); sent with the
 // paper orders so the server can tell completed from partly completed. Anything but a whole 1..64 is not sent.
 const preparedBasketLegs = computed(() => { const n = String(route.query.basket ?? ''); return /^(?:[1-9]|[1-5]\d|6[0-4])$/.test(n) ? n : null }) // stays a string like the ids: the server's model reads it as a whole number
-async function prepareApproach({ legs: next, suggestionIds = [], basketLegs = 0, exit = false }) { // the chosen approach's legs become the builder's legs; no order is placed
-  const { adjust: _gone, pick: _picks, opp: _opp, acted: _acted, basket: _basket, ...rest } = route.query
+// D-25 (ADR-326 (1)): a Take profit basket names its approach (`approach=A-24`, set by prepare, travels with `acted`) so the
+// server asks the same build path that offered it; only A-24 / A-25 are ever sent, anything else in the URL is ignored.
+const preparedApproachId = computed(() => { const a = String(route.query.approach ?? ''); return a === 'A-24' || a === 'A-25' ? a : null })
+async function prepareApproach({ legs: next, suggestionIds = [], basketLegs = 0, exit = false, approachId = null }) { // the chosen approach's legs become the builder's legs; no order is placed
+  const { adjust: _gone, pick: _picks, opp: _opp, acted: _acted, basket: _basket, approach: _approach, ...rest } = route.query
   const acted = opportunitiesFromQuery(suggestionIds.join(','))
   const size = Number.isInteger(basketLegs) && basketLegs > 0 && basketLegs <= 64 ? { basket: String(basketLegs) } : {}
   const id = adjustId.value
-  await router.replace({ query: acted.length ? { ...rest, acted: acted.join(','), ...size } : rest }) // awaited: nameInUrl below spreads it
+  const take = approachId === 'A-24' || approachId === 'A-25' ? { approach: approachId } : {}
+  await router.replace({ query: acted.length ? { ...rest, acted: acted.join(','), ...size, ...take } : { ...rest, ...take } }) // awaited: nameInUrl below spreads it
   // ADR-207 (2), live 2026-11-06 (strategy 88, A-11): a strategy with a paper book is edited in ITS Drafts Mode, never as a new
   // unlinked draft (whose Add to Paper would open a second position). A full exit takes the book's Exit all path; any other
   // approach's after-legs become the edited legs, so the pending changes are paperOrdersFor(net, after-legs) (the exit + add
@@ -168,9 +172,11 @@ function keepHeldFills(net, next) {
 // refused on every retry. A 422 (price, contract) is fixed by the user and keeps them.
 const ACTED_REFUSED = new Set([404, 409])
 // awaited: a later URL write (nameInUrl after the book re-read) spreads route.query and would put the ids back
-async function dropActed() { // the basket answered its records, or the server refused them: never sent again
-  if (route.query.acted === undefined) return
-  const { acted: _acted, basket: _basket, ...rest } = route.query
+async function dropActed({ withApproach = false } = {}) { // the basket answered its records, or the server refused them: never sent again
+  if (route.query.acted === undefined && !(withApproach && route.query.approach !== undefined)) return
+  // a refused record keeps the approach (the retry is asked again); a stored basket answers it once
+  const { acted: _acted, basket: _basket, approach: gone, ...rest } = route.query
+  if (!withApproach && gone !== undefined) rest.approach = gone
   await router.replace({ path: route.path, query: rest })
 }
 // W-090 (REQ-034 AC-4, AC-6): the scenario column and range the user picked; kept across every reload and push.
@@ -475,7 +481,7 @@ async function confirmPending(orders) {
   paperError.value = ''
   paperState.value = PAPER_STATE.READY
   try {
-    await postPaperOrders(api, id, orders, actedSuggestionIds.value, preparedBasketLegs.value)
+    await postPaperOrders(api, id, orders, actedSuggestionIds.value, preparedBasketLegs.value, null, preparedApproachId.value)
   } catch (e) {
     const outcome = paperPostOutcome(e)
     if (outcome === PAPER_STATE.REFUSED) { // 4xx: the server stored nothing (one transaction or none)
@@ -493,7 +499,7 @@ async function confirmPending(orders) {
   // STORED (201). From here nothing may offer these orders again: a failure below is only a failed refresh.
   paperStale.value = true
   try {
-    await dropActed() // one basket answers the records once
+    await dropActed({ withApproach: true }) // one basket answers the records once
   } catch { /* the ids may stay in the URL: the stored orders are never offered again (paperStale) */ }
   try {
     // the dialog stays, says it was placed, and has no Confirm, while the book is read again (issue 18: bounded retries, then Retry)

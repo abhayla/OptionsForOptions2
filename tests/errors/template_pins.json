@@ -3867,6 +3867,18 @@
     "sha256": "fb23414a7469aeeb2912e6e99ed14bc638e288450fa6c76e62b511f1baa51b46",
     "reviewed": "pending owner read"
   },
+  "adjust_take_profit_not_in_profit_after_charges": {
+    "sha256": "f7529d6888488d7c79d6638ba736aaca9ca95ddd09842e293b6ef9f7a7ee4062",
+    "reviewed": "pending owner read"
+  },
+  "adjust_take_profit_charges_unknown": {
+    "sha256": "c5c124ea8c4172a51097769912d11dd5bb09d39d694fd113ed6868b5ba9f6629",
+    "reviewed": "pending owner read"
+  },
+  "adjust_take_profit_two_expiries": {
+    "sha256": "fa7e184e961ba0cd9c473336219f3a9c3c8d3ba07a646d83aa129d741d9e441d",
+    "reviewed": "pending owner read"
+  },
   "explanation:monitor_pause_label": {
     "sha256": "75aa8fe6ba24988ff5add8cd84a50478f9c042dd0b7b432bd696ef6fb0abc7fd",
     "reviewed": "pending owner read"
@@ -4417,10 +4429,6 @@
   },
   "explanation:adjust_take_profit_basis": {
     "sha256": "8a3b065df8796efe23115bc8009bdc01c5e2edccacded1c9e603e7345293e3d1",
-    "reviewed": "pending owner read"
-  },
-  "explanation:adjust_take_profit_basis_no_charges": {
-    "sha256": "dea61abc4e3b4a635c31a9d9e869f83dd4131a6432f5cccba725af717da66588",
     "reviewed": "pending owner read"
   },
   "explanation:suggestion_counts_units": {

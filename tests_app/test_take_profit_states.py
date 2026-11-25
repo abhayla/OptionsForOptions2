@@ -1,6 +1,7 @@
 """Issue 11 (ADR-238 (6), ADR-294): Take profit (A-24, A-25) through the route's ONE build path (``priced_approach``
 after ``as_of_market``), one test per state of the trade. The profit test is BEFORE charges (row 294); an offered
-approach carries the after-charges figure. Case 141: booked -32.50, charges paid 403.45, after charges -435.95."""
+approach carries the after-charges figure;
+an after-charges loss is refused (ADR-326 (1)). Case 141: booked -32.50, charges paid 403.45, after charges -435.95."""
 from __future__ import annotations
 
 from dataclasses import replace
@@ -48,12 +49,11 @@ def test_booked_unknown_is_refused_with_its_reason(a):
 
 
 @pytest.mark.parametrize("a", ["A-24", "A-25"])
-def test_profit_before_charges_is_offered_with_the_after_charges_figure(a):
-    built, priced = _run("ADJ-10", whole=D("61.75"), paid=D("403.45"), a=a)  # case 143: +61.75 before, loss after
-    assert built.refusal is None and priced is not None and priced.after is not None
-    after = priced.after.after_charges
-    assert after.max_profit < 0 or a == "A-25"  # A-24 closes everything: the after-charges result IS a loss here
-    assert priced.charges_known
+def test_profit_before_charges_but_loss_after_is_refused_with_the_after_figure(a):
+    """ADR-326 (1) (was: offered with the after-charges figure): case 143, +61.75 before and a loss after charges."""
+    built, priced = _run("ADJ-10", whole=D("61.75"), paid=D("403.45"), a=a)
+    assert built.refusal is not None and priced is None
+    assert built.refusal_message.what_happened.startswith("Not in profit after charges: ")
 
 
 def test_profit_before_and_after_charges_is_offered():

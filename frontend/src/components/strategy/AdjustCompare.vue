@@ -393,7 +393,7 @@ async function openInBuilder() {
     const legs = exit ? exitLegsFromApproach(underlying.value, a, contracts, at) : legsFromApproach(underlying.value, a, contracts, at)
     if (!legs) { prepareError.value = LOCAL_FAILURE; return }
     const acted = await markActedOn()
-    emit('prepare', { legs, underlying: underlying.value, suggestionIds: acted, basketLegs: (a.trades ?? []).length, exit })
+    emit('prepare', { legs, underlying: underlying.value, suggestionIds: acted, basketLegs: (a.trades ?? []).length, exit, approachId: a.id })
   } catch (e) {
     prepareError.value = e?.parts ?? NEUTRAL_PARTS
   }

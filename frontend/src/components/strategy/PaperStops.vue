@@ -135,6 +135,9 @@ async function keep(t) {
   <div ref="rootEl" class="mt-2 rounded border border-line p-2" data-testid="paper-stops">
     <p class="text-xs font-semibold" data-testid="stops-label">{{ LABEL }}</p>
 
+    <!-- D-44 round 1: from lg up the form (first) and the list of stops (second) sit side by side; narrower they stack -->
+    <div class="grid gap-x-6 lg:grid-cols-2" data-testid="stops-columns">
+    <div class="min-w-0" data-testid="stops-form">
     <div class="mt-2" data-testid="conditional-exit">
       <p class="font-medium">Conditional exit{{ underlying ? ` - ${underlying}` : '' }}</p>
       <p class="text-xs text-ink-muted">Exit all legs when the index crosses a level. Fill one or both.</p>
@@ -163,6 +166,9 @@ async function keep(t) {
     <p v-if="error" class="mt-2 text-red-700" role="alert" data-testid="stops-error">{{ error }}</p>
     <p v-else-if="saved" class="mt-2 text-xs text-ink-muted" role="status" data-testid="stops-saved">{{ saved }}</p>
 
+    </div>
+
+    <div class="min-w-0" data-testid="stops-list">
     <div class="mt-2" data-testid="triggers">
       <p class="font-medium">Stops on this strategy</p>
       <p v-if="triggers && !triggers.length" class="text-xs text-ink-muted" data-testid="stops-empty">No stops set.</p>
@@ -180,6 +186,8 @@ async function keep(t) {
           </template>
         </li>
       </ul>
+    </div>
+    </div>
     </div>
   </div>
 </template>

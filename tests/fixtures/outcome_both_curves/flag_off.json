@@ -8539,7 +8539,7 @@
   "spot_at": null,
   "spot_level": null,
   "state": "FROM_ENTRIES",
-  "status_label": "Live market data disconnected. Last updated: 09:20:09 AM. Live strategy monitoring is paused.",
+  "status_label": "Live market data disconnected. Last updated: 09:20:09 IST. Live strategy monitoring is paused.",
   "summary": {
    "breakevens": [
     "22662.4"

@@ -4,10 +4,9 @@
 
 One line per decision, requirement and spec section. Read it before asking the owner anything; cite the ids you rely on in a `Spec basis:` line, or write `Spec basis: none (searched: <terms>)`.
 
-## Decisions (315)
+## Decisions (316)
 
-- Older decisions: 275 rows, ADR-1..ADR-288 (oldest first). Read spec/decisions/*.md, or find one by meaning: python tools/spec_similar.py . "<text>"
-- ADR-289 2026-11-11: Owner answers 2026-11-11 (question tool, standing direction step 4): "Yes, one order, I press Execu… [amends ADR-281 (one exception, step 4 only); stat…]
+- Older decisions: 276 rows, ADR-1..ADR-289 (oldest first). Read spec/decisions/*.md, or find one by meaning: python tools/spec_similar.py . "<text>"
 - ADR-290 2026-11-11: Owner, 2026-11-11 (chat, then question tool "Both: by hand now, Zerodha later"): "I don't want to p… [withdraws ADR-289 part (2); restates the standing…]
 - ADR-291 2026-11-12: Owner, 2026-11-12 ~00:1x IST (chat): "It is mandatory that whoever connects to kite should have kit… [narrows the current scope of ADR-290 to the owner…]
 - ADR-292 2026-11-12: How ADR-290 (2) works for the one user of ADR-291, as approved with the GC-TRACK1 contract (owner 2… [adds the held_elsewhere source to the strategy st…]
@@ -44,6 +43,7 @@ One line per decision, requirement and spec section. Read it before asking the o
 - ADR-323 2026-11-25: PENDING OWNER READ. [Refines ADR-309 (1) (D-31), ADR-299 (D-28), ADR-3…]
 - ADR-324 2026-11-25: PENDING OWNER READ. [Refines REQ-109 AC-5 (header totals), ADR-311 (th…]
 - ADR-325 2026-11-25: PENDING OWNER READ. [Refines REQ-109 AC-5 (Today figure), REQ-029 AC-2…]
+- ADR-326 2026-11-25: Owner answers, 25 Nov 2026: Q2 to Q6 answered one at a time with the question tool in the GC-ICLIVE… [Amends ADR-015 Q182 and REQ-049 AC-5 (24-hour tim…]
 - ADR-327 2026-11-25: OWNER DECIDED 25 Nov 2026 ~16:10 IST (question tool, after the live screen test of 25 Nov). [Supersedes ADR-317 (2) in market hours; ADR-317 (…]
 - ADR-328 2026-11-25: Owner decided 25 Nov 2026 (evening), answering five questions one at a time in the orchestrating cl… [Amends ADR-319 (4) and the REQ-109 AC-9 sentence…]
 - ADR-329 2026-11-25: Owner decided 25 Nov 2026 (about 22:35 IST) in the orchestrating cloud session; he first answered "… [Settles finding S-08 of the 25 Nov live screen te…]

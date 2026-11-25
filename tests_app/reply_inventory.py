@@ -881,6 +881,7 @@ INVENTORY = (
     'FIELD InboxOut.groups[].records[].id: int',
     "FIELD InboxOut.groups[].records[].outcome: Literal['open','dismissed','acted_on','completed','partly_completed','lapsed']",
     'FIELD InboxOut.groups[].records[].outcome_text: CatalogueText',
+    'FIELD InboxOut.groups[].records[].popup_due: bool',
     'FIELD InboxOut.groups[].records[].rule_id: Identifier',
     'FIELD InboxOut.groups[].records[].shown_at: datetime',
     'FIELD InboxOut.groups[].records[].stage: CatalogueText',

@@ -30,6 +30,8 @@ Spec basis: REQ-081 AC-3; contract GC-ICLIVE-B; ADR-008.
 
 ## Q2 (D-25): may "Take profit" be offered when the trade is a loss after charges?
 
+**Answered by the owner 25 Nov 2026: refuse Take profit at an after-charges loss (ADR-326 (1)).**
+
 Business call: two owner texts give different answers; the Part C run stopped D-25 here (it kept the built change,
 which adds figures and removes nothing).
 
@@ -53,6 +55,8 @@ Spec basis: ADR-238 (6); ADR-294 (3), (4); ADR-263; contract GC-ICLIVE-C (D-25).
 
 ## Q3 (D-40): which figures does the paper page header add up when some strategies sit on expired contracts?
 
+**Answered by the owner 25 Nov 2026: keep as built (ADR-326 (2)).**
+
 Business call: the spec does not say; the Part D run took option A (ADR-324, PENDING OWNER READ) and kept the old
 scenario strategies.
 
@@ -73,6 +77,8 @@ Spec basis: REQ-109 AC-5; ADR-311; ADR-210; ADR-324.
 
 ## Q4 (D-38): what does a page say when a read takes too long, and does it keep what the trader typed?
 
+**Answered by the owner 25 Nov 2026: keep as built (ADR-326 (3)).**
+
 Business call: the contract says "a page that times out says so and keeps the user's input"; the words and the
 failed-pick behaviour are the run's choice (ADR-324 point 4, PENDING OWNER READ).
 
@@ -90,6 +96,8 @@ Spec basis: contract GC-ICLIVE-D (D-38 line); ADR-324 point 4; ADR-210 (reason s
 
 ## Q5 (D-57): may the "Last updated" disconnect sentence use 24-hour time? (CLASH, not decided)
 
+**Answered by the owner 25 Nov 2026: 24-hour IST everywhere, the disconnect sentence included (ADR-326 (4)).**
+
 Business call: two owner texts give different answers; the run did not change the two sentences and marked D-57
 `Needs owner decision`. Everything else of D-57 is built (one date formatter, "23 Nov 2026", 24-hour IST times).
 
@@ -104,6 +112,8 @@ Business call: two owner texts give different answers; the run did not change th
 Spec basis: ADR-015 Q182; REQ-049 AC-5; ADR-320 (D-57); ADR-325 point 17.
 
 ## Q6 (D-67): how many minutes after entry should an adjustment pop-up stay quiet for a rule already true at entry?
+
+**Answered by the owner 25 Nov 2026: quiet for 5 minutes after entry when the rule was already true (ADR-326 (5)).**
 
 Business call: the owner direction says the pop-up "is not raised in the first minutes after entry for a rule
 already true at entry"; the spec gives no number, so the run invented none (ADR-325 point 5).
@@ -121,6 +131,8 @@ Spec basis: ADR-320 (D-67); REQ-170 (5 min cool-down); ADR-246 (quiet until 09:2
 
 ## Q7 (D-68): what does "Today" add up?
 
+**Answered by the owner 25 Nov 2026: keep as built (ADR-326 (6)).**
+
 Business call: the decision row is the run's choice (ADR-325 point 2, PENDING OWNER READ).
 
 - **Built:** total after charges of the real trades opened or closed on the current trading day (the India date of the
@@ -133,6 +145,8 @@ Business call: the decision row is the run's choice (ADR-325 point 2, PENDING OW
 Spec basis: REQ-109 AC-5; ADR-320 (D-68); ADR-325 point 2.
 
 ## Q8 (D-47): should the lots box show on every strike row?
+
+**Answered by the owner 25 Nov 2026: keep as built (ADR-326 (7)).**
 
 Business call: the run kept the lots box behind the first click (ADR-325 point 4).
 

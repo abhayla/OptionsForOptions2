@@ -108,7 +108,8 @@ export function takeOpportunities(data) {
   for (const g of groups) {
     for (const r of Array.isArray(g?.records) ? g.records : []) {
       if (r && r.outcome === 'open' && Number.isInteger(r.id)) {
-        open.push({ id: r.id, strategy_id: g.strategy_id, strategy_name: g.strategy_name ?? null, text: r.condition || g.label || '', shown_at: r.shown_at ?? g.shown_at ?? null })
+        // D-67 (ADR-326 (5)): popup_due is the SERVER's answer (ofo.adjustment.popup_quiet); absent = due (fail open)
+        open.push({ id: r.id, strategy_id: g.strategy_id, strategy_name: g.strategy_name ?? null, text: r.condition || g.label || '', shown_at: r.shown_at ?? g.shown_at ?? null, popup_due: r.popup_due !== false })
       } else if (r && Number.isInteger(r.id) && r.outcome !== 'open') {
         (settled[g.strategy_id] ??= []).push({ id: r.id, text: r.condition || g.label || '', outcome_text: r.outcome_text ?? '', shown_at: r.shown_at ?? g.shown_at ?? null, closed_at: r.closed_at ?? null })
       }
@@ -117,8 +118,10 @@ export function takeOpportunities(data) {
   openRecords.list = open
   settledRecords.byStrategy = settled
   settledRecords.state = 'ok'
-  const fresh = open.filter((r) => !announced.has(r.id))
-  open.forEach((r) => announced.add(r.id))
+  // D-67: a quiet record is counted (openRecords) but not announced yet; it is announced on the poll that finds it due
+  const due = open.filter((r) => r.popup_due)
+  const fresh = due.filter((r) => !announced.has(r.id))
+  due.forEach((r) => announced.add(r.id))
   const first = !opportunitiesLoaded
   opportunitiesLoaded = true
   return first ? [] : fresh

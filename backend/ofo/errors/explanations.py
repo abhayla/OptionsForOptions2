@@ -896,9 +896,8 @@ class HourMinute(SlotType):
         return value.astimezone(datetime.timezone(datetime.timedelta(hours=5, minutes=30))).strftime("%H:%M")
 
 
-# owner question: ADR-015 Q182 12-hour vs ADR-320 D-57 24-hour
 class ClockSeconds(SlotType):
-    """A timezone-aware time as the IST clock time with seconds, "10:42:17 AM" (ADR-015's example)."""
+    """A timezone-aware time as the 24-hour IST clock time with seconds, "10:42:17 IST" (ADR-326 (4); one formatter: Clock)."""
 
     @staticmethod
     def validate(value: object) -> None:
@@ -2196,10 +2195,6 @@ _EXPLANATIONS: tuple[ExplanationTemplate, ...] = (
     ExplanationTemplate("adjust_take_profit_basis", "values_seen",
                         "Whole trade closed at the planned prices: {before} before charges (the figure the profit test "
                         "used), {after} after charges.", {"before": Rupees, "after": Rupees}),
-    ExplanationTemplate("adjust_take_profit_basis_no_charges", "values_seen",
-                        "Whole trade closed at the planned prices: {before} before charges (the figure the profit test "
-                        "used); the charges could not be priced, so the result after charges is not shown.",
-                        {"before": Rupees}),
     ExplanationTemplate("adjust_prepare_wait_fresh", "values_seen", "Wait for fresh prices"),
     ExplanationTemplate("adjust_checks_paused_prices", "values_seen",
                         "Adjustment checks are paused: prices are not live (since {time}).", {"time": HourMinute}),

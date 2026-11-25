@@ -29,7 +29,11 @@
               </span>
             </td>
             <td class="py-1.5 pl-6 text-right tabular-nums">{{ leg.entry }}</td>
-            <td class="py-1.5 pl-6 text-right tabular-nums">{{ leg.exited ? `Exited at ${leg.exitPrice ?? '—'}` : (leg.current ?? '-') }}</td>
+            <td class="py-1.5 pl-6 text-right tabular-nums">
+              <span data-testid="tracking-leg-ltp">{{ leg.exited ? `Exited at ${leg.exitPrice ?? '—'}` : (leg.current ?? '-') }}</span>
+              <!-- D-18: the leg's own quote time beside its price (the server's price_at); "time not available" when it sent none -->
+              <span v-if="!leg.exited && leg.current !== null" class="ml-1 text-xs text-ink-muted" data-testid="tracking-leg-quote-at">{{ istClock(leg.quoteAt) ?? QUOTE_TIME_UNAVAILABLE_TEXT }}</span>
+            </td>
             <!-- GC-UI b2 D-B48: the server's per-leg paper P&L text (booked legs say so), "—" when it sent none -->
             <td class="py-1.5 pl-6 text-right tabular-nums" data-testid="tracking-leg-pnl">{{ leg.pnl }}</td>
           </tr>
@@ -94,8 +98,8 @@ import Chip from '@/components/common/Chip.vue'
 import FigureHint from '@/components/common/FigureHint.vue'
 import api, { NEUTRAL_PARTS } from '@/services/api'
 import { NOT_CONNECTED_TEXT, PAPER_PNL_PREFIX, readTracking, sharedTotal } from '@/lib/tracking'
-import { EARLIER_SHOWN_MAX, RULES_LOAD_FAILED_TEXT, checkStaleLine, earlierMoreText, firedAtText, liveNowText, ruleEarlierText, ruleNotCheckedText } from '@/lib/sharedStateText'
-import { istStamp } from '@/lib/displayFormat'
+import { EARLIER_SHOWN_MAX, QUOTE_TIME_UNAVAILABLE_TEXT, RULES_LOAD_FAILED_TEXT, checkStaleLine, earlierMoreText, firedAtText, liveNowText, ruleEarlierText, ruleNotCheckedText } from '@/lib/sharedStateText'
+import { istClock, istStamp } from '@/lib/displayFormat'
 import { openRecords, settledRecords } from '@/lib/paperAlerts'
 import { said } from '@/lib/playbookEditor'
 import { usePaperRefresh } from '@/lib/usePaperRefresh'
