@@ -161,7 +161,6 @@ async function confirmRename(row) {
           </p>
           <form v-if="renaming && renaming.id === s.id" class="col-span-full flex w-full flex-wrap items-center gap-2" data-testid="rename-form" @submit.prevent="confirmRename(s)">
             <input v-model="renaming.text" type="text" class="field" data-testid="rename-input" :maxlength="STRATEGY_NAME_MAX" aria-label="New strategy name" autocomplete="off" />
-            <span class="text-xs" :class="renaming.text.length > STRATEGY_NAME_MAX ? 'text-warn' : 'text-ink-muted'" data-testid="rename-count">{{ renaming.text.length }}/{{ STRATEGY_NAME_MAX }}</span>
             <span class="text-xs" :class="renaming.text.length > STRATEGY_NAME_MAX ? 'text-warn' : 'text-ink-muted'" data-testid="rename-limit">{{ nameLimitText(renaming.text.length) }}</span>
             <button type="submit" class="btn btn-sm btn-primary" :disabled="busy" data-testid="rename-save">Save</button>
             <button type="button" class="btn btn-sm" data-testid="rename-cancel" @click="renaming = null">Cancel</button>
