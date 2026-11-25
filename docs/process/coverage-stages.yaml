@@ -705,6 +705,7 @@ issues:
   "#716": S6.7  # GC-ICFIX: Paper tab opens on a real server error when broker state is 'partial'; adjustments marker goes N, N+1, N around an exit
   "#717": S6.7  # GC-ICFIX: checks not reachable on screen so far, and not done (u404 clear-out, issue 26 measurement, live-day items)
   "#719": S6.7  # Broker status shows live prices 'partial / feed idle' while prices flow to the background watcher
+  "#723": S6.7  # GC-ICLIVE-D: the worker margin refresh is answered from the plan cache, so T-16 can use the morning funds figure
 
 # Work items whose status is not done.
 work_items:
