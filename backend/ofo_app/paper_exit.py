@@ -68,11 +68,11 @@ async def live_exit_prices(ctx: Any, feed: Any, underlying: str,  # noqa: PLR091
     if len(keys) != len(feed_keys):  # never priced from another contract's quote (token reused, delisted, retired)
         return Refused(CONTRACT_NOT_LIVE, Failure.CONFLICT)
     if on_read_error == "raise":
-        snapshot = await tracking._snapshot(ctx, feed, underlying, keys)
+        snapshot = await tracking.exit_snapshot(ctx, feed, underlying, keys)
         prices = {k: paper.leg_price(snapshot, k) for k in keys}
     else:
         try:
-            snapshot = await tracking._snapshot(ctx, feed, underlying, keys)
+            snapshot = await tracking.exit_snapshot(ctx, feed, underlying, keys)
             prices = {k: paper.leg_price(snapshot, k) for k in keys}
         except Exception:  # any failed read is "no price": refused by name, nothing written
             log.exception("paper exit price read failed")

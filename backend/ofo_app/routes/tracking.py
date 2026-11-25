@@ -226,6 +226,12 @@ async def _snapshot(ctx: MarketContext, feed: LiveFeed | None, underlying: str, 
     return snapshot
 
 
+async def exit_snapshot(ctx: MarketContext, feed: LiveFeed | None, underlying: str, keys: list[str]):
+    """The exit door's live read (``paper_exit.live_exit_prices``): ``_snapshot``, looked up at call time so a test's
+    patch of ``_snapshot`` still applies."""
+    return await _snapshot(ctx, feed, underlying, keys)
+
+
 def _connected(ctx: MarketContext | None) -> bool:
     return ctx is not None and ctx.provider.status().connected
 
