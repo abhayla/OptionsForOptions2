@@ -108,7 +108,7 @@ def test_d21_reduce_on_the_condor_shows_the_eight_measures_before_against_after_
     want_after = sum(sign[x["side"]] * x["lots"] * sc["lot"] * deltas[x["tradingsymbol"]] for x in after_legs)
     assert _num(rows["net_delta"]["before_text"]) == want_before.quantize(D("0.0001"))
     assert _num(rows["net_delta"]["after_text"]) == want_after.quantize(D("0.0001"))
-    assert rows["net_delta"]["direction"] == "down"
+    assert rows["net_delta"]["direction"] == "up"  # -27.57 before, -12.93 after: less negative
     # POP: a probability with the switch on, each side with its own text
     assert rows["pop"]["before_text"].endswith("%") and rows["pop"]["after_text"].endswith("%")
     # the one plain reason line: max loss rises while the action's name says it cuts exposure
@@ -155,7 +155,7 @@ def test_d21_a_measure_that_cannot_be_worked_out_says_not_available_with_its_rea
     body = post(client_for(load("ADJ-02"), rates=RATES)).json()  # no Greeks read, and the POP switch is off
     rows = rows_of(body["what_changes"]["A-29"])
     assert rows["pop"]["direction"] == "not_available"
-    assert rows["pop"]["unavailable_reason"].startswith("POP not available")
+    assert rows["pop"]["unavailable_reason"].startswith("Before and after: POP not available")
     assert rows["net_delta"]["direction"] == "not_available" and rows["net_delta"]["unavailable_reason"]
     assert rows["net_delta"]["after_text"].lower().startswith("not available")
 
@@ -180,6 +180,10 @@ def test_d21_the_block_reads_the_same_engine_figures_as_the_compare_table(sid):
     cells = {c["id"]: c["values"] for c in body["criteria"]}
     for a, block in body["what_changes"].items():
         rows = rows_of(block)
-        assert rows["max_loss"]["after_text"] == cells["max_loss"][a]["text"], a
-        assert rows["max_profit"]["after_text"] == cells["max_profit"][a]["text"], a
-        assert rows["pop"]["after_text"] == cells["pop"][a]["text"] or rows["pop"]["unavailable_reason"], a
+        for measure in ("max_loss", "max_profit", "pop"):
+            cell = cells[measure][a]
+            if cell["unavailable_reason"] is None:
+                assert rows[measure]["after_text"] == cell["text"], (a, measure)
+            else:
+                assert rows[measure]["direction"] == "not_available", (a, measure)
+                assert cell["unavailable_reason"] in rows[measure]["unavailable_reason"], (a, measure)
