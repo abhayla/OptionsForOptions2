@@ -202,6 +202,12 @@ async def _charges(db: AsyncSession, on: datetime.date | None = None) -> Charges
                       rates={k: _num(v) for k, v in values.items()})
 
 
+def _ist_day(now: datetime.datetime) -> datetime.date:
+    """The database clock's IST calendar day, from the instant already read (D-38: the rate set's day needs no second
+    clock read; the same day the rates store's own ``_TODAY`` query would answer)."""
+    return now.astimezone(datetime.timezone(datetime.timedelta(hours=5, minutes=30))).date()
+
+
 async def _read_all(db: AsyncSession) -> tuple[dict[str, settings_store.StoredSetting],
                                                dict[str, list[settings_store.StoredSetting]], datetime.datetime]:
     now = await settings_store.database_now(db)
@@ -217,7 +223,7 @@ async def read_settings(db: Db) -> SettingsOut:
     for key, s in registry_mod.registry().items():
         groups.setdefault(s.group, []).append(_setting_out(key, forced.get(key), hist[key], now))
     return SettingsOut(groups=[GroupOut(name=_words(g), settings=items) for g, items in groups.items()],
-                       charges=await _charges(db))
+                       charges=await _charges(db, _ist_day(now)))
 
 
 # ---- refusals ------------------------------------------------------------------------------------------------------

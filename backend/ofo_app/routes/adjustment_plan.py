@@ -53,6 +53,7 @@ from ofo_app.routes.adjustment import (
     get_market_reader,
     get_rest_spot_reader,
     get_tracked_reader,
+    release_connection,
 )
 from ofo_app.routes.adjustment_preferences import UserValuesIn
 from ofo_app.routes.broker import current_user_ref
@@ -333,19 +334,15 @@ async def _market(tracked: Any, market_reader: MarketReader, ctx: MarketContext 
         return None
 
 
-async def _type_of(db: Any, user_ref: str, strategy_id: int, tracked: Any, market_reader: MarketReader,  # noqa: PLR0913
-                   rest_reader: RestSpotReader, ctx: MarketContext | None,
-                   market: Any = None) -> tuple[str | None, store.Plan | None]:
-    """The plan's type when there is a plan (a plan keeps its type), else the shape's, read as the check route does."""
+async def _type_of(db: Any, user_ref: str, strategy_id: int, tracked: Any,
+                   ctx: MarketContext | None) -> tuple[str | None, store.Plan | None]:
+    """The plan's type when there is a plan (a plan keeps its type), else the shape's, read as the check route does.
+    D-38: the entry type takes no market and no spot (D-04, owner decision 25 Nov 2026, ADR-322 point 5), so this reads
+    none; it used to ask the market reader a second time for a figure it then threw away."""
     plan = await store.plan_for(db, user_ref, strategy_id)
     if plan is not None:
         return plan.strategy_type, plan
-    if market is None:
-        market = await market_reader(tracked, ctx)
-    # the entry type takes no spot (D-04), so this route reads none (owner decision 25 Nov 2026, ADR-322 point 5)
     return check.entry_type(tracked, check.listed_of(ctx)), None  # D-04
-
-
 def _kind_of(tracked: Any, money: in_force_mod.MoneyInputs | None) -> str:
     """The strategy's own expiry kind (the live check's read): the market's, else the position's, else weekly."""
     at = None if money is None else money.at
@@ -451,8 +448,9 @@ async def read_plan(  # noqa: PLR0913 - FastAPI dependencies, one per input
         playbook_id: Annotated[int | None, Query(ge=1, le=ID_MAX)] = None) -> AdjustmentPlanOut:
     rates = rates if isinstance(rates, ChargeRates) else None
     tracked = await _own_strategy(strategy_id, tracked_reader, rates)
+    await release_connection(db)  # D-38: the market read waits on the broker; a held connection starves other pages
     market = await _market(tracked, market_reader, ctx)
-    stype, plan = await _type_of(db, user_ref, strategy_id, tracked, market_reader, rest_reader, ctx, market)
+    stype, plan = await _type_of(db, user_ref, strategy_id, tracked, ctx)
     money = in_force_mod.money_inputs(tracked, market, rates)
 
     async def work() -> AdjustmentPlanOut:
@@ -466,8 +464,9 @@ async def _write(strategy_id: int, data: PlanIn, edit: bool, db: Any, user_ref: 
                  ctx: MarketContext | None, rates: ChargeRates | None, user_values: Any = None) -> AdjustmentPlanOut:
     rates = rates if isinstance(rates, ChargeRates) else None
     tracked = await _own_strategy(strategy_id, tracked_reader, rates)
+    await release_connection(db)  # D-38: the market read waits on the broker; a held connection starves other pages
     market = await _market(tracked, market_reader, ctx)
-    stype, plan = await _type_of(db, user_ref, strategy_id, tracked, market_reader, rest_reader, ctx, market)
+    stype, plan = await _type_of(db, user_ref, strategy_id, tracked, ctx)
     money = in_force_mod.money_inputs(tracked, market, rates)
     if stype is None:
         raise StrategyRefused(_GENERIC, Failure.CONFLICT)
@@ -527,7 +526,7 @@ async def _rules_scope(strategy_id: int, db: Any, user_ref: str, tracked_reader:
                        market_reader: MarketReader, rest_reader: RestSpotReader, ctx: MarketContext | None,
                        rates: ChargeRates | None) -> tuple[str, store.Plan | None]:
     tracked = await _own_strategy(strategy_id, tracked_reader, rates if isinstance(rates, ChargeRates) else None)
-    stype, plan = await _type_of(db, user_ref, strategy_id, tracked, market_reader, rest_reader, ctx)
+    stype, plan = await _type_of(db, user_ref, strategy_id, tracked, ctx)
     if stype is None:
         raise StrategyRefused(_GENERIC, Failure.CONFLICT)
     return stype, plan

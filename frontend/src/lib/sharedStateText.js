@@ -49,6 +49,16 @@ export const PLAN_LOAD_FAILED_TEXT = 'Could not load the plan. Nothing was chang
 // pending owner read (15 Nov 2026), GC-ICFIX issue 18: the practice orders were stored but the position could not be read back
 export const PAPER_REREAD_FAILED_TEXT = 'Your paper orders were placed, but the position could not be loaded. Nothing was lost.'
 export const PLAN_LOADING_TEXT = 'Loading the plan…'
+// pending owner read (25 Nov 2026), D-38: a read that hit the client's time limit says it took too long, never "could not"
+export const PLAN_TIMED_OUT_TEXT = 'The plan took too long to load. Nothing was changed.'
+export const PLAN_PICK_TIMED_OUT_TEXT = 'The playbook took too long to load, so the fields are as you left them. Nothing was changed.'
+export const SETTINGS_TIMED_OUT_TEXT = 'The settings took too long to load, so no value is shown.'
+export const TIMED_OUT_PARTS = Object.freeze({
+  what_happened: 'The server took too long to answer.',
+  impact: 'The prices and figures it was asked for are not shown, so none of them can be mistaken for current values.',
+  what_is_blocked: 'Nothing was changed and no order was placed. Your choices on this page are kept.',
+  next_action: 'Try again in a moment.',
+})
 // GC-ICFIX issue 15 (pending owner read): shown after a playbook is picked in the plan box, because the pick replaces what was typed
 export const PLAN_REFILLED_TEXT = (name) => `The fields were refilled from the playbook ${name}.`
 // pending owner read (13 Nov 2026), GC-ICFIX u113 round 3 (ADR-304 (3)): the states of the plan card's limit lines, read from the rule check

@@ -7,12 +7,13 @@
 <template>
   <Modal :open="open" :title="labels.title || ' '" @close="emit('close')">
     <div data-testid="plan-sheet">
-      <LoadFailed v-if="loadError" :text="loadError" prefix="plan-sheet" @retry="load()" />
+      <LoadFailed v-if="loadError && !sheet" :text="loadError" prefix="plan-sheet" @retry="load()" />
       <p v-else-if="loading && !sheet" class="text-sm text-ink-muted" data-testid="plan-sheet-loading">{{ PLAN_LOADING_TEXT }}</p>
       <template v-else-if="sheet && sheet.kind === 'generic'">
         <p class="text-sm" data-testid="plan-sheet-generic">{{ sheet.text }}</p>
       </template>
       <template v-else-if="sheet && sheet.kind === 'sheet'">
+        <p v-if="loadError" class="text-sm" role="alert" data-testid="plan-sheet-pick-error">{{ loadError }}</p>
         <p class="text-sm text-ink-muted" data-testid="plan-sheet-type">{{ sheet.typeName }}</p>
         <label class="mt-3 block text-sm font-medium">{{ labels.playbook }}
           <select class="mt-1 h-10 w-full rounded border border-line px-2" data-testid="plan-playbook" :value="form.playbookId" :disabled="busy" @change="pick($event.target.value)">
@@ -61,7 +62,7 @@ import LoadFailed from '@/components/common/LoadFailed.vue'
 import ErrorMessage from '@/components/common/ErrorMessage.vue'
 import AlertStylePicker from '@/components/strategy/AlertStylePicker.vue'
 import api, { NEUTRAL_PARTS } from '@/services/api'
-import { PLAN_LOADING_TEXT, PLAN_LOAD_FAILED_TEXT, PLAN_REFILLED_TEXT } from '@/lib/sharedStateText'
+import { PLAN_LOADING_TEXT, PLAN_LOAD_FAILED_TEXT, PLAN_PICK_TIMED_OUT_TEXT, PLAN_REFILLED_TEXT, PLAN_TIMED_OUT_TEXT } from '@/lib/sharedStateText'
 import { asIsBody, customiseUrl, fetchPlan, formOf, saveBody, sendPlan } from '@/lib/adjustPlan'
 
 const props = defineProps({
@@ -101,10 +102,15 @@ async function load(pickId = null, pickName = '') {
       form.value = { ...read.prefill }
       if (pickId !== null) refilledFrom.value = pickName
     }
-  } catch {
+  } catch (e) {
     if (id !== props.strategyId) return
+    const timedOut = e?.code === 'ECONNABORTED'
+    if (pickId !== null && sheet.value?.kind === 'sheet') { // D-38: a pick that failed leaves the sheet and what was typed as they are
+      loadError.value = timedOut ? PLAN_PICK_TIMED_OUT_TEXT : PLAN_LOAD_FAILED_TEXT
+      return
+    }
     sheet.value = null
-    loadError.value = PLAN_LOAD_FAILED_TEXT
+    loadError.value = timedOut ? PLAN_TIMED_OUT_TEXT : PLAN_LOAD_FAILED_TEXT
   } finally {
     if (id === props.strategyId) loading.value = false
   }
