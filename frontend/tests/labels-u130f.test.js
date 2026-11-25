@@ -52,7 +52,7 @@ describe('item 2: before-charges groups carry one label', () => {
 
 describe('item 3: the server charges_paid_text, never the raw string', () => {
   it('the Completed row shows "Charges paid: 1,403.45"', async () => {
-    answer = () => Promise.resolve({ data: { strategies: [{ id: 139, underlying: 'NIFTY', status: 'closed', created_at: '2026-10-18T04:00:00Z', updated_at: '2026-10-18T04:00:00Z',
+    answer = () => Promise.resolve({ data: { strategies: [{ id: 139, underlying: 'NIFTY', status: 'closed', status_word: 'Completed', created_at: '2026-10-18T04:00:00Z', updated_at: '2026-10-18T04:00:00Z',
       final_pnl_text: '-159.25', total_after: '-511.65', total_after_text: '-511.65', charges_paid: '1403.45', charges_paid_text: 'Charges paid: 1,403.45', after_charges_reason: null }] } })
     const router = createRouter({ history: createMemoryHistory(), routes: [{ path: '/s', component: MyStrategiesPage, meta: { title: 'Completed Strategies', parent: 'Strategies', completedOnly: true } }, { path: '/strategy/builder', component: { template: '<div/>' } }] })
     await router.push('/s')

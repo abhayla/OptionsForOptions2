@@ -36,7 +36,7 @@ const notConnected = (at) => ({ state: 'NOT_CONNECTED', answered_at: '2026-10-19
   indices: [row('NIFTY', null, at, null), row('SENSEX', null, at, null)] })
 const T1 = '2026-10-19T09:20:00+05:30'
 const T2 = '2026-10-19T09:20:01+05:30'
-const draft = (id, underlying, updated_at) => ({ id, underlying, status: 'draft', revision: 1, created_at: updated_at, updated_at })
+const draft = (id, underlying, updated_at) => ({ id, underlying, status: 'draft', status_word: 'Draft', revision: 1, created_at: updated_at, updated_at })
 
 async function mountHome() {
   const router = createRouter({ history: createMemoryHistory(), routes: [
@@ -192,7 +192,7 @@ describe('REQ-134 reader sweep: a recent row shows the strategy name (quoted use
     expect(rows[1].text()).toContain('NIFTY, Draft, last saved 17 Oct 2026')
   })
   it('ADR-299: a recent row says Running for a placed trade (practice or real) and the unknown words for a status it does not know', async () => {
-    strategiesAnswer = [{ ...draft(1, 'NIFTY', '2026-10-18T10:00:00+05:30'), has_order: true }, { ...draft(2, 'NIFTY', '2026-10-17T10:00:00+05:30'), status: 'weird' }]
+    strategiesAnswer = [{ ...draft(1, 'NIFTY', '2026-10-18T10:00:00+05:30'), has_order: true, status_word: 'Running' }, { ...draft(2, 'NIFTY', '2026-10-17T10:00:00+05:30'), status: 'weird', status_word: 'Unknown' }]
     const w = await mountHome()
     const rows = w.findAll('[data-testid="recent-row"]')
     expect(rows[0].text()).toContain('NIFTY, Running, last saved')

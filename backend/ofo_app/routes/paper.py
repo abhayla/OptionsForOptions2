@@ -947,7 +947,7 @@ async def _book(db: Any, stored: Any, orders: Sequence[paper_store.StoredOrder],
     return PaperBookOut.model_validate(figures | {
         "strategy_id": stored.id, "name": sf.shown_name(stored.name), "underlying": underlying,
         "answered_at": answered_at, "orders": _order_rows(orders, found),
-        "status_word": store.status_word(stored.status, True),  # a paper book has orders by definition
+        "status_word": _paper_word(stored.status, figures["positions"]),
         "held": _held_out((await held_entry_store.read_many(db, [stored.id])).get(stored.id))})
 
 
@@ -1001,9 +1001,16 @@ async def list_paper_strategies(db: Annotated[Any, Depends(get_db)],  # noqa: PL
         figures |= charges | summary | _after(b.orders, found, prices, charges, b.underlying, rates)
         out.append(figures | {"strategy_id": b.strategy_id, "name": sf.shown_name(b.name), "underlying": b.underlying,
                               "held": _held_out(held_rows.get(b.strategy_id)),
-                              "status_word": store.status_word(b.status, True),
+                              "status_word": _paper_word(b.status, figures["positions"]),
                               "open_count": open_legs, "position_count": len(figures["positions"])})
     return PaperListOut.model_validate({"strategies": out, "totals": _totals(out, decays), "answered_at": now()})
+
+
+def _paper_word(status: str, positions: Sequence[Mapping[str, Any]]) -> str:
+    """ADR-299 (1), D-28: a paper book has orders, so it is Running while at least one leg is open and Completed once every
+    leg is closed, even before the strategy row is marked closed. A status the one function does not know stays Unknown."""
+    word = store.status_word(status, True)
+    return word if word == "Unknown" or any(p["net_quantity"] != 0 for p in positions) else "Completed"
 
 
 def _newest_first(book: paper_store.UserBook) -> tuple[datetime.datetime, int]:

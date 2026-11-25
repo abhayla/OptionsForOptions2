@@ -9,6 +9,7 @@ import { UNREADABLE_TEXT, EXITED_TEXT, afterFigure } from '@/lib/tracking'
 import { istTime } from '@/lib/displayFormat'
 import { LAST_CLOSE_LABEL } from '@/lib/paperDrafts'
 
+const WORDS = ['Draft', 'Running', 'Completed']
 const STATES = new Set(['LIVE', 'PAUSED', 'NOT_CONNECTED', 'EXITED'])
 export const PAPER_NO_FIGURE = '—'
 export const PAPER_PAUSED = 'Paper P&L paused - prices not live'
@@ -129,6 +130,7 @@ export function readPaperStrategy(s, index = 0) {
     name: plainName(s.name),
     underlying: s.underlying,
     state: s.state,
+    statusWord: WORDS.includes(s.status_word) ? s.status_word : null, // ADR-299 (4): the server's word, never derived here
     stateText,
     openCount: s.open_count,
     positionCount: s.position_count,

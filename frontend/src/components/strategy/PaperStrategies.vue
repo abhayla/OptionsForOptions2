@@ -52,6 +52,7 @@
               <div>
                 <h2 class="font-semibold" data-testid="paper-group-name">{{ g.name ?? `Strategy ${g.id}` }}</h2>
                 <span class="text-ink-muted" data-testid="paper-group-underlying">{{ g.underlying }}</span>
+                <span v-if="g.statusWord" class="text-xs text-ink-muted" data-testid="paper-status-word">{{ g.statusWord }}</span>
                 <p class="text-xs text-ink-muted" data-testid="paper-count">{{ g.openCount }} of {{ g.positionCount }} positions</p>
                 <HeldNote :held="g.held" />
               </div>

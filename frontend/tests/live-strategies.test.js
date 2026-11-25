@@ -14,7 +14,7 @@ let partlyPricedFor = new Set() // REQ-077 AC-9: drafts with one priced leg and 
 vi.mock('@/services/api', async (importActual) => {
   const actual = await importActual()
   const get = (url) => {
-    if (url === '/strategies') return typeof listAnswer === 'function' ? listAnswer() : Promise.resolve({ data: listAnswer })
+    if (url === '/strategies') return typeof listAnswer === 'function' ? listAnswer() : Promise.resolve({ data: withWords(listAnswer) })
     // ADR-299 / issue 16: the book of a running trade (only the contract held now, one leg already closed)
     const book = /^\/paper\/strategies\/(\d+)$/.exec(url)
     if (book) {
@@ -48,6 +48,7 @@ vi.mock('@/services/api', async (importActual) => {
   }
   return { ...actual, default: { get, post } }
 })
+import { withWords } from './_statusWord'
 import LiveStrategiesPage from '@/pages/LiveStrategiesPage.vue'
 import { LEG_NOT_LIVE_LABEL, NOT_CONNECTED_LABEL } from '@/lib/legPicker'
 

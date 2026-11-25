@@ -10,7 +10,7 @@ let bookAnswer
 vi.mock('@/services/api', async (importActual) => {
   const actual = await importActual()
   const get = (url) => {
-    if (url === '/strategies') return Promise.resolve({ data: { strategies: [{ id: 155, underlying: 'NIFTY', status: 'draft', has_order: true, created_at: '2026-11-23T10:00:00+05:30', updated_at: '2026-11-23T10:00:00+05:30' }] } })
+    if (url === '/strategies') return Promise.resolve({ data: { strategies: [{ id: 155, underlying: 'NIFTY', status: 'draft', status_word: 'Running', has_order: true, created_at: '2026-11-23T10:00:00+05:30', updated_at: '2026-11-23T10:00:00+05:30' }] } })
     if (/^\/paper\/strategies\/155$/.test(url)) return typeof bookAnswer === 'function' ? bookAnswer() : Promise.resolve({ data: bookAnswer })
     if (/^\/catalogue\/NIFTY\/contracts/.test(url)) {
       return Promise.resolve({ data: { contracts: [...Array(40).keys()].map((i) => ({ contract_id: i + 1, exchange_segment: 'NSE_FO', exchange_token: 1001 + i,

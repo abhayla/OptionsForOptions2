@@ -185,7 +185,7 @@ describe('u123 tracking box', () => {
 })
 
 describe('u125 Completed list row', () => {
-  const row = (id, over = {}) => ({ id, underlying: 'NIFTY', status: 'closed', created_at: '2026-10-18T04:00:00Z', updated_at: '2026-10-18T04:00:00Z', ...over })
+  const row = (id, over = {}) => ({ id, underlying: 'NIFTY', status: 'closed', status_word: 'Completed', created_at: '2026-10-18T04:00:00Z', updated_at: '2026-10-18T04:00:00Z', ...over })
   async function open(...rows) {
     answer = () => Promise.resolve({ data: { strategies: rows } })
     const router = createRouter({ history: createMemoryHistory(), routes: [{ path: '/s', component: MyStrategiesPage, meta: { title: 'Completed Strategies', parent: 'Strategies', completedOnly: true } }, { path: '/strategy/builder', component: { template: '<div/>' } }] })

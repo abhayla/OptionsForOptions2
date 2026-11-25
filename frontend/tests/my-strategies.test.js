@@ -16,7 +16,7 @@ vi.mock('@/services/api', async (importActual) => {
   return {
     ...actual,
     default: {
-      get: (url) => (url === '/features' ? features() : answer(url)),
+      get: (url) => (url === '/features' ? features() : Promise.resolve(answer(url)).then((r) => ({ ...r, data: withWords(r.data) }))),
       patch: (url, body) => {
         sent.push({ url, body })
         return patchAnswer(url, body)
@@ -32,6 +32,7 @@ vi.mock('@/services/api', async (importActual) => {
     },
   }
 })
+import { withWords } from './_statusWord'
 import MyStrategiesPage from '@/pages/MyStrategiesPage.vue'
 
 const Stub = { template: '<i />' }
