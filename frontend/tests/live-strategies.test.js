@@ -85,7 +85,7 @@ const leg = (over = {}) => ({ instrument_id: 'NSE_FO:1001', symbol: 'NIFTY1', ac
 const computed = (over = {}) => ({ state: 'COMPUTED', underlying: 'NIFTY', status_label: null, reason: null, output_label: null,
   spot_level: '25123.45', spot_at: '2026-10-19T10:15:00+05:30', answered_at: '2026-10-19T10:15:01+05:30',
   summary: { max_profit: '0.00', max_loss: '13000.00', max_profit_unlimited: false, max_loss_unlimited: false }, legs: [leg()], ...over })
-const SERVER_LABEL = 'Server wrote this not-live sentence 10:15:00 AM'
+const SERVER_LABEL = 'Server wrote this not-live sentence 10:15:00 IST'
 const notConnected = () => ({ state: 'NOT_CONNECTED', status_label: SERVER_LABEL, reason: null, answered_at: '2026-10-19T10:16:00+05:30', legs: [], spot_level: null, spot_at: null })
 const FROM_YOUR_PRICES = 'From your prices — no live data'
 // The FROM_ENTRIES answer as the server sends it after a drop (tests_app/test_strategy_live_push.py `_assert_from_entries_after_drop`).

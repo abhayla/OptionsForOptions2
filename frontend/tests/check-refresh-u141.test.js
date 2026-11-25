@@ -34,8 +34,8 @@ const LABELS = { plan_entry: 'Plan', playbook: 'Playbook', target: 'Target', sto
 const PLAN = { strategy_id: 7, type: 'ic', type_name: 'Iron condor', generic: false, generic_text: null, labels: LABELS, plan: null,
   playbooks: [{ id: 9, name: 'Mine', type: 'ic', type_name: 'Iron condor', is_system: false, draft: false, active: true }], prefill: { playbook_id: 9 } }
 
-const AS_OF_1 = 'As of 01:05:00 PM IST'
-const AS_OF_2 = 'As of 01:05:05 PM IST'
+const AS_OF_1 = 'As of 13:05:00 IST'
+const AS_OF_2 = 'As of 13:05:05 IST'
 const flag = (pct, over = {}) => ({ kind: 'flag', rule_id: 'R-stop', trigger_id: 'T-06', cmp: 'ge', value: pct, threshold: '50.0000', reason: null,
   wording: 'Your rule was triggered', condition: `Loss as % of max loss: ${pct} % (rule 5 %)`, suggestion_id: 11, note: null,
   stop_text: `Stop reached: loss now ₹1,234.00 (${pct} % of max loss); stop line ₹2,980.00 (5 % of max loss); reached at 12:58 IST`, ...over })

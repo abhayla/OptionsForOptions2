@@ -26,7 +26,7 @@ const LABELS = { plan_entry: 'Plan', playbook: 'Playbook', target: 'Target', sto
   edit: 'Edit plan', no_plan: 'No plan saved yet: default rules apply', set_plan: 'Set plan' }
 const PLAN = { strategy_id: 161, type: 'ic', type_name: 'Iron condor', generic: false, generic_text: null, labels: LABELS, plan: null,
   playbooks: [{ id: 9, name: 'Mine', type: 'ic', type_name: 'Iron condor', is_system: false, draft: false, active: true }], prefill: { playbook_id: 9 } }
-const CHECK = { strategy_id: 161, as_of: '2026-11-23T09:45:00Z', as_of_text: 'As of 03:15:00 PM IST', strategy_type: 'ic', type_name: 'Iron condor',
+const CHECK = { strategy_id: 161, as_of: '2026-11-23T09:45:00Z', as_of_text: 'As of 15:15:00 IST', strategy_type: 'ic', type_name: 'Iron condor',
   playbook: { source: 'system', id: 1, status: null, draft: false }, stage: { name: null, index: null }, withheld: null, results: [], paused: null,
   limits: [{ rule_id: 'T-07', trigger_id: 'T-07', threshold: '40.0000', amount: null, later: [], tightened_by: null, state: 'checked', reason: null,
     text: 'Target: profit of 40 % of max profit, before charges', after: null, reason_code: null }] }

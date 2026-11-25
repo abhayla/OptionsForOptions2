@@ -11,10 +11,10 @@ const t = (w, id) => w.find(`[data-testid="${id}"]`)
 const STALE = {
   stale: true, as_of: '2026-11-06T11:35:00+05:30', age_minutes: 10,
   banner: 'Prices are 10 min old (last update 11:35 IST): figures below are not live.', as_of_note: 'as of 11:35',
-  label: 'prices from 11:35:00 AM', prepare_blocked_reason: 'Wait for fresh prices',
+  label: 'prices from 11:35:00 IST', prepare_blocked_reason: 'Wait for fresh prices',
   checks_text: 'Adjustment checks are paused: prices are not live (since 11:35).',
 }
-const FRESH = { stale: false, as_of: '2026-11-06T11:45:00+05:30', age_minutes: 0, banner: null, as_of_note: 'as of 11:45', label: 'prices from 11:45:00 AM', prepare_blocked_reason: null, checks_text: null }
+const FRESH = { stale: false, as_of: '2026-11-06T11:45:00+05:30', age_minutes: 0, banner: null, as_of_note: 'as of 11:45', label: 'prices from 11:45:00 IST', prepare_blocked_reason: null, checks_text: null }
 async function show(prices) {
   const reply = { ...JSON.parse(JSON.stringify(adj02)), prices }
   const client = {

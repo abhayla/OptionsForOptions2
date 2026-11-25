@@ -6,10 +6,10 @@ import { flushPromises, mount } from '@vue/test-utils'
 
 const FLAG = { kind: 'flag', rule_id: 'R-spot', trigger_id: 'T-01', cmp: 'le', value: '0.7293', threshold: '0.7500', reason: null,
   wording: 'Your rule was triggered', condition: 'Spot distance from the short strike: 0.7293 % (rule 0.7500 %)', suggestion_id: 11, note: null,
-  stop_text: null, fired_at: '2026-11-23T09:01:20Z', live_value: '0.6882', live_as_of_text: 'As of 02:32:00 PM IST' }
+  stop_text: null, fired_at: '2026-11-23T09:01:20Z', live_value: '0.6882', live_as_of_text: 'As of 14:32:00 IST' }
 const FLAG2 = { ...FLAG, rule_id: 'R-delta', trigger_id: 'T-04', condition: 'Net delta: 0.3311 (rule 0.3500)', suggestion_id: 12, live_value: '0.3300', value: '0.3311' }
 let RESULTS = [FLAG]
-const CHECK = { strategy_id: 7, as_of: '2026-11-23T09:02:00Z', as_of_text: 'As of 02:32:00 PM IST', strategy_type: 'ic', type_name: 'Iron condor',
+const CHECK = { strategy_id: 7, as_of: '2026-11-23T09:02:00Z', as_of_text: 'As of 14:32:00 IST', strategy_type: 'ic', type_name: 'Iron condor',
   playbook: { source: 'system', id: 1, status: null, draft: false }, stage: { name: null, index: null }, withheld: null, get results() { return RESULTS }, limits: [], paused: null }
 const answer = (url) => {
   if (url === '/strategies/7/tracking') return Promise.resolve({ data: { strategy_id: 7, state: 'LIVE', paper_pnl: '195.00', paper_pnl_text: '+195.00', as_of: null, legs: [], detections: [] } })

@@ -42,6 +42,13 @@ one banner time (by design, D-19); the depth popover's Escape listener does not 
 scan reads `.py` files only (frontend has its own scan); a Take profit placed by a direct API call without an
 approach id is not checked as one.
 
+**Miss after the push (CI red on 0a5a4be3):** the D-57 class grep covered `tests`, `tests_app`, `frontend/tests` and
+one e2e mock, but not the shared e2e pattern `frontend/e2e/support/ac5.ts`, which still expected
+`\d{2}:\d{2}:\d{2} [AP]M`. Six Playwright failures followed (live-strategies.spec.ts:85, strategy-live.spec.ts:65 and
+:142, at both sizes). Fixed in one commit with every other 12-hour mock string in `frontend/tests` (8 files, 94 tests
+passed; e2e collection 16 tests in 3 files). Why missed: the grep looked for "AM." / "PM." text, not the regex
+spelling `[AP]M`.
+
 ## Overlap with `refactor/modular-doors` (additive changes only; expect merge conflicts there)
 
 `backend/ofo_app/routes/paper.py`, `backend/ofo_app/routes/adjustment.py`, `frontend/src/lib/tracking.js`,
