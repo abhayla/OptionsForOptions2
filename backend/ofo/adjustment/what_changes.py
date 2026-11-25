@@ -44,6 +44,7 @@ UP, DOWN, SAME, NOT_AVAILABLE = "up", "down", "same", "not_available"
 _DIRECTION_TEXT = {UP: "adjust_wc_dir_up", DOWN: "adjust_wc_dir_down", SAME: "adjust_wc_dir_same",
                    NOT_AVAILABLE: "adjust_wc_dir_na"}
 _SIDE_WORD = {"PE": "put", "CE": "call"}
+_BUY_BACK_UNTESTED = frozenset({"A-26"})  # D-61: "Buy back the untested short"
 
 
 @dataclass(frozen=True)
@@ -203,7 +204,7 @@ def lone_long_line(after: Sequence[PositionLeg] | None) -> ExplanationText | Non
 
 def _with_lone_long(col: Column, reason: ExplanationText | None) -> ExplanationText | None:
     """The reason line, then the D-61 line when the approach is "Buy back the untested short" (A-26) and it applies."""
-    lone = lone_long_line(col.built.after) if col.built.id == "A-26" else None
+    lone = lone_long_line(col.built.after) if col.built.id in _BUY_BACK_UNTESTED else None
     if lone is None or reason is None:
         return lone or reason
     return render_explanation("adjust_wc_lines", first=reason, second=lone)
