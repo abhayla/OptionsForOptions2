@@ -22,6 +22,8 @@ import api from '@/services/api'
 import { healthSentence, missingCode, missingReason, shownHealth } from '@/lib/dataHealthText'
 import { istClock, istStamp, setShownDate, strikeLabel } from '@/lib/displayFormat'
 import MarketClosedBanner from '@/components/states/MarketClosedBanner.vue'
+import LeaveBuilderDialog from '@/components/strategy/LeaveBuilderDialog.vue'
+import { useLeaveBuilder } from '@/composables/useLeaveBuilder'
 import { useSettingsValues } from '@/stores/settingsValues'
 import { strikeRangesOf } from '@/lib/settingsValues'
 import { NOT_LIVE_LABEL, VALUE_UNAVAILABLE, chainRequest, daysLeft, useChainAnswer } from '@/composables/useChainLive'
@@ -102,6 +104,8 @@ watch(serverKey, () => {
 onBeforeUnmount(() => clearTimeout(filterTimer))
 
 const router = useRouter()
+// ADR-329 (2): the builder's legs held for this trip are still the builder's; leaving the chain for any page but the builder asks first
+const leaveGuard = useLeaveBuilder({ role: 'chain' })
 const selection = useChainSelection()
 const legs = computed(() => selection.legsOf(underlying.value))
 const pending = computed(() => selection.pendingOf(underlying.value))
@@ -182,6 +186,7 @@ const resetFilters = () => (filters.value = { ...NO_FILTERS })
 
 <template>
   <section data-testid="option-chain-page">
+    <LeaveBuilderDialog :leave="leaveGuard" />
     <PageHeader parent="Market" title="Option Chain" />
 
     <!-- Owner 2026-10-30 (Sensibull 060): one bar for underlying, expiry, spot and feed state, then one row of filters,
