@@ -36,4 +36,17 @@ describe('D-52: the empty-builder hint points to a place that is on the screen',
     features = () => Promise.reject(new Error('down'))
     expect(await hint()).toBe('Pick strikes, or start from a ready-made shape on the Create Strategy page.')
   })
+
+  it('round 2: the hint shows nothing until the features read has finished, then the right wording, in both orders', async () => {
+    for (const [held, wording] of [[[], 'on the Create Strategy page.'], [['platform_strikes'], 'in the Ready-made tab.']]) {
+      let release
+      features = () => new Promise((resolve) => { release = () => resolve({ data: { held } }) })
+      const w = mount(LegList, { props: { legs: [], multiplierMax: 50 } })
+      await flushPromises()
+      expect(w.find('[data-testid="no-legs-hint"]').exists() ? w.get('[data-testid="no-legs-hint"]').text() : '').toBe('')
+      release()
+      await flushPromises()
+      expect(w.get('[data-testid="no-legs-hint"]').text()).toContain(wording)
+    }
+  })
 })

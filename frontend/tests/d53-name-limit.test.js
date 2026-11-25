@@ -70,4 +70,11 @@ describe('D-53: the name limit is said where it applies', () => {
     await t(w, 'rename-input').setValue('y'.repeat(20))
     expect(t(w, 'rename-limit').text()).toBe(AT)
   })
+
+  it('round 2: the limit is said once per box: no separate "n/20 characters" count line beside the limit line', async () => {
+    const w = await bar()
+    await t(w, 'save-draft').trigger('click')
+    expect(t(w, 'name-count').exists()).toBe(false)
+    expect(t(w, 'name-limit').text()).toBe(ROOM)
+  })
 })

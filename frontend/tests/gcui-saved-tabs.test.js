@@ -145,7 +145,7 @@ describe('D-C16 Save modal', () => {
     await t(w, 'save-draft').trigger('click')
     expect(t(w, 'modal-title').text()).toBe('Save New Strategy')
     expect(w.get('label[for="strategy-name"]').text()).toBe('Strategy Name')
-    expect(t(w, 'name-count').text()).toBe('12/20 characters')
+    expect(t(w, 'name-limit').text()).toBe('A name can be up to 20 characters.')
     expect(t(w, 'name-input').attributes('maxlength')).toBe('20')
     expect(t(w, 'name-cancel').text()).toBe('Cancel')
     expect(t(w, 'name-confirm').classes()).toContain('bg-accent')
