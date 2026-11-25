@@ -5,12 +5,15 @@ carries ``popup_due``; the record itself (and so the bell's count) is unchanged.
 from __future__ import annotations
 
 import datetime as dt
+import inspect
 from decimal import Decimal
 
 from ofo_app import playbook_store
+from ofo_app.routes import adjustment_opportunities as route
 from ofo_app.routes.adjustment_opportunities import OpportunityOut, PopupFacts, inbox_body
 
 ENTRY = dt.datetime(2026, 11, 23, 9, 20, 0, tzinfo=dt.UTC)
+FIRST = ENTRY + dt.timedelta(seconds=20)  # the rule memory's first write
 
 
 def _row(who: tuple[int, int, str, str], figures: tuple[str, str], shown: dt.datetime) -> playbook_store.InboxRow:
@@ -34,7 +37,7 @@ def test_two_condors_true_at_entry_wait_then_pop_up_and_the_records_stay():
             _row((167, 2, "R-delta", "T-04"), ("0.3809", "0.35"), ENTRY + dt.timedelta(minutes=3))]
     def facts(now: dt.datetime) -> PopupFacts:
         return PopupFacts(entry={166: ENTRY, 167: ENTRY},
-                          seen_clear={(166, "R-gamma"): False, (167, "R-delta"): False}, now=now)
+                          seen_clear={(166, "R-gamma"): (False, FIRST), (167, "R-delta"): (False, FIRST)}, now=now)
 
     early = inbox_body(rows, popup=facts(ENTRY + dt.timedelta(minutes=3)))
     assert [r["popup_due"] for r in _records(early).values()] == [False, False]
@@ -48,7 +51,8 @@ def test_two_condors_true_at_entry_wait_then_pop_up_and_the_records_stay():
 def test_rule_false_at_entry_then_true_pops_up_at_once_and_a_second_strategy_is_not_held():
     rows = [_row((166, 1, "R-gamma", "T-02"), ("2.95", "2.00"), ENTRY + dt.timedelta(minutes=2)),
             _row((167, 2, "R-delta", "T-04"), ("0.3809", "0.35"), ENTRY + dt.timedelta(minutes=2))]
-    facts = PopupFacts(entry={166: ENTRY, 167: ENTRY}, seen_clear={(166, "R-gamma"): True, (167, "R-delta"): False},
+    facts = PopupFacts(entry={166: ENTRY, 167: ENTRY},
+                       seen_clear={(166, "R-gamma"): (True, FIRST), (167, "R-delta"): (False, FIRST)},
                        now=ENTRY + dt.timedelta(minutes=2))
     got = _records(inbox_body(rows, popup=facts))
     assert got[1]["popup_due"] is True  # became true after a check that found it false
@@ -57,7 +61,8 @@ def test_rule_false_at_entry_then_true_pops_up_at_once_and_a_second_strategy_is_
 
 def test_entry_time_unknown_pops_up_at_once_and_no_facts_means_due():
     rows = [_row((166, 1, "R-gamma", "T-02"), ("2.95", "2.00"), ENTRY + dt.timedelta(minutes=1))]
-    none_known = PopupFacts(entry={}, seen_clear={(166, "R-gamma"): False}, now=ENTRY + dt.timedelta(minutes=1))
+    none_known = PopupFacts(entry={}, seen_clear={(166, "R-gamma"): (False, FIRST)},
+                            now=ENTRY + dt.timedelta(minutes=1))
     assert _records(inbox_body(rows, popup=none_known))[1]["popup_due"] is True
     assert _records(inbox_body(rows))[1]["popup_due"] is True
 
@@ -67,5 +72,27 @@ def test_a_settled_record_is_never_quiet():
     done = playbook_store.InboxRow(
         playbook_store.Suggestion(1, 166, "R-gamma", "T-02", "Entry", Decimal("2.95"), Decimal("2.00"),
                                   row.suggestion.shown_at, "dismissed", None, row.suggestion.timeline), "C10", True)
-    facts = PopupFacts(entry={166: ENTRY}, seen_clear={(166, "R-gamma"): False}, now=ENTRY)
+    facts = PopupFacts(entry={166: ENTRY}, seen_clear={(166, "R-gamma"): (False, FIRST)}, now=ENTRY)
     assert _records(inbox_body([done], popup=facts))[1]["popup_due"] is True
+
+
+def test_a_rule_first_evaluated_two_minutes_after_entry_pops_up_at_once():
+    rows = [_row((166, 1, "R-gamma", "T-02"), ("2.95", "2.00"), ENTRY + dt.timedelta(minutes=2))]
+    late = PopupFacts(entry={166: ENTRY}, seen_clear={(166, "R-gamma"): (False, ENTRY + dt.timedelta(minutes=2))},
+                      now=ENTRY + dt.timedelta(minutes=2))
+    assert _records(inbox_body(rows, popup=late))[1]["popup_due"] is True
+
+
+def test_a_scenario_dated_strategy_uses_the_clock_it_is_given():
+    scn = dt.datetime(2026, 11, 3, 9, 20, tzinfo=dt.UTC)
+    rows = [_row((166, 1, "R-gamma", "T-02"), ("2.95", "2.00"), scn + dt.timedelta(minutes=1))]
+    kw = {"entry": {166: scn}, "seen_clear": {(166, "R-gamma"): (False, scn + dt.timedelta(seconds=10))}}
+    two = PopupFacts(now=scn + dt.timedelta(minutes=2), **kw)
+    five = PopupFacts(now=scn + dt.timedelta(minutes=5), **kw)
+    assert _records(inbox_body(rows, popup=two))[1]["popup_due"] is False
+    assert _records(inbox_body(rows, popup=five))[1]["popup_due"] is True
+
+
+def test_the_route_reads_the_app_clock_not_the_real_one():
+    src = inspect.getsource(route.adjustment_opportunities)
+    assert "get_answer_clock" in inspect.getsource(route) and "datetime.now" not in src
