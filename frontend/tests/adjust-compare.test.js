@@ -356,3 +356,11 @@ describe('GC-IC1 4b: the controls sit on the compare page and take the reply\'s 
     expect(t(old.w, 'delta-card').exists()).toBe(false)
   })
 })
+
+describe('GC-ICLIVE D-32 (ADR-242): the watch box says in its own label that it only alerts and does not exit', () => {
+  it('C8 163: the heading names the alert-only effect, beside the Watch buttons, so it cannot be read as a Conditional exit', async () => {
+    const { w } = await show(clone(adj02))
+    const card = t(w, 'watch-card')
+    expect(card.get('h3').text()).toBe('Watch an index level: it only alerts and does not exit')
+  })
+})
