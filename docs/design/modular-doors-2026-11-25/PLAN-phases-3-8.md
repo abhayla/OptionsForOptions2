@@ -230,6 +230,23 @@ only two files conflict, `docs/process/coverage-stages.yaml` and `views/spec-dig
 fix branch, and the merged tree has `may_act.refuse_unless_allowed(ctx, "place", placed_at)` at the same place (merged
 `routes/paper.py:1339`); `git grep refuse_when_closed` in the merged tree finds only the `may_act.py` docstring.
 
+**Step 0 run (25 Nov night), results and corrections.** The merge is `4350f336` (of `6574e475`). Differences from the
+text above:
+- A THIRD conflict: `docs/process/coverage-register.md` (generated). Take our side (`git show :2:<path>`), then
+  `python scripts/orchestrator/coverage.py . --write --no-gh`.
+- `views/spec-digest.md` is resolved by running `python tools/build_spec_digest.py .` over the conflicted file (a hook
+  blocks editing it and blocks `checkout --ours`).
+- A cloud clone is shallow: run `git fetch --unshallow origin` before `ci_local` (steps 17 and 20 need
+  `git merge-base origin/main HEAD`).
+- The DB selection (4.1) with base `b1055c5` was 218 files, about 50-70 min run one after another (`ofo_app` has
+  CONNECTION LIMIT 5).
+- Line moves in the merged tree: `lib/tracking.js` key at `:211` (not `:210`); `routes/tracking.py` `contract_ids`
+  `:248`; `routes/paper.py` `_server_exit_prices` `:1224`, `place_paper_orders` `:1315`, its exit-price call `:1340`,
+  `paper_exit_risk` `:1413`; `routes/execute.py` `exit_legs` call `:363`.
+- `routes/paper.py::paper_exit_risk` (`:1413`) ALSO calls `_server_exit_prices` (`:1434`): see the note in 5.4.1.
+- G1 (5.8): `adjustment_readers.py::read_market` itself calls `underlying_quote`; it is a real site to exempt by
+  `file::function`.
+
 Commands (Lane A, in `/home/user/OptionsForOptions2` or a worktree on `refactor/modular-doors`):
 
 ```
@@ -526,6 +543,10 @@ ADR-212 (no fill at a closing price); ADR-002; ADR-328 (4) (quoted in 2.1); ADR-
 - Real path: `execute_plan.exit_legs` (`execute_plan.py:223-226`) sorts `sorted(held.items())` by the plan's
   instrument string (string order: `"NFO-OPT:10"` before `"NFO-OPT:9"`, `test_execute_route.py:565-569`). A closing
   basket case exists in `tests_app/test_checked_basket.py:185` (settled here).
+
+- **Second caller (Step 0 run, 25 Nov night):** `paper_exit_risk` (`routes/paper.py:1413`) also calls
+  `_server_exit_prices` (`:1434`). Phase 4 must move this second caller onto `live_exit_prices` too, or
+  `_server_exit_prices` stays alive after the move.
 
 #### 5.4.2 Design
 

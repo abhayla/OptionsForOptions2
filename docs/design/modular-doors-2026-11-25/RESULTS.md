@@ -2,10 +2,11 @@
 
 Plan: `PLAN.md`. Owner questions: `owner-questions.md`. Branch `refactor/modular-doors`.
 
-**Status: PAUSED 25 Nov 2026 on the owner's instruction (relayed by the GC-ICLIVE orchestrating session) after
-Phase 2. Pushed head `0e30edc1`. Phases 1 and 2 are done and pushed; Phase 3 is part-way, saved as a patch
-(`phase3-wip.patch.txt`); Phases 4-8 are not started.** This file is written so a fresh session can carry on from it alone.
-Read `PLAN.md` for the why and the per-phase Core / Proof, then this file for what is done.
+**Status: Step 0 DONE at `4350f336` (merge of `fix/ic-live-test-1123` at `6574e475` into `refactor/modular-doors`;
+pushed state to be filled at push). Before it, PAUSED 25 Nov 2026 on the owner's instruction (relayed by the GC-ICLIVE
+orchestrating session) after Phase 2, pushed head `0e30edc1`. Phases 1 and 2 are done and pushed; Phase 3 is part-way,
+saved as a patch (`phase3-wip.patch.txt`); Phases 4-8 are not started.** This file is written so a fresh session can carry
+on from it alone. Read `PLAN.md` for the why and the per-phase Core / Proof, then this file for what is done.
 
 | Phase | Scope | State | Where |
 |---|---|---|---|
@@ -17,6 +18,31 @@ Read `PLAN.md` for the why and the per-phase Core / Proof, then this file for wh
 | 6 | B2, B7, F7, F8 (maintenance; B2 needs Tier A review) | NOT STARTED | `PLAN.md` Phase 6 |
 | 7 | 23 Nov helpers R2-R12 (R1 parked) | NOT STARTED | `PLAN.md` Phase 7 |
 | 8 | Guard test with exemption list and allowlist | NOT STARTED | `PLAN.md` Phase 8 |
+
+## Step 0: merge of fix/ic-live-test-1123
+
+| Claim | Evidence |
+|---|---|
+| Merge | `4350f336` of `6574e475`; the fix branch's App tests CI was green (run 45645290337) |
+| Conflicts | `coverage-stages.yaml` (all four rows ADR-326..329 kept, S6.7); `spec-digest.md` (regenerated); `coverage-register.md` (regenerated, 1035 rows) |
+| Generated files | OpenAPI and reply inventory regenerate with no diff |
+| vitest | 223 files, 2622 tests passed |
+| pytest tests/errors + d57 + money scan | 721 passed |
+| DB selection, base `b1055c5` | 218 of 218 files exit 0 on fresh clones (4089 passed, 1 skipped = `test_execute_replay_api` live-server test) |
+| ci_local | TOTAL 16 passed, 0 failed, 5 skipped |
+
+### Section 9 first commands
+
+| Phase | First command | Result |
+|---|---|---|
+| Step 0 | vitest | green (agrees) |
+| 3, 4 | run at phase start | tests not yet written |
+| 5 | `leg-step-duplicate-d60` + `leg-duplicate-d60` | 36 passed (agrees) |
+| 6 | `test_execute_route -k exit_legs` | 1 passed (agrees); `exit_legs` at `execute_plan.py:223-226` sorts `sorted(held.items())` |
+| 7 | `test_strategy_alert_style` | 37 passed (agrees) |
+| 8 | G1 AST scan | 34 sites by `file::function`, 44 calls in 17 files; all in plan-named files except the door itself (`market_read.py::_read`); exemptions must be keyed by `file::function` |
+
+Verdict: no result contradicts any phase; no phase parked.
 
 ## Phase 1: B3 read_market + B5 trigger check (D-01, S-20, ADR-327)
 
