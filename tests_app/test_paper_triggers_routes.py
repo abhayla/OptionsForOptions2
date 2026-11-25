@@ -872,6 +872,6 @@ async def test_a_scenario_strategys_alert_is_neither_listed_nor_counted_nor_mark
         listed = (await c.get("/paper/alerts")).json()
         assert [a["strategy_id"] for a in listed["alerts"]] == [stored.id] and listed["unread"] == 1
         await c.post("/paper/alerts/read")
-    unread = (await db.execute(text("SELECT count(*) FROM public.paper_alerts WHERE strategy_id = :s AND read_at IS NULL"),
-                               {"s": scenario.id})).scalar_one()
+    sql = "SELECT count(*) FROM public.paper_alerts WHERE strategy_id = :s AND read_at IS NULL"
+    unread = (await db.execute(text(sql), {"s": scenario.id})).scalar_one()
     assert unread == 1  # a live process never touches a scenario strategy's alerts
