@@ -4,7 +4,7 @@
      judged on its text (a multiple of 0.05, not zero) and sent as typed; every level and contract shown is the server's text
      (ADR-008). A refusal shows the server's words, never swallowed. -->
 <script setup>
-import { computed, onMounted, ref, watch } from 'vue'
+import { computed, nextTick, onMounted, ref, watch } from 'vue'
 import api, { NEUTRAL_ERROR } from '@/services/api'
 import { paperPriceOk, paperPriceReason } from '@/lib/tracking'
 
@@ -97,6 +97,7 @@ async function saveExit() {
     saved.value = !dups.length ? `Saved: ${line(fresh)}` : !fresh.length ? `Already set: ${line(dups)}` : `Saved: ${line(fresh)}. Already set: ${line(dups)}`
     above.value = ''
     below.value = ''
+    showSaved((x) => x.kind === 'conditional_exit' && (body.above ? x.direction === 'above' : x.direction === 'below'))
   }
 }
 async function saveStop(leg) {
@@ -106,7 +107,17 @@ async function saveStop(leg) {
   if (data) {
     saved.value = `${data.already_set || data.already_armed?.length ? 'Already set' : 'Saved'}: stop ${s.direction} ${typed(s.level)}`
     setStop(leg.index, { level: '' })
+    showSaved((x) => x.kind === 'leg_stop' && String(x.contract_id) === String(leg.contractId) && x.direction === s.direction)
   }
+}
+// D-44: after a successful Save the list can sit below the fold; bring the row just saved into view (nothing on a failure)
+const rootEl = ref(null)
+function showSaved(match) {
+  nextTick(() => {
+    const row = (triggers.value ?? []).find(match)
+    const el = (row && rootEl.value?.querySelector(`[data-trigger-id="${row.id}"]`)) ?? rootEl.value?.querySelector('[data-testid="triggers"]')
+    el?.scrollIntoView?.({ block: 'nearest' })
+  })
 }
 const cancel = (t) => run(() => api.delete(`${path}/${t.id}`))
 // D-03: same level, stored again after the change to the legs. Ends in one line: Kept / Already kept (the exit was not marked,
@@ -121,7 +132,7 @@ async function keep(t) {
 </script>
 
 <template>
-  <div class="mt-2 rounded border border-line p-2" data-testid="paper-stops">
+  <div ref="rootEl" class="mt-2 rounded border border-line p-2" data-testid="paper-stops">
     <p class="text-xs font-semibold" data-testid="stops-label">{{ LABEL }}</p>
 
     <div class="mt-2" data-testid="conditional-exit">
@@ -156,7 +167,7 @@ async function keep(t) {
       <p class="font-medium">Stops on this strategy</p>
       <p v-if="triggers && !triggers.length" class="text-xs text-ink-muted" data-testid="stops-empty">No stops set.</p>
       <ul v-else-if="triggers">
-        <li v-for="t in triggers" :key="t.id" class="flex flex-wrap items-center gap-2 border-b border-line py-1" data-testid="trigger-row">
+        <li v-for="t in triggers" :key="t.id" class="flex flex-wrap items-center gap-2 border-b border-line py-1" data-testid="trigger-row" :data-trigger-id="t.id">
           <span>{{ t.kind === 'leg_stop' ? (legNames[t.contract_id] ?? t.contract_text ?? 'Leg stop') : 'Conditional exit' }}</span>
           <span class="font-medium" data-testid="trigger-direction">{{ t.direction === 'above' ? 'Above' : t.direction === 'below' ? 'Below' : '' }}</span>
           <span data-testid="trigger-level">{{ t.level_text }}</span>
