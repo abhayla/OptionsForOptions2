@@ -540,8 +540,10 @@ def take_profit_after_charges_refusal(built: ApproachLegs, priced: Priced) -> Us
     charges, no whole-trade figure) -> refused with its own reason (fail closed). Any other approach: None."""
     if built.whole_before_charges is None:
         return None
-    if priced.after is None or not priced.charges_known:
+    if not priced.charges_known:
         return render("adjust_take_profit_charges_unknown")
+    if priced.after is None:  # charges known, but the legs left span two expiries: no whole-trade figure (fail closed)
+        return render("adjust_take_profit_two_expiries")
     after = adjust_money.after_charges(built.whole_before_charges, priced.after.total_charges)
     if not adjust_money.in_profit(after):
         return render("adjust_take_profit_not_in_profit_after_charges", after=_rupees(after))
@@ -768,14 +770,11 @@ def take_profit_block(built: ApproachLegs | None, priced: Priced | None) -> dict
     """D-25 (ADR-238 (6), ADR-294 (4)): an OFFERED Take profit (A-24, A-25) names the whole trade's result
     before charges
     (the figure its profit test used) and, beside it, the result after charges (before charges less every charge line,
-    the engine's ``total_charges``). Refused, other approaches: None. Charges not priced: the after figure is None and
-    the text says so, never 0."""
-    if built is None or built.refusal_message is not None or built.whole_before_charges is None or priced is None:
+    the engine's ``total_charges``). Refused, other approaches: None (charges not priced is a refusal now)."""
+    if built is None or built.refusal_message is not None or built.whole_before_charges is None or priced is None \
+            or priced.after is None:  # an offered take profit always has its whole-trade figure (ADR-326 (1))
         return None
     before = _rupees(built.whole_before_charges)
-    if priced.after is None or not priced.charges_known:
-        return {"before_charges": before, "after_charges": None,
-                "text": render_explanation("adjust_take_profit_basis_no_charges", before=before)}
     after = _rupees(adjust_money.after_charges(built.whole_before_charges, priced.after.total_charges))
     return {"before_charges": before, "after_charges": after,
             "text": render_explanation("adjust_take_profit_basis", before=before, after=after)}

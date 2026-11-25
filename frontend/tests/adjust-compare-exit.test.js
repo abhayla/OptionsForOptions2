@@ -59,6 +59,7 @@ describe('Compare: exit the whole strategy', () => {
       expect(p.legs[i]).toMatchObject({ symbol: tr.tradingsymbol, action: tr.action, lots: tr.lots, planned_entry: tr.price })
     })
     expect(p.basketLegs).toBe(EXIT.trades.length)
+    expect(p.approachId).toBe('A-31') // D-25: the chosen approach's id travels with the basket (the page sends only A-24 / A-25)
     expect(w.text()).not.toContain('could not get an answer from the server')
     expect(c.post).toHaveBeenCalledTimes(1) // the compare read only: no order, no second POST
   })

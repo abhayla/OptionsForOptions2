@@ -1527,6 +1527,10 @@ _PLAYBOOK_TEMPLATES: tuple[MessageTemplate, ...] = (
     # ADR-326 (1) (D-25): take profit is also refused when the whole trade is a loss AFTER charges
     _gate("adjust_take_profit_not_in_profit_after_charges", _UI, 198,
           "Not in profit after charges: {after}", _ADJ_REFUSED, _ADJ_BLOCKED, _ADJ_PICK_OTHER, {"after": PnLMoney}),
+    _gate("adjust_take_profit_two_expiries", _UI, 200,
+          "The result after charges cannot be worked out for a trade that would be left with two expiries, so whether "
+          "it is in profit after charges is not known and this approach is not built.",
+          _ADJ_REFUSED, _ADJ_BLOCKED, _ADJ_PICK_OTHER, {}),
     _gate("adjust_take_profit_charges_unknown", _UI, 199,
           "The charges of closing the whole trade cannot be worked out, so whether it is in profit after charges is "
           "not known and this approach is not built.",

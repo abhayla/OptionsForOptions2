@@ -72,10 +72,11 @@ export function entryPriceFor(leg, livePriceById = {}) {
 }
 
 /** POST the confirmed orders in ONE request (the server stores them in one transaction or none). Throws the client error. */
-export async function addToPaper(client, strategyId, orders, suggestionIds = [], basketLegs = null, held = null) {
+export async function addToPaper(client, strategyId, orders, suggestionIds = [], basketLegs = null, held = null, approachId = null) {
   // REQ-163 AC-1: the acted-on records this basket answers (Compare -> Open in builder); omitted when none
   const body = suggestionIds.length ? { orders, suggestion_ids: suggestionIds } : { orders }
   if (suggestionIds.length && basketLegs) body.basket_legs = basketLegs // REQ-112: the prepared basket's size
+  if (approachId) body.approach_id = approachId // D-25 (ADR-326 (1)): a Take profit basket (A-24 / A-25), checked by the server
   if (held) body.held = held // GC-TRACK1 k10: only on the first basket, only when the user ticked "Held at my broker"
   const { data } = await client.post(`/paper/strategies/${strategyId}/orders`, body)
   return data

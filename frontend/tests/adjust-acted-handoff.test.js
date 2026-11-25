@@ -137,16 +137,13 @@ describe('D-25 (ADR-326 (1)): a Take profit basket carries its approach id to th
     expect(posts()[0].body.approach_id).toBe('A-24')
     expect(router.currentRoute.value.query).toEqual({ strategy: '63' })
   })
-  it('a Take profit with no acted record still sends it, and a refused one keeps it for the retry', async () => {
-    const { w } = await openBuilder({ strategy: '63', approach: 'A-25' })
+  it('a Take profit with no acted record still sends it, and a refused one keeps it in the URL', async () => {
+    const { w, router } = await openBuilder({ strategy: '63', approach: 'A-25' })
     answers[ORDERS] = refusal(409, 'Not in profit after charges: -₹223')
     await confirmOneExit(w)
     expect(t(w, 'paper-error').text()).toBe('Not in profit after charges: -₹223')
-    answers[ORDERS] = refusal(409, 'Not in profit after charges: -₹223')
-    await t(w, 'paper-confirm-button').trigger('click')
-    await flushPromises()
-    expect(posts()).toHaveLength(2)
-    expect(posts()[1].body.approach_id).toBe('A-25')
+    expect(posts()[0].body.approach_id).toBe('A-25')
+    expect(router.currentRoute.value.query).toEqual({ strategy: '63', approach: 'A-25' }) // kept: a retry is asked again
   })
   it('an ordinary basket, or a junk approach value, sends no approach_id', async () => {
     for (const approach of [undefined, 'A-31', 'x', 'A-24,A-25']) {

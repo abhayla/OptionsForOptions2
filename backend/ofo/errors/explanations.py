@@ -2195,10 +2195,6 @@ _EXPLANATIONS: tuple[ExplanationTemplate, ...] = (
     ExplanationTemplate("adjust_take_profit_basis", "values_seen",
                         "Whole trade closed at the planned prices: {before} before charges (the figure the profit test "
                         "used), {after} after charges.", {"before": Rupees, "after": Rupees}),
-    ExplanationTemplate("adjust_take_profit_basis_no_charges", "values_seen",
-                        "Whole trade closed at the planned prices: {before} before charges (the figure the profit test "
-                        "used); the charges could not be priced, so the result after charges is not shown.",
-                        {"before": Rupees}),
     ExplanationTemplate("adjust_prepare_wait_fresh", "values_seen", "Wait for fresh prices"),
     ExplanationTemplate("adjust_checks_paused_prices", "values_seen",
                         "Adjustment checks are paused: prices are not live (since {time}).", {"time": HourMinute}),
