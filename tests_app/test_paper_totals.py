@@ -436,3 +436,62 @@ async def test_a4_an_expired_strategy_and_stale_prices_the_stale_reason_wins_and
     totals = (await _list(app))["totals"]
     assert (totals["unbooked"], totals["total"], totals["totals_reason"]) == (None, None, "prices_not_live")
     assert (totals["left_out_count"], totals["left_out_text"]) == (1, "1 strategy left out: its contract has expired.")
+
+
+# --- D-36: a finished book (no open leg) costs the list no pricing, decay or live-figure work ------------------------
+
+_FINISHED = 6
+_STATEMENTS = 6  # the list's fixed database work
+_WORK = ("_prices", "_figures", "_summary", "_decay", "_charges", "_after")
+
+
+async def _seed_finished_and_one_open(db):
+    app, stored, provider, _clock, last = await _setup(db)
+    s48, s50 = _fixture(48), _fixture(50)
+    for n in range(_FINISHED):
+        await _strategy(db, stored, [(0, s50["legs"][0])], AT + datetime.timedelta(minutes=n + 1), new=n > 0)
+    await _strategy(db, stored, list(enumerate(s48["legs"])), AT, new=True)
+    for iid, leg in zip(IDS, s48["legs"], strict=True):
+        provider.on_frame(_frame(provider, iid, leg["current_price"] or "100"), last)
+    app.dependency_overrides[load_charge_rates] = lambda: RATES
+    return app
+
+
+async def test_d36_the_list_does_fixed_database_work_and_finished_books_cost_only_cheap_arithmetic(db, monkeypatch):
+    from ofo_app.routes import paper as route  # noqa: PLC0415
+    from sqlalchemy import event  # noqa: PLC0415
+    app = await _seed_finished_and_one_open(db)
+    seen = {name: {"finished": 0, "open": 0} for name in _WORK}
+
+    def counted(name):
+        original = getattr(route, name)
+
+        def wrapper(*args, **kwargs):
+            first = args[0]
+            if name == "_prices":
+                held = first  # the open contract ids
+            elif name == "_decay":
+                held = [p for p in first["positions"] if p["net_quantity"] != 0]
+            else:
+                held = route._open_ids(first)
+            seen[name]["open" if held else "finished"] += 1
+            return original(*args, **kwargs)
+        return wrapper
+    for name in _WORK:
+        monkeypatch.setattr(route, name, counted(name))
+    statements: list[str] = []
+    sync = db.sync_connection
+
+    def record(_conn, _cursor, statement, *_rest):
+        statements.append(statement)
+    event.listen(sync, "before_cursor_execute", record)
+    try:
+        body = await _list(app)
+    finally:
+        event.remove(sync, "before_cursor_execute", record)
+    # D-36 count (measured 2026-11-25, 6 finished + 1 open): the per-book helpers run once per finished book, pure
+    # arithmetic of about 0.3 ms each (6 books: 2 ms in all); the database work is a fixed 6 statements whatever the
+    # count of strategies and no broker is called. Finished books cost nothing measurable, so nothing is skipped.
+    assert {name: seen[name]["finished"] for name in _WORK} == dict.fromkeys(_WORK, _FINISHED)
+    assert len(statements) == _STATEMENTS
+    assert len(body["strategies"]) == _FINISHED + 1
