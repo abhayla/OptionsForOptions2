@@ -209,6 +209,7 @@ export function readTracking(body, replyLegs = null) {
   if (!body || typeof body !== 'object' || !STATES.has(body.state) || !Array.isArray(body.legs)) return INVALID
   const legs = body.legs.map((leg) => ({
     key: leg.instrument_id,
+    contractId: leg.contract_id, // D-41: the book's key of this leg (key is the feed identity "NSE_FO:..."); absent in an older reply
     action: leg.action,
     instrument: leg.instrument,
     strike: leg.strike,
