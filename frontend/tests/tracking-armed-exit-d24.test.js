@@ -19,8 +19,9 @@ vi.mock('@/services/api', async (importActual) => {
   return { ...actual, default: { get: (u) => answer(u), post: (u) => answer(u), put: (u) => answer(u) } }
 })
 import TrackingPanel from '@/components/strategy/TrackingPanel.vue'
+import { TRACKING_REFRESH_MS } from '@/lib/tracking'
 
-const TRACK = { strategy_id: 161, state: 'LIVE', paper_pnl: '195.00', paper_pnl_text: '+195.00', as_of: null, legs: [], detections: [] }
+let TRACK = { strategy_id: 161, state: 'LIVE', paper_pnl: '195.00', paper_pnl_text: '+195.00', as_of: null, legs: [], detections: [] }
 const LABELS = { plan_entry: 'Plan', playbook: 'Playbook', target: 'Target', stop: 'Stop', max_adjustments: 'Max adjustments', time_exit: 'Time exit',
   edit: 'Edit plan', no_plan: 'No plan saved yet: default rules apply', set_plan: 'Set plan' }
 const PLAN = { strategy_id: 161, type: 'ic', type_name: 'Iron condor', generic: false, generic_text: null, labels: LABELS, plan: null,
@@ -82,5 +83,21 @@ describe('an armed conditional exit is on the tracking panel (D-24)', () => {
     const w = await panel()
     expect(t(w, 'plan-entry-exits-failed').exists()).toBe(true)
     expect(w.find('[data-testid^="plan-entry-exit-"]').exists()).toBe(false)
+  })
+})
+
+describe('D-24 round 2: the exit that fires leaves "Armed" on the panel', () => {
+  it('first read armed; then tracking says EXITED and the trigger is fired: the line reads Fired', async () => {
+    vi.useFakeTimers()
+    try {
+      triggers = { triggers: [trig()] }
+      const w = await panel()
+      expect(t(w, 'plan-entry-exit-31').text()).toContain('Armed')
+      TRACK = { ...TRACK, state: 'EXITED' }
+      triggers = { triggers: [trig({ state: 'fired', fired_at: '2026-11-23T09:50:00Z' })] }
+      await vi.advanceTimersByTimeAsync(TRACKING_REFRESH_MS)
+      await flushPromises()
+      expect(t(w, 'plan-entry-exit-31').text()).toBe('Conditional exit: all legs exit if the index goes above 25,720. Fired.')
+    } finally { vi.useRealTimers(); TRACK = { ...TRACK, state: 'LIVE' } }
   })
 })
