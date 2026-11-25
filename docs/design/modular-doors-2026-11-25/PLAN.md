@@ -13,7 +13,7 @@ at e98148e1 (= 5d9b53ca + one test-golden commit). Work branch: `refactor/modula
 |---|---|---|
 | Q1 | Start now on the fix branch, on its own branch | Build on `refactor/modular-doors` (from the fix branch). The owner screen-tests the fix branch (5d9b53c) tomorrow 26 Nov; this branch must not be merged into it until the owner says so. |
 | Q2 | Scope = clean-up + the 5 bugs that come from the duplicates (D-01, D-05, D-41, D-60, S-20); no new features | Every duplicate below becomes one shared module; the 5 bugs are fixed INSIDE those modules. All other behaviour stays exactly as today. Exit supports "now / market" only. |
-| ADR-326 | D-01 rule: in market hours, a trigger whose level cannot be checked against a live price (after asking the feed and waiting up to 3 s) is refused: "Not saved: the live price could not be read, so this level cannot be checked. Try again in a moment." Market closed: unchanged (saved, arms at next live tick). | Phase 1 implements it. `spec/decisions/ADR-326.md` is committed on this branch. |
+| ADR-327 | D-01 rule: in market hours, a trigger whose level cannot be checked against a live price (after asking the feed and waiting up to 3 s) is refused: "Not saved: the live price could not be read, so this level cannot be checked. Try again in a moment." Market closed: unchanged (saved, arms at next live tick). | Phase 1 implements it. `spec/decisions/ADR-327.md` is committed on this branch. |
 
 Out of scope (written down so nobody builds them): paper limit-order exit (new feature; needs owner rules on leg order
 and partly filled legs, ADR-281 / F-102); plan target / stop-loss / time exit placing orders (today they only alert;
@@ -35,7 +35,7 @@ Server (backend/):
 | # | Capability | Copies today | Door to build | Bug fixed inside |
 |---|---|---|---|---|
 | B3 | Read a live price (leg or index) | 9-11 readers, several hold mechanisms, 4-5 hold nothing; `live_push.hold_and_read` (live_push.py:95) is bypassed | `read_market(ctx, underlying, leg_keys, need_index, purpose)`: asks the feed to hold what it needs, waits up to 3 s, returns prices + a state per price (live / stale / missing / market closed) | D-01, S-20 |
-| B5 | Trigger save: "already crossed?" | `routes/paper.py:1637 _already_crossed` reads with no hold; keep route same shape | `check_trigger_levels(...)` on top of `read_market`; ADR-326 states | D-01 |
+| B5 | Trigger save: "already crossed?" | `routes/paper.py:1637 _already_crossed` reads with no hold; keep route same shape | `check_trigger_levels(...)` on top of `read_market`; ADR-327 states | D-01 |
 | B4 | "May this act now?" (market open, prices live) | `paper_limit.refuse_when_closed` (paper_limit.py:119), `paper_monitor.on_quote` calendar (:177), `market_state` (outcome.py:224), `paper.is_live`, others | `may_act(ctx, action, at) -> Allowed | Refused(reason)`, plus a read-only answer the screens can show before a click | D-05 (server half) |
 | B1 | Exit legs (paper) | 4 server builders of "opposite side of the open book" (`routes/paper.py:1296`, `routes/tracking.py:513/550`, `paper_monitor.py:205/231`, `paper_settlement.py:164/171`) + the browser builds the basket (`frontend/src/lib/paperList.js:199 exitRowsFor`) | `exit_strategy(strategy_id, reason, only=None)`: reads the open net book under the strategy lock, builds opposite orders, buys first (ADR-117 / D-02), prices via `read_market`, refuses whole exit if a leg has no live price, writes through `paper_store.place` | D-05 (one rule for every Exit) |
 | B6 | Strategy money figures (P&L, booked, charges) assembled for the API | `routes/paper.py:651 _figures`, `routes/tracking.py:312 _figures`, `outcome.py:389`, `adjustment_history.py:333`, `routes/adjustment.py:428` | `strategy_money_view(strategy_id, prices)` (engine maths stays where it is; only the assembly is merged) | D-41 (server half) |
@@ -66,11 +66,11 @@ door above touches them.
 Each phase states Core / Proof. "Behaviour unchanged" means the existing tests for every caller still pass unmodified,
 except tests that pin one of the 5 bugs (change those in the tests-first commit and say why).
 
-1. **B3 read_market + B5 trigger check (D-01, S-20, ADR-326).**
+1. **B3 read_market + B5 trigger check (D-01, S-20, ADR-327).**
    Core: a save of "Above X" with the index above X is refused even when nothing else holds the index.
    Proof: `evidence/repro_d01.py.txt` (rename to .py to run) turned into a test (`tests_app/test_paper_trigger_unheld_index.py`): unheld index ->
    refused `paper_trigger_already_crossed`; held -> refused; market open + no price after 3 s -> refused with the
-   ADR-326 line; market closed -> saved. Leg-stop alert carries the index value when the index ticks (S-20).
+   ADR-327 line; market closed -> saved. Leg-stop alert carries the index value when the index ticks (S-20).
    Move every reader that bypasses the hold onto `read_market` (list in evidence/review-backend.md section 3).
 2. **B4 may_act + F1 priceState (D-05 server half, D-39 where same rule).** One answer to "may I exit / place now?"
    that both the route and the screen use. Proof: a test per action state (open+live, open+stale, open+missing,
@@ -98,14 +98,14 @@ except tests that pin one of the 5 bugs (change those in the tests-first commit 
 ## How the cloud session works (rules)
 
 - Read first: CLAUDE.md, `docs/process/runbook.md`, `.claude/kit/GUIDE.md`, this PLAN.md, the evidence files,
-  `spec/decisions/ADR-326.md`, ADR-317, ADR-322, ADR-117, ADR-281, F-102 (spec/findings.md).
+  `spec/decisions/ADR-327.md`, ADR-317, ADR-322, ADR-117, ADR-281, F-102 (spec/findings.md).
 - Model routing (CLAUDE.md hard rule): the main session manages; builders Sonnet; Opus only for Tier A (B1 exit,
   B2 real path, B3 price door) review.
 - Each phase: tests-first commit (red), code commit (green), then `python tools/ci_local.py`. Targeted pytest/vitest
   per file; long output to a log, read the tail. No DB test runs against the owner's VPS from the cloud; DB tests run
   in CI on the PR.
 - Money is Decimal, never float (ADR-008). Never call a broker order endpoint. Paper only.
-- Every PR body carries the Spec-deviation block (`Class: 3` for ADR-326 with the decision id; `Class: none`
+- Every PR body carries the Spec-deviation block (`Class: 3` for ADR-327 with the decision id; `Class: none`
   otherwise) and `Fixes`-free wording for partial items (no "fixes #N" unless the whole issue is done).
 - Park, don't drag: 2 failed rounds on a phase -> write a `parked` note in this folder with evidence and go on.
 - Questions for the owner are NOT asked in the cloud session: append them to
@@ -122,3 +122,16 @@ except tests that pin one of the 5 bugs (change those in the tests-first commit 
   (before -> after counts, e.g. "price readers: 11 -> 1 door + 0 bypasses"), the tests, and anything parked.
 - A screen-check list for the owner (what to click to see D-01, D-05, D-41, D-60, S-20 fixed), since the cloud
   session cannot drive the live app.
+
+## Who owns what (added 25 Nov ~16:50 IST, to stop two sessions fixing the same thing)
+
+Two cloud sessions work at once. No item belongs to both.
+
+| Session / branch | Owns | Must not touch |
+|---|---|---|
+| GC-ICLIVE session, Part F, on `fix/ic-live-test-1123` | The owner's Q2-Q6 answers (its ADR-326: Take profit refused at a loss after charges; 24-hour IST everywhere incl. the disconnect sentence; adjustment pop-up quiet 5 min after entry when its rule was already true; header totals and timeout messages kept), Q7 and Q8, screen-check FAILs D-18 and D-44 | D-01, D-05, D-41, D-60, S-20 and the shared modules of this plan |
+| Modular session (this plan), on `refactor/modular-doors` | Phases 1-8 and the bugs D-01, D-05, D-41, D-60, S-20 (D-01 rule = ADR-327) | The Part F items above, `docs/process/owner-questions-2026-11-24.md` |
+
+ADR numbers: ADR-326 = the GC-ICLIVE session's Q2-Q6 answers; ADR-327 = the D-01 rule (this branch). Any new
+decision record on either branch takes the next number free on BOTH branches (`git ls-tree` both before writing).
+Merge order: Part F lands on the fix branch first; this branch merges the fix branch head before its final push.
