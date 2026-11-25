@@ -4,7 +4,7 @@
 //   builder -> any other page: asks when the builder holds unsaved legs ("Stay" cancels the navigation, "Leave" clears the hold);
 //   chain -> builder: never asks (the hold waits for the builder); chain -> any other page with a hold: asks the same question.
 // The tab close is not asked (the browser's own prompt is out: it cannot show this sentence or these labels). Escape, x and the overlay are Stay.
-import { inject, ref } from 'vue'
+import { getCurrentInstance, inject, onBeforeUnmount, ref } from 'vue'
 import { matchedRouteKey, onBeforeRouteLeave } from 'vue-router'
 import { useBuilderHold } from '@/stores/builderHold'
 
@@ -32,9 +32,9 @@ export function useLeaveBuilder({ role, unsaved = () => 0, snapshot = () => null
     question.value = null
     resolve?.(stay)
   }
-  /** Resolves true to leave, false to stay; a newer question settles the older one as Stay. */
+  /** Resolves true to leave, false to stay; a newer question settles the older one as Stay (settle(true) = stay). */
   const ask = (count) => {
-    settle(false)
+    settle(true)
     return new Promise((resolve) => {
       resolveOpen = (stay) => resolve(!stay)
       question.value = { count }
@@ -45,6 +45,7 @@ export function useLeaveBuilder({ role, unsaved = () => 0, snapshot = () => null
 
   async function allow(to) {
     const name = to?.name
+    settle(true) // a newer navigation settles an open question as Stay, whether or not it asks again
     if (role === 'builder') {
       if (BUILDER_ROUTES.includes(name)) return true
       if (name === CHAIN_ROUTE) {
@@ -63,6 +64,8 @@ export function useLeaveBuilder({ role, unsaved = () => 0, snapshot = () => null
   }
   // onBeforeRouteLeave needs a route component rendered by <router-view>; a page mounted directly (unit tests) has no guard
   if (inject(matchedRouteKey, null)) onBeforeRouteLeave((to) => allow(to))
+
+  if (getCurrentInstance()) onBeforeUnmount(() => settle(true)) // no promise dangles when the page goes away
 
   return { question, stay, leave }
 }
