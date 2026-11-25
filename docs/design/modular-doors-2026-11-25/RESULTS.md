@@ -14,7 +14,7 @@ waits for the Lane B merge.** This file is written so a fresh session can carry 
 | 3 | F3 + F5 + B6 one paper book source (D-41 (two readers), ADR-328 (3)) | DONE (review PASS) | `e5622280` tests, `42c1f467`..`491ca7e2` code, merged into the branch |
 | 4 | B1 exit door + F2 exit gate (D-05, ADR-328 (4)) + R5 | DONE (Tier A Opus PASS; one fix round) | backend `81e0b561`..`e79857a2`, frontend `643f0bdd`, `440e0299`, `15fe3268`, fixes on `wt/phase4-fix` |
 | 5 | F6 `useLegDoor` (D-60) | NOT STARTED | `PLAN.md` Phase 5, OQ-1 |
-| 6 | B2 close list (real path), F7, F8; B7 not built | DONE (B2 Tier A Opus PASS; F7/F8 Sonnet PASS) | `8862b957`..`bc4d8df1`, merged |
+| 6 | B2 close list (real path), F7, F8; B7 not built | PARTIAL: F7, F8 DONE (Sonnet PASS); B2 PARKED (breaks the REQ-109 AC-1 import guard; reverted) | `8862b957`..`3229e0a1`, merged; `PARKED-phase6-B2.md` |
 | 7 | R2 `owns`, R3 browser, R1 comment; rest skipped/parked | DONE (Sonnet PASS) | `45fd9dfb`..`637ea5cc`, merged |
 | 8 | Guard test with exemption list and allowlist | NOT STARTED | `PLAN.md` Phase 8 |
 
@@ -267,7 +267,11 @@ gate is the local mirror: ci_local, the whole vitest suite, the `select_app_test
 
 Built on `wt/phase6-a` from the Phase 4 merge `b567a156` (in parallel with Phase 7; file-disjoint), merged `--no-ff`.
 
-- **B2.** `execute_plan.exit_legs` = `[LegToPrice(instrument_of(c.key), Action(c.side), c.quantity, None) for c in
+- **B2: PARKED after the merge** (`PARKED-phase6-B2.md`): prepush found that `execute_plan.py` importing
+  `ofo.tracking.closing` breaks `tests_app/test_strategy_tracking_imports.py::test_ac1_no_order_path_module_imports_the_tracking_code`
+  (REQ-109 AC-1 / AC-2). `bc4d8df1` and `2e5a6e96` are reverted; the real path is byte-identical to `87a446bf`; the
+  oracle and basket golden stay as guards (green on the old body). What B2 was, for the record:
+  `execute_plan.exit_legs` = `[LegToPrice(instrument_of(c.key), Action(c.side), c.quantity, None) for c in
   open_legs_to_close(dict(sorted(held.items())))]`; one new import (stdlib-only `ofo.tracking.closing`); `sorted` kept at
   the call site. `ofo/execution/**` and `routes/execute.py`: no diff. Oracle `tests_app/test_exit_legs_oracle.py` (the old
   body copied character for character; "NFO-OPT:10" vs "NFO-OPT:9" order trap, zero nets, shorts, condors): green on both
@@ -290,7 +294,12 @@ Built on `wt/phase6-a` from the Phase 4 merge `b567a156` (in parallel with Phase
 | Oracle + golden + checked basket | `pytest tests_app/test_exit_legs_oracle.py tests_app/test_exit_basket_golden.py tests_app/test_checked_basket.py`: `30 passed` |
 | Real-path tests unmodified, green | test_execute_route `31 passed`, test_exit_adopted_313b `9 passed`, tests/execution close_slices/close_refusals/partial `41 passed` (reviewer) |
 | vitest / DB / ci_local on the worktree | 226 files / 2656 tests; DB selection base `b567a156` 45 of 45 exit 0; `TOTAL: 16 passed, 0 failed` |
-| Review | B2: Tier A, fresh Opus: PASS (1 minor, pinned). F7/F8: Sonnet: PASS, no finding |
+| Review | B2: Tier A, fresh Opus: PASS (1 minor, pinned) but missed the import guard; parked. F7/F8: Sonnet: PASS, no finding |
+| After the B2 revert | `pytest -c pytest-app.ini tests_app/test_strategy_tracking_imports.py tests_app/test_exit_legs_oracle.py tests_app/test_exit_basket_golden.py tests_app/test_checked_basket.py`: `62 passed` |
+
+Gate lesson (for every later phase): ci_local does not run the repo scans; prepush preflight runs `-m repo_scan` on
+both `tests` and `tests_app` and `scripts/ruff_ratchet.py`. Run all three before a review, not after.
+Deferred issues filed for plan section 6 rows 1-12 and 16-21: #724-#741 (label `deferred`).
 
 ## Phase 7: helpers: DONE
 
