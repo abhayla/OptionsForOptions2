@@ -4398,6 +4398,14 @@
   },
   "explanation:money_time_value_live_untimed": {
     "sha256": "c20c1e144ef37a146972497d78b302b5f60d1c2d7460f9622a681fa0e91eb70e",
-    "reviewed": "owner read 2026-11-25 (ADR-322 point 2, the sentence as the owner decided it)"
+    "reviewed": "pending owner read"
+  },
+  "explanation:money_time_value_closed": {
+    "sha256": "516d6e58dafe1e38ca54863444ea85ad61e6d0720d0f4abc1a2869b37ec9790d",
+    "reviewed": "pending owner read"
+  },
+  "explanation:money_time_value_closed_untimed": {
+    "sha256": "2f4be3d705108396474be558da1f79d3202817073ebb9e81f40b3fe08879fd0f",
+    "reviewed": "pending owner read"
   }
 }

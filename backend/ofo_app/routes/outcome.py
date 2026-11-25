@@ -1087,13 +1087,24 @@ def _oldest_quote_at(rows: list[dict]) -> datetime.datetime | None:
     return None if not times or any(t is None for t in times) else min(times)
 
 
-def _with_time_value_basis(summary: dict | None, oldest: datetime.datetime | None) -> dict | None:
-    """D-17 (ADR-322 point 2): the time value is at live prices; the sentence names the oldest leg quote time the reply
-    already serves (no clock is read here). No time value, no sentence; a leg quote with no time says so."""
+def _time_value_as_of(rows: list[dict], spot: NormalizedQuote | None) -> datetime.datetime | None:
+    """D-17: the time value is the leg prices minus intrinsic AT THE SPOT, so its time is the oldest of the leg quote
+    times and the spot's price time; None when any of them is missing (no other time stands in for it)."""
+    times = [r["quote_at"] for r in rows] + [None if spot is None else spot.price_at]
+    return None if not rows or any(t is None for t in times) else min(times)
+
+
+def _with_time_value_basis(summary: dict | None, as_of: datetime.datetime | None, closed: bool = False) -> dict | None:
+    """D-17 (ADR-322 point 2): the sentence names the time the figure's prices are from (no clock is read here). On a
+    closed market the figure is on last-close prices, so it says that, not "live". No time value, no sentence."""
     if summary is None or summary.get("time_value") is None:
         return summary
-    text = (render_explanation("money_time_value_live", time=oldest) if oldest is not None
-            else render_explanation("money_time_value_live_untimed"))
+    if closed:
+        text = (render_explanation("money_time_value_closed", time=as_of) if as_of is not None
+                else render_explanation("money_time_value_closed_untimed"))
+    else:
+        text = (render_explanation("money_time_value_live", time=as_of) if as_of is not None
+                else render_explanation("money_time_value_live_untimed"))
     return {**summary, "time_value_basis_text": text}
 
 
@@ -1289,7 +1300,8 @@ def outcome_response(req: OutcomeRequest, ctx: MarketContext | None,  # noqa: PL
     if out.state is OutcomeState.COMPUTED:  # only a live computed answer: never a held, refused or not-live one
         body["leg_quotes"] = _leg_quotes(snapshot, definition, {l["instrument_id"]: l["symbol"] for l in body["legs"]})
         body["oldest_quote_at"] = _oldest_quote_at(body["leg_quotes"])
-        body["summary"] = _with_time_value_basis(body.get("summary"), body["oldest_quote_at"])
+        body["summary"] = _with_time_value_basis(
+            body.get("summary"), _time_value_as_of(body["leg_quotes"], snapshot.spot), state.closed)
     # REQ-119 AC-1 / REQ-133 AC-2: the REST route and the live push pass the seq they were sent; none -> no key
     return echo_seq(OutcomeResponse.model_validate(body), seq)
 
