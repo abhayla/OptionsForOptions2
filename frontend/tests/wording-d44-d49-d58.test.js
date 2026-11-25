@@ -106,3 +106,34 @@ describe('D-49: the leg column header follows the Lots / Quantity switch', () =>
     expect(w.get('[data-testid="leg-unit-head"]').text()).toBe('Lots')
   })
 })
+
+describe('D-44: after a successful Save the saved row is brought into view', () => {
+  it('scrolls the saved stop row on success, and does nothing on a refusal', async () => {
+    const scroll = vi.fn()
+    Element.prototype.scrollIntoView = scroll
+    const w = await open()
+    const level = w.get('[data-testid^="stop-level-"]')
+    const id = level.attributes('data-testid').replace('stop-level-', '')
+    await level.setValue('120')
+    answers[`POST ${TRIG}`] = () => Promise.reject({ message: 'x', status: 422, parts: { what_happened: 'No', impact: 'i', what_is_blocked: 'b', next_action: 'n' } })
+    await t(w, `stop-save-${id}`).trigger('click')
+    await flushPromises()
+    expect(scroll).not.toHaveBeenCalled()
+    answers[`POST ${TRIG}`] = ok({ triggers: [trig(7, { kind: 'leg_stop', contract_id: 5000, contract_text: 'x', direction: 'above', level: '120.00', level_text: '120.00' })] })
+    await level.setValue('120')
+    await t(w, `stop-save-${id}`).trigger('click')
+    await flushPromises()
+    expect(scroll).toHaveBeenCalledTimes(1)
+    expect(scroll.mock.contexts[0].getAttribute('data-trigger-id')).toBe('7')
+  })
+  it('a saved conditional exit scrolls its row too', async () => {
+    const scroll = vi.fn()
+    Element.prototype.scrollIntoView = scroll
+    const w = await open()
+    await t(w, 'ce-above').setValue('24500')
+    answers[`POST ${TRIG}`] = ok({ triggers: [trig(3)] })
+    await t(w, 'ce-save').trigger('click')
+    await flushPromises()
+    expect(scroll.mock.contexts[0].getAttribute('data-trigger-id')).toBe('3')
+  })
+})
