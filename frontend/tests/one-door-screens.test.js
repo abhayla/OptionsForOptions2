@@ -8,8 +8,10 @@
 //   (2) a `.post(` to /paper/strategies/${...}/orders only in lib/tracking.js, function addToPaper.
 //   (3) a `.get(` of the single book /paper/strategies/${id} only in lib/usePaperBookRead.js. The list read /paper/strategies and the
 //       sub-resources (/triggers, /exit-risk, /armed-exits, /orders ...) are another reply and are out of scope by pattern.
-//   (4) PLACEHOLDER, Phase 5 (Lane B): dup-increase / dup-separate only in DuplicateLegDialog.vue, sameContract only in lib/legDoor.js.
-//       NOT implemented here; Lane B owns it (frontend/tests/leg-emitters-guard.test.js). Do not add it in this file.
+//   (4) one duplicate-leg question, one same-contract test (Phase 5, Lane B): the test ids dup-increase / dup-separate appear only in
+//       components/strategy/DuplicateLegDialog.vue; the DEFINITION of sameContract (function, const or method) only in lib/legDoor.js.
+//       Calls and imports of sameContract elsewhere are allowed: LegList.vue shows the D-60 duplicate warning by calling the door's
+//       own export, which is reading the door, not a second copy of the test. A second definition is the drift this rule stops.
 //
 // Exemptions are keyed by (file, enclosing function or const, matched text), never by line, each with a category and a reason.
 // A stale exemption fails ("shrink only"). Limits (not claims): a URL held in a variable first, a client reached through an alias
@@ -25,6 +27,8 @@ const SRC = join(process.cwd(), 'src')
 const PRICE_STATE_HOME = 'src/lib/priceState.js'
 const TRACKING_HOME = { file: 'src/lib/tracking.js', fn: 'addToPaper' }
 const BOOK_READ_HOME = 'src/lib/usePaperBookRead.js'
+const DUP_DIALOG_HOME = 'src/components/strategy/DuplicateLegDialog.vue'
+const LEG_DOOR_HOME = 'src/lib/legDoor.js'
 
 // The exported not-live texts, pinned here and checked against the real exports below (a new export fails the test that compares).
 const NOT_LIVE_TEXTS = [PAUSED_TEXT, NOT_CONNECTED_TEXT, NOT_LIVE_EXIT, CHANGED_ELSEWHERE_EXIT]
@@ -73,9 +77,11 @@ function enclosing(lines, line) {
 
 const POST_ORDERS = /\.post\(\s*(?:`[^`]*?\/paper\/strategies\/\$\{[^}]*\}\/orders\b[^`]*`|['"]\/paper\/strategies\/[^'"]*['"]\s*\+[^,)]*?\+\s*['"]\/orders\b)/g
 const GET_BOOK = /\.get\(\s*(`\/paper\/strategies\/\$\{[^}]*\}`|['"]\/paper\/strategies\/['"]\s*\+\s*[^,)]+)\s*[,)]/g
+const DUP_ID = /\bdup-(?:increase|separate)\b/g
+const SAME_CONTRACT_DEF = /\b(?:function\s+sameContract\b|(?:const|let|var)\s+sameContract\b|sameContract\s*\([^)]*\)\s*\{)/g
 const LITERAL = /'[^'\n]*'|"[^"\n]*"|`[^`]*`/g
 
-/** Every hit of the three rules in one source: [{rule, fn, line, text}]. */
+/** Every hit of the four rules in one source: [{rule, fn, line, text}]. */
 function hitsOf(src) {
   const code = stripComments(src)
   const lines = ['', ...code.split('\n')]
@@ -96,6 +102,14 @@ function hitsOf(src) {
     const line = lineAt(m.index)
     out.push({ rule: 3, line, fn: enclosing(lines, line), text: m[1].replace(/^`|`$/g, '') })
   }
+  for (const m of code.matchAll(DUP_ID)) {
+    const line = lineAt(m.index)
+    out.push({ rule: 4, line, fn: enclosing(lines, line), text: m[0], home: DUP_DIALOG_HOME, what: 'dup question id' })
+  }
+  for (const m of code.matchAll(SAME_CONTRACT_DEF)) {
+    const line = lineAt(m.index)
+    out.push({ rule: 4, line, fn: enclosing(lines, line), text: 'sameContract', home: LEG_DOOR_HOME, what: 'sameContract definition' })
+  }
   return out
 }
 
@@ -103,8 +117,9 @@ const OUTSIDE = {
   1: (file, line, fn) => `not-live string outside priceState: ${file}:${line} in ${fn}. Use the texts exported by lib/priceState.js, or add (file, fn, text) to EXEMPT with a category and reason.`,
   2: (file, line, fn) => `paper order POST outside addToPaper: ${file}:${line} in ${fn}. Use addToPaper in lib/tracking.js, or add (file, fn) to EXEMPT with a category and reason.`,
   3: (file, line, fn) => `paper book read outside usePaperBookRead: ${file}:${line} in ${fn}. Use lib/usePaperBookRead.js, or add (file, fn) to EXEMPT with a category and reason.`,
+  4: (file, line, fn, h) => `${h.what} outside its door: ${file}:${line} in ${fn}. Use components/strategy/DuplicateLegDialog.vue for the dup-increase / dup-separate ids and lib/legDoor.js for sameContract, or add (file, fn, text) to EXEMPT with a category and reason.`,
 }
-const WHAT = { 1: 'holds the text', 2: 'posts the orders', 3: 'reads the book' }
+const WHAT = { 1: 'holds the text', 2: 'posts the orders', 3: 'reads the book', 4: 'holds the leg-door text' }
 
 function allowedHome(rule, file, fn) {
   if (rule === 1) return file === PRICE_STATE_HOME
@@ -124,10 +139,10 @@ export function problems(files, exempt = EXEMPT) {
   for (const [file, src] of Object.entries(files)) {
     if (typeof src !== 'string') { out.push(`unreadable source (fail closed): ${file}`); continue }
     for (const h of hitsOf(src)) {
-      if (allowedHome(h.rule, file, h.fn)) continue
+      if (h.home ? file === h.home : allowedHome(h.rule, file, h.fn)) continue
       const idx = exempt.findIndex((e) => e.rule === h.rule && e.file === file && e.fn === h.fn && e.text === h.text)
       if (idx >= 0) { used.add(idx); continue }
-      out.push(OUTSIDE[h.rule](file, h.line, h.fn))
+      out.push(OUTSIDE[h.rule](file, h.line, h.fn, h))
     }
   }
   exempt.forEach((e, idx) => {
@@ -135,9 +150,6 @@ export function problems(files, exempt = EXEMPT) {
   })
   return out
 }
-
-// ---- Rule (4): PLACEHOLDER (Phase 5, Lane B) --------------------------------------------------------------------------------
-// dup-increase / dup-separate only in components/DuplicateLegDialog.vue; sameContract only in lib/legDoor.js. Not built here.
 
 // ---- the real scan -----------------------------------------------------------------------------------------------------------
 function walk(dir, acc = []) {
@@ -155,7 +167,7 @@ const realFiles = () => {
 }
 
 describe('G3: one door per screen concern (real scan of src/)', () => {
-  it('finds no not-live string, paper order POST or paper book read outside its door', () => {
+  it('finds no not-live string, paper order POST, paper book read, duplicate-leg id or sameContract definition outside its door', () => {
     const files = realFiles()
     expect(Object.keys(files).length).toBeGreaterThan(100) // the scan really saw src/
     expect(problems(files)).toEqual([])
@@ -261,4 +273,61 @@ describe('G3 mutations: exemptions', () => {
     const e = EXEMPT[0]
     expect(problems({ [e.file]: '' }, [e])[0]).toMatch(/^stale exemption: .*::NO_TOTAL no longer holds the text/)
   })
+})
+
+describe('G3 mutations: rule 4 (one duplicate-leg dialog, one sameContract)', () => {
+  const BAD_ID = '<template>\n  <button data-testid="dup-increase">Increase</button>\n</template>\n'
+  const BAD_DEF = 'export const sameContract = (a, b) => a.instrument_id === b.instrument_id\n'
+
+  it('a dup-increase or dup-separate id outside the dialog is one problem; in the dialog none', () => {
+    for (const id of ['dup-increase', 'dup-separate']) {
+      const src = BAD_ID.replace('dup-increase', id)
+      const bad = problems({ 'src/pages/StrategyBuilderPage.vue': src }, [])
+      expect(bad).toHaveLength(1)
+      expect(bad[0]).toContain('dup question id outside its door: src/pages/StrategyBuilderPage.vue:2')
+      expect(problems({ [DUP_DIALOG_HOME]: src }, [])).toEqual([])
+    }
+  })
+
+  it('a second definition of sameContract is one problem (function, const, method); in legDoor.js none', () => {
+    const forms = [BAD_DEF, 'function sameContract(a, b) {\n  return a === b\n}\n', 'const o = {\n  sameContract(a, b) {\n    return a === b\n  },\n}\n']
+    for (const src of forms) {
+      const bad = problems({ 'src/components/strategy/LegList.vue': src }, [])
+      expect(bad).toHaveLength(1)
+      expect(bad[0]).toContain('sameContract definition outside its door: src/components/strategy/LegList.vue')
+      expect(problems({ [LEG_DOOR_HOME]: src }, [])).toEqual([])
+    }
+  })
+
+  it('calls, imports, other names and comments are not problems', () => {
+    const ok = "import { sameContract } from '@/lib/legDoor'\nconst sameContractAs = (l, i) => legs.findIndex((o, k) => k !== i && sameContract(o, l))\n// const sameContract = 1; dup-increase\n"
+    expect(problems({ 'src/components/strategy/LegList.vue': ok }, [])).toEqual([])
+  })
+
+  it('a stale rule 4 exemption is reported', () => {
+    const E = [{ rule: 4, file: 'src/pages/A.vue', fn: 'a', text: 'dup-separate', category: 'own_process', reason: 'a long enough reason to be read' }]
+    expect(problems({ 'src/pages/A.vue': 'const a = 1\n' }, E)).toEqual(['stale exemption: src/pages/A.vue::a no longer holds the leg-door text "dup-separate"; delete the entry'])
+    expect(problems({ 'src/pages/A.vue': "const a = 'dup-separate'\n" }, E)).toEqual([])
+  })
+
+  it('the real homes hold what the rule guards (the scan is not vacuous)', () => {
+    const files = realFiles()
+    expect(files[DUP_DIALOG_HOME]).toMatch(/dup-increase/)
+    expect(files[DUP_DIALOG_HOME]).toMatch(/dup-separate/)
+    expect(files[LEG_DOOR_HOME]).toMatch(SAME_CONTRACT_DEF)
+  })
+})
+
+describe('G3: the Lane B emitter guard', () => {
+  const HERE = join(process.cwd(), 'tests')
+  const include = () => /include:\s*\[([^\]]*)\]/.exec(readFileSync(join(process.cwd(), 'vite.config.js'), 'utf8'))?.[1] ?? ''
+
+  it('vitest collects tests/*.test.js (the include pattern of vite.config.js)', () => {
+    expect(include()).toContain("'tests/**/*.{test,spec}.{js,ts}'")
+    expect(readdirSync(HERE)).toContain('one-door-screens.test.js')
+  })
+
+  // Lane B's RESULTS name frontend/tests/leg-emitters-guard.test.js, but it is not on this head (checked 25 Nov: git ls-files, find).
+  // Phase 5 landed leg-door-phase5.test.js instead. A todo, not a silent pass: flip to `it` once the file lands.
+  it.todo('frontend/tests/leg-emitters-guard.test.js exists (it matches the include pattern)')
 })
