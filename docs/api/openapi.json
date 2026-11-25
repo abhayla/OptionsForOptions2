@@ -7888,6 +7888,15 @@
             ],
             "title": "After Charges Reason Text"
           },
+          "after_close_text": {
+            "anyOf": [
+              {},
+              {
+                "type": "null"
+              }
+            ],
+            "title": "After Close Text"
+          },
           "answered_at": {
             "format": "date-time",
             "title": "Answered At",
@@ -8916,6 +8925,16 @@
             "title": "Strategies",
             "type": "array"
           },
+          "today": {
+            "anyOf": [
+              {
+                "$ref": "#/components/schemas/PaperTodayOut"
+              },
+              {
+                "type": "null"
+              }
+            ]
+          },
           "totals": {
             "$ref": "#/components/schemas/PaperTotalsOut"
           }
@@ -9353,6 +9372,15 @@
               }
             ],
             "title": "After Charges Reason Text"
+          },
+          "after_close_text": {
+            "anyOf": [
+              {},
+              {
+                "type": "null"
+              }
+            ],
+            "title": "After Close Text"
           },
           "as_of": {
             "anyOf": [
@@ -10130,6 +10158,395 @@
           "position_count"
         ],
         "title": "PaperStrategyOut",
+        "type": "object"
+      },
+      "PaperTodayOut": {
+        "additionalProperties": false,
+        "description": "D-68 (ADR-320 point 6): the header's \"Today\" total: the same sums as ``totals`` (one function,\n``_totals``), over the real trades opened or closed today (IST) only. ``count`` 0 = nothing today\n(``empty_text`` says so; the figures are then not shown).",
+        "properties": {
+          "after_charges_reason": {
+            "anyOf": [
+              {
+                "enum": [
+                  "rates_unavailable",
+                  "not_priced",
+                  "prices_not_live"
+                ],
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "After Charges Reason"
+          },
+          "after_charges_reason_text": {
+            "anyOf": [
+              {},
+              {
+                "type": "null"
+              }
+            ],
+            "title": "After Charges Reason Text"
+          },
+          "booked": {
+            "title": "Booked",
+            "type": "string"
+          },
+          "booked_after": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Booked After"
+          },
+          "booked_after_reason": {
+            "anyOf": [
+              {
+                "enum": [
+                  "rates_unavailable",
+                  "not_priced",
+                  "prices_not_live"
+                ],
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Booked After Reason"
+          },
+          "booked_after_reason_text": {
+            "anyOf": [
+              {},
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Booked After Reason Text"
+          },
+          "booked_after_text": {
+            "anyOf": [
+              {},
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Booked After Text"
+          },
+          "booked_text": {
+            "title": "Booked Text"
+          },
+          "charges": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Charges"
+          },
+          "charges_paid": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Charges Paid"
+          },
+          "charges_paid_text": {
+            "anyOf": [
+              {},
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Charges Paid Text"
+          },
+          "charges_reason": {
+            "anyOf": [
+              {
+                "enum": [
+                  "rates_unavailable",
+                  "not_priced"
+                ],
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Charges Reason"
+          },
+          "charges_reason_text": {
+            "anyOf": [
+              {},
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Charges Reason Text"
+          },
+          "charges_text": {
+            "anyOf": [
+              {},
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Charges Text"
+          },
+          "charges_to_close": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Charges To Close"
+          },
+          "charges_to_close_text": {
+            "anyOf": [
+              {},
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Charges To Close Text"
+          },
+          "count": {
+            "default": 0,
+            "title": "Count",
+            "type": "integer"
+          },
+          "decay": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Decay"
+          },
+          "decay_reason": {
+            "anyOf": [
+              {
+                "const": "prices_not_live",
+                "type": "string"
+              },
+              {
+                "enum": [
+                  "contract_retired",
+                  "contract_delisted",
+                  "token_reassigned",
+                  "contract_missing"
+                ],
+                "type": "string"
+              },
+              {
+                "enum": [
+                  "no_iv",
+                  "no_next_open",
+                  "model_refused"
+                ],
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Decay Reason"
+          },
+          "decay_reason_text": {
+            "anyOf": [
+              {},
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Decay Reason Text"
+          },
+          "decay_text": {
+            "anyOf": [
+              {},
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Decay Text"
+          },
+          "empty_text": {
+            "anyOf": [
+              {},
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Empty Text"
+          },
+          "left_out_count": {
+            "default": 0,
+            "title": "Left Out Count",
+            "type": "integer"
+          },
+          "left_out_text": {
+            "anyOf": [
+              {},
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Left Out Text"
+          },
+          "total": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Total"
+          },
+          "total_after": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Total After"
+          },
+          "total_after_text": {
+            "anyOf": [
+              {},
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Total After Text"
+          },
+          "total_text": {
+            "anyOf": [
+              {},
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Total Text"
+          },
+          "totals_as_of": {
+            "anyOf": [
+              {
+                "format": "date-time",
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Totals As Of"
+          },
+          "totals_reason": {
+            "anyOf": [
+              {
+                "const": "prices_not_live",
+                "type": "string"
+              },
+              {
+                "enum": [
+                  "contract_retired",
+                  "contract_delisted",
+                  "token_reassigned",
+                  "contract_missing"
+                ],
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Totals Reason"
+          },
+          "totals_reason_text": {
+            "anyOf": [
+              {},
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Totals Reason Text"
+          },
+          "unbooked": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Unbooked"
+          },
+          "unbooked_after": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Unbooked After"
+          },
+          "unbooked_after_text": {
+            "anyOf": [
+              {},
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Unbooked After Text"
+          },
+          "unbooked_text": {
+            "anyOf": [
+              {},
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Unbooked Text"
+          }
+        },
+        "required": [
+          "booked",
+          "booked_text",
+          "unbooked",
+          "unbooked_text",
+          "total",
+          "total_text",
+          "totals_reason",
+          "decay",
+          "decay_text",
+          "decay_reason"
+        ],
+        "title": "PaperTodayOut",
         "type": "object"
       },
       "PaperTotalsOut": {
@@ -14676,6 +15093,15 @@
             ],
             "title": "After Charges Reason Text"
           },
+          "after_close_text": {
+            "anyOf": [
+              {},
+              {
+                "type": "null"
+              }
+            ],
+            "title": "After Close Text"
+          },
           "as_of": {
             "anyOf": [
               {
@@ -15304,6 +15730,15 @@
               }
             ],
             "title": "After Charges Reason Text"
+          },
+          "after_close_text": {
+            "anyOf": [
+              {},
+              {
+                "type": "null"
+              }
+            ],
+            "title": "After Close Text"
           },
           "answered_at": {
             "format": "date-time",
@@ -17527,6 +17962,18 @@
             ],
             "title": "Charges To Close Text"
           },
+          "closed_at": {
+            "anyOf": [
+              {
+                "format": "date-time",
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Closed At"
+          },
           "completed_reason_text": {
             "anyOf": [
               {},
@@ -17540,6 +17987,15 @@
             "format": "date-time",
             "title": "Created At",
             "type": "string"
+          },
+          "current_legs_text": {
+            "anyOf": [
+              {},
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Current Legs Text"
           },
           "final_pnl": {
             "anyOf": [

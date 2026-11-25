@@ -4,10 +4,9 @@
 
 One line per decision, requirement and spec section. Read it before asking the owner anything; cite the ids you rely on in a `Spec basis:` line, or write `Spec basis: none (searched: <terms>)`.
 
-## Decisions (311)
+## Decisions (312)
 
-- Older decisions: 271 rows, ADR-1..ADR-284 (oldest first). Read spec/decisions/*.md, or find one by meaning: python tools/spec_similar.py . "<text>"
-- ADR-285 2026-11-10: Decided by the GC-ICSAFE plan review as a technical call under the owner's approval of that contrac… [extends ADR-119 (2): says what happens after the…]
+- Older decisions: 272 rows, ADR-1..ADR-285 (oldest first). Read spec/decisions/*.md, or find one by meaning: python tools/spec_similar.py . "<text>"
 - ADR-286 2026-11-10: Technical call under the owner's approval of the GC-ICSAFE contract (2026-11-10), for the alert hal… [amends the egress rule of REQ-073 as built in ofo…]
 - ADR-287 2026-11-11: Owner answer 2026-11-11 (question tool, after GC-ICSAFE): "Approve as written". [closes standing direction step 2 ("The owner has…]
 - ADR-288 2026-11-11: Owner answer 2026-11-11 (question tool, standing direction step 4): "Hostinger VPS, Redis there". [decides Q273 (option a); applies REQ-113 AC-3 and…]
@@ -47,6 +46,7 @@ One line per decision, requirement and spec section. Read it before asking the o
 - ADR-322 2026-11-25: Owner decided 25 Nov 2026, answering five questions in the orchestrating cloud session. [Answers docs/process/owner-questions-2026-11-24.m…]
 - ADR-323 2026-11-25: PENDING OWNER READ. [Refines ADR-309 (1) (D-31), ADR-299 (D-28), ADR-3…]
 - ADR-324 2026-11-25: PENDING OWNER READ. [Refines REQ-109 AC-5 (header totals), ADR-311 (th…]
+- ADR-325 2026-11-25: PENDING OWNER READ. [Refines REQ-109 AC-5 (Today figure), REQ-029 AC-2…]
 
 ## Requirements (161)
 
