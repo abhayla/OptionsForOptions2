@@ -4,6 +4,8 @@
 // limit as a manual change of lots. Nothing here prices anything or computes a number beyond the lots sum (ADR-008).
 import { lotsValid } from '@/lib/legPicker'
 
+/** D-47: said beside the picker's own count when the draft already holds legs (the count is only the picks of this open picker). New text, pending owner read. */
+export const DRAFT_HOLDS_TEXT = (n) => `${n} already in the draft`
 export const DUP_QUESTION = (name) => `${name} is already in this strategy.`
 /** The manual lots edit's own sentence (LegPicker's lots-error), with the served maximum. */
 export const lotsRangeText = (max) => `Lots must be a whole number from 1 to ${max ?? 10000}.`

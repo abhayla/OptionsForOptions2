@@ -10,7 +10,7 @@ import { computed, nextTick, onBeforeUnmount, onMounted, ref, watch } from 'vue'
 import api, { NEUTRAL_PARTS } from '@/services/api'
 import ErrorMessage from '@/components/common/ErrorMessage.vue'
 import Modal from '@/components/common/Modal.vue'
-import { DUP_QUESTION, admitLegs, lotsRangeText } from '@/lib/legDoor'
+import { DRAFT_HOLDS_TEXT, DUP_QUESTION, admitLegs, lotsRangeText } from '@/lib/legDoor'
 import DepthPopup from '@/components/strategy/DepthPopup.vue'
 import MarketClosedBanner from '@/components/states/MarketClosedBanner.vue'
 import { capturedCaption, contractName, daysByExpiry, expiryText, expiryWithDays, istClock, istTime, setShownDate, strikeLabel } from '@/lib/displayFormat'
@@ -790,14 +790,14 @@ defineExpose({ startEdit, showStrikes })
                       />
                       <span class="relative text-ink-muted" data-testid="cell-oi">{{ oiCompact(row[side].oi) }}</span>
                     </span>
-                    <!-- UI-203: B and S show on row hover or keyboard focus, and stay shown once chosen -->
+                    <!-- UI-203 / D-47: B and S are drawn on every cell (they were hover-only, which hid the way to add a leg) -->
                     <span v-else-if="col === 'act' && choicesFor(row[side]).length" class="flex gap-0.5">
                       <button
                         v-for="sd in [['BUY', 'B', 'Buy'], ['SELL', 'S', 'Sell']]" :key="sd[0]" type="button"
                         class="h-4 w-3 rounded text-[10px] font-semibold focus:opacity-100"
                         :class="picked[row[side].instrument_id] === sd[0]
                           ? (sd[0] === 'BUY' ? 'bg-buy text-white' : 'bg-sell text-white')
-                          : (sd[0] === 'BUY' ? 'bg-buy-soft text-buy' : 'bg-sell-soft text-sell') + (picked[row[side].instrument_id] ? '' : ' opacity-0 group-hover:opacity-100 group-focus-within:opacity-100')"
+                          : (sd[0] === 'BUY' ? 'bg-buy-soft text-buy' : 'bg-sell-soft text-sell')"
                         :data-testid="sd[0] === 'BUY' ? 'cell-buy' : 'cell-sell'" :aria-pressed="picked[row[side].instrument_id] === sd[0]"
                         :aria-label="`${sd[2]} ${strikeLabel(row.strike)} ${side.toUpperCase()}`" :title="`${sd[2]} ${strikeLabel(row.strike)} ${side.toUpperCase()}`"
                         @click="choose(row[side].instrument_id, sd[0])"
@@ -991,6 +991,7 @@ v-for="l in legs" :key="l.id" class="flex flex-wrap items-center gap-2" data-tes
       data-testid="picker-footer"
     >
       <span class="font-medium" data-testid="picker-count">{{ pickedCount }} {{ pickedCount === 1 ? 'leg' : 'legs' }} selected</span>
+      <span v-if="legs.length" class="text-ink-muted" data-testid="picker-draft-count">{{ DRAFT_HOLDS_TEXT(legs.length) }}</span>
       <button type="button" class="ml-auto text-accent underline" data-testid="picker-pick-chain" @click="view = 'ltp'">Pick from Option Chain</button>
       <button type="button" data-testid="picker-clear-all" class="rounded border border-line px-3 py-1" :disabled="!pickedCount" @click="clearAll">Clear All</button>
       <button type="button" data-testid="picker-done" class="rounded bg-accent px-3 py-1 font-semibold text-white hover:bg-accent-hover disabled:opacity-50" :disabled="busy || !pickedCount" @click="done">Done</button>

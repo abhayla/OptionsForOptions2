@@ -104,7 +104,7 @@
           <thead>
             <tr>
               <th scope="col" class="p-2 text-left text-xs">Criterion</th>
-              <th v-for="x in kept" :key="x.a.id" scope="col" class="min-w-[140px] p-2 text-left" :data-testid="`adjust-col-${x.a.id}`">
+              <th v-for="x in kept" :key="x.a.id" scope="col" class="min-w-[140px] p-2 text-right" :data-testid="`adjust-col-${x.a.id}`">
                 <div class="font-semibold">{{ x.a.name ?? x.a.id }}</div>
                 <div v-if="x.unavailable.length" class="text-xs font-normal text-ink-muted" :data-testid="`adjust-unavailable-${x.a.id}`">{{ UNAVAILABLE_FOR_FILTER }}</div>
                 <div v-if="x.a.take_profit" class="text-xs font-normal text-ink-muted" :data-testid="`adjust-take-profit-${x.a.id}`">{{ x.a.take_profit.text }}</div>
@@ -113,7 +113,11 @@
           </thead>
           <tbody>
             <template v-for="g in groups" :key="g.id">
-              <tr class="bg-surface-muted"><th :colspan="kept.length + 1" scope="colgroup" class="p-2 text-left text-xs font-semibold" :data-testid="`adjust-group-${g.id}`">{{ GROUP_TITLES[g.id] ?? g.id }}</th></tr>
+              <!-- D-45: the column names repeat under every group title, so a row far down the table is still labelled -->
+              <tr class="bg-surface-muted">
+                <th scope="colgroup" class="p-2 text-left text-xs font-semibold" :data-testid="`adjust-group-${g.id}`">{{ GROUP_TITLES[g.id] ?? g.id }}</th>
+                <th v-for="x in kept" :key="x.a.id" scope="col" class="p-2 text-right text-xs font-normal text-ink-muted" :data-testid="`adjust-group-colname-${g.id}-${x.a.id}`">{{ x.a.name ?? x.a.id }}</th>
+              </tr>
               <template v-for="c in g.rows" :key="c.id">
               <tr :data-testid="`adjust-row-${c.id}`">
                 <th scope="row" class="p-2 text-left font-normal">
@@ -124,12 +128,12 @@
                     :aria-expanded="showBreakdown ? 'true' : 'false'" aria-controls="adjust-cost-breakdown" data-testid="adjust-cost-toggle" @click="showBreakdown = !showBreakdown"
                   >{{ showBreakdown ? BREAKDOWN_HIDE : BREAKDOWN_SHOW }}</button>
                 </th>
-                <td v-for="x in kept" :key="x.a.id" class="p-2 align-top" :class="isLeader(c, x.a.id) ? 'bg-profit-soft' : ''" :data-leader="isLeader(c, x.a.id) ? 'true' : 'false'" :data-testid="`adjust-cell-${c.id}-${x.a.id}`">
+                <td v-for="x in kept" :key="x.a.id" class="p-2 text-right align-top tabular-nums" :class="isLeader(c, x.a.id) ? 'bg-profit-soft' : ''" :data-leader="isLeader(c, x.a.id) ? 'true' : 'false'" :data-testid="`adjust-cell-${c.id}-${x.a.id}`">
                   <template v-if="cellOf(c, x.a.id)?.text != null && cellOf(c, x.a.id)?.unavailable_reason == null">
-                    <div>{{ cellOf(c, x.a.id).text }}</div>
+                    <div class="font-medium" data-testid="adjust-cell-value">{{ cellOf(c, x.a.id).text }}</div>
                     <div v-if="cellOf(c, x.a.id).at_index_zero" class="text-xs text-ink-muted" data-testid="adjust-cell-at-zero">{{ MAX_PROFIT_AT_ZERO_LABEL }}</div>
                     <div v-if="stale && c.group === 'money_now' && prices.as_of_note" class="text-xs text-ink-muted" data-testid="adjust-cell-asof">{{ prices.as_of_note }}</div>
-                    <div v-if="isLeader(c, x.a.id)" class="text-xs text-ink-muted" data-testid="adjust-leader-label">{{ c.leader_label }}</div>
+                    <div v-if="isLeader(c, x.a.id)" class="mt-0.5 inline-block rounded border border-line px-1 text-xs text-ink-muted" data-testid="adjust-leader-label">{{ c.leader_label }}</div>
                     <!-- REQ-159 AC-6: the server's judgement of the cost % against the playbook's warning level (numbers only) -->
                     <div v-if="cellOf(c, x.a.id).warning" class="text-xs text-warn" data-testid="adjust-cell-warning">{{ cellOf(c, x.a.id).warning }}</div>
                     <div v-else-if="cellOf(c, x.a.id).warning_off" class="text-xs text-ink-muted" data-testid="adjust-cell-warning-off">{{ cellOf(c, x.a.id).warning_off }}</div>
@@ -150,10 +154,13 @@
               </tr>
               </template>
             </template>
-            <tr class="bg-surface-muted"><th :colspan="kept.length + 1" scope="colgroup" class="p-2 text-left text-xs font-semibold" data-testid="adjust-group-summary">Summary</th></tr>
+            <tr class="bg-surface-muted">
+              <th scope="colgroup" class="p-2 text-left text-xs font-semibold" data-testid="adjust-group-summary">Summary</th>
+              <th v-for="x in kept" :key="x.a.id" scope="col" class="p-2 text-right text-xs font-normal text-ink-muted" :data-testid="`adjust-group-colname-summary-${x.a.id}`">{{ x.a.name ?? x.a.id }}</th>
+            </tr>
             <tr data-testid="adjust-row-leads">
               <th scope="row" class="p-2 text-left font-normal"><div>Leads on</div><div class="text-xs text-ink-muted">count of the lines above</div></th>
-              <td v-for="x in kept" :key="x.a.id" class="p-2" :data-testid="`adjust-leads-${x.a.id}`">{{ leadsText(x.a.id) }}</td>
+              <td v-for="x in kept" :key="x.a.id" class="p-2 text-right tabular-nums" :data-testid="`adjust-leads-${x.a.id}`">{{ leadsText(x.a.id) }}</td>
             </tr>
           </tbody>
         </table>
