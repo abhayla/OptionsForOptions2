@@ -12,11 +12,11 @@ a passed independent review; what is left is the screen check on the owner's PC.
 
 | Status | Count |
 |---|---|
-| Fixed, not tested | 57 |
+| Fixed, not tested | 59 |
 | Could not reproduce | 5 (D-07, D-20, D-50, D-69, D-70) |
 | Feature request (parked) | 5 (D-34, D-35, D-48, D-51, D-62) |
 | Parked | 2 (D-15, D-27) |
-| Needs owner decision | 2 (D-25, D-57) |
+| Needs owner decision | 0 (D-25 and D-57 answered 25 Nov, ADR-326; built in Part F) |
 | Open or Fix in progress | 0 |
 | **Total** | **71** |
 
@@ -41,14 +41,14 @@ a passed independent review; what is left is the screen check on the owner's PC.
 | D-15 | Paper entry prices are re-quoted at Add to Paper and differ from the plan, with no warning | Parked | B | Done: the server derives the summary price basis from the paper book ("At plan prices" / "At paper fill prices" / N of M), a client cannot claim it; Add to Paper... | Paper trade summary says "At paper fill prices"; Add to Paper shows "plan 36.45" beside a re-quoted price |
 | D-16 | Breakevens are on different bases on different screens, none labelled | Fixed, not tested | B | Paper breakevens carry the same charges and booked P&L as Max Profit/Loss, with a basis line; chart marks on the curve basis (ADR-321 (2)) | C6 159: builder, compare and adjust page breakevens agree and say what is inside |
 | D-17 | Time value is negative and uses different prices from the credit, with no label | Fixed, not tested | B/C | Owner decided 25 Nov (ADR-322 (2)): time value at live prices, labelled "at live prices, as of HH:MM:SS" (oldest of the spot and leg times); "at the last close... | Builder summary on a live 0DTE condor: label beside the credit basis |
-| D-18 | The same leg shows 2-4 different prices in the same second | Fixed, not tested | B | Each builder leg price carries its own quote time; the leg list leads with the server oldest_quote_at; the chain picker uses its quote time; no shared store | Four panels of one leg each show their quote time |
+| D-18 | The same leg shows 2-4 different prices in the same second | Fixed, not tested | B/F | Each leg price carries its own quote time: builder leg list, chain picker, and (Part F, after the 25 Nov screen FAIL) the tracking Paper P&L panel and the Positions... | Builder ?strategy=170-type trade: a time beside each leg price on the tracking panel and the Positions Paper row; Escape closes the... |
 | D-19 | Option chain LTP often sits outside its own bid/ask | Fixed, not tested | B | Chain cell carries last_trade_at; page shows "Last trade 09:19:53 IST" (date if an earlier day). LTP/bid/ask come from one packet (pinned); the rest is a feed-timing... | An LTP outside bid/ask shows an older last-trade time |
 | D-20 | Put-call parity implies a forward below spot (SENSEX about 72 pts, NIFTY about 4 pts) | Could not reproduce | B | Carry at 6.5% over 3 days gives F-S +44, not -72 (needs a 17%/yr implied yield); the engine forward uses bid-ask mids, the tester used LTPs; no strike-level snapshot... | Record bid and ask of the same strikes at one moment |
 | D-21 | The Reduce suggestion raises max loss and the preview does not say why | Fixed, not tested | C | Every built adjustment approach (all 15 ids) has a "What changes" block: eight measures before against after (profit range, distance to each breakeven, POP, max... | Strategy 164 Reduce reads the put-side reason line; block layout at phone width |
 | D-22 | A fired stop is missing from Alerts History, and the closed trade's own page gives no... | Fixed, not tested | C | A fired stop stores the live index value at that moment in its reason; Alerts > History lists fired stops and settlements (GET /paper/alerts/records); the closed... | History tab lists the C3 stop with index value; closed C4 160 page shows the stop reason on its rows (LegList still says "No legs yet") |
 | D-23 | Stop-out exit rows in the orderbook are labelled Add | Fixed, not tested | C | Orderbook Kind column keeps the server kind: a stop-out reads Stop, a settlement reads Settled, not Add | Orderbook of C4 160 shows Stop on the stop-out row |
 | D-24 | An armed conditional exit is not shown on the builder or tracking panel | Fixed, not tested | C | The tracking panel Plan block lists armed and fired index conditional exits with level and state from the server; the line turns Fired on the tick the strategy exits | C7 161 panel shows "Conditional exit: all legs exit if the index goes above 25,720. Armed." |
-| D-25 | Take profit, whole strategy is offered at a loss with the same numbers as Exit | Needs owner decision | C | Built and kept: the Take profit offer names the whole-trade result before charges (the profit test) and after charges beside it. Stopped: ADR-238 (6) "never shown... | After the owner answer: 162-style trade at an after-charges loss |
+| D-25 | Take profit, whole strategy is offered at a loss with the same numbers as Exit | Fixed, not tested | C/F | Owner 25 Nov (ADR-326 (1)): Take profit (A-24, A-25) is refused at an after-charges loss with "Not in profit after charges: {after}" (and with its own reason when the... | 162-type trade at an after-charges loss: Compare shows "Not in profit after charges: ..." under Take profit; Exit offered |
 | D-26 | The Review adjustment button vanishes when the idea lapses, so a live idea cannot be... | Fixed, not tested | C | A lapsed idea says when it lapsed (the close entry of its timeline, not a later append); a live idea keeps its Review button while the trade has an open record | Trade page line "Lapsed at HH:MM:SS IST"; Review stays while the idea is open |
 | D-27 | Adjustment history is empty after adjustments | Parked | C | No cause proven (engine and route give rows for two-adjustment shapes; two reviews agree). Built: the section says it is reading, re-reads on every opening, says when... | Open C1 155 adjustment history; record the route reply |
 | D-28 | Running strategies show state draft in the strategy endpoints but LIVE in the paper... | Fixed, not tested | C | One server function decides Draft / Running / Completed (status_word on strategy and paper replies; Running = an open leg, ADR-299 (1)); every screen shows the server... | Running condor reads Running on My Strategies, Live and Paper lists |
@@ -67,7 +67,7 @@ a passed independent review; what is left is the screen check on the owner's PC.
 | D-41 | Live and My Strategies cards show no P&L or health, and a card can stay Loading | Fixed, not tested | E | Live card and My Strategies row of a running trade show the Positions paper-list P&L (Positions paused rule; dash + "prices not live"); a failed read says so; no... | Live and My Strategies with prices live, then paused: figure equals the Positions Paper tab |
 | D-42 | My Strategies shows the original legs and closed strategies are missing | Fixed, not tested | E | My Strategies lists current legs from the paper book (the Positions source) and closed strategies as Completed; an unreadable book degrades only its row with a line | My Strategies: a rolled condor shows its current legs; closed C4 listed as Completed |
 | D-43 | Strategy names are cut off to about 8 characters | Fixed, not tested | E | Name column has a 9.5rem floor (one shared class) on My Strategies, the compact paper list and the builder card, with a title fallback | My Strategies at desktop width: C5 to C9 names in full |
-| D-44 | Stop list uses raw contract names, different from the form | Fixed, not tested | E | The Stops list names a leg with the form label ("NIFTY 3 Nov 22300 PE") through one legNamesOf map; after Save the saved row is scrolled into view | Stops form and list side by side; Save brings the new row into view |
+| D-44 | Stop list uses raw contract names, different from the form | Fixed, not tested | E/F | The Stops list names a leg with the form label; after Save the saved row is scrolled into view; (Part F, after the 25 Nov screen FAIL) the form and the list sit side... | Positions > Paper > Stops at 1536 px: form and list side by side; Save brings the new row into view |
 | D-45 | Adjustment comparison table is hard to read | Fixed, not tested | E | Compare table: leader label is its own chip apart from the value, column names repeat under every group, numbers right-aligned tabular; the drawer already shows... | Compare with 5+ approaches: chips and column names under each group |
 | D-46 | Greeks and max profit/loss display rounding hides the real number | Fixed, not tested | E | One display formatter keeps two significant digits for a Greek that would show as zero or one step ("0.004"); max profit/loss stay whole rupees half-up (REQ-152), now... | C5/C6 Greeks show non-zero digits; C7 max loss reads 4,774 |
 | D-47 | Builder strike picker is confusing | Fixed, not tested | E | Picker: Buy and Sell always drawn; the footer adds "N already in the draft"; the lots box still opens after the first click (ADR-325 (4), Q8) | Picker with a 4-leg draft: footer reads "0 legs selected" and "4 already in the draft" |
@@ -80,7 +80,7 @@ a passed independent review; what is left is the screen check on the owner's PC.
 | D-54 | Playbook editor Test does nothing and Delete needs no confirmation | Fixed, not tested | E | Delete asks "Delete this playbook?" (Cancel keeps it); the dead Test button is removed and the out-of-V1 line stands where it was, in a fixed sentence when the labels... | Adjustments > Playbooks > own playbook: Delete, Cancel, Delete; no Test button |
 | D-55 | Option chain filters apply late and Change / OI Change columns are always blank | Fixed, not tested | E | Chain filters apply as typed (sent 300 ms after the last key, rows stay on screen); Min OI needs every shown side to pass; Change = live minus previous close (exact... | Chain in market hours: Change filled; typing Min OI drops rows as you type |
 | D-56 | Home overview shows only index values | Fixed, not tested | E | Home shows running strategies (server status word), the bell number and total P&L (Positions totals, same paused rule); a failed read says so in that figure only | Home with prices live and paused; alert figure equals the bell |
-| D-57 | Dates on the adjustments page use US month/day | Needs owner decision | E | Built: one date formatter ("23 Nov 2026", 24-hour IST) used by every screen, frontend and backend scans guard it. Stopped: the ADR-015 Q182 / REQ-049 AC-5 "Last... | After Q5: adjustments page dates; the disconnect sentence |
+| D-57 | Dates on the adjustments page use US month/day | Fixed, not tested | E/F | One date formatter ("23 Nov 2026", 24-hour IST) on every screen; owner 25 Nov (ADR-326 (4)): the disconnect and market-closed sentences also read 24-hour ("Last... | Adjustments page dates; disconnect banner "Last updated: HH:MM:SS IST"; market-closed "Prices are from HH:MM:SS IST." |
 | D-58 | Small wording problems: zero-price message, quote characters in names, tested-side wording | Fixed, not tested | E | Zero price: "A price of 0 cannot be used. Enter 0.05 or more"; quote pair stripped at the one display function; live T-01 line ends "(put side tested)" / "(call side... | C2 opportunity line, C9/C6 drawer reasons, Stops form Above=0, ADJ-02-type rule line with the side |
 | D-59 | At expiry settlement of a two-expiry trade the armed index stops are silently removed | Fixed, not tested | A | No code defect: stops were never stored by settlement; no change made | Stops survive a part settlement at 15:45 on a two-expiry paper trade |
 | D-60 | A duplicate leg or a fifth leg is accepted silently | Fixed, not tested | A | Every way a leg is added or moved (picker, edit form, strike step, Shift, Width, Hedge) asks Increase / Keep separate / Cancel through one door; one live question per... | Step a strike onto a held contract: the question box (Escape = Cancel); Increase over the lots limit; Add to Paper refusing a kept duplicate |
@@ -90,7 +90,7 @@ a passed independent review; what is left is the screen check on the owner's PC.
 | D-64 | After the 15:30 close the page shows raw errors and never says settlement comes at 15:45 | Fixed, not tested | E | Between 15:30 and settlement on expiry day, builder, Positions and tracking say "Market closed. Open legs that expire today settle at 15:45." from one clock function;... | Builder and Positions between 15:30 and 15:45 on an expiry day |
 | D-65 | Renaming a paper trade from the builder fails, and its status differs between lists | Fixed, not tested | E | Rename from the builder read no revision (422); the shared rename call reads it first and the route still refuses a missing or stale one; the Saved tab re-reads after... | Rename a paper trade from the builder; status matches My Strategies |
 | D-66 | Completed page "last saved" shows the last builder save, not the close time | Fixed, not tested | E | The Completed page column reads "Closed" with the last exit, stop or settlement time ("closed 23 Nov 2026, 13:24:07 IST"), or "closed: time not available" | Completed page times match the stop-out times |
-| D-67 | Adjustment toasts pop up within minutes of opening a trade and cover page buttons | Fixed, not tested | E | Pop-ups render inside the sticky header block (stay on screen, never float over page buttons; aria-live always present); the rule keeps firing from entry because the... | My Strategies or Positions with 2-3 pop-ups: no button covered; scroll down and raise one |
+| D-67 | Adjustment toasts pop up within minutes of opening a trade and cover page buttons | Fixed, not tested | E/F | Pop-ups sit in the sticky header block; owner 25 Nov (ADR-326 (5), refined): a rule first found true within 5 min of entry and never seen false waits until entry + 5... | Open a condor with a rule already true: bell counts at once, pop-up at about entry + 5 min; a rule that clears and turns true pops up at... |
 | D-68 | No screen gives the day total for the test trades | Fixed, not tested | E | The Paper tab header shows "Today (after charges)": real trades opened or closed on the current trading day (newest snapshot India date), scenario left out, paused... | Paper tab header Today on a test day, and on a Saturday |
 | D-69 | Index value frozen at 25,366.40 on reads from 15:15 to 15:27 | Could not reproduce | C | A real QuoteBook read of an index tick at 15:15:18 with option frames to 15:27 gives 25366.40 with its own 15:15:18 time; feed health is judged on the whole feed... | Owner: per-quote age limit for the index? |
 | D-70 | 1 Dec put prices kept moving after the market-closed banner | Could not reproduce | C | Post-close vendor frames are applied (no after-close freeze); the label keeps the 15:30 close time. Matches the feed, not an app re-mark; no feed log to confirm.... | Owner: freeze option prices at the close? |
@@ -100,7 +100,8 @@ a passed independent review; what is left is the screen check on the owner's PC.
 
 - **ADR-323** (Part C, proposed): suggestions and alerts: records, times, one word, one value (D-22 to D-31).
 - **ADR-324** (Part D, proposed): header totals leave out strategies on expired contracts (D-40); timeout wording (D-38).
-- **ADR-325** (Part E, proposed): points (1) to (17), the labels, small features and post-close messages (D-39 to D-68).
+- **ADR-326** (owner answers to Q2 to Q8, accepted 25 Nov; built in Part F).
+- **ADR-325** (Part E, proposed; points (2) and (4) accepted by ADR-326): points (1) to (17), the labels, small features and post-close messages (D-39 to D-68).
 - ADR-317 to ADR-322 are accepted (owner decisions of 23 to 25 Nov).
 
 ## Owner questions (`docs/process/owner-questions-2026-11-24.md`)
@@ -108,13 +109,13 @@ a passed independent review; what is left is the screen check on the owner's PC.
 | Q | Issue | Question | State |
 |---|---|---|---|
 | Q1 | D-17 | Which prices "Time value" uses | Answered 25 Nov (ADR-322 (2)), built |
-| Q2 | D-25 | May Take profit be offered at an after-charges loss (ADR-238 (6) against ADR-294 (4)) | Open: CLASH |
-| Q3 | D-40 | Which figures the header adds up beside expired strategies | Open (ADR-324) |
-| Q4 | D-38 | Timeout words; keep typed fields | Open (ADR-324 (4)) |
-| Q5 | D-57 | "Last updated" 12-hour (ADR-015 Q182) against 24-hour everywhere (ADR-320) | Open: CLASH |
-| Q6 | D-67 | Quiet minutes after entry for a rule already true | Open (recommend 5) |
-| Q7 | D-68 | What "Today" adds up | Open (ADR-325 (2)) |
-| Q8 | D-47 | Lots box on every strike row | Open (ADR-325 (4)) |
+| Q2 | D-25 | Take profit at an after-charges loss | Answered 25 Nov: refused (ADR-326 (1)), built in Part F |
+| Q3 | D-40 | Header totals beside expired strategies | Answered 25 Nov: keep (ADR-326 (2)) |
+| Q4 | D-38 | Timeout words; keep typed fields | Answered 25 Nov: keep (ADR-326 (3)) |
+| Q5 | D-57 | 12-hour disconnect sentence | Answered 25 Nov: 24-hour everywhere (ADR-326 (4)), built in Part F |
+| Q6 | D-67 | Quiet minutes after entry | Answered 25 Nov: 5 min, refined in Part F: first found true within 5 min and never seen false (ADR-326 (5)), built |
+| Q7 | D-68 | What "Today" adds up | Answered 25 Nov: keep (ADR-326 (6)) |
+| Q8 | D-47 | Lots box on every strike row | Answered 25 Nov: keep (ADR-326 (7)) |
 
 ## Parked items and next steps
 
@@ -287,7 +288,7 @@ Ordered by what each needs. Parked features are left out. Each line is the ledge
 - **D-14** (Fixed, not tested): 157-type 0DTE trade: two labelled max/profit-left figures; Charges dialog matches the tile
 - **D-16** (Fixed, not tested): C6 159: builder, compare and adjust page breakevens agree and say what is inside
 - **D-17** (Fixed, not tested): Builder summary on a live 0DTE condor: label beside the credit basis
-- **D-18** (Fixed, not tested): Four panels of one leg each show their quote time
+- **D-18** (Fixed, not tested) **(Part F re-check)**: Builder ?strategy=170-type trade: a time beside each leg price on the tracking panel and the Positions Paper row; Escape closes the depth popover
 - **D-19** (Fixed, not tested): An LTP outside bid/ask shows an older last-trade time
 - **D-20** (Could not reproduce): Record bid and ask of the same strikes at one moment
 - **D-31** (Fixed, not tested): C6 drawer, panel and list show 0.7293 fired, Now beside it
@@ -298,6 +299,7 @@ Ordered by what each needs. Parked features are left out. Each line is the ledge
 - **D-46** (Fixed, not tested): C5/C6 Greeks show non-zero digits; C7 max loss reads 4,774
 - **D-55** (Fixed, not tested): Chain in market hours: Change filled; typing Min OI drops rows as you type
 - **D-56** (Fixed, not tested): Home with prices live and paused; alert figure equals the bell
+- **D-57** (Fixed, not tested) **(Part F re-check)**: Adjustments page dates; disconnect banner "Last updated: HH:MM:SS IST"; market-closed "Prices are from HH:MM:SS IST."
 - **D-64** (Fixed, not tested): Builder and Positions between 15:30 and 15:45 on an expiry day
 - **D-68** (Fixed, not tested): Paper tab header Today on a test day, and on a Saturday
 - **D-69** (Could not reproduce): Owner: per-quote age limit for the index?
@@ -314,7 +316,7 @@ Ordered by what each needs. Parked features are left out. Each line is the ledge
 - **D-22** (Fixed, not tested): History tab lists the C3 stop with index value; closed C4 160 page shows the stop reason on its rows (LegList still says "No legs yet")
 - **D-23** (Fixed, not tested): Orderbook of C4 160 shows Stop on the stop-out row
 - **D-24** (Fixed, not tested): C7 161 panel shows "Conditional exit: all legs exit if the index goes above 25,720. Armed."
-- **D-25** (Needs owner decision): After the owner answer: 162-style trade at an after-charges loss
+- **D-25** (Fixed, not tested) **(Part F re-check)**: 162-type trade at an after-charges loss: Compare shows "Not in profit after charges: ..." under Take profit; Exit offered
 - **D-26** (Fixed, not tested): Trade page line "Lapsed at HH:MM:SS IST"; Review stays while the idea is open
 - **D-27** (Parked): Open C1 155 adjustment history; record the route reply
 - **D-30** (Fixed, not tested): Opportunities page: conditions/rows line; no 16 Nov PATH rows Open
@@ -326,7 +328,7 @@ Ordered by what each needs. Parked features are left out. Each line is the ledge
 - **D-60** (Fixed, not tested): Step a strike onto a held contract: the question box (Escape = Cancel); Increase over the lots limit; Add to Paper refusing a kept duplicate
 - **D-61** (Fixed, not tested): C7 161-type Compare: Buy back the untested short shows the line
 - **D-63** (Fixed, not tested): C9 164: P&L Table shows closed rows; Greeks total labelled
-- **D-67** (Fixed, not tested): My Strategies or Positions with 2-3 pop-ups: no button covered; scroll down and raise one
+- **D-67** (Fixed, not tested) **(Part F re-check)**: Open a condor with a rule already true: bell counts at once, pop-up at about entry + 5 min; a rule that clears and turns true pops up at once
 - **D-71** (Fixed, not tested): C2 157 after expiry: History record and closed-row reason
 
 ### C. Needs neither
@@ -338,13 +340,12 @@ Ordered by what each needs. Parked features are left out. Each line is the ledge
 - **D-37** (Fixed, not tested): Builder what-if with prices not live: pick a level and a date.
 - **D-42** (Fixed, not tested): My Strategies: a rolled condor shows its current legs; closed C4 listed as Completed
 - **D-43** (Fixed, not tested): My Strategies at desktop width: C5 to C9 names in full
-- **D-44** (Fixed, not tested): Stops form and list side by side; Save brings the new row into view
+- **D-44** (Fixed, not tested) **(Part F re-check)**: Positions > Paper > Stops at 1536 px: form and list side by side; Save brings the new row into view
 - **D-49** (Fixed, not tested): Flip the switch in Settings: header reads Lots or Quantity
 - **D-50** (Could not reproduce): C2-type chart: hover and arrows during a live refresh; owner: keep the reading when the levels are unchanged?
 - **D-52** (Fixed, not tested): Empty builder hint with the feature off and on
 - **D-53** (Fixed, not tested): Type 20+ characters in the Save box and in the rename box
 - **D-54** (Fixed, not tested): Adjustments > Playbooks > own playbook: Delete, Cancel, Delete; no Test button
-- **D-57** (Needs owner decision): After Q5: adjustments page dates; the disconnect sentence
 - **D-65** (Fixed, not tested): Rename a paper trade from the builder; status matches My Strategies
 - **D-66** (Fixed, not tested): Completed page times match the stop-out times
 
@@ -365,9 +366,17 @@ Ordered by what each needs. Parked features are left out. Each line is the ledge
 
 ## DONE / PENDING / BLOCKED / PARKED / NEXT
 
-- **DONE:** 71 of 71 issues have a final status for this chain (counts above); 57 are Fixed, not tested.
-- **PENDING:** the owner's read of ADR-323, ADR-324, ADR-325 and questions Q2 to Q8; #723.
-- **BLOCKED:** D-25 (Q2) and the last part of D-57 (Q5), each on a clash between two owner texts.
+- **DONE:** 71 of 71 issues have a final status for this chain; 59 are Fixed, not tested (after Part F).
+- **PENDING:** the owner's read of ADR-323, ADR-324 point (4) and ADR-325 (other than the points ADR-326 accepted); #723;
+  the screen-check FAILs D-01, D-05, D-41, D-60 (and S-20), owned by `refactor/modular-doors`.
+- **BLOCKED:** none.
 - **PARKED:** D-15, D-27; five owner-parked features.
-- **NEXT:** the screen checks on the owner's PC, in the order above (A in market hours first), then the owner's
-  answers to Q2 to Q8. The pull request stays a draft until the screen checks pass.
+- **NEXT:** the screen checks on the owner's PC (list above), including the Part F re-checks of D-18, D-25, D-44,
+  D-57 and D-67; the pull request stays a draft.
+
+## Part F addendum (25 Nov 2026, owner in chat)
+
+Report: `docs/process/GC-ICLIVE-F-report-2026-11-25.md`. Built: the owner's answers Q2 to Q8 (ADR-326) and the 25 Nov
+screen-check FAILs D-18 and D-44. Not touched here: the screen-check FAILs D-01, D-05, D-41 and D-60 (and S-20), which
+belong to the modular clean-up on `refactor/modular-doors` (its D-01 rule is ADR-327 there). Their ledger rows keep
+their Part A to E text until that branch lands.
