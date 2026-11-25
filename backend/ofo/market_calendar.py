@@ -185,5 +185,16 @@ def price_time(at: datetime.datetime, holidays: Holidays | None = None) -> datet
     return last_close(at, holidays)
 
 
-__all__ = ["DATA_FILE", "after_close_before_settlement", "CalendarError", "MarketStatus", "calendar_end_warning", "is_market_open", "last_close",
-           "last_covered_date", "market_status", "next_open", "price_time"]
+__all__ = [
+    "DATA_FILE",
+    "CalendarError",
+    "MarketStatus",
+    "after_close_before_settlement",
+    "calendar_end_warning",
+    "is_market_open",
+    "last_close",
+    "last_covered_date",
+    "market_status",
+    "next_open",
+    "price_time",
+]

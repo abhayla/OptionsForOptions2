@@ -63,16 +63,16 @@ from ofo.errors import render
 from ofo.errors.explanations import render_explanation, restore_explanation
 from ofo.instruments.models import FUTURE_TYPE, is_lot_aligned
 from ofo.limits import INTEGER_MAX
+from ofo.market_calendar import after_close_before_settlement
 from ofo.money import PAISE, shown_price
 from ofo.outcome import read_snapshot
 from ofo.outcome.price_text import price_text
 from ofo.outcome.serialize import breakevens_display
 from ofo.outcome.snapshot import forward_strike_ids
+from ofo.settings import calc
 from ofo.strategy import stored_form as sf
 from ofo.strategy.definition import describe_contract, display_contract
 from ofo.table.model import display_number
-from ofo.market_calendar import after_close_before_settlement
-from ofo.settings import calc
 from ofo.timeutil import IST
 from ofo.tracking import paper, paper_decay, paper_greeks, stops
 from ofo.tracking.orderbook import ClosedLeg, NetPosition, PaperOrder, is_typed_price, lifecycles, net_positions
@@ -1068,7 +1068,7 @@ def _paper_word(status: str, positions: Sequence[Mapping[str, Any]]) -> str:
 
 
 async def current_legs_many(db: Any, user_ref: str) -> dict[int, dict[str, Any]]:
-    """GC-ICLIVE D-42 (ADR-299): per strategy with a paper book, the CURRENT legs and the status word, from the same book
+    """GC-ICLIVE D-42 (ADR-299): per strategy with a paper book, the CURRENT legs and the status word, from the book
     the Positions page reads (open positions; a book with nothing open names the legs it traded) and the same
     ``_paper_word`` as the paper list. ``leg_count`` and ``first_leg`` replace the saved definition's legs on the My
     Strategies list; a strategy without a book is absent here (its saved legs stand). A read failure raises."""

@@ -534,7 +534,7 @@ async def test_a_strategy_that_is_not_completed_has_no_close_time(db):
 
 
 # ---- GC-ICLIVE D-64 (owner decision): after the 15:30 close the book says when expiring legs settle ----
-# Real case 24 Nov 2026 (C2 157 at 15:30, C9 164): raw "Instrument NSE_FO:64457 cannot be used: expired" and "prices not live".
+# Real case 24 Nov 2026 (C2 157 at 15:30, C9 164): a raw "cannot be used: expired" text and "prices not live".
 # The fixture strategy's legs expire 2026-10-13: the answer clock is moved around that day's close (IST = UTC + 5:30).
 
 SETTLES_LINE = "Market closed. Open legs that expire today settle at 15:45."

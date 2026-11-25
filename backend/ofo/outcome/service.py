@@ -56,6 +56,7 @@ from ofo.engine.model import (
 )
 from ofo.errors.explanations import ExplanationText, join_explanations, render_explanation
 from ofo.instruments.models import ZERODHA
+from ofo.market_calendar import after_close_before_settlement
 from ofo.marketdata.forward import ForwardUnavailable, spot_fallback_forward
 from ofo.marketdata.quote import NormalizedQuote, is_live_price, planning_price_usable
 from ofo.marketdata.shared_compute import FeedScope, call_shared
@@ -79,9 +80,8 @@ from ofo.scenario.levels import (
 from ofo.scenario.spot import spot_reading
 from ofo.scenario.views import DEFAULT_VIEW, LABELS, ScenarioValues, View, on_levels, scenario_values
 from ofo.settings import calc
-from ofo.table import ColumnSpec, Table, build_table, visible_columns
-from ofo.market_calendar import after_close_before_settlement
 from ofo.strategy.definition import display_contract
+from ofo.table import ColumnSpec, Table, build_table, visible_columns
 from ofo.timeutil import IST
 
 NOT_CONNECTED_LABEL: Final = render_explanation("outcome_not_connected")
@@ -428,15 +428,17 @@ def _quote_label(q: NormalizedQuote) -> ExplanationText | None:
 
 def _problem_leg(snapshot: MarketSnapshot, instrument_id: str, why: ExplanationText,
                  settings: Mapping[str, Decimal]) -> ExplanationText:
-    """D-64: the ONE place a refusal names an unusable leg: as the trader knows it ("NIFTY 13 Oct 22600 CE"), never by the
-    raw instrument id. An expired leg on its expiry day after the close, before the settlement time, says when it settles."""
+    """D-64: the ONE place a refusal names an unusable leg: as the trader knows it ("NIFTY 13 Oct 22600 CE"), never
+    by the raw instrument id. An expired leg on its expiry day after the close, before the settlement time, says when
+    it settles."""
     lm = snapshot.legs.get(instrument_id)
     listed = None if lm is None else lm.contract
     if listed is None:
         return render_explanation("outcome_problem_leg_unknown", why=why)
     c = listed.contract
     clock = snapshot.clock
-    if (clock is not None and c.expiry == clock.astimezone(IST).date() and why == render_explanation("outcome_why_expired")):
+    expired = why == render_explanation("outcome_why_expired")
+    if clock is not None and c.expiry == clock.astimezone(IST).date() and expired:
         settle_from = calc.paper_settle_from(settings)
         if after_close_before_settlement(clock, settle_from):
             return render_explanation("market_closed_settles", time=settle_from)

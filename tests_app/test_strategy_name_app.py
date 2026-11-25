@@ -301,7 +301,7 @@ async def test_d65_a_rename_without_a_revision_is_refused_422_and_writes_nothing
             async with _client(_app(_ConnMaker(conn), user)) as ac:
                 for sent in ({"name": "Late", "expected_revision": None}, {"name": "Late"}):
                     refused = await ac.patch(f"/strategies/{stored.id}/name", json=sent)
-                    assert refused.status_code == 422, refused.text
+                    assert refused.status_code == HTTPStatus.UNPROCESSABLE_ENTITY, refused.text
             assert await _snapshot(conn, stored.id) == before
         finally:
             await trans.rollback()

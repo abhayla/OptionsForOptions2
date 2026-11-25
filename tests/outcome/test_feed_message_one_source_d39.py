@@ -1,17 +1,17 @@
 """GC-ICLIVE D-39: the live-data status message comes from the same freshness as the prices shown (one source).
 
-Real case 23 Nov 2026 (C1, first read): "Live market data disconnected ... monitoring paused" beside spot 25523.85 and live leg
-prices; seconds later all live. The message read the feed's status while the prices on the same page read each quote's own
-health. Now: when every price held is available (live), no disconnected message is raised; a stale or lost price still says so.
-Real function: ofo.outcome.service._feed_message.
+Real case 23 Nov 2026 (C1, first read): "Live market data disconnected ... monitoring paused" beside spot 25523.85
+and live leg prices; seconds later all live. The message read the feed's status while the prices on the same page
+read each quote's own health. Now: when every price held is available (live), no disconnected message is raised; a
+stale or lost price still says so. Real function: ofo.outcome.service._feed_message.
 """
 from __future__ import annotations
 
 import datetime
 from types import SimpleNamespace
 
-from ofo.rules.inputs import DataHealth
 from ofo.outcome.service import _feed_message
+from ofo.rules.inputs import DataHealth
 
 AT = datetime.datetime(2026, 11, 23, 5, 0, tzinfo=datetime.UTC)
 

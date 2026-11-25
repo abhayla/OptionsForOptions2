@@ -1,18 +1,19 @@
-"""GC-ICLIVE D-64 remainder: the payoff refusal names an unusable leg as the trader knows it ("NIFTY 13 Oct 22600 CE"), never
-by its raw instrument id, and on expiry day after the close it says when the leg settles. Real function: build_outcome on the
-recorded 2026-10-08 replay (13 Oct expiry); the valuation moves to the day of expiry."""
+"""GC-ICLIVE D-64 remainder: the payoff refusal names an unusable leg as the trader knows it ("NIFTY 13 Oct 22600
+CE"), never by its raw instrument id, and on expiry day after the close it says when the leg settles. Real
+function: build_outcome on the recorded 2026-10-08 replay (13 Oct expiry); the valuation moves to the day of
+expiry.
+"""
 from __future__ import annotations
 
 import datetime
 import re
 
-from outcome._both_curves_cases import S54, _FQ, as_json, definition, market
-from outcome.test_same_engine import RATE
-
 from ofo.outcome import build_outcome, read_snapshot
 from ofo.outcome.serialize import outcome_to_dict
 from ofo.settings import defaults
 from ofo.timeutil import IST
+from outcome._both_curves_cases import _FQ, S54, as_json, definition, market
+from outcome.test_same_engine import RATE
 
 RAW_ID = re.compile(r"\b(NSE_FO|BFO|NSE|BSE)[:_][A-Z_]*:?\d+")
 LINE = "Market closed. Open legs that expire today settle at 15:45."
@@ -59,7 +60,8 @@ def test_before_the_close_there_is_no_refusal_line():
 
 
 def test_no_refusal_is_built_with_the_raw_id_template():
-    """Scan: the raw-id template is never rendered by the service; every refusal goes through the one named-leg function."""
+    """Scan: the raw-id template is never rendered by the service; refusals use the one named-leg function."""
     import pathlib  # noqa: PLC0415
-    source = (pathlib.Path(__file__).resolve().parents[2] / "backend/ofo/outcome/service.py").read_text(encoding="utf-8")
+    path = pathlib.Path(__file__).resolve().parents[2] / "backend/ofo/outcome/service.py"
+    source = path.read_text(encoding="utf-8")
     assert 'render_explanation("outcome_problem_leg",' not in source
