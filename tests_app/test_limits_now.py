@@ -270,13 +270,13 @@ def test_text_an_unknown_state_or_a_checked_row_with_nothing_to_compare_has_no_t
 def test_u141_the_reply_carries_the_checks_own_time_in_both_forms_and_refuses_a_reply_without_it():
 
 
-    assert AS_OF_TEXT == "As of 01:05:00 PM IST"
+    assert AS_OF_TEXT == "As of 13:05:00 IST"
     body = {"strategy_id": 1, "strategy_type": None, "type_name": None, "playbook": {"source": "none", "id": None, "status": None, "draft": False},
             "stage": {"name": None, "index": None}, "withheld": None, "results": []}
     with pytest.raises(ValueError):
         route.AdjustmentCheckOut.model_validate(body)
     out = route.AdjustmentCheckOut.model_validate({**body, "as_of": NOW, "as_of_text": AS_OF_TEXT})
-    assert out.as_of == NOW and out.as_of_text == "As of 01:05:00 PM IST"
+    assert out.as_of == NOW and out.as_of_text == "As of 13:05:00 IST"
 
 
 def test_u143_an_already_true_row_carries_its_adjustment_number_and_the_decision_is_unchanged():
