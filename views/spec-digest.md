@@ -46,7 +46,7 @@ One line per decision, requirement and spec section. Read it before asking the o
 - ADR-323 2026-11-25: PENDING OWNER READ. [Refines ADR-309 (1) (D-31), ADR-299 (D-28), ADR-3…]
 - ADR-324 2026-11-25: PENDING OWNER READ. [Refines REQ-109 AC-5 (header totals), ADR-311 (th…]
 - ADR-325 2026-11-25: PENDING OWNER READ. [Refines REQ-109 AC-5 (Today figure), REQ-029 AC-2…]
-- ADR-326 2026-11-25: Owner answers, 25 Nov 2026 (Q2 to Q6 given before Part F and recorded in the "Who owns what" table… [Amends ADR-015 Q182 and REQ-049 AC-5 (24-hour tim…]
+- ADR-326 2026-11-25: Owner answers, 25 Nov 2026: Q2 to Q6 answered one at a time with the question tool in the GC-ICLIVE… [Amends ADR-015 Q182 and REQ-049 AC-5 (24-hour tim…]
 
 ## Requirements (161)
 
