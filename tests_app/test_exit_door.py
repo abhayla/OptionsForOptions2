@@ -12,6 +12,7 @@ trigger the test armed. Real PostgreSQL; every test but the race test rolls back
 from __future__ import annotations
 
 import asyncio
+import dataclasses
 import datetime
 from decimal import Decimal
 from http import HTTPStatus
@@ -22,6 +23,7 @@ import test_paper_monitor as pm
 import test_paper_settlement as ps_t
 from httpx import ASGITransport, AsyncClient
 from ofo.errors import render
+from ofo.rules.inputs import DataHealth
 from ofo.timeutil import IST
 from ofo_app import paper_monitor, paper_store, settings_store, tracked_contracts
 from ofo_app import paper_settlement as ps
@@ -318,6 +320,26 @@ async def test_a_stale_price_refuses_the_whole_exit_and_nothing_is_stored(db, ca
     reply = await _exit_call(app, stored, caller, [0, 1])
     _refused(reply, "tracking_exit_prices_not_live")
     assert await _closing(db, stored.id, list(stored.saved.contract_ids)) == []
+
+
+@pytest.mark.parametrize("caller", CALLERS)
+async def test_one_stale_leg_among_live_ones_refuses_the_whole_exit_and_nothing_is_stored(db, monkeypatch, caller):
+    """Row 8: two legs named, the first one's quote alone is not live (only its own feed key ages), the second is live."""
+    app, stored, provider, _clock, _last = await _opened(db)
+    ids = list(stored.saved.contract_ids)
+    key = (await db.execute(text("SELECT exchange_segment || ':' || exchange_token FROM public.catalogue_contracts "
+                                 "WHERE id = :id"), {"id": ids[0]})).scalar_one()
+    real_chain = provider.option_chain_snapshot
+
+    def chain(underlying, expiry):  # only this feed key's quote is not live; every other quote is as the feed holds it
+        return [dataclasses.replace(q, health=DataHealth.STALE) if q.instrument_id == key else q
+                for q in real_chain(underlying, expiry)]
+
+    monkeypatch.setattr(provider, "option_chain_snapshot", chain)
+    assert any(q.instrument_id == key for q in real_chain("NIFTY", datetime.date(2026, 10, 13)))
+    reply = await _exit_call(app, stored, caller, [0, 1])
+    _refused(reply, "tracking_exit_prices_not_live")
+    assert await _closing(db, stored.id, ids) == []
 
 
 @pytest.mark.parametrize(("caller", "status", "code"), [("orders", CONFLICT, "tracking_exit_prices_not_live"),
