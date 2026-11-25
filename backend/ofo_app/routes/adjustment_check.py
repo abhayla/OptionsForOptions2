@@ -370,6 +370,17 @@ def live_fields(rule_id: str, live: Mapping[str, Decimal], fired_at: Mapping[str
             "live_as_of_text": None if value is None else as_of_text}
 
 
+def _from_record(flag: pe.Flag, rec: Any) -> pe.Flag:
+    """D-31: ``flag`` as its open record ``rec`` shows it (the record's value, limit and sentence); the flag itself when
+    the rule has no open record or the record stored no comparison to show."""
+    if (rec is None or rec.trigger_id is None or rec.value is None or rec.threshold is None
+            or (flag.cmp or rec.cmp) is None):
+        return flag
+    return HeldFlag(flag.rule_id, flag.trigger_id, flag.stage_name, rec.value,
+                    rec.threshold if rec.limit is None else rec.limit, flag.cmp or rec.cmp, flag.members, flag.beyond,
+                    target=getattr(rec, "target", None), record=rec)
+
+
 def shown_results(ev: pe.Evaluation, open_recs: Any) -> list[pe.Result]:
     """ADR-309 (1): the shown fired state follows the gate's open RECORD. A rule the check evaluated false
     (``ev.clear``), or could not check at all (market closed, prices not live: ``NotChecked``), that still has an open
@@ -380,7 +391,10 @@ def shown_results(ev: pe.Evaluation, open_recs: Any) -> list[pe.Result]:
     # GC-ICFIX issue 19: a close (prices not live) reads the rule "not checked", which is not "cleared": the open record
     # stays shown as fired with its own figures, the not-checked line beside it (the stop must not vanish at 15:30)
     unread = {r.rule_id for r in ev.results if isinstance(r, pe.NotChecked)}
-    return [*ev.results,
+    # D-31 (ADR-309 (1)): a rule that is firing now AND has an open record is shown from that record too (its value, its
+    # sentence), the figures the opportunity list shows; the value of this poll is the separate "Now" value
+    by_rule = {rec.rule_id: rec for rec in open_recs}
+    return [*(_from_record(x, by_rule.get(x.rule_id)) if isinstance(x, pe.Flag) else x for x in ev.results),
             *(HeldFlag(rec.rule_id, rec.trigger_id, rec.stage, rec.value,
                        rec.threshold if rec.limit is None else rec.limit,
                        cmp_of.get(rec.rule_id) or rec.cmp, target=getattr(rec, "target", None), record=rec)

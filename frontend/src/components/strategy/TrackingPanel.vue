@@ -173,7 +173,8 @@ function onDismissed({ ids }) {
 function openDrawer() {
   drawerLines.value = [
     ...(view.value?.detections ?? []).flatMap((d) => [d.line, ...d.details]),
-    ...flags.value.flatMap((f) => [f.wording, f.condition].filter(Boolean)),
+    ...flags.value.flatMap((f) => [f.wording, f.condition, firedClock(f) ? firedAtText(firedClock(f)) : null,
+      f.live_value != null && f.live_value !== f.value ? liveNowText(f.live_value, f.live_as_of_text) : null].filter(Boolean)),
   ]
   drawerOpen.value = true
 }
