@@ -2,10 +2,10 @@
 
 Plan: `PLAN.md`. Owner questions: `owner-questions.md`. Branch `refactor/modular-doors`.
 
-**Status (26 Nov night, Lane A, unattended run): Step 0, 0b, Phases 3, 4, 6, 7 DONE. Pushed: `a99730b8` (0b), `546c67d3`
-(Phase 3), `87a446bf` (Phase 4); Phases 6 and 7 merged after it (push state: see the last commit on the branch). Phase 8
-waits for the Lane B merge.** This file is written so a fresh session can carry on from it alone. Read
-`PLAN-phases-3-8.md` for the build order and `PLAN.md` for the why.
+**Status (26 Nov, Lane A, end of the unattended run): Step 0, 0b and Phases 3-8 DONE; Lane B's Phase 5 merged; Phase 6
+B2 not built (closed by the coordinator). Final state, screen-check list and open questions: the last three sections.**
+This file is written so a fresh session can carry on from it alone. Read `PLAN-phases-3-8.md` for the build order and
+`PLAN.md` for the why.
 
 | Phase | Scope | State | Where |
 |---|---|---|---|
@@ -13,10 +13,10 @@ waits for the Lane B merge.** This file is written so a fresh session can carry 
 | 2 | B4 `may_act` + F1 `priceState` (D-05 server half, D-39) | DONE, pushed | `707bc5d4`, `0e30edc1` |
 | 3 | F3 + F5 + B6 one paper book source (D-41 (two readers), ADR-328 (3)) | DONE (review PASS) | `e5622280` tests, `42c1f467`..`491ca7e2` code, merged into the branch |
 | 4 | B1 exit door + F2 exit gate (D-05, ADR-328 (4)) + R5 | DONE (Tier A Opus PASS; one fix round) | backend `81e0b561`..`e79857a2`, frontend `643f0bdd`, `440e0299`, `15fe3268`, fixes on `wt/phase4-fix` |
-| 5 | F6 `useLegDoor` (D-60) | NOT STARTED | `PLAN.md` Phase 5, OQ-1 |
+| 5 | F6 `useLegDoor` + ADR-329 (Lane B) | DONE (merged) | `5d834099`, `RESULTS-lane-b.md` |
 | 6 | B2 close list (real path), F7, F8; B7 not built | DONE (F7, F8; Sonnet PASS); B2 not built: parked, then closed by the coordinator (REQ-109 AC-1 import guard) | `8862b957`..`3229e0a1`, merged; `PARKED-phase6-B2.md` |
 | 7 | R2 `owns`, R3 browser, R1 comment; rest skipped/parked | DONE (Sonnet PASS) | `45fd9dfb`..`637ea5cc`, merged |
-| 8 | Guard test with exemption list and allowlist | NOT STARTED | `PLAN.md` Phase 8 |
+| 8 | Guards G1-G5 + Lane B emitter guard | DONE | `ab2e61cc` + rule 4 after the Lane B merge |
 
 ## Step 0: merge of fix/ic-live-test-1123
 
@@ -326,7 +326,118 @@ execution return or any broker module. Tests: `test_strategy_owns.py` 6, `groupe
 155 of 155 after the pin fix; ci_local 0 failed; ruff ratchet OK. Review: Sonnet: PASS (2 optional minors: no locked-read
 caller of `owns` exists; the text guard matches the exact bind names).
 
-## Phase 8: not started (waits for the Lane B merge)
+## Merges of 26 Nov night (plan 3.3 steps 4 and 5)
+
+- `origin/refactor/leg-door` at `5d834099` (Lane B Phase 5, its prepush passed; it already held `87a446bf`) merged with no
+  conflict. It changes no backend, `tests_app` or `tests` file (`git diff --stat ab2e61cc HEAD -- backend tests_app tests`
+  empty). Lane B's own record: `RESULTS-lane-b.md` (folded in below: screen checks 6-15, owner question OQ-5).
+- `origin/fix/ic-live-test-1123` at `e01f747c` (docs only: ADR-330) merged; conflicts only in the generated
+  `coverage-stages.yaml` (both sides' rows kept, ADR-326..330 S6.7), `views/spec-digest.md` and `coverage-register.md`
+  (regenerated: digest 40984 bytes, register 1036 rows, ADR-330 in both). OpenAPI and reply inventory regenerate with no
+  diff; ruff ratchet OK.
+
+## Phase 8: guards: DONE (see the Phase 8 review line below)
+
+Built in two worktrees from `5354f722` before the Lane B merge (G1, G2, G4 in `tests/`; G3 rules 1-3 in
+`frontend/tests/one-door-screens.test.js`), merged and pushed at `ab2e61cc`; G3 rule 4 (one duplicate-leg dialog, one
+`sameContract`) and the Lane B emitter-guard check added after the Lane B merge.
+
+| Guard | File | Exemptions (category) | Mutation proof |
+|---|---|---|---|
+| G1 price reads only in `read_market` | `tests/test_price_reads_one_door.py` | 43 keys: own_process 7, display 26, real_path 5, awaiting_phase_9 1 (`entry_facts_now`, deferred #735 family, plan row 13) | bad sample 1 problem; home none; alias, getattr, unparsable caught; stale entry; copytree of `routes/paper.py` names `_new_price_reader` |
+| G2 paper `NewOrder` only in the door and the store homes | `tests/test_paper_orders_one_door.py` | 1 (own_process: `routes/tracking.py::exit_tracking`, a signed held quantity, not a side) | 11 tests: bad build, home, alias, `x = NewOrder`, IfExp, `_opposite`, stale, a home that stopped building |
+| G3 screens: not-live wording, exit POST, one book reader, one dup dialog | `frontend/tests/one-door-screens.test.js` | 3 (PaperStrategies `NO_TOTAL` display; `paperDrafts.readPaperBook` own_process; `LiveStrategyCard.rereadBook` display) | per rule: bad sample, home, stale, fail closed |
+| G4 one caller per alert writer | `tests/test_alert_writers_one_caller.py` | 0 | each writer outside its home; four alias forms; `paper_monitor.notify` not matched |
+| G5 | existing D-57 guards | - | - |
+| Lane B emitter guard | `frontend/tests/leg-emitters-guard.test.js` (Lane B) | its allow-list | Phase 8 checks it is collected |
+
+Known limits (stated in the files): G3 is a text scan (a URL held in a variable first is not seen); the category names
+`real_path` for the paper exit read and `awaiting_phase_9` for `entry_facts_now` are the builder's labels.
+
+## Final state (26 Nov, Lane A)
+
+| Step / phase | State | Head |
+|---|---|---|
+| Step 0, 0b | DONE | `4350f336`, `a99730b8` |
+| 3 | DONE | `546c67d3` |
+| 4 | DONE (Tier A PASS) | `87a446bf` |
+| 5 (Lane B) | DONE (merged) | `5d834099` |
+| 6 | DONE for F7, F8; B2 not built (parked, closed by the coordinator: REQ-109 AC-1 guard) | `5354f722` |
+| 7 | DONE | `5354f722` |
+| 8 | DONE | see the last commit of the branch |
+
+CI: no GitHub run exists for this branch (workflows run only on `pull_request` and pushes to `main`; no PR tonight). The
+gate was the local mirror for every head: prepush TOTAL PASS on each pushed head, ci_local, whole vitest, and the
+`select_app_tests` DB run on fresh Postgres clones.
+
+## Screen-check list for the owner (click by click, on `refactor/modular-doors`, paper only)
+
+Market hours unless stated. Tick each box. Lane A rows 1-5 (plan section 8), Lane B rows 6-15 (`RESULTS-lane-b.md`).
+
+1. **D-01 trigger levels (Phase 1).** Positions > Paper > Stops > Conditional exit; choose "Above" a level the index is
+   already beyond; Save: "Not saved: the live price is already at or beyond this level ...". Stop the feed; Save: "Not
+   saved: the live price could not be read, so this level cannot be checked. Try again in a moment." Market closed: Save
+   saves. [ ]
+2. **S-20 (Phase 1).** Arm only a leg stop; let it fire: the alert carries the NIFTY value, not "not available". [ ]
+3. **D-41 (two readers), ADR-328 (3) (Phase 3).** Open a paper strategy in the builder. For each open leg the Net
+   Positions LTP and time equal the Paper P&L panel's LTP and time (watch 3 refreshes). The panel's leg P&L equals the
+   table's P&L column; the rows add up to the before-charges total. Exit one lot of a 2-lot leg, then compare again: the
+   panel shows the leg's total (booked + open), the same as the table. After 15:30: the panel rows show the last close,
+   not "-". Note: for up to 5 s right after an exit one row may still show the old price or "Exited at" (two timers). [ ]
+4. **D-05 (Phase 4).** In the builder, stop the API (or block `GET /paper/strategies/{id}`): within 5 s Exit all and every
+   per-leg Exit grey out, "Prices are not live; try again when they update" shows under Exit all, the figures show "—"
+   (the LTP time and the "after charges" label are hidden); an open Exit dialog closes. Restore: everything comes back.
+   Positions > Paper: same as before. [ ]
+5. **Stale Exit, ADR-328 (4) (Phase 4).** Open the strategy in the builder in tab 1; in tab 2 (Positions) exit one leg or
+   add a lot. In tab 1 within 5 s: Exit all and per-leg Exit disabled with "This trade changed elsewhere. Reload to see
+   the current legs." (figures stay). If you had pressed Exit all before the change, "Review and add" now does nothing
+   either. Reload tab 1: enabled, the legs are the current ones. [ ]
+6. **Same-side step (Phase 5).** Add SELL NIFTY 22800 CE and SELL 22700 CE. On the 22700 leg click the strike "+" until it
+   would land on 22800: "NIFTY ... 22800 CE is already in this strategy." with Increase quantity / Keep separate / Cancel.
+   Cancel: legs unchanged. [ ]
+7. **Opposite-side step, ADR-328 (1).** Add BUY 22800 CE and SELL 22700 CE. Step the SELL leg onto 22800: "NIFTY ...
+   22800 CE is already in this strategy as a Buy." and "A Buy and a Sell of one contract cancel each other out.", buttons
+   Keep both / Cancel only. Keep both: two rows; Cancel: as before. Escape, x and the overlay act as Cancel. A Sell of a
+   held Buy added from the strike picker asks nothing. [ ]
+8. **Chain trip keeps and adds, ADR-329 (1).** Build 3 legs (unsaved). Market > Option Chain: no question. Tick two
+   contracts, choose Buy or Sell on each, Add Selected: the builder shows 5 rows (your 3 first, then the 2), no
+   question. [ ]
+9. **Chain trip with a clash.** Same, but tick a contract you hold with the same action: the usual three-button question;
+   Cancel adds nothing. Tick the opposite side of a held contract: added silently as a second row. [ ]
+10. **Leave question, ADR-329 (2).** With 3 unsaved legs click Settings (any page but the Option Chain): "Leave the
+    builder? The 3 unsaved legs will be lost." Stay / Leave (one leg: "The 1 unsaved leg will be lost."). The same
+    question from the Option Chain while it holds the legs. Empty builder, or a saved strategy unchanged: no question.
+    Closing or reloading the tab: no question (decided: the browser's own box cannot show the sentence). [ ]
+11. **Replace question on a draft link, ADR-328 (2).** With legs shown, paste a different `?draft=` link into the
+    address bar of the same tab: "Replace the N legs in the builder?" Replace / Cancel; Cancel keeps the legs and puts the
+    old link back. [ ]
+12. **Drafts Mode across the chain trip.** Open a paper strategy, remove one leg (a pending change), go to the Option
+    Chain and back: the pending change is still there. If the book changed meanwhile: "The strategy changed while you
+    were away. Your unsaved edits were not restored." [ ]
+13. **Underlying refusal (OQ-5).** Build 3 NIFTY legs (unsaved). Option Chain, switch to SENSEX, tick one contract, Add
+    Selected: the builder keeps your 3 NIFTY legs and says "These contracts are on SENSEX; the legs in the builder are on
+    NIFTY. Nothing was added." [ ]
+14. **Back after Add Selected.** Add two contracts from the chain, go to the chain again, press Back: the builder shows
+    the same legs, not the two added again. [ ]
+15. **Drafts Mode count.** In a paper strategy with one pending change, go to any page other than the chain: the
+    question counts the same number the bar shows. [ ]
+
+New wording to read: the opposite-side note, "The 1 unsaved leg will be lost.", the Drafts Mode changed-book sentence,
+the OQ-5 refusal sentence.
+
+Re-test list (screens the clean-up touched, no new behaviour): Positions > Paper (list, Exit, stops panel); builder Net
+Positions, Orderbook tab, Paper P&L panel, Review and add, confirm dialog; Live Strategies card figures; My Strategies
+(rename, P&L cell); Home totals; paper alerts (leg stop, conditional exit); expiry-day settlement rows (Positions > Paper
+after 15:45 on an expiry day); strike picker, futures button, edit form, step / Shift / Width / Hedge, ready-made shapes,
+Compare "Open in builder", Undo of Clear all; Option Chain Add Selected; every place showing "Paper P&L paused - prices
+not live" or the not-connected text. The real-order exit basket is unchanged (B2 not built).
+
+## Open owner questions
+
+- **OQ-5 (Lane B)** Add Selected with contracts of another underlying than the builder's held legs: built (a) refuse,
+  fail-closed; options and recommendation in `owner-questions.md`.
+- No other question is open. B2 was a technical choice closed by the coordinator (`PARKED-phase6-B2.md`).
+
 
 
 
