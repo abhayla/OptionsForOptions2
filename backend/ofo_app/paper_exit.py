@@ -121,7 +121,7 @@ async def exit_strategy(conn: Any, *, user_ref: str, strategy_id: int, kind: str
                         prices: Mapping[Hashable, Decimal], placed_at: datetime.datetime | Mapping[Hashable, Any],
                         write: Callable[[list[NewOrder]], Awaitable[Sequence[StoredOrder]]],
                         only: Only = None, closes: Literal["locked"] | Sequence[Close] = "locked",
-                        reason: str | None | Mapping[Hashable, Any] = None, trigger_id: int | None = None,
+                        reason: str | Mapping[Hashable, Any] | None = None, trigger_id: int | None = None,
                         before_write: Callable[[], Awaitable[bool]] | None = None) -> Outcome:
     """Exits the strategy's open legs; see the module docstring for the order of the steps. ``placed_at`` and
     ``reason`` are one value for every order or a mapping from the close's key."""
