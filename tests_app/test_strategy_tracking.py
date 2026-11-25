@@ -328,3 +328,39 @@ async def test_req050_the_tracking_read_shares_the_forward_with_the_outcome_rout
                                                     "planned_entry": "10.00", "captured_at": ANSWERED} for i in IDS])
     outcome_route.outcome_response(req, MarketContext(provider, lambda: last, D("0.065"), "user-1"), settings=_d())
     assert set(calls.values()) == {1}  # the outcome route read the tracking route's forward
+
+
+# ---- GC-ICLIVE D-28 (ADR-299, owner 2026-11-13): ONE status word per strategy on every route ----
+# Real 23 Nov case: condors 155-157, 159-161 had open practice legs; /api/strategies and /strategies/{id} said status
+# "draft" while /paper/strategies said state "LIVE". "Draft" before any order, "Running" with open legs, "Completed"
+# once the row is closed (alembic 0049): the same word on the book, the list, the paper book and the paper list.
+
+async def _get_ok(app, path):
+    async with _client(app) as c:
+        reply = await c.get(path)
+    assert reply.status_code == HTTPStatus.OK, reply.text
+    return reply.json()
+
+
+async def _words(app, sid, *, paper: bool) -> dict[str, str | None]:
+    out = {"book": (await _get_ok(app, f"/strategies/{sid}")).get("status_word"),
+           "list": next(s for s in (await _get_ok(app, "/strategies"))["strategies"]
+                        if s["id"] == sid).get("status_word")}
+    if paper:
+        out["paper_book"] = (await _get_ok(app, f"/paper/strategies/{sid}")).get("status_word")
+        out["paper_list"] = next(s for s in (await _get_ok(app, "/paper/strategies"))["strategies"]
+                                 if s["strategy_id"] == sid).get("status_word")
+    return out
+
+
+async def test_one_status_word_on_every_route_through_the_strategy_life(db):
+    app, stored, *_ = await _setup(db)
+    assert await _words(app, stored.id, paper=False) == {"book": "Draft", "list": "Draft"}
+    async with _client(app) as c:
+        placed = await c.post(f"/paper/strategies/{stored.id}/orders", json=_paper_body(stored, ENTRY_PRICES))
+    assert placed.status_code == HTTPStatus.CREATED, placed.text
+    assert placed.json().get("status_word") == "Running"
+    running = {"book": "Running", "list": "Running", "paper_book": "Running", "paper_list": "Running"}
+    assert await _words(app, stored.id, paper=True) == running
+    await db.execute(text("UPDATE public.strategies SET status = 'closed' WHERE id = :i"), {"i": stored.id})
+    assert set((await _words(app, stored.id, paper=True)).values()) == {"Completed"}

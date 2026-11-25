@@ -60,6 +60,7 @@ class UserBook:
     name: str | None
     underlying: str
     orders: tuple[StoredOrder, ...]
+    status: str = "draft"  # the row's stored status (draft | closed): with the orders, the status word's input
 
 
 def order_from_row(r: Any) -> StoredOrder:

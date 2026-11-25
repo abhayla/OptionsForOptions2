@@ -406,6 +406,7 @@ class PaperBookOut(PaperFigures, PaperExtremes, PaperBreakevens, PaperGreeksBloc
     underlying: Underlying
     answered_at: datetime.datetime
     orders: list[PaperOrderOut]
+    status_word: Literal["Draft", "Running", "Completed", "Unknown"]  # ADR-299 (D-28): the same word /strategies says
     held: HeldEntryOut | None = None  # GC-TRACK1 k07
 
 
@@ -413,6 +414,7 @@ class PaperStrategyOut(PaperFigures, PaperExtremes, PaperBreakevens, PaperGreeks
     strategy_id: int
     name: CatalogueText
     underlying: Underlying
+    status_word: Literal["Draft", "Running", "Completed", "Unknown"]  # ADR-299 (D-28): the same word /strategies says
     held: HeldEntryOut | None = None  # GC-TRACK1 k07
     open_count: int  # GC-TP step 4a: positions with a non-zero net quantity ("N of M positions")
     position_count: int
@@ -945,6 +947,7 @@ async def _book(db: Any, stored: Any, orders: Sequence[paper_store.StoredOrder],
     return PaperBookOut.model_validate(figures | {
         "strategy_id": stored.id, "name": sf.shown_name(stored.name), "underlying": underlying,
         "answered_at": answered_at, "orders": _order_rows(orders, found),
+        "status_word": store.status_word(stored.status, True),  # a paper book has orders by definition
         "held": _held_out((await held_entry_store.read_many(db, [stored.id])).get(stored.id))})
 
 
@@ -998,6 +1001,7 @@ async def list_paper_strategies(db: Annotated[Any, Depends(get_db)],  # noqa: PL
         figures |= charges | summary | _after(b.orders, found, prices, charges, b.underlying, rates)
         out.append(figures | {"strategy_id": b.strategy_id, "name": sf.shown_name(b.name), "underlying": b.underlying,
                               "held": _held_out(held_rows.get(b.strategy_id)),
+                              "status_word": store.status_word(b.status, True),
                               "open_count": open_legs, "position_count": len(figures["positions"])})
     return PaperListOut.model_validate({"strategies": out, "totals": _totals(out, decays), "answered_at": now()})
 
