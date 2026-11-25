@@ -198,6 +198,16 @@
             ],
             "title": "Step Value"
           },
+          "take_profit": {
+            "anyOf": [
+              {
+                "$ref": "#/components/schemas/AdjustTakeProfitOut"
+              },
+              {
+                "type": "null"
+              }
+            ]
+          },
           "trades": {
             "anyOf": [
               {
@@ -400,6 +410,16 @@
             ],
             "title": "View",
             "type": "string"
+          },
+          "what_changes": {
+            "default": {},
+            "patternProperties": {
+              "^[A-Za-z0-9_\\-.]{1,64}$": {
+                "$ref": "#/components/schemas/AdjustWhatChangesOut"
+              }
+            },
+            "title": "What Changes",
+            "type": "object"
           }
         },
         "required": [
@@ -1406,6 +1426,37 @@
         "title": "AdjustSpotReasonOut",
         "type": "object"
       },
+      "AdjustTakeProfitOut": {
+        "additionalProperties": false,
+        "description": "D-25 (ADR-294 (4)): Take profit's basis, both figures named: the whole trade before charges (the figure the\nprofit test used) and after charges, beside it.",
+        "properties": {
+          "after_charges": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "After Charges"
+          },
+          "before_charges": {
+            "title": "Before Charges",
+            "type": "string"
+          },
+          "text": {
+            "title": "Text"
+          }
+        },
+        "required": [
+          "before_charges",
+          "after_charges",
+          "text"
+        ],
+        "title": "AdjustTakeProfitOut",
+        "type": "object"
+      },
       "AdjustTimingOut": {
         "additionalProperties": false,
         "properties": {
@@ -1487,6 +1538,98 @@
           "tradingsymbol"
         ],
         "title": "AdjustTradeOut",
+        "type": "object"
+      },
+      "AdjustWhatChangesOut": {
+        "additionalProperties": false,
+        "description": "D-21: the eight measures in a fixed order and, only where a number moves against the action's name, one plain\nreason line (no verdict word anywhere).",
+        "properties": {
+          "reason_line": {
+            "anyOf": [
+              {},
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Reason Line"
+          },
+          "rows": {
+            "items": {
+              "$ref": "#/components/schemas/AdjustWhatChangesRowOut"
+            },
+            "title": "Rows",
+            "type": "array"
+          },
+          "title": {
+            "title": "Title"
+          }
+        },
+        "required": [
+          "title",
+          "rows"
+        ],
+        "title": "AdjustWhatChangesOut",
+        "type": "object"
+      },
+      "AdjustWhatChangesRowOut": {
+        "additionalProperties": false,
+        "description": "D-21 (ADR-320 (3)): one measure of the \"What changes\" block, the position as it stands against the position\nafter the approach. ``direction`` up / down / same, or not_available with ``unavailable_reason`` (never a filled\ndefault).",
+        "properties": {
+          "after_text": {
+            "title": "After Text"
+          },
+          "before_text": {
+            "title": "Before Text"
+          },
+          "direction": {
+            "enum": [
+              "up",
+              "down",
+              "same",
+              "not_available"
+            ],
+            "title": "Direction",
+            "type": "string"
+          },
+          "direction_text": {
+            "title": "Direction Text"
+          },
+          "id": {
+            "enum": [
+              "profit_range",
+              "breakeven_distance",
+              "pop",
+              "max_profit",
+              "max_loss",
+              "credit",
+              "margin",
+              "net_delta"
+            ],
+            "title": "Id",
+            "type": "string"
+          },
+          "label": {
+            "title": "Label"
+          },
+          "unavailable_reason": {
+            "anyOf": [
+              {},
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Unavailable Reason"
+          }
+        },
+        "required": [
+          "id",
+          "label",
+          "before_text",
+          "after_text",
+          "direction",
+          "direction_text"
+        ],
+        "title": "AdjustWhatChangesRowOut",
         "type": "object"
       },
       "AdjustWholeOut": {
@@ -5661,21 +5804,46 @@
         "title": "HistoryOrderOut",
         "type": "object"
       },
-      "HistoryOut": {
+      "HistoryRecordOut": {
         "additionalProperties": false,
+        "description": "D-22 / D-71: one record of Alerts > History: a fired stop or an expiry settlement, with time, what happened, the\nindex value at that moment and the prices (all in the stored wording's text).",
         "properties": {
-          "entries": {
-            "items": {
-              "$ref": "#/components/schemas/EntryOut"
-            },
-            "title": "Entries",
-            "type": "array"
+          "at": {
+            "format": "date-time",
+            "title": "At",
+            "type": "string"
+          },
+          "body": {
+            "title": "Body"
+          },
+          "kind": {
+            "enum": [
+              "stop",
+              "settled"
+            ],
+            "title": "Kind",
+            "type": "string"
+          },
+          "strategy_id": {
+            "title": "Strategy Id",
+            "type": "integer"
+          },
+          "strategy_name": {
+            "title": "Strategy Name"
+          },
+          "title": {
+            "title": "Title"
           }
         },
         "required": [
-          "entries"
+          "kind",
+          "strategy_id",
+          "strategy_name",
+          "at",
+          "title",
+          "body"
         ],
-        "title": "HistoryOut",
+        "title": "HistoryRecordOut",
         "type": "object"
       },
       "HistoryRowOut": {
@@ -6231,12 +6399,16 @@
             },
             "title": "Held",
             "type": "array"
+          },
+          "totals": {
+            "$ref": "#/components/schemas/TotalsOut"
           }
         },
         "required": [
           "groups",
           "held",
           "counts",
+          "totals",
           "empty_text",
           "dismiss_reasons"
         ],
@@ -7053,6 +7225,18 @@
           "can_act": {
             "title": "Can Act",
             "type": "boolean"
+          },
+          "closed_at": {
+            "anyOf": [
+              {
+                "format": "date-time",
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Closed At"
           },
           "condition": {
             "anyOf": [
@@ -8319,6 +8503,16 @@
             "title": "State",
             "type": "string"
           },
+          "status_word": {
+            "enum": [
+              "Draft",
+              "Running",
+              "Completed",
+              "Unknown"
+            ],
+            "title": "Status Word",
+            "type": "string"
+          },
           "strategy_id": {
             "title": "Strategy Id",
             "type": "integer"
@@ -8456,7 +8650,8 @@
           "name",
           "underlying",
           "answered_at",
-          "orders"
+          "orders",
+          "status_word"
         ],
         "title": "PaperBookOut",
         "type": "object"
@@ -8535,6 +8730,15 @@
           "quantity": {
             "title": "Quantity",
             "type": "integer"
+          },
+          "reason_text": {
+            "anyOf": [
+              {},
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Reason Text"
           },
           "side": {
             "enum": [
@@ -9023,6 +9227,15 @@
           "quantity": {
             "title": "Quantity",
             "type": "integer"
+          },
+          "reason_text": {
+            "anyOf": [
+              {},
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Reason Text"
           },
           "side": {
             "enum": [
@@ -9747,6 +9960,16 @@
             "title": "State",
             "type": "string"
           },
+          "status_word": {
+            "enum": [
+              "Draft",
+              "Running",
+              "Completed",
+              "Unknown"
+            ],
+            "title": "Status Word",
+            "type": "string"
+          },
           "strategy_id": {
             "title": "Strategy Id",
             "type": "integer"
@@ -9883,6 +10106,7 @@
           "strategy_id",
           "name",
           "underlying",
+          "status_word",
           "open_count",
           "position_count"
         ],
@@ -13024,6 +13248,16 @@
             "title": "Status",
             "type": "string"
           },
+          "status_word": {
+            "enum": [
+              "Draft",
+              "Running",
+              "Completed",
+              "Unknown"
+            ],
+            "title": "Status Word",
+            "type": "string"
+          },
           "updated_at": {
             "format": "date-time",
             "title": "Updated At",
@@ -13041,6 +13275,7 @@
           "id",
           "name",
           "status",
+          "status_word",
           "revision",
           "created_at",
           "updated_at",
@@ -14354,6 +14589,29 @@
           "results"
         ],
         "title": "TestStrategyOut",
+        "type": "object"
+      },
+      "TotalsOut": {
+        "additionalProperties": false,
+        "properties": {
+          "conditions": {
+            "title": "Conditions",
+            "type": "integer"
+          },
+          "rows": {
+            "title": "Rows",
+            "type": "integer"
+          },
+          "text": {
+            "title": "Text"
+          }
+        },
+        "required": [
+          "conditions",
+          "rows",
+          "text"
+        ],
+        "title": "TotalsOut",
         "type": "object"
       },
       "TrackedStrategyOut": {
@@ -16635,6 +16893,15 @@
             ],
             "title": "Time Value"
           },
+          "time_value_basis_text": {
+            "anyOf": [
+              {},
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Time Value Basis Text"
+          },
           "time_value_display": {
             "anyOf": [
               {},
@@ -16697,6 +16964,23 @@
           "risk_boundaries"
         ],
         "title": "SummaryOut",
+        "type": "object"
+      },
+      "ofo_app__routes__paper__HistoryOut": {
+        "additionalProperties": false,
+        "properties": {
+          "records": {
+            "items": {
+              "$ref": "#/components/schemas/HistoryRecordOut"
+            },
+            "title": "Records",
+            "type": "array"
+          }
+        },
+        "required": [
+          "records"
+        ],
+        "title": "HistoryOut",
         "type": "object"
       },
       "ofo_app__routes__playbooks__DeletedOut": {
@@ -16797,6 +17081,23 @@
           "revision"
         ],
         "title": "DeletedOut",
+        "type": "object"
+      },
+      "ofo_app__routes__strategies__HistoryOut": {
+        "additionalProperties": false,
+        "properties": {
+          "entries": {
+            "items": {
+              "$ref": "#/components/schemas/EntryOut"
+            },
+            "title": "Entries",
+            "type": "array"
+          }
+        },
+        "required": [
+          "entries"
+        ],
+        "title": "HistoryOut",
         "type": "object"
       },
       "ofo_app__routes__strategies__LegIn": {
@@ -17274,6 +17575,16 @@
             "title": "Status",
             "type": "string"
           },
+          "status_word": {
+            "enum": [
+              "Draft",
+              "Running",
+              "Completed",
+              "Unknown"
+            ],
+            "title": "Status Word",
+            "type": "string"
+          },
           "total_after": {
             "anyOf": [
               {
@@ -17323,6 +17634,7 @@
           "id",
           "underlying",
           "status",
+          "status_word",
           "created_at",
           "updated_at",
           "name",
@@ -20091,6 +20403,25 @@
         "summary": "Read Paper Alerts"
       }
     },
+    "/paper/alerts/records": {
+      "get": {
+        "description": "D-22 / D-71 (owner decision): every fired stop (the alert rows, read or not) and every expiry settlement, newest\nfirst. No new table: the stop's alert and the settle orders are already stored with their text.",
+        "operationId": "paper_alerts_records_paper_alerts_records_get",
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ofo_app__routes__paper__HistoryOut"
+                }
+              }
+            },
+            "description": "Successful Response"
+          }
+        },
+        "summary": "Paper Alerts Records"
+      }
+    },
     "/paper/strategies": {
       "get": {
         "description": "Every paper strategy of the signed-in user, newest first: fixed cost whatever the count (finding F-3): one orders\nquery, one contract batch (two queries) and ONE market read per underlying for every open contract together.",
@@ -20794,7 +21125,7 @@
             "content": {
               "application/json": {
                 "schema": {
-                  "$ref": "#/components/schemas/HistoryOut"
+                  "$ref": "#/components/schemas/ofo_app__routes__strategies__HistoryOut"
                 }
               }
             },
