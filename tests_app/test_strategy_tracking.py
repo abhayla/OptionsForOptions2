@@ -531,3 +531,44 @@ async def test_a_strategy_that_is_not_completed_has_no_close_time(db):
     await paper_store.place(db, stored.user_ref, stored.id, _exits66(stored, [0], one_hour))
     row = await _row66(app, stored.id)  # one leg exited, three open: Running, nothing closed yet
     assert row["status_word"] == "Running" and row.get("closed_at") is None
+
+
+# ---- GC-ICLIVE D-64 (owner decision): after the 15:30 close the book says when expiring legs settle ----
+# Real case 24 Nov 2026 (C2 157 at 15:30, C9 164): raw "Instrument NSE_FO:64457 cannot be used: expired" and "prices not live".
+# The fixture strategy's legs expire 2026-10-13: the answer clock is moved around that day's close (IST = UTC + 5:30).
+
+SETTLES_LINE = "Market closed. Open legs that expire today settle at 15:45."
+
+
+def _clock_at(app, hour: int, minute: int, day: int = 13) -> None:
+    at = datetime.datetime(2026, 10, day, hour, minute, tzinfo=datetime.UTC) - datetime.timedelta(hours=5, minutes=30)
+    app.dependency_overrides[get_answer_clock] = lambda: lambda: at
+
+
+async def _book_after_close(app, stored, hour: int, minute: int, day: int = 13) -> dict:
+    async with _client(app) as c:
+        placed = await c.post(f"/paper/strategies/{stored.id}/orders", json=_paper_body(stored, ENTRY_PRICES))
+        assert placed.status_code == HTTPStatus.CREATED, placed.text
+    _clock_at(app, hour, minute, day)
+    return await _get_ok(app, f"/paper/strategies/{stored.id}")
+
+
+async def test_d64_before_the_close_there_is_no_line(db):
+    app, stored, *_ = await _setup(db)
+    assert (await _book_after_close(app, stored, 15, 0)).get("after_close_text") is None
+
+
+async def test_d64_between_close_and_settlement_the_line_replaces_the_raw_text(db):
+    app, stored, *_ = await _setup(db)
+    book = await _book_after_close(app, stored, 15, 35)
+    assert book["after_close_text"] == SETTLES_LINE
+    shown = " ".join(str(v) for k, v in book.items() if k.endswith("_text") and v)
+    assert "NSE_FO:" not in shown and "cannot be used" not in shown
+    assert all(p["contract_text"] and "NSE_FO" not in p["contract_text"] for p in book["positions"])
+
+
+async def test_d64_after_settlement_and_on_another_day_there_is_no_line(db):
+    app, stored, *_ = await _setup(db)
+    assert (await _book_after_close(app, stored, 15, 50)).get("after_close_text") is None  # settled at 15:45
+    _clock_at(app, 15, 35, day=8)  # a day when no open leg expires
+    assert (await _get_ok(app, f"/paper/strategies/{stored.id}")).get("after_close_text") is None
