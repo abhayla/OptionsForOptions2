@@ -70,3 +70,20 @@ scenario strategies.
   owner's call (not done).
 
 Spec basis: REQ-109 AC-5; ADR-311; ADR-210; ADR-324.
+
+## Q4 (D-38): what does a page say when a read takes too long, and does it keep what the trader typed?
+
+Business call: the contract says "a page that times out says so and keeps the user's input"; the words and the
+failed-pick behaviour are the run's choice (ADR-324 point 4, PENDING OWNER READ).
+
+- **Built:** a read that hits the browser's 10 s limit says it took too long ("The plan took too long to load. Nothing
+  was changed.", "The settings took too long to load, so no value is shown.", and on Create Strategy step 4 "The server
+  took too long to answer." with "Your choices on this page are kept."). A failed playbook pick, for any reason, keeps
+  the plan sheet and the typed fields and shows the could-not-load line inline.
+- **Not built:** replacing the sheet with the could-not-load state on a failed pick (the 23 Nov behaviour), which
+  throws away the typed target and stop.
+- **Real case (23 Nov):** settings page 10 s then "could not be read" (the second try worked); plan dialog
+  "Loading the plan..." 5 to 12 s on every paper add.
+- **Recommendation:** keep as built; change only the words if wanted.
+
+Spec basis: contract GC-ICLIVE-D (D-38 line); ADR-324 point 4; ADR-210 (reason sentences).
