@@ -262,6 +262,63 @@ describe.runIf(WIRED.hold)('ADR-329 (1): the chain trip keeps the legs, Add Sele
   })
 })
 
+// ---- review round (RESULTS-lane-b.md "Review findings"): F1, F3, F5, F7 on the real pages ----
+const OTHER_LINK = link(real.legs.slice(1, 3))
+describe.runIf(WIRED.hold)('review round: chain trip and replace question', () => {
+  it('F1 held NIFTY legs + ticked SENSEX contracts: nothing is added, the held legs stay, a plain sentence says why', async () => {
+    await start(BUILDER, { draft: HELD_LINK })
+    await goChain()
+    await w.get('[data-testid="underlying-select"]').setValue('SENSEX')
+    await flushPromises()
+    FakeSocket.all.at(-1).serverOpen()
+    FakeSocket.all.at(-1).serverPush({ ...CHAIN_ANSWER, underlying: 'SENSEX' })
+    await flushPromises()
+    await tick('22900.00', 'ce', 'buy')
+    await addSelected()
+    expect(router.currentRoute.value.name).toBe(BUILDER)
+    expect(shown()).toEqual(HELD_SHOWN)
+    noDialogs()
+    expect(w.text()).toContain('These contracts are on SENSEX; the legs in the builder are on NIFTY. Nothing was added.')
+  })
+
+  it('F3 Back from the chain into the builder?draft=X entry does not add the same ticks again', async () => {
+    await start(BUILDER, { draft: HELD_LINK })
+    await goChain()
+    await tick('22900.00', 'ce', 'buy')
+    await tick('22300.00', 'pe', 'sell')
+    await addSelected()
+    expect(rowCount()).toBe(5)
+    await goChain()
+    router.back()
+    await flushPromises()
+    await flushPromises()
+    noDialogs()
+    expect(shown()).toEqual([...HELD_SHOWN, 'BUY NSE_FO:44700 1', 'SELL NSE_FO:44701 1'])
+  })
+
+  it('F5 the draft query dropped (Save) while the replace question is open: the question closes as Cancel; a late Replace cannot apply the stale link', async () => {
+    await start(BUILDER, { draft: HELD_LINK })
+    await router.push({ name: BUILDER, query: { draft: OTHER_LINK } })
+    await flushPromises()
+    expect(t(w, 'draft-replace-dialog').exists()).toBe(true)
+    await router.replace({ name: BUILDER, query: {} })
+    await flushPromises()
+    expect(t(w, 'draft-replace-dialog').exists()).toBe(false)
+    expect(shown()).toEqual(HELD_SHOWN)
+    expect(router.currentRoute.value.query.draft).toBeUndefined() // the cancel did not write the old link back over the Save
+  })
+
+  it('F7 unmount with the replace question open settles it (no dangling promise)', async () => {
+    await start(BUILDER, { draft: HELD_LINK })
+    await router.push({ name: BUILDER, query: { draft: OTHER_LINK } })
+    await flushPromises()
+    const vm = builder()
+    expect(vm.replaceAsk).not.toBeNull()
+    w.unmount()
+    expect(vm.replaceAsk).toBeNull()
+  })
+})
+
 describe('C7 the chain opened directly (nothing behind it): Add Selected opens exactly the ticked legs, no question', () => {
   it('2 ticked contracts -> 2 rows', async () => {
     await start(CHAIN)

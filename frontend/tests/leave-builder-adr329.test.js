@@ -91,6 +91,45 @@ describe('the leave guard (harness)', () => {
     await flushPromises()
     return { router, w }
   }
+  it('F2 a second navigation while the question is open settles the first as Stay: the hold survives, one question stays open', async () => {
+    unsaved.value = 3
+    snapshot = { legs: [{ id: 'a' }, { id: 'b' }, { id: 'c' }] }
+    const { router, w } = await start()
+    useBuilderHold().hold(snapshot)
+    const first = router.push({ name: HOME })
+    await flushPromises()
+    const second = router.push({ name: 'market-other' })
+    await flushPromises()
+    expect(useBuilderHold().count).toBe(3) // the first guard did not proceed to "Leave" and clear it
+    expect(t(w, 'leave-dialog').exists()).toBe(true)
+    await t(w, 'leave-stay').trigger('click')
+    await Promise.all([first, second])
+    expect(route(router)).toBe(BUILDER)
+    expect(useBuilderHold().count).toBe(3)
+  })
+  it('F2 a navigation that needs no question (to the chain) while one is open settles the open one as Stay', async () => {
+    unsaved.value = 3
+    snapshot = { legs: [{ id: 'a' }, { id: 'b' }, { id: 'c' }] }
+    const { router, w } = await start()
+    const first = router.push({ name: HOME })
+    await flushPromises()
+    expect(t(w, 'leave-dialog').exists()).toBe(true)
+    await router.push({ name: CHAIN_ROUTE })
+    await flushPromises()
+    await first
+    expect(t(w, 'leave-dialog').exists()).toBe(false)
+    expect(useBuilderHold().count).toBe(3)
+  })
+  it('F7 unmount with the question open settles it: the pending navigation ends', async () => {
+    unsaved.value = 3
+    const { router, w } = await start()
+    const nav = router.push({ name: HOME })
+    await flushPromises()
+    expect(t(w, 'leave-dialog').exists()).toBe(true)
+    w.unmount()
+    const done = await Promise.race([nav.then(() => 'settled'), new Promise((r) => setTimeout(() => r('dangling'), 200))])
+    expect(done).toBe('settled')
+  })
   it('L1 no unsaved legs: the push to Home resolves with no dialog (absent)', async () => {
     const { router, w } = await start()
     await router.push({ name: HOME })
