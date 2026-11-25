@@ -251,7 +251,7 @@ async def test_ac1_core_two_pushes_for_a_five_strike_chain_with_changing_ltps_an
     assert second["rows"][2]["pe"]["health"] == "available"
 
 
-async def test_ac2_default_columns_present_and_change_null_without_a_previous_close():
+async def test_ac2_default_columns_present_and_change_null_without_a_previous_close():  # no day stats in this rig
     """AC-2/AC-3/AC-4: each cell carries exactly LTP, bid/ask, Change, OI (+ change), Volume, the engine's IV and
     Greeks (row 33) plus id, health, time; the feed has no previous close, so change is null on every cell."""
     provider, _feed, channel, _mono, push = make_rig()
@@ -938,7 +938,7 @@ async def test_ac9_each_row_carries_its_moneyness_from_the_server_atm():
 
 @pytest.mark.parametrize(("extra", "strikes"), [
     ({}, ["25050.00", "25100.00", "25150.00", "25200.00", "25250.00"]),
-    ({"min_oi": 2000}, ["25200.00"]),
+    ({"min_oi": 2000}, []),  # D-55: the 25200 call has OI 5000 but its put (shown too) has 1000: the row goes
     ({"min_volume": 501}, []),
     ({"min_ltp": "203.00"}, ["25200.00", "25250.00"]),
     ({"bid_and_ask": True}, ["25100.00"]),
@@ -1248,3 +1248,58 @@ async def test_d12_expiry_day_cells_carry_decay_left_today_other_days_none():
     assert abs(left + (Decimal("102.50") - Decimal("12.30"))) <= Decimal("1.00")  # the model's value now = the price
     other = await _cells_at(T0)
     assert other["ce"]["decay_left_today"] is None and other["ce"]["theta"] is not None
+
+
+# ---- D-55 (ADR-320 point 6): Min OI keeps a row only when the side(s) shown pass; Change from the feed's previous close --------
+
+def _side(oi, ltp="100.00"):
+    return chain_push.ChainCellOut(instrument_id="NSE_FO:1001", ltp=Decimal(ltp), bid=None, ask=None, change=None, oi=oi, oi_change=None,
+                                   volume=10, health="available", at=T0, last_trade_at=None, permitted=True,
+                                   unavailable_reason=None, **chain_push._NO_GREEKS)
+
+
+def _row(ce, pe):
+    return chain_push.ChainRowOut(strike=Decimal("25200.00"), moneyness="ATM", ce=ce, pe=pe)
+
+
+@pytest.mark.parametrize(("ce_oi", "pe_oi", "kept"), [
+    (5000, 5000, True),   # both sides shown, both pass
+    (5000, 1000, False),  # the put side is shown and fails: the row goes (was kept when either passed)
+    (1000, 5000, False),  # the call side is shown and fails
+    (None, 5000, False),  # a shown side with no OI value never meets a minimum
+])
+def test_d55_min_oi_both_sides_shown_each_must_pass(ce_oi, pe_oi, kept):
+    req = ChainRequest(underlying="NIFTY", expiry=EXPIRY, strikes_each_side=2, min_oi=2000)
+    assert chain_push.row_passes(_row(_side(ce_oi), _side(pe_oi)), req) is kept
+
+
+@pytest.mark.parametrize(("oi", "kept"), [(5000, True), (1000, False)])
+def test_d55_min_oi_call_side_only_shown(oi, kept):
+    req = ChainRequest(underlying="NIFTY", expiry=EXPIRY, strikes_each_side=2, min_oi=2000)
+    assert chain_push.row_passes(_row(_side(oi), None), req) is kept
+
+
+@pytest.mark.parametrize(("oi", "kept"), [(5000, True), (1000, False)])
+def test_d55_min_oi_put_side_only_shown(oi, kept):
+    req = ChainRequest(underlying="NIFTY", expiry=EXPIRY, strikes_each_side=2, min_oi=2000)
+    assert chain_push.row_passes(_row(None, _side(oi)), req) is kept
+
+
+def test_d55_volume_and_premium_filters_are_unchanged_either_side():
+    req = ChainRequest(underlying="NIFTY", expiry=EXPIRY, strikes_each_side=2, min_volume=5, min_ltp=Decimal("50"))
+    assert chain_push.row_passes(_row(_side(1, "100.00"), _side(1, "10.00")), req) is True
+
+
+async def test_d55_change_is_ltp_less_the_feed_previous_close():
+    """D-55: ltp 63.10 with the feed's previous close 58 (_stats) gives Change 5.10 as the server's exact decimal."""
+    ce = await _pushed_ce(_stats(int(T0.timestamp())))
+    assert (ce["ltp"], ce["change"]) == ("63.10", "5.10")
+
+
+@pytest.mark.parametrize("stats", [None, DayStatsAnswer.unavailable("PACKET_WITHOUT_DAY_FIELDS"),
+                                   DayStatsAnswer(DayStats(Decimal("60"), Decimal("70"), Decimal("55"), None, 1))])
+async def test_d55_change_is_null_without_a_previous_close(stats):
+    """No day stats, a packet without day fields, or no previous close: null (the screen says not available), never 0."""
+    ce = await _pushed_ce(stats)
+    assert ce["ltp"] == "63.10"
+    assert ce["change"] is None
