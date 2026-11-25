@@ -184,7 +184,7 @@ describe('D-41: the read cycle (fake timers)', () => {
     expect(texts(w, 'tracking-leg-ltp')).toEqual(OWN)
     expect(texts(w, 'net-ltp')).toEqual(['—', '—', '—', '—'])
   })
-  it('10a closed strategy: no book read; rows say "Exited at <price>"', async () => {
+  it('10 a closed strategy: no book read; rows say "Exited at <price>"', async () => {
     const flat = LEGS.map((l) => pos(l, { net_quantity: 0, ltp_text: null, unbooked_text: null, total_text: '0.00', booked_text: '0.00' }))
     TRACK = track({ state: 'EXITED', legs: LEGS.map((l, i) => tLeg(l, i, { exit_price_display: `9${i}.00`, exited_at: TRACK_AT, pnl_kind: 'booked', current_price_display: null })) })
     const w = await page(book({ state: 'EXITED', positions: flat }))

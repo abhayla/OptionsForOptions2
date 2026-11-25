@@ -220,6 +220,36 @@ describe('ADR-328 (4): an Exit is never built from an old net', () => {
     expect(t(w, 'paper-confirm').exists()).toBe(true)
   })
 
+  it('changed elsewhere: Exit edits kept after the dialog closed are not posted by "Review and add" (ADR-328 (4))', async () => {
+    const w = await builder()
+    await t(w, 'paper-exit-all').trigger('click')
+    await flushPromises()
+    await setMark(w, true)
+    expect(t(w, 'paper-confirm').exists()).toBe(false)
+    expect(w.vm.$.setupState.legs).toEqual([]) // the edits are kept
+    await t(w, 'paper-review').trigger('click')
+    await flushPromises()
+    if (t(w, 'paper-confirm-button').exists()) await t(w, 'paper-confirm-button').trigger('click')
+    await flushPromises()
+    await w.vm.$.setupState.confirmPending(w.vm.$.setupState.paperRows) // and no direct confirm either
+    await flushPromises()
+    expect(orderPosts()).toHaveLength(0)
+    expect(t(w, 'paper-exit-reason').text()).toBe(CHANGED)
+  })
+
+  it('failed read: Exit edits kept after the dialog closed are not posted by "Review and add" either', async () => {
+    const w = await builder()
+    await t(w, 'paper-exit-all').trigger('click')
+    await flushPromises()
+    await failRead(w)
+    await t(w, 'paper-review').trigger('click')
+    await flushPromises()
+    if (t(w, 'paper-confirm-button').exists()) await t(w, 'paper-confirm-button').trigger('click')
+    await flushPromises()
+    expect(orderPosts()).toHaveLength(0)
+    expect(t(w, 'paper-exit-reason').text()).toBe(NOT_LIVE)
+  })
+
   it('both flags: the not-live reason comes first', async () => {
     const w = await builder()
     await setMark(w, true)

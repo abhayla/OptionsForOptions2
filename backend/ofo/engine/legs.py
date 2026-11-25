@@ -106,9 +106,9 @@ def intrinsic_value(instrument: Instrument, strike: Decimal | None, level: Decim
     """The ONE intrinsic value per unit at ``level``: CE max(0, level - strike), PE max(0, strike - level), a future the
     level itself. The At Expiry mark and the paper expiry settlement (REQ-109 AC-7) both read it."""
     if instrument is Instrument.CE:
-        return max(level - strike, Decimal(0))  # type: ignore[operator] - an option has a strike
+        return max(Decimal(0), level - strike)  # type: ignore[operator] - an option has a strike
     if instrument is Instrument.PE:
-        return max(strike - level, Decimal(0))  # type: ignore[operator]
+        return max(Decimal(0), strike - level)  # type: ignore[operator]
     return level
 
 
