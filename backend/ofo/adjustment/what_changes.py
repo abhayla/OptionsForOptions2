@@ -22,6 +22,9 @@ closing legs of ONE side removes that side's credit, and when the other side the
 it is named; otherwise the plain "removes credit" line. Exit (kind ``exit``): max loss after (the loss it books,
 after every charge) above max loss before gets the "books today's prices" line. Roll, Convert and No change carry no
 reason line: their names promise no direction.
+
+D-61 (ADR-320 point 5): for "Buy back the untested short" (A-26) the same line also carries the sentence naming a long
+call or put left with no short of its type against it (``lone_long_line``, read from the approach's resulting legs).
 """
 from __future__ import annotations
 
@@ -29,6 +32,7 @@ from collections.abc import Mapping, Sequence
 from dataclasses import dataclass
 from decimal import ROUND_HALF_EVEN, Decimal
 
+from ofo.adjustment.approaches import PositionLeg
 from ofo.adjustment.compare import INFINITE, Cell, Column, Context, MarginRead, Rows, pnl_at
 from ofo.engine import adjust_money
 from ofo.errors.explanations import ExplanationText, render_explanation
@@ -184,6 +188,27 @@ def reason_line(col: Column, ctx: Context, before_col: Column, loss_before: Side
     return render_explanation("adjust_wc_reason_credit")
 
 
+def lone_long_line(after: Sequence[PositionLeg] | None) -> ExplanationText | None:
+    """D-61 (ADR-320 point 5): one line when the legs that stay open hold a long call or put with no short of the same
+    type against it, decided from the approach's own resulting legs; None when a short stays against each long, when
+    nothing stays open (``()``) and when no after-state was built (``None``). One sentence per such type, call first."""
+    if not after:
+        return None
+    shorts = {x.type for x in after if x.side == "SELL"}
+    lines = [render_explanation("adjust_lone_long", kind=_SIDE_WORD[t]) for t in ("CE", "PE")
+             if t not in shorts and any(x.side == "BUY" and x.type == t for x in after)]
+    return render_explanation("adjust_wc_lines", first=lines[0], second=lines[1]) if len(lines) == 2 else next(
+        iter(lines), None)
+
+
+def _with_lone_long(col: Column, reason: ExplanationText | None) -> ExplanationText | None:
+    """The reason line, then the D-61 line when the approach is "Buy back the untested short" (A-26) and it applies."""
+    lone = lone_long_line(col.built.after) if col.built.id == "A-26" else None
+    if lone is None or reason is None:
+        return lone or reason
+    return render_explanation("adjust_wc_lines", first=reason, second=lone)
+
+
 def block(col: Column, ctx: Context, before_col: Column) -> Block:
     """The eight measures of one built approach against the position as it stands (``before_col``)."""
     b, a = Rows(before_col, ctx), Rows(col, ctx)
@@ -201,7 +226,8 @@ def block(col: Column, ctx: Context, before_col: Column) -> Block:
         _row("net_delta", _of_cell(delta_b if isinstance(delta_b, Cell) else delta_b["delta"]),
              _of_cell(delta_a if isinstance(delta_a, Cell) else delta_a["delta"])),
     )
-    return Block(render_explanation("adjust_wc_title"), rows, reason_line(col, ctx, before_col, loss_b, loss_a))
+    return Block(render_explanation("adjust_wc_title"), rows,
+                 _with_lone_long(col, reason_line(col, ctx, before_col, loss_b, loss_a)))
 
 
 def blocks(columns: Sequence[Column], ctx: Context, before_col: Column) -> Mapping[str, Block]:
@@ -209,4 +235,4 @@ def blocks(columns: Sequence[Column], ctx: Context, before_col: Column) -> Mappi
     return {c.built.id: block(c, ctx, before_col) for c in columns}
 
 
-__all__ = ["MEASURES", "Block", "Row", "Side", "block", "blocks", "reason_line"]
+__all__ = ["MEASURES", "Block", "Row", "Side", "block", "blocks", "lone_long_line", "reason_line"]

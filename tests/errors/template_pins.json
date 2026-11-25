@@ -4543,5 +4543,13 @@
   "explanation:adjust_cmp_breakeven_above": {
     "sha256": "bb2af31238f122493d005044b736314a3d0153b00d2c683e4cfee826080a2d6a",
     "reviewed": "pending owner read"
+  },
+  "explanation:adjust_lone_long": {
+    "sha256": "3e8d16963404d77e89fe1aeaab2c1b52158e854f97af4321c7fc0fd8bab1fe50",
+    "reviewed": "pending owner read"
+  },
+  "explanation:adjust_wc_lines": {
+    "sha256": "832eae6213c539b76e62e086c9b7997e4369dbaf63616826b903e6d53792ea56",
+    "reviewed": "pending owner read"
   }
 }

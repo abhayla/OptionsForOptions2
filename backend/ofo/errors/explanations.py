@@ -2149,6 +2149,11 @@ _EXPLANATIONS: tuple[ExplanationTemplate, ...] = (
     ExplanationTemplate("adjust_wc_reason_side", "values_seen",
                         "This removes credit from the {closed} side, so the {remaining} spread becomes the largest loss.",
                         {"closed": Recorded, "remaining": Recorded}),
+    # D-61 (ADR-320 point 5; pending owner read): the buy-back of the untested short leaves a long option with no short
+    ExplanationTemplate("adjust_lone_long", "values_seen",
+                        "This trade now has a long {kind} with no short against it; its result now depends on direction.",
+                        {"kind": Recorded}),
+    ExplanationTemplate("adjust_wc_lines", "values_seen", "{first} {second}", {"first": Explained, "second": Explained}),
     ExplanationTemplate("adjust_wc_reason_credit", "values_seen",
                         "This removes credit that was held against the loss, so the maximum loss is higher than before."),
     ExplanationTemplate("adjust_wc_reason_exit", "values_seen",
