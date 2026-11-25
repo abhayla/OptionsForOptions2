@@ -13,7 +13,8 @@ SHOWN = dt.datetime(2026, 11, 23, 9, 1, 20, tzinfo=dt.UTC)
 
 
 def _suggestion(outcome: str, timeline: list) -> playbook_store.Suggestion:
-    return playbook_store.Suggestion(901, 161, "R-delta", "T-04", "Last day", Decimal("0.3311"), Decimal("0.3500"), SHOWN,
+    return playbook_store.Suggestion(901, 161, "R-delta", "T-04", "Last day", Decimal("0.3311"),
+                                     Decimal("0.3500"), SHOWN,
                                      outcome, None, timeline)
 
 

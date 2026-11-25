@@ -1,5 +1,6 @@
 """D-25 (ADR-238 (6), ADR-294 (4), ADR-320 point 4): the offer of Take profit (A-24, A-25) states its basis. The profit
-test is BEFORE charges; the offer carries that figure and the whole-trade result AFTER charges beside it, each named, so a
+test is BEFORE charges; the offer carries that figure and the whole-trade result AFTER charges beside it, each named,
+so a
 trader never reads an offered Take profit at a result of -223 as if it were a profit.
 
 Real case 23 Nov, strategy 162: Take profit offered with the same numbers as Exit while the page showed P&L -223

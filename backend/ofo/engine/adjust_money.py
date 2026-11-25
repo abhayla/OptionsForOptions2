@@ -108,7 +108,8 @@ def sum_amounts(amounts: Iterable[Decimal]) -> Decimal:
 
 
 def after_charges(pnl: Decimal, total_charges: Decimal) -> Decimal:
-    """D-25 (ADR-294 (4)): a whole-trade P&L before charges less every charge line once (the engine's ``total_charges``)."""
+    """D-25 (ADR-294 (4)): a whole-trade P&L before charges less every charge line once
+    (the engine's ``total_charges``)."""
     return pnl - total_charges
 
 

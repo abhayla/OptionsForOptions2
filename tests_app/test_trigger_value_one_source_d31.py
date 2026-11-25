@@ -1,4 +1,5 @@
-"""D-31 (ADR-309 (1), ADR-320): a rule with an open record is shown on the trade page (panel and drawer) with the figures
+"""D-31 (ADR-309 (1), ADR-320): a rule with an open record is shown on the trade page (panel and
+drawer) with the figures
 of that record, the same ones the opportunity list shows; the check's value of the moment is the separate "Now" value.
 Real case 23 Nov, condor C6: the list said 0.7293 % (the record), the panel 0.6882 % (this poll), the drawer 0.6851 %
 (an earlier poll), within a minute, none labelled."""

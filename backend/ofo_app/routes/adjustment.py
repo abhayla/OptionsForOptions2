@@ -730,7 +730,8 @@ def _days_to_expiry(position: Position) -> int | None:
 
 
 def take_profit_block(built: ApproachLegs | None, priced: Priced | None) -> dict[str, Any] | None:
-    """D-25 (ADR-238 (6), ADR-294 (4)): an OFFERED Take profit (A-24, A-25) names the whole trade's result before charges
+    """D-25 (ADR-238 (6), ADR-294 (4)): an OFFERED Take profit (A-24, A-25) names the whole trade's result
+    before charges
     (the figure its profit test used) and, beside it, the result after charges (before charges less every charge line,
     the engine's ``total_charges``). Refused, other approaches: None. Charges not priced: the after figure is None and
     the text says so, never 0."""
