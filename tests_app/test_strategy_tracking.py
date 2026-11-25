@@ -582,3 +582,29 @@ async def test_d64_the_tracking_route_carries_the_same_line_and_no_raw_text(db):
     assert body["unpriced_text"] is None
     _clock_at(app, 11, 0)
     assert (await _get_ok(app, f"/strategies/{stored.id}/tracking")).get("after_close_text") is None
+
+
+async def test_d42_one_unreadable_book_degrades_only_its_own_row(db, monkeypatch):
+    """Review: a contract that no longer resolves must not make the whole My Strategies list a 500."""
+    from ofo_app import tracked_contracts  # noqa: PLC0415
+    app, good, *_ = await _setup(db)
+    _, bad = await _with_draft(db, good.user_ref)
+    ids = good.saved.contract_ids
+    legs = good.saved.definition.legs
+    async with _client(app) as c:
+        one = await c.post(f"/paper/strategies/{good.id}/orders", json={"orders": _paper_body(good)["orders"][:3]})
+        assert one.status_code == HTTPStatus.CREATED, one.text
+        other = await c.post(f"/paper/strategies/{bad.id}/orders", json={"orders": [
+            {"contract_id": ids[3], "side": legs[3].action.value, "quantity": legs[3].quantity,
+             "price": ENTRY_PRICES[3], "kind": "open"}]})
+        assert other.status_code == HTTPStatus.CREATED, other.text
+    real = tracked_contracts.resolve
+
+    async def without_last(conn, wanted):
+        return [r for r in await real(conn, wanted) if r.contract_id != ids[3]]
+
+    monkeypatch.setattr(tracked_contracts, "resolve", without_last)
+    rows = {s["id"]: s for s in (await _get_ok(app, "/strategies"))["strategies"]}
+    assert rows[good.id]["leg_count"] == OPEN_AFTER_EXIT and rows[good.id].get("current_legs_text") is None
+    assert rows[bad.id]["leg_count"] == len(legs)  # the saved legs stand
+    assert rows[bad.id]["current_legs_text"] == "The current legs could not be read. The legs shown are as saved."
