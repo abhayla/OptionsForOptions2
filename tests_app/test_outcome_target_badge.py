@@ -140,3 +140,12 @@ def test_badge_is_not_available_without_an_estimate_with_the_reason_never_a_numb
     object.__setattr__(t, "at_refused_reason", reason)
     b = badge(t, _margin(Decimal(61163)))
     assert b["state"] == "unavailable" and b["reason"] == reason and b["amount"] is None
+
+
+async def test_d37_every_target_block_carries_the_not_live_sentence(provider):
+    """D-37: the plain offer and a target reply both carry the sentence the browser shows beside a "-" readout when prices
+    are not live (the block it keeps on screen may be the offer, which has no stale text)."""
+    plain = (await _target(provider))["target"]
+    asked = (await _target(provider, target_level="25350"))["target"]
+    assert plain["not_live_text"] == "not shown while prices are not live"
+    assert asked["not_live_text"] == plain["not_live_text"]
