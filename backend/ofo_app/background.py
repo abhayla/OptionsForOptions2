@@ -536,7 +536,7 @@ def screen_margin_reader(margin_of: Any) -> MarginOf:
     return read
 
 
-def worker_margin_of(login: "StoredLogin", ctx: Any, source: Any) -> MarginOf:
+def worker_margin_of(login: StoredLogin, ctx: Any, source: Any) -> MarginOf:
     """The worker's T-16 margin seam. D-36 round 2: every read gets its OWN ``ApproachMargin`` (``get_approach_margin``
     makes the unit of work's one ``RequestFunds``), so the available-funds figure, or its failure, is that read's only:
     nothing a long-lived worker holds carries one read's funds into the next check cycle."""

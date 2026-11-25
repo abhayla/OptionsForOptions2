@@ -40,7 +40,7 @@ from collections import OrderedDict
 from collections.abc import Awaitable, Callable, Hashable, Sequence
 from dataclasses import dataclass
 from decimal import Decimal
-from typing import Final
+from typing import Any, Final
 
 from ofo.engine.product import Product
 from ofo.execution.margin_gate import MARGIN_BUSY_CODE
@@ -128,8 +128,16 @@ class RequestFunds:
 
     def __init__(self, limit: float = READ_TIMEOUT_SECONDS) -> None:
         self._flight: asyncio.Future | None = None
+        self._opening: asyncio.Future | None = None
         self._limit = limit
         self.reads = 0  # Kite funds reads started (a test counter)
+
+    async def client(self, open_client: Callable[[], Awaitable[Any]]) -> Any:
+        """The request's one opened client (live: one stored-token read = one pooled connection, asked once, not once
+        per basket); a failed open is the same failure for all of them."""
+        if self._opening is None:
+            self._opening = asyncio.ensure_future(open_client())
+        return await asyncio.shield(self._opening)
 
     async def value(self, client: KiteMargin) -> Decimal:
         if self._flight is None:
@@ -216,7 +224,7 @@ class OutcomeMargin:
         self.reads += 1
         timeout = self._limits.timeout
         try:
-            client = await asyncio.wait_for(self._open(), timeout)
+            client = await asyncio.wait_for(self._open() if funds is None else funds.client(self._open), timeout)
             if client is None:  # no stored session after all
                 return MARGIN, False
             if funds is None:
