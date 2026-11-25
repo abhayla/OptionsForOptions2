@@ -174,3 +174,91 @@ describe('G3: one door per screen concern (real scan of src/)', () => {
     }
   })
 })
+
+// ---- mutation tests: in-memory samples, no disk writes -------------------------------------------------------------------------
+const BAD_TEXT = "const MSG = 'Prices are not live; try again when they update'\n"
+const BAD_POST = "async function sendIt(api, id) {\n  return api.post(`/paper/strategies/${id}/orders`, { orders: [] })\n}\n"
+const BAD_GET = "async function loadIt(api, id) {\n  return (await api.get(`/paper/strategies/${id}`)).data\n}\n"
+
+describe('G3 mutations: a sample outside the door is one problem, the same sample in its home is none', () => {
+  it('rule 1: a not-live text in a screen is one problem; in priceState.js none', () => {
+    const bad = problems({ 'src/components/Foo.vue': BAD_TEXT }, [])
+    expect(bad).toHaveLength(1)
+    expect(bad[0]).toContain('not-live string outside priceState: src/components/Foo.vue:1 in MSG')
+    expect(problems({ 'src/lib/priceState.js': BAD_TEXT }, [])).toEqual([])
+  })
+
+  it('rule 1: each exported text and a retyped wording is caught', () => {
+    for (const t of [...NOT_LIVE_TEXTS, 'Total: prices are not live']) {
+      expect(problems({ 'src/pages/A.vue': `const x = "${t}"\n` }, [])).toHaveLength(1)
+    }
+  })
+
+  it('rule 1: the same words in a comment are not a problem', () => {
+    expect(problems({ 'src/pages/A.vue': "// prices are not live here\n/* Prices are not live; try again when they update */\nconst x = 1\n" }, [])).toEqual([])
+  })
+
+  it('rule 2: an orders POST outside addToPaper is one problem; inside addToPaper none; another function of tracking.js is one', () => {
+    const bad = problems({ 'src/pages/Foo.vue': BAD_POST }, [])
+    expect(bad).toHaveLength(1)
+    expect(bad[0]).toContain('paper order POST outside addToPaper: src/pages/Foo.vue:2 in sendIt')
+    const home = BAD_POST.replace('sendIt', 'addToPaper')
+    expect(problems({ 'src/lib/tracking.js': home }, [])).toEqual([])
+    expect(problems({ 'src/lib/tracking.js': BAD_POST }, [])).toHaveLength(1)
+  })
+
+  it('rule 2: a string-joined path is caught too, and a POST to another path is not', () => {
+    expect(problems({ 'src/a.js': "api.post('/paper/strategies/' + id + '/orders', b)\n" }, [])).toHaveLength(1)
+    expect(problems({ 'src/a.js': "api.post(`/paper/strategies/${id}/triggers`, b)\n" }, [])).toEqual([])
+  })
+
+  it('rule 3: a single-book read outside usePaperBookRead is one problem; in its home none', () => {
+    const bad = problems({ 'src/pages/Foo.vue': BAD_GET }, [])
+    expect(bad).toHaveLength(1)
+    expect(bad[0]).toContain('paper book read outside usePaperBookRead: src/pages/Foo.vue:2 in loadIt')
+    expect(problems({ 'src/lib/usePaperBookRead.js': BAD_GET }, [])).toEqual([])
+  })
+
+  it('rule 3: the list and the sub-resources are out of scope by pattern', () => {
+    const ok = "api.get('/paper/strategies')\napi.get(`/paper/strategies/${id}/triggers`)\napi.get(`/paper/strategies/${id}/exit-risk`, {})\n"
+    expect(problems({ 'src/a.js': ok }, [])).toEqual([])
+  })
+
+  it('an unreadable source fails closed', () => {
+    expect(problems({ 'src/a.js': null }, [])).toHaveLength(1)
+  })
+})
+
+describe('G3 mutations: exemptions', () => {
+  const E = [{ rule: 3, file: 'src/lib/x.js', fn: 'readIt', text: '/paper/strategies/${id}', category: 'own_process', reason: 'a long enough reason to be read' }]
+  const SITE = "export async function readIt(c, id) {\n  return (await c.get(`/paper/strategies/${id}`)).data\n}\n"
+
+  it('an exempt site is clean; a different function in the same file is not', () => {
+    expect(problems({ 'src/lib/x.js': SITE }, E)).toEqual([])
+    expect(problems({ 'src/lib/x.js': SITE.replace('readIt', 'other') }, E)).toHaveLength(2) // the new site, and the entry now stale
+  })
+
+  it('a deleted exempt site is a stale exemption', () => {
+    const out = problems({ 'src/lib/x.js': 'export const a = 1\n' }, E)
+    expect(out).toEqual(['stale exemption: src/lib/x.js::readIt no longer reads the book "/paper/strategies/${id}"; delete the entry'])
+  })
+
+  it('a deleted exempt file is a stale exemption', () => {
+    expect(problems({}, E)).toHaveLength(1)
+  })
+
+  it('an exemption with an unknown category or no reason is a problem', () => {
+    expect(problems({ 'src/lib/x.js': SITE }, [{ ...E[0], category: 'whatever' }])).toHaveLength(1)
+    expect(problems({ 'src/lib/x.js': SITE }, [{ ...E[0], reason: '' }])).toHaveLength(1)
+  })
+
+  it('the real exemptions each still exist on this head (a deleted one fails the real scan with "stale exemption")', () => {
+    const files = realFiles()
+    for (const e of EXEMPT) {
+      const alone = problems({ [e.file]: files[e.file] ?? '' }, [e])
+      expect(alone, `${e.file}::${e.fn}`).toEqual([])
+    }
+    const e = EXEMPT[0]
+    expect(problems({ [e.file]: '' }, [e])[0]).toMatch(/^stale exemption: .*::NO_TOTAL no longer holds the text/)
+  })
+})
