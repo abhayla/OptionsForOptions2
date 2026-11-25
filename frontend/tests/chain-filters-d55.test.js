@@ -96,6 +96,7 @@ const typeInto = async (w, testid, text) => {
   el.value = text
   el.dispatchEvent(new Event('input')) // what typing does; no blur, no change event
   await flushPromises()
+  if (!vi.isFakeTimers()) await new Promise((r) => setTimeout(r, 350)) // the typed value is sent after the short pause
 }
 const lastRequest = () => JSON.parse(sock().sent.at(-1))
 async function openChain(over = {}) {
@@ -142,5 +143,28 @@ describe('D-55: Change and OI Change are the feed values, else "not available"',
   it('a missing cell (no contract on that side) keeps the plain dash, not "not available"', async () => {
     const w = await openChain({ rows: [{ strike: '24500.00', moneyness: 'ATM', ce: cell('NFO:24500CE', '120.50'), pe: null }] })
     expect(cellsOf(w, 'pe-change')).toEqual(['-'])
+  })
+})
+
+describe('D-55 round 2: typing is sent once after a short pause and the rows stay', () => {
+  it('5 keystrokes within 300 ms send one request with the final value', async () => {
+    const w = await openChain()
+    vi.useFakeTimers({ toFake: ['setTimeout', 'clearTimeout'] })
+    const before = sock().sent.length
+    for (const t of ['1', '10', '100', '1000', '10000']) await typeInto(w, 'filter-min-oi', t)
+    expect(sock().sent.length).toBe(before)
+    await vi.advanceTimersByTimeAsync(350)
+    expect(sock().sent.length).toBe(before + 1)
+    expect(lastRequest().min_oi).toBe('10000')
+    vi.useRealTimers()
+  })
+  it('the table is not blanked while the new request is in flight', async () => {
+    const w = await openChain()
+    restAnswer = () => new Promise(() => {})
+    vi.useFakeTimers({ toFake: ['setTimeout', 'clearTimeout'] })
+    await typeInto(w, 'filter-min-oi', '5000')
+    await vi.advanceTimersByTimeAsync(350)
+    expect(w.findAll('[data-testid="chain-row"]').length).toBe(3)
+    vi.useRealTimers()
   })
 })
