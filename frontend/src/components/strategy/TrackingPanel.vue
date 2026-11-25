@@ -166,6 +166,7 @@ async function readCheck(id, background = false) {
   }
 }
 // GC-ICLIVE D-24: the armed / fired index exits of this strategy, read on the same rhythm as the check (never a second timer)
+let lastKind = null // the previous tick's tracking kind
 const exits = ref([])
 const exitsFailed = ref(false)
 async function readExits(id) {
@@ -219,6 +220,7 @@ async function load(id) {
   checkRefusal.value = ''
   exits.value = []
   exitsFailed.value = false
+  lastKind = null
   dismissed.value = []
   drawerOpen.value = false
   error.value = ''
@@ -247,7 +249,11 @@ usePaperRefresh({
     view.value = readTracking(data, props.legs)
     raw.value = data
     // GC-ICFIX u141: the rule check rides the same rhythm (no second timer); a closed trade's check is not re-read (as before)
-    if (view.value?.kind !== 'exited') { readCheck(props.savedId, true); readExits(props.savedId) }
+    // the exits are read on every tick not exited AND on the tick the kind turns exited (a fired exit is what exited it); the check keeps its skip
+    const wasExited = lastKind === 'exited'
+    lastKind = view.value?.kind
+    if (lastKind !== 'exited') readCheck(props.savedId, true)
+    if (lastKind !== 'exited' || !wasExited) readExits(props.savedId)
   },
   onError: failed,
 })
