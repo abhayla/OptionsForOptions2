@@ -37,3 +37,17 @@ def test_an_unreadable_time_is_none_never_a_guess():
     bad = {"at": "yesterday", "outcome": "lapsed", "reason": "condition_stopped"}
     assert _record(_suggestion("lapsed", [OPENED, bad]), True)["closed_at"] is None
     assert _record(_suggestion("lapsed", [OPENED, {"outcome": "lapsed"}]), True)["closed_at"] is None
+
+
+def test_a_dismissed_record_keeps_its_dismiss_time_after_condition_cleared_is_appended():
+    dismissed = {"at": "2026-11-23T09:04:11+00:00", "outcome": "dismissed", "suggestion_id": 901, "reason": None}
+    cleared = {"at": "2026-11-23T11:00:00+00:00", "event": "condition_cleared"}
+    record = _record(_suggestion("dismissed", [OPENED, dismissed, cleared]), True)
+    assert record["closed_at"] == dt.datetime(2026, 11, 23, 9, 4, 11, tzinfo=dt.UTC)
+
+
+def test_an_acted_on_record_keeps_its_acted_on_time_after_orders_placed_is_appended():
+    acted = {"at": "2026-11-23T09:04:11+00:00", "outcome": "acted_on", "suggestion_id": 901, "reason": None}
+    placed = {"at": "2026-11-23T09:20:00+00:00", "event": "orders_placed", "order_ids": [5], "basket_legs": 1}
+    record = _record(_suggestion("acted_on", [OPENED, acted, placed]), True)
+    assert record["closed_at"] == dt.datetime(2026, 11, 23, 9, 4, 11, tzinfo=dt.UTC)
