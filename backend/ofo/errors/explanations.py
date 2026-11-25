@@ -896,6 +896,7 @@ class HourMinute(SlotType):
         return value.astimezone(datetime.timezone(datetime.timedelta(hours=5, minutes=30))).strftime("%H:%M")
 
 
+# owner question: ADR-015 Q182 12-hour vs ADR-320 D-57 24-hour
 class ClockSeconds(SlotType):
     """A timezone-aware time as the IST clock time with seconds, "10:42:17 AM" (ADR-015's example)."""
 

@@ -306,7 +306,9 @@ class Clock(SlotType):
     @staticmethod
     def format(value: datetime) -> str:
         ist = value.astimezone(_IST)
+        # owner question: ADR-015 Q182 12-hour vs ADR-320 D-57 24-hour
         hour = ist.hour % 12 or 12
+        # owner question: ADR-015 Q182 12-hour vs ADR-320 D-57 24-hour
         half = "AM" if ist.hour < 12 else "PM"
         return f"{hour:02d}:{ist.minute:02d}:{ist.second:02d} {half}"
 

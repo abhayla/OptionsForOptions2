@@ -488,7 +488,7 @@ def test_a_valued_day_rule_record_names_the_rule_not_its_id(label):
     assert text.endswith(": 0.8 (rule 1.5)"), text
 
 
-# ---- D-58 (final round): one label function, so no rule id reaches the screen as a label, whatever the rule family ----
+# ---- D-58 (final round): one label function; no rule id reaches the screen as a label, in any rule family ----
 def _valued(rule_id: str, label: str | None):
     return playbook_store.Suggestion(
         1, 143, rule_id, rule_id, None, Decimal("0.8"), Decimal("1.5"), dt.datetime(2026, 11, 24, 9, 30, tzinfo=dt.UTC),

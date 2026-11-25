@@ -150,7 +150,7 @@ def _detail(s: store.Suggestion) -> Any:
 
 def _yes_no_name(s: store.Suggestion) -> str | None:
     """The stored label of a clock-time rule, situation rule or level watch, else a watch's catalogue label."""
-    own = None if s.label == s.rule_id else s.label
+    own = _stored_label(s)
     if s.unit == CLOCK_UNIT or s.trigger_id in TIME_TRIGGERS:  # a clock-time rule stores no value: its own label
         return own
     if not (is_situation_rule_id(s.rule_id) or level_watch.is_rule_id(s.rule_id)):
@@ -158,11 +158,30 @@ def _yes_no_name(s: store.Suggestion) -> str | None:
     return own or LEVEL_WATCH_LABEL_TEXT.get(level_watch.direction_of(s.rule_id) or "")
 
 
+def _stored_label(s: store.Suggestion) -> Any:
+    """The label the record stored, or None when it is only the rule's raw id (an id is no wording). The ONE place a
+    record's label is read for a line, so no rule id reaches the screen as its label (D-58)."""
+    return None if s.label == s.rule_id else s.label
+
+
 def _own_label(s: store.Suggestion) -> Any:
-    """The record's stored label; a valued day rule's label is its id, so it names itself in words instead (D-58)."""
-    if is_day_rule_id(s.rule_id) and s.label in (None, s.rule_id):
+    """The label for a valued record's line: the stored one, else the rule's own words (a day rule's action words, a
+    level watch's catalogue label); None when the rule has no wording."""
+    own = _stored_label(s)
+    if own is not None:
+        return own
+    if is_day_rule_id(s.rule_id):
         return day_rule_words(s.rule_id)
-    return s.label
+    if level_watch.is_rule_id(s.rule_id):
+        return LEVEL_WATCH_LABEL_TEXT.get(level_watch.direction_of(s.rule_id) or "")
+    return None
+
+
+def _valued_line(s: store.Suggestion, shown: Any, figures: Any) -> Any:
+    label = _own_label(s)
+    if label is None and s.trigger_id == s.rule_id:  # the id would stand in as the label: no wording, no line
+        return None
+    return condition_line(s.trigger_id, label, s.unit, format(s.value, "f"), format(shown, "f"), s.beyond, figures)
 
 
 def condition_text(s: store.Suggestion) -> Any:
@@ -170,7 +189,7 @@ def condition_text(s: store.Suggestion) -> Any:
     if s.cmp not in ("le", "ge", "lt") or s.trigger_id is None or s.value is None or s.threshold is None:
         if is_day_rule_id(s.rule_id):  # ADR-267 amendment: a day rule names itself, never an empty "What happened"
             # the rule's action words; the id as a label is no wording: the id's own sentence, never the raw id
-            names = (None if s.label == s.rule_id else s.label, day_rule_words(s.rule_id), DAY_RULE_GENERIC_TEXT)
+            names = (_stored_label(s), day_rule_words(s.rule_id), DAY_RULE_GENERIC_TEXT)
             if names[1].startswith(DAY_RULE_GENERIC_TEXT):
                 log.warning("day rule id with no wording: %s", s.rule_id)  # the raw id goes to the log only
             for name in names:
@@ -192,8 +211,7 @@ def condition_text(s: store.Suggestion) -> Any:
     shown = s.threshold if s.limit is None else s.limit
     found = s.target if s.trigger_id == "T-07" else None  # ADR-294 (2): the figures it was shown with
     figures = None if found is None else TargetFigures(*found)
-    return condition_line(s.trigger_id, _own_label(s), s.unit, format(s.value, "f"), format(shown, "f"), s.beyond,
-                          figures)
+    return _valued_line(s, shown, figures)
 
 
 def _record(s: store.Suggestion, paper: bool) -> dict:
