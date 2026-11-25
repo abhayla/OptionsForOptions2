@@ -517,3 +517,17 @@ async def test_k25_a_deleted_strategys_paper_alert_leaves_the_list_and_the_unrea
     await _set_deleted(db, stored.id, False)
     rows, unread = await pts.alerts(db, user)
     assert len(rows) == unread == len((stored, kept_s))
+
+
+# D-29 round 2 (ADR-260): the inbox that feeds the bell and Alerts > Active reads this process's own strategies only.
+# Real case: old "Scenario PATH-xx" open records counted in the bell and sat on Active beside the real ones.
+async def test_d29_a_scenario_strategys_open_record_is_not_in_the_inbox_or_the_held_inbox(db):
+    from test_strategy_store import _ids, _saved_in  # noqa: PLC0415
+    user = _user()
+    real = await _open(db, user)
+    await _with_draft(db, user)  # loads the catalogue rows the next saved draft needs
+    scenario = await store.save_draft(db, user, await _saved_in(db, user, await _ids(db)), scenario_id="PATH-01")
+    marked = await pb.open_suggestion(db, user, scenario.id, "T-01", trigger_id="T-01", stage="Early",
+                                      value=Decimal("0.42"), threshold=Decimal("0.5"))
+    assert {r.suggestion.id for r in await pb.inbox(db, user)} == {real.id}, marked.id
+    assert [h.strategy_id for h in await pb.held_inbox(db, user)] == []
