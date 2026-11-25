@@ -16,7 +16,7 @@ This file is written so a fresh session can carry on from it alone. Read `PLAN-p
 | 5 | F6 `useLegDoor` + ADR-329 (Lane B) | DONE (merged) | `5d834099`, `RESULTS-lane-b.md` |
 | 6 | B2 close list (real path), F7, F8; B7 not built | DONE (F7, F8; Sonnet PASS); B2 not built: parked, then closed by the coordinator (REQ-109 AC-1 import guard) | `8862b957`..`3229e0a1`, merged; `PARKED-phase6-B2.md` |
 | 7 | R2 `owns`, R3 browser, R1 comment; rest skipped/parked | DONE (Sonnet PASS) | `45fd9dfb`..`637ea5cc`, merged |
-| 8 | Guards G1-G5 + Lane B emitter guard | DONE | `ab2e61cc` + rule 4 after the Lane B merge |
+| 8 | Guards G1-G5 | DONE (Lane B emitter guard MISSING: not built by Lane B) | `ab2e61cc` + rule 4 after the Lane B merge |
 
 ## Step 0: merge of fix/ic-live-test-1123
 
@@ -340,7 +340,7 @@ caller of `owns` exists; the text guard matches the exact bind names).
 
 Built in two worktrees from `5354f722` before the Lane B merge (G1, G2, G4 in `tests/`; G3 rules 1-3 in
 `frontend/tests/one-door-screens.test.js`), merged and pushed at `ab2e61cc`; G3 rule 4 (one duplicate-leg dialog, one
-`sameContract`) and the Lane B emitter-guard check added after the Lane B merge.
+`sameContract`) added after the Lane B merge (definition-only rule for `sameContract`: `LegList.vue` legitimately calls the door export).
 
 | Guard | File | Exemptions (category) | Mutation proof |
 |---|---|---|---|
@@ -349,7 +349,7 @@ Built in two worktrees from `5354f722` before the Lane B merge (G1, G2, G4 in `t
 | G3 screens: not-live wording, exit POST, one book reader, one dup dialog | `frontend/tests/one-door-screens.test.js` | 3 (PaperStrategies `NO_TOTAL` display; `paperDrafts.readPaperBook` own_process; `LiveStrategyCard.rereadBook` display) | per rule: bad sample, home, stale, fail closed |
 | G4 one caller per alert writer | `tests/test_alert_writers_one_caller.py` | 0 | each writer outside its home; four alias forms; `paper_monitor.notify` not matched |
 | G5 | existing D-57 guards | - | - |
-| Lane B emitter guard | `frontend/tests/leg-emitters-guard.test.js` (Lane B) | its allow-list | Phase 8 checks it is collected |
+| Lane B emitter guard | `frontend/tests/leg-emitters-guard.test.js` (plan 5.5, Lane B row) | - | MISSING: the file does not exist on any branch (Lane B did not build it; `RESULTS-lane-b.md` does not name it); an `it.todo` in `one-door-screens.test.js` marks it, and the vitest include pattern would collect it. Left for Lane B (its ownership row) |
 
 Known limits (stated in the files): G3 is a text scan (a URL held in a variable first is not seen); the category names
 `real_path` for the paper exit read and `awaiting_phase_9` for `entry_facts_now` are the builder's labels.
