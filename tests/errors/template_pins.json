@@ -4293,63 +4293,63 @@
   },
   "explanation:paper_breakevens_with_charges": {
     "sha256": "93abe1e127f6a953b9eec29ca4211b899e0173795e367f3a302113d029f16372",
-    "reviewed": "pending owner read"
+    "reviewed": "owner read 2026-11-25 (ADR-322 point 4, answered by the owner in the question tool)"
   },
   "explanation:paper_breakevens_before_charges": {
     "sha256": "c2db81735f247b05c4f4f847c688e1dbbc6d6125378233f025b67dbe83fcfcdc",
-    "reviewed": "pending owner read"
+    "reviewed": "owner read 2026-11-25 (ADR-322 point 4, answered by the owner in the question tool)"
   },
   "explanation:paper_closed_result": {
     "sha256": "c765d31855c6d587d03c729e0fbd90ee610371026a99e3b364b3e80b0bee6737",
-    "reviewed": "pending owner read"
+    "reviewed": "owner read 2026-11-25 (ADR-322 point 4, answered by the owner in the question tool)"
   },
   "explanation:paper_greeks_across_expiries": {
     "sha256": "a3ef617b13cba269483abb227032293f5d52f87ff661c350bdc59ad6b536e029",
-    "reviewed": "pending owner read"
+    "reviewed": "owner read 2026-11-25 (ADR-322 point 4, answered by the owner in the question tool)"
   },
   "explanation:paper_closed_result_before": {
     "sha256": "fa5fe597b9c22d034ef622b2f1213f9acff66fff7fad9a728fb8d5bdb6af5568",
-    "reviewed": "pending owner read"
+    "reviewed": "owner read 2026-11-25 (ADR-322 point 4, answered by the owner in the question tool)"
   },
   "explanation:table_column_decay_left_today": {
     "sha256": "15ef15e222b4b8b799b3da7ace784b79be6c72364df82fceee9f2c74a4f7fb91",
-    "reviewed": "pending owner read"
+    "reviewed": "owner read 2026-11-25 (ADR-322 point 4, answered by the owner in the question tool)"
   },
   "explanation:decay_left_today_text": {
     "sha256": "e4f1f9e008dc41c281d75abcaa2dee7b2bfa1d1e72c525ab1eee4b2d91358694",
-    "reviewed": "pending owner read"
+    "reviewed": "owner read 2026-11-25 (ADR-322 point 4, answered by the owner in the question tool)"
   },
   "explanation:estimate_intrinsic_basis": {
     "sha256": "b54ecf15a44b81bf0016cce376dbc42de7f0086c80d3872b3f87ae04178372d5",
-    "reviewed": "pending owner read"
+    "reviewed": "owner read 2026-11-25 (ADR-322 point 4, answered by the owner in the question tool)"
   },
   "explanation:money_basis_plan": {
     "sha256": "c7cce05733908910a71e3199e9ea137ed72e1bfe7c371b3022a3692996320648",
-    "reviewed": "pending owner read"
+    "reviewed": "owner read 2026-11-25 (ADR-322 point 4, answered by the owner in the question tool)"
   },
   "explanation:money_basis_paper": {
     "sha256": "bd34b9aa561d0ebdd48537d552d3ada61f9196f99581ab61c09b96934fc07c07",
-    "reviewed": "pending owner read"
+    "reviewed": "owner read 2026-11-25 (ADR-322 point 4, answered by the owner in the question tool)"
   },
   "explanation:money_plan_get": {
     "sha256": "3983e4696fdf7f4bbaec30ff6c3f321256d3e3858379046666fd9883dcf6552f",
-    "reviewed": "pending owner read"
+    "reviewed": "owner read 2026-11-25 (ADR-322 point 4, answered by the owner in the question tool)"
   },
   "explanation:money_plan_pay": {
     "sha256": "1d5a5b5bf48ac5e98907f04544db812868188c3bf5e6bfa11ddf55850d69f9d5",
-    "reviewed": "pending owner read"
+    "reviewed": "owner read 2026-11-25 (ADR-322 point 4, answered by the owner in the question tool)"
   },
   "explanation:money_basis_mixed": {
     "sha256": "57186d2208bf9aa31f3e5f6ba9aafbc165b8469f44a36dce826fa27e39ed035d",
-    "reviewed": "pending owner read"
+    "reviewed": "owner read 2026-11-25 (ADR-322 point 4, answered by the owner in the question tool)"
   },
   "explanation:money_basis_none": {
     "sha256": "8feda6313760cea65df02e123f643edc5a88d814d3ca1f33076e72f39a5f88ba",
-    "reviewed": "pending owner read"
+    "reviewed": "owner read 2026-11-25 (ADR-322 point 4, answered by the owner in the question tool)"
   },
   "explanation:money_basis_unread": {
     "sha256": "e55cb44a992f05ce8f777ada449fcaed852b5217e2f944ccec5dd1eb897b1775",
-    "reviewed": "pending owner read"
+    "reviewed": "owner read 2026-11-25 (ADR-322 point 4, answered by the owner in the question tool)"
   },
   "explanation:money_plan_changed": {
     "sha256": "80571b2ba39c3a0930fbfb5b6d8df336e8e7f8e7c4234e694c9c7892adb2fb03",
@@ -4389,6 +4389,7 @@
   },
   "explanation:suggestion_lapsed_contract_expired": {
     "sha256": "555637ef88c67b94651c99048afae3d5c03b7d085735c08ef5af7f1f75e6e61d",
-    "reviewed": "pending owner read"
+    "reviewed": "pending owner read",
+    "reviewed": "owner read 2026-11-25 (ADR-322 point 4, answered by the owner in the question tool)"
   }
 }
