@@ -1,13 +1,15 @@
 """Phase 3 / B6 (modular doors; D-41 server half): the strategy's money figures are ASSEMBLED once.
 
-Before: ``routes/paper.py _figures`` / ``_extremes`` / ``_after`` and ``routes/tracking.py _book_figures`` each turned the
-open contracts' price answers into a live-price map and called the one engine (net_positions / lifecycles) themselves, so
-the book page and the tracking page could not be shown to agree except by luck (D-41, two readers). After:
-``ofo_app.strategy_money.strategy_money_view`` is the one assembly; the engine maths stays in ``ofo.tracking.orderbook``
-(ADR-008: one engine owns every P&L number), and each route keeps its own reply shape. No database.
+Before: ``routes/paper.py _figures`` / ``_extremes`` / ``_after`` and ``routes/tracking.py _book_figures`` each turned
+the open contracts' price answers into a live-price map and called the one engine (net_positions / lifecycles)
+themselves, so the book page and the tracking page could not be shown to agree except by luck (D-41, two readers).
+After: ``ofo_app.strategy_money.strategy_money_view`` is the one assembly; the engine maths stays in
+``ofo.tracking.orderbook`` (ADR-008: one engine owns every P&L number), and each route keeps its own reply shape. No
+database.
 
-Rows: all live; one open contract unpriced (paused: no unbooked, no total; the priced one keeps its own figure, ADR-311);
-no price at all; a closed book; the tracking route's "totals paused" basis; and the two routes' figures agree at one price set.
+Rows: all live; one open contract unpriced (paused: no unbooked, no total; the priced one keeps its own figure,
+ADR-311); no price at all; a closed book; the tracking route's "totals paused" basis; and the two routes' figures agree
+at one price set.
 """
 from __future__ import annotations
 
@@ -83,8 +85,9 @@ def test_core_the_paper_page_and_the_tracking_page_show_the_same_money_at_one_pr
                                 stored=SimpleNamespace(listed=SimpleNamespace(contract=SimpleNamespace(
                                     name="NIFTY", instrument_type="CE", strike=D("23000"),
                                     expiry=datetime.date(2026, 12, 2), lot_size=65)))) for c in (1, 2)}
-    stored = [SimpleNamespace(order=SimpleNamespace(contract_id=int(o.instrument_id), as_paper=lambda o=o: o, kind=o.kind,
-                                                    reason=None, placed_at=o.placed_at)) for o in BOOK]
+    stored = [SimpleNamespace(order=SimpleNamespace(
+        contract_id=int(o.instrument_id), as_paper=lambda o=o: o, kind=o.kind,
+        reason=None, placed_at=o.placed_at)) for o in BOOK]
     page = P._figures(stored, found, prices, True, datetime.date(2026, 11, 25))
     legs = tuple(SimpleNamespace(instrument_id=str(c), exited=False) for c in (1, 2))
     bk = SimpleNamespace(strategy_id=170, orders=tuple(BOOK), legs=legs)
@@ -92,8 +95,8 @@ def test_core_the_paper_page_and_the_tracking_page_show_the_same_money_at_one_pr
     figures, per_leg, _ = T._book_figures(bk, view)
     assert (page["booked"], page["unbooked"], page["total"]) == tuple(
         None if v is None else P._exact(v) for v in (figures.booked, figures.unbooked, figures.total))
-    assert per_leg == [p.unbooked for p in net_positions(BOOK, {k: p.price for k, p in
-                                                                ((str(c), prices[c]) for c in prices) if paper.is_live(p)}).positions]
+    live = {k: p.price for k, p in ((str(c), prices[c]) for c in prices) if paper.is_live(p)}
+    assert per_leg == [p.unbooked for p in net_positions(BOOK, live).positions]
 
 
 @pytest.mark.parametrize("fn", [P._figures, P._extremes, P._after, T._book_figures])
@@ -109,21 +112,28 @@ def test_the_assembly_does_no_arithmetic_of_its_own():
     import ast  # noqa: PLC0415
     tree = ast.parse(inspect.getsource(strategy_money))
     math = (ast.Add, ast.Sub, ast.Mult, ast.Div, ast.FloorDiv, ast.Mod, ast.Pow)  # `int | str` annotations are BitOr
-    assert not [n for n in ast.walk(tree) if isinstance(n, ast.AugAssign) or (isinstance(n, ast.BinOp) and isinstance(n.op, math))]
+    bad = [n for n in ast.walk(tree)
+           if isinstance(n, ast.AugAssign) or (isinstance(n, ast.BinOp) and isinstance(n.op, math))]
+    assert not bad
     assert lifecycles is not None
 
 
-# ---- the tracking reply's rows: contract id, and one figure per contract on both pages (D-41) -------------------------
+# ---- the tracking reply's rows: contract id, and one figure per contract on both pages (D-41) ------------------------
 
 KEYS = {5001: "NSE_FO:44601", 5002: "NSE_FO:44602"}  # the feed identity of the tracking reply's `instrument_id`
-CBOOK = [PaperOrder(str(cid), side, 65, D(price), "open", AT) for cid, side, price in ((5001, "SELL", "100"), (5002, "BUY", "50"))]
-CLIVE = {5001: paper.Price(KEYS[5001], paper.LIVE, D("90.00"), AT), 5002: paper.Price(KEYS[5002], paper.LIVE, D("60.00"), AT)}
-CHALF = {5001: paper.Price(KEYS[5001], paper.LIVE, D("90.00"), AT), 5002: paper.Price(KEYS[5002], "missing", None, None)}
-CNONE = {5001: paper.Price(KEYS[5001], "missing", None, None), 5002: paper.Price(KEYS[5002], "stale", None, AT)}
+CBOOK = [PaperOrder(str(cid), side, 65, D(price), "open", AT)
+         for cid, side, price in ((5001, "SELL", "100"), (5002, "BUY", "50"))]
+CLIVE = {5001: paper.Price(KEYS[5001], paper.LIVE, D("90.00"), AT),
+         5002: paper.Price(KEYS[5002], paper.LIVE, D("60.00"), AT)}
+CHALF = {5001: paper.Price(KEYS[5001], paper.LIVE, D("90.00"), AT),
+         5002: paper.Price(KEYS[5002], "missing", None, None)}
+CNONE = {5001: paper.Price(KEYS[5001], "missing", None, None),
+         5002: paper.Price(KEYS[5002], "stale", None, AT)}
 
 
 def _tracking_rows(prices, connected=True):
-    legs = [paper.TrackedLeg(KEYS[c], Action(o.side), Instrument.CE, D("23000"), datetime.date(2026, 12, 2), 65, o.price, AT)
+    legs = [paper.TrackedLeg(KEYS[c], Action(o.side), Instrument.CE, D("23000"),
+                             datetime.date(2026, 12, 2), 65, o.price, AT)
             for c, o in zip((5001, 5002), CBOOK, strict=True)]
     bk = T._Book(170, tuple(CBOOK), book.contract_legs(CBOOK))
     paused = any(not paper.is_live(p) for p in prices.values())
@@ -133,25 +143,29 @@ def _tracking_rows(prices, connected=True):
 
 
 def test_tracking_rows_carry_the_contract_id():
-    """D-41: the join key of the screen. `instrument_id` stays the feed identity ("NSE_FO:..."); `contract_id` is the book's key."""
+    """D-41: the join key of the screen. `instrument_id` stays the feed identity ("NSE_FO:..."); `contract_id` is the
+    book's key."""
     rows = _tracking_rows(CLIVE)
     assert [r["contract_id"] for r in rows] == [5001, 5002]
     assert all(isinstance(r["contract_id"], int) for r in rows)
     assert [r["instrument_id"] for r in rows] == ["NSE_FO:44601", "NSE_FO:44602"]
-    assert [r["contract_id"] for r in _tracking_rows(CLIVE, connected=False)] == [5001, 5002]  # not connected: still stated
+    # not connected: still stated
+    assert [r["contract_id"] for r in _tracking_rows(CLIVE, connected=False)] == [5001, 5002]
 
 
 @pytest.mark.parametrize("prices", [CLIVE, CHALF, CNONE], ids=["live", "one-unpriced", "none-priced"])
 def test_book_page_and_tracking_rows_agree_per_contract_at_one_price_set(prices):
-    """Each contract's own unbooked figure is the same on the book page's positions and on the tracking rows (None on both
-    sides for an unpriced contract, ADR-311), whichever contracts have a price."""
+    """Each contract's own unbooked figure is the same on the book page's positions and on the tracking rows (None on
+    both sides for an unpriced contract, ADR-311), whichever contracts have a price."""
     found = {c: SimpleNamespace(contract_id=c, state="live", feed_key=KEYS[c], identity=KEYS[c],
                                 stored=SimpleNamespace(listed=SimpleNamespace(contract=SimpleNamespace(
                                     name="NIFTY", instrument_type="CE", strike=D("23000"),
                                     expiry=datetime.date(2026, 12, 2), lot_size=65)))) for c in (5001, 5002)}
-    stored = [SimpleNamespace(order=SimpleNamespace(contract_id=int(o.instrument_id), as_paper=lambda o=o: o, kind=o.kind,
-                                                    reason=None, placed_at=o.placed_at)) for o in CBOOK]
-    page = {p["contract_id"]: p["unbooked"] for p in P._figures(stored, found, prices, True, datetime.date(2026, 11, 25))["positions"]}
+    stored = [SimpleNamespace(order=SimpleNamespace(
+        contract_id=int(o.instrument_id), as_paper=lambda o=o: o, kind=o.kind,
+        reason=None, placed_at=o.placed_at)) for o in CBOOK]
+    figures = P._figures(stored, found, prices, True, datetime.date(2026, 11, 25))
+    page = {p["contract_id"]: p["unbooked"] for p in figures["positions"]}
     rows = {r["contract_id"]: r["pnl"] for r in _tracking_rows(prices)}
     assert page == rows
     assert sorted(page) == [5001, 5002]
@@ -172,8 +186,9 @@ def test_history_route_uses_the_door_live_prices():
 
 
 def test_by_contract_is_computed_at_most_once_per_view(monkeypatch):
-    """The list route never asks for per-contract figures: `by_contract` (and `book`) are lazy and cached; with live totals the
-    book is reused, so the engine is called once; with paused totals it is called once more for the per-contract basis."""
+    """The list route never asks for per-contract figures: `by_contract` (and `book`) are lazy and cached; with live
+    totals the book is reused, so the engine is called once; with paused totals it is called once more for the
+    per-contract basis."""
     calls = []
     real = strategy_money.net_positions
 
