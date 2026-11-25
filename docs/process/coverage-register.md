@@ -2,7 +2,7 @@
 
 # Coverage register
 
-Generated from commit f131a9ca
+Generated from commit 5276008c
 
 ## Stage S0
 
@@ -858,6 +858,7 @@ Generated from commit f131a9ca
 | S6.7 | decision | ADR-327 | - | In market hours a paper trigger whose level cannot be checked against a live price is refused, not saved |
 | S6.7 | decision | ADR-328 | - | Owner decisions of 25 Nov 2026 evening for the modular-doors plan, phases 3 to 8 (opposite-side step, Add Selected, per-leg P&L, stale Exit, unreadable-price wording) |
 | S6.7 | decision | ADR-329 | - | Unsaved builder legs: kept across the Option Chain trip and added to by Add Selected; leaving for any other page asks first (S-08) |
+| S6.7 | decision | ADR-330 | - | Owner decisions of 25 Nov 2026 night on the open choices of the live screen test (plan stop after a partial close, and the items that follow) |
 | S6.7 | finding | F-101 | - | Live alert discipline cut suggestion noise by three quarters; a 1-day SENSEX condor past its breakeven still flaps |
 | S6.7 | finding | F-102 | - | Kite's own basket runs in sequence; the Kite Publisher basket (our path) does not guarantee order |
 | S6.7 | finding | F-103 | - | The market calendar holds one year; outside it every day reads as closed |
@@ -1152,7 +1153,7 @@ Generated from commit f131a9ca
 | S6.4 | 0 | 1 | 13 | 19 | 0 | 32 | 1 | 0 | 25 | 0 | 8 | 99 |
 | S6.5 | 0 | 0 | 1 | 0 | 0 | 0 | 0 | 0 | 3 | 0 | 1 | 5 |
 | S6.6 | 0 | 0 | 0 | 0 | 0 | 0 | 0 | 0 | 7 | 0 | 2 | 9 |
-| S6.7 | 0 | 0 | 109 | 9 | 0 | 64 | 0 | 0 | 14 | 0 | 19 | 215 |
+| S6.7 | 0 | 0 | 110 | 9 | 0 | 64 | 0 | 0 | 14 | 0 | 19 | 216 |
 | S7 | 1 | 0 | 0 | 0 | 0 | 1 | 1 | 0 | 5 | 0 | 0 | 8 |
 | S8 | 2 | 0 | 17 | 1 | 0 | 1 | 1 | 1 | 22 | 4 | 7 | 56 |
 | all | 0 | 0 | 15 | 0 | 0 | 0 | 0 | 0 | 10 | 0 | 0 | 25 |
