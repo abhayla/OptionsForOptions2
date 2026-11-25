@@ -20,7 +20,7 @@ vi.mock('@/services/api', async (importActual) => {
   } } }
 })
 import HomeOverviewPage from '@/pages/HomeOverviewPage.vue'
-import { resetPaperAlerts } from '@/lib/paperAlerts'
+import { bellCount, openRecords, resetPaperAlerts } from '@/lib/paperAlerts'
 
 class FakeSocket {
   constructor(url) { this.url = url; this.readyState = 0 }
@@ -89,6 +89,16 @@ describe('D-56 Home: unread alerts (the alert count route)', () => {
     expect(tile(w, 'unread')).toContain('Could not be read right now.')
     expect(fig(w, 'unread')).toBe('—')
     expect(fig(w, 'running')).toBe('2')
+  })
+})
+
+describe('D-56 round 2: Home unread = the bell badge', () => {
+  it('with open adjustment records in the store, Home shows the bell number', async () => {
+    openRecords.list = [{ id: 1, strategy_id: 1 }, { id: 2, strategy_id: 1 }]
+    const w = await mountHome()
+    expect(bellCount()).toBe(5)
+    expect(fig(w, 'unread')).toBe(String(bellCount()))
+    openRecords.list = []
   })
 })
 
