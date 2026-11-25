@@ -77,20 +77,17 @@ def test_the_offer_path_reads_the_same_type_whatever_spot_it_is_given(tracked, a
 
 
 def test_the_plan_route_reads_the_server_limits_type_and_reads_no_spot(tracked, monkeypatch):
-    """The route no longer reads the spot (ADR-322 point 5): the type is the server's limit by construction, and a
-    REST spot read here would be a spot read, so the REST reader fails the test if it is called."""
+    """The plan route's type read takes no reader, so it reads no spot by construction (D-38 stale D-04 test; D-04,
+    ADR-322 point 5). ``_type_of`` takes (db, user_ref, strategy_id, tracked, ctx): no market and no REST reader, so a
+    spot read cannot happen here. The signature check fails if a reader or a spot parameter is ever added back."""
     async def plan_for(*_a):
         return None
-
-    async def market_reader(*_a):
-        return object()  # the market is still read (for the stop amounts), but no spot is judged from it
-
-    async def rest_reader(_underlying):
-        raise AssertionError("the plan route read the REST spot")
     monkeypatch.setattr(adjustment_plan.store, "plan_for", plan_for)
     assert not hasattr(adjustment_plan, "judge_spot")
+    params = list(inspect.signature(adjustment_plan._type_of).parameters)
+    assert not [p for p in params if any(word in p for word in ("reader", "market", "spot"))], params
     ctx = SimpleNamespace(provider=SimpleNamespace(instrument_master=list))
-    stype, plan = asyncio.run(adjustment_plan._type_of(None, "u", 164, tracked, market_reader, rest_reader, ctx))
+    stype, plan = asyncio.run(adjustment_plan._type_of(None, "u", 164, tracked, ctx))
     assert (stype, plan) == ("strangle", None)
 
 
