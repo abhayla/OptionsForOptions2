@@ -241,7 +241,7 @@ export function readTracking(body, replyLegs = null) {
       }
     })
   if (body.state === 'NOT_CONNECTED') return { kind: 'not_connected', text: NOT_CONNECTED_TEXT, figure: null, legs, detections }
-  if (body.state === 'PAUSED') return { kind: 'paused', text: pausedText(body.as_of), figure: null, legs, detections, unpriced: serverText(body.unpriced_text) }
+  if (body.state === 'PAUSED') return { kind: 'paused', text: serverText(body.after_close_text) ?? pausedText(body.as_of), figure: null, legs, detections, unpriced: serverText(body.after_close_text) !== null ? null : serverText(body.unpriced_text) }
   // live #603 item 1 (REQ-152 AC-4, ADR-008): the total, booked and unbooked are the server's signed texts as sent (one
   // minus character with the leg figures); a live / exited answer without the total's text is unreadable
   const signed = serverText(body.paper_pnl_text)
@@ -250,7 +250,7 @@ export function readTracking(body, replyLegs = null) {
   const unbooked = serverText(body.unbooked_text)
   // GC-ICFIX u123 (ADR-263): the headline is the after-charges figure, labelled; no after figure -> the before figure, labelled
   const shown = afterFigure(body, signed)
-  if (shown.kind === 'paused') return { kind: 'paused', text: pausedText(body.as_of), figure: null, legs, detections, unpriced: serverText(body.unpriced_text) }
+  if (shown.kind === 'paused') return { kind: 'paused', text: serverText(body.after_close_text) ?? pausedText(body.as_of), figure: null, legs, detections, unpriced: serverText(body.after_close_text) !== null ? null : serverText(body.unpriced_text) }
   const text = `${PAPER_PNL_PREFIX}${shown.text} ${shown.label}`
   const base = { figure: shown.text, afterReason: shown.reason, breakdown: shown.breakdown, booked, unbooked, legs, detections }
   if (body.state === 'EXITED') return { kind: 'exited', text: `${text} - exited`, ...base }

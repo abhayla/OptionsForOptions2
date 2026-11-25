@@ -572,3 +572,13 @@ async def test_d64_after_settlement_and_on_another_day_there_is_no_line(db):
     assert (await _book_after_close(app, stored, 15, 50)).get("after_close_text") is None  # settled at 15:45
     _clock_at(app, 15, 35, day=8)  # a day when no open leg expires
     assert (await _get_ok(app, f"/paper/strategies/{stored.id}")).get("after_close_text") is None
+
+
+async def test_d64_the_tracking_route_carries_the_same_line_and_no_raw_text(db):
+    app, stored, *_ = await _setup(db)
+    await _book_after_close(app, stored, 15, 35)
+    body = await _get_ok(app, f"/strategies/{stored.id}/tracking")
+    assert body["after_close_text"] == SETTLES_LINE
+    assert body["unpriced_text"] is None
+    _clock_at(app, 11, 0)
+    assert (await _get_ok(app, f"/strategies/{stored.id}/tracking")).get("after_close_text") is None

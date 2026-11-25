@@ -26,6 +26,7 @@ import AfterChargesTap from '@/components/common/AfterChargesTap.vue'
 const notAvailable = (s) => s.after_charges_reason_text ?? s.completed_reason_text ?? 'the server sent no figure'
 import { STRATEGY_NAME_MAX, legsLine, nameLimitText, noMatchText, plainName, renameStrategy, searchStrategies, strategyLabel } from '@/lib/saveDraft'
 import { isCompleted, isRunning, strategyStatusWord } from '@/lib/strategyStatus'
+import { CLOSED_HEADER, CLOSED_PREFIX, CLOSED_UNAVAILABLE_TEXT } from '@/lib/sharedStateText'
 import { useOrderPath } from '@/lib/orderPath'
 import PnlLine from '@/components/live/PnlLine.vue'
 import { usePaperPnl } from '@/lib/paperPnl'
@@ -36,18 +37,17 @@ import { useSettingsValues } from '@/stores/settingsValues'
 // Owner 2026-10-30 (Sensibull 117): one column grid shared by the header row and every strategy row, so columns line up
 // User test 2026-10-30 round 2 widths: last saved 16rem holds "last saved 30 Oct 2026, 08:28:55 IST" on one line
 const COLS = 'lg:grid lg:grid-cols-[minmax(9.5rem,1.4fr)_3.5rem_minmax(0,1fr)_5rem_13rem_12rem]'
-const HEADS = computed(() => ['Name', 'Index', 'Legs', 'Status', completedOnly.value ? 'Closed' : 'Last saved', '']) // ADR-299: the Tracking column is gone (its words are retired)
+const HEADS = computed(() => ['Name', 'Index', 'Legs', 'Status', completedOnly.value ? CLOSED_HEADER : 'Last saved', '']) // ADR-299: the Tracking column is gone (its words are retired)
 
 // W-121 (REQ-073 AC-6, ADR-165): the Execute link is absent (not disabled) unless the server said the order path is on.
 const orderPathOn = useOrderPath()
 const pnl = usePaperPnl() // D-41: the Positions page's P&L (one read of the paper list); only a running row shows it
 
-// pending owner read (25 Nov 2026), D-66: the Completed page shows when the trade closed (the server's close time), never the last save
+// D-66: the Completed page shows when the trade closed (the server's close time), never the last save; words: sharedStateText
 const closedText = (s) => {
   const time = istTime(s.closed_at)
-  return time === TIME_UNAVAILABLE ? CLOSED_UNAVAILABLE_TEXT : `closed ${time}`
+  return time === TIME_UNAVAILABLE ? CLOSED_UNAVAILABLE_TEXT : `${CLOSED_PREFIX}${time}`
 }
-const CLOSED_UNAVAILABLE_TEXT = 'closed: time not available'
 
 const route = useRoute()
 const router = useRouter()

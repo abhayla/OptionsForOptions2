@@ -368,13 +368,14 @@ def _plain(value: Decimal) -> str:
 
 def _view(bk: _Book, legs: list[paper.TrackedLeg], underlying: str,  # noqa: PLR0913
           view: paper.TrackingView | None, answered_at: datetime.datetime,
-          reasons: list[paper.ContractReason | None], rates: ChargeRates | None = None) -> TrackingOut:
+          reasons: list[paper.ContractReason | None], rates: ChargeRates | None = None,
+          extra: dict | None = None) -> TrackingOut:
     figures = _figures(bk, legs, view, reasons, underlying, rates)
     texts = _texts(figures)
     texts["paper_pnl_text"] = texts.pop("total_text")
     body: dict = {"strategy_id": bk.strategy_id, "started_at": bk.started_at,
                   "prices_at": bk.prices_at, "answered_at": answered_at, "detections": [],
-                  "paper_pnl": figures.pop("total")} | figures | texts
+                  "paper_pnl": figures.pop("total")} | figures | texts | (extra or {})
     if view is None or view.index is None:
         return TrackingOut.model_validate(body | {"index": None, "breakevens": None})
     index = view.index
@@ -418,21 +419,33 @@ def _legs_of(bk: _Book, contracts: Sequence[tracked_contracts.TrackedContract]) 
 async def _answer(db: Any, stored, bk: _Book, ctx: MarketContext | None,  # noqa: PLR0913
                   feed: LiveFeed | None, threshold: Decimal, answered_at: datetime.datetime,
                   rates: ChargeRates | None = None) -> TrackingOut:
+    """D-64: the tracking answer, with the one after-close line (``paper._after_close``'s rule) in place of the paused
+    texts while an open leg expires today and the settlement time has not come."""
+    legs, _ = await _entry_legs(db, bk)
+    open_today = [{"net_quantity": 1, "expiry": leg.expiry} for i, leg in enumerate(legs) if i not in bk.exit_prices]
+    from ofo_app.routes.paper import _after_close  # noqa: PLC0415 - routes.paper imports routes.strategies
+    extra = await _after_close(db, answered_at, {"positions": open_today})
+    return await _answer_core(db, stored, bk, ctx, feed, threshold, answered_at, rates, extra)
+
+
+async def _answer_core(db: Any, stored, bk: _Book, ctx: MarketContext | None,  # noqa: PLR0913
+                       feed: LiveFeed | None, threshold: Decimal, answered_at: datetime.datetime,
+                       rates: ChargeRates | None = None, extra: dict | None = None) -> TrackingOut:
     legs, reasons = await _entry_legs(db, bk)
     underlying = stored.saved.definition.underlying  # fixed for the strategy's life (strategy_store UNDERLYING_FIXED)
     exits = bk.exit_prices
     if len(exits) == len(legs):  # every leg exited: frozen at its exit prices, no market read (EXITED)
         return _view(bk, legs, underlying, paper.tracking_view(None, legs, threshold, reasons, exits),
-                     answered_at, reasons, rates)
+                     answered_at, reasons, rates, extra)
     if not _connected(ctx):
-        return _view(bk, legs, underlying, None, answered_at, reasons, rates)
+        return _view(bk, legs, underlying, None, answered_at, reasons, rates, extra)
     snapshot = await _snapshot(ctx, feed, underlying, _open_keys(bk, legs, reasons))
     view = paper.tracking_view(snapshot, legs, check_threshold(threshold), reasons, exits)
     if view.detections and _playbook_type(ctx, underlying, legs, bk, view) is not None:
         # F-71 / GC-ADJ2 1C: a strategy whose shape is a playbook type is checked by its playbook
         # (GET /api/strategies/{id}/adjustment-check); the fixed 0.5% level rule fires at entry for an iron condor
         view = dataclasses.replace(view, detections=())
-    return _view(bk, legs, underlying, view, answered_at, reasons, rates)
+    return _view(bk, legs, underlying, view, answered_at, reasons, rates, extra)
 
 
 def _playbook_type(ctx: MarketContext | None, underlying: str, legs: list[paper.TrackedLeg], bk: _Book,
