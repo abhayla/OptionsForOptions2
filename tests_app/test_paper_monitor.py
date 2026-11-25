@@ -121,7 +121,8 @@ async def test_core_a_crossing_tick_fires_once_through_the_fan_out_and_never_aga
         assert await monitor.step() == 0
     market.tick(INDEX, "22849.95")
     assert await monitor.step() == 1
-    reason = "Stop-loss on the index: NIFTY crossed below 22,850.00"
+    # D-22: the stop's record carries the index value at that moment (the tick that crossed)
+    reason = "Stop-loss on the index: NIFTY crossed below 22,850.00; NIFTY was at 22,849.95 at that moment"
     assert await _stops(db, stored.id) == [(ids[0], "BUY", 65, D("41.00"), reason, tid),
                                            (ids[1], "SELL", 65, D("12.50"), reason, tid)]
     assert await _trigger_state(db, tid) == (True, False)
@@ -217,11 +218,28 @@ async def test_a_leg_stop_exits_only_its_contract_for_its_whole_open_quantity_at
     await monitor.step()
     market.tick(keys[0], "119.95")
     assert await monitor.step() == 0
+    market.tick(INDEX, "22849.95")  # D-22: a leg stop's record also carries the index at that moment
     market.tick(keys[0], "120.40")
     assert await monitor.step() == 1
     [(cid, side, qty, price, reason, trigger)] = await _stops(db, stored.id)
     assert (cid, side, qty, price, trigger) == (ids[0], "BUY", 130, D("120.40"), tid)
-    assert reason.startswith("Stop-loss: ") and reason.endswith("crossed above 120.00")
+    assert reason.startswith("Stop-loss: ")
+    assert reason.endswith("crossed above 120.00; NIFTY was at 22,849.95 at that moment")
+    [(_, body)] = await _alerts(db, stored.id)
+    assert reason in body
+
+
+async def test_a_leg_stop_with_no_live_index_value_says_so_and_still_fires(db):
+    """D-22: no index price is ever invented; the record says the value was not available."""
+    market = Market()
+    stored, ids, keys = await _strategy(db)
+    await triggers.add(db, stored.id, triggers.NewTrigger("leg_stop", "above", D("120.00"), contract_id=ids[0]))
+    monitor = _monitor(db, market)
+    await monitor.step()
+    market.tick(keys[0], "120.40")
+    assert await monitor.step() == 1
+    [(*_, reason, _)] = await _stops(db, stored.id)
+    assert reason.endswith("crossed above 120.00; the index value at that moment was not available")
 
 
 async def test_a_fully_exited_strategy_cancels_its_triggers_and_places_nothing(db):
