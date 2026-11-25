@@ -129,7 +129,7 @@ def _all_blocks():
             encoding="utf-8")), "ic"))
         g.pop("roll_debit_limit", None)
         return g
-    # ADJ-09 is in profit with the playbook's time reached: Take profit (A-24, A-25) and Time exit (A-35) are built there
+    # ADJ-09 is in profit with the playbook's time reached: A-24, A-25 and A-35 are built there
     out = [(f"{sid}+playbook", post(client(load(sid), guards=guards())).json()) for sid in ("ADJ-02", "ADJ-09")]
     out.extend((sid, post(client(load(sid))).json()) for sid in ("ADJ-02", "ADJ-13"))
     return out
@@ -150,7 +150,7 @@ def test_d21_every_approach_id_has_the_eight_measures_or_states_its_refusal():
                 assert r["direction"] in ("up", "down", "same", "not_available"), (label, a, r)
                 if r["direction"] == "not_available":  # never a filled default: the reason is stated
                     assert r["unavailable_reason"], (label, a, r)
-    assert seen_built == set(APPROACH_IDS), set(APPROACH_IDS) - seen_built  # every one of the 15 shows its block somewhere
+    assert seen_built == set(APPROACH_IDS), set(APPROACH_IDS) - seen_built  # all 15 show a block
 
 
 def test_d21_a_measure_that_cannot_be_worked_out_says_not_available_with_its_reason():
@@ -189,3 +189,37 @@ def test_d21_the_block_reads_the_same_engine_figures_as_the_compare_table(sid):
             else:
                 assert rows[measure]["direction"] == "not_available", (a, measure)
                 assert cell["unavailable_reason"] in rows[measure]["unavailable_reason"], (a, measure)
+
+
+# ---- round 2: a single breakeven is an open range, not a narrow one -------------------------------------------------
+
+def test_d21_r2_one_breakeven_is_worded_by_its_side_and_ranks_as_unbounded():
+    """ADJ-02 A-26 (buy back the decayed put short, its wing stays): the position now profits at every level below the
+    one breakeven, 23,540.53. The cell said "23540.53 (profit range 120.53 points)" (distance from the index), which
+    ranked it narrower than 886.46 and marked the range down. It is open on one side."""
+    body = post(client(load("ADJ-02"), guards=_ic_guards())).json()
+    cells = {c["id"]: c for c in body["criteria"]}["breakevens"]
+    for a in ("A-26", "A-27"):
+        cell = cells["values"][a]
+        assert cell["text"] == "Profit below 23,540.53, no lower end", (a, cell)
+        assert cell["value"] is None
+        assert a in cells["leaders"], cells["leaders"]  # unbounded is above every finite width
+        row = rows_of(body["what_changes"][a])["profit_range"]
+        assert row["after_text"] == "Profit below 23,540.53, no lower end" and row["direction"] == "up", row
+
+
+def _ic_guards():
+    g = adjustment_check.guards_of_body(pe.body_from_fixture(json.loads((FIX / "_playbooks.json").read_text(
+        encoding="utf-8")), "ic"))
+    g.pop("roll_debit_limit", None)
+    return g
+
+
+def test_d21_r2_the_side_line_needs_the_larger_loss_to_have_been_on_the_closed_side_before(monkeypatch):
+    """ADJ-02 A-29 closes call credit. If the put side already carried the larger loss before (not tied), the put
+    spread does not 'become' the largest loss, so the plain line is used instead of the side-specific one."""
+    from ofo.adjustment import what_changes  # noqa: PLC0415 - patched in this test only
+    monkeypatch.setattr(what_changes, "_loss_tail", lambda col, ctx: "PE")
+    body = post(client(load("ADJ-02"))).json()
+    assert body["what_changes"]["A-29"]["reason_line"] == (
+        "This removes credit that was held against the loss, so the maximum loss is higher than before.")
