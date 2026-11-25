@@ -110,7 +110,7 @@ const withCells = (extra) => ({ rows: [row('24450.00', '150.00', '80.00'), row('
   .map((r, i) => ({ ...r, ce: { ...r.ce, ...extra.ce[i] }, pe: { ...r.pe, ...extra.pe[i] } })) })
 
 describe('D-55: the filters apply as typed', () => {
-  it.each([['filter-min-oi', 'min_oi', '5000'], ['filter-min-volume', 'min_volume', '300'], ['filter-min-ltp', 'min_ltp', '12.50']])(
+  it.each([['filter-min-oi', 'min_oi', '5000'], ['filter-min-volume', 'min_volume', '300'], ['filter-min-ltp', 'min_ltp', '12.5']])(
     '%s: the request carries %s as soon as it is typed (input event only, no blur)', async (testid, field, typed) => {
       const w = await openChain()
       await typeInto(w, testid, typed)
