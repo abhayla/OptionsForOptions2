@@ -2514,6 +2514,15 @@
             ],
             "title": "Price Basis Text"
           },
+          "time_value_basis_text": {
+            "anyOf": [
+              {},
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Time Value Basis Text"
+          },
           "plan_line": {
             "anyOf": [
               {},
