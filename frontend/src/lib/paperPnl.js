@@ -6,7 +6,8 @@
 // always ends, the client has a timeout, so this state never lasts).
 import { computed, onMounted, ref } from 'vue'
 import api from '@/services/api'
-import { PAPER_NO_FIGURE, PAPER_PAUSED, listIsStale, readPaperList } from '@/lib/paperList'
+import { PAPER_NO_FIGURE, PAPER_PAUSED, readPaperList } from '@/lib/paperList'
+import { usePriceFreshness } from '@/lib/priceState'
 import { UNREADABLE_TEXT } from '@/lib/tracking'
 import { usePaperRefresh } from '@/lib/usePaperRefresh'
 
@@ -43,7 +44,8 @@ export function usePaperPnl() {
     onError: () => { failed.value = true; loaded.value = true },
   })
   onMounted(refresh)
-  const stale = computed(() => listIsStale(failed.value, list.value))
+  const { readOk } = usePriceFreshness({ readFailed: failed, held: list })
+  const stale = computed(() => !readOk.value)
   /** The cell of one strategy: {kind: loading | none | value | paused | failed, text, label, note}. */
   const cellFor = (id) => {
     if (!loaded.value) return { kind: 'loading' }

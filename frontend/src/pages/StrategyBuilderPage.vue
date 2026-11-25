@@ -38,6 +38,7 @@ import {
 import { withAsOf } from '@/lib/paperList'
 import PaperBookPanel from '@/components/strategy/PaperBookPanel.vue'
 import { usePaperBookRead } from '@/lib/usePaperBookRead'
+import { usePriceFreshness } from '@/lib/priceState'
 import PaperStrategies from '@/components/strategy/PaperStrategies.vue'
 import AdjustCompare from '@/components/strategy/AdjustCompare.vue'
 import { opportunitiesFromQuery, picksFromQuery } from '@/lib/adjustDrawer'
@@ -424,7 +425,14 @@ const { readFailed: paperReadFailed, contractsChanged: paperContractsChanged } =
   book: () => paper.value?.book ?? null,
   onBook: (b) => { if (paper.value && !paperStale.value) paper.value = { ...paper.value, book: b } },
 })
-const paperTotal = computed(() => (paper.value ? sharedTotal(paper.value.book, paperReadFailed.value) : null))
+// F1: the page's book-read state through the one freshness rule (priceState). `readOk` / `exitReason` are what the builder's Exit
+// gate reads (Phase 4 wires it); today only the read-failed line uses it, as the book on screen is the one that failed.
+const { readFailed: paperBookFailed } = usePriceFreshness({
+  readFailed: paperReadFailed,
+  held: () => paper.value?.book ?? null,
+  serverState: () => paper.value?.book?.state,
+})
+const paperTotal = computed(() => (paper.value ? sharedTotal(paper.value.book, paperBookFailed.value) : null))
 function reviewPending() {
   if (!paper.value || paperStale.value || !pendingOrders.value?.length) return
   paperError.value = ''
@@ -1061,7 +1069,7 @@ const pricesStamp = computed(() => {
           <button v-if="!paperStale && pendingOrders?.length" type="button" class="h-9 rounded-lg bg-accent px-3 font-medium text-white" data-testid="paper-review" @click="reviewPending">{{ REVIEW_AND_ADD_LABEL }}</button>
           <button v-if="pendingOrders === null || pendingOrders.length" type="button" class="h-9 rounded-lg border border-line px-3 font-medium" data-testid="paper-discard" @click="discardPending">{{ DISCARD_LABEL }}</button>
         </div>
-        <PaperBookPanel v-if="paper" :book="paper.book" :net="paper.net" :read-failed="paperReadFailed" :contracts-changed="paperContractsChanged" :show-orders="showOrdersTick" @exit="exitPaper" @exit-all="exitAllPaper" />
+        <PaperBookPanel v-if="paper" :book="paper.book" :net="paper.net" :read-failed="paperBookFailed" :contracts-changed="paperContractsChanged" :show-orders="showOrdersTick" @exit="exitPaper" @exit-all="exitAllPaper" />
         </div>
         <PaperConfirmDialog :open="paperDialog" :orders="paperRows" :strategy-id="route.query.strategy" :busy="paperBusy" :error="paperError" :state="paperState" @confirm="confirmPending" @cancel="paperDialog = false" @orderbook="openPaperOrderbook" />
         <SaveDraftBar ref="barRef" :legs="legs" :rules-ref="String(route.query.rules_ref || '')" :current="openStrategy" :shown-name="shapeName ?? ''" :paper-mode="paper !== null" :live-price-by-id="livePriceById" class="max-[1099px]:contents" @open="openFromBar" @saved="onSaved" @paper-added="onPaperAdded" @renamed="onRenamed" @deleted="onDeleted">
@@ -1252,7 +1260,7 @@ const pricesStamp = computed(() => {
           </ChartCard>
           <LowerCard :table="data.table" :legs="data.legs ?? null" :sd="data.standard_deviation ?? null" />
           <StrategyActions :saved-id="savedId" :execute-refusal="refusal" />
-          <TrackingPanel :saved-id="savedId" :legs="data.legs ?? null" :shared="paper?.book ?? null" :shared-failed="paperReadFailed" />
+          <TrackingPanel :saved-id="savedId" :legs="data.legs ?? null" :shared="paper?.book ?? null" :shared-failed="paperBookFailed" />
         </div>
       </div>
     </div>

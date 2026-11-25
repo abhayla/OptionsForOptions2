@@ -82,6 +82,7 @@ from pydantic import AwareDatetime, BaseModel, ConfigDict, Field, field_validato
 from ofo_app import (
     held_entry_store,
     market_read,
+    may_act,
     paper_limit,
     paper_monitor,
     paper_store,
@@ -111,7 +112,6 @@ from ofo_app.routes.outcome import (
     get_answer_clock,
     get_market_context,
     load_charge_rates,
-    market_state,
 )
 from ofo_app.routes.planned_entry import get_live_feed
 from ofo_app.routes.strategies import StrategyRefused, refused_answer
@@ -119,7 +119,7 @@ from ofo_app.scenario_guard import guard_paper_order
 from ofo_app.underlying import Underlying
 
 _LOG = logging.getLogger(__name__)
-_UNREADABLE = "paper_trigger_price_unreadable"  # ADR-327 (2)
+_UNREADABLE = may_act.TRIGGER_PRICE_UNREADABLE  # ADR-327 (2)
 
 router = APIRouter(route_class=ClosedRoute)
 #: REQ-163 AC-1: a basket naming a suggestion record it may not link (the opportunities routes' own answers)
@@ -1241,8 +1241,7 @@ async def _server_exit_prices(ctx: MarketContext | None, feed: LiveFeed | None, 
     except Exception:  # noqa: BLE001 - any failed read is "no price": refused by name, nothing written
         _LOG.exception("paper exit price read failed")
         raise StrategyRefused("tracking_exit_prices_not_live", Failure.CONFLICT) from None
-    if not all(paper.is_live(p) and p.price is not None for p in prices.values()):
-        raise StrategyRefused("tracking_exit_prices_not_live", Failure.CONFLICT)
+    may_act.require(may_act.prices_ok("exit", [may_act.state_of(p) for p in prices.values()]))
     return {i: p.price for i, p in prices.items()}  # type: ignore[misc] - priced: price set
 
 
@@ -1316,7 +1315,7 @@ async def place_paper_orders(strategy_id: int, body: PaperOrdersIn,  # noqa: PLR
         raise StrategyRefused("paper_contract_not_tradable")
     _refuse_duplicate_legs(stored.saved.definition.underlying, body.orders, state)  # ADR-319 (3)
     placed_at = now()
-    paper_limit.refuse_when_closed(ctx, placed_at)  # ADR-212: before any price read
+    may_act.refuse_unless_allowed(ctx, "place", placed_at)  # ADR-212: before any price read
     exit_prices = await _server_exit_prices(ctx, feed, stored.saved.definition.underlying, body.orders, state)
     # only a strategy with no paper order yet can be at its first fill (a book never shrinks): a later fill reads no IV
     first = not await paper_store.tracked_ids(db, [strategy_id])
@@ -1648,7 +1647,7 @@ async def check_trigger_levels(db: Any, ctx: MarketContext | None, feed: LiveFee
     live after asking the feed and waiting up to 3 s (stale, missing) -> ``paper_trigger_price_unreadable`` (ADR-327
     (2)); a live price at or beyond a level -> ``paper_trigger_already_crossed`` / ``paper_trigger_leg_already_crossed``
     (a crossed level is reported before an unreadable one: the trader can act on it)."""
-    if market_state(ctx, now() if ctx is None else ctx.clock()).closed:
+    if not may_act.market_open(ctx, now() if ctx is None else ctx.clock()):
         return None
     if ctx is None:
         return _UNREADABLE
@@ -1670,15 +1669,16 @@ def _judge_levels(new: Sequence[paper_trigger_store.NewTrigger], read: market_re
                   keys: Mapping[int, str | None]) -> str | None:
     if read.market_closed:
         return None
-    unreadable = False
+    states: list[str] = []
     for n in new:
         answer = read.index if n.contract_id is None else read.legs[keys[n.contract_id]]  # type: ignore[index]
-        if answer is None or answer.state != paper.LIVE:
-            unreadable = True
-        elif stops.crossed(stops.Trigger(0, 0, n.kind, n.direction, n.level, n.contract_id, n.underlying),  # type: ignore[arg-type]
-                           market_read.live_price(answer)):
+        states.append(may_act.MISSING if answer is None else answer.state)
+        if answer is not None and answer.state == paper.LIVE and stops.crossed(
+                stops.Trigger(0, 0, n.kind, n.direction, n.level, n.contract_id, n.underlying),  # type: ignore[arg-type]
+                market_read.live_price(answer)):
             return "paper_trigger_already_crossed" if n.contract_id is None else "paper_trigger_leg_already_crossed"
-    return _UNREADABLE if unreadable else None
+    decision = may_act.prices_ok("set_trigger", states)
+    return decision.reason if isinstance(decision, may_act.Refused) else None
 
 
 async def _validated_triggers(db: Any, strategy_id: int, body: TriggerIn,

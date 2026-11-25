@@ -55,7 +55,7 @@ describe('the rule and the wording each screen already had are the one in priceS
   it('the paused sentence, with and without its time, is unchanged text', () => {
     expect(PAPER_PAUSED).toBe(PAUSED_TEXT)
     expect(PAUSED_TEXT).toBe('Paper P&L paused - prices not live')
-    expect(pausedText(AS_OF)).toBe(`${PAUSED_TEXT}, as of 10:15:30 IST`)
+    expect(pausedText(AS_OF)).toBe(`${PAUSED_TEXT}, as of 8 Oct 2026, 10:15:30 IST`)
     expect(trackingPaused(AS_OF)).toBe(pausedText(AS_OF))
     expect(trackingPaused(null)).toBe(pausedText(null))
   })

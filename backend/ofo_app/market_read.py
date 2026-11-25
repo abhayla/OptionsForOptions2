@@ -27,8 +27,9 @@ from typing import Final, Literal
 from ofo.outcome import read_snapshot
 from ofo.tracking import paper
 
+from ofo_app import may_act
 from ofo_app.live_push import POLL_SECONDS, LiveFeed, hold_and_read
-from ofo_app.routes.outcome import MarketContext, feed_scope, market_state
+from ofo_app.routes.outcome import MarketContext, feed_scope
 
 log = logging.getLogger(__name__)
 
@@ -96,7 +97,7 @@ async def read_market(ctx: MarketContext, feed: LiveFeed | None, underlying: str
     read that raises raises: the caller refuses by name (ADR-327), never reads "no price" as "fine"."""
     keys = list(dict.fromkeys(leg_keys))
     provider = ctx.provider
-    if market_state(ctx, ctx.clock()).closed:
+    if not may_act.market_open(ctx, ctx.clock()):
         return MarketRead(True, MarketPrice(underlying, MARKET_CLOSED, None) if need_index else None,
                           {k: MarketPrice(k, MARKET_CLOSED, None) for k in keys})
 

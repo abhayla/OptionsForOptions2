@@ -170,7 +170,8 @@ import PaperStops from '@/components/strategy/PaperStops.vue'
 import AfterChargesTap from '@/components/common/AfterChargesTap.vue'
 import PaperConfirmDialog from '@/components/strategy/PaperConfirmDialog.vue'
 import HeldNote from '@/components/strategy/HeldNote.vue'
-import { ALL_CLOSED_TEXT, DECAY_LEFT_TODAY_HEADING, GREEK_COLUMNS, PAPER_NO_FIGURE, PAPER_PAUSED, SHOW_CLOSED_LABEL, exitRowsFor, listIsStale, readPaperList, visibleGroups } from '@/lib/paperList'
+import { ALL_CLOSED_TEXT, DECAY_LEFT_TODAY_HEADING, GREEK_COLUMNS, PAPER_NO_FIGURE, PAPER_PAUSED, SHOW_CLOSED_LABEL, exitRowsFor, readPaperList, visibleGroups } from '@/lib/paperList'
+import { NOT_LIVE_EXIT, usePriceFreshness } from '@/lib/priceState'
 import { usePaperRefresh } from '@/lib/usePaperRefresh'
 import { EXITED_NOW_LABEL, HELD_TO_EXPIRY_LABEL } from '@/lib/paperDrafts'
 import { PAPER_STATE, paperPostOutcome } from '@/lib/tracking'
@@ -187,7 +188,6 @@ const legsText = (g) => {
 }
 const NO_TOTAL = 'No paper total yet: prices are not live'
 const BANNER = 'Paper trades - not real money'
-const NOT_LIVE_EXIT = 'Prices are not live; try again when they update' // REQ-109 AC-5
 const EMPTY = 'No paper strategies yet. Build a strategy, then press Add to Paper.'
 const figures = [
   { field: 'total', label: 'Total P&L', testid: 'paper-total', reason: 'pauseReason', reasonId: 'paper-total-reason' },
@@ -236,7 +236,8 @@ const showClosed = ref(false)
 const shown = computed(() => visibleGroups(items.value ?? [], showClosed.value))
 const errorParts = ref(null)
 // D-05 r3: a failed or unreadable refresh with a list on screen: figures paused, no exit from old prices
-const stale = computed(() => listIsStale(errorParts.value, items.value))
+const { readOk } = usePriceFreshness({ readFailed: errorParts, held: items })
+const stale = computed(() => !readOk.value)
 const loading = ref(true)
 // D-05: reads are one at a time; each read start makes a fresh token object. latestReadToken is the latest started,
 // goodReadToken the one of the last good answer, so an open Stops panel drops its Not saved line only for a good read

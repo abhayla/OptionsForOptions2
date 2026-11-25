@@ -29,7 +29,8 @@ from ofo_app.strategy_refused import StrategyRefused  # noqa: E402
 
 OPEN_AT = datetime.datetime(2026, 10, 8, 10, 0, tzinfo=IST)  # a Thursday session
 CLOSED_AT = datetime.datetime(2026, 10, 8, 20, 0, tzinfo=IST)
-CLOSED, UNREADABLE, EXIT_NOT_LIVE = "gate_market_closed", "paper_trigger_price_unreadable", "tracking_exit_prices_not_live"
+CLOSED, EXIT_NOT_LIVE = "gate_market_closed", "tracking_exit_prices_not_live"
+UNREADABLE = "paper_trigger_price_unreadable"
 
 
 @pytest.fixture

@@ -8,12 +8,12 @@ import { contractName, CONTRACT_UNAVAILABLE } from '@/lib/displayFormat'
 import { UNREADABLE_TEXT, EXITED_TEXT, afterFigure } from '@/lib/tracking'
 import { istTime } from '@/lib/displayFormat'
 import { LAST_CLOSE_LABEL } from '@/lib/paperDrafts'
+import { PAUSED_TEXT as PAPER_PAUSED, NOT_CONNECTED_TEXT as PAPER_NOT_CONNECTED, listIsStale } from '@/lib/priceState'
 
 const WORDS = ['Draft', 'Running', 'Completed']
 const STATES = new Set(['LIVE', 'PAUSED', 'NOT_CONNECTED', 'EXITED'])
 export const PAPER_NO_FIGURE = '—'
-export const PAPER_PAUSED = 'Paper P&L paused - prices not live'
-export const PAPER_NOT_CONNECTED = 'Paper P&L paused - live prices are not connected'
+export { PAPER_PAUSED, PAPER_NOT_CONNECTED, listIsStale } // the one rule and wording live in lib/priceState.js
 export const NOT_WHOLE_LOTS_TEXT = 'Not a whole number of lots'
 export const SHOW_CLOSED_LABEL = 'Show closed positions'
 export const ALL_CLOSED_TEXT = 'No open paper positions. Turn on Show closed positions to see the exited ones.'
@@ -181,9 +181,6 @@ export function readPaperList(data) {
   if (!data || !Array.isArray(data.strategies)) return null
   return { groups: data.strategies.map(readPaperStrategy), totals: readTotals(data.totals), today: readToday(data.today) }
 }
-
-/** The ONE paused decision of every paper P&L screen (REQ-109 AC-5): a refresh failed or did not read while a list is held. */
-export const listIsStale = (failed, list) => !!failed && !!list
 
 /** A group is open when the server counts an open position in it (never a fully exited one). */
 export const isOpenGroup = (g) => g.readable && g.state !== 'EXITED' && g.openCount > 0

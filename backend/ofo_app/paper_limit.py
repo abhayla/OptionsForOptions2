@@ -25,7 +25,6 @@ from ofo.errors import render
 from ofo.tracking.orderbook import net_positions
 
 from ofo_app import paper_store, playbook_store, tracked_contracts
-from ofo_app.errors import Failure
 from ofo_app.strategy_refused import StrategyRefused
 
 log = logging.getLogger(__name__)
@@ -114,21 +113,14 @@ def _limit_of(guards: Any) -> int | None:
     return limit
 
 
-def refuse_when_closed(ctx: Any, at: Any) -> None:
-    """ADR-212: no paper fill outside market hours (a closing price is never a fill price); callers run it BEFORE any
-    price read so the after-hours reason is the one shown."""
-    from ofo_app.routes.outcome import market_state  # noqa: PLC0415 - it imports the route layer
-    if market_state(ctx, at).closed:
-        raise StrategyRefused("gate_market_closed", Failure.CONFLICT)
-
-
 async def place_checked(db: Any, user_ref: str, strategy_id: int, orders: Sequence[Any], *,  # noqa: PLR0913
                         entry: Any, ctx: Any, at: Any, reader: Any, rates: Any) -> tuple[Any, ...]:
     """The ONE write both user save paths use (ADR-212, ADR-255): every fill outside market hours at ``at`` is refused
     (``gate_market_closed``; no market context fails closed by the calendar), then ``paper_store.place``, then the
     adjustment limit on the stored book. The caller commits, or rolls back on any raise. Returns the whole book."""
     from ofo_app import adjustment_check as check  # noqa: PLC0415 - it imports the route layer
-    refuse_when_closed(ctx, at)
+    from ofo_app import may_act  # noqa: PLC0415 - it imports the route layer
+    may_act.refuse_unless_allowed(ctx, "place", at)  # ADR-212
     reader = await _read_before(reader, strategy_id, rates)
     book = await paper_store.place(db, user_ref, strategy_id, orders, entry=entry)
     await check_adjustment_limit(db, user_ref, strategy_id, book[:-len(orders)], [o.order for o in book[-len(orders):]],

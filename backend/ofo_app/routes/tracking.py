@@ -47,7 +47,7 @@ from ofo.tracking import book, paper
 from ofo.tracking.orderbook import PaperOrder, net_positions
 from pydantic import BaseModel, ConfigDict, Field
 
-from ofo_app import paper_limit, paper_reasons
+from ofo_app import may_act, paper_limit, paper_reasons
 from ofo_app import paper_store, tracked_contracts
 from ofo_app import strategy_store as store
 from ofo_app.api_models import ApiModel, CatalogueText, InstrumentId, Money
@@ -529,7 +529,7 @@ async def exit_tracking(strategy_id: int, body: TrackingExitIn,  # noqa: PLR0913
     if bk is None:
         raise StrategyRefused("user_input_request_not_available", Failure.NOT_FOUND)
     answered = now()
-    paper_limit.refuse_when_closed(ctx, answered)  # ADR-212: no fill outside market hours, before any price read
+    may_act.refuse_unless_allowed(ctx, "exit", answered)  # ADR-212: no fill outside market hours, before any price read
     if len(set(body.legs)) != len(body.legs) or any(i >= len(bk.legs) for i in body.legs):
         raise StrategyRefused("tracking_exit_legs_invalid")
     if set(body.legs) & set(bk.exit_prices):

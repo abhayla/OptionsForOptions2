@@ -93,7 +93,8 @@
 <script setup>
 import { computed, ref, watch } from 'vue'
 import { istClock } from '@/lib/displayFormat'
-import { CONTRACTS_CHANGED_TEXT, afterFigure, pausedText } from '@/lib/tracking'
+import { CONTRACTS_CHANGED_TEXT, afterFigure } from '@/lib/tracking'
+import { bookNotLive, pausedText } from '@/lib/priceState'
 import AfterChargesTap from '@/components/common/AfterChargesTap.vue'
 import { withAsOf } from '@/lib/paperList'
 import ClosedRows from '@/components/strategy/ClosedRows.vue'
@@ -115,7 +116,7 @@ const emit = defineEmits(['exit', 'exit-all'])
 // the paused sentence (REQ-109 AC-5) from the book's as_of; a failed read says the same with the last good answer's time
 const asOfLine = computed(() => {
   if (props.readFailed) return pausedText(props.book.answered_at ?? null)
-  return props.book.state === 'PAUSED' || props.book.state === 'NOT_CONNECTED' ? pausedText(props.book.as_of ?? null) : null
+  return bookNotLive(props.book) ? pausedText(props.book.as_of ?? null) : null
 })
 
 const readAt = computed(() => istClock(props.book.answered_at ?? null))

@@ -13,6 +13,7 @@ const legPnlText = (leg) => {
   return leg.pnl_kind === 'booked' ? `${text} booked` : text
 }
 import { plainName } from '@/lib/saveDraft'
+import { NOT_CONNECTED_TEXT, bookNotLive, pausedText } from '@/lib/priceState'
 
 /** GC-TP step 2 (ADR-207 (1)): the builder's action replaces "Start tracking". REQ-109 AC-1's footer, said plainly. */
 export const ADD_TO_PAPER_LABEL = 'Add to Paper'
@@ -105,17 +106,13 @@ export const TRACKING_REFRESH_MS = 5000
 export const PLATFORM_DETECTION_LABEL = 'Adjustment opportunity detected'
 /** REQ-109 AC-2: every paper figure says it is not real. */
 export const PAPER_PNL_PREFIX = 'Paper P&L (not real): '
-export const NOT_CONNECTED_TEXT = 'Paper P&L paused - live prices are not connected'
 export const UNREADABLE_TEXT = 'Paper P&L is not available right now.'
 export const CONDITION_TEXT = Object.freeze({
   near_short_strike: 'Index is near a short strike',
   near_breakeven: 'Index is near a breakeven',
 })
 
-/** REQ-109 AC-5's paused text, with the time of the last price; null time reads as not available. */
-export function pausedText(asOf) {
-  return `Paper P&L paused - prices not live, as of ${istTime(asOf)}`
-}
+export { NOT_CONNECTED_TEXT, pausedText } // the one wording lives in lib/priceState.js (REQ-109 AC-5)
 
 const MONEY = /^(-?)(\d+)\.(\d{2})$/
 
@@ -179,7 +176,7 @@ export function afterFigure(src, before, pausedText = null, afterKey = 'total_af
 export const CONTRACTS_CHANGED_TEXT = 'The open contracts changed, so the screen could not refresh them: reload to see them.'
 export function sharedTotal(book, failed = false) {
   if (!book || typeof book !== 'object') return null
-  const notLive = book.state === 'PAUSED' || book.state === 'NOT_CONNECTED'
+  const notLive = bookNotLive(book)
   const shown = afterFigure(book, serverText(book.total_text), pausedText(book.as_of ?? null))
   const at = istClock(book.answered_at ?? null)
   const closedLine = serverText(book.after_close_text) // D-64: after the close the server's sentence says why, in place of "prices not live"

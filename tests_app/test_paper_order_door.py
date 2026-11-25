@@ -21,7 +21,8 @@ pytestmark = pytest.mark.repo_scan
 #: The modules that make up the paper order book. Add a module here (step 7: the monitor) and it is walked too.
 PAPER_MODULES: tuple[str, ...] = ("ofo_app.routes.paper", "ofo_app.paper_store", "ofo.engine.orderbook",
                                   "ofo.tracking.orderbook", "ofo_app.paper_monitor", "ofo_app.paper_trigger_store",
-                                  "ofo.tracking.stops", "ofo_app.paper_settlement", "ofo_app.market_read")
+                                  "ofo.tracking.stops", "ofo_app.paper_settlement", "ofo_app.market_read",
+                                  "ofo_app.may_act")
 #: Order doors beyond the shared order list: the order audit, order book and order-path-switch modules. A paper module
 #: reaching one is red. The Kite client is NOT listed: the paper book reads live prices through it (a read), and the
 #: order, GTT and basket doors sit in the modules above. A GTT or alert-trigger module added later must be listed
