@@ -159,27 +159,6 @@ async def test_check_route_judges_the_spot_at_the_later_clock(monkeypatch):
     assert seen["spot"].value == SPOT and seen["spot"].source == "rest_quote"
 
 
-async def test_plan_route_judges_the_spot_at_the_later_clock(monkeypatch):
-    clock = Clock(T0)
-    monkeypatch.setattr(outcome, "server_now", clock)
-    _feed, rest = _readings(T0)
-
-    async def no_plan(*_a):
-        return None
-
-    monkeypatch.setattr(plan_route.store, "plan_for", no_plan)
-    seen = {}
-    _watch_judged_spot(monkeypatch, plan_route, seen)
-    monkeypatch.setattr(plan_route.check, "entry_type", lambda _t, _l: "stub")  # the classifier takes no spot (D-04)
-
-    async def market(_t, _c):
-        return _market(T0, SourceReading(SourceState.ABSENT))
-
-    tracked = SimpleNamespace(position=SimpleNamespace(underlying="NIFTY"), entry_position=None)
-    await plan_route._type_of(None, "u", 1, tracked, market, _rest_reader(clock, rest), None)
-    assert seen["spot"].value == SPOT and seen["spot"].source == "rest_quote"
-
-
 async def test_playbook_preview_judges_the_spot_at_the_later_clock(monkeypatch):
     clock = Clock(T0)
     monkeypatch.setattr(outcome, "server_now", clock)
