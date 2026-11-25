@@ -1,0 +1,3970 @@
+{
+ "approaches": [
+  {
+   "after": {
+    "after_charges": null,
+    "booked_pnl": "0.00",
+    "gross": {
+     "breakevens": [
+      "22655.95",
+      "23544.05"
+     ],
+     "loss_regions": [
+      [
+       null,
+       "22655.95"
+      ],
+      [
+       "23544.05",
+       null
+      ]
+     ],
+     "max_loss": "20273.50",
+     "max_profit": "5726.50"
+    }
+   },
+   "after_legs": [
+    {
+     "entry": "21.75",
+     "expiry": "2026-11-09",
+     "lots": 2,
+     "side": "BUY",
+     "strike": "22500.00",
+     "tradingsymbol": "NIFTY26N0922500PE",
+     "type": "PE"
+    },
+    {
+     "entry": "41.8",
+     "expiry": "2026-11-09",
+     "lots": 2,
+     "side": "SELL",
+     "strike": "22700.00",
+     "tradingsymbol": "NIFTY26N0922700PE",
+     "type": "PE"
+    },
+    {
+     "entry": "42",
+     "expiry": "2026-11-09",
+     "lots": 2,
+     "side": "SELL",
+     "strike": "23500.00",
+     "tradingsymbol": "NIFTY26N0923500CE",
+     "type": "CE"
+    },
+    {
+     "entry": "18",
+     "expiry": "2026-11-09",
+     "lots": 2,
+     "side": "BUY",
+     "strike": "23700.00",
+     "tradingsymbol": "NIFTY26N0923700CE",
+     "type": "CE"
+    }
+   ],
+   "after_reason": null,
+   "basis_source": null,
+   "charges": {
+    "not_available": "Charges not available, so the figures after charges are not shown.",
+    "open_exit": null,
+    "paid_so_far": null,
+    "this_adjustment": null
+   },
+   "closed_legs": [],
+   "id": "A-36",
+   "kind": "none",
+   "liquidity_flags": [],
+   "margin": {
+    "at": "2026-11-06T11:40:00+05:30",
+    "reason": null,
+    "state": "stated",
+    "value": "715552.50"
+   },
+   "name": "No change",
+   "pop": {
+    "not_available": true,
+    "reason": "Charges not available, so the figures after charges are not shown.",
+    "value": null
+   },
+   "refusal": null,
+   "side": "none",
+   "step_basis": null,
+   "step_value": null,
+   "take_profit": null,
+   "trades": [],
+   "warnings": []
+  },
+  {
+   "after": {
+    "after_charges": null,
+    "booked_pnl": "2366.00",
+    "gross": {
+     "breakevens": [
+      "23176.15",
+      "23573.85"
+     ],
+     "loss_regions": [
+      [
+       null,
+       "23176.15"
+      ],
+      [
+       "23573.85",
+       null
+      ]
+     ],
+     "max_loss": "16399.50",
+     "max_profit": "9600.50"
+    }
+   },
+   "after_legs": [
+    {
+     "entry": "18.45",
+     "expiry": "2026-11-09",
+     "lots": 2,
+     "side": "BUY",
+     "strike": "23050.00",
+     "tradingsymbol": "NIFTY26N0923050PE",
+     "type": "PE"
+    },
+    {
+     "entry": "50.10",
+     "expiry": "2026-11-09",
+     "lots": 2,
+     "side": "SELL",
+     "strike": "23250.00",
+     "tradingsymbol": "NIFTY26N0923250PE",
+     "type": "PE"
+    },
+    {
+     "entry": "42",
+     "expiry": "2026-11-09",
+     "lots": 2,
+     "side": "SELL",
+     "strike": "23500.00",
+     "tradingsymbol": "NIFTY26N0923500CE",
+     "type": "CE"
+    },
+    {
+     "entry": "18",
+     "expiry": "2026-11-09",
+     "lots": 2,
+     "side": "BUY",
+     "strike": "23700.00",
+     "tradingsymbol": "NIFTY26N0923700CE",
+     "type": "CE"
+    }
+   ],
+   "after_reason": null,
+   "basis_source": "default",
+   "charges": {
+    "not_available": "Charges not available, so the figures after charges are not shown.",
+    "open_exit": null,
+    "paid_so_far": null,
+    "this_adjustment": null
+   },
+   "closed_legs": [
+    {
+     "entry": "21.75",
+     "exit": "0.85",
+     "expiry": "2026-11-09",
+     "lots": 2,
+     "quantity": 130,
+     "side": "BUY",
+     "strike": "22500.00",
+     "tradingsymbol": "NIFTY26N0922500PE",
+     "type": "PE"
+    },
+    {
+     "entry": "41.8",
+     "exit": "2.70",
+     "expiry": "2026-11-09",
+     "lots": 2,
+     "quantity": 130,
+     "side": "SELL",
+     "strike": "22700.00",
+     "tradingsymbol": "NIFTY26N0922700PE",
+     "type": "PE"
+    }
+   ],
+   "id": "A-01",
+   "kind": "roll",
+   "liquidity_flags": [],
+   "margin": {
+    "at": "2026-11-06T11:40:00+05:30",
+    "reason": null,
+    "state": "stated",
+    "value": "724561.50"
+   },
+   "name": "Roll the untested spread to the strikes your roll setting picks (same width, same expiry)",
+   "pop": {
+    "not_available": true,
+    "reason": "Charges not available, so the figures after charges are not shown.",
+    "value": null
+   },
+   "refusal": null,
+   "side": "put",
+   "step_basis": "delta",
+   "step_value": "0.30",
+   "take_profit": null,
+   "trades": [
+    {
+     "action": "BUY",
+     "expiry": "2026-11-09",
+     "lots": 2,
+     "price": "18.45",
+     "quantity": 130,
+     "strike": "23050.00",
+     "tradingsymbol": "NIFTY26N0923050PE",
+     "type": "PE"
+    },
+    {
+     "action": "BUY",
+     "expiry": "2026-11-09",
+     "lots": 2,
+     "price": "2.70",
+     "quantity": 130,
+     "strike": "22700.00",
+     "tradingsymbol": "NIFTY26N0922700PE",
+     "type": "PE"
+    },
+    {
+     "action": "SELL",
+     "expiry": "2026-11-09",
+     "lots": 2,
+     "price": "0.85",
+     "quantity": 130,
+     "strike": "22500.00",
+     "tradingsymbol": "NIFTY26N0922500PE",
+     "type": "PE"
+    },
+    {
+     "action": "SELL",
+     "expiry": "2026-11-09",
+     "lots": 2,
+     "price": "50.10",
+     "quantity": 130,
+     "strike": "23250.00",
+     "tradingsymbol": "NIFTY26N0923250PE",
+     "type": "PE"
+    }
+   ],
+   "warnings": []
+  },
+  {
+   "after": null,
+   "after_legs": null,
+   "after_reason": null,
+   "basis_source": "default",
+   "charges": null,
+   "closed_legs": null,
+   "id": "A-05",
+   "kind": "roll",
+   "liquidity_flags": [],
+   "margin": null,
+   "name": "Roll the tested spread to the strikes your roll setting picks (same width, same expiry)",
+   "pop": null,
+   "refusal": {
+    "code": "USER_INPUT_176",
+    "error_class": "USER_INPUT",
+    "external_text": null,
+    "impact": "This approach was not built; the other approaches still show.",
+    "next_action": "Compare the other approaches, or change the legs in the Builder.",
+    "what_happened": "This roll costs \u20b92,515.50 net, which is more than the \u20b9572.65 your playbook allows for one roll.",
+    "what_is_blocked": "This approach."
+   },
+   "side": "call",
+   "step_basis": "delta",
+   "step_value": "0.30",
+   "take_profit": null,
+   "trades": null,
+   "warnings": []
+  },
+  {
+   "after": {
+    "after_charges": null,
+    "booked_pnl": "-1989.00",
+    "gross": {
+     "breakevens": [
+      "22683.25",
+      "23533.5"
+     ],
+     "loss_regions": [
+      [
+       null,
+       "22683.25"
+      ],
+      [
+       "23533.5",
+       null
+      ]
+     ],
+     "max_loss": "23822.50",
+     "max_profit": "2177.50"
+    }
+   },
+   "after_legs": [
+    {
+     "entry": "21.75",
+     "expiry": "2026-11-09",
+     "lots": 2,
+     "side": "BUY",
+     "strike": "22500.00",
+     "tradingsymbol": "NIFTY26N0922500PE",
+     "type": "PE"
+    },
+    {
+     "entry": "41.8",
+     "expiry": "2026-11-09",
+     "lots": 2,
+     "side": "SELL",
+     "strike": "22700.00",
+     "tradingsymbol": "NIFTY26N0922700PE",
+     "type": "PE"
+    },
+    {
+     "entry": "42",
+     "expiry": "2026-11-09",
+     "lots": 1,
+     "side": "SELL",
+     "strike": "23500.00",
+     "tradingsymbol": "NIFTY26N0923500CE",
+     "type": "CE"
+    },
+    {
+     "entry": "18",
+     "expiry": "2026-11-09",
+     "lots": 1,
+     "side": "BUY",
+     "strike": "23700.00",
+     "tradingsymbol": "NIFTY26N0923700CE",
+     "type": "CE"
+    }
+   ],
+   "after_reason": null,
+   "basis_source": null,
+   "charges": {
+    "not_available": "Charges not available, so the figures after charges are not shown.",
+    "open_exit": null,
+    "paid_so_far": null,
+    "this_adjustment": null
+   },
+   "closed_legs": [
+    {
+     "entry": "42",
+     "exit": "84.10",
+     "expiry": "2026-11-09",
+     "lots": 1,
+     "quantity": 65,
+     "side": "SELL",
+     "strike": "23500.00",
+     "tradingsymbol": "NIFTY26N0923500CE",
+     "type": "CE"
+    },
+    {
+     "entry": "18",
+     "exit": "29.50",
+     "expiry": "2026-11-09",
+     "lots": 1,
+     "quantity": 65,
+     "side": "BUY",
+     "strike": "23700.00",
+     "tradingsymbol": "NIFTY26N0923700CE",
+     "type": "CE"
+    }
+   ],
+   "id": "A-29",
+   "kind": "reduce",
+   "liquidity_flags": [],
+   "margin": {
+    "at": "2026-11-06T11:40:00+05:30",
+    "reason": null,
+    "state": "stated",
+    "value": "533422.50"
+   },
+   "name": "Reduce the tested side",
+   "pop": {
+    "not_available": true,
+    "reason": "Charges not available, so the figures after charges are not shown.",
+    "value": null
+   },
+   "refusal": null,
+   "side": "call",
+   "step_basis": null,
+   "step_value": null,
+   "take_profit": null,
+   "trades": [
+    {
+     "action": "BUY",
+     "expiry": "2026-11-09",
+     "lots": 1,
+     "price": "84.10",
+     "quantity": 65,
+     "strike": "23500.00",
+     "tradingsymbol": "NIFTY26N0923500CE",
+     "type": "CE"
+    },
+    {
+     "action": "SELL",
+     "expiry": "2026-11-09",
+     "lots": 1,
+     "price": "29.50",
+     "quantity": 65,
+     "strike": "23700.00",
+     "tradingsymbol": "NIFTY26N0923700CE",
+     "type": "CE"
+    }
+   ],
+   "warnings": []
+  },
+  {
+   "after": {
+    "after_charges": null,
+    "booked_pnl": "-3978.00",
+    "gross": {
+     "breakevens": [],
+     "loss_regions": [
+      [
+       null,
+       null
+      ]
+     ],
+     "max_loss": "27371.50",
+     "max_profit": "-1371.50"
+    }
+   },
+   "after_legs": [
+    {
+     "entry": "21.75",
+     "expiry": "2026-11-09",
+     "lots": 2,
+     "side": "BUY",
+     "strike": "22500.00",
+     "tradingsymbol": "NIFTY26N0922500PE",
+     "type": "PE"
+    },
+    {
+     "entry": "41.8",
+     "expiry": "2026-11-09",
+     "lots": 2,
+     "side": "SELL",
+     "strike": "22700.00",
+     "tradingsymbol": "NIFTY26N0922700PE",
+     "type": "PE"
+    }
+   ],
+   "after_reason": null,
+   "basis_source": null,
+   "charges": {
+    "not_available": "Charges not available, so the figures after charges are not shown.",
+    "open_exit": null,
+    "paid_so_far": null,
+    "this_adjustment": null
+   },
+   "closed_legs": [
+    {
+     "entry": "42",
+     "exit": "84.10",
+     "expiry": "2026-11-09",
+     "lots": 2,
+     "quantity": 130,
+     "side": "SELL",
+     "strike": "23500.00",
+     "tradingsymbol": "NIFTY26N0923500CE",
+     "type": "CE"
+    },
+    {
+     "entry": "18",
+     "exit": "29.50",
+     "expiry": "2026-11-09",
+     "lots": 2,
+     "quantity": 130,
+     "side": "BUY",
+     "strike": "23700.00",
+     "tradingsymbol": "NIFTY26N0923700CE",
+     "type": "CE"
+    }
+   ],
+   "id": "A-28",
+   "kind": "close_part",
+   "liquidity_flags": [],
+   "margin": {
+    "at": "2026-11-06T11:40:00+05:30",
+    "reason": null,
+    "state": "stated",
+    "value": "351292.50"
+   },
+   "name": "Close the tested spread",
+   "pop": {
+    "not_available": true,
+    "reason": "Charges not available, so the figures after charges are not shown.",
+    "value": null
+   },
+   "refusal": null,
+   "side": "call",
+   "step_basis": null,
+   "step_value": null,
+   "take_profit": null,
+   "trades": [
+    {
+     "action": "BUY",
+     "expiry": "2026-11-09",
+     "lots": 2,
+     "price": "84.10",
+     "quantity": 130,
+     "strike": "23500.00",
+     "tradingsymbol": "NIFTY26N0923500CE",
+     "type": "CE"
+    },
+    {
+     "action": "SELL",
+     "expiry": "2026-11-09",
+     "lots": 2,
+     "price": "29.50",
+     "quantity": 130,
+     "strike": "23700.00",
+     "tradingsymbol": "NIFTY26N0923700CE",
+     "type": "CE"
+    }
+   ],
+   "warnings": []
+  },
+  {
+   "after": {
+    "after_charges": null,
+    "booked_pnl": "-1612.00",
+    "gross": {
+     "breakevens": [
+      "23274",
+      "23526"
+     ],
+     "loss_regions": [
+      [
+       null,
+       "23274"
+      ],
+      [
+       "23526",
+       null
+      ]
+     ],
+     "max_loss": "9620.00",
+     "max_profit": "16380.00"
+    }
+   },
+   "after_legs": [
+    {
+     "entry": "39.45",
+     "expiry": "2026-11-09",
+     "lots": 2,
+     "side": "BUY",
+     "strike": "23200.00",
+     "tradingsymbol": "NIFTY26N0923200PE",
+     "type": "PE"
+    },
+    {
+     "entry": "98.00",
+     "expiry": "2026-11-09",
+     "lots": 2,
+     "side": "SELL",
+     "strike": "23400",
+     "tradingsymbol": "NIFTY26N0923400PE",
+     "type": "PE"
+    },
+    {
+     "entry": "131.15",
+     "expiry": "2026-11-09",
+     "lots": 2,
+     "side": "SELL",
+     "strike": "23400",
+     "tradingsymbol": "NIFTY26N0923400CE",
+     "type": "CE"
+    },
+    {
+     "entry": "51.30",
+     "expiry": "2026-11-09",
+     "lots": 2,
+     "side": "BUY",
+     "strike": "23600.00",
+     "tradingsymbol": "NIFTY26N0923600CE",
+     "type": "CE"
+    }
+   ],
+   "after_reason": null,
+   "basis_source": null,
+   "charges": {
+    "not_available": "Charges not available, so the figures after charges are not shown.",
+    "open_exit": null,
+    "paid_so_far": null,
+    "this_adjustment": null
+   },
+   "closed_legs": [
+    {
+     "entry": "21.75",
+     "exit": "0.85",
+     "expiry": "2026-11-09",
+     "lots": 2,
+     "quantity": 130,
+     "side": "BUY",
+     "strike": "22500.00",
+     "tradingsymbol": "NIFTY26N0922500PE",
+     "type": "PE"
+    },
+    {
+     "entry": "41.8",
+     "exit": "2.70",
+     "expiry": "2026-11-09",
+     "lots": 2,
+     "quantity": 130,
+     "side": "SELL",
+     "strike": "22700.00",
+     "tradingsymbol": "NIFTY26N0922700PE",
+     "type": "PE"
+    },
+    {
+     "entry": "42",
+     "exit": "84.10",
+     "expiry": "2026-11-09",
+     "lots": 2,
+     "quantity": 130,
+     "side": "SELL",
+     "strike": "23500.00",
+     "tradingsymbol": "NIFTY26N0923500CE",
+     "type": "CE"
+    },
+    {
+     "entry": "18",
+     "exit": "29.50",
+     "expiry": "2026-11-09",
+     "lots": 2,
+     "quantity": 130,
+     "side": "BUY",
+     "strike": "23700.00",
+     "tradingsymbol": "NIFTY26N0923700CE",
+     "type": "CE"
+    }
+   ],
+   "id": "A-11",
+   "kind": "convert",
+   "liquidity_flags": [],
+   "margin": {
+    "at": "2026-11-06T11:40:00+05:30",
+    "reason": null,
+    "state": "stated",
+    "value": "718282.50"
+   },
+   "name": "Convert to an iron butterfly: move both shorts to the money, wings keep their distance",
+   "pop": {
+    "not_available": true,
+    "reason": "Charges not available, so the figures after charges are not shown.",
+    "value": null
+   },
+   "refusal": null,
+   "side": "both",
+   "step_basis": null,
+   "step_value": null,
+   "take_profit": null,
+   "trades": [
+    {
+     "action": "BUY",
+     "expiry": "2026-11-09",
+     "lots": 2,
+     "price": "39.45",
+     "quantity": 130,
+     "strike": "23200.00",
+     "tradingsymbol": "NIFTY26N0923200PE",
+     "type": "PE"
+    },
+    {
+     "action": "BUY",
+     "expiry": "2026-11-09",
+     "lots": 2,
+     "price": "2.70",
+     "quantity": 130,
+     "strike": "22700.00",
+     "tradingsymbol": "NIFTY26N0922700PE",
+     "type": "PE"
+    },
+    {
+     "action": "BUY",
+     "expiry": "2026-11-09",
+     "lots": 2,
+     "price": "84.10",
+     "quantity": 130,
+     "strike": "23500.00",
+     "tradingsymbol": "NIFTY26N0923500CE",
+     "type": "CE"
+    },
+    {
+     "action": "BUY",
+     "expiry": "2026-11-09",
+     "lots": 2,
+     "price": "51.30",
+     "quantity": 130,
+     "strike": "23600.00",
+     "tradingsymbol": "NIFTY26N0923600CE",
+     "type": "CE"
+    },
+    {
+     "action": "SELL",
+     "expiry": "2026-11-09",
+     "lots": 2,
+     "price": "0.85",
+     "quantity": 130,
+     "strike": "22500.00",
+     "tradingsymbol": "NIFTY26N0922500PE",
+     "type": "PE"
+    },
+    {
+     "action": "SELL",
+     "expiry": "2026-11-09",
+     "lots": 2,
+     "price": "98.00",
+     "quantity": 130,
+     "strike": "23400",
+     "tradingsymbol": "NIFTY26N0923400PE",
+     "type": "PE"
+    },
+    {
+     "action": "SELL",
+     "expiry": "2026-11-09",
+     "lots": 2,
+     "price": "131.15",
+     "quantity": 130,
+     "strike": "23400",
+     "tradingsymbol": "NIFTY26N0923400CE",
+     "type": "CE"
+    },
+    {
+     "action": "SELL",
+     "expiry": "2026-11-09",
+     "lots": 2,
+     "price": "29.50",
+     "quantity": 130,
+     "strike": "23700.00",
+     "tradingsymbol": "NIFTY26N0923700CE",
+     "type": "CE"
+    }
+   ],
+   "warnings": []
+  },
+  {
+   "after": {
+    "after_charges": null,
+    "booked_pnl": "-1612.00",
+    "gross": {
+     "breakevens": [],
+     "loss_regions": [
+      [
+       null,
+       null
+      ]
+     ],
+     "max_loss": "1612.00",
+     "max_profit": "-1612.00"
+    }
+   },
+   "after_legs": [],
+   "after_reason": null,
+   "basis_source": null,
+   "charges": {
+    "not_available": "Charges not available, so the figures after charges are not shown.",
+    "open_exit": null,
+    "paid_so_far": null,
+    "this_adjustment": null
+   },
+   "closed_legs": [
+    {
+     "entry": "21.75",
+     "exit": "0.85",
+     "expiry": "2026-11-09",
+     "lots": 2,
+     "quantity": 130,
+     "side": "BUY",
+     "strike": "22500.00",
+     "tradingsymbol": "NIFTY26N0922500PE",
+     "type": "PE"
+    },
+    {
+     "entry": "41.8",
+     "exit": "2.70",
+     "expiry": "2026-11-09",
+     "lots": 2,
+     "quantity": 130,
+     "side": "SELL",
+     "strike": "22700.00",
+     "tradingsymbol": "NIFTY26N0922700PE",
+     "type": "PE"
+    },
+    {
+     "entry": "42",
+     "exit": "84.10",
+     "expiry": "2026-11-09",
+     "lots": 2,
+     "quantity": 130,
+     "side": "SELL",
+     "strike": "23500.00",
+     "tradingsymbol": "NIFTY26N0923500CE",
+     "type": "CE"
+    },
+    {
+     "entry": "18",
+     "exit": "29.50",
+     "expiry": "2026-11-09",
+     "lots": 2,
+     "quantity": 130,
+     "side": "BUY",
+     "strike": "23700.00",
+     "tradingsymbol": "NIFTY26N0923700CE",
+     "type": "CE"
+    }
+   ],
+   "id": "A-31",
+   "kind": "exit",
+   "liquidity_flags": [],
+   "margin": {
+    "at": null,
+    "reason": null,
+    "state": "not_needed",
+    "value": null
+   },
+   "name": "Exit the whole strategy",
+   "pop": {
+    "not_available": true,
+    "reason": "Charges not available, so the figures after charges are not shown.",
+    "value": null
+   },
+   "refusal": null,
+   "side": "both",
+   "step_basis": null,
+   "step_value": null,
+   "take_profit": null,
+   "trades": [
+    {
+     "action": "BUY",
+     "expiry": "2026-11-09",
+     "lots": 2,
+     "price": "2.70",
+     "quantity": 130,
+     "strike": "22700.00",
+     "tradingsymbol": "NIFTY26N0922700PE",
+     "type": "PE"
+    },
+    {
+     "action": "BUY",
+     "expiry": "2026-11-09",
+     "lots": 2,
+     "price": "84.10",
+     "quantity": 130,
+     "strike": "23500.00",
+     "tradingsymbol": "NIFTY26N0923500CE",
+     "type": "CE"
+    },
+    {
+     "action": "SELL",
+     "expiry": "2026-11-09",
+     "lots": 2,
+     "price": "0.85",
+     "quantity": 130,
+     "strike": "22500.00",
+     "tradingsymbol": "NIFTY26N0922500PE",
+     "type": "PE"
+    },
+    {
+     "action": "SELL",
+     "expiry": "2026-11-09",
+     "lots": 2,
+     "price": "29.50",
+     "quantity": 130,
+     "strike": "23700.00",
+     "tradingsymbol": "NIFTY26N0923700CE",
+     "type": "CE"
+    }
+   ],
+   "warnings": []
+  },
+  {
+   "after": null,
+   "after_legs": null,
+   "after_reason": null,
+   "basis_source": null,
+   "charges": null,
+   "closed_legs": null,
+   "id": "A-24",
+   "kind": "exit",
+   "liquidity_flags": [],
+   "margin": null,
+   "name": "Take profit, whole strategy",
+   "pop": null,
+   "refusal": {
+    "code": "USER_INPUT_189",
+    "error_class": "USER_INPUT",
+    "external_text": null,
+    "impact": "This approach was not built; the other approaches still show.",
+    "next_action": "Compare the other approaches, or change the legs in the Builder.",
+    "what_happened": "The whole trade is not in profit with every open leg closed at its planned price, so this approach is not built.",
+    "what_is_blocked": "This approach."
+   },
+   "side": "both",
+   "step_basis": null,
+   "step_value": null,
+   "take_profit": null,
+   "trades": null,
+   "warnings": []
+  },
+  {
+   "after": null,
+   "after_legs": null,
+   "after_reason": null,
+   "basis_source": null,
+   "charges": null,
+   "closed_legs": null,
+   "id": "A-25",
+   "kind": "reduce",
+   "liquidity_flags": [],
+   "margin": null,
+   "name": "Take partial profit (close X%)",
+   "pop": null,
+   "refusal": {
+    "code": "USER_INPUT_189",
+    "error_class": "USER_INPUT",
+    "external_text": null,
+    "impact": "This approach was not built; the other approaches still show.",
+    "next_action": "Compare the other approaches, or change the legs in the Builder.",
+    "what_happened": "The whole trade is not in profit with every open leg closed at its planned price, so this approach is not built.",
+    "what_is_blocked": "This approach."
+   },
+   "side": "both",
+   "step_basis": null,
+   "step_value": null,
+   "take_profit": null,
+   "trades": null,
+   "warnings": []
+  },
+  {
+   "after": {
+    "after_charges": null,
+    "booked_pnl": "5083.00",
+    "gross": {
+     "breakevens": [
+      "23541.35"
+     ],
+     "loss_regions": [
+      [
+       "23541.35",
+       null
+      ]
+     ],
+     "max_loss": "20624.50",
+     "max_profit": "2930375.50"
+    }
+   },
+   "after_legs": [
+    {
+     "entry": "21.75",
+     "expiry": "2026-11-09",
+     "lots": 2,
+     "side": "BUY",
+     "strike": "22500.00",
+     "tradingsymbol": "NIFTY26N0922500PE",
+     "type": "PE"
+    },
+    {
+     "entry": "42",
+     "expiry": "2026-11-09",
+     "lots": 2,
+     "side": "SELL",
+     "strike": "23500.00",
+     "tradingsymbol": "NIFTY26N0923500CE",
+     "type": "CE"
+    },
+    {
+     "entry": "18",
+     "expiry": "2026-11-09",
+     "lots": 2,
+     "side": "BUY",
+     "strike": "23700.00",
+     "tradingsymbol": "NIFTY26N0923700CE",
+     "type": "CE"
+    }
+   ],
+   "after_reason": null,
+   "basis_source": null,
+   "charges": {
+    "not_available": "Charges not available, so the figures after charges are not shown.",
+    "open_exit": null,
+    "paid_so_far": null,
+    "this_adjustment": null
+   },
+   "closed_legs": [
+    {
+     "entry": "41.8",
+     "exit": "2.70",
+     "expiry": "2026-11-09",
+     "lots": 2,
+     "quantity": 130,
+     "side": "SELL",
+     "strike": "22700.00",
+     "tradingsymbol": "NIFTY26N0922700PE",
+     "type": "PE"
+    }
+   ],
+   "id": "A-26",
+   "kind": "close_part",
+   "liquidity_flags": [],
+   "margin": {
+    "at": "2026-11-06T11:40:00+05:30",
+    "reason": null,
+    "state": "stated",
+    "value": "361432.50"
+   },
+   "name": "Buy back the decayed untested short (its wing stays)",
+   "pop": {
+    "not_available": true,
+    "reason": "Charges not available, so the figures after charges are not shown.",
+    "value": null
+   },
+   "refusal": null,
+   "side": "put",
+   "step_basis": null,
+   "step_value": null,
+   "take_profit": null,
+   "trades": [
+    {
+     "action": "BUY",
+     "expiry": "2026-11-09",
+     "lots": 2,
+     "price": "2.70",
+     "quantity": 130,
+     "strike": "22700.00",
+     "tradingsymbol": "NIFTY26N0922700PE",
+     "type": "PE"
+    }
+   ],
+   "warnings": []
+  },
+  {
+   "after": {
+    "after_charges": null,
+    "booked_pnl": "5083.00",
+    "gross": {
+     "breakevens": [
+      "23541.35"
+     ],
+     "loss_regions": [
+      [
+       "23541.35",
+       null
+      ]
+     ],
+     "max_loss": "20624.50",
+     "max_profit": "2930375.50"
+    }
+   },
+   "after_legs": [
+    {
+     "entry": "21.75",
+     "expiry": "2026-11-09",
+     "lots": 2,
+     "side": "BUY",
+     "strike": "22500.00",
+     "tradingsymbol": "NIFTY26N0922500PE",
+     "type": "PE"
+    },
+    {
+     "entry": "42",
+     "expiry": "2026-11-09",
+     "lots": 2,
+     "side": "SELL",
+     "strike": "23500.00",
+     "tradingsymbol": "NIFTY26N0923500CE",
+     "type": "CE"
+    },
+    {
+     "entry": "18",
+     "expiry": "2026-11-09",
+     "lots": 2,
+     "side": "BUY",
+     "strike": "23700.00",
+     "tradingsymbol": "NIFTY26N0923700CE",
+     "type": "CE"
+    }
+   ],
+   "after_reason": null,
+   "basis_source": null,
+   "charges": {
+    "not_available": "Charges not available, so the figures after charges are not shown.",
+    "open_exit": null,
+    "paid_so_far": null,
+    "this_adjustment": null
+   },
+   "closed_legs": [
+    {
+     "entry": "41.8",
+     "exit": "2.70",
+     "expiry": "2026-11-09",
+     "lots": 2,
+     "quantity": 130,
+     "side": "SELL",
+     "strike": "22700.00",
+     "tradingsymbol": "NIFTY26N0922700PE",
+     "type": "PE"
+    }
+   ],
+   "id": "A-27",
+   "kind": "close_part",
+   "liquidity_flags": [],
+   "margin": {
+    "at": "2026-11-06T11:40:00+05:30",
+    "reason": null,
+    "state": "stated",
+    "value": "361432.50"
+   },
+   "name": "Buy back cheap shorts",
+   "pop": {
+    "not_available": true,
+    "reason": "Charges not available, so the figures after charges are not shown.",
+    "value": null
+   },
+   "refusal": null,
+   "side": "both",
+   "step_basis": null,
+   "step_value": null,
+   "take_profit": null,
+   "trades": [
+    {
+     "action": "BUY",
+     "expiry": "2026-11-09",
+     "lots": 2,
+     "price": "2.70",
+     "quantity": 130,
+     "strike": "22700.00",
+     "tradingsymbol": "NIFTY26N0922700PE",
+     "type": "PE"
+    }
+   ],
+   "warnings": []
+  },
+  {
+   "after": null,
+   "after_legs": null,
+   "after_reason": null,
+   "basis_source": null,
+   "charges": null,
+   "closed_legs": null,
+   "id": "A-35",
+   "kind": "exit",
+   "liquidity_flags": [],
+   "margin": null,
+   "name": "Time exit",
+   "pop": null,
+   "refusal": {
+    "code": "USER_INPUT_185",
+    "error_class": "USER_INPUT",
+    "external_text": null,
+    "impact": "This approach was not built; the other approaches still show.",
+    "next_action": "Compare the other approaches, or change the legs in the Builder.",
+    "what_happened": "The time exit is offered on expiry day from 14:30.",
+    "what_is_blocked": "This approach."
+   },
+   "side": "both",
+   "step_basis": null,
+   "step_value": null,
+   "take_profit": null,
+   "trades": null,
+   "warnings": []
+  },
+  {
+   "after": null,
+   "after_legs": null,
+   "after_reason": null,
+   "basis_source": "default",
+   "charges": null,
+   "closed_legs": null,
+   "id": "A-02",
+   "kind": "roll",
+   "liquidity_flags": [],
+   "margin": null,
+   "name": "Roll the tested short to the strike your roll setting picks",
+   "pop": null,
+   "refusal": {
+    "code": "USER_INPUT_176",
+    "error_class": "USER_INPUT",
+    "external_text": null,
+    "impact": "This approach was not built; the other approaches still show.",
+    "next_action": "Compare the other approaches, or change the legs in the Builder.",
+    "what_happened": "This roll costs \u20b94,264 net, which is more than the \u20b9572.65 your playbook allows for one roll.",
+    "what_is_blocked": "This approach."
+   },
+   "side": "call",
+   "step_basis": "delta",
+   "step_value": "0.30",
+   "take_profit": null,
+   "trades": null,
+   "warnings": []
+  },
+  {
+   "after": null,
+   "after_legs": null,
+   "after_reason": null,
+   "basis_source": "default",
+   "charges": null,
+   "closed_legs": null,
+   "id": "A-04",
+   "kind": "roll",
+   "liquidity_flags": [],
+   "margin": null,
+   "name": "Roll up/down and out (diagonal roll)",
+   "pop": null,
+   "refusal": {
+    "code": "USER_INPUT_176",
+    "error_class": "USER_INPUT",
+    "external_text": null,
+    "impact": "This approach was not built; the other approaches still show.",
+    "next_action": "Compare the other approaches, or change the legs in the Builder.",
+    "what_happened": "This roll costs \u20b91,878.50 net, which is more than the \u20b9572.65 your playbook allows for one roll.",
+    "what_is_blocked": "This approach."
+   },
+   "side": "call",
+   "step_basis": "delta",
+   "step_value": "0.30",
+   "take_profit": null,
+   "trades": null,
+   "warnings": []
+  },
+  {
+   "after": null,
+   "after_legs": null,
+   "after_reason": null,
+   "basis_source": null,
+   "charges": null,
+   "closed_legs": null,
+   "id": "A-06",
+   "kind": "roll",
+   "liquidity_flags": [],
+   "margin": null,
+   "name": "Shift the tested spread by N strikes: a call spread up, a put spread down",
+   "pop": null,
+   "refusal": {
+    "code": "USER_INPUT_176",
+    "error_class": "USER_INPUT",
+    "external_text": null,
+    "impact": "This approach was not built; the other approaches still show.",
+    "next_action": "Compare the other approaches, or change the legs in the Builder.",
+    "what_happened": "This roll costs \u20b91,352 net, which is more than the \u20b9572.65 your playbook allows for one roll.",
+    "what_is_blocked": "This approach."
+   },
+   "side": "call",
+   "step_basis": null,
+   "step_value": null,
+   "take_profit": null,
+   "trades": null,
+   "warnings": []
+  }
+ ],
+ "available": [
+  {
+   "applicable": true,
+   "explanation": "Keep every leg as it is. This is the baseline the others are compared with.",
+   "id": "A-36",
+   "liquidity_flags": [],
+   "name": "No change",
+   "reason": null
+  },
+  {
+   "applicable": true,
+   "explanation": "Move the side that spot is moving away from closer to spot, keeping its width.",
+   "id": "A-01",
+   "liquidity_flags": [],
+   "name": "Roll the untested spread to the strikes your roll setting picks (same width, same expiry)",
+   "reason": null
+  },
+  {
+   "applicable": false,
+   "explanation": "Move the side that spot is pressing on further out, keeping its width.",
+   "id": "A-05",
+   "liquidity_flags": [],
+   "name": "Roll the tested spread to the strikes your roll setting picks (same width, same expiry)",
+   "reason": {
+    "code": "USER_INPUT_176",
+    "error_class": "USER_INPUT",
+    "external_text": null,
+    "impact": "This approach was not built; the other approaches still show.",
+    "next_action": "Compare the other approaches, or change the legs in the Builder.",
+    "what_happened": "This roll costs \u20b92,515.50 net, which is more than the \u20b9572.65 your playbook allows for one roll.",
+    "what_is_blocked": "This approach."
+   }
+  },
+  {
+   "applicable": true,
+   "explanation": "Close part of the side that spot is pressing on and keep the rest.",
+   "id": "A-29",
+   "liquidity_flags": [],
+   "name": "Reduce the tested side",
+   "reason": null
+  },
+  {
+   "applicable": true,
+   "explanation": "Close the whole side that spot is pressing on and keep the other side.",
+   "id": "A-28",
+   "liquidity_flags": [],
+   "name": "Close the tested spread",
+   "reason": null
+  },
+  {
+   "applicable": true,
+   "explanation": "Move both short strikes to the strike nearest spot, keeping each wing's distance.",
+   "id": "A-11",
+   "liquidity_flags": [],
+   "name": "Convert to an iron butterfly: move both shorts to the money, wings keep their distance",
+   "reason": null
+  },
+  {
+   "applicable": true,
+   "explanation": "Close every open leg.",
+   "id": "A-31",
+   "liquidity_flags": [],
+   "name": "Exit the whole strategy",
+   "reason": null
+  },
+  {
+   "applicable": false,
+   "explanation": "Close every open leg to keep the profit made so far.",
+   "id": "A-24",
+   "liquidity_flags": [],
+   "name": "Take profit, whole strategy",
+   "reason": {
+    "code": "USER_INPUT_189",
+    "error_class": "USER_INPUT",
+    "external_text": null,
+    "impact": "This approach was not built; the other approaches still show.",
+    "next_action": "Compare the other approaches, or change the legs in the Builder.",
+    "what_happened": "The whole trade is not in profit with every open leg closed at its planned price, so this approach is not built.",
+    "what_is_blocked": "This approach."
+   }
+  },
+  {
+   "applicable": false,
+   "explanation": "Close the same part of every leg's lots and keep the rest open.",
+   "id": "A-25",
+   "liquidity_flags": [],
+   "name": "Take partial profit (close X%)",
+   "reason": {
+    "code": "USER_INPUT_189",
+    "error_class": "USER_INPUT",
+    "external_text": null,
+    "impact": "This approach was not built; the other approaches still show.",
+    "next_action": "Compare the other approaches, or change the legs in the Builder.",
+    "what_happened": "The whole trade is not in profit with every open leg closed at its planned price, so this approach is not built.",
+    "what_is_blocked": "This approach."
+   }
+  },
+  {
+   "applicable": true,
+   "explanation": "Buy back the short leg of the side spot is moving away from once most of its price is gone; its wing stays.",
+   "id": "A-26",
+   "liquidity_flags": [],
+   "name": "Buy back the decayed untested short (its wing stays)",
+   "reason": null
+  },
+  {
+   "applicable": true,
+   "explanation": "Buy back the short legs priced at or below your playbook's limit for this stage.",
+   "id": "A-27",
+   "liquidity_flags": [],
+   "name": "Buy back cheap shorts",
+   "reason": null
+  },
+  {
+   "applicable": false,
+   "explanation": "Close every open leg on expiry day from the time exit your playbook sets.",
+   "id": "A-35",
+   "liquidity_flags": [],
+   "name": "Time exit",
+   "reason": {
+    "code": "USER_INPUT_185",
+    "error_class": "USER_INPUT",
+    "external_text": null,
+    "impact": "This approach was not built; the other approaches still show.",
+    "next_action": "Compare the other approaches, or change the legs in the Builder.",
+    "what_happened": "The time exit is offered on expiry day from 14:30.",
+    "what_is_blocked": "This approach."
+   }
+  },
+  {
+   "applicable": false,
+   "explanation": "Move only the short leg of the side spot is pressing on further away; its wing stays, so the spread narrows.",
+   "id": "A-02",
+   "liquidity_flags": [],
+   "name": "Roll the tested short to the strike your roll setting picks",
+   "reason": {
+    "code": "USER_INPUT_176",
+    "error_class": "USER_INPUT",
+    "external_text": null,
+    "impact": "This approach was not built; the other approaches still show.",
+    "next_action": "Compare the other approaches, or change the legs in the Builder.",
+    "what_happened": "This roll costs \u20b94,264 net, which is more than the \u20b9572.65 your playbook allows for one roll.",
+    "what_is_blocked": "This approach."
+   }
+  },
+  {
+   "applicable": false,
+   "explanation": "Close the spread of the side spot is pressing on and open the same width in the next expiry, further away.",
+   "id": "A-04",
+   "liquidity_flags": [],
+   "name": "Roll up/down and out (diagonal roll)",
+   "reason": {
+    "code": "USER_INPUT_176",
+    "error_class": "USER_INPUT",
+    "external_text": null,
+    "impact": "This approach was not built; the other approaches still show.",
+    "next_action": "Compare the other approaches, or change the legs in the Builder.",
+    "what_happened": "This roll costs \u20b91,878.50 net, which is more than the \u20b9572.65 your playbook allows for one roll.",
+    "what_is_blocked": "This approach."
+   }
+  },
+  {
+   "applicable": false,
+   "explanation": "Move the short and wing of the side spot is pressing on by your set number of listed strikes away from spot.",
+   "id": "A-06",
+   "liquidity_flags": [],
+   "name": "Shift the tested spread by N strikes: a call spread up, a put spread down",
+   "reason": {
+    "code": "USER_INPUT_176",
+    "error_class": "USER_INPUT",
+    "external_text": null,
+    "impact": "This approach was not built; the other approaches still show.",
+    "next_action": "Compare the other approaches, or change the legs in the Builder.",
+    "what_happened": "This roll costs \u20b91,352 net, which is more than the \u20b9572.65 your playbook allows for one roll.",
+    "what_is_blocked": "This approach."
+   }
+  }
+ ],
+ "before": {
+  "after": {
+   "after_charges": null,
+   "booked_pnl": "0.00",
+   "gross": {
+    "breakevens": [
+     "22655.95",
+     "23544.05"
+    ],
+    "loss_regions": [
+     [
+      null,
+      "22655.95"
+     ],
+     [
+      "23544.05",
+      null
+     ]
+    ],
+    "max_loss": "20273.50",
+    "max_profit": "5726.50"
+   }
+  },
+  "after_reason": null,
+  "charges": {
+   "not_available": "Charges not available, so the figures after charges are not shown.",
+   "open_exit": null,
+   "paid_so_far": null,
+   "this_adjustment": null
+  },
+  "pop": {
+   "not_available": true,
+   "reason": "Charges not available, so the figures after charges are not shown.",
+   "value": null
+  }
+ },
+ "criteria": [
+  {
+   "group": "money_now",
+   "hint": null,
+   "id": "credit",
+   "label": "Credit (+) or debit (-)",
+   "leader_label": "Most credit",
+   "leaders": [
+    "A-11"
+   ],
+   "values": {
+    "A-01": {
+     "at_index_zero": false,
+     "breakdown": null,
+     "text": "\u20b93,874.00",
+     "unavailable_reason": null,
+     "value": "3874.00",
+     "warning": null,
+     "warning_off": null
+    },
+    "A-11": {
+     "at_index_zero": false,
+     "breakdown": null,
+     "text": "\u20b910,653.50",
+     "unavailable_reason": null,
+     "value": "10653.50",
+     "warning": null,
+     "warning_off": null
+    },
+    "A-26": {
+     "at_index_zero": false,
+     "breakdown": null,
+     "text": "\u2212\u20b9351.00",
+     "unavailable_reason": null,
+     "value": "-351.00",
+     "warning": null,
+     "warning_off": null
+    },
+    "A-27": {
+     "at_index_zero": false,
+     "breakdown": null,
+     "text": "\u2212\u20b9351.00",
+     "unavailable_reason": null,
+     "value": "-351.00",
+     "warning": null,
+     "warning_off": null
+    },
+    "A-28": {
+     "at_index_zero": false,
+     "breakdown": null,
+     "text": "\u2212\u20b97,098.00",
+     "unavailable_reason": null,
+     "value": "-7098.00",
+     "warning": null,
+     "warning_off": null
+    },
+    "A-29": {
+     "at_index_zero": false,
+     "breakdown": null,
+     "text": "\u2212\u20b93,549.00",
+     "unavailable_reason": null,
+     "value": "-3549.00",
+     "warning": null,
+     "warning_off": null
+    },
+    "A-31": {
+     "at_index_zero": false,
+     "breakdown": null,
+     "text": "\u2212\u20b97,338.50",
+     "unavailable_reason": null,
+     "value": "-7338.50",
+     "warning": null,
+     "warning_off": null
+    },
+    "A-36": {
+     "at_index_zero": false,
+     "breakdown": null,
+     "text": "\u20b90.00",
+     "unavailable_reason": null,
+     "value": "0.00",
+     "warning": null,
+     "warning_off": null
+    }
+   }
+  },
+  {
+   "group": "money_now",
+   "hint": null,
+   "id": "cost",
+   "label": "Charges plus bid-ask cost",
+   "leader_label": "Lowest cost",
+   "leaders": [
+    "A-36"
+   ],
+   "values": {
+    "A-01": {
+     "at_index_zero": false,
+     "breakdown": null,
+     "text": "-",
+     "unavailable_reason": "Charges not available, so the figures after charges are not shown.",
+     "value": null,
+     "warning": null,
+     "warning_off": null
+    },
+    "A-11": {
+     "at_index_zero": false,
+     "breakdown": null,
+     "text": "-",
+     "unavailable_reason": "Charges not available, so the figures after charges are not shown.",
+     "value": null,
+     "warning": null,
+     "warning_off": null
+    },
+    "A-26": {
+     "at_index_zero": false,
+     "breakdown": null,
+     "text": "-",
+     "unavailable_reason": "Charges not available, so the figures after charges are not shown.",
+     "value": null,
+     "warning": null,
+     "warning_off": null
+    },
+    "A-27": {
+     "at_index_zero": false,
+     "breakdown": null,
+     "text": "-",
+     "unavailable_reason": "Charges not available, so the figures after charges are not shown.",
+     "value": null,
+     "warning": null,
+     "warning_off": null
+    },
+    "A-28": {
+     "at_index_zero": false,
+     "breakdown": null,
+     "text": "-",
+     "unavailable_reason": "Charges not available, so the figures after charges are not shown.",
+     "value": null,
+     "warning": null,
+     "warning_off": null
+    },
+    "A-29": {
+     "at_index_zero": false,
+     "breakdown": null,
+     "text": "-",
+     "unavailable_reason": "Charges not available, so the figures after charges are not shown.",
+     "value": null,
+     "warning": null,
+     "warning_off": null
+    },
+    "A-31": {
+     "at_index_zero": false,
+     "breakdown": null,
+     "text": "-",
+     "unavailable_reason": "Charges not available, so the figures after charges are not shown.",
+     "value": null,
+     "warning": null,
+     "warning_off": null
+    },
+    "A-36": {
+     "at_index_zero": false,
+     "breakdown": null,
+     "text": "\u20b90.00",
+     "unavailable_reason": null,
+     "value": "0.00",
+     "warning": null,
+     "warning_off": null
+    }
+   }
+  },
+  {
+   "group": "money_now",
+   "hint": null,
+   "id": "cost_pct",
+   "label": "Cost as % of premium left",
+   "leader_label": "Lowest cost for the premium left",
+   "leaders": [
+    "A-36"
+   ],
+   "values": {
+    "A-01": {
+     "at_index_zero": false,
+     "breakdown": null,
+     "text": "-",
+     "unavailable_reason": "Charges not available, so the figures after charges are not shown.",
+     "value": null,
+     "warning": null,
+     "warning_off": null
+    },
+    "A-11": {
+     "at_index_zero": false,
+     "breakdown": null,
+     "text": "-",
+     "unavailable_reason": "Charges not available, so the figures after charges are not shown.",
+     "value": null,
+     "warning": null,
+     "warning_off": null
+    },
+    "A-26": {
+     "at_index_zero": false,
+     "breakdown": null,
+     "text": "-",
+     "unavailable_reason": "Charges not available, so the figures after charges are not shown.",
+     "value": null,
+     "warning": null,
+     "warning_off": null
+    },
+    "A-27": {
+     "at_index_zero": false,
+     "breakdown": null,
+     "text": "-",
+     "unavailable_reason": "Charges not available, so the figures after charges are not shown.",
+     "value": null,
+     "warning": null,
+     "warning_off": null
+    },
+    "A-28": {
+     "at_index_zero": false,
+     "breakdown": null,
+     "text": "-",
+     "unavailable_reason": "Charges not available, so the figures after charges are not shown.",
+     "value": null,
+     "warning": null,
+     "warning_off": null
+    },
+    "A-29": {
+     "at_index_zero": false,
+     "breakdown": null,
+     "text": "-",
+     "unavailable_reason": "Charges not available, so the figures after charges are not shown.",
+     "value": null,
+     "warning": null,
+     "warning_off": null
+    },
+    "A-31": {
+     "at_index_zero": false,
+     "breakdown": null,
+     "text": "-",
+     "unavailable_reason": "Charges not available, so the figures after charges are not shown.",
+     "value": null,
+     "warning": null,
+     "warning_off": null
+    },
+    "A-36": {
+     "at_index_zero": false,
+     "breakdown": null,
+     "text": "0.00%",
+     "unavailable_reason": null,
+     "value": "0.00",
+     "warning": null,
+     "warning_off": null
+    }
+   }
+  },
+  {
+   "group": "money_now",
+   "hint": null,
+   "id": "max_profit_change",
+   "label": "Change in max profit",
+   "leader_label": "Largest rise in max profit",
+   "leaders": [],
+   "values": {
+    "A-01": {
+     "at_index_zero": false,
+     "breakdown": null,
+     "text": "-",
+     "unavailable_reason": "Charges not available, so the figures after charges are not shown.",
+     "value": null,
+     "warning": null,
+     "warning_off": null
+    },
+    "A-11": {
+     "at_index_zero": false,
+     "breakdown": null,
+     "text": "-",
+     "unavailable_reason": "Charges not available, so the figures after charges are not shown.",
+     "value": null,
+     "warning": null,
+     "warning_off": null
+    },
+    "A-26": {
+     "at_index_zero": false,
+     "breakdown": null,
+     "text": "-",
+     "unavailable_reason": "Charges not available, so the figures after charges are not shown.",
+     "value": null,
+     "warning": null,
+     "warning_off": null
+    },
+    "A-27": {
+     "at_index_zero": false,
+     "breakdown": null,
+     "text": "-",
+     "unavailable_reason": "Charges not available, so the figures after charges are not shown.",
+     "value": null,
+     "warning": null,
+     "warning_off": null
+    },
+    "A-28": {
+     "at_index_zero": false,
+     "breakdown": null,
+     "text": "-",
+     "unavailable_reason": "Charges not available, so the figures after charges are not shown.",
+     "value": null,
+     "warning": null,
+     "warning_off": null
+    },
+    "A-29": {
+     "at_index_zero": false,
+     "breakdown": null,
+     "text": "-",
+     "unavailable_reason": "Charges not available, so the figures after charges are not shown.",
+     "value": null,
+     "warning": null,
+     "warning_off": null
+    },
+    "A-31": {
+     "at_index_zero": false,
+     "breakdown": null,
+     "text": "-",
+     "unavailable_reason": "Charges not available, so the figures after charges are not shown.",
+     "value": null,
+     "warning": null,
+     "warning_off": null
+    },
+    "A-36": {
+     "at_index_zero": false,
+     "breakdown": null,
+     "text": "-",
+     "unavailable_reason": "Charges not available, so the figures after charges are not shown.",
+     "value": null,
+     "warning": null,
+     "warning_off": null
+    }
+   }
+  },
+  {
+   "group": "money_now",
+   "hint": null,
+   "id": "margin_change",
+   "label": "Margin change (negative = margin freed)",
+   "leader_label": "Lowest margin change",
+   "leaders": [
+    "A-31"
+   ],
+   "values": {
+    "A-01": {
+     "at_index_zero": false,
+     "breakdown": null,
+     "text": "\u20b99,009.00",
+     "unavailable_reason": null,
+     "value": "9009.00",
+     "warning": null,
+     "warning_off": null
+    },
+    "A-11": {
+     "at_index_zero": false,
+     "breakdown": null,
+     "text": "\u20b92,730.00",
+     "unavailable_reason": null,
+     "value": "2730.00",
+     "warning": null,
+     "warning_off": null
+    },
+    "A-26": {
+     "at_index_zero": false,
+     "breakdown": null,
+     "text": "\u2212\u20b93,54,120.00",
+     "unavailable_reason": null,
+     "value": "-354120.00",
+     "warning": null,
+     "warning_off": null
+    },
+    "A-27": {
+     "at_index_zero": false,
+     "breakdown": null,
+     "text": "\u2212\u20b93,54,120.00",
+     "unavailable_reason": null,
+     "value": "-354120.00",
+     "warning": null,
+     "warning_off": null
+    },
+    "A-28": {
+     "at_index_zero": false,
+     "breakdown": null,
+     "text": "\u2212\u20b93,64,260.00",
+     "unavailable_reason": null,
+     "value": "-364260.00",
+     "warning": null,
+     "warning_off": null
+    },
+    "A-29": {
+     "at_index_zero": false,
+     "breakdown": null,
+     "text": "\u2212\u20b91,82,130.00",
+     "unavailable_reason": null,
+     "value": "-182130.00",
+     "warning": null,
+     "warning_off": null
+    },
+    "A-31": {
+     "at_index_zero": false,
+     "breakdown": null,
+     "text": "\u2212\u20b97,15,552.50",
+     "unavailable_reason": null,
+     "value": "-715552.50",
+     "warning": null,
+     "warning_off": null
+    },
+    "A-36": {
+     "at_index_zero": false,
+     "breakdown": null,
+     "text": "\u20b90.00",
+     "unavailable_reason": null,
+     "value": "0.00",
+     "warning": null,
+     "warning_off": null
+    }
+   }
+  },
+  {
+   "group": "risk_after",
+   "hint": null,
+   "id": "max_loss",
+   "label": "Max loss",
+   "leader_label": "Smallest max loss",
+   "leaders": [],
+   "values": {
+    "A-01": {
+     "at_index_zero": false,
+     "breakdown": null,
+     "text": "-",
+     "unavailable_reason": "Charges not available, so the figures after charges are not shown.",
+     "value": null,
+     "warning": null,
+     "warning_off": null
+    },
+    "A-11": {
+     "at_index_zero": false,
+     "breakdown": null,
+     "text": "-",
+     "unavailable_reason": "Charges not available, so the figures after charges are not shown.",
+     "value": null,
+     "warning": null,
+     "warning_off": null
+    },
+    "A-26": {
+     "at_index_zero": false,
+     "breakdown": null,
+     "text": "-",
+     "unavailable_reason": "Charges not available, so the figures after charges are not shown.",
+     "value": null,
+     "warning": null,
+     "warning_off": null
+    },
+    "A-27": {
+     "at_index_zero": false,
+     "breakdown": null,
+     "text": "-",
+     "unavailable_reason": "Charges not available, so the figures after charges are not shown.",
+     "value": null,
+     "warning": null,
+     "warning_off": null
+    },
+    "A-28": {
+     "at_index_zero": false,
+     "breakdown": null,
+     "text": "-",
+     "unavailable_reason": "Charges not available, so the figures after charges are not shown.",
+     "value": null,
+     "warning": null,
+     "warning_off": null
+    },
+    "A-29": {
+     "at_index_zero": false,
+     "breakdown": null,
+     "text": "-",
+     "unavailable_reason": "Charges not available, so the figures after charges are not shown.",
+     "value": null,
+     "warning": null,
+     "warning_off": null
+    },
+    "A-31": {
+     "at_index_zero": false,
+     "breakdown": null,
+     "text": "-",
+     "unavailable_reason": "Charges not available, so the figures after charges are not shown.",
+     "value": null,
+     "warning": null,
+     "warning_off": null
+    },
+    "A-36": {
+     "at_index_zero": false,
+     "breakdown": null,
+     "text": "-",
+     "unavailable_reason": "Charges not available, so the figures after charges are not shown.",
+     "value": null,
+     "warning": null,
+     "warning_off": null
+    }
+   }
+  },
+  {
+   "group": "risk_after",
+   "hint": null,
+   "id": "move_m2",
+   "label": "P&L if spot falls 2%",
+   "leader_label": "Highest P&L at -2%",
+   "leaders": [],
+   "values": {
+    "A-01": {
+     "at_index_zero": false,
+     "breakdown": null,
+     "text": "-",
+     "unavailable_reason": "Charges not available, so the figures after charges are not shown.",
+     "value": null,
+     "warning": null,
+     "warning_off": null
+    },
+    "A-11": {
+     "at_index_zero": false,
+     "breakdown": null,
+     "text": "-",
+     "unavailable_reason": "Charges not available, so the figures after charges are not shown.",
+     "value": null,
+     "warning": null,
+     "warning_off": null
+    },
+    "A-26": {
+     "at_index_zero": false,
+     "breakdown": null,
+     "text": "-",
+     "unavailable_reason": "Charges not available, so the figures after charges are not shown.",
+     "value": null,
+     "warning": null,
+     "warning_off": null
+    },
+    "A-27": {
+     "at_index_zero": false,
+     "breakdown": null,
+     "text": "-",
+     "unavailable_reason": "Charges not available, so the figures after charges are not shown.",
+     "value": null,
+     "warning": null,
+     "warning_off": null
+    },
+    "A-28": {
+     "at_index_zero": false,
+     "breakdown": null,
+     "text": "-",
+     "unavailable_reason": "Charges not available, so the figures after charges are not shown.",
+     "value": null,
+     "warning": null,
+     "warning_off": null
+    },
+    "A-29": {
+     "at_index_zero": false,
+     "breakdown": null,
+     "text": "-",
+     "unavailable_reason": "Charges not available, so the figures after charges are not shown.",
+     "value": null,
+     "warning": null,
+     "warning_off": null
+    },
+    "A-31": {
+     "at_index_zero": false,
+     "breakdown": null,
+     "text": "-",
+     "unavailable_reason": "Charges not available, so the figures after charges are not shown.",
+     "value": null,
+     "warning": null,
+     "warning_off": null
+    },
+    "A-36": {
+     "at_index_zero": false,
+     "breakdown": null,
+     "text": "-",
+     "unavailable_reason": "Charges not available, so the figures after charges are not shown.",
+     "value": null,
+     "warning": null,
+     "warning_off": null
+    }
+   }
+  },
+  {
+   "group": "risk_after",
+   "hint": null,
+   "id": "move_m1",
+   "label": "P&L if spot falls 1%",
+   "leader_label": "Highest P&L at -1%",
+   "leaders": [],
+   "values": {
+    "A-01": {
+     "at_index_zero": false,
+     "breakdown": null,
+     "text": "-",
+     "unavailable_reason": "Charges not available, so the figures after charges are not shown.",
+     "value": null,
+     "warning": null,
+     "warning_off": null
+    },
+    "A-11": {
+     "at_index_zero": false,
+     "breakdown": null,
+     "text": "-",
+     "unavailable_reason": "Charges not available, so the figures after charges are not shown.",
+     "value": null,
+     "warning": null,
+     "warning_off": null
+    },
+    "A-26": {
+     "at_index_zero": false,
+     "breakdown": null,
+     "text": "-",
+     "unavailable_reason": "Charges not available, so the figures after charges are not shown.",
+     "value": null,
+     "warning": null,
+     "warning_off": null
+    },
+    "A-27": {
+     "at_index_zero": false,
+     "breakdown": null,
+     "text": "-",
+     "unavailable_reason": "Charges not available, so the figures after charges are not shown.",
+     "value": null,
+     "warning": null,
+     "warning_off": null
+    },
+    "A-28": {
+     "at_index_zero": false,
+     "breakdown": null,
+     "text": "-",
+     "unavailable_reason": "Charges not available, so the figures after charges are not shown.",
+     "value": null,
+     "warning": null,
+     "warning_off": null
+    },
+    "A-29": {
+     "at_index_zero": false,
+     "breakdown": null,
+     "text": "-",
+     "unavailable_reason": "Charges not available, so the figures after charges are not shown.",
+     "value": null,
+     "warning": null,
+     "warning_off": null
+    },
+    "A-31": {
+     "at_index_zero": false,
+     "breakdown": null,
+     "text": "-",
+     "unavailable_reason": "Charges not available, so the figures after charges are not shown.",
+     "value": null,
+     "warning": null,
+     "warning_off": null
+    },
+    "A-36": {
+     "at_index_zero": false,
+     "breakdown": null,
+     "text": "-",
+     "unavailable_reason": "Charges not available, so the figures after charges are not shown.",
+     "value": null,
+     "warning": null,
+     "warning_off": null
+    }
+   }
+  },
+  {
+   "group": "risk_after",
+   "hint": null,
+   "id": "move_p1",
+   "label": "P&L if spot rises 1%",
+   "leader_label": "Highest P&L at +1%",
+   "leaders": [],
+   "values": {
+    "A-01": {
+     "at_index_zero": false,
+     "breakdown": null,
+     "text": "-",
+     "unavailable_reason": "Charges not available, so the figures after charges are not shown.",
+     "value": null,
+     "warning": null,
+     "warning_off": null
+    },
+    "A-11": {
+     "at_index_zero": false,
+     "breakdown": null,
+     "text": "-",
+     "unavailable_reason": "Charges not available, so the figures after charges are not shown.",
+     "value": null,
+     "warning": null,
+     "warning_off": null
+    },
+    "A-26": {
+     "at_index_zero": false,
+     "breakdown": null,
+     "text": "-",
+     "unavailable_reason": "Charges not available, so the figures after charges are not shown.",
+     "value": null,
+     "warning": null,
+     "warning_off": null
+    },
+    "A-27": {
+     "at_index_zero": false,
+     "breakdown": null,
+     "text": "-",
+     "unavailable_reason": "Charges not available, so the figures after charges are not shown.",
+     "value": null,
+     "warning": null,
+     "warning_off": null
+    },
+    "A-28": {
+     "at_index_zero": false,
+     "breakdown": null,
+     "text": "-",
+     "unavailable_reason": "Charges not available, so the figures after charges are not shown.",
+     "value": null,
+     "warning": null,
+     "warning_off": null
+    },
+    "A-29": {
+     "at_index_zero": false,
+     "breakdown": null,
+     "text": "-",
+     "unavailable_reason": "Charges not available, so the figures after charges are not shown.",
+     "value": null,
+     "warning": null,
+     "warning_off": null
+    },
+    "A-31": {
+     "at_index_zero": false,
+     "breakdown": null,
+     "text": "-",
+     "unavailable_reason": "Charges not available, so the figures after charges are not shown.",
+     "value": null,
+     "warning": null,
+     "warning_off": null
+    },
+    "A-36": {
+     "at_index_zero": false,
+     "breakdown": null,
+     "text": "-",
+     "unavailable_reason": "Charges not available, so the figures after charges are not shown.",
+     "value": null,
+     "warning": null,
+     "warning_off": null
+    }
+   }
+  },
+  {
+   "group": "risk_after",
+   "hint": null,
+   "id": "move_p2",
+   "label": "P&L if spot rises 2%",
+   "leader_label": "Highest P&L at +2%",
+   "leaders": [],
+   "values": {
+    "A-01": {
+     "at_index_zero": false,
+     "breakdown": null,
+     "text": "-",
+     "unavailable_reason": "Charges not available, so the figures after charges are not shown.",
+     "value": null,
+     "warning": null,
+     "warning_off": null
+    },
+    "A-11": {
+     "at_index_zero": false,
+     "breakdown": null,
+     "text": "-",
+     "unavailable_reason": "Charges not available, so the figures after charges are not shown.",
+     "value": null,
+     "warning": null,
+     "warning_off": null
+    },
+    "A-26": {
+     "at_index_zero": false,
+     "breakdown": null,
+     "text": "-",
+     "unavailable_reason": "Charges not available, so the figures after charges are not shown.",
+     "value": null,
+     "warning": null,
+     "warning_off": null
+    },
+    "A-27": {
+     "at_index_zero": false,
+     "breakdown": null,
+     "text": "-",
+     "unavailable_reason": "Charges not available, so the figures after charges are not shown.",
+     "value": null,
+     "warning": null,
+     "warning_off": null
+    },
+    "A-28": {
+     "at_index_zero": false,
+     "breakdown": null,
+     "text": "-",
+     "unavailable_reason": "Charges not available, so the figures after charges are not shown.",
+     "value": null,
+     "warning": null,
+     "warning_off": null
+    },
+    "A-29": {
+     "at_index_zero": false,
+     "breakdown": null,
+     "text": "-",
+     "unavailable_reason": "Charges not available, so the figures after charges are not shown.",
+     "value": null,
+     "warning": null,
+     "warning_off": null
+    },
+    "A-31": {
+     "at_index_zero": false,
+     "breakdown": null,
+     "text": "-",
+     "unavailable_reason": "Charges not available, so the figures after charges are not shown.",
+     "value": null,
+     "warning": null,
+     "warning_off": null
+    },
+    "A-36": {
+     "at_index_zero": false,
+     "breakdown": null,
+     "text": "-",
+     "unavailable_reason": "Charges not available, so the figures after charges are not shown.",
+     "value": null,
+     "warning": null,
+     "warning_off": null
+    }
+   }
+  },
+  {
+   "group": "risk_after",
+   "hint": null,
+   "id": "breakevens",
+   "label": "Breakevens",
+   "leader_label": "Widest profit range",
+   "leaders": [],
+   "values": {
+    "A-01": {
+     "at_index_zero": false,
+     "breakdown": null,
+     "text": "-",
+     "unavailable_reason": "Charges not available, so the figures after charges are not shown.",
+     "value": null,
+     "warning": null,
+     "warning_off": null
+    },
+    "A-11": {
+     "at_index_zero": false,
+     "breakdown": null,
+     "text": "-",
+     "unavailable_reason": "Charges not available, so the figures after charges are not shown.",
+     "value": null,
+     "warning": null,
+     "warning_off": null
+    },
+    "A-26": {
+     "at_index_zero": false,
+     "breakdown": null,
+     "text": "-",
+     "unavailable_reason": "Charges not available, so the figures after charges are not shown.",
+     "value": null,
+     "warning": null,
+     "warning_off": null
+    },
+    "A-27": {
+     "at_index_zero": false,
+     "breakdown": null,
+     "text": "-",
+     "unavailable_reason": "Charges not available, so the figures after charges are not shown.",
+     "value": null,
+     "warning": null,
+     "warning_off": null
+    },
+    "A-28": {
+     "at_index_zero": false,
+     "breakdown": null,
+     "text": "-",
+     "unavailable_reason": "Charges not available, so the figures after charges are not shown.",
+     "value": null,
+     "warning": null,
+     "warning_off": null
+    },
+    "A-29": {
+     "at_index_zero": false,
+     "breakdown": null,
+     "text": "-",
+     "unavailable_reason": "Charges not available, so the figures after charges are not shown.",
+     "value": null,
+     "warning": null,
+     "warning_off": null
+    },
+    "A-31": {
+     "at_index_zero": false,
+     "breakdown": null,
+     "text": "-",
+     "unavailable_reason": "Charges not available, so the figures after charges are not shown.",
+     "value": null,
+     "warning": null,
+     "warning_off": null
+    },
+    "A-36": {
+     "at_index_zero": false,
+     "breakdown": null,
+     "text": "-",
+     "unavailable_reason": "Charges not available, so the figures after charges are not shown.",
+     "value": null,
+     "warning": null,
+     "warning_off": null
+    }
+   }
+  },
+  {
+   "group": "reward_after",
+   "hint": null,
+   "id": "max_profit",
+   "label": "Max profit",
+   "leader_label": "Highest max profit",
+   "leaders": [],
+   "values": {
+    "A-01": {
+     "at_index_zero": false,
+     "breakdown": null,
+     "text": "-",
+     "unavailable_reason": "Charges not available, so the figures after charges are not shown.",
+     "value": null,
+     "warning": null,
+     "warning_off": null
+    },
+    "A-11": {
+     "at_index_zero": false,
+     "breakdown": null,
+     "text": "-",
+     "unavailable_reason": "Charges not available, so the figures after charges are not shown.",
+     "value": null,
+     "warning": null,
+     "warning_off": null
+    },
+    "A-26": {
+     "at_index_zero": false,
+     "breakdown": null,
+     "text": "-",
+     "unavailable_reason": "Charges not available, so the figures after charges are not shown.",
+     "value": null,
+     "warning": null,
+     "warning_off": null
+    },
+    "A-27": {
+     "at_index_zero": false,
+     "breakdown": null,
+     "text": "-",
+     "unavailable_reason": "Charges not available, so the figures after charges are not shown.",
+     "value": null,
+     "warning": null,
+     "warning_off": null
+    },
+    "A-28": {
+     "at_index_zero": false,
+     "breakdown": null,
+     "text": "-",
+     "unavailable_reason": "Charges not available, so the figures after charges are not shown.",
+     "value": null,
+     "warning": null,
+     "warning_off": null
+    },
+    "A-29": {
+     "at_index_zero": false,
+     "breakdown": null,
+     "text": "-",
+     "unavailable_reason": "Charges not available, so the figures after charges are not shown.",
+     "value": null,
+     "warning": null,
+     "warning_off": null
+    },
+    "A-31": {
+     "at_index_zero": false,
+     "breakdown": null,
+     "text": "-",
+     "unavailable_reason": "Charges not available, so the figures after charges are not shown.",
+     "value": null,
+     "warning": null,
+     "warning_off": null
+    },
+    "A-36": {
+     "at_index_zero": false,
+     "breakdown": null,
+     "text": "-",
+     "unavailable_reason": "Charges not available, so the figures after charges are not shown.",
+     "value": null,
+     "warning": null,
+     "warning_off": null
+    }
+   }
+  },
+  {
+   "group": "reward_after",
+   "hint": null,
+   "id": "premium_left",
+   "label": "Premium still left to earn",
+   "leader_label": "Most premium left",
+   "leaders": [
+    "A-11"
+   ],
+   "values": {
+    "A-01": {
+     "at_index_zero": false,
+     "breakdown": null,
+     "text": "\u20b911,212.50",
+     "unavailable_reason": null,
+     "value": "11212.50",
+     "warning": null,
+     "warning_off": null
+    },
+    "A-11": {
+     "at_index_zero": false,
+     "breakdown": null,
+     "text": "\u20b917,992.00",
+     "unavailable_reason": null,
+     "value": "17992.00",
+     "warning": null,
+     "warning_off": null
+    },
+    "A-26": {
+     "at_index_zero": false,
+     "breakdown": null,
+     "text": "\u20b96,987.50",
+     "unavailable_reason": null,
+     "value": "6987.50",
+     "warning": null,
+     "warning_off": null
+    },
+    "A-27": {
+     "at_index_zero": false,
+     "breakdown": null,
+     "text": "\u20b96,987.50",
+     "unavailable_reason": null,
+     "value": "6987.50",
+     "warning": null,
+     "warning_off": null
+    },
+    "A-28": {
+     "at_index_zero": false,
+     "breakdown": null,
+     "text": "\u20b9240.50",
+     "unavailable_reason": null,
+     "value": "240.50",
+     "warning": null,
+     "warning_off": null
+    },
+    "A-29": {
+     "at_index_zero": false,
+     "breakdown": null,
+     "text": "\u20b93,789.50",
+     "unavailable_reason": null,
+     "value": "3789.50",
+     "warning": null,
+     "warning_off": null
+    },
+    "A-31": {
+     "at_index_zero": false,
+     "breakdown": null,
+     "text": "\u20b90.00",
+     "unavailable_reason": null,
+     "value": "0.00",
+     "warning": null,
+     "warning_off": null
+    },
+    "A-36": {
+     "at_index_zero": false,
+     "breakdown": null,
+     "text": "\u20b97,338.50",
+     "unavailable_reason": null,
+     "value": "7338.50",
+     "warning": null,
+     "warning_off": null
+    }
+   }
+  },
+  {
+   "group": "reward_after",
+   "hint": null,
+   "id": "pop",
+   "label": "POP",
+   "leader_label": "Highest POP",
+   "leaders": [],
+   "values": {
+    "A-01": {
+     "at_index_zero": false,
+     "breakdown": null,
+     "text": "-",
+     "unavailable_reason": "Charges not available, so the figures after charges are not shown.",
+     "value": null,
+     "warning": null,
+     "warning_off": null
+    },
+    "A-11": {
+     "at_index_zero": false,
+     "breakdown": null,
+     "text": "-",
+     "unavailable_reason": "Charges not available, so the figures after charges are not shown.",
+     "value": null,
+     "warning": null,
+     "warning_off": null
+    },
+    "A-26": {
+     "at_index_zero": false,
+     "breakdown": null,
+     "text": "-",
+     "unavailable_reason": "Charges not available, so the figures after charges are not shown.",
+     "value": null,
+     "warning": null,
+     "warning_off": null
+    },
+    "A-27": {
+     "at_index_zero": false,
+     "breakdown": null,
+     "text": "-",
+     "unavailable_reason": "Charges not available, so the figures after charges are not shown.",
+     "value": null,
+     "warning": null,
+     "warning_off": null
+    },
+    "A-28": {
+     "at_index_zero": false,
+     "breakdown": null,
+     "text": "-",
+     "unavailable_reason": "Charges not available, so the figures after charges are not shown.",
+     "value": null,
+     "warning": null,
+     "warning_off": null
+    },
+    "A-29": {
+     "at_index_zero": false,
+     "breakdown": null,
+     "text": "-",
+     "unavailable_reason": "Charges not available, so the figures after charges are not shown.",
+     "value": null,
+     "warning": null,
+     "warning_off": null
+    },
+    "A-31": {
+     "at_index_zero": false,
+     "breakdown": null,
+     "text": "-",
+     "unavailable_reason": "Charges not available, so the figures after charges are not shown.",
+     "value": null,
+     "warning": null,
+     "warning_off": null
+    },
+    "A-36": {
+     "at_index_zero": false,
+     "breakdown": null,
+     "text": "-",
+     "unavailable_reason": "Charges not available, so the figures after charges are not shown.",
+     "value": null,
+     "warning": null,
+     "warning_off": null
+    }
+   }
+  },
+  {
+   "group": "greeks_after",
+   "hint": null,
+   "id": "delta",
+   "label": "Net delta",
+   "leader_label": "Closest to delta-neutral",
+   "leaders": [
+    "A-28"
+   ],
+   "values": {
+    "A-01": {
+     "at_index_zero": false,
+     "breakdown": null,
+     "text": "-9.3210",
+     "unavailable_reason": null,
+     "value": "-9.3210",
+     "warning": null,
+     "warning_off": null
+    },
+    "A-11": {
+     "at_index_zero": false,
+     "breakdown": null,
+     "text": "-4.3420",
+     "unavailable_reason": null,
+     "value": "-4.3420",
+     "warning": null,
+     "warning_off": null
+    },
+    "A-26": {
+     "at_index_zero": false,
+     "breakdown": null,
+     "text": "-30.1730",
+     "unavailable_reason": null,
+     "value": "-30.1730",
+     "warning": null,
+     "warning_off": null
+    },
+    "A-27": {
+     "at_index_zero": false,
+     "breakdown": null,
+     "text": "-30.1730",
+     "unavailable_reason": null,
+     "value": "-30.1730",
+     "warning": null,
+     "warning_off": null
+    },
+    "A-28": {
+     "at_index_zero": false,
+     "breakdown": null,
+     "text": "1.7420",
+     "unavailable_reason": null,
+     "value": "1.7420",
+     "warning": null,
+     "warning_off": null
+    },
+    "A-29": {
+     "at_index_zero": false,
+     "breakdown": null,
+     "text": "-12.9090",
+     "unavailable_reason": null,
+     "value": "-12.9090",
+     "warning": null,
+     "warning_off": null
+    },
+    "A-31": {
+     "at_index_zero": false,
+     "breakdown": null,
+     "text": "-",
+     "unavailable_reason": "No position left after exit",
+     "value": null,
+     "warning": null,
+     "warning_off": null
+    },
+    "A-36": {
+     "at_index_zero": false,
+     "breakdown": null,
+     "text": "-27.5600",
+     "unavailable_reason": null,
+     "value": "-27.5600",
+     "warning": null,
+     "warning_off": null
+    }
+   }
+  },
+  {
+   "group": "greeks_after",
+   "hint": null,
+   "id": "gamma",
+   "label": "Gamma",
+   "leader_label": "Gamma closest to zero",
+   "leaders": [
+    "A-28"
+   ],
+   "values": {
+    "A-01": {
+     "at_index_zero": false,
+     "breakdown": null,
+     "text": "-0.1300",
+     "unavailable_reason": null,
+     "value": "-0.1300",
+     "warning": null,
+     "warning_off": null
+    },
+    "A-11": {
+     "at_index_zero": false,
+     "breakdown": null,
+     "text": "-0.0780",
+     "unavailable_reason": null,
+     "value": "-0.0780",
+     "warning": null,
+     "warning_off": null
+    },
+    "A-26": {
+     "at_index_zero": false,
+     "breakdown": null,
+     "text": "-0.0587",
+     "unavailable_reason": null,
+     "value": "-0.0587",
+     "warning": null,
+     "warning_off": null
+    },
+    "A-27": {
+     "at_index_zero": false,
+     "breakdown": null,
+     "text": "-0.0587",
+     "unavailable_reason": null,
+     "value": "-0.0587",
+     "warning": null,
+     "warning_off": null
+    },
+    "A-28": {
+     "at_index_zero": false,
+     "breakdown": null,
+     "text": "-0.0067",
+     "unavailable_reason": null,
+     "value": "-0.0067",
+     "warning": null,
+     "warning_off": null
+    },
+    "A-29": {
+     "at_index_zero": false,
+     "breakdown": null,
+     "text": "-0.0392",
+     "unavailable_reason": null,
+     "value": "-0.0392",
+     "warning": null,
+     "warning_off": null
+    },
+    "A-31": {
+     "at_index_zero": false,
+     "breakdown": null,
+     "text": "-",
+     "unavailable_reason": "No position left after exit",
+     "value": null,
+     "warning": null,
+     "warning_off": null
+    },
+    "A-36": {
+     "at_index_zero": false,
+     "breakdown": null,
+     "text": "-0.0717",
+     "unavailable_reason": null,
+     "value": "-0.0717",
+     "warning": null,
+     "warning_off": null
+    }
+   }
+  },
+  {
+   "group": "greeks_after",
+   "hint": null,
+   "id": "theta",
+   "label": "Theta",
+   "leader_label": "Most theta",
+   "leaders": [
+    "A-01"
+   ],
+   "values": {
+    "A-01": {
+     "at_index_zero": false,
+     "breakdown": null,
+     "text": "1429.3110",
+     "unavailable_reason": null,
+     "value": "1429.3110",
+     "warning": null,
+     "warning_off": null
+    },
+    "A-11": {
+     "at_index_zero": false,
+     "breakdown": null,
+     "text": "740.8830",
+     "unavailable_reason": null,
+     "value": "740.8830",
+     "warning": null,
+     "warning_off": null
+    },
+    "A-26": {
+     "at_index_zero": false,
+     "breakdown": null,
+     "text": "528.5930",
+     "unavailable_reason": null,
+     "value": "528.5930",
+     "warning": null,
+     "warning_off": null
+    },
+    "A-27": {
+     "at_index_zero": false,
+     "breakdown": null,
+     "text": "528.5930",
+     "unavailable_reason": null,
+     "value": "528.5930",
+     "warning": null,
+     "warning_off": null
+    },
+    "A-28": {
+     "at_index_zero": false,
+     "breakdown": null,
+     "text": "214.3440",
+     "unavailable_reason": null,
+     "value": "214.3440",
+     "warning": null,
+     "warning_off": null
+    },
+    "A-29": {
+     "at_index_zero": false,
+     "breakdown": null,
+     "text": "553.4295",
+     "unavailable_reason": null,
+     "value": "553.4295",
+     "warning": null,
+     "warning_off": null
+    },
+    "A-31": {
+     "at_index_zero": false,
+     "breakdown": null,
+     "text": "-",
+     "unavailable_reason": "No position left after exit",
+     "value": null,
+     "warning": null,
+     "warning_off": null
+    },
+    "A-36": {
+     "at_index_zero": false,
+     "breakdown": null,
+     "text": "892.5150",
+     "unavailable_reason": null,
+     "value": "892.5150",
+     "warning": null,
+     "warning_off": null
+    }
+   }
+  },
+  {
+   "group": "greeks_after",
+   "hint": null,
+   "id": "vega",
+   "label": "Vega",
+   "leader_label": "Vega closest to zero",
+   "leaders": [
+    "A-28"
+   ],
+   "values": {
+    "A-01": {
+     "at_index_zero": false,
+     "breakdown": null,
+     "text": "-728.6240",
+     "unavailable_reason": null,
+     "value": "-728.6240",
+     "warning": null,
+     "warning_off": null
+    },
+    "A-11": {
+     "at_index_zero": false,
+     "breakdown": null,
+     "text": "-438.8930",
+     "unavailable_reason": null,
+     "value": "-438.8930",
+     "warning": null,
+     "warning_off": null
+    },
+    "A-26": {
+     "at_index_zero": false,
+     "breakdown": null,
+     "text": "-292.1100",
+     "unavailable_reason": null,
+     "value": "-292.1100",
+     "warning": null,
+     "warning_off": null
+    },
+    "A-27": {
+     "at_index_zero": false,
+     "breakdown": null,
+     "text": "-292.1100",
+     "unavailable_reason": null,
+     "value": "-292.1100",
+     "warning": null,
+     "warning_off": null
+    },
+    "A-28": {
+     "at_index_zero": false,
+     "breakdown": null,
+     "text": "-84.3050",
+     "unavailable_reason": null,
+     "value": "-84.3050",
+     "warning": null,
+     "warning_off": null
+    },
+    "A-29": {
+     "at_index_zero": false,
+     "breakdown": null,
+     "text": "-257.0165",
+     "unavailable_reason": null,
+     "value": "-257.0165",
+     "warning": null,
+     "warning_off": null
+    },
+    "A-31": {
+     "at_index_zero": false,
+     "breakdown": null,
+     "text": "-",
+     "unavailable_reason": "No position left after exit",
+     "value": null,
+     "warning": null,
+     "warning_off": null
+    },
+    "A-36": {
+     "at_index_zero": false,
+     "breakdown": null,
+     "text": "-429.7280",
+     "unavailable_reason": null,
+     "value": "-429.7280",
+     "warning": null,
+     "warning_off": null
+    }
+   }
+  },
+  {
+   "group": "practical",
+   "hint": null,
+   "id": "adjustments",
+   "label": "Adjustments used",
+   "leader_label": "Fewest adjustments",
+   "leaders": [
+    "A-36",
+    "A-31"
+   ],
+   "values": {
+    "A-01": {
+     "at_index_zero": false,
+     "breakdown": null,
+     "text": "1 of 2",
+     "unavailable_reason": null,
+     "value": "1",
+     "warning": null,
+     "warning_off": null
+    },
+    "A-11": {
+     "at_index_zero": false,
+     "breakdown": null,
+     "text": "1 of 2",
+     "unavailable_reason": null,
+     "value": "1",
+     "warning": null,
+     "warning_off": null
+    },
+    "A-26": {
+     "at_index_zero": false,
+     "breakdown": null,
+     "text": "1 of 2",
+     "unavailable_reason": null,
+     "value": "1",
+     "warning": null,
+     "warning_off": null
+    },
+    "A-27": {
+     "at_index_zero": false,
+     "breakdown": null,
+     "text": "1 of 2",
+     "unavailable_reason": null,
+     "value": "1",
+     "warning": null,
+     "warning_off": null
+    },
+    "A-28": {
+     "at_index_zero": false,
+     "breakdown": null,
+     "text": "1 of 2",
+     "unavailable_reason": null,
+     "value": "1",
+     "warning": null,
+     "warning_off": null
+    },
+    "A-29": {
+     "at_index_zero": false,
+     "breakdown": null,
+     "text": "1 of 2",
+     "unavailable_reason": null,
+     "value": "1",
+     "warning": null,
+     "warning_off": null
+    },
+    "A-31": {
+     "at_index_zero": false,
+     "breakdown": null,
+     "text": "Not an adjustment: closes every open leg",
+     "unavailable_reason": null,
+     "value": "0",
+     "warning": null,
+     "warning_off": null
+    },
+    "A-36": {
+     "at_index_zero": false,
+     "breakdown": null,
+     "text": "0 of 2",
+     "unavailable_reason": null,
+     "value": "0",
+     "warning": null,
+     "warning_off": null
+    }
+   }
+  },
+  {
+   "group": "practical",
+   "hint": null,
+   "id": "liquidity",
+   "label": "Strike liquidity (widest bid-ask spread)",
+   "leader_label": "Tightest spreads",
+   "leaders": [
+    "A-11"
+   ],
+   "values": {
+    "A-01": {
+     "at_index_zero": false,
+     "breakdown": null,
+     "text": "1.20%",
+     "unavailable_reason": null,
+     "value": "1.20",
+     "warning": null,
+     "warning_off": null
+    },
+    "A-11": {
+     "at_index_zero": false,
+     "breakdown": null,
+     "text": "1.17%",
+     "unavailable_reason": null,
+     "value": "1.17",
+     "warning": null,
+     "warning_off": null
+    },
+    "A-26": {
+     "at_index_zero": false,
+     "breakdown": null,
+     "text": "-",
+     "unavailable_reason": "Not available: this approach opens no new leg.",
+     "value": null,
+     "warning": null,
+     "warning_off": null
+    },
+    "A-27": {
+     "at_index_zero": false,
+     "breakdown": null,
+     "text": "-",
+     "unavailable_reason": "Not available: this approach opens no new leg.",
+     "value": null,
+     "warning": null,
+     "warning_off": null
+    },
+    "A-28": {
+     "at_index_zero": false,
+     "breakdown": null,
+     "text": "-",
+     "unavailable_reason": "Not available: this approach opens no new leg.",
+     "value": null,
+     "warning": null,
+     "warning_off": null
+    },
+    "A-29": {
+     "at_index_zero": false,
+     "breakdown": null,
+     "text": "-",
+     "unavailable_reason": "Not available: this approach opens no new leg.",
+     "value": null,
+     "warning": null,
+     "warning_off": null
+    },
+    "A-31": {
+     "at_index_zero": false,
+     "breakdown": null,
+     "text": "-",
+     "unavailable_reason": "Not available: this approach opens no new leg.",
+     "value": null,
+     "warning": null,
+     "warning_off": null
+    },
+    "A-36": {
+     "at_index_zero": false,
+     "breakdown": null,
+     "text": "-",
+     "unavailable_reason": "Not available: this approach opens no new leg.",
+     "value": null,
+     "warning": null,
+     "warning_off": null
+    }
+   }
+  },
+  {
+   "group": "practical",
+   "hint": null,
+   "id": "fresh",
+   "label": "Would you open this fresh",
+   "leader_label": "Smallest fresh max loss",
+   "leaders": [],
+   "values": {
+    "A-01": {
+     "at_index_zero": false,
+     "breakdown": null,
+     "text": "-",
+     "unavailable_reason": "Charges not available, so the figures after charges are not shown.",
+     "value": null,
+     "warning": null,
+     "warning_off": null
+    },
+    "A-11": {
+     "at_index_zero": false,
+     "breakdown": null,
+     "text": "-",
+     "unavailable_reason": "Charges not available, so the figures after charges are not shown.",
+     "value": null,
+     "warning": null,
+     "warning_off": null
+    },
+    "A-26": {
+     "at_index_zero": false,
+     "breakdown": null,
+     "text": "-",
+     "unavailable_reason": "Charges not available, so the figures after charges are not shown.",
+     "value": null,
+     "warning": null,
+     "warning_off": null
+    },
+    "A-27": {
+     "at_index_zero": false,
+     "breakdown": null,
+     "text": "-",
+     "unavailable_reason": "Charges not available, so the figures after charges are not shown.",
+     "value": null,
+     "warning": null,
+     "warning_off": null
+    },
+    "A-28": {
+     "at_index_zero": false,
+     "breakdown": null,
+     "text": "-",
+     "unavailable_reason": "Charges not available, so the figures after charges are not shown.",
+     "value": null,
+     "warning": null,
+     "warning_off": null
+    },
+    "A-29": {
+     "at_index_zero": false,
+     "breakdown": null,
+     "text": "-",
+     "unavailable_reason": "Charges not available, so the figures after charges are not shown.",
+     "value": null,
+     "warning": null,
+     "warning_off": null
+    },
+    "A-31": {
+     "at_index_zero": false,
+     "breakdown": null,
+     "text": "-",
+     "unavailable_reason": "Not available: no leg stays open.",
+     "value": null,
+     "warning": null,
+     "warning_off": null
+    },
+    "A-36": {
+     "at_index_zero": false,
+     "breakdown": null,
+     "text": "-",
+     "unavailable_reason": "Charges not available, so the figures after charges are not shown.",
+     "value": null,
+     "warning": null,
+     "warning_off": null
+    }
+   }
+  }
+ ],
+ "current": {
+  "legs": [
+   {
+    "iv": "17.73%",
+    "label": "BUY 22500.00 PE",
+    "ltp": "\u20b90.85",
+    "oi": "18,655",
+    "text": "IV 17.73%, OI 18,655, LTP \u20b90.85",
+    "tradingsymbol": "NIFTY26N0922500PE"
+   },
+   {
+    "iv": "16.71%",
+    "label": "SELL 22700.00 PE",
+    "ltp": "\u20b92.70",
+    "oi": "29,380",
+    "text": "IV 16.71%, OI 29,380, LTP \u20b92.70",
+    "tradingsymbol": "NIFTY26N0922700PE"
+   },
+   {
+    "iv": "13.14%",
+    "label": "SELL 23500.00 CE",
+    "ltp": "\u20b984.10",
+    "oi": "2.2L",
+    "text": "IV 13.14%, OI 2.2L, LTP \u20b984.10",
+    "tradingsymbol": "NIFTY26N0923500CE"
+   },
+   {
+    "iv": "13.48%",
+    "label": "BUY 23700.00 CE",
+    "ltp": "\u20b929.50",
+    "oi": "1.1L",
+    "text": "IV 13.48%, OI 1.1L, LTP \u20b929.50",
+    "tradingsymbol": "NIFTY26N0923700CE"
+   }
+  ],
+  "margin_utilisation": {
+   "reason": null,
+   "text": "6.7%"
+  },
+  "max_loss": {
+   "reason": "not available: the current position's max loss was not worked out",
+   "text": null
+  }
+ },
+ "curves": {},
+ "curves_estimate_note": null,
+ "curves_estimated": {},
+ "days_to_expiry": 3,
+ "delta_neutral": {
+  "future_lots": 0,
+  "future_remaining": "-27.5600",
+  "known": true,
+  "label": "Delta-neutral figures (a calculation, not a suggestion to trade)",
+  "missing_leg": null,
+  "net_delta": "-27.5600",
+  "option_lots": 1,
+  "option_remaining": "8.1055",
+  "option_strike": "23400",
+  "option_type": "CE",
+  "reason": null
+ },
+ "leads": {
+  "A-01": {
+   "m": 11,
+   "n": 1
+  },
+  "A-11": {
+   "m": 11,
+   "n": 3
+  },
+  "A-26": {
+   "m": 11,
+   "n": 0
+  },
+  "A-27": {
+   "m": 11,
+   "n": 0
+  },
+  "A-28": {
+   "m": 11,
+   "n": 3
+  },
+  "A-29": {
+   "m": 11,
+   "n": 0
+  },
+  "A-31": {
+   "m": 11,
+   "n": 2
+  },
+  "A-36": {
+   "m": 11,
+   "n": 3
+  }
+ },
+ "limit": null,
+ "limits_reason": null,
+ "not_offered": [],
+ "pop_switch_on": true,
+ "prices": {
+  "age_minutes": 0,
+  "as_of": "2026-11-06T11:39:59+05:30",
+  "as_of_note": "as of 11:39",
+  "banner": null,
+  "checks_text": null,
+  "label": "prices from 11:39:59 AM",
+  "prepare_blocked_reason": null,
+  "stale": false
+ },
+ "spot": {
+  "at": "2026-11-06T11:40:00+05:30",
+  "reasons": [],
+  "source": "feed",
+  "source_text": "Spot from the live feed",
+  "text": null,
+  "value": "23420"
+ },
+ "strategy_id": 1,
+ "view": "at_expiry",
+ "what_changes": {
+  "A-01": {
+   "reason_line": null,
+   "rows": [
+    {
+     "after_text": "Not available",
+     "before_text": "Not available",
+     "direction": "not_available",
+     "direction_text": "not available",
+     "id": "profit_range",
+     "label": "Profit range",
+     "unavailable_reason": "Before and after: Charges not available, so the figures after charges are not shown."
+    },
+    {
+     "after_text": "Not available",
+     "before_text": "Not available",
+     "direction": "not_available",
+     "direction_text": "not available",
+     "id": "breakeven_distance",
+     "label": "Distance from the index to each breakeven",
+     "unavailable_reason": "Before and after: Charges not available, so the figures after charges are not shown."
+    },
+    {
+     "after_text": "Not available",
+     "before_text": "Not available",
+     "direction": "not_available",
+     "direction_text": "not available",
+     "id": "pop",
+     "label": "Probability of profit",
+     "unavailable_reason": "Before and after: Charges not available, so the figures after charges are not shown."
+    },
+    {
+     "after_text": "Not available",
+     "before_text": "Not available",
+     "direction": "not_available",
+     "direction_text": "not available",
+     "id": "max_profit",
+     "label": "Max profit",
+     "unavailable_reason": "Before and after: Charges not available, so the figures after charges are not shown."
+    },
+    {
+     "after_text": "Not available",
+     "before_text": "Not available",
+     "direction": "not_available",
+     "direction_text": "not available",
+     "id": "max_loss",
+     "label": "Max loss",
+     "unavailable_reason": "Before and after: Charges not available, so the figures after charges are not shown."
+    },
+    {
+     "after_text": "Credit \u20b93,874.00",
+     "before_text": "No trade",
+     "direction": "up",
+     "direction_text": "up",
+     "id": "credit",
+     "label": "Credit or debit of this adjustment",
+     "unavailable_reason": null
+    },
+    {
+     "after_text": "\u20b97,24,561.50",
+     "before_text": "\u20b97,15,552.50",
+     "direction": "up",
+     "direction_text": "up",
+     "id": "margin",
+     "label": "Margin",
+     "unavailable_reason": null
+    },
+    {
+     "after_text": "-9.3210",
+     "before_text": "-27.5600",
+     "direction": "up",
+     "direction_text": "up",
+     "id": "net_delta",
+     "label": "Net delta",
+     "unavailable_reason": null
+    }
+   ],
+   "title": "What changes"
+  },
+  "A-11": {
+   "reason_line": null,
+   "rows": [
+    {
+     "after_text": "Not available",
+     "before_text": "Not available",
+     "direction": "not_available",
+     "direction_text": "not available",
+     "id": "profit_range",
+     "label": "Profit range",
+     "unavailable_reason": "Before and after: Charges not available, so the figures after charges are not shown."
+    },
+    {
+     "after_text": "Not available",
+     "before_text": "Not available",
+     "direction": "not_available",
+     "direction_text": "not available",
+     "id": "breakeven_distance",
+     "label": "Distance from the index to each breakeven",
+     "unavailable_reason": "Before and after: Charges not available, so the figures after charges are not shown."
+    },
+    {
+     "after_text": "Not available",
+     "before_text": "Not available",
+     "direction": "not_available",
+     "direction_text": "not available",
+     "id": "pop",
+     "label": "Probability of profit",
+     "unavailable_reason": "Before and after: Charges not available, so the figures after charges are not shown."
+    },
+    {
+     "after_text": "Not available",
+     "before_text": "Not available",
+     "direction": "not_available",
+     "direction_text": "not available",
+     "id": "max_profit",
+     "label": "Max profit",
+     "unavailable_reason": "Before and after: Charges not available, so the figures after charges are not shown."
+    },
+    {
+     "after_text": "Not available",
+     "before_text": "Not available",
+     "direction": "not_available",
+     "direction_text": "not available",
+     "id": "max_loss",
+     "label": "Max loss",
+     "unavailable_reason": "Before and after: Charges not available, so the figures after charges are not shown."
+    },
+    {
+     "after_text": "Credit \u20b910,653.50",
+     "before_text": "No trade",
+     "direction": "up",
+     "direction_text": "up",
+     "id": "credit",
+     "label": "Credit or debit of this adjustment",
+     "unavailable_reason": null
+    },
+    {
+     "after_text": "\u20b97,18,282.50",
+     "before_text": "\u20b97,15,552.50",
+     "direction": "up",
+     "direction_text": "up",
+     "id": "margin",
+     "label": "Margin",
+     "unavailable_reason": null
+    },
+    {
+     "after_text": "-4.3420",
+     "before_text": "-27.5600",
+     "direction": "up",
+     "direction_text": "up",
+     "id": "net_delta",
+     "label": "Net delta",
+     "unavailable_reason": null
+    }
+   ],
+   "title": "What changes"
+  },
+  "A-26": {
+   "reason_line": null,
+   "rows": [
+    {
+     "after_text": "Not available",
+     "before_text": "Not available",
+     "direction": "not_available",
+     "direction_text": "not available",
+     "id": "profit_range",
+     "label": "Profit range",
+     "unavailable_reason": "Before and after: Charges not available, so the figures after charges are not shown."
+    },
+    {
+     "after_text": "Not available",
+     "before_text": "Not available",
+     "direction": "not_available",
+     "direction_text": "not available",
+     "id": "breakeven_distance",
+     "label": "Distance from the index to each breakeven",
+     "unavailable_reason": "Before and after: Charges not available, so the figures after charges are not shown."
+    },
+    {
+     "after_text": "Not available",
+     "before_text": "Not available",
+     "direction": "not_available",
+     "direction_text": "not available",
+     "id": "pop",
+     "label": "Probability of profit",
+     "unavailable_reason": "Before and after: Charges not available, so the figures after charges are not shown."
+    },
+    {
+     "after_text": "Not available",
+     "before_text": "Not available",
+     "direction": "not_available",
+     "direction_text": "not available",
+     "id": "max_profit",
+     "label": "Max profit",
+     "unavailable_reason": "Before and after: Charges not available, so the figures after charges are not shown."
+    },
+    {
+     "after_text": "Not available",
+     "before_text": "Not available",
+     "direction": "not_available",
+     "direction_text": "not available",
+     "id": "max_loss",
+     "label": "Max loss",
+     "unavailable_reason": "Before and after: Charges not available, so the figures after charges are not shown."
+    },
+    {
+     "after_text": "Debit \u20b9351.00",
+     "before_text": "No trade",
+     "direction": "down",
+     "direction_text": "down",
+     "id": "credit",
+     "label": "Credit or debit of this adjustment",
+     "unavailable_reason": null
+    },
+    {
+     "after_text": "\u20b93,61,432.50",
+     "before_text": "\u20b97,15,552.50",
+     "direction": "down",
+     "direction_text": "down",
+     "id": "margin",
+     "label": "Margin",
+     "unavailable_reason": null
+    },
+    {
+     "after_text": "-30.1730",
+     "before_text": "-27.5600",
+     "direction": "down",
+     "direction_text": "down",
+     "id": "net_delta",
+     "label": "Net delta",
+     "unavailable_reason": null
+    }
+   ],
+   "title": "What changes"
+  },
+  "A-27": {
+   "reason_line": null,
+   "rows": [
+    {
+     "after_text": "Not available",
+     "before_text": "Not available",
+     "direction": "not_available",
+     "direction_text": "not available",
+     "id": "profit_range",
+     "label": "Profit range",
+     "unavailable_reason": "Before and after: Charges not available, so the figures after charges are not shown."
+    },
+    {
+     "after_text": "Not available",
+     "before_text": "Not available",
+     "direction": "not_available",
+     "direction_text": "not available",
+     "id": "breakeven_distance",
+     "label": "Distance from the index to each breakeven",
+     "unavailable_reason": "Before and after: Charges not available, so the figures after charges are not shown."
+    },
+    {
+     "after_text": "Not available",
+     "before_text": "Not available",
+     "direction": "not_available",
+     "direction_text": "not available",
+     "id": "pop",
+     "label": "Probability of profit",
+     "unavailable_reason": "Before and after: Charges not available, so the figures after charges are not shown."
+    },
+    {
+     "after_text": "Not available",
+     "before_text": "Not available",
+     "direction": "not_available",
+     "direction_text": "not available",
+     "id": "max_profit",
+     "label": "Max profit",
+     "unavailable_reason": "Before and after: Charges not available, so the figures after charges are not shown."
+    },
+    {
+     "after_text": "Not available",
+     "before_text": "Not available",
+     "direction": "not_available",
+     "direction_text": "not available",
+     "id": "max_loss",
+     "label": "Max loss",
+     "unavailable_reason": "Before and after: Charges not available, so the figures after charges are not shown."
+    },
+    {
+     "after_text": "Debit \u20b9351.00",
+     "before_text": "No trade",
+     "direction": "down",
+     "direction_text": "down",
+     "id": "credit",
+     "label": "Credit or debit of this adjustment",
+     "unavailable_reason": null
+    },
+    {
+     "after_text": "\u20b93,61,432.50",
+     "before_text": "\u20b97,15,552.50",
+     "direction": "down",
+     "direction_text": "down",
+     "id": "margin",
+     "label": "Margin",
+     "unavailable_reason": null
+    },
+    {
+     "after_text": "-30.1730",
+     "before_text": "-27.5600",
+     "direction": "down",
+     "direction_text": "down",
+     "id": "net_delta",
+     "label": "Net delta",
+     "unavailable_reason": null
+    }
+   ],
+   "title": "What changes"
+  },
+  "A-28": {
+   "reason_line": null,
+   "rows": [
+    {
+     "after_text": "Not available",
+     "before_text": "Not available",
+     "direction": "not_available",
+     "direction_text": "not available",
+     "id": "profit_range",
+     "label": "Profit range",
+     "unavailable_reason": "Before and after: Charges not available, so the figures after charges are not shown."
+    },
+    {
+     "after_text": "Not available",
+     "before_text": "Not available",
+     "direction": "not_available",
+     "direction_text": "not available",
+     "id": "breakeven_distance",
+     "label": "Distance from the index to each breakeven",
+     "unavailable_reason": "Before and after: Charges not available, so the figures after charges are not shown."
+    },
+    {
+     "after_text": "Not available",
+     "before_text": "Not available",
+     "direction": "not_available",
+     "direction_text": "not available",
+     "id": "pop",
+     "label": "Probability of profit",
+     "unavailable_reason": "Before and after: Charges not available, so the figures after charges are not shown."
+    },
+    {
+     "after_text": "Not available",
+     "before_text": "Not available",
+     "direction": "not_available",
+     "direction_text": "not available",
+     "id": "max_profit",
+     "label": "Max profit",
+     "unavailable_reason": "Before and after: Charges not available, so the figures after charges are not shown."
+    },
+    {
+     "after_text": "Not available",
+     "before_text": "Not available",
+     "direction": "not_available",
+     "direction_text": "not available",
+     "id": "max_loss",
+     "label": "Max loss",
+     "unavailable_reason": "Before and after: Charges not available, so the figures after charges are not shown."
+    },
+    {
+     "after_text": "Debit \u20b97,098.00",
+     "before_text": "No trade",
+     "direction": "down",
+     "direction_text": "down",
+     "id": "credit",
+     "label": "Credit or debit of this adjustment",
+     "unavailable_reason": null
+    },
+    {
+     "after_text": "\u20b93,51,292.50",
+     "before_text": "\u20b97,15,552.50",
+     "direction": "down",
+     "direction_text": "down",
+     "id": "margin",
+     "label": "Margin",
+     "unavailable_reason": null
+    },
+    {
+     "after_text": "1.7420",
+     "before_text": "-27.5600",
+     "direction": "up",
+     "direction_text": "up",
+     "id": "net_delta",
+     "label": "Net delta",
+     "unavailable_reason": null
+    }
+   ],
+   "title": "What changes"
+  },
+  "A-29": {
+   "reason_line": null,
+   "rows": [
+    {
+     "after_text": "Not available",
+     "before_text": "Not available",
+     "direction": "not_available",
+     "direction_text": "not available",
+     "id": "profit_range",
+     "label": "Profit range",
+     "unavailable_reason": "Before and after: Charges not available, so the figures after charges are not shown."
+    },
+    {
+     "after_text": "Not available",
+     "before_text": "Not available",
+     "direction": "not_available",
+     "direction_text": "not available",
+     "id": "breakeven_distance",
+     "label": "Distance from the index to each breakeven",
+     "unavailable_reason": "Before and after: Charges not available, so the figures after charges are not shown."
+    },
+    {
+     "after_text": "Not available",
+     "before_text": "Not available",
+     "direction": "not_available",
+     "direction_text": "not available",
+     "id": "pop",
+     "label": "Probability of profit",
+     "unavailable_reason": "Before and after: Charges not available, so the figures after charges are not shown."
+    },
+    {
+     "after_text": "Not available",
+     "before_text": "Not available",
+     "direction": "not_available",
+     "direction_text": "not available",
+     "id": "max_profit",
+     "label": "Max profit",
+     "unavailable_reason": "Before and after: Charges not available, so the figures after charges are not shown."
+    },
+    {
+     "after_text": "Not available",
+     "before_text": "Not available",
+     "direction": "not_available",
+     "direction_text": "not available",
+     "id": "max_loss",
+     "label": "Max loss",
+     "unavailable_reason": "Before and after: Charges not available, so the figures after charges are not shown."
+    },
+    {
+     "after_text": "Debit \u20b93,549.00",
+     "before_text": "No trade",
+     "direction": "down",
+     "direction_text": "down",
+     "id": "credit",
+     "label": "Credit or debit of this adjustment",
+     "unavailable_reason": null
+    },
+    {
+     "after_text": "\u20b95,33,422.50",
+     "before_text": "\u20b97,15,552.50",
+     "direction": "down",
+     "direction_text": "down",
+     "id": "margin",
+     "label": "Margin",
+     "unavailable_reason": null
+    },
+    {
+     "after_text": "-12.9090",
+     "before_text": "-27.5600",
+     "direction": "up",
+     "direction_text": "up",
+     "id": "net_delta",
+     "label": "Net delta",
+     "unavailable_reason": null
+    }
+   ],
+   "title": "What changes"
+  },
+  "A-31": {
+   "reason_line": null,
+   "rows": [
+    {
+     "after_text": "Not available",
+     "before_text": "Not available",
+     "direction": "not_available",
+     "direction_text": "not available",
+     "id": "profit_range",
+     "label": "Profit range",
+     "unavailable_reason": "Before and after: Charges not available, so the figures after charges are not shown."
+    },
+    {
+     "after_text": "Not available",
+     "before_text": "Not available",
+     "direction": "not_available",
+     "direction_text": "not available",
+     "id": "breakeven_distance",
+     "label": "Distance from the index to each breakeven",
+     "unavailable_reason": "Before and after: Charges not available, so the figures after charges are not shown."
+    },
+    {
+     "after_text": "Not available",
+     "before_text": "Not available",
+     "direction": "not_available",
+     "direction_text": "not available",
+     "id": "pop",
+     "label": "Probability of profit",
+     "unavailable_reason": "Before and after: Charges not available, so the figures after charges are not shown."
+    },
+    {
+     "after_text": "Not available",
+     "before_text": "Not available",
+     "direction": "not_available",
+     "direction_text": "not available",
+     "id": "max_profit",
+     "label": "Max profit",
+     "unavailable_reason": "Before and after: Charges not available, so the figures after charges are not shown."
+    },
+    {
+     "after_text": "Not available",
+     "before_text": "Not available",
+     "direction": "not_available",
+     "direction_text": "not available",
+     "id": "max_loss",
+     "label": "Max loss",
+     "unavailable_reason": "Before and after: Charges not available, so the figures after charges are not shown."
+    },
+    {
+     "after_text": "Debit \u20b97,338.50",
+     "before_text": "No trade",
+     "direction": "down",
+     "direction_text": "down",
+     "id": "credit",
+     "label": "Credit or debit of this adjustment",
+     "unavailable_reason": null
+    },
+    {
+     "after_text": "\u20b90.00",
+     "before_text": "\u20b97,15,552.50",
+     "direction": "down",
+     "direction_text": "down",
+     "id": "margin",
+     "label": "Margin",
+     "unavailable_reason": null
+    },
+    {
+     "after_text": "Not available",
+     "before_text": "-27.5600",
+     "direction": "not_available",
+     "direction_text": "not available",
+     "id": "net_delta",
+     "label": "Net delta",
+     "unavailable_reason": "After: No position left after exit"
+    }
+   ],
+   "title": "What changes"
+  },
+  "A-36": {
+   "reason_line": null,
+   "rows": [
+    {
+     "after_text": "Not available",
+     "before_text": "Not available",
+     "direction": "not_available",
+     "direction_text": "not available",
+     "id": "profit_range",
+     "label": "Profit range",
+     "unavailable_reason": "Before and after: Charges not available, so the figures after charges are not shown."
+    },
+    {
+     "after_text": "Not available",
+     "before_text": "Not available",
+     "direction": "not_available",
+     "direction_text": "not available",
+     "id": "breakeven_distance",
+     "label": "Distance from the index to each breakeven",
+     "unavailable_reason": "Before and after: Charges not available, so the figures after charges are not shown."
+    },
+    {
+     "after_text": "Not available",
+     "before_text": "Not available",
+     "direction": "not_available",
+     "direction_text": "not available",
+     "id": "pop",
+     "label": "Probability of profit",
+     "unavailable_reason": "Before and after: Charges not available, so the figures after charges are not shown."
+    },
+    {
+     "after_text": "Not available",
+     "before_text": "Not available",
+     "direction": "not_available",
+     "direction_text": "not available",
+     "id": "max_profit",
+     "label": "Max profit",
+     "unavailable_reason": "Before and after: Charges not available, so the figures after charges are not shown."
+    },
+    {
+     "after_text": "Not available",
+     "before_text": "Not available",
+     "direction": "not_available",
+     "direction_text": "not available",
+     "id": "max_loss",
+     "label": "Max loss",
+     "unavailable_reason": "Before and after: Charges not available, so the figures after charges are not shown."
+    },
+    {
+     "after_text": "No trade",
+     "before_text": "No trade",
+     "direction": "same",
+     "direction_text": "unchanged",
+     "id": "credit",
+     "label": "Credit or debit of this adjustment",
+     "unavailable_reason": null
+    },
+    {
+     "after_text": "\u20b97,15,552.50",
+     "before_text": "\u20b97,15,552.50",
+     "direction": "same",
+     "direction_text": "unchanged",
+     "id": "margin",
+     "label": "Margin",
+     "unavailable_reason": null
+    },
+    {
+     "after_text": "-27.5600",
+     "before_text": "-27.5600",
+     "direction": "same",
+     "direction_text": "unchanged",
+     "id": "net_delta",
+     "label": "Net delta",
+     "unavailable_reason": null
+    }
+   ],
+   "title": "What changes"
+  }
+ }
+}
