@@ -473,7 +473,7 @@ def test_a_situation_or_watch_alert_keeps_its_name_when_the_latest_check_no_long
 
 
 # ---- GC-ICLIVE-E D-58: a VALUED day-rule record (a hit with its distance) names the rule, never its raw id ----
-# Real case: C2 on 24 Nov 2026, rule id "day.beforeHoliday.1500.0" printed as "day.beforeHoliday.1500.0: 0.8 (rule 1.5)".
+# Real case: C2, 24 Nov 2026: rule id "day.beforeHoliday.1500.0" printed as "day.beforeHoliday.1500.0: 0.8 (rule 1.5)".
 def _valued_day_record(rule_id: str, label: str | None):
     return playbook_store.Suggestion(
         1, 143, rule_id, rule_id, None, Decimal("0.8"), Decimal("1.5"), dt.datetime(2026, 11, 24, 9, 30, tzinfo=dt.UTC),

@@ -1490,7 +1490,8 @@ _PLAYBOOK_TEMPLATES: tuple[MessageTemplate, ...] = (
     _gate("adjust_time_exit_not_set", _UI, 184,
           "This approach is not built because your playbook sets no exit time.",
           _ADJ_REFUSED, _ADJ_BLOCKED, _ADJ_PICK_OTHER, {}),
-    _gate("adjust_time_exit_not_yet", _UI, 185, "This approach opens on the expiry day, from {time}; it is not offered before then.",
+    _gate("adjust_time_exit_not_yet", _UI, 185,
+          "This approach opens on the expiry day, from {time}; it is not offered before then.",
           _ADJ_REFUSED, _ADJ_BLOCKED, _ADJ_PICK_OTHER, {"time": ClockTime}),
     # ADR-239 (GC-IC1 step 3): the roll approaches A-02 and A-04
     _gate("adjust_roll_short_past_wing", _UI, 186,

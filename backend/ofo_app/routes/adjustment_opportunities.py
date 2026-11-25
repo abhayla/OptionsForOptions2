@@ -158,6 +158,13 @@ def _yes_no_name(s: store.Suggestion) -> str | None:
     return own or LEVEL_WATCH_LABEL_TEXT.get(level_watch.direction_of(s.rule_id) or "")
 
 
+def _own_label(s: store.Suggestion) -> Any:
+    """The record's stored label; a valued day rule's label is its id, so it names itself in words instead (D-58)."""
+    if is_day_rule_id(s.rule_id) and s.label in (None, s.rule_id):
+        return day_rule_words(s.rule_id)
+    return s.label
+
+
 def condition_text(s: store.Suggestion) -> Any:
     """A record's condition in the catalogue's words (the inbox line; the adjustment history's Why, REQ-163 AC-1)."""
     if s.cmp not in ("le", "ge", "lt") or s.trigger_id is None or s.value is None or s.threshold is None:
@@ -185,10 +192,8 @@ def condition_text(s: store.Suggestion) -> Any:
     shown = s.threshold if s.limit is None else s.limit
     found = s.target if s.trigger_id == "T-07" else None  # ADR-294 (2): the figures it was shown with
     figures = None if found is None else TargetFigures(*found)
-    label = s.label
-    if is_day_rule_id(s.rule_id) and label in (None, s.rule_id):  # D-58: a valued day rule names itself, never its id
-        label = day_rule_words(s.rule_id)
-    return condition_line(s.trigger_id, label, s.unit, format(s.value, "f"), format(shown, "f"), s.beyond, figures)
+    return condition_line(s.trigger_id, _own_label(s), s.unit, format(s.value, "f"), format(shown, "f"), s.beyond,
+                          figures)
 
 
 def _record(s: store.Suggestion, paper: bool) -> dict:
