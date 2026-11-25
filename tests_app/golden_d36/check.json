@@ -1,6 +1,6 @@
 {
  "as_of": "2026-11-06T11:40:00+05:30",
- "as_of_text": "As of 11:40:00 AM IST",
+ "as_of_text": "As of 11:40:00 IST",
  "limits": [
   {
    "after": null,
@@ -59,7 +59,7 @@
    "condition": "Spot within this % of a short strike: 0.3416 % (rule 0.5000 %)",
    "fired_at": null,
    "kind": "flag",
-   "live_as_of_text": "As of 11:40:00 AM IST",
+   "live_as_of_text": "As of 11:40:00 IST",
    "live_value": "0.3416",
    "note": null,
    "reason": null,
@@ -101,7 +101,7 @@
    "condition": "Tested short's delta reaches: 0.4103 delta (rule 0.3500 delta)",
    "fired_at": null,
    "kind": "flag",
-   "live_as_of_text": "As of 11:40:00 AM IST",
+   "live_as_of_text": "As of 11:40:00 IST",
    "live_value": "0.4103",
    "note": null,
    "reason": null,
@@ -118,7 +118,7 @@
    "condition": "A short leg's premium falls to Rs or below (close for pennies): \u20b92.70 (rule \u20b93.00)",
    "fired_at": null,
    "kind": "flag",
-   "live_as_of_text": "As of 11:40:00 AM IST",
+   "live_as_of_text": "As of 11:40:00 IST",
    "live_value": "2.7000",
    "note": null,
    "reason": null,
@@ -210,7 +210,7 @@
    "condition": "Trending day: 0.2120 (rule 0.1500)",
    "fired_at": null,
    "kind": "flag",
-   "live_as_of_text": "As of 11:40:00 AM IST",
+   "live_as_of_text": "As of 11:40:00 IST",
    "live_value": "0.2120",
    "note": null,
    "reason": null,

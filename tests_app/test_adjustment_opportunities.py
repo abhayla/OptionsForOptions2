@@ -470,3 +470,19 @@ def test_a_situation_or_watch_alert_keeps_its_name_when_the_latest_check_no_long
     valued = RuleValue("sit.S-02", "sit.S-02", Decimal("0.2"), Decimal("0.15"), "ge", True, yes_no=True)
     assert chk.record_words(body, "sit.S-02", valued) == ("sit.S-02", "ge", "Trending day", None)
     assert chk.record_words(body, "T-02", None) == (None, None, None, None)
+
+
+# ---- GC-ICLIVE-E D-58: a VALUED day-rule record (a hit with its distance) names the rule, never its raw id ----
+# Real case: C2 on 24 Nov 2026, rule id "day.beforeHoliday.1500.0" printed as "day.beforeHoliday.1500.0: 0.8 (rule 1.5)".
+def _valued_day_record(rule_id: str, label: str | None):
+    return playbook_store.Suggestion(
+        1, 143, rule_id, rule_id, None, Decimal("0.8"), Decimal("1.5"), dt.datetime(2026, 11, 24, 9, 30, tzinfo=dt.UTC),
+        "open", None, [{"cmp": "le", "label": label, "group": "g"}])
+
+
+@pytest.mark.parametrize("label", [None, "day.beforeHoliday.1500.0"])
+def test_a_valued_day_rule_record_names_the_rule_not_its_id(label):
+    text = str(condition_text(_valued_day_record("day.beforeHoliday.1500.0", label)))
+    assert "day." not in text and "beforeHoliday" not in text, text
+    assert text.startswith("The day before a market holiday, 15:00: Run the carry check"), text
+    assert text.endswith(": 0.8 (rule 1.5)"), text

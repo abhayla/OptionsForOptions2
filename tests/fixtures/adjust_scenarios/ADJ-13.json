@@ -3755,7 +3755,7 @@
    },
    "A-35": {
     "side": "both",
-    "refused": "Your playbook sets no time exit, so this approach is not built.",
+    "refused": "This approach is not built because your playbook sets no exit time.",
     "step_basis": null,
     "step_value": null
    },
@@ -4179,7 +4179,7 @@
     },
     "A-35": {
      "side": "both",
-     "refused": "The time exit is offered on expiry day from 14:30.",
+     "refused": "This approach opens on the expiry day, from 14:30; it is not offered before then.",
      "step_basis": null,
      "step_value": null
     }

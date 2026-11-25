@@ -1163,7 +1163,7 @@
     "external_text": null,
     "impact": "This approach was not built; the other approaches still show.",
     "next_action": "Compare the other approaches, or change the legs in the Builder.",
-    "what_happened": "The time exit is offered on expiry day from 14:30.",
+    "what_happened": "This approach opens on the expiry day, from 14:30; it is not offered before then.",
     "what_is_blocked": "This approach."
    },
    "side": "both",
@@ -1386,7 +1386,7 @@
     "external_text": null,
     "impact": "This approach was not built; the other approaches still show.",
     "next_action": "Compare the other approaches, or change the legs in the Builder.",
-    "what_happened": "The time exit is offered on expiry day from 14:30.",
+    "what_happened": "This approach opens on the expiry day, from 14:30; it is not offered before then.",
     "what_is_blocked": "This approach."
    }
   },
@@ -3327,7 +3327,7 @@
   "as_of_note": "as of 11:39",
   "banner": null,
   "checks_text": null,
-  "label": "prices from 11:39:59 AM",
+  "label": "prices from 11:39:59",
   "prepare_blocked_reason": null,
   "stale": false
  },
