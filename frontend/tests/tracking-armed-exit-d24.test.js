@@ -5,13 +5,11 @@ import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
 import { flushPromises, mount } from '@vue/test-utils'
 
 let triggers = null // GET /paper/strategies/161/triggers: a body, or an Error to reject with
-let triggerCalls = 0
 const answer = (url) => {
   if (url === '/strategies/161/tracking') return Promise.resolve({ data: TRACK })
   if (url === '/strategies/161/adjustment-check') return Promise.resolve({ data: CHECK })
   if (url.startsWith('/strategies/161/adjustment-plan')) return Promise.resolve({ data: PLAN })
   if (url === '/paper/strategies/161/triggers') {
-    triggerCalls += 1
     return triggers instanceof Error ? Promise.reject(triggers) : Promise.resolve({ data: triggers })
   }
   return Promise.reject({ status: 404, parts: null })
@@ -43,7 +41,7 @@ async function panel() {
   await flushPromises()
   return w
 }
-beforeEach(() => { triggers = { triggers: [] }; triggerCalls = 0 })
+beforeEach(() => { triggers = { triggers: [] } })
 afterEach(() => { mounted.splice(0).forEach((w) => w.unmount()) })
 
 describe('an armed conditional exit is on the tracking panel (D-24)', () => {
