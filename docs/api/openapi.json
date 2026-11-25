@@ -7275,6 +7275,11 @@
           "outcome_text": {
             "title": "Outcome Text"
           },
+          "popup_due": {
+            "default": true,
+            "title": "Popup Due",
+            "type": "boolean"
+          },
           "rule_id": {
             "pattern": "^[A-Za-z0-9_\\-.]{1,64}$",
             "title": "Rule Id",
@@ -9296,6 +9301,21 @@
       "PaperOrdersIn": {
         "additionalProperties": false,
         "properties": {
+          "approach_id": {
+            "anyOf": [
+              {
+                "enum": [
+                  "A-24",
+                  "A-25"
+                ],
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Approach Id"
+          },
           "basket_legs": {
             "anyOf": [
               {

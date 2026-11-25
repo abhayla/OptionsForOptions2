@@ -485,6 +485,7 @@ decisions:
   ADR-323: S6.7         # Part C of the 23 Nov live test: records, times, one word, one value (pending owner read)
   ADR-324: S6.7         # Part D of the 23 Nov live test: paper header totals leave out expired strategies (pending owner read)
   ADR-325: S6.7         # Part E of the 23 Nov live test: labels, small features and post-close messages (pending owner read)
+  ADR-326: S6.7         # Owner answers of 25 Nov 2026 to the GC-ICLIVE questions Q2 to Q8 (pending owner read)
 
 questions:
   Q210: 4a              # external: Zerodha's written answer; ADR-051 covers the owner's own account
