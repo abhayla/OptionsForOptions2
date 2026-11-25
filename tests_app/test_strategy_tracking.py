@@ -364,3 +364,23 @@ async def test_one_status_word_on_every_route_through_the_strategy_life(db):
     assert await _words(app, stored.id, paper=True) == running
     await db.execute(text("UPDATE public.strategies SET status = 'closed' WHERE id = :i"), {"i": stored.id})
     assert set((await _words(app, stored.id, paper=True)).values()) == {"Completed"}
+
+
+async def test_exited_paper_book_reads_completed_on_the_book_and_the_list(db):
+    """GC-ICLIVE D-28 round 2 (ADR-299 (1)): "Running" is at least one open leg. A book whose every leg was exited is
+    Completed on /paper/strategies/{id} and /paper/strategies, even before the strategy row is closed."""
+    app, stored, *_ = await _setup(db)
+    async with _client(app) as c:
+        placed = await c.post(f"/paper/strategies/{stored.id}/orders", json=_paper_body(stored, ENTRY_PRICES))
+        assert placed.status_code == HTTPStatus.CREATED, placed.text
+        assert placed.json()["status_word"] == "Running"
+        exits = [{"contract_id": cid, "kind": "exit", "price": "1.00", "quantity": leg.quantity,
+                  "side": "BUY" if leg.action.value == "SELL" else "SELL"}
+                 for cid, leg in zip(stored.saved.contract_ids, stored.saved.definition.legs, strict=True)]
+        out = await c.post(f"/paper/strategies/{stored.id}/orders", json={"orders": exits})
+        assert out.status_code == HTTPStatus.CREATED, out.text
+        assert out.json()["state"] == "EXITED"
+        assert out.json()["status_word"] == "Completed"
+        assert (await c.get(f"/paper/strategies/{stored.id}")).json()["status_word"] == "Completed"
+        listed = next(s for s in (await c.get("/paper/strategies")).json()["strategies"] if s["strategy_id"] == stored.id)
+        assert listed["status_word"] == "Completed"
