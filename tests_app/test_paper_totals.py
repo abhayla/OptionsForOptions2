@@ -408,6 +408,8 @@ async def test_a1_not_connected_with_an_expired_contract_still_leaves_that_strat
     async with _client(app) as c:
         single = (await c.get(f"/paper/strategies/{seeded['46']}")).json()
     assert single["expired_open"] is True  # the per-strategy reply says it too (the card keys on this)
+    assert [u["expired"] for u in single["unpriced_legs"]] == [True]  # and names the expired leg, connected or not
+    assert single["unpriced_text"].startswith("Expired contracts have no price: ")
 
 
 async def test_a2_one_expired_leg_among_live_ones_leaves_the_whole_strategy_out(db):
