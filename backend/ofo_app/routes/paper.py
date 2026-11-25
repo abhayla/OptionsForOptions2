@@ -75,7 +75,7 @@ from ofo.strategy.definition import describe_contract, display_contract
 from ofo.table.model import display_number
 from ofo.timeutil import IST
 from ofo.tracking import paper, paper_decay, paper_greeks, stops
-from ofo.tracking.orderbook import ClosedLeg, NetPosition, PaperOrder, is_typed_price, lifecycles, net_positions
+from ofo.tracking.orderbook import ClosedLeg, NetPosition, PaperOrder, is_typed_price, net_positions
 from ofo.tracking.paper_alert import restore_alert_body, restore_order_reason, settle_history_body
 from pydantic import AwareDatetime, BaseModel, ConfigDict, Field, field_validator
 
@@ -116,6 +116,7 @@ from ofo_app.routes.outcome import (
 from ofo_app.routes.planned_entry import get_live_feed
 from ofo_app.routes.strategies import StrategyRefused, refused_answer
 from ofo_app.scenario_guard import guard_paper_order
+from ofo_app.strategy_money import strategy_money_view
 from ofo_app.underlying import Underlying
 
 _LOG = logging.getLogger(__name__)
@@ -657,8 +658,7 @@ def _book_day(snapshot: Any, answered_at: datetime.datetime) -> datetime.date:
 def _figures(orders: Sequence[paper_store.StoredOrder], found: dict[int, tracked_contracts.TrackedContract],
              prices: dict[int, paper.Price], connected: bool, today: datetime.date | None = None) -> dict:
     """The strategy's figures from the one engine at the live prices of its open contracts."""
-    live = {str(cid): p.price for cid, p in prices.items() if paper.is_live(p) and p.price is not None}
-    view = lifecycles(_paper(orders), live)  # D-10: the net_positions totals, split at every flat point
+    view = strategy_money_view(_paper(orders), prices).lifecycle()  # D-10: the book's totals, split at every flat point
     positions = [_position(p, found[int(p.instrument_id)], prices.get(int(p.instrument_id))) for p in view.positions]
     why = _closing_reasons(orders)
     closed = [_closed_row(leg, found[int(leg.instrument_id)], why.get((int(leg.instrument_id), leg.closed_at)))
@@ -710,9 +710,9 @@ def _extremes(orders: Sequence[paper_store.StoredOrder], found: dict[int, tracke
     has no after total (ADR-306 (6): never a gross range beside a net maximum). ``today`` = the trade's nearest open
     expiry (ADR-320 (2), D-14): the "If held to expiry" pair (``max_profit_hold`` / ``profit_left_hold``) is served
     beside the usual figures, which are the "If exited now" pair; other days it is absent."""
-    live = {str(cid): p.price for cid, p in prices.items() if paper.is_live(p) and p.price is not None}
+    money = strategy_money_view(_paper(orders), prices)
+    live, view = money.live, money.book
     terms = terms_of(orders, found)
-    view = net_positions(_paper(orders), live)
     paid = paid_exact_of(orders, found, underlying, rates)  # ADR-263: the charges really paid on every filled order
     got = max_after_charges(view, terms, live, underlying, rates, paid) if paid is not None else \
         book_extremes(view, terms, live)  # unpriced: before charges, and says so
@@ -944,8 +944,8 @@ def left_fields(got: AfterSplit) -> dict:
 
 def _after(orders: Sequence[paper_store.StoredOrder], found: dict[int, tracked_contracts.TrackedContract],  # noqa: PLR0913
            prices: dict[int, paper.Price], charges: dict, underlying: str, rates: ChargeRates | None) -> dict:
-    live = {str(cid): p.price for cid, p in prices.items() if paper.is_live(p) and p.price is not None}
-    view = net_positions(_paper(orders), live)
+    money = strategy_money_view(_paper(orders), prices)
+    live, view = money.live, money.book
     terms = terms_of(orders, found)
     got = after_charges(view, terms, live, charges["charges"], charges["charges_reason"], underlying, rates)
     split = after_split(view, terms, live, underlying, rates, got, paid_exact_of(orders, found, underlying, rates))

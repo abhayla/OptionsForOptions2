@@ -37,8 +37,8 @@ class MoneyView:
     leg keeps its figure while the totals are paused).
 
     ``book`` and ``by_contract`` are computed when first asked and then kept (a view that is only split by
-    ``lifecycle`` runs no second engine call). When the totals' basis is the priced set, ``by_contract`` is the book's own
-    positions: one engine call serves both."""
+    ``lifecycle`` runs no second engine call). When the totals' basis is the priced set, ``by_contract`` is the book's
+    own positions: one engine call serves both."""
 
     orders: tuple[PaperOrder, ...]
     priced: dict[str, Decimal]
