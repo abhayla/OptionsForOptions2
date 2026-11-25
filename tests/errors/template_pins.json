@@ -4374,5 +4374,13 @@
   "explanation:paper_settle_history_body": {
     "sha256": "562c25b53228df085b02a035533d0db0cd19b172a75448f9cca8b25e81ed9354",
     "reviewed": "pending owner read"
+  },
+  "explanation:adjust_take_profit_basis": {
+    "sha256": "8a3b065df8796efe23115bc8009bdc01c5e2edccacded1c9e603e7345293e3d1",
+    "reviewed": "pending owner read"
+  },
+  "explanation:adjust_take_profit_basis_no_charges": {
+    "sha256": "dea61abc4e3b4a635c31a9d9e869f83dd4131a6432f5cccba725af717da66588",
+    "reviewed": "pending owner read"
   }
 }

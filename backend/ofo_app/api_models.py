@@ -466,6 +466,14 @@ class AdjustWholeOut(ApiModel):
     after_reason: CatalogueText | None
 
 
+class AdjustTakeProfitOut(ApiModel):
+    """D-25 (ADR-294 (4)): Take profit's basis, both figures named: the whole trade before charges (the figure the
+    profit test used) and after charges, beside it."""
+    before_charges: Money
+    after_charges: Money | None  # None: the charges could not be priced (the text says so)
+    text: CatalogueText
+
+
 class AdjustApproachOut(ApiModel):
     id: Identifier
     name: CatalogueText | None = None
@@ -486,6 +494,7 @@ class AdjustApproachOut(ApiModel):
     after_reason: CatalogueText | None = None
     margin: AdjustMarginOut | None = None
     liquidity_flags: list[CatalogueText] = []  # ADR-230 (1): the flags of its new strikes (same limits as the Compare)
+    take_profit: AdjustTakeProfitOut | None = None  # D-25: A-24 / A-25 only, when offered
 
 
 class AdjustTimingOut(ApiModel):

@@ -107,6 +107,7 @@
               <th v-for="x in kept" :key="x.a.id" scope="col" class="min-w-[140px] p-2 text-left" :data-testid="`adjust-col-${x.a.id}`">
                 <div class="font-semibold">{{ x.a.name ?? x.a.id }}</div>
                 <div v-if="x.unavailable.length" class="text-xs font-normal text-ink-muted" :data-testid="`adjust-unavailable-${x.a.id}`">{{ UNAVAILABLE_FOR_FILTER }}</div>
+                <div v-if="x.a.take_profit" class="text-xs font-normal text-ink-muted" :data-testid="`adjust-take-profit-${x.a.id}`">{{ x.a.take_profit.text }}</div>
               </th>
             </tr>
           </thead>

@@ -729,6 +729,22 @@ def _days_to_expiry(position: Position) -> int | None:
     return max((min(x.expiry for x in position.legs) - position.today).days, 0)
 
 
+def take_profit_block(built: ApproachLegs | None, priced: Priced | None) -> dict[str, Any] | None:
+    """D-25 (ADR-238 (6), ADR-294 (4)): an OFFERED Take profit (A-24, A-25) names the whole trade's result before charges
+    (the figure its profit test used) and, beside it, the result after charges (before charges less every charge line,
+    the engine's ``total_charges``). Refused, other approaches: None. Charges not priced: the after figure is None and
+    the text says so, never 0."""
+    if built is None or built.refusal_message is not None or built.whole_before_charges is None or priced is None:
+        return None
+    before = _rupees(built.whole_before_charges)
+    if priced.after is None or not priced.charges_known:
+        return {"before_charges": before, "after_charges": None,
+                "text": render_explanation("adjust_take_profit_basis_no_charges", before=before)}
+    after = _rupees(adjust_money.after_charges(built.whole_before_charges, priced.after.total_charges))
+    return {"before_charges": before, "after_charges": after,
+            "text": render_explanation("adjust_take_profit_basis", before=before, after=after)}
+
+
 async def _approach_item(a: str, built: ApproachLegs | None, priced: Mapping[str, Priced], pop_on: bool,  # noqa: PLR0913
                          margin_of: ApproachMargin, market: MarketInputs) -> dict[str, Any]:
     """One approach of the reply: unknown id -> refused by name (attack 2); refused -> its reason; else the full
@@ -744,6 +760,7 @@ async def _approach_item(a: str, built: ApproachLegs | None, priced: Mapping[str
         item |= {"trades": [_leg_out(t) for t in built.trades], "after_legs": [_leg_out(x) for x in built.after],
                  "closed_legs": [_leg_out(c) for c in built.closed], **_after_block(priced[a], pop_on)}
         item["margin"] = await _margin(margin_of, built, market)
+        item["take_profit"] = take_profit_block(built, priced[a])
     return item
 
 

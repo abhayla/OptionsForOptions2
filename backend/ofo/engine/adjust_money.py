@@ -107,6 +107,11 @@ def sum_amounts(amounts: Iterable[Decimal]) -> Decimal:
     return sum(amounts, Decimal(0))
 
 
+def after_charges(pnl: Decimal, total_charges: Decimal) -> Decimal:
+    """D-25 (ADR-294 (4)): a whole-trade P&L before charges less every charge line once (the engine's ``total_charges``)."""
+    return pnl - total_charges
+
+
 def in_profit(pnl: Decimal) -> bool:
     """ADR-238 (6): a whole-trade P&L is in profit only above zero (zero and a loss are not)."""
     return pnl > 0
