@@ -9,11 +9,11 @@ from ofo.outcome.serialize import _whole
 
 
 @pytest.mark.parametrize(("exact", "profit_text", "loss_text"), [
-    (D("1727.36"), "+1,727", "−1,727"),
-    (D("4773.64"), "+4,774", "−4,774"),   # half-up on the magnitude: 4,774, never 4,773
-    (D("4773.50"), "+4,774", "−4,774"),
-    (D("4773.49"), "+4,773", "−4,773"),
-    (D("1727.50"), "+1,728", "−1,728"),
+    (D("1727.36"), "+1,727", "\u22121,727"),
+    (D("4773.64"), "+4,774", "\u22124,774"),   # half-up on the magnitude: 4,774, never 4,773
+    (D("4773.50"), "+4,774", "\u22124,774"),
+    (D("4773.49"), "+4,773", "\u22124,773"),
+    (D("1727.50"), "+1,728", "\u22121,728"),
 ])
 def test_max_profit_and_loss_text_is_half_up_whole_rupees(exact: D, profit_text: str, loss_text: str) -> None:
     assert str(_whole(exact, signed=True)) == profit_text
