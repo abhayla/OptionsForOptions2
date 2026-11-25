@@ -4,10 +4,9 @@
 
 One line per decision, requirement and spec section. Read it before asking the owner anything; cite the ids you rely on in a `Spec basis:` line, or write `Spec basis: none (searched: <terms>)`.
 
-## Decisions (313)
+## Decisions (314)
 
-- Older decisions: 273 rows, ADR-1..ADR-286 (oldest first). Read spec/decisions/*.md, or find one by meaning: python tools/spec_similar.py . "<text>"
-- ADR-287 2026-11-11: Owner answer 2026-11-11 (question tool, after GC-ICSAFE): "Approve as written". [closes standing direction step 2 ("The owner has…]
+- Older decisions: 274 rows, ADR-1..ADR-287 (oldest first). Read spec/decisions/*.md, or find one by meaning: python tools/spec_similar.py . "<text>"
 - ADR-288 2026-11-11: Owner answer 2026-11-11 (question tool, standing direction step 4): "Hostinger VPS, Redis there". [decides Q273 (option a); applies REQ-113 AC-3 and…]
 - ADR-289 2026-11-11: Owner answers 2026-11-11 (question tool, standing direction step 4): "Yes, one order, I press Execu… [amends ADR-281 (one exception, step 4 only); stat…]
 - ADR-290 2026-11-11: Owner, 2026-11-11 (chat, then question tool "Both: by hand now, Zerodha later"): "I don't want to p… [withdraws ADR-289 part (2); restates the standing…]
@@ -47,6 +46,7 @@ One line per decision, requirement and spec section. Read it before asking the o
 - ADR-324 2026-11-25: PENDING OWNER READ. [Refines REQ-109 AC-5 (header totals), ADR-311 (th…]
 - ADR-325 2026-11-25: PENDING OWNER READ. [Refines REQ-109 AC-5 (Today figure), REQ-029 AC-2…]
 - ADR-326 2026-11-25: Owner answers, 25 Nov 2026: Q2 to Q6 answered one at a time with the question tool in the GC-ICLIVE… [Amends ADR-015 Q182 and REQ-049 AC-5 (24-hour tim…]
+- ADR-330 2026-11-25: Owner decided 25 Nov 2026 (night, chat in the orchestrating cloud session; the question tool is clo… [Refines ADR-247 and ADR-230: the base of the "% o…]
 
 ## Requirements (161)
 
