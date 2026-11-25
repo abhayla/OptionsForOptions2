@@ -3867,6 +3867,14 @@
     "sha256": "fb23414a7469aeeb2912e6e99ed14bc638e288450fa6c76e62b511f1baa51b46",
     "reviewed": "pending owner read"
   },
+  "adjust_take_profit_not_in_profit_after_charges": {
+    "sha256": "f7529d6888488d7c79d6638ba736aaca9ca95ddd09842e293b6ef9f7a7ee4062",
+    "reviewed": "pending owner read"
+  },
+  "adjust_take_profit_charges_unknown": {
+    "sha256": "c5c124ea8c4172a51097769912d11dd5bb09d39d694fd113ed6868b5ba9f6629",
+    "reviewed": "pending owner read"
+  },
   "explanation:monitor_pause_label": {
     "sha256": "75aa8fe6ba24988ff5add8cd84a50478f9c042dd0b7b432bd696ef6fb0abc7fd",
     "reviewed": "pending owner read"

@@ -70,6 +70,7 @@ from ofo.engine.whole_trade import (
     near_expiry_after,
     whole_trade_after,
 )
+from ofo.errors import UserFacingError, render
 from ofo.errors.explanations import EXPLANATIONS, approach_about_id, approach_name_id, render_explanation
 from ofo.marketdata.spot_source import SourceReading, SpotAnswer, feed_reading
 from ofo.money import to_paise
@@ -522,8 +523,29 @@ def priced_approach(a: str, tracked: Tracked, market: MarketInputs, spot: Decima
     if built.refusal is not None:
         return built, None
     booked = None if tracked.booked is None else tracked.booked + _closed_booked(built)
-    return built, price_after(built.after, position, booked, tracked.paid_charges,
-                              _trade_orders(built, position.underlying), rates, market, tracked.paid_exact)
+    priced = price_after(built.after, position, booked, tracked.paid_charges,
+                         _trade_orders(built, position.underlying), rates, market, tracked.paid_exact)
+    refused = take_profit_after_charges_refusal(built, priced)
+    if refused is not None:  # ADR-326 (1): the ONE place the after-charges test is made; every route reads this path
+        return dataclasses.replace(built, trades=(), after=(), closed=(), warnings=(), warning_messages=(),
+                                   whole_before_charges=None, refusal=refused.what_happened,
+                                   refusal_message=refused), None
+    return built, priced
+
+
+def take_profit_after_charges_refusal(built: ApproachLegs, priced: Priced) -> UserFacingError | None:
+    """ADR-326 (1) (D-25): an offerable Take profit (A-24, A-25: ``whole_before_charges`` is set) is refused when the
+    whole trade closed at the planned prices is not in profit AFTER charges (the engine's ``after_charges`` and
+    ``in_profit``; the before-charges test already passed in the builder). Charges not priced (no rates, no paid
+    charges, no whole-trade figure) -> refused with its own reason (fail closed). Any other approach: None."""
+    if built.whole_before_charges is None:
+        return None
+    if priced.after is None or not priced.charges_known:
+        return render("adjust_take_profit_charges_unknown")
+    after = adjust_money.after_charges(built.whole_before_charges, priced.after.total_charges)
+    if not adjust_money.in_profit(after):
+        return render("adjust_take_profit_not_in_profit_after_charges", after=_rupees(after))
+    return None
 
 
 def _after_block(priced: Priced, pop_on: bool) -> dict:
@@ -757,6 +779,27 @@ def take_profit_block(built: ApproachLegs | None, priced: Priced | None) -> dict
     after = _rupees(adjust_money.after_charges(built.whole_before_charges, priced.after.total_charges))
     return {"before_charges": before, "after_charges": after,
             "text": render_explanation("adjust_take_profit_basis", before=before, after=after)}
+
+
+async def refuse_take_profit_at_loss(approach_id: str | None, strategy_id: int,  # noqa: PLR0913
+                                     tracked_reader: TrackedReader, ctx: MarketContext | None,
+                                     rates: ChargeRates | None, prefs: Preferences, roll_basis: RollBasis) -> None:
+    """ADR-326 (1) (D-25): a basket placed as Take profit (A-24, A-25) is refused at an after-charges loss, by the SAME
+    build path that offers it (``priced_approach``), so offered and accepted agree. Any other id (or none): nothing.
+    Strategy not read / spot not available: refused (fail closed, nothing placed)."""
+    if approach_id not in ("A-24", "A-25"):
+        return
+    tracked = await tracked_reader(strategy_id, rates)
+    if tracked is None:
+        raise StrategyRefused("user_input_request_not_available", Failure.NOT_FOUND)
+    market = await get_market_reader()(tracked, ctx)
+    tracked = as_of_market(tracked, market)
+    spot = judge_spot(market, await get_rest_spot_reader()(tracked.position.underlying), ctx)
+    if not spot.available:
+        raise StrategyRefused("adjust_take_profit_charges_unknown")
+    built, _ = priced_approach(approach_id, tracked, market, spot.value, rates, prefs.approach, roll_basis=roll_basis)
+    if built is not None and built.refusal_message is not None:
+        raise StrategyRefused("adjust_take_profit_charges_unknown", Failure.CONFLICT, message=built.refusal_message)
 
 
 async def release_connection(db: Any) -> None:

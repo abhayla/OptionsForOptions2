@@ -282,7 +282,7 @@ def test_attack4_one_approach_margin_raises_others_keep_theirs():
 @pytest.mark.parametrize("sid", ["ADJ-20c", "ADJ-20d", "ADJ-20e"])
 def test_ac8_refusal_or_warning_while_others_still_show(sid):
     sc = load(sid)
-    body = post(client_for(sc)).json()
+    body = post(client_for(sc, rates=RATES)).json()
     hand = sc["expected"]["approach_legs"]
     shown = [a for a in body["approaches"] if a["refusal"] is None]
     assert len(shown) >= 2  # noqa: PLR2004 - the other approaches still show

@@ -1,5 +1,6 @@
-"""D-25 (ADR-326 (1), ADR-238 (6), ADR-294 (4)): "Take profit" (A-24, A-25) is refused when the whole trade closed at the
-planned prices is a loss AFTER charges, as well as when it is a loss before charges; Exit (A-31) stays offered. The one
+"""D-25 (ADR-326 (1), ADR-238 (6), ADR-294 (4)): "Take profit" (A-24, A-25) is refused when the whole trade closed at
+the planned prices is a loss AFTER charges, as well as when it is a loss before charges; Exit (A-31) stays
+offered. The one
 build path (``priced_approach``: the approaches route, the Compare and the check's T-19 all call it) decides it, and the
 paper place route asks the same function (offered and accepted agree).
 
@@ -35,9 +36,8 @@ def test_profit_before_charges_but_loss_after_is_refused_with_the_after_figure(a
     assert take_profit_block(built, priced) is None  # never an offer block beside an after-charges loss
 
 
-@pytest.mark.parametrize("a", ["A-24", "A-25"])
-def test_the_refusal_names_the_after_charges_figure(a):
-    built, _ = _run(a, D("61.75"), D("403.45"))
+def test_the_refusal_names_the_after_charges_figure():
+    built, _ = _run("A-24", D("61.75"), D("403.45"))  # A-24 closes what A-31 closes: the same charges
     _, offered = _run("A-31", D("61.75"), D("403.45"))
     after = D("61.75") - offered.after.total_charges
     assert after < 0 and f"{abs(after):,.2f}" in built.refusal
@@ -93,3 +93,12 @@ async def test_the_place_route_refuses_a_take_profit_basket_at_an_after_charges_
     assert REASON in str(err.value.message.what_happened)
     # Exit-all is never asked about here: another id passes through
     await adj.refuse_take_profit_at_loss("A-31", 1, tracked_reader, None, t.RATES, t.PREFS, t.BASIS)
+
+
+def test_the_paper_basket_body_takes_only_a_take_profit_approach_id():
+    from ofo_app.routes.paper import PaperOrdersIn  # noqa: PLC0415
+    order = {"contract_id": 1, "side": "BUY", "quantity": 65, "price": "1.00", "kind": "exit"}
+    assert PaperOrdersIn.model_validate({"orders": [order], "approach_id": "A-24"}).approach_id == "A-24"
+    assert PaperOrdersIn.model_validate({"orders": [order]}).approach_id is None
+    with pytest.raises(ValueError, match="approach_id"):
+        PaperOrdersIn.model_validate({"orders": [order], "approach_id": "A-31"})

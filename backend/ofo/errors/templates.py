@@ -45,7 +45,18 @@ from ofo.errors.gate_slots import (
     WorstCase,
 )
 from ofo.errors.model import UserFacingError, _build, _claim_render_token
-from ofo.errors.slots import Code, Count, ExternalText, Instrument, Int, Money, SlotType, Time, Underlying
+from ofo.errors.slots import (
+    Code,
+    Count,
+    ExternalText,
+    Instrument,
+    Int,
+    Money,
+    PnLMoney,
+    SlotType,
+    Time,
+    Underlying,
+)
 from ofo.instruments.catalogue import SUPPORTED_UNDERLYINGS
 
 _PART_NAMES: tuple[str, ...] = ("what_happened", "impact", "what_is_blocked", "next_action")
@@ -1512,6 +1523,13 @@ _PLAYBOOK_TEMPLATES: tuple[MessageTemplate, ...] = (
     _gate("adjust_take_profit_booked_unknown", _UI, 190,
           "The profit or loss booked so far is not known, so whether the whole trade is in profit cannot be worked "
           "out and this approach is not built.",
+          _ADJ_REFUSED, _ADJ_BLOCKED, _ADJ_PICK_OTHER, {}),
+    # ADR-326 (1) (D-25): take profit is also refused when the whole trade is a loss AFTER charges
+    _gate("adjust_take_profit_not_in_profit_after_charges", _UI, 198,
+          "Not in profit after charges: {after}", _ADJ_REFUSED, _ADJ_BLOCKED, _ADJ_PICK_OTHER, {"after": PnLMoney}),
+    _gate("adjust_take_profit_charges_unknown", _UI, 199,
+          "The charges of closing the whole trade cannot be worked out, so whether it is in profit after charges is "
+          "not known and this approach is not built.",
           _ADJ_REFUSED, _ADJ_BLOCKED, _ADJ_PICK_OTHER, {}),
 )
 

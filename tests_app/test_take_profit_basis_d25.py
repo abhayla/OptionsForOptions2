@@ -25,16 +25,11 @@ def _run(a: str, whole: D, paid: D):
 
 
 @pytest.mark.parametrize("a", ["A-24", "A-25"])
-def test_offer_at_a_loss_after_charges_names_both_figures(a):
-    built, priced = _run(a, D("61.75"), D("403.45"))  # +61.75 before charges, a loss after them
-    block = take_profit_block(built, priced)
-    assert block is not None
-    assert block["before_charges"] == D("61.75")
-    assert block["after_charges"] == D("61.75") - priced.after.total_charges
-    assert block["after_charges"] < 0
-    assert "before charges" in block["text"].what_happened if hasattr(block["text"], "what_happened") else \
-        "before charges" in str(block["text"])
-    assert "after charges" in str(block["text"])
+def test_profit_before_charges_but_loss_after_is_no_longer_offered(a):
+    """ADR-326 (1): the case this test once pinned as an offer (+61.75 before charges, a loss after) is now refused
+    (tests_app/test_take_profit_after_charges_f1.py states the reason); no offer block exists beside the loss."""
+    built, priced = _run(a, D("61.75"), D("403.45"))
+    assert built.refusal is not None and priced is None and take_profit_block(built, priced) is None
 
 
 def test_offer_in_profit_both_ways_carries_both_positive_figures():
