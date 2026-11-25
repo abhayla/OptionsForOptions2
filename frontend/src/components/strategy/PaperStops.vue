@@ -7,6 +7,7 @@
 import { computed, nextTick, onMounted, ref, watch } from 'vue'
 import api, { NEUTRAL_ERROR } from '@/services/api'
 import { paperPriceOk, paperPriceReason } from '@/lib/tracking'
+import { triggerListOf, triggersPath } from '@/lib/paperTriggers'
 
 const props = defineProps({
   strategyId: { type: Number, required: true },
@@ -25,7 +26,7 @@ const props = defineProps({
 
 const LABEL = 'Paper - exits are recorded in the app, not sent to Zerodha'
 const AT_LEAST_ONE = 'Enter at least one level'
-const path = `/paper/strategies/${props.strategyId}/triggers`
+const path = triggersPath(props.strategyId)
 
 const triggers = ref(null) // null = not read (or unreadable)
 const error = ref('')
@@ -60,8 +61,9 @@ async function run(call, saving = false) {
   saved.value = ''
   try {
     const data = (await call()).data
-    if (data && Array.isArray(data.triggers)) {
-      triggers.value = data.triggers
+    const list = triggerListOf(data)
+    if (list) {
+      triggers.value = list
       return data
     }
     triggers.value = null
