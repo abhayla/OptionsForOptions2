@@ -53,7 +53,6 @@ from ofo_app.routes.adjustment import (
     get_market_reader,
     get_rest_spot_reader,
     get_tracked_reader,
-    judge_spot,
 )
 from ofo_app.routes.adjustment_preferences import UserValuesIn
 from ofo_app.routes.broker import current_user_ref
@@ -343,9 +342,7 @@ async def _type_of(db: Any, user_ref: str, strategy_id: int, tracked: Any, marke
         return plan.strategy_type, plan
     if market is None:
         market = await market_reader(tracked, ctx)
-    # the spot is judged as the check route does (tests/test_spot_clock_scan.py holds that this route answers through
-    # judge_spot) but is NOT a classification input: the entry type takes none (D-04)
-    judge_spot(market, await rest_reader(tracked.position.underlying), ctx)
+    # the entry type takes no spot (D-04), so this route reads none (owner decision 25 Nov 2026, ADR-322 point 5)
     return check.entry_type(tracked, check.listed_of(ctx)), None  # D-04
 
 
