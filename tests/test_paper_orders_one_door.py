@@ -12,7 +12,14 @@ Two rules over ``backend/ofo_app`` (tests excluded):
 Out of scope by key (they build orders of another book or another meaning, not the paper exit): ``ofo/execution/*``,
 ``reconciliation/resolution.py``, ``adjustment/approaches.py`` and the charge estimates; none is under ``ofo_app`` paper
 modules, so only ``ofo_app`` is scanned. Fail closed: an aliased import of ``NewOrder`` or ``_opposite`` and an
-unparsable file are problems; ``X = NewOrder`` (a reference that could build later) counts as a build.
+unparsable file are problems. Every Load of the name ``NewOrder`` or ``_opposite`` that is not part of an import
+counts as a build outside the homes: a call, ``X = NewOrder``, ``partial(NewOrder, 1)``, ``return NewOrder``,
+``map(NewOrder, rows)``, a keyword value, a tuple, a class base and ``getattr(m, "NewOrder")`` with a constant name.
+A type annotation (argument, return or ``AnnAssign`` annotation) is excluded: a hint builds nothing.
+Limits (not claims): ``dataclasses.replace(order, ...)`` and ``type(order)(...)`` copy an order without the name and are
+not caught; ``getattr`` with a non-constant name is not seen; a side flip is caught only as a ``BUY``/``SELL`` IfExp
+(``dict`` lookup, ``if`` statement, ``==`` chains are not); keys count functions, not sites (a second build in an
+allowed function is not seen).
 """
 from __future__ import annotations
 
@@ -63,17 +70,31 @@ def scan(rel: str, source: str) -> tuple[list[tuple[str, int, str]], list[str]]:
     issues: list[str] = []
 
     def walk(node: ast.AST, func: str) -> None:
+        skip: set[int] = set()  # annotation contexts: a type hint builds nothing
+        if isinstance(node, (ast.FunctionDef, ast.AsyncFunctionDef)) and node.returns is not None:
+            skip.add(id(node.returns))
+        elif isinstance(node, (ast.arg, ast.AnnAssign)):
+            ann = node.annotation
+            if ann is not None:
+                skip.add(id(ann))
         for child in ast.iter_child_nodes(node):
+            if id(child) in skip:
+                continue
             inner = child.name if isinstance(child, (ast.FunctionDef, ast.AsyncFunctionDef)) else func
             if isinstance(child, (ast.ImportFrom, ast.Import)):
                 issues.extend(f"aliased import: {rel}:{child.lineno} imports {a.name} as {a.asname}; import it by its "
                               f"own name" for a in child.names
                               if a.asname and a.name.rsplit(".", 1)[-1] in ("NewOrder", "_opposite")
                               and a.asname != a.name)
-            elif isinstance(child, ast.Call) and _name_of(child.func) in ("NewOrder", "_opposite"):
-                sites.append((inner, child.lineno, str(_name_of(child.func))))
-            elif isinstance(child, ast.Assign) and _name_of(child.value) in ("NewOrder", "_opposite"):
-                sites.append((inner, child.lineno, str(_name_of(child.value))))  # a name that builds later
+                continue  # the names of an import are not uses
+            if isinstance(child, (ast.Name, ast.Attribute)) and isinstance(child.ctx, ast.Load):
+                name = _name_of(child)
+                if name in ("NewOrder", "_opposite"):  # a call, a reference, a base class, an argument: all count
+                    sites.append((inner, child.lineno, name))
+            elif (isinstance(child, ast.Call) and isinstance(child.func, ast.Name)
+                  and child.func.id in ("getattr", "hasattr") and len(child.args) > 1
+                  and isinstance(child.args[1], ast.Constant) and child.args[1].value in ("NewOrder", "_opposite")):
+                sites.append((inner, child.lineno, child.args[1].value))
             elif isinstance(child, ast.IfExp) and any(
                     isinstance(c, ast.Constant) and c.value in ("BUY", "SELL") for c in ast.walk(child)):
                 sites.append((inner, child.lineno, SIDE_FLIP))
@@ -200,3 +221,34 @@ def test_mutation_a_home_function_that_stopped_building_is_stale():
     sources[EXIT_DOOR] = sources[EXIT_DOOR].replace("NewOrder(", "dict(")
     assert problems(sources) == [
         "stale exemption: ofo_app/paper_exit.py::exit_strategy no longer calls NewOrder; delete the entry"]
+
+
+@pytest.mark.parametrize("source", [
+    "import functools\n\ndef f():\n    return functools.partial(NewOrder, 1)\n",
+    "def f():\n    return NewOrder\n",
+    "def f(rows):\n    return list(map(NewOrder, rows))\n",
+    "def f(h):\n    return h(builder=NewOrder)\n",
+    "def f():\n    a, b = NewOrder, 1\n    return a\n",
+    "B: type = NewOrder\n",
+    "class N2(NewOrder):\n    pass\n",
+    "def f(m):\n    return getattr(m, 'NewOrder')\n",
+    "def f(m):\n    return m.NewOrder\n",
+], ids=["partial", "return", "map", "keyword", "tuple", "annassign-value", "class-base", "getattr-const", "attribute"])
+def test_mutation_every_reference_to_neworder_outside_a_home_is_a_problem(source):
+    found = problems({"ofo_app/routes/x.py": source}, exempt={}, homes={})
+    assert len(found) == 1, found
+    assert found[0].startswith("paper order built outside its door: ofo_app/routes/x.py:")
+    assert problems({"ofo_app/paper_store.py": source}, exempt={}, homes={"ofo_app/paper_store.py": None}) == []
+
+
+def test_mutation_an_opposite_reference_in_a_paper_module_is_a_problem():
+    found = problems({"ofo_app/paper_monitor.py": "def f(rows):\n    return list(map(_opposite, rows))\n"},
+                     exempt={}, homes={})
+    assert len(found) == 1
+    assert "_opposite" in found[0]
+
+
+def test_mutation_type_hints_and_imports_are_not_a_build():
+    source = ("from ofo.x import NewOrder\n\ndef f(a: NewOrder, *, b: 'NewOrder' = None) -> list[NewOrder]:\n"
+              "    c: NewOrder\n    return []\n")
+    assert problems({"ofo_app/routes/x.py": source}, exempt={}, homes={}) == []
