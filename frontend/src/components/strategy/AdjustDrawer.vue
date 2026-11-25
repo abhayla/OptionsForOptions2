@@ -17,7 +17,7 @@
       <div class="flex-1 overflow-y-auto p-3">
         <section data-testid="drawer-why">
           <h3 class="text-sm font-semibold">1 · Why detected</h3>
-          <p v-for="l in lines" :key="l" class="mt-1 text-sm" data-testid="drawer-why-line">{{ l }}</p>
+          <p v-for="(l, i) in lines" :key="i" class="mt-1 text-sm" data-testid="drawer-why-line">{{ l }}</p>
           <p v-if="!detected" class="mt-1 text-sm" data-testid="drawer-lapsed">{{ LAPSED_TEXT }}</p>
         </section>
         <section class="mt-4" data-testid="drawer-state">

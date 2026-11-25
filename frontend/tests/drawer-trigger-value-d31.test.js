@@ -34,8 +34,8 @@ describe('D-31 drawer reasons are labelled like the panel', () => {
     await flushPromises()
     const lines = [...document.querySelectorAll('[data-testid="drawer-why-line"]')].map((n) => n.textContent)
     expect(lines.join(' | ')).toContain('0.7293')
-    expect(lines.some((l) => l.startsWith('Fired at'))).toBe(true)
-    expect(lines.some((l) => l.startsWith('Now 0.6882'))).toBe(true)
+    expect(lines.some((l) => l.includes('Fired at'))).toBe(true)
+    expect(lines.some((l) => l.includes('Now 0.6882'))).toBe(true)
   })
 
   it('two rules firing in the same minute give two distinct, labelled lines each', async () => {

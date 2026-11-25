@@ -173,8 +173,11 @@ function onDismissed({ ids }) {
 function openDrawer() {
   drawerLines.value = [
     ...(view.value?.detections ?? []).flatMap((d) => [d.line, ...d.details]),
-    ...flags.value.flatMap((f) => [f.wording, f.condition, firedClock(f) ? firedAtText(firedClock(f)) : null,
-      f.live_value != null && f.live_value !== f.value ? liveNowText(f.live_value, f.live_as_of_text) : null].filter(Boolean)),
+    ...flags.value.flatMap((f) => {
+      const name = String(f.condition ?? '').split(':')[0] || f.rule_id // the rule's own label, as its condition line names it
+      return [flags.value.find((x) => x.wording === f.wording) === f ? f.wording : null, f.condition, firedClock(f) ? `${name}: ${firedAtText(firedClock(f))}` : null,
+        f.live_value != null && f.live_value !== f.value ? `${name}: ${liveNowText(f.live_value, f.live_as_of_text)}` : null].filter(Boolean)
+    }),
   ]
   drawerOpen.value = true
 }
