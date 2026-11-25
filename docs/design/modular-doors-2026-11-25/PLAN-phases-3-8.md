@@ -1254,6 +1254,10 @@ File each as a GitHub issue labelled `deferred` (kit C4) when the phase that fou
   `lib/displayFormat.js:137-139`; `useChainLive.js:153-155`; Found in: Phase 7 (R10)
 - **20** - Title: The monitor's market calendar is not `may_act`'s; Evidence: `paper_monitor.py:181-182` (own holidays)
   vs `may_act.market_open`; Found in: Phase 2 (RESULTS "Left")
+- **21** - Title: Two tracking legs of one contract (a buy and a sell) each show the contract's whole net figure on the
+  Paper P&L panel, so the rows sum to twice the book total; Evidence: `TrackingPanel.vue` `rows` (one book entry per
+  contract), Phase 3 review M1 probe DUP (-20.00 twice vs book -20.00); the old code did the same
+  (`by_id[leg.instrument_id]`); Found in: Phase 3 review
 
 Parked (no code this round; evidence in the phase-678 report): R3 server rupee grouping (wording, template pins), R6
 Kite money parsers, R8 Kite token wiring, R9 Kite HTTP paths. Not built: B7 `raise_alert` (replaced by G4). Skipped

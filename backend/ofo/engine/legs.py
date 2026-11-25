@@ -102,13 +102,19 @@ class Leg:
         return self.instrument is not Instrument.FUT
 
 
+def intrinsic_value(instrument: Instrument, strike: Decimal | None, level: Decimal) -> Decimal:
+    """The ONE intrinsic value per unit at ``level``: CE max(0, level - strike), PE max(0, strike - level), a future the
+    level itself. The At Expiry mark and the paper expiry settlement (REQ-109 AC-7) both read it."""
+    if instrument is Instrument.CE:
+        return max(Decimal(0), level - strike)  # type: ignore[operator] - an option has a strike
+    if instrument is Instrument.PE:
+        return max(Decimal(0), strike - level)  # type: ignore[operator]
+    return level
+
+
 def _long_value_at(leg: Leg, market: Decimal) -> Decimal:
     """Value per unit of the long side at ``market``: option intrinsic value, or the level for futures."""
-    if leg.instrument is Instrument.CE:
-        return max(market - leg.strike, Decimal(0))
-    if leg.instrument is Instrument.PE:
-        return max(leg.strike - market, Decimal(0))
-    return market
+    return intrinsic_value(leg.instrument, leg.strike, market)
 
 
 def expiry_value(leg: Leg, market: Decimal) -> Decimal:

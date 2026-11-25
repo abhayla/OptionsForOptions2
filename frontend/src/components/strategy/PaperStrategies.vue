@@ -147,8 +147,7 @@
                 <RouterLink :to="builderLink(g)" class="rounded border border-line px-2 py-1 text-center text-accent" data-testid="paper-open-builder">Open in Builder</RouterLink>
                 <RouterLink :to="builderLink(g)" class="rounded border border-line px-2 py-1 text-center text-accent" data-testid="paper-add-orders">Add orders</RouterLink>
                 <button v-if="g.openCount" type="button" class="rounded border border-line px-2 py-1" :aria-expanded="!!stopsOpen[g.id]" :data-testid="`stops-open-${g.id}`" @click="stopsOpen = { ...stopsOpen, [g.id]: !stopsOpen[g.id] }">Stops</button>
-                <button v-if="g.openCount" type="button" class="rounded border border-line px-2 py-1" :data-testid="`exit-selected-${g.id}`" :disabled="busy || stale || !tickedOpen(g).length" @click="ask(g, tickedOpen(g))">Exit ({{ tickedOpen(g).length }})</button>
-                <p v-if="stale && g.openCount" class="text-xs text-ink-muted" data-testid="paper-exit-reason">{{ NOT_LIVE_EXIT }}</p>
+                <ExitButton v-if="g.openCount" :blocked="exitGate.blocked.value" :reason="exitGate.reason.value" :extra-disabled="!tickedOpen(g).length" class="rounded border border-line px-2 py-1" :data-testid="`exit-selected-${g.id}`" @click="ask(g, tickedOpen(g))">Exit ({{ tickedOpen(g).length }})</ExitButton>
               </div>
             </div>
             <PaperStops v-if="stopsOpen[g.id]" :strategy-id="g.id" :underlying="g.underlying" :legs="stopLegs(g)" :leg-names="legNamesOf(g)" :latest-read-token="latestReadToken" :good-read-token="goodReadToken" />
@@ -173,10 +172,12 @@ import AfterChargesTap from '@/components/common/AfterChargesTap.vue'
 import PaperConfirmDialog from '@/components/strategy/PaperConfirmDialog.vue'
 import HeldNote from '@/components/strategy/HeldNote.vue'
 import { ALL_CLOSED_TEXT, DECAY_LEFT_TODAY_HEADING, GREEK_COLUMNS, PAPER_NO_FIGURE, PAPER_PAUSED, SHOW_CLOSED_LABEL, exitRowsFor, readPaperList, visibleGroups } from '@/lib/paperList'
-import { NOT_LIVE_EXIT, usePriceFreshness } from '@/lib/priceState'
+import { usePriceFreshness } from '@/lib/priceState'
+import { usePaperExit } from '@/lib/usePaperExit'
+import ExitButton from '@/components/strategy/ExitButton.vue'
 import { usePaperRefresh } from '@/lib/usePaperRefresh'
 import { EXITED_NOW_LABEL, HELD_TO_EXPIRY_LABEL } from '@/lib/paperDrafts'
-import { PAPER_STATE, paperPostOutcome } from '@/lib/tracking'
+import { PAPER_STATE, addToPaper, paperPostOutcome } from '@/lib/tracking'
 import { useRouter } from 'vue-router'
 import { signOf } from '@/lib/chartCard'
 
@@ -240,6 +241,8 @@ const errorParts = ref(null)
 // D-05 r3: a failed or unreadable refresh with a list on screen: figures paused, no exit from old prices
 const { readOk } = usePriceFreshness({ readFailed: errorParts, held: items })
 const stale = computed(() => !readOk.value)
+// Phase 4 (F2): the Exit gate of the page, the same one as the builder's book panel (no contracts-changed mark on this list)
+const exitGate = usePaperExit({ readFailed: errorParts, held: items, busy: () => busy.value, changed: false })
 const loading = ref(true)
 // D-05: reads are one at a time; each read start makes a fresh token object. latestReadToken is the latest started,
 // goodReadToken the one of the last good answer, so an open Stops panel drops its Not saved line only for a good read
@@ -330,7 +333,7 @@ async function doExit(orders) {
   dialogError.value = ''
   dialogState.value = PAPER_STATE.READY
   try {
-    await api.post(`/paper/strategies/${c.id}/orders`, { orders })
+    await addToPaper(api, c.id, orders) // no suggestion ids: the body is exactly { orders }
   } catch (e) {
     const outcome = paperPostOutcome(e)
     if (outcome === PAPER_STATE.REFUSED) dialogError.value = e?.parts?.what_happened || NEUTRAL_ERROR // 4xx: nothing stored

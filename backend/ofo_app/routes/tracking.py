@@ -44,10 +44,11 @@ from ofo.outcome.price_text import price_text
 from ofo.strategy import stored_form as sf
 from ofo.strategy.definition import display_contract
 from ofo.tracking import book, paper
-from ofo.tracking.orderbook import PaperOrder, net_positions
+from ofo.tracking.closing import open_legs_to_close
+from ofo.tracking.orderbook import PaperOrder
 from pydantic import BaseModel, ConfigDict, Field
 
-from ofo_app import may_act, paper_limit, paper_reasons
+from ofo_app import may_act, paper_exit, paper_limit, paper_reasons
 from ofo_app import paper_store, tracked_contracts
 from ofo_app import strategy_store as store
 from ofo_app.api_models import ApiModel, CatalogueText, InstrumentId, Money
@@ -76,6 +77,7 @@ from ofo_app.routes.paper import (
 from ofo_app.routes.planned_entry import get_live_feed, hold_until_priced
 from ofo_app.routes.strategies import StrategyRefused, refused_answer
 from ofo_app.scenario_guard import guard_paper_order  # dev/test scenario guard; reaches no Execute code
+from ofo_app.strategy_money import strategy_money_view
 from ofo_app.underlying import Underlying
 
 router = APIRouter(route_class=ClosedRoute)
@@ -98,6 +100,7 @@ class TrackingExitIn(BaseModel):
 class TrackingLegOut(ApiModel):
     leg_index: int
     instrument_id: InstrumentId
+    contract_id: int  # D-41: the book's key for this leg (the screen joins on it); instrument_id is the feed identity
     action: Literal["BUY", "SELL"]
     instrument: Literal["CE", "PE", "FUT"]
     strike: Money | None
@@ -223,6 +226,12 @@ async def _snapshot(ctx: MarketContext, feed: LiveFeed | None, underlying: str, 
     return snapshot
 
 
+async def exit_snapshot(ctx: MarketContext, feed: LiveFeed | None, underlying: str, keys: list[str]):
+    """The exit door's live read (``paper_exit.live_exit_prices``): ``_snapshot``, looked up at call time so a test's
+    patch of ``_snapshot`` still applies."""
+    return await _snapshot(ctx, feed, underlying, keys)
+
+
 def _connected(ctx: MarketContext | None) -> bool:
     return ctx is not None and ctx.provider.status().connected
 
@@ -298,15 +307,13 @@ def _book_figures(bk: _Book, view: paper.TrackingView | None
     """REQ-109 AC-4: every figure from the one engine on the orders (ofo.engine.orderbook.net_positions), exact. The
     open legs are priced only when the view is live (not paused, connected): a paused or unconnected view gives no
     open leg a figure and no unbooked / total (AC-5); an exited leg keeps its booked figure."""
-    priced = {} if view is None else {
-        leg.instrument_id: view.legs[i].price for i, leg in enumerate(bk.legs)
-        if not leg.exited and paper.is_live(view.legs[i]) and view.legs[i].price is not None}
-    live = {} if view is None or view.paused else priced
-    figures = net_positions(bk.orders, live)  # every TOTAL (and the after-charges figures) stays paused, never a mix
-    by_id = {p.instrument_id: p for p in net_positions(bk.orders, priced).positions}  # ADR-311: per leg
+    prices = {} if view is None else {
+        leg.instrument_id: view.legs[i] for i, leg in enumerate(bk.legs) if not leg.exited}
+    money = strategy_money_view(bk.orders, prices, totals_priced=view is not None and not view.paused)
+    by_id = money.by_contract  # ADR-311: per leg, at the legs that have a price
     pnls: list[Decimal | None] = [by_id[leg.instrument_id].booked if leg.exited else by_id[leg.instrument_id].unbooked
                                   for leg in bk.legs]
-    return figures, pnls, live
+    return money.book, pnls, money.live  # every TOTAL (and the after-charges figures) stays paused, never a mix
 
 
 def _figures(bk: _Book, legs: list[paper.TrackedLeg], view: paper.TrackingView | None,  # noqa: PLR0913
@@ -320,7 +327,8 @@ def _figures(bk: _Book, legs: list[paper.TrackedLeg], view: paper.TrackingView |
         price = None if view is None else view.legs[i]
         done = held.exited
         state = price.state if price is not None else paper.EXITED if done else (reasons[i] or "missing")
-        rows.append({"leg_index": i, "instrument_id": leg.instrument_id, "action": leg.action.value,
+        rows.append({"leg_index": i, "instrument_id": leg.instrument_id, "contract_id": int(held.instrument_id),
+                     "action": leg.action.value,
                      "instrument": leg.instrument.value, "strike": leg.strike, "expiry": leg.expiry,
                      "quantity": leg.quantity, "entry_price": leg.entry_price,
                      "entry_price_display": price_text(leg.entry_price), "entry_at": leg.price_at,
@@ -468,10 +476,6 @@ def _open_keys(bk: _Book, legs: list[paper.TrackedLeg], reasons: list[paper.Cont
             if reason is None and not held.exited]
 
 
-def _opposite(side: str) -> str:
-    return "SELL" if side == "BUY" else "BUY"
-
-
 async def _write(db: Any, strategy_id: int, writing: Coroutine[Any, Any, Sequence[paper_store.StoredOrder]],
                  refused_code: str, refused_as: str) -> _Book:
     """Awaits the paper store write and commits; the store's ``refused_code`` answers ``refused_as`` (409), any other
@@ -537,24 +541,34 @@ async def exit_tracking(strategy_id: int, body: TrackingExitIn,  # noqa: PLR0913
     if not _connected(ctx):
         raise StrategyRefused("tracking_not_connected", Failure.CONFLICT)
     legs, reasons = await _entry_legs(db, bk)
-    if any(reasons[i] is not None for i in body.legs):
-        # Review M2: a retired / delisted / token-reassigned contract never comes back, so "try again" cannot work;
-        # the exit's own contract-not-live refusal (never priced from another contract), nothing stored.
-        raise StrategyRefused("tracking_exit_contract_not_live", Failure.CONFLICT)
-    named = [legs[i] for i in body.legs]
-    snapshot = await _snapshot(ctx, feed, stored.saved.definition.underlying, [leg.instrument_id for leg in named])
-    try:
-        prices = paper.exit_prices_now(snapshot, named)
-    except paper.PricesNotLive:
-        raise StrategyRefused("tracking_exit_prices_not_live", Failure.CONFLICT) from None
-    orders = [paper_store.NewOrder(bk.contract_ids[i], _opposite(bk.legs[i].side), bk.legs[i].quantity,
-                                   p.price, "exit", p.at or answered)  # type: ignore[arg-type] - live: price set
-              for i, p in zip(body.legs, prices, strict=True)]
-    # a racing exit that closed the leg first makes this one exceed the open quantity: refused as already exited
-    after = await _write(db, strategy_id, paper_limit.place_checked(db, user_ref, strategy_id, orders, entry=None,
-                                                   ctx=ctx, at=answered, reader=tracked_reader,
-                                                   rates=rates),  # an exit
-                         paper_store.EXIT_EXCEEDS_OPEN, "tracking_leg_already_exited")
+    # a retired / delisted / token-reassigned contract never comes back (Review M2): the door's own contract-not-live
+    # refusal, never "try again"; every other refusal of the one live exit read is its own (paper_exit.live_exit_prices)
+    keys = [None if reasons[i] is not None else legs[i].instrument_id for i in body.legs]
+    live = await paper_exit.live_exit_prices(ctx, feed, stored.saved.definition.underlying, keys,
+                                             connected_rule="provider", on_read_error="raise")
+    if isinstance(live, may_act.Refused):
+        may_act.require(live)
+    ids = [bk.contract_ids[i] for i in body.legs]
+    # the closes from this route's own pre-read book (side and whole open quantity), used as given by the door: a leg
+    # that shrank or went flat since is refused by the store, a racing exit makes this one exceed the open quantity
+    held = {bk.contract_ids[i]: bk.legs[i].quantity if bk.legs[i].side == "BUY" else -bk.legs[i].quantity
+            for i in body.legs}
+    by_leg = {bk.contract_ids[i]: live[legs[i].instrument_id] for i in body.legs}  # type: ignore[index] - live: dict
+
+    async def exit_orders() -> Sequence[paper_store.StoredOrder]:
+        done = await paper_exit.exit_strategy(
+            db, user_ref=user_ref, strategy_id=strategy_id, kind="exit",
+            prices={c: p.price for c, p in by_leg.items()},  # type: ignore[misc] - live: price set
+            placed_at={c: p.at or answered for c, p in by_leg.items()}, closes=open_legs_to_close(held, ids),
+            write=lambda orders: paper_limit.place_checked(db, user_ref, strategy_id, orders, entry=None, ctx=ctx,
+                                                          at=answered, reader=tracked_reader, rates=rates))  # an exit
+        if isinstance(done, paper_exit.Exited):
+            return done.book
+        if isinstance(done, may_act.Refused):
+            may_act.require(done)
+        raise StrategyRefused("tracking_exit_prices_not_live" if isinstance(done, paper_exit.NotYet)
+                              else "tracking_leg_already_exited", Failure.CONFLICT)
+    after = await _write(db, strategy_id, exit_orders(), paper_store.EXIT_EXCEEDS_OPEN, "tracking_leg_already_exited")
     return await _answer(db, stored, after, ctx, feed, threshold, answered, rates)
 
 

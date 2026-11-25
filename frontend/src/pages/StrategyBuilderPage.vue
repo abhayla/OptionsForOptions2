@@ -27,7 +27,7 @@ import ProjectionsNote from '@/components/strategy/ProjectionsNote.vue'
 import StrategyActions from '@/components/strategy/StrategyActions.vue'
 import TrackingPanel from '@/components/strategy/TrackingPanel.vue'
 import AdjustSteps from '@/components/strategy/AdjustSteps.vue'
-import { ADD_TO_PAPER_LABEL, PAPER_PLACED_NOT_REFRESHED_TEXT, PAPER_STATE, addToPaper as postPaperOrders, paperPostOutcome, sharedTotal } from '@/lib/tracking'
+import { ADD_TO_PAPER_LABEL, PAPER_PLACED_NOT_REFRESHED_TEXT, PAPER_STATE, addToPaper as postPaperOrders, paperPostOutcome } from '@/lib/tracking'
 import PaperConfirmDialog from '@/components/strategy/PaperConfirmDialog.vue'
 import LoadFailed from '@/components/common/LoadFailed.vue'
 import { PAPER_REREAD_FAILED_TEXT } from '@/lib/sharedStateText'
@@ -37,7 +37,7 @@ import {
 } from '@/lib/paperDrafts'
 import { withAsOf } from '@/lib/paperList'
 import PaperBookPanel from '@/components/strategy/PaperBookPanel.vue'
-import { usePaperBookRead } from '@/lib/usePaperBookRead'
+import { paperPnlBlock, usePaperBookRead } from '@/lib/usePaperBookRead'
 import { usePriceFreshness } from '@/lib/priceState'
 import PaperStrategies from '@/components/strategy/PaperStrategies.vue'
 import AdjustCompare from '@/components/strategy/AdjustCompare.vue'
@@ -431,36 +431,47 @@ const { readFailed: paperReadFailed, contractsChanged: paperContractsChanged } =
   book: () => paper.value?.book ?? null,
   onBook: (b) => { if (paper.value && !paperStale.value) paper.value = { ...paper.value, book: b } },
 })
-// F1: the page's book-read state through the one freshness rule (priceState). `readOk` / `exitReason` are what the builder's Exit
-// gate reads (Phase 4 wires it); today only the read-failed line uses it, as the book on screen is the one that failed.
+// F1: the page's book-read state through the one freshness rule (priceState). Phase 4 (D-05, ADR-328 (4)): the Exit buttons of the
+// book panel read it (usePaperExit), and so do the handlers below: no exit is built from old prices (a failed read) or from an old net
+// (the contracts changed elsewhere). The panel says which, in the words of priceState.
 const { readFailed: paperBookFailed } = usePriceFreshness({
   readFailed: paperReadFailed,
   held: () => paper.value?.book ?? null,
   serverState: () => paper.value?.book?.state,
 })
-const paperTotal = computed(() => (paper.value ? sharedTotal(paper.value.book, paperBookFailed.value) : null))
-function reviewPending() {
+const exitBlocked = computed(() => paperBookFailed.value || paperContractsChanged.value)
+const exitOrigin = ref(false) // the pending edits came from Exit all or a per-leg Exit; stays true until they are posted or discarded (ADR-328 (4))
+const paperTotal = computed(() => (paper.value ? paperPnlBlock(paper.value.book, paperBookFailed.value) : null))
+function reviewPending(fromExit = false) { // the "Review and add" button passes its click event: only `true` marks an Exit
   if (!paper.value || paperStale.value || !pendingOrders.value?.length) return
+  if (fromExit === true) exitOrigin.value = true // never reset here: "Review and add" of Exit edits is still an Exit
+  if (exitOrigin.value && exitBlocked.value) return // post nothing; the panel's reason line says why
   paperError.value = ''
   paperState.value = PAPER_STATE.READY
   paperRows.value = confirmRowsFor(pendingOrders.value, paper.value.book, contractName, livePriceById.value)
   paperDialog.value = true
 }
+watch(pendingOrders, (o) => { if (!o?.length) exitOrigin.value = false }) // posted, discarded or edited back: no Exit edits are left
 const discardPending = () => { if (paper.value) setLegs(copyLegs(paper.value.net)) }
 // GC-TP step 3b2 (Sensibull Drafts Mode 274-279): Exit all / a (partial) Exit only EDIT the legs (none / the contract less N lots),
 // then open the same confirm list: the orders are paperOrdersFor(net, legs) like every other edit, never built here.
 function exitAllPaper() {
-  if (!paper.value || paperStale.value) return
+  if (!paper.value || paperStale.value || exitBlocked.value) return
   setLegs([])
-  reviewPending()
+  reviewPending(true)
 }
 function exitPaper(contractId, lots) {
-  if (!paper.value || paperStale.value) return
+  if (!paper.value || paperStale.value || exitBlocked.value) return
   const next = legsAfterExit(paper.value.net, legs.value, contractId, lots)
   if (!next) return
   setLegs(next)
-  reviewPending()
+  reviewPending(true)
 }
+// ADR-328 (4) / D-05: an Exit dialog posts nothing while the read failed or the trade changed elsewhere; it closes, the edits stay,
+// the panel's reason line says why. A dialog of "Review and add" for other edits is not touched (L6, deferred).
+watch(exitBlocked, (blocked) => {
+  if (blocked && paperDialog.value && exitOrigin.value && !paperBusy.value && !paperStale.value && paperState.value !== PAPER_STATE.UNKNOWN) paperDialog.value = false
+})
 // Drafts Mode summary: the book's Profit left / Loss left first (or the words for its extremes_reason), its original Max Profit /
 // Max Loss below; every figure the book reply's text as sent. Null outside Drafts Mode: the summary is unchanged.
 // D-11: the tiles and the chart's marks are the WHOLE trade (booked in, the paper reply: the tiles after charges, the marks on
@@ -476,6 +487,7 @@ const paperLeft = computed(() => { // GC-ICFIX u124: after-charges forms, labell
 const paperFills = computed(() => (paper.value ? paper.value.net.map(paperFillKey) : []))
 async function confirmPending(orders) {
   if (paperBusy.value || !paper.value) return
+  if (exitOrigin.value && exitBlocked.value) { paperDialog.value = false; return } // post nothing (the watch may not have run yet)
   const { id } = paper.value
   paperBusy.value = true
   paperError.value = ''

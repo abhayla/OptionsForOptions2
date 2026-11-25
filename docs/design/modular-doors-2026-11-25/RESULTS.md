@@ -2,18 +2,17 @@
 
 Plan: `PLAN.md`. Owner questions: `owner-questions.md`. Branch `refactor/modular-doors`.
 
-**Status: Step 0 DONE at `4350f336` (merge of `fix/ic-live-test-1123` at `6574e475` into `refactor/modular-doors`;
-pushed state to be filled at push). Before it, PAUSED 25 Nov 2026 on the owner's instruction (relayed by the GC-ICLIVE
-orchestrating session) after Phase 2, pushed head `0e30edc1`. Phases 1 and 2 are done and pushed; Phase 3 is part-way,
-saved as a patch (`phase3-wip.patch.txt`); Phases 4-8 are not started.** This file is written so a fresh session can carry
-on from it alone. Read `PLAN.md` for the why and the per-phase Core / Proof, then this file for what is done.
+**Status (26 Nov night, Lane A, unattended run): Step 0 DONE (`4350f336`), Step 0b DONE and pushed (`a99730b8`, prepush
+TOTAL PASS), Phase 3 DONE (merged from `wt/phase3-a`, reviewed PASS; push state in the Phase 3 section). Phases 4-8:
+see the table.** This file is written so a fresh session can carry on from it alone. Read `PLAN-phases-3-8.md` for the
+build order and `PLAN.md` for the why.
 
 | Phase | Scope | State | Where |
 |---|---|---|---|
 | 1 | B3 `read_market` + B5 `check_trigger_levels` (D-01, S-20, ADR-327) | DONE, pushed | `fce27095`, `58bd51d9`, `3b8ae9b7` |
 | 2 | B4 `may_act` + F1 `priceState` (D-05 server half, D-39) | DONE, pushed | `707bc5d4`, `0e30edc1` |
-| 3 | F3 + F5 + B6 one paper book source (D-41) | PARTIAL: red tests committed in the patch; code written but unreviewed and ungated | `phase3-wip.patch.txt` (not on the branch) |
-| 4 | B1 `exit_strategy` + F2 shared exit gate (D-05) | NOT STARTED | `PLAN.md` Phase 4 |
+| 3 | F3 + F5 + B6 one paper book source (D-41 (two readers), ADR-328 (3)) | DONE (review PASS) | `e5622280` tests, `42c1f467`..`491ca7e2` code, merged into the branch |
+| 4 | B1 exit door + F2 exit gate (D-05, ADR-328 (4)) + R5 | DONE (Tier A Opus PASS; one fix round) | backend `81e0b561`..`e79857a2`, frontend `643f0bdd`, `440e0299`, `15fe3268`, fixes on `wt/phase4-fix` |
 | 5 | F6 `useLegDoor` (D-60) | NOT STARTED | `PLAN.md` Phase 5, OQ-1 |
 | 6 | B2, B7, F7, F8 (maintenance; B2 needs Tier A review) | NOT STARTED | `PLAN.md` Phase 6 |
 | 7 | 23 Nov helpers R2-R12 (R1 parked) | NOT STARTED | `PLAN.md` Phase 7 |
@@ -155,68 +154,118 @@ no Exit button changed in Phase 2.
 **Commits.** `707bc5d4` tests (red), `0e30edc1` code (green). **Review:** Tier B, Sonnet: PASS, no critical or major
 finding. **Prepush:** TOTAL PASS on `0e30edc1`.
 
-## Phase 3: PARTIAL (F3 + F5 + B6, D-41), saved as `phase3-wip.patch.txt`
+## Phase 3: one paper book source (F3 + F5 + B6), D-41 (two readers), ADR-328 (3): DONE
 
-**What the patch holds.** One file, two parts, separated by the line `# ---- uncommitted green-attempt diff on top of 8de187b4 ----`:
-1. A `git format-patch` of commit `8de187b4` (Phase 3 tests first, red): `frontend/tests/one-source-d41.test.js` (5 tests:
-   same LTP per leg on both builder panels, rows add up to the before-charges total on both, headline stays the
-   after-charges text, `legPricesOf`, `paperPnlBlock`) and `tests_app/test_strategy_money_view.py` (13 tests, no DB: engine
-   parity, paper page and tracking page agree at one price set, the four routes call the door and no engine function, no
-   arithmetic in the module).
-2. An uncommitted, UNREVIEWED code diff on top (green attempt): new `backend/ofo_app/strategy_money.py`
-   (`strategy_money_view(orders, prices, *, totals_priced=True)` -> `MoneyView`; the signature differs from the plan's
-   `(strategy_id, prices)` because callers already hold the orders and the paper `_figures` signature is pinned by
-   `test_paper_unpriced_names.py`); edits to `routes/paper.py` (`_figures`, `_extremes`, `_after`), `routes/tracking.py`
-   (`_book_figures`), `TrackingPanel.vue`, `lib/usePaperBookRead.js` (`legPricesOf`, `paperPnlBlock`),
-   `StrategyBuilderPage.vue`, `ChartCard.vue`, `tests_app/test_paper_order_door.py` (`strategy_money` added to
-   `PAPER_MODULES`), `tests_app/test_strategy_money_view.py`, and a Phase 3 draft of this RESULTS file (superseded by the
-   section you are reading; its facts are kept here).
+Built on `wt/phase3-a` from `4350f336`, merged with `--no-ff`. The patch `phase3-wip.patch.txt` was reused only for the
+hunks plan 5.3 names; its join (by `instrument_id`), fixture and RESULTS hunk were dropped.
 
-**State at the stop.** The builder reported: whole vitest 2613 passed; the DB test files it ran green. NOT run: repo scans,
-ruff ratchet, coverage, `ci_local`. NO review. Nothing from Phase 3 is on the branch or pushed. A copy of the work may
-exist in the machine-local worktree `/home/user/wt-p3` (branch `wt/phase3`, at `8de187b4` plus uncommitted files); it is
-gone on a new container, the patch file is the durable copy.
+**Door, server.** `backend/ofo_app/strategy_money.py`: `live_prices(prices)`, `MoneyView`,
+`strategy_money_view(orders, prices, *, totals_priced=True)`. Five copies of "price answers -> live map -> engine"
+(`routes/paper.py` `_figures`, `_extremes`, `_after`; `routes/tracking.py` `_book_figures`;
+`routes/adjustment_history.py` live map) -> 1 door. `TrackingLegOut` gains `contract_id: int`
+(`int(held.instrument_id)`), additive; OpenAPI +5 lines and reply inventory +2 lines, exactly that field.
 
-**Price basis (decided before the source changed).** The Paper P&L panel's leg rows now use the paper book's own price,
-`ofo.tracking.paper.display_price` (book route `_prices`, `routes/paper.py`), the price the Net Positions table, the Total
-and the P&L table already use. Before, the rows came from `/strategies/{id}/tracking`, which prices each leg with
-`leg_price` (live only) on its own poll. Spec: ADR-212 ("After market hours, paper positions show LTP and P&L from the last
-close, as the builder does"); REQ-109 AC-5 unchanged in market hours (`display_price` is exactly `leg_price` then). Visible
-change: only the after-hours panel rows (a dash before, the last close now). Fills, stops and triggers keep `leg_price`.
+**Door, screen.** `usePaperBookRead.js`: `legPricesOf(book)` (contract-id text -> `{ltp, at, total, noPrice}`, open
+legs only) and `paperPnlBlock(book, failed)`. `TrackingPanel.vue` `rows`: an open leg found by `contractId` takes price,
+quote time and P&L together from the book; an exited leg, a leg the book does not hold, or a missing contract id keeps
+the tracking row. `StrategyBuilderPage.vue` `paperTotal` from `paperPnlBlock`.
 
-**Callers, before -> after (as written in the patch).** Server "price answers -> live map -> engine call": `_figures`,
-`_extremes`, `_after` (paper), `_book_figures` (tracking) = 4 copies -> 1 door. Screen: the panel's `/tracking` leg rows
-(a second poll of the same legs) -> the book's `LegPrice`; headline and the builder's `paperTotal` -> `paperPnlBlock`.
+**Deviations from the plan (recorded).** `MoneyView.book` is lazy too, not only `by_contract` (the list route needs only
+`lifecycle()`; counting test: 0 engine calls on construction, 1 with live totals, 2 with `totals_priced=False`).
+Signature `(orders, prices, ...)`, not PLAN's `(strategy_id, prices)` (callers hold the orders; pinned `_figures`
+signature). `LegPrice` is a plain object, not a component (a component would change pinned markup). Two polls remain
+(book and tracking); there is one SOURCE for the leg price, not one poll. The patch's import reorder in `paper.py` was
+not taken (the I001 finding predates it; ruff counts per file unchanged).
 
-**Left, with the reason (as written in the patch).** `routes/outcome.py read_booked`, `routes/adjustment_history.py
-closed_figures`, `routes/adjustment.py price_after`: other questions. Rounding stays per route (`_exact` on the book page,
-`to_paise` on tracking): reply shapes must not change. `PaperBookPanel` total, `readPaperList` / `usePaperPnl`,
-`readTracking`, `AdjustCompare.vue :262`: other replies or wording. The `/paper/strategies` list pollers stay separate from
-the builder's per-strategy read. The panel's `/tracking` poll still runs for detections, rules and exits.
+**Visible changes (screen-check list rows 3).** After hours the panel rows show the book's last close and its time
+(ADR-212) instead of `-`. A partly exited leg shows its TOTAL (booked + open), the same as the table (ADR-328 (3)): in
+test 13, `25.00` not `+20.00`. Right after an exit, for up to 5 s, one row may still show the tracking price or
+"Exited at" while the other read catches up (two timers, by design).
 
-**How to resume.** These commands were verified on 25 Nov in a throwaway worktree at `0e30edc1`: the first part applied with
-`git am`, the second with `git apply`, and `git status` showed the 10 entries below; the worktree was then removed. The
-first part's sha changes on `am` (it was `8de187b4`). Run the `sed` lines as their own command first: a hook refuses
-`git am` / `git apply` of a patch file created in the same command.
+**Tests.** `frontend/tests/one-source-d41.test.js`: 15 rows (13 red of 37 with `tracking.test.js` on the old code;
+rows 4, 9, 10, 12 pin unchanged behaviour and are green on both); `tracking.test.js`: one new `it`;
+`tests_app/test_strategy_money_view.py`: 19 (no DB).
 
-```
-git checkout -b wt/phase3-resume 0e30edc1
-sed -n '1,/^# ---- uncommitted/p' docs/design/modular-doors-2026-11-25/phase3-wip.patch.txt | head -n -1 > /tmp/p3a.patch
-sed -n '/^# ---- uncommitted/,$p' docs/design/modular-doors-2026-11-25/phase3-wip.patch.txt | tail -n +2 > /tmp/p3b.patch
-git am /tmp/p3a.patch
-git apply /tmp/p3b.patch
-git status --short
-```
+| Claim | Evidence (command, result line) |
+|---|---|
+| Red first | `npx vitest run tests/one-source-d41.test.js tests/tracking.test.js`: `Tests 13 failed / 24 passed (37)` (`legPricesOf is not a function`, `150.95` vs `149.70`); pytest: `ImportError: cannot import name 'strategy_money'` |
+| Whole vitest green | `npx vitest run`: `Test Files 224 passed (224)`, `Tests 2639 passed (2639)` |
+| Python guards | `pytest tests/errors tests/test_money_outside_engine.py tests/orchestrator -q`: `1407 passed` |
+| DB selection (base `4350f336`) | 50 files, each on a fresh clone via `/root/ofo-fresh-run.sh`: 50 of 50 exit 0, 928 passed |
+| ci_local | `TOTAL: 16 passed, 0 failed, 5 skipped (118.4s)` |
+| Old vs new money | reviewer probe: 3000 random books x live/missing/stale/None prices, old inline code vs door: 0 differences |
+| Review | Sonnet, adversarial, fresh: PASS, no critical or major |
 
-Expected `git status --short` (10 entries): modified `backend/ofo_app/routes/paper.py`, `backend/ofo_app/routes/tracking.py`,
-`docs/design/modular-doors-2026-11-25/RESULTS.md`, `frontend/src/components/strategy/ChartCard.vue`,
-`frontend/src/components/strategy/TrackingPanel.vue`, `frontend/src/lib/usePaperBookRead.js`,
-`frontend/src/pages/StrategyBuilderPage.vue`, `tests_app/test_paper_order_door.py`, `tests_app/test_strategy_money_view.py`;
-untracked `backend/ofo_app/strategy_money.py`. Note: the `RESULTS.md` change in the patch is a draft that replaces the
-"Phases 4..8" line of an older RESULTS; on the resume branch (which already has this file) keep this file and fold in only
-what Phase 3 needs. If the resume branch is not based on `0e30edc1`, merge first, then re-apply.
+**Review minors (not fixed; listed).** M1: two tracking legs of one contract (a buy and a sell, REQ-030 AC-11) each show
+the contract's whole net figure, so the rows sum to twice the book total. Not new: the old code also indexed one figure
+per contract (`by_id[leg.instrument_id]`). Deferred issue (plan section 6, row 21). M2: `legPricesOf` keys a position
+with a null `contract_id` as the text "null" (only a contrived tracking id could match). M3: test 7's fixture sends
+`price_state 'stale'` with an `ltp_text`; the real after-hours reply sends `live` with the last close (the panel ignores
+`price_state`, so the assertion still holds).
 
-## Phases 4..8: not started
+## Phase 4: the exit door (B1 + F2), D-05 builder half, ADR-328 (4), R5: DONE
+
+Built in two parallel worktrees from the Phase 3 head `491ca7e2` (backend `wt/phase4-be`, frontend `wt/phase4-fe`;
+file-disjoint), merged with `--no-ff` (`b567a156`), then one review-fix round (`wt/phase4-fix`).
+
+**Door, server.** `backend/ofo/tracking/closing.py` (`Close`, `open_legs_to_close`, stdlib only) and
+`backend/ofo_app/paper_exit.py` (`live_exit_prices`, `exit_strategy` -> `Exited` / `Refused` / `NotYet` / `Flat`).
+Callers: tracking exit route, the orders route's `_server_exit_prices` and `paper_exit_risk` (both through the one read;
+`_server_exit_prices` stays as a thin index-to-price adapter), the monitor `_fire`, settlement. Server exit builders:
+3 + 1 pricer (+ the second `paper_exit_risk` caller) -> 1 door. R5: `ofo/engine/legs.py` `intrinsic_value`;
+`paper_settlement.settle_price` deleted. `ofo/execution/**`, `routes/execute.py`, `execute_plan.py`: no diff.
+
+**A3 deadlock: PROVEN and fixed.** Row 11 `[before_place]` on the pre-phase code: `asyncpg.exceptions.DeadlockDetectedError:
+deadlock detected` (monitor claimed the trigger row, then waited for the strategy lock held by the tracking route, whose
+`reconcile_triggers` waited for the trigger row). After the door (strategy lock first in every caller): one set of
+closing rows, the loser stores nothing, no deadlock. Re-run independently by the Tier A reviewer on both trees.
+
+**Goldens.** Rows 1-7 (tracking all / one, manual all / partial, conditional, leg stop, settlement of a two-expiry trade)
+captured on the pre-phase code and pasted as literals; equal on both trees (contract, side, qty, Decimal price, kind,
+reason, trigger, placed_at).
+
+**Race-only change (5.4.3).** The monitor reads the net under the lock: a lot added between its first look and the lock
+is closed in full (130, not 65; row 12b). The tracking route keeps its pre-read quantities (golden part-close of 65).
+
+**Deviations (accepted by the Tier A review).** `live_exit_prices` does not run the market half of `may_act` (routes keep
+`refuse_unless_allowed`, so the refusal order is unchanged); it takes feed keys and returns `paper.Price` per key (the
+tracking route needs each leg's quote time). `exit_strategy` `prices` is a mapping read before the lock; `only` may be a
+function of the locked net (`sorted` for the conditional exit, today's contract-id order); `placed_at` / `reason` may be
+per-key mappings. Row 8 "one named leg stale" became "a stale price refuses the whole exit" plus (fix round) a mixed
+stale/live case. `paper_exit_exceeds_open` is 422, as today. Correction of a builder claim: a monitor on a strategy with
+no orders still raises `ValueError` in its unchanged pre-read (`paper_monitor.py` `net_positions` before the lock), so
+there is no behaviour change; the door's empty-book `Flat` is reachable only in a race.
+
+**Screen (F2 + ADR-328 (4)).** `priceState.js` `CHANGED_ELSEWHERE_EXIT` (ADR text verbatim), `usePaperExit.js`,
+`ExitButton.vue`; `PaperBookPanel.vue`, `StrategyBuilderPage.vue`, `PaperStrategies.vue` (POST through `addToPaper`, body
+exactly `{ orders }`). On a failed book read in the builder: Exit all and every per-leg Exit disabled, "Prices are not
+live; try again when they update", Total / Avg / LTP / Booked / Unbooked / P&L show "—" (the Positions rule); an open Exit
+dialog closes. While the trade changed elsewhere: both disabled with "This trade changed elsewhere. Reload to see the
+current legs." (figures stay); an open Exit dialog closes and posts nothing; the Exit's kept edits cannot be posted
+through "Review and add" either (fix round, Tier A minor 1). The reason line shows once, under Exit all.
+
+**Tests changed under the plan's bound (section 1, "a test that pins a named bug").** `paper-place-refresh.test.js:231`
+(ADR-328 (4)); `paper-book-live.test.js`, `one-read-u130f.test.js`, `one-source-d41.test.js` test 8 (D-05: a failed
+read shows dashes in the builder panel, plan 5.4.2), commit `15fe3268` with old and new assertions per file.
+
+| Claim | Evidence (command, result line) |
+|---|---|
+| Deadlock red before, green after | `/root/ofo-fresh-run.sh tests_app/test_exit_door.py` on the pre-phase tree: `3 failed, 29 passed` (deadlock[before_place] DeadlockDetectedError; 12b monitor race; old settle_price gone); on `b567a156`: `32 passed` |
+| No real-path change | `git diff 546c67d3..b567a156 -- backend/ofo/execution backend/ofo_app/routes/execute.py backend/ofo_app/execute_plan.py \| wc -l`: `0` |
+| R5 parity | reviewer script, CE/PE/FUT in/at/out: 9 of 9 equal |
+| Backend DB selection (base `491ca7e2`) | 160 of 160 files exit 0 on fresh clones |
+| Merged vitest | `npx vitest run` on `b567a156`: `Test Files 225 passed`, `Tests 2653 passed` |
+| ci_local on `b567a156` | `TOTAL: 16 passed, 0 failed, 5 skipped` |
+| Python guards | `pytest tests/errors tests/test_money_outside_engine.py tests/orchestrator tests/tracking tests/engine`: `2556 passed, 1 skipped` |
+| Review | Tier A, fresh Opus, adversarial (A1-A15): PASS, no critical or major; 6 minors, 1-4 and 6 fixed in the fix round |
+
+**CI.** GitHub workflows run only on `pull_request` or a push to `main`; there is no PR tonight (owner bound), so the
+gate is the local mirror: ci_local, the whole vitest suite, the `select_app_tests` DB run on fresh clones and prepush
+(coordinator, 26 Nov 00:50 IST). The same holds for every phase of this night.
+
+## Phases 6..8: see the table
+
+
 
 ## Next step (exact)
 

@@ -57,7 +57,7 @@ const props = defineProps({
   savedId: { type: Number, default: null },
   charges: { type: Object, default: null }, // D-63 round 3: the paper reply's charges texts {paid, close}, as sent; shown only beside an after-charges TOTAL
   closed: { type: Array, default: null }, // D-63 (a): the paper reply's closed rows; its TOTAL includes their booked P&L, so they are listed under the table
-  paperTotal: { type: Object, default: null }, // GC-ICFIX round 2 (F4): sharedTotal() of the page's one paper read; the TOTAL row's P&L shows it, not the socket's figure
+  paperTotal: { type: Object, default: null }, // GC-ICFIX round 2 (F4): paperPnlBlock() of the page's one paper read; the TOTAL row's P&L shows it, not the socket's figure
   savedRevision: { type: [Number, String], default: null }, // changes on every re-save: the Strategy Chart re-asks
 })
 // D-B10: the graph's Zoom asks the page for a new range; D-B24: the interval menu asks for a new payoff_step (the server

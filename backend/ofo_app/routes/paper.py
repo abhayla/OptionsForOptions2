@@ -75,7 +75,7 @@ from ofo.strategy.definition import describe_contract, display_contract
 from ofo.table.model import display_number
 from ofo.timeutil import IST
 from ofo.tracking import paper, paper_decay, paper_greeks, stops
-from ofo.tracking.orderbook import ClosedLeg, NetPosition, PaperOrder, is_typed_price, lifecycles, net_positions
+from ofo.tracking.orderbook import ClosedLeg, NetPosition, PaperOrder, is_typed_price, net_positions
 from ofo.tracking.paper_alert import restore_alert_body, restore_order_reason, settle_history_body
 from pydantic import AwareDatetime, BaseModel, ConfigDict, Field, field_validator
 
@@ -83,6 +83,7 @@ from ofo_app import (
     held_entry_store,
     market_read,
     may_act,
+    paper_exit,
     paper_limit,
     paper_monitor,
     paper_store,
@@ -116,6 +117,7 @@ from ofo_app.routes.outcome import (
 from ofo_app.routes.planned_entry import get_live_feed
 from ofo_app.routes.strategies import StrategyRefused, refused_answer
 from ofo_app.scenario_guard import guard_paper_order
+from ofo_app.strategy_money import strategy_money_view
 from ofo_app.underlying import Underlying
 
 _LOG = logging.getLogger(__name__)
@@ -657,8 +659,7 @@ def _book_day(snapshot: Any, answered_at: datetime.datetime) -> datetime.date:
 def _figures(orders: Sequence[paper_store.StoredOrder], found: dict[int, tracked_contracts.TrackedContract],
              prices: dict[int, paper.Price], connected: bool, today: datetime.date | None = None) -> dict:
     """The strategy's figures from the one engine at the live prices of its open contracts."""
-    live = {str(cid): p.price for cid, p in prices.items() if paper.is_live(p) and p.price is not None}
-    view = lifecycles(_paper(orders), live)  # D-10: the net_positions totals, split at every flat point
+    view = strategy_money_view(_paper(orders), prices).lifecycle()  # D-10: the book's totals, split at every flat point
     positions = [_position(p, found[int(p.instrument_id)], prices.get(int(p.instrument_id))) for p in view.positions]
     why = _closing_reasons(orders)
     closed = [_closed_row(leg, found[int(leg.instrument_id)], why.get((int(leg.instrument_id), leg.closed_at)))
@@ -710,9 +711,9 @@ def _extremes(orders: Sequence[paper_store.StoredOrder], found: dict[int, tracke
     has no after total (ADR-306 (6): never a gross range beside a net maximum). ``today`` = the trade's nearest open
     expiry (ADR-320 (2), D-14): the "If held to expiry" pair (``max_profit_hold`` / ``profit_left_hold``) is served
     beside the usual figures, which are the "If exited now" pair; other days it is absent."""
-    live = {str(cid): p.price for cid, p in prices.items() if paper.is_live(p) and p.price is not None}
+    money = strategy_money_view(_paper(orders), prices)
+    live, view = money.live, money.book
     terms = terms_of(orders, found)
-    view = net_positions(_paper(orders), live)
     paid = paid_exact_of(orders, found, underlying, rates)  # ADR-263: the charges really paid on every filled order
     got = max_after_charges(view, terms, live, underlying, rates, paid) if paid is not None else \
         book_extremes(view, terms, live)  # unpriced: before charges, and says so
@@ -944,8 +945,8 @@ def left_fields(got: AfterSplit) -> dict:
 
 def _after(orders: Sequence[paper_store.StoredOrder], found: dict[int, tracked_contracts.TrackedContract],  # noqa: PLR0913
            prices: dict[int, paper.Price], charges: dict, underlying: str, rates: ChargeRates | None) -> dict:
-    live = {str(cid): p.price for cid, p in prices.items() if paper.is_live(p) and p.price is not None}
-    view = net_positions(_paper(orders), live)
+    money = strategy_money_view(_paper(orders), prices)
+    live, view = money.live, money.book
     terms = terms_of(orders, found)
     got = after_charges(view, terms, live, charges["charges"], charges["charges_reason"], underlying, rates)
     split = after_split(view, terms, live, underlying, rates, got, paid_exact_of(orders, found, underlying, rates))
@@ -1230,22 +1231,16 @@ async def _server_exit_prices(ctx: MarketContext | None, feed: LiveFeed | None, 
     tracking_not_connected; a contract not live (token reassigned, delisted, retired, missing) ->
     tracking_exit_contract_not_live; a leg with no live price (missing, failed read) ->
     tracking_exit_prices_not_live; nothing is written on any refusal. The browser's price is never used."""
-    from ofo_app.routes.tracking import _snapshot  # noqa: PLC0415 - the exit route's own market read
     exits = [(i, state[o.contract_id]) for i, o in enumerate(orders) if o.kind == "exit"]
     if not exits:
         return {}
-    if ctx is None:
-        raise StrategyRefused("tracking_not_connected", Failure.CONFLICT)
-    if any(c.feed_key is None for _, c in exits):  # never priced from another contract's quote (token reused etc.)
-        raise StrategyRefused("tracking_exit_contract_not_live", Failure.CONFLICT)
-    try:
-        snapshot = await _snapshot(ctx, feed, underlying, sorted({c.feed_key for _, c in exits}))  # type: ignore[type-var]
-        prices = {i: paper.leg_price(snapshot, c.feed_key) for i, c in exits}  # type: ignore[arg-type]
-    except Exception:  # noqa: BLE001 - any failed read is "no price": refused by name, nothing written
-        _LOG.exception("paper exit price read failed")
-        raise StrategyRefused("tracking_exit_prices_not_live", Failure.CONFLICT) from None
-    may_act.require(may_act.prices_ok("exit", [may_act.state_of(p) for p in prices.values()]))
-    return {i: p.price for i, p in prices.items()}  # type: ignore[misc] - priced: price set
+    keys = [c.feed_key for _, c in exits]
+    # the one live exit read (paper_exit.live_exit_prices): the refusals and their order are the ones named above
+    live = await paper_exit.live_exit_prices(ctx, feed, underlying, [None] if None in keys else sorted(set(keys)),  # type: ignore[type-var]
+                                             connected_rule="ctx", on_read_error="refuse")
+    if isinstance(live, may_act.Refused):
+        may_act.require(live)
+    return {i: live[c.feed_key].price for i, c in exits}  # type: ignore[index, misc] - priced: price set
 
 
 async def entry_facts(ctx: MarketContext | None, underlying: str, orders: Sequence[Any],
