@@ -20,10 +20,11 @@ import { capturedCaption, contractName, expiryWithDays, istTime, strikeLabel } f
 import { NOT_CONNECTED_LABEL, REPRICE_PROMPT } from '@/lib/legPicker'
 import {
   CUSTOM_STRATEGY, LEFT_OUT_LABEL, LEGS_CLEARED, LEG_CARD_PADDING_PX, LEG_ROW_COLUMNS, MULTIPLIER_MIN, multiplierChoices,
-  NO_CONTROLS, NO_LEGS_YET, PLANNED_ENTRY_LABEL, YOUR_PRICE_LABEL,
+  NO_CONTROLS, NO_LEGS_HINT_PAGE, NO_LEGS_HINT_TAB, NO_LEGS_YET, PLANNED_ENTRY_LABEL, YOUR_PRICE_LABEL,
   anyUnticked, canStep, controlsForSelection, movedMarker, priceReasonText, removeAllPrompt, replacedPriceNote, showsControls,
 } from '@/lib/legEdit'
 import { plainName } from '@/lib/saveDraft'
+import { useHeldFeature } from '@/lib/heldFeatures'
 import { PAPER_AVERAGE_LABEL, paperFillKey } from '@/lib/paperDrafts'
 
 const props = defineProps({
@@ -96,6 +97,7 @@ const legPricesAsOf = computed(() => (istClock(props.oldestQuoteAt) ? `Oldest le
 const moved = (l) => movedMarker(l, props.ltpById[l.instrument_id], props.priceTextById[l.instrument_id])
 // GC-UI 3a D-A15 (ADR-202 (2)): one icon by the price heading while any leg's price has moved
 const anyMoved = computed(() => props.legs.some((l) => !!moved(l)))
+const readyMadeTab = useHeldFeature('platform_strikes') // D-52: false until the server lists it; a failed read stays false
 // D-A06: the card title is the same plain name the action row used (no literal quote marks)
 const cardName = computed(() => plainName(props.strategyName) || 'New Strategy')
 // D-A14: the price box shows the planned entry as its value until the user types; only typed text is ever sent
@@ -169,7 +171,7 @@ function setMultiplier(index) {
 
     <div v-if="!legs.length" class="py-6 text-center" :style="cardPadding" data-testid="no-legs">
       <p class="font-medium" data-testid="no-legs-text">{{ NO_LEGS_YET }}</p>
-      <p class="mt-1 text-xs text-ink-muted">Pick strikes, or start from a ready-made shape below.</p>
+      <p class="mt-1 text-xs text-ink-muted" data-testid="no-legs-hint">{{ readyMadeTab ? NO_LEGS_HINT_TAB : NO_LEGS_HINT_PAGE }}</p>
       <div class="mt-3 flex justify-center gap-2">
         <button type="button" class="rounded bg-accent px-3 py-1 text-white" data-testid="no-legs-add" @click="emit('add-leg')">Add leg</button>
         <button type="button" class="rounded border border-line px-3 py-1" data-testid="no-legs-chain" @click="emit('pick-chain')">Pick from Option Chain</button>
