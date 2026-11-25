@@ -1,14 +1,14 @@
 """D-30 (ADR-320; REQ-112 AC-2): an opportunity whose contracts have expired reads Lapsed, with the time it lapsed.
-Real case 23 Nov: 16 Nov PATH opportunities on expired contracts were still Open on 23 Nov. The one place a record
-lapses is the worker (ADR-237 (6)): the rebuild asks its gate store, per strategy, with the IST day of the worker's clock."""
+Real case 23 Nov: 16 Nov PATH opportunities on expired contracts were still Open on 23 Nov. The one place a
+record lapses is the worker (ADR-237 (6)): the rebuild asks its gate store, per strategy,
+with the IST day of the worker's clock."""
 from __future__ import annotations
 
 import datetime as dt
-from decimal import Decimal
 
 import pytest
-from ofo.errors.explanations import render_explanation
-from ofo_app import playbook_store, scenario_mode
+from ofo.timeutil import IST
+from ofo_app import playbook_store
 from test_background_cycle import FakeGate, _rig
 
 EXPIRY = dt.date(2026, 11, 16)
@@ -43,11 +43,6 @@ async def test_the_expiry_day_itself_and_an_unknown_expiry_lapse_nothing(monkeyp
     assert await _lapse(monkeypatch, expiry, today) == []
 
 
-def test_the_lapse_reason_has_its_words():
-    assert "contract_expired" in playbook_store.LAPSE_REASONS
-    assert "expired" in str(render_explanation("suggestion_lapsed_contract_expired"))
-
-
 class ExpiryGate(FakeGate):
     def __init__(self) -> None:
         super().__init__()
@@ -66,10 +61,5 @@ async def test_the_rebuild_asks_for_the_expiry_lapse_of_every_strategy_with_the_
     w = _rig(gate, listed)
     await w.rebuild()
     sid, today, expiry = gate.asked[0]
-    assert sid == listed[0][0].strategy_id and today == w._clock().astimezone(background_ist()).date()
-    assert isinstance(expiry, dt.date) and Decimal(0) == 0 and scenario_mode is not None
-
-
-def background_ist():
-    from ofo_app.background import IST
-    return IST
+    assert sid == listed[0][0].strategy_id and today == w._clock().astimezone(IST).date()
+    assert isinstance(expiry, dt.date)

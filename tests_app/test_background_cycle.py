@@ -1441,6 +1441,11 @@ async def test_the_db_gate_store_lapses_the_records_of_an_earlier_count_as_posit
     assert str(render_explanation("suggestion_lapsed_position_changed")) == "The position changed"
 
 
+def test_d30_the_contract_expired_lapse_reason_has_its_words():
+    assert "contract_expired" in playbook_store.LAPSE_REASONS
+    assert str(render_explanation("suggestion_lapsed_contract_expired")) == "The contracts have expired"
+
+
 # ---- k23: a new strategy's first check is not lost in the rebuild's gap ---------------------------------------------
 class GapGate(FakeGate):
     """A gate store whose read yields to a full cycle: the cycle that runs in the rebuild's gap (before the gates)."""
