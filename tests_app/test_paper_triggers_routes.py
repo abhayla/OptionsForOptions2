@@ -852,8 +852,8 @@ async def test_history_lists_a_fired_stop_and_an_expiry_settlement_with_time_ind
 # D-29 (ADR-260): the alert list and the bell's unread count read this process's own strategies only. Real case: 17 old
 # "Scenario PATH-xx" alerts buried the 3 real stops of 23 Nov and inflated the bell (21-24 against 20 rows).
 async def test_a_scenario_strategys_alert_is_neither_listed_nor_counted_nor_marked_read(db, notified):
-    from test_strategy_store import _ids, _saved_in  # noqa: PLC0415
     from ofo_app import strategy_store as store  # noqa: PLC0415
+    from test_strategy_store import _ids, _saved_in  # noqa: PLC0415
     app, stored, ids = await _open(db)
     scenario = await store.save_draft(db, stored.user_ref, await _saved_in(db, stored.user_ref, await _ids(db)),
                                       scenario_id="PATH-01")
@@ -879,9 +879,9 @@ async def test_a_scenario_strategys_alert_is_neither_listed_nor_counted_nor_mark
 
 # D-22 / D-71 round 2: the closed row carries the reason; a scenario settlement is never listed.
 async def test_the_closed_row_carries_the_settlement_reason_and_a_scenario_settlement_is_not_listed(db, notified):
-    from test_strategy_store import _ids, _saved_in  # noqa: PLC0415
     from ofo_app import paper_settlement  # noqa: PLC0415
     from ofo_app import strategy_store as store  # noqa: PLC0415
+    from test_strategy_store import _ids, _saved_in  # noqa: PLC0415
     app, stored, ids = await _open(db)
     at = datetime.datetime(2026, 11, 24, 10, 0, tzinfo=datetime.UTC)
     why = str(paper_settlement.settle_reason("NIFTY", D("25641.35")))
