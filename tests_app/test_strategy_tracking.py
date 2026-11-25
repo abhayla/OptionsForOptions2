@@ -14,6 +14,7 @@ from decimal import Decimal
 from http import HTTPStatus
 
 import pytest
+from ofo_app import paper_store
 from sqlalchemy import text
 from sqlalchemy.ext.asyncio import AsyncSession, async_sessionmaker
 
@@ -385,3 +386,148 @@ async def test_exited_paper_book_reads_completed_on_the_book_and_the_list(db):
         books = (await c.get("/paper/strategies")).json()["strategies"]
         listed = next(s for s in books if s["strategy_id"] == stored.id)
         assert listed["status_word"] == "Completed"
+
+
+# ---- GC-ICLIVE D-42 (ADR-299): the My Strategies list names the CURRENT legs and the paper list's word ----
+
+CONDOR_LEGS = 4
+OPEN_AFTER_EXIT = 3
+
+
+async def _row42(app, sid):
+    return next(s for s in (await _get_ok(app, "/strategies"))["strategies"] if s["id"] == sid)
+
+
+async def _positions42(app, sid):
+    return (await _get_ok(app, f"/paper/strategies/{sid}"))["positions"]
+
+
+def _terms42(position):
+    return {"instrument": position["instrument"], "strike": str(position["strike"]), "expiry": str(position["expiry"])}
+
+
+def _row_terms4242(row):
+    leg = row["first_leg"]
+    return {"instrument": leg["instrument"], "strike": str(leg["strike"]), "expiry": str(leg["expiry"])}
+
+
+async def _exit_leg42(c, stored, index):
+    leg = stored.saved.definition.legs[index]
+    side = "BUY" if leg.action.value == "SELL" else "SELL"
+    done = await c.post(f"/paper/strategies/{stored.id}/orders", json={"orders": [
+        {"contract_id": stored.saved.contract_ids[index], "kind": "exit", "price": "1.00", "quantity": leg.quantity,
+         "side": side}]})
+    assert done.status_code == HTTPStatus.CREATED, done.text
+
+
+async def test_core_a_closed_leg_leaves_the_list_row_and_the_first_leg_is_an_open_one(db):
+    app, stored, *_ = await _setup(db)
+    async with _client(app) as c:
+        placed = await c.post(f"/paper/strategies/{stored.id}/orders", json=_paper_body(stored, ENTRY_PRICES))
+        assert placed.status_code == HTTPStatus.CREATED, placed.text
+    before = await _row42(app, stored.id)
+    assert before["leg_count"] == CONDOR_LEGS
+    first_open = next(p for p in await _positions42(app, stored.id) if p["net_quantity"] != 0)
+    assert _row_terms4242(before) == _terms42(first_open)
+    # exit the leg the row names as first: the list must now name another leg and count three
+    index = next(i for i, cid in enumerate(stored.saved.contract_ids) if cid == first_open["contract_id"])
+    async with _client(app) as c:
+        await _exit_leg42(c, stored, index)
+    after = await _row42(app, stored.id)
+    assert after["leg_count"] == OPEN_AFTER_EXIT
+    still_open = [p for p in await _positions42(app, stored.id) if p["net_quantity"] != 0]
+    assert len(still_open) == OPEN_AFTER_EXIT
+    assert _row_terms4242(after) == _terms42(still_open[0])
+    assert _row_terms4242(after) != _row_terms4242(before)  # the closed leg is not named any more
+    assert after["status_word"] == "Running"
+
+
+async def test_a_strategy_with_no_order_keeps_the_saved_legs(db):
+    app, stored, *_ = await _setup(db)
+    row = await _row42(app, stored.id)
+    first = stored.saved.definition.legs[0]
+    assert row["leg_count"] == len(stored.saved.definition.legs)
+    assert row["first_leg"]["instrument"] == first.instrument.value
+    assert row["status_word"] == "Draft"
+
+
+async def test_every_leg_exited_lists_the_strategy_completed_with_its_traded_legs(db):
+    app, stored, *_ = await _setup(db)
+    async with _client(app) as c:
+        placed = await c.post(f"/paper/strategies/{stored.id}/orders", json=_paper_body(stored, ENTRY_PRICES))
+        assert placed.status_code == HTTPStatus.CREATED, placed.text
+        for index in range(len(stored.saved.contract_ids)):
+            await _exit_leg42(c, stored, index)
+    row = await _row42(app, stored.id)  # the closed strategy is in the list
+    assert row["status"] == "closed"
+    assert row["status_word"] == "Completed"
+    assert row["leg_count"] == CONDOR_LEGS  # nothing is open: the legs it traded, not "0 legs"
+
+
+async def test_the_list_word_is_the_paper_list_word_after_every_leg_is_exited(db):
+    """Every leg exited (the paper list says Completed): the My Strategies list says the same word, so the Completed
+    page shows it. (Placing the last exit marks the row closed too: alembic 0049.)"""
+    app, stored, *_ = await _setup(db)
+    async with _client(app) as c:
+        placed = await c.post(f"/paper/strategies/{stored.id}/orders", json=_paper_body(stored, ENTRY_PRICES))
+        assert placed.status_code == HTTPStatus.CREATED, placed.text
+    later = ANSWERED + datetime.timedelta(minutes=5)
+    exits = [paper_store.NewOrder(cid, "BUY" if leg.action.value == "SELL" else "SELL", leg.quantity, D("1.00"),
+                                  "exit", later)
+             for cid, leg in zip(stored.saved.contract_ids, stored.saved.definition.legs, strict=True)]
+    await paper_store.place(db, stored.user_ref, stored.id, exits)
+    paper = next(s for s in (await _get_ok(app, "/paper/strategies"))["strategies"] if s["strategy_id"] == stored.id)
+    assert paper["status_word"] == "Completed"
+    assert (await _row42(app, stored.id))["status_word"] == paper["status_word"]
+
+
+# ---- GC-ICLIVE D-66: the Completed list carries the time the trade closed (last closing fill / settlement) ----
+
+async def _row66(app, sid):
+    async with _client(app) as c:
+        reply = await c.get("/strategies")
+    assert reply.status_code == HTTPStatus.OK, reply.text
+    return next(s for s in reply.json()["strategies"] if s["id"] == sid)
+
+
+def _exits66(stored, indexes, at, kind="exit"):
+    legs, ids = stored.saved.definition.legs, stored.saved.contract_ids
+    return [paper_store.NewOrder(ids[i], "BUY" if legs[i].action.value == "SELL" else "SELL", legs[i].quantity,
+                                 D("1.00"), kind, at) for i in indexes]
+
+
+async def _open66(app, stored):
+    async with _client(app) as c:
+        placed = await c.post(f"/paper/strategies/{stored.id}/orders", json=_paper_body(stored, ENTRY_PRICES))
+    assert placed.status_code == HTTPStatus.CREATED, placed.text
+
+
+async def test_core_completed_row_carries_the_time_of_the_last_closing_fill_not_the_last_save(db):
+    app, stored, *_ = await _setup(db)
+    await _open66(app, stored)
+    first_exit = ANSWERED + datetime.timedelta(hours=2)
+    last_exit = ANSWERED + datetime.timedelta(hours=3, minutes=24, seconds=7)
+    await paper_store.place(db, stored.user_ref, stored.id, _exits66(stored, [0, 1], first_exit))
+    await paper_store.place(db, stored.user_ref, stored.id, _exits66(stored, [2, 3], last_exit, "stop"))
+    row = await _row66(app, stored.id)
+    assert row["status_word"] == "Completed"
+    assert datetime.datetime.fromisoformat(row["closed_at"]) == last_exit
+    assert datetime.datetime.fromisoformat(row["closed_at"]) != datetime.datetime.fromisoformat(row["updated_at"])
+
+
+async def test_settlement_record_is_the_close_time(db):
+    app, stored, *_ = await _setup(db)
+    await _open66(app, stored)
+    settled = ANSWERED + datetime.timedelta(hours=11, minutes=45)  # 15:45 IST on the case's day
+    await paper_store.place(db, stored.user_ref, stored.id, _exits66(stored, [0, 1, 2, 3], settled, "settle"))
+    assert datetime.datetime.fromisoformat((await _row66(app, stored.id))["closed_at"]) == settled
+
+
+async def test_a_strategy_that_is_not_completed_has_no_close_time(db):
+    app, stored, *_ = await _setup(db)
+    assert (await _row66(app, stored.id)).get("closed_at") is None  # a draft
+    await _open66(app, stored)
+    one_hour = ANSWERED + datetime.timedelta(hours=1)
+    await paper_store.place(db, stored.user_ref, stored.id, _exits66(stored, [0], one_hour))
+    row = await _row66(app, stored.id)  # one leg exited, three open: Running, nothing closed yet
+    assert row["status_word"] == "Running" and row.get("closed_at") is None
