@@ -87,3 +87,58 @@ failed-pick behaviour are the run's choice (ADR-324 point 4, PENDING OWNER READ)
 - **Recommendation:** keep as built; change only the words if wanted.
 
 Spec basis: contract GC-ICLIVE-D (D-38 line); ADR-324 point 4; ADR-210 (reason sentences).
+
+## Q5 (D-57): may the "Last updated" disconnect sentence use 24-hour time? (CLASH, not decided)
+
+Business call: two owner texts give different answers; the run did not change the two sentences and marked D-57
+`Needs owner decision`. Everything else of D-57 is built (one date formatter, "23 Nov 2026", 24-hour IST times).
+
+- **ADR-015 Q182** (and REQ-049 AC-5 quoting it): on disconnect: *"Live market data disconnected. Last updated:
+  10:42:17 AM. ..."*: a 12-hour clock with AM/PM.
+- **ADR-320 (owner 24 Nov), D-57:** "dates read '23 Nov 2026' and 24-hour IST times everywhere; one formatter."
+- **Real case (23 Nov):** the adjustments page showed '11/11/2026, 12:33:17 AM' beside '23 Nov 2026' elsewhere.
+  The disconnect sentence would still read "10:42:17 AM" while every other time reads "15:45:00 IST".
+- **Recommendation:** 24-hour everywhere, ADR-015 Q182 amended to "Last updated: 10:42:17 IST". One rule, no AM/PM
+  on any screen. The two sites are named exceptions in the backend scan until you answer.
+
+Spec basis: ADR-015 Q182; REQ-049 AC-5; ADR-320 (D-57); ADR-325 point 17.
+
+## Q6 (D-67): how many minutes after entry should an adjustment pop-up stay quiet for a rule already true at entry?
+
+Business call: the owner direction says the pop-up "is not raised in the first minutes after entry for a rule
+already true at entry"; the spec gives no number, so the run invented none (ADR-325 point 5).
+
+- **Built:** pop-ups sit in the sticky header block and no longer float over page buttons. The rule keeps firing
+  from entry.
+- **Real case (23 Nov):** C10 166 gamma 2.95 % against the 2 % rule and C11 167 tested delta 0.3809 against 0.35, both
+  raised within 1 to 3 minutes of opening.
+- **Options:** (A) a quiet period of N minutes after entry for a rule already true at entry (you give N); (B) no
+  quiet period, only the placement fix (as built).
+- **Recommendation:** A with N = 5, matching the existing 5-minute alert cool-down of REQ-170, so a trade opened into
+  an already-true rule is not told at once what the trader just accepted.
+
+Spec basis: ADR-320 (D-67); REQ-170 (5 min cool-down); ADR-246 (quiet until 09:20); ADR-325 point 5.
+
+## Q7 (D-68): what does "Today" add up?
+
+Business call: the decision row is the run's choice (ADR-325 point 2, PENDING OWNER READ).
+
+- **Built:** total after charges of the real trades opened or closed on the current trading day (the India date of the
+  newest snapshot), whole trade; scenario strategies left out; a trade opened earlier and only partly exited today is
+  left out.
+- **Option not chosen:** only what was booked today (the part exited today plus today's move of open legs).
+- **Real case:** 25 Nov test trades (N-6): the tester wanted one figure for the day's test trades.
+- **Recommendation:** keep as built for the test-day use; ask again when real trading starts.
+
+Spec basis: REQ-109 AC-5; ADR-320 (D-68); ADR-325 point 2.
+
+## Q8 (D-47): should the lots box show on every strike row?
+
+Business call: the run kept the lots box behind the first click (ADR-325 point 4).
+
+- **Built:** Buy and Sell always drawn; the footer adds "N already in the draft".
+- **Not built:** the lots box on every row (doubles the row height of the picker).
+- **Real case (23 Nov):** draft X with 4 legs: "0 legs selected", Buy/Sell only on hover, lots only after a click.
+- **Recommendation:** keep as built.
+
+Spec basis: ADR-320; ADR-325 point 4.
