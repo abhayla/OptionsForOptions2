@@ -56,7 +56,7 @@ from __future__ import annotations
 import datetime
 from dataclasses import dataclass
 from dataclasses import replace as _replace
-from decimal import ROUND_HALF_EVEN, ROUND_HALF_UP, Decimal, localcontext
+from decimal import ROUND_HALF_EVEN, ROUND_HALF_UP, Context, Decimal, localcontext
 from enum import Enum
 from typing import Final, Sequence
 
@@ -232,7 +232,7 @@ def _display_number(value: Decimal, places: int) -> ExplanationText:
     shown = value.quantize(Decimal(1).scaleb(-places), rounding=ROUND_HALF_UP)
     step = Decimal(1).scaleb(-places)
     if shown != value and abs(shown) <= step:  # D-46: a real value shown as zero or one step keeps two significant digits (as the chain's gamma does)
-        shown = value.quantize(Decimal(1).scaleb(value.adjusted() - 1), rounding=ROUND_HALF_UP)
+        shown = Context(prec=2, rounding=ROUND_HALF_UP).create_decimal(value)  # two significant digits, no arithmetic here
     return render_explanation("cell_number", value=shown)
 
 
