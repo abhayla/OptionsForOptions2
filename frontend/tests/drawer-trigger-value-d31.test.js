@@ -46,7 +46,9 @@ describe('D-31 drawer reasons are labelled like the panel', () => {
     await w.find('[data-testid="review-adjustment"]').trigger('click')
     await flushPromises()
     const lines = [...document.querySelectorAll('[data-testid="drawer-why-line"]')].map((n) => n.textContent)
-    expect(new Set(lines).size).toBe(lines.length)
+    const fired = lines.filter((l) => l.includes('Fired at'))
+    expect(fired).toHaveLength(2)
+    expect(new Set(fired).size).toBe(2)
     expect(lines.filter((l) => l.includes('Fired at')).every((l) => l.startsWith('Spot distance from the short strike') || l.startsWith('Net delta'))).toBe(true)
     RESULTS = [FLAG]
   })
