@@ -382,5 +382,6 @@ async def test_exited_paper_book_reads_completed_on_the_book_and_the_list(db):
         assert out.json()["state"] == "EXITED"
         assert out.json()["status_word"] == "Completed"
         assert (await c.get(f"/paper/strategies/{stored.id}")).json()["status_word"] == "Completed"
-        listed = next(s for s in (await c.get("/paper/strategies")).json()["strategies"] if s["strategy_id"] == stored.id)
+        books = (await c.get("/paper/strategies")).json()["strategies"]
+        listed = next(s for s in books if s["strategy_id"] == stored.id)
         assert listed["status_word"] == "Completed"

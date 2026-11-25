@@ -1007,8 +1007,8 @@ async def list_paper_strategies(db: Annotated[Any, Depends(get_db)],  # noqa: PL
 
 
 def _paper_word(status: str, positions: Sequence[Mapping[str, Any]]) -> str:
-    """ADR-299 (1), D-28: a paper book has orders, so it is Running while at least one leg is open and Completed once every
-    leg is closed, even before the strategy row is marked closed. A status the one function does not know stays Unknown."""
+    """ADR-299 (1), D-28: a paper book has orders, so it is Running while at least one leg is open and Completed once
+    every leg is closed, even before the strategy row is marked closed. An unknown status stays Unknown."""
     word = store.status_word(status, True)
     return word if word == "Unknown" or any(p["net_quantity"] != 0 for p in positions) else "Completed"
 
