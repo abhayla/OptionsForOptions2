@@ -23,7 +23,9 @@ rule `admitLegs` (`legDoor.js:19`). **Not yet code** (planned only, `PLAN-phases
 `strategy_money_view` (Phase 3, `be/strategy_money.py`), `exit_strategy` / `live_exit_prices` (Phase 4, `be/paper_exit.py`,
 `ofo/tracking/closing.py`), `usePaperExit` + `ExitButton` (Phase 4), `useLegDoor` (Phase 5, Lane B). Anything below that
 needs one of those says **WAITS (Phase N)**. Line numbers of the refactor branch are those of `a99730b8`; lines of
-**[fix]** are those of `e01f747`. Unverified claims are marked **Unverified** with the first command that settles them.
+**[fix]** are those of `e01f747`. Unverified claims are marked **Unverified** with the first command that settles them. Verification pass of 25 Nov: the first
+commands were run against `e01f747`; what they settled reads **Verified [fix]** with file:line, what code cannot settle reads
+**Still open** with the exact access that settles it.
 
 Two things the refactor plan decided that this plan changes (the later owner words win):
 1. `PLAN-phases-3-8.md` section 2.2 and Phase 6 say "B7 `raise_alert` not built; guard G4 pins one caller per writer". The
@@ -317,8 +319,18 @@ added without the user."
 (`playbook_store.lapse_changed:879`, `#685`). The plan keeps `strategy_type` forever (`accept_plan` refuses a type change,
 `playbook_store.py:674-678`, guard OF031). The shape name comes from `ofo/strategy/matching.py` (the builder showed "Bull Put
 Spread"). Evaluator reads only open legs (`state.shorts`, `playbook_eval.py:519-521`, `_t01 :547`), so the remaining side's
-rules already work. **Unverified:** which of the 27 trigger ids and which approaches are side-specific; first command:
-`grep -n "shorts\|kind ==" backend/ofo/adjustment/playbook_eval.py backend/ofo/adjustment/approaches.py`.
+rules already work. **Verified [fix] (side-specific ids, read 25 Nov):** triggers are side-blind: they read only the open legs
+and each short-based one (T-01 `_t01 :547`, T-01b `:560`, T-03 `:579`, T-09 `:607`) measures the remaining shorts; with no
+short at all `_shorts` raises `_Missing(no_short_leg)` (`playbook_eval.py:518-521`). T-05 (`:722-731`) is side-specific by
+nature (larger side value / smaller side value over CE / PE; with one side it reads `side_value_not_positive`, `:728-730`).
+T-02 and T-07 read only P&L (`:565-567`, `:593-595`). The approaches already refuse by shape: `_condor()` returns None unless
+exactly 4 legs on one expiry (`approaches.py:340-350`); `build_approach` then raises `adjust_needs_two_spreads` for every side
+approach (`:708-709`), while A-27, A-36 and A-31 still build on any legs list (`:12-13`, `:705-707`); `tested_side` is None
+(`:352-358`). **Still open:** the other trigger ids (T-04, T-06b, T-08, T-11 family, T-12 to T-20b) were not read one by one;
+the `side_scope.json` trigger half is filled while its guard test is written, from the same reading (one id per line, with
+its function). Effect on the design: the approach half is already enforced by `_condor`, so `side_scope.json` needs only the
+trigger half plus a test that every approach id that raises `adjust_needs_two_spreads` is marked `both` (a little smaller than
+first sized; size stays L because of the page flow).
 **Design.** (1) pure `ofo/adjustment/side_scope.py`: `closed_sides(entry_legs, open_legs) -> {call, put}`; a table
 `side_scope.json` (trigger id / approach id -> `both` | `call` | `put` | `none`) with a guard test that every id of
 `system_playbooks.json` has an entry. (2) the plan block shows, per rule, `not_applicable: call` -> "Not applicable: the call
@@ -436,12 +448,17 @@ prints it (Q2). **Tests first:** totals with one closed and one open strategy ->
 
 ### P12 S-07, the word "Strategies" in the top menu
 
-**Verified [fix]:** only the toggle button carries the click (`AppHeader.vue:272-281`, `onToggleClick`, `data-testid
-nav-menu-toggle-<key>`); the label next to it is not part of the button. **Fix:** the whole label is inside the button.
-**Tests first:** click on the text node of each section opens its menu (and again closes it); Enter / Space still work
-(`onToggleKey :146`); click inside the open panel does not toggle. **Size S.** **Spec basis:** none (searched: "top menu");
-`AppHeader.vue` header comment "each section opens a menu of its REQ-009 items". **Unverified:** whether the label is a router
-link; first command: `sed -n 255,300p frontend/src/components/layout/AppHeader.vue`.
+**Verified [fix]:** the label is NOT dead text: it is a `router-link` to `firstBuiltPath(key)` (`AppHeader.vue:263-269`,
+`@click="closeMenu()"`), and `firstBuiltPath('strategies')` is `/strategies/my-strategies` (`router/nav.js:18`, `:91-94`).
+So where S-07 was seen (on My Strategies, S-05) the click is a same-route navigation (nothing happens) and `closeMenu()` shuts
+a menu that hover had opened (`onSectionEnter :180`). Only the toggle button opens the menu by click (`:271-281`,
+`onToggleClick :133`, `data-testid nav-menu-toggle-<key>`). **Fix (changed from the first draft):** keep the link, and make a
+click on the label open the menu when the page is already at the section's first path (otherwise navigate as today, menu
+closed); Enter / Space on the toggle unchanged. Putting the label inside the button would remove the link, so it is not done.
+**Tests first:** on the section's own first path, a click on the label opens its menu (and again closes it); on another path the
+click navigates to `firstBuiltPath` (menu closed, as today); Enter / Space still work (`onToggleKey :146`); click inside the
+open panel does not toggle. **Size S.** **Spec basis:** none (searched: "top menu");
+`AppHeader.vue` header comment "each section opens a menu of its REQ-009 items".
 
 ## 4. Lane Q, the screens
 
@@ -468,13 +485,25 @@ Undo exists per delete (`:undoDelete`).
   `tests/errors/template_pins.json`: both sentences added with pins.
 - **S-05:** `list-loading` shows bare "Loading..." (`MyStrategiesPage.vue:139`) while the list read takes 1.5 to 4.5 s. Spec
   basis: ADR-320 line 32 "never stay on 'Loading'" (failure case). **Fix:** the same `LoadFailed` / skeleton pattern other
-  lists use (`LoadFailed` in `AdjustPlanSheet.vue:11`); a read that takes more than the page's limit shows the retry. Not a
-  speed fix (**Unverified** why it takes seconds; first command: time `GET /strategies` with the 100-row account).
-- **S-02:** "An unexpected server error (ERR-6960F002)" once on Delete of a Running paper strategy, retry worked. **Unverified
-  cause.** First command: `grep -rn "6960F002" <api log>` (the owner's PC log; the id format `ERR-` + 8 hex is written by
-  `errors.py:612`). Candidate causes to test, in this order: (a) lock wait between `delete_draft`'s row lock (`_locked`) and
-  the paper monitor / worker holding the same strategy row; (b) `expected_revision` race: `readRevision` GET then DELETE while
-  the worker bumps the revision (409 handled, but a 500 would not be); (c) a monitor tick writing to a hidden strategy.
+  lists use (`LoadFailed` in `AdjustPlanSheet.vue:10`, component `components/common/LoadFailed.vue`); a read that takes more than the page's limit shows the retry. Not a
+  speed fix. **Verified [fix] (shape of the read):** `GET /strategies` runs five reads in series (`routes/strategies.py:443-453`:
+  `store.list_strategies`, `closed_figures_many`, `_tracked_ids`, `_open_opportunities`, `current_legs_many`); the closed-row
+  batching (`67a5cd06`, branch `perf/strategies-list-batch`) is already an ancestor of `e01f747`. **Still open:** which of the
+  five takes the 1.5 to 4.5 s on an EMPTY list (cost cannot be per-row there); code cannot settle it. Access: time the five calls
+  on the owner's account (a `log.info` with each call's seconds, or `EXPLAIN ANALYZE` of `_LIST` and the three account-wide reads).
+- **S-02:** "An unexpected server error (ERR-6960F002)" once on Delete of a Running paper strategy, retry worked. **Cause
+  still open (needs the owner's API log).** First command: `grep -rn "6960F002" <api log>` (the owner's PC log). **Verified
+  [fix] (how the line reaches the log):** the id is `"ERR-" + secrets.token_hex(4).upper()` (`errors.py:611-612`) and the handler
+  writes `log.error("unhandled error %s on %s %s", ..., exc_info=exc)` (`errors.py:617`), so the matching log line carries the full
+  traceback and names the exception class; nothing else settles it. **Verified [fix] (what can and cannot be the 500):**
+  `DELETE /strategies/{id}` is `routes/strategies.py:507-516`; `_run` (`:417-428`) turns only `StrategyStoreError` /
+  `StoredFormError` into a sentence and re-raises everything else, so a raw 500 is a non-store exception. Candidate (b) below is
+  ruled OUT: a stale `expected_revision` raises `StrategyStoreError(REVISION_CONFLICT)` (`strategy_store.py:200-204`), a handled
+  409. `_deletable` (`:333-339`) swallows its own errors and fails closed (a 409). That leaves a database error out of `_locked`
+  (`SELECT ... FOR UPDATE`, `strategy_store.py:161-163`, `:378-383`): the app role has `statement_timeout = 30s`
+  (`alembic/versions/0001_baseline_ledger_clock.py:46,266`), so a row lock held longer than 30 s, or a deadlock with the monitor /
+  worker, raises a DB error and ends as ERR-xxxx. Candidate causes to test, in this order: (a) lock wait between `delete_draft`'s row lock (`_locked`) and
+  the paper monitor / worker holding the same strategy row; (b) `expected_revision` race: **ruled out** (a handled 409, see above); (c) a monitor tick writing to a hidden strategy.
   Tests-first: reproduce with a DB test that runs `delete_draft` while a second connection holds `FOR UPDATE` on the row and
   a trigger is armed; assert a clean refusal sentence, never a 500. If the log shows another cause, the test follows it.
 **Design for bulk delete (reuse):** one server route `POST /strategies/bulk-delete {items: [{id, expected_revision}]}` that
@@ -561,21 +590,43 @@ exit-confirm title contains "Paper" for a paper exit. Existing tests changed wit
   3,877 - 258 charges; breakeven 25,490 = 25,550 - 59.65). Spec basis: ADR-321 (2) breakevens "carry the same charges as Max
   Profit / Max Loss ... with a line saying so" (written for the paper book; the plan summary is the gap; same class as D-16).
   Verified [fix]: `SummaryCards.vue` prints Max Profit / Max Loss with the after / before charges text (`:29`) and the
-  breakeven row (`:72-77`); the figures come from `backend/ofo/outcome/serialize.py` / `target.py` (**Unverified** which
-  function emits `breakeven`; first command: `grep -n "breakeven" backend/ofo/outcome/serialize.py`). Fix choice: compute the
+  breakeven row (`:72-77`); the figures come from the engine: the summary's breakevens are made in
+  `ofo/scenario/levels.py:279-298` (`breakevens = breakevens_with_shift(strategy, booked)` at `:286`, shift = booked only, so
+  BEFORE charges), serialized by `ofo/outcome/serialize.py:309-311` (`breakevens_display(s.breakevens, out.spot_level)`; the one
+  text maker is `breakevens_display :58`, `_breakeven :50`); the target-date path is `outcome/target.py:207-211`, `:297`
+  (`breakevens_at`, booked counted, no charges). **Verified [fix], what it changes:** the after-charges kernel already exists:
+  `book_breakevens` (`ofo/engine/extremes.py:191-208`) calls `breakevens_with_shift(strategy, view.cash - charges)` and
+  `loss_regions_after_charges` (`metrics.py`) is used at `levels.py:296`; so the fix reuses `breakevens_with_shift` with the
+  charges in the shift (no new math, size S stays). Fix choice: compute the
   breakevens after charges in the engine (one engine, ADR-008) or label both with their basis; recommendation: after charges
   with the line, because that is what the paper book does (ADR-321 (2)). **Tests first:** the 25 Nov plan: breakevens equal the
   after-charges pair (~25,494 / ~26,106) and the line "after charges" appears; charges unavailable -> before-charges breakevens
   with the line "before charges" (answer state: not computable); expiry vs target-date toggle unchanged.
 - **S-09.** Pick from Option Chain shows "-" for 4-8 s (`LegPicker.vue:751,:856` "Reading strikes..."; the chain cells in
-  `OptionChainPage.vue` / `useChainLive.js`). **Unverified** cause (first read of a chain snapshot vs the picker waiting for the
-  feed hold); first command: time `GET /leg-picker` and the first frame in the test harness. Fix after the cause is read; the
+  `OptionChainPage.vue` / `useChainLive.js`). **Verified [fix] (cause of the dash, from code):**
+  `GET /leg-picker/strikes` (`ofo_app/routes/leg_picker.py:734-753`) calls `_held_quotes` (`:401-410`), which takes the window
+  lease (`LEASE.hold`, `:407`) and in the SAME call reads `provider.option_chain_snapshot` (`:409`); on a window not held before,
+  the vendor has not streamed yet, so the cells come back null and the picker prints "-" (`_cell :320-332`: no quote -> no price).
+  The page then refills only on its timer, `PICKER_REFRESH_MS = 5000` (`lib/legPicker.js:88`, `LegPicker.vue:426`), which is the
+  4-8 s the owner saw (first frame ~0 s + one 5 s tick + the answer time). The first opening shows "Reading strikes..."
+  (`LegPicker.vue:751,856`) until the GET returns, then prices within ~4 s, consistent with a warm lease. **Still open:** the
+  exact vendor delay (ms) after `hold`; settled only by a live-feed run (market hours), command: two timed
+  `GET /leg-picker/strikes` calls 0.5 s apart on a fresh window, count null `ltp` in each. **Fix:** the page re-reads once
+  after about 1 s while any visible cell has no price (before the 5 s tick); the server may also wait a short bounded time
+  for the first quotes after a fresh `hold`. Not decided here (Tier A for the server wait: it is feed code); recommendation: the
+  page-side early re-read. Fix after the delay is measured; the
   rule is ADR-321 (9) (a price states its time) and the dash needs a reason ("waiting for prices"), never a bare "-". **Tests
   first:** while strikes are loading the cells read the loading reason and B/S buttons are disabled (they are clickable on dash
   rows today).
-- **S-25.** Orderbook Qty and Price run together ("65101.20"). Verified: the table is in `PaperBookPanel.vue` /
-  `PaperConfirmDialog.vue` / the Orderbook route (**Unverified**: `grep -rn "Qty" frontend/src`). Fix: numeric columns right-aligned
-  in separate cells with `tabular-nums` (the pattern of `ui-table`). **Test:** the Qty cell and Price cell are two elements.
+- **S-25.** Orderbook Qty and Price run together ("65101.20"). Verified: the table is the Orderbook view of `PaperBookPanel.vue:76-85`
+  (`<table data-testid="order-table">`), not `PaperConfirmDialog.vue`. **Verified [fix] (cause):** Qty and Price ARE two cells
+  (`:84` `order-qty`, `:85` `order-price`), both `num text-right`, but the table is a plain `w-full text-xs` table with no cell
+  padding and the `<th>` are centred while the cells are right-aligned; two adjacent right-aligned cells with no padding touch,
+  so "65" + "101.20" reads "65101.20" (and a 2-digit price leaves a gap). It is not the `ui-table` class (`style.css:62`).
+  Fix: give the Orderbook table the `ui-table` class (or `px-2` on every cell), right-align the Qty and Price headers with their
+  cells, `tabular-nums`. **Test (changed: the two cells already exist):** `order-qty` and `order-price` cells carry horizontal
+  padding and the same alignment as their header (class assertion), and the row text with `65` and `101.20` has a separator
+  element or padding between them.
   **Sizes:** S, S/M, S. **Depends on refactor:** `LegPicker.vue` is Lane B's file in refactor Phase 5 -> S-09 WAITS (Phase 5).
 
 ## 5. Ownership, lanes, merge order, ADR numbers
@@ -690,16 +741,16 @@ Confidence = that the plan's facts and steps are right as written (not that the 
 | P4 | 80 % | where T-07's percent is turned into rupees for the "Rs" figure | `grep -n "of_max\|rupee" backend/ofo_app/routes/adjustment_plan.py` |
 | P5 | 85 % | other readers of `time_exit` (A-35 approach, `exit_inputs_of`) | `grep -rn "time_exit" backend --include=*.py` |
 | P6 | 85 % | pricing the stop level as a "given price" in `exit_risk` | `python -m pytest tests/test_exit_risk.py -q` (name unverified: `grep -rln "exit_risk" tests tests_app`) |
-| P7 | 65 % | which triggers and approaches are side-specific; the shape label store | `grep -n "shorts\|kind ==" backend/ofo/adjustment/playbook_eval.py backend/ofo/adjustment/approaches.py` |
+| P7 | 75 % | trigger ids T-04, T-06b, T-08, T-11 family, T-12 to T-20b not read one by one (approaches settled: `approaches.py:340-350`, `:708`); the shape label store | `grep -n "shorts\|kind ==" backend/ofo/adjustment/playbook_eval.py backend/ofo/adjustment/approaches.py` |
 | P8 | 70 % | `system_playbook_versions` keyed by type in 0034/0041; admin page assumptions | `sed -n 1,60p backend/ofo_app/alembic/versions/0034_system_playbook_versions.py` |
 | P9 | 70 % | exact `exit_strategy` signature after Phase 4 | `git show origin/refactor/modular-doors:backend/ofo_app/paper_exit.py` (exists only after Phase 4) |
 | P10 | 75 % | `Evaluation.values` is filled on the check route path, not only the worker's | `grep -n "values=" backend/ofo/adjustment/playbook_eval.py` |
 | P11 | 90 % | none | `python -m pytest -c pytest-app.ini tests_app/test_paper_list.py -q` (name unverified) |
-| P12 | 80 % | whether the label is a link | `sed -n 255,300p frontend/src/components/layout/AppHeader.vue` |
+| P12 | 90 % | none (the label is a router-link, `AppHeader.vue:263-269`) | `cd frontend && npx vitest run tests/` (the AppHeader test file; name unverified) |
 | Q1 | 80 % | S-02 cause (not known); held flag in the list row | `grep -rn "6960F002" <API log>`; `python -m pytest -c pytest-app.ini tests_app/test_strategy_delete_app.py -q` |
 | Q2 | 70 % | PaperStrategies after Phase 4; `/positions` row shape | `git show origin/refactor/modular-doors:frontend/src/components/strategy/PaperStrategies.vue \| head -120` |
 | Q3 | 90 % | none | `cd frontend && npx vitest run tests/home.test.js` (then the new click-through test) |
-| Q4 | 55 % | files of S-06, S-09, S-25 not located | `grep -n "breakeven" backend/ofo/outcome/serialize.py; grep -rn "Qty" frontend/src` |
+| Q4 | 80 % | S-09 exact vendor delay after `hold` (live feed only); files now located: S-06 `scenario/levels.py:286`, S-09 `routes/leg_picker.py:407-409`, S-25 `PaperBookPanel.vue:76-85` | `grep -n "breakevens_with_shift" backend/ofo/scenario/levels.py backend/ofo/engine/extremes.py; git grep -n "order-qty" frontend/src` |
 
 Core and proof (kit E3): the first run of Lane P is `tests_app/test_actionable_alerts.py::test_s16_real_sequence` on the 25 Nov
 numbers; a failing core stops the lane. The first run of Lane Q is the Q3 click-through test (smallest, real ids) and the S-02
