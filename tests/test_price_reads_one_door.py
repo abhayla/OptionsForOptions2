@@ -19,6 +19,7 @@ from __future__ import annotations
 
 import ast
 import re
+import shutil
 from collections.abc import Mapping
 from pathlib import Path
 
@@ -158,3 +159,77 @@ def test_exemptions_carry_a_category_and_a_reason():
 
 def test_the_door_itself_is_not_an_exemption():
     assert [k for k in EXEMPT if k[0] == DOOR] == []
+
+
+# ---- mutation tests: the guard goes red where it should and only there -----------------------------------------------
+READ = "def f(p):\n    return p.underlying_quote('NIFTY')\n"
+ENTRY: dict[Key, tuple[str, str]] = {("ofo_app/x.py", "f", "underlying_quote"): ("display", "a shown price")}
+
+
+def test_mutation_bad_sample_gives_exactly_one_problem_naming_the_door():
+    found = problems({"ofo_app/routes/x.py": READ}, exempt={})
+    assert len(found) == 1
+    assert found[0].startswith("price read outside read_market: ofo_app/routes/x.py:2 in f calls underlying_quote().")
+    assert "ofo_app.market_read.read_market" in found[0]
+
+
+def test_mutation_same_sample_in_the_allowed_home_gives_none():
+    assert problems({DOOR: READ}, exempt={}) == []
+
+
+def test_mutation_an_exempt_site_passes():
+    assert problems({"ofo_app/x.py": READ}, exempt=ENTRY) == []
+
+
+def test_mutation_a_reference_and_a_getattr_are_reads():
+    assert len(problems({"ofo_app/x.py": "def f():\n    return read_snapshot\n"}, exempt={})) == 1
+    assert len(problems({"ofo_app/x.py": "def f(p):\n    return getattr(p, 'latest_depth', None)\n"}, exempt={})) == 1
+
+
+@pytest.mark.parametrize("source", [
+    "from ofo.x import underlying_quote as q\n\ndef f():\n    return q('NIFTY')\n",
+    "import ofo.x.underlying_quote as q\n\ndef f():\n    return q('NIFTY')\n",
+])
+def test_mutation_an_aliased_import_gives_one_problem(source):
+    found = problems({"ofo_app/x.py": source}, exempt={})
+    assert len(found) == 1
+    assert found[0].startswith("aliased import: ofo_app/x.py:1")
+
+
+def test_mutation_an_unparsable_file_fails_closed():
+    found = problems({"ofo_app/x.py": "def f(:\n"}, exempt={})
+    assert len(found) == 1
+    assert found[0].startswith("unparsable file")
+
+
+def test_mutation_a_deleted_exempt_site_is_a_stale_exemption():
+    found = problems({"ofo_app/x.py": "def f(p):\n    return None\n"}, exempt=ENTRY)
+    assert found == ["stale exemption: ofo_app/x.py::f no longer calls underlying_quote; delete the entry"]
+
+
+def test_mutation_deleting_a_real_exempt_site_goes_red_with_the_stale_message():
+    sources = load_sources()
+    rel = "ofo_app/routes/ready_made.py"
+    assert "underlying_quote" in sources[rel]
+    sources[rel] = sources[rel].replace("underlying_quote", "spot_value")
+    assert problems(sources) == [
+        "stale exemption: ofo_app/routes/ready_made.py::_spot no longer calls underlying_quote; delete the entry"]
+
+
+def test_mutation_a_provider_call_added_to_a_copy_of_routes_paper_is_named(tmp_path):
+    copy = tmp_path / "backend"
+    (copy / "ofo_app" / "routes").mkdir(parents=True)
+    for rel in load_sources():
+        target = copy / rel
+        target.parent.mkdir(parents=True, exist_ok=True)
+        shutil.copyfile(BACKEND / rel, target)
+    assert problems(load_sources(copy)) == []  # the copy alone is as green as the tree
+    paper = copy / "ofo_app" / "routes" / "paper.py"
+    paper.write_text(paper.read_text(encoding="utf-8")
+                     + "\n\ndef _new_price_reader(provider):\n    return provider.futures_quote('NIFTY')\n",
+                     encoding="utf-8")
+    found = problems(load_sources(copy))
+    assert len(found) == 1
+    assert "ofo_app/routes/paper.py" in found[0]
+    assert "_new_price_reader" in found[0]
+    assert "futures_quote()" in found[0]

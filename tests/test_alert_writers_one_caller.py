@@ -137,3 +137,61 @@ def test_each_home_still_calls_its_writer():
     sites = {rel: {w for _f, _l, w in scan(rel, text)[0]} for rel, text in load_sources().items()}
     called = {w: {rel for rel, ws in sites.items() if w in ws} for w in HOMES}
     assert {w: sorted(called[w]) for w in HOMES if not called[w] & HOMES[w]} == {}
+
+
+# ---- mutation tests: the guard goes red where it should and only there -----------------------------------------------
+CALLS = {
+    "add_alert": ("ofo_app/paper_monitor.py", "async def f(c):\n    return await triggers.add_alert(c, 1)\n"),
+    "open_suggestion": ("ofo_app/background.py", "async def f(c):\n    return await store.open_suggestion(c)\n"),
+    "record_held": ("ofo_app/background.py", "async def f(c):\n    return await store.record_held(c)\n"),
+    NOTIFY: ("ofo_app/worker_watch.py", "async def f():\n    return await notifier.notify('a', 'b')\n"),
+}
+
+
+@pytest.mark.parametrize("writer", sorted(CALLS))
+def test_mutation_a_bad_sample_gives_exactly_one_problem_and_the_home_none(writer):
+    home, source = CALLS[writer]
+    found = problems({"ofo_app/routes/x.py": source}, exempt={})
+    assert len(found) == 1
+    assert found[0].startswith(f"alert writer outside its one caller: ofo_app/routes/x.py:2 in f calls {writer}().")
+    assert home in found[0]
+    assert problems({home: source}, exempt={}) == []
+
+
+def test_mutation_add_alert_is_also_allowed_in_the_exit_door():
+    assert problems({"ofo_app/paper_exit.py": CALLS["add_alert"][1]}, exempt={}) == []
+
+
+@pytest.mark.parametrize("source", [
+    "from ofo_app.paper_trigger_store import add_alert as a\n\nasync def f():\n    return await a()\n",
+    "from ofo_app.playbook_store import open_suggestion as o\n\nasync def f():\n    return await o()\n",
+    "from ofo_app.notifier import notify as n\n\nasync def f():\n    return await n('a')\n",
+    "from ofo_app import notifier as nt\n\nasync def f():\n    return await nt.notify('a')\n",
+])
+def test_mutation_an_aliased_import_gives_one_problem(source):
+    found = problems({"ofo_app/routes/x.py": source}, exempt={})
+    assert len(found) == 1
+    assert found[0].startswith("aliased import: ofo_app/routes/x.py:1")
+
+
+def test_mutation_a_plain_notify_import_and_a_reference_are_sites():
+    plain = "from ofo_app.notifier import notify\n\nasync def f():\n    return await notify('a')\n"
+    assert len(problems({"ofo_app/routes/x.py": plain}, exempt={})) == 1
+    assert len(problems({"ofo_app/routes/x.py": "def f():\n    return add_alert\n"}, exempt={})) == 1
+
+
+def test_mutation_the_monitors_own_notify_is_not_the_notifier():
+    assert problems({"ofo_app/routes/paper.py": "def f():\n    paper_monitor.notify()\n"}, exempt={}) == []
+
+
+def test_mutation_an_unparsable_file_fails_closed():
+    found = problems({"ofo_app/x.py": "def f(:\n"}, exempt={})
+    assert len(found) == 1
+    assert found[0].startswith("unparsable file")
+
+
+def test_mutation_a_deleted_exempt_site_is_a_stale_exemption():
+    entry: dict[Key, tuple[str, str]] = {("ofo_app/routes/x.py", "f", "add_alert"): ("display", "a shown alert")}
+    assert problems({"ofo_app/routes/x.py": CALLS["add_alert"][1]}, exempt=entry) == []
+    found = problems({"ofo_app/routes/x.py": "def f():\n    return None\n"}, exempt=entry)
+    assert found == ["stale exemption: ofo_app/routes/x.py::f no longer calls add_alert; delete the entry"]
