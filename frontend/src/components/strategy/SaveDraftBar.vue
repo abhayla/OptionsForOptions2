@@ -29,7 +29,7 @@ import { newestEntry, newestSeq, restoreEntry, useDeleteFlow } from '@/lib/strat
 import { isCompleted, strategyStatusWord } from '@/lib/strategyStatus'
 import { RUNNING_TAB_EMPTY_MESSAGE, RUNNING_TAB_EMPTY_TITLE } from '@/lib/sharedStateText'
 import {
-  STRATEGY_NAME_DEFAULT, STRATEGY_NAME_MAX, buildSaveBody, buildUpdateBody, canSaveLegs, fetchSavedDraft, legsLine, plainName, renameStrategy, saveAsName, strategyLabel,
+  STRATEGY_NAME_DEFAULT, STRATEGY_NAME_MAX, buildSaveBody, nameLimitText, buildUpdateBody, canSaveLegs, fetchSavedDraft, legsLine, plainName, renameStrategy, saveAsName, strategyLabel,
 } from '@/lib/saveDraft'
 
 const props = defineProps({
@@ -465,6 +465,7 @@ v-if="current" type="button" role="menuitem" data-testid="rename-open"
 id="strategy-name" ref="nameInput" v-model="nameText" data-testid="name-input" type="text" class="mt-1 h-10 w-full rounded border border-line px-2"
                :maxlength="STRATEGY_NAME_MAX" autocomplete="off" />
         <p class="mt-1 text-xs" :class="nameText.length > STRATEGY_NAME_MAX ? 'text-warn' : 'text-ink-muted'" data-testid="name-count">{{ nameText.length }}/{{ STRATEGY_NAME_MAX }} characters</p>
+        <p class="mt-1 text-xs" :class="nameText.length > STRATEGY_NAME_MAX ? 'text-warn' : 'text-ink-muted'" data-testid="name-limit">{{ nameLimitText(nameText.length) }}</p>
       </form>
       <template #actions>
         <button type="button" data-testid="name-cancel" class="h-10 rounded-lg border border-line px-3 font-medium" @click="cancelName">Cancel</button>

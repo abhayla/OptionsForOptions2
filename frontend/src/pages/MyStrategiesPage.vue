@@ -24,7 +24,7 @@ const net = (s) => { const a = afterFigure(s, null); return a.kind === 'after' ?
 const netBreakdown = (s) => afterFigure(s, typeof s.final_pnl_text === 'string' && s.final_pnl_text.trim() !== '' ? s.final_pnl_text.trim() : null).breakdown
 import AfterChargesTap from '@/components/common/AfterChargesTap.vue'
 const notAvailable = (s) => s.after_charges_reason_text ?? s.completed_reason_text ?? 'the server sent no figure'
-import { STRATEGY_NAME_MAX, legsLine, noMatchText, plainName, renameStrategy, searchStrategies, strategyLabel } from '@/lib/saveDraft'
+import { STRATEGY_NAME_MAX, legsLine, nameLimitText, noMatchText, plainName, renameStrategy, searchStrategies, strategyLabel } from '@/lib/saveDraft'
 import { isCompleted, strategyStatusWord } from '@/lib/strategyStatus'
 import { useOrderPath } from '@/lib/orderPath'
 import { useDeleteFlow } from '@/lib/strategyActivity'
@@ -162,6 +162,7 @@ async function confirmRename(row) {
           <form v-if="renaming && renaming.id === s.id" class="col-span-full flex w-full flex-wrap items-center gap-2" data-testid="rename-form" @submit.prevent="confirmRename(s)">
             <input v-model="renaming.text" type="text" class="field" data-testid="rename-input" :maxlength="STRATEGY_NAME_MAX" aria-label="New strategy name" autocomplete="off" />
             <span class="text-xs" :class="renaming.text.length > STRATEGY_NAME_MAX ? 'text-warn' : 'text-ink-muted'" data-testid="rename-count">{{ renaming.text.length }}/{{ STRATEGY_NAME_MAX }}</span>
+            <span class="text-xs" :class="renaming.text.length > STRATEGY_NAME_MAX ? 'text-warn' : 'text-ink-muted'" data-testid="rename-limit">{{ nameLimitText(renaming.text.length) }}</span>
             <button type="submit" class="btn btn-sm btn-primary" :disabled="busy" data-testid="rename-save">Save</button>
             <button type="button" class="btn btn-sm" data-testid="rename-cancel" @click="renaming = null">Cancel</button>
           </form>

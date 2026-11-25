@@ -59,7 +59,11 @@ describe('D-53: the name limit is said where it applies', () => {
   it('My Strategies rename box: the same note and the same three states', async () => {
     const { default: MyStrategiesPage } = await import('@/pages/MyStrategiesPage.vue')
     answers['GET /strategies'] = { strategies: [{ id: 7, underlying: 'NIFTY', status: 'draft', status_word: 'Draft', created_at: '2026-10-27T04:00:00Z', updated_at: '2026-10-27T04:07:00Z', name: '"Plan 7"', leg_count: 4, first_leg: { instrument: 'CE', strike: '22800.00', expiry: '2026-10-13' }, tracked: true, can_delete: true }] }
-    const w = mount(MyStrategiesPage, { attachTo: document.body, global: { stubs: { RouterLink: true } } })
+    const { createRouter, createMemoryHistory } = await import('vue-router')
+    const router = createRouter({ history: createMemoryHistory(), routes: [{ path: '/s', component: MyStrategiesPage, meta: { title: 'My Strategies', parent: 'Strategies' } }] })
+    await router.push('/s')
+    await router.isReady()
+    const w = mount(MyStrategiesPage, { attachTo: document.body, global: { plugins: [router] } })
     await flushPromises()
     await w.get('[data-testid="rename-7"]').trigger('click')
     expect(t(w, 'rename-limit').text()).toBe(ROOM)

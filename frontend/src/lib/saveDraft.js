@@ -35,6 +35,14 @@ export const STRATEGY_NAME_DEFAULT = 'New Strategy'
 export const STRATEGY_NAME_MAX = 20
 export const SAVE_AS_SUFFIX = ' copy'
 
+// pending owner read (25 Nov 2026), D-53: the name box stops at the limit, so the limit is said beside it in three states:
+// room left, exactly at the limit (typing stops), over it (a name stored before ADR-183 keeps its length but cannot be saved as is)
+export function nameLimitText(length) {
+  if (length > STRATEGY_NAME_MAX) return `This name is longer than ${STRATEGY_NAME_MAX} characters: shorten it to save.`
+  if (length === STRATEGY_NAME_MAX) return `That is the ${STRATEGY_NAME_MAX}-character limit: nothing more can be typed.`
+  return `A name can be up to ${STRATEGY_NAME_MAX} characters.`
+}
+
 /** ADR-192 (REQ-134 AC-2): the Save As pre-fill. The original name (the API's quotes stripped; the default when there is none)
  *  is cut from its end, and trailing spaces dropped, so that the original part plus " copy" is 20 characters or fewer. */
 export function saveAsName(shown) {
