@@ -25,7 +25,8 @@ vi.mock('@/services/api', async (importActual) => {
 })
 import { settingsData } from './helpers/servedLots'
 import StrategyBuilderPage from '@/pages/StrategyBuilderPage.vue'
-import { DUP_QUESTION } from '@/lib/legDoor'
+import { DUP_QUESTION, OPPOSITE_QUESTION } from '@/lib/legDoor'
+import { WIRED } from './helpers/phase5Wired'
 import real from './fixtures/outcome-condor.json'
 
 const t = (w, id) => w.find(`[data-testid="${id}"]`)
@@ -88,7 +89,21 @@ describe('D-60 A5: a step onto a contract another leg holds with the same action
     expect(ids(w)[0]).toBe(FREE.instrument_id)
   })
 
-  it('a step onto a contract held with the OTHER action does not ask (two legs, REQ-030 AC-11)', async () => {
+  // ADR-328 (1) amends ADR-319 (4) for steps and moves: the OTHER side now asks (Keep both / Cancel). The page commit (5.5.4) turns
+  // this test on and deletes the `skipIf` one below it, which pins the old silence until then.
+  it.runIf(WIRED.door)('a step onto a contract held with the OTHER action asks first: Keep both / Cancel (ADR-328 (1))', async () => {
+    const w = await openPage()
+    answers['POST /strategies/leg-edit'] = landing(real.legs[1])
+    await all(w, 'strike-plus')[0].trigger('click')
+    await flushPromises()
+    expect(t(w, 'dup-question').text()).toBe(OPPOSITE_QUESTION('NIFTY 13 Oct 23000 CE', 'BUY'))
+    expect(ids(w)).toEqual(BEFORE)
+    await t(w, 'dup-separate').trigger('click')
+    await flushPromises()
+    expect(ids(w)[0]).toBe(real.legs[1].instrument_id)
+  })
+
+  it.skipIf(WIRED.door)('a step onto a contract held with the OTHER action does not ask (two legs, REQ-030 AC-11)', async () => {
     const w = await openPage()
     answers['POST /strategies/leg-edit'] = landing(real.legs[1]) // BUY 23000 CE is held; the stepped leg is a SELL
     await all(w, 'strike-plus')[0].trigger('click')
