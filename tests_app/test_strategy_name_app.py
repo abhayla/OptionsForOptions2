@@ -290,6 +290,23 @@ async def test_ac3_a_stale_revision_is_refused_409_and_writes_nothing(app_engine
             await trans.rollback()
 
 
+async def test_d65_a_rename_without_a_revision_is_refused_422_and_writes_nothing(app_engine):
+    """GC-ICLIVE D-65: the route still requires the revision (a null one is the 24 Nov refusal "values missing or not in
+    the expected form"); the browser's one rename call reads it first, the server enforces it on every path."""
+    async with app_engine.connect() as conn:
+        trans = await conn.begin()
+        try:
+            _, stored = await _with_draft(conn, user := _user())
+            before = await _snapshot(conn, stored.id)
+            async with _client(_app(_ConnMaker(conn), user)) as ac:
+                for sent in ({"name": "Late", "expected_revision": None}, {"name": "Late"}):
+                    refused = await ac.patch(f"/strategies/{stored.id}/name", json=sent)
+                    assert refused.status_code == 422, refused.text
+            assert await _snapshot(conn, stored.id) == before
+        finally:
+            await trans.rollback()
+
+
 @pytest.mark.parametrize("name,code", [("", EMPTY_NAME_CODE), ("   ", EMPTY_NAME_CODE),
                                        ("x" * 21, INVALID_NAME_CODE), ("x" * 41, INVALID_NAME_CODE)])
 async def test_ac3_a_rename_follows_the_same_name_rules(app_engine, name, code):

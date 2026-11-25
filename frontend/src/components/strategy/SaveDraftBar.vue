@@ -395,6 +395,7 @@ async function confirmPaper(orders, held = null) {
     planFor.value = paperTarget.value // GC-ADJ2 step 4 (REQ-161 AC-1): the strategy exists now, so its plan sheet opens
     clearTimeout(paperToastTimer)
     paperToastTimer = setTimeout(() => { paperToast.value = null }, PAPER_TOAST_MS)
+    await refresh() // D-65: the Saved tab's word is read again (an order now exists), so it says what My Strategies says
     emit('paper-added', paperTarget.value)
   } catch {
     paperOpen.value = true

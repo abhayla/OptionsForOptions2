@@ -65,7 +65,14 @@ export function plainName(shown) {
  *  the list and the builder. Returns the reply (id, quoted name, revision unchanged); throws the mapped error on a refusal and
  *  an Error when the reply carries no name (fail closed: nothing is shown as renamed). `name` is sent as typed; the server owns the rule. */
 export async function renameStrategy(client, id, revision, name) {
-  const done = (await client.patch(`/strategies/${id}/name`, { name, expected_revision: revision })).data
+  // D-65: a paper trade opened in Drafts Mode holds no revision (the paper book has none): read the saved copy's revision first,
+  // never send null (the server refuses it as "missing or not in the expected form"); an unreadable answer sends nothing
+  let held = revision
+  if (!Number.isInteger(held)) {
+    held = (await client.get(`/strategies/${id}`)).data?.revision
+    if (!Number.isInteger(held)) throw new Error('unreadable answer')
+  }
+  const done = (await client.patch(`/strategies/${id}/name`, { name, expected_revision: held })).data
   if (typeof done?.name !== 'string') throw new Error('unreadable answer')
   return done
 }
