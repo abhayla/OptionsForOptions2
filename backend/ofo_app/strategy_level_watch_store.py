@@ -19,11 +19,10 @@ from sqlalchemy import text
 from sqlalchemy.exc import IntegrityError
 from sqlalchemy.ext.asyncio import AsyncConnection, AsyncSession
 
-from ofo_app import settings_store
+from ofo_app import settings_store, strategy_store
 
 Session = AsyncSession | AsyncConnection
 
-_OWNED = text("SELECT 1 FROM public.strategies WHERE id = :s AND user_ref = :u AND deleted_at IS NULL")
 _LATEST = text(
     "SELECT DISTINCT ON (direction) direction, level FROM public.strategy_level_watch "
     "WHERE user_ref = :u AND strategy_id = :s ORDER BY direction, effective_from DESC"
@@ -53,7 +52,7 @@ def _user(user_ref: object) -> str:
 
 
 async def _owned(session: Session, user: str, strategy_id: int) -> None:
-    if (await session.execute(_OWNED, {"s": strategy_id, "u": user})).first() is None:
+    if not await strategy_store.owns(session, user, strategy_id):
         raise WatchNotFound(f"strategy {strategy_id} is not this user's")
 
 

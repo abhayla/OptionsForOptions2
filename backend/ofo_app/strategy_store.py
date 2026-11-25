@@ -172,6 +172,9 @@ _LIST = text(
     "CROSS JOIN LATERAL (SELECT coalesce((SELECT v.definition FROM public.strategy_versions AS v "
     "WHERE v.strategy_id = s.id AND v.state = 'active'), s.definition) AS definition) AS d "
     "WHERE s.user_ref = :user_ref AND s.deleted_at IS NULL ORDER BY s.id")
+#: The ONE ownership read (modular-doors Phase 7 R2): the strategy exists, is this user's and is not hidden. Another
+#: user's, a hidden and a missing strategy answer alike (False), so the caller keeps its own error.
+_OWNED = text("SELECT 1 FROM public.strategies WHERE id = :s AND user_ref = :u AND deleted_at IS NULL")
 _RENAME = text("UPDATE public.strategies SET name = :name WHERE id = :id RETURNING id, name, revision, updated_at")
 _INSERT_HISTORY = text(
     "INSERT INTO public.strategy_history (strategy_id, change_summary, definition, definition_schema_version) "
@@ -782,3 +785,8 @@ async def history(conn: Any, user_ref: str, strategy_id: int) -> list[sf.History
         out.append(sf.HistoryEntry(int(r.seq), r.at, r.change_summary, await _read(conn, r.definition_text),
                                    restorable=is_restore_target(r.change_summary, sent_nothing)))
     return out
+
+
+async def owns(conn: Any, user_ref: str, strategy_id: int) -> bool:
+    """True only for a visible (not soft-deleted) strategy of ``user_ref``; no error, no lock, no write."""
+    return (await conn.execute(_OWNED, {"s": strategy_id, "u": user_ref})).first() is not None
