@@ -63,7 +63,8 @@ export const firedAtText = (stamp) => `Fired at ${stamp}` // the stamp is today'
 export const liveNowText = (value, asOf) => (asOf ? `Now ${value} (${asOf})` : `Now ${value}`) // ADR-309: the value at the check, with its own time (the server's "As of ..." text)
 // the reason is the server's sentence or its four-part message object: said() takes the sentence; none -> no dangling colon
 export const ruleNotCheckedText = (reason) => (said(reason) ? `Rule not checked: ${said(reason)}` : 'Rule not checked')
-export const ruleEarlierText = (text, outcome, stamp) => `${text} - ${outcome}${stamp ? `, fired ${stamp}` : ''}`
+// D-26: a lapsed (or otherwise closed) rule says when it closed, beside when it fired
+export const ruleEarlierText = (text, outcome, stamp, closedStamp = null) => `${text} - ${outcome}${closedStamp ? ` at ${closedStamp}` : ''}${stamp ? `, fired ${stamp}` : ''}`
 export const OPPORTUNITY_PAGE_SIZE = 25
 // u511: N counts every row the server returned in its one read (the list has no server paging)
 export const ROWS_ONE_TEXT = 'Showing 1 of 1 row'

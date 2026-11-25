@@ -61,7 +61,7 @@
       <p v-if="settledRecords.state === 'failed'" class="mt-1 text-xs text-red-700" data-testid="rules-earlier-failed">{{ RULES_LOAD_FAILED_TEXT }}</p>
       <ul v-if="notChecked.length || earlier.length" class="mt-1 space-y-0.5 text-xs text-ink-muted" data-testid="rules-line">
         <li v-for="n in notChecked" :key="n.rule_id" data-testid="rules-not-checked">{{ ruleNotCheckedText(n.reason) }}</li>
-        <li v-for="e in earlier" :key="e.id" data-testid="rules-earlier">{{ ruleEarlierText(e.text, e.outcome_text, istStamp(e.shown_at)) }}</li>
+        <li v-for="e in earlier" :key="e.id" data-testid="rules-earlier">{{ ruleEarlierText(e.text, e.outcome_text, istStamp(e.shown_at), istStamp(e.closed_at)) }}</li>
         <li v-if="earlierMore" data-testid="rules-earlier-more">{{ earlierMoreText(earlierMore) }}</li>
       </ul>
       <p v-if="typed && withheldText" class="mt-1 text-xs text-ink-muted" data-testid="check-withheld">{{ withheldText }}</p>
@@ -69,7 +69,7 @@
       <p v-if="typed && check.as_of_text" class="mt-1 text-xs text-ink-muted" data-testid="check-as-of">{{ check.as_of_text }}</p>
       <p v-if="typed && checkStale" class="mt-1 text-xs text-red-700" data-testid="check-stale">{{ checkStaleLine(checkRefusal) }}</p>
       <p v-for="a in alreadyTrue" :key="a.rule_id" class="mt-1 text-xs text-ink-muted" data-testid="playbook-already-true">{{ a.wording?.what_happened }} {{ a.condition }}</p>
-      <button v-if="view.detections.length || flags.length" ref="reviewBtn" type="button" class="mt-2 rounded border border-line bg-surface px-2 py-1 text-xs font-medium" data-testid="review-adjustment" @click="openDrawer">{{ REVIEW_BUTTON_TEXT }}</button>
+      <button v-if="view.detections.length || flags.length || liveHere" ref="reviewBtn" type="button" class="mt-2 rounded border border-line bg-surface px-2 py-1 text-xs font-medium" data-testid="review-adjustment" @click="openDrawer">{{ REVIEW_BUTTON_TEXT }}</button>
     </div>
     <!-- GC-ADJ2 step 6 (REQ-163): the entry, every adjustment and the whole-trade totals; read when opened -->
     <AdjustSteps :strategy-id="savedId" />
@@ -96,7 +96,7 @@ import api, { NEUTRAL_PARTS } from '@/services/api'
 import { NOT_CONNECTED_TEXT, PAPER_PNL_PREFIX, readTracking, sharedTotal } from '@/lib/tracking'
 import { EARLIER_SHOWN_MAX, RULES_LOAD_FAILED_TEXT, checkStaleLine, earlierMoreText, firedAtText, liveNowText, ruleEarlierText, ruleNotCheckedText } from '@/lib/sharedStateText'
 import { istStamp } from '@/lib/displayFormat'
-import { settledRecords } from '@/lib/paperAlerts'
+import { openRecords, settledRecords } from '@/lib/paperAlerts'
 import { said } from '@/lib/playbookEditor'
 import { usePaperRefresh } from '@/lib/usePaperRefresh'
 
@@ -138,6 +138,9 @@ const notChecked = computed(() => (typed.value ? (check.value.results ?? []) : [
 // this trade's settled records only, newest first, at most EARLIER_SHOWN_MAX; the app's one read of the records (header), never a second fetch
 const allEarlier = computed(() => [...(settledRecords.byStrategy[props.savedId] ?? [])].sort((a, b) => Date.parse(b.shown_at) - Date.parse(a.shown_at)))
 const earlier = computed(() => allEarlier.value.slice(0, EARLIER_SHOWN_MAX))
+// D-26: a live idea (an open record of this trade in the app's one read) keeps the Review button even when this panel's own
+// rule check gave no flag (failed, not read yet): the button is the way to the approaches
+const liveHere = computed(() => openRecords.list.some((o) => o.strategy_id === props.savedId))
 const earlierMore = computed(() => allEarlier.value.length - earlier.value.length)
 const firedClock = (f) => istStamp(f.fired_at)
 const flagIds = computed(() => flags.value.map((f) => f.suggestion_id).filter((x) => x !== null && x !== undefined))

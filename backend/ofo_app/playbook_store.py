@@ -237,6 +237,19 @@ class Suggestion:
         return "completed" if len(set(placed)) == legs else "partly_completed"
 
     @property
+    def closed_at(self) -> datetime | None:
+        """D-26: when the record left "open" (its last timeline entry's ``at``, written by the store's UPDATE); None
+        while open or when the stored time is missing or unreadable (never a guess)."""
+        if self.outcome == "open" or not self.timeline or not isinstance(self.timeline[-1], dict):
+            return None
+        raw = self.timeline[-1].get("at")
+        try:
+            found = datetime.fromisoformat(raw) if isinstance(raw, str) else None
+        except ValueError:
+            return None
+        return found if found is not None and found.tzinfo is not None else None
+
+    @property
     def lapse_reason(self) -> str | None:
         """condition_stopped / strategy_closed / superseded_by_worse on a lapsed record (its last timeline entry)."""
         return self.timeline[-1].get("reason") if self.outcome == "lapsed" and self.timeline else None

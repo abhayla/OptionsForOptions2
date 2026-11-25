@@ -73,6 +73,7 @@ class OpportunityOut(ApiModel):
     outcome_text: CatalogueText
     detail: CatalogueText | None  # a dismiss reason or why it lapsed
     can_act: bool  # open: Dismiss and acted on are allowed
+    closed_at: datetime.datetime | None = None  # D-26: when it lapsed / was dismissed / acted on; None while open
 
 
 class GroupOut(ApiModel):
@@ -184,7 +185,8 @@ def _record(s: store.Suggestion, paper: bool) -> dict:
     return {"id": s.id, "rule_id": s.rule_id, "trigger_id": s.trigger_id,
             "stage": stage_name_text(s.stage), "value": s.value, "threshold": s.threshold,
             "condition": condition_text(s), "shown_at": s.shown_at, "outcome": s.shown_outcome,
-            "outcome_text": outcome_text(s, paper), "detail": _detail(s), "can_act": s.outcome == "open"}
+            "outcome_text": outcome_text(s, paper), "detail": _detail(s), "can_act": s.outcome == "open",
+            "closed_at": s.closed_at}
 
 
 def held_body(rows: list[store.HeldInboxRow]) -> list[dict]:
