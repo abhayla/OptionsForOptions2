@@ -905,14 +905,22 @@ def _target_line(trigger_id: str, threshold: str, target: TargetFigures | None) 
 
 
 def condition_line(trigger_id: str, label: str | None, unit: str | None, value: str, threshold: str,  # noqa: PLR0913
-                   beyond: tuple[str, Decimal, Decimal] | None = None, target: TargetFigures | None = None) -> Any:
+                   beyond: tuple[str, Decimal, Decimal] | None = None, target: TargetFigures | None = None,
+                   side: str | None = None) -> Any:
     """The condition in words. ADR-294 (2): T-07 with ``target`` figures -> the target sentence (profit before charges,
     the target, the after-charges result); anything else, or a figure the slots refuse -> the percent line."""
     try:
         sentence = _target_line(trigger_id, threshold, target)
     except (TypeError, ValueError, ArithmeticError):  # a refused figure: the percent line (fail visible)
         sentence = None
-    return sentence if sentence is not None else _percent_line(trigger_id, label, unit, value, threshold, beyond)
+    line = sentence if sentence is not None else _percent_line(trigger_id, label, unit, value, threshold, beyond)
+    if trigger_id != "T-01" or beyond is not None or side not in ("CE", "PE"):  # D-58: a plain T-01 line, known side
+        return line
+    try:
+        said = "adjust_condition_side_put" if side == "PE" else "adjust_condition_side_call"
+        return render_explanation(said, line=line)
+    except (TypeError, ValueError):  # a line the slot refuses: the plain line (fail visible)
+        return line
 
 
 def _percent_line(trigger_id: str, label: str | None, unit: str | None, value: str, threshold: str,  # noqa: PLR0913

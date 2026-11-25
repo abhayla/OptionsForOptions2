@@ -1645,6 +1645,9 @@ _EXPLANATIONS: tuple[ExplanationTemplate, ...] = (
     ExplanationTemplate("adjust_condition_line_t01_beyond_pe", "values_seen",
                         "{label}: spot is beyond the sold {strike} PE by {points} points",
                         {"label": PlaybookTriggerLabel, "strike": WholePoints, "points": Points}),
+    # D-58 (pending owner read): after an adjustment the T-01 line says which side is tested (its short is nearer spot)
+    ExplanationTemplate("adjust_condition_side_put", "values_seen", "{line} (put side tested)", {"line": Explained}),
+    ExplanationTemplate("adjust_condition_side_call", "values_seen", "{line} (call side tested)", {"line": Explained}),
     # last resort (fail visible): the trigger id alone when no line can carry its value
     ExplanationTemplate("adjust_condition_line_id", "values_seen", "{label}", {"label": PlaybookTriggerLabel}),
     # ADR-221: the T-19 flag line names the cheapest approach the playbook offers and its Compare cost

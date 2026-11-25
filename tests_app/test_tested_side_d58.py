@@ -7,6 +7,7 @@ from decimal import Decimal
 
 import pytest
 from ofo.adjustment import playbook_eval as pe
+from ofo.strategy.stored_form import shown_broker, shown_name
 from ofo_app import adjustment_check as check
 from ofo_app.routes import adjustment_check as route
 
@@ -21,7 +22,8 @@ def test_the_nearest_short_names_the_side():
     assert pe.nearest_short_side(D("25700"), SHORTS) == "CE"  # a tie is the call side, as in approaches.tested_side
 
 
-@pytest.mark.parametrize("shorts", [(), (pe.ShortLeg(D("25600"), None, None, None),), (pe.ShortLeg(D("25600"), None, None, "FUT"),)])
+@pytest.mark.parametrize("shorts", [(), (pe.ShortLeg(D("25600"), None, None, None),),
+                                    (pe.ShortLeg(D("25600"), None, None, "FUT"),)])
 def test_no_known_side_gives_none(shorts):
     assert pe.nearest_short_side(D("25640"), shorts) is None
 
@@ -42,7 +44,7 @@ def test_no_side_no_suffix_and_a_breached_line_is_left_alone():
 def test_the_check_route_takes_the_side_from_the_flags_own_hit():
     hit = pe.Hit("T-01", D("0.2335"), D("0.5"), "le", True, None, "PE")
     flag = pe.Flag("R1", "T-01", "Early", D("0.2335"), D("0.5"), "le", (hit,), None)
-    body = {"triggers": [{"id": "T-01", "label": LABEL, "unit": "%"}]}
+    body = {"triggers": {"T-01": {"label": LABEL, "unit": "%"}}}
     assert str(route._condition(flag, body)).endswith("(put side tested)")
     bare = pe.Flag("R1", "T-01", "Early", D("0.2335"), D("0.5"), "le", (), None)
     assert "tested" not in str(route._condition(bare, body))
@@ -52,6 +54,5 @@ def test_the_check_route_takes_the_side_from_the_flags_own_hit():
 # (ADR-003: the user's own words are quoted word for word in a labelled field). The one place that removes the pair for
 # display is the front end's plainName, so the server must not strip it too (that would break every other reader).
 def test_stored_text_has_no_quotes_and_the_server_serves_exactly_one_pair():
-    from ofo.strategy.stored_form import shown_broker, shown_name
     assert str(shown_name("Condor C3")) == '"Condor C3"'
     assert str(shown_broker("Zerodha")) == '"Zerodha"'

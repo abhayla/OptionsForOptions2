@@ -3975,6 +3975,14 @@
     "sha256": "3d17720cda147ab5288393772b59ae8ab25d246b61971c17164ff9ccde2a80c1",
     "reviewed": "pending owner read"
   },
+  "explanation:adjust_condition_side_put": {
+    "sha256": "45d154e934750e087946223f80790465a2d710b3eea9d37b0479fef17869f0ab",
+    "reviewed": "pending owner read"
+  },
+  "explanation:adjust_condition_side_call": {
+    "sha256": "ee8f5c3f58a09c8c9daad8f6bbf0bc36ea3969de19d35b754dbc282554239a41",
+    "reviewed": "pending owner read"
+  },
   "explanation:adjust_condition_line_t01_beyond_pe": {
     "sha256": "9ccacd5b70330d566c79a7cdbc8b726db0c8c85fc8fffc639c6c065b68954559",
     "reviewed": "pending owner read"

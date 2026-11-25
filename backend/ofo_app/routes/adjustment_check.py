@@ -180,7 +180,8 @@ def _condition(r: pe.Flag | pe.AlreadyTrue, body: Mapping | None,
     limit = str(r.threshold) if threshold is None else str(threshold)
     if r.trigger_id == "T-19" and cheapest is not None:
         return check.condition_line_t19(label, shown, limit, *cheapest)
-    return check.condition_line(r.trigger_id, label, unit, shown, limit, r.beyond, target)
+    side = next((h.side for h in getattr(r, "members", ()) if h.trigger_id == r.trigger_id), None)  # D-58: tested side
+    return check.condition_line(r.trigger_id, label, unit, shown, limit, r.beyond, target, side)
 
 
 def result_out(r: pe.Result, flag_wording: Any, opened: dict[str, int] | None = None, *,  # noqa: PLR0913
