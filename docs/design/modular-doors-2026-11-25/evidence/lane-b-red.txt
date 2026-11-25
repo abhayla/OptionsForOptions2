@@ -355,11 +355,11 @@ Error: Failed to resolve import "@/composables/useLegDoor" from "tests/leg-door-
  FAIL  tests/builder-draft-replace.test.js > ADR-328 (2): a replacing draft link on a mounted builder asks first > the dialog says "Replace the 3 legs in the builder?"; Cancel keeps the 3 legs and the URL names the old draft
 AssertionError: expected false to be true // Object.is equality
 
-[32m- Expected[39m
-[31m+ Received[39m
+- Expected
++ Received
 
-[32m- true[39m
-[31m+ false[39m
+- true
++ false
 
  ❯ tests/builder-draft-replace.test.js:62:51
      60|     const before = idsOf(w)
@@ -427,10 +427,10 @@ Error: Cannot call trigger on an empty DOMWrapper.
  FAIL  tests/leg-duplicate-d60.test.js > Phase 5: legDoor opposite option > opposite: ask asks with kind "opposite"; Cancel returns null
 AssertionError: expected { legs: [ { id: 'a', …(3) } ], …(1) } to be null
 
-[32m- Expected:[39m 
+- Expected: 
 null
 
-[31m+ Received:[39m 
++ Received: 
 {
   "kept": [
     {
