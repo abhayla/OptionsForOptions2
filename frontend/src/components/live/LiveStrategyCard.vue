@@ -38,6 +38,7 @@ const data = ref(null) // the newest outcome answer, as the server sent it
 const errorParts = ref(NEUTRAL_PARTS)
 let gone = false // set on unmount: a late push or answer is dropped
 let draft = null
+const expiredText = ref(null) // D-40: the server's sentence for a trade whose open legs are on expired contracts
 const notLive = ref(false) // issue #500: a leg's stored contract is no longer live; nothing is priced
 const wasLive = ref(false) // a live push arrived at least once: from then on a socket that is not live pauses the card
 let seq = 0 // only the newest REST answer is shown
@@ -98,6 +99,14 @@ async function begin() {
   try {
     // issue 16: a running trade follows the legs it holds NOW (its paper book's net position), not the legs it was saved with
     const read = isRunning(props.strategy) ? await readPaperBook(api, props.strategy.id) : { kind: 'plan' }
+    if (gone) return
+    if (read.kind === 'unpriced') { // D-40: the open legs are on expired contracts; show the server's own reason, price nothing
+      paperBook.value = read.book
+      expiredText.value = serverText(read.book.unpriced_text) ?? serverText(read.book.pause_reason_text)
+      state.value = 'unpriced'
+      settle()
+      return
+    }
     const legs = read.kind === 'paper' ? read.net : await fetchSavedLegs(api, props.strategy.id)
     if (gone) return
     // a real trade has no practice book and the server sends no current-legs field for it: the saved legs, said plainly
@@ -187,7 +196,7 @@ class="rounded border border-line bg-surface p-4" data-testid="live-strategy-car
     <p v-if="state === 'queued'" class="mt-2 text-sm text-ink-muted" data-testid="live-queued">{{ CARD_QUEUED_TEXT }}</p>
     <p v-else-if="state === 'loading'" class="mt-2 text-sm text-ink-muted" data-testid="live-loading">Loading this strategy...</p>
     <ErrorMessage v-else-if="state === 'error'" class="mt-2" :parts="errorParts" compact prefix="live-error" data-testid="live-error" />
-    <p v-else-if="state === 'unpriced'" class="mt-2 text-sm" data-testid="live-status-label" :data-not-live="notLive ? 'true' : 'false'">{{ notLive ? LEG_NOT_LIVE_LABEL : NOT_CONNECTED_LABEL }}</p>
+    <p v-else-if="state === 'unpriced'" class="mt-2 text-sm" data-testid="live-status-label" :data-not-live="notLive ? 'true' : 'false'">{{ expiredText ?? (notLive ? LEG_NOT_LIVE_LABEL : NOT_CONNECTED_LABEL) }}</p>
 
     <template v-else>
       <p v-if="notConnected || refused || fromEntries" class="mt-2 text-sm font-medium" data-testid="live-status-label">{{ data.status_label }}</p>

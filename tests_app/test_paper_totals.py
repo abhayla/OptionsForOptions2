@@ -177,14 +177,22 @@ async def test_same_first_order_time_falls_back_to_the_newest_id(db):
 
 # --- answer states ----------------------------------------------------------------------------------------------------
 
-async def test_one_open_contract_not_live_drops_unbooked_total_and_decay_but_keeps_booked(db):
+async def test_one_expired_contract_leaves_its_strategy_out_of_every_figure_and_says_so(db):
+    """D-40 (ADR-324): strategy 48 holds the retired contract, so it is left out; 50 and 46 can be priced and every
+    header figure (booked too, so Total = Booked + Unbooked) is the sum over those two."""
     app, _provider, _clock, _last, sid = await _seed_three(db)
     await db.execute(text(_RETIRE), {"id": sid["contracts"][1]})  # held only by strategy 48 (SELL 65)
-    totals = (await _list(app))["totals"]
-    assert (totals["booked"], totals["unbooked"], totals["total"], totals["totals_reason"]) == (
-        "731.25", None, None, "contract_retired")
-    assert (totals["unbooked_text"], totals["total_text"], totals["decay"], totals["decay_reason"]) == (
-        None, None, None, "contract_retired")
+    body = await _list(app)
+    totals = body["totals"]
+    rows = {s["strategy_id"]: s for s in body["strategies"]}
+    assert rows[sid["48"]]["unbooked"] is None
+    booked = D(rows[sid["50"]]["booked"]) + D(rows[sid["46"]]["booked"])
+    unbooked = D(rows[sid["50"]]["unbooked"]) + D(rows[sid["46"]]["unbooked"])
+    assert (totals["booked"], totals["unbooked"], totals["total"]) == (
+        str(booked), str(unbooked), str(booked + unbooked))
+    assert totals["booked"] == "2236.00"  # 731.25 over all three, minus 48's booked -1,504.75
+    assert (totals["totals_reason"], totals["decay_reason"], totals["decay"] is None) == (None, None, False)
+    assert (totals["left_out_count"], totals["left_out_text"]) == (1, "1 strategy left out: its contract has expired.")
 
 
 async def test_stale_prices_make_the_totals_absent_with_prices_not_live(db):
@@ -218,6 +226,7 @@ async def test_a_fully_exited_strategy_counts_in_booked_and_decays_nothing(db):
                               "totals_reason_text": None, "decay_reason_text": None,
                               "charges_reason_text": str(reason_text("rates_unavailable")),
                               "totals_as_of": None,  # GC-LIVE L3a: no paused book, no pause time
+                              "left_out_count": 0, "left_out_text": None,  # D-40: nothing expired
                               # ADR-301 to ADR-311: the after-charges figures wait for the same missing rates
                               "total_after": None, "total_after_text": None, "booked_after": None,
                               "booked_after_text": None, "unbooked_after": None, "unbooked_after_text": None,
@@ -240,6 +249,7 @@ async def test_no_paper_strategies_answers_an_empty_list_and_zero_totals(db):
                               "charges_text": str(render_explanation("paper_charges", amount=D("0"))),
                               "charges_reason": None, "totals_reason_text": None, "decay_reason_text": None,
                               "charges_reason_text": None, "totals_as_of": None,
+                              "left_out_count": 0, "left_out_text": None,
                               # ADR-301 to ADR-311: nothing traded, so every after-charges figure is zero
                               "total_after": "0.00", "total_after_text": zero, "booked_after": "0.00",
                               "booked_after_text": zero, "unbooked_after": "0.00", "unbooked_after_text": zero,

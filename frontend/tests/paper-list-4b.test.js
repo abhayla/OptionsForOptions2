@@ -243,6 +243,19 @@ describe('Paper tab from GET /paper/strategies (the real reply)', () => {
     expect(t(w, 'paper-confirm-button').element.disabled).toBe(false)
   })
 
+  it('D-40: the header shows the server\'s left-out line as sent, and no line when none was left out', async () => {
+    const LINE = '2 strategies left out: their contracts have expired.'
+    const d = clone()
+    Object.assign(d.totals, { left_out_count: 2, left_out_text: LINE })
+    answers['GET /paper/strategies'] = ok(d)
+    const w = await show()
+    expect(t(w, 'totals-left-out').text()).toBe(LINE)
+    expect(t(w, 'totals-total').text()).toBe(REAL.totals.total_text) // the figures are the server's, not blanked
+    const none = clone()
+    Object.assign(none.totals, { left_out_count: 0, left_out_text: null })
+    answers['GET /paper/strategies'] = ok(none)
+    expect(has(await show(), 'totals-left-out')).toBe(false)
+  })
   it('totals_reason replaces a missing figure with the server reason', async () => {
     const d = clone()
     Object.assign(d.totals, { total_text: null, total: null, totals_reason: 'prices_not_live', totals_reason_text: 'Prices are not live', decay_text: null, decay: null, decay_reason: 'no_iv', decay_reason_text: 'No Greeks yet' })

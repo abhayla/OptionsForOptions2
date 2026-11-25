@@ -161,6 +161,7 @@ function readTotals(t) {
     unbookedAfter: afterFigure(t, text(t.unbooked_text), totalReason, 'unbooked_after_text', ['close']),
     total: text(t.total_text), booked: text(t.booked_text), unbooked: text(t.unbooked_text), decay: text(t.decay_text),
     charges: text(t.charges_text), chargesReason: text(t.charges_reason_text),
+    leftOut: text(t.left_out_text), // D-40 (ADR-324): the server's line saying how many expired strategies the figures leave out
     totalReason, decayReason: t.decay_reason === 'prices_not_live' ? withAsOf(text(t.decay_reason_text), t.totals_as_of) : text(t.decay_reason_text),
   }
 }

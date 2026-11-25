@@ -50,3 +50,23 @@ which adds figures and removes nothing).
   touches no direct owner answer. Not recommended: keep the before-charges test only (the 23 Nov complaint stays).
 
 Spec basis: ADR-238 (6); ADR-294 (3), (4); ADR-263; contract GC-ICLIVE-C (D-25).
+
+## Q3 (D-40): which figures does the paper page header add up when some strategies sit on expired contracts?
+
+Business call: the spec does not say; the Part D run took option A (ADR-324, PENDING OWNER READ) and kept the old
+scenario strategies.
+
+- **Option A (built):** every header figure (Total, Booked, Unbooked, Decay, Charges, after-charges figures) is the sum
+  over the strategies that can be priced. A strategy with an open leg on an expired contract is named as expired on its
+  own row and left out; the header adds "N strategies left out: their contracts have expired." Total = Booked +
+  Unbooked always holds.
+- **Option B:** only Total, Unbooked and Decay leave the expired strategies out; Booked and Charges keep adding every
+  strategy (the 23 Nov screen: Booked +10,947.43, Charges 6,140.07 over all of them). Total would then not equal
+  Booked + Unbooked, and the header would mix two sets.
+- **Real case (23 Nov):** PATH-60 and PATH-61 (old scenario strategies) hold open legs on expired contracts, so Total,
+  Unbooked and Decay were dashes with "This contract has expired", while Booked and Charges summed every strategy.
+- **Recommendation:** A. One set under every figure, no partial sum (REQ-109 AC-5), and the line says how many were left
+  out. B keeps Booked and Charges larger but cannot be added up by the trader. Deleting the old strategies stays the
+  owner's call (not done).
+
+Spec basis: REQ-109 AC-5; ADR-311; ADR-210; ADR-324.

@@ -2057,6 +2057,10 @@ _EXPLANATIONS: tuple[ExplanationTemplate, ...] = (
     ExplanationTemplate("unpriced_legs", "values_seen", "No price for: {legs}.", {"legs": Explained}),
     ExplanationTemplate("unpriced_legs_expired", "values_seen", "Expired contracts have no price: {legs}.",
                         {"legs": Explained}),
+    # D-40 (ADR-324): the practice page's header totals leave out a strategy whose open contract has expired
+    ExplanationTemplate("paper_totals_left_out_one", "values_seen", "1 strategy left out: its contract has expired."),
+    ExplanationTemplate("paper_totals_left_out_many", "values_seen",
+                        "{count} strategies left out: their contracts have expired.", {"count": Count}),
     ExplanationTemplate("paper_reason_multi_expiry", "values_seen",
                         "Profit left and Loss left are not worked out: the open contracts have different expiries."),
     ExplanationTemplate("paper_extremes_prices_not_live", "values_seen",

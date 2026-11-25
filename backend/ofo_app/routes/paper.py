@@ -457,6 +457,9 @@ class PaperTotalsOut(ApiModel):
     totals_reason_text: CatalogueText | None = None  # ADR-210: the sentence beside each dash above
     decay_reason_text: CatalogueText | None = None
     charges_reason_text: CatalogueText | None = None
+    # D-40 (ADR-324): strategies whose open contract has expired are left out of every figure above, and counted here
+    left_out_count: int = 0
+    left_out_text: CatalogueText | None = None
 
 
 class PaperListOut(ApiModel):
@@ -1003,7 +1006,14 @@ async def list_paper_strategies(db: Annotated[Any, Depends(get_db)],  # noqa: PL
                               "held": _held_out(held_rows.get(b.strategy_id)),
                               "status_word": _paper_word(b.status, figures["positions"]),
                               "open_count": open_legs, "position_count": len(figures["positions"])})
-    return PaperListOut.model_validate({"strategies": out, "totals": _totals(out, decays), "answered_at": now()})
+    kept = [i for i, s in enumerate(out) if not _expired_open(s)]  # D-40: the strategies that can be priced
+    totals = _totals([out[i] for i in kept], [decays[i] for i in kept], len(out) - len(kept))
+    return PaperListOut.model_validate({"strategies": out, "totals": totals, "answered_at": now()})
+
+
+def _expired_open(strategy: Mapping[str, Any]) -> bool:
+    """D-40 (ADR-324): an open leg is on an expired contract (ADR-311: retired, or its expiry is past)."""
+    return any(u["expired"] for u in strategy["unpriced_legs"])
 
 
 def _paper_word(status: str, positions: Sequence[Mapping[str, Any]]) -> str:
@@ -1030,9 +1040,10 @@ def _decay(figures: dict, found: dict[int, tracked_contracts.TrackedContract], s
     return paper_decay.book_decay(snapshot, underlying, contracts)
 
 
-def _totals(strategies: Sequence[dict], decays: Sequence[paper_decay.Decay]) -> dict:
-    """The exact sums over every strategy. Unbooked and total are absent with the first absent strategy's reason, and
-    Decay with the first absent book's reason: never a partial sum shown as a total (REQ-109 AC-5)."""
+def _totals(strategies: Sequence[dict], decays: Sequence[paper_decay.Decay], left_out: int = 0) -> dict:
+    """The exact sums over every strategy that can be priced (the ``left_out`` expired ones are only counted).
+    Unbooked and total are absent with the first absent strategy's reason, and Decay with the first absent book's
+    reason: never a partial sum shown as a total (REQ-109 AC-5)."""
     got = book_totals([(s["booked"], s["unbooked"]) for s in strategies], [d.value for d in decays])
     paused = next((s for s in strategies if s["unbooked"] is None), None)
     missing = next((d for d in decays if d.value is None), None)
@@ -1046,7 +1057,15 @@ def _totals(strategies: Sequence[dict], decays: Sequence[paper_decay.Decay]) -> 
             "totals_reason": totals_reason, "totals_reason_text": reason_text(totals_reason),
             "decay": decay, "decay_text": _signed(decay), "decay_reason": decay_reason,
             "decay_reason_text": reason_text(decay_reason),
+            "left_out_count": left_out, "left_out_text": _left_out_text(left_out),
             **_charges_total(strategies), **_after_total(strategies)}
+
+
+def _left_out_text(count: int) -> Any:
+    if count == 0:
+        return None
+    return render_explanation("paper_totals_left_out_one") if count == 1 else render_explanation(
+        "paper_totals_left_out_many", count=count)
 
 
 def _after_total(strategies: Sequence[dict]) -> dict:

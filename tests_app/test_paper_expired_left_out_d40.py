@@ -73,5 +73,6 @@ async def test_a_book_on_expired_contracts_answers_200_with_the_plain_reason_the
     assert body["unpriced_text"] and body["unpriced_text"].startswith("Expired contracts have no price: ")
     assert listed.status_code == HTTPStatus.OK, listed.text
     totals = listed.json()["totals"]
-    assert totals["left_out_count"] == 2  # 46 and 48 hold open legs (50 is fully exited)
-    assert totals["left_out_text"] == render_explanation("paper_totals_left_out_many", count=2)
+    open_books = 2  # 46 and 48 hold open legs (50 is fully exited)
+    assert totals["left_out_count"] == open_books
+    assert totals["left_out_text"] == render_explanation("paper_totals_left_out_many", count=open_books)

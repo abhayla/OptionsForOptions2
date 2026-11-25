@@ -187,6 +187,8 @@ export async function readPaperBook(client, id) {
     contracts.push(...(await client.get(`/catalogue/${book.underlying}/contracts?expiry=${expiry}`)).data.contracts)
   }
   const net = netLegsFromBook(book, contracts)
+  // D-40: an open leg on an expired contract is not in the catalogue; the server's reply already says why nothing is priced
+  if (!net && typeof book.unpriced_text === 'string' && book.unpriced_text.trim() !== '') return { kind: 'unpriced', book }
   if (!net) throw new Error('unreadable paper book')
   return { kind: 'paper', book, net }
 }
