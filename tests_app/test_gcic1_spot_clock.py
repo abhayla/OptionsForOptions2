@@ -17,7 +17,6 @@ from ofo_app import adjustment_check as check
 from ofo_app import adjustment_readers as readers
 from ofo_app.routes import adjustment as route
 from ofo_app.routes import adjustment_check as check_route
-from ofo_app.routes import adjustment_plan as plan_route
 from ofo_app.routes import outcome, playbooks
 from test_adjustment_approaches_route import IC_IDS, client_for, load, market_of, post
 
