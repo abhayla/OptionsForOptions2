@@ -20,13 +20,14 @@ import { capturedCaption, contractName, expiryWithDays, istTime, strikeLabel } f
 import { NOT_CONNECTED_LABEL, REPRICE_PROMPT } from '@/lib/legPicker'
 import {
   CUSTOM_STRATEGY, LEFT_OUT_LABEL, LEGS_CLEARED, LEG_CARD_PADDING_PX, LEG_ROW_COLUMNS, MULTIPLIER_MIN, multiplierChoices,
-  NO_CONTROLS, NO_LEGS_HINT_PAGE, NO_LEGS_HINT_TAB, NO_LEGS_YET, PLANNED_ENTRY_LABEL, YOUR_PRICE_LABEL,
+  EXPIRY_BLOCKED_BY_EXIT, NO_CONTROLS, NO_LEGS_HINT_PAGE, NO_LEGS_HINT_TAB, NO_LEGS_YET, PLANNED_ENTRY_LABEL, YOUR_PRICE_LABEL,
   anyUnticked, canStep, controlsForSelection, movedMarker, priceReasonText, removeAllPrompt, replacedPriceNote, showsControls,
 } from '@/lib/legEdit'
 import { plainName } from '@/lib/saveDraft'
 import { fetchHeldFeatureOn } from '@/lib/heldFeatures'
 import { NAME_FLOOR_CLASS } from '@/lib/nameFloor'
 import { PAPER_AVERAGE_LABEL, paperFillKey } from '@/lib/paperDrafts'
+import { EXPIRY_LIST_UNREADABLE, NO_OTHER_EXPIRY, useExpiryChoices } from '@/composables/useExpiryChoices'
 
 const props = defineProps({
   // N-35 (ADR-328 (4)): the page's ONE blocked rule (the Exit buttons' own): every control that edits the legs is disabled, with `lockReason` as its title
@@ -55,6 +56,7 @@ const props = defineProps({
   paperFills: { type: Array, default: () => [] },
   oldestQuoteAt: { type: String, default: null }, // the reply's oldest_quote_at: picked by the server, null when any leg quote has no time (D-18)
   quoteAtById: { type: Object, default: () => ({}) }, // the outcome reply's leg_quotes[].quote_at by instrument id: each leg's OWN quote time (D-18)
+  stagedExitIds: { type: Array, default: () => [] }, // D-48: contract ids of the legs that have an Exit waiting (Drafts Mode): their Change expiry is off
 })
 // GC-UI 3a D-A07: 'include-all' asks the page to run the existing per-leg include edit for every leg that differs
 const emit = defineEmits(['edit', 'add-leg', 'pick-chain', 'remove', 'edit-leg', 'clear-all', 'undo-clear', 'include-all'])
@@ -85,6 +87,20 @@ const someLeftOut = computed(() => anyUnticked(props.legs))
 // ADR-195: no shape name while any leg is left out; otherwise the server's name (Custom Strategy when it named none)
 const shown = computed(() => (someLeftOut.value || !props.hasReply ? null : props.shapeName ?? CUSTOM_STRATEGY))
 const shownControls = computed(() => controlsForSelection(props.controls, props.legs))
+// D-48 (REQ-078 AC-11, AC-13): the listed expiries (the leg picker's own reader) for the per-leg chip and the all-legs select
+const expiryChoices = useExpiryChoices(() => props.legs[0]?.underlying ?? null)
+const hasStagedExit = (leg) => props.stagedExitIds.includes(leg?.contract_id)
+const anyStagedExit = computed(() => props.legs.some(hasStagedExit))
+function expiryOff(leg) { // the reason this leg's Change expiry is off, or null
+  if (props.locked) return props.lockReason
+  if (hasStagedExit(leg)) return EXPIRY_BLOCKED_BY_EXIT
+  if (expiryChoices.state.value === 'failed') return EXPIRY_LIST_UNREADABLE
+  if (expiryChoices.state.value === 'read' && !expiryChoices.list.value.some((e) => e.expiry !== leg.expiry)) return NO_OTHER_EXPIRY
+  return expiryChoices.state.value === 'loading' ? 'The expiry list is loading.' : null
+}
+function pickExpiry(i, value) {
+  if (value && value !== props.legs[i]?.expiry) emit('edit', { control: 'expiry', index: i, expiry: value }) // same expiry: no request
+}
 const tickState = computed(() => (selectedCount.value === props.legs.length ? 'all' : selectedCount.value === 0 ? 'none' : 'some'))
 const legName = (l) => contractName(l)
 /** D-60 (REQ-059 gate): two rows on one contract and action are never merged silently. The words are the gate's own
@@ -220,7 +236,17 @@ function setMultiplier(index) {
           <div class="leg-grid leg-phone grid h-9 flex-nowrap items-center whitespace-nowrap max-[639px]:h-auto max-[639px]:gap-y-1" :style="gridStyle" data-testid="leg-row-line">
             <input type="checkbox" :checked="leg.included !== false" :aria-label="`Include leg ${i + 1} in the numbers`" data-testid="leg-tick" @change="emit('edit', { control: 'include', index: i, included: $event.target.checked })" />
             <span :class="leg.action === 'BUY' ? 'tag tag-buy' : 'tag tag-sell'" class="w-6 justify-self-center text-center" :title="leg.action">{{ leg.action === 'BUY' ? 'B' : 'S' }}<span class="sr-only">{{ leg.action }}</span></span>
-            <span class="flex h-8 items-center overflow-hidden rounded border border-line px-1 text-xs" :title="expiryWithDays(leg.expiry, leg.days_to_expiry)" data-testid="leg-expiry">{{ expiryWithDays(leg.expiry, leg.days_to_expiry) }}</span>
+            <span class="relative flex h-8 items-center overflow-hidden rounded border border-line px-1 text-xs" :title="expiryOff(leg) ?? expiryWithDays(leg.expiry, leg.days_to_expiry)" data-testid="leg-expiry-chip">
+              <span class="min-w-0 truncate" data-testid="leg-expiry">{{ expiryWithDays(leg.expiry, leg.days_to_expiry) }}</span>
+              <!-- D-48: a transparent native select over the chip (the OS picker on a phone); option legs only (a futures leg has no strike to keep) -->
+              <select
+                v-if="canStep(leg)" class="absolute inset-0 h-full w-full cursor-pointer opacity-0 disabled:cursor-not-allowed" :value="leg.expiry" :disabled="expiryOff(leg) !== null"
+                :title="expiryOff(leg) ?? 'Change expiry'" :aria-label="`Change expiry of leg ${i + 1}`" data-testid="leg-expiry-select" @change="pickExpiry(i, $event.target.value)"
+              >
+                <option v-for="e in expiryChoices.list.value" :key="e.expiry" :value="e.expiry">{{ expiryWithDays(e.expiry, e.days) }}</option>
+              </select>
+              <span v-if="canStep(leg) && expiryOff(leg) !== null && hasStagedExit(leg)" class="sr-only" data-testid="leg-expiry-reason">{{ expiryOff(leg) }}</span>
+            </span>
             <span class="flex h-8 items-stretch overflow-hidden rounded border border-line" data-testid="strike-stepper">
               <template v-if="canStep(leg)">
                 <button type="button" class="h-8 w-8 shrink-0 border-r border-line" aria-label="Previous strike" data-testid="strike-minus" :disabled="locked" :title="locked ? lockReason : undefined" @click="emit('edit', { control: 'step', index: i, direction: -1 })">-</button>
@@ -293,7 +319,7 @@ function setMultiplier(index) {
       </ul>
 
       <div v-if="showsControls(legs)" class="border-t border-line py-2" :style="cardPadding">
-        <StrategyControls :controls="shownControls" :locked="locked" :lock-reason="lockReason" @edit="(e) => emit('edit', e)" />
+        <StrategyControls :controls="shownControls" :locked="locked" :lock-reason="lockReason" :expiries="expiryChoices.list.value" :expiry-state="expiryChoices.state.value" :expiry-off-reason="anyStagedExit ? EXPIRY_BLOCKED_BY_EXIT : null" @edit="(e) => emit('edit', e)" />
       </div>
       <div class="flex min-h-10 items-center justify-between gap-3 max-[639px]:flex-wrap border-t border-line py-2" :style="cardPadding" data-testid="money-row">
         <label class="flex items-center gap-2" :title="`Strategy multiplier (${MULTIPLIER_MIN} to ${multiplierMax ?? '...'})`">Multiplier

@@ -34,7 +34,7 @@ import LoadFailed from '@/components/common/LoadFailed.vue'
 import { PAPER_REREAD_FAILED_TEXT } from '@/lib/sharedStateText'
 import {
   DISCARD_LABEL, PAPER_BOOK_UNREADABLE, PAPER_MODE_LABEL, PAPER_PENDING_UNREADABLE, PAPER_REREAD_DELAYS_MS, REVIEW_AND_ADD_LABEL, confirmRowsFor, paperOrdersFor, pendingText, readPaperBook,
-  legsAfterExit, paperFillKey, paperLeftOf, paperChargesOf,
+  legsAfterExit, paperFillKey, paperLeftOf, paperChargesOf, stagedExitIds,
 } from '@/lib/paperDrafts'
 import { withAsOf } from '@/lib/paperList'
 import PaperBookPanel from '@/components/strategy/PaperBookPanel.vue'
@@ -67,7 +67,7 @@ import { replacePrompt } from '@/lib/readyMade'
 import SaveDraftBar from '@/components/strategy/SaveDraftBar.vue'
 import LegList from '@/components/strategy/LegList.vue'
 import { paperLegListPrices } from '@/lib/chartCard'
-import { applyEditReply,buildEditRequest, controlsFrom, moveKey, MAX_STEPS, RELATIVE_CONTROLS, executeRefusal, CLEAR_UNDO_SECONDS_KEY, LEG_REMOVED, MULTIPLIER_MAX_KEY, EXECUTE_WAITS_FOR_LATEST, NO_CONTROLS } from '@/lib/legEdit'
+import { applyEditReply,buildEditRequest, controlsFrom, moveKey, MAX_STEPS, MOVE_CONTROLS, RELATIVE_CONTROLS, executeRefusal, CLEAR_UNDO_SECONDS_KEY, LEG_REMOVED, MULTIPLIER_MAX_KEY, EXECUTE_WAITS_FOR_LATEST, NO_CONTROLS } from '@/lib/legEdit'
 import { createNewestWins, isSuperseded } from '@/lib/newestWins'
 import { NOT_CONNECTED_LABEL, buildDraft } from '@/lib/legPicker'
 import { matchesLegs } from '@/lib/liveMatch'
@@ -991,7 +991,7 @@ async function sendEdit(edit, baseLegs, shiftTotal, owner) {
     const shown = legs.value // the legs the reply is computed against; the answer must still find them on screen
     let landed = applyEditReply(shown, reply)
     let increased = false
-    if (RELATIVE_CONTROLS.includes(edit.control)) {
+    if (MOVE_CONTROLS.includes(edit.control)) { // D-48: the absolute expiry control lands on other contracts too (ADR-319 (1), ADR-328 (1))
       // D-60 (ADR-319, review finding 2): a move that lands a leg on a contract another leg holds with the same action asks
       // through the one shared door; Cancel keeps the legs as before the step, a refused Increase says why.
       const moved = await door.admitMoved(baseLegs, landed)
@@ -1254,7 +1254,7 @@ const leaveGuard = useLeaveBuilder({
         <p v-if="paper" class="mb-2 text-xs font-semibold text-warn" data-testid="paper-mode-label">{{ PAPER_MODE_LABEL }}</p>
         <LegList
           :opening="opening" :done="paperCompleted" :locked="exitBlocked" :lock-reason="exitGate.reason.value"
-          :multiplier-max="served.integer(MULTIPLIER_MAX_KEY)" :legs="legs" :pending-steps="pendingSteps" :paper-fills="paperFills" :quote-at-by-id="quoteAtById" :oldest-quote-at="data?.oldest_quote_at ?? null" :shape-name="shapeName" :has-reply="hasReply" :controls="controls" :updating="updating" :error-parts="editError" :error-index="editErrorIndex" :ltp-by-id="legListPrices.ltpById" :price-text-by-id="legListPrices.priceTextById"
+          :multiplier-max="served.integer(MULTIPLIER_MAX_KEY)" :legs="legs" :pending-steps="pendingSteps" :paper-fills="paperFills" :staged-exit-ids="paper ? stagedExitIds(paper.net, legs) : []" :quote-at-by-id="quoteAtById" :oldest-quote-at="data?.oldest_quote_at ?? null" :shape-name="shapeName" :has-reply="hasReply" :controls="controls" :updating="updating" :error-parts="editError" :error-index="editErrorIndex" :ltp-by-id="legListPrices.ltpById" :price-text-by-id="legListPrices.priceTextById"
           :undo-offered="undoHeld !== null" :undo-text="undoHeld?.text" :leg-unit="legUnit" :strategy-name="openStrategy?.name ?? null"
           @edit="editLeg" @edit-leg="openInPicker" @include-all="includeAll" @remove="removeLeg" @add-leg="focusPicker" @pick-chain="pickFromChain" @clear-all="clearAll" @undo-clear="undoClear"
         >

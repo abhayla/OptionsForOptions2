@@ -318,5 +318,13 @@ export function legsAfterExit(net, legs, contractId, lots) {
   return out
 }
 
+/** D-48 (REQ-078 AC-13): the contract ids of the legs that have an Exit waiting in Drafts Mode: the leg is still there but
+ *  holds fewer lots than the net position (a partial Exit; a whole Exit leaves no leg). A texts-only comparison of the
+ *  page's own copies, no number is formed. */
+export function stagedExitIds(net, legs) {
+  const held = new Map((net ?? []).map((l) => [l.contract_id, l.lots]))
+  return (legs ?? []).filter((l) => held.has(l.contract_id) && l.lots < held.get(l.contract_id)).map((l) => l.contract_id)
+}
+
 /** R-11: a leg is the book's paper fill while its entry and its time are still the ones the net position loaded. */
 export const paperFillKey = (l) => [l?.contract_id, l?.planned_entry, l?.captured_at].join('|') // an identity key, never shown
