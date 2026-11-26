@@ -88,6 +88,18 @@ CI. Add, when relevant: `python scripts/ruff_ratchet.py`; `python scripts/orches
 `python scripts/orchestrator/coverage.py . --check`; a migration or DB store runs its own test file (below); a
 regenerated file its `--check`. Red CI: read `gh run view <id> --log-failed`, fix, push again.
 
+**Fast pre-check before every prepush run (owner, 2026-11-26; applies to every session and every lane brief).** On
+26 Nov, 12 prepush runs failed in preflight on repo scans and each cost a second ~35 min run (four runs for one push).
+Before starting prepush, run on the exact tree (about 5 to 8 min) and start prepush only when all are green:
+`pytest tests -m repo_scan -q`; `python scripts/ruff_ratchet.py`; `python scripts/orchestrator/coverage.py . --check
+--no-gh`; the regenerated files' checks (openapi, spec digest, findings index); `tests_app/test_reply_inventory.py`
+and `tests_app/test_order_closure_all_routes.py` when a route or reply model changed; `python tools/ci_local.py`;
+vitest for the touched files (all of it after a merge). Run prepush in the background with a 2-hour limit and build
+the next item in another worktree meanwhile; batch related fixes into one gated push; a guard that needs a person's
+edit (reply_inventory notes, ROUTE_ORDER_EDGES, an allow-list) goes to the owner the moment it is known, not after
+the gate. Counter: prepush runs per push (target 1). The gate itself is being made faster on
+`chore/gate-speed-1126`; until that lands and is proven, this pre-check is the rule.
+
 ## Merge
 - Only `python scripts/orchestrator/merge.py <pr> --reviewed-sha <full 40-char sha>` (or `land.py <worktree> --title T
   --body-file F --reviewed-sha <sha>`, which also pushes, opens the PR and updates a BEHIND branch). Never
