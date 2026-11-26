@@ -32,6 +32,7 @@ const props = defineProps({
   // N-35 (ADR-328 (4)): the page's ONE blocked rule (the Exit buttons' own): every control that edits the legs is disabled, with `lockReason` as its title
   locked: { type: Boolean, default: false },
   lockReason: { type: String, default: null },
+  done: { type: Boolean, default: false }, // N-48: the paper trade is Completed (every leg closed): no empty-legs block, no add-leg controls (the panel's closed rows say the result)
   opening: { type: Boolean, default: false }, // N-13: a strategy is being opened; the empty-legs block is not shown until its read answers
   legs: { type: Array, required: true },
   // 2026-11-06: clicks of a strike step not yet confirmed by the server, per move key ({ 'step:2': 4 }); shown on the row at
@@ -178,7 +179,7 @@ function setMultiplier(index) {
       {{ LEGS_CLEARED }} <button type="button" class="text-accent underline" data-testid="clear-undo" @click="emit('undo-clear')">Undo</button>
     </p>
 
-    <div v-if="!legs.length && !opening" class="py-6 text-center" :style="cardPadding" data-testid="no-legs">
+    <div v-if="!legs.length && !opening && !done" class="py-6 text-center" :style="cardPadding" data-testid="no-legs">
       <p class="font-medium" data-testid="no-legs-text">{{ NO_LEGS_YET }}</p>
       <p class="mt-1 text-xs text-ink-muted" data-testid="no-legs-hint">{{ readyMadeTab === null ? '' : readyMadeTab ? NO_LEGS_HINT_TAB : NO_LEGS_HINT_PAGE }}</p>
       <div class="mt-3 flex justify-center gap-2">
