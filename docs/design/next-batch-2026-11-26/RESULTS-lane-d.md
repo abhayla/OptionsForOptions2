@@ -11,8 +11,8 @@ ADR-330 (3), (23), (34), (36); REQ-049, REQ-109, REQ-133 AC-3, REQ-138, REQ-154.
 
 | Class | Count | Issues |
 |---|---|---|
-| FIX NOW | 20 | #725 #726 #727 #728 #729 #730 #732 #733 #734 #736 #737 #738 #739 #740 #741 #743 #745 #746 #748 #749 |
-| NEEDS THE OWNER | 0 | #732 answered by the owner 26 Nov ~21:20 IST: ADR-330 (44), option 1 |
+| FIX NOW | 19 | #725 #726 #727 #728 #729 #730 #732 #733 #734 #736 #737 #738 #739 #740 #743 #745 #746 #748 #749 |
+| NEEDS THE OWNER | 1 | #741 (sent 26 Nov evening; recommended: one row per contract, ADR-328 (3)). #732 answered: ADR-330 (44), option 1 |
 | WAITS FOR A STAGE | 4 | #735 #742 (D-12, after step 4), #750 #751 (step 4: sign-in, migration) |
 | ALREADY FIXED | 1 | #747 (46b970e) |
 | OTHER LANE NOW | 6 | #724 #744 #752 (Lane R), #753 (Lane J, carries the migrations), #754 #755 (Lane G) |
@@ -43,7 +43,7 @@ Harm: what a user loses. Size: small = one small push. Line numbers are on this 
 | 738 | internal: a "not a number" or infinite strike or tick size in the instrument list would be stored | low | small | FIX NOW | `ofo/instruments/parser.py:52` |
 | 739 | Outside India near midnight, "days left" to expiry on the Option Chain is one day off | low | small | FIX NOW | `displayFormat.js:144` `localDay`; one caller `useChainLive.js:155` |
 | 740 | internal today (same holiday table): the stop watcher decides "market open" by its own rule, not the rule the rest of the app uses | low | small | FIX NOW | `paper_monitor.py:180` vs `may_act.market_open` |
-| 741 | A trade with a buy and a sell leg of the same contract shows that contract's whole P&L on both rows of the Paper P&L panel, so the rows add up to twice the total | medium | small | FIX NOW | `TrackingPanel.vue:138-141` keyed by contract only |
+| 741 | A trade with a buy and a sell leg of the same contract shows that contract's whole P&L on both rows of the Paper P&L panel, so the rows add up to twice the total | medium | small | NEEDS THE OWNER | `TrackingPanel.vue:138-141` keyed by contract only; round 1 (0445914, not taken) fell back to the server's per-leg figure, which `routes/tracking.py:_book_figures` also keys by contract, so the doubling stays. The netted book has no per-row split: one row per contract (legs-table parity) or a marker row is a display choice |
 | 742 | internal: 17 read-only routes count as reaching order code because of one import, so the order-closure guard protects nothing for them | none | medium | WAITS FOR A STAGE | Structural (D-12); the fix also changes guard pins, which need the owner's own words |
 | 743 | When the daily alert cap or quiet time holds an alert, a price swinging across the higher step writes one "held" history row per candle for the rest of the day | medium | small | FIX NOW | `alert_gate.py:262-267` judges the hold on the step, not the rule's line; Tier A |
 | 744 | Builder per-leg prices of a paper trade read other sources | - | - | OTHER LANE NOW (Lane R) | Full table and leg list fixed by 42b49f4; only `AdvancedDetails.vue:23` (bid/ask) left in the guard's REMAINING list |
@@ -81,4 +81,4 @@ with no amount), #711 (raw instrument id on a trade page), #600, #597.
 
 ## To file as deferred issues
 
-(none yet)
+- Soft-deleted strategy still readable through 11 more `playbook_store.py` queries and `reconciliation_store._SHARED`, `scenario_guard._MARKER` (found while fixing #736; the two queries #736 names are fixed).
