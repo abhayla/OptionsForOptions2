@@ -26,7 +26,7 @@ const net = (s) => { const a = afterFigure(s, null); return a.kind === 'after' ?
 const netBreakdown = (s) => afterFigure(s, typeof s.final_pnl_text === 'string' && s.final_pnl_text.trim() !== '' ? s.final_pnl_text.trim() : null).breakdown
 import AfterChargesTap from '@/components/common/AfterChargesTap.vue'
 const notAvailable = (s) => s.after_charges_reason_text ?? s.completed_reason_text ?? 'the server sent no figure'
-import { STRATEGY_NAME_MAX, legsLine, nameLimitText, noMatchText, plainName, renameStrategy, searchStrategies, strategyLabel } from '@/lib/saveDraft'
+import { STRATEGY_NAME_MAX, legsLine, nameLimitText, noMatchText, plainName, renameStrategy, searchStrategies, strategyListLabel } from '@/lib/saveDraft'
 import { isCompleted, isRunning, strategyStatusWord } from '@/lib/strategyStatus'
 import { CLOSED_HEADER, CLOSED_PREFIX, CLOSED_UNAVAILABLE_TEXT } from '@/lib/sharedStateText'
 import { useOrderPath } from '@/lib/orderPath'
@@ -117,7 +117,9 @@ function askBulk() {
   deleteFlow.setSelection(chosen.value.map((r) => r.id))
   deleteFlow.askBulk(chosen.value.filter(isRunning).length)
 }
-const keptName = (id) => { const r = rows.value.find((x) => x.id === id); return r ? strategyLabel(r, `Strategy ${id}`) : `Strategy ${id}` }
+// ADR-330 (19): the list label: name, then (#id, expiry) from the list reply's first leg
+const listLabel = (r) => strategyListLabel({ name: r.name, id: r.id, expiries: [r.first_leg?.expiry], fallback: `Strategy ${r.id}` })
+const keptName = (id) => { const r = rows.value.find((x) => x.id === id); return r ? listLabel(r) : `Strategy ${id}` }
 
 // REQ-134 AC-5: the Builder opens the saved strategy from its `strategy` link and reads the saved copy itself (legs, planned
 // entries and revision as saved), so a reload opens it again and Save there updates this strategy.
@@ -196,9 +198,9 @@ async function confirmRename(row) {
       <ul class="divide-y divide-line" data-testid="strategy-list">
         <li v-for="s in visible" :key="s.id" class="flex flex-wrap min-h-9 items-center gap-x-2 gap-y-1 px-4 py-1.5 text-[13px] hover:bg-surface-muted" :class="COLS" data-testid="strategy-row" :data-strategy-id="s.id">
           <span class="flex min-w-0 max-w-full items-center gap-2">
-            <input v-if="canDelete(s)" type="checkbox" :checked="deleteFlow.selected.includes(s.id)" :disabled="deleteFlow.busy" :aria-label="`Select ${strategyLabel(s, `Strategy ${s.id}`)}`" :data-testid="`select-${s.id}`" @change="deleteFlow.toggle(s.id, $event.target.checked)" />
+            <input v-if="canDelete(s)" type="checkbox" :checked="deleteFlow.selected.includes(s.id)" :disabled="deleteFlow.busy" :aria-label="`Select ${listLabel(s)}`" :data-testid="`select-${s.id}`" @change="deleteFlow.toggle(s.id, $event.target.checked)" />
             <span v-else class="inline-block w-[13px] shrink-0" aria-hidden="true"></span>
-            <span class="min-w-0 max-w-full truncate font-medium" :title="strategyLabel(s, `Strategy ${s.id}`)" data-testid="row-name">{{ strategyLabel(s, `Strategy ${s.id}`) }}</span>
+            <span class="min-w-0 max-w-full truncate font-medium" :title="listLabel(s)" data-testid="row-name">{{ listLabel(s) }}</span>
           </span>
           <span data-testid="row-underlying">{{ s.underlying }}</span>
           <span v-if="legsLine(s)" class="min-w-0 max-w-full truncate text-ink-muted" :title="legsLine(s)" data-testid="row-legs">{{ legsLine(s) }}</span>

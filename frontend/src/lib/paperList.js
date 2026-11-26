@@ -45,6 +45,7 @@ function readPosition(p, underlying) {
   return {
     key: String(p.contract_id),
     contractId: p.contract_id,
+    expiry: typeof p.expiry === 'string' ? p.expiry : null, // ADR-330 (19): the group label's expiry
     name: shownName(p, underlying),
     side: p.net_quantity > 0 ? 'B' : p.net_quantity < 0 ? 'S' : null,
     open,
@@ -128,6 +129,7 @@ export function readPaperStrategy(s, index = 0) {
     readable: true,
     id,
     name: plainName(s.name),
+    expiries: positions.map((p) => p.expiry).filter((e) => e !== null), // ADR-330 (19): the dates the group label may show
     underlying: s.underlying,
     state: s.state,
     statusWord: WORDS.includes(s.status_word) ? s.status_word : null, // ADR-299 (4): the server's word, never derived here

@@ -9,7 +9,7 @@ import { computed, onBeforeUnmount, onMounted, ref, watch } from 'vue'
 import api, { NEUTRAL_PARTS } from '@/services/api'
 import ErrorMessage from '@/components/common/ErrorMessage.vue'
 import { LEG_NOT_LIVE_LABEL, NOT_CONNECTED_LABEL, buildDraft } from '@/lib/legPicker'
-import { fetchSavedLegs, strategyLabel } from '@/lib/saveDraft'
+import { fetchSavedLegs, strategyListLabel } from '@/lib/saveDraft'
 import { PAPER_BOOK_UNREADABLE, readPaperBook } from '@/lib/paperDrafts'
 import PnlLine from '@/components/live/PnlLine.vue'
 import { CARD_LEGS_AS_SAVED_TEXT, CARD_QUEUED_TEXT } from '@/lib/sharedStateText'
@@ -191,6 +191,8 @@ const breakevens = computed(() => ((paperBook.value ? (bookFailed.value ? [] : p
 const hasLots = computed(() => (data.value?.legs ?? []).some((l) => l.lots != null))
 const hasEntry = computed(() => (data.value?.legs ?? []).some((l) => (l.planned_entry_display ?? l.planned_entry) != null))
 // S-14: links only while the card is not in the error state; a Running (placed paper) strategy shows its fill as "Entry price"
+// ADR-330 (19): name, then (#id, expiry) from the list reply's first leg
+const listLabel = computed(() => strategyListLabel({ name: props.strategy.name, id: props.strategy.id, expiries: [props.strategy.first_leg?.expiry], fallback: `Draft ${props.strategy.id}` }))
 const openLink = computed(() => (state.value === 'error' ? null : builderLinkOf(props.strategy.id)))
 const exitLink = computed(() => (state.value !== 'error' && isRunning(props.strategy) ? paperExitLinkOf(props.strategy.id) : null))
 const stopsLink = computed(() => (state.value !== 'error' && isRunning(props.strategy) ? paperStopsLinkOf(props.strategy.id) : null))
@@ -207,7 +209,7 @@ class="rounded border border-line bg-surface p-4" data-testid="live-strategy-car
            :data-state="state" :data-paused="paused ? 'true' : 'false'" :data-live="live.status.value">
     <header class="flex flex-wrap items-baseline gap-2">
       <!-- S-14: the name opens the strategy (not in the error state); a running paper strategy also links to its Stops. Exit links to the Paper list, whose own exit dialog (the one exit door) opens; the card holds no exit code. -->
-      <h2 class="text-base font-semibold"><component :is="openLink ? RouterLink : 'span'" v-bind="openLink ? { to: openLink, class: 'hover:underline', 'data-testid': 'live-strategy-open' } : {}"><span data-testid="live-strategy-title">{{ strategyLabel(strategy, `Draft ${strategy.id}`) }}, {{ strategy.underlying }}</span></component></h2>
+      <h2 class="text-base font-semibold"><component :is="openLink ? RouterLink : 'span'" v-bind="openLink ? { to: openLink, class: 'hover:underline', 'data-testid': 'live-strategy-open' } : {}"><span data-testid="live-strategy-title">{{ listLabel }}, {{ strategy.underlying }}</span></component></h2>
       <span class="rounded bg-gray-100 px-1.5 text-xs text-ink-muted" data-testid="live-strategy-status">{{ strategyStatusWord(strategy) }}</span>
       <!-- GC-MU A3 (ADR-230 (2)): the server's words for the open adjustment records; none at 0 or when unread -->
       <RouterLink v-if="strategy.open_opportunities_text" :to="{ path: '/positions/adjustment-opportunities', query: { strategy: String(strategy.id) } }" class="text-sm text-accent underline" data-testid="live-opportunity-mark">{{ strategy.open_opportunities_text }}</RouterLink>

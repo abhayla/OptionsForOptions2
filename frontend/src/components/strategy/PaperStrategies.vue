@@ -48,7 +48,7 @@
           <p v-if="!g.readable" data-testid="paper-unreadable">{{ g.text }}</p>
           <RouterLink v-else :to="{ path: '/positions/current-positions', query: { tab: 'paper', strategy: String(g.id) } }" class="flex items-center gap-2" :data-testid="`paper-compact-link-${g.id}`">
             <span class="flex-1" :class="NAME_FLOOR_CLASS">
-              <span class="block truncate font-medium" :title="g.name ?? `Strategy ${g.id}`" data-testid="paper-group-name">{{ g.name ?? `Strategy ${g.id}` }}</span>
+              <span class="block truncate font-medium" :title="groupLabel(g)" data-testid="paper-group-name">{{ groupLabel(g) }}</span>
               <span class="block text-xs text-ink-muted" data-testid="paper-compact-legs">{{ legsText(g) }}</span>
             </span>
             <span class="shrink-0 text-right">
@@ -68,7 +68,7 @@
               <div>
                 <!-- ADR-330 (10): every paper group in the one Positions list is tagged PAPER -->
                 <span class="mr-1 rounded bg-accent-soft px-1 text-xs font-semibold text-accent" data-testid="paper-tag">PAPER</span>
-                <h2 class="font-semibold" data-testid="paper-group-name">{{ g.name ?? `Strategy ${g.id}` }}</h2>
+                <h2 class="font-semibold" data-testid="paper-group-name">{{ groupLabel(g) }}</h2>
                 <span class="text-ink-muted" data-testid="paper-group-underlying">{{ g.underlying }}</span>
                 <span v-if="g.statusWord" class="text-xs text-ink-muted" data-testid="paper-status-word">{{ g.statusWord }}</span>
                 <p class="text-xs text-ink-muted" data-testid="paper-count">{{ g.openCount }} of {{ g.positionCount }} positions</p>
@@ -167,6 +167,7 @@
 
 <script setup>
 import { NAME_FLOOR_CLASS } from '@/lib/nameFloor'
+import { strategyListLabel } from '@/lib/saveDraft'
 import { istClock } from '@/lib/displayFormat'
 import { QUOTE_TIME_UNAVAILABLE_TEXT } from '@/lib/sharedStateText'
 import { computed, onMounted, ref, shallowRef, watch } from 'vue'
@@ -215,6 +216,8 @@ const summaryFigures = [
   { id: 'max-loss', label: 'Max Loss', value: (g) => g.maxLoss, reason: (g) => g.maxLossReason },
 ]
 const greeksOpen = ref({})
+// ADR-330 (19) (g.name is already unquoted and the label maker unquotes once, so it is wrapped again): name, then (#id, expiry): one distinct expiry among the group's positions prints it, several or none print only the number
+const groupLabel = (g) => strategyListLabel({ name: typeof g.name === 'string' ? `"${g.name}"` : null, id: g.id, expiries: g.expiries ?? [], fallback: `Strategy ${g.id}` })
 const legName = (g, contractId) => g.positions.find((p) => p.contractId === contractId)?.name ?? String(contractId)
 const totalFigures = [
   { id: 'total', field: 'total', reason: 'totalReason', reasonId: 'totals-reason', label: 'Total P&L' },

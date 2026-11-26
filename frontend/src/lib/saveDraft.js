@@ -1,6 +1,6 @@
 // Save Draft / reopen helpers (W-071; REQ-038 AC-5, ADR-057, ADR-068 item 1, ADR-075, ADR-008). Pure functions.
 // Adapted from the legacy strategy save/load calls only (legacy-reuse row 146): no client P&L, no price fallback.
-import { CONTRACT_UNAVAILABLE, contractName } from '@/lib/displayFormat'
+import { CONTRACT_UNAVAILABLE, contractName, expiryText } from '@/lib/displayFormat'
 // Strings stay strings: a planned entry and a capture time are sent and shown exactly as the API gave them.
 
 /** The Save Draft body. Per leg exactly: contract_id, action, quantity (units = lots x lot size, a count, not money) and,
@@ -80,6 +80,18 @@ export async function renameStrategy(client, id, revision, name) {
 /** The label of a saved strategy row: its name, or `fallback` when the server (an older one) sent none. */
 export function strategyLabel(row, fallback) {
   return plainName(row?.name) ?? fallback
+}
+
+/** ADR-330 (19): the label every strategy LIST shows (My Strategies, Live Strategies, Positions > Paper, Home): the name with the
+ *  trade's number and expiry beside it, 'Short Iron Condor (#172, 1 Dec)', so four strategies of one name can be told apart.
+ *  `expiries` = the expiry dates (ISO text) the reply carries for that strategy; exactly ONE distinct readable date prints it
+ *  (written by the one expiry formatter); none or several print only the number, '(#172)'. A strategy with no name shows the
+ *  caller's `fallback` as is (it already carries the number). Text only, no date arithmetic. */
+export function strategyListLabel({ name, id, expiries = [], fallback }) {
+  const base = plainName(name)
+  if (base === null) return fallback
+  const days = [...new Set((Array.isArray(expiries) ? expiries : [expiries]).map((e) => expiryText(e)).filter((t) => t !== null))]
+  return `${base} (#${id}${days.length === 1 ? `, ${days[0]}` : ''})`
 }
 
 /** REQ-134 AC-4: 'NIFTY 27 Oct 22500 PE and 3 more' from the list row's first_leg and leg_count (Sensibull screen 117).

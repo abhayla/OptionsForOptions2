@@ -94,7 +94,7 @@ describe('Positions page filter (was: tabs)', () => {
     answers['GET /tracking'] = () => Promise.resolve({ data: TRACKING })
     const w = await page('/p?tab=paper')
     expect(has(w, 'positions-loading')).toBe(false)
-    expect(t(w, 'paper-group-name').text()).toBe('GCBP P3 IC')
+    expect(t(w, 'paper-group-name').text()).toBe('GCBP P3 IC (#48, 3 Nov)') // ADR-330 (19)
   })
   it('the real section still shows its own error when the Zerodha read fails', async () => {
     answers['GET /positions'] = () => Promise.reject({ status: 503, parts: { what_happened: 'Zerodha down' } })

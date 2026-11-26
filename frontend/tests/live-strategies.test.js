@@ -561,7 +561,7 @@ describe('REQ-134 reader sweep: the card title is the strategy name (quoted user
     listAnswer = { strategies: [{ ...row(1), name: '"<b>NIFTY</b> Oct condor"' }, row(2)] }
     const w = await mountPage()
     const titles = w.findAll('[data-testid="live-strategy-title"]').map((x) => x.text())
-    expect(titles).toContain('<b>NIFTY</b> Oct condor, NIFTY')
+    expect(titles).toContain('<b>NIFTY</b> Oct condor (#1), NIFTY') // ADR-330 (19): number added; this row has no first leg, so no expiry
     expect(titles).toContain('Draft 2, NIFTY')
     expect(w.find('[data-testid="live-strategy-title"] b').exists()).toBe(false)
   })

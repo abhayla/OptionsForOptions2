@@ -11,7 +11,7 @@ import IndexStrip from '@/components/layout/IndexStrip.vue'
 import Card from '@/components/common/Card.vue'
 import PageHeader from '@/components/common/PageHeader.vue'
 import { istTime } from '@/lib/displayFormat'
-import { plainName } from '@/lib/saveDraft'
+import { plainName, strategyListLabel } from '@/lib/saveDraft'
 import { isRunning, strategyStatusWord } from '@/lib/strategyStatus'
 import { FIGURE_READ_FAILED_TEXT, HOME_PNL_LABEL, HOME_RUNNING_LABEL, HOME_UNREAD_LABEL, usePaperPnl } from '@/lib/paperPnl'
 import { bellCount, dropAlerts, paperAlerts, readPaperAlerts, takeAlerts } from '@/lib/paperAlerts'
@@ -116,7 +116,7 @@ onMounted(async () => {
             class="grid min-h-9 grid-cols-[minmax(0,1.2fr)_minmax(0,2fr)_auto] items-center gap-3 px-4 py-2 hover:bg-surface-muted"
             data-testid="recent-row"
           >
-            <span v-if="plainName(s.name)" class="min-w-0 truncate font-medium" data-testid="recent-name">{{ plainName(s.name) }}</span>
+            <span v-if="plainName(s.name)" class="min-w-0 truncate font-medium" data-testid="recent-name">{{ strategyListLabel({ name: s.name, id: s.id, expiries: [s.first_leg?.expiry], fallback: '' }) }}</span>
             <span v-else class="text-ink-subtle" aria-hidden="true">—</span>
             <span class="min-w-0 truncate text-ink-muted">{{ s.underlying }}, {{ strategyStatusWord(s) }}, last saved {{ istTime(s.updated_at) }}</span>
             <router-link v-if="builderLinkOf(s.id)" :to="builderLinkOf(s.id)" class="text-accent hover:underline" :data-testid="`recent-open-${s.id}`">Open in Strategy Builder</router-link>
