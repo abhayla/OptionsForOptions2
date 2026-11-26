@@ -145,10 +145,18 @@ async def test_a_trade_with_no_readable_open_leg_shows_its_number_only(app_db_ur
 async def test_a_failed_expiry_read_for_one_trade_never_stops_the_lists_or_the_bell(app_db_url, monkeypatch, caplog):
     """ADR-330 (3)(4): any failure reading ONE trade's book (a plain error, a database error) leaves that row as
     "(#id)", the other rows labelled, and Active / History answering 200 with the count unchanged."""
-    good = await _clean(app_db_url, await _seeded(app_db_url, monkeypatch, "ADJ-03"))
-    bad = await _clean(app_db_url, await _seeded(app_db_url, monkeypatch, "ADJ-02"))
+    sids = []
+    for _ in range(2):  # the seed reuses a strategy by name, so the first is renamed before the second is seeded
+        sid = await _clean(app_db_url, await _seeded(app_db_url, monkeypatch, "ADJ-03"))
+        async with app_db_url.begin() as conn:
+            await conn.execute(text("UPDATE public.strategies SET name = 'Short Iron Condor' WHERE id = :id"),
+                               {"id": sid})
+        sids.append(sid)
+    good, bad = sids
     ids = {sid: await _raise(app_db_url, sid) for sid in (good, bad)}
     real = readers.nearest_expiry
+    baseline = (await _call("GET", "/api/alerts/active"))[1]["count"]
+    assert baseline >= 2  # the seeds raise their own open alerts too
     for failure in (RuntimeError("boom"), DBAPIError("SELECT 1", None, Exception("db"))):
         async def lookup(db, sid, _failure=failure):
             if sid == bad:
@@ -158,11 +166,13 @@ async def test_a_failed_expiry_read_for_one_trade_never_stops_the_lists_or_the_b
             return await real(db, sid)
         monkeypatch.setattr(readers, "nearest_expiry", lookup)
         status, active = await _call("GET", "/api/alerts/active")
-        named = {a["id"]: a["strategy_name"] for a in active["alerts"]}
-        assert status == OK and active["count"] == len(active["alerts"]) == 2
-        assert named[ids[bad]] == f'"Scenario ADJ-02" (#{bad})'
-        assert named[ids[good]].startswith(f'"Scenario ADJ-03" (#{good}, ')
-        assert (await _call("POST", f"/api/alerts/{ids[bad]}/answer", {"answer": "continue"}))[0] == OK
-        assert (await _call("GET", "/api/alerts/answered"))[0] == OK
-        ids[bad] = await _raise(app_db_url, bad)
+        by_trade = {(a["strategy_id"], a["strategy_name"]) for a in active["alerts"]}
+        assert status == OK and active["count"] == len(active["alerts"]) == baseline
+        assert (bad, f'"Short Iron Condor" (#{bad})') in by_trade
+        assert [n for i, n in by_trade if i == good and n.startswith(f'"Short Iron Condor" (#{good}, ')]
+        history = await _call("GET", "/api/alerts/answered")
+        assert history[0] == OK
+    assert (await _call("POST", f"/api/alerts/{ids[bad]}/answer", {"answer": "continue"}))[0] == OK
+    answered = (await _call("GET", "/api/alerts/answered"))[1]["items"]
+    assert [i["strategy_name"] for i in answered if i["id"] == ids[bad]] == [f'"Short Iron Condor" (#{bad})']
     assert "expiry" in caplog.text
