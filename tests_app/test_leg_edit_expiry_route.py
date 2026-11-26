@@ -10,6 +10,7 @@ import datetime
 from test_leg_edit_route import BY_ID, HTTP_OK, HTTP_UNPROCESSABLE, STAMP, START, legs, post, strikes
 
 EARLY = datetime.date(2026, 9, 29)
+MISSING_STRIKE = 15000  # listed on 2026-09-29 only
 TODAY = datetime.date(2026, 9, 28)
 BY_EARLY = {(c.instrument_type, int(c.strike)): i for i, c in BY_ID.items()
             if c.name == "NIFTY" and c.expiry == EARLY and c.instrument_type in ("CE", "PE")}
@@ -44,7 +45,7 @@ def test_one_missing_strike_refuses_everything_and_names_the_strike():
     early = [{"instrument_id": BY_EARLY[("CE", 23000)], "action": "BUY", "lots": 1, "base_lots": 1,
               "planned_entry": "1.00", "captured_at": STAMP.isoformat()},
              {"instrument_id": next(i for i, c in BY_ID.items() if c.name == "NIFTY" and c.expiry == EARLY
-                                    and c.instrument_type == "PE" and int(c.strike) == 15000),
+                                    and c.instrument_type == "PE" and int(c.strike) == MISSING_STRIKE),
               "action": "SELL", "lots": 1, "base_lots": 1, "planned_entry": "1.00", "captured_at": STAMP.isoformat()}]
     status, reply = post({"legs": early, "edit": {"control": "expiry", "expiry": "2026-10-06"}}, today=TODAY)
     assert status == HTTP_UNPROCESSABLE and "legs" not in reply

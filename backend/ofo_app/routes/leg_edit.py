@@ -541,7 +541,7 @@ Gate = tuple[dict[str, str | None], frozenset[int], Decimal | None]
 
 
 def _apply_move(cat: Catalogue, req: LegEditIn, legs: list[EditLeg], today: datetime.date, gate: Gate | None):
-    """REQ-078: shift / width / hedge by one strike step, refused with the reason when its control is off."""
+    """REQ-078: shift / width / hedge by one strike step (and D-48 expiry), refused with the reason when it is off."""
     e = req.edit
     if gate is None:  # unreachable: the route always passes it for a move
         raise RuntimeError(f"leg edit '{e.control}' reached apply_edit without its control check")
@@ -553,6 +553,8 @@ def _apply_move(cat: Catalogue, req: LegEditIn, legs: list[EditLeg], today: date
         moved = edit.shift(listing, req.underlying, legs, direction)
     elif e.control == "width":
         moved = edit.width(listing, req.underlying, legs, direction, spot)
+    elif e.control == "expiry":  # D-48 (REQ-078 AC-11, AC-12): one leg or all legs onto one listed expiry
+        moved = edit.change_expiry(listing, req.underlying, legs, e.index, e.expiry)
     else:
         moved = edit.hedge(listing, req.underlying, legs, hedged, direction)
     return moved.legs, moved.moved
@@ -574,15 +576,8 @@ def apply_edit(cat: Catalogue, req: LegEditIn, legs: list[EditLeg], today: datet
     hedge) needs ``gate`` (:func:`_controls`, the Hedge marks and the live index level for Width's last-step case,
     None: no price, ADR-186 (5); all computed by the server from the legs as sent)."""
     e, name = req.edit, req.underlying
-    if e.control in MOVES:
+    if e.control in (*MOVES, "expiry"):
         return _apply_move(cat, req, legs, today, gate)
-    if e.control == "expiry":  # D-48 (REQ-078 AC-11, AC-12): one leg or every leg onto one listed expiry, or nothing moves
-        if gate is None:  # unreachable: the route always passes it for the expiry control
-            raise RuntimeError("leg edit 'expiry' reached apply_edit without its control check")
-        if gate[0]["expiry"] is not None:  # today's list not loaded: no expiry is read from it
-            raise LegEditRefused(gate[0]["expiry"])
-        moved = edit.change_expiry(edit.Listing(cat, today), name, legs, e.index, e.expiry)
-        return moved.legs, moved.moved
     if e.control == "include":
         return edit.include_leg(legs, _need_index(e, legs), bool(e.included)), frozenset()
     if e.control == "multiplier":

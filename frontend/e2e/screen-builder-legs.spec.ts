@@ -62,6 +62,7 @@ type Opts = {
   orders?: Handler           // POST /api/paper/strategies/63/orders
   depth?: Handler
   saved?: Record<string, any>
+  expiries?: string[]       // GET /api/catalogue/NIFTY/expiries (default: the one expiry of the recorded legs)
 }
 type Stub = { sent: any[]; outcomes: any[]; orders: any[]; calls: string[]; bookReads: () => number; setBook: (b: Opts['book']) => void }
 
@@ -103,7 +104,7 @@ async function stub(page: Page, o: Opts = {}): Promise<Stub> {
       return route.fulfill({ json: { legs: legsFor(body.legs, (l, i) => o.legEdit?.(body, i) ?? {}), shape: null, shape_name: null, outcome: null,
         controls: rec.read.controls, control_reasons: rec.read.control_reasons, shift_total: rec.read.shift_total } })
     }
-    if (p === '/api/catalogue/NIFTY/expiries') return route.fulfill({ json: { underlying: 'NIFTY', expiries: ['2026-10-13'], today: '2026-10-08' } })
+    if (p === '/api/catalogue/NIFTY/expiries') return route.fulfill({ json: { underlying: 'NIFTY', expiries: o.expiries ?? ['2026-10-13'], expiry_days: (o.expiries ?? ['2026-10-13']).map((e) => ({ expiry: e, days: e === '2026-10-13' ? 5 : 12 })), today: '2026-10-08' } })
     if (/^\/api\/catalogue\/NIFTY\/contracts$/.test(p)) return route.fulfill({ json: u.searchParams.get('expiry') === '2026-11-03' ? { underlying: 'NIFTY', contracts: bookContracts() } : CONTRACTS })
     if (p === '/api/leg-picker/strikes') return route.fulfill({ json: GRID })
     if (p === '/api/leg-picker/futures') return route.fulfill({ json: { underlying: 'NIFTY', futures: [] } })
@@ -1176,5 +1177,33 @@ test.describe('Builder running paper trade: edits, Review and add, Exit (REQ-109
     await shot(page, 'row12')
     await expect(page.getByTestId('paper-pending-count')).toHaveText('1 pending change')
     await expect(rows(page)).toHaveCount(3)
+  })
+})
+
+// =============================================================================================== Change expiry (D-48, REQ-078 AC-11..AC-13)
+test.describe('Builder Change expiry (REQ-078 AC-11, AC-12; ADR-330 (42))', () => {
+  const NEXT = '2026-10-20'
+  test('CE-1 the all-legs select sends only the listed date, every leg then shows the new expiry and the Shift total is "-"', async ({ page }) => {
+    // Spec basis: REQ-078 AC-11, AC-9; ADR-330 (42)
+    const S = await stub(page, { expiries: ['2026-10-13', NEXT], legEdit: (b) => (b.edit.control === 'expiry' ? { expiry: NEXT, days_to_expiry: 12 } : {}) })
+    await openDraft(page)
+    await page.getByTestId('expiry-all').selectOption(NEXT)
+    await expect(rows(page).first()).toHaveAttribute('data-expiry', NEXT)
+    for (let i = 0; i < 4; i++) await expect(rows(page).nth(i)).toHaveAttribute('data-expiry', NEXT)
+    expect(S.sent[0].edit).toEqual({ control: 'expiry', expiry: NEXT })
+    expect(S.sent[0].legs.map((l: any) => l.instrument_id)).toEqual(real.legs.map((l: any) => l.instrument_id)) // the legs as shown, no strike built here
+    await shot(page, 'CE-1')
+  })
+
+  test('CE-2 a leg chip changes one leg by index; a refusal (a strike not listed) names the strike and leaves every leg unchanged', async ({ page }) => {
+    // Spec basis: REQ-078 AC-11, AC-12 (fail closed)
+    const S = await stub(page, { expiries: ['2026-10-13', NEXT], legEditRoute: (route, body) => (body.edit.control === 'expiry'
+      ? route.fulfill({ status: 422, json: catalogue('No 22,800 CE is listed for 20 Oct 2026, so leg 1 cannot move there.') })
+      : route.fulfill({ json: { legs: legsFor(body.legs), shape: null, shape_name: null, outcome: null, controls: rec.read.controls, control_reasons: rec.read.control_reasons, shift_total: rec.read.shift_total } })) })
+    await openDraft(page)
+    await rows(page).nth(0).getByTestId('leg-expiry-select').selectOption(NEXT)
+    await expect(page.getByTestId('edit-error')).toContainText('No 22,800 CE is listed for 20 Oct 2026, so leg 1 cannot move there.')
+    expect(S.sent[0].edit).toEqual({ control: 'expiry', index: 0, expiry: NEXT })
+    for (let i = 0; i < 4; i++) await expect(rows(page).nth(i)).toHaveAttribute('data-expiry', '2026-10-13')
   })
 })

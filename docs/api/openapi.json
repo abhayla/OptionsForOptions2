@@ -4488,7 +4488,8 @@
               "read",
               "shift",
               "width",
-              "hedge"
+              "hedge",
+              "expiry"
             ],
             "title": "Control",
             "type": "string"
@@ -4507,6 +4508,18 @@
               }
             ],
             "title": "Direction"
+          },
+          "expiry": {
+            "anyOf": [
+              {
+                "format": "date",
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Expiry"
           },
           "included": {
             "anyOf": [

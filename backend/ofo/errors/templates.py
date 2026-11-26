@@ -1286,7 +1286,7 @@ _LEG_EDIT_TEMPLATES: tuple[MessageTemplate, ...] = (
     _gate("leg_edit_width_hedge_one_expiry", _UI, 25, "Width and Hedge need one expiry.",
           "The move was refused and no leg changed.", "This move.",
           "Use Shift, or put every leg on one expiry.", {}),
-    # D-48 (REQ-078 AC-11, AC-12): change the expiry of legs in the builder; a refusal changes nothing. Pending owner read.
+    # D-48 (REQ-078 AC-11, AC-12): change the expiry of legs in the builder; a refusal changes nothing. Pending read.
     # (a leg already on a passed expiry is refused by the request check, leg_edit_strike_not_listed, before any edit)
     _gate("leg_edit_expiry_not_listed", _UI, 570,
           "No {strikes} {kind} is listed for {expiry}, so leg {number} cannot move there.",

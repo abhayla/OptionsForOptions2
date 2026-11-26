@@ -4261,6 +4261,28 @@
      ],
      "type": "button",
      "component": "components/strategy/TargetBlock.vue"
+    },
+    {
+     "id": "BUILD-198",
+     "kind": "field",
+     "tag": "select",
+     "label": "{{expiryWithDays(e.expiry, e.days)}}",
+     "labelFrom": "text",
+     "ariaLabel": "`Change expiry of leg ${i + 1}`",
+     "testid": "leg-expiry-select",
+     "source": "frontend/src/components/strategy/LegList.vue:242",
+     "component": "components/strategy/LegList.vue"
+    },
+    {
+     "id": "BUILD-199",
+     "kind": "field",
+     "tag": "select",
+     "label": "Change expiry {{expiryWithDays(e.expiry, e.days)}}",
+     "labelFrom": "text",
+     "ariaLabel": "Change expiry of all legs",
+     "testid": "expiry-all",
+     "source": "frontend/src/components/strategy/StrategyControls.vue:111",
+     "component": "components/strategy/StrategyControls.vue"
     }
    ]
   },

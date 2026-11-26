@@ -236,8 +236,8 @@ function setMultiplier(index) {
           <div class="leg-grid leg-phone grid h-9 flex-nowrap items-center whitespace-nowrap max-[639px]:h-auto max-[639px]:gap-y-1" :style="gridStyle" data-testid="leg-row-line">
             <input type="checkbox" :checked="leg.included !== false" :aria-label="`Include leg ${i + 1} in the numbers`" data-testid="leg-tick" @change="emit('edit', { control: 'include', index: i, included: $event.target.checked })" />
             <span :class="leg.action === 'BUY' ? 'tag tag-buy' : 'tag tag-sell'" class="w-6 justify-self-center text-center" :title="leg.action">{{ leg.action === 'BUY' ? 'B' : 'S' }}<span class="sr-only">{{ leg.action }}</span></span>
-            <span class="relative flex h-8 items-center overflow-hidden rounded border border-line px-1 text-xs" :title="expiryOff(leg) ?? expiryWithDays(leg.expiry, leg.days_to_expiry)" data-testid="leg-expiry-chip">
-              <span class="min-w-0 truncate" data-testid="leg-expiry">{{ expiryWithDays(leg.expiry, leg.days_to_expiry) }}</span>
+            <span class="relative flex h-8 min-w-0 items-stretch" data-testid="leg-expiry-chip">
+              <span class="flex min-w-0 flex-1 items-center overflow-hidden rounded border border-line px-1 text-xs" :title="expiryWithDays(leg.expiry, leg.days_to_expiry)" data-testid="leg-expiry">{{ expiryWithDays(leg.expiry, leg.days_to_expiry) }}</span>
               <!-- D-48: a transparent native select over the chip (the OS picker on a phone); option legs only (a futures leg has no strike to keep) -->
               <select
                 v-if="canStep(leg)" class="absolute inset-0 h-full w-full cursor-pointer opacity-0 disabled:cursor-not-allowed" :value="leg.expiry" :disabled="expiryOff(leg) !== null"
