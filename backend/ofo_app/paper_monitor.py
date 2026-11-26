@@ -34,7 +34,6 @@ from dataclasses import dataclass
 from decimal import Decimal
 from typing import Any, Final
 
-from ofo import market_calendar
 from ofo.engine.legs import Instrument
 from ofo.errors.explanations import ExplanationText, render_explanation
 from ofo.instruments.models import FUTURE_TYPE
@@ -45,7 +44,7 @@ from ofo.tracking import paper, stops
 from ofo.tracking.orderbook import net_positions
 from ofo.tracking.paper_alert import ALERT_BODY_TEMPLATES, STOP_LINE_TEMPLATES, alert_body, stop_reason_at
 
-from ofo_app import actionable_alerts, paper_exit, paper_store, tracked_contracts
+from ofo_app import actionable_alerts, may_act, paper_exit, paper_store, tracked_contracts
 from ofo_app import paper_trigger_store as triggers
 from ofo_app.live_push import LiveFeed
 from ofo_app.routes.outcome import SettingsReader, feed_scope, with_rate_in_force
@@ -91,7 +90,7 @@ def _contract_text(found: tracked_contracts.TrackedContract) -> ExplanationText:
 class PaperMonitor:
     def __init__(self, sessions: Sessions, feed: Callable[[], LiveFeed | None], *,  # noqa: PLR0913 - seams
                  read_settings: SettingsReader,
-                 leg_prices: LegPrices = provider_prices, holidays: market_calendar.Holidays | None = None,
+                 leg_prices: LegPrices = provider_prices,
                  reload_seconds: float = RELOAD_SECONDS, monotonic: Callable[[], float] | None = None) -> None:
         self._sessions = sessions
         # REQ-167 AC-4 (GC-SET step 5a): the risk-free rate and forward settings are read at each fire, never the
@@ -99,7 +98,6 @@ class PaperMonitor:
         self._read_settings = read_settings
         self._feed_source = feed
         self._leg_prices = leg_prices
-        self._holidays = holidays
         self._reload_seconds = reload_seconds
         self._monotonic = monotonic or asyncio.get_running_loop().time
         self._feed: LiveFeed | None = None
@@ -177,7 +175,7 @@ class PaperMonitor:
         if not watching or self._feed is None:
             return 0
         now = self._feed.ctx.clock()
-        if not market_calendar.is_market_open(now, self._holidays):
+        if not may_act.market_open(self._feed.ctx, now):  # the ONE market rule (the feed's own answer)
             return 0
         try:
             price = paper.price_of(quote, quote.instrument_id)
