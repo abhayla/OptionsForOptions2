@@ -34,8 +34,8 @@ def test_one_third_has_no_rounding_error():
 
 
 def test_absent_figures_are_not_computable_never_not_met():
-    for args in ((None, D("1"), D("1")), (D("1"), None, D("1")), (D("1"), D("1"), None)):
-        out = pnl_percent(*args, "ge")
+    for num, den, limit in ((None, D("1"), D("1")), (D("1"), None, D("1")), (D("1"), D("1"), None)):
+        out = pnl_percent(num, den, limit, "ge")
         assert isinstance(out, NotComputable) and not isinstance(out, NotMet) and out.reason
 
 
