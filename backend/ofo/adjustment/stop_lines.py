@@ -133,7 +133,6 @@ __all__ = [
     "RUPEE_PROFIT_KEY",
     "RUPEE_PROFIT_RULE",
     "RUPEE_RULES",
-    "rupee_loss_is_the_stop",
     "STAGE_UNKNOWN",
     "STOPS_NOT_SUPPLIED",
     "STOP_CREDIT",
@@ -149,4 +148,5 @@ __all__ = [
     "is_stop_rule",
     "not_checked_code",
     "rule_id",
+    "rupee_loss_is_the_stop",
 ]

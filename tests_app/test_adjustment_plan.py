@@ -98,7 +98,7 @@ async def _system_ic(engine) -> playbook_store.Playbook:
 
 def _without_rupees(prefill: dict) -> dict:
     """ADR-330 (5): the rupee figures of a level are asserted on their own (tests_app/test_plan_rupee_levels.py)."""
-    return {k: v for k, v in prefill.items() if "rupee" not in k and "per_lot" not in k}
+    return {k: v for k, v in prefill.items() if "rupee" not in k and "per_lot" not in k and not k.endswith("_source")}
 
 
 async def test_get_without_a_plan_prefills_from_the_active_system_playbook_and_pick_refills(app_db_url, monkeypatch):

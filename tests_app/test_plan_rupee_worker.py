@@ -1,5 +1,5 @@
-"""ADR-330 (5)(b): a plan's rupee loss stop, once hit, is raised by the worker through ``actionable_alerts`` as ONE alert
-of kind ``plan_rupee_loss`` (open, no answer yet) and nothing exits by itself: ``paper_orders`` is unchanged.
+"""ADR-330 (5)(b): a plan's rupee loss stop, once hit, is raised by the worker through ``actionable_alerts`` as ONE
+alert of kind ``plan_rupee_loss`` (open, no answer yet) and nothing exits by itself: ``paper_orders`` is unchanged.
 
 Real case: the S-21 base (max loss 2,600), a stop typed as Rs 400, the loss reaching Rs 400.00 (a repeat of the same
 reading adds no second row). Same gate-store path as ``test_background_worker.py`` (the worker's one writer).
@@ -14,7 +14,11 @@ from ofo.adjustment import alert_gate
 from ofo.adjustment import stop_lines as sl
 from ofo_app import background
 from sqlalchemy import text
-from test_background_worker import _db_now, _watched_and_fresh_t03, app_db_url  # noqa: F401 - the fixture is used by name
+from test_background_worker import (  # noqa: F401 - the fixture is used by name
+    _db_now,
+    _watched_and_fresh_t03,
+    app_db_url,
+)
 
 
 async def _orders(engine) -> int:

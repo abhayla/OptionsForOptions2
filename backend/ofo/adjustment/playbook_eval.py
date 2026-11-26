@@ -1014,7 +1014,8 @@ def _outcomes(body: Mapping, state: StrategyState, gap_until: str) -> tuple[_Ctx
         else:
             out.append(_rule(c, rule))
     named = {m for rule in body.get("rules", []) for m in (rule.get("any_of") or rule["all_of"])}
-    for tid in sorted(sl.STOP_TRIGGERS - named - ({sl.TRIGGER_MAX_LOSS} if replaced else set())):  # an active line no body rule names is still checked (ADR-252)
+    skipped = {sl.TRIGGER_MAX_LOSS} if replaced else set()  # the rupee stop is the plan's one stop
+    for tid in sorted(sl.STOP_TRIGGERS - named - skipped):  # an active line no rule names is still checked (ADR-252)
         line = _line(state, tid)
         if line is not None and line.active:
             out.append(_stop_rule(c, {"id": tid, "any_of": [tid]}, why))

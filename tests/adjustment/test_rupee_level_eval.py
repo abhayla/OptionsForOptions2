@@ -80,7 +80,8 @@ def _one_stop_run(guards: dict, pnl, max_loss="2600", pct="10"):
 
 
 def _plan_loss_flags(ev):
-    return [r for r in ev.results if isinstance(r, Flag) and kind_of(r.trigger_id) in ("plan_loss_stop", "plan_rupee_loss")]
+    kinds = ("plan_loss_stop", "plan_rupee_loss")
+    return [r for r in ev.results if isinstance(r, Flag) and kind_of(r.trigger_id) in kinds]
 
 
 def test_rupee_stop_is_the_plans_only_stop_alert_not_a_second_one_from_t06():

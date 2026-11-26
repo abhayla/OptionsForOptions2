@@ -395,6 +395,8 @@ APP_MODELS = (
     "ofo_app.routes.adjustment_opportunities.TotalsOut",
     "ofo_app.routes.adjustment_plan.AdjustmentPlanOut",
     "ofo_app.routes.adjustment_plan.ClockOut",
+    "ofo_app.routes.adjustment_plan.LevelOut",
+    "ofo_app.routes.adjustment_plan.LevelsOut",
     "ofo_app.routes.adjustment_plan.PlanOut",
     "ofo_app.routes.adjustment_plan.PlanPlaybookOut",
     "ofo_app.routes.adjustment_plan.PrefillOut",
