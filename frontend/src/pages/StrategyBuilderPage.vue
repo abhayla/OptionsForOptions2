@@ -128,11 +128,15 @@ function legsFromQuery() {
     source: null,
   }))
 }
-// ADR-329 (1): the legs the builder held across an Option Chain trip come back (once). ?strategy= / ?adjust= name another thing to
-// open, so the hold is dropped and today's open path runs.
+// ADR-329 (1): the legs the builder held across an Option Chain trip come back (once). ?adjust= or a ?strategy= naming ANOTHER
+// strategy name another thing to open, so the hold is dropped and today's open path runs. A ?strategy= naming the held strategy
+// (browser Back to the entry it was opened by) is that strategy's own link: the hold comes back and the book is not read over it.
 const builderHold = useBuilderHold()
 let heldBack = null
-if (route.query.strategy !== undefined || route.query.adjust !== undefined) builderHold.clear()
+const urlStrategy = route.query.strategy
+const heldStrategyId = builderHold.held ? String(builderHold.held.paperId ?? builderHold.held.openStrategy?.id ?? '') : ''
+const heldForUrl = urlStrategy !== undefined && route.query.adjust === undefined && heldStrategyId !== '' && heldStrategyId === String(urlStrategy)
+if (urlStrategy !== undefined && !heldForUrl || route.query.adjust !== undefined) builderHold.clear()
 else heldBack = builderHold.take()
 const legs = ref(heldBack ? heldBack.legs : legsFromQuery())
 // GC-ADJ1 step 3 (REQ-156): `?adjust=<strategy id>` opens the approach compare instead of the builder's two columns.
@@ -823,7 +827,7 @@ onMounted(async () => {
     readShape()
   }
   if (chainError) editError.value = chainError
-  openFromUrl()
+  if (!heldForUrl) openFromUrl() // the held strategy is already the page's: reading its book again would overwrite the restored edit
 })
 // REQ-076 AC-1/AC-4/AC-6/AC-8: ONE edit goes to the server; legs, name, marks and every number come from its reply.
 // Only the tick leaves a saved draft saved (it is never part of the saved strategy, AC-7); any other edit makes it unsaved.

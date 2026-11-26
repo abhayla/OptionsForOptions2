@@ -239,7 +239,7 @@ describe.runIf(WIRED.hold)('ADR-329 (1): the chain trip keeps the legs, Add Sele
     noDialogs()
   })
 
-  it('C10 held legs and a ?strategy= link: the hold is dropped and today\'s open path runs', async () => {
+  it('C10 held legs and a ?strategy= link to another strategy id: the hold is dropped and today\'s open path runs', async () => {
     await start(BUILDER, { draft: HELD_LINK })
     await goChain()
     expect(useBuilderHold().count).toBe(3)
@@ -364,5 +364,78 @@ describe.runIf(WIRED.hold)('C11 Drafts Mode on the real strategy 63 book: the tr
     await flushPromises()
     expect(w.text()).toContain('The strategy changed while you were away. Your unsaved edits were not restored.')
     expect(builder().pendingOrders).toHaveLength(0)
+  })
+})
+
+// Row 12 (owner 2026-11-26): browser Back returns to the history entry `?strategy=<id>` of the strategy the builder holds; that
+// link names the held strategy itself, so the hold is kept (a link to ANOTHER id still drops it, C10).
+describe.runIf(WIRED.hold)('row 12: Back to a ?strategy= entry of the held strategy keeps the held edit', () => {
+  const CHANGED = 'The strategy changed while you were away. Your unsaved edits were not restored.'
+  const BOOK63 = async () => {
+    const BOOK = (await import('../../tests/fixtures/paper/strategy-63-roll.json')).default
+    answers['GET /paper/strategies/63'] = BOOK
+    answers['GET /catalogue/NIFTY/contracts?expiry=2026-11-03'] = { underlying: 'NIFTY', contracts: BOOK.positions.map((p) => ({ contract_id: p.contract_id,
+      exchange_segment: 'NSE_FO', exchange_token: p.contract_id, instrument_type: p.instrument, expiry: p.expiry, strike: p.strike, lot_size: 65, symbol: `N${p.strike}${p.instrument}` })) }
+    return BOOK
+  }
+  const paperLegs = () => builder().legs.map((l) => `${l.action} ${l.contract_id} ${l.lots}`)
+
+  it('R12a paper strategy 63: remove a leg, chain, Back -> the same edit, 1 pending, no restore note', async () => {
+    await BOOK63()
+    await start(BUILDER, { strategy: '63' })
+    builder().legs.splice(0, 1)
+    await flushPromises()
+    const edited = paperLegs()
+    expect(builder().pendingOrders).toHaveLength(1)
+    await goChain()
+    router.back()
+    await flushPromises()
+    await flushPromises()
+    expect(paperLegs()).toEqual(edited)
+    expect(builder().pendingOrders).toEqual(paperOrdersFor(builder().paper.net, builder().legs))
+    expect(builder().pendingOrders).toHaveLength(1)
+    expect(w.text()).not.toContain(CHANGED)
+  })
+
+  it('R12b saved non-paper strategy 7: remove a leg, chain, Back -> the edited legs, savedId null, openStrategy 7', async () => {
+    await start(BUILDER, { strategy: '7' })
+    await t(w, 'remove-leg').trigger('click')
+    await flushPromises()
+    const edited = shown()
+    await goChain()
+    router.back()
+    await flushPromises()
+    expect(shown()).toEqual(edited)
+    expect(builder().savedId).toBeNull()
+    expect(builder().openStrategy.id).toBe(7)
+  })
+
+  it('R12c strategy 63 and the book changed while away, Back -> the changed-book sentence, 0 pending', async () => {
+    const BOOK = await BOOK63()
+    await start(BUILDER, { strategy: '63' })
+    builder().legs.splice(0, 1)
+    await flushPromises()
+    await goChain()
+    answers['GET /paper/strategies/63'] = { ...BOOK, positions: BOOK.positions.map((p, i) => (i === 0 ? { ...p, net_quantity: 130 } : p)) }
+    router.back()
+    await flushPromises()
+    await flushPromises()
+    expect(w.text()).toContain(CHANGED)
+    expect(builder().pendingOrders).toHaveLength(0)
+  })
+
+  it('R12d held legs of 63, then a link to strategy 7: the hold is dropped and 7 opens', async () => {
+    await BOOK63()
+    await start(BUILDER, { strategy: '63' })
+    builder().legs.splice(0, 1)
+    await flushPromises()
+    await goChain()
+    expect(useBuilderHold().held.paperId).toBe(63)
+    await router.push({ name: BUILDER, query: { strategy: '7' } })
+    await flushPromises()
+    await flushPromises()
+    expect(useBuilderHold().held).toBeNull()
+    expect(builder().openStrategy.id).toBe(7)
+    expect(rowCount()).toBe(4)
   })
 })
