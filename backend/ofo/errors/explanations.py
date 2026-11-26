@@ -2046,6 +2046,10 @@ _EXPLANATIONS: tuple[ExplanationTemplate, ...] = (
     ExplanationTemplate("stop_fired_note", "what_triggered", "{body}", {"body": Explained}),
     ExplanationTemplate("stop_fired_note_with_line", "what_triggered", "{body} {line}",
                         {"body": Explained, "line": Explained}),
+    # ADR-330 (44): a paper exit that could not run because a contract has no live price; it stays set
+    ExplanationTemplate("exit_not_run_no_price", "what_triggered",
+                        "Your exit at {level} could not run: {contract} has no live price. It is still set.",
+                        {"level": IndexLevel, "contract": Explained}),
     ExplanationTemplate("paper_alert_title", "what_triggered", "Paper strategy — {name}", {"name": Explained}),
     ExplanationTemplate("paper_alert_leg", "values_seen", "{contract} at {price}",
                         {"contract": Explained, "price": Explained}),

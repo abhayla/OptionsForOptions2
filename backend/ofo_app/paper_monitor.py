@@ -70,6 +70,27 @@ def provider_prices(feed: LiveFeed, underlying: str, keys: Sequence[str]) -> Map
     return {k: paper.leg_price(snapshot, k) for k in keys}
 
 
+#: The kind an "exit could not run" message is stored under: the closest informational kind the alert table's kind
+#: check allows (a kind of its own needs a migration).
+EXIT_NOT_RUN_KIND: Final = "stop_fired"
+#: How long a stop's fire waits for an index value the held feed does not show yet (``market_read``'s own hold)
+INDEX_WAIT_SECONDS: Final = 1.0
+
+
+def exit_not_run_rule(trigger_id: int) -> str:
+    """The ONCE-A-DAY rule of the "exit could not run" message (ADR-330 (44)): one message per exit (trigger) per India
+    day, however many blocked ticks that day. The rule is this id: ``actionable_alerts.inform_once_per_day`` writes the
+    message only when no stored row of this id falls in the India day of the tick, so a restart cannot repeat it."""
+    return f"info:exit_not_run:{trigger_id}"
+
+
+@dataclass(frozen=True)
+class _NoPrice:
+    """An exit that cannot run: the first contract without a live price (its price is stale, missing or unreadable)."""
+
+    contract_id: int
+
+
 def _no_listener(_quote: Any) -> None:
     """The monitor drains its queue itself (fanout.drain); a tick alone calls nothing."""
 
@@ -92,8 +113,11 @@ class PaperMonitor:
     def __init__(self, sessions: Sessions, feed: Callable[[], LiveFeed | None], *,  # noqa: PLR0913 - seams
                  read_settings: SettingsReader,
                  leg_prices: LegPrices = provider_prices,
-                 reload_seconds: float = RELOAD_SECONDS, monotonic: Callable[[], float] | None = None) -> None:
+                 reload_seconds: float = RELOAD_SECONDS, monotonic: Callable[[], float] | None = None,
+                 index_wait: Any = None) -> None:
         self._sessions = sessions
+        self._index_wait = index_wait  # a ``market_read.Wait`` (tests inject the clock); None: INDEX_WAIT_SECONDS
+        self._told: dict[int, datetime.date] = {}  # trigger id -> India day it was told (a short cut, not the record)
         # REQ-167 AC-4 (GC-SET step 5a): the risk-free rate and forward settings are read at each fire, never the
         # live feed's context captured when the socket started (which holds the registry default)
         self._read_settings = read_settings
@@ -224,10 +248,11 @@ class PaperMonitor:
             targets = [t.contract_id] if t.kind == "leg_stop" else sorted(open_net)
             found = {c.contract_id: c for c in await tracked_contracts.resolve(session, targets)}
             prices = self._exit_prices(feed, a, w, price, targets, found)
-            if prices is None:
-                return None  # a contract without a live price: not yet, the trigger stays armed
+            if isinstance(prices, _NoPrice):  # a contract without a live price: not yet, the trigger stays armed
+                await self._tell_exit_not_run(session, a, prices, found, now)  # #732: once a day, never blocks
+                return None
             texts = {c: _contract_text(found[c]) for c in targets}
-            reason = stop_reason_at(self._reason(t, texts), a.underlying, self._index_now(feed, a.underlying))
+            reason = stop_reason_at(self._reason(t, texts), a.underlying, await self._index_at_fire(feed, a, price))
             # the door: the strategy lock FIRST, the net read under it (a lot added since the look above is closed
             # too), then the claim, then the write (a stop: never a first fill)
             done = await paper_exit.exit_strategy(
@@ -251,6 +276,50 @@ class PaperMonitor:
                 restore={"body": ALERT_BODY_TEMPLATES, "line": STOP_LINE_TEMPLATES})
         self.fires += 1
         return {"fired": {t.id}, "cancelled": set()}
+
+    async def _tell_exit_not_run(self, session: Any, a: triggers.ArmedTrigger, blocked: _NoPrice,
+                                found: Mapping[int, tracked_contracts.TrackedContract],
+                                now: datetime.datetime) -> None:
+        """#732 (ADR-330 (44), (39)): the exit is set, a tick crossed it, and a contract has no live price (the price
+        reader's verdict: missing, stale, not live, or the leg's own price absent). ONE informational message per exit
+        per India day ("Your exit at 26,100.00 could not run: <contract> has no live price. It is still set."): History
+        row + pop-up, never the bell, through the one alert module. The exit stays armed and runs at the next check when
+        prices are back; no order is placed. The answer is the stored rows (``exit_not_run_rule``); ``_told`` only saves
+        a query per tick. A store that fails: logged by type, the exit path is untouched (the trigger stays armed), and
+        no retry on the next tick the same day (no tight retry, REQ-100 AC-18)."""
+        t = a.trigger
+        day = now.astimezone(paper.IST).date()
+        if self._told.get(t.id) == day:
+            return
+        self._told = {k: v for k, v in self._told.items() if v == day}
+        self._told[t.id] = day
+        try:
+            await actionable_alerts.inform_once_per_day(
+                session, a.user_ref, t.strategy_id, EXIT_NOT_RUN_KIND, exit_not_run_rule(t.id),
+                "exit_not_run_no_price", {"level": t.level, "contract": _contract_text(found[blocked.contract_id])},
+                at=now, restore={"contract": ("contract_display",)})
+        except Exception as exc:  # noqa: BLE001 - the message is a courtesy: the exit stays armed whatever happens here
+            log.error("exit-not-run message of trigger %s not written: %s", t.id, type(exc).__name__)
+
+    async def _index_at_fire(self, feed: LiveFeed, a: triggers.ArmedTrigger, price: paper.Price) -> Decimal | None:
+        """#734: the index value the fire's reason carries. The held reading first; when it is not there yet (a fire in
+        the first second after ``reload``, before the index tick arrives): the crossing tick itself when it IS the index
+        (a conditional exit), else the one market reader (``market_read.read_market``, a short hold). Truly unknown ->
+        None, and the reason says "not available" (never a made-up value)."""
+        held = self._index_now(feed, a.underlying)
+        if held is not None:
+            return held
+        if a.trigger.kind == "conditional_exit":
+            return price.price  # the tick that fired it is the live index value (on_quote: live, market open)
+        from ofo_app import market_read  # noqa: PLC0415 - late: market_read imports the live feed
+        try:
+            wait = self._index_wait or market_read.Wait(INDEX_WAIT_SECONDS)
+            read = await market_read.read_market(feed.ctx, feed, a.underlying, [], True, "stop_fire", wait=wait)
+        except Exception as exc:  # noqa: BLE001 - the value is a record detail: never block a stop on it
+            log.error("index value of fired trigger %s not read: %s", a.trigger.id, type(exc).__name__)
+            return None
+        index = read.index
+        return index.price if index is not None and index.state == paper.LIVE else None
 
     @staticmethod
     async def _max_loss_line(session: Any, a: Any, t: stops.Trigger, book: Sequence[Any],  # noqa: PLR0913
@@ -297,18 +366,19 @@ class PaperMonitor:
 
     def _exit_prices(self, feed: LiveFeed, a: triggers.ArmedTrigger, w: _Watch,  # noqa: PLR0913
                      price: paper.Price, targets: list[int],
-                     found: dict[int, tracked_contracts.TrackedContract]) -> dict[int, Decimal] | None:
+                     found: dict[int, tracked_contracts.TrackedContract]) -> dict[int, Decimal] | _NoPrice:
         if a.trigger.kind == "leg_stop":
-            return {targets[0]: price.price} if price.price is not None else None
+            return {targets[0]: price.price} if price.price is not None else _NoPrice(targets[0])
         keys = {c: found[c].feed_key for c in targets}
-        if any(found[c].state != tracked_contracts.LIVE or k is None for c, k in keys.items()):
-            return None
+        for c, k in keys.items():
+            if found[c].state != tracked_contracts.LIVE or k is None:
+                return _NoPrice(c)
         answers = self._leg_prices(feed, a.underlying, [k for k in keys.values() if k is not None])
         out: dict[int, Decimal] = {}
         for c, k in keys.items():
             p = answers.get(k)  # type: ignore[arg-type]
             if p is None or not paper.is_live(p) or p.price is None:
-                return None
+                return _NoPrice(c)
             out[c] = p.price
         return out
 

@@ -225,6 +225,27 @@ async def test_inform_adds_a_history_row_and_never_changes_the_count(db):
     assert await aa.unanswered_count(db, user) == 1
 
 
+async def test_inform_once_per_day_writes_one_row_per_rule_per_india_day(db):
+    """#732 (ADR-330 (44)): the stored rows are the answer; another rule, another strategy and the next India day (from
+    00:00 IST, 18:30 UTC the evening before) each get their own row."""
+    user, stored = await _strategy(db)
+    _, other = await _strategy(db, user)
+    say = {"time": LATER}
+
+    async def once(sid, rule, at):
+        return await aa.inform_once_per_day(db, user, sid, "stop_fired", rule, "alert_fired_at", say, at=at)
+
+    first = await once(stored.id, "info:r:1", LATER)
+    assert first is not None
+    assert await once(stored.id, "info:r:1", LATER + datetime.timedelta(hours=3)) is None  # the same day
+    assert await once(stored.id, "info:r:2", LATER) is not None  # another exit
+    assert await once(other.id, "info:r:1", LATER) is not None  # another strategy
+    midnight = datetime.datetime(2026, 11, 26, 0, 0, 0, tzinfo=IST)
+    assert await once(stored.id, "info:r:1", midnight - datetime.timedelta(seconds=1)) is None  # 25 Nov 23:59:59
+    assert await once(stored.id, "info:r:1", midnight) is not None  # 26 Nov 00:00:00 IST
+    assert await aa.unanswered_count(db, user) == 0
+
+
 # 5 -------------------------------------------------------------------------------------------------------------
 async def test_a_second_raise_for_the_same_rule_is_the_same_row_and_a_worse_value_updates_it(db):
     user, stored = await _strategy(db)

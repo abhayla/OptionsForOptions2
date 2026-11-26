@@ -848,6 +848,21 @@ async def test_d03r2_keep_on_an_exit_that_is_not_marked_answers_normally_and_sto
     assert [(r["id"], r["state"]) for r in rows] == [(first, "armed")]
 
 
+async def test_733_keep_on_an_exit_the_live_price_has_crossed_is_refused_and_nothing_changes(db, notified):
+    """#733 (ADR-317 (1)): Keep stores the exit again, so the same crossed-level refusal as the save route applies. The
+    spot is 22,533.25: an exit above 22,500 (stored before it crossed) is marked after an adjustment; Keep says no."""
+    app, stored, ids = await _open(db)
+    old = await paper_trigger_store.add(db, stored.id, paper_trigger_store.NewTrigger(
+        "conditional_exit", "above", D("22500"), underlying="NIFTY"))
+    await _adjust(db, stored, [_new(ids[2], "SELL", 65, "82.75"), _new(ids[3], "BUY", 65, "35.80")], 1)
+    before = await _stored(db, stored.id)
+    async with _client(app) as c:
+        kept = await c.post(_url(stored, f"/{old}/keep"))
+    assert kept.status_code == HTTPStatus.UNPROCESSABLE_ENTITY, kept.text
+    assert CE_SENTENCE in kept.text
+    assert await _stored(db, stored.id) == before and notified == []  # the old exit is still armed, no new row
+
+
 async def test_d03r2_keep_on_a_cancelled_exit_is_409(db, notified):
     app, stored, _ids = await _open(db)
     async with _client(app) as c:
