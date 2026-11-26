@@ -35,6 +35,16 @@ describe('section label click (P12)', () => {
     w.unmount()
   })
 
+  it('a ctrl-click on the label is left to the browser: not prevented, menu not toggled', async () => {
+    const { w } = await mountAt('/strategies/my-strategies')
+    const ev = new MouseEvent('click', { bubbles: true, cancelable: true, ctrlKey: true })
+    w.get('[data-testid="nav-strategies"]').element.dispatchEvent(ev)
+    await flushPromises()
+    expect(ev.defaultPrevented).toBe(false)
+    expect(menu(w).exists()).toBe(false)
+    w.unmount()
+  })
+
   it('click on a label from another path navigates and leaves the menu closed', async () => {
     const { w, router } = await mountAt('/home')
     await w.get('[data-testid="nav-strategies"]').trigger('click')

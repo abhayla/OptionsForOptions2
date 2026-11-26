@@ -4331,6 +4331,14 @@
     "sha256": "a68739cce66043b300fb760ceb54f45c96b922503b071737e91faa2a33e0088d",
     "reviewed": "pending owner read"
   },
+  "explanation:paper_totals_closed_one": {
+    "sha256": "6f4736d24c413147a0ade57249f9898cd8663dbb0c1232791f468877ad6c9124",
+    "reviewed": "pending owner read"
+  },
+  "explanation:paper_totals_closed_many": {
+    "sha256": "29d7b3c3804f5c769dedeabf858f6b826b7ff58aa3e23dbd25fccc355d9f18af",
+    "reviewed": "pending owner read"
+  },
   "paper_trigger_already_crossed": {
     "sha256": "75f3b8659d6d4aa95d0f7dc8d3c4f9c8cfad4d72452461ed06c06cbc79c801be",
     "reviewed": "owner read 2026-11-23 (approved in session)"

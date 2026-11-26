@@ -469,6 +469,9 @@ class PaperTotalsOut(ApiModel):
     # D-40 (ADR-324): strategies whose open contract has expired are left out of every figure above, and counted here
     left_out_count: int = 0
     left_out_text: CatalogueText | None = None
+    # P11 (ADR-330 (10)): how many closed strategies the figures include (the screen prints closed_text)
+    closed_count: int = 0
+    closed_text: CatalogueText | None = None
 
 
 class PaperTodayOut(PaperTotalsOut):
@@ -1036,7 +1039,8 @@ async def list_paper_strategies(db: Annotated[Any, Depends(get_db)],  # noqa: PL
                               "status_word": _paper_word(b.status, figures["positions"]),
                               "open_count": open_legs, "position_count": len(figures["positions"])})
     kept = [i for i, s in enumerate(out) if not _expired_open(s)]  # D-40: the strategies that can be priced
-    totals = _totals([out[i] for i in kept], [decays[i] for i in kept], len(out) - len(kept))
+    totals = _totals([out[i] for i in kept], [decays[i] for i in kept], len(out) - len(kept),
+                    sum(1 for s in out if s["open_count"] == 0 or s["state"] == "EXITED"))
     sorted_books = sorted(books, key=_newest_first, reverse=True)
     day = today_day([snapshots.get(b.underlying) for b in sorted_books], answered)
     today = today_totals([_today_item(out[i], decays[i], sorted_books[i]) for i in kept], day)
@@ -1118,7 +1122,8 @@ def _decay(figures: dict, found: dict[int, tracked_contracts.TrackedContract], s
     return paper_decay.book_decay(snapshot, underlying, contracts)
 
 
-def _totals(strategies: Sequence[dict], decays: Sequence[paper_decay.Decay], left_out: int = 0) -> dict:
+def _totals(strategies: Sequence[dict], decays: Sequence[paper_decay.Decay], left_out: int = 0,
+            closed: int = 0) -> dict:
     """The exact sums over every strategy that can be priced (the ``left_out`` expired ones are only counted).
     Unbooked and total are absent with the first absent strategy's reason, and Decay with the first absent book's
     reason: never a partial sum shown as a total (REQ-109 AC-5)."""
@@ -1136,6 +1141,7 @@ def _totals(strategies: Sequence[dict], decays: Sequence[paper_decay.Decay], lef
             "decay": decay, "decay_text": _signed(decay), "decay_reason": decay_reason,
             "decay_reason_text": reason_text(decay_reason),
             "left_out_count": left_out, "left_out_text": _left_out_text(left_out),
+            "closed_count": closed, "closed_text": _closed_text(closed),
             **_charges_total(strategies), **_after_total(strategies)}
 
 
@@ -1180,6 +1186,14 @@ def _left_out_text(count: int) -> Any:
         return None
     return render_explanation("paper_totals_left_out_one") if count == 1 else render_explanation(
         "paper_totals_left_out_many", count=count)
+
+
+def _closed_text(count: int) -> Any:
+    """P11: the sentence saying how many closed strategies the Paper totals include; absent when none."""
+    if count == 0:
+        return None
+    return render_explanation("paper_totals_closed_one") if count == 1 else render_explanation(
+        "paper_totals_closed_many", count=count)
 
 
 def _after_total(strategies: Sequence[dict]) -> dict:

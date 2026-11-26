@@ -13,14 +13,14 @@ Changes (owner-run, one transaction; ADDITIVE: no row rewritten, no back-fill he
   this change gets its base worked out ONCE from the strategy's entry orders at its first check (source "backfill").
 - Grants: the application role also gets column INSERT and UPDATE on stop_base (a plan edit rewrites it; the
   back-fill writes it only where it is NULL). The 0031 / 0041 plan guard is unchanged (it never looked at the column).
-- public.ofo_assert_app_role_allowlist: 0052's chain text with the plan block's INSERT and UPDATE column sets widened
+- public.ofo_assert_app_role_allowlist: 0054's chain text with the plan block's INSERT and UPDATE column sets widened
   (fails closed when 0031's two column checks are not in the chain exactly once).
 - downgrade (as 0046's): the allow-list 'pre' check, then locks the table and REFUSES (SQLSTATE OF039, counted)
   while any
-  plan row holds a stop_base; else drops the column and restores 0052's chain text.
+  plan row holds a stop_base; else drops the column and restores 0054's chain text.
 
 Revision ID: 0055_plan_stop_base
-Revises: 0053_close_finished_strategies
+Revises: 0054_actionable_alert_answers
 """
 from __future__ import annotations
 
@@ -30,8 +30,7 @@ from pathlib import Path
 from alembic import op
 
 revision = "0055_plan_stop_base"
-# LANE-P: rechain to 0054_actionable_alert_answers at integration
-down_revision = "0053_close_finished_strategies"
+down_revision = "0054_actionable_alert_answers"
 branch_labels = None
 depends_on = None
 
@@ -48,7 +47,7 @@ def _load(filename: str, name: str):
 
 _M31 = _load("0031_adjustment_playbooks.py", "ofo_migration_0031_for_0055")
 _M39 = _load("0039_strategy_entry_facts.py", "ofo_migration_0039_for_0055")
-_M52 = _load("0052_strategy_held_entries.py", "ofo_migration_0052_for_0055")
+_M54 = _load("0054_actionable_alert_answers.py", "ofo_migration_0054_for_0055")
 _BASE = _M31._BASE
 _M3 = _M31._M16._M3
 TABLE = _M31.PLANS
@@ -71,11 +70,11 @@ def _replacements() -> tuple[tuple[str, str], ...]:
 
 
 def previous_allowlist_sql() -> str:
-    return _M52.extended_allowlist_sql()
+    return _M54.extended_allowlist_sql()
 
 
 def extended_allowlist_sql() -> str:
-    """0052's chain text with the plan block asserting the widened column sets. Fails closed on a changed shape."""
+    """0054's chain text with the plan block asserting the widened column sets. Fails closed on a changed shape."""
     sql = previous_allowlist_sql()
     for old, new in _replacements():
         if sql.count(old) != 1:
