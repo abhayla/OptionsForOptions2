@@ -156,7 +156,7 @@ async def test_a_failed_expiry_read_for_one_trade_never_stops_the_lists_or_the_b
     ids = {sid: await _raise(app_db_url, sid) for sid in (good, bad)}
     real = readers.nearest_expiry
     baseline = (await _call("GET", "/api/alerts/active"))[1]["count"]
-    assert baseline >= 2  # the seeds raise their own open alerts too
+    assert baseline >= len(ids)  # the seeds raise their own open alerts too
     for failure in (RuntimeError("boom"), DBAPIError("SELECT 1", None, Exception("db"))):
         async def lookup(db, sid, _failure=failure):
             if sid == bad:
