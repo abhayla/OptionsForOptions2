@@ -16,7 +16,10 @@ code, no spec rows, no migration. Owner evidence: comment 7184365037 on PR #722 
 | Option Chain | `frontend/e2e/screen-option-chain.spec.ts` | 105 (stable: 630 passed with `--repeat-each 3`) | 3 (NEW-T40, NEW-T41, row 12) | 2 | 247bcfd |
 | Strategy Builder part A (legs table, leg door, figures, Drafts Mode edits, Review and add, Exit) | `frontend/e2e/screen-builder-legs.spec.ts` | 90 (stable: 540 passed with `--repeat-each 3`) | 10 (row 12, N-04, N-05, N-07, NEW-T50, NEW-T51, NEW-T52 x3, NEW-T53 phone) | 4 | c32fd04 |
 | Strategy Builder part B (Drafts Mode, leave and replace questions, Save / Save As / Rename, saved list, history, drawers, load states) | `frontend/e2e/screen-builder-drafts.spec.ts` | 131 (stable: 786 passed with `--repeat-each 3`) | 12 (row 12 x2, NEW-T60..T68; NEW-T68 phone only) | 9 | 8c6ca7e |
+| Alerts (Active, History, Notification settings) and the 15 unbuilt placeholder pages | `frontend/e2e/screen-alerts.spec.ts` | 55 (stable: 330 passed with `--repeat-each 3`) | 1 (N-14) | 2 observations (NEW-T70, NEW-T71) | 3aa98cc |
 | Live-socket guard fix (REQ-133 AC-2) | chain spec no longer routes the strategy live socket; `live-card-stub.ts` pushes stamped; guard EXPECTED lists the stub | - | - | - | acbadd2 |
+| Socket stand-in guard fix | chain spec records socket hosts with `page.on('websocket')`, no regex route | - | - | - | 4197832 |
+| Inventory Covered-by column after the suites | `screen-inventory.md` | - | - | - | a71b1f7 |
 
 Core proof: the row-2 test failed under one mutation (`HomeOverviewPage.vue` row link pinned to row 1: "Expected
 /strategy\/builder\?strategy=7$/ Received .../strategy/builder?strategy=12") and passed again after the revert.
@@ -25,6 +28,39 @@ How the suite runs: built app on `vite preview` (port 4175, `OFO_API_TARGET=http
 stubs, the way the existing `home.spec.ts` runs; `PW_CHROMIUM_PATH=/opt/pw-browsers/chromium-1243/chrome-linux64/chrome
 npx playwright test e2e/screen-home.spec.ts --trace off` from `frontend/`. The real-backend mode CI uses (Postgres 16,
 migrated, 2026-10-08 catalogue seeded, uvicorn 8000-8002, previews 4173-4176) also works in this container.
+
+## Totals
+
+| Measure | Value |
+|---|---|
+| Routes / pages in the inventory | 55 route entries, 47 pages (15 unbuilt placeholders) |
+| Controls in the inventory | 446 |
+| Covered before Lane T (9de2c9b) | 279 |
+| Covered after Lane T (a71b1f7) | 348 (+69) |
+| Not covered after | 98 |
+| Spec-silent controls | 30 (question Q9 in `owner-questions-lane-t.md`) |
+| New Lane T tests (per viewport; each runs at 390 and 1280 px) | 832 (Home 79, My Strategies 100, Current positions 142, Live and Adjustments 130, Option Chain 105, Builder A 90, Builder B 131, Alerts and placeholders 55) plus the inventory guard (vitest) |
+| Expected-fail tests (written to the spec; today's code fails) | see the per-screen table; each proved once to fail for its stated reason |
+| New findings | 29 (NEW-T01..T03, T10, T11, T20..T24, T31, T32, T40, T41, T50..T53, T60..T68, T70, T71) |
+| Owner findings pinned as tests | row 12, N-01, N-04, N-05, N-07, N-13 (as NEW-T65), N-14, N-18 (R-06) |
+
+Coverage per section, covered/not covered, before to after (unchanged sections omitted): SHARED 26/18 to 36/8; HOME
+6/1 to 7/0; PLACE 0/1 to 1/0; MYSTR 13/1 to 14/0; BUILD 107/89 to 143/53; LIVE 4/2 to 6/0; ADJ 36/30 to 47/19; ADJOPP
+3/2 to 5/0; CHAIN 18/5 to 23/0. The 98 rows still NONE are listed by id in `screen-inventory.md`; most are the
+builder's payoff chart, adjustment drawer, plan editor and target sliders (BUILD), the Adjustments plan-edit form
+(ADJ-38..45), the Settings page (SET) and the landing page (LAND), none of which were on this lane's screen list.
+
+"Covered before" (279) was measured by a script plus a read of about 10 hits, so it is generous; each "after" row was
+checked against the test body.
+
+## Gate notes (for the next lane)
+
+- Two repo guards run in the prepush preflight and are not in `ci_local.py`: `tests/test_e2e_live_socket_fakes.py`
+  (every push on the strategy live socket stamped with `echoSeq`; its `EXPECTED` map lists every file that routes that
+  socket) and `tests/test_e2e_socket_standins.py` (every `routeWebSocket` URL a plain string literal). Lane T's second
+  and third prepush runs failed on them (an unstamped push in `live-card-stub.ts`; the chain spec's catch-all regex
+  route); fixed in acbadd2 and 4197832. Run `pytest tests -m repo_scan` once before prepush when adding e2e socket stubs.
+- The push hook checks the checked-out HEAD, so a gated older commit cannot be pushed once HEAD has moved on.
 
 ## Findings (product defects; steps, spec, actual)
 
@@ -69,6 +105,10 @@ migrated, 2026-10-08 catalogue seeded, uvicorn 8000-8002, previews 4173-4176) al
 | NEW-T66 | Builder | Open ?strategy=999 (deleted) | Wording that says not found (spec silent on the words: question) | Neutral "The page could not get an answer from the server." blames the connection | `ST-4` | - |
 | NEW-T67 | Builder | Saved tab, pencil on a row that is not open | The rename dialog opens (REQ-134 AC-3) | The strategy opens, no dialog: `renameRow` clears `pendingRename` before the async open sets `current.id` | `SL-18` | - |
 
+| N-14 (owner, alerts) | Alerts | Active list with stops from trades 172 and 175, both named "Short Iron Condor" | The two can be told apart (owner N-14, R-07) | Both print "Short Iron Condor", no trade number | `ACT-17` | `NEW-T70-alerts-1280.png` |
+| NEW-T70 (observation) | Orders placeholder | Open /orders | Orders is the user's Zerodha orders, import and funds view (REQ-009 AC-5, ADR-160) | Note still reads "Strategy-linked orders only. There is no order-entry form." (nav.js) | `PH-ORD` (pins the part still true) | - |
+| NEW-T71 (observation) | Placeholders | Open any placeholder, e.g. /home/important-alerts | Empty state names what is coming (ADR-193 (4)) | Message "This page is a placeholder. It is built in a later work item." is developer wording shown to a trader | `PH x15` | - |
+
 Screenshots are written by the tests to `frontend/test-results/lane-t/` (gitignored; regenerated on each run).
 
 ## Coverage guard
@@ -77,6 +117,11 @@ Screenshots are written by the tests to `frontend/test-results/lane-t/` (gitigno
 file:line and label, when a route or control has no row in `screen-inventory.json`, or a row's control is gone.
 Matching is on source file + kind + testid-or-label, not the positional id. Proof: a temporary `<button>Lane T probe</button>`
 in `HomeOverviewPage.vue` made it fail with `HomeOverviewPage.vue:81 button "Lane T probe"`; reverted.
+
+## Not covered yet (Alerts)
+
+- Lane P's full Alerts screens are not on this branch: alert text naming the strategy (N-14 fix), leg-stop alert with the NIFTY value (row 2 / S-20), the "Includes N closed strategies" line (S-15 / Q2-14), Compare through an alert link (R-10), expiry settlement rows (trade 173), R-07.
+- A real stop firing (stubbed).
 
 ## Not covered yet (Strategy Builder)
 
