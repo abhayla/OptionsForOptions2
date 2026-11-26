@@ -10,6 +10,8 @@ from __future__ import annotations
 
 UI = 'user-facing wording or a fixed broker URL: V1 is Zerodha only and its texts/links name Zerodha/Kite (ADR-002, REQ-073 wording); no branch on the broker'
 REASONS: dict[str, str] = {
+    'frontend/src/lib/strategyActivity.js':
+        "ADR-292 / REQ-070 AC-7: the pinned sentence 'held at your broker' says 'broker' generically and 'held_at_broker' is a server flag read as true/not-true; no broker name, no branch on the broker",
     'frontend/src/lib/tracking.js':
         "ADR-292 (2): shows the broker name the user typed for a held condor (free text, 'shown and never used'); no branch on the broker",
     'backend/ofo_app/routes/broker.py':
@@ -346,6 +348,11 @@ LINES: dict[str, tuple[str, ...]] = {
     'frontend/src/lib/paperDrafts.js': (
         # ADR-330 (10): the exit-title word for a real exit, user-facing wording in the one title door (no real exit is rendered, ADR-281)
         "const KIND_WORDS = { paper: 'Paper', real: 'Real (Zerodha order)' }",
+    ),
+    'frontend/src/lib/strategyActivity.js': (
+        'export const HELD_REFUSED_TEXT = "This strategy is marked as held at your broker, so it cannot be deleted.";',
+        'export const refusedText = (row) => (row?.held_at_broker === true ? HELD_REFUSED_TEXT : DELETE_REFUSED_TEXT);',
+        'export const canDelete = (row) => row?.can_delete === true && row?.held_at_broker !== true;',
     ),
     'frontend/src/lib/dataHealthText.js': (
         "not_sent: 'Zerodha did not send this figure for this contract.',",

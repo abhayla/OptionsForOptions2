@@ -2,7 +2,7 @@
 
 # Coverage register
 
-Generated from commit c317f0d1
+Generated from commit b16c9b7a
 
 ## Stage S0
 
