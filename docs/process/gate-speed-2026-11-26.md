@@ -85,9 +85,10 @@ Things that went wrong on the way, kept so the next run is not surprised:
 - A builder worktree under `.claude/worktrees` doubled every ruff count and made preflight red (issue #755).
 
 **Table** (commit x step x old x new). "-" = the step did not run. Where the old gate's preflight was red it stopped there
-and ran nothing else, so the new gate's extra rows are "new-only". Rows marked "stopped" are new-gate steps that ended
-within a second of the preflight FAIL line (killed by the fail-fast); this is read from the timestamps in
-`new-<seed>.txt`, which do not label them.
+and ran nothing else, so the new gate's extra rows are "new-only". Rows marked "stopped" are new-gate steps killed by the
+preflight fail-fast: each one's own log ends `FAIL: stopped: preflight failed` (checked for money_scan app_tests and
+alembic_heads domain_tests; alembic_heads app_tests is a real red, `1 failed` in
+tests_app/test_alembic_migration_guard.py::test_real_versions_pass).
 
 | commit | step | old | new | note |
 |---|---|---|---|---|
@@ -317,5 +318,5 @@ product does.
 - `--jobs 1` is unit-tested, not run for real in this lane.
 - The 4-core container is the only host measured; gains differ on other CPU counts.
 - Harness runs were serial, one gate at a time; running two gates at once on one host would slow both.
-- Step "stopped" labels in the table are inferred from timestamps.
+- The report line of a stopped step reads `FAIL <step> <s>s`; only its log says `stopped: preflight failed`.
 - The docs lane's gain is small by design.
