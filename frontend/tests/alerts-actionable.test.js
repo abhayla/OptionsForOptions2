@@ -154,12 +154,12 @@ describe('Active page', () => {
 
 describe('History tab', () => {
   it('lists answered rows (label and time) with the stop and settlement records', async () => {
-    answers['GET /alerts/history'] = () => Promise.resolve({ data: { items: [{ id: 3, strategy_id: 7, strategy_name: '"Trade A"', kind: 'plan_loss_stop', text: 'Loss stop reached', fired_at: '2026-11-25T11:02:20+05:30', fired_line: 'Fired at 11:02', answer: 'continue', answer_label: 'Continue with the position', answered_at: '2026-11-25T11:09:00+05:30', closed_reason: null }] } })
+    answers['GET /alerts/answered'] = () => Promise.resolve({ data: { items: [{ id: 3, strategy_id: 7, strategy_name: '"Trade A"', kind: 'plan_loss_stop', text: 'Loss stop reached', fired_at: '2026-11-25T11:02:20+05:30', fired_line: 'Fired at 11:02', answer: 'continue', answer_label: 'Continue with the position', answered_at: '2026-11-25T11:09:00+05:30', closed_reason: null }] } })
     answers['GET /paper/alerts/records'] = () => Promise.resolve({ data: { records: [{ at: '2026-11-25T09:00:00Z', kind: 'stop', title: 'Stop fired', body: 'Leg stop reached', strategy_id: 7, strategy_name: '"Trade A"' }] } })
     const page = await mountAt('/alerts/history', AlertsPage)
-    expect(ids(page, 'history-row')).toHaveLength(1)
-    expect(ids(page, 'history-row')[0].text()).toContain('Continue with the position')
-    expect(ids(page, 'history-row')[0].text()).toContain('11:09')
+    expect(ids(page, 'answered-row')).toHaveLength(1)
+    expect(ids(page, 'answered-row')[0].text()).toContain('Continue with the position')
+    expect(ids(page, 'answered-row')[0].text()).toContain('11:09')
     expect(ids(page, 'record-row')).toHaveLength(1)
   })
 })

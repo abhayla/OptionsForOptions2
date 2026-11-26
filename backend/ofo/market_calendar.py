@@ -137,6 +137,11 @@ def is_market_open(now: datetime.datetime, holidays: Holidays | None = None) -> 
     return market_status(now, holidays) is MarketStatus.OPEN
 
 
+def is_trading_day(day: datetime.date, holidays: Holidays | None = None) -> bool:
+    """True when the exchange is open at midday of ``day`` (the calendar's own answer, no history reader)."""
+    return is_market_open(datetime.datetime.combine(day, datetime.time(12, 0), IST), holidays)
+
+
 def after_close_before_settlement(now: datetime.datetime, settle_from: datetime.time,
                                   holidays: Holidays | None = None) -> bool:
     """GC-ICLIVE D-64: the ONE answer to "the market has closed today and the expiring legs have not settled yet": a

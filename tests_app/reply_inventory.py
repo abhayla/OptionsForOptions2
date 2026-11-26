@@ -3275,7 +3275,7 @@ INVENTORY = (
     'ROUTE GET /api/adjustment-opportunities -> InboxOut',
     'ROUTE GET /api/adjustments/preferences -> PreferencesOut',
     'ROUTE GET /api/alerts/active -> ActiveOut',
-    'ROUTE GET /api/alerts/history -> HistoryOut',
+    'ROUTE GET /api/alerts/answered -> HistoryOut',
     'ROUTE GET /api/broker/account -> BrokerAccountOut',
     'ROUTE GET /api/broker/capabilities -> CapabilitiesOut',
     'ROUTE GET /api/broker/refusals/{code} -> RefusalOut',

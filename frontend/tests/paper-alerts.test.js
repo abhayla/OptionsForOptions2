@@ -118,7 +118,7 @@ describe('Alerts page', () => {
   })
   it('History (its own reads) and Notification settings (still the honest empty line) never read the Active list', async () => {
     answers['GET /alerts/active'] = ok(TWO)
-    answers['GET /alerts/history'] = ok({ items: [] })
+    answers['GET /alerts/answered'] = ok({ items: [] })
     answers['GET /paper/alerts/records'] = ok({ records: [] })
     const h = await page('/alerts/history')
     expect(h.text()).toContain('No stops or expiry settlements yet.')

@@ -2223,6 +2223,7 @@
         "type": "object"
       },
       "AnswerIn": {
+        "additionalProperties": false,
         "properties": {
           "answer": {
             "default": "",
@@ -18847,9 +18848,9 @@
         "summary": "Active Alerts"
       }
     },
-    "/api/alerts/history": {
+    "/api/alerts/answered": {
       "get": {
-        "operationId": "alert_history_api_alerts_history_get",
+        "operationId": "alert_answered_api_alerts_answered_get",
         "responses": {
           "200": {
             "content": {
@@ -18862,7 +18863,7 @@
             "description": "Successful Response"
           }
         },
-        "summary": "Alert History"
+        "summary": "Alert Answered"
       }
     },
     "/api/alerts/{alert_id}/answer": {

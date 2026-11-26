@@ -408,7 +408,7 @@ def _spot_block(answer: SpotAnswer) -> dict:
 
 # ---- pricing (engine time) ----------------------------------------------------------------------------------------
 
-def _strategy(legs: Sequence[PositionLeg], lot: int) -> Strategy:
+def strategy_of(legs: Sequence[PositionLeg], lot: int) -> Strategy:
     return Strategy(tuple(Leg(Action(x.side), Instrument(x.type), x.strike, x.expiry, x.lots * lot, x.entry,
                               exact_entry=True) for x in legs))
 
@@ -455,7 +455,7 @@ def price_after(legs: Sequence[PositionLeg], position: Position, booked: Decimal
         except ValueError:
             known = False
     try:
-        open_legs = _strategy(legs, position.lot) if legs else None  # None: every leg exited (A-31)
+        open_legs = strategy_of(legs, position.lot) if legs else None  # None: every leg exited (A-31)
         after = whole_trade_after(open_legs, booked_pnl=booked,
                                   paid_charges=paid if known else Decimal(0),  # type: ignore[arg-type]
                                   adjustment_charges=adjustment if known else Decimal(0),
@@ -483,7 +483,7 @@ def _near_after(legs: Sequence[PositionLeg], position: Position, booked: Decimal
         return None, render_explanation("adjust_cmp_near_no_rate")
     zero = Decimal(0)
     try:
-        after = near_expiry_after(_strategy(legs, position.lot), booked_pnl=booked,
+        after = near_expiry_after(strategy_of(legs, position.lot), booked_pnl=booked,
                                   paid_charges=paid if known else zero,  # type: ignore[arg-type]
                                   adjustment_charges=adjustment if known else zero,
                                   open_exit_charges=exits if known else zero, rate=rate,

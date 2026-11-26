@@ -6,7 +6,7 @@
   strategy's, a missing id); 409 suggestion_not_open (already answered); 422 alert_answer_refused (empty or not one of
   the kind's answers). Nothing is written on a refusal. An answer never places an order (ADR-003): "Exit the position"
   only records the call; the exit itself is the usual confirmation.
-- GET /api/alerts/history: answered, system-closed and informational rows, newest first.
+- GET /api/alerts/answered: answered, system-closed and informational rows, newest first.
 
 Answer states: stated -> row leaves Active; absent -> stays; not found / not open / refused -> the three errors above.
 """
@@ -20,7 +20,7 @@ from ofo.alerts import CLOSED_BY_SYSTEM
 from ofo.errors import render
 from ofo.errors.explanations import render_explanation
 from ofo.strategy.stored_form import shown_name
-from pydantic import BaseModel
+from pydantic import BaseModel, ConfigDict
 
 from ofo_app import actionable_alerts as aa
 from ofo_app import playbook_store as store
@@ -37,6 +37,8 @@ _STATUS = {store.SUGGESTION_NOT_FOUND: Failure.NOT_FOUND, store.SUGGESTION_NOT_O
 
 
 class AnswerIn(BaseModel):
+    model_config = ConfigDict(extra="forbid")  # a closed body: an unnamed field is refused (422)
+
     answer: str = ""
 
 
@@ -184,8 +186,8 @@ async def answer_alert(alert_id: int, body: AnswerIn, db: Annotated[Any, Depends
         "answered_at": done.answered_at})
 
 
-@router.get("/api/alerts/history", response_model=HistoryOut)
-async def alert_history(db: Annotated[Any, Depends(get_db)],
+@router.get("/api/alerts/answered", response_model=HistoryOut)
+async def alert_answered(db: Annotated[Any, Depends(get_db)],
                         user_ref: Annotated[str, Depends(current_user_ref)]) -> HistoryOut:
     by_id = await _texts(db, user_ref)
     items = [{"id": a.id, "strategy_id": a.strategy_id, "strategy_name": shown_name(a.strategy_name), "kind": _kind(a),

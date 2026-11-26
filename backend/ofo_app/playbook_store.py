@@ -397,7 +397,7 @@ _INBOX_SQL = (f"SELECT {', '.join('g.' + c for c in _SG_COLUMNS.split(', '))}, s
               "ORDER BY g.shown_at DESC, g.id DESC")
 
 
-def _scoped(sql: str) -> tuple[Any, dict]:
+def scoped(sql: str) -> tuple[Any, dict]:
     from ofo_app.scenario_mode import scope_clause  # noqa: PLC0415 - the one isolation helper
     clause, params = scope_clause("s")
     return text(sql.format(scope=clause)), params
@@ -731,14 +731,14 @@ async def plan_for(conn: Any, user_ref: str, strategy_id: int) -> Plan | None:
     return None if row is None else _plan(row)
 
 
-async def _owned(conn: Any, user_ref: str, strategy_id: int) -> None:
+async def require_owned(conn: Any, user_ref: str, strategy_id: int) -> None:
     if (await conn.execute(_OWNS_STRATEGY, {"strategy_id": strategy_id, "user_ref": user_ref})).first() is None:
         raise strategy_store.StrategyStoreError(strategy_store.NOT_FOUND, f"strategy {strategy_id}")
 
 
 async def rule_states(conn: Any, user_ref: str, strategy_id: int) -> dict[int, dict[str, tuple[bool, bool]]]:
     """starting point (adjustments made, ADR-258) -> rule id -> (held_at_entry, seen_clear). No row -> {}."""
-    await _owned(conn, user_ref, strategy_id)
+    await require_owned(conn, user_ref, strategy_id)
     out: dict[int, dict[str, tuple[bool, bool]]] = {}
     for r in (await conn.execute(_SELECT_STATE, {"strategy_id": strategy_id})).all():
         out.setdefault(int(r[0]), {})[r[1]] = (r[2], r[3])
@@ -760,7 +760,7 @@ async def put_rule_state(conn: Any, user_ref: str, strategy_id: int, rule_id: st
     ``adjustment_no`` = the adjustments made before this memory started (ADR-258; 0 = the entry)."""
     if isinstance(adjustment_no, bool) or not isinstance(adjustment_no, int) or adjustment_no < 0:
         raise ValueError(f"adjustment_no must be an int >= 0, got {adjustment_no!r}")
-    await _owned(conn, user_ref, strategy_id)
+    await require_owned(conn, user_ref, strategy_id)
     await conn.execute(_SET_MARKER, {"n": str(adjustment_no)})
     await conn.execute(_PUT_STATE, {"strategy_id": strategy_id, "rule_id": rule_id, "held": held_at_entry,
                                     "seen": seen_clear})
@@ -792,7 +792,7 @@ async def open_suggestion(conn: Any, user_ref: str, strategy_id: int, rule_id: s
     Only ``actionable_alerts.raise_actionable`` passes them (it is the one writer)."""
     if worse not in WORSE_MARKS:
         raise ValueError(f"unknown worse marker {worse!r}")
-    await _owned(conn, user_ref, strategy_id)
+    await require_owned(conn, user_ref, strategy_id)
     params = {"strategy_id": strategy_id, "rule_id": rule_id}
     existing = (await conn.execute(_OPEN_FOR_RULE, params)).one_or_none()
     if existing is not None:
@@ -814,7 +814,7 @@ async def open_suggestion(conn: Any, user_ref: str, strategy_id: int, rule_id: s
     return _suggestion(row)
 
 
-async def _close(conn: Any, user_ref: str, suggestion_id: int, outcome: str, reason: str | None,  # noqa: PLR0913
+async def close_suggestion(conn: Any, user_ref: str, suggestion_id: int, outcome: str, reason: str | None,  # noqa: PLR0913
                  note: str | None = None, answer: str | None = None,
                  answered_at: datetime | None = None) -> Suggestion:
     if outcome not in SUGGESTION_FINAL:
@@ -833,11 +833,11 @@ async def _close(conn: Any, user_ref: str, suggestion_id: int, outcome: str, rea
 
 
 async def dismiss(conn: Any, user_ref: str, suggestion_id: int, reason: str | None = None) -> Suggestion:
-    return await _close(conn, user_ref, suggestion_id, "dismissed", reason, answer=ANSWER_CONTINUE)
+    return await close_suggestion(conn, user_ref, suggestion_id, "dismissed", reason, answer=ANSWER_CONTINUE)
 
 
 async def act_on(conn: Any, user_ref: str, suggestion_id: int) -> Suggestion:
-    return await _close(conn, user_ref, suggestion_id, "acted_on", None, answer=ANSWER_CONTINUE)
+    return await close_suggestion(conn, user_ref, suggestion_id, "acted_on", None, answer=ANSWER_CONTINUE)
 
 
 async def link_orders(conn: Any, user_ref: str, strategy_id: int, suggestion_id: int,  # noqa: PLR0913
@@ -877,7 +877,7 @@ async def lapse(conn: Any, user_ref: str, suggestion_id: int, reason: str = LAPS
     ``actionable_alerts.close_by_system`` (it passes ``answer`` closed_by_system; the table guard refuses the rest)."""
     if reason not in LAPSE_REASONS:
         raise ValueError(f"unknown lapse reason {reason!r}")
-    return await _close(conn, user_ref, suggestion_id, "lapsed", None, reason, answer, answered_at)
+    return await close_suggestion(conn, user_ref, suggestion_id, "lapsed", None, reason, answer, answered_at)
 
 
 async def open_suggestions(conn: Any, user_ref: str, strategy_id: int) -> list[Suggestion]:
@@ -927,7 +927,7 @@ async def lapse_changed(conn: Any, user_ref: str, strategy_id: int, current: int
 
 async def inbox(conn: Any, user_ref: str) -> list[InboxRow]:
     """REQ-162 AC-1: every record of the user's strategies, newest first."""
-    query, scope = _scoped(_INBOX_SQL)
+    query, scope = scoped(_INBOX_SQL)
     rows = (await conn.execute(query, {"user_ref": user_ref, **scope})).all()
     return [InboxRow(_suggestion(r), r[11], r[12] is True) for r in rows]
 
@@ -989,7 +989,7 @@ async def record_held(conn: Any, user_ref: str, strategy_id: int, rule_id: str, 
         raise ValueError(f"unknown held reason {reason!r}")
     if isinstance(value, bool):
         raise ValueError("a yes/no rule's held value is stored as None, not a bool")
-    await _owned(conn, user_ref, strategy_id)
+    await require_owned(conn, user_ref, strategy_id)
     row = (await conn.execute(_INSERT_HELD, {"strategy_id": strategy_id, "rule_id": rule_id, "trigger_id": trigger_id,
                                              "stage": stage, "value": value, "threshold": threshold,
                                              "reason": reason})).one()
@@ -1000,7 +1000,7 @@ async def gate_rows(conn: Any, user_ref: str, strategy_id: int, today: date) -> 
     """ADR-237 (5): what ``alert_gate.restore`` needs - the last record per rule (time, threshold, dismissed, still
     open) and today's (IST) record count. No record -> empty, 0. Another user's or a missing strategy -> not found;
     a store error raises (never an empty default)."""
-    await _owned(conn, user_ref, strategy_id)
+    await require_owned(conn, user_ref, strategy_id)
     params = {"strategy_id": strategy_id, "user_ref": user_ref}
     last = (await conn.execute(_GATE_LAST, params)).all()
     today_ids = (await conn.execute(_GATE_TODAY, {**params, "today": today})).scalars().all()
@@ -1066,7 +1066,7 @@ async def popup_facts(conn: Any, user_ref: str, strategy_ids: Iterable[int]) -> 
 
 async def held_inbox(conn: Any, user_ref: str) -> list[HeldInboxRow]:
     """REQ-170 AC-4: every crossing the gate held on the user's strategies, newest first (the timeline's reader)."""
-    query, scope = _scoped(_HELD_INBOX_SQL)
+    query, scope = scoped(_HELD_INBOX_SQL)
     rows = (await conn.execute(query, {"user_ref": user_ref, **scope})).all()
     return [HeldInboxRow(*r) for r in rows]
 
@@ -1074,6 +1074,6 @@ async def held_inbox(conn: Any, user_ref: str) -> list[HeldInboxRow]:
 async def held_today(conn: Any, user_ref: str, strategy_id: int, today: date) -> tuple[HeldToday, ...]:
     """GC-ALERT1 wire-b item 5: the crossings held on ``today`` (IST), oldest first, so a restarted worker restores
     the held episode instead of writing a second Held row. Read only; a store error raises."""
-    await _owned(conn, user_ref, strategy_id)
+    await require_owned(conn, user_ref, strategy_id)
     rows = (await conn.execute(_HELD_TODAY, {"strategy_id": strategy_id, "user_ref": user_ref, "today": today})).all()
     return tuple(HeldToday(r[0], r[1], r[2], r[3]) for r in rows)

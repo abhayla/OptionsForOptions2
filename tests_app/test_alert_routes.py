@@ -1,4 +1,4 @@
-"""ADR-330 (3), (4): GET /api/alerts/active, POST /api/alerts/{id}/answer, GET /api/alerts/history (real DB).
+"""ADR-330 (3), (4): GET /api/alerts/active, POST /api/alerts/{id}/answer, GET /api/alerts/answered (real DB).
 
 Asserts the EXACT key set of each reply: the frontend contract (frontend/src/lib/paperAlerts.js, mocked in
 frontend/tests/alerts-actionable.test.js) reads exactly these names.
@@ -43,7 +43,8 @@ async def test_active_answer_history_replies_and_errors(app_db_url, monkeypatch)
     assert (mine["fired_at"], mine["no_longer_true_since"]) == ("2026-11-25T05:32:20Z", "2026-11-25T05:35:01Z")
     assert (mine["escalated_at"], mine["worse_line"]) == (None, None)  # never worse: null, not an empty line
     assert [a["code"] for a in mine["answers"]] == ["exit", "continue"] and set(mine["answers"][0]) == {"code", "label"}
-    for body, code in (({"answer": ""}, REFUSED), ({"answer": "add_legs"}, REFUSED)):  # empty, not for this kind
+    for body, code in (({"answer": ""}, REFUSED), ({"answer": "add_legs"}, REFUSED),  # empty, not for this kind
+                       ({"answer": "continue", "unnamed": 1}, REFUSED)):  # a closed body: an extra field is refused
         assert (await _call("POST", f"/api/alerts/{alert_id}/answer", body))[0] == code
     other = await _call("POST", f"/api/alerts/{alert_id}/answer", {"answer": "continue"}, user="someone-else")
     assert other[0] == NOT_FOUND
@@ -52,7 +53,7 @@ async def test_active_answer_history_replies_and_errors(app_db_url, monkeypatch)
     assert status == OK and set(done) == {"id", "answer", "answer_label", "answered_at"}
     assert (await _call("POST", f"/api/alerts/{alert_id}/answer", {"answer": "exit"}))[0] == CONFLICT
     assert (await _call("GET", "/api/alerts/active"))[1]["count"] == active["count"] - 1
-    status, history = await _call("GET", "/api/alerts/history")
+    status, history = await _call("GET", "/api/alerts/answered")
     row = next(i for i in history["items"] if i["id"] == alert_id)
     assert status == OK and set(history) == {"items"} and set(row) == HISTORY_KEYS
     assert (row["answer"], row["answer_label"]) == ("continue", "Continue with the position")
@@ -81,6 +82,6 @@ async def test_a_worse_reading_shows_escalated_at_and_the_worse_line_in_active_a
     assert mine["worse_line"] == "Worse than when it fired: 16.2000 % (fired at 15.5750 %)"
     assert mine["fired_at"] == "2026-11-25T05:32:20Z"  # the first-shown time never moves
     assert (await _call("POST", f"/api/alerts/{alert.id}/answer", {"answer": "continue"}))[0] == OK
-    row = next(i for i in (await _call("GET", "/api/alerts/history"))[1]["items"] if i["id"] == alert.id)
+    row = next(i for i in (await _call("GET", "/api/alerts/answered"))[1]["items"] if i["id"] == alert.id)
     assert set(row) == HISTORY_KEYS and (row["escalated_at"], row["worse_line"]) == (
         mine["escalated_at"], mine["worse_line"])

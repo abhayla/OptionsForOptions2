@@ -14,7 +14,7 @@ vi.mock('@/services/api', async (importActual) => {
       return templatesAnswer instanceof Error ? Promise.reject(templatesAnswer) : Promise.resolve({ data: templatesAnswer })
     }
     if (url === '/alerts/active') return Promise.resolve({ data: { count: 0, alerts: [] } }) // ADR-330 (4): the Alerts page and the bell read this
-    if (url === '/alerts/history') return Promise.resolve({ data: { items: [] } }) // ADR-330 (3): answered alerts, the History tab
+    if (url === '/alerts/answered') return Promise.resolve({ data: { items: [] } }) // ADR-330 (3): answered alerts, the History tab
     if (url === '/paper/alerts/records') return Promise.resolve({ data: { records: [] } }) // D-22/D-71: the History tab's own read
     return Promise.resolve({ data: indicesAnswer })
   } } }

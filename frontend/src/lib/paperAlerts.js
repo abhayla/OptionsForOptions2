@@ -65,12 +65,12 @@ export async function answerAlert(id, code) {
   }
 }
 
-// ADR-330 (3): the History tab = the answered actionable alerts (GET /alerts/history); a failed read shows no rows and its reason.
+// ADR-330 (3): the History tab = the answered actionable alerts (GET /alerts/answered); a failed read shows no rows and its reason.
 export const alertHistory = reactive({ items: [], parts: null, loaded: false })
 const historyOk = (h) => h && Number.isInteger(h.id) && typeof h.text === 'string'
 export async function loadAlertHistory() {
   try {
-    const data = (await api.get('/alerts/history')).data
+    const data = (await api.get('/alerts/answered')).data
     if (!data || !Array.isArray(data.items) || !data.items.every(historyOk)) throw new Error('unreadable')
     Object.assign(alertHistory, { items: data.items, parts: null, loaded: true })
   } catch (e) {

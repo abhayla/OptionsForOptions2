@@ -29,6 +29,7 @@ from decimal import Decimal, InvalidOperation
 from typing import Annotated, Any
 
 from fastapi import APIRouter, Depends, Query
+from ofo import market_calendar
 from ofo.adjustment import playbook_stages as stages
 from ofo.adjustment.playbook_text import name_shown
 from ofo.adjustment.playbook_types import SHOWN_NAMES
@@ -46,7 +47,6 @@ from ofo_app import settings_in_force as in_force_mod
 from ofo_app.api_models import ApiModel, CatalogueText, Identifier, Money
 from ofo_app.db import get_db
 from ofo_app.errors import ClosedRoute, Failure
-from ofo_app.paper_settlement import is_trading_day
 from ofo_app.playbook_body_out import PlaybookBody
 from ofo_app.routes import playbooks as pb_routes
 from ofo_app.routes.adjustment import (
@@ -315,7 +315,7 @@ def check_time_exit_day(guard: object, today: datetime.date | None, last_expiry:
         return
     day = day_of(parts[1])
     if day is None or today is None or last_expiry is None or day < today or day > last_expiry \
-            or not is_trading_day(day):
+            or not market_calendar.is_trading_day(day):
         raise _bad(TIME_KEY)
 
 

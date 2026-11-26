@@ -234,7 +234,7 @@ async def answer(conn: Any, user_ref: str, alert_id: int, answer: str | None, at
         allowed = kinds.allowed_answers(current.kind) if current.kind else (kinds.EXIT, kinds.CONTINUE)
         if not isinstance(answer, str) or answer not in allowed:
             raise AlertAnswerRefused(f"{answer!r} is not one of {allowed} for {current.kind or 'this alert'}")
-        await pb._close(conn, user_ref, alert_id, _OUTCOME_OF[answer], None, answer=answer, answered_at=at)
+        await pb.close_suggestion(conn, user_ref, alert_id, _OUTCOME_OF[answer], None, answer=answer, answered_at=at)
         return await _get(conn, user_ref, alert_id)
 
 
@@ -317,7 +317,7 @@ async def history(conn: Any, user_ref: str) -> list[Alert]:
 
 
 async def _rows(conn: Any, sql: str, user_ref: str) -> list[Any]:
-    statement, params = pb._scoped(sql)
+    statement, params = pb.scoped(sql)
     return list((await conn.execute(statement, {**params, "user_ref": user_ref})).all())
 
 
@@ -330,6 +330,6 @@ async def inform(conn: Any, user_ref: str, strategy_id: int, kind: str, text: st
         raise ValueError(f"the text of an informational note is 1 to {_TEXT_MAX} characters")
     _aware(at)
     async with conn.begin_nested():
-        await pb._owned(conn, user_ref, strategy_id)
+        await pb.require_owned(conn, user_ref, strategy_id)
         return int((await conn.execute(_INSERT_NOTE, {"strategy_id": strategy_id, "rule_id": f"info:{kind}",
                                                       "kind": kind, "at": at, "text": text})).scalar_one())
