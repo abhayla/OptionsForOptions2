@@ -4,6 +4,7 @@ import importlib.util
 import json
 import os
 import re
+import signal
 import subprocess
 import sys
 import threading
@@ -846,7 +847,7 @@ def docs_repo(tmp_path):
 
 
 def docs_count(repo):
-    return prepush.docs_only_change(str(repo))
+    return prepush.docs_only_change(str(repo), sha_of(repo))
 
 
 def test_a_docs_only_diff_counts_its_files_additions_modifications_and_deletions(tmp_path):
@@ -899,8 +900,8 @@ def test_no_merge_base_a_git_failure_or_an_import_failure_is_the_full_lane(tmp_p
     repo = docs_repo(tmp_path)
     commit_file(repo, "docs/fine.md", "ok")
     assert docs_count(repo) == 1
-    assert prepush.docs_only_change(str(repo), base="origin/missing") is None  # no merge base
-    assert prepush.docs_only_change(str(tmp_path / "not-a-repo")) is None  # git fails
+    assert prepush.docs_only_change(str(repo), sha_of(repo), base="origin/missing") is None  # no merge base
+    assert prepush.docs_only_change(str(tmp_path / "not-a-repo"), "HEAD") is None  # git fails
     (repo / "tools" / "change_scope.py").write_text("raise RuntimeError('broken')\n", encoding="utf-8")
     assert docs_count(repo) is None  # import failure
     (repo / "tools" / "change_scope.py").unlink()
@@ -931,7 +932,7 @@ def test_docs_only_entries_fails_closed_on_every_odd_shape():
 
 
 def test_full_never_asks_for_the_docs_lane(tmp_path, capsys):
-    def boom(repo):
+    def boom(repo, sha):
         raise AssertionError("must not be asked with --full")
 
     repo = make_repo(tmp_path)
@@ -943,11 +944,11 @@ def test_full_never_asks_for_the_docs_lane(tmp_path, capsys):
 def run_docs(repo, tmp_path, runner, count=3, jobs=1, **kw):
     kw.setdefault("select_docs_app", lambda r: (0, ["tests_app/test_reads_docs.py"], "1 files"))
     return prepush.run_all(str(repo), runner=runner, log_dir=str(tmp_path / "l"), jobs=jobs,
-                           select_docs_only=lambda r: count, **kw)
+                           select_docs_only=lambda r, sha: count, **kw)
 
 
 @pytest.mark.parametrize("jobs", [1, 4])
-def test_a_docs_only_change_skips_exactly_ruff_and_alembic_and_still_runs_the_rest(tmp_path, capsys, jobs):
+def test_a_docs_only_change_skips_nothing_and_runs_the_docs_reading_app_tests(tmp_path, capsys, jobs):
     repo = make_repo(tmp_path)
     runner = ThreadRunner()
 
@@ -960,38 +961,68 @@ def test_a_docs_only_change_skips_exactly_ruff_and_alembic_and_still_runs_the_re
     assert run_docs(repo, tmp_path, runner, jobs=jobs, select_app=no_code_selector,
                     select_frontend=frontend_would_fail, which=which) == 0
     out = capsys.readouterr().out
-    assert sorted(Path(c[2]).stem for c in runner.calls) == sorted(["coverage", *LONG])
-    for name in SKIPPED_STEPS:
-        assert f"SKIP {name} skipped: docs-only change (3 files)" in out
-    assert "frontend_" not in out and "PASS preflight" in out and "PASS app_tests" in out
+    assert sorted(Path(c[2]).stem for c in runner.calls) == sorted(NAMES)  # all seven steps ran, ruff and alembic too
+    assert "SKIP" not in out and "frontend_" not in out and "PASS ruff_ratchet" in out and "PASS alembic_guard" in out
     app = next(c[0] for c in runner.calls if Path(c[2]).stem == "app_tests")
     assert app[-1] == "tests_app/test_reads_docs.py"
-    assert prepush.has_marker(str(repo), sha_of(repo))
     body = json.loads(Path(prepush.marker_path(str(repo), sha_of(repo))).read_text(encoding="utf-8"))
     assert body["mode"] == {"jobs": jobs, "lane": "docs-only (3 files)"}
-    assert [s["name"] for s in body["steps"]] == NAMES  # plan order, skipped steps in place
-    assert [s for s in body["steps"] if "skipped" in s] == [
-        {"name": n, "skipped": "docs-only change (3 files)"} for n in SKIPPED_STEPS]
-    assert all(s["rc"] == 0 for s in body["steps"] if "skipped" not in s)
+    assert [s["name"] for s in body["steps"]] == NAMES
+    assert all("skipped" not in s and s["rc"] == 0 for s in body["steps"])
+    assert prepush.SKIPPABLE == ()
 
 
-def test_a_failing_step_in_the_docs_lane_still_blocks_the_marker(tmp_path):
+@pytest.mark.parametrize("failing", ["ruff_ratchet", "alembic_guard", "coverage"])
+def test_a_red_step_in_the_docs_lane_blocks_the_marker(tmp_path, failing):
+    # round 1: a local ruff version difference made the old gate refuse; the docs lane must refuse the same way
     repo = make_repo(tmp_path)
-    assert run_docs(repo, tmp_path, Runner(fail={"coverage"})) == 1
+    assert run_docs(repo, tmp_path, Runner(fail={failing})) == 1
     assert not prepush.has_marker(str(repo), sha_of(repo))
 
 
-def test_a_skip_outside_the_allowed_tuple_blocks_the_marker(tmp_path, monkeypatch, capsys):
+def test_any_skip_row_blocks_the_marker(tmp_path, monkeypatch, capsys):
     repo = make_repo(tmp_path)
-    monkeypatch.setattr(prepush, "_lane", lambda repo, full, sel: ("docs-only (3 files)", {"coverage": "sneaky"}))
+    sneaky = ("docs-only (3 files)", {"ruff_ratchet": "x"}, True)
+    monkeypatch.setattr(prepush, "_lane", lambda repo, full, sel, sha: sneaky)
     assert run_docs(repo, tmp_path, Runner()) == 1
     assert not prepush.has_marker(str(repo), sha_of(repo))
     assert "TOTAL FAIL" in capsys.readouterr().out
     row = lambda n: (n, 0, 0.0, "x.log")  # noqa: E731
     everything = ["ruff_ratchet", "coverage"]
-    assert prepush.complete([row("coverage")], everything, skips=("ruff_ratchet",))
-    assert not prepush.complete([row("ruff_ratchet")], everything, skips=("coverage",))  # coverage is not skippable
+    assert not prepush.complete([row("coverage")], everything, skips=("ruff_ratchet",))  # SKIPPABLE is empty
     assert not prepush.complete([row("coverage")], everything, skips=())  # a step with no result and no skip
+    assert prepush.complete([row("ruff_ratchet"), row("coverage")], everything)
+
+
+def test_the_lane_is_decided_on_the_start_sha_not_on_a_moved_head(tmp_path):
+    repo = docs_repo(tmp_path)
+    commit_file(repo, "docs/fine.md", "ok")
+    start = sha_of(repo)
+    commit_file(repo, "backend/x.py", "x = 1\n")  # HEAD moves while the lane is being decided
+    assert prepush.docs_only_change(str(repo), start) == 1
+    assert prepush.docs_only_change(str(repo), sha_of(repo)) is None
+    assert prepush.docs_only_change(str(repo)) is None  # no sha: symbolic HEAD
+
+
+def test_run_all_hands_the_start_sha_to_the_lane_decision(tmp_path):
+    repo = make_repo(tmp_path)
+    seen = []
+    run_all_sha = sha_of(repo)
+    prepush.run_all(str(repo), runner=Runner(), log_dir=str(tmp_path / "l"),
+                    select_docs_only=lambda r, sha: seen.append(sha))
+    assert seen == [run_all_sha]
+
+
+def test_a_change_to_change_scope_itself_is_the_full_lane(tmp_path):
+    repo = docs_repo(tmp_path)
+    commit_file(repo, "docs/fine.md", "ok")
+    assert docs_count(repo) == 1
+    scope_file = repo / "tools" / "change_scope.py"
+    scope_file.write_text(scope_file.read_text("utf-8") + "\n# loosened\n", encoding="utf-8")
+    git(repo, "commit", "-q", "-am", "edit the classifier")
+    assert docs_count(repo) is None
+    entries = [("A", ["docs/a.md"], ("000000", "100644")), ("M", ["tools/change_scope.py"], ("100644", "100644"))]
+    assert prepush.docs_only_entries(lambda p: True, entries) is None  # even if a loosened classifier said docs
 
 
 def test_a_real_docs_only_branch_runs_the_docs_lane_end_to_end(tmp_path, capsys):
@@ -1004,7 +1035,7 @@ def test_a_real_docs_only_branch_runs_the_docs_lane_end_to_end(tmp_path, capsys)
     runner = Runner()
     assert prepush.run_all(str(repo), runner=runner, log_dir=str(tmp_path / "l")) == 0
     out = capsys.readouterr().out
-    assert "SKIP ruff_ratchet skipped: docs-only change (1 files)" in out
+    assert "LANE docs-only (1 files): nothing is skipped" in out and "SKIP" not in out
     app = next(c[0] for c in runner.calls if Path(c[2]).stem == "app_tests")
     assert app[-1] == "tests_app/test_reads.py" and "tests_app/test_plain.py" not in app
     body = json.loads(Path(prepush.marker_path(str(repo), sha_of(repo))).read_text(encoding="utf-8"))
@@ -1048,3 +1079,58 @@ def test_a_selection_error_in_the_docs_lane_is_a_fail(tmp_path):
     assert run_docs(repo, tmp_path, Runner(), select_docs_app=lambda r: (1, [], "cannot select")) == 1
     assert "cannot select" in (tmp_path / "l" / "app_tests.log").read_text(encoding="utf-8")
     assert not prepush.has_marker(str(repo), sha_of(repo))
+
+
+# ---- Ctrl-C and the kill path ----
+
+def test_a_keyboard_interrupt_kills_the_child_tree_and_is_reraised(tmp_path, monkeypatch):
+    killed = []
+
+    class Interrupted(FakePopen):
+        def wait(self, timeout=None):
+            raise KeyboardInterrupt
+
+    monkeypatch.setattr(prepush.subprocess, "Popen", Interrupted)
+    monkeypatch.setattr(prepush, "kill_tree", killed.append)
+    with pytest.raises(KeyboardInterrupt):
+        prepush.RealRunner(repo=str(tmp_path))(["x"], str(tmp_path), str(tmp_path / "s.log"))
+    assert len(killed) == 1 and isinstance(killed[0], Interrupted)
+
+
+@pytest.mark.skipif(sys.platform == "win32", reason="the test sends SIGINT to itself")
+def test_a_keyboard_interrupt_in_the_main_thread_stops_the_workers_and_writes_no_marker(tmp_path):
+    repo = make_repo(tmp_path)
+
+    class Interrupting(ThreadRunner):
+        def __call__(self, cmd, cwd, log_path):
+            if Path(log_path).stem == "domain_tests":
+                os.kill(os.getpid(), signal.SIGINT)  # a real Ctrl-C: the main thread is waiting on the workers
+            return super().__call__(cmd, cwd, log_path)
+
+    runner = Interrupting(block={"ci_checks", "domain_tests", "app_tests"})
+    with pytest.raises(KeyboardInterrupt):
+        run_jobs(repo, tmp_path, runner, 4)
+    assert runner.stop.is_set()  # the workers saw it and ended (the pool was joined before the exception left)
+    assert not prepush.has_marker(str(repo), sha_of(repo))
+
+
+def test_a_missing_taskkill_falls_back_to_proc_kill_and_never_crashes(monkeypatch):
+    monkeypatch.setattr(prepush, "IS_WINDOWS", True)
+
+    def no_taskkill(cmd, **kwargs):
+        raise FileNotFoundError(cmd[0])
+
+    monkeypatch.setattr(prepush.subprocess, "run", no_taskkill)
+    calls = []
+
+    class Proc:
+        pid = 7
+
+        def kill(self):
+            calls.append("kill")
+
+        def wait(self, timeout=None):
+            return 1
+
+    prepush.kill_tree(Proc())
+    assert calls == ["kill"]

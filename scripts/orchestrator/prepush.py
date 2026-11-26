@@ -25,15 +25,17 @@ min(N, steps) threads, preflight submitted first; each keeps its own log, second
 sets a stop event: steps not started are reported `FAIL <name> 0.0s stopped: preflight failed`, running ones are killed
 with their whole process tree (POSIX: own session + killpg SIGTERM then SIGKILL after KILL_GRACE_S; Windows:
 CREATE_NEW_PROCESS_GROUP + `taskkill /F /T`), then the STOP line. The same tree kill ends a step at STEP_TIMEOUT_S.
-Docs-only lane (not with --full): when EVERY path changed since the merge base with origin/main is a records file
-(tools/change_scope.py path_is_docs from the checked repo; status A or M, or D of a records path; mode 100644; no
-rename, symlink or submodule; anything unreadable = the full lane), ruff_ratchet and alembic_guard are reported
-`SKIP <step> skipped: docs-only change (<n> files)` (they read only .py files and migrations), the frontend steps
-are not
-planned, and app_tests runs the tests_app files that READ a docs-folder path (select_docs_app_tests; a selection error
-= FAIL). Preflight, ci_checks, coverage and domain_tests run unchanged (the kit already narrows a docs change to the
-records tests). The marker records the skips ({"name", "skipped"}) and lane "docs-only (<n> files)"; only the steps in
-SKIPPABLE may be skipped, any other skip blocks it.
+Docs-only lane (not with --full): when EVERY path changed between the merge base with origin/main and the START sha
+(not symbolic HEAD, which can move) is a records file (tools/change_scope.py path_is_docs from the checked repo; status
+A or M, or D of a records path; mode 100644; no rename, symlink or submodule; tools/change_scope.py itself among the
+changes, or anything unreadable = the full lane), the marker and the report record lane "docs-only (<n> files)" and
+app_tests also runs the tests_app files that READ a docs-folder path (select_docs_app_tests; a selection error =
+FAIL). The lane SKIPS NOTHING (SKIPPABLE is empty, so the structural marker check rejects any skipped step): on a
+docs-only change today's selectors already run no code-only stage (domain tests narrow to the records tests, the code
+app selection is empty, no frontend step), so the lane removes nothing and only adds the docs-reading app tests.
+ruff_ratchet and alembic_guard cost under a second and a red one (e.g. another local ruff version) must refuse.
+KeyboardInterrupt kills every running child's process tree (serial and parallel; the parallel main thread sets the
+stop event first), then propagates: no marker.
 Isolation (both modes): every child gets its own TMPDIR/TEMP/TMP, <tempdir>/ofo-prepush-tmp/<sha1(repo)[:12]>/<step>
 (stable across runs, so the preflight's mypy cache stays warm; no two stages share one).
 Each step's output goes to a log file outside the repo; one line per step. A step that times out
@@ -129,7 +131,7 @@ def select_app_tests(repo: str) -> tuple[int, list[str], str]:
     return r.returncode, files, out.strip()
 
 
-SKIPPABLE = ("ruff_ratchet", "alembic_guard")  # the only steps the docs-only lane may skip (.py / migrations)
+SKIPPABLE: tuple[str, ...] = ()  # the steps a lane may skip: none (round 1: the docs-only lane skips nothing)
 RECORDS_MODES = {"A": ("000000", "100644"), "M": ("100644", "100644"), "D": ("100644", "000000")}
 
 
@@ -145,11 +147,16 @@ def load_change_scope(repo: str):
     return module
 
 
+CLASSIFIER = "tools/change_scope.py"
+
+
 def docs_only_entries(path_is_docs, entries) -> int | None:
     """Number of entries when every one is an added / modified / deleted records file (mode 100644, one path), else
     None. entries: (status letter, [paths], (old mode, new mode)) as change_scope.parse_raw_z gives them."""
     if not entries:
         return None
+    if any(CLASSIFIER in paths for _, paths, _ in entries):
+        return None  # the classifier's own change must not vouch for itself
     for status, paths, modes in entries:
         if status not in RECORDS_MODES or len(paths) != 1 or tuple(modes) != RECORDS_MODES[status]:
             return None
@@ -158,16 +165,18 @@ def docs_only_entries(path_is_docs, entries) -> int | None:
     return len(entries)
 
 
-def docs_only_change(repo: str, base: str = "origin/main") -> int | None:
+def docs_only_change(repo: str, sha: str | None = None, base: str = "origin/main") -> int | None:
     """Count of changed files when the whole change since the merge base is records files, else None (fail closed:
-    no merge base, git error, empty diff, tools/change_scope.py not importable, anything unexpected)."""
+    no merge base, git error, empty diff, tools/change_scope.py not importable or changed, anything unexpected).
+    The diff is merge-base..sha, sha being the start sha of the run (HEAD only when none is given)."""
+    sha = sha or "HEAD"
     try:
-        rc, merge_base = _git(repo, "merge-base", base, "HEAD")
+        rc, merge_base = _git(repo, "merge-base", base, sha)
         if rc != 0 or not merge_base:
             return None
         scope = load_change_scope(repo)
         proc = subprocess.run(["git", "-C", repo, "--no-pager", "-c", "core.quotepath=off", "diff", "--raw", "-z",  # noqa: S603, S607
-                               "--no-renames", "--no-abbrev", "--no-ext-diff", merge_base, "HEAD", "--"],
+                               "--no-renames", "--no-abbrev", "--no-ext-diff", merge_base, sha, "--"],
                               capture_output=True, text=True, encoding="utf-8", errors="replace", check=False)
         if proc.returncode != 0:
             return None
@@ -401,7 +410,10 @@ def kill_tree(proc) -> None:
     once the leader is gone: a grandchild may outlive it). Windows: taskkill /F /T."""
     if IS_WINDOWS:
         cmd = ["taskkill", "/F", "/T", "/PID", str(proc.pid)]
-        subprocess.run(cmd, capture_output=True, check=False)  # noqa: S603
+        try:
+            subprocess.run(cmd, capture_output=True, check=False)  # noqa: S603
+        except OSError:  # no taskkill on this PATH: kill the child itself, never crash the run
+            proc.kill()
     else:
         _signal_group(proc.pid, signal.SIGTERM)
         with contextlib.suppress(subprocess.TimeoutExpired):
@@ -430,20 +442,27 @@ class RealRunner:
             except OSError as exc:  # the tool could not start: a FAIL, never a pass
                 log.write(f"\nFAIL: could not start {cmd[0]}: {exc!r}\n")
                 return 1
-            deadline = time.monotonic() + STEP_TIMEOUT_S
-            while True:
-                try:
-                    return proc.wait(timeout=POLL_S)
-                except subprocess.TimeoutExpired:
-                    pass
-                if self.stop.is_set():
-                    kill_tree(proc)
-                    log.write(f"\nFAIL: {STOP_REASON}\n")
-                    return STOPPED_RC
-                if time.monotonic() >= deadline:
-                    kill_tree(proc)
-                    log.write(f"\nFAIL: timed out after {STEP_TIMEOUT_S}s\n")
-                    return TIMEOUT_RC
+            try:
+                return self._wait(proc, log)
+            except BaseException:  # Ctrl-C, SystemExit: never leave the child tree running
+                kill_tree(proc)
+                raise
+
+    def _wait(self, proc, log):
+        deadline = time.monotonic() + STEP_TIMEOUT_S
+        while True:
+            try:
+                return proc.wait(timeout=POLL_S)
+            except subprocess.TimeoutExpired:
+                pass
+            if self.stop.is_set():
+                kill_tree(proc)
+                log.write(f"\nFAIL: {STOP_REASON}\n")
+                return STOPPED_RC
+            if time.monotonic() >= deadline:
+                kill_tree(proc)
+                log.write(f"\nFAIL: timed out after {STEP_TIMEOUT_S}s\n")
+                return TIMEOUT_RC
 
 
 real_runner = RealRunner()  # stays importable; run_all builds its own (repo-bound) instance
@@ -581,8 +600,12 @@ def _run_parallel(plan: Plan, log_dir: str, clock, jobs: int, stop: threading.Ev
 
     if long_steps:
         with ThreadPoolExecutor(max_workers=max(1, min(jobs, len(long_steps)))) as pool:
-            futures = [pool.submit(work, n, f) for n, f in long_steps]
-            parallel = [fut.result() for fut in futures]
+            try:
+                futures = [pool.submit(work, n, f) for n, f in long_steps]
+                parallel = [fut.result() for fut in futures]
+            except BaseException:  # Ctrl-C in the main thread: the workers kill their trees, then the pool is joined
+                stop.set()
+                raise
         by_name = {r[0]: r for r in parallel}
         results += [by_name[n] for n, _ in steps if n in by_name]
         if by_name.get("preflight", ("", 0))[1] != 0:
@@ -650,15 +673,16 @@ def proxy_notice(environ=None) -> str | None:
             "them unset (runbook, Before a push)")
 
 
-def _lane(repo, full, select_docs_only) -> tuple[str, dict]:
-    """("full", {}) or ("docs-only (<n> files)", {skippable step: reason}). --full and any doubt = the full lane."""
+def _lane(repo, full, select_docs_only, sha=None) -> tuple[str, dict, bool]:
+    """(lane name, {step: reason it is skipped} (empty: SKIPPABLE is empty), is the docs-only lane). --full, no start
+    sha and any doubt = the full lane."""
     try:
-        count = None if full else select_docs_only(repo)
+        count = None if full or sha is None else select_docs_only(repo, sha)
     except Exception:  # noqa: BLE001 - cannot tell: the full lane
         count = None
     if count is None:
-        return "full", {}
-    return f"docs-only ({count} files)", dict.fromkeys(SKIPPABLE, f"docs-only change ({count} files)")
+        return "full", {}, False
+    return f"docs-only ({count} files)", dict.fromkeys(SKIPPABLE, f"docs-only change ({count} files)"), True
 
 
 def _frontend_changes_or_none(select_frontend, repo):
@@ -686,9 +710,10 @@ def run_all(repo, full=False, runner=None, log_dir=None, clock=time.monotonic,  
         print(notice)
     sha = head_sha(repo)
     clean_at_start = tree_is_clean(repo)  # review F3: the tree is the commit for the whole run, not only at the end
-    lane, skips = _lane(repo, full, select_docs_only or docs_only_change)
-    if skips:  # a docs-only change: no frontend step is planned, the app tests are the ones that read docs paths
+    lane, skips, docs_lane = _lane(repo, full, select_docs_only or docs_only_change, sha)
+    if docs_lane:  # a docs-only change: no frontend step is planned; app_tests runs the files that read docs paths
         frontend, select_app = [], select_docs_app or select_docs_app_tests
+        print(f"LANE {lane}: nothing is skipped; app_tests runs the tests_app files that read docs paths")
         for name, reason in skips.items():
             print(f"SKIP {name} skipped: {reason}")
     else:
