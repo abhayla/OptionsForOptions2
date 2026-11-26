@@ -1077,7 +1077,9 @@ PLAYBOOK_TYPE_LABEL_TEXT: Mapping[str, str] = MappingProxyType(
 NO_PLAN_TEXT = "No plan: nothing is watched for this strategy"  # ADR-330 (11): replaces "default rules apply"
 PLAN_SHEET_LABEL_TEXT: Mapping[str, str] = MappingProxyType({
     "title": "When tracking starts: this strategy's plan", "playbook": "Playbook", "target": "Target",
-    "stop": "Stop", "max_adjustments": "Max adjustments", "time_exit": "Time exit",
+    "stop": "Stop",
+    "target_rupees": "Target (Rs)", "stop_rupees": "Stop (Rs)",  # ADR-330 (5): the same level typed in rupees
+    "max_adjustments": "Max adjustments", "time_exit": "Time exit",
     "time_exit_on": "Time exit date (blank = expiry day)",  # ADR-330 (7): any trading day, one date and one time
     "customise": "Customise triggers", "use_as_is": "Use playbook as is", "save": "Save plan", "close": "Close",
     "plan_entry": "Plan", "edit": "Edit plan", "no_plan": NO_PLAN_TEXT, "set_plan": "Set plan",
@@ -1677,6 +1679,12 @@ _EXPLANATIONS: tuple[ExplanationTemplate, ...] = (
                         {"pct": PlaybookField, "margin": PlaybookField}),
     ExplanationTemplate("plan_stop_words_credit", "values_seen", "{multiple}x the credit received",
                         {"multiple": PlaybookField}),
+    # ADR-330 (5) / owner Q3: a rupee level is the whole trade, before charges, the per-lot figure beside it
+    ExplanationTemplate("plan_level_rupees", "values_seen",
+                        "Rs {rupees} for the whole trade (Rs {per_lot} per lot), before charges",
+                        {"rupees": Amount, "per_lot": Amount}),
+    ExplanationTemplate("plan_level_rupees_whole", "values_seen", "Rs {rupees} for the whole trade, before charges",
+                        {"rupees": Amount}),
     ExplanationTemplate("plan_stop_words_or", "values_seen", "{a} or {b}", {"a": Explained, "b": Explained}),
     ExplanationTemplate("plan_stop_words_or3", "values_seen", "{a}, {b} or {c}",
                         {"a": Explained, "b": Explained, "c": Explained}),

@@ -96,6 +96,11 @@ async def _system_ic(engine) -> playbook_store.Playbook:
 # --- AC-1: the sheet's prefill ---------------------------------------------------------------------------------------
 
 
+def _without_rupees(prefill: dict) -> dict:
+    """ADR-330 (5): the rupee figures of a level are asserted on their own (tests_app/test_plan_rupee_levels.py)."""
+    return {k: v for k, v in prefill.items() if "rupee" not in k and "per_lot" not in k and not k.endswith("_source")}
+
+
 async def test_get_without_a_plan_prefills_from_the_active_system_playbook_and_pick_refills(app_db_url, monkeypatch):
     sid = await _seeded(app_db_url, monkeypatch, "ADJ-01")
     system = await _system_ic(app_db_url)
@@ -103,7 +108,8 @@ async def test_get_without_a_plan_prefills_from_the_active_system_playbook_and_p
     assert status == OK, out
     assert (out["type"], out["type_name"], out["generic"], out["generic_text"], out["plan"]) == (
         "ic", IC_NAME, False, None, None)
-    assert out["prefill"] == {"playbook_id": system.id, "target": "50", "stop": "50", "max_adjustments": 2,
+    assert (out["prefill"]["stop_rupees"], out["prefill"]["stop_per_lot"]) == ("10390.25", "5195.13")  # ADR-330 (5)
+    assert _without_rupees(out["prefill"]) == {"playbook_id": system.id, "target": "50", "stop": "50", "max_adjustments": 2,  # noqa: E501
                               "time_exit": {"hour": 14, "minute": 30},  # ADR-216: the iron condor seed
                               "time_exit_on": None,
                               "target_words": "50 % of max profit",
@@ -120,7 +126,7 @@ async def test_get_without_a_plan_prefills_from_the_active_system_playbook_and_p
     async with app_db_url.begin() as conn:
         own = await playbook_store.create(conn, USER, "ic", "Plan pick", body)
     status, picked = await _call("GET", _plan_path(sid) + f"?playbook_id={own.id}")
-    assert status == OK and picked["prefill"] == {"playbook_id": own.id, "target": "70", "stop": "30",
+    assert status == OK and _without_rupees(picked["prefill"]) == {"playbook_id": own.id, "target": "70", "stop": "30",
                                                   "max_adjustments": 4, "time_exit": {"hour": 14, "minute": 45},
                                                   "time_exit_on": None,
                                                   "target_words": "70 % of max profit",

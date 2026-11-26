@@ -31,9 +31,12 @@ from typing import Annotated, Any
 from fastapi import APIRouter, Depends, Query
 from ofo import market_calendar
 from ofo.adjustment import playbook_stages as stages
+from ofo.adjustment import stop_lines as sl
 from ofo.adjustment.playbook_text import name_shown
 from ofo.adjustment.playbook_types import SHOWN_NAMES
 from ofo.charges import ChargeRates
+from ofo.checks import pnl_amount as rupee
+from ofo.checks import rupee_figures as figs
 from ofo.checks.time_of_day import CLOCK, DATE, ON_EXPIRY, day_of, time_exit_parts
 from ofo.errors import render
 from ofo.errors.explanations import LABEL_TABLES, render_explanation
@@ -75,11 +78,14 @@ ID_MAX = 9_223_372_036_854_775_807  # the id column is BIGSERIAL
 MAX_ADJUSTMENTS_LIMIT = 10
 _PERCENT = re.compile(r"[0-9]{1,3}(\.[0-9]{1,4})?")
 _COUNT = re.compile(r"[0-9]{1,3}")
+_RUPEES = re.compile(r"[0-9]{1,12}(\.[0-9]{1,2})?")  # whole-trade rupees, to the paisa
 #: The sheet field -> the guard of the plan's copy that holds it (docs/design/playbook-body-v1.md "guards")
 TARGET_KEY = "profit_target_pct_of_max_profit"
 #: the sheet's stop is the % of max loss trigger's value (ADR-252: ``settings_in_force.set_max_loss_stop`` /
 #: ``sheet_stop``), never a guard key
-EITHER_RULE = "whichever comes first"
+SOURCE_RUPEES = "rupees"  # which box is the saved level (the other figure is derived for display)
+SOURCE_PERCENT = "percent"
+EITHER_RULE ="whichever comes first"
 MAX_KEY = "max_adjustments"
 TIME_KEY = "time_exit"
 
@@ -102,6 +108,10 @@ class PlanIn(_In):
     stop: str | None = None
     max_adjustments: str | None = None
     time_exit: str | TimeExitIn | None = None  # a plain "HH:MM" = on expiry day (the old shape)
+    #: ADR-330 (5): the same two levels typed in rupees (whole trade, before charges, decimal text; "" = none). The
+    #: sheet sends the box last edited; both given must be the same level, else refused naming the rupee field
+    target_rupees: str | None = None
+    stop_rupees: str | None = None
     #: ADR-245: this strategy's own setting overrides (the strategy layer), ``{key: "decimal text"}``. Given -> the
     #: plan's overrides become exactly this object (``{}`` removes every override, so each value follows the user's,
     #: else the default); left out -> kept as the body has them. Each key must be a three-layer setting and each value
@@ -133,6 +143,14 @@ class PrefillOut(ApiModel):
     max_adjustments: int | None
     time_exit: ClockOut | None
     time_exit_on: datetime.date | None = None  # None = expiry day
+    target_rupees: Money | None = None  # ADR-330 (5): the level in rupees (whole trade, before charges)
+    target_per_lot: Money | None = None
+    target_rupee_words: CatalogueText | None = None
+    stop_rupees: Money | None = None
+    stop_per_lot: Money | None = None
+    stop_rupee_words: CatalogueText | None = None
+    target_source: Identifier | None = None  # the saved level's own box: "rupees" or "percent" (the other is derived)
+    stop_source: Identifier | None = None
 
 
 class PlanOut(ApiModel):
@@ -145,6 +163,14 @@ class PlanOut(ApiModel):
     max_adjustments: int | None
     time_exit: ClockOut | None
     time_exit_on: datetime.date | None = None  # None = expiry day
+    target_rupees: Money | None = None  # ADR-330 (5): the level in rupees (whole trade, before charges)
+    target_per_lot: Money | None = None
+    target_rupee_words: CatalogueText | None = None
+    stop_rupees: Money | None = None
+    stop_per_lot: Money | None = None
+    stop_rupee_words: CatalogueText | None = None
+    target_source: Identifier | None = None  # the saved level's own box: "rupees" or "percent" (the other is derived)
+    stop_source: Identifier | None = None
     accepted_at: datetime.datetime
 
 
@@ -285,6 +311,120 @@ def _values(body: dict, saved_before: bool, kind: str | None = None) -> dict[str
             "time_exit_on": _read_clock_on(guards)}
 
 
+@dataclasses.dataclass(frozen=True)
+class Bases:
+    """What a rupee level is shown against (ADR-330 (5)): max profit for a target, the stored stop base's max loss for
+    a stop (both whole trade, before charges) and the lots of the largest leg for the per-lot figure. None = unknown."""
+    max_profit: Decimal | None = None
+    max_loss: Decimal | None = None
+    lots: int | None = None
+
+
+def bases_of(tracked: Any, market: Any, rates: Any) -> Bases:
+    base = getattr(tracked, "stop_base", None)
+    loss = getattr(base, "max_loss", None)
+    profit = None
+    if market is not None:
+        try:
+            profit = check.max_profit_of(tracked, market, rates)
+        except Exception:  # noqa: BLE001 - an optional display figure: unknown, never a guess; logged
+            log.warning("adjustment plan: max profit not worked out for the rupee figures", exc_info=True)
+    legs = getattr(getattr(tracked, "position", None), "legs", None) or ()
+    return Bases(profit, loss if isinstance(loss, Decimal) and loss.is_finite() else None,
+                 max((x.lots for x in legs), default=None))
+
+
+def _rupee_guard(guards: dict, key: str) -> Decimal | None:
+    try:
+        return rupee.level_of(guards.get(key) if isinstance(guards.get(key), str) else None)
+    except ValueError:
+        return None  # an unreadable stored level shows nothing (the evaluator says "not checked")
+
+
+def _rupee_words(found: figs.Figures) -> Any:
+    if found.rupees is None:
+        return None
+    if found.per_lot is None:
+        return render_explanation("plan_level_rupees_whole", rupees=found.rupees)
+    return render_explanation("plan_level_rupees", rupees=found.rupees, per_lot=found.per_lot)
+
+
+def with_rupee_figures(values: dict[str, Any], body: dict, bases: Bases) -> dict[str, Any]:
+    """ADR-330 (5): the plan shows BOTH figures of each level, worked out here (the browser computes nothing). A stored
+    rupee target is the source: its percent is derived from max profit; otherwise the rupees come from the percent."""
+    found = body.get("guards")
+    guards: dict = found if isinstance(found, dict) else {}
+    out = dict(values)
+    level = _rupee_guard(guards, sl.RUPEE_PROFIT_KEY)
+    out["target_source"] = SOURCE_PERCENT if level is None else SOURCE_RUPEES
+    if level is not None:
+        target = figs.from_rupees(level, bases.max_profit, bases.lots)
+        out["target"] = target.percent
+        out["target_words"] = None if target.percent is None else render_explanation(
+            "plan_target_words", pct=format(target.percent, "f"))
+    elif values.get("target") is None:
+        target = figs.NONE
+    else:
+        target = figs.from_percent(values["target"], bases.max_profit, bases.lots)
+    level = _rupee_guard(guards, sl.RUPEE_LOSS_KEY)
+    out["stop_source"] = SOURCE_PERCENT if level is None else SOURCE_RUPEES
+    if level is not None:
+        stop = figs.from_rupees(level, bases.max_loss, bases.lots)
+        if stop.percent is not None:  # the rupee level IS the stop; its percent is the derived display figure only
+            out["stop"] = stop.percent
+            out["stop_words"] = render_explanation("plan_stop_words_loss", pct=format(stop.percent, "f"))
+    elif values.get("stop") is None:
+        stop = figs.NONE
+    else:
+        stop = figs.from_percent(values["stop"], bases.max_loss, bases.lots)
+    out |= {"target_rupees": target.rupees, "target_per_lot": target.per_lot,
+            "target_rupee_words": _rupee_words(target), "stop_rupees": stop.rupees, "stop_per_lot": stop.per_lot,
+            "stop_rupee_words": _rupee_words(stop)}
+    return out
+
+
+def _rupee_in(raw: str, field: str) -> Decimal | None:
+    """The typed rupee text -> a positive Decimal; "" -> None (no rupee level); else refused naming the field."""
+    if raw == "":
+        return None
+    try:
+        if not _RUPEES.fullmatch(raw):
+            raise ValueError(field)
+        return rupee.level_of(raw)
+    except ValueError:
+        raise _bad(field) from None
+
+
+def _apply_rupee(out: dict, key: str, typed: str | None, percent: str | None,  # noqa: PLR0913
+                 base: Decimal | None, lots: int | None, field: str) -> bool:
+    """One level's rupee box. Returns True when the rupee level is the SOURCE (typed, no percent beside it): the caller
+    then switches the percent target off. Both typed -> they must be the same level (else refused naming the rupee
+    field; a base that cannot judge refuses too) and the percent is the one stored. A percent typed alone drops the
+    rupee level (the last edited box is the source of truth)."""
+    guards = out.setdefault("guards", {})
+    if typed is None:
+        if percent is not None:
+            guards.pop(key, None)
+        return False
+    level = _rupee_in(typed, field)
+    if level is None:
+        guards.pop(key, None)
+        return False
+    if percent:
+        if not figs.agree(Decimal(percent), level, base, lots):
+            raise _bad(field)
+        guards.pop(key, None)
+        return False
+    guards[key] = format(level, "f")
+    return True
+
+
+def _stored_loss(stored: Any, bases: Bases) -> Decimal | None:
+    """The max loss of the base now stored (ADR-330 (1)), else the one read before the save."""
+    found = getattr(getattr(stored, "stop_base", None), "max_loss", None)
+    return found if isinstance(found, Decimal) and found.is_finite() else bases.max_loss
+
+
 def _set_stop(out: dict, raw: str, kind: str | None = None) -> None:
     """ADR-252: the sheet's stop edit IS the T-06 value the live check reads (``settings_in_force``), every stage."""
     try:
@@ -319,7 +459,7 @@ def check_time_exit_day(guard: object, today: datetime.date | None, last_expiry:
         raise _bad(TIME_KEY)
 
 
-def with_overrides(body: dict, data: PlanIn, kind: str | None = None) -> dict:
+def with_overrides(body: dict, data: PlanIn, kind: str | None = None, bases: Bases | None = None) -> dict:
     """A copy of ``body`` whose guards hold the sheet's values (a value left out stays as the body has it)."""
     out = copy.deepcopy(body)
     guards = out.setdefault("guards", {})
@@ -327,6 +467,11 @@ def with_overrides(body: dict, data: PlanIn, kind: str | None = None) -> dict:
         guards[TARGET_KEY] = _percent(data.target, "target") if data.target != "" else ""  # ADR-305: "" = no Target
     if data.stop is not None:
         _set_stop(out, data.stop, kind)
+    bases = bases or Bases()
+    if _apply_rupee(out, sl.RUPEE_PROFIT_KEY, data.target_rupees, data.target, bases.max_profit, bases.lots,
+                    "target_rupees"):
+        guards[TARGET_KEY] = ""  # the rupee target is the source: the percent target is off (one target level)
+    _apply_rupee(out, sl.RUPEE_LOSS_KEY, data.stop_rupees, data.stop, bases.max_loss, bases.lots, "stop_rupees")
     if data.max_adjustments is not None:
         if not _COUNT.fullmatch(data.max_adjustments) or int(data.max_adjustments) > MAX_ADJUSTMENTS_LIMIT:
             raise _bad(MAX_KEY)
@@ -390,7 +535,8 @@ def _kind_of(tracked: Any, money: in_force_mod.MoneyInputs | None) -> str:
     return (None if at is None else at.expiry_kind) or getattr(tracked.position, "expiry_kind", None) or "weekly"
 
 
-async def _plan_out(db: Any, user_ref: str, plan: store.Plan, kind: str | None = None) -> dict[str, Any]:
+async def _plan_out(db: Any, user_ref: str, plan: store.Plan, kind: str | None = None,
+                    bases: Bases | None = None) -> dict[str, Any]:
     name = None
     if plan.playbook_id is not None:  # a deleted playbook leaves the plan's playbook_id NULL
         try:
@@ -398,7 +544,8 @@ async def _plan_out(db: Any, user_ref: str, plan: store.Plan, kind: str | None =
         except store.PlaybookStoreError:
             name = None
     return {"playbook_id": plan.playbook_id, "playbook_name": name, "accepted_at": plan.accepted_at,
-            **_values(plan.body, await check.plan_saved_before_adr247(db, plan), kind)}
+            **with_rupee_figures(_values(plan.body, await check.plan_saved_before_adr247(db, plan), kind), plan.body,
+                                 bases or Bases())}
 
 
 def _in_force_reply(found: in_force_mod.InForce) -> dict[str, Any]:
@@ -425,7 +572,8 @@ def _in_force_reply(found: in_force_mod.InForce) -> dict[str, Any]:
 
 async def _sheet(db: Any, user_ref: str, strategy_id: int, stype: str | None, plan: store.Plan | None,  # noqa: PLR0913
                  pick: int | None, user_values: Any = None,
-                 money: in_force_mod.MoneyInputs | None = None, kind: str | None = None) -> AdjustmentPlanOut:
+                 money: in_force_mod.MoneyInputs | None = None, kind: str | None = None,
+                 bases: Bases | None = None) -> AdjustmentPlanOut:
     reply: dict[str, Any] = {"strategy_id": strategy_id, "type": stype, "type_name": None, "generic": stype is None,
                              "generic_text": render(_GENERIC) if stype is None else None, "playbooks": [],
                              "plan": None, "prefill": None, "labels": _labels()}
@@ -451,15 +599,16 @@ async def _sheet(db: Any, user_ref: str, strategy_id: int, stype: str | None, pl
         chosen = found
     if plan is not None and pick is None:
         saved_before = await check.plan_saved_before_adr247(db, plan)
-        values = _values(plan.body, saved_before, kind)
+        values = with_rupee_figures(_values(plan.body, saved_before, kind), plan.body, bases or Bases())
         source_id = plan.playbook_id if plan.playbook_id is not None else active.id
     else:
-        values, source_id = _values(chosen.body, False, kind), chosen.id  # a playbook, not a saved plan
+        values = with_rupee_figures(_values(chosen.body, False, kind), chosen.body, bases or Bases())
+        source_id = chosen.id  # a playbook, not a saved plan
         if (_t07_of(chosen.body) or {}).get("on") is False:  # ADR-305: the profit rule is off -> the box opens empty
             values |= {"target": None, "target_words": None}
     reply |= {"type_name": render_explanation("adjust_check_type_name", name=SHOWN_NAMES[stype]),
               "playbooks": [_playbook_row(p, active.id) for p in listed],
-              "plan": None if plan is None else await _plan_out(db, user_ref, plan, kind),
+              "plan": None if plan is None else await _plan_out(db, user_ref, plan, kind, bases),
               "prefill": {"playbook_id": source_id, **values}}
     return AdjustmentPlanOut.model_validate(reply)
 
@@ -478,6 +627,65 @@ async def _run(db: Any, work: Any) -> Any:
     return result
 
 
+class LevelOut(ApiModel):
+    percent: Money | None
+    rupees: Money | None
+    per_lot: Money | None
+    words: CatalogueText | None  # the typed level in words (the percent), as the plan sheet shows it
+    rupee_words: CatalogueText | None  # "Rs X for the whole trade (Rs Y per lot), before charges"
+
+
+class LevelsOut(ApiModel):
+    target: LevelOut | None
+    stop: LevelOut | None
+
+
+def _level_out(percent_raw: str | None, rupees_raw: str | None, base: Decimal | None, lots: int | None,  # noqa: PLR0913
+               field: str, words_id: str) -> dict[str, Any] | None:
+    """One level from what was typed: percent and/or rupees (ADR-330 (5)); both must agree, else refused naming the
+    rupee field. Nothing typed -> None. The server works both figures out; the browser prints them."""
+    pct = None if percent_raw in (None, "") else Decimal(_percent(percent_raw, field.removesuffix("_rupees")))
+    level = None if rupees_raw in (None, "") else _rupee_in(rupees_raw, field)
+    if pct is not None and level is not None and not figs.agree(pct, level, base, lots):
+        raise _bad(field)
+    if level is not None and pct is None:
+        found = figs.from_rupees(level, base, lots)
+    elif pct is not None:
+        found = figs.from_percent(pct, base, lots)
+    else:
+        return None
+    words = None if found.percent is None else render_explanation(words_id, pct=format(found.percent, "f"))
+    return {"percent": found.percent, "rupees": found.rupees, "per_lot": found.per_lot, "words": words,
+            "rupee_words": _rupee_words(found)}
+
+
+@router.get("/api/strategies/{strategy_id}/adjustment-plan/levels", response_model=LevelsOut)
+async def read_levels(  # noqa: PLR0913 - FastAPI dependencies, one per input
+        strategy_id: int, db: Annotated[Any, Depends(get_db)], user_ref: Annotated[str, Depends(current_user_ref)],
+        tracked_reader: Annotated[TrackedReader, Depends(get_tracked_reader)],
+        market_reader: Annotated[MarketReader, Depends(get_market_reader)],
+        ctx: Annotated[MarketContext | None, Depends(get_market_context)],
+        rates: Annotated[ChargeRates | None, Depends(load_charge_rates)],
+        target: Annotated[str | None, Query(max_length=12)] = None,
+        target_rupees: Annotated[str | None, Query(max_length=16)] = None,
+        stop: Annotated[str | None, Query(max_length=12)] = None,
+        stop_rupees: Annotated[str | None, Query(max_length=16)] = None) -> LevelsOut:
+    """ADR-330 (5) / S-12: both figures of the typed level(s), worked out on the server, the per-lot figure beside the
+    rupees. The last edited box is sent alone; both boxes with different values -> refused naming the rupee field."""
+    rates = rates if isinstance(rates, ChargeRates) else None
+    tracked = await _own_strategy(strategy_id, tracked_reader, rates)
+    await release_connection(db)
+    bases = bases_of(tracked, await _market(tracked, market_reader, ctx), rates)
+    try:
+        reply = {"target": _level_out(target, target_rupees, bases.max_profit, bases.lots, "target_rupees",
+                                      "plan_target_words"),
+                 "stop": _level_out(stop, stop_rupees, bases.max_loss, bases.lots, "stop_rupees",
+                                    "plan_stop_words_loss")}
+    except store.PlaybookStoreError as exc:
+        raise _refused(exc) from None
+    return LevelsOut.model_validate(reply)
+
+
 @router.get("/api/strategies/{strategy_id}/adjustment-plan", response_model=AdjustmentPlanOut)
 async def read_plan(  # noqa: PLR0913 - FastAPI dependencies, one per input
         strategy_id: int, db: Annotated[Any, Depends(get_db)], user_ref: Annotated[str, Depends(current_user_ref)],
@@ -494,10 +702,11 @@ async def read_plan(  # noqa: PLR0913 - FastAPI dependencies, one per input
     market = await _market(tracked, market_reader, ctx)
     stype, plan = await _type_of(db, user_ref, strategy_id, tracked, ctx)
     money = in_force_mod.money_inputs(tracked, market, rates)
+    bases = bases_of(tracked, market, rates)
 
     async def work() -> AdjustmentPlanOut:
         return await _sheet(db, user_ref, strategy_id, stype, plan, playbook_id, user_values, money,
-                            _kind_of(tracked, money))
+                            _kind_of(tracked, money), bases)
     return await _run(db, work)
 
 
@@ -510,6 +719,7 @@ async def _write(strategy_id: int, data: PlanIn, edit: bool, db: Any, user_ref: 
     market = await _market(tracked, market_reader, ctx)
     stype, plan = await _type_of(db, user_ref, strategy_id, tracked, ctx)
     money = in_force_mod.money_inputs(tracked, market, rates)
+    bases = bases_of(tracked, market, rates)
     if stype is None:
         raise StrategyRefused(_GENERIC, Failure.CONFLICT)
     if edit and plan is None:
@@ -522,7 +732,8 @@ async def _write(strategy_id: int, data: PlanIn, edit: bool, db: Any, user_ref: 
         if source.strategy_type != stype:
             raise _bad("playbook_id")
         keep = edit and plan is not None and plan.playbook_id == source.id  # editing the plan keeps its own body
-        body = with_overrides(plan.body if keep and plan is not None else source.body, data, _kind_of(tracked, money))
+        body = with_overrides(plan.body if keep and plan is not None else source.body, data, _kind_of(tracked, money),
+                              bases)
         if data.time_exit is not None:  # ADR-330 (7): the day is judged against today and the legs, never trusted
             legs = tracked.position.legs
             check_time_exit_day(body["guards"].get(TIME_KEY),
@@ -532,7 +743,8 @@ async def _write(strategy_id: int, data: PlanIn, edit: bool, db: Any, user_ref: 
         # ADR-330 (1): the reply shows the base now STORED (the one the checks read), not the one read before the save
         stored = dataclasses.replace(tracked, stop_base=in_force_mod.stop_base_from_json(saved.stop_base))
         return await _sheet(db, user_ref, strategy_id, stype, saved, None, user_values,
-                            in_force_mod.money_inputs(stored, market, rates), _kind_of(tracked, money))
+                            in_force_mod.money_inputs(stored, market, rates), _kind_of(tracked, money),
+                            dataclasses.replace(bases, max_loss=_stored_loss(stored, bases)))
     return await _run(db, work)
 
 

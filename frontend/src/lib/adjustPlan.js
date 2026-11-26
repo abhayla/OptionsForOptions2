@@ -19,6 +19,11 @@ export const formOf = (src) => ({
   timeExit: clockText(src?.time_exit), timeExitOn: text(src?.time_exit_on), // ADR-330 (7): blank date = expiry day
   timeExitShown: clockText(src?.time_exit), timeExitOnShown: text(src?.time_exit_on), // as the sheet showed them
   targetWords: text(src?.target_words), stopWords: text(src?.stop_words), // what the numbers are, the server's words
+  // ADR-330 (5): the same two levels in rupees, both figures the server's; the box last edited is the one saved
+  targetRupees: decimal(src?.target_rupees), stopRupees: decimal(src?.stop_rupees),
+  stopRupeesShown: decimal(src?.stop_rupees),
+  targetRupeeWords: text(src?.target_rupee_words), stopRupeeWords: text(src?.stop_rupee_words),
+  targetLast: src?.target_source === 'rupees' ? 'rupees' : 'percent', stopLast: src?.stop_source === 'rupees' ? 'rupees' : 'percent',
 })
 
 /** The one reading of the answer: { kind: 'generic', text } | { kind: 'sheet', ... } | { kind: 'invalid' }. */
@@ -58,12 +63,16 @@ export async function fetchPlan(client, strategyId, pickId = null) {
 /** The body for "Use playbook as is": the playbook alone, the server copies it unchanged. */
 export const asIsBody = (playbookId) => ({ playbook_id: playbookId })
 
-/** The body for Save: the playbook and every field as typed; the server checks each and names the one that is not valid. */
+/** The body for Save: the playbook and every field as typed; the server checks each and names the one that is not valid.
+ *  Of each percent / rupee pair only the box last edited is sent (ADR-330 (5)); the other is the server's derived figure. */
 export function saveBody(form) {
   const body = { playbook_id: form.playbookId }
-  body.target = form.target.trim() // ADR-305: an empty Target is sent as "" = no target alert for this trade
+  if (form.targetLast === 'rupees') body.target_rupees = (form.targetRupees ?? '').trim() // "" clears the level
+  else body.target = form.target.trim() // ADR-305: an empty Target is sent as "" = no target alert for this trade
   // ADR-252 addendum: a stop left as the sheet showed it is not sent (the server also compares; this is the first layer)
-  if (form.stop.trim() !== '' && form.stop.trim() !== (form.stopShown ?? '').trim()) body.stop = form.stop.trim()
+  if (form.stopLast === 'rupees') {
+    if ((form.stopRupees ?? '').trim() !== (form.stopRupeesShown ?? '').trim()) body.stop_rupees = form.stopRupees.trim()
+  } else if (form.stop.trim() !== '' && form.stop.trim() !== (form.stopShown ?? '').trim()) body.stop = form.stop.trim()
   if (form.maxAdjustments.trim() !== '') body.max_adjustments = form.maxAdjustments.trim()
   // ADR-330 (7): one time on one day; a blank date is sent as "" = expiry day (the server judges the day). Sent only
   // when the time or the date changed in the sheet, so a saved date that has passed never blocks an unrelated edit;
@@ -73,6 +82,22 @@ export function saveBody(form) {
   const changed = at !== (form.timeExitShown ?? '').trim() || on !== (form.timeExitOnShown ?? '').trim()
   if (changed && (at !== '' || on !== '')) body.time_exit = { at, on }
   return body
+}
+
+const levelsPath = (id, typed) => {
+  const q = Object.entries(typed).filter(([, v]) => typeof v === 'string' && v.trim() !== '')
+    .map(([k, v]) => `${k}=${encodeURIComponent(v.trim())}`).join('&')
+  return `${planPath(id)}/levels${q ? `?${q}` : ''}`
+}
+const level = (l) => (l && typeof l === 'object'
+  ? { percent: decimal(l.percent), rupees: decimal(l.rupees), words: text(l.words), rupeeWords: text(l.rupee_words) } : null)
+
+/** GET .../adjustment-plan/levels for the box just typed in (`{ target }`, `{ target_rupees }`, `{ stop }` or
+ *  `{ stop_rupees }`): the server works out both figures and the hint words; the browser computes nothing (ADR-008).
+ *  Returns `{ target, stop }` (each `{ percent, rupees, words, rupeeWords }` or null). Throws the client error. */
+export async function fetchLevels(client, strategyId, typed) {
+  const { data } = await client.get(levelsPath(strategyId, typed))
+  return { target: level(data?.target), stop: level(data?.stop) }
 }
 
 /** POST (accept) or PUT (edit the plan later). Returns the new reading; throws the client error. */

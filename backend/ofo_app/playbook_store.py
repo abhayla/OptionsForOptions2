@@ -29,11 +29,13 @@ from datetime import date, datetime
 from decimal import Decimal
 from typing import Any
 
+from ofo.adjustment import stop_lines as sl
 from ofo.adjustment.cap_scope import count_capped
 from ofo.adjustment.gate_rows import GateRow, GateRows
 from ofo.adjustment.playbook_eval import validate_body
 from ofo.adjustment.playbook_types import BODY_SCHEMA, NAME_MAX, SHOWN_NAMES
 from ofo.alerts import CONTINUE as ANSWER_CONTINUE  # ADR-330 (3): Dismiss and Act on both leave the position as is
+from ofo.checks import pnl_amount as rupee
 from ofo.errors.explanations import render_explanation
 from ofo.settings import layers
 from sqlalchemy import text
@@ -447,6 +449,7 @@ def check_body(body: object, strategy_type: str) -> dict:
         if key in body and not isinstance(body[key], kind):
             raise _bad(key)
     _check_day_rule_times(body.get("day_rules"))
+    _check_rupee_guards(body.get("guards"))
     from ofo_app.settings_in_force import check_stop_values  # noqa: PLC0415 - it imports this module's callers
     if (bad := check_stop_values(body)) is not None:  # a stop value out of range is refused on save (ADR-252)
         raise _bad(bad)
@@ -460,6 +463,20 @@ def check_body(body: object, strategy_type: str) -> dict:
     except ValueError:
         raise _bad("body") from None
     return body
+
+
+def _check_rupee_guards(guards: object) -> None:
+    """ADR-330 (5): a plan's rupee level is "" (none) or a positive finite decimal text, nothing else (fail closed)."""
+    for key in (sl.RUPEE_PROFIT_KEY, sl.RUPEE_LOSS_KEY):
+        raw = guards.get(key) if isinstance(guards, dict) else None
+        if raw is None:
+            continue
+        try:
+            if not isinstance(raw, str):
+                raise ValueError(key)
+            rupee.level_of(raw)
+        except ValueError:
+            raise _bad(f"guards.{key}") from None
 
 
 def _check_day_rule_times(day_rules: object) -> None:

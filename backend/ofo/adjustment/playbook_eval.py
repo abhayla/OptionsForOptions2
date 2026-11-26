@@ -34,6 +34,7 @@ from ofo.adjustment import level_watch
 from ofo.adjustment import stop_lines as sl
 from ofo.adjustment.approaches import KINDS, ExitInputs, is_expiry_day
 from ofo.adjustment.offered import offered_now
+from ofo.checks import pnl_amount as rupee
 from ofo.checks.time_of_day import ON_EXPIRY, resolve_on, time_exit_due, time_exit_parts
 from ofo.engine import adjust_money
 from ofo.engine import adjust_ratios as ratios
@@ -974,7 +975,7 @@ def _later(c: _Ctx, tid: str) -> tuple[Decimal | str, ...]:
     if tid in sl.STOP_TRIGGERS:  # the line in force carries its later figures (a flat line: none)
         line = _line(c.state, tid)
         return () if line is None or line.figure is None else tuple(_tightened(c, tid, x, "ge") for x in line.later)
-    if c.stage is None or sl.is_stop_rule(tid):  # the 2x-credit line is one amount, not a per-stage value
+    if c.stage is None or sl.is_stop_rule(tid) or tid in sl.RUPEE_RULES:  # one amount each, not per stage
         return ()
     out = []
     for i in range(c.stage + 1, len(c.body["stages"][c.state.expiry_kind])):
@@ -995,6 +996,9 @@ def _value_of(c: _Ctx, rule: Mapping | None, o: _Outcome) -> RuleValue | None:
 
 
 def _outcomes(body: Mapping, state: StrategyState, gap_until: str) -> tuple[_Ctx, str | None, list[_Outcome]]:
+    replaced = sl.rupee_loss_is_the_stop(body)
+    if replaced:  # ADR-330 (5)(a): the plan's one loss stop is the rupee level; T-06 is not a second stop
+        body = _without_t06(body)
     c = dataclasses.replace(_context(body, state), gap_until=gap_until)
     why = _withheld(state)
     out = []
@@ -1010,12 +1014,55 @@ def _outcomes(body: Mapping, state: StrategyState, gap_until: str) -> tuple[_Ctx
         else:
             out.append(_rule(c, rule))
     named = {m for rule in body.get("rules", []) for m in (rule.get("any_of") or rule["all_of"])}
-    for tid in sorted(sl.STOP_TRIGGERS - named):  # an active line no body rule names is still checked (ADR-252)
+    skipped = {sl.TRIGGER_MAX_LOSS} if replaced else set()  # the rupee stop is the plan's one stop
+    for tid in sorted(sl.STOP_TRIGGERS - named - skipped):  # an active line no rule names is still checked (ADR-252)
         line = _line(state, tid)
         if line is not None and line.active:
             out.append(_stop_rule(c, {"id": tid, "any_of": [tid]}, why))
     out.extend(_credit_outcome(state, why))
+    out.extend(_rupee_outcomes(body, state, why))
     return c, why, out
+
+
+def _without_t06(body: Mapping) -> dict:
+    """The body with T-06 taken out of every rule (a rule left with no member is dropped)."""
+    rules = []
+    for rule in body.get("rules", []):
+        key = "any_of" if "any_of" in rule else "all_of"
+        left = [m for m in rule[key] if m != sl.TRIGGER_MAX_LOSS]
+        if left:
+            rules.append({**rule, key: left})
+    return {**body, "rules": rules}
+
+
+def _rupee_outcomes(body: Mapping, state: StrategyState, why: str | None) -> list[_Outcome]:
+    """ADR-330 (5): the plan's rupee loss stop / profit target, whole trade before charges (Q3), through ``pnl_amount``.
+    No level typed (absent or blank) -> no rule; a level that cannot be read -> not checked (fail closed); no P&L ->
+    not checked, never "not met". A met level is a Flag like every other rule: it alerts, nothing exits."""
+    guards = body.get("guards")
+    guards = guards if isinstance(guards, Mapping) else {}
+    out: list[_Outcome] = []
+    for rid, key, side in ((sl.RUPEE_LOSS_RULE, sl.RUPEE_LOSS_KEY, rupee.LOSS),
+                           (sl.RUPEE_PROFIT_RULE, sl.RUPEE_PROFIT_KEY, rupee.PROFIT)):
+        raw = guards.get(key)
+        try:
+            level = rupee.level_of(raw if isinstance(raw, str) else (None if raw is None else str(type(raw))))
+        except ValueError:
+            out.append(_Outcome(rid, rid, reason=sl.NOT_CHECKED_OTHER))
+            continue
+        if level is None:
+            continue
+        if why is not None:
+            out.append(_Outcome(rid, rid, reason=why))
+            continue
+        answer = rupee.pnl_amount(level, state.pnl, side)
+        if isinstance(answer, rupee.NotComputable):
+            out.append(_Outcome(rid, rid, reason=f"{P}missing_pnl"))
+            continue
+        met = isinstance(answer, rupee.Met)
+        shown = state.pnl if side == rupee.PROFIT else -state.pnl  # type: ignore[operator]
+        out.append(_Outcome(rid, rid, (Hit(rid, shown, level, "ge", met),), fired=met))
+    return out
 
 
 def _line(state: StrategyState, tid: str) -> sl.StopInForce | None:
