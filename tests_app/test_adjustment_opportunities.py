@@ -33,9 +33,7 @@ OK, NOT_FOUND, CONFLICT, INVALID = 200, 404, 409, 422
 #: label 'Trending day'). This test predated 6a and still said 3 (test_adjustment_check filters sit.* out instead).
 ADJ02_FLAGS = 4
 S02_THRESHOLD = Decimal("0.1500")  # other.situation_net_delta_per_lot, default 0.15 (REQ-167 AC-4)
-SYSTEM_LABEL = "Adjustment opportunity detected"
 OWN_LABEL = "Your rule was triggered"  # a plan-watched strategy (ADR-330 (11))
-OWN_LABEL = "Your rule was triggered"
 
 
 async def _call(method: str, url: str, body: Any = None, *, user: str | None = None,

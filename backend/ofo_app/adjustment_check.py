@@ -29,9 +29,8 @@ ambiguous -> None, so the evaluator answers NotChecked with its catalogue reason
 - prices_fresh (T-21): the market context's provider health: available -> True, stale -> False, anything else or no
   context -> None (``withheld_fresh_unknown``).
 
-Playbook (REQ-158 AC-5): the strategy's own plan; else the user's active playbook of the type (``active_for`` falls
-back to the type's system playbook); type None (Custom or an unmapped template) -> no playbook, no results, and the
-tracking route keeps the platform 0.5% detection.
+Playbook (ADR-330 (11)): the strategy's own plan only; no plan -> source "none" (nothing watched); type None (Custom
+or an unmapped template) -> no playbook, no results, and the tracking route keeps the platform 0.5% detection.
 
 F-71 entry state: in scenario mode the scenario's ``position.entry`` (its clock, spot and ATM IV; the shorts' strikes;
 every other entry input None). Otherwise, when the strategy's rule memory is empty (tracking just started), the first

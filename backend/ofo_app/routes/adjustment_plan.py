@@ -393,7 +393,8 @@ async def _sheet(db: Any, user_ref: str, strategy_id: int, stype: str | None, pl
         found = in_force_mod.in_force(user_values, none, money)
         return AdjustmentPlanOut.model_validate(reply | _in_force_reply(found))
     active = await store.active_for(db, user_ref, stype)
-    # the playbook in force (as ``adjustment_check.resolve``): the plan copy, else the user's active / the system one
+    # the sheet shows the playbook that accepting would copy (``adjustment_check.resolve`` answers only the
+    # strategy's own plan or "none"): the plan copy, else the user's active / the system one
     resolved = check.Resolved("plan", check.with_plan_target(plan.body), plan.playbook_id, None, False,
                               saved_before_adr247=await check.plan_saved_before_adr247(db,
                                                                                        plan)) if plan is not None else \
