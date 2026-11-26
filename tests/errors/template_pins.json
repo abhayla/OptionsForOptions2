@@ -4650,5 +4650,13 @@
   "explanation:alert_answer_noted": {
     "sha256": "380d8b6a8e1b45020066a431166b018475b9484002fdd935f82f09e9af80564c",
     "reviewed": "pending owner read"
+  },
+  "explanation:plan_level_rupees": {
+    "sha256": "821d20d978ae65a38cb01ef88dfb7407fb587416463687e42fdf6a7e1b4b190c",
+    "reviewed": "pending owner read"
+  },
+  "explanation:plan_level_rupees_whole": {
+    "sha256": "337d9a4a39689766f94d5825ed79baa6d73798c8bdce733d55cc9c37cb673498",
+    "reviewed": "pending owner read"
   }
 }
