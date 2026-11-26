@@ -173,6 +173,22 @@ async def _tracked_on(db: Any, strategy_id: int, rates: ChargeRates | None) -> T
                    entry_position=entry_position_of(orders, found), stop_base=base, entry_stop_base=fresh)
 
 
+async def nearest_expiry(db: Any, strategy_id: int) -> datetime.date | None:
+    """ADR-330 (19)(b): the nearest expiry among the strategy's OPEN contracts, from a light read (orders, contracts,
+    the netted book): no stop-base backfill, no write. None: not this user's, nothing traded, or no open leg."""
+    paper = await paper_book.load_owned(db, current_user_ref(), strategy_id)
+    orders: Any = paper or await _real_rows(db, strategy_id)
+    if not orders:
+        return None
+    found = {c.contract_id: c for c in await tracked_contracts.resolve(db, sorted({o.order.contract_id
+                                                                                   for o in orders}))}
+    book = net_positions([o.order.as_paper() for o in orders], {})
+    expiries = [found[int(p.instrument_id)].stored.listed.contract.expiry for p in book.positions
+                if p.net_quantity != 0 and found.get(int(p.instrument_id)) is not None
+                and found[int(p.instrument_id)].stored is not None]
+    return min(expiries, default=None)
+
+
 _ENTRY_SOURCE = "entry"  # = settings_in_force.BASE_ENTRY (imported lazily: that module imports the check)
 
 

@@ -13,6 +13,7 @@ Answer states: stated -> row leaves Active; absent -> stays; not found / not ope
 from __future__ import annotations
 
 import datetime
+import logging
 from typing import Annotated, Any
 
 from fastapi import APIRouter, Depends
@@ -31,6 +32,7 @@ from ofo_app.routes.adjustment_opportunities import ID_MAX, condition_text
 from ofo_app.routes.broker import current_user_ref
 from ofo_app.strategy_refused import StrategyRefused
 
+log = logging.getLogger(__name__)
 router = APIRouter(route_class=ClosedRoute)
 _STATUS = {store.SUGGESTION_NOT_FOUND: Failure.NOT_FOUND, store.SUGGESTION_NOT_OPEN: Failure.CONFLICT}
 
@@ -154,10 +156,11 @@ async def _labels(db: Any, rows: list[aa.Alert]) -> dict[int, Any]:
         name = shown_name(a.strategy_name)
         expiry = None
         try:
-            tracked = await readers.read_tracked(a.strategy_id, None, db)
-            expiry = min((leg.expiry for leg in tracked.position.legs), default=None) if tracked else None
-        except readers.TrackedUnreadable:
-            expiry = None
+            async with db.begin_nested():  # a failed statement rolls back to here, the request's session stays usable
+                expiry = await readers.nearest_expiry(db, a.strategy_id)
+        except Exception:  # noqa: BLE001 - a label must never stop the Active list, History or the bell (ADR-330 (3)(4))
+            log.warning("alert label: the expiry of strategy %s could not be read; its number is shown alone",
+                        a.strategy_id, exc_info=True)
         out[a.strategy_id] = (
             render_explanation("alert_strategy_label_no_expiry", name=name, number=a.strategy_id) if expiry is None
             else render_explanation("alert_strategy_label", name=name, number=a.strategy_id, day=expiry.day,

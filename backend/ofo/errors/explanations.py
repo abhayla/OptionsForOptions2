@@ -1702,6 +1702,10 @@ _EXPLANATIONS: tuple[ExplanationTemplate, ...] = (
     ExplanationTemplate("plan_stop_above_max_loss", "values_seen",
                         "This stop (Rs {stop}) is above the trade's max loss (Rs {loss}), so it cannot be reached.",
                         {"stop": WholeRupees, "loss": WholeRupees}),
+    # the same line when both figures print as the same whole rupees: each to the paisa, so they read differently.
+    ExplanationTemplate("plan_stop_above_max_loss_paise", "values_seen",
+                        "This stop ({stop}) is above the trade's max loss ({loss}), so it cannot be reached.",
+                        {"stop": Rupees, "loss": Rupees}),
     # GC-ICFIX u113 round 3 (ADR-304 (3), ADR-294, ADR-296): the one sentence each limit row of the rule check carries.
     # The percent and the rupee amount are the evaluator's own numbers; a rule that is not checked prints its reason and no number.
     ExplanationTemplate("limit_target", "values_seen", "Target: profit of {pct} % of max profit, before charges",

@@ -503,3 +503,20 @@ async def test_a_stop_with_no_known_max_loss_has_no_warning(app_db_url, monkeypa
     assert status == OK and preview["stop"]["warning"] is None
     status, saved = await _call("POST", _plan_path(sid), json={"playbook_id": system.id, "stop_rupees": "5000"})
     assert status == OK and saved["plan"]["stop_warning"] is None
+
+
+async def test_a_stop_that_rounds_to_the_same_whole_rupees_as_max_loss_is_shown_to_the_paisa(app_db_url, monkeypatch):
+    """ADR-330 (25): Rs 2,600.40 against Rs 2,600.00 must not read "Rs 2,600 ... Rs 2,600"."""
+    _base_loss(monkeypatch, D("2600"))
+    sid = await _seeded(app_db_url, monkeypatch, "ADJ-01")
+    status, preview = await _call("GET", _plan_path(sid) + "/levels", params={"stop_rupees": "2600.40"})
+    assert status == OK and preview["stop"]["warning"] == (
+        "This stop (₹2,600.40) is above the trade's max loss (₹2,600.00), so it cannot be reached."), preview
+
+
+async def test_a_zero_or_negative_max_loss_gives_no_stop_warning(app_db_url, monkeypatch):
+    sid = await _seeded(app_db_url, monkeypatch, "ADJ-01")
+    for loss in (D("0"), D("-100")):
+        _base_loss(monkeypatch, loss)
+        status, preview = await _call("GET", _plan_path(sid) + "/levels", params={"stop_rupees": "5000"})
+        assert status == OK and preview["stop"]["warning"] is None, (loss, preview)
