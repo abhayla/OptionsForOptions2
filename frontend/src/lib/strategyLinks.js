@@ -15,3 +15,9 @@ export function paperStopsLinkOf(id) {
   const s = positiveId(id)
   return s === null ? null : { path: '/positions/current-positions', query: { tab: 'paper', strategy: s } }
 }
+
+/** S-14 Exit: the Paper tab on strategy `id` with `exit=<id>`, which opens that list's own exit confirm (the one exit door); null as above. */
+export function paperExitLinkOf(id) {
+  const s = positiveId(id)
+  return s === null ? null : { path: '/positions/current-positions', query: { tab: 'paper', strategy: s, exit: s } }
+}

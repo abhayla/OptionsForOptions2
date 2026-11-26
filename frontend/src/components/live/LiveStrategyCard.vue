@@ -14,7 +14,7 @@ import { PAPER_BOOK_UNREADABLE, readPaperBook } from '@/lib/paperDrafts'
 import PnlLine from '@/components/live/PnlLine.vue'
 import { CARD_LEGS_AS_SAVED_TEXT, CARD_QUEUED_TEXT } from '@/lib/sharedStateText'
 import { isRunning, strategyStatusWord } from '@/lib/strategyStatus'
-import { builderLinkOf, paperStopsLinkOf } from '@/lib/strategyLinks'
+import { builderLinkOf, paperExitLinkOf, paperStopsLinkOf } from '@/lib/strategyLinks'
 import { istTime, maxLine, nameFromPool } from '@/lib/displayFormat'
 import { RouterLink } from 'vue-router'
 import Chip from '@/components/common/Chip.vue'
@@ -191,6 +191,7 @@ const hasLots = computed(() => (data.value?.legs ?? []).some((l) => l.lots != nu
 const hasEntry = computed(() => (data.value?.legs ?? []).some((l) => (l.planned_entry_display ?? l.planned_entry) != null))
 // S-14: links only while the card is not in the error state; a Running (placed paper) strategy shows its fill as "Entry price"
 const openLink = computed(() => (state.value === 'error' ? null : builderLinkOf(props.strategy.id)))
+const exitLink = computed(() => (state.value !== 'error' && isRunning(props.strategy) ? paperExitLinkOf(props.strategy.id) : null))
 const stopsLink = computed(() => (state.value !== 'error' && isRunning(props.strategy) ? paperStopsLinkOf(props.strategy.id) : null))
 const entryHead = computed(() => (isRunning(props.strategy) ? 'Entry price' : 'Planned entry'))
 const legName = (leg) => nameFromPool(leg, [], data.value?.underlying) // never the raw trading symbol (issue 297, REQ-151)
@@ -204,12 +205,13 @@ const healthWord = (leg) => (closed.value ? null : leg.health === 'available' ? 
 class="rounded border border-line bg-surface p-4" data-testid="live-strategy-card" :data-strategy-id="strategy.id"
            :data-state="state" :data-paused="paused ? 'true' : 'false'" :data-live="live.status.value">
     <header class="flex flex-wrap items-baseline gap-2">
-      <!-- S-14: the name opens the strategy (not in the error state); a running paper strategy also links to its Stops. Exit waits for ExitButton. -->
+      <!-- S-14: the name opens the strategy (not in the error state); a running paper strategy also links to its Stops. Exit links to the Paper list, whose own exit dialog (the one exit door) opens; the card holds no exit code. -->
       <h2 class="text-base font-semibold"><component :is="openLink ? RouterLink : 'span'" v-bind="openLink ? { to: openLink, class: 'hover:underline', 'data-testid': 'live-strategy-open' } : {}"><span data-testid="live-strategy-title">{{ strategyLabel(strategy, `Draft ${strategy.id}`) }}, {{ strategy.underlying }}</span></component></h2>
       <span class="rounded bg-gray-100 px-1.5 text-xs text-ink-muted" data-testid="live-strategy-status">{{ strategyStatusWord(strategy) }}</span>
       <!-- GC-MU A3 (ADR-230 (2)): the server's words for the open adjustment records; none at 0 or when unread -->
       <RouterLink v-if="strategy.open_opportunities_text" :to="{ path: '/positions/adjustment-opportunities', query: { strategy: String(strategy.id) } }" class="text-sm text-accent underline" data-testid="live-opportunity-mark">{{ strategy.open_opportunities_text }}</RouterLink>
       <RouterLink v-if="stopsLink" :to="stopsLink" class="text-sm text-accent underline" data-testid="live-strategy-stops">Stops</RouterLink>
+      <RouterLink v-if="exitLink" :to="exitLink" class="text-sm text-accent underline" data-testid="live-strategy-exit">Exit</RouterLink>
       <span v-if="paused" class="text-sm" data-testid="live-paused-badge">⏸ Monitoring paused</span>
       <span v-if="paused" class="inline-flex items-center gap-1 text-sm text-ink-muted" data-testid="live-health-dot" data-health="unknown">
         <span class="inline-block h-2 w-2 rounded-full bg-gray-400" aria-hidden="true"></span>Health unknown
@@ -242,7 +244,7 @@ class="rounded border border-line bg-surface p-4" data-testid="live-strategy-car
         </p>
         <p v-if="figuresReason" class="text-xs text-ink-muted" data-testid="live-figures-reason">{{ figuresReason }}</p>
         <p v-for="line in figuresBasis" :key="line" class="text-xs text-ink-muted" data-testid="live-figures-basis">{{ line }}</p>
-        <table class="mt-2 w-full text-sm" data-testid="live-legs">
+        <table class="num-table mt-2 w-full text-sm" data-testid="live-legs">
           <thead class="text-xs text-ink-muted">
             <tr><th class="text-left font-normal">Instrument</th><th v-if="hasLots" class="text-right font-normal">Lots</th><th v-if="hasEntry" class="text-right font-normal">{{ entryHead }}</th><th class="text-right font-normal">LTP</th></tr>
           </thead>

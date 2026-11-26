@@ -411,3 +411,68 @@ describe('G3: the Lane B emitter guard', () => {
     expect(readdirSync(HERE)).toContain('leg-emitters-guard.test.js')
   })
 })
+
+// Rule 5 (ADR-330 (10), Q2 Chunk B): the one Positions list shows real rows read-only and starts no order. PositionsPage.vue and
+// PositionsTotals.vue contain no addToPaper, no `.post(` and no `/orders` (comments blanked; strings kept). The 'Real (Zerodha
+// order)' literal part of this rule is the second half, further down.
+//
+// KNOWN BYPASSES of rule 5 (both halves; a text scan, not a parser; written down, deliberately NOT chased):
+//   - only PositionsPage.vue and every file under src/components/positions/ are scanned for orders; a Positions feature built in
+//     another directory is not seen;
+//   - the order patterns are `addToPaper`, `.post(` and `/orders`: `api.put(`, `api['post'](`, `.post (` (space) and `api.request(`
+//     are not seen;
+//   - the word 'Real (Zerodha order)' is matched as one literal: a split string ('Real (Zerodha ' + 'order)'), a non-breaking space or
+//     another spelling is not seen; the real exit-button check is by name (ExitButton, usePaperExit, PaperConfirmDialog, an exit test id).
+const POSITIONS_DIR = join(process.cwd(), 'src/components/positions')
+const ONE_LIST_FILES = ['src/pages/PositionsPage.vue', ...readdirSync(POSITIONS_DIR).filter((n) => /\.(vue|js|ts)$/.test(n)).map((n) => `src/components/positions/${n}`)]
+const ONE_LIST_BANNED = [/addToPaper/, /\.post\(/, /\/orders/]
+const oneListProblems = (sources) => Object.entries(sources).flatMap(([file, src]) =>
+  ONE_LIST_BANNED.filter((re) => re.test(stripComments(src))).map((re) => `${file}: ${re}`))
+describe('G3 rule 5: the one Positions list starts no order', () => {
+  const real = Object.fromEntries(ONE_LIST_FILES.map((f) => [f, readFileSync(join(process.cwd(), f), 'utf8')]))
+  it('PositionsPage.vue and PositionsTotals.vue contain no addToPaper, .post( or /orders', () => {
+    expect(oneListProblems(real)).toEqual([])
+  })
+  it('mutation: a scratch copy with .post(, addToPaper or /orders is one problem each; a comment is none', () => {
+    const base = real['src/pages/PositionsPage.vue']
+    expect(oneListProblems({ a: base + "\napi.post('/x')" })).toHaveLength(1)
+    expect(oneListProblems({ a: base + '\naddToPaper(api)' })).toHaveLength(1)
+    expect(oneListProblems({ a: base + '\nconst u = `/paper/strategies/1/orders`' })).toHaveLength(1)
+    expect(oneListProblems({ a: base + '\n// api.post(\n' })).toEqual([])
+  })
+})
+
+// Rule 5, second half (ADR-330 (10), Chunk C): the exit-title word 'Real (Zerodha order)' is spelled in ONE place, lib/paperDrafts.js
+// (positionKindWord). A second copy in any other src file is a second door. Comments are not counted. No real exit button exists
+// on the Positions page (ADR-281): it imports no ExitButton, usePaperExit or PaperConfirmDialog.
+const KIND_WORD_HOME = 'src/lib/paperDrafts.js'
+const KIND_WORD = /Real \(Zerodha order\)/
+const kindWordProblems = (sources) => Object.entries(sources)
+  .filter(([file, src]) => file !== KIND_WORD_HOME && KIND_WORD.test(stripComments(src))).map(([file]) => `${file}: holds the real exit word`)
+const REAL_EXIT_BANNED = [/\bExitButton\b/, /\busePaperExit\b/, /\bPaperConfirmDialog\b/, /data-testid="[^"]*exit[^"]*"/i]
+describe('G3 rule 5 (exit title): one spelling of Real (Zerodha order); no real exit on Positions', () => {
+  it('the literal appears only in lib/paperDrafts.js, and is there (not vacuous)', () => {
+    const files = realFiles()
+    expect(kindWordProblems(files)).toEqual([])
+    expect(KIND_WORD.test(stripComments(files[KIND_WORD_HOME]))).toBe(true)
+  })
+  it('mutation: the literal in another src file is one problem; in a comment or in the home none', () => {
+    const files = realFiles()
+    const scratch = { ...files, 'src/pages/Scratch.vue': "const t = 'Exit Real (Zerodha order) positions'\n" }
+    expect(kindWordProblems(scratch)).toEqual(['src/pages/Scratch.vue: holds the real exit word'])
+    expect(kindWordProblems({ ...files, 'src/pages/Scratch.vue': '// Real (Zerodha order)\n' })).toEqual([])
+    expect(kindWordProblems({ [KIND_WORD_HOME]: "const w = 'Real (Zerodha order)'" })).toEqual([])
+  })
+  it('the Positions page and its totals render no real exit button or exit dialog', () => {
+    const files = realFiles()
+    expect(ONE_LIST_FILES).toContain('src/components/positions/PositionsTotals.vue')
+    for (const f of ONE_LIST_FILES) {
+      const src = stripComments(files[f])
+      expect(REAL_EXIT_BANNED.filter((re) => re.test(src)), f).toEqual([])
+    }
+  })
+  it('mutation: an ExitButton in a scratch copy of the Positions page is caught', () => {
+    const src = stripComments(realFiles()['src/pages/PositionsPage.vue'] + '\n<ExitButton />')
+    expect(REAL_EXIT_BANNED.some((re) => re.test(src))).toBe(true)
+  })
+})

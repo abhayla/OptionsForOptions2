@@ -213,6 +213,103 @@ describe('Stops panel', () => {
     expect(has(bad, 'trigger-row')).toBe(false)
     expect(has(bad, 'stops-error')).toBe(true)
   })
+
+  // S-23: a fired stop must not read "armed" until reload. Root cause: triggers were read once on mount only.
+  it('S-23: a new good list read re-reads the triggers quietly (fired shows), no new timer, no cleared status', async () => {
+    vi.useFakeTimers({ toFake: ['setInterval', 'clearInterval'] })
+    try {
+      const w = await open({ triggers: [trig(1)] })
+      expect(t(w, 'trigger-state').text()).toBe('armed')
+      const timers = vi.getTimerCount()
+      answers[`GET ${TRIG}`] = ok({ triggers: [trig(1, { state: 'fired', fired_at: '2026-10-29T06:00:00Z' })] })
+      await vi.advanceTimersByTimeAsync(5000)
+      await flushPromises()
+      expect(t(w, 'trigger-state').text()).toBe('fired')
+      expect(vi.getTimerCount()).toBe(timers)
+      // a failed quiet reread keeps the last list and says so on its own line, not in the action error
+      answers[`GET ${TRIG}`] = () => Promise.reject({ message: 'net', status: null, parts: null })
+      await vi.advanceTimersByTimeAsync(5000)
+      await flushPromises()
+      expect(t(w, 'trigger-state').text()).toBe('fired')
+      expect(has(w, 'stops-list-error')).toBe(true)
+      expect(has(w, 'stops-error')).toBe(false)
+    } finally {
+      vi.useRealTimers()
+    }
+  })
+  it('S-23: a quiet reread does not clear the Saved line the user is reading', async () => {
+    vi.useFakeTimers({ toFake: ['setInterval', 'clearInterval'] })
+    try {
+      const w = await open({ triggers: [] })
+      await t(w, 'ce-above').setValue('24500')
+      answers[`POST ${TRIG}`] = ok({ triggers: [trig(1)] })
+      await t(w, 'ce-save').trigger('click')
+      await flushPromises()
+      expect(t(w, 'stops-saved').text()).toContain('Saved')
+      await vi.advanceTimersByTimeAsync(5000)
+      await flushPromises()
+      expect(t(w, 'stops-saved').text()).toContain('Saved')
+    } finally {
+      vi.useRealTimers()
+    }
+  })
+
+  // S-19: the panel says the index level it is judged against, from the one reader (useIndexAnswer), or says it is not live.
+  it('S-19: with no live index answer the panel says the index is not live, with no digits', async () => {
+    const w = await open()
+    expect(t(w, 'stops-index').text()).toBe('Index values unavailable.')
+    expect(t(w, 'stops-index').text()).not.toMatch(/\d/)
+  })
+  it('S-19: a live index answer shows "NIFTY now <value> as of <time>" as the reader gives them', async () => {
+    answers['GET /market/indices'] = ok({ state: 'LIVE', market_closed: false, last_price_at: '2026-11-26T05:11:05Z',
+      indices: [{ underlying: 'NIFTY', instrument_id: '1', value: '25,735.00', at: '2026-11-26T05:11:05Z', health: null }] })
+    const w = await open()
+    expect(t(w, 'stops-index').text()).toBe('NIFTY now 25,735.00 as of 10:41:05')
+  })
+
+  // S-26: typing in a level must keep the same element, value and focus while the panel refreshes and a status line appears.
+  // S-26 root cause (measured against the pre-fix panel in jsdom): the inputs were never re-mounted and kept value and focus; what moved
+  // the boxes was the reason lines (ce-reason, stop-reason) and status lines coming and going as v-if lines in the flow.
+  it('S-26: every line that comes and goes while typing lives in an always-rendered reserved slot; inputs and form block are the same nodes', async () => {
+    const w = await open({ triggers: [trig(1)] })
+    const slots = ['stops-status-slot', 'ce-reason-slot', 'stops-list-slot']
+    for (const s of slots) expect(has(w, s)).toBe(true)
+    const stopSlot = w.find('[data-testid^="stop-reason-slot-"]')
+    expect(stopSlot.exists()).toBe(true)
+    const inputs = [t(w, 'ce-above').element, t(w, 'ce-below').element, w.get('[data-testid^="stop-level-"]').element]
+    const form = t(w, 'stops-form').element
+    inputs[0].focus()
+    await t(w, 'ce-above').setValue('24500.07') // ce-reason appears
+    await w.get('[data-testid^="stop-level-"]').setValue('1.07') // stop-reason appears
+    expect(has(w, 'ce-reason')).toBe(true)
+    expect(stopSlot.find('[data-testid^="stop-reason-"]').exists()).toBe(true)
+    expect(t(w, 'ce-reason-slot').element.contains(t(w, 'ce-reason').element)).toBe(true)
+    await t(w, 'ce-above').setValue('24500') // ce-reason goes
+    expect(has(w, 'ce-reason')).toBe(false)
+    for (const s of slots) expect(has(w, s)).toBe(true)
+    expect(w.find('[data-testid^="stop-reason-slot-"]').element).toBe(stopSlot.element)
+    inputs[0].focus()
+    answers[`GET ${TRIG}`] = () => Promise.reject({ message: 'net', status: null, parts: null })
+    await w.vm.$nextTick()
+    expect([t(w, 'ce-above').element, t(w, 'ce-below').element, w.get('[data-testid^="stop-level-"]').element]).toEqual(inputs)
+    expect(t(w, 'stops-form').element).toBe(form)
+    expect(inputs[0].value).toBe('24500')
+    expect(document.activeElement === inputs[0] || document.activeElement === document.body).toBe(true)
+  })
+  it('S-26: typing keeps the same input element, value and focus across a refresh and a status line; the status slot keeps its height class', async () => {
+    const w = await open({ triggers: [trig(1)] })
+    const before = t(w, 'ce-above').element
+    before.focus()
+    await t(w, 'ce-above').setValue('24500.07')
+    const slotClass = t(w, 'stops-status-slot').attributes('class')
+    answers[`POST ${TRIG}`] = refuse('That level is not valid.')
+    await t(w, 'ce-save').trigger('click')
+    await flushPromises()
+    expect(t(w, 'ce-above').element).toBe(before)
+    expect(before.value).toBe('24500.07')
+    expect(t(w, 'stops-status-slot').attributes('class')).toBe(slotClass)
+    expect(t(w, 'stops-status-slot').classes()).toContain('min-h-5')
+  })
 })
 
 // D-05 (IC live test 2026-11-23, trade 164): a stop Save must never end with no row and no line on screen.

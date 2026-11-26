@@ -337,32 +337,34 @@ describe('the builder compact Paper list (same reply)', () => {
 
 describe('Positions page default tab (F-69) and Alerts names (R-8)', () => {
   const POS = (over = {}) => ({ read_at: '2026-10-29T10:00:00+05:30', strategies: [], has_outside: false, outside_lots: 0, blocked: false, blocked_strategy_ids: [], ...over })
-  it('opens on Paper with an open paper strategy and no real position', async () => {
+  // ADR-330 (10) replaces ADR-201 (2): no jump to a Paper tab; the default All shows the real section and the paper list together
+  it('with an open paper strategy and no real position, the page shows the paper rows (default All)', async () => {
     answers['GET /positions'] = ok(POS())
     answers['GET /paper/strategies'] = ok(REAL)
     const w = await show(PositionsPage, '/p')
     await flushPromises()
     expect(has(w, 'positions-paper')).toBe(true)
+    expect(all(w, 'paper-group').length).toBeGreaterThan(0)
   })
-  it('stays on Positions when the Zerodha read shows a position', async () => {
+  it('with the Zerodha read showing a position, both the outside-lots line and the paper rows show', async () => {
     answers['GET /positions'] = ok(POS({ has_outside: true, outside_lots: 2 }))
     answers['GET /paper/strategies'] = ok(REAL)
     const w = await show(PositionsPage, '/p')
-    expect(has(w, 'positions-paper')).toBe(false)
+    expect(has(w, 'positions-paper')).toBe(true)
     expect(has(w, 'positions-outside')).toBe(true)
   })
-  it('with paper open and nothing real, the Positions tab says so (F-69)', async () => {
+  it('with paper open and nothing real, the real section says no open positions and never points at a Paper tab', async () => {
     answers['GET /positions'] = ok(POS())
     answers['GET /paper/strategies'] = ok(REAL)
     const w = await show(PositionsPage, '/p?tab=positions')
-    expect(t(w, 'positions-empty').text()).toContain('No open Zerodha positions. 2 paper strategies are open - see Paper.')
-    expect(w.text()).not.toContain('none of your strategies holds any')
+    expect(t(w, 'positions-empty').text()).toContain('No open Zerodha positions') // ADR-330 (10): one list
+    expect(w.text()).not.toContain('see Paper')
   })
   it('with no paper strategy open the real empty text stays', async () => {
     answers['GET /positions'] = ok(POS())
     answers['GET /paper/strategies'] = ok(EMPTY)
     const w = await show(PositionsPage, '/p')
-    expect(t(w, 'positions-empty').text()).toContain('No open positions')
+    expect(t(w, 'positions-empty').text()).toContain('No open Zerodha positions') // ADR-330 (10): one list
   })
   it('u504: the bare /positions route opens the first built Positions page; every sub-item page stays reachable by its own address', () => {
     // GC-CLEAN 2026-10-30 kept the section page so the menu listed all four sub-items. u504 (2026-11-15) changed that: a

@@ -110,7 +110,7 @@ describe('CORE: Drafts Mode summary from the REAL book reply', () => {
 })
 
 describe('CORE: Exit all and a partial exit go through paperOrdersFor and the one confirm list', () => {
-  it('Exit all: one exit per open contract, full open quantity, price = the contract ltp text; title "Exit paper positions"', async () => {
+  it('Exit all: one exit per open contract, full open quantity, price = the contract ltp text; title "Exit Paper positions"', async () => {
     const w = await openBuilder()
     await t(w, 'paper-exit-all').trigger('click')
     await flushPromises()
@@ -118,7 +118,7 @@ describe('CORE: Exit all and a partial exit go through paperOrdersFor and the on
     // REQ-159 AC-6: short buy-backs (BUY) are listed before the long sales (SELL), contract order kept within each
     const buyBacksFirst = [...OPEN.filter((p) => p.net_quantity < 0), ...OPEN.filter((p) => p.net_quantity > 0)]
     expect(rowsOf(w)).toEqual(buyBacksFirst.map((p) => ({ side: p.net_quantity > 0 ? 'SELL' : 'BUY', contract_id: p.contract_id, lots: 1, lot_size: 65, price: p.ltp_text, kind: 'exit' })))
-    expect(dialog(w).find('[data-testid="modal-title"]').text()).toBe('Exit paper positions')
+    expect(dialog(w).find('[data-testid="modal-title"]').text()).toBe('Exit Paper positions')
     expect(all(w, 'paper-order-kind').map((k) => k.text())).toEqual(OPEN.map(() => 'Exit'))
     expect(w.vm.$.setupState.legs).toEqual([]) // the edit is the legs, so the pending count / Discard see it too
     expect(calls.filter((c) => c.method === 'POST' && c.url.startsWith('/paper/'))).toHaveLength(0)
@@ -159,7 +159,7 @@ describe('CORE: Exit all and a partial exit go through paperOrdersFor and the on
 
 describe('Confirm list title by content, each row\'s kind beside B/S', () => {
   const order = (kind) => ({ key: kind, contract_id: 1, side: 'BUY', text: 'NIFTY', lots: 1, lot_size: 65, price: '10.00', kind })
-  for (const [kinds, title, labels] of [[['add'], 'Add to Paper', ['Add']], [['open'], 'Add to Paper', ['Add']], [['exit'], 'Exit paper positions', ['Exit']], [['exit', 'add'], 'Review paper orders', ['Exit', 'Add']]]) {
+  for (const [kinds, title, labels] of [[['add'], 'Add to Paper', ['Add']], [['open'], 'Add to Paper', ['Add']], [['exit'], 'Exit Paper positions', ['Exit']], [['exit', 'add'], 'Review Paper orders', ['Exit', 'Add']]]) {
     it(`${kinds.join('+')} -> "${title}"`, () => {
       const w = mount(PaperConfirmDialog, { props: { open: true, orders: kinds.map(order) } })
       expect(t(w, 'modal-title').text()).toBe(title)

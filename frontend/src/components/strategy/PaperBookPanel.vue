@@ -44,11 +44,11 @@
     </dl>
 
     <div v-if="view === 'net'" class="mt-2 overflow-x-auto">
-      <table class="w-full text-xs" data-testid="net-table">
+      <table class="num-table w-full text-xs" data-testid="net-table">
         <thead class="text-ink-muted">
           <!-- GC-ICFIX round 2 (F2): the server sends no after-charges form per contract: Booked / Unbooked / P&L are before charges, said once -->
-          <tr><th colspan="4"></th><th colspan="3" class="font-normal" data-testid="net-basis">(before charges)</th><th></th></tr>
-          <tr><th class="text-left font-normal">Contract</th><th class="font-normal">Lots</th><th class="font-normal">Avg</th><th class="font-normal">LTP</th><th class="font-normal">Booked</th><th class="font-normal">Unbooked</th><th class="font-normal">P&amp;L</th><th></th></tr>
+          <tr><th colspan="4"></th><th colspan="3" class="text-center font-normal" data-testid="net-basis">(before charges)</th><th></th></tr>
+          <tr><th class="text-left font-normal">Contract</th><th class="text-center font-normal">Lots</th><th class="text-right font-normal">Avg</th><th class="text-right font-normal">LTP</th><th class="text-right font-normal">Booked</th><th class="text-right font-normal">Unbooked</th><th class="text-right font-normal">P&amp;L</th><th></th></tr>
         </thead>
         <tbody>
           <tr v-for="p in open" :key="p.contract_id" class="border-t border-line" data-testid="net-row" :data-contract-id="p.contract_id">
@@ -76,9 +76,9 @@
     </div>
 
     <!-- S-25: every cell has px-2 and Qty / Price are right-aligned tabular figures, so "65" and "101.20" never read as 65101.20 -->
-    <table v-else class="mt-2 w-full text-xs" data-testid="order-table">
+    <table v-else class="num-table mt-2 w-full text-xs" data-testid="order-table">
       <thead class="text-ink-muted">
-        <tr><th class="px-2 text-left font-normal">Time</th><th class="px-2 font-normal">B/S</th><th class="px-2 text-left font-normal">Contract</th><th class="px-2 text-right font-normal">Qty</th><th class="px-2 text-right font-normal">Price</th><th class="px-2 font-normal">Kind</th></tr>
+        <tr><th class="px-2 text-left font-normal">Time</th><th class="px-2 text-center font-normal">B/S</th><th class="px-2 text-left font-normal">Contract</th><th class="px-2 text-right font-normal">Qty</th><th class="px-2 text-right font-normal">Price</th><th class="px-2 text-center font-normal">Kind</th></tr>
       </thead>
       <tbody>
         <tr v-for="o in book.orders" :key="o.id" class="border-t border-line" data-testid="order-row">

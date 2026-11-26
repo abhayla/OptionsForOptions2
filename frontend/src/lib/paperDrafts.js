@@ -261,16 +261,27 @@ export const SETTLE_KIND_LABEL = 'Settled'
 export const NET_POSITIONS_LABEL = 'Net Positions'
 export const ORDERBOOK_LABEL = 'Orderbook'
 
-/** The confirm list's title by what it holds: only adds (an `open` is the first add) -> Add to Paper; only exits -> Exit paper
- *  positions; both -> Review paper orders. */
+/** ADR-330 (10): every exit confirmation names what it exits in its title. The ONE place the word is spelled: 'Paper', or
+ *  'Real (Zerodha order)' for a real exit (none is rendered today, ADR-281). Anything but 'real' reads Paper (fail closed). */
+const KIND_WORDS = { paper: 'Paper', real: 'Real (Zerodha order)' }
+/** Only exactly 'paper' or 'real' is accepted; anything else THROWS (fail closed: a wrong word on a confirmation is worse than none). */
+export const positionKindWord = (kind) => {
+  if (kind !== 'paper' && kind !== 'real') throw new Error(`positionKindWord: unknown kind ${String(kind)}`)
+  return KIND_WORDS[kind]
+}
+export const exitConfirmTitle = (kind) => `Exit ${positionKindWord(kind)} positions`
+export const reviewConfirmTitle = (kind) => `Review ${positionKindWord(kind)} orders`
+
+/** The confirm list's title by what it holds: only adds (an `open` is the first add) -> Add to Paper; only exits ->
+ *  exitConfirmTitle; both -> reviewConfirmTitle. */
 export const PAPER_TITLE_ADD = 'Add to Paper'
-export const PAPER_TITLE_EXIT = 'Exit paper positions'
-export const PAPER_TITLE_BOTH = 'Review paper orders'
-export function paperDialogTitle(orders) {
+export const PAPER_TITLE_EXIT = exitConfirmTitle('paper')
+export const PAPER_TITLE_BOTH = reviewConfirmTitle('paper')
+export function paperDialogTitle(orders, kind = 'paper') {
   const list = orders ?? []
   const exits = list.filter((o) => o?.kind === 'exit').length
   if (exits === 0) return PAPER_TITLE_ADD
-  return exits === list.length ? PAPER_TITLE_EXIT : PAPER_TITLE_BOTH
+  return exits === list.length ? exitConfirmTitle(kind) : reviewConfirmTitle(kind)
 }
 /** Each row's kind beside B/S ('open' and 'add' both add to the position; D-23: a stop-out and an expiry settlement keep their own
  *  kind, the server's `stop` and `settle`, so they never read as a new buy). */

@@ -141,6 +141,7 @@ import FigureHint from '@/components/common/FigureHint.vue'
 import Tooltip from '@/components/common/Tooltip.vue'
 import { EXITED_NOW_LABEL, HELD_TO_EXPIRY_LABEL, LOSS_LEFT_LABEL, PROFIT_LEFT_LABEL } from '@/lib/paperDrafts'
 import { AFTER_CHARGES } from '@/lib/tracking'
+import { MAX_NOT_AVAILABLE } from '@/lib/displayFormat'
 import { PLAN_BASIS_AFTER_CHARGES_TEXT, PLAN_BASIS_BEFORE_CHARGES_TEXT } from '@/lib/targetBlock'
 const props = defineProps({
   maxProfit: { type: String, default: '-' }, // summaryFigure(summary, 'profit'): the server's display string
@@ -181,6 +182,9 @@ const fundsLine = computed(() => (props.fundsShare
 const flipped = defineModel('flipped', { type: Boolean, default: false })
 const planBasis = computed(() => {
   if (props.left || !props.summary) return null
+  // mixed-expiry plan: charges are sent but both max figures read "Not available" (or "-"): never claim "after charges" over them
+  const gone = (v) => v === MAX_NOT_AVAILABLE || v === '-'
+  if (props.summary.charges != null && gone(props.maxProfit) && gone(props.maxLoss)) return null
   return props.summary.charges != null ? PLAN_BASIS_AFTER_CHARGES_TEXT : PLAN_BASIS_BEFORE_CHARGES_TEXT
 })
 const showRatio = computed(() => props.rewardRisk != null || props.rewardRiskReason != null)

@@ -89,6 +89,7 @@ const props = defineProps({
   holdMs: { type: Number, default: PAPER_UNKNOWN_HOLD_MS },
   firstBasket: { type: Boolean, default: false }, // GC-TRACK1 k10: offer "Held at my broker" (the strategy's first basket only)
   strategyId: { type: [Number, String], default: '' }, // GC-ICFIX Issue 10: with it, exit rows ask the server whether the exit widens the maximum loss
+  kind: { type: String, default: 'paper' }, // ADR-330 (10): 'paper' | 'real'; names what an exit confirmation exits, via paperDrafts.exitConfirmTitle
 })
 const emit = defineEmits(['confirm', 'cancel', 'orderbook'])
 
@@ -101,7 +102,7 @@ watch(() => [props.open, props.orders], () => {
 const quoteClock = (row) => (row.price_at ? istClock(row.price_at) ?? '' : '')
 
 // GC-TP step 3b2: the title says what the list holds (adds, exits or both)
-const title = computed(() => paperDialogTitle(props.orders))
+const title = computed(() => paperDialogTitle(props.orders, props.kind))
 const reasons = computed(() => rows.value.map((r) => (!paperLotsOk(r.lots) ? PAPER_LOTS_REASON : (r.kind !== 'exit' && !paperPriceOk(r.price)) ? paperPriceReason(r.price) : '')))
 const heldOn = ref(false)
 const heldAt = ref('')
