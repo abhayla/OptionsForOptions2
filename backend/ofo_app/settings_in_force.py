@@ -254,13 +254,13 @@ def compute_stop_base(legs: Sequence[Any], lot: int, booked: Decimal, taken_at: 
     (``whole_trade_after``, gross, no charges). Several expiries or an engine refusal -> None (not worked out)."""
     from ofo.engine.whole_trade import MultiExpiryError, whole_trade_after  # noqa: PLC0415 - engine only here
 
-    from ofo_app.routes.adjustment import _strategy  # noqa: PLC0415 - it imports this package's routes
+    from ofo_app.routes.adjustment import strategy_of  # noqa: PLC0415 - it imports this package's routes
 
     if not legs:
         return None
     zero = Decimal(0)
     try:
-        gross = whole_trade_after(_strategy(legs, lot), booked_pnl=booked, paid_charges=zero, adjustment_charges=zero,
+        gross = whole_trade_after(strategy_of(legs, lot), booked_pnl=booked, paid_charges=zero, adjustment_charges=zero,
                                   open_exit_charges=zero).gross
     except (MultiExpiryError, ValueError, ArithmeticError):
         return None
