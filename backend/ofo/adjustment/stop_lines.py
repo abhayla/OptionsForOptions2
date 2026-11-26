@@ -25,6 +25,8 @@ KINDS: Final = (STOP_MAX_LOSS, STOP_CREDIT, STOP_MARGIN)
 TRIGGER_MAX_LOSS: Final = "T-06"
 TRIGGER_MARGIN: Final = "T-16"
 STOP_TRIGGERS: Final = frozenset({TRIGGER_MAX_LOSS, TRIGGER_MARGIN})
+#: the plan's time exit ("Clock time reached", ADR-330 (7)): its alert kind is plan_time_exit, not a stop line
+TRIGGER_TIME_EXIT: Final = "T-10b"
 
 #: rule ids: the max-loss and margin lines answer under their old trigger ids (same wording, same rule memory, so
 #: "already true" and the alert gate carry over); only the 2x-credit line (ADR-247) has a new id
@@ -113,6 +115,7 @@ __all__ = [
     "STOP_VALUE_UNREADABLE",
     "TRIGGER_MARGIN",
     "TRIGGER_MAX_LOSS",
+    "TRIGGER_TIME_EXIT",
     "StopInForce",
     "StopsInForce",
     "is_stop_rule",

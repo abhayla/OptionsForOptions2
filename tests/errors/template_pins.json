@@ -3352,7 +3352,7 @@
     "reviewed": "owner read 2026-10-31 (accepted after independent screen, not read line by line)"
   },
   "explanation:playbook_guard_time_exit": {
-    "sha256": "f69b827c104abe0efc40696c8852a186b6583604f1fd5ab91043adc24f093617",
+    "sha256": "3da7b1b276527a6ece178561b4c942351b9a3bc4ed6888a4e4a2973029ce9cda",
     "reviewed": "pending owner read"
   },
   "explanation:playbook_guard_warn_cost_pct_of_premium_left": {
@@ -3360,7 +3360,7 @@
     "reviewed": "owner read 2026-10-31 (accepted after independent screen, not read line by line)"
   },
   "labels:playbook_guard": {
-    "sha256": "f959b311738817ca3883e0fc0e3d374c6ae9e74cd66aba3f7b65a65a15861be5",
+    "sha256": "549ee2e2d6d7f4df36ed728953fc2dee7265ad74090e41a9decba553040168f9",
     "reviewed": "pending owner read"
   },
   "explanation:playbook_summary_plan_target": {

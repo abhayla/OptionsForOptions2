@@ -6,6 +6,7 @@ from pathlib import Path
 
 import pytest
 from ofo import alerts
+from ofo.adjustment import stop_lines as sl
 from ofo.errors.explanations import EXPLANATIONS, LABEL_TABLES
 
 _MIGRATION = Path(__file__).resolve().parents[1] / "backend" / "ofo_app" / "alembic" / "versions" \
@@ -31,7 +32,7 @@ def test_answers_per_kind() -> None:
 
 @pytest.mark.parametrize(("trigger", "kind"), [
     ("T-06", "plan_loss_stop"), ("T-16", "plan_loss_stop"), ("stop.credit_x", "plan_loss_stop"),
-    ("T-07", "plan_profit_target"), ("T-01", "adjustment_rule"), ("T-19", "adjustment_rule"),
+    ("T-07", "plan_profit_target"), (sl.TRIGGER_TIME_EXIT, "plan_time_exit"),("T-01", "adjustment_rule"), ("T-19", "adjustment_rule"),
     ("", "adjustment_rule"), (None, "adjustment_rule")])
 def test_kind_of_trigger_ids(trigger: str | None, kind: str) -> None:
     assert alerts.kind_of(trigger) == kind

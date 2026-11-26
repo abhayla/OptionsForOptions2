@@ -81,4 +81,4 @@ def test_one_definition_of_expiry_day():
 
 def test_the_rule_is_named_time_exit_on_expiry_day_wherever_the_server_sends_it():
     assert PLAN_SHEET_LABEL_TEXT["time_exit"] == "Time exit"  # ADR-330 (7): the sheet's time exit is any trading day
-    assert PLAYBOOK_GUARD_LABEL_TEXT["time_exit"] == "Time exit (on expiry day)"
+    assert PLAYBOOK_GUARD_LABEL_TEXT["time_exit"] == "Time exit"

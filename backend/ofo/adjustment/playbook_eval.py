@@ -644,7 +644,7 @@ def _t13(c: _Ctx) -> Hit:
 #: Rules that count the strategy's own adjustments (the playbook row has cmp ""): the baseline restarts at each
 #: adjustment (ADR-258), so the check that reaches the count is itself the baseline and "already true" would hide it.
 COUNTER_RULES = frozenset({"T-18"})
-TIME_TRIGGERS = frozenset({"T-10b"})  # ADR-283 (2): a clock-time rule is never "already true"
+TIME_TRIGGERS = frozenset({sl.TRIGGER_TIME_EXIT})  # ADR-283 (2): a clock-time rule is never "already true"
 
 
 def never_held(body: Mapping) -> frozenset[str]:

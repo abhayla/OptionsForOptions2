@@ -370,7 +370,7 @@ PLAYBOOK_GUARD_LABEL_TEXT: Mapping[str, str] = MappingProxyType({
     "stop_line_pct_of_margin": "Stop line (% of margin)",
     "stop_line_pct_of_max_loss": "Stop line (% of max loss)",
     "stop_line_rule": "Stop line rule",
-    "time_exit": "Time exit (on expiry day)",
+    "time_exit": "Time exit",
     "warn_cost_pct_of_premium_left": "Warn when an adjustment costs more than this % of the premium left",
 })
 #: GC-ADJ2 step 3 (REQ-160 AC-1): the plain-words summary's sentences. A doubled brace is a slot the editor fills from the body ({name} after rendering); the words are the catalogue's.
