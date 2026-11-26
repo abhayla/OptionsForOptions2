@@ -367,6 +367,7 @@ async def delete_draft(conn: Any, user_ref: str, strategy_id: int, *, expected_r
             if await _held(conn, row.id):
                 raise StrategyStoreError(DELETE_HELD_AT_BROKER, f"strategy {strategy_id} is held at the broker")
             raise StrategyStoreError(DELETE_AFTER_BASKET, f"strategy {strategy_id} sent a basket or may have")
+        await _write_history(conn, row.id, sf.delete_summary(), row.definition_text)  # ADR-330 (31): same savepoint
         await conn.execute(_SET_DELETED, {"id": row.id})
 
 
@@ -379,6 +380,7 @@ async def undelete_draft(conn: Any, user_ref: str, strategy_id: int, *, expected
         if row is None:
             raise StrategyStoreError(NOT_FOUND, f"strategy {strategy_id}")
         _check_revision(row, expected_revision)
+        await _write_history(conn, row.id, sf.undelete_summary(), row.definition_text)  # ADR-330 (31): same savepoint
         await conn.execute(_CLEAR_DELETED, {"id": row.id})
     return await load(conn, user_ref, row.id)
 
@@ -442,12 +444,16 @@ async def update(conn: Any, user_ref: str, strategy_id: int, saved: sf.SavedDefi
     return _stored(written, saved)
 
 
+#: Items that are not a change of the configuration (REQ-134 AC-3, ADR-330 (31)): the entry holds the definition that
+#: was already current, so it is shown but never offered for Restore.
+_NOT_A_CONFIGURATION = frozenset({"renamed", "deleted", "undeleted"})
+
+
 def _is_rename_only(change_summary: str) -> bool:
-    """A history entry whose items are all ``renamed`` is shown but is not a restore target (it holds the definition
-    that was already current when the name changed)."""
+    """A history entry whose items are all ``renamed`` (or a delete / Undo) is shown but is not a restore target."""
     items = sf.parse_json(change_summary)
     return isinstance(items, list) and bool(items) and all(
-        isinstance(i, dict) and i.get("kind") == "renamed" for i in items)
+        isinstance(i, dict) and i.get("kind") in _NOT_A_CONFIGURATION for i in items)
 
 
 def is_restore_target(change_summary: str, sent_nothing: object) -> bool:

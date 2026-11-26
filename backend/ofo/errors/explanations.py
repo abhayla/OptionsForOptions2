@@ -1450,6 +1450,9 @@ _EXPLANATIONS: tuple[ExplanationTemplate, ...] = (
     ExplanationTemplate("playbook_name_shown", "values_seen", "{name}", {"name": UserText}),
     ExplanationTemplate("change_renamed", "values_seen", "Renamed from {old} to {new}",
                         {"old": UserText, "new": UserText}),
+    # ADR-330 (31): a delete and its Undo are history entries (the times come from the entry, not from this text)
+    ExplanationTemplate("change_deleted", "values_seen", "Deleted"),
+    ExplanationTemplate("change_undeleted", "values_seen", "Restored"),
     ExplanationTemplate("rule_label_days_to_expiry_from", "rule", "{days} days to expiry or fewer, from {time} IST",
                         {"days": Days, "time": ClockHm}),
     # --- W-066 (issue #151, REQ-034 AC-7): every text of the outcome API, with typed slots --------------------------
