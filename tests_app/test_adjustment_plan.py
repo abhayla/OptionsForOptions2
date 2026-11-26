@@ -346,3 +346,28 @@ async def test_levels_preview_gives_the_stop_sentence_the_saved_plan_gives_and_w
         assert "2x the credit received" in preview["stop"]["words"]
         assert preview["stop"]["words"].endswith(", whichever comes first")
     assert preview["stop"]["words"].startswith("a loss of Rs 4000.00 (")
+
+
+def _own_with_credit(body: dict, multiple: str) -> dict:
+    body = copy.deepcopy(body)
+    body["guards"]["stop_line_x_credit"] = multiple
+    return body
+
+
+async def test_levels_preview_follows_the_picked_playbook_not_the_active_one(app_db_url, monkeypatch):
+    """P4b round 2: the picked playbook's credit multiple (3x) is in the preview, exactly as in the saved plan."""
+    sid = await _seeded(app_db_url, monkeypatch, "ADJ-01")
+    system = await _system_ic(app_db_url)
+    async with app_db_url.begin() as conn:
+        own = await playbook_store.duplicate(conn, USER, system.id, "Three x credit")
+        await conn.execute(text("UPDATE public.adjustment_playbooks SET body = CAST(:b AS jsonb) WHERE id = :id"),
+                           {"b": json.dumps(_own_with_credit(own.body, "3")), "id": own.id})
+    levels = _plan_path(sid) + "/levels"
+    status, preview = await _call("GET", levels, params={"stop_rupees": "400", "playbook_id": own.id})
+    assert status == OK, preview
+    status, saved = await _call("POST", _plan_path(sid), json={"playbook_id": own.id, "stop_rupees": "400"})
+    assert status == OK, saved
+    assert "3x the credit received" in saved["plan"]["stop_words"]
+    assert preview["stop"]["words"] == saved["plan"]["stop_words"]
+    assert (await _call("GET", levels, params={"stop_rupees": "400", "playbook_id": 0}))[0] == UNPROCESSABLE
+    assert (await _call("GET", levels, params={"stop_rupees": "400", "playbook_id": 999999999}))[0] == UNPROCESSABLE
