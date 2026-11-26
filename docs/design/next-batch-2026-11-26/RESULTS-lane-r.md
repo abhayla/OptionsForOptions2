@@ -175,3 +175,28 @@ review agent runs, so a review blocked three builders for about 15 minutes: run 
 3. Closed rows: the exit price stands alone on the right, the stop-loss sentence on its own line under it.
 4. My Strategies: reload; the grey loading bars are clearly visible for the moment before the list shows.
 5. Nothing else on these screens changed wording.
+
+## After LANE R DONE (7bf64eb): review round, N-28, #744
+
+| Finding | Status | Root cause (one sentence) | Class before / after | Tests red, then green |
+|---|---|---|---|---|
+| Exit path, independent Opus review of N-04/N-05 round 2 and the u513 correction | Fixed, not tested (MAJOR 1 and MINOR 2) | MAJOR 1: the u513 correction left the Exit snapshot alive after the user's Cancel, so a later page-side close restored the old legs and silently wiped edits made after the Cancel; MINOR 2: a block that arrived during a POST left the dialog open with Confirm enabled (nothing posted). | Page closes that can wipe later user edits: 1 path (two Exit clicks with a Cancel between); 0 after (the user's Cancel ends the snapshot). Confirm while blocked: enabled in 2 states; disabled after (a `blocked` prop on the paper confirm dialog). | `exit-dialog-page-close.test.js` A1, A2, A3, A8: 4 failed on the pushed code (lead's run), then 18 pass; full suite 2,981 pass. |
+| N-28 = ADR-330 (27), closed exit averaged over several exits | Fixed, not tested | The closed row printed the average with no count. | The server builds the text once (catalogue template `closed_exit_average`, "{value} (avg of {count})"; reply field `exit_fills`); every screen that prints it gets it. | `tests_app/test_paper_closed_rows.py`: red KeyError 'exit_fills', then 7 passed (real DB). |
+| #744, the remaining N-07 readers | Fixed, not tested | The Full table printed the reply row, the leg list's "now" price came from the reply, and the Paper P&L rows ignored a failed book read. | Builder views of a paper leg's price / P&L on the book: 2 of 5 before, 5 of 6 after (left: Advanced Details bid/ask, not a price or P&L). One join (`chartCard.paperBookLeg`: contract, side, lots); guard mutation-tested on 7 breaks. | `full-table-one-source-744.test.js`: 6 failed, then 7 pass. `one-source-d41.test.js` test 8 now expects the dash on a failed read. |
+| S-02 wording | Approved (ADR-330 (26)) | - | The ADR-NB-1 placeholder is now ADR-330 (26) everywhere; the pin is marked owner-read. | `tests/errors`: 710 passed. |
+
+## Re-test: exit path round 3
+
+1. Builder on a running paper trade: per-leg Exit on one leg; Cancel (the exit stays as "1 pending change", as before).
+2. Change the lots of another leg ("2 pending changes"); then per-leg Exit on a third leg; leave the dialog open and stop the API.
+3. Expected: the dialog closes by itself and "2 pending changes" remain (your kept exit and your lot change); only the third leg's exit is gone.
+4. Start the API; press Exit all, Confirm, and stop the API while "Placing..." shows (or open a second tab and exit a leg there at the same moment).
+5. Expected: once the answer arrives the dialog closes or its Confirm is greyed; nothing is sent twice.
+
+## Re-test: N-28 and #744
+
+1. Builder of paper trade 172 > Net Positions > closed rows: 25850 CE reads "174.73 (avg of 2)"; a leg closed by one exit shows the bare price.
+2. Open the "P&L Table" tab and switch on "Full table": each leg's LTP and P&L equal the legs table at the same moment; P&L % shows "-".
+3. A leg whose price moved shows "Price has moved ... now <the legs table's LTP>".
+4. Stop the API for a few seconds: the legs table, the P&L Table, the Full table and the Paper P&L panel rows all show "-"; restore: all come back.
+5. Orderbook: each fill of 25850 CE is still its own row (153.00 and 196.45).
