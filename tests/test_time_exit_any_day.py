@@ -106,3 +106,12 @@ def test_a35_agrees_with_the_evaluator(te):
     _time_exit_due(pos, on_time)
     with pytest.raises(Exception):  # noqa: B017, PT011 - the A-35 refusal type is private
         _time_exit_due(pos, early)
+
+
+@pytest.mark.parametrize("bad", ["25:99", "24:00", "9:30", "12:6x", "20261125", "2026-1-5"])
+def test_unreadable_clock_or_day_is_no_time_exit(bad):
+    from ofo.checks.time_of_day import day_of, is_hhmm, time_exit_parts
+
+    assert not is_hhmm(bad) and day_of(bad) is None
+    assert time_exit_parts(bad) is None
+    assert time_exit_parts({"at": "15:15", "on": bad}) is None

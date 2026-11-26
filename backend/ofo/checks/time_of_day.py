@@ -2,17 +2,24 @@
 from __future__ import annotations
 
 import datetime
+import re
 from collections.abc import Mapping
 from typing import Final
 
 ON_EXPIRY: Final = "expiry"  # the stored `on` for "blank date = expiry day" (Q9)
 
 
+CLOCK: Final = re.compile(r"([01][0-9]|2[0-3]):([0-5][0-9])")  # one home: the save and the readers share it
+DATE: Final = re.compile(r"[0-9]{4}-[0-9]{2}-[0-9]{2}")
+
+
 def is_hhmm(text: str) -> bool:
-    return len(text) == 5 and text[2] == ":" and text[:2].isdigit() and text[3:].isdigit()  # noqa: PLR2004
+    return CLOCK.fullmatch(text) is not None
 
 
 def day_of(text: str) -> datetime.date | None:
+    if DATE.fullmatch(text) is None:
+        return None
     try:
         return datetime.date.fromisoformat(text)
     except ValueError:

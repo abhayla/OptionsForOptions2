@@ -165,7 +165,7 @@ function planValue(f) {
 const planTag = computed(() => (plan.state === 'plan' ? 'This strategy' : 'Default'))
 function editPlan() {
   const p = plan.sheet.plan
-  plan.form = { playbookId: p.playbookId, target: p.target, stop: p.stop, maxAdjustments: p.maxAdjustments, timeExit: p.timeExit }
+  plan.form = { playbookId: p.playbookId, target: p.target, stop: p.stop, maxAdjustments: p.maxAdjustments, timeExit: p.timeExit, timeExitOn: p.timeExitOn, timeExitShown: p.timeExit, timeExitOnShown: p.timeExitOn }
   plan.reason = ''
 }
 async function savePlan() {

@@ -17,6 +17,7 @@ export const formOf = (src) => ({
   playbookId: src?.playbook_id ?? null,
   target: decimal(src?.target), stop: decimal(src?.stop), stopShown: decimal(src?.stop), maxAdjustments: count(src?.max_adjustments),
   timeExit: clockText(src?.time_exit), timeExitOn: text(src?.time_exit_on), // ADR-330 (7): blank date = expiry day
+  timeExitShown: clockText(src?.time_exit), timeExitOnShown: text(src?.time_exit_on), // as the sheet showed them
   targetWords: text(src?.target_words), stopWords: text(src?.stop_words), // what the numbers are, the server's words
 })
 
@@ -64,8 +65,13 @@ export function saveBody(form) {
   // ADR-252 addendum: a stop left as the sheet showed it is not sent (the server also compares; this is the first layer)
   if (form.stop.trim() !== '' && form.stop.trim() !== (form.stopShown ?? '').trim()) body.stop = form.stop.trim()
   if (form.maxAdjustments.trim() !== '') body.max_adjustments = form.maxAdjustments.trim()
-  // ADR-330 (7): one time on one day; a blank date is sent as "" = expiry day (the server judges the day)
-  if (form.timeExit.trim() !== '') body.time_exit = { at: form.timeExit.trim(), on: (form.timeExitOn ?? '').trim() }
+  // ADR-330 (7): one time on one day; a blank date is sent as "" = expiry day (the server judges the day). Sent only
+  // when the time or the date changed in the sheet, so a saved date that has passed never blocks an unrelated edit;
+  // a date typed without a time is sent with the empty time, so the server names the field (never silently dropped).
+  const at = (form.timeExit ?? '').trim()
+  const on = (form.timeExitOn ?? '').trim()
+  const changed = at !== (form.timeExitShown ?? '').trim() || on !== (form.timeExitOnShown ?? '').trim()
+  if (changed && (at !== '' || on !== '')) body.time_exit = { at, on }
   return body
 }
 
