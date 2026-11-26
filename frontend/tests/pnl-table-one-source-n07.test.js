@@ -97,11 +97,11 @@ describe('N-07: book-read answer states of the P&L Table (paperLegsOf)', () => {
   const net = [{ contract_id: 5572, instrument_id: 'NSE_FO:5572', action: 'BUY', lots: 1 }, { contract_id: 9999, instrument_id: 'NSE_FO:9999', action: 'BUY', lots: 1 }]
   it('ok: the leg of a contract the book holds carries the book texts; a leg missing from the book is absent (keeps the reply row)', () => {
     const m = paperLegsOf(net, BOOK, false)
-    expect(m.get('NSE_FO:5572')).toEqual({ entry: '72.60', ltp: '60.65', pnl: '−776.75', action: 'BUY', lots: 1 })
+    expect(m.get('NSE_FO:5572')).toEqual({ entry: '72.60', ltp: '60.65', pnl: '−776.75', action: 'BUY', lots: 1, priced: true })
     expect(m.has('NSE_FO:9999')).toBe(false)
   })
   it('failed read: the same dash the legs table shows, never an old number', () => {
-    expect(paperLegsOf(net, BOOK, true).get('NSE_FO:5572')).toEqual({ entry: '—', ltp: '—', pnl: '—', action: 'BUY', lots: 1 })
+    expect(paperLegsOf(net, BOOK, true).get('NSE_FO:5572')).toEqual({ entry: '—', ltp: '—', pnl: '—', action: 'BUY', lots: 1, priced: false })
   })
   it('not a paper trade (no book / no net): null, the table stays the outcome reply', () => {
     expect(paperLegsOf(net, null, false)).toBeNull()

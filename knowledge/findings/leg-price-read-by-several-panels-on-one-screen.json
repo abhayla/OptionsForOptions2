@@ -11,8 +11,8 @@
  "fix": "Every per-leg price / P&L of a paper trade is read through lib/usePaperBookRead (legPricesOf, paperPnlBlock, paperLegsOf), joined by contract id (the page leg carries instrument_id and contract_id). A panel that cannot join a leg keeps its own source and says so in the guard's registry.",
  "detection": {
   "status": "guarded",
-  "checks": ["frontend/tests/paper-leg-readers-guard.test.js", "frontend/tests/pnl-table-one-source-n07.test.js", "frontend/tests/one-source-d41.test.js"],
-  "note": "The guard is a text scan: a file naming a leg price or P&L field must be on its registry, and ChartCard must receive and use paperLegs. Still on the outcome reply for a paper trade (registered as REMAINING): the Full table (StrategyTable), the leg list 'Price has moved ... now' text, Advanced Details."
+  "checks": ["frontend/tests/paper-leg-readers-guard.test.js", "frontend/tests/pnl-table-one-source-n07.test.js", "frontend/tests/one-source-d41.test.js", "frontend/tests/full-table-one-source-744.test.js"],
+  "note": "The guard is a text scan: a file naming a leg price or P&L field must be on its registry, and ChartCard must receive and use paperLegs. #744 (26 Nov 2026) moved the Full table (StrategyTable), the leg list 'Price has moved ... now' text and the Paper P&L panel rows after a failed read onto the book through ONE join (chartCard.paperBookLeg); the guard has WIRING rows plus a mutation test per reader, so a further reader on the reply fails. Still on the outcome reply for a paper trade (REMAINING): Advanced Details bid/ask only (not an LTP or P&L). Bypass not seen: a reader that takes a reply price under a token not in TOKENS."
  },
  "spec_ref": [
   "spec/decisions/ADR-328.md",
@@ -29,6 +29,11 @@
    "date": "2026-11-26",
    "where": "N-07 P&L Table tab vs legs table (strategy 172)",
    "evidence": "frontend/tests/pnl-table-one-source-n07.test.js"
+  },
+  {
+   "date": "2026-11-26",
+   "where": "#744 Full table (StrategyTable 25650 PE 166.35 / +695.50 vs 166.20 / +715.00, strategy 172), leg list 'now' price, Paper P&L panel rows after a failed read",
+   "evidence": "frontend/tests/full-table-one-source-744.test.js red: expected [ '₹999.10', '₹100.00', '₹100.00' ] to deeply equal [ '60.65', '−776.75', '72.60' ]"
   }
  ]
 }

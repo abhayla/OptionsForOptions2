@@ -5,8 +5,8 @@
 //      an unlisted file is a possible third reader and fails; a listed file with no hit is stale and fails ("shrink only").
 //   2. WIRING: every <ChartCard in src passes :paper-legs, and ChartCard.vue hands props.paperLegs to compactRows (the P&L Table).
 // KNOWN BYPASSES (not seen): a price read through a renamed field or a computed key; a reply object passed whole to a child that reads it
-// there; a new file that reads a leg price under a token not in TOKENS; the Full table (StrategyTable), LegList "now" price, Advanced Details
-// and Greeks still read the outcome reply on a paper trade (listed REMAINING below: each is registered with that reason, so a NEW one fails).
+// there; a new file that reads a leg price under a token not in TOKENS; Advanced Details (bid/ask only)
+// and Greeks (not prices) read the reply; #744 moved the Full table, the LegList "now" price and the failed-read panel rows onto the book (WIRING below).
 // The mutation check at the bottom runs the real ChartCard text with the fix removed and shows the wiring check goes red.
 import { readdirSync, readFileSync, statSync } from 'node:fs'
 import { join, relative, sep } from 'node:path'
@@ -22,9 +22,9 @@ export const READERS = [
   { file: 'src/components/strategy/ChartCard.vue', source: BOOK, why: 'P&L Table: passes props.paperLegs to compactRows' },
   { file: 'src/components/strategy/PaperBookPanel.vue', source: BOOK, why: 'legs table (Net Positions): the book itself' },
   { file: 'src/lib/tracking.js', source: BOOK, why: 'sharedTotal / readTracking: the headline is the book; TrackingPanel overlays the book LegPrice by contract id' },
-  { file: 'src/pages/StrategyBuilderPage.vue', source: BOOK, why: 'wires paperLegsOf / paperPnlBlock into the panels; its own ltp maps (ltpById, livePriceById, priceTextById) feed LegList/dialog = REMAINING outcome-reply readers' },
-  { file: 'src/lib/legEdit.js', source: 'outcome reply', why: 'REMAINING: LegList "Price has moved ... now" text uses the reply ltp_display (deferred issue)' },
-  { file: 'src/components/strategy/LegList.vue', source: 'outcome reply', why: 'REMAINING: same "now" price as legEdit.js' },
+  { file: 'src/pages/StrategyBuilderPage.vue', source: BOOK, why: 'wires paperLegsOf / paperPnlBlock / paperLegListPrices into the panels; its reply ltp maps (ltpById, priceTextById) are only the non-paper fallback of legListPrices, livePriceById feeds the confirm dialog / draft bar (not a shown leg price)' },
+  { file: 'src/lib/legEdit.js', source: BOOK, why: 'movedMarker prints the "now" price it is given; for a paper trade the page gives it the book LTP (paperLegListPrices)' },
+  { file: 'src/components/strategy/LegList.vue', source: BOOK, why: 'LegList prints movedMarker with the page maps (the book LTP for a paper trade); #744' },
   { file: 'src/lib/paperDrafts.js', source: BOOK, why: 'exit / pending-order rows priced from the book positions' },
   { file: 'src/lib/paperList.js', source: 'GET /paper/strategies list', why: 'the My Strategies list, not the builder page' },
   { file: 'src/components/strategy/PaperStrategies.vue', source: 'GET /paper/strategies list', why: 'list page, not the builder page' },
@@ -37,9 +37,20 @@ export const READERS = [
 
 // REMAINING readers of the outcome reply on a paper trade, by file and the text of the line (shrink only: a changed line fails and must be re-read).
 export const REMAINING = [
-  { file: 'src/components/strategy/StrategyTable.vue', line: 54, text: '<StrategyLegRow v-for="row in table.rows"', why: 'Full table: every cell (LTP, entry, P&L) is the outcome reply row; deferred issue' },
   { file: 'src/components/strategy/AdvancedDetails.vue', line: 23, text: 'adv-bid', why: 'bid / ask per leg from the reply leg_quotes (not an LTP or P&L); listed for completeness' },
-  { file: 'src/components/strategy/LegList.vue', line: 43, text: 'priceTextById', why: 'leg list "Price has moved ... now" text from the reply ltp_display; deferred issue' },
+]
+
+// #744 WIRING of the three readers that used to read the reply (each: file, a pattern that must be present, the problem text if it is gone).
+const WIRING = [
+  { file: 'src/components/strategy/ChartCard.vue', re: /:book-cells="fullBookCells"/, out: 'ChartCard.vue does not pass :book-cells to the Full table (StrategyTable)' },
+  { file: 'src/components/strategy/ChartCard.vue', re: /fullBookCells = computed\(\(\) => \(props\.paperLegs && compact\.value[\s\S]*?cellText\(r, c\)/, out: 'ChartCard.vue: the Full table cells are not the compact (book) rows' },
+  { file: 'src/components/strategy/StrategyTable.vue', re: /:book-cells="bookCells\?\.\[row\.row_id\] \?\? null"/, out: 'StrategyTable.vue does not hand its book cells to StrategyLegRow' },
+  { file: 'src/components/strategy/StrategyLegRow.vue', re: /bookCells\?\.\[c\.id\] \?\? cellText\(row, c\)/, out: 'StrategyLegRow.vue does not print the book cell before the reply cell' },
+  { file: 'src/pages/StrategyBuilderPage.vue', re: /:ltp-by-id="legListPrices\.ltpById" :price-text-by-id="legListPrices\.priceTextById"/, out: 'the page does not give LegList the legListPrices maps' },
+  { file: 'src/pages/StrategyBuilderPage.vue', re: /legListPrices = computed\(\(\) => \(paper\.value \? paperLegListPrices\(data\.value\?\.legs, paperLegsOf\(paper\.value\.net, paper\.value\.book, paperBookFailed\.value\)\)/, out: 'legListPrices is not the book read (paperLegListPrices of paperLegsOf) for a paper trade' },
+  { file: 'src/lib/chartCard.js', re: /paperBookLeg\(l, replyLegs, paperLegs\)/, out: 'paperLegListPrices does not use the one join (paperBookLeg)' },
+  { file: 'src/lib/chartCard.js', re: /own = paperBookLeg\(byLegNo\.get/, out: 'compactRows does not use the one join (paperBookLeg)' },
+  { file: 'src/lib/usePaperBookRead.js', re: /legPricesOf\(book, failed\)/, out: 'paperPnlBlock does not hand `failed` to legPricesOf (the Paper P&L panel rows would keep old figures)' },
 ]
 
 function walk(dir, out = []) {
@@ -68,9 +79,10 @@ export function problems(map) {
   const page = map['src/pages/StrategyBuilderPage.vue'] ?? ''
   if (!/:paper-legs="paper \? paperLegsOf\(paper\.net, paper\.book, paperBookFailed\) : null"/.test(page)) out.push('the page does not pass :paper-legs from paperLegsOf(paper.net, paper.book, paperBookFailed)')
   const lib = map['src/lib/chartCard.js'] ?? ''
-  if (!/paperLegs\.get\(/.test(lib) || !/if \(!paperLegs\) return rows/.test(lib)) out.push('compactRows does not read paperLegs')
+  if (!/paperLegs\?\.get\(/.test(lib) || !/if \(!paperLegs\) return rows/.test(lib)) out.push('compactRows does not read paperLegs')
   const card = map['src/components/strategy/ChartCard.vue'] ?? ''
   if (!/compactRows\(props\.table,\s*props\.legs,\s*props\.paperLegs\)/.test(card)) out.push('ChartCard.vue does not hand props.paperLegs to compactRows')
+  for (const w of WIRING) if (!w.re.test(map[w.file] ?? '')) out.push(w.out)
   for (const r of REMAINING) {
     if (!(map[r.file] ?? '').includes(r.text)) out.push(`remaining reader changed or gone (update the registry): ${r.file}`)
   }
@@ -93,13 +105,31 @@ describe('N-07 guard: one reader of a paper leg price / P&L', () => {
   })
   it('MUTATION: compactRows ignoring paperLegs, and the page passing :paper-legs=null, are red', () => {
     const map = files()
-    const lib = map['src/lib/chartCard.js'].replace('paperLegs.get(', 'new Map().get(')
+    const lib = map['src/lib/chartCard.js'].replace('paperLegs?.get(', 'new Map().get(')
     expect(problems({ ...map, 'src/lib/chartCard.js': lib })).toEqual(['compactRows does not read paperLegs'])
     const page = map['src/pages/StrategyBuilderPage.vue'].replace(/:paper-legs="[^"]*"/, ':paper-legs="null"')
     expect(problems({ ...map, 'src/pages/StrategyBuilderPage.vue': page })).toEqual(['the page does not pass :paper-legs from paperLegsOf(paper.net, paper.book, paperBookFailed)'])
   })
   it('the REMAINING registry lines are where it says (file:line)', () => {
     for (const r of REMAINING) expect(readFileSync(join(process.cwd(), r.file), 'utf8').split('\n')[r.line - 1]).toContain(r.text)
+  })
+  it('#744 MUTATION: each of the three readers going back to the reply turns the guard red', () => {
+    const map = files()
+    const mutate = (file, from, to) => {
+      expect(map[file]).toMatch(from)
+      return problems({ ...map, [file]: map[file].replace(from, to) })
+    }
+    // Full table back to the reply cells, in the card, the table and the row
+    expect(mutate('src/components/strategy/ChartCard.vue', ':book-cells="fullBookCells"', '')).toEqual(['ChartCard.vue does not pass :book-cells to the Full table (StrategyTable)'])
+    expect(mutate('src/components/strategy/StrategyLegRow.vue', 'bookCells?.[c.id] ?? cellText(row, c)', 'cellText(row, c)')).toEqual(['StrategyLegRow.vue does not print the book cell before the reply cell'])
+    expect(mutate('src/components/strategy/StrategyTable.vue', ':book-cells="bookCells?.[row.row_id] ?? null"', '')).toEqual(['StrategyTable.vue does not hand its book cells to StrategyLegRow'])
+    // leg list "now" price back to the reply maps
+    expect(mutate('src/pages/StrategyBuilderPage.vue', ':ltp-by-id="legListPrices.ltpById"', ':ltp-by-id="ltpById"')).toEqual(['the page does not give LegList the legListPrices maps'])
+    expect(mutate('src/pages/StrategyBuilderPage.vue', 'paperLegListPrices(data.value?.legs', 'paperLegListPrices(null')).toEqual(['legListPrices is not the book read (paperLegListPrices of paperLegsOf) for a paper trade'])
+    // Paper P&L panel after a failed read back to the last figures
+    expect(mutate('src/lib/usePaperBookRead.js', 'legPricesOf(book, failed)', 'legPricesOf(book)')).toEqual(['paperPnlBlock does not hand `failed` to legPricesOf (the Paper P&L panel rows would keep old figures)'])
+    // a second join
+    expect(mutate('src/lib/chartCard.js', 'own = paperBookLeg(byLegNo.get', 'own = paperLegs.get(byLegNo.get')).toEqual(['compactRows does not use the one join (paperBookLeg)'])
   })
   it('MUTATION: a page that mounts ChartCard without :paper-legs, and a new file reading ltp_text, are red', () => {
     const map = files()

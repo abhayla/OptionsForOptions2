@@ -12,6 +12,7 @@ const props = defineProps({
   table: { type: Object, required: true },
   maxProfit: { type: String, default: null },
   maxLoss: { type: String, default: null },
+  bookCells: { type: Object, default: null }, // #744: a paper trade's book texts per row id and column id ({ rowId: { ltp: text } }); null = every cell is the reply's
 })
 const cols = computed(() => props.table.columns)
 // AC-7: the API's heading pair ("<underlying> at expiry", "You make/lose") sits over the scenario columns, one cell spanning them.
@@ -51,7 +52,7 @@ const heading = computed(() => {
           </tr>
         </thead>
         <tbody>
-          <StrategyLegRow v-for="row in table.rows" :key="row.row_id" :row="row" :columns="cols" :max-profit="maxProfit" :max-loss="maxLoss" />
+          <StrategyLegRow v-for="row in table.rows" :key="row.row_id" :row="row" :columns="cols" :max-profit="maxProfit" :max-loss="maxLoss" :book-cells="bookCells?.[row.row_id] ?? null" />
         </tbody>
       </table>
     </div>

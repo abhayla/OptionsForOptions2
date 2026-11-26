@@ -176,12 +176,15 @@ describe('D-41: the Net Positions table and the Paper P&L panel read one book', 
 describe('D-41: the read cycle (fake timers)', () => {
   beforeEach(() => vi.useFakeTimers())
 
-  it('8 the book read failed: the headline pauses and the rows still follow the table', async () => {
+  // #744: this test pinned the OLD behaviour (a failed read kept the last LTPs in the Paper P&L panel rows, "deferred"); the panel now prints the
+  // one dash the legs table prints (legPricesOf honours `failed`, ADR-328 (3): one figure per leg on the screen), so the rows are the dash too
+  it('8 the book read failed: the headline pauses and the rows show the same dash as the legs table', async () => {
     const w = await page(book())
     BOOK_READ = () => Promise.reject({ status: 503, parts: null })
     await vi.advanceTimersByTimeAsync(TRACKING_REFRESH_MS)
     expect(w.get('[data-testid="paper-shared-line"]').text()).toContain('Paper P&L paused - prices not live')
-    expect(texts(w, 'tracking-leg-ltp')).toEqual(OWN)
+    expect(texts(w, 'tracking-leg-ltp')).toEqual(['—', '—', '—', '—'])
+    expect(texts(w, 'tracking-leg-pnl')).toEqual(['—', '—', '—', '—'])
     expect(texts(w, 'net-ltp')).toEqual(['—', '—', '—', '—'])
   })
   it('10 a closed strategy: no book read; rows say "Exited at <price>"', async () => {
