@@ -17,7 +17,7 @@
     <template v-else-if="!loading && items">
       <!-- Sensibull 050-053: the totals sit above the rows. A figure the reply omits is a dash with the server's reason. -->
       <dl v-if="totals && !compact" class="mt-2 flex flex-wrap gap-6 rounded bg-surface-muted px-3 py-2" data-testid="paper-totals">
-        <div v-for="f in totalFigures" :key="f.id" class="text-right">
+        <div v-for="f in totalFigures.filter((x) => !(headlineAbove && x.id === 'total'))" :key="f.id" class="text-right">
           <dt class="text-xs text-ink-muted" :data-testid="`totals-${f.id}-label`">{{ shownFig(totals, f).label }}</dt>
           <dd class="text-lg font-semibold" :class="f.id === 'charges' ? '' : toneOf(shownFig(totals, f).text)" :data-testid="`totals-${f.id}`"><AfterChargesTap :breakdown="shownFig(totals, f).breakdown ?? null">{{ pnlText(shownFig(totals, f).text) }}</AfterChargesTap></dd>
           <p v-if="shownFig(totals, f).reason" class="text-xs text-ink-muted" :data-testid="f.reasonId">{{ shownFig(totals, f).reason }}</p>
@@ -36,7 +36,7 @@
         </template>
       </div>
       <!-- ADR-330 (15): the server's line under the Paper total ("Includes N closed strategies"), printed as sent, only when served -->
-      <p v-if="totals && !compact && totals.closedNote" class="mt-1 text-xs text-ink-muted" data-testid="totals-closed-note">{{ totals.closedNote }}</p>
+      <p v-if="totals && !compact && !headlineAbove && totals.closedNote" class="mt-1 text-xs text-ink-muted" data-testid="totals-closed-note">{{ totals.closedNote }}</p>
       <p v-if="totals && !compact && totals.leftOut" class="mt-1 text-xs text-ink-muted" data-testid="totals-left-out">{{ totals.leftOut }}</p>
       <label class="mt-2 flex items-center gap-2"><input v-model="showClosed" type="checkbox" data-testid="show-closed" /> {{ SHOW_CLOSED_LABEL }}</label>
       <p v-if="!shown.length" class="mt-2" data-testid="paper-all-closed">{{ ALL_CLOSED_TEXT }}</p>
@@ -65,6 +65,8 @@
           <template v-else>
             <div class="flex flex-wrap items-start justify-between gap-3">
               <div>
+                <!-- ADR-330 (10): every paper group in the one Positions list is tagged PAPER -->
+                <span class="mr-1 rounded bg-accent-soft px-1 text-xs font-semibold text-accent" data-testid="paper-tag">PAPER</span>
                 <h2 class="font-semibold" data-testid="paper-group-name">{{ g.name ?? `Strategy ${g.id}` }}</h2>
                 <span class="text-ink-muted" data-testid="paper-group-underlying">{{ g.underlying }}</span>
                 <span v-if="g.statusWord" class="text-xs text-ink-muted" data-testid="paper-status-word">{{ g.statusWord }}</span>
@@ -166,7 +168,7 @@
 import { NAME_FLOOR_CLASS } from '@/lib/nameFloor'
 import { istClock } from '@/lib/displayFormat'
 import { QUOTE_TIME_UNAVAILABLE_TEXT } from '@/lib/sharedStateText'
-import { computed, onMounted, ref, shallowRef } from 'vue'
+import { computed, onMounted, ref, shallowRef, watch } from 'vue'
 import api, { NEUTRAL_ERROR, NEUTRAL_PARTS } from '@/services/api'
 import ErrorMessage from '@/components/common/ErrorMessage.vue'
 import PaperStops from '@/components/strategy/PaperStops.vue'
@@ -183,7 +185,10 @@ import { PAPER_STATE, addToPaper, paperPostOutcome } from '@/lib/tracking'
 import { useRouter } from 'vue-router'
 import { signOf } from '@/lib/chartCard'
 
-defineProps({ compact: { type: Boolean, default: false } })
+// ADR-330 (10): headlineAbove = the Positions page shows the Paper total in its own header, so this list omits its Total P&L figure
+// (and the closed-strategies line that goes with it); it emits `summary` so that header prints the server's figure, never a sum.
+defineProps({ compact: { type: Boolean, default: false }, headlineAbove: { type: Boolean, default: false } })
+const emit = defineEmits(['summary'])
 // GC-TRACK1 k27: the OPEN leg count; an unreadable open_count shows nothing (never the total). "open" only when closed ones exist.
 const legsText = (g) => {
   const n = g.openCount
@@ -246,6 +251,14 @@ const stale = computed(() => !readOk.value)
 // Phase 4 (F2): the Exit gate of the page, the same one as the builder's book panel (no contracts-changed mark on this list)
 const exitGate = usePaperExit({ readFailed: errorParts, held: items, busy: () => busy.value, changed: false })
 const loading = ref(true)
+const summary = computed(() => ({
+  totalAfter: totals.value ? totals.value.totalAfter : null,
+  closedNote: totals.value ? totals.value.closedNote : null,
+  stale: stale.value,
+  loaded: !loading.value && items.value !== null,
+  openGroups: (items.value ?? []).filter((g) => g.readable && g.openCount > 0).length,
+}))
+watch(summary, (v) => emit('summary', v), { immediate: true, flush: 'sync' })
 // D-05: reads are one at a time; each read start makes a fresh token object. latestReadToken is the latest started,
 // goodReadToken the one of the last good answer, so an open Stops panel drops its Not saved line only for a good read
 // that is not the one it was stamped with (a different good token is a read started after the failure)
