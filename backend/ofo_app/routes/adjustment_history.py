@@ -153,18 +153,8 @@ def _per_order_charges(orders: Any, found: dict, underlying: str,
 
 async def _plan_max(db: Any, user_ref: str, strategy_id: int, reader: tuple[TrackedReader, ChargeRates | None],
                     ctx: MarketContext | None) -> int | None:
-    from ofo_app import adjustment_check as check  # noqa: PLC0415 - it imports routes.adjustment
-    from ofo_app.adjustment_readers import TrackedUnreadable  # noqa: PLC0415
-    plan = await playbook_store.plan_for(db, user_ref, strategy_id)
+    plan = await playbook_store.plan_for(db, user_ref, strategy_id)  # ADR-330 (11): only the strategy's own plan
     body: Any = None if plan is None else plan.body
-    if body is None:
-        try:
-            tracked = await reader[0](strategy_id, reader[1])
-        except TrackedUnreadable:
-            tracked = None  # nothing open: no type, so no type playbook
-        if tracked is not None:
-            stype = check.entry_type(tracked, check.listed_of(ctx))  # D-04
-            body = (await check.resolve(db, user_ref, strategy_id, stype)).body
     mx = None if body is None else body.get("guards", {}).get("max_adjustments")
     return mx if type(mx) is int and mx >= 0 else None
 

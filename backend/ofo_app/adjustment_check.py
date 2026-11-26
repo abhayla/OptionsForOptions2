@@ -220,11 +220,9 @@ async def resolve(conn: Any, user_ref: str, strategy_id: int, stype: str | None)
     if plan is not None:
         return Resolved("plan", with_plan_target(plan.body), plan.playbook_id, None, False,
                         saved_before_adr247=await plan_saved_before_adr247(conn, plan))
-    if stype is None:
-        return Resolved("none", None, None, None, False, saved_before_adr247=False)
-    pb = await playbook_store.active_for(conn, user_ref, stype)
-    return Resolved("system" if pb.is_system else "active", pb.body, pb.id, pb.status if pb.is_system else None,
-                    pb.is_system, saved_before_adr247=False)
+    # ADR-330 (11): a playbook is only a source to copy from when a plan is made; no plan -> nothing is watched.
+    # (A plan row with an unreadable body raised in ``plan_for`` above: refused, never "none".)
+    return Resolved("none", None, None, None, False, saved_before_adr247=False)
 
 
 def _limit_value(v: Any) -> Decimal | str:
