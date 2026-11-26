@@ -103,7 +103,7 @@ def _pct(distance: Decimal | None, reference: Decimal | None) -> Decimal | None:
     return (distance / abs(reference) * PERCENT).quantize(SHOWN_PCT, rounding=ROUND_HALF_UP)
 
 
-def _line(key: str, kind: str, section: str, label: Any, unit: str, state: str, *,  # noqa: PLR0913, PLR0917
+def _line(key: str, kind: str, section: str, label: Any, unit: str, state: str, *,  # noqa: PLR0913
           fires: Decimal | None = None, now: Decimal | None = None, distance: Decimal | None = None,
           pct: Decimal | None = None, reason: Any = None) -> dict:
     return {"key": key, "kind": kind, "section": section, "label": label, "unit": unit, "fires_at": _q(fires),
