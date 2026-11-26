@@ -1619,6 +1619,14 @@
     "sha256": "3fe9ee4a130c6fe38e4adc1fb5895210f0027f3ef00dafb7e564d0bbfb434cfb",
     "reviewed": "owner read 2026-11-02 (accepted after independent screen, not read line by line)"
   },
+  "explanation:change_deleted": {
+    "sha256": "d2ca1edf09b33802cd20244a6bfb355669303bdd137081d6afe4da696a82721e",
+    "reviewed": "pending owner read"
+  },
+  "explanation:change_undeleted": {
+    "sha256": "7b755cdab22e4bec0d510be4511fd6e83aeda7273723c4a6f711c5a358dd2616",
+    "reviewed": "pending owner read"
+  },
   "strategy_delete_after_basket": {
     "sha256": "3d38562149284ea4780da1470db4f1f0a237375d84a7d7e78810cf8bfc73166e",
     "reviewed": "owner read 2026-11-02 (decided in session under owner delegation, independent screen)"

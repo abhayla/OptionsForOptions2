@@ -55,7 +55,7 @@ async def test_core_delete_hides_and_keeps_history(app_engine):
             assert await store.list_strategies(conn, user) == []
             raw = (await conn.execute(RAW_ROW, {"id": stored.id})).one()
             assert raw.deleted_at is not None
-            assert len(await _history_rows(conn, stored.id)) == 1
+            assert len(await _history_rows(conn, stored.id)) == EDITS - 1 + 1  # edit + delete (ADR-330 (31))
             back = await store.undelete_draft(conn, user, stored.id, expected_revision=edited.revision)
             assert (back.id, back.revision, back.updated_at) == before
             assert [s.id for s in await store.list_strategies(conn, user)] == [stored.id]
@@ -155,7 +155,7 @@ async def test_delete_over_the_api_hides_from_every_reader_and_keeps_the_rows(ap
                     assert err.value.code == plans.NOT_FOUND
                 count = text("SELECT count(*) FROM public.execution_plans WHERE strategy_id = :id")
                 assert (await conn.execute(count, {"id": first.id})).scalar_one() == 0
-                assert len(await _history_rows(conn, first.id)) == EDITS
+                assert len(await _history_rows(conn, first.id)) == EDITS + 1  # + the delete entry (ADR-330 (31))
                 assert await store.list_strategies(conn, user) == []  # reconcile_attribution reads this list
                 back = await ac.post(f"/strategies/{first.id}/undelete", params={"expected_revision": revision})
                 assert (back.status_code, back.json()["id"]) == (200, first.id), back.text

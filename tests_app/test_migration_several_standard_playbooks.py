@@ -96,12 +96,13 @@ async def test_downgrade_is_refused_while_a_type_holds_a_second_standard_playboo
 
 
 async def test_downgrade_with_only_the_seeded_rows_restores_the_one_system_index(admin_engine):
-    from _migration_replay import recorded  # noqa: PLC0415
+    from _migration_replay import round_trip_sql  # noqa: PLC0415
 
     async with admin_engine.connect() as c:
         outer = await c.begin()
         try:
-            for statement in recorded("0056_several_standard_playbooks.py", "downgrade"):
+            # every later migration's downgrade first (0057 and on), then 0056's: the database is at head
+            for statement in round_trip_sql("0056_several_standard_playbooks.py")[2]:
                 await c.execute(text(statement))
             names = {r[0] for r in (await c.execute(text(
                 "SELECT indexname FROM pg_indexes WHERE tablename = 'adjustment_playbooks'"))).all()}
