@@ -20,4 +20,6 @@ Options:
 - (b) Keep them in Active until the user answers (ADR-330 (3) literally), although nothing watches the strategy.
 
 Built meanwhile: (a), in one place (`background.py` owner lister, `close_by_system(..., not_monitored)`), reversible by
-removing that one call. Decided by: nobody yet (this file).
+removing that one call.
+
+**Answered** by the owner on 26 Nov 2026 (question tool, through the coordinator): "Close it by system (Recommended)" = option (a); recorded in ADR-330 (3).
