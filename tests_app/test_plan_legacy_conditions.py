@@ -106,3 +106,30 @@ async def test_reset_with_no_plan_answers_the_plan_routes_not_available_404(app_
     status, out = await _call("POST", f"{plan_path(sid)}/reset", json={})
     assert status_edit == 404 and status == 404, out
     assert out["code"] == out_edit["code"]
+
+
+async def test_a_plan_whose_playbook_was_deleted_keeps_its_conditions_through_a_rules_save(app_db_url, monkeypatch):  # noqa: F811
+    """REQ-158 AC-5 / ADR-330 (9): playbook_id NULL after the copy is deleted; the plan's own conditions stay, a new one is refused."""
+    sid = await _seeded(app_db_url, monkeypatch, "ADJ-01")
+    async with app_db_url.connect() as conn:
+        seed = next(v for v in await sys_store.history(conn, "ic") if v.reason == "seed")
+    async with app_db_url.begin() as conn:
+        mine = await store.duplicate(conn, USER, (await store.active_for(conn, USER, "ic")).id, "My old ic")
+        await conn.execute(store._SAVE, {"id": mine.id, "user_ref": USER, "version": mine.version,
+                                         "body": store._dump(seed.body)})  # the copy holds the pre-0040 guard
+        await conn.execute(store._UPSERT_PLAN, {"strategy_id": sid, "playbook_id": mine.id, "type": "ic",
+                                               "body": store._dump(seed.body), "stop_base": None})
+        await store.delete(conn, USER, mine.id)
+    assert (await _plan_row(app_db_url, sid)).playbook_id is None
+    status, read = await _call("GET", rules_path(sid))
+    assert status == 200 and MARGIN in read["body"]["guards"], read
+    status, out = await _call("PUT", rules_path(sid), json={"body": read["body"]})
+    assert status == 200, out
+    assert MARGIN in json.loads((await _plan_row(app_db_url, sid)).body)["guards"]
+    before = (await _plan_row(app_db_url, sid)).body
+    new = copy.deepcopy(read["body"])
+    new["guards"]["brand_new_guard_xyz"] = {"on": True}
+    status, out = await _call("PUT", rules_path(sid), json={"body": new})
+    assert status == 422, out
+    assert "brand_new_guard_xyz" not in json.dumps(out)
+    assert (await _plan_row(app_db_url, sid)).body == before
