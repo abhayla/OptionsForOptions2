@@ -1283,8 +1283,6 @@ test.describe('Option Chain: Add Selected opens the builder with exactly those l
 
   test('ROW-12 a paper trade\'s pending change survives a trip to the Option Chain and Back (RESULTS.md check 12)', async ({ page }) => {
     // Spec basis: RESULTS.md modular doors check 12 / ADR-329 (1): "Open a paper strategy, remove one leg (a pending change), go to the Option Chain and back: the pending change is still there."
-    // expected-fail: row 12 (Lane R fixes): after Back the builder reads ?strategy=63, drops the held edit (StrategyBuilderPage.vue:135 builderHold.clear()) and shows "0 pending changes"
-    test.fail()
     await stubChain(page)
     await page.goto(`${BUILDER}?strategy=63`)
     await expect(legRows(page)).toHaveCount(4)
@@ -1296,7 +1294,6 @@ test.describe('Option Chain: Add Selected opens the builder with exactly those l
     await expect(rows(page)).toHaveCount(7)
     await page.goBack()
     await expect(page).toHaveURL(/strategy-builder\?strategy=63/)
-    await expect(legRows(page)).toHaveCount(4) // the book's four legs are back
     await shot(page, 'row-12-after-back')
     await expect(page.getByTestId('paper-pending-count')).toHaveText('1 pending change')
     await expect(legRows(page)).toHaveCount(3)
