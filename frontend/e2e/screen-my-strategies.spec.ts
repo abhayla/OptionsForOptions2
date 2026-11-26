@@ -279,8 +279,6 @@ test.describe('My Strategies: loading, empty and failure states (ADR-320 S-05, R
 
   test('LOAD-4 (S-05) a 200 whose body is unreadable (not JSON) shows the same sentence and Retry', async ({ page }) => {
     // Spec basis: ADR-330 (S-05); REQ-065 (fail closed on an answer that cannot be read)
-    // expected-fail: NEW-T11: an unreadable 200 body is read as an empty list, so the page says "You have no saved strategies yet" instead of the load-failed sentence
-    test.fail()
     await open(page, { list: { body: '<html>proxy error' } })
     await expect(page.getByTestId('list-load-error')).toHaveText(LOAD_FAILED)
     await expect(rows(page)).toHaveCount(0)

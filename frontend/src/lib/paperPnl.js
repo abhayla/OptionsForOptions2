@@ -22,7 +22,8 @@ export const FIGURE_READ_FAILED_TEXT = 'Could not be read right now.' // pending
  *  (not readable). `notLive`: the list itself is old (a failed refresh) or the strategy's state says prices are not live. */
 export function pnlFigure(fig, notLive = false) {
   if (!fig) return { kind: 'failed', text: PAPER_NO_FIGURE, label: '', note: UNREADABLE_TEXT }
-  if (notLive || fig.kind === 'paused') return { kind: 'paused', text: PAPER_NO_FIGURE, label: '', note: PAPER_PAUSED }
+  if (notLive) return { kind: 'paused', text: PAPER_NO_FIGURE, label: '', note: PAPER_PAUSED }
+  if (fig.kind === 'paused') return { kind: 'paused', text: PAPER_NO_FIGURE, label: '', note: fig.reason ?? PAPER_PAUSED } // the list's own sentence, with its as-of time (REQ-109 AC-5)
   if (fig.text === null) return { kind: 'failed', text: PAPER_NO_FIGURE, label: '', note: fig.reason ?? UNREADABLE_TEXT }
   return { kind: 'value', text: fig.text, label: fig.label, note: fig.reason }
 }

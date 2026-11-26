@@ -399,8 +399,6 @@ test.describe('Current positions: the two totals (ADR-330 (10), ADR-263, ADR-008
 
   test('TOT-11 a failed first paper read: the Paper total is a dash and says it is paused', async ({ page }) => {
     // Spec basis: ADR-330 (10) "when the first paper read fails it shows the same paused reason as the list"; REQ-109 AC-5
-    // expected-fail: NEW-T23: after a failed FIRST paper read the Paper total shows a dash but no paused reason (PositionsTotals needs a loaded list or a stale flag)
-    test.fail()
     await stubApi(page, { paper: { status: 500, json: {} } })
     await openPositions(page)
     await expect(page.getByTestId('totals-paper')).toHaveText(NO_FIGURE)
@@ -566,8 +564,6 @@ test.describe('Current positions: the real section, read from Zerodha (REQ-044 A
 
   test('REAL-13 an unreadable broker status after a refused read is a failed read (fail closed)', async ({ page }) => {
     // Spec basis: REQ-015 AC-10 (answer states: absent, not an object, any other value -> not connected is only said for a stated answer)
-    // expected-fail: NEW-T24: an unreadable (non-JSON) broker status after a refused read is shown as "not connected"; PositionsPage's own rule says only a successful read stating not connected is that
-    test.fail()
     await stubApi(page, { positions: { status: 500, json: {} }, broker: { status: 200, text: 'not json' } })
     await openPositions(page)
     await expect(page.getByTestId('positions-error-what')).toHaveText(NEUTRAL.what)
@@ -577,8 +573,6 @@ test.describe('Current positions: the real section, read from Zerodha (REQ-044 A
 
   test('REAL-14 an unreadable positions body (no strategies list) shows the failure message, not a blank or an empty list', async ({ page }) => {
     // Spec basis: ADR-008 + REQ-044 AC-3 (fail closed: an answer that does not read shows the failure message, never an empty list)
-    // expected-fail: NEW-T20: GET /positions answering 200 with a body that has no `strategies` list throws in the template and the real section renders nothing
-    test.fail()
     await stubApi(page, { positions: ok({ unexpected: true }) })
     await openPositions(page, '', 'none')
     await expect(page.getByTestId('positions-page')).toBeVisible()

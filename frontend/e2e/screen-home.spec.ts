@@ -694,8 +694,6 @@ test.describe('Home: the figures Running strategies / Unread alerts / Total P&L 
 
   test('STALE-2 the paused sentence carries the time of the last price: "Paper P&L paused - prices not live, as of 26 Nov 2026, 10:00:00 IST"', async ({ page }) => {
     // Spec basis: REQ-109 AC-5 (the sentence, "as of <time>"); ADR-320 (6) D-56
-    // expected-fail: NEW-T02: Home's pnlFigure keeps only PAPER_PAUSED and drops the as-of time that Positions shows for the same reply
-    test.fail()
     const paused = { total_text: null, total_after_text: null, booked_text: null, unbooked_text: null, after_charges_reason: 'prices_not_live', totals_as_of: T_NOW }
     await stubApi(page, { paper: ok(paperOk(paused)) })
     await openHome(page)

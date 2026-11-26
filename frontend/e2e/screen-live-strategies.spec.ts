@@ -933,8 +933,6 @@ test.describe('Adjustment opportunities inbox (REQ-162 AC-1..AC-3, REQ-112, ADR-
 
   test('OPP-15 unreadable inbox body (200, not JSON): the neutral parts, never "No adjustment opportunities" or an empty table', async ({ page }) => {
     // Spec basis: REQ-065; REQ-162 (an unread inbox is not an empty one)
-    // expected-fail: NEW-T31: today's code takes the unparsed text as the inbox and shows "Showing 0-0 of 0 rows" with no error
-    test.fail()
     await world(page, [], { opps: { text: '<html>gateway</html>' } })
     await page.goto(OPPS)
     await shot(page, 'NEW-T31')

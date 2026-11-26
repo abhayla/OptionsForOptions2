@@ -258,7 +258,7 @@ const loading = ref(true)
 const summary = computed(() => ({
   totalAfter: totals.value ? totals.value.totalAfter : null,
   closedNote: totals.value ? totals.value.closedNote : null,
-  stale: stale.value,
+  stale: stale.value || (!loading.value && !!errorParts.value), // a failed FIRST read (no list held) is paused too, with the same reason as the list (ADR-330 (10))
   loaded: !loading.value && items.value !== null,
 }))
 watch(summary, (v) => emit('summary', v), { immediate: true, flush: 'sync' })

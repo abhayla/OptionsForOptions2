@@ -51,8 +51,22 @@ const api = axios.create({
   headers: { 'Content-Type': 'application/json' },
 })
 
+/** REQ-065 / REQ-162 / ADR-008: a 2xx whose body could not be read as JSON (axios hands back the raw text) is a FAILED read,
+ *  the same state as a dropped connection, never an empty list or a "not connected". An empty body (204) is not unreadable. */
+export function unreadableBody(response) {
+  const ok = response && response.status >= 200 && response.status < 300
+  const type = response?.config?.responseType
+  if (!ok || (type && type !== 'json')) return false
+  return typeof response.data === 'string' && response.data.trim() !== ''
+}
+
+/** Shape check for the callers the shared door cannot do for: true only for a plain object that carries every named key. */
+export function hasShape(data, keys = []) {
+  return !!data && typeof data === 'object' && !Array.isArray(data) && keys.every((k) => k in data)
+}
+
 api.interceptors.response.use(
-  (response) => response,
+  (response) => (unreadableBody(response) ? Promise.reject({ message: NEUTRAL_ERROR, status: response.status, unreadable: true }) : response),
   // REQ-119 AC-3: a request the page itself cancelled (newer request of its kind) is 'superseded' - no message, no status.
   (error) => Promise.reject(isSuperseded(error) ? { superseded: true } : mapError(error))
 )
