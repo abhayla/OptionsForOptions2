@@ -29,7 +29,7 @@ from datetime import date, datetime
 from decimal import Decimal
 from typing import Any
 
-from ofo.adjustment import level_watch
+from ofo.adjustment import level_watch, plan_diff
 from ofo.adjustment import stop_lines as sl
 from ofo.adjustment.cap_scope import count_capped
 from ofo.adjustment.gate_rows import GateRow, GateRows
@@ -103,6 +103,7 @@ class Playbook:
     version: int
     created_at: datetime
     updated_at: datetime
+    slug: str | None = None  # a standard playbook's stable name ("<type>-default" is the first of each type)
 
 
 @dataclass(frozen=True)
@@ -281,14 +282,16 @@ class InboxRow:
     paper: bool  # the strategy has paper orders: an acted-on basket is not sent to Zerodha (ADR-135)
 
 
-_PB_COLUMNS = "id, user_ref, strategy_type, name, is_system, status, body::text, version, created_at, updated_at"
+_PB_COLUMNS = "id, user_ref, strategy_type, name, is_system, status, body::text, version, created_at, updated_at, slug"
+_DEFAULT_FIRST = "(slug IS NOT DISTINCT FROM strategy_type || '-default') DESC"
 _VISIBLE = "(user_ref IS NULL OR user_ref = :user_ref)"
 _SELECT_ONE = text(f"SELECT {_PB_COLUMNS} FROM public.adjustment_playbooks "  # noqa: S608 constant columns
                    f"WHERE id = :id AND {_VISIBLE}")
 _SELECT_TYPE = text(f"SELECT {_PB_COLUMNS} FROM public.adjustment_playbooks "  # noqa: S608 constant columns
-                    f"WHERE strategy_type = :type AND {_VISIBLE} ORDER BY is_system DESC, lower(name), id")
+                    f"WHERE strategy_type = :type AND {_VISIBLE} "
+                    f"ORDER BY is_system DESC, {_DEFAULT_FIRST}, lower(name), id")
 _SELECT_SYSTEM = text(f"SELECT {_PB_COLUMNS} FROM public.adjustment_playbooks "  # noqa: S608 constant columns
-                      "WHERE strategy_type = :type AND is_system")
+                      f"WHERE strategy_type = :type AND is_system ORDER BY {_DEFAULT_FIRST}, id LIMIT 1")
 _SELECT_ACTIVE = text(f"SELECT {', '.join('p.' + c for c in _PB_COLUMNS.split(', '))} "  # noqa: S608 constant columns
                       "FROM public.adjustment_playbook_active a JOIN public.adjustment_playbooks p "
                       "ON p.id = a.playbook_id WHERE a.user_ref = :user_ref AND a.strategy_type = :type")
@@ -566,13 +569,13 @@ def _name(name: object) -> str:
 
 def _playbook(row: Any) -> Playbook:
     return Playbook(id=row[0], user_ref=row[1], strategy_type=row[2], name=row[3], is_system=row[4], status=row[5],
-                    body=_load(row[6]), version=row[7], created_at=row[8], updated_at=row[9])
+                    body=_load(row[6]), version=row[7], created_at=row[8], updated_at=row[9], slug=row[10])
 
 
 async def _current(conn: Any, pb: Playbook) -> Playbook:
     """A system playbook as its current version (REQ-169); a user's own playbook unchanged. A system playbook with
     no stored version is a broken database (0034 seeds all 12): fails closed, never the 0031 row's body."""
-    if not pb.is_system:
+    if not pb.is_system or pb.slug != f"{pb.strategy_type}-default":  # a further standard playbook: its own row
         return pb
     row = (await conn.execute(_SYSTEM_CURRENT, {"type": pb.strategy_type})).one_or_none()
     if row is None:
@@ -718,10 +721,24 @@ async def accept_plan(conn: Any, user_ref: str, strategy_id: int, playbook_id: i
         raise PlaybookStoreError(BODY_INVALID, f"plan of strategy {strategy_id} is {current.strategy_type}, "
                                  f"playbook {source.id} is {source.strategy_type}", field="strategy_type")
     copy = check_body(source.body if body is None else body, source.strategy_type)
+    if extra := plan_diff.added(copy, source.body):  # ADR-330 (9): a plan cannot add a condition its playbook lacks
+        raise _bad(extra[0])
     row = (await conn.execute(_UPSERT_PLAN, {"strategy_id": strategy_id, "playbook_id": source.id,
                                              "type": source.strategy_type, "body": _dump(copy),
                                              "stop_base": None if stop_base is None else _dump(stop_base)})).one()
     return _plan(row)
+
+
+async def reset_plan(conn: Any, user_ref: str, strategy_id: int, stop_base: dict | None = None) -> Plan:
+    """ADR-330 (9) "Reset to playbook": every condition of the plan goes back to its playbook's (the server does the
+    copy). Refused, plan unchanged: no plan (not found); a plan saved before playbooks were pointed at (playbook_id
+    NULL) or whose playbook was deleted (not found, the playbook's own sentence)."""
+    current = await plan_for(conn, user_ref, strategy_id)
+    if current is None or current.playbook_id is None:
+        raise _not_found(None if current is None else "of this plan")
+    source = await get(conn, user_ref, current.playbook_id)  # not found when the playbook is gone
+    return await accept_plan(conn, user_ref, strategy_id, source.id, plan_diff.reset(current.body, source.body),
+                             stop_base)
 
 
 _BACKFILL_STOP_BASE = text("UPDATE public.strategy_adjustment_plans SET stop_base = CAST(:value AS JSONB) "
