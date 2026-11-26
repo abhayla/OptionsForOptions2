@@ -159,7 +159,7 @@ describe('CORE: Exit all and a partial exit go through paperOrdersFor and the on
 
 describe('Confirm list title by content, each row\'s kind beside B/S', () => {
   const order = (kind) => ({ key: kind, contract_id: 1, side: 'BUY', text: 'NIFTY', lots: 1, lot_size: 65, price: '10.00', kind })
-  for (const [kinds, title, labels] of [[['add'], 'Add to Paper', ['Add']], [['open'], 'Add to Paper', ['Add']], [['exit'], 'Exit Paper positions', ['Exit']], [['exit', 'add'], 'Review paper orders', ['Exit', 'Add']]]) {
+  for (const [kinds, title, labels] of [[['add'], 'Add to Paper', ['Add']], [['open'], 'Add to Paper', ['Add']], [['exit'], 'Exit Paper positions', ['Exit']], [['exit', 'add'], 'Review Paper orders', ['Exit', 'Add']]]) {
     it(`${kinds.join('+')} -> "${title}"`, () => {
       const w = mount(PaperConfirmDialog, { props: { open: true, orders: kinds.map(order) } })
       expect(t(w, 'modal-title').text()).toBe(title)

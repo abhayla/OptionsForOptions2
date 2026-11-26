@@ -345,7 +345,7 @@ LINES: dict[str, tuple[str, ...]] = {
     ),
     'frontend/src/lib/paperDrafts.js': (
         # ADR-330 (10): the exit-title word for a real exit, user-facing wording in the one title door (no real exit is rendered, ADR-281)
-        "const REAL_KIND_WORD = 'Real (Zerodha order)'",
+        "const KIND_WORDS = { paper: 'Paper', real: 'Real (Zerodha order)' }",
     ),
     'frontend/src/lib/dataHealthText.js': (
         "not_sent: 'Zerodha did not send this figure for this contract.',",

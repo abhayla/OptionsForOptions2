@@ -26,8 +26,12 @@ const route = useRoute()
 // ?tab=paper opens Paper and ?tab=positions opens Real, so bookmarks and the builder's links still land where they did.
 const FILTERS = [{ key: 'all', label: 'All' }, { key: 'real', label: 'Real' }, { key: 'paper', label: 'Paper' }]
 const filterOf = (tab) => (tab === 'paper' ? 'paper' : tab === 'positions' ? 'real' : 'all')
-const filter = ref(filterOf(route.query.tab))
-watch(() => route.query.tab, (tab) => { filter.value = filterOf(tab) })
+// ?exit= (the Live card's Exit link) always opens on Paper, so the exit confirm never opens over the Real view; the filter stays Paper
+// after PaperStrategies consumes the parameter (the tab did not change, so nothing resets it).
+const hasExit = () => route.query.exit !== undefined
+const filter = ref(hasExit() ? 'paper' : filterOf(route.query.tab))
+watch(() => route.query.tab, (tab) => { filter.value = hasExit() ? 'paper' : filterOf(tab) })
+watch(() => route.query.exit, (x) => { if (x !== undefined) filter.value = 'paper' })
 const paperSummary = ref(null) // PaperStrategies' emitted figures: this page reads no paper list itself (one reader)
 const notConnected = ref(false) // the read was refused AND the connection read says not connected
 // W-121 (REQ-073 AC-6, ADR-165): a link to the strategy's Execute screen is absent (not disabled) unless the server said

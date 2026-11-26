@@ -18,14 +18,14 @@ describe('exit title door (ADR-330 (10))', () => {
     expect(exitConfirmTitle('paper', [EXIT])).toBe('Exit Paper positions')
     expect(exitConfirmTitle('real', [EXIT])).toContain('Real (Zerodha order)')
   })
-  it('an unknown kind fails closed to Paper (never a blank or a real word)', () => {
-    expect(positionKindWord(undefined)).toBe('Paper')
-    expect(positionKindWord('x')).toBe('Paper')
+  it('an unknown kind throws (fail closed; round 2, more in chunk-c-round2.test.js)', () => {
+    expect(() => positionKindWord(undefined)).toThrow()
+    expect(() => positionKindWord('x')).toThrow()
   })
   it('the paper door: only exits -> the exit title; adds and mixed keep their titles', () => {
     expect(paperDialogTitle([EXIT])).toBe('Exit Paper positions')
     expect(paperDialogTitle([ADD])).toBe('Add to Paper')
-    expect(paperDialogTitle([EXIT, ADD])).toBe('Review paper orders')
+    expect(paperDialogTitle([EXIT, ADD])).toBe('Review Paper orders')
   })
   it('PaperConfirmDialog title: default kind paper; kind real names the Zerodha order', () => {
     const open = (props) => mount(PaperConfirmDialog, { props: { open: true, orders: [EXIT], ...props }, attachTo: document.body })

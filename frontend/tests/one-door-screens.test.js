@@ -414,8 +414,17 @@ describe('G3: the Lane B emitter guard', () => {
 
 // Rule 5 (ADR-330 (10), Q2 Chunk B): the one Positions list shows real rows read-only and starts no order. PositionsPage.vue and
 // PositionsTotals.vue contain no addToPaper, no `.post(` and no `/orders` (comments blanked; strings kept). The 'Real (Zerodha
-// order)' literal part of this rule belongs to Chunk C and is not built here.
-const ONE_LIST_FILES = ['src/pages/PositionsPage.vue', 'src/components/positions/PositionsTotals.vue']
+// order)' literal part of this rule is the second half, further down.
+//
+// KNOWN BYPASSES of rule 5 (both halves; a text scan, not a parser; written down, deliberately NOT chased):
+//   - only PositionsPage.vue and every file under src/components/positions/ are scanned for orders; a Positions feature built in
+//     another directory is not seen;
+//   - the order patterns are `addToPaper`, `.post(` and `/orders`: `api.put(`, `api['post'](`, `.post (` (space) and `api.request(`
+//     are not seen;
+//   - the word 'Real (Zerodha order)' is matched as one literal: a split string ('Real (Zerodha ' + 'order)'), a non-breaking space or
+//     another spelling is not seen; the real exit-button check is by name (ExitButton, usePaperExit, PaperConfirmDialog, an exit test id).
+const POSITIONS_DIR = join(process.cwd(), 'src/components/positions')
+const ONE_LIST_FILES = ['src/pages/PositionsPage.vue', ...readdirSync(POSITIONS_DIR).filter((n) => /\.(vue|js|ts)$/.test(n)).map((n) => `src/components/positions/${n}`)]
 const ONE_LIST_BANNED = [/addToPaper/, /\.post\(/, /\/orders/]
 const oneListProblems = (sources) => Object.entries(sources).flatMap(([file, src]) =>
   ONE_LIST_BANNED.filter((re) => re.test(stripComments(src))).map((re) => `${file}: ${re}`))
@@ -456,7 +465,8 @@ describe('G3 rule 5 (exit title): one spelling of Real (Zerodha order); no real 
   })
   it('the Positions page and its totals render no real exit button or exit dialog', () => {
     const files = realFiles()
-    for (const f of ['src/pages/PositionsPage.vue', 'src/components/positions/PositionsTotals.vue']) {
+    expect(ONE_LIST_FILES).toContain('src/components/positions/PositionsTotals.vue')
+    for (const f of ONE_LIST_FILES) {
       const src = stripComments(files[f])
       expect(REAL_EXIT_BANNED.filter((re) => re.test(src)), f).toEqual([])
     }

@@ -257,7 +257,6 @@ const summary = computed(() => ({
   closedNote: totals.value ? totals.value.closedNote : null,
   stale: stale.value,
   loaded: !loading.value && items.value !== null,
-  openGroups: (items.value ?? []).filter((g) => g.readable && g.openCount > 0).length,
 }))
 watch(summary, (v) => emit('summary', v), { immediate: true, flush: 'sync' })
 // D-05: reads are one at a time; each read start makes a fresh token object. latestReadToken is the latest started,

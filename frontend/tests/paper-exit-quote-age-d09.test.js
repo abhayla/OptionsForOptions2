@@ -1,4 +1,4 @@
-// D-09 (REQ-109 AC-4; GC-ICLIVE-B item 6): the Review paper orders dialog says how old the quote it shows is.
+// D-09 (REQ-109 AC-4; GC-ICLIVE-B item 6): the Review Paper orders dialog says how old the quote it shows is.
 // Real case 23 Nov 2026: C4 exit of NIFTY 25500 PE showed 42.55; the quote was read 40 s before Confirm. The fill rule
 // is unchanged (the server prices an exit at its own live price on Confirm); the screen only states the quote's time.
 import { describe, expect, it } from 'vitest'

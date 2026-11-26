@@ -85,7 +85,7 @@ describe('ADR-330 (10): one Positions list', () => {
     const { w } = await page()
     const header = t(w, 'positions-totals')
     expect(header.get('[data-testid="totals-paper"]').text()).toBe(REAL.totals.total_text)
-    expect(header.get('[data-testid="totals-real"]').text()).toBe('-')
+    expect(header.get('[data-testid="totals-real"]').text()).toBe('—') // PAPER_NO_FIGURE: the one home of the dash (round 2)
     expect(header.get('[data-testid="totals-real-reason"]').text()).toBe('Real P&L is not shown yet: the server does not price Zerodha positions.')
     const ids = header.findAll('[data-testid^="totals-"]').map((e) => e.attributes('data-testid'))
     expect(ids.filter((i) => !/-(reason|basis|closed-note)$/.test(i)).sort()).toEqual(['totals-paper', 'totals-real'])
