@@ -132,6 +132,12 @@ export function istTime(iso) {
   return `${p.day} ${MONTHS[new Date(ms + 19800000).getUTCMonth()]} ${p.year}, ${p.hour}:${p.minute}:${p.second} IST`
 }
 
+/** D-57: today's date as 'YYYY-MM-DD' from the browser's calendar day. A date KEY for day arithmetic, never shown to a
+ *  reader; it lives here so that this file stays the only place a locale date function is called. */
+export function localDay(date = new Date()) {
+  return date.toLocaleDateString('en-CA')
+}
+
 /** An ISO instant (with an offset or Z) as 'HH:MM:SS' in India time, or null when it cannot be read (never the raw string,
  *  never the browser clock). The time part of istTime. */
 export function istClock(iso) {
@@ -195,7 +201,7 @@ export function groupMoney(text) {
 // nothing is parsed to a float and no money is computed (ADR-008); the server's own forms are "₹1,865.50", "−₹916.50" and "65.18%".
 const RUPEE = '₹'
 const MINUS = '−' // U+2212, the sign the server prints before the rupee sign
-const groupedIndian = (digits) => (digits.length <= 3 ? digits : `${digits.slice(0, -3).replace(/\B(?=(\d{2})+$)/g, ',')},${digits.slice(-3)}`)
+export const groupedIndian = (digits) => (digits.length <= 3 ? digits : `${digits.slice(0, -3).replace(/\B(?=(\d{2})+$)/g, ',')},${digits.slice(-3)}`)
 
 /** A plain decimal text as rupees with Indian grouping: '720252.00' -> '₹7,20,252.00', '-2453.75' -> '−₹2,453.75'. Digits after the
  *  point are kept as sent (a whole number gets '.00'). Anything that is not a plain decimal comes back unchanged. */

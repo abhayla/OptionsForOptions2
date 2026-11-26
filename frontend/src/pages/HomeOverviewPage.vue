@@ -3,6 +3,7 @@
      Create Strategy, the three most recently updated). A failed read -> `error` with the server's message. The live index
      strip shows in every state. Zerodha is a quiet line only: no connect control anywhere on this page (AC-5). No money. -->
 <script setup>
+import { builderLinkOf } from '@/lib/strategyLinks'
 import { computed, onMounted, ref } from 'vue'
 import api, { NEUTRAL_PARTS } from '@/services/api'
 import ErrorMessage from '@/components/common/ErrorMessage.vue'
@@ -11,7 +12,10 @@ import Card from '@/components/common/Card.vue'
 import PageHeader from '@/components/common/PageHeader.vue'
 import { istTime } from '@/lib/displayFormat'
 import { plainName } from '@/lib/saveDraft'
-import { strategyStatusWord } from '@/lib/strategyStatus'
+import { isRunning, strategyStatusWord } from '@/lib/strategyStatus'
+import { FIGURE_READ_FAILED_TEXT, HOME_PNL_LABEL, HOME_RUNNING_LABEL, HOME_UNREAD_LABEL, usePaperPnl } from '@/lib/paperPnl'
+import { bellCount, dropAlerts, paperAlerts, readPaperAlerts, takeAlerts } from '@/lib/paperAlerts'
+import { PAPER_NO_FIGURE } from '@/lib/paperList'
 import { SECTIONS } from '@/router/nav'
 
 const RECENT_COUNT = 3
@@ -37,7 +41,32 @@ const recent = computed(() =>
     .sort((a, b) => Date.parse(b.updated_at) - Date.parse(a.updated_at))
     .slice(0, RECENT_COUNT))
 
+// D-56: three figures, each read from the function the owning page uses: the running count = the server's status_word (D-28) over the
+// same GET /strategies this page reads; unread = the alert count route the bell reads (D-29); P&L = the Positions total (lib/paperPnl).
+// A failed read of one figure says so in that figure only; the browser forms no money and counts only rows (no arithmetic).
+const pnl = usePaperPnl()
+const runningCell = computed(() => {
+  if (errorParts.value) return { text: PAPER_NO_FIGURE, note: FIGURE_READ_FAILED_TEXT }
+  if (strategies.value === null) return { text: PAPER_NO_FIGURE, note: null }
+  return { text: String(strategies.value.filter(isRunning).length), note: null }
+})
+const unreadCell = computed(() => {
+  if (!paperAlerts.loaded) return { text: PAPER_NO_FIGURE, note: null }
+  if (paperAlerts.parts) return { text: PAPER_NO_FIGURE, note: FIGURE_READ_FAILED_TEXT }
+  return { text: String(bellCount()), note: null } // the bell badge's own number (unread stops plus open adjustment records)
+})
+const pnlCell = computed(() => {
+  const c = pnl.totalCell.value
+  if (c.kind === 'loading') return { text: PAPER_NO_FIGURE, note: null }
+  return { text: c.text, label: c.label, note: c.note }
+})
+const figures = computed(() => [
+  { id: 'running', label: HOME_RUNNING_LABEL, ...runningCell.value },
+  { id: 'unread', label: HOME_UNREAD_LABEL, ...unreadCell.value },
+  { id: 'pnl', label: HOME_PNL_LABEL, ...pnlCell.value },
+])
 onMounted(async () => {
+  readPaperAlerts().then(takeAlerts, dropAlerts)
   try {
     const list = (await api.get('/strategies')).data?.strategies
     if (!Array.isArray(list)) throw new Error('unreadable answer') // fail closed: no state is guessed
@@ -52,6 +81,14 @@ onMounted(async () => {
   <section data-testid="home" :data-state="state">
     <PageHeader parent="Home" title="Overview" />
     <IndexStrip />
+
+    <dl v-if="state !== 'loading'" class="mt-4 flex flex-wrap gap-6 rounded-lg border border-line bg-surface px-4 py-3" data-testid="home-figures">
+      <div v-for="f in figures" :key="f.id" :data-testid="`home-${f.id}`">
+        <dt class="text-xs text-ink-muted">{{ f.label }}<template v-if="f.label && f.id === 'pnl' && f.text !== PAPER_NO_FIGURE && pnlCell.label">{{ ' ' }}{{ pnlCell.label }}</template></dt>
+        <dd class="text-lg font-semibold tabular-nums" :data-testid="`home-${f.id}-figure`">{{ f.text }}</dd>
+        <p v-if="f.note" class="text-xs text-ink-muted" :data-testid="`home-${f.id}-note`">{{ f.note }}</p>
+      </div>
+    </dl>
 
     <ErrorMessage v-if="state === 'error'" class="mt-4" :parts="errorParts" prefix="home-error" data-testid="home-error" />
 
@@ -82,7 +119,8 @@ onMounted(async () => {
             <span v-if="plainName(s.name)" class="min-w-0 truncate font-medium" data-testid="recent-name">{{ plainName(s.name) }}</span>
             <span v-else class="text-ink-subtle" aria-hidden="true">—</span>
             <span class="min-w-0 truncate text-ink-muted">{{ s.underlying }}, {{ strategyStatusWord(s) }}, last saved {{ istTime(s.updated_at) }}</span>
-            <router-link to="/strategy/builder" class="text-accent hover:underline" :data-testid="`recent-open-${s.id}`">Open in Strategy Builder</router-link>
+            <router-link v-if="builderLinkOf(s.id)" :to="builderLinkOf(s.id)" class="text-accent hover:underline" :data-testid="`recent-open-${s.id}`">Open in Strategy Builder</router-link>
+            <span v-else aria-hidden="true"></span><!-- S-18: no usable id, no link; the grid cell stays -->
           </li>
         </ul>
       </Card>

@@ -5,7 +5,7 @@ import { test, expect } from '@playwright/test'
 
 const REPLAY_URL = process.env.REPLAY_URL || 'http://127.0.0.1:4175'
 const draft = (id: number, underlying: string, updated_at: string) =>
-  ({ id, underlying, status: 'draft', revision: 1, created_at: updated_at, updated_at })
+  ({ id, underlying, status: 'draft', status_word: 'Draft', revision: 1, created_at: updated_at, updated_at })
 
 test('AC-2: no saved strategies -> Create Strategy, Explore Option Chain, Learn, and a quiet Zerodha line', async ({ page }) => {
   await page.route('**/api/strategies', (route) =>

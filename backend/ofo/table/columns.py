@@ -72,3 +72,5 @@ TRAILING_COLUMNS: tuple[ColumnId, ...] = (
 
 #: Each heading is a catalogue render (W-066): template `table_column_label`, words in `COLUMN_LABEL_TEXT`.
 HEADER_LABELS: dict[ColumnId, str] = {cid: render_explanation("table_column_label", column=cid) for cid in ColumnId}
+#: D-12 (ADR-320 (1)): the Theta column's heading on expiry day, when its cells are the Decay left today in rupees.
+DECAY_LEFT_TODAY_LABEL: str = render_explanation("table_column_decay_left_today")

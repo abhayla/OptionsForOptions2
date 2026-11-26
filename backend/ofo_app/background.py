@@ -536,6 +536,19 @@ def screen_margin_reader(margin_of: Any) -> MarginOf:
     return read
 
 
+def worker_margin_of(login: StoredLogin, ctx: Any, source: Any) -> MarginOf:
+    """The worker's T-16 margin seam. D-36 round 2: every read gets its OWN ``ApproachMargin`` (``get_approach_margin``
+    makes the unit of work's one ``RequestFunds``), so no failed or stale funds read of that holder is reused by the
+    next read. The OutcomeMargin plan cache (ADR-099) still returns a successful read's figures for an unchanged
+    basket; a fresh read per refresh is not forced here (follow-up in the Part D report)."""
+    from ofo_app.routes.adjustment import get_approach_margin  # noqa: PLC0415
+    from ofo_app.routes.adjustment_check import current_margin  # noqa: PLC0415 - the route module, at run time
+
+    async def read(w: Watched, market: MarketInputs) -> Mapping | None:
+        return await current_margin(get_approach_margin(ctx, source), w.tracked, market)
+    return login.reading(read)
+
+
 class StoredLogin:
     """The day's stored broker login as this process's margin read needs it (#627). The process holds no live Kite
     session (``live_market.current_session`` is None here), so the stored one is read again at the start of each margin
@@ -815,6 +828,19 @@ class DbGateStore:
         return bool(lapsed)
 
 
+    async def lapse_expired(self, w: Watched, today: datetime.date) -> bool:
+        """D-30: the open records of a strategy whose last expiry is before ``today`` lapse as contract_expired
+        (``playbook_store.lapse_expired``); True when any did. A failure raises, as ``lapse_changed``."""
+        from ofo_app import playbook_store  # noqa: PLC0415 - database layer at run time
+        from ofo_app.db import get_sessionmaker  # noqa: PLC0415
+        legs = w.tracked.position.legs
+        expiry = max((x.expiry for x in legs), default=None)
+        async with get_sessionmaker()() as db:
+            lapsed = await playbook_store.lapse_expired(db, w.user_ref, w.strategy_id, expiry, today)
+            await db.commit()
+        return bool(lapsed)
+
+
 Lister = Callable[[], Awaitable[list[Watched]]]
 Recorder = Callable[[Watched, pe.StrategyState, Preferences], Awaitable[Any]]
 #: (underlying, IST trading day, expiry, ATM IV) -> stored (ADR-277 (4)); ``record_daily_iv`` is the real one
@@ -963,6 +989,8 @@ class Worker:
                 self._signature.pop(w.strategy_id, None)
                 self._tick.pop(w.strategy_id, None)
         old = {w.strategy_id: w for w in self.monitors}
+        today = self._clock().astimezone(IST).date()
+        await self._lapse_expired_all(monitors, today)
         for w in monitors:
             if _count_of(w.tracked) is None:  # an unreadable count lapses nothing (and resets nothing)
                 continue
@@ -988,6 +1016,18 @@ class Worker:
         self.monitors = [w for w in monitors if w.strategy_id in old or w.strategy_id in self._gate_load]
         self._rebuilt_at = self._clock()
         log.info("background: %s strategies monitored", len(self.monitors))
+
+    async def _lapse_expired_all(self, monitors: list[Watched], today: datetime.date) -> None:
+        """D-30: records of expired contracts lapse (the one writer, ADR-237 (6)); a failure is contained per strategy,
+        logged and retried at the next re-list (as ``_lapse_exited``), so the others and the rebuild go on."""
+        for w in monitors:
+            try:
+                async with held(self.db_gate, GATE_REBUILD):
+                    await self._gate_store.lapse_expired(w, today)
+            except Exception as exc:
+                log.exception("background: lapsing the expired records of strategy %s failed; the others go on",
+                              w.strategy_id)
+                _keep_recent(self.errors, (w.strategy_id, type(exc).__name__))
 
     def _drop_stale_writes(self, monitors: list[Watched]) -> None:
         """#636 r5 finding 2: a queued write whose strategy left the list (exited, deleted, no playbook) or whose plan
@@ -1878,9 +1918,7 @@ async def owner_lister(provider: Any, gate: Any = None,
                 tracked = await read_tracked(s.id, rates)
                 if tracked is None:  # nothing traded: a definite answer, not a failed read (those raise below)
                     raise _NothingTraded  # handled outside the hold (the lapse takes its own)
-                spot = provider.underlying_quote(tracked.position.underlying)
-                stype = check.strategy_type(tracked.position, None if spot is None else spot.ltp,
-                                            provider.instrument_master())
+                stype = check.entry_type(tracked, provider.instrument_master())  # D-04
                 async with get_sessionmaker()() as db:
                     resolved = await check.resolve(db, OWNER_REF, s.id, stype)
                     facts = await entry_facts_in(db, s.id) if resolved.body is not None else None
@@ -2012,7 +2050,6 @@ async def _serve_live() -> int:  # pragma: no cover - the process wiring; each p
     from ofo.settings import defaults  # noqa: PLC0415
 
     from ofo_app.outcome_margin import OutcomeMargin  # noqa: PLC0415
-    from ofo_app.routes.adjustment import get_approach_margin  # noqa: PLC0415
     from ofo_app.routes.outcome import MarketContext, load_charge_rates, server_now  # noqa: PLC0415
     login = stored_login(clock)
     margin_source = OutcomeMargin(login.session, login.open_client, clock=server_now)
@@ -2025,7 +2062,7 @@ async def _serve_live() -> int:  # pragma: no cover - the process wiring; each p
     worker = Worker(provider_for=lambda _owner: provider, lister=lister,
                     clock=clock, settings=cache.at, preferences=preferences, want_client=bus, db_gate=gate,
                     side_tasks=(cache.poll_loop,), user_values=user_values,
-                    margin_of=login.reading(screen_margin_reader(get_approach_margin(margin_ctx, margin_source))),
+                    margin_of=worker_margin_of(login, margin_ctx, margin_source),
                     daily_iv=record_daily_iv)  # ADR-277 (4): the live role only
     feed = asyncio.create_task(socket.run(), name="background-feed")
     try:

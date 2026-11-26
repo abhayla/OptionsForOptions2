@@ -189,7 +189,7 @@ def test_rendered_expired_leg_text() -> None:
 
 def test_rendered_disconnect_text_is_ac5_exact() -> None:
     assert _render_gate("marketdata_disconnected").what_happened == (
-        "Live market data disconnected. Last updated: 10:42:17 AM. Live strategy monitoring is paused.")
+        "Live market data disconnected. Last updated: 10:42:17 IST. Live strategy monitoring is paused.")
 
 
 def test_mutation_dropping_one_part_is_refused() -> None:

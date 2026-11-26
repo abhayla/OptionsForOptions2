@@ -8,7 +8,7 @@
   "where": "strategies 141 and 139 (GC-ICFIX issues 3 and 4)",
   "evidence": "Strategy 141 showed -32.50 while the result after charges was -435.95 (charges paid 403.45); strategy 139: -159.25 against -511.65."
  },
- "fix": "One engine function (book_after_charges) feeds every total; labels '(after charges)' / '(before charges)'; the breakdown is one tap away.",
+ "fix": "One engine function (book_after_charges) feeds every total; labels '(after charges)' / '(before charges)'; the breakdown is one tap away. Part B (25 Nov): one cost to close at the live price; every tile, curve, table and breakeven for a paper trade reads the paper reply and carries a basis line; the Add Booked switch moves them together (ADR-321).",
  "detection": {
   "status": "unguarded",
   "checks": [],
@@ -19,13 +19,19 @@
   "spec/decisions/ADR-301.md",
   "spec/decisions/ADR-302.md",
   "spec/decisions/ADR-303.md",
-  "spec/decisions/ADR-306.md"
+  "spec/decisions/ADR-306.md",
+  "spec/decisions/ADR-321.md"
  ],
  "occurrences": [
   {
    "date": "2026-11-13",
    "where": "strategies 141 and 139 (GC-ICFIX issues 3 and 4)",
    "evidence": "Strategy 141 showed -32.50 while the result after charges was -435.95 (charges paid 403.45); strategy 139: -159.25 against -511.65."
+  },
+  {
+   "date": "2026-11-23",
+   "where": "live iron condor paper test, D-06/D-11/D-13/D-14/D-16/D-63 (GC-ICLIVE Part B)",
+   "evidence": "C2 157: tiles +301/-6,199 after charges beside a table +494/-6,006 before; profit_left 2,986.75 gross beside max_profit 2,094 net; three charge estimates 103.56 / 206.84 / 203.75; card +1,985 vs builder +2,380.32 after an adjustment (booked +643.50 left out)."
   }
  ]
 }

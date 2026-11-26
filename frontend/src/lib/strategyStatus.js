@@ -1,19 +1,18 @@
-// ADR-299 (D6) + ADR-259 + ADR-298: THE one place that decides a strategy's status word. It reads the list row the server
-// sent (GET /strategies: status 'draft' | 'closed', stored when the last open leg is exited, alembic 0049; has_order = ANY
-// order placed, practice or real). No screen decides a status of its own (tests/strategy-status.test.js guards that).
+// ADR-299 (D6) + ADR-259 + ADR-298: the browser does NOT decide a strategy's status word. The server's ONE function
+// (ofo_app.strategy_store.status_word, GC-ICLIVE D-28) sends it as `status_word` on every strategy row and paper book; this
+// file only reads it. An absent or unknown word reads "Status not available", never a guessed Draft (fail closed).
 import { STATUS_COMPLETED, STATUS_DRAFT, STATUS_RUNNING, STATUS_UNKNOWN } from '@/lib/sharedStateText'
 
-const KNOWN = ['draft', 'closed']
+const KNOWN = [STATUS_DRAFT, STATUS_RUNNING, STATUS_COMPLETED]
 
-/** The server stores only draft and closed; anything else (or no row) is unknown, never guessed as Draft. */
-export const isUnknownStatus = (row) => !KNOWN.includes(row?.status)
+/** No usable server word: unknown, never guessed as Draft. */
+export const isUnknownStatus = (row) => !KNOWN.includes(row?.status_word)
 
-/** Every leg closed: the strategy is Completed and leaves Live Strategies, My Strategies and the Saved tab (ADR-259). */
-export const isCompleted = (row) => row?.status === 'closed'
+/** Every leg closed: Completed leaves Live Strategies, My Strategies and the Saved tab (ADR-259). */
+export const isCompleted = (row) => row?.status_word === STATUS_COMPLETED
 
-/** Placed (practice or real) with at least one open leg (partly closed stays Running). */
-export const isRunning = (row) => row?.status === 'draft' && row.has_order === true
+/** At least one open leg (ADR-299 (1)). */
+export const isRunning = (row) => row?.status_word === STATUS_RUNNING
 
-/** 'Draft' (saved, no order yet), 'Running' (open leg), 'Completed' (every leg closed), or the not-available words. */
-export const strategyStatusWord = (row) =>
-  isUnknownStatus(row) ? STATUS_UNKNOWN : isCompleted(row) ? STATUS_COMPLETED : isRunning(row) ? STATUS_RUNNING : STATUS_DRAFT
+/** The server's word, or the not-available words. */
+export const strategyStatusWord = (row) => (isUnknownStatus(row) ? STATUS_UNKNOWN : row.status_word)

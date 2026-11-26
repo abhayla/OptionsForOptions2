@@ -28,6 +28,7 @@ from ofo.adjustment.approaches import (
     build_approach,
 )
 from ofo.adjustment.compare import (
+    OPEN_SIDE_RANK,
     Cell,
     Column,
     Context,
@@ -188,8 +189,8 @@ def test_ac2_breakevens_and_margin_change_and_adjustments_rows():
     cmp = compare(cols, ctx)
     be = row(cmp, "breakevens")
     legs, after = sc["expected"]["approach_legs"], sc["expected"]["approach_after"]
-    for a in ("A-36", "A-01", "A-11"):  # hand zeros of the intrinsic payoff less the charges, between strikes
-        def pnl(x, a=a):
+    def hand_zeros(a):  # hand zeros of the intrinsic payoff less the charges, between strikes
+        def pnl(x):
             return gen.hand_pnl_at(legs[a]["after"], Fraction(after[a]["booked_pnl"]), x) - Fraction(total(sc, a))
         points = sorted({Fraction(x["strike"]) for x in legs[a]["after"]})
         zeros = []
@@ -197,10 +198,24 @@ def test_ac2_breakevens_and_margin_change_and_adjustments_rows():
             if (pnl(lo) < 0) != (pnl(hi) < 0):
                 z = lo + (hi - lo) * pnl(lo) / (pnl(lo) - pnl(hi))
                 zeros.append((D(z.numerator) / D(z.denominator)).quantize(D("0.01")))
+        return zeros, pnl
+
+    for a in ("A-36", "A-01", "A-11"):
+        zeros, _ = hand_zeros(a)
         assert len(zeros) == 2, a
         cell = be.values[a]
         assert cell.text.startswith(f"{zeros[0]}/{zeros[1]} (profit range ") and cell.value == zeros[1] - zeros[0]
-    assert be.leaders == hand_leaders({a: be.values[a].value for a in be.values}, True)
+
+    def hand_rank(a):  # D-21 round 3: two zeros -> the width; ONE zero -> open on the side the P&L at index 0 gives;
+        zeros, pnl = hand_zeros(a)  # no zero -> a loss everywhere (0) or a profit everywhere (above every width)
+        if len(zeros) >= 2:
+            return zeros[-1] - zeros[0]
+        if len(zeros) == 1:
+            word = "Profit below" if pnl(Fraction(0)) > 0 else "Profit above"
+            assert be.values[a].text.startswith(f"{word} {zeros[0]:,}") and be.values[a].value is None, a
+            return OPEN_SIDE_RANK
+        return D(0) if pnl(Fraction(0)) < 0 else D("Infinity")
+    assert be.leaders == hand_leaders({a: hand_rank(a) for a in be.values}, True)
     assert be.values["A-31"].text == "No breakeven: a loss at every level" and be.values["A-31"].value == 0
     mc = row(cmp, "margin_change")
     assert mc.values["A-36"].value == D(0) and mc.values["A-01"].value == D("-1999.50")
@@ -211,17 +226,17 @@ def test_ac2_breakevens_and_margin_change_and_adjustments_rows():
     assert a29.text == "-" and "Zerodha returned no margin figure for this basket" in a29.unavailable_reason
     adj = row(cmp, "adjustments")
     assert adj.values["A-36"].text == "0 used; no plan maximum set" and adj.values["A-05"].value == 1
-    assert adj.leaders == ("A-36",)
+    assert adj.leaders == ("A-36", "A-31")  # D-04: Exit all adds no adjustment, so it ties the fewest
 
 
 def test_f93_adjustments_row_shows_the_plan_maximum_as_used_of_max():
     """F-93: a plan that sets a maximum shows "0 of 2" (+1 when the approach trades); 0 shows "0 of 0";
     no maximum keeps the "no plan maximum set" words; the leader is still the fewest used."""
     _, cols, ctx = build_columns("ADJ-02")
-    for mx, first, trading in ((2, "0 of 2", "1 of 2"), (0, "0 of 0", "1 of 0")):
+    for mx, first, trading in ((2, "0 of 2", "1 of 2"), (0, "0 of 0", "1 of 0")):  # D-04: the true count, never capped
         adj = row(compare(cols, replace(ctx, adjustments_max=mx)), "adjustments")
-        assert adj.values["A-36"].text == first and adj.values["A-05"].text == trading, mx
-        assert adj.values["A-05"].value == 1 and adj.leaders == ("A-36",)
+        assert adj.values["A-36"].text == first and adj.values["A-05"].text.startswith(trading), mx
+        assert adj.values["A-05"].value == 1 and adj.leaders == ("A-36", "A-31")  # Exit all adds none: a tie
     none = row(compare(cols, replace(ctx, adjustments_max=None)), "adjustments")
     assert none.values["A-36"].text == "0 used; no plan maximum set"
 
@@ -388,8 +403,8 @@ def test_adr215_nothing_open_shows_no_position_left_and_cannot_lead_the_greeks_r
         kept = crit.values["A-36"]
         assert kept.unavailable_reason is None and kept.rank is not None, rid
     led = [c.id for c in cmp.criteria if "A-31" in c.leaders]
-    assert led == ["margin_change", "max_loss"]
-    assert cmp.leads["A-31"][0] == 2
+    assert led == ["margin_change", "max_loss", "adjustments"]  # Exit all adds no adjustment (ADR-318)
+    assert cmp.leads["A-31"][0] == 3
 
 
 def test_max_profit_cell_says_when_the_top_is_the_value_at_index_zero():
@@ -402,3 +417,58 @@ def test_max_profit_cell_says_when_the_top_is_the_value_at_index_zero():
     flagged = _Rows(replace(cols[0], whole=put_whole), ctx).max_profit()
     assert flagged.at_index_zero is True and flagged.value == D("1719000")
     assert _Rows(cols[0], ctx).max_profit().at_index_zero is False
+
+
+def _rows_at(used, mx):
+    _, cols, ctx = build_columns("ADJ-02")
+    return row(compare(cols, replace(ctx, adjustments_used=used, adjustments_max=mx)), "adjustments")
+
+
+EXIT_TEXT = "Not an adjustment: closes every open leg"
+
+
+def over(n, mx):
+    return f"{n} of {mx}; this would be adjustment {n}, over your plan maximum of {mx}"
+
+
+def test_d04_below_the_maximum_a_trading_row_counts_one_more_and_is_not_marked():
+    adj = _rows_at(0, 2)
+    assert adj.values["A-36"].text == "0 of 2" and adj.values["A-05"].text == "1 of 2"
+    assert _rows_at(1, 2).values["A-05"].text == "2 of 2"  # the 2nd of 2: at the maximum, not over it
+
+
+@pytest.mark.parametrize("used", [2, 3])
+def test_d04_at_or_over_the_maximum_every_trading_row_shows_the_true_count_and_says_it_is_over(used):
+    """ADR-318 (2): never capped for display. Header and No change show the stored count; Reduce, Close tested spread
+    and every other trading row show stored + 1 with the sentence."""
+    adj = _rows_at(used, 2)
+    assert adj.values["A-36"].text == f"{used} of 2"
+    for a in ("A-29", "A-28", "A-05"):
+        assert adj.values[a].text == over(used + 1, 2), a
+        assert adj.values[a].value == used + 1
+
+
+@pytest.mark.parametrize(("used", "mx"), [(0, 2), (2, 2), (3, 2), (5, None), (0, 0)])
+def test_d04_exit_all_shows_no_count_at_every_state(used, mx):
+    """ADR-318 (3) / ADR-255: closing every open leg is not an adjustment, so no count and no marker."""
+    cell = _rows_at(used, mx).values["A-31"]
+    assert cell.text == EXIT_TEXT and cell.value == used
+
+
+def test_d04_max_zero_the_first_adjustment_is_already_over():
+    adj = _rows_at(0, 0)
+    assert adj.values["A-36"].text == "0 of 0" and adj.values["A-05"].text == over(1, 0)
+
+
+def test_d04_no_plan_maximum_keeps_counting_the_proposed_adjustment_in_the_old_words():
+    adj = _rows_at(5, None)
+    assert adj.values["A-36"].text == "5 used; no plan maximum set"
+    assert adj.values["A-05"].text == "6 used; no plan maximum set"
+    assert adj.values["A-31"].text == EXIT_TEXT
+
+
+def test_d04_a_strategy_with_no_open_leg_counts_nothing_it_does_not_trade():
+    _, cols, ctx = build_columns("ADJ-02")
+    empty = replace(cols[0], built=replace(cols[0].built, trades=(), after=(), closed=()))
+    adj = row(compare([empty], replace(ctx, adjustments_used=2, adjustments_max=2)), "adjustments")
+    assert adj.values["A-36"].text == "2 of 2"

@@ -693,12 +693,12 @@ def test_round6_check_failure_reason_and_flag_message_pass_the_shared_check() ->
 def test_round6_disconnect_message_runs_the_shared_check(monkeypatch: pytest.MonkeyPatch) -> None:
     """AC-2: disconnect_message passes its finished text through the shared check; a changed
     fixed text carrying a Q230 word form is refused, the owner-cited text passes (05:12:17 UTC is
-    10:42:17 AM IST, ADR-015's own example time)."""
+    10:42:17 IST, ADR-015's own example time)."""
     from ofo.marketdata import disconnect
 
     at = datetime.datetime(2026, 9, 29, 5, 12, 17, tzinfo=datetime.timezone.utc)
     assert disconnect.disconnect_message(at) == (
-        "Live market data disconnected. Last updated: 10:42:17 AM. Live strategy monitoring is paused.")
+        "Live market data disconnected. Last updated: 10:42:17 IST. Live strategy monitoring is paused.")
     # Round 9: the text lives only in the catalogue (template marketdata_disconnected); the module keeps no text
     # of its own that could be swapped, and the message carries all four AC-2 parts.
     assert not hasattr(disconnect, "_MESSAGE")

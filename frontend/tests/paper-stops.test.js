@@ -1,6 +1,6 @@
 // GC-TP step 7b (REQ-109 AC-8; ADR-207 (5); screens 221-224): arming a Conditional exit or a leg Stop on a paper strategy,
 // listing and cancelling its triggers. Levels are sent as typed strings; every figure shown is the server's text.
-import { describe, it, expect, vi, beforeEach } from 'vitest'
+import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest'
 import { mount, flushPromises } from '@vue/test-utils'
 import { createRouter, createMemoryHistory } from 'vue-router'
 
@@ -17,6 +17,7 @@ vi.mock('@/services/api', async (importActual) => {
   return { ...actual, default: { get: reply('GET'), post: reply('POST'), delete: reply('DELETE') } }
 })
 
+import { TRACKING_REFRESH_MS, PAPER_PRICE_REASON, PAPER_PRICE_ZERO_REASON } from '@/lib/tracking'
 import { withPriceTexts } from './_priceTexts'
 import PaperStrategies from '@/components/strategy/PaperStrategies.vue'
 
@@ -82,7 +83,8 @@ describe('Stops panel', () => {
     for (const bad of ['0', '-5', '24500.07', 'abc', '0.00']) {
       await t(w, 'ce-above').setValue(bad)
       expect(t(w, 'ce-save').attributes('disabled')).toBeDefined()
-      expect(t(w, 'ce-reason').text()).toBe('Enter a price in steps of 0.05')
+      // D-58: a zero price has its own reason, every other bad text keeps the steps reason
+      expect(t(w, 'ce-reason').text()).toBe(['0', '0.00'].includes(bad) ? PAPER_PRICE_ZERO_REASON : 'Enter a price in steps of 0.05')
     }
     await t(w, 'ce-above').setValue('')
     await t(w, 'ce-below').setValue('24000')
@@ -91,7 +93,7 @@ describe('Stops panel', () => {
     await flushPromises()
     expect(posts()).toEqual([['POST', TRIG, { kind: 'conditional_exit', below: '24000' }]])
   })
-  it('shows the server refusal text and keeps the typed values; a network failure shows the neutral line', async () => {
+  it('shows the server refusal text and keeps the typed values; a network failure shows the Not saved line (ADR-317 (5))', async () => {
     const w = await open()
     await t(w, 'ce-above').setValue('24500')
     answers[`POST ${TRIG}`] = refuse('That level is not valid.')
@@ -102,7 +104,53 @@ describe('Stops panel', () => {
     answers[`POST ${TRIG}`] = () => Promise.reject({ message: 'net', status: null, parts: null })
     await t(w, 'ce-save').trigger('click')
     await flushPromises()
-    expect(t(w, 'stops-error').text()).toBe('Something went wrong. Please try again.')
+    expect(t(w, 'stops-error').text()).toBe('Not saved: could not get an answer from the server. Your levels are still in the boxes, press Save again.')
+  })
+  it('a saved level is confirmed in one line; a refusal shows the server words, keeps the values and no confirmation', async () => {
+    const w = await open()
+    expect(has(w, 'stops-saved')).toBe(false)
+    await t(w, 'ce-above').setValue('24500')
+    await t(w, 'ce-below').setValue('24000.05')
+    answers[`POST ${TRIG}`] = ok({ triggers: [trig(1)] })
+    await t(w, 'ce-save').trigger('click')
+    await flushPromises()
+    expect(t(w, 'stops-saved').text()).toBe('Saved: exit above 24500 and below 24000.05')
+    await t(w, 'ce-above').setValue('22500')
+    answers[`POST ${TRIG}`] = refuse('NIFTY is already above 22,500. This exit would close the trade straight away, so it was not saved.')
+    await t(w, 'ce-save').trigger('click')
+    await flushPromises()
+    expect(has(w, 'stops-saved')).toBe(false)
+    expect(t(w, 'stops-error').text()).toContain('straight away')
+    expect(t(w, 'ce-above').element.value).toBe('22500')
+  })
+  it('D-01: a crossed-level refusal reads exactly the approved line and keeps the typed level', async () => {
+    const w = await open()
+    await t(w, 'ce-above').setValue('22500')
+    answers[`POST ${TRIG}`] = refuse('the live price is already at or beyond this level, so this exit would close the trade straight away. To close now, use Exit.')
+    await t(w, 'ce-save').trigger('click')
+    await flushPromises()
+    expect(t(w, 'stops-error').text()).toBe('Not saved: the live price is already at or beyond this level, so this exit would close the trade straight away. To close now, use Exit.')
+    expect(t(w, 'ce-above').element.value).toBe('22500')
+  })
+  it('D-01: the Not saved line prints the server reason exactly as written, with no change to its first letter', async () => {
+    const w = await open()
+    await t(w, 'ce-above').setValue('22500')
+    for (const reason of ['Zerodha shows no price for this leg.', 'NIFTY is closed.', 'NSE holiday today.', 'the live price is already at or beyond this level.']) {
+      answers[`POST ${TRIG}`] = refuse(reason)
+      await t(w, 'ce-save').trigger('click')
+      await flushPromises()
+      expect(t(w, 'stops-error').text()).toBe(`Not saved: ${reason}`)
+    }
+  })
+  it('a saved leg stop is confirmed with its direction and level', async () => {
+    const w = await open()
+    const level = w.get('[data-testid^="stop-level-"]')
+    const id = level.attributes('data-testid').replace('stop-level-', '')
+    await level.setValue('120')
+    answers[`POST ${TRIG}`] = ok({ triggers: [trig(1, { kind: 'leg_stop', contract_id: 5000, contract_text: 'x' })] })
+    await t(w, `stop-save-${id}`).trigger('click')
+    await flushPromises()
+    expect(t(w, 'stops-saved').text()).toBe('Saved: stop above 120')
   })
   it('lists armed / fired / cancelled; Cancel only on armed ones, and DELETEs that trigger', async () => {
     const w = await open({ triggers: [trig(3, { state: 'fired', fired_at: '2026-10-29T06:00:00Z' }), trig(2, { state: 'cancelled' }), trig(1)] })
@@ -114,6 +162,46 @@ describe('Stops panel', () => {
     await flushPromises()
     expect(calls.filter((c) => c[0] === 'DELETE')).toHaveLength(1)
     expect(w.findAll('[data-testid^="trigger-cancel-"]')).toHaveLength(0)
+  })
+  // D-03 (ADR-317 (7)): an index exit set before an adjustment stays armed; the row says so with the server's sentence
+  const NOTE = 'Exit above 25,645.00 was set before this change; your new short call is 25650. Check this level.'
+  it('D-03: a marked exit prints the server note and Keep this level; an unmarked one has neither', async () => {
+    const w = await open({ triggers: [trig(2, { direction: 'below', level_text: 'Index at or below 25,355.00', set_before_adjustment: false, adjustment_note: null }),
+      trig(1, { level_text: 'Index at or above 25,645.00', set_before_adjustment: true, adjustment_note: NOTE })] })
+    const rows = w.findAll('[data-testid="trigger-row"]')
+    expect(rows[0].find('[data-testid="trigger-adjusted"]').exists()).toBe(false)
+    expect(rows[0].find('[data-testid="trigger-keep-2"]').exists()).toBe(false)
+    expect(rows[1].get('[data-testid="trigger-adjusted"]').text()).toContain('set before the last adjustment')
+    expect(rows[1].get('[data-testid="trigger-adjustment-note"]').text()).toBe(NOTE)
+    expect(rows[1].find('[data-testid="trigger-cancel-1"]').exists()).toBe(true)
+  })
+  it('D-03: Keep this level POSTs keep for that trigger and the mark goes from the answer; cancelled rows are never marked', async () => {
+    const w = await open({ triggers: [trig(1, { set_before_adjustment: true, adjustment_note: NOTE }), trig(5, { state: 'cancelled', set_before_adjustment: true, adjustment_note: NOTE })] })
+    expect(w.findAll('[data-testid^="trigger-keep-"]').map((b) => b.attributes('data-testid'))).toEqual(['trigger-keep-1'])
+    answers['POST /paper/strategies/48/triggers/1/keep'] = ok({ triggers: [trig(6, { set_before_adjustment: false, adjustment_note: null }), trig(1, { state: 'cancelled' })] })
+    await t(w, 'trigger-keep-1').trigger('click')
+    await flushPromises()
+    expect(calls.filter((c) => c[0] === 'POST' && c[1].endsWith('/triggers/1/keep'))).toHaveLength(1)
+    expect(has(w, 'trigger-adjusted')).toBe(false)
+    expect(w.findAll('[data-testid^="trigger-keep-"]')).toHaveLength(0)
+  })
+  it('D-03 r2: a Keep press ends in a line: Kept, Already kept (an unmarked exit), or Not saved', async () => {
+    const w = await open({ triggers: [trig(1, { level_text: 'Index at or above 25,645.00', set_before_adjustment: true, adjustment_note: NOTE })] })
+    answers['POST /paper/strategies/48/triggers/1/keep'] = ok({ triggers: [trig(6, { level_text: 'Index at or above 25,645.00' }), trig(1, { state: 'cancelled' })] })
+    await t(w, 'trigger-keep-1').trigger('click')
+    await flushPromises()
+    expect(t(w, 'stops-saved').text()).toBe('Kept: exit above 25,645.00')
+    const same = await open({ triggers: [trig(1, { level_text: 'Index at or above 25,645.00', set_before_adjustment: true, adjustment_note: NOTE })] })
+    answers['POST /paper/strategies/48/triggers/1/keep'] = ok({ triggers: [trig(1, { level_text: 'Index at or above 25,645.00', set_before_adjustment: false, adjustment_note: null })] })
+    await t(same, 'trigger-keep-1').trigger('click')
+    await flushPromises()
+    expect(t(same, 'stops-saved').text()).toBe('Already kept: exit above 25,645.00')
+    const bad = await open({ triggers: [trig(1, { level_text: 'Index at or above 25,645.00', set_before_adjustment: true, adjustment_note: NOTE })] })
+    answers['POST /paper/strategies/48/triggers/1/keep'] = refuse('That stop already fired.')
+    await t(bad, 'trigger-keep-1').trigger('click')
+    await flushPromises()
+    expect(t(bad, 'stops-error').text()).toBe('Not saved: That stop already fired.')
+    expect(has(bad, 'stops-saved')).toBe(false)
   })
   it('a refused cancel shows the server text; an unreadable or failed triggers read shows a line and no rows', async () => {
     const w = await open({ triggers: [trig(1)] })
@@ -192,5 +280,183 @@ describe('Stops panel', () => {
     expect(before.value).toBe('24500.07')
     expect(t(w, 'stops-status-slot').attributes('class')).toBe(slotClass)
     expect(t(w, 'stops-status-slot').classes()).toContain('min-h-5')
+  })
+})
+
+// D-05 (IC live test 2026-11-23, trade 164): a stop Save must never end with no row and no line on screen.
+describe('Stops panel: a save is never silent (D-05)', () => {
+  it('a Save pressed while the first read is still running is not silently dropped: the button says Saving...', async () => {
+    let release
+    answers['GET /tracking'] = ok({ strategies: [item], answered_at: '2026-10-28T06:00:00Z' })
+    answers[`GET ${TRIG}`] = () => new Promise((resolve) => { release = () => resolve({ data: { triggers: [] } }) })
+    const router = createRouter({ history: createMemoryHistory(), routes: [{ path: '/', component: { template: '<div/>' } }, { path: '/strategy/builder', component: { template: '<div/>' } }] })
+    router.push('/')
+    await router.isReady()
+    const w = mount(PaperStrategies, { global: { plugins: [router] } })
+    await flushPromises()
+    await t(w, 'stops-open-48').trigger('click')
+    await flushPromises()
+    await t(w, 'ce-above').setValue('24500')
+    expect(t(w, 'ce-save').attributes('disabled')).toBeDefined()
+    expect(t(w, 'ce-save').text()).toBe('Saving...')
+    release()
+    await flushPromises()
+  })
+  it('a failed save shows a line starting "Not saved:" and keeps the typed levels', async () => {
+    const w = await open()
+    await t(w, 'ce-above').setValue('24500')
+    await t(w, 'ce-below').setValue('24000.05')
+    answers[`POST ${TRIG}`] = () => Promise.reject({ message: 'x', status: null, parts: null })
+    await t(w, 'ce-save').trigger('click')
+    await flushPromises()
+    expect(t(w, 'stops-error').text().startsWith('Not saved:')).toBe(true)
+    expect(t(w, 'ce-above').element.value).toBe('24500')
+    expect(t(w, 'ce-below').element.value).toBe('24000.05')
+  })
+  it('when the server says the identical stop already exists the line starts "Already set:"', async () => {
+    const w = await open()
+    await t(w, 'ce-above').setValue('24500')
+    answers[`POST ${TRIG}`] = ok({ triggers: [trig(1)], already_set: true, already_armed: ['above'] })
+    await t(w, 'ce-save').trigger('click')
+    await flushPromises()
+    expect(w.text()).toContain('Already set:')
+    expect(t(w, 'stops-saved').text().startsWith('Already set:')).toBe(true)
+  })
+})
+
+describe('Stops panel: a mixed save says which level is which (D-05 r2)', () => {
+  it('one level already armed, the other new: "Saved: ... Already set: ..."', async () => {
+    const w = await open({ triggers: [trig(1, { direction: 'above', level: '29990.00' })] })
+    await t(w, 'ce-above').setValue('29990')
+    await t(w, 'ce-below').setValue('20010')
+    answers[`POST ${TRIG}`] = ok({ triggers: [trig(2, { direction: 'below', level: '20010.00' }), trig(1, { direction: 'above', level: '29990.00' })], already_set: false, already_armed: ['above'] })
+    await t(w, 'ce-save').trigger('click')
+    await flushPromises()
+    expect(t(w, 'stops-saved').text()).toBe('Saved: exit below 20010. Already set: exit above 29990')
+  })
+  it('both levels already armed: "Already set: exit above X and below Y"', async () => {
+    const w = await open({ triggers: [trig(1, { direction: 'above', level: '29990.00' }), trig(2, { direction: 'below', level: '20010.00' })] })
+    await t(w, 'ce-above').setValue('29990.00')
+    await t(w, 'ce-below').setValue('20010')
+    answers[`POST ${TRIG}`] = ok({ triggers: [trig(1, { direction: 'above', level: '29990.00' }), trig(2, { direction: 'below', level: '20010.00' })], already_set: true, already_armed: ['above', 'below'] })
+    await t(w, 'ce-save').trigger('click')
+    await flushPromises()
+    expect(t(w, 'stops-saved').text()).toBe('Already set: exit above 29990.00 and below 20010')
+  })
+  it('armed list unread (null): the line still comes from the server, a duplicate is not called Saved', async () => {
+    answers['GET /tracking'] = ok({ strategies: [item], answered_at: '2026-10-28T06:00:00Z' })
+    answers[`GET ${TRIG}`] = () => Promise.reject({ message: 'x', status: null, parts: null })
+    const router = createRouter({ history: createMemoryHistory(), routes: [{ path: '/', component: { template: '<div/>' } }, { path: '/strategy/builder', component: { template: '<div/>' } }] })
+    router.push('/')
+    await router.isReady()
+    const w = mount(PaperStrategies, { global: { plugins: [router] } })
+    await flushPromises()
+    await t(w, 'stops-open-48').trigger('click')
+    await flushPromises()
+    await t(w, 'ce-above').setValue('29990')
+    await t(w, 'ce-below').setValue('20010')
+    answers[`POST ${TRIG}`] = ok({ triggers: [trig(2, { direction: 'below', level: '20010.00' }), trig(1, { direction: 'above', level: '29990.00' })], already_set: false, already_armed: ['above'] })
+    await t(w, 'ce-save').trigger('click')
+    await flushPromises()
+    expect(t(w, 'stops-saved').text()).toBe('Saved: exit below 20010. Already set: exit above 29990')
+  })
+  it('stale local list (shows above armed, it was cancelled elsewhere): the server stored both, the line says Saved for both', async () => {
+    const w = await open({ triggers: [trig(1, { direction: 'above', level: '29990.00' })] })
+    await t(w, 'ce-above').setValue('29990')
+    await t(w, 'ce-below').setValue('20010')
+    answers[`POST ${TRIG}`] = ok({ triggers: [trig(3, { direction: 'above', level: '29990.00' }), trig(2, { direction: 'below', level: '20010.00' })], already_set: false, already_armed: [] })
+    await t(w, 'ce-save').trigger('click')
+    await flushPromises()
+    expect(t(w, 'stops-saved').text()).toBe('Saved: exit above 29990 and below 20010')
+  })
+  it('leg stop: Saved from a new row, Already set when the server says nothing new was stored', async () => {
+    const w = await open()
+    const id = w.get('[data-testid^="stop-level-"]').attributes('data-testid').replace('stop-level-', '')
+    await t(w, `stop-level-${id}`).setValue('110')
+    answers[`POST ${TRIG}`] = ok({ triggers: [trig(1, { kind: 'leg_stop', direction: 'above', level: '110.00' })], already_set: false, already_armed: [] })
+    await t(w, `stop-save-${id}`).trigger('click')
+    await flushPromises()
+    expect(t(w, 'stops-saved').text()).toBe('Saved: stop above 110')
+    await t(w, `stop-level-${id}`).setValue('110')
+    answers[`POST ${TRIG}`] = ok({ triggers: [trig(1, { kind: 'leg_stop', direction: 'above', level: '110.00' })], already_set: true, already_armed: ['above'] })
+    await t(w, `stop-save-${id}`).trigger('click')
+    await flushPromises()
+    expect(t(w, 'stops-saved').text()).toBe('Already set: stop above 110')
+  })
+})
+
+describe('Stops panel: the Not saved line and the empty-level hint (D-05, ADR-317 (5))', () => {
+  afterEach(() => { vi.useRealTimers() })
+  const failSave = (w) => {
+    answers[`POST ${TRIG}`] = () => Promise.reject({ message: 'x', status: null, parts: null })
+    return t(w, 'ce-save').trigger('click').then(() => flushPromises())
+  }
+  const tick = async () => { await vi.advanceTimersByTimeAsync(TRACKING_REFRESH_MS); await flushPromises() }
+
+  it('Not saved is gone after the next good refresh; the typed levels stay', async () => {
+    vi.useFakeTimers()
+    const w = await open()
+    await t(w, 'ce-above').setValue('24500')
+    await failSave(w)
+    expect(t(w, 'stops-error').text().startsWith('Not saved:')).toBe(true)
+    await tick() // the list's own refresh answers well
+    expect(has(w, 'stops-error')).toBe(false)
+    expect(t(w, 'ce-above').element.value).toBe('24500')
+  })
+  it('a failed refresh leaves the Not saved line on screen', async () => {
+    vi.useFakeTimers()
+    const w = await open()
+    await t(w, 'ce-above').setValue('24500')
+    await failSave(w)
+    answers['GET /tracking'] = () => Promise.reject({ message: 'x', status: null, parts: null })
+    await tick()
+    expect(t(w, 'stops-error').text().startsWith('Not saved:')).toBe(true)
+    expect(t(w, 'ce-above').element.value).toBe('24500')
+  })
+  it('a good Save shows Saved and never Enter at least one level beside it', async () => {
+    const w = await open()
+    await t(w, 'ce-above').setValue('24500')
+    answers[`POST ${TRIG}`] = ok({ triggers: [trig(1)] })
+    await t(w, 'ce-save').trigger('click')
+    await flushPromises()
+    expect(t(w, 'stops-saved').text()).toBe('Saved: exit above 24500')
+    expect(w.text()).not.toContain('Enter at least one level')
+  })
+  it('a refresh that started before the failed Save does not clear Not saved; a later good refresh does', async () => {
+    vi.useFakeTimers()
+    const w = await open()
+    await t(w, 'ce-above').setValue('24500')
+    let release
+    const good = { strategies: [item], answered_at: '2026-10-28T06:00:00Z' }
+    answers['GET /tracking'] = () => new Promise((resolve) => { release = () => resolve({ data: good }) })
+    await tick() // a refresh starts and waits
+    await failSave(w)
+    expect(t(w, 'stops-error').text().startsWith('Not saved:')).toBe(true)
+    release()
+    await flushPromises() // the older refresh lands, good
+    expect(t(w, 'stops-error').text().startsWith('Not saved:')).toBe(true)
+    answers['GET /tracking'] = ok(good)
+    await tick() // a refresh that started after the failure
+    expect(has(w, 'stops-error')).toBe(false)
+    expect(t(w, 'ce-above').element.value).toBe('24500')
+  })
+  it('after Saved, a bad price still shows its reason; empty boxes show no at-least-one hint', async () => {
+    const w = await open()
+    await t(w, 'ce-above').setValue('24500')
+    answers[`POST ${TRIG}`] = ok({ triggers: [trig(1)] })
+    await t(w, 'ce-save').trigger('click')
+    await flushPromises()
+    expect(t(w, 'stops-saved').text()).toBe('Saved: exit above 24500')
+    expect(has(w, 'ce-reason')).toBe(false)
+    await t(w, 'ce-above').setValue('24500.03')
+    expect(t(w, 'ce-reason').text()).toBe(PAPER_PRICE_REASON)
+  })
+  it('Save with both boxes empty shows the hint', async () => {
+    const w = await open()
+    expect(t(w, 'ce-reason').text()).toBe('Enter at least one level')
+    await t(w, 'ce-save').trigger('click')
+    await flushPromises()
+    expect(t(w, 'ce-reason').text()).toBe('Enter at least one level')
+    expect(posts()).toHaveLength(0)
   })
 })

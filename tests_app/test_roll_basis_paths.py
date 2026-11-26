@@ -151,7 +151,7 @@ CALL_SITES = {
     ("ofo/adjustment/approaches.py", "build_approach"): 1,  # applicable_approaches (a pure caller: config as given)
     ("ofo_app/routes/adjustment.py", "build_approach"): 3,  # priced_approach (with_basis), _available (cfg), NO_CHANGE
     ("ofo_app/routes/adjustment.py", "with_basis"): 2,  # the Compare route's cfg and priced_approach
-    ("ofo_app/routes/adjustment.py", "priced_approach"): 1,  # the Compare route
+    ("ofo_app/routes/adjustment.py", "priced_approach"): 2,  # the Compare route; refuse_take_profit_at_loss (D-25)
     ("ofo_app/adjustment_check.py", "priced_approach"): 1,  # cheapest_offered (T-19, the check)
     ("ofo_app/adjustment_check.py", "cheapest_offered"): 1,  # state_of
     ("ofo_app/routes/adjustment_check.py", "state_of"): 1,  # the screen check

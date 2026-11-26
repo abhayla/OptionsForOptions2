@@ -13,7 +13,7 @@ import { openFullTable } from './pages/builder.page'
 const real = JSON.parse(readFileSync(fileURLToPath(new URL('../tests/fixtures/outcome-condor.json', import.meta.url)), 'utf-8'))
 const DRAFT = { underlying: 'NIFTY', legs: real.legs.map((l: any) => ({ instrument_id: l.instrument_id, action: l.action, lots: l.lots,
   planned_entry: l.planned_entry, captured_at: l.captured_at })) }
-const NOT_LIVE = { ...real, state: 'NOT_CONNECTED', status_label: 'Live market data disconnected. Last updated: 09:20:09 AM. Live strategy monitoring is paused.',
+const NOT_LIVE = { ...real, state: 'NOT_CONNECTED', status_label: 'Live market data disconnected. Last updated: 09:20:09 IST. Live strategy monitoring is paused.',
   table: null, summary: null, payoff: null, scenario: null, leg_quotes: undefined, legs: real.legs.map((l: any) => ({ ...l, ltp: null, label: 'x' })) }
 // The real server stamps every outcome push with its own time (`answered_at`) and the feed's last price time
 // (`last_price_at`, the time the reconnecting text shows, REQ-114 AC-5); the recorded fixture predates both fields, so the

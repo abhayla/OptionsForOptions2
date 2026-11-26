@@ -89,6 +89,7 @@ PAPER_ORDER_ROUTES: frozenset[tuple[str, str]] = frozenset({
     ("POST", "/paper/strategies/{strategy_id}/orders"),
     ("POST", "/paper/strategies/{strategy_id}/triggers"),
     ("DELETE", "/paper/strategies/{strategy_id}/triggers/{trigger_id}"),
+    ("POST", "/paper/strategies/{strategy_id}/triggers/{trigger_id}/keep"),  # D-03 Keep this level: re-arms a trigger
     ("POST", "/strategies/{strategy_id}/tracking/exit"),  # places paper exit orders (paper_store.place)
 })
 #: Every order route, real or paper (derived; read by the start-up classification).

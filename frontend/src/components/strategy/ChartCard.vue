@@ -22,8 +22,9 @@ import PayoffChart from './PayoffChart.vue'
 import TargetBadge from './TargetBadge.vue'
 import StrategyPriceChart from './StrategyPriceChart.vue'
 import StrategyTable from './StrategyTable.vue'
+import ClosedRows from './ClosedRows.vue'
 import {
-  COMPACT_COLUMNS, GREEK_COLUMNS, PAYOFF_STEPS, compactRows, greekModeHeading, greekRows, greekText, payoffLevelRows, payoffStepTable, signOf,
+  COMPACT_COLUMNS, GREEK_COLUMNS, PAYOFF_STEPS, greekColumns, compactRows, greekModeHeading, greekRows, greekText, payoffLevelRows, payoffStepTable, signOf,
 } from '@/lib/chartCard'
 import { BOOKED_SWITCH_LABEL } from '@/lib/targetBlock'
 import { BEFORE_CHARGES } from '@/lib/tracking'
@@ -42,6 +43,7 @@ const props = defineProps({
   breakevens: { type: Array, default: () => [] },
   targetCurve: { type: Object, default: null }, // GC-TP step 6b: the reply's target.curve (REQ-084), drawn beside the two curves
   targetBadge: { type: Object, default: null }, // GC-TP R-19a: the reply's target.badge (REQ-144), drawn on the graph
+  curveBookedText: { type: String, default: '' }, // D-11 (ADR-209): the reply's curve_includes_booked_text: the drawn curves include the booked P&L
   targetBookedText: { type: String, default: '' }, // R-18: the reply's target.includes_booked_text
   targetStale: { type: Boolean, default: false }, // the last target request failed: the badge shows no old amount
   targetStaleText: { type: String, default: '' }, // the reply's target.stale_text (ADR-210 (7)) shown when stale
@@ -53,7 +55,9 @@ const props = defineProps({
   payoffTable: { type: Object, default: null },
   // GC-UI step 5 (D-B40 / D-B41): the saved strategy's id, which the Strategy Chart tab asks the server about (null = unsaved)
   savedId: { type: Number, default: null },
-  paperTotal: { type: Object, default: null }, // GC-ICFIX round 2 (F4): sharedTotal() of the page's one paper read; the TOTAL row's P&L shows it, not the socket's figure
+  charges: { type: Object, default: null }, // D-63 round 3: the paper reply's charges texts {paid, close}, as sent; shown only beside an after-charges TOTAL
+  closed: { type: Array, default: null }, // D-63 (a): the paper reply's closed rows; its TOTAL includes their booked P&L, so they are listed under the table
+  paperTotal: { type: Object, default: null }, // GC-ICFIX round 2 (F4): paperPnlBlock() of the page's one paper read; the TOTAL row's P&L shows it, not the socket's figure
   savedRevision: { type: [Number, String], default: null }, // changes on every re-save: the Strategy Chart re-asks
 })
 // D-B10: the graph's Zoom asks the page for a new range; D-B24: the interval menu asks for a new payoff_step (the server
@@ -67,6 +71,11 @@ const cellText = (r, c) => (r.isTotal && c.id === 'unrealized_pnl' && props.pape
   : r.isTotal && c.id === 'pnl_percent' && props.paperTotal ? '—' : r.values[c.id].display)
 // a paper trade's per-row P&L cells are before charges: said once, in the column header (the TOTAL cell carries its own label)
 const headText = (c) => (c.id === 'unrealized_pnl' && props.paperTotal ? `${c.label} ${BEFORE_CHARGES}` : c.label)
+// D-63 round 3: with an after-charges TOTAL, the reply's paid and to-close charges texts are shown as sent (no sum here);
+// charges unknown means the TOTAL is before charges and no line shows
+const chargeLines = computed(() => (props.paperTotal?.kind === 'after' && props.charges
+  ? [{ id: 'paid', label: 'Charges paid', text: props.charges.paid }, { id: 'close', label: 'Estimated cost to close', text: props.charges.close }].filter((l) => l.text)
+  : []))
 const TABS = [
   { key: 'payoff', label: 'Payoff Graph' }, // GC-UI b1 D-B01 (Sensibull 012 tab labels)
   { key: 'pnl', label: 'P&L Table' },
@@ -92,6 +101,11 @@ const showPct = ref(false) // D-B26 (REQ-137 AC-2): Show % adds the server's mov
 const greekMode = ref('unit') // REQ-084 AC-8: one toggle, Per unit (default) or Per position
 const compact = computed(() => compactRows(props.table, props.legs))
 const greeks = computed(() => greekRows(props.table, props.legs))
+// D-63: the Greeks Total adds every leg; with legs on two expiries it says so (a count of expiries, no money)
+const greeksTotalLabel = computed(() => {
+  const n = new Set((props.legs ?? []).map((l) => l?.expiry).filter(Boolean)).size
+  return n > 1 ? `Total (summed across ${n} expiries)` : 'Total'
+})
 const levels = computed(() => payoffLevelRows(props.table))
 const stepTable = computed(() => payoffStepTable(props.payoffTable))
 const pickStep = (e) => emit('payoff-step', e.target.value)
@@ -112,6 +126,7 @@ const toneOf = (v) => ({ profit: 'text-profit', loss: 'text-loss' })[signOf(v)] 
       <label class="flex items-center gap-2 text-sm text-ink-muted">
         <input v-model="includeBooked" type="checkbox" role="switch" :aria-checked="includeBooked ? 'true' : 'false'" data-testid="add-booked-switch" />
         {{ BOOKED_SWITCH_LABEL }}
+        <span v-if="curveBookedText" class="text-xs" data-testid="curve-booked-text">({{ curveBookedText }})</span>
       </label>
     </div>
 
@@ -233,7 +248,15 @@ const toneOf = (v) => ({ profit: 'text-profit', loss: 'text-loss' })[signOf(v)] 
             </tr>
           </thead>
           <tbody>
-            <tr v-for="r in compact" :key="r.rowId" :class="['border-b border-line', r.isTotal ? 'font-semibold' : '']" :data-row="r.rowId" data-testid="compact-row">
+            <template v-for="r in compact" :key="r.rowId">
+            <!-- D-63 round 3: the rows are before charges, the TOTAL is after: the server's two charges lines sit between them -->
+            <template v-if="r.isTotal && chargeLines.length">
+              <tr v-for="l in chargeLines" :key="l.id" class="border-b border-line text-ink-muted" :data-testid="`pnl-charges-${l.id}`">
+                <td class="py-1.5">{{ l.label }}</td>
+                <td v-for="c in COMPACT_COLUMNS" :key="c.id" class="py-1.5 text-right tabular-nums">{{ c.id === 'unrealized_pnl' ? l.text : '' }}</td>
+              </tr>
+            </template>
+            <tr :class="['border-b border-line', r.isTotal ? 'font-semibold' : '']" :data-row="r.rowId" data-testid="compact-row">
               <td class="py-1.5">
                 <span v-if="r.isTotal">Total</span>
                 <span v-else class="inline-flex flex-wrap items-center gap-1.5">
@@ -249,6 +272,7 @@ const toneOf = (v) => ({ profit: 'text-profit', loss: 'text-loss' })[signOf(v)] 
                 data-testid="compact-cell"
               >{{ cellText(r, c) }}</td>
             </tr>
+            </template>
           </tbody>
         </table>
         <EmptyState v-else message="The per-leg P&L is not in this answer. Open the full table to see every column." data-testid="compact-empty" />
@@ -258,6 +282,8 @@ const toneOf = (v) => ({ profit: 'text-profit', loss: 'text-loss' })[signOf(v)] 
         <StrategyTable :table="table" :max-profit="maxProfit" :max-loss="maxLoss" />
         <slot name="details" />
       </div>
+      <!-- D-63 (a): the TOTAL above includes the booked P&L of closed legs; they are listed here, the reply's rows as sent (no sum) -->
+      <ClosedRows :rows="closed ?? []" prefix="pnl-closed" />
     </div>
 
     <!-- Greeks -->
@@ -285,13 +311,13 @@ const toneOf = (v) => ({ profit: 'text-profit', loss: 'text-loss' })[signOf(v)] 
         <thead>
           <tr class="border-b border-line text-left text-ink-muted">
             <th scope="col" class="py-2 font-medium">Instrument</th>
-            <th v-for="c in GREEK_COLUMNS" :key="c.id" scope="col" class="py-2 text-right font-medium" data-testid="greeks-head">{{ c.label }}<FigureHint v-if="c.id === 'decay' || c.id === 'theta'" :id="c.id" /></th>
+            <th v-for="c in greekColumns(props.table)" :key="c.id" scope="col" class="py-2 text-right font-medium" data-testid="greeks-head">{{ c.label }}<FigureHint v-if="c.id === 'decay' || c.id === 'theta'" :id="c.id" /></th>
           </tr>
         </thead>
         <tbody>
           <tr v-for="r in greeks" :key="r.rowId" :class="['border-b border-line', r.isTotal ? 'font-semibold' : '']" :data-row="r.rowId" data-testid="greeks-row">
             <td class="py-1.5">
-              <span v-if="r.isTotal">Total</span>
+              <span v-if="r.isTotal" data-testid="greeks-total-label">{{ greeksTotalLabel }}</span>
               <span v-else class="inline-flex flex-wrap items-center gap-1.5">
                 <Chip :kind="chipKind(r.side)" :label="chipLabel(r.side)" />
                 <span data-testid="instrument-text">{{ r.text }}</span>

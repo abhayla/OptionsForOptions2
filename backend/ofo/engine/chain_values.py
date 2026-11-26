@@ -30,7 +30,15 @@ from decimal import ROUND_HALF_UP, Decimal
 from typing import Literal
 
 from ofo.engine.legs import Instrument
-from ofo.engine.model import data_label, expiry_model, greeks, greeks_unrounded, implied_vol, iv_price
+from ofo.engine.model import (
+    data_label,
+    expiry_model,
+    greeks,
+    greeks_unrounded,
+    implied_vol,
+    iv_price,
+    unit_decay_left_today,
+)
 from ofo.errors.explanations import ExplanationText
 from ofo.marketdata.forward import PARITY, ForwardQuality, ForwardUnavailable, parity_forward
 from ofo.marketdata.quote import NormalizedQuote, is_live_price
@@ -63,6 +71,8 @@ class ChainGreeks:
     vega: Decimal
     #: the unrounded gamma, set only when the 4 dp gamma reads 0.0000 but the real one is not zero (deep OTM ~0.00001)
     gamma_exact: Decimal | None = None
+    #: D-12 (ADR-320 (1)): on the expiry's own day, the per-unit Decay left today (Rs, unrounded); None other days
+    decay_left_today: Decimal | None = None
 
 
 def cell_values(kind: str, strike: Decimal, ltp: Decimal | None, spot: Decimal | None, lot_size: int) -> CellValues:
@@ -89,6 +99,15 @@ def cell_values(kind: str, strike: Decimal, ltp: Decimal | None, spot: Decimal |
         time_value=None if time_value is None else time_value.quantize(PAISE, rounding=ROUND_HALF_UP),
         breakeven=None if breakeven is None else breakeven.quantize(PAISE, rounding=ROUND_HALF_UP),
         breakeven_pct=pct)
+
+
+def price_change(ltp: Decimal | None, previous_close: Decimal | None) -> Decimal | None:
+    """D-55 (ADR-320 (6); REQ-029 AC-2): the chain's Change = the live price less the feed's previous session close,
+    exact decimal, to the paisa. None when either is absent or the price is not live: never 0, never taken from
+    anything else (F-47)."""
+    if ltp is None or previous_close is None or not is_live_price(ltp) or not is_live_price(previous_close):
+        return None
+    return (ltp - previous_close).quantize(PAISE, rounding=ROUND_HALF_UP)
 
 
 def in_the_money(kind: str, strike: Decimal, spot: Decimal | None) -> bool | None:
@@ -130,7 +149,7 @@ class ChainModel:
 
 def chain_model(chain: Iterable[NormalizedQuote], spot_quote: NormalizedQuote | None, expiry: datetime.date,  # noqa: PLR0913
                 valuation: datetime.datetime, rate: Decimal, quality: ForwardQuality, *,
-                market_closed: bool = False) -> ChainModel:
+                market_closed: bool = False, decay_until: datetime.datetime | None = None) -> ChainModel:
     """instrument_id -> engine Greeks for each option of the expiry whose price gives an implied volatility, with the
     forward's basis; no Greeks (and the reason) when the spot or the expiry's forward is refused. ``market_closed``
     (ADR-119 calendar): the held close is the answer (ADR-197, ADR-200 (2)), so no "stale since" label is made; the
@@ -158,10 +177,11 @@ def chain_model(chain: Iterable[NormalizedQuote], spot_quote: NormalizedQuote | 
             vol = implied_vol(em, q.instrument_type, price, q.strike).iv
             g = greeks(em, q.instrument_type, q.strike, vol).greeks
             exact = greeks_unrounded(em, q.instrument_type, q.strike, vol).gamma if g.gamma == 0 else None
+            left = unit_decay_left_today(em, q.instrument_type, q.strike, vol, decay_until)
         except (ValueError, ArithmeticError):
             continue
         out[q.instrument_id] = ChainGreeks(vol, g.delta, g.gamma, g.theta, g.vega,
-                                           exact if exact is not None and exact > 0 else None)
+                                           exact if exact is not None and exact > 0 else None, left)
     return ChainModel(out, "PARITY" if fwd.source == PARITY else "SPOT_FALLBACK", None,
                       None if market_closed else data_label(reading))
 

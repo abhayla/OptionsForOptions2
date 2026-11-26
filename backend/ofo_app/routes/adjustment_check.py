@@ -47,6 +47,7 @@ from ofo_app.routes.adjustment import (
     get_rest_spot_reader,
     get_tracked_reader,
     margin_block,
+    release_connection,
 )
 from ofo_app.routes.adjustment_opportunities import condition_text
 from ofo_app.routes.adjustment_preferences import UserPreferences, UserValuesIn
@@ -179,7 +180,8 @@ def _condition(r: pe.Flag | pe.AlreadyTrue, body: Mapping | None,
     limit = str(r.threshold) if threshold is None else str(threshold)
     if r.trigger_id == "T-19" and cheapest is not None:
         return check.condition_line_t19(label, shown, limit, *cheapest)
-    return check.condition_line(r.trigger_id, label, unit, shown, limit, r.beyond, target)
+    side = next((h.side for h in getattr(r, "members", ()) if h.trigger_id == r.trigger_id), None)  # D-58: tested side
+    return check.condition_line(r.trigger_id, label, unit, shown, limit, r.beyond, target, side)
 
 
 def result_out(r: pe.Result, flag_wording: Any, opened: dict[str, int] | None = None, *,  # noqa: PLR0913
@@ -370,6 +372,17 @@ def live_fields(rule_id: str, live: Mapping[str, Decimal], fired_at: Mapping[str
             "live_as_of_text": None if value is None else as_of_text}
 
 
+def _from_record(flag: pe.Flag, rec: Any) -> pe.Flag:
+    """D-31: ``flag`` as its open record ``rec`` shows it (the record's value, limit and sentence); the flag itself when
+    the rule has no open record or the record stored no comparison to show."""
+    if (rec is None or rec.trigger_id is None or rec.value is None or rec.threshold is None
+            or (flag.cmp or rec.cmp) is None):
+        return flag
+    return HeldFlag(flag.rule_id, flag.trigger_id, flag.stage_name, rec.value,
+                    rec.threshold if rec.limit is None else rec.limit, flag.cmp or rec.cmp, flag.members, flag.beyond,
+                    target=getattr(rec, "target", None), record=rec)
+
+
 def shown_results(ev: pe.Evaluation, open_recs: Any) -> list[pe.Result]:
     """ADR-309 (1): the shown fired state follows the gate's open RECORD. A rule the check evaluated false
     (``ev.clear``), or could not check at all (market closed, prices not live: ``NotChecked``), that still has an open
@@ -380,7 +393,10 @@ def shown_results(ev: pe.Evaluation, open_recs: Any) -> list[pe.Result]:
     # GC-ICFIX issue 19: a close (prices not live) reads the rule "not checked", which is not "cleared": the open record
     # stays shown as fired with its own figures, the not-checked line beside it (the stop must not vanish at 15:30)
     unread = {r.rule_id for r in ev.results if isinstance(r, pe.NotChecked)}
-    return [*ev.results,
+    # D-31 (ADR-309 (1)): a rule that is firing now AND has an open record is shown from that record too (its value, its
+    # sentence), the figures the opportunity list shows; the value of this poll is the separate "Now" value
+    by_rule = {rec.rule_id: rec for rec in open_recs}
+    return [*(_from_record(x, by_rule.get(x.rule_id)) if isinstance(x, pe.Flag) else x for x in ev.results),
             *(HeldFlag(rec.rule_id, rec.trigger_id, rec.stage, rec.value,
                        rec.threshold if rec.limit is None else rec.limit,
                        cmp_of.get(rec.rule_id) or rec.cmp, target=getattr(rec, "target", None), record=rec)
@@ -436,10 +452,11 @@ async def adjustment_check(  # noqa: PLR0913 - FastAPI dependencies, one per inp
         raise StrategyRefused(_NOT_AVAILABLE, Failure.CONFLICT) from None
     if tracked is None:
         raise StrategyRefused(_NOT_AVAILABLE, Failure.NOT_FOUND)
+    await release_connection(db)  # D-36 (c): market and REST reads wait on the broker
     market = await market_reader(tracked, ctx)
     spot = judge_spot(market, await rest_reader(tracked.position.underlying), ctx)
     listed = check.listed_of(ctx)
-    stype = check.strategy_type(tracked.position, spot.value if spot.available else None, listed)
+    stype = check.entry_type(tracked, listed)  # D-04
     resolved = await check.resolve(db, user_ref, strategy_id, stype)
     reply: dict[str, Any] = {
         "strategy_id": strategy_id, "as_of": market.now,
@@ -452,6 +469,9 @@ async def adjustment_check(  # noqa: PLR0913 - FastAPI dependencies, one per inp
     reply["paused"] = await pause_in_force(db, user_ref, strategy_id, market.now)
     if resolved.body is None or reply["paused"] is not None:  # A-38: paused -> shown with its end, not evaluated
         return AdjustmentCheckOut.model_validate(reply)
+    # D-36 (c): the reads above are done; give the request's connection back BEFORE the broker is waited on (the next
+    # statement below starts a new transaction on a fresh checkout; rows read so far stay readable, no expiry on commit)
+    await release_connection(db)
     margin = await current_margin(margin_of, tracked, market)
     # ADR-245: the carry gap in force (plan, else the user's own, else the admin default) is resolved inside state_of
     # ADR-243: the roll basis in force is resolved inside state_of too, from the same layers and the stored entry facts

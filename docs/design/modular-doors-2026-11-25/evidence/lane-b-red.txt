@@ -1,0 +1,481 @@
+
+ RUN  v3.2.7 /home/user/OptionsForOptions2/frontend
+
+ ❯ tests/leg-duplicate-d60.test.js (18 tests | 1 failed) 494ms
+   ✓ D-60: a contract already in the strategy asks first > CORE (23 Nov): the same contract and action picked again asks Increase quantity / Keep separate / Cancel and adds nothing yet 94ms
+   ✓ D-60: a contract already in the strategy asks first > Increase quantity: the existing row gets the picked lots, no new row 59ms
+   ✓ D-60: a contract already in the strategy asks first > Keep separate: a second row 37ms
+   ✓ D-60: a contract already in the strategy asks first > Cancel: nothing changes and the pick stays selected 36ms
+   ✓ D-60: a contract already in the strategy asks first > AC-11: the same contract with the opposite action is two legs, no question 28ms
+   ✓ D-60: a contract already in the strategy asks first > editing a leg onto a contract another leg holds asks the same question 63ms
+   ✓ D-60: two rows on one contract and action carry the gate wording > both rows show it; an opposite-action pair shows nothing 37ms
+   ✓ D-60 r2: the one door (src/lib/legDoor.js) > same contract = same instrument id and same action; a leg with no instrument id never matches another 1ms
+   ✓ D-60 r2: the one door (src/lib/legDoor.js) > Increase beyond the maximum is refused with the manual-edit sentence and changes nothing 1ms
+   ✓ D-60 r2: the one door (src/lib/legDoor.js) > Increase inside the maximum raises the held row; Keep separate keeps the incoming; Cancel returns null 1ms
+   ✓ D-60 r2: the one door (src/lib/legDoor.js) > several held contracts: one question each, in order; Cancel on the second aborts the whole batch 0ms
+   ✓ D-60 r2: the picker obeys the door > Increase quantity beyond the maximum shows the same lots sentence as a manual edit and adds nothing 52ms
+   ✓ D-60 r2: the picker obeys the door > Escape on the question is Cancel; the picks stay; the dialog is a modal with the controls behind it covered 29ms
+   ✓ D-60 r2: the picker obeys the door > a leg row with no instrument id shows no duplicate warning against another such row 18ms
+   ✓ D-60 r3: Increase raises base lots with lots > the door folds base_lots together with lots (lots stays base_lots x multiplier) 0ms
+   ✓ D-60 r3: Increase raises base lots with lots > picker Increase then multiplier x1 keeps the total: the leg sent on carries base_lots equal to its lots 29ms
+   ✓ Phase 5: legDoor opposite option > the default is silent: a SELL of a held BUY asks nothing and is kept as its own row 1ms
+   × Phase 5: legDoor opposite option > opposite: ask asks with kind "opposite"; Cancel returns null 6ms
+     → expected { legs: [ { id: 'a', …(3) } ], …(1) } to be null
+stderr | tests/draft-link.test.js > REQ-134 AC-5 (attack 4): a reload on ?strategy=<id> reopens the saved legs with their SAVED planned entries > four legs open with the saved entries; every outcome request carries them; nothing is captured; the name is the saved one
+[Vue Router warn]: No match found for location with path "/strategies/my-strategies"
+
+stderr | tests/leg-step-duplicate-d60.test.js > D-60 A5: a step onto a contract another leg holds with the same action asks > Core: the strike step lands on the held SELL 22400 PE -> the question names it; nothing is applied before the answer
+[Vue Router warn]: No match found for location with path "/strategies/my-strategies"
+
+stderr | tests/draft-link.test.js > REQ-134 AC-5 (attack 4): a reload on ?strategy=<id> reopens the saved legs with their SAVED planned entries > a ?draft= link still opens its own legs and asks for no saved copy
+[Vue Router warn]: No match found for location with path "/strategies/my-strategies"
+
+stderr | tests/leg-step-duplicate-d60.test.js > D-60 A5: a step onto a contract another leg holds with the same action asks > a step onto a FREE contract does not ask and moves the leg
+[Vue Router warn]: No match found for location with path "/strategies/my-strategies"
+
+stderr | tests/draft-link.test.js > REQ-134 AC-5 (attack 4): a reload on ?strategy=<id> reopens the saved legs with their SAVED planned entries > not found (the catalogue message): shown, the screen is kept, nothing is guessed
+[Vue Router warn]: No match found for location with path "/strategies/my-strategies"
+
+stderr | tests/draft-link.test.js > REQ-134 AC-5 (attack 4): a reload on ?strategy=<id> reopens the saved legs with their SAVED planned entries > unreadable (a leg whose contract the catalogue no longer lists) and a failed request show a message and open nothing
+[Vue Router warn]: No match found for location with path "/strategies/my-strategies"
+
+stderr | tests/draft-link.test.js > REQ-134 AC-5 (attack 4): a reload on ?strategy=<id> reopens the saved legs with their SAVED planned entries > unreadable (a leg whose contract the catalogue no longer lists) and a failed request show a message and open nothing
+[Vue Router warn]: No match found for location with path "/strategies/my-strategies"
+
+stderr | tests/draft-link.test.js > REQ-134 AC-5 (attack 4): a reload on ?strategy=<id> reopens the saved legs with their SAVED planned entries > a strategy value that is not an id sends no request for it
+[Vue Router warn]: No match found for location with path "/strategies/my-strategies"
+
+stderr | tests/leg-step-duplicate-d60.test.js > D-60 A5: a step onto a contract another leg holds with the same action asks > a step onto a contract held with the OTHER action asks first: Keep both / Cancel (ADR-328 (1))
+[Vue Router warn]: No match found for location with path "/strategies/my-strategies"
+
+stderr | tests/draft-link.test.js > REQ-134 AC-5 (attack 4): a reload on ?strategy=<id> reopens the saved legs with their SAVED planned entries > a strategy value that is not an id sends no request for it
+[Vue Router warn]: No match found for location with path "/strategies/my-strategies"
+
+stderr | tests/draft-link.test.js > REQ-134 AC-5 (attack 4): a reload on ?strategy=<id> reopens the saved legs with their SAVED planned entries > a strategy value that is not an id sends no request for it
+[Vue Router warn]: No match found for location with path "/strategies/my-strategies"
+
+stderr | tests/draft-link.test.js > REQ-134 AC-5 (attack 4): a reload on ?strategy=<id> reopens the saved legs with their SAVED planned entries > a strategy value that is not an id sends no request for it
+[Vue Router warn]: No match found for location with path "/strategies/my-strategies"
+
+stderr | tests/draft-link.test.js > REQ-134 AC-2 core on the page: Save, edit a leg, Save again is ONE strategy at the next revision > a never-saved screen asks a name, creates the strategy and names it in the URL; the edit then Save PUTs the loaded revision
+[Vue Router warn]: No match found for location with path "/strategies/my-strategies"
+
+stderr | tests/leg-step-duplicate-d60.test.js > D-60 A5: a step onto a contract another leg holds with the same action asks > Cancel keeps every leg exactly as before the step
+[Vue Router warn]: No match found for location with path "/strategies/my-strategies"
+
+stderr | tests/draft-link.test.js > REQ-134 AC-2 core on the page: Save, edit a leg, Save again is ONE strategy at the next revision > a never-saved screen asks a name, creates the strategy and names it in the URL; the edit then Save PUTs the loaded revision
+[Vue Router warn]: No match found for location with path "/strategies/my-strategies"
+
+stderr | tests/leg-step-duplicate-d60.test.js > D-60 A5: a step onto a contract another leg holds with the same action asks > Keep separate applies the step: two rows on the contract, legs not merged
+[Vue Router warn]: No match found for location with path "/strategies/my-strategies"
+
+stderr | tests/draft-link.test.js > REQ-134 AC-2 core on the page: Save, edit a leg, Save again is ONE strategy at the next revision > after Save (revision 3 -> 4) the next Save sends the page's newest loaded revision 4
+[Vue Router warn]: No match found for location with path "/strategies/my-strategies"
+
+stderr | tests/leg-step-duplicate-d60.test.js > D-60 A5: a step onto a contract another leg holds with the same action asks > Increase quantity adds the stepped leg's lots to the held row; the stepped row is gone (3 legs, lots 2)
+[Vue Router warn]: No match found for location with path "/strategies/my-strategies"
+
+stderr | tests/draft-link.test.js > REQ-134 AC-2 core on the page: Save, edit a leg, Save again is ONE strategy at the next revision > Save As opens the copy: the URL names the copy, and the next Save updates the copy, never the original
+[Vue Router warn]: No match found for location with path "/strategies/my-strategies"
+
+stderr | tests/leg-step-duplicate-d60.test.js > D-60 A5: a step onto a contract another leg holds with the same action asks > Increase past the served lots limit changes nothing and says why (the picker's sentence)
+[Vue Router warn]: No match found for location with path "/strategies/my-strategies"
+
+stderr | tests/draft-link.test.js > REQ-134 AC-2 core on the page: Save, edit a leg, Save again is ONE strategy at the next revision > Save As opens the copy: the URL names the copy, and the next Save updates the copy, never the original
+[Vue Router warn]: No match found for location with path "/strategies/my-strategies"
+
+stderr | tests/draft-link.test.js > REQ-134 AC-2 core on the page: Save, edit a leg, Save again is ONE strategy at the next revision > Clear all leaves the saved strategy: the next Save asks a name (a new strategy); Undo gives the saved strategy back
+[Vue Router warn]: No match found for location with path "/strategies/my-strategies"
+
+stderr | tests/leg-step-duplicate-d60.test.js > D-60 A5: a step onto a contract another leg holds with the same action asks > Shift onto a held contract asks too (every relative control passes the same door)
+[Vue Router warn]: No match found for location with path "/strategies/my-strategies"
+
+stderr | tests/leg-step-duplicate-d60.test.js > D-60 A5: a step onto a contract another leg holds with the same action asks > the question survives a parent refresh: the outcome re-read does not remove it
+[Vue Router warn]: No match found for location with path "/strategies/my-strategies"
+
+stderr | tests/draft-link.test.js > F-4: a new ?strategy= while the builder is mounted opens that strategy like a fresh load > router.push to ?strategy=49 on a page showing 54 shows 49's legs
+[Vue Router warn]: No match found for location with path "/strategies/my-strategies"
+
+stderr | tests/draft-link.test.js > F-4: a new ?strategy= while the builder is mounted opens that strategy like a fresh load > router.push to ?strategy=49 on a page showing 54 shows 49's legs
+[Vue Router warn]: No match found for location with path "/strategies/my-strategies"
+
+stderr | tests/leg-step-duplicate-d60.test.js > D-60 round 2: a newer move cancels the open question > a second step onto a FREE contract closes the old question, settles the first edit and shows the second move
+[Vue Router warn]: No match found for location with path "/strategies/my-strategies"
+
+stderr | tests/draft-link.test.js > F-4: a new ?strategy= while the builder is mounted opens that strategy like a fresh load > Save does not re-read the strategy it just named in the URL
+[Vue Router warn]: No match found for location with path "/strategies/my-strategies"
+
+stderr | tests/leg-step-duplicate-d60.test.js > D-60 round 2: a newer move cancels the open question > a second step onto a held contract leaves ONE question and answering it applies to the second move
+[Vue Router warn]: No match found for location with path "/strategies/my-strategies"
+
+stderr | tests/draft-link.test.js > F-4: a new ?strategy= while the builder is mounted opens that strategy like a fresh load > a slow read of 54 landing after the push to 49 never replaces 49
+[Vue Router warn]: No match found for location with path "/strategies/my-strategies"
+
+stderr | tests/draft-link.test.js > F-4: a new ?strategy= while the builder is mounted opens that strategy like a fresh load > a slow read of 54 landing after the push to 49 never replaces 49
+[Vue Router warn]: No match found for location with path "/strategies/my-strategies"
+
+stderr | tests/draft-link.test.js > F-4: a new ?strategy= while the builder is mounted opens that strategy like a fresh load > a new ?draft= link while mounted asks "Replace the N legs", and on Yes seeds that draft's legs
+[Vue Router warn]: No match found for location with path "/strategies/my-strategies"
+
+stderr | tests/leg-step-duplicate-d60.test.js > D-60 round 2: a newer move cancels the open question > Width collapsing the two BUY wings onto one contract asks (moved against moved)
+[Vue Router warn]: No match found for location with path "/strategies/my-strategies"
+
+stderr | tests/draft-link.test.js > F-4: a new ?strategy= while the builder is mounted opens that strategy like a fresh load > a new ?draft= link while mounted asks "Replace the N legs", and on Yes seeds that draft's legs
+[Vue Router warn]: No match found for location with path "/strategies/my-strategies"
+
+stderr | tests/draft-link.test.js > u502 round 2: Save is off only when the screen equals the server copy of the open strategy > edit, Clear all, Undo: Save is ENABLED and sends the edited legs (no lost work)
+[Vue Router warn]: No match found for location with path "/strategies/my-strategies"
+
+stderr | tests/leg-step-duplicate-d60.test.js > D-60 round 2: a newer move cancels the open question > Hedge keeps the leg count and order: moving one hedge leg to a free contract asks nothing (finding 3)
+[Vue Router warn]: No match found for location with path "/strategies/my-strategies"
+
+stderr | tests/leg-step-duplicate-d60.test.js > D-60 round 3: net-zero step closes the question; Increase keeps base lots; legs changed under the dialog > step onto a held contract, step back (+1 then -1 nets to zero): no question on screen, no hanging edit, legs as before
+[Vue Router warn]: No match found for location with path "/strategies/my-strategies"
+
+stderr | tests/draft-link.test.js > u502 round 2: Save is off only when the screen equals the server copy of the open strategy > open A, edit, open B: the second strategy Save state follows its server legs (off), and an edit of B turns it on
+[Vue Router warn]: No match found for location with path "/strategies/my-strategies"
+
+stderr | tests/builder-draft-replace.test.js > ADR-328 (2): a replacing draft link on a mounted builder asks first > the dialog says "Replace the 3 legs in the builder?"; Cancel keeps the 3 legs and the URL names the old draft
+[Vue Router warn]: No match found for location with path "/strategies/my-strategies"
+
+stderr | tests/leg-step-duplicate-d60.test.js > D-60 round 3: net-zero step closes the question; Increase keeps base lots; legs changed under the dialog > step Increase then multiplier x1 keeps the total (base lots rise with lots)
+[Vue Router warn]: No match found for location with path "/strategies/my-strategies"
+
+stderr | tests/draft-link.test.js > u502 round 2: Save is off only when the screen equals the server copy of the open strategy > open A, edit, open B: the second strategy Save state follows its server legs (off), and an edit of B turns it on
+[Vue Router warn]: No match found for location with path "/strategies/my-strategies"
+
+stderr | tests/builder-draft-replace.test.js > ADR-328 (2): a replacing draft link on a mounted builder asks first > the dialog says "Replace the 3 legs in the builder?"; Cancel keeps the 3 legs and the URL names the old draft
+[Vue Router warn]: No match found for location with path "/strategies/my-strategies"
+
+stderr | tests/draft-link.test.js > u502 round 2: Save is off only when the screen equals the server copy of the open strategy > a load that fails leaves no baseline: Save follows the never-saved rule (on, with savable legs)
+[Vue Router warn]: No match found for location with path "/strategies/my-strategies"
+
+stderr | tests/builder-draft-replace.test.js > ADR-328 (2): a replacing draft link on a mounted builder asks first > Escape, x and the overlay are Cancel too
+[Vue Router warn]: No match found for location with path "/strategies/my-strategies"
+
+stderr | tests/draft-link.test.js > u502 round 2: Save is off only when the screen equals the server copy of the open strategy > a load that fails leaves no baseline: Save follows the never-saved rule (on, with savable legs)
+[Vue Router warn]: No match found for location with path "/strategies/my-strategies"
+
+stderr | tests/leg-step-duplicate-d60.test.js > D-60 round 3: net-zero step closes the question; Increase keeps base lots; legs changed under the dialog > legs changed while the question is open are not overwritten: the answer is treated as Cancel
+[Vue Router warn]: No match found for location with path "/strategies/my-strategies"
+
+ ❯ tests/draft-link.test.js (21 tests | 1 failed | 1 skipped) 2847ms
+   ✓ canonicalLeg > lots "02" and entry "042.70" become 2 and "42.70" 2ms
+   ✓ canonicalLeg > a missing planned entry stays valid (an unpriced leg) 0ms
+   ✓ canonicalLeg > refuses what the server would accept but the matcher cannot compare 1ms
+   ✓ the refusal text is the catalogue template > matches user_input_request_invalid in backend/ofo/errors/templates.py 2ms
+   ✓ REQ-134 AC-5 (attack 4): a reload on ?strategy=<id> reopens the saved legs with their SAVED planned entries > four legs open with the saved entries; every outcome request carries them; nothing is captured; the name is the saved one 252ms
+   ✓ REQ-134 AC-5 (attack 4): a reload on ?strategy=<id> reopens the saved legs with their SAVED planned entries > a ?draft= link still opens its own legs and asks for no saved copy 168ms
+   ✓ REQ-134 AC-5 (attack 4): a reload on ?strategy=<id> reopens the saved legs with their SAVED planned entries > not found (the catalogue message): shown, the screen is kept, nothing is guessed 44ms
+   ✓ REQ-134 AC-5 (attack 4): a reload on ?strategy=<id> reopens the saved legs with their SAVED planned entries > unreadable (a leg whose contract the catalogue no longer lists) and a failed request show a message and open nothing 64ms
+   ✓ REQ-134 AC-5 (attack 4): a reload on ?strategy=<id> reopens the saved legs with their SAVED planned entries > a strategy value that is not an id sends no request for it 130ms
+   ✓ REQ-134 AC-2 core on the page: Save, edit a leg, Save again is ONE strategy at the next revision > a never-saved screen asks a name, creates the strategy and names it in the URL; the edit then Save PUTs the loaded revision 234ms
+   ✓ REQ-134 AC-2 core on the page: Save, edit a leg, Save again is ONE strategy at the next revision > after Save (revision 3 -> 4) the next Save sends the page's newest loaded revision 4 226ms
+   ✓ REQ-134 AC-2 core on the page: Save, edit a leg, Save again is ONE strategy at the next revision > Save As opens the copy: the URL names the copy, and the next Save updates the copy, never the original 187ms
+   ✓ REQ-134 AC-2 core on the page: Save, edit a leg, Save again is ONE strategy at the next revision > Clear all leaves the saved strategy: the next Save asks a name (a new strategy); Undo gives the saved strategy back  333ms
+   ✓ F-4: a new ?strategy= while the builder is mounted opens that strategy like a fresh load > router.push to ?strategy=49 on a page showing 54 shows 49's legs 214ms
+   ✓ F-4: a new ?strategy= while the builder is mounted opens that strategy like a fresh load > Save does not re-read the strategy it just named in the URL 117ms
+   ✓ F-4: a new ?strategy= while the builder is mounted opens that strategy like a fresh load > a slow read of 54 landing after the push to 49 never replaces 49 122ms
+   × F-4: a new ?strategy= while the builder is mounted opens that strategy like a fresh load > a new ?draft= link while mounted asks "Replace the N legs", and on Yes seeds that draft's legs 154ms
+     → Cannot call trigger on an empty DOMWrapper.
+   ↓ F-4: a new ?strategy= while the builder is mounted opens that strategy like a fresh load > a new ?draft= link while mounted seeds that draft's legs
+   ✓ u502 round 2: Save is off only when the screen equals the server copy of the open strategy > edit, Clear all, Undo: Save is ENABLED and sends the edited legs (no lost work) 254ms
+   ✓ u502 round 2: Save is off only when the screen equals the server copy of the open strategy > open A, edit, open B: the second strategy Save state follows its server legs (off), and an edit of B turns it on 219ms
+   ✓ u502 round 2: Save is off only when the screen equals the server copy of the open strategy > a load that fails leaves no baseline: Save follows the never-saved rule (on, with savable legs) 119ms
+stderr | tests/builder-draft-replace.test.js > ADR-328 (2): a replacing draft link on a mounted builder asks first > Escape, x and the overlay are Cancel too
+[Vue Router warn]: No match found for location with path "/strategies/my-strategies"
+
+stderr | tests/leg-step-duplicate-d60.test.js > D-60 round 4: replacing the legs closes the open question; an equal-content refresh keeps the answer > route change to another strategy (new ?draft=) closes the question and settles the edit
+[Vue Router warn]: No match found for location with path "/strategies/my-strategies"
+
+stderr | tests/builder-draft-replace.test.js > ADR-328 (2): a replacing draft link on a mounted builder asks first > Yes shows the new legs (today's path)
+[Vue Router warn]: No match found for location with path "/strategies/my-strategies"
+
+stderr | tests/builder-draft-replace.test.js > ADR-328 (2): a replacing draft link on a mounted builder asks first > Yes shows the new legs (today's path)
+[Vue Router warn]: No match found for location with path "/strategies/my-strategies"
+
+stderr | tests/leg-step-duplicate-d60.test.js > D-60 round 4: replacing the legs closes the open question; an equal-content refresh keeps the answer > route change to another strategy (new ?draft=) closes the question and settles the edit
+[Vue Router warn]: No match found for location with path "/strategies/my-strategies"
+
+stderr | tests/builder-draft-replace.test.js > ADR-328 (2): a replacing draft link on a mounted builder asks first > one leg on screen reads "Replace the 1 leg in the builder?"
+[Vue Router warn]: No match found for location with path "/strategies/my-strategies"
+
+stderr | tests/leg-step-duplicate-d60.test.js > D-60 round 4: replacing the legs closes the open question; an equal-content refresh keeps the answer > Undo closes the question and settles the edit
+[Vue Router warn]: No match found for location with path "/strategies/my-strategies"
+
+stderr | tests/builder-draft-replace.test.js > ADR-328 (2): a replacing draft link on a mounted builder asks first > one leg on screen reads "Replace the 1 leg in the builder?"
+[Vue Router warn]: No match found for location with path "/strategies/my-strategies"
+
+stderr | tests/builder-draft-replace.test.js > ADR-328 (2): a replacing draft link on a mounted builder asks first > an unreadable ?draft= while legs are shown takes today's refusal path: no replace question, the link is refused as today
+[Vue Router warn]: No match found for location with path "/strategies/my-strategies"
+
+stderr | tests/builder-draft-replace.test.js > ADR-328 (2): a replacing draft link on a mounted builder asks first > an unreadable ?draft= while legs are shown takes today's refusal path: no replace question, the link is refused as today
+[Vue Router warn]: No match found for location with path "/strategies/my-strategies"
+
+stderr | tests/leg-step-duplicate-d60.test.js > D-60 round 4: replacing the legs closes the open question; an equal-content refresh keeps the answer > legs reassigned with equal content (a names reply) keep the answer: Increase still applies
+[Vue Router warn]: No match found for location with path "/strategies/my-strategies"
+
+stderr | tests/builder-draft-replace.test.js > ADR-328 (2): the cases that ask nothing > the same draft as shown (an equal link) -> no question, the legs stay
+[Vue Router warn]: No match found for location with path "/strategies/my-strategies"
+
+stderr | tests/builder-draft-replace.test.js > ADR-328 (2): the cases that ask nothing > a builder with no legs receiving a draft link -> no question, the link's legs are shown
+[Vue Router warn]: No match found for location with path "/strategies/my-strategies"
+
+stderr | tests/builder-draft-replace.test.js > ADR-328 (2): the cases that ask nothing > a builder with no legs receiving a draft link -> no question, the link's legs are shown
+[Vue Router warn]: No match found for location with path "/strategies/my-strategies"
+
+stderr | tests/leg-step-duplicate-d60.test.js > D-60 round 4: replacing the legs closes the open question; an equal-content refresh keeps the answer > unmounting with the question open settles the pending edit
+[Vue Router warn]: No match found for location with path "/strategies/my-strategies"
+
+stderr | tests/builder-draft-replace.test.js > ADR-328 (2): the cases that ask nothing > a fresh mount with ?draft= (a pasted link, a reload) holds no legs, so it asks nothing
+[Vue Router warn]: No match found for location with path "/strategies/my-strategies"
+
+ ❯ tests/leg-step-duplicate-d60.test.js (21 tests | 1 failed | 1 skipped) 3511ms
+   ✓ D-60 A5: a step onto a contract another leg holds with the same action asks > Core: the strike step lands on the held SELL 22400 PE -> the question names it; nothing is applied before the answer  309ms
+   ✓ D-60 A5: a step onto a contract another leg holds with the same action asks > a step onto a FREE contract does not ask and moves the leg 209ms
+   × D-60 A5: a step onto a contract another leg holds with the same action asks > a step onto a contract held with the OTHER action asks first: Keep both / Cancel (ADR-328 (1)) 170ms
+     → Cannot call text on an empty DOMWrapper.
+   ↓ D-60 A5: a step onto a contract another leg holds with the same action asks > a step onto a contract held with the OTHER action does not ask (two legs, REQ-030 AC-11)
+   ✓ D-60 A5: a step onto a contract another leg holds with the same action asks > Cancel keeps every leg exactly as before the step 162ms
+   ✓ D-60 A5: a step onto a contract another leg holds with the same action asks > Keep separate applies the step: two rows on the contract, legs not merged 155ms
+   ✓ D-60 A5: a step onto a contract another leg holds with the same action asks > Increase quantity adds the stepped leg's lots to the held row; the stepped row is gone (3 legs, lots 2) 171ms
+   ✓ D-60 A5: a step onto a contract another leg holds with the same action asks > Increase past the served lots limit changes nothing and says why (the picker's sentence) 160ms
+   ✓ D-60 A5: a step onto a contract another leg holds with the same action asks > Shift onto a held contract asks too (every relative control passes the same door) 192ms
+   ✓ D-60 A5: a step onto a contract another leg holds with the same action asks > the question survives a parent refresh: the outcome re-read does not remove it 245ms
+   ✓ D-60 round 2: a newer move cancels the open question > a second step onto a FREE contract closes the old question, settles the first edit and shows the second move 161ms
+   ✓ D-60 round 2: a newer move cancels the open question > a second step onto a held contract leaves ONE question and answering it applies to the second move 195ms
+   ✓ D-60 round 2: a newer move cancels the open question > Width collapsing the two BUY wings onto one contract asks (moved against moved) 161ms
+   ✓ D-60 round 2: a newer move cancels the open question > Hedge keeps the leg count and order: moving one hedge leg to a free contract asks nothing (finding 3) 152ms
+   ✓ D-60 round 3: net-zero step closes the question; Increase keeps base lots; legs changed under the dialog > step onto a held contract, step back (+1 then -1 nets to zero): no question on screen, no hanging edit, legs as before 146ms
+   ✓ D-60 round 3: net-zero step closes the question; Increase keeps base lots; legs changed under the dialog > step Increase then multiplier x1 keeps the total (base lots rise with lots) 222ms
+   ✓ D-60 round 3: net-zero step closes the question; Increase keeps base lots; legs changed under the dialog > legs changed while the question is open are not overwritten: the answer is treated as Cancel 130ms
+   ✓ D-60 round 4: replacing the legs closes the open question; an equal-content refresh keeps the answer > route change to another strategy (new ?draft=) closes the question and settles the edit 158ms
+   ✓ D-60 round 4: replacing the legs closes the open question; an equal-content refresh keeps the answer > Undo closes the question and settles the edit 150ms
+   ✓ D-60 round 4: replacing the legs closes the open question; an equal-content refresh keeps the answer > legs reassigned with equal content (a names reply) keep the answer: Increase still applies 142ms
+   ✓ D-60 round 4: replacing the legs closes the open question; an equal-content refresh keeps the answer > unmounting with the question open settles the pending edit 117ms
+ ❯ tests/builder-draft-replace.test.js (8 tests | 4 failed) 1126ms
+   × ADR-328 (2): a replacing draft link on a mounted builder asks first > the dialog says "Replace the 3 legs in the builder?"; Cancel keeps the 3 legs and the URL names the old draft 298ms
+     → expected false to be true // Object.is equality
+   × ADR-328 (2): a replacing draft link on a mounted builder asks first > Escape, x and the overlay are Cancel too 192ms
+     → Cannot call trigger on an empty DOMWrapper.
+   × ADR-328 (2): a replacing draft link on a mounted builder asks first > Yes shows the new legs (today's path) 124ms
+     → Cannot call trigger on an empty DOMWrapper.
+   × ADR-328 (2): a replacing draft link on a mounted builder asks first > one leg on screen reads "Replace the 1 leg in the builder?" 106ms
+     → Cannot call text on an empty DOMWrapper.
+   ✓ ADR-328 (2): a replacing draft link on a mounted builder asks first > an unreadable ?draft= while legs are shown takes today's refusal path: no replace question, the link is refused as today 101ms
+   ✓ ADR-328 (2): the cases that ask nothing > the same draft as shown (an equal link) -> no question, the legs stay 101ms
+   ✓ ADR-328 (2): the cases that ask nothing > a builder with no legs receiving a draft link -> no question, the link's legs are shown 95ms
+   ✓ ADR-328 (2): the cases that ask nothing > a fresh mount with ?draft= (a pasted link, a reload) holds no legs, so it asks nothing 108ms
+
+⎯⎯⎯⎯⎯⎯ Failed Suites 4 ⎯⎯⎯⎯⎯⎯⎯
+
+ FAIL  tests/builder-hold-adr329.test.js [ tests/builder-hold-adr329.test.js ]
+Error: Failed to resolve import "@/stores/builderHold" from "tests/builder-hold-adr329.test.js". Does the file exist?
+  Plugin: vite:import-analysis
+  File: /home/user/OptionsForOptions2/frontend/tests/builder-hold-adr329.test.js:7:42
+  5  |  import { beforeEach, describe, expect, it } from 'vitest'
+  6  |  import { createPinia, setActivePinia } from 'pinia'
+  7  |  import { useBuilderHold, netKeyOf } from '@/stores/builderHold'
+     |                                            ^
+  8  |  import { leaveQuestion, unsavedCount } from '@/composables/useLeaveBuilder'
+  9  |  
+ ❯ TransformPluginContext._formatLog node_modules/vite/dist/node/chunks/config.js:29079:43
+ ❯ TransformPluginContext.error node_modules/vite/dist/node/chunks/config.js:29076:14
+ ❯ normalizeUrl node_modules/vite/dist/node/chunks/config.js:27199:18
+ ❯ node_modules/vite/dist/node/chunks/config.js:27257:32
+ ❯ TransformPluginContext.transform node_modules/vite/dist/node/chunks/config.js:27225:4
+ ❯ EnvironmentPluginContainer.transform node_modules/vite/dist/node/chunks/config.js:28877:14
+ ❯ loadAndTransform node_modules/vite/dist/node/chunks/config.js:22746:26
+
+⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯[1/11]⎯
+
+ FAIL  tests/chain-trip-adr329.test.js [ tests/chain-trip-adr329.test.js ]
+Error: Failed to resolve import "@/stores/builderHold" from "tests/chain-trip-adr329.test.js". Does the file exist?
+  Plugin: vite:import-analysis
+  File: /home/user/OptionsForOptions2/frontend/tests/chain-trip-adr329.test.js:33:0
+  21 |  const __vi_import_7__ = await import("@/pages/StrategyBuilderPage.vue");
+  22 |  const __vi_import_8__ = await import("@/pages/OptionChainPage.vue");
+  23 |  const __vi_import_9__ = await import("@/stores/builderHold");
+     |                                       ^
+  24 |  const __vi_import_10__ = await import("@/stores/chainSelection");
+  25 |  const __vi_import_11__ = await import("@/lib/legDoor");
+ ❯ TransformPluginContext._formatLog node_modules/vite/dist/node/chunks/config.js:29079:43
+ ❯ TransformPluginContext.error node_modules/vite/dist/node/chunks/config.js:29076:14
+ ❯ normalizeUrl node_modules/vite/dist/node/chunks/config.js:27199:18
+ ❯ node_modules/vite/dist/node/chunks/config.js:27257:32
+ ❯ TransformPluginContext.transform node_modules/vite/dist/node/chunks/config.js:27225:4
+ ❯ EnvironmentPluginContainer.transform node_modules/vite/dist/node/chunks/config.js:28877:14
+ ❯ loadAndTransform node_modules/vite/dist/node/chunks/config.js:22746:26
+
+⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯[2/11]⎯
+
+ FAIL  tests/leave-builder-adr329.test.js [ tests/leave-builder-adr329.test.js ]
+Error: Failed to resolve import "@/components/strategy/LeaveBuilderDialog.vue" from "tests/leave-builder-adr329.test.js". Does the file exist?
+  Plugin: vite:import-analysis
+  File: /home/user/OptionsForOptions2/frontend/tests/leave-builder-adr329.test.js:34:0
+  23 |  const __vi_import_9__ = await import("@/pages/StrategyBuilderPage.vue");
+  24 |  const __vi_import_10__ = await import("@/pages/OptionChainPage.vue");
+  25 |  const __vi_import_11__ = await import("@/components/strategy/LeaveBuilderDialog.vue");
+     |                                        ^
+  26 |  const __vi_import_12__ = await import("@/composables/useLeaveBuilder");
+  27 |  const __vi_import_13__ = await import("@/stores/builderHold");
+ ❯ TransformPluginContext._formatLog node_modules/vite/dist/node/chunks/config.js:29079:43
+ ❯ TransformPluginContext.error node_modules/vite/dist/node/chunks/config.js:29076:14
+ ❯ normalizeUrl node_modules/vite/dist/node/chunks/config.js:27199:18
+ ❯ node_modules/vite/dist/node/chunks/config.js:27257:32
+ ❯ TransformPluginContext.transform node_modules/vite/dist/node/chunks/config.js:27225:4
+ ❯ EnvironmentPluginContainer.transform node_modules/vite/dist/node/chunks/config.js:28877:14
+ ❯ loadAndTransform node_modules/vite/dist/node/chunks/config.js:22746:26
+
+⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯[3/11]⎯
+
+ FAIL  tests/leg-door-phase5.test.js [ tests/leg-door-phase5.test.js ]
+Error: Failed to resolve import "@/composables/useLegDoor" from "tests/leg-door-phase5.test.js". Does the file exist?
+  Plugin: vite:import-analysis
+  File: /home/user/OptionsForOptions2/frontend/tests/leg-door-phase5.test.js:32:0
+  20 |  const __vi_import_6__ = await import("@/pages/StrategyBuilderPage.vue");
+  21 |  const __vi_import_7__ = await import("@/components/strategy/LegPicker.vue");
+  22 |  const __vi_import_8__ = await import("@/composables/useLegDoor");
+     |                                       ^
+  23 |  const __vi_import_9__ = await import("@/lib/legDoor");
+  24 |  const __vi_import_10__ = await import("@/lib/paperDrafts");
+ ❯ TransformPluginContext._formatLog node_modules/vite/dist/node/chunks/config.js:29079:43
+ ❯ TransformPluginContext.error node_modules/vite/dist/node/chunks/config.js:29076:14
+ ❯ normalizeUrl node_modules/vite/dist/node/chunks/config.js:27199:18
+ ❯ node_modules/vite/dist/node/chunks/config.js:27257:32
+ ❯ TransformPluginContext.transform node_modules/vite/dist/node/chunks/config.js:27225:4
+ ❯ EnvironmentPluginContainer.transform node_modules/vite/dist/node/chunks/config.js:28877:14
+ ❯ loadAndTransform node_modules/vite/dist/node/chunks/config.js:22746:26
+
+⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯[4/11]⎯
+
+
+⎯⎯⎯⎯⎯⎯⎯ Failed Tests 7 ⎯⎯⎯⎯⎯⎯⎯
+
+ FAIL  tests/builder-draft-replace.test.js > ADR-328 (2): a replacing draft link on a mounted builder asks first > the dialog says "Replace the 3 legs in the builder?"; Cancel keeps the 3 legs and the URL names the old draft
+AssertionError: expected false to be true // Object.is equality
+
+- Expected
++ Received
+
+- true
++ false
+
+ ❯ tests/builder-draft-replace.test.js:62:51
+     60|     const before = idsOf(w)
+     61|     await pushDraft(ONE)
+     62|     expect(t(w, 'draft-replace-dialog').exists()).toBe(true)
+       |                                                   ^
+     63|     expect(t(w, 'draft-replace-dialog').text()).toContain(replacePromp…
+     64|     expect(t(w, 'draft-replace-dialog').text()).toContain('Replace the…
+
+⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯[5/11]⎯
+
+ FAIL  tests/builder-draft-replace.test.js > ADR-328 (2): a replacing draft link on a mounted builder asks first > Escape, x and the overlay are Cancel too
+Error: Cannot call trigger on an empty DOMWrapper.
+ ❯ Object.get node_modules/@vue/test-utils/dist/vue-test-utils.cjs.js:1488:27
+    1486|                     return () => false;
+    1487|                 default:
+    1488|                     throw new Error(`Cannot call ${String(prop)} on an…
+       |                           ^
+    1489|             }
+    1490|         }
+ ❯ tests/builder-draft-replace.test.js:73:51
+ ❯ tests/builder-draft-replace.test.js:76:13
+
+⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯[6/11]⎯
+
+ FAIL  tests/builder-draft-replace.test.js > ADR-328 (2): a replacing draft link on a mounted builder asks first > Yes shows the new legs (today's path)
+Error: Cannot call trigger on an empty DOMWrapper.
+ ❯ Object.get node_modules/@vue/test-utils/dist/vue-test-utils.cjs.js:1488:27
+    1486|                     return () => false;
+    1487|                 default:
+    1488|                     throw new Error(`Cannot call ${String(prop)} on an…
+       |                           ^
+    1489|             }
+    1490|         }
+ ❯ tests/builder-draft-replace.test.js:86:36
+
+⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯[7/11]⎯
+
+ FAIL  tests/builder-draft-replace.test.js > ADR-328 (2): a replacing draft link on a mounted builder asks first > one leg on screen reads "Replace the 1 leg in the builder?"
+Error: Cannot call text on an empty DOMWrapper.
+ ❯ Object.get node_modules/@vue/test-utils/dist/vue-test-utils.cjs.js:1488:27
+    1486|                     return () => false;
+    1487|                 default:
+    1488|                     throw new Error(`Cannot call ${String(prop)} on an…
+       |                           ^
+    1489|             }
+    1490|         }
+ ❯ tests/builder-draft-replace.test.js:94:40
+
+⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯[8/11]⎯
+
+ FAIL  tests/draft-link.test.js > F-4: a new ?strategy= while the builder is mounted opens that strategy like a fresh load > a new ?draft= link while mounted asks "Replace the N legs", and on Yes seeds that draft's legs
+Error: Cannot call trigger on an empty DOMWrapper.
+ ❯ Object.get node_modules/@vue/test-utils/dist/vue-test-utils.cjs.js:1488:27
+    1486|                     return () => false;
+    1487|                 default:
+    1488|                     throw new Error(`Cannot call ${String(prop)} on an…
+       |                           ^
+    1489|             }
+    1490|         }
+ ❯ tests/draft-link.test.js:272:36
+
+⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯[9/11]⎯
+
+ FAIL  tests/leg-duplicate-d60.test.js > Phase 5: legDoor opposite option > opposite: ask asks with kind "opposite"; Cancel returns null
+AssertionError: expected { legs: [ { id: 'a', …(3) } ], …(1) } to be null
+
+- Expected: 
+null
+
++ Received: 
+{
+  "kept": [
+    {
+      "action": "SELL",
+      "id": "n",
+      "instrument_id": "NSE_FO:1",
+      "lots": 1,
+    },
+  ],
+  "legs": [
+    {
+      "action": "BUY",
+      "id": "a",
+      "instrument_id": "NSE_FO:1",
+      "lots": 1,
+    },
+  ],
+}
+
+ ❯ tests/leg-duplicate-d60.test.js:296:141
+    294|   it('opposite: ask asks with kind "opposite"; Cancel returns null', a…
+    295|     const ask = vi.fn().mockResolvedValue('cancel')
+    296|     expect(await admitLegs(held, [{ id: 'n', instrument_id: 'NSE_FO:1'…
+       |                                                                                                                                             ^
+    297|     expect(ask).toHaveBeenCalledWith(held[0], 'opposite')
+    298|   })
+
+⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯[10/11]⎯
+
+ FAIL  tests/leg-step-duplicate-d60.test.js > D-60 A5: a step onto a contract another leg holds with the same action asks > a step onto a contract held with the OTHER action asks first: Keep both / Cancel (ADR-328 (1))
+Error: Cannot call text on an empty DOMWrapper.
+ ❯ Object.get node_modules/@vue/test-utils/dist/vue-test-utils.cjs.js:1488:27
+    1486|                     return () => false;
+    1487|                 default:
+    1488|                     throw new Error(`Cannot call ${String(prop)} on an…
+       |                           ^
+    1489|             }
+    1490|         }
+ ❯ tests/leg-step-duplicate-d60.test.js:99:32
+
+⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯[11/11]⎯
+
+
+ Test Files  8 failed (8)
+      Tests  7 failed | 59 passed | 2 skipped (68)
+   Start at  19:28:55
+   Duration  5.52s (transform 1.43s, setup 1.01s, collect 3.82s, tests 7.98s, environment 1.37s, prepare 438ms)
+

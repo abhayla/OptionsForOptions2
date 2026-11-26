@@ -38,6 +38,7 @@ from ofo.engine import adjust_history as ah
 from ofo.engine.black_scholes import Greeks, year_fraction
 from ofo.engine.chain_values import chain_model
 from ofo.engine.legs import Instrument
+from ofo.engine.model import close_if_expiry_day
 from ofo.instruments.models import INDEX_ROWS, is_lot_aligned
 from ofo.marketdata.day_open import index_day_open
 from ofo.marketdata.forward import ForwardUnavailable, parity_forward
@@ -144,6 +145,26 @@ async def _tracked_on(db: Any, strategy_id: int, rates: ChargeRates | None) -> T
     found = {c.contract_id: c for c in await tracked_contracts.resolve(db, sorted({o.order.contract_id
                                                                                    for o in orders}))}
     book = net_positions([o.order.as_paper() for o in orders], {})
+    underlying, lot, legs = _legs_of(book, found)
+    if not legs or underlying is None or lot is None:
+        raise TrackedExited("no open option leg")
+    if real:  # paid charges and adjustments used before the app saw it: not readable yet ("not checked", ADR-276 (4))
+        return Tracked(Position(underlying, lot, "", datetime.date.min, tuple(legs)), book.booked, None,
+                       adjustments_used=None, entered_at=entered_at(orders), real_book=True)
+    paid, paid_exact = paid_of(orders, found, underlying, rates) if rates is not None else (None, None)
+    booked = book.booked  # the same paper orders ``read_booked`` would read again on a second session
+    # expiry kind and today are set by the route from the market reader (the calendar and clock live there)
+    # adjustments_used: the engine's adjustment history over the stored orders (the count the history page shows);
+    # None when the history cannot be read (the compare's "-" with that reason, never 0)
+    used = history_count(orders, lambda cid: found[cid].stored is not None
+                         and found[cid].stored.listed.contract.instrument_type in _OPTION_TYPES)
+    return Tracked(Position(underlying, lot, "", datetime.date.min, tuple(legs)), booked, paid,
+                   adjustments_used=used, entered_at=entered_at(orders), paid_exact=paid_exact,
+                   entry_position=entry_position_of(orders, found))
+
+
+def _legs_of(book: Any, found: Mapping[int, Any]) -> tuple[str | None, int | None, list[PositionLeg]]:
+    """(underlying, lot, open option legs) of a netted book; a leg that is not a whole-lot option is refused by name."""
     legs: list[PositionLeg] = []
     underlying = lot = None
     for p in book.positions:
@@ -160,20 +181,24 @@ async def _tracked_on(db: Any, strategy_id: int, rates: ChargeRates | None) -> T
         underlying, lot = c.name, c.lot_size
         legs.append(PositionLeg("BUY" if p.net_quantity > 0 else "SELL", c.instrument_type, c.strike, c.expiry,
                                 abs(p.net_quantity) // c.lot_size, p.average, lc.broker_refs[0].broker_symbol))
-    if not legs or underlying is None or lot is None:
-        raise TrackedExited("no open option leg")
-    if real:  # paid charges and adjustments used before the app saw it: not readable yet ("not checked", ADR-276 (4))
-        return Tracked(Position(underlying, lot, "", datetime.date.min, tuple(legs)), book.booked, None,
-                       adjustments_used=None, entered_at=entered_at(orders), real_book=True)
-    paid, paid_exact = paid_of(orders, found, underlying, rates) if rates is not None else (None, None)
-    booked = book.booked  # the same paper orders ``read_booked`` would read again on a second session
-    # expiry kind and today are set by the route from the market reader (the calendar and clock live there)
-    # adjustments_used: the engine's adjustment history over the stored orders (the count the history page shows);
-    # None when the history cannot be read (the compare's "-" with that reason, never 0)
-    used = history_count(orders, lambda cid: found[cid].stored is not None
-                         and found[cid].stored.listed.contract.instrument_type in _OPTION_TYPES)
-    return Tracked(Position(underlying, lot, "", datetime.date.min, tuple(legs)), booked, paid,
-                   adjustments_used=used, entered_at=entered_at(orders), paid_exact=paid_exact)
+    return underlying, lot, legs
+
+
+def entry_position_of(orders: Any, found: Mapping[int, Any]) -> Position | None:
+    """D-04: the position the first batch of orders opened (every order with the first order's ``placed_at``), read as
+    ``_tracked_on`` reads the book. None when no order states a time, the first batch is not whole-lot options, or it
+    nets to nothing: the caller then keeps the current shape (never a guess)."""
+    times = [getattr(o.order, "placed_at", None) for o in orders]
+    if not times or not all(isinstance(t, datetime.datetime) for t in times):
+        return None
+    first = min(times)
+    try:
+        underlying, lot, legs = _legs_of(net_positions([o.order.as_paper() for o in orders
+                                                        if o.order.placed_at == first], {}), found)
+    except TrackedUnreadable:
+        return None
+    return None if not legs or underlying is None or lot is None else Position(underlying, lot, "", datetime.date.min,
+                                                                                 tuple(legs))
 
 
 def paid_of(orders: Any, found: Mapping[int, Any], underlying: str,
@@ -241,7 +266,7 @@ class _GuardsUnreadable:
 GUARDS_UNREADABLE = _GuardsUnreadable()
 
 
-async def read_guards(strategy_id: int, position: Position, spot: Decimal | None,
+async def read_guards(strategy_id: int, tracked: Tracked, spot: Decimal | None,
                       listed: list | None, db: Any = None) -> dict[str, Any] | None | _GuardsUnreadable:
     """The ``guards`` of the strategy playbook (its own plan, else the active playbook of its type; ADR-230 (1)).
     Answer states: a mapping (limits; empty = none set), None (the shape matches no playbook), ``GUARDS_UNREADABLE``
@@ -249,18 +274,17 @@ async def read_guards(strategy_id: int, position: Position, spot: Decimal | None
     ``db``: the request's own session (a request uses ONE connection, #682); None for a caller with no request."""
     try:
         if db is not None:
-            return await _guards_on(db, strategy_id, position, spot, listed)
+            return await _guards_on(db, strategy_id, tracked, listed)
         async with get_sessionmaker()() as own:
-            return await _guards_on(own, strategy_id, position, spot, listed)
+            return await _guards_on(own, strategy_id, tracked, listed)
     except Exception as exc:  # noqa: BLE001 - any failure of the read is "unreadable", never a silent skip
         log.warning("adjustment guards: strategy %s playbook unreadable (%s)", strategy_id, type(exc).__name__)
         return GUARDS_UNREADABLE
 
 
-async def _guards_on(db: Any, strategy_id: int, position: Position, spot: Decimal | None,
-                     listed: list | None) -> dict[str, Any] | None:
+async def _guards_on(db: Any, strategy_id: int, tracked: Tracked, listed: list | None) -> dict[str, Any] | None:
     from ofo_app import adjustment_check  # noqa: PLC0415 - it imports the route module's dataclasses
-    stype = adjustment_check.strategy_type(position, spot, listed)
+    stype = adjustment_check.entry_type(tracked, listed)  # D-04: the one door the server's limit uses
     resolved = await adjustment_check.resolve(db, current_user_ref(), strategy_id, stype)
     return adjustment_check.guards_of_body(resolved.body)
 
@@ -610,7 +634,7 @@ async def read_market(tracked: Tracked, ctx: Any, *, extra_ids: Iterable[str] = 
         reach[expiry] = rm
     if later is not None:  # that expiry's OWN chain model (its forward, its time), from the same frozen read
         later_model = chain_model(list(frozen.later.values()), spot_q, later, now, ctx.rate, ctx.forward_quality,
-                                  market_closed=closed)
+                                  market_closed=closed, decay_until=_today_close(expiry, now))
         if (rm := reach_model(frozen.later, spot_q, later, now, ctx, later_model.greeks)) is not None:
             reach[later] = rm
 
@@ -642,7 +666,27 @@ async def read_market(tracked: Tracked, ctx: Any, *, extra_ids: Iterable[str] = 
                         index_day_open(frozen.day, now), reach, ctx.carry_gap_pct, ctx.s02_delta_per_lot,
                         ctx.s12_percent, spot_q, feed_is_live(provider, now),
                         *leg_prices_state(ctx, quotes, ids, position),
-                        regime=await regime_inputs.read_regime(position.underlying))  # ADR-280: margin, VIX, ADX
+                        regime=await regime_inputs.read_regime(position.underlying),  # ADR-280: margin, VIX, ADX
+                        leg_decay_left=None if _today_close(expiry, now) is None else _decay_left(
+                            ids, model.greeks, later_symbols if later is not None else {},
+                            later_model.greeks if later is not None else {}))
+
+
+def _today_close(expiry: datetime.date, now: datetime.datetime) -> datetime.datetime | None:
+    """D-12 (ADR-320 (1)): the position's nearest expiry is today and its close is ahead -> today's close, else None."""
+    return close_if_expiry_day(expiry, now)  # the engine's one expiry-day check (expiry_day_close calls it too)
+
+
+def _decay_left(ids: Mapping[str, str], greeks: Mapping[str, Any], later_ids: Mapping[str, str],
+                later_greeks: Mapping[str, Any]) -> dict[str, Decimal]:
+    """D-12: trading symbol -> the chain model's per-unit Decay left today, for every contract that has one."""
+    out = {}
+    for symbols, model in ((ids, greeks), (later_ids, later_greeks)):
+        for sym, iid in symbols.items():
+            g = model.get(iid)
+            if g is not None and g.decay_left_today is not None:
+                out[sym] = g.decay_left_today
+    return out
 
 
 async def read_market_more(tracked: Tracked, ctx: Any, extra_ids: Iterable[str]) -> MarketInputs | None:

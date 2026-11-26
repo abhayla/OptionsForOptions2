@@ -190,9 +190,20 @@ def model_inputs(inputs: StrategyInput, forwards: Forwards) -> ModelInputs:
         expiries[leg.expiry] = em
     dlabel = data_label(reading)
     fell_back = any(em.forward.label for em in expiries.values())
-    return ModelInputs._make(_TOKEN, inputs=inputs, spot_level=reading.level, spot_at=reading.at, data_label=dlabel,
-                             expiries=types.MappingProxyType(dict(expiries)),
-                             label=join_labels(dlabel, FALLBACK_LABEL if fell_back else None))
+    built = ModelInputs._make(_TOKEN, inputs=inputs, spot_level=reading.level, spot_at=reading.at, data_label=dlabel,
+                              expiries=types.MappingProxyType(dict(expiries)),
+                              label=join_labels(dlabel, FALLBACK_LABEL if fell_back else None))
+    return _with_basis(built)
+
+
+def _with_basis(model: ModelInputs) -> ModelInputs:
+    """D-08: the ONE place the answer's label (Outcome.output_label, Table.output_label read ``model.label``) gains the
+    at-intrinsic basis line, when :func:`no_time_value` values any leg; else the model unchanged."""
+    basis = intrinsic_basis(model)
+    if basis is None:
+        return model
+    return ModelInputs._make(_TOKEN, **{n: getattr(model, n) for n in ModelInputs.__slots__ if n != "label"},
+                             label=join_labels(model.label, basis))
 
 
 def market_closed_model(model: ModelInputs) -> ModelInputs:
@@ -203,9 +214,10 @@ def market_closed_model(model: ModelInputs) -> ModelInputs:
                                      source=em.source, label=em.forward.label, forward=em.forward, spot_at=em.spot_at)
                 for d, em in model.expiries.items()}
     fell_back = any(em.forward.label for em in expiries.values())
-    return ModelInputs._make(_TOKEN, inputs=model.inputs, spot_level=model.spot_level, spot_at=model.spot_at,
-                             data_label=None, expiries=types.MappingProxyType(expiries),
-                             label=FALLBACK_LABEL if fell_back else None)
+    return _with_basis(ModelInputs._make(_TOKEN, inputs=model.inputs, spot_level=model.spot_level,
+                                         spot_at=model.spot_at, data_label=None,
+                                         expiries=types.MappingProxyType(expiries),
+                                         label=FALLBACK_LABEL if fell_back else None))
 
 
 def _require(model: object) -> ModelInputs:
@@ -373,7 +385,8 @@ def estimate(model: ModelInputs, level: Decimal, at: datetime.datetime | None = 
     ADR-008 Q33A = C; ADR-063; REQ-084 AC-4). One code path for every time: the model's input with its valuation time
     moved to ``at`` (unchanged when ``at`` is the valuation time). A leg whose expiry close is at or before ``at`` is
     marked at its At Expiry value (the engine's expiry payoff, years 0); every other leg keeps its own remaining time,
-    so a multi-expiry strategy values each leg on its own expiry."""
+    so a multi-expiry strategy values each leg on its own expiry. D-08: a leg with no time value left in its price
+    (:func:`no_time_value`) is marked at its At Expiry value at ``level`` too, never dropped from the curve."""
     m = _require(model)
     when = valued_at(m, at)
     shifted = m.inputs if when == m.inputs.valuation_time else dataclasses.replace(m.inputs, valuation_time=when)
@@ -384,7 +397,7 @@ def estimate(model: ModelInputs, level: Decimal, at: datetime.datetime | None = 
     sources: list[str] = []
     for leg in m.legs:
         em = m.expiry_model(leg.expiry)
-        if when >= leg_close(leg):
+        if when >= leg_close(leg) or no_time_value(m, leg):  # D-08: no time left, or none in the price (ADR-268 (1))
             mark = _legs.expiry_value(leg.leg, level)
             marks.append(mark)
             pnls.append(_legs.expiry_pnl(leg.leg, level))
@@ -411,6 +424,10 @@ def leg_greeks_at_unrounded(model: ModelInputs, leg: LegInput, level: Decimal,
     None when the leg's expiry close is at or before ``at``: no time is left, so no model Greek exists (RD-081: the
     caller explains it in a sentence, never an error)."""
     m = _require(model)
+    if no_time_value(m, leg):  # D-08 / ADR-268 (1): delta 1 in the money at ``level``, 0 out of it; no other Greek
+        itm = level > leg.strike if leg.instrument is Instrument.CE else level < leg.strike
+        delta = Decimal(0) if not itm else Decimal(1) if leg.instrument is Instrument.CE else Decimal(-1)
+        return Greeks(delta, Decimal(0), Decimal(0), Decimal(0))
     if leg.iv is None:
         raise ValueError(f"leg {leg.contract} has no IV")
     when = valued_at(m, at)
@@ -421,3 +438,101 @@ def leg_greeks_at_unrounded(model: ModelInputs, leg: LegInput, level: Decimal,
     years = _bs.year_fraction(when, leg.expiry, days_in_year=f.days_in_year)
     return _bs.bs_greeks_unrounded(leg.instrument, level, leg.strike, years, f.rate, leg.iv,
                                    days_in_year=f.days_in_year, dividend_yield=em.dividend_yield)
+
+
+#: ADR-268 (1): an option price within one tick of its intrinsic value has no time value left.
+INTRINSIC_TICK: Final = Decimal("0.05")
+
+
+def no_time_value(model: ModelInputs, leg: LegInput) -> bool:
+    """D-08 (ADR-268 (1), the nearest decision): ON THE LEG'S OWN EXPIRY DAY, before its 15:30 IST close, an option leg
+    whose IV is not solvable while its price is within one tick of its intrinsic value at the live spot (either side,
+    ``|ltp - intrinsic| <= 0.05``) holds no time value: the engine values it at its intrinsic value (its At Expiry
+    value at the level) instead of dropping the estimate, and every figure built so says it (:func:`intrinsic_basis`).
+    Any other day, a price more than a tick away from intrinsic (ADR-019: never substituted), a leg with an IV, a
+    futures leg or a leg with no price: False, so the estimate stays not available (no guess)."""
+    m = _require(model)
+    if leg.instrument is Instrument.FUT or leg.iv is not None or leg.ltp is None or leg.strike is None:
+        return False
+    now = m.inputs.valuation_time
+    if now.astimezone(IST).date() != leg.expiry or now >= leg_close(leg):
+        return False
+    spot = m.expiry_model(leg.expiry).level
+    intrinsic = max(spot - leg.strike if leg.instrument is Instrument.CE else leg.strike - spot, Decimal(0))
+    return abs(leg.ltp - intrinsic) <= INTRINSIC_TICK
+
+
+def intrinsic_basis(model: ModelInputs) -> ExplanationText | None:
+    """D-08: the basis line every estimate that valued a leg by :func:`no_time_value` carries; None when none did."""
+    m = _require(model)
+    return render_explanation("estimate_intrinsic_basis") if any(no_time_value(m, leg) for leg in m.legs) else None
+
+
+def legs_without_estimate(model: ModelInputs) -> list[str]:
+    """The option legs an estimate cannot value (no IV and time value left in the price): the one list every
+    "Estimate not available" reason reads (the scenario view, the what-if)."""
+    m = _require(model)
+    return [leg.contract for leg in m.legs if leg.leg.is_option and leg.iv is None and not no_time_value(m, leg)]
+
+
+def expiry_day_close(model: ModelInputs, at: datetime.datetime | None = None) -> datetime.datetime | None:
+    """ADR-320 (1), ADR-310 (4): today's 15:30 IST close when the strategy's NEAREST expiry is today (IST) and ``at``
+    (default: the valuation time) is before it; else None (another day, or after the close: no theta is replaced)."""
+    m = _require(model)
+    when = valued_at(m, at)
+    return close_if_expiry_day(min(leg.expiry for leg in m.legs), when) if m.legs else None
+
+
+def close_if_expiry_day(nearest: datetime.date, at: datetime.datetime) -> datetime.datetime | None:
+    """THE expiry-day check of ADR-320 (1) (ADR-310 (4)): ``nearest``'s 15:30 IST close when ``nearest`` is ``at``'s IST
+    date and ``at`` is before that close; else None. :func:`expiry_day_close` and the adjustment drawer call it."""
+    close = datetime.datetime.combine(nearest, _bs.EXPIRY_CLOSE)
+    return close if at.astimezone(IST).date() == nearest and at < close else None
+
+
+def unit_decay_left_today(em: ExpiryModel, kind: Instrument, strike: Decimal, vol: Decimal,
+                          until: datetime.datetime | None = None) -> Decimal | None:
+    """D-12 (ADR-320 (1)) for one contract of an expiry (the option chain, the adjustment drawer): per-unit UNSIGNED,
+    UNROUNDED Decay left today at the live spot = its value at today's close minus its model value now. The expiry IS
+    today (IST) and the valuation is before its 15:30 close: its intrinsic value at the close (minus its whole time
+    value). A later expiry with ``until`` (today's close of the position's nearest expiry, from
+    :func:`expiry_day_close`): its decay over the hours left today, as :func:`leg_decay_left_today` values a later
+    leg. Else None (theta stays)."""
+    e = _require_expiry(em)
+    f = e.forward
+    when = f.valuation_time
+    close = datetime.datetime.combine(e.expiry, _bs.EXPIRY_CLOSE)
+    if until is not None and when < until < close:
+        then = _bs.year_fraction(until, e.expiry, days_in_year=f.days_in_year)
+    elif when.astimezone(IST).date() == e.expiry and when < close:
+        then = Decimal(0)
+    else:
+        return None
+    return _bs.bs_decay_unrounded(kind, e.level, strike, f.years, then, f.rate, vol,
+                                  dividend_yield=e.dividend_yield)
+
+
+def leg_decay_left_today(model: ModelInputs, leg: LegInput, level: Decimal | None = None,
+                         at: datetime.datetime | None = None) -> Decimal | None:
+    """D-12 (ADR-320 (1)): per-unit UNSIGNED, UNROUNDED "Decay left today" of one leg: the model value at today's close
+    minus the model value at ``at`` (default now), at ``level`` (default the live spot) with the leg's IV, the rate and
+    the expiry's q; a leg expiring today is at its intrinsic value at the close, so this is minus its whole time value.
+    A later-expiry leg decays over the hours left today. None when it is not expiry day (:func:`expiry_day_close`).
+    A futures leg and a leg with no time value left: 0. No IV with time value left: ValueError (the caller's reason)."""
+    m = _require(model)
+    close = expiry_day_close(m, at)
+    if close is None:
+        return None
+    if leg.instrument is Instrument.FUT or no_time_value(m, leg):
+        return Decimal(0)
+    if leg.iv is None:
+        raise ValueError(f"leg {leg.contract} has no IV")
+    when = valued_at(m, at)
+    em = m.expiry_model(leg.expiry)
+    f = em.forward
+    s = em.level if level is None else level
+    now = _bs.year_fraction(when, leg.expiry, days_in_year=f.days_in_year)
+    then = (_bs.year_fraction(close, leg.expiry, days_in_year=f.days_in_year) if close < leg_close(leg)
+            else Decimal(0))
+    return _bs.bs_decay_unrounded(leg.instrument, s, leg.strike, now, then, f.rate, leg.iv,
+                                  dividend_yield=em.dividend_yield)

@@ -476,6 +476,20 @@ decisions:
   ADR-314: S6.7         # a stored alert record keeps the value, threshold and limit of the sample that confirmed it, never the latest check's
   ADR-315: S6.7         # a draft whose paper book is flat after a reducing order is closed (migration 0053), deleted rows included, real-order strategies excluded
   ADR-316: S6.7         # yes/no and clock rule alerts show the rule's own label; the clock time follows once stored; the breakeven line names its figure
+  ADR-317: S6.7         # a trigger is judged when it is saved, and follows the legs
+  ADR-318: S6.7         # at the adjustment limit, only risk-cutting routes, with the true count
+  ADR-319: S6.7         # a duplicate leg blocks until the user fixes it; legs are never merged silently
+  ADR-320: S6.7         # owner decisions for the remaining items of the 23 Nov live iron condor test
+  ADR-321: S6.7         # one basis per money number, labelled (Part B of the 23 Nov live test, pending owner read)
+  ADR-322: S6.7         # owner decisions of 25 Nov 2026 on the GC-ICLIVE run (rounds, time value, paper exits, spot gate)
+  ADR-323: S6.7         # Part C of the 23 Nov live test: records, times, one word, one value (pending owner read)
+  ADR-324: S6.7         # Part D of the 23 Nov live test: paper header totals leave out expired strategies (pending owner read)
+  ADR-325: S6.7         # Part E of the 23 Nov live test: labels, small features and post-close messages (pending owner read)
+  ADR-326: S6.7         # Owner answers of 25 Nov 2026 to the GC-ICLIVE questions Q2 to Q8 (accepted)
+  ADR-327: S6.7         # in market hours a paper trigger whose level cannot be checked against a live price is refused
+  ADR-328: S6.7         # owner 25 Nov evening: modular-doors phases 3-8 (opposite-side step, Add Selected, per-leg P&L, stale Exit, 446 wording)
+  ADR-329: S6.7         # owner 25 Nov late evening: unsaved builder legs kept for the chain trip, Add Selected adds, leaving elsewhere asks
+  ADR-330: S6.7         # owner decisions of 25 Nov night on the open choices of the live screen test (S-21 and following)
 
 questions:
   Q210: 4a              # external: Zerodha's written answer; ADR-051 covers the owner's own account
@@ -697,6 +711,25 @@ issues:
   "#716": S6.7  # GC-ICFIX: Paper tab opens on a real server error when broker state is 'partial'; adjustments marker goes N, N+1, N around an exit
   "#717": S6.7  # GC-ICFIX: checks not reachable on screen so far, and not done (u404 clear-out, issue 26 measurement, live-day items)
   "#719": S6.7  # Broker status shows live prices 'partial / feed idle' while prices flow to the background watcher
+  "#723": S6.7  # GC-ICLIVE-D: the worker margin refresh is answered from the plan cache, so T-16 can use the morning funds figure
+  "#724": S6.7  # D-41 third reader: the builder leg list shows the outcome socket price, not the paper book's
+  "#725": S6.7  # Tracking panel rows drop a closed lifecycle's booked part
+  "#726": S6.7  # L1: tracking exit placed_at is the quote time, the manual exit is now()
+  "#727": S6.7  # L2: a tracking exit read that raises gives 500, the orders route a named 409
+  "#728": S6.7  # L3: "not connected" means ctx is None on one route, provider.status().connected on the other
+  "#729": S6.7  # L5 (route half): a tracking exit closes only the pre-read qty when a leg grew between read and lock
+  "#730": S6.7  # L6 remainder: a "Review and add" dialog of other edits can still post exits while the trade changed elsewhere
+  "#731": S6.7  # L7: two tabs can each store a partial exit of the same lot (no idempotency key)
+  "#732": S6.7  # L8: a conditional exit never fires while any open contract is not live, and says nothing
+  "#733": S6.7  # Keep-this-level route has no price check
+  "#734": S6.7  # S-20 first-second race after reload
+  "#735": S6.7  # Display and advisory price readers not on read_market
+  "#736": S6.7  # Playbook ownership check ignores deleted_at
+  "#737": S6.7  # execute_plan._money accepts Decimal("NaN")
+  "#738": S6.7  # The instruments parser accepts NaN / Infinity strike and tick size
+  "#739": S6.7  # localDay() uses the browser's day, so "days left" is a day off outside IST near midnight
+  "#740": S6.7  # The monitor's market calendar is not may_act's
+  "#741": S6.7  # Two tracking legs of one contract each show the whole net figure on the Paper P&L panel, rows sum to twice the book total
 
 # Work items whose status is not done.
 work_items:

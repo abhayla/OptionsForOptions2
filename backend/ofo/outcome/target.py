@@ -22,19 +22,37 @@ import dataclasses
 import datetime
 from dataclasses import dataclass
 from decimal import ROUND_HALF_EVEN, Decimal
-from typing import Literal
+from typing import Any, Literal
 
 from ofo.engine import scenario_grid
 from ofo.engine.black_scholes import Greeks
 from ofo.engine.estimate import MODEL
 from ofo.engine.legs import Instrument
-from ofo.engine.model import ModelInputs, estimate, leg_close, leg_greeks_at_unrounded
+from ofo.engine.model import (
+    ModelInputs,
+    estimate,
+    expiry_day_close,
+    intrinsic_basis,
+    join_labels,
+    leg_close,
+    leg_decay_left_today,
+    leg_greeks_at_unrounded,
+    legs_without_estimate,
+)
 from ofo.engine.target import add_booked, add_booked_all, breakevens_at, greeks_total, target_level_limits
 from ofo.errors.explanations import ExplanationText, render_explanation
 from ofo.money import PAISE
 from ofo.scenario.levels import LevelSet
 from ofo.scenario.views import ScenarioValues, View, scenario_values
-from ofo.table.model import FUTURES_PER_UNIT_GREEKS, display_number, position_greeks, round_greek
+from ofo.table.model import (
+    FUTURES_PER_UNIT_GREEKS,
+    TOTAL_ROW_ID,
+    Cell,
+    CellKind,
+    display_number,
+    position_greeks,
+    round_greek,
+)
 from ofo.timeutil import IST
 
 ClampCode = Literal["before_now", "after_first_expiry"]
@@ -91,6 +109,9 @@ class TargetGreeks:
     #: made from the UNROUNDED total so it is rounded once (delta, theta, vega 2; gamma 4)
     units: int | None = None
     total_display: dict[str, str] | None = None
+    #: D-12 (ADR-320 (1)): on expiry day the position's "Decay left today: Rs X" at the target (level, time), shown
+    #: in place of theta; None on any other day or when a leg cannot be valued
+    decay_left_today_text: ExplanationText | None = None
 
     @property
     def basis_text(self) -> ExplanationText:
@@ -210,7 +231,22 @@ def _greeks(model: ModelInputs, level: Decimal, at: datetime.datetime) -> Target
     shown = {"delta": display_number(total.delta, 2), "gamma": display_number(total.gamma, 4),
              "theta": display_number(total.theta, 2), "vega": display_number(total.vega, 2)}
     return TargetGreeks(tuple(rows), _rounded(total), None, yields,
-                        quantities.pop() if len(quantities) == 1 else None, shown)
+                        quantities.pop() if len(quantities) == 1 else None, shown, _decay_left_text(model, level, at))
+
+
+def _decay_left_text(model: ModelInputs, level: Decimal, at: datetime.datetime) -> ExplanationText | None:
+    """D-12: the engine's per-unit Decay left today of each leg at the target, x quantity x sign (the table's signing),
+    summed, to a paisa; None when it is not expiry day at ``at``."""
+    if expiry_day_close(model, at) is None:
+        return None
+    try:
+        units = [leg_decay_left_today(model, leg, level, at) for leg in model.legs]
+    except ValueError:  # a leg with no IV and time value left: no figure, never a partial sum
+        return None
+    zero = Decimal(0)
+    total = sum((position_greeks(Greeks(zero, zero, u, zero), leg.action, leg.quantity).theta
+                 for u, leg in zip(units, model.legs, strict=True) if u is not None), zero)
+    return render_explanation("decay_left_today_text", amount=total.quantize(PAISE, rounding=ROUND_HALF_EVEN))
 
 
 def yields_of(model: ModelInputs) -> tuple[tuple[datetime.date, Decimal], ...]:
@@ -225,7 +261,7 @@ def _rounded(g: Greeks) -> Greeks:
 
 
 def _missing_iv_reason(model: ModelInputs) -> ExplanationText | None:
-    missing = [leg.contract for leg in model.legs if leg.leg.is_option and leg.iv is None]
+    missing = legs_without_estimate(model)  # D-08: the engine's one list (a leg at intrinsic is valued, not missing)
     return render_explanation("scenario_estimated_unavailable", legs=tuple(missing)) if missing else None
 
 
@@ -254,6 +290,7 @@ def live_target(ask: TargetAsk, model: ModelInputs, graph_levels: LevelSet, step
     limits = dataclasses.replace(limits, at_min=model.inputs.valuation_time, at_max=first_close(model))
     at, clamp = clamp_at(ask.at, model.inputs.valuation_time, first_close(model))
     label = render_explanation("target_estimate_label")  # REQ-084 AC-5: every target figure, the curve included
+    label = join_labels(label, intrinsic_basis(model)) or label  # D-08: a leg valued at intrinsic says so
     curve = dataclasses.replace(scenario_values(graph_levels, model, View.ESTIMATED_NOW, at=at), output_label=label)
     single = model.strategy.is_single_expiry
     booked = _booked_of(ask)
@@ -295,3 +332,48 @@ def entries_target(ask: TargetAsk, model: ModelInputs, step: Decimal, span: Deci
     level, level_clamped = _level(ask, model.spot_level, limits)
     reason = render_explanation("outcome_from_entries_no_estimate")
     return _exact_only(limits, level, level_clamped, model, reason, None, ask)
+
+
+def with_booked_curves(out: Any, booked: Decimal | None) -> Any:
+    """D-11 (ADR-209, GC-ICLIVE-B): the Add Booked P&L switch ON puts the booked P&L into the drawn curves as well as
+    the target block: every point of the payoff line and of each view's curve is open legs + booked (the one engine
+    function ``add_booked_all``, the same amount the target block adds). None or 0: the answer as it was (a plan,
+    switch off, book unreadable). The same amount goes into every table the reply serves (the TOTAL row's scenario
+    cells of ``table``, ``scenario``, ``other_view`` and the payoff table's views), so one level reads the same on
+    every screen; levels and the summary are not touched; the reply says the figures include it."""
+    if booked is None or booked == 0:
+        return out
+
+    def shifted(view: Any) -> Any:
+        if view is None or view.totals is None:
+            return view
+        return dataclasses.replace(view, totals=add_booked_all(view.totals, booked))
+
+    points = out.payoff_points
+    if points:
+        levels = tuple(p[0] for p in points)
+        points = tuple(zip(levels, add_booked_all(tuple(p[1] for p in points), booked) or (), strict=True))
+    table = out.table
+    if table is not None:
+        rows = tuple(_total_row_with_booked(r, table.columns, booked) for r in table.rows)
+        table = dataclasses.replace(table, rows=rows)
+    payoff_table = out.payoff_table
+    if payoff_table is not None:
+        payoff_table = dataclasses.replace(payoff_table, views=tuple(shifted(v) for v in payoff_table.views))
+    return dataclasses.replace(out, payoff_points=points, curves=tuple(shifted(c) for c in out.curves or ()),
+                               scenario=shifted(out.scenario), other_view=shifted(out.other_view), table=table,
+                               payoff_table=payoff_table)
+
+
+def _total_row_with_booked(row: Any, columns: Any, booked: Decimal) -> Any:
+    """The TOTAL row's scenario-level cells plus the booked P&L (exact, ``cell_rupees`` text); leg rows are one leg's
+    P&L each and stay as they are."""
+    if row.row_id != TOTAL_ROW_ID:
+        return row
+    cells = dict(row.cells)
+    for col in columns:
+        cell = cells.get(col.id)
+        if col.is_scenario_level and cell is not None and isinstance(cell.value, Decimal):
+            total = add_booked(cell.value, booked)
+            cells[col.id] = Cell(total, render_explanation("cell_rupees", amount=total), CellKind.MONEY)
+    return dataclasses.replace(row, cells=cells)

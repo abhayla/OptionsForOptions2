@@ -123,13 +123,8 @@ describe('playbook editor (REQ-160)', () => {
     expect(w.get('[data-testid=pb-refusal]').text()).toBe('A playbook named "IC mine" already exists for Iron condor.')
   })
 
-  it('attack 3: T-01 Middle to 0.3 changes the summary and is what Test sends, before any save', async () => {
+  it('attack 3: T-01 Middle to 0.3 changes the summary before any save, and nothing is sent (D-54: no Test button)', async () => {
     setUp()
-    answers['POST /playbooks/test'] = { type: 'ic', type_name: 'Iron condor', none_text: null, past_note: PAST, strategies: [{
-      strategy_id: 72, name: '"Iron condor 3 Nov"', stage: { name: 'Middle', index: 1 }, withheld: null, results: [
-        { kind: 'flag', rule_id: 'T-03', trigger_id: 'T-03', cmp: 'ge', value: '0.41037', threshold: '0.35', reason: null, wording: null },
-        { kind: 'not_checked', rule_id: 'T-16', trigger_id: 'T-16', cmp: null, value: null, threshold: null,
-          reason: { what_happened: 'Zerodha has not stated the margin.', impact: 'i', what_is_blocked: 'b', next_action: 'n' }, wording: null }] }] }
     const w = await open()
     const before = w.get('[data-testid=pb-sum-looks]').text()
     await w.get('[data-testid=pb-step-when]').trigger('click')
@@ -138,30 +133,9 @@ describe('playbook editor (REQ-160)', () => {
     expect(before).toContain('Spot within this % of a short strike: 0.75 / 0.5 / 0.3 %')
     expect(w.get('[data-testid=pb-sum-looks]').text()).toContain('Spot within this % of a short strike: 0.75 / 0.3 / 0.3 %')
     await w.get('[data-testid=pb-step-test]').trigger('click')
-    await w.get('[data-testid=pb-run-test]').trigger('click')
-    await flushPromises()
-    const sent = calls.find(([m, u]) => m === 'POST' && u === '/playbooks/test')[2]
-    expect(sent.type).toBe('ic')
-    expect(sent.body.triggers['T-01'].weekly[1]).toBe('0.3')
-    expect(calls.some(([m]) => m === 'PUT')).toBe(false)
-    expect(w.get('[data-testid=pb-test-row-T-03-T-03]').text()).toBe('Would flagShort delta at or above0.410370.35')
-    expect(w.get('[data-testid=pb-test-row-T-16-T-16]').text()).toBe('Not checkedT-16Zerodha has not stated the margin.')
-    expect(w.get('[data-testid=pb-test-72]').text()).toContain('"Iron condor 3 Nov" - Middle')
+    expect(w.find('[data-testid=pb-run-test]').exists()).toBe(false)
+    expect(calls.some(([m]) => m === 'PUT' || m === 'POST')).toBe(false)
     expect(w.get('[data-testid=pb-past-note]').text()).toBe(PAST)
-  })
-
-  it('AC-3: no strategy of the type shows the server sentence; an invalid body shows its refusal', async () => {
-    setUp()
-    answers['POST /playbooks/test'] = { type: 'ic', type_name: 'Iron condor', none_text: 'No current Iron condor strategy to test against', past_note: PAST, strategies: [] }
-    const w = await open()
-    await w.get('[data-testid=pb-step-test]').trigger('click')
-    await w.get('[data-testid=pb-run-test]').trigger('click')
-    await flushPromises()
-    expect(w.get('[data-testid=pb-test-none]').text()).toBe('No current Iron condor strategy to test against')
-    answers['POST /playbooks/test'] = refusal('Days 2 to 4 are in both Last and Near (weekly expiries).')
-    await w.get('[data-testid=pb-run-test]').trigger('click')
-    await flushPromises()
-    expect(w.get('[data-testid=pb-test-refusal]').text()).toBe('Days 2 to 4 are in both Last and Near (weekly expiries).')
   })
 
   it('a failed read shows the refusal and does not open the editor; an empty list says so', async () => {
@@ -180,6 +154,7 @@ describe('playbook editor (REQ-160)', () => {
     answers['DELETE /playbooks/7'] = { deleted: true, active_now_system: true, message: 'Iron condor: the system playbook is active again' }
     const w = await open()
     await w.get('[data-testid=pb-delete]').trigger('click')
+    await w.get('[data-testid=pb-delete-yes]').trigger('click')
     await flushPromises()
     expect(w.get('[data-testid=pb-notice]').text()).toBe('Iron condor: the system playbook is active again')
   })
@@ -307,7 +282,7 @@ describe('playbook editor on the 12 real system bodies (round 3)', () => {
     }
   })
 
-  it('attack 3 + 2: every body x every step x both expiry kinds renders with zero Vue errors; Test then posts', async () => {
+  it('attack 3 + 2: every body x every step x both expiry kinds renders with zero Vue errors; the Test step has no button (D-54)', async () => {
     for (const entry of realEntries()) {
       reset()
       setUpReal(entry)
@@ -321,12 +296,7 @@ describe('playbook editor on the 12 real system bodies (round 3)', () => {
         }
       }
       expect(errors, entry.strategy_type).toEqual([])
-      await w.get('[data-testid=pb-run-test]').trigger('click')
-      await flushPromises()
-      const sent = calls.filter(([m, u]) => m === 'POST' && u === '/playbooks/test')
-      expect(sent, entry.strategy_type).toHaveLength(1)
-      expect(sent[0][2].type).toBe(entry.strategy_type)
-      expect(w.get('[data-testid=pb-test-none]').text()).toBe('No current strategy to test against')
+      expect(w.find('[data-testid=pb-run-test]').exists(), entry.strategy_type).toBe(false) // D-54
       w.unmount()
     }
   })
@@ -408,11 +378,11 @@ describe('playbook editor on the 12 real system bodies (round 3)', () => {
     expect(w.get('[data-testid=pb-novalue-T-03]').text()).toBe(NO_VALUES) // missing key
     await w.get('[data-testid=pb-step-basics]').trigger('click')
     await w.get('[data-testid=pb-stage-add]').trigger('click')
-    await w.get('[data-testid=pb-step-test]').trigger('click')
-    await w.get('[data-testid=pb-run-test]').trigger('click')
+    await w.get('[data-testid=pb-new-name]').setValue('IC copy') // the working copy leaves only by a save (D-54: no Test button)
+    await w.get('[data-testid=pb-save-as]').trigger('click')
     await flushPromises()
     expect(errors).toEqual([])
-    const sent = calls.find(([m, u]) => m === 'POST' && u === '/playbooks/test')[2].body.triggers
+    const sent = calls.find(([m, u]) => m === 'POST' && u === '/playbooks')[2].body.triggers
     expect(sent['T-02'].monthly).toBeNull()
     expect('monthly' in sent['T-03']).toBe(false)
     expect(sent['T-01'].monthly).toHaveLength(t['T-01'].monthly.length + 1)

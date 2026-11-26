@@ -1,7 +1,7 @@
 """The disconnect status text for an affected strategy (REQ-049 AC-5, ADR-015 Q182).
 
 Exact wording, owner-cited: 'Live market data disconnected. Last updated: <time>. Live strategy monitoring is
-paused.' The time is the quote's last update, shown in IST (ADR-015's own example: '10:42:17 AM'); a trigger is
+paused.' The time is the quote's last update, shown in IST (24-hour, ADR-326 (4): "10:42:17 IST"); a trigger is
 never claimed for the gap (handled by :mod:`ofo.rules`, which cannot evaluate on a non-``available`` input).
 
 :func:`disconnect_status_for_strategy` ties this message to exactly one cause: a strategy PAUSED because the feed

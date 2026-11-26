@@ -8,6 +8,7 @@
 import { computed, onMounted, ref } from 'vue'
 import { useRoute, useRouter } from 'vue-router'
 import api, { NEUTRAL_PARTS } from '@/services/api'
+import { TIMED_OUT_PARTS } from '@/lib/sharedStateText'
 import ErrorMessage from '@/components/common/ErrorMessage.vue'
 import PageHeader from '@/components/common/PageHeader.vue'
 import { UNDERLYINGS } from '@/lib/legPicker'
@@ -73,7 +74,7 @@ const heading = computed(() => (notSure.value
   : 'Strategies you could consider'))
 
 async function read(fn) {
-  try { return await fn() } catch (e) { errorParts.value = e?.parts ?? NEUTRAL_PARTS; return null }
+  try { return await fn() } catch (e) { errorParts.value = e?.parts ?? (e?.code === 'ECONNABORTED' ? TIMED_OUT_PARTS : NEUTRAL_PARTS); return null }
 }
 
 // The template list loads once on mount; Show strategies awaits this same load, so a click before the list arrives
@@ -125,11 +126,19 @@ async function chooseExpiry() {
   readingChoice.value = null
 }
 
-async function priceCard(template, legs) {
+// D-38: the planned entries of every card are asked once, for the distinct contracts of all cards (the route takes at most
+// 20 a request), not once per card; each card is then priced by its own outcome request, all started together.
+const PLANNED_ENTRY_MAX = 20
+async function readEntries(fitting) {
+  const rest = [...new Set(fitting.flatMap(([, legs]) => legs.map((l) => l.instrument_id)))]
+  const chunks = []
+  while (rest.length) chunks.push(rest.splice(0, PLANNED_ENTRY_MAX))
+  const answers = await Promise.all(chunks.map((ids) => read(async () => (await api.post('/strategies/planned-entry', { underlying: underlying.value, instrument_ids: ids })).data?.entries)))
+  return Object.fromEntries(answers.flatMap((entries) => (Array.isArray(entries) ? entries : [])).map((e) => [`${e.exchange_segment}:${e.exchange_token}`, e]))
+}
+
+async function priceCard(template, legs, byId) {
   const card = { id: template.id, name: template.name, level: template.level, views: template.views, legs, summary: null, margin: null, entryGuideLine: null, priced: false }
-  const entries = await read(async () => (await api.post('/strategies/planned-entry', { underlying: underlying.value, instrument_ids: legs.map((l) => l.instrument_id) })).data?.entries)
-  if (!Array.isArray(entries)) return card
-  const byId = Object.fromEntries(entries.map((e) => [`${e.exchange_segment}:${e.exchange_token}`, e]))
   if (legs.some((l) => !byId[l.instrument_id] || byId[l.instrument_id].planned_entry === null)) return card // never guessed
   card.legs = legs.map((l) => ({ ...l, planned_entry: byId[l.instrument_id].planned_entry, captured_at: byId[l.instrument_id].captured_at, close_at: byId[l.instrument_id].close_at ?? null }))
   const out = await read(async () => (await api.post('/strategies/outcome', {
@@ -147,7 +156,8 @@ async function showStrategies() {
   showAll.value = false
   await templatesLoad
   const fitting = matched.value.list.map((t) => [t, expandTemplate(t, contracts.value, current.value)]).filter(([, legs]) => legs)
-  cards.value = await Promise.all(fitting.map(([t, legs]) => priceCard(t, legs)))
+  const byId = await readEntries(fitting)
+  cards.value = await Promise.all(fitting.map(([t, legs]) => priceCard(t, legs, byId)))
   busy.value = false
 }
 

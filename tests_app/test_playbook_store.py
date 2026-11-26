@@ -9,6 +9,7 @@ AC-6 "A system playbook can only be saved as a new playbook". Real PostgreSQL; e
 from __future__ import annotations
 
 import copy
+import datetime as dt
 from decimal import Decimal
 
 import pytest
@@ -517,3 +518,36 @@ async def test_k25_a_deleted_strategys_paper_alert_leaves_the_list_and_the_unrea
     await _set_deleted(db, stored.id, False)
     rows, unread = await pts.alerts(db, user)
     assert len(rows) == unread == len((stored, kept_s))
+
+
+# D-29 round 2 (ADR-260): the inbox that feeds the bell and Alerts > Active reads this process's own strategies only.
+# Real case: old "Scenario PATH-xx" open records counted in the bell and sat on Active beside the real ones.
+async def test_d29_a_scenario_strategys_open_record_is_not_in_the_inbox_or_the_held_inbox(db):
+    from test_strategy_store import _ids, _saved_in  # noqa: PLC0415
+    user = _user()
+    real = await _open(db, user)
+    await _with_draft(db, user)  # loads the catalogue rows the next saved draft needs
+    scenario = await store.save_draft(db, user, await _saved_in(db, user, await _ids(db)), scenario_id="PATH-01")
+    marked = await pb.open_suggestion(db, user, scenario.id, "T-01", trigger_id="T-01", stage="Early",
+                                      value=Decimal("0.42"), threshold=Decimal("0.5"))
+    assert {r.suggestion.id for r in await pb.inbox(db, user)} == {real.id}, marked.id
+    assert [h.strategy_id for h in await pb.held_inbox(db, user)] == []
+
+
+# --- D-67 (ADR-326 (5)): the facts behind the pop-up quiet period, read from the real tables ------------------------
+
+async def test_popup_facts_read_the_first_order_time_and_the_newest_rule_memory(db):
+    user = _user()
+    _, stored = await _with_draft(db, user)
+    _, other = await _with_draft(db, user)
+    contract = stored.saved.contract_ids[0]
+    await db.execute(text("INSERT INTO public.paper_orders (strategy_id, contract_id, side, quantity, price, kind, "
+                          "placed_at) VALUES (:s, :c, 'SELL', 50, 10.00, 'open', :t)"),
+                     {"s": stored.id, "c": contract, "t": dt.datetime(2026, 11, 23, 9, 20, tzinfo=dt.UTC)})
+    await pb.put_rule_state(db, user, stored.id, "T-01", held_at_entry=False, seen_clear=False)
+    await pb.put_rule_state(db, user, stored.id, "T-02", held_at_entry=False, seen_clear=True)
+    entry, clear = await pb.popup_facts(db, user, [stored.id, other.id])
+    assert entry == {stored.id: dt.datetime(2026, 11, 23, 9, 20, tzinfo=dt.UTC)}  # no order -> absent
+    assert clear == {(stored.id, "T-01"): False, (stored.id, "T-02"): True}
+    assert await pb.popup_facts(db, "someone-else", [stored.id]) == ({}, {})
+    assert await pb.popup_facts(db, user, []) == ({}, {})

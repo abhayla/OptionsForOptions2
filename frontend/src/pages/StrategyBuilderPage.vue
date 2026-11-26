@@ -14,7 +14,7 @@
      Below 1100 px the regions stack A, B, right, C, D. No value here is computed: each is a server reply field.
      New file; the legacy StrategyBuilderView computes P&L and falls back on prices in the browser, so it is not copied. -->
 <script setup>
-import { computed, nextTick, onBeforeUnmount, onMounted, ref, watch } from 'vue'
+import { computed, nextTick, onBeforeUnmount, onMounted, provide, ref, watch } from 'vue'
 import { useRoute, useRouter } from 'vue-router'
 import { useOutsideClose } from '@/composables/useOutsideClose'
 import api, { NEUTRAL_PARTS } from '@/services/api'
@@ -27,17 +27,18 @@ import ProjectionsNote from '@/components/strategy/ProjectionsNote.vue'
 import StrategyActions from '@/components/strategy/StrategyActions.vue'
 import TrackingPanel from '@/components/strategy/TrackingPanel.vue'
 import AdjustSteps from '@/components/strategy/AdjustSteps.vue'
-import { ADD_TO_PAPER_LABEL, PAPER_PLACED_NOT_REFRESHED_TEXT, PAPER_STATE, addToPaper as postPaperOrders, paperPostOutcome, sharedTotal } from '@/lib/tracking'
+import { ADD_TO_PAPER_LABEL, PAPER_PLACED_NOT_REFRESHED_TEXT, PAPER_STATE, addToPaper as postPaperOrders, paperPostOutcome } from '@/lib/tracking'
 import PaperConfirmDialog from '@/components/strategy/PaperConfirmDialog.vue'
 import LoadFailed from '@/components/common/LoadFailed.vue'
 import { PAPER_REREAD_FAILED_TEXT } from '@/lib/sharedStateText'
 import {
   DISCARD_LABEL, PAPER_BOOK_UNREADABLE, PAPER_MODE_LABEL, PAPER_PENDING_UNREADABLE, PAPER_REREAD_DELAYS_MS, REVIEW_AND_ADD_LABEL, confirmRowsFor, paperOrdersFor, pendingText, readPaperBook,
-  legsAfterExit, paperFillKey, paperLeftOf,
+  legsAfterExit, paperFillKey, paperLeftOf, paperChargesOf,
 } from '@/lib/paperDrafts'
 import { withAsOf } from '@/lib/paperList'
 import PaperBookPanel from '@/components/strategy/PaperBookPanel.vue'
-import { usePaperBookRead } from '@/lib/usePaperBookRead'
+import { paperPnlBlock, usePaperBookRead } from '@/lib/usePaperBookRead'
+import { usePriceFreshness } from '@/lib/priceState'
 import PaperStrategies from '@/components/strategy/PaperStrategies.vue'
 import AdjustCompare from '@/components/strategy/AdjustCompare.vue'
 import { opportunitiesFromQuery, picksFromQuery } from '@/lib/adjustDrawer'
@@ -52,6 +53,14 @@ import { UNDERLYINGS } from '@/lib/underlyings'
 import PopFigure from '@/components/strategy/PopFigure.vue'
 import ActivityPanel from '@/components/strategy/ActivityPanel.vue'
 import Drawer from '@/components/common/Drawer.vue'
+import Modal from '@/components/common/Modal.vue'
+import { sameLegs } from '@/lib/legDoor'
+import { useLegDoor } from '@/composables/useLegDoor'
+import DuplicateLegDialog from '@/components/strategy/DuplicateLegDialog.vue'
+import { netKeyOf, useBuilderHold } from '@/stores/builderHold'
+import { unsavedCount, useLeaveBuilder } from '@/composables/useLeaveBuilder'
+import LeaveBuilderDialog from '@/components/strategy/LeaveBuilderDialog.vue'
+import { replacePrompt } from '@/lib/readyMade'
 import SaveDraftBar from '@/components/strategy/SaveDraftBar.vue'
 import LegList from '@/components/strategy/LegList.vue'
 import { applyEditReply, buildEditRequest, controlsFrom, moveKey, MAX_STEPS, RELATIVE_CONTROLS, executeRefusal, CLEAR_UNDO_SECONDS_KEY, MULTIPLIER_MAX_KEY, EXECUTE_WAITS_FOR_LATEST, NO_CONTROLS } from '@/lib/legEdit'
@@ -61,7 +70,7 @@ import { matchesLegs } from '@/lib/liveMatch'
 import { INVALID_LINK_PARTS, canonicalLegs } from '@/lib/draftLink'
 import ScenarioControls from '@/components/strategy/ScenarioControls.vue'
 import TargetBlock from '@/components/strategy/TargetBlock.vue'
-import { bookedFields, dateStops, debounced, firstExpiry, targetFields } from '@/lib/targetBlock'
+import { OPEN_LEGS_ONLY_BEFORE_CHARGES_TEXT, OPEN_LEGS_ONLY_TEXT, bookedFields, dateStops, debounced, firstExpiry, targetFields } from '@/lib/targetBlock'
 import { CHART_FLAGS, DEFAULT_CHOICE, choiceFields, matchesChoice } from '@/lib/scenarioChoice'
 import { contractName, istClock, istTime, nameFromPool } from '@/lib/displayFormat'
 import { summaryFigure } from '@/lib/summaryFigures'
@@ -77,6 +86,10 @@ const route = useRoute()
 const router = useRouter()
 const served = useSettingsValues() // REQ-167 AC-5: the lot caps and the multiplier cap are served, never typed
 served.load()
+// F6 (Phase 5): the page's ONE door asks every add-or-move question; the picker and its forms reach it by inject('legDoor').
+const door = useLegDoor({ maxLots: () => served.integer(MAX_LOTS_KEY) })
+provide('legDoor', door)
+const cancelDuplicate = () => door.cancel() // D-60: a question about replaced legs closes (its edit settles as Cancel)
 const capabilities = useCapabilities() // REQ-117: the named broker flags; null until read, {} after a failure (all off)
 const state = ref('loading') // loading | computed | stale | not-connected | unpriced | refused | error | no-draft
 const data = ref(null)
@@ -115,7 +128,13 @@ function legsFromQuery() {
     source: null,
   }))
 }
-const legs = ref(legsFromQuery())
+// ADR-329 (1): the legs the builder held across an Option Chain trip come back (once). ?strategy= / ?adjust= name another thing to
+// open, so the hold is dropped and today's open path runs.
+const builderHold = useBuilderHold()
+let heldBack = null
+if (route.query.strategy !== undefined || route.query.adjust !== undefined) builderHold.clear()
+else heldBack = builderHold.take()
+const legs = ref(heldBack ? heldBack.legs : legsFromQuery())
 // GC-ADJ1 step 3 (REQ-156): `?adjust=<strategy id>` opens the approach compare instead of the builder's two columns.
 const adjustId = computed(() => (/^\d+$/.test(String(route.query.adjust ?? '')) ? String(route.query.adjust) : null))
 const pickedIds = computed(() => picksFromQuery(route.query.pick)) // the approaches ticked in the Review adjustment drawer
@@ -127,12 +146,16 @@ const actedSuggestionIds = computed(() => opportunitiesFromQuery(route.query.act
 // REQ-112: how many orders the prepared basket held (`basket=4`, set by prepare, travels with `acted`); sent with the
 // paper orders so the server can tell completed from partly completed. Anything but a whole 1..64 is not sent.
 const preparedBasketLegs = computed(() => { const n = String(route.query.basket ?? ''); return /^(?:[1-9]|[1-5]\d|6[0-4])$/.test(n) ? n : null }) // stays a string like the ids: the server's model reads it as a whole number
-async function prepareApproach({ legs: next, suggestionIds = [], basketLegs = 0, exit = false }) { // the chosen approach's legs become the builder's legs; no order is placed
-  const { adjust: _gone, pick: _picks, opp: _opp, acted: _acted, basket: _basket, ...rest } = route.query
+// D-25 (ADR-326 (1)): a Take profit basket names its approach (`approach=A-24`, set by prepare, travels with `acted`) so the
+// server asks the same build path that offered it; only A-24 / A-25 are ever sent, anything else in the URL is ignored.
+const preparedApproachId = computed(() => { const a = String(route.query.approach ?? ''); return a === 'A-24' || a === 'A-25' ? a : null })
+async function prepareApproach({ legs: next, suggestionIds = [], basketLegs = 0, exit = false, approachId = null }) { // the chosen approach's legs become the builder's legs; no order is placed
+  const { adjust: _gone, pick: _picks, opp: _opp, acted: _acted, basket: _basket, approach: _approach, ...rest } = route.query
   const acted = opportunitiesFromQuery(suggestionIds.join(','))
   const size = Number.isInteger(basketLegs) && basketLegs > 0 && basketLegs <= 64 ? { basket: String(basketLegs) } : {}
   const id = adjustId.value
-  await router.replace({ query: acted.length ? { ...rest, acted: acted.join(','), ...size } : rest }) // awaited: nameInUrl below spreads it
+  const take = approachId === 'A-24' || approachId === 'A-25' ? { approach: approachId } : {}
+  await router.replace({ query: acted.length ? { ...rest, acted: acted.join(','), ...size, ...take } : { ...rest, ...take } }) // awaited: nameInUrl below spreads it
   // ADR-207 (2), live 2026-11-06 (strategy 88, A-11): a strategy with a paper book is edited in ITS Drafts Mode, never as a new
   // unlinked draft (whose Add to Paper would open a second position). A full exit takes the book's Exit all path; any other
   // approach's after-legs become the edited legs, so the pending changes are paperOrdersFor(net, after-legs) (the exit + add
@@ -165,9 +188,11 @@ function keepHeldFills(net, next) {
 // refused on every retry. A 422 (price, contract) is fixed by the user and keeps them.
 const ACTED_REFUSED = new Set([404, 409])
 // awaited: a later URL write (nameInUrl after the book re-read) spreads route.query and would put the ids back
-async function dropActed() { // the basket answered its records, or the server refused them: never sent again
-  if (route.query.acted === undefined) return
-  const { acted: _acted, basket: _basket, ...rest } = route.query
+async function dropActed({ withApproach = false } = {}) { // the basket answered its records, or the server refused them: never sent again
+  if (route.query.acted === undefined && !(withApproach && route.query.approach !== undefined)) return
+  // a refused record keeps the approach (the retry is asked again); a stored basket answers it once
+  const { acted: _acted, basket: _basket, approach: gone, ...rest } = route.query
+  if (!withApproach && gone !== undefined) rest.approach = gone
   await router.replace({ path: route.path, query: rest })
 }
 // W-090 (REQ-034 AC-4, AC-6): the scenario column and range the user picked; kept across every reload and push.
@@ -178,7 +203,7 @@ if (linkRefused.value) {
 }
 // W-148 (REQ-076): the leg-edit state. The shape name is the server's (null until a reply named it); `updating` marks the
 // old numbers while an edit is pending; `editError` is the server's refusal of the last edit.
-const shapeName = ref(null)
+const shapeName = ref(heldBack?.shapeName ?? null)
 const hasReply = ref(false)
 // W-158 (REQ-078 AC-2/AC-3): which of Shift / Width / Hedge work and the Shift total, exactly as the newest applied reply sent them.
 const controls = ref(NO_CONTROLS)
@@ -193,6 +218,7 @@ const guard = createNewestWins()
 const targetPick = ref({ level: '', dateIndex: 0 })
 const targetShown = ref(null)
 const targetStale = ref(false)
+const targetNotLiveText = ref('') // D-37: the latest reply's own sentence when its prices are not live; '' after a failed request or any other reply
 const dateStopList = computed(() => dateStops(data.value?.valuation, firstExpiry(data.value?.legs)))
 // GC-LIVE R-26: a pick goes to BOTH answer paths: the live socket's follow message (so every push of the new version
 // carries the target block, refreshed as prices move) and one REST request (the answer while the socket is not live).
@@ -253,6 +279,7 @@ async function load() {
     if (isSuperseded(e) || !guard.isNewest('outcome', mine)) return // a cancelled or older request shows nothing (AC-3)
     if ((target.target_level || target.target_at) && targetShown.value && data.value && prevState !== 'loading') {
       targetStale.value = true // a failed target request keeps the last good figures, marked stale
+      targetNotLiveText.value = '' // a failure says nothing about the prices: no not-live sentence
       state.value = prevState
       return
     }
@@ -295,6 +322,7 @@ function reask(kind, ticket) {
 // One outcome answer (REST or a live push) onto the page, as the server sent it: no number is computed here (ADR-008).
 function applyOutcome(body) {
   data.value = body
+  targetNotLiveText.value = typeof body.target_not_live_text === 'string' ? body.target_not_live_text : '' // D-37: only what this reply says
   const moved = !!targetPick.value.level || targetPick.value.dateIndex > 0
   if (body.target && (body.target.kind || !moved)) { // figures for the pick, or nothing picked: the reply's block as sent
     targetShown.value = body.target
@@ -341,13 +369,13 @@ function syncLive() {
 }
 
 // W-104: the saved strategy behind the legs on screen (Save Draft or reopen); any edit makes the draft unsaved again.
-const savedId = ref(null)
+const savedId = ref(heldBack?.savedId ?? null)
 // W-122: the revision the page loaded or saved (kept for the chart's version)
-const savedRevision = ref(null)
+const savedRevision = ref(heldBack?.savedRevision ?? null)
 // REQ-134 AC-2: the saved strategy this screen is editing ({ id, revision, name }: the revision and name the page loaded or saved).
 // Unlike savedId it SURVIVES edits, so Save after an edit updates that strategy (PUT with this revision) instead of creating a
 // second row (RD-106). It is replaced on open/save, and dropped by Clear all (held for Undo).
-const openStrategy = ref(null)
+const openStrategy = ref(heldBack?.openStrategy ?? null)
 const openError = ref(null) // the catalogue message when ?strategy= cannot be opened; the screen is kept
 // REQ-134 AC-5: the URL names the strategy (?strategy=<id>) so a reload opens it again; a `draft` link is dropped from it.
 function nameInUrl(id) {
@@ -419,31 +447,54 @@ const { readFailed: paperReadFailed, contractsChanged: paperContractsChanged } =
   book: () => paper.value?.book ?? null,
   onBook: (b) => { if (paper.value && !paperStale.value) paper.value = { ...paper.value, book: b } },
 })
-const paperTotal = computed(() => (paper.value ? sharedTotal(paper.value.book, paperReadFailed.value) : null))
-function reviewPending() {
+// F1: the page's book-read state through the one freshness rule (priceState). Phase 4 (D-05, ADR-328 (4)): the Exit buttons of the
+// book panel read it (usePaperExit), and so do the handlers below: no exit is built from old prices (a failed read) or from an old net
+// (the contracts changed elsewhere). The panel says which, in the words of priceState.
+const { readFailed: paperBookFailed } = usePriceFreshness({
+  readFailed: paperReadFailed,
+  held: () => paper.value?.book ?? null,
+  serverState: () => paper.value?.book?.state,
+})
+const exitBlocked = computed(() => paperBookFailed.value || paperContractsChanged.value)
+const exitOrigin = ref(false) // the pending edits came from Exit all or a per-leg Exit; stays true until they are posted or discarded (ADR-328 (4))
+const paperTotal = computed(() => (paper.value ? paperPnlBlock(paper.value.book, paperBookFailed.value) : null))
+function reviewPending(fromExit = false) { // the "Review and add" button passes its click event: only `true` marks an Exit
   if (!paper.value || paperStale.value || !pendingOrders.value?.length) return
+  if (fromExit === true) exitOrigin.value = true // never reset here: "Review and add" of Exit edits is still an Exit
+  if (exitOrigin.value && exitBlocked.value) return // post nothing; the panel's reason line says why
   paperError.value = ''
   paperState.value = PAPER_STATE.READY
   paperRows.value = confirmRowsFor(pendingOrders.value, paper.value.book, contractName, livePriceById.value)
   paperDialog.value = true
 }
+watch(pendingOrders, (o) => { if (!o?.length) exitOrigin.value = false }) // posted, discarded or edited back: no Exit edits are left
 const discardPending = () => { if (paper.value) setLegs(copyLegs(paper.value.net)) }
 // GC-TP step 3b2 (Sensibull Drafts Mode 274-279): Exit all / a (partial) Exit only EDIT the legs (none / the contract less N lots),
 // then open the same confirm list: the orders are paperOrdersFor(net, legs) like every other edit, never built here.
 function exitAllPaper() {
-  if (!paper.value || paperStale.value) return
+  if (!paper.value || paperStale.value || exitBlocked.value) return
   setLegs([])
-  reviewPending()
+  reviewPending(true)
 }
 function exitPaper(contractId, lots) {
-  if (!paper.value || paperStale.value) return
+  if (!paper.value || paperStale.value || exitBlocked.value) return
   const next = legsAfterExit(paper.value.net, legs.value, contractId, lots)
   if (!next) return
   setLegs(next)
-  reviewPending()
+  reviewPending(true)
 }
+// ADR-328 (4) / D-05: an Exit dialog posts nothing while the read failed or the trade changed elsewhere; it closes, the edits stay,
+// the panel's reason line says why. A dialog of "Review and add" for other edits is not touched (L6, deferred).
+watch(exitBlocked, (blocked) => {
+  if (blocked && paperDialog.value && exitOrigin.value && !paperBusy.value && !paperStale.value && paperState.value !== PAPER_STATE.UNKNOWN) paperDialog.value = false
+})
 // Drafts Mode summary: the book's Profit left / Loss left first (or the words for its extremes_reason), its original Max Profit /
 // Max Loss below; every figure the book reply's text as sent. Null outside Drafts Mode: the summary is unchanged.
+// D-11: the tiles and the chart's marks are the WHOLE trade (booked in, the paper reply: the tiles after charges, the marks on
+// the drawn curve's own basis, before charges, so they sit where the line crosses zero) with the switch ON, the open legs only (the
+// outcome's own summary) with it OFF; the server computes both, this only picks which served figure to show
+const wholeTrade = computed(() => !!paperLeft.value && includeBooked.value)
+const paperCharges = computed(() => (paper.value && includeBooked.value ? paperChargesOf(paper.value.book) : null)) // D-13/D-14: the charges of the tiles beside it: switch ON = the paper tiles (paid + close); OFF = the open-legs tiles, the plan's round trip at entry prices (data.charges_breakdown)
 const paperLeft = computed(() => { // GC-ICFIX u124: after-charges forms, labelled (lib/paperDrafts paperLeftOf)
   const b = paper.value?.book
   return b ? paperLeftOf(b, withAsOf(typeof b.pause_reason_text === 'string' && b.pause_reason_text.trim() !== '' ? b.pause_reason_text.trim() : null, b.as_of)) : null
@@ -452,12 +503,13 @@ const paperLeft = computed(() => { // GC-ICFIX u124: after-charges forms, labell
 const paperFills = computed(() => (paper.value ? paper.value.net.map(paperFillKey) : []))
 async function confirmPending(orders) {
   if (paperBusy.value || !paper.value) return
+  if (exitOrigin.value && exitBlocked.value) { paperDialog.value = false; return } // post nothing (the watch may not have run yet)
   const { id } = paper.value
   paperBusy.value = true
   paperError.value = ''
   paperState.value = PAPER_STATE.READY
   try {
-    await postPaperOrders(api, id, orders, actedSuggestionIds.value, preparedBasketLegs.value)
+    await postPaperOrders(api, id, orders, actedSuggestionIds.value, preparedBasketLegs.value, null, preparedApproachId.value)
   } catch (e) {
     const outcome = paperPostOutcome(e)
     if (outcome === PAPER_STATE.REFUSED) { // 4xx: the server stored nothing (one transaction or none)
@@ -475,7 +527,7 @@ async function confirmPending(orders) {
   // STORED (201). From here nothing may offer these orders again: a failure below is only a failed refresh.
   paperStale.value = true
   try {
-    await dropActed() // one basket answers the records once
+    await dropActed({ withApproach: true }) // one basket answers the records once
   } catch { /* the ids may stay in the URL: the stored orders are never offered again (paperStale) */ }
   try {
     // the dialog stays, says it was placed, and has no Confirm, while the book is read again (issue 18: bounded retries, then Retry)
@@ -605,11 +657,45 @@ watch(() => route.query.strategy, (v) => {
   openError.value = null
   openFromUrl()
 })
-watch(() => route.query.draft, (v) => {
-  if (!v) return // dropped from the URL by Save
-  draftQuery = readDraft()
-  canonicalQueryLegs = draftQuery ? canonicalLegs(draftQuery.legs) : []
-  const refused = draftQuery !== null && canonicalQueryLegs === null
+// ADR-328 (2): a replacing ?draft= link while the builder shows legs asks first (replacePrompt, the same words as the ready-made
+// panel). Cancel keeps the legs, Drafts Mode and the open strategy and puts the previous link back in the URL (the one watch call
+// that write causes is ignored). A newer link settles an open question as Cancel; an unreadable link takes today's refusal path.
+const replaceAsk = ref(null) // null, or { count, resolve }
+let replaceSeq = 0
+let ignoreDraftWrites = 0
+const settleReplace = (yes) => {
+  const a = replaceAsk.value
+  replaceAsk.value = null
+  a?.resolve(yes)
+}
+const sameDraftContent = (canon) => canon.length === legs.value.length
+  && canon.every((l, i) => l.instrument_id === legs.value[i].instrument_id && l.action === legs.value[i].action && l.lots === legs.value[i].lots)
+watch(() => route.query.draft, async (v, old) => {
+  if (ignoreDraftWrites > 0) { ignoreDraftWrites -= 1; return } // our own restore of the previous link
+  if (!v) { // dropped from the URL by Save: an open replace question is Cancel, and its late answer must not apply the stale link
+    replaceSeq += 1
+    settleReplace(false)
+    return
+  }
+  const mine = ++replaceSeq
+  settleReplace(false) // a second question settles the first as Cancel
+  const nextDraft = readDraft()
+  const nextCanon = nextDraft ? canonicalLegs(nextDraft.legs) : []
+  const refused = nextDraft !== null && nextCanon === null
+  if (legs.value.length && nextDraft !== null && !refused) {
+    if (sameDraftContent(nextCanon)) return // the same content as shown: nothing to ask, nothing to reseed
+    cancelDuplicate() // one live question: an open leg-door question closes as Cancel
+    const yes = await new Promise((resolve) => { replaceAsk.value = { count: legs.value.length, resolve } })
+    if (mine !== replaceSeq) return // a newer link took over: it asks (or applies) on its own
+    if (!yes) {
+      ignoreDraftWrites += 1
+      const { draft: _shown, ...rest } = route.query
+      await router.replace({ path: route.path, query: old ? { ...rest, draft: old } : rest })
+      return
+    }
+  }
+  draftQuery = nextDraft
+  canonicalQueryLegs = nextCanon
   leaveDrafts()
   openStrategy.value = null
   openError.value = null
@@ -621,6 +707,8 @@ watch(() => route.query.draft, (v) => {
   }
 })
 const setLegs = (next) => {
+  restoreNote.value = null
+  cancelDuplicate() // D-60: every legs replacement passes here; a question about the replaced legs closes (its edit settles as Cancel)
   dropUndo() // any new leg list supersedes an Undo still on offer: it can never restore over new legs
   savedId.value = null
   savedRevision.value = null
@@ -674,11 +762,67 @@ function undoClear() {
 
 // W-121 (REQ-073 AC-6): the notice a redirect from an order page carries.
 const orderPathNotice = computed(() => route.query.notice === 'order_path_off')
-onMounted(() => {
+const DRAFTS_CHANGED_TEXT = 'The strategy changed while you were away. Your unsaved edits were not restored.'
+const restoreNote = ref(null) // ADR-329: said when the book changed while the user was away and the held edits were not restored
+// ADR-329 (1), Drafts Mode: the held legs belong to a paper strategy. Its book is read again (the net is the book's, never the held
+// copy); the held edits reappear only when the net is the one they were made on, else the book stands and the page says so.
+async function restoreDrafts(h) {
+  const before = legs.value
+  let read
+  try {
+    read = await readPaperBook(api, String(h.paperId))
+  } catch (e) {
+    openError.value = unreadableParts(e)
+    return
+  }
+  if (legs.value !== before) return // the legs changed while the read was out: never overwrite them
+  if (read.kind !== 'paper' || String(read.book.strategy_id) !== String(h.paperId)) { openError.value = unreadableParts(null); return }
+  enterDrafts(read.book.strategy_id, read)
+  if (h.netKey && JSON.stringify(netKeyOf(read.net)) === JSON.stringify(h.netKey)) setLegs(h.legs.map((l) => ({ ...l })))
+  else restoreNote.value = DRAFTS_CHANGED_TEXT
+}
+// ADR-329 (3): Add Selected arrives as a ?draft= link on the builder's held legs: the ticked contracts go through the one door
+// (a same-action clash asks, an opposite side is a deliberate add), never through the draft-replace question. Returns true when
+// it replaced the legs (setLegs already reloaded the numbers).
+let chainError = null
+let addedDraft = heldBack?.addedDraft ?? null
+async function addFromChain() {
+  const fresh = legsFromQuery()
+  // F1: a strategy has one underlying; ticked contracts of another underlying than the held legs are refused, nothing is added
+  const heldUnderlying = legs.value[0]?.underlying
+  const tickedUnderlying = fresh[0]?.underlying
+  if (heldUnderlying && tickedUnderlying && heldUnderlying !== tickedUnderlying) {
+    chainError = { ...NEUTRAL_PARTS, what_happened: `These contracts are on ${tickedUnderlying}; the legs in the builder are on ${heldUnderlying}. Nothing was added.` }
+    return false
+  }
+  const used = new Set(legs.value.map((l) => l.id))
+  let n = 0
+  const incoming = fresh.map((l) => {
+    while (used.has(`chain-${n}`)) n += 1
+    used.add(`chain-${n}`)
+    return { ...l, id: `chain-${n}` }
+  })
+  const r = await door.admit(legs.value, incoming, { opposite: 'allow' })
+  if (!r) return false // Cancel: the held legs stay as they were
+  if (r.error) {
+    chainError = { ...NEUTRAL_PARTS, what_happened: r.error } // shown after the held legs' first reads, which clear editError
+    return false
+  }
+  setLegs([...r.legs, ...r.kept])
+  addedDraft = route.query.draft ?? null // F3: Back into this same ?draft= entry must not add the same ticks again
+  return true
+}
+onMounted(async () => {
   index.start() // the page holds the index itself (its own socket), so an empty builder still has a spot
-  load()
-  syncLive()
-  readShape()
+  if (heldBack?.paperId != null) await restoreDrafts(heldBack)
+  const sameAdd = heldBack?.addedDraft != null && heldBack.addedDraft === (route.query.draft ?? null) // F3: already added to this hold
+  const added = heldBack && draftQuery && canonicalQueryLegs && !sameAdd ? await addFromChain() : false
+  if (!added) {
+    load()
+    syncLive()
+    readShape()
+  }
+  if (chainError) editError.value = chainError
   openFromUrl()
 })
 // REQ-076 AC-1/AC-4/AC-6/AC-8: ONE edit goes to the server; legs, name, marks and every number come from its reply.
@@ -714,6 +858,7 @@ async function moveLeg(edit) {
   pendingSteps.value = { [key]: m.net }
   if (m.net === 0) { // the clicks cancel out: nothing to ask, the confirmed legs stand
     guard.cancel('leg-edit')
+    cancelDuplicate() // a question left open by the move that just netted out closes as Cancel
     endMove(m)
     return
   }
@@ -731,6 +876,7 @@ async function sendEdit(edit, baseLegs, shiftTotal, owner) {
     return
   }
   const mine = guard.next('leg-edit') // aborts the edit still in flight (its reply would be stale)
+  cancelDuplicate() // a question left open by the older move closes: the old edit settles as Cancel
   editError.value = null
   editErrorIndex.value = null
   try {
@@ -747,7 +893,24 @@ async function sendEdit(edit, baseLegs, shiftTotal, owner) {
       return
     }
     const keep = edit.control === 'include'
-    legs.value = applyEditReply(legs.value, reply)
+    const shown = legs.value // the legs the reply is computed against; the answer must still find them on screen
+    let landed = applyEditReply(shown, reply)
+    let increased = false
+    if (RELATIVE_CONTROLS.includes(edit.control)) {
+      // D-60 (ADR-319, review finding 2): a move that lands a leg on a contract another leg holds with the same action asks
+      // through the one shared door; Cancel keeps the legs as before the step, a refused Increase says why.
+      const moved = await door.admitMoved(baseLegs, landed)
+      if (!guard.isNewest('leg-edit', mine)) return // a newer edit took over while the question was open
+      if (!sameLegs(legs.value, shown)) return // the move's base is no longer current: never overwrite the legs (Cancel)
+      if (!moved) return
+      if (moved.error) {
+        editError.value = { ...NEUTRAL_PARTS, what_happened: moved.error }
+        return
+      }
+      increased = moved.increased
+      landed = moved.legs
+    }
+    legs.value = landed
     if (!keep) {
       savedId.value = null
       savedRevision.value = null
@@ -757,7 +920,9 @@ async function sendEdit(edit, baseLegs, shiftTotal, owner) {
     hasReply.value = true
     // The embedded outcome is the server's At Expiry on its default range, so it is drawn only when it matches the legs and
     // choice on screen and no outcome request is pending (that one is never cancelled here: its reply is checked the same way).
-    if (reply.outcome && drawable(reply.outcome) && !guard.pending.outcome) {
+    if (increased) {
+      load() // Increase quantity changed the legs the reply priced: the numbers for the legs now on screen
+    } else if (reply.outcome && drawable(reply.outcome) && !guard.pending.outcome) {
       guard.cancel('outcome')
       clearTimeout(slowTimer)
       slow.value = false
@@ -850,6 +1015,9 @@ const zoomGrid = computed(() => {
   return sc?.step && sc.start && sc.end ? { step: sc.step, start: sc.start, end: sc.end } : null
 })
 onBeforeUnmount(() => {
+  replaceSeq += 1
+  settleReplace(false) // F7: no dangling replace question
+  cancelDuplicate() // the pending edit settles
   clearTimeout(slowTimer)
   clearTimeout(undoTimer)
 })
@@ -879,6 +1047,8 @@ const fromEntries = computed(() => state.value === 'from-entries')
 const pickUnderlying = ref('NIFTY')
 const headerUnderlying = computed(() => data.value?.underlying ?? legs.value[0]?.underlying ?? '')
 // REQ-077 AC-6: each leg's live LTP string from the outcome the page already has (a FROM_ENTRIES answer carries none)
+// D-18: each leg's own quote time from the reply (leg_quotes[].quote_at), by instrument id
+const quoteAtById = computed(() => Object.fromEntries((data.value?.leg_quotes ?? []).filter((q) => typeof q.quote_at === 'string').map((q) => [q.instrument_id, q.quote_at])))
 const ltpById = computed(() => Object.fromEntries((data.value?.legs ?? []).filter((l) => l.ltp != null).map((l) => [l.instrument_id, l.ltp])))
 // GC-UI D-PX (REQ-152 AC-2): the server's two-decimal price texts by instrument id; the browser prints these, never the values
 // fix/paper-dialog-safe item 2: the live price per leg as the table shows it (ltp_display, else the ltp string); an entry row in
@@ -910,6 +1080,16 @@ const pricesStamp = computed(() => {
   const at = istClock(d.last_price_at)
   return at ? { kind: 'time', text: `Prices as of ${at} IST` } : null
 })
+// ADR-329 (1), (2): leaving the builder for the Option Chain holds what it shows; leaving for any other page with unsaved legs asks.
+// The guard registers only when the page is rendered by a <router-view> (the app); a page mounted directly has none.
+const leaveGuard = useLeaveBuilder({
+  role: 'builder',
+  unsaved: () => unsavedCount({ legCount: legs.value.length, savedId: savedId.value, inDrafts: paper.value !== null, pendingCount: pendingOrders.value?.length ?? 0 }),
+  snapshot: () => (legs.value.length
+    ? { legs: legs.value, openStrategy: openStrategy.value, savedId: savedId.value, savedRevision: savedRevision.value, shapeName: shapeName.value,
+      paperId: paper.value?.book?.strategy_id ?? null, netKey: paper.value ? netKeyOf(paper.value.net) : null, addedDraft }
+    : null),
+})
 </script>
 
 <template>
@@ -917,6 +1097,18 @@ const pricesStamp = computed(() => {
     <!-- W-193 (UI-005): the visible title block is gone (the top bar breadcrumb names the page); the heading stays for screen
          readers. The planning sentence moved into the Important info note under the summary card. -->
     <h1 class="sr-only" data-testid="page-title">Strategy Builder</h1>
+    <!-- F6 (ADR-319, ADR-328 (1)): the ONE leg-door question (picker, forms, steps, chain add); outside every v-if chain, so no state hides it -->
+    <DuplicateLegDialog :door="door" />
+    <!-- ADR-328 (2): a replacing draft link while legs are shown -->
+    <Modal :open="replaceAsk !== null" title="Replace the legs?" @close="settleReplace(false)">
+      <div data-testid="draft-replace-dialog"><p data-testid="draft-replace-text">{{ replaceAsk ? replacePrompt(replaceAsk.count) : '' }}</p></div>
+      <template #actions>
+        <button type="button" class="rounded border border-line px-2 py-1" data-testid="draft-replace-yes" @click="settleReplace(true)">Replace</button>
+        <button type="button" class="rounded border border-line px-2 py-1" data-testid="draft-replace-cancel" @click="settleReplace(false)">Cancel</button>
+      </template>
+    </Modal>
+    <LeaveBuilderDialog :leave="leaveGuard" />
+    <p v-if="restoreNote" class="mt-2 text-sm text-ink-muted" data-testid="drafts-restore-note">{{ restoreNote }}</p>
 
     <MarketClosedBanner v-if="closedBanner" class="mt-2" :prices-at="closedBanner.at" />
     <p v-if="orderPathNotice" class="mt-2 text-sm text-ink-muted" data-testid="order-path-off-notice">{{ ORDER_PATH_OFF_SENTENCE }}</p>
@@ -962,12 +1154,12 @@ const pricesStamp = computed(() => {
         <div :class="paper ? 'rounded-lg border-2 border-dashed border-warn p-2' : 'contents'" data-testid="legs-frame" :data-paper-mode="paper ? 'true' : 'false'">
         <p v-if="paper" class="mb-2 text-xs font-semibold text-warn" data-testid="paper-mode-label">{{ PAPER_MODE_LABEL }}</p>
         <LegList
-          :multiplier-max="served.integer(MULTIPLIER_MAX_KEY)" :legs="legs" :pending-steps="pendingSteps" :paper-fills="paperFills" :shape-name="shapeName" :has-reply="hasReply" :controls="controls" :updating="updating" :error-parts="editError" :error-index="editErrorIndex" :ltp-by-id="ltpById" :price-text-by-id="priceTextById"
+          :multiplier-max="served.integer(MULTIPLIER_MAX_KEY)" :legs="legs" :pending-steps="pendingSteps" :paper-fills="paperFills" :quote-at-by-id="quoteAtById" :oldest-quote-at="data?.oldest_quote_at ?? null" :shape-name="shapeName" :has-reply="hasReply" :controls="controls" :updating="updating" :error-parts="editError" :error-index="editErrorIndex" :ltp-by-id="ltpById" :price-text-by-id="priceTextById"
           :undo-offered="undoHeld !== null" :leg-unit="legUnit" :strategy-name="openStrategy?.name ?? null"
           @edit="editLeg" @edit-leg="openInPicker" @include-all="includeAll" @remove="removeLeg" @add-leg="focusPicker" @pick-chain="pickFromChain" @clear-all="clearAll" @undo-clear="undoClear"
         >
           <template #money>
-            <div v-if="showNumbers" :class="updating ? 'opacity-60' : ''"><MoneySummary class="!mt-0 !px-0" :net-premium="data.summary.net_premium ?? null" :charges="data.charges_breakdown ?? null" /></div>
+            <div v-if="showNumbers" :class="updating ? 'opacity-60' : ''"><MoneySummary class="!mt-0 !px-0" :net-premium="data.summary.net_premium ?? null" :charges="data.charges_breakdown ?? null" :paper-charges="paperCharges" :basis-text="data.summary.price_basis_text ?? null" /></div>
           </template>
         </LegList>
         <!-- GC-ICFIX P3 u513: while the confirm dialog is open its list is a preview, not "N pending changes" the user made -->
@@ -977,7 +1169,7 @@ const pricesStamp = computed(() => {
           <button v-if="!paperStale && pendingOrders?.length" type="button" class="h-9 rounded-lg bg-accent px-3 font-medium text-white" data-testid="paper-review" @click="reviewPending">{{ REVIEW_AND_ADD_LABEL }}</button>
           <button v-if="pendingOrders === null || pendingOrders.length" type="button" class="h-9 rounded-lg border border-line px-3 font-medium" data-testid="paper-discard" @click="discardPending">{{ DISCARD_LABEL }}</button>
         </div>
-        <PaperBookPanel v-if="paper" :book="paper.book" :net="paper.net" :read-failed="paperReadFailed" :contracts-changed="paperContractsChanged" :show-orders="showOrdersTick" @exit="exitPaper" @exit-all="exitAllPaper" />
+        <PaperBookPanel v-if="paper" :book="paper.book" :net="paper.net" :read-failed="paperBookFailed" :contracts-changed="paperContractsChanged" :show-orders="showOrdersTick" @exit="exitPaper" @exit-all="exitAllPaper" />
         </div>
         <PaperConfirmDialog :open="paperDialog" :orders="paperRows" :strategy-id="route.query.strategy" :busy="paperBusy" :error="paperError" :state="paperState" @confirm="confirmPending" @cancel="paperDialog = false" @orderbook="openPaperOrderbook" />
         <SaveDraftBar ref="barRef" :legs="legs" :rules-ref="String(route.query.rules_ref || '')" :current="openStrategy" :shown-name="shapeName ?? ''" :paper-mode="paper !== null" :live-price-by-id="livePriceById" class="max-[1099px]:contents" @open="openFromBar" @saved="onSaved" @paper-added="onPaperAdded" @renamed="onRenamed" @deleted="onDeleted">
@@ -1081,16 +1273,18 @@ const pricesStamp = computed(() => {
             </ul>
           </div>
 
+          <!-- D-11/D-16 (ADR-209): the tiles follow the Add Booked switch; this line says which basis they are on -->
+          <p v-if="paperLeft" class="mt-4 text-xs text-ink-muted" data-testid="tiles-basis">{{ wholeTrade ? (paper.book.breakevens_basis_text ?? '') : (data.summary?.charges != null ? OPEN_LEGS_ONLY_TEXT : OPEN_LEGS_ONLY_BEFORE_CHARGES_TEXT) }}</p>
           <SummaryCards
             v-model:flipped="ratioFlipped"
             class="mt-4"
             :left="paperLeft"
-            :max-profit="paperLeft ? paper.book.max_profit_text ?? '-' : summaryFigure(data.summary, 'profit')"
-            :max-loss="paperLeft ? paper.book.max_loss_text ?? '-' : summaryFigure(data.summary, 'loss')"
-            :max-profit-exact="paperLeft ? paper.book.max_profit ?? null : data.summary.max_profit ?? null"
-            :max-loss-exact="paperLeft ? paper.book.max_loss ?? null : data.summary.max_loss ?? null"
-            :breakevens="paperLeft ? paper.book.breakevens_display ?? [] : data.summary.breakevens_display ?? []"
-            :breakevens-exact="paperLeft ? paper.book.breakevens ?? [] : data.summary.breakevens ?? []"
+            :max-profit="wholeTrade ? paper.book.max_profit_text ?? '-' : summaryFigure(data.summary, 'profit')"
+            :max-loss="wholeTrade ? paper.book.max_loss_text ?? '-' : summaryFigure(data.summary, 'loss')"
+            :max-profit-exact="wholeTrade ? paper.book.max_profit ?? null : data.summary.max_profit ?? null"
+            :max-loss-exact="wholeTrade ? paper.book.max_loss ?? null : data.summary.max_loss ?? null"
+            :breakevens="wholeTrade ? paper.book.breakevens_display ?? [] : data.summary.breakevens_display ?? []"
+            :breakevens-exact="wholeTrade ? paper.book.breakevens ?? [] : data.summary.breakevens ?? []"
             :what-can-i-make="data.summary.what_can_i_make"
             :what-can-i-lose="data.summary.what_can_i_lose"
             :where-i-start-losing="data.summary.where_do_i_start_losing"
@@ -1103,6 +1297,7 @@ const pricesStamp = computed(() => {
             :estimate-label="data.output_label || null"
             :risk-reward="data.summary.risk_reward ?? null"
             :value-label="data.summary.value_label ?? null"
+            :time-value-basis="data.summary.time_value_basis_text ?? null"
             :value-reason="data.summary.value_reason ?? null"
             :funds-share="paperLeft ? null : data.summary.funds_share ?? null"
           >
@@ -1124,20 +1319,23 @@ const pricesStamp = computed(() => {
             :spot="data.spot_level ?? ''"
             :table="data.table"
             :legs="data.legs ?? null"
-            :max-profit="data.summary.max_profit_unlimited ? null : data.summary.max_profit"
-            :max-loss="data.summary.max_loss_unlimited ? null : data.summary.max_loss"
+            :max-profit="wholeTrade ? (paper.book.max_profit === 'unlimited' ? null : paper.book.max_profit ?? null) : data.summary.max_profit_unlimited ? null : data.summary.max_profit"
+            :max-loss="wholeTrade ? (paper.book.max_loss === 'unlimited' ? null : paper.book.max_loss ?? null) : data.summary.max_loss_unlimited ? null : data.summary.max_loss"
             :curves="data.curves ?? null"
             :target-curve="targetShown?.curve ?? null"
             :include-booked="includeBooked"
             :target-booked-text="targetShown?.includes_booked_text ?? ''"
             :target-badge="targetShown?.badge ?? null" :target-stale="targetStale" :target-stale-text="targetShown?.stale_text ?? ''" :show-badge="!!targetShown"
-            :breakevens="data.summary.breakevens ?? []"
+            :breakevens="wholeTrade ? paper.book.breakevens_curve ?? [] : data.summary.breakevens ?? []"
+            :curve-booked-text="data.curve_includes_booked_text ?? ''"
             :sd="data.standard_deviation ?? null"
             :oi="data.open_interest ?? null"
             :zoom="zoomGrid"
             :payoff-table="data.payoff_table ?? null"
             :saved-id="savedId"
             :paper-total="paperTotal"
+            :closed="paper?.book?.closed ?? null"
+            :charges="paper ? { paid: paper.book.charges_paid_text ?? paper.book.charges_text ?? null, close: paper.book.charges_to_close_text ?? null } : null"
             :saved-revision="savedRevision"
             @zoom="zoomTo"
             @update:include-booked="pickBooked"
@@ -1146,7 +1344,7 @@ const pricesStamp = computed(() => {
             <!-- GC-TP R-19a (Sensibull 020): the what-if Target block sits BELOW the payoff graph, inside the chart card -->
             <template #target>
               <TargetBlock
-                :target="targetShown" :pick="targetPick" :stop-count="dateStopList.length" :stale="targetStale"
+                :target="targetShown" :pick="targetPick" :stop-count="dateStopList.length" :stale="targetStale" :not-live-text="targetNotLiveText"
                 @level="(v) => pickTarget({ level: v })"
                 @date="(i) => pickTarget({ dateIndex: i })"
                 @reset-level="pickTarget({ level: '' })"
@@ -1162,7 +1360,7 @@ const pricesStamp = computed(() => {
           </ChartCard>
           <LowerCard :table="data.table" :legs="data.legs ?? null" :sd="data.standard_deviation ?? null" />
           <StrategyActions :saved-id="savedId" :execute-refusal="refusal" />
-          <TrackingPanel :saved-id="savedId" :legs="data.legs ?? null" :shared="paper?.book ?? null" :shared-failed="paperReadFailed" />
+          <TrackingPanel :saved-id="savedId" :legs="data.legs ?? null" :shared="paper?.book ?? null" :shared-failed="paperBookFailed" />
         </div>
       </div>
     </div>

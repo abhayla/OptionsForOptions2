@@ -176,3 +176,63 @@ describe('R-26: every answer state of the target answer', () => {
     expect(t(w, 'target-block').attributes('data-stale')).toBe('true')
   })
 })
+
+// D-37 round 2 (B1): the sentence belongs to the latest reply that said prices are not live; never to a failed request or a refusal.
+describe('D-37 r2: "not shown while prices are not live" only when the latest reply said so', () => {
+  const NOT_LIVE = 'not shown while prices are not live'
+  const notLiveReply = { ...plain, target_not_live_text: NOT_LIVE, target: undefined }
+  const sentence = (w) => ['target-move-not-live', 'target-days-not-live'].filter((id) => t(w, id).exists())
+
+  it('a reply that says prices are not live shows the sentence beside the "-" readouts', async () => {
+    const w = await openLive()
+    await pick(w, '23100')
+    await pushesFor(2 * PUSH_MS)
+    serverAnswer = () => notLiveReply
+    await pushesFor(PUSH_MS)
+    expect(t(w, 'target-block').attributes('data-stale')).toBe('true')
+    expect(sentence(w)).toEqual(['target-move-not-live', 'target-days-not-live'])
+    expect(t(w, 'target-days-not-live').text()).toBe(NOT_LIVE)
+  })
+
+  it('a refused target (a reply without the sentence) marks the figures stale and shows no not-live sentence', async () => {
+    const w = await openLive()
+    await pick(w, '23100')
+    await pushesFor(2 * PUSH_MS)
+    serverAnswer = () => ({ ...plain, target: undefined })
+    await pushesFor(PUSH_MS)
+    expect(t(w, 'target-block').attributes('data-stale')).toBe('true')
+    expect(sentence(w)).toEqual([])
+  })
+
+  it('a failed request after a not-live reply drops the sentence: the failure says nothing about prices', async () => {
+    const w = await openLive()
+    await pick(w, '23100')
+    await pushesFor(2 * PUSH_MS)
+    serverAnswer = () => notLiveReply
+    await pushesFor(PUSH_MS)
+    expect(sentence(w)).toHaveLength(2)
+    socket().onclose()
+    await vi.advanceTimersByTimeAsync(REST_MS)
+    await flushPromises()
+    restFails = true
+    await pick(w, '23150')
+    await vi.advanceTimersByTimeAsync(REST_MS)
+    await flushPromises()
+    expect(t(w, 'target-block').attributes('data-stale')).toBe('true')
+    expect(sentence(w)).toEqual([])
+  })
+
+  it('a failed request with no not-live reply before it shows no sentence', async () => {
+    const w = await openLive()
+    await pick(w, '23100')
+    await pushesFor(2 * PUSH_MS)
+    socket().onclose()
+    await vi.advanceTimersByTimeAsync(REST_MS)
+    await flushPromises()
+    restFails = true
+    await pick(w, '23150')
+    await vi.advanceTimersByTimeAsync(REST_MS)
+    await flushPromises()
+    expect(sentence(w)).toEqual([])
+  })
+})

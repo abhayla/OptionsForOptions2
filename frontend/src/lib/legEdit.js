@@ -21,6 +21,10 @@ export const EXECUTE_WAITS_FOR_LATEST = 'Waiting for the latest numbers: Execute
 export const EXECUTE_NEEDS_ALL_TICKED = 'Tick every leg to execute: the whole strategy is sent as one plan.'
 /** REQ-076 AC-10: the empty list's sentence. */
 export const NO_LEGS_YET = 'No legs yet'
+// pending owner read (25 Nov 2026), D-52: the empty list's hint names the place that is on the screen: the Ready-made tab
+// when the server lists that held feature (REQ-079), else the Create Strategy page, where the shapes also are
+export const NO_LEGS_HINT_TAB = 'Pick strikes, or start from a ready-made shape in the Ready-made tab.'
+export const NO_LEGS_HINT_PAGE = 'Pick strikes, or start from a ready-made shape on the Create Strategy page.'
 /** REQ-135 AC-1: the Clear all legs question (N = the number of legs on the list) and how long Undo stays offered. */
 export const removeAllPrompt = (n) => `Remove all ${n} legs?`
 export const LEGS_CLEARED = 'All legs removed.'

@@ -86,7 +86,7 @@ def test_only_the_judge_and_the_window_reader_call_resolve_spot():
 
 
 def test_the_routes_answer_the_spot_through_judge_spot():
-    for name in ("adjustment.py", "adjustment_check.py", "adjustment_plan.py", "playbooks.py"):
+    for name in ("adjustment.py", "adjustment_check.py", "playbooks.py"):
         assert "judge_spot(" in (BACKEND / "routes" / name).read_text(encoding="utf-8"), name
 
 

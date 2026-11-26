@@ -230,11 +230,14 @@ describe('a re-read never lands on another strategy', () => {
 describe('round 2 smaller states', () => {
   it('a "contracts changed" mark left by a poll is cleared once the re-read succeeds', async () => {
     const w = await exitDialog()
-    w.vm.$.setupState.paperContractsChanged = true
-    await flushPromises()
-    expect(t(w, 'book-contracts-changed').exists()).toBe(true)
+    // ADR-328 (4): an Exit dialog never posts while the trade changed elsewhere, so the mark is set after the Confirm's POST has
+    // returned (a poll of the book landing while the re-read is not yet through), then the first re-read is not ready
+    answers['POST /paper/strategies/86/orders'] = () => { w.vm.$.setupState.paperContractsChanged = true; return Promise.resolve({ data: { ...REAL, strategy_id: 86, name: '"IC"' } }) }
+    notReady = 1
     await confirm(w)
-    await later(100)
+    expect(posts(86)).toHaveLength(1)
+    expect(t(w, 'book-contracts-changed').exists()).toBe(true)
+    await later(2000)
     expect(t(w, 'book-contracts-changed').exists()).toBe(false)
   })
 

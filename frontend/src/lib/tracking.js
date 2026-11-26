@@ -1,7 +1,7 @@
 // W-122 (REQ-109 AC-1, AC-2, AC-5; REQ-045 AC-1; REQ-046 AC-1; ADR-166): the paper-tracking panel's words and the one
 // reading of the tracking answer. The browser computes no money: every figure is the server's Decimal string, only
 // re-grouped for display. An answer this module cannot read shows no figure (fail closed).
-import { instrumentText, istClock, istTime, strikeLabel } from '@/lib/displayFormat'
+import { groupedIndian, instrumentText, istClock, istTime, strikeLabel } from '@/lib/displayFormat'
 
 /** GC-UI b2 D-B48 (REQ-109 AC-1, REQ-152): one leg's paper P&L as the server wrote it (`pnl_text`, signed, to the paisa),
  *  "booked" added for a leg the server marks booked (paper-exited); no text -> "—", never a browser figure (ADR-008). */
@@ -13,6 +13,7 @@ const legPnlText = (leg) => {
   return leg.pnl_kind === 'booked' ? `${text} booked` : text
 }
 import { plainName } from '@/lib/saveDraft'
+import { NOT_CONNECTED_TEXT, bookNotLive, pausedText } from '@/lib/priceState'
 
 /** GC-TP step 2 (ADR-207 (1)): the builder's action replaces "Start tracking". REQ-109 AC-1's footer, said plainly. */
 export const ADD_TO_PAPER_LABEL = 'Add to Paper'
@@ -20,6 +21,7 @@ export const PAPER_NOT_REAL_TEXT = 'This is not a real trade. Paper orders use n
 export const PAPER_EXIT_CHECKING_TEXT = 'Checking whether this exit leaves a sold option without protection...'
 export const PAPER_EXIT_UNCHECKED_TEXT = 'The app could not check whether this exit leaves a sold option without protection. You can still confirm.'
 export const PAPER_PRICE_REASON = 'Enter a price in steps of 0.05'
+export const PAPER_PRICE_ZERO_REASON = 'A price of 0 cannot be used. Enter 0.05 or more' // pending owner read (D-58): a zero is not a step problem
 export const PAPER_LOTS_REASON = 'Enter whole lots, 1 or more'
 export const PAPER_ADDED_TEXT = 'Added to Paper'
 // a typed price: digits with at most two decimals whose last decimal is 0 or 5 (a multiple of 0.05), and not zero. Judged on
@@ -29,6 +31,11 @@ const ZERO_TEXT = /^0+(?:\.0+)?$/
 export function paperPriceOk(text) {
   const typed = String(text ?? '').trim()
   return PRICE_TEXT.test(typed) && !ZERO_TEXT.test(typed)
+}
+/** The reason a typed price is refused, or '' when it is fine: zero has its own words (D-58), any other bad text the steps reason. */
+export function paperPriceReason(text) {
+  if (paperPriceOk(text)) return ''
+  return ZERO_TEXT.test(String(text ?? '').trim()) ? PAPER_PRICE_ZERO_REASON : PAPER_PRICE_REASON
 }
 export const paperLotsOk = (text) => /^[1-9]\d{0,5}$/.test(String(text ?? '').trim())
 
@@ -59,16 +66,18 @@ export function paperPostOutcome(e) {
  *  planned entry with a note saying so. The planned-entry field itself is never changed. */
 export function entryPriceFor(leg, livePriceById = {}) {
   const live = livePriceById?.[leg?.instrument_id]
-  if (typeof live === 'string' && live.trim() !== '') return { price: live.trim(), price_note: '' }
   const planned = typeof leg?.planned_entry === 'string' ? leg.planned_entry : ''
+  // GC-ICLIVE-B D-15 (c): a live price that is not the plan's says so ("plan 36.45"): no re-quote is hidden
+  if (typeof live === 'string' && live.trim() !== '') return { price: live.trim(), price_note: planned && planned !== live.trim() ? `plan ${planned}` : '' }
   return { price: planned, price_note: planned ? PAPER_PLANNED_PRICE_NOTE : '' }
 }
 
 /** POST the confirmed orders in ONE request (the server stores them in one transaction or none). Throws the client error. */
-export async function addToPaper(client, strategyId, orders, suggestionIds = [], basketLegs = null, held = null) {
+export async function addToPaper(client, strategyId, orders, suggestionIds = [], basketLegs = null, held = null, approachId = null) {
   // REQ-163 AC-1: the acted-on records this basket answers (Compare -> Open in builder); omitted when none
   const body = suggestionIds.length ? { orders, suggestion_ids: suggestionIds } : { orders }
   if (suggestionIds.length && basketLegs) body.basket_legs = basketLegs // REQ-112: the prepared basket's size
+  if (approachId) body.approach_id = approachId // D-25 (ADR-326 (1)): a Take profit basket (A-24 / A-25), checked by the server
   if (held) body.held = held // GC-TRACK1 k10: only on the first basket, only when the user ticked "Held at my broker"
   const { data } = await client.post(`/paper/strategies/${strategyId}/orders`, body)
   return data
@@ -98,25 +107,15 @@ export const TRACKING_REFRESH_MS = 5000
 export const PLATFORM_DETECTION_LABEL = 'Adjustment opportunity detected'
 /** REQ-109 AC-2: every paper figure says it is not real. */
 export const PAPER_PNL_PREFIX = 'Paper P&L (not real): '
-export const NOT_CONNECTED_TEXT = 'Paper P&L paused - live prices are not connected'
 export const UNREADABLE_TEXT = 'Paper P&L is not available right now.'
 export const CONDITION_TEXT = Object.freeze({
   near_short_strike: 'Index is near a short strike',
   near_breakeven: 'Index is near a breakeven',
 })
 
-/** REQ-109 AC-5's paused text, with the time of the last price; null time reads as not available. */
-export function pausedText(asOf) {
-  return `Paper P&L paused - prices not live, as of ${istTime(asOf)}`
-}
+export { NOT_CONNECTED_TEXT, pausedText } // the one wording lives in lib/priceState.js (REQ-109 AC-5)
 
 const MONEY = /^(-?)(\d+)\.(\d{2})$/
-
-function groupIndian(digits) {
-  if (digits.length <= 3) return digits
-  const head = digits.slice(0, -3)
-  return `${head.replace(/\B(?=(\d{2})+(?!\d))/g, ',')},${digits.slice(-3)}`
-}
 
 /** A 2-decimal money string as "+1,240.50" / "-390.00" (zero reads "+0.00"); null for anything else. */
 export function signedRupees(text) {
@@ -124,7 +123,7 @@ export function signedRupees(text) {
   if (!m) return null
   const [, minus, whole, paise] = m
   const zero = /^0+$/.test(whole) && paise === '00'
-  return `${minus && !zero ? '-' : '+'}${groupIndian(String(BigInt(whole)))}.${paise}`
+  return `${minus && !zero ? '-' : '+'}${groupedIndian(String(BigInt(whole)))}.${paise}`
 }
 
 /** Exited is the server's own marker (exited_at, or a booked P&L), never the presence of a price text. */
@@ -172,12 +171,13 @@ export function afterFigure(src, before, pausedText = null, afterKey = 'total_af
 export const CONTRACTS_CHANGED_TEXT = 'The open contracts changed, so the screen could not refresh them: reload to see them.'
 export function sharedTotal(book, failed = false) {
   if (!book || typeof book !== 'object') return null
-  const notLive = book.state === 'PAUSED' || book.state === 'NOT_CONNECTED'
+  const notLive = bookNotLive(book)
   const shown = afterFigure(book, serverText(book.total_text), pausedText(book.as_of ?? null))
   const at = istClock(book.answered_at ?? null)
-  const line = failed ? pausedText(book.answered_at ?? null) : notLive ? pausedText(book.as_of ?? null) : at === null ? null : `As of ${at} IST`
+  const closedLine = serverText(book.after_close_text) // D-64: after the close the server's sentence says why, in place of "prices not live"
+  const line = failed ? pausedText(book.answered_at ?? null) : closedLine !== null && notLive ? closedLine : notLive ? pausedText(book.as_of ?? null) : at === null ? null : `As of ${at} IST`
   // ADR-311: the legs that pause the total, named by the server (null when none); a paused total is never a number
-  return { kind: shown.kind, text: shown.text, label: shown.label, reason: shown.reason, breakdown: shown.breakdown, line, unpriced: serverText(book.unpriced_text) }
+  return { kind: shown.kind, text: shown.text, label: shown.label, reason: shown.reason, breakdown: shown.breakdown, line, unpriced: closedLine !== null ? null : serverText(book.unpriced_text) }
 }
 
 const STATES = new Set(['LIVE', 'PAUSED', 'NOT_CONNECTED', 'EXITED'])
@@ -203,6 +203,7 @@ export function readTracking(body, replyLegs = null) {
   if (!body || typeof body !== 'object' || !STATES.has(body.state) || !Array.isArray(body.legs)) return INVALID
   const legs = body.legs.map((leg) => ({
     key: leg.instrument_id,
+    contractId: leg.contract_id, // D-41: the book's key of this leg (key is the feed identity "NSE_FO:..."); absent in an older reply
     action: leg.action,
     instrument: leg.instrument,
     strike: leg.strike,
@@ -211,6 +212,7 @@ export function readTracking(body, replyLegs = null) {
     text: instrumentText({ quantity: String(leg.quantity ?? ''), expiry: leg.expiry, strike: leg.strike ?? '', instrument: leg.instrument }, lotsOf(replyLegs, leg)),
     entry: leg.entry_price_display ?? null, // GC-UI D-PX: the server's two-decimal text, printed as sent
     current: leg.price_state === 'live' ? (leg.current_price_display ?? null) : null,
+    quoteAt: leg.price_state === 'live' && typeof leg.price_at === 'string' ? leg.price_at : null, // D-18: when THIS leg's price was quoted (the server's price_at)
     exited: isExited(leg),
     exitPrice: leg.exit_price_display ?? null, // REQ-109 AC-4: the server's text of the exit price; null = a dash
     pnl: legPnlText(leg),
@@ -239,7 +241,7 @@ export function readTracking(body, replyLegs = null) {
       }
     })
   if (body.state === 'NOT_CONNECTED') return { kind: 'not_connected', text: NOT_CONNECTED_TEXT, figure: null, legs, detections }
-  if (body.state === 'PAUSED') return { kind: 'paused', text: pausedText(body.as_of), figure: null, legs, detections, unpriced: serverText(body.unpriced_text) }
+  if (body.state === 'PAUSED') return { kind: 'paused', text: serverText(body.after_close_text) ?? pausedText(body.as_of), figure: null, legs, detections, unpriced: serverText(body.after_close_text) !== null ? null : serverText(body.unpriced_text) }
   // live #603 item 1 (REQ-152 AC-4, ADR-008): the total, booked and unbooked are the server's signed texts as sent (one
   // minus character with the leg figures); a live / exited answer without the total's text is unreadable
   const signed = serverText(body.paper_pnl_text)
@@ -248,7 +250,7 @@ export function readTracking(body, replyLegs = null) {
   const unbooked = serverText(body.unbooked_text)
   // GC-ICFIX u123 (ADR-263): the headline is the after-charges figure, labelled; no after figure -> the before figure, labelled
   const shown = afterFigure(body, signed)
-  if (shown.kind === 'paused') return { kind: 'paused', text: pausedText(body.as_of), figure: null, legs, detections, unpriced: serverText(body.unpriced_text) }
+  if (shown.kind === 'paused') return { kind: 'paused', text: serverText(body.after_close_text) ?? pausedText(body.as_of), figure: null, legs, detections, unpriced: serverText(body.after_close_text) !== null ? null : serverText(body.unpriced_text) }
   const text = `${PAPER_PNL_PREFIX}${shown.text} ${shown.label}`
   const base = { figure: shown.text, afterReason: shown.reason, breakdown: shown.breakdown, booked, unbooked, legs, detections }
   if (body.state === 'EXITED') return { kind: 'exited', text: `${text} - exited`, ...base }

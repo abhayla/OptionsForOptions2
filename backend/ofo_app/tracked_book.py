@@ -26,11 +26,10 @@ from ofo.instruments.models import InstrumentId
 from ofo.money import PAISE
 from sqlalchemy import text
 
-from ofo_app import catalogue_store
+from ofo_app import catalogue_store, strategy_store
 from ofo_app.paper_book import NewOrder
 
 _SIDES = ("BUY", "SELL")
-_OWNED = text("SELECT 1 FROM public.strategies WHERE id = :s AND user_ref = :u AND deleted_at IS NULL")
 _FILLS = text(
     "SELECT p.plan_number, p.action, p.created_at, o.instrument_id, o.transaction_type, f.quantity, f.price "
     "FROM public.execution_plan_fills f JOIN public.execution_plan_orders o ON o.tag = f.tag "
@@ -106,7 +105,7 @@ def real_orders(fills: Sequence[FillRow], held: Sequence[HeldRow],
 
 async def real_book(conn: Any, user_ref: str, strategy_id: int) -> tuple[NewOrder, ...] | None:
     """``real_orders`` over the strategy's stored trades and adopted holdings; None when not this user's strategy."""
-    if (await conn.execute(_OWNED, {"s": strategy_id, "u": user_ref})).first() is None:
+    if not await strategy_store.owns(conn, user_ref, strategy_id):
         return None
     fills = [FillRow(int(r.plan_number), r.action, r.created_at, r.instrument_id, r.transaction_type, r.quantity,
                      r.price) for r in (await conn.execute(_FILLS, {"s": strategy_id})).all()]

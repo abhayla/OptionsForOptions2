@@ -40,12 +40,12 @@ from collections import OrderedDict
 from collections.abc import Awaitable, Callable, Hashable, Sequence
 from dataclasses import dataclass
 from decimal import Decimal
-from typing import Final
+from typing import Any, Final
 
 from ofo.engine.product import Product
+from ofo.execution.margin_gate import MARGIN_BUSY_CODE
 from ofo.instruments.models import ZERODHA
 from ofo.instruments.parser import ZERODHA_EXCHANGE_TO_SEGMENT
-from ofo.execution.margin_gate import MARGIN_BUSY_CODE
 from ofo.marketdata.provider import MarketDataProvider
 from ofo.outcome.service import (
     MARGIN,
@@ -114,6 +114,39 @@ def _read(client: KiteMargin, orders: tuple[BasketOrder, ...]) -> tuple[Decimal,
     return available, basket.required_total, basket.zerodha_total, basket.top_up
 
 
+def _read_basket(client: KiteMargin, orders: tuple[BasketOrder, ...]) -> tuple[Decimal, Decimal, Decimal]:
+    """In a worker thread: the basket's required total (ours, ADR-094), Zerodha's own figure and the top-up."""
+    basket = client.fetch_basket_margin(orders)
+    return basket.required_total, basket.zerodha_total, basket.top_up
+
+
+class RequestFunds:
+    """D-36 (a): Zerodha's available funds, read ONCE for one request and shared by every margin read of it. It is the
+    same figure within a request, so a request asks Zerodha once, not once per approach. Nothing outlives the request
+    (the object is made per request); the first reader starts the one read, the others wait on it; a failed read is
+    the same failure for all of them and is NOT tried again (ADR-016 to ADR-019: no automatic retry)."""
+
+    def __init__(self, limit: float = READ_TIMEOUT_SECONDS) -> None:
+        self._flight: asyncio.Future | None = None
+        self._opening: asyncio.Future | None = None
+        self._limit = limit
+        self.reads = 0  # Kite funds reads started (a test counter)
+
+    async def client(self, open_client: Callable[[], Awaitable[Any]]) -> Any:
+        """The request's one opened client (live: one stored-token read = one pooled connection, asked once, not once
+        per basket); a failed open is the same failure for all of them."""
+        if self._opening is None:
+            self._opening = asyncio.ensure_future(open_client())
+        return await asyncio.shield(self._opening)
+
+    async def value(self, client: KiteMargin) -> Decimal:
+        if self._flight is None:
+            self.reads += 1
+            self._flight = asyncio.ensure_future(asyncio.wait_for(asyncio.to_thread(client.fetch_available_funds),
+                                                                  self._limit))
+        return await asyncio.shield(self._flight)  # a waiter that goes away never cancels the shared read
+
+
 @dataclass(frozen=True)
 class _Entry:
     margin: Margin
@@ -158,22 +191,25 @@ class OutcomeMargin:
         self._cache.move_to_end(key)
         return entry.margin
 
-    async def margin_for(self, session: Hashable, orders: tuple[BasketOrder, ...]) -> Margin:
+    async def margin_for(self, session: Hashable, orders: tuple[BasketOrder, ...],
+                         funds: RequestFunds | None = None) -> Margin:
         """The cached margin of ``orders`` for ``session`` (its user and session id), read from Zerodha on a miss.
-        No lock is held across the network read: a hit answers at once whatever another key is waiting for."""
+        No lock is held across the network read: a hit answers at once whatever another key is waiting for.
+        ``funds`` (D-36): the request's one available-funds read, shared by its basket reads."""
         key = (session, orders)
         hit = self._cached(key)
         if hit is not None:
             return hit
         flight = self._inflight.get(key)
         if flight is None:
-            flight = asyncio.ensure_future(self._read_and_store(key, orders, store=_known(session)))
+            flight = asyncio.ensure_future(self._read_and_store(key, orders, store=_known(session), funds=funds))
             self._inflight[key] = flight
         return await asyncio.shield(flight)  # a waiter that goes away never cancels the shared read
 
-    async def _read_and_store(self, key: Hashable, orders: tuple[BasketOrder, ...], *, store: bool) -> Margin:
+    async def _read_and_store(self, key: Hashable, orders: tuple[BasketOrder, ...], *, store: bool,
+                              funds: RequestFunds | None = None) -> Margin:
         try:
-            margin, kept = await self._fetch(orders)
+            margin, kept = await self._fetch(orders, funds)
             if store:
                 self._cache[key] = _Entry(margin, None if kept else self._monotonic() + self._limits.retry)
                 self._cache.move_to_end(key)
@@ -183,16 +219,22 @@ class OutcomeMargin:
         finally:
             self._inflight.pop(key, None)
 
-    async def _fetch(self, orders: tuple[BasketOrder, ...]) -> tuple[Margin, bool]:
+    async def _fetch(self, orders: tuple[BasketOrder, ...], funds: RequestFunds | None = None) -> tuple[Margin, bool]:
         """(the margin, whether it is kept until the plan changes)."""
         self.reads += 1
         timeout = self._limits.timeout
         try:
-            client = await asyncio.wait_for(self._open(), timeout)
+            client = await asyncio.wait_for(self._open() if funds is None else funds.client(self._open), timeout)
             if client is None:  # no stored session after all
                 return MARGIN, False
-            available, needed, broker_needed, top_up = await asyncio.wait_for(asyncio.to_thread(_read, client, orders),
-                                                                       timeout)
+            if funds is None:
+                available, needed, broker_needed, top_up = await asyncio.wait_for(
+                    asyncio.to_thread(_read, client, orders), timeout)
+            else:  # D-36 (a): the request's one funds figure, then this basket; ONE bound covers both (round 2)
+                async def both() -> tuple[Decimal, Decimal, Decimal, Decimal]:
+                    got = await funds.value(client)
+                    return (got, *await asyncio.to_thread(_read_basket, client, orders))
+                available, needed, broker_needed, top_up = await asyncio.wait_for(both(), timeout)
         except KiteMarginError as exc:
             log.warning("outcome margin: Zerodha could not be read: %s", exc.code)
             if exc.code == MARGIN_BUSY_CODE:
@@ -214,8 +256,10 @@ def _known(session: Hashable) -> bool:
     return not (isinstance(session, tuple) and session and session[-1] is None)
 
 
-async def margin_answer(source: OutcomeMargin | None, ctx, legs: Sequence[PlannedOrderIn]) -> Margin:
-    """The margin block for one outcome answer. ``ctx`` is the market context (None = not connected)."""
+async def margin_answer(source: OutcomeMargin | None, ctx, legs: Sequence[PlannedOrderIn],
+                        funds: RequestFunds | None = None) -> Margin:
+    """The margin block for one outcome answer. ``ctx`` is the market context (None = not connected). ``funds``: the
+    request's one available-funds read (D-36), None = this answer reads its own."""
     if source is None or ctx is None:
         return MARGIN
     session = source.session()
@@ -224,4 +268,5 @@ async def margin_answer(source: OutcomeMargin | None, ctx, legs: Sequence[Planne
     orders = basket_orders(ctx.provider, legs)
     if orders is None:
         return margin_no_basket()
-    return await source.margin_for(session, orders)
+    return await (source.margin_for(session, orders) if funds is None
+                  else source.margin_for(session, orders, funds))

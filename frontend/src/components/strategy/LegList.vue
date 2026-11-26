@@ -8,6 +8,8 @@
      (Settings popover, UI-103). -->
 <script setup>
 import { computed, nextTick, ref } from 'vue'
+import { sameContract } from '@/lib/legDoor'
+import { istClock } from '@/lib/displayFormat'
 import ErrorMessage from '@/components/common/ErrorMessage.vue'
 import Tooltip from '@/components/common/Tooltip.vue'
 import Icon from '@/components/common/Icon.vue'
@@ -18,10 +20,12 @@ import { capturedCaption, contractName, expiryWithDays, istTime, strikeLabel } f
 import { NOT_CONNECTED_LABEL, REPRICE_PROMPT } from '@/lib/legPicker'
 import {
   CUSTOM_STRATEGY, LEFT_OUT_LABEL, LEGS_CLEARED, LEG_CARD_PADDING_PX, LEG_ROW_COLUMNS, MULTIPLIER_MIN, multiplierChoices,
-  NO_CONTROLS, NO_LEGS_YET, PLANNED_ENTRY_LABEL, YOUR_PRICE_LABEL,
+  NO_CONTROLS, NO_LEGS_HINT_PAGE, NO_LEGS_HINT_TAB, NO_LEGS_YET, PLANNED_ENTRY_LABEL, YOUR_PRICE_LABEL,
   anyUnticked, canStep, controlsForSelection, movedMarker, priceReasonText, removeAllPrompt, replacedPriceNote, showsControls,
 } from '@/lib/legEdit'
 import { plainName } from '@/lib/saveDraft'
+import { fetchHeldFeatureOn } from '@/lib/heldFeatures'
+import { NAME_FLOOR_CLASS } from '@/lib/nameFloor'
 import { PAPER_AVERAGE_LABEL, paperFillKey } from '@/lib/paperDrafts'
 
 const props = defineProps({
@@ -43,6 +47,8 @@ const props = defineProps({
   strategyName: { type: String, default: null }, // the open saved strategy's name, else the card reads "New Strategy"
   // GC-TP step 3b2 (R-11): paperFillKey of each leg the Drafts Mode net position loaded; such a leg reads "Paper average" (no time)
   paperFills: { type: Array, default: () => [] },
+  oldestQuoteAt: { type: String, default: null }, // the reply's oldest_quote_at: picked by the server, null when any leg quote has no time (D-18)
+  quoteAtById: { type: Object, default: () => ({}) }, // the outcome reply's leg_quotes[].quote_at by instrument id: each leg's OWN quote time (D-18)
 })
 // GC-UI 3a D-A07: 'include-all' asks the page to run the existing per-leg include edit for every leg that differs
 const emit = defineEmits(['edit', 'add-leg', 'pick-chain', 'remove', 'edit-leg', 'clear-all', 'undo-clear', 'include-all'])
@@ -75,11 +81,26 @@ const shown = computed(() => (someLeftOut.value || !props.hasReply ? null : prop
 const shownControls = computed(() => controlsForSelection(props.controls, props.legs))
 const tickState = computed(() => (selectedCount.value === props.legs.length ? 'all' : selectedCount.value === 0 ? 'none' : 'some'))
 const legName = (l) => contractName(l)
+/** D-60 (REQ-059 gate): two rows on one contract and action are never merged silently. The words are the gate's own
+ *  (gate_duplicate_leg in backend/ofo/errors/templates.py), shown on both rows. Index of the other row, or null. */
+const sameContractAs = (leg, i) => {
+  const j = props.legs.findIndex((o, k) => k !== i && sameContract(o, leg))
+  return j === -1 ? null : j
+}
+const duplicateLegText = (leg, other) => `Leg ${leg} is the same contract as leg ${other}. The legs have not been combined; edit the strategy to keep one or combine them yourself.`
 const replacedNotes = computed(() => props.legs.flatMap((l, i) => (l.replaced_typed === true ? [replacedPriceNote(i + 1, l)] : [])))
 const needsReprice = (l) => l.planned_entry == null && l.reason_code === 'needs_reprice'
+// D-18: every leg price states its own quote time (the reply's per-leg time); the summary line prints the reply's oldest_quote_at
+// (the server picks it), and says "time not given" when the server has none: no date arithmetic here
+const hasLegPrice = computed(() => Object.keys(props.ltpById ?? {}).length > 0)
+const legQuoteAt = (l) => istClock(props.quoteAtById?.[l.instrument_id] ?? null)
+const legPricesAsOf = computed(() => (istClock(props.oldestQuoteAt) ? `Oldest leg price as of ${istClock(props.oldestQuoteAt)} IST` : 'Leg prices: time not given'))
 const moved = (l) => movedMarker(l, props.ltpById[l.instrument_id], props.priceTextById[l.instrument_id])
 // GC-UI 3a D-A15 (ADR-202 (2)): one icon by the price heading while any leg's price has moved
 const anyMoved = computed(() => props.legs.some((l) => !!moved(l)))
+// D-52: null until the features read has finished (the hint shows nothing, so it never flips); then true only when listed
+const readyMadeTab = ref(null)
+fetchHeldFeatureOn('platform_strikes').then((on) => { readyMadeTab.value = on })
 // D-A06: the card title is the same plain name the action row used (no literal quote marks)
 const cardName = computed(() => plainName(props.strategyName) || 'New Strategy')
 // D-A14: the price box shows the planned entry as its value until the user types; only typed text is ever sent
@@ -137,7 +158,7 @@ function setMultiplier(index) {
 <template>
   <div class="rounded-t-lg border border-b-0 border-line bg-surface text-sm" data-testid="leg-edit-list" :data-updating="updating ? 'true' : 'false'">
     <div class="flex h-12 items-center justify-between border-b border-line" :style="cardPadding" data-testid="strategy-card-header">
-      <p role="heading" aria-level="2" class="truncate text-base font-semibold" data-testid="strategy-card-name">{{ cardName }}</p>
+      <p role="heading" aria-level="2" class="truncate text-base font-semibold" :class="NAME_FLOOR_CLASS" :title="cardName" data-testid="strategy-card-name">{{ cardName }}</p>
       <span v-if="legs.length" class="flex items-center gap-2">
         <button type="button" class="text-accent" data-testid="clear-all-legs" @click="confirmingClear = true">Clear all</button>
       </span>
@@ -153,7 +174,7 @@ function setMultiplier(index) {
 
     <div v-if="!legs.length" class="py-6 text-center" :style="cardPadding" data-testid="no-legs">
       <p class="font-medium" data-testid="no-legs-text">{{ NO_LEGS_YET }}</p>
-      <p class="mt-1 text-xs text-ink-muted">Pick strikes, or start from a ready-made shape below.</p>
+      <p class="mt-1 text-xs text-ink-muted" data-testid="no-legs-hint">{{ readyMadeTab === null ? '' : readyMadeTab ? NO_LEGS_HINT_TAB : NO_LEGS_HINT_PAGE }}</p>
       <div class="mt-3 flex justify-center gap-2">
         <button type="button" class="rounded bg-accent px-3 py-1 text-white" data-testid="no-legs-add" @click="emit('add-leg')">Add leg</button>
         <button type="button" class="rounded border border-line px-3 py-1" data-testid="no-legs-chain" @click="emit('pick-chain')">Pick from Option Chain</button>
@@ -179,7 +200,7 @@ function setMultiplier(index) {
       <p v-for="n in replacedNotes" :key="n" class="text-ink-muted" :style="cardPadding" data-testid="replaced-note">{{ n }}</p>
 
       <div class="leg-grid grid items-center whitespace-nowrap text-xs text-ink-muted max-[639px]:hidden" :style="{ ...cardPadding, ...gridStyle }" aria-hidden="true" data-testid="leg-table-head">
-        <span></span><span class="px-1 text-center">B/S</span><span class="pl-2 pr-1">Expiry</span><span class="px-1 text-center">Strike</span><span class="px-1 text-center">Type</span><span class="px-1 text-center">Lots</span><span class="flex items-center justify-end gap-1 pl-1" data-testid="price-head">{{ PLANNED_ENTRY_LABEL }}<span class="relative inline-flex" :class="anyMoved ? 'text-warn' : ''" :title="anyMoved ? 'Price has moved' : 'Your planned entry price'" data-testid="price-help" data-icon="question"><Icon name="help" :size="12" /><span v-if="anyMoved" class="absolute -right-0.5 -top-0.5 h-1.5 w-1.5 rounded-full bg-warn" data-testid="price-moved-head"></span></span></span><span></span><span></span>
+        <span></span><span class="px-1 text-center">B/S</span><span class="pl-2 pr-1">Expiry</span><span class="px-1 text-center">Strike</span><span class="px-1 text-center">Type</span><span class="px-1 text-center" data-testid="leg-unit-head">{{ legUnit === 'quantity' ? 'Quantity' : 'Lots' }}</span><span class="flex items-center justify-end gap-1 pl-1" data-testid="price-head">{{ PLANNED_ENTRY_LABEL }}<span class="relative inline-flex" :class="anyMoved ? 'text-warn' : ''" :title="anyMoved ? 'Price has moved' : 'Your planned entry price'" data-testid="price-help" data-icon="question"><Icon name="help" :size="12" /><span v-if="anyMoved" class="absolute -right-0.5 -top-0.5 h-1.5 w-1.5 rounded-full bg-warn" data-testid="price-moved-head"></span></span></span><span></span><span></span>
       </div>
       <ul data-testid="leg-table">
         <li
@@ -207,9 +228,10 @@ function setMultiplier(index) {
             <span v-else class="flex h-8 items-center justify-center rounded border border-line px-1" data-testid="leg-lots">{{ leg.lots }} lot</span>
             <span :ref="(el) => (menuRoots[i] = el)" class="leg-line2-price relative flex h-8 items-center justify-end rounded border" :class="leg.typed === true ? 'border-accent' : 'border-line'" data-testid="price-box" @keydown.esc="closeMenu">
               <span v-if="moved(leg)" class="absolute -right-1 -top-1 z-10 leading-none" data-testid="price-moved-dot">
-                <Tooltip :text="moved(leg)" label="Price has moved"><template #trigger><span class="block h-2 w-2 rounded-full bg-warn" aria-hidden="true"></span></template></Tooltip>
+                <Tooltip :text="`${moved(leg)}${legQuoteAt(leg) ? `, quoted ${legQuoteAt(leg)} IST` : ''}`" label="Price has moved"><template #trigger><span class="block h-2 w-2 rounded-full bg-warn" aria-hidden="true"></span></template></Tooltip>
               </span>
               <span v-if="moved(leg)" class="sr-only" data-testid="price-moved">{{ moved(leg) }}</span>
+              <span v-if="ltpById[leg.instrument_id] != null" class="sr-only" data-testid="leg-quote-at">{{ legQuoteAt(leg) ?? 'time n/a' }}</span>
               <input
                 :value="priceText(leg, i)" type="text" inputmode="decimal" class="num h-full w-[8ch] min-w-0 flex-1 bg-transparent px-1 text-right text-ink"
                 :title="isPaperFill(leg) ? PAPER_AVERAGE_LABEL : leg.planned_entry != null && leg.captured_at != null ? `${entryLabel(leg)}, ${capturedText(leg)}` : undefined"
@@ -242,6 +264,7 @@ function setMultiplier(index) {
             </div>
           </div>
           <span class="sr-only" data-testid="leg-name">{{ legName(leg) }}</span>
+          <p v-if="sameContractAs(leg, i) !== null" class="pl-6 text-xs text-warn" data-testid="duplicate-leg-warning">{{ duplicateLegText(i + 1, sameContractAs(leg, i) + 1) }}</p>
           <span v-if="leg.planned_entry != null" class="sr-only" data-testid="leg-entry">{{ entryLabel(leg) }} {{ leg.planned_entry_display ?? priceTextById[leg.instrument_id]?.planned_entry_display ?? '—' }}</span>
           <div v-if="needsSecondLine(leg, i)" class="pl-6 text-xs text-ink-muted" data-testid="leg-second-line">
             <span v-if="leg.included === false" class="mr-2" data-testid="left-out-label">{{ LEFT_OUT_LABEL }}</span>
@@ -270,7 +293,10 @@ function setMultiplier(index) {
             <option v-for="n in multiplierList" :key="n" :value="n">{{ n }}</option>
           </select>
         </label>
-        <div class="min-w-0 max-[639px]:w-full"><slot name="money" /></div>
+        <div class="min-w-0 max-[639px]:w-full">
+          <p v-if="hasLegPrice" class="text-xs text-ink-muted" data-testid="leg-prices-as-of">{{ legPricesAsOf }}</p>
+          <slot name="money" />
+        </div>
       </div>
     </template>
   </div>

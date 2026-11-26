@@ -8,6 +8,7 @@
 import PageHeader from '@/components/common/PageHeader.vue'
 import { computed, onMounted, ref } from 'vue'
 import api from '@/services/api'
+import { istTime } from '@/lib/displayFormat'
 import ErrorMessage from '@/components/common/ErrorMessage.vue'
 import { accountView } from '@/lib/brokerAccount'
 import { NO_EXTRA_CHARGES, OPEN_ACCOUNT_LABEL, SAFE_EXPLAINER, SAFE_EXPLAINER_TITLE, openAccountUrl } from '@/lib/connectHelp'
@@ -62,7 +63,7 @@ const rows = computed(() => ROWS.map(([key, title]) => {
 const anyConnected = computed(() => rows.value.some((r) => r.level !== 'disconnected'))
 const lastSync = computed(() => {
   const at = status.value?.last_successful_sync
-  return at ? new Date(at).toLocaleString('en-IN', { timeZone: 'Asia/Kolkata', dateStyle: 'medium', timeStyle: 'short' }) + ' IST' : null
+  return at ? istTime(at) : null // D-57: the one formatter
 })
 
 async function load() {

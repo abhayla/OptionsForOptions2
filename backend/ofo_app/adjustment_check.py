@@ -66,7 +66,7 @@ from ofo.engine.extremes import ContractTerms
 from ofo.engine.extremes_charges import NOT_PRICED, RATES_UNAVAILABLE, book_after_charges, open_exit_charges
 from ofo.engine.legs import Action, Instrument, Leg
 from ofo.engine.metrics import UNLIMITED
-from ofo.engine.model import delta_at_intrinsic
+from ofo.engine.model import INTRINSIC_TICK, delta_at_intrinsic
 from ofo.errors.explanations import (
     DAY_RULE_GENERIC_TEXT,
     LEVEL_WATCH_LABEL_TEXT,
@@ -166,6 +166,19 @@ def strategy_type(position: Position, spot: Decimal | None, listed: list | None)
     return found
 
 
+def entry_type(tracked: Tracked, listed: list | None) -> str | None:
+    """D-04 (ADR-318 (4)): the playbook type of a strategy with no plan = the shape it had AT ENTRY (the first batch of
+    paper orders, ``Tracked.entry_position``), so an adjustment that changes the shape keeps its rules and maximum.
+    No entry shape readable (a real book, no order time), or one that cannot be classified (its contracts are no longer
+    listed, so no strike gap) -> the current shape. The one door every playbook lookup by shape goes through. It takes
+    NO spot (the server limit reads the shape against the middle of its strikes): a caller cannot classify against
+    another reference than the limit."""
+    # the entry is the first basket of orders (ADR-255): a trade built in two separate confirms is typed by its
+    # first only
+    entry = tracked.entry_position
+    return (entry and strategy_type(entry, None, listed)) or strategy_type(tracked.position, None, listed)
+
+
 async def plan_saved_before_adr247(conn: Any, plan: Any) -> bool:
     """ADR-250: a plan accepted before the iron condor system version 2 (migration 0040) was saved (the plan's
     ``accepted_at`` survives every re-save). Version 2 absent -> True: keep its own stops."""
@@ -236,7 +249,6 @@ def prices_fresh(ctx: Any) -> bool | None:
 
 
 #: ADR-268 (1): an option price within one tick of its intrinsic value has no time value left (NSE/BSE option tick)
-INTRINSIC_TICK: Final = Decimal("0.05")
 
 
 def _abs_delta(market: MarketInputs, leg: Any, ltp: Decimal | None, spot: Decimal | None) -> Decimal | None:
@@ -893,14 +905,22 @@ def _target_line(trigger_id: str, threshold: str, target: TargetFigures | None) 
 
 
 def condition_line(trigger_id: str, label: str | None, unit: str | None, value: str, threshold: str,  # noqa: PLR0913
-                   beyond: tuple[str, Decimal, Decimal] | None = None, target: TargetFigures | None = None) -> Any:
+                   beyond: tuple[str, Decimal, Decimal] | None = None, target: TargetFigures | None = None,
+                   side: str | None = None) -> Any:
     """The condition in words. ADR-294 (2): T-07 with ``target`` figures -> the target sentence (profit before charges,
     the target, the after-charges result); anything else, or a figure the slots refuse -> the percent line."""
     try:
         sentence = _target_line(trigger_id, threshold, target)
     except (TypeError, ValueError, ArithmeticError):  # a refused figure: the percent line (fail visible)
         sentence = None
-    return sentence if sentence is not None else _percent_line(trigger_id, label, unit, value, threshold, beyond)
+    line = sentence if sentence is not None else _percent_line(trigger_id, label, unit, value, threshold, beyond)
+    if trigger_id != "T-01" or beyond is not None or side not in ("CE", "PE"):  # D-58: a plain T-01 line, known side
+        return line
+    try:
+        said = "adjust_condition_side_put" if side == "PE" else "adjust_condition_side_call"
+        return render_explanation(said, line=line)
+    except (TypeError, ValueError):  # a line the slot refuses: the plain line (fail visible)
+        return line
 
 
 def _percent_line(trigger_id: str, label: str | None, unit: str | None, value: str, threshold: str,  # noqa: PLR0913

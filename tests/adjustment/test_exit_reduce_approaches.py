@@ -153,14 +153,14 @@ def test_a27_short_without_price_is_refused_naming_the_leg():
 def test_a35_only_on_expiry_day_from_the_time():
     sc = load("ADJ-09")  # expiry day 14:45
     position, chain, spot = inputs(sc)
-    for exits, want in [(ExitInputs(None, "14:30", "14:29"), "The time exit is offered on expiry day from 14:30."),
-                        (ExitInputs(None, "14:30", None), "The time exit is offered on expiry day from 14:30."),
-                        (ExitInputs(None, None, "15:00"), "Your playbook sets no time exit, so this approach is not built.")]:
+    for exits, want in [(ExitInputs(None, "14:30", "14:29"), "This approach opens on the expiry day, from 14:30; it is not offered before then."),
+                        (ExitInputs(None, "14:30", None), "This approach opens on the expiry day, from 14:30; it is not offered before then."),
+                        (ExitInputs(None, None, "15:00"), "This approach is not built because your playbook sets no exit time.")]:
         assert build_approach(position, chain, spot, "A-35", CFG, exits=exits).refusal == want
     assert build_approach(position, chain, spot, "A-35", CFG, exits=ExitInputs(None, "14:30", "14:30")).refusal is None
     day_before = replace(position, today=position.today - datetime.timedelta(days=1))
     assert build_approach(day_before, chain, spot, "A-35", CFG, exits=ExitInputs(None, "14:30", "15:00")).refusal == \
-        "The time exit is offered on expiry day from 14:30."
+        "This approach opens on the expiry day, from 14:30; it is not offered before then."
 
 
 def test_s11_keeps_all_five_at_the_adjustment_limit():

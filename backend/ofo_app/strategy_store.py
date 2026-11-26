@@ -25,7 +25,7 @@ from __future__ import annotations
 import dataclasses
 from dataclasses import dataclass
 from datetime import datetime
-from typing import Any, Iterable, Mapping, Optional, Sequence
+from typing import Any, Iterable, Literal, Mapping, Optional, Sequence
 
 from sqlalchemy import text
 
@@ -128,6 +128,28 @@ _HAS_PAPER_SQL = "EXISTS (SELECT 1 FROM public.paper_orders o WHERE o.strategy_i
 #: ADR-299 / ADR-298: "an order was placed", practice OR real, in ONE place: a paper order, or an execution plan
 #: (a basket was sent to the broker). The one status word on every screen reads this (Draft = no order yet).
 _HAS_ORDER_SQL = (f"({_HAS_PAPER_SQL} OR EXISTS (SELECT 1 FROM public.execution_plans xp WHERE xp.strategy_id = s.id))")
+_HAS_ORDER = text(f"SELECT {_HAS_ORDER_SQL} AS has_order FROM public.strategies AS s WHERE s.id = :id")  # noqa: S608
+
+StatusWord = Literal["Draft", "Running", "Completed", "Unknown"]
+
+
+def status_word(status: str | None, has_order: bool) -> StatusWord:
+    """ADR-299 (owner 2026-11-13, D6) / GC-ICLIVE D-28: THE one function that names a strategy's state, read by every
+    route that carries a strategy (strategies, paper book, paper list). The stored status is draft or closed (alembic
+    0049, ADR-259); "Draft" is no order yet, "Running" an order with the row still open, "Completed" every leg closed. A
+    status this function does not know is "Unknown", never guessed as Draft."""
+    if status == "closed":
+        return "Completed"
+    if status == "draft":
+        return "Running" if has_order else "Draft"
+    return "Unknown"
+
+
+async def has_order(conn: Any, strategy_id: int) -> bool:
+    """ADR-299: whether ANY order (practice or real) exists for the strategy: the same fragment the list selects."""
+    return bool((await conn.execute(_HAS_ORDER, {"id": strategy_id})).scalar())
+
+
 _CAN_DELETE = text(f"SELECT {_CAN_DELETE_SQL} AS can_delete FROM public.strategies AS s WHERE s.id = :id")  # noqa: S608
 _SELECT_HIDDEN = text(f"SELECT {_COLUMNS} FROM public.strategies WHERE id = :id AND user_ref = :user_ref "  # noqa: S608
                       "AND deleted_at IS NOT NULL FOR UPDATE")
@@ -150,6 +172,9 @@ _LIST = text(
     "CROSS JOIN LATERAL (SELECT coalesce((SELECT v.definition FROM public.strategy_versions AS v "
     "WHERE v.strategy_id = s.id AND v.state = 'active'), s.definition) AS definition) AS d "
     "WHERE s.user_ref = :user_ref AND s.deleted_at IS NULL ORDER BY s.id")
+#: The ONE ownership read (modular-doors Phase 7 R2): the strategy exists, is this user's and is not hidden. Another
+#: user's, a hidden and a missing strategy answer alike (False), so the caller keeps its own error.
+_OWNED = text("SELECT 1 FROM public.strategies WHERE id = :s AND user_ref = :u AND deleted_at IS NULL")
 _RENAME = text("UPDATE public.strategies SET name = :name WHERE id = :id RETURNING id, name, revision, updated_at")
 _INSERT_HISTORY = text(
     "INSERT INTO public.strategy_history (strategy_id, change_summary, definition, definition_schema_version) "
@@ -760,3 +785,8 @@ async def history(conn: Any, user_ref: str, strategy_id: int) -> list[sf.History
         out.append(sf.HistoryEntry(int(r.seq), r.at, r.change_summary, await _read(conn, r.definition_text),
                                    restorable=is_restore_target(r.change_summary, sent_nothing)))
     return out
+
+
+async def owns(conn: Any, user_ref: str, strategy_id: int) -> bool:
+    """True only for a visible (not soft-deleted) strategy of ``user_ref``; no error, no lock, no write."""
+    return (await conn.execute(_OWNED, {"s": strategy_id, "u": user_ref})).first() is not None
