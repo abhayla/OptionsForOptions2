@@ -1913,12 +1913,24 @@ async def cancel_paper_trigger(strategy_id: int, trigger_id: int, db: Annotated[
 
 @router.post("/paper/strategies/{strategy_id}/triggers/{trigger_id}/keep", response_model=TriggersOut,
              dependencies=[Depends(guard_paper_order)])
-async def keep_paper_trigger(strategy_id: int, trigger_id: int, db: Annotated[Any, Depends(get_db)],
-                             user_ref: Annotated[str, Depends(current_user_ref)]) -> TriggersOut:
+async def keep_paper_trigger(strategy_id: int, trigger_id: int, db: Annotated[Any, Depends(get_db)],  # noqa: PLR0913
+                             user_ref: Annotated[str, Depends(current_user_ref)],
+                             ctx: Annotated[MarketContext | None, Depends(get_market_context)],
+                             feed: Annotated[LiveFeed | None, Depends(get_live_feed)],
+                             now: Annotated[AnswerClock, Depends(get_answer_clock)]) -> TriggersOut:
     """D-03 "Keep this level": the trader has read the mark and keeps the exit. The same exit is stored again as a new
     armed row (created after the adjustment, so it is no longer marked) and the old row is cancelled, in ONE
-    transaction under the strategy lock. The level is the same: nothing is moved (no silent substitution)."""
-    await _load_strategy(db, user_ref, strategy_id)
+    transaction under the strategy lock. The level is the same: nothing is moved (no silent substitution).
+    #733 (ADR-317 (1)): keeping stores the exit again, so the SAME crossed-level check as the save route
+    (``check_trigger_levels``) runs first, before the lock (the price read may wait up to 3 s): a level the live price
+    has already reached is refused and the old exit stays as it is."""
+    stored = await _load_strategy(db, user_ref, strategy_id)
+    current = {r.trigger.id: r for r in await paper_trigger_store.list_for(db, strategy_id)}.get(trigger_id)
+    if current is not None and current.trigger.kind == "conditional_exit" and _state(current) == "armed":
+        again = paper_trigger_store.NewTrigger("conditional_exit", current.trigger.direction, current.trigger.level,
+                                               underlying=current.trigger.underlying)
+        if refusal := await check_trigger_levels(db, ctx, feed, stored.saved.definition.underlying, [again], now):
+            raise StrategyRefused(refusal)
     try:
         await store.lock_strategy(db, user_ref, strategy_id)
         rows = {r.trigger.id: r for r in await paper_trigger_store.list_for(db, strategy_id)}
