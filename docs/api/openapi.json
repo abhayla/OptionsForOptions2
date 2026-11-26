@@ -10345,6 +10345,20 @@
             ],
             "title": "Charges To Close Text"
           },
+          "closed_count": {
+            "default": 0,
+            "title": "Closed Count",
+            "type": "integer"
+          },
+          "closed_text": {
+            "anyOf": [
+              {},
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Closed Text"
+          },
           "count": {
             "default": 0,
             "title": "Count",
@@ -10733,6 +10747,20 @@
               }
             ],
             "title": "Charges To Close Text"
+          },
+          "closed_count": {
+            "default": 0,
+            "title": "Closed Count",
+            "type": "integer"
+          },
+          "closed_text": {
+            "anyOf": [
+              {},
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Closed Text"
           },
           "decay": {
             "anyOf": [
