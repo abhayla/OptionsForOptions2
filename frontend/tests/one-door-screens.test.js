@@ -411,3 +411,24 @@ describe('G3: the Lane B emitter guard', () => {
     expect(readdirSync(HERE)).toContain('leg-emitters-guard.test.js')
   })
 })
+
+// Rule 5 (ADR-330 (10), Q2 Chunk B): the one Positions list shows real rows read-only and starts no order. PositionsPage.vue and
+// PositionsTotals.vue contain no addToPaper, no `.post(` and no `/orders` (comments blanked; strings kept). The 'Real (Zerodha
+// order)' literal part of this rule belongs to Chunk C and is not built here.
+const ONE_LIST_FILES = ['src/pages/PositionsPage.vue', 'src/components/positions/PositionsTotals.vue']
+const ONE_LIST_BANNED = [/addToPaper/, /\.post\(/, /\/orders/]
+const oneListProblems = (sources) => Object.entries(sources).flatMap(([file, src]) =>
+  ONE_LIST_BANNED.filter((re) => re.test(stripComments(src))).map((re) => `${file}: ${re}`))
+describe('G3 rule 5: the one Positions list starts no order', () => {
+  const real = Object.fromEntries(ONE_LIST_FILES.map((f) => [f, readFileSync(join(process.cwd(), f), 'utf8')]))
+  it('PositionsPage.vue and PositionsTotals.vue contain no addToPaper, .post( or /orders', () => {
+    expect(oneListProblems(real)).toEqual([])
+  })
+  it('mutation: a scratch copy with .post(, addToPaper or /orders is one problem each; a comment is none', () => {
+    const base = real['src/pages/PositionsPage.vue']
+    expect(oneListProblems({ a: base + "\napi.post('/x')" })).toHaveLength(1)
+    expect(oneListProblems({ a: base + '\naddToPaper(api)' })).toHaveLength(1)
+    expect(oneListProblems({ a: base + '\nconst u = `/paper/strategies/1/orders`' })).toHaveLength(1)
+    expect(oneListProblems({ a: base + '\n// api.post(\n' })).toEqual([])
+  })
+})
