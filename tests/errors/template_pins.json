@@ -4023,6 +4023,22 @@
     "sha256": "d4a1f2f4128afc9683ca095870118463d9841b7c9b9f630fc81672a2988020b6",
     "reviewed": "pending owner read"
   },
+  "explanation:alert_strategy_label": {
+    "sha256": "71c7fb7be4332d32007d5433f1487ee0b74185a426fdfa1cd58f3b4a1c5225fb",
+    "reviewed": "pending owner read"
+  },
+  "explanation:alert_strategy_label_no_expiry": {
+    "sha256": "7693c93af9e497ad03255b7c70f6d6a5ad10215fe945027cded8cea97fb14e20",
+    "reviewed": "pending owner read"
+  },
+  "explanation:plan_stop_above_max_loss": {
+    "sha256": "1d4738327ec269bde3265df4ce92e7b388a4bab7bb589767aad668725c9fb14d",
+    "reviewed": "pending owner read"
+  },
+  "explanation:plan_stop_above_max_loss_paise": {
+    "sha256": "26d4b218eee34d02f07a18bf2ccc702f621639f0fcc306f2492e561a5e751309",
+    "reviewed": "pending owner read"
+  },
   "adjust_trigger_stop_not_supplied": {
     "sha256": "801657f720eeec57f47e7c7695e2dd893f7740a678ffa3f7fe23460c1c2a6fe4",
     "reviewed": "pending owner read"
@@ -4789,14 +4805,6 @@
   },
   "explanation:limit_stop_rupees": {
     "sha256": "a561fd61c385e518b588715a77da3afdfc813e4d2b55486375571086fd715205",
-    "reviewed": "pending owner read"
-  },
-  "explanation:alert_title_label": {
-    "sha256": "8c162f793ef770d884fec96f88fe24f4e0cb49e6d17de93067045bfd2a5c7949",
-    "reviewed": "pending owner read"
-  },
-  "explanation:alert_title_label_no_expiry": {
-    "sha256": "91ff54a90e6fc8d561d0aa586094b86ae08f02938a7b4b59a54865ebe03441ed",
     "reviewed": "pending owner read"
   },
   "explanation:alert_title_unnamed": {

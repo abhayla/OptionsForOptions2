@@ -1693,6 +1693,19 @@ _EXPLANATIONS: tuple[ExplanationTemplate, ...] = (
                         {"a": Explained, "b": Explained, "c": Explained}),
     ExplanationTemplate("plan_stop_words_first", "values_seen", "{words}, whichever comes first",
                         {"words": Explained}),
+    # ADR-330 (19)(b) (pending owner read): the trade's number and nearest expiry beside its (quoted) name in alert lists
+    ExplanationTemplate("alert_strategy_label", "values_seen", "{name} (#{number}, {day} {month})",
+                        {"name": Explained, "number": Recorded, "day": Recorded, "month": Recorded}),
+    ExplanationTemplate("alert_strategy_label_no_expiry", "values_seen", "{name} (#{number})",
+                        {"name": Explained, "number": Recorded}),
+    # ADR-330 (25) / LP-4 (pending owner read): a rupee stop above the stop base's max loss; informs, never blocks.
+    ExplanationTemplate("plan_stop_above_max_loss", "values_seen",
+                        "This stop (Rs {stop}) is above the trade's max loss (Rs {loss}), so it cannot be reached.",
+                        {"stop": WholeRupees, "loss": WholeRupees}),
+    # the same line when both figures print as the same whole rupees: each to the paisa, so they read differently.
+    ExplanationTemplate("plan_stop_above_max_loss_paise", "values_seen",
+                        "This stop ({stop}) is above the trade's max loss ({loss}), so it cannot be reached.",
+                        {"stop": Rupees, "loss": Rupees}),
     # GC-ICFIX u113 round 3 (ADR-304 (3), ADR-294, ADR-296): the one sentence each limit row of the rule check carries.
     # The percent and the rupee amount are the evaluator's own numbers; a rule that is not checked prints its reason and no number.
     ExplanationTemplate("limit_target", "values_seen", "Target: profit of {pct} % of max profit, before charges",
@@ -2028,10 +2041,6 @@ _EXPLANATIONS: tuple[ExplanationTemplate, ...] = (
                         "This exit could not be checked against your current legs. Check this level.", {}),
     # ADR-330 (19)(b): the one label every alert title carries: the name with the trade's number and, when the trade has
     # exactly one expiry, that expiry: Short Iron Condor (#172, 1 Dec)
-    ExplanationTemplate("alert_title_label", "values_seen", "{name} (#{id}, {day} {month})",
-                        {"name": Explained, "id": Recorded, "day": Recorded, "month": Recorded}),
-    ExplanationTemplate("alert_title_label_no_expiry", "values_seen", "{name} (#{id})",
-                        {"name": Explained, "id": Recorded}),
     ExplanationTemplate("alert_title_unnamed", "values_seen", "Strategy {id}", {"id": Recorded}),
     # ADR-330 (3b), (6): the message of a fired Stops-panel exit (History only); the line is the ADR-330 (6) max-loss line
     ExplanationTemplate("stop_fired_note", "what_triggered", "{body}", {"body": Explained}),

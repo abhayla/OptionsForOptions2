@@ -281,9 +281,11 @@ async def test_each_alert_row_names_its_strategy(db):
     async with _client(app) as c:
         alerts = (await c.get("/paper/alerts")).json()["alerts"]
         book = (await c.get(f"/paper/strategies/{stored.id}")).json()
-    # W2-A pin changed: the alert row names its strategy with the ADR-330 (19)(b) label (name, then "(#id, d Mon)")
+    # the alert row names its strategy with the ONE ADR-330 (19)(b) label (alert_title.labels, Lane P's rule: the
+    # nearest open-leg expiry, read as the V1 owner); this strategy is a test user's, so the expiry is not readable
+    # and only the number prints (never a guessed date)
     assert [(a["strategy_id"], a["strategy_name"]) for a in alerts] == [
-        (stored.id, f'{book["name"]} (#{stored.id}, 13 Oct)')]
+        (stored.id, f'{book["name"]} (#{stored.id})')]
     assert alerts[0]["strategy_name"]
 
 

@@ -65,3 +65,40 @@ Options:
 - (c) Accept silently (today).
 
 Built meanwhile: nothing (today's behaviour, (c)).
+
+## LP-5 What "Reset to playbook" puts back
+
+Spec basis: ADR-330 (9) "a plan has "Reset to playbook": after one confirmation every condition goes back to the
+playbook's values. The plan marks the conditions the user changed or switched off". Silent on whether the plan sheet's
+own levels (target, Rs target, Rs stop, max adjustments, time exit with its date) and the plan's settings are
+"conditions" (searched: "Reset to playbook", "conditions").
+
+Real case (Opus review of P8, 26 Nov): a user switches T-05 off, types a Rs 400 stop and a time exit for 15:15 today,
+sees only the T-05 mark, presses Reset: in the first build all three were lost.
+
+Options:
+- (a) Reset puts back the playbook's CONDITIONS (triggers, rules, approaches) and keeps the sheet's levels and the
+  plan's settings, exactly the set the "changed" marks cover. **Recommended**: the marks and the Reset then mean the
+  same thing, and nothing the user typed on the sheet disappears without a mark.
+- (b) Reset puts back everything, the sheet's levels too (the confirmation says so).
+
+Built meanwhile: (a), in one place (`backend/ofo/adjustment/plan_diff.reset`), reversible.
+
+**Answered** by the owner on 26 Nov 2026 (question tool, through the coordinator): "Conditions only; keep my levels" = option (a); recorded in ADR-330 (32). The Reset confirmation (button not built yet) must say that the typed levels stay.
+
+## LP-6 A side that closes a second time
+
+Spec basis: ADR-330 (2)(b) "When a side closes, the user is told so and asked whether he wants to add new positions on
+the closed side"; silent on a side that closes again after the user added new legs on it (searched: "closes again").
+
+Real case: none yet (P7 is new). Example: the call side of an iron condor closes, the user answers "add legs", adds a
+new call spread, and later that new call side also closes.
+
+Options:
+- (a) Ask again: a new "side closed" alert each time a side closes after it was re-opened with new legs.
+  **Recommended**: each close is a new decision for the trader.
+- (b) Ask once per side for the life of the trade (as built in P7).
+
+Built meanwhile: (b) (one alert per side, ever), in one place (`backend/ofo_app/side_closed.py`); (a) is the next step.
+
+**Answered** by the owner on 26 Nov 2026: "Ask again each time" = option (a); recorded in ADR-330 (33). Being built in the P7 fix round before the second push.

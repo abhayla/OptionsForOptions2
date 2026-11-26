@@ -20,6 +20,7 @@ CONFIRM_NEW_SHAPE: Final = "confirm_new_shape"
 CLOSED_BY_SYSTEM: Final = "closed_by_system"
 NOTED: Final = "noted"
 LEVEL_WATCH: Final = "level_watch"
+SIDE_CLOSED: Final = "side_closed"
 #: every value of the answer column (migration 0054 CHECK; a test compares the two)
 ANSWERS: Final = (EXIT, CONTINUE, ADD_LEGS, CONFIRM_NEW_SHAPE, CLOSED_BY_SYSTEM, NOTED)
 #: the answers a USER may give; the other two are written by the system only
@@ -43,7 +44,7 @@ KINDS: Final = {k.code: k for k in (
     AlertKind("plan_rupee_profit", True, _ASK, _FIRED),
     AlertKind("plan_time_exit", True, _ASK, _FIRED),
     AlertKind("adjustment_rule", True, _ASK, _FIRED),
-    AlertKind("side_closed", True, (ADD_LEGS, CONFIRM_NEW_SHAPE), _FIRED),
+    AlertKind(SIDE_CLOSED, True, (ADD_LEGS, CONFIRM_NEW_SHAPE), _FIRED),
     # ADR-242 (3) governs a watched level, not ADR-330 (3): one record per crossing episode, no answer asked
     AlertKind(LEVEL_WATCH, False, (), _FIRED),
     AlertKind("stop_fired", False, (), _FIRED),

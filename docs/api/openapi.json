@@ -11947,6 +11947,14 @@
             "title": "Accepted At",
             "type": "string"
           },
+          "changed": {
+            "items": {
+              "pattern": "^[A-Za-z0-9_\\-.]{1,64}$",
+              "type": "string"
+            },
+            "title": "Changed",
+            "type": "array"
+          },
           "max_adjustments": {
             "anyOf": [
               {
@@ -12032,6 +12040,15 @@
             ],
             "title": "Stop Source"
           },
+          "stop_warning": {
+            "anyOf": [
+              {},
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Stop Warning"
+          },
           "stop_words": {
             "anyOf": [
               {},
@@ -12040,6 +12057,14 @@
               }
             ],
             "title": "Stop Words"
+          },
+          "switched_off": {
+            "items": {
+              "pattern": "^[A-Za-z0-9_\\-.]{1,64}$",
+              "type": "string"
+            },
+            "title": "Switched Off",
+            "type": "array"
           },
           "target": {
             "anyOf": [
@@ -12134,7 +12159,9 @@
           "stop",
           "max_adjustments",
           "time_exit",
-          "accepted_at"
+          "accepted_at",
+          "changed",
+          "switched_off"
         ],
         "title": "PlanOut",
         "type": "object"
@@ -12828,6 +12855,15 @@
               }
             ],
             "title": "Stop Source"
+          },
+          "stop_warning": {
+            "anyOf": [
+              {},
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Stop Warning"
           },
           "stop_words": {
             "anyOf": [
@@ -17696,6 +17732,15 @@
             ],
             "title": "Rupees"
           },
+          "warning": {
+            "anyOf": [
+              {},
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Warning"
+          },
           "words": {
             "anyOf": [
               {},
@@ -21319,6 +21364,46 @@
           }
         },
         "summary": "Read Levels"
+      }
+    },
+    "/api/strategies/{strategy_id}/adjustment-plan/reset": {
+      "post": {
+        "description": "ADR-330 (9) \"Reset to playbook\" (the browser asks once, the server does the copy): every condition of the plan\ngoes back to its playbook's and the stop base is worked out again (a plan edit recomputes it, ADR-330 (1)). A plan\nwith no playbook (saved before playbooks were pointed at, or its playbook deleted) or no plan: refused\n(no plan: \"not available\", 404; no playbook: the playbook's not-found sentence), the plan\nunchanged. The sheet levels and plan settings are kept.",
+        "operationId": "reset_plan_api_strategies__strategy_id__adjustment_plan_reset_post",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "strategy_id",
+            "required": true,
+            "schema": {
+              "title": "Strategy Id",
+              "type": "integer"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/AdjustmentPlanOut"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "summary": "Reset Plan"
       }
     },
     "/api/strategies/{strategy_id}/adjustment-plan/rules": {

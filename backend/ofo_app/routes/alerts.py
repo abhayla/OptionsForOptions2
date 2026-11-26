@@ -13,6 +13,7 @@ Answer states: stated -> row leaves Active; absent -> stays; not found / not ope
 from __future__ import annotations
 
 import datetime
+import logging
 from typing import Annotated, Any
 
 from fastapi import APIRouter, Depends, Query
@@ -31,6 +32,7 @@ from ofo_app.routes.adjustment_opportunities import ID_MAX, condition_text
 from ofo_app.routes.broker import current_user_ref
 from ofo_app.strategy_refused import StrategyRefused
 
+log = logging.getLogger(__name__)
 router = APIRouter(route_class=ClosedRoute)
 _STATUS = {store.SUGGESTION_NOT_FOUND: Failure.NOT_FOUND, store.SUGGESTION_NOT_OPEN: Failure.CONFLICT}
 

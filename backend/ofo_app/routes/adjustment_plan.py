@@ -30,6 +30,7 @@ from typing import Annotated, Any
 
 from fastapi import APIRouter, Depends, Query
 from ofo import market_calendar
+from ofo.adjustment import plan_diff
 from ofo.adjustment import playbook_stages as stages
 from ofo.adjustment import stop_lines as sl
 from ofo.adjustment.playbook_text import name_shown
@@ -38,6 +39,7 @@ from ofo.charges import ChargeRates
 from ofo.checks import pnl_amount as rupee
 from ofo.checks import rupee_figures as figs
 from ofo.checks.time_of_day import CLOCK, DATE, ON_EXPIRY, day_of, time_exit_parts
+from ofo.engine.display import format_whole_rupees
 from ofo.errors import render
 from ofo.errors.explanations import LABEL_TABLES, render_explanation
 from ofo.settings import layers
@@ -149,6 +151,7 @@ class PrefillOut(ApiModel):
     stop_rupees: Money | None = None
     stop_per_lot: Money | None = None
     stop_rupee_words: CatalogueText | None = None
+    stop_warning: CatalogueText | None = None  # ADR-330 (25): the rupee stop is above the trade's max loss
     target_source: Identifier | None = None  # the saved level's own box: "rupees" or "percent" (the other is derived)
     stop_source: Identifier | None = None
 
@@ -169,9 +172,14 @@ class PlanOut(ApiModel):
     stop_rupees: Money | None = None
     stop_per_lot: Money | None = None
     stop_rupee_words: CatalogueText | None = None
+    stop_warning: CatalogueText | None = None  # ADR-330 (25): the rupee stop is above the trade's max loss
     target_source: Identifier | None = None  # the saved level's own box: "rupees" or "percent" (the other is derived)
     stop_source: Identifier | None = None
     accepted_at: datetime.datetime
+    #: ADR-330 (9): the conditions of the plan's playbook this plan changed / switched off (paths such as
+    #: ``triggers.T-01``); both empty when the plan is as its playbook, or its playbook is gone (nothing to compare)
+    changed: list[Identifier]
+    switched_off: list[Identifier]
 
 
 class SettingInForceOut(ApiModel):
@@ -360,6 +368,16 @@ def _rupee_stop_part(stop: figs.Figures) -> Any:
     return render_explanation("plan_stop_words_rupees", rupees=stop.rupees, pct=stop.percent)
 
 
+def _stop_warning(level: Decimal | None, max_loss: Decimal | None) -> Any:
+    """ADR-330 (25): ONE warning line when a rupee stop is larger than the stop base's max loss; never when the level
+    or the base is unknown. It informs; nothing is refused."""
+    if level is None or max_loss is None or max_loss <= 0 or level <= max_loss:
+        return None  # no loss to exceed (a base with no loss, or an unreadable one) is no warning
+    if format_whole_rupees(level, signed=False) == format_whole_rupees(max_loss, signed=False):
+        return render_explanation("plan_stop_above_max_loss_paise", stop=level, loss=max_loss)
+    return render_explanation("plan_stop_above_max_loss", stop=level, loss=max_loss)
+
+
 def with_rupee_figures(values: dict[str, Any], body: dict, bases: Bases, *, kind: str | None = None,
                        saved_before: bool = False) -> dict[str, Any]:
     """ADR-330 (5): the plan shows BOTH figures of each level, worked out here (the browser computes nothing). A stored
@@ -380,6 +398,7 @@ def with_rupee_figures(values: dict[str, Any], body: dict, bases: Bases, *, kind
         target = figs.from_percent(values["target"], bases.max_profit, bases.lots)
     level = _rupee_guard(guards, sl.RUPEE_LOSS_KEY)
     out["stop_source"] = SOURCE_PERCENT if level is None else SOURCE_RUPEES
+    out["stop_warning"] = _stop_warning(level, bases.max_loss)
     if level is not None:
         stop = figs.from_rupees(level, bases.max_loss, bases.lots)
         # the rupee level IS the stop; its percent is the derived display figure only (None when not computable: never
@@ -550,13 +569,16 @@ def _kind_of(tracked: Any, money: in_force_mod.MoneyInputs | None) -> str:
 async def _plan_out(db: Any, user_ref: str, plan: store.Plan, kind: str | None = None,
                     bases: Bases | None = None) -> dict[str, Any]:
     name = None
+    shown: dict[str, list[str]] = {"changed": [], "switched_off": []}
     if plan.playbook_id is not None:  # a deleted playbook leaves the plan's playbook_id NULL
         try:
-            name = name_shown((await store.get(db, user_ref, plan.playbook_id)).name)
+            source = await store.get(db, user_ref, plan.playbook_id)
+            name = name_shown(source.name)
+            shown = plan_diff.diff(plan.body, source.body)
         except store.PlaybookStoreError:
             name = None
     saved_before = await check.plan_saved_before_adr247(db, plan)
-    return {"playbook_id": plan.playbook_id, "playbook_name": name, "accepted_at": plan.accepted_at,
+    return {"playbook_id": plan.playbook_id, "playbook_name": name, "accepted_at": plan.accepted_at, **shown,
             **with_rupee_figures(_values(plan.body, saved_before, kind), plan.body, bases or Bases(),
                                  kind=kind, saved_before=saved_before)}
 
@@ -647,6 +669,7 @@ class LevelOut(ApiModel):
     per_lot: Money | None
     words: CatalogueText | None  # the typed level in words (the percent), as the plan sheet shows it
     rupee_words: CatalogueText | None  # "Rs X for the whole trade (Rs Y per lot), before charges"
+    warning: CatalogueText | None = None  # ADR-330 (25): a rupee stop above the max loss (stop level only)
 
 
 class LevelsOut(ApiModel):
@@ -654,16 +677,15 @@ class LevelsOut(ApiModel):
     stop: LevelOut | None
 
 
-def preview_stop_words(body: dict | None, saved_before: bool, kind: str | None, bases: Bases,
-                       typed_in: PlanIn) -> Any:
-    """The stop sentence of the levels preview: the SAME builder the saved plan uses (``with_overrides`` then
-    ``with_rupee_figures`` -> ``_stop_words``, which keeps the lines still in force), on a copy of the body with the
+def preview_stop_figures(body: dict | None, saved_before: bool, kind: str | None, bases: Bases,
+                         typed_in: PlanIn) -> dict[str, Any] | None:
+    """The stop sentence and the above-max-loss warning of the levels preview: the SAME builder the saved plan uses
+    (``with_overrides`` then ``with_rupee_figures`` -> ``_stop_words``, which keeps the lines still in force), on a copy of the body with the
     typed level put in. Nothing is stored. None when there is no body to read the lines from."""
     if body is None:
         return None
     typed = with_overrides(body, typed_in, kind, bases)
-    return with_rupee_figures(_values(typed, saved_before, kind), typed, bases, kind=kind,
-                              saved_before=saved_before)["stop_words"]
+    return with_rupee_figures(_values(typed, saved_before, kind), typed, bases, kind=kind, saved_before=saved_before)
 
 
 def _level_out(percent_raw: str | None, rupees_raw: str | None, base: Decimal | None, lots: int | None,  # noqa: PLR0913
@@ -720,9 +742,11 @@ async def read_levels(  # noqa: PLR0913 - FastAPI dependencies, one per input
                 body = (await store.active_for(db, user_ref, stype)).body
             kind = _kind_of(tracked, in_force_mod.money_inputs(tracked, market, rates))
             saved_before = plan is not None and await check.plan_saved_before_adr247(db, plan)
-            words = preview_stop_words(body, saved_before, kind, bases,
-                                       PlanIn(playbook_id=0, stop=stop or None, stop_rupees=stop_rupees or None))
-            reply["stop"]["words"] = words  # no body to read the lines from: no words, never the partial sentence
+            shown = preview_stop_figures(body, saved_before, kind, bases,
+                                         PlanIn(playbook_id=0, stop=stop or None, stop_rupees=stop_rupees or None))
+            # no body to read the lines from: no words, never the partial sentence
+            reply["stop"]["words"] = None if shown is None else shown["stop_words"]
+            reply["stop"]["warning"] = None if shown is None else shown["stop_warning"]
     except store.PlaybookStoreError as exc:
         raise _refused(exc) from None
     return LevelsOut.model_validate(reply)
@@ -931,3 +955,38 @@ async def edit_plan(  # noqa: PLR0913 - FastAPI dependencies, one per input
     """REQ-161 AC-3: edit the strategy's plan later (REQ-158 AC-5); 404 when it has none."""
     return await _write(strategy_id, data, True, db, user_ref, tracked_reader, market_reader, rest_reader, ctx, rates,
                         user_values)
+
+
+@router.post("/api/strategies/{strategy_id}/adjustment-plan/reset", response_model=AdjustmentPlanOut)
+async def reset_plan(  # noqa: PLR0913 - FastAPI dependencies, one per input
+        strategy_id: int, db: Annotated[Any, Depends(get_db)], user_ref: Annotated[str, Depends(current_user_ref)],
+        tracked_reader: Annotated[TrackedReader, Depends(get_tracked_reader)],
+        market_reader: Annotated[MarketReader, Depends(get_market_reader)],
+        rest_reader: Annotated[RestSpotReader, Depends(get_rest_spot_reader)],
+        ctx: Annotated[MarketContext | None, Depends(get_market_context)],
+        rates: Annotated[ChargeRates | None, Depends(load_charge_rates)],
+        user_values: UserValuesIn) -> AdjustmentPlanOut:
+    """ADR-330 (9) "Reset to playbook" (the browser asks once, the server does the copy): every condition of the plan
+    goes back to its playbook's and the stop base is worked out again (a plan edit recomputes it, ADR-330 (1)). A plan
+    with no playbook (saved before playbooks were pointed at, or its playbook deleted) or no plan: refused
+    (no plan: "not available", 404; no playbook: the playbook's not-found sentence), the plan
+    unchanged. The sheet levels and plan settings are kept."""
+    rates = rates if isinstance(rates, ChargeRates) else None
+    tracked = await _own_strategy(strategy_id, tracked_reader, rates)
+    await release_connection(db)  # D-38: the market read waits on the broker; a held connection starves other pages
+    market = await _market(tracked, market_reader, ctx)
+    stype, plan_before = await _type_of(db, user_ref, strategy_id, tracked, ctx)
+    money = in_force_mod.money_inputs(tracked, market, rates)
+    bases = bases_of(tracked, market, rates)
+    if stype is None:
+        raise StrategyRefused(_GENERIC, Failure.CONFLICT)
+    if plan_before is None:  # no plan: the plan route's own "not available" (as editing with no plan answers)
+        raise StrategyRefused(_NOT_AVAILABLE, Failure.NOT_FOUND)
+
+    async def work() -> AdjustmentPlanOut:
+        saved = await store.reset_plan(db, user_ref, strategy_id, _base_json(tracked))
+        stored = dataclasses.replace(tracked, stop_base=in_force_mod.stop_base_from_json(saved.stop_base))
+        return await _sheet(db, user_ref, strategy_id, stype, saved, None, user_values,
+                            in_force_mod.money_inputs(stored, market, rates), _kind_of(tracked, money),
+                            dataclasses.replace(bases, max_loss=_stored_loss(stored, bases)))
+    return await _run(db, work)

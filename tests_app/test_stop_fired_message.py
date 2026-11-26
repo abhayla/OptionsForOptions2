@@ -128,21 +128,6 @@ async def test_an_index_exit_gets_a_line_only_when_the_exit_check_says_yes(db):
     assert "exited 4 legs" in text and "If this stop fires" not in text  # the whole book closed: nothing widens
 
 
-@pytest.mark.parametrize(("expiries", "shown"), [
-    ([datetime.date(2026, 12, 1)], '"Short Iron Condor" (#172, 1 Dec)'),
-    ([datetime.date(2026, 12, 1)] * 4, '"Short Iron Condor" (#172, 1 Dec)'),
-    ([datetime.date(2026, 12, 1), datetime.date(2026, 12, 8)], '"Short Iron Condor" (#172)'),
-    ([], '"Short Iron Condor" (#172)'),
-    ([datetime.date(2026, 12, 1), None], '"Short Iron Condor" (#172)'),
-])
-def test_the_title_carries_the_number_and_one_expiry_only(expiries, shown):
-    assert str(alert_title.strategy_label("Short Iron Condor", 172, expiries)) == shown
-
-
-def test_an_unnamed_strategy_shows_its_number():
-    assert str(alert_title.strategy_label(None, 172, [datetime.date(2026, 12, 1)])) == "Strategy 172"
-
-
 async def test_the_history_title_keeps_its_expiry_after_the_book_is_flat(db):
     _, stored, _, _ = await _fire_leg(db, SHORT_CALL, "140.70", "141.00")
     label = str((await alert_title.labels(db, [(stored.id, "Condor")]))[stored.id])

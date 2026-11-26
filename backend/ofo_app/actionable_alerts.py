@@ -76,6 +76,11 @@ _CLEAR_STOPPED = text(
     "timeline = g.timeline || jsonb_build_array(jsonb_build_object('at', CAST(:at AS TIMESTAMPTZ), "
     "'event', 'condition_true_again')) WHERE g.id = :id AND g.outcome = 'open' "
     "AND g.no_longer_true_since IS NOT NULL")
+#: ADR-330 (33): an answered side_closed row whose side has open legs again; once, kept in the row's own timeline
+_MARK_REOPENED = text(
+    "UPDATE public.adjustment_suggestions AS g SET timeline = g.timeline || jsonb_build_array(jsonb_build_object("
+    "'at', CAST(:at AS TIMESTAMPTZ), 'event', 'side_reopened')) WHERE g.id = :id AND g.outcome <> 'open' "
+    "AND NOT g.timeline @> jsonb_build_array(jsonb_build_object('event', 'side_reopened'))")
 _INSERT_NOTE = text(
     "INSERT INTO public.adjustment_suggestions (strategy_id, rule_id, kind, outcome, answer, answered_at, shown_at, "
     "timeline) VALUES (:strategy_id, :rule_id, :kind, 'dismissed', 'noted', CAST(:at AS TIMESTAMPTZ), "
@@ -139,6 +144,11 @@ class Alert:
             return first["template"], {k: _decode(v) for k, v in first.get("values", {}).items()}
         except ValueError:  # a nested line that no longer fits its templates: the route words the row without it
             return None
+
+    @property
+    def side_reopened(self) -> bool:
+        """ADR-330 (33): the side this answered row asked about had open legs again afterwards (a later closure is new)."""
+        return any(t.get("event") == "side_reopened" for t in self.timeline)
 
     @property
     def closed_reason(self) -> str | None:
@@ -253,6 +263,12 @@ async def raise_actionable(conn: Any, user_ref: str, strategy_id: int, rule_id: 
         elif current.no_longer_true_since is not None:
             await conn.execute(_CLEAR_STOPPED, params)
         return await _get(conn, user_ref, current.id)
+
+
+async def mark_side_reopened(conn: Any, alert_id: int, at: datetime) -> None:
+    """ADR-330 (33): record once on an answered row that its side has open legs again. Opens, answers and closes nothing."""
+    _aware(at)
+    await conn.execute(_MARK_REOPENED, {"id": alert_id, "at": at})
 
 
 async def note_condition(conn: Any, user_ref: str, alert_id: int, *, still_true: bool, at: datetime) -> Alert:

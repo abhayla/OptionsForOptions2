@@ -37,6 +37,7 @@
           <label class="block text-sm font-medium">{{ labels.stop_rupees }}
             <input v-model="form.stopRupees" class="mt-1 h-10 w-full rounded border border-line px-2" inputmode="decimal" data-testid="plan-stop-rupees" @input="typed('stop_rupees')" />
             <span v-if="form.stopRupeeWords" class="mt-1 block text-xs font-normal text-ink-muted" data-testid="plan-stop-rupee-words">{{ form.stopRupeeWords }}</span>
+            <span v-if="form.stopWarning" class="mt-1 block text-xs font-normal text-ink-muted" data-testid="plan-stop-warning">{{ form.stopWarning }}</span>
           </label>
           <label class="block text-sm font-medium">{{ labels.max_adjustments }}
             <input v-model="form.maxAdjustments" class="mt-1 h-10 w-full rounded border border-line px-2" inputmode="numeric" data-testid="plan-max" />
@@ -137,7 +138,7 @@ async function typed(field) {
   else f.stopLast = rupees ? 'rupees' : 'percent'
   const own = isTarget ? (rupees ? f.targetRupees : f.target) : (rupees ? f.stopRupees : f.stop)
   const other = isTarget ? (rupees ? 'target' : 'targetRupees') : (rupees ? 'stop' : 'stopRupees')
-  const words = isTarget ? ['targetWords', 'targetRupeeWords'] : ['stopWords', 'stopRupeeWords']
+  const words = isTarget ? ['targetWords', 'targetRupeeWords'] : ['stopWords', 'stopRupeeWords', 'stopWarning']
   const level = isTarget ? 'target' : 'stop'
   const run = ++levelsRun[level]
   if (own.trim() === '') { f[other] = ''; words.forEach((k) => { f[k] = '' }); return } // nothing typed: nothing to show
@@ -148,6 +149,7 @@ async function typed(field) {
     f[other] = rupees ? got.percent : got.rupees
     f[words[0]] = got.words
     f[words[1]] = got.rupeeWords
+    if (!isTarget) f.stopWarning = got.warning
   } catch (e) {
     if (run !== levelsRun[level]) return
     f[other] = '' // a level the server will not read shows no figure (fail closed); Save names the field

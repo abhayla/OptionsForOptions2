@@ -172,6 +172,9 @@ describe('REQ-134: the name as the API sends it (quoted user words, ADR-003)', (
     expect(plainName('"half')).toBe('"half')
     expect(plainName('""')).toBe('""') // nothing inside the pair: as received, never guessed
     expect(plainName('"')).toBe('"')
+    expect(plainName('"Short Iron Condor" (#172, 1 Dec)')).toBe('Short Iron Condor (#172, 1 Dec)') // ADR-330 (19)(b): the server's label
+    expect(plainName('"Short Iron Condor" (#172)')).toBe('Short Iron Condor (#172)') // no expiry readable
+    expect(plainName('"a" (#x)')).toBe('"a" (#x)') // not the label's shape: as received
     expect(plainName(undefined)).toBeNull()
     expect(plainName(7)).toBeNull()
   })

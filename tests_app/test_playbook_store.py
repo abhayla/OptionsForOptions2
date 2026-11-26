@@ -265,7 +265,7 @@ async def test_the_application_role_cannot_update_or_delete_a_system_row_in_raw_
     await _refused(db, "DELETE FROM public.adjustment_playbooks WHERE is_system AND strategy_type = 'ic'", "OF031")
 
 
-async def test_the_application_role_cannot_insert_a_system_row_and_the_owner_cannot_add_a_second(db, admin_engine):
+async def test_the_application_role_cannot_insert_a_system_row_and_the_owner_cannot_repeat_a_slug(db, admin_engine):
     await _refused(db, "INSERT INTO public.adjustment_playbooks (user_ref, strategy_type, name, is_system, body) "
                        "VALUES (NULL, 'ic', 'Fake', true, CAST(:b AS JSONB))", "permission denied",
                    b=pb._dump(_body()))
@@ -273,8 +273,9 @@ async def test_the_application_role_cannot_insert_a_system_row_and_the_owner_can
         trans = await conn.begin()
         try:
             await _refused(conn, "INSERT INTO public.adjustment_playbooks (user_ref, strategy_type, name, is_system, "
-                                 "body) VALUES (NULL, 'ic', 'Second system', true, CAST(:b AS JSONB))",
-                           "adjustment_playbooks_one_system", b=pb._dump(_body()))
+                                 "body, slug) VALUES (NULL, 'ic', 'Second system', true, CAST(:b AS JSONB), "
+                                 "'ic-default')",
+                           "adjustment_playbooks_standard_slug", b=pb._dump(_body()))
         finally:
             await trans.rollback()
 

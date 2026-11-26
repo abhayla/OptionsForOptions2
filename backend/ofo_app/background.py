@@ -837,6 +837,16 @@ class DbGateStore:
             await db.commit()
         return bool(lapsed)
 
+    async def raise_side_closed(self, w: Watched, at: datetime.datetime) -> int | None:
+        """ADR-330 (2): when one side of the entry condor is closed, ONE side_closed alert through the one alert module
+        (``side_closed.raise_if_closed``); the id, or None when nothing is closed or it was raised before."""
+        from ofo_app import side_closed  # noqa: PLC0415 - database layer at run time
+        from ofo_app.db import get_sessionmaker  # noqa: PLC0415
+        async with get_sessionmaker()() as db:  # no source: the notice is not an adjustment flag
+            found = await side_closed.raise_if_closed(db, w.user_ref, w.strategy_id, w.tracked, at=at, source=None)
+            await db.commit()
+        return found
+
 
 Lister = Callable[[], Awaitable[list[Watched]]]
 Recorder = Callable[[Watched, pe.StrategyState, Preferences], Awaitable[Any]]
@@ -988,6 +998,7 @@ class Worker:
         old = {w.strategy_id: w for w in self.monitors}
         today = self._clock().astimezone(IST).date()
         await self._lapse_expired_all(monitors, today)
+        await self._raise_side_closed_all(monitors)
         for w in monitors:
             if _position_changed(old.get(w.strategy_id), w):
                 # ADR-330 (3): an adjustment basket closes no open alert (only the user's answer, the trade closing or
@@ -1021,6 +1032,22 @@ class Worker:
                     await self._gate_store.lapse_expired(w, today)
             except Exception as exc:
                 log.exception("background: lapsing the expired records of strategy %s failed; the others go on",
+                              w.strategy_id)
+                _keep_recent(self.errors, (w.strategy_id, type(exc).__name__))
+
+    async def _raise_side_closed_all(self, monitors: list[Watched]) -> None:
+        """ADR-330 (2): each listed strategy that lost one side of its entry condor gets its one side_closed alert; a
+        failure is contained per strategy and retried at the next re-list. A gate store without the method (a test
+        double) raises nothing."""
+        raiser = getattr(self._gate_store, "raise_side_closed", None)
+        if raiser is None:
+            return
+        for w in monitors:
+            try:
+                async with held(self.db_gate, GATE_REBUILD):
+                    await raiser(w, self._clock())
+            except Exception as exc:
+                log.exception("background: the side-closed check of strategy %s failed; the others go on",
                               w.strategy_id)
                 _keep_recent(self.errors, (w.strategy_id, type(exc).__name__))
 

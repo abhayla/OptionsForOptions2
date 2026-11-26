@@ -12,11 +12,15 @@ from http import HTTPStatus
 import test_adjustment_check as check_test
 from ofo.timeutil import IST
 from ofo_app import actionable_alerts as aa
+from ofo_app import adjustment_readers as readers
+from sqlalchemy import text
+from sqlalchemy.exc import DBAPIError
 from test_adjustment_check import _seeded
 from test_adjustment_opportunities import _call, _clean
 
 app_db_url = check_test.app_db_url
 OK, NOT_FOUND, CONFLICT, REFUSED = 200, 404, 409, 422
+TRADES = 3  # strategies sharing one name in the alert-label test
 FIRED = datetime.datetime(2026, 11, 25, 11, 2, 20, tzinfo=IST)
 STOPPED = datetime.datetime(2026, 11, 25, 11, 5, 1, tzinfo=IST)
 ACTIVE_KEYS = {"id", "strategy_id", "strategy_name", "kind", "text", "fired_at", "fired_line", "no_longer_true_since",
@@ -60,9 +64,8 @@ async def test_active_answer_history_replies_and_errors(app_db_url, monkeypatch)
     assert (row["answer"], row["answer_label"]) == ("continue", "Continue with the position")
     assert (row["fired_line"], row["answered_at"]) == ("Fired at 11:02", done["answered_at"])
     assert row["closed_reason"] is None
-    # W2-A pin changed: the ADR-330 (19)(b) label (was the bare quoted name)
-    expected = f'"Scenario ADJ-02" (#{mine["strategy_id"]}, 9 Nov)'
-    assert mine["strategy_name"] == row["strategy_name"] == expected
+    # the user's name in the quoted slot, then the trade's number and nearest expiry (ADR-330 (19)(b))
+    assert mine["strategy_name"] == row["strategy_name"] == f'"Scenario ADJ-02" (#{sid}, 9 Nov)'
 
 
 ESCALATED = datetime.datetime(2026, 11, 25, 11, 9, 0, tzinfo=IST)
@@ -108,7 +111,7 @@ async def test_a_noted_row_in_history_is_catalogue_worded_and_never_a_500(app_db
 
 
 async def test_answered_after_returns_only_rows_with_a_higher_id(app_db_url, monkeypatch):
-    """W2-A: the header's pop-up reader asks for what is new since the last row it saw (GET /api/alerts/answered?after=)."""
+    """W2-A: the header's pop-up reader asks only for what is new since the last row it saw (?after=)."""
     sid = await _clean(app_db_url, await _seeded(app_db_url, monkeypatch, "ADJ-02"))
     async with app_db_url.begin() as conn:
         first = await aa.inform(conn, "owner", sid, "stop_fired", "alert_fired_at", {"time": FIRED}, at=FIRED)
@@ -121,3 +124,87 @@ async def test_answered_after_returns_only_rows_with_a_higher_id(app_db_url, mon
     assert ids((await _call("GET", f"/api/alerts/answered?after={first}"))[1]) == [second]
     assert ids((await _call("GET", f"/api/alerts/answered?after={second}"))[1]) == []
     assert (await _call("GET", "/api/alerts/answered?after=-1"))[0] == HTTPStatus.UNPROCESSABLE_ENTITY
+
+
+async def test_alert_lists_carry_the_trade_number_and_expiry_beside_the_name(app_db_url, monkeypatch):
+    """ADR-330 (19)(b): three strategies may share a name (REQ-134 AC-1); each Active / History row says which one."""
+    sids = []
+    for _ in range(TRADES):  # the seed reuses a strategy by name, so each is renamed before the next is seeded
+        sid = await _clean(app_db_url, await _seeded(app_db_url, monkeypatch, "ADJ-03"))
+        async with app_db_url.begin() as conn:
+            await conn.execute(text("UPDATE public.strategies SET name = 'Short Iron Condor' WHERE id = :id"),
+                               {"id": sid})
+        sids.append(sid)
+    assert len(set(sids)) == TRADES
+    ids = {sid: await _raise(app_db_url, sid) for sid in sids}
+    status, active = await _call("GET", "/api/alerts/active")
+    assert status == OK
+    named = {a["id"]: a["strategy_name"] for a in active["alerts"]}
+    assert [named[ids[sid]] for sid in sids] == [f'"Short Iron Condor" (#{sid}, 9 Nov)' for sid in sids]
+    assert (await _call("POST", f"/api/alerts/{ids[sids[0]]}/answer", {"answer": "continue"}))[0] == OK
+    history = {i["id"]: i["strategy_name"] for i in (await _call("GET", "/api/alerts/answered"))[1]["items"]}
+    assert history[ids[sids[0]]] == f'"Short Iron Condor" (#{sids[0]}, 9 Nov)'
+
+
+async def test_a_trade_with_no_readable_open_leg_shows_its_number_only(app_db_url, monkeypatch):
+    """No expiry readable (the book is flat, or cannot be read): "(#id)" only, never a guessed date."""
+    sid = await _clean(app_db_url, await _seeded(app_db_url, monkeypatch, "ADJ-02"))
+    alert_id = await _raise(app_db_url, sid)
+
+    async def flat(*args, **kwargs):
+        return None  # no open option leg
+    monkeypatch.setattr(readers, "nearest_expiry", flat)
+    status, active = await _call("GET", "/api/alerts/active")
+    named = {a["id"]: a["strategy_name"] for a in active["alerts"]}
+    assert status == OK and named[alert_id] == f'"Scenario ADJ-02" (#{sid})'
+
+
+async def test_a_failed_expiry_read_for_one_trade_never_stops_the_lists_or_the_bell(app_db_url, monkeypatch, caplog):
+    """ADR-330 (3)(4): any failure reading ONE trade's book (a plain error, a database error) leaves that row as
+    "(#id)", the other rows labelled, and Active / History answering 200 with the count unchanged."""
+    sids = []
+    for _ in range(2):  # the seed reuses a strategy by name, so the first is renamed before the second is seeded
+        sid = await _clean(app_db_url, await _seeded(app_db_url, monkeypatch, "ADJ-03"))
+        async with app_db_url.begin() as conn:
+            await conn.execute(text("UPDATE public.strategies SET name = 'Short Iron Condor' WHERE id = :id"),
+                               {"id": sid})
+        sids.append(sid)
+    good, bad = sids
+    ids = {sid: await _raise(app_db_url, sid) for sid in (good, bad)}
+    real = readers.nearest_expiry
+    baseline = (await _call("GET", "/api/alerts/active"))[1]["count"]
+    assert baseline >= len(ids)  # the seeds raise their own open alerts too
+    for failure in (RuntimeError("boom"), DBAPIError("SELECT 1", None, Exception("db"))):
+        async def lookup(db, sid, _failure=failure):
+            if sid == bad:
+                if isinstance(_failure, DBAPIError):
+                    await db.execute(text("SELECT * FROM public.no_such_table"))  # really aborts the transaction
+                raise _failure
+            return await real(db, sid)
+        monkeypatch.setattr(readers, "nearest_expiry", lookup)
+        status, active = await _call("GET", "/api/alerts/active")
+        by_trade = {(a["strategy_id"], a["strategy_name"]) for a in active["alerts"]}
+        assert status == OK and active["count"] == len(active["alerts"]) == baseline
+        assert (bad, f'"Short Iron Condor" (#{bad})') in by_trade
+        assert [n for i, n in by_trade if i == good and n.startswith(f'"Short Iron Condor" (#{good}, ')]
+        history = await _call("GET", "/api/alerts/answered")
+        assert history[0] == OK
+    assert (await _call("POST", f"/api/alerts/{ids[bad]}/answer", {"answer": "continue"}))[0] == OK
+    answered = (await _call("GET", "/api/alerts/answered"))[1]["items"]
+    assert [i["strategy_name"] for i in answered if i["id"] == ids[bad]] == [f'"Short Iron Condor" (#{bad})']
+    assert "expiry" in caplog.text
+
+
+async def test_a_side_closed_row_in_active_has_no_adjustment_wording(app_db_url, monkeypatch):
+    """P7 checker 3: the side_closed notice is raised with no source, so its Active text never says the adjustment
+    heading words ("Adjustment opportunity detected" / "Your rule was triggered")."""
+    from ofo_app import side_closed  # noqa: PLC0415
+    from test_side_closed_alert import CALL_EXITED  # noqa: PLC0415
+    sid = await _clean(app_db_url, await _seeded(app_db_url, monkeypatch, "ADJ-02"))
+    async with app_db_url.begin() as conn:
+        alert_id = await side_closed.raise_if_closed(conn, "owner", sid, CALL_EXITED, at=FIRED, source=None)
+    assert alert_id is not None
+    mine = next(a for a in (await _call("GET", "/api/alerts/active"))[1]["alerts"] if a["id"] == alert_id)
+    assert mine["kind"] == "side_closed"
+    for words in ("Adjustment opportunity detected", "Your rule was triggered"):
+        assert words not in str(mine["text"])

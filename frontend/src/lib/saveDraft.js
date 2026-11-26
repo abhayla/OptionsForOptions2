@@ -51,6 +51,9 @@ export function saveAsName(shown) {
   return `${(original.length > room ? original.slice(0, room).join('').trimEnd() : original.join(''))}${SAVE_AS_SUFFIX}`
 }
 
+/** ADR-330 (19)(b): an alert row's name arrives as `"name" (#172, 1 Dec)`: the trade's number and expiry follow the quoted name. */
+const TRADE_LABEL = /^"(.+)"( \(#\d+(?:, \d{1,2} [A-Z][a-z]{2})?\))$/s
+
 /** The API sends a name as the user's quoted words (ADR-003, template strategy_name_shown): "NIFTY Oct condor" arrives
  *  wrapped in one pair of double quotes. Strips exactly one outer pair for display and for prefilling a name field; inner
  *  quote marks stay ('"say "hi""' -> 'say "hi"'). A value not wrapped in a pair, or empty inside it, is returned as
@@ -58,10 +61,8 @@ export function saveAsName(shown) {
 export function plainName(shown) {
   if (typeof shown !== 'string' || !shown) return null
   if (shown.length >= 3 && shown.startsWith('"') && shown.endsWith('"')) return shown.slice(1, -1)
-  // ADR-330 (19)(b): an alert's title label is the quoted name plus the server's '(#172, 1 Dec)' / '(#172)': only the name's quotes go
-  const label = /^"(.+)"( \(#\d+(?:, \d{1,2} [A-Z][a-z]{2})?\))$/s.exec(shown)
-  if (label) return `${label[1]}${label[2]}`
-  return shown
+  const labelled = TRADE_LABEL.exec(shown) // an alert row's `"name" (#172, 1 Dec)`: the server's label, only the name's quotes go
+  return labelled ? `${labelled[1]}${labelled[2]}` : shown
 }
 
 /** REQ-134 AC-3: rename a saved strategy (PATCH /strategies/{id}/name) with the revision the caller holds. The one rename call for

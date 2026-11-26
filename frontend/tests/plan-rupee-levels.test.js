@@ -98,3 +98,22 @@ describe('saveBody: of each pair only the last edited box', () => {
     expect('stop' in b || 'stop_rupees' in b).toBe(false)
   })
 })
+
+describe('ADR-330 (25) / LP-4: a rupee stop above the max loss shows the server\'s one warning line', () => {
+  const WARNING = 'This stop (Rs 5,000) is above the trade\'s max loss (Rs 2,600), so it cannot be reached.'
+  it('prints the prefill\'s line as sent, and the preview\'s line when typed; none when the server sends none', async () => {
+    answers[`GET ${PATH}`] = { ...ANSWER, prefill: { ...PREFILL, stop_warning: WARNING } }
+    answers[`GET ${PATH}/levels?stop_rupees=400&playbook_id=9`] = { target: null, stop: { percent: '15.38', rupees: '400.00', per_lot: '200.00',
+      words: '15.38 % of max loss', rupee_words: 'Rs 400.00 for the whole trade (Rs 200.00 per lot), before charges', warning: null } }
+    answers[`GET ${PATH}/levels?stop_rupees=5000&playbook_id=9`] = { target: null, stop: { percent: null, rupees: '5000.00', per_lot: null,
+      words: null, rupee_words: 'Rs 5000.00 for the whole trade, before charges', warning: WARNING } }
+    const w = await sheet()
+    expect(t(w, 'plan-stop-warning').text()).toBe(WARNING)
+    await t(w, 'plan-stop-rupees').setValue('400')
+    await flushPromises()
+    expect(t(w, 'plan-stop-warning').exists()).toBe(false)
+    await t(w, 'plan-stop-rupees').setValue('5000')
+    await flushPromises()
+    expect(t(w, 'plan-stop-warning').text()).toBe(WARNING)
+  })
+})
