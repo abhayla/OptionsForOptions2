@@ -9,9 +9,10 @@ local-ci-mirror-runs-a-subset); then, when frontend/ runs, frontend_lint (eslint
 and frontend_build (still before everything that reads frontend/dist: the preflight's layer 0 and the domain tests'
 bundle secret scan); then preflight (--no-domain-scans with --full, since all of tests/ runs next), ci_checks (ci_local
 on a copy of ci.yml without its pytest steps, --no-tests), domain_tests (the tests/ files the kit's own selection
-picks; --full or an unreadable diff = all of tests/), app_tests (the tests_app files select_app_tests picks: those a backend/ change can break PLUS every changed
-tests_app test file, its conftest subtree and the tests naming a changed helper/data file; DB tests
-are CI's; cannot select = FAIL), and frontend_unit last. Why the split: kit defect Startup-Factory #186, any changed
+picks; --full or an unreadable diff = all of tests/), app_tests (the tests_app files select_app_tests picks: those a
+backend/ change can break PLUS every changed tests_app test file, the tests importing a changed or deleted tests_app
+module (transitively), a changed conftest/__init__ subtree and the tests naming a changed data file; DB tests are
+CI's; cannot select = FAIL), and frontend_unit last. Why the split: kit defect Startup-Factory #186, any changed
 non-.py file makes ci_local run the full suite incl. tests_app (egress allow-list leak, DB tests that must not run on
 this host).
 When the change since the merge base with origin/main touches frontend/ (or that diff cannot be read: fail closed),

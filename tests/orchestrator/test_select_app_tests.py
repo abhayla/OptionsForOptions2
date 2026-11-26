@@ -500,3 +500,109 @@ def test_the_cli_selects_a_failing_test_appended_to_a_tests_app_file_when_backen
     r = subprocess.run([sys.executable, cli, str(repo)], capture_output=True, text=True, check=False)  # noqa: S603
     assert r.returncode == 0, r.stdout + r.stderr
     assert r.stdout.splitlines() == ["1 files", "tests_app/test_c.py"]
+
+
+# ---- review round 2: test modules as helpers, quoted names, renames, __init__ ----
+EXIT_NOT_PARSED = 3
+
+
+def _two(tmp_path) -> pathlib.Path:
+    d = tmp_path / "tests_app"
+    d.mkdir()
+    (d / "test_store.py").write_text("def _user():\n    pass\n", encoding="utf-8")
+    (d / "test_user.py").write_text("from test_store import _user\n", encoding="utf-8")
+    (d / "test_other.py").write_text("x = 1\n", encoding="utf-8")
+    return d
+
+
+def test_s1_a_changed_test_module_selects_the_tests_importing_it(tmp_path) -> None:
+    d = _two(tmp_path)
+    f = "tests_app/test_store.py"
+    assert sel.select([f], _mod(f), d, lambda r: "", []) == ["tests_app/test_store.py", "tests_app/test_user.py"]
+
+
+def test_s2_a_deleted_test_module_selects_its_importers(tmp_path) -> None:
+    d = _two(tmp_path)
+    f = "tests_app/test_store.py"
+    (d / "test_store.py").unlink()
+    assert sel.select([f], _gone(f), d, lambda r: "", []) == ["tests_app/test_user.py"]
+
+
+def test_a_helper_chain_is_followed_to_a_fixed_point(tmp_path) -> None:
+    d = _two(tmp_path)
+    (d / "h_one.py").write_text("X = 1\n", encoding="utf-8")
+    (d / "h_two.py").write_text("import h_one\n", encoding="utf-8")
+    (d / "test_other.py").write_text("from h_two import y\n", encoding="utf-8")
+    f = "tests_app/h_one.py"
+    assert sel.select([f], _mod(f), d, lambda r: "", []) == ["tests_app/test_other.py"]
+
+
+def test_a_quoted_name_fails_closed() -> None:
+    with pytest.raises(sel.DiffNotParsed):
+        sel.names_from_git('"tests_app/test_caf\\303\\251.py"\ntests_app/test_a.py\n')
+    assert sel.names_from_git("tests_app/test_a.py\n") == ["tests_app/test_a.py"]
+    with pytest.raises(sel.DiffNotParsed):
+        sel.parse_diff('diff --git "a/tests_app/test_caf\\303\\251.py" "b/tests_app/test_caf\\303\\251.py"\n')
+
+
+def test_an_init_py_selects_its_subtree(tmp_path) -> None:
+    d = _tree(tmp_path)
+    (d / "sub" / "__init__.py").write_text("", encoding="utf-8")
+    f = "tests_app/sub/__init__.py"
+    assert sel.select([f], _mod(f), d, lambda r: "", []) == ["tests_app/sub/test_d.py"]
+
+
+def _git2(cwd, *a) -> None:
+    subprocess.run(["git", "-c", "user.email=t@t", "-c", "user.name=t", *a], cwd=cwd, check=True,  # noqa: S603, S607
+                   capture_output=True)
+
+
+def _repo(tmp_path, files: dict) -> pathlib.Path:
+    r = tmp_path / "r"
+    (r / "tests_app" / "sub").mkdir(parents=True)
+    for k, v in files.items():
+        (r / k).write_text(v, encoding="utf-8")
+    _git2(r, "init", "-q", "-b", "main")
+    _git2(r, "add", "-A")
+    _git2(r, "commit", "-qm", "base")
+    _git2(r, "update-ref", "refs/remotes/origin/main", "HEAD")
+    _git2(r, "checkout", "-q", "-b", "feat")
+    return r
+
+
+def _cli(r) -> tuple:
+    cli = str(pathlib.Path(sel.__file__))
+    p = subprocess.run([sys.executable, cli, str(r)], capture_output=True, text=True,  # noqa: S603
+                       encoding="utf-8", check=False)
+    return p.returncode, p.stdout
+
+
+def test_cli_rename_of_a_conftest_selects_the_old_subtree(tmp_path) -> None:
+    r = _repo(tmp_path, {"tests_app/sub/conftest.py": "# c\n", "tests_app/sub/test_d.py": "x = 1\n",
+                         "tests_app/test_c.py": "x = 2\n"})
+    _git2(r, "mv", "tests_app/sub/conftest.py", "tests_app/conftest_moved.py")
+    _git2(r, "commit", "-qam", "mv")
+    rc, out = _cli(r)
+    assert rc == 0 and "tests_app/sub/test_d.py" in out.splitlines()
+
+
+def test_cli_quoted_name_exits_3(tmp_path) -> None:
+    r = _repo(tmp_path, {"tests_app/test_c.py": "x = 2\n"})
+    (r / "tests_app" / "test_café.py").write_text("x = 1\n", encoding="utf-8")
+    _git2(r, "add", "-A")
+    _git2(r, "commit", "-qm", "u")
+    rc, out = _cli(r)
+    assert rc == EXIT_NOT_PARSED, out
+
+
+def test_cli_s1_and_s2(tmp_path) -> None:
+    r = _repo(tmp_path, {"tests_app/test_store.py": "def _user(): pass\n",
+                         "tests_app/test_user.py": "from test_store import _user\n"})
+    (r / "tests_app" / "test_store.py").write_text("def _user(): return 1\n", encoding="utf-8")
+    _git2(r, "commit", "-qam", "m")
+    rc, out = _cli(r)
+    assert rc == 0 and out.splitlines()[1:] == ["tests_app/test_store.py", "tests_app/test_user.py"]
+    _git2(r, "rm", "-q", "tests_app/test_store.py")
+    _git2(r, "commit", "-qm", "d")
+    rc, out = _cli(r)
+    assert rc == 0 and out.splitlines()[1:] == ["tests_app/test_user.py"]

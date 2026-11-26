@@ -132,8 +132,10 @@ moment it is known, not after the gate. Counter: prepush runs per push (target 1
   `python scripts/orchestrator/db_run.py . python -m alembic -c backend/ofo_app/alembic.ini upgrade head`
   `python scripts/orchestrator/db_run.py . python -m pytest -q -rs -p no:cacheprovider -c pytest-app.ini tests_app/<file>.py`
 - Which `tests_app` files a backend change can break: `python scripts/orchestrator/select_app_tests.py <worktree>`
-  (exit 3 = diff not parsed; fails closed). It also selects a changed `tests_app` test file itself, a changed conftest
-  subtree, and the tests naming a changed helper/data file (all of them if none does), so a tests_app-only push is gated. Tests marked `network` hit Zerodha's public instrument list.
+  (exit 3 = diff not parsed; fails closed). It also selects a changed `tests_app` test file itself; every test that
+  imports (names) a changed or deleted `tests_app` module, test files included, followed transitively; a changed or deleted
+  conftest/`__init__` subtree; the tests naming a changed data file; all of them if nothing names a changed non-test file.
+  Renames count as delete + add; a git-quoted path name exits 3. It does not follow computed imports. Tests marked `network` hit Zerodha's public instrument list.
 - Background worker (REQ-115 AC-6, ADR-286): start it through the supervisor, which restarts it when it dies (1, 2, 4 .. 60 s
   backoff; gives up after 5 restarts in 10 minutes so the heartbeat watch says "stopped"; a clean exit 0 is not restarted):
   `python scripts/orchestrator/supervise_worker.py` (same as `-- python -m ofo_app.background`; run it with the env the worker needs). Stop the supervisor with `taskkill /PID <pid> /T /F`: without /T the worker it started keeps running (measured 12 Nov: the child outlived `taskkill /PID <supervisor> /F`).
