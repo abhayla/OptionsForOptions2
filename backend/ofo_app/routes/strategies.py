@@ -52,6 +52,7 @@ from ofo_app.db import get_db
 from ofo_app.errors import ClosedRoute, Failure, refuse_request
 from ofo_app.routes import adjustment_opportunities as opportunities
 from ofo_app.routes.broker import current_user_ref
+from ofo_app.routes.catalogue import get_shown_date
 from ofo_app.routes.outcome import AnswerClock, get_answer_clock, get_settings_reader, load_charge_rates
 from ofo_app.strategy_refused import StrategyRefused
 from ofo_app.tracked_contracts import ContractState
@@ -282,6 +283,8 @@ class BulkDeleteOut(ApiModel):
 
 class StrategyListOut(ApiModel):
     strategies: list[SummaryOut]
+    # the server's shown date: a list label leaves the year off inside this year (ADR-330 (19))
+    shown_date: datetime.date
 
 
 class EntryOut(ApiModel):
@@ -330,9 +333,12 @@ _STORE_REFUSAL = MappingProxyType({
 })
 
 
-def refused_answer(exc: Exception, form_status: int) -> Exception:
-    """The exception the boundary answers: 404 for a missing strategy or entry, else a catalogue message."""
+def refused_answer(exc: Exception, form_status: int, *, open_by_id: bool = False) -> Exception:
+    """The exception the boundary answers: 404 for a missing strategy or entry, else a catalogue message.
+    ``open_by_id``: the read that opens one strategy; its missing strategy has its own words (ADR-330 (37))."""
     if isinstance(exc, store.StrategyStoreError):
+        if open_by_id and exc.code == store.NOT_FOUND:
+            return StrategyRefused("strategy_not_found", Failure.NOT_FOUND)
         template, failure = _STORE_REFUSAL.get(exc.code, ("strategy_underlying_fixed", None))
         return StrategyRefused(template, failure)
     assert isinstance(exc, sf.StoredFormError)
@@ -448,14 +454,14 @@ async def _check_eligible(db: Any, saved: sf.SavedDefinition, today_of: elig.Tod
         raise StrategyRefused(template, message=render(template, leg=value))
 
 
-async def _run(db: Any, work: Callable, *, form_status: int) -> Any:
+async def _run(db: Any, work: Callable, *, form_status: int, open_by_id: bool = False) -> Any:
     """Runs one store call; commits on success, rolls back on any error (nothing half-written)."""
     try:
         result = await work()
         await db.commit()
     except (store.StrategyStoreError, sf.StoredFormError) as exc:
         await db.rollback()
-        raise refused_answer(exc, form_status) from None
+        raise refused_answer(exc, form_status, open_by_id=open_by_id) from None
     except Exception:
         await db.rollback()
         raise
@@ -475,7 +481,8 @@ async def save_draft(body: StrategyCreateIn, today_of: Annotated[elig.TodayReade
 
 @router.get("/strategies", response_model=StrategyListOut)
 async def list_strategies(db: Annotated[Any, Depends(get_db)], user_ref: Annotated[str, Depends(current_user_ref)],
-                          rates: Annotated[Any, Depends(load_charge_rates)]) -> StrategyListOut:
+                          rates: Annotated[Any, Depends(load_charge_rates)],
+                          shown_date: Annotated[datetime.date, Depends(get_shown_date)]) -> StrategyListOut:
     async def work():
         rows = await store.list_strategies(db, user_ref)
         from ofo_app.routes.adjustment_history import closed_figures_many  # noqa: PLC0415 - it imports routes.paper
@@ -485,7 +492,7 @@ async def list_strategies(db: Annotated[Any, Depends(get_db)], user_ref: Annotat
         tracked = await _tracked_ids(db, [r.id for r in rows])
         opened = await _open_opportunities(db, user_ref)
         current = await current_legs_many(db, user_ref)  # D-42: the legs and the word the Positions page reads
-        return StrategyListOut.model_validate({"strategies": [
+        return StrategyListOut.model_validate({"shown_date": shown_date, "strategies": [
             {"id": r.id, "underlying": r.underlying, "status": r.status, "created_at": r.created_at,
              "updated_at": r.updated_at, "name": sf.shown_name(r.name),
              **{"status_word": store.status_word(r.status, r.has_order),
@@ -620,7 +627,7 @@ async def get_strategy(strategy_id: int, db: Any = Depends(get_db),
                        user_ref: str = Depends(current_user_ref)) -> StrategyOut:
     async def work():
         return await _strategy_out(db, await store.load(db, user_ref, strategy_id))
-    return await _run(db, work, form_status=409)
+    return await _run(db, work, form_status=409, open_by_id=True)
 
 
 @router.put("/strategies/{strategy_id}", response_model=StrategyOut, response_model_exclude_unset=True)

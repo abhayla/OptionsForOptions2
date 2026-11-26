@@ -549,7 +549,10 @@ async def test_ac5_api_answers_not_found_for_another_users_strategy(app_engine):
                 for method, path in (("GET", f"/strategies/{stored.id}"), ("GET", f"/strategies/{stored.id}/history"),
                                      ("POST", f"/strategies/{stored.id}/restore/1?expected_revision=1")):
                     response = await ac.request(method, path)
-                    assert (response.status_code, response.json()["code"]) == (404, "USER_INPUT_003"), path
+                    # opening by id answers strategy_not_found (ADR-330 (37), REQ-134 AC-5);
+                    # the others keep the generic reply
+                    want = "STRATEGY_VALIDATION_523" if path == f"/strategies/{stored.id}" else "USER_INPUT_003"
+                    assert (response.status_code, response.json()["code"]) == (404, want), path
         finally:
             await trans.rollback()
 
@@ -625,16 +628,18 @@ async def test_ac5_a_live_state_name_inside_a_map_is_refused_by_the_api(maps, me
 BEYOND_BIGINT = 2**63  # one past strategies.id's range
 
 
-@pytest.mark.parametrize("method, path, body", [
-    ("GET", f"/strategies/{BEYOND_BIGINT}", None),
-    ("GET", f"/strategies/{BEYOND_BIGINT}/history", None),
-    ("PUT", f"/strategies/{BEYOND_BIGINT}", BODY | {"expected_revision": 1}),
-    ("POST", f"/strategies/{BEYOND_BIGINT}/restore/1?expected_revision=1", None),
+# Opening a strategy by id answers the specific strategy_not_found reply (owner, ADR-330 (37), REQ-134 AC-5); every
+# other route keeps the generic not-available reply.
+@pytest.mark.parametrize("method, path, body, code", [
+    ("GET", f"/strategies/{BEYOND_BIGINT}", None, "STRATEGY_VALIDATION_523"),
+    ("GET", f"/strategies/{BEYOND_BIGINT}/history", None, "USER_INPUT_003"),
+    ("PUT", f"/strategies/{BEYOND_BIGINT}", BODY | {"expected_revision": 1}, "USER_INPUT_003"),
+    ("POST", f"/strategies/{BEYOND_BIGINT}/restore/1?expected_revision=1", None, "USER_INPUT_003"),
 ])
-async def test_ac5_an_id_beyond_the_bigint_range_is_not_found_without_a_query(method, path, body):
+async def test_ac5_an_id_beyond_the_bigint_range_is_not_found_without_a_query(method, path, body, code):
     async with _client(_offline_app()) as ac:
         response = await ac.request(method, path, json=body)
-    assert (response.status_code, response.json()["code"]) == (404, "USER_INPUT_003")
+    assert (response.status_code, response.json()["code"]) == (404, code)
 
 
 async def test_ac5_a_change_based_on_an_old_revision_is_refused_and_writes_nothing(app_engine):

@@ -108,6 +108,7 @@ from ofo_app.paper_reasons import (
 )
 from ofo_app.routes.adjustment import TrackedReader, get_tracked_reader
 from ofo_app.routes.broker import current_user_ref
+from ofo_app.routes.catalogue import get_shown_date
 from ofo_app.routes.outcome import (
     AnswerClock,
     MarketContext,
@@ -498,6 +499,8 @@ class PaperListOut(ApiModel):
     totals: PaperTotalsOut
     today: PaperTodayOut | None = None
     answered_at: datetime.datetime
+    # the server's shown date: a list label leaves the year off inside this year (ADR-330 (19))
+    shown_date: datetime.date
 
 
 def _connected(ctx: MarketContext | None) -> bool:
@@ -1027,7 +1030,8 @@ async def list_paper_strategies(db: Annotated[Any, Depends(get_db)],  # noqa: PL
                                 ctx: Annotated[MarketContext | None, Depends(get_market_context)],
                                 feed: Annotated[LiveFeed | None, Depends(get_live_feed)],
                                 now: Annotated[AnswerClock, Depends(get_answer_clock)],
-                                rates: Annotated[ChargeRates | None, Depends(load_charge_rates)]) -> PaperListOut:
+                                rates: Annotated[ChargeRates | None, Depends(load_charge_rates)],
+                                shown_date: Annotated[datetime.date, Depends(get_shown_date)]) -> PaperListOut:
     """Every paper strategy of the signed-in user, newest first: fixed cost whatever the count (finding F-3): one orders
     query, one contract batch (two queries) and ONE market read per underlying for every open contract together."""
     books = await paper_store.load_all(db, user_ref)
@@ -1069,7 +1073,8 @@ async def list_paper_strategies(db: Annotated[Any, Depends(get_db)],  # noqa: PL
     sorted_books = sorted(books, key=_newest_first, reverse=True)
     day = today_day([snapshots.get(b.underlying) for b in sorted_books], answered)
     today = today_totals([_today_item(out[i], decays[i], sorted_books[i]) for i in live], day)
-    return PaperListOut.model_validate({"strategies": out, "totals": totals, "today": today, "answered_at": now()})
+    return PaperListOut.model_validate({"strategies": out, "totals": totals, "today": today, "answered_at": now(),
+                                       "shown_date": shown_date})
 
 
 async def settle_line_after_close(db: Any, now: datetime.datetime, figures: Mapping[str, Any]) -> dict[str, Any]:
