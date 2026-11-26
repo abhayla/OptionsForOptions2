@@ -753,6 +753,11 @@ def record_fields(e: alert_gate.Opened | alert_gate.Escalated | alert_gate.Held)
                         {**t19, **target_record(trigger or "", ctx.state)})
 
 
+def _trigger_of_kind(rule_id: str, trigger: str | None) -> str:
+    """What ``kind_of`` reads: a watched level is known by its rule id; every other record by its trigger."""
+    return rule_id if rule_id.startswith(level_watch.RULE_PREFIX) else trigger or rule_id
+
+
 class DbGateStore:
     """The real gate store: ``playbook_store`` and the pin store, one session per call."""
 
@@ -809,7 +814,7 @@ class DbGateStore:
                                                         threshold=threshold, reason=e.reason)
                     continue
                 rec = await actionable_alerts.raise_actionable(
-                    db, w.user_ref, w.strategy_id, e.rule_id, kind_of(e.rule_id if e.rule_id.startswith(level_watch.RULE_PREFIX) else f.trigger or e.rule_id), at=e.at, value=value,
+                    db, w.user_ref, w.strategy_id, e.rule_id, kind_of(_trigger_of_kind(e.rule_id, f.trigger)), at=e.at, value=value,
                     threshold=threshold, trigger_id=f.trigger, stage=f.stage, group=gate_group(w.strategy_id, e.at),
                     source=source, cmp=f.cmp, label=f.label, unit=f.unit, worse=e.worse, beyond=f.beyond,
                     limit=_quantized(e.limit),

@@ -14,7 +14,8 @@ Changes (owner-run, one transaction; ADDITIVE columns, no back-fill, old rows ke
   CHECK (answer and answered_at are both set or both NULL).
 - Guard adjustment_suggestions_guard (0036's, every protection kept) plus:
   * a record of a kind (kind NOT NULL) leaves 'open' only with an answer; the one exception is a level_watch record
-    (ADR-242 (3): one record per crossing episode, no answer asked), which may lapse with reason condition_stopped; a 'lapsed' one only as 'closed_by_system'
+    (ADR-242 (3): one record per crossing episode, no answer asked), which may lapse with reason condition_stopped;
+    a 'lapsed' one only as 'closed_by_system'
     and 'closed_by_system' only with 'lapsed' (no path closes an actionable record without the user or the position);
   * the answer and its time are written once, with the final outcome;
   * no_longer_true_since and escalated_at change only while the record is open and stays open;

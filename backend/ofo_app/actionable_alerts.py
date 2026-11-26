@@ -56,7 +56,7 @@ _OPEN_OF_RULE = text(f"SELECT {_COLUMNS} {_FROM} AND g.strategy_id = :strategy_i
 _OPEN_OF_STRATEGY = text(f"SELECT {_COLUMNS} {_FROM} AND g.strategy_id = :strategy_id "
                          "AND g.outcome = 'open' ORDER BY g.id")
 #: the Active list: open rows of the user's visible strategies of this process (D-29), newest first
-_UNANSWERED_SQL = (f"SELECT {_COLUMNS} {_FROM} AND g.outcome = 'open' "
+_UNANSWERED_SQL = (f"SELECT {_COLUMNS} {_FROM} AND g.outcome = 'open' "  # noqa: S608 constant names
                    f"AND g.kind IS DISTINCT FROM '{kinds.LEVEL_WATCH}' AND {{scope}} "
                    "ORDER BY g.shown_at DESC, g.id DESC")
 _HISTORY_SQL = (f"SELECT {_COLUMNS} {_FROM} AND g.outcome <> 'open' AND {{scope}} "
