@@ -237,6 +237,25 @@ async def test_accepting_again_replaces_the_strategys_own_plan_and_another_user_
     assert missing.value.code == store.NOT_FOUND
 
 
+async def test_736_a_soft_deleted_strategys_plan_is_not_read_and_not_written(db):
+    """#736: the ownership check and the plan read leave a soft-deleted strategy (strategy_store._OWNED does the same);
+    restored, the plan is back. Answer states: read -> absent (None), write -> NOT_FOUND."""
+    user = _user()
+    _, stored = await _with_draft(db, user)
+    system = await pb.active_for(db, user, "ic")
+    await pb.accept_plan(db, user, stored.id, system.id)
+    assert await pb.plan_for(db, user, stored.id) is not None
+    await _set_deleted(db, stored.id, True)
+    assert await pb.plan_for(db, user, stored.id) is None
+    for call in (pb.require_owned(db, user, stored.id), pb.accept_plan(db, user, stored.id, system.id),
+                 pb.rule_states(db, user, stored.id)):
+        with pytest.raises(store.StrategyStoreError) as missing:
+            await call
+        assert missing.value.code == store.NOT_FOUND
+    await _set_deleted(db, stored.id, False)
+    assert await pb.plan_for(db, user, stored.id) is not None
+
+
 async def test_a_plan_is_never_deleted_and_keeps_its_type(db):
     user = _user()
     _, stored = await _with_draft(db, user)

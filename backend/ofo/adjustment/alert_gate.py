@@ -260,7 +260,7 @@ def _refresh(rule_id: str, rule: _Rule, pend: _Pending, level: int, preset: Pres
             rule = replace(rule, record=replace(rec, final=True) if watched else replace(rec, stopped=True))
             events.append(Lapsed(rule_id, pend.end, pend.value))
     if hold is not None and (
-        _safe_by_band(pend.spec, pend.value, hold.threshold, preset)
+        _safe_by_band(pend.spec, pend.value, _line(pend.spec, hold.threshold), preset)  # the LINE's band (ADR-237 (4))
         or level > hold.level
         or (hold.reason == HELD_QUIET_TIME and pend.end.time() > preset.quiet_until)
     ):

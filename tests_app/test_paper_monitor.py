@@ -13,6 +13,7 @@ read_snapshot + paper.leg_price, the routes' rule). Every test rolls back.
 from __future__ import annotations
 
 import datetime
+import types
 from decimal import Decimal
 
 import pytest
@@ -210,14 +211,16 @@ async def test_a_leg_without_a_live_price_holds_the_fire_and_the_trigger_stays_a
     assert await monitor.step() == 1
 
 
-@pytest.mark.parametrize(("at", "holidays"), [
-    (AFTER_CLOSE, None), (OPEN_AT, {2026: frozenset({datetime.date(2026, 10, 29)})}),
-    (datetime.datetime(2026, 10, 31, 4, 30, tzinfo=datetime.UTC), None)], ids=["after-hours", "holiday", "weekend"])
-async def test_nothing_fires_while_the_market_is_closed(db, at, holidays):
+@pytest.mark.parametrize(("at", "feed_closed"), [
+    (AFTER_CLOSE, None), (OPEN_AT, True),  # #740: the feed says closed while the calendar says open (a holiday)
+    (datetime.datetime(2026, 10, 31, 4, 30, tzinfo=datetime.UTC), None)], ids=["after-hours", "feed-closed", "weekend"])
+async def test_nothing_fires_while_the_market_is_closed(db, at, feed_closed):
     market = Market(at)
+    if feed_closed:  # a provider with a feed state: the ONE market rule (may_act.market_open) reads its answer
+        market.provider.feed = types.SimpleNamespace(market_closed=lambda _at: True)
     stored, _, keys = await _strategy(db)
     tid = await _exit_below(db, stored.id)
-    monitor = _monitor(db, market, holidays=holidays)
+    monitor = _monitor(db, market)
     await monitor.step()
     market.tick(keys[0], "41.00")
     market.tick(keys[1], "12.50")

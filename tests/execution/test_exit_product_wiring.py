@@ -36,6 +36,14 @@ def test_kite_position_row_parses_product_quantity_and_prices():
     assert (line.average_price, line.ltp) == (D("3.95"), D("4"))
 
 
+@pytest.mark.parametrize("bad", [D("NaN"), D("Infinity"), D("-Infinity")])
+@pytest.mark.parametrize("field", ["average_price", "last_price"])
+def test_kite_position_row_refuses_a_non_finite_price(field, bad):
+    row = {"tradingsymbol": "X", "product": "MIS", "quantity": 65, "average_price": D("3.95"), "last_price": D("4")}
+    with pytest.raises(ValueError, match="finite"):
+        position_line_from_kite_row({**row, field: bad})
+
+
 def test_kite_position_row_unknown_product_is_unread_not_assumed():
     row = {"tradingsymbol": "X", "product": "CNC", "quantity": 65, "average_price": D("3.95"), "last_price": D("4")}
     assert position_line_from_kite_row(row).product is None
