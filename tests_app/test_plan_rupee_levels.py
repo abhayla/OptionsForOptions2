@@ -103,3 +103,11 @@ def test_saved_body_with_good_rupee_guards_passes():
     body = copy.deepcopy(BODY)
     body["guards"].update({sl.RUPEE_LOSS_KEY: "400", sl.RUPEE_PROFIT_KEY: ""})
     assert playbook_store.check_body(body, "ic") is body
+
+
+def test_rupee_stop_on_the_s21_base_shows_the_percent_derived_beside_it():
+    """S-21 base: max loss 2,600. A Rs 400 stop is 15.38 % of it (shown to the catalogue's two decimals)."""
+    body = edited(stop_rupees="400")
+    out = plan.with_rupee_figures(plan._values(body, False, "weekly"), body, plan.Bases(max_loss=D("2600"), lots=2))
+    assert (out["stop"], out["stop_rupees"]) == (D("15.38"), D("400.00"))
+    assert out["stop_words"] == "15.38 % of max loss"
