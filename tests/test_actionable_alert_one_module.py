@@ -31,7 +31,8 @@ def problems_in(name: str, source: str) -> list[tuple[str, int, str]]:
             if isinstance(child, ast.Call):
                 f = child.func
                 called = f.attr if isinstance(f, ast.Attribute) else getattr(f, "id", None)
-                if called in CALLS and getattr(f.value if isinstance(f, ast.Attribute) else None, "id", "") != "actionable_alerts":
+                owner = f.value if isinstance(f, ast.Attribute) else None
+                if called in CALLS and getattr(owner, "id", "") != "actionable_alerts":
                     found.append((fn, child.lineno, f"{called}() outside the one module: use {USE}"))
             if isinstance(child, ast.Constant) and isinstance(child.value, str):
                 low = " ".join(child.value.lower().split())
