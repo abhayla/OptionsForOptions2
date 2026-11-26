@@ -49,3 +49,19 @@ Built meanwhile: (a), the words say both, in one place (`settings_in_force.stops
 Spec basis: owner answer Q3 (ADR-330): "per-lot figure shown beside it"; silent on legs of different sizes (searched:
 "per lot", "per-lot"). Decided: the per-lot figure is shown only when every leg has the same number of lots; otherwise
 only the whole-trade figure. Reversible in `routes/adjustment_plan.py`.
+
+## LP-4 A rupee stop typed larger than the trade's max loss
+
+Spec basis: ADR-330 (5) "a plan's ... loss stop can be typed either in rupees or in percent"; ADR-330 (1) (the stop base
+is fixed at entry); silent on a rupee stop above the max loss (searched: "above max loss", "larger than max loss").
+
+Real case (Opus re-check of P4, 26 Nov): on a debit spread with max loss Rs 10,000, a rupee stop of Rs 15,000 is accepted;
+the loss can never reach it, so the stop can never fire and the percent stop it replaced is no longer checked.
+
+Options:
+- (a) Refuse on Save with the reason ("The stop is larger than this trade's max loss of Rs 10,000: it can never be
+  reached"). **Recommended**: a stop that can never fire looks like protection and is none.
+- (b) Accept with a warning line on the plan.
+- (c) Accept silently (today).
+
+Built meanwhile: nothing (today's behaviour, (c)).
