@@ -70,3 +70,21 @@ Spec basis: ADR-330 (8) busy-store paragraph (Lane R, 26 Nov 2026); ADR-003. Bui
 entry `store_busy` (STRATEGY_VALIDATION_522): "This strategy is busy with another action, so nothing was changed." /
 "Wait a moment, then try again." Real case: the owner's ERR-6960F002 on a strategy delete, 25 Nov. Recommendation:
 approve as built. A new decision row number for it is the coordinator's.
+
+## LR-Q8 N-28: how a closed leg's exit price reads when it is an average of several exits (open, 26 Nov 2026)
+
+Spec basis: none: the spec is silent on labelling a closed exit average (searched: "average exit", "exit prices"); ADR-321 (6)
+("a closed lifecycle is its own row with entry, exit and booked"); ADR-008 (the average is served, `routes/paper.py:617-624`).
+Real case: paper trade 172, closed row 25850 CE shows exit 174.73, the average of two exits 153.00 and 196.45 (Orderbook).
+Options: (a) a suffix "(avg of 2)" after the price (new wording); (b) each exit fill as its own line in the closed row;
+(c) leave it, the Orderbook lists the fills. Recommendation: (a), small and the Orderbook already holds the detail.
+Lane R builds nothing for it until answered.
+
+## LR-Q9 C-01b: one basis for breakevens? (open, 26 Nov 2026; only if the owner wants it)
+
+Spec basis: ADR-330 (17) (plan summary: breakevens BEFORE charges, Max Profit / Max Loss after); ADR-263 (2) (a placed paper
+book: breakevens carry the same charges as Max Profit / Max Loss and booked P&L, with a line saying so). Real case: draft 174
+reads "Max Profit and Max Loss are after charges estimated at entry prices; breakevens are before charges."; placed 172 reads
+"Breakevens include the booked P&L and about Rs 395.78 of charges and taxes." Both are as built and as decided.
+Options: (a) keep both (recommended: a placed trade has real charges and booked P&L, a plan has estimates); (b) plan
+breakevens after charges too; (c) placed breakevens before charges too. No build.

@@ -734,6 +734,7 @@ issues:
   "#745": S6.7  # Create Strategy: a timed-out expiries or indices read leaves the took-too-long box (N-02)
   "#746": S6.7  # order_book_store maps every database error in its savepoint to BAD_HOLDING (busy database)
   "#747": S6.7  # Paper Orderbook in lots (ADR-330 (23), N-15): order rows carry no lots or lot size
+  "#748": S6.7  # Option Chain: a newly picked expiry shows Unavailable for 13-26 s instead of a waiting state (S-09)
 
 # Work items whose status is not done.
 work_items:

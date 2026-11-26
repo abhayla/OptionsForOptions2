@@ -28,7 +28,7 @@ walk-through was possible in the cloud: the app needs the broker feed and the ow
 | N-11, leave question for a staged removal | Fixed, not tested (ADR-330 (22)) | The question counted pending changes but called them unsaved legs. | 1 question; it now says "pending changes" for a running trade on the builder and the chain page. | `leave-builder-adr329.test.js`: red, then pass. |
 | N-12, Stops link does not reach the trade | Fixed, not tested (ADR-330 (21)) | The Positions page ignored `?strategy=` unless an exit was asked. | 1 link; it now opens that trade's Stops panel and scrolls to it; the list is not filtered. | `paper-exit-link-s14.test.js`: red, then pass. |
 | N-08, chain ticks stay after Add Selected | Fixed, not tested (ADR-330 (20)) | Add Selected pushed the draft link and never cleared the selection. | 1 store; the builder clears the ticks only after it has added them (Cancel on a clash, the other-index refusal or an error keeps them). REQ-030 AC-10 amended. | N08a, N08d failed without the fix (lead's run), then 57 pass. |
-| N-15, Orderbook quantity in units | Blocked: deferred #747 (ADR-330 (23)) | The order rows carry units only, no lots or lot size, and the browser must not divide by a guessed lot size. | - | - |
+| N-15, Orderbook quantity in units | Fixed, not tested (ADR-330 (23), #747) | The order rows carried units only, no lots or lot size, and the browser must not divide by a guessed lot size. | 1 table; the server now sends `lots` per order row (catalogue lot size, same source as the closed rows; a quantity that is not whole lots sends null and shows "-"); the column reads "Lots". Caveat: an NSE lot-size revision re-divides old orders with the new lot. | `tests_app/test_paper_order_lots.py` (real DB): 3 failed (KeyError 'lots'), then 3 passed; vitest 28 pass. |
 | S-02, a lock wait on delete ends as a raw 500 | Fixed, not tested (wording pending owner read, ADR-NB-1) | The error door had no case for a busy database (sqlstate 55P03, 57014, 40P01), so it answered the generic internal error. | Write routes that end as ERR-xxxx on a busy database: 49 in 21 route files; 0 after. Left: `order_book_store.py:152` answers BAD_HOLDING (#746). | `tests_app/test_store_busy.py` (real DB): 6 failed, then 10 passed. |
 | N-02 | Deferred #745 | A timed-out parallel read leaves the box after the other read succeeds. | - | - |
 | N-03, N-06, N-09, N-16, N-17, N-19 | Not a defect | N-03 legal hold (REQ-079); N-06 by design (D-C50); N-09 and N-17 test-tool artefacts; N-16 name vs engine shape (REQ-076 AC-8/9); N-19 by design (REQ-080 AC-9). | - | - |
@@ -122,3 +122,48 @@ review agent runs, so a review blocked three builders for about 15 minutes: run 
 3. Expected: My Strategies, Live Strategies and Positions > Paper show "IC wk1 (#<its number>, 1 Dec)".
 4. Again Add to Paper on another unsaved shape, then Cancel in the name box. Expected: nothing is added.
 5. Not changed here: alert titles still read "Paper strategy - <name>" (the alerts lane adds the number and expiry).
+
+## Part C (second batch, owner comment 7185059890)
+
+| Finding | Status | Root cause (one sentence) | Class before / after | Tests red, then green |
+|---|---|---|---|---|
+| C-04 / N-26 / N-30, bulk delete Undo lasts 2-3 s | Fixed, not tested | The delete flow kept its Undo only in a timed state that cleared after the served wait; the bulk result line never had an Undo and a single delete had no result line. | Undos offered only in a timed pop-up: 6; 4 after (single and bulk delete fixed; Save Undo, Clear all Undo, the chain's one-leg Undo and the generic toast remain, deferred). N-30's ~3 s before the result shows is not addressed. | `my-strategies-bulk.test.js`: 5 failed, then 23 pass. |
+| N-25 (b), "1 of them are running" | Fixed, not tested | `bulkConfirmText` used "are" for any count. | 1 sentence; REQ-070 updated. | same file. |
+| C-12b, stale index number in the Stops panel | Fixed, not tested | With the feed down the server keeps the answer LIVE but marks each row's health stale; the one index reader looked at the answer state only. | `useIndexAnswer` screens that drop a stale value: 1 of 3; the Stops panel now reads the row health through the shared reader. The Home strip and Index page keep the number with a "stale" word, unchanged (by design today). | `stops-index-stale.test.js`: 4 failed, then 61 pass. |
+| N-22, Cancel moves in the Exit dialog | Fixed, not tested (pixels not seen: jsdom has no layout) | The risk-check line and the status lines were shown with v-if and no reserved height, so the centred dialog shrank. | Moving spots in the paper confirm dialog: 2; 0 after (always-rendered slots). Listed, not fixed: AdjustPlanSheet.vue:44, LegList.vue:167/200/283, SaveDraftBar.vue:491, BrokerSettingsPage.vue:160. Finding `controls-move-while-user-acts-v-if-lines.json`. | `paper-confirm-no-shift-n22.test.js`: 2 failed, then 154 pass. |
+| C-05 (NOT CHECKED) | How to check | The PC database has no strategy held at the broker. | - | Check after the first real order (ADR-289): My Strategies > tick a strategy held at Zerodha with others > Delete selected: it is kept and named with the server's reason. |
+| C-12a (NOT CHECKED) | How to check | The Positions page has no index strip. | - | Open Home in a second tab; compare the Stops panel's "as of" time and value with the strip at the same second (or the Option Chain spot). |
+
+### Part C triage of the observations (N-20 to N-30, C-01b, S-09)
+
+| Id | Class | Reason / action |
+|---|---|---|
+| C-01b | not a defect | A placed paper book follows ADR-263 (2) ("a paper book's breakevens carry the same charges as its Max Profit / Max Loss and booked P&L, with a line saying so"; server text `routes/paper.py:772`, `errors/explanations.py:1905,1912`); ADR-330 (17) is about the plan summary only. Two bases on two screens: if the owner wants one, that is a new question (LR-Q9). |
+| N-20 | not a defect | Home "Total P&L —" right after the API restart is the first-read / paused state (`paperPnl.js:25-30, 62-66`), not a wrong figure. |
+| N-21 | defect, fixing now | The Stops panel re-read only its own list after Save; the legs come from the parent's 5 s timer (`PaperStops.vue:58-75`, `PaperStrategies.vue:362`). The server refuses an exit of a fired leg, so a display lag only. |
+| N-22 | fixed | above. |
+| N-23 | not a defect | The "taking longer than usual" notice is designed (`StrategyBuilderPage.vue:277, 1275`); the delay is the outcome call's round trip (a speed item, not measured). |
+| N-24 | not a defect (fixed by N-14) | The builder's compact paper list already uses `strategyListLabel` since the N-14 commit, after the tested a9bd41a8. Re-test on this branch. |
+| N-25 (a) | not a defect | The after-charges line belongs on every plan summary, saved or not (ADR-330 (17), ADR-263). |
+| N-25 (b) | fixed | with C-04. |
+| N-26, N-30 | fixed (N-26) / open (N-30) | with C-04; the ~3 s before the result shows is not addressed. |
+| N-27 | defect, fixing now | `PaperBookPanel.vue:59` price and time inline; Exit cell cut off. |
+| N-28 | layout fixing now; product question LR-Q8 | The exit average is served (`routes/paper.py:617-624`), not computed in the browser (ADR-008 holds); the cell split ships with N-27; how to label an average of several exits is the owner's. |
+| N-29 | placeholders fixing now; hyphen not a defect | Placeholder bars `bg-surface-muted` on white (`MyStrategiesPage.vue:173-174`); the hyphen is a test-tool artefact (plain v-model, saved name right). |
+| S-09 | defect, deferred #748 | A newly subscribed contract shows the "unavailable" health word instead of the REQ-133 AC-3 waiting state. |
+
+## Re-test: C-04 (Part C push)
+
+1. My Strategies: save two throw-away drafts (e.g. "UNDOTEST-1", "UNDOTEST-2"); search UNDOTEST; tick both; Delete selected; Delete.
+2. Expected: the line "2 deleted." stays with "Undo" and "Dismiss" beside it; wait 30 seconds: still there.
+3. Click Undo. Expected: both rows come back and the line goes.
+4. Delete one draft by its own Delete: the line "1 deleted." (or the server's summary) with Undo stays too; Dismiss removes it.
+5. Tick a running paper trade with one draft and press Delete selected: the question reads "... 1 of them is running."; Cancel.
+
+## Re-test: C-12b and N-22 (Part C push)
+
+1. Positions > Paper > Stops on a running trade: the line "NIFTY now ... as of ..." shows.
+2. Stop the price feed (as in Part C). Within a few seconds the line reads "Index values unavailable." with no number.
+3. Start the feed again: the number comes back without a reload.
+4. Live Strategies > Exit on a running trade: watch the Cancel button while "Checking whether this exit leaves a sold option without protection..." finishes.
+5. Expected: Cancel does not move; one click on it closes the dialog.

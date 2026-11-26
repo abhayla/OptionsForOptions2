@@ -2,7 +2,7 @@
 
 # Findings index
 
-193 finding(s), generated from `knowledge/findings/*.json`.
+194 finding(s), generated from `knowledge/findings/*.json`.
 
 | id | class | detection status | other fields |
 |---|---|---|---|
@@ -41,6 +41,7 @@
 | client-message-resets-rate-limit | A per-stream rate limit that is reset whenever the client sends a message lets any client bypass it by re-sending, turning a server-paced push into client-driven work. | unguarded | occurrences, scope, spec_ref |
 | closed-market-label-time-from-frame | A market-closed label states a price time taken from a field that records when a frame ARRIVED (or when the broker stamped a post-close packet) instead of when the price was made; outside market hours every price was made at the close of its session, so any label built from arrival or packet time tells the user a false time (e.g. 'Prices are from 28 Oct 07:46' for the 27 Oct close). | unguarded | occurrences, scope, spec_ref |
 | closed-market-rule-per-surface | Any screen or answer that shows market data after hours, where the closed-market rule (ADR-177 one banner, ADR-200 (2) no stale/read-time labels, ADR-197/ADR-212 numbers from the last close) is applied by that surface's own code instead of one shared path: each surface that was not touched keeps showing 'stale since <read time>', per-cell stale sentences, a 'live' tag, the fetch time as the price time, or blank numbers. | unguarded | scope, spec_ref |
+| controls-move-while-user-acts-v-if-lines | A status, risk-check, result or error line is shown with v-if above or beside buttons or inputs and appears or disappears on an async answer, so the control moves under the user's pointer and the click lands beside it. | unguarded | occurrences, scope, spec_ref |
 | count-includes-the-closing-exit | A count of 'adjustments used' that includes the final Exit all, so a finished trade reads over its own limit. | guarded | scope, spec_ref |
 | cutoff-by-version-number-not-by-the-row-written | Any code that finds 'the row a migration wrote' in an append-only versioned table by a fixed version NUMBER is wrong on every database where another writer (admin save, restore, an earlier migration) appended versions before the migration ran: the number then names someone else's row, and every rule keyed on that row's time or body (a cutoff, an 'already applied' check, a before/after split) silently applies to the wrong population. The number is only stable on a fresh database, which is the one database the tests use. | unguarded | occurrences, scope, spec_ref |
 | daily-list-trims-far-strikes-trips-truncation-guard | A truncation guard on a reference-data reload that judges a shrunk list by a percentage (of the index, or of one expiry) refuses a legitimate daily trim of far-from-the-money members, because the source drops only the far end of every expiry at once; the refused reload leaves the catalogue not same-day and a downstream gate then refuses every action that needs a same-day list. | unguarded | occurrences, scope, spec_ref |
