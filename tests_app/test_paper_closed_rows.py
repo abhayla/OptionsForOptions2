@@ -102,3 +102,16 @@ def test_a_fully_closed_book_with_known_charges_says_after_charges():
     assert got["closed_text"] is not None
     assert got["closed_text"].endswith(" after charges.") and got["closed_text"].startswith("Closed: result ")
     assert "before charges" not in got["closed_text"]
+
+
+def test_n28_two_exits_read_the_average_with_the_count_one_exit_the_bare_price():
+    """N-28 (ADR-330 (27)): real case, paper trade 172, closed 25850 CE: exits 153.00 and 196.45 ->
+    (153.00 + 196.45) / 2 = 174.725 -> "174.73 (avg of 2)";
+    the server builds the text, the numeric average_exit stays 174.73."""
+    two = _figures([_order(0, "BUY", 150, "100.00", "open"), _order(1, "SELL", 75, "153.00", "exit"),
+                    _order(2, "SELL", 75, "196.45", "exit")])
+    row = two["closed"][0]
+    assert (row["average_exit"], row["average_exit_text"], row["exit_fills"]) == (
+        D("174.73"), "174.73 (avg of 2)", 2)
+    one = _figures(C1)["closed"][0]
+    assert (one["average_exit_text"], one["exit_fills"]) == ("115.71", 1)

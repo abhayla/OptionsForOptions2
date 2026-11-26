@@ -218,7 +218,8 @@ class PaperClosedOut(ApiModel):
     average_entry: Money
     average_entry_text: CatalogueText
     average_exit: Money  # 0.00 for an option that expired worthless (settled)
-    average_exit_text: CatalogueText
+    average_exit_text: CatalogueText  # "174.73 (avg of 2)" when over more than one exit (N-28, ADR-330 (27))
+    exit_fills: int  # how many exit orders the average exit is over; the Orderbook keeps each fill
     booked: Money
     booked_text: CatalogueText
     opened_at: datetime.datetime
@@ -610,6 +611,13 @@ def _closing_reasons(orders: Sequence[paper_store.StoredOrder]) -> dict[tuple[in
             if o.order.kind in ("stop", "settle") and o.order.reason}
 
 
+def _exit_text(exit_: Decimal, fills: int) -> Any:
+    """N-28 (ADR-330 (27)): the bare price for one exit, "174.73 (avg of 2)" for an average over several exits."""
+    if fills <= 1:
+        return price_text(exit_)
+    return render_explanation("closed_exit_average", value=exit_, count=fills)
+
+
 def _closed_row(leg: ClosedLeg, found: tracked_contracts.TrackedContract, reason: str | None = None) -> dict:
     underlying, instrument, strike, expiry = _identity(found)
     lot = found.stored.listed.contract.lot_size
@@ -621,7 +629,7 @@ def _closed_row(leg: ClosedLeg, found: tracked_contracts.TrackedContract, reason
             "quantity": leg.quantity, "lot_size": lot,
             "lots": leg.quantity // lot if is_lot_aligned(leg.quantity, lot) else None,
             "average_entry": entry, "average_entry_text": price_text(entry),
-            "average_exit": exit_, "average_exit_text": price_text(exit_),
+            "average_exit": exit_, "average_exit_text": _exit_text(exit_, leg.exit_fills), "exit_fills": leg.exit_fills,
             "booked": _exact(leg.booked), "booked_text": _signed(leg.booked),
             "opened_at": leg.opened_at, "closed_at": leg.closed_at, "reason_text": restore_order_reason(reason)}
 

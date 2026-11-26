@@ -1251,6 +1251,10 @@
     "sha256": "8461935265421850080cd604591d7c73fcae4aca56478d139ffb97314a917403",
     "reviewed": "owner read 2026-11-02 (accepted after independent screen, not read line by line)"
   },
+  "explanation:closed_exit_average": {
+    "sha256": "56274fa5a621a8ccb262252fc668dc07433e2e8ec2bf384ce581e8510b409373",
+    "reviewed": "owner read 2026-11-26 (ADR-330 (27), answered by the owner in the question tool)"
+  },
   "explanation:execute_cost_charges_not_included": {
     "sha256": "a7f0559e88aa53f42ab25de4b9ff301d7f8eefc573a52ce3fd4109fbb5902290",
     "reviewed": "owner read 2026-11-02 (accepted after independent screen, not read line by line)"
