@@ -61,7 +61,7 @@
         </li>
       </ul>
       <template v-else>
-        <div v-for="g in shown" :key="g.id" class="mt-3 rounded-lg border border-line p-3" data-testid="paper-group" :data-strategy="g.id">
+        <div v-for="g in shown" :key="g.id" :ref="(el) => (cards[g.id] = el)" class="mt-3 rounded-lg border border-line p-3" data-testid="paper-group" :data-strategy="g.id">
           <p v-if="!g.readable" data-testid="paper-unreadable">{{ g.text }}</p>
           <template v-else>
             <div class="flex flex-wrap items-start justify-between gap-3">
@@ -282,6 +282,7 @@ const dialogState = ref(PAPER_STATE.READY) // fix/paper-dialog-safe: the dialog'
 const router = useRouter()
 
 function show({ data, token }) {
+  const hadExit = !props.compact && router?.currentRoute.value.query.exit !== undefined
   const exitId = takeExitParam()
   const read = readPaperList(data)
   if (read === null) {
@@ -296,6 +297,7 @@ function show({ data, token }) {
     goodReadToken.value = token // the token travels with the answer from the read that made it
     settle(items.value)
     openExitFromLink(exitId)
+    if (!hadExit) openStopsFromLink()
   }
   loading.value = false
 }
@@ -315,6 +317,22 @@ function takeExitParam() {
   const strategy = q.strategy === undefined ? undefined : String(Array.isArray(q.strategy) ? q.strategy[0] : q.strategy)
   return strategy !== undefined && strategy !== id ? null : id
 }
+// ADR-330 (21): the Live card's "Stops" link (`strategy=<id>`, no `exit`) opens that trade's Stops panel and scrolls to its card, once
+// (the first good answer); an id the list does not show opens nothing and says nothing; the list is never filtered.
+let stopsLinkDone = false
+function openStopsFromLink() {
+  if (stopsLinkDone || props.compact || !router) return
+  stopsLinkDone = true
+  const q = router.currentRoute.value.query.strategy
+  const id = q === undefined ? null : String(Array.isArray(q) ? q[0] : q)
+  const g = id === null ? null : (items.value ?? []).find((x) => x.readable && x.openCount && String(x.id) === id) // Stops is drawn only for open legs
+  if (!g) return
+  stopsOpen.value = { ...stopsOpen.value, [g.id]: true }
+  scrollTo.value = g.id
+}
+const cards = {} // the drawn card element of each group, by strategy id (a function ref)
+const scrollTo = ref(null) // the strategy id whose card is scrolled to once it is drawn
+watch(scrollTo, (id) => { if (id !== null) { cards[id]?.scrollIntoView?.({ block: 'start' }); scrollTo.value = null } }, { flush: 'post' })
 function openExitFromLink(id) {
   if (id === null) return // no new request: an earlier note stays until the user leaves
   exitNote.value = ''

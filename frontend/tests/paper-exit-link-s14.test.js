@@ -129,3 +129,48 @@ describe('S-14 exit link: round 2 (one-shot, never throws, same rule as the list
   })
 })
 
+// ADR-330 (21): the Live card's "Stops" link (?tab=paper&strategy=N, no exit) opens that trade's Stops panel and scrolls to its card;
+// the other trades stay on the page (the list is never filtered).
+describe('ADR-330 (21): ?strategy=N opens that trade\'s Stops panel and scrolls to it', () => {
+  const two = list(item({ strategy_id: 48 }), item({ strategy_id: 172, name: '"Jade Lizard"' }))
+  let scrolled
+  beforeEach(() => {
+    scrolled = []
+    Element.prototype.scrollIntoView = function scrollIntoView() { scrolled.push(this.getAttribute('data-strategy')) }
+  })
+  afterEach(() => { delete Element.prototype.scrollIntoView })
+  const stopsOpen = (w, id) => w.get(`[data-testid="stops-open-${id}"]`).attributes('aria-expanded')
+
+  it('?strategy=172: the 172 Stops panel is open, its card was scrolled to once, 48 is still listed with its Stops closed', async () => {
+    answers['GET /tracking'] = ok(two)
+    const { w } = await showAt('/positions/current-positions?tab=paper&strategy=172')
+    expect(w.findAll('[data-testid="paper-group"]').map((g) => g.attributes('data-strategy'))).toEqual(['48', '172'])
+    expect(stopsOpen(w, 172)).toBe('true')
+    expect(stopsOpen(w, 48)).toBe('false')
+    expect(scrolled).toEqual(['172'])
+    await vi.advanceTimersByTimeAsync(TRACKING_REFRESH_MS)
+    await flushPromises()
+    expect(scrolled).toEqual(['172']) // once: a later refresh does not scroll again
+  })
+  it('an unknown strategy id: nothing opens, nothing scrolls, no error, every trade listed', async () => {
+    answers['GET /tracking'] = ok(two)
+    const { w } = await showAt('/positions/current-positions?tab=paper&strategy=999')
+    expect(w.findAll('[data-testid="paper-group"]')).toHaveLength(2)
+    expect(stopsOpen(w, 48)).toBe('false')
+    expect(stopsOpen(w, 172)).toBe('false')
+    expect(scrolled).toEqual([])
+  })
+  it('no strategy query: no Stops panel opens and nothing scrolls', async () => {
+    answers['GET /tracking'] = ok(two)
+    const { w } = await showAt('/positions/current-positions?tab=paper')
+    expect(stopsOpen(w, 172)).toBe('false')
+    expect(scrolled).toEqual([])
+  })
+  it('with exit=: the exit dialog path is unchanged and no Stops panel opens', async () => {
+    answers['GET /tracking'] = ok(two)
+    const { w } = await showAt('/positions/current-positions?tab=paper&strategy=172&exit=172')
+    expect(dialog(w).props('open')).toBe(true)
+    expect(stopsOpen(w, 172)).toBe('false')
+  })
+})
+
