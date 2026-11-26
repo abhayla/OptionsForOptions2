@@ -81,7 +81,7 @@ const gate = () => {
 
 async function stubApi(page: Page, over: Partial<Pick<Stub, 'strategies' | 'paper' | 'alerts' | 'opps' | 'indices'>> = {}): Promise<Stub> {
   const S: Stub = {
-    strategies: ok({ strategies: LIST }), paper: ok(paperOk()), alerts: ok({ unread: 3, alerts: [] }), opps: ok({ groups: [] }),
+    strategies: ok({ strategies: LIST, shown_date: '2026-11-26' }), paper: ok(paperOk()), alerts: ok({ unread: 3, alerts: [] }), opps: ok({ groups: [] }),
     indices: ok(idxLive('25145.50', '82010.25')), ws: null, calls: [],
     push: (msg) => S.ws?.send(JSON.stringify(msg)),
     ...over,

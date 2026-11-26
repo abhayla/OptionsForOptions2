@@ -17,7 +17,7 @@ import LoadFailed from '@/components/common/LoadFailed.vue'
 import DraftDeleteConfirm from '@/components/strategy/DraftDeleteConfirm.vue'
 import DraftDelete from '@/components/strategy/DraftDelete.vue'
 import DraftDeleteStatus from '@/components/strategy/DraftDeleteStatus.vue'
-import { TIME_UNAVAILABLE, istTime } from '@/lib/displayFormat'
+import { TIME_UNAVAILABLE, istTime, noteShownDate } from '@/lib/displayFormat'
 import { afterFigure } from '@/lib/tracking'
 // u125: the server's sentence for why charges / the net are absent (an older server sends none: the Completed reason, else a plain word)
 // the net counts only when the helper calls it an after figure (a reply that also sends a reason is not trusted)
@@ -78,7 +78,7 @@ async function loadList() {
   let timer = null
   const limit = new Promise((_, reject) => { timer = setTimeout(() => reject(new Error('timed out')), LIST_LIMIT_MS) })
   try {
-    const list = (await Promise.race([api.get('/strategies'), limit])).data?.strategies
+    const list = noteShownDate((await Promise.race([api.get('/strategies'), limit])).data)?.strategies
     if (mine !== readNo) return
     rows.value = Array.isArray(list) ? list : []
     loadFailed.value = false

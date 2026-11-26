@@ -11,6 +11,7 @@ import MarketClosedBanner from '@/components/states/MarketClosedBanner.vue'
 import { LIVE_NOTHING_RUNNING_TEXT, STATUS_DRAFT, STATUS_RUNNING } from '@/lib/sharedStateText'
 import { isCompleted, isRunning } from '@/lib/strategyStatus'
 import { usePaperPnl } from '@/lib/paperPnl'
+import { noteShownDate } from '@/lib/displayFormat'
 
 const MAX_CARDS = 20
 const pnl = usePaperPnl() // D-41: one read of the Positions page's paper list; each card shows its own figure
@@ -44,7 +45,7 @@ const capped = computed(() => followed.value.length > MAX_CARDS)
 onBeforeUnmount(() => clearTimeout(timer))
 onMounted(async () => {
   try {
-    all.value = (await api.get('/strategies')).data.strategies
+    all.value = noteShownDate((await api.get('/strategies')).data).strategies
     state.value = 'ready'
     if (queue.value.length) timer = setTimeout(() => release(0), RELEASE_MS)
   } catch (e) {

@@ -58,13 +58,13 @@ const TOTALS = {
   closed_text: 'Includes 1 closed strategy', charges_text: '73.50', decay_text: '+12.00', totals_as_of: T_NOW,
 }
 // ADR-330 (19): a paper card's name reads "<name> (#<id>, <expiry>)" when its positions share ONE expiry (several or none: "(#<id>)" only);
-// the year is printed because this page sets no shown date. Built from the same stub book, never typed twice.
+// the list reply's shown_date (26 Nov 2026) leaves the year off inside 2026 (ADR-330 (19), REQ-148 AC-2). Built from the same stub book, never typed twice.
 const MON = ['Jan', 'Feb', 'Mar', 'Apr', 'May', 'Jun', 'Jul', 'Aug', 'Sep', 'Oct', 'Nov', 'Dec']
 const plbl = (b: { strategy_id: number; name: string | null; positions: object[] }) => {
-  const days = [...new Set((b.positions as { expiry: string }[]).map((x) => `${Number(x.expiry.slice(8, 10))} ${MON[Number(x.expiry.slice(5, 7)) - 1]} ${x.expiry.slice(0, 4)}`))]
+  const days = [...new Set((b.positions as { expiry: string }[]).map((x) => `${Number(x.expiry.slice(8, 10))} ${MON[Number(x.expiry.slice(5, 7)) - 1]}${x.expiry.startsWith('2026-') ? '' : ` ${x.expiry.slice(0, 4)}`}`))]
   return `${b.name} (#${b.strategy_id}${days.length === 1 ? `, ${days[0]}` : ''})`
 }
-const paperOk = (strategies: object[] = [CONDOR, STRANGLE, OLD], totals: object | null = TOTALS) => ({ strategies, totals, answered_at: T_NOW })
+const paperOk = (strategies: object[] = [CONDOR, STRANGLE, OLD], totals: object | null = TOTALS) => ({ strategies, totals, answered_at: T_NOW, shown_date: '2026-11-26' })
 const SYMBOL = 'NIFTY26O1923650CE'
 const realOk = (over: object = {}) => ({
   read_at: '2026-10-16T12:21:04+05:30', has_outside: false, outside_lots: 0, blocked: false, blocked_strategy_ids: [],

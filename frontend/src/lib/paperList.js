@@ -6,7 +6,7 @@
 import { plainName } from '@/lib/saveDraft'
 import { contractName, CONTRACT_UNAVAILABLE } from '@/lib/displayFormat'
 import { UNREADABLE_TEXT, EXITED_TEXT, afterFigure } from '@/lib/tracking'
-import { istTime } from '@/lib/displayFormat'
+import { istTime, noteShownDate } from '@/lib/displayFormat'
 import { LAST_CLOSE_LABEL } from '@/lib/paperDrafts'
 import { PAUSED_TEXT as PAPER_PAUSED, NOT_CONNECTED_TEXT as PAPER_NOT_CONNECTED, listIsStale } from '@/lib/priceState'
 
@@ -184,6 +184,7 @@ function readToday(t) {
 /** The whole reply: {groups, totals, today}, or null when it does not read (the caller shows the neutral error, no figure). */
 export function readPaperList(data) {
   if (!data || !Array.isArray(data.strategies)) return null
+  noteShownDate(data) // ADR-330 (19): before any group label is written
   return { groups: data.strategies.map(readPaperStrategy), totals: readTotals(data.totals), today: readToday(data.today) }
 }
 
