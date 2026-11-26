@@ -54,9 +54,12 @@ def _parse_decimal(raw: str, field: str) -> Decimal:
     if raw == "":
         raise ValueError(f"empty {field}: decimal fields must never be blank")
     try:
-        return Decimal(raw)
+        number = Decimal(raw)
     except InvalidOperation as exc:
         raise ValueError(f"unparseable {field}: {raw!r}") from exc
+    if not number.is_finite():  # "NaN" / "Infinity" parse as Decimal but are no strike or tick size (ADR-008)
+        raise ValueError(f"unparseable {field}: {raw!r}")
+    return number
 
 
 def _parse_int(raw: str, field: str) -> int:

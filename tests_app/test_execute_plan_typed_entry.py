@@ -42,6 +42,20 @@ def _price(entry: D | None, quote: ep.LegQuote | None = None, action: Action = A
     return ep.price_legs("1", "NIFTY", [ep.LegToPrice(CORE_ID, action, QUANTITY, entry)], _catalogue(), lambda i, t: q)
 
 
+@pytest.mark.parametrize("bad", [D("NaN"), D("sNaN"), D("Infinity"), D("-Infinity")])
+def test_737_a_non_finite_decimal_is_no_money_in_the_quote_figures(bad):
+    """#737: _money returns None for NaN / Infinity (like a float or text), a finite Decimal / int is kept."""
+    assert ep._money(bad) is None
+    assert ep._money(D("7.05")) == D("7.05") and ep._money(4) == D("4")
+    assert ep._money(7.05) is None and ep._money("7.05") is None and ep._money(True) is None
+    assert ep._money(None) is None
+    quote = live_quote()
+    quote["last_price"] = bad
+    quote["upper_circuit_limit"] = bad
+    parsed = ep.quote_from_kite(quote)
+    assert parsed is None or (parsed.last_price is None and parsed.band is None)
+
+
 def _limit(priced: ep.PricedPlan) -> D:
     return priced.plan.legs[0].leg.entry_price
 

@@ -59,8 +59,8 @@ def is_flat_row(row: Mapping[str, object]) -> bool:
 def _kite_price(value: object, name: str) -> Decimal:
     if isinstance(value, int) and not isinstance(value, bool):
         return Decimal(value)
-    if not isinstance(value, Decimal):
-        raise ValueError(f"{name} must be a Decimal or int (floats are refused), got {value!r}")
+    if not isinstance(value, Decimal) or not value.is_finite():
+        raise ValueError(f"{name} must be a finite Decimal or int (floats are refused), got {value!r}")
     return value
 
 

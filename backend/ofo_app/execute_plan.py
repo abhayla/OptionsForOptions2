@@ -102,7 +102,8 @@ class PricedPlan:
 def _money(value: object) -> Decimal | None:
     if isinstance(value, bool) or not isinstance(value, (Decimal, int)):
         return None  # a float or text money figure is never read (money-parsed-through-float)
-    return Decimal(value)
+    number = Decimal(value)
+    return number if number.is_finite() else None  # NaN / Infinity is no money (ADR-008)
 
 
 def quote_from_kite(quote: object) -> LegQuote | None:
