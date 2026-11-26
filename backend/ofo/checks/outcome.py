@@ -42,7 +42,7 @@ def usable(value: object) -> bool:
     return isinstance(value, Decimal) and value.is_finite()
 
 
-def at_or_beyond(level: Decimal | None, direction: str, price: Decimal | None) -> Outcome:
+def at_or_beyond(level: Decimal | None, direction: str, price: Decimal | None) -> Outcome:  # noqa: PLR0911 - one answer per reason a level check is not computable
     """The one level comparison: ``above`` is met when price >= level, ``below`` when price <= level (a level, not an
     edge: equality is met in both directions). Anything absent or unreadable is NotComputable, never NotMet."""
     if level is None:

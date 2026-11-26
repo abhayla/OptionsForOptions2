@@ -9,6 +9,8 @@ import re
 from decimal import Decimal, InvalidOperation
 from typing import Final
 
+from ofo.checks.outcome import Met, NotComputable, NotMet, Outcome  # the one answer type, re-exported here
+
 LOSS: Final = "loss"
 PROFIT: Final = "profit"
 NO_PNL: Final = "no_pnl"  # reasons are codes: the words live in the catalogue
@@ -17,9 +19,6 @@ UNKNOWN_SIDE: Final = "unknown_side"
 #: the ONE shape of a typed rupee level (rupees to the paisa, ASCII digits only): the plan route's box and the stored
 #: guard are both read by it (``level_of``), so "1e3", "400.005" and full-width digits never pass
 LEVEL_PATTERN: Final = re.compile(r"[0-9]{1,12}([.][0-9]{1,2})?")
-
-
-from ofo.checks.outcome import Met, NotComputable, NotMet, Outcome  # noqa: F401 - the one answer type, re-exported
 
 
 def _usable(value: object) -> bool:
