@@ -8,7 +8,9 @@ more than 0.51 s while a median 59 of 1,091 contracts had no tick for over 60 s,
 Rule here: while a feed is connected and a data frame or heartbeat arrived within ``FEED_STALE`` every contract on it
 is available; beyond that every contract of that feed is stale; disconnected longer than the reconnect window, never
 connected, or session ended: unavailable. A contract's own last change time is kept (``QuoteBook``) as information
-and is never a health input. Provider-agnostic: any provider with a live connection can use ``FeedState``.
+and is never a health input, except the ONE index rule of ADR-330 (39) (``FeedState.quote_health``): in market hours an
+index quote older than ``index_quote_max_age`` is STALE even on a live feed. Provider-agnostic: any provider with a
+live connection can use ``FeedState``.
 
 Outside market hours (ADR-119 calendar, REQ-114 AC-7) the feed is never live, whatever frames arrive: ``health`` is
 STALE and ``phase`` is ``FEED_MARKET_CLOSED`` (a session ended or a capped socket still say so). The calendar is read
@@ -345,8 +347,9 @@ class QuoteBook:
     def latest_depth(self, instrument_id: str, now: datetime.datetime) -> Depth | None:
         """The 5-level depth of the instrument's latest packet, or None: not held (never seen, removed or parked), the
         latest packet was not a full frame, or the quote is not AVAILABLE (feed stale / disconnected / ended, or the
-        quote itself invalid or delayed). Staleness is the feed's (``FeedState``), the one limit the quote already
-        uses; a contract's own age is never a limit (a quiet contract keeps its depth, F-32)."""
+        quote itself invalid or delayed). Health is ``FeedState.quote_health``: the feed's word, so an option's own
+        age is not a limit (a quiet contract keeps its depth, F-32); an index quote older than the index age limit is
+        not AVAILABLE (ADR-330 (39))."""
         e = self._entries.get(instrument_id)
         if e is None or e.depth is None:
             return None

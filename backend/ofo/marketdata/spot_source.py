@@ -135,7 +135,8 @@ def feed_reading(quote: NormalizedQuote | None, now: datetime.datetime, *, feed_
     - no quote held -> ABSENT;
     - live (``feed_live``: the feed is connected and current and the market is open, the caller's connection-aware
       answer) and the quote's own health AVAILABLE and its last change today (IST), not in the future -> STATED at
-      ``now`` (fresh, however quiet);
+      ``now`` (an option or a quote within the index age limit; an INDEX quote older than
+      ``detection.index_quote_max_age_seconds`` in market hours is not AVAILABLE here, ADR-330 (39));
     - feed stale / disconnected / market closed (``feed_live`` False), the quote's own health not AVAILABLE, or no tick
       yet today (a last change on an earlier IST day) -> STATED with its own last change, so ``resolve_spot``'s age
       window judges it (an old stamp is refused as stale: fail closed);
