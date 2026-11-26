@@ -34,6 +34,7 @@ from sqlalchemy.exc import DBAPIError
 
 from ofo_app import execute_plan as ep
 from ofo_app import execution_plan_store as plans
+from ofo_app.errors import busy_database_error
 from ofo_app.reconciliation_store import MAX_TEXT
 
 NOT_FOUND = "not_found"
@@ -150,6 +151,8 @@ async def record_adopted(conn: Any, user_ref: str, strategy_id: int, holding: Ad
                                          "product": holding.product, "px": holding.average_price,
                                          "ref": holding.reference, "v": version})
     except DBAPIError as exc:
+        if busy_database_error(exc):  # a lock wait / timeout / deadlock is not a bad holding: the error door answers
+            raise  # store_busy (ADR-330 (8)); the savepoint has rolled back
         message = str(exc.orig)
         if _HOLDING_KEY in message:
             raise OrderBookError(ALREADY_HELD, message) from exc

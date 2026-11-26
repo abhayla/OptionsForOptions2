@@ -28,6 +28,7 @@ from pathlib import Path
 import pytest
 from ofo.execution.basket import make_tag
 from ofo.timeutil import IST
+from ofo_app import errors as door
 from ofo_app import execute_plan as ep
 from ofo_app import execution_plan_store as plans
 from ofo_app import execution_return as er
@@ -36,6 +37,7 @@ from ofo_app import return_book as rb
 from ofo_app.execute_replay import retag_recorded
 from ofo_app.kite_replies import KiteReplyError
 from sqlalchemy import text
+from sqlalchemy.exc import DBAPIError
 from sqlalchemy.ext.asyncio import create_async_engine
 from sqlalchemy.pool import NullPool
 from test_execution_plan_store import (
@@ -553,6 +555,101 @@ async def test_core_adopted_average_7_025_survives_a_restart_exactly(app_engine,
         assert (back.quantity, back.instrument_id) == (units, REAL_INSTRUMENT)
         with pytest.raises(plans.PlanStoreError, match="at most 2 decimals"):
             _fill(price=D("7.005"))
+    finally:
+        await _remove_own_fills_and_rows(admin_engine, ids, user)
+
+
+# ---------------------------------------------------------------------------------------------------------------
+# #746: a busy store (lock wait, timeout, deadlock) is never mapped to bad_holding (ADR-330 (8))
+# ---------------------------------------------------------------------------------------------------------------
+
+
+class _Orig(Exception):
+    def __init__(self, sqlstate: str) -> None:
+        super().__init__("boom")
+        self.sqlstate = sqlstate
+
+
+class _Res:
+    def first(self):
+        return None
+
+    def scalar_one(self):
+        return 1
+
+
+class _Savepoint:
+    async def __aenter__(self):
+        return self
+
+    async def __aexit__(self, *exc):
+        return False
+
+
+class _InsertFailsConn:
+    """A connection whose adopted_holdings insert raises a DBAPIError with the given sqlstate; every check answers
+    'nothing found'."""
+
+    def __init__(self, sqlstate: str) -> None:
+        self.sqlstate = sqlstate
+
+    def begin_nested(self):
+        return _Savepoint()
+
+    async def execute(self, stmt, params=None):
+        if "INSERT INTO public.adopted_holdings" in str(stmt):
+            raise DBAPIError("INSERT", {}, _Orig(self.sqlstate))
+        return _Res()
+
+
+@pytest.mark.parametrize(("sqlstate", "busy"), [("55P03", True), ("57014", True), ("40P01", True),
+                                                ("23514", False), ("22003", False)])
+async def test_the_insert_mapping_lets_a_busy_error_through_and_still_maps_the_rest(monkeypatch, sqlstate, busy):
+    """Unit: busy sqlstates reach the error door as the DBAPIError (store_busy); every other database error is still
+    bad_holding."""
+    async def fake_locked(conn, user_ref, strategy_id):
+        return 1
+
+    async def fake_symbol(conn, instrument_id):
+        return "X"
+
+    async def no_plans(*_a, **_k):
+        return []
+
+    monkeypatch.setattr(books, "_locked", fake_locked)
+    monkeypatch.setattr(books.plans, "zerodha_symbol", fake_symbol)
+    monkeypatch.setattr(books.plans, "plans_for", no_plans)
+    if busy:
+        with pytest.raises(DBAPIError) as err:
+            await books.record_adopted(_InsertFailsConn(sqlstate), "u", 1, _holding())
+        assert door.busy_database_error(err.value)
+    else:
+        with pytest.raises(books.OrderBookError) as err2:
+            await books.record_adopted(_InsertFailsConn(sqlstate), "u", 1, _holding())
+        assert err2.value.code == books.BAD_HOLDING
+
+
+async def test_a_record_adopted_that_waits_on_a_held_lock_is_busy_not_a_bad_holding(app_engine, admin_engine):
+    """Real PostgreSQL: a second transaction holds the unique reference (uncommitted insert); this insert waits on it
+    under lock_timeout 300 ms -> sqlstate 55P03 -> the DBAPIError reaches the error door (store_busy), not
+    BAD_HOLDING. Mutation 'drop the busy re-raise': OrderBookError(BAD_HOLDING) is raised and this fails."""
+    user, ids = _user(), []
+    try:
+        async with app_engine.connect() as setup:
+            async with setup.begin():
+                first = await _new_strategy(setup, user)
+                second = await _new_strategy(setup, user, catalogue=False)
+            ids = await _contract_ids(setup)
+        async with app_engine.connect() as holder, app_engine.connect() as waiter:
+            t1, t2 = await holder.begin(), await waiter.begin()
+            await books.record_adopted(holder, user, first, _holding())
+            await waiter.execute(text("SET LOCAL lock_timeout = '300ms'"))
+            with pytest.raises(DBAPIError) as err:
+                await books.record_adopted(waiter, user, second, _holding())
+            assert door.busy_database_error(err.value)
+            assert getattr(err.value.orig, "sqlstate", None) == "55P03"
+            await t2.rollback()
+            await t1.rollback()
     finally:
         await _remove_own_fills_and_rows(admin_engine, ids, user)
 
