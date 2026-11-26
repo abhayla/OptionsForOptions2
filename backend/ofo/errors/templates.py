@@ -949,7 +949,7 @@ _STRATEGY_DRAFT_TEMPLATES: tuple[MessageTemplate, ...] = (
           "Review the current plan, then prepare the orders again."),
     # W-157 (REQ-134 AC-1): the name a user gives a saved strategy.
     _gate("strategy_name_empty", _SV, 430,
-          "The strategy has no name.",
+          "Give the strategy a name.",
           "The strategy was not saved or renamed.", "Saving or renaming this strategy.",
           "Type a name of 1 to 20 characters, then save again."),
     _gate("strategy_name_invalid", _SV, 431,

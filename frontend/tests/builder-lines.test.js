@@ -64,7 +64,7 @@ describe('Save Draft bar', () => {
     await t(w, 'saved-search').setValue('sensex')
     expect(w.findAll('[data-testid="saved-draft-name"]').map((r) => r.text())).toEqual(['Plan 12'])
     await t(w, 'saved-search').setValue('no such plan')
-    expect(t(w, 'saved-empty').text()).toBe('No saved strategy matches.')
+    expect(t(w, 'saved-empty').text()).toBe('No saved strategy matches no such plan')
     w.unmount()
   })
 
