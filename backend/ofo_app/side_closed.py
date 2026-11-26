@@ -7,8 +7,8 @@ confirm. If he confirms, the strategy is shown as the new shape from then on ...
 entry shape name with the notice showing ... nothing is added without the user."
 
 The alert is raised through ``actionable_alerts.raise_actionable`` (kind ``side_closed``), never by its own code, once
-per (strategy, closed side): any earlier row of the rule, open or answered, stops a second one. It is not closed by a
-position change (P1). Storing the confirmed shape needs no column: the answered row IS the record (answer
+per (strategy, closed side): an open row or the user's answer stops a second one (a system-closed row does not). It is
+not closed by a position change (P1). Storing the confirmed shape needs no column: the answered row IS the record (answer
 ``confirm_new_shape``), read back by ``confirmed_shape``. ``add_legs`` stores the answer only and places no order.
 Answer states of ``confirmed_shape``: stated (a confirmed row) -> the label; absent / not answered / answered
 ``add_legs`` -> None (the trade keeps its entry shape name); a closed side with no known remaining shape -> never
@@ -39,10 +39,15 @@ def _names() -> dict[str, str]:
 
 
 def _is_condor(legs: Any) -> bool:
-    """Entered as a two-spread condor: per side one SELL and one BUY (the only entry shape ADR-330 (2) names)."""
+    """Entered as a short iron condor: per side one SELL and one BUY, the wings outside the shorts (put BUY < put SELL <
+    call SELL < call BUY). A reverse (long) condor or an iron butterfly is not named by ADR-330 (2): no alert."""
     legs = tuple(legs or ())
-    return len(legs) == _CONDOR_LEGS and all(
-        sorted(x.side for x in legs if x.type == kind) == ["BUY", "SELL"] for kind in ("CE", "PE"))
+    if len(legs) != _CONDOR_LEGS:
+        return False
+    by = {(x.type, x.side): x.strike for x in legs}
+    if set(by) != {(t, s) for t in ("CE", "PE") for s in ("BUY", "SELL")}:
+        return False
+    return by["PE", "BUY"] < by["PE", "SELL"] < by["CE", "SELL"] < by["CE", "BUY"]
 
 
 def remaining_label(entry_legs: Any, closed: frozenset[str]) -> str | None:
@@ -69,7 +74,9 @@ async def raise_if_closed(conn: Any, user_ref: str, strategy_id: int, tracked: A
         return None
     rule = rule_id(next(iter(closed)))
     rows = [*await aa.unanswered(conn, user_ref), *await aa.history(conn, user_ref)]
-    if any(r.strategy_id == strategy_id and r.rule_id == rule for r in rows):
+    # only an open row or the user's own answer stops a new raise; a row the system closed (plan removed, not monitored)
+    # does not: the side is still closed and the user was never asked
+    if any(r.strategy_id == strategy_id and r.rule_id == rule and r.answer != kinds.CLOSED_BY_SYSTEM for r in rows):
         return None
     alert = await aa.raise_actionable(conn, user_ref, strategy_id, rule, kinds.SIDE_CLOSED, at=at, value=None,
                                       threshold=None, source=source, label=label)

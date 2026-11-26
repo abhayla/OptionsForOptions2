@@ -102,3 +102,18 @@ async def test_a_noted_row_in_history_is_catalogue_worded_and_never_a_500(app_db
     active = (await _call("GET", "/api/alerts/active"))[1]
     # never counted
     assert active["count"] == len(active["alerts"]) and note_id not in [a["id"] for a in active["alerts"]]
+
+
+async def test_a_side_closed_row_in_active_has_no_adjustment_wording(app_db_url, monkeypatch):
+    """P7 checker 3: the side_closed notice is raised with no source, so its Active text never says the adjustment
+    heading words ("Adjustment opportunity detected" / "Your rule was triggered")."""
+    from test_side_closed_alert import CALL_EXITED  # noqa: PLC0415
+    from ofo_app import side_closed  # noqa: PLC0415
+    sid = await _clean(app_db_url, await _seeded(app_db_url, monkeypatch, "ADJ-02"))
+    async with app_db_url.begin() as conn:
+        alert_id = await side_closed.raise_if_closed(conn, "owner", sid, CALL_EXITED, at=FIRED, source=None)
+    assert alert_id is not None
+    mine = next(a for a in (await _call("GET", "/api/alerts/active"))[1]["alerts"] if a["id"] == alert_id)
+    assert mine["kind"] == "side_closed"
+    for words in ("Adjustment opportunity detected", "Your rule was triggered"):
+        assert words not in str(mine["text"])
