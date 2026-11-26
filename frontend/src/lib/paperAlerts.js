@@ -49,10 +49,6 @@ export function dropActive(e) {
   Object.assign(activeAlerts, { count: 0, alerts: [], parts: e ? (e.parts ?? NEUTRAL_PARTS) : NEUTRAL_PARTS, loaded: true })
 }
 
-// The clock word of an ISO time as IST HH:MM (the server sends the instant; the sentence "Fired at HH:MM" comes from the server).
-export const hmIst = (iso) =>
-  iso ? new Date(iso).toLocaleTimeString('en-GB', { hour: '2-digit', minute: '2-digit', hour12: false, timeZone: 'Asia/Kolkata' }) : ''
-
 export const readActive = async () => (await api.get('/alerts/active')).data
 
 /** Post the user's answer; throws the api error (with its parts) on 404 / 409 / 422 / network. Re-reads Active on success. */

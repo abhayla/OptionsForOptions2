@@ -9,10 +9,10 @@ import EmptyState from '@/components/states/EmptyState.vue'
 import { computed, onMounted, ref } from 'vue'
 import { useRoute, useRouter } from 'vue-router'
 import ErrorMessage from '@/components/common/ErrorMessage.vue'
-import { istTime } from '@/lib/displayFormat'
+import { istHm, istTime } from '@/lib/displayFormat'
 import { plainName } from '@/lib/saveDraft'
 import { NEUTRAL_PARTS } from '@/services/api'
-import { RECORDS_EMPTY, PAPER_ALERTS_EMPTY, activeAlerts, alertHistory, answerAlert, dropActive, hmIst, loadAlertHistory, loadPaperRecords, paperRecords, readActive, takeActive } from '@/lib/paperAlerts'
+import { RECORDS_EMPTY, PAPER_ALERTS_EMPTY, activeAlerts, alertHistory, answerAlert, dropActive, loadAlertHistory, loadPaperRecords, paperRecords, readActive, takeActive } from '@/lib/paperAlerts'
 
 // U23: the title shows once; an older stored body still opens with it, so that repeat is dropped (display only)
 const alertBody = (a) => (a.body.startsWith(`${a.title}: `) ? a.body.slice(a.title.length + 2) : a.body)
@@ -76,7 +76,7 @@ onMounted(async () => {
         <li v-for="h in alertHistory.items" :key="`h${h.id}`" class="px-4 py-3 hover:bg-surface-muted" data-testid="answered-row">
           <p class="font-medium" data-testid="answered-strategy">{{ plainName(h.strategy_name) ?? `Strategy ${h.strategy_id}` }}</p>
           <p class="mt-1 text-sm">{{ h.text }}</p>
-          <p class="text-xs text-ink-muted">{{ h.fired_line }}<template v-if="h.answer_label"> - {{ h.answer_label }} at {{ hmIst(h.answered_at) }}</template><template v-else-if="h.closed_reason"> - closed: {{ h.closed_reason }}</template></p>
+          <p class="text-xs text-ink-muted">{{ h.fired_line }}<template v-if="h.answer_label"> - {{ h.answer_label }} at {{ istHm(h.answered_at) }}</template><template v-else-if="h.closed_reason"> - closed: {{ h.closed_reason }}</template></p>
           <p v-if="h.worse_line" class="text-xs text-ink-muted" data-testid="answered-worse">{{ h.worse_line }}</p>
         </li>
       </ul>

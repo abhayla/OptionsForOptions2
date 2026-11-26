@@ -132,6 +132,13 @@ export function istTime(iso) {
   return `${p.day} ${MONTHS[new Date(ms + 19800000).getUTCMonth()]} ${p.year}, ${p.hour}:${p.minute}:${p.second} IST`
 }
 
+/** An ISO instant as IST 'HH:MM' (24-hour); '' when empty or unreadable. */
+export function istHm(iso) {
+  const ms = typeof iso === 'string' ? isoMillis(iso) : null
+  if (ms === null) return ''
+  return istTime(iso).slice(-12, -7)
+}
+
 /** D-57: today's date as 'YYYY-MM-DD' from the browser's calendar day. A date KEY for day arithmetic, never shown to a
  *  reader; it lives here so that this file stays the only place a locale date function is called. */
 export function localDay(date = new Date()) {
