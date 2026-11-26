@@ -61,7 +61,7 @@ class ActiveAlert(ApiModel):
     no_longer_true_line: CatalogueText | None
     escalated_at: datetime.datetime | None
     worse_line: CatalogueText | None
-    #: ADR-330 (2) (b): a side_closed row only: the sentence that names the shape that remains, shown before "Confirm the
+    #: ADR-330 (2) (b): a side_closed row only: the sentence naming the shape that remains, shown before "Confirm the
     #: new shape" stores anything; None for every other kind
     confirm_text: CatalogueText | None = None
     answers: list[AnswerChoice]
@@ -121,9 +121,10 @@ def _words(a: aa.Alert, by_id: dict[int, store.Suggestion]) -> Any:
 def _closed_side(a: aa.Alert) -> str | None:
     """"call" / "put" for a side_closed row (its rule id is ``side.closed.<side>``), else None."""
     prefix = side_closed.RULE_PREFIX
-    if a.kind != SIDE_CLOSED or not a.rule_id.startswith(prefix) or a.rule_id.removeprefix(prefix) not in ("call", "put"):
+    side = a.rule_id.removeprefix(prefix)
+    if a.kind != SIDE_CLOSED or not a.rule_id.startswith(prefix) or side not in ("call", "put"):
         return None
-    return a.rule_id.removeprefix(prefix)
+    return side
 
 
 def _confirm(a: aa.Alert) -> Any:
