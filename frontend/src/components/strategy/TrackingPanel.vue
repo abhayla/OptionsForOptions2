@@ -98,7 +98,7 @@ import Chip from '@/components/common/Chip.vue'
 import FigureHint from '@/components/common/FigureHint.vue'
 import api, { NEUTRAL_PARTS } from '@/services/api'
 import { LEG_PNL_MISSING, NOT_CONNECTED_TEXT, PAPER_PNL_PREFIX, readTracking } from '@/lib/tracking'
-import { paperPnlBlock } from '@/lib/usePaperBookRead'
+import { closedLegRowsOf, paperPnlBlock } from '@/lib/usePaperBookRead'
 import { EARLIER_SHOWN_MAX, QUOTE_TIME_UNAVAILABLE_TEXT, RULES_LOAD_FAILED_TEXT, checkStaleLine, earlierMoreText, firedAtText, liveNowText, ruleEarlierText, ruleNotCheckedText } from '@/lib/sharedStateText'
 import { istClock, istStamp } from '@/lib/displayFormat'
 import { openRecords, settledRecords } from '@/lib/paperAlerts'
@@ -135,10 +135,18 @@ const headline = computed(() => {
 // CONTRACT ID (the reply's contract_id), never by `key` (the feed identity). An exited leg, a leg the book does not hold, and a reply without
 // a contract id keep the tracking row: it fails to the old source, never to another contract's price. Up to 5 s after an exit the book and
 // tracking reads can differ for one row (two polls); the next tick settles it.
-const rows = computed(() => (view.value?.legs ?? []).map((leg) => {
-  const own = leg.exited || leg.contractId == null ? undefined : block.value?.legs.get(String(leg.contractId))
-  return own === undefined ? leg : { ...leg, current: own.ltp, quoteAt: own.at, pnl: own.total ?? own.noPrice ?? LEG_PNL_MISSING }
-}))
+// B6 (ADR-328 (3), D-10): the rows are the legs table's rows: the open rows above plus the book's closed lifecycles, each its own row
+// (a contract closed and opened again has both), so the rows add up to the book total. A closed row replaces the tracking row of an
+// exited contract (the same lifecycle); a failed read prints the dash in every row.
+const rows = computed(() => {
+  const closed = block.value ? closedLegRowsOf(props.shared, props.sharedFailed) : []
+  const closedIds = new Set(closed.map((c) => String(c.contractId)))
+  const open = (view.value?.legs ?? []).filter((leg) => !(leg.exited && closedIds.has(String(leg.contractId)))).map((leg) => {
+    const own = leg.exited || leg.contractId == null ? undefined : block.value?.legs.get(String(leg.contractId))
+    return own === undefined ? leg : { ...leg, current: own.ltp, quoteAt: own.at, pnl: own.total ?? own.noPrice ?? LEG_PNL_MISSING }
+  })
+  return [...open, ...closed]
+})
 const drawerOpen = ref(false)
 const drawerLines = ref([]) // layer 1: the detection's own text; kept when the detection lapses while the drawer is open
 // GC-ADJ2 step 5: the playbook check answer. A typed strategy (strategy_type set) shows its flags; an untyped one keeps

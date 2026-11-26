@@ -44,6 +44,17 @@ export function paperLegsOf(net, book, failed = false) {
   return out
 }
 
+/** B6 (ADR-328 (3), D-10): the Paper P&L panel's rows for the book's closed lifecycles, one per `closed` entry, the legs table's Closed rows
+ *  (ClosedRows.vue): the contract, entry and exit text and the lifecycle's own booked P&L, all as the server sent them (nothing added here).
+ *  A failed read prints the one dash the legs table prints. Empty when the book has none. */
+export function closedLegRowsOf(book, failed = false) {
+  const dash = (v) => (failed ? PAPER_NO_FIGURE : (text(v) ?? PAPER_NO_FIGURE))
+  return (Array.isArray(book?.closed) ? book.closed : []).map((c) => ({
+    key: `closed:${c.contract_id}:${c.opened_at}`, contractId: c.contract_id, action: c.side, text: c.contract_text ?? '',
+    entry: dash(c.average_entry_text), current: null, quoteAt: null, exited: true, exitPrice: dash(c.average_exit_text), pnl: dash(c.booked_text), closed: true,
+  }))
+}
+
 /** The one P&L block of a paper book: the headline (sharedTotal: after charges, or the labelled before text, or paused, with its
  *  as-of line) and the LegPrice of every open contract. null = no book. */
 export function paperPnlBlock(book, failed = false) {
