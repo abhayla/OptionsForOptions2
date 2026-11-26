@@ -10,6 +10,8 @@ from __future__ import annotations
 from dataclasses import dataclass
 from typing import Final
 
+from ofo.adjustment import stop_lines as sl
+
 EXIT: Final = "exit"
 CONTINUE: Final = "continue"
 ADD_LEGS: Final = "add_legs"
@@ -46,9 +48,9 @@ KINDS: Final = {k.code: k for k in (
     AlertKind("stop_saved", False, (), _FIRED),
 )}
 
-#: the plan's loss stops: "% of max loss" (T-06), "% of margin" (T-16), the 2x-credit line (rule id stop.credit_x);
+#: the plan's loss stops: "% of max loss", "% of margin" and the 2x-credit line (``stop_lines``);
 #: its profit target: "% of max profit" (T-07). Every other trigger is an adjustment rule.
-_PLAN_LOSS_STOP: Final = frozenset({"T-06", "T-16", "stop.credit_x"})
+_PLAN_LOSS_STOP: Final = frozenset({sl.TRIGGER_MAX_LOSS, sl.TRIGGER_MARGIN, sl.CREDIT_RULE})
 _PLAN_PROFIT_TARGET: Final = frozenset({"T-07"})
 
 
