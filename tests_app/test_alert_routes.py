@@ -13,6 +13,7 @@ from ofo.timeutil import IST
 from ofo_app import actionable_alerts as aa
 from ofo_app import adjustment_readers as readers
 from sqlalchemy import text
+from sqlalchemy.exc import DBAPIError
 from test_adjustment_check import _seeded
 from test_adjustment_opportunities import _call, _clean
 
@@ -134,8 +135,34 @@ async def test_a_trade_with_no_readable_open_leg_shows_its_number_only(app_db_ur
     alert_id = await _raise(app_db_url, sid)
 
     async def flat(*args, **kwargs):
-        raise readers.TrackedExited("no open option leg")
-    monkeypatch.setattr(readers, "read_tracked", flat)
+        return None  # no open option leg
+    monkeypatch.setattr(readers, "nearest_expiry", flat)
     status, active = await _call("GET", "/api/alerts/active")
     named = {a["id"]: a["strategy_name"] for a in active["alerts"]}
     assert status == OK and named[alert_id] == f'"Scenario ADJ-02" (#{sid})'
+
+
+async def test_a_failed_expiry_read_for_one_trade_never_stops_the_lists_or_the_bell(app_db_url, monkeypatch, caplog):
+    """ADR-330 (3)(4): any failure reading ONE trade's book (a plain error, a database error) leaves that row as
+    "(#id)", the other rows labelled, and Active / History answering 200 with the count unchanged."""
+    good = await _clean(app_db_url, await _seeded(app_db_url, monkeypatch, "ADJ-03"))
+    bad = await _clean(app_db_url, await _seeded(app_db_url, monkeypatch, "ADJ-02"))
+    ids = {sid: await _raise(app_db_url, sid) for sid in (good, bad)}
+    real = readers.nearest_expiry
+    for failure in (RuntimeError("boom"), DBAPIError("SELECT 1", None, Exception("db"))):
+        async def lookup(db, sid, _failure=failure):
+            if sid == bad:
+                if isinstance(_failure, DBAPIError):
+                    await db.execute(text("SELECT * FROM public.no_such_table"))  # really aborts the transaction
+                raise _failure
+            return await real(db, sid)
+        monkeypatch.setattr(readers, "nearest_expiry", lookup)
+        status, active = await _call("GET", "/api/alerts/active")
+        named = {a["id"]: a["strategy_name"] for a in active["alerts"]}
+        assert status == OK and active["count"] == len(active["alerts"]) == 2
+        assert named[ids[bad]] == f'"Scenario ADJ-02" (#{bad})'
+        assert named[ids[good]].startswith(f'"Scenario ADJ-03" (#{good}, ')
+        assert (await _call("POST", f"/api/alerts/{ids[bad]}/answer", {"answer": "continue"}))[0] == OK
+        assert (await _call("GET", "/api/alerts/answered"))[0] == OK
+        ids[bad] = await _raise(app_db_url, bad)
+    assert "expiry" in caplog.text
