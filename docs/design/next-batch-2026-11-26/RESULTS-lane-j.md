@@ -9,13 +9,14 @@ Spec basis: ADR-330 (1) to (27) and its one-module instruction; ADR-002; ADR-003
 
 ## Status for the coordinator (this session cannot send messages: the session-message service refuses it as untrusted)
 
-1. On origin: Step 2 wiring since push 2 (7d81d0a); every head you named through 3d7aaf7 (push 3). Built and gated in
-   this push or the one before: P7 answers, P8 Reset, ADR-330 (31) with 0057, S-11, the Not-applicable line, Lane R
-   71ed990, Lane U 63091d7. #753 (0058) is still being built: it goes in only with its review and proof by 07:00 IST.
-2. Each push runs the full pre-push gate (about 35-40 min); the head of section (c) "Push log" is the latest.
-3. Next pushes: every gate pass until 07:00 IST; final head by 07:30 IST; nothing after until you say.
-4. Blocking: nothing. Approvals the owner may give later (none block the test): see "Lines waiting for a person's
-   approval" at the end.
+1. On origin: Step 2 wiring since push 2 (7d81d0a); P7 answers, P8 Reset, ADR-330 (31) with 0057, S-11, the
+   Not-applicable line, Lane R 71ed990 and Lane U 63091d7 since push 4+5 (9f769b5); section (a) corrected from the PC
+   rehearsal since push 6 (ae01cc6). This push (7): Lane U d9de498, Lane D 91cc43b, the three full-suite fixes below.
+2. #753 is PARKED (two Tier A reviews FIX; migration 0058 is NOT on the branch): see "#753 PARKED" in section (c).
+3. Next: the heads you named for tonight (Lane U second push, Lane R ~23:30, Lane D push 2) as they appear, each with
+   one gate; final head by 07:30 IST; nothing after until you say.
+4. Blocking: nothing. Waiting for the owner (none blocks the test): LJ-2 (what counts as a plan acceptance, #753) and
+   the "pending owner read" wordings listed at the end.
 
 ## (a) PC set-up (do these first, in this order)
 
@@ -254,7 +255,8 @@ current, none hand-edited.
 | 2 | 7d81d0a | ic docs 3d66541, Lane R ce5316e, Step 2, Step 3, the review fix | `prepush.py --full` TOTAL PASS 2137 s |
 | 3 | 3d7aaf7 | ic docs e40a5ad, Lane R ecb3655, Lane P a59f7a9 (0056), Lane U b81970b, Lane S d344d82 | `prepush.py --full` TOTAL PASS 2460 s |
 | 4+5 | 9f769b5 | P7 page answers, P8 Reset button, ADR-330 (31) with 0057, health e2e fix, side-closed templates; Not-applicable plan line, S-11 hold, Lane R 71ed990, Lane U 63091d7 | `prepush.py --full` TOTAL PASS 2195 s |
-| 6 | (this push) | section (a) corrected from the PC rehearsal; owner question LJ-2 | see the commit's gate |
+| 6 | ae01cc6 | section (a) corrected from the PC rehearsal; owner question LJ-2 | `prepush.py --full` TOTAL PASS 2067 s |
+| 7 | (this push) | Lane U d9de498, Lane D 91cc43b, three full-suite test fixes, #753 parked | see the commit's gate |
 
 Coordinator message for push 1 could not be sent: the session-message service refused this session (untrusted
 device); recorded here instead.
@@ -276,6 +278,42 @@ device); recorded here instead.
 | The P7 plan rule line "Not applicable: the <side> side is closed" is not shown | `side_scope.rule_notes` is wired into no route and the sentence is not in the catalogue (Lane J P7 builder) | ADR-330 (2)(a) | the plan watch and the plan sheet print that line for each rule of the closed side |
 | The inbox heading of a side_closed row reads "Adjustment opportunity detected" | Lane P open finding (routes/adjustment_opportunities.py group label) | ADR-330 (2)(b), (3) | the inbox names the side that closed |
 
+## Full app (DB) suite on the head (Lane G's gap: the gate does not run tests_app with a database)
+
+Run as CI's "Run app tests" step (GITHUB_ACTIONS=true, per-file database clones, -m "not full_chain"):
+- 9f769b5 (push 4+5): `3 failed, 7579 passed, 5 skipped, 23 deselected in 2970.93s`. The three, each failing alone too:
+  `tests_app/test_d38_page_counts.py::test_plan_counts_and_reply` (Lane J P8 9e04198c added the reset labels without
+  regenerating golden_d38/plan.json), `tests_app/test_paper_totals.py::test_d36_the_list_does_fixed_database_work_and_finished_books_cost_only_cheap_arithmetic`
+  (Lane U 7397330f added shown_date to the paper list: 2 fixed statements, budget 6 -> 8 with the reason beside it,
+  still independent of the number of strategies), `tests_app/test_strategy_followups.py::test_the_api_answers_not_found_to_a_put_on_another_users_strategy_and_stores_nothing`
+  (Lane U 9972cae7, ADR-330 (37): GET of a missing strategy answers STRATEGY_VALIDATION_523; the test now expects that
+  for GET and USER_INPUT_003 for PUT). All three: test expectations behind a deliberate change, no code change; fixed
+  in this push (b150d5e). Skips (5): trial ENDED (ADR-039), EXECUTE_REPLAY_URL unset, no INDEX row in the test
+  catalogue, and two environment-only.
+- The final head's full run: recorded here when it ends.
+
+Merge notes, push 7: Lane U d9de498 (displayFormat.js: Lane J's istHm kept; Lane U's removal of localDay kept; REQ-070:
+Lane J's ADR-330 (31) criterion stays AC-8, Lane U's toast criterion becomes AC-9); Lane D 91cc43b (#739 fixed twice:
+Lane U shows the server's count of days left, Lane D an India-day count in the browser; REQ-135 AC-2 says the server
+computes it, so Lane U's stays and Lane D's localDay and its tests are dropped; template pins merged by key). Full
+vitest on the push-7 tree: 280 files, 3152 tests passed.
+
+## #753 PARKED (not on this branch; migration 0058 is NOT applied tomorrow)
+
+Built on side branch `lanej/753` (head 8b00ed77, not pushed), two rounds, both Tier A reviews (Opus) FIX:
+- Round 1 (stamp only on a playbook switch): Reset to playbook and accepting the same playbook stopped being a new
+  acceptance (a strategy-82-shaped plan kept only the % of max loss stop after Reset); a sheet edit that points an old
+  plan with no playbook at the active one still stamped.
+- Round 2 (stamp only on an explicit acceptance, a transaction-local signal from accept/Reset): Reset stamps, but a
+  playbook switch made from the plan sheet is a PUT and no longer stamps (the page sends POST only for a new plan), so
+  that switch would also leave fewer stops; plus a pre-existing defect: a sheet edit of an old plan with no playbook
+  replaces its whole body (routes/adjustment_plan.py:792), losing its own stops.
+What is left: the owner's answer to LJ-2 (what counts as a new acceptance), then a signal that the page's switch and
+Reset send and an edit does not (the route cannot tell a switch from an edit today: PUT carries both), the round-2
+review's minors (an error inside the accept path is hidden by the finally at playbook_store.py:746; the source-scan
+test is a weak pin), and the deploy order rule (a code rollback must also downgrade 0058).
+Today's behaviour on the branch is unchanged from 0041 (every body edit restamps accepted_at): #753 stays open.
+
 ## Lines waiting for a person's approval (none written by Lane J)
 
 - Catalogue wordings pinned "pending owner read": `stop_fired_note`, `stop_fired_note_with_line`, `alert_title_unnamed`
@@ -283,3 +321,4 @@ device); recorded here instead.
   the `labels:plan_sheet` pin (P7/P8); `change_deleted` "Deleted", `change_undeleted` "Restored" (ADR-330 (31)).
 - REQ-070 AC-8 text (ADR-330 (31)); the 0057 downgrade refusal rule.
 - Owner question LJ-1: answered (ADR-330 (41), the recorded fill, as built).
+- Owner question LJ-2 (#753): open; 0058 parked.
