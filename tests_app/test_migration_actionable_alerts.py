@@ -48,14 +48,15 @@ async def _refused(conn, sql, params) -> None:
             await conn.execute(text(sql) if isinstance(sql, str) else sql, params)
 
 
-async def test_the_four_columns_exist_and_a_row_without_a_kind_keeps_null(db):
+async def test_the_four_columns_exist_and_a_new_row_without_a_kind_is_refused(db):
     found = {r[0] for r in (await db.execute(text(
         "SELECT column_name FROM information_schema.columns WHERE table_name = 'adjustment_suggestions'"))).all()}
     assert set(_COLUMNS) <= found
-    _, rid = await _open(db, kind=None)
+    sid, rid = await _open(db)
     row = (await db.execute(text("SELECT kind, answer, answered_at, no_longer_true_since "
                                  "FROM public.adjustment_suggestions WHERE id = :id"), {"id": rid})).one()
-    assert tuple(row) == (None, None, None, None)
+    assert tuple(row) == ("plan_loss_stop", None, None, None)
+    await _refused(db, _OPEN, {"i": sid, "rule": "r_nokind", "kind": None})  # M3: a new row names its kind
 
 
 async def test_checks_refuse_a_bad_kind_a_bad_answer_and_an_unpaired_answer(db):
@@ -84,9 +85,19 @@ async def test_a_record_of_a_kind_leaves_open_only_with_its_answer(db):
     await _refused(db, _SET.format("answer = 'exit'"), {"id": rid})
 
 
-async def test_a_record_without_a_kind_still_closes_as_before(db):
-    _, rid = await _open(db, kind=None)
-    await db.execute(_CLOSE, {"id": rid, "outcome": "lapsed", "answer": None})
+async def test_an_old_record_without_a_kind_still_closes_as_before(admin_engine):
+    """Rows written before 0054 have no kind (the insert guard now refuses a new one): build one with the guard off,
+    in a rolled-back owner transaction, then close it with the guard on."""
+    async with admin_engine.connect() as conn:
+        outer = await conn.begin()
+        try:
+            _, rid = await _open(conn)
+            await conn.execute(text("ALTER TABLE public.adjustment_suggestions DISABLE TRIGGER USER"))
+            await conn.execute(text("UPDATE public.adjustment_suggestions SET kind = NULL WHERE id = :id"), {"id": rid})
+            await conn.execute(text("ALTER TABLE public.adjustment_suggestions ENABLE TRIGGER USER"))
+            await conn.execute(_CLOSE, {"id": rid, "outcome": "lapsed", "answer": None})
+        finally:
+            await outer.rollback()
 
 
 async def test_value_and_no_longer_true_since_change_only_while_open(db):
@@ -102,8 +113,14 @@ async def test_a_note_is_history_only_and_nothing_else_is_stored_closed(db):
     sid, _ = await _open(db)
     ok = {"i": sid, "rule": "info:settled:1", "kind": "settled", "outcome": "dismissed", "answer": "noted"}
     await db.execute(_NOTE, ok)
-    for change in ({"outcome": "open"}, {"answer": "exit"}, {"outcome": "lapsed"}, {"kind": None}):
+    for change in ({"outcome": "open"}, {"answer": "exit"}, {"outcome": "lapsed"}, {"kind": None},
+                   {"kind": "plan_loss_stop"}, {"kind": "adjustment_rule"}):  # M3: 'noted' only for informational kinds
         await _refused(db, _NOTE, {**ok, "rule": "info:x", **change})
+    for kind in ("stop_fired", "orders_placed", "stop_saved"):  # every informational kind is a note
+        await db.execute(_NOTE, {**ok, "rule": f"info:{kind}", "kind": kind})
+    await _refused(db, _OPEN, {"i": sid, "rule": "r_open_info", "kind": "settled"})  # a note is never open
+    _, rid = await _open(db, rule="r_to_note")
+    await _refused(db, _SET.format("answer = 'noted', outcome = 'dismissed', answered_at = now()"), {"id": rid})
     open_count = (await db.execute(text("SELECT count(*) FROM public.adjustment_suggestions "
                                         "WHERE strategy_id = :i AND outcome = 'open'"), {"i": sid})).scalar_one()
     assert open_count == 1

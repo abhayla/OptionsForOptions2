@@ -31,6 +31,7 @@ from ofo.errors.explanations import DAY_RULE_GENERIC_TEXT, LEVEL_WATCH_LABEL_TEX
 from ofo.strategy.stored_form import shown_name
 from pydantic import BaseModel, ConfigDict
 
+from ofo_app import actionable_alerts as aa
 from ofo_app import playbook_store as store
 from ofo_app.adjustment_check import (
     CLOCK_UNIT,
@@ -334,10 +335,10 @@ async def adjustment_opportunities(db: Annotated[Any, Depends(get_db)],
 @router.post("/api/adjustment-opportunities/{suggestion_id}/dismiss", response_model=SuggestionOut)
 async def dismiss_opportunity(suggestion_id: int, body: DismissIn, db: Annotated[Any, Depends(get_db)],
                               user_ref: Annotated[str, Depends(current_user_ref)]) -> SuggestionOut:
-    return await _close(db, lambda: store.dismiss(db, user_ref, _id(suggestion_id), body.reason))
+    return await _close(db, lambda: aa.dismiss(db, user_ref, _id(suggestion_id), body.reason))
 
 
 @router.post("/api/adjustment-opportunities/{suggestion_id}/acted-on", response_model=SuggestionOut)
 async def acted_on_opportunity(suggestion_id: int, db: Annotated[Any, Depends(get_db)],
                                user_ref: Annotated[str, Depends(current_user_ref)]) -> SuggestionOut:
-    return await _close(db, lambda: store.act_on(db, user_ref, _id(suggestion_id)))
+    return await _close(db, lambda: aa.act_on(db, user_ref, _id(suggestion_id)))

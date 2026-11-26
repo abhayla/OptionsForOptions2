@@ -114,7 +114,12 @@ class TrackedUnreadable(Exception):
 
 
 class TrackedExited(TrackedUnreadable):
-    """Every leg of the strategy is exited (no open leg): the strategy closed (GC-ADJ2 step 5, REQ-112 AC-2 lapse)."""
+    """Every leg of the strategy is exited (no open leg): the strategy closed (GC-ADJ2 step 5, REQ-112 AC-2 lapse).
+    ``closed_at``: the trade's own close time (its last exit, settle or stop order), None when no order states one."""
+
+    def __init__(self, *args: object, closed_at: datetime.datetime | None = None) -> None:
+        super().__init__(*args)
+        self.closed_at = closed_at
 
 
 def index_name(underlying: str) -> str | None:
@@ -149,7 +154,7 @@ async def _tracked_on(db: Any, strategy_id: int, rates: ChargeRates | None) -> T
     book = net_positions([o.order.as_paper() for o in orders], {})
     underlying, lot, legs = _legs_of(book, found)
     if not legs or underlying is None or lot is None:
-        raise TrackedExited("no open option leg")
+        raise TrackedExited("no open option leg", closed_at=closed_at_of(orders))
     fresh = entry_stop_base(orders, found, _ENTRY_SOURCE)  # ADR-330 (1): from the entry orders only
     base = await stop_base_in_force(db, strategy_id, fresh)
     if real:  # paid charges and adjustments used before the app saw it: not readable yet ("not checked", ADR-276 (4))
@@ -307,6 +312,18 @@ def entered_at(orders: Any) -> datetime.datetime | None:
     times = [p for p in (getattr(getattr(o, "order", None), "placed_at", None) for o in orders)
              if isinstance(p, datetime.datetime)]
     return min(times) if times else None
+
+
+_CLOSING_KINDS = ("exit", "settle", "stop")
+
+
+def closed_at_of(orders: Any) -> datetime.datetime | None:
+    """The trade's close time (owner Q2b: "the trade closed at HH:MM"): the ``placed_at`` of its last exit, settle
+    or stop order, on the app's clock; None when no such order states one (never a guess, never the worker's notice
+    time)."""
+    times = [p for p in (getattr(o.order, "placed_at", None) for o in orders if o.order.kind in _CLOSING_KINDS)
+             if isinstance(p, datetime.datetime)]
+    return max(times) if times else None
 
 
 def history_count(orders: Any, is_option: Any) -> int | None:

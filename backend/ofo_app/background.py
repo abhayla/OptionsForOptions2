@@ -814,21 +814,10 @@ class DbGateStore:
             await db.commit()
         return opened
 
-    async def lapse_changed(self, w: Watched) -> bool:
-        """#685 item 3: the open records raised at another adjustment count than the strategy holds now lapse as
-        position_changed (``playbook_store.lapse_changed``); True when any did. A failure raises (the rebuild keeps
-        its last list and tries again), unlike the contained lapse of an exited strategy."""
-        from ofo_app import actionable_alerts  # noqa: PLC0415 - database layer at run time
-        from ofo_app.db import get_sessionmaker  # noqa: PLC0415
-        async with get_sessionmaker()() as db:
-            lapsed = await actionable_alerts.close_changed(db, w.user_ref, w.strategy_id, _count_of(w.tracked))
-            await db.commit()
-        return bool(lapsed)
-
-
     async def lapse_expired(self, w: Watched, today: datetime.date) -> bool:
         """D-30: the open records of a strategy whose last expiry is before ``today`` lapse as contract_expired
-        (``playbook_store.lapse_expired``); True when any did. A failure raises, as ``lapse_changed``."""
+        (``playbook_store.lapse_expired``); True when any did. A failure raises (the rebuild contains it per
+        strategy)."""
         from ofo_app import actionable_alerts  # noqa: PLC0415 - database layer at run time
         from ofo_app.db import get_sessionmaker  # noqa: PLC0415
         legs = w.tracked.position.legs
@@ -990,12 +979,10 @@ class Worker:
         today = self._clock().astimezone(IST).date()
         await self._lapse_expired_all(monitors, today)
         for w in monitors:
-            if _count_of(w.tracked) is None:  # an unreadable count lapses nothing (and resets nothing)
-                continue
-            async with held(self.db_gate, GATE_REBUILD):  # a raise keeps the last list: re-found next re-read
-                lapsed = await self._gate_store.lapse_changed(w)
-            if lapsed or _position_changed(old.get(w.strategy_id), w):
-                # the old position's records and queued events are gone; the gate restores from the store next check
+            if _position_changed(old.get(w.strategy_id), w):
+                # ADR-330 (3): an adjustment basket closes no open alert (only the user's answer, the trade closing or
+                # its expiry does); the gate memory and queued events of the old position are dropped and the gate
+                # restores from the store (open records included) at the next check
                 self._gate.pop(w.strategy_id, None)
                 self._gate_events.pop(w.strategy_id, None)
         self._drop_stale_writes(monitors)
@@ -1840,7 +1827,7 @@ def _count_of(tracked: Any) -> int | None:
 
 def _position_changed(old: Watched | None, new: Watched) -> bool:
     """A basket was booked since ``old`` was read, seen in this process: it resets the strategy's gate memory even
-    when no record was open (the records themselves are judged by their stored count, ``DbGateStore.lapse_changed``)."""
+    when no record was open (open alerts stay: ADR-330 (3))."""
     a, b = _count_of(old and old.tracked), _count_of(new.tracked)
     return a is not None and b is not None and a != b
 
@@ -1854,15 +1841,17 @@ class _NothingTraded(Exception):
 LISTER_LAPSE_FAILURES: dict[int, int] = {}
 
 
-async def _lapse_exited(db: Any, user_ref: str, sid: int, reason: str | None = None) -> None:
+async def _lapse_exited(db: Any, user_ref: str, sid: int, reason: str | None = None, **when: Any) -> None:
     """Lapse an exited strategy's open records (``reason`` default strategy_closed; #652 not_monitored for a strategy
-    that dropped out of the list for good), contained to that strategy: a failing write (a record no longer open,
-    the database refusing) is rolled back, counted and logged once per strategy, and never drops the other strategies
+    that dropped out of the list for good; ``at``: the trade's own close time when known, M5), contained to that
+    strategy: a failing write (a record no longer open, the database refusing) is rolled back, counted and logged
+    once per strategy, and never drops the other strategies
     from the list or skips their gate read (the whole lister failing kept the old list; at start-up 0 monitored)."""
     from ofo_app import actionable_alerts, playbook_store  # noqa: PLC0415 - database layer at run time only
     try:
         if await playbook_store.open_suggestions(db, user_ref, sid):
-            await actionable_alerts.close_by_system(db, user_ref, sid, reason or playbook_store.LAPSE_STRATEGY_CLOSED)
+            await actionable_alerts.close_by_system(db, user_ref, sid, reason or playbook_store.LAPSE_STRATEGY_CLOSED,
+                                                    **when)
             await db.commit()
     except Exception:  # contained per strategy; retried at the next re-list
         await db.rollback()
@@ -1925,7 +1914,9 @@ async def owner_lister(provider: Any, gate: Any = None,
                     baskets = await _baskets_in(db, s.id) if resolved.body is not None else {}
         except (TrackedExited, _NothingTraded) as gone:  # all legs exited (REQ-112 AC-2; one writer, ADR-237 (6))
             async with held(gate, GATE_REBUILD), get_sessionmaker()() as db:  # one session at a time (#636 r4)
-                await _lapse_exited(db, OWNER_REF, s.id, getattr(gone, "lapse_reason", None))
+                closed_at = getattr(gone, "closed_at", None)  # the trade's own time, not when this worker noticed
+                await _lapse_exited(db, OWNER_REF, s.id, getattr(gone, "lapse_reason", None),
+                                    **({} if closed_at is None else {"at": closed_at}))
             continue
         except TrackedUnreadable:
             unread.add(s.id)
