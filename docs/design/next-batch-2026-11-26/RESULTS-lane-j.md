@@ -16,22 +16,29 @@ Spec basis: ADR-330 (1) to (27) and its one-module instruction; ADR-002; ADR-003
 2. `git fetch origin` and `git checkout integration/nb-1126` at the pushed head named in section (c).
 3. `pip install -r requirements-app.txt` and `cd frontend && npm ci` (new packages may have come with the merge).
 4. Migrate: `python scripts/orchestrator/db_run.py . python -m alembic -c backend/ofo_app/alembic.ini upgrade head`.
-   The PC is at `0053_close_finished_strategies` (the screens line). This runs exactly two migrations, both additive:
-   `0054_actionable_alert_answers` (new NULL columns on `adjustment_suggestions`; old rows read as adjustment rules)
-   then `0055_plan_stop_base` (`stop_base JSONB NULL` on `strategy_adjustment_plans`). No row is changed or deleted.
+   The PC is at `0053_close_finished_strategies` (the screens line). This runs exactly three migrations:
+   `0054_actionable_alert_answers` (new NULL columns on `adjustment_suggestions`; old rows read as adjustment rules),
+   `0055_plan_stop_base` (`stop_base JSONB NULL` on `strategy_adjustment_plans`), then
+   `0056_several_standard_playbooks` (drops the one-standard-playbook-per-type unique index, adds a unique `slug`
+   column, each standard playbook gets `<type>-default`; ADR-330 (9)). No playbook, plan or alert row is deleted.
    Treat 0054 as one-way: never run `alembic downgrade` (its downgrade refuses once new alerts exist).
 5. Post-migration checks: `python scripts/orchestrator/db_run.py . python -m alembic -c backend/ofo_app/alembic.ini current`
-   must print `0055_plan_stop_base (head)`.
+   must print `0056_several_standard_playbooks (head)`.
 6. Restart: stop and start the API, the background worker supervisor (`python scripts/orchestrator/supervise_worker.py`),
    and rebuild the frontend (`cd frontend && npm run build`).
 7. In the browser: (a) Positions > Adjustment opportunities still lists the old records; (b) Alerts > Active opens and
    its row count equals the bell number.
 
 Old-code safety of each migration on this branch (so switching the PC back to another branch is safe):
-- 0054 and 0055 (Lane P): proved by Lane P with the code at e01f747 against a database at 0055 (test_background_worker,
-  test_adjustment_opportunities, test_background_cycle, test_held_tracking, test_playbook_store pass); the same check
-  with the PC's current code (7bf64eb, the screens line) is in progress and is recorded here when it ends. Do not run
-  `alembic downgrade` from an older branch.
+- 0054 and 0055: the PC's current code (7bf64eb, the screens line) run against a database the merged tree migrated to
+  0055: test_background_worker, test_adjustment_opportunities, test_background_cycle, test_held_tracking,
+  test_playbook_store: 193 passed, 0 failed (Lane J test run, 26 Nov). From 0053 the merged tree ran exactly 0054 then
+  0055; `alembic heads` printed one head.
+- 0056: Lane P measured the code at e01f747 against 0056 (worker, opportunities, cycle, held, playbook routes, system
+  playbook versions, plan: all pass; one test fails by design: it expects the database to refuse a second standard
+  playbook per type, which 0056 allows on purpose). The same check with the PC's code 7bf64eb: see "0056 with 7bf64eb"
+  below (recorded when it ends).
+- Do not run `alembic downgrade` from an older branch.
 
 ## (b) Screen-check list (owner, paper only, market hours 09:15-15:30 IST; Ctrl+F5 once after the rebuild)
 
@@ -88,13 +95,24 @@ N4. Paper total line (ADR-330 (15)). Positions > Paper with at least one closed 
 N5. Whole-trade close closes its alert. Exit a whole paper trade that has an unanswered alert: Alerts > History shows
     "Closed by system: the trade closed at HH:MM"; the bell drops by 1.
 N6. Top menu (P12): on My Strategies click "Strategies" in the top menu: its menu opens; click again: closes.
+N7. Stop above the max loss (ADR-330 (25), Lane P LP-4). Plan sheet of a 1-lot iron condor with max loss Rs 2,600: type
+    3000 in "Stop (Rs)": one line under the box reads "This stop (Rs 3,000) is above the trade's max loss (Rs 2,600),
+    so it cannot be reached." Save still works. Type 400 again: the line goes.
+N8. Side closed (ADR-330 (2), (33), Lane P P7, server side only): on a paper iron condor with a plan exit both call legs.
+    Within one worker cycle Alerts > Active gains one row naming the closed side and the bell goes up by 1. Its two
+    page answers (add legs / confirm the new shape) are not built yet (Lane P Wave 2, Lane J next).
+N9. Real P&L total (Lane S): Positions with no real position in a strategy: "Real P&L" shows a dash and "No real
+    positions are open in your strategies."; "Paper P&L" shows its own figure beside it, not added. With one real
+    position: the total shows the row's figure with "Zerodha, as at HH:MM:SS IST" and equals Kite's P&L for that
+    contract at the same minute. Filter All / Real / Paper: the two totals stay separate.
 Re-checks after the merge (quick):
 R1. Exit from Positions: Positions > Paper > a trade > Exit: the confirmation, Cancel exits nothing, Confirm exits.
 R2. Positions: the real and paper lists load; the Stops link of a Live Strategies card opens Positions at that trade's
     Stops panel (ADR-330 (21)).
 R3. Builder: open a saved paper trade; the payoff, Greeks and live P&L show; Add Selected from the chain adds legs; the
     leave question reads "Leave the builder? The N pending changes will be lost." (ADR-330 (22)).
-R4. Alert titles and lists carry the number and expiry, as in "Short Iron Condor (#172, 1 Dec)" (ADR-330 (19)).
+R4. Alert titles and lists carry the number and the NEAREST open-leg expiry, as in "Short Iron Condor" (#172, 1 Dec)
+    (ADR-330 (19)); a trade with no open leg shows "(#172)" only. Two paper trades with the same name show two numbers.
 
 ## (c) What is merged, what is left out
 
@@ -108,10 +126,18 @@ R4. Alert titles and lists carry the number and expiry, as in "Short Iron Condor
 | Lane J Step 2 (W2-A, W2-B, W2-C) | lanej/w2a 6a1474b, lanej/w2b c2452b1, lanej/w2c 364cbae | merged (push 2) |
 | Lane J Step 3 (P9 checks) | lanej/s3 2490974 | merged (push 2) |
 
-Not merged yet (Step 4, in order as they appear): Lane P's second push (migration 0056, P7, P8, warning line, alert
-titles: overlaps W2-A's titles), fix/suite-findings-1126 (Lane U; not on origin at 18:00 IST), feat/nb-real-pnl-1126
-(Lane S, d344d82), test/screen-suite-1126 (2fd3f02). Then ADR-330 (31) (Deleted / Restored history entries, its own
-migration), handed over by the coordinator.
+| fix/ic-live-test-1123 | e40a5ad | merged (push 3) |
+| fix/screen-findings-1126 (Lane R, newest) | ecb3655 | merged (push 3) |
+| feat/nb-plan-alerts-1126 (Lane P second push: 0056, P7, P8, LP-4, alert titles) | a59f7a9 | merged (push 3) |
+| fix/suite-findings-1126 (Lane U, includes test/screen-suite-1126) | b81970b | merged (push 3) |
+| feat/nb-real-pnl-1126 (Lane S, Real P&L total) | d344d82 | merged (push 3) |
+
+Push 3 merge notes: alert titles were built on both lines; ONE function now (`backend/ofo_app/alert_title.py`, Lane
+P's rule: the nearest open-leg expiry; a failed read leaves that row "(#id)"), W2-A's duplicate templates removed.
+StrategyBuilderPage: Lane R's props and Lane U's undo-text both kept; PaperStrategies: W2-B's exit-closed watch and
+Lane U's closeByPage both kept. Template pins merged by key.
+Not yet: ADR-330 (31) (Deleted / Restored history entries, its own migration), Lane P's Wave 2 page steps (P7 page
+flow, P8 Reset button).
 
 ## Step 2 and Step 3: what was built (status: Fixed, not tested)
 
@@ -166,7 +192,8 @@ current, none hand-edited.
 |---|---|---|---|
 | 1 | 7231916 | Step 1 (the two merges and the three breaks above) | `prepush.py --full` TOTAL PASS 2023.6 s (domain, app, vitest, lint, coverage, alembic guard) |
 
-| 2 | (this push) | ic docs 3d66541, Lane R ce5316e, Step 2, Step 3, the review fix | `prepush.py --full` (see the commit's gate) |
+| 2 | 7d81d0a | ic docs 3d66541, Lane R ce5316e, Step 2, Step 3, the review fix | `prepush.py --full` TOTAL PASS 2137 s |
+| 3 | (this push) | ic docs e40a5ad, Lane R ecb3655, Lane P a59f7a9 (0056), Lane U b81970b, Lane S d344d82 | see the commit's gate |
 
 Coordinator message for push 1 could not be sent: the session-message service refused this session (untrusted
 device); recorded here instead.
