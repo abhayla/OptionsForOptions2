@@ -12,6 +12,7 @@ read_snapshot + paper.leg_price, the routes' rule). Every test rolls back.
 """
 from __future__ import annotations
 
+import dataclasses
 import datetime
 import types
 from decimal import Decimal
@@ -20,7 +21,10 @@ import pytest
 from ofo import settings
 from ofo.errors.explanations import render_explanation
 from ofo.marketdata.fanout import FanOut
+from ofo.marketdata.feed_health import FeedState
 from ofo.rules.inputs import DataHealth
+from ofo.settings import calc
+from ofo.settings import defaults as default_settings
 from ofo.tracking import paper, stops
 from ofo_app import actionable_alerts as aa
 from ofo_app import alert_title, market_read, paper_monitor, paper_store, settings_store, tracked_contracts
@@ -562,3 +566,41 @@ async def test_the_stop_out_alert_lists_the_legs_in_the_recorded_buys_first_orde
     [(_, body)] = await _alerts(db, stored.id)
     texts = [str(paper_monitor._contract_text(found[c])) for c, *_ in stops]
     assert body.index(texts[0]) < body.index(texts[1])
+
+
+class _AgeRuleProvider(FakeProvider):
+    """The fake provider, but every quote's health is the ONE real rule (``FeedState.quote_health``, ADR-330 (39)) on a
+    feed that is connected and live (a frame arrived at the clock's time)."""
+
+    def __init__(self, ids, market: Market) -> None:
+        super().__init__(ids)
+        self.market = market
+        self.state = FeedState(windows=calc.feed_windows(dict(default_settings())), market_open=lambda _t: True)
+        self.state.on_connected(market.at)
+
+    def tick(self, q) -> None:
+        self.state.on_data(self.market.at)  # option frames keep arriving: the whole feed is live
+        health = self.state.quote_health(q, self.market.at)
+        super().tick(dataclasses.replace(q, health=health))
+
+
+async def test_adr_330_39_a_stale_index_tick_does_not_fire_an_armed_exit_and_a_fresh_crossing_tick_fires(db):
+    market = Market()
+    market.provider = _AgeRuleProvider({"NIFTY": INDEX}, market)
+    market.feed = LiveFeed(MarketContext(market.provider, lambda: market.at, D("0.065"), None),
+                           FanOut(market.provider))
+    stored, _, keys = await _strategy(db)
+    tid = await _exit_below(db, stored.id)
+    monitor = _monitor(db, market)
+    await monitor.step()
+    market.tick(keys[0], "41.00")
+    market.tick(keys[1], "12.50")
+    old = market.at - datetime.timedelta(seconds=61)  # older than detection.index_quote_max_age_seconds (60 s)
+    market.provider.tick(quote(INDEX, "NIFTY", "22800.00", old))  # below the level, but 61 s old
+    assert market.provider.quotes[INDEX].health is DataHealth.STALE
+    assert await monitor.step() == 0
+    assert await _trigger_state(db, tid) == (False, False) and await _stops(db, stored.id) == []
+    market.tick(INDEX, "22800.00")  # the same level, stamped now: a fresh crossing tick
+    assert await monitor.step() == 1
+    assert await _trigger_state(db, tid) == (True, False)
+    assert len(await _stops(db, stored.id)) == OPEN_LEGS

@@ -324,7 +324,9 @@ def feed_spot(read: PriceRead, now: datetime.datetime) -> SourceReading:
     """The feed spot of a FRESH read stamped ``now`` (finding staleness-by-last-change-age).
 
     ``read_prices`` already judged freshness by the provider's connection-aware health; the quote's own timestamp is
-    its LAST CHANGE, and Kite sends a packet only on a change, so a quiet but live index is current. Stamping its last
+    its LAST CHANGE, and Kite sends a packet only on a change, so a quiet contract on a live feed is current; the
+    exception is an index quote older than ``detection.index_quote_max_age_seconds`` in market hours, which the
+    provider's health already reports as not AVAILABLE (ADR-330 (39)), so it is not FRESH here. Stamping its last
     change instead made ``resolve_spot``'s feed-age window (3 s) answer "no spot" for every check more than 3 s after
     the last tick, the evaluation was withheld, and a rule whose value cleared its band was never read (round 2 RCA:
     the 23000 frame arrived inside the 10 s check interval and was 9 s old at the next check). A timestamp in the

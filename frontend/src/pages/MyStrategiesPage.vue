@@ -101,6 +101,7 @@ onMounted(loadList)
 const deleteFlow = useDeleteFlow(api, {
   undoMs: () => useSettingsValues().waitMs(CLEAR_UNDO_SECONDS_KEY),
   onRemoved: (id) => { rows.value = rows.value.filter((r) => r.id !== id) },
+  revisionOf: (id) => rows.value.find((r) => r.id === id)?.revision, // N-30: the list row's revision, no GET per row
   onBack: loadList,
   reload: loadList,
 })

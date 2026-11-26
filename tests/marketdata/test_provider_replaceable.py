@@ -65,10 +65,11 @@ def test_fanout_and_feed_health_run_unchanged_on_a_second_provider():
     fake.push("X:1", "100.50", T0)
     fan.pump()
     assert [q.ltp for q in got] == [Decimal("100.50")] * 2
-    # the same health rule: 61 s with the feed live (activity every second) keeps the quiet contract available
-    for s in range(1, 62):
+    # the same health rule: 59 s with the feed live (activity every second) keeps the quiet contract available (an index
+    # quote is judged by its own age past the ADR-330 (39) limit, 60 s: tests/marketdata/test_index_quote_age.py)
+    for s in range(1, 60):
         fake.feed.on_activity(T0 + datetime.timedelta(seconds=s))
-    assert fake.book.get("X:1", T0 + datetime.timedelta(seconds=61)).health is DataHealth.AVAILABLE
+    assert fake.book.get("X:1", T0 + datetime.timedelta(seconds=59)).health is DataHealth.AVAILABLE
 
 
 ADAPTER_FILES = {"kite_frames.py", "kite_provider.py", "kite_ws.py"}  # the market-data Kite adapter (by name)

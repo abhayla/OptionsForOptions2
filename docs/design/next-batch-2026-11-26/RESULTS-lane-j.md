@@ -261,7 +261,7 @@ current, none hand-edited.
 | 4+5 | 9f769b5 | P7 page answers, P8 Reset button, ADR-330 (31) with 0057, health e2e fix, side-closed templates; Not-applicable plan line, S-11 hold, Lane R 71ed990, Lane U 63091d7 | `prepush.py --full` TOTAL PASS 2195 s |
 | 6 | ae01cc6 | section (a) corrected from the PC rehearsal; owner question LJ-2 | `prepush.py --full` TOTAL PASS 2067 s |
 | 7 | (see push 8 row) | Lane U d9de498, Lane D 91cc43b, three full-suite test fixes, #753 parked | `prepush.py --full` |
-| 8 | (this push) | Lane U final 12e04b9 (Change expiry, ADR-330 (42)) | see the commit's gate |
+| 8 | (this push) | Lane U final 12e04b9 (Change expiry, ADR-330 (42)), Lane R a2b44dd (banner ADR-330 (36), (38) hover, N-30, D-15 label, (39) index age rule, D-27 PC step; its checks are in RESULTS-lane-r.md) | see the commit's gate |
 
 Coordinator message for push 1 could not be sent: the session-message service refused this session (untrusted
 device); recorded here instead.

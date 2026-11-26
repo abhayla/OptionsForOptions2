@@ -65,7 +65,9 @@ PINNED_SLOT_TYPES = frozenset({
         # approach ids the app builds (ADJUSTMENT_APPROACH_LABEL_TEXT); RegistryText only takes a group / label /
         # what-it-changes text the code-reviewed settings registry holds, re-checked against the wording rules;
         # SourceUrl is one http(s) token of URL characters (no space, so no sentence), at most 300 long.
-        "ApproachLabel", "RegistryText", "SourceUrl")),
+        "ApproachLabel", "RegistryText", "SourceUrl",
+        # ADR-330 (36), LR-Q18 (owner, 26 Nov 2026): exactly int, 2 or more; a count of legs, no user text
+        "LegCount")),
     *(f"ofo.errors.gate_slots.{n}" for n in (
         "LegRef", "LegContract", "Date", "Strikes", "Rupees", "WorstCase", "VersionStateName", "VersionStates",
         "DataInputName", "DataHealthState", "ExecutionStatusName", "Symbol", "Clock", "ContractSymbol", "RiskRows",

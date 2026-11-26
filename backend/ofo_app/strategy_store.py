@@ -85,6 +85,7 @@ class StrategySummary:
     has_paper_order: bool = False  # ADR-271: picks the refusal wording ("paper orders were placed")
     has_order: bool = False  # ADR-299: any placed order, practice or real (the status word's one input)
     held_at_broker: bool = False  # ADR-292 / ADR-330 (8): a held entry exists; Delete shows the held sentence
+    revision: int = 0  # N-30: saved revision (0 = not read)
 
 
 @dataclass(frozen=True)
@@ -169,7 +170,7 @@ _SELECT_FOR_UPDATE = text(
 #: The list reads the ACTIVE definition like ``load`` does (the active version's after the first execution, else the
 #: row's), only for the signed-in user's rows (REQ-134 AC-6).
 _LIST = text(
-    "SELECT s.id, s.underlying, s.status, s.created_at, s.updated_at, s.name, s.scenario_id, "
+    "SELECT s.id, s.underlying, s.status, s.created_at, s.updated_at, s.name, s.scenario_id, s.revision, "
     f"{_DELETABLE_SQL} AS can_delete, {_HAS_PAPER_SQL} AS has_paper_order, "
     f"{_HAS_ORDER_SQL} AS has_order, {_HELD_SQL} AS held_at_broker, "
     "d.definition -> 'legs' AS legs "
@@ -789,7 +790,8 @@ async def list_strategies(conn: Any, user_ref: str) -> list[StrategySummary]:
     rows = (await conn.execute(_LIST, {"user_ref": user_ref})).all()
     return [StrategySummary(int(r.id), r.underlying, r.status, r.created_at, r.updated_at, r.name,
                             len(r.legs), _first_leg(r.legs), r.can_delete is True, r.scenario_id,
-                            r.has_paper_order is True, r.has_order is True, r.held_at_broker is True) for r in rows]
+                            r.has_paper_order is True, r.has_order is True, r.held_at_broker is True,
+                            int(r.revision)) for r in rows]
 
 
 def _first_leg(legs: Sequence[Mapping[str, Any]]) -> FirstLeg:

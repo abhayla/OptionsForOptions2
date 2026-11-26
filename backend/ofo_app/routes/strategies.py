@@ -207,6 +207,7 @@ class SummaryOut(ApiModel):
     status_word: Literal["Draft", "Running", "Completed", "Unknown"]  # ADR-299: store.status_word
     created_at: datetime.datetime
     updated_at: datetime.datetime
+    revision: int  # N-30: the saved revision, so Delete / bulk delete send it without a read per row
     name: CatalogueText  # REQ-134 AC-4: quoted user text
     leg_count: int  # legs of the active definition; "and N more" is leg_count - 1
     first_leg: FirstLegOut
@@ -494,7 +495,7 @@ async def list_strategies(db: Annotated[Any, Depends(get_db)], user_ref: Annotat
         current = await current_legs_many(db, user_ref)  # D-42: the legs and the word the Positions page reads
         return StrategyListOut.model_validate({"shown_date": shown_date, "strategies": [
             {"id": r.id, "underlying": r.underlying, "status": r.status, "created_at": r.created_at,
-             "updated_at": r.updated_at, "name": sf.shown_name(r.name),
+             "updated_at": r.updated_at, "revision": r.revision, "name": sf.shown_name(r.name),
              **{"status_word": store.status_word(r.status, r.has_order),
                 "leg_count": r.leg_count,
                 "first_leg": {"instrument": r.first_leg.instrument, "strike": r.first_leg.strike,

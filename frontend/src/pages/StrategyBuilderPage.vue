@@ -1128,7 +1128,7 @@ const indexLevel = computed(() => headerLevel(data.value?.spot_level, index.show
 // ADR-200 (2): the page's one market-closed banner. With an outcome reply it follows that reply; with none (no legs yet,
 // the drawer priced from the last close) it follows the index answer the page already holds (its own socket / REST read)
 const closedBanner = computed(() => {
-  if (data.value) return data.value.market_closed ? { at: data.value.last_price_at } : null
+  if (data.value) return data.value.market_closed ? { at: data.value.last_price_at, text: data.value.closed_prices_text ?? null } : null
   const a = index.answer.value
   return a?.market_closed === true ? { at: a.last_price_at ?? null } : null
 })
@@ -1214,7 +1214,7 @@ const leaveGuard = useLeaveBuilder({
     <LeaveBuilderDialog :leave="leaveGuard" />
     <p v-if="restoreNote" class="mt-2 text-sm text-ink-muted" data-testid="drafts-restore-note">{{ restoreNote }}</p>
 
-    <MarketClosedBanner v-if="closedBanner" class="mt-2" :prices-at="closedBanner.at" />
+    <MarketClosedBanner v-if="closedBanner" class="mt-2" :prices-at="closedBanner.at" :server-text="closedBanner.text ?? null" />
     <p v-if="orderPathNotice" class="mt-2 text-sm text-ink-muted" data-testid="order-path-off-notice">{{ ORDER_PATH_OFF_SENTENCE }}</p>
 
     <AdjustCompare v-if="adjustId" :key="adjustId" :strategy-id="adjustId" :picked="pickedIds" :opportunities="opportunityIds" @prepare="prepareApproach" />

@@ -583,6 +583,20 @@ class Days(SlotType):
         return str(value)
 
 
+class LegCount(SlotType):
+    """How many legs a label counts (ADR-330 (36), LR-Q18): exactly `int`, 2 or more (one leg has its own singular text)."""
+
+    @staticmethod
+    def validate(value: object) -> None:
+        _require_exact(value, int, "LegCount")
+        if value <= 1:  # type: ignore[operator]
+            raise ValueError("LegCount slot requires a value >= 2")
+
+    @staticmethod
+    def format(value: int) -> str:
+        return str(value)
+
+
 class ClockHm(SlotType):
     """A time of day in IST, hours and minutes: exactly `datetime.time`."""
 
@@ -1495,6 +1509,14 @@ _EXPLANATIONS: tuple[ExplanationTemplate, ...] = (
     # D-37: beside a "-" Target / Date readout while the prices are not live (pending owner read)
     ExplanationTemplate("target_not_live", "values_seen", "not shown while prices are not live"),
     # GC-TP R-18 (ADR-209): the line naming the booked P&L a paper strategy's target figures include
+    # ADR-330 (36) (LR-Q18, owner 26 Nov 2026): a trade after the close with legs frozen at the close AND legs first priced
+    # later; the later legs carry the time they have. Singular and plural; the one function is closed_label (outcome.py).
+    ExplanationTemplate("closed_prices_mixed_one", "values_seen",
+                        "Market closed. Prices are from {frozen}; 1 leg as of {later}.",
+                        {"frozen": ClockHms, "later": ClockHms}),
+    ExplanationTemplate("closed_prices_mixed_many", "values_seen",
+                        "Market closed. Prices are from {frozen}; {count} legs as of {later}.",
+                        {"frozen": ClockHms, "later": ClockHms, "count": LegCount}),
     ExplanationTemplate("target_includes_booked", "values_seen", "includes {amount} booked", {"amount": SignedRupeesPaisa}),
     ExplanationTemplate("target_booked_unreadable", "values_seen",
                         "Booked profit and loss could not be read, so these figures are for the open legs only."),

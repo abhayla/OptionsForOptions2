@@ -7962,6 +7962,15 @@
               }
             ]
           },
+          "closed_prices_text": {
+            "anyOf": [
+              {},
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Closed Prices Text"
+          },
           "curve_includes_booked_text": {
             "anyOf": [
               {},
@@ -14807,6 +14816,15 @@
             "title": "Centre",
             "type": "string"
           },
+          "closed_prices_text": {
+            "anyOf": [
+              {},
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Closed Prices Text"
+          },
           "default_width": {
             "title": "Default Width",
             "type": "integer"
@@ -19284,6 +19302,10 @@
             ],
             "title": "Open Opportunities Text"
           },
+          "revision": {
+            "title": "Revision",
+            "type": "integer"
+          },
           "status": {
             "pattern": "^[A-Za-z0-9_\\-.]{1,64}$",
             "title": "Status",
@@ -19351,6 +19373,7 @@
           "status_word",
           "created_at",
           "updated_at",
+          "revision",
           "name",
           "leg_count",
           "first_leg",

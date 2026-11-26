@@ -15,16 +15,24 @@
    "tests/marketdata/test_feed_health_replay.py::test_no_contract_is_stale_after_61_s_while_the_feed_is_live",
    "tests/marketdata/test_feed_health_replay.py::test_inserted_gap_makes_every_contract_stale_then_data_resumes"
   ],
-  "note": "W-059 replays the recorded 2026-10-08 frames: 61 s with the feed live leaves all 983 ticked contracts available; a 5 s gap makes all 983 stale and data resuming makes them available. The old per-quote age rule flags all 983 on the same replay (test_the_old_per_quote_age_rule_is_the_defect). Not covered: a provider other than Kite must use ofo.marketdata.feed_health itself; health.build_quote still ages by timestamp for non-feed sources."
+  "note": "W-059 replays the recorded 2026-10-08 frames: 61 s with the feed live leaves all 983 ticked contracts available; a 5 s gap makes all 983 stale and data resuming makes them available. The old per-quote age rule flags all 983 on the same replay (test_the_old_per_quote_age_rule_is_the_defect). Not covered: a provider other than Kite must use ofo.marketdata.feed_health itself; health.build_quote still ages by timestamp for non-feed sources. Index case (ADR-330 (39)): an index is the one quote whose own age is judged, per quote, in FeedState.quote_health (detection.index_quote_max_age_seconds, 60 s, market hours), covered by tests/marketdata/test_index_quote_age.py."
  },
  "spec_ref": [
-  "spec/requirements/REQ-049.md"
+  "spec/requirements/REQ-049.md",
+  "spec/requirements/REQ-100.md",
+  "spec/requirements/REQ-114.md",
+  "spec/decisions/ADR-330.md"
  ],
  "occurrences": [
   {
    "date": "2026-10-08",
    "where": "F-32 live checks",
    "evidence": "inst_stale_gt_60s median 59 of 1,091 with feed_stale false in all 360 samples"
+  },
+  {
+   "date": "2026-11-26",
+   "where": "D-69 index frozen while option frames kept arriving",
+   "evidence": "NIFTY last tick 15:15:18, option frames still arriving, feed word read live at 15:16:30; the whole-feed judgement called a silent index live; fixed by ADR-330 (39) (one per-quote index age rule; options keep the feed word)"
   }
  ]
 }

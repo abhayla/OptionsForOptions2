@@ -386,6 +386,18 @@
       "source": "ADR-222, REQ-167 AC-5; was ofo/marketdata/feed_health.py RECONNECT_WINDOW"
     },
     {
+      "key": "detection.index_quote_max_age_seconds",
+      "group": "Detection",
+      "label": "Index value older than (not live)",
+      "unit": "seconds",
+      "type": "decimal",
+      "min": "5",
+      "max": "600",
+      "default": "60",
+      "what_it_changes": "In market hours, how old an index value (NIFTY, SENSEX) may be before it is shown as not live with its own time, and every check that needs the live index treats it as unavailable, even while option prices keep arriving.",
+      "source": "ADR-330 (39), F-32, D-69; was ofo/marketdata/feed_health.py (no old constant: the index had no age limit)"
+    },
+    {
       "key": "speeds.open_strategy_seconds",
       "group": "Speeds",
       "label": "Open strategy push interval",

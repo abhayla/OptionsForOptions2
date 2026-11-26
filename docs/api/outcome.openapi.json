@@ -1432,6 +1432,15 @@
             ],
             "title": "Last Price At"
           },
+          "closed_prices_text": {
+            "anyOf": [
+              {},
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Closed Prices Text"
+          },
           "spot_level": {
             "anyOf": [
               {
