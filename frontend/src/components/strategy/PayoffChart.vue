@@ -410,7 +410,8 @@ const onKey = (e) => {
 watch(points0, (now, before) => {
   if (index.value === null || !now.length) return hide()
   const level = before?.[index.value]?.level
-  index.value = level === undefined ? null : nearestIndex(Number(level))
+  // the held level goes in as the reply's own text; nearestBy compares it as an index level (selection only)
+  index.value = level === undefined ? null : nearestBy(now, level, (p) => p.level)
 })
 watch(() => [points0.value, props.spot, props.breakevens, props.sd, props.oi, props.targetCurve], createChart, { deep: true })
 onMounted(createChart)
