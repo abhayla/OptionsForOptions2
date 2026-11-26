@@ -59,3 +59,20 @@ Spec basis: ADR-330 (1) to (27) and its one-module instruction; ADR-002; ADR-003
 Generated files after the merge: spec digest, coverage register, `docs/api/openapi.json`
 (`generate_openapi.py` output byte-identical), `tests_app/reply_inventory.py` (`--check` exit 0, notes unchanged): all
 current, none hand-edited.
+
+### Breaks the merge caused (each line passed its own gates; the merged tree did not)
+
+| Gate | What failed | Fix |
+|---|---|---|
+| ruff ratchet | PLR2004 559 -> 560: each line added one magic number and removed another | `tests_app/test_paper_totals_closed.py` names its expected count |
+| G2 `tests/test_paper_orders_one_door.py` (one exit door) | Lane P's `paper_leg_stop_risk` flipped BUY/SELL itself (`routes/paper.py:1523`) | the close's side and quantity come from `open_legs_to_close`, the door's own rule; `test_leg_stop_risk` passes |
+| G4 `tests/test_alert_writers_one_caller.py` (one caller per alert writer) | still pinned `open_suggestion` / `record_held` to `background.py`; Lane P moved both into `actionable_alerts.py` | G4's homes follow the move (the plan: "guard G4 replaced (Phase 8)"); Lane P's one-module guard keeps every other caller out |
+
+## Push log
+
+| Push | Head | Contents | Gate |
+|---|---|---|---|
+| 1 | 7231916 | Step 1 (the two merges and the three breaks above) | `prepush.py --full` TOTAL PASS 2023.6 s (domain, app, vitest, lint, coverage, alembic guard) |
+
+Coordinator message for push 1 could not be sent: the session-message service refused this session (untrusted
+device); recorded here instead.
