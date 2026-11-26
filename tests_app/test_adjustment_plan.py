@@ -244,6 +244,32 @@ async def test_overrides_land_in_the_copy_only_and_an_edit_keeps_them(app_db_url
     assert status == OK and sheet_now["prefill"]["stop"] == "35" and sheet_now["plan"]["playbook_name"] is not None
 
 
+async def test_reset_to_playbook_goes_back_marks_what_differed_and_a_gone_playbook_refuses_it(app_db_url, monkeypatch):
+    """P8 (ADR-330 (9)): the plan names the conditions it changed; one reset copies the playbook back; a plan whose
+    playbook was deleted is refused with the not-found sentence and stays as it is."""
+    sid = await _seeded(app_db_url, monkeypatch, "ADJ-02")
+    system = (await _system_ic(app_db_url)).id
+    status, out = await _call("POST", _plan_path(sid), json={"playbook_id": system})
+    assert status == OK and (out["plan"]["changed"], out["plan"]["switched_off"]) == ([], [])
+    status, out = await _call("PUT", _plan_path(sid), json={"playbook_id": system, "stop": "35", "target": "60"})
+    assert status == OK and out["plan"]["changed"] == ["triggers.T-06"]  # the sheet's levels are no conditions
+    status, out = await _call("POST", _plan_path(sid) + "/reset")
+    assert status == OK, out
+    assert (out["plan"]["changed"], out["plan"]["switched_off"], out["plan"]["playbook_id"]) == ([], [], system)
+    assert json.loads((await _plan_row(app_db_url, sid)).body) == (await _system_ic(app_db_url)).body
+    async with app_db_url.begin() as conn:  # a plan of the user's own playbook, which is then deleted
+        own = await playbook_store.duplicate(conn, USER, system, "Reset source")
+    status, out = await _call("POST", _plan_path(sid), json={"playbook_id": own.id, "stop": "30"})
+    assert status == OK and out["plan"]["changed"] == ["triggers.T-06"]
+    async with app_db_url.begin() as conn:
+        await playbook_store.delete(conn, USER, own.id)
+    before = await _plan_row(app_db_url, sid)
+    status, out = await _call("POST", _plan_path(sid) + "/reset")
+    assert status == NOT_FOUND
+    assert out["code"] == "USER_INPUT_156", out  # the catalogue row of "This playbook was not found."
+    assert await _plan_row(app_db_url, sid) == before
+
+
 async def test_zz_another_users_strategy_is_not_found_on_get_post_and_put_and_nothing_is_written(
         app_db_url, monkeypatch):
     sid = await _seeded(app_db_url, monkeypatch, "ADJ-02")
