@@ -310,8 +310,10 @@ def _book_figures(bk: _Book, view: paper.TrackingView | None
         leg.instrument_id: view.legs[i] for i, leg in enumerate(bk.legs) if not leg.exited}
     money = strategy_money_view(bk.orders, prices, totals_priced=view is not None and not view.paused)
     by_id = money.by_contract  # ADR-311: per leg, at the legs that have a price
-    pnls: list[Decimal | None] = [by_id[leg.instrument_id].booked if leg.exited else by_id[leg.instrument_id].unbooked
-                                  for leg in bk.legs]
+    # #725 (ADR-328 (3)): a leg's figure is the engine's own total for its contract (booked + unbooked, the same figure
+    # as the legs table), so an open leg keeps the booked part of an earlier closed lifecycle or partial exit; None
+    # while the open contract is unpriced (the engine gives no total then); an exited leg's total is its booked.
+    pnls: list[Decimal | None] = [by_id[leg.instrument_id].total for leg in bk.legs]
     return money.book, pnls, money.live  # every TOTAL (and the after-charges figures) stays paused, never a mix
 
 
