@@ -176,3 +176,17 @@ legs (recommended: it is where the user looks when the count changes, and it dis
 (b) a one-time note the first time a leg is added in a session, dismissible;
 (c) in the leave question only ("Leave the builder? The N unsaved legs will be lost.") - not enough, a reload never shows it.
 Nothing is built until answered; the line is removed when REQ-154 ships.
+
+## LR-Q17 (ANSWERED 26 Nov ~18:30 IST): "Show it with its real time, tonight; exact close later" = ADR-330 (36) (b) built, (c) deferred.
+
+## LR-Q18 Mixed trade after the close: which time does the builder banner show? (open, 26 Nov 2026)
+
+Spec basis: ADR-330 (36) (a) frozen at the close under "Prices are from 15:30:00", (b) a contract first priced after the
+close labelled with its own time; silent on a trade with legs of both kinds. `backend/ofo_app/routes/outcome.py:241-242`
+(`label_time` takes the latest leg time), shown at `StrategyBuilderPage.vue:1112`, `:1164` and the leg picker banner
+(`LegPicker.vue:753`, `leg_picker.py:461`). Real case (Opus re-check run): leg A 99.75 held at 15:29:59, leg B 100.10 first
+priced at 15:33:48 -> the banner reads "Prices are from 15:33:48" over a leg frozen at 15:29:59 (the label is later than
+that figure); each leg row carries its own time correctly.
+Options: (a) the banner shows the EARLIEST leg time ("Prices are from 15:29:59"), the leg rows keep their own; (b) the
+banner names both: "Prices are from 15:30:00; 1 leg as of 15:33:48" (new wording); (c) keep the latest time (as built).
+Recommendation: (b) - no figure sits under a time it does not have. Lane R builds nothing until answered; #752 stays open.

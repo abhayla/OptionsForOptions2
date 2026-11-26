@@ -295,3 +295,16 @@ strategy). `strategy_history.at` is stamped by the database, so the times need n
    Evidence: `backend/ofo_app/live_market.py:477` `_index_reading` / `index_spot` (via `spot_source`) returns Kite's current REST `last_price`, while the chain and index header show the frozen tick. Settlement is unaffected. Steps: after the close compare the REST spot with the index header.
    Spec basis: ADR-330 (36), ADR-200 (2), ADR-119.
    Done when: the after-hours spot goes through the same cut-off (`made_by_the_close`).
+
+### More to file as deferred issues (Opus re-check of ADR-330 (36) round 2, 26 Nov evening; not filed)
+
+- **A frame with no exchange time is labelled with its arrival time after the close.** Evidence: `backend/ofo/marketdata/quote.py:197` returns the quote's own time, which is the arrival time when Kite sends no exchange time (`backend/ofo_app/kite_provider.py:184`); review run: a fresh process, a frame with no exchange time arriving 21:05:12 is labelled 21:05:12. Spec basis: F-19 (a stamp that is not a price time is never shown as one), ADR-200 (2). Done when a post-close frame without an exchange time is labelled as the previous close (or shown unpriced) and a test pins it.
+- **The broker-status reply still clamps a path-(b) price to 15:30:00.** Evidence: `backend/ofo_app/broker_status.py:144` uses `price_time`; no frontend file renders `live_market_closed` today (API only). Spec basis: ADR-330 (36) (b). Done when it reads the same own-time rule as `NormalizedQuote.price_at`.
+
+## Re-test: ADR-330 (34), (35), (36) (next market day and evening)
+
+1. (34) Builder: add two legs (unsaved): under the bar "Unsaved legs are not kept if you reload or close this page. Save to keep them."; Save: the line goes. A running paper trade with one pending change shows it too.
+2. (35) After the close with one settled or unpriced trade: Home's Total P&L is the sum of the priced trades with the count line (as AC-R06), now owner-approved.
+3. (36a) After 15:30 with the API running since before the close: a running paper trade's prices stay at their last pre-close values while "Prices are from 15:30:00" shows; they do not change over 10 minutes.
+4. (36b) Restart the API after 15:30, open the same trade: each leg shows a price labelled with its own time ("as of 15:4x:xx"), never "Prices are from 15:30:00".
+5. Mixed (one leg of each kind, e.g. add a new strike after the close to a builder that held its legs through the close): note the banner time; it follows the open question LR-Q18.
