@@ -1713,7 +1713,6 @@ test.describe('Builder: loading, not found and failure states (REQ-134 AC-5, REQ
 
   test('ST-4 a strategy that is not found says so in words (not the "could not get an answer from the server" line)', async ({ page }, info) => {
     // Spec basis: REQ-065 (a message says what happened; a missing strategy is not a connection failure); ADR-003
-    test.fail() // expected-fail: NEW-T66: a 404 for a deleted strategy shows "The page could not get an answer from the server." (the neutral connection message)
     await stubBuilder(page)
     await page.goto(`${BUILDER}?strategy=999`)
     await expect(page.getByTestId('open-error-what')).toBeVisible()
