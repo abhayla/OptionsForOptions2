@@ -1956,6 +1956,13 @@ _EXPLANATIONS: tuple[ExplanationTemplate, ...] = (
     ExplanationTemplate("paper_exit_widens_loss", "values_seen",
                         "After these orders, maximum loss: {before} before, {after} after.",
                         {"before": Explained, "after": Explained}),
+    # ADR-330 (6): the Stops panel line before a leg stop is saved (figures are the loss sizes, no sign)
+    ExplanationTemplate("paper_leg_stop_widens_loss", "values_seen",
+                        "If this stop fires, max loss becomes Rs {after} (now Rs {before})",
+                        {"before": IndexLevel, "after": IndexLevel}),
+    ExplanationTemplate("paper_leg_stop_unlimited_loss", "values_seen",
+                        "If this stop fires, there is no fixed maximum loss (now Rs {before})",
+                        {"before": IndexLevel}),
     ExplanationTemplate("paper_exit_less_protected", "values_seen",
                         "Sold option with less protection: {legs}.", {"legs": Explained}),
     ExplanationTemplate("paper_exit_warning_join", "values_seen", "{first} {second}",

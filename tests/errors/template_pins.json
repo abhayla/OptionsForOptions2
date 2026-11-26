@@ -4658,5 +4658,13 @@
   "explanation:plan_level_rupees_whole": {
     "sha256": "337d9a4a39689766f94d5825ed79baa6d73798c8bdce733d55cc9c37cb673498",
     "reviewed": "pending owner read"
+  },
+  "explanation:paper_leg_stop_widens_loss": {
+    "sha256": "9b3f9013bb843b255940e8c99827b43d222039064596ca691eaffa0356849ab6",
+    "reviewed": "pending owner read"
+  },
+  "explanation:paper_leg_stop_unlimited_loss": {
+    "sha256": "ee7f7babf5dff7e297663b3a0e565ed5e306a8a88def934caf3e147c3d20d3f6",
+    "reviewed": "pending owner read"
   }
 }
