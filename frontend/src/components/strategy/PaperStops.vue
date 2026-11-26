@@ -19,10 +19,7 @@ const props = defineProps({
   // D-44: contract id -> the leg label the form rows use (every position of the strategy, open or closed), so the list names a
   // stop's leg the same way; a contract not in it keeps the server's contract text
   legNames: { type: Object, default: () => ({}) },
-  // D-05: the parent list's latest-started read token and the token of its last good read; a "Not saved" line clears only
-  // when a good read is set and is not the token stamped at the failure (reads never overlap, so a different good token
-  // means a read started after the failure; a failed refresh does not move goodReadToken)
-  latestReadToken: { type: Object, default: null },
+  // the token of the parent list's last good read: a new one makes the stops list read again (S-23)
   goodReadToken: { type: Object, default: null },
 })
 
@@ -73,11 +70,9 @@ async function run(call, saving = false) {
     }
     triggers.value = null
     error.value = saving ? NO_ANSWER : NEUTRAL_ERROR
-    failedAtToken = props.latestReadToken
     return null
   } catch (e) {
     error.value = saving ? notSaved(e) : refusal(e)
-    failedAtToken = props.latestReadToken
     return null
   } finally {
     busy.value = false
@@ -111,8 +106,10 @@ async function reread() {
     if (mine === gen) listError.value = LIST_STALE
   }
 }
-let failedAtToken = null // the latest-started read token when the last save failed
-watch(() => props.goodReadToken, (t, old) => { if (t && t !== old) reread(); if (!busy.value && error.value.startsWith('Not saved') && t && t !== failedAtToken) error.value = '' })
+// N-01: the one clear rule for the status line of every form here (conditional exit, leg stop, keep, cancel): it goes only when
+// the user edits a level or direction, or presses a button again (run() clears it). A list refresh never clears it.
+watch(() => props.goodReadToken, (t, old) => { if (t && t !== old) reread() })
+watch([above, below, stop], () => { if (!busy.value) error.value = '' })
 
 async function saveExit() {
   if (ceReason.value) return

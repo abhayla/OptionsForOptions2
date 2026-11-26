@@ -155,7 +155,7 @@
                 <ExitButton v-if="g.openCount" :blocked="exitGate.blocked.value" :reason="exitGate.reason.value" :extra-disabled="!tickedOpen(g).length" class="rounded border border-line px-2 py-1" :data-testid="`exit-selected-${g.id}`" @click="ask(g, tickedOpen(g))">Exit ({{ tickedOpen(g).length }})</ExitButton>
               </div>
             </div>
-            <PaperStops v-if="stopsOpen[g.id]" :strategy-id="g.id" :underlying="g.underlying" :legs="stopLegs(g)" :leg-names="legNamesOf(g)" :latest-read-token="latestReadToken" :good-read-token="goodReadToken" />
+            <PaperStops v-if="stopsOpen[g.id]" :strategy-id="g.id" :underlying="g.underlying" :legs="stopLegs(g)" :leg-names="legNamesOf(g)" :good-read-token="goodReadToken" />
           </template>
         </div>
       </template>
@@ -259,10 +259,7 @@ const summary = computed(() => ({
   loaded: !loading.value && items.value !== null,
 }))
 watch(summary, (v) => emit('summary', v), { immediate: true, flush: 'sync' })
-// D-05: reads are one at a time; each read start makes a fresh token object. latestReadToken is the latest started,
-// goodReadToken the one of the last good answer, so an open Stops panel drops its Not saved line only for a good read
-// that is not the one it was stamped with (a different good token is a read started after the failure)
-const latestReadToken = shallowRef(null)
+// goodReadToken: the token of the last good read; an open Stops panel reads its own list again when it changes (S-23)
 const goodReadToken = shallowRef(null)
 const stopsOpen = ref({})
 // R-10: a Stop row for each OPEN contract, keyed by the contract id the reply carries (a digit string sent as is)
@@ -343,7 +340,7 @@ function fail(e) {
 
 const { refresh, refreshNow } = usePaperRefresh({
   key: () => 'list',
-  read: async () => { const token = {}; latestReadToken.value = token; return { data: (await api.get('/paper/strategies')).data, token } },
+  read: async () => { const token = {}; return { data: (await api.get('/paper/strategies')).data, token } },
   onData: show,
   onError: fail,
 })

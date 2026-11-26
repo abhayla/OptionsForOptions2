@@ -422,15 +422,56 @@ describe('Stops panel: the Not saved line and the empty-level hint (D-05, ADR-31
   }
   const tick = async () => { await vi.advanceTimersByTimeAsync(TRACKING_REFRESH_MS); await flushPromises() }
 
-  it('Not saved is gone after the next good refresh; the typed levels stay', async () => {
+  const CROSSED = 'the live price is already at or beyond this level, so this exit would close the trade straight away. To close now, use Exit.'
+  const NOTE = `Not saved: ${CROSSED}`
+  // N-01 (26 Nov 2026): the refusal stays until the user edits the form or saves again; a good list refresh never clears it
+  it('N-01: the FIRST Save click shows the refusal, and it survives the poll and timers; typed levels stay', async () => {
     vi.useFakeTimers()
     const w = await open()
-    await t(w, 'ce-above').setValue('24500')
-    await failSave(w)
-    expect(t(w, 'stops-error').text().startsWith('Not saved:')).toBe(true)
-    await tick() // the list's own refresh answers well
+    await t(w, 'ce-above').setValue('25700')
+    answers[`POST ${TRIG}`] = refuse(CROSSED)
+    await t(w, 'ce-save').trigger('click')
+    await flushPromises()
+    expect(t(w, 'stops-error').text()).toBe(NOTE)
+    await tick()
+    await tick()
+    await vi.advanceTimersByTimeAsync(60000)
+    await flushPromises()
+    expect(t(w, 'stops-error').text()).toBe(NOTE)
+    expect(t(w, 'ce-above').element.value).toBe('25700')
+  })
+  it('N-01: a leg-stop refusal also stays through the poll and clears on a level edit', async () => {
+    vi.useFakeTimers()
+    const w = await open()
+    const level = w.get('[data-testid^="stop-level-"]')
+    const id = level.attributes('data-testid').replace('stop-level-', '')
+    await level.setValue('110')
+    answers[`POST ${TRIG}`] = refuse(CROSSED)
+    await t(w, `stop-save-${id}`).trigger('click')
+    await flushPromises()
+    await tick()
+    expect(t(w, 'stops-error').text()).toBe(NOTE)
+    await level.setValue('111')
     expect(has(w, 'stops-error')).toBe(false)
-    expect(t(w, 'ce-above').element.value).toBe('24500')
+  })
+  it('N-01: changing the level clears the line; Save again replaces it', async () => {
+    vi.useFakeTimers()
+    const w = await open()
+    await t(w, 'ce-above').setValue('25700')
+    answers[`POST ${TRIG}`] = refuse(CROSSED)
+    await t(w, 'ce-save').trigger('click')
+    await flushPromises()
+    expect(has(w, 'stops-error')).toBe(true)
+    await t(w, 'ce-above').setValue('25800')
+    expect(has(w, 'stops-error')).toBe(false)
+    await t(w, 'ce-save').trigger('click')
+    await flushPromises()
+    expect(t(w, 'stops-error').text()).toBe(NOTE)
+    answers[`POST ${TRIG}`] = ok({ triggers: [trig(1)] })
+    await t(w, 'ce-save').trigger('click')
+    await flushPromises()
+    expect(has(w, 'stops-error')).toBe(false)
+    expect(t(w, 'stops-saved').text()).toBe('Saved: exit above 25800')
   })
   it('a failed refresh leaves the Not saved line on screen', async () => {
     vi.useFakeTimers()
@@ -450,24 +491,6 @@ describe('Stops panel: the Not saved line and the empty-level hint (D-05, ADR-31
     await flushPromises()
     expect(t(w, 'stops-saved').text()).toBe('Saved: exit above 24500')
     expect(w.text()).not.toContain('Enter at least one level')
-  })
-  it('a refresh that started before the failed Save does not clear Not saved; a later good refresh does', async () => {
-    vi.useFakeTimers()
-    const w = await open()
-    await t(w, 'ce-above').setValue('24500')
-    let release
-    const good = { strategies: [item], answered_at: '2026-10-28T06:00:00Z' }
-    answers['GET /tracking'] = () => new Promise((resolve) => { release = () => resolve({ data: good }) })
-    await tick() // a refresh starts and waits
-    await failSave(w)
-    expect(t(w, 'stops-error').text().startsWith('Not saved:')).toBe(true)
-    release()
-    await flushPromises() // the older refresh lands, good
-    expect(t(w, 'stops-error').text().startsWith('Not saved:')).toBe(true)
-    answers['GET /tracking'] = ok(good)
-    await tick() // a refresh that started after the failure
-    expect(has(w, 'stops-error')).toBe(false)
-    expect(t(w, 'ce-above').element.value).toBe('24500')
   })
   it('after Saved, a bad price still shows its reason; empty boxes show no at-least-one hint', async () => {
     const w = await open()
