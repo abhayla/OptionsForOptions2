@@ -240,11 +240,18 @@ def _safe_by_band(spec: RuleSpec, value: Value, threshold: Decimal | None, prese
     return value <= threshold - band if spec.cmp == "ge" else value >= threshold + band
 
 
+def _line(spec: RuleSpec, threshold: Decimal | None) -> Decimal | None:
+    """The rule's LINE (ladder[0]) that "stopped" / "true again" are judged against (ADR-330 (3), ADR-237 (4)); the
+    record's own (escalated) step only feeds the worse figures. No real ladder: the stored threshold."""
+    return spec.ladder[0] if spec.cmp != "bool" and spec.ladder else threshold
+
+
 def _refresh(rule_id: str, rule: _Rule, pend: _Pending, level: int, preset: Preset) -> tuple[_Rule, list[Event]]:
     """Apply a close to the clear mark, the record's lapse and the held episode before deciding."""
     rec, hold = rule.record, rule.hold
     events: list[Event] = []
-    if rec is not None and not rule.cleared and _safe_by_band(pend.spec, pend.value, rec.threshold, preset):
+    line = _line(pend.spec, rec.threshold) if rec is not None else None
+    if rec is not None and not rule.cleared and _safe_by_band(pend.spec, pend.value, line, preset):
         rule = replace(rule, cleared=True)
         if not (rec.dismissed or rec.final or rec.stopped):
             # ADR-242 (3): a watched level keeps one record per crossing episode: the clear closes it (final), so

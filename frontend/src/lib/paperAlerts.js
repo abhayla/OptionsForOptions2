@@ -112,6 +112,10 @@ export function resetOpenRecords() {
 }
 
 // ADR-330 (4): the bell = the server's count of unanswered actionable alerts = the Active rows; nothing is added to it.
+// ADR-242 (3): a watched level's record (rule id watch.level.above / .below, the server's ofo.adjustment.level_watch.RULE_PREFIX);
+// it is not an actionable alert (never in /alerts/active, never on the bell), so the header announces it from the open records
+export const LEVEL_WATCH_PREFIX = 'watch.level.'
+export const isLevelWatch = (r) => typeof r?.rule_id === 'string' && r.rule_id.startsWith(LEVEL_WATCH_PREFIX)
 export const bellCount = () => activeAlerts.count
 
 /** Take one answer of GET /adjustment-opportunities. Returns the NEW open records (never on the first good read). */
@@ -129,7 +133,7 @@ export function takeOpportunities(data) {
     for (const r of Array.isArray(g?.records) ? g.records : []) {
       if (r && r.outcome === 'open' && Number.isInteger(r.id)) {
         // D-67 (ADR-326 (5)): popup_due is the SERVER's answer (ofo.adjustment.popup_quiet); absent = due (fail open)
-        open.push({ id: r.id, strategy_id: g.strategy_id, strategy_name: g.strategy_name ?? null, text: r.condition || g.label || '', shown_at: r.shown_at ?? g.shown_at ?? null, popup_due: r.popup_due !== false })
+        open.push({ id: r.id, rule_id: r.rule_id ?? null, strategy_id: g.strategy_id, strategy_name: g.strategy_name ?? null, text: r.condition || g.label || '', shown_at: r.shown_at ?? g.shown_at ?? null, popup_due: r.popup_due !== false })
       } else if (r && Number.isInteger(r.id) && r.outcome !== 'open') {
         (settled[g.strategy_id] ??= []).push({ id: r.id, text: r.condition || g.label || '', outcome_text: r.outcome_text ?? '', shown_at: r.shown_at ?? g.shown_at ?? null, closed_at: r.closed_at ?? null })
       }

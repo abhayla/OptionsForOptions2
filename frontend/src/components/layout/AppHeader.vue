@@ -13,7 +13,7 @@ import { useRoute, useRouter } from 'vue-router'
 import Icon from '@/components/common/Icon.vue'
 import { showInfo } from '@/lib/infoPopup'
 import { compareAllUrl } from '@/lib/adjustDrawer'
-import { bellCount, dropActive, openRecords, readActive, readOpportunities, takeActive, takeOpportunities } from '@/lib/paperAlerts'
+import { bellCount, dropActive, isLevelWatch, openRecords, readActive, readOpportunities, takeActive, takeOpportunities } from '@/lib/paperAlerts'
 import { plainName } from '@/lib/saveDraft'
 import { usePaperRefresh } from '@/lib/usePaperRefresh'
 import { ACCOUNT_LABEL, ACCOUNT_MENU_ITEMS, ITEM_DESCRIPTIONS, MEGA_MENUS, MENU_SECTIONS, firstBuiltPath } from '@/router/nav'
@@ -60,7 +60,10 @@ const { refresh: refreshAlerts } = usePaperRefresh({
   key: () => 'alerts',
   read: async () => {
     const [a, o] = await Promise.allSettled([readActive(), readOpportunities()])
-    takeOpportunities(o.status === 'fulfilled' ? o.value : null) // fills the records only; the pop-up is announceActive's
+    // fills the records; the pop-up is announceActive's, except a watched level (never in /alerts/active): ADR-242 (3), once per record id
+    for (const w of takeOpportunities(o.status === 'fulfilled' ? o.value : null).filter(isLevelWatch)) {
+      showInfo([plainName(w.strategy_name), w.text].filter(Boolean).join(': '))
+    }
     if (a.status === 'rejected') throw a.reason
     return a.value
   },
