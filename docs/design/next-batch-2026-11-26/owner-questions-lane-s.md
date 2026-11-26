@@ -40,7 +40,8 @@ Options:
 - (a) **Recommended.** The total is the sum of the per-row figures the list shows (open contracts of the user's
   strategies), so the user can check it by eye. A line under it says what it leaves out when that applies:
   "Excludes N outside lots and contracts closed today; see Kite for the whole account." Real case: the 16 Oct 15:10
-  reply has only a flat (closed today) row: the list has no row and the total reads "Rs 0.00" with that line.
+  reply has only a flat (closed today) row: the list has no row, so the total shows no figure
+  and says "No real positions are open in your strategies." with the excludes line (the built, safer rule).
 - (b) The whole account's F&O P&L as Zerodha shows it (closed-today rows and outside lots included). Not chosen: the
   total would not equal the rows on screen, and outside lots belong to no strategy.
 
