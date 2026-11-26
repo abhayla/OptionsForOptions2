@@ -404,8 +404,14 @@ const onKey = (e) => {
   show(Math.max(0, Math.min(points0.value.length - 1, from + (e.key === 'ArrowRight' ? 1 : -1))))
 }
 
-// A new reply (or none: NOT_CONNECTED) drops the hover, so no number from an older answer stays on screen.
-watch(points0, hide)
+// ADR-330 (38): a new reply keeps the reading (mouse or arrow key) where it was, keyed by INDEX LEVEL, not by point object
+// or array identity: the figures re-read from the new reply at that level, and a level no longer sent = the nearest level
+// (selection only, never interpolation: ADR-008). No points (NOT_CONNECTED) drops it: no number from an older answer stays.
+watch(points0, (now, before) => {
+  if (index.value === null || !now.length) return hide()
+  const level = before?.[index.value]?.level
+  index.value = level === undefined ? null : nearestIndex(Number(level))
+})
 watch(() => [points0.value, props.spot, props.breakevens, props.sd, props.oi, props.targetCurve], createChart, { deep: true })
 onMounted(createChart)
 onUnmounted(() => {
