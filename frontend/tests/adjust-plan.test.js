@@ -117,7 +117,7 @@ describe('REQ-161 AC-2: one click accepts; another playbook refills every field'
     await t(w, 'plan-save').trigger('click')
     await flushPromises()
     expect(calls.filter((c) => c.method !== 'GET')).toEqual([{ method: 'PUT', url: PATH,
-      body: { playbook_id: 9, target: '60', stop: '35', max_adjustments: '3', time_exit: '14:45' } }])
+      body: { playbook_id: 9, target: '60', stop: '35', max_adjustments: '3', time_exit: { at: '14:45', on: '' } } }])
     expect(w.emitted('saved')).toHaveLength(1)
   })
 

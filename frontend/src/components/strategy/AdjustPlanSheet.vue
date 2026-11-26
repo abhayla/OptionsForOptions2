@@ -36,6 +36,9 @@
           <label class="block text-sm font-medium">{{ labels.time_exit }}
             <input v-model="form.timeExit" type="time" class="mt-1 h-10 w-full rounded border border-line px-2" data-testid="plan-time" />
           </label>
+          <label class="block text-sm font-medium">{{ labels.time_exit_on }}
+            <input v-model="form.timeExitOn" type="date" class="mt-1 h-10 w-full rounded border border-line px-2" data-testid="plan-time-on" />
+          </label>
         </div>
         <button type="button" class="mt-3 text-sm font-semibold text-accent underline" data-testid="plan-customise" :disabled="busy" @click="customise">{{ labels.customise }}</button>
       </template>

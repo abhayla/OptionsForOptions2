@@ -2828,7 +2828,11 @@
     "reviewed": "owner read 2026-10-31 (accepted after independent screen, not read line by line)"
   },
   "explanation:plan_sheet_time_exit": {
-    "sha256": "f69b827c104abe0efc40696c8852a186b6583604f1fd5ab91043adc24f093617",
+    "sha256": "3da7b1b276527a6ece178561b4c942351b9a3bc4ed6888a4e4a2973029ce9cda",
+    "reviewed": "pending owner read"
+  },
+  "explanation:plan_sheet_time_exit_on": {
+    "sha256": "86d2e26dabfe780e2e7fe2c133ae0d43438fa5ed605189b84f92537f137f7287",
     "reviewed": "pending owner read"
   },
   "explanation:plan_sheet_customise": {
@@ -2868,7 +2872,7 @@
     "reviewed": "owner read 2026-10-31 (accepted after independent screen, not read line by line)"
   },
   "labels:plan_sheet": {
-    "sha256": "14de6086dc062e85f906e37429c00e9bedc43bfd799a029e9a5a0bef34d28126",
+    "sha256": "ba1d392e3f5a4464e58e2759eea48fdbce74e9831b71fe67471f3e91eda8fff4",
     "reviewed": "pending owner read"
   },
   "explanation:playbook_test_no_strategy": {
@@ -4433,7 +4437,6 @@
   },
   "explanation:suggestion_lapsed_contract_expired": {
     "sha256": "555637ef88c67b94651c99048afae3d5c03b7d085735c08ef5af7f1f75e6e61d",
-    "reviewed": "pending owner read",
     "reviewed": "owner read 2026-11-25 (ADR-322 point 4, answered by the owner in the question tool)"
   },
   "explanation:money_time_value_live": {

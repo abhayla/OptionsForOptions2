@@ -1071,7 +1071,8 @@ PLAYBOOK_TYPE_LABEL_TEXT: Mapping[str, str] = MappingProxyType(
 NO_PLAN_TEXT = "No plan: nothing is watched for this strategy"  # ADR-330 (11): replaces "default rules apply"
 PLAN_SHEET_LABEL_TEXT: Mapping[str, str] = MappingProxyType({
     "title": "When tracking starts: this strategy's plan", "playbook": "Playbook", "target": "Target",
-    "stop": "Stop", "max_adjustments": "Max adjustments", "time_exit": "Time exit (on expiry day)",
+    "stop": "Stop", "max_adjustments": "Max adjustments", "time_exit": "Time exit",
+    "time_exit_on": "Time exit date (blank = expiry day)",  # ADR-330 (7): any trading day, one date and one time
     "customise": "Customise triggers", "use_as_is": "Use playbook as is", "save": "Save plan", "close": "Close",
     "plan_entry": "Plan", "edit": "Edit plan", "no_plan": NO_PLAN_TEXT, "set_plan": "Set plan",
     "hour": "Hour", "minute": "Minute",

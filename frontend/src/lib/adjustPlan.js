@@ -16,7 +16,7 @@ const count = (v) => (Number.isInteger(v) ? String(v) : '')
 export const formOf = (src) => ({
   playbookId: src?.playbook_id ?? null,
   target: decimal(src?.target), stop: decimal(src?.stop), stopShown: decimal(src?.stop), maxAdjustments: count(src?.max_adjustments),
-  timeExit: clockText(src?.time_exit),
+  timeExit: clockText(src?.time_exit), timeExitOn: text(src?.time_exit_on), // ADR-330 (7): blank date = expiry day
   targetWords: text(src?.target_words), stopWords: text(src?.stop_words), // what the numbers are, the server's words
 })
 
@@ -38,7 +38,7 @@ export function readPlan(body) {
       playbookName: text(body.plan.playbook_name),
       target: decimal(body.plan.target), stop: decimal(body.plan.stop),
       targetWords: text(body.plan.target_words), stopWords: text(body.plan.stop_words),
-      maxAdjustments: count(body.plan.max_adjustments), timeExit: clockText(body.plan.time_exit),
+      maxAdjustments: count(body.plan.max_adjustments), timeExit: clockText(body.plan.time_exit), timeExitOn: text(body.plan.time_exit_on),
     } : null,
     prefill: formOf(body.prefill),
   }
@@ -64,7 +64,8 @@ export function saveBody(form) {
   // ADR-252 addendum: a stop left as the sheet showed it is not sent (the server also compares; this is the first layer)
   if (form.stop.trim() !== '' && form.stop.trim() !== (form.stopShown ?? '').trim()) body.stop = form.stop.trim()
   if (form.maxAdjustments.trim() !== '') body.max_adjustments = form.maxAdjustments.trim()
-  if (form.timeExit.trim() !== '') body.time_exit = form.timeExit.trim()
+  // ADR-330 (7): one time on one day; a blank date is sent as "" = expiry day (the server judges the day)
+  if (form.timeExit.trim() !== '') body.time_exit = { at: form.timeExit.trim(), on: (form.timeExitOn ?? '').trim() }
   return body
 }
 

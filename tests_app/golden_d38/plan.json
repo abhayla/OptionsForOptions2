@@ -15,7 +15,8 @@
   "set_plan": "Set plan",
   "stop": "Stop",
   "target": "Target",
-  "time_exit": "Time exit (on expiry day)",
+  "time_exit": "Time exit",
+  "time_exit_on": "Time exit date (blank = expiry day)",
   "title": "When tracking starts: this strategy's plan",
   "use_as_is": "Use playbook as is"
  },
