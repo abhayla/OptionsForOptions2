@@ -187,6 +187,7 @@ describe('REQ-161 AC-3: the Plan entry on the tracking panel', () => {
     answers[`POST ${PATH}`] = sheetAnswer({ plan: PLAN })
     const w = await entry()
     expect(t(w, 'plan-entry-none').text()).toBe('No plan: nothing is watched for this strategy')
+    expect(t(w, 'plan-entry-none').text()).not.toContain('default rules apply') // ADR-330 (11): never the old line
     await t(w, 'plan-entry-edit').trigger('click')
     await flushPromises()
     await t(w, 'plan-use-as-is').trigger('click')

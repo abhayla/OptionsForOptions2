@@ -45,11 +45,15 @@ async def app_db_url(app_engine, monkeypatch):
     _reset_engine()
 
 
-async def _seeded(app_engine, monkeypatch, sid: str) -> int:
-    """The scenario's contracts into the catalogue (the store's writer), then its strategy (seed_scenario.seed)."""
+async def _seeded(app_engine, monkeypatch, sid: str, *, plan: bool = True) -> int:
+    """The scenario's contracts into the catalogue (the store's writer), then its strategy (seed_scenario.seed), then
+    (ADR-330 (11): only a strategy's own plan is watched) its plan, a copy of the system iron condor playbook; ``plan=False``: none."""
     monkeypatch.setenv("OFO_SCENARIO", sid)
     await load_library(app_engine)  # the whole library's list, once per database
-    return await seed_mod.seed(sid)
+    strategy_id = await seed_mod.seed(sid)
+    if plan:
+        await _planned(app_engine, strategy_id)
+    return strategy_id
 
 
 async def _planned(app_engine, strategy_id: int) -> None:
@@ -82,7 +86,6 @@ def _by_kind(body: dict, kind: str) -> list[tuple]:
 
 async def test_adj02_flags_exactly_t01_t03_t09_with_the_system_wording(app_db_url, monkeypatch):
     sid = await _seeded(app_db_url, monkeypatch, "ADJ-02")
-    await _planned(app_db_url, sid)
     status, body = await _check("ADJ-02", sid)
     assert status == OK, body
     assert (body["strategy_type"], body["type_name"], body["stage"]) == ("ic", "Iron condor",
@@ -113,7 +116,6 @@ async def test_adr237_6_the_screen_check_writes_no_record_and_shows_the_stored_o
     records. Two checks with T-01 true leave the record table unchanged; a record the worker's store function opened
     is named by the T-01 flag (suggestion_id), and a dismissed one gives the "You dismissed this" note."""
     sid = await _seeded(app_db_url, monkeypatch, "ADJ-02")
-    await _planned(app_db_url, sid)
     assert await _record_rows(app_db_url, sid) == []
     for _ in range(2):
         status, body = await _check("ADJ-02", sid)
@@ -142,7 +144,6 @@ async def test_a_records_store_read_failure_is_a_refusal_never_an_empty_answer(a
     from sqlalchemy.exc import OperationalError  # noqa: PLC0415
 
     sid = await _seeded(app_db_url, monkeypatch, "ADJ-02")
-    await _planned(app_db_url, sid)
 
     async def broken(*_a, **_k):
         raise OperationalError("SELECT", {}, Exception("connection lost"))
@@ -158,14 +159,14 @@ async def test_adj01_no_flag(app_db_url, monkeypatch):
 
 
 async def test_a_strategy_with_no_plan_is_not_checked_whatever_playbook_is_active(app_db_url, monkeypatch):
-    """ADR-330 (11): was "the user's active playbook is read when the strategy has no plan". Now no plan = source
+    """ADR-330 (11) (a scenario no other test of the file plans: plans are never deleted): was "the user's active playbook is read when the strategy has no plan". Now no plan = source
     "none": no results, nothing watched (the system and the user's own active playbooks are only sources to copy)."""
-    sid = await _seeded(app_db_url, monkeypatch, "ADJ-01")
+    sid = await _seeded(app_db_url, monkeypatch, "ADJ-43", plan=False)
     async with app_db_url.begin() as conn:
         system = await playbook_store.active_for(conn, "owner", "ic")
         own = await playbook_store.duplicate(conn, "owner", system.id, "Mine")
         await playbook_store.make_active(conn, "owner", own.id)
-    status, out = await _check("ADJ-01", sid)
+    status, out = await _check("ADJ-43", sid)
     assert status == OK and (out["playbook"]["source"], out["playbook"]["id"], out["results"]) == ("none", None, [])
 
 
@@ -184,7 +185,6 @@ async def test_two_screen_checks_write_no_adjustment_state_at_all(app_db_url, mo
     before the fix the first screen check wrote the rule memory (T-01 held at entry), which the worker had cached
     differently."""
     sid = await _seeded(app_db_url, monkeypatch, "ADJ-42")
-    await _planned(app_db_url, sid)
     async with app_db_url.connect() as conn:
         before = (await conn.execute(_STATE_ROWS, {"s": sid})).all()
     for _ in range(2):
@@ -197,7 +197,6 @@ async def test_two_screen_checks_write_no_adjustment_state_at_all(app_db_url, mo
 
 async def test_adj42_f71_already_true_at_entry_then_flags_after_a_clear_check(app_db_url, monkeypatch):
     sid = await _seeded(app_db_url, monkeypatch, "ADJ-42")
-    await _planned(app_db_url, sid)
     status, body = await _check("ADJ-42", sid)
     assert status == OK
     assert [x[0] for x in _by_kind(body, "already_true")] == ["T-01"] and _by_kind(body, "flag") == []
@@ -214,7 +213,6 @@ async def test_adj42_f71_already_true_at_entry_then_flags_after_a_clear_check(ap
 
 async def test_adj24b_no_spot_every_rule_not_checked_with_its_reason_never_a_flag(app_db_url, monkeypatch):
     sid = await _seeded(app_db_url, monkeypatch, "ADJ-24b")
-    await _planned(app_db_url, sid)
     status, body = await _check("ADJ-24b", sid)
     assert status == OK and body["strategy_type"] == "ic"
     assert body["results"] and {x["kind"] for x in body["results"]} == {"not_checked"}
