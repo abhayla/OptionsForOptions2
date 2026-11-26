@@ -6,6 +6,7 @@ from pathlib import Path
 
 import pytest
 from ofo import alerts
+from ofo.adjustment import level_watch
 from ofo.adjustment import stop_lines as sl
 from ofo.errors.explanations import EXPLANATIONS, LABEL_TABLES
 
@@ -18,7 +19,12 @@ def test_actionable_and_informational_kinds_are_exactly_the_decided_ones() -> No
         "plan_loss_stop", "plan_profit_target", "plan_rupee_loss", "plan_rupee_profit", "plan_time_exit",
         "adjustment_rule", "side_closed"}
     assert {k for k, v in alerts.KINDS.items() if not v.actionable} == {
+        "level_watch", "stop_fired", "settled", "orders_placed", "stop_saved"}
+    # ADR-242 (3): a watched level is not actionable and not a History note: its own one-record-per-episode lifecycle
+    assert {k for k in alerts.KINDS if alerts.is_informational(k)} == {
         "stop_fired", "settled", "orders_placed", "stop_saved"}
+    assert alerts.kind_of(level_watch.RULE_PREFIX + level_watch.ABOVE) == alerts.LEVEL_WATCH
+    assert alerts.allowed_answers(alerts.LEVEL_WATCH) == ()
 
 
 def test_answers_per_kind() -> None:

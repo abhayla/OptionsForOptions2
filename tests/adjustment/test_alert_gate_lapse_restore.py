@@ -178,3 +178,20 @@ def test_a_yes_no_close_leaves_a_placeholder_restore_unlevelled_and_a_held_resto
     held, events = steps(held, ag.WEEKLY, [(at("10:41"), D("0.36")), (at("10:46"), D("0.36"))], T03)
     assert events == []  # the same held episode at the same level: no second Held row
     assert held.rule("T-03").hold.level == 1 and not held.rule("T-03").hold.unleveled
+
+
+def test_a_watched_level_closes_its_record_when_it_clears_and_re_arms_while_a_plan_rule_stays_open():
+    # ADR-242 (3): one record per crossing episode; ADR-330 (3): every other rule's record stays open, "no longer true"
+    watch = ag.RuleSpec("watch.level.above", "bool", ())
+    state, events = steps(ag.initial_state(), ag.INTRADAY, [(at("10:40"), True), (at("10:41"), True)], watch)
+    assert len(opened(events)) == 1
+    state, events = steps(state, ag.INTRADAY, [(at("10:42"), False), (at("10:43"), False)], watch)
+    assert lapsed(events) == [ag.Lapsed("watch.level.above", at("10:43"), False)]
+    assert state.rule("watch.level.above").record.final  # closed: the rule is armed again
+    state, events = steps(state, ag.INTRADAY, [(at("10:44"), True), (at("10:45"), True), (at("10:46"), True)], watch)
+    assert len(opened(events)) == 1  # the re-cross is a second record
+    plan = ag.RuleSpec("T-02", "bool", ())
+    state, _ = steps(ag.initial_state(), ag.INTRADAY, [(at("10:40"), True), (at("10:41"), True),
+                                                       (at("10:42"), False), (at("10:43"), False)], plan)
+    rec = state.rule("T-02").record
+    assert rec.stopped and not rec.final

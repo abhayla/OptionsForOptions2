@@ -36,6 +36,8 @@ from ofo_app import playbook_store as pb
 from ofo_app import strategy_store
 
 ALERT_ANSWER_REFUSED = "alert_answer_refused"
+#: the store error this module raises for a not-found / not-open alert (routes catch it here, never via strategy_store)
+StoreError = strategy_store.StrategyStoreError
 #: the reasons that still end an alert because the position the question is about is gone (ADR-330 (3))
 SYSTEM_REASONS = (pb.LAPSE_STRATEGY_CLOSED, pb.LAPSE_CONTRACT_EXPIRED,
                   pb.LAPSE_NOT_MONITORED)
@@ -54,7 +56,8 @@ _OPEN_OF_RULE = text(f"SELECT {_COLUMNS} {_FROM} AND g.strategy_id = :strategy_i
 _OPEN_OF_STRATEGY = text(f"SELECT {_COLUMNS} {_FROM} AND g.strategy_id = :strategy_id "
                          "AND g.outcome = 'open' ORDER BY g.id")
 #: the Active list: open rows of the user's visible strategies of this process (D-29), newest first
-_UNANSWERED_SQL = (f"SELECT {_COLUMNS} {_FROM} AND g.outcome = 'open' AND {{scope}} "
+_UNANSWERED_SQL = (f"SELECT {_COLUMNS} {_FROM} AND g.outcome = 'open' "  # noqa: S608 constant names
+                   f"AND g.kind IS DISTINCT FROM '{kinds.LEVEL_WATCH}' AND {{scope}} "
                    "ORDER BY g.shown_at DESC, g.id DESC")
 _HISTORY_SQL = (f"SELECT {_COLUMNS} {_FROM} AND g.outcome <> 'open' AND {{scope}} "
                 "ORDER BY COALESCE(g.answered_at, g.shown_at) DESC, g.id DESC")
@@ -213,7 +216,7 @@ async def raise_actionable(conn: Any, user_ref: str, strategy_id: int, rule_id: 
     One open row per (strategy, rule): a second call returns the same row; a WORSE value updates value / threshold /
     stage, sets ``escalated_at`` and adds one timeline entry, keeping ``fired_at``; the condition being true again clears
     ``no_longer_true_since`` (one timeline entry); an equal or better value writes nothing. Never closes anything."""
-    if kind not in kinds.KINDS or not kinds.is_actionable(kind):
+    if kind not in kinds.KINDS or not (kinds.is_actionable(kind) or kind == kinds.LEVEL_WATCH):
         raise ValueError(f"{kind!r} is not an actionable alert kind")
     _aware(at)
     async with conn.begin_nested():
@@ -291,6 +294,20 @@ async def close_by_system(conn: Any, user_ref: str, strategy_id: int, reason: st
     return closed
 
 
+async def close_level_watch(conn: Any, user_ref: str, strategy_id: int, rule_id: str, *, at: datetime) -> Alert | None:
+    """ADR-242 (3): the watched level cleared at a candle close, so this episode's record closes (lapsed,
+    condition_stopped, no answer); the next crossing opens a new one. Only a level_watch row closes here: any other
+    open row of the rule is left alone. None when no such row is open (absent: nothing to close)."""
+    _aware(at)
+    async with conn.begin_nested():
+        row = (await conn.execute(_OPEN_OF_RULE, {"user_ref": user_ref, "strategy_id": strategy_id,
+                                                  "rule_id": rule_id})).one_or_none()
+        if row is None or row[4] != kinds.LEVEL_WATCH:
+            return None
+        await pb.lapse(conn, user_ref, row[0], pb.LAPSE_CONDITION_STOPPED)
+        return await _get(conn, user_ref, row[0])
+
+
 async def note_rule_condition(conn: Any, user_ref: str, strategy_id: int, rule_id: str, *, still_true: bool,  # noqa: PLR0913
                               at: datetime) -> Alert | None:
     """The gate's word on one RULE of a strategy (it knows rules, not row ids): ``note_condition`` on the rule's open
@@ -348,7 +365,7 @@ async def inform(conn: Any, user_ref: str, strategy_id: int, kind: str, template
     """An informational message (ADR-330 (3b)): a History row, answered at once ('noted'), never open, never counted.
     The words are a catalogue id plus its slot values (rendered when read, so History can never hold a plain string);
     ``values`` are checked by rendering once now. Returns the row id."""
-    if kind not in kinds.KINDS or kinds.is_actionable(kind):
+    if not kinds.is_informational(kind):
         raise ValueError(f"{kind!r} is not an informational alert kind")
     render_explanation(template_id, **values)  # unknown id, missing/extra slot or wrong type: refused, nothing written
     _aware(at)
