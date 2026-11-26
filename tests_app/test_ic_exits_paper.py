@@ -44,6 +44,7 @@ async def setup(app_engine, monkeypatch, path: str = PATH) -> int:
     await app_engine.dispose()
     sid = await core.seed_mod.seed(path)
     core._reset_engine()
+    await core.give_plan(sid)
     return sid
 
 

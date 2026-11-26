@@ -38,6 +38,7 @@ async def _setup(app_engine, monkeypatch, name: str) -> int:
     await app_engine.dispose()
     sid = await core.seed_mod.seed(PATH)
     core._reset_engine()
+    await core.give_plan(sid)
     async with core._engine().connect() as conn:
         await strategy_alert_style_store.set_pin(conn, "owner", sid, "intraday")
         await conn.commit()
