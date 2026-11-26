@@ -114,3 +114,17 @@ export const CREATE_STRATEGY_ROUTE = { name: 'strategies-create-strategy' }
 // pending owner read (D-54 round 2): the out-of-V1 line when the labels read failed (the server's own sentence is preferred when present)
 export const PLAYBOOK_TEST_OUT_OF_V1_TEXT = 'Testing against past expiries is not in this version: it needs licensed historical option data.'
 export const PLAYBOOK_DELETE_CONFIRM_TEXT = 'Delete this playbook?'
+// pending owner read (26 Nov 2026), T-Q8 (ADR-328 (4)): Option Chain, nothing ticked: the greyed Add Selected (0) says why
+export const CHAIN_ADD_NOTHING_TICKED = 'Tick at least one contract to add.'
+// pending owner read (26 Nov 2026), T-Q10: the Option Chain page's own sentences, moved here unchanged from pages/OptionChainPage.vue
+// (one door); listed in REQ-029 AC-11
+export const CHAIN_WAITING_TEXT = 'Waiting for live data.'
+export const CHAIN_ROWS_MISSING_TEXTS = Object.freeze({
+  SPOT_MISSING: 'The underlying price is missing, so no strikes can be chosen yet.',
+  EXPIRY_UNKNOWN: 'This expiry is not in the catalogue.',
+  CATALOGUE_EMPTY: 'The catalogue lists no options for this expiry.',
+  CATALOGUE_UNREADABLE: 'The catalogue could not be read.',
+})
+export const CHAIN_SPOT_MISSING_ROWS_KEPT_TEXT = 'The underlying price is missing right now: option prices are shown, but the ATM strike, moneyness, IV and Greeks are not.'
+export const CHAIN_NO_STRIKES_MATCH_TEXT = 'No strikes match the filters.'
+export const CHAIN_EXPIRIES_UNREADABLE_TEXT = 'The expiries could not be read, so no chain is shown.'

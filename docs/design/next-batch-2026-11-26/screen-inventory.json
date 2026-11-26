@@ -5399,7 +5399,7 @@
      "labelFrom": "text",
      "ariaLabel": "",
      "testid": "underlying-select",
-     "source": "frontend/src/pages/OptionChainPage.vue:203",
+     "source": "frontend/src/pages/OptionChainPage.vue:200",
      "component": "pages/OptionChainPage.vue"
     },
     {
@@ -5410,7 +5410,7 @@
      "labelFrom": "text",
      "ariaLabel": "",
      "testid": "expiry-select",
-     "source": "frontend/src/pages/OptionChainPage.vue:209",
+     "source": "frontend/src/pages/OptionChainPage.vue:206",
      "component": "pages/OptionChainPage.vue"
     },
     {
@@ -5421,7 +5421,7 @@
      "labelFrom": "text",
      "ariaLabel": "",
      "testid": "filter-strike-range",
-     "source": "frontend/src/pages/OptionChainPage.vue:226",
+     "source": "frontend/src/pages/OptionChainPage.vue:223",
      "component": "pages/OptionChainPage.vue"
     },
     {
@@ -5432,7 +5432,7 @@
      "labelFrom": "text",
      "ariaLabel": "",
      "testid": "filter-moneyness",
-     "source": "frontend/src/pages/OptionChainPage.vue:232",
+     "source": "frontend/src/pages/OptionChainPage.vue:229",
      "component": "pages/OptionChainPage.vue"
     },
     {
@@ -5443,7 +5443,7 @@
      "labelFrom": "attr",
      "ariaLabel": "",
      "testid": "filter-min-oi",
-     "source": "frontend/src/pages/OptionChainPage.vue:236",
+     "source": "frontend/src/pages/OptionChainPage.vue:233",
      "type": "number",
      "component": "pages/OptionChainPage.vue"
     },
@@ -5455,7 +5455,7 @@
      "labelFrom": "attr",
      "ariaLabel": "",
      "testid": "filter-min-volume",
-     "source": "frontend/src/pages/OptionChainPage.vue:237",
+     "source": "frontend/src/pages/OptionChainPage.vue:234",
      "type": "number",
      "component": "pages/OptionChainPage.vue"
     },
@@ -5467,7 +5467,7 @@
      "labelFrom": "attr",
      "ariaLabel": "",
      "testid": "filter-min-ltp",
-     "source": "frontend/src/pages/OptionChainPage.vue:238",
+     "source": "frontend/src/pages/OptionChainPage.vue:235",
      "type": "number",
      "component": "pages/OptionChainPage.vue"
     },
@@ -5479,7 +5479,7 @@
      "labelFrom": "attr",
      "ariaLabel": "",
      "testid": "filter-bid-ask",
-     "source": "frontend/src/pages/OptionChainPage.vue:239",
+     "source": "frontend/src/pages/OptionChainPage.vue:236",
      "type": "checkbox",
      "component": "pages/OptionChainPage.vue"
     },
@@ -5491,7 +5491,7 @@
      "labelFrom": "attr",
      "ariaLabel": "",
      "testid": "details-toggle",
-     "source": "frontend/src/pages/OptionChainPage.vue:240",
+     "source": "frontend/src/pages/OptionChainPage.vue:237",
      "type": "checkbox",
      "component": "pages/OptionChainPage.vue"
     },
@@ -5503,7 +5503,7 @@
      "labelFrom": "text",
      "ariaLabel": "",
      "testid": "filter-reset",
-     "source": "frontend/src/pages/OptionChainPage.vue:241",
+     "source": "frontend/src/pages/OptionChainPage.vue:238",
      "handlers": [
       "click"
      ],
@@ -5518,7 +5518,7 @@
      "labelFrom": "text",
      "ariaLabel": "",
      "testid": "chain-refresh",
-     "source": "frontend/src/pages/OptionChainPage.vue:256",
+     "source": "frontend/src/pages/OptionChainPage.vue:253",
      "handlers": [
       "click"
      ],
@@ -5533,7 +5533,7 @@
      "labelFrom": "aria-label",
      "ariaLabel": "'Select CE ' + row.strike",
      "testid": "select-ce",
-     "source": "frontend/src/pages/OptionChainPage.vue:290",
+     "source": "frontend/src/pages/OptionChainPage.vue:287",
      "type": "checkbox",
      "component": "pages/OptionChainPage.vue"
     },
@@ -5545,7 +5545,7 @@
      "labelFrom": "text",
      "ariaLabel": "",
      "testid": "`a.toLowerCase() + '-ce'`",
-     "source": "frontend/src/pages/OptionChainPage.vue:291",
+     "source": "frontend/src/pages/OptionChainPage.vue:288",
      "handlers": [
       "click"
      ],
@@ -5560,7 +5560,7 @@
      "labelFrom": "aria-label",
      "ariaLabel": "'Select PE ' + row.strike",
      "testid": "select-pe",
-     "source": "frontend/src/pages/OptionChainPage.vue:307",
+     "source": "frontend/src/pages/OptionChainPage.vue:304",
      "type": "checkbox",
      "component": "pages/OptionChainPage.vue"
     },
@@ -5572,7 +5572,7 @@
      "labelFrom": "text",
      "ariaLabel": "",
      "testid": "`a.toLowerCase() + '-pe'`",
-     "source": "frontend/src/pages/OptionChainPage.vue:308",
+     "source": "frontend/src/pages/OptionChainPage.vue:305",
      "handlers": [
       "click"
      ],
@@ -5587,7 +5587,7 @@
      "labelFrom": "text",
      "ariaLabel": "",
      "testid": "`'leg-' + a.toLowerCase()`",
-     "source": "frontend/src/pages/OptionChainPage.vue:326",
+     "source": "frontend/src/pages/OptionChainPage.vue:324",
      "handlers": [
       "click"
      ],
@@ -5602,7 +5602,7 @@
      "labelFrom": "text",
      "ariaLabel": "Fewer lots",
      "testid": "lots-minus",
-     "source": "frontend/src/pages/OptionChainPage.vue:328",
+     "source": "frontend/src/pages/OptionChainPage.vue:326",
      "handlers": [
       "click"
      ],
@@ -5617,7 +5617,7 @@
      "labelFrom": "text",
      "ariaLabel": "More lots",
      "testid": "lots-plus",
-     "source": "frontend/src/pages/OptionChainPage.vue:330",
+     "source": "frontend/src/pages/OptionChainPage.vue:328",
      "handlers": [
       "click"
      ],
@@ -5632,7 +5632,7 @@
      "labelFrom": "text",
      "ariaLabel": "'Remove ' + contractName(e)",
      "testid": "leg-remove",
-     "source": "frontend/src/pages/OptionChainPage.vue:332",
+     "source": "frontend/src/pages/OptionChainPage.vue:330",
      "handlers": [
       "click"
      ],
@@ -5647,7 +5647,7 @@
      "labelFrom": "text",
      "ariaLabel": "",
      "testid": "undo",
-     "source": "frontend/src/pages/OptionChainPage.vue:336",
+     "source": "frontend/src/pages/OptionChainPage.vue:334",
      "handlers": [
       "click"
      ],
@@ -5662,7 +5662,7 @@
      "labelFrom": "text",
      "ariaLabel": "",
      "testid": "multi-expiry-continue",
-     "source": "frontend/src/pages/OptionChainPage.vue:340",
+     "source": "frontend/src/pages/OptionChainPage.vue:338",
      "handlers": [
       "click"
      ],
@@ -5677,7 +5677,7 @@
      "labelFrom": "text",
      "ariaLabel": "",
      "testid": "multi-expiry-review",
-     "source": "frontend/src/pages/OptionChainPage.vue:341",
+     "source": "frontend/src/pages/OptionChainPage.vue:339",
      "handlers": [
       "click"
      ],
@@ -5692,7 +5692,7 @@
      "labelFrom": "text",
      "ariaLabel": "",
      "testid": "add-selected",
-     "source": "frontend/src/pages/OptionChainPage.vue:343",
+     "source": "frontend/src/pages/OptionChainPage.vue:342",
      "handlers": [
       "click"
      ],
