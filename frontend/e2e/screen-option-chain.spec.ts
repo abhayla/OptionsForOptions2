@@ -547,7 +547,7 @@ test.describe('Option Chain: filters and Clear filters (REQ-029 AC-9; REQ-087 AC
   })
 
   test('CHAIN-10 Clear filters empties Min OI, Min volume, Min premium, Has bid and ask, sets All strikes, and asks the server with none of them', async ({ page }) => {
-    // Spec basis: none (searched: Clear filters; REQ-029 AC-9 names the filters, not a reset) - tests what the code does
+    // Spec basis: REQ-029 AC-9 (Clear filters resets ITM/ATM/OTM, premium, OI and volume, bid/ask; T-Q4)
     const S = await openNifty(page)
     await page.getByTestId('filter-min-oi').fill('270000')
     await expect(rows(page)).toHaveCount(3)
@@ -566,8 +566,8 @@ test.describe('Option Chain: filters and Clear filters (REQ-029 AC-9; REQ-087 AC
     expect(S.sent.at(-1)).toEqual({ underlying: 'NIFTY', expiry: EXP1, strikes_each_side: 6 })
   })
 
-  test('CHAIN-10 Clear filters leaves the strike range, Details and the ticked contracts as they were (question for the owner: should it?)', async ({ page }) => {
-    // Spec basis: none (searched: Clear filters, reset, strike range); REQ-029 AC-9 lists "expiry, strike range" among the filters
+  test('CHAIN-10 Clear filters leaves the strike range, Details and the ticked contracts as they were (view settings, not filters: REQ-029 AC-9, coordinator answer T-Q4)', async ({ page }) => {
+    // Spec basis: REQ-029 AC-9 (Clear filters clears the filters; the strike range and Details are view settings and stay; T-Q4)
     await openNifty(page)
     await page.getByTestId('filter-strike-range').selectOption('2')
     await page.getByTestId('details-toggle').check()
@@ -661,14 +661,16 @@ test.describe('Option Chain: ticking, Buy / Sell, lots, Remove, Undo (REQ-030 AC
     await expect(r.getByTestId('sell-ce')).toHaveAttribute('aria-pressed', 'true')
   })
 
-  test('CHAIN-13 the same action twice on one contract is one leg: the second press switches it off', async ({ page }) => {
-    // Spec basis: REQ-030 AC-5 (the same contract with the same action is one row); the "second press switches it off" part is the code's choice: see questions
+  test('CHAIN-13 the same action twice on one contract is one leg: the second press removes the leg and unticks the box', async ({ page }) => {
+    // Spec basis: REQ-030 AC-5 (a contract is one row; the second press of Buy or Sell on the same ticked contract removes it, owner answer T-Q5, ADR-330 (40); more lots go in the lots box)
     await openNifty(page)
     const r = rowOf(page, '25150')
     await r.getByTestId('buy-ce').click()
+    await expect(page.getByTestId('selected-leg')).toHaveCount(1)
     await r.getByTestId('buy-ce').click()
-    await expect(page.getByTestId('selected-leg')).toHaveCount(0)
+    await expect(page.getByTestId('selected-leg')).toHaveCount(0) // removed, not a second row and not a doubled lot count
     await expect(r.getByTestId('select-ce')).not.toBeChecked()
+    await expect(r.getByTestId('buy-ce')).toHaveAttribute('aria-pressed', 'false')
   })
 
   test('CHAIN-12 unticking a contract takes its legs out of Selected Legs; with nothing left the summary and Add Selected are gone', async ({ page }) => {
