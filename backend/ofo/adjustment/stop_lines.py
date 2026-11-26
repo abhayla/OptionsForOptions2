@@ -28,6 +28,14 @@ STOP_TRIGGERS: Final = frozenset({TRIGGER_MAX_LOSS, TRIGGER_MARGIN})
 #: the plan's time exit ("Clock time reached", ADR-330 (7)): its alert kind is plan_time_exit, not a stop line
 TRIGGER_TIME_EXIT: Final = "T-10b"
 
+#: ADR-330 (5): the plan's rupee levels (whole trade, before charges). Rule ids like the 2x-credit line; the guards
+#: hold the typed level as decimal text. A hit raises an alert and nothing more.
+RUPEE_LOSS_RULE: Final = "plan.rupee_loss"
+RUPEE_PROFIT_RULE: Final = "plan.rupee_profit"
+RUPEE_LOSS_KEY: Final = "loss_stop_rupees"
+RUPEE_RULES: Final = frozenset({RUPEE_LOSS_RULE, RUPEE_PROFIT_RULE})  # one amount each, no per-stage value
+RUPEE_PROFIT_KEY: Final = "profit_target_rupees"
+
 #: rule ids: the max-loss and margin lines answer under their old trigger ids (same wording, same rule memory, so
 #: "already true" and the alert gate carry over); only the 2x-credit line (ADR-247) has a new id
 CREDIT_RULE: Final = "stop.credit_x"
@@ -116,6 +124,7 @@ __all__ = [
     "TRIGGER_MARGIN",
     "TRIGGER_MAX_LOSS",
     "TRIGGER_TIME_EXIT",
+    "RUPEE_LOSS_RULE", "RUPEE_PROFIT_RULE", "RUPEE_RULES", "RUPEE_LOSS_KEY", "RUPEE_PROFIT_KEY",
     "StopInForce",
     "StopsInForce",
     "is_stop_rule",

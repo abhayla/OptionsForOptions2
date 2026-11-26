@@ -11,6 +11,9 @@ from typing import Final
 
 LOSS: Final = "loss"
 PROFIT: Final = "profit"
+NO_PNL: Final = "no_pnl"  # reasons are codes: the words live in the catalogue
+PNL_UNREADABLE: Final = "pnl_unreadable"
+UNKNOWN_SIDE: Final = "unknown_side"
 
 
 @dataclass(frozen=True)
@@ -53,11 +56,11 @@ def pnl_amount(level: Decimal, pnl: Decimal | None, side: str) -> Outcome:
     if not _usable(level) or level <= 0:
         raise ValueError(f"rupee level must be a positive finite Decimal: {level!r}")
     if pnl is None:
-        return NotComputable("no P&L figure")
+        return NotComputable(NO_PNL)
     if not _usable(pnl):
-        return NotComputable("P&L figure unreadable")
+        return NotComputable(PNL_UNREADABLE)
     if side == LOSS:
         return Met() if pnl <= -level else NotMet()
     if side == PROFIT:
         return Met() if pnl >= level else NotMet()
-    return NotComputable("unknown side")
+    return NotComputable(UNKNOWN_SIDE)
