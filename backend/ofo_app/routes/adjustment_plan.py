@@ -38,6 +38,7 @@ from ofo.charges import ChargeRates
 from ofo.checks import pnl_amount as rupee
 from ofo.checks import rupee_figures as figs
 from ofo.checks.time_of_day import CLOCK, DATE, ON_EXPIRY, day_of, time_exit_parts
+from ofo.engine.display import format_whole_rupees
 from ofo.errors import render
 from ofo.errors.explanations import LABEL_TABLES, render_explanation
 from ofo.settings import layers
@@ -365,8 +366,10 @@ def _rupee_stop_part(stop: figs.Figures) -> Any:
 def _stop_warning(level: Decimal | None, max_loss: Decimal | None) -> Any:
     """ADR-330 (25): ONE warning line when a rupee stop is larger than the stop base's max loss; never when the level
     or the base is unknown. It informs; nothing is refused."""
-    if level is None or max_loss is None or level <= max_loss:
-        return None
+    if level is None or max_loss is None or max_loss <= 0 or level <= max_loss:
+        return None  # no loss to exceed (a base with no loss, or an unreadable one) is no warning
+    if format_whole_rupees(level, signed=False) == format_whole_rupees(max_loss, signed=False):
+        return render_explanation("plan_stop_above_max_loss_paise", stop=level, loss=max_loss)  # never "Rs 2,600 ... 2,600"
     return render_explanation("plan_stop_above_max_loss", stop=level, loss=max_loss)
 
 
