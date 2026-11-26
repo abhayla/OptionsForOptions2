@@ -140,6 +140,20 @@ describe('D-41: the Net Positions table and the Paper P&L panel read one book', 
     expect(texts(w, 'net-ltp')).toEqual(OWN)
     expect(texts(w, 'tracking-leg-ltp')).toEqual(texts(w, 'net-ltp'))
   })
+  it('N-44 a book priced at the last close, a tracking reply with all legs unpriced: no "No price for:" line', async () => {
+    TRACK = track({ state: 'PAUSED', as_of: TRACK_AT, unpriced_text: 'No price for: NIFTY 1 Dec 25750 PE, 25850 PE, 26050 CE, 26150 CE.',
+      legs: LEGS.map((l, i) => tLeg(l, i, { price_state: 'stale', current_price_display: null, price_at: null })) })
+    const w = await page(book({ state: 'PAUSED', as_of: BOOK_AT, positions: LEGS.map((l) => pos(l, { price_state: 'stale' })) }))
+    expect(texts(w, 'tracking-leg-ltp')).toEqual(OWN)
+    expect(w.find('[data-testid="tracking-unpriced"]').exists()).toBe(false)
+    expect(w.text()).not.toContain('No price for:')
+  })
+  it('N-44 a book that itself has an unpriced leg: the line shows the book\'s own text', async () => {
+    TRACK = track({ unpriced_text: 'No price for: tracking-only text.' })
+    const unpriced = pos(LEGS[1], { price_state: 'stale', ltp_text: null, unbooked_text: null, total_text: null, no_price_text: 'no price', price_at: null })
+    const w = await page(book({ unpriced_text: 'No price for: NIFTY 26100 CE.', positions: [pos(LEGS[0]), unpriced, pos(LEGS[2]), pos(LEGS[3])] }))
+    expect(w.get('[data-testid="tracking-unpriced"]').text()).toBe('No price for: NIFTY 26100 CE.')
+  })
   it('9 no shared book: the panel keeps its tracking rows (price, time, P&L as the tracking reply sent)', async () => {
     const w = mount(TrackingPanel, { props: { savedId: 170, legs: [], shared: null, sharedFailed: false } })
     mounted.push(w)

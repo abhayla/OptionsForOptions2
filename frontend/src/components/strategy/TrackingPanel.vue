@@ -128,7 +128,7 @@ const headline = computed(() => {
   const s = block.value && v ? block.value : null
   if (!s) return { ...v, line: null, unpriced: v?.unpriced ?? null }
   const text = s.text === null ? (s.line ?? NOT_CONNECTED_TEXT) : `${PAPER_PNL_PREFIX}${s.text} ${s.label}${v.kind === 'exited' ? ' - exited' : ''}`.replace(/ +$/, '')
-  return { text, kind: s.kind, breakdown: s.breakdown, afterReason: s.reason, line: s.text === null ? null : s.line, unpriced: s.unpriced ?? v.unpriced ?? null }
+  return { text, kind: s.kind, breakdown: s.breakdown, afterReason: s.reason, line: s.text === null ? null : s.line, unpriced: s.unpriced ?? null }
 })
 // D-41 (modular doors, Phase 3): with the page's book read, an OPEN leg's LTP, quote time and P&L are that book's own (its display price,
 // ADR-212), the very LegPrice the Net Positions table shows; P&L is the leg's TOTAL, the table's figure (ADR-328 (3)). The leg is found by its
