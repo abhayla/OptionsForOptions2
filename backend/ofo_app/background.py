@@ -1929,6 +1929,10 @@ async def owner_lister(provider: Any, gate: Any = None,
             log.exception("background: listing strategy %s failed; it is skipped", s.id)
             unread.add(s.id)  # not read is not gone: its queued alert events stay (#636 r6 review)
             continue
+        if resolved.source == "none":  # P2 / ADR-330 (11): no plan = nothing watched, a DEFINITE answer (a failed read raised above)
+            async with held(gate, GATE_REBUILD), get_sessionmaker()() as db:  # its open alerts close: not_monitored
+                await _lapse_exited(db, OWNER_REF, s.id, "not_monitored")
+            continue
         if resolved.body is not None:
             out.append(Watched(OWNER_REF, s.id, tracked, resolved.body, resolved.is_system, OWNER_REF,
                                resolved.strategy_layer, facts, resolved=resolved, charge_rates=rates,

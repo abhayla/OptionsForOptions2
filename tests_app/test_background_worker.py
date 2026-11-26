@@ -862,6 +862,36 @@ async def _states_after_list(app_db_url, monkeypatch, *, listed=None, read=None)
     return [(s.outcome, s.lapse_reason) for s in recs]
 
 
+async def _after_resolve(app_db_url, monkeypatch, resolve) -> tuple[list[tuple], int]:
+    """(outcome, answer, reason) of the seeded strategy's open T-03 alert after one lister pass whose plan read is
+    ``resolve``, and the unanswered count (the bell) of the owner."""
+    w, rec = await _watched_and_fresh_t03(app_db_url, monkeypatch)
+    monkeypatch.setattr(background.check, "resolve", resolve)
+    await background.owner_lister(scenario_mode.current().provider)
+    async with app_db_url.connect() as conn:
+        recs = [x for x in await actionable_alerts.history(conn, "owner") if x.id == rec]
+        open_now = [x for x in await actionable_alerts.unanswered(conn, "owner") if x.strategy_id == w.strategy_id]
+    return [(x.outcome, x.answer, x.closed_reason) for x in recs], len(open_now)
+
+
+async def test_a_plan_less_strategy_closes_its_open_alert_as_not_monitored(app_db_url, monkeypatch):
+    """P2 checker MAJOR: resolve says "none" (a definite answer) -> the alert opened under the old playbook fallback
+    is closed_by_system / not_monitored and leaves Active and the bell."""
+    from ofo_app.adjustment_check import Resolved  # noqa: PLC0415
+
+    async def none(*_a, **_k):
+        return Resolved("none", None, None, None, False, saved_before_adr247=False)
+    states, still_open = await _after_resolve(app_db_url, monkeypatch, none)
+    assert states == [("lapsed", "closed_by_system", "not_monitored")] and still_open == 0
+
+
+async def test_a_failed_plan_read_keeps_the_open_alert(app_db_url, monkeypatch):
+    async def failed(*_a, **_k):
+        raise RuntimeError("plan read failed")
+    states, still_open = await _after_resolve(app_db_url, monkeypatch, failed)
+    assert states == [] and still_open == 1  # still open: not read is not gone
+
+
 async def test_a_strategy_with_nothing_traded_lapses_its_open_record_as_no_longer_monitored(app_db_url, monkeypatch):
     async def nothing(_sid, _rates):
         return None
