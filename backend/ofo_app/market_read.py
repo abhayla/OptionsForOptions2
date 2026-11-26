@@ -35,7 +35,8 @@ log = logging.getLogger(__name__)
 
 READ_WAIT_S: Final = 3.0  # ADR-327 (1): the longest a read waits for a price it asked the feed for
 MARKET_CLOSED: Final = "market_closed"
-Purpose = Literal["trigger_check"]  # named so a log line says what a wait was for; the basis is always ``leg_price``
+# named so a log line says what a wait was for; the basis is always ``leg_price``
+Purpose = Literal["trigger_check", "stop_fire"]
 
 
 @dataclass(frozen=True)
