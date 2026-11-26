@@ -98,6 +98,30 @@ export function greekModeHeading(rows, mode) {
   return only && only !== DASH ? `Per position, ${only} units` : 'Per position'
 }
 
+/** #744: THE join of a reply leg to its book leg, for every reader on the builder page (the P&L Table, the Full table, the leg list's
+ *  "Price has moved" text): the book's figures (a paperLegsOf entry) only when contract (the entry's key), side AND lots equal the net leg's and
+ *  no other reply leg names that contract; otherwise null (the reader shows the dash or nothing, never the reply's price). */
+export function paperBookLeg(leg, legs, paperLegs) {
+  const own = paperLegs?.get(leg?.instrument_id)
+  if (own === undefined) return null
+  const named = (legs ?? []).filter((l) => l?.instrument_id === leg.instrument_id).length
+  return named === 1 && leg.action === own.action && String(leg.lots) === String(own.lots) ? own : null
+}
+
+/** #744: the leg list's "now" price of a PAPER trade, by instrument id, through the same join (paperBookLeg): the book's LTP text for a leg
+ *  that joins and has one; a leg with none (not in the book, another side or lots, failed read, no price) is absent, so no "moved" marker.
+ *  Returns the two maps LegList takes: { ltpById, priceTextById } (texts as sent, nothing computed). */
+export function paperLegListPrices(replyLegs, paperLegs) {
+  const ltpById = {}
+  const priceTextById = {}
+  for (const l of replyLegs ?? []) {
+    const own = paperBookLeg(l, replyLegs, paperLegs)
+    priceTextById[l.instrument_id] = { ltp_display: own?.priced ? own.ltp : null, planned_entry_display: l.planned_entry_display ?? null }
+    if (own?.priced) ltpById[l.instrument_id] = own.ltp
+  }
+  return { ltpById, priceTextById }
+}
+
 /** ADR-194 (1): one row per leg plus the reply's own TOTAL row when it sent one (never a browser sum). Null when the
  *  reply's table lacks a compact column. */
 export function compactRows(table, legs = null, paperLegs = null) {
@@ -109,14 +133,11 @@ export function compactRows(table, legs = null, paperLegs = null) {
   // figure is used only when the reply row's contract, side AND lots equal the net leg's and no other reply row names that contract; any
   // other row (a draft leg, an edited lot count, a flipped side) shows the dash, never the reply's plan figure (one source per screen). No
   // percent: the book sends none (ADR-008).
-  const named = new Map()
-  for (const l of legs ?? []) named.set(l?.instrument_id, (named.get(l?.instrument_id) ?? 0) + 1)
   const byLegNo = new Map((legs ?? []).map((l, k) => [String(k + 1), l])) // the reply's 1-based leg number, matched as text (no parsing)
   return rows.map((r, i) => {
     if (r.isTotal) return r
-    const leg = byLegNo.get(String(table.rows[i]?.cells?.leg?.value))
-    const own = paperLegs.get(leg?.instrument_id)
-    const book = own !== undefined && named.get(leg.instrument_id) === 1 && leg.action === own.action && String(leg.lots) === String(own.lots)
+    const own = paperBookLeg(byLegNo.get(String(table.rows[i]?.cells?.leg?.value)), legs, paperLegs)
+    const book = own !== null
     const put = (id, text) => ({ ...r.values[id], display: text, value: null })
     const t = book ? own : { entry: DASH, ltp: DASH, pnl: DASH }
     return { ...r, book, values: { ...r.values, entry_price: put('entry_price', t.entry), ltp: put('ltp', t.ltp), unrealized_pnl: put('unrealized_pnl', t.pnl), pnl_percent: put('pnl_percent', DASH) } }

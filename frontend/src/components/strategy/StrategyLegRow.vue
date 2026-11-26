@@ -26,7 +26,7 @@
         data-testid="cell"
       >
         <span v-if="c.id === 'action' || c.id === 'instrument'" :class="['tag', tagClass(c.id)]">{{ cellText(row, c) }}</span>
-        <template v-else>{{ cellText(row, c) }}</template>
+        <template v-else>{{ bookCells?.[c.id] ?? cellText(row, c) }}</template>
       </td>
     </template>
   </tr>
@@ -42,6 +42,7 @@ const props = defineProps({
   columns: { type: Array, required: true },
   maxProfit: { type: String, default: null },
   maxLoss: { type: String, default: null },
+  bookCells: { type: Object, default: null }, // #744: a paper trade's book texts for this row ({ columnId: text }); they replace the reply's cell text
 })
 
 const side = computed(() => props.row.cells.action?.value)

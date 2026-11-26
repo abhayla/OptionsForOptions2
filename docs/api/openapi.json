@@ -9121,6 +9121,10 @@
           "contract_text": {
             "title": "Contract Text"
           },
+          "exit_fills": {
+            "title": "Exit Fills",
+            "type": "integer"
+          },
           "expiry": {
             "format": "date",
             "title": "Expiry",
@@ -9202,6 +9206,7 @@
           "average_entry_text",
           "average_exit",
           "average_exit_text",
+          "exit_fills",
           "booked",
           "booked_text",
           "opened_at",

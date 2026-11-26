@@ -961,3 +961,21 @@ async def test_the_closed_row_carries_the_settlement_reason_and_a_scenario_settl
         records = (await c.get("/paper/alerts/records")).json()["records"]
     assert sorted(r["reason_text"] for r in closed) == [why, why]
     assert [r["strategy_id"] for r in records] == [stored.id]
+
+
+# N-47: the Positions list closed legs carry the same settlement sentence and exit text as the builder book.
+async def test_the_list_closed_legs_carry_the_settlement_sentence_and_exit_text(db, notified):
+    from ofo_app import paper_settlement  # noqa: PLC0415
+    app, stored, ids = await _open(db)
+    at = datetime.datetime(2026, 11, 24, 10, 0, tzinfo=datetime.UTC)
+    why = str(paper_settlement.settle_reason("NIFTY", D("25641.35")))
+    legs = [paper_store.NewOrder(ids[0], "BUY", 65, D("0.00"), "settle", at, why),
+            paper_store.NewOrder(ids[1], "SELL", 65, D("246.03"), "settle", at, why)]
+    await paper_store.place(db, stored.user_ref, stored.id, legs, entry=None)
+    async with _client(app) as c:
+        book = (await c.get(f"/paper/strategies/{stored.id}")).json()["closed"]
+        listed = (await c.get("/paper/strategies")).json()["strategies"]
+    row = next(s for s in listed if s["strategy_id"] == stored.id)
+    assert row["closed"], "the list reply carries the closed legs"
+    assert [c["reason_text"] for c in row["closed"]] == [why, why]
+    assert [c["average_exit_text"] for c in row["closed"]] == [c["average_exit_text"] for c in book]

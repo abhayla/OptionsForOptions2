@@ -66,7 +66,8 @@ import LeaveBuilderDialog from '@/components/strategy/LeaveBuilderDialog.vue'
 import { replacePrompt } from '@/lib/readyMade'
 import SaveDraftBar from '@/components/strategy/SaveDraftBar.vue'
 import LegList from '@/components/strategy/LegList.vue'
-import { applyEditReply, buildEditRequest, controlsFrom, moveKey, MAX_STEPS, RELATIVE_CONTROLS, executeRefusal, CLEAR_UNDO_SECONDS_KEY, MULTIPLIER_MAX_KEY, EXECUTE_WAITS_FOR_LATEST, NO_CONTROLS } from '@/lib/legEdit'
+import { paperLegListPrices } from '@/lib/chartCard'
+import { applyEditReply,buildEditRequest, controlsFrom, moveKey, MAX_STEPS, RELATIVE_CONTROLS, executeRefusal, CLEAR_UNDO_SECONDS_KEY, MULTIPLIER_MAX_KEY, EXECUTE_WAITS_FOR_LATEST, NO_CONTROLS } from '@/lib/legEdit'
 import { createNewestWins, isSuperseded } from '@/lib/newestWins'
 import { NOT_CONNECTED_LABEL, buildDraft } from '@/lib/legPicker'
 import { matchesLegs } from '@/lib/liveMatch'
@@ -427,6 +428,8 @@ const STRATEGY_ID = /^[1-9]\d{0,17}$/
 // reaches the server is the list paperOrdersFor(net, legs) gives, reviewed in the confirm dialog. Save / Save As / Add to Paper
 // are not offered (SaveDraftBar paper-mode). A book that cannot be read is said plainly; the plan is never shown in its place.
 const paper = ref(null) // { id, book, net } while in Drafts Mode, else null
+// N-48: every leg of the paper book is closed (it has closed lifecycles, none open): Completed, nothing to add to (ADR-002)
+const paperCompleted = computed(() => { const b = paper.value?.book; return !!b && Array.isArray(b.closed) && b.closed.length > 0 && Array.isArray(b.positions) && b.positions.every((p) => p.net_quantity === 0) })
 const pendingOrders = computed(() => (paper.value ? paperOrdersFor(paper.value.net, legs.value) : []))
 const paperRows = ref([])
 const paperDialog = ref(false)
@@ -502,7 +505,11 @@ function exitPaper(contractId, lots) {
 // them), so no "pending change" outlives a dialog the page closed. The user's own Cancel is userCancelPaperDialog: u513 (owner test note
 // #85) keeps the exits the user chose as edits, counted and discardable. A dialog of "Review and add" keeps its edits. While a POST is in
 // flight nothing closes it: its answer (or the unknown-outcome text) decides.
-const userCancelPaperDialog = () => { if (!paperBusy.value) paperDialog.value = false }
+const userCancelPaperDialog = () => {
+  if (paperBusy.value) return
+  paperDialog.value = false
+  if (exitOrigin.value) { exitOrigin.value = false; legsBeforeExit = null } // the kept exits are ordinary edits now: the next Exit takes a fresh snapshot
+}
 function cancelPaperDialog() {
   if (paperBusy.value) return
   const wasExit = exitOrigin.value
@@ -516,8 +523,8 @@ function cancelPaperDialog() {
 }
 // ADR-328 (4) / D-05: a paper dialog posts nothing while the read failed or the trade changed elsewhere (any dialog: its orders are
 // built from the net on screen); it closes through the same cancel as the user's, the panel's reason line says why.
-watch(exitBlocked, (blocked) => {
-  if (blocked && paperDialog.value && !paperBusy.value && !paperStale.value && paperState.value !== PAPER_STATE.UNKNOWN) cancelPaperDialog()
+watch([exitBlocked, paperBusy], ([blocked]) => { // also when a POST answers: a block that arrived meanwhile is acted on now
+  if (blocked &&paperDialog.value && !paperBusy.value && !paperStale.value && paperState.value !== PAPER_STATE.UNKNOWN) cancelPaperDialog()
 })
 // Drafts Mode summary: the book's Profit left / Loss left first (or the words for its extremes_reason), its original Max Profit /
 // Max Loss below; every figure the book reply's text as sent. Null outside Drafts Mode: the summary is unchanged.
@@ -822,7 +829,15 @@ async function restoreDrafts(h) {
   if (legs.value !== before) return // the legs changed while the read was out: never overwrite them
   if (read.kind !== 'paper' || String(read.book.strategy_id) !== String(h.paperId)) { openError.value = unreadableParts(null); return }
   enterDrafts(read.book.strategy_id, read)
-  if (h.netKey && JSON.stringify(netKeyOf(read.net)) === JSON.stringify(h.netKey)) setLegs(h.legs.map((l) => ({ ...l })))
+  if (h.netKey && JSON.stringify(netKeyOf(read.net)) === JSON.stringify(h.netKey)) {
+    // N-37: a leg that was the book's own fill when held stays the book's fill: it takes the fill the book just answered (the average and its
+    // quote time), so the page still knows it as a fill and never calls it a price the user typed. Other legs come back as held.
+    const fills = new Set(h.fills ?? [])
+    setLegs(h.legs.map((l) => {
+      const fill = fills.has(paperFillKey(l)) ? read.net.find((n) => n.contract_id === l.contract_id) : undefined
+      return fill ? { ...l, planned_entry: fill.planned_entry, captured_at: fill.captured_at } : { ...l }
+    }))
+  }
   else restoreNote.value = DRAFTS_CHANGED_TEXT
 }
 // ADR-329 (3): Add Selected arrives as a ?draft= link on the builder's held legs: the ticked contracts go through the one door
@@ -840,6 +855,9 @@ function clearAddedTicks() {
   if (JSON.stringify(chainTicks.draftOf(u)) === q) chainTicks.clear()
 }
 let addedDraft = heldBack?.addedDraft ?? null
+// N-36: the handled mark is the ?draft= text plus the history entry that carried it, so Back into the same entry asks nothing
+// while a NEW Add Selected with the very same ticks (a new entry) still asks.
+const entryMark = () => JSON.stringify([route.query.draft ?? null, router?.options?.history?.state?.addEntry ?? null])
 async function addFromChain() {
   const fresh = legsFromQuery()
   // F1: a strategy has one underlying; ticked contracts of another underlying than the held legs are refused, nothing is added
@@ -857,20 +875,23 @@ async function addFromChain() {
     return { ...l, id: `chain-${n}` }
   })
   const r = await door.admit(legs.value, incoming, { opposite: 'allow' })
-  if (!r) return false // Cancel: the held legs stay as they were
+  if (!r) { // Cancel: the held legs stay as they were, the ticks stay (ADR-330 (20)); Back into this same ?draft= entry asks nothing again (N-36)
+    addedDraft = entryMark()
+    return false
+  }
   if (r.error) {
     chainError = { ...INVALID_LINK_PARTS, what_happened: r.error } // shown after the held legs' first reads, which clear editError
     return false
   }
   setLegs([...r.legs, ...r.kept])
-  addedDraft = route.query.draft ?? null // F3: Back into this same ?draft= entry must not add the same ticks again
+  addedDraft = entryMark() // F3: Back into this same ?draft= entry must not add the same ticks again
   clearAddedTicks()
   return true
 }
 onMounted(async () => {
   index.start() // the page holds the index itself (its own socket), so an empty builder still has a spot
   if (heldBack?.paperId != null) await whileOpening(() => restoreDrafts(heldBack))
-  const sameAdd = heldBack?.addedDraft != null && heldBack.addedDraft === (route.query.draft ?? null) // F3: already added to this hold
+  const sameAdd = heldBack?.addedDraft != null && heldBack.addedDraft === entryMark() // F3: already added to this hold
   const added = heldBack && draftQuery && canonicalQueryLegs && !sameAdd ? await addFromChain() : false
   if (!added) {
     load()
@@ -1111,6 +1132,8 @@ const ltpById = computed(() => Object.fromEntries((data.value?.legs ?? []).filte
 // the paper confirm list starts at it instead of the planned entry captured when the leg was added
 const livePriceById = computed(() => Object.fromEntries((data.value?.legs ?? []).map((l) => [l.instrument_id, l.ltp_display ?? l.ltp ?? null]).filter(([, v]) => typeof v === 'string' && v.trim() !== '')))
 const priceTextById = computed(() => Object.fromEntries((data.value?.legs ?? []).map((l) => [l.instrument_id, { ltp_display: l.ltp_display ?? null, planned_entry_display: l.planned_entry_display ?? null }])))
+// #744: the leg list's "Price has moved ... now" price: a paper trade reads the book (through the one join), any other plan keeps the reply's
+const legListPrices = computed(() => (paper.value ? paperLegListPrices(data.value?.legs, paperLegsOf(paper.value.net, paper.value.book, paperBookFailed.value)) : { ltpById: ltpById.value, priceTextById: priceTextById.value }))
 const legQuoteRows = computed(() => legQuotes(data.value))
 // A leg's contract name: from its own fields, else looked up from the page's draft legs by instrument id (ADR-086).
 const nameOf = (leg) => nameFromPool(leg, legs.value, data.value?.underlying ?? headerUnderlying.value)
@@ -1138,12 +1161,13 @@ const pricesStamp = computed(() => {
 })
 // ADR-329 (1), (2): leaving the builder for the Option Chain holds what it shows; leaving for any other page with unsaved legs asks.
 // The guard registers only when the page is rendered by a <router-view> (the app); a page mounted directly has none.
+// the snapshot's paperId comes from `paper` (Drafts Mode itself; a refresh reply's book may carry no id): the leave question's "pending" reads it
 const leaveGuard = useLeaveBuilder({
   role: 'builder',
   unsaved: () => unsavedCount({ legCount: legs.value.length, savedId: savedId.value, inDrafts: paper.value !== null, pendingCount: pendingOrders.value?.length ?? 0 }),
   snapshot: () => (legs.value.length
     ? { legs: legs.value, openStrategy: openStrategy.value, savedId: savedId.value, savedRevision: savedRevision.value, shapeName: shapeName.value,
-      paperId: paper.value?.book?.strategy_id ?? null, netKey: paper.value ? netKeyOf(paper.value.net) : null, addedDraft }
+      paperId: paper.value ? (paper.value.book?.strategy_id ?? paper.value.id) : null, netKey: paper.value ? netKeyOf(paper.value.net) : null, fills: paperFills.value, addedDraft }
     : null),
 })
 </script>
@@ -1210,8 +1234,8 @@ const leaveGuard = useLeaveBuilder({
         <div :class="paper ? 'rounded-lg border-2 border-dashed border-warn p-2' : 'contents'" data-testid="legs-frame" :data-paper-mode="paper ? 'true' : 'false'">
         <p v-if="paper" class="mb-2 text-xs font-semibold text-warn" data-testid="paper-mode-label">{{ PAPER_MODE_LABEL }}</p>
         <LegList
-          :opening="opening"
-          :multiplier-max="served.integer(MULTIPLIER_MAX_KEY)" :legs="legs" :pending-steps="pendingSteps" :paper-fills="paperFills" :quote-at-by-id="quoteAtById" :oldest-quote-at="data?.oldest_quote_at ?? null" :shape-name="shapeName" :has-reply="hasReply" :controls="controls" :updating="updating" :error-parts="editError" :error-index="editErrorIndex" :ltp-by-id="ltpById" :price-text-by-id="priceTextById"
+          :opening="opening" :done="paperCompleted" :locked="exitBlocked" :lock-reason="exitGate.reason.value"
+          :multiplier-max="served.integer(MULTIPLIER_MAX_KEY)" :legs="legs" :pending-steps="pendingSteps" :paper-fills="paperFills" :quote-at-by-id="quoteAtById" :oldest-quote-at="data?.oldest_quote_at ?? null" :shape-name="shapeName" :has-reply="hasReply" :controls="controls" :updating="updating" :error-parts="editError" :error-index="editErrorIndex" :ltp-by-id="legListPrices.ltpById" :price-text-by-id="legListPrices.priceTextById"
           :undo-offered="undoHeld !== null" :leg-unit="legUnit" :strategy-name="openStrategy?.name ?? null"
           @edit="editLeg" @edit-leg="openInPicker" @include-all="includeAll" @remove="removeLeg" @add-leg="focusPicker" @pick-chain="pickFromChain" @clear-all="clearAll" @undo-clear="undoClear"
         >
@@ -1228,10 +1252,10 @@ const leaveGuard = useLeaveBuilder({
         </div>
         <PaperBookPanel v-if="paper" :book="paper.book" :net="paper.net" :read-failed="paperBookFailed" :contracts-changed="paperContractsChanged" :show-orders="showOrdersTick" @exit="exitPaper" @exit-all="exitAllPaper" />
         </div>
-        <PaperConfirmDialog :open="paperDialog" :orders="paperRows" :strategy-id="route.query.strategy" :busy="paperBusy" :error="paperError" :state="paperState" @confirm="confirmPending" @cancel="userCancelPaperDialog" @orderbook="openPaperOrderbook" />
-        <SaveDraftBar ref="barRef" :legs="legs" :rules-ref="String(route.query.rules_ref || '')" :current="openStrategy" :shown-name="shapeName ?? ''" :paper-mode="paper !== null" :live-price-by-id="livePriceById" class="max-[1099px]:contents" @open="openFromBar" @saved="onSaved" @paper-added="onPaperAdded" @renamed="onRenamed" @deleted="onDeleted">
+        <PaperConfirmDialog :open="paperDialog" :orders="paperRows" :strategy-id="route.query.strategy" :busy="paperBusy" :blocked="exitBlocked" :error="paperError" :state="paperState" @confirm="confirmPending" @cancel="userCancelPaperDialog" @orderbook="openPaperOrderbook" />
+        <SaveDraftBar v-show="!(opening && !legs.length)" ref="barRef" :legs="legs" :rules-ref="String(route.query.rules_ref || '')" :current="openStrategy" :shown-name="shapeName ?? ''" :paper-mode="paper !== null" :live-price-by-id="livePriceById" class="max-[1099px]:contents" @open="openFromBar" @saved="onSaved" @paper-added="onPaperAdded" @renamed="onRenamed" @deleted="onDeleted">
           <template #add-edit>
-            <button type="button" class="h-10 flex-1 basis-0 rounded-lg border border-line font-medium" aria-haspopup="dialog" :aria-expanded="pickerOpen ? 'true' : 'false'" data-testid="add-edit" @click="pickerOpen = !pickerOpen">Add/Edit</button>
+            <button v-if="!paperCompleted" type="button" class="h-10 flex-1 basis-0 rounded-lg border border-line font-medium" aria-haspopup="dialog" :aria-expanded="pickerOpen ? 'true' : 'false'" data-testid="add-edit" :disabled="exitBlocked" :title="exitBlocked ? exitGate.reason.value : undefined" @click="pickerOpen = !pickerOpen">Add/Edit</button>
           </template>
           <template #menu="{ close, addToPaper, canAddToPaper }">
             <button v-if="openStrategy" type="button" role="menuitem" data-testid="menu-activity" @click="close(); showHistory()">History</button>

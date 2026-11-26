@@ -93,6 +93,18 @@ describe('Paper tab from GET /paper/strategies (the real reply)', () => {
     expect(all(w, 'paper-group')[0].get('[data-testid="paper-state"]').text()).toBe('Exited')
   })
 
+  it('N-47: a settled closed leg prints the server settlement sentence under its exit, never a bare 0.00', async () => {
+    const r = clone()
+    const why = 'Paper - settled at expiry: SENSEX closed at 84,328.59'
+    r.strategies[1].closed = [{ ...r.strategies[1].closed[0], average_exit_text: '0.00 (settled)', reason_text: why }]
+    answers['GET /paper/strategies'] = ok(r)
+    const w = await show()
+    await t(w, 'show-closed').setValue(true)
+    const leg = all(w, 'paper-group')[1].get('[data-testid="paper-closed-leg"]')
+    expect(leg.get('[data-testid="paper-closed-reason"]').text()).toBe(why)
+    expect(leg.get('[data-testid="paper-closed-exit"]').text()).toContain('0.00 (settled)')
+  })
+
   it('a position row has Lots, Avg, LTP, Booked, Unbooked and P&L as the reply sent them', async () => {
     answers['GET /paper/strategies'] = ok(REAL)
     const w = await show()
@@ -256,6 +268,15 @@ describe('Paper tab from GET /paper/strategies (the real reply)', () => {
     Object.assign(none.totals, { left_out_count: 0, left_out_text: null })
     answers['GET /paper/strategies'] = ok(none)
     expect(has(await show(), 'totals-left-out')).toBe(false)
+  })
+  it('AC-R06 / N-46: a paused strategy among priced ones: the header keeps the server\'s total and its count line', async () => {
+    const LINE = '1 strategy left out: its price is not live.'
+    const d = clone()
+    Object.assign(d.totals, { left_out_count: 1, left_out_text: LINE })
+    answers['GET /paper/strategies'] = ok(d)
+    const w = await show()
+    expect(t(w, 'totals-left-out').text()).toBe(LINE)
+    expect(t(w, 'totals-total').text()).toBe(REAL.totals.total_text)
   })
   it('D-40 r2: the compact list shows no header figure, so no left-out line is missing beside one', async () => {
     const d = clone()

@@ -126,6 +126,18 @@ describe('D-56 Home: total P&L (the Positions total)', () => {
     expect(fig(w, 'pnl')).toBe('—')
     expect(tile(w, 'pnl')).toContain('prices not live')
   })
+  it('AC-R06: one paused strategy among six: Home shows the server\'s total over the priced five and its count line', async () => {
+    const LINE = '1 strategy left out: its price is not live.'
+    paperAnswer = paper(totals({ total_text: '+15,775.80', total_after_text: '+15,775.80', left_out_count: 1, left_out_text: LINE }))
+    const w = await mountHome()
+    expect(fig(w, 'pnl')).toBe('+15,775.80')
+    expect(w.get('[data-testid="home-pnl-left-out"]').text()).toBe(LINE)
+    expect(tile(w, 'pnl')).not.toContain('prices not live')
+  })
+  it('AC-R06: no count line when nothing was left out', async () => {
+    const w = await mountHome()
+    expect(w.find('[data-testid="home-pnl-left-out"]').exists()).toBe(false)
+  })
   it('read failed: says it is not available, no number', async () => {
     paperAnswer = new Error('down')
     const w = await mountHome()

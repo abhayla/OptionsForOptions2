@@ -29,7 +29,7 @@ walk-through was possible in the cloud: the app needs the broker feed and the ow
 | N-12, Stops link does not reach the trade | Fixed, not tested (ADR-330 (21)) | The Positions page ignored `?strategy=` unless an exit was asked. | 1 link; it now opens that trade's Stops panel and scrolls to it; the list is not filtered. | `paper-exit-link-s14.test.js`: red, then pass. |
 | N-08, chain ticks stay after Add Selected | Fixed, not tested (ADR-330 (20)) | Add Selected pushed the draft link and never cleared the selection. | 1 store; the builder clears the ticks only after it has added them (Cancel on a clash, the other-index refusal or an error keeps them). REQ-030 AC-10 amended. | N08a, N08d failed without the fix (lead's run), then 57 pass. |
 | N-15, Orderbook quantity in units | Fixed, not tested (ADR-330 (23), #747) | The order rows carried units only, no lots or lot size, and the browser must not divide by a guessed lot size. | 1 table; the server now sends `lots` per order row (catalogue lot size, same source as the closed rows; a quantity that is not whole lots sends null and shows "-"); the column reads "Lots". Caveat: an NSE lot-size revision re-divides old orders with the new lot. | `tests_app/test_paper_order_lots.py` (real DB): 3 failed (KeyError 'lots'), then 3 passed; vitest 28 pass. |
-| S-02, a lock wait on delete ends as a raw 500 | Fixed, not tested (wording pending owner read, ADR-NB-1) | The error door had no case for a busy database (sqlstate 55P03, 57014, 40P01), so it answered the generic internal error. | Write routes that end as ERR-xxxx on a busy database: 49 in 21 route files; 0 after. Left: `order_book_store.py:152` answers BAD_HOLDING (#746). | `tests_app/test_store_busy.py` (real DB): 6 failed, then 10 passed. |
+| S-02, a lock wait on delete ends as a raw 500 | Fixed, not tested (wording approved by the owner, ADR-330 (26)) | The error door had no case for a busy database (sqlstate 55P03, 57014, 40P01), so it answered the generic internal error. | Write routes that end as ERR-xxxx on a busy database: 49 in 21 route files; 0 after. Left: `order_book_store.py:152` answers BAD_HOLDING (#746). | `tests_app/test_store_busy.py` (real DB): 6 failed, then 10 passed. |
 | N-02 | Deferred #745 | A timed-out parallel read leaves the box after the other read succeeds. | - | - |
 | N-03, N-06, N-09, N-16, N-17, N-19 | Not a defect | N-03 legal hold (REQ-079); N-06 by design (D-C50); N-09 and N-17 test-tool artefacts; N-16 name vs engine shape (REQ-076 AC-8/9); N-19 by design (REQ-080 AC-9). | - | - |
 
@@ -103,7 +103,7 @@ review agent runs, so a review blocked three builders for about 15 minutes: run 
 1. Not clickable on purpose: the case needs a second database session holding a lock on the strategy row.
 2. What changed for the user: a delete or other write that waits on a busy database now says "This strategy is busy with
    another action, so nothing was changed." and "Wait a moment, then try again." instead of ERR-xxxx.
-3. Wording pending the owner's read (ADR-NB-1 in ADR-330 (8)).
+3. Wording approved by the owner as written, 26 Nov 2026 (ADR-330 (26)).
 4. Normal deletes: My Strategies > Delete on a draft still deletes as before.
 5. Nothing to check after 15:30.
 
@@ -175,3 +175,77 @@ review agent runs, so a review blocked three builders for about 15 minutes: run 
 3. Closed rows: the exit price stands alone on the right, the stop-loss sentence on its own line under it.
 4. My Strategies: reload; the grey loading bars are clearly visible for the moment before the list shows.
 5. Nothing else on these screens changed wording.
+
+## After LANE R DONE (7bf64eb): review round, N-28, #744
+
+| Finding | Status | Root cause (one sentence) | Class before / after | Tests red, then green |
+|---|---|---|---|---|
+| Exit path, independent Opus review of N-04/N-05 round 2 and the u513 correction | Fixed, not tested (MAJOR 1 and MINOR 2) | MAJOR 1: the u513 correction left the Exit snapshot alive after the user's Cancel, so a later page-side close restored the old legs and silently wiped edits made after the Cancel; MINOR 2: a block that arrived during a POST left the dialog open with Confirm enabled (nothing posted). | Page closes that can wipe later user edits: 1 path (two Exit clicks with a Cancel between); 0 after (the user's Cancel ends the snapshot). Confirm while blocked: enabled in 2 states; disabled after (a `blocked` prop on the paper confirm dialog). | `exit-dialog-page-close.test.js` A1, A2, A3, A8: 4 failed on the pushed code (lead's run), then 18 pass; full suite 2,981 pass. |
+| N-28 = ADR-330 (27), closed exit averaged over several exits | Fixed, not tested | The closed row printed the average with no count. | The server builds the text once (catalogue template `closed_exit_average`, "{value} (avg of {count})"; reply field `exit_fills`); every screen that prints it gets it. | `tests_app/test_paper_closed_rows.py`: red KeyError 'exit_fills', then 7 passed (real DB). |
+| #744, the remaining N-07 readers | Fixed, not tested | The Full table printed the reply row, the leg list's "now" price came from the reply, and the Paper P&L rows ignored a failed book read. | Builder views of a paper leg's price / P&L on the book: 2 of 5 before, 5 of 6 after (left: Advanced Details bid/ask, not a price or P&L). One join (`chartCard.paperBookLeg`: contract, side, lots); guard mutation-tested on 7 breaks. | `full-table-one-source-744.test.js`: 6 failed, then 7 pass. `one-source-d41.test.js` test 8 now expects the dash on a failed read. |
+| S-02 wording | Approved (ADR-330 (26)) | - | The ADR-NB-1 placeholder is now ADR-330 (26) everywhere; the pin is marked owner-read. | `tests/errors`: 710 passed. |
+
+## Re-test: exit path round 3
+
+1. Builder on a running paper trade: per-leg Exit on one leg; Cancel (the exit stays as "1 pending change", as before).
+2. Change the lots of another leg ("2 pending changes"); then per-leg Exit on a third leg; leave the dialog open and stop the API.
+3. Expected: the dialog closes by itself and "2 pending changes" remain (your kept exit and your lot change); only the third leg's exit is gone.
+4. Start the API; press Exit all, Confirm, and stop the API while "Placing..." shows (or open a second tab and exit a leg there at the same moment).
+5. Expected: once the answer arrives the dialog closes or its Confirm is greyed; nothing is sent twice.
+
+## Re-test: N-28 and #744
+
+1. Builder of paper trade 172 > Net Positions > closed rows: 25850 CE reads "174.73 (avg of 2)"; a leg closed by one exit shows the bare price.
+2. Open the "P&L Table" tab and switch on "Full table": each leg's LTP and P&L equal the legs table at the same moment; P&L % shows "-".
+3. A leg whose price moved shows "Price has moved ... now <the legs table's LTP>".
+4. Stop the API for a few seconds: the legs table, the P&L Table, the Full table and the Paper P&L panel rows all show "-"; restore: all come back.
+5. Orderbook: each fill of 25850 CE is still its own row (153.00 and 196.45).
+
+## Part D (re-test of 7bf64eb, owner comment 7187957060)
+
+Result on the PC: 15 PASS with this morning's failure gone, 3 PASS with a remainder (D-N07, D-N13, D-S02), 1 FAIL (D-N11).
+
+| Finding | Status | Root cause (one sentence) | Class before / after | Tests red, then green |
+|---|---|---|---|---|
+| D-N11, "1 unsaved leg" for a staged removal on a running trade | Hardened, NOT reproduced | The old test drove a hand-built harness and snapshot, so the page's own snapshot never ran (detection gap, now closed); on the real path (real routes, real page, real book fixture, real bin click, real Settings route) the wording was already right, so the owner's case is not explained. | "Pending" now reads the page's Drafts Mode state itself, not a field of the book reply (`paper.book.strategy_id`, which a refreshed book could in principle lack). | New `leave-builder-real-path-adr329.test.js`: N11a green before and after; N11c (book without strategy_id) red, then green. If the PC still shows "unsaved leg": note the deployed commit and copy the `GET /api/paper/strategies/<id>` reply. |
+| N-37, restored legs read "Your price, typed" | Fixed, not tested | A paper-fill leg is recognised by contract, planned entry and capture time; the restore re-reads the book, its fills carry newer times, so no held leg matched and every leg showed as typed. | Restored legs shown as typed: 3 of 3; 0 after (the hold carries the fill keys and the restore takes the fresh fill's entry and time). | N37: 3 typed lines, then 0. |
+| N-35, stale builder still offers the bins | Fixed, not tested | Only the Exit buttons read the blocked rule; the leg list and the controls had no lock. | Leg-edit controls enabled while the trade changed elsewhere: 24 (4-leg fixture); 0 after, through one `locked` prop with the existing reload line as the reason. Choice: the same lock holds while the book read fails (the Exit rule); it lifts when the read recovers. | `leg-lock-n35.test.js`: red, then 3 pass. |
+| D-N13 / N-34, empty "New Strategy" frame while opening | Fixed, not tested | The opening flag hid only "No legs yet"; the card title and the action bar still showed. | Shell parts shown while opening: 4; 0 after (one loading card with the existing "Working out the outcome..." text). | `opening-shell-n34.test.js`: red, then 3 pass. |
+| D-N07 remainder, API down shows an error block on the P&L Table tab | Question LR-Q10 | Without an outcome reply the page shows its error block for the whole numbers area; the P&L Table's rows come from that reply. The dash rule works when the outcome answers and only the book read fails (tested). | - | - |
+| D-S02, the busy wording cannot be clicked | As designed | The wording needs another session holding the strategy's row lock until the statement times out; two tabs deleting at once queue in milliseconds and get a refusal or "not found", never the busy line. The owner can see it only through `tests_app/test_store_busy.py` (one file, `scripts/orchestrator/db_run.py`). | - | - |
+| N-36, Back replays a cancelled clash question | Fixed, not tested | A cancelled add was not recorded on the hold, so Back replayed the same draft link. | 1 path; each Add Selected is now its own history entry and the handled mark is the draft text plus that entry: Back asks nothing, a new Add Selected still asks. | N36 in `chain-trip-adr329.test.js`: red, then pass. |
+| N-39, "2 deleted" stays ~3 s after Undo | Fixed, not tested | The line was cleared only after the restore calls finished. | 1 line; cleared at once, put back only if a restore fails. | `my-strategies-bulk.test.js`: red, then pass. |
+| N-31, N-33, N-41, N-42 | Not a defect | N-31: the index had no tick yet after the API restart (self-clears); N-33: Exit on a Live card opens Positions by design (D-N22); N-41: drafts 182/183 were most likely restored by a late Undo on the result line (a deleted row cannot be listed: every read filters deleted rows); N-42: the plan sheet at Add to Paper is REQ-161 AC-1 (Lane P's area). | - | - |
+| N-32 | Not a defect | During a pending partial exit the P&L Table row shows "-" and "Planned entry" because the row's lots differ from the book's (the one join, #744). The ~10 s Confirm lock is the exit's round trip. | - | - |
+| N-38, N-40, delete history | Questions LR-Q11, LR-Q12, LR-Q13 | - | - | - |
+| N-43 | Deferred #749 | The stop-loss sentence wraps in the narrow Exit column. | - | - |
+
+## Re-test: Part D fixes
+
+1. D-N11: open a running paper trade by My Strategies > Open in Builder; bin one leg; You > Settings. Expected "Leave the builder? The 1 pending change will be lost." Stay. If it still says "unsaved leg", note the commit the PC runs and save the `GET /api/paper/strategies/<id>` reply from the browser's network tab.
+2. N-37: same trade, bin one leg, Market > Option Chain, Back. Expected: "1 pending change" and no leg reads "Your price, typed ...".
+3. N-35: open the trade in two tabs; in tab 2 exit one leg; in tab 1: the bins, strike +/-, lots, Clear all, Add/Edit and Shift/Width/Hedge are greyed, with "This trade changed elsewhere. Reload to see the current legs."; reload: all enabled.
+4. D-N13: open `/strategy/builder?strategy=<a running trade>` fresh. Expected: one loading card, never an empty "New Strategy" with Save / Add to Paper, then the trade.
+5. N-36 / N-39: chain clash > Cancel > Back: no question again; My Strategies bulk delete > Undo: the "2 deleted" line goes at once.
+
+## After the close (owner comment 7189204004, run 15:31 to 15:50 IST on 7bf64eb)
+
+Result on the PC: 3 PASS (AC-01 market-closed Save, AC-03 the three P&L places equal at the last close, AC-SETTLE SENSEX
+trade 173 settled with the right sum), 1 FAIL (AC-R06), 1 NOT CHECKED (AC-R10).
+
+| Finding | Status | Root cause (one sentence) | Class before / after | Tests red, then green |
+|---|---|---|---|---|
+| AC-R06 / N-46, Home and Positions totals pause when one trade cannot be priced | Fixed, not tested; SPEC CHANGE pending owner read (ADR-324 (3b), placeholder ADR-NB-2; question LR-Q15) | The server summed every non-expired strategy and blanked the whole total on any other missing price, exactly as ADR-324 (1) says ("Any other reason a price is missing ... keeps today's behaviour: the figure is blank with its reason"); #173, expiring that day and awaiting settlement, had no live price. | Totals over several paper strategies that blank on one unpriced member: 3 (Positions header, Today total, Home Total P&L); 0 after: the server sums the strategies that can be priced and a count line names how many were left out and why. All unpriced: blank with the reason, as before. | `tests_app/test_paper_totals.py` -k ac_r06: 2 failed, then 22 passed; `test_d68_today_total.py` 10 passed (one test that pinned the whole-pause rule rewritten); frontend `home-figures-d56`, `paper-list-4b`: 45 passed. |
+| N-47, settled trade's Positions card has no settlement sentence | Fixed, not tested | The list reply already carried the server's settlement sentence; the card's reader dropped it. | 1 screen; the card prints the same server sentence as the builder. A leg that expired worthless still shows the server's exit text (e.g. 0.00) - that is the settlement price. | `paper-list-4b.test.js`: 1 failed without the fix (lead's run), then 29 pass; app test `test_paper_triggers_routes.py` -k settlement: 2 passed. |
+| N-48, settled trade's builder shows "No legs yet" and Add leg | Fixed, not tested | The empty-legs block did not know the trade was finished. | 1 screen; a trade whose book has closed rows and no open position shows no empty-legs block and no Add leg / Add/Edit. | `builder-completed-n48.test.js`: red, then pass. |
+| N-44, "No price for:" above a priced table after the close | Fixed, not tested | The Paper P&L panel took the unpriced line from the tracking reply (live prices only) when the book had none. | One reader: the line comes from the book read only. | `one-source-d41.test.js`: 1 failed with the old line, then 18 pass. |
+| N-45, prices keep moving after the close under "Prices are from 15:30:00" | Deferred #752, question LR-Q14 | The label time is clamped to the close; the figure is the feed's latest quote. | - | - |
+| AC-R10, Compare's "Open in builder and prepare basket" greyed after the close | NOT CHECKED (by design after the close: "Wait for fresh prices") | - | - | Re-test at the open, below. |
+
+## Re-test: after-close items (next market day)
+
+1. AC-R10 (at the open, after 09:15): Alerts > "Compare approaches" on a paper trade's alert > "Open in builder and prepare basket" is enabled once prices are live; click it: the builder opens on that trade with the chosen approach's legs staged.
+2. N-47 (after the close on an expiry day, or on SENSEX trade 173 now): Positions > Paper > Show closed positions > the settled card's closed legs read "Paper - settled at expiry: SENSEX closed at 84,328.59", the same as the builder.
+3. N-48: open the builder of trade 173: no "No legs yet", no Add leg; the closed legs and "Closed: result" show.
+4. N-44 (after the close): builder of a running paper trade > Paper P&L panel: no "No price for: ..." line when every leg shows a price.
+5. AC-R06 (after the close, with one settled trade): Home's "Total P&L" shows a figure over the trades that can be priced, with the count line, and equals the sum of those rows on My Strategies.

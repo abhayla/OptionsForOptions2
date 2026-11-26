@@ -155,6 +155,8 @@ export function useDeleteFlow(client, hooks) {
       if (!held || state.busy) return;
       state.busy = true;
       dropAll();
+      const shownResult = state.bulkResult;
+      if (held.bulk) state.bulkResult = null; // N-39: the "N deleted" line goes at once, not after the calls and the reload
       if (held.bulk) {
         let failed = 0;
         let firstParts = null;
@@ -168,7 +170,7 @@ export function useDeleteFlow(client, hooks) {
         }
         if (firstParts) state.errorParts = firstParts; // the server's own refusal text
         if (failed) state.notice = `${failed} of ${held.bulk.length} could not be brought back.`;
-        state.bulkResult = null;
+        if (failed) state.bulkResult = shownResult; // a restore failed: the line comes back beside the error parts
         try {
           await hooks.reload();
         } finally {

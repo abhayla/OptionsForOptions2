@@ -64,14 +64,14 @@ and adds the ADR-328 pointer; that pointer is a spec text change, so the row num
 - N-11 = ADR-330 (22): "The N pending changes will be lost." for a running trade. Built.
 - N-15 = ADR-330 (23): Orderbook in lots. Blocked on a server field: issue #747.
 
-## LR-Q7 S-02 wording (open, ADR-NB-1)
+## LR-Q7 S-02 wording (ANSWERED 26 Nov 14:25 IST, question tool: "Approve as written" = ADR-330 (26))
 
 Spec basis: ADR-330 (8) busy-store paragraph (Lane R, 26 Nov 2026); ADR-003. Built as reversible new wording, catalogue
 entry `store_busy` (STRATEGY_VALIDATION_522): "This strategy is busy with another action, so nothing was changed." /
 "Wait a moment, then try again." Real case: the owner's ERR-6960F002 on a strategy delete, 25 Nov. Recommendation:
 approve as built. A new decision row number for it is the coordinator's.
 
-## LR-Q8 N-28: how a closed leg's exit price reads when it is an average of several exits (open, 26 Nov 2026)
+## LR-Q8 N-28: how a closed leg's exit price reads when it is an average of several exits (ANSWERED 26 Nov 14:25 IST, question tool: "Add '(avg of 2)'" = ADR-330 (27), built)
 
 Spec basis: none: the spec is silent on labelling a closed exit average (searched: "average exit", "exit prices"); ADR-321 (6)
 ("a closed lifecycle is its own row with entry, exit and booked"); ADR-008 (the average is served, `routes/paper.py:617-624`).
@@ -80,7 +80,10 @@ Options: (a) a suffix "(avg of 2)" after the price (new wording); (b) each exit 
 (c) leave it, the Orderbook lists the fills. Recommendation: (a), small and the Orderbook already holds the detail.
 Lane R builds nothing for it until answered.
 
-## LR-Q9 C-01b: one basis for breakevens? (open, 26 Nov 2026; only if the owner wants it)
+## LR-Q9 C-01b: one basis for breakevens? (CLOSED 26 Nov 2026)
+
+**CLOSED** by the coordinator, 14:20 IST: already answered by ADR-330 (17): the plan summary's breakevens stay before charges
+and say so; the placed book follows ADR-263 (2). No build.
 
 Spec basis: ADR-330 (17) (plan summary: breakevens BEFORE charges, Max Profit / Max Loss after); ADR-263 (2) (a placed paper
 book: breakevens carry the same charges as Max Profit / Max Loss and booked P&L, with a line saying so). Real case: draft 174
@@ -88,3 +91,62 @@ reads "Max Profit and Max Loss are after charges estimated at entry prices; brea
 "Breakevens include the booked P&L and about Rs 395.78 of charges and taxes." Both are as built and as decided.
 Options: (a) keep both (recommended: a placed trade has real charges and booked P&L, a plan has estimates); (b) plan
 breakevens after charges too; (c) placed breakevens before charges too. No build.
+
+## LR-Q10 D-N07: what the P&L Table shows when the API is down (open, 26 Nov 2026)
+
+Spec basis: check row 4 of docs/design/modular-doors-2026-11-25/RESULTS.md (when prices are not live the figures show "-"); the
+N-07 / #744 rule (P&L Table rows and TOTAL show "-" on a failed book read); ADR-008. Real case (Part D, 14:24): API stopped
+~25 s; the legs table showed "-" everywhere, the P&L Table tab was replaced by "The page could not get an answer from the
+server" with no rows. Cause: with the API down the outcome request fails too, and the P&L Table's rows come from that reply.
+Options: (a) keep: the error block is honest, it shows no number (recommended: no extra build, nothing misleading);
+(b) build P&L Table rows from the held book net with "-" in every figure while the outcome is unreadable (a second row
+source for that tab; medium build); (c) keep the last outcome rows on screen with every figure dashed. No build until answered.
+
+## LR-Q11 N-38: two different "Settings" (open)
+
+Spec basis: REQ-009 (the avatar menu opens Account & Settings; "Settings (the admin's app-wide Settings page, REQ-167)").
+Real case: the builder has its own "Settings" button (a "Show legs as" popover) beside the search; the app's Settings is in
+the avatar menu only. Options: (a) keep; (b) rename the builder's button, e.g. "View" or "Builder settings" (label only);
+(c) add Settings to the top menu. Recommendation: (b). New wording, so it needs the owner.
+
+## LR-Q12 N-40: Add to Paper while live prices are disconnected (open)
+
+Spec basis: REQ-109 AC-1 (each confirm price defaults to the leg's builder entry price and is editable); REQ-109 AC-5 and
+may_act (only paper EXITS are refused when prices are not live); ADR-015 ("Live market data disconnected. Last updated ...").
+Spec silent on entries at stale prices (searched: stale, not live, entry, Add to Paper refusal). Real case (Part D, 14:46):
+the banner "Live market data disconnected. Last updated: 14:46:30 IST" showed, and Add to Paper still recorded the entry at
+the last captured prices. Paper only, but every later paper P&L, stop and target check starts from that entry.
+Options: (a) allow as now; (b) allow, with a line in the confirm list "Prices are not live; the entry is the last captured
+price, as of HH:MM" that the user confirms; (c) refuse like the exit. Recommendation: (b). New wording and a rule: needs a row.
+
+## LR-Q13 Should a delete and its Undo show in the strategy's history? (open)
+
+Spec basis: REQ-070 (the delete confirm reads "Delete this draft? Its history is kept, and you can Undo right after."); ADR-118.
+Real case: drafts 182 and 183 reappeared and nothing on screen says when or how; `delete_draft` and `undelete_draft`
+(backend/ofo_app/strategy_store.py ~359-383) set or clear `deleted_at` and write no history entry. Options: (a) keep;
+(b) add "Deleted" and "Restored" events to the strategy's history (server, small). Recommendation: (b).
+
+## LR-Q14 N-45: what "the last close" is when the feed keeps moving after 15:30 (open, 26 Nov 2026)
+
+Spec basis: ADR-200 (2) ("last close" is "the last price the feed or a REST read holds ... (the LTP at the close)"; the
+label time "is that price's own time"); ADR-212 (the paper screens after hours show "the last close the feed holds"). Real
+case (after-close check, 15:33-15:37): trade 185's 25750 PE read 99.75, then 99.60, then 100.10 under "Prices are from
+15:30:00". Issue #752. Paper only, no fills after hours.
+Options: (a) hold the last price received up to the calendar close (15:30) and ignore later frames for the figure
+(recommended: the label and the figure then agree; it amends ADR-200 (2)'s "the last price the feed holds"); (b) keep the
+latest price and label it with its own time ("as of 15:37:12"); (c) leave as is. Needs a row.
+
+## LR-Q15 AC-R06: does one unpriced trade blank the whole Total P&L? (open, 26 Nov 2026; built as recommended, reversible)
+
+Business call: which total a trader sees on Home and the Positions header when one running trade has no live price.
+Spec basis: ADR-324 (1) (status proposed, pending owner read; taken unattended on 25 Nov): header figures are sums over
+the strategies that can be priced; expired ones are left out and counted; "Any other reason a price is missing (prices
+not live, not connected, delisted, reassigned) keeps today's behaviour: the figure is blank with its reason." SPEC CHANGE
+built as ADR-324 (3b) [placeholder ADR-NB-2]: the same left-out-and-counted rule for any unpriced trade; all unpriced still
+blanks. Real case (after-close check, 15:32): five of six running trades priced at the last close (rows sum +15,775.80),
+#173 (SENSEX, expiring that day, awaiting settlement) paused; Home showed "Total P&L -" with "Paper P&L paused - prices not
+live". New wording (pinned "pending owner read"): "1 strategy left out: its price is not live.", "{count} strategies left
+out: their prices are not live.", "{count} strategies left out: their contracts have expired or their prices are not live."
+Options: (a) keep the build: a total over the priced trades with the count line (recommended: one unpriced trade no
+longer hides the other five); (b) revert to the blank total; (c) as (a), but a settled or settling trade counts at its
+booked result instead of being left out (needs a settlement rule for the header).

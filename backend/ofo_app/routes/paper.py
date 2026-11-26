@@ -23,9 +23,9 @@ The user comes from the session (``current_user_ref``), never from the request.
 from __future__ import annotations
 
 import datetime
-from dataclasses import dataclass
 import logging
 from collections.abc import Mapping, Sequence
+from dataclasses import dataclass
 from decimal import ROUND_HALF_EVEN, Decimal
 from typing import Annotated, Any, Literal, get_args
 
@@ -219,7 +219,8 @@ class PaperClosedOut(ApiModel):
     average_entry: Money
     average_entry_text: CatalogueText
     average_exit: Money  # 0.00 for an option that expired worthless (settled)
-    average_exit_text: CatalogueText
+    average_exit_text: CatalogueText  # "174.73 (avg of 2)" when over more than one exit (N-28, ADR-330 (27))
+    exit_fills: int  # how many exit orders the average exit is over; the Orderbook keeps each fill
     booked: Money
     booked_text: CatalogueText
     opened_at: datetime.datetime
@@ -617,6 +618,13 @@ def _closing_reasons(orders: Sequence[paper_store.StoredOrder]) -> dict[tuple[in
             if o.order.kind in ("stop", "settle") and o.order.reason}
 
 
+def _exit_text(exit_: Decimal, fills: int) -> Any:
+    """N-28 (ADR-330 (27)): the bare price for one exit, "174.73 (avg of 2)" for an average over several exits."""
+    if fills <= 1:
+        return price_text(exit_)
+    return render_explanation("closed_exit_average", value=exit_, count=fills)
+
+
 def _closed_row(leg: ClosedLeg, found: tracked_contracts.TrackedContract, reason: str | None = None) -> dict:
     underlying, instrument, strike, expiry = _identity(found)
     lot = found.stored.listed.contract.lot_size
@@ -628,7 +636,7 @@ def _closed_row(leg: ClosedLeg, found: tracked_contracts.TrackedContract, reason
             "quantity": leg.quantity, "lot_size": lot,
             "lots": leg.quantity // lot if is_lot_aligned(leg.quantity, lot) else None,
             "average_entry": entry, "average_entry_text": price_text(entry),
-            "average_exit": exit_, "average_exit_text": price_text(exit_),
+            "average_exit": exit_, "average_exit_text": _exit_text(exit_, leg.exit_fills), "exit_fills": leg.exit_fills,
             "booked": _exact(leg.booked), "booked_text": _signed(leg.booked),
             "opened_at": leg.opened_at, "closed_at": leg.closed_at, "reason_text": restore_order_reason(reason)}
 
@@ -1052,12 +1060,14 @@ async def list_paper_strategies(db: Annotated[Any, Depends(get_db)],  # noqa: PL
                               "held": _held_out(held_rows.get(b.strategy_id)),
                               "status_word": _paper_word(b.status, figures["positions"]),
                               "open_count": open_legs, "position_count": len(figures["positions"])})
-    kept = [i for i, s in enumerate(out) if not _expired_open(s)]  # D-40: the strategies that can be priced
-    totals = _totals([out[i] for i in kept], [decays[i] for i in kept], len(out) - len(kept),
-                    sum(1 for s in out if s["open_count"] == 0 or s["state"] == "EXITED"))
+    live = [i for i, s in enumerate(out) if not _expired_open(s)]  # D-40: not expired
+    kept = _priced(live, [out[i] for i in live])  # AC-R06 (ADR-324): the strategies that can be priced
+    expired = len(out) - len(live)
+    totals = _totals([out[i] for i in kept], [decays[i] for i in kept], expired, len(live) - len(kept),
+                     sum(1 for s in out if s["open_count"] == 0 or s["state"] == "EXITED"))  # ADR-330 (15)
     sorted_books = sorted(books, key=_newest_first, reverse=True)
     day = today_day([snapshots.get(b.underlying) for b in sorted_books], answered)
-    today = today_totals([_today_item(out[i], decays[i], sorted_books[i]) for i in kept], day)
+    today = today_totals([_today_item(out[i], decays[i], sorted_books[i]) for i in live], day)
     return PaperListOut.model_validate({"strategies": out, "totals": totals, "today": today, "answered_at": now()})
 
 
@@ -1136,9 +1146,21 @@ def _decay(figures: dict, found: dict[int, tracked_contracts.TrackedContract], s
     return paper_decay.book_decay(snapshot, underlying, contracts)
 
 
-def _totals(strategies: Sequence[dict], decays: Sequence[paper_decay.Decay], left_out: int = 0,
-            closed: int = 0) -> dict:
-    """The exact sums over every strategy that can be priced (the ``left_out`` expired ones are only counted).
+def _priced(keys: Sequence[Any], strategies: Sequence[Mapping[str, Any]]) -> list[Any]:
+    """AC-R06 / N-46 (ADR-324 (1) to (3)): the members of ``keys`` (parallel to ``strategies``) that CAN be priced, i.e.
+    whose unbooked figure is present (a fully exited or settled book is). A strategy with no live price never pauses
+    the whole total: it is left out and counted. When NONE can be priced the figure stays absent with its reason
+    (every member kept), as before."""
+    priced = [(k, s) for k, s in zip(keys, strategies, strict=True) if s["unbooked"] is not None]
+    # a fully exited book needs no price, so it alone does not make the others "unpriceable": at least one book with an
+    # open leg must be priced, else every member stays and the figure is absent with its reason
+    return [k for k, _ in priced] if any(s["open_count"] for _, s in priced) else list(keys)
+
+
+def _totals(strategies: Sequence[dict], decays: Sequence[paper_decay.Decay], expired: int = 0,
+            unpriced: int = 0, closed: int = 0) -> dict:
+    """The exact sums over every strategy that can be priced (the ``expired`` and ``unpriced`` ones left out are only
+    counted, in one line). ``closed`` is the number of closed strategies the whole-paper total keeps (ADR-330 (15)).
     Unbooked and total are absent with the first absent strategy's reason, and Decay with the first absent book's
     reason: never a partial sum shown as a total (REQ-109 AC-5)."""
     got = book_totals([(s["booked"], s["unbooked"]) for s in strategies], [d.value for d in decays])
@@ -1154,7 +1176,7 @@ def _totals(strategies: Sequence[dict], decays: Sequence[paper_decay.Decay], lef
             "totals_reason": totals_reason, "totals_reason_text": reason_text(totals_reason),
             "decay": decay, "decay_text": _signed(decay), "decay_reason": decay_reason,
             "decay_reason_text": reason_text(decay_reason),
-            "left_out_count": left_out, "left_out_text": _left_out_text(left_out),
+            "left_out_count": expired + unpriced, "left_out_text": _left_out_text(expired, unpriced),
             "closed_count": closed, "closed_text": _closed_text(closed),
             **_charges_total(strategies), **_after_total(strategies)}
 
@@ -1191,15 +1213,23 @@ def today_totals(items: Sequence[TodayItem], day: datetime.date) -> dict:
     def on_day(at: datetime.datetime | None) -> bool:
         return at is not None and at.astimezone(paper.IST).date() == day
     chosen = [x for x in items if x.scenario_id is None and (on_day(x.opened) or on_day(x.closed))]
-    out = _totals([x.figures for x in chosen], [x.decay for x in chosen])
+    kept = _priced(chosen, [x.figures for x in chosen])  # AC-R06: the same rule as the header (ADR-324 (1) to (3))
+    out = _totals([x.figures for x in kept], [x.decay for x in kept], 0, len(chosen) - len(kept))
     return out | {"count": len(chosen), "empty_text": None if chosen else render_explanation("paper_today_none")}
 
 
-def _left_out_text(count: int) -> Any:
+def _left_out_text(expired: int, unpriced: int) -> Any:
+    """The count line of the header (ADR-324 (1)): the reason is expiry, no live price, or both."""
+    count = expired + unpriced
     if count == 0:
         return None
-    return render_explanation("paper_totals_left_out_one") if count == 1 else render_explanation(
-        "paper_totals_left_out_many", count=count)
+    if expired and unpriced:
+        return render_explanation("paper_totals_left_out_mixed", count=count)
+    if expired:
+        return render_explanation("paper_totals_left_out_one") if count == 1 else render_explanation(
+            "paper_totals_left_out_many", count=count)
+    return render_explanation("paper_totals_left_out_unpriced_one") if count == 1 else render_explanation(
+        "paper_totals_left_out_unpriced_many", count=count)
 
 
 def _closed_text(count: int) -> Any:
