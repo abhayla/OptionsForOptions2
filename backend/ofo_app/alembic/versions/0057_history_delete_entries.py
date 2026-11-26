@@ -16,8 +16,11 @@ Changes (owner-run, one transaction):
 
 Old-code compatibility: additive. Code before this migration never writes the two kinds; when it READS a history that
 holds one, ``render_summary`` shows the fixed line "this change could not be shown" (an unknown kind is never shown
-raw) and the entry is offered Restore, which is harmless: the entry holds the definition that was current at that time
-and restoring a definition equal to the current one writes nothing.
+raw) and the entry is offered Restore. Restoring it puts back the definition that was current at the delete or the
+Undo (a real earlier configuration of the same strategy, as an edit's own entry holds) and writes a normal "restored"
+entry; the never-sent and live-contract checks still apply (Tier A review 26 Nov: measured with code 3d7aaf78).
+Deploy order: migrate FIRST, then start the new code (at 0056 the validator refuses the new kinds, so every Delete and
+Undo of new code would fail; they roll back cleanly).
 
 Revision ID: 0057_history_delete_entries
 Revises: 0056_several_standard_playbooks

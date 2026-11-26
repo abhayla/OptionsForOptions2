@@ -16,14 +16,17 @@ Spec basis: ADR-330 (1) to (27) and its one-module instruction; ADR-002; ADR-003
 2. `git fetch origin` and `git checkout integration/nb-1126` at the pushed head named in section (c).
 3. `pip install -r requirements-app.txt` and `cd frontend && npm ci` (new packages may have come with the merge).
 4. Migrate: `python scripts/orchestrator/db_run.py . python -m alembic -c backend/ofo_app/alembic.ini upgrade head`.
-   The PC is at `0053_close_finished_strategies` (the screens line). This runs exactly three migrations:
+   The PC is at `0053_close_finished_strategies` (the screens line). This runs exactly four migrations:
    `0054_actionable_alert_answers` (new NULL columns on `adjustment_suggestions`; old rows read as adjustment rules),
    `0055_plan_stop_base` (`stop_base JSONB NULL` on `strategy_adjustment_plans`), then
    `0056_several_standard_playbooks` (drops the one-standard-playbook-per-type unique index, adds a unique `slug`
-   column, each standard playbook gets `<type>-default`; ADR-330 (9)). No playbook, plan or alert row is deleted.
+   column, each standard playbook gets `<type>-default`; ADR-330 (9)), then `0057_history_delete_entries` (the
+   strategy-history item validator accepts two new kinds, `deleted` and `undeleted`, ADR-330 (31); no table, column
+   or grant change). No playbook, plan, alert or history row is changed or deleted. Migrate BEFORE starting the new
+   code (at 0056 a new-code Delete or Undo is refused by the database and rolls back).
    Treat 0054 as one-way: never run `alembic downgrade` (its downgrade refuses once new alerts exist).
 5. Post-migration checks: `python scripts/orchestrator/db_run.py . python -m alembic -c backend/ofo_app/alembic.ini current`
-   must print `0056_several_standard_playbooks (head)`.
+   must print `0057_history_delete_entries (head)`.
 6. Restart: stop and start the API, the background worker supervisor (`python scripts/orchestrator/supervise_worker.py`),
    and rebuild the frontend (`cd frontend && npm run build`).
 7. In the browser: (a) Positions > Adjustment opportunities still lists the old records; (b) Alerts > Active opens and
@@ -43,6 +46,12 @@ Old-code safety of each migration on this branch (so switching the PC back to an
   test_paper_triggers_routes 65, test_exit_door 34 passed; test_playbook_store 50 passed, 1 failed by design
   (`test_the_application_role_cannot_insert_a_system_row_and_the_owner_cannot_add_a_second`: DID NOT RAISE, 0056
   drops that rule on purpose, ADR-330 (9)).
+- 0057 (Lane J, ADR-330 (31)): code 3d7aaf78 (push 3, before 0057) against a database at 0057 holding a `deleted`
+  entry: test_strategy_store 98, test_strategy_bulk_delete 11, test_strategy_delete_app 31, test_strategy_name_app 28
+  passed; the old history screen shows those entries as "this change could not be shown" and offers Restore, which puts
+  back the definition current at the delete (harmless, measured by the Tier A review). Three old-tree tests that replay
+  migrations fail because the database is newer (expected). Tier A review (Opus): SHIP; upgrade of a database holding
+  every old history kind keeps all 44 rows valid; grants unchanged; downgrade refuses while a delete entry exists.
 - Do not run `alembic downgrade` from an older branch.
 
 ## (b) Screen-check list (owner, paper only, market hours 09:15-15:30 IST; Ctrl+F5 once after the rebuild)
@@ -110,6 +119,18 @@ N9. Real P&L total (Lane S): Positions with no real position in a strategy: "Rea
     positions are open in your strategies."; "Paper P&L" shows its own figure beside it, not added. With one real
     position: the total shows the row's figure with "Zerodha, as at HH:MM:SS IST" and equals Kite's P&L for that
     contract at the same minute. Filter All / Real / Paper: the two totals stay separate.
+N10. Side closed, the answers (ADR-330 (2)(b), (33)). After N8, Alerts > Active, the side-closed row: press "Add the
+    legs again": the answer is stored and the builder of that trade opens. On another side-closed row press "Confirm
+    the new shape": a confirmation names the shape that remains (e.g. iron condor -> bull put spread); Cancel: nothing
+    is stored and the row stays asking; Confirm: the row leaves Active, the bell drops by 1. Not built: the plan's
+    rule lines reading "Not applicable: the <side> side is closed" (ADR-330 (2)(a)).
+N11. Reset to playbook (ADR-330 (9), (32)). A plan saved from a playbook: switch one condition off, type a Rs 400 stop
+    and a 15:15 time exit, Save. Open the plan sheet > Edit > "Reset to playbook": one confirmation says the typed
+    levels stay; Confirm: the condition is on again, the Rs 400 stop and 15:15 stay, the changed / switched-off markers
+    show. A plan whose playbook was deleted: the reset is refused with the server's sentence.
+N12. Deleted / Restored in the history (ADR-330 (31)). My Strategies: delete one draft, then Undo. Open its history:
+    two entries "Deleted" and "Restored", each with its time, and no Restore button on either. Bulk: tick 3 rows,
+    Delete selected, Undo: each of the 3 histories has one "Deleted" and one "Restored".
 Re-checks after the merge (quick):
 R1. Exit from Positions: Positions > Paper > a trade > Exit: the confirmation, Cancel exits nothing, Confirm exits.
 R2. Positions: the real and paper lists load; the Stops link of a Live Strategies card opens Positions at that trade's
@@ -145,8 +166,16 @@ Push 3 merge notes: alert titles were built on both lines; ONE function now (`ba
 P's rule: the nearest open-leg expiry; a failed read leaves that row "(#id)"), W2-A's duplicate templates removed.
 StrategyBuilderPage: Lane R's props and Lane U's undo-text both kept; PaperStrategies: W2-B's exit-closed watch and
 Lane U's closeByPage both kept. Template pins merged by key.
-Not yet: ADR-330 (31) (Deleted / Restored history entries, its own migration), Lane P's Wave 2 page steps (P7 page
-flow, P8 Reset button).
+Push 4: Lane P's Wave 2 page steps P7 (side-closed answers) and P8 (Reset to playbook) and ADR-330 (31) with
+migration 0057 (Lane J builders; 0057 Tier A review SHIP). Not built: the P7 "Not applicable: the <side> side is
+closed" rule line (needs a new plan-watch / adjustment-check field and a new sentence).
+
+Full app (DB) suite, run as CI runs it (GITHUB_ACTIONS=true, per-file database clones) on 8ba68be: 7468 passed,
+1 failed, 6 skipped (environment: trial ended, replay URL, catalogue index row, owner migration URL). The failure
+(tests_app/test_d38_page_counts.py golden) was Lane P's and passes on push 3. Playwright CI job: 269 passed; the
+positions ADR-138 (2) cases fail the same way on the screens line 7bf64eb (pre-existing); health.spec failed only on
+the merged tree (fixed in push 4); strategy-live AC-4 and navigation menu cases are flaky (pass on reruns, also fail on
+the parents). Not run: execute-screen e2e (needs a database named exactly ofo_test).
 
 ## Step 2 and Step 3: what was built (status: Fixed, not tested)
 
@@ -202,7 +231,8 @@ current, none hand-edited.
 | 1 | 7231916 | Step 1 (the two merges and the three breaks above) | `prepush.py --full` TOTAL PASS 2023.6 s (domain, app, vitest, lint, coverage, alembic guard) |
 
 | 2 | 7d81d0a | ic docs 3d66541, Lane R ce5316e, Step 2, Step 3, the review fix | `prepush.py --full` TOTAL PASS 2137 s |
-| 3 | (this push) | ic docs e40a5ad, Lane R ecb3655, Lane P a59f7a9 (0056), Lane U b81970b, Lane S d344d82 | see the commit's gate |
+| 3 | 3d7aaf7 | ic docs e40a5ad, Lane R ecb3655, Lane P a59f7a9 (0056), Lane U b81970b, Lane S d344d82 | `prepush.py --full` TOTAL PASS 2460 s |
+| 4 | (this push) | P7 page answers, P8 Reset button, ADR-330 (31) with 0057, health e2e fix | see the commit's gate |
 
 Coordinator message for push 1 could not be sent: the session-message service refused this session (untrusted
 device); recorded here instead.
@@ -221,3 +251,14 @@ device); recorded here instead.
 | test_settings_reader_guard pins a source line number | `tests/test_settings_reader_guard.py:109`; W2-A padded `paper_monitor.py` with a comment to keep read_snapshot at line 68 (fails closed: removing the comment turns the guard red) | none (test hygiene) | the guard finds the function by name, not by line |
 | A playbook comparison word other than le/ge reads "checked, not met" | Step 3 review: `playbook_eval.py:512` `_exact` turns NotComputable into fired=False; the save check (`playbook_store.py:497-515`) never validates cmp; shipped playbooks are clean | ADR-330 (12); ADR-003 | an unknown cmp is refused on save, or shown "not checked" |
 | The checks guard restricts only calls of crossed | `tests/test_checks_no_side_effects.py:74-78`: a direct leg_price/index_level call in ofo_app (skipping the live-price check of stops.py:58), `import crossed as _c`, a `lambda conn:` pass | ADR-330 (12) | each of the three samples turns the guard red |
+| The P7 plan rule line "Not applicable: the <side> side is closed" is not shown | `side_scope.rule_notes` is wired into no route and the sentence is not in the catalogue (Lane J P7 builder) | ADR-330 (2)(a) | the plan watch and the plan sheet print that line for each rule of the closed side |
+| The inbox heading of a side_closed row reads "Adjustment opportunity detected" | Lane P open finding (routes/adjustment_opportunities.py group label) | ADR-330 (2)(b), (3) | the inbox names the side that closed |
+
+## Lines waiting for a person's approval (none written by Lane J)
+
+- Catalogue wordings pinned "pending owner read": `stop_fired_note`, `stop_fired_note_with_line`, `alert_title_unnamed`
+  (W2-A); `alert_side_closed_text`, `alert_side_closed_confirm`, `plan_sheet_reset`, `plan_sheet_reset_confirm` and
+  the `labels:plan_sheet` pin (P7/P8); `change_deleted` "Deleted", `change_undeleted` "Restored" (ADR-330 (31)).
+- Reply inventory note `'ActiveAlert.confirm_text': 'UNREVIEWED'` in `tests_app/reply_inventory.py` (P7).
+- REQ-070 AC-8 text (ADR-330 (31)); the 0057 downgrade refusal rule.
+- Owner question LJ-1 (fired-stop line priced at the fill), `owner-questions-lane-j.md`.
