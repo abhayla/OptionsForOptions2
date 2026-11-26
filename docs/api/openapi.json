@@ -2306,6 +2306,107 @@
         "title": "BrokerStatusOut",
         "type": "object"
       },
+      "BulkDeleteIn": {
+        "additionalProperties": false,
+        "description": "ADR-330 (8): the ticked rows with the revision the screen showed. The limit is checked in the route so the\nrefusal is the catalogue sentence that names it (an empty list is refused here, 422).",
+        "properties": {
+          "items": {
+            "items": {
+              "$ref": "#/components/schemas/BulkDeleteItemIn"
+            },
+            "minItems": 1,
+            "title": "Items",
+            "type": "array"
+          }
+        },
+        "required": [
+          "items"
+        ],
+        "title": "BulkDeleteIn",
+        "type": "object"
+      },
+      "BulkDeleteItemIn": {
+        "additionalProperties": false,
+        "properties": {
+          "expected_revision": {
+            "exclusiveMinimum": 0.0,
+            "maximum": 9.223372036854776e+18,
+            "title": "Expected Revision",
+            "type": "integer"
+          },
+          "id": {
+            "exclusiveMinimum": 0.0,
+            "maximum": 9.223372036854776e+18,
+            "title": "Id",
+            "type": "integer"
+          }
+        },
+        "required": [
+          "id",
+          "expected_revision"
+        ],
+        "title": "BulkDeleteItemIn",
+        "type": "object"
+      },
+      "BulkDeleteOut": {
+        "additionalProperties": false,
+        "properties": {
+          "deleted": {
+            "items": {
+              "$ref": "#/components/schemas/ofo_app__routes__strategies__DeletedOut"
+            },
+            "title": "Deleted",
+            "type": "array"
+          },
+          "kept": {
+            "items": {
+              "$ref": "#/components/schemas/BulkKeptOut"
+            },
+            "title": "Kept",
+            "type": "array"
+          },
+          "summary_text": {
+            "title": "Summary Text"
+          }
+        },
+        "required": [
+          "deleted",
+          "kept",
+          "summary_text"
+        ],
+        "title": "BulkDeleteOut",
+        "type": "object"
+      },
+      "BulkKeptOut": {
+        "additionalProperties": false,
+        "properties": {
+          "id": {
+            "title": "Id",
+            "type": "integer"
+          },
+          "reason": {
+            "enum": [
+              "held_at_broker",
+              "orders_sent",
+              "not_found",
+              "changed",
+              "failed"
+            ],
+            "title": "Reason",
+            "type": "string"
+          },
+          "text": {
+            "title": "Text"
+          }
+        },
+        "required": [
+          "id",
+          "reason",
+          "text"
+        ],
+        "title": "BulkKeptOut",
+        "type": "object"
+      },
       "CapabilitiesOut": {
         "additionalProperties": false,
         "properties": {
@@ -18053,6 +18154,10 @@
             "title": "Has Paper Order",
             "type": "boolean"
           },
+          "held_at_broker": {
+            "title": "Held At Broker",
+            "type": "boolean"
+          },
           "id": {
             "title": "Id",
             "type": "integer"
@@ -18158,6 +18263,7 @@
           "can_delete",
           "has_paper_order",
           "has_order",
+          "held_at_broker",
           "open_opportunities",
           "open_opportunities_text",
           "final_pnl",
@@ -21396,6 +21502,45 @@
           }
         },
         "summary": "Save Draft"
+      }
+    },
+    "/strategies/bulk-delete": {
+      "post": {
+        "description": "ADR-330 (8): the single delete's rule (``store.delete_draft``) per id, one savepoint per item; a strategy it\nrefuses is kept with its reason. Another user's or a hidden id is \"not_found\" (never says it exists). Undo is the\nexisting per-id undelete route.",
+        "operationId": "bulk_delete_strategies_strategies_bulk_delete_post",
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/BulkDeleteIn"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/BulkDeleteOut"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "summary": "Bulk Delete Strategies"
       }
     },
     "/strategies/{strategy_id}": {
