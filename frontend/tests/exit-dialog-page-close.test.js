@@ -174,9 +174,10 @@ describe('Tier A review round 2: the staged exit is dropped, the user\'s own edi
   const lots9 = (w) => S(w).setLegs(S(w).paper.net.map((l, i) => (i === 0 ? { ...l, lots: 9 } : { ...l })))
   const exitLeg = async (w, i) => { S(w).exitPaper(S(w).paper.net[i].contract_id, 1); await flushPromises() }
 
-  it('F1 A1: a lot change, then a per-leg Exit on another leg, then the user\'s Cancel: both edits stay (u513, 2 pending)', async () => {
+  it('F1 A1: a leg removed (an exit waiting), then a per-leg Exit on another leg, then the user\'s Cancel: both edits stay (u513, 2 pending)', async () => {
     const w = await builder()
-    lots9(w)
+    const before = S(w).legs.length
+    removeFirst(w)
     await flushPromises()
     expect(S(w).pendingOrders.length).toBe(1)
     await exitLeg(w, 2)
@@ -185,7 +186,16 @@ describe('Tier A review round 2: the staged exit is dropped, the user\'s own edi
     await t(w, 'paper-cancel').trigger('click')
     await flushPromises()
     expect(S(w).pendingOrders.length).toBe(2)
-    expect(S(w).legs[0].lots).toBe(9)
+    expect(S(w).legs.length).toBe(before - 2)
+  })
+
+  it('F1 A1b (D-48 round 2): lots raised on a leg (an add waiting), then a per-leg Exit: blocked, still 1 pending, no dialog', async () => {
+    const w = await builder()
+    lots9(w)
+    await flushPromises()
+    await exitLeg(w, 2)
+    expect(S(w).pendingOrders.length).toBe(1)
+    expect(t(w, 'paper-confirm').exists()).toBe(false)
   })
 
   it('F1 A2: a leg removed, then a per-leg Exit, then the read fails: the removal stays (1 pending)', async () => {

@@ -47,12 +47,20 @@ const CONTROL_FIELDS = {
   shift: ['direction'], // REQ-078 AC-6: the browser sends only the control and its direction; the server moves the strikes
   width: ['direction'],
   hedge: ['direction'],
+  expiry: ['expiry'], // D-48 (REQ-078 AC-11, ADR-330 (42)): the target date text as the server listed it; `index` is optional (absent = every leg)
   read: [], // changes no leg: the server answers the current numbers, shape name and Hedge marks (REQ-076 AC-8)
 }
 
 /** The controls a click moves by ONE step relative to the legs shown (2026-11-06): while one is in flight, further clicks of
  *  the same control (and leg) add up, and the newest request carries the total as `steps` from the last confirmed legs. */
 export const RELATIVE_CONTROLS = Object.freeze(['step', 'shift', 'width', 'hedge'])
+/** D-48: every control that can land a leg on another contract, so its landing goes through the one leg door (ADR-319 (1),
+ *  ADR-328 (1)). The expiry control is ABSOLUTE (a listed date, never a click count), so it is not in RELATIVE_CONTROLS. */
+export const MOVE_CONTROLS = Object.freeze([...RELATIVE_CONTROLS, 'expiry'])
+/** D-48 (REQ-078 AC-13): the sentence of the Change expiry control for a leg that already has an Exit waiting. */
+export const EXPIRY_BLOCKED_BY_EXIT = 'This leg has an exit waiting; review or discard it first.'
+/** D-48 (REQ-078 AC-11, AC-12): the server's sentence (leg_edit_expiry_futures) shown BEFORE the click on the all-legs select while a futures leg is present. */
+export const EXPIRY_FUTURES_LEG = 'Expiry change applies to option legs.'
 export const MAX_STEPS = 20 // the server's cap per request (EditIn.steps)
 
 /** The key two relative clicks share when they add up: the control and, for a strike step, the leg. */
@@ -77,6 +85,10 @@ export function buildEditRequest(underlying, legs, edit, shiftTotal = null) {
   if (edit.control === 'price' && typeof edit.price !== 'string') return null // text, never a number (ADR-008)
   const body = { control: edit.control }
   for (const f of fields) body[f] = edit[f]
+  if (edit.control === 'expiry') {
+    if (typeof edit.expiry !== 'string') return null // the listed date text, never a Date or a number
+    if (Number.isInteger(edit.index)) body.index = edit.index // one leg; absent = every leg
+  }
   // 2026-11-06: N quick clicks of one relative control go as ONE request moving N listed strikes (the server steps them)
   if (RELATIVE_CONTROLS.includes(edit.control) && Number.isInteger(edit.steps) && edit.steps > 1) body.steps = edit.steps
   return {

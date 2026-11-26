@@ -1286,6 +1286,16 @@ _LEG_EDIT_TEMPLATES: tuple[MessageTemplate, ...] = (
     _gate("leg_edit_width_hedge_one_expiry", _UI, 25, "Width and Hedge need one expiry.",
           "The move was refused and no leg changed.", "This move.",
           "Use Shift, or put every leg on one expiry.", {}),
+    # D-48 (REQ-078 AC-11, AC-12): change the expiry of legs in the builder; a refusal changes nothing. Pending read.
+    # (a leg already on a passed expiry is refused by the request check, leg_edit_strike_not_listed, before any edit)
+    _gate("leg_edit_expiry_not_listed", _UI, 570,
+          "No {strikes} {kind} is listed for {expiry}, so leg {number} cannot move there.",
+          "The change was refused and no leg changed.", "This expiry change.",
+          "Pick another expiry, or remove the leg and add it again at a listed strike.",
+          {"strikes": Strikes, "kind": Instrument, "expiry": Date, "number": Count}),
+    _gate("leg_edit_expiry_futures", _UI, 571, "Expiry change applies to option legs.",
+          "The change was refused and no leg changed.", "This expiry change.",
+          "Remove the futures leg and add it again on the expiry you want.", {}),
     # GC-SET lots (REQ-167 AC-5): a leg above the limits.max_lots setting in force. Pending owner read.
     _gate("leg_lots_above_limit", _UI, 175,
           "A leg can hold at most {max_lots} lots; this leg has {lots}.",

@@ -4902,5 +4902,13 @@
   "explanation:exit_not_run_no_price": {
     "sha256": "9f4e2dd5f7ab2f0dd4adea6f1389b3300f4d7ce8c3673e7ef25aef7bcee10e19",
     "reviewed": "pending owner read"
+  },
+  "leg_edit_expiry_not_listed": {
+    "sha256": "53bfe893829cdb7a1b060c1e7e06cf12b33124c563ba3c6ea9ec50ec45150e31",
+    "reviewed": "pending owner read"
+  },
+  "leg_edit_expiry_futures": {
+    "sha256": "01b1db55a6fb8c0d3d6e878134a81f519837bc2864e7c447fd109aaca985569a",
+    "reviewed": "pending owner read"
   }
 }

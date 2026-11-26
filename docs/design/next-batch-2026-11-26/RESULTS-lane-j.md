@@ -153,6 +153,10 @@ N12. [needs live prices: no] Deleted / Restored in the history (ADR-330 (31)). M
 N13. [needs live prices: no] Customise triggers keeps the plan (S-11). Plan sheet: type 400 in "Stop (Rs)" and a time exit (today, 15:15),
     then press "Customise triggers": the customise page opens. Come back to the builder: the plan sheet opens again by
     itself with 400 and 15:15 still typed; Save saves them. Another strategy's sheet shows nothing held.
+N14. [needs live prices: yes] Change expiry (ADR-330 (42), Lane U D-48). Builder of a paper trade: pick another
+    expiry in a leg's expiry box (or "all legs"): the leg moves to that expiry. KNOWN LEFTOVER (Lane U, not fixed
+    tonight): a leg stop set on that leg in the Stops panel does NOT follow the moved leg; check the Stops panel after
+    the move and write down what it shows.
 Re-checks after the merge (quick):
 R1. [needs live prices: yes] Exit from Positions: Positions > Paper > a trade > Exit: the confirmation, Cancel exits nothing, Confirm exits.
 R2. [needs live prices: no] Positions: the real and paper lists load; the Stops link of a Live Strategies card opens Positions at that trade's
@@ -256,7 +260,8 @@ current, none hand-edited.
 | 3 | 3d7aaf7 | ic docs e40a5ad, Lane R ecb3655, Lane P a59f7a9 (0056), Lane U b81970b, Lane S d344d82 | `prepush.py --full` TOTAL PASS 2460 s |
 | 4+5 | 9f769b5 | P7 page answers, P8 Reset button, ADR-330 (31) with 0057, health e2e fix, side-closed templates; Not-applicable plan line, S-11 hold, Lane R 71ed990, Lane U 63091d7 | `prepush.py --full` TOTAL PASS 2195 s |
 | 6 | ae01cc6 | section (a) corrected from the PC rehearsal; owner question LJ-2 | `prepush.py --full` TOTAL PASS 2067 s |
-| 7 | (this push) | Lane U d9de498, Lane D 91cc43b, three full-suite test fixes, #753 parked | see the commit's gate |
+| 7 | (see push 8 row) | Lane U d9de498, Lane D 91cc43b, three full-suite test fixes, #753 parked | `prepush.py --full` |
+| 8 | (this push) | Lane U final 12e04b9 (Change expiry, ADR-330 (42)) | see the commit's gate |
 
 Coordinator message for push 1 could not be sent: the session-message service refused this session (untrusted
 device); recorded here instead.
