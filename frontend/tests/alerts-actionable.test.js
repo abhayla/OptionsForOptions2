@@ -132,7 +132,7 @@ describe('Active page', () => {
   })
   it('a 409 answer shows the server reason and keeps the row; Exit then stays on the page', async () => {
     answers['GET /alerts/active'] = () => Promise.resolve(active(1))
-    const parts = { what: 'This alert is already answered.', why: 'It was answered elsewhere.', next: 'Reload.', code: 'suggestion_not_open' }
+    const parts = { what_happened: 'This alert is already answered.', impact: 'It was answered elsewhere.', what_is_blocked: 'Nothing was changed.', next_action: 'Reload.' }
     answers['POST /alerts/1/answer'] = () => Promise.reject({ message: 'x', status: 409, parts })
     const page = await mountAt('/alerts/active', AlertsPage)
     await page.get('[data-testid="alert-answer-exit"]').trigger('click')
