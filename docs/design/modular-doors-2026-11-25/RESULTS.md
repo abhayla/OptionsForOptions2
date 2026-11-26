@@ -374,6 +374,11 @@ variable is not seen). Gates after the fix: Python guards `54 passed`; `one-door
 | 7 | DONE | `5354f722` |
 | 8 | DONE | see the last commit of the branch |
 
+Whole-refactor DB run on the merged tree (after the Lane B and fix-branch merges, head `42ec8114` backend =
+`5d56778d` backend): `python /root/phase_select.py b1055c5` selected 248 `tests_app` files; each on its own fresh Postgres
+clone via `/root/ofo-fresh-run.sh`: 248 of 248 exit 0. Final pushed heads: `b4aaed6d` (merges), `5d56778d` (Phase 8
+fixes), each with prepush TOTAL PASS.
+
 CI: no GitHub run exists for this branch (workflows run only on `pull_request` and pushes to `main`; no PR tonight). The
 gate was the local mirror for every head: prepush TOTAL PASS on each pushed head, ci_local, whole vitest, and the
 `select_app_tests` DB run on fresh Postgres clones.
