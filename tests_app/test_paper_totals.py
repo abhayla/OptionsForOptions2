@@ -489,7 +489,10 @@ def test_ac_r06_the_count_line_names_expired_unpriced_or_both():
 # --- D-36: a finished book (no open leg) costs the list no pricing, decay or live-figure work ------------------------
 
 _FINISHED = 6
-_STATEMENTS = 6  # the list's fixed database work
+# 6 -> 8 (Lane U 7397330f, ADR-330 (19), REQ-134 AC-4): the list reply carries `shown_date`, read by the one shown-date
+# source of the expiries reply (catalogue.get_shown_date: database date + database clock, scenario clock in scenario
+# mode), which costs SAVEPOINT + SELECT clock_timestamp() = 2 statements. Still fixed whatever the count of strategies.
+_STATEMENTS = 8  # the list's fixed database work
 _WORK = ("_prices", "_figures", "_summary", "_decay", "_charges", "_after")
 
 
@@ -538,7 +541,7 @@ async def test_d36_the_list_does_fixed_database_work_and_finished_books_cost_onl
     finally:
         event.remove(sync, "before_cursor_execute", record)
     # D-36 count (measured 2026-11-25, 6 finished + 1 open): the per-book helpers run once per finished book, pure
-    # arithmetic of about 0.3 ms each (6 books: 2 ms in all); the database work is a fixed 6 statements whatever the
+    # arithmetic of about 0.3 ms each (6 books: 2 ms in all); the database work is a fixed 8 statements whatever the
     # count of strategies and no broker is called. Finished books cost nothing measurable, so nothing is skipped.
     assert {name: seen[name]["finished"] for name in _WORK} == dict.fromkeys(_WORK, _FINISHED)
     assert len(statements) == _STATEMENTS

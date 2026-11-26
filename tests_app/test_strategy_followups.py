@@ -111,8 +111,10 @@ async def test_the_api_answers_not_found_to_a_put_on_another_users_strategy_and_
             async with _client(_app(_ConnMaker(conn), "someone-else")) as ac:
                 got = await ac.get(f"/strategies/{stored.id}")
                 put = await ac.put(f"/strategies/{stored.id}", json=_body(ids, wing=WING, expected_revision=1))
-            assert (got.status_code, got.json()["code"]) == (404, "USER_INPUT_003")
-            assert (put.status_code, put.json()) == (got.status_code, got.json()), put.text
+            # ADR-292: another user's strategy is "not found", never a refusal that says it exists. Opening by id
+            # answers strategy_not_found (ADR-330 (37), REQ-134 AC-5, Lane U 9972cae7); a PUT keeps the generic reply.
+            assert (got.status_code, got.json()["code"]) == (404, "STRATEGY_VALIDATION_523")
+            assert (put.status_code, put.json()["code"]) == (404, "USER_INPUT_003"), put.text
             assert await store.load(conn, stored.user_ref, stored.id) == before
             assert await _history_rows(conn, stored.id) == history
         finally:
