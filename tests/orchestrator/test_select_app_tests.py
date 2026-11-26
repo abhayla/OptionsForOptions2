@@ -68,6 +68,8 @@ PR241_SELECTION = {
     "tests_app/test_times_settings.py",  # GC-SET 5a2: calls catalogue_picker.publish_time / loaded_before
     "tests_app/test_pinned_clock.py",  # calls the /api/catalogue/{underlying}/... routes
     "tests_app/test_strategy_tracking.py",  # W-122: GET /strategies/{strategy_id}
+    "tests_app/test_paper_monitor.py",  # W2-A: imports ofo_app.alert_title, a module this diff changes
+    "tests_app/test_stop_fired_message.py",  # W2-A: a new file importing ofo_app.routes.paper
     "tests_app/test_stored_contract_feed_keys.py",  # issue #500: GET /strategies/{id} and /history, StrategyRefused
     "tests_app/test_stored_chain_real.py",  # PR #580 (I-4): real catalogue_picker readers and routes
     "tests_app/test_strategy_tracking_imports.py",  # issue #500: its scan names ofo_app.catalogue_picker as a source

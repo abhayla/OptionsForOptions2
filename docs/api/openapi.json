@@ -19463,7 +19463,28 @@
     },
     "/api/alerts/answered": {
       "get": {
+        "description": "``after``: only the rows with an id above it (the header's pop-up reader asks for what is new since the last\nrow it saw; the page History asks without it).",
         "operationId": "alert_answered_api_alerts_answered_get",
+        "parameters": [
+          {
+            "in": "query",
+            "name": "after",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "maximum": 9223372036854775807,
+                  "minimum": 0,
+                  "type": "integer"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "After"
+            }
+          }
+        ],
         "responses": {
           "200": {
             "content": {
@@ -19474,6 +19495,16 @@
               }
             },
             "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
           }
         },
         "summary": "Alert Answered"

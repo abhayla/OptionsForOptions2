@@ -2,8 +2,9 @@
 
 Rule, over ``backend/ofo_app`` (tests excluded):
 
-- ``add_alert`` (a paper trigger's alert row) only in ``paper_monitor.py`` (or ``paper_exit.py``, if the exit door took
-  it over);
+- ``add_alert`` (a paper trigger's alert row) is NOT listed any more (W2-A, 26 Nov): ``paper_monitor`` raises a fired
+  stop through ``actionable_alerts.inform``, so no caller is left in ``backend/ofo_app``; the guard
+  ``test_actionable_alert_one_module.py`` still bans ``add_alert`` outside its store and the one module;
 - ``open_suggestion`` (an actionable playbook row) only in ``actionable_alerts.py``, the one alert module of ADR-330's
   one-module instruction (Lane J 26 Nov: Lane P moved the call there from ``background.py``; which callers may raise
   an alert through that module is the guard ``test_actionable_alert_one_module.py``);
@@ -37,12 +38,11 @@ BACKEND = Path(__file__).resolve().parents[1] / "backend"
 NOTIFY = "notifier.notify"
 #: writer -> the files (under backend/) that may call it
 HOMES: dict[str, frozenset[str]] = {
-    "add_alert": frozenset({"ofo_app/paper_monitor.py", "ofo_app/paper_exit.py"}),
     "open_suggestion": frozenset({"ofo_app/actionable_alerts.py"}),
     "record_held": frozenset({"ofo_app/actionable_alerts.py", "ofo_app/background.py"}),
     NOTIFY: frozenset({"ofo_app/worker_watch.py"}),
 }
-PLAIN = frozenset({"add_alert", "open_suggestion", "record_held"})
+PLAIN = frozenset({"open_suggestion", "record_held"})
 CATEGORY = re.compile(r"own_process|display|real_path|awaiting_phase_\d+")
 Key = tuple[str, str, str]  # (file under backend/, enclosing function, writer)
 EXEMPT: dict[Key, tuple[str, str]] = {}
@@ -149,7 +149,6 @@ def test_each_home_still_calls_its_writer():
 
 # ---- mutation tests: the guard goes red where it should and only there -----------------------------------------------
 CALLS = {
-    "add_alert": ("ofo_app/paper_monitor.py", "async def f(c):\n    return await triggers.add_alert(c, 1)\n"),
     "open_suggestion": ("ofo_app/actionable_alerts.py", "async def f(c):\n    return await store.open_suggestion(c)\n"),
     "record_held": ("ofo_app/background.py", "async def f(c):\n    return await store.record_held(c)\n"),
     NOTIFY: ("ofo_app/worker_watch.py", "async def f():\n    return await notifier.notify('a', 'b')\n"),
@@ -166,12 +165,7 @@ def test_mutation_a_bad_sample_gives_exactly_one_problem_and_the_home_none(write
     assert problems({home: source}, exempt={}) == []
 
 
-def test_mutation_add_alert_is_also_allowed_in_the_exit_door():
-    assert problems({"ofo_app/paper_exit.py": CALLS["add_alert"][1]}, exempt={}) == []
-
-
 @pytest.mark.parametrize("source", [
-    "from ofo_app.paper_trigger_store import add_alert as a\n\nasync def f():\n    return await a()\n",
     "from ofo_app.playbook_store import open_suggestion as o\n\nasync def f():\n    return await o()\n",
     "from ofo_app.notifier import notify as n\n\nasync def f():\n    return await n('a')\n",
     "from ofo_app import notifier as nt\n\nasync def f():\n    return await nt.notify('a')\n",
@@ -185,7 +179,7 @@ def test_mutation_an_aliased_import_gives_one_problem(source):
 def test_mutation_a_plain_notify_import_and_a_reference_are_sites():
     plain = "from ofo_app.notifier import notify\n\nasync def f():\n    return await notify('a')\n"
     assert len(problems({"ofo_app/routes/x.py": plain}, exempt={})) == 1
-    assert len(problems({"ofo_app/routes/x.py": "def f():\n    return add_alert\n"}, exempt={})) == 1
+    assert len(problems({"ofo_app/routes/x.py": "def f():\n    return open_suggestion\n"}, exempt={})) == 1
 
 
 def test_mutation_the_monitors_own_notify_is_not_the_notifier():
@@ -199,7 +193,7 @@ def test_mutation_an_unparsable_file_fails_closed():
 
 
 def test_mutation_a_deleted_exempt_site_is_a_stale_exemption():
-    entry: dict[Key, tuple[str, str]] = {("ofo_app/routes/x.py", "f", "add_alert"): ("display", "a shown alert")}
-    assert problems({"ofo_app/routes/x.py": CALLS["add_alert"][1]}, exempt=entry) == []
+    entry: dict[Key, tuple[str, str]] = {("ofo_app/routes/x.py", "f", "open_suggestion"): ("display", "a shown alert")}
+    assert problems({"ofo_app/routes/x.py": CALLS["open_suggestion"][1]}, exempt=entry) == []
     found = problems({"ofo_app/routes/x.py": "def f():\n    return None\n"}, exempt=entry)
-    assert found == ["stale exemption: ofo_app/routes/x.py::f no longer calls add_alert; delete the entry"]
+    assert found == ["stale exemption: ofo_app/routes/x.py::f no longer calls open_suggestion; delete the entry"]

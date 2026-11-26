@@ -17,10 +17,12 @@ from decimal import Decimal
 
 import pytest
 from ofo import settings
+from ofo.errors.explanations import render_explanation
 from ofo.marketdata.fanout import FanOut
 from ofo.rules.inputs import DataHealth
 from ofo.tracking import paper, stops
-from ofo_app import paper_monitor, paper_store, settings_store, tracked_contracts
+from ofo_app import actionable_alerts as aa
+from ofo_app import alert_title, paper_monitor, paper_store, settings_store, tracked_contracts
 from ofo_app import paper_trigger_store as triggers
 from ofo_app.live_push import LiveFeed
 from ofo_app.routes.outcome import MarketContext
@@ -103,8 +105,21 @@ async def _trigger_state(db, tid: int) -> tuple[bool, bool]:
 
 
 async def _alerts(db, sid: int) -> list[tuple]:
-    rows = await db.execute(text("SELECT title, body FROM public.paper_alerts WHERE strategy_id = :s"), {"s": sid})
-    return [tuple(r) for r in rows]
+    """W2-A: a fired stop is ONE informational History row (kind stop_fired) of the one alert module, no longer a
+    paper_alerts row: (the row's title = the strategy label, the message text)."""
+    user = (await db.execute(text("SELECT user_ref FROM public.strategies WHERE id = :s"), {"s": sid})).scalar_one()
+    out = []
+    for a in await aa.history(db, user):
+        if a.strategy_id == sid and a.kind == "stop_fired":
+            template_id, values = a.note
+            title = (await alert_title.labels(db, [(sid, a.strategy_name)]))[sid]
+            out.append((str(title), str(render_explanation(template_id, **values))))
+    return out
+
+
+async def _paper_alert_rows(db, sid: int) -> int:
+    return (await db.execute(text("SELECT count(*) FROM public.paper_alerts WHERE strategy_id = :s"),
+                             {"s": sid})).scalar_one()
 
 
 async def test_core_a_crossing_tick_fires_once_through_the_fan_out_and_never_again_after_a_restart(db):
@@ -127,7 +142,8 @@ async def test_core_a_crossing_tick_fires_once_through_the_fan_out_and_never_aga
                                            (ids[1], "SELL", 65, D("12.50"), reason, tid)]
     assert await _trigger_state(db, tid) == (True, False)
     [(title, body)] = await _alerts(db, stored.id)
-    assert title.startswith("Paper strategy — ")
+    assert f"(#{stored.id}" in title  # W2-A pin changed: the ADR-330 (19)(b) label, not "Paper strategy — "
+    assert await _paper_alert_rows(db, stored.id) == 0  # W2-A: written once, through the one module
     assert body.startswith("Stop-loss on the index: ")
     assert "Paper strategy — " not in body  # the title shows once, as the alert title
     assert reason in body
@@ -320,16 +336,16 @@ async def test_a_failed_write_rolls_back_whole_and_the_next_crossing_tick_fires(
     await monitor.step()
     market.tick(keys[0], "41.00")
     market.tick(keys[1], "12.50")
-    real_alert = triggers.add_alert
+    real_alert = aa.inform
 
     async def broken(*_a, **_k):
         raise ConnectionError("database went away")
 
-    monkeypatch.setattr(triggers, "add_alert", broken)  # fails AFTER the claim and the stop orders
+    monkeypatch.setattr(aa, "inform", broken)  # fails AFTER the claim and the stop orders
     market.tick(INDEX, "22800.00")
     assert await monitor.step() == 0 and monitor.failures == 1
     assert await _trigger_state(db, tid) == (False, False) and await _stops(db, stored.id) == []
-    monkeypatch.setattr(triggers, "add_alert", real_alert)
+    monkeypatch.setattr(aa, "inform", real_alert)
     market.tick(INDEX, "22790.00")
     assert await monitor.step() == 1 and len(await _stops(db, stored.id)) == OPEN_LEGS
 

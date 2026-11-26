@@ -81,6 +81,7 @@ from ofo.tracking.paper_alert import restore_alert_body, restore_order_reason, s
 from pydantic import AwareDatetime, BaseModel, ConfigDict, Field, field_validator
 
 from ofo_app import (
+    alert_title,
     held_entry_store,
     market_read,
     may_act,
@@ -1540,19 +1541,32 @@ async def paper_leg_stop_risk(strategy_id: int, contract_id: Annotated[int, Quer
     held = {p.instrument_id: p.net_quantity for p in net_positions(_paper(booked), {}).positions} if booked else {}
     if held.get(str(contract_id), 0) == 0:
         raise StrategyRefused("paper_trigger_leg_not_open")
+    names, terms = await names_and_terms(db, stored.saved.definition.underlying, booked)
+    return leg_stop_answer(booked, held[str(contract_id)], contract_id, level, names, terms, now())
+
+
+async def names_and_terms(db: Any, underlying: str, booked: Sequence[Any]) -> tuple[dict[str, Any], dict[str, Any]]:
+    """The shown name and engine terms of every contract the book holds (one reader for the routes and the monitor)."""
     found = {c.contract_id: c for c in await tracked_contracts.resolve(
         db, sorted({o.order.contract_id for o in booked}))}
-    names = {}
-    terms = {}
+    names: dict[str, Any] = {}
+    terms: dict[str, Any] = {}
     for cid, one in found.items():
         if one.stored is not None:
             _, instrument, strike, expiry = _identity(one)
-            names[str(cid)] = describe_contract((stored.saved.definition.underlying, instrument, strike, expiry))
+            names[str(cid)] = describe_contract((underlying, instrument, strike, expiry))
             terms[str(cid)] = ContractTerms(instrument, strike, expiry)
+    return names, terms
+
+
+def leg_stop_answer(booked: Sequence[Any], net: int, contract_id: int, level: Decimal,  # noqa: PLR0913
+                     names: Mapping[str, Any], terms: Mapping[str, Any], at: datetime.datetime) -> ExitRiskOut:
+    """THE ADR-330 (6) answer for one leg stop (the route and the monitor's fired-stop message both call this, so the
+    figure is computed one way): the one-leg exit of the whole open quantity ``net`` at ``level``."""
     # the close's side and quantity from the exit door's own rule (G2: no side flipped outside it); no order is built
-    close = open_legs_to_close({str(contract_id): held[str(contract_id)]})[0]
+    close = open_legs_to_close({str(contract_id): net})[0]
     try:
-        leg = PaperOrder(str(close.key), close.side, close.quantity, level, "exit", now())
+        leg = PaperOrder(str(close.key), close.side, close.quantity, level, "exit", at)
     except ValueError:
         return _exit_risk_answer("cannot_tell")
     risk = exit_risk(_paper(booked), [leg], terms, priced=True)
@@ -1570,6 +1584,22 @@ async def paper_leg_stop_risk(strategy_id: int, contract_id: Annotated[int, Quer
     elif risk.state != "yes":
         return _exit_risk_answer(risk.state)
     return _exit_warning(risk, names, leg_stop=True)
+
+
+def index_exit_answer(booked: Sequence[Any], exits: Mapping[int, Decimal], terms: Mapping[str, Any],
+                      names: Mapping[str, Any], at: datetime.datetime) -> ExitRiskOut:
+    """The same exit_risk / _exit_warning the exit confirmation uses, for an index exit that closes every open leg
+    (``exits``: contract id -> the fill price). The confirmation's own rule: a line only when the engine says yes."""
+    held = {p.instrument_id: p.net_quantity for p in net_positions(_paper(booked), {}).positions}
+    try:
+        legs = [PaperOrder(str(c.key), c.side, c.quantity, exits[int(c.key)], "exit", at)
+                for c in open_legs_to_close({str(c): held[str(c)] for c in sorted(exits)})]
+    except (ValueError, KeyError):
+        return _exit_risk_answer("cannot_tell")
+    risk = exit_risk(_paper(booked), legs, terms, priced=True)
+    if risk.state != "yes":
+        return _exit_risk_answer(risk.state)
+    return _exit_warning(risk, names)
 
 
 class ArmedExitsOut(ApiModel):
@@ -1912,15 +1942,17 @@ async def keep_paper_trigger(strategy_id: int, trigger_id: int, db: Annotated[An
 
 async def _alerts_out(db: Any, user_ref: str) -> AlertsOut:
     rows, unread = await paper_trigger_store.alerts(db, user_ref)
+    titles = await alert_title.labels(db, [(a.strategy_id, a.strategy_name) for a in rows])  # ADR-330 (19)(b)
     shown: list[dict[str, Any]] = []
     for a in rows:
         try:  # one unreadable row is left out of the list (and logged), never a 500 for every alert
-            title = restore_explanation("paper_alert_title", a.title)
+            restore_explanation("paper_alert_title", a.title)  # the stored title must still fit; it is worded afresh
+            title = render_explanation("paper_alert_title", name=titles[a.strategy_id])
             body = restore_alert_body(a.body)
         except ValueError:
             _LOG.warning("paper alert %s left out: stored text fits no alert template", a.id)
             continue
-        shown.append({"id": a.id, "strategy_id": a.strategy_id, "strategy_name": sf.shown_name(a.strategy_name),
+        shown.append({"id": a.id, "strategy_id": a.strategy_id, "strategy_name": titles[a.strategy_id],
                       "trigger_id": a.trigger_id, "created_at": a.created_at, "title": title, "body": body,
                       "read": a.read_at is not None})
     return AlertsOut.model_validate({"unread": unread, "alerts": shown})
@@ -1956,6 +1988,7 @@ async def _settled_records(db: Any, user_ref: str) -> list[dict[str, Any]]:
     for name, o in rows:
         groups.setdefault((o.strategy_id, o.order.placed_at, o.order.reason), []).append((name, o))
     out: list[dict[str, Any]] = []
+    titles = await alert_title.labels(db, [(sid, items[0][0]) for (sid, _, _), items in groups.items()])
     for (sid, at, reason), items in groups.items():
         what = restore_order_reason(reason)
         if what is None:
@@ -1963,9 +1996,8 @@ async def _settled_records(db: Any, user_ref: str) -> list[dict[str, Any]]:
             continue
         name = items[0][0]
         legs = [(describe_contract(_identity(found[o.order.contract_id])), o.order.price) for _, o in items]
-        out.append({"kind": "settled", "strategy_id": sid, "strategy_name": sf.shown_name(name), "at": at,
-                    "title": render_explanation("paper_alert_title", name=sf.shown_name(name) if name
-                                                else render_explanation("cell_dash")),
+        out.append({"kind": "settled", "strategy_id": sid, "strategy_name": titles[sid], "at": at,
+                    "title": render_explanation("paper_alert_title", name=titles[sid]),
                     "body": settle_history_body(what, legs)})
     return out
 

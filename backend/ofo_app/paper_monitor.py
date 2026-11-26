@@ -40,18 +40,18 @@ from ofo.errors.explanations import ExplanationText, render_explanation
 from ofo.instruments.models import FUTURE_TYPE
 from ofo.marketdata.quote import NormalizedQuote
 from ofo.outcome import read_snapshot
-from ofo.strategy import stored_form as sf
 from ofo.strategy.definition import display_contract
 from ofo.tracking import paper, stops
 from ofo.tracking.orderbook import net_positions
-from ofo.tracking.paper_alert import alert_body, stop_reason_at
+from ofo.tracking.paper_alert import ALERT_BODY_TEMPLATES, STOP_LINE_TEMPLATES, alert_body, stop_reason_at
 
-from ofo_app import paper_exit, paper_store, tracked_contracts
+from ofo_app import actionable_alerts, paper_exit, paper_store, tracked_contracts
 from ofo_app import paper_trigger_store as triggers
 from ofo_app.live_push import LiveFeed
 from ofo_app.routes.outcome import SettingsReader, feed_scope, with_rate_in_force
 
 log = logging.getLogger(__name__)
+# ADR-330 (3)(b): a fired stop is raised through ofo_app.actionable_alerts.inform, never a table write of its own
 
 RELOAD_SECONDS: Final = 60.0
 POLL_SECONDS: Final = 0.5
@@ -242,12 +242,44 @@ class PaperMonitor:
             # D-02: the stored (buys first) order
             recorded = [o.order.contract_id for o in stored if o.order.trigger_id == t.id]
             body = alert_body(reason, [(texts[c], prices[c]) for c in recorded], names_contract=t.kind == "leg_stop")
-            name = sf.shown_name(a.name) if a.name else render_explanation("cell_dash")
-            await triggers.add_alert(session, t.strategy_id, t.id, str(render_explanation("paper_alert_title",
-                                                                                          name=name)),
-                                     str(body))
+            line = await self._max_loss_line(session, a, t, book, open_net, prices, now)
+            # ADR-330 (3b), owner Q2: the fired exit is an informational message (History + pop-up, never the bell),
+            # raised through the one alert module in this same transaction
+            values: dict[str, Any] = {"body": body} if line is None else {"body": body, "line": line}
+            await actionable_alerts.inform(
+                session, a.user_ref, t.strategy_id, "stop_fired",
+                "stop_fired_note" if line is None else "stop_fired_note_with_line", values, at=now,
+                restore={"body": ALERT_BODY_TEMPLATES, "line": STOP_LINE_TEMPLATES})
         self.fires += 1
         return {"fired": {t.id}, "cancelled": set()}
+
+    @staticmethod
+    async def _max_loss_line(session: Any, a: Any, t: stops.Trigger, book: Sequence[Any],  # noqa: PLR0913
+                             open_net: Mapping[int, int],
+                             prices: Mapping[int, Any], now: datetime.datetime) -> ExplanationText | None:
+        """ADR-330 (6): "If this stop fires, max loss becomes Rs X (now Rs Y)", from the one engine through the SAME
+        functions the Stops panel's route uses (``routes.paper``), judged on the book BEFORE the exit was written.
+        A leg stop is priced AT ITS STOP LEVEL, exactly as the line the user saw when saving it (the fill price is the
+        live tick and can gap past it; the line is the stop's own promise). An index exit closes every open leg at the
+        fill prices and gets a line only when the exit confirmation's own check says yes. Answer states: yes -> line;
+        no / cannot_tell -> None (no figure); any failure -> logged, None. The exit and its record never wait on it
+        (the exit already happened): the read runs in a savepoint so a failed statement cannot poison the fire."""
+        from ofo_app.routes import paper as paper_routes  # noqa: PLC0415 - the routes import this module
+        try:
+            async with session.begin_nested():
+                names, terms = await paper_routes.names_and_terms(session, a.underlying, book)
+                if t.kind == "leg_stop":
+                    answer = paper_routes.leg_stop_answer(
+                        book, open_net[t.contract_id], t.contract_id, t.level, names, terms, now)
+                else:
+                    answer = paper_routes.index_exit_answer(book, {c: prices[c] for c in sorted(open_net)}, terms,
+                                                            names, now)
+        except Exception as exc:  # noqa: BLE001 - the message is written without the line, never not at all
+            log.error("max-loss line of fired trigger %s left out: %s", t.id, type(exc).__name__)
+            return None
+        if answer.state != "yes" or answer.warning_text is None:
+            return None
+        return answer.warning_text
 
     @staticmethod
     async def _not_written(session: Any, t: stops.Trigger, done: Any) -> dict[str, set[int]] | None:

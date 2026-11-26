@@ -281,7 +281,9 @@ async def test_each_alert_row_names_its_strategy(db):
     async with _client(app) as c:
         alerts = (await c.get("/paper/alerts")).json()["alerts"]
         book = (await c.get(f"/paper/strategies/{stored.id}")).json()
-    assert [(a["strategy_id"], a["strategy_name"]) for a in alerts] == [(stored.id, book["name"])]
+    # W2-A pin changed: the alert row names its strategy with the ADR-330 (19)(b) label (name, then "(#id, d Mon)")
+    assert [(a["strategy_id"], a["strategy_name"]) for a in alerts] == [
+        (stored.id, f'{book["name"]} (#{stored.id}, 13 Oct)')]
     assert alerts[0]["strategy_name"]
 
 

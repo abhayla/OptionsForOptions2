@@ -573,7 +573,7 @@ async def _remove_paper_rows(admin_engine, user_ref: str, contract_ids: list[int
     async with admin_engine.connect() as conn:  # noqa: SIM117
         async with conn.begin():
             mine = "(SELECT id FROM public.strategies WHERE user_ref = :u)"
-            for table in ("paper_alerts", "paper_triggers", "paper_orders"):
+            for table in ("paper_alerts", "adjustment_suggestions", "paper_triggers", "paper_orders"):
                 await conn.execute(text(f'ALTER TABLE public."{table}" DISABLE TRIGGER USER'))
                 await conn.execute(text(f"DELETE FROM public.{table} WHERE strategy_id IN {mine}"),  # noqa: S608
                                    {"u": user_ref})

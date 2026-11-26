@@ -15,14 +15,14 @@ from __future__ import annotations
 import datetime
 from typing import Annotated, Any
 
-from fastapi import APIRouter, Depends
+from fastapi import APIRouter, Depends, Query
 from ofo.alerts import CLOSED_BY_SYSTEM
 from ofo.errors import render
 from ofo.errors.explanations import render_explanation
-from ofo.strategy.stored_form import shown_name
 from pydantic import BaseModel, ConfigDict
 
 from ofo_app import actionable_alerts as aa
+from ofo_app import alert_title
 from ofo_app import playbook_store as store
 from ofo_app.api_models import ApiModel, CatalogueText, Identifier
 from ofo_app.db import get_db
@@ -151,8 +151,9 @@ async def active_alerts(db: Annotated[Any, Depends(get_db)],
                         user_ref: Annotated[str, Depends(current_user_ref)]) -> ActiveOut:
     rows = await aa.unanswered(db, user_ref)  # ONE query: the count below is len() of these rows
     by_id = await _texts(db, user_ref)
+    titles = await alert_title.labels(db, [(a.strategy_id, a.strategy_name) for a in rows])  # ADR-330 (19)(b)
     from ofo.alerts import allowed_answers  # noqa: PLC0415 - stdlib table
-    alerts = [{"id": a.id, "strategy_id": a.strategy_id, "strategy_name": shown_name(a.strategy_name), "kind": _kind(a),
+    alerts = [{"id": a.id, "strategy_id": a.strategy_id, "strategy_name": titles[a.strategy_id], "kind": _kind(a),
                "text": _words(a, by_id), "fired_at": a.fired_at, "fired_line": _fired(a),
                "no_longer_true_since": a.no_longer_true_since, "no_longer_true_line": _stopped(a),
                "escalated_at": a.escalated_at, "worse_line": _worse(a),
@@ -188,13 +189,17 @@ async def answer_alert(alert_id: int, body: AnswerIn, db: Annotated[Any, Depends
 
 
 @router.get("/api/alerts/answered", response_model=HistoryOut)
-async def alert_answered(db: Annotated[Any, Depends(get_db)],
-                        user_ref: Annotated[str, Depends(current_user_ref)]) -> HistoryOut:
+async def alert_answered(db: Annotated[Any, Depends(get_db)], user_ref: Annotated[str, Depends(current_user_ref)],
+                        after: Annotated[int | None, Query(ge=0, le=ID_MAX)] = None) -> HistoryOut:
+    """``after``: only the rows with an id above it (the header's pop-up reader asks for what is new since the last
+    row it saw; the page History asks without it)."""
     by_id = await _texts(db, user_ref)
-    items = [{"id": a.id, "strategy_id": a.strategy_id, "strategy_name": shown_name(a.strategy_name), "kind": _kind(a),
+    rows = [a for a in await aa.history(db, user_ref) if after is None or a.id > after]
+    titles = await alert_title.labels(db, [(a.strategy_id, a.strategy_name) for a in rows])  # ADR-330 (19)(b)
+    items = [{"id": a.id, "strategy_id": a.strategy_id, "strategy_name": titles[a.strategy_id], "kind": _kind(a),
               "text": _words(a, by_id), "fired_at": a.fired_at, "fired_line": _fired(a),
               "escalated_at": a.escalated_at, "worse_line": _worse(a),
               "answer": a.answer, "answer_label": _label(a.answer),
               "answered_at": a.answered_at,
-              "closed_reason": _reason(a)} for a in await aa.history(db, user_ref)]
+              "closed_reason": _reason(a)} for a in rows]
     return HistoryOut.model_validate({"items": items})

@@ -7,6 +7,7 @@ from __future__ import annotations
 
 import datetime
 from decimal import Decimal as D
+from http import HTTPStatus
 
 import test_adjustment_check as check_test
 from ofo.timeutil import IST
@@ -59,7 +60,9 @@ async def test_active_answer_history_replies_and_errors(app_db_url, monkeypatch)
     assert (row["answer"], row["answer_label"]) == ("continue", "Continue with the position")
     assert (row["fired_line"], row["answered_at"]) == ("Fired at 11:02", done["answered_at"])
     assert row["closed_reason"] is None
-    assert mine["strategy_name"] == row["strategy_name"] == '"Scenario ADJ-02"'  # the user's name in the quoted slot
+    # W2-A pin changed: the ADR-330 (19)(b) label (was the bare quoted name)
+    expected = f'"Scenario ADJ-02" (#{mine["strategy_id"]}, 9 Nov)'
+    assert mine["strategy_name"] == row["strategy_name"] == expected
 
 
 ESCALATED = datetime.datetime(2026, 11, 25, 11, 9, 0, tzinfo=IST)
@@ -102,3 +105,19 @@ async def test_a_noted_row_in_history_is_catalogue_worded_and_never_a_500(app_db
     active = (await _call("GET", "/api/alerts/active"))[1]
     # never counted
     assert active["count"] == len(active["alerts"]) and note_id not in [a["id"] for a in active["alerts"]]
+
+
+async def test_answered_after_returns_only_rows_with_a_higher_id(app_db_url, monkeypatch):
+    """W2-A: the header's pop-up reader asks for what is new since the last row it saw (GET /api/alerts/answered?after=)."""
+    sid = await _clean(app_db_url, await _seeded(app_db_url, monkeypatch, "ADJ-02"))
+    async with app_db_url.begin() as conn:
+        first = await aa.inform(conn, "owner", sid, "stop_fired", "alert_fired_at", {"time": FIRED}, at=FIRED)
+        second = await aa.inform(conn, "owner", sid, "stop_fired", "alert_fired_at", {"time": FIRED}, at=FIRED)
+
+    def ids(body):
+        return [i["id"] for i in body["items"]]
+
+    assert {first, second} <= set(ids((await _call("GET", "/api/alerts/answered"))[1]))
+    assert ids((await _call("GET", f"/api/alerts/answered?after={first}"))[1]) == [second]
+    assert ids((await _call("GET", f"/api/alerts/answered?after={second}"))[1]) == []
+    assert (await _call("GET", "/api/alerts/answered?after=-1"))[0] == HTTPStatus.UNPROCESSABLE_ENTITY
