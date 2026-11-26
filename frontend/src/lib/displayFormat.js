@@ -1,17 +1,19 @@
 // Display formats for the Strategy Builder screen (W-072; ADR-086). Display only: the API keeps sending ids and ISO
 // times. No money value is read, parsed or formatted here (ADR-008); a strike is a contract label, handled as text.
 
+import { ref } from 'vue'
+
 export const CONTRACT_UNAVAILABLE = 'Contract details not available'
 export const TIME_UNAVAILABLE = 'Time not available'
 
 const MONTHS = ['Jan', 'Feb', 'Mar', 'Apr', 'May', 'Jun', 'Jul', 'Aug', 'Sep', 'Oct', 'Nov', 'Dec']
 const MONTH_BY_TEXT = Object.fromEntries(MONTHS.map((m, i) => [String(i + 1).padStart(2, '0'), m])) // '01' -> 'Jan'
 
-let shownDate = null
+const shownDate = ref(null) // reactive: a label computed before the date arrives recomputes when it is noted
 /** u510: the server's shown date ('2026-11-15', from an expiries reply), kept once so every expiry text can leave the year
  *  off for the current year. Null (never set, or an older reply without it) = every expiry prints its year. */
 export function setShownDate(today) {
-  shownDate = /^\d{4}-\d{2}-\d{2}/.test(String(today ?? '')) ? String(today) : null
+  shownDate.value = /^\d{4}-\d{2}-\d{2}/.test(String(today ?? '')) ? String(today) : null
 }
 
 /** ADR-330 (19), REQ-148 AC-2: a list reply (GET /strategies, GET /paper/strategies) carries the server's `shown_date`; keep it
@@ -24,7 +26,7 @@ export function noteShownDate(data) {
 
 /** THE one expiry-text rule (u510): '2026-10-19' -> '19 Oct 2026', or '19 Oct' only when the expiry is known to be in the
  *  year of the shown date (`today`, else the one set by setShownDate); text compare, no clock. Null when not a date. */
-export function expiryText(expiry, today = shownDate) {
+export function expiryText(expiry, today = shownDate.value) {
   const m = /^(\d{4})-(\d{2})-(\d{2})/.exec(String(expiry ?? ''))
   if (!m) return null
   const month = MONTH_BY_TEXT[m[2]]

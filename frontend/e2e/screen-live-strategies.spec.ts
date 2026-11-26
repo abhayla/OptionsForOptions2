@@ -221,7 +221,7 @@ test.describe('Live Strategies card: fields and figures (REQ-049 AC-4, REQ-151, 
     await expect(c.getByTestId('live-legs').locator('thead th')).toHaveText(['Instrument', 'Lots', 'Entry price', 'LTP'])
     const leg = c.getByTestId('live-leg')
     await expect(leg).toHaveCount(1)
-    await expect(leg.locator('td').nth(0)).toContainText('NIFTY 1 Dec 2026 25650 PE')
+    await expect(leg.locator('td').nth(0)).toContainText('NIFTY 1 Dec 25650 PE') // U-Q8 (a): no year inside the shown year (REQ-148 AC-2)
     await expect(leg.locator('td').nth(0)).not.toContainText('NIFTY25DEC25650PE') // never the broker's trading symbol
     await expect(leg.locator('td').nth(0).locator('.sr-only')).toHaveText('SELL')
     await expect(leg.locator('td').nth(1)).toHaveText('1')

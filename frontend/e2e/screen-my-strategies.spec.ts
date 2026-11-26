@@ -127,7 +127,7 @@ async function stubApi(page: Page, over: Over = {}, rows: Row[] = LIST): Promise
   return F
 }
 // the renamed names the fake keeps are shown through GET /strategies as well
-const withNames = (F: Fake) => { F.over.list ??= () => ({ json: { strategies: F.rows.filter((r) => !F.hidden.has(r.id)).map((r) => (F.names.has(r.id) ? { ...r, name: `"${F.names.get(r.id)}"` } : r)) } }) }
+const withNames = (F: Fake) => { F.over.list ??= () => ({ json: { strategies: F.rows.filter((r) => !F.hidden.has(r.id)).map((r) => (F.names.has(r.id) ? { ...r, name: `"${F.names.get(r.id)}"` } : r)), shown_date: SHOWN } }) }
 
 const rows = (page: Page) => page.getByTestId('strategy-row')
 const rowOf = (page: Page, id: number) => page.locator(`[data-testid="strategy-row"][data-strategy-id="${id}"]`)
@@ -169,15 +169,15 @@ test.describe('My Strategies: the list (REQ-134 AC-4, REQ-009 AC-2, ADR-299, ADR
     await openLoaded(page)
     const r21 = rowOf(page, 21)
     await expect(r21.getByTestId('row-underlying')).toHaveText('SENSEX')
-    await expect(r21.getByTestId('row-legs')).toHaveText('SENSEX 3 Dec 2026 82000 CE and 3 more')
+    await expect(r21.getByTestId('row-legs')).toHaveText('SENSEX 3 Dec 82000 CE and 3 more') // U-Q8 (a): no year inside the shown year (REQ-148 AC-2)
     await expect(r21.getByTestId('row-status')).toHaveText('Running')
     await expect(r21.getByTestId('row-saved')).toHaveText('last saved 20 Nov 2026, 10:00:00 IST')
     const r17 = rowOf(page, 17)
     await expect(r17.getByTestId('row-underlying')).toHaveText('NIFTY')
-    await expect(r17.getByTestId('row-legs')).toHaveText('NIFTY 1 Dec 2026 25600 PE and 1 more')
+    await expect(r17.getByTestId('row-legs')).toHaveText('NIFTY 1 Dec 25600 PE and 1 more') // U-Q8 (a): no year inside the shown year (REQ-148 AC-2)
     await expect(r17.getByTestId('row-status')).toHaveText('Draft')
     await expect(r17.getByTestId('row-saved')).toHaveText('last saved 10 Nov 2026, 10:00:00 IST')
-    await expect(rowOf(page, 4).getByTestId('row-legs')).toHaveText('NIFTY 1 Dec 2026 25600 PE') // one leg: no "and N more"
+    await expect(rowOf(page, 4).getByTestId('row-legs')).toHaveText('NIFTY 1 Dec 25600 PE') // one leg: no "and N more"; U-Q8 (a): no year inside the shown year (REQ-148 AC-2)
   })
 
   test('LIST-3 a column header row names the columns; the Tracking column is gone (ADR-299)', async ({ page, isMobile }) => {
@@ -255,7 +255,7 @@ test.describe('My Strategies: loading, empty and failure states (ADR-320 S-05, R
   test('LOAD-1 (S-05, Q2-7) while the list read runs the page shows grey placeholder rows named "Loading your strategies", never a bare "Loading..."', async ({ page }) => {
     // Spec basis: ADR-330 (S-05) / REQ-070 My Strategies screen wording ("The list read shows a skeleton while it runs")
     const g = gate()
-    await open(page, { list: () => ({ wait: g.wait, json: { strategies: LIST } }) })
+    await open(page, { list: () => ({ wait: g.wait, json: { strategies: LIST, shown_date: SHOWN } }) })
     const skeleton = page.getByTestId('list-skeleton')
     await expect(skeleton).toHaveAttribute('aria-label', 'Loading your strategies')
     await expect(skeleton.locator('div')).toHaveCount(4)
@@ -294,7 +294,7 @@ test.describe('My Strategies: loading, empty and failure states (ADR-320 S-05, R
   test('LOAD-5 (S-05, Q2-7, N-02) Retry reads again: the rows come in and the failure sentence goes', async ({ page }) => {
     // Spec basis: ADR-330 (S-05) ("Retry, which reads again"); owner N-02 (a red box over data that had loaded)
     let fail = true
-    const F = await open(page, { list: () => (fail ? { status: 500, json: {} } : { json: { strategies: LIST } }) })
+    const F = await open(page, { list: () => (fail ? { status: 500, json: {} } : { json: { strategies: LIST, shown_date: SHOWN } }) })
     await expect(page.getByTestId('list-load-error')).toHaveText(LOAD_FAILED)
     fail = false
     await page.getByTestId('list-load-retry').click()
@@ -317,7 +317,7 @@ test.describe('My Strategies: loading, empty and failure states (ADR-320 S-05, R
     // Spec basis: ADR-330 (S-05) ("after 15 seconds, 'Could not load your strategies. Nothing was changed.' with Retry")
     await page.clock.install()
     const g = gate()
-    await open(page, { list: () => ({ wait: g.wait, json: { strategies: LIST } }) })
+    await open(page, { list: () => ({ wait: g.wait, json: { strategies: LIST, shown_date: SHOWN } }) })
     await expect(page.getByTestId('list-skeleton')).toBeVisible()
     await page.clock.fastForward(15001)
     await expect(page.getByTestId('list-load-error')).toHaveText(LOAD_FAILED)
@@ -329,7 +329,7 @@ test.describe('My Strategies: loading, empty and failure states (ADR-320 S-05, R
   test('LOAD-8 a failed re-read after a good first read keeps the list on screen (Undo / reload failing does not blank it)', async ({ page }) => {
     // Spec basis: none (searched: re-read, keeps the list; the page comment in MyStrategiesPage.vue is the only source)
     let fail = false
-    const F = await openLoaded(page, { list: () => (fail ? { status: 500, json: {} } : { json: { strategies: LIST } }) })
+    const F = await openLoaded(page, { list: () => (fail ? { status: 500, json: {} } : { json: { strategies: LIST, shown_date: SHOWN } }) })
     fail = true
     await rowOf(page, 17).getByTestId('delete-17').click()
     F.over.del = { status: 409, json: cat('This strategy was changed by another action after you opened it.') } // delete refused: the page re-reads (and that read fails)
@@ -673,7 +673,7 @@ test.describe('My Strategies: delete one and Undo (REQ-070 AC-6, ADR-293, ADR-29
     await expect(rowOf(page, 17)).toHaveCount(0)
     await page.getByTestId('delete-undo').click()
     await expect(names(page)).toHaveText(ORDER)
-    await expect(rowOf(page, 17).getByTestId('row-legs')).toHaveText('NIFTY 1 Dec 2026 25600 PE and 1 more')
+    await expect(rowOf(page, 17).getByTestId('row-legs')).toHaveText('NIFTY 1 Dec 25600 PE and 1 more') // U-Q8 (a): no year inside the shown year (REQ-148 AC-2)
     await expect(page.getByTestId('delete-toast')).toHaveCount(0)
     expect(callsTo(F, 'POST', /strategies\/17\/undelete\?expected_revision=3$/)).toHaveLength(1) // the revision the page read before the delete
   })
