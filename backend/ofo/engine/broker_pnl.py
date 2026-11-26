@@ -10,7 +10,7 @@ two figures that differ are "mismatch" and carry no value. Several Zerodha rows 
 from __future__ import annotations
 
 import re
-from collections.abc import Mapping, Sequence
+from collections.abc import Hashable, Mapping, Sequence
 from dataclasses import dataclass
 from decimal import ROUND_HALF_EVEN, Decimal, InvalidOperation
 from typing import Final
@@ -84,6 +84,15 @@ def broker_contract_pnl(rows: Mapping[str, object] | Sequence[Mapping[str, objec
 def count_without_figure(figures: Sequence[BrokerPnl]) -> int:
     """How many contracts have no stated figure (the total's "N of M contracts have no figure")."""
     return sum(1 for f in figures if f.state != STATED)
+
+
+def contracts_without_figure(rows: Sequence[tuple[Hashable, BrokerPnl]]) -> tuple[int, int]:
+    """(contracts with no stated figure, distinct contracts) over (contract key, figure) rows: a contract held by two
+    strategies is ONE contract, and has no figure if any of its rows has none."""
+    states: dict[Hashable, bool] = {}
+    for key, figure in rows:
+        states[key] = states.get(key, True) and figure.state == STATED
+    return sum(1 for ok in states.values() if not ok), len(states)
 
 
 def broker_total(figures: Sequence[BrokerPnl]) -> Decimal | None:

@@ -2390,6 +2390,9 @@ _EXPLANATIONS: tuple[ExplanationTemplate, ...] = (
     ExplanationTemplate("real_pnl_shared", "rule",
                         "This contract is shared (with another strategy or outside lots); Zerodha reports one P&L "
                         "for the whole contract, so no split is shown."),
+    ExplanationTemplate("real_pnl_part_closed", "rule",
+                        "Part of {contract} was closed today on Zerodha and is reported apart, so no figure is shown "
+                        "for it.", {"contract": Recorded}),
     ExplanationTemplate("real_pnl_pending", "rule", "This contract is not yet confirmed, so no P&L is shown."),
     ExplanationTemplate("real_pnl_stale", "rule",
                         "Zerodha was last read more than {seconds} seconds ago, so no figure is shown until it is "

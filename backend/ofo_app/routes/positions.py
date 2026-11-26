@@ -32,6 +32,7 @@ from typing import Annotated, Any, Literal, Optional
 
 from fastapi import APIRouter, Depends
 from ofo.engine import broker_pnl
+from ofo.execution.basket import parse_tag
 from ofo.errors import render
 from ofo.errors.explanations import render_explanation
 from ofo.instruments.models import is_lot_aligned
@@ -111,6 +112,7 @@ class _Zerodha:
     read_at: datetime.datetime  # when Zerodha was read (the periodic job's read or this request's), never "now"
     money: Any = None  # Lane S: per contract, the P&L fields of Zerodha's non-flat rows (kite_replies.PositionsRead.money)
     flat_platform: int = 0  # Lane S: closed-today rows of ours (flat); the total leaves them out
+    flat_keys: frozenset[Any] = frozenset()  # Lane S: the contracts those flat rows are on (reported apart)
 
 
 def _read(session: KiteSession, catalogue: Any) -> _Zerodha:
@@ -125,7 +127,7 @@ def _read(session: KiteSession, catalogue: Any) -> _Zerodha:
     except (KiteReadError, KiteReplyError, ValueError) as exc:
         raise _refuse(unconfirmed_template(exc)) from None
     log_ignored(read, "positions read")  # rows never ours, named in one line (as the Execute and return routes do)
-    return _Zerodha(read.net, orders, index, answer.read_at, read.money, read.flat_platform)
+    return _Zerodha(read.net, orders, index, answer.read_at, read.money, read.flat_platform, read.flat_keys)
 
 
 async def _attribute(db: Any, user_ref: str, zerodha: _Zerodha, sources: ra.Sources,
@@ -133,7 +135,8 @@ async def _attribute(db: Any, user_ref: str, zerodha: _Zerodha, sources: ra.Sour
     """The ONE call into W-108: the route hands over only the account (connection + user), Zerodha's net and Zerodha's
     order book; W-108 loads the strategies and plans itself (never held units, plans or outside lots from here or the
     client)."""
-    return await ra.attribute_and_compare(ra.Account(db, user_ref), {}, zerodha.net, zerodha.orders, sources, at=now)
+    return await ra.attribute_and_compare(ra.Account(db, user_ref), STANDALONE, zerodha.net, zerodha.orders, sources,
+                                          at=now)
 
 
 def _symbol(key: Any, index: ContractIndex) -> str:
@@ -162,7 +165,49 @@ SOURCE = "Zerodha"
 _NO_FIGURE = {"pnl": None, "pnl_text": None}
 
 
-def _row_pnl(key: Any, row: dict[str, Any], symbol: str, zerodha: _Zerodha, stale: bool) -> dict[str, Any]:
+STANDALONE: dict[Any, int] = {}  # no recorded standalone store yet (REQ-060 AC-7); the ONE map attribution and the
+# sole-holder check both read, so a future standalone cannot pass the check unseen
+
+
+def _foreign_fill(symbol: str, zerodha: _Zerodha) -> bool:
+    """(e): a filled order (any filled quantity) on this contract today whose tag is not one this app made: an outside
+    round trip that is inside Zerodha's buy_value / sell_value for the contract."""
+    for order in zerodha.orders:
+        if order.tradingsymbol != symbol or not order.filled_quantity:
+            continue
+        try:
+            parse_tag(order.tag)
+        except ValueError:
+            return True  # untagged or another tag grammar: not this app's
+    return False
+
+
+def _sole_reason(key: Any, sid: str, units: int, result: ra.Attribution, zerodha: _Zerodha,
+                 standalone: Any = None) -> str | None:
+    """None when this strategy is the sole holder of Zerodha's whole figure for the contract, else the reason
+    template of the row: "real_pnl_shared" or "real_pnl_part_closed". Sole holder = (a) exactly one strategy holds the
+    contract, (b) no outside units on it, (c) no recorded standalone on it, (d) own units == Zerodha's net, (e) no
+    filled order of another tag on it today, (f) no flat (closed today) row of another product on it."""
+    standalone = STANDALONE if standalone is None else standalone
+    holders = [h for h, held in result.held.items() if held.get(key, 0) != 0]
+    if holders != [sid] or result.outside.get(key, 0) or standalone.get(key, 0):
+        return "real_pnl_shared"
+    symbol = _symbol(key, zerodha.index)
+    if units != zerodha.net.get(key, 0) or _foreign_fill(symbol, zerodha):
+        return "real_pnl_shared"
+    if key in zerodha.flat_keys:
+        return "real_pnl_part_closed"
+    return None
+
+
+def sole_holder(key: Any, sid: str, result: ra.Attribution, zerodha: _Zerodha, standalone: Any = None) -> bool:
+    """The one predicate every stated Real P&L row passes through (ADR-330 (24)): see ``_sole_reason``."""
+    own = result.held.get(sid, {}).get(key, 0)
+    return own != 0 and _sole_reason(key, sid, own, result, zerodha, standalone) is None
+
+
+def _row_pnl(key: Any, sid: str, row: dict[str, Any], symbol: str, result: ra.Attribution, zerodha: _Zerodha,
+             stale: bool) -> dict[str, Any]:
     """One real contract row's P&L (ADR-330 (24)): stale, pending and shared rows and every engine state other
     than "stated" carry no figure and the catalogue's reason; the figure is Zerodha's own, checked by the engine."""
     def none(state: str, template: str, **slots: Any) -> dict[str, Any]:
@@ -172,8 +217,9 @@ def _row_pnl(key: Any, row: dict[str, Any], symbol: str, zerodha: _Zerodha, stal
         return none("stale", "real_pnl_stale", seconds=STALE_AFTER_SECONDS)
     if row["pending"]:
         return none("pending", "real_pnl_pending")
-    if zerodha.net.get(key, 0) != row["units"]:
-        return none("shared", "real_pnl_shared")  # another strategy or outside lots hold part: never a split
+    reason = _sole_reason(key, sid, row["units"], result, zerodha)
+    if reason is not None:  # another strategy, outside lots or trades, or a closed sibling row hold part: never a split
+        return none("shared", reason, **({"contract": symbol} if reason == "real_pnl_part_closed" else {}))
     figure = broker_pnl.broker_contract_pnl(list((zerodha.money or {}).get(key, ())))
     if figure.state == broker_pnl.STATED and figure.value is not None:
         return {"pnl": figure.value, "pnl_text": paper.signed(figure.value), "pnl_state": "stated",
@@ -183,7 +229,7 @@ def _row_pnl(key: Any, row: dict[str, Any], symbol: str, zerodha: _Zerodha, stal
 
 
 def _groups(result: ra.Attribution, index: ContractIndex, zerodha: _Zerodha,
-            stale: bool) -> tuple[list[dict[str, Any]], list[broker_pnl.BrokerPnl]]:
+            stale: bool) -> tuple[list[dict[str, Any]], list[tuple[Any, broker_pnl.BrokerPnl]]]:
     """ADR-138 (2): one group per strategy, holding only the contracts linked to it: its own units (W-108's ``held``)
     or its plans that keep a contract pending (ADR-110: no own/outside split there). A blocked strategy with no such
     contract still gets its group, so its badge is shown. Outside-only contracts are never a row. Also returns the
@@ -202,13 +248,14 @@ def _groups(result: ra.Attribution, index: ContractIndex, zerodha: _Zerodha,
     for sid in result.blocked:
         rows.setdefault(str(sid), {})
     groups = []
-    figures: list[broker_pnl.BrokerPnl] = []
+    figures: list[tuple[Any, broker_pnl.BrokerPnl]] = []
     for sid in sorted(rows, key=int):
         contracts = []
         for key, row in rows[sid].items():
             symbol = _symbol(key, index)
-            pnl = _row_pnl(key, row, symbol, zerodha, stale)
-            figures.append(pnl.pop("_value", None) or broker_pnl.BrokerPnl(pnl["pnl_state"], None, None, None))
+            pnl = _row_pnl(key, sid, row, symbol, result, zerodha, stale)
+            figures.append((key, pnl.pop("_value", None)
+                           or broker_pnl.BrokerPnl(pnl["pnl_state"], None, None, None)))
             contracts.append({"tradingsymbol": symbol, "zerodha_units": result.raw_net.get(key, 0),
                               **row, **pnl, "pending_plans": sorted(row["pending_plans"])})
         groups.append({"strategy_id": int(sid), "blocked": sid in result.blocked,
@@ -216,19 +263,19 @@ def _groups(result: ra.Attribution, index: ContractIndex, zerodha: _Zerodha,
     return groups, figures
 
 
-def _real_total(figures: list[broker_pnl.BrokerPnl], has_outside: bool, zerodha: _Zerodha,
+def _real_total(figures: list[tuple[Any, broker_pnl.BrokerPnl]], has_outside: bool, zerodha: _Zerodha,
                 stale: bool) -> dict[str, Any]:
     """ADR-330 (10) / LQS-2 (a): the exact sum of the rows' figures, only when EVERY row is stated; stale, empty and
     partial carry no figure and say why. The note says what the total leaves out (outside lots, contracts closed today)."""
     clock_text = zerodha.read_at.astimezone(IST).strftime("%H:%M:%S")
-    total = broker_pnl.broker_total(figures)
-    missing = broker_pnl.count_without_figure(figures)
+    total = broker_pnl.broker_total([f for _, f in figures])
+    missing, contracts = broker_pnl.contracts_without_figure(figures)
     if stale:
         state, reason = "stale", render_explanation("real_pnl_stale", seconds=STALE_AFTER_SECONDS)
     elif not figures:
         state, reason = "empty", render_explanation("real_pnl_total_empty")
     elif total is None:
-        state, reason = "partial", render_explanation("real_pnl_total_partial", missing=missing, total=len(figures))
+        state, reason = "partial", render_explanation("real_pnl_total_partial", missing=missing, total=contracts)
     else:
         state, reason = "stated", None
     leaves_out = has_outside or zerodha.flat_platform > 0

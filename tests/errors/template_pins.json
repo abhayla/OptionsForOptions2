@@ -4659,6 +4659,10 @@
     "sha256": "34df787cc37f41914fae2c8b0ba8c5f39ac748c72e3323542feddbd774b65fb2",
     "reviewed": "pending owner read"
   },
+  "explanation:real_pnl_part_closed": {
+    "sha256": "0e5c5d28046caa9865662061859ec8a28c4417c5fe74ebf8720aaea77f7ff9d5",
+    "reviewed": "pending owner read"
+  },
   "explanation:real_pnl_pending": {
     "sha256": "fd8b0901addc344f8d474acd0fa9ed0a3299acb19ec19ef6b0c039292ce35598",
     "reviewed": "pending owner read"

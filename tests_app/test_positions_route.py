@@ -229,6 +229,10 @@ async def _world(conn, app_engine, monkeypatch, plans: str) -> tuple[str, dict]:
     if plans == "two_strategies":
         ids["second"] = await _second_strategy(conn, user)
         await _plan(conn, user, ids["second"], 1, closed=False)
+    if plans == "two_holders":  # both strategies hold their own 65 of the same contract (both plans closed, filled)
+        await _plan(conn, user, sid, 1)
+        ids["second"] = await _second_strategy(conn, user)
+        await _plan(conn, user, ids["second"], 1)
     return user, ids
 
 
@@ -757,3 +761,123 @@ async def test_lane_s_a_read_at_90_seconds_is_still_fresh(app_engine, admin_engi
 async def test_lane_s_refusals_stay_the_catalogue_409(app_engine, admin_engine, monkeypatch):
     resp, _, _ = await _run((app_engine, admin_engine), monkeypatch, _reply(POSITIONS_ENTRY), session=False)
     assert resp.status_code == HTTPStatus.CONFLICT and "real_pnl" not in resp.json()
+
+
+# -- Round 1 review fixes: ONE sole-holder predicate (ADR-330 (24)): no figure when the contract's P&L is not this
+# strategy's alone -----------------------------------------------------------------------------------------------
+
+PART_CLOSED = ("Part of NIFTY26O1923650CE was closed today on Zerodha and is reported apart, so no figure is shown "
+               "for it.")
+
+
+def _second_holders_orders(second: int) -> list:
+    """The recorded COMPLETE entry row plus a copy tagged for strategy ``second`` (hand-made derivation)."""
+    from ofo.execution.basket import make_tag  # noqa: PLC0415
+
+    rows = _orders()
+    extra = copy.deepcopy(rows[0])
+    extra.update(order_id="261016170576999", tag=make_tag(second, 1, 0), tags=[make_tag(second, 1, 0)])
+    return [*rows, extra]
+
+
+@pytest.mark.usefixtures("app_engine")
+async def test_review_two_strategies_each_holding_65_against_zerodha_65_are_both_shared(app_engine, admin_engine,
+                                                                                        monkeypatch):
+    """Reviewer's case: strategies 1 and 2 each BUY 65, the user sold 65 on Kite, net 65: neither row is stated and
+    the total is partial, counting the ONE contract once."""
+    body = await _pnl(monkeypatch, (app_engine, admin_engine), _reply(POSITIONS_ENTRY), plans="two_holders",
+                      orders=_second_holders_orders(2))
+    rows = [c for g in body["strategies"] for c in g["contracts"]]
+    assert len(rows) == 2, body
+    assert [(r["pnl"], r["pnl_state"], r["pnl_reason"]) for r in rows] == [(None, "shared", SHARED)] * 2
+    assert (body["real_pnl"]["state"], body["real_pnl"]["value"]) == ("partial", None)
+    assert body["real_pnl"]["reason"] == "1 of 1 contracts have no figure, so no total is shown."
+
+
+@pytest.mark.usefixtures("app_engine")
+async def test_review_an_outside_round_trip_in_the_order_book_makes_the_row_shared(app_engine, admin_engine,
+                                                                                   monkeypatch):
+    """Own 65 @5.1 plus the user's untagged BUY 65 @5.00 and SELL 65 @4.00: Zerodha row qty 65, buy_value 656.5,
+    sell_value 260, pnl -65 (it checks out, yet it is not the strategy's alone)."""
+    data = _entry(buy_value=D("656.5"), sell_value=D("260"), pnl=D("-65"))
+    outside = []
+    for number, side in enumerate(("BUY", "SELL")):
+        row = copy.deepcopy(_orders()[0])
+        row.update(order_id=f"26101617057700{number}", tag=None, tags=[], transaction_type=side)
+        outside.append(row)
+    body = await _pnl(monkeypatch, (app_engine, admin_engine), data, orders=[*_orders(), *outside])
+    row = body["strategies"][0]["contracts"][0]
+    assert (row["pnl"], row["pnl_state"], row["pnl_reason"]) == (None, "shared", SHARED)
+    assert body["real_pnl"]["state"] == "partial"
+
+
+@pytest.mark.usefixtures("app_engine")
+async def test_review_the_same_figures_without_an_outside_fill_are_stated(app_engine, admin_engine, monkeypatch):
+    """The control of the case above (the read is cached per user, so it is its own test): nothing outside, stated."""
+    data = _entry(buy_value=D("656.5"), sell_value=D("260"), pnl=D("-65"))
+    body = await _pnl(monkeypatch, (app_engine, admin_engine), data)
+    assert body["strategies"][0]["contracts"][0]["pnl"] == "-65.00"
+
+
+@pytest.mark.usefixtures("app_engine")
+async def test_review_a_closed_sibling_row_of_another_product_gives_the_part_closed_reason(app_engine, admin_engine,
+                                                                                          monkeypatch):
+    """A flat MIS row of the same contract (pnl -400, closed today) is reported apart: the open row has no figure."""
+    data = _entry()
+    flat = copy.deepcopy(_reply(FLAT)["net"][0])
+    flat.update(product="MIS", pnl=D("-400"))  # hand-made derivation of the recorded flat row
+    data["net"].append(flat)
+    body = await _pnl(monkeypatch, (app_engine, admin_engine), data)
+    row = body["strategies"][0]["contracts"][0]
+    assert (row["pnl"], row["pnl_state"], row["pnl_reason"]) == (None, "shared", PART_CLOSED)
+    assert (body["real_pnl"]["state"], body["real_pnl"]["value"]) == ("partial", None)
+    assert body["real_pnl"]["excludes_note"] == NOTE
+
+
+@pytest.mark.usefixtures("app_engine")
+async def test_review_a_blocked_strategys_sole_held_contract_stays_stated(app_engine, admin_engine, monkeypatch):
+    """ADR-018: a pending plan elsewhere blocks the strategy but its own sole-held contract is stated."""
+    body = await _pnl(monkeypatch, (app_engine, admin_engine), _reply(POSITIONS_ENTRY), plans="two_contracts")
+    group = body["strategies"][0]
+    assert group["blocked"] is True
+    assert [(c["tradingsymbol"], c["pnl_state"]) for c in group["contracts"]] == [(SYMBOL, "stated"),
+                                                                                   (SECOND_SYMBOL, "pending")]
+    assert group["contracts"][0]["pnl"] == "0.00"
+
+
+def _predicate_world(*, held: dict, outside: int = 0, net: int = 65, orders: tuple = ()):
+    import types  # noqa: PLC0415
+
+    from ofo_app.routes import positions as route  # noqa: PLC0415
+
+    key = ("NIFTY", "CE", D("23650"), datetime.date(2026, 10, 19))
+    index = types.SimpleNamespace(symbol_of=lambda k: SYMBOL)
+    result = types.SimpleNamespace(held={sid: {key: u} for sid, u in held.items()}, outside={key: outside})
+    zerodha = route._Zerodha({key: net}, tuple(orders), index, READ_AT, None, 0, frozenset())
+    return route, key, result, zerodha
+
+
+def test_review_sole_holder_true_for_a_long_and_for_a_short_position():
+    route, key, result, zerodha = _predicate_world(held={"1": 65})
+    assert route.sole_holder(key, "1", result, zerodha) is True
+    route, key, result, zerodha = _predicate_world(held={"1": -65}, net=-65)  # a short: the sign is kept
+    assert route.sole_holder(key, "1", result, zerodha) is True
+
+
+def test_review_sole_holder_false_when_outside_lots_cancel_two_opposite_holders():
+    """Holders +65 and -65, 65 outside, Zerodha 65: units == net by coincidence for strategy 1; still not sole."""
+    route, key, result, zerodha = _predicate_world(held={"1": 65, "2": -65}, outside=65)
+    assert route.sole_holder(key, "1", result, zerodha) is False
+    route, key, result, zerodha = _predicate_world(held={"1": 65}, outside=65)  # (b) alone
+    assert route.sole_holder(key, "1", result, zerodha) is False
+
+
+def test_review_sole_holder_false_with_a_recorded_standalone_on_the_key():
+    route, key, result, zerodha = _predicate_world(held={"1": 65})
+    assert route.sole_holder(key, "1", result, zerodha, {key: 25}) is False
+    assert route.sole_holder(key, "1", result, zerodha, {}) is True
+
+
+def test_review_sole_holder_false_when_units_differ_from_zerodhas_net():
+    route, key, result, zerodha = _predicate_world(held={"1": 65}, net=130)
+    assert route.sole_holder(key, "1", result, zerodha) is False

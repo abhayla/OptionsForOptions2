@@ -234,6 +234,9 @@ class PositionsRead:
     money: Mapping[ContractKey, tuple[Mapping[str, Decimal | None], ...]] = field(default_factory=dict)
     #: Lane S: flat (quantity 0) rows the platform could own (closed today); the total says it leaves them out.
     flat_platform: int = 0
+    #: Lane S: the contract keys of those flat rows when the catalogue names them (a flat row's closed-today P&L is
+    #: reported apart from an open row of the same contract, so that contract's open row shows no figure).
+    flat_keys: frozenset[ContractKey] = frozenset()
 
 
 #: A Kite F&O tradingsymbol: underlying, 2-digit year, then a monthly ``OCT`` or weekly ``O19`` expiry, then a strike
@@ -307,9 +310,16 @@ def positions_from_reply(data: Mapping[str, object], index: ContractIndex) -> Po
     ignored = []
     money: dict[ContractKey, list[Mapping[str, Decimal | None]]] = {}
     flat_platform = 0
+    flat_keys: set[ContractKey] = set()
     for row in rows:
         if is_flat_row(row):
-            flat_platform += _flat_row_may_be_ours(row)
+            ours = _flat_row_may_be_ours(row)
+            flat_platform += ours
+            if ours:
+                try:
+                    flat_keys.add(index.resolve(row))
+                except KiteReplyError:
+                    pass  # not in the catalogue: no strategy can hold it, so no open row of ours shares it
             continue  # quantity 0: no position (never a 0-price holding)
         if not platform_may_own(row):
             ignored.append(f"{_text(row, 'exchange')}:{_text(row, 'tradingsymbol')}")
@@ -327,7 +337,7 @@ def positions_from_reply(data: Mapping[str, object], index: ContractIndex) -> Po
         lines.append(line)
     live = {k: q for k, q in net.items() if q != 0}
     return PositionsRead(live, tuple(lines), tuple(ignored), {k: tuple(v) for k, v in money.items() if k in live},
-                         flat_platform)
+                         flat_platform, frozenset(flat_keys))
 
 
 def fill_from_trade_row(row: Mapping[str, object]) -> FillEvent:

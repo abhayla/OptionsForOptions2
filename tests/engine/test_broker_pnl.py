@@ -117,3 +117,21 @@ def test_count_without_figure():
     assert count_without_figure([ok, BrokerPnl("mismatch", None, None, None), BrokerPnl("not_available", None, None,
                                                                                         None)]) == 2
     assert count_without_figure([]) == 0
+
+
+def test_contracts_without_figure_counts_one_contract_once():
+    from ofo.engine.broker_pnl import contracts_without_figure
+
+    ok = broker_contract_pnl(fields(real_row()))
+    bad = BrokerPnl("shared", None, None, None)
+    assert contracts_without_figure([("A", bad), ("A", bad), ("B", ok)]) == (1, 2)
+    assert contracts_without_figure([("A", ok), ("A", bad)]) == (1, 1)  # one bad row spoils its contract
+    assert contracts_without_figure([]) == (0, 0)
+
+
+def test_a_short_position_keeps_its_sign():
+    """Short 65 sold at 5.1 (sell_value 331.5), last 6.1: 331.5 - 0 + (-65) x 6.1 = -65.00."""
+    row = {"pnl": Decimal("-65"), "buy_value": Decimal(0), "sell_value": Decimal("331.5"),
+           "quantity": Decimal(-65), "last_price": Decimal("6.1"), "multiplier": Decimal(1)}
+    got = broker_contract_pnl(row)
+    assert (got.state, got.value) == ("stated", Decimal("-65.00"))
