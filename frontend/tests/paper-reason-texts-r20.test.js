@@ -19,7 +19,7 @@ vi.mock('@/services/api', async (importActual) => {
 })
 
 import PaperStrategies from '@/components/strategy/PaperStrategies.vue'
-import { resetPaperAlerts } from '@/lib/paperAlerts'
+import { resetActiveAlerts } from '@/lib/paperAlerts'
 
 const adr = fs.readFileSync(path.resolve(process.cwd(), '..', 'spec', 'decisions', 'ADR-210.md'), 'utf8')
 const decision = adr.split('\ndecision:')[1].split('\nstatus:')[0].replace(/\s*\r?\n\s*/g, ' ')
@@ -39,7 +39,7 @@ async function show() {
   return w
 }
 
-beforeEach(() => { answers = {}; resetPaperAlerts(); vi.useFakeTimers() })
+beforeEach(() => { answers = {}; resetActiveAlerts(); vi.useFakeTimers() })
 afterEach(() => vi.useRealTimers())
 
 describe('ADR-210 sentences beside the Paper tab dashes', () => {

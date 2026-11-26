@@ -1,5 +1,5 @@
 // D-56 (ADR-320 point 5; GC-ICLIVE-E): Home shows the count of running strategies (the server's status_word, D-28), the unread alert
-// count (GET /paper/alerts, D-29) and the total P&L (the Positions total, GET /paper/strategies totals; same paused rule). Each
+// count (GET /alerts/active, ADR-330 (4)) and the total P&L (the Positions total, GET /paper/strategies totals; same paused rule). Each
 // figure has its own states: value, paused (P&L only), read failed, zero. A failed read of one figure leaves the others alone.
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
 import { flushPromises, mount } from '@vue/test-utils'
@@ -14,13 +14,13 @@ vi.mock('@/services/api', async (importActual) => {
   const answer = (a) => (a instanceof Error ? Promise.reject(a) : Promise.resolve({ data: a }))
   return { ...actual, default: { get: (url) => {
     if (url === '/strategies') return strategiesAnswer instanceof Error ? Promise.reject(strategiesAnswer) : Promise.resolve({ data: { strategies: strategiesAnswer } })
-    if (url === '/paper/alerts') return answer(alertsAnswer)
+    if (url === '/alerts/active') return answer(alertsAnswer)
     if (url === '/paper/strategies') return answer(paperAnswer)
     return Promise.resolve({ data: { state: 'NOT_CONNECTED', answered_at: '2026-11-23T03:50:09+00:00', indices: [] } })
   } } }
 })
 import HomeOverviewPage from '@/pages/HomeOverviewPage.vue'
-import { bellCount, openRecords, resetPaperAlerts } from '@/lib/paperAlerts'
+import { bellCount, openRecords, resetActiveAlerts } from '@/lib/paperAlerts'
 
 class FakeSocket {
   constructor(url) { this.url = url; this.readyState = 0 }
@@ -31,7 +31,7 @@ const T = '2026-11-23T10:00:00+05:30'
 const strat = (id, word) => ({ id, underlying: 'NIFTY', status: 'draft', status_word: word, revision: 1, created_at: T, updated_at: T })
 const totals = (over = {}) => ({ total_text: '+14.00', total_after_text: '+12.00', booked_text: '+2.00', unbooked_text: '+12.00', after_charges_reason: null, ...over })
 const paper = (t = totals()) => ({ strategies: [], totals: t, answered_at: T })
-const alerts = (unread) => ({ unread, alerts: [] })
+const alerts = (count) => ({ count, alerts: Array.from({ length: count }, (_, i) => ({ id: i + 1, strategy_id: 1, kind: 'plan_loss_stop', text: 't', fired_at_hm: '11:02', answers: [] })) })
 
 async function mountHome() {
   const router = createRouter({ history: createMemoryHistory(), routes: [{ path: '/home/overview', component: HomeOverviewPage }, { path: '/:rest(.*)', component: { template: '<div />' } }] })
@@ -45,7 +45,7 @@ const fig = (w, id) => w.get(`[data-testid="home-${id}-figure"]`).text()
 const tile = (w, id) => w.get(`[data-testid="home-${id}"]`).text()
 
 beforeEach(() => {
-  resetPaperAlerts()
+  resetActiveAlerts()
   strategiesAnswer = [strat(1, 'Running'), strat(2, 'Running'), strat(3, 'Draft'), strat(4, 'Completed')]
   alertsAnswer = alerts(3)
   paperAnswer = paper()
@@ -93,10 +93,10 @@ describe('D-56 Home: unread alerts (the alert count route)', () => {
 })
 
 describe('D-56 round 2: Home unread = the bell badge', () => {
-  it('with open adjustment records in the store, Home shows the bell number', async () => {
+  it('with open adjustment records in the store, Home shows the bell number (the server count; records add nothing, ADR-330 (4))', async () => {
     openRecords.list = [{ id: 1, strategy_id: 1 }, { id: 2, strategy_id: 1 }]
     const w = await mountHome()
-    expect(bellCount()).toBe(5)
+    expect(bellCount()).toBe(3)
     expect(fig(w, 'unread')).toBe(String(bellCount()))
     openRecords.list = []
   })

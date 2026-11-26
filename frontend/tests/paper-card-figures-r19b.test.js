@@ -23,7 +23,7 @@ vi.mock('@/services/api', async (importActual) => {
 import PaperStrategies from '@/components/strategy/PaperStrategies.vue'
 import { PAPER_NO_FIGURE } from '@/lib/paperList'
 import { UNREADABLE_TEXT } from '@/lib/tracking'
-import { resetPaperAlerts } from '@/lib/paperAlerts'
+import { resetActiveAlerts } from '@/lib/paperAlerts'
 
 const ok = (data) => () => Promise.resolve({ data })
 const clone = (x) => JSON.parse(JSON.stringify(x))
@@ -41,7 +41,7 @@ const card = (w, id) => w.get(`[data-testid="paper-group"][data-strategy="${id}"
 const q = (c, id) => c.get(`[data-testid="${id}"]`)
 const open = (reply) => reply.strategies.find((s) => s.state !== 'EXITED')
 
-beforeEach(() => { answers = {}; resetPaperAlerts(); vi.useFakeTimers() })
+beforeEach(() => { answers = {}; resetActiveAlerts(); vi.useFakeTimers() })
 afterEach(() => vi.useRealTimers())
 
 describe('the card figures (the real reply)', () => {

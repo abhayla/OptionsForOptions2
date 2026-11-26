@@ -11,9 +11,9 @@
 import { computed, nextTick, onBeforeUnmount, onMounted, ref, watch } from 'vue'
 import { useRoute, useRouter } from 'vue-router'
 import Icon from '@/components/common/Icon.vue'
-import { useToast } from '@/composables/useToast'
+import { showInfo } from '@/lib/infoPopup'
 import { compareAllUrl } from '@/lib/adjustDrawer'
-import { bellCount, dropAlerts, openRecords, readOpportunities, readPaperAlerts, takeAlerts, takeOpportunities } from '@/lib/paperAlerts'
+import { bellCount, dropActive, openRecords, readActive, readOpportunities, takeActive, takeOpportunities } from '@/lib/paperAlerts'
 import { plainName } from '@/lib/saveDraft'
 import { usePaperRefresh } from '@/lib/usePaperRefresh'
 import { ACCOUNT_LABEL, ACCOUNT_MENU_ITEMS, ITEM_DESCRIPTIONS, MEGA_MENUS, MENU_SECTIONS, firstBuiltPath } from '@/router/nav'
@@ -35,7 +35,6 @@ const ITEM_ICONS = {
 
 const route = useRoute()
 const router = useRouter()
-const { showToast } = useToast()
 const total = computed(() => bellCount())
 // IC e2e B4: a new OPEN adjustment record shows one toast; clicking it opens the strategy's compare (suggestion drawer)
 // Issue 8: one toast per trade with a new record, naming the trade and the rule (the server's words) and opening THAT trade's offer
@@ -44,21 +43,26 @@ function announce(fresh) {
     const mine = fresh.filter((r) => r.strategy_id === sid)
     const ids = openRecords.list.filter((r) => r.strategy_id === sid).map((r) => r.id)
     const what = [plainName(mine[0].strategy_name), mine.map((r) => r.text).filter(Boolean).join('; ')].filter(Boolean).join(': ')
-    showToast(`New adjustment opportunity${what ? ` - ${what}` : ''}. Open it?`, 'info', { onClick: () => router.push(compareAllUrl(sid, ids)) })
+    showInfo(`New adjustment opportunity${what ? ` - ${what}` : ''}. Open it?`, { onClick: () => router.push(compareAllUrl(sid, ids)) })
   }
 }
-// GC-TP step 7b: the bell's count is the server's unread number, re-read on the paper refresh tick (no timer of its own);
-// IC e2e B4: the open adjustment records are read on that same tick; a failed read of them leaves the paper count alone
+// ADR-330 (3): a new actionable alert is announced once by the info pop-up (it stays in Active and the bell). An adjustment-rule
+// alert is announced by the opportunity pop-up above (with its Open button), so it is not announced twice.
+function announceActive(fresh) {
+  for (const a of fresh.filter((x) => x.kind !== 'adjustment_rule')) showInfo([plainName(a.strategy_name), a.text].filter(Boolean).join(': '))
+}
+// ADR-330 (4): the bell's count is the server's count of unanswered actionable alerts (GET /alerts/active), re-read on the paper
+// refresh tick (no timer of its own); the open adjustment records are read on that same tick for their pop-up only
 const { refresh: refreshAlerts } = usePaperRefresh({
   key: () => 'alerts',
   read: async () => {
-    const [a, o] = await Promise.allSettled([readPaperAlerts(), readOpportunities()])
+    const [a, o] = await Promise.allSettled([readActive(), readOpportunities()])
     announce(takeOpportunities(o.status === 'fulfilled' ? o.value : null))
     if (a.status === 'rejected') throw a.reason
     return a.value
   },
-  onData: takeAlerts,
-  onError: dropAlerts,
+  onData: (data) => announceActive(takeActive(data)),
+  onError: dropActive,
 })
 onMounted(refreshAlerts)
 const header = ref(null)

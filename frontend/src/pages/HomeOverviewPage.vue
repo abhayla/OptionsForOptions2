@@ -13,7 +13,7 @@ import { istTime } from '@/lib/displayFormat'
 import { plainName } from '@/lib/saveDraft'
 import { isRunning, strategyStatusWord } from '@/lib/strategyStatus'
 import { FIGURE_READ_FAILED_TEXT, HOME_PNL_LABEL, HOME_RUNNING_LABEL, HOME_UNREAD_LABEL, usePaperPnl } from '@/lib/paperPnl'
-import { bellCount, dropAlerts, paperAlerts, readPaperAlerts, takeAlerts } from '@/lib/paperAlerts'
+import { activeAlerts, bellCount, dropActive, readActive, takeActive } from '@/lib/paperAlerts'
 import { PAPER_NO_FIGURE } from '@/lib/paperList'
 import { SECTIONS } from '@/router/nav'
 
@@ -50,9 +50,9 @@ const runningCell = computed(() => {
   return { text: String(strategies.value.filter(isRunning).length), note: null }
 })
 const unreadCell = computed(() => {
-  if (!paperAlerts.loaded) return { text: PAPER_NO_FIGURE, note: null }
-  if (paperAlerts.parts) return { text: PAPER_NO_FIGURE, note: FIGURE_READ_FAILED_TEXT }
-  return { text: String(bellCount()), note: null } // the bell badge's own number (unread stops plus open adjustment records)
+  if (!activeAlerts.loaded) return { text: PAPER_NO_FIGURE, note: null }
+  if (activeAlerts.parts) return { text: PAPER_NO_FIGURE, note: FIGURE_READ_FAILED_TEXT }
+  return { text: String(bellCount()), note: null } // the bell badge's own number (the server's count of unanswered actionable alerts)
 })
 const pnlCell = computed(() => {
   const c = pnl.totalCell.value
@@ -65,7 +65,7 @@ const figures = computed(() => [
   { id: 'pnl', label: HOME_PNL_LABEL, ...pnlCell.value },
 ])
 onMounted(async () => {
-  readPaperAlerts().then(takeAlerts, dropAlerts)
+  readActive().then(takeActive, dropActive)
   try {
     const list = (await api.get('/strategies')).data?.strategies
     if (!Array.isArray(list)) throw new Error('unreadable answer') // fail closed: no state is guessed
