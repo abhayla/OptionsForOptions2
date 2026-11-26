@@ -474,22 +474,22 @@ test.describe('Alerts > Notification settings (REQ-062 AC-4)', () => {
 // ADR-193 (4): "a screen whose feature is not built shows a Sensibull-style empty state naming what is coming"; ADR-313: the
 // menus do not offer these pages (NAV-1/NAV-4 and tests/menu-no-placeholder.test.js), but each is still reachable by its address.
 test.describe('Unbuilt placeholder pages: the 15 addresses (REQ-009 AC-1..AC-8, ADR-193 (4), ADR-313)', () => {
-  const PLACEHOLDERS: Array<[string, string, string]> = [
-    ['/home/important-alerts', 'Home', 'Important alerts'],
-    ['/home/active-strategies', 'Home', 'Active strategies'],
-    ['/home/account-status', 'Home', 'Account status'],
-    ['/positions/pnl-risk', 'Positions', 'P&L/risk'],
-    ['/orders', '', 'Orders'],
-    ['/orders/pending', 'Orders', 'Pending'],
-    ['/orders/executed', 'Orders', 'Executed'],
-    ['/orders/failed-partial', 'Orders', 'Failed/partial'],
-    ['/orders/execution-history', 'Orders', 'Execution history'],
-    ['/settings/profile', 'Account & Settings', 'Profile'],
-    ['/settings/zerodha-connection', 'Account & Settings', 'Zerodha connection'],
-    ['/settings/notifications', 'Account & Settings', 'Notifications'],
-    ['/settings/security', 'Account & Settings', 'Security'],
-    ['/settings/preferences', 'Account & Settings', 'Preferences'],
-    ['/settings/strategy-preferences', 'Account & Settings', 'Strategy Preferences'],
+  const PLACEHOLDERS: Array<[string, string, string, string]> = [
+    ['/home/important-alerts', 'Home', 'Important alerts', "The alerts that matter most will be collected on this page."],
+    ['/home/active-strategies', 'Home', 'Active strategies', "Your running strategies will be summarised on this page."],
+    ['/home/account-status', 'Home', 'Account status', "Your Zerodha connection and subscription status will show on this page."],
+    ['/positions/pnl-risk', 'Positions', 'P&L/risk', "Profit and loss and risk across your positions will show on this page."],
+    ['/orders', '', 'Orders', "Your Zerodha orders with Zerodha's own status, an order import and a read-only funds and margin view will show on this page. It never takes an order."],
+    ['/orders/pending', 'Orders', 'Pending', "Your Zerodha orders that are still open will be listed on this page, with Zerodha's own status."],
+    ['/orders/executed', 'Orders', 'Executed', "Your executed Zerodha orders will be listed on this page."],
+    ['/orders/failed-partial', 'Orders', 'Failed/partial', "Your rejected and partly filled Zerodha orders will be listed on this page, with Zerodha's reason."],
+    ['/orders/execution-history', 'Orders', 'Execution history', "Your past Zerodha orders will be listed on this page, with the time we read them."],
+    ['/settings/profile', 'Account & Settings', 'Profile', "Your name and contact details will show on this page."],
+    ['/settings/zerodha-connection', 'Account & Settings', 'Zerodha connection', "Your Zerodha connection will be managed on this page."],
+    ['/settings/notifications', 'Account & Settings', 'Notifications', "Your notification choices will be set on this page."],
+    ['/settings/security', 'Account & Settings', 'Security', "Your sign-in and security options will be set on this page."],
+    ['/settings/preferences', 'Account & Settings', 'Preferences', "Your display preferences will be set on this page."],
+    ['/settings/strategy-preferences', 'Account & Settings', 'Strategy Preferences', "Your default strategy choices will be set on this page."],
   ]
   test.beforeEach(async ({ page }) => { await stubApi(page) })
 
@@ -498,7 +498,7 @@ test.describe('Unbuilt placeholder pages: the 15 addresses (REQ-009 AC-1..AC-8, 
     expect(PLACEHOLDERS).toHaveLength(15)
   })
 
-  for (const [path, section, heading] of PLACEHOLDERS) {
+  for (const [path, section, heading, coming] of PLACEHOLDERS) {
     test(`PH ${path}: heading "${heading}", the empty state "${heading} is coming" and no control that does nothing`, async ({ page }) => {
       // Spec basis: ADR-193 (4) (empty state naming what is coming), REQ-009 AC-1..AC-8 (the item label is the heading), ADR-313
       await page.goto(`${BASE}${path}`)
@@ -508,17 +508,17 @@ test.describe('Unbuilt placeholder pages: the 15 addresses (REQ-009 AC-1..AC-8, 
       else await expect(parent(page)).toHaveCount(0)
       const body = page.getByTestId('placeholder-page')
       await expect(body.getByTestId('empty-state-title')).toHaveText(`${heading} is coming`)
-      await expect(body.getByTestId('empty-state-message')).toHaveText('This page is a placeholder. It is built in a later work item.')
+      await expect(body.getByTestId('empty-state-message')).toHaveText(coming)
       await expect(body.getByTestId('empty-state-action')).toHaveCount(0) // no next-step button that goes nowhere
       await expect(body.locator('button, input, select, textarea, form, [role="button"]')).toHaveCount(0)
       if (path !== '/orders') await expect(body.locator('a')).toHaveCount(0)
     })
   }
 
-  test('PH-ORD /orders is the one placeholder with links: the note says there is no order-entry form and its four links open the four Orders placeholders', async ({ page }) => {
+  test('PH-ORD /orders is the one placeholder with links: the note says the page never takes an order and its four links open the four Orders placeholders', async ({ page }) => {
     // Spec basis: REQ-009 AC-5 (Orders is never an order-entry form), ADR-002 (no standalone order entry), ADR-193 (4)
     await page.goto(`${BASE}/orders`)
-    await expect(page.getByTestId('page-note')).toContainText('There is no order-entry form.')
+    await expect(page.getByTestId('page-note')).toHaveText('Your Zerodha orders, read-only. This page never takes an order.')
     const links = page.getByTestId('subitem-link')
     await expect(links).toHaveText(['Pending', 'Executed', 'Failed/partial', 'Execution history'])
     const hrefs = ['/orders/pending', '/orders/executed', '/orders/failed-partial', '/orders/execution-history']

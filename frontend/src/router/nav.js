@@ -45,8 +45,8 @@ export const SECTIONS = [
   {
     key: 'orders',
     label: 'Orders',
-    // Strategy-linked orders only; no order-entry page exists (ADR-002, REQ-009 AC-5).
-    note: 'Strategy-linked orders only. There is no order-entry form.',
+    // Zerodha's orders, import and funds view; no order-entry page exists (ADR-002, REQ-009 AC-5, ADR-160).
+    note: "Your Zerodha orders, read-only. This page never takes an order.",
     items: [
       ['pending', 'Pending'],
       ['executed', 'Executed'],
@@ -91,6 +91,26 @@ export const MENU_SECTIONS = SECTIONS.map((s) => ({ ...s, items: built(s.key, s.
 export const firstBuiltPath = (key) => {
   const [slug] = built(key, SECTIONS.find((s) => s.key === key)?.items ?? ACCOUNT_ITEMS)[0] ?? []
   return slug ? `/${key}/${slug}` : null
+}
+
+// ADR-193 (4): what each unbuilt page will hold, in the user's words (REQ-009 AC-1..AC-8; text in the spec at REQ-009
+// "Unbuilt pages"). Keyed by the route path without the leading slash. A page missing here says only that it is not built.
+export const COMING_LINES = {
+  'home/important-alerts': "The alerts that matter most will be collected on this page.",
+  'home/active-strategies': "Your running strategies will be summarised on this page.",
+  'home/account-status': "Your Zerodha connection and subscription status will show on this page.",
+  'positions/pnl-risk': "Profit and loss and risk across your positions will show on this page.",
+  'orders': "Your Zerodha orders with Zerodha's own status, an order import and a read-only funds and margin view will show on this page. It never takes an order.",
+  'orders/pending': "Your Zerodha orders that are still open will be listed on this page, with Zerodha's own status.",
+  'orders/executed': "Your executed Zerodha orders will be listed on this page.",
+  'orders/failed-partial': "Your rejected and partly filled Zerodha orders will be listed on this page, with Zerodha's reason.",
+  'orders/execution-history': "Your past Zerodha orders will be listed on this page, with the time we read them.",
+  'settings/profile': "Your name and contact details will show on this page.",
+  'settings/zerodha-connection': "Your Zerodha connection will be managed on this page.",
+  'settings/notifications': "Your notification choices will be set on this page.",
+  'settings/security': "Your sign-in and security options will be set on this page.",
+  'settings/preferences': "Your display preferences will be set on this page.",
+  'settings/strategy-preferences': "Your default strategy choices will be set on this page.",
 }
 
 export const ACCOUNT_LABEL = 'Account & Settings'
