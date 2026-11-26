@@ -10,15 +10,18 @@ import { KITE_POSITIONS_URL } from '../src/lib/execute.js'
 
 const SYMBOL = 'NIFTY26O1923650CE'
 const READ_AT = '2026-10-16T12:21:04+05:30'
+// Lane S (ADR-330 (24)): the route's real_pnl object and each row's P&L keys, exactly the keys the route test pins
+const REAL_PNL = { value: '0.00', pnl_text: '0.00', state: 'stated', reason: null, source: 'Zerodha', read_at: READ_AT,
+  caption: 'Zerodha, as at 12:21:00 IST', excludes_note: null }
 
 async function answer(page: Page, strategies: object[], outside: number | null, hasOutside: boolean, blocked: number[] = []) {
   await page.route('**/api/positions', (route) => route.fulfill({
-    json: { read_at: READ_AT, strategies, has_outside: hasOutside, outside_lots: outside, blocked: blocked.length > 0,
-      blocked_strategy_ids: blocked },
+    json: { read_at: READ_AT, real_pnl: REAL_PNL, pnl_text: REAL_PNL.pnl_text, strategies, has_outside: hasOutside,
+      outside_lots: outside, blocked: blocked.length > 0, blocked_strategy_ids: blocked },
   }))
 }
 const own = (units: number, zerodha: number) => ({ tradingsymbol: SYMBOL, zerodha_units: zerodha, units, pending: false,
-  pending_plans: [] })
+  pending_plans: [], pnl: '0.00', pnl_text: '0.00', pnl_state: 'stated', pnl_reason: null })
 
 for (const path of ['/positions/current-positions', '/positions/strategy-linked-positions']) {
   test(`ADR-138 (2) mixed on ${path}: strategy 1 own 65 (Zerodha 130), "1 outside lot - view on Kite", no money word or button`, async ({ page }) => {
@@ -33,7 +36,7 @@ for (const path of ['/positions/current-positions', '/positions/strategy-linked-
     await expect(page.getByTestId('position-strategy-name')).toHaveText('Strategy 1')
     await expect(page.getByTestId('positions-outside')).toHaveText('1 outside lot - view on Kite')
     await expect(page.getByTestId('positions-outside-kite')).toHaveAttribute('href', KITE_POSITIONS_URL)
-    await expect(page.getByTestId('positions-page')).not.toContainText(/P&L|price|margin|₹/i)
+    await expect(page.getByTestId('positions-page')).not.toContainText(/price|margin|₹/i) // Lane S: Zerodha's own P&L is shown now
     await expect(page.getByTestId('positions-page').getByRole('button')).toHaveCount(0)
   })
 }
@@ -78,7 +81,8 @@ test('ADR-110: a contract with an open plan shows waiting for Check, 65 not yet 
   // A browser mock, not the real route. The pending case is unproven end to end through the real route
   // (work/W-111.md next_action).
   await answer(page, [{ strategy_id: 1, blocked: true, contracts: [{ tradingsymbol: SYMBOL, zerodha_units: 65, units: null,
-    pending: true, pending_plans: [1] }] }], 0, false, [1])
+    pending: true, pending_plans: [1], pnl: null, pnl_text: null, pnl_state: 'pending',
+    pnl_reason: 'This contract is not yet confirmed, so no P&L is shown.' }] }], 0, false, [1])
   await page.goto('/positions/strategy-linked-positions')
   await expect(page.getByTestId('position-waiting')).toHaveText('Order placed - waiting for Check with Zerodha')
   await expect(page.getByTestId('position-zerodha')).toHaveText('65')

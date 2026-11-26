@@ -27,8 +27,11 @@ const ok = (data) => () => Promise.resolve({ data })
 const t = (w, id) => w.get(`[data-testid="${id}"]`)
 const all = (w, id) => w.findAll(`[data-testid="${id}"]`)
 const has = (w, id) => w.find(`[data-testid="${id}"]`).exists()
-const own = (symbol, units, zerodha) => ({ tradingsymbol: symbol, zerodha_units: zerodha, units, pending: false, pending_plans: [] })
-const pos = (strategies, over = {}) => ({ read_at: '2026-10-29T10:00:00+05:30', strategies, has_outside: false, outside_lots: 0, blocked: false, blocked_strategy_ids: [], ...over })
+const own = (symbol, units, zerodha, over = {}) => ({ tradingsymbol: symbol, zerodha_units: zerodha, units, pending: false, pending_plans: [], pnl: '65.00', pnl_text: '+65.00', pnl_state: 'stated', pnl_reason: null, ...over })
+// the server's real_pnl object (Lane S, ADR-330 (24)); every string below is what the server would send, the browser only prints it
+const REAL_PNL = { value: '65.00', pnl_text: '+65.00', state: 'stated', reason: null, source: 'Zerodha', read_at: '2026-10-29T10:00:00+05:30', caption: 'Zerodha, as at 10:00:00 IST', excludes_note: null }
+const pos = (strategies, over = {}) => ({ read_at: '2026-10-29T10:00:00+05:30', real_pnl: REAL_PNL, pnl_text: REAL_PNL.pnl_text, strategies, has_outside: false, outside_lots: 0, blocked: false, blocked_strategy_ids: [], ...over })
+const withReal = (real, strategies) => pos(strategies, { real_pnl: { ...REAL_PNL, ...real }, pnl_text: real.pnl_text ?? null })
 const REAL_ONE = pos([{ strategy_id: 1, blocked: false, contracts: [own('NIFTY26O1923650CE', 65, 65)] }])
 const refused = () => Promise.reject({ status: 409, parts: { what_happened: 'Connect your Zerodha account to continue.', impact: 'i', what_is_blocked: 'b', next_action: 'n' } })
 
@@ -80,32 +83,79 @@ describe('ADR-330 (10): one Positions list', () => {
     expect(all(w, 'paper-tag')).toHaveLength(paper.length)
   })
 
-  it('two totals, never added: Paper P&L is the reply text, Real P&L is a dash with its line, no sum and no third totals-* in the header', async () => {
+  it('two totals, never added: Paper P&L is the reply text, Real P&L is the server text with its caption, no sum and no third totals-* in the header', async () => {
     withBoth()
     const { w } = await page()
     const header = t(w, 'positions-totals')
     expect(header.get('[data-testid="totals-paper"]').text()).toBe(REAL.totals.total_text)
-    expect(header.get('[data-testid="totals-real"]').text()).toBe('—') // PAPER_NO_FIGURE: the one home of the dash (round 2)
-    expect(header.get('[data-testid="totals-real-reason"]').text()).toBe('Real P&L is not shown yet: the server does not price Zerodha positions.')
+    expect(header.get('[data-testid="totals-real"]').text()).toBe('+65.00')
+    expect(header.get('[data-testid="totals-real-basis"]').text()).toBe('Zerodha, as at 10:00:00 IST')
+    expect(header.find('[data-testid="totals-real-reason"]').exists()).toBe(false)
+    expect(header.find('[data-testid="totals-real-excludes"]').exists()).toBe(false)
     const ids = header.findAll('[data-testid^="totals-"]').map((e) => e.attributes('data-testid'))
-    expect(ids.filter((i) => !/-(reason|basis|closed-note)$/.test(i)).sort()).toEqual(['totals-paper', 'totals-real'])
+    expect(ids.filter((i) => !/-(reason|basis|closed-note|excludes)$/.test(i)).sort()).toEqual(['totals-paper', 'totals-real'])
     expect(w.text()).toContain('Real P&L')
     expect(w.text()).toContain('Paper P&L')
     expect(w.text()).not.toMatch(/combined|grand total|all trades/i)
-    // PaperStrategies' own headline is not repeated under the header
     expect(has(w, 'totals-total')).toBe(false)
+    // the per-row figure is the server's row text
+    expect(t(w, 'position-pnl').text()).toBe('+65.00')
+    expect(has(w, 'position-pnl-reason')).toBe(false)
   })
 
-  it('a served pnl_text is printed verbatim as Real P&L and no number equals the sum of the two totals', async () => {
+  it('a stated total is printed verbatim and no number equals the sum of the two totals', async () => {
     withBoth()
-    answers['GET /positions'] = ok({ ...REAL_ONE, pnl_text: '+1,000.00' })
+    answers['GET /positions'] = ok(withReal({ pnl_text: '+1,000.00', value: '1000.00' }, REAL_ONE.strategies))
     const { w } = await page()
-    const header = t(w, 'positions-totals')
-    expect(header.get('[data-testid="totals-real"]').text()).toBe('+1,000.00')
-    expect(header.find('[data-testid="totals-real-reason"]').exists()).toBe(false)
-    expect(header.get('[data-testid="totals-paper"]').text()).toBe(REAL.totals.total_text)
+    expect(t(w, 'positions-totals').get('[data-testid="totals-real"]').text()).toBe('+1,000.00')
     // 1000.00 + (-4433.00) = -3433.00: shown nowhere (the paper total is the reply's after-charges text, so the sum is checked on digits)
     expect(w.text()).not.toMatch(/3,?433/)
+  })
+
+  it.each([
+    ['partial', '1 of 2 contracts have no figure, so no total is shown.'],
+    ['empty', 'No real positions are open in your strategies.'],
+    ['stale', 'Zerodha was last read more than 90 seconds ago, so no figure is shown until it is read again.'],
+  ])('a %s total shows a dash and the server reason, never a figure', async (state, reason) => {
+    withBoth()
+    answers['GET /positions'] = ok(withReal({ state, value: null, pnl_text: null, reason, excludes_note: 'Excludes contracts not in a strategy here and contracts closed today.' }, REAL_ONE.strategies))
+    const { w } = await page()
+    const header = t(w, 'positions-totals')
+    expect(header.get('[data-testid="totals-real"]').text()).toBe('—')
+    expect(header.get('[data-testid="totals-real-reason"]').text()).toBe(reason)
+    expect(header.get('[data-testid="totals-real-excludes"]').text()).toBe('Excludes contracts not in a strategy here and contracts closed today.')
+    expect(header.get('[data-testid="totals-real-basis"]').text()).toBe('Zerodha, as at 10:00:00 IST')
+  })
+
+  it('a row without a figure shows a dash and its own reason; a stated row beside it keeps its figure', async () => {
+    withBoth()
+    const shared = own('NIFTY26O1923700CE', 65, 130, { pnl: null, pnl_text: null, pnl_state: 'shared', pnl_reason: 'This contract is shared (with another strategy or outside lots); Zerodha reports one P&L for the whole contract, so no split is shown.' })
+    answers['GET /positions'] = ok(withReal({ state: 'partial', value: null, pnl_text: null, reason: '1 of 2 contracts have no figure, so no total is shown.' }, [{ strategy_id: 1, blocked: false, contracts: [own('NIFTY26O1923650CE', 65, 65), shared] }]))
+    const { w } = await page()
+    const rows = all(w, 'position-row')
+    expect(rows[0].get('[data-testid="position-pnl"]').text()).toBe('+65.00')
+    expect(rows[1].get('[data-testid="position-pnl"]').text()).toBe('—')
+    expect(rows[1].get('[data-testid="position-pnl-reason"]').text()).toContain('This contract is shared')
+    expect(t(w, 'totals-real').text()).toBe('—')
+  })
+
+  it('a refused read (409) shows the dash and the refusal\'s own message as the Real reason', async () => {
+    withBoth()
+    answers['GET /positions'] = refused
+    const { w } = await page()
+    const header = t(w, 'positions-totals')
+    expect(header.get('[data-testid="totals-real"]').text()).toBe('—')
+    expect(header.get('[data-testid="totals-real-reason"]').text()).toBe('Connect your Zerodha account to continue.')
+    expect(header.get('[data-testid="totals-paper"]').text()).toBe(REAL.totals.total_text)
+  })
+
+  it('only a server reply with no real_pnl key keeps the old "not shown yet" line', async () => {
+    withBoth()
+    const { real_pnl: _r, pnl_text: _p, ...legacy } = REAL_ONE
+    answers['GET /positions'] = ok(legacy)
+    const { w } = await page()
+    expect(t(w, 'totals-real').text()).toBe('—')
+    expect(t(w, 'totals-real-reason').text()).toBe('Real P&L is not shown yet: the server does not price Zerodha positions.')
   })
 
   it('filters: Real hides the paper rows but totals-paper stays; Paper removes the real section', async () => {
