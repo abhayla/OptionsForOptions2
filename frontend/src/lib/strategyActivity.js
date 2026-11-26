@@ -25,6 +25,8 @@ export const canDelete = (row) => row?.can_delete === true && row?.held_at_broke
 /** ADR-330 (8): the one confirmation of a bulk delete ("Delete 14 strategies? 3 of them are running."). */
 export const bulkConfirmText = (count, running) =>
   `Delete ${count} ${count === 1 ? "strategy" : "strategies"}?${running > 0 ? ` ${running} of them are running.` : ""}`;
+/** The server's catalogue sentence: an object {what_happened, ...} (a bare string is accepted too). Never composed here. */
+export const sentenceOf = (t) => (typeof t === "string" ? t : typeof t?.what_happened === "string" ? t.what_happened : "");
 export const BULK_UNREADABLE_TEXT = "The strategy could not be read, so it was not deleted.";
 
 /** The history entries as the API sends them (seq ascending). Throws the mapped error. */
@@ -216,14 +218,14 @@ export function useDeleteFlow(client, hooks) {
           if (!Array.isArray(body?.deleted) || !Array.isArray(body?.kept)) throw new Error("unreadable answer"); // fail closed
           deleted = body.deleted;
           kept = body.kept;
-          summary = typeof body.summary_text === "string" ? body.summary_text : null;
+          summary = sentenceOf(body.summary_text) || null;
         }
         state.bulkConfirming = null;
         state.selected = [];
         for (const d of deleted) hooks.onRemoved(d.id);
         state.bulkResult = {
           summary: summary ?? `${deleted.length} deleted, ${kept.length + unreadable.length} kept.`,
-          kept: [...kept, ...unreadable],
+          kept: [...kept.map((k) => ({ ...k, text: sentenceOf(k.text) })), ...unreadable],
         };
         dropUndo();
         if (!deleted.length) return;

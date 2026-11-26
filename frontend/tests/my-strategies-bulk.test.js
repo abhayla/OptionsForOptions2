@@ -53,7 +53,8 @@ const THREE = () => [mk(1), mk(2, { has_order: true, has_paper_order: true, stat
 const bulkCall = () => calls.find((c) => c.url === '/strategies/bulk-delete')
 const tick = (w, id) => w.get(`[data-testid="select-${id}"]`).setValue(true)
 const rowIds = (w) => w.findAll('[data-testid="strategy-row"]').map((r) => r.attributes('data-strategy-id'))
-const err422 = () => Object.assign(new Error('422'), { status: 422, parts: { what_happened: 'The request was not valid.', impact: 'Select 1 to 200 strategies.', what_is_blocked: 'Nothing was deleted.', next_action: 'Change the selection.' } })
+const cat = (t) => ({ error_class: 'refusal', code: 'X', what_happened: t, impact: 'i', what_is_blocked: 'b', next_action: 'n', external_text: t })
+const err422 = () => Object.assign(new Error('422'), { status: 422, parts: { what_happened: 'You can delete at most 200 strategies at once.', impact: 'Select 1 to 200 strategies.', what_is_blocked: 'Nothing was deleted.', next_action: 'Change the selection.' } })
 
 beforeEach(() => {
   setActivePinia(createPinia())
@@ -119,7 +120,7 @@ describe('bulk delete confirmation and result', () => {
   })
 
   it('all deleted: one call with ids and revisions, the summary line shown, rows leave, one Undo restores every id', async () => {
-    bulkAnswer = () => Promise.resolve({ data: { deleted: [{ id: 1, revision: 6 }, { id: 3, revision: 7 }], kept: [], summary_text: '2 deleted.' } })
+    bulkAnswer = () => Promise.resolve({ data: { deleted: [{ id: 1, revision: 6 }, { id: 3, revision: 7 }], kept: [], summary_text: cat('2 deleted.') } })
     const w = await open()
     await tick(w, 1); await tick(w, 3)
     await w.get('[data-testid="delete-selected"]').trigger('click')
@@ -138,8 +139,8 @@ describe('bulk delete confirmation and result', () => {
 
   it('some kept (held, not_found, changed, failed): each named with its text', async () => {
     bulkAnswer = () => Promise.resolve({ data: { deleted: [{ id: 1, revision: 6 }], kept: [
-      { id: 2, reason: 'held', text: 'Held at your broker.' }, { id: 3, reason: 'changed', text: 'Changed since you opened it.' },
-      { id: 4, reason: 'not_found', text: 'Already gone.' }, { id: 5, reason: 'failed', text: 'Could not delete it.' }], summary_text: '1 deleted, 4 kept: ...' } })
+      { id: 2, reason: 'held', text: cat('Held at your broker.') }, { id: 3, reason: 'changed', text: cat('Changed since you opened it.') },
+      { id: 4, reason: 'not_found', text: cat('Already gone.') }, { id: 5, reason: 'failed', text: cat('Could not delete it.') }], summary_text: cat('1 deleted, 4 kept: ...') } })
     listAnswer = () => Promise.resolve({ data: { strategies: [mk(1), mk(2), mk(3), mk(4), mk(5)] } })
     const w = await open()
     await w.get('[data-testid="select-all"]').setValue(true)
@@ -157,7 +158,7 @@ describe('bulk delete confirmation and result', () => {
   })
 
   it('none deleted: the summary and the kept rows show, no Undo, nothing removed', async () => {
-    bulkAnswer = () => Promise.resolve({ data: { deleted: [], kept: [{ id: 1, reason: 'failed', text: 'Could not delete it.' }], summary_text: '0 deleted, 1 kept: ...' } })
+    bulkAnswer = () => Promise.resolve({ data: { deleted: [], kept: [{ id: 1, reason: 'failed', text: cat('Could not delete it.') }], summary_text: cat('0 deleted, 1 kept: ...') } })
     const w = await open()
     await tick(w, 1)
     await w.get('[data-testid="delete-selected"]').trigger('click')
@@ -175,7 +176,7 @@ describe('bulk delete confirmation and result', () => {
     await w.get('[data-testid="delete-selected"]').trigger('click')
     await w.get('[data-testid="bulk-confirm"]').trigger('click')
     await flushPromises()
-    expect(w.get('[data-testid="delete-error"]').text()).toContain('The request was not valid.')
+    expect(w.get('[data-testid="delete-error"]').text()).toContain('You can delete at most 200 strategies at once.')
     expect(w.get('[data-testid="delete-selected"]').text()).toBe('Delete selected (1)')
     expect(rowIds(w)).toHaveLength(3)
   })
