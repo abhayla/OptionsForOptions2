@@ -303,19 +303,25 @@ export const exitLotsOk = (text, max) => exitLotsFrom(text, max) !== null
 /** D-48 review (ADR-328 (4)): the sentence of a row Exit on a contract that has a change waiting that is not an exit. */
 export const EXIT_BLOCKED_BY_CHANGE = 'This leg has a change waiting; review or discard it first.'
 
-/** The contract ids of the net position that have a staged change other than an Exit: the row moved to another contract (Change
- *  expiry or a strike step keeps the row's id `paper-<contract id>`, so a row with that id on another contract is the moved one),
- *  or more lots / the other side than the net position holds. A row Exit on such a contract is refused (legsAfterExit). */
-export function stagedChangeIds(net, legs) {
-  return (net ?? []).filter((n) => {
-    const rows = (legs ?? []).filter((l) => l.contract_id === n.contract_id)
-    const movedAway = (legs ?? []).some((l) => l.id === `paper-${n.contract_id}` && l.contract_id !== n.contract_id)
-    const flipped = rows.some((l) => l.action !== n.action)
-    let lots = 0 // the lots kept on this contract, summed over its rows
-    for (const l of rows) lots += Number.isInteger(l.lots) ? l.lots : 0
-    return movedAway || flipped || lots > n.lots
-  }).map((n) => n.contract_id)
+/** D-48 review round 2 (C3, structural): a row Exit never carries an add. True when, with the rows of `contractId` set aside (the
+ *  Exit rebuilds that contract from the net position), the orders the page's other legs already stage hold anything but an exit
+ *  (a move onto another contract, lots or a side changed, a new leg), or cannot be formed. This reads the ORDERS, not row ids: a
+ *  move answered with Increase or an adjustment roll drops the row id `paper-<contract>`, an id detector misses it. ONE predicate:
+ *  legsAfterExit (the door) and the panel (stagedChangeIds) both use it. */
+export function rowExitBlocked(net, legs, contractId) {
+  const others = (n) => n.contract_id !== contractId
+  const orders = paperOrdersFor((net ?? []).filter(others), (legs ?? []).filter(others))
+  const held = (net ?? []).find((n) => !others(n))
+  let kept = 0 // the lots of this contract's own rows, summed (1 + 1 against 2 held is no change); a row of the other side is an add
+  let flipped = false
+  for (const l of (legs ?? []).filter((x) => !others(x))) {
+    kept += Number.isInteger(l.lots) ? l.lots : 0
+    if (held && l.action !== held.action) flipped = true
+  }
+  return orders === null || orders.some((o) => o.kind !== 'exit') || flipped || kept > (held?.lots ?? 0)
 }
+/** The contract ids whose row Exit is off before the click (the panel's `changedIds`): rowExitBlocked, per open contract. */
+export const stagedChangeIds = (net, legs) => (net ?? []).filter((n) => rowExitBlocked(net, legs, n.contract_id)).map((n) => n.contract_id)
 
 /** The EDITED legs for "exit `lots` of `contractId`": every other contract keeps the legs on screen; this contract becomes its
  *  net leg less `lots` (gone at zero), in its place. Only legs change: the orders still come from paperOrdersFor(net, edited),
@@ -323,7 +329,7 @@ export function stagedChangeIds(net, legs) {
 export function legsAfterExit(net, legs, contractId, lots) {
   const held = (net ?? []).find((l) => l.contract_id === contractId)
   if (!held || !Number.isInteger(lots) || lots < 1 || lots > held.lots) return null
-  if (stagedChangeIds(net, legs).includes(contractId)) return null // the ONE door: an Exit never combines with a staged move or add
+  if (rowExitBlocked(net, legs, contractId)) return null // the ONE door: an Exit never combines with a staged move, add or new leg
   const rest = held.lots - lots
   const out = []
   let placed = false

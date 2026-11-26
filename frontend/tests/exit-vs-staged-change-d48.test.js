@@ -5,7 +5,8 @@
 import { describe, expect, it } from 'vitest'
 import { mount } from '@vue/test-utils'
 import PaperBookPanel from '@/components/strategy/PaperBookPanel.vue'
-import { EXIT_BLOCKED_BY_CHANGE, legsAfterExit, paperOrdersFor, stagedChangeIds, stagedExitIds } from '@/lib/paperDrafts'
+import { EXIT_BLOCKED_BY_CHANGE, legsAfterExit, paperOrdersFor, rowExitBlocked, stagedChangeIds, stagedExitIds } from '@/lib/paperDrafts'
+import { admitLegs } from '@/lib/legDoor'
 
 const A = { id: 'paper-1', contract_id: 1, instrument_id: 'NSE_FO:1', action: 'SELL', lots: 2, lot_size: 65, strike: 22800, instrument_type: 'CE', expiry: '2026-11-03' }
 const net = [A]
@@ -23,12 +24,41 @@ describe('a row Exit never combines with a staged change on its contract', () =>
   it('lots raised above the net position is a staged add: blocked too', () => {
     expect(legsAfterExit(net, [{ ...A, lots: 3 }], 1, 1)).toBeNull()
   })
-  it('exit-only states still work: untouched, partial exit, whole exit, another contract moved', () => {
+  it('exit-only states still work: untouched, partial exit, whole exit, removed leg, 1 + 1 rows, lots 2 -> 1 -> 2', () => {
     expect(stagedChangeIds(net, [A])).toEqual([])
+    expect(rowExitBlocked(net, [A], 1)).toBe(false)
     expect(legsAfterExit(net, [A], 1, 1).map((l) => l.lots)).toEqual([1])
     expect(legsAfterExit(net, [{ ...A, lots: 1 }], 1, 2).map((l) => l.lots)).toEqual([])
     const B = { ...A, id: 'paper-2', contract_id: 2, instrument_id: 'NSE_FO:2' }
-    expect(legsAfterExit([A, B], [moved, B], 2, 1).map((l) => l.lots)).toEqual([2, 1])
+    expect(legsAfterExit([A, B], [A], 1, 1).map((l) => l.lots)).toEqual([1]) // B removed (an exit waiting): A's Exit still allowed
+    expect(legsAfterExit(net, [{ ...A, lots: 1 }, { ...A, id: 'x', lots: 1 }], 1, 1)).not.toBeNull() // 1 + 1 rows: no change
+    expect(legsAfterExit(net, [{ ...A, lots: 1 }], 1, 1).map((l) => l.lots)).toEqual([1]) // lots 2 -> 1 (an exit waiting), then Exit 1 of the net 2
+    expect(legsAfterExit(net, [{ ...A, lots: 2 }], 1, 1).map((l) => l.lots)).toEqual([1]) // 2 -> 1 -> 2 is untouched
+  })
+  it('another contract moved: the row Exit is now blocked too (a row Exit never carries an add)', () => {
+    const B = { ...A, id: 'paper-2', contract_id: 2, instrument_id: 'NSE_FO:2' }
+    expect(legsAfterExit([A, B], [moved, B], 2, 1)).toBeNull()
+    expect(stagedChangeIds([A, B], [moved, B])).toEqual([1, 2])
+  })
+  it('a new staged leg C blocks every row Exit', () => {
+    const C = { ...A, id: 'new-c', contract_id: 3, instrument_id: 'NSE_FO:3', lots: 1 }
+    expect(legsAfterExit(net, [A, C], 1, 1)).toBeNull()
+  })
+  it('ATK-1: a move onto a held contract answered with Increase (the id paper-1 is dropped) is still blocked', async () => {
+    const B = { ...A, id: 'paper-2', contract_id: 2, instrument_id: 'NSE_FO:2', lots: 1 }
+    const mv = { ...A, instrument_id: 'NSE_FO:2', contract_id: 2, lots: 2 } // row paper-1 moved onto B
+    const r = await admitLegs([B], [mv], { ask: async () => 'increase', maxLots: 100 })
+    const legs = r.legs
+    expect(legs.map((l) => l.id)).toEqual(['paper-2'])
+    expect(legs[0].lots).toBe(3)
+    expect(paperOrdersFor([A, B], legs).map((o) => o.kind)).toContain('add') // why the id detector missed it
+    expect(legsAfterExit([A, B], legs, 1, 1)).toBeNull()
+    expect(stagedChangeIds([A, B], legs)).toEqual([1, 2])
+  })
+  it('ATK-7: an adjustment roll (adjust- ids, no paper- id) is blocked', () => {
+    const roll = { ...A, id: 'adjust-0', contract_id: 9, instrument_id: 'NSE_FO:9', lots: 2 }
+    expect(paperOrdersFor(net, [roll]).map((o) => o.kind)).toContain('add')
+    expect(legsAfterExit(net, [roll], 1, 1)).toBeNull()
   })
   it('the panel row says why and sends nothing', async () => {
     const book = { strategy_id: 1, state: 'LIVE', total_text: '0', positions: [position(1, 2)], closed: [], orders: [] }
