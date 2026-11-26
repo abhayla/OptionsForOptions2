@@ -11,7 +11,7 @@
           <td class="py-1 pr-2" :data-testid="`${prefix}-contract`"><span class="mr-1 font-semibold">{{ c.side === 'BUY' ? 'B' : 'S' }}</span>{{ c.contract_text }}</td>
           <td class="num text-center" :data-testid="`${prefix}-lots`">{{ c.lots ?? c.quantity }}</td>
           <td class="num text-right" :data-testid="`${prefix}-entry`">{{ c.average_entry_text }}</td>
-          <td class="num text-right" :data-testid="`${prefix}-exit`">{{ c.average_exit_text }}<span v-if="c.reason_text" class="block text-[11px] font-normal text-ink-muted" :data-testid="`${prefix}-reason`">{{ c.reason_text }}</span></td>
+          <td class="num text-right" :data-testid="`${prefix}-exit`"><span :data-testid="`${prefix}-exit-price`">{{ c.average_exit_text }}</span><span v-if="c.reason_text" class="block text-left text-[11px] font-normal text-ink-muted" :data-testid="`${prefix}-reason`">{{ c.reason_text }}</span></td>
           <td class="num text-right" :data-testid="`${prefix}-booked`">{{ c.booked_text }}</td>
         </tr>
       </tbody>

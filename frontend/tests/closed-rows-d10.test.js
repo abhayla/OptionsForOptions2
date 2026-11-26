@@ -44,4 +44,24 @@ describe('Net Positions closed rows show the reason (D-22, D-71)', () => {
     const w = mount(PaperBookPanel, { props: { book: book({ positions: [], closed: [stopRow, settledRow, plain] }), net: [] } })
     expect(w.findAll('[data-testid="closed-reason"]').map((n) => n.text())).toEqual([stopRow.reason_text, settledRow.reason_text])
   })
+  // N-27/N-28: jsdom has no layout, so this checks the structure only: the Exit price is its own element and the reason is a
+  // separate left-aligned block line under it (the price stays right-aligned alone); the LTP time is a block under the price
+  it('N-28: the Exit price stands alone in its span and the reason is a separate left-aligned block', () => {
+    const w = mount(PaperBookPanel, { props: { book: book({ positions: [], closed: [stopRow] }), net: [] } })
+    const cell = w.get('[data-testid="closed-exit"]')
+    expect(cell.get('[data-testid="closed-exit-price"]').text()).toBe('₹115.71')
+    const reason = cell.get('[data-testid="closed-reason"]')
+    expect(reason.element.tagName).toBe('SPAN')
+    expect(reason.classes()).toContain('block')
+    expect(reason.classes()).toContain('text-left')
+    expect(cell.get('[data-testid="closed-exit-price"]').element.contains(reason.element)).toBe(false)
+  })
+  it('N-27: the LTP time is a block element under the price span, not inline beside it', () => {
+    const w = mount(PaperBookPanel, { props: { book: book(), net: [{ contract_id: 7, lots: 2 }] } })
+    const price = w.get('[data-testid="net-ltp"]')
+    const at = w.get('[data-testid="net-ltp-at"]')
+    expect(at.classes()).toContain('block')
+    expect(price.element.parentElement).toBe(at.element.parentElement)
+    expect(price.element.contains(at.element)).toBe(false)
+  })
 })

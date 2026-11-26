@@ -56,7 +56,7 @@
             <td class="py-1 pr-2" data-testid="net-contract">{{ p.contract_text }}</td>
             <td class="num text-center" data-testid="net-lots">{{ lotsOf(p) }}</td>
             <td class="num text-right" data-testid="net-avg">{{ readFailed ? PAPER_NO_FIGURE : (p.average_text ?? '-') }}</td>
-            <td class="num text-right"><span data-testid="net-ltp">{{ readFailed ? PAPER_NO_FIGURE : (p.ltp_text ?? '-') }}</span><span v-if="p.ltp_text && !readFailed" class="ml-1 text-ink-muted" data-testid="net-ltp-at">{{ istClock(p.price_at ?? null) ?? 'time n/a' }}</span></td>
+            <td class="num text-right"><span data-testid="net-ltp">{{ readFailed ? PAPER_NO_FIGURE : (p.ltp_text ?? '-') }}</span><span v-if="p.ltp_text && !readFailed" class="block text-[11px] text-ink-muted" data-testid="net-ltp-at">{{ istClock(p.price_at ?? null) ?? 'time n/a' }}</span></td>
             <td class="num text-right" data-testid="net-booked">{{ readFailed ? PAPER_NO_FIGURE : p.booked_text }}</td>
             <td class="num text-right" data-testid="net-unbooked">{{ readFailed ? PAPER_NO_FIGURE : (p.unbooked_text ?? '-') }}</td>
             <td class="num text-right" data-testid="net-pnl">{{ readFailed ? PAPER_NO_FIGURE : (p.total_text ?? '-') }}</td>
