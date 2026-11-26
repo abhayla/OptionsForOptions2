@@ -11,7 +11,8 @@ import yaml
 sys.path.insert(0, str(Path(__file__).resolve().parents[2] / "scripts" / "orchestrator"))
 import prepush
 
-NAMES = ["preflight", "ci_checks", "domain_tests", "app_tests", "ruff_ratchet", "coverage", "alembic_guard"]
+CHEAP = ["ruff_ratchet", "coverage", "alembic_guard"]
+NAMES = [*CHEAP, "preflight", "ci_checks", "domain_tests", "app_tests"]  # run order (cheap checks first)
 FRONT = ["frontend_lint", "frontend_unit", "frontend_build"]
 REAL_FRONTEND_CHANGES = prepush.frontend_changes
 CI_YML = """name: ci
@@ -84,13 +85,14 @@ def test_steps_run_in_order_in_the_repo_with_logs_outside_it(tmp_path, capsys):
     rc = prepush.run_all(str(repo), runner=runner, log_dir=str(tmp_path / "logs"))
     assert rc == 0
     tails = [" ".join(c[0][1:]).replace("\\", "/") for c in runner.calls]
-    assert tails[0].startswith("scripts/orchestrator/merge_preflight.py . --log-dir ")  # first: the fast checks
-    assert tails[1].startswith("tools/ci_local.py --workflow ")
-    assert tails[1].endswith("ci-no-pytest.yml --no-tests")
-    assert tails[2:] == ["-m pytest -q -p no:cacheprovider tests/test_a.py",
-                         "-m pytest -c pytest-app.ini -q -p no:cacheprovider tests_app/test_b.py",
-                         "scripts/ruff_ratchet.py", "scripts/orchestrator/coverage.py . --check",
+    # the seconds-long checks first (finding cheap-check-after-expensive-one), then the minutes-long ones
+    assert tails[:3] == ["scripts/ruff_ratchet.py", "scripts/orchestrator/coverage.py . --check",
                          "scripts/alembic_migration_guard.py"]
+    assert tails[3].startswith("scripts/orchestrator/merge_preflight.py . --log-dir ")
+    assert tails[4].startswith("tools/ci_local.py --workflow ")
+    assert tails[4].endswith("ci-no-pytest.yml --no-tests")
+    assert tails[5:] == ["-m pytest -q -p no:cacheprovider tests/test_a.py",
+                         "-m pytest -c pytest-app.ini -q -p no:cacheprovider tests_app/test_b.py"]
     assert all(Path(c[1]) == repo for c in runner.calls)
     assert all(repo not in Path(c[2]).parents for c in runner.calls)
     out = capsys.readouterr().out
@@ -105,10 +107,30 @@ def test_a_red_preflight_stops_the_run_before_the_long_steps_and_writes_no_marke
     runner = Runner(fail={"preflight"})
     rc = prepush.run_all(str(repo), runner=runner, log_dir=str(tmp_path / "l"))
     assert rc == 1
-    assert len(runner.calls) == 1  # only the preflight ran
+    assert len(runner.calls) == len(CHEAP) + 1  # the cheap checks and the preflight ran; nothing after it
     out = capsys.readouterr().out
     assert "FAIL preflight" in out and "STOP: preflight failed" in out and "failed: preflight" in out
     assert not prepush.has_marker(str(repo), sha_of(repo))
+
+
+@pytest.mark.parametrize("failing", CHEAP)
+def test_a_red_cheap_check_still_lets_the_preflight_and_every_later_step_run(tmp_path, capsys, failing):
+    repo = make_repo(tmp_path)
+    runner = Runner(fail={failing})
+    assert prepush.run_all(str(repo), runner=runner, log_dir=str(tmp_path / "l")) == 1
+    assert [Path(c[2]).stem for c in runner.calls] == NAMES  # all seven ran, in order, preflight included
+    out = capsys.readouterr().out
+    assert f"FAIL {failing} " in out and "STOP" not in out and f"failed: {failing}" in out
+    assert not prepush.has_marker(str(repo), sha_of(repo))
+
+
+def test_a_red_ruff_ratchet_runs_every_later_step_and_exits_1(tmp_path, capsys):
+    repo = make_repo(tmp_path)
+    runner = Runner(fail={"ruff_ratchet"})
+    rc = prepush.run_all(str(repo), runner=runner, log_dir=str(tmp_path / "l"))
+    assert rc == 1
+    assert [Path(c[2]).stem for c in runner.calls][1:] == NAMES[1:]
+    assert "TOTAL FAIL" in capsys.readouterr().out
 
 
 def test_the_workflow_copy_drops_pytest_steps_keeps_the_rest_outside_the_repo(tmp_path, capsys):
@@ -127,7 +149,7 @@ def test_no_tests_flag_is_passed_to_ci_local(tmp_path):
     repo = make_repo(tmp_path)
     runner = Runner()
     prepush.run_all(str(repo), runner=runner, log_dir=str(tmp_path / "l"))
-    assert runner.calls[1][0][-1] == "--no-tests"
+    assert runner.calls[4][0][-1] == "--no-tests"
 
 
 def test_a_none_selection_runs_all_of_tests(tmp_path, monkeypatch):
@@ -135,8 +157,8 @@ def test_a_none_selection_runs_all_of_tests(tmp_path, monkeypatch):
     repo = make_repo(tmp_path)
     runner = Runner()
     prepush.run_all(str(repo), runner=runner, log_dir=str(tmp_path / "l"))
-    assert runner.calls[2][0][-1] == "tests/"
-    assert runner.calls[2][0][1:3] == ["-m", "pytest"]
+    assert runner.calls[5][0][-1] == "tests/"
+    assert runner.calls[5][0][1:3] == ["-m", "pytest"]
 
 
 def test_full_runs_all_of_tests_without_asking_the_selector(tmp_path, monkeypatch):
@@ -147,7 +169,7 @@ def test_full_runs_all_of_tests_without_asking_the_selector(tmp_path, monkeypatc
     repo = make_repo(tmp_path)
     runner = Runner()
     assert prepush.run_all(str(repo), full=True, runner=runner, log_dir=str(tmp_path / "l")) == 0
-    assert runner.calls[2][0][-1] == "tests/"
+    assert runner.calls[5][0][-1] == "tests/"
 
 
 def test_an_empty_selection_skips_the_domain_step_as_pass(tmp_path, monkeypatch, capsys):
@@ -360,18 +382,20 @@ def test_a_frontend_change_runs_lint_related_vitest_and_build_in_frontend(tmp_pa
     repo = frontend_repo(tmp_path)
     runner = Runner()
     assert run_front(repo, tmp_path, ["src/components/LegPicker.vue", "tests/leg-picker.test.js"], runner) == 0
-    # the build runs FIRST (the domain tests' bundle scan reads frontend/dist); lint and vitest run after the rest
-    front = [runner.calls[0], *runner.calls[len(NAMES) + 1:]]
+    # lint (needs no build: eslint ignores dist/) and the build run before the preflight, which reads frontend/dist;
+    # vitest runs last
+    front = [*runner.calls[3:5], runner.calls[-1]]
     assert [c[0] for c in front] == [
-        ["/fake/bin/npm", "run", "build"],
         ["/fake/bin/npm", "run", "lint"],
+        ["/fake/bin/npm", "run", "build"],
         ["/fake/bin/npx", "vitest", "related", "--run", "src/components/LegPicker.vue", "tests/leg-picker.test.js"]]
     assert all(Path(c[1]) == repo / "frontend" for c in front)
     out = capsys.readouterr().out
     assert all(f"PASS {n} " in out for n in FRONT)
     assert prepush.has_marker(str(repo), sha_of(repo))
     body = json.loads(Path(prepush.marker_path(str(repo), sha_of(repo))).read_text(encoding="utf-8"))
-    assert [s["name"] for s in body["steps"]] == ["frontend_build", *NAMES, "frontend_lint", "frontend_unit"]
+    assert [s["name"] for s in body["steps"]] == [*CHEAP, "frontend_lint", "frontend_build", "preflight", "ci_checks",
+                                                       "domain_tests", "app_tests", "frontend_unit"]
 
 
 @pytest.mark.parametrize("failing", FRONT)
@@ -390,7 +414,7 @@ def test_every_vitest_file_runs_on_full_a_wide_change_or_an_unreadable_diff(tmp_
     repo = frontend_repo(tmp_path)
     runner = Runner()
     assert run_front(repo, tmp_path, changes, runner, full=full) == 0
-    assert runner.calls[len(NAMES) + 2][0] == ["/fake/bin/npx", "vitest", "run"]  # build first, lint, then vitest
+    assert runner.calls[-1][0] == ["/fake/bin/npx", "vitest", "run"]  # vitest runs last
     assert len(runner.calls) == len(NAMES) + len(FRONT)
 
 
@@ -430,7 +454,7 @@ def test_a_frontend_selector_error_fails_closed_into_running_every_step(tmp_path
     repo = frontend_repo(tmp_path)
     runner = Runner()
     prepush.run_all(str(repo), runner=runner, log_dir=str(tmp_path / "l"), select_frontend=broken, which=which)
-    assert runner.calls[len(NAMES) + 2][0] == ["/fake/bin/npx", "vitest", "run"]  # build first, lint, then vitest
+    assert runner.calls[-1][0] == ["/fake/bin/npx", "vitest", "run"]  # vitest runs last
 
 
 def commit_file(repo, rel, text="x"):

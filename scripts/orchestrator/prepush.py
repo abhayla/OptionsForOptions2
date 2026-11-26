@@ -2,19 +2,22 @@
 
 Runs, in order, every step even when an earlier one fails (so one run shows everything that is red), with ONE
 exception: a red preflight stops the run (merge_preflight.py, 2026-11-01: a broken merge is caught in minutes, and the
-long steps would only repeat it). Order: frontend_build first when frontend/ runs (the domain tests' bundle secret scan
-reads frontend/dist), preflight (--no-domain-scans with --full, since all of tests/ runs next),
-  ci_checks (ci_local on a copy of ci.yml without its pytest steps, --no-tests), domain_tests (the tests/ files the
-  kit's own selection picks; --full or an unreadable diff = all of tests/), app_tests (the tests_app files
-  select_app_tests picks; DB tests are CI's; cannot select = FAIL), ruff_ratchet, coverage --check, alembic guard
-(the last three are checks app-tests.yml / coverage.yml run in CI that ci_local does not mirror: finding
-local-ci-mirror-runs-a-subset). Why the split: kit defect Startup-Factory #186, any changed non-.py file makes
-ci_local run the full suite incl. tests_app (egress allow-list leak, DB tests that must not run on this host).
+long steps would only repeat it). Order: the seconds-long checks first (finding cheap-check-after-expensive-one,
+2026-11-26: they ran after ~1985 s of long stages and 12 gate runs failed late): ruff_ratchet, coverage --check,
+alembic guard (the checks app-tests.yml / coverage.yml run in CI that ci_local does not mirror: finding
+local-ci-mirror-runs-a-subset); then, when frontend/ runs, frontend_lint (eslint ignores dist/, so it needs no build)
+and frontend_build (still before everything that reads frontend/dist: the preflight's layer 0 and the domain tests'
+bundle secret scan); then preflight (--no-domain-scans with --full, since all of tests/ runs next), ci_checks (ci_local
+on a copy of ci.yml without its pytest steps, --no-tests), domain_tests (the tests/ files the kit's own selection
+picks; --full or an unreadable diff = all of tests/), app_tests (the tests_app files select_app_tests picks; DB tests
+are CI's; cannot select = FAIL), and frontend_unit last. Why the split: kit defect Startup-Factory #186, any changed
+non-.py file makes ci_local run the full suite incl. tests_app (egress allow-list leak, DB tests that must not run on
+this host).
 When the change since the merge base with origin/main touches frontend/ (or that diff cannot be read: fail closed),
-the frontend steps run in frontend/, as app-tests.yml does in CI: frontend_build (npm run build, FIRST, see above),
-then after the rest frontend_lint (npm run lint) and frontend_unit (npx vitest related --run <changed src/tests files>;
-every test file with --full or when a deletion / non-src file changed). A missing frontend/node_modules or tool is a
-FAIL with the reason, never a skip (orchestrator finding 1, 2026-10-27: a marker was written over 37 red vitest tests).
+the frontend steps run in frontend/, as app-tests.yml does in CI: npm run lint, npm run build, and
+npx vitest related --run <changed src/tests files> (every test file with --full or when a deletion / non-src file
+changed). A missing frontend/node_modules or tool is a FAIL with the reason, never a skip (orchestrator finding 1,
+2026-10-27: a marker was written over 37 red vitest tests).
 Each step's output goes to a log file outside the repo; one line per step. A step that times out
 (STEP_TIMEOUT_S) or cannot start is a FAIL. The child environment never carries TEST_DATABASE_URL,
 TEST_ADMIN_DATABASE_URL or ALEMBIC_DATABASE_URL (this host's PostgreSQL serves production; DB tests are CI's).
@@ -200,21 +203,25 @@ class Plan:
     def steps(self):
         py = sys.executable
         front = self.frontend != []  # None (diff unreadable) runs them too: fail closed
-        # the build goes FIRST: the domain tests' bundle secret scan reads frontend/dist, and a build left from before a
-        # merge (another config, no manifest) failed that scan on right code (2026-11-01, one ~35 min gate run lost)
-        steps = [("frontend_build", lambda log: self.front("npm", ["run", "build"], log))] if front else []
-        # then the minutes-long checks of a broken merge; a red one stops the run (run_all). With --full all of tests/
-        # runs next, so the preflight skips its tests/ repo_scan subset; a selection run keeps it (review MINOR 7)
+        # seconds-long checks first (finding cheap-check-after-expensive-one: they used to run after ~33 min of long
+        # stages, and 12 gate runs failed late on them)
+        steps = [("ruff_ratchet", lambda log: self.run(py, "scripts/ruff_ratchet.py", log=log)),
+                 ("coverage", lambda log: self.run(py, "scripts/orchestrator/coverage.py", ".", "--check", log=log)),
+                 ("alembic_guard", lambda log: self.run(py, "scripts/alembic_migration_guard.py", log=log))]
+        if front:
+            # lint needs no build (frontend/eslint.config.js ignores dist/); the build still comes before everything
+            # that reads frontend/dist: the preflight's layer 0 and the domain tests' bundle secret scan (a build left
+            # from before a merge failed that scan on right code, 2026-11-01, one ~35 min gate run lost)
+            steps += [("frontend_lint", lambda log: self.front("npm", ["run", "lint"], log)),
+                      ("frontend_build", lambda log: self.front("npm", ["run", "build"], log))]
+        # then the minutes-long checks of a broken merge; a red preflight stops the run (run_all). With --full all of
+        # tests/ runs next, so the preflight skips its tests/ repo_scan subset; a selection run keeps it (MINOR 7)
         skip = ["--no-domain-scans"] if self.full else []
         steps += [("preflight", lambda log: self.run(py, "scripts/orchestrator/merge_preflight.py", ".", "--log-dir",
                                                      self.log_dir, *skip, log=log)),
-                  ("ci_checks", self.ci_checks), ("domain_tests", self.domain_tests), ("app_tests", self.app_tests),
-                  ("ruff_ratchet", lambda log: self.run(py, "scripts/ruff_ratchet.py", log=log)),
-                  ("coverage", lambda log: self.run(py, "scripts/orchestrator/coverage.py", ".", "--check", log=log)),
-                  ("alembic_guard", lambda log: self.run(py, "scripts/alembic_migration_guard.py", log=log))]
+                  ("ci_checks", self.ci_checks), ("domain_tests", self.domain_tests), ("app_tests", self.app_tests)]
         if front:
-            steps += [("frontend_lint", lambda log: self.front("npm", ["run", "lint"], log)),
-                      ("frontend_unit", self.frontend_unit)]
+            steps.append(("frontend_unit", self.frontend_unit))
         return steps
 
 
