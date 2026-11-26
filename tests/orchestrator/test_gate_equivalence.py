@@ -35,7 +35,7 @@ TOTAL FAIL 4.5s marker not written (failed: domain_tests)
 """
 
 
-def rec(steps, total, marker, expect_red=(), skips=None, stops=()):  # noqa: PLR0913, PLR0917
+def rec(steps, total, marker, expect_red=(), skips=None, stops=()):  # noqa: PLR0913
     return {"steps": dict(steps), "total": total, "marker": marker, "seconds": 1.0, "raw_path": "x",
             "expect_red": list(expect_red), "skip_reasons": skips or {}, "stops": list(stops)}
 
