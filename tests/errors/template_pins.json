@@ -4652,11 +4652,27 @@
     "reviewed": "pending owner read"
   },
   "explanation:paper_leg_stop_widens_loss": {
-    "sha256": "9b3f9013bb843b255940e8c99827b43d222039064596ca691eaffa0356849ab6",
+    "sha256": "c70ac417600bc310c7614f10edec75ee1cc6bf83d93c90af679336c299fcbb75",
     "reviewed": "pending owner read"
   },
   "explanation:paper_leg_stop_unlimited_loss": {
-    "sha256": "ee7f7babf5dff7e297663b3a0e565ed5e306a8a88def934caf3e147c3d20d3f6",
+    "sha256": "b2bf658f44033a95e217468372cb8bca71a71f68f022527a5cd8163ac0f05edf",
+    "reviewed": "pending owner read"
+  },
+  "explanation:paper_leg_stop_from_profit": {
+    "sha256": "463238f9ada1d016ac2c0086e9ffe6e3b091eec6c18dbeafbefb61cf9939a217",
+    "reviewed": "pending owner read"
+  },
+  "explanation:paper_leg_stop_unlimited_from_profit": {
+    "sha256": "e47aa44a58aebb775b3e225e045800c130e563fec38c07d57b40c270447f1364",
+    "reviewed": "pending owner read"
+  },
+  "explanation:paper_leg_stop_to_profit": {
+    "sha256": "80e80c8e789aa854d13e4240b13e7101ae5b98580c77b69fdaae856d8f31d2b1",
+    "reviewed": "pending owner read"
+  },
+  "explanation:paper_leg_stop_still_profit": {
+    "sha256": "15b512201105dc3a9d7fe0ec84349b00c6d6fce4f51257de2d5bc00403df6ff0",
     "reviewed": "pending owner read"
   }
 }

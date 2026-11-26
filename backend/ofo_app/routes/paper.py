@@ -1403,10 +1403,19 @@ def _exit_risk_answer(state: Literal["yes", "no", "cannot_tell"]) -> ExitRiskOut
 
 
 def _stop_line(before: Decimal, after: Decimal | str) -> str:
-    """ADR-330 (6): "If this stop fires, max loss becomes Rs X (now Rs Y)"; unlimited: no fixed maximum."""
+    """ADR-330 (6): "If this stop fires, max loss becomes Rs X (now Rs Y)." A figure is negative for a loss; a figure
+    that is >= 0 is a profit and has its own sentence (never abs). Unlimited after: no fixed maximum."""
     if after == "unlimited":
-        return render_explanation("paper_leg_stop_unlimited_loss", before=abs(before))
-    return render_explanation("paper_leg_stop_widens_loss", before=abs(before), after=abs(Decimal(after)))
+        return (render_explanation("paper_leg_stop_unlimited_from_profit", before=before) if before >= 0
+                else render_explanation("paper_leg_stop_unlimited_loss", before=-before))
+    figure = Decimal(after)
+    if before >= 0 and figure >= 0:
+        return render_explanation("paper_leg_stop_still_profit", before=before, after=figure)
+    if before >= 0:
+        return render_explanation("paper_leg_stop_from_profit", before=before, after=-figure)
+    if figure >= 0:
+        return render_explanation("paper_leg_stop_to_profit", before=-before, after=figure)
+    return render_explanation("paper_leg_stop_widens_loss", before=-before, after=-figure)
 
 
 def _exit_warning(risk: ExitRisk, names: Mapping[str, Any], leg_stop: bool = False) -> ExitRiskOut:
@@ -1509,7 +1518,18 @@ async def paper_leg_stop_risk(strategy_id: int, contract_id: Annotated[int, Quer
     except ValueError:
         return _exit_risk_answer("cannot_tell")
     risk = exit_risk(_paper(booked), [leg], terms, priced=True)
-    if risk.state != "yes":
+    if risk.state == "cannot_tell":
+        return _exit_risk_answer("cannot_tell")
+    # ADR-330 (6) has no threshold: the line shows whenever the engine prices both figures (ADR-256's "more than double"
+    # is the exit confirmation's rule, whose figures exit_risk hides below it), so read the same engine's figures here
+    try:
+        loss0 = book_extremes(net_positions(_paper(booked), {}), terms, {}).max_loss
+        loss1 = book_extremes(net_positions([*_paper(booked), leg], {}), terms, {}).max_loss
+    except (ValueError, KeyError):
+        loss0 = loss1 = None
+    if isinstance(loss0, Decimal) and (loss1 is UNLIMITED or isinstance(loss1, Decimal)):
+        risk = ExitRisk("yes", loss0, loss1, risk.exposed)
+    elif risk.state != "yes":
         return _exit_risk_answer(risk.state)
     return _exit_warning(risk, names, leg_stop=True)
 
