@@ -259,6 +259,17 @@ async def answer(conn: Any, user_ref: str, alert_id: int, answer: str | None, at
         return await _get(conn, user_ref, alert_id)
 
 
+async def dismiss(conn: Any, user_ref: str, alert_id: int, reason: str | None = None) -> Any:
+    """The inbox's Dismiss (= "continue with the position"; it stores answer and time). The route goes through here so
+    that no module outside the two homes closes an alert-table row."""
+    return await pb.dismiss(conn, user_ref, alert_id, reason)
+
+
+async def act_on(conn: Any, user_ref: str, alert_id: int) -> Any:
+    """The inbox's Act on (outcome acted_on, answer continue, as before); see ``dismiss``."""
+    return await pb.act_on(conn, user_ref, alert_id)
+
+
 async def close_by_system(conn: Any, user_ref: str, strategy_id: int, reason: str, *,  # noqa: PLR0913
                           at: datetime | None = None,
                           ids: Iterable[int] | None = None) -> list[Alert]:
