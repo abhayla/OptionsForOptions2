@@ -1005,7 +1005,7 @@ _STRATEGY_DRAFT_TEMPLATES: tuple[MessageTemplate, ...] = (
           "This strategy could not be deleted because of an unexpected error, so it was left as it is.",
           "The kept strategies were not changed.", "Deleting the kept strategies.",
           "Read the reason on each kept row.", {"deleted": Count, "kept": Count}),
-    # ADR-330 (8) busy store (S-02; new wording, ADR-NB-1 pending owner read, Lane R 26 Nov 2026).
+    # ADR-330 (8) busy store (S-02; new wording approved by the owner as written, ADR-330 (26), 26 Nov 2026).
     _gate("store_busy", _SV, 522,
           "This strategy is busy with another action, so nothing was changed.",
           "The strategy and its history were not changed.", "This action on this strategy.",

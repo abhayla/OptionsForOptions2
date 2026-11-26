@@ -61,7 +61,8 @@ export function usePaperPnl() {
     if (!loaded.value) return { kind: 'loading' }
     if (list.value === null) return pnlFigure(null)
     if (list.value.totals === null) return pnlFigure(null)
-    return pnlFigure(list.value.totals.totalAfter, stale.value)
+    // AC-R06 / N-46 (ADR-324): the server's count line (strategies left out of the total) rides with the figure, as sent
+    return { ...pnlFigure(list.value.totals.totalAfter, stale.value), leftOut: list.value.totals.leftOut ?? null }
   })
   return { cellFor, totalCell, loaded }
 }

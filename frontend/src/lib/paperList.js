@@ -77,6 +77,7 @@ function readClosed(c, underlying) {
     qtyText: Number.isInteger(c.lots) ? `${c.lots} ${c.lots === 1 ? 'lot' : 'lots'}` : `${c.quantity} units`,
     entryText: text(c.average_entry_text),
     exitText: text(c.average_exit_text),
+    reasonText: text(c.reason_text), // N-47: the server's settlement / stop sentence, as the builder's closed rows print it
     booked: text(c.booked_text),
   }
 }

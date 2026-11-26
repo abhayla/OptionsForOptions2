@@ -8,7 +8,7 @@ import StrategyBuilderPage from '@/pages/StrategyBuilderPage.vue'
 import { netLegsFromBook } from '@/lib/paperDrafts'
 import { PAPER_ADDED_TEXT } from '@/lib/tracking'
 import REAL from './fixtures/paper-book-63.json'
-import { confirmPaperName } from './helpers/paperName'
+import { confirmPaperName, tickNotLive } from './helpers/paperName'
 
 const calls = []
 let answers = {}
@@ -59,6 +59,7 @@ describe('R-6: the "Added to Paper" toast after the save-first path', () => {
     expect(router.currentRoute.value.query.strategy).toBe('70') // saved first, the URL names it
     expect(calls.filter((c) => c.method === 'POST' && c.url === '/strategies')).toHaveLength(1)
     vi.useFakeTimers()
+    await tickNotLive(w)
     await t(w, 'paper-confirm-button').trigger('click')
     await flushPromises()
     expect(calls.filter((c) => c.url === '/paper/strategies/70/orders')).toHaveLength(1)

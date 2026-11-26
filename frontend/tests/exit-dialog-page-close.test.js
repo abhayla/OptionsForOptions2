@@ -264,3 +264,88 @@ describe('Tier A review round 2: the staged exit is dropped, the user\'s own edi
     expect(S(w).legs).toEqual([])
   })
 })
+
+describe('Tier A review round 3: the Exit snapshot ends with the dialog; a block that arrives during a POST is acted on after it', () => {
+  const removeFirst = (w) => S(w).setLegs(S(w).legs.slice(1))
+  const exitLeg = async (w, i) => { S(w).exitPaper(S(w).paper.net[i].contract_id, 1); await flushPromises() }
+  const cancel = async (w) => { await t(w, 'paper-cancel').trigger('click'); await flushPromises() }
+
+  it('A1: Exit leg 2, Cancel, 9 lots on leg 0, Exit leg 3, the read fails: only the leg-3 exit is dropped (2 pending)', async () => {
+    const w = await builder()
+    await exitLeg(w, 2)
+    await cancel(w)
+    expect(S(w).pendingOrders.length).toBe(1)
+    S(w).setLegs(S(w).legs.map((l, i) => (i === 0 ? { ...l, lots: 9 } : l)))
+    await flushPromises()
+    expect(S(w).pendingOrders.length).toBe(2)
+    await exitLeg(w, 3)
+    await failRead()
+    expect(t(w, 'paper-confirm').exists()).toBe(false)
+    expect(S(w).pendingOrders.length).toBe(2)
+    expect(S(w).legs[0].lots).toBe(9)
+  })
+
+  it('A3: Exit leg 2, Cancel, remove another leg, Review and add, the read fails: removal and kept exit stay (2 pending)', async () => {
+    const w = await builder()
+    await exitLeg(w, 2)
+    await cancel(w)
+    removeFirst(w)
+    await flushPromises()
+    expect(S(w).pendingOrders.length).toBe(2)
+    await t(w, 'paper-review').trigger('click')
+    await flushPromises()
+    expect(t(w, 'paper-confirm').exists()).toBe(true)
+    await failRead()
+    expect(t(w, 'paper-confirm').exists()).toBe(false)
+    expect(S(w).pendingOrders.length).toBe(2)
+  })
+
+  it('A2: Exit all, Cancel (4 kept), Review and add, contracts changed: 4 pending stay', async () => {
+    const w = await builder()
+    await t(w, 'paper-exit-all').trigger('click')
+    await flushPromises()
+    await cancel(w)
+    expect(S(w).pendingOrders.length).toBe(4)
+    await t(w, 'paper-review').trigger('click')
+    await flushPromises()
+    expect(t(w, 'paper-confirm').exists()).toBe(true)
+    await setMark(w, true)
+    expect(t(w, 'paper-confirm').exists()).toBe(false)
+    expect(S(w).pendingOrders.length).toBe(4)
+  })
+
+  it('A4: Confirm, contracts change while the POST is out, the POST answers 422: dialog closed or Confirm disabled, 1 POST', async () => {
+    const w = await builder()
+    let fail
+    answers['POST /paper/strategies/86/orders'] = () => new Promise((_, rej) => { fail = rej })
+    await t(w, 'paper-exit-all').trigger('click')
+    await flushPromises()
+    await t(w, 'paper-confirm-button').trigger('click')
+    await flushPromises()
+    expect(S(w).paperBusy).toBe(true)
+    await setMark(w, true)
+    fail({ status: 422, message: 'x', parts: null })
+    await flushPromises()
+    const open = t(w, 'paper-confirm').exists()
+    expect(!open || t(w, 'paper-confirm-button').attributes('disabled') !== undefined).toBe(true)
+    expect(orderPosts()).toHaveLength(1)
+  })
+
+  it('A8: Confirm, 503 (unknown outcome), then blocked: the unknown text stays, Confirm disabled after the hold, 1 POST', async () => {
+    const w = await builder()
+    let fail
+    answers['POST /paper/strategies/86/orders'] = () => new Promise((_, rej) => { fail = rej })
+    await t(w, 'paper-exit-all').trigger('click')
+    await flushPromises()
+    await t(w, 'paper-confirm-button').trigger('click')
+    await flushPromises()
+    fail({ status: 503, message: 'x', parts: null })
+    await flushPromises()
+    await setMark(w, true)
+    expect(t(w, 'paper-unknown').exists()).toBe(true)
+    await vi.advanceTimersByTimeAsync(120000)
+    await flushPromises()
+    expect(t(w, 'paper-confirm-button').attributes('disabled')).toBeDefined()
+    expect(orderPosts()).toHaveLength(1)
+  })
+})

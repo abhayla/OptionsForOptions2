@@ -8,7 +8,7 @@
   "where": "owner screen check, strategy delete, ERR-6960F002 (S-02)",
   "evidence": "Lane Q2 measured it 26 Nov: a second connection holding FOR UPDATE on a strategy row with lock_timeout 300 ms made strategy_store.delete_draft raise LockNotAvailableError (55P03); the route answered 500. Lane R reproduced it through DELETE /strategies/{id}: 500 INTERNAL_SYSTEM_002 for lock_timeout and for statement_timeout (57014)."
  },
- "fix": "One structural catch in the one error door, handle_error: a DBAPIError (or an exception raised from one) with sqlstate 55P03, 57014 or 40P01 is answered with the catalogue entry store_busy (STRATEGY_VALIDATION_522, HTTP 409): 'This strategy is busy with another action, so nothing was changed.' Every route passes this door (49 write routes in 21 route files). The request session is rolled back first (_run, get_db), so the write is all-or-nothing. Any other database error is unchanged. Wording is new and pending the owner's read (ADR-330 (8), ADR-NB-1).",
+ "fix": "One structural catch in the one error door, handle_error: a DBAPIError (or an exception raised from one) with sqlstate 55P03, 57014 or 40P01 is answered with the catalogue entry store_busy (STRATEGY_VALIDATION_522, HTTP 409): 'This strategy is busy with another action, so nothing was changed.' Every route passes this door (49 write routes in 21 route files). The request session is rolled back first (_run, get_db), so the write is all-or-nothing. Any other database error is unchanged. Wording is new and was approved by the owner as written on 26 Nov 2026 (ADR-330 (8), (26)).",
  "detection": {
   "status": "guarded",
   "checks": [

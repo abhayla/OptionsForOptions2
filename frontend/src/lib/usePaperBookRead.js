@@ -17,10 +17,12 @@ const text = (v) => (typeof v === 'string' && v.trim() !== '' ? v.trim() : null)
 
 /** LegPrice (a plain object): one open contract's price, quote time and own TOTAL (booked plus still open, ADR-328 (3)), as the
  *  book sent them. Keyed by the contract id text; a flat contract has none; null = the server sent none. */
-export function legPricesOf(book) {
+export function legPricesOf(book, failed = false) {
   const out = new Map()
   for (const p of Array.isArray(book?.positions) ? book.positions : []) {
     if (p.net_quantity === 0) continue
+    // #744: a failed read prints the one dash the legs table prints, never the last figures (entry, LTP, TOTAL; no quote time, no reason text)
+    if (failed) { out.set(String(p.contract_id), { entry: PAPER_NO_FIGURE, ltp: PAPER_NO_FIGURE, at: null, total: PAPER_NO_FIGURE, noPrice: null }); continue }
     out.set(String(p.contract_id), { entry: text(p.average_text), ltp: text(p.ltp_text), at: p.price_at ?? null, total: text(p.total_text), noPrice: text(p.no_price_text) })
   }
   return out
@@ -33,10 +35,11 @@ export function paperLegsOf(net, book, failed = false) {
   if (!book || !Array.isArray(net)) return null
   const prices = legPricesOf(book)
   const out = new Map()
+  // `priced`: the book sent an LTP text for this leg and the read did not fail (the leg list's "now" price needs a real figure, not a dash)
   for (const l of net) {
     const p = l?.contract_id == null || typeof l.instrument_id !== 'string' ? undefined : prices.get(String(l.contract_id))
     if (p === undefined) continue
-    out.set(l.instrument_id, { action: l.action, lots: l.lots, ...(failed ? { entry: PAPER_NO_FIGURE, ltp: PAPER_NO_FIGURE, pnl: PAPER_NO_FIGURE } : { entry: p.entry ?? '-', ltp: p.ltp ?? '-', pnl: p.total ?? '-' }) })
+    out.set(l.instrument_id, { action: l.action, lots: l.lots, priced: !failed && p.ltp !== null, ...(failed ? { entry: PAPER_NO_FIGURE, ltp: PAPER_NO_FIGURE, pnl: PAPER_NO_FIGURE } : { entry: p.entry ?? '-', ltp: p.ltp ?? '-', pnl: p.total ?? '-' }) })
   }
   return out
 }
@@ -46,7 +49,7 @@ export function paperLegsOf(net, book, failed = false) {
 export function paperPnlBlock(book, failed = false) {
   const total = sharedTotal(book, failed)
   if (total === null) return null
-  const legs = legPricesOf(book) // failed read: the Paper P&L panel's own per-leg rows keep the last figures (TrackingPanel.vue:139-141, D-41 test 8): deferred, not changed here
+  const legs = legPricesOf(book, failed) // #744: a failed read gives the dash rows, the same as the legs table and the P&L Table
   return { ...total, failed, legs }
 }
 

@@ -2011,6 +2011,9 @@ _EXPLANATIONS: tuple[ExplanationTemplate, ...] = (
     ExplanationTemplate("cell_percent_signed", "values_seen", "{value}%", {"value": SignedAmount}),
     ExplanationTemplate("cell_number", "values_seen", "{value}", {"value": Amount}),
     ExplanationTemplate("cell_text", "values_seen", "{value}", {"value": CellText}),
+    # N-28 (ADR-330 (27), owner 2026-11-26): a closed leg's exit over several exit orders; count is a whole number
+    ExplanationTemplate("closed_exit_average", "values_seen", "{value} (avg of {count})",
+                        {"value": Amount, "count": Days}),
     ExplanationTemplate("cell_health", "values_seen", "{health}", {"health": HealthLabel}),
     # GC-UI step 5 (REQ-091 AC-2..AC-5, ADR-203, F-64): the Strategy Chart's source, future label, notes and reasons
     ExplanationTemplate("price_history_source", "values_seen", "Zerodha's historical 1-minute candles"),
@@ -2075,6 +2078,15 @@ _EXPLANATIONS: tuple[ExplanationTemplate, ...] = (
     ExplanationTemplate("paper_totals_left_out_one", "values_seen", "1 strategy left out: its contract has expired."),
     ExplanationTemplate("paper_totals_left_out_many", "values_seen",
                         "{count} strategies left out: their contracts have expired.", {"count": Count}),
+    # AC-R06 / N-46 (ADR-324 (1) to (3), wording new, pending owner read): a strategy with no live price is left out of the
+    # header figures and counted, as an expired one is; the line names the reason(s) of the strategies left out
+    ExplanationTemplate("paper_totals_left_out_unpriced_one", "values_seen",
+                        "1 strategy left out: its price is not live."),
+    ExplanationTemplate("paper_totals_left_out_unpriced_many", "values_seen",
+                        "{count} strategies left out: their prices are not live.", {"count": Count}),
+    ExplanationTemplate("paper_totals_left_out_mixed", "values_seen",
+                        "{count} strategies left out: their contracts have expired or their prices are not live.",
+                        {"count": Count}),
     ExplanationTemplate("paper_reason_multi_expiry", "values_seen",
                         "Profit left and Loss left are not worked out: the open contracts have different expiries."),
     ExplanationTemplate("paper_extremes_prices_not_live", "values_seen",

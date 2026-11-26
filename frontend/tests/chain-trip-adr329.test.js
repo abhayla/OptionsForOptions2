@@ -331,6 +331,27 @@ describe.runIf(WIRED.hold)('review round: chain trip and replace question', () =
     expect(useChainSelection().entries).toHaveLength(2)
   })
 
+  it('N36 clash, Cancel, back to the chain, Back into the same entry: no question; a new Add Selected asks again', async () => {
+    await start(BUILDER, { draft: HELD_LINK })
+    await goChain()
+    await tick('22800.00', 'ce', 'sell')
+    await tick('22900.00', 'ce', 'buy')
+    await addSelected()
+    expect(t(w, 'dup-dialog').exists()).toBe(true)
+    await t(w, 'dup-cancel').trigger('click')
+    await flushPromises()
+    await goChain()
+    expect(useChainSelection().entries).toHaveLength(2)
+    router.back()
+    await flushPromises()
+    await flushPromises()
+    noDialogs()
+    expect(shown()).toEqual(HELD_SHOWN)
+    await goChain()
+    await addSelected()
+    expect(t(w, 'dup-dialog').exists()).toBe(true)
+  })
+
   it('N08c the other-index refusal: the ticks stay', async () => {
     await start(BUILDER, { draft: HELD_LINK })
     await goChain()

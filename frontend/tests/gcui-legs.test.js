@@ -292,7 +292,7 @@ describe('D-A01 header strip and D-A22 Add/Edit on the page', () => {
     await flushPromises()
     return w
   }
-  it('the index sits in a field with a magnifier inside it; Settings is a separate boxed button beside the field', async () => {
+  it('the index sits in a field with a magnifier inside it; the View button (ADR-330 (30), was Settings) is a separate boxed button beside the field', async () => {
     const w = await openPage()
     const field = t(w, 'underlying-field')
     expect(field.classes()).toEqual(expect.arrayContaining(['border', 'rounded-lg']))
@@ -301,6 +301,7 @@ describe('D-A01 header strip and D-A22 Add/Edit on the page', () => {
     expect(field.find('[data-testid="builder-settings"]').exists()).toBe(false)
     const settings = t(w, 'underlying-bar').find('[data-testid="builder-settings"]')
     expect(settings.classes()).toEqual(expect.arrayContaining(['border', 'rounded-lg', 'h-10']))
+    expect(settings.text()).toBe('View') // ADR-330 (30): label only; the popover's "Show legs as" is unchanged
     expect(t(w, 'underlying-bar').text()).not.toMatch(/%/) // D-A02 day change is Later: nothing invented
     w.unmount()
   })

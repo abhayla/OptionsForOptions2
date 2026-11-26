@@ -737,8 +737,10 @@ issues:
   "#746": S6.7  # order_book_store maps every database error inside its savepoint to BAD_HOLDING
   "#747": S6.7  # Paper Orderbook in lots (ADR-330 (23), N-15): order rows carry no lots or lot size
   "#748": S6.7  # Option Chain: a newly picked expiry shows "Unavailable: no price has been received" for 13-26 s (S-09)
+  "#749": S6.7  # Builder closed-leg table: the stop-loss sentence wraps in the narrow Exit column (N-43)
   "#750": S6.1  # Builder settings not saved per user (REQ-138 AC-1/AC-2 not built; Lane T NEW-T62, NEW-T63)
-  "#751": S6.1  # Unsaved builder strategy lost on reload (REQ-154 not built; NEW-T60; ADR-329 (3) conflict, U-Q6)
+  "#751": S6.1  # Unsaved builder strategy lost on reload (REQ-154 stands, ADR-330 (34); built with sign-in; NEW-T60)
+  "#752": S6.7  # After the close prices keep moving while the banner says Prices are from 15:30:00 (N-45)
 
 # Work items whose status is not done.
 work_items:

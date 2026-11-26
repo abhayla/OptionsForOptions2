@@ -44,6 +44,12 @@ describe('Net Positions closed rows show the reason (D-22, D-71)', () => {
     const w = mount(PaperBookPanel, { props: { book: book({ positions: [], closed: [stopRow, settledRow, plain] }), net: [] } })
     expect(w.findAll('[data-testid="closed-reason"]').map((n) => n.text())).toEqual([stopRow.reason_text, settledRow.reason_text])
   })
+  // N-28 (ADR-330 (27), ADR-008): the server sends the average with its count; the browser prints it as sent
+  it('N-28: an exit averaged over two fills shows "174.73 (avg of 2)" exactly as the server sent it', () => {
+    const avg = { ...closed, average_exit_text: '174.73 (avg of 2)', exit_fills: 2 }
+    const w = mount(PaperBookPanel, { props: { book: book({ positions: [], closed: [avg] }), net: [] } })
+    expect(w.get('[data-testid="closed-exit-price"]').text()).toBe('174.73 (avg of 2)')
+  })
   // N-27/N-28: jsdom has no layout, so this checks the structure only: the Exit price is its own element and the reason is a
   // separate left-aligned block line under it (the price stays right-aligned alone); the LTP time is a block under the price
   it('N-28: the Exit price stands alone in its span and the reason is a separate left-aligned block', () => {

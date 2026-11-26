@@ -129,9 +129,10 @@ const canAdd = computed(() => legs.value.length > 0 && pending.value.length === 
 // One module names a contract (lib/displayFormat.js), the builder's own name: 'NIFTY 1 Dec 25150 CE' (REQ-148 AC-2).
 const contractName = (e) => legName({ ...e, instrument_type: e.type })
 
+let entrySeq = 0
 function openBuilder() {
   askExpiries.value = false
-  router?.push({ name: BUILDER_ROUTE, query: { draft: JSON.stringify(selection.draftOf(underlying.value)) } })
+  router?.push({ name: BUILDER_ROUTE, query: { draft: JSON.stringify(selection.draftOf(underlying.value)) }, state: { addEntry: `${Date.now()}-${++entrySeq}` } }) // N-36: each Add Selected is its own history entry
 }
 function addSelected() {
   if (!canAdd.value) return

@@ -139,7 +139,7 @@
                     <td data-testid="paper-closed-instrument"><span class="mr-1 rounded bg-surface-muted px-1 font-semibold">{{ c.side }}</span> <span>{{ c.name }}</span> <span>(closed)</span></td>
                     <td data-testid="paper-closed-qty">{{ c.qtyText }}</td>
                     <td data-testid="paper-closed-entry">{{ pnlText(c.entryText) }}</td>
-                    <td data-testid="paper-closed-exit">{{ pnlText(c.exitText) }}</td>
+                    <td data-testid="paper-closed-exit">{{ pnlText(c.exitText) }}<span v-if="c.reasonText" class="block text-[11px] text-ink-muted" data-testid="paper-closed-reason">{{ c.reasonText }}</span></td>
                     <td data-testid="paper-closed-booked">{{ pnlText(c.booked) }}</td>
                     <td></td><td></td>
                   </tr>

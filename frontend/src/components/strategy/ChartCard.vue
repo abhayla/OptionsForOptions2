@@ -104,6 +104,11 @@ const greekMode = ref('unit') // REQ-084 AC-8: one toggle, Per unit (default) or
 const compact = computed(() => compactRows(props.table, props.legs, props.paperLegs))
 // N-07: the entry column is the paper entry only when every shown leg row is a book row; a draft leg beside them keeps "Planned entry"
 const bookRows = computed(() => { const legRows = (compact.value ?? []).filter((r) => !r.isTotal); return legRows.length > 0 && legRows.every((r) => r.book === true) })
+// #744: the Full table of a paper trade prints the SAME texts as the compact view above for its entry, LTP, P&L and P&L % cells (the book's through
+// compactRows' one join, the dash for a row that does not join, the TOTAL the page's one paper total); its other columns stay the reply's
+const fullBookCells = computed(() => (props.paperLegs && compact.value
+  ? Object.fromEntries(compact.value.map((r) => [r.rowId, Object.fromEntries(COMPACT_COLUMNS.map((c) => [c.id, cellText(r, c)]))]))
+  : null))
 const greeks = computed(() => greekRows(props.table, props.legs))
 // D-63: the Greeks Total adds every leg; with legs on two expiries it says so (a count of expiries, no money)
 const greeksTotalLabel = computed(() => {
@@ -283,7 +288,7 @@ const toneOf = (v) => ({ profit: 'text-profit', loss: 'text-loss' })[signOf(v)] 
         <p v-if="paperTotal?.line" class="mt-1 text-xs text-ink-muted" data-testid="total-line">{{ paperTotal.line }}</p>
       </div>
       <div v-show="fullTable" data-testid="full-view">
-        <StrategyTable :table="table" :max-profit="maxProfit" :max-loss="maxLoss" />
+        <StrategyTable :table="table" :max-profit="maxProfit" :max-loss="maxLoss" :book-cells="fullBookCells" />
         <slot name="details" />
       </div>
       <!-- D-63 (a): the TOTAL above includes the booked P&L of closed legs; they are listed here, the reply's rows as sent (no sum) -->

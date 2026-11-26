@@ -8,3 +8,9 @@ export async function confirmPaperName(w) {
   await form.trigger('submit')
   await flushPromises()
 }
+
+// ADR-330 (28): when the page's prices are not live the confirm list carries a line to tick first; this ticks it if it is there
+export async function tickNotLive(w) {
+  const box = w.find('[data-testid="paper-not-live-ack"]')
+  if (box.exists()) await box.setValue(true)
+}

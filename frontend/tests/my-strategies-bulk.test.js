@@ -306,6 +306,21 @@ async function bulkDelete(w, ids) {
   await flushPromises()
 }
 describe('C-04 the result line carries Undo after the pop-up is gone', () => {
+  it('N-39 Undo clicked while the undelete calls are pending: the "2 deleted" line is gone at once', async () => {
+    bulkAnswer = () => Promise.resolve({ data: { deleted: [{ id: 1, revision: 6 }, { id: 3, revision: 7 }], kept: [], summary_text: cat('2 deleted.') } })
+    let release
+    undeleteAnswer = () => new Promise((r) => { release = () => r({ data: {} }) })
+    const w = await open()
+    await bulkDelete(w, [1, 3])
+    expect(w.get('[data-testid="bulk-result"]').text()).toContain('2 deleted.')
+    await w.get('[data-testid="result-undo"]').trigger('click')
+    await flushPromises()
+    expect(w.find('[data-testid="bulk-result"]').exists()).toBe(false)
+    expect(w.find('[data-testid="result-undo"]').exists()).toBe(false)
+    undeleteAnswer = () => Promise.resolve({ data: {} })
+    release()
+    await flushPromises()
+  })
   it('(a) bulk delete 2: the toast expires, the line Undo stays, click restores both and the line goes', async () => {
     undoWait = 30
     bulkAnswer = () => Promise.resolve({ data: { deleted: [{ id: 1, revision: 6 }, { id: 3, revision: 7 }], kept: [], summary_text: cat('2 deleted.') } })

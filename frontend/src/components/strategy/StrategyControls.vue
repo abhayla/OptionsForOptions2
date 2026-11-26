@@ -13,6 +13,8 @@ import { shiftText } from "@/lib/legEdit";
 
 defineProps({
   controls: { type: Object, required: true }, // controlsFrom(reply): { shift, width, hedge, shiftTotal, reasons }
+  locked: { type: Boolean, default: false }, // N-35: the page's one blocked rule (ADR-328 (4)); off for every stepper, `lockReason` as the title
+  lockReason: { type: String, default: null },
 });
 const emit = defineEmits(["edit"]);
 
@@ -42,7 +44,8 @@ const STEPPERS = [
           <button
             type="button"
             class="h-8 w-8 shrink-0 border-r border-line disabled:cursor-not-allowed"
-            :disabled="!controls[c.id]"
+            :disabled="locked || !controls[c.id]"
+            :title="locked ? lockReason : undefined"
             :aria-label="`${c.label} down`"
             :data-testid="`${c.id}-minus`"
             @click="emit('edit', { control: c.id, direction: -1 })"
@@ -63,7 +66,8 @@ const STEPPERS = [
           <button
             type="button"
             class="h-8 w-8 shrink-0 border-l border-line disabled:cursor-not-allowed"
-            :disabled="!controls[c.id]"
+            :disabled="locked || !controls[c.id]"
+            :title="locked ? lockReason : undefined"
             :aria-label="`${c.label} up`"
             :data-testid="`${c.id}-plus`"
             @click="emit('edit', { control: c.id, direction: 1 })"
