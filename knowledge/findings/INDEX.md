@@ -2,7 +2,7 @@
 
 # Findings index
 
-194 finding(s), generated from `knowledge/findings/*.json`.
+195 finding(s), generated from `knowledge/findings/*.json`.
 
 | id | class | detection status | other fields |
 |---|---|---|---|
@@ -130,6 +130,7 @@
 | outcome-multi-expiry-unhandled-500 | A domain function that raises a typed exception for an input shape the user can legitimately build (legs on two expiries) with no route-level mapping to a catalogue user-facing error returns a bare HTTP 500 instead of a message the user can act on. | unguarded | occurrences, scope, spec_ref |
 | overlap-gate-refuses-generated-files | A dispatch-time overlap gate that compares the files two rows touch counts generated or shared registry files as overlap, so two rows with no real product overlap are serialised and the second sits idle. | unguarded | occurrences, scope, spec_ref |
 | own-figure-labelled-as-broker-figure | A figure the platform derives from the broker's answer (the broker's number plus a platform rule) is shown under the broker's name, so the user reads our number as the broker's authority. Wider shape: once a value is adjusted, every label that names its source must change with it; a field named after its origin ('Zerodha says') outlives the rule that changed its meaning. | unguarded | occurrences, scope, spec_ref |
+| owner-question-asked-without-the-requirement-that-answered-it | Owner questions asked while a requirement or decision already settles the subject: the question's Spec basis cites only what the question's own words matched, so the settled answer is missed and the owner is asked to decide something the spec already decided, or to overturn it without being told. | unguarded | occurrences, scope, spec_ref |
 | owner-question-blocks-dispatchable-work | The orchestrator asks the owner a question with the interactive tool while independent work is ready to dispatch: the tool stops the orchestrator until the owner answers, so ready briefs wait for the whole answer time. | unguarded | occurrences, scope, spec_ref |
 | panel-renders-nothing-when-its-read-fails | Any panel that is drawn only when its data read succeeds: a slow or failed read removes the panel with no message, so the user cannot tell absent from broken. | unguarded | occurrences, scope, spec_ref |
 | paper-plan-diverges-from-position | Any screen or figure that reads a paper-tracked strategy's saved plan (its latest revision and planned entry prices) instead of the legs and prices actually recorded for the paper position, once the plan has been saved again or the fills differ from the plan. | guarded | scope, spec_ref |
