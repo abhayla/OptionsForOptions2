@@ -303,6 +303,15 @@ product does.
 - **(b) The gate never runs a changed `tests_app` test file.** Evidence: the `app_fail` seed got a marker over a failing
   `tests_app` test in BOTH gates (`select_app_tests` diffs only `backend/`). Done when: a change to a `tests_app` file
   selects that file and the `app_fail` seed goes red in the harness. **Fixed in the commit that adds `tests_app_selection` to `select_app_tests.py`**: the CLI diff now covers `tests_app/`; evidence: `tests/orchestrator/test_select_app_tests.py::test_the_cli_selects_a_failing_test_appended_to_a_tests_app_file_when_backend_is_unchanged` (throwaway git repo mirroring the seed prints the file). Review round 2: a changed or deleted `tests_app` module (test files included) also selects every test importing it, transitively; conftest/`__init__` select their subtree; renames are delete + add; quoted path names exit 3; computed imports are not followed. The harness re-run of the seed is not done here.
+  Gate proof (lane G, 26 Nov): the same failing test appended to `tests_app/test_abs_delta_intrinsic.py` on top of
+  the fix (commit ed36019d, scratch clone with origin/main = that commit), run through the new gate: `FAIL app_tests
+  1.6s` (`FAILED tests_app/test_abs_delta_intrinsic.py::test_equiv_seed_fail`, `1 failed, 7 passed`), `TOTAL FAIL
+  431.5s ... marker not written`. The same seed on b323efd3 (before the fix): `app_tests 0.1s PASS`, marker written,
+  in both gates. Selector tests against the pre-fix select_app_tests.py: `12 failed, 30 passed`; after: `42 passed`.
+  Tier A review round 1 found one MAJOR (a changed test module did not select the test files importing it: 151
+  tests_app files import another test module) and three MINORs; all fixed in review round 2 (2a04ee4d: importers to a
+  fixed point, quoted names fail closed, `--no-renames`, `__init__.py` selects its subtree). Round 2 was not
+  re-reviewed (two-round limit).
 - **(c) `alembic_migration_guard` does not detect a second head.** Evidence: the `alembic_heads` seed went red only
   through its empty `upgrade()`. Done when: a second head alone turns the guard red.
 - **(d) A change to `docs/api/openapi.json` runs no frontend step** although `frontend/vite.config.js` references it
