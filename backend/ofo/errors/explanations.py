@@ -1757,14 +1757,15 @@ _EXPLANATIONS: tuple[ExplanationTemplate, ...] = (
     ExplanationTemplate("alert_closed_trade_closed", "values_seen", "Closed by system: the trade closed at {time}",
                         {"time": HourMinute}),
     # ADR-330 (2) (b), (33), P7 page flow (pending owner read): the side_closed row's words and its confirmation
-    # one sentence per closed side, with no slot (Lane J 26 Nov: two new slot types would need the pinned slot-type
+    # one sentence per closed side; the shape is a strategy template's own name through the reviewed TemplateText slot
+    # (Lane J 26 Nov: two new slot types would need the pinned slot-type
     # review of tests_app/test_identifier_and_slots.py); the route uses it only when the shape data names that shape
     ExplanationTemplate("alert_side_closed_text_call", "values_seen",
                         "The call side of this trade is closed. Add the legs again, or confirm the new shape: "
-                        "this strategy will change from its entry shape to Bull Put Spread."),
+                        "this strategy will change from its entry shape to {shape}.", {"shape": TemplateText}),
     ExplanationTemplate("alert_side_closed_text_put", "values_seen",
                         "The put side of this trade is closed. Add the legs again, or confirm the new shape: "
-                        "this strategy will change from its entry shape to Bear Call Spread."),
+                        "this strategy will change from its entry shape to {shape}.", {"shape": TemplateText}),
     # ADR-330 (2) (a), P10 (pending owner read): a plan rule that needs a closed side, in the Plan watch's reason field;
     # one sentence per side, no slot (as the side-closed alert sentence)
     ExplanationTemplate("plan_watch_side_not_applicable_call", "values_seen", "Not applicable: the call side is closed"),
