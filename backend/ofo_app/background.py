@@ -124,7 +124,7 @@ from dataclasses import dataclass, field
 from decimal import Decimal
 from typing import Any, Final
 
-from ofo.adjustment import alert_gate, alert_presets, gate_readings, monitor_pause
+from ofo.adjustment import alert_gate, alert_presets, gate_readings, level_watch, monitor_pause
 from ofo.adjustment import playbook_eval as pe
 from ofo.adjustment.preferences import Preferences
 from ofo.adjustment.preferences import from_values as prefs_from_values
@@ -788,6 +788,10 @@ class DbGateStore:
         opened: dict[str, int] = {}
         async with get_sessionmaker()() as db:
             for e in events:
+                if isinstance(e, alert_gate.Lapsed) and e.rule_id.startswith(level_watch.RULE_PREFIX):
+                    # ADR-242 (3): the level cleared at a close: that episode's watch record closes (lapsed)
+                    await actionable_alerts.close_level_watch(db, w.user_ref, w.strategy_id, e.rule_id, at=e.at)
+                    continue
                 if isinstance(e, (alert_gate.Lapsed, alert_gate.TrueAgain)):  # "no longer true" / "true again"
                     await actionable_alerts.note_rule_condition(
                         db, w.user_ref, w.strategy_id, e.rule_id, still_true=isinstance(e, alert_gate.TrueAgain),
@@ -805,7 +809,7 @@ class DbGateStore:
                                                         threshold=threshold, reason=e.reason)
                     continue
                 rec = await actionable_alerts.raise_actionable(
-                    db, w.user_ref, w.strategy_id, e.rule_id, kind_of(f.trigger or e.rule_id), at=e.at, value=value,
+                    db, w.user_ref, w.strategy_id, e.rule_id, kind_of(e.rule_id if e.rule_id.startswith(level_watch.RULE_PREFIX) else f.trigger or e.rule_id), at=e.at, value=value,
                     threshold=threshold, trigger_id=f.trigger, stage=f.stage, group=gate_group(w.strategy_id, e.at),
                     source=source, cmp=f.cmp, label=f.label, unit=f.unit, worse=e.worse, beyond=f.beyond,
                     limit=_quantized(e.limit),

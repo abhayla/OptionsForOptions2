@@ -10,6 +10,7 @@ from __future__ import annotations
 from dataclasses import dataclass
 from typing import Final
 
+from ofo.adjustment import level_watch
 from ofo.adjustment import stop_lines as sl
 
 EXIT: Final = "exit"
@@ -18,6 +19,7 @@ ADD_LEGS: Final = "add_legs"
 CONFIRM_NEW_SHAPE: Final = "confirm_new_shape"
 CLOSED_BY_SYSTEM: Final = "closed_by_system"
 NOTED: Final = "noted"
+LEVEL_WATCH: Final = "level_watch"
 #: every value of the answer column (migration 0054 CHECK; a test compares the two)
 ANSWERS: Final = (EXIT, CONTINUE, ADD_LEGS, CONFIRM_NEW_SHAPE, CLOSED_BY_SYSTEM, NOTED)
 #: the answers a USER may give; the other two are written by the system only
@@ -42,6 +44,8 @@ KINDS: Final = {k.code: k for k in (
     AlertKind("plan_time_exit", True, _ASK, _FIRED),
     AlertKind("adjustment_rule", True, _ASK, _FIRED),
     AlertKind("side_closed", True, (ADD_LEGS, CONFIRM_NEW_SHAPE), _FIRED),
+    # ADR-242 (3) governs a watched level, not ADR-330 (3): one record per crossing episode, no answer asked
+    AlertKind(LEVEL_WATCH, False, (), _FIRED),
     AlertKind("stop_fired", False, (), _FIRED),
     AlertKind("settled", False, (), _FIRED),
     AlertKind("orders_placed", False, (), _FIRED),
@@ -56,6 +60,8 @@ _PLAN_PROFIT_TARGET: Final = frozenset({"T-07"})
 
 def kind_of(trigger_id: str | None) -> str:
     """The kind of the condition a trigger id (or stop rule id) stands for; unknown or absent -> adjustment_rule."""
+    if isinstance(trigger_id, str) and trigger_id.startswith(level_watch.RULE_PREFIX):
+        return LEVEL_WATCH
     if trigger_id in _PLAN_LOSS_STOP:
         return "plan_loss_stop"
     if trigger_id in _PLAN_PROFIT_TARGET:
@@ -71,6 +77,11 @@ def kind_of(trigger_id: str | None) -> str:
 
 def is_actionable(kind: str) -> bool:
     return kind in KINDS and KINDS[kind].actionable
+
+
+def is_informational(kind: str) -> bool:
+    """A History line that is stored already noted (not actionable, and not the level watch's own lifecycle)."""
+    return kind in KINDS and not KINDS[kind].actionable and kind != LEVEL_WATCH
 
 
 def allowed_answers(kind: str) -> tuple[str, ...]:

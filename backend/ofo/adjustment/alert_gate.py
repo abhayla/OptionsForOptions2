@@ -19,6 +19,7 @@ from datetime import date, datetime, time, timedelta
 from decimal import Decimal
 from typing import Literal, Union
 
+from ofo.adjustment import level_watch
 from ofo.adjustment.cap_scope import cap_exempt
 from ofo.adjustment.gate_rows import GateRow, GateRows, Preset  # noqa: F401 - re-exported for callers
 from ofo.adjustment.held_reasons import HELD_DAILY_LIMIT, HELD_QUIET_TIME, HELD_TEXT_IDS  # noqa: F401 - re-exported
@@ -246,7 +247,10 @@ def _refresh(rule_id: str, rule: _Rule, pend: _Pending, level: int, preset: Pres
     if rec is not None and not rule.cleared and _safe_by_band(pend.spec, pend.value, rec.threshold, preset):
         rule = replace(rule, cleared=True)
         if not (rec.dismissed or rec.final or rec.stopped):
-            rule = replace(rule, record=replace(rec, stopped=True))
+            # ADR-242 (3): a watched level keeps one record per crossing episode: the clear closes it (final), so
+            # the rule re-arms; every other record stays open, marked "no longer true" (ADR-330 (3))
+            watched = rule_id.startswith(level_watch.RULE_PREFIX)
+            rule = replace(rule, record=replace(rec, final=True) if watched else replace(rec, stopped=True))
             events.append(Lapsed(rule_id, pend.end, pend.value))
     if hold is not None and (
         _safe_by_band(pend.spec, pend.value, hold.threshold, preset)

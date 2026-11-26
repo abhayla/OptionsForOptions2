@@ -13,7 +13,8 @@ Changes (owner-run, one transaction; ADDITIVE columns, no back-fill, old rows ke
   ``worse`` column keeps its meaning, how the row was opened relative to an earlier record, and never changes),
   CHECK (answer and answered_at are both set or both NULL).
 - Guard adjustment_suggestions_guard (0036's, every protection kept) plus:
-  * a record of a kind (kind NOT NULL) leaves 'open' only with an answer; a 'lapsed' one only as 'closed_by_system'
+  * a record of a kind (kind NOT NULL) leaves 'open' only with an answer; the one exception is a level_watch record
+    (ADR-242 (3): one record per crossing episode, no answer asked), which may lapse with reason condition_stopped; a 'lapsed' one only as 'closed_by_system'
     and 'closed_by_system' only with 'lapsed' (no path closes an actionable record without the user or the position);
   * the answer and its time are written once, with the final outcome;
   * no_longer_true_since and escalated_at change only while the record is open and stays open;
@@ -64,7 +65,7 @@ SUGGESTIONS = _M31.SUGGESTIONS
 GUARD = _M36.SUGGESTION_GUARD
 #: copy of ``ofo.alerts`` kinds (a test compares the two)
 KINDS = ("plan_loss_stop", "plan_profit_target", "plan_rupee_loss", "plan_rupee_profit", "plan_time_exit",
-         "adjustment_rule", "side_closed", "stop_fired", "settled", "orders_placed", "stop_saved")
+         "adjustment_rule", "side_closed", "level_watch", "stop_fired", "settled", "orders_placed", "stop_saved")
 # ofo.alerts: actionable False (a test compares)
 INFORMATIONAL_KINDS = ("stop_fired", "settled", "orders_placed", "stop_saved")
 ANSWERS = ("exit", "continue", "add_legs", "confirm_new_shape", "closed_by_system", "noted")
@@ -135,7 +136,9 @@ def guard_sql() -> str:
             IF NEW.answered_at IS DISTINCT FROM OLD.answered_at AND NEW.answer IS NOT DISTINCT FROM OLD.answer THEN
                 {raise_('the answer time is written only with the answer')}
             END IF;
-            IF OLD.outcome = 'open' AND NEW.outcome IN {_FINAL} AND OLD.kind IS NOT NULL AND NEW.answer IS NULL THEN
+            IF OLD.outcome = 'open' AND NEW.outcome IN {_FINAL} AND OLD.kind IS NOT NULL AND NEW.answer IS NULL
+               AND NOT (OLD.kind = 'level_watch' AND NEW.outcome = 'lapsed'
+                        AND (NEW.timeline -> -1 ->> 'reason') = 'condition_stopped') THEN
                 {raise_('a record of a kind leaves open only with an answer')}
             END IF;
             IF NEW.kind IS NOT NULL AND (NEW.outcome = 'lapsed') IS DISTINCT FROM (NEW.answer = 'closed_by_system')
@@ -162,8 +165,8 @@ def guard_sql() -> str:
             RETURN NEW;""")  # noqa: S608 constant names
 
 
-OLD_PIN = _M36.SUGGESTION_PIN
-NEW_PIN = _M4._md5_body(guard_sql())
+PREVIOUS_GUARD_PIN = _M36.SUGGESTION_PIN
+GUARD_PIN = _M4._md5_body(guard_sql())
 
 
 def _new_block() -> str:
@@ -171,7 +174,7 @@ def _new_block() -> str:
                               INSERT_COLUMNS, UPDATE_COLUMNS)
     if block.count(_M31.PINS[GUARD]) != 1:
         raise RuntimeError("0031's suggestion allow-list block changed shape: cannot re-pin it safely")
-    return block.replace(_M31.PINS[GUARD], NEW_PIN, 1)
+    return block.replace(_M31.PINS[GUARD], GUARD_PIN, 1)
 
 
 def previous_allowlist_sql() -> str:

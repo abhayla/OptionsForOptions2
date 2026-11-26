@@ -30,7 +30,6 @@ from ofo_app.errors import ClosedRoute, Failure
 from ofo_app.routes.adjustment_opportunities import ID_MAX, condition_text
 from ofo_app.routes.broker import current_user_ref
 from ofo_app.strategy_refused import StrategyRefused
-from ofo_app.strategy_store import StrategyStoreError
 
 router = APIRouter(route_class=ClosedRoute)
 _STATUS = {store.SUGGESTION_NOT_FOUND: Failure.NOT_FOUND, store.SUGGESTION_NOT_OPEN: Failure.CONFLICT}
@@ -168,14 +167,14 @@ async def answer_alert(alert_id: int, body: AnswerIn, db: Annotated[Any, Depends
     from datetime import UTC, datetime  # noqa: PLC0415
     try:
         if not 1 <= alert_id <= ID_MAX:
-            raise StrategyStoreError(store.SUGGESTION_NOT_FOUND, f"suggestion {alert_id}")
+            raise aa.StoreError(store.SUGGESTION_NOT_FOUND, f"suggestion {alert_id}")
         done = await aa.answer(db, user_ref, alert_id, body.answer, datetime.now(UTC))
         await db.commit()
     except aa.AlertAnswerRefused:
         await db.rollback()
         raise StrategyRefused(aa.ALERT_ANSWER_REFUSED, Failure.UNPROCESSABLE,
                               message=render(aa.ALERT_ANSWER_REFUSED)) from None
-    except StrategyStoreError as exc:
+    except aa.StoreError as exc:
         await db.rollback()
         if exc.code not in _STATUS:
             raise
