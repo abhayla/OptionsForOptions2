@@ -1791,6 +1791,9 @@ _EXPLANATIONS: tuple[ExplanationTemplate, ...] = (
                         "The {side} side of this trade is closed. Add the legs again, or confirm the new shape: "
                         "this strategy will change from its entry shape to {shape}.",
                         {"side": ClosedSide, "shape": RemainingShape}),
+    # ADR-330 (2) (a), P10 (pending owner read): a plan rule that needs a closed side, in the Plan watch's reason field
+    ExplanationTemplate("plan_watch_side_not_applicable", "values_seen", "Not applicable: the {side} side is closed",
+                        {"side": ClosedSide}),
     *(ExplanationTemplate(f"alert_answer_{key}", "values_seen", text)  # ADR-330 (3): each answer's label, as the page shows it
       for key, text in ALERT_ANSWER_LABEL_TEXT.items()),
     ExplanationTemplate("stop_fired_loss", "values_seen",

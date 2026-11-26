@@ -10,7 +10,10 @@ figures (``state_of``); ``strategy_money_view`` is a later phase.
 Answer states: plan present -> its lines; no plan (source "none") -> ``no_plan_text`` and NO plan lines, the armed
 triggers still listed (ADR-330 (11)); the user's pause in force -> no plan lines (no evaluation), triggers paused;
 prices not live or no spot -> state "paused" and no ``now`` (absent, never 0); a limit or rule the evaluator could not
-check -> "not_computable" with its reason; a rule true since tracking started -> "not_applicable" (F-71); a rule fired
+check -> "not_computable" with its reason; a rule true since tracking started -> "not_applicable" (F-71); a rule that
+needs a side the entry strategy had and no longer has open -> "not_applicable" with "Not applicable: the call / put
+side is closed" (ADR-330 (2) (a); entry or open legs unreadable -> no side judged closed, the rule keeps its state);
+a rule fired
 -> "fired"; evaluation unreadable, trigger store unreadable -> the check's refusal, no lines (fail closed); strategy
 not found or another user's -> its 404. Writes nothing. Suggest-only (ADR-003): nothing here exits anything.
 """
@@ -23,6 +26,7 @@ from typing import Annotated, Any, Literal
 
 from fastapi import APIRouter, Depends
 from ofo.adjustment import playbook_eval as pe
+from ofo.adjustment import side_scope
 from ofo.adjustment import stop_lines as sl
 from ofo.charges import ChargeRates
 from ofo.engine import adjust_money
@@ -111,7 +115,30 @@ def _line(key: str, kind: str, section: str, label: Any, unit: str, state: str, 
             "now": _q(now), "distance_rs": _q(distance), "distance_pct": pct, "state": state, "reason": reason}
 
 
+def _closed(run: CheckRun) -> frozenset[str]:
+    """The sides ("call" / "put") the entry strategy had and no longer has open; empty when it cannot be said."""
+    entry = getattr(run.tracked, "entry_position", None)
+    now = getattr(run.tracked, "position", None)
+    return side_scope.closed_sides(getattr(entry, "legs", None), getattr(now, "legs", None))
+
+
 def _plan_lines(run: CheckRun, live: bool) -> list[dict]:
+    lines = _plan_lines_all(run, live)
+    gone = side_scope.rule_notes(run.body, _closed(run))  # rule id -> its closed side(s); {} when nothing is closed
+    if not gone:
+        return lines
+    rule_of = {lim.trigger_id: lim.rule_id for lim in (run.ev.limits if run.ev else ())}
+    out = []
+    for x in lines:
+        rid = rule_of.get(x["key"], x["key"])  # a rule line's key is its rule id; a limit's, its trigger
+        side = sorted(gone[rid])[0] if rid in gone else None
+        out.append(x if side is None else _line(
+            x["key"], x["kind"], "plan", x["label"], x["unit"], "not_applicable",
+            reason=render_explanation("plan_watch_side_not_applicable", side=side)))
+    return out
+
+
+def _plan_lines_all(run: CheckRun, live: bool) -> list[dict]:
     out, state, ev = run.out, run.state, run.ev
     if state is None or ev is None:
         return []
