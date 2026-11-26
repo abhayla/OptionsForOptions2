@@ -65,3 +65,21 @@ Options:
 - (c) Accept silently (today).
 
 Built meanwhile: nothing (today's behaviour, (c)).
+
+## LP-5 What "Reset to playbook" puts back
+
+Spec basis: ADR-330 (9) "a plan has "Reset to playbook": after one confirmation every condition goes back to the
+playbook's values. The plan marks the conditions the user changed or switched off". Silent on whether the plan sheet's
+own levels (target, Rs target, Rs stop, max adjustments, time exit with its date) and the plan's settings are
+"conditions" (searched: "Reset to playbook", "conditions").
+
+Real case (Opus review of P8, 26 Nov): a user switches T-05 off, types a Rs 400 stop and a time exit for 15:15 today,
+sees only the T-05 mark, presses Reset: in the first build all three were lost.
+
+Options:
+- (a) Reset puts back the playbook's CONDITIONS (triggers, rules, approaches) and keeps the sheet's levels and the
+  plan's settings, exactly the set the "changed" marks cover. **Recommended**: the marks and the Reset then mean the
+  same thing, and nothing the user typed on the sheet disappears without a mark.
+- (b) Reset puts back everything, the sheet's levels too (the confirmation says so).
+
+Built meanwhile: (a), in one place (`backend/ofo/adjustment/plan_diff.reset`), reversible.
