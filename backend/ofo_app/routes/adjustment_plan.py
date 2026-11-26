@@ -654,6 +654,18 @@ class LevelsOut(ApiModel):
     stop: LevelOut | None
 
 
+def preview_stop_words(body: dict | None, saved_before: bool, kind: str | None, bases: Bases,
+                       stop: str | None, stop_rupees: str | None) -> Any:
+    """The stop sentence of the levels preview: the SAME builder the saved plan uses (``with_overrides`` then
+    ``with_rupee_figures`` -> ``_stop_words``, which keeps the lines still in force), on a copy of the body with the typed
+    level put in. Nothing is stored. None when there is no body to read the lines from."""
+    if body is None:
+        return None
+    typed = with_overrides(body, PlanIn(playbook_id=0, stop=stop or None, stop_rupees=stop_rupees or None), kind, bases)
+    return with_rupee_figures(_values(typed, saved_before, kind), typed, bases, kind=kind,
+                              saved_before=saved_before)["stop_words"]
+
+
 def _level_out(percent_raw: str | None, rupees_raw: str | None, base: Decimal | None, lots: int | None,  # noqa: PLR0913
                field: str, words_id: str) -> dict[str, Any] | None:
     """One level from what was typed: percent and/or rupees (ADR-330 (5)); both must agree, else refused naming the
@@ -689,12 +701,24 @@ async def read_levels(  # noqa: PLR0913 - FastAPI dependencies, one per input
     rates = rates if isinstance(rates, ChargeRates) else None
     tracked = await _own_strategy(strategy_id, tracked_reader, rates)
     await release_connection(db)
-    bases = bases_of(tracked, await _market(tracked, market_reader, ctx), rates)
+    market = await _market(tracked, market_reader, ctx)
+    bases = bases_of(tracked, market, rates)
     try:
         reply = {"target": _level_out(target, target_rupees, bases.max_profit, bases.lots, "target_rupees",
                                       "plan_target_words"),
                  "stop": _level_out(stop, stop_rupees, bases.max_loss, bases.lots, "stop_rupees",
                                     "plan_stop_words_loss")}
+        if reply["stop"] is not None:  # the one stop sentence of the saved plan, for the level typed (ADR-330 (5)/LP-2)
+            stype, plan = await _type_of(db, user_ref, strategy_id, tracked, ctx)
+            body = None
+            if plan is not None:
+                body = plan.body
+            elif stype is not None:
+                body = (await store.active_for(db, user_ref, stype)).body
+            kind = _kind_of(tracked, in_force_mod.money_inputs(tracked, market, rates))
+            saved_before = plan is not None and await check.plan_saved_before_adr247(db, plan)
+            words = preview_stop_words(body, saved_before, kind, bases, stop, stop_rupees)
+            reply["stop"]["words"] = words if words is not None else reply["stop"]["words"]
     except store.PlaybookStoreError as exc:
         raise _refused(exc) from None
     return LevelsOut.model_validate(reply)
