@@ -305,6 +305,21 @@ SEEDS = [
          ["spec/requirements/REQ-001.md"], _m_docs_break, [PY, "tools/build_spec_index.py", ".", "--check"]),
 ]
 
+# the exact text each seed's mutate writes: a tree that already holds it carries the seed (never copy it as a base)
+SEED_MARKERS = {
+    "clean_code": "equiv seed: docstring only",
+    "ruff": "equiv seed: one E501",
+    "coverage": "ADR-9999: all",
+    "money_scan": "_equiv_seed_money",
+    "domain_fail": "test_equiv_seed_fail",
+    "app_fail": "test_equiv_seed_fail",
+    "vitest_fail": "equiv seed: deliberately red",
+    "lint_fail": "equivSeed",
+    "alembic_heads": "0054_equiv_seed_second_head",
+    "docs_clean": "Equivalence seed note",
+    "docs_spec_break": "(equiv seed)",
+}
+
 
 def _git(runner, cwd, *args):
     return runner(["git", *args], cwd)

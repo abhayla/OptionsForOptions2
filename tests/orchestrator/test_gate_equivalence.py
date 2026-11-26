@@ -7,6 +7,7 @@ from __future__ import annotations
 import json
 import os
 import pathlib
+import subprocess
 import sys
 
 sys.path.insert(0, str(pathlib.Path(__file__).resolve().parents[2] / "scripts" / "orchestrator"))
@@ -269,17 +270,54 @@ def test_seed_table_names_and_expectations():
     assert by["app_fail"].expect_red == ["app_tests"]
 
 
+def _seed_free_bytes(root, rel, marker):
+    """Bytes to start a scratch copy of rel from. If the working file already carries this seed's marker (the tree
+    holds a seed), use the committed blob instead; None when there is no seed-free base (file absent or new)."""
+    path = root / rel
+    if not path.exists():
+        return None
+    data = path.read_bytes()
+    if marker.encode() not in data:
+        return data
+    out = subprocess.run(["git", "-C", str(root), "show", f"HEAD:{rel}"],  # noqa: S603, S607 - fixed git argv
+                         capture_output=True, check=False)
+    return out.stdout if out.returncode == 0 else None
+
+
+def _copy_seed_touches(root, scratch, seed):
+    """Copy the seed's touched files from root into scratch, starting each from a seed-free base."""
+    marker = ge.SEED_MARKERS[seed.name]
+    for rel in seed.touches:
+        data = _seed_free_bytes(root, rel, marker)
+        if data is not None:
+            (scratch / rel).parent.mkdir(parents=True, exist_ok=True)
+            (scratch / rel).write_bytes(data)
+
+
+def _state(scratch, seed):
+    return {rel: (scratch / rel).read_bytes() if (scratch / rel).exists() else None for rel in seed.touches}
+
+
 def test_mutations_edit_a_copy_of_the_tree(tmp_path):
     """Every mutate function must change at least one existing-tree-relative file under a scratch root that mirrors
     the real layout (here: the real repo files copied)."""
     root = pathlib.Path(__file__).resolve().parents[2]
     for seed in ge.SEEDS:
         scratch = tmp_path / seed.name
-        for rel in seed.touches:
-            if (root / rel).exists():
-                (scratch / rel).parent.mkdir(parents=True, exist_ok=True)
-                (scratch / rel).write_bytes((root / rel).read_bytes())
-        before = {rel: (scratch / rel).read_bytes() if (scratch / rel).exists() else None for rel in seed.touches}
+        _copy_seed_touches(root, scratch, seed)
+        before = _state(scratch, seed)
         seed.mutate(scratch)
-        after = {rel: (scratch / rel).read_bytes() if (scratch / rel).exists() else None for rel in seed.touches}
-        assert before != after, seed.name
+        assert before != _state(scratch, seed), seed.name
+
+
+def test_mutation_is_visible_when_the_tree_already_carries_the_seed(tmp_path):
+    """A working tree that already holds a seed (e.g. the lint_fail seed commit) must not make the copy-and-mutate
+    check fail: the scratch copy starts seed-free, so the mutation still changes it."""
+    seed = next(s for s in ge.SEEDS if s.name == "lint_fail")
+    tree = tmp_path / "tree"
+    seed.mutate(tree)  # the tree now carries the seed file
+    scratch = tmp_path / "scratch"
+    _copy_seed_touches(tree, scratch, seed)
+    before = _state(scratch, seed)
+    seed.mutate(scratch)
+    assert before != _state(scratch, seed), seed.name
