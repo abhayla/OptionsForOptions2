@@ -27,9 +27,74 @@ Spec basis: ADR-330 (1) to (27) and its one-module instruction; ADR-002; ADR-003
 7. In the browser: (a) Positions > Adjustment opportunities still lists the old records; (b) Alerts > Active opens and
    its row count equals the bell number.
 
-## (b) Screen-check list (owner, market hours; live-price checks first)
+Old-code safety of each migration on this branch (so switching the PC back to another branch is safe):
+- 0054 and 0055 (Lane P): proved by Lane P with the code at e01f747 against a database at 0055 (test_background_worker,
+  test_adjustment_opportunities, test_background_cycle, test_held_tracking, test_playbook_store pass); the same check
+  with the PC's current code (7bf64eb, the screens line) is in progress and is recorded here when it ends. Do not run
+  `alembic downgrade` from an older branch.
 
-(written as each step lands; see below)
+## (b) Screen-check list (owner, paper only, market hours 09:15-15:30 IST; Ctrl+F5 once after the rebuild)
+
+Live-price checks first (rows L1 to L9 need ticking prices), then the rest. Each row: the clicks, then the exact text
+expected. Write PASS / FAIL and what you saw beside each.
+
+Set-up for the live rows: one paper iron condor WITH a plan (Positions > Paper > Add to Paper from the builder; then the
+plan sheet: Set plan, a Stop (Rs) a little above the current loss so it can be crossed, Save), and one paper iron condor
+WITHOUT a plan.
+
+L1. Plan watch on the builder (ADR-330 (13)). Open the planned trade in the builder (My Strategies > its row > Open in
+    Builder). Expected: beside the live P&L a box titled "Plan watch", one row per trigger (profit target, loss stop,
+    2x credit, each adjustment rule; each armed Stops-panel exit under "Armed in the Stops panel"), each row showing
+    fires at, now, distance as "₹X (Y%)", and a state. The "now" and distance figures change with the prices.
+L2. Plan watch on Positions. Positions > Paper: the planned trade's row shows the same box in its compact form, with the
+    same figures as L1 at the same moment. The trade WITHOUT a plan reads "No plan: nothing is watched for this
+    strategy" and still lists its armed Stops-panel exits, if any. A fully closed trade shows no box.
+L3. Max-loss line before a leg stop is saved (ADR-330 (6)). Positions > Paper > the planned trade > Stops. Pick the
+    short CALL leg, type a stop price above its price. Within about half a second a line appears under the box:
+    "If this stop fires, max loss becomes Rs X (now Rs Y)." (or "If this stop fires, there is no fixed maximum loss
+    (now Rs Y)." when the leg's wing would be left alone). Change the price: the line goes away and comes back for the
+    new price. Clear the box: no line. Save is clickable in every case.
+L4. Save that leg stop at a price the market will reach soon. When it fires: a pop-up appears for about 6 seconds,
+    titled with the trade's name, number and expiry, as in "Short Iron Condor (#172, 1 Dec)", whose text ends with the
+    same "If this stop fires, max loss becomes Rs X (now Rs Y)." line as L3. The bell number does NOT go up.
+    Alerts > History shows the same message once. The leg is exited on the Paper Orderbook (one exit order).
+L5. Actionable alert stays until answered (ADR-330 (3), (4)). Wait for (or arrange) the plan's loss stop on the planned
+    trade to be crossed. Expected: a short pop-up, and the bell number goes up by 1. Alerts > Active: as many rows as
+    the bell; the row shows "Fired at HH:MM", its title with "(#<number>, <d Mon>)", and two buttons "Exit the
+    position" and "Continue with the position". Opening the page does not lower the bell.
+L6. If the loss comes back inside the stop: the row stays and adds "no longer true since HH:MM"; when it crosses again
+    that line goes away. If the loss gets worse, a second pop-up "Worse than when it fired: ...".
+L7. Press "Continue with the position": the row leaves Active, the bell drops by 1, Alerts > History shows the answer
+    and its time. Nothing is exited (Paper Orderbook unchanged).
+L8. Exit from an alert (ADR-330 (3), (12)). On another alert press "Exit the position". Expected: the answer is stored
+    and the SAME exit confirmation as on Positions opens on the Alerts page for that trade. Press Cancel: nothing is
+    exited (Orderbook unchanged). Raise another alert, press "Exit the position", then Confirm: one exit per open leg
+    appears on the Paper Orderbook, and the trade reads closed on Positions.
+L9. Time exit on any day (ADR-330 (7)). Plan sheet: "Time exit" with a date box (blank = expiry day). Set today and a
+    time 5 minutes ahead; Save. At that time an alert appears as in L5; nothing exits.
+
+Without live prices (any time):
+
+N1. Stop fixed at entry (ADR-330 (1)). On an iron condor with a plan, note the plan's stop line (e.g. "15.4 % of max
+    loss (Rs 400.40)" and "2x credit Rs 7,800"). Close the call side (two exits). Reopen the plan: the same rupees.
+N2. Rupee levels with the preview sentence (ADR-330 (5)). Plan sheet: type 400 in "Stop (Rs)" on a 1-lot iron condor:
+    the percent box fills from the server and the line under it reads "a loss of Rs 400.00 (<p> % of max loss), 2x the
+    credit received ... whichever comes first"; after Save the saved plan shows the same sentence.
+N3. Own-plan rule (ADR-330 (11)). The trade without a plan: plan card reads "No plan: nothing is watched for this
+    strategy"; no adjustment suggestions or target/stop alerts for it; its Stops-panel exits still fire.
+N4. Paper total line (ADR-330 (15)). Positions > Paper with at least one closed paper trade: under the total
+    "Includes 1 closed strategy." (or "Includes N closed strategies."). If a trade has no live price, the left-out line
+    "1 strategy left out: its price is not live." is shown too, and the total adds up to the rows it shows.
+N5. Whole-trade close closes its alert. Exit a whole paper trade that has an unanswered alert: Alerts > History shows
+    "Closed by system: the trade closed at HH:MM"; the bell drops by 1.
+N6. Top menu (P12): on My Strategies click "Strategies" in the top menu: its menu opens; click again: closes.
+Re-checks after the merge (quick):
+R1. Exit from Positions: Positions > Paper > a trade > Exit: the confirmation, Cancel exits nothing, Confirm exits.
+R2. Positions: the real and paper lists load; the Stops link of a Live Strategies card opens Positions at that trade's
+    Stops panel (ADR-330 (21)).
+R3. Builder: open a saved paper trade; the payoff, Greeks and live P&L show; Add Selected from the chain adds legs; the
+    leave question reads "Leave the builder? The N pending changes will be lost." (ADR-330 (22)).
+R4. Alert titles and lists carry the number and expiry, as in "Short Iron Condor (#172, 1 Dec)" (ADR-330 (19)).
 
 ## (c) What is merged, what is left out
 
@@ -38,6 +103,30 @@ Spec basis: ADR-330 (1) to (27) and its one-module instruction; ADR-002; ADR-003
 | fix/screen-findings-1126 (Lane R, base) | 7bf64eb | base |
 | fix/ic-live-test-1123 (ADR-330 answers, docs) | 2ed05a7 | merged |
 | feat/nb-plan-alerts-1126 (Lane P first push) | 7bca124 | merged |
+| fix/ic-live-test-1123 (ADR-330 (28) to (33)) | 3d66541 | merged (push 2) |
+| fix/screen-findings-1126 (Lane R, newer) | ce5316e (includes 8384516) | merged (push 2) |
+| Lane J Step 2 (W2-A, W2-B, W2-C) | lanej/w2a 6a1474b, lanej/w2b c2452b1, lanej/w2c 364cbae | merged (push 2) |
+| Lane J Step 3 (P9 checks) | lanej/s3 2490974 | merged (push 2) |
+
+Not merged yet (Step 4, in order as they appear): Lane P's second push (migration 0056, P7, P8, warning line, alert
+titles: overlaps W2-A's titles), fix/suite-findings-1126 (Lane U; not on origin at 18:00 IST), feat/nb-real-pnl-1126
+(Lane S, d344d82), test/screen-suite-1126 (2fd3f02). Then ADR-330 (31) (Deleted / Restored history entries, its own
+migration), handed over by the coordinator.
+
+## Step 2 and Step 3: what was built (status: Fixed, not tested)
+
+| Item | Spec | What it does | Proof |
+|---|---|---|---|
+| W2-A fired stop through the one alert module | ADR-330 (3)(b), (6), (19)(b); one-module instruction | `paper_monitor._fire` raises `actionable_alerts.inform('stop_fired', ...)` in the exit's own transaction (no more `paper_alerts` write); the message carries "If this stop fires, max loss becomes Rs X (now Rs Y)." priced at the recorded fill (see LJ-1); a failing line never stops the exit or the record; the pop-up reads `GET /alerts/answered?after=<id>` once per new row, never on first load, never on the bell; alert titles "Name (#id, d Mon)" from one function `alert_title.py` | guard `test_actionable_alert_one_module` red with the old exemption removed, green after; mutation (add_alert back) red; `test_stop_fired_message` 14, `test_paper_monitor` 23, `test_actionable_alerts` 35, `test_alert_routes` 4, `header-stop-fired-popup` 4 |
+| W2-B Alerts Exit through the one exit door | ADR-330 (3), (12) | "Exit the position" stores the answer then opens the same exit confirmation as Positions on the Alerts page; Cancel exits nothing; a failed answer opens nothing | `alerts-exit-door-w2b` 6 failed on the old code, 21 pass with `alerts-actionable` |
+| W2-B leg-stop risk line before Save | ADR-330 (6) | the Stops panel reads `leg-stop-risk` 400 ms after typing; prints the server's line only on "yes"; out-of-order or stale answers dropped; Save never blocked | `paper-stops-leg-risk-w2b` 7 failed on the old code, 10 pass |
+| W2-C Plan watch box | ADR-330 (11), (13) | one reader `lib/planWatch.js`, one component `PlanWatch.vue`, on the builder beside the live P&L and on each open Positions paper row; a failed read shows no old figure; paused rows a dash and the reason | `plan-watch-*` 23 pass |
+| Paper total line | ADR-330 (15) | already printed on the screens line (Lane Q2): "Includes N closed strategies." | (existing tests) |
+| Step 3 stand-alone checks | ADR-330 (12) | `ofo/checks/` index_level, leg_price, pnl_amount, pnl_percent, time_of_day answer Met / NotMet / NotComputable; `stops.crossed` and the playbook percent rule call them; guard `tests/test_checks_no_side_effects.py` | `test_paper_monitor` 23 unmodified; checks 38; mutation (equality made NotMet) 4 failed |
+
+Tier A reviews (independent, Opus): Step 2 round 1 FIX (MAJOR: the alert's max-loss line priced at the stop level
+understated a gapped fill, stop 140.70 filled 180.00: Rs 12,005.50 shown, Rs 14,560.00 true) -> fixed, gap test red on
+the old pricing and green now; seven MINORs listed below. Step 3: SHIP, three MINORs listed below.
 
 ### Merge 1: fix/ic-live-test-1123
 
@@ -67,6 +156,9 @@ current, none hand-edited.
 | ruff ratchet | PLR2004 559 -> 560: each line added one magic number and removed another | `tests_app/test_paper_totals_closed.py` names its expected count |
 | G2 `tests/test_paper_orders_one_door.py` (one exit door) | Lane P's `paper_leg_stop_risk` flipped BUY/SELL itself (`routes/paper.py:1523`) | the close's side and quantity come from `open_legs_to_close`, the door's own rule; `test_leg_stop_risk` passes |
 | G4 `tests/test_alert_writers_one_caller.py` (one caller per alert writer) | still pinned `open_suggestion` / `record_held` to `background.py`; Lane P moved both into `actionable_alerts.py` | G4's homes follow the move (the plan: "guard G4 replaced (Phase 8)"); Lane P's one-module guard keeps every other caller out |
+| ADR-008 second layer `frontend/tests/strategy-table.test.js` | W2-A's pop-up reader used `Math.max` / `.reduce` (for an id) in `lib/paperAlerts.js` | a plain loop |
+| `tests_app/test_error_boundary_scan.py` | `str()` inside the leg-stop-risk route's return (a dict key) | the open quantity read before the return |
+| `tests/test_bundle_secret_scan.py` | W2-C's prop `refreshToken` in the built bundle reads as a credential name | renamed `readTick` |
 
 ## Push log
 
@@ -74,5 +166,22 @@ current, none hand-edited.
 |---|---|---|---|
 | 1 | 7231916 | Step 1 (the two merges and the three breaks above) | `prepush.py --full` TOTAL PASS 2023.6 s (domain, app, vitest, lint, coverage, alembic guard) |
 
+| 2 | (this push) | ic docs 3d66541, Lane R ce5316e, Step 2, Step 3, the review fix | `prepush.py --full` (see the commit's gate) |
+
 Coordinator message for push 1 could not be sent: the session-message service refused this session (untrusted
 device); recorded here instead.
+
+## To file as deferred issues (the coordinator files them; Lane J files none)
+
+| Title | Evidence | Spec basis | Done when |
+|---|---|---|---|
+| A fired stop never executes while the monitor clock is ahead of the database clock | Tier A review: 0054's insert guard `shown_at > clock_timestamp()` (`alembic/versions/0054_actionable_alert_answers.py:92`) refuses the stop_fired row; with `Market(at=2026-11-27 04:30 UTC)` the fire rolled back every tick: fires 0, failures 1, stops 0. The old paper_alerts write had no such check. | ADR-330 (3)(b); ADR-016 (submitted is not executed) | a fire whose record time is ahead of the DB clock still exits once and records once (test with a skewed clock) |
+| The fired-stop line is judged on the book read before the strategy lock | `paper_monitor.py:218-220,245`: a lot added between the look and the lock is exited by the door but the line is for the smaller quantity | ADR-330 (6); ADR-008 | the line is computed from the book the door returned (`done.book` before the exit) |
+| Old and new fired stops sit in two History lists | `routes/paper.py:2006-2016`, `paperAlerts.js:100` still say /paper/alerts/records holds every fired stop; new ones land only in /alerts/answered; each shows once but not in one time order | ADR-330 (3)(b) | History lists every fired stop in one time order; the comments say where each lives |
+| An alert title is computed when read, not kept from when it fired | `alert_title.py:43-52`: a rolled-then-closed trade shows "(#172)" although it fired as "(#172, 8 Dec)"; a strategy without a paper book never gets an expiry | ADR-330 (19)(b) | the title is stored with the row at fire time (or the docstring stops promising it) |
+| Header poll reads the whole history until the first stop fires | `paperAlerts.js:23-36`, `routes/alerts.py:197-198`: stopSeen 0 means every poll reads all of History plus one book load per strategy | none: speed only | the first read asks for the newest id only |
+| Exit from two alerts of one strategy can offer the same legs twice | `AlertsPage.vue:57-58`: busy is released before the door opens; a second alert's Exit during the first POST offers the same legs; a second Confirm posts a second exit (needs two Confirms) | ADR-330 (3), (12); ADR-019 | the Alerts page holds one open exit per strategy until the first answers |
+| A list refresh closes the Alerts page's exit dialog without a word | `PaperStrategies.vue:387,390` in exitOnlyFor mode | ADR-330 (3) | a cancelled dialog says why |
+| test_settings_reader_guard pins a source line number | `tests/test_settings_reader_guard.py:109`; W2-A padded `paper_monitor.py` with a comment to keep read_snapshot at line 68 (fails closed: removing the comment turns the guard red) | none (test hygiene) | the guard finds the function by name, not by line |
+| A playbook comparison word other than le/ge reads "checked, not met" | Step 3 review: `playbook_eval.py:512` `_exact` turns NotComputable into fired=False; the save check (`playbook_store.py:497-515`) never validates cmp; shipped playbooks are clean | ADR-330 (12); ADR-003 | an unknown cmp is refused on save, or shown "not checked" |
+| The checks guard restricts only calls of crossed | `tests/test_checks_no_side_effects.py:74-78`: a direct leg_price/index_level call in ofo_app (skipping the live-price check of stops.py:58), `import crossed as _c`, a `lambda conn:` pass | ADR-330 (12) | each of the three samples turns the guard red |
