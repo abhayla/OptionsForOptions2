@@ -4654,5 +4654,13 @@
   "explanation:paper_today_none": {
     "sha256": "6d782178d298b637a3f0945333fc7f0b137ab3ed40d303b892348fe2a6bdd8f6",
     "reviewed": "pending owner read"
+  },
+  "leg_edit_expiry_not_listed": {
+    "sha256": "53bfe893829cdb7a1b060c1e7e06cf12b33124c563ba3c6ea9ec50ec45150e31",
+    "reviewed": "pending owner read"
+  },
+  "leg_edit_expiry_futures": {
+    "sha256": "01b1db55a6fb8c0d3d6e878134a81f519837bc2864e7c447fd109aaca985569a",
+    "reviewed": "pending owner read"
   }
 }
