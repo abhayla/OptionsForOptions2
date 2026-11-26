@@ -68,6 +68,7 @@ describe('Stops panel', () => {
     await t(w, 'ce-below').setValue('24000.05')
     expect(t(w, 'ce-save').attributes('disabled')).toBeUndefined()
     answers[`POST ${TRIG}`] = ok({ triggers: [trig(2, { direction: 'below', level: '24000.05', level_text: 'Index at or below 24,000.05' }), trig(1)] })
+    answers[`GET ${TRIG}`] = answers[`POST ${TRIG}`] // N-21: the list re-read now follows a Save, as the server's would
     await t(w, 'ce-save').trigger('click')
     await flushPromises()
     expect(posts()).toEqual([['POST', TRIG, { kind: 'conditional_exit', above: '24500', below: '24000.05' }]])
@@ -158,6 +159,7 @@ describe('Stops panel', () => {
     expect(rows.map((r) => r.get('[data-testid="trigger-state"]').text())).toEqual(['fired', 'cancelled', 'armed'])
     expect(w.findAll('[data-testid^="trigger-cancel-"]')).toHaveLength(1)
     answers['DELETE /paper/strategies/48/triggers/1'] = ok({ triggers: [trig(3, { state: 'fired' }), trig(2, { state: 'cancelled' }), trig(1, { state: 'cancelled' })] })
+    answers[`GET ${TRIG}`] = answers['DELETE /paper/strategies/48/triggers/1']
     await t(w, 'trigger-cancel-1').trigger('click')
     await flushPromises()
     expect(calls.filter((c) => c[0] === 'DELETE')).toHaveLength(1)
@@ -510,5 +512,26 @@ describe('Stops panel: the Not saved line and the empty-level hint (D-05, ADR-31
     await flushPromises()
     expect(t(w, 'ce-reason').text()).toBe('Enter at least one level')
     expect(posts()).toHaveLength(0)
+  })
+  it('N-21: a Save whose stops reply shows fired asks the parent list to read at once (no wait for its timer)', async () => {
+    const w = await open()
+    const listReads = () => calls.filter((c) => c[0] === 'GET' && c[1] === '/paper/strategies').length
+    const before = listReads()
+    const level = w.get('[data-testid^="stop-level-"]')
+    const id = level.attributes('data-testid').replace('stop-level-', '')
+    await level.setValue('110')
+    answers[`POST ${TRIG}`] = ok({ triggers: [trig(1, { kind: 'leg_stop', contract_id: 5000, state: 'fired', fired_at: '2026-10-29T06:00:00Z' })] })
+    await t(w, `stop-save-${id}`).trigger('click')
+    await flushPromises()
+    expect(listReads()).toBeGreaterThan(before)
+  })
+  it('N-21: a Cancel also asks the parent list to read at once', async () => {
+    const w = await open({ triggers: [trig(1)] })
+    const listReads = () => calls.filter((c) => c[0] === 'GET' && c[1] === '/paper/strategies').length
+    const before = listReads()
+    answers[`DELETE ${TRIG}/1`] = ok({ triggers: [trig(1, { state: 'cancelled' })] })
+    await w.get('[data-testid^="trigger-cancel"]').trigger('click')
+    await flushPromises()
+    expect(listReads()).toBeGreaterThan(before)
   })
 })

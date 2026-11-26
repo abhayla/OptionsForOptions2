@@ -23,6 +23,10 @@ const props = defineProps({
   goodReadToken: { type: Object, default: null },
 })
 
+// N-21: after a good Save or Cancel, or when a re-read shows a fired stop, the parent list reads at once (its legs and book
+// move with a stop); the panel has no timer of its own
+const emit = defineEmits(['changed'])
+
 const LABEL = 'Paper - exits are recorded in the app, not sent to Zerodha'
 const AT_LEAST_ONE = 'Enter at least one level'
 const LIST_STALE = 'Could not refresh this list. It shows the last read.'
@@ -55,7 +59,7 @@ const refusal = (e) => e?.parts?.what_happened || NEUTRAL_ERROR
 const notSaved = (e) => (e?.status >= 400 && e.status < 500 && e?.parts?.what_happened ? `Not saved: ${e.parts.what_happened}` : NO_ANSWER)
 
 // Returns the reply data on success (a reply without a triggers array is a failure), null otherwise.
-async function run(call, saving = false) {
+async function run(call, saving = false, notify = false) {
   if (busy.value) return null
   busy.value = true
   gen += 1
@@ -66,6 +70,7 @@ async function run(call, saving = false) {
     const list = triggerListOf(data)
     if (list) {
       triggers.value = list
+      if (notify) emit('changed')
       return data
     }
     triggers.value = null
@@ -101,7 +106,12 @@ async function reread() {
   try {
     const list = triggerListOf((await api.get(path)).data)
     if (mine !== gen) return // an action ran meanwhile: its answer is newer
-    if (list) { triggers.value = list; listError.value = '' } else listError.value = LIST_STALE
+    if (list) {
+      const hadFired = (triggers.value ?? []).some((x) => x.state === 'fired')
+      triggers.value = list
+      listError.value = ''
+      if (!hadFired && list.some((x) => x.state === 'fired')) emit('changed')
+    } else listError.value = LIST_STALE
   } catch {
     if (mine === gen) listError.value = LIST_STALE
   }
@@ -116,7 +126,7 @@ async function saveExit() {
   const body = { kind: 'conditional_exit' }
   if (typed(above.value)) body.above = typed(above.value)
   if (typed(below.value)) body.below = typed(below.value)
-  const data = await run(() => api.post(path, body), true)
+  const data = await run(() => api.post(path, body), true, true)
   if (data) {
     // D-05 r3: the line is built only from the server's answer: already_armed names the submitted levels it did NOT store
     const dupDirs = data.already_set ? ['above', 'below'] : (data.already_armed ?? [])
@@ -133,7 +143,7 @@ async function saveExit() {
 async function saveStop(leg) {
   if (stopReason(leg.index)) return
   const s = stopOf(leg.index)
-  const data = await run(() => api.post(path, { kind: 'leg_stop', contract_id: leg.contractId, direction: s.direction, level: typed(s.level) }), true)
+  const data = await run(() => api.post(path, { kind: 'leg_stop', contract_id: leg.contractId, direction: s.direction, level: typed(s.level) }), true, true)
   if (data) {
     saved.value = `${data.already_set || data.already_armed?.length ? 'Already set' : 'Saved'}: stop ${s.direction} ${typed(s.level)}`
     setStop(leg.index, { level: '' })
@@ -149,7 +159,7 @@ function showSaved(match) {
     el?.scrollIntoView?.({ block: 'nearest' })
   })
 }
-const cancel = (t) => run(() => api.delete(`${path}/${t.id}`))
+const cancel = (t) => run(() => api.delete(`${path}/${t.id}`), false, true)
 // D-03: same level, stored again after the change to the legs. Ends in one line: Kept / Already kept (the exit was not marked,
 // so the server stored nothing) / Not saved (same path as Save). The level is written as the row writes it.
 async function keep(t) {
