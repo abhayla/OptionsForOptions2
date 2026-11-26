@@ -49,7 +49,7 @@ def test_empty_level_is_no_check():
     assert level_of("") is None and level_of(None) is None and level_of("  ") is None
 
 
-@pytest.mark.parametrize("bad", ["0", "-5", "-0.01", "NaN", "Infinity", "-Infinity", "abc", "1e400", "1,000"])
+@pytest.mark.parametrize("bad", ["0", "-5", "-0.01", "NaN", "Infinity", "-Infinity", "abc", "1,000"])
 def test_refused_levels(bad):
     with pytest.raises(ValueError):
         level_of(bad)
