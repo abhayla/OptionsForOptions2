@@ -128,6 +128,7 @@ async function stubChain(page: Page, o: Opts = {}): Promise<Stub> {
   const S: Stub = { sent: [], sockets: [], calls: [], rest: [], hosts: new Set(), wsHosts: new Set(), answer: o.answer ?? ((req) => chainAnswer(req)),
     push: (msg) => { const ws = S.sockets.at(-1); if (ws) ws.send(JSON.stringify(msg)) } }
   page.on('request', (r) => { S.hosts.add(new URL(r.url()).host) })
+  page.on('websocket', (ws) => { S.wsHosts.add(new URL(ws.url()).host) }) // every socket the page opens, routed or not, is recorded for the ADR-012 host assertion
   const serve = async (route: Route, r: Reply) => {
     if (r.wait) await r.wait
     if (r.abort) return route.abort('connectionrefused')
@@ -170,7 +171,6 @@ async function stubChain(page: Page, o: Opts = {}): Promise<Stub> {
     }
     return route.fulfill({ status: 503, json: catalogue }) // anything this page does not need: a plain failure, never a proxy hang
   })
-  await page.routeWebSocket(/^(?!.*\/api\/strategies\/live).*/, (ws) => { S.wsHosts.add(new URL(ws.url()).host); ws.close() }) // any other socket (not the strategy live one, which this page never plays) is recorded and refused
   await page.routeWebSocket('**/api/market/indices/live', (ws) => { S.wsHosts.add(new URL(ws.url()).host) }) // held open and silent
   await page.routeWebSocket('**/api/market/chain/live', (ws) => {
     S.wsHosts.add(new URL(ws.url()).host)
