@@ -1724,11 +1724,11 @@ test.describe('Builder: loading, not found and failure states (REQ-134 AC-5, REQ
     await expect(page).toHaveURL(/\/strategies\/my-strategies$/)
   })
 
-  test('ST-4b a bare 404 (no catalogue body) shows the generic not-available reply and no Open My Strategies button', async ({ page }) => {
-    // Spec basis: REQ-065; af807755 (NOT_FOUND_PARTS): only the catalogue's own strategy_not_found code adds the button
+  test('ST-4b a bare 404 gives the neutral message and no button', async ({ page }) => {
+    // Spec basis: REQ-065 (a bare 404 is the neutral failure, no state guessed); only the catalogue's own strategy_not_found code adds the button
     await stubBuilder(page)
     await page.goto(`${BUILDER}?strategy=998`)
-    await expect(page.getByTestId('open-error-what')).toHaveText('The page or action you asked for is not available here.')
+    await expect(page.getByTestId('open-error-what')).toHaveText(NEUTRAL.what)
     await expect(page.getByRole('link', { name: 'Open My Strategies' })).toHaveCount(0)
   })
 

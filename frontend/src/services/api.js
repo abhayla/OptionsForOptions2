@@ -17,7 +17,6 @@ export function mapError(error) {
     out.parts = parts
     if (typeof error.response.data.code === 'string') out.error_code = error.response.data.code // the catalogue's own code (a caller may add a button to a message)
   }
-  else if (out.status === 404) out.parts = NOT_FOUND_PARTS // NEW-T66: the server answered "no such thing"; that is not a connection failure
   const reason = error?.response?.data?.reason // GC-SET: a refused Settings change answers {reason}: the catalogue's own words
   if (typeof reason === 'string' && reason) out.reason = reason
   const stamped = serverTime(error?.response?.headers?.date)
@@ -41,15 +40,6 @@ export function catalogueParts(data) {
   if (!PART_KEYS.every((k) => typeof data[k] === 'string' && data[k])) return null
   return Object.fromEntries(PART_KEYS.map((k) => [k, data[k]]))
 }
-
-/** A 404 with no catalogue body (a framework or proxy miss): the catalogue's own "not available" message,
- *  backend/ofo/errors/templates.py `user_input_request_not_available` (word for word), never the connection line. */
-export const NOT_FOUND_PARTS = Object.freeze({
-  what_happened: 'The page or action you asked for is not available here.',
-  impact: 'Nothing was changed.',
-  what_is_blocked: 'This request.',
-  next_action: 'Go back to the previous page and choose again.',
-})
 
 /** Shown when the failure carries no catalogue message (a dropped connection, a proxy error). */
 export const NEUTRAL_PARTS = Object.freeze({

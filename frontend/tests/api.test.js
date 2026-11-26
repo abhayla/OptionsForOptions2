@@ -31,13 +31,13 @@ describe('api client (ADR-012, same-origin, no token storage)', () => {
     expect(JSON.stringify(mapError(new Error('x')))).not.toMatch(/internals/)
   })
 
-  it('keeps the catalogue code of a catalogue answer, and none for a bare 404 (NEW-T66 finish)', () => {
+  it('keeps the catalogue code of a catalogue answer, and no parts for a bare 404 (NEW-T66 finish)', () => {
     const body = { code: 'STRATEGY_VALIDATION_523', what_happened: 'a', impact: 'b', what_is_blocked: 'c', next_action: 'd' }
     const out = mapError({ response: { status: 404, data: body } })
     expect(out.error_code).toBe('STRATEGY_VALIDATION_523')
     expect(out.parts).toEqual({ what_happened: 'a', impact: 'b', what_is_blocked: 'c', next_action: 'd' })
     const bare = mapError({ response: { status: 404, data: { detail: 'Not Found' } } })
     expect(bare.error_code).toBeUndefined()
-    expect(bare.parts.what_happened).toBe('The page or action you asked for is not available here.')
+    expect(bare.parts).toBeUndefined() // REQ-065: a bare 404 is the neutral failure; only the catalogue's own body is worded
   })
 })
