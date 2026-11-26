@@ -138,6 +138,16 @@ function onToggleClick(e, key) {
   toggleMenu(key)
   if (openKey.value === key && e.detail === 0) focusItem(0)
 }
+// The label is a link to the section's first path; when the page is already there, the click toggles the menu instead
+// of a no-op navigation that would close it. Elsewhere it navigates as before, with the menu closed.
+function onLabelClick(e, key) {
+  if (route.path === firstBuiltPath(key)) {
+    e.preventDefault()
+    toggleMenu(key)
+  } else {
+    closeMenu()
+  }
+}
 function menuLinks() {
   return panel.value ? [...panel.value.querySelectorAll('[role="menuitem"]')] : []
 }
@@ -269,7 +279,7 @@ onBeforeUnmount(() => {
               class="flex items-center pl-3 text-[15px] leading-5 font-medium"
               :class="activeSection === s.key ? 'text-accent' : 'text-ink hover:text-accent'"
               :data-testid="`nav-${s.key}`"
-              @click="closeMenu()"
+              @click="onLabelClick($event, s.key)"
               >{{ s.label }}</router-link
             >
             <button
