@@ -39,7 +39,7 @@ def _usable(value: object) -> bool:
 
 
 def level_of(text: str | None) -> Decimal | None:
-    """The stored text level -> a positive finite Decimal; blank/absent -> None (no check); anything else -> ValueError."""
+    """The stored text level -> a positive finite Decimal; blank or absent -> None (no check); else ValueError."""
     if text is None or not text.strip():
         return None
     try:

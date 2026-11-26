@@ -1,5 +1,5 @@
 """ADR-330 (5): both figures of one level come from one pure place. Real case: Rs 1,000 on a 3,900 max-profit trade is
-25.64 % (owner example); 25.64 % of 3,900 is Rs 999.96, so a typed pair 25.64 % / Rs 1,000 agrees through the rupee side.
+25.64 % (owner example); 25.64 % of 3,900 is Rs 999.96, so a typed pair 25.64 % and Rs 1,000 agrees on the rupee side.
 Spec basis: ADR-330 (5) and its Q3 answer (whole trade, before charges, per-lot beside it)."""
 from decimal import Decimal as D
 

@@ -109,7 +109,7 @@ async def test_get_without_a_plan_prefills_from_the_active_system_playbook_and_p
     assert (out["type"], out["type_name"], out["generic"], out["generic_text"], out["plan"]) == (
         "ic", IC_NAME, False, None, None)
     assert (out["prefill"]["stop_rupees"], out["prefill"]["stop_per_lot"]) == ("10390.25", "5195.13")  # ADR-330 (5)
-    assert _without_rupees(out["prefill"]) == {"playbook_id": system.id, "target": "50", "stop": "50", "max_adjustments": 2,
+    assert _without_rupees(out["prefill"]) == {"playbook_id": system.id, "target": "50", "stop": "50", "max_adjustments": 2,  # noqa: E501
                               "time_exit": {"hour": 14, "minute": 30},  # ADR-216: the iron condor seed
                               "time_exit_on": None,
                               "target_words": "50 % of max profit",

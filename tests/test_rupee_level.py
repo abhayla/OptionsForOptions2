@@ -11,7 +11,6 @@ import inspect
 from decimal import Decimal
 
 import pytest
-
 from ofo.checks import pnl_amount as mod
 from ofo.checks.pnl_amount import LOSS, PROFIT, Met, NotComputable, NotMet, level_of, pnl_amount
 

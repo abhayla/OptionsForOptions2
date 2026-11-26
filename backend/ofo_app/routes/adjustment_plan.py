@@ -373,7 +373,7 @@ def with_rupee_figures(values: dict[str, Any], body: dict, bases: Bases) -> dict
 
 
 def _rupee_in(raw: str, field: str) -> Decimal | None:
-    """The typed rupee text -> a positive Decimal; "" -> None (no rupee level); anything else refused naming the field."""
+    """The typed rupee text -> a positive Decimal; "" -> None (no rupee level); else refused naming the field."""
     if raw == "":
         return None
     try:
@@ -629,7 +629,7 @@ class LevelsOut(ApiModel):
     stop: LevelOut | None
 
 
-def _level_out(percent_raw: str | None, rupees_raw: str | None, base: Decimal | None, lots: int | None,
+def _level_out(percent_raw: str | None, rupees_raw: str | None, base: Decimal | None, lots: int | None,  # noqa: PLR0913
                field: str, words_id: str) -> dict[str, Any] | None:
     """One level from what was typed: percent and/or rupees (ADR-330 (5)); both must agree, else refused naming the
     rupee field. Nothing typed -> None. The server works both figures out; the browser prints them."""

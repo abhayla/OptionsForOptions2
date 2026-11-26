@@ -1,4 +1,3 @@
-# ruff: noqa: E501
 """ADR-330 (5): a plan's profit target and loss stop typed in rupees or percent; the plan shows both figures. No DB.
 
 Real case (owner example): Rs 1,000 target on a 3,900 max-profit trade shows 25.64 % and Rs 1,000 together, Rs 500
