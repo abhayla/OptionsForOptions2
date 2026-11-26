@@ -239,7 +239,7 @@ watch(asking, async (mode) => {
   await nextTick()
   nameInput.value?.focus?.()
 })
-const NAME_TITLES = { save: 'Save New Strategy', 'save-as': 'Save As', rename: 'Update Strategy Name' }
+const NAME_TITLES = { save: 'Save New Strategy', 'save-as': 'Save As', rename: 'Update Strategy Name', paper: 'Name this paper trade' }
 
 // GC-UI 6b D-C12: the row's pencil opens the EXISTING rename (REQ-134 AC-3) on that strategy. Rename needs the revision the page
 // loaded, so a row that is not the open one is opened first and the dialog follows once the page holds it.
@@ -287,6 +287,7 @@ async function confirmRename() {
 async function confirmName() {
   if (asking.value === 'rename' && props.current && !busy.value) return confirmRename()
   if (props.paperMode || busy.value || !asking.value || !canSaveLegs(props.legs)) return
+  if (asking.value === 'paper' && paperRecorded.value) return
   const mode = asking.value
   const legs = snapshot(props.legs)
   busy.value = true
@@ -296,6 +297,12 @@ async function confirmName() {
     const res = await api.post('/strategies', buildSaveBody(legs, props.rulesRef, nameText.value))
     const revision = done(res.data)
     asking.value = null
+    if (mode === 'paper') {
+      emit('saved', res.data.id, revision, savedName.value, legs)
+      await refresh()
+      openPaperDialog(res.data.id)
+      return
+    }
     if (mode === 'save-as') emit('open', legs, res.data.id, revision, savedName.value)
     else emit('saved', res.data.id, revision, savedName.value, legs)
     await refresh()
@@ -341,28 +348,22 @@ const paperRecorded = ref(false)
 watch(() => props.current?.id, () => { paperRecorded.value = false })
 const canAddToPaper = computed(() => !props.paperMode && !paperRecorded.value && !busy.value && !paperBusy.value && canSaveLegs(props.legs) && tickedLegs.value.length > 0)
 
-async function startPaper() {
+// ADR-330 (19): an UNSAVED strategy asks for its name first (the name dialog, prefilled with the shape name); Confirm saves it under
+// that name and goes on to the paper confirm, Cancel adds nothing. A strategy already saved asks nothing: the code cannot tell a name
+// the user typed from a shape name saved earlier, so it never asks twice for a strategy that has an id (REQ-134 AC-1).
+function startPaper() {
   if (!canAddToPaper.value) return
   paperError.value = ''
   errorParts.value = null
-  let id = props.current?.id ?? null
-  const sentNow = snapshot(props.legs)
-  if (id === null) {
-    busy.value = true
-    try {
-      const name = props.shownName.length >= 1 && props.shownName.length <= STRATEGY_NAME_MAX ? props.shownName : STRATEGY_NAME_DEFAULT
-      const res = await api.post('/strategies', buildSaveBody(sentNow, props.rulesRef, name))
-      const revision = done(res.data)
-      id = res.data.id
-      emit('saved', id, revision, savedName.value, sentNow)
-      await refresh()
-    } catch (e) {
-      errorParts.value = e?.parts ?? NEUTRAL_PARTS
-      return
-    } finally {
-      busy.value = false
-    }
+  if (props.current?.id == null) {
+    asking.value = 'paper'
+    nameText.value = props.shownName.length >= 1 && props.shownName.length <= STRATEGY_NAME_MAX ? props.shownName : STRATEGY_NAME_DEFAULT
+    return
   }
+  openPaperDialog(props.current.id)
+}
+
+function openPaperDialog(id) {
   paperTarget.value = id
   paperOrders.value = tickedLegs.value.map((l, i) => ({
     key: l.id ?? `leg-${i}`, contract_id: l.contract_id, side: l.action, text: contractName(l), lots: l.lots, lot_size: l.lot_size,

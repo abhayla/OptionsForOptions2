@@ -10,6 +10,7 @@ import { createMemoryHistory, createRouter } from 'vue-router'
 import StrategyBuilderPage from '@/pages/StrategyBuilderPage.vue'
 import { PAPER_MODE_LABEL, netLegsFromBook } from '@/lib/paperDrafts'
 import REAL from './fixtures/paper-book-63.json'
+import { confirmPaperName } from './helpers/paperName'
 
 const calls = []
 let answers = {}
@@ -76,6 +77,7 @@ async function firstBasket() {
   await flushPromises()
   await t(w, 'add-to-paper').trigger('click')
   await flushPromises()
+  await confirmPaperName(w)
   return w
 }
 const confirm = async (w) => { await t(w, 'paper-confirm-button').trigger('click'); await flushPromises() }

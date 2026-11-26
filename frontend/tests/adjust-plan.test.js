@@ -25,6 +25,7 @@ vi.mock('@/services/api', async (importActual) => {
 })
 import AdjustPlanSheet from '@/components/strategy/AdjustPlanSheet.vue'
 import PlanEntry from '@/components/strategy/PlanEntry.vue'
+import { confirmPaperName } from './helpers/paperName'
 
 const LABELS = {
   title: "When tracking starts: this strategy's plan", playbook: 'Playbook', target: 'Target', stop: 'Stop', max_adjustments: 'Max adjustments',
@@ -333,6 +334,7 @@ describe('REQ-161 AC-1: the sheet opens after the paper orders are placed, never
     await flushPromises()
     await t(w, 'add-to-paper').trigger('click')
     await flushPromises()
+    await confirmPaperName(w)
     return w
   }
 

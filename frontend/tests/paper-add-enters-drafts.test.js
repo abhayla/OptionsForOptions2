@@ -7,6 +7,7 @@ import StrategyBuilderPage from '@/pages/StrategyBuilderPage.vue'
 import { PAPER_BOOK_UNREADABLE, PAPER_MODE_LABEL, netLegsFromBook } from '@/lib/paperDrafts'
 import { PAPER_ADDED_TEXT } from '@/lib/tracking'
 import REAL from './fixtures/paper-book-63.json'
+import { confirmPaperName } from './helpers/paperName'
 
 const calls = []
 let answers = {}
@@ -60,6 +61,7 @@ describe('Add to Paper ends in Drafts Mode', () => {
     const w = await mountPage()
     await t(w, 'add-to-paper').trigger('click')
     await flushPromises()
+    await confirmPaperName(w)
     await t(w, 'paper-confirm-button').trigger('click')
     await flushPromises()
     expect(t(w, 'paper-mode-label').text()).toBe(PAPER_MODE_LABEL)
@@ -75,6 +77,7 @@ describe('Add to Paper ends in Drafts Mode', () => {
     await t(w, 'more-menu').trigger('click')
     await t(w, 'menu-add-to-paper').trigger('click')
     await flushPromises()
+    await confirmPaperName(w)
     await t(w, 'paper-confirm-button').trigger('click')
     await flushPromises()
     expect(t(w, 'paper-mode-label').exists()).toBe(true)
@@ -87,6 +90,7 @@ describe('Add to Paper ends in Drafts Mode', () => {
     const w = await mountPage()
     await t(w, 'add-to-paper').trigger('click')
     await flushPromises()
+    await confirmPaperName(w)
     await t(w, 'paper-confirm-button').trigger('click')
     await flushPromises()
     expect(t(w, 'paper-mode-label').exists()).toBe(false)
@@ -100,6 +104,7 @@ describe('Add to Paper ends in Drafts Mode', () => {
     const w = await mountPage()
     await t(w, 'add-to-paper').trigger('click')
     await flushPromises()
+    await confirmPaperName(w)
     await t(w, 'paper-confirm-button').trigger('click')
     await flushPromises()
     expect(t(w, 'paper-mode-label').exists()).toBe(false)
@@ -110,6 +115,7 @@ describe('Add to Paper ends in Drafts Mode', () => {
     const w = await mountPage()
     await t(w, 'add-to-paper').trigger('click')
     await flushPromises()
+    await confirmPaperName(w)
     answers['GET /paper/strategies/70'] = () => Promise.reject(new Error('network'))
     await t(w, 'paper-confirm-button').trigger('click')
     await flushPromises()

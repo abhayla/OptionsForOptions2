@@ -7,6 +7,7 @@ import { createMemoryHistory, createRouter } from 'vue-router'
 import SaveDraftBar from '@/components/strategy/SaveDraftBar.vue'
 import PaperConfirmDialog from '@/components/strategy/PaperConfirmDialog.vue'
 import * as tracking from '@/lib/tracking'
+import { confirmPaperName } from './helpers/paperName'
 const { PAPER_PRICE_ZERO_REASON } = tracking
 
 const calls = []
@@ -49,6 +50,7 @@ async function bar(props = {}) {
 async function openList(w) {
   await t(w, 'add-to-paper').trigger('click')
   await flushPromises()
+  await confirmPaperName(w)
 }
 
 beforeEach(() => {
@@ -214,6 +216,7 @@ describe('Add to Paper: unsaved strategy, toast, old path', () => {
     await t(w, 'more-menu').trigger('click')
     await t(w, 'menu-add-to-paper').trigger('click')
     await flushPromises()
+    await confirmPaperName(w)
     expect(all(w, 'paper-order')).toHaveLength(4)
     expect(w.text()).not.toContain('Start tracking')
     expect('START_TRACKING_LABEL' in tracking).toBe(false)
