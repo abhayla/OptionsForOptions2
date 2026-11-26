@@ -77,3 +77,32 @@ def test_on_expiry_is_unchanged():
 def test_old_plain_hhmm_reads_as_expiry_day():
     ev = _run(today=OPENED, hhmm="15:20", time_exit="15:15")
     assert not isinstance(_t10b(ev), Flag)
+
+
+_SHAPES = [pytest.param({"at": "15:15", "on": "expiry"}, id="mapping"), pytest.param("15:15", id="plain")]
+
+
+@pytest.mark.parametrize("te", _SHAPES)
+def test_plan_time_beats_the_playbook_stage_time_on_expiry(te):
+    """The plan's own time decides; the playbook's T-10b stage value (14:30 in ADJ-14) is only for a plan without one."""
+    assert "14:30" in str(body_of(load("ADJ-14")))
+    assert not isinstance(_t10b(_run(today=EXPIRY, hhmm="14:40", time_exit=te)), Flag)
+    r = _t10b(_run(today=EXPIRY, hhmm="15:15", time_exit=te))
+    assert isinstance(r, Flag) and r.threshold == "15:15"
+
+
+@pytest.mark.parametrize("te", _SHAPES)
+def test_a35_agrees_with_the_evaluator(te):
+    from types import SimpleNamespace
+
+    from ofo.adjustment.approaches import _time_exit_due
+    from ofo.adjustment.playbook_eval import exit_inputs
+
+    sc = load("ADJ-14")
+    pos = SimpleNamespace(today=EXPIRY, legs=[SimpleNamespace(expiry=EXPIRY)])
+    early = exit_inputs(body_of(sc), {"time_exit": te}, replace(state_of(sc), today=EXPIRY, expiry=EXPIRY, hhmm="14:40"))
+    on_time = exit_inputs(body_of(sc), {"time_exit": te}, replace(state_of(sc), today=EXPIRY, expiry=EXPIRY, hhmm="15:15"))
+    assert early.time_exit == on_time.time_exit == "15:15"
+    _time_exit_due(pos, on_time)
+    with pytest.raises(Exception):  # noqa: B017, PT011 - the A-35 refusal type is private
+        _time_exit_due(pos, early)
