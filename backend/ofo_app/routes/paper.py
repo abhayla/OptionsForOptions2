@@ -1291,8 +1291,7 @@ async def _server_exit_prices(ctx: MarketContext | None, feed: LiveFeed | None, 
         return {}
     keys = [c.feed_key for _, c in exits]
     # the one live exit read (paper_exit.live_exit_prices): the refusals and their order are the ones named above
-    live = await paper_exit.live_exit_prices(ctx, feed, underlying, [None] if None in keys else sorted(set(keys)),  # type: ignore[type-var]
-                                             connected_rule="ctx", on_read_error="refuse")
+    live = await paper_exit.live_exit_prices(ctx, feed, underlying, [None] if None in keys else sorted(set(keys)))  # type: ignore[type-var]
     if isinstance(live, may_act.Refused):
         may_act.require(live)
     return {i: live[c.feed_key].price for i, c in exits}  # type: ignore[index, misc] - priced: price set

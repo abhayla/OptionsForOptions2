@@ -292,15 +292,15 @@ async def test_no_market_context_is_refused_not_connected_and_nothing_is_stored(
     assert await _closing(db, stored.id, list(stored.saved.contract_ids)) == []
 
 
-@pytest.mark.parametrize(("caller", "template"), [("tracking", "tracking_not_connected"),
-                                                  ("orders", "tracking_exit_prices_not_live")])
-async def test_a_disconnected_provider_is_refused_per_caller_and_nothing_is_stored(db, monkeypatch, caller, template):
-    """L3 kept: the tracking route asks the provider's status first; the orders route only has "no context"."""
-    app, stored, provider, clock, last = await _opened(db)
+@pytest.mark.parametrize("caller", CALLERS)
+async def test_a_disconnected_provider_is_refused_not_connected_for_both_callers_and_nothing_is_stored(
+        db, monkeypatch, caller):
+    """#728: one rule inside the door, the stricter one (fail closed): a market context whose provider says not
+    connected is "not connected" on the tracking route AND the orders route, with quotes still fresh."""
+    app, stored, provider, *_ = await _opened(db)
     monkeypatch.setattr(provider, "status", lambda: SimpleNamespace(connected=False))
-    clock.now = last + datetime.timedelta(minutes=10)  # a lost connection: the quotes age out
     reply = await _exit_call(app, stored, caller, [0, 1])
-    _refused(reply, template)
+    _refused(reply, "tracking_not_connected")
     assert await _closing(db, stored.id, list(stored.saved.contract_ids)) == []
 
 
@@ -342,19 +342,17 @@ async def test_one_stale_leg_among_live_ones_refuses_the_whole_exit_and_nothing_
     assert await _closing(db, stored.id, ids) == []
 
 
-@pytest.mark.parametrize(("caller", "status", "code"), [("orders", CONFLICT, "tracking_exit_prices_not_live"),
-                                                         ("tracking", HTTPStatus.INTERNAL_SERVER_ERROR, None)])
-async def test_a_price_read_that_raises_is_409_for_orders_and_500_for_tracking(db, monkeypatch, caller, status, code):
-    """L2 kept: a failed read is "no price" on the orders route, an unhandled error on the tracking route."""
+@pytest.mark.parametrize("caller", CALLERS)
+async def test_a_price_read_that_raises_is_409_prices_not_live_for_both_callers(db, monkeypatch, caller):
+    """#727: one behaviour: a failed price read is "no price" (the named 409) on the tracking route and the orders
+    route alike, never a 500; nothing is stored."""
     app, stored, *_ = await _opened(db)
 
     async def broken(*_a, **_k):
         raise RuntimeError("the price read failed")
     monkeypatch.setattr(tracking_routes, "_snapshot", broken)
     reply = await _exit_call(app, stored, caller, [0, 1], raise_app=False)
-    assert reply.status_code == status
-    if code is not None:
-        assert reply.json()["code"] == _code(code)
+    _refused(reply, "tracking_exit_prices_not_live")
     assert await _closing(db, stored.id, list(stored.saved.contract_ids)) == []
 
 

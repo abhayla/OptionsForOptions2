@@ -9,10 +9,10 @@ Two functions, used by every server path that builds paper exit orders:
 
 - ``live_exit_prices``: the ONE live exit read (the tracking exit route, the manual orders route and the exit-risk
   read all call it). It keeps today's read (``routes.tracking._snapshot``: one snapshot, then the planned-entry wait for
-  a leg nobody holds) so no refusal changes. ``connected_rule`` is "ctx" (the orders route: a market context exists) or
-  "provider" (the tracking route: the provider says connected); ``on_read_error`` is "refuse" (a failed read is "no
-  price", the orders route) or "raise" (the tracking route lets it be a 500). The market half of ``may_act`` stays
-  in the callers, where it always was, so no refusal changes order. Never call it under a strategy lock: it can wait.
+  a leg nobody holds). One rule for every caller (fail closed): not connected = no market context or the provider's
+  status says not connected; a failed read is "no price" (a named refusal, never a 500). The market half of ``may_act``
+  stays in the callers, where it always was, so no refusal changes order. Never call it under a strategy lock: it can
+  wait.
 - ``exit_strategy``: lock, load, choose, price, claim, write, in this order and for every caller:
   1. the strategy's row lock FIRST (the monitor used to claim its trigger before the lock: deadlock A3);
   2. the book under the lock -> the net per contract;
@@ -53,30 +53,24 @@ Refused = may_act.Refused
 
 
 async def live_exit_prices(ctx: Any, feed: Any, underlying: str,  # noqa: PLR0913 - the plan's signature
-                           feed_keys: Sequence[str | None], *,
-                           connected_rule: Literal["ctx", "provider"],
-                           on_read_error: Literal["refuse", "raise"]) -> dict[str, paper.Price] | Refused:
+                           feed_keys: Sequence[str | None]) -> dict[str, paper.Price] | Refused:
     """The live price answer of each feed key, or the ``Refused`` the routes always gave (``may_act.require``).
     ``feed_keys`` are read as given (a None key is a contract that is no longer live). Answer states: no market
-    (``tracking_not_connected``); a contract not live (``tracking_exit_contract_not_live``, never "try again"); a failed
-    read (refused or raised per ``on_read_error``); any price not live (``tracking_exit_prices_not_live``)."""
+    (``tracking_not_connected``: no context, or the provider says not connected); a contract not live
+    (``tracking_exit_contract_not_live``, never "try again"); a failed read (``tracking_exit_prices_not_live``); any price not live (``tracking_exit_prices_not_live``)."""
     from ofo_app.routes import tracking  # noqa: PLC0415 - the exit route's own market read, looked up at call time
-    connected = ctx is not None and (connected_rule == "ctx" or ctx.provider.status().connected)
+    connected = ctx is not None and ctx.provider.status().connected
     if not connected:
         return Refused(NOT_CONNECTED, Failure.CONFLICT)
     keys = [k for k in feed_keys if k is not None]
     if len(keys) != len(feed_keys):  # never priced from another contract's quote (token reused, delisted, retired)
         return Refused(CONTRACT_NOT_LIVE, Failure.CONFLICT)
-    if on_read_error == "raise":
+    try:
         snapshot = await tracking.exit_snapshot(ctx, feed, underlying, keys)
         prices = {k: paper.leg_price(snapshot, k) for k in keys}
-    else:
-        try:
-            snapshot = await tracking.exit_snapshot(ctx, feed, underlying, keys)
-            prices = {k: paper.leg_price(snapshot, k) for k in keys}
-        except Exception:  # any failed read is "no price": refused by name, nothing written
-            log.exception("paper exit price read failed")
-            return may_act.Refused(may_act.EXIT_PRICES_NOT_LIVE, Failure.CONFLICT)
+    except Exception:  # any failed read is "no price": refused by name, nothing written
+        log.exception("paper exit price read failed")
+        return may_act.Refused(may_act.EXIT_PRICES_NOT_LIVE, Failure.CONFLICT)
     decision = may_act.prices_ok("exit", [may_act.state_of(p) for p in prices.values()])
     return decision if isinstance(decision, Refused) else prices
 

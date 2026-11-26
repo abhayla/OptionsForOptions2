@@ -544,8 +544,7 @@ async def exit_tracking(strategy_id: int, body: TrackingExitIn,  # noqa: PLR0913
     # a retired / delisted / token-reassigned contract never comes back (Review M2): the door's own contract-not-live
     # refusal, never "try again"; every other refusal of the one live exit read is its own (paper_exit.live_exit_prices)
     keys = [None if reasons[i] is not None else legs[i].instrument_id for i in body.legs]
-    live = await paper_exit.live_exit_prices(ctx, feed, stored.saved.definition.underlying, keys,
-                                             connected_rule="provider", on_read_error="raise")
+    live = await paper_exit.live_exit_prices(ctx, feed, stored.saved.definition.underlying, keys)
     if isinstance(live, may_act.Refused):
         may_act.require(live)
     ids = [bk.contract_ids[i] for i in body.legs]
