@@ -32,6 +32,10 @@ const EXPIRIES: Record<string, string[]> = {
   NIFTY: ['2026-12-01', '2026-12-08', '2026-12-29'],
   SENSEX: ['2026-11-26', '2026-12-03'],
 }
+// The server's expiry_days (REQ-135 AC-2) for the shown date 2026-11-26, and the labels a trader reads for them.
+const DAYS: Record<string, number> = { '2026-11-26': 0, '2026-12-01': 5, '2026-12-03': 7, '2026-12-08': 12, '2026-12-29': 33 }
+const expiryDays = (list: string[]) => list.map((expiry) => ({ expiry, days: DAYS[expiry] }))
+const EXPIRY_LABELS: Record<string, string[]> = { NIFTY: ['1 Dec (5 days)', '8 Dec (12 days)', '29 Dec (33 days)'], SENSEX: ['Today (0 days)', '3 Dec (7 days)'] }
 const ATM: Record<string, string> = { NIFTY: '25150.00', SENSEX: '82000.00' }
 const SPOT: Record<string, string> = { NIFTY: '25145.50', SENSEX: '82010.25' }
 const UNIVERSE: Record<string, string[]> = {
@@ -142,7 +146,7 @@ async function stubChain(page: Page, o: Opts = {}): Promise<Stub> {
     S.calls.push(`${req.method()} ${pathname}`)
     if (get && pathname === '/api/settings') return serve(route, o.settings ?? ok(SETTINGS()))
     const cat = /^\/api\/catalogue\/(NIFTY|SENSEX)\/expiries$/.exec(pathname)
-    if (get && cat) return serve(route, o.expiries?.[cat[1]] ?? ok({ underlying: cat[1], expiries: EXPIRIES[cat[1]], today: '2026-11-26' }))
+    if (get && cat) return serve(route, o.expiries?.[cat[1]] ?? ok({ underlying: cat[1], expiries: EXPIRIES[cat[1]], expiry_days: expiryDays(EXPIRIES[cat[1]]), today: '2026-11-26' }))
     if (get && pathname === '/api/market/chain') {
       S.rest.push(searchParams)
       if (o.restAnswer) return route.fulfill({ json: o.restAnswer({ underlying: searchParams.get('underlying')!, expiry: searchParams.get('expiry')!, strikes_each_side: Number(searchParams.get('strikes_each_side')) }) })
@@ -236,7 +240,7 @@ test.describe('Option Chain: opening, underlying and expiry (REQ-029 AC-1, AC-8,
     const S = await openNifty(page)
     await expect(page.getByTestId('underlying-select').locator('option')).toHaveText(['NIFTY', 'SENSEX'])
     await page.getByTestId('underlying-select').selectOption('SENSEX')
-    await expect(page.getByTestId('expiry-select').locator('option')).toHaveText(EXPIRIES.SENSEX)
+    await expect(page.getByTestId('expiry-select').locator('option')).toHaveText(EXPIRY_LABELS.SENSEX)
     await expect(page.getByTestId('expiry-select')).toHaveValue('2026-11-26')
     await expect(page.getByTestId('spot')).toHaveText('82010.25')
     await expect.poll(() => strikesShown(page)).toEqual(UNIVERSE.SENSEX.map(labelOf))
@@ -284,8 +288,8 @@ test.describe('Option Chain: opening, underlying and expiry (REQ-029 AC-1, AC-8,
 
   test('CHAIN-02 the expiry list is the catalogue\'s, shown earliest first even when the server lists them in another order', async ({ page }) => {
     // Spec basis: none (searched: expiry order, default expiry; REQ-029 AC-8 names the selector only)
-    await openNifty(page, { expiries: { NIFTY: ok({ underlying: 'NIFTY', expiries: ['2026-12-29', '2026-12-01', '2026-12-08'], today: '2026-11-26' }) } })
-    await expect(page.getByTestId('expiry-select').locator('option')).toHaveText(EXPIRIES.NIFTY)
+    await openNifty(page, { expiries: { NIFTY: ok({ underlying: 'NIFTY', expiries: ['2026-12-29', '2026-12-01', '2026-12-08'], expiry_days: expiryDays(['2026-12-29', '2026-12-01', '2026-12-08']), today: '2026-11-26' }) } })
+    await expect(page.getByTestId('expiry-select').locator('option')).toHaveText(EXPIRY_LABELS.NIFTY)
     await expect(page.getByTestId('expiry-select')).toHaveValue(EXP1)
   })
 
@@ -343,8 +347,6 @@ test.describe('Option Chain: opening, underlying and expiry (REQ-029 AC-1, AC-8,
 
   test('CHAIN-02 expiry dates in the selector read as dates a trader reads, never the raw 2026-12-01', async ({ page }) => {
     // Spec basis: REQ-148 AC-2 (builder legs: "9 Nov (13 days)", never raw "2026-11-09"), applied to the chain's selector
-    // expected-fail: NEW-T40: the Expiry selector lists raw ISO dates (2026-12-01); REQ-148 AC-2 names the builder's legs, the chain is the same product
-    test.fail()
     await openNifty(page)
     await shot(page, 'NEW-T40')
     await expect(page.getByTestId('expiry-select').locator('option')).toHaveText(['1 Dec (5 days)', '8 Dec (12 days)', '29 Dec (33 days)'])
@@ -722,7 +724,7 @@ test.describe('Option Chain: ticking, Buy / Sell, lots, Remove, Undo (REQ-030 AC
     await pick(page, '25150', 'ce', 'buy')
     await pick(page, '25100', 'pe', 'sell')
     await expect(page.getByTestId('undo')).toHaveCount(0)
-    await page.getByRole('button', { name: 'Remove NIFTY 2026-12-01 25150.00 CE' }).click()
+    await page.getByRole('button', { name: 'Remove NIFTY 1 Dec 25150 CE' }).click()
     await expect(page.getByTestId('selected-leg')).toHaveCount(1)
     await expect(addSelected(page)).toHaveText('Add Selected (1)')
     await expect(page.getByTestId('undo')).toHaveText('Undo')
@@ -812,8 +814,6 @@ test.describe('Option Chain: ticking, Buy / Sell, lots, Remove, Undo (REQ-030 AC
 
   test('CHAIN-NAMES a selected leg is named with a date a trader reads (1 Dec), not the raw 2026-12-01 and not the raw 25150.00', async ({ page }) => {
     // Spec basis: REQ-029 AC-10 (every leg shows its expiry); REQ-148 AC-2 (never raw "2026-11-09"); the builder's own name for the same leg is "NIFTY 1 Dec 25150 CE"
-    // expected-fail: NEW-T41: Selected Legs names a leg "NIFTY 2026-12-01 25150.00 CE" (raw ISO date and raw strike text)
-    test.fail()
     await openNifty(page)
     await pick(page, '25150', 'ce', 'buy')
     await shot(page, 'NEW-T41')
