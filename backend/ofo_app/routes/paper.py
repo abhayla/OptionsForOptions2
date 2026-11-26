@@ -1542,7 +1542,8 @@ async def paper_leg_stop_risk(strategy_id: int, contract_id: Annotated[int, Quer
     if held.get(str(contract_id), 0) == 0:
         raise StrategyRefused("paper_trigger_leg_not_open")
     names, terms = await names_and_terms(db, stored.saved.definition.underlying, booked)
-    return leg_stop_answer(booked, held[str(contract_id)], contract_id, level, names, terms, now())
+    net = held[str(contract_id)]  # the open quantity (signed); a key, not reply text
+    return leg_stop_answer(booked, net, contract_id, level, names, terms, now())
 
 
 async def names_and_terms(db: Any, underlying: str, booked: Sequence[Any]) -> tuple[dict[str, Any], dict[str, Any]]:
