@@ -14,6 +14,9 @@ code, no spec rows, no migration. Owner evidence: comment 7184365037 on PR #722 
 | Current positions | `frontend/e2e/screen-positions.spec.ts` | 142 (stable: 568 passed with `--repeat-each 2`) | 6 (NEW-T20, NEW-T21/N-05, NEW-T22/N-04, NEW-T23, NEW-T24, N-01) | 5 | 4d9cbaa |
 | Live Strategies, Adjustment opportunities, Adjustments (playbooks, settings, system admin) | `frontend/e2e/screen-live-strategies.spec.ts` (+ `e2e/support/live-card-stub.ts`) | 130 (stable: 520 passed with `--repeat-each 2`; round 2 fixed a race in LINK-11) | 2 (N-14, NEW-T31) | 2 (NEW-T31, NEW-T32 observation) | 433f60c |
 | Option Chain | `frontend/e2e/screen-option-chain.spec.ts` | 105 (stable: 630 passed with `--repeat-each 3`) | 3 (NEW-T40, NEW-T41, row 12) | 2 | 247bcfd |
+| Strategy Builder part A (legs table, leg door, figures, Drafts Mode edits, Review and add, Exit) | `frontend/e2e/screen-builder-legs.spec.ts` | 90 (stable: 540 passed with `--repeat-each 3`) | 10 (row 12, N-04, N-05, N-07, NEW-T50, NEW-T51, NEW-T52 x3, NEW-T53 phone) | 4 | c32fd04 |
+| Strategy Builder part B (Drafts Mode, leave and replace questions, Save / Save As / Rename, saved list, history, drawers, load states) | `frontend/e2e/screen-builder-drafts.spec.ts` | 131 (stable: 786 passed with `--repeat-each 3`) | 12 (row 12 x2, NEW-T60..T68; NEW-T68 phone only) | 9 | 8c6ca7e |
+| Live-socket guard fix (REQ-133 AC-2) | chain spec no longer routes the strategy live socket; `live-card-stub.ts` pushes stamped; guard EXPECTED lists the stub | - | - | - | acbadd2 |
 
 Core proof: the row-2 test failed under one mutation (`HomeOverviewPage.vue` row link pinned to row 1: "Expected
 /strategy\/builder\?strategy=7$/ Received .../strategy/builder?strategy=12") and passed again after the revert.
@@ -50,6 +53,22 @@ migrated, 2026-10-08 catalogue seeded, uvicorn 8000-8002, previews 4173-4176) al
 | NEW-T40 | Option Chain | Open the chain; read the Expiry selector | Dates read "1 Dec (5 days)", never raw ISO (REQ-148 AC-2 names builder legs; applies to the chain? question) | Options "2026-12-01", "2026-12-08", "2026-12-29" | `CHAIN-02 expiry dates...` | `NEW-T40-1280.png` |
 | NEW-T41 | Option Chain | Tick 25150 CE, press Buy; read Selected Legs | "NIFTY 1 Dec 25150 CE", as the builder names it (REQ-029 AC-10, REQ-148 AC-2) | "NIFTY 2026-12-01 25150.00 CE", also in the Remove button's accessible name | `CHAIN-NAMES...` | `NEW-T41-1280.png` |
 
+| N-04 (owner) | Builder | Paper trade, stage an Exit, let the book read fail (page closes the Exit list) | Nothing staged remains (owner N-04) | The staged exit stays | `PP-22` | `N-04-1280.png` |
+| N-05 (owner) | Builder | Exit staged, book unreadable | Review and add looks and acts blocked (owner N-05, ADR-328 (4)) | Enabled; does nothing when pressed | `PP-20` | `N-05-1280.png` |
+| N-07 (owner) | Builder | Paper trade 63: compare the P&L Table tab with Net Positions for one contract | One price for one contract (ADR-008 one engine) | P&L Table 39.15 (outcome LTP) vs Net Positions 41.00 (paper book LTP) | `PP-24` | `N-07-1280.png` |
+| NEW-T50 | Builder | Draft of 4 legs, trash on row 2 | Removal is immediate with a short Undo (REQ-030 AC-15) | No Undo (only Clear all has one) | `LT-18` | `NEW-T50-1280.png` |
+| NEW-T51 | Builder | Add/Edit > "Pick from Option Chain" in the picker footer | The chain is reachable from the builder (REQ-029 AC-5, REQ-076 AC-10); may be by design (W-195 note): question | Only switches the strike table to the LTP view; URL stays /strategy/builder | `PK-14` | `NEW-T51-1280.png` |
+| NEW-T52 | Builder | Draft with SELL 22800 CE; Add/Edit, pick SELL 22800 CE, Done | "Already in this strategy" question answerable by Increase quantity / Keep separate / Cancel (ADR-328 (1), REQ-030 AC-12) | Question renders under the drawer overlay; no button can be clicked; only Escape answers | `ED-5b`, `ED-6`, `ED-7` | `NEW-T52-1280.png` |
+| NEW-T53 / NEW-T68 | Builder | Phone 390 px, open Add/Edit, look for "Show Editor >>" | A way back from the full-screen drawer (BUILD-15; spec silent, question) | The 520 px drawer pushes the edge tab to x=520, off screen | `PK-13`, `DR-2`, `DR-3` (mobile only) | `NEW-T53-390.png` |
+| NEW-T60 | Builder | Open ?strategy=7, remove a leg, reload | The unsaved change survives a reload (REQ-154 AC-1); conflicts with ADR-329's note: question | Builder empty | `LV-14` | `NEW-T60-1280.png` |
+| NEW-T61 | Builder | Rename, empty name, Save | "Give the strategy a name" (REQ-134 AC-1) | "The strategy has no name." (catalogue `strategy_name_empty`) | `SV-21` | - |
+| NEW-T62 | Builder | Open Settings | The REQ-138 AC-1 settings list | Only "Show legs as" | `MN-7` | - |
+| NEW-T63 | Builder | Settings > Quantity, reload | The choice is kept (REQ-138 AC-2) | Back to Lots; no settings write sent | `MN-8` | - |
+| NEW-T64 | Builder | Saved tab, search "zzz" | "No saved strategy matches zzz" (REQ-134 AC-4) | "No saved strategy matches." (`noMatchText` in saveDraft.js unused) | `SL-11` | - |
+| NEW-T65 (owner N-13) | Builder | Open ?strategy=7 with a slow read | No "No draft strategy is open" while reading (owner N-13) | Shown for the whole read | `ST-1` | - |
+| NEW-T66 | Builder | Open ?strategy=999 (deleted) | Wording that says not found (spec silent on the words: question) | Neutral "The page could not get an answer from the server." blames the connection | `ST-4` | - |
+| NEW-T67 | Builder | Saved tab, pencil on a row that is not open | The rename dialog opens (REQ-134 AC-3) | The strategy opens, no dialog: `renameRow` clears `pendingRename` before the async open sets `current.id` | `SL-18` | - |
+
 Screenshots are written by the tests to `frontend/test-results/lane-t/` (gitignored; regenerated on each run).
 
 ## Coverage guard
@@ -58,6 +77,11 @@ Screenshots are written by the tests to `frontend/test-results/lane-t/` (gitigno
 file:line and label, when a route or control has no row in `screen-inventory.json`, or a row's control is gone.
 Matching is on source file + kind + testid-or-label, not the positional id. Proof: a temporary `<button>Lane T probe</button>`
 in `HomeOverviewPage.vue` made it fail with `HomeOverviewPage.vue:81 button "Lane T probe"`; reverted.
+
+## Not covered yet (Strategy Builder)
+
+- BUILD-18..38 payoff chart, summary and figure widgets, charges, margin; BUILD-39..62 execute, tracking, adjust drawer; BUILD-68..85 adjust compare; BUILD-130..136 ready-made panel contents; BUILD-187..196 scenario and target blocks (partly in existing column-mode, display-format, range-step specs).
+- BUILD-93..95 strategy-type confirm; BUILD-101..108 straddle, strangle, quick select, futures, synthetic; BUILD-116/185 reprice prompt; BUILD-156/157 paper toast after Add to Paper; BUILD-91/92 choosing width or lots mode.
 
 ## Not covered yet (Option Chain)
 
