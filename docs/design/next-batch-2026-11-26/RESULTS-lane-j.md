@@ -253,8 +253,8 @@ current, none hand-edited.
 
 | 2 | 7d81d0a | ic docs 3d66541, Lane R ce5316e, Step 2, Step 3, the review fix | `prepush.py --full` TOTAL PASS 2137 s |
 | 3 | 3d7aaf7 | ic docs e40a5ad, Lane R ecb3655, Lane P a59f7a9 (0056), Lane U b81970b, Lane S d344d82 | `prepush.py --full` TOTAL PASS 2460 s |
-| 4 | (see push 5 row) | P7 page answers, P8 Reset button, ADR-330 (31) with 0057, health e2e fix, side-closed templates | `prepush.py --full` |
-| 5 | (this push) | Not-applicable plan line, S-11 hold, Lane R 71ed990, Lane U 63091d7 | see the commit's gate |
+| 4+5 | 9f769b5 | P7 page answers, P8 Reset button, ADR-330 (31) with 0057, health e2e fix, side-closed templates; Not-applicable plan line, S-11 hold, Lane R 71ed990, Lane U 63091d7 | `prepush.py --full` TOTAL PASS 2195 s |
+| 6 | (this push) | section (a) corrected from the PC rehearsal; owner question LJ-2 | see the commit's gate |
 
 Coordinator message for push 1 could not be sent: the session-message service refused this session (untrusted
 device); recorded here instead.
