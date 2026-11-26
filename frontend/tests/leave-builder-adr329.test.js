@@ -130,6 +130,41 @@ describe('the leave guard (harness)', () => {
     const done = await Promise.race([nav.then(() => 'settled'), new Promise((r) => setTimeout(() => r('dangling'), 200))])
     expect(done).toBe('settled')
   })
+  // ADR-330 (22): a running trade (Drafts Mode, snapshot carries paperId) counts PENDING CHANGES; a new unsaved strategy keeps unsaved legs
+  it('P1 Drafts Mode: the question reads "The 2 pending changes will be lost."; one reads "The 1 pending change"', async () => {
+    unsaved.value = 2
+    snapshot = { legs: [{ id: 'a' }], paperId: 171 }
+    const { router, w } = await start()
+    const nav = router.push({ name: HOME })
+    await flushPromises()
+    expect(t(w, 'leave-question').text()).toBe('Leave the builder? The 2 pending changes will be lost.')
+    await t(w, 'leave-stay').trigger('click')
+    await nav
+    unsaved.value = 1
+    const nav2 = router.push({ name: HOME })
+    await flushPromises()
+    expect(t(w, 'leave-question').text()).toBe('Leave the builder? The 1 pending change will be lost.')
+    await t(w, 'leave-stay').trigger('click')
+    await nav2
+  })
+  it('P2 the chain page, a held Drafts Mode hold (paperId): "The 2 pending changes will be lost."; a hold without paperId keeps unsaved legs', async () => {
+    const router = makeRouter(Harness, ChainHarness)
+    await router.push({ name: CHAIN_ROUTE })
+    const w = app(router)
+    await flushPromises()
+    useBuilderHold().hold({ legs: [{ id: 'a' }, { id: 'b' }], paperId: 171 })
+    const nav = router.push({ name: HOME })
+    await flushPromises()
+    expect(t(w, 'leave-question').text()).toBe('Leave the builder? The 2 pending changes will be lost.')
+    await t(w, 'leave-stay').trigger('click')
+    await nav
+    useBuilderHold().hold({ legs: [{ id: 'a' }, { id: 'b' }] })
+    const nav2 = router.push({ name: HOME })
+    await flushPromises()
+    expect(t(w, 'leave-question').text()).toBe('Leave the builder? The 2 unsaved legs will be lost.')
+    await t(w, 'leave-stay').trigger('click')
+    await nav2
+  })
   it('L1 no unsaved legs: the push to Home resolves with no dialog (absent)', async () => {
     const { router, w } = await start()
     await router.push({ name: HOME })

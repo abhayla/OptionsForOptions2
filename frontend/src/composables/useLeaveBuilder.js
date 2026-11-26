@@ -11,8 +11,9 @@ import { useBuilderHold } from '@/stores/builderHold'
 export const CHAIN_ROUTE = 'market-option-chain'
 export const BUILDER_ROUTES = Object.freeze(['strategies-strategy-builder', 'strategy-builder-screen'])
 
-/** ADR-329 (2), verbatim; one leg reads "The 1 unsaved leg will be lost." (plan choice, on the screen-check list). */
-export const leaveQuestion = (n) => `Leave the builder? The ${n} unsaved ${n === 1 ? 'leg' : 'legs'} will be lost.`
+/** ADR-329 (2), verbatim; one leg reads "The 1 unsaved leg will be lost." (plan choice, on the screen-check list).
+ *  ADR-330 (22): a running trade (Drafts Mode, `pending`) counts its pending changes: "The N pending changes will be lost." ("The 1 pending change"). */
+export const leaveQuestion = (n, pending = false) => `Leave the builder? The ${n} ${pending ? 'pending' : 'unsaved'} ${pending ? 'change' : 'leg'}${n === 1 ? '' : 's'} will be lost.`
 
 const whole = (n) => (Number.isInteger(n) && n > 0 ? n : 0)
 /** "Unsaved" = shown legs with no saved copy (`savedId === null`); in Drafts Mode the pending changes the bar shows. A pure count. */
@@ -21,10 +22,13 @@ export function unsavedCount({ legCount, savedId, inDrafts, pendingCount }) {
   return savedId === null || savedId === undefined ? whole(legCount) : 0
 }
 
+/** A running trade is the builder in Drafts Mode: its snapshot / hold carries the paper strategy id (ADR-330 (22)). */
+const isRunningTrade = (snap) => snap?.paperId !== null && snap?.paperId !== undefined
+
 /** `role` 'builder' (needs `unsaved()` and `snapshot()`) or 'chain'. Returns the open question and its two answers for LeaveBuilderDialog. */
 export function useLeaveBuilder({ role, unsaved = () => 0, snapshot = () => null }) {
   const hold = useBuilderHold()
-  const question = ref(null) // null, or { count }
+  const question = ref(null) // null, or { count, pending }
   let resolveOpen = null
   const settle = (stay) => {
     const resolve = resolveOpen
@@ -33,11 +37,11 @@ export function useLeaveBuilder({ role, unsaved = () => 0, snapshot = () => null
     resolve?.(stay)
   }
   /** Resolves true to leave, false to stay; a newer question settles the older one as Stay (settle(true) = stay). */
-  const ask = (count) => {
+  const ask = (count, pending) => {
     settle(true)
     return new Promise((resolve) => {
       resolveOpen = (stay) => resolve(!stay)
-      question.value = { count }
+      question.value = { count, pending }
     })
   }
   const stay = () => settle(true)
@@ -53,12 +57,12 @@ export function useLeaveBuilder({ role, unsaved = () => 0, snapshot = () => null
         return true
       }
       const n = unsaved()
-      if (n > 0 && !(await ask(n))) return false
+      if (n > 0 && !(await ask(n, isRunningTrade(snapshot())))) return false
       hold.clear()
       return true
     }
     if (BUILDER_ROUTES.includes(name) || name === CHAIN_ROUTE || hold.held === null) return true
-    if (!(await ask(hold.count))) return false
+    if (!(await ask(hold.count, isRunningTrade(hold.held)))) return false
     hold.clear()
     return true
   }
