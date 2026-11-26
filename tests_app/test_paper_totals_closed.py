@@ -51,8 +51,9 @@ async def test_a_closed_strategy_of_another_user_is_not_counted(db):  # noqa: F8
 async def test_a_deleted_closed_strategy_is_not_counted(db):  # noqa: F811
     """ADR-293 delete hides the strategy: it is neither listed nor counted."""
     app, _p, _c, _l, sid = await _seed_three(db)
+    closed_two = 2  # the seeded closed strategy and the one added here
     extra = await _another_closed(db, sid, 2)
-    assert (await _list(app))["totals"]["closed_count"] == 2
+    assert (await _list(app))["totals"]["closed_count"] == closed_two
     await db.execute(text(_DELETE), {"id": extra.id})
     assert (await _list(app))["totals"]["closed_count"] == 1
 

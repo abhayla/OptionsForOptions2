@@ -75,6 +75,7 @@ from ofo.strategy.definition import describe_contract, display_contract
 from ofo.table.model import display_number
 from ofo.timeutil import IST
 from ofo.tracking import paper, paper_decay, paper_greeks, stops
+from ofo.tracking.closing import open_legs_to_close
 from ofo.tracking.orderbook import ClosedLeg, NetPosition, PaperOrder, is_typed_price, net_positions
 from ofo.tracking.paper_alert import restore_alert_body, restore_order_reason, settle_history_body
 from pydantic import AwareDatetime, BaseModel, ConfigDict, Field, field_validator
@@ -1532,8 +1533,10 @@ def _leg_stop_answer(booked: Sequence[Any], net: int, contract_id: int, level: D
                      names: Mapping[str, Any], terms: Mapping[str, Any], at: datetime.datetime) -> ExitRiskOut:
     """THE ADR-330 (6) answer for one leg stop (the route and the monitor's fired-stop message both call this, so the
     figure is computed one way): the one-leg exit of the whole open quantity ``net`` at ``level``."""
+    # the close's side and quantity from the exit door's own rule (G2: no side flipped outside it); no order is built
+    close = open_legs_to_close({str(contract_id): net})[0]
     try:
-        leg = PaperOrder(str(contract_id), "BUY" if net < 0 else "SELL", abs(net), level, "exit", at)
+        leg = PaperOrder(str(close.key), close.side, close.quantity, level, "exit", at)
     except ValueError:
         return _exit_risk_answer("cannot_tell")
     risk = exit_risk(_paper(booked), [leg], terms, priced=True)
@@ -1559,8 +1562,8 @@ def index_exit_answer(booked: Sequence[Any], exits: Mapping[int, Decimal], terms
     (``exits``: contract id -> the fill price). The confirmation's own rule: a line only when the engine says yes."""
     held = {p.instrument_id: p.net_quantity for p in net_positions(_paper(booked), {}).positions}
     try:
-        legs = [PaperOrder(str(c), "BUY" if held[str(c)] < 0 else "SELL", abs(held[str(c)]), price, "exit", at)
-                for c, price in sorted(exits.items())]
+        legs = [PaperOrder(str(c.key), c.side, c.quantity, exits[int(c.key)], "exit", at)
+                for c in open_legs_to_close({str(c): held[str(c)] for c in sorted(exits)})]
     except (ValueError, KeyError):
         return _exit_risk_answer("cannot_tell")
     risk = exit_risk(_paper(booked), legs, terms, priced=True)
