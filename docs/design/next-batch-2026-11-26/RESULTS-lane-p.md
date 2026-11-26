@@ -8,7 +8,7 @@ P12. Highest status claimed for anything here: **Fixed, not tested** (the owner 
 
 | Item | Status | Reviews | Notes |
 |---|---|---|---|
-| P1 one actionable-alert module + one info pop-up | Fixed, not tested | Opus round 1: REVISE (F1-F5, M1-M7); fix passes A and B merged; Opus round 2: every round-1 finding CLOSED, verdict PARK on two NEW MAJORs (NEW-1: after a worse step "no longer true" is judged against that step, so the row can flap each minute and the timeline grows; NEW-2: a watched-level crossing gets no pop-up any more) - both are item P1c (running; second push if not done in time) | Wave 2 steps below |
+| P1 one actionable-alert module + one info pop-up | Fixed, not tested | Opus round 1 REVISE (F1-F5, M1-M7) -> fix passes A and B; Opus round 2 closed all of them, found NEW-1 and NEW-2 (MAJOR) -> new item P1c; Opus check of P1c: SHIP (NEW-1, NEW-2, NEW-3 closed) | Wave 2 steps below; deferred #743 (held episode judged on the held step, pre-existing) |
 | P2 only a strategy's own plan applies | Fixed, not tested | Sonnet: FIX (1 MAJOR, fixed inside P1b: plan-less strategies' open records close by system); 1 regression (A-27/A-35 test lacked a plan) fixed | |
 | P3 stop amounts fixed at entry | Fixed, not tested | Opus round 1 FIX (F1 CRITICAL: T-06 still fired on the live max loss), round 2 SHIP | |
 | P4 rupee plan levels | Fixed, not tested: complete with P4b (P4 itself was PARKED with N1 open after two rounds; P4b closed N1, Sonnet round 2 SHIP) | Opus round 1 FIX (F1-F9), round 2 SHIP on money with NEW N1 MAJOR (the levels preview drops the 2x-credit part while typing) | Both P4 merge commits are on the branch: "Merge P4 (ADR-330 (5), owner Q3) ..." and "Merge P4 Opus fixes F1-F9 ...". P4b (N1) is a new item for the second push |
@@ -30,7 +30,7 @@ Q2b/LP-1 = `actionable_alerts.close_by_system` callers in `background.py`.
 
 ## Deferred issues and open findings
 
-#742 read-only routes reach order code through playbook_store (structural). Open MINORs listed for the owner: P3 NEW-1
+#742 read-only routes reach order code through playbook_store (structural). #743 a held alert episode ends on the held step, not the rule's line (pre-existing, one held row per close after the daily cap). P1c MINORs: no test pins the browser's "watch.level." prefix to the Python constant; engine rule ids (stop.credit_x, plan.rupee_*, T-06, T-16, T-18) are not refused as user rule ids. Process: a builder killed an alembic process that held a DB session (the rule says never kill processes by name; recorded). Open MINORs listed for the owner: P3 NEW-1
 (real-book entry with holdings adopted one by one), NEW-2 (ADR-266 check skipped at max loss exactly 0), a negative live
 max loss raises inside the evaluator (pre-existing); P5 2027 calendar missing (step 3, #686); P1 M7 (shown_at back-dating
 needs deliberate code), F7 of P3 (partly filled real entry reads "not checked").
