@@ -655,13 +655,13 @@ class LevelsOut(ApiModel):
 
 
 def preview_stop_words(body: dict | None, saved_before: bool, kind: str | None, bases: Bases,
-                       stop: str | None, stop_rupees: str | None) -> Any:
+                       typed_in: PlanIn) -> Any:
     """The stop sentence of the levels preview: the SAME builder the saved plan uses (``with_overrides`` then
     ``with_rupee_figures`` -> ``_stop_words``, which keeps the lines still in force), on a copy of the body with the typed
     level put in. Nothing is stored. None when there is no body to read the lines from."""
     if body is None:
         return None
-    typed = with_overrides(body, PlanIn(playbook_id=0, stop=stop or None, stop_rupees=stop_rupees or None), kind, bases)
+    typed = with_overrides(body, typed_in, kind, bases)
     return with_rupee_figures(_values(typed, saved_before, kind), typed, bases, kind=kind,
                               saved_before=saved_before)["stop_words"]
 
@@ -717,7 +717,8 @@ async def read_levels(  # noqa: PLR0913 - FastAPI dependencies, one per input
                 body = (await store.active_for(db, user_ref, stype)).body
             kind = _kind_of(tracked, in_force_mod.money_inputs(tracked, market, rates))
             saved_before = plan is not None and await check.plan_saved_before_adr247(db, plan)
-            words = preview_stop_words(body, saved_before, kind, bases, stop, stop_rupees)
+            words = preview_stop_words(body, saved_before, kind, bases,
+                                       PlanIn(playbook_id=0, stop=stop or None, stop_rupees=stop_rupees or None))
             reply["stop"]["words"] = words if words is not None else reply["stop"]["words"]
     except store.PlaybookStoreError as exc:
         raise _refused(exc) from None
