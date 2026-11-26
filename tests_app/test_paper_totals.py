@@ -227,6 +227,8 @@ async def test_a_fully_exited_strategy_counts_in_booked_and_decays_nothing(db):
                               "charges_reason_text": str(reason_text("rates_unavailable")),
                               "totals_as_of": None,  # GC-LIVE L3a: no paused book, no pause time
                               "left_out_count": 0, "left_out_text": None,  # D-40: nothing expired
+                              # P11: the one fully exited strategy is a closed one
+                              "closed_count": 1, "closed_text": render_explanation("paper_totals_closed_one"),
                               # ADR-301 to ADR-311: the after-charges figures wait for the same missing rates
                               "total_after": None, "total_after_text": None, "booked_after": None,
                               "booked_after_text": None, "unbooked_after": None, "unbooked_after_text": None,
@@ -250,6 +252,7 @@ async def test_no_paper_strategies_answers_an_empty_list_and_zero_totals(db):
                               "charges_reason": None, "totals_reason_text": None, "decay_reason_text": None,
                               "charges_reason_text": None, "totals_as_of": None,
                               "left_out_count": 0, "left_out_text": None,
+                              "closed_count": 0, "closed_text": None,  # P11
                               # ADR-301 to ADR-311: nothing traded, so every after-charges figure is zero
                               "total_after": "0.00", "total_after_text": zero, "booked_after": "0.00",
                               "booked_after_text": zero, "unbooked_after": "0.00", "unbooked_after_text": zero,

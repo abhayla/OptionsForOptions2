@@ -11,6 +11,7 @@ from ofo_app import strategy_store as store
 from sqlalchemy import text
 from test_paper_routes import AT
 from test_paper_totals import _fixture, _list, _seed_three, _strategy, db  # noqa: F401 - db is a fixture
+from test_strategy_store import _ids, _saved_in
 
 ONE = "Includes 1 closed strategy; tick Show closed positions to list them"
 MANY = "Includes {n} closed strategies; tick Show closed positions to list them"
@@ -41,9 +42,10 @@ async def test_none_closed_is_zero_and_null(db):  # noqa: F811
 
 async def test_a_closed_strategy_of_another_user_is_not_counted(db):  # noqa: F811
     app, _p, _c, _l, sid = await _seed_three(db)
-    await db.execute(text("UPDATE public.strategies SET user_ref = 'someone-else' WHERE id = :id"), {"id": sid["50"]})
-    totals = (await _list(app))["totals"]
-    assert (totals["closed_count"], totals["closed_text"]) == (0, None)
+    await db.execute(text(_DELETE), {"id": sid["50"]})  # the signed-in user's only closed one is gone ...
+    other = await store.save_draft(db, "someone-else", await _saved_in(db, "someone-else", await _ids(db)))
+    await _strategy(db, other, [(0, _fixture(50)["legs"][0])], AT, new=False)  # ... another user's closed one stays
+    assert (await _list(app))["totals"]["closed_count"] == 0
 
 
 async def test_a_deleted_closed_strategy_is_not_counted(db):  # noqa: F811
