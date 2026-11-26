@@ -4,7 +4,7 @@
      /api/strategies/{id} with the revision THIS PAGE loaded and asks nothing (REQ-134 AC-2); Save As asks for a name
      prefilled "<name> copy", POSTs a new strategy and opens the copy; the original is never sent. The list (GET /api/strategies)
      reopens a draft (GET /api/strategies/{id}) with the legs exactly as stored: a planned entry and its capture time are never
-     re-captured here. Every refusal shows the API's catalogue message (an empty name: "The strategy has no name.", from the API,
+     re-captured here. Every refusal shows the API's catalogue message (an empty name: "Give the strategy a name.", from the API,
      not retyped); the draft on screen is never cleared by a failure. A name is shown as text, never as HTML. No number is computed. -->
 <script setup>
 import { computed, nextTick, onBeforeUnmount, onMounted, ref, watch } from 'vue'
@@ -30,7 +30,7 @@ import { newestEntry, newestSeq, restoreEntry, useDeleteFlow } from '@/lib/strat
 import { isCompleted, strategyStatusWord } from '@/lib/strategyStatus'
 import { RUNNING_TAB_EMPTY_MESSAGE, RUNNING_TAB_EMPTY_TITLE } from '@/lib/sharedStateText'
 import {
-  STRATEGY_NAME_DEFAULT, STRATEGY_NAME_MAX, buildSaveBody, nameLimitText, buildUpdateBody, canSaveLegs, fetchSavedDraft, legsLine, plainName, renameStrategy, saveAsName, strategyLabel,
+  STRATEGY_NAME_DEFAULT, STRATEGY_NAME_MAX, buildSaveBody, nameLimitText, noMatchText, buildUpdateBody, canSaveLegs, fetchSavedDraft, legsLine, plainName, renameStrategy, saveAsName, strategyLabel,
 } from '@/lib/saveDraft'
 
 const props = defineProps({
@@ -249,10 +249,8 @@ let pendingRename = null
 async function renameRow(d) {
   if (busy.value) return
   if (props.current?.id === d.id) return renameOpen()
-  pendingRename = d.id
-  await open(d.id)
-  await nextTick()
-  pendingRename = null
+  pendingRename = d.id // kept until the page holds the opened strategy (the watch below) or the open fails
+  if (!(await open(d.id))) pendingRename = null
 }
 watch(() => props.current?.id, (id) => {
   if (pendingRename !== null && id === pendingRename) {
@@ -316,15 +314,18 @@ async function confirmName() {
 }
 
 async function open(id) {
-  if (busy.value) return
+  if (busy.value) return false
+  if (pendingRename !== id) pendingRename = null // any other open cancels a rename waiting on a row
   busy.value = true
   errorParts.value = null
   try {
     const { legs, revision, name } = await fetchSavedDraft(api, id) // throws when unreadable: the draft on screen stays
     asking.value = null
     emit('open', legs, id, revision, name)
+    return true
   } catch (e) {
     errorParts.value = e?.parts ?? NEUTRAL_PARTS
+    return false
   } finally {
     busy.value = false
   }
@@ -522,7 +523,7 @@ class="flex shrink-0 items-center gap-1 opacity-100 md:opacity-0 md:focus-within
             </span>
           </li>
         </ul>
-        <p v-else class="mt-2 text-ink-muted" data-testid="saved-empty">{{ search.trim() ? 'No saved strategy matches.' : 'No saved strategies yet.' }}</p>
+        <p v-else class="mt-2 text-ink-muted" data-testid="saved-empty">{{ search.trim() ? noMatchText(search) : 'No saved strategies yet.' }}</p>
         <router-link to="/strategies/my-strategies" class="mt-2 inline-block text-accent" data-testid="saved-show-all">Show all in My Strategies</router-link>
       </div>
       <div v-show="tab === 'tracked'" class="mt-3" data-testid="tab-panel-tracked"><slot name="tracked" :active="tab === 'tracked'"><EmptyState icon="pulse" :title="RUNNING_TAB_EMPTY_TITLE" :message="RUNNING_TAB_EMPTY_MESSAGE" /></slot></div>

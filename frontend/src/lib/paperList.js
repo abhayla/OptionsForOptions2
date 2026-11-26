@@ -158,7 +158,8 @@ export function readPaperStrategy(s, index = 0) {
 
 function readTotals(t) {
   if (!t || typeof t !== 'object') return null
-  const totalReason = withAsOf(text(t.totals_reason_text), t.totals_as_of)
+  // REQ-109 AC-5: a paused total always says so, with the time of the last price: ONE sentence for Positions and Home (pnlFigure reads it)
+  const totalReason = withAsOf(text(t.totals_reason_text) ?? (t.after_charges_reason === 'prices_not_live' ? PAPER_PAUSED : null), t.totals_as_of)
   return {
     totalAfter: afterFigure(t, text(t.total_text), totalReason), // GC-ICFIX u123: one total from the engine's sum, never a partial one
     bookedAfter: afterFigure(t, text(t.booked_text), totalReason, 'booked_after_text', ['paid']),

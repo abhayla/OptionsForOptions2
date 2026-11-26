@@ -82,7 +82,7 @@ onBeforeUnmount(() => {
         :aria-label="title"
         tabindex="-1"
         class="absolute top-0 bottom-0 flex max-w-full flex-col bg-surface shadow-drawer focus:outline-none"
-        :class="side === 'left' ? 'left-0' : 'right-0'"
+        :class="[side === 'left' ? 'left-0' : 'right-0', $slots.edge ? 'max-[639px]:!max-w-[calc(100%-28px)]' : '']"
         :style="{ width }"
         :data-side="side"
         data-testid="drawer"
@@ -122,7 +122,8 @@ onBeforeUnmount(() => {
         >
           <slot name="footer" />
         </footer>
-        <!-- GC-UI 6c D-C35: an optional tab on the panel's outer edge (the leg picker's "Show Editor") -->
+        <!-- GC-UI 6c D-C35: an optional tab on the panel's outer edge (the leg picker's "Show Editor"). U-Q5 (a), NEW-T53/T68:
+             on a phone (< 640 px) the panel leaves 28 px of the viewport for this tab, so the way back is on screen, never past the edge. -->
         <div v-if="$slots.edge" class="absolute top-1/2 left-full -translate-y-1/2">
           <slot name="edge" />
         </div>

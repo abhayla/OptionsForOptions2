@@ -47,6 +47,7 @@ const props = defineProps({
   priceTextById: { type: Object, default: () => ({}) }, // GC-UI D-PX: the outcome's own two-decimal price texts by instrument id: { ltp_display, planned_entry_display }
   ltpById: { type: Object, default: () => ({}) }, // the outcome's own per-leg LTP strings by instrument id (REQ-077 AC-6)
   controls: { type: Object, default: () => NO_CONTROLS }, // REQ-078 AC-2: controlsFrom(the newest reply)
+  undoText: { type: String, default: LEGS_CLEARED }, // 'All legs removed.' or 'Leg removed.'
   undoOffered: { type: Boolean, default: false }, // REQ-135 AC-1: the page holds the cleared legs for 10 seconds
   legUnit: { type: String, default: 'lots' }, // REQ-076 AC-5: 'lots' | 'quantity', chosen in the page's Settings popover
   strategyName: { type: String, default: null }, // the open saved strategy's name, else the card reads "New Strategy"
@@ -176,7 +177,7 @@ function setMultiplier(index) {
       <button type="button" class="ml-1 rounded border border-line px-2" data-testid="clear-confirm-no" @click="confirmingClear = false">Cancel</button>
     </p>
     <p v-if="undoOffered" class="py-2" :style="cardPadding" data-testid="clear-undo-bar">
-      {{ LEGS_CLEARED }} <button type="button" class="text-accent underline" data-testid="clear-undo" @click="emit('undo-clear')">Undo</button>
+      {{ undoText ?? LEGS_CLEARED }} <button type="button" class="text-accent underline" data-testid="clear-undo" @click="emit('undo-clear')">Undo</button>
     </p>
 
     <div v-if="!legs.length && !opening && !done" class="py-6 text-center" :style="cardPadding" data-testid="no-legs">

@@ -738,8 +738,8 @@ issues:
   "#747": S6.7  # Paper Orderbook in lots (ADR-330 (23), N-15): order rows carry no lots or lot size
   "#748": S6.7  # Option Chain: a newly picked expiry shows Unavailable for 13-26 s instead of a waiting state (S-09)
   "#749": S6.7  # Builder closed-leg table: the stop-loss sentence wraps to 3 lines in the narrow Exit column and overflows it (N-43)
-  "#750": S6.7  # Builder settings are not saved per user (REQ-138 AC-1/AC-2 not built; Lane T NEW-T62, NEW-T63)
-  "#751": S6.7  # Unsaved builder strategy is lost on reload (REQ-154 not built; Lane T NEW-T60; ADR-329 conflict)
+  "#750": S6.1  # Builder settings not saved per user (REQ-138 AC-1/AC-2 not built; Lane T NEW-T62, NEW-T63)
+  "#751": S6.1  # Unsaved builder strategy lost on reload (REQ-154 not built; NEW-T60; ADR-329 (3) conflict, U-Q6)
   "#752": S6.7  # After the close, option prices keep moving while the banner says "Prices are from 15:30:00" (N-45)
   "#753": S6.7  # deferred: the first edit of a plan saved before ADR-247 makes it read as saved after (accepted_at restamped by 0041)
   "#754": S6.7  # Egress gate test red when HTTPS_PROXY is set (test_attack2 gets proxy 400, not EgressRefused)

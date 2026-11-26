@@ -369,6 +369,7 @@ EXPECTED = {
     "frontend/e2e/feed-reconnect.spec.ts": [ECHO_RULE],
     "frontend/e2e/strategy-live.spec.ts": [CLIENT_RULE, FORWARD_RULE],
     "frontend/e2e/live-strategies.spec.ts": [FORWARD_RULE],
+    "frontend/e2e/support/live-card-stub.ts": [ECHO_RULE],
     "frontend/e2e/support/quiet-live.ts": [],
 }
 LIVE_ROUTE = "await page.routeWebSocket('**/api/strategies/live', (ws) => {\n  %s\n})\n"
@@ -400,7 +401,7 @@ def test_real_tree_every_live_socket_send_meets_the_rule() -> None:
 
 
 def test_report_lists_each_live_socket_file_and_the_rule_each_send_met(capsys: pytest.CaptureFixture[str]) -> None:
-    """AC-2: the live-socket files today are exactly the five known ones, with the rule each send met."""
+    """AC-2: the live-socket files today are exactly the six known ones, with the rule each send met."""
     rules, report, _ = scan(ROOT)
     with capsys.disabled():
         for rel, line, rule in report:

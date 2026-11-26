@@ -68,7 +68,7 @@ import { replacePrompt } from '@/lib/readyMade'
 import SaveDraftBar from '@/components/strategy/SaveDraftBar.vue'
 import LegList from '@/components/strategy/LegList.vue'
 import { paperLegListPrices } from '@/lib/chartCard'
-import { applyEditReply,buildEditRequest, controlsFrom, moveKey, MAX_STEPS, RELATIVE_CONTROLS, executeRefusal, CLEAR_UNDO_SECONDS_KEY, MULTIPLIER_MAX_KEY, EXECUTE_WAITS_FOR_LATEST, NO_CONTROLS } from '@/lib/legEdit'
+import { applyEditReply, buildEditRequest, controlsFrom, moveKey, MAX_STEPS, RELATIVE_CONTROLS, executeRefusal, CLEAR_UNDO_SECONDS_KEY, LEG_REMOVED, MULTIPLIER_MAX_KEY, EXECUTE_WAITS_FOR_LATEST, NO_CONTROLS } from '@/lib/legEdit'
 import { createNewestWins, isSuperseded } from '@/lib/newestWins'
 import { NOT_CONNECTED_LABEL, buildDraft } from '@/lib/legPicker'
 import { matchesLegs } from '@/lib/liveMatch'
@@ -788,7 +788,6 @@ const setLegs = (next) => {
 function readShape() {
   if (!linkRefused.value && legs.value.length >= 2) editLeg({ control: 'read' })
 }
-const removeLeg = (i) => setLegs(legs.value.filter((_, k) => k !== i))
 
 // REQ-135 AC-1: Clear all legs. The legs (and the saved strategy they belong to) are held for the served Clear-all window; the clear is
 // an ordinary edit (the saved copy changes only on Save), exactly as removing the last leg is. One timer, not a recurring one.
@@ -806,6 +805,18 @@ async function clearAll() {
   const ms = await useSettingsValues().waitMs(CLEAR_UNDO_SECONDS_KEY) // the served wait (REQ-167 AC-7)
   if (ms === null) return // not readable: no Undo is offered, never a typed time
   if (legs.value.length) return // legs came back while the wait was read: an Undo would restore over them
+  undoHeld.value = held
+  clearTimeout(undoTimer)
+  undoTimer = setTimeout(dropUndo, ms)
+}
+// REQ-030 AC-15 (Q56): a row's trash is immediate and offers the SAME Undo as Clear all (one mechanism: undoHeld/undoClear). A paper
+// trade's removal is a staged change with its own Discard, so it gets no second Undo.
+async function removeLeg(i) {
+  const held = { legs: legs.value, savedId: savedId.value, savedRevision: savedRevision.value, openStrategy: openStrategy.value, text: LEG_REMOVED }
+  setLegs(legs.value.filter((_, k) => k !== i))
+  if (paper.value) return
+  const ms = await useSettingsValues().waitMs(CLEAR_UNDO_SECONDS_KEY)
+  if (ms === null || legs.value.length !== held.legs.length - 1) return // unreadable, or the legs changed while the wait was read
   undoHeld.value = held
   clearTimeout(undoTimer)
   undoTimer = setTimeout(dropUndo, ms)
@@ -1244,7 +1255,7 @@ const leaveGuard = useLeaveBuilder({
         <LegList
           :opening="opening" :done="paperCompleted" :locked="exitBlocked" :lock-reason="exitGate.reason.value"
           :multiplier-max="served.integer(MULTIPLIER_MAX_KEY)" :legs="legs" :pending-steps="pendingSteps" :paper-fills="paperFills" :quote-at-by-id="quoteAtById" :oldest-quote-at="data?.oldest_quote_at ?? null" :shape-name="shapeName" :has-reply="hasReply" :controls="controls" :updating="updating" :error-parts="editError" :error-index="editErrorIndex" :ltp-by-id="legListPrices.ltpById" :price-text-by-id="legListPrices.priceTextById"
-          :undo-offered="undoHeld !== null" :leg-unit="legUnit" :strategy-name="openStrategy?.name ?? null"
+          :undo-offered="undoHeld !== null" :undo-text="undoHeld?.text" :leg-unit="legUnit" :strategy-name="openStrategy?.name ?? null"
           @edit="editLeg" @edit-leg="openInPicker" @include-all="includeAll" @remove="removeLeg" @add-leg="focusPicker" @pick-chain="pickFromChain" @clear-all="clearAll" @undo-clear="undoClear"
         >
           <template #money>

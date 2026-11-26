@@ -10,7 +10,7 @@
 <script setup>
 import { computed, onMounted, ref, watch } from 'vue'
 import { useRoute } from 'vue-router'
-import api, { NEUTRAL_PARTS } from '@/services/api'
+import api, { NEUTRAL_PARTS, hasShape } from '@/services/api'
 import ErrorMessage from '@/components/common/ErrorMessage.vue'
 import PageHeader from '@/components/common/PageHeader.vue'
 import EmptyState from '@/components/states/EmptyState.vue'
@@ -63,7 +63,9 @@ const realState = computed(() => {
 const realPnlText = computed(() => (typeof result.value?.pnl_text === 'string' ? result.value.pnl_text : null))
 onMounted(async () => {
   try {
-    result.value = (await api.get('/positions')).data
+    const body = (await api.get('/positions')).data
+    if (!hasShape(body, ['strategies']) || !Array.isArray(body.strategies)) throw { unreadable: true } // ADR-008: an answer with no strategies list is a failed read, never an empty one
+    result.value = body
   } catch (e) {
     errorParts.value = e?.parts ?? NEUTRAL_PARTS
     // fail closed: only a connection read that succeeded and says not connected is "not connected"; an unreadable one is a failed read

@@ -20,7 +20,7 @@ import { UNAVAILABLE_LABEL, isPermitted, reasonLine } from '@/lib/chainUnavailab
 import { UNDERLYINGS } from '@/lib/underlyings'
 import api from '@/services/api'
 import { healthSentence, missingCode, missingReason, shownHealth } from '@/lib/dataHealthText'
-import { istClock, istStamp, setShownDate, strikeLabel } from '@/lib/displayFormat'
+import { contractName as legName, daysByExpiry, expiryWithDays, istClock, istStamp, setShownDate, strikeLabel } from '@/lib/displayFormat'
 import MarketClosedBanner from '@/components/states/MarketClosedBanner.vue'
 import LeaveBuilderDialog from '@/components/strategy/LeaveBuilderDialog.vue'
 import { useLeaveBuilder } from '@/composables/useLeaveBuilder'
@@ -44,6 +44,8 @@ const props = defineProps({ initialUnderlying: { type: String, default: 'NIFTY' 
 const underlying = ref(props.initialUnderlying)
 const expiries = ref([])
 const expiry = ref('')
+const expiryDays = ref({}) // the server's days left per expiry (REQ-135 AC-2); the browser counts nothing for the label
+const shownToday = ref(null)
 const catalogueFailed = ref(false)
 let expirySeq = 0 // the newest expiry read wins
 
@@ -67,6 +69,8 @@ async function loadExpiries() {
     const res = await api.get(`/catalogue/${underlying.value}/expiries`)
     if (mine !== expirySeq) return
     expiries.value = [...res.data.expiries].sort()
+    shownToday.value = res.data.today ?? null
+    expiryDays.value = daysByExpiry(res.data.expiry_days)
     setShownDate(res.data.today)
     expiry.value = expiries.value[0] ?? ''
     if (!expiry.value) catalogueFailed.value = true
@@ -122,7 +126,8 @@ const isChosen = (cell, action) => entriesOf(cell).some((e) => e.action === acti
 const tick = (row, type) => selection.toggleContract(contractFor(row, type))
 const choose = (row, type, action) => selection.chooseAction(contractFor(row, type), action)
 const canAdd = computed(() => legs.value.length > 0 && pending.value.length === 0)
-const contractName = (e) => `${e.underlying} ${e.expiry} ${e.strike} ${e.type}`
+// One module names a contract (lib/displayFormat.js), the builder's own name: 'NIFTY 1 Dec 25150 CE' (REQ-148 AC-2).
+const contractName = (e) => legName({ ...e, instrument_type: e.type })
 
 let entrySeq = 0
 function openBuilder() {
@@ -202,7 +207,7 @@ const resetFilters = () => (filters.value = { ...NO_FILTERS })
       <label class="field-label">
         Expiry
         <select v-model="expiry" class="field ml-1" data-testid="expiry-select">
-          <option v-for="e in expiries" :key="e" :value="e">{{ e }}</option>
+          <option v-for="e in expiries" :key="e" :value="e">{{ expiryWithDays(e, expiryDays[e], shownToday) }}</option>
         </select>
       </label>
       <span v-if="days !== null" class="text-sm text-ink-muted" data-testid="days-left">{{ days }} days left</span>
