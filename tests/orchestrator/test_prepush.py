@@ -1,5 +1,6 @@
 """prepush.py: step order, every step runs, exit code, marker only on all-pass + clean tracked tree.
 Injected runner and a temp git repo; the real suites are never run here."""
+import importlib.util
 import json
 import os
 import re
@@ -794,3 +795,256 @@ def test_complete_is_a_structural_check():
     assert not prepush.complete([row("a"), row("b"), row("c")], ["a", "b"])  # unplanned
     assert not prepush.complete([row("a"), row("a")], ["a"])  # duplicate
     assert not prepush.complete([row("a"), row("b", prepush.STOPPED_RC)], ["a", "b"])  # stopped
+
+
+# ---- proxy notice ----
+
+def test_the_proxy_notice_names_the_variables_and_never_their_values(monkeypatch):
+    for name in prepush.PROXY_VARS:
+        monkeypatch.delenv(name, raising=False)
+    assert prepush.proxy_notice() is None
+    monkeypatch.setenv("HTTPS_PROXY", "http://user:secret@proxy.example:3128")
+    monkeypatch.setenv("all_proxy", "socks5://other-secret@proxy.example:1080")
+    monkeypatch.setenv("HTTP_PROXY", "")  # set but empty: not a proxy
+    text = prepush.proxy_notice()
+    assert text.startswith("NOTICE: proxy variables set (HTTPS_PROXY, all_proxy): tests that expect the egress gate")
+    assert "secret" not in text and "proxy.example" not in text and "HTTP_PROXY" not in text.replace("HTTPS_PROXY", "")
+    assert text.endswith("them unset (runbook, Before a push)")
+
+
+def test_run_all_prints_the_proxy_notice_once_and_it_changes_no_verdict(tmp_path, monkeypatch, capsys):
+    for name in prepush.PROXY_VARS:
+        monkeypatch.delenv(name, raising=False)
+    repo = make_repo(tmp_path)
+    assert prepush.run_all(str(repo), runner=Runner(), log_dir=str(tmp_path / "a")) == 0
+    assert "NOTICE" not in capsys.readouterr().out
+    monkeypatch.setenv("HTTP_PROXY", "http://hidden-value:1")
+    assert prepush.run_all(str(repo), runner=Runner(), log_dir=str(tmp_path / "b")) == 0  # still passes
+    out = capsys.readouterr().out
+    assert out.count("NOTICE: proxy variables set (HTTP_PROXY)") == 1 and "hidden-value" not in out
+    assert prepush.has_marker(str(repo), sha_of(repo))
+
+
+# ---- docs-only lane ----
+
+REPO_ROOT = Path(__file__).resolve().parents[2]
+SKIPPED_STEPS = ["ruff_ratchet", "alembic_guard"]
+
+
+def docs_repo(tmp_path):
+    """A repo with tools/change_scope.py (copied from this one) and origin/main at its first commits."""
+    repo = make_repo(tmp_path)
+    (repo / "tools").mkdir()
+    (repo / "tools" / "change_scope.py").write_text((REPO_ROOT / "tools" / "change_scope.py").read_text("utf-8"),
+                                                    encoding="utf-8")
+    commit_file(repo, "docs/old.md", "old")
+    commit_file(repo, "backend/old.py", "x = 1\n")
+    git(repo, "add", "tools")
+    git(repo, "commit", "-q", "-m", "tools")
+    git(repo, "update-ref", "refs/remotes/origin/main", "HEAD")
+    return repo
+
+
+def docs_count(repo):
+    return prepush.docs_only_change(str(repo))
+
+
+def test_a_docs_only_diff_counts_its_files_additions_modifications_and_deletions(tmp_path):
+    repo = docs_repo(tmp_path)
+    assert docs_count(repo) is None  # nothing changed: an empty diff is not a docs lane
+    commit_file(repo, "spec/new.md", "n")
+    commit_file(repo, "docs/old.md", "changed")
+    commit_file(repo, "README.md", "root markdown")
+    assert docs_count(repo) == 3  # noqa: PLR2004
+    git(repo, "rm", "-q", "docs/old.md")
+    git(repo, "commit", "-q", "-m", "delete a records file")
+    assert docs_count(repo) == 3  # noqa: PLR2004  # a deleted records file is still one changed file
+
+
+@pytest.mark.parametrize("rel", ["backend/x.py", "tools/x.py", ".github/x.yml", "notes.txt", "docs/script.py",
+                                 "docs/test_x.md", "unknown/x.md"])
+def test_an_unknown_path_anywhere_in_the_diff_is_the_full_lane(tmp_path, rel):
+    repo = docs_repo(tmp_path)
+    commit_file(repo, "docs/fine.md", "ok")
+    assert docs_count(repo) == 1
+    commit_file(repo, rel, "x")
+    assert docs_count(repo) is None
+
+
+def test_deleting_a_code_file_renaming_one_or_changing_a_mode_is_the_full_lane(tmp_path):
+    repo = docs_repo(tmp_path)
+    git(repo, "rm", "-q", "backend/old.py")
+    git(repo, "commit", "-q", "-m", "delete code")
+    assert docs_count(repo) is None
+    git(repo, "reset", "-q", "--hard", "origin/main")
+    git(repo, "mv", "backend/old.py", "docs/moved.md")
+    git(repo, "commit", "-q", "-m", "rename code into docs")
+    assert docs_count(repo) is None  # with --no-renames it is a deletion of a code path plus an addition
+    git(repo, "reset", "-q", "--hard", "origin/main")
+    git(repo, "update-index", "--chmod=+x", "docs/old.md")
+    git(repo, "commit", "-q", "-m", "mode")
+    assert docs_count(repo) is None
+
+
+@pytest.mark.skipif(sys.platform == "win32", reason="symlinks need privileges on Windows")
+def test_a_symlink_is_the_full_lane(tmp_path):
+    repo = docs_repo(tmp_path)
+    (repo / "docs" / "ln.md").symlink_to("old.md")
+    git(repo, "add", "docs/ln.md")
+    git(repo, "commit", "-q", "-m", "symlink")
+    assert docs_count(repo) is None
+
+
+def test_no_merge_base_a_git_failure_or_an_import_failure_is_the_full_lane(tmp_path):
+    repo = docs_repo(tmp_path)
+    commit_file(repo, "docs/fine.md", "ok")
+    assert docs_count(repo) == 1
+    assert prepush.docs_only_change(str(repo), base="origin/missing") is None  # no merge base
+    assert prepush.docs_only_change(str(tmp_path / "not-a-repo")) is None  # git fails
+    (repo / "tools" / "change_scope.py").write_text("raise RuntimeError('broken')\n", encoding="utf-8")
+    assert docs_count(repo) is None  # import failure
+    (repo / "tools" / "change_scope.py").unlink()
+    assert docs_count(repo) is None
+
+
+def test_docs_only_entries_fails_closed_on_every_odd_shape():
+    spec = importlib.util.spec_from_file_location("cs_for_test", REPO_ROOT / "tools" / "change_scope.py")
+    scope = importlib.util.module_from_spec(spec)
+    sys.modules[spec.name] = scope
+    spec.loader.exec_module(scope)
+    ok = ("A", ["docs/a.md"], ("000000", "100644"))
+    assert prepush.docs_only_entries(scope.path_is_docs, [ok]) == 1
+    assert prepush.docs_only_entries(scope.path_is_docs, []) is None
+    odd = [("A", ["docs/../backend/x.py"], ("000000", "100644")),  # a path with ..
+           ("A", ["../docs/x.md"], ("000000", "100644")),
+           ("D", ["backend/x.py"], ("100644", "000000")),  # deleting a code file
+           ("R", ["docs/a.md", "docs/b.md"], ("100644", "100644")),  # a rename
+           ("T", ["docs/a.md"], ("100644", "120000")),
+           ("M", ["docs/a.md"], ("100644", "100755")),  # mode change
+           ("M", ["docs/a.md"], ("100755", "100755")),
+           ("A", ["docs/a.md"], ("000000", "120000")),  # symlink
+           ("A", ["docs/sub"], ("000000", "160000")),  # submodule
+           ("M", ["docs/a.md", "docs/b.md"], ("100644", "100644")),
+           ("A", [], ("000000", "100644"))]
+    for entry in odd:
+        assert prepush.docs_only_entries(scope.path_is_docs, [ok, entry]) is None, entry
+
+
+def test_full_never_asks_for_the_docs_lane(tmp_path, capsys):
+    def boom(repo):
+        raise AssertionError("must not be asked with --full")
+
+    repo = make_repo(tmp_path)
+    rc = prepush.run_all(str(repo), full=True, runner=Runner(), log_dir=str(tmp_path / "l"), select_docs_only=boom)
+    assert rc == 0
+    assert "SKIP" not in capsys.readouterr().out
+
+
+def run_docs(repo, tmp_path, runner, count=3, jobs=1, **kw):
+    kw.setdefault("select_docs_app", lambda r: (0, ["tests_app/test_reads_docs.py"], "1 files"))
+    return prepush.run_all(str(repo), runner=runner, log_dir=str(tmp_path / "l"), jobs=jobs,
+                           select_docs_only=lambda r: count, **kw)
+
+
+@pytest.mark.parametrize("jobs", [1, 4])
+def test_a_docs_only_change_skips_exactly_ruff_and_alembic_and_still_runs_the_rest(tmp_path, capsys, jobs):
+    repo = make_repo(tmp_path)
+    runner = ThreadRunner()
+
+    def no_code_selector(r):
+        raise AssertionError("the code app-test selector must not be used in the docs lane")
+
+    def frontend_would_fail(r):  # a frontend step would FAIL here (no node_modules): it must not even be planned
+        return ["src/a.js"]
+
+    assert run_docs(repo, tmp_path, runner, jobs=jobs, select_app=no_code_selector,
+                    select_frontend=frontend_would_fail, which=which) == 0
+    out = capsys.readouterr().out
+    assert sorted(Path(c[2]).stem for c in runner.calls) == sorted(["coverage", *LONG])
+    for name in SKIPPED_STEPS:
+        assert f"SKIP {name} skipped: docs-only change (3 files)" in out
+    assert "frontend_" not in out and "PASS preflight" in out and "PASS app_tests" in out
+    app = next(c[0] for c in runner.calls if Path(c[2]).stem == "app_tests")
+    assert app[-1] == "tests_app/test_reads_docs.py"
+    assert prepush.has_marker(str(repo), sha_of(repo))
+    body = json.loads(Path(prepush.marker_path(str(repo), sha_of(repo))).read_text(encoding="utf-8"))
+    assert body["mode"] == {"jobs": jobs, "lane": "docs-only (3 files)"}
+    assert [s["name"] for s in body["steps"]] == NAMES  # plan order, skipped steps in place
+    assert [s for s in body["steps"] if "skipped" in s] == [
+        {"name": n, "skipped": "docs-only change (3 files)"} for n in SKIPPED_STEPS]
+    assert all(s["rc"] == 0 for s in body["steps"] if "skipped" not in s)
+
+
+def test_a_failing_step_in_the_docs_lane_still_blocks_the_marker(tmp_path):
+    repo = make_repo(tmp_path)
+    assert run_docs(repo, tmp_path, Runner(fail={"coverage"})) == 1
+    assert not prepush.has_marker(str(repo), sha_of(repo))
+
+
+def test_a_skip_outside_the_allowed_tuple_blocks_the_marker(tmp_path, monkeypatch, capsys):
+    repo = make_repo(tmp_path)
+    monkeypatch.setattr(prepush, "_lane", lambda repo, full, sel: ("docs-only (3 files)", {"coverage": "sneaky"}))
+    assert run_docs(repo, tmp_path, Runner()) == 1
+    assert not prepush.has_marker(str(repo), sha_of(repo))
+    assert "TOTAL FAIL" in capsys.readouterr().out
+    row = lambda n: (n, 0, 0.0, "x.log")  # noqa: E731
+    everything = ["ruff_ratchet", "coverage"]
+    assert prepush.complete([row("coverage")], everything, skips=("ruff_ratchet",))
+    assert not prepush.complete([row("ruff_ratchet")], everything, skips=("coverage",))  # coverage is not skippable
+    assert not prepush.complete([row("coverage")], everything, skips=())  # a step with no result and no skip
+
+
+def test_a_real_docs_only_branch_runs_the_docs_lane_end_to_end(tmp_path, capsys):
+    repo = docs_repo(tmp_path)
+    (repo / "tests_app").mkdir()
+    commit_file(repo, "tests_app/test_reads.py", 'P = ROOT / "spec" / "decisions" / "ADR-1.md"\n')
+    commit_file(repo, "tests_app/test_plain.py", "x = 1\n")
+    git(repo, "update-ref", "refs/remotes/origin/main", "HEAD")
+    commit_file(repo, "spec/decisions/ADR-1.md", "text")
+    runner = Runner()
+    assert prepush.run_all(str(repo), runner=runner, log_dir=str(tmp_path / "l")) == 0
+    out = capsys.readouterr().out
+    assert "SKIP ruff_ratchet skipped: docs-only change (1 files)" in out
+    app = next(c[0] for c in runner.calls if Path(c[2]).stem == "app_tests")
+    assert app[-1] == "tests_app/test_reads.py" and "tests_app/test_plain.py" not in app
+    body = json.loads(Path(prepush.marker_path(str(repo), sha_of(repo))).read_text(encoding="utf-8"))
+    assert body["mode"]["lane"] == "docs-only (1 files)"
+
+
+def test_the_app_selection_picks_the_files_that_read_docs_paths(tmp_path):
+    repo = docs_repo(tmp_path)
+    apps = repo / "tests_app"
+    (apps / "sub").mkdir(parents=True)
+    (apps / "test_joins.py").write_text('P = ROOT / "spec" / "decisions" / "ADR-210.md"\n', encoding="utf-8")
+    (apps / "test_literal.py").write_text('P = Path("docs/api/openapi.json")\n', encoding="utf-8")
+    (apps / "test_os_join.py").write_text('P = os.path.join(ROOT, "views", "spec-digest.md")\n', encoding="utf-8")
+    (apps / "test_plain.py").write_text('opts.get("plans", "closed")\nX = "frontend/src/a.js"\n', encoding="utf-8")
+    (apps / "_paths.py").write_text('DIGEST = "views/spec-digest.md"\n', encoding="utf-8")
+    (apps / "test_via_helper.py").write_text("import _paths\n", encoding="utf-8")
+    (apps / "sub" / "conftest.py").write_text('F = "knowledge/findings/x.json"\n', encoding="utf-8")
+    (apps / "sub" / "test_under_conftest.py").write_text("x = 1\n", encoding="utf-8")
+    rc, files, message = prepush.select_docs_app_tests(str(repo))
+    assert rc == 0, message
+    assert files == ["tests_app/sub/test_under_conftest.py", "tests_app/test_joins.py", "tests_app/test_literal.py",
+                     "tests_app/test_os_join.py", "tests_app/test_via_helper.py"]
+    assert "tests_app/test_plain.py" not in files
+
+
+def test_the_app_selection_fails_closed(tmp_path):
+    repo = docs_repo(tmp_path)
+    rc, files, message = prepush.select_docs_app_tests(str(repo))  # no tests_app/
+    assert rc == 1 and files == [] and "tests_app" in message
+    (repo / "tests_app").mkdir()
+    (repo / "tests_app" / "test_bad.py").write_bytes(b"\xff\xfe not utf-8 \x80")
+    assert prepush.select_docs_app_tests(str(repo))[0] == 1  # unreadable file
+    (repo / "tests_app" / "test_bad.py").unlink()
+    assert prepush.select_docs_app_tests(str(repo))[0] == 0
+    (repo / "tools" / "change_scope.py").unlink()
+    assert prepush.select_docs_app_tests(str(repo))[0] == 1  # cannot load the docs folder names
+
+
+def test_a_selection_error_in_the_docs_lane_is_a_fail(tmp_path):
+    repo = make_repo(tmp_path)
+    assert run_docs(repo, tmp_path, Runner(), select_docs_app=lambda r: (1, [], "cannot select")) == 1
+    assert "cannot select" in (tmp_path / "l" / "app_tests.log").read_text(encoding="utf-8")
+    assert not prepush.has_marker(str(repo), sha_of(repo))

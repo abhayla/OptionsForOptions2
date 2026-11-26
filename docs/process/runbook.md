@@ -83,7 +83,14 @@ except that a red preflight stops the run. `--jobs N` (or `PREPUSH_JOBS`; the op
 or not a number is a usage error, exit 2) runs the preflight, ci_checks, domain tests, app tests and vitest side by side
 after the serial cheap checks and the frontend lint and build; `--jobs 1` is the plain serial reference. A red preflight
 then stops the steps not yet started and kills the running ones with their whole process tree. Every child gets its own
-temp root (`<tempdir>/ofo-prepush-tmp/<repo hash>/<step>`) in both modes. It writes the marker that `git push` and
+temp root (`<tempdir>/ofo-prepush-tmp/<repo hash>/<step>`) in both modes. In a cloud container, unset the proxy
+variables for the gate: `env -u HTTPS_PROXY -u HTTP_PROXY -u https_proxy -u http_proxy -u ALL_PROXY -u all_proxy python
+scripts/orchestrator/prepush.py`; the owner's PC sets none (the gate prints a NOTICE naming any it finds). Docs-only lane (not with `--full`): when every changed path since the merge base is a records file (`tools/change_scope.py`
+`path_is_docs`; added, modified or deleted; no rename, mode change or symlink; any doubt = full lane), the report shows
+`SKIP ruff_ratchet` and `SKIP alembic_guard` (they read only `.py` files and migrations), no frontend step is planned, and
+the app tests are the `tests_app` files that read a docs-folder path (not the code selector). Preflight, ci_checks,
+coverage and domain_tests run as always. The marker records the skips and `lane: "docs-only (<n> files)"`; only those
+two steps may be skipped. It writes the marker that `git push` and
 `land.py` require for that exact HEAD only when every step passed, the tree was clean from start to end, HEAD did not
 move and no untracked file sits under backend/, tests*/, scripts/ or frontend/src/, and every planned step has a
 passing result (an amend needs a new run; the marker records `mode`: jobs and lane). A push

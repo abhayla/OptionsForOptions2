@@ -25,6 +25,15 @@ min(N, steps) threads, preflight submitted first; each keeps its own log, second
 sets a stop event: steps not started are reported `FAIL <name> 0.0s stopped: preflight failed`, running ones are killed
 with their whole process tree (POSIX: own session + killpg SIGTERM then SIGKILL after KILL_GRACE_S; Windows:
 CREATE_NEW_PROCESS_GROUP + `taskkill /F /T`), then the STOP line. The same tree kill ends a step at STEP_TIMEOUT_S.
+Docs-only lane (not with --full): when EVERY path changed since the merge base with origin/main is a records file
+(tools/change_scope.py path_is_docs from the checked repo; status A or M, or D of a records path; mode 100644; no
+rename, symlink or submodule; anything unreadable = the full lane), ruff_ratchet and alembic_guard are reported
+`SKIP <step> skipped: docs-only change (<n> files)` (they read only .py files and migrations), the frontend steps
+are not
+planned, and app_tests runs the tests_app files that READ a docs-folder path (select_docs_app_tests; a selection error
+= FAIL). Preflight, ci_checks, coverage and domain_tests run unchanged (the kit already narrows a docs change to the
+records tests). The marker records the skips ({"name", "skipped"}) and lane "docs-only (<n> files)"; only the steps in
+SKIPPABLE may be skipped, any other skip blocks it.
 Isolation (both modes): every child gets its own TMPDIR/TEMP/TMP, <tempdir>/ofo-prepush-tmp/<sha1(repo)[:12]>/<step>
 (stable across runs, so the preflight's mypy cache stays warm; no two stages share one).
 Each step's output goes to a log file outside the repo; one line per step. A step that times out
@@ -120,6 +129,96 @@ def select_app_tests(repo: str) -> tuple[int, list[str], str]:
     return r.returncode, files, out.strip()
 
 
+SKIPPABLE = ("ruff_ratchet", "alembic_guard")  # the only steps the docs-only lane may skip (.py / migrations)
+RECORDS_MODES = {"A": ("000000", "100644"), "M": ("100644", "100644"), "D": ("100644", "000000")}
+
+
+def load_change_scope(repo: str):
+    """tools/change_scope.py of the CHECKED repo (like select_domain_tests imports ci_local)."""
+    import importlib.util  # noqa: PLC0415
+
+    path = os.path.join(repo, "tools", "change_scope.py")
+    spec = importlib.util.spec_from_file_location("change_scope_for_prepush", path)
+    module = importlib.util.module_from_spec(spec)
+    sys.modules[spec.name] = module
+    spec.loader.exec_module(module)
+    return module
+
+
+def docs_only_entries(path_is_docs, entries) -> int | None:
+    """Number of entries when every one is an added / modified / deleted records file (mode 100644, one path), else
+    None. entries: (status letter, [paths], (old mode, new mode)) as change_scope.parse_raw_z gives them."""
+    if not entries:
+        return None
+    for status, paths, modes in entries:
+        if status not in RECORDS_MODES or len(paths) != 1 or tuple(modes) != RECORDS_MODES[status]:
+            return None
+        if not path_is_docs(paths[0]):
+            return None
+    return len(entries)
+
+
+def docs_only_change(repo: str, base: str = "origin/main") -> int | None:
+    """Count of changed files when the whole change since the merge base is records files, else None (fail closed:
+    no merge base, git error, empty diff, tools/change_scope.py not importable, anything unexpected)."""
+    try:
+        rc, merge_base = _git(repo, "merge-base", base, "HEAD")
+        if rc != 0 or not merge_base:
+            return None
+        scope = load_change_scope(repo)
+        proc = subprocess.run(["git", "-C", repo, "--no-pager", "-c", "core.quotepath=off", "diff", "--raw", "-z",  # noqa: S603, S607
+                               "--no-renames", "--no-abbrev", "--no-ext-diff", merge_base, "HEAD", "--"],
+                              capture_output=True, text=True, encoding="utf-8", errors="replace", check=False)
+        if proc.returncode != 0:
+            return None
+        return docs_only_entries(scope.path_is_docs, scope.parse_raw_z(proc.stdout) or [])
+    except Exception:  # noqa: BLE001 - any doubt is the full lane
+        return None
+
+
+def docs_readers_patterns(folders) -> tuple[re.Pattern[str], re.Pattern[str]]:
+    """(string literal starting with a docs folder and '/', a Path / join operand naming a docs folder)."""
+    names = "|".join(re.escape(f) for f in folders)
+    literal = re.compile(rf"""["'`](?:\./)?(?:{names})/""")
+    quoted = rf"""["'](?:{names})["']"""
+    joined = re.compile(rf"/\s*{quoted}|{quoted}\s*/|(?:join|joinpath|Path|PurePath)\([^)\n]*{quoted}")
+    return literal, joined
+
+
+def select_docs_app_tests(repo: str) -> tuple[int, list[str], str]:
+    """(rc, tests_app/**/test_*.py files that read a docs path, message); rc != 0 = cannot select (fail closed).
+    A helper or conftest.py that names a docs path selects every test that imports it (conftest: every test beside or
+    below it)."""
+    try:
+        literal, joined = docs_readers_patterns(load_change_scope(repo).DOCS_FOLDERS)
+        root = os.path.join(repo, "tests_app")
+        if not os.path.isdir(root):
+            return 1, [], "tests_app/ not found"
+        tests, helpers = [], []
+        for here, dirs, files in os.walk(root):
+            dirs[:] = sorted(d for d in dirs if d != "__pycache__")
+            for name in sorted(files):
+                if name.endswith(".py"):
+                    path = os.path.join(here, name)
+                    with open(path, encoding="utf-8") as handle:
+                        text = handle.read()
+                    rel = os.path.relpath(path, repo).replace(os.sep, "/")
+                    (tests if name.startswith("test_") else helpers).append((rel, text))
+        reads = lambda text: bool(literal.search(text) or joined.search(text))  # noqa: E731
+        readers = [rel for rel, text in helpers if reads(text)]
+
+        def uses(rel, text, helper):
+            stem = os.path.splitext(os.path.basename(helper))[0]
+            if stem == "conftest":
+                return rel.startswith(os.path.dirname(helper) + "/")
+            return re.search(rf"\b{re.escape(stem)}\b", text) is not None
+
+        picked = sorted(rel for rel, text in tests if reads(text) or any(uses(rel, text, h) for h in readers))
+        return 0, picked, f"{len(picked)} tests_app files read docs paths"
+    except Exception as exc:  # noqa: BLE001 - cannot select: fail closed
+        return 1, [], repr(exc)
+
+
 FRONTEND = "frontend"
 FRONTEND_TEST_DIRS = ("src/", "tests/")  # a change elsewhere in frontend/ (config, package.json) runs every test file
 
@@ -154,7 +253,8 @@ class Plan:
     command writes its reason to its log."""
 
     def __init__(self, repo, full, runner, log_dir, select_domain, select_app,  # noqa: PLR0913
-                 frontend=(), which=shutil.which):
+                 frontend=(), which=shutil.which, skips=None):
+        self.skips = dict(skips or {})  # step name -> reason it is not run (the docs-only lane)
         self.repo, self.full, self.runner, self.log_dir = repo, full, runner, log_dir
         self.select_domain, self.select_app = select_domain, select_app
         self.frontend, self.which = frontend, which  # frontend: frontend_changes() result
@@ -218,6 +318,10 @@ class Plan:
                         log=log)
 
     def steps(self):
+        """The steps to run, in order (skipped ones left out)."""
+        return [(n, f) for n, f in self.all_steps() if n not in self.skips]
+
+    def all_steps(self):
         py = sys.executable
         front = self.frontend != []  # None (diff unreadable) runs them too: fail closed
         # seconds-long checks first (finding cheap-check-after-expensive-one: they used to run after ~33 min of long
@@ -397,12 +501,18 @@ def untracked_source(repo) -> list[str] | None:
     return [p for p in out.splitlines() if p.replace("\\", "/").startswith(UNTRACKED_SOURCE)]
 
 
-def write_marker(repo, sha, results, mode=None) -> str:
+def marker_rows(results, skips, order) -> list[dict]:
+    """The marker's step rows in plan order: a run step is {name, rc, seconds}, a skipped one {name, skipped}."""
+    rows = {n: {"name": n, "rc": rc, "seconds": s} for n, rc, s, _ in results}
+    rows.update({n: {"name": n, "skipped": reason} for n, reason in skips.items()})
+    return [rows[n] for n in order if n in rows]
+
+
+def write_marker(repo, sha, rows, mode=None) -> str:
     path = marker_path(repo, sha)
     os.makedirs(os.path.dirname(path), exist_ok=True)
     body = {"sha": sha, "at": datetime.now(UTC).isoformat(timespec="seconds"),
-            "mode": mode or {"jobs": 1, "lane": "full"},
-            "steps": [{"name": n, "rc": rc, "seconds": s} for n, rc, s, _ in results]}
+            "mode": mode or {"jobs": 1, "lane": "full"}, "steps": rows}
     tmp = path + ".tmp"
     with open(tmp, "w", encoding="utf-8") as handle:
         json.dump(body, handle, indent=1)
@@ -481,11 +591,13 @@ def _run_parallel(plan: Plan, log_dir: str, clock, jobs: int, stop: threading.Ev
     return results
 
 
-def complete(results, planned) -> bool:
-    """Structural check for the marker: the result names are exactly the planned names (each once) and every rc is 0.
-    A step that never ran or was stopped can never count as passed."""
-    names = [n for n, _, _, _ in results]
-    return len(names) == len(set(names)) and set(names) == set(planned) and all(rc == 0 for _, rc, _, _ in results)
+def complete(results, planned, skips=()) -> bool:
+    """Structural check for the marker: the run results plus the skipped steps are exactly the planned names (each
+    once), every rc is 0, and only steps in SKIPPABLE are skipped. A step that never ran or was stopped can never
+    count as passed."""
+    names = [n for n, _, _, _ in results] + list(skips)
+    return (len(names) == len(set(names)) and set(names) == set(planned) and set(skips) <= set(SKIPPABLE)
+            and all(rc == 0 for _, rc, _, _ in results))
 
 
 def _blocker(repo, sha, clean_at_start) -> str | None:
@@ -511,20 +623,54 @@ def _blocker(repo, sha, clean_at_start) -> str | None:
     return reason
 
 
-def _marker_note(repo, start, results, ok, mode) -> str:
+def _marker_note(repo, start, rows, ok, mode) -> str:
     """Write the marker when every condition holds and say so; otherwise the reason it was not written.
     start = (sha, tree was clean at the start)."""
     note = "marker not written"
     if not ok:
-        failed = ", ".join(n for n, rc, _, _ in results if rc != 0)
-        return note + f" (failed: {failed})"
+        failed = ", ".join(r["name"] for r in rows if r.get("rc", 0) != 0)
+        return note + (f" (failed: {failed})" if failed else " (a planned step has no passing result)")
     if (reason := _blocker(repo, *start)) is not None:
         return note + f" ({reason})"
-    return "marker " + write_marker(repo, start[0], results, mode)
+    return "marker " + write_marker(repo, start[0], rows, mode)
+
+
+PROXY_VARS = ("HTTPS_PROXY", "HTTP_PROXY", "https_proxy", "http_proxy", "ALL_PROXY", "all_proxy")
+
+
+def proxy_notice(environ=None) -> str | None:
+    """One NOTICE line naming (never showing the values of) the proxy variables set in this environment, else None.
+    A notice only: it changes no verdict and no marker."""
+    env = os.environ if environ is None else environ
+    names = [n for n in PROXY_VARS if env.get(n)]
+    if not names:
+        return None
+    return (f"NOTICE: proxy variables set ({', '.join(names)}): tests that expect the egress gate to refuse (e.g. "
+            "tests_app/test_kite_broker_reader.py attack2) fail behind a proxy; in a cloud container run the gate with "
+            "them unset (runbook, Before a push)")
+
+
+def _lane(repo, full, select_docs_only) -> tuple[str, dict]:
+    """("full", {}) or ("docs-only (<n> files)", {skippable step: reason}). --full and any doubt = the full lane."""
+    try:
+        count = None if full else select_docs_only(repo)
+    except Exception:  # noqa: BLE001 - cannot tell: the full lane
+        count = None
+    if count is None:
+        return "full", {}
+    return f"docs-only ({count} files)", dict.fromkeys(SKIPPABLE, f"docs-only change ({count} files)")
+
+
+def _frontend_changes_or_none(select_frontend, repo):
+    try:
+        return select_frontend(repo)
+    except Exception:  # noqa: BLE001 - cannot tell: fail closed, run every frontend step
+        return None
 
 
 def run_all(repo, full=False, runner=None, log_dir=None, clock=time.monotonic,  # noqa: PLR0913
-            select_domain=None, select_app=None, select_frontend=None, which=shutil.which, jobs=1) -> int:
+            select_domain=None, select_app=None, select_frontend=None, which=shutil.which, jobs=1,
+            select_docs_only=None, select_docs_app=None) -> int:
     select_domain = select_domain or select_domain_tests
     select_app = select_app or select_app_tests
     select_frontend = select_frontend or frontend_changes
@@ -536,18 +682,24 @@ def run_all(repo, full=False, runner=None, log_dir=None, clock=time.monotonic,  
     log_dir = log_dir or tempfile.mkdtemp(prefix="prepush-")
     os.makedirs(log_dir, exist_ok=True)
     started = clock()
+    if (notice := proxy_notice()) is not None:
+        print(notice)
     sha = head_sha(repo)
     clean_at_start = tree_is_clean(repo)  # review F3: the tree is the commit for the whole run, not only at the end
-    try:
-        frontend = select_frontend(repo)
-    except Exception:  # noqa: BLE001 - cannot tell: fail closed, run every frontend step
-        frontend = None
-    plan = Plan(repo, full, runner, log_dir, select_domain, select_app, frontend, which)
-    planned = [n for n, _ in plan.steps()]
+    lane, skips = _lane(repo, full, select_docs_only or docs_only_change)
+    if skips:  # a docs-only change: no frontend step is planned, the app tests are the ones that read docs paths
+        frontend, select_app = [], select_docs_app or select_docs_app_tests
+        for name, reason in skips.items():
+            print(f"SKIP {name} skipped: {reason}")
+    else:
+        frontend = _frontend_changes_or_none(select_frontend, repo)
+    plan = Plan(repo, full, runner, log_dir, select_domain, select_app, frontend, which, skips)
+    order = [n for n, _ in plan.all_steps()]
     serial = jobs <= 1
     results = _run_steps(plan, log_dir, clock) if serial else _run_parallel(plan, log_dir, clock, jobs, stop)
-    ok = complete(results, planned)
-    note = _marker_note(repo, (sha, clean_at_start), results, ok, {"jobs": jobs, "lane": "full"})
+    ok = complete(results, order, skips)
+    rows = marker_rows(results, skips, order)
+    note = _marker_note(repo, (sha, clean_at_start), rows, ok, {"jobs": jobs, "lane": lane})
     wall = round(clock() - started, 1)
     total = round(sum(s for _, _, s, _ in results), 1)
     print(f"TOTAL {'PASS' if ok else 'FAIL'} {wall}s (steps sum {total}s, jobs {jobs}) {note}")
