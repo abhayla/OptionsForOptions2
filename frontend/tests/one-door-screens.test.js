@@ -407,7 +407,7 @@ describe('G3: the Lane B emitter guard', () => {
     expect(readdirSync(HERE)).toContain('one-door-screens.test.js')
   })
 
-  // Lane B's RESULTS name frontend/tests/leg-emitters-guard.test.js, but it is not on this head (checked 25 Nov: git ls-files, find).
-  // Phase 5 landed leg-door-phase5.test.js instead. A todo, not a silent pass: flip to `it` once the file lands.
-  it.todo('frontend/tests/leg-emitters-guard.test.js exists (it matches the include pattern)')
+  it('frontend/tests/leg-emitters-guard.test.js exists (it matches the include pattern)', () => {
+    expect(readdirSync(HERE)).toContain('leg-emitters-guard.test.js')
+  })
 })
