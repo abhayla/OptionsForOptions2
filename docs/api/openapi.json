@@ -7650,6 +7650,15 @@
               }
             ]
           },
+          "closed_prices_text": {
+            "anyOf": [
+              {},
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Closed Prices Text"
+          },
           "curve_includes_booked_text": {
             "anyOf": [
               {},
@@ -13986,6 +13995,15 @@
             ],
             "title": "Centre",
             "type": "string"
+          },
+          "closed_prices_text": {
+            "anyOf": [
+              {},
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Closed Prices Text"
           },
           "default_width": {
             "title": "Default Width",

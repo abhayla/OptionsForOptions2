@@ -750,7 +750,7 @@ defineExpose({ startEdit, showStrikes })
         <p v-else-if="!strikesData" data-testid="strikes-loading">Reading strikes...</p>
         <template v-else>
           <!-- ADR-200 (2): after hours every cell is the last close, under the one market-closed banner -->
-          <MarketClosedBanner v-if="strikesData.market_closed === true" class="mb-2" :prices-at="strikesData.last_price_at" />
+          <MarketClosedBanner v-if="strikesData.market_closed === true" class="mb-2" :prices-at="strikesData.last_price_at" :server-text="strikesData.closed_prices_text ?? null" />
           <p v-if="strikesReason" data-testid="strikes-reason">{{ strikesReason }}</p>
           <p v-if="centreLine" data-testid="strikes-centre">{{ centreLine }}</p>
           <p v-if="chainAsOf" class="text-xs text-ink-muted" data-testid="chain-prices-as-of">{{ chainAsOf }}</p>

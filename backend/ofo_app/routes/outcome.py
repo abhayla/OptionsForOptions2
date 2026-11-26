@@ -31,7 +31,12 @@ from ofo.errors.slots import INT_ABS_MAX
 from ofo.instruments.models import InstrumentId as ContractKey
 from ofo.instruments.models import ListedContract
 from ofo.limits import INTEGER_MAX
-from ofo.marketdata.feed_health import FeedWindows, awaiting_first_price_for, market_closed_for
+from ofo.marketdata.feed_health import (
+    FeedWindows,
+    awaiting_first_price_for,
+    made_by_the_close,
+    market_closed_for,
+)
 from ofo.marketdata.forward import ForwardQuality
 from ofo.marketdata.provider import MarketDataProvider
 from ofo.marketdata.quote import NormalizedQuote
@@ -240,6 +245,46 @@ def label_time(state: MarketState, quote_times: Iterable[datetime.datetime | Non
         return state.last_price_at
     times = [t for t in quote_times if isinstance(t, datetime.datetime) and t.utcoffset() is not None]
     return max(times) if times else None
+
+
+@dataclass(frozen=True)
+class ClosedLabel:
+    """The market-closed banner of one answer: ``last_price_at`` (the time the banner prints) and ``text`` (the
+    catalogue sentence when the trade is mixed, else None: the browser then prints its own one-time sentence)."""
+
+    last_price_at: datetime.datetime | None
+    text: Any = None
+
+
+def _aware(t: object) -> bool:
+    return isinstance(t, datetime.datetime) and t.utcoffset() is not None
+
+
+def closed_label(state: MarketState, leg_quotes: Iterable[NormalizedQuote | None],
+                 spot: NormalizedQuote | None = None) -> ClosedLabel:
+    """ADR-330 (36) (LR-Q18): the ONE banner function of every after-close answer that covers several legs (the
+    builder's outcome reply and the leg picker). After the close, legs frozen at the close (made by it) and legs first
+    priced after it carry different times. Only when BOTH kinds are present the banner reads "Prices are from <frozen
+    time>; 1 leg as of <time>" (plural for 2 or more). The frozen time is the latest own time of the frozen legs and the
+    index spot (the spot is a frozen-kind quote and is never counted as a leg); the later time is the EARLIEST of the
+    later legs: every later leg's price is at least as new as it, so no figure sits under a time newer than its own.
+    In market hours, or with only one kind, ``last_price_at`` is :func:`label_time` and no text is built (unchanged)."""
+    legs = [q for q in leg_quotes if q is not None and _aware(q.price_at)]
+    all_times = [*(q.price_at for q in legs), *([spot.price_at] if spot is not None else [])]
+    if not state.closed:
+        return ClosedLabel(label_time(state, all_times))
+    later = [q.price_at for q in legs if not made_by_the_close(q)]
+    frozen = [q.price_at for q in legs if made_by_the_close(q)]
+    if not later or not frozen:
+        return ClosedLabel(label_time(state, all_times))
+    if spot is not None and _aware(spot.price_at) and made_by_the_close(spot):
+        frozen.append(spot.price_at)
+    frozen_at, later_at = max(frozen), min(later)
+    if len(later) == 1:
+        text = render_explanation("closed_prices_mixed_one", frozen=frozen_at, later=later_at)
+    else:
+        text = render_explanation("closed_prices_mixed_many", frozen=frozen_at, later=later_at, count=len(later))
+    return ClosedLabel(frozen_at, text)
 
 
 def feed_scope(ctx: MarketContext) -> FeedScope | None:
@@ -1025,6 +1070,9 @@ class OutcomeResponse(ApiModel):
     market_closed: bool
     #: when the feed's last price frame arrived (None: none yet); the market-closed and reconnecting texts show it
     last_price_at: datetime.datetime | None
+    #: ADR-330 (36) (LR-Q18): after the close, a trade with legs frozen at the close AND legs first priced later: the
+    #: banner's whole sentence (the browser prints it as sent); None otherwise (the one-time banner is unchanged)
+    closed_prices_text: CatalogueText | None = None
     spot_level: Money | None
     spot_at: datetime.datetime | None
     legs: list[LegOut]
@@ -1290,7 +1338,9 @@ def outcome_response(req: OutcomeRequest, ctx: MarketContext | None,  # noqa: PL
     body.update(entry_guide_fields(out, ctx))  # ADR-300
     state = market_state(ctx, answered_at)
     body["market_closed"] = state.closed
-    body["last_price_at"] = label_time(state, (q.price_at for q in used_quotes if q is not None))
+    label = closed_label(state, used_quotes[1:], used_quotes[0] if used_quotes else None)  # [spot, *legs]
+    body["last_price_at"] = label.last_price_at
+    body["closed_prices_text"] = label.text
     for column in (body.get("table") or {}).get("columns", ()):
         column["markers"] = [MARKER_CODES[m] for m in column["markers"]]
     if req.open_interest:  # REQ-083 AC-5 / AC-6: the bars, or the one reason (never a 0 in a missing place)
