@@ -52,3 +52,21 @@ from a draft link; only the unit test `draft-link.test.js` reaches it, by changi
 
 **Lane R action now:** nothing built for row 11. If option 1 is chosen, Lane R (or the coordinator) edits the check text
 and adds the ADR-328 pointer; that pointer is a spec text change, so the row number stays the coordinator's.
+
+## LR-Q2 to LR-Q6: N-14, N-08, N-12, N-11, N-15 (asked 26 Nov 2026 about 12:20 IST, through the coordinator)
+
+**ANSWERED 26 Nov 2026 about 12:30 IST** (owner, question tool): recorded as ADR-330 (19) to (23) on fix/ic-live-test-1123.
+- N-14 = ADR-330 (19): Add to Paper asks for a name prefilled with the shape name; lists and alert titles carry the number
+  and expiry. Built: the name and the lists. Alert titles: Lane P's catalogue; proposed "Paper strategy - Short Iron
+  Condor (#172, 1 Dec)" (`backend/ofo/errors/explanations.py` ~1962, `ofo_app/paper_monitor.py` ~246, `routes/paper.py` ~1845).
+- N-08 = ADR-330 (20): ticks cleared once added. Built.
+- N-12 = ADR-330 (21): Stops link scrolls to the trade and opens its Stops panel. Built.
+- N-11 = ADR-330 (22): "The N pending changes will be lost." for a running trade. Built.
+- N-15 = ADR-330 (23): Orderbook in lots. Blocked on a server field: issue #747.
+
+## LR-Q7 S-02 wording (open, ADR-NB-1)
+
+Spec basis: ADR-330 (8) busy-store paragraph (Lane R, 26 Nov 2026); ADR-003. Built as reversible new wording, catalogue
+entry `store_busy` (STRATEGY_VALIDATION_522): "This strategy is busy with another action, so nothing was changed." /
+"Wait a moment, then try again." Real case: the owner's ERR-6960F002 on a strategy delete, 25 Nov. Recommendation:
+approve as built. A new decision row number for it is the coordinator's.

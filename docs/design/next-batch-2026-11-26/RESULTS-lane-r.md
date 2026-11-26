@@ -21,13 +21,13 @@ walk-through was possible in the cloud: the app needs the broker feed and the ow
 | N-05, "Review and add" looks usable while blocked | Fixed, not tested | Review and add read the blocked rule only for edits that came from an Exit, and an open dialog's Confirm ignored it. | Buttons that commit paper orders reading one blocked rule: 2 of 3; 3 of 3 after; a blocked Confirm posts nothing for any paper dialog. | same files; A3: 1 POST before, 0 after. |
 | N-07, third price reader (P&L Table) | Fixed, not tested (part; rest #744) | The P&L Table printed the outcome reply's LTP and P&L and the plan's entry, while the legs table and the Paper P&L panel read the book. | Builder views of a paper leg's price/P&L: 3 of 6 on the book before (legs table, Paper P&L, and none other); after, the P&L Table too (joined by contract, side and lots; a failed read shows "-" in rows and TOTAL). Left: Full table, leg-list "now" price, Paper P&L rows after a failed read (#744). | `pnl-table-one-source-n07.test.js`: 5 failed, then round 2: 7 of 12 failed, then pass; guard `paper-leg-readers-guard.test.js` red on 3 mutations. |
 | N-01, refusal line vanishes | Fixed, not tested | A watcher in `PaperStops.vue` cleared every "Not saved" line when the list's next good poll arrived. | Clear paths not driven by a user edit or a new Save: 1; 0 after. "First Save showed nothing" not reproduced. | `paper-stops.test.js`: 2 failed, then pass. |
-| N-14, every paper trade has the same name | Building (ADR-330 (19)) | Add to Paper saves under the shape name and never asks. | - | - |
+| N-14, every paper trade has the same name | Fixed, not tested (ADR-330 (19) a and the lists half of b; alert titles are Lane P's) | Add to Paper saved an unsaved strategy under the shape name and never asked; the lists showed the bare name. | Lists showing a bare name: My Strategies, Live cards, Home recent, Positions > Paper (2 spots); 0 after, one label maker `strategyListLabel` in `lib/saveDraft.js`. A list reply carries only the first leg's expiry, so a calendar spread shows that date on My Strategies, Live and Home. | `add-to-paper-name-adr330.test.js`, `strategy-list-label-adr330.test.js`: 10 failed without the fix, then 16 files / 228 tests pass. `e2e/my-strategies.spec.ts` updated, not run (needs the servers). |
 | R-06 / N-18, doubled label on Home | Fixed, not tested | `HomeOverviewPage.vue` spread "(after charges)" over the figure's name, then appended it again. | Places that can print the suffix twice: 1; 0 after. | `home-figures-d56.test.js`: red "(after charges) (after charges)", then pass. |
 | N-10, wrong refusal parts for the other-index add | Fixed, not tested | `addFromChain` built its refusals from the server-failure parts. | 2 refusal sites; 0 after (both use `INVALID_LINK_PARTS`). | F1 test: red on "Try again in a moment", then pass. |
 | N-13, "No draft strategy is open" while a trade opens | Fixed, not tested | `load()` set the empty-builder state before the `?strategy=` book read answered. | Open paths showing the empty builder before their read: 4; 0 after. | 3 of 5 new tests failed, then pass. |
 | N-11, leave question for a staged removal | Fixed, not tested (ADR-330 (22)) | The question counted pending changes but called them unsaved legs. | 1 question; it now says "pending changes" for a running trade on the builder and the chain page. | `leave-builder-adr329.test.js`: red, then pass. |
 | N-12, Stops link does not reach the trade | Fixed, not tested (ADR-330 (21)) | The Positions page ignored `?strategy=` unless an exit was asked. | 1 link; it now opens that trade's Stops panel and scrolls to it; the list is not filtered. | `paper-exit-link-s14.test.js`: red, then pass. |
-| N-08, chain ticks stay after Add Selected | Building (ADR-330 (20)) | - | - | - |
+| N-08, chain ticks stay after Add Selected | Fixed, not tested (ADR-330 (20)) | Add Selected pushed the draft link and never cleared the selection. | 1 store; the builder clears the ticks only after it has added them (Cancel on a clash, the other-index refusal or an error keeps them). REQ-030 AC-10 amended. | N08a, N08d failed without the fix (lead's run), then 57 pass. |
 | N-15, Orderbook quantity in units | Blocked: deferred #747 (ADR-330 (23)) | The order rows carry units only, no lots or lot size, and the browser must not divide by a guessed lot size. | - | - |
 | S-02, a lock wait on delete ends as a raw 500 | Fixed, not tested (wording pending owner read, ADR-NB-1) | The error door had no case for a busy database (sqlstate 55P03, 57014, 40P01), so it answered the generic internal error. | Write routes that end as ERR-xxxx on a busy database: 49 in 21 route files; 0 after. Left: `order_book_store.py:152` answers BAD_HOLDING (#746). | `tests_app/test_store_busy.py` (real DB): 6 failed, then 10 passed. |
 | N-02 | Deferred #745 | A timed-out parallel read leaves the box after the other read succeeds. | - | - |
@@ -106,3 +106,19 @@ review agent runs, so a review blocked three builders for about 15 minutes: run 
 3. Wording pending the owner's read (ADR-NB-1 in ADR-330 (8)).
 4. Normal deletes: My Strategies > Delete on a draft still deletes as before.
 5. Nothing to check after 15:30.
+
+## Re-test: N-08 (push 2)
+
+1. Build 3 legs in the builder; Market > Option Chain; tick two contracts with Buy; Add Selected.
+2. Expected: the builder shows 5 legs.
+3. Market > Option Chain again. Expected: "Selected Legs" is empty.
+4. Tick a contract you already hold with the same action; Add Selected; Cancel in the question; go back to the chain.
+5. Expected: that tick is still there.
+
+## Re-test: N-14 (push 3)
+
+1. Strategies > Create Strategy > Guided > Short Iron Condor > Open in Strategy Builder > Add to Paper.
+2. Expected: a "Name this paper trade" box prefilled "Short Iron Condor". Type "IC wk1" and Save; then Confirm the paper trade.
+3. Expected: My Strategies, Live Strategies and Positions > Paper show "IC wk1 (#<its number>, 1 Dec)".
+4. Again Add to Paper on another unsaved shape, then Cancel in the name box. Expected: nothing is added.
+5. Not changed here: alert titles still read "Paper strategy - <name>" (the alerts lane adds the number and expiry).
