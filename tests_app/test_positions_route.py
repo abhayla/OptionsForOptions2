@@ -910,7 +910,7 @@ def _predicate_world(*, held: dict, outside: int = 0, net: int = 65, orders: tup
     key = ("NIFTY", "CE", D("23650"), datetime.date(2026, 10, 19))
     index = types.SimpleNamespace(symbol_of=lambda k: SYMBOL)
     result = types.SimpleNamespace(held={sid: {key: u} for sid, u in held.items()}, outside={key: outside})
-    zerodha = route._Zerodha({key: net}, tuple(orders), index, READ_AT, None, 0, frozenset())
+    zerodha = route._BrokerRead({key: net}, tuple(orders), index, READ_AT, None, 0, frozenset())
     return route, key, result, zerodha
 
 
