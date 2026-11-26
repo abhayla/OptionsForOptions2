@@ -249,3 +249,33 @@ trade 173 settled with the right sum), 1 FAIL (AC-R06), 1 NOT CHECKED (AC-R10).
 3. N-48: open the builder of trade 173: no "No legs yet", no Add leg; the closed legs and "Closed: result" show.
 4. N-44 (after the close): builder of a running paper trade > Paper P&L panel: no "No price for: ..." line when every leg shows a price.
 5. AC-R06 (after the close, with one settled trade): Home's "Total P&L" shows a figure over the trades that can be priced, with the count line, and equals the sum of those rows on My Strategies.
+
+## Owner answers of 26 Nov ~16:00 IST (ADR-330 (28) to (31))
+
+| Item | Status | What changed | Tests red, then green |
+|---|---|---|---|
+| ADR-330 (28), Add to Paper while prices are not live (was N-40 / LR-Q12) | Fixed, not tested | When the page's one price rule (priceState) says prices are not live, the confirm list shows a tick box labelled "Prices are not live; the entry is the last captured price, as of HH:MM." and Confirm stays disabled until it is ticked; a typed entry price keeps the line. Choices: the time is the OLDEST capture time of the ticked legs (no leg reads fresher than it is); with no readable capture time the ", as of ..." part is dropped; after the close and while the builder has no priced answer, prices count as not live, so the tick box shows then too. REQ-109 AC-1 carries the sentence. | `paper-add-not-live.test.js`: 3 failed, then pass; full frontend suite 3,004 pass. |
+| ADR-330 (29), P&L Table with the API down (was D-N07 remainder / LR-Q10) | Closed as designed | The error block stays: with the outcome unreadable there are no rows to dash. No build. | - |
+| ADR-330 (30), the builder's "Settings" button (was N-38 / LR-Q11) | Fixed, not tested | The button reads "View" (label only; its popover's screen-reader name "Builder settings" is unchanged). REQ-138 AC-1 carries the label. | `gcui-legs.test.js`: red "expected 'Settings' to be 'View'", then 28 pass. |
+| ADR-330 (31), Deleted / Restored in the history (was LR-Q13) | Handed to Lane J | See below. | - |
+
+### Handed to Lane J: ADR-330 (31)
+
+It needs a migration (Lane R adds none). Evidence: `strategy_history.change_summary` (JSONB) items are checked on every
+insert by the plpgsql validator `ofo_strategy_change_items_valid` (`backend/ofo_app/alembic/versions/0008_strategy_store.py`
+~327-346: kinds underlying, leg_removed, leg_added, quantity, field, legs_reordered, replaced_unreadable, restored;
+`ELSE ok := FALSE`, SQLSTATE 23514); its body is md5-pinned in the allowlist function; migrations 0011 (entries_repriced,
+the `_NEW_SIMPLE_KINDS` pattern) and 0025 (renamed) widened it the same way. No existing kind fits: `restored` means
+"restored to version N" and requires `seq` (`backend/ofo_app/strategy_store.py` ~488). Needed: kinds `deleted` and
+`undeleted` with exactly `{kind}`, the md5 re-pinned, the kinds mirrored in `backend/ofo/strategy/definition.py` ~308 and in
+the summary text / catalogue labels of `stored_form.py`; then `delete_draft` / `undelete_draft` (`strategy_store.py`
+~359-383, both inside `begin_nested`, so a failing history write rolls the delete back) write one entry each (bulk: one per
+strategy). `strategy_history.at` is stamped by the database, so the times need nothing.
+
+## Re-test: ADR-330 (28) and (30)
+
+1. With live prices: Add to Paper on a new shape: no tick box; Confirm works as before.
+2. After the close (or with the feed stopped): Add to Paper: a tick box "Prices are not live; the entry is the last captured price, as of HH:MM."; Confirm stays grey until ticked.
+3. Type your own entry price for one leg: the tick box still shows; tick, Confirm: the typed price is the entry.
+4. Builder: the button beside the search reads "View" and opens the same "Show legs as" choice.
+5. Nothing else in the confirm list changed wording.

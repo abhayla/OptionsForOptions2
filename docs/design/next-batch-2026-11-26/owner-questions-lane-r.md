@@ -150,3 +150,29 @@ out: their prices are not live.", "{count} strategies left out: their contracts 
 Options: (a) keep the build: a total over the priced trades with the count line (recommended: one unpriced trade no
 longer hides the other five); (b) revert to the blank total; (c) as (a), but a settled or settling trade counts at its
 booked result instead of being left out (needs a settlement rule for the header).
+
+## LR-Q10 to LR-Q13 (ANSWERED 26 Nov ~16:00 IST, question tool): ADR-330 (28) to (31)
+
+LR-Q12 = (28) allow with a confirmed line (built); LR-Q10 = (29) keep the error block (closed, no build); LR-Q11 = (30)
+"View" (built); LR-Q13 = (31) Deleted / Restored history entries (handed to Lane J: needs a migration).
+
+## LR-Q1 correction (26 Nov ~17:00 IST)
+
+The row-11 answer relayed in the morning was asked without REQ-154 in view. Asked again as a conflict, the owner decided:
+REQ-154 stands (ADR-330 (34)). ADR-329 (3), ADR-328 (2) and row 11 now say the fresh-load loss is only what ships until
+REQ-154 is built (issue #751, deferred, not built by Lane R).
+
+## LR-Q16 ADR-330 (34): saying plainly that unsaved legs are not kept across a reload, until REQ-154 is built (open)
+
+(Numbered LR-Q16: LR-Q14 is N-45.)
+Spec basis: ADR-330 (34) (until REQ-154 is built the app says plainly that unsaved legs are not kept across a reload);
+REQ-154 AC-1; ADR-329 (2) (the leave question for in-app navigation; the browser's own box was not chosen).
+Real case: screen-check row 11 (26 Nov 10:57 IST): 3 unsaved legs, a pasted link loaded the page fresh, the legs were gone,
+nothing was said.
+Proposed wording: "Unsaved legs are not kept if you reload or close this page. Save to keep them."
+Where it shows - options:
+(a) one line under the builder's unsaved-legs bar (next to the pending/unsaved count), shown only while there are unsaved
+legs (recommended: it is where the user looks when the count changes, and it disappears once saved);
+(b) a one-time note the first time a leg is added in a session, dismissible;
+(c) in the leave question only ("Leave the builder? The N unsaved legs will be lost.") - not enough, a reload never shows it.
+Nothing is built until answered; the line is removed when REQ-154 ships.

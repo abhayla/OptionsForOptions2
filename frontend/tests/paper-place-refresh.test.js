@@ -10,7 +10,7 @@ import { createMemoryHistory, createRouter } from 'vue-router'
 import StrategyBuilderPage from '@/pages/StrategyBuilderPage.vue'
 import { PAPER_MODE_LABEL, netLegsFromBook } from '@/lib/paperDrafts'
 import REAL from './fixtures/paper-book-63.json'
-import { confirmPaperName } from './helpers/paperName'
+import { confirmPaperName, tickNotLive } from './helpers/paperName'
 
 const calls = []
 let answers = {}
@@ -80,7 +80,7 @@ async function firstBasket() {
   await confirmPaperName(w)
   return w
 }
-const confirm = async (w) => { await t(w, 'paper-confirm-button').trigger('click'); await flushPromises() }
+const confirm = async (w) => { await tickNotLive(w); await t(w, 'paper-confirm-button').trigger('click'); await flushPromises() }
 const later = async (ms) => { await vi.advanceTimersByTimeAsync(ms); await flushPromises() }
 
 beforeEach(() => vi.useFakeTimers())

@@ -108,7 +108,7 @@ const ISO_INSTANT = /^(\d{4})-(\d{2})-(\d{2})T(\d{2}):(\d{2}):(\d{2})(?:\.\d+)?(
 
 /** The instant of a strict ISO string in milliseconds, or null: an impossible calendar date (2026-02-30), time or offset
  *  is refused, never rolled over to the next month. */
-function isoMillis(text) {
+export function isoMillis(text) {
   const m = ISO_INSTANT.exec(text.trim())
   if (!m) return null
   const [y, mo, d, h, mi, s] = m.slice(1, 7).map((x) => +x)

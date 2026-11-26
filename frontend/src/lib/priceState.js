@@ -6,7 +6,7 @@
 // | read_failed (the last read failed while a list or book is on screen: the old figures stay, marked old).
 // Wording here is the wording each screen already showed; no sentence is new.
 import { computed, toValue } from 'vue'
-import { istTime } from '@/lib/displayFormat'
+import { isoMillis, istClock, istTime } from '@/lib/displayFormat'
 
 export const PAUSED_TEXT = 'Paper P&L paused - prices not live'
 export const NOT_CONNECTED_TEXT = 'Paper P&L paused - live prices are not connected'
@@ -15,6 +15,24 @@ export const CHANGED_ELSEWHERE_EXIT = 'This trade changed elsewhere. Reload to s
 
 /** REQ-109 AC-5's paused text, with the time of the last price; null time reads as not available. */
 export const pausedText = (asOf) => `${PAUSED_TEXT}, as of ${istTime(asOf)}`
+
+/** ADR-330 (28), REQ-109 AC-1: the line the Add to Paper confirm list carries while the prices are not live (owner's sentence;
+ *  the time is HH:MM India time of the OLDEST capture among the listed legs, so no leg reads fresher than it is). With no
+ *  readable capture time the clause "as of ..." is left out, never invented. */
+export const notLiveEntryLine = (asOf) => {
+  const at = asOf ? istClock(asOf)?.slice(0, 5) : null
+  return `Prices are not live; the entry is the last captured price${at ? `, as of ${at}` : ''}.`
+}
+/** The oldest readable `captured_at` of `legs` (an ISO text), or null. */
+export function oldestCapture(legs) {
+  let best = null
+  let bestMs = Infinity
+  for (const l of legs ?? []) {
+    const ms = typeof l?.captured_at === 'string' ? isoMillis(l.captured_at) : null
+    if (ms !== null && ms < bestMs) { best = l.captured_at; bestMs = ms }
+  }
+  return best
+}
 
 /** The ONE paused decision of every paper P&L screen (REQ-109 AC-5): a refresh failed or did not read while a list is held. */
 export const listIsStale = (failed, list) => !!failed && !!list

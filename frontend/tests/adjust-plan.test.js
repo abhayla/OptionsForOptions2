@@ -25,7 +25,7 @@ vi.mock('@/services/api', async (importActual) => {
 })
 import AdjustPlanSheet from '@/components/strategy/AdjustPlanSheet.vue'
 import PlanEntry from '@/components/strategy/PlanEntry.vue'
-import { confirmPaperName } from './helpers/paperName'
+import { confirmPaperName, tickNotLive } from './helpers/paperName'
 
 const LABELS = {
   title: "When tracking starts: this strategy's plan", playbook: 'Playbook', target: 'Target', stop: 'Stop', max_adjustments: 'Max adjustments',
@@ -389,6 +389,7 @@ describe('REQ-161 AC-1: the sheet opens after the paper orders are placed, never
   it('placed: the plan sheet opens for that strategy, pre-filled', async () => {
     const w = await builder()
     answers['POST /paper/strategies/70/orders'] = BOOK_70
+    await tickNotLive(w)
     await t(w, 'paper-confirm-button').trigger('click')
     await flushPromises()
     expect(calls.filter((c) => c.url === PATH)).toHaveLength(1)
@@ -399,6 +400,7 @@ describe('REQ-161 AC-1: the sheet opens after the paper orders are placed, never
   it('a failed placement never opens the sheet and never reads a plan', async () => {
     const w = await builder()
     answers['POST /paper/strategies/70/orders'] = () => Promise.reject({ message: 'x', status: 409, parts: null })
+    await tickNotLive(w)
     await t(w, 'paper-confirm-button').trigger('click')
     await flushPromises()
     expect(calls.filter((c) => c.url === PATH)).toHaveLength(0)
