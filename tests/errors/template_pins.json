@@ -491,6 +491,10 @@
     "sha256": "11c795ba45e0011039572240bb6205f6127787a56591c789659aeb541279bd92",
     "reviewed": "owner read 2026-11-02 (accepted after independent screen, not read line by line)"
   },
+  "strategy_not_found": {
+    "sha256": "6347d0929484e4fa4875822a0f8b1e8aca21051708402c3c1bbd415af4c44b90",
+    "reviewed": "pending owner read"
+  },
   "entitlement_access_sign_in_required": {
     "sha256": "dbe6af4fed56c9531c4e98e08eea5f5bac8329d5e1e850a2f87e3e15bf9543d5",
     "reviewed": "owner read 2026-11-02 (accepted after independent screen, not read line by line)"

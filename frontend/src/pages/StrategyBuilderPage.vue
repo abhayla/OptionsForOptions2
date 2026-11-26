@@ -17,7 +17,7 @@
 import { computed, nextTick, onBeforeUnmount, onMounted, provide, ref, watch } from 'vue'
 import { useRoute, useRouter } from 'vue-router'
 import { useOutsideClose } from '@/composables/useOutsideClose'
-import api, { NEUTRAL_PARTS } from '@/services/api'
+import api, { NEUTRAL_PARTS, STRATEGY_NOT_FOUND_CODE } from '@/services/api'
 import ChartCard from '@/components/strategy/ChartCard.vue'
 import LowerCard from '@/components/strategy/LowerCard.vue'
 import SummaryCards from '@/components/strategy/SummaryCards.vue'
@@ -385,6 +385,7 @@ const savedRevision = ref(heldBack?.savedRevision ?? null)
 // second row (RD-106). It is replaced on open/save, and dropped by Clear all (held for Undo).
 const openStrategy = ref(heldBack?.openStrategy ?? null)
 const openError = ref(null) // the catalogue message when ?strategy= cannot be opened; the screen is kept
+const openNotFound = ref(null) // the openError that said "strategy not found" (the Open My Strategies button shows only while it is the one on screen)
 // REQ-134 AC-5: the URL names the strategy (?strategy=<id>) so a reload opens it again; a `draft` link is dropped from it.
 function nameInUrl(id) {
   const { draft: _link, ...rest } = route.query
@@ -702,6 +703,7 @@ async function readUrlStrategy() {
     openSaved(saved.legs, saved.id, saved.revision, saved.name)
   } catch (e) {
     openError.value = e?.parts ?? NEUTRAL_PARTS // not found, unreadable, request failed: the screen stays as it is
+    openNotFound.value = e?.error_code === STRATEGY_NOT_FOUND_CODE ? openError.value : null
   }
 }
 // F-4: the page stays mounted when only the query changes (App.vue's router-view is unkeyed), so a new ?strategy= / ?draft= is
@@ -1245,6 +1247,7 @@ const leaveGuard = useLeaveBuilder({
 
         <LoadFailed v-if="rereadFailed" :text="PAPER_REREAD_FAILED_TEXT" prefix="paper-reread" @retry="retryReread" />
         <ErrorMessage v-if="openError" :parts="openError" compact prefix="open-error" data-testid="open-error" />
+        <RouterLink v-if="openError && openError === openNotFound" to="/strategies/my-strategies" class="mt-2 inline-block rounded border border-line px-2 py-1 text-sm" data-testid="open-error-my-strategies">Open My Strategies</RouterLink>
         <!-- Region B (UI-104..UI-108) -->
         <!-- GC-TP step 3b1 (Sensibull Drafts Mode 274-279): a paper strategy's legs are its net position, in a dashed frame -->
         <div :class="paper ? 'rounded-lg border-2 border-dashed border-warn p-2' : 'contents'" data-testid="legs-frame" :data-paper-mode="paper ? 'true' : 'false'">

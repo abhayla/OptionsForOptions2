@@ -330,9 +330,12 @@ _STORE_REFUSAL = MappingProxyType({
 })
 
 
-def refused_answer(exc: Exception, form_status: int) -> Exception:
-    """The exception the boundary answers: 404 for a missing strategy or entry, else a catalogue message."""
+def refused_answer(exc: Exception, form_status: int, *, open_by_id: bool = False) -> Exception:
+    """The exception the boundary answers: 404 for a missing strategy or entry, else a catalogue message.
+    ``open_by_id``: the read that opens one strategy; its missing strategy has its own words (ADR-330 (37))."""
     if isinstance(exc, store.StrategyStoreError):
+        if open_by_id and exc.code == store.NOT_FOUND:
+            return StrategyRefused("strategy_not_found", Failure.NOT_FOUND)
         template, failure = _STORE_REFUSAL.get(exc.code, ("strategy_underlying_fixed", None))
         return StrategyRefused(template, failure)
     assert isinstance(exc, sf.StoredFormError)
@@ -448,14 +451,14 @@ async def _check_eligible(db: Any, saved: sf.SavedDefinition, today_of: elig.Tod
         raise StrategyRefused(template, message=render(template, leg=value))
 
 
-async def _run(db: Any, work: Callable, *, form_status: int) -> Any:
+async def _run(db: Any, work: Callable, *, form_status: int, open_by_id: bool = False) -> Any:
     """Runs one store call; commits on success, rolls back on any error (nothing half-written)."""
     try:
         result = await work()
         await db.commit()
     except (store.StrategyStoreError, sf.StoredFormError) as exc:
         await db.rollback()
-        raise refused_answer(exc, form_status) from None
+        raise refused_answer(exc, form_status, open_by_id=open_by_id) from None
     except Exception:
         await db.rollback()
         raise
@@ -620,7 +623,7 @@ async def get_strategy(strategy_id: int, db: Any = Depends(get_db),
                        user_ref: str = Depends(current_user_ref)) -> StrategyOut:
     async def work():
         return await _strategy_out(db, await store.load(db, user_ref, strategy_id))
-    return await _run(db, work, form_status=409)
+    return await _run(db, work, form_status=409, open_by_id=True)
 
 
 @router.put("/strategies/{strategy_id}", response_model=StrategyOut, response_model_exclude_unset=True)
