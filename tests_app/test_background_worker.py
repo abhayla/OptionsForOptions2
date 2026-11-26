@@ -78,6 +78,9 @@ async def _seeded(app_engine, monkeypatch) -> tuple[int, scenario_mode.Scenario]
     run = next(_SEED_RUN)
     monkeypatch.setattr(seed_mod, "strategy_name", lambda scenario_id: f"{seed_mod.NAME_PREFIX}{scenario_id} t{run}")
     sid = await seed_mod.seed("ADJ-02")
+    async with app_engine.begin() as conn:  # ADR-330 (11): only the strategy's own plan is watched
+        system = await playbook_store.active_for(conn, "owner", "ic")
+        await playbook_store.accept_plan(conn, "owner", sid, system.id)
     real_list = strategy_store.list_strategies
 
     async def own(conn, user_ref):
