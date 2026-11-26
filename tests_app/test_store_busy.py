@@ -1,7 +1,7 @@
 """S-02 (owner screen check 25 Nov 2026, ERR-6960F002 on a strategy delete): a database lock wait or statement timeout
 on a store write is answered with the catalogue's `store_busy` refusal, never a raw 500 (ERR-xxxx).
 
-Spec basis: ADR-330 (8) "Busy store" paragraph (new wording approved by the owner as written, ADR-330 (26), 26 Nov 2026);
+Spec basis: ADR-330 (8) "Busy store" paragraph (wording approved by the owner as written, ADR-330 (26), 26 Nov 2026);
 RESULTS-lane-q2.md "S-02 candidate cause, measured" (delete_draft raised sqlstate 55P03 with a second connection
 holding FOR UPDATE and lock_timeout 300 ms); ADR-016 to ADR-019 (nothing half-written).
 
