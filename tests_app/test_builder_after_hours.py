@@ -410,10 +410,15 @@ def _pre_open_frame(provider) -> bytes:
 
 def _pre_open():
     provider, clock, _last = _replayed()
+    # ADR-330 (36): the figure after the close is the last price received up to the close. The replay ends at 09:20, so
+    # the session's last frame (the held price, stamped by its arrival at exactly the close) is fed first; the pre-open
+    # snapshot below arrives later and is ignored for the figure, which keeps the close time as its label.
+    clock.now = SESSION_CLOSE
+    assert provider.on_frame(_pre_open_frame(provider), SESSION_CLOSE)
     clock.now = PRE_OPEN
     assert provider.on_frame(_pre_open_frame(provider), PRE_OPEN)  # the snapshot lands in the book
     held = provider.book.get(CONDOR[0][0], PRE_OPEN)
-    assert held.timestamp == PRE_OPEN and held.price_at == SESSION_CLOSE  # the shape the live miss had
+    assert held.timestamp == SESSION_CLOSE and held.price_at == SESSION_CLOSE
     return provider, clock
 
 

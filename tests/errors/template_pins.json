@@ -4425,15 +4425,15 @@
   },
   "explanation:paper_totals_left_out_unpriced_one": {
     "sha256": "a1fd59f182d835c6bee817e8a352c419fb1c7c3955f2f42ca32d6c57a0866e19",
-    "reviewed": "pending owner read"
+    "reviewed": "owner read 2026-11-26 (ADR-330 (35), approved as written by the owner in the question tool)"
   },
   "explanation:paper_totals_left_out_unpriced_many": {
     "sha256": "4c9c71b8dd4b65919e9ef05bf322bcb1f9a4ed3fe6d85ad5ceb03047664303e2",
-    "reviewed": "pending owner read"
+    "reviewed": "owner read 2026-11-26 (ADR-330 (35), approved as written by the owner in the question tool)"
   },
   "explanation:paper_totals_left_out_mixed": {
     "sha256": "26096d53714a657b3c560b26884489b629daebdf53c2845fc07c1ef756c70549",
-    "reviewed": "pending owner read"
+    "reviewed": "owner read 2026-11-26 (ADR-330 (35), approved as written by the owner in the question tool)"
   },
   "paper_trigger_already_crossed": {
     "sha256": "75f3b8659d6d4aa95d0f7dc8d3c4f9c8cfad4d72452461ed06c06cbc79c801be",

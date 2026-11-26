@@ -24,7 +24,7 @@ from dataclasses import dataclass
 from decimal import Decimal
 
 from ofo.engine.executable_price import Depth
-from ofo.market_calendar import is_market_open
+from ofo.market_calendar import is_market_open, price_time
 from ofo.marketdata.provider import (
     FEED_NOT_HEALTHY,
     NOT_HELD,
@@ -221,6 +221,22 @@ class BookEntry:
     # packet carried no depth (quote / ltp mode) - never an empty Depth, which would read as "no liquidity"
     depth: Depth | None = None
     day_stats: DayStats | None = None  # the day values of the SAME packet; None when it carried none
+    #: ADR-330 (36): the last quote whose time is at or before the calendar close of its day (None: none held yet).
+    #: Served instead of ``quote`` while the market is closed, so the figure and the label "from 15:30:00" agree.
+    close_quote: NormalizedQuote | None = None
+
+
+def made_by_the_close(quote: NormalizedQuote) -> bool:
+    """ADR-330 (36): the ONE cut-off. True when the quote's time is at or before the close of its trading day: inside
+    the session or exactly at the close. A frame after the close, before the open, or on a holiday or weekend is not
+    (``price_time`` puts it at an earlier close). A date the calendar cannot answer cannot be cut: True, as before."""
+    made = price_time(quote.timestamp)
+    return made is None or made >= quote.timestamp
+
+
+def _close_after(previous: BookEntry | None, quote: NormalizedQuote) -> NormalizedQuote | None:
+    """The at-close quote once ``quote`` arrives: it, when made by the close; else the one already held."""
+    return quote if made_by_the_close(quote) else (None if previous is None else previous.close_quote)
 
 
 class QuoteBook:
@@ -279,13 +295,15 @@ class QuoteBook:
         False when the instrument is not parked."""
         if quote.instrument_id not in self._parked:
             return False
-        self._parked[quote.instrument_id] = BookEntry(quote, quote.timestamp, depth, day_stats)
+        self._parked[quote.instrument_id] = BookEntry(
+            quote, quote.timestamp, depth, day_stats, _close_after(self._parked[quote.instrument_id], quote))
         return True
 
     def update(self, quote: NormalizedQuote, depth: Depth | None = None, day_stats: DayStats | None = None) -> None:
-        self._parked.pop(quote.instrument_id, None)
+        parked = self._parked.pop(quote.instrument_id, None)
         self._ended_times.pop(instrument_id := quote.instrument_id, None)  # held again: the quote itself speaks
-        self._entries[instrument_id] = BookEntry(quote, quote.timestamp, depth, day_stats)
+        self._entries[instrument_id] = BookEntry(
+            quote, quote.timestamp, depth, day_stats, _close_after(self._entries.get(instrument_id) or parked, quote))
 
     def __len__(self) -> int:
         return len(self._entries)
@@ -296,7 +314,15 @@ class QuoteBook:
 
     def get(self, instrument_id: str, now: datetime.datetime) -> NormalizedQuote | None:
         e = self._entries.get(instrument_id)
-        return with_feed_health(e.quote, self.feed.health(now)) if e else None
+        return with_feed_health(self._served(e, now), self.feed.health(now)) if e else None
+
+    def _served(self, e: BookEntry, now: datetime.datetime) -> NormalizedQuote:
+        """ADR-330 (36), the one place that applies the close cut-off: while the market is closed the quote is the
+        at-close one (a later frame is ignored for the figure); in market hours always the latest. None held at close (a
+        contract first seen after the close): the latest frame, as before."""
+        if e.close_quote is not None and self.feed.market_closed(now):
+            return e.close_quote
+        return e.quote
 
     def latest_depth(self, instrument_id: str, now: datetime.datetime) -> Depth | None:
         """The 5-level depth of the instrument's latest packet, or None: not held (never seen, removed or parked), the
@@ -337,4 +363,4 @@ class QuoteBook:
 
     def quotes(self, now: datetime.datetime) -> list[NormalizedQuote]:
         health = self.feed.health(now)
-        return [with_feed_health(e.quote, health) for e in self._entries.values()]
+        return [with_feed_health(self._served(e, now), health) for e in self._entries.values()]

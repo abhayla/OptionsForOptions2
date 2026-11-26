@@ -208,3 +208,6 @@ export async function draftFromReply(client, body) {
   if (!legs) throw new Error('unreadable draft') // fail closed: the caller keeps what is on screen
   return { legs, id: Number.isInteger(body.id) ? body.id : null, revision: Number.isInteger(body.revision) ? body.revision : null, name: typeof body.name === 'string' ? body.name : null }
 }
+
+/** ADR-330 (34), LR-Q16: the one line under the builder's unsaved-legs bar. Remove with its use when REQ-154 (unsaved strategy kept across a reload) ships. */
+export const UNSAVED_RELOAD_NOTE = 'Unsaved legs are not kept if you reload or close this page. Save to keep them.'
