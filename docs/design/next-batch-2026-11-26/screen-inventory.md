@@ -586,6 +586,7 @@ Same page component also serves: `/strategy/builder`.
 | BUILD-194 | (no label) `target-date-slider` _(field)_ | src/components/strategy/TargetBlock.vue:78 | Target date slider. | REQ-084 AC-2 | NONE |  | live prices |
 | BUILD-195 | &gt; [aria-label: Later] `target-date-forward` _(button)_ | src/components/strategy/TargetBlock.vue:83 | Step the target date back or forward. | REQ-084 AC-2 | NONE |  | live prices |
 | BUILD-196 | Reset `target-date-reset` _(button)_ | src/components/strategy/TargetBlock.vue:84 | Reset the target date. | REQ-084 AC-2 | NONE |  | live prices |
+| BUILD-197 | Open My Strategies `open-error-my-strategies` _(link)_ | src/pages/StrategyBuilderPage.vue:1250 | After a ?strategy= that does not exist: goes to /strategies/my-strategies (JSON id BUILD-10; regenerated ids after it shift by one, see Lane U note). | REQ-134 AC-5; ADR-330 (37) | e2e/screen-builder-drafts.spec.ts › ST-4 |  | none |
 
 ### `/strategies/live-strategies` - LiveStrategiesPage.vue
 
