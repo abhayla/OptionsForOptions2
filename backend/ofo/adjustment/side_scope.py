@@ -18,8 +18,9 @@ CALL: Final = "call"
 PUT: Final = "put"
 _KIND_SIDE: Final = {"CE": CALL, "PE": PUT}
 SCOPE: Final[dict[str, str]] = json.loads(Path(__file__).with_name("side_scope.json").read_text(encoding="utf-8"))
-#: the words of the rule line (catalogue wording, pending the owner's read)
-NOT_APPLICABLE: Final = "Not applicable: the {side} side is closed"
+#: the closed side -> the catalogue template of the shape that remains (ADR-330 (2) (b)); data, not code (AC-5)
+REMAINING_SHAPE: Final[dict[str, str]] = json.loads(
+    Path(__file__).with_name("side_remaining_shape.json").read_text(encoding="utf-8"))
 
 
 def _sides(legs: Iterable[Any]) -> frozenset[str]:
@@ -42,16 +43,17 @@ def _needs(trigger_id: str, closed: frozenset[str]) -> bool:
     return bool(closed) if scope == "both" else scope in closed
 
 
-def rule_notes(body: Mapping | None, closed: frozenset[str]) -> dict[str, str]:
-    """Rule id -> "Not applicable: the <call or put> side is closed" for each rule that no longer fits. An any_of rule
-    stops fitting when every trigger needs a closed side, an all_of rule when one does."""
+def rule_notes(body: Mapping | None, closed: frozenset[str]) -> dict[str, frozenset[str]]:
+    """Rule id -> the closed side(s) that make it "Not applicable: the <call or put> side is closed" (the sentence is a
+    catalogue line pending the owner's read; no words are built here), for each rule that no longer fits. An any_of
+    rule stops fitting when every trigger needs a closed side, an all_of rule when one does."""
     if not closed or not isinstance(body, Mapping):
         return {}
-    out: dict[str, str] = {}
+    out: dict[str, frozenset[str]] = {}
     for rule in body.get("rules") or ():
         any_of, all_of = rule.get("any_of") or (), rule.get("all_of") or ()
         gone = ((bool(any_of) and all(_needs(t, closed) for t in any_of))
                 or (bool(all_of) and any(_needs(t, closed) for t in all_of)))
         if gone:
-            out[rule["id"]] = NOT_APPLICABLE.format(side=" and ".join(sorted(closed)))
+            out[rule["id"]] = closed
     return out

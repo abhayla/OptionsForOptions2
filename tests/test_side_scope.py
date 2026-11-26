@@ -4,13 +4,13 @@ import json
 from decimal import Decimal
 from pathlib import Path
 
-from ofo.adjustment import side_scope
+from ofo.adjustment import playbook_eval, side_scope
 from ofo.adjustment.approaches import PositionLeg
 from ofo.adjustment.side_scope import closed_sides
 
 EXPIRY = datetime.date(2026, 12, 1)
 CONDOR = (("SELL", "CE", 24500), ("BUY", "CE", 24700), ("SELL", "PE", 24000), ("BUY", "PE", 23800))
-CLOSED_CALL = "Not applicable: the call side is closed"
+CLOSED_CALL = frozenset({"call"})  # the sentence itself is a catalogue line, pending the owner's read
 
 
 def leg(side, kind, strike):
@@ -52,7 +52,6 @@ def test_a_rolled_leg_is_not_closed():
 
 
 def test_every_trigger_of_the_playbooks_has_a_side_scope():
-    from ofo.adjustment import playbook_eval
     data = json.loads((Path(side_scope.__file__).parent / "system_playbooks.json").read_text())
     ids = set()
     for p in data["playbooks"]:

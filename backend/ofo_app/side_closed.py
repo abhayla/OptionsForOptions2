@@ -11,7 +11,8 @@ per (strategy, closed side): any earlier row of the rule, open or answered, stop
 position change (P1). Storing the confirmed shape needs no column: the answered row IS the record (answer
 ``confirm_new_shape``), read back by ``confirmed_shape``. ``add_legs`` stores the answer only and places no order.
 Answer states of ``confirmed_shape``: stated (a confirmed row) -> the label; absent / not answered / answered
-``add_legs`` -> None (the trade keeps its entry shape name); a closed side with no known remaining shape -> never raised.
+``add_legs`` -> None (the trade keeps its entry shape name); a closed side with no known remaining shape -> never
+raised.
 """
 from __future__ import annotations
 
@@ -24,8 +25,8 @@ from ofo.adjustment import side_scope
 from ofo.strategy.loader import load_templates
 
 RULE_PREFIX: Final = "side.closed."
-#: the closed side -> the catalogue template of the shape that remains (ADR-330 (2))
-_REMAINING: Final = {side_scope.CALL: "bull_put_spread", side_scope.PUT: "bear_call_spread"}
+_REMAINING: Final = side_scope.REMAINING_SHAPE
+_CONDOR_LEGS: Final = 4
 
 
 def rule_id(side: str) -> str:
@@ -40,7 +41,7 @@ def _names() -> dict[str, str]:
 def _is_condor(legs: Any) -> bool:
     """Entered as a two-spread condor: per side one SELL and one BUY (the only entry shape ADR-330 (2) names)."""
     legs = tuple(legs or ())
-    return len(legs) == 4 and all(
+    return len(legs) == _CONDOR_LEGS and all(
         sorted(x.side for x in legs if x.type == kind) == ["BUY", "SELL"] for kind in ("CE", "PE"))
 
 
@@ -52,8 +53,8 @@ def remaining_label(entry_legs: Any, closed: frozenset[str]) -> str | None:
     return _names().get(_REMAINING[next(iter(closed))])
 
 
-async def raise_if_closed(conn: Any, user_ref: str, strategy_id: int, tracked: Any, *, at: datetime,
-                          source: str | None = None) -> int | None:
+async def raise_if_closed(conn: Any, user_ref: str, strategy_id: int, tracked: Any, *,  # noqa: PLR0913
+                          at: datetime, source: str | None = None) -> int | None:
     """Raise the one side_closed alert when a side of the entry condor is closed now. Returns the alert id, or None
     (nothing closed, unreadable, unknown shape, or already raised once for this side)."""
     from ofo_app import actionable_alerts as aa  # noqa: PLC0415
