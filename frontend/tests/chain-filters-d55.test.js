@@ -15,7 +15,7 @@ vi.mock('@/services/api', async (importActual) => {
 import { createPinia, setActivePinia } from 'pinia'
 import OptionChainPage from '@/pages/OptionChainPage.vue'
 import { useSettingsValues } from '@/stores/settingsValues'
-import { NOT_LIVE_LABEL, daysLeft } from '@/composables/useChainLive'
+import { NOT_LIVE_LABEL } from '@/composables/useChainLive'
 import { healthSentence } from '@/lib/dataHealthText'
 
 class FakeSocket {

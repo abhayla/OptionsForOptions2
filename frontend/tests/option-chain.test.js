@@ -14,7 +14,7 @@ vi.mock('@/services/api', async (importActual) => {
 import { createPinia, setActivePinia } from 'pinia'
 import OptionChainPage from '@/pages/OptionChainPage.vue'
 import { useSettingsValues } from '@/stores/settingsValues'
-import { NOT_LIVE_LABEL, daysLeft } from '@/composables/useChainLive'
+import { NOT_LIVE_LABEL } from '@/composables/useChainLive'
 import { healthSentence } from '@/lib/dataHealthText'
 
 class FakeSocket {
@@ -141,9 +141,22 @@ describe('Option Chain screen', () => {
     expect(w.findAll('[data-testid="chain-row"]').map((r) => r.attributes('data-atm'))).toEqual(['false', 'false', 'false'])
   })
 
-  it('AC-8: days left comes from the expiry date alone', () => {
-    expect(daysLeft('2026-10-27', new Date(2026, 9, 19, 23, 30))).toBe(8)
-    expect(daysLeft('2026-10-19', new Date(2026, 9, 19, 0, 5))).toBe(0)
+  it('AC-8 / REQ-135 AC-2 (T-Q7): "N days left" is the SERVER\'s count; a frozen browser clock on another day changes nothing', async () => {
+    vi.useFakeTimers({ toFake: ['Date'] })
+    vi.setSystemTime(new Date(2026, 9, 19, 23, 30)) // the browser says 19 Oct: its own count to 27 Oct would be 8
+    try {
+      restAnswer = (url, params) => (url.startsWith('/catalogue/')
+        ? Promise.resolve({ data: { expiries: [EXPIRY], today: '2026-10-24', expiry_days: [{ expiry: EXPIRY, days: 3 }] } })
+        : url === '/settings' ? Promise.resolve(settingsAnswer()) : Promise.reject(new Error('down')))
+      const w = await mountPage()
+      expect(w.get('[data-testid="days-left"]').text()).toBe('3 days left')
+      // the server's count absent: no number at all, never one from the browser clock
+      restAnswer = (url) => (url.startsWith('/catalogue/') ? Promise.resolve({ data: { expiries: [EXPIRY] } }) : url === '/settings' ? Promise.resolve(settingsAnswer()) : Promise.reject(new Error('down')))
+      const w2 = await mountPage()
+      expect(w2.find('[data-testid="days-left"]').exists()).toBe(false)
+    } finally {
+      vi.useRealTimers()
+    }
   })
 
   it('AC-6: no order, execute, buy/sell button or link anywhere on the screen', async () => {

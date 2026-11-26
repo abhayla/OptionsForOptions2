@@ -26,7 +26,7 @@ import LeaveBuilderDialog from '@/components/strategy/LeaveBuilderDialog.vue'
 import { useLeaveBuilder } from '@/composables/useLeaveBuilder'
 import { useSettingsValues } from '@/stores/settingsValues'
 import { strikeRangesOf } from '@/lib/settingsValues'
-import { NOT_LIVE_LABEL, VALUE_UNAVAILABLE, chainRequest, daysLeft, useChainAnswer } from '@/composables/useChainLive'
+import { NOT_LIVE_LABEL, VALUE_UNAVAILABLE, chainRequest, useChainAnswer } from '@/composables/useChainLive'
 import { CHAIN_NOT_AVAILABLE, FEED_VALUE_KEYS, GREEKS_BASIS_LINES, GREEKS_MISSING_LINES, MONEYNESS, NO_FILTERS, anyServerFilter, fieldsFor, filterParams, onExpiryDay, filterRows, greeksStaleLabel } from '@/lib/chainDisplay'
 const ROWS_MISSING_LABELS = {
   SPOT_MISSING: 'The underlying price is missing, so no strikes can be chosen yet.',
@@ -166,7 +166,8 @@ const rowsMissing = computed(() => {
   if (!code) return ''
   return code === 'SPOT_MISSING' && view.value.rows.length ? SPOT_MISSING_ROWS_KEPT : ROWS_MISSING_LABELS[code]
 })
-const days = computed(() => (expiry.value ? daysLeft(expiry.value) : null))
+// REQ-135 AC-2: the server counted the days (IST); a missing or unreadable count shows no number, never the browser's own count
+const days = computed(() => { const d = expiryDays.value[expiry.value]; return Number.isInteger(d) && d >= 0 ? d : null })
 const spotTime = computed(() => {
   const at = (view.value ?? null)?.spot_at ?? null
   return at ? (istClock(at) ?? '') : '' // D-57: 24-hour India time from the one formatter
