@@ -282,8 +282,20 @@ function show({ data, token }) {
     errorParts.value = null
     goodReadToken.value = token // the token travels with the answer from the read that made it
     settle(items.value)
+    openExitFromLink()
   }
   loading.value = false
+}
+// S-14 (ADR-330 (10)): the Live card's Exit links here with `exit=<strategy id>`. It opens THIS list's own exit confirm for every
+// open leg, through the same gate and ask(); the user still confirms, and the parameter is dropped so a refresh does not re-open it.
+function openExitFromLink() {
+  const id = router?.currentRoute.value.query.exit
+  if (id === undefined || confirm.value || busy.value) return
+  const g = items.value.find((x) => String(x.id) === String(id))
+  const rows = g ? g.positions.filter(canExit) : []
+  const { exit, ...rest } = router.currentRoute.value.query
+  router.replace({ query: rest })
+  if (g && rows.length && !exitGate.blocked.value) ask(g, rows)
 }
 // D-05 r2: a failed read keeps the last loaded list (and any open Stops panel) under an error banner marked as last loaded
 function fail(e) {

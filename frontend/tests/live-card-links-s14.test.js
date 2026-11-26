@@ -1,6 +1,6 @@
 // S-14 (owner live test 25 Nov): the Live card's name opens the strategy, a running paper card has a Stops link, and the
 // entry column says "Entry price" for a placed (Running) strategy, "Planned entry" for an unplaced plan. Expected strings are
-// written here. No Exit button yet (waits for the ExitButton refactor).
+// written here. Exit is a link to the Paper tab (`exit=<id>`) that opens that list's own confirm: the card has no exit code of its own.
 import { beforeEach, describe, expect, it, vi } from 'vitest'
 import { flushPromises, mount } from '@vue/test-utils'
 import { createMemoryHistory, createRouter } from 'vue-router'
@@ -48,12 +48,14 @@ describe('S-14 Live card links', () => {
   it('a running card has a Stops link to the paper tab of its strategy', async () => {
     const w = await mountCard(strat(168, 'Running'))
     expect(w.get('[data-testid="live-strategy-stops"]').attributes('href')).toBe('/positions/current-positions?tab=paper&strategy=168')
-    expect(w.find('[data-testid="live-strategy-exit"]').exists()).toBe(false)
+    expect(w.get('[data-testid="live-strategy-exit"]').attributes('href')).toBe('/positions/current-positions?tab=paper&strategy=168&exit=168')
+    expect(w.get('[data-testid="live-strategy-exit"]').text()).toBe('Exit')
   })
   it('a Completed card has the name link and no Stops link', async () => {
     const w = await mountCard(strat(170, 'Completed'))
     expect(w.find('[data-testid="live-strategy-open"]').exists()).toBe(true)
     expect(w.find('[data-testid="live-strategy-stops"]').exists()).toBe(false)
+    expect(w.find('[data-testid="live-strategy-exit"]').exists()).toBe(false)
   })
   it('a Draft card has no Stops link', async () => {
     const w = await mountCard(strat(171, 'Draft'))
@@ -65,6 +67,7 @@ describe('S-14 Live card links', () => {
     expect(w.get('[data-testid="live-strategy-card"]').attributes('data-state')).toBe('error')
     expect(w.find('[data-testid="live-strategy-open"]').exists()).toBe(false)
     expect(w.find('[data-testid="live-strategy-stops"]').exists()).toBe(false)
+    expect(w.find('[data-testid="live-strategy-exit"]').exists()).toBe(false)
     expect(w.get('[data-testid="live-strategy-title"]').text()).toContain('S168')
   })
   it('entry column head: "Entry price" for a placed (Running) strategy, "Planned entry" for an unplaced plan', async () => {
