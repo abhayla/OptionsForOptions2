@@ -325,3 +325,24 @@ async def test_saving_the_box_with_an_empty_target_stores_no_target_and_t07_is_n
     for bad in ("0", "-5", "101", "abc"):  # an unusable number is still refused, naming the field
         status, refused = await _call("PUT", _plan_path(sid), json={"playbook_id": system.id, "target": bad})
         assert status == UNPROCESSABLE and "target" in json.dumps(refused), refused
+
+
+# --- ADR-330 (5) / LP-2: the levels preview says the same stop sentence the saved plan says (P4b) ---------------------
+
+
+async def test_levels_preview_gives_the_stop_sentence_the_saved_plan_gives_and_writes_nothing(app_db_url, monkeypatch):
+    sid = await _seeded(app_db_url, monkeypatch, "ADJ-01")
+    system = await _system_ic(app_db_url)
+    levels = _plan_path(sid) + "/levels"
+    for typed in ({"stop": "40"}, {"stop_rupees": "4000"}):
+        before = await _plan_row(app_db_url, sid)
+        status, preview = await _call("GET", levels, params=typed)
+        assert status == OK, preview
+        assert await _plan_row(app_db_url, sid) == before  # a preview writes nothing: the stored body is unchanged
+        status, saved = await _call("PUT" if before is not None else "POST", _plan_path(sid),
+                                    json={"playbook_id": system.id, **typed})
+        assert status == OK, saved
+        assert preview["stop"]["words"] == saved["plan"]["stop_words"], typed
+        assert "2x the credit received" in preview["stop"]["words"]
+        assert preview["stop"]["words"].endswith(", whichever comes first")
+    assert preview["stop"]["words"].startswith("a loss of Rs 4000.00 (")
