@@ -20,6 +20,8 @@ from test_adjustment_check import (
 OK, NOT_FOUND = 200, 404
 KEYS = {"key", "kind", "label", "unit", "fires_at", "now", "distance_rs", "distance_pct", "state", "reason"}
 STATES = {"watching", "fired", "not_applicable", "not_computable", "paused"}
+NA_CALL = "Not applicable: the call side is closed"
+NA_PUT = "Not applicable: the put side is closed"
 
 
 async def _arm(app_engine, sid: int) -> None:
@@ -105,3 +107,83 @@ async def test_records_store_unreadable_is_a_refusal_with_no_lines(app_db_url, m
     monkeypatch.setattr(playbook_store, "open_suggestions", broken)
     status, out = await _watch(sid)
     assert status == 503 and "lines" not in out, out  # noqa: PLR2004 - Failure.UPSTREAM_BUSY
+
+
+async def _exit_side(app_engine, sid: int, kind: str) -> None:
+    """Exit every open leg of one side ("CE" / "PE") with a reducing order at a later time (as the book does it)."""
+    import datetime  # noqa: PLC0415
+
+    from ofo_app import tracked_contracts  # noqa: PLC0415
+    from ofo_app.paper_book import NewOrder  # noqa: PLC0415
+    from ofo_app.routes.paper import identity_of  # noqa: PLC0415
+
+    async with app_engine.begin() as conn:
+        orders = await paper_store.load(conn, sid)
+        ids = sorted({o.order.contract_id for o in orders})
+        found = {c.contract_id: c for c in await tracked_contracts.resolve(conn, ids)}
+        net: dict[int, int] = {}
+        for o in orders:
+            net[o.order.contract_id] = net.get(o.order.contract_id, 0) + (
+                o.order.quantity if o.order.side == "BUY" else -o.order.quantity)
+        later = max(o.order.placed_at for o in orders) + datetime.timedelta(minutes=30)
+        closing = [NewOrder(cid, "SELL" if q > 0 else "BUY", abs(q), Decimal("10"), "exit", later)
+                   for cid, q in net.items() if q and identity_of(found[cid])[1].value == kind]
+        assert len(closing) == 2, closing  # noqa: PLR2004 - a condor side has two legs
+        await paper_store.place(conn, "owner", sid, closing)
+
+
+async def _with_side_rule(app_engine, sid: int) -> None:
+    """The system iron condor plan has no rule that needs a side (T-05, one side's value x the other's, is off and in
+    no rule), so the strategy gets its own plan: the system rules plus a rule on T-05, switched on."""
+    import copy  # noqa: PLC0415
+
+    from ofo_app import playbook_store  # noqa: PLC0415
+
+    async with app_engine.begin() as conn:
+        system = await playbook_store.active_for(conn, "owner", "ic")
+        mine = await playbook_store.duplicate(conn, "owner", system.id, f"Side rule {sid}")
+        body = copy.deepcopy(mine.body)
+        body["triggers"]["T-05"]["on"] = True
+        body["rules"].append({"any_of": ["T-05"], "id": "T-05"})
+        saved = await playbook_store.save_in_place(conn, "owner", mine.id, body, mine.version)
+        await playbook_store.accept_plan(conn, "owner", sid, saved.id)
+
+
+async def test_closed_call_side_rules_read_not_applicable_and_put_side_keeps_working(app_db_url, monkeypatch):  # noqa: F811
+    """ADR-330 (2)(a), P10: the call side fully exited -> each rule that needs the call side reads "Not applicable: the
+    call side is closed" (state not_applicable, the existing state / reason fields); the rules that still fit keep
+    their own state."""
+    sid = await _seeded(app_db_url, monkeypatch, "ADJ-01")
+    await _with_side_rule(app_db_url, sid)
+    status, before = await _watch(sid)
+    assert status == OK, before
+    assert not [x for x in before["lines"] if x["reason"] == NA_CALL]  # nothing closed yet
+    assert next(x for x in before["lines"] if x["key"] == "T-05")["state"] in ("watching", "fired")
+    await _exit_side(app_db_url, sid, "CE")
+    status, out = await _watch(sid)
+    assert status == OK, out
+    shown = {x["key"]: x for x in out["lines"] if x["section"] == "plan"}
+    na = {k: x for k, x in shown.items() if x["state"] == "not_applicable"}
+    assert set(na) == {"T-05"}, shown  # the one rule that needs both sides; every other rule still fits
+    for x in na.values():
+        assert x["reason"] == NA_CALL, x
+        assert x["now"] is None and x["fires_at"] is None and x["distance_rs"] is None and x["distance_pct"] is None
+    kept = [x for x in shown.values() if x["state"] != "not_applicable"]
+    assert {"T-07", "T-06"} <= {x["key"] for x in kept}  # target and loss stop are not side rules
+    assert {x["state"] for x in kept if x["key"] in ("T-07", "T-06")} <= {"watching", "fired"}  # they keep working
+    assert {x["state"] for x in kept} <= {"watching", "fired", "not_computable"}, kept  # each its own state
+    assert all(x["reason"] != NA_CALL for x in kept)
+
+
+async def test_closed_put_side_reads_put_and_unreadable_entry_judges_no_side(app_db_url, monkeypatch):  # noqa: F811
+    sid = await _seeded(app_db_url, monkeypatch, "ADJ-02")  # its own strategy: the call test closed ADJ-01's call side
+    await _with_side_rule(app_db_url, sid)
+    await _exit_side(app_db_url, sid, "PE")
+    status, out = await _watch(sid)
+    assert status == OK, out
+    reasons = {x["reason"] for x in out["lines"] if x["state"] == "not_applicable" and x["section"] == "plan"}
+    assert reasons == {NA_PUT}, reasons
+    from ofo_app.routes import plan_watch as pw  # noqa: PLC0415
+    monkeypatch.setattr(pw, "_closed", lambda _run: frozenset())  # an unreadable entry: nothing judged closed
+    status, out = await _watch(sid)
+    assert status == OK and not [x for x in out["lines"] if x["reason"] == NA_PUT], out
