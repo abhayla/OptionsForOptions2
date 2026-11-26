@@ -1082,6 +1082,10 @@ PLAN_SHEET_LABEL_TEXT: Mapping[str, str] = MappingProxyType({
     "max_adjustments": "Max adjustments", "time_exit": "Time exit",
     "time_exit_on": "Time exit date (blank = expiry day)",  # ADR-330 (7): any trading day, one date and one time
     "customise": "Customise triggers", "use_as_is": "Use playbook as is", "save": "Save plan", "close": "Close",
+    "reset": "Reset to playbook",  # ADR-330 (9), (32), P8 (pending owner read)
+    "reset_confirm": ("Reset to playbook puts back this playbook's conditions only. The levels you typed on the sheet "
+                      "(profit target, rupee target, rupee stop, time exit, the adjustment limit) and the plan's "
+                      "settings stay as you set them. Reset the conditions?"),
     "plan_entry": "Plan", "edit": "Edit plan", "no_plan": NO_PLAN_TEXT, "set_plan": "Set plan",
     "hour": "Hour", "minute": "Minute",
 })
@@ -1450,6 +1454,9 @@ _EXPLANATIONS: tuple[ExplanationTemplate, ...] = (
     ExplanationTemplate("playbook_name_shown", "values_seen", "{name}", {"name": UserText}),
     ExplanationTemplate("change_renamed", "values_seen", "Renamed from {old} to {new}",
                         {"old": UserText, "new": UserText}),
+    # ADR-330 (31): a delete and its Undo are history entries (the times come from the entry, not from this text)
+    ExplanationTemplate("change_deleted", "values_seen", "Deleted"),
+    ExplanationTemplate("change_undeleted", "values_seen", "Restored"),
     ExplanationTemplate("rule_label_days_to_expiry_from", "rule", "{days} days to expiry or fewer, from {time} IST",
                         {"days": Days, "time": ClockHm}),
     # --- W-066 (issue #151, REQ-034 AC-7): every text of the outcome API, with typed slots --------------------------
@@ -1749,6 +1756,20 @@ _EXPLANATIONS: tuple[ExplanationTemplate, ...] = (
     # ADR-330 (3), owner Q2b: an unanswered alert whose trade closed first stays in History with this line
     ExplanationTemplate("alert_closed_trade_closed", "values_seen", "Closed by system: the trade closed at {time}",
                         {"time": HourMinute}),
+    # ADR-330 (2) (b), (33), P7 page flow (pending owner read): the side_closed row's words and its confirmation
+    # one sentence per closed side; the shape is a strategy template's own name through the reviewed TemplateText slot
+    # (Lane J 26 Nov: two new slot types would need the pinned slot-type
+    # review of tests_app/test_identifier_and_slots.py); the route uses it only when the shape data names that shape
+    ExplanationTemplate("alert_side_closed_text_call", "values_seen",
+                        "The call side of this trade is closed. Add the legs again, or confirm the new shape: "
+                        "this strategy will change from its entry shape to {shape}.", {"shape": TemplateText}),
+    ExplanationTemplate("alert_side_closed_text_put", "values_seen",
+                        "The put side of this trade is closed. Add the legs again, or confirm the new shape: "
+                        "this strategy will change from its entry shape to {shape}.", {"shape": TemplateText}),
+    # ADR-330 (2) (a), P10 (pending owner read): a plan rule that needs a closed side, in the Plan watch's reason field;
+    # one sentence per side, no slot (as the side-closed alert sentence)
+    ExplanationTemplate("plan_watch_side_not_applicable_call", "values_seen", "Not applicable: the call side is closed"),
+    ExplanationTemplate("plan_watch_side_not_applicable_put", "values_seen", "Not applicable: the put side is closed"),
     *(ExplanationTemplate(f"alert_answer_{key}", "values_seen", text)  # ADR-330 (3): each answer's label, as the page shows it
       for key, text in ALERT_ANSWER_LABEL_TEXT.items()),
     ExplanationTemplate("stop_fired_loss", "values_seen",

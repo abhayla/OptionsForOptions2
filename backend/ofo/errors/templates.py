@@ -1010,6 +1010,11 @@ _STRATEGY_DRAFT_TEMPLATES: tuple[MessageTemplate, ...] = (
           "This strategy is busy with another action, so nothing was changed.",
           "The strategy and its history were not changed.", "This action on this strategy.",
           "Wait a moment, then try again."),
+    # NEW-T66 finish (ADR-330 (37), owner 26 Nov 2026): opening ?strategy=<id> for a strategy that does not exist.
+    _gate("strategy_not_found", _SV, 523,
+          "This strategy was not found. It may have been deleted.",
+          "Nothing was opened or changed.", "Opening this strategy.",
+          "Open My Strategies to choose another one."),
     # GC-BP step 5 (REQ-109 AC-4, AC-5): paper exit of tracked legs.
     _gate("tracking_exit_prices_not_live", _SV, 433,
           "Prices are not live; try again when they update.",

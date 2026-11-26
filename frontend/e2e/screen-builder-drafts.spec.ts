@@ -1676,12 +1676,14 @@ test.describe('Builder: the leg drawer tabs, History drawer and the Drawer primi
 // =============================================================================================== loading, not found, failure
 test.describe('Builder: loading, not found and failure states (REQ-134 AC-5, REQ-065, REQ-035)', () => {
   test('ST-1 N-13 while a saved strategy is being read the page does not say "No draft strategy is open"', async ({ page }, info) => {
-    // Spec basis: none (searched: loading saved strategy; REQ-154 "Why" names the same sentence as the problem a user sees when work seems gone); owner N-13
+    // Spec basis: none (searched: loading saved strategy; REQ-154 "Why" names the same sentence as the problem a user sees when work seems gone); owner N-13;
+    // D-N13 / N-34 (RESULTS-lane-r.md): while opening the left card is the loading line, not an empty "New Strategy" shell
     const S = await stubBuilder(page)
     const g = gate()
     S.one.set(7, { wait: g.wait, json: SAVED_7() })
     await page.goto(`${BUILDER}?strategy=7`)
-    await expect(page.getByTestId('strategy-card-name')).toBeVisible()
+    await expect(page.getByTestId('opening-card')).toHaveText('Working out the outcome...')
+    await expect(page.getByTestId('strategy-card-name')).toHaveCount(0)
     await shot(page, `NEW-T65-${info.project.name}`)
     await expect(page.getByTestId('state-no-draft')).toHaveCount(0)
     g.open()
@@ -1711,13 +1713,25 @@ test.describe('Builder: loading, not found and failure states (REQ-134 AC-5, REQ
     expect(S.calls).toContain('GET /api/strategies/999')
   })
 
-  test('ST-4 a strategy that is not found says so in words (not the "could not get an answer from the server" line)', async ({ page }, info) => {
-    // Spec basis: REQ-065 (a message says what happened; a missing strategy is not a connection failure); ADR-003
-    await stubBuilder(page)
+  test('ST-4 a strategy that is not found says so in words and offers Open My Strategies (not the "could not get an answer from the server" line)', async ({ page }, info) => {
+    // Spec basis: REQ-065 (a missing strategy is not a connection failure); ADR-003; ADR-330 (37) (owner, 26 Nov 2026); REQ-134 AC-5
+    const S = await stubBuilder(page)
+    // the server's real 404 body for a deleted strategy (backend/ofo/errors/templates.py `strategy_not_found`, STRATEGY_VALIDATION_523)
+    S.one.set(999, { status: 404, json: { error_class: 'STRATEGY_VALIDATION', code: 'STRATEGY_VALIDATION_523', what_happened: 'This strategy was not found. It may have been deleted.', impact: 'Nothing was opened or changed.', what_is_blocked: 'Opening this strategy.', next_action: 'Open My Strategies to choose another one.', external_text: null } })
     await page.goto(`${BUILDER}?strategy=999`)
-    await expect(page.getByTestId('open-error-what')).toBeVisible()
+    await expect(page.getByTestId('open-error-what')).toHaveText('This strategy was not found. It may have been deleted.')
     await shot(page, `NEW-T66-${info.project.name}`)
     await expect(page.getByTestId('open-error-what')).not.toHaveText(NEUTRAL.what)
+    await page.getByRole('link', { name: 'Open My Strategies' }).click()
+    await expect(page).toHaveURL(/\/strategies\/my-strategies$/)
+  })
+
+  test('ST-4b a bare 404 gives the neutral message and no button', async ({ page }) => {
+    // Spec basis: REQ-065 (a bare 404 is the neutral failure, no state guessed); only the catalogue's own strategy_not_found code adds the button
+    await stubBuilder(page)
+    await page.goto(`${BUILDER}?strategy=998`)
+    await expect(page.getByTestId('open-error-what')).toHaveText(NEUTRAL.what)
+    await expect(page.getByRole('link', { name: 'Open My Strategies' })).toHaveCount(0)
   })
 
   test('ST-5 a ?strategy= that is not a whole number (abc) opens nothing and asks the server for no strategy', async ({ page }) => {

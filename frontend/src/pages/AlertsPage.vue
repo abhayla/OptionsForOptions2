@@ -7,12 +7,13 @@
 import PageHeader from '@/components/common/PageHeader.vue'
 import EmptyState from '@/components/states/EmptyState.vue'
 import { computed, nextTick, onMounted, ref } from 'vue'
-import { useRoute } from 'vue-router'
+import { useRoute, useRouter } from 'vue-router'
 import ErrorMessage from '@/components/common/ErrorMessage.vue'
 import PaperStrategies from '@/components/strategy/PaperStrategies.vue'
 import { istHm, istTime } from '@/lib/displayFormat'
 import { plainName } from '@/lib/saveDraft'
 import { NEUTRAL_PARTS } from '@/services/api'
+import { builderLinkOf } from '@/lib/strategyLinks'
 import { RECORDS_EMPTY, PAPER_ALERTS_EMPTY, activeAlerts, alertHistory, answerAlert, dropActive, loadAlertHistory, loadPaperRecords, paperRecords, readActive, takeActive } from '@/lib/paperAlerts'
 
 // U23: the title shows once; an older stored body still opens with it, so that repeat is dropped (display only)
@@ -21,6 +22,7 @@ const alertBody = (a) => (a.body.startsWith(`${a.title}: `) ? a.body.slice(a.tit
 const NO_CHANNELS = 'No notification channels are set up yet.'
 
 const route = useRoute()
+const router = useRouter()
 const isActive = computed(() => route.path.endsWith('/active'))
 // the third tab is the one that is neither Active nor Notification settings (no path literal: ADR-066's scan)
 const isRecords = computed(() => !isActive.value && !route.path.endsWith('/notification-settings'))
@@ -35,8 +37,24 @@ const exitCode = 'exit'
 // user confirms in it; a flat strategy gets the door's own note; closing it (confirm or cancel) leaves the alert answered.
 const exitFor = ref(null)
 
+// P7 (ADR-330 (2)(b), (33)): a side_closed row. "Add the legs again" stores add_legs then opens that strategy's builder (the builder
+// cannot be told a side: it shows the strategy and the server's notice). "Confirm the new shape" first shows the server's sentence
+// naming the shape that remains (the row's own text); only its Confirm stores confirm_new_shape; Cancel stores nothing and the row stays asking.
+const confirming = ref(null) // the alert id whose confirmation sentence is showing
+const isSideClosed = (a) => a.kind === 'side_closed'
+
 async function answer(a, code) {
   if (busy.value) return
+  if (isSideClosed(a) && code === 'confirm_new_shape' && confirming.value !== a.id) {
+    if (typeof a.text !== 'string' || a.text === '') { // no sentence from the server: store nothing (fail closed)
+      answerError.value = { ...answerError.value, [a.id]: NEUTRAL_PARTS }
+      return
+    }
+    answerError.value = { ...answerError.value, [a.id]: null }
+    confirming.value = a.id
+    return
+  }
+  confirming.value = null
   busy.value = true
   answerError.value = { ...answerError.value, [a.id]: null }
   try {
@@ -55,6 +73,11 @@ async function answer(a, code) {
     return
   }
   busy.value = false
+  if (isSideClosed(a) && code === 'add_legs') {
+    const to = builderLinkOf(a.strategy_id)
+    if (to) router.push(to)
+    return
+  }
   if (code === exitCode) { exitFor.value = null; await nextTick(); exitFor.value = String(a.strategy_id) }
 }
 
@@ -104,6 +127,13 @@ onMounted(async () => {
         <p v-if="a.worse_line" class="text-xs text-ink-muted" data-testid="alert-worse">{{ a.worse_line }}</p>
         <div class="mt-2 flex flex-wrap gap-2">
           <button v-for="x in a.answers" :key="x.code" type="button" class="rounded border border-line px-2 py-1 text-sm" :disabled="busy" :data-testid="`alert-answer-${x.code}`" @click="answer(a, x.code)">{{ x.label }}</button>
+        </div>
+        <div v-if="confirming === a.id" class="mt-2 rounded border border-line p-2" data-testid="side-closed-confirm">
+          <p class="text-sm">{{ a.text }}</p>
+          <div class="mt-2 flex gap-2">
+            <button type="button" class="rounded border border-line px-2 py-1 text-sm" :disabled="busy" data-testid="side-closed-confirm-yes" @click="answer(a, 'confirm_new_shape')">{{ a.answers.find((x) => x.code === 'confirm_new_shape')?.label }}</button>
+            <button type="button" class="rounded border border-line px-2 py-1 text-sm" :disabled="busy" data-testid="side-closed-confirm-no" @click="confirming = null">Cancel</button>
+          </div>
         </div>
         <div v-if="answerError[a.id]" class="mt-2" data-testid="alert-answer-error"><ErrorMessage :parts="answerError[a.id]" compact prefix="alert-answer" /></div>
       </li>

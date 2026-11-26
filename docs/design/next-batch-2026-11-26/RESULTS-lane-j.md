@@ -7,6 +7,16 @@ for these items by the owner on 26 Nov, see RESULTS-lane-p.md). Highest status c
 
 Spec basis: ADR-330 (1) to (27) and its one-module instruction; ADR-002; ADR-003; ADR-008; ADR-016 to ADR-019.
 
+## Status for the coordinator (this session cannot send messages: the session-message service refuses it as untrusted)
+
+1. On origin: Step 2 wiring since push 2 (7d81d0a); every head you named through 3d7aaf7 (push 3). Built and gated in
+   this push or the one before: P7 answers, P8 Reset, ADR-330 (31) with 0057, S-11, the Not-applicable line, Lane R
+   71ed990, Lane U 63091d7. #753 (0058) is still being built: it goes in only with its review and proof by 07:00 IST.
+2. Each push runs the full pre-push gate (about 35-40 min); the head of section (c) "Push log" is the latest.
+3. Next pushes: every gate pass until 07:00 IST; final head by 07:30 IST; nothing after until you say.
+4. Blocking: nothing. Approvals the owner may give later (none block the test): see "Lines waiting for a person's
+   approval" at the end.
+
 ## (a) PC set-up (do these first, in this order)
 
 1. **Back up the database FIRST** (the PC's PostgreSQL is the owner's live one). In a terminal on the PC:
@@ -16,14 +26,17 @@ Spec basis: ADR-330 (1) to (27) and its one-module instruction; ADR-002; ADR-003
 2. `git fetch origin` and `git checkout integration/nb-1126` at the pushed head named in section (c).
 3. `pip install -r requirements-app.txt` and `cd frontend && npm ci` (new packages may have come with the merge).
 4. Migrate: `python scripts/orchestrator/db_run.py . python -m alembic -c backend/ofo_app/alembic.ini upgrade head`.
-   The PC is at `0053_close_finished_strategies` (the screens line). This runs exactly three migrations:
+   The PC is at `0053_close_finished_strategies` (the screens line). This runs exactly four migrations:
    `0054_actionable_alert_answers` (new NULL columns on `adjustment_suggestions`; old rows read as adjustment rules),
    `0055_plan_stop_base` (`stop_base JSONB NULL` on `strategy_adjustment_plans`), then
    `0056_several_standard_playbooks` (drops the one-standard-playbook-per-type unique index, adds a unique `slug`
-   column, each standard playbook gets `<type>-default`; ADR-330 (9)). No playbook, plan or alert row is deleted.
+   column, each standard playbook gets `<type>-default`; ADR-330 (9)), then `0057_history_delete_entries` (the
+   strategy-history item validator accepts two new kinds, `deleted` and `undeleted`, ADR-330 (31); no table, column
+   or grant change). No playbook, plan, alert or history row is changed or deleted. Migrate BEFORE starting the new
+   code (at 0056 a new-code Delete or Undo is refused by the database and rolls back).
    Treat 0054 as one-way: never run `alembic downgrade` (its downgrade refuses once new alerts exist).
 5. Post-migration checks: `python scripts/orchestrator/db_run.py . python -m alembic -c backend/ofo_app/alembic.ini current`
-   must print `0056_several_standard_playbooks (head)`.
+   must print `0057_history_delete_entries (head)`.
 6. Restart: stop and start the API, the background worker supervisor (`python scripts/orchestrator/supervise_worker.py`),
    and rebuild the frontend (`cd frontend && npm run build`).
 7. In the browser: (a) Positions > Adjustment opportunities still lists the old records; (b) Alerts > Active opens and
@@ -43,9 +56,19 @@ Old-code safety of each migration on this branch (so switching the PC back to an
   test_paper_triggers_routes 65, test_exit_door 34 passed; test_playbook_store 50 passed, 1 failed by design
   (`test_the_application_role_cannot_insert_a_system_row_and_the_owner_cannot_add_a_second`: DID NOT RAISE, 0056
   drops that rule on purpose, ADR-330 (9)).
+- 0057 (Lane J, ADR-330 (31)): code 3d7aaf78 (push 3, before 0057) against a database at 0057 holding a `deleted`
+  entry: test_strategy_store 98, test_strategy_bulk_delete 11, test_strategy_delete_app 31, test_strategy_name_app 28
+  passed; the old history screen shows those entries as "this change could not be shown" and offers Restore, which puts
+  back the definition current at the delete (harmless, measured by the Tier A review). Three old-tree tests that replay
+  migrations fail because the database is newer (expected). Tier A review (Opus): SHIP; upgrade of a database holding
+  every old history kind keeps all 44 rows valid; grants unchanged; downgrade refuses while a delete entry exists.
 - Do not run `alembic downgrade` from an older branch.
 
 ## (b) Screen-check list (owner, paper only, market hours 09:15-15:30 IST; Ctrl+F5 once after the rebuild)
+
+Each row starts with "[needs live prices: yes/no]". Step 2 (the wiring: fired stops through the one alert module
+with the max-loss line, Exit on an alert through the one exit door, the leg-stop risk line, the Plan watch box) has
+been on origin since push 2 (7d81d0a, 26 Nov evening); rows L1 to L8 test it.
 
 Live-price checks first (rows L1 to L9 need ticking prices), then the rest. Each row: the clicks, then the exact text
 expected. Write PASS / FAIL and what you saw beside each.
@@ -54,69 +77,88 @@ Set-up for the live rows: one paper iron condor WITH a plan (Positions > Paper >
 plan sheet: Set plan, a Stop (Rs) a little above the current loss so it can be crossed, Save), and one paper iron condor
 WITHOUT a plan.
 
-L1. Plan watch on the builder (ADR-330 (13)). Open the planned trade in the builder (My Strategies > its row > Open in
+L1. [needs live prices: yes] Plan watch on the builder (ADR-330 (13)). Open the planned trade in the builder (My Strategies > its row > Open in
     Builder). Expected: beside the live P&L a box titled "Plan watch", one row per trigger (profit target, loss stop,
     2x credit, each adjustment rule; each armed Stops-panel exit under "Armed in the Stops panel"), each row showing
     fires at, now, distance as "₹X (Y%)", and a state. The "now" and distance figures change with the prices.
-L2. Plan watch on Positions. Positions > Paper: the planned trade's row shows the same box in its compact form, with the
+L2. [needs live prices: yes] Plan watch on Positions. Positions > Paper: the planned trade's row shows the same box in its compact form, with the
     same figures as L1 at the same moment. The trade WITHOUT a plan reads "No plan: nothing is watched for this
     strategy" and still lists its armed Stops-panel exits, if any. A fully closed trade shows no box.
-L3. Max-loss line before a leg stop is saved (ADR-330 (6)). Positions > Paper > the planned trade > Stops. Pick the
+L3. [needs live prices: no] Max-loss line before a leg stop is saved (ADR-330 (6)). Positions > Paper > the planned trade > Stops. Pick the
     short CALL leg, type a stop price above its price. Within about half a second a line appears under the box:
     "If this stop fires, max loss becomes Rs X (now Rs Y)." (or "If this stop fires, there is no fixed maximum loss
     (now Rs Y)." when the leg's wing would be left alone). Change the price: the line goes away and comes back for the
     new price. Clear the box: no line. Save is clickable in every case.
-L4. Save that leg stop at a price the market will reach soon. When it fires: a pop-up appears for about 6 seconds,
+L4. [needs live prices: yes] Save that leg stop at a price the market will reach soon. When it fires: a pop-up appears for about 6 seconds,
     titled with the trade's name, number and expiry, as in "Short Iron Condor (#172, 1 Dec)", whose text ends with the
     same "If this stop fires, max loss becomes Rs X (now Rs Y)." line as L3. The bell number does NOT go up.
     Alerts > History shows the same message once. The leg is exited on the Paper Orderbook (one exit order).
-L5. Actionable alert stays until answered (ADR-330 (3), (4)). Wait for (or arrange) the plan's loss stop on the planned
+L5. [needs live prices: yes] Actionable alert stays until answered (ADR-330 (3), (4)). Wait for (or arrange) the plan's loss stop on the planned
     trade to be crossed. Expected: a short pop-up, and the bell number goes up by 1. Alerts > Active: as many rows as
     the bell; the row shows "Fired at HH:MM", its title with "(#<number>, <d Mon>)", and two buttons "Exit the
     position" and "Continue with the position". Opening the page does not lower the bell.
-L6. If the loss comes back inside the stop: the row stays and adds "no longer true since HH:MM"; when it crosses again
+L6. [needs live prices: yes] If the loss comes back inside the stop: the row stays and adds "no longer true since HH:MM"; when it crosses again
     that line goes away. If the loss gets worse, a second pop-up "Worse than when it fired: ...".
-L7. Press "Continue with the position": the row leaves Active, the bell drops by 1, Alerts > History shows the answer
+L7. [needs live prices: yes] Press "Continue with the position": the row leaves Active, the bell drops by 1, Alerts > History shows the answer
     and its time. Nothing is exited (Paper Orderbook unchanged).
-L8. Exit from an alert (ADR-330 (3), (12)). On another alert press "Exit the position". Expected: the answer is stored
+L8. [needs live prices: yes] Exit from an alert (ADR-330 (3), (12)). On another alert press "Exit the position". Expected: the answer is stored
     and the SAME exit confirmation as on Positions opens on the Alerts page for that trade. Press Cancel: nothing is
     exited (Orderbook unchanged). Raise another alert, press "Exit the position", then Confirm: one exit per open leg
     appears on the Paper Orderbook, and the trade reads closed on Positions.
-L9. Time exit on any day (ADR-330 (7)). Plan sheet: "Time exit" with a date box (blank = expiry day). Set today and a
+L9. [needs live prices: yes] Time exit on any day (ADR-330 (7)). Plan sheet: "Time exit" with a date box (blank = expiry day). Set today and a
     time 5 minutes ahead; Save. At that time an alert appears as in L5; nothing exits.
 
 Without live prices (any time):
 
-N1. Stop fixed at entry (ADR-330 (1)). On an iron condor with a plan, note the plan's stop line (e.g. "15.4 % of max
+N1. [needs live prices: yes] Stop fixed at entry (ADR-330 (1)). On an iron condor with a plan, note the plan's stop line (e.g. "15.4 % of max
     loss (Rs 400.40)" and "2x credit Rs 7,800"). Close the call side (two exits). Reopen the plan: the same rupees.
-N2. Rupee levels with the preview sentence (ADR-330 (5)). Plan sheet: type 400 in "Stop (Rs)" on a 1-lot iron condor:
+N2. [needs live prices: no] Rupee levels with the preview sentence (ADR-330 (5)). Plan sheet: type 400 in "Stop (Rs)" on a 1-lot iron condor:
     the percent box fills from the server and the line under it reads "a loss of Rs 400.00 (<p> % of max loss), 2x the
     credit received ... whichever comes first"; after Save the saved plan shows the same sentence.
-N3. Own-plan rule (ADR-330 (11)). The trade without a plan: plan card reads "No plan: nothing is watched for this
+N3. [needs live prices: no] Own-plan rule (ADR-330 (11)). The trade without a plan: plan card reads "No plan: nothing is watched for this
     strategy"; no adjustment suggestions or target/stop alerts for it; its Stops-panel exits still fire.
-N4. Paper total line (ADR-330 (15)). Positions > Paper with at least one closed paper trade: under the total
+N4. [needs live prices: no] Paper total line (ADR-330 (15)). Positions > Paper with at least one closed paper trade: under the total
     "Includes 1 closed strategy." (or "Includes N closed strategies."). If a trade has no live price, the left-out line
     "1 strategy left out: its price is not live." is shown too, and the total adds up to the rows it shows.
-N5. Whole-trade close closes its alert. Exit a whole paper trade that has an unanswered alert: Alerts > History shows
+N5. [needs live prices: yes] Whole-trade close closes its alert. Exit a whole paper trade that has an unanswered alert: Alerts > History shows
     "Closed by system: the trade closed at HH:MM"; the bell drops by 1.
-N6. Top menu (P12): on My Strategies click "Strategies" in the top menu: its menu opens; click again: closes.
-N7. Stop above the max loss (ADR-330 (25), Lane P LP-4). Plan sheet of a 1-lot iron condor with max loss Rs 2,600: type
+N6. [needs live prices: no] Top menu (P12): on My Strategies click "Strategies" in the top menu: its menu opens; click again: closes.
+N7. [needs live prices: no] Stop above the max loss (ADR-330 (25), Lane P LP-4). Plan sheet of a 1-lot iron condor with max loss Rs 2,600: type
     3000 in "Stop (Rs)": one line under the box reads "This stop (Rs 3,000) is above the trade's max loss (Rs 2,600),
     so it cannot be reached." Save still works. Type 400 again: the line goes.
-N8. Side closed (ADR-330 (2), (33), Lane P P7, server side only): on a paper iron condor with a plan exit both call legs.
+N8. [needs live prices: yes] Side closed (ADR-330 (2), (33), Lane P P7, server side only): on a paper iron condor with a plan exit both call legs.
     Within one worker cycle Alerts > Active gains one row naming the closed side and the bell goes up by 1. Its two
     page answers (add legs / confirm the new shape) are not built yet (Lane P Wave 2, Lane J next).
-N9. Real P&L total (Lane S): Positions with no real position in a strategy: "Real P&L" shows a dash and "No real
+N9. [needs live prices: yes] Real P&L total (Lane S): Positions with no real position in a strategy: "Real P&L" shows a dash and "No real
     positions are open in your strategies."; "Paper P&L" shows its own figure beside it, not added. With one real
     position: the total shows the row's figure with "Zerodha, as at HH:MM:SS IST" and equals Kite's P&L for that
     contract at the same minute. Filter All / Real / Paper: the two totals stay separate.
+N10. [needs live prices: yes] Side closed, the answers (ADR-330 (2)(b), (33)). After N8, Alerts > Active, the side-closed row: press "Add the
+    legs again": the answer is stored and the builder of that trade opens. On another side-closed row press "Confirm
+    the new shape": the confirmation shows the row's own sentence "The call side of this trade is closed. Add the legs
+    again, or confirm the new shape: this strategy will change from its entry shape to Bull Put Spread." (the shape as
+    the server names it); Cancel: nothing
+    is stored and the row stays asking; Confirm: the row leaves Active, the bell drops by 1.
+    Plan watch after a side closed (ADR-330 (2)(a)): a plan rule that needs the closed side reads "Not applicable: the
+    call side is closed" with dashes for now and distance; the other side's rules keep working. Note: the stock iron
+    condor plan has no side-scoped rule (only T-05 is, and it is off), so this line shows only on a plan with T-05 on.
+N11. [needs live prices: no] Reset to playbook (ADR-330 (9), (32)). A plan saved from a playbook: switch one condition off, type a Rs 400 stop
+    and a 15:15 time exit, Save. Open the plan sheet > Edit > "Reset to playbook": one confirmation says the typed
+    levels stay; Confirm: the condition is on again, the Rs 400 stop and 15:15 stay, the changed / switched-off markers
+    show. A plan whose playbook was deleted: the reset is refused with the server's sentence.
+N12. [needs live prices: no] Deleted / Restored in the history (ADR-330 (31)). My Strategies: delete one draft, then Undo. Open its history:
+    two entries "Deleted" and "Restored", each with its time, and no Restore button on either. Bulk: tick 3 rows,
+    Delete selected, Undo: each of the 3 histories has one "Deleted" and one "Restored".
+N13. [needs live prices: no] Customise triggers keeps the plan (S-11). Plan sheet: type 400 in "Stop (Rs)" and a time exit (today, 15:15),
+    then press "Customise triggers": the customise page opens. Come back to the builder: the plan sheet opens again by
+    itself with 400 and 15:15 still typed; Save saves them. Another strategy's sheet shows nothing held.
 Re-checks after the merge (quick):
-R1. Exit from Positions: Positions > Paper > a trade > Exit: the confirmation, Cancel exits nothing, Confirm exits.
-R2. Positions: the real and paper lists load; the Stops link of a Live Strategies card opens Positions at that trade's
+R1. [needs live prices: yes] Exit from Positions: Positions > Paper > a trade > Exit: the confirmation, Cancel exits nothing, Confirm exits.
+R2. [needs live prices: no] Positions: the real and paper lists load; the Stops link of a Live Strategies card opens Positions at that trade's
     Stops panel (ADR-330 (21)).
-R3. Builder: open a saved paper trade; the payoff, Greeks and live P&L show; Add Selected from the chain adds legs; the
+R3. [needs live prices: yes] Builder: open a saved paper trade; the payoff, Greeks and live P&L show; Add Selected from the chain adds legs; the
     leave question reads "Leave the builder? The N pending changes will be lost." (ADR-330 (22)).
-R4. Alert titles and lists carry the number and the NEAREST open-leg expiry, as in "Short Iron Condor" (#172, 1 Dec)
+R4. [needs live prices: yes] Alert titles and lists carry the number and the NEAREST open-leg expiry, as in "Short Iron Condor" (#172, 1 Dec)
     (ADR-330 (19)); a trade with no open leg shows "(#172)" only. Two paper trades with the same name show two numbers.
 
 ## (c) What is merged, what is left out
@@ -145,8 +187,16 @@ Push 3 merge notes: alert titles were built on both lines; ONE function now (`ba
 P's rule: the nearest open-leg expiry; a failed read leaves that row "(#id)"), W2-A's duplicate templates removed.
 StrategyBuilderPage: Lane R's props and Lane U's undo-text both kept; PaperStrategies: W2-B's exit-closed watch and
 Lane U's closeByPage both kept. Template pins merged by key.
-Not yet: ADR-330 (31) (Deleted / Restored history entries, its own migration), Lane P's Wave 2 page steps (P7 page
-flow, P8 Reset button).
+Push 4: Lane P's Wave 2 page steps P7 (side-closed answers) and P8 (Reset to playbook) and ADR-330 (31) with
+migration 0057 (Lane J builders; 0057 Tier A review SHIP). Not built: the P7 "Not applicable: the <side> side is
+closed" rule line (needs a new plan-watch / adjustment-check field and a new sentence).
+
+Full app (DB) suite, run as CI runs it (GITHUB_ACTIONS=true, per-file database clones) on 8ba68be: 7468 passed,
+1 failed, 6 skipped (environment: trial ended, replay URL, catalogue index row, owner migration URL). The failure
+(tests_app/test_d38_page_counts.py golden) was Lane P's and passes on push 3. Playwright CI job: 269 passed; the
+positions ADR-138 (2) cases fail the same way on the screens line 7bf64eb (pre-existing); health.spec failed only on
+the merged tree (fixed in push 4); strategy-live AC-4 and navigation menu cases are flaky (pass on reruns, also fail on
+the parents). Not run: execute-screen e2e (needs a database named exactly ofo_test).
 
 ## Step 2 and Step 3: what was built (status: Fixed, not tested)
 
@@ -202,7 +252,9 @@ current, none hand-edited.
 | 1 | 7231916 | Step 1 (the two merges and the three breaks above) | `prepush.py --full` TOTAL PASS 2023.6 s (domain, app, vitest, lint, coverage, alembic guard) |
 
 | 2 | 7d81d0a | ic docs 3d66541, Lane R ce5316e, Step 2, Step 3, the review fix | `prepush.py --full` TOTAL PASS 2137 s |
-| 3 | (this push) | ic docs e40a5ad, Lane R ecb3655, Lane P a59f7a9 (0056), Lane U b81970b, Lane S d344d82 | see the commit's gate |
+| 3 | 3d7aaf7 | ic docs e40a5ad, Lane R ecb3655, Lane P a59f7a9 (0056), Lane U b81970b, Lane S d344d82 | `prepush.py --full` TOTAL PASS 2460 s |
+| 4 | (see push 5 row) | P7 page answers, P8 Reset button, ADR-330 (31) with 0057, health e2e fix, side-closed templates | `prepush.py --full` |
+| 5 | (this push) | Not-applicable plan line, S-11 hold, Lane R 71ed990, Lane U 63091d7 | see the commit's gate |
 
 Coordinator message for push 1 could not be sent: the session-message service refused this session (untrusted
 device); recorded here instead.
@@ -221,3 +273,13 @@ device); recorded here instead.
 | test_settings_reader_guard pins a source line number | `tests/test_settings_reader_guard.py:109`; W2-A padded `paper_monitor.py` with a comment to keep read_snapshot at line 68 (fails closed: removing the comment turns the guard red) | none (test hygiene) | the guard finds the function by name, not by line |
 | A playbook comparison word other than le/ge reads "checked, not met" | Step 3 review: `playbook_eval.py:512` `_exact` turns NotComputable into fired=False; the save check (`playbook_store.py:497-515`) never validates cmp; shipped playbooks are clean | ADR-330 (12); ADR-003 | an unknown cmp is refused on save, or shown "not checked" |
 | The checks guard restricts only calls of crossed | `tests/test_checks_no_side_effects.py:74-78`: a direct leg_price/index_level call in ofo_app (skipping the live-price check of stops.py:58), `import crossed as _c`, a `lambda conn:` pass | ADR-330 (12) | each of the three samples turns the guard red |
+| The P7 plan rule line "Not applicable: the <side> side is closed" is not shown | `side_scope.rule_notes` is wired into no route and the sentence is not in the catalogue (Lane J P7 builder) | ADR-330 (2)(a) | the plan watch and the plan sheet print that line for each rule of the closed side |
+| The inbox heading of a side_closed row reads "Adjustment opportunity detected" | Lane P open finding (routes/adjustment_opportunities.py group label) | ADR-330 (2)(b), (3) | the inbox names the side that closed |
+
+## Lines waiting for a person's approval (none written by Lane J)
+
+- Catalogue wordings pinned "pending owner read": `stop_fired_note`, `stop_fired_note_with_line`, `alert_title_unnamed`
+  (W2-A); `alert_side_closed_text` (now also names the shape that remains), `plan_sheet_reset`, `plan_sheet_reset_confirm` and
+  the `labels:plan_sheet` pin (P7/P8); `change_deleted` "Deleted", `change_undeleted` "Restored" (ADR-330 (31)).
+- REQ-070 AC-8 text (ADR-330 (31)); the 0057 downgrade refusal rule.
+- Owner question LJ-1: answered (ADR-330 (41), the recorded fill, as built).

@@ -624,6 +624,16 @@ def rename_summary(old: str, new: str) -> str:
     return summary_text([{"kind": "renamed", "from": old, "to": new}])
 
 
+def delete_summary() -> str:
+    """The history summary of a delete (ADR-330 (31)): one closed ``deleted`` item, shown "Deleted"."""
+    return summary_text([{"kind": "deleted"}])
+
+
+def undelete_summary() -> str:
+    """The history summary of the Undo of a delete (ADR-330 (31)): one closed ``undeleted`` item, shown "Restored"."""
+    return summary_text([{"kind": "undeleted"}])
+
+
 def change_summary(old: SavedDefinition, new: SavedDefinition) -> str:
     """The activity-history summary as stored data: the meaningful changes, or the cosmetic one."""
     items = list(new.definition.change_items(old.definition))

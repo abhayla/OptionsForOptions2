@@ -45,6 +45,8 @@ export function readPlan(body) {
       playbookName: text(body.plan.playbook_name),
       target: decimal(body.plan.target), stop: decimal(body.plan.stop),
       targetWords: text(body.plan.target_words), stopWords: text(body.plan.stop_words),
+      changed: Array.isArray(body.plan.changed) ? body.plan.changed.filter((x) => typeof x === 'string') : [], // ADR-330 (9): the server's markers
+      switchedOff: Array.isArray(body.plan.switched_off) ? body.plan.switched_off.filter((x) => typeof x === 'string') : [],
       maxAdjustments: count(body.plan.max_adjustments), timeExit: clockText(body.plan.time_exit), timeExitOn: text(body.plan.time_exit_on),
     } : null,
     prefill: formOf(body.prefill),
@@ -104,6 +106,12 @@ export async function fetchLevels(client, strategyId, typed, playbookId = null) 
 /** POST (accept) or PUT (edit the plan later). Returns the new reading; throws the client error. */
 export async function sendPlan(client, strategyId, body, edit) {
   const { data } = edit ? await client.put(planPath(strategyId), body) : await client.post(planPath(strategyId), body)
+  return readPlan(data)
+}
+
+/** ADR-330 (9), (32) "Reset to playbook": the server puts the playbook's conditions back (the typed levels stay) and answers the sheet. Throws the client error. */
+export async function resetPlan(client, strategyId) {
+  const { data } = await client.post(`${planPath(strategyId)}/reset`)
   return readPlan(data)
 }
 

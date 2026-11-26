@@ -17,7 +17,7 @@ import logging
 from typing import Annotated, Any
 
 from fastapi import APIRouter, Depends, Query
-from ofo.alerts import CLOSED_BY_SYSTEM
+from ofo.alerts import CLOSED_BY_SYSTEM, SIDE_CLOSED
 from ofo.errors import render
 from ofo.errors.explanations import render_explanation
 from pydantic import BaseModel, ConfigDict
@@ -25,6 +25,7 @@ from pydantic import BaseModel, ConfigDict
 from ofo_app import actionable_alerts as aa
 from ofo_app import alert_title
 from ofo_app import playbook_store as store
+from ofo_app import side_closed
 from ofo_app.api_models import ApiModel, CatalogueText, Identifier
 from ofo_app.db import get_db
 from ofo_app.errors import ClosedRoute, Failure
@@ -99,16 +100,34 @@ def _kind(a: aa.Alert) -> str:
     return a.kind or "adjustment_rule"  # a record written before migration 0054 is an adjustment rule
 
 
+_SIDE_CLOSED_TEXT = {"call": "alert_side_closed_text_call", "put": "alert_side_closed_text_put"}
+
+
 def _words(a: aa.Alert, by_id: dict[int, store.Suggestion]) -> Any:
     """The words the inbox already shows for the record (Active says what today's record says); an informational note
     is rendered from the catalogue id and values stored with it; a record the inbox cannot word falls back to its
     stage-less rule label, never a raw id."""
+    side = _closed_side(a)
+    shape = None if side is None else side_closed.remaining_shape_name(side)
+    # ADR-330 (2) (b): the side_closed row says the side closed, the shape that remains (the template's own name,
+    # TemplateText refuses any other string), and asks; an unknown side or shape keeps the row's earlier words
+    if side in _SIDE_CLOSED_TEXT and shape is not None:
+        return render_explanation(_SIDE_CLOSED_TEXT[side], shape=shape)
     if a.note is not None:
         template_id, values = a.note
         return render_explanation(template_id, **values)
     found = by_id.get(a.id)
     shown = None if found is None else condition_text(found)
     return shown if shown is not None else render_explanation("adjust_condition_line_id", label=a.strategy_name)
+
+
+def _closed_side(a: aa.Alert) -> str | None:
+    """"call" / "put" for a side_closed row (its rule id is ``side.closed.<side>``), else None."""
+    prefix = side_closed.RULE_PREFIX
+    side = a.rule_id.removeprefix(prefix)
+    if a.kind != SIDE_CLOSED or not a.rule_id.startswith(prefix) or side not in ("call", "put"):
+        return None
+    return side
 
 
 def _fired(a: aa.Alert) -> Any:

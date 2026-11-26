@@ -703,14 +703,17 @@ test.describe('Builder leg door: add a leg from the strike table (REQ-080 AC-1..
     await expect(page.getByTestId('selection-row')).toHaveCount(1)
   })
 
-  test('PK-14 Pick from Option Chain inside the picker opens the Option Chain page (BUILD-120)', async ({ page }) => {
-    // Spec basis: REQ-076 AC-10; REQ-029 AC-5 (the chain is reachable from the builder as 'Select from Option Chain')
-    // expected-fail: NEW-T51: today the button only switches the strike table to the LTP view (LegPicker.vue:994 view = 'ltp'); no chain page opens
-    test.fail()
+  test('PK-14 Pick from Option Chain inside the picker switches to the chain/strike view and stays on the builder (BUILD-120)', async ({ page }) => {
+    // Spec basis: REQ-076 AC-10; REQ-029 AC-5. U-Q4 (a), coordinator 26 Nov; REQ-029 AC-5 is met by the Market > Option Chain route
+    // and this in-builder view; W-195 review 7 (LegPicker.vue:667). NEW-T51 closed as intended behaviour.
     await stub(page); await openPicker(page)
+    await page.getByTestId('picker-view-greeks').click()
+    await expect(page.getByTestId('picker-view-greeks')).toHaveAttribute('aria-checked', 'true')
     await page.getByTestId('picker-pick-chain').click()
     await shot(page, 'NEW-T51')
-    await expect(page).toHaveURL(/\/market\/option-chain/)
+    await expect(page.getByTestId('picker-view-ltp')).toHaveAttribute('aria-checked', 'true')
+    await expect(page.getByTestId('strikes-panel')).toBeVisible()
+    await expect(page).toHaveURL(/\/strategy\/builder/)
   })
 
   test('PK-15 the Futures tab with no future listed says "No future is listed for this index."', async ({ page }) => {

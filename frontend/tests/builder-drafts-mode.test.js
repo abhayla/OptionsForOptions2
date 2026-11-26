@@ -159,3 +159,14 @@ describe('Save / Save As / Add to Paper are not offered in Drafts Mode', () => {
     for (const id of ['save-draft', 'add-to-paper', 'menu-save', 'save-as', 'menu-add-to-paper']) expect(t(w, id).exists(), id).toBe(false)
   })
 })
+
+// ADR-330 (34), LR-Q16: the pending changes of a running trade are lost on a reload too, so the one reload line shows under the bar while any are pending.
+describe("ADR-330 (34): the reload line in Drafts Mode", () => {
+  it("0 pending changes: no line; 1 pending change: one line", async () => {
+    const w = await openBuilder()
+    expect(w.findAll('[data-testid="unsaved-reload-note"]')).toHaveLength(0)
+    await removeLeg(w, "22700.00")
+    expect(t(w, "paper-pending-count").text()).toBe("1 pending change")
+    expect(w.findAll('[data-testid="unsaved-reload-note"]')).toHaveLength(1)
+  })
+})

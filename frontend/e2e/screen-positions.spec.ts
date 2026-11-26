@@ -58,13 +58,13 @@ const TOTALS = {
   closed_text: 'Includes 1 closed strategy', charges_text: '73.50', decay_text: '+12.00', totals_as_of: T_NOW,
 }
 // ADR-330 (19): a paper card's name reads "<name> (#<id>, <expiry>)" when its positions share ONE expiry (several or none: "(#<id>)" only);
-// the year is printed because this page sets no shown date. Built from the same stub book, never typed twice.
+// the list reply's shown_date (26 Nov 2026) leaves the year off inside 2026 (ADR-330 (19), REQ-148 AC-2). Built from the same stub book, never typed twice.
 const MON = ['Jan', 'Feb', 'Mar', 'Apr', 'May', 'Jun', 'Jul', 'Aug', 'Sep', 'Oct', 'Nov', 'Dec']
 const plbl = (b: { strategy_id: number; name: string | null; positions: object[] }) => {
-  const days = [...new Set((b.positions as { expiry: string }[]).map((x) => `${Number(x.expiry.slice(8, 10))} ${MON[Number(x.expiry.slice(5, 7)) - 1]} ${x.expiry.slice(0, 4)}`))]
+  const days = [...new Set((b.positions as { expiry: string }[]).map((x) => `${Number(x.expiry.slice(8, 10))} ${MON[Number(x.expiry.slice(5, 7)) - 1]}${x.expiry.startsWith('2026-') ? '' : ` ${x.expiry.slice(0, 4)}`}`))]
   return `${b.name} (#${b.strategy_id}${days.length === 1 ? `, ${days[0]}` : ''})`
 }
-const paperOk = (strategies: object[] = [CONDOR, STRANGLE, OLD], totals: object | null = TOTALS) => ({ strategies, totals, answered_at: T_NOW })
+const paperOk = (strategies: object[] = [CONDOR, STRANGLE, OLD], totals: object | null = TOTALS) => ({ strategies, totals, answered_at: T_NOW, shown_date: '2026-11-26' })
 const SYMBOL = 'NIFTY26O1923650CE'
 const realOk = (over: object = {}) => ({
   read_at: '2026-10-16T12:21:04+05:30', has_outside: false, outside_lots: 0, blocked: false, blocked_strategy_ids: [],
@@ -713,7 +713,7 @@ test.describe('Current positions: the paper list states (REQ-109 AC-2, AC-5, ADR
     await expect(card.getByTestId('paper-leg')).toHaveCount(2)
     const first = card.getByTestId('paper-leg').first()
     await expect(first.getByTestId('paper-instrument')).toContainText('S')
-    await expect(first.getByTestId('paper-instrument')).toContainText('NIFTY 1 Dec 2026 25700 PE')
+    await expect(first.getByTestId('paper-instrument')).toContainText('NIFTY 1 Dec 25700 PE') // U-Q8 (a): no year inside the shown year (REQ-148 AC-2)
     await expect(first.getByTestId('paper-qty')).toHaveText('1 lot')
     await expect(first.getByTestId('paper-avg')).toHaveText('161.50')
     await expect(first.getByTestId('paper-ltp')).toContainText('150.00')
@@ -966,7 +966,7 @@ test.describe('Current positions: Exit (n) and the confirm dialog (REQ-109 AC-4,
     // Spec basis: REQ-109 AC-4 (partial exit per leg); ADR-207 (2)
     await stubApi(page)
     await openPositions(page)
-    await expect(page.getByRole('checkbox', { name: 'Select NIFTY 1 Dec 2026 25700 PE' })).toBeVisible()
+    await expect(page.getByRole('checkbox', { name: 'Select NIFTY 1 Dec 25700 PE' })).toBeVisible() // U-Q8 (a): no year inside the shown year (REQ-148 AC-2)
     await tick(page, 171, 1001).check()
     await expect(exitBtn(page, 172)).toHaveText('Exit (0)') // the other card is untouched
     await expect(exitBtn(page, 172)).toBeDisabled()
@@ -981,7 +981,7 @@ test.describe('Current positions: Exit (n) and the confirm dialog (REQ-109 AC-4,
     const rows = page.getByTestId('paper-order')
     await expect(rows).toHaveCount(1)
     await expect(rows.first().getByTestId('paper-order-kind')).toHaveText('Exit')
-    await expect(rows.first().getByTestId('paper-order-text')).toHaveText('NIFTY 1 Dec 2026 25700 PE')
+    await expect(rows.first().getByTestId('paper-order-text')).toHaveText('NIFTY 1 Dec 25700 PE') // U-Q8 (a): no year inside the shown year (REQ-148 AC-2)
     await expect(rows.first()).toContainText('B') // the leg is short (-65): the exit buys it back
     await expect(rows.first().getByTestId('paper-lots')).toHaveValue('1')
     await expect(rows.first().getByTestId('paper-exit-price')).toHaveText(/about 150\.00, as of 10:00:00, the server sets the exit price when you confirm$/)
@@ -1004,7 +1004,7 @@ test.describe('Current positions: Exit (n) and the confirm dialog (REQ-109 AC-4,
     await stubApi(page)
     await openPositions(page)
     await openExit(page, 171, [1002, 1001])
-    await expect(page.getByTestId('paper-order-text')).toHaveText(['NIFTY 1 Dec 2026 25700 PE', 'NIFTY 1 Dec 2026 25600 PE'])
+    await expect(page.getByTestId('paper-order-text')).toHaveText(['NIFTY 1 Dec 25700 PE', 'NIFTY 1 Dec 25600 PE']) // U-Q8 (a): no year inside the shown year (REQ-148 AC-2)
     await expect(dialog(page)).toHaveAccessibleName('Exit Paper positions')
   })
 
@@ -1519,12 +1519,12 @@ test.describe('Current positions: the Stops panel (REQ-109 AC-8, ADR-207 (4), AD
     await openPositions(page)
     await openStops(page)
     await expect(page.getByTestId('leg-stops')).toContainText('Stop on a leg')
-    await expect(page.getByTestId('stop-row-1001')).toContainText('NIFTY 1 Dec 2026 25700 PE')
-    await expect(page.getByTestId('stop-row-1002')).toContainText('NIFTY 1 Dec 2026 25600 PE')
+    await expect(page.getByTestId('stop-row-1001')).toContainText('NIFTY 1 Dec 25700 PE') // U-Q8 (a): no year inside the shown year (REQ-148 AC-2)
+    await expect(page.getByTestId('stop-row-1002')).toContainText('NIFTY 1 Dec 25600 PE') // U-Q8 (a): no year inside the shown year (REQ-148 AC-2)
     const dir = page.getByTestId('stop-direction-1001')
     await expect(dir).toHaveValue('above')
     await expect(dir.locator('option')).toHaveText(['Above', 'Below'])
-    await expect(page.getByRole('combobox', { name: 'Stop direction for NIFTY 1 Dec 2026 25700 PE' })).toBeVisible()
+    await expect(page.getByRole('combobox', { name: 'Stop direction for NIFTY 1 Dec 25700 PE' })).toBeVisible() // U-Q8 (a): no year inside the shown year (REQ-148 AC-2)
     await expect(page.getByTestId('stop-level-1001')).toHaveAttribute('placeholder', 'Stop price')
     await expect(page.getByTestId('stop-save-1001')).toBeDisabled()
   })
@@ -1556,7 +1556,7 @@ test.describe('Current positions: the Stops panel (REQ-109 AC-8, ADR-207 (4), AD
     await expect(page.getByTestId('stop-level-1002')).toHaveValue('')
     const row = page.getByTestId('trigger-row')
     await expect(row).toHaveCount(1)
-    await expect(row).toContainText('NIFTY 1 Dec 2026 25600 PE')
+    await expect(row).toContainText('NIFTY 1 Dec 25600 PE') // U-Q8 (a): no year inside the shown year (REQ-148 AC-2)
     await expect(row.getByTestId('trigger-direction')).toHaveText('Below')
   })
 
@@ -1597,7 +1597,7 @@ test.describe('Current positions: the Stops panel (REQ-109 AC-8, ADR-207 (4), AD
     await expect(page.getByTestId('trigger-cancel-11')).toHaveText('Cancel')
     await expect(page.getByTestId('trigger-cancel-12')).toHaveCount(0)
     await expect(page.getByTestId('trigger-cancel-13')).toHaveCount(0)
-    await expect(page.getByTestId('trigger-row').nth(2)).toContainText('NIFTY 1 Dec 2026 25700 PE')
+    await expect(page.getByTestId('trigger-row').nth(2)).toContainText('NIFTY 1 Dec 25700 PE') // U-Q8 (a): no year inside the shown year (REQ-148 AC-2)
   })
 
   test('STOP-24 Cancel on an armed stop sends a DELETE for that stop and the row turns "cancelled"', async ({ page }) => {
