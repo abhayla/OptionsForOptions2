@@ -34,6 +34,7 @@ from ofo.adjustment import level_watch
 from ofo.adjustment import stop_lines as sl
 from ofo.adjustment.approaches import KINDS, ExitInputs, is_expiry_day
 from ofo.adjustment.offered import offered_now
+from ofo.checks.time_of_day import ON_EXPIRY, resolve_on, time_exit_due, time_exit_parts
 from ofo.engine import adjust_money
 from ofo.engine import adjust_ratios as ratios
 from ofo.engine.black_scholes import Greeks
@@ -614,9 +615,12 @@ def _t09(c: _Ctx) -> Hit:
 
 def _t10b(c: _Ctx) -> Hit:
     hhmm = _need(c.state.hhmm, "clock")
-    lim = _limit(c, "T-10b")
     today, expiry = _need(c.state.today, "today"), _need(c.state.expiry, "expiry")
-    if not is_expiry_day(today, expiry):  # ADR-310: the time exit acts on expiry day only; before it, waiting
+    parts = time_exit_parts(c.body.get("guards", {}).get("time_exit"))
+    if parts is not None and parts[1] != ON_EXPIRY:  # ADR-330 (7): the plan's own day and time, any trading day
+        return Hit("T-10b", hhmm, parts[0], "ge", time_exit_due(today, hhmm, resolve_on(parts[1], expiry), parts[0]))
+    lim = _limit(c, "T-10b")
+    if not is_expiry_day(today, expiry):  # ADR-310 (2): a time exit with no date of its own acts on expiry day only
         raise _Missing(f"{P}waits_expiry_day", day=expiry)
     return Hit("T-10b", hhmm, lim, "ge", hhmm >= lim)
 
@@ -640,7 +644,7 @@ def _t13(c: _Ctx) -> Hit:
 #: Rules that count the strategy's own adjustments (the playbook row has cmp ""): the baseline restarts at each
 #: adjustment (ADR-258), so the check that reaches the count is itself the baseline and "already true" would hide it.
 COUNTER_RULES = frozenset({"T-18"})
-TIME_TRIGGERS = frozenset({"T-10b"})  # ADR-283 (2): a clock-time rule is never "already true"
+TIME_TRIGGERS = frozenset({sl.TRIGGER_TIME_EXIT})  # ADR-283 (2): a clock-time rule is never "already true"
 
 
 def never_held(body: Mapping) -> frozenset[str]:
@@ -1406,8 +1410,11 @@ def exit_inputs(body: Mapping | None, guards: Mapping | None, state: StrategySta
             t09 = _t09_now(_context(body, state))
         except (KeyError, TypeError, IndexError):  # a body without this expiry kind's stages: no limit, never a guess
             t09 = None
-    at = guards.get("time_exit") if isinstance(guards, Mapping) else None
-    return ExitInputs(t09, at if isinstance(at, str) and _HHMM.fullmatch(at) else None, state.hhmm)
+    parts = time_exit_parts(guards.get("time_exit") if isinstance(guards, Mapping) else None)
+    if parts is None:
+        return ExitInputs(t09, None, state.hhmm)
+    on = None if parts[1] == ON_EXPIRY else resolve_on(parts[1], None)
+    return ExitInputs(t09, parts[0], state.hhmm, on)
 
 
 def _add_day_rules(body: Mapping, state: StrategyState, why: str | None, stage_name: str | None,  # noqa: PLR0913

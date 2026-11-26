@@ -30,7 +30,7 @@
         <p v-if="limits && check.as_of_text" class="text-xs text-ink-muted" data-testid="plan-entry-limits-as-of">{{ check.as_of_text }}</p>
         <p v-if="limits && checkStale" class="text-xs text-red-700" data-testid="plan-entry-limits-stale">{{ checkStaleLine(checkRefusal) }}</p>
         <p v-if="read.plan" data-testid="plan-entry-guards">
-          {{ read.labels.max_adjustments }}: {{ read.plan.maxAdjustments }} / {{ read.labels.time_exit }}: {{ read.plan.timeExit }}
+          {{ read.labels.max_adjustments }}: {{ read.plan.maxAdjustments }} / {{ read.labels.time_exit }}: {{ read.plan.timeExit }}{{ read.plan.timeExitOn ? ` ${read.plan.timeExitOn}` : '' }}
         </p>
         <button type="button" class="mt-2 rounded border border-line bg-surface px-2 py-1 text-xs font-medium" data-testid="plan-entry-edit" @click="sheetOpen = true">
           {{ read.plan ? read.labels.edit : read.labels.set_plan }}

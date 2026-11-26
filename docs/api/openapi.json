@@ -11485,6 +11485,9 @@
                 "type": "string"
               },
               {
+                "$ref": "#/components/schemas/TimeExitIn"
+              },
+              {
                 "type": "null"
               }
             ],
@@ -11585,6 +11588,18 @@
                 "type": "null"
               }
             ]
+          },
+          "time_exit_on": {
+            "anyOf": [
+              {
+                "format": "date",
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Time Exit On"
           }
         },
         "required": [
@@ -12212,6 +12227,18 @@
                 "type": "null"
               }
             ]
+          },
+          "time_exit_on": {
+            "anyOf": [
+              {
+                "format": "date",
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Time Exit On"
           }
         },
         "required": [
@@ -15087,6 +15114,26 @@
           "results"
         ],
         "title": "TestStrategyOut",
+        "type": "object"
+      },
+      "TimeExitIn": {
+        "additionalProperties": false,
+        "description": "ADR-330 (7): the plan's time exit, one time on one day; a blank ``on`` = expiry day (Q9).",
+        "properties": {
+          "at": {
+            "title": "At",
+            "type": "string"
+          },
+          "on": {
+            "default": "",
+            "title": "On",
+            "type": "string"
+          }
+        },
+        "required": [
+          "at"
+        ],
+        "title": "TimeExitIn",
         "type": "object"
       },
       "TotalsOut": {

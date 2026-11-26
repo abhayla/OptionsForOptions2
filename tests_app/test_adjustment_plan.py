@@ -105,6 +105,7 @@ async def test_get_without_a_plan_prefills_from_the_active_system_playbook_and_p
         "ic", IC_NAME, False, None, None)
     assert out["prefill"] == {"playbook_id": system.id, "target": "50", "stop": "50", "max_adjustments": 2,
                               "time_exit": {"hour": 14, "minute": 30},  # ADR-216: the iron condor seed
+                              "time_exit_on": None,
                               "target_words": "50 % of max profit",
                               "stop_words": "50 % of max loss or 2x the credit received, whichever comes first"}
     assert "rules_in_force" not in out  # GC-ICFIX u113 round 3: the limits come from the rule check only (ADR-304 (3))
@@ -121,6 +122,7 @@ async def test_get_without_a_plan_prefills_from_the_active_system_playbook_and_p
     status, picked = await _call("GET", _plan_path(sid) + f"?playbook_id={own.id}")
     assert status == OK and picked["prefill"] == {"playbook_id": own.id, "target": "70", "stop": "30",
                                                   "max_adjustments": 4, "time_exit": {"hour": 14, "minute": 45},
+                                                  "time_exit_on": None,
                                                   "target_words": "70 % of max profit",
                                                   "stop_words": "30 % of max loss or 2x the credit received, "
                                                                   "whichever comes first"}

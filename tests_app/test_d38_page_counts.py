@@ -109,6 +109,7 @@ async def test_plan_counts_and_reply(app_db_url, monkeypatch, capsys):
     with capsys.disabled():
         print(f"\nD38 PLAN funds={counts.funds} sql={counts.sql} market={counts.market} tracked={counts.tracked} "
               f"held={counts.held_in_wait}", *counts.statements, sep="\n  ")
+    body["plan"]["accepted_at"] = "<the clock of the run>"  # ADR-330 (11): the seed accepts a plan, stamped now
     _golden("plan", body)
 
 

@@ -84,6 +84,7 @@ from decimal import ROUND_HALF_UP, Decimal
 from typing import Final, cast
 
 from ofo.adjustment import liquidity
+from ofo.checks.time_of_day import time_exit_due
 from ofo.engine import adjust_money
 from ofo.engine.legs import Action, Instrument, Leg
 from ofo.engine.model import live_book
@@ -198,6 +199,8 @@ class ExitInputs:
     t09: tuple[Decimal, str] | None = None
     time_exit: str | None = None
     hhmm: str | None = None
+    #: ADR-330 (7): the plan time exit's own day (ISO date); None = expiry day (a blank date, or an old plain "HH:MM")
+    time_exit_on: datetime.date | None = None
 
 
 @dataclass(frozen=True)
@@ -660,8 +663,12 @@ def _time_exit_due(position: Position, exits: ExitInputs) -> None:
     """A-35 (ADR-238 (5)): built on expiry day from the playbook's time exit; otherwise refused naming the time."""
     if exits.time_exit is None:
         raise _refusal("adjust_time_exit_not_set")
-    expiry_day = bool(position.legs) and is_expiry_day(position.today, min(x.expiry for x in position.legs))
-    if not expiry_day or exits.hhmm is None or exits.hhmm < exits.time_exit:
+    if exits.time_exit_on is not None:  # ADR-330 (7): the plan's own day
+        due = time_exit_due(position.today, exits.hhmm, exits.time_exit_on, exits.time_exit)
+    else:
+        due = bool(position.legs) and is_expiry_day(position.today, min(x.expiry for x in position.legs)) \
+            and time_exit_due(position.today, exits.hhmm, position.today, exits.time_exit)
+    if not due:
         raise _refusal("adjust_time_exit_not_yet", time=exits.time_exit)
 
 

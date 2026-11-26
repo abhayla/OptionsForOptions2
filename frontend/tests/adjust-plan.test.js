@@ -28,7 +28,7 @@ import PlanEntry from '@/components/strategy/PlanEntry.vue'
 
 const LABELS = {
   title: "When tracking starts: this strategy's plan", playbook: 'Playbook', target: 'Target', stop: 'Stop', max_adjustments: 'Max adjustments',
-  time_exit: 'Time exit', customise: 'Customise triggers', use_as_is: 'Use playbook as is', save: 'Save plan', close: 'Close',
+  time_exit: 'Time exit', time_exit_on: 'Time exit date (blank = expiry day)', customise: 'Customise triggers', use_as_is: 'Use playbook as is', save: 'Save plan', close: 'Close',
   plan_entry: 'Plan', edit: 'Edit plan', no_plan: 'No plan: nothing is watched for this strategy', set_plan: 'Set plan', hour: 'Hour', minute: 'Minute',
 }
 const PLAYBOOKS = [
@@ -109,6 +109,29 @@ describe('REQ-161 AC-2: one click accepts; another playbook refills every field'
     expect(inputs(w)).toEqual({ playbook: '1', target: '70', stop: '30', max: '4', time: '09:05' })
   })
 
+  it('ADR-330 (7): the label reads "Time exit", the date box is blank (= expiry day) and Save sends {at, on}', async () => {
+    answers[`GET ${PATH}`] = sheetAnswer()
+    answers[`POST ${PATH}`] = sheetAnswer({ plan: PLAN })
+    const w = await sheet()
+    expect(w.text()).toContain('Time exit')
+    expect(w.text()).not.toContain('on expiry day)')
+    expect(t(w, 'plan-time-on').element.value).toBe('')
+    await t(w, 'plan-time').setValue('15:15')
+    await t(w, 'plan-save').trigger('click')
+    await flushPromises()
+    expect(calls.find((c) => c.method === 'POST').body.time_exit).toEqual({ at: '15:15', on: '' })
+    await t(w, 'plan-time-on').setValue('2026-11-25')
+    await t(w, 'plan-save').trigger('click')
+    await flushPromises()
+    expect(calls.filter((c) => c.method === 'POST').pop().body.time_exit).toEqual({ at: '15:15', on: '2026-11-25' })
+  })
+
+  it('a plan with a dated time exit shows its date in the box', async () => {
+    answers[`GET ${PATH}`] = sheetAnswer({ plan: PLAN, prefill: { ...PREFILL_9, time_exit: { hour: 15, minute: 15 }, time_exit_on: '2026-11-25' } })
+    const w = await sheet({ edit: true })
+    expect([t(w, 'plan-time').element.value, t(w, 'plan-time-on').element.value]).toEqual(['15:15', '2026-11-25'])
+  })
+
   it('Save sends the typed fields as the server shapes them; a plan already held is edited with PUT', async () => {
     answers[`GET ${PATH}`] = sheetAnswer({ plan: PLAN, prefill: { playbook_id: 9, target: '60', stop: '40', max_adjustments: 3, time_exit: PLAN.time_exit } })
     answers[`PUT ${PATH}`] = sheetAnswer({ plan: { ...PLAN, stop: '35' } })
@@ -117,7 +140,7 @@ describe('REQ-161 AC-2: one click accepts; another playbook refills every field'
     await t(w, 'plan-save').trigger('click')
     await flushPromises()
     expect(calls.filter((c) => c.method !== 'GET')).toEqual([{ method: 'PUT', url: PATH,
-      body: { playbook_id: 9, target: '60', stop: '35', max_adjustments: '3', time_exit: '14:45' } }])
+      body: { playbook_id: 9, target: '60', stop: '35', max_adjustments: '3', time_exit: { at: '14:45', on: '' } } }])
     expect(w.emitted('saved')).toHaveLength(1)
   })
 

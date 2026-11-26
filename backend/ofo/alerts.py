@@ -60,6 +60,8 @@ def kind_of(trigger_id: str | None) -> str:
         return "plan_loss_stop"
     if trigger_id in _PLAN_PROFIT_TARGET:
         return "plan_profit_target"
+    if trigger_id == sl.TRIGGER_TIME_EXIT:
+        return "plan_time_exit"
     return "adjustment_rule"
 
 
