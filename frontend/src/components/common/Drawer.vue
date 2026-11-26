@@ -3,7 +3,7 @@
      64 px footer (`footer` slot). An overlay sits behind it; Esc, the "x" and an overlay click emit `close`. While open,
      focus moves inside and Tab / Shift+Tab stay inside; on close focus returns to what had it before. -->
 <script setup>
-import { inject, nextTick, onBeforeUnmount, ref, watch } from "vue";
+import { inject, nextTick, onBeforeUnmount, onMounted, ref, watch } from "vue";
 import Icon from "./Icon.vue";
 import { focusables, trapTab } from "./focusTrap.js";
 
@@ -29,6 +29,17 @@ defineOptions({ inheritAttrs: false });
 const teleportOn = inject("dialog-teleport", true);
 const emit = defineEmits(["close"]);
 const panel = ref(null);
+// U-Q5 (a), coordinator 26 Nov: below 640 px the drawer is full width and the edge control sits in its own header.
+const narrow = ref(false);
+let narrowMq = null;
+const onNarrow = (e) => { narrow.value = e.matches; };
+onMounted(() => {
+  if (typeof window === "undefined" || typeof window.matchMedia !== "function") return;
+  narrowMq = window.matchMedia("(max-width: 639px)");
+  narrow.value = narrowMq.matches;
+  narrowMq.addEventListener?.("change", onNarrow);
+});
+onBeforeUnmount(() => narrowMq?.removeEventListener?.("change", onNarrow));
 let returnTo = null;
 
 function onKey(e) {
@@ -82,12 +93,19 @@ onBeforeUnmount(() => {
         :aria-label="title"
         tabindex="-1"
         class="absolute top-0 bottom-0 flex max-w-full flex-col bg-surface shadow-drawer focus:outline-none"
-        :class="[side === 'left' ? 'left-0' : 'right-0', $slots.edge ? 'max-[639px]:!max-w-[calc(100%-28px)]' : '']"
+        :class="[side === 'left' ? 'left-0' : 'right-0', $slots.edge ? 'max-[639px]:!w-full' : '']"
         :style="{ width }"
         :data-side="side"
         data-testid="drawer"
         @keydown="onKey"
       >
+        <div
+          v-if="$slots.edge && narrow"
+          class="flex h-10 shrink-0 items-center border-b border-line pl-2 pr-12 [&_button]:![writing-mode:horizontal-tb] [&_button]:rounded-md [&_button]:!px-3 [&_button]:!py-1"
+          data-testid="drawer-edge-header"
+        >
+          <slot name="edge" />
+        </div>
         <button
           v-if="bare"
           type="button"
@@ -123,8 +141,8 @@ onBeforeUnmount(() => {
           <slot name="footer" />
         </footer>
         <!-- GC-UI 6c D-C35: an optional tab on the panel's outer edge (the leg picker's "Show Editor"). U-Q5 (a), NEW-T53/T68:
-             on a phone (< 640 px) the panel leaves 28 px of the viewport for this tab, so the way back is on screen, never past the edge. -->
-        <div v-if="$slots.edge" class="absolute top-1/2 left-full -translate-y-1/2">
+             on a phone (< 640 px) the panel is full width and this control moves into its own header row (above), so the way back is on screen. -->
+        <div v-if="$slots.edge && !narrow" class="absolute top-1/2 left-full -translate-y-1/2">
           <slot name="edge" />
         </div>
       </div>
