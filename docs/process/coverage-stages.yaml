@@ -740,6 +740,7 @@ issues:
   "#752": S6.7  # After the close, option prices keep moving while the banner says "Prices are from 15:30:00" (N-45)
   "#753": S6.7  # deferred: the first edit of a plan saved before ADR-247 makes it read as saved after (accepted_at restamped by 0041)
   "#754": S6.7  # Egress gate test red when HTTPS_PROXY is set (test_attack2 gets proxy 400, not EgressRefused)
+  "#755": S6.7  # Pre-push gate goes red on the ruff ratchet while a builder worktree sits under .claude/worktrees/
 
 # Work items whose status is not done.
 work_items:
