@@ -30,6 +30,9 @@ SCRUBBED_ENV = ("TEST_DATABASE_URL", "TEST_ADMIN_DATABASE_URL", "ALEMBIC_DATABAS
 RAN = ("PASS", "FAIL")
 DEFAULT_WORKTREE = os.path.join(".claude", "worktrees", "equiv-1126")
 GIT_ID = ["-c", "user.name=gate-equivalence", "-c", "user.email=gate-equivalence@invalid"]
+# untracked build output a gate run creates; removed before EVERY seed run so no seed starts from another's output
+# (a leftover frontend/dist made merge_preflight's layer 0 red in 0.1 s). node_modules is never listed here.
+RUN_RESET_PATHS = ("frontend/dist",)
 
 STEP_RE = re.compile(r"^(PASS|FAIL) (\S+) ([\d.]+)s (.*)$")
 TOTAL_RE = re.compile(r"^TOTAL (PASS|FAIL) ([\d.]+)s ?(.*)$")
@@ -386,6 +389,25 @@ def _prove(seed: Seed, wt: str, node_modules: str, runner) -> str:
 
 # ---- run ----
 
+def reset_run_outputs(runner, wt: str) -> list[str]:
+    """Remove RUN_RESET_PATHS from the checkout. Refuses (raises) before deleting anything if a path is tracked."""
+    for rel in RUN_RESET_PATHS:
+        rc, listed = _git(runner, wt, "ls-files", rel)
+        if rc != 0 or listed.strip():
+            raise RuntimeError(f"refusing to reset {rel} in {wt}: it is tracked by git (or ls-files failed, rc={rc})")
+    removed = []
+    for rel in RUN_RESET_PATHS:
+        path = os.path.join(wt, rel)
+        if os.path.isdir(path) and not os.path.islink(path):
+            shutil.rmtree(path)
+        elif os.path.lexists(path):
+            os.unlink(path)
+        else:
+            continue
+        removed.append(rel)
+    return removed
+
+
 def cmd_run(a, runner=real_runner, clock=time.monotonic) -> int:
     manifest = json.loads(Path(a.manifest).read_text(encoding="utf-8"))
     if a.only:
@@ -414,6 +436,7 @@ def cmd_run(a, runner=real_runner, clock=time.monotonic) -> int:
         if rc != 0:
             print(f"{seed['name']}: checkout failed: {out}")
             return 2
+        reset = reset_run_outputs(runner, wt)
         t0 = clock()
         rc, out = runner([sys.executable, a.gate, "--repo", wt, *extra], os.getcwd(), a.timeout)
         seconds = round(clock() - t0, 1)
@@ -424,7 +447,7 @@ def cmd_run(a, runner=real_runner, clock=time.monotonic) -> int:
             "steps": parsed["steps"], "total": parsed["total"], "total_note": parsed["total_note"],
             "marker": os.path.exists(marker), "seconds": seconds, "raw_path": raw, "rc": rc,
             "skip_reasons": parsed["skip_reasons"], "stops": parsed["stops"],
-            "expect_red": seed.get("expect_red", [])}
+            "expect_red": seed.get("expect_red", []), "reset": reset}
         print(f"{seed['name']}: total={parsed['total']} marker={_yn(os.path.exists(marker))} {seconds}s")
         Path(a.out).write_text(json.dumps(results, indent=1), encoding="utf-8")  # partial results survive a stop
     return 0

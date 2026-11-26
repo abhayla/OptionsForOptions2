@@ -10,6 +10,8 @@ import pathlib
 import subprocess
 import sys
 
+import pytest
+
 sys.path.insert(0, str(pathlib.Path(__file__).resolve().parents[2] / "scripts" / "orchestrator"))
 import gate_equivalence as ge
 
@@ -321,3 +323,98 @@ def test_mutation_is_visible_when_the_tree_already_carries_the_seed(tmp_path):
     before = _state(scratch, seed)
     seed.mutate(scratch)
     assert before != _state(scratch, seed), seed.name
+
+
+# ---- every seed run starts with no build output left by the previous one ----
+
+class BuildingRunner(FakeRunner):
+    """Like FakeRunner; each gate call records whether frontend/dist exists when it starts, then builds it."""
+
+    def __init__(self, common_dir, outputs, wt):
+        super().__init__(common_dir, outputs)
+        self.wt, self.dist_at_start = wt, []
+
+    def __call__(self, cmd, cwd, timeout=None):
+        if len(cmd) > 1 and cmd[1] == "gate.py":
+            dist = pathlib.Path(self.wt) / "frontend" / "dist"
+            self.dist_at_start.append(dist.exists())
+            dist.mkdir(parents=True, exist_ok=True)
+            (dist / "index.html").write_text("build output")
+        return super().__call__(cmd, cwd, timeout)
+
+
+class TrackedDistRunner(FakeRunner):
+    """Reports frontend/dist as tracked by git in the checkout."""
+
+    def __call__(self, cmd, cwd, timeout=None):
+        if cmd[:3] == ["git", "ls-files", "frontend/dist"]:
+            return 0, "frontend/dist/index.html\n"
+        return super().__call__(cmd, cwd, timeout)
+
+
+def _two_seed_manifest(tmp_path):
+    return manifest_for(tmp_path, [
+        {"name": "first", "sha": SHA, "base": "0" * 40, "expect_red": [], "note": ""},
+        {"name": "second", "sha": "b" * 40, "base": "0" * 40, "expect_red": [], "note": ""}])
+
+
+def test_dist_left_by_a_previous_seed_is_gone_before_the_next_gate_call(tmp_path):
+    common = tmp_path / "common"
+    wt = tmp_path / "wt"
+    (wt / "frontend" / "node_modules").mkdir(parents=True)
+    runner = BuildingRunner(str(common), {SHA: (GREEN, False), "b" * 40: (GREEN, False)}, str(wt))
+    rc = ge.main(["run", "--gate", "gate.py", "--manifest", _two_seed_manifest(tmp_path), "--label", "new",
+                  "--out", str(tmp_path / "new.json"), "--worktree", str(wt)], runner=runner)
+    assert rc == 0
+    assert runner.dist_at_start == [False, False]  # the first gate builds it; the second starts without it
+
+
+def test_node_modules_is_never_touched_by_the_reset(tmp_path):
+    common = tmp_path / "common"
+    wt = tmp_path / "wt"
+    (wt / "frontend" / "node_modules" / "pkg").mkdir(parents=True)
+    (wt / "frontend" / "node_modules" / "pkg" / "index.js").write_text("module")
+    (wt / "frontend" / "dist").mkdir(parents=True)
+    runner = BuildingRunner(str(common), {SHA: (GREEN, False), "b" * 40: (GREEN, False)}, str(wt))
+    ge.main(["run", "--gate", "gate.py", "--manifest", _two_seed_manifest(tmp_path), "--label", "new",
+             "--out", str(tmp_path / "new.json"), "--worktree", str(wt)], runner=runner)
+    assert (wt / "frontend" / "node_modules" / "pkg" / "index.js").read_text() == "module"
+
+
+def test_tracked_reset_path_raises_and_no_gate_runs(tmp_path):
+    common = tmp_path / "common"
+    wt = tmp_path / "wt"
+    (wt / "frontend" / "node_modules").mkdir(parents=True)
+    (wt / "frontend" / "dist").mkdir(parents=True)
+    (wt / "frontend" / "dist" / "index.html").write_text("tracked")
+    runner = TrackedDistRunner(str(common), {SHA: (GREEN, False), "b" * 40: (GREEN, False)})
+    with pytest.raises(RuntimeError, match="frontend/dist"):
+        ge.main(["run", "--gate", "gate.py", "--manifest", _two_seed_manifest(tmp_path), "--label", "new",
+                 "--out", str(tmp_path / "new.json"), "--worktree", str(wt)], runner=runner)
+    assert not any(len(c) > 1 and c[1] == "gate.py" for c, _ in runner.calls)
+    assert (wt / "frontend" / "dist" / "index.html").read_text() == "tracked"
+
+
+def test_result_json_records_what_each_seed_reset(tmp_path):
+    common = tmp_path / "common"
+    wt = tmp_path / "wt"
+    (wt / "frontend" / "node_modules").mkdir(parents=True)
+    (wt / "frontend" / "dist").mkdir(parents=True)  # left over before the run: removed for the first seed
+    runner = BuildingRunner(str(common), {SHA: (GREEN, False), "b" * 40: (GREEN, False)}, str(wt))
+    out = tmp_path / "new.json"
+    ge.main(["run", "--gate", "gate.py", "--manifest", _two_seed_manifest(tmp_path), "--label", "new",
+             "--out", str(out), "--worktree", str(wt)], runner=runner)
+    data = json.loads(out.read_text())
+    assert data["seeds"]["first"]["reset"] == ["frontend/dist"]
+    assert data["seeds"]["second"]["reset"] == ["frontend/dist"]  # the first gate built it again
+
+
+def test_result_json_reset_is_empty_when_nothing_was_left(tmp_path):
+    common = tmp_path / "common"
+    wt = tmp_path / "wt"
+    (wt / "frontend" / "node_modules").mkdir(parents=True)
+    runner = FakeRunner(str(common), {SHA: (GREEN, False), "b" * 40: (GREEN, False)})
+    out = tmp_path / "new.json"
+    ge.main(["run", "--gate", "gate.py", "--manifest", _two_seed_manifest(tmp_path), "--label", "new",
+             "--out", str(out), "--worktree", str(wt)], runner=runner)
+    assert json.loads(out.read_text())["seeds"]["first"]["reset"] == []
