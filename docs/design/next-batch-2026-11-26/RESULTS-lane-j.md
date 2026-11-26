@@ -18,52 +18,76 @@ Spec basis: ADR-330 (1) to (27) and its one-module instruction; ADR-002; ADR-003
 4. Blocking: nothing. Waiting for the owner (none blocks the test): LJ-2 (what counts as a plan acceptance, #753) and
    the "pending owner read" wordings listed at the end.
 
-## (a) PC set-up (do these first, in this order)
+## (a) PC set-up (do these first, in this order; about 30 minutes, start 08:15 IST)
 
-1. **Back up the database FIRST** (the PC's PostgreSQL is the owner's live one). In a terminal on the PC:
-   `pg_dump -Fc -h 127.0.0.1 -U <owner role> -d <app database> -f D:\Abhay\backups\ofo-before-0054-2026-11-27.dump`
-   Then check it: `pg_restore --list D:\Abhay\backups\ofo-before-0054-2026-11-27.dump | find /c "TABLE DATA"` must print
-   a number above 0, and the file size must be above a few MB. Do not go on if either check fails.
-2. `git fetch origin` and `git checkout integration/nb-1126` at the pushed head named in section (c).
-3. `pip install -r requirements-app.txt` and `cd frontend && npm ci` (new packages may have come with the merge).
-4. Migrate: `python scripts/orchestrator/db_run.py . python -m alembic -c backend/ofo_app/alembic.ini upgrade head`.
-   The PC is at `0053_close_finished_strategies` (the screens line). This runs exactly four migrations:
-   `0054_actionable_alert_answers` (new NULL columns on `adjustment_suggestions`; old rows read as adjustment rules),
-   `0055_plan_stop_base` (`stop_base JSONB NULL` on `strategy_adjustment_plans`), then
-   `0056_several_standard_playbooks` (drops the one-standard-playbook-per-type unique index, adds a unique `slug`
-   column, each standard playbook gets `<type>-default`; ADR-330 (9)), then `0057_history_delete_entries` (the
-   strategy-history item validator accepts two new kinds, `deleted` and `undeleted`, ADR-330 (31); no table, column
-   or grant change). No playbook, plan, alert or history row is changed or deleted. Migrate BEFORE starting the new
-   code (at 0056 a new-code Delete or Undo is refused by the database and rolls back).
-   Treat 0054 as one-way: never run `alembic downgrade` (its downgrade refuses once new alerts exist).
-5. Post-migration checks: `python scripts/orchestrator/db_run.py . python -m alembic -c backend/ofo_app/alembic.ini current`
-   must print `0057_history_delete_entries (head)`.
-6. Restart: stop and start the API, the background worker supervisor (`python scripts/orchestrator/supervise_worker.py`),
-   and rebuild the frontend (`cd frontend && npm run build`).
-7. In the browser: (a) Positions > Adjustment opportunities still lists the old records; (b) Alerts > Active opens and
-   its row count equals the bell number.
+Corrected 26 Nov night from the PC rehearsal (PR #722 comment 7196817335, "Rehearsal for the 27 Nov test": 0054 to 0056
+applied on a restored copy of `ofo_dev` in 2 min 44 s, row counts equal, grants unchanged). Facts it found: the
+database is on the VPS (127.0.0.1:5432 on the PC is an SSH tunnel), the PC has no `pg_dump`, and
+`scripts/orchestrator/db_run.py` always targets `ofo_test`, so it is NOT used below.
 
-Old-code safety of each migration on this branch (so switching the PC back to another branch is safe):
-- 0054 and 0055: the PC's current code (7bf64eb, the screens line) run against a database the merged tree migrated to
-  0055: test_background_worker, test_adjustment_opportunities, test_background_cycle, test_held_tracking,
-  test_playbook_store: 193 passed, 0 failed (Lane J test run, 26 Nov). From 0053 the merged tree ran exactly 0054 then
-  0055; `alembic heads` printed one head.
-- 0056: Lane P measured the code at e01f747 against 0056 (worker, opportunities, cycle, held, playbook routes, system
-  playbook versions, plan: all pass; one test fails by design: it expects the database to refuse a second standard
-  playbook per type, which 0056 allows on purpose). With the PC's code 7bf64eb against a database the merged tree
-  migrated to 0056 (Lane J run, 26 Nov; the old fixtures run no alembic, so the old code met the real 0056 schema):
-  test_background_worker 24, test_adjustment_opportunities 34, test_background_cycle 78, test_held_tracking 6,
+1. **Back up `ofo_dev` FIRST, on the VPS over SSH** (as in the rehearsal): `pg_dump -Fc -d ofo_dev -f
+   <backup folder>/ofo_dev-2026-11-27-before-0054.dump` run on the VPS as the database owner, then copy the file to
+   `C:\Users\itsab\ofo-backups\`. Check it: `pg_restore --list <file>` lists TABLE DATA entries (the rehearsal's dump
+   had 47) and the file size is about the rehearsal's (1,795,550 bytes on 26 Nov). Do not go on if either check fails.
+   The VPS disk is about 90% full (12 GB free): enough for one dump of about 2 MB.
+2. In the checkout the app serves from (NOT a `wt-new.ps1` worktree: `npm ci` there would empty the running app's
+   linked `node_modules`): stop the API, the worker supervisor and the frontend; `git fetch origin`;
+   `git checkout integration/nb-1126` at the head named in section (c) "Push log" (last row).
+3. `pip install -r requirements-app.txt`; `cd frontend && npm ci && npm run build && cd ..` (the build reads
+   `docs/api/openapi.json` beside `frontend/`, so run it in the full checkout).
+4. **0057 was NOT in the 26 Nov rehearsal** (it ran 0054 to 0056 only). First run this same command with `ofo_dev`
+   replaced by `ofo_rehearsal_1127` (the scratch copy left in place by the rehearsal, already at 0056): it must apply
+   only 0057 and end at `0057_history_delete_entries (head)`; then run the 0057 check of the list below on that copy.
+   Only then migrate the live database:
+   **Migrate `ofo_dev`** with the owner-role URL built in memory for this one command (same user and password as the
+   rehearsal, read from GLOBAL.env; nothing written to a file), from the checkout root:
+   `python -c "import os,subprocess,sys,urllib.parse; sys.path.insert(0,'scripts/orchestrator'); import db_run as d; g=d.read_env(d.GLOBAL_ENV); u='postgresql+asyncpg://'+g['WINDOWS_VPS_PG_ADMIN_USER']+':'+urllib.parse.quote(g['WINDOWS_VPS_PG_ADMIN_PASSWORD'],safe='')+'@127.0.0.1:5432/ofo_dev'; e=dict(os.environ,ALEMBIC_DATABASE_URL=u); [subprocess.run([sys.executable,'-m','alembic','-c','backend/ofo_app/alembic.ini']+a,env=e,check=True) for a in (['current'],['upgrade','head'],['current'])]"`
+   Proved here on a scratch database named `ofo_dev` (26 Nov night): it printed `current`, migrated, and printed
+   `0057_history_delete_entries (head)`. On the PC it prints `0053_close_finished_strategies` first, runs the migrations listed below in order, and prints the last one
+   with `(head)`. A stop with an error: do not start the app; restore from the dump of step 1 and send the error.
+5. **After-checks (read-only SQL on `ofo_dev`, run with `psql -d ofo_dev` on the VPS over SSH, as step 1; each line was run
+   on a test database migrated by this command, 26 Nov):**
+   - `SELECT public.ofo_assert_app_role_allowlist('ofo_app', 'post');` returns without an error (the app role's
+     grants and every pinned function body are as the branch expects).
+   - Row counts of `adjustment_suggestions`, `strategy_adjustment_plans`, `adjustment_playbooks` and `strategy_history`
+     equal the counts taken just before step 4 (no migration below changes or deletes a row, except 0056 filling
+     `slug` on the standard playbooks).
+   - The per-migration checks in the list below.
+6. Start the API, the background worker supervisor (`python scripts/orchestrator/supervise_worker.py`) and the
+   frontend. In the browser: (a) Positions > Adjustment opportunities still lists the old records; (b) Alerts > Active
+   opens and its row count equals the bell number; (c) a live price ticks on Positions.
+
+Migrations on this branch (the PC is at 0053), each with its old-code safety and what the PC checks after it:
+
+- **0054_actionable_alert_answers**: NULL columns `kind`, `answer`, `answered_at`, `no_longer_true_since`,
+  `escalated_at` on `adjustment_suggestions`; old rows keep NULL and read as adjustment rules. One-way: never run
+  `alembic downgrade` (it refuses once new alerts exist).
+  Old code: the PC's code before this branch (7bf64eb) against a database the branch migrated to 0055 passed
+  test_background_worker, test_adjustment_opportunities, test_background_cycle, test_held_tracking,
+  test_playbook_store (193 passed, 0 failed; Lane J, 26 Nov).
+  PC check: `SELECT count(*) FROM adjustment_suggestions WHERE kind IS NOT NULL;` returns 0 right after the migration.
+- **0055_plan_stop_base**: `stop_base JSONB NULL` on `strategy_adjustment_plans`. Old code: as 0054 (same run).
+  PC check: `SELECT count(*) FROM strategy_adjustment_plans WHERE stop_base IS NOT NULL;` returns 0 right after.
+- **0056_several_standard_playbooks**: drops the one-standard-playbook-per-type unique index; adds `slug` (each
+  standard playbook gets `<type>-default`, unique per type); ADR-330 (9). Old code (7bf64eb) against a database at
+  0056: test_background_worker 24, test_adjustment_opportunities 34, test_background_cycle 78, test_held_tracking 6,
   test_playbook_routes 18, test_system_playbook_versions 23, test_adjustment_plan 10, test_paper_monitor 23,
-  test_paper_triggers_routes 65, test_exit_door 34 passed; test_playbook_store 50 passed, 1 failed by design
-  (`test_the_application_role_cannot_insert_a_system_row_and_the_owner_cannot_add_a_second`: DID NOT RAISE, 0056
-  drops that rule on purpose, ADR-330 (9)).
-- 0057 (Lane J, ADR-330 (31)): code 3d7aaf78 (push 3, before 0057) against a database at 0057 holding a `deleted`
-  entry: test_strategy_store 98, test_strategy_bulk_delete 11, test_strategy_delete_app 31, test_strategy_name_app 28
-  passed; the old history screen shows those entries as "this change could not be shown" and offers Restore, which puts
-  back the definition current at the delete (harmless, measured by the Tier A review). Three old-tree tests that replay
-  migrations fail because the database is newer (expected). Tier A review (Opus): SHIP; upgrade of a database holding
-  every old history kind keeps all 44 rows valid; grants unchanged; downgrade refuses while a delete entry exists.
-- Do not run `alembic downgrade` from an older branch.
+  test_paper_triggers_routes 65, test_exit_door 34 passed; test_playbook_store 50 passed and 1 failed by design (it
+  expects the database to refuse a second standard playbook, which 0056 allows on purpose).
+  PC check: `SELECT count(*) FROM adjustment_playbooks WHERE is_system AND slug IS NULL;` returns 0 (the rehearsal: all
+  12 got `<type>-default`).
+- **0057_history_delete_entries** (ADR-330 (31)): the strategy-history item validator accepts two new kinds,
+  `deleted` and `undeleted`; no table, column, grant or row change. Migrate BEFORE starting the new code (at 0056 a
+  new-code Delete or Undo is refused by the database and rolls back). Old code (3d7aaf7, before 0057) against a
+  database at 0057 holding a `deleted` entry: test_strategy_store 98, test_strategy_bulk_delete 11,
+  test_strategy_delete_app 31, test_strategy_name_app 28 passed; its history screen shows such an entry as "this change
+  could not be shown". Tier A review (Opus): SHIP (all 44 old history rows of every kind still valid after the
+  upgrade; grants unchanged; downgrade refuses while a delete entry exists).
+  PC check: `SELECT count(*) FROM strategy_history WHERE NOT public.ofo_strategy_change_items_valid(change_summary);`
+  returns 0.
+
+These old-code tests build their own throwaway databases (they are run here, on test databases, not on the PC); the
+PC runs only the read-only checks above.
 
 ## (b) Screen-check list (owner, paper only, market hours 09:15-15:30 IST; Ctrl+F5 once after the rebuild)
 
