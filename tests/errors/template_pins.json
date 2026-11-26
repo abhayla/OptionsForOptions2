@@ -4598,5 +4598,13 @@
   "labels:alert_answer": {
     "sha256": "a4dc3ce54ea870fb01210ed297a5dd92e749ad3dd23d377b31c4c83604d00ed9",
     "reviewed": "pending owner read"
+  },
+  "alert_answer_refused": {
+    "sha256": "2dbe3df1c919f7843b6099c14f512e5114e310c20a3c7b0e8f7fa93b3c02a209",
+    "reviewed": "pending owner read"
+  },
+  "explanation:alert_closed_trade_closed": {
+    "sha256": "3ae1dbfd9af4d25b227c48a09ed71d3cb83a370e060a99a3b90ae25ca76c78bf",
+    "reviewed": "pending owner read"
   }
 }
