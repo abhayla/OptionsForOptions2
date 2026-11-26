@@ -477,15 +477,15 @@ test.describe('Unbuilt placeholder pages: the 15 addresses (REQ-009 AC-1..AC-8, 
   const PLACEHOLDERS: Array<[string, string, string, string]> = [
     ['/home/important-alerts', 'Home', 'Important alerts', "The alerts that matter most will be collected on this page."],
     ['/home/active-strategies', 'Home', 'Active strategies', "Your running strategies will be summarised on this page."],
-    ['/home/account-status', 'Home', 'Account status', "Your Zerodha connection and subscription status will show on this page."],
+    ['/home/account-status', 'Home', 'Account status', "Your broker connection and subscription status will show on this page."],
     ['/positions/pnl-risk', 'Positions', 'P&L/risk', "Profit and loss and risk across your positions will show on this page."],
-    ['/orders', '', 'Orders', "Your Zerodha orders with Zerodha's own status, an order import and a read-only funds and margin view will show on this page. It never takes an order."],
-    ['/orders/pending', 'Orders', 'Pending', "Your Zerodha orders that are still open will be listed on this page, with Zerodha's own status."],
-    ['/orders/executed', 'Orders', 'Executed', "Your executed Zerodha orders will be listed on this page."],
-    ['/orders/failed-partial', 'Orders', 'Failed/partial', "Your rejected and partly filled Zerodha orders will be listed on this page, with Zerodha's reason."],
-    ['/orders/execution-history', 'Orders', 'Execution history', "Your past Zerodha orders will be listed on this page, with the time we read them."],
+    ['/orders', '', 'Orders', "Your broker orders with your broker's own status, an order import and a read-only funds and margin view will show on this page. It never takes an order."],
+    ['/orders/pending', 'Orders', 'Pending', "Your broker orders that are still open will be listed on this page, with your broker's own status."],
+    ['/orders/executed', 'Orders', 'Executed', "Your executed broker orders will be listed on this page."],
+    ['/orders/failed-partial', 'Orders', 'Failed/partial', "Your rejected and partly filled broker orders will be listed on this page, with your broker's reason."],
+    ['/orders/execution-history', 'Orders', 'Execution history', "Your past broker orders will be listed on this page, with the time we read them."],
     ['/settings/profile', 'Account & Settings', 'Profile', "Your name and contact details will show on this page."],
-    ['/settings/zerodha-connection', 'Account & Settings', 'Zerodha connection', "Your Zerodha connection will be managed on this page."],
+    ['/settings/zerodha-connection', 'Account & Settings', 'Zerodha connection', "Your broker connection will be managed on this page."],
     ['/settings/notifications', 'Account & Settings', 'Notifications', "Your notification choices will be set on this page."],
     ['/settings/security', 'Account & Settings', 'Security', "Your sign-in and security options will be set on this page."],
     ['/settings/preferences', 'Account & Settings', 'Preferences', "Your display preferences will be set on this page."],
@@ -518,7 +518,7 @@ test.describe('Unbuilt placeholder pages: the 15 addresses (REQ-009 AC-1..AC-8, 
   test('PH-ORD /orders is the one placeholder with links: the note says the page never takes an order and its four links open the four Orders placeholders', async ({ page }) => {
     // Spec basis: REQ-009 AC-5 (Orders is never an order-entry form), ADR-002 (no standalone order entry), ADR-193 (4)
     await page.goto(`${BASE}/orders`)
-    await expect(page.getByTestId('page-note')).toHaveText('Your Zerodha orders, read-only. This page never takes an order.')
+    await expect(page.getByTestId('page-note')).toHaveText('Your broker orders, read-only. This page never takes an order.')
     const links = page.getByTestId('subitem-link')
     await expect(links).toHaveText(['Pending', 'Executed', 'Failed/partial', 'Execution history'])
     const hrefs = ['/orders/pending', '/orders/executed', '/orders/failed-partial', '/orders/execution-history']
