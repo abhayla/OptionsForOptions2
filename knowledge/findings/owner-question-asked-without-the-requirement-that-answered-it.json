@@ -1,0 +1,28 @@
+{
+ "id": "owner-question-asked-without-the-requirement-that-answered-it",
+ "scope": "project",
+ "class": "Owner questions asked while a requirement or decision already settles the subject: the question's Spec basis cites only what the question's own words matched, so the settled answer is missed and the owner is asked to decide something the spec already decided, or to overturn it without being told.",
+ "mechanism": "The spec was searched by the question's own words (\"Replace the N legs\", \"pasted link\") and not by the subject's terms (\"unsaved\", \"reload\", \"survives\"), so rule R1 of spec-first was not met; the spec_basis_gate hook checks that cited ids exist, not that the relevant ones were found.",
+ "first_seen": {
+  "date": "2026-11-26",
+  "where": "coordinator question on what a pasted link or a reload does to unsaved builder legs (answer recorded as ADR-330 (18): load fresh, legs lost)",
+  "evidence": "The question's Spec basis cited ADR-319 (1) and REQ-079 AC-5 only; it did not cite REQ-154 AC-1, which already required an unsaved builder strategy to survive a page reload. Screen-suite test LV-14 and issue #751 exposed the clash the same day; the owner then decided REQ-154 stands (ADR-330 (34)). Size known today: 1 of the 30+ owner questions of 25-26 Nov (this one); the others were not re-checked."
+ },
+ "fix": "Not yet built. Procedure: before any owner question, run `python tools/spec_similar.py . \"<the subject in the user's words>\"` and grep the spec for the subject's nouns and verbs; put every hit in the Spec basis line, including hits that disagree with the option being offered. A question whose basis lists no requirement for a builder, positions or alerts subject is suspect.",
+ "detection": {
+  "status": "unguarded",
+  "checks": [],
+  "note": "Proposed, not built: the spec_basis_gate hook could run spec_similar on the question text and refuse when a high-scoring requirement is not cited. Filed here as a note; the hook is not edited by this entry."
+ },
+ "spec_ref": [
+  "spec/requirements/REQ-154.md",
+  "spec/decisions/ADR-330.md"
+ ],
+ "occurrences": [
+  {
+   "date": "2026-11-26",
+   "where": "ADR-330 (18) question on pasted link / reload and unsaved builder legs; clash found by LV-14 and issue #751; settled by ADR-330 (34)",
+   "evidence": "Spec basis cited ADR-319 (1) and REQ-079 AC-5, not REQ-154 AC-1"
+  }
+ ]
+}
