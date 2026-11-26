@@ -47,7 +47,8 @@ async def app_db_url(app_engine, monkeypatch):
 
 async def _seeded(app_engine, monkeypatch, sid: str, *, plan: bool = True) -> int:
     """The scenario's contracts into the catalogue (the store's writer), then its strategy (seed_scenario.seed), then
-    (ADR-330 (11): only a strategy's own plan is watched) its plan, a copy of the system iron condor playbook; ``plan=False``: none."""
+    (ADR-330 (11): only a strategy's own plan is watched) its plan, a copy of the system iron condor playbook;
+    ``plan=False``: none."""
     monkeypatch.setenv("OFO_SCENARIO", sid)
     await load_library(app_engine)  # the whole library's list, once per database
     strategy_id = await seed_mod.seed(sid)
@@ -100,7 +101,7 @@ async def test_adj02_flags_exactly_t01_t03_t09_with_the_system_wording(app_db_ur
         "Spot within this % of a short strike: 0.3416 % (rule 0.5000 %) (call side tested)")
     assert by_trigger["T-03"]["condition"] == "Tested short's delta reaches: 0.4103 delta (rule 0.3500 delta)"
     assert not any("T-0" in x["condition"] for x in flags)
-    assert {x["wording"] for x in flags} == {"Your rule was triggered"}  # a plan's rules are the user's own (ADR-330 (11))
+    assert {x["wording"] for x in flags} == {"Your rule was triggered"}  # a plan's rules are the user's own
     assert all(x["reason"] for x in body["results"] if x["kind"] == "not_checked")
 
 
@@ -159,8 +160,10 @@ async def test_adj01_no_flag(app_db_url, monkeypatch):
 
 
 async def test_a_strategy_with_no_plan_is_not_checked_whatever_playbook_is_active(app_db_url, monkeypatch):
-    """ADR-330 (11) (a scenario no other test of the file plans: plans are never deleted): was "the user's active playbook is read when the strategy has no plan". Now no plan = source
-    "none": no results, nothing watched (the system and the user's own active playbooks are only sources to copy)."""
+    """ADR-330 (11) (a scenario no other test of the file plans: plans are never deleted): was
+    "the user's active playbook is read when the strategy has no plan". Now no plan =
+    source "none": no results, nothing watched
+    (the system and the user's own active playbooks are only sources to copy)."""
     sid = await _seeded(app_db_url, monkeypatch, "ADJ-43", plan=False)
     async with app_db_url.begin() as conn:
         system = await playbook_store.active_for(conn, "owner", "ic")
