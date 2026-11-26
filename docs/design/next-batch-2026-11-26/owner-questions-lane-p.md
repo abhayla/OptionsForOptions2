@@ -23,3 +23,27 @@ Built meanwhile: (a), in one place (`background.py` owner lister, `close_by_syst
 removing that one call.
 
 **Answered** by the owner on 26 Nov 2026 (question tool, through the coordinator): "Close it by system (Recommended)" = option (a); recorded in ADR-330 (3).
+
+## LP-2 Does the "2x the credit received" stop stay beside a stop typed in rupees?
+
+Spec basis: ADR-330 (5) "a plan's profit target and loss stop can be typed either in rupees or in percent ... One rule
+for every plan trigger"; ADR-247 "a loss of 50 % of max loss or 2x the credit received, whichever comes first". The
+spec does not say whether a rupee stop replaces only the "% of max loss" part or the whole stop line.
+
+Real case (Opus review of P4, 26 Nov, on the ADJ-01 iron condor, max loss Rs 2,600): rupee stop typed as Rs 400 while
+the 2x-credit line stands at Rs 300; at a loss of Rs 450 two stop alerts fire, the credit one first (at Rs 300, before
+the stop the user typed).
+
+Options:
+- (a) The rupee stop replaces only the "% of max loss" part; the "2x the credit received" line stays and the plan says
+  so: "Stop: loss of Rs 400 (15.38 % of max loss) or 2x the credit received, whichever comes first". **Recommended**:
+  it keeps ADR-247's rule unchanged and the user sees both lines that watch him.
+- (b) A rupee stop is the whole stop: the 2x-credit line is not checked while a rupee stop is set.
+
+Built meanwhile: (a), the words say both, in one place (`settings_in_force.stops_of` and the stop words), reversible.
+
+## LP-3 (decided, B2) The per-lot figure when the legs have different lot counts
+
+Spec basis: owner answer Q3 (ADR-330): "per-lot figure shown beside it"; silent on legs of different sizes (searched:
+"per lot", "per-lot"). Decided: the per-lot figure is shown only when every leg has the same number of lots; otherwise
+only the whole-trade figure. Reversible in `routes/adjustment_plan.py`.
