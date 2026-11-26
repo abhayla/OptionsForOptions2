@@ -24,7 +24,7 @@ from ofo.adjustment import alert_gate
 from ofo.adjustment.preferences import from_values
 from ofo.timeutil import IST
 from ofo.settings import defaults as registry_defaults
-from ofo_app import background, playbook_store, scenario_mode, strategy_alert_style_store
+from ofo_app import actionable_alerts, background, playbook_store, scenario_mode, strategy_alert_style_store
 from ofo_app import db as app_db
 from ofo_app.config import get_settings
 from sqlalchemy import text
@@ -197,7 +197,12 @@ async def test_core_wobble_10_crossings_in_6_minutes_opens_one_record_at_a_candl
             _push_spot(scn, BEFORE_CROSS_SPOT, now[0])
         await worker.cycle()
     after = (await _t01_ids(app_db_url, sid))[len(before):]
-    assert after == [(new[0][0], "lapsed")] and worker.errors == [], (after, worker.errors)
+    # ADR-330 (3): the cleared band no longer lapses the record: it stays open and says "no longer true since"
+    assert after == [(new[0][0], "open")] and worker.errors == [], (after, worker.errors)
+    async with app_db_url.connect() as conn:
+        stopped = (await conn.execute(text("SELECT no_longer_true_since FROM public.adjustment_suggestions "
+                                           "WHERE id = :i"), {"i": new[0][0]})).scalar_one()
+    assert stopped is not None
     print(f"CORE-PROOF crossings=10 records={len(new)} first_cross={first_cross.time()} close={close.time()} "
           f"opened_at={opened_at.time()} record={new[0][0]} lapsed_after_band_cleared=yes")
 
@@ -269,7 +274,7 @@ async def _watched_and_fresh_t03(app_engine, monkeypatch) -> tuple[background.Wa
     sid, scn = await _seeded(app_engine, monkeypatch)
     w = next(x for x in await background.owner_lister(scn.provider) if x.strategy_id == sid)
     async with app_engine.begin() as conn:
-        await playbook_store.lapse_all(conn, "owner", sid, playbook_store.LAPSE_CONDITION_STOPPED)
+        await actionable_alerts.close_by_system(conn, "owner", sid, playbook_store.LAPSE_NOT_MONITORED)
         rec = await playbook_store.open_suggestion(conn, "owner", sid, "T-03", trigger_id="T-03", stage="Middle",
                                                    value=D("0.36"), threshold=D("0.35"))
     return w, rec.id
@@ -283,24 +288,44 @@ async def _t03_rows(engine, sid: int, since: int) -> list[tuple]:
     return [tuple(r) for r in rows]
 
 
-async def test_an_escalation_of_an_open_record_lapses_it_and_opens_the_worse_one_in_one_transaction(app_db_url,
-                                                                                                  monkeypatch):
-    """Review #1 of 0036 (REQ-112: one open record per rule): Opened(worse="last") while the rule's record is open ->
-    the old one lapsed and the worse one opened, both or neither (a failing insert leaves the old record open)."""
+async def test_a_recross_after_no_longer_true_opens_no_second_row_and_grows_the_timeline_once(app_db_url, monkeypatch):
+    """The gate's later closes (ADR-330 (3)): Opened, Lapsed, Lapsed again (a restart), Opened again at the same value
+    -> still ONE row, no_longer_true_since cleared, timeline = opened + stopped + true again (3), never one per candle."""
+    w, _ = await _watched_and_fresh_t03(app_db_url, monkeypatch)
+    t0 = datetime.datetime(2026, 11, 25, 11, 2, 20, tzinfo=IST)
+    minute = datetime.timedelta(minutes=1)
+    store = background.DbGateStore()
+    opened = await store.apply(w, [alert_gate.Opened("T-06", t0, 0, D("15.4000"), D("15.5750"))])
+    await store.apply(w, [alert_gate.Lapsed("T-06", t0 + minute, D("15"))])
+    await store.apply(w, [alert_gate.Lapsed("T-06", t0 + 2 * minute, D("15"))])
+    again = await store.apply(w, [alert_gate.Opened("T-06", t0 + 9 * minute, 0, D("15.4000"), D("15.5750"))])
+    again2 = await store.apply(w, [alert_gate.Opened("T-06", t0 + 10 * minute, 0, D("15.4000"), D("15.5750"))])
+    async with app_db_url.connect() as conn:
+        rows = (await conn.execute(text(
+            "SELECT id, outcome, no_longer_true_since, jsonb_array_length(timeline) FROM "
+            "public.adjustment_suggestions WHERE strategy_id = :s AND rule_id = 'T-06'"), {"s": w.strategy_id})).all()
+    assert again == again2 == opened
+    assert [tuple(r) for r in rows] == [(opened["T-06"], "open", None, 3)], rows
+
+
+async def test_an_escalation_of_an_open_record_updates_it_in_one_transaction(app_db_url, monkeypatch):
+    """Review #1 of 0036 (REQ-112: one open record per rule), under ADR-330 (3): Opened(worse="last") while the rule's
+    alert is open updates THAT row (the worse value, one timeline entry), never lapses it and opens another; a failing
+    write leaves the old values (all or nothing)."""
     w, old = await _watched_and_fresh_t03(app_db_url, monkeypatch)
     at = await _db_now(app_db_url)
     worse = alert_gate.Opened("T-03", at, 2, D("0.40"), D("0.41"), "last")
 
     async def refused(*_a, **_k):
-        raise RuntimeError("insert refused")
+        raise RuntimeError("write refused")
     with monkeypatch.context() as m:
-        m.setattr(playbook_store, "open_suggestion", refused)
-        with pytest.raises(RuntimeError, match="insert refused"):
+        m.setattr(actionable_alerts, "_get", refused)
+        with pytest.raises(RuntimeError, match="write refused"):
             await background.DbGateStore().apply(w, [worse])
     assert await _t03_rows(app_db_url, w.strategy_id, old) == [(old, "open", None, D("0.35"))]  # rolled back
     opened = await background.DbGateStore().apply(w, [worse])
-    rows = await _t03_rows(app_db_url, w.strategy_id, old)
-    assert rows == [(old, "lapsed", None, D("0.35")), (opened["T-03"], "open", "last", D("0.40"))], rows
+    assert opened == {"T-03": old}
+    assert await _t03_rows(app_db_url, w.strategy_id, old) == [(old, "open", None, D("0.40"))]
 
 
 async def test_a_record_acted_on_mid_session_makes_no_lapse_call_when_the_band_clears(app_db_url, monkeypatch):
@@ -383,6 +408,12 @@ async def _cross(engine, worker, scn, now, spot: str, sid: int, base: int, wait:
     raise AssertionError(f"no T-01 record within {wait} s of the crossing at {spot}")
 
 
+async def _threshold_of(engine, rec: int) -> D:
+    async with engine.connect() as conn:
+        return (await conn.execute(text("SELECT threshold FROM public.adjustment_suggestions WHERE id = :i"),
+                                   {"i": rec})).scalar_one()
+
+
 async def _open_one(engine, worker, scn, now, sid) -> tuple[int, int]:
     base = await _last_id(engine, sid)
     return base, await _cross(engine, worker, scn, now, CROSS_SPOT, sid, base)
@@ -443,8 +474,16 @@ async def test_a_plan_change_restores_the_gate_against_the_new_ladder(app_db_url
     changed[0] = True
     await worker.rebuild()
     assert sid not in worker._gate  # dropped: restored at the next check against the new ladder
-    second = await _cross(app_db_url, worker, scn, now, LEVEL_ONE_NEW_PLAN_SPOT, sid, first)
-    assert await _t01_rows(app_db_url, sid, base) == [(first, "lapsed", None), (second, "open", "last")]
+    now[0] += datetime.timedelta(seconds=5)
+    _push_spot(scn, LEVEL_ONE_NEW_PLAN_SPOT, now[0])
+    for _ in range(130):  # a worse reading updates the ONE open alert (it used to lapse it and open another)
+        await worker.cycle()
+        now[0] += ONE_SECOND
+        if (await _threshold_of(app_db_url, first)) == D("0.2000"):
+            break
+    # ADR-330 (3): the same open row, no second record
+    assert await _threshold_of(app_db_url, first) == D("0.2000")
+    assert await _t01_rows(app_db_url, sid, base) == [(first, "open", None)]
     assert worker._gate_body[sid] == new_body[0] and worker.errors == []
 
 
@@ -502,7 +541,8 @@ async def test_the_ist_day_rollover_resets_the_cap(app_db_url, monkeypatch):
         now[0] += ONE_SECOND
     assert worker.status[sid] is background.MonitoringStatus.ACTIVE, worker.paused_reason
     rows = await _t01_rows(app_db_url, sid, base)
-    assert [(r[1], r[2]) for r in rows] == [("lapsed", None), ("open", "last")], rows  # the cap no longer holds it
+    assert [(r[1], r[2]) for r in rows] == [("open", None)], rows  # the cap no longer holds it: ONE row, updated
+    assert await _threshold_of(app_db_url, rec) == D("0.3000"), rows
     assert await _held_reasons(app_db_url, sid) == held
 
 
@@ -710,7 +750,7 @@ async def test_one_exited_strategys_failing_lapse_never_drops_the_others_or_thei
     monkeypatch.setattr(strategy_store, "list_strategies", listed)
     monkeypatch.setattr(adjustment_readers, "read_tracked", read)
     monkeypatch.setattr(playbook_store, "open_suggestions", open_of)
-    monkeypatch.setattr(playbook_store, "lapse_all", refused)
+    monkeypatch.setattr(actionable_alerts, "close_by_system", refused)
     monkeypatch.setattr(background, "LISTER_LAPSE_FAILURES", {}, raising=False)
     worker.monitors, worker._gate_load = [], {}  # as at start-up: nothing listed, no gate read yet
     for _ in range(2):
@@ -726,21 +766,21 @@ async def test_d30_an_exited_strategys_failed_lapse_is_retried_at_the_next_re_li
     from ofo_app import adjustment_readers  # noqa: PLC0415
     sid, _scn, _now, worker = await _ready(app_db_url, monkeypatch)
     async with app_db_url.begin() as conn:
-        await playbook_store.lapse_all(conn, "owner", sid, playbook_store.LAPSE_CONDITION_STOPPED)
+        await actionable_alerts.close_by_system(conn, "owner", sid, playbook_store.LAPSE_NOT_MONITORED)
         rec = (await playbook_store.open_suggestion(conn, "owner", sid, "T-03", trigger_id="T-03", stage="Middle",
                                                     value=D("0.36"), threshold=D("0.35"))).id
-    real_lapse_all, fails = playbook_store.lapse_all, [1]
+    real_close, fails = actionable_alerts.close_by_system, [1]
 
     async def flaky(conn, user_ref, strategy_id, reason):
         if fails[0]:
             fails[0] -= 1
             raise ConnectionError("database blip")
-        return await real_lapse_all(conn, user_ref, strategy_id, reason)
+        return await real_close(conn, user_ref, strategy_id, reason)
 
     async def exited(_sid, _rates):
         raise adjustment_readers.TrackedExited("every leg exited")
     monkeypatch.setattr(adjustment_readers, "read_tracked", exited)
-    monkeypatch.setattr(playbook_store, "lapse_all", flaky)
+    monkeypatch.setattr(actionable_alerts, "close_by_system", flaky)
     monkeypatch.setattr(background, "LISTER_LAPSE_FAILURES", {}, raising=False)
 
     async def states():
@@ -771,21 +811,23 @@ async def test_s16_a_gate_condition_stopped_never_closes_the_record(app_db_url, 
                                          2)], rows  # a repeat Lapsed adds nothing: one entry for opening, one stopped
 
 
-async def test_an_escalation_lapses_the_old_record_as_superseded_by_worse_and_a_cleared_one_as_condition_stopped(
-        app_db_url, monkeypatch):
-    """Review round 2, finding 5: the record an escalation closes lapsed because a worse one replaced it, not because
-    the condition stopped; its own reason, shown through the catalogue (the inbox and opportunities words)."""
+async def test_an_escalation_updates_and_a_cleared_band_notes_no_longer_true_without_closing(app_db_url,
+                                                                                            monkeypatch):
+    """ADR-330 (3): an escalation updates the one open alert; the cleared band (Lapsed) only sets "no longer true
+    since"; the old lapse reasons keep their catalogue words for the History of records closed before 0054."""
     from ofo.errors.explanations import render_explanation  # noqa: PLC0415
     w, old = await _watched_and_fresh_t03(app_db_url, monkeypatch)
     at = await _db_now(app_db_url)
+    later = at + datetime.timedelta(minutes=3)
     opened = await background.DbGateStore().apply(w, [alert_gate.Opened("T-03", at, 2, D("0.40"), D("0.41"), "last")])
-    await background.DbGateStore().apply(w, [alert_gate.Lapsed("T-03", at, D("0.20"))])
+    await background.DbGateStore().apply(w, [alert_gate.Lapsed("T-03", later, D("0.20"))])
     async with app_db_url.connect() as conn:
         recs = {s.id: s for s in await playbook_store.suggestions(conn, "owner", w.strategy_id)}
-    assert (recs[old].outcome, recs[old].lapse_reason) == ("lapsed", "superseded_by_worse")
-    assert (recs[opened["T-03"]].outcome, recs[opened["T-03"]].lapse_reason) == ("lapsed", "condition_stopped")
-    shown = render_explanation("suggestion_lapsed_" + recs[old].lapse_reason)
-    assert str(shown) == "A worse reading of the same rule replaced it"
+        stopped = (await conn.execute(text("SELECT no_longer_true_since FROM public.adjustment_suggestions "
+                                           "WHERE id = :i"), {"i": old})).scalar_one()
+    assert opened == {"T-03": old} and (recs[old].outcome, recs[old].lapse_reason) == ("open", None)
+    assert stopped == later
+    assert str(render_explanation("suggestion_lapsed_superseded_by_worse")) == "A worse reading of the same rule replaced it"
 
 
 async def test_a_yes_no_record_stores_the_confirming_reading_and_none_when_it_had_no_number(app_db_url, monkeypatch):
