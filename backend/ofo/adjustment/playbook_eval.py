@@ -617,9 +617,13 @@ def _t10b(c: _Ctx) -> Hit:
     hhmm = _need(c.state.hhmm, "clock")
     today, expiry = _need(c.state.today, "today"), _need(c.state.expiry, "expiry")
     parts = time_exit_parts(c.body.get("guards", {}).get("time_exit"))
-    if parts is not None and parts[1] != ON_EXPIRY:  # ADR-330 (7): the plan's own day and time, any trading day
+    if parts is not None:  # ADR-330 (7): the plan's own time always; its date only picks the day (blank = expiry)
+        if parts[1] == ON_EXPIRY:
+            _limit(c, "T-10b")  # a stage with no T-10b value does not apply the rule (not checked)
+            if not is_expiry_day(today, expiry):  # ADR-310 (2)
+                raise _Missing(f"{P}waits_expiry_day", day=expiry)
         return Hit("T-10b", hhmm, parts[0], "ge", time_exit_due(today, hhmm, resolve_on(parts[1], expiry), parts[0]))
-    lim = _limit(c, "T-10b")
+    lim = _limit(c, "T-10b")  # no time exit in the plan: the playbook's stage value
     if not is_expiry_day(today, expiry):  # ADR-310 (2): a time exit with no date of its own acts on expiry day only
         raise _Missing(f"{P}waits_expiry_day", day=expiry)
     return Hit("T-10b", hhmm, lim, "ge", hhmm >= lim)

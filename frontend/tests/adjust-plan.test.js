@@ -140,8 +140,32 @@ describe('REQ-161 AC-2: one click accepts; another playbook refills every field'
     await t(w, 'plan-save').trigger('click')
     await flushPromises()
     expect(calls.filter((c) => c.method !== 'GET')).toEqual([{ method: 'PUT', url: PATH,
-      body: { playbook_id: 9, target: '60', stop: '35', max_adjustments: '3', time_exit: { at: '14:45', on: '' } } }])
+      body: { playbook_id: 9, target: '60', stop: '35', max_adjustments: '3' } }])
     expect(w.emitted('saved')).toHaveLength(1)
+  })
+
+  it('an unrelated edit does not re-send a saved time exit whose date has passed', async () => {
+    answers[`GET ${PATH}`] = sheetAnswer({ plan: PLAN, prefill: { ...PREFILL_9, time_exit: { hour: 15, minute: 15 }, time_exit_on: '2026-11-20' } })
+    answers[`PUT ${PATH}`] = sheetAnswer({ plan: PLAN })
+    const w = await sheet({ edit: true })
+    await t(w, 'plan-target').setValue('55')
+    await t(w, 'plan-save').trigger('click')
+    await flushPromises()
+    expect('time_exit' in calls.find((c) => c.method === 'PUT').body).toBe(false)
+    await t(w, 'plan-time').setValue('15:20')
+    await t(w, 'plan-save').trigger('click')
+    await flushPromises()
+    expect(calls.filter((c) => c.method === 'PUT').pop().body.time_exit).toEqual({ at: '15:20', on: '2026-11-20' })
+  })
+
+  it('a date typed without a time is sent with the empty time so the server names the field', async () => {
+    answers[`GET ${PATH}`] = sheetAnswer()
+    answers[`POST ${PATH}`] = sheetAnswer({ plan: PLAN })
+    const w = await sheet()
+    await t(w, 'plan-time-on').setValue('2026-11-25')
+    await t(w, 'plan-save').trigger('click')
+    await flushPromises()
+    expect(calls.find((c) => c.method === 'POST').body.time_exit).toEqual({ at: '', on: '2026-11-25' })
   })
 
   it('a refusal shows the server message naming the field, keeps the sheet open and the typed values', async () => {

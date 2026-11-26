@@ -33,7 +33,7 @@ from ofo.adjustment import playbook_stages as stages
 from ofo.adjustment.playbook_text import name_shown
 from ofo.adjustment.playbook_types import SHOWN_NAMES
 from ofo.charges import ChargeRates
-from ofo.checks.time_of_day import ON_EXPIRY, day_of, time_exit_parts
+from ofo.checks.time_of_day import CLOCK, DATE, ON_EXPIRY, day_of, time_exit_parts
 from ofo.errors import render
 from ofo.errors.explanations import LABEL_TABLES, render_explanation
 from ofo.settings import layers
@@ -74,8 +74,6 @@ _GENERIC = "adjust_plan_no_playbook"
 ID_MAX = 9_223_372_036_854_775_807  # the id column is BIGSERIAL
 MAX_ADJUSTMENTS_LIMIT = 10
 _PERCENT = re.compile(r"[0-9]{1,3}(\.[0-9]{1,4})?")
-_CLOCK = re.compile(r"([01][0-9]|2[0-3]):([0-5][0-9])")
-_DATE = re.compile(r"[0-9]{4}-[0-9]{2}-[0-9]{2}")
 _COUNT = re.compile(r"[0-9]{1,3}")
 #: The sheet field -> the guard of the plan's copy that holds it (docs/design/playbook-body-v1.md "guards")
 TARGET_KEY = "profit_target_pct_of_max_profit"
@@ -235,7 +233,7 @@ def _read_percent(guards: dict, key: str) -> Decimal | None:
 
 def _read_clock(guards: dict) -> ClockOut | None:
     parts = time_exit_parts(guards.get(TIME_KEY))
-    found = None if parts is None else _CLOCK.fullmatch(parts[0])
+    found = None if parts is None else CLOCK.fullmatch(parts[0])
     return None if found is None else ClockOut.model_validate({"hour": int(found[1]), "minute": int(found[2])})
 
 
@@ -299,11 +297,11 @@ def _time_exit_guard(raw: str | TimeExitIn) -> str | dict[str, str]:
     """The guard to store: a plain "HH:MM" stays as typed (on expiry day); {at, on} keeps its day, a blank day stored
     as "expiry". An unreadable time or date -> refused naming the field."""
     if isinstance(raw, str):
-        if not _CLOCK.fullmatch(raw):
+        if not CLOCK.fullmatch(raw):
             raise _bad(TIME_KEY)
         return raw
     on = raw.on.strip() or ON_EXPIRY
-    if not _CLOCK.fullmatch(raw.at) or (on != ON_EXPIRY and (not _DATE.fullmatch(on) or day_of(on) is None)):
+    if not CLOCK.fullmatch(raw.at) or (on != ON_EXPIRY and (not DATE.fullmatch(on) or day_of(on) is None)):
         raise _bad(TIME_KEY)
     return {"at": raw.at, "on": on}
 
