@@ -529,6 +529,7 @@ APP_MODELS = (
     "ofo_app.routes.playbooks.TypeOut",
     "ofo_app.routes.playbooks.TypesOut",
     "ofo_app.routes.positions.PositionsOut",
+    "ofo_app.routes.positions.RealPnlOut",
     "ofo_app.routes.positions.StrategyContractOut",
     "ofo_app.routes.positions.StrategyPositionsOut",
     "ofo_app.routes.ready_made.LoadTemplateIn",

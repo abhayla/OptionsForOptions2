@@ -31,7 +31,7 @@ from http import HTTPStatus
 from pathlib import Path
 
 import pytest
-from ofo_app.routes.positions import PositionsOut, StrategyContractOut, StrategyPositionsOut
+from ofo_app.routes.positions import PositionsOut, RealPnlOut, StrategyContractOut, StrategyPositionsOut
 from ofo.settings import calc as _calc, defaults as _defaults
 
 _MAX_DELIST = _calc.max_delist_percent(_defaults())
@@ -45,8 +45,8 @@ ORDERS_ENTRY = REPLIES / "orders-122104.json"
 ORDERS_EXIT = REPLIES / "orders-151006.json"
 SYMBOL = "NIFTY26O1923650CE"
 SECOND_SYMBOL = "NIFTY26O1923700CE"
-FORBIDDEN = ("price", "pnl", "p_and_l", "margin", "greek", "delta", "gamma", "theta", "vega", "value", "premium",
-             "cost", "money", "charge", "m2m", "realised", "unrealised", "order")
+FORBIDDEN = ("price", "p_and_l", "margin", "greek", "delta", "gamma", "theta", "vega", "premium",
+             "cost", "money", "charge", "m2m", "realised", "unrealised", "order")  # Lane S: pnl / value are served now
 
 
 def _reply(path: Path) -> dict:
@@ -229,7 +229,20 @@ async def _world(conn, app_engine, monkeypatch, plans: str) -> tuple[str, dict]:
     if plans == "two_strategies":
         ids["second"] = await _second_strategy(conn, user)
         await _plan(conn, user, ids["second"], 1, closed=False)
+    if plans == "two_holders":  # both strategies hold their own 65 of the same contract (both plans closed, filled)
+        await _plan(conn, user, sid, 1)
+        ids["second"] = await _second_strategy(conn, user)
+        await _plan(conn, user, ids["second"], 1)
     return user, ids
+
+
+PNL_KEYS = ("pnl", "pnl_text", "pnl_state", "pnl_reason")
+
+
+def _nopnl(groups: list) -> list:
+    """The strategy groups without the Lane S P&L keys (the units tests below pin units only; P&L has its own tests)."""
+    return [{**g, "contracts": [{k: v for k, v in c.items() if k not in PNL_KEYS} for c in g["contracts"]]}
+            for g in groups]
 
 
 def _closed_keys(node) -> None:
@@ -251,6 +264,8 @@ async def _run(engines, monkeypatch, data, *, url="/positions", **opts):
         trans = await conn.begin()
         try:
             user, ids = await _world(conn, app_engine, monkeypatch, plans)
+            if callable(orders):  # a book that names the strategies' stored ids
+                orders = orders(ids)
             transport = _Transport(data, status, orders, orders_status)
             resp = await _get(_app_for(conn, user, transport if session else None), url)
             return resp, transport, ids
@@ -296,7 +311,7 @@ async def test_ac3_core_recorded_reply_shows_the_strategys_own_65_and_nothing_ou
     assert resp.status_code == HTTPStatus.OK, resp.text
     body = resp.json()
     _closed_keys(body)
-    assert body["strategies"] == [_group(1, [_own(65, 65)], False)]
+    assert _nopnl(body["strategies"]) == [_group(1, [_own(65, 65)], False)]
     assert (body["has_outside"], body["outside_lots"]) == (False, 0)
     assert body["blocked"] is False and body["blocked_strategy_ids"] == []
     assert [(m, u.rsplit("/", 1)[-1]) for m, u in transport.calls] == [("GET", "positions"), ("GET", "orders")]
@@ -312,7 +327,7 @@ async def test_adr110_core_open_plan_with_the_order_open_at_zerodha_is_pending(a
     assert resp.status_code == HTTPStatus.OK, resp.text
     body = resp.json()
     _closed_keys(body)
-    assert body["strategies"] == [_group(1, [_waiting(65, [1])], True)]
+    assert _nopnl(body["strategies"]) == [_group(1, [_waiting(65, [1])], True)]
     assert (body["has_outside"], body["outside_lots"]) == (False, 0)
     assert body["blocked"] is True and body["blocked_strategy_ids"] == [1]
 
@@ -330,7 +345,7 @@ async def test_adr110_open_plan_with_the_real_complete_row_takes_the_normal_comp
                             plans="open_legacy" if legacy else "open", orders=_orders(legacy=legacy))
     assert resp.status_code == HTTPStatus.OK, resp.text
     body = resp.json()
-    assert body["strategies"] == [_group(1, [_own(65, 65)], False)]
+    assert _nopnl(body["strategies"]) == [_group(1, [_own(65, 65)], False)]
     assert body["blocked"] is False and body["blocked_strategy_ids"] == []
 
 
@@ -340,7 +355,7 @@ async def test_adr110_empty_order_book_keeps_a_closed_plans_stored_fill(app_engi
     plan 1 closed filled 65 keeps its stored fill -> own 65, not pending, not blocked."""
     resp, _, _ = await _run((app_engine, admin_engine), monkeypatch, _reply(POSITIONS_ENTRY), orders=[])
     assert resp.status_code == HTTPStatus.OK, resp.text
-    assert resp.json()["strategies"] == [_group(1, [_own(65, 65)], False)]
+    assert _nopnl(resp.json()["strategies"]) == [_group(1, [_own(65, 65)], False)]
 
 
 @pytest.mark.usefixtures("app_engine")
@@ -350,7 +365,7 @@ async def test_adr110_empty_order_book_with_an_open_plan_is_pending(app_engine, 
     resp, _, _ = await _run((app_engine, admin_engine), monkeypatch, _reply(POSITIONS_ENTRY), plans="open", orders=[])
     assert resp.status_code == HTTPStatus.OK, resp.text
     body = resp.json()
-    assert body["strategies"] == [_group(1, [_waiting(65, [1])], True)]
+    assert _nopnl(body["strategies"]) == [_group(1, [_waiting(65, [1])], True)]
     assert body["has_outside"] is False and body["blocked_strategy_ids"] == [1]
 
 
@@ -382,14 +397,17 @@ async def test_adr110_two_strategies_on_one_contract_one_pending_blocks_both(app
     assert resp.status_code == HTTPStatus.OK, resp.text
     body = resp.json()
     _closed_keys(body)
-    assert body["strategies"] == [_group(1, [], True), _group(ids["second"], [_waiting(65, [1])], True)]
+    assert _nopnl(body["strategies"]) == [_group(1, [], True), _group(ids["second"], [_waiting(65, [1])], True)]
     assert body["blocked_strategy_ids"] == sorted([1, ids["second"]])
     # What the page reads: the EXACT key sets as literals. frontend/e2e/positions.spec.ts and
     # frontend/tests/positions-page.test.js mock exactly these keys.
-    assert set(body) == {"read_at", "strategies", "has_outside", "outside_lots", "blocked", "blocked_strategy_ids"}
+    assert set(body) == {"read_at", "real_pnl", "pnl_text", "strategies", "has_outside", "outside_lots", "blocked",
+                         "blocked_strategy_ids"}
+    assert set(body["real_pnl"]) == {"value", "pnl_text", "state", "reason", "source", "read_at", "caption",
+                                     "excludes_note"}
     assert set(body["strategies"][1]) == {"strategy_id", "blocked", "contracts"}
     assert set(body["strategies"][1]["contracts"][0]) == {"tradingsymbol", "zerodha_units", "units", "pending",
-                                                          "pending_plans"}
+                                                          "pending_plans", *PNL_KEYS}
 
 
 @pytest.mark.usefixtures("app_engine")
@@ -402,7 +420,7 @@ async def test_adr110_a_pending_strategys_other_contract_shows_its_normal_row_bu
     assert resp.status_code == HTTPStatus.OK, resp.text
     body = resp.json()
     _closed_keys(body)
-    assert body["strategies"] == [_group(1, [_own(65, 65), _waiting(0, [2], SECOND_SYMBOL)], True)]
+    assert _nopnl(body["strategies"]) == [_group(1, [_own(65, 65), _waiting(0, [2], SECOND_SYMBOL)], True)]
     assert body["blocked"] is True and body["blocked_strategy_ids"] == [1]
 
 
@@ -414,7 +432,7 @@ async def test_ac3_mixed_zerodha_130_against_own_65_is_own_65_and_one_outside_lo
     resp, _, _ = await _run((app_engine, admin_engine), monkeypatch, _doubled())
     assert resp.status_code == HTTPStatus.OK, resp.text
     body = resp.json()
-    assert body["strategies"] == [_group(1, [_own(65, 130)], False)]
+    assert _nopnl(body["strategies"]) == [_group(1, [_own(65, 130)], False)]
     assert (body["has_outside"], body["outside_lots"], body["blocked"]) == (True, 1, False)
 
 
@@ -425,7 +443,7 @@ async def test_ac3_outside_units_not_a_whole_lot_are_shown_without_a_number(app_
     resp, _, _ = await _run((app_engine, admin_engine), monkeypatch, _requantified(95))
     assert resp.status_code == HTTPStatus.OK, resp.text
     body = resp.json()
-    assert body["strategies"] == [_group(1, [_own(65, 95)], False)]
+    assert _nopnl(body["strategies"]) == [_group(1, [_own(65, 95)], False)]
     assert (body["has_outside"], body["outside_lots"], body["blocked"]) == (True, None, False)
 
 
@@ -436,7 +454,7 @@ async def test_ac3_zerodha_flat_against_own_65_is_blocked_and_shown(app_engine, 
     resp, _, _ = await _run((app_engine, admin_engine), monkeypatch, _reply(FLAT), orders=_orders(ORDERS_EXIT))
     assert resp.status_code == HTTPStatus.OK, resp.text
     body = resp.json()
-    assert body["strategies"] == [_group(1, [_own(65, 0)], True)]
+    assert _nopnl(body["strategies"]) == [_group(1, [_own(65, 0)], True)]
     assert body["blocked"] is True and body["blocked_strategy_ids"] == [1]
 
 
@@ -448,7 +466,7 @@ async def test_ac3_only_outside_positions_are_zero_rows_and_a_count(app_engine, 
     assert resp.status_code == HTTPStatus.OK, resp.text
     body = resp.json()
     _closed_keys(body)
-    assert body["strategies"] == []
+    assert _nopnl(body["strategies"]) == []
     assert (body["has_outside"], body["outside_lots"], body["blocked"]) == (True, 1, False)
     assert SYMBOL not in resp.text  # the outside contract is never named: no copy of Kite's list
 
@@ -461,7 +479,7 @@ async def test_ac3_empty_book_and_no_lots_is_an_empty_list_with_a_read_time(app_
     resp, _, _ = await _run((app_engine, admin_engine), monkeypatch, data, plans="none", orders=[])
     assert resp.status_code == HTTPStatus.OK, resp.text
     body = resp.json()
-    assert body["strategies"] == [] and body["blocked"] is False and body["read_at"]
+    assert _nopnl(body["strategies"]) == [] and body["blocked"] is False and body["read_at"]
     assert (body["has_outside"], body["outside_lots"]) == (False, 0)
 
 
@@ -488,7 +506,7 @@ async def test_ac3_a_never_ours_row_is_logged_and_not_counted(app_engine, admin_
     resp, _, _ = await _run((app_engine, admin_engine), monkeypatch, data)
     assert resp.status_code == HTTPStatus.OK, resp.text
     body = resp.json()
-    assert body["strategies"] == [_group(1, [_own(65, 65)], False)]
+    assert _nopnl(body["strategies"]) == [_group(1, [_own(65, 65)], False)]
     assert (body["has_outside"], body["outside_lots"]) == (False, 0)
     lines = [r.getMessage() for r in caplog.records if "ignored" in r.getMessage()]
     assert lines == ["positions read: positions read ignored 1 non-platform rows: NSE:INFY"]
@@ -539,23 +557,26 @@ async def test_ac3_client_supplied_units_are_ignored(app_engine, admin_engine, m
 def test_ac3_answer_key_set_is_closed_and_names_no_money_figure():
     """AC-3 attack 4: the declared answer keys are exactly these, and none names a price, P&L, margin or Greek; a
     key added to a model fails here."""
-    assert set(PositionsOut.model_fields) == {"read_at", "strategies", "has_outside", "outside_lots", "blocked",
-                                              "blocked_strategy_ids"}
+    assert set(PositionsOut.model_fields) == {"read_at", "real_pnl", "pnl_text", "strategies", "has_outside",
+                                              "outside_lots", "blocked", "blocked_strategy_ids"}
     assert set(StrategyPositionsOut.model_fields) == {"strategy_id", "blocked", "contracts"}
     assert set(StrategyContractOut.model_fields) == {"tradingsymbol", "zerodha_units", "units", "pending",
-                                                     "pending_plans"}
-    for model in (PositionsOut, StrategyPositionsOut, StrategyContractOut):
+                                                     "pending_plans", *PNL_KEYS}
+    assert set(RealPnlOut.model_fields) == {"value", "pnl_text", "state", "reason", "source", "read_at", "caption",
+                                            "excludes_note"}
+    for model in (PositionsOut, StrategyPositionsOut, StrategyContractOut, RealPnlOut):
         for name, field in model.model_fields.items():
             assert not any(word in name for word in FORBIDDEN), name
             assert field.annotation is not D, name
 
 
 def test_ac3_extra_key_in_an_answer_is_refused():
-    """AC-3 attack 4 (mutation): an answer carrying a pnl key does not validate (ApiModel is closed)."""
+    """AC-3 attack 4 (mutation): an answer carrying an undeclared key does not validate (ApiModel is closed)."""
     row = {"tradingsymbol": SYMBOL, "zerodha_units": 65, "units": 65, "pending": False, "pending_plans": [],
-           "pnl": "1.00"}
+           "pnl": None, "pnl_text": None, "pnl_state": "stated", "pnl_reason": None}
+    assert StrategyContractOut.model_validate(row)  # the declared keys alone validate
     with pytest.raises(ValueError):
-        StrategyContractOut.model_validate(row)
+        StrategyContractOut.model_validate({**row, "m2m": "1.00"})
 
 
 @pytest.mark.usefixtures("app_engine")
@@ -572,3 +593,348 @@ async def test_req118_a_busy_zerodha_orders_read_is_the_busy_text_never_a_broken
     assert "strategies" not in resp.json()
     assert ZERODHA_BUSY_TEXT in resp.text
     assert render("gate_broker_unconfirmed").what_happened not in resp.text
+
+
+# --- Lane S (REQ-044 AC-3; ADR-330 (10), (24)): the Real P&L figure per row and as a total ----------------------
+IST = datetime.timezone(datetime.timedelta(hours=5, minutes=30))
+CAPTION = "Zerodha, as at 12:21:00 IST"
+NOTE = "Excludes contracts not in a strategy here and contracts closed today."
+SHARED = ("This contract is shared (with another strategy or outside lots); Zerodha reports one P&L for the whole "
+          "contract, so no split is shown.")
+PENDING = "This contract is not yet confirmed, so no P&L is shown."
+READ_AT = datetime.datetime(2026, 10, 16, 12, 21, 0, tzinfo=IST)
+
+
+def _fresh(monkeypatch, read_at) -> None:
+    """Zerodha's read time is the periodic job's own clock (kite_period_reads.utc_now); the route clock is 12:21:04
+    IST."""
+    from ofo_app import kite_period_reads  # noqa: PLC0415
+
+    monkeypatch.setattr(kite_period_reads, "utc_now", lambda: read_at)
+
+
+def _entry(**changes) -> dict:
+    """The REAL open row of positions-122104.json (NIFTY26O1923650CE +65, buy_value 331.5, last 5.1, pnl 0), changed."""
+    data = copy.deepcopy(_reply(POSITIONS_ENTRY))
+    data["net"][0].update(changes)
+    return data
+
+
+async def _pnl(monkeypatch, engines, data, **opts) -> dict:
+    _fresh(monkeypatch, opts.pop("read_at", READ_AT))
+    resp, _, _ = await _run(engines, monkeypatch, data, **opts)
+    assert resp.status_code == HTTPStatus.OK, resp.text
+    body = resp.json()
+    assert body["pnl_text"] == body["real_pnl"]["pnl_text"]  # one reader's figure
+    assert "paper" not in resp.text.lower()  # Real and Paper are never in one answer, so never added
+    return body
+
+
+@pytest.mark.usefixtures("app_engine")
+async def test_lane_s_stated_row_and_total_on_the_real_open_row(app_engine, admin_engine, monkeypatch):
+    """The owner's real open row (pnl 0, derived 0 - 331.5 + 65 x 5.1 = 0.00): row and total are stated 0.00."""
+    body = await _pnl(monkeypatch, (app_engine, admin_engine), _reply(POSITIONS_ENTRY))
+    row = body["strategies"][0]["contracts"][0]
+    assert (row["pnl"], row["pnl_text"], row["pnl_state"], row["pnl_reason"]) == ("0.00", "0.00", "stated", None)
+    assert body["real_pnl"] == {"value": "0.00", "pnl_text": "0.00", "state": "stated", "reason": None,
+                                "source": "Zerodha", "read_at": body["read_at"], "caption": CAPTION,
+                                "excludes_note": None}
+
+
+@pytest.mark.usefixtures("app_engine")
+async def test_lane_s_stated_profit_is_signed_text_and_exact_string(app_engine, admin_engine, monkeypatch):
+    """last_price 6.1: 0 - 331.5 + 65 x 6.1 = 65.00 and Zerodha says 65 -> "65.00", shown "+65.00" (derived variant)."""
+    body = await _pnl(monkeypatch, (app_engine, admin_engine), _entry(last_price="6.1", pnl=65))
+    row = body["strategies"][0]["contracts"][0]
+    assert (row["pnl"], row["pnl_text"], row["pnl_state"]) == ("65.00", "+65.00", "stated")
+    assert (body["real_pnl"]["value"], body["real_pnl"]["pnl_text"], body["real_pnl"]["state"]) == (
+        "65.00", "+65.00", "stated")
+
+
+@pytest.mark.usefixtures("app_engine")
+async def test_lane_s_mismatch_shows_no_figure_and_the_total_is_partial(app_engine, admin_engine, monkeypatch):
+    body = await _pnl(monkeypatch, (app_engine, admin_engine), _entry(pnl=5))
+    row = body["strategies"][0]["contracts"][0]
+    assert (row["pnl"], row["pnl_text"], row["pnl_state"]) == (None, None, "mismatch")
+    assert row["pnl_reason"] == f"Zerodha's P&L for {SYMBOL} does not match its own trade values; no figure is shown."
+    total = body["real_pnl"]
+    assert (total["value"], total["pnl_text"], total["state"]) == (None, None, "partial")
+    assert total["reason"] == "1 of 1 contracts have no figure, so no total is shown."
+
+
+@pytest.mark.usefixtures("app_engine")
+@pytest.mark.parametrize("change", [{"pnl": None}, {"pnl": "abc"}, {"buy_value": True}, {"last_price": None},
+                                    {"multiplier": "x"}])
+async def test_lane_s_unreadable_money_field_is_not_available_never_a_refusal(app_engine, admin_engine, monkeypatch,
+                                                                            change):
+    """A missing, null, boolean or malformed P&L field makes THAT contract not_available; the read is not refused and
+    the units still show."""
+    body = await _pnl(monkeypatch, (app_engine, admin_engine), _entry(**change))
+    row = body["strategies"][0]["contracts"][0]
+    assert (row["units"], row["pnl"], row["pnl_state"]) == (65, None, "not_available")
+    assert row["pnl_reason"] == (f"Zerodha's reply for {SYMBOL} lacks a figure needed to check its P&L; "
+                                 "no figure is shown.")
+    assert body["real_pnl"]["state"] == "partial"
+
+
+@pytest.mark.usefixtures("app_engine")
+async def test_lane_s_missing_pnl_key_is_not_available(app_engine, admin_engine, monkeypatch):
+    data = _entry()
+    del data["net"][0]["pnl"]
+    body = await _pnl(monkeypatch, (app_engine, admin_engine), data)
+    assert body["strategies"][0]["contracts"][0]["pnl_state"] == "not_available"
+
+
+@pytest.mark.usefixtures("app_engine")
+async def test_lane_s_no_strategy_rows_is_empty_with_its_reason(app_engine, admin_engine, monkeypatch):
+    body = await _pnl(monkeypatch, (app_engine, admin_engine), {"net": [], "day": []}, plans="none", orders=[])
+    total = body["real_pnl"]
+    assert (total["value"], total["pnl_text"], total["state"]) == (None, None, "empty")
+    assert total["reason"] == "No real positions are open in your strategies."
+    assert total["excludes_note"] is None and total["caption"] == CAPTION
+
+
+@pytest.mark.usefixtures("app_engine")
+async def test_lane_s_contract_closed_today_is_empty_with_the_excludes_note(app_engine, admin_engine, monkeypatch):
+    """The real 15:10:06 reply holds only the flat (closed today) row: no row, no figure, and the note says so."""
+    body = await _pnl(monkeypatch, (app_engine, admin_engine), _reply(FLAT), plans="none", orders=[])
+    assert body["strategies"] == []
+    assert (body["real_pnl"]["state"], body["real_pnl"]["value"], body["real_pnl"]["excludes_note"]) == (
+        "empty", None, NOTE)
+
+
+@pytest.mark.usefixtures("app_engine")
+async def test_lane_s_outside_only_position_is_empty_with_the_excludes_note(app_engine, admin_engine, monkeypatch):
+    body = await _pnl(monkeypatch, (app_engine, admin_engine), _reply(RECORDED), plans="none")
+    assert (body["real_pnl"]["state"], body["real_pnl"]["excludes_note"]) == ("empty", NOTE)
+    assert SYMBOL not in json.dumps(body)
+
+
+@pytest.mark.usefixtures("app_engine")
+async def test_lane_s_shared_contract_130_held_65_own_has_no_split_and_a_note(app_engine, admin_engine, monkeypatch):
+    """W-111's case: Zerodha 130, strategy 65, 65 outside -> the row and the total show no figure; no guessed split."""
+    body = await _pnl(monkeypatch, (app_engine, admin_engine), _doubled())
+    row = body["strategies"][0]["contracts"][0]
+    assert (row["units"], row["zerodha_units"], row["pnl"], row["pnl_state"], row["pnl_reason"]) == (
+        65, 130, None, "shared", SHARED)
+    assert body["real_pnl"]["state"] == "partial" and body["real_pnl"]["value"] is None
+    assert body["real_pnl"]["excludes_note"] == NOTE
+
+
+@pytest.mark.usefixtures("app_engine")
+async def test_lane_s_pending_row_has_no_figure_and_says_not_yet_confirmed(app_engine, admin_engine, monkeypatch):
+    body = await _pnl(monkeypatch, (app_engine, admin_engine), _reply(POSITIONS_ENTRY), plans="open",
+                      orders=_orders_open())
+    row = body["strategies"][0]["contracts"][0]
+    assert (row["pnl"], row["pnl_state"], row["pnl_reason"]) == (None, "pending", PENDING)
+    assert (body["real_pnl"]["state"], body["real_pnl"]["value"]) == ("partial", None)
+
+
+@pytest.mark.usefixtures("app_engine")
+async def test_lane_s_one_stated_and_one_pending_contract_is_partial_naming_the_count(app_engine, admin_engine,
+                                                                                    monkeypatch):
+    body = await _pnl(monkeypatch, (app_engine, admin_engine), _reply(POSITIONS_ENTRY), plans="two_contracts")
+    states = [c["pnl_state"] for c in body["strategies"][0]["contracts"]]
+    assert states == ["stated", "pending"]
+    assert body["real_pnl"]["state"] == "partial" and body["real_pnl"]["value"] is None
+    assert body["real_pnl"]["reason"] == "1 of 2 contracts have no figure, so no total is shown."
+
+
+@pytest.mark.usefixtures("app_engine")
+async def test_lane_s_a_read_older_than_90_seconds_shows_no_figure_anywhere(app_engine, admin_engine, monkeypatch):
+    """Route clock 12:21:04, Zerodha read 12:19:00 (124 s): stale on the row and on the total."""
+    stale = datetime.datetime(2026, 10, 16, 12, 19, 0, tzinfo=IST)
+    body = await _pnl(monkeypatch, (app_engine, admin_engine), _reply(POSITIONS_ENTRY), read_at=stale)
+    reason = "Zerodha was last read more than 90 seconds ago, so no figure is shown until it is read again."
+    row = body["strategies"][0]["contracts"][0]
+    assert (row["pnl"], row["pnl_state"], row["pnl_reason"]) == (None, "stale", reason)
+    total = body["real_pnl"]
+    assert (total["state"], total["value"], total["reason"]) == ("stale", None, reason)
+    assert total["caption"] == "Zerodha, as at 12:19:00 IST"
+
+
+@pytest.mark.usefixtures("app_engine")
+async def test_lane_s_a_read_at_90_seconds_is_still_fresh(app_engine, admin_engine, monkeypatch):
+    edge = datetime.datetime(2026, 10, 16, 12, 19, 34, tzinfo=IST)  # route clock 12:21:04: exactly 90 s
+    body = await _pnl(monkeypatch, (app_engine, admin_engine), _reply(POSITIONS_ENTRY), read_at=edge)
+    assert body["real_pnl"]["state"] == "stated"
+
+
+@pytest.mark.usefixtures("app_engine")
+async def test_lane_s_refusals_stay_the_catalogue_409(app_engine, admin_engine, monkeypatch):
+    resp, _, _ = await _run((app_engine, admin_engine), monkeypatch, _reply(POSITIONS_ENTRY), session=False)
+    assert resp.status_code == HTTPStatus.CONFLICT and "real_pnl" not in resp.json()
+
+
+# -- Round 1 review fixes: ONE sole-holder predicate (ADR-330 (24)): no figure when the contract's P&L is not this
+# strategy's alone -----------------------------------------------------------------------------------------------
+
+PART_CLOSED = ("Part of NIFTY26O1923650CE was closed today on Zerodha and is reported apart, so no figure is shown "
+               "for it.")
+
+
+def _second_holders_orders(second: int) -> list:
+    """The recorded COMPLETE entry row plus a copy tagged for strategy ``second`` (hand-made derivation)."""
+    from ofo.execution.basket import make_tag  # noqa: PLC0415
+
+    rows = _orders()
+    extra = copy.deepcopy(rows[0])
+    extra.update(order_id="261016170576999", tag=make_tag(second, 1, 0), tags=[make_tag(second, 1, 0)])
+    return [*rows, extra]
+
+
+@pytest.mark.usefixtures("app_engine")
+async def test_review_two_strategies_each_holding_65_against_zerodha_65_are_both_shared(app_engine, admin_engine,
+                                                                                        monkeypatch):
+    """Reviewer's case: strategies 1 and 2 each BUY 65, the user sold 65 on Kite, net 65: neither row is stated and
+    the total is partial, counting the ONE contract once."""
+    body = await _pnl(monkeypatch, (app_engine, admin_engine), _reply(POSITIONS_ENTRY), plans="two_holders",
+                      orders=lambda ids: _second_holders_orders(ids["second"]))
+    rows = [c for g in body["strategies"] for c in g["contracts"]]
+    assert [(r["pnl"], r["pnl_state"], r["pnl_reason"]) for r in rows] == [(None, "shared", SHARED)] * 2, body
+    assert (body["real_pnl"]["state"], body["real_pnl"]["value"]) == ("partial", None)
+    assert body["real_pnl"]["reason"] == "1 of 1 contracts have no figure, so no total is shown."
+
+
+@pytest.mark.usefixtures("app_engine")
+async def test_review_an_outside_round_trip_in_the_order_book_makes_the_row_shared(app_engine, admin_engine,
+                                                                                   monkeypatch):
+    """Own 65 @5.1 plus the user's untagged BUY 65 @5.00 and SELL 65 @4.00: Zerodha row qty 65, buy_value 656.5,
+    sell_value 260, pnl -65 (it checks out, yet it is not the strategy's alone)."""
+    data = _entry(buy_value=D("656.5"), sell_value=D("260"), pnl=D("-65"))
+    outside = []
+    for number, side in enumerate(("BUY", "SELL")):
+        row = copy.deepcopy(_orders()[0])
+        row.update(order_id=f"26101617057700{number}", tag=None, tags=[], transaction_type=side)
+        outside.append(row)
+    body = await _pnl(monkeypatch, (app_engine, admin_engine), data, orders=[*_orders(), *outside])
+    row = body["strategies"][0]["contracts"][0]
+    assert (row["pnl"], row["pnl_state"], row["pnl_reason"]) == (None, "shared", SHARED)
+    assert body["real_pnl"]["state"] == "partial"
+
+
+def _round_trip(tag: str, *, status: str = "COMPLETE", filled: int = 65) -> list:
+    """A BUY 65 and a SELL 65 of the contract today with ``tag`` (hand-made derivations of the recorded order row)."""
+    rows = []
+    for number, side in enumerate(("BUY", "SELL")):
+        row = copy.deepcopy(_orders()[0])
+        row.update(order_id=f"26101617058{number}00", tag=tag, tags=[tag], transaction_type=side, status=status,
+                   filled_quantity=filled)
+        rows.append(row)
+    return rows
+
+
+ROUND_TRIP = {"buy_value": D("656.5"), "sell_value": D("260"), "pnl": D("-65")}
+
+
+@pytest.mark.usefixtures("app_engine")
+@pytest.mark.parametrize("legacy", [False, True])
+async def test_round2_another_strategys_round_trip_makes_the_row_shared(app_engine, admin_engine, monkeypatch, legacy):
+    """Strategy 1 BUY 65 @5.1; another strategy (stored id differs) BUY 65 and exit 65 today under ITS tag (new Q
+    grammar, or legacy OFS): Zerodha row qty 65, buy 656.5, sell 260, pnl -65 is not strategy 1's own."""
+    from ofo.execution.basket import make_tag  # noqa: PLC0415
+
+    def book(ids):
+        other = ids["first"] + 1
+        return [*_orders(), *_round_trip(f"OFS{other}V1L0" if legacy else make_tag(other, 1, 0))]
+
+    body = await _pnl(monkeypatch, (app_engine, admin_engine), _entry(**ROUND_TRIP), orders=book)
+    row = body["strategies"][0]["contracts"][0]
+    assert (row["pnl"], row["pnl_state"], row["pnl_reason"]) == (None, "shared", SHARED)
+    assert (body["real_pnl"]["state"], body["real_pnl"]["value"]) == ("partial", None)
+
+
+@pytest.mark.usefixtures("app_engine")
+async def test_round2_the_strategys_own_round_trip_stays_stated(app_engine, admin_engine, monkeypatch):
+    from ofo.execution.basket import make_tag  # noqa: PLC0415
+
+    body = await _pnl(monkeypatch, (app_engine, admin_engine), _entry(**ROUND_TRIP),
+                      orders=lambda ids: [*_orders(), *_round_trip(make_tag(ids["first"], 3, 0))])
+    row = body["strategies"][0]["contracts"][0]
+    assert (row["pnl"], row["pnl_state"]) == ("-65.00", "stated")
+    assert (body["real_pnl"]["state"], body["real_pnl"]["value"]) == ("stated", "-65.00")
+
+
+@pytest.mark.usefixtures("app_engine")
+async def test_round2_a_partly_filled_cancelled_order_of_another_strategy_makes_the_row_shared(
+        app_engine, admin_engine, monkeypatch):
+    from ofo.execution.basket import make_tag  # noqa: PLC0415
+
+    def book(ids):
+        return [*_orders(), *_round_trip(make_tag(ids["first"] + 1, 1, 0), status="CANCELLED", filled=25)[:1]]
+
+    body = await _pnl(monkeypatch, (app_engine, admin_engine), _entry(), orders=book)
+    row = body["strategies"][0]["contracts"][0]
+    assert (row["pnl"], row["pnl_state"], row["pnl_reason"]) == (None, "shared", SHARED)
+
+
+@pytest.mark.usefixtures("app_engine")
+async def test_review_the_same_figures_without_an_outside_fill_are_stated(app_engine, admin_engine, monkeypatch):
+    """The control of the case above (the read is cached per user, so it is its own test): nothing outside, stated."""
+    data = _entry(buy_value=D("656.5"), sell_value=D("260"), pnl=D("-65"))
+    body = await _pnl(monkeypatch, (app_engine, admin_engine), data)
+    assert body["strategies"][0]["contracts"][0]["pnl"] == "-65.00"
+
+
+@pytest.mark.usefixtures("app_engine")
+async def test_review_a_closed_sibling_row_of_another_product_gives_the_part_closed_reason(app_engine, admin_engine,
+                                                                                          monkeypatch):
+    """A flat MIS row of the same contract (pnl -400, closed today) is reported apart: the open row has no figure."""
+    data = _entry()
+    flat = copy.deepcopy(_reply(FLAT)["net"][0])
+    flat.update(product="MIS", pnl=D("-400"))  # hand-made derivation of the recorded flat row
+    data["net"].append(flat)
+    body = await _pnl(monkeypatch, (app_engine, admin_engine), data)
+    row = body["strategies"][0]["contracts"][0]
+    assert (row["pnl"], row["pnl_state"], row["pnl_reason"]) == (None, "shared", PART_CLOSED)
+    assert (body["real_pnl"]["state"], body["real_pnl"]["value"]) == ("partial", None)
+    assert body["real_pnl"]["excludes_note"] == NOTE
+
+
+@pytest.mark.usefixtures("app_engine")
+async def test_review_a_blocked_strategys_sole_held_contract_stays_stated(app_engine, admin_engine, monkeypatch):
+    """ADR-018: a pending plan elsewhere blocks the strategy but its own sole-held contract is stated."""
+    body = await _pnl(monkeypatch, (app_engine, admin_engine), _reply(POSITIONS_ENTRY), plans="two_contracts")
+    group = body["strategies"][0]
+    assert group["blocked"] is True
+    assert [(c["tradingsymbol"], c["pnl_state"]) for c in group["contracts"]] == [(SYMBOL, "stated"),
+                                                                                   (SECOND_SYMBOL, "pending")]
+    assert group["contracts"][0]["pnl"] == "0.00"
+
+
+def _predicate_world(*, held: dict, outside: int = 0, net: int = 65, orders: tuple = ()):
+    import types  # noqa: PLC0415
+
+    from ofo_app.routes import positions as route  # noqa: PLC0415
+
+    key = ("NIFTY", "CE", D("23650"), datetime.date(2026, 10, 19))
+    index = types.SimpleNamespace(symbol_of=lambda k: SYMBOL)
+    result = types.SimpleNamespace(held={sid: {key: u} for sid, u in held.items()}, outside={key: outside})
+    zerodha = route._ReadSnapshot({key: net}, tuple(orders), index, READ_AT, None, 0, frozenset())
+    return route, key, result, zerodha
+
+
+def test_review_sole_holder_true_for_a_long_and_for_a_short_position():
+    route, key, result, zerodha = _predicate_world(held={"1": 65})
+    assert route.sole_holder(key, "1", result, zerodha) is True
+    route, key, result, zerodha = _predicate_world(held={"1": -65}, net=-65)  # a short: the sign is kept
+    assert route.sole_holder(key, "1", result, zerodha) is True
+
+
+def test_review_sole_holder_false_when_outside_lots_cancel_two_opposite_holders():
+    """Holders +65 and -65, 65 outside, Zerodha 65: units == net by coincidence for strategy 1; still not sole."""
+    route, key, result, zerodha = _predicate_world(held={"1": 65, "2": -65}, outside=65)
+    assert route.sole_holder(key, "1", result, zerodha) is False
+    route, key, result, zerodha = _predicate_world(held={"1": 65}, outside=65)  # (b) alone
+    assert route.sole_holder(key, "1", result, zerodha) is False
+
+
+def test_review_sole_holder_false_with_a_recorded_standalone_on_the_key():
+    route, key, result, zerodha = _predicate_world(held={"1": 65})
+    assert route.sole_holder(key, "1", result, zerodha, {key: 25}) is False
+    assert route.sole_holder(key, "1", result, zerodha, {}) is True
+
+
+def test_review_sole_holder_false_when_units_differ_from_zerodhas_net():
+    route, key, result, zerodha = _predicate_world(held={"1": 65}, net=130)
+    assert route.sole_holder(key, "1", result, zerodha) is False

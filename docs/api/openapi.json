@@ -12648,10 +12648,22 @@
             ],
             "title": "Outside Lots"
           },
+          "pnl_text": {
+            "anyOf": [
+              {},
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Pnl Text"
+          },
           "read_at": {
             "format": "date-time",
             "title": "Read At",
             "type": "string"
+          },
+          "real_pnl": {
+            "$ref": "#/components/schemas/RealPnlOut"
           },
           "strategies": {
             "items": {
@@ -12663,6 +12675,8 @@
         },
         "required": [
           "read_at",
+          "real_pnl",
+          "pnl_text",
           "strategies",
           "has_outside",
           "outside_lots",
@@ -13169,6 +13183,85 @@
           "legs"
         ],
         "title": "ReadyMadeOut",
+        "type": "object"
+      },
+      "RealPnlOut": {
+        "additionalProperties": false,
+        "description": "ADR-330 (10): the \"Real P&L\" total of the one Positions list: the exact sum of the rows' figures, never added to\nPaper P&L. ``state``: stated | empty | partial | stale (no figure in any state but stated).",
+        "properties": {
+          "caption": {
+            "title": "Caption"
+          },
+          "excludes_note": {
+            "anyOf": [
+              {},
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Excludes Note"
+          },
+          "pnl_text": {
+            "anyOf": [
+              {},
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Pnl Text"
+          },
+          "read_at": {
+            "format": "date-time",
+            "title": "Read At",
+            "type": "string"
+          },
+          "reason": {
+            "anyOf": [
+              {},
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Reason"
+          },
+          "source": {
+            "const": "Zerodha",
+            "title": "Source",
+            "type": "string"
+          },
+          "state": {
+            "enum": [
+              "stated",
+              "empty",
+              "partial",
+              "stale"
+            ],
+            "title": "State",
+            "type": "string"
+          },
+          "value": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Value"
+          }
+        },
+        "required": [
+          "value",
+          "pnl_text",
+          "state",
+          "reason",
+          "source",
+          "read_at",
+          "caption",
+          "excludes_note"
+        ],
+        "title": "RealPnlOut",
         "type": "object"
       },
       "ReasonOut": {
@@ -14335,6 +14428,47 @@
             "title": "Pending Plans",
             "type": "array"
           },
+          "pnl": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Pnl"
+          },
+          "pnl_reason": {
+            "anyOf": [
+              {},
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Pnl Reason"
+          },
+          "pnl_state": {
+            "enum": [
+              "stated",
+              "not_available",
+              "mismatch",
+              "shared",
+              "pending",
+              "stale"
+            ],
+            "title": "Pnl State",
+            "type": "string"
+          },
+          "pnl_text": {
+            "anyOf": [
+              {},
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Pnl Text"
+          },
           "tradingsymbol": {
             "pattern": "^[A-Za-z0-9_\\-.]{1,64}$",
             "title": "Tradingsymbol",
@@ -14361,7 +14495,11 @@
           "zerodha_units",
           "units",
           "pending",
-          "pending_plans"
+          "pending_plans",
+          "pnl",
+          "pnl_text",
+          "pnl_state",
+          "pnl_reason"
         ],
         "title": "StrategyContractOut",
         "type": "object"

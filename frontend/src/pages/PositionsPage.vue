@@ -1,5 +1,5 @@
 <!-- Positions pages, part 1 (W-111; REQ-044 AC-3, ADR-109 (2), ADR-027, ADR-138 (2)). Reads GET /api/positions once on
-     load and shows QUANTITIES grouped by strategy, with each strategy's link: no price, P&L, margin or Greek (part 2), no
+     load and shows QUANTITIES and each contract's Zerodha P&L (Lane S: the server's figure, or a dash with its reason) grouped by strategy, with each strategy's link: no price, margin or Greek, no
      order button (every action routes back to the strategy). ADR-138 (2): "strategy groups, strategy P&L, the mismatch
      badge and "N outside lots - view on Kite"; no copy of Kite's full position list" - so only contracts linked to a
      strategy are rows; units no strategy owns are one count with a link to Kite. A refused read (no Zerodha session,
@@ -17,6 +17,7 @@ import EmptyState from '@/components/states/EmptyState.vue'
 import PositionsTotals from '@/components/positions/PositionsTotals.vue'
 import PaperStrategies from '@/components/strategy/PaperStrategies.vue'
 import { istTime } from '@/lib/displayFormat'
+import { PAPER_NO_FIGURE as NO_FIGURE } from '@/lib/paperList'
 import { KITE_POSITIONS_URL } from '@/lib/execute'
 import { useOrderPath } from '@/lib/orderPath'
 import { brokerIsConnected } from '@/lib/brokerConnected'
@@ -59,8 +60,15 @@ const realState = computed(() => {
   if (errorParts.value) return notConnected.value ? 'not_connected' : 'read_failed'
   return realEmpty.value ? 'empty' : 'connected'
 })
-// ADR-330 (10): the server's Real P&L text, printed as sent, only when GET /positions served one (it does not today)
-const realPnlText = computed(() => (typeof result.value?.pnl_text === 'string' ? result.value.pnl_text : null))
+// ADR-330 (10), (24): the Real P&L total is the server's real_pnl, every string printed as sent (no arithmetic here). A refused read
+// shows its own message as the reason; only a reply with no real_pnl key keeps the legacy "not shown yet" line.
+const realTotals = computed(() => {
+  if (errorParts.value) return { text: null, reason: errorParts.value.what_happened ?? null, caption: null, note: null }
+  const r = result.value?.real_pnl
+  if (result.value && !r) return { text: typeof result.value.pnl_text === 'string' ? result.value.pnl_text : null, legacy: true }
+  if (!r) return null
+  return { text: r.state === 'stated' ? r.pnl_text : null, reason: r.reason, caption: r.caption, note: r.excludes_note }
+})
 onMounted(async () => {
   try {
     const body = (await api.get('/positions')).data
@@ -84,7 +92,7 @@ onMounted(async () => {
     <!-- ADR-330 (10) replaces ADR-201 (2): ONE list. Two totals (never added), a filter All / Real / Paper, the real section (read
          from Zerodha first, ADR-016) and the one paper list, which loads by itself and is never held up by the Zerodha read. -->
     <div class="mt-4 grid gap-4">
-    <PositionsTotals :real-pnl-text="realPnlText" :paper="paperSummary" />
+    <PositionsTotals :real="realTotals" :paper="paperSummary" />
     <div role="group" aria-label="Show real trades, paper trades or both" class="flex gap-2" data-testid="positions-filter">
       <button v-for="f in FILTERS" :key="f.key" type="button" class="rounded border border-line px-3 py-1 text-sm" :class="filter === f.key ? 'bg-accent-soft font-semibold text-accent' : ''" :aria-pressed="filter === f.key" :data-testid="`filter-${f.key}`" @click="filter = f.key">{{ f.label }}</button>
     </div>
@@ -124,7 +132,7 @@ onMounted(async () => {
         <div v-else class="overflow-x-auto">
         <table class="ui-table">
           <thead>
-            <tr><th>Contract</th><th class="ui-num">Your units</th><th class="ui-num">Zerodha units</th><th>Status</th></tr>
+            <tr><th>Contract</th><th class="ui-num">Your units</th><th class="ui-num">Zerodha units</th><th class="ui-num">P&amp;L</th><th>Status</th></tr>
           </thead>
           <tbody>
             <tr v-for="c in g.contracts" :key="c.tradingsymbol" data-testid="position-row" :data-symbol="c.tradingsymbol">
@@ -132,11 +140,13 @@ onMounted(async () => {
               <template v-if="c.pending">
                 <td class="ui-num"><span data-testid="position-waiting">{{ WAITING }}</span> (plan <span data-testid="position-pending-plans">{{ c.pending_plans.join(', ') }}</span>)</td>
                 <td class="ui-num"><span data-testid="position-zerodha">{{ c.zerodha_units }}</span></td>
+                <td class="ui-num"><span data-testid="position-pnl">{{ c.pnl_state === 'stated' ? c.pnl_text : NO_FIGURE }}</span><span v-if="c.pnl_reason" class="block text-xs text-ink-muted" data-testid="position-pnl-reason">{{ c.pnl_reason }}</span></td>
                 <td class="text-ink-muted"><span data-testid="position-unconfirmed">{{ UNCONFIRMED }}</span>. <span data-testid="position-pending-holders">{{ HOLDERS }}</span></td>
               </template>
               <template v-else>
                 <td class="ui-num"><span data-testid="position-own-units">{{ c.units }}</span></td>
                 <td class="ui-num"><span data-testid="position-zerodha">{{ c.zerodha_units }}</span></td>
+                <td class="ui-num"><span data-testid="position-pnl">{{ c.pnl_state === 'stated' ? c.pnl_text : NO_FIGURE }}</span><span v-if="c.pnl_reason" class="block text-xs text-ink-muted" data-testid="position-pnl-reason">{{ c.pnl_reason }}</span></td>
                 <td></td>
               </template>
             </tr>
