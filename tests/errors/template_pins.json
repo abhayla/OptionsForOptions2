@@ -4433,7 +4433,6 @@
   },
   "explanation:suggestion_lapsed_contract_expired": {
     "sha256": "555637ef88c67b94651c99048afae3d5c03b7d085735c08ef5af7f1f75e6e61d",
-    "reviewed": "pending owner read",
     "reviewed": "owner read 2026-11-25 (ADR-322 point 4, answered by the owner in the question tool)"
   },
   "explanation:money_time_value_live": {
@@ -4586,6 +4585,18 @@
   },
   "explanation:paper_today_none": {
     "sha256": "6d782178d298b637a3f0945333fc7f0b137ab3ed40d303b892348fe2a6bdd8f6",
+    "reviewed": "pending owner read"
+  },
+  "explanation:alert_fired_at": {
+    "sha256": "c9f3ac33774fc3d79e57b28ba91ccab499b118f75c45c155663b801f81ff2e39",
+    "reviewed": "pending owner read"
+  },
+  "explanation:alert_no_longer_true_since": {
+    "sha256": "7a0b2fe85f9e53c24b7dfe881401114746307bafb030e5798b1d83557af23015",
+    "reviewed": "pending owner read"
+  },
+  "labels:alert_answer": {
+    "sha256": "a4dc3ce54ea870fb01210ed297a5dd92e749ad3dd23d377b31c4c83604d00ed9",
     "reviewed": "pending owner read"
   }
 }

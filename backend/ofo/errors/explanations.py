@@ -448,6 +448,12 @@ ADJUSTMENT_CRITERION_LABEL_TEXT: Mapping[str, str] = MappingProxyType({
     "fresh": "Would you open this fresh",
 })
 #: REQ-156 AC-3: each row's leader in plain words (decision-support words only, ADR-003: no ranking word)
+#: ADR-330 (3): what the user answers an actionable alert with, and how History names an answer (ofo.alerts)
+ALERT_ANSWER_LABEL_TEXT: Mapping[str, str] = MappingProxyType({
+    "exit": "Exit the position", "continue": "Continue with the position", "add_legs": "Add the legs again",
+    "confirm_new_shape": "Confirm the new shape", "closed_by_system": "Closed: the position ended",
+    "noted": "Information",
+})
 ADJUSTMENT_LEADER_LABEL_TEXT: Mapping[str, str] = MappingProxyType({
     "credit": "Most credit",
     "cost": "Lowest cost",
@@ -1699,6 +1705,9 @@ _EXPLANATIONS: tuple[ExplanationTemplate, ...] = (
                         "{line}. Already true after adjustment {n}: alerts after it clears and crosses again",
                         {"line": Explained, "n": Amount}),
     ExplanationTemplate("check_as_of", "values_seen", "As of {time} IST", {"time": ClockHms}),
+    ExplanationTemplate("alert_fired_at", "what_triggered", "Fired at {time}", {"time": HourMinute}),
+    ExplanationTemplate("alert_no_longer_true_since", "values_seen", "no longer true since {time}",
+                        {"time": HourMinute}),
     ExplanationTemplate("stop_fired_loss", "values_seen",
                         "Stop reached: loss now {loss} ({loss_pct} % of max loss); stop line {stop} ({stop_pct} % of max loss)",
                         {"loss": Rupees, "loss_pct": Amount, "stop": Rupees, "stop_pct": Amount}),
@@ -2388,7 +2397,7 @@ LABEL_TABLES: Mapping[str, Mapping[str, str]] = MappingProxyType({
     "playbook_day_kind": PLAYBOOK_DAY_RULE_KIND_TEXT, "playbook_day_action": PLAYBOOK_DAY_RULE_ACTION_TEXT,
     "playbook_summary": PLAYBOOK_SUMMARY_TEXT, "plan_sheet": PLAN_SHEET_LABEL_TEXT,
     "playbook_guard": PLAYBOOK_GUARD_LABEL_TEXT, "level_watch": LEVEL_WATCH_LABEL_TEXT,
-    "stop": STOP_LABEL_TEXT,
+    "stop": STOP_LABEL_TEXT, "alert_answer": ALERT_ANSWER_LABEL_TEXT,
 })
 
 
