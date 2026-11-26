@@ -36,22 +36,20 @@ const ITEM_ICONS = {
 const route = useRoute()
 const router = useRouter()
 const total = computed(() => bellCount())
-// ADR-330 (3), REQ-170 AC-3: ONE announcer, fed by GET /alerts/active, once per (id, escalated_at): a new alert or a later
-// escalation of the same one; never two pop-ups for one plan stop. D-67 (ADR-326 (5)): the quiet rule is the popup_due of the
-// open adjustment record with the same id (absent record or field = due). An adjustment-rule alert keeps the Open button
-// (IC e2e B4: it opens that trade's compare); the other kinds stay in Active and the bell.
-const isDue = (a) => openRecords.list.find((r) => r.id === a.id)?.popup_due !== false
-function announceActive(fresh) {
-  for (const a of fresh) {
-    const who = [plainName(a.strategy_name), a.text].filter(Boolean).join(': ')
-    const worse = a.worse_line ? ` ${a.worse_line}` : ''
-    if (a.kind !== 'adjustment_rule') {
-      showInfo(`${who}${worse}`)
-      continue
-    }
-    const ids = openRecords.list.filter((r) => r.strategy_id === a.strategy_id).map((r) => r.id)
-    showInfo(`New adjustment opportunity${who ? ` - ${who}` : ''}.${worse} Open it?`, { onClick: () => router.push(compareAllUrl(a.strategy_id, ids.length ? ids : [a.id])) })
+// IC e2e B4: a new OPEN adjustment record shows one toast; clicking it opens the strategy's compare (suggestion drawer)
+// Issue 8: one toast per trade with a new record, naming the trade and the rule (the server's words) and opening THAT trade's offer
+function announce(fresh) {
+  for (const sid of new Set(fresh.map((r) => r.strategy_id))) {
+    const mine = fresh.filter((r) => r.strategy_id === sid)
+    const ids = openRecords.list.filter((r) => r.strategy_id === sid).map((r) => r.id)
+    const what = [plainName(mine[0].strategy_name), mine.map((r) => r.text).filter(Boolean).join('; ')].filter(Boolean).join(': ')
+    showInfo(`New adjustment opportunity${what ? ` - ${what}` : ''}. Open it?`, { onClick: () => router.push(compareAllUrl(sid, ids)) })
   }
+}
+// ADR-330 (3): a new actionable alert is announced once by the info pop-up (it stays in Active and the bell). An adjustment-rule
+// alert is announced by the opportunity pop-up above (with its Open button), so it is not announced twice.
+function announceActive(fresh) {
+  for (const a of fresh.filter((x) => x.kind !== 'adjustment_rule')) showInfo([plainName(a.strategy_name), a.text].filter(Boolean).join(': '))
 }
 // ADR-330 (4): the bell's count is the server's count of unanswered actionable alerts (GET /alerts/active), re-read on the paper
 // refresh tick (no timer of its own); the open adjustment records are read on that same tick for their pop-up only
@@ -59,11 +57,11 @@ const { refresh: refreshAlerts } = usePaperRefresh({
   key: () => 'alerts',
   read: async () => {
     const [a, o] = await Promise.allSettled([readActive(), readOpportunities()])
-    takeOpportunities(o.status === 'fulfilled' ? o.value : null) // fills the records only; the pop-up is announceActive's
+    announce(takeOpportunities(o.status === 'fulfilled' ? o.value : null))
     if (a.status === 'rejected') throw a.reason
     return a.value
   },
-  onData: (data) => announceActive(takeActive(data, isDue)),
+  onData: (data) => announceActive(takeActive(data)),
   onError: dropActive,
 })
 onMounted(refreshAlerts)
