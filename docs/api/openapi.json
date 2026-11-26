@@ -21558,6 +21558,74 @@
         "summary": "Paper Exit Risk"
       }
     },
+    "/paper/strategies/{strategy_id}/leg-stop-risk": {
+      "get": {
+        "description": "ADR-330 (6), read only, nothing stored, never blocks a save: what the book becomes if a stop on ``contract_id``\nfires at ``level``. The one-leg exit (the whole open quantity, the opposite side) is priced AT THE LEVEL, a given\nprice and never a live read, and judged by the same ``exit_risk`` as the exit confirmation. Answer states: stated\n(yes, with the line) / no (proven not wider) / cannot_tell (the engine could not judge: no figure); another user's\nor a missing strategy -> 404; a level that is not above 0 and a multiple of 0.05, or a contract not open -> the\nsave's own refusals (paper_trigger_level_invalid, paper_trigger_leg_not_open).",
+        "operationId": "paper_leg_stop_risk_paper_strategies__strategy_id__leg_stop_risk_get",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "strategy_id",
+            "required": true,
+            "schema": {
+              "title": "Strategy Id",
+              "type": "integer"
+            }
+          },
+          {
+            "in": "query",
+            "name": "contract_id",
+            "required": true,
+            "schema": {
+              "exclusiveMinimum": 0,
+              "maximum": 2147483647,
+              "title": "Contract Id",
+              "type": "integer"
+            }
+          },
+          {
+            "in": "query",
+            "name": "level",
+            "required": true,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "number"
+                },
+                {
+                  "pattern": "^(?!^[-+.]*$)[+-]?0*\\d*\\.?\\d*$",
+                  "type": "string"
+                }
+              ],
+              "title": "Level"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ExitRiskOut"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "summary": "Paper Leg Stop Risk"
+      }
+    },
     "/paper/strategies/{strategy_id}/orders": {
       "post": {
         "operationId": "place_paper_orders_paper_strategies__strategy_id__orders_post",
