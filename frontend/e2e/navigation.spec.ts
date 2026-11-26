@@ -60,7 +60,7 @@ for (const [ac, { label, items }] of Object.entries(SECTIONS)) {
   })
 }
 
-test('AC-5: Orders offers strategy-linked orders only, never an order-entry form', async ({ page }) => {
+test('AC-5: Orders is Zerodha orders, read-only, never an order-entry form', async ({ page }) => {
   await page.goto('/orders')
   const nav = new NavPage(page)
   const slugs = ['', '/pending', '/executed', '/failed-partial', '/execution-history']
@@ -73,7 +73,7 @@ test('AC-5: Orders offers strategy-linked orders only, never an order-entry form
     await expect(content.getByText(/place order|buy|sell/i)).toHaveCount(0)
   }
   await page.goto('/orders')
-  await expect(page.getByTestId('page-note')).toContainText('Strategy-linked orders only')
+  await expect(page.getByTestId('page-note')).toHaveText('Your Zerodha orders, read-only. This page never takes an order.')
   // no route exists for an order-entry page: it falls to the catch-all
   for (const entry of ['/orders/new', '/orders/place', '/orders/entry']) {
     await page.goto(entry)

@@ -485,8 +485,6 @@ test.describe('My Strategies: rename (REQ-134 AC-1, AC-3, ADR-183)', () => {
 
   test('RENAME-5 (R-05, MYSTR-11) Escape in the name box closes it without saving', async ({ page }) => {
     // Spec basis: none (searched: Escape, Esc, rename); inventory MYSTR-11 says "Esc cancels"; owner R-05 "whether Escape closed the box not verified"
-    // expected-fail: NEW-T10: pressing Escape in the rename box does nothing today (no key handler on the form), the box stays open
-    test.fail()
     const F = await openLoaded(page)
     await rowOf(page, 17).getByTestId('rename-17').click()
     await box(page).fill('Never saved')
