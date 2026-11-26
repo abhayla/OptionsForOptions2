@@ -539,6 +539,22 @@
      "unit": "seconds",
      "value": "30",
      "what_it_changes": "How long a dropped price-feed connection may keep trying to reconnect before its quotes read unavailable instead of stale."
+    },
+    {
+     "default": "60",
+     "earlier_values": [],
+     "effective_from": null,
+     "group": "Detection",
+     "is_default": true,
+     "key": "detection.index_quote_max_age_seconds",
+     "label": "Index value older than (not live)",
+     "max": "600",
+     "min": "5",
+     "set_by": null,
+     "type": "decimal",
+     "unit": "seconds",
+     "value": "60",
+     "what_it_changes": "In market hours, how old an index value (NIFTY, SENSEX) may be before it is shown as not live with its own time, and every check that needs the live index treats it as unavailable, even while option prices keep arriving."
     }
    ]
   },

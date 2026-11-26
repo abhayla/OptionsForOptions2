@@ -47,6 +47,9 @@ class FeedWindows:
 
     stale: datetime.timedelta
     reconnect: datetime.timedelta
+    #: ADR-330 (39): in market hours an INDEX quote older than this is not live, whatever the feed as a whole says
+    #: (``detection.index_quote_max_age_seconds``; written only in ``registry.json``).
+    index_quote_max_age: datetime.timedelta
 
 
 #: most instruments whose last quote TIME is kept after unsubscribe (oldest removal evicted first). A time is a few
@@ -184,6 +187,18 @@ class FeedState:
         return DataHealth.AVAILABLE
 
 
+    def quote_health(self, quote: NormalizedQuote, now: datetime.datetime) -> DataHealth:
+        """ADR-330 (39), the ONE per-quote age rule: the feed's health, except that in market hours an index quote
+        (``instrument_type`` None) whose own time is older than ``index_quote_max_age`` is STALE even while the feed
+        as a whole is live (F-32: option frames keep arriving while the index sat silent). Options keep the feed's
+        word (a quiet contract is not stale). Closed market: the feed already says STALE; ADR-330 (36) applies."""
+        health = self.health(now)
+        if (health is DataHealth.AVAILABLE and quote.instrument_type is None
+                and now - quote.timestamp > self.windows.index_quote_max_age):
+            return DataHealth.STALE
+        return health
+
+
 def market_closed_for(source: object, now: datetime.datetime) -> bool:
     """REQ-114 AC-7: the ONE market-state answer for ANY provider shape. A provider (or relay) with a
     ``FeedState`` answers through ``FeedState.market_closed`` (the same answer its quote healths read); one without
@@ -314,7 +329,10 @@ class QuoteBook:
 
     def get(self, instrument_id: str, now: datetime.datetime) -> NormalizedQuote | None:
         e = self._entries.get(instrument_id)
-        return with_feed_health(self._served(e, now), self.feed.health(now)) if e else None
+        if not e:
+            return None
+        served = self._served(e, now)
+        return with_feed_health(served, self.feed.quote_health(served, now))
 
     def _served(self, e: BookEntry, now: datetime.datetime) -> NormalizedQuote:
         """ADR-330 (36), the one place that applies the close cut-off: while the market is closed the quote is the
@@ -332,7 +350,7 @@ class QuoteBook:
         e = self._entries.get(instrument_id)
         if e is None or e.depth is None:
             return None
-        quote = with_feed_health(e.quote, self.feed.health(now))
+        quote = with_feed_health(e.quote, self.feed.quote_health(e.quote, now))
         return e.depth if quote.health is DataHealth.AVAILABLE else None
 
     def depth_after_close(self, instrument_id: str,
@@ -355,12 +373,12 @@ class QuoteBook:
         e = self._entries.get(instrument_id)
         if e is None:
             return DayStatsAnswer.unavailable(NOT_HELD)
-        if with_feed_health(e.quote, self.feed.health(now)).health is not DataHealth.AVAILABLE:
+        if with_feed_health(e.quote, self.feed.quote_health(e.quote, now)).health is not DataHealth.AVAILABLE:
             return DayStatsAnswer.unavailable(FEED_NOT_HEALTHY)
         if e.day_stats is None:
             return DayStatsAnswer.unavailable(PACKET_WITHOUT_DAY_FIELDS)
         return DayStatsAnswer(e.day_stats)
 
     def quotes(self, now: datetime.datetime) -> list[NormalizedQuote]:
-        health = self.feed.health(now)
-        return [with_feed_health(self._served(e, now), health) for e in self._entries.values()]
+        served = [self._served(e, now) for e in self._entries.values()]
+        return [with_feed_health(q, self.feed.quote_health(q, now)) for q in served]

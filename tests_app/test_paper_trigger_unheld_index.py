@@ -13,6 +13,7 @@ touch and is stubbed.
 """
 from __future__ import annotations
 
+import datetime
 import pathlib
 import sys
 from decimal import Decimal
@@ -206,6 +207,27 @@ async def test_a_stale_price_after_the_wait_is_not_a_price(rig):
     rig.hold([rig.index_id])
     rig.clock.now = rig.clock.now.replace(minute=45)  # 25 min after the last tick, still inside market hours: stale
     assert await _check(rig, [_exit("above", "22600")]) == UNREADABLE
+
+
+async def test_adr_330_39_an_old_index_quote_on_a_live_feed_is_unreadable_but_an_option_leg_is_not(rig):
+    """D-69: the feed is live (a heartbeat 1 s ago; option contracts stay available however quiet, F-32) but the
+    index's last tick is 61 s old: a conditional exit is refused with the ADR-327 (2) text and nothing is armed; a leg
+    stop on the option contract is judged as before."""
+    rig.hold([rig.index_id, LEG_ID])
+    last = rig.clock.now
+    rig.clock.now = last + datetime.timedelta(seconds=61)
+    rig.provider.on_frame(b"\x00", rig.clock.now)  # a heartbeat: the whole feed is live
+    assert rig.provider.status().health.value == "available"
+    assert await _check(rig, [_exit("above", "22600")]) == UNREADABLE
+    assert "Not saved: " + render(UNREADABLE).what_happened == VERBATIM
+    assert await _check(rig, [_leg("above", "5000.00")]) is None
+
+
+async def test_adr_330_39_an_index_quote_59_seconds_old_is_still_read(rig):
+    rig.hold([rig.index_id, LEG_ID])
+    rig.clock.now = rig.clock.now + datetime.timedelta(seconds=59)
+    rig.provider.on_frame(b"\x00", rig.clock.now)
+    assert await _check(rig, [_exit("above", "22600")]) is None
 
 
 def test_every_recorded_contract_the_rig_uses_exists():
