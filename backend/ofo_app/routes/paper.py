@@ -494,7 +494,8 @@ class PaperListOut(ApiModel):
     totals: PaperTotalsOut
     today: PaperTodayOut | None = None
     answered_at: datetime.datetime
-    shown_date: datetime.date  # the server's shown date: a list label leaves the year off inside this year (ADR-330 (19))
+    # the server's shown date: a list label leaves the year off inside this year (ADR-330 (19))
+    shown_date: datetime.date
 
 
 def _connected(ctx: MarketContext | None) -> bool:

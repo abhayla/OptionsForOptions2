@@ -283,7 +283,8 @@ class BulkDeleteOut(ApiModel):
 
 class StrategyListOut(ApiModel):
     strategies: list[SummaryOut]
-    shown_date: datetime.date  # the server's shown date: a list label leaves the year off inside this year (ADR-330 (19))
+    # the server's shown date: a list label leaves the year off inside this year (ADR-330 (19))
+    shown_date: datetime.date
 
 
 class EntryOut(ApiModel):

@@ -75,7 +75,8 @@ PR241_SELECTION = {
     "tests_app/test_playbook_labels_route.py",  # GC-ADJ2 step 3: imports ofo.errors.explanations (changed here)
     "tests_app/test_day_rules_worker.py",  # GC-IC1 step 1: imports ofo.errors.explanations (changed here)
     "tests_app/test_order_closure_all_routes.py",  # W-121: names ofo_app.routes.strategies in its edge table
-    "tests_app/test_strategy_open_not_found.py",  # NEW-T66 (ADR-330 (37)): calls GET /strategies/{strategy_id}, a route this diff changes
+    # NEW-T66 (ADR-330 (37)): calls GET /strategies/{strategy_id}, a route this diff changes
+    "tests_app/test_strategy_open_not_found.py",
     # builder sequence rows 1-10 (2026-10-22/23) added app tests that import the same modules or call the same routes:
     "tests_app/test_underlying_refusal.py",  # row 1
     "tests_app/test_connect_gate_routes.py",  # row 2

@@ -14,7 +14,7 @@ from __future__ import annotations
 
 import datetime
 from collections.abc import Awaitable, Callable
-from typing import Any, Literal, Optional
+from typing import Annotated, Any, Literal, Optional
 
 from fastapi import APIRouter, Depends, Query
 from ofo.market_calendar import MarketStatus, market_status
@@ -70,10 +70,13 @@ def get_shown_now() -> Callable[[Any, datetime.date], Awaitable[datetime.datetim
     return picker.judging_instant
 
 
-async def get_shown_date(db: Any = Depends(get_db), shown_now: Callable[[Any, datetime.date], Awaitable[datetime.datetime]]
-                         = Depends(get_shown_now)) -> datetime.date:
-    """The ONE date a screen is shown against (the `today` of the expiries reply): the database date in India, the scenario
-    clock in scenario mode. List replies send it as `shown_date` so a label can leave the current year off (ADR-330 (19))."""
+async def get_shown_date(
+        db: Annotated[Any, Depends(get_db)],
+        shown_now: Annotated[Callable[[Any, datetime.date], Awaitable[datetime.datetime]], Depends(get_shown_now)],
+) -> datetime.date:
+    """The ONE date a screen is shown against (the `today` of the expiries reply): the database date in India, the
+    scenario clock in scenario mode. List replies send it as `shown_date` so a label can leave the current year off
+    (ADR-330 (19))."""
     return (await shown_now(db, await picker.database_today(db))).astimezone(IST).date()
 
 
