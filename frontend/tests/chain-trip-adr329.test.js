@@ -305,6 +305,54 @@ describe.runIf(WIRED.hold)('review round: chain trip and replace question', () =
     expect(shown()).toEqual([...HELD_SHOWN, 'BUY NSE_FO:44700 1', 'SELL NSE_FO:44701 1'])
   })
 
+  // ADR-330 (20) / N-08: the ticks persist until they are added; once the builder has them they are cleared
+  it('N08a tick 2, Add Selected, back to the chain: no Selected Legs', async () => {
+    await start(BUILDER, { draft: HELD_LINK })
+    await goChain()
+    await tick('22900.00', 'ce', 'buy')
+    await tick('22300.00', 'pe', 'sell')
+    await addSelected()
+    expect(rowCount()).toBe(5)
+    expect(useChainSelection().entries).toHaveLength(0)
+    await goChain()
+    expect(t(w, 'selected-legs').exists()).toBe(false)
+    expect(w.findAll('[data-testid="selected-leg"]')).toHaveLength(0)
+  })
+
+  it('N08b a clash then Cancel: the ticks stay', async () => {
+    await start(BUILDER, { draft: HELD_LINK })
+    await goChain()
+    await tick('22800.00', 'ce', 'sell')
+    await tick('22900.00', 'ce', 'buy')
+    await addSelected()
+    await t(w, 'dup-cancel').trigger('click')
+    await flushPromises()
+    expect(shown()).toEqual(HELD_SHOWN)
+    expect(useChainSelection().entries).toHaveLength(2)
+  })
+
+  it('N08c the other-index refusal: the ticks stay', async () => {
+    await start(BUILDER, { draft: HELD_LINK })
+    await goChain()
+    await w.get('[data-testid="underlying-select"]').setValue('SENSEX')
+    await flushPromises()
+    FakeSocket.all.at(-1).serverOpen()
+    FakeSocket.all.at(-1).serverPush({ ...CHAIN_ANSWER, underlying: 'SENSEX' })
+    await flushPromises()
+    await tick('22900.00', 'ce', 'buy')
+    await addSelected()
+    expect(w.text()).toContain('Nothing was added.')
+    expect(useChainSelection().entries).toHaveLength(1)
+  })
+
+  it('N08d the plain open from the chain (nothing held) clears the ticks too', async () => {
+    await start(CHAIN)
+    await tick('22900.00', 'ce', 'buy')
+    await addSelected()
+    expect(rowCount()).toBe(1)
+    expect(useChainSelection().entries).toHaveLength(0)
+  })
+
   it('F5 the draft query dropped (Save) while the replace question is open: the question closes as Cancel; a late Replace cannot apply the stale link', async () => {
     await start(BUILDER, { draft: HELD_LINK })
     await router.push({ name: BUILDER, query: { draft: OTHER_LINK } })

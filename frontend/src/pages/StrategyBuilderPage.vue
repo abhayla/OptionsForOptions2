@@ -60,6 +60,7 @@ import { sameLegs } from '@/lib/legDoor'
 import { useLegDoor } from '@/composables/useLegDoor'
 import DuplicateLegDialog from '@/components/strategy/DuplicateLegDialog.vue'
 import { netKeyOf, useBuilderHold } from '@/stores/builderHold'
+import { useChainSelection } from '@/stores/chainSelection'
 import { unsavedCount, useLeaveBuilder } from '@/composables/useLeaveBuilder'
 import LeaveBuilderDialog from '@/components/strategy/LeaveBuilderDialog.vue'
 import { replacePrompt } from '@/lib/readyMade'
@@ -826,6 +827,16 @@ async function restoreDrafts(h) {
 // (a same-action clash asks, an opposite side is a deliberate add), never through the draft-replace question. Returns true when
 // it replaced the legs (setLegs already reloaded the numbers).
 let chainError = null
+// ADR-330 (20): once the ticked contracts are in the builder the ticks are cleared (they persist until they are added). The ONE
+// place: called only after the legs were really set from the chain's own draft (the store's draft, byte for byte), so Cancel on
+// a clash, the other-index refusal and an error leave the ticks, and a ?draft= from elsewhere never clears them.
+const chainTicks = useChainSelection()
+function clearAddedTicks() {
+  const q = route.query.draft
+  const u = draftQuery?.underlying
+  if (typeof q !== 'string' || !u || !chainTicks.entries.length) return
+  if (JSON.stringify(chainTicks.draftOf(u)) === q) chainTicks.clear()
+}
 let addedDraft = heldBack?.addedDraft ?? null
 async function addFromChain() {
   const fresh = legsFromQuery()
@@ -851,6 +862,7 @@ async function addFromChain() {
   }
   setLegs([...r.legs, ...r.kept])
   addedDraft = route.query.draft ?? null // F3: Back into this same ?draft= entry must not add the same ticks again
+  clearAddedTicks()
   return true
 }
 onMounted(async () => {
@@ -862,6 +874,7 @@ onMounted(async () => {
     load()
     syncLive()
     readShape()
+    if (!heldBack && legs.value.length && !linkRefused.value) clearAddedTicks() // the plain open from the chain's draft (nothing held)
   }
   if (chainError) editError.value = chainError
   if (!heldForUrl) openFromUrl() // the held strategy is already the page's: reading its book again would overwrite the restored edit
