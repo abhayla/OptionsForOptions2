@@ -29,10 +29,16 @@ from datetime import date, datetime
 from decimal import Decimal
 from typing import Any
 
+from ofo.adjustment import level_watch
 from ofo.adjustment import stop_lines as sl
 from ofo.adjustment.cap_scope import count_capped
 from ofo.adjustment.gate_rows import GateRow, GateRows
-from ofo.adjustment.playbook_eval import validate_body
+from ofo.adjustment.playbook_eval import (
+    LEGACY_SITUATION_RULE_PREFIX,
+    SITUATION_RULE_PREFIX,
+    is_day_rule_id,
+    validate_body,
+)
 from ofo.adjustment.playbook_types import BODY_SCHEMA, NAME_MAX, SHOWN_NAMES
 from ofo.alerts import CONTINUE as ANSWER_CONTINUE  # ADR-330 (3): Dismiss and Act on both leave the position as is
 from ofo.checks import pnl_amount as rupee
@@ -509,6 +515,9 @@ def _check_triggers(triggers: object, counts: dict[str, int]) -> dict:
     return triggers
 
 
+_RESERVED_RULE_PREFIXES = (level_watch.RULE_PREFIX, SITUATION_RULE_PREFIX, LEGACY_SITUATION_RULE_PREFIX)
+
+
 def _check_rules(rules: object, triggers: dict) -> None:
     if not isinstance(rules, list):
         raise _bad("rules")
@@ -518,6 +527,8 @@ def _check_rules(rules: object, triggers: dict) -> None:
                 or ("any_of" in rule) == ("all_of" in rule) or not isinstance(members, list) or not members
                 or any(m not in triggers for m in members)):
             raise _bad(f"rules.{i}")
+        if is_day_rule_id(rule["id"]) or rule["id"].startswith(_RESERVED_RULE_PREFIXES):
+            raise _bad(f"rules.{i}.id")  # a user rule never takes an id the engine's own rules use
 
 
 def _dump(body: dict) -> str:

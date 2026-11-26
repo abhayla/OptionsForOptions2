@@ -312,6 +312,10 @@ async def test_another_users_playbook_answers_not_found_everywhere(db):
     (lambda b: b["triggers"]["T-01"].update(weekly=[0.5, ""]), "triggers.T-01.weekly.0"),
     (lambda b: b["triggers"]["T-01"].update(weekly=["half", ""]), "triggers.T-01.weekly.0"),
     (lambda b: b["rules"].append({"id": "R-2", "all_of": ["T-99"]}), "rules.1"),
+    (lambda b: b["rules"].append({"id": "watch.level.above", "any_of": ["T-01"]}), "rules.1.id"),  # P1c NEW-3
+    (lambda b: b["rules"].append({"id": "day.x", "any_of": ["T-01"]}), "rules.1.id"),
+    (lambda b: b["rules"].append({"id": "sit.x", "any_of": ["T-01"]}), "rules.1.id"),
+    (lambda b: b["rules"].append({"id": "sit:x", "any_of": ["T-01"]}), "rules.1"),  # a colon fails the id shape first
     (lambda b: b.pop("stages"), "stages"),
     (lambda b: b.update(day_rules=[_carry_rule("2:30 pm")]), "day_rules.0.at"),
     (lambda b: b.update(day_rules=[_carry_rule(1430)]), "day_rules.0.at"),

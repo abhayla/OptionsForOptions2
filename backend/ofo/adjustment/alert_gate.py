@@ -250,7 +250,8 @@ def _refresh(rule_id: str, rule: _Rule, pend: _Pending, level: int, preset: Pres
     """Apply a close to the clear mark, the record's lapse and the held episode before deciding."""
     rec, hold = rule.record, rule.hold
     events: list[Event] = []
-    if rec is not None and not rule.cleared and _safe_by_band(pend.spec, pend.value, _line(pend.spec, rec.threshold), preset):
+    line = _line(pend.spec, rec.threshold) if rec is not None else None
+    if rec is not None and not rule.cleared and _safe_by_band(pend.spec, pend.value, line, preset):
         rule = replace(rule, cleared=True)
         if not (rec.dismissed or rec.final or rec.stopped):
             # ADR-242 (3): a watched level keeps one record per crossing episode: the clear closes it (final), so
