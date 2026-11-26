@@ -89,7 +89,7 @@ async function stubApi(page: Page, over: Over = {}, rows: Row[] = LIST): Promise
     F.calls.push({ m, path: path + url.search, body })
     const c: Ctx = { body, query: url.searchParams }
     const one = /^\/api\/strategies\/(\d+)(?:\/(name|undelete))?$/.exec(path)
-    if (m === 'GET' && path === '/api/strategies') return serve(route, pick('list', c, { json: { strategies: F.rows.filter((r) => !F.hidden.has(r.id)) } }))
+    if (m === 'GET' && path === '/api/strategies') return serve(route, pick('list', c, { json: { strategies: F.rows.filter((r) => !F.hidden.has(r.id)), shown_date: SHOWN } }))
     if (m === 'GET' && path === '/api/features') return serve(route, pick('features', c, { json: { order_path: 'on' } }))
     if (m === 'GET' && path === '/api/settings') return serve(route, pick('settings', c, { json: { groups: [{ settings: [{ key: 'other.undo_clear_all_seconds', value: '60' }] }] } }))
     if (m === 'GET' && path === '/api/paper/strategies') return serve(route, pick('paper', c, { json: paperOk }))
@@ -145,9 +145,11 @@ async function openLoaded(page: Page, over: Over = {}, list: Row[] = LIST) {
   return F
 }
 // ADR-330 (19): every list row shows "<name> (#<id>, <expiry>)", the expiry being the first leg's, written by the one expiry formatter.
-// This page sets no shown date, so the year is printed ("1 Dec 2026"). Built here from the same stub row, never typed twice.
+// The list reply carries shown_date, so an expiry in the shown year prints without the year ("1 Dec"). Built here from the same stub row, never typed twice.
 const MON = ['Jan', 'Feb', 'Mar', 'Apr', 'May', 'Jun', 'Jul', 'Aug', 'Sep', 'Oct', 'Nov', 'Dec']
-const expShown = (iso: string) => `${Number(iso.slice(8, 10))} ${MON[Number(iso.slice(5, 7)) - 1]} ${iso.slice(0, 4)}`
+// ADR-330 (19) / REQ-148 AC-2: the stubs answer shown_date = the suite's fixed day; an expiry in that year prints without the year.
+const SHOWN = '2026-11-26'
+const expShown = (iso: string) => `${Number(iso.slice(8, 10))} ${MON[Number(iso.slice(5, 7)) - 1]}${iso.startsWith(SHOWN.slice(0, 4)) ? '' : ` ${iso.slice(0, 4)}`}`
 const lbl = (r: Row, name?: string) => `${name ?? String(r.name).replace(/^"|"$/g, '')} (#${r.id}, ${expShown((r.first_leg as { expiry: string }).expiry)})`
 const ORDER = [R21, R17, R9, R5, R4].map((r) => lbl(r)) // newest save first (U2)
 const callsTo = (F: Fake, m: string, re: RegExp) => F.calls.filter((c) => c.m === m && re.test(c.path))

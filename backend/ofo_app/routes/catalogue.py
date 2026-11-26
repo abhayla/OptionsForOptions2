@@ -70,6 +70,13 @@ def get_shown_now() -> Callable[[Any, datetime.date], Awaitable[datetime.datetim
     return picker.judging_instant
 
 
+async def get_shown_date(db: Any = Depends(get_db), shown_now: Callable[[Any, datetime.date], Awaitable[datetime.datetime]]
+                         = Depends(get_shown_now)) -> datetime.date:
+    """The ONE date a screen is shown against (the `today` of the expiries reply): the database date in India, the scenario
+    clock in scenario mode. List replies send it as `shown_date` so a label can leave the current year off (ADR-330 (19))."""
+    return (await shown_now(db, await picker.database_today(db))).astimezone(IST).date()
+
+
 def _todays_expiry_spent(now: datetime.datetime) -> bool:
     """Whether an expiry dated today can no longer trade at ``now`` (IST). Answer states: OPEN -> no; closed hours ->
     only from the close (before the open it is still today's); weekend or holiday -> yes (nothing trades today); no

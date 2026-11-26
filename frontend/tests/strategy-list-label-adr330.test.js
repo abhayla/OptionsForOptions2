@@ -2,7 +2,7 @@
 import { beforeEach, describe, expect, it, vi } from 'vitest'
 import { flushPromises, mount } from '@vue/test-utils'
 import { createMemoryHistory, createRouter } from 'vue-router'
-import { setShownDate } from '@/lib/displayFormat'
+import { noteShownDate, setShownDate } from '@/lib/displayFormat'
 import { strategyListLabel } from '@/lib/saveDraft'
 import PaperStrategies from '@/components/strategy/PaperStrategies.vue'
 import LiveStrategyCard from '@/components/live/LiveStrategyCard.vue'
@@ -28,6 +28,26 @@ describe('strategyListLabel', () => {
   })
   it('no readable expiry shows only the number', () => {
     expect(strategyListLabel({ name: '"A"', id: 3, expiries: [undefined, null, 'soon'], fallback: 'x' })).toBe('A (#3)')
+  })
+  // ADR-330 (19), REQ-148 AC-2: the year is left out when the expiry is in the current (server shown) year
+  it('same year as the shown date: no year', () => {
+    setShownDate('2026-11-26')
+    expect(strategyListLabel({ name: '"IC wk1"', id: 172, expiries: ['2026-12-01'], fallback: 'x' })).toBe('IC wk1 (#172, 1 Dec)')
+  })
+  it('another year than the shown date: the year stays', () => {
+    setShownDate('2026-11-26')
+    expect(strategyListLabel({ name: '"IC wk1"', id: 172, expiries: ['2027-01-05'], fallback: 'x' })).toBe('IC wk1 (#172, 5 Jan 2027)')
+  })
+  it('no shown date (older reply): the year stays, the fail-safe', () => {
+    setShownDate(null)
+    expect(strategyListLabel({ name: '"IC wk1"', id: 172, expiries: ['2026-12-01'], fallback: 'x' })).toBe('IC wk1 (#172, 1 Dec 2026)')
+  })
+  it('noteShownDate keeps the reply shown_date; a reply without one changes nothing', () => {
+    setShownDate(null)
+    noteShownDate({ shown_date: '2026-11-26', strategies: [] })
+    expect(strategyListLabel({ name: '"A"', id: 1, expiries: ['2026-12-01'], fallback: 'x' })).toBe('A (#1, 1 Dec)')
+    noteShownDate({ strategies: [] })
+    expect(strategyListLabel({ name: '"A"', id: 1, expiries: ['2026-12-01'], fallback: 'x' })).toBe('A (#1, 1 Dec)')
   })
   it('no name shows the fallback unchanged', () => {
     expect(strategyListLabel({ name: undefined, id: 4, expiries: ['2026-12-01'], fallback: 'Draft 4' })).toBe('Draft 4')

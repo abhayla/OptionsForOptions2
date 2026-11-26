@@ -10,7 +10,7 @@ import ErrorMessage from '@/components/common/ErrorMessage.vue'
 import IndexStrip from '@/components/layout/IndexStrip.vue'
 import Card from '@/components/common/Card.vue'
 import PageHeader from '@/components/common/PageHeader.vue'
-import { istTime } from '@/lib/displayFormat'
+import { istTime, noteShownDate } from '@/lib/displayFormat'
 import { plainName, strategyListLabel } from '@/lib/saveDraft'
 import { isRunning, strategyStatusWord } from '@/lib/strategyStatus'
 import { FIGURE_READ_FAILED_TEXT, HOME_PNL_LABEL, HOME_RUNNING_LABEL, HOME_UNREAD_LABEL, usePaperPnl } from '@/lib/paperPnl'
@@ -68,7 +68,7 @@ const figures = computed(() => [
 onMounted(async () => {
   readPaperAlerts().then(takeAlerts, dropAlerts)
   try {
-    const list = (await api.get('/strategies')).data?.strategies
+    const list = noteShownDate((await api.get('/strategies')).data)?.strategies
     if (!Array.isArray(list)) throw new Error('unreadable answer') // fail closed: no state is guessed
     strategies.value = list
   } catch (e) {

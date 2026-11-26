@@ -14,6 +14,14 @@ export function setShownDate(today) {
   shownDate = /^\d{4}-\d{2}-\d{2}/.test(String(today ?? '')) ? String(today) : null
 }
 
+/** ADR-330 (19), REQ-148 AC-2: a list reply (GET /strategies, GET /paper/strategies) carries the server's `shown_date`; keep it
+ *  before the labels render so an expiry in that year prints without the year. A reply without a readable one changes nothing
+ *  (the year stays on, the fail-safe). Never the browser clock (REQ-135 AC-2). Returns `data` so a reader can chain it. */
+export function noteShownDate(data) {
+  if (/^\d{4}-\d{2}-\d{2}/.test(String(data?.shown_date ?? ''))) setShownDate(data.shown_date)
+  return data
+}
+
 /** THE one expiry-text rule (u510): '2026-10-19' -> '19 Oct 2026', or '19 Oct' only when the expiry is known to be in the
  *  year of the shown date (`today`, else the one set by setShownDate); text compare, no clock. Null when not a date. */
 export function expiryText(expiry, today = shownDate) {

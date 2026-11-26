@@ -32,7 +32,7 @@ const R171 = row(171, 'Short Iron Condor', 'Running', '2026-11-26T09:40:00+05:30
 const D170 = row(170, 'Bull Put Spread', 'Draft', '2026-11-25T09:50:00+05:30')
 const D168 = row(168, 'Old Draft', 'Draft', '2026-11-20T09:50:00+05:30')
 const C169 = row(169, 'Finished Trade', 'Completed', '2026-11-24T09:50:00+05:30')
-const rows = (...r: Row[]) => ok({ strategies: r })
+const rows = (...r: Row[]) => ok({ strategies: r, shown_date: '2026-11-26' })
 
 /** The usual world: 172 and 171 are Running paper trades, 170 and 168 are Drafts; every card answers live. */
 async function world(page: Page, list: Row[], over: Partial<Stub> = {}): Promise<Stub> {

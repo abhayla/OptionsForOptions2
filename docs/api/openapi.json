@@ -9029,6 +9029,11 @@
             "title": "Answered At",
             "type": "string"
           },
+          "shown_date": {
+            "format": "date",
+            "title": "Shown Date",
+            "type": "string"
+          },
           "strategies": {
             "items": {
               "$ref": "#/components/schemas/PaperStrategyOut"
@@ -9053,7 +9058,8 @@
         "required": [
           "strategies",
           "totals",
-          "answered_at"
+          "answered_at",
+          "shown_date"
         ],
         "title": "PaperListOut",
         "type": "object"
@@ -13773,6 +13779,11 @@
       "StrategyListOut": {
         "additionalProperties": false,
         "properties": {
+          "shown_date": {
+            "format": "date",
+            "title": "Shown Date",
+            "type": "string"
+          },
           "strategies": {
             "items": {
               "$ref": "#/components/schemas/ofo_app__routes__strategies__SummaryOut"
@@ -13782,7 +13793,8 @@
           }
         },
         "required": [
-          "strategies"
+          "strategies",
+          "shown_date"
         ],
         "title": "StrategyListOut",
         "type": "object"
