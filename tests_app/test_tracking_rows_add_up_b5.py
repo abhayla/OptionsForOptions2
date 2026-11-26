@@ -64,7 +64,7 @@ async def test_a_closed_and_reopened_contract_is_one_row_with_its_booked_part(db
         reply = await c.get(f"/strategies/{stored.id}/tracking")
         body = reply.json()
         _assert_rows_add_up(body, LEGS)
-        assert D(body["booked"]) == D("65.00")  # the closed lifecycle's result is in the book and in that contract's one row
+        assert D(body["booked"]) == D("65.00")  # the closed lifecycle's result is in the book and in the one row
 
 
 async def test_a_buy_and_a_sell_of_one_contract_is_one_netted_row(db):  # noqa: F811
@@ -102,9 +102,10 @@ async def test_untouched_contracts_show_the_legs_table_figure_in_the_tracking_ro
         assert compared == LEGS
 
 
-@pytest.mark.xfail(strict=True, reason="OWNER FORK (B5): for a contract closed and re-opened the legs table row is the last "
-                   "lifecycle only (+65.00; the earlier lifecycle is its own closed row, D-10) while the tracking row, and so "
-                   "the panel's book-sum, is the contract's netted total (+130.00). Both cannot hold with one row per contract.")
+@pytest.mark.xfail(strict=True, reason=(
+    "OWNER FORK (B5): for a contract closed and re-opened the legs table row is the last lifecycle only "
+    "(+65.00; the earlier lifecycle is its own closed row, D-10) while the tracking row, and so the panel's "
+    "book-sum, is the contract's netted total (+130.00). Both cannot hold with one row per contract."))
 async def test_reopened_contract_row_equals_the_legs_table_row(db):  # noqa: F811
     app, stored, *_ = await _setup(db)
     async with _client(app) as c:
