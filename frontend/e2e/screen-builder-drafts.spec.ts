@@ -1501,7 +1501,6 @@ test.describe('Builder: the leg drawer tabs, History drawer and the Drawer primi
   })
 
   test('DR-2 BUILD-15 "Show Editor >>" on the drawer edge folds the drawer away and shows "<< Show Strikes" at the page edge', async ({ page }, info) => {
-    test.fail(info.project.name === 'mobile-390', 'NEW-T68') // expected-fail (mobile-390 only): NEW-T68: the 520 px drawer fills the phone, so its Show Editor edge tab sits at x=520, outside the 390 px screen and cannot be tapped
     // Spec basis: none (searched: Show Editor, Show Strikes; REQ-149 names tabs, not these buttons); ADR-193 D-C35 as built
     await stubBuilder(page)
     await openStrategy(page, 7)
@@ -1514,7 +1513,6 @@ test.describe('Builder: the leg drawer tabs, History drawer and the Drawer primi
   })
 
   test('DR-3 BUILD-16 "<< Show Strikes" brings the drawer back and the tab goes away', async ({ page }, info) => {
-    test.fail(info.project.name === 'mobile-390', 'NEW-T68') // expected-fail (mobile-390 only): NEW-T68: the 520 px drawer fills the phone, so its Show Editor edge tab sits at x=520, outside the 390 px screen and cannot be tapped
     // Spec basis: none (searched: Show Editor, Show Strikes; REQ-149)
     await stubBuilder(page)
     await openStrategy(page, 7)

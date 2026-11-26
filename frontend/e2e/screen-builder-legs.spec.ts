@@ -694,8 +694,6 @@ test.describe('Builder leg door: add a leg from the strike table (REQ-080 AC-1..
     // Spec basis: none (searched: Show Editor, Show Strikes)
     await stub(page); await openPicker(page)
     await cellOf(page, '22800.00', 'ce').getByTestId('cell-sell').click()
-    // expected-fail (phone only): NEW-T53: at 390 px the drawer fills the screen and the Show Editor >> edge tab sits beyond the right edge, so it cannot be reached
-    test.fail(isMobile(page), 'NEW-T53: Show Editor >> is outside the 390 px viewport')
     await shot(page, 'NEW-T53')
     await expect(page.getByTestId('show-editor')).toBeInViewport()
     await page.getByTestId('show-editor').click()
