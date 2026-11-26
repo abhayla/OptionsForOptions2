@@ -1145,12 +1145,13 @@ const pricesStamp = computed(() => {
 })
 // ADR-329 (1), (2): leaving the builder for the Option Chain holds what it shows; leaving for any other page with unsaved legs asks.
 // The guard registers only when the page is rendered by a <router-view> (the app); a page mounted directly has none.
+// the snapshot's paperId comes from `paper` (Drafts Mode itself; a refresh reply's book may carry no id): the leave question's "pending" reads it
 const leaveGuard = useLeaveBuilder({
   role: 'builder',
   unsaved: () => unsavedCount({ legCount: legs.value.length, savedId: savedId.value, inDrafts: paper.value !== null, pendingCount: pendingOrders.value?.length ?? 0 }),
   snapshot: () => (legs.value.length
     ? { legs: legs.value, openStrategy: openStrategy.value, savedId: savedId.value, savedRevision: savedRevision.value, shapeName: shapeName.value,
-      paperId: paper.value?.book?.strategy_id ?? null, netKey: paper.value ? netKeyOf(paper.value.net) : null, addedDraft }
+      paperId: paper.value ? (paper.value.book?.strategy_id ?? paper.value.id) : null, netKey: paper.value ? netKeyOf(paper.value.net) : null, addedDraft }
     : null),
 })
 </script>
