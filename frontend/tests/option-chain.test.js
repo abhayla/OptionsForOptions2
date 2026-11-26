@@ -142,8 +142,9 @@ describe('Option Chain screen', () => {
   })
 
   it('AC-8: days left comes from the expiry date alone', () => {
-    expect(daysLeft('2026-10-27', new Date(2026, 9, 19, 23, 30))).toBe(8)
-    expect(daysLeft('2026-10-19', new Date(2026, 9, 19, 0, 5))).toBe(0)
+    // #739: the day is the India day, so the instants are written with the IST offset (the runner's zone changes nothing)
+    expect(daysLeft('2026-10-27', new Date('2026-10-19T23:30:00+05:30'))).toBe(8)
+    expect(daysLeft('2026-10-19', new Date('2026-10-19T00:05:00+05:30'))).toBe(0)
   })
 
   it('AC-6: no order, execute, buy/sell button or link anywhere on the screen', async () => {

@@ -1,7 +1,7 @@
 // W-072 / REQ-039 AC-3 under ADR-086: the one contract-name formatter and the one India-time formatter.
 // Run once with TZ=America/New_York as well: the output must not move with the machine's zone.
 import { describe, it, expect } from 'vitest'
-import { CONTRACT_UNAVAILABLE, TIME_UNAVAILABLE, contractName, istTime, nameFromPool, strikeLabel, groupMoney } from '@/lib/displayFormat'
+import { CONTRACT_UNAVAILABLE, TIME_UNAVAILABLE, contractName, istTime, nameFromPool, strikeLabel, groupMoney, localDay } from '@/lib/displayFormat'
 
 const ce = { underlying: 'NIFTY', expiry: '2026-10-19', strike: '23200.00', instrument_type: 'CE', instrument_id: 'NSE_FO:47171', symbol: 'NIFTY26O1923200CE' }
 
@@ -134,5 +134,14 @@ describe('groupMoney edge cases (#582 item 3)', () => {
     expect(groupMoney('12345.60')).toBe('12,345.60')
     expect(groupMoney('')).toBe('')
     expect(groupMoney(null)).toBe(null)
+  })
+})
+
+describe('#739 localDay is the India calendar day', () => {
+  it('00:30 IST on 27 Nov (19:00Z on the 26th) is 2026-11-27, whatever the runner zone', () => {
+    expect(localDay(new Date('2026-11-26T19:00:00Z'))).toBe('2026-11-27')
+  })
+  it('23:59 IST stays on its own day', () => {
+    expect(localDay(new Date('2026-11-26T18:29:00Z'))).toBe('2026-11-26')
   })
 })

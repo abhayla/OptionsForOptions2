@@ -141,8 +141,9 @@ export function istHm(iso) {
 
 /** D-57: today's date as 'YYYY-MM-DD' from the browser's calendar day. A date KEY for day arithmetic, never shown to a
  *  reader; it lives here so that this file stays the only place a locale date function is called. */
+const IST_DAY = new Intl.DateTimeFormat('en-CA', { timeZone: 'Asia/Kolkata', year: 'numeric', month: '2-digit', day: '2-digit' })
 export function localDay(date = new Date()) {
-  return date.toLocaleDateString('en-CA')
+  return IST_DAY.format(date) // #739: the India calendar day, never the browser's
 }
 
 /** An ISO instant (with an offset or Z) as 'HH:MM:SS' in India time, or null when it cannot be read (never the raw string,
