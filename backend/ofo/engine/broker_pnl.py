@@ -56,7 +56,7 @@ def _exact(raw: object) -> Decimal | None:
 
 
 def _paisa(value: Decimal) -> Decimal:
-    return value.quantize(PAISE, rounding=ROUND_HALF_EVEN)
+    return value.quantize(PAISE, rounding=ROUND_HALF_EVEN) + 0  # + 0: a tiny negative is 0.00, never -0.00
 
 
 def broker_contract_pnl(rows: Mapping[str, object] | Sequence[Mapping[str, object]]) -> BrokerPnl:
@@ -79,6 +79,11 @@ def broker_contract_pnl(rows: Mapping[str, object] | Sequence[Mapping[str, objec
     if reported_paisa != derived_paisa:
         return BrokerPnl(MISMATCH, None, reported_paisa, derived_paisa)
     return BrokerPnl(STATED, derived_paisa, reported_paisa, derived_paisa)
+
+
+def count_without_figure(figures: Sequence[BrokerPnl]) -> int:
+    """How many contracts have no stated figure (the total's "N of M contracts have no figure")."""
+    return sum(1 for f in figures if f.state != STATED)
 
 
 def broker_total(figures: Sequence[BrokerPnl]) -> Decimal | None:

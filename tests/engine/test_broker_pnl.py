@@ -31,6 +31,15 @@ def test_real_closed_row_is_stated():
     assert str(got.value) == "-130.00"
 
 
+def test_real_open_row_is_stated():
+    """The owner's real OPEN row (positions-122104.json, 16 Oct 2026 12:21:07): 0 - 331.5 + 65 x 5.1 x 1 = 0.00."""
+    path = FIXTURE.with_name("positions-122104.json")
+    row = json.loads(path.read_text(encoding="utf-8"))["data"]["net"][0]
+    assert row["quantity"] == 65 and row["pnl"] == 0
+    got = broker_contract_pnl(fields(row))
+    assert got == BrokerPnl("stated", Decimal("0.00"), Decimal("0.00"), Decimal("0.00"))
+
+
 def test_derived_open_row_is_stated():
     row = copy.deepcopy(real_row())
     row.update(quantity=-65, buy_value=0, buy_quantity=0, sell_value="331.5", last_price="3.1", pnl=130)
@@ -99,3 +108,12 @@ def test_total_is_exact_sum_only_when_every_row_is_stated():
     assert broker_total([ok, ok]) == Decimal("-260.00")
     assert broker_total([ok, BrokerPnl("mismatch", None, Decimal("1.00"), Decimal("2.00"))]) is None
     assert broker_total([]) is None
+
+
+def test_count_without_figure():
+    from ofo.engine.broker_pnl import count_without_figure
+
+    ok = broker_contract_pnl(fields(real_row()))
+    assert count_without_figure([ok, BrokerPnl("mismatch", None, None, None), BrokerPnl("not_available", None, None,
+                                                                                        None)]) == 2
+    assert count_without_figure([]) == 0
