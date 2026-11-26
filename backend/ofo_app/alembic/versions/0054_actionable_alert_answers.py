@@ -19,8 +19,9 @@ Changes (owner-run, one transaction; ADDITIVE columns, no back-fill, old rows ke
   * no_longer_true_since and escalated_at change only while the record is open and stays open;
   * stage, value and threshold change only while the record is open and stays open (a worse escalation updates the
     open row); id, strategy, rule, trigger, shown_at (= "Fired at"), worse and kind never change;
-  * an INSERT is open and unanswered, or an informational note: outcome 'dismissed', answer 'noted', answered_at set,
-    kind set (History only, never open, so never counted).
+  * an INSERT names its kind (NULL refused) and is open and unanswered (an actionable kind), or an informational
+    note (kind stop_fired, settled, orders_placed or stop_saved only): outcome 'dismissed', answer 'noted',
+    answered_at set (History only, never open, so never counted); 'noted' is never written by an UPDATE.
 - Grants: INSERT (shown_at, kind, outcome, answer, answered_at) (shown_at = the event time "Fired at", never in the
   future); UPDATE (stage, value, threshold, answer, answered_at,
   no_longer_true_since, escalated_at). public.ofo_assert_app_role_allowlist: block 23's suggestion part re-pinned.
@@ -64,6 +65,7 @@ GUARD = _M36.SUGGESTION_GUARD
 #: copy of ``ofo.alerts`` kinds (a test compares the two)
 KINDS = ("plan_loss_stop", "plan_profit_target", "plan_rupee_loss", "plan_rupee_profit", "plan_time_exit",
          "adjustment_rule", "side_closed", "stop_fired", "settled", "orders_placed", "stop_saved")
+INFORMATIONAL_KINDS = ("stop_fired", "settled", "orders_placed", "stop_saved")  # ofo.alerts: actionable False (a test compares)
 ANSWERS = ("exit", "continue", "add_legs", "confirm_new_shape", "closed_by_system", "noted")
 NEW_COLUMNS = ("kind", "answer", "answered_at", "no_longer_true_since", "escalated_at")
 INSERT_COLUMNS = (*_M36.SUGGESTION_INSERT_COLUMNS, "shown_at", "kind", "outcome", "answer", "answered_at")
@@ -86,13 +88,19 @@ def guard_sql() -> str:
                 IF NEW.shown_at > clock_timestamp() THEN
                     {raise_('a suggestion is never shown in the future')}
                 END IF;
+                IF NEW.kind IS NULL THEN
+                    {raise_('a new suggestion record names its kind')}
+                END IF;
                 IF NEW.answer IS NULL THEN
+                    IF NEW.kind IN ({_list(INFORMATIONAL_KINDS)}) THEN
+                        {raise_('an informational note is never open: it is stored already noted')}
+                    END IF;
                     IF NEW.outcome <> 'open' OR NEW.dismiss_reason IS NOT NULL OR NEW.answered_at IS NOT NULL
                        OR NEW.no_longer_true_since IS NOT NULL OR NEW.escalated_at IS NOT NULL THEN
                         {raise_('a suggestion record starts open')}
                     END IF;
                 ELSIF NOT (NEW.answer = 'noted' AND NEW.outcome = 'dismissed' AND NEW.dismiss_reason IS NULL
-                           AND NEW.kind IS NOT NULL AND NEW.answered_at IS NOT NULL
+                           AND NEW.kind IN ({_list(INFORMATIONAL_KINDS)}) AND NEW.answered_at IS NOT NULL
                            AND NEW.no_longer_true_since IS NULL AND NEW.escalated_at IS NULL) THEN
                     {raise_('only an informational note is stored already answered')}
                 END IF;
@@ -119,6 +127,9 @@ def guard_sql() -> str:
             IF NEW.answer IS DISTINCT FROM OLD.answer
                AND NOT (OLD.answer IS NULL AND OLD.outcome = 'open' AND NEW.outcome IN {_FINAL}) THEN
                 {raise_('an answer is written once, with the final outcome')}
+            END IF;
+            IF NEW.answer = 'noted' AND OLD.answer IS DISTINCT FROM 'noted' THEN
+                {raise_('a note is stored already noted; an open record is never noted afterwards')}
             END IF;
             IF NEW.answered_at IS DISTINCT FROM OLD.answered_at AND NEW.answer IS NOT DISTINCT FROM OLD.answer THEN
                 {raise_('the answer time is written only with the answer')}
