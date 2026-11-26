@@ -44,7 +44,10 @@ const upper = ref(null)
 const cards = ref([])
 const showAll = ref(false)
 const details = ref({})
-const errorParts = ref(null)
+// #745: one error slot per read (templates, expiries, indices, contracts, entries, outcome); a read that succeeds clears its own slot, so the box
+// shows only a read that is still failed (the first one, in this order).
+const readErrors = ref({})
+const errorParts = computed(() => Object.values(readErrors.value).find((v) => v) ?? null)
 const busy = ref(false)
 
 const isKnow = computed(() => objective.value === 'know')
@@ -73,8 +76,18 @@ const heading = computed(() => (notSure.value
   ? `Based on your expected range of ${lower.value}–${upper.value} by ${expiryLabel.value}, here are strategies you could consider`
   : 'Strategies you could consider'))
 
-async function read(fn) {
-  try { return await fn() } catch (e) { errorParts.value = e?.parts ?? (e?.code === 'ECONNABORTED' ? TIMED_OUT_PARTS : NEUTRAL_PARTS); return null }
+async function read(key, fn) {
+  try {
+    const out = await fn()
+    readErrors.value = { ...readErrors.value, [key]: null }
+    return out
+  } catch (e) {
+    readErrors.value = { ...readErrors.value, [key]: e?.parts ?? (e?.code === 'ECONNABORTED' ? TIMED_OUT_PARTS : NEUTRAL_PARTS) }
+    return null
+  }
+}
+function clearReads(prefix) {
+  readErrors.value = Object.fromEntries(Object.entries(readErrors.value).filter(([k]) => !k.startsWith(prefix)))
 }
 
 // The template list loads once on mount; Show strategies awaits this same load, so a click before the list arrives
@@ -82,7 +95,7 @@ async function read(fn) {
 let templatesLoad = Promise.resolve()
 onMounted(() => {
   settingsValues.load() // the range pick-list step and caps (REQ-167 AC-5)
-  templatesLoad = read(async () => (await api.get('/strategy-templates')).data?.templates)
+  templatesLoad = read('templates', async () => (await api.get('/strategy-templates')).data?.templates)
     .then((list) => { if (Array.isArray(list)) templates.value = list })
 })
 
@@ -104,22 +117,24 @@ function chooseView(key) {
   loadExpiries()
 }
 
+const readIndices = () => read('indices', async () => (await api.get('/market/indices')).data?.indices)
+const levelOf = (idx) => (Array.isArray(idx) ? (idx.find((i) => i.underlying === underlying.value)?.value ?? null) : null)
+
 async function loadExpiries() {
-  errorParts.value = null
   const [ex, idx] = await Promise.all([
-    read(async () => (await api.get(`/catalogue/${underlying.value}/expiries`)).data),
-    read(async () => (await api.get('/market/indices')).data?.indices),
+    read('expiries', async () => (await api.get(`/catalogue/${underlying.value}/expiries`)).data),
+    readIndices(),
   ])
   expiries.value = Array.isArray(ex?.expiries) ? ex.expiries : []
   shownToday.value = ex?.today ?? null
   setShownDate(shownToday.value)
-  current.value = Array.isArray(idx) ? (idx.find((i) => i.underlying === underlying.value)?.value ?? null) : null
+  current.value = levelOf(idx)
   expiry.value = ''
   contracts.value = []
 }
 
 async function chooseExpiry() {
-  const list = await read(async () => (await api.get(`/catalogue/${underlying.value}/contracts?expiry=${expiry.value}`)).data?.contracts)
+  const list = await read('contracts', async () => (await api.get(`/catalogue/${underlying.value}/contracts?expiry=${expiry.value}`)).data?.contracts)
   contracts.value = Array.isArray(list) ? list : []
   lower.value = current.value // REQ-026 AC-3: both levels start at the current level
   upper.value = current.value
@@ -133,7 +148,7 @@ async function readEntries(fitting) {
   const rest = [...new Set(fitting.flatMap(([, legs]) => legs.map((l) => l.instrument_id)))]
   const chunks = []
   while (rest.length) chunks.push(rest.splice(0, PLANNED_ENTRY_MAX))
-  const answers = await Promise.all(chunks.map((ids) => read(async () => (await api.post('/strategies/planned-entry', { underlying: underlying.value, instrument_ids: ids })).data?.entries)))
+  const answers = await Promise.all(chunks.map((ids, i) => read(`entries-${i}`, async () => (await api.post('/strategies/planned-entry', { underlying: underlying.value, instrument_ids: ids })).data?.entries)))
   return Object.fromEntries(answers.flatMap((entries) => (Array.isArray(entries) ? entries : [])).map((e) => [`${e.exchange_segment}:${e.exchange_token}`, e]))
 }
 
@@ -141,7 +156,7 @@ async function priceCard(template, legs, byId) {
   const card = { id: template.id, name: template.name, level: template.level, views: template.views, legs, summary: null, margin: null, entryGuideLine: null, priced: false }
   if (legs.some((l) => !byId[l.instrument_id] || byId[l.instrument_id].planned_entry === null)) return card // never guessed
   card.legs = legs.map((l) => ({ ...l, planned_entry: byId[l.instrument_id].planned_entry, captured_at: byId[l.instrument_id].captured_at, close_at: byId[l.instrument_id].close_at ?? null }))
-  const out = await read(async () => (await api.post('/strategies/outcome', {
+  const out = await read(`outcome-${template.id}`, async () => (await api.post('/strategies/outcome', {
     underlying: underlying.value,
     legs: card.legs.map((l) => ({ instrument_id: l.instrument_id, action: l.action, lots: l.lots, planned_entry: l.planned_entry, captured_at: l.captured_at })),
   })).data)
@@ -150,7 +165,10 @@ async function priceCard(template, legs, byId) {
 }
 
 async function showStrategies() {
+  // #745: the index level failed to read: the click asks again; while it is still failed the box names it (no silent no-op)
+  if (current.value === null) { current.value = levelOf(await readIndices()) }
   if (current.value === null) return
+  clearReads('entries'); clearReads('outcome')
   step.value = 4
   busy.value = true
   showAll.value = false
@@ -251,7 +269,7 @@ v-for="v in MARKET_VIEWS" :key="v.key" type="button" class="min-h-[44px] w-full 
         </template>
         <button
 type="button" class="btn btn-primary min-h-[44px] w-full sm:w-auto" data-testid="show-strategies"
-                :disabled="!expiry || !contracts.length || current === null" @click="showStrategies">Show strategies</button>
+                :disabled="!expiry || !contracts.length || (current === null && !readErrors.indices)" @click="showStrategies">Show strategies</button>
       </div>
 
       <div v-else class="mt-4" data-testid="step-results">
