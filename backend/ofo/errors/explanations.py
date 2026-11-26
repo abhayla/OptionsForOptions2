@@ -2087,9 +2087,9 @@ _EXPLANATIONS: tuple[ExplanationTemplate, ...] = (
                         "{count} strategies left out: their contracts have expired.", {"count": Count}),
     # P11 (ADR-330 (10), owner Q11): the Paper totals keep closed trades and say how many
     ExplanationTemplate("paper_totals_closed_one", "values_seen",
-                        "Includes 1 closed strategy; tick Show closed positions to list them"),
+                        "Includes 1 closed strategy."),
     ExplanationTemplate("paper_totals_closed_many", "values_seen",
-                        "Includes {count} closed strategies; tick Show closed positions to list them",
+                        "Includes {count} closed strategies.",
                         {"count": Count}),
     ExplanationTemplate("paper_reason_multi_expiry", "values_seen",
                         "Profit left and Loss left are not worked out: the open contracts have different expiries."),

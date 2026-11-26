@@ -13,8 +13,8 @@ from test_paper_routes import AT
 from test_paper_totals import _fixture, _list, _seed_three, _strategy, db  # noqa: F401 - db is a fixture
 from test_strategy_store import _ids, _saved_in
 
-ONE = "Includes 1 closed strategy; tick Show closed positions to list them"
-MANY = "Includes {n} closed strategies; tick Show closed positions to list them"
+ONE = "Includes 1 closed strategy."
+MANY = "Includes {n} closed strategies."
 _DELETE = "UPDATE public.strategies SET deleted_at = clock_timestamp() WHERE id = :id"
 
 
@@ -63,3 +63,11 @@ async def test_three_closed_is_plural(db):  # noqa: F811
         await _another_closed(db, sid, hours)
     totals = (await _list(app))["totals"]
     assert (totals["closed_count"], totals["closed_text"]) == (3, MANY.format(n=3))
+
+
+async def test_stored_closed_with_an_open_leg_is_not_counted(db):  # noqa: F811
+    """The count uses the list's own predicate (no open leg): status "closed" on 48, with open legs, adds none."""
+    app, _p, _c, _l, sid = await _seed_three(db)
+    await db.execute(text("UPDATE public.strategies SET status = 'closed' WHERE id = :id"), {"id": sid["48"]})
+    totals = (await _list(app))["totals"]
+    assert (totals["closed_count"], totals["closed_text"]) == (1, ONE)

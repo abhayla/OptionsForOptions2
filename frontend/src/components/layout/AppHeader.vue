@@ -141,6 +141,7 @@ function onToggleClick(e, key) {
 // The label is a link to the section's first path; when the page is already there, the click toggles the menu instead
 // of a no-op navigation that would close it. Elsewhere it navigates as before, with the menu closed.
 function onLabelClick(e, key) {
+  if (e.metaKey || e.ctrlKey || e.shiftKey || e.altKey || e.button) return
   if (route.path === firstBuiltPath(key)) {
     e.preventDefault()
     toggleMenu(key)

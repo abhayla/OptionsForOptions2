@@ -4332,11 +4332,11 @@
     "reviewed": "pending owner read"
   },
   "explanation:paper_totals_closed_one": {
-    "sha256": "270da99efe9bf4e633ce1c5d615cb8a6f596513d83453db66fd64b55871b82c5",
+    "sha256": "6f4736d24c413147a0ade57249f9898cd8663dbb0c1232791f468877ad6c9124",
     "reviewed": "pending owner read"
   },
   "explanation:paper_totals_closed_many": {
-    "sha256": "f8e7236720643321a02b84eae0bbac1ca4b9c2a80f764d1253a00a89c90af722",
+    "sha256": "29d7b3c3804f5c769dedeabf858f6b826b7ff58aa3e23dbd25fccc355d9f18af",
     "reviewed": "pending owner read"
   },
   "paper_trigger_already_crossed": {

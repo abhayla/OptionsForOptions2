@@ -1040,7 +1040,7 @@ async def list_paper_strategies(db: Annotated[Any, Depends(get_db)],  # noqa: PL
                               "open_count": open_legs, "position_count": len(figures["positions"])})
     kept = [i for i, s in enumerate(out) if not _expired_open(s)]  # D-40: the strategies that can be priced
     totals = _totals([out[i] for i in kept], [decays[i] for i in kept], len(out) - len(kept),
-                    sum(1 for s in out if s["status_word"] == "Completed"))
+                    sum(1 for s in out if s["open_count"] == 0 or s["state"] == "EXITED"))
     sorted_books = sorted(books, key=_newest_first, reverse=True)
     day = today_day([snapshots.get(b.underlying) for b in sorted_books], answered)
     today = today_totals([_today_item(out[i], decays[i], sorted_books[i]) for i in kept], day)
