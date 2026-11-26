@@ -1,6 +1,6 @@
 """Lane S (REQ-044 AC-3; ADR-008, ADR-016/018): the engine re-derives Zerodha's own `pnl` from Zerodha's own fields.
 
-Real input: tests/fixtures/kite_replies/positions-151006.json data.net[0] (NIFTY26O1923650CE, the owner's 16 Oct 2026
+Real input: tests/fixtures/kite_replies/positions-151006.json data.net[0] (the first net row, the owner's 16 Oct 2026
 round trip): sell_value 201.5 - buy_value 331.5 + 0 x 3.1 x 1 = -130.00 == Zerodha's pnl -130.
 """
 from __future__ import annotations
@@ -11,9 +11,16 @@ import pathlib
 from decimal import Decimal
 
 import pytest
-from ofo.engine.broker_pnl import BrokerPnl, broker_contract_pnl, broker_total
+from ofo.engine.real_pnl import (
+    BrokerPnl,
+    broker_contract_pnl,
+    broker_total,
+    contracts_without_figure,
+    count_without_figure,
+)
 
 FIXTURE = pathlib.Path(__file__).resolve().parents[1] / "fixtures" / "kite_replies" / "positions-151006.json"
+TWO_WITHOUT_FIGURE = 2
 FIELDS = ("pnl", "buy_value", "sell_value", "quantity", "last_price", "multiplier")
 
 
@@ -35,7 +42,7 @@ def test_real_open_row_is_stated():
     """The owner's real OPEN row (positions-122104.json, 16 Oct 2026 12:21:07): 0 - 331.5 + 65 x 5.1 x 1 = 0.00."""
     path = FIXTURE.with_name("positions-122104.json")
     row = json.loads(path.read_text(encoding="utf-8"))["data"]["net"][0]
-    assert row["quantity"] == 65 and row["pnl"] == 0
+    assert (row["quantity"], row["pnl"]) == (65, 0)
     got = broker_contract_pnl(fields(row))
     assert got == BrokerPnl("stated", Decimal("0.00"), Decimal("0.00"), Decimal("0.00"))
 
@@ -111,17 +118,13 @@ def test_total_is_exact_sum_only_when_every_row_is_stated():
 
 
 def test_count_without_figure():
-    from ofo.engine.broker_pnl import count_without_figure
-
     ok = broker_contract_pnl(fields(real_row()))
     assert count_without_figure([ok, BrokerPnl("mismatch", None, None, None), BrokerPnl("not_available", None, None,
-                                                                                        None)]) == 2
+                                                                                        None)]) == TWO_WITHOUT_FIGURE
     assert count_without_figure([]) == 0
 
 
 def test_contracts_without_figure_counts_one_contract_once():
-    from ofo.engine.broker_pnl import contracts_without_figure
-
     ok = broker_contract_pnl(fields(real_row()))
     bad = BrokerPnl("shared", None, None, None)
     assert contracts_without_figure([("A", bad), ("A", bad), ("B", ok)]) == (1, 2)

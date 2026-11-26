@@ -595,7 +595,7 @@ async def test_req118_a_busy_zerodha_orders_read_is_the_busy_text_never_a_broken
     assert render("gate_broker_unconfirmed").what_happened not in resp.text
 
 
-# --- Lane S (REQ-044 AC-3; ADR-330 (10), (24)): the Real P&L figure per row and as a total --------------------------------
+# --- Lane S (REQ-044 AC-3; ADR-330 (10), (24)): the Real P&L figure per row and as a total ----------------------
 IST = datetime.timezone(datetime.timedelta(hours=5, minutes=30))
 CAPTION = "Zerodha, as at 12:21:00 IST"
 NOTE = "Excludes contracts not in a strategy here and contracts closed today."
@@ -606,14 +606,15 @@ READ_AT = datetime.datetime(2026, 10, 16, 12, 21, 0, tzinfo=IST)
 
 
 def _fresh(monkeypatch, read_at) -> None:
-    """Zerodha's read time is the periodic job's own clock (kite_period_reads.utc_now); the route clock is 12:21:04 IST."""
+    """Zerodha's read time is the periodic job's own clock (kite_period_reads.utc_now); the route clock is 12:21:04
+    IST."""
     from ofo_app import kite_period_reads  # noqa: PLC0415
 
     monkeypatch.setattr(kite_period_reads, "utc_now", lambda: read_at)
 
 
 def _entry(**changes) -> dict:
-    """The REAL open row of positions-122104.json (NIFTY26O1923650CE +65, buy_value 331.5, last 5.1, pnl 0) with changes."""
+    """The REAL open row of positions-122104.json (NIFTY26O1923650CE +65, buy_value 331.5, last 5.1, pnl 0), changed."""
     data = copy.deepcopy(_reply(POSITIONS_ENTRY))
     data["net"][0].update(changes)
     return data
@@ -790,8 +791,7 @@ async def test_review_two_strategies_each_holding_65_against_zerodha_65_are_both
     body = await _pnl(monkeypatch, (app_engine, admin_engine), _reply(POSITIONS_ENTRY), plans="two_holders",
                       orders=lambda ids: _second_holders_orders(ids["second"]))
     rows = [c for g in body["strategies"] for c in g["contracts"]]
-    assert len(rows) == 2, body
-    assert [(r["pnl"], r["pnl_state"], r["pnl_reason"]) for r in rows] == [(None, "shared", SHARED)] * 2
+    assert [(r["pnl"], r["pnl_state"], r["pnl_reason"]) for r in rows] == [(None, "shared", SHARED)] * 2, body
     assert (body["real_pnl"]["state"], body["real_pnl"]["value"]) == ("partial", None)
     assert body["real_pnl"]["reason"] == "1 of 1 contracts have no figure, so no total is shown."
 
@@ -824,7 +824,7 @@ def _round_trip(tag: str, *, status: str = "COMPLETE", filled: int = 65) -> list
     return rows
 
 
-ROUND_TRIP = dict(buy_value=D("656.5"), sell_value=D("260"), pnl=D("-65"))
+ROUND_TRIP = {"buy_value": D("656.5"), "sell_value": D("260"), "pnl": D("-65")}
 
 
 @pytest.mark.usefixtures("app_engine")

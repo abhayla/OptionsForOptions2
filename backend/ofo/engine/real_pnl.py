@@ -40,7 +40,7 @@ _NOT_AVAILABLE: Final = BrokerPnl(NOT_AVAILABLE, None, None, None)
 
 
 def _exact(raw: object) -> Decimal | None:
-    """One Zerodha figure as an exact finite Decimal, or None (absent, bool, float, text that is not a plain decimal)."""
+    """One Zerodha figure as an exact finite Decimal, or None (absent, bool, float, not a plain decimal)."""
     if isinstance(raw, bool) or raw is None:
         return None
     if isinstance(raw, Decimal):

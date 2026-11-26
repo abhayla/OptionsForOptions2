@@ -13,7 +13,7 @@ design rests on the spec and the existing adapter code only.
 
 - Per contract, the figure is **Zerodha's own `pnl`** from `GET /portfolio/positions` (read through the existing
   adapter, at most once per 45 s, `kite_period_reads.screen_positions`). The caption reads "Zerodha, as at HH:MM:SS IST".
-- The one engine (`backend/ofo/engine/broker_pnl.py`) re-derives it from Zerodha's own fields:
+- The one engine (`backend/ofo/engine/real_pnl.py`) re-derives it from Zerodha's own fields:
   `sell_value - buy_value + quantity x last_price x multiplier`, exact Decimal, both sides quantized to the paisa
   (half-even). Shown only when the two agree.
 - A row shows a figure only if ONE predicate, `sole_holder` (`backend/ofo_app/routes/positions.py`), holds:

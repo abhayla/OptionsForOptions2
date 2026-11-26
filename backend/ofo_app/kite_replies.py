@@ -21,6 +21,7 @@ Any missing or unknown required field raises `KiteReplyError` (fail closed).
 """
 from __future__ import annotations
 
+import contextlib
 import datetime
 import logging
 import math
@@ -30,6 +31,7 @@ from dataclasses import dataclass, field
 from decimal import Decimal
 from typing import Final
 
+from ofo.engine import real_pnl
 from ofo.engine.legs import Action, Instrument
 from ofo.execution.partial import BrokerOrderStatus
 from ofo.instruments.catalogue import SUPPORTED_UNDERLYINGS, Catalogue
@@ -279,14 +281,10 @@ def platform_may_own(row: Mapping[str, object]) -> bool:
     return SUPPORTED_UNDERLYINGS.get(shape["underlying"]) == segment
 
 
-#: The six Zerodha fields the engine's P&L check reads (``ofo.engine.broker_pnl.FIELDS``).
-_MONEY_FIELDS: Final = ("pnl", "buy_value", "sell_value", "quantity", "last_price", "multiplier")
-
-
 def _money_fields(row: Mapping[str, object]) -> dict[str, Decimal | None]:
     """The six P&L fields of one row, exact; one that is absent, null or malformed is None (never refuses the read)."""
     out: dict[str, Decimal | None] = {}
-    for name in _MONEY_FIELDS:
+    for name in real_pnl.FIELDS:  # the six fields the engine's P&L check reads
         try:
             out[name] = kite_money(row[name], name, exact=True) if name in row else None
         except KiteReplyError:
@@ -316,10 +314,8 @@ def positions_from_reply(data: Mapping[str, object], index: ContractIndex) -> Po
             ours = _flat_row_may_be_ours(row)
             flat_platform += ours
             if ours:
-                try:
+                with contextlib.suppress(KiteReplyError):  # not in the catalogue: no strategy can hold it
                     flat_keys.add(index.resolve(row))
-                except KiteReplyError:
-                    pass  # not in the catalogue: no strategy can hold it, so no open row of ours shares it
             continue  # quantity 0: no position (never a 0-price holding)
         if not platform_may_own(row):
             ignored.append(f"{_text(row, 'exchange')}:{_text(row, 'tradingsymbol')}")
