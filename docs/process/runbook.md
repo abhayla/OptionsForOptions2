@@ -91,7 +91,7 @@ regenerated file its `--check`. Red CI: read `gh run view <id> --log-failed`, fi
 **Fast pre-check before every prepush run (owner, 2026-11-26; applies to every session and every lane brief).** On
 26 Nov, 12 prepush runs failed in preflight on repo scans and each cost a second ~35 min run (four runs for one push).
 Before starting prepush, run on the exact tree (about 5 to 8 min) and start prepush only when all are green:
-`pytest tests -m repo_scan -q`; `python scripts/ruff_ratchet.py`; `python scripts/orchestrator/coverage.py . --check
+`python -m pytest tests -m repo_scan -q` (with `python -m`: a bare `pytest` cannot import `tests`); `python scripts/ruff_ratchet.py`; `python scripts/orchestrator/coverage.py . --check
 --no-gh`; the regenerated files' checks (openapi, spec digest, findings index); `tests_app/test_reply_inventory.py`
 and `tests_app/test_order_closure_all_routes.py` when a route or reply model changed; `python tools/ci_local.py`;
 vitest for the touched files (all of it after a merge). Run prepush in the background with a 2-hour limit and build
