@@ -730,6 +730,8 @@ issues:
   "#739": S6.7  # localDay() uses the browser's day, so "days left" is a day off outside IST near midnight
   "#740": S6.7  # The monitor's market calendar is not may_act's
   "#741": S6.7  # Two tracking legs of one contract each show the whole net figure on the Paper P&L panel, rows sum to twice the book total
+  "#742": S6.7  # Read-only routes reach order code through playbook_store's strategy_store import (17 routes pinned)
+  "#743": S6.7  # A held alert episode ends on the held step, not the rule's line (one held row per close after the cap)
   "#744": S6.7  # Builder of a paper trade: Full table, leg-list now price, Paper P&L rows after a failed read read another source (N-07 remainder)
   "#745": S6.7  # Create Strategy: a timed-out expiries or indices read leaves the took-too-long box (N-02)
   "#746": S6.7  # order_book_store maps every database error in its savepoint to BAD_HOLDING (busy database)
