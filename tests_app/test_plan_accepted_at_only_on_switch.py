@@ -155,14 +155,14 @@ async def test_a_playbook_change_without_the_acceptance_signal_does_not_stamp(db
 
 
 async def test_post_with_the_same_playbook_id_is_a_new_acceptance(db):
-    user, strategy, system, old = await _old_plan(db)
+    user, strategy, _, old = await _old_plan(db)
     again = await pbs.accept_plan(db, user, strategy.id, old.playbook_id, accepts=True)
     assert again.playbook_id == old.playbook_id and again.accepted_at > old.accepted_at
     assert await check.plan_saved_before_adr247(db, again) is False
 
 
 async def test_reset_to_playbook_on_the_strategy_82_shape_is_a_new_acceptance_with_the_credit_line(db):
-    user, strategy, system, old = await _old_plan(db)
+    user, strategy, _, old = await _old_plan(db)
     body = copy.deepcopy(old.body)
     body["guards"]["stop_line_pct_of_margin"] = "4"
     body["triggers"]["T-16"]["on"] = True  # the pre-ADR-247 shape: margin stop and T-16 on
