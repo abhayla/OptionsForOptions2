@@ -14,6 +14,7 @@ from __future__ import annotations
 
 import copy
 import datetime
+import json
 
 import pytest
 from ofo_app import adjustment_check as check
@@ -95,7 +96,7 @@ async def test_several_body_edits_with_the_playbook_unchanged_never_move_accepte
 async def test_switching_to_another_playbook_is_a_new_acceptance(db):
     user, strategy, system, old = await _old_plan(db)
     own = await pbs.duplicate(db, user, system.id, "My IC")
-    switched = await pbs.accept_plan(db, user, strategy.id, own.id)
+    switched = await pbs.accept_plan(db, user, strategy.id, own.id, accepts=True)
     assert switched.playbook_id == own.id
     assert switched.accepted_at > old.accepted_at
     assert switched.accepted_at >= await pbs.adr247_saved_at(db)
@@ -106,7 +107,7 @@ async def test_a_switch_to_a_playbook_with_the_same_body_still_stamps(db):
     """0041's own case: the body is equal, only the playbook differs."""
     user, strategy, system, old = await _old_plan(db)
     own = await pbs.duplicate(db, user, system.id, "Same body")
-    switched = await pbs.accept_plan(db, user, strategy.id, own.id, old.body)
+    switched = await pbs.accept_plan(db, user, strategy.id, own.id, old.body, accepts=True)
     assert switched.body == old.body and switched.playbook_id == own.id
     assert switched.accepted_at > old.accepted_at
 
@@ -114,7 +115,7 @@ async def test_a_switch_to_a_playbook_with_the_same_body_still_stamps(db):
 async def test_a_switch_plus_a_body_edit_stamps(db):
     user, strategy, system, old = await _old_plan(db)
     own = await pbs.duplicate(db, user, system.id, "Other")
-    switched = await pbs.accept_plan(db, user, strategy.id, own.id, _with_target(old.body, "33"))
+    switched = await pbs.accept_plan(db, user, strategy.id, own.id, _with_target(old.body, "33"), accepts=True)
     assert switched.accepted_at > old.accepted_at
 
 
@@ -132,18 +133,74 @@ async def test_an_edit_after_the_cutoff_on_a_new_plan_behaves_as_today(db):
     assert after.saved_before_adr247 is False and sif.credit_line_applies(after) is True
 
 
-async def test_a_plan_whose_playbook_was_deleted_and_is_re_pointed_is_a_new_acceptance(db):
-    """playbook_id NULL -> a playbook is a switch (0041 kept this); playbook deleted -> NULL is not."""
-    user, strategy, system, _ = await _old_plan(db)
-    own = await pbs.duplicate(db, user, system.id, "Gone")
-    await pbs.accept_plan(db, user, strategy.id, own.id)
+async def test_a_sheet_edit_that_re_points_a_null_playbook_plan_keeps_accepted_at(db):
+    """Finding 2: an old plan whose playbook was deleted (playbook_id NULL) is re-pointed at the active playbook by a
+    PUT sheet edit (accepts False): it must still read as saved before ADR-247, with no 2x-credit line."""
+    user, strategy, system, old = await _old_plan(db)
     await db.execute(text("UPDATE public.strategy_adjustment_plans SET playbook_id = NULL WHERE strategy_id = :s"),
                      {"s": strategy.id})  # what ON DELETE SET NULL does
     nulled = await pbs.plan_for(db, user, strategy.id)
-    assert nulled.playbook_id is None
-    await db.execute(text("SELECT pg_sleep(0.01)"))
-    again = await pbs.accept_plan(db, user, strategy.id, system.id)
-    assert again.accepted_at > nulled.accepted_at
+    assert nulled.playbook_id is None and nulled.accepted_at == old.accepted_at
+    edited = await pbs.accept_plan(db, user, strategy.id, system.id, _with_target(old.body, "35"))
+    assert edited.playbook_id == system.id and edited.accepted_at == old.accepted_at
+    after = await _resolved(db, user, strategy)
+    assert after.saved_before_adr247 is True and sif.credit_line_applies(after) is False
+
+
+async def test_a_playbook_change_without_the_acceptance_signal_does_not_stamp(db):
+    user, strategy, system, old = await _old_plan(db)
+    own = await pbs.duplicate(db, user, system.id, "Pointer only")
+    moved = await pbs.accept_plan(db, user, strategy.id, own.id)  # accepts False: a sheet edit
+    assert moved.playbook_id == own.id and moved.accepted_at == old.accepted_at
+
+
+async def test_post_with_the_same_playbook_id_is_a_new_acceptance(db):
+    user, strategy, system, old = await _old_plan(db)
+    again = await pbs.accept_plan(db, user, strategy.id, old.playbook_id, accepts=True)
+    assert again.playbook_id == old.playbook_id and again.accepted_at > old.accepted_at
+    assert await check.plan_saved_before_adr247(db, again) is False
+
+
+async def test_reset_to_playbook_on_the_strategy_82_shape_is_a_new_acceptance_with_the_credit_line(db):
+    user, strategy, system, old = await _old_plan(db)
+    body = copy.deepcopy(old.body)
+    body["guards"]["stop_line_pct_of_margin"] = "4"
+    body["triggers"]["T-16"]["on"] = True  # the pre-ADR-247 shape: margin stop and T-16 on
+    await db.execute(text("ALTER TABLE public.strategy_adjustment_plans DISABLE TRIGGER USER"))
+    await db.execute(text("UPDATE public.strategy_adjustment_plans SET body = CAST(:b AS JSONB) "
+                          "WHERE strategy_id = :s"), {"b": json.dumps(body), "s": strategy.id})  # saved long ago
+    await db.execute(text("ALTER TABLE public.strategy_adjustment_plans ENABLE TRIGGER USER"))
+    before = await _resolved(db, user, strategy)
+    assert before.saved_before_adr247 is True and sif.credit_line_applies(before) is False
+    reset = await pbs.reset_plan(db, user, strategy.id)
+    assert reset.accepted_at > old.accepted_at
+    after = await _resolved(db, user, strategy)
+    assert after.saved_before_adr247 is False and sif.credit_line_applies(after) is True
+
+
+async def test_the_signal_is_cleared_after_an_acceptance_so_a_later_edit_in_the_same_transaction_keeps(db):
+    user, strategy, _, old = await _old_plan(db)
+    accepted = await pbs.accept_plan(db, user, strategy.id, old.playbook_id, accepts=True)
+    assert (await db.execute(text("SELECT current_setting('ofo.plan_acceptance', true)"))).scalar_one() == "off"
+    edited = await pbs.accept_plan(db, user, strategy.id, old.playbook_id, _with_target(old.body, "31"))
+    assert edited.accepted_at == accepted.accepted_at
+
+
+async def test_the_first_save_stamps_without_any_signal(db):
+    user = _user()
+    _, strategy = await _with_draft(db, user)
+    system = await pbs.active_for(db, user, "ic")
+    first = await pbs.accept_plan(db, user, strategy.id, system.id)
+    assert first.accepted_at >= await pbs.adr247_saved_at(db)
+
+
+def test_only_the_post_route_and_reset_pass_the_acceptance_flag():
+    import pathlib  # noqa: PLC0415
+
+    root = pathlib.Path(__file__).resolve().parents[1] / "backend/ofo_app"
+    route = (root / "routes/adjustment_plan.py").read_text(encoding="utf-8")
+    assert route.count("accepts=") == 1 and "accepts=not edit" in route  # PUT /rules (save_rules) passes none
+    assert "accepts=True)" in (root / "playbook_store.py").read_text(encoding="utf-8")
 
 
 async def test_the_application_role_cannot_set_accepted_at_directly(app_engine):

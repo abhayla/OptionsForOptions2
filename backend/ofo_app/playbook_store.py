@@ -706,14 +706,23 @@ def _plan(row: Any) -> Plan:
                 stop_base=None if row[5] is None else _load(row[5]))
 
 
+#: #753 (migration 0058): the plan guard stamps ``accepted_at`` on an UPDATE only while this transaction-local setting
+#: is 'on'. Set right before the write of an explicit acceptance (accept a playbook, Reset), cleared right after.
+PLAN_ACCEPTANCE_SETTING = "ofo.plan_acceptance"
+_SET_ACCEPTANCE = text(f"SELECT set_config('{PLAN_ACCEPTANCE_SETTING}', :v, true)")
+
+
 async def accept_plan(conn: Any, user_ref: str, strategy_id: int, playbook_id: int,  # noqa: PLR0913 - the stop base is stored with the plan
-                      body: object | None = None, stop_base: dict | None = None) -> Plan:
+                      body: object | None = None, stop_base: dict | None = None, *, accepts: bool = False) -> Plan:
     """REQ-161 AC-2/AC-3: the plan is a copy of the chosen playbook's body (or the customised sheet's body, same
     type); accepting again replaces the strategy's own plan. ADR-330 (1): ``stop_base`` (worked out from the entry
     orders by the caller) is stored with it and REPLACES the old one, so a plan edit recomputes it; None = nothing
     worked
     out now: a stored base is KEPT (never overwritten by NULL), and none stored stays none (the first check works it
-    out once)."""
+    out once).
+    #753 / ADR-250: ``accepts`` is True only for an explicit acceptance (the user accepting a playbook, Reset to
+    playbook): then ``accepted_at`` is stamped. False (a plan-sheet edit, the default) never moves it, whatever the
+    body or the playbook pointer do; the first save always stamps (column default)."""
     await strategy_store.lock_strategy(conn, user_ref, strategy_id)  # not_found for a missing / another user's
     source = await get(conn, user_ref, playbook_id)
     current = await plan_for(conn, user_ref, strategy_id)
@@ -727,9 +736,15 @@ async def accept_plan(conn: Any, user_ref: str, strategy_id: int, playbook_id: i
         extra = sorted(set(extra) - set(plan_diff.added(current.body, source.body)))  # stays; only NEW ones are refused
     if extra:  # ADR-330 (9): a plan cannot add a condition its playbook lacks; the section is named, never the key
         raise _bad(extra[0].split(".", 1)[0])
-    row = (await conn.execute(_UPSERT_PLAN, {"strategy_id": strategy_id, "playbook_id": source.id,
-                                             "type": source.strategy_type, "body": _dump(copy),
-                                             "stop_base": None if stop_base is None else _dump(stop_base)})).one()
+    if accepts:
+        await conn.execute(_SET_ACCEPTANCE, {"v": "on"})
+    try:
+        row = (await conn.execute(_UPSERT_PLAN, {"strategy_id": strategy_id, "playbook_id": source.id,
+                                                 "type": source.strategy_type, "body": _dump(copy),
+                                                 "stop_base": None if stop_base is None else _dump(stop_base)})).one()
+    finally:
+        if accepts:
+            await conn.execute(_SET_ACCEPTANCE, {"v": "off"})
     return _plan(row)
 
 
@@ -744,7 +759,7 @@ async def reset_plan(conn: Any, user_ref: str, strategy_id: int, stop_base: dict
         raise _not_found(None if current is None else "of this plan")
     source = await get(conn, user_ref, current.playbook_id)  # not found when the playbook is gone
     return await accept_plan(conn, user_ref, strategy_id, source.id, plan_diff.reset(current.body, source.body),
-                             stop_base)
+                             stop_base, accepts=True)  # ADR-330 (9): Reset to playbook is an acceptance (#753)
 
 
 _BACKFILL_STOP_BASE = text("UPDATE public.strategy_adjustment_plans SET stop_base = CAST(:value AS JSONB) "

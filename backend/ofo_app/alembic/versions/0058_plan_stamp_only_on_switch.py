@@ -1,4 +1,4 @@
-"""A plan's ``accepted_at`` moves only when the plan switches to another playbook, never on an edit of its body (#753).
+"""A plan's ``accepted_at`` moves only on an explicit acceptance, never on an edit (#753).
 
 Spec basis: ADR-250 ("a strategy plan saved before ADR-247 keeps its own stop alerts exactly as saved ... and does NOT
 gain the 2x-credit stop ... Why: nothing under a live position changes without the user choosing it"); ADR-252
@@ -11,12 +11,19 @@ Defect (measured on strategy 82's shape): 0041 made the plan guard stamp ``accep
 against the ADR-247 version time, so editing only the target of a plan saved before ADR-247 moved it past the cutoff
 and the plan gained the 2x-credit stop under a live position, a change the user never chose.
 
-Mechanism: this replaces ONLY ``public.strategy_adjustment_plans_guard``: ``accepted_at`` is stamped (clock) only when
-``playbook_id`` changes to another, non-NULL playbook (a playbook deleted -> playbook_id NULL is not an acceptance;
-NULL -> a playbook is). Otherwise ``accepted_at`` keeps its old value, whatever the body does. A plan has no playbook
-version column: a newer system playbook version is a copy made from the same playbook row, so a re-accept of the SAME
-playbook_id does not stamp (see "Open fork" below). The stop base (0055) is not looked at by the guard and still
-follows ``accept_plan`` unchanged.
+Mechanism: this replaces ONLY ``public.strategy_adjustment_plans_guard``. On UPDATE, ``accepted_at`` is stamped
+(clock) only while the transaction-local setting ``ofo.plan_acceptance`` is ``'on'``; otherwise it keeps its old value,
+whatever the body or ``playbook_id`` do. INSERT (the first save) takes the column default, a stamp, as before. The
+store sets the signal (``SELECT set_config('ofo.plan_acceptance', 'on', true)``) right before the write of an explicit
+acceptance and sets it ``'off'`` right after: (a) the first save, (b) the user accepting a playbook (POST
+/adjustment-plan, any playbook id, the same one included: it takes the newest version, ADR-252 addendum), (c) Reset to
+playbook. A plan-sheet edit (PUT) never sets it, so it never stamps, also when it re-points a plan whose playbook was
+deleted (playbook_id NULL) at the active playbook. A bare ``playbook_id`` change without the signal does not stamp (0041
+stamped on it; the NULL toggle of an earlier draft of this migration made a sheet edit of an old plan read as saved
+after ADR-247). The stop base (0055) is not looked at by the guard and follows ``accept_plan`` unchanged.
+
+Known bypass: the application role can set the setting itself. It is the app's own code path, as the NULL toggle was;
+the role still cannot write the column (no column grant) and the guard still ignores any value it tries to write.
 
 Additive, no row changed: existing rows are NOT repaired. A plan whose ``accepted_at`` was already moved by an
 earlier edit keeps that value; undoing it is the owner's choice per row (ADR-250: "nothing ... changes without the
@@ -26,11 +33,10 @@ Re-pin: the app-role allow-list pins md5 of this function's body (block 23), so 
 body in 0057's chain text (fails closed, RuntimeError, when the old pin is not in the chain exactly once). Downgrade
 re-installs 0041's function and 0057's chain text exactly. Both end with the ``'post'`` check.
 
-Old-code safety: the database function is the only change. Code before this migration works against it: the one
-behaviour that differs is that a body-only edit no longer restamps (a test that pins that restamp fails by design).
-
-Open fork (owner): a re-accept of the same system playbook after its text changed (a "newer version" with the same
-playbook_id) can no longer be told from an edit by the database, so it does not stamp. The app has no such flow today.
+Old-code safety: code before this migration (12bc1852) never sets the signal, so on a 0058 database an accept it makes
+(POST or Reset) does NOT stamp: the plan keeps its earlier ``accepted_at`` (an old plan stays "saved before ADR-247",
+no credit stop gained), and its edits no longer restamp. New code against a 0057 database (0041's function) still
+works: it stamps on every body change and the extra setting is ignored. Deploy: migrate, then new code.
 
 Revision ID: 0058_plan_stamp_only_on_switch
 Revises: 0057_history_delete_entries
@@ -47,10 +53,11 @@ down_revision = "0057_history_delete_entries"
 branch_labels = None
 depends_on = None
 
-# 0041's stamping test (body changed OR playbook switched) and the one this migration installs (playbook switched)
+# 0041's stamping test (body changed OR playbook switched) and the one this migration installs (explicit acceptance)
 OLD_TEST = ("IF NEW.body IS DISTINCT FROM OLD.body OR (NEW.playbook_id IS NOT NULL "
             "AND NEW.playbook_id IS DISTINCT FROM OLD.playbook_id) THEN")
-NEW_TEST = "IF NEW.playbook_id IS NOT NULL AND NEW.playbook_id IS DISTINCT FROM OLD.playbook_id THEN"
+SIGNAL = "ofo.plan_acceptance"
+NEW_TEST = f"IF coalesce(current_setting('{SIGNAL}', true), '') = 'on' THEN"
 
 
 def _load(filename: str, name: str):
