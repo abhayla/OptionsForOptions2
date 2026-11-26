@@ -259,9 +259,12 @@ class PaperMonitor:
                              prices: Mapping[int, Any], now: datetime.datetime) -> ExplanationText | None:
         """ADR-330 (6): "If this stop fires, max loss becomes Rs X (now Rs Y)", from the one engine through the SAME
         functions the Stops panel's route uses (``routes.paper``), judged on the book BEFORE the exit was written.
-        A leg stop is priced AT ITS STOP LEVEL, exactly as the line the user saw when saving it (the fill price is the
-        live tick and can gap past it; the line is the stop's own promise). An index exit closes every open leg at the
-        fill prices and gets a line only when the exit confirmation's own check says yes. Answer states: yes -> line;
+        A leg stop is priced AT ITS RECORDED FILL (the "exited at" price of the same message), so the figure is the
+        position actually held after the exit, the one the Positions page shows (Lane J review 26 Nov: a tick that gaps
+        past the level, e.g. stop 140.70 filled at 180.00, priced at the level understated max loss by Rs 2,554.50;
+        without a gap the fill equals the level and the line is the one the user saw when saving). An index exit
+        closes every open leg at the fill prices and gets a line only when the exit confirmation's own check says yes.
+        Answer states: yes -> line;
         no / cannot_tell -> None (no figure); any failure -> logged, None. The exit and its record never wait on it
         (the exit already happened): the read runs in a savepoint so a failed statement cannot poison the fire."""
         from ofo_app.routes import paper as paper_routes  # noqa: PLC0415 - the routes import this module
@@ -270,7 +273,8 @@ class PaperMonitor:
                 names, terms = await paper_routes.names_and_terms(session, a.underlying, book)
                 if t.kind == "leg_stop":
                     answer = paper_routes.leg_stop_answer(
-                        book, open_net[t.contract_id], t.contract_id, t.level, names, terms, now)
+                        book, open_net[t.contract_id], t.contract_id, prices[t.contract_id],
+                        names, terms, now)
                 else:
                     answer = paper_routes.index_exit_answer(book, {c: prices[c] for c in sorted(open_net)}, terms,
                                                             names, now)

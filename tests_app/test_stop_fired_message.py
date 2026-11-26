@@ -1,9 +1,11 @@
 """W2-A (ADR-330 (3b), (6), (19)(b); owner Q2; the owner's one-module instruction): a fired Stops-panel exit is raised
 through ``actionable_alerts.inform`` (kind stop_fired) in the exit's own transaction, with the max-loss line from the
-ONE function the Stops panel's route uses (``routes.paper.leg_stop_answer``), priced at the stop level.
+ONE function the Stops panel's route uses (``routes.paper.leg_stop_answer``), priced at the recorded fill (the
+"exited at" price of the same message; Lane J review 26 Nov: a gapped fill priced at the level understated max loss).
 
 The book is the app's iron condor of tests_app/test_leg_stop_risk.py: a stop on the short call at 140.70
-turns Max Loss 2,860.00 into 12,005.50. States: yes -> line; no / cannot_tell -> no line; an exception
+turns Max Loss 2,860.00 into 12,005.50 at 140.70 exactly; each 0.05 above it adds Rs 3.25
+(65 units). States: yes -> line; no / cannot_tell -> no line; an exception
 while computing it -> no line, logged, the exit and the record are still written. Every test rolls back.
 """
 from __future__ import annotations
@@ -24,7 +26,8 @@ D = Decimal
 AT = datetime.datetime(2026, 11, 25, 5, 0, tzinfo=datetime.UTC)
 SIDES, PRICES = ("SELL", "BUY", "SELL", "BUY"), ("80", "20", "130", "34")
 SHORT_CALL, LONG_CALL = 0, 1
-LINE = "If this stop fires, max loss becomes Rs 12,005.50 (now Rs 2,860.00)."
+LINE = "If this stop fires, max loss becomes Rs 12,025.00 (now Rs 2,860.00)."  # filled at 141.00 (stop 140.70)
+GAP_LINE = "If this stop fires, max loss becomes Rs 14,560.00 (now Rs 2,860.00)."  # filled at 180.00
 
 
 @pytest.fixture
@@ -71,6 +74,15 @@ async def test_a_fired_leg_stop_is_one_informational_history_row_with_the_max_lo
     assert await aa.unanswered_count(db, user) == 0  # the bell is unchanged
     row = next(a for a in await aa.history(db, user) if a.strategy_id == stored.id)
     assert (row.kind, row.answer, row.outcome) == ("stop_fired", "noted", "dismissed")
+
+
+async def test_a_gapped_fill_prices_the_line_at_the_fill_the_route_gives_for_that_price(db):
+    """Review MAJOR 1: stop 140.70, the tick gaps to 180.00; the line is the position actually held, the same figure
+    the Stops panel's route gives for a level of 180.00, never the 140.70 figure."""
+    _, stored, _, fires = await _fire_leg(db, SHORT_CALL, "140.70", "180.00")
+    [(_, text)] = await _alerts(db, stored.id)
+    assert fires == 1 and GAP_LINE in text and "exited at 180.00" in text
+    assert "12,005.50" not in text
 
 
 async def test_a_failing_line_computation_never_stops_the_exit_or_the_record(db, monkeypatch):
