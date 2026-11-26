@@ -840,16 +840,15 @@ class DbGateStore:
     async def raise_side_closed(self, w: Watched, at: datetime.datetime) -> int | None:
         """ADR-330 (2): when one side of the entry condor is closed, ONE side_closed alert through the one alert module
         (``side_closed.raise_if_closed``); the id, or None when nothing is closed or it was raised before."""
-        from ofo_app import playbook_store, side_closed  # noqa: PLC0415 - database layer at run time
+        from ofo_app import side_closed  # noqa: PLC0415 - database layer at run time
         from ofo_app.db import get_sessionmaker  # noqa: PLC0415
-        source = playbook_store.SOURCE_SYSTEM if w.is_system else playbook_store.SOURCE_OWN
-        async with get_sessionmaker()() as db:
-            found = await side_closed.raise_if_closed(db, w.user_ref, w.strategy_id, w.tracked, at=at, source=source)
+        async with get_sessionmaker()() as db:  # no source: the notice is not an adjustment flag
+            found = await side_closed.raise_if_closed(db, w.user_ref, w.strategy_id, w.tracked, at=at, source=None)
             await db.commit()
         return found
 
 
-Lister =Callable[[], Awaitable[list[Watched]]]
+Lister = Callable[[], Awaitable[list[Watched]]]
 Recorder = Callable[[Watched, pe.StrategyState, Preferences], Awaitable[Any]]
 #: (underlying, IST trading day, expiry, ATM IV) -> stored (ADR-277 (4)); ``record_daily_iv`` is the real one
 DailyIvRecorder = Callable[[str, datetime.date, datetime.date, Decimal], Awaitable[Any]]

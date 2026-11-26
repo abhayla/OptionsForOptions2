@@ -147,5 +147,58 @@ async def test_condor_shape_only(db):
     assert await side_closed.raise_if_closed(db, user, sid, wide, at=AT) is None  # not entered as a condor
 
 
+REVERSE_CONDOR = (("BUY", "CE", 24500), ("SELL", "CE", 24700), ("BUY", "PE", 24000), ("SELL", "PE", 23800))
+BUTTERFLY = (("SELL", "CE", 24500), ("BUY", "CE", 24700), ("SELL", "PE", 24500), ("BUY", "PE", 24300))
+SHORT_CONDOR_WIDE = (("SELL", "CE", 24500), ("BUY", "CE", 24700), ("SELL", "PE", 24000), ("BUY", "PE", 23800))
+
+
+def _entered(rows, left):
+    def pos(r):
+        return Position("NIFTY", 65, "weekly", datetime.date.min, _legs(r))
+    return SimpleNamespace(entry_position=pos(rows), position=pos(left))
+
+
+@pytest.mark.parametrize("rows", [REVERSE_CONDOR, BUTTERFLY])
+async def test_only_a_short_condor_is_a_condor(db, rows):
+    """Reverse (long) condor and butterfly: no alert; the wings must sit outside the shorts."""
+    user, sid = await _setup(db)
+    assert await side_closed.raise_if_closed(db, user, sid, _entered(rows, rows[2:]), at=AT) is None
+    assert await aa.unanswered(db, user) == []
+
+
+async def test_a_short_condor_with_wings_outside_raises(db):
+    user, sid = await _setup(db)
+    got = await side_closed.raise_if_closed(db, user, sid, _entered(SHORT_CONDOR_WIDE, SHORT_CONDOR_WIDE[2:]), at=AT)
+    assert got is not None
+
+
+async def test_a_system_closed_row_does_not_stop_a_new_raise(db):
+    user, sid = await _setup(db)
+    first = await side_closed.raise_if_closed(db, user, sid, CALL_EXITED, at=AT)
+    closed = await aa.close_by_system(db, user, sid, "not_monitored", at=LATER)
+    assert [c.id for c in closed] == [first] and await aa.unanswered(db, user) == []
+    again = await side_closed.raise_if_closed(db, user, sid, CALL_EXITED, at=LATER)
+    assert again is not None and again != first
+    assert [r.id for r in await aa.unanswered(db, user)] == [again]
+
+
 def test_the_worker_has_the_hook():
     assert callable(background.DbGateStore.raise_side_closed)
+
+
+@pytest.mark.parametrize("answer", [kinds.ADD_LEGS, kinds.CONFIRM_NEW_SHAPE])
+async def test_ask_again_each_time_the_side_closes_again(db, answer):
+    """ADR-330 (33): closed, alert, answer, new legs on that side (it re-opens), closed again: a NEW alert."""
+    user, sid = await _setup(db)
+    first = await side_closed.raise_if_closed(db, user, sid, CALL_EXITED, at=AT)
+    await aa.answer(db, user, first, answer, LATER)
+    # still closed (no legs added yet): the answered row stands, nothing new
+    assert await side_closed.raise_if_closed(db, user, sid, CALL_EXITED, at=LATER) is None
+    # call legs added again: the side is open; the watch sees it, nothing raised
+    assert await side_closed.raise_if_closed(db, user, sid, _tracked(CONDOR), at=LATER) is None
+    assert await aa.unanswered(db, user) == []
+    again = await side_closed.raise_if_closed(db, user, sid, CALL_EXITED, at=LATER + datetime.timedelta(hours=1))
+    assert again is not None and again != first
+    # an OPEN row for the side stops a duplicate
+    assert await side_closed.raise_if_closed(db, user, sid, CALL_EXITED, at=LATER) is None
+    assert [r.id for r in await aa.unanswered(db, user)] == [again]

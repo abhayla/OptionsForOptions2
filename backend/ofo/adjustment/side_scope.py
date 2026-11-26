@@ -27,6 +27,11 @@ def _sides(legs: Iterable[Any]) -> frozenset[str]:
     return frozenset(_KIND_SIDE[x.type] for x in legs if getattr(x, "type", None) in _KIND_SIDE)
 
 
+def open_sides(legs: Iterable[Any] | None) -> frozenset[str]:
+    """The sides ("call" / "put") that have at least one leg in ``legs``; empty when it cannot be said."""
+    return frozenset() if legs is None else _sides(legs)
+
+
 def closed_sides(entry_legs: Iterable[Any] | None, open_legs: Iterable[Any] | None) -> frozenset[str]:
     """The sides entered with legs and left with none (see the module note); empty when it cannot be said."""
     if entry_legs is None or open_legs is None:
