@@ -45,7 +45,7 @@ import PaperStrategies from '@/components/strategy/PaperStrategies.vue'
 import AdjustCompare from '@/components/strategy/AdjustCompare.vue'
 import { opportunitiesFromQuery, picksFromQuery } from '@/lib/adjustDrawer'
 import AdvancedDetails from '@/components/strategy/AdvancedDetails.vue'
-import { fetchSavedDraft } from '@/lib/saveDraft'
+import { UNSAVED_RELOAD_NOTE, fetchSavedDraft } from '@/lib/saveDraft'
 import { legQuotes } from '@/lib/strategyTable'
 import ErrorMessage from '@/components/common/ErrorMessage.vue'
 import Icon from '@/components/common/Icon.vue'
@@ -1104,6 +1104,9 @@ onBeforeUnmount(() => {
   clearTimeout(undoTimer)
 })
 
+// ADR-329 (2): the ONE count of unsaved legs (Drafts Mode: pending changes); the leave question and the line under the bar both read it.
+const unsavedNow = computed(() => unsavedCount({ legCount: legs.value.length, savedId: savedId.value, inDrafts: paper.value !== null, pendingCount: pendingOrders.value?.length ?? 0 }))
+
 const index = useIndexAnswer()
 const indexLevel = computed(() => headerLevel(data.value?.spot_level, index.shownValue(index.rowFor(headerUnderlying.value || pickUnderlying.value))))
 // ADR-200 (2): the page's one market-closed banner. With an outcome reply it follows that reply; with none (no legs yet,
@@ -1169,7 +1172,7 @@ const pricesStamp = computed(() => {
 // the snapshot's paperId comes from `paper` (Drafts Mode itself; a refresh reply's book may carry no id): the leave question's "pending" reads it
 const leaveGuard = useLeaveBuilder({
   role: 'builder',
-  unsaved: () => unsavedCount({ legCount: legs.value.length, savedId: savedId.value, inDrafts: paper.value !== null, pendingCount: pendingOrders.value?.length ?? 0 }),
+  unsaved: () => unsavedNow.value,
   snapshot: () => (legs.value.length
     ? { legs: legs.value, openStrategy: openStrategy.value, savedId: savedId.value, savedRevision: savedRevision.value, shapeName: shapeName.value,
       paperId: paper.value ? (paper.value.book?.strategy_id ?? paper.value.id) : null, netKey: paper.value ? netKeyOf(paper.value.net) : null, fills: paperFills.value, addedDraft }
@@ -1270,6 +1273,9 @@ const leaveGuard = useLeaveBuilder({
           <!-- GC-BP step 6: the Tracked tab is the shared paper list; it reads (and polls) only while that tab is shown -->
           <template #tracked="{ active }"><PaperStrategies v-if="active" compact /></template>
         </SaveDraftBar>
+        <!-- ADR-330 (34): remove this line when REQ-154 (unsaved strategy kept across a reload) ships. Shown while unsavedNow > 0 (in Drafts Mode too:
+             pending changes are lost on a reload as well); gone once saved or cleared. -->
+        <p v-if="unsavedNow > 0" class="mt-1 text-xs text-ink-muted" data-testid="unsaved-reload-note">{{ UNSAVED_RELOAD_NOTE }}</p>
         <!-- W-195 (ADR-193 UI-200): the leg picker is a left slide-in drawer; it stays mounted while shut so Edit can open
              it on a leg and a half-made selection survives a close -->
         <!-- GC-UI 6c D-C20: no title bar (S-032: the picker's own header row is the top line); the width stays 520 px so the
