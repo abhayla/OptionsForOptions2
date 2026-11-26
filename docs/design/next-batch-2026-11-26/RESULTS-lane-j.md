@@ -9,14 +9,17 @@ Spec basis: ADR-330 (1) to (27) and its one-module instruction; ADR-002; ADR-003
 
 ## Status for the coordinator (this session cannot send messages: the session-message service refuses it as untrusted)
 
-1. On origin: Step 2 wiring since push 2 (7d81d0a); P7 answers, P8 Reset, ADR-330 (31) with 0057, S-11, the
-   Not-applicable line, Lane R 71ed990 and Lane U 63091d7 since push 4+5 (9f769b5); section (a) corrected from the PC
-   rehearsal since push 6 (ae01cc6). This push (7): Lane U d9de498, Lane D 91cc43b, the three full-suite fixes below.
-2. #753 is PARKED (two Tier A reviews FIX; migration 0058 is NOT on the branch): see "#753 PARKED" in section (c).
-3. Next: the heads you named for tonight (Lane U second push, Lane R ~23:30, Lane D push 2) as they appear, each with
-   one gate; final head by 07:30 IST; nothing after until you say.
-4. Blocking: nothing. Waiting for the owner (none blocks the test): LJ-2 (what counts as a plan acceptance, #753) and
-   the "pending owner read" wordings listed at the end.
+**Full app (DB) suite on the final code head 1eb5097, run as CI runs it (GITHUB_ACTIONS=true, per-file database
+clones, -m "not full_chain"): `7638 passed, 5 skipped, 23 deselected, 1 xfailed in 2917.28s` (0 failed). Skips:
+trial ENDED x3 (ADR-039), EXECUTE_REPLAY_URL unset, no INDEX row in the test catalogue.**
+
+1. Final head for 27 Nov: the head of this commit (docs only on top of 1eb5097). Merged: Lane R a2b44dd, Lane U
+   12e04b9 (Change expiry), Lane D 491df12, all of Lane P, Step 2 wiring, Step 3 checks, P7, P8, S-11, the
+   Not-applicable line, ADR-330 (31) with 0057.
+2. Migrations the PC applies: 0054, 0055, 0056, 0057, each with its old-code-safe proof and its read-only check in
+   section (a); 0057 first on the scratch copy ofo_rehearsal_1127. #753 (0058) is PARKED and not on the branch.
+3. No push to integration/nb-1126 after 07:30 IST until you say.
+4. Blocking: nothing. Waiting for the owner (none blocks the test): LJ-2 and the "pending owner read" wordings.
 
 ## (a) PC set-up (do these first, in this order; about 30 minutes, start 08:15 IST)
 
@@ -285,7 +288,9 @@ current, none hand-edited.
 | 4+5 | 9f769b5 | P7 page answers, P8 Reset button, ADR-330 (31) with 0057, health e2e fix, side-closed templates; Not-applicable plan line, S-11 hold, Lane R 71ed990, Lane U 63091d7 | `prepush.py --full` TOTAL PASS 2195 s |
 | 6 | ae01cc6 | section (a) corrected from the PC rehearsal; owner question LJ-2 | `prepush.py --full` TOTAL PASS 2067 s |
 | 7 | (see push 8 row) | Lane U d9de498, Lane D 91cc43b, three full-suite test fixes, #753 parked | `prepush.py --full` |
-| 8 | (this push) | Lane U final 12e04b9 (Change expiry, ADR-330 (42)), Lane R a2b44dd (banner ADR-330 (36), (38) hover, N-30, D-15 label, (39) index age rule, D-27 PC step; its checks are in RESULTS-lane-r.md) | see the commit's gate |
+| 8 | (in push 9) | Lane U final 12e04b9 (Change expiry, ADR-330 (42)), Lane R a2b44dd (banner ADR-330 (36), (38) hover, N-30, D-15 label, (39) index age rule, D-27 PC step; its checks are in RESULTS-lane-r.md) | - |
+| 9 | 1eb5097 | the rehearsal-corrected section (a), Lane D final 491df12 (with Lane U 12e04b9 and Lane R a2b44dd from push 8) | `prepush.py --full` TOTAL PASS 2025 s; full DB suite 7638 passed, 0 failed |
+| 10 | (this push, FINAL for 27 Nov) | docs only: this status and the DB result line | see the commit's gate |
 
 Coordinator message for push 1 could not be sent: the session-message service refused this session (untrusted
 device); recorded here instead.
@@ -319,7 +324,7 @@ Run as CI's "Run app tests" step (GITHUB_ACTIONS=true, per-file database clones,
   for GET and USER_INPUT_003 for PUT). All three: test expectations behind a deliberate change, no code change; fixed
   in this push (b150d5e). Skips (5): trial ENDED (ADR-039), EXECUTE_REPLAY_URL unset, no INDEX row in the test
   catalogue, and two environment-only.
-- The final head's full run: recorded here when it ends.
+- 1eb5097 (final code head): `7638 passed, 5 skipped, 23 deselected, 1 xfailed in 2917.28s`, 0 failed.
 
 Merge notes, push 7: Lane U d9de498 (displayFormat.js: Lane J's istHm kept; Lane U's removal of localDay kept; REQ-070:
 Lane J's ADR-330 (31) criterion stays AC-8, Lane U's toast criterion becomes AC-9); Lane D 91cc43b (#739 fixed twice:
