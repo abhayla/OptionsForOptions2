@@ -1,7 +1,7 @@
 <!-- P10 Wave 2 (ADR-330 (11), (13); ADR-008; ADR-003): the live "Plan watch" box. One row per trigger (profit target, loss stop, each
      adjustment rule, the Stops-panel index exits and leg stops): fires at / now / distance in rupees and percent / state. Every line,
      figure and reason is the server's (lib/planWatch, the one reader); this component only prints them with the app's rupee formatter.
-     Refresh rides the host: it re-reads when `refreshToken` changes (the builder's book read, the Positions list read), no timer here.
+     Refresh rides the host: it re-reads when `readTick` changes (the builder's book read, the Positions list read), no timer here.
      A failed read clears the lines (no old figure). A figure the server sent as absent shows a dash and the reason, never 0.
      Decision support only: nothing here exits or places anything. -->
 <template>
@@ -51,11 +51,11 @@ import { rupeesText } from '@/lib/displayFormat'
 import { PAUSED_TEXT } from '@/lib/priceState'
 import { PAPER_NO_FIGURE } from '@/lib/paperList'
 
-// strategyId: the saved strategy. refreshToken: the host's own change signal (its last good book read); stale: the host says its last
+// strategyId: the saved strategy. readTick: the host's own change signal (its last good book read); stale: the host says its last
 // read failed, so every price-derived figure is paused (the one not-live wording of priceState). compact: the Positions row layout.
 const props = defineProps({
   strategyId: { type: [Number, String], required: true },
-  refreshToken: { type: null, default: null },
+  readTick: { type: null, default: null },
   stale: { type: Boolean, default: false },
   compact: { type: Boolean, default: false },
 })
@@ -75,7 +75,7 @@ async function reread() {
 }
 onMounted(reread)
 watch(() => props.strategyId, () => { view.value = null; reread() })
-watch(() => props.refreshToken, (t, old) => { if (t !== old) reread() })
+watch(() => props.readTick, (t, old) => { if (t !== old) reread() })
 
 // the server's figure as text in the line's unit: rupees with Indian grouping; index points and percent as sent; null is a dash
 const shown = (l, v) => {

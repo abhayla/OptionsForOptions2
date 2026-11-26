@@ -82,10 +82,10 @@ describe('PlanWatch.vue', () => {
   })
   it('a failed refresh after a good one clears the old figures', async () => {
     replies = [ok(SERVER()), fail({ status: 503, parts: null })]
-    const w = mountIt({ refreshToken: 1 })
+    const w = mountIt({ readTick: 1 })
     await flushPromises()
     expect(w.text()).toContain('₹350.00')
-    await w.setProps({ refreshToken: 2 })
+    await w.setProps({ readTick: 2 })
     await flushPromises()
     expect(calls).toHaveLength(2)
     expect(w.text()).not.toContain('₹350.00')
@@ -94,13 +94,13 @@ describe('PlanWatch.vue', () => {
   it('the host token re-reads; no token change, no read (no timer of its own)', async () => {
     replies = [ok(SERVER())]
     vi.useFakeTimers()
-    const w = mountIt({ refreshToken: 1 })
+    const w = mountIt({ readTick: 1 })
     await flushPromises()
     vi.advanceTimersByTime(120000)
     await flushPromises()
     expect(calls).toHaveLength(1)
     vi.useRealTimers()
-    await w.setProps({ refreshToken: 2 })
+    await w.setProps({ readTick: 2 })
     await flushPromises()
     expect(calls).toHaveLength(2)
   })

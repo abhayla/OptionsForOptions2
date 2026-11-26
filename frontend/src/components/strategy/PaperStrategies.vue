@@ -156,7 +156,7 @@
               </div>
             </div>
             <!-- P10 (ADR-330 (13)): the Plan watch of an open strategy; it re-reads on this list's own good-read token -->
-            <PlanWatch v-if="g.openCount" :strategy-id="g.id" :refresh-token="goodReadToken" :stale="stale" compact class="mt-2" />
+            <PlanWatch v-if="g.openCount" :strategy-id="g.id" :read-tick="goodReadToken" :stale="stale" compact class="mt-2" />
             <PaperStops v-if="stopsOpen[g.id]" :strategy-id="g.id" :underlying="g.underlying" :legs="stopLegs(g)" :leg-names="legNamesOf(g)" :good-read-token="goodReadToken" @changed="onStopsChanged" />
           </template>
         </div>
