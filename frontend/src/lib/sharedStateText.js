@@ -116,6 +116,8 @@ export const PLAYBOOK_TEST_OUT_OF_V1_TEXT = 'Testing against past expiries is no
 export const PLAYBOOK_DELETE_CONFIRM_TEXT = 'Delete this playbook?'
 // pending owner read (26 Nov 2026), T-Q8 (ADR-328 (4)): Option Chain, nothing ticked: the greyed Add Selected (0) says why
 export const CHAIN_ADD_NOTHING_TICKED = 'Tick at least one contract to add.'
+// pending owner read (26 Nov 2026), U-Q12 (ADR-328 (4)): a contract is ticked but has no Buy or Sell: the greyed Add Selected says why
+export const CHAIN_ADD_NO_ACTION = 'Choose Buy or Sell for each ticked contract.'
 // pending owner read (26 Nov 2026), T-Q10: the Option Chain page's own sentences, moved here unchanged from pages/OptionChainPage.vue
 // (one door); listed in REQ-029 AC-11
 export const CHAIN_WAITING_TEXT = 'Waiting for live data.'

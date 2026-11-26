@@ -25,7 +25,7 @@ import MarketClosedBanner from '@/components/states/MarketClosedBanner.vue'
 import LeaveBuilderDialog from '@/components/strategy/LeaveBuilderDialog.vue'
 import { useLeaveBuilder } from '@/composables/useLeaveBuilder'
 import { useSettingsValues } from '@/stores/settingsValues'
-import { CHAIN_ADD_NOTHING_TICKED, CHAIN_EXPIRIES_UNREADABLE_TEXT, CHAIN_NO_STRIKES_MATCH_TEXT, CHAIN_ROWS_MISSING_TEXTS, CHAIN_SPOT_MISSING_ROWS_KEPT_TEXT, CHAIN_WAITING_TEXT } from '@/lib/sharedStateText'
+import { CHAIN_ADD_NO_ACTION, CHAIN_ADD_NOTHING_TICKED, CHAIN_EXPIRIES_UNREADABLE_TEXT, CHAIN_NO_STRIKES_MATCH_TEXT, CHAIN_ROWS_MISSING_TEXTS, CHAIN_SPOT_MISSING_ROWS_KEPT_TEXT, CHAIN_WAITING_TEXT } from '@/lib/sharedStateText'
 import { strikeRangesOf } from '@/lib/settingsValues'
 import { NOT_LIVE_LABEL, VALUE_UNAVAILABLE, chainRequest, useChainAnswer } from '@/composables/useChainLive'
 import { CHAIN_NOT_AVAILABLE, FEED_VALUE_KEYS, GREEKS_BASIS_LINES, GREEKS_MISSING_LINES, MONEYNESS, NO_FILTERS, anyServerFilter, fieldsFor, filterParams, onExpiryDay, filterRows, greeksStaleLabel } from '@/lib/chainDisplay'
@@ -122,7 +122,8 @@ const tick = (row, type) => selection.toggleContract(contractFor(row, type))
 const choose = (row, type, action) => selection.chooseAction(contractFor(row, type), action)
 const canAdd = computed(() => legs.value.length > 0 && pending.value.length === 0)
 // ADR-328 (4), T-Q8: a blocked control looks blocked and says why. Nothing ticked: the button is there, dimmed, with its reason.
-const addReason = computed(() => (picked.value.length ? '' : CHAIN_ADD_NOTHING_TICKED))
+// One reason, the first blocking cause in order: nothing ticked, then a ticked contract without Buy or Sell (U-Q12).
+const addReason = computed(() => (!picked.value.length ? CHAIN_ADD_NOTHING_TICKED : pending.value.length ? CHAIN_ADD_NO_ACTION : ''))
 // One module names a contract (lib/displayFormat.js), the builder's own name: 'NIFTY 1 Dec 25150 CE' (REQ-148 AC-2).
 const contractName = (e) => legName({ ...e, instrument_type: e.type })
 

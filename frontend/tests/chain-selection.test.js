@@ -1,7 +1,7 @@
 // W-120 + W-118-sel part 2 (REQ-030 AC-1/2/4/5/6/7/8/9/10/11/15/16; ADR-002, ADR-132): the Option Chain's leg selection, on a fake chain socket, and the
 // chainSelection store on its own. Each test name starts with its AC id.
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
-import { CHAIN_ADD_NOTHING_TICKED } from '@/lib/sharedStateText'
+import { CHAIN_ADD_NO_ACTION, CHAIN_ADD_NOTHING_TICKED } from '@/lib/sharedStateText'
 import { echoSeq } from './helpers/echoSeq'
 import { mount, flushPromises } from '@vue/test-utils'
 import { createPinia, setActivePinia } from 'pinia'
@@ -188,6 +188,17 @@ describe('Option Chain selection (screen)', () => {
     await pick(w, '24000.00', 'ce', 'buy')
     expect(w.find('[data-testid="add-selected-reason"]').exists()).toBe(false)
     expect(w.get('[data-testid="add-selected"]').attributes('disabled')).toBeUndefined()
+  })
+
+  it('AC-9 / ADR-328 (4) (U-Q12): a contract ticked with no Buy or Sell keeps Add Selected disabled and says why; choosing Buy enables it with no reason', async () => {
+    const w = await mountPage()
+    await w.get('[data-testid="select-ce"]').setValue(true)
+    expect(w.get('[data-testid="add-selected"]').attributes('disabled')).toBeDefined()
+    expect(w.get('[data-testid="add-selected-reason"]').text()).toBe('Choose Buy or Sell for each ticked contract.')
+    expect(CHAIN_ADD_NO_ACTION).toBe('Choose Buy or Sell for each ticked contract.')
+    await w.get('[data-testid="buy-ce"]').trigger('click')
+    expect(w.get('[data-testid="add-selected"]').attributes('disabled')).toBeUndefined()
+    expect(w.find('[data-testid="add-selected-reason"]').exists()).toBe(false)
   })
 
   it('AC-8: a Selected Legs summary shows each leg and stays pinned (sticky) to the screen bottom', async () => {

@@ -1133,6 +1133,7 @@ test.describe('Option Chain: Add Selected opens the builder with exactly those l
     await expect(page).toHaveURL(/\/market\/option-chain$/)
     await rowOf(page, '25150').getByTestId('select-ce').check()
     await expect(addSelected(page)).toBeDisabled()
+    await expect(page.getByTestId('add-selected-reason')).toHaveText('Choose Buy or Sell for each ticked contract.') // U-Q12
     await addSelected(page).click({ force: true }) // pressing a greyed button does nothing
     await expect(page).toHaveURL(/\/market\/option-chain$/)
   })
