@@ -508,15 +508,22 @@ def _only_t01(scn):
     return lister
 
 
-async def test_cap_reached_writes_exactly_one_held_row_for_the_episode(app_db_url, monkeypatch):
+async def test_a_worse_reading_of_the_open_alert_is_not_held_by_the_cap_and_marks_it_escalated(app_db_url,
+                                                                                            monkeypatch):
+    """ADR-330 (3), P1 round 3: with the day's one slot used, one level worse is NOT a new record, so the cap does not
+    hold it: it escalates the ONE open alert (no Held row, no second row; escalated_at set)."""
     sid, scn, now, worker = await _ready(app_db_url, monkeypatch, overrides=CAP_ONE, lister_for=_only_t01)
     base, rec = await _open_one(app_db_url, worker, scn, now, sid)  # the day's one record
     held = await _held_reasons(app_db_url, sid)
     now[0] += ONE_SECOND
-    _push_spot(scn, LEVEL_ONE_SPOT, now[0])  # one level worse, but the cap is used
+    _push_spot(scn, LEVEL_ONE_SPOT, now[0])  # one level worse; the cap is used
     await _advance(worker, now, 300, step=5)
-    assert await _held_reasons(app_db_url, sid) == [*held, "daily_limit"]
+    assert await _held_reasons(app_db_url, sid) == held
     assert await _t01_rows(app_db_url, sid, base) == [(rec, "open", None)] and worker.errors == []
+    async with app_db_url.connect() as conn:
+        escalated = (await conn.execute(text("SELECT escalated_at FROM public.adjustment_suggestions WHERE id = :i"),
+                                        {"i": rec})).scalar_one()
+    assert escalated is not None
 
 
 async def test_the_ist_day_rollover_resets_the_cap(app_db_url, monkeypatch):
@@ -973,7 +980,7 @@ async def test_f2_a_rule_flipping_every_3_minutes_for_an_hour_is_one_row_and_a_r
             "AND rule_id IN ('T-06', 'T-07') GROUP BY rule_id"), {"s": w.strategy_id})).all())
         rebuilt = await playbook_store.gate_rows(conn, w.user_ref, w.strategy_id, day)
     assert counts == {"T-06": 1, "T-07": 1}
-    assert state.opened_today == 2 == rebuilt.opened_today  # the live gate and the restart agree
+    assert state.opened_today == len(counts) == rebuilt.opened_today  # live gate and restart agree
 
 
 async def test_f3_a_worse_close_marks_the_open_alert_escalated_and_a_stopped_note_is_cleared(app_db_url, monkeypatch):
@@ -992,4 +999,4 @@ async def test_f3_a_worse_close_marks_the_open_alert_escalated_and_a_stopped_not
             "FROM public.adjustment_suggestions WHERE strategy_id = :s AND rule_id = 'T-03' AND outcome = 'open'"),
             {"s": w.strategy_id})).all()
     assert ids == {"T-03": old}
-    assert [tuple(r) for r in rows] == [(old, D("0.4100"), D("0.4000"), worse_at, None, None, "0.36")], rows  # the fixture row fired at 0.36
+    assert [tuple(r) for r in rows] == [(old, D("0.4100"), D("0.4000"), worse_at, None, None, "0.36")], rows

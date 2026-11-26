@@ -68,7 +68,7 @@ def test_f2_a_rule_flipping_every_3_minutes_for_an_hour_opens_once_and_the_cap_i
     state, ev = _step(state, "12:16:20", {"T-07": (T07, D("15.9")), "T-03": (T03, D("0.31"))})
     state, ev2 = _step(state, "12:17:20", {"T-07": (T07, D("15.9")), "T-03": (T03, D("0.31"))})
     assert [type(e).__name__ for e in ev + ev2 if e.rule_id == "T-03"] == ["Opened"]  # not Held daily_limit
-    assert state.opened_today == 2
+    assert state.opened_today == 1 + 1  # T-07 and T-03, each once
 
 
 def test_a_worse_close_while_open_is_an_escalation_not_a_new_record_and_not_counted():

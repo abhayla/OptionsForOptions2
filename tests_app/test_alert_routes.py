@@ -19,9 +19,9 @@ OK, NOT_FOUND, CONFLICT, REFUSED = 200, 404, 409, 422
 FIRED = datetime.datetime(2026, 11, 25, 11, 2, 20, tzinfo=IST)
 STOPPED = datetime.datetime(2026, 11, 25, 11, 5, 1, tzinfo=IST)
 ACTIVE_KEYS = {"id", "strategy_id", "strategy_name", "kind", "text", "fired_at", "fired_line", "no_longer_true_since",
-               "no_longer_true_line", "answers"}
-HISTORY_KEYS = {"id", "strategy_id", "strategy_name", "kind", "text", "fired_at", "fired_line", "answer",
-                "answer_label", "answered_at", "closed_reason"}
+               "no_longer_true_line", "escalated_at", "worse_line", "answers"}
+HISTORY_KEYS = {"id", "strategy_id", "strategy_name", "kind", "text", "fired_at", "fired_line", "escalated_at",
+                "worse_line", "answer", "answer_label", "answered_at", "closed_reason"}
 
 
 async def _raise(engine, sid: int) -> int:
@@ -41,6 +41,7 @@ async def test_active_answer_history_replies_and_errors(app_db_url, monkeypatch)
     assert set(mine) == ACTIVE_KEYS and mine["kind"] == "plan_loss_stop"
     assert (mine["fired_line"], mine["no_longer_true_line"]) == ("Fired at 11:02", "no longer true since 11:05")
     assert (mine["fired_at"], mine["no_longer_true_since"]) == ("2026-11-25T05:32:20Z", "2026-11-25T05:35:01Z")
+    assert (mine["escalated_at"], mine["worse_line"]) == (None, None)  # never worse: null, not an empty line
     assert [a["code"] for a in mine["answers"]] == ["exit", "continue"] and set(mine["answers"][0]) == {"code", "label"}
     for body, code in (({"answer": ""}, REFUSED), ({"answer": "add_legs"}, REFUSED)):  # empty, not for this kind
         assert (await _call("POST", f"/api/alerts/{alert_id}/answer", body))[0] == code
@@ -58,3 +59,28 @@ async def test_active_answer_history_replies_and_errors(app_db_url, monkeypatch)
     assert (row["fired_line"], row["answered_at"]) == ("Fired at 11:02", done["answered_at"])
     assert row["closed_reason"] is None
     assert mine["strategy_name"] == row["strategy_name"] == '"Scenario ADJ-02"'  # the user's name in the quoted slot
+
+
+ESCALATED = datetime.datetime(2026, 11, 25, 11, 9, 0, tzinfo=IST)
+
+
+async def test_a_worse_reading_shows_escalated_at_and_the_worse_line_in_active_and_history(app_db_url, monkeypatch):
+    """P1 round 3 F3 (contract): the open alert carries when a WORSE value of the same rule last updated it, and the
+    catalogue's line; a later answer keeps both in History; a second worse reading moves escalated_at."""
+    sid = await _clean(app_db_url, await _seeded(app_db_url, monkeypatch, "ADJ-02"))
+    async with app_db_url.begin() as conn:
+        alert = await aa.raise_actionable(conn, "owner", sid, "T-06", "plan_loss_stop", at=FIRED, value=D("15.5750"),
+                                          threshold=D("15.4000"), trigger_id="T-06", stage=None, unit="%", cmp="ge")
+        worse = await aa.raise_actionable(conn, "owner", sid, "T-06", "plan_loss_stop", at=ESCALATED,
+                                          value=D("16.2000"), threshold=D("15.4000"), trigger_id="T-06", stage=None)
+    assert worse.id == alert.id
+    status, active = await _call("GET", "/api/alerts/active")
+    mine = next(a for a in active["alerts"] if a["id"] == alert.id)
+    assert status == OK and set(mine) == ACTIVE_KEYS
+    assert mine["escalated_at"] == "2026-11-25T05:39:00Z"
+    assert mine["worse_line"] == "Worse than when it fired: 16.2000 % (fired at 15.5750 %)"
+    assert mine["fired_at"] == "2026-11-25T05:32:20Z"  # the first-shown time never moves
+    assert (await _call("POST", f"/api/alerts/{alert.id}/answer", {"answer": "continue"}))[0] == OK
+    row = next(i for i in (await _call("GET", "/api/alerts/history"))[1]["items"] if i["id"] == alert.id)
+    assert set(row) == HISTORY_KEYS and (row["escalated_at"], row["worse_line"]) == (
+        mine["escalated_at"], mine["worse_line"])

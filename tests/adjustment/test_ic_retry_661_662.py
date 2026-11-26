@@ -35,7 +35,7 @@ def _frames(path, k: int):
 
 
 def _walk(path, frames, rule_id: str, adjust=None):
-    """Steps the gate over ``frames`` (CYCLES checks per frame); -> {frame: [Opened / Escalated events of rule_id]} (a worse close of the open alert is an Escalated, ADR-330)."""
+    """Steps the gate over ``frames`` (CYCLES checks per frame); -> {frame: [Opened or Escalated events of rule_id]}."""
     st, out = gate.initial_state(), {}
     for k in frames:
         (body, s), clock = _frames(path, k)

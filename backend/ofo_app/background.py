@@ -778,7 +778,8 @@ class DbGateStore:
         rule id -> id of each alert raised. A closed candle that clears the line (Lapsed) only notes "no longer true
         since" on the open alert: it stays in Active until the user answers (ADR-330 (3)). A worse close
         (``Escalated``) updates the same open row and marks it escalated (one open alert per rule, REQ-112); the first
-        close past the line again (``TrueAgain``) clears the note at once and opens no second row. Every field of a record's snapshot is from the event's own sample (``record_fields``)."""
+        close past the line again (``TrueAgain``) clears the note at once and opens no second row.
+        Every field of a record's snapshot is from the event's own sample (``record_fields``)."""
         from ofo.alerts import kind_of  # noqa: PLC0415
 
         from ofo_app import actionable_alerts, playbook_store  # noqa: PLC0415 - database layer at run time
