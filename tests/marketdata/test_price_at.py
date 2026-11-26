@@ -74,8 +74,9 @@ def test_a_full_option_packet_stamped_before_the_open_is_labelled_with_the_close
 
 
 @pytest.mark.parametrize("stamped,expected", [
-    (datetime.datetime(2026, 10, 27, 17, 35, 6, tzinfo=IST), CLOSE_27),  # Kite's post-close index stamp
-    (datetime.datetime(2026, 10, 27, 16, 22, 40, tzinfo=IST), CLOSE_27),  # Kite's post-close option stamp
+    # ADR-330 (36), LR-Q17: a price first made after the close shows its OWN time, not the close
+    (datetime.datetime(2026, 10, 27, 17, 35, 6, tzinfo=IST), datetime.datetime(2026, 10, 27, 17, 35, 6, tzinfo=IST)),
+    (datetime.datetime(2026, 10, 27, 16, 22, 40, tzinfo=IST), datetime.datetime(2026, 10, 27, 16, 22, 40, tzinfo=IST)),
     (datetime.datetime(2026, 10, 27, 15, 30, tzinfo=IST), CLOSE_27),  # exactly the close
     (datetime.datetime(2026, 10, 21, 7, 46, tzinfo=IST),  # Wed after the Tue 20 Oct Dussehra holiday
      datetime.datetime(2026, 10, 19, 15, 30, tzinfo=IST)),

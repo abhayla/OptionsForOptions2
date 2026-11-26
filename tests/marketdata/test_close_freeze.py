@@ -7,8 +7,9 @@ label. Rebuilt here with 15:29:59 -> 99.75, 15:31:10 -> 99.60, 15:33:48 -> 100.1
 decoded by the real ``parse_frame`` in the real ``KiteProvider``; the clock is injected.
 
 Answer states: in session (latest, unchanged); after close with a pre-close quote (the at-close one); after close with
-only post-close quotes (nothing at close is held: the latest frame, as before); holiday (the previous session's close
-quote); no exchange time (the frame's arrival time is its time, so it is cut by when it arrived)."""
+only post-close quotes (nothing at close is held: the latest frame, its OWN time, LR-Q17);
+holiday (the previous session's close quote); no exchange time (the frame's arrival time is its time, so it is
+cut by when it arrived)."""
 from __future__ import annotations
 
 import datetime
@@ -91,13 +92,59 @@ def test_a_frame_stamped_exactly_at_the_close_is_the_close_price():
     assert _served(provider, clock, _at(TUE, 15, 40, 0)).ltp == Decimal("99.80")
 
 
-def test_only_post_close_quotes_held_serves_the_latest_as_before():
-    """A contract first held after the close (a new subscription's snapshot): no at-close quote exists, so there is
-    nothing to freeze to; the latest frame is served and labelled with the close, exactly as before."""
+def test_only_post_close_quotes_held_serves_the_latest_with_its_own_time():
+    """ADR-330 (36) path (b), LR-Q17: a contract first priced after the close (an API restart after 15:30, a strike
+    first subscribed after hours) has no at-close quote. The latest frame is served and labelled with ITS OWN time
+    (15:33:48), never clamped to "15:30:00"."""
     provider, clock = _feed(("99.60", _at(TUE, 15, 31, 10), _at(TUE, 15, 31, 10)),
                             ("100.10", _at(TUE, 15, 33, 48), _at(TUE, 15, 33, 48)))
     quote = _served(provider, clock, _at(TUE, 15, 34, 0))
-    assert (quote.ltp, quote.price_at) == (Decimal("100.10"), _at(TUE, 15, 30, 0))
+    assert (quote.ltp, quote.price_at) == (Decimal("100.10"), _at(TUE, 15, 33, 48))
+    assert quote.price_at != _at(TUE, 15, 30, 0)
+
+
+def test_path_a_label_is_the_last_price_made_by_the_close_path_b_label_is_its_own():
+    """Both paths side by side on the real sequence: (a) a process that ran through the close serves 99.75 made at
+    15:29:59; (b) a fresh provider fed only the two post-close frames serves 100.10 made at 15:33:48."""
+    ran, clock_a = _real_sequence()
+    a = _served(ran, clock_a, _at(TUE, 15, 40, 0))
+    fresh, clock_b = _feed(("99.60", _at(TUE, 15, 31, 10), _at(TUE, 15, 31, 10)),
+                           ("100.10", _at(TUE, 15, 33, 48), _at(TUE, 15, 33, 48)))
+    b = _served(fresh, clock_b, _at(TUE, 15, 40, 0))
+    assert (a.ltp, a.price_at) == (Decimal("99.75"), _at(TUE, 15, 29, 59))
+    assert (b.ltp, b.price_at) == (Decimal("100.10"), _at(TUE, 15, 33, 48))
+
+
+def _held_overnight() -> tuple[KiteProvider, Clock]:
+    """Monday 30 Nov: 99.75 at 15:29:59 (the at-close quote), then 99.60 at 15:31:10 (after the close, the latest)."""
+    prev = datetime.date(2026, 11, 30)  # Monday, a trading day
+    return _feed(("99.75", _at(prev, 15, 29, 59), _at(prev, 15, 29, 59)),
+                 ("99.60", _at(prev, 15, 31, 10), _at(prev, 15, 31, 10)))
+
+
+def test_during_the_session_the_book_serves_the_latest_quote_not_the_held_close_quote():
+    """Guard for the in-hours check in ``_served``: at 10:00 IST on a trading day the book holds an at-close quote
+    (99.75) and a later, different latest quote (99.60); the LATEST is served. A ``_served`` that always returns
+    close_quote fails this (scratch-copy mutation check recorded in the handover)."""
+    provider, clock = _held_overnight()
+    assert _served(provider, clock, _at(TUE, 10, 0, 0)).ltp == Decimal("99.60")
+
+
+def test_exactly_at_the_reopen_the_book_serves_the_latest_quote():
+    provider, clock = _held_overnight()
+    assert _served(provider, clock, _at(TUE, 9, 15, 0)).ltp == Decimal("99.60")
+    assert _served(provider, clock, _at(TUE, 9, 14, 59)).ltp == Decimal("99.75")  # one second before: still closed
+
+
+def test_a_fresh_process_at_pre_open_labels_the_frame_with_the_previous_close_never_its_arrival():
+    """F-19, kept by ADR-330 (36): a provider that starts at 09:10 IST with no overnight close quote serves the pre-open
+    frame (exchange stamp 09:08:30, arrived 09:10:05). Before the open a frame's stamp is not a price time, so the label
+    is the previous session's close (Mon 30 Nov 15:30), never the 09:10:05 arrival (and the figure is the frame's)."""
+    provider, clock = _feed(("100.10", _at(TUE, 9, 8, 30), _at(TUE, 9, 10, 5)))
+    quote = _served(provider, clock, _at(TUE, 9, 10, 6))
+    prev_close = _at(datetime.date(2026, 11, 30), 15, 30, 0)
+    assert (quote.ltp, quote.timestamp, quote.price_at) == (Decimal("100.10"), _at(TUE, 9, 8, 30), prev_close)
+    assert quote.price_at != _at(TUE, 9, 10, 5)
 
 
 def test_a_holiday_serves_the_previous_sessions_close_quote():

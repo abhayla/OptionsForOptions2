@@ -187,9 +187,15 @@ class NormalizedQuote:
 
     @property
     def price_at(self) -> datetime.datetime | None:
-        """ADR-200 (2), GC-BM F-19: when the price was MADE, the time every market-closed label prints. In market hours
-        it is ``timestamp``; outside them the close (15:30 IST) of the session the price belongs to (a frame's arrival
-        time or Kite's post-close stamp is never a price time); None when the calendar has no data for that date.
-        Derived from ``timestamp``, never passed in, so every provider gets the same answer; ``timestamp`` itself
-        (liveness, bars, the in-hours rules) is never changed."""
-        return price_time(self.timestamp)
+        """ADR-200 (2), ADR-330 (36): when the price was MADE, the time every market-closed label prints. In market
+        hours it is ``timestamp``. After the close of a trading day it is the quote's OWN time (15:33:48 reads
+        "as of 15:33:48", never clamped to 15:30:00; the quote book already serves the last quote made by the
+        close, so a quote that ran through the close is at or before 15:30).
+        Before the open, or on a holiday or weekend, a frame's
+        stamp is not a price time (GC-BM F-19): the close of the session the price belongs to. None when the calendar
+        has no data for that date. A frame's arrival time is never a price time. Derived from ``timestamp``, never
+        passed in; ``timestamp`` itself (liveness, bars, the in-hours rules) is never changed."""
+        made = price_time(self.timestamp)
+        if made is not None and made.date() == self.timestamp.astimezone(made.tzinfo).date():
+            return self.timestamp  # in hours, at the close, or after the close of a trading day: its own time
+        return made

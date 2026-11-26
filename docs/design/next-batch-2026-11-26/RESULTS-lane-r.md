@@ -240,6 +240,7 @@ trade 173 settled with the right sum), 1 FAIL (AC-R06), 1 NOT CHECKED (AC-R10).
 | N-48, settled trade's builder shows "No legs yet" and Add leg | Fixed, not tested | The empty-legs block did not know the trade was finished. | 1 screen; a trade whose book has closed rows and no open position shows no empty-legs block and no Add leg / Add/Edit. | `builder-completed-n48.test.js`: red, then pass. |
 | N-44, "No price for:" above a priced table after the close | Fixed, not tested | The Paper P&L panel took the unpriced line from the tracking reply (live prices only) when the book had none. | One reader: the line comes from the book read only. | `one-source-d41.test.js`: 1 failed with the old line, then 18 pass. |
 | N-45, prices keep moving after the close under "Prices are from 15:30:00" | Deferred #752, question LR-Q14 | The label time is clamped to the close; the figure is the feed's latest quote. | - | - |
+| N-45 / ADR-330 (36), prices keep moving after the close under "Prices are from 15:30:00" (round 2: LR-Q17) | Fixed, not tested: (a) frozen at the close, (b) own time; (c) deferred; #752 stays open | Round 1 froze the figure at the last quote made by the close, but a contract first priced after the close (API restart after 15:30, strike first subscribed after hours) was still clamped by `NormalizedQuote.price_at` to "15:30:00" while showing a later price. | Places that clamp a post-close price time: 1 (`quote.py price_at`); 0 after: a trading-day post-close quote carries its own time (before the open, holiday and weekend stay at the previous close, F-19). | `tests/marketdata/test_close_freeze.py` (path a 99.75, path b 100.10 at 15:33:48, in-hours guard and reopen, fresh pre-open) and `tests_app/test_close_freeze_routes.py` (path b, one leg of each kind). |
 | AC-R10, Compare's "Open in builder and prepare basket" greyed after the close | NOT CHECKED (by design after the close: "Wait for fresh prices") | - | - | Re-test at the open, below. |
 
 ## Re-test: after-close items (next market day)
@@ -279,3 +280,18 @@ strategy). `strategy_history.at` is stamped by the database, so the times need n
 3. Type your own entry price for one leg: the tick box still shows; tick, Confirm: the typed price is the entry.
 4. Builder: the button beside the search reads "View" and opens the same "Show legs as" choice.
 5. Nothing else in the confirm list changed wording.
+
+## To file as deferred issues (ADR-330 (36), round 2; not filed)
+
+1. **ADR-330 (36) (c): start-up read of each contract's 15:30 close.**
+   Evidence: `backend/ofo/marketdata/quote.py` `price_at`; steps: start the API after 15:30 with a held contract and open the trade: the figure is the first frame received (e.g. 100.10 as of 15:33:48), not the 15:30 close. The broker adapter's day read exists (`backend/ofo_app/paper_settlement.py:274` `owner_close_of` reads a Kite DAY candle; `price_history_source.day_close_reader`).
+   Spec basis: ADR-330 (36) (c), LR-Q17 ("exact close later"), ADR-200 (2), ADR-015.
+   Done when: a process started after the close shows the 15:30 close for a held contract, labelled "Prices are from 15:30:00".
+2. **The depth popup after the close shows the latest frame, not the frozen close.**
+   Evidence: `backend/ofo/marketdata/feed_health.py` `depth_after_close` (~346-349) reads `e.quote`/`e.depth`, and `backend/ofo_app/chain_push.py` `_last_trade_at` (~401) beside it; review run: figure 99.75, popup bid 100.05 / ask 100.15. Steps: after the close, with a frame after 15:30, open the depth popup of a held contract.
+   Spec basis: ADR-330 (36), ADR-200 (1) and (2), REQ-080 AC-7.
+   Done when: depth after the close (bid, ask, day stats) comes from the served quote, the same frame as the figure.
+3. **The REST index spot after hours is the post-close value.**
+   Evidence: `backend/ofo_app/live_market.py:477` `_index_reading` / `index_spot` (via `spot_source`) returns Kite's current REST `last_price`, while the chain and index header show the frozen tick. Settlement is unaffected. Steps: after the close compare the REST spot with the index header.
+   Spec basis: ADR-330 (36), ADR-200 (2), ADR-119.
+   Done when: the after-hours spot goes through the same cut-off (`made_by_the_close`).
