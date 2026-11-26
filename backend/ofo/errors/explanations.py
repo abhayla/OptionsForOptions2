@@ -655,36 +655,6 @@ class ApproachLabel(SlotType):
         return BUILT_APPROACH_NAMES[value]
 
 
-class ClosedSide(SlotType):
-    """ADR-330 (2): the closed side of an iron condor, "call" or "put" (the two ids of ``side_remaining_shape.json``)."""
-
-    @staticmethod
-    def validate(value: object) -> None:
-        if value not in ("call", "put"):
-            raise ValueError(f"ClosedSide slot must be call or put, got {value!r}")
-
-    @staticmethod
-    def format(value: str) -> str:
-        return str.__str__(value)
-
-
-class RemainingShape(SlotType):
-    """ADR-330 (2) (b): the shape name that remains after a side closes ("Bull Put Spread" / "Bear Call Spread"), the
-    strategy template's own name (``ofo.strategy.loader``), never a typed one."""
-
-    @staticmethod
-    def validate(value: object) -> None:
-        from ofo.adjustment.side_scope import REMAINING_SHAPE
-        from ofo.strategy.loader import load_templates
-        names = {t.name for t in load_templates() if t.id in REMAINING_SHAPE.values()}
-        if not isinstance(value, str) or value not in names:
-            raise ValueError(f"RemainingShape slot must be one of {sorted(names)}, got {value!r:.40}")
-
-    @staticmethod
-    def format(value: str) -> str:
-        return str.__str__(value)
-
-
 class WholeRupees(SlotType):
     """REQ-152: a summary money figure in whole rupees, Indian grouping, no sign (net premium, margin figures)."""
 
@@ -1787,10 +1757,14 @@ _EXPLANATIONS: tuple[ExplanationTemplate, ...] = (
     ExplanationTemplate("alert_closed_trade_closed", "values_seen", "Closed by system: the trade closed at {time}",
                         {"time": HourMinute}),
     # ADR-330 (2) (b), (33), P7 page flow (pending owner read): the side_closed row's words and its confirmation
-    ExplanationTemplate("alert_side_closed_text", "values_seen",
-                        "The {side} side of this trade is closed. Add the legs again, or confirm the new shape: "
-                        "this strategy will change from its entry shape to {shape}.",
-                        {"side": ClosedSide, "shape": RemainingShape}),
+    # one sentence per closed side, with no slot (Lane J 26 Nov: two new slot types would need the pinned slot-type
+    # review of tests_app/test_identifier_and_slots.py); the route uses it only when the shape data names that shape
+    ExplanationTemplate("alert_side_closed_text_call", "values_seen",
+                        "The call side of this trade is closed. Add the legs again, or confirm the new shape: "
+                        "this strategy will change from its entry shape to Bull Put Spread."),
+    ExplanationTemplate("alert_side_closed_text_put", "values_seen",
+                        "The put side of this trade is closed. Add the legs again, or confirm the new shape: "
+                        "this strategy will change from its entry shape to Bear Call Spread."),
     *(ExplanationTemplate(f"alert_answer_{key}", "values_seen", text)  # ADR-330 (3): each answer's label, as the page shows it
       for key, text in ALERT_ANSWER_LABEL_TEXT.items()),
     ExplanationTemplate("stop_fired_loss", "values_seen",
