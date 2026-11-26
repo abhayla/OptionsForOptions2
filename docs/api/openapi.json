@@ -9351,6 +9351,17 @@
             "title": "Kind",
             "type": "string"
           },
+          "lots": {
+            "anyOf": [
+              {
+                "type": "integer"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Lots"
+          },
           "placed_at": {
             "format": "date-time",
             "title": "Placed At",
@@ -9392,6 +9403,7 @@
           "contract_id",
           "contract_text",
           "quantity",
+          "lots",
           "price",
           "price_text",
           "kind"
