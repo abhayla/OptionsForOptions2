@@ -72,18 +72,19 @@
       <p v-if="book.closed_text" class="mt-2 text-xs font-semibold" data-testid="closed-result">{{ book.closed_text }}</p>
     </div>
 
+    <!-- S-25: every cell has px-2 and Qty / Price are right-aligned tabular figures, so "65" and "101.20" never read as 65101.20 -->
     <table v-else class="mt-2 w-full text-xs" data-testid="order-table">
       <thead class="text-ink-muted">
-        <tr><th class="text-left font-normal">Time</th><th class="font-normal">B/S</th><th class="text-left font-normal">Contract</th><th class="font-normal">Qty</th><th class="font-normal">Price</th><th class="font-normal">Kind</th></tr>
+        <tr><th class="px-2 text-left font-normal">Time</th><th class="px-2 font-normal">B/S</th><th class="px-2 text-left font-normal">Contract</th><th class="px-2 text-right font-normal">Qty</th><th class="px-2 text-right font-normal">Price</th><th class="px-2 font-normal">Kind</th></tr>
       </thead>
       <tbody>
         <tr v-for="o in book.orders" :key="o.id" class="border-t border-line" data-testid="order-row">
-          <td class="num py-1" data-testid="order-time">{{ istClock(o.placed_at) ?? '-' }}</td>
-          <td class="text-center" data-testid="order-side">{{ o.side === 'BUY' ? 'B' : 'S' }}</td>
-          <td data-testid="order-contract">{{ o.contract_text }}<span v-if="o.reason_text" class="block text-[11px] text-ink-muted" data-testid="order-reason">{{ o.reason_text }}</span></td>
-          <td class="num text-right" data-testid="order-qty">{{ o.quantity }}</td>
-          <td class="num text-right" data-testid="order-price">{{ o.price_text }}</td>
-          <td class="text-center" data-testid="order-kind">{{ kindText(o.kind) }}</td>
+          <td class="num px-2 py-1" data-testid="order-time">{{ istClock(o.placed_at) ?? '-' }}</td>
+          <td class="px-2 text-center" data-testid="order-side">{{ o.side === 'BUY' ? 'B' : 'S' }}</td>
+          <td class="px-2" data-testid="order-contract">{{ o.contract_text }}<span v-if="o.reason_text" class="block text-[11px] text-ink-muted" data-testid="order-reason">{{ o.reason_text }}</span></td>
+          <td class="num px-2 text-right tabular-nums" data-testid="order-qty">{{ o.quantity }}</td>
+          <td class="num px-2 text-right tabular-nums" data-testid="order-price">{{ o.price_text }}</td>
+          <td class="px-2 text-center" data-testid="order-kind">{{ kindText(o.kind) }}</td>
         </tr>
       </tbody>
     </table>
