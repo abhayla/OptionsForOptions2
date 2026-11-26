@@ -21209,7 +21209,7 @@
     },
     "/api/strategies/{strategy_id}/adjustment-plan/reset": {
       "post": {
-        "description": "ADR-330 (9) \"Reset to playbook\" (the browser asks once, the server does the copy): every condition of the plan\ngoes back to its playbook's and the stop base is worked out again (a plan edit recomputes it, ADR-330 (1)). A plan\nwith no playbook (saved before playbooks were pointed at, or its playbook deleted) or no plan: refused with the\nplaybook's own not-found sentence, the plan unchanged.",
+        "description": "ADR-330 (9) \"Reset to playbook\" (the browser asks once, the server does the copy): every condition of the plan\ngoes back to its playbook's and the stop base is worked out again (a plan edit recomputes it, ADR-330 (1)). A plan\nwith no playbook (saved before playbooks were pointed at, or its playbook deleted) or no plan: refused\n(no plan: \"not available\", 404; no playbook: the playbook's not-found sentence), the plan\nunchanged. The sheet levels and plan settings are kept.",
         "operationId": "reset_plan_api_strategies__strategy_id__adjustment_plan_reset_post",
         "parameters": [
           {
