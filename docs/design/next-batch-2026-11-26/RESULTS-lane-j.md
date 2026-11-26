@@ -121,7 +121,9 @@ N9. Real P&L total (Lane S): Positions with no real position in a strategy: "Rea
     contract at the same minute. Filter All / Real / Paper: the two totals stay separate.
 N10. Side closed, the answers (ADR-330 (2)(b), (33)). After N8, Alerts > Active, the side-closed row: press "Add the
     legs again": the answer is stored and the builder of that trade opens. On another side-closed row press "Confirm
-    the new shape": a confirmation names the shape that remains (e.g. iron condor -> bull put spread); Cancel: nothing
+    the new shape": the confirmation shows the row's own sentence "The call side of this trade is closed. Add the legs
+    again, or confirm the new shape: this strategy will change from its entry shape to Bull Put Spread." (the shape as
+    the server names it); Cancel: nothing
     is stored and the row stays asking; Confirm: the row leaves Active, the bell drops by 1. Not built: the plan's
     rule lines reading "Not applicable: the <side> side is closed" (ADR-330 (2)(a)).
 N11. Reset to playbook (ADR-330 (9), (32)). A plan saved from a playbook: switch one condition off, type a Rs 400 stop
@@ -257,8 +259,7 @@ device); recorded here instead.
 ## Lines waiting for a person's approval (none written by Lane J)
 
 - Catalogue wordings pinned "pending owner read": `stop_fired_note`, `stop_fired_note_with_line`, `alert_title_unnamed`
-  (W2-A); `alert_side_closed_text`, `alert_side_closed_confirm`, `plan_sheet_reset`, `plan_sheet_reset_confirm` and
+  (W2-A); `alert_side_closed_text` (now also names the shape that remains), `plan_sheet_reset`, `plan_sheet_reset_confirm` and
   the `labels:plan_sheet` pin (P7/P8); `change_deleted` "Deleted", `change_undeleted` "Restored" (ADR-330 (31)).
-- Reply inventory note `'ActiveAlert.confirm_text': 'UNREVIEWED'` in `tests_app/reply_inventory.py` (P7).
 - REQ-070 AC-8 text (ADR-330 (31)); the 0057 downgrade refusal rule.
 - Owner question LJ-1 (fired-stop line priced at the fill), `owner-questions-lane-j.md`.
