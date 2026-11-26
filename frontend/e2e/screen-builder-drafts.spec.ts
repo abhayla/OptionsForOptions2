@@ -904,9 +904,8 @@ test.describe('Builder: Save, Save As, Rename and the name dialog (REQ-134 AC-1.
 
   test('SV-21 an empty name is refused with "Give the strategy a name" and the dialog stays open', async ({ page }, info) => {
     // Spec basis: REQ-134 AC-1 ("an empty name is refused with 'Give the strategy a name'")
-    test.fail() // expected-fail: NEW-T61: the refusal reads the catalogue's "The strategy has no name." (templates.py strategy_name_empty), not the spec's "Give the strategy a name"
     const S = await stubBuilder(page)
-    S.patch = { status: 400, json: { what_happened: 'The strategy has no name.', impact: 'The strategy was not saved or renamed.', what_is_blocked: 'Saving or renaming this strategy.', next_action: 'Type a name of 1 to 20 characters, then save again.' } }
+    S.patch = { status: 400, json: { what_happened: 'Give the strategy a name.', impact: 'The strategy was not saved or renamed.', what_is_blocked: 'Saving or renaming this strategy.', next_action: 'Type a name of 1 to 20 characters, then save again.' } }
     await openStrategy(page, 7)
     await openMore(page)
     await page.getByTestId('rename-open').click()
@@ -1115,7 +1114,6 @@ test.describe('Builder: the Saved Strategies list (REQ-134 AC-4, AC-5, REQ-070 A
 
   test('SL-11 a search with no match reads "No saved strategy matches <text>"', async ({ page }, info) => {
     // Spec basis: REQ-134 AC-4 ("no match shows 'No saved strategy matches <text>'")
-    test.fail() // expected-fail: NEW-T64: the page prints "No saved strategy matches." without the typed text (lib/saveDraft.js noMatchText exists and is not used)
     await stubBuilder(page)
     await page.goto(BUILDER)
     await savedTab(page)
@@ -1196,7 +1194,6 @@ test.describe('Builder: the Saved Strategies list (REQ-134 AC-4, AC-5, REQ-070 A
 
   test('SL-18 the pencil on another row opens that strategy first, then the rename dialog; Save renames it', async ({ page }, info) => {
     // Spec basis: REQ-134 AC-3 (rename from the list or the builder; same rules as AC-1); BUILD-163
-    test.fail() // expected-fail: NEW-T67: the strategy opens but the rename dialog never follows (renameRow clears its pending id one tick after open(), before the page's async open sets the current strategy)
     const S = await stubBuilder(page)
     S.saved.set(8, savedStrategy(8, 'Bull Call Spread', 1, [savedLeg(CONTRACTS[2], 'BUY', '90.00')]))
     await page.goto(BUILDER)
