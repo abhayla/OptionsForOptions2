@@ -305,10 +305,13 @@ LINES: dict[str, tuple[str, ...]] = {
         "const WAITING = 'Order placed - waiting for Check with Zerodha'",
         "const BLOCKED = 'blocked until its position matches Zerodha'",
         "const VIEW_ON_KITE = 'view on Kite'",
-        '<EmptyState v-else title="No open positions" message="Zerodha shows no open positions, and none of your strategies holds any." />',
-        # GC-TP 4b (F-69, ADR-207 (3)): while paper strategies are open, the real Positions tab names Zerodha as the source
-        "const NO_ZERODHA = 'No open Zerodha positions.'",
-        '<p v-if="paperOpen > 0" data-testid="positions-paper-open">{{ NO_ZERODHA }} {{ paperOpenText(paperOpen) }}</p>',
+        '<EmptyState title="No open positions" message="Zerodha shows no open positions, and none of your strategies holds any." />',
+        # ADR-330 (10) replaces ADR-201 (2): the one list tags each real group with its source, user-facing wording
+        "const REAL_TAG = 'REAL (Zerodha)'",
+    ),
+    'frontend/src/components/positions/PositionsTotals.vue': (
+        # ADR-330 (10): the Real P&L line says why there is no figure (user-facing wording)
+        "const REAL_NOT_SHOWN = 'Real P&L is not shown yet: the server does not price Zerodha positions.'",
     ),
     'frontend/src/router/nav.js': (
         "['zerodha-connection', 'Zerodha connection'],",
