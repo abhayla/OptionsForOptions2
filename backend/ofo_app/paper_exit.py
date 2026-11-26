@@ -52,12 +52,13 @@ ALREADY_FIRED = "already_fired"
 Refused = may_act.Refused
 
 
-async def live_exit_prices(ctx: Any, feed: Any, underlying: str,  # noqa: PLR0913 - the plan's signature
+async def live_exit_prices(ctx: Any, feed: Any, underlying: str,
                            feed_keys: Sequence[str | None]) -> dict[str, paper.Price] | Refused:
     """The live price answer of each feed key, or the ``Refused`` the routes always gave (``may_act.require``).
     ``feed_keys`` are read as given (a None key is a contract that is no longer live). Answer states: no market
     (``tracking_not_connected``: no context, or the provider says not connected); a contract not live
-    (``tracking_exit_contract_not_live``, never "try again"); a failed read (``tracking_exit_prices_not_live``); any price not live (``tracking_exit_prices_not_live``)."""
+    (``tracking_exit_contract_not_live``, never "try again"); a failed read or any price not live
+    (``tracking_exit_prices_not_live``)."""
     from ofo_app.routes import tracking  # noqa: PLC0415 - the exit route's own market read, looked up at call time
     connected = ctx is not None and ctx.provider.status().connected
     if not connected:

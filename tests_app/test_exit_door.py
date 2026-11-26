@@ -481,8 +481,7 @@ async def test_tracking_exit_order_time_is_the_answer_time_not_the_quote_time(db
         legs = {leg["leg_index"]: leg for leg in reply.json()["legs"]}
     ids = list(stored.saved.contract_ids)
     rows = await _closing(db, stored.id, ids)
-    assert len(rows) == 2
-    assert {r[7] for r in rows} == {ANSWERED}
+    assert [r[7] for r in rows] == [ANSWERED, ANSWERED]
     assert legs[0]["price_at"] is None or legs[0]["price_at"] != ANSWERED.isoformat()  # the quote time is not it
     assert datetime.datetime.fromisoformat(legs[0]["exited_at"].replace("Z", "+00:00")) == ANSWERED
 

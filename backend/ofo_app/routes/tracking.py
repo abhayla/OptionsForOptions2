@@ -21,7 +21,7 @@ from __future__ import annotations  # noqa: I001 - the import-door test pins the
 
 import dataclasses
 import datetime
-from collections.abc import Coroutine, Hashable, Mapping, Sequence
+from collections.abc import Callable, Coroutine, Hashable, Mapping, Sequence
 from dataclasses import dataclass
 from decimal import Decimal
 from typing import Annotated, Any, Literal
@@ -513,6 +513,17 @@ async def get_tracking(strategy_id: int,  # noqa: PLR0913 - FastAPI dependencies
     return await _answer(db, stored, bk, ctx, feed, threshold, now(), rates)
 
 
+def _locked_ids(ids: list[int]) -> Callable[[Mapping[Hashable, int]], list[int]]:
+    """#729: the named contract ids as the door's ``only``, judged on the net re-read under the strategy lock
+    (``closes="locked"``): a leg that grew since the route's read closes whole; a named contract already flat there is
+    the existing already-exited refusal (a flat leg among open ones is never silently dropped)."""
+    def chosen(net: Mapping[Hashable, int]) -> list[int]:
+        if any(not net.get(c) for c in ids):
+            raise StrategyRefused("tracking_leg_already_exited", Failure.CONFLICT)
+        return ids
+    return chosen
+
+
 @router.post("/strategies/{strategy_id}/tracking/exit", response_model=TrackingOut,
              dependencies=[Depends(guard_paper_order)])  # IC e2e 5: scenario mode = own scenario only
 async def exit_tracking(strategy_id: int, body: TrackingExitIn,  # noqa: PLR0913 - FastAPI dependencies
@@ -550,21 +561,13 @@ async def exit_tracking(strategy_id: int, body: TrackingExitIn,  # noqa: PLR0913
     if isinstance(live, may_act.Refused):
         may_act.require(live)
     ids = [bk.contract_ids[i] for i in body.legs]
-
-    def chosen(net: Mapping[Hashable, int]) -> list[int]:
-        """#729: the door re-reads the net under the strategy lock (``closes="locked"``) so a leg that grew since this
-        route's read closes whole; a named contract already flat there is the existing already-exited refusal."""
-        if any(not net.get(c) for c in ids):
-            raise StrategyRefused("tracking_leg_already_exited", Failure.CONFLICT)
-        return ids
-
     by_leg = {bk.contract_ids[i]: live[legs[i].instrument_id] for i in body.legs}  # type: ignore[index] - live: dict
 
     async def exit_orders() -> Sequence[paper_store.StoredOrder]:
         done = await paper_exit.exit_strategy(
             db, user_ref=user_ref, strategy_id=strategy_id, kind="exit",
             prices={c: p.price for c, p in by_leg.items()},  # type: ignore[misc] - live: price set
-            placed_at=answered, only=chosen,  # #726: the time the route answers, never the quote time
+            placed_at=answered, only=_locked_ids(ids),  # #726: the time the route answers, never the quote time
             write=lambda orders: paper_limit.place_checked(db, user_ref, strategy_id, orders, entry=None, ctx=ctx,
                                                           at=answered, reader=tracked_reader, rates=rates))  # an exit
         if isinstance(done, paper_exit.Exited):
