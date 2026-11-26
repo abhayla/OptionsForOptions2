@@ -11,12 +11,11 @@ ADR-330 (3), (23), (34), (36); REQ-049, REQ-109, REQ-133 AC-3, REQ-138, REQ-154.
 
 | Class | Count | Issues |
 |---|---|---|
-| FIX NOW | 19 | #725 #726 #727 #728 #729 #730 #733 #734 #736 #737 #738 #739 #740 #741 #743 #745 #746 #748 #749 |
-| NEEDS THE OWNER | 1 | #732 (question D-Q1 in `owner-questions-lane-d.md`) |
-| NEEDS A MIGRATION (coordinator) | 1 | #753 (spec settled: ADR-250, ADR-252 (23)) |
+| FIX NOW | 20 | #725 #726 #727 #728 #729 #730 #732 #733 #734 #736 #737 #738 #739 #740 #741 #743 #745 #746 #748 #749 |
+| NEEDS THE OWNER | 0 | #732 answered by the owner 26 Nov ~21:20 IST: ADR-330 (44), option 1 |
 | WAITS FOR A STAGE | 4 | #735 #742 (D-12, after step 4), #750 #751 (step 4: sign-in, migration) |
 | ALREADY FIXED | 1 | #747 (46b970e) |
-| OTHER LANE NOW | 5 | #724 #744 #752 (Lane R), #754 #755 (Lane G) |
+| OTHER LANE NOW | 6 | #724 #744 #752 (Lane R), #753 (Lane J, carries the migrations), #754 #755 (Lane G) |
 | NOT WORTH DOING | 1 | #731 |
 
 Older `deferred` issues (135 open below #724): not triaged one by one in this pass; see "Older issues" below.
@@ -35,7 +34,7 @@ Harm: what a user loses. Size: small = one small push. Line numbers are on this 
 | 729 | An exit from the tracking panel closes only the lots read before the lock; if the leg grew in between, part of it stays open without a word | high | small | FIX NOW | `tracking.py:554`; `paper_exit` already supports `closes="locked"` |
 | 730 | "Review and add" dialog built on an old view of the trade can still post an exit after the trade changed in another tab (the server still refuses an exit larger than what is open) | low | small-medium | FIX NOW | `StrategyBuilderPage.vue:434`; reuse the `contractsChanged` gate. Hot file (Lane R/U): last in order |
 | 731 | Two tabs can each send a partial exit of the same lot; both are stored | none | medium + migration | NOT WORTH DOING | The store locks the strategy and re-checks the open quantity under the lock (`paper_store.py:85-95,128-138`), so the two exits can never close more than is open; each is a legal order the user sent. An idempotency key needs a migration for no loss |
-| 732 | A price-level exit does not fire while any of the trade's contracts has no live price, and nothing tells the user it is waiting | medium | medium | NEEDS THE OWNER | Needs alert wording and kind (ADR-003) and a repeat rule; question D-Q1 |
+| 732 | A price-level exit does not fire while any of the trade's contracts has no live price, and nothing tells the user it is waiting | medium | medium | FIX NOW | Owner answer ADR-330 (44): one INFORMATIONAL alert per exit per day ("Your exit at 26,100 could not run: <contract> has no live price. It is still set."), the exit stays set, no order; through the one alert module; also covers ADR-330 (39) (index value too old) using the price reader's verdict |
 | 733 | "Keep this level" re-arms a level that the index may already have crossed, so it fires on the next tick | low | medium | FIX NOW | Spec settled (found on the subject search, so not asked): ADR-317 (1) refuses a level already crossed at save time with the approved "Not saved: ..." wording; (2) no live price = kept; (7) "keeps it" is a save |
 | 734 | A stop that fires in the first second after the watcher reloads can record "index value not available" in its alert | low | medium | FIX NOW | `paper_monitor.py` reload / `_fire`; alerts path, Tier A |
 | 735 | internal: no user effect today. Four display price readers do not go through the one market reader | none | large | WAITS FOR A STAGE | Structural debt D-12 waits until step 4 is done |
@@ -56,7 +55,7 @@ Harm: what a user loses. Size: small = one small push. Line numbers are on this 
 | 750 | Builder Settings has only "Show legs as", and a choice is lost on reload | medium | large | WAITS FOR A STAGE | Step 4 (signed-in user, a settings table = migration) |
 | 751 | An unsaved builder strategy is lost on reload | medium | large | WAITS FOR A STAGE | Step 4 (REQ-154, stored draft per user = migration) |
 | 752 | After the close, prices keep moving under a 15:30 banner | - | - | OTHER LANE NOW (Lane R) | ADR-330 (36) built on fix/screen-findings-1126 (0e6f6ac, d73508f) |
-| 753 | Editing a plan saved before ADR-247 silently adds the 2x-credit stop line to it | medium | medium | NEEDS A MIGRATION (coordinator) | Spec settled: ADR-250 (an old plan keeps its own stops, gains no 2x-credit line: "nothing under a live position changes without the user choosing it"), ADR-252 (23) (only a playbook switch is a new acceptance). Migration 0041's trigger restamps `accepted_at` on every body edit; the fix stamps it on a switch only = a trigger change = a migration. Real case: an edit of strategy 82's target (ADR-250's case) would add the 2x line |
+| 753 | Editing a plan saved before ADR-247 silently adds the 2x-credit stop line to it | medium | medium | OTHER LANE NOW (Lane J) | Spec settled: ADR-250 (an old plan keeps its own stops, gains no 2x-credit line: "nothing under a live position changes without the user choosing it"), ADR-252 (23) (only a playbook switch is a new acceptance). Migration 0041's trigger restamps `accepted_at` on every body edit; the fix stamps it on a switch only = a trigger change = a migration. Real case: an edit of strategy 82's target (ADR-250's case) would add the 2x line |
 | 754 | internal: an egress test is red when a proxy is set | - | - | OTHER LANE NOW (Lane G) | not touched |
 | 755 | internal: the gate is red while a builder worktree sits under `.claude/worktrees/` | - | - | OTHER LANE NOW (Lane G) | not touched; this lane keeps helper worktrees outside the repo |
 
