@@ -426,7 +426,8 @@ Market hours unless stated. Tick each box. Lane A rows 1-5 (plan section 8), Lan
 11. **Pasted draft link, ADR-329 (3).** With unsaved legs shown, paste a different `?draft=` link into the address bar
     of the same tab and press Enter: the page loads fresh with the link's legs and asks nothing (the same as a reload,
     row 10). The Replace question is only for a draft link that arrives inside the app (unit test `draft-link.test.js`;
-    no screen does that today). Rewritten 26 Nov 2026 after the owner's answer to LR-Q1. [ ]
+    no screen does that today). Rewritten 26 Nov 2026 after the owner's answer to LR-Q1. This is the behaviour UNTIL
+    REQ-154 is built: REQ-154 AC-1 (the unsaved strategy survives a reload) stands, ADR-330 (34); issue #751. [ ]
 12. **Drafts Mode across the chain trip.** Open a paper strategy, remove one leg (a pending change), go to the Option
     Chain and back: the pending change is still there. If the book changed meanwhile: "The strategy changed while you
     were away. Your unsaved edits were not restored." [ ]
