@@ -200,3 +200,30 @@ review agent runs, so a review blocked three builders for about 15 minutes: run 
 3. A leg whose price moved shows "Price has moved ... now <the legs table's LTP>".
 4. Stop the API for a few seconds: the legs table, the P&L Table, the Full table and the Paper P&L panel rows all show "-"; restore: all come back.
 5. Orderbook: each fill of 25850 CE is still its own row (153.00 and 196.45).
+
+## Part D (re-test of 7bf64eb, owner comment 7187957060)
+
+Result on the PC: 15 PASS with this morning's failure gone, 3 PASS with a remainder (D-N07, D-N13, D-S02), 1 FAIL (D-N11).
+
+| Finding | Status | Root cause (one sentence) | Class before / after | Tests red, then green |
+|---|---|---|---|---|
+| D-N11, "1 unsaved leg" for a staged removal on a running trade | Hardened, NOT reproduced | The old test drove a hand-built harness and snapshot, so the page's own snapshot never ran (detection gap, now closed); on the real path (real routes, real page, real book fixture, real bin click, real Settings route) the wording was already right, so the owner's case is not explained. | "Pending" now reads the page's Drafts Mode state itself, not a field of the book reply (`paper.book.strategy_id`, which a refreshed book could in principle lack). | New `leave-builder-real-path-adr329.test.js`: N11a green before and after; N11c (book without strategy_id) red, then green. If the PC still shows "unsaved leg": note the deployed commit and copy the `GET /api/paper/strategies/<id>` reply. |
+| N-37, restored legs read "Your price, typed" | Fixed, not tested | A paper-fill leg is recognised by contract, planned entry and capture time; the restore re-reads the book, its fills carry newer times, so no held leg matched and every leg showed as typed. | Restored legs shown as typed: 3 of 3; 0 after (the hold carries the fill keys and the restore takes the fresh fill's entry and time). | N37: 3 typed lines, then 0. |
+| N-35, stale builder still offers the bins | Fixed, not tested | Only the Exit buttons read the blocked rule; the leg list and the controls had no lock. | Leg-edit controls enabled while the trade changed elsewhere: 24 (4-leg fixture); 0 after, through one `locked` prop with the existing reload line as the reason. Choice: the same lock holds while the book read fails (the Exit rule); it lifts when the read recovers. | `leg-lock-n35.test.js`: red, then 3 pass. |
+| D-N13 / N-34, empty "New Strategy" frame while opening | Fixed, not tested | The opening flag hid only "No legs yet"; the card title and the action bar still showed. | Shell parts shown while opening: 4; 0 after (one loading card with the existing "Working out the outcome..." text). | `opening-shell-n34.test.js`: red, then 3 pass. |
+| D-N07 remainder, API down shows an error block on the P&L Table tab | Question LR-Q10 | Without an outcome reply the page shows its error block for the whole numbers area; the P&L Table's rows come from that reply. The dash rule works when the outcome answers and only the book read fails (tested). | - | - |
+| D-S02, the busy wording cannot be clicked | As designed | The wording needs another session holding the strategy's row lock until the statement times out; two tabs deleting at once queue in milliseconds and get a refusal or "not found", never the busy line. The owner can see it only through `tests_app/test_store_busy.py` (one file, `scripts/orchestrator/db_run.py`). | - | - |
+| N-36, Back replays a cancelled clash question | Fixed, not tested | A cancelled add was not recorded on the hold, so Back replayed the same draft link. | 1 path; each Add Selected is now its own history entry and the handled mark is the draft text plus that entry: Back asks nothing, a new Add Selected still asks. | N36 in `chain-trip-adr329.test.js`: red, then pass. |
+| N-39, "2 deleted" stays ~3 s after Undo | Fixed, not tested | The line was cleared only after the restore calls finished. | 1 line; cleared at once, put back only if a restore fails. | `my-strategies-bulk.test.js`: red, then pass. |
+| N-31, N-33, N-41, N-42 | Not a defect | N-31: the index had no tick yet after the API restart (self-clears); N-33: Exit on a Live card opens Positions by design (D-N22); N-41: drafts 182/183 were most likely restored by a late Undo on the result line (a deleted row cannot be listed: every read filters deleted rows); N-42: the plan sheet at Add to Paper is REQ-161 AC-1 (Lane P's area). | - | - |
+| N-32 | Not a defect | During a pending partial exit the P&L Table row shows "-" and "Planned entry" because the row's lots differ from the book's (the one join, #744). The ~10 s Confirm lock is the exit's round trip. | - | - |
+| N-38, N-40, delete history | Questions LR-Q11, LR-Q12, LR-Q13 | - | - | - |
+| N-43 | Deferred #749 | The stop-loss sentence wraps in the narrow Exit column. | - | - |
+
+## Re-test: Part D fixes
+
+1. D-N11: open a running paper trade by My Strategies > Open in Builder; bin one leg; You > Settings. Expected "Leave the builder? The 1 pending change will be lost." Stay. If it still says "unsaved leg", note the commit the PC runs and save the `GET /api/paper/strategies/<id>` reply from the browser's network tab.
+2. N-37: same trade, bin one leg, Market > Option Chain, Back. Expected: "1 pending change" and no leg reads "Your price, typed ...".
+3. N-35: open the trade in two tabs; in tab 2 exit one leg; in tab 1: the bins, strike +/-, lots, Clear all, Add/Edit and Shift/Width/Hedge are greyed, with "This trade changed elsewhere. Reload to see the current legs."; reload: all enabled.
+4. D-N13: open `/strategy/builder?strategy=<a running trade>` fresh. Expected: one loading card, never an empty "New Strategy" with Save / Add to Paper, then the trade.
+5. N-36 / N-39: chain clash > Cancel > Back: no question again; My Strategies bulk delete > Undo: the "2 deleted" line goes at once.

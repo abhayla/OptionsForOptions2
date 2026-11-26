@@ -91,3 +91,37 @@ reads "Max Profit and Max Loss are after charges estimated at entry prices; brea
 "Breakevens include the booked P&L and about Rs 395.78 of charges and taxes." Both are as built and as decided.
 Options: (a) keep both (recommended: a placed trade has real charges and booked P&L, a plan has estimates); (b) plan
 breakevens after charges too; (c) placed breakevens before charges too. No build.
+
+## LR-Q10 D-N07: what the P&L Table shows when the API is down (open, 26 Nov 2026)
+
+Spec basis: check row 4 of docs/design/modular-doors-2026-11-25/RESULTS.md (when prices are not live the figures show "-"); the
+N-07 / #744 rule (P&L Table rows and TOTAL show "-" on a failed book read); ADR-008. Real case (Part D, 14:24): API stopped
+~25 s; the legs table showed "-" everywhere, the P&L Table tab was replaced by "The page could not get an answer from the
+server" with no rows. Cause: with the API down the outcome request fails too, and the P&L Table's rows come from that reply.
+Options: (a) keep: the error block is honest, it shows no number (recommended: no extra build, nothing misleading);
+(b) build P&L Table rows from the held book net with "-" in every figure while the outcome is unreadable (a second row
+source for that tab; medium build); (c) keep the last outcome rows on screen with every figure dashed. No build until answered.
+
+## LR-Q11 N-38: two different "Settings" (open)
+
+Spec basis: REQ-009 (the avatar menu opens Account & Settings; "Settings (the admin's app-wide Settings page, REQ-167)").
+Real case: the builder has its own "Settings" button (a "Show legs as" popover) beside the search; the app's Settings is in
+the avatar menu only. Options: (a) keep; (b) rename the builder's button, e.g. "View" or "Builder settings" (label only);
+(c) add Settings to the top menu. Recommendation: (b). New wording, so it needs the owner.
+
+## LR-Q12 N-40: Add to Paper while live prices are disconnected (open)
+
+Spec basis: REQ-109 AC-1 (each confirm price defaults to the leg's builder entry price and is editable); REQ-109 AC-5 and
+may_act (only paper EXITS are refused when prices are not live); ADR-015 ("Live market data disconnected. Last updated ...").
+Spec silent on entries at stale prices (searched: stale, not live, entry, Add to Paper refusal). Real case (Part D, 14:46):
+the banner "Live market data disconnected. Last updated: 14:46:30 IST" showed, and Add to Paper still recorded the entry at
+the last captured prices. Paper only, but every later paper P&L, stop and target check starts from that entry.
+Options: (a) allow as now; (b) allow, with a line in the confirm list "Prices are not live; the entry is the last captured
+price, as of HH:MM" that the user confirms; (c) refuse like the exit. Recommendation: (b). New wording and a rule: needs a row.
+
+## LR-Q13 Should a delete and its Undo show in the strategy's history? (open)
+
+Spec basis: REQ-070 (the delete confirm reads "Delete this draft? Its history is kept, and you can Undo right after."); ADR-118.
+Real case: drafts 182 and 183 reappeared and nothing on screen says when or how; `delete_draft` and `undelete_draft`
+(backend/ofo_app/strategy_store.py ~359-383) set or clear `deleted_at` and write no history entry. Options: (a) keep;
+(b) add "Deleted" and "Restored" events to the strategy's history (server, small). Recommendation: (b).
