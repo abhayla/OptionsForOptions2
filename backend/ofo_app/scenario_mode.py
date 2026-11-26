@@ -126,6 +126,7 @@ NON_ORDER_ROUTES: frozenset[tuple[str, str]] = frozenset({
     ("POST", "/strategies"),
     ("PATCH", "/strategies/{strategy_id}/name"),
     ("DELETE", "/strategies/{strategy_id}"),
+    ("POST", "/strategies/bulk-delete"),  # ADR-330 (8): the single delete per id (app data, no order)
     ("POST", "/strategies/{strategy_id}/undelete"),
     ("PUT", "/strategies/{strategy_id}"),
     ("POST", "/strategies/{strategy_id}/restore/{seq}"),

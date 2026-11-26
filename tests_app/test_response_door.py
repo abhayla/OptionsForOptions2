@@ -532,6 +532,8 @@ APP_MODELS = (
     "ofo_app.routes.settings.RefusedOut",
     "ofo_app.routes.settings.SettingOut",
     "ofo_app.routes.settings.SettingsOut",
+    "ofo_app.routes.strategies.BulkDeleteOut",
+    "ofo_app.routes.strategies.BulkKeptOut",
     "ofo_app.routes.strategies.DefinitionOut",
     "ofo_app.routes.strategies.DeletedOut",
     "ofo_app.routes.strategies.EntryOut",
