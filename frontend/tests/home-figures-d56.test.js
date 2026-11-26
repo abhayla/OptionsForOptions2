@@ -31,7 +31,7 @@ const T = '2026-11-23T10:00:00+05:30'
 const strat = (id, word) => ({ id, underlying: 'NIFTY', status: 'draft', status_word: word, revision: 1, created_at: T, updated_at: T })
 const totals = (over = {}) => ({ total_text: '+14.00', total_after_text: '+12.00', booked_text: '+2.00', unbooked_text: '+12.00', after_charges_reason: null, ...over })
 const paper = (t = totals()) => ({ strategies: [], totals: t, answered_at: T })
-const alerts = (count) => ({ count, alerts: Array.from({ length: count }, (_, i) => ({ id: i + 1, strategy_id: 1, kind: 'plan_loss_stop', text: 't', fired_at_hm: '11:02', answers: [] })) })
+const alerts = (count) => ({ count, alerts: Array.from({ length: count }, (_, i) => ({ id: i + 1, strategy_id: 1, kind: 'plan_loss_stop', text: 't', fired_line: 'Fired at 11:02', answers: [] })) })
 
 async function mountHome() {
   const router = createRouter({ history: createMemoryHistory(), routes: [{ path: '/home/overview', component: HomeOverviewPage }, { path: '/:rest(.*)', component: { template: '<div />' } }] })

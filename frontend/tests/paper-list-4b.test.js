@@ -28,7 +28,7 @@ import { resetActiveAlerts } from '@/lib/paperAlerts'
 import { routes } from '@/router/routes'
 
 const ok = (data) => () => Promise.resolve({ data })
-const ACTIVE_ROW = { id: 1, strategy_id: 64, kind: 'plan_loss_stop', text: 'Stop hit', fired_at_hm: '11:02', answers: [] } // GET /alerts/active row
+const ACTIVE_ROW = { id: 1, strategy_id: 64, kind: 'plan_loss_stop', text: 'Stop hit', fired_line: 'Fired at 11:02', answers: [] } // GET /alerts/active row
 const t = (w, id) => w.get(`[data-testid="${id}"]`)
 const all = (w, id) => w.findAll(`[data-testid="${id}"]`)
 const has = (w, id) => w.find(`[data-testid="${id}"]`).exists()

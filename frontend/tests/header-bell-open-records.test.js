@@ -20,8 +20,10 @@ import { resetActiveAlerts, resetOpenRecords } from '@/lib/paperAlerts'
 import { TRACKING_REFRESH_MS } from '@/lib/tracking'
 import { dismissToast, openToast, toasts } from '@/composables/useToast'
 
-const alertRow = (id) => ({ id, strategy_id: 48, kind: 'plan_loss_stop', text: `t${id}`, fired_at_hm: '11:02', answers: [] })
+const alertRow = (id) => ({ id, strategy_id: 48, kind: 'plan_loss_stop', text: `t${id}`, fired_line: 'Fired at 11:02', answers: [] })
 const paper = (n) => () => Promise.resolve({ data: { count: n, alerts: Array.from({ length: n }, (_, i) => alertRow(i + 1)) } })
+// P1 r3: the pop-up is announced from /alerts/active; these adjustment-rule alerts mirror the open records of the same ids
+const rules = (...ids) => () => Promise.resolve({ data: { count: ids.length, alerts: ids.map((id) => ({ ...alertRow(id), strategy_id: 7, kind: 'adjustment_rule' })) } })
 const rec = (id, outcome = 'open') => ({ id, outcome })
 const opp = (...recs) => () => Promise.resolve({ data: { groups: [{ group: 'g', strategy_id: 7, records: recs }] } })
 const OPEN3 = [rec(1), rec(2), rec(3)]
@@ -88,15 +90,16 @@ describe('bell counts the server count of unanswered alerts only', () => {
 
 describe('toast on a new open record', () => {
   it('no toast on first load with 3 open records', async () => {
-    answers['GET /alerts/active'] = paper(0)
+    answers['GET /alerts/active'] = rules(1, 2, 3)
     answers['GET /adjustment-opportunities'] = opp(...OPEN3)
     await header()
     expect(toasts).toHaveLength(0)
   })
   it('a new id on a later poll toasts once; the same id on the next poll does not toast again', async () => {
-    answers['GET /alerts/active'] = paper(0)
+    answers['GET /alerts/active'] = rules(1, 2, 3)
     answers['GET /adjustment-opportunities'] = opp(...OPEN3)
     await header()
+    answers['GET /alerts/active'] = rules(1, 2, 3, 4)
     answers['GET /adjustment-opportunities'] = opp(...OPEN3, rec(4))
     await tick()
     expect(toasts).toHaveLength(1)
@@ -105,9 +108,10 @@ describe('toast on a new open record', () => {
     expect(toasts).toHaveLength(0)
   })
   it('clicking the toast routes to the strategy compare with the open records', async () => {
-    answers['GET /alerts/active'] = paper(0)
+    answers['GET /alerts/active'] = rules(1)
     answers['GET /adjustment-opportunities'] = opp(rec(1))
     await header()
+    answers['GET /alerts/active'] = rules(1, 2)
     answers['GET /adjustment-opportunities'] = opp(rec(1), rec(2))
     await tick()
     openToast(toasts[0].id)
@@ -117,9 +121,10 @@ describe('toast on a new open record', () => {
     expect(r.currentRoute.value.query.pick).toBeUndefined() // ADR-308 (4): the pop-up opens with every approach shown
   })
   it('a dismissed toast does not route', async () => {
-    answers['GET /alerts/active'] = paper(0)
+    answers['GET /alerts/active'] = rules(1)
     answers['GET /adjustment-opportunities'] = opp(rec(1))
     await header()
+    answers['GET /alerts/active'] = rules(1, 2)
     answers['GET /adjustment-opportunities'] = opp(rec(1), rec(2))
     await tick()
     dismissToast(toasts[0].id)

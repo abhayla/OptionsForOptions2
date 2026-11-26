@@ -23,7 +23,7 @@ import { toasts } from '@/composables/useToast'
 
 const rec = (id, condition) => ({ id, rule_id: `R-${id}`, outcome: 'open', condition, can_act: true })
 const group = (strategy_id, strategy_name, ...records) => ({ group: `${strategy_id}-g`, strategy_id, strategy_name, label: 'Your rule was triggered', records })
-const row = (id, strategy_id) => ({ id, strategy_id, strategy_name: `"Trade ${strategy_id}"`, kind: 'plan_loss_stop', text: `Loss stop ${id}`, fired_at_hm: '11:02', answers: [{ code: 'continue', label: 'Continue with the position' }] })
+const row = (id, strategy_id) => ({ id, strategy_id, strategy_name: `"Trade ${strategy_id}"`, kind: 'plan_loss_stop', text: `Loss stop ${id}`, fired_line: 'Fired at 11:02', answers: [{ code: 'continue', label: 'Continue with the position' }] })
 const ACTIVE = { count: 2, alerts: [row(1, 7), row(2, 8)] }
 
 let r
@@ -76,6 +76,9 @@ describe('two open records on one trade', () => {
     answers['GET /alerts/active'] = () => Promise.resolve({ data: { count: 0, alerts: [] } })
     answers['GET /adjustment-opportunities'] = () => Promise.resolve({ data: { groups: [] } })
     await mountAt('/', AppHeader)
+    // P1 r3: announced from /alerts/active (kind adjustment_rule), still one pop-up per trade naming both rules
+    const rule = (id, text) => ({ ...row(id, 7), kind: 'adjustment_rule', text })
+    answers['GET /alerts/active'] = () => Promise.resolve({ data: { count: 2, alerts: [rule(1, 'Net delta above 40'), rule(2, 'Loss beyond 5000')] } })
     answers['GET /adjustment-opportunities'] = () => Promise.resolve({ data: { groups: [group(7, '"Trade A"', rec(1, 'Net delta above 40'), rec(2, 'Loss beyond 5000'))] } })
     await vi.advanceTimersByTimeAsync(TRACKING_REFRESH_MS)
     await flushPromises()

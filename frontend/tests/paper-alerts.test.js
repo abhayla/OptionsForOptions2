@@ -23,8 +23,8 @@ import { resetActiveAlerts } from '@/lib/paperAlerts'
 import { TRACKING_REFRESH_MS } from '@/lib/tracking'
 
 const alert = (id, over = {}) => ({ id, strategy_id: 48, strategy_name: null, kind: 'plan_loss_stop', text: `Loss stop reached (${id})`,
-  fired_at: '2026-10-29T05:00:00Z', fired_at_hm: '10:30', no_longer_true_since: null, no_longer_true_since_hm: null, answers: [{ code: 'continue', label: 'Continue with the position' }], ...over })
-const TWO = { count: 2, alerts: [alert(2, { fired_at_hm: '12:00' }), alert(1)] }
+  fired_at: '2026-10-29T05:00:00Z', fired_line: 'Fired at 10:30', no_longer_true_since: null, no_longer_true_since_hm: null, answers: [{ code: 'continue', label: 'Continue with the position' }], ...over })
+const TWO = { count: 2, alerts: [alert(2, { fired_line: 'Fired at 12:00' }), alert(1)] }
 const ok = (data) => () => Promise.resolve({ data })
 const fail = (parts, status = 500) => () => Promise.reject({ message: 'x', status, parts })
 const t = (w, id) => w.get(`[data-testid="${id}"]`)

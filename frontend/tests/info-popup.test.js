@@ -20,7 +20,7 @@ import { resetActiveAlerts, resetOpenRecords } from '@/lib/paperAlerts'
 import { TRACKING_REFRESH_MS } from '@/lib/tracking'
 import { toasts } from '@/composables/useToast'
 
-const row = (id, kind = 'plan_loss_stop') => ({ id, strategy_id: 7, strategy_name: '"Trade A"', kind, text: `Loss stop ${id} reached`, fired_at_hm: '11:02', answers: [] })
+const row = (id, kind = 'plan_loss_stop') => ({ id, strategy_id: 7, strategy_name: '"Trade A"', kind, text: `Loss stop ${id} reached`, fired_line: 'Fired at 11:02', answers: [] })
 const active = (...rows) => () => Promise.resolve({ data: { count: rows.length, alerts: rows } })
 
 beforeEach(() => {

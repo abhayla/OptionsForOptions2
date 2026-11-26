@@ -40,6 +40,14 @@ async function answer(a, code) {
   } catch (e) {
     answerError.value = { ...answerError.value, [a.id]: e?.parts ?? NEUTRAL_PARTS }
     busy.value = false
+    // ADR-330 (3): a refusal 404 / 409 means the server's list moved on (answered elsewhere, gone): re-read Active at once so the row and bell follow it
+    if (e?.status === 404 || e?.status === 409) {
+      try {
+        takeActive(await readActive())
+      } catch (err) {
+        dropActive(err)
+      }
+    }
     return
   }
   busy.value = false
@@ -69,6 +77,7 @@ onMounted(async () => {
           <p class="font-medium" data-testid="history-strategy">{{ plainName(h.strategy_name) ?? `Strategy ${h.strategy_id}` }}</p>
           <p class="mt-1 text-sm">{{ h.text }}</p>
           <p class="text-xs text-ink-muted">{{ h.fired_line }}<template v-if="h.answer_label"> - {{ h.answer_label }} at {{ hmIst(h.answered_at) }}</template><template v-else-if="h.closed_reason"> - closed: {{ h.closed_reason }}</template></p>
+          <p v-if="h.worse_line" class="text-xs text-ink-muted" data-testid="history-worse">{{ h.worse_line }}</p>
         </li>
       </ul>
       <ErrorMessage v-if="paperRecords.parts" :parts="paperRecords.parts" compact prefix="records-error" />
@@ -89,6 +98,7 @@ onMounted(async () => {
         <p class="font-medium" data-testid="alert-strategy">{{ plainName(a.strategy_name) ?? `Strategy ${a.strategy_id}` }}</p>
         <p class="mt-1 text-sm" data-testid="alert-text">{{ a.text }}</p>
         <p class="text-xs text-ink-muted"><span data-testid="alert-fired">{{ a.fired_line }}</span><span v-if="a.no_longer_true_line" data-testid="alert-no-longer"> - {{ a.no_longer_true_line }}</span></p>
+        <p v-if="a.worse_line" class="text-xs text-ink-muted" data-testid="alert-worse">{{ a.worse_line }}</p>
         <div class="mt-2 flex flex-wrap gap-2">
           <button v-for="x in a.answers" :key="x.code" type="button" class="rounded border border-line px-2 py-1 text-sm" :disabled="busy" :data-testid="`alert-answer-${x.code}`" @click="answer(a, x.code)">{{ x.label }}</button>
         </div>
