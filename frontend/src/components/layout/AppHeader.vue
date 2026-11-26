@@ -42,15 +42,16 @@ const total = computed(() => bellCount())
 // (IC e2e B4: it opens that trade's compare); the other kinds stay in Active and the bell.
 const isDue = (a) => openRecords.list.find((r) => r.id === a.id)?.popup_due !== false
 function announceActive(fresh) {
-  for (const a of fresh) {
-    const who = [plainName(a.strategy_name), a.text].filter(Boolean).join(': ')
-    const worse = a.worse_line ? ` ${a.worse_line}` : ''
-    if (a.kind !== 'adjustment_rule') {
-      showInfo(`${who}${worse}`)
-      continue
-    }
-    const ids = openRecords.list.filter((r) => r.strategy_id === a.strategy_id).map((r) => r.id)
-    showInfo(`New adjustment opportunity${who ? ` - ${who}` : ''}.${worse} Open it?`, { onClick: () => router.push(compareAllUrl(a.strategy_id, ids.length ? ids : [a.id])) })
+  const line = (a) => [plainName(a.strategy_name), a.text].filter(Boolean).join(': ')
+  const worse = (as) => as.map((a) => a.worse_line).filter(Boolean).map((w) => ` ${w}`).join('')
+  for (const a of fresh.filter((x) => x.kind !== 'adjustment_rule')) showInfo(`${line(a)}${worse([a])}`)
+  // Issue 8: one Open pop-up per trade with a new adjustment-rule alert, naming the trade and every rule (the server's words)
+  const rules = fresh.filter((x) => x.kind === 'adjustment_rule')
+  for (const sid of new Set(rules.map((a) => a.strategy_id))) {
+    const mine = rules.filter((a) => a.strategy_id === sid)
+    const ids = openRecords.list.filter((r) => r.strategy_id === sid).map((r) => r.id)
+    const what = [plainName(mine[0].strategy_name), mine.map((a) => a.text).filter(Boolean).join('; ')].filter(Boolean).join(': ')
+    showInfo(`New adjustment opportunity${what ? ` - ${what}` : ''}.${worse(mine)} Open it?`, { onClick: () => router.push(compareAllUrl(sid, ids.length ? ids : mine.map((a) => a.id))) })
   }
 }
 // ADR-330 (4): the bell's count is the server's count of unanswered actionable alerts (GET /alerts/active), re-read on the paper

@@ -25,7 +25,7 @@ const rec = (id, condition, outcome = 'open') => ({ id, rule_id: `R-${id}`, outc
 const group = (strategy_id, strategy_name, ...records) => ({ group: `${strategy_id}-g`, strategy_id, strategy_name, label: 'Your rule was triggered', records })
 const opp = (...groups) => () => Promise.resolve({ data: { groups } })
 const active = (rows) => () => Promise.resolve({ data: { count: rows.length, alerts: rows } })
-const item = (id, strategy_id, text) => ({ id, strategy_id, strategy_name: `"Trade ${strategy_id}"`, kind: 'adjustment_rule', text, fired_at_hm: '11:02', no_longer_true_since_hm: null, answers: [{ code: 'continue', label: 'Continue with the position' }] })
+const item = (id, strategy_id, text) => ({ id, strategy_id, strategy_name: `"Trade ${strategy_id}"`, kind: 'adjustment_rule', text, fired_line: 'Fired at 11:02', no_longer_true_since_hm: null, answers: [{ code: 'continue', label: 'Continue with the position' }] })
 
 let r
 async function mountAt(path, comp) {
@@ -51,13 +51,15 @@ afterEach(() => { vi.useRealTimers() })
 
 describe('pop-up names the trade and the rule and opens that trade', () => {
   it('two trades, the second one raises a new alert: text names trade B and its rule; click opens trade B', async () => {
-    answers['GET /alerts/active'] = active([])
+    // P1 r3: the pop-up is announced from /alerts/active (one announcer); the open records only carry the quiet rule and the Open ids
+    answers['GET /alerts/active'] = active([item(1, 7, 'Net delta above 40')])
     answers['GET /adjustment-opportunities'] = opp(A)
     await mountAt('/', AppHeader)
+    answers['GET /alerts/active'] = active([item(1, 7, 'Net delta above 40'), item(2, 8, 'Loss beyond 5000')])
     answers['GET /adjustment-opportunities'] = opp(A, B)
     await tick()
     expect(toasts).toHaveLength(1)
-    expect(toasts[0].message).toContain('Trade B')
+    expect(toasts[0].message).toContain('Trade 8')
     expect(toasts[0].message).toContain('Loss beyond 5000')
     expect(toasts[0].message).not.toContain('Trade A')
     openToast(toasts[0].id)

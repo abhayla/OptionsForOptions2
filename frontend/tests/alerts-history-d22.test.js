@@ -72,7 +72,7 @@ describe('the closed trade page: Orderbook reasons (D-22, D-71)', () => {
 
 describe('Active shows a time on each alert (D-29, ADR-330 (3))', () => {
   it('prints "Fired at HH:MM" as the server sent it', async () => {
-    answers['GET /alerts/active'] = () => Promise.resolve({ data: { count: 1, alerts: [{ id: 1, strategy_id: 7, strategy_name: '"Trade A"', kind: 'adjustment_rule', text: 'Net delta above 40', fired_at: '2026-11-23T05:51:58Z', fired_at_hm: '11:21', no_longer_true_since: null, no_longer_true_since_hm: null, answers: [] }] } })
+    answers['GET /alerts/active'] = () => Promise.resolve({ data: { count: 1, alerts: [{ id: 1, strategy_id: 7, strategy_name: '"Trade A"', kind: 'adjustment_rule', text: 'Net delta above 40', fired_at: '2026-11-23T05:51:58Z', fired_line: 'Fired at 11:21', no_longer_true_since: null, no_longer_true_since_hm: null, answers: [] }] } })
     const w = await mountAt('/alerts/active')
     expect(w.get('[data-testid="alert-fired"]').text()).toBe('Fired at 11:21')
   })
