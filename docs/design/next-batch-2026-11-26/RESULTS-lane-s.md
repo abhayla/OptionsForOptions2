@@ -56,6 +56,14 @@ Core proof on real recorded replies (owner's live session, 16 Oct 2026):
 | Mutations (scratch copies) | removing derived==reported check, defaulting a missing field to 0, truncating instead of half-even, dropping (a), (e), (f), the `== sid` tag check: each fails at least one test | restored |
 
 Owner-approved reviewer notes for the 7 new reply fields: commit d53fac2 (owner, 26 Nov 2026, in this session).
+Owner-approved broker-name allow-list edit (`tests/broker_name_allowlist.py`, 10 removed, 6 added, no reason text
+changed): commit 1db0e50 (owner, 26 Nov 2026, in this session).
+
+Pre-push gate fixes (no behaviour change): the route decodes order tags through the read-side
+`reconcile_attribution.tag_strategy_id` (no order-module import from a read route); the engine module is
+`backend/ofo/engine/real_pnl.py`; local names `snap` / `_ReadSnapshot` (fewer broker-word lines); lint back to the
+ratchet baseline; OpenAPI regenerated; `frontend/tests/paper-tabs.test.js` now expects the refusal sentence only
+under the Real total (ADR-330 (10): both totals show in every filter).
 
 ## Click-by-click check for the owner (browser, as a user)
 
