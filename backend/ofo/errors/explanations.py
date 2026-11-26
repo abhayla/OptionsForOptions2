@@ -1983,6 +1983,14 @@ _EXPLANATIONS: tuple[ExplanationTemplate, ...] = (
     ExplanationTemplate("paper_exit_warning_join", "values_seen", "{first} {second}",
                         {"first": Explained, "second": Explained}),
     ExplanationTemplate("paper_trigger_level", "values_seen", "{level}", {"level": IndexLevel}),
+    # P10 (ADR-330 (13)): the labels of the Plan watch lines for the Stops-panel triggers, and the heading they sit under
+    ExplanationTemplate("plan_watch_index_above", "values_seen", "Index exit above {level}", {"level": IndexLevel}),
+    ExplanationTemplate("plan_watch_index_below", "values_seen", "Index exit below {level}", {"level": IndexLevel}),
+    ExplanationTemplate("plan_watch_leg_above", "values_seen", "Leg stop on {leg}: price above {level}",
+                        {"leg": Explained, "level": IndexLevel}),
+    ExplanationTemplate("plan_watch_leg_below", "values_seen", "Leg stop on {leg}: price below {level}",
+                        {"leg": Explained, "level": IndexLevel}),
+    ExplanationTemplate("plan_watch_armed_heading", "values_seen", "Armed in the Stops panel", {}),
     # D-03 (ADR-317 (7)): an index exit set before an adjustment stays armed; the row names the new short strike
     ExplanationTemplate("paper_exit_set_before_call", "values_seen",
                         "Exit above {level} was set before this change; your new short call is {strike}. Check this level.",
