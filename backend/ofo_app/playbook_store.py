@@ -334,7 +334,7 @@ _INSERT_SUGGESTION = text(
     "kind, shown_at, timeline) VALUES (:strategy_id, :rule_id, :trigger_id, :stage, :value, :threshold, "
     "CAST(:worse AS TEXT), CAST(:kind AS TEXT), COALESCE(CAST(:shown_at AS TIMESTAMPTZ), now()), "
     "jsonb_build_array(jsonb_build_object('at', clock_timestamp(), 'outcome', 'open', "
-    "'group', CAST(:group AS TEXT), 'source', CAST(:source AS TEXT), 'cmp', CAST(:cmp AS TEXT), "
+    "'fired_value', CAST(CAST(:value AS NUMERIC) AS TEXT), 'group', CAST(:group AS TEXT), 'source', CAST(:source AS TEXT), 'cmp', CAST(:cmp AS TEXT), "
     "'label', CAST(:label AS TEXT), 'unit', CAST(:unit AS TEXT), 'approach', CAST(:approach AS TEXT), "
     "'approach_cost', CAST(:approach_cost AS TEXT), 'unpriced', CAST(:unpriced AS INTEGER), "
     "'carry', CAST(:carry AS JSONB), 'beyond', CAST(:beyond AS JSONB), 'limit', CAST(:limit AS TEXT), "

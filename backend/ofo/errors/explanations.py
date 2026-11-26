@@ -1710,6 +1710,13 @@ _EXPLANATIONS: tuple[ExplanationTemplate, ...] = (
     ExplanationTemplate("alert_fired_at", "what_triggered", "Fired at {time}", {"time": HourMinute}),
     ExplanationTemplate("alert_no_longer_true_since", "values_seen", "no longer true since {time}",
                         {"time": HourMinute}),
+    # ADR-330 (3), REQ-170 AC-3: the open alert says a later reading of the same rule is worse than the one it fired at
+    ExplanationTemplate("alert_worse_than_fired", "values_seen",
+                        "Worse than when it fired: {value} {unit} (fired at {fired} {unit})",
+                        {"value": PlaybookField, "unit": PlaybookUnit, "fired": PlaybookField}),
+    ExplanationTemplate("alert_worse_than_fired_plain", "values_seen",
+                        "Worse than when it fired: {value} (fired at {fired})",
+                        {"value": PlaybookField, "fired": PlaybookField}),
     # ADR-330 (3), owner Q2b: an unanswered alert whose trade closed first stays in History with this line
     ExplanationTemplate("alert_closed_trade_closed", "values_seen", "Closed by system: the trade closed at {time}",
                         {"time": HourMinute}),

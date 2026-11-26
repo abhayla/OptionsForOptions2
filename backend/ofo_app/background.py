@@ -725,7 +725,7 @@ class RecordFields:
     extra: Mapping = dataclasses.field(default_factory=dict)  # approach / cost / unpriced, carry, target
 
 
-def record_fields(e: alert_gate.Opened | alert_gate.Held) -> RecordFields:
+def record_fields(e: alert_gate.Opened | alert_gate.Escalated | alert_gate.Held) -> RecordFields:
     """#709 item 7: the record's words and figures from ``e.sample`` alone, the check whose sample confirmed it. A
     sample that is not a ``GateContext`` (an event built with none) gives NO fields, never a guess from a later check:
     a record with no condition words is visible, a record with another check's figures is wrong and looks right."""
@@ -776,9 +776,9 @@ class DbGateStore:
     async def apply(self, w: Watched, events: Iterable[alert_gate.Event]) -> dict[str, int]:
         """The gate's events in ONE transaction, every write through ``actionable_alerts`` (ADR-330: the one module);
         rule id -> id of each alert raised. A closed candle that clears the line (Lapsed) only notes "no longer true
-        since" on the open alert: it stays in Active until the user answers (ADR-330 (3)). A worse escalation updates
-        the same open row (one open alert per rule, REQ-112); a re-cross after "no longer true" clears the note and
-        opens no second row. Every field of a record's snapshot is from the event's own sample (``record_fields``)."""
+        since" on the open alert: it stays in Active until the user answers (ADR-330 (3)). A worse close
+        (``Escalated``) updates the same open row and marks it escalated (one open alert per rule, REQ-112); the first
+        close past the line again (``TrueAgain``) clears the note at once and opens no second row. Every field of a record's snapshot is from the event's own sample (``record_fields``)."""
         from ofo.alerts import kind_of  # noqa: PLC0415
 
         from ofo_app import actionable_alerts, playbook_store  # noqa: PLC0415 - database layer at run time
@@ -787,9 +787,10 @@ class DbGateStore:
         opened: dict[str, int] = {}
         async with get_sessionmaker()() as db:
             for e in events:
-                if isinstance(e, alert_gate.Lapsed):
-                    await actionable_alerts.note_rule_condition(db, w.user_ref, w.strategy_id, e.rule_id,
-                                                                still_true=False, at=e.at)
+                if isinstance(e, (alert_gate.Lapsed, alert_gate.TrueAgain)):  # "no longer true" / "true again"
+                    await actionable_alerts.note_rule_condition(
+                        db, w.user_ref, w.strategy_id, e.rule_id, still_true=isinstance(e, alert_gate.TrueAgain),
+                        at=e.at)
                     continue
                 f = record_fields(e)
                 # GC-ICFIX: the event's own numbers (the confirming sample's), never the latest check's
@@ -1072,6 +1073,8 @@ class Worker:
             for row in load.rows.last:
                 if row.dismissed and alert_gate.is_dismissed(state, row.rule_id) is False and row.id is not None:
                     state = alert_gate.dismiss(state, row.rule_id, row.id)  # by record, never by rule (#639 item 2)
+                if not row.open and row.id is not None:  # answered (exit) or closed: it re-arms as before
+                    state = alert_gate.answered(state, row.rule_id, row.id)
             self._gate[sid] = state
 
     async def _rebuild_loop(self) -> None:

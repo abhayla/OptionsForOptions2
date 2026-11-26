@@ -55,6 +55,8 @@ class ActiveAlert(ApiModel):
     fired_line: CatalogueText
     no_longer_true_since: datetime.datetime | None
     no_longer_true_line: CatalogueText | None
+    escalated_at: datetime.datetime | None
+    worse_line: CatalogueText | None
     answers: list[AnswerChoice]
 
 
@@ -78,6 +80,8 @@ class HistoryItem(ApiModel):
     text: CatalogueText
     fired_at: datetime.datetime
     fired_line: CatalogueText
+    escalated_at: datetime.datetime | None
+    worse_line: CatalogueText | None
     answer: Identifier | None
     answer_label: CatalogueText | None
     answered_at: datetime.datetime | None
@@ -111,6 +115,17 @@ def _stopped(a: aa.Alert) -> Any:
     return None if at is None else render_explanation("alert_no_longer_true_since", time=at)
 
 
+def _worse(a: aa.Alert) -> Any:
+    """REQ-170 AC-3: a later, worse reading of the same rule updated this open alert; None if it never was."""
+    if a.escalated_at is None or a.value is None or a.fired_value is None:
+        return None
+    now, fired = format(a.value, "f"), format(a.fired_value, "f")
+    try:
+        return render_explanation("alert_worse_than_fired", value=now, unit=a.unit, fired=fired)
+    except (TypeError, ValueError):  # no stored unit, or one the catalogue does not take: the line without it
+        return render_explanation("alert_worse_than_fired_plain", value=now, fired=fired)
+
+
 def _label(code: str | None) -> Any:
     return None if code is None else render_explanation("alert_answer_" + code)
 
@@ -137,6 +152,7 @@ async def active_alerts(db: Annotated[Any, Depends(get_db)],
     alerts = [{"id": a.id, "strategy_id": a.strategy_id, "strategy_name": shown_name(a.strategy_name), "kind": _kind(a),
                "text": _words(a, by_id), "fired_at": a.fired_at, "fired_line": _fired(a),
                "no_longer_true_since": a.no_longer_true_since, "no_longer_true_line": _stopped(a),
+               "escalated_at": a.escalated_at, "worse_line": _worse(a),
                "answers": [{"code": c, "label": _label(c)}
                            for c in (allowed_answers(a.kind) if a.kind else ("exit", "continue"))]} for a in rows]
     return ActiveOut.model_validate({"count": len(rows), "alerts": alerts})
@@ -174,6 +190,7 @@ async def alert_history(db: Annotated[Any, Depends(get_db)],
     by_id = await _texts(db, user_ref)
     items = [{"id": a.id, "strategy_id": a.strategy_id, "strategy_name": shown_name(a.strategy_name), "kind": _kind(a),
               "text": _words(a, by_id), "fired_at": a.fired_at, "fired_line": _fired(a),
+              "escalated_at": a.escalated_at, "worse_line": _worse(a),
               "answer": a.answer, "answer_label": _label(a.answer),
               "answered_at": a.answered_at,
               "closed_reason": _reason(a)} for a in await aa.history(db, user_ref)]
