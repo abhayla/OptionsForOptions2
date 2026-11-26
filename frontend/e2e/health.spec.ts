@@ -14,15 +14,15 @@ test('the health page shows the live database status from the real backend', asy
   await page.goto('/health-status')
   await expect(page.getByTestId('health-database')).toHaveText('database: ok')
   await expect(page.getByTestId('health-status')).toHaveAttribute('data-state', 'ok')
-  // ADR-012: every call is same-origin /api: the page's /api/health plus the header bell's unread count
-  // (GC-TP step 7b, ADR-207 (5): GET /paper/alerts on every app page), the bell's open adjustment records (IC e2e
+  // ADR-012: every call is same-origin /api: the page's /api/health plus the header bell's count
+  // (GC-TP step 7b, ADR-207 (5): GET /alerts/active on every app page; ADR-330 (4)), the bell's open adjustment records (IC e2e
   // stage B4, design decision 10: GET /adjustment-opportunities on the same tick, AppHeader.vue) and the scenario banner's
   // GET /features (GC-ADJ1 step 1b, ScenarioBanner.vue) and the calendar-end banner's one read of the index reply,
   // the only reply that carries the two calendar fields (ADR-285, GC-ICSAFE c28: GET /market/indices once per
   // shell open); nothing else
   const origin = new URL(page.url()).origin
   expect([...new Set(apiCalls)].sort()).toEqual(
-    ['/api/adjustment-opportunities', '/api/features', '/api/health', '/api/market/indices', '/api/paper/alerts'].map(
+    ['/api/adjustment-opportunities', '/api/alerts/active', '/api/features', '/api/health', '/api/market/indices'].map(
       (p) => origin + p,
     ),
   )

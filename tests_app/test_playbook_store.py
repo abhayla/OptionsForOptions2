@@ -312,6 +312,10 @@ async def test_another_users_playbook_answers_not_found_everywhere(db):
     (lambda b: b["triggers"]["T-01"].update(weekly=[0.5, ""]), "triggers.T-01.weekly.0"),
     (lambda b: b["triggers"]["T-01"].update(weekly=["half", ""]), "triggers.T-01.weekly.0"),
     (lambda b: b["rules"].append({"id": "R-2", "all_of": ["T-99"]}), "rules.1"),
+    (lambda b: b["rules"].append({"id": "watch.level.above", "any_of": ["T-01"]}), "rules.1.id"),  # P1c NEW-3
+    (lambda b: b["rules"].append({"id": "day.x", "any_of": ["T-01"]}), "rules.1.id"),
+    (lambda b: b["rules"].append({"id": "sit.x", "any_of": ["T-01"]}), "rules.1.id"),
+    (lambda b: b["rules"].append({"id": "sit:x", "any_of": ["T-01"]}), "rules.1"),  # a colon fails the id shape first
     (lambda b: b.pop("stages"), "stages"),
     (lambda b: b.update(day_rules=[_carry_rule("2:30 pm")]), "day_rules.0.at"),
     (lambda b: b.update(day_rules=[_carry_rule(1430)]), "day_rules.0.at"),
@@ -450,9 +454,9 @@ async def test_an_outcome_change_must_append_exactly_one_timeline_entry(db):
                        "WHERE id = :id", "OF031", o="dismissed", id=opened.id)  # the entry names another outcome
     await _refused(db, "UPDATE public.adjustment_suggestions SET outcome = 'lapsed', timeline = timeline || "
                        "'[{\"outcome\": \"lapsed\"}]'::jsonb WHERE id = :id", "OF031", id=opened.id)  # no id link
-    await db.execute(text(_SET_OUTCOME), {"o": "lapsed", "id": opened.id})
+    await pb.dismiss(db, user, opened.id)  # 0054: a record of a kind leaves open only with its answer
     timeline = (await pb.suggestions(db, user, opened.strategy_id))[0].timeline
-    assert [e["outcome"] for e in timeline] == ["open", "lapsed"]
+    assert [e["outcome"] for e in timeline] == ["open", "dismissed"]
 
 
 async def test_a_plan_row_pointing_at_another_users_or_another_types_playbook_is_refused(db):

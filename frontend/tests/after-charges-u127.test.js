@@ -28,7 +28,7 @@ import TrackingPanel from '@/components/strategy/TrackingPanel.vue'
 import MyStrategiesPage from '@/pages/MyStrategiesPage.vue'
 import { afterFigure, BREAKDOWN_LABELS } from '@/lib/tracking'
 import { paperLeftOf } from '@/lib/paperDrafts'
-import { resetPaperAlerts } from '@/lib/paperAlerts'
+import { resetActiveAlerts } from '@/lib/paperAlerts'
 import { withPriceTexts } from './_priceTexts'
 
 const ok = (data) => () => Promise.resolve({ data })
@@ -41,7 +41,7 @@ const OPEN = { total_after: '1237.96', total_after_text: '+1,237.96', charges_pa
 const NO_AFTER = (reason, text) => ({ total_after: null, total_after_text: null, booked_after_text: null, unbooked_after_text: null, profit_left_after_text: null, loss_left_after_text: null, charges_paid: null, charges_to_close: null, charges_to_close_text: null, after_charges_reason: reason, after_charges_reason_text: text })
 const rowsOf = (f) => f.breakdown.rows.map((r) => `${r.label}: ${r.text}`)
 
-beforeEach(() => { answers = {}; resetPaperAlerts(); vi.useFakeTimers() })
+beforeEach(() => { answers = {}; resetActiveAlerts(); vi.useFakeTimers() })
 afterEach(() => vi.useRealTimers())
 
 describe('u127 afterFigure breakdown (the one rule)', () => {

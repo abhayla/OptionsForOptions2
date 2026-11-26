@@ -15,6 +15,8 @@ import dataclasses
 from decimal import Decimal
 from typing import Final
 
+from ofo.checks import pnl_amount as rupee
+
 STOP_MAX_LOSS: Final = "max_loss_pct"
 STOP_CREDIT: Final = "credit_multiple"
 STOP_MARGIN: Final = "margin_pct"
@@ -25,6 +27,16 @@ KINDS: Final = (STOP_MAX_LOSS, STOP_CREDIT, STOP_MARGIN)
 TRIGGER_MAX_LOSS: Final = "T-06"
 TRIGGER_MARGIN: Final = "T-16"
 STOP_TRIGGERS: Final = frozenset({TRIGGER_MAX_LOSS, TRIGGER_MARGIN})
+#: the plan's time exit ("Clock time reached", ADR-330 (7)): its alert kind is plan_time_exit, not a stop line
+TRIGGER_TIME_EXIT: Final = "T-10b"
+
+#: ADR-330 (5): the plan's rupee levels (whole trade, before charges). Rule ids like the 2x-credit line; the guards
+#: hold the typed level as decimal text. A hit raises an alert and nothing more.
+RUPEE_LOSS_RULE: Final = "plan.rupee_loss"
+RUPEE_PROFIT_RULE: Final = "plan.rupee_profit"
+RUPEE_LOSS_KEY: Final = "loss_stop_rupees"
+RUPEE_RULES: Final = frozenset({RUPEE_LOSS_RULE, RUPEE_PROFIT_RULE})  # one amount each, no per-stage value
+RUPEE_PROFIT_KEY: Final = "profit_target_rupees"
 
 #: rule ids: the max-loss and margin lines answer under their old trigger ids (same wording, same rule memory, so
 #: "already true" and the alert gate carry over); only the 2x-credit line (ADR-247) has a new id
@@ -58,6 +70,18 @@ NOT_CHECKED: Final = {
     MARGIN_NOT_READ: f"{_T}missing_margin",
     STAGE_UNKNOWN: f"{_T}missing_days_left",
 }
+
+
+def rupee_loss_is_the_stop(body: object) -> bool:
+    """ADR-330 (5)(a): a plan has ONE loss stop. When it is typed in rupees (a readable level in the guards), that level
+    IS the stop and the T-06 percent line is not a second one. A level that cannot be read does not replace it (fail
+    closed: the percent line keeps checking). Pure."""
+    guards = body.get("guards") if isinstance(body, dict) else None
+    raw = guards.get(RUPEE_LOSS_KEY) if isinstance(guards, dict) else None
+    try:
+        return isinstance(raw, str) and rupee.level_of(raw) is not None
+    except ValueError:
+        return False
 
 
 def not_checked_code(reason: str | None) -> str:
@@ -104,6 +128,11 @@ __all__ = [
     "NOT_CHECKED_OTHER",
     "NO_CREDIT",
     "RULE_OF_LINE",
+    "RUPEE_LOSS_KEY",
+    "RUPEE_LOSS_RULE",
+    "RUPEE_PROFIT_KEY",
+    "RUPEE_PROFIT_RULE",
+    "RUPEE_RULES",
     "STAGE_UNKNOWN",
     "STOPS_NOT_SUPPLIED",
     "STOP_CREDIT",
@@ -113,9 +142,11 @@ __all__ = [
     "STOP_VALUE_UNREADABLE",
     "TRIGGER_MARGIN",
     "TRIGGER_MAX_LOSS",
+    "TRIGGER_TIME_EXIT",
     "StopInForce",
     "StopsInForce",
     "is_stop_rule",
     "not_checked_code",
     "rule_id",
+    "rupee_loss_is_the_stop",
 ]

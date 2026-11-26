@@ -24,10 +24,11 @@ vi.mock('@/services/api', async (importActual) => {
 import PaperStrategies from '@/components/strategy/PaperStrategies.vue'
 import PositionsPage from '@/pages/PositionsPage.vue'
 import AlertsPage from '@/pages/AlertsPage.vue'
-import { resetPaperAlerts } from '@/lib/paperAlerts'
+import { resetActiveAlerts } from '@/lib/paperAlerts'
 import { routes } from '@/router/routes'
 
 const ok = (data) => () => Promise.resolve({ data })
+const ACTIVE_ROW = { id: 1, strategy_id: 64, kind: 'plan_loss_stop', text: 'Stop hit', fired_line: 'Fired at 11:02', answers: [] } // GET /alerts/active row
 const t = (w, id) => w.get(`[data-testid="${id}"]`)
 const all = (w, id) => w.findAll(`[data-testid="${id}"]`)
 const has = (w, id) => w.find(`[data-testid="${id}"]`).exists()
@@ -51,7 +52,7 @@ async function show(Comp = PaperStrategies, url = '/', meta = {}) {
   return w
 }
 
-beforeEach(() => { calls.length = 0; answers = {}; resetPaperAlerts(); vi.useFakeTimers() })
+beforeEach(() => { calls.length = 0; answers = {}; resetActiveAlerts(); vi.useFakeTimers() })
 afterEach(() => vi.useRealTimers())
 
 describe('Paper tab from GET /paper/strategies (the real reply)', () => {
@@ -376,14 +377,14 @@ describe('Positions page default tab (F-69) and Alerts names (R-8)', () => {
     }
   })
   it('an alert row shows the strategy name from the reply, not "Strategy 64"', async () => {
-    answers['GET /paper/alerts'] = ok({ unread: 0, alerts: [{ id: 1, strategy_id: 64, strategy_name: '"Iron Fly"', trigger_id: 3, created_at: '2026-10-29T05:00:00Z', title: 'Stop hit', body: 'b', read: true }] })
+    answers['GET /alerts/active'] = ok({ count: 1, alerts: [{ ...ACTIVE_ROW, strategy_name: '"Iron Fly"' }] })
     const w = await show(AlertsPage, '/p/active', { title: 'Alerts' })
     expect(t(w, 'alert-strategy').text()).toBe('Iron Fly')
   })
   it('GC-TPD R-8: an alert with no strategy name (absent, null or empty) falls back to "Strategy N", never a blank cell', async () => {
-    const row = { id: 1, strategy_id: 64, trigger_id: 3, created_at: '2026-10-29T05:00:00Z', title: 'Stop hit', body: 'b', read: true }
+    const row = ACTIVE_ROW
     for (const gone of [{}, { strategy_name: null }, { strategy_name: '' }]) {
-      answers['GET /paper/alerts'] = ok({ unread: 0, alerts: [{ ...row, ...gone }] })
+      answers['GET /alerts/active'] = ok({ count: 1, alerts: [{ ...row, ...gone }] })
       const w = await show(AlertsPage, '/p/active', { title: 'Alerts' })
       expect(t(w, 'alert-strategy').text()).toBe('Strategy 64')
     }

@@ -123,6 +123,7 @@ PR241_SELECTION = {
     "tests_app/test_may_act.py",  # Phase 2 (B4): imports strategy_refused / routes.outcome (changed here)
     "tests_app/test_strategy_bulk_delete.py",  # Q1 bulk delete: calls the /api/strategies/... routes
     "tests_app/test_store_busy.py",  # S-02 (Lane R): imports ofo.errors (render) and the error door, changed here
+    "tests_app/test_plan_watch.py",  # Lane P 26 Nov: test_plan_watch.py added (P10)
 }
 
 

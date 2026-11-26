@@ -55,7 +55,7 @@ def _ic_body(*, v2: bool = True) -> dict:
 
 def _state(stops, pnl: D, days_left: int = 3, **kw) -> pe.StrategyState:
     return pe.StrategyState(expiry_kind="weekly", days_left=days_left, hhmm="11:00", spot=D(23100), pnl=pnl,
-                            max_loss=MAX_LOSS, prices_fresh=True, stops=stops, **kw)
+                            max_loss=MAX_LOSS, stop_max_loss=MAX_LOSS, prices_fresh=True, stops=stops, **kw)
 
 
 def _plan(body, *, before: bool) -> check.Resolved:

@@ -86,6 +86,9 @@ ROUTE_ORDER_EDGES: dict[str, dict[tuple[str, str], str]] = {
     "ofo_app.routes.adjustment_opportunities": {**STRATEGY_STORE},
     # GC-ADJ2 4: the plan sheet accepts a plan through playbook_store (its strategy_store import)
     "ofo_app.routes.adjustment_plan": {**STRATEGY_STORE},
+    # Lane P 26 Nov (ADR-330 (3), (4)): the alert routes read and answer alerts through actionable_alerts ->
+    # playbook_store (its strategy_store import); they never prepare or post an order
+    "ofo_app.routes.alerts": {**STRATEGY_STORE},
     "ofo_app.routes.broker_status": _execute_route_edge(
         "broker_status", "the status route reuses the execute route's clock provider"),
     "ofo_app.routes.features": {**STRATEGY_STORE},
@@ -94,6 +97,9 @@ ROUTE_ORDER_EDGES: dict[str, dict[tuple[str, str], str]] = {
     "ofo_app.routes.level_watch": {**STRATEGY_STORE},
     "ofo_app.routes.monitoring_pause": {**STRATEGY_STORE},
     "ofo_app.routes.paper": {**STRATEGY_STORE},
+    # Lane P 26 Nov (ADR-330 (13)): the plan watch reads the check and the armed triggers (strategy_store import);
+    # read only
+    "ofo_app.routes.plan_watch": {**STRATEGY_STORE},
     # GC-ADJ2 2: the playbook routes call playbook_store, whose strategy_store import reaches the plan modules
     "ofo_app.routes.playbooks": {**STRATEGY_STORE},
     "ofo_app.routes.positions": {
@@ -114,7 +120,8 @@ ROUTE_ORDER_EDGES: dict[str, dict[tuple[str, str], str]] = {
 #: GC-SET step 9: +2 system_playbooks (via playbook_store)
 #: GC-ALERT1 4b: +2 alert_style (via adjustment_readers -> playbook_store)
 #: Phase 7 R2: +2 level_watch, +2 monitoring_pause (via their stores' strategy_store.owns)
-PINNED_EDGE_COUNT = 41
+#: Lane P 26 Nov: +2 alerts, +2 plan_watch
+PINNED_EDGE_COUNT = 45
 
 
 def route_modules(backend: pathlib.Path) -> list[str]:

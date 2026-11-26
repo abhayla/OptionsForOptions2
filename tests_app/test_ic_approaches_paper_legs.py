@@ -46,6 +46,7 @@ async def _setup(app_engine, monkeypatch, path: str) -> int:
     await app_engine.dispose()  # from here on ONE engine (the app's) holds every connection
     sid = await core.seed_mod.seed(path)
     core._reset_engine()
+    await core.give_plan(sid)  # ADR-330 (11): A-27 (buy-back price) and A-35 (exit time) read the strategy's own plan
     return sid
 
 

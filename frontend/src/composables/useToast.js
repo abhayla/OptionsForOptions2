@@ -27,17 +27,20 @@ export function useToast() {
    * Show a toast. With `onClick` the toast carries an Open button that runs it; every toast has Dismiss.
    * @param {string} message
    * @param {string} type - success | error | warning | info
+   * @returns {number} the id of the toast now on screen (a repeat returns the id already shown)
    */
   const showToast = (message, type = 'info', { onClick } = {}) => {
-    // never expires (a warning must not vanish unread), so an identical one is not stacked and the oldest makes room;
+    // the list itself never expires a toast (infoPopup.js dismisses its own after INFO_POPUP_MS), so an identical one is not stacked and the oldest makes room;
     // the one box on screen takes the NEWEST action, or its Open would go to the old record
     const same = toasts.find((t) => t.message === message && t.type === type)
     if (same) {
       same.onClick = onClick || null
-      return
+      return same.id
     }
     if (toasts.length >= MAX_ON_SCREEN) toasts.shift()
-    toasts.push({ id: nextId++, message, type, icon: ICON[type] || ICON.info, onClick: onClick || null })
+    const id = nextId++
+    toasts.push({ id, message, type, icon: ICON[type] || ICON.info, onClick: onClick || null })
+    return id
   }
 
   return { showToast }

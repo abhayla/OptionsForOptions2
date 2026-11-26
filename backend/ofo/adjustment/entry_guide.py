@@ -3,8 +3,9 @@
 The guide is the playbook's own ``guards.entry_guide`` text ("shorts at 0.15 to 0.20 delta, wings ..."); its delta range
 is read from that text, never typed here. The sold-leg delta is ``playbook_eval.sold_leg_delta`` (T-03's own measure).
 A strategy that breaks the guide still shows and still saves: the line is a fact with both numbers, no advice.
-The rule set a strategy with no stored plan yet would get is the system playbook of its shape's type
-(``system_rule_set``). shortcut: a user's own edited playbook text is not read here (no database in the outcome route);
+A strategy with no stored plan is not watched (ADR-330 (11)); the entry guide shows the system playbook of its
+shape's type (``system_rule_set``) only as the source a plan would be copied from.
+shortcut: a user's own edited playbook text is not read here (no database in the outcome route);
 read it through ``playbook_store.active_for`` when the route gains a database reader.
 Pure: no database, no clock.
 """

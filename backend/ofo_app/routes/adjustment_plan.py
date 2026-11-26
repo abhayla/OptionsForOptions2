@@ -29,13 +29,19 @@ from decimal import Decimal, InvalidOperation
 from typing import Annotated, Any
 
 from fastapi import APIRouter, Depends, Query
+from ofo import market_calendar
 from ofo.adjustment import playbook_stages as stages
+from ofo.adjustment import stop_lines as sl
 from ofo.adjustment.playbook_text import name_shown
 from ofo.adjustment.playbook_types import SHOWN_NAMES
 from ofo.charges import ChargeRates
+from ofo.checks import pnl_amount as rupee
+from ofo.checks import rupee_figures as figs
+from ofo.checks.time_of_day import CLOCK, DATE, ON_EXPIRY, day_of, time_exit_parts
 from ofo.errors import render
 from ofo.errors.explanations import LABEL_TABLES, render_explanation
 from ofo.settings import layers
+from ofo.timeutil import IST
 from pydantic import BaseModel, ConfigDict
 
 from ofo_app import adjustment_check as check
@@ -71,19 +77,27 @@ _GENERIC = "adjust_plan_no_playbook"
 ID_MAX = 9_223_372_036_854_775_807  # the id column is BIGSERIAL
 MAX_ADJUSTMENTS_LIMIT = 10
 _PERCENT = re.compile(r"[0-9]{1,3}(\.[0-9]{1,4})?")
-_CLOCK = re.compile(r"([01][0-9]|2[0-3]):([0-5][0-9])")
 _COUNT = re.compile(r"[0-9]{1,3}")
+_RUPEES = rupee.LEVEL_PATTERN  # whole-trade rupees, to the paisa: the one pattern (F8), shared with the stored guard
 #: The sheet field -> the guard of the plan's copy that holds it (docs/design/playbook-body-v1.md "guards")
 TARGET_KEY = "profit_target_pct_of_max_profit"
 #: the sheet's stop is the % of max loss trigger's value (ADR-252: ``settings_in_force.set_max_loss_stop`` /
 #: ``sheet_stop``), never a guard key
-EITHER_RULE = "whichever comes first"
+SOURCE_RUPEES = "rupees"  # which box is the saved level (the other figure is derived for display)
+SOURCE_PERCENT = "percent"
+EITHER_RULE ="whichever comes first"
 MAX_KEY = "max_adjustments"
 TIME_KEY = "time_exit"
 
 
 class _In(BaseModel):
     model_config = ConfigDict(extra="forbid", strict=True)
+
+
+class TimeExitIn(_In):
+    """ADR-330 (7): the plan's time exit, one time on one day; a blank ``on`` = expiry day (Q9)."""
+    at: str
+    on: str = ""
 
 
 class PlanIn(_In):
@@ -93,7 +107,11 @@ class PlanIn(_In):
     target: str | None = None
     stop: str | None = None
     max_adjustments: str | None = None
-    time_exit: str | None = None
+    time_exit: str | TimeExitIn | None = None  # a plain "HH:MM" = on expiry day (the old shape)
+    #: ADR-330 (5): the same two levels typed in rupees (whole trade, before charges, decimal text; "" = none). The
+    #: sheet sends the box last edited; both given must be the same level, else refused naming the rupee field
+    target_rupees: str | None = None
+    stop_rupees: str | None = None
     #: ADR-245: this strategy's own setting overrides (the strategy layer), ``{key: "decimal text"}``. Given -> the
     #: plan's overrides become exactly this object (``{}`` removes every override, so each value follows the user's,
     #: else the default); left out -> kept as the body has them. Each key must be a three-layer setting and each value
@@ -124,6 +142,15 @@ class PrefillOut(ApiModel):
     stop_words: CatalogueText | None = None
     max_adjustments: int | None
     time_exit: ClockOut | None
+    time_exit_on: datetime.date | None = None  # None = expiry day
+    target_rupees: Money | None = None  # ADR-330 (5): the level in rupees (whole trade, before charges)
+    target_per_lot: Money | None = None
+    target_rupee_words: CatalogueText | None = None
+    stop_rupees: Money | None = None
+    stop_per_lot: Money | None = None
+    stop_rupee_words: CatalogueText | None = None
+    target_source: Identifier | None = None  # the saved level's own box: "rupees" or "percent" (the other is derived)
+    stop_source: Identifier | None = None
 
 
 class PlanOut(ApiModel):
@@ -135,6 +162,15 @@ class PlanOut(ApiModel):
     stop_words: CatalogueText | None = None
     max_adjustments: int | None
     time_exit: ClockOut | None
+    time_exit_on: datetime.date | None = None  # None = expiry day
+    target_rupees: Money | None = None  # ADR-330 (5): the level in rupees (whole trade, before charges)
+    target_per_lot: Money | None = None
+    target_rupee_words: CatalogueText | None = None
+    stop_rupees: Money | None = None
+    stop_per_lot: Money | None = None
+    stop_rupee_words: CatalogueText | None = None
+    target_source: Identifier | None = None  # the saved level's own box: "rupees" or "percent" (the other is derived)
+    stop_source: Identifier | None = None
     accepted_at: datetime.datetime
 
 
@@ -222,8 +258,14 @@ def _read_percent(guards: dict, key: str) -> Decimal | None:
 
 
 def _read_clock(guards: dict) -> ClockOut | None:
-    found = _CLOCK.fullmatch(guards.get(TIME_KEY) or "")
+    parts = time_exit_parts(guards.get(TIME_KEY))
+    found = None if parts is None else CLOCK.fullmatch(parts[0])
     return None if found is None else ClockOut.model_validate({"hour": int(found[1]), "minute": int(found[2])})
+
+
+def _read_clock_on(guards: dict) -> datetime.date | None:
+    parts = time_exit_parts(guards.get(TIME_KEY))
+    return None if parts is None or parts[1] == ON_EXPIRY else day_of(parts[1])
 
 
 _STOP_WORD_IDS = {in_force_mod.STOP_MAX_LOSS: "plan_stop_words_loss",
@@ -231,7 +273,7 @@ _STOP_WORD_IDS = {in_force_mod.STOP_MAX_LOSS: "plan_stop_words_loss",
                   in_force_mod.STOP_MARGIN: "plan_stop_words_margin"}
 _STOP_SLOTS = {in_force_mod.STOP_MAX_LOSS: "pct", in_force_mod.STOP_CREDIT: "multiple",
                in_force_mod.STOP_MARGIN: "margin"}
-def _stop_words(body: dict, saved_before: bool, kind: str | None = None) -> Any:
+def _stop_words(body: dict, saved_before: bool, kind: str | None = None, rupee_part: Any = None) -> Any:
     """ADR-247/252: the ACTIVE stops from the ONE settings-in-force stops list (``settings_in_force.stops_of`` at the
     first stage: T-06 % of max loss, N x the credit received where it applies, T-16 % of margin only when on), joined
     "..., whichever comes first". Read for every plan, whatever guard keys its body holds."""
@@ -239,6 +281,8 @@ def _stop_words(body: dict, saved_before: bool, kind: str | None = None) -> Any:
                                   None, in_force_mod.first_stage_of(kind)).lines
     parts = [render_explanation(_STOP_WORD_IDS[x.kind], **{_STOP_SLOTS[x.kind]: format(x.figure, "f")})
              for x in lines if x.active and x.figure is not None]
+    if rupee_part is not None:  # ADR-330 (5)/LP-2: the rupee stop leads; the lines still in force follow it
+        parts.insert(0, rupee_part)
     if not parts:
         return None
     if len(parts) == 1:
@@ -265,7 +309,132 @@ def _values(body: dict, saved_before: bool, kind: str | None = None) -> dict[str
     t_words, s_words = _words(body, guards, saved_before, kind)
     return {"target": _read_percent(guards, TARGET_KEY), "stop": in_force_mod.sheet_stop(body, kind),
             "target_words": t_words, "stop_words": s_words,
-            "max_adjustments": mx if type(mx) is int else None, "time_exit": _read_clock(guards)}
+            "max_adjustments": mx if type(mx) is int else None, "time_exit": _read_clock(guards),
+            "time_exit_on": _read_clock_on(guards)}
+
+
+@dataclasses.dataclass(frozen=True)
+class Bases:
+    """What a rupee level is shown against (ADR-330 (5)): max profit for a target, the stored stop base's max loss for
+    a stop (both whole trade, before charges) and the lots of the largest leg for the per-lot figure. None = unknown."""
+    max_profit: Decimal | None = None
+    max_loss: Decimal | None = None
+    lots: int | None = None
+
+
+def bases_of(tracked: Any, market: Any, rates: Any) -> Bases:
+    base = getattr(tracked, "stop_base", None)
+    loss = getattr(base, "max_loss", None)
+    profit = None
+    if market is not None:
+        try:
+            profit = check.max_profit_of(tracked, market, rates)
+        except Exception:  # noqa: BLE001 - an optional display figure: unknown, never a guess; logged
+            log.warning("adjustment plan: max profit not worked out for the rupee figures", exc_info=True)
+    legs = getattr(getattr(tracked, "position", None), "legs", None) or ()
+    counts = {x.lots for x in legs}  # LP-3: the per-lot figure only when every leg has the same lot count
+    return Bases(profit, loss if isinstance(loss, Decimal) and loss.is_finite() else None,
+                 counts.pop() if len(counts) == 1 else None)
+
+
+def _rupee_guard(guards: dict, key: str) -> Decimal | None:
+    try:
+        return rupee.level_of(guards.get(key) if isinstance(guards.get(key), str) else None)
+    except ValueError:
+        return None  # an unreadable stored level shows nothing (the evaluator says "not checked")
+
+
+def _rupee_words(found: figs.Figures) -> Any:
+    if found.rupees is None:
+        return None
+    if found.per_lot is None:
+        return render_explanation("plan_level_rupees_whole", rupees=found.rupees)
+    return render_explanation("plan_level_rupees", rupees=found.rupees, per_lot=found.per_lot)
+
+
+def _rupee_stop_part(stop: figs.Figures) -> Any:
+    if stop.rupees is None:
+        return None
+    if stop.percent is None:
+        return render_explanation("plan_stop_words_rupees_plain", rupees=stop.rupees)
+    return render_explanation("plan_stop_words_rupees", rupees=stop.rupees, pct=stop.percent)
+
+
+def with_rupee_figures(values: dict[str, Any], body: dict, bases: Bases, *, kind: str | None = None,
+                       saved_before: bool = False) -> dict[str, Any]:
+    """ADR-330 (5): the plan shows BOTH figures of each level, worked out here (the browser computes nothing). A stored
+    rupee target is the source: its percent is derived from max profit; otherwise the rupees come from the percent."""
+    found = body.get("guards")
+    guards: dict = found if isinstance(found, dict) else {}
+    out = dict(values)
+    level = _rupee_guard(guards, sl.RUPEE_PROFIT_KEY)
+    out["target_source"] = SOURCE_PERCENT if level is None else SOURCE_RUPEES
+    if level is not None:
+        target = figs.from_rupees(level, bases.max_profit, bases.lots)
+        out["target"] = target.percent
+        out["target_words"] = None if target.percent is None else render_explanation(
+            "plan_target_words", pct=format(target.percent, "f"))
+    elif values.get("target") is None:
+        target = figs.NONE
+    else:
+        target = figs.from_percent(values["target"], bases.max_profit, bases.lots)
+    level = _rupee_guard(guards, sl.RUPEE_LOSS_KEY)
+    out["stop_source"] = SOURCE_PERCENT if level is None else SOURCE_RUPEES
+    if level is not None:
+        stop = figs.from_rupees(level, bases.max_loss, bases.lots)
+        # the rupee level IS the stop; its percent is the derived display figure only (None when not computable: never
+        # the stale T-06 value, review F3), and the words say every stop in force (LP-2: the 2x-credit line too)
+        out["stop"] = stop.percent
+        out["stop_words"] = _stop_words(body, saved_before, kind, _rupee_stop_part(stop))
+    elif values.get("stop") is None:
+        stop = figs.NONE
+    else:
+        stop = figs.from_percent(values["stop"], bases.max_loss, bases.lots)
+    out |= {"target_rupees": target.rupees, "target_per_lot": target.per_lot,
+            "target_rupee_words": _rupee_words(target), "stop_rupees": stop.rupees, "stop_per_lot": stop.per_lot,
+            "stop_rupee_words": _rupee_words(stop)}
+    return out
+
+
+def _rupee_in(raw: str, field: str) -> Decimal | None:
+    """The typed rupee text -> a positive Decimal; "" -> None (no rupee level); else refused naming the field."""
+    if raw == "":
+        return None
+    try:
+        if not _RUPEES.fullmatch(raw):
+            raise ValueError(field)
+        return rupee.level_of(raw)
+    except ValueError:
+        raise _bad(field) from None
+
+
+def _apply_rupee(out: dict, key: str, typed: str | None, percent: str | None,  # noqa: PLR0913
+                 base: Decimal | None, lots: int | None, field: str) -> bool:
+    """One level's rupee box. Returns True when the rupee level is the SOURCE (typed, no percent beside it): the caller
+    then switches the percent target off. Both typed -> they must be the same level (else refused naming the rupee
+    field; a base that cannot judge refuses too) and the rupee level is the one stored. A percent typed alone drops the
+    rupee level (the last edited box is the source of truth)."""
+    guards = out.setdefault("guards", {})
+    if typed is None:
+        if percent is not None:
+            guards.pop(key, None)
+        return False
+    level = _rupee_in(typed, field)
+    if level is None:
+        if key == sl.RUPEE_LOSS_KEY and not percent and key in guards:
+            raise _bad(field)  # a plan always has a stop: clearing it with no percent would restore a stale T-06
+        guards.pop(key, None)
+        return False
+    if percent and not figs.agree(Decimal(percent), level, base, lots):
+        raise _bad(field)
+    guards[key] = format(level, "f")  # agreeing boxes store the RUPEE level: the rounded percent would move it (F4)
+    return True
+
+
+def _stored_loss(stored: Any, bases: Bases) -> Decimal | None:
+    """The max loss of the base now stored (ADR-330 (1)), else the one read before the save."""
+    found = getattr(getattr(stored, "stop_base", None), "max_loss", None)
+    return found if isinstance(found, Decimal) and found.is_finite() else bases.max_loss
 
 
 def _set_stop(out: dict, raw: str, kind: str | None = None) -> None:
@@ -276,7 +445,33 @@ def _set_stop(out: dict, raw: str, kind: str | None = None) -> None:
         raise _bad("stop") from None
 
 
-def with_overrides(body: dict, data: PlanIn, kind: str | None = None) -> dict:
+def _time_exit_guard(raw: str | TimeExitIn) -> str | dict[str, str]:
+    """The guard to store: a plain "HH:MM" stays as typed (on expiry day); {at, on} keeps its day, a blank day stored
+    as "expiry". An unreadable time or date -> refused naming the field."""
+    if isinstance(raw, str):
+        if not CLOCK.fullmatch(raw):
+            raise _bad(TIME_KEY)
+        return raw
+    on = raw.on.strip() or ON_EXPIRY
+    if not CLOCK.fullmatch(raw.at) or (on != ON_EXPIRY and (not DATE.fullmatch(on) or day_of(on) is None)):
+        raise _bad(TIME_KEY)
+    return {"at": raw.at, "on": on}
+
+
+def check_time_exit_day(guard: object, today: datetime.date | None, last_expiry: datetime.date | None) -> None:
+    """ADR-330 (7), at save: a dated time exit must be a trading day (not a weekend or holiday), not before today and
+    not after the last expiry of the legs; otherwise refused naming ``time_exit``. A day that cannot be judged
+    (today or the legs unknown) is refused too, never passed. On expiry (blank) there is nothing to judge."""
+    parts = time_exit_parts(guard)
+    if parts is None or parts[1] == ON_EXPIRY:
+        return
+    day = day_of(parts[1])
+    if day is None or today is None or last_expiry is None or day < today or day > last_expiry \
+            or not market_calendar.is_trading_day(day):
+        raise _bad(TIME_KEY)
+
+
+def with_overrides(body: dict, data: PlanIn, kind: str | None = None, bases: Bases | None = None) -> dict:
     """A copy of ``body`` whose guards hold the sheet's values (a value left out stays as the body has it)."""
     out = copy.deepcopy(body)
     guards = out.setdefault("guards", {})
@@ -284,14 +479,17 @@ def with_overrides(body: dict, data: PlanIn, kind: str | None = None) -> dict:
         guards[TARGET_KEY] = _percent(data.target, "target") if data.target != "" else ""  # ADR-305: "" = no Target
     if data.stop is not None:
         _set_stop(out, data.stop, kind)
+    bases = bases or Bases()
+    if _apply_rupee(out, sl.RUPEE_PROFIT_KEY, data.target_rupees, data.target, bases.max_profit, bases.lots,
+                    "target_rupees"):
+        guards[TARGET_KEY] = ""  # the rupee target is the source: the percent target is off (one target level)
+    _apply_rupee(out, sl.RUPEE_LOSS_KEY, data.stop_rupees, data.stop, bases.max_loss, bases.lots, "stop_rupees")
     if data.max_adjustments is not None:
         if not _COUNT.fullmatch(data.max_adjustments) or int(data.max_adjustments) > MAX_ADJUSTMENTS_LIMIT:
             raise _bad(MAX_KEY)
         guards[MAX_KEY] = int(data.max_adjustments)
     if data.time_exit is not None:
-        if not _CLOCK.fullmatch(data.time_exit):
-            raise _bad(TIME_KEY)
-        guards[TIME_KEY] = data.time_exit
+        guards[TIME_KEY] = _time_exit_guard(data.time_exit)
     if data.settings is not None:
         for key, raw in data.settings.items():
             try:
@@ -349,15 +547,18 @@ def _kind_of(tracked: Any, money: in_force_mod.MoneyInputs | None) -> str:
     return (None if at is None else at.expiry_kind) or getattr(tracked.position, "expiry_kind", None) or "weekly"
 
 
-async def _plan_out(db: Any, user_ref: str, plan: store.Plan, kind: str | None = None) -> dict[str, Any]:
+async def _plan_out(db: Any, user_ref: str, plan: store.Plan, kind: str | None = None,
+                    bases: Bases | None = None) -> dict[str, Any]:
     name = None
     if plan.playbook_id is not None:  # a deleted playbook leaves the plan's playbook_id NULL
         try:
             name = name_shown((await store.get(db, user_ref, plan.playbook_id)).name)
         except store.PlaybookStoreError:
             name = None
+    saved_before = await check.plan_saved_before_adr247(db, plan)
     return {"playbook_id": plan.playbook_id, "playbook_name": name, "accepted_at": plan.accepted_at,
-            **_values(plan.body, await check.plan_saved_before_adr247(db, plan), kind)}
+            **with_rupee_figures(_values(plan.body, saved_before, kind), plan.body, bases or Bases(),
+                                 kind=kind, saved_before=saved_before)}
 
 
 def _in_force_reply(found: in_force_mod.InForce) -> dict[str, Any]:
@@ -384,7 +585,8 @@ def _in_force_reply(found: in_force_mod.InForce) -> dict[str, Any]:
 
 async def _sheet(db: Any, user_ref: str, strategy_id: int, stype: str | None, plan: store.Plan | None,  # noqa: PLR0913
                  pick: int | None, user_values: Any = None,
-                 money: in_force_mod.MoneyInputs | None = None, kind: str | None = None) -> AdjustmentPlanOut:
+                 money: in_force_mod.MoneyInputs | None = None, kind: str | None = None,
+                 bases: Bases | None = None) -> AdjustmentPlanOut:
     reply: dict[str, Any] = {"strategy_id": strategy_id, "type": stype, "type_name": None, "generic": stype is None,
                              "generic_text": render(_GENERIC) if stype is None else None, "playbooks": [],
                              "plan": None, "prefill": None, "labels": _labels()}
@@ -393,7 +595,8 @@ async def _sheet(db: Any, user_ref: str, strategy_id: int, stype: str | None, pl
         found = in_force_mod.in_force(user_values, none, money)
         return AdjustmentPlanOut.model_validate(reply | _in_force_reply(found))
     active = await store.active_for(db, user_ref, stype)
-    # the playbook in force (as ``adjustment_check.resolve``): the plan copy, else the user's active / the system one
+    # the sheet shows the playbook that accepting would copy (``adjustment_check.resolve`` answers only the
+    # strategy's own plan or "none"): the plan copy, else the user's active / the system one
     resolved = check.Resolved("plan", check.with_plan_target(plan.body), plan.playbook_id, None, False,
                               saved_before_adr247=await check.plan_saved_before_adr247(db,
                                                                                        plan)) if plan is not None else \
@@ -409,15 +612,17 @@ async def _sheet(db: Any, user_ref: str, strategy_id: int, stype: str | None, pl
         chosen = found
     if plan is not None and pick is None:
         saved_before = await check.plan_saved_before_adr247(db, plan)
-        values = _values(plan.body, saved_before, kind)
+        values = with_rupee_figures(_values(plan.body, saved_before, kind), plan.body, bases or Bases(), kind=kind,
+                                    saved_before=saved_before)
         source_id = plan.playbook_id if plan.playbook_id is not None else active.id
     else:
-        values, source_id = _values(chosen.body, False, kind), chosen.id  # a playbook, not a saved plan
+        values = with_rupee_figures(_values(chosen.body, False, kind), chosen.body, bases or Bases(), kind=kind)
+        source_id = chosen.id  # a playbook, not a saved plan
         if (_t07_of(chosen.body) or {}).get("on") is False:  # ADR-305: the profit rule is off -> the box opens empty
             values |= {"target": None, "target_words": None}
     reply |= {"type_name": render_explanation("adjust_check_type_name", name=SHOWN_NAMES[stype]),
               "playbooks": [_playbook_row(p, active.id) for p in listed],
-              "plan": None if plan is None else await _plan_out(db, user_ref, plan, kind),
+              "plan": None if plan is None else await _plan_out(db, user_ref, plan, kind, bases),
               "prefill": {"playbook_id": source_id, **values}}
     return AdjustmentPlanOut.model_validate(reply)
 
@@ -436,6 +641,93 @@ async def _run(db: Any, work: Any) -> Any:
     return result
 
 
+class LevelOut(ApiModel):
+    percent: Money | None
+    rupees: Money | None
+    per_lot: Money | None
+    words: CatalogueText | None  # the typed level in words (the percent), as the plan sheet shows it
+    rupee_words: CatalogueText | None  # "Rs X for the whole trade (Rs Y per lot), before charges"
+
+
+class LevelsOut(ApiModel):
+    target: LevelOut | None
+    stop: LevelOut | None
+
+
+def preview_stop_words(body: dict | None, saved_before: bool, kind: str | None, bases: Bases,
+                       typed_in: PlanIn) -> Any:
+    """The stop sentence of the levels preview: the SAME builder the saved plan uses (``with_overrides`` then
+    ``with_rupee_figures`` -> ``_stop_words``, which keeps the lines still in force), on a copy of the body with the
+    typed level put in. Nothing is stored. None when there is no body to read the lines from."""
+    if body is None:
+        return None
+    typed = with_overrides(body, typed_in, kind, bases)
+    return with_rupee_figures(_values(typed, saved_before, kind), typed, bases, kind=kind,
+                              saved_before=saved_before)["stop_words"]
+
+
+def _level_out(percent_raw: str | None, rupees_raw: str | None, base: Decimal | None, lots: int | None,  # noqa: PLR0913
+               field: str, words_id: str) -> dict[str, Any] | None:
+    """One level from what was typed: percent and/or rupees (ADR-330 (5)); both must agree, else refused naming the
+    rupee field. Nothing typed -> None. The server works both figures out; the browser prints them."""
+    pct = None if percent_raw in (None, "") else Decimal(_percent(percent_raw, field.removesuffix("_rupees")))
+    level = None if rupees_raw in (None, "") else _rupee_in(rupees_raw, field)
+    if pct is not None and level is not None and not figs.agree(pct, level, base, lots):
+        raise _bad(field)
+    if level is not None and pct is None:
+        found = figs.from_rupees(level, base, lots)
+    elif pct is not None:
+        found = figs.from_percent(pct, base, lots)
+    else:
+        return None
+    words = None if found.percent is None else render_explanation(words_id, pct=format(found.percent, "f"))
+    return {"percent": found.percent, "rupees": found.rupees, "per_lot": found.per_lot, "words": words,
+            "rupee_words": _rupee_words(found)}
+
+
+@router.get("/api/strategies/{strategy_id}/adjustment-plan/levels", response_model=LevelsOut)
+async def read_levels(  # noqa: PLR0913 - FastAPI dependencies, one per input
+        strategy_id: int, db: Annotated[Any, Depends(get_db)], user_ref: Annotated[str, Depends(current_user_ref)],
+        tracked_reader: Annotated[TrackedReader, Depends(get_tracked_reader)],
+        market_reader: Annotated[MarketReader, Depends(get_market_reader)],
+        ctx: Annotated[MarketContext | None, Depends(get_market_context)],
+        rates: Annotated[ChargeRates | None, Depends(load_charge_rates)],
+        target: Annotated[str | None, Query(max_length=12)] = None,
+        target_rupees: Annotated[str | None, Query(max_length=16)] = None,
+        stop: Annotated[str | None, Query(max_length=12)] = None,
+        stop_rupees: Annotated[str | None, Query(max_length=16)] = None,
+        playbook_id: Annotated[int | None, Query(ge=1, le=ID_MAX)] = None) -> LevelsOut:
+    """ADR-330 (5) / S-12: both figures of the typed level(s), worked out on the server, the per-lot figure beside the
+    rupees. The last edited box is sent alone; both boxes with different values -> refused naming the rupee field."""
+    rates = rates if isinstance(rates, ChargeRates) else None
+    tracked = await _own_strategy(strategy_id, tracked_reader, rates)
+    await release_connection(db)
+    market = await _market(tracked, market_reader, ctx)
+    bases = bases_of(tracked, market, rates)
+    try:
+        reply = {"target": _level_out(target, target_rupees, bases.max_profit, bases.lots, "target_rupees",
+                                      "plan_target_words"),
+                 "stop": _level_out(stop, stop_rupees, bases.max_loss, bases.lots, "stop_rupees",
+                                    "plan_stop_words_loss")}
+        if reply["stop"] is not None:  # the one stop sentence of the saved plan, for the level typed (ADR-330 (5)/LP-2)
+            stype, plan = await _type_of(db, user_ref, strategy_id, tracked, ctx)
+            body = None
+            if stype is not None and playbook_id is not None:  # the picked playbook, as the save reads it
+                body = _body_to_save(await _picked(db, user_ref, playbook_id, stype), plan, plan is not None)
+            elif plan is not None:
+                body = plan.body
+            elif stype is not None:
+                body = (await store.active_for(db, user_ref, stype)).body
+            kind = _kind_of(tracked, in_force_mod.money_inputs(tracked, market, rates))
+            saved_before = plan is not None and await check.plan_saved_before_adr247(db, plan)
+            words = preview_stop_words(body, saved_before, kind, bases,
+                                       PlanIn(playbook_id=0, stop=stop or None, stop_rupees=stop_rupees or None))
+            reply["stop"]["words"] = words  # no body to read the lines from: no words, never the partial sentence
+    except store.PlaybookStoreError as exc:
+        raise _refused(exc) from None
+    return LevelsOut.model_validate(reply)
+
+
 @router.get("/api/strategies/{strategy_id}/adjustment-plan", response_model=AdjustmentPlanOut)
 async def read_plan(  # noqa: PLR0913 - FastAPI dependencies, one per input
         strategy_id: int, db: Annotated[Any, Depends(get_db)], user_ref: Annotated[str, Depends(current_user_ref)],
@@ -452,11 +744,29 @@ async def read_plan(  # noqa: PLR0913 - FastAPI dependencies, one per input
     market = await _market(tracked, market_reader, ctx)
     stype, plan = await _type_of(db, user_ref, strategy_id, tracked, ctx)
     money = in_force_mod.money_inputs(tracked, market, rates)
+    bases = bases_of(tracked, market, rates)
 
     async def work() -> AdjustmentPlanOut:
         return await _sheet(db, user_ref, strategy_id, stype, plan, playbook_id, user_values, money,
-                            _kind_of(tracked, money))
+                            _kind_of(tracked, money), bases)
     return await _run(db, work)
+
+
+async def _picked(db: Any, user_ref: str, playbook_id: int, stype: str) -> Any:
+    """The playbook the user picked: in range, theirs or the system's, and of the strategy's type (else refused)."""
+    if not 1 <= playbook_id <= ID_MAX:
+        raise _bad("playbook_id")
+    source = await store.get(db, user_ref, playbook_id)
+    if source.strategy_type != stype:
+        raise _bad("playbook_id")
+    return source
+
+
+def _body_to_save(source: Any, plan: Any, edit: bool) -> dict:
+    """The ONE rule for which body the typed levels go into, shared by the save and the levels preview: editing the
+    plan keeps its own body when the pick is the plan's own playbook, else the picked playbook's body."""
+    keep = edit and plan is not None and plan.playbook_id == source.id
+    return plan.body if keep else source.body
 
 
 async def _write(strategy_id: int, data: PlanIn, edit: bool, db: Any, user_ref: str,  # noqa: PLR0913
@@ -468,21 +778,26 @@ async def _write(strategy_id: int, data: PlanIn, edit: bool, db: Any, user_ref: 
     market = await _market(tracked, market_reader, ctx)
     stype, plan = await _type_of(db, user_ref, strategy_id, tracked, ctx)
     money = in_force_mod.money_inputs(tracked, market, rates)
+    bases = bases_of(tracked, market, rates)
     if stype is None:
         raise StrategyRefused(_GENERIC, Failure.CONFLICT)
     if edit and plan is None:
         raise StrategyRefused(_NOT_AVAILABLE, Failure.NOT_FOUND)
 
     async def work() -> AdjustmentPlanOut:
-        if not 1 <= data.playbook_id <= ID_MAX:
-            raise _bad("playbook_id")
-        source = await store.get(db, user_ref, data.playbook_id)
-        if source.strategy_type != stype:
-            raise _bad("playbook_id")
-        keep = edit and plan is not None and plan.playbook_id == source.id  # editing the plan keeps its own body
-        body = with_overrides(plan.body if keep and plan is not None else source.body, data, _kind_of(tracked, money))
-        saved = await store.accept_plan(db, user_ref, strategy_id, source.id, body)
-        return await _sheet(db, user_ref, strategy_id, stype, saved, None, user_values, money, _kind_of(tracked, money))
+        source = await _picked(db, user_ref, data.playbook_id, stype)
+        body = with_overrides(_body_to_save(source, plan, edit), data, _kind_of(tracked, money), bases)
+        if data.time_exit is not None:  # ADR-330 (7): the day is judged against today and the legs, never trusted
+            legs = tracked.position.legs
+            check_time_exit_day(body["guards"].get(TIME_KEY),
+                                None if market is None else market.now.astimezone(IST).date(),
+                                max((x.expiry for x in legs), default=None))
+        saved = await store.accept_plan(db, user_ref, strategy_id, source.id, body, _base_json(tracked))
+        # ADR-330 (1): the reply shows the base now STORED (the one the checks read), not the one read before the save
+        stored = dataclasses.replace(tracked, stop_base=in_force_mod.stop_base_from_json(saved.stop_base))
+        return await _sheet(db, user_ref, strategy_id, stype, saved, None, user_values,
+                            in_force_mod.money_inputs(stored, market, rates), _kind_of(tracked, money),
+                            dataclasses.replace(bases, max_loss=_stored_loss(stored, bases)))
     return await _run(db, work)
 
 
@@ -522,14 +837,21 @@ def _rules_to_save(base: dict, submitted: dict, is_plan: bool) -> dict:
     return out
 
 
+def _base_json(tracked: Any) -> dict | None:
+    """ADR-330 (1): a plan save or edit stores the stop base worked out from the entry orders NOW (None: not worked
+    out; the first check then works it out once, source "backfill")."""
+    base = getattr(tracked, "entry_stop_base", None)
+    return None if base is None else base.to_json()
+
+
 async def _rules_scope(strategy_id: int, db: Any, user_ref: str, tracked_reader: TrackedReader,  # noqa: PLR0913
                        market_reader: MarketReader, rest_reader: RestSpotReader, ctx: MarketContext | None,
-                       rates: ChargeRates | None) -> tuple[str, store.Plan | None]:
+                       rates: ChargeRates | None) -> tuple[str, store.Plan | None, Any]:
     tracked = await _own_strategy(strategy_id, tracked_reader, rates if isinstance(rates, ChargeRates) else None)
     stype, plan = await _type_of(db, user_ref, strategy_id, tracked, ctx)
     if stype is None:
         raise StrategyRefused(_GENERIC, Failure.CONFLICT)
-    return stype, plan
+    return stype, plan, tracked
 
 
 @router.get("/api/strategies/{strategy_id}/adjustment-plan/rules", response_model=pb_routes.PlaybookFullOut)
@@ -542,7 +864,8 @@ async def read_rules(  # noqa: PLR0913 - FastAPI dependencies, one per input
         rates: Annotated[ChargeRates | None, Depends(load_charge_rates)]) -> Any:
     """Issue 7 (REQ-158 AC-6): "Customise triggers" from a trade opens THIS trade's rules: its plan copy, else a copy of
     the type's active playbook that is written only when the user saves. Never a playbook row."""
-    stype, plan = await _rules_scope(strategy_id, db, user_ref, tracked_reader, market_reader, rest_reader, ctx, rates)
+    stype, plan, _ = await _rules_scope(strategy_id, db, user_ref, tracked_reader, market_reader, rest_reader, ctx,
+                                        rates)
 
     async def work() -> Any:
         if plan is not None:  # the applied view: what the rule check reads (ADR-304), via the one function
@@ -562,7 +885,8 @@ async def save_rules(  # noqa: PLR0913 - FastAPI dependencies, one per input
         ctx: Annotated[MarketContext | None, Depends(get_market_context)],
         rates: Annotated[ChargeRates | None, Depends(load_charge_rates)]) -> Any:
     """Save this trade's rules: the strategy's plan body only (``accept_plan`` writes the plan row; no playbook row)."""
-    stype, plan = await _rules_scope(strategy_id, db, user_ref, tracked_reader, market_reader, rest_reader, ctx, rates)
+    stype, plan, tracked = await _rules_scope(strategy_id, db, user_ref, tracked_reader, market_reader, rest_reader,
+                                              ctx, rates)
 
     async def work() -> Any:
         try:
@@ -573,7 +897,8 @@ async def save_rules(  # noqa: PLR0913 - FastAPI dependencies, one per input
         source_id = plan.playbook_id if keep and plan is not None else (await store.active_for(db, user_ref, stype)).id
         base = plan.body if plan is not None else (await store.active_for(db, user_ref, stype)).body
         saved = await store.accept_plan(
-            db, user_ref, strategy_id, source_id, _rules_to_save(base, data.body, plan is not None))
+            db, user_ref, strategy_id, source_id, _rules_to_save(base, data.body, plan is not None),
+            _base_json(tracked))
         return _rules_out(stype, dict(check.with_plan_target(saved.body)), saved.accepted_at)
     return await _run(db, work)
 

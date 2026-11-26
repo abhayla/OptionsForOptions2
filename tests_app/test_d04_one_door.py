@@ -63,11 +63,11 @@ def test_the_shape_reads_differently_with_the_live_spot_than_without(tracked):
     assert check.strategy_type(tracked.position, LIVE_SPOT, []) is None
 
 
-def test_the_server_limit_reads_the_strangle_playbook(tracked, asked):
-    async def reader(_sid, _rates):
-        return tracked
-    asyncio.run(paper_limit._plan_body(None, "u", 164, reader, None, []))
-    assert asked == ["strangle"]
+def test_the_server_limit_reads_no_playbook_for_a_strategy_without_a_plan(tracked, asked):
+    """Was: the limit read the strangle playbook of the entry shape. ADR-330 (11): only a strategy's own plan applies,
+    so with no plan the limit reads no type and no playbook (no limit applies)."""
+    assert asyncio.run(paper_limit._plan_body(None, "u", 164)) is None
+    assert asked == []
 
 
 def test_the_offer_path_reads_the_same_type_whatever_spot_it_is_given(tracked, asked):
@@ -110,7 +110,7 @@ def test_no_caller_hands_the_door_a_spot():
     """The check route and the worker (and every other caller) call the door with the tracked strategy and the listing
     only: a spot cannot reach the classification, so a caller cannot read another playbook than the server limit."""
     calls = {p: _entry_type_calls(p) for p in DOOR_CALLERS}
-    assert sum(len(v) for v in calls.values()) >= 8  # noqa: PLR2004 - the eight call sites of D-04 are still found
+    assert sum(len(v) for v in calls.values()) >= 6  # noqa: PLR2004 - the six call sites left (ADR-330 (11): the limit and the history no longer type a plan-less strategy)
     for path, found in calls.items():
         for call in found:
             assert len(call.args) + len(call.keywords) == 2, f"{path}:{call.lineno} passes more than (tracked, listed)"  # noqa: PLR2004

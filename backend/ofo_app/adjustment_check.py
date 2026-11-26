@@ -29,9 +29,8 @@ ambiguous -> None, so the evaluator answers NotChecked with its catalogue reason
 - prices_fresh (T-21): the market context's provider health: available -> True, stale -> False, anything else or no
   context -> None (``withheld_fresh_unknown``).
 
-Playbook (REQ-158 AC-5): the strategy's own plan; else the user's active playbook of the type (``active_for`` falls
-back to the type's system playbook); type None (Custom or an unmapped template) -> no playbook, no results, and the
-tracking route keeps the platform 0.5% detection.
+Playbook (ADR-330 (11)): the strategy's own plan only; no plan -> source "none" (nothing watched); type None (Custom
+or an unmapped template) -> no playbook, no results, and the tracking route keeps the platform 0.5% detection.
 
 F-71 entry state: in scenario mode the scenario's ``position.entry`` (its clock, spot and ATM IV; the shorts' strikes;
 every other entry input None). Otherwise, when the strategy's rule memory is empty (tracking just started), the first
@@ -220,11 +219,19 @@ async def resolve(conn: Any, user_ref: str, strategy_id: int, stype: str | None)
     if plan is not None:
         return Resolved("plan", with_plan_target(plan.body), plan.playbook_id, None, False,
                         saved_before_adr247=await plan_saved_before_adr247(conn, plan))
-    if stype is None:
-        return Resolved("none", None, None, None, False, saved_before_adr247=False)
-    pb = await playbook_store.active_for(conn, user_ref, stype)
-    return Resolved("system" if pb.is_system else "active", pb.body, pb.id, pb.status if pb.is_system else None,
-                    pb.is_system, saved_before_adr247=False)
+    # ADR-330 (11): a playbook is only a source to copy from when a plan is made; no plan -> nothing is watched.
+    # (A plan row with an unreadable body raised in ``plan_for`` above: refused, never "none".)
+    return Resolved("none", None, None, None, False, saved_before_adr247=False)
+
+
+def max_profit_of(tracked: Any, market: Any, rates: Any) -> Decimal | None:
+    """ADR-330 (5): the whole-trade max profit before charges (the Before's gross figure, as the live check reads it),
+    the base a rupee target is shown against. Unlimited, not priced or unreadable -> None, never a guess."""
+    before = price_after(tracked.position.legs, tracked.position, tracked.booked, tracked.paid_charges, (), rates,
+                         market, tracked.paid_exact)
+    gross = None if before.after is None else before.after.gross
+    value = None if gross is None else gross.max_profit
+    return value if isinstance(value, Decimal) and value.is_finite() else None
 
 
 def _limit_value(v: Any) -> Decimal | str:
@@ -388,18 +395,18 @@ def state_of(tracked: Tracked, market: MarketInputs, spot: SpotAnswer, margin: M
     day = market.day_open
     kind = market.expiry_kind or position.expiry_kind or "weekly"
     stops = None
+    stop_base = getattr(tracked, "stop_base", None)  # ADR-330 (1): fixed at entry, None = not checked
     if resolved is not None:
         from ofo_app import settings_in_force as sif  # noqa: PLC0415 - it imports this module
-        credit = None if booked is None else adjust_money.net_credit_so_far(
-            booked, ((x.side, x.entry, qty[x.tradingsymbol]) for x in position.legs))
-        stops = sif.stops_of(resolved, sif.MoneyInputs(None if gross is None else gross.max_loss, credit,
-                                                       stated_margin),
+        stops = sif.stops_of(resolved, sif.MoneyInputs(None if stop_base is None else stop_base.max_loss,
+                                                       None if stop_base is None else stop_base.credit, stated_margin),
                              sif.StageAt(kind, (expiry - now.date()).days))
     return with_gamma(with_carry(pe.StrategyState(stops=stops,
         expiry_kind=market.expiry_kind or position.expiry_kind or "weekly",  # type: ignore[arg-type]
         days_left=(expiry - now.date()).days, hhmm=hhmm, spot=value, shorts=shorts, pnl=pnl,
         pnl_after=pnl_after, pnl_after_reason=pnl_after_reason,
         max_loss=None if gross is None else _limit_value(gross.max_loss),
+        stop_max_loss=None if stop_base is None else _limit_value(stop_base.max_loss),
         max_profit=None if gross is None else _limit_value(gross.max_profit),
         margin=stated_margin, margin_unreadable=margin_unreadable, premium_left=left, adjustment_cost=cheap.cost,
         adjustment_approach=cheap.approach,

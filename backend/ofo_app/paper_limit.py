@@ -31,15 +31,10 @@ log = logging.getLogger(__name__)
 _OPTION_TYPES = (Instrument.CE.value, Instrument.PE.value)
 
 
-async def _plan_body(db: Any, user_ref: str, strategy_id: int, reader: Any,  # noqa: PLR0913
-                     rates: Any, listed: Any) -> Any:
-    from ofo_app import adjustment_check as check  # noqa: PLC0415 - it imports the route layer
+async def _plan_body(db: Any, user_ref: str, strategy_id: int) -> Any:
+    """ADR-330 (11), Q7: only the strategy's own plan sets a maximum; no plan -> None -> no limit applies."""
     plan = await playbook_store.plan_for(db, user_ref, strategy_id)
-    if plan is not None:
-        return plan.body
-    tracked = await reader(strategy_id, rates)  # raises when the open legs cannot be read: refused by name
-    stype = check.entry_type(tracked, listed)  # D-04
-    return (await check.resolve(db, user_ref, strategy_id, stype)).body
+    return None if plan is None else plan.body
 
 
 async def _read_before(reader: Any, strategy_id: int, rates: Any) -> Any:
@@ -89,8 +84,8 @@ async def check_adjustment_limit(db: Any, user_ref: str, strategy_id: int,  # no
     if before is not None and after <= before:
         return
     try:
-        body = await _plan_body(db, user_ref, strategy_id, reader, rates, listed)
-        guards = {} if body is None else body.get("guards", {})  # no plan and no playbook: nothing sets a maximum
+        body = await _plan_body(db, user_ref, strategy_id)
+        guards = {} if body is None else body.get("guards", {})  # no plan: nothing sets a maximum (ADR-330 (11))
     except Exception as exc:  # noqa: BLE001 - any failure of the read is "unreadable", never a silent allow
         log.warning("paper adjustment limit: strategy %s plan unreadable (%s)", strategy_id, type(exc).__name__)
         raise _unread() from None

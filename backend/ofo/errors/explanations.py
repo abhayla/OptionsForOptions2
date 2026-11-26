@@ -370,7 +370,7 @@ PLAYBOOK_GUARD_LABEL_TEXT: Mapping[str, str] = MappingProxyType({
     "stop_line_pct_of_margin": "Stop line (% of margin)",
     "stop_line_pct_of_max_loss": "Stop line (% of max loss)",
     "stop_line_rule": "Stop line rule",
-    "time_exit": "Time exit (on expiry day)",
+    "time_exit": "Time exit",
     "warn_cost_pct_of_premium_left": "Warn when an adjustment costs more than this % of the premium left",
 })
 #: GC-ADJ2 step 3 (REQ-160 AC-1): the plain-words summary's sentences. A doubled brace is a slot the editor fills from the body ({name} after rendering); the words are the catalogue's.
@@ -448,6 +448,12 @@ ADJUSTMENT_CRITERION_LABEL_TEXT: Mapping[str, str] = MappingProxyType({
     "fresh": "Would you open this fresh",
 })
 #: REQ-156 AC-3: each row's leader in plain words (decision-support words only, ADR-003: no ranking word)
+#: ADR-330 (3): what the user answers an actionable alert with, and how History names an answer (ofo.alerts)
+ALERT_ANSWER_LABEL_TEXT: Mapping[str, str] = MappingProxyType({
+    "exit": "Exit the position", "continue": "Continue with the position", "add_legs": "Add the legs again",
+    "confirm_new_shape": "Confirm the new shape", "closed_by_system": "Closed: the position ended",
+    "noted": "Information",
+})
 ADJUSTMENT_LEADER_LABEL_TEXT: Mapping[str, str] = MappingProxyType({
     "credit": "Most credit",
     "cost": "Lowest cost",
@@ -1068,11 +1074,15 @@ PLAYBOOK_TYPE_LABEL_TEXT: Mapping[str, str] = MappingProxyType(
 
 #: GC-ADJ2 step 4 (REQ-161 AC-1, AC-2; mockup screen 4): the fixed words of the strategy plan sheet and the tracking
 #: panel's Plan entry, by key. Each is one reviewed template `plan_sheet_<key>`; the browser prints what the server sends.
+NO_PLAN_TEXT = "No plan: nothing is watched for this strategy"  # ADR-330 (11): replaces "default rules apply"
 PLAN_SHEET_LABEL_TEXT: Mapping[str, str] = MappingProxyType({
     "title": "When tracking starts: this strategy's plan", "playbook": "Playbook", "target": "Target",
-    "stop": "Stop", "max_adjustments": "Max adjustments", "time_exit": "Time exit (on expiry day)",
+    "stop": "Stop",
+    "target_rupees": "Target (Rs)", "stop_rupees": "Stop (Rs)",  # ADR-330 (5): the same level typed in rupees
+    "max_adjustments": "Max adjustments", "time_exit": "Time exit",
+    "time_exit_on": "Time exit date (blank = expiry day)",  # ADR-330 (7): any trading day, one date and one time
     "customise": "Customise triggers", "use_as_is": "Use playbook as is", "save": "Save plan", "close": "Close",
-    "plan_entry": "Plan", "edit": "Edit plan", "no_plan": "No plan saved yet: default rules apply", "set_plan": "Set plan",
+    "plan_entry": "Plan", "edit": "Edit plan", "no_plan": NO_PLAN_TEXT, "set_plan": "Set plan",
     "hour": "Hour", "minute": "Minute",
 })
 
@@ -1669,6 +1679,15 @@ _EXPLANATIONS: tuple[ExplanationTemplate, ...] = (
                         {"pct": PlaybookField, "margin": PlaybookField}),
     ExplanationTemplate("plan_stop_words_credit", "values_seen", "{multiple}x the credit received",
                         {"multiple": PlaybookField}),
+    # ADR-330 (5) / owner Q3: a rupee level is the whole trade, before charges, the per-lot figure beside it
+    ExplanationTemplate("plan_level_rupees", "values_seen",
+                        "Rs {rupees} for the whole trade (Rs {per_lot} per lot), before charges",
+                        {"rupees": Amount, "per_lot": Amount}),
+    ExplanationTemplate("plan_level_rupees_whole", "values_seen", "Rs {rupees} for the whole trade, before charges",
+                        {"rupees": Amount}),
+    ExplanationTemplate("plan_stop_words_rupees", "values_seen", "a loss of Rs {rupees} ({pct} % of max loss)",
+                        {"rupees": Amount, "pct": Amount}),
+    ExplanationTemplate("plan_stop_words_rupees_plain", "values_seen", "a loss of Rs {rupees}", {"rupees": Amount}),
     ExplanationTemplate("plan_stop_words_or", "values_seen", "{a} or {b}", {"a": Explained, "b": Explained}),
     ExplanationTemplate("plan_stop_words_or3", "values_seen", "{a}, {b} or {c}",
                         {"a": Explained, "b": Explained, "c": Explained}),
@@ -1685,6 +1704,11 @@ _EXPLANATIONS: tuple[ExplanationTemplate, ...] = (
                         {"multiple": Amount, "amount": Rupees}),
     ExplanationTemplate("limit_stop_credit_plain", "values_seen", "Stop: loss of {multiple} x credit",
                         {"multiple": Amount}),
+    # ADR-330 (5): a typed rupee level is a limit row of its own (whole trade, before charges, Q3)
+    ExplanationTemplate("limit_target_rupees", "values_seen", "Target: profit of {amount}, before charges",
+                        {"amount": Rupees}),
+    ExplanationTemplate("limit_stop_rupees", "values_seen", "Stop: loss of {amount}, before charges",
+                        {"amount": Rupees}),
     ExplanationTemplate("limit_later", "values_seen", "{line}; {pct} % nearer expiry", {"line": Explained, "pct": Amount}),
     ExplanationTemplate("limit_tightened", "values_seen", "{line}; tightened by {pct} % today",
                         {"line": Explained, "pct": Amount}),
@@ -1699,6 +1723,21 @@ _EXPLANATIONS: tuple[ExplanationTemplate, ...] = (
                         "{line}. Already true after adjustment {n}: alerts after it clears and crosses again",
                         {"line": Explained, "n": Amount}),
     ExplanationTemplate("check_as_of", "values_seen", "As of {time} IST", {"time": ClockHms}),
+    ExplanationTemplate("alert_fired_at", "what_triggered", "Fired at {time}", {"time": HourMinute}),
+    ExplanationTemplate("alert_no_longer_true_since", "values_seen", "no longer true since {time}",
+                        {"time": HourMinute}),
+    # ADR-330 (3), REQ-170 AC-3: the open alert says a later reading of the same rule is worse than the one it fired at
+    ExplanationTemplate("alert_worse_than_fired", "values_seen",
+                        "Worse than when it fired: {value} {unit} (fired at {fired} {unit})",
+                        {"value": PlaybookField, "unit": PlaybookUnit, "fired": PlaybookField}),
+    ExplanationTemplate("alert_worse_than_fired_plain", "values_seen",
+                        "Worse than when it fired: {value} (fired at {fired})",
+                        {"value": PlaybookField, "fired": PlaybookField}),
+    # ADR-330 (3), owner Q2b: an unanswered alert whose trade closed first stays in History with this line
+    ExplanationTemplate("alert_closed_trade_closed", "values_seen", "Closed by system: the trade closed at {time}",
+                        {"time": HourMinute}),
+    *(ExplanationTemplate(f"alert_answer_{key}", "values_seen", text)  # ADR-330 (3): each answer's label, as the page shows it
+      for key, text in ALERT_ANSWER_LABEL_TEXT.items()),
     ExplanationTemplate("stop_fired_loss", "values_seen",
                         "Stop reached: loss now {loss} ({loss_pct} % of max loss); stop line {stop} ({stop_pct} % of max loss)",
                         {"loss": Rupees, "loss_pct": Amount, "stop": Rupees, "stop_pct": Amount}),
@@ -1927,11 +1966,39 @@ _EXPLANATIONS: tuple[ExplanationTemplate, ...] = (
     ExplanationTemplate("paper_exit_widens_loss", "values_seen",
                         "After these orders, maximum loss: {before} before, {after} after.",
                         {"before": Explained, "after": Explained}),
+    # ADR-330 (6): the Stops panel line before a leg stop is saved (figures are the loss sizes, no sign)
+    ExplanationTemplate("paper_leg_stop_widens_loss", "values_seen",
+                        "If this stop fires, max loss becomes Rs {after} (now Rs {before}).",
+                        {"before": IndexLevel, "after": IndexLevel}),
+    ExplanationTemplate("paper_leg_stop_unlimited_loss", "values_seen",
+                        "If this stop fires, there is no fixed maximum loss (now Rs {before}).",
+                        {"before": IndexLevel}),
+    # the same line when the book's "max loss" figure is a profit (positive): never printed as a loss
+    ExplanationTemplate("paper_leg_stop_from_profit", "values_seen",
+                        "If this stop fires, max loss becomes Rs {after} (now a profit: at least Rs {before}).",
+                        {"before": IndexLevel, "after": IndexLevel}),
+    ExplanationTemplate("paper_leg_stop_unlimited_from_profit", "values_seen",
+                        "If this stop fires, there is no fixed maximum loss (now a profit: at least Rs {before}).",
+                        {"before": IndexLevel}),
+    ExplanationTemplate("paper_leg_stop_to_profit", "values_seen",
+                        "If this stop fires, the book shows a profit of at least Rs {after} (now max loss Rs {before}).",
+                        {"before": IndexLevel, "after": IndexLevel}),
+    ExplanationTemplate("paper_leg_stop_still_profit", "values_seen",
+                        "If this stop fires, the book shows a profit of at least Rs {after} (now at least Rs {before}).",
+                        {"before": IndexLevel, "after": IndexLevel}),
     ExplanationTemplate("paper_exit_less_protected", "values_seen",
                         "Sold option with less protection: {legs}.", {"legs": Explained}),
     ExplanationTemplate("paper_exit_warning_join", "values_seen", "{first} {second}",
                         {"first": Explained, "second": Explained}),
     ExplanationTemplate("paper_trigger_level", "values_seen", "{level}", {"level": IndexLevel}),
+    # P10 (ADR-330 (13)): the labels of the Plan watch lines for the Stops-panel triggers, and the heading they sit under
+    ExplanationTemplate("plan_watch_index_above", "values_seen", "Index exit above {level}", {"level": IndexLevel}),
+    ExplanationTemplate("plan_watch_index_below", "values_seen", "Index exit below {level}", {"level": IndexLevel}),
+    ExplanationTemplate("plan_watch_leg_above", "values_seen", "Leg stop on {leg}: price above {level}",
+                        {"leg": Explained, "level": IndexLevel}),
+    ExplanationTemplate("plan_watch_leg_below", "values_seen", "Leg stop on {leg}: price below {level}",
+                        {"leg": Explained, "level": IndexLevel}),
+    ExplanationTemplate("plan_watch_armed_heading", "values_seen", "Armed in the Stops panel", {}),
     # D-03 (ADR-317 (7)): an index exit set before an adjustment stays armed; the row names the new short strike
     ExplanationTemplate("paper_exit_set_before_call", "values_seen",
                         "Exit above {level} was set before this change; your new short call is {strike}. Check this level.",
@@ -2075,6 +2142,12 @@ _EXPLANATIONS: tuple[ExplanationTemplate, ...] = (
     ExplanationTemplate("paper_totals_left_out_one", "values_seen", "1 strategy left out: its contract has expired."),
     ExplanationTemplate("paper_totals_left_out_many", "values_seen",
                         "{count} strategies left out: their contracts have expired.", {"count": Count}),
+    # P11 (ADR-330 (10), owner Q11): the Paper totals keep closed trades and say how many
+    ExplanationTemplate("paper_totals_closed_one", "values_seen",
+                        "Includes 1 closed strategy."),
+    ExplanationTemplate("paper_totals_closed_many", "values_seen",
+                        "Includes {count} closed strategies.",
+                        {"count": Count}),
     ExplanationTemplate("paper_reason_multi_expiry", "values_seen",
                         "Profit left and Loss left are not worked out: the open contracts have different expiries."),
     ExplanationTemplate("paper_extremes_prices_not_live", "values_seen",
@@ -2388,7 +2461,7 @@ LABEL_TABLES: Mapping[str, Mapping[str, str]] = MappingProxyType({
     "playbook_day_kind": PLAYBOOK_DAY_RULE_KIND_TEXT, "playbook_day_action": PLAYBOOK_DAY_RULE_ACTION_TEXT,
     "playbook_summary": PLAYBOOK_SUMMARY_TEXT, "plan_sheet": PLAN_SHEET_LABEL_TEXT,
     "playbook_guard": PLAYBOOK_GUARD_LABEL_TEXT, "level_watch": LEVEL_WATCH_LABEL_TEXT,
-    "stop": STOP_LABEL_TEXT,
+    "stop": STOP_LABEL_TEXT, "alert_answer": ALERT_ANSWER_LABEL_TEXT,
 })
 
 

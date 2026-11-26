@@ -1,0 +1,261 @@
+"""GET /api/strategies/{id}/plan-watch (P10, ADR-330 (13), (11)): the live "Plan watch": one line per trigger with
+fires at / now / distance / state, in rupees and percent.
+
+The lines are composed from the two stored sources and never recomputed here (ADR-008, one engine): the plan's rules
+and limits come from the one adjustment check (``adjustment_check.run_check``: ``Evaluation.limits`` and the evaluated
+rules), the Stops-panel triggers from the trigger store. Money figures: P&L levels in rupees; an index exit in index
+points; a leg stop in the option's price per unit (each line's ``unit`` says which). Wave 1 uses the check's own
+figures (``state_of``); ``strategy_money_view`` is a later phase.
+
+Answer states: plan present -> its lines; no plan (source "none") -> ``no_plan_text`` and NO plan lines, the armed
+triggers still listed (ADR-330 (11)); the user's pause in force -> no plan lines (no evaluation), triggers paused;
+prices not live or no spot -> state "paused" and no ``now`` (absent, never 0); a limit or rule the evaluator could not
+check -> "not_computable" with its reason; a rule true since tracking started -> "not_applicable" (F-71); a rule fired
+-> "fired"; evaluation unreadable, trigger store unreadable -> the check's refusal, no lines (fail closed); strategy
+not found or another user's -> its 404. Writes nothing. Suggest-only (ADR-003): nothing here exits anything.
+"""
+from __future__ import annotations
+
+import datetime
+import logging
+from decimal import ROUND_HALF_UP, Decimal
+from typing import Annotated, Any, Literal
+
+from fastapi import APIRouter, Depends
+from ofo.adjustment import playbook_eval as pe
+from ofo.adjustment import stop_lines as sl
+from ofo.charges import ChargeRates
+from ofo.engine import adjust_money
+from ofo.errors.explanations import render_explanation
+from ofo.money import HUNDREDTH, PAISE
+from ofo.strategy.definition import describe_contract
+from sqlalchemy.exc import SQLAlchemyError
+
+from ofo_app import adjustment_check as check
+from ofo_app import paper_trigger_store, tracked_contracts
+from ofo_app.api_models import ApiModel, CatalogueText, Identifier, Money
+from ofo_app.db import get_db
+from ofo_app.errors import ClosedRoute, Failure
+from ofo_app.routes.adjustment import (
+    ApproachMargin,
+    MarketReader,
+    RestSpotReader,
+    TrackedReader,
+    get_approach_margin,
+    get_market_reader,
+    get_rest_spot_reader,
+    get_tracked_reader,
+)
+from ofo_app.routes.adjustment_check import CheckPauseOut, CheckRun, run_check
+from ofo_app.routes.adjustment_preferences import UserPreferences, UserValuesIn
+from ofo_app.routes.broker import current_user_ref
+from ofo_app.routes.outcome import MarketContext, get_market_context, load_charge_rates
+from ofo_app.routes.paper import identity_of
+from ofo_app.strategy_refused import StrategyRefused
+
+log = logging.getLogger(__name__)
+router = APIRouter(route_class=ClosedRoute)
+_NOT_AVAILABLE = "user_input_request_not_available"
+PERCENT = Decimal(100)
+SHOWN_PCT = HUNDREDTH
+_PCT_UNIT = "%"
+
+LineKind = Literal["target", "stop", "credit_stop", "rule", "index_exit", "leg_stop"]
+LineState = Literal["watching", "fired", "not_applicable", "not_computable", "paused"]
+LineUnit = Literal["pnl_rupees", "index_points", "option_price", "percent", "rule_unit"]
+
+
+class WatchLineOut(ApiModel):
+    """One trigger. ``fires_at`` / ``now`` / ``distance_rs`` are in the line's ``unit``; ``distance_pct`` is the
+    distance as a percent (of the fires-at level for a P&L line, of ``now`` for a price line, percentage points for a
+    percent rule). ``now`` and the distances are None (never 0) when the line is paused or not computable."""
+
+    key: Identifier
+    kind: LineKind
+    section: Literal["plan", "armed"]
+    label: CatalogueText
+    unit: LineUnit
+    fires_at: Money | None
+    now: Money | None
+    distance_rs: Money | None
+    distance_pct: Money | None
+    state: LineState
+    reason: CatalogueText | None = None
+
+
+class PlanWatchOut(ApiModel):
+    strategy_id: int
+    as_of: datetime.datetime
+    as_of_text: CatalogueText
+    plan_state: Literal["planned", "no_plan", "paused"]
+    no_plan_text: CatalogueText | None
+    armed_heading: CatalogueText | None
+    paused: CheckPauseOut | None = None
+    lines: list[WatchLineOut]
+
+
+def _q(v: Decimal | None) -> Decimal | None:
+    return None if v is None else v.quantize(PAISE, rounding=ROUND_HALF_UP)
+
+
+def _pct(distance: Decimal | None, reference: Decimal | None) -> Decimal | None:
+    if distance is None or reference is None or reference == 0:
+        return None
+    return (distance / abs(reference) * PERCENT).quantize(SHOWN_PCT, rounding=ROUND_HALF_UP)
+
+
+def _line(key: str, kind: str, section: str, label: Any, unit: str, state: str, *,  # noqa: PLR0913
+          fires: Decimal | None = None, now: Decimal | None = None, distance: Decimal | None = None,
+          pct: Decimal | None = None, reason: Any = None) -> dict:
+    return {"key": key, "kind": kind, "section": section, "label": label, "unit": unit, "fires_at": _q(fires),
+            "now": _q(now), "distance_rs": _q(distance), "distance_pct": pct, "state": state, "reason": reason}
+
+
+def _plan_lines(run: CheckRun, live: bool) -> list[dict]:
+    out, state, ev = run.out, run.state, run.ev
+    if state is None or ev is None:
+        return []
+    results = {r.rule_id: r for r in out.results}
+    fired = {rid for rid, r in results.items() if r.kind == "flag"}
+    lines: list[dict] = []
+    seen: set[str] = set()
+    pnl = state.pnl if live else None
+    for lim, shown in zip(ev.limits, out.limits, strict=True):
+        seen.add(lim.rule_id)
+        kind = ("target" if lim.trigger_id == "T-07" else "credit_stop" if lim.rule_id == sl.CREDIT_RULE else "stop")
+        label = shown.text or render_explanation("adjust_condition_line_id", label=lim.trigger_id)
+        if lim.state == "already_true":
+            lines.append(_line(lim.trigger_id, kind, "plan", label, "pnl_rupees", "not_applicable"))
+            continue
+        fires = _fires_at(kind, lim, state)
+        if lim.state == "not_checked" or fires is None:
+            lines.append(_line(lim.trigger_id, kind, "plan", label, "pnl_rupees", "not_computable",
+                               reason=shown.reason))
+            continue
+        if not live or pnl is None:
+            lines.append(_line(lim.trigger_id, kind, "plan", label, "pnl_rupees", "paused", fires=fires))
+            continue
+        # rupees still to go before the line is reached
+        distance = adjust_money.distance_to_level(fires, pnl, kind == "target")
+        lines.append(_line(lim.trigger_id, kind, "plan", label, "pnl_rupees",
+                           "fired" if lim.rule_id in fired else "watching", fires=fires, now=pnl, distance=distance,
+                           pct=_pct(distance, fires)))
+    for v in ev.values:  # each other rule the evaluator checked, true or false
+        if v.rule_id in seen or v.trigger_id in sl.STOP_TRIGGERS:
+            continue
+        seen.add(v.rule_id)
+        lines.append(_rule_line(v, run, live, v.rule_id in fired))
+    for rid, r in results.items():  # a rule with no value: not checked, or true since tracking started
+        if rid in seen or r.trigger_id in sl.STOP_TRIGGERS or r.kind == "flag":
+            continue
+        seen.add(rid)
+        label = render_explanation("adjust_condition_line_id", label=_label_of(run, r.trigger_id))
+        lines.append(_line(rid, "rule", "plan", label, "rule_unit",
+                           "not_applicable" if r.kind == "already_true" else "not_computable", reason=r.reason))
+    return lines
+
+
+def _label_of(run: CheckRun, trigger_id: str) -> str:
+    label, _unit = check.trigger_words(run.body, trigger_id)
+    return label if label else trigger_id
+
+
+def _fires_at(kind: str, lim: pe.LimitNow, state: pe.StrategyState) -> Decimal | None:
+    """The P&L level, in rupees, at which the limit is reached: the target = its % of max profit; a stop = minus the
+    evaluator's own rupee loss line (``LimitNow.amount``); None = not known (never a guess)."""
+    if kind == "target":
+        if isinstance(state.max_profit, Decimal) and isinstance(lim.threshold, Decimal):
+            return adjust_money.pct_of(state.max_profit, lim.threshold)
+        return None
+    return -lim.amount if isinstance(lim.amount, Decimal) else None
+
+
+def _rule_line(v: pe.RuleValue, run: CheckRun, live: bool, fired: bool) -> dict:
+    label = render_explanation("adjust_condition_line_id", label=_label_of(run, v.trigger_id))
+    if not (isinstance(v.value, Decimal) and isinstance(v.threshold, Decimal)):  # a clock rule: no number to subtract
+        said = "fired" if fired else "watching" if live else "paused"
+        return _line(v.rule_id, "rule", "plan", label, "rule_unit", said)
+    _label, unit = check.trigger_words(run.body, v.trigger_id)
+    percent = unit == _PCT_UNIT
+    kind = "percent" if percent else "rule_unit"
+    if not live:
+        return _line(v.rule_id, "rule", "plan", label, kind, "paused", fires=v.threshold)
+    distance = adjust_money.distance_to_level(v.threshold, v.value, v.cmp == "ge")  # still to go (negative: past)
+    return _line(v.rule_id, "rule", "plan", label, kind, "fired" if fired else "watching", fires=v.threshold,
+                 now=v.value, pct=_q(distance) if percent else None)
+
+
+async def _armed_lines(db: Any, strategy_id: int, run: CheckRun, live: bool) -> list[dict]:
+    try:
+        rows = [r for r in reversed(await paper_trigger_store.list_for(db, strategy_id)) if r.cancelled_at is None]
+        ids = sorted({r.trigger.contract_id for r in rows if r.trigger.contract_id is not None})
+        found = {c.contract_id: c for c in await tracked_contracts.resolve(db, ids)}
+    except SQLAlchemyError as exc:
+        log.warning("plan watch: triggers of strategy %s unreadable: %s", strategy_id, type(exc).__name__)
+        raise StrategyRefused(_NOT_AVAILABLE, Failure.UPSTREAM_BUSY) from None
+    marks = _leg_marks(run)
+    lines = []
+    for r in rows:
+        t = r.trigger
+        up = t.direction == "above"
+        if t.kind == "conditional_exit":
+            label = render_explanation("plan_watch_index_above" if up else "plan_watch_index_below", level=t.level)
+            unit, price = "index_points", run.spot
+        else:
+            try:
+                identity = identity_of(found[t.contract_id])
+            except (KeyError, RuntimeError):
+                lines.append(_line(f"trigger-{t.id}", "leg_stop", "armed", render_explanation(
+                    "adjust_condition_line_id", label="leg stop"), "option_price", "not_computable"))
+                continue
+            leg = describe_contract(identity)
+            label = render_explanation("plan_watch_leg_above" if up else "plan_watch_leg_below", leg=leg, level=t.level)
+            unit, price = "option_price", marks.get((identity[1].value, identity[2]))
+        key = f"trigger-{t.id}"
+        kind_out = "index_exit" if t.kind == "conditional_exit" else "leg_stop"
+        if price is None or not live:  # prices not live: a paused line with no `now` (never an old number)
+            lines.append(_line(key, kind_out, "armed", label, unit, "paused" if not live else "not_computable",
+                               fires=t.level))
+            continue
+        distance = adjust_money.distance_to_level(t.level, price, up)
+        lines.append(_line(key, kind_out, "armed", label, unit, "fired" if r.fired_at is not None else "watching",
+                           fires=t.level, now=price, distance=distance, pct=_pct(distance, price)))
+    return lines
+
+
+def _leg_marks(run: CheckRun) -> dict[tuple[str, Decimal], Decimal | None]:
+    """(CE / PE, strike) -> the open leg's mark now (the check's own ``mark_of``); empty when no market or position."""
+    if run.market is None or run.tracked is None:
+        return {}
+    rows = {x.tradingsymbol: x for x in run.market.chain}
+    return {(x.type, x.strike): check.mark_of(rows.get(x.tradingsymbol)) for x in run.tracked.position.legs}
+
+
+@router.get("/api/strategies/{strategy_id}/plan-watch", response_model=PlanWatchOut)
+async def plan_watch(  # noqa: PLR0913 - FastAPI dependencies, one per input
+        strategy_id: int, *,
+        db: Annotated[Any, Depends(get_db)], user_ref: Annotated[str, Depends(current_user_ref)],
+        tracked_reader: Annotated[TrackedReader, Depends(get_tracked_reader)],
+        market_reader: Annotated[MarketReader, Depends(get_market_reader)],
+        rest_reader: Annotated[RestSpotReader, Depends(get_rest_spot_reader)],
+        margin_of: Annotated[ApproachMargin, Depends(get_approach_margin)],
+        ctx: Annotated[MarketContext | None, Depends(get_market_context)],
+        rates: Annotated[ChargeRates | None, Depends(load_charge_rates)],
+        prefs: UserPreferences, user_values: UserValuesIn) -> PlanWatchOut:
+    from ofo_app.scenario_guard import check_screen_isolation  # noqa: PLC0415 - imports routes.broker
+    await check_screen_isolation(db, user_ref, strategy_id)
+    run = await run_check(strategy_id, db=db, user_ref=user_ref, tracked_reader=tracked_reader,
+                          market_reader=market_reader, rest_reader=rest_reader, margin_of=margin_of, ctx=ctx,
+                          rates=rates, prefs=prefs, user_values=user_values)
+    live = run.fresh is not False and run.spot is not None  # unknown health with a spot is read as the check reads it
+    out = run.out
+    plan = out.playbook.source != "none"
+    pause = out.paused
+    plan_lines = [] if not plan or pause is not None else _plan_lines(run, live)
+    armed = await _armed_lines(db, strategy_id, run, live and pause is None)
+    return PlanWatchOut.model_validate({
+        "strategy_id": strategy_id, "as_of": out.as_of, "as_of_text": out.as_of_text,
+        "plan_state": "paused" if plan and pause is not None else "planned" if plan else "no_plan",
+        "no_plan_text": None if plan else render_explanation("plan_sheet_no_plan"),
+        "armed_heading": render_explanation("plan_watch_armed_heading") if armed else None,
+        "paused": pause, "lines": plan_lines + armed})

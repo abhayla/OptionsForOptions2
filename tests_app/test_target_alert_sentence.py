@@ -28,8 +28,8 @@ from ofo.engine.extremes_charges import book_after_charges, open_exit_charges
 from ofo.engine.legs import Instrument
 from ofo.engine.orderbook import PaperOrder, net_positions
 from ofo.marketdata.spot_source import SpotAnswer
+from ofo_app import actionable_alerts, background, playbook_store
 from ofo_app import adjustment_check as check
-from ofo_app import background, playbook_store
 from ofo_app import db as app_db
 from ofo_app.paper_reasons import reason_text
 from ofo_app.routes import adjustment_check as check_route
@@ -175,11 +175,11 @@ class _Session:
 async def test_the_worker_stores_both_figures_with_the_record(monkeypatch):
     stamped: dict = {}
 
-    async def open_suggestion(db, user, sid, rule, **fields):
+    async def raise_actionable(db, user, sid, rule, kind, **fields):
         stamped.update(fields)
         return SimpleNamespace(id=1)
 
-    monkeypatch.setattr(playbook_store, "open_suggestion", open_suggestion)
+    monkeypatch.setattr(actionable_alerts, "raise_actionable", raise_actionable)
     monkeypatch.setattr(app_db, "get_sessionmaker", lambda: _Session)
     monkeypatch.setattr(check_route, "cheapest", lambda state: None)
     rv = SimpleNamespace(rule_id="T-07", trigger_id="T-07", value=D("1.7700"), threshold=D("1.0000"), cmp="ge",
@@ -338,11 +338,11 @@ def _ctx(tag: str, stage: str, adjustments: int, figures: tuple[str, str, str, s
 async def test_the_record_takes_its_fields_from_the_confirming_check(monkeypatch):
     stamped: dict = {}
 
-    async def open_suggestion(db, user, sid, rule, **fields):
+    async def raise_actionable(db, user, sid, rule, kind, **fields):
         stamped[rule] = fields
         return SimpleNamespace(id=1)
 
-    monkeypatch.setattr(playbook_store, "open_suggestion", open_suggestion)
+    monkeypatch.setattr(actionable_alerts, "raise_actionable", raise_actionable)
     monkeypatch.setattr(app_db, "get_sessionmaker", lambda: _Session)
     first = _ctx("A", "Early", 1, ("A-27", "61.75", "CE", "100"))
     later = _ctx("B", "Late", 2, ("A-28", "99.00", "PE", "5"))

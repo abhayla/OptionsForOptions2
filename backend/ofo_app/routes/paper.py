@@ -477,6 +477,9 @@ class PaperTotalsOut(ApiModel):
     # D-40 (ADR-324): strategies whose open contract has expired are left out of every figure above, and counted here
     left_out_count: int = 0
     left_out_text: CatalogueText | None = None
+    # P11 (ADR-330 (10)): how many closed strategies the figures include (the screen prints closed_text)
+    closed_count: int = 0
+    closed_text: CatalogueText | None = None
 
 
 class PaperTodayOut(PaperTotalsOut):
@@ -571,6 +574,9 @@ def _identity(found: tracked_contracts.TrackedContract) -> tuple[str, Instrument
     instrument = Instrument(contract.instrument_type)
     strike = None if contract.instrument_type == FUTURE_TYPE else contract.strike
     return contract.name, instrument, strike, contract.expiry
+
+
+identity_of = _identity  # the public name other routes import (plan_watch.py)
 
 
 def _exact(value: Decimal | None) -> Decimal | None:
@@ -1046,7 +1052,8 @@ async def list_paper_strategies(db: Annotated[Any, Depends(get_db)],  # noqa: PL
                               "status_word": _paper_word(b.status, figures["positions"]),
                               "open_count": open_legs, "position_count": len(figures["positions"])})
     kept = [i for i, s in enumerate(out) if not _expired_open(s)]  # D-40: the strategies that can be priced
-    totals = _totals([out[i] for i in kept], [decays[i] for i in kept], len(out) - len(kept))
+    totals = _totals([out[i] for i in kept], [decays[i] for i in kept], len(out) - len(kept),
+                    sum(1 for s in out if s["open_count"] == 0 or s["state"] == "EXITED"))
     sorted_books = sorted(books, key=_newest_first, reverse=True)
     day = today_day([snapshots.get(b.underlying) for b in sorted_books], answered)
     today = today_totals([_today_item(out[i], decays[i], sorted_books[i]) for i in kept], day)
@@ -1128,7 +1135,8 @@ def _decay(figures: dict, found: dict[int, tracked_contracts.TrackedContract], s
     return paper_decay.book_decay(snapshot, underlying, contracts)
 
 
-def _totals(strategies: Sequence[dict], decays: Sequence[paper_decay.Decay], left_out: int = 0) -> dict:
+def _totals(strategies: Sequence[dict], decays: Sequence[paper_decay.Decay], left_out: int = 0,
+            closed: int = 0) -> dict:
     """The exact sums over every strategy that can be priced (the ``left_out`` expired ones are only counted).
     Unbooked and total are absent with the first absent strategy's reason, and Decay with the first absent book's
     reason: never a partial sum shown as a total (REQ-109 AC-5)."""
@@ -1146,6 +1154,7 @@ def _totals(strategies: Sequence[dict], decays: Sequence[paper_decay.Decay], lef
             "decay": decay, "decay_text": _signed(decay), "decay_reason": decay_reason,
             "decay_reason_text": reason_text(decay_reason),
             "left_out_count": left_out, "left_out_text": _left_out_text(left_out),
+            "closed_count": closed, "closed_text": _closed_text(closed),
             **_charges_total(strategies), **_after_total(strategies)}
 
 
@@ -1190,6 +1199,14 @@ def _left_out_text(count: int) -> Any:
         return None
     return render_explanation("paper_totals_left_out_one") if count == 1 else render_explanation(
         "paper_totals_left_out_many", count=count)
+
+
+def _closed_text(count: int) -> Any:
+    """P11: the sentence saying how many closed strategies the Paper totals include; absent when none."""
+    if count == 0:
+        return None
+    return render_explanation("paper_totals_closed_one") if count == 1 else render_explanation(
+        "paper_totals_closed_many", count=count)
 
 
 def _after_total(strategies: Sequence[dict]) -> dict:
@@ -1391,13 +1408,31 @@ def _exit_risk_answer(state: Literal["yes", "no", "cannot_tell"]) -> ExitRiskOut
     return ExitRiskOut(state=state, max_loss_before=None, max_loss_after=None, warning_text=None)
 
 
-def _exit_warning(risk: ExitRisk, names: Mapping[str, Any]) -> ExitRiskOut:
+def _stop_line(before: Decimal, after: Decimal | str) -> str:
+    """ADR-330 (6): "If this stop fires, max loss becomes Rs X (now Rs Y)." A figure is negative for a loss; a figure
+    that is >= 0 is a profit and has its own sentence (never abs). Unlimited after: no fixed maximum."""
+    if after == "unlimited":
+        return (render_explanation("paper_leg_stop_unlimited_from_profit", before=before) if before >= 0
+                else render_explanation("paper_leg_stop_unlimited_loss", before=-before))
+    figure = Decimal(after)
+    if before >= 0 and figure >= 0:
+        return render_explanation("paper_leg_stop_still_profit", before=before, after=figure)
+    if before >= 0:
+        return render_explanation("paper_leg_stop_from_profit", before=before, after=-figure)
+    if figure >= 0:
+        return render_explanation("paper_leg_stop_to_profit", before=-before, after=figure)
+    return render_explanation("paper_leg_stop_widens_loss", before=-before, after=-figure)
+
+
+def _exit_warning(risk: ExitRisk, names: Mapping[str, Any], leg_stop: bool = False) -> ExitRiskOut:
     """The yes answer says only what is known: the Max Loss figures (the catalogue's "No fixed maximum" when unlimited)
-    when the engine gave them, and the sold legs left with less cover. Nothing known to say -> cannot_tell."""
+    when the engine gave them, and the sold legs left with less cover. Nothing known to say -> cannot_tell.
+    ``leg_stop``: the figures are worded as the leg-stop line (ADR-330 (6)) instead of the exit confirmation's."""
     (before, before_text), (after, after_text) = _extreme(risk.max_loss_before), _extreme(risk.max_loss_after)
     lines = []
     if before is not None and after is not None:
-        lines.append(render_explanation("paper_exit_widens_loss", before=before_text, after=after_text))
+        lines.append(_stop_line(before, after) if leg_stop else render_explanation(
+            "paper_exit_widens_loss", before=before_text, after=after_text))
     if risk.exposed:
         legs_text = names[risk.exposed[0]]
         for other in risk.exposed[1:]:
@@ -1454,6 +1489,55 @@ async def paper_exit_risk(strategy_id: int, orders: Annotated[str, Query(max_len
     if risk.state != "yes":
         return _exit_risk_answer(risk.state)
     return _exit_warning(risk, names)
+
+
+@router.get("/paper/strategies/{strategy_id}/leg-stop-risk", response_model=ExitRiskOut)
+async def paper_leg_stop_risk(strategy_id: int, contract_id: Annotated[int, Query(gt=0, le=INTEGER_MAX)],  # noqa: PLR0913
+                              level: Annotated[Decimal, Query(allow_inf_nan=False)],
+                              db: Annotated[Any, Depends(get_db)], user_ref: Annotated[str, Depends(current_user_ref)],
+                              now: Annotated[AnswerClock, Depends(get_answer_clock)]) -> ExitRiskOut:
+    """ADR-330 (6), read only, nothing stored, never blocks a save: what the book becomes if a stop on ``contract_id``
+    fires at ``level``. The one-leg exit (the whole open quantity, the opposite side) is priced AT THE LEVEL, a given
+    price and never a live read, and judged by the same ``exit_risk`` as the exit confirmation. Answer states: stated
+    (yes, with the line) / no (proven not wider) / cannot_tell (the engine could not judge: no figure); another user's
+    or a missing strategy -> 404; a level that is not above 0 and a multiple of 0.05, or a contract not open -> the
+    save's own refusals (paper_trigger_level_invalid, paper_trigger_leg_not_open)."""
+    stored = await _load_strategy(db, user_ref, strategy_id)
+    if not is_typed_price(level):
+        raise StrategyRefused("paper_trigger_level_invalid")
+    booked = await paper_store.load(db, strategy_id)
+    held = {p.instrument_id: p.net_quantity for p in net_positions(_paper(booked), {}).positions} if booked else {}
+    if held.get(str(contract_id), 0) == 0:
+        raise StrategyRefused("paper_trigger_leg_not_open")
+    found = {c.contract_id: c for c in await tracked_contracts.resolve(
+        db, sorted({o.order.contract_id for o in booked}))}
+    names = {}
+    terms = {}
+    for cid, one in found.items():
+        if one.stored is not None:
+            _, instrument, strike, expiry = _identity(one)
+            names[str(cid)] = describe_contract((stored.saved.definition.underlying, instrument, strike, expiry))
+            terms[str(cid)] = ContractTerms(instrument, strike, expiry)
+    net = held[str(contract_id)]
+    try:
+        leg = PaperOrder(str(contract_id), "BUY" if net < 0 else "SELL", abs(net), level, "exit", now())
+    except ValueError:
+        return _exit_risk_answer("cannot_tell")
+    risk = exit_risk(_paper(booked), [leg], terms, priced=True)
+    if risk.state == "cannot_tell":
+        return _exit_risk_answer("cannot_tell")
+    # ADR-330 (6) has no threshold: the line shows whenever the engine prices both figures (ADR-256's "more than double"
+    # is the exit confirmation's rule, whose figures exit_risk hides below it), so read the same engine's figures here
+    try:
+        loss0 = book_extremes(net_positions(_paper(booked), {}), terms, {}).max_loss
+        loss1 = book_extremes(net_positions([*_paper(booked), leg], {}), terms, {}).max_loss
+    except (ValueError, KeyError):
+        loss0 = loss1 = None
+    if isinstance(loss0, Decimal) and (loss1 is UNLIMITED or isinstance(loss1, Decimal)):
+        risk = ExitRisk("yes", loss0, loss1, risk.exposed)
+    elif risk.state != "yes":
+        return _exit_risk_answer(risk.state)
+    return _exit_warning(risk, names, leg_stop=True)
 
 
 class ArmedExitsOut(ApiModel):

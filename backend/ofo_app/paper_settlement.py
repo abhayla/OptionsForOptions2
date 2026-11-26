@@ -60,6 +60,7 @@ SKIP_REASON: Final = "settlement price not available"
 #: ``facts.paper_retry_until`` setting (default 18:00 IST). Both are read at each run (REQ-167 AC-4), never held.
 RETRY_MINUTES: Final = 15
 _MIDDAY: Final = datetime.time(12, 0)
+_ZERO: Final = Decimal(0)
 
 #: (underlying, expiry date) -> the index's official close that day, or None when it is not available.
 CloseOf = Callable[[str, datetime.date], Awaitable[Decimal | None]]
@@ -202,8 +203,7 @@ async def settle_expired(conn: Any, now: datetime.datetime, close_of: CloseOf) -
 # --- the scheduled job -------------------------------------------------------------------------------------------
 
 
-def is_trading_day(day: datetime.date, holidays: market_calendar.Holidays | None = None) -> bool:
-    return market_calendar.is_market_open(datetime.datetime.combine(day, _MIDDAY, IST), holidays)
+is_trading_day = market_calendar.is_trading_day  # the calendar's own function; kept here for this module's callers
 
 
 def next_run(now: datetime.datetime, retry: bool, holidays: market_calendar.Holidays | None = None, *,

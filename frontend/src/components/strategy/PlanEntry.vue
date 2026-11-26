@@ -1,6 +1,6 @@
 <!-- GC-ADJ2 step 4 (REQ-161 AC-3, REQ-158 AC-5): the "Plan" entry on a tracked strategy's panel: the accepted plan's playbook name
      and its guards as the server sent them, and an Edit action that reopens the plan sheet (PUT). GC-ICFIX u111-u114 (ADR-295, ADR-304 (3)):
-     a strategy with no plan says "No plan saved yet: default rules apply" and a "Set plan" button that opens the sheet to accept one (POST);
+     a strategy with no plan says "No plan: nothing is watched for this strategy" and a "Set plan" button that opens the sheet to accept one (POST);
      nothing is saved by showing this. The target and stop lines are the rule check's own `limits` rows (the panel's one read of the check,
      passed in): each row's `text` is the server's sentence and the browser derives nothing from the numbers. A rule that is not being checked
      says so with its reason and no number; a check that failed says could-not-load with Retry; while it is out the card says loading.
@@ -30,7 +30,7 @@
         <p v-if="limits && check.as_of_text" class="text-xs text-ink-muted" data-testid="plan-entry-limits-as-of">{{ check.as_of_text }}</p>
         <p v-if="limits && checkStale" class="text-xs text-red-700" data-testid="plan-entry-limits-stale">{{ checkStaleLine(checkRefusal) }}</p>
         <p v-if="read.plan" data-testid="plan-entry-guards">
-          {{ read.labels.max_adjustments }}: {{ read.plan.maxAdjustments }} / {{ read.labels.time_exit }}: {{ read.plan.timeExit }}
+          {{ read.labels.max_adjustments }}: {{ read.plan.maxAdjustments }} / {{ read.labels.time_exit }}: {{ read.plan.timeExit }}{{ read.plan.timeExitOn ? ` ${read.plan.timeExitOn}` : '' }}
         </p>
         <button type="button" class="mt-2 rounded border border-line bg-surface px-2 py-1 text-xs font-medium" data-testid="plan-entry-edit" @click="sheetOpen = true">
           {{ read.plan ? read.labels.edit : read.labels.set_plan }}

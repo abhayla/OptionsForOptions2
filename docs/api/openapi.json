@@ -1,6 +1,125 @@
 {
   "components": {
     "schemas": {
+      "ActiveAlert": {
+        "additionalProperties": false,
+        "properties": {
+          "answers": {
+            "items": {
+              "$ref": "#/components/schemas/AnswerChoice"
+            },
+            "title": "Answers",
+            "type": "array"
+          },
+          "escalated_at": {
+            "anyOf": [
+              {
+                "format": "date-time",
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Escalated At"
+          },
+          "fired_at": {
+            "format": "date-time",
+            "title": "Fired At",
+            "type": "string"
+          },
+          "fired_line": {
+            "title": "Fired Line"
+          },
+          "id": {
+            "title": "Id",
+            "type": "integer"
+          },
+          "kind": {
+            "pattern": "^[A-Za-z0-9_\\-.]{1,64}$",
+            "title": "Kind",
+            "type": "string"
+          },
+          "no_longer_true_line": {
+            "anyOf": [
+              {},
+              {
+                "type": "null"
+              }
+            ],
+            "title": "No Longer True Line"
+          },
+          "no_longer_true_since": {
+            "anyOf": [
+              {
+                "format": "date-time",
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "No Longer True Since"
+          },
+          "strategy_id": {
+            "title": "Strategy Id",
+            "type": "integer"
+          },
+          "strategy_name": {
+            "title": "Strategy Name"
+          },
+          "text": {
+            "title": "Text"
+          },
+          "worse_line": {
+            "anyOf": [
+              {},
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Worse Line"
+          }
+        },
+        "required": [
+          "id",
+          "strategy_id",
+          "strategy_name",
+          "kind",
+          "text",
+          "fired_at",
+          "fired_line",
+          "no_longer_true_since",
+          "no_longer_true_line",
+          "escalated_at",
+          "worse_line",
+          "answers"
+        ],
+        "title": "ActiveAlert",
+        "type": "object"
+      },
+      "ActiveOut": {
+        "additionalProperties": false,
+        "properties": {
+          "alerts": {
+            "items": {
+              "$ref": "#/components/schemas/ActiveAlert"
+            },
+            "title": "Alerts",
+            "type": "array"
+          },
+          "count": {
+            "title": "Count",
+            "type": "integer"
+          }
+        },
+        "required": [
+          "count",
+          "alerts"
+        ],
+        "title": "ActiveOut",
+        "type": "object"
+      },
       "AdjustAfterOut": {
         "additionalProperties": false,
         "properties": {
@@ -2082,6 +2201,67 @@
           "unread"
         ],
         "title": "AlertsOut",
+        "type": "object"
+      },
+      "AnswerChoice": {
+        "additionalProperties": false,
+        "properties": {
+          "code": {
+            "pattern": "^[A-Za-z0-9_\\-.]{1,64}$",
+            "title": "Code",
+            "type": "string"
+          },
+          "label": {
+            "title": "Label"
+          }
+        },
+        "required": [
+          "code",
+          "label"
+        ],
+        "title": "AnswerChoice",
+        "type": "object"
+      },
+      "AnswerIn": {
+        "additionalProperties": false,
+        "properties": {
+          "answer": {
+            "default": "",
+            "title": "Answer",
+            "type": "string"
+          }
+        },
+        "title": "AnswerIn",
+        "type": "object"
+      },
+      "AnsweredOut": {
+        "additionalProperties": false,
+        "properties": {
+          "answer": {
+            "pattern": "^[A-Za-z0-9_\\-.]{1,64}$",
+            "title": "Answer",
+            "type": "string"
+          },
+          "answer_label": {
+            "title": "Answer Label"
+          },
+          "answered_at": {
+            "format": "date-time",
+            "title": "Answered At",
+            "type": "string"
+          },
+          "id": {
+            "title": "Id",
+            "type": "integer"
+          }
+        },
+        "required": [
+          "id",
+          "answer",
+          "answer_label",
+          "answered_at"
+        ],
+        "title": "AnsweredOut",
         "type": "object"
       },
       "ApproachesIn": {
@@ -5857,6 +6037,118 @@
         "title": "HeldOut",
         "type": "object"
       },
+      "HistoryItem": {
+        "additionalProperties": false,
+        "properties": {
+          "answer": {
+            "anyOf": [
+              {
+                "pattern": "^[A-Za-z0-9_\\-.]{1,64}$",
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Answer"
+          },
+          "answer_label": {
+            "anyOf": [
+              {},
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Answer Label"
+          },
+          "answered_at": {
+            "anyOf": [
+              {
+                "format": "date-time",
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Answered At"
+          },
+          "closed_reason": {
+            "anyOf": [
+              {},
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Closed Reason"
+          },
+          "escalated_at": {
+            "anyOf": [
+              {
+                "format": "date-time",
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Escalated At"
+          },
+          "fired_at": {
+            "format": "date-time",
+            "title": "Fired At",
+            "type": "string"
+          },
+          "fired_line": {
+            "title": "Fired Line"
+          },
+          "id": {
+            "title": "Id",
+            "type": "integer"
+          },
+          "kind": {
+            "pattern": "^[A-Za-z0-9_\\-.]{1,64}$",
+            "title": "Kind",
+            "type": "string"
+          },
+          "strategy_id": {
+            "title": "Strategy Id",
+            "type": "integer"
+          },
+          "strategy_name": {
+            "title": "Strategy Name"
+          },
+          "text": {
+            "title": "Text"
+          },
+          "worse_line": {
+            "anyOf": [
+              {},
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Worse Line"
+          }
+        },
+        "required": [
+          "id",
+          "strategy_id",
+          "strategy_name",
+          "kind",
+          "text",
+          "fired_at",
+          "fired_line",
+          "escalated_at",
+          "worse_line",
+          "answer",
+          "answer_label",
+          "answered_at",
+          "closed_reason"
+        ],
+        "title": "HistoryItem",
+        "type": "object"
+      },
       "HistoryOrderOut": {
         "additionalProperties": false,
         "properties": {
@@ -7006,28 +7298,35 @@
         "title": "LegQuoteOut",
         "type": "object"
       },
-      "LevelOut": {
+      "LevelsOut": {
         "additionalProperties": false,
         "properties": {
-          "current": {
-            "title": "Current",
-            "type": "boolean"
+          "stop": {
+            "anyOf": [
+              {
+                "$ref": "#/components/schemas/ofo_app__routes__adjustment_plan__LevelOut"
+              },
+              {
+                "type": "null"
+              }
+            ]
           },
-          "level": {
-            "title": "Level",
-            "type": "string"
-          },
-          "zero_pnl": {
-            "title": "Zero Pnl",
-            "type": "boolean"
+          "target": {
+            "anyOf": [
+              {
+                "$ref": "#/components/schemas/ofo_app__routes__adjustment_plan__LevelOut"
+              },
+              {
+                "type": "null"
+              }
+            ]
           }
         },
         "required": [
-          "level",
-          "current",
-          "zero_pnl"
+          "target",
+          "stop"
         ],
-        "title": "LevelOut",
+        "title": "LevelsOut",
         "type": "object"
       },
       "LoadTemplateIn": {
@@ -10458,6 +10757,20 @@
             ],
             "title": "Charges To Close Text"
           },
+          "closed_count": {
+            "default": 0,
+            "title": "Closed Count",
+            "type": "integer"
+          },
+          "closed_text": {
+            "anyOf": [
+              {},
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Closed Text"
+          },
           "count": {
             "default": 0,
             "title": "Count",
@@ -10846,6 +11159,20 @@
               }
             ],
             "title": "Charges To Close Text"
+          },
+          "closed_count": {
+            "default": 0,
+            "title": "Closed Count",
+            "type": "integer"
+          },
+          "closed_text": {
+            "anyOf": [
+              {},
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Closed Text"
           },
           "decay": {
             "anyOf": [
@@ -11553,6 +11880,17 @@
             ],
             "title": "Stop"
           },
+          "stop_rupees": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Stop Rupees"
+          },
           "target": {
             "anyOf": [
               {
@@ -11564,10 +11902,24 @@
             ],
             "title": "Target"
           },
+          "target_rupees": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Target Rupees"
+          },
           "time_exit": {
             "anyOf": [
               {
                 "type": "string"
+              },
+              {
+                "$ref": "#/components/schemas/TimeExitIn"
               },
               {
                 "type": "null"
@@ -11632,6 +11984,49 @@
             ],
             "title": "Stop"
           },
+          "stop_per_lot": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Stop Per Lot"
+          },
+          "stop_rupee_words": {
+            "anyOf": [
+              {},
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Stop Rupee Words"
+          },
+          "stop_rupees": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Stop Rupees"
+          },
+          "stop_source": {
+            "anyOf": [
+              {
+                "pattern": "^[A-Za-z0-9_\\-.]{1,64}$",
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Stop Source"
+          },
           "stop_words": {
             "anyOf": [
               {},
@@ -11652,6 +12047,49 @@
             ],
             "title": "Target"
           },
+          "target_per_lot": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Target Per Lot"
+          },
+          "target_rupee_words": {
+            "anyOf": [
+              {},
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Target Rupee Words"
+          },
+          "target_rupees": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Target Rupees"
+          },
+          "target_source": {
+            "anyOf": [
+              {
+                "pattern": "^[A-Za-z0-9_\\-.]{1,64}$",
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Target Source"
+          },
           "target_words": {
             "anyOf": [
               {},
@@ -11670,6 +12108,18 @@
                 "type": "null"
               }
             ]
+          },
+          "time_exit_on": {
+            "anyOf": [
+              {
+                "format": "date",
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Time Exit On"
           }
         },
         "required": [
@@ -11725,6 +12175,78 @@
           "active"
         ],
         "title": "PlanPlaybookOut",
+        "type": "object"
+      },
+      "PlanWatchOut": {
+        "additionalProperties": false,
+        "properties": {
+          "armed_heading": {
+            "anyOf": [
+              {},
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Armed Heading"
+          },
+          "as_of": {
+            "format": "date-time",
+            "title": "As Of",
+            "type": "string"
+          },
+          "as_of_text": {
+            "title": "As Of Text"
+          },
+          "lines": {
+            "items": {
+              "$ref": "#/components/schemas/WatchLineOut"
+            },
+            "title": "Lines",
+            "type": "array"
+          },
+          "no_plan_text": {
+            "anyOf": [
+              {},
+              {
+                "type": "null"
+              }
+            ],
+            "title": "No Plan Text"
+          },
+          "paused": {
+            "anyOf": [
+              {
+                "$ref": "#/components/schemas/CheckPauseOut"
+              },
+              {
+                "type": "null"
+              }
+            ]
+          },
+          "plan_state": {
+            "enum": [
+              "planned",
+              "no_plan",
+              "paused"
+            ],
+            "title": "Plan State",
+            "type": "string"
+          },
+          "strategy_id": {
+            "title": "Strategy Id",
+            "type": "integer"
+          }
+        },
+        "required": [
+          "strategy_id",
+          "as_of",
+          "as_of_text",
+          "plan_state",
+          "no_plan_text",
+          "armed_heading",
+          "lines"
+        ],
+        "title": "PlanWatchOut",
         "type": "object"
       },
       "PlannedEntriesOut": {
@@ -12259,6 +12781,49 @@
             ],
             "title": "Stop"
           },
+          "stop_per_lot": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Stop Per Lot"
+          },
+          "stop_rupee_words": {
+            "anyOf": [
+              {},
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Stop Rupee Words"
+          },
+          "stop_rupees": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Stop Rupees"
+          },
+          "stop_source": {
+            "anyOf": [
+              {
+                "pattern": "^[A-Za-z0-9_\\-.]{1,64}$",
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Stop Source"
+          },
           "stop_words": {
             "anyOf": [
               {},
@@ -12279,6 +12844,49 @@
             ],
             "title": "Target"
           },
+          "target_per_lot": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Target Per Lot"
+          },
+          "target_rupee_words": {
+            "anyOf": [
+              {},
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Target Rupee Words"
+          },
+          "target_rupees": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Target Rupees"
+          },
+          "target_source": {
+            "anyOf": [
+              {
+                "pattern": "^[A-Za-z0-9_\\-.]{1,64}$",
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Target Source"
+          },
           "target_words": {
             "anyOf": [
               {},
@@ -12297,6 +12905,18 @@
                 "type": "null"
               }
             ]
+          },
+          "time_exit_on": {
+            "anyOf": [
+              {
+                "format": "date",
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Time Exit On"
           }
         },
         "required": [
@@ -13033,7 +13653,7 @@
           },
           "levels": {
             "items": {
-              "$ref": "#/components/schemas/LevelOut"
+              "$ref": "#/components/schemas/ofo_app__routes__outcome__LevelOut"
             },
             "title": "Levels",
             "type": "array"
@@ -15174,6 +15794,26 @@
         "title": "TestStrategyOut",
         "type": "object"
       },
+      "TimeExitIn": {
+        "additionalProperties": false,
+        "description": "ADR-330 (7): the plan's time exit, one time on one day; a blank ``on`` = expiry day (Q9).",
+        "properties": {
+          "at": {
+            "title": "At",
+            "type": "string"
+          },
+          "on": {
+            "default": "",
+            "title": "On",
+            "type": "string"
+          }
+        },
+        "required": [
+          "at"
+        ],
+        "title": "TimeExitIn",
+        "type": "object"
+      },
       "TotalsOut": {
         "additionalProperties": false,
         "properties": {
@@ -16786,6 +17426,129 @@
         "title": "WatchIn",
         "type": "object"
       },
+      "WatchLineOut": {
+        "additionalProperties": false,
+        "description": "One trigger. ``fires_at`` / ``now`` / ``distance_rs`` are in the line's ``unit``; ``distance_pct`` is the\ndistance as a percent (of the fires-at level for a P&L line, of ``now`` for a price line, percentage points for a\npercent rule). ``now`` and the distances are None (never 0) when the line is paused or not computable.",
+        "properties": {
+          "distance_pct": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Distance Pct"
+          },
+          "distance_rs": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Distance Rs"
+          },
+          "fires_at": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Fires At"
+          },
+          "key": {
+            "pattern": "^[A-Za-z0-9_\\-.]{1,64}$",
+            "title": "Key",
+            "type": "string"
+          },
+          "kind": {
+            "enum": [
+              "target",
+              "stop",
+              "credit_stop",
+              "rule",
+              "index_exit",
+              "leg_stop"
+            ],
+            "title": "Kind",
+            "type": "string"
+          },
+          "label": {
+            "title": "Label"
+          },
+          "now": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Now"
+          },
+          "reason": {
+            "anyOf": [
+              {},
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Reason"
+          },
+          "section": {
+            "enum": [
+              "plan",
+              "armed"
+            ],
+            "title": "Section",
+            "type": "string"
+          },
+          "state": {
+            "enum": [
+              "watching",
+              "fired",
+              "not_applicable",
+              "not_computable",
+              "paused"
+            ],
+            "title": "State",
+            "type": "string"
+          },
+          "unit": {
+            "enum": [
+              "pnl_rupees",
+              "index_points",
+              "option_price",
+              "percent",
+              "rule_unit"
+            ],
+            "title": "Unit",
+            "type": "string"
+          }
+        },
+        "required": [
+          "key",
+          "kind",
+          "section",
+          "label",
+          "unit",
+          "fires_at",
+          "now",
+          "distance_rs",
+          "distance_pct",
+          "state"
+        ],
+        "title": "WatchLineOut",
+        "type": "object"
+      },
       "WatchOut": {
         "additionalProperties": false,
         "properties": {
@@ -16883,6 +17646,71 @@
         "title": "GroupOut",
         "type": "object"
       },
+      "ofo_app__routes__adjustment_plan__LevelOut": {
+        "additionalProperties": false,
+        "properties": {
+          "per_lot": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Per Lot"
+          },
+          "percent": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Percent"
+          },
+          "rupee_words": {
+            "anyOf": [
+              {},
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Rupee Words"
+          },
+          "rupees": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Rupees"
+          },
+          "words": {
+            "anyOf": [
+              {},
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Words"
+          }
+        },
+        "required": [
+          "percent",
+          "rupees",
+          "per_lot",
+          "words",
+          "rupee_words"
+        ],
+        "title": "LevelOut",
+        "type": "object"
+      },
       "ofo_app__routes__adjustment_preferences__PreferencesOut": {
         "additionalProperties": false,
         "properties": {
@@ -16929,6 +17757,23 @@
           "value"
         ],
         "title": "SetIn",
+        "type": "object"
+      },
+      "ofo_app__routes__alerts__HistoryOut": {
+        "additionalProperties": false,
+        "properties": {
+          "items": {
+            "items": {
+              "$ref": "#/components/schemas/HistoryItem"
+            },
+            "title": "Items",
+            "type": "array"
+          }
+        },
+        "required": [
+          "items"
+        ],
+        "title": "HistoryOut",
         "type": "object"
       },
       "ofo_app__routes__outcome__LegIn": {
@@ -17188,6 +18033,30 @@
           "label"
         ],
         "title": "LegOut",
+        "type": "object"
+      },
+      "ofo_app__routes__outcome__LevelOut": {
+        "additionalProperties": false,
+        "properties": {
+          "current": {
+            "title": "Current",
+            "type": "boolean"
+          },
+          "level": {
+            "title": "Level",
+            "type": "string"
+          },
+          "zero_pnl": {
+            "title": "Zero Pnl",
+            "type": "boolean"
+          }
+        },
+        "required": [
+          "level",
+          "current",
+          "zero_pnl"
+        ],
+        "title": "LevelOut",
         "type": "object"
       },
       "ofo_app__routes__outcome__MarginOut": {
@@ -18567,6 +19436,91 @@
           }
         },
         "summary": "Reset Preference"
+      }
+    },
+    "/api/alerts/active": {
+      "get": {
+        "operationId": "active_alerts_api_alerts_active_get",
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ActiveOut"
+                }
+              }
+            },
+            "description": "Successful Response"
+          }
+        },
+        "summary": "Active Alerts"
+      }
+    },
+    "/api/alerts/answered": {
+      "get": {
+        "operationId": "alert_answered_api_alerts_answered_get",
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ofo_app__routes__alerts__HistoryOut"
+                }
+              }
+            },
+            "description": "Successful Response"
+          }
+        },
+        "summary": "Alert Answered"
+      }
+    },
+    "/api/alerts/{alert_id}/answer": {
+      "post": {
+        "operationId": "answer_alert_api_alerts__alert_id__answer_post",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "alert_id",
+            "required": true,
+            "schema": {
+              "title": "Alert Id",
+              "type": "integer"
+            }
+          }
+        ],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/AnswerIn"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/AnsweredOut"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "summary": "Answer Alert"
       }
     },
     "/api/broker/account": {
@@ -20205,6 +21159,132 @@
         "summary": "Edit Plan"
       }
     },
+    "/api/strategies/{strategy_id}/adjustment-plan/levels": {
+      "get": {
+        "description": "ADR-330 (5) / S-12: both figures of the typed level(s), worked out on the server, the per-lot figure beside the\nrupees. The last edited box is sent alone; both boxes with different values -> refused naming the rupee field.",
+        "operationId": "read_levels_api_strategies__strategy_id__adjustment_plan_levels_get",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "strategy_id",
+            "required": true,
+            "schema": {
+              "title": "Strategy Id",
+              "type": "integer"
+            }
+          },
+          {
+            "in": "query",
+            "name": "target",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "maxLength": 12,
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Target"
+            }
+          },
+          {
+            "in": "query",
+            "name": "target_rupees",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "maxLength": 16,
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Target Rupees"
+            }
+          },
+          {
+            "in": "query",
+            "name": "stop",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "maxLength": 12,
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Stop"
+            }
+          },
+          {
+            "in": "query",
+            "name": "stop_rupees",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "maxLength": 16,
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Stop Rupees"
+            }
+          },
+          {
+            "in": "query",
+            "name": "playbook_id",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "maximum": 9223372036854775807,
+                  "minimum": 1,
+                  "type": "integer"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Playbook Id"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/LevelsOut"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "summary": "Read Levels"
+      }
+    },
     "/api/strategies/{strategy_id}/adjustment-plan/rules": {
       "get": {
         "description": "Issue 7 (REQ-158 AC-6): \"Customise triggers\" from a trade opens THIS trade's rules: its plan copy, else a copy of\nthe type's active playbook that is written only when the user saves. Never a playbook row.",
@@ -20651,6 +21731,45 @@
           }
         },
         "summary": "Set Pause"
+      }
+    },
+    "/api/strategies/{strategy_id}/plan-watch": {
+      "get": {
+        "operationId": "plan_watch_api_strategies__strategy_id__plan_watch_get",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "strategy_id",
+            "required": true,
+            "schema": {
+              "title": "Strategy Id",
+              "type": "integer"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/PlanWatchOut"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "summary": "Plan Watch"
       }
     },
     "/api/strategy-templates": {
@@ -21210,6 +22329,74 @@
           }
         },
         "summary": "Paper Exit Risk"
+      }
+    },
+    "/paper/strategies/{strategy_id}/leg-stop-risk": {
+      "get": {
+        "description": "ADR-330 (6), read only, nothing stored, never blocks a save: what the book becomes if a stop on ``contract_id``\nfires at ``level``. The one-leg exit (the whole open quantity, the opposite side) is priced AT THE LEVEL, a given\nprice and never a live read, and judged by the same ``exit_risk`` as the exit confirmation. Answer states: stated\n(yes, with the line) / no (proven not wider) / cannot_tell (the engine could not judge: no figure); another user's\nor a missing strategy -> 404; a level that is not above 0 and a multiple of 0.05, or a contract not open -> the\nsave's own refusals (paper_trigger_level_invalid, paper_trigger_leg_not_open).",
+        "operationId": "paper_leg_stop_risk_paper_strategies__strategy_id__leg_stop_risk_get",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "strategy_id",
+            "required": true,
+            "schema": {
+              "title": "Strategy Id",
+              "type": "integer"
+            }
+          },
+          {
+            "in": "query",
+            "name": "contract_id",
+            "required": true,
+            "schema": {
+              "exclusiveMinimum": 0,
+              "maximum": 2147483647,
+              "title": "Contract Id",
+              "type": "integer"
+            }
+          },
+          {
+            "in": "query",
+            "name": "level",
+            "required": true,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "number"
+                },
+                {
+                  "pattern": "^(?!^[-+.]*$)[+-]?0*\\d*\\.?\\d*$",
+                  "type": "string"
+                }
+              ],
+              "title": "Level"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ExitRiskOut"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "summary": "Paper Leg Stop Risk"
       }
     },
     "/paper/strategies/{strategy_id}/orders": {

@@ -72,7 +72,7 @@ def lines(found) -> dict:
 
 def results(b, found, pnl, days=3) -> dict:
     state = pe.StrategyState(stops=found, expiry_kind="weekly", days_left=days, hhmm="11:00", spot=D(23100), pnl=pnl,
-                             max_loss=MAX_LOSS, margin=MARGIN, prices_fresh=True)
+                             max_loss=MAX_LOSS, stop_max_loss=MAX_LOSS, margin=MARGIN, prices_fresh=True)
     ev = pe.evaluate(b, state, {}, None, gap_until="09:30")
     return {r.rule_id: r for r in ev.results}
 

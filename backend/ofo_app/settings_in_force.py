@@ -31,6 +31,7 @@ Codes only: the words are rendered by the screen / the catalogue.
 from __future__ import annotations
 
 import dataclasses
+import datetime
 from collections.abc import Mapping, Sequence
 from decimal import Decimal, InvalidOperation
 from typing import Any, Final
@@ -200,30 +201,87 @@ class StageAt:
     days_left: int | None
 
 
-def net_credit(tracked: Any) -> Decimal | None:
-    """ADR-251: the net credit collected so far for a tracked strategy (book unread -> None, never 0)."""
-    position = tracked.position
-    if tracked.booked is None:
+#: ADR-330 (1), plan question Q4 (a): the stop base is worked out from the trade as entered ONLY (the first basket,
+#: ``adjustment_readers.entry_batch``, the one definition of entry): an adjustment does not move it, only a plan edit
+#: recomputes it. The Q4 choice lives in that one function.
+BASE_ENTRY: Final = "entry"  # worked out from the entry orders when the plan was saved or edited
+BASE_BACKFILL: Final = "backfill"  # a plan saved before ADR-330: worked out once, at its first read
+BASE_SOURCES: Final = (BASE_ENTRY, BASE_BACKFILL)
+_UNLIMITED_TEXT: Final = "unlimited"
+
+
+@dataclasses.dataclass(frozen=True)
+class StopBase:
+    """ADR-330 (1): what the two stop amounts are worked out from, fixed at entry. ``max_loss``: the entry trade's max
+    loss at expiry (``UNLIMITED`` = unlimited: the % line says so, the credit line still works); ``credit``: its net
+    credit (a debit trade -> not positive, the credit line says so; None = not worked out)."""
+
+    max_loss: Decimal | Any
+    credit: Decimal | None
+    taken_at: datetime.datetime
+    source: str
+
+    def to_json(self) -> dict[str, str | None]:
+        """The stored form: decimals as text (``format(d, "f")``), never a JSON number."""
+        return {"max_loss": _UNLIMITED_TEXT if self.max_loss is UNLIMITED else format(self.max_loss, "f"),
+                "credit": None if self.credit is None else format(self.credit, "f"),
+                "taken_at": self.taken_at.isoformat(), "source": self.source}
+
+
+def stop_base_from_json(raw: object) -> StopBase | None:
+    """The stored form read back; anything that is not exactly the stored shape (a float, a bad source, a missing
+    key) -> None: the caller treats it as unreadable and the stop lines say "not checked"."""
+    if not isinstance(raw, Mapping) or set(raw) != {"max_loss", "credit", "taken_at", "source"}:
         return None
-    return adjust_money.net_credit_so_far(tracked.booked, ((x.side, x.entry, x.lots * position.lot)
-                                                           for x in position.legs))
+    try:
+        loss, credit, at, source = raw["max_loss"], raw["credit"], raw["taken_at"], raw["source"]
+        if source not in BASE_SOURCES or not isinstance(at, str) or not isinstance(loss, str) \
+                or not (credit is None or isinstance(credit, str)):
+            return None
+        max_loss = UNLIMITED if loss == _UNLIMITED_TEXT else Decimal(loss)
+        value = None if credit is None else Decimal(credit)
+        if (max_loss is not UNLIMITED and not max_loss.is_finite()) or (value is not None and not value.is_finite()):
+            return None
+        return StopBase(max_loss, value, datetime.datetime.fromisoformat(at), source)
+    except (InvalidOperation, ValueError):
+        return None
+
+
+def compute_stop_base(legs: Sequence[Any], lot: int, booked: Decimal, taken_at: datetime.datetime,
+                      source: str) -> StopBase | None:
+    """THE one place a stop base is worked out: ``legs`` (``PositionLeg``s) and ``booked`` are those of the ENTRY
+    orders only (``adjustment_readers.entry_stop_base`` nets them), through the same engine path ``price_after`` uses
+    (``whole_trade_after``, gross, no charges). Several expiries or an engine refusal -> None (not worked out)."""
+    from ofo.engine.whole_trade import MultiExpiryError, whole_trade_after  # noqa: PLC0415 - engine only here
+
+    from ofo_app.routes.adjustment import strategy_of  # noqa: PLC0415 - it imports this package's routes
+
+    if not legs:
+        return None
+    zero = Decimal(0)
+    try:
+        gross = whole_trade_after(strategy_of(legs, lot), booked_pnl=booked, paid_charges=zero, adjustment_charges=zero,
+                                  open_exit_charges=zero).gross
+    except (MultiExpiryError, ValueError, ArithmeticError):
+        return None
+    credit = adjust_money.net_credit_so_far(booked, ((x.side, x.entry, x.lots * lot) for x in legs))
+    return StopBase(gross.max_loss, credit, taken_at, source)
 
 
 def money_inputs(tracked: Any, market: Any, rates: Any) -> MoneyInputs:
-    """The ONE engine read of the stop inputs for a tracked strategy (no market -> max loss not priced)."""
-    from ofo_app.routes.adjustment import price_after  # noqa: PLC0415 - it imports this package's routes
-
-    position = tracked.position
-    credit = net_credit(tracked)
+    """The stop inputs for a tracked strategy. ADR-330 (1): max loss and credit are read from the stored stop base
+    (``tracked.stop_base``), never from the live legs; None (entry orders unreadable or none, base unreadable) -> not
+    worked out -> both lines say "not checked". ``market`` only gives the stage (None -> no stage)."""
+    base = getattr(tracked, "stop_base", None)
+    max_loss = None if base is None else base.max_loss
+    credit = None if base is None else base.credit
     if market is None:
-        return MoneyInputs(None, credit)
-    before = price_after(position.legs, position, tracked.booked, tracked.paid_charges, (), rates, market,
-                         tracked.paid_exact)
-    gross = None if before.after is None else before.after.gross
+        return MoneyInputs(max_loss, credit)
+    position = tracked.position
     expiry = min(x.expiry for x in position.legs)  # the live check's stage read (``adjustment_check.state_of``)
     at = StageAt(market.expiry_kind or position.expiry_kind or "weekly",
                  (expiry - market.now.astimezone(IST).date()).days)
-    return MoneyInputs(None if gross is None else gross.max_loss, credit, at=at)
+    return MoneyInputs(max_loss, credit, at=at)
 
 
 #: ADR-247 is "Default stop for the iron condor playbook": only this family gets the 2x-credit line
@@ -363,6 +421,12 @@ def _first(lines: list[StopInForce]) -> StopsInForce:
     return StopsInForce(tuple(lines), first.kind, None)
 
 
+#: LP-2 (owner question, build option (a)): a rupee stop keeps the 2x-credit line beside it, "whichever comes first"
+#: (ADR-247). Option (b), the rupee stop replacing the credit line too, is this one value set to False: the evaluator,
+#: the limits strip and the plan words all read the lines ``stops_of`` returns.
+RUPEE_STOP_KEEPS_CREDIT: Final = True
+
+
 def stops_of(resolved: check.Resolved, money: MoneyInputs | None,
              at: StageAt | str | None = None) -> StopsInForce:
     """THE stop lines in force (the live check's only stop source, ``adjustment_check.state_of``). ADR-252: the % of
@@ -376,7 +440,9 @@ def stops_of(resolved: check.Resolved, money: MoneyInputs | None,
     max_loss = None if money is None else money.max_loss
     margin = None if money is None else money.margin
     lines = [x for x in (_trigger_line(body, STOP_MAX_LOSS, max_loss, at, source),) if x is not None]
-    if credit_line_applies(resolved):
+    if sl.rupee_loss_is_the_stop(body):  # ADR-330 (5)(a): the rupee level is the plan's stop, T-06 is not a second one
+        lines = [dataclasses.replace(x, active=False, figure=None, amount=None, later=()) for x in lines]
+    if credit_line_applies(resolved) and (RUPEE_STOP_KEEPS_CREDIT or not sl.rupee_loss_is_the_stop(body)):
         lines.append(_credit_line(body, None if money is None else money.credit, source))
     lines.extend(x for x in (_trigger_line(body, STOP_MARGIN, margin, at, source),) if x is not None)
     return _first(lines)
@@ -478,21 +544,23 @@ __all__ = [
     "MoneyInputs",
     "SettingInForce",
     "StageAt",
+    "StopBase",
     "StopInForce",
     "StopsInForce",
     "TriggerInForce",
     "check_stop_values",
+    "compute_stop_base",
     "covered_keys",
     "credit_line_applies",
     "first_stage_of",
     "in_force",
     "margin_line_on",
     "money_inputs",
-    "net_credit",
     "set_max_loss_stop",
     "setting_of",
     "settings_of",
     "sheet_stop",
+    "stop_base_from_json",
     "stops_of",
     "triggers_of",
 ]

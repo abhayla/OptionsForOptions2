@@ -1519,6 +1519,10 @@ _PLAYBOOK_TEMPLATES: tuple[MessageTemplate, ...] = (
     # GC-ADJ2 step 5 (REQ-112 AC-2/AC-4): a suggestion's outcome is written once; nothing is written on a refusal
     _gate("suggestion_not_found", _UI, 170, "This adjustment opportunity was not found.",
           "Nothing was changed.", "Recording what you did with it.", "Open Adjustment opportunities again."),
+    # ADR-330 (3): an answer that is empty or not one of the alert's own answers is refused; nothing is written
+    _gate("alert_answer_refused", _UI, 701, "That answer is not one this alert can take.",
+          "Nothing was changed; the alert stays in the Active list.", "Recording that answer.",
+          "Choose one of the answers shown with the alert."),
     _gate("suggestion_not_open", _UI, 171, "This adjustment opportunity already has its outcome.",
           "Nothing was changed; its outcome stays as it was.", "Recording another outcome for it.",
           "Open Adjustment opportunities to see its outcome."),

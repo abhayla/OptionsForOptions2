@@ -7,6 +7,7 @@ that share ADJ-02 run in file order: the core proof first, the overrides next, t
 from __future__ import annotations
 
 import copy
+import dataclasses
 import importlib.util
 import json
 import pathlib
@@ -16,9 +17,10 @@ import pytest
 from _scenario_catalogue import load_library
 from httpx import ASGITransport, AsyncClient
 from ofo.adjustment.playbook_types import SHOWN_NAMES
-from ofo_app import adjustment_check, adjustment_readers, playbook_store
+from ofo_app import adjustment_check, adjustment_readers, playbook_store, settings_in_force
 from ofo_app import db as app_db
 from ofo_app.config import get_settings
+from ofo_app.routes import adjustment_plan as route
 from sqlalchemy import text
 
 ROOT = pathlib.Path(__file__).resolve().parent.parent
@@ -96,6 +98,11 @@ async def _system_ic(engine) -> playbook_store.Playbook:
 # --- AC-1: the sheet's prefill ---------------------------------------------------------------------------------------
 
 
+def _without_rupees(prefill: dict) -> dict:
+    """ADR-330 (5): the rupee figures of a level are asserted on their own (tests_app/test_plan_rupee_levels.py)."""
+    return {k: v for k, v in prefill.items() if "rupee" not in k and "per_lot" not in k and not k.endswith("_source")}
+
+
 async def test_get_without_a_plan_prefills_from_the_active_system_playbook_and_pick_refills(app_db_url, monkeypatch):
     sid = await _seeded(app_db_url, monkeypatch, "ADJ-01")
     system = await _system_ic(app_db_url)
@@ -103,8 +110,10 @@ async def test_get_without_a_plan_prefills_from_the_active_system_playbook_and_p
     assert status == OK, out
     assert (out["type"], out["type_name"], out["generic"], out["generic_text"], out["plan"]) == (
         "ic", IC_NAME, False, None, None)
-    assert out["prefill"] == {"playbook_id": system.id, "target": "50", "stop": "50", "max_adjustments": 2,
+    assert (out["prefill"]["stop_rupees"], out["prefill"]["stop_per_lot"]) == ("10390.25", "5195.13")  # ADR-330 (5)
+    assert _without_rupees(out["prefill"]) == {"playbook_id": system.id, "target": "50", "stop": "50", "max_adjustments": 2,  # noqa: E501
                               "time_exit": {"hour": 14, "minute": 30},  # ADR-216: the iron condor seed
+                              "time_exit_on": None,
                               "target_words": "50 % of max profit",
                               "stop_words": "50 % of max loss or 2x the credit received, whichever comes first"}
     assert "rules_in_force" not in out  # GC-ICFIX u113 round 3: the limits come from the rule check only (ADR-304 (3))
@@ -119,8 +128,9 @@ async def test_get_without_a_plan_prefills_from_the_active_system_playbook_and_p
     async with app_db_url.begin() as conn:
         own = await playbook_store.create(conn, USER, "ic", "Plan pick", body)
     status, picked = await _call("GET", _plan_path(sid) + f"?playbook_id={own.id}")
-    assert status == OK and picked["prefill"] == {"playbook_id": own.id, "target": "70", "stop": "30",
+    assert status == OK and _without_rupees(picked["prefill"]) == {"playbook_id": own.id, "target": "70", "stop": "30",
                                                   "max_adjustments": 4, "time_exit": {"hour": 14, "minute": 45},
+                                                  "time_exit_on": None,
                                                   "target_words": "70 % of max profit",
                                                   "stop_words": "30 % of max loss or 2x the credit received, "
                                                                   "whichever comes first"}
@@ -317,3 +327,106 @@ async def test_saving_the_box_with_an_empty_target_stores_no_target_and_t07_is_n
     for bad in ("0", "-5", "101", "abc"):  # an unusable number is still refused, naming the field
         status, refused = await _call("PUT", _plan_path(sid), json={"playbook_id": system.id, "target": bad})
         assert status == UNPROCESSABLE and "target" in json.dumps(refused), refused
+
+
+# --- ADR-330 (5) / LP-2: the levels preview says the same stop sentence the saved plan says (P4b) ---------------------
+
+
+async def test_levels_preview_gives_the_stop_sentence_the_saved_plan_gives_and_writes_nothing(app_db_url, monkeypatch):
+    sid = await _seeded(app_db_url, monkeypatch, "ADJ-01")
+    system = await _system_ic(app_db_url)
+    levels = _plan_path(sid) + "/levels"
+    for typed in ({"stop": "40"}, {"stop_rupees": "4000"}):
+        before = await _plan_row(app_db_url, sid)
+        status, preview = await _call("GET", levels, params=typed)
+        assert status == OK, preview
+        assert await _plan_row(app_db_url, sid) == before  # a preview writes nothing: the stored body is unchanged
+        status, saved = await _call("PUT" if before is not None else "POST", _plan_path(sid),
+                                    json={"playbook_id": system.id, **typed})
+        assert status == OK, saved
+        assert preview["stop"]["words"] == saved["plan"]["stop_words"], typed
+        assert "2x the credit received" in preview["stop"]["words"]
+        assert preview["stop"]["words"].endswith(", whichever comes first")
+    assert preview["stop"]["words"].startswith("a loss of Rs 4000.00 (")
+
+
+def _own_with_credit(body: dict, multiple: str) -> dict:
+    body = copy.deepcopy(body)
+    body["guards"]["stop_line_x_credit"] = multiple
+    return body
+
+
+async def test_levels_preview_follows_the_picked_playbook_not_the_active_one(app_db_url, monkeypatch):
+    """P4b round 2: the picked playbook's credit multiple (3x) is in the preview, exactly as in the saved plan."""
+    sid = await _seeded(app_db_url, monkeypatch, "ADJ-01")
+    system = await _system_ic(app_db_url)
+    async with app_db_url.begin() as conn:
+        own = await playbook_store.duplicate(conn, USER, system.id, "Three x credit")
+        await conn.execute(text("UPDATE public.adjustment_playbooks SET body = CAST(:b AS jsonb) WHERE id = :id"),
+                           {"b": json.dumps(_own_with_credit(own.body, "3")), "id": own.id})
+    levels = _plan_path(sid) + "/levels"
+    status, preview = await _call("GET", levels, params={"stop_rupees": "400", "playbook_id": own.id})
+    assert status == OK, preview
+    status, saved = await _call("POST", _plan_path(sid), json={"playbook_id": own.id, "stop_rupees": "400"})
+    assert status == OK, saved
+    assert "3x the credit received" in saved["plan"]["stop_words"]
+    assert preview["stop"]["words"] == saved["plan"]["stop_words"]
+    status, edited = await _call("PUT", _plan_path(sid), json={"playbook_id": own.id, "stop_rupees": "500"})
+    status2, again = await _call("GET", levels, params={"stop_rupees": "500", "playbook_id": own.id})
+    assert (status, status2) == (OK, OK) and again["stop"]["words"] == edited["plan"]["stop_words"]  # editing keeps it
+    assert (await _call("GET", levels, params={"stop_rupees": "400", "playbook_id": 0}))[0] == UNPROCESSABLE
+    missing = {"stop_rupees": "400", "playbook_id": 999999999}  # in range, not there: the refusal the save gives
+    assert (await _call("GET", levels, params=missing))[0] == (await _call("POST", _plan_path(sid), json={
+        "playbook_id": 999999999, "stop_rupees": "400"}))[0] == NOT_FOUND
+
+
+async def test_levels_preview_of_a_generic_shape_has_no_stop_words_not_the_partial_sentence(app_db_url, monkeypatch):
+    sid = await _seeded(app_db_url, monkeypatch, "ADJ-42")
+    real = route._type_of
+
+    async def no_type(*args):
+        return (None, (await real(*args))[1])  # no playbook matches and no plan: no body to read the lines from
+    monkeypatch.setattr(route, "_type_of", no_type)
+    status, out = await _call("GET", _plan_path(sid) + "/levels", params={"stop": "40"})
+    assert status == OK, out
+    assert out["stop"]["percent"] == "40" and out["stop"]["words"] is None
+
+
+async def _preview_and_saved(app_db_url, monkeypatch, pick_body=None, typed=None):
+    """Seed ADJ-01, pick the system playbook (or the user's own copy holding ``pick_body``), return the levels preview
+    and the saved plan's stop sentence for the same typed level."""
+    sid = await _seeded(app_db_url, monkeypatch, "ADJ-01")
+    system = await _system_ic(app_db_url)
+    pick = system.id
+    if pick_body is not None:
+        async with app_db_url.begin() as conn:
+            own = await playbook_store.duplicate(conn, USER, system.id, "Regression copy")
+            await conn.execute(text("UPDATE public.adjustment_playbooks SET body = CAST(:b AS jsonb) WHERE id = :id"),
+                               {"b": json.dumps(pick_body(own.body)), "id": own.id})
+        pick = own.id
+    typed = typed or {"stop_rupees": "400"}
+    status, preview = await _call("GET", _plan_path(sid) + "/levels", params={**typed, "playbook_id": pick})
+    assert status == OK, preview
+    status, saved = await _call("POST", _plan_path(sid), json={"playbook_id": pick, **typed})
+    assert status == OK, saved
+    return preview["stop"]["words"], saved["plan"]["stop_words"]
+
+
+async def test_levels_preview_equals_saved_when_the_rupee_stop_replaces_the_credit_line(app_db_url, monkeypatch):
+    monkeypatch.setattr(settings_in_force, "RUPEE_STOP_KEEPS_CREDIT", False)
+    preview, saved = await _preview_and_saved(app_db_url, monkeypatch)
+    assert preview == saved and "credit" not in preview
+
+
+async def test_levels_preview_equals_saved_for_a_body_with_no_credit_line(app_db_url, monkeypatch):
+    monkeypatch.setattr(settings_in_force, "credit_line_applies", lambda resolved: False)
+    preview, saved = await _preview_and_saved(app_db_url, monkeypatch)
+    assert preview == saved and "credit" not in preview
+
+
+async def test_levels_preview_equals_saved_with_no_stored_base(app_db_url, monkeypatch):
+    real = route.bases_of
+    monkeypatch.setattr(route, "bases_of", lambda *a, **k: dataclasses.replace(real(*a, **k), max_loss=None))
+    monkeypatch.setattr(route, "_stored_loss", lambda stored, bases: None)
+    preview, saved = await _preview_and_saved(app_db_url, monkeypatch)
+    assert preview == saved == "a loss of Rs 400.00 or 2x the credit received, whichever comes first"

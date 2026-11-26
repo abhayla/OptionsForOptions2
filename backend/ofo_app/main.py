@@ -43,6 +43,7 @@ from ofo_app.routes import (
     adjustment_plan,
     adjustment_preferences,
     alert_style,
+    alerts,
     broker,
     broker_capabilities,
     broker_status,
@@ -60,6 +61,7 @@ from ofo_app.routes import (
     monitoring_pause,
     outcome,
     paper,
+    plan_watch,
     planned_entry,
     playbooks,
     positions,
@@ -120,9 +122,11 @@ def _mount_routes(app: FastAPI, config: BrokerConfig) -> None:
     app.include_router(chain.router)  # W-116: the chain's first paint and socket-down fallback
     app.include_router(adjustment.router)  # W-196: adjustment approaches (REQ-155)
     app.include_router(adjustment_plan.router)  # GC-ADJ2 4: the strategy plan sheet (REQ-161)
+    app.include_router(plan_watch.router)  # P10: the live Plan watch lines (ADR-330 (13))
     app.include_router(adjustment_check.router)  # GC-ADJ2 1C: the playbook check (REQ-158 AC-5)
     app.include_router(adjustment_history.router)  # GC-ADJ2 6: history + totals (REQ-163)
     app.include_router(adjustment_opportunities.router)  # GC-ADJ2 5: the opportunities inbox (REQ-162, REQ-112)
+    app.include_router(alerts.router)  # ADR-330 (3)(4): Active, answer, History of actionable alerts
     app.include_router(playbooks.router)  # GC-ADJ2 2: playbooks (REQ-158)
     app.include_router(settings.router)  # GC-SET 2: the admin Settings page (REQ-167)
     app.include_router(system_playbooks.router)  # REQ-169: the admin's system playbook versions

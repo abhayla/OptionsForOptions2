@@ -8,7 +8,7 @@ import datetime as dt
 
 import pytest
 from ofo.timeutil import IST
-from ofo_app import playbook_store
+from ofo_app import actionable_alerts
 from test_background_cycle import FakeGate, _rig
 
 EXPIRY = dt.date(2026, 11, 16)
@@ -21,21 +21,18 @@ class _Rec:
 
 
 async def _lapse(monkeypatch, expiry, today):
-    lapsed: list = []
+    closed: list = []
 
-    async def open_suggestions(_db, _user, _sid):
+    async def close_by_system(_db, _user, sid, reason, **_kw):
+        closed.append((sid, reason))
         return [_Rec(1), _Rec(2)]
-
-    async def lapse(_db, _user, sid, reason="x"):
-        lapsed.append((sid, reason))
-    monkeypatch.setattr(playbook_store, "open_suggestions", open_suggestions)
-    monkeypatch.setattr(playbook_store, "lapse", lapse)
-    await playbook_store.lapse_expired(None, "owner", 161, expiry, today)
-    return lapsed
+    monkeypatch.setattr(actionable_alerts, "close_by_system", close_by_system)
+    await actionable_alerts.close_expired(None, "owner", 161, expiry, today)
+    return closed
 
 
 async def test_open_records_of_an_expired_position_lapse_as_contract_expired(monkeypatch):
-    assert await _lapse(monkeypatch, EXPIRY, LATER) == [(1, "contract_expired"), (2, "contract_expired")]
+    assert await _lapse(monkeypatch, EXPIRY, LATER) == [(161, "contract_expired")]
 
 
 @pytest.mark.parametrize(("expiry", "today"), [(EXPIRY, EXPIRY), (LATER, EXPIRY), (None, LATER)])
@@ -47,9 +44,6 @@ class ExpiryGate(FakeGate):
     def __init__(self) -> None:
         super().__init__()
         self.asked: list = []
-
-    async def lapse_changed(self, _w):
-        return False
 
     async def lapse_expired(self, w, today):
         self.asked.append((w.strategy_id, today, max(x.expiry for x in w.tracked.position.legs)))
