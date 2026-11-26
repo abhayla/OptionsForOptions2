@@ -1600,8 +1600,8 @@
     "reviewed": "owner read 2026-11-02 (accepted after independent screen, not read line by line)"
   },
   "strategy_name_empty": {
-    "sha256": "567d6dbc9f465cf8a76d6424c8e3db21d59f5003fc5e05ef317be0d41a987ecb",
-    "reviewed": "owner read 2026-11-02 (decided in session under owner delegation, independent screen)"
+    "sha256": "3d0abbca45fe441be3f34b7213f76970d66ebd311fc0b0dbd9623789c7f5a76a",
+    "reviewed": "pending owner read"
   },
   "strategy_name_invalid": {
     "sha256": "46638a9e28c3761e23f7781579fc0fb82345272079fafc0bc9c16ecd0eae77a0",
