@@ -80,7 +80,10 @@ Options: (a) a suffix "(avg of 2)" after the price (new wording); (b) each exit 
 (c) leave it, the Orderbook lists the fills. Recommendation: (a), small and the Orderbook already holds the detail.
 Lane R builds nothing for it until answered.
 
-## LR-Q9 C-01b: one basis for breakevens? (open, 26 Nov 2026; only if the owner wants it)
+## LR-Q9 C-01b: one basis for breakevens? (CLOSED 26 Nov 2026)
+
+**CLOSED** by the coordinator, 14:20 IST: already answered by ADR-330 (17): the plan summary's breakevens stay before charges
+and say so; the placed book follows ADR-263 (2). No build.
 
 Spec basis: ADR-330 (17) (plan summary: breakevens BEFORE charges, Max Profit / Max Loss after); ADR-263 (2) (a placed paper
 book: breakevens carry the same charges as Max Profit / Max Loss and booked P&L, with a line saying so). Real case: draft 174
