@@ -33,9 +33,11 @@ from ofo.adjustment import playbook_stages as stages
 from ofo.adjustment.playbook_text import name_shown
 from ofo.adjustment.playbook_types import SHOWN_NAMES
 from ofo.charges import ChargeRates
+from ofo.checks.time_of_day import ON_EXPIRY, day_of, time_exit_parts
 from ofo.errors import render
 from ofo.errors.explanations import LABEL_TABLES, render_explanation
 from ofo.settings import layers
+from ofo.timeutil import IST
 from pydantic import BaseModel, ConfigDict
 
 from ofo_app import adjustment_check as check
@@ -44,6 +46,7 @@ from ofo_app import settings_in_force as in_force_mod
 from ofo_app.api_models import ApiModel, CatalogueText, Identifier, Money
 from ofo_app.db import get_db
 from ofo_app.errors import ClosedRoute, Failure
+from ofo_app.paper_settlement import is_trading_day
 from ofo_app.playbook_body_out import PlaybookBody
 from ofo_app.routes import playbooks as pb_routes
 from ofo_app.routes.adjustment import (
@@ -72,6 +75,7 @@ ID_MAX = 9_223_372_036_854_775_807  # the id column is BIGSERIAL
 MAX_ADJUSTMENTS_LIMIT = 10
 _PERCENT = re.compile(r"[0-9]{1,3}(\.[0-9]{1,4})?")
 _CLOCK = re.compile(r"([01][0-9]|2[0-3]):([0-5][0-9])")
+_DATE = re.compile(r"[0-9]{4}-[0-9]{2}-[0-9]{2}")
 _COUNT = re.compile(r"[0-9]{1,3}")
 #: The sheet field -> the guard of the plan's copy that holds it (docs/design/playbook-body-v1.md "guards")
 TARGET_KEY = "profit_target_pct_of_max_profit"
@@ -86,6 +90,12 @@ class _In(BaseModel):
     model_config = ConfigDict(extra="forbid", strict=True)
 
 
+class TimeExitIn(_In):
+    """ADR-330 (7): the plan's time exit, one time on one day; a blank ``on`` = expiry day (Q9)."""
+    at: str
+    on: str = ""
+
+
 class PlanIn(_In):
     """Every sheet value arrives as the text typed (the browser forms no number, ADR-008): percents as decimal text,
     max adjustments as digits, the time exit as ``HH:MM``; each is checked here and names its field when not valid."""
@@ -93,7 +103,7 @@ class PlanIn(_In):
     target: str | None = None
     stop: str | None = None
     max_adjustments: str | None = None
-    time_exit: str | None = None
+    time_exit: str | TimeExitIn | None = None  # a plain "HH:MM" = on expiry day (the old shape)
     #: ADR-245: this strategy's own setting overrides (the strategy layer), ``{key: "decimal text"}``. Given -> the
     #: plan's overrides become exactly this object (``{}`` removes every override, so each value follows the user's,
     #: else the default); left out -> kept as the body has them. Each key must be a three-layer setting and each value
@@ -124,6 +134,7 @@ class PrefillOut(ApiModel):
     stop_words: CatalogueText | None = None
     max_adjustments: int | None
     time_exit: ClockOut | None
+    time_exit_on: datetime.date | None = None  # None = expiry day
 
 
 class PlanOut(ApiModel):
@@ -135,6 +146,7 @@ class PlanOut(ApiModel):
     stop_words: CatalogueText | None = None
     max_adjustments: int | None
     time_exit: ClockOut | None
+    time_exit_on: datetime.date | None = None  # None = expiry day
     accepted_at: datetime.datetime
 
 
@@ -222,8 +234,14 @@ def _read_percent(guards: dict, key: str) -> Decimal | None:
 
 
 def _read_clock(guards: dict) -> ClockOut | None:
-    found = _CLOCK.fullmatch(guards.get(TIME_KEY) or "")
+    parts = time_exit_parts(guards.get(TIME_KEY))
+    found = None if parts is None else _CLOCK.fullmatch(parts[0])
     return None if found is None else ClockOut.model_validate({"hour": int(found[1]), "minute": int(found[2])})
+
+
+def _read_clock_on(guards: dict) -> datetime.date | None:
+    parts = time_exit_parts(guards.get(TIME_KEY))
+    return None if parts is None or parts[1] == ON_EXPIRY else day_of(parts[1])
 
 
 _STOP_WORD_IDS = {in_force_mod.STOP_MAX_LOSS: "plan_stop_words_loss",
@@ -265,7 +283,8 @@ def _values(body: dict, saved_before: bool, kind: str | None = None) -> dict[str
     t_words, s_words = _words(body, guards, saved_before, kind)
     return {"target": _read_percent(guards, TARGET_KEY), "stop": in_force_mod.sheet_stop(body, kind),
             "target_words": t_words, "stop_words": s_words,
-            "max_adjustments": mx if type(mx) is int else None, "time_exit": _read_clock(guards)}
+            "max_adjustments": mx if type(mx) is int else None, "time_exit": _read_clock(guards),
+            "time_exit_on": _read_clock_on(guards)}
 
 
 def _set_stop(out: dict, raw: str, kind: str | None = None) -> None:
@@ -274,6 +293,32 @@ def _set_stop(out: dict, raw: str, kind: str | None = None) -> None:
         in_force_mod.set_max_loss_stop(out, _percent(raw, "stop"), kind)
     except ValueError:
         raise _bad("stop") from None
+
+
+def _time_exit_guard(raw: str | TimeExitIn) -> str | dict[str, str]:
+    """The guard to store: a plain "HH:MM" stays as typed (on expiry day); {at, on} keeps its day, a blank day stored
+    as "expiry". An unreadable time or date -> refused naming the field."""
+    if isinstance(raw, str):
+        if not _CLOCK.fullmatch(raw):
+            raise _bad(TIME_KEY)
+        return raw
+    on = raw.on.strip() or ON_EXPIRY
+    if not _CLOCK.fullmatch(raw.at) or (on != ON_EXPIRY and (not _DATE.fullmatch(on) or day_of(on) is None)):
+        raise _bad(TIME_KEY)
+    return {"at": raw.at, "on": on}
+
+
+def check_time_exit_day(guard: object, today: datetime.date | None, last_expiry: datetime.date | None) -> None:
+    """ADR-330 (7), at save: a dated time exit must be a trading day (not a weekend or holiday), not before today and
+    not after the last expiry of the legs; otherwise refused naming ``time_exit``. A day that cannot be judged
+    (today or the legs unknown) is refused too, never passed. On expiry (blank) there is nothing to judge."""
+    parts = time_exit_parts(guard)
+    if parts is None or parts[1] == ON_EXPIRY:
+        return
+    day = day_of(parts[1])
+    if day is None or today is None or last_expiry is None or day < today or day > last_expiry \
+            or not is_trading_day(day):
+        raise _bad(TIME_KEY)
 
 
 def with_overrides(body: dict, data: PlanIn, kind: str | None = None) -> dict:
@@ -289,9 +334,7 @@ def with_overrides(body: dict, data: PlanIn, kind: str | None = None) -> dict:
             raise _bad(MAX_KEY)
         guards[MAX_KEY] = int(data.max_adjustments)
     if data.time_exit is not None:
-        if not _CLOCK.fullmatch(data.time_exit):
-            raise _bad(TIME_KEY)
-        guards[TIME_KEY] = data.time_exit
+        guards[TIME_KEY] = _time_exit_guard(data.time_exit)
     if data.settings is not None:
         for key, raw in data.settings.items():
             try:
@@ -482,6 +525,11 @@ async def _write(strategy_id: int, data: PlanIn, edit: bool, db: Any, user_ref: 
             raise _bad("playbook_id")
         keep = edit and plan is not None and plan.playbook_id == source.id  # editing the plan keeps its own body
         body = with_overrides(plan.body if keep and plan is not None else source.body, data, _kind_of(tracked, money))
+        if data.time_exit is not None:  # ADR-330 (7): the day is judged against today and the legs, never trusted
+            legs = tracked.position.legs
+            check_time_exit_day(body["guards"].get(TIME_KEY),
+                                None if market is None else market.now.astimezone(IST).date(),
+                                max((x.expiry for x in legs), default=None))
         saved = await store.accept_plan(db, user_ref, strategy_id, source.id, body, _base_json(tracked))
         # ADR-330 (1): the reply shows the base now STORED (the one the checks read), not the one read before the save
         stored = dataclasses.replace(tracked, stop_base=in_force_mod.stop_base_from_json(saved.stop_base))

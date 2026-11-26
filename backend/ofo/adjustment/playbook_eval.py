@@ -1410,8 +1410,11 @@ def exit_inputs(body: Mapping | None, guards: Mapping | None, state: StrategySta
             t09 = _t09_now(_context(body, state))
         except (KeyError, TypeError, IndexError):  # a body without this expiry kind's stages: no limit, never a guess
             t09 = None
-    at = guards.get("time_exit") if isinstance(guards, Mapping) else None
-    return ExitInputs(t09, at if isinstance(at, str) and _HHMM.fullmatch(at) else None, state.hhmm)
+    parts = time_exit_parts(guards.get("time_exit") if isinstance(guards, Mapping) else None)
+    if parts is None:
+        return ExitInputs(t09, None, state.hhmm)
+    on = None if parts[1] == ON_EXPIRY else resolve_on(parts[1], None)
+    return ExitInputs(t09, parts[0], state.hhmm, on)
 
 
 def _add_day_rules(body: Mapping, state: StrategyState, why: str | None, stage_name: str | None,  # noqa: PLR0913
