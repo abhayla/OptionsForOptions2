@@ -213,6 +213,7 @@ class SummaryOut(ApiModel):
     can_delete: bool  # REQ-070 AC-6: False once a basket was sent (or when that could not be read)
     has_paper_order: bool  # ADR-271: True once a paper order was placed (the refusal says "paper orders")
     has_order: bool  # ADR-299: True once ANY order was placed, practice or real (the one status word reads it)
+    held_at_broker: bool  # ADR-292: a held entry exists (Delete is refused with the held sentence)
     open_opportunities: Optional[int]  # noqa: UP045 - GC-MU A3: open adjustment records; None = could not be read
     open_opportunities_text: Optional[CatalogueText]  # noqa: UP045 - "N adjustment opportunities"; None at 0 or unread
     # GC-ICGUIDE g23 (Completed tab): set only for a closed strategy, all from the engine; None + reason when unreadable
@@ -245,6 +246,38 @@ class RenamedOut(ApiModel):
 class DeletedOut(ApiModel):
     id: int
     revision: int  # unchanged by a delete or its Undo
+
+
+BulkReason = Literal["held_at_broker", "orders_sent", "not_found", "changed", "failed"]
+BULK_DELETE_LIMIT = 200  # ADR-330 (8): the catalogue sentence "strategy_bulk_delete_too_many" names the same number
+
+
+class BulkDeleteItemIn(BaseModel):
+    model_config = ConfigDict(extra="forbid", strict=True)
+
+    id: int = Field(gt=0, le=store.BIGINT_MAX)
+    expected_revision: int = Field(gt=0, le=store.BIGINT_MAX)
+
+
+class BulkDeleteIn(BaseModel):
+    """ADR-330 (8): the ticked rows with the revision the screen showed. The limit is checked in the route so the
+    refusal is the catalogue sentence that names it (an empty list is refused here, 422)."""
+
+    model_config = ConfigDict(extra="forbid", strict=True)
+
+    items: list[BulkDeleteItemIn] = Field(min_length=1)
+
+
+class BulkKeptOut(ApiModel):
+    id: int
+    reason: BulkReason
+    text: CatalogueText
+
+
+class BulkDeleteOut(ApiModel):
+    deleted: list[DeletedOut]
+    kept: list[BulkKeptOut]
+    summary_text: CatalogueText
 
 
 class StrategyListOut(ApiModel):
@@ -293,6 +326,7 @@ _STORE_REFUSAL = MappingProxyType({
     store.VERSION_PENDING: ("strategy_version_pending", Failure.CONFLICT),  # W-144, ADR-019 Q191
     store.RECONCILIATION_REQUIRED: ("strategy_reconciliation_required", Failure.CONFLICT),  # ADR-018, Q222
     store.DELETE_AFTER_BASKET: ("strategy_delete_after_basket", Failure.CONFLICT),  # REQ-070 AC-6, ADR-118
+    store.DELETE_HELD_AT_BROKER: ("strategy_delete_held_at_broker", Failure.CONFLICT),  # ADR-292, ADR-330 (8)
 })
 
 
@@ -460,6 +494,7 @@ async def list_strategies(db: Annotated[Any, Depends(get_db)], user_ref: Annotat
                               "expiry": r.first_leg.expiry}} | current.get(r.id, {}),
              "tracked": None if tracked is None else r.id in tracked, "can_delete": r.can_delete,
              "has_paper_order": r.has_paper_order, "has_order": r.has_order,
+             "held_at_broker": r.held_at_broker,
              "open_opportunities": None if opened is None else opened.get(r.id, 0),
              "open_opportunities_text": None if opened is None else opportunities.open_mark(opened.get(r.id, 0)),
              **closed.get(r.id, _NO_FIGURES)}
@@ -514,6 +549,59 @@ async def delete_strategy(strategy_id: int, db: Annotated[Any, Depends(get_db)],
         await store.delete_draft(db, user_ref, strategy_id, expected_revision=expected_revision)
         return DeletedOut.model_validate({"id": strategy_id, "revision": expected_revision})
     return await _run(db, work, form_status=409)
+
+
+#: A store refusal's code -> the bulk result's reason (the sentence is the single delete's own, from _STORE_REFUSAL).
+_BULK_REASON = MappingProxyType({
+    store.NOT_FOUND: "not_found", store.REVISION_CONFLICT: "changed", store.DELETE_AFTER_BASKET: "orders_sent",
+    store.DELETE_HELD_AT_BROKER: "held_at_broker",
+})
+_BULK_FAILED_TEMPLATE = "strategy_bulk_delete_item_failed"
+
+
+def _kept(strategy_id: int, reason: str, template: str) -> dict:
+    return {"id": strategy_id, "reason": reason, "text": render(template)}
+
+
+def _bulk_summary(deleted: int, kept: list[dict]) -> Any:
+    """'12 deleted, 2 kept: <the one shared reason's sentence, else 'see each row'>' (ADR-330 (8)), a catalogue
+    template per case (no sentence is built here)."""
+    if not kept:
+        return render("strategy_bulk_summary_none_kept", deleted=deleted)
+    reasons = {k["reason"] for k in kept}
+    template = f"strategy_bulk_summary_{reasons.pop()}" if len(reasons) == 1 else "strategy_bulk_summary_each"
+    return render(template, deleted=deleted, kept=len(kept))
+
+
+@router.post("/strategies/bulk-delete", response_model=BulkDeleteOut)
+async def bulk_delete_strategies(body: BulkDeleteIn, db: Annotated[Any, Depends(get_db)],
+                                 user_ref: Annotated[str, Depends(current_user_ref)]) -> BulkDeleteOut:
+    """ADR-330 (8): the single delete's rule (``store.delete_draft``) per id, one savepoint per item; a strategy it
+    refuses is kept with its reason. Another user's or a hidden id is "not_found" (never says it exists). Undo is the
+    existing per-id undelete route."""
+    if len(body.items) > BULK_DELETE_LIMIT:
+        raise StrategyRefused("strategy_bulk_delete_too_many")
+    unique = list({item.id: item for item in reversed(body.items)}.values())[::-1]
+    deleted: list[dict] = []
+    kept: list[dict] = []
+    for item in unique:
+        try:
+            async with db.begin_nested():
+                await store.delete_draft(db, user_ref, item.id, expected_revision=item.expected_revision)
+            deleted.append({"id": item.id, "revision": item.expected_revision})
+        except (store.StrategyStoreError, sf.StoredFormError) as exc:
+            reason = _BULK_REASON.get(getattr(exc, "code", None)) if isinstance(exc, store.StrategyStoreError) else None
+            if reason is None:
+                log.error("bulk delete: strategy %s refused unexpectedly", item.id, exc_info=True)
+                kept.append(_kept(item.id, "failed", _BULK_FAILED_TEMPLATE))
+            else:
+                kept.append(_kept(item.id, reason, _STORE_REFUSAL[exc.code][0]))
+        except Exception:  # one item must not stop the others: one item must not stop the others
+            log.error("bulk delete: strategy %s failed", item.id, exc_info=True)
+            kept.append(_kept(item.id, "failed", _BULK_FAILED_TEMPLATE))
+    await db.commit()
+    return BulkDeleteOut.model_validate({"deleted": deleted, "kept": kept,
+                                         "summary_text": _bulk_summary(len(deleted), kept)})
 
 
 @router.post("/strategies/{strategy_id}/undelete", response_model=StrategyOut, response_model_exclude_unset=True)

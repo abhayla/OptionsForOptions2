@@ -47,6 +47,7 @@ VERSION_NOT_FOUND = "version_not_found"
 RECONCILIATION_REQUIRED = "reconciliation_required"
 #: W-156 (REQ-070 AC-6, ADR-118): a strategy that sent a basket (any plan row or version row) is never deleted.
 DELETE_AFTER_BASKET = "delete_after_basket"
+DELETE_HELD_AT_BROKER = "delete_held_at_broker"  # ADR-292: the refusal is the held entry alone, not a sent basket
 
 
 class StrategyStoreError(ValueError):
@@ -83,6 +84,7 @@ class StrategySummary:
     scenario_id: str | None = None  # IC e2e decision 3: the scenario marker (None = a real strategy)
     has_paper_order: bool = False  # ADR-271: picks the refusal wording ("paper orders were placed")
     has_order: bool = False  # ADR-299: any placed order, practice or real (the status word's one input)
+    held_at_broker: bool = False  # ADR-292 / ADR-330 (8): a held entry exists; Delete shows the held sentence
 
 
 @dataclass(frozen=True)
@@ -124,6 +126,12 @@ _DELETABLE_SQL = ("(NOT EXISTS (SELECT 1 FROM public.execution_plans p WHERE p.s
                   # ADR-292: a condor held at the broker is a REAL position stored as practice orders: never deletable
                   "AND NOT EXISTS (SELECT 1 FROM public.strategy_held_entries h WHERE h.strategy_id = s.id))")
 _DELETABLE = text(f"SELECT {_DELETABLE_SQL} AS can_delete FROM public.strategies AS s WHERE s.id = :id")  # noqa: S608
+#: ADR-292: the held entry is the ONLY reason a delete is refused: picks the held sentence.
+_HELD_ONLY = text("SELECT (EXISTS (SELECT 1 FROM public.strategy_held_entries h WHERE h.strategy_id = s.id) "
+                  "AND NOT EXISTS (SELECT 1 FROM public.execution_plans p WHERE p.strategy_id = s.id) "
+                  "AND NOT EXISTS (SELECT 1 FROM public.strategy_versions v WHERE v.strategy_id = s.id)) AS held "
+                  "FROM public.strategies AS s WHERE s.id = :id")
+_HELD_SQL = "EXISTS (SELECT 1 FROM public.strategy_held_entries hh WHERE hh.strategy_id = s.id)"
 _HAS_PAPER_SQL = "EXISTS (SELECT 1 FROM public.paper_orders o WHERE o.strategy_id = s.id)"
 #: ADR-299 / ADR-298: "an order was placed", practice OR real, in ONE place: a paper order, or an execution plan
 #: (a basket was sent to the broker). The one status word on every screen reads this (Draft = no order yet).
@@ -166,7 +174,7 @@ _SELECT_FOR_UPDATE = text(
 _LIST = text(
     "SELECT s.id, s.underlying, s.status, s.created_at, s.updated_at, s.name, s.scenario_id, "
     f"{_DELETABLE_SQL} AS can_delete, {_HAS_PAPER_SQL} AS has_paper_order, "
-    f"{_HAS_ORDER_SQL} AS has_order, "
+    f"{_HAS_ORDER_SQL} AS has_order, {_HELD_SQL} AS held_at_broker, "
     "d.definition -> 'legs' AS legs "
     "FROM public.strategies AS s "
     "CROSS JOIN LATERAL (SELECT coalesce((SELECT v.definition FROM public.strategy_versions AS v "
@@ -342,6 +350,15 @@ async def _deletable(conn: Any, strategy_id: int) -> bool:
         return False
 
 
+async def _held_only(conn: Any, strategy_id: int) -> bool:
+    """True when the held entry is the only reason Delete is refused. Unreadable -> False (the orders sentence)."""
+    try:
+        async with conn.begin_nested():
+            return (await conn.execute(_HELD_ONLY, {"id": strategy_id})).scalar_one() is True
+    except Exception:  # noqa: BLE001 - an unreadable answer keeps the orders sentence
+        return False
+
+
 async def delete_draft(conn: Any, user_ref: str, strategy_id: int, *, expected_revision: int) -> None:
     """REQ-070 AC-6 / ADR-118: hides a strategy that never sent a basket; the row and its history stay. The decision is
     read inside the strategy's row lock, so a plan creation (which takes the same lock) serializes with it. An
@@ -350,6 +367,8 @@ async def delete_draft(conn: Any, user_ref: str, strategy_id: int, *, expected_r
         row = await _locked(conn, user_ref, strategy_id)
         _check_revision(row, expected_revision)
         if not await _deletable(conn, row.id):
+            if await _held_only(conn, row.id):
+                raise StrategyStoreError(DELETE_HELD_AT_BROKER, f"strategy {strategy_id} is held at the broker")
             raise StrategyStoreError(DELETE_AFTER_BASKET, f"strategy {strategy_id} sent a basket or may have")
         await conn.execute(_SET_DELETED, {"id": row.id})
 
@@ -767,7 +786,7 @@ async def list_strategies(conn: Any, user_ref: str) -> list[StrategySummary]:
     rows = (await conn.execute(_LIST, {"user_ref": user_ref})).all()
     return [StrategySummary(int(r.id), r.underlying, r.status, r.created_at, r.updated_at, r.name,
                             len(r.legs), _first_leg(r.legs), r.can_delete is True, r.scenario_id,
-                            r.has_paper_order is True, r.has_order is True) for r in rows]
+                            r.has_paper_order is True, r.has_order is True, r.held_at_broker is True) for r in rows]
 
 
 def _first_leg(legs: Sequence[Mapping[str, Any]]) -> FirstLeg:

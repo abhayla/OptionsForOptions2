@@ -430,6 +430,7 @@ async def test_a_strategy_with_only_paper_orders_is_deleted_and_undone(app_engin
 
 
 SENT_TEXT = "Orders were already sent for this strategy, so it cannot be deleted."
+HELD_TEXT = "This strategy is marked as held at your broker, so it cannot be deleted."
 
 
 async def test_a_strategy_with_practice_orders_and_a_plan_row_is_refused(app_engine):
@@ -446,7 +447,7 @@ async def test_a_strategy_with_practice_orders_and_a_plan_row_is_refused(app_eng
         assert (await tx.conn.execute(RAW_ROW, {"id": tx.strategy_id})).one().deleted_at is None
 
 
-async def test_a_condor_held_at_the_broker_is_refused_with_the_sent_orders_sentence(app_engine):
+async def test_a_condor_held_at_the_broker_is_refused_with_the_held_sentence(app_engine):
     """ADR-292: a held entry is a REAL position stored as practice orders; it is never deletable."""
     async with _Tx(app_engine) as tx:
         await _paper_order(tx.conn, tx.strategy_id)
@@ -457,7 +458,7 @@ async def test_a_condor_held_at_the_broker_is_refused_with_the_sent_orders_sente
             assert [s["can_delete"] for s in (await ac.get("/strategies")).json()["strategies"]] == [False]
             refused = await ac.delete(f"/strategies/{tx.strategy_id}", params={"expected_revision": revision})
             assert refused.status_code == HTTPStatus.CONFLICT
-            assert refused.json()["what_happened"] == SENT_TEXT
+            assert refused.json()["what_happened"] == HELD_TEXT
         assert (await tx.conn.execute(RAW_ROW, {"id": tx.strategy_id})).one().deleted_at is None
 
 
