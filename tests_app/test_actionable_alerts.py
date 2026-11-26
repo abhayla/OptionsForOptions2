@@ -210,16 +210,17 @@ async def test_inform_adds_a_history_row_and_never_changes_the_count(db):
     user, stored = await _strategy(db)
     await _raise(db, user, stored.id)
     before = await aa.unanswered_count(db, user)
-    note_id = await aa.inform(db, user, stored.id, "stop_fired", "Stop fired at 11:10", at=LATER)
+    note_id = await aa.inform(db, user, stored.id, "stop_fired", "alert_fired_at", {"time": LATER}, at=LATER)
     assert await aa.unanswered_count(db, user) == before == 1
     assert [h.id for h in await aa.history(db, user)] == [note_id]
     note = (await aa.history(db, user))[0]
-    assert note.answer == "noted" and note.kind == "stop_fired" and note.text == "Stop fired at 11:10"
+    assert note.answer == "noted" and note.kind == "stop_fired" and note.note == ("alert_fired_at", {"time": LATER})
     for bad_kind in ("plan_loss_stop", "nonsense"):  # an actionable or unknown kind is never a note
         with pytest.raises(ValueError, match="informational"):
-            await aa.inform(db, user, stored.id, bad_kind, "x", at=LATER)
-    with pytest.raises(ValueError, match="text"):
-        await aa.inform(db, user, stored.id, "settled", "", at=LATER)
+            await aa.inform(db, user, stored.id, bad_kind, "alert_fired_at", {"time": LATER}, at=LATER)
+    for bad_words in (("no_such_template", {}), ("alert_fired_at", {}), ("alert_fired_at", {"time": "11:10"})):
+        with pytest.raises((ValueError, TypeError)):  # unknown id, missing slot, plain string for a time: nothing written
+            await aa.inform(db, user, stored.id, "settled", *bad_words, at=LATER)
     assert await aa.unanswered_count(db, user) == 1
 
 

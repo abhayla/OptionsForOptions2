@@ -29,6 +29,7 @@ from decimal import Decimal
 from typing import Any
 
 from ofo import alerts as kinds
+from ofo.errors.explanations import render_explanation
 from sqlalchemy import text
 
 from ofo_app import playbook_store as pb
@@ -42,7 +43,6 @@ SYSTEM_REASONS = (pb.LAPSE_STRATEGY_CLOSED, pb.LAPSE_CONTRACT_EXPIRED, pb.LAPSE_
 _OUTCOME_OF: dict[str, str] = {kinds.EXIT: "acted_on", kinds.ADD_LEGS: "acted_on",
                                kinds.CONTINUE: "dismissed", kinds.CONFIRM_NEW_SHAPE: "dismissed"}
 _LESS_IS_WORSE = ("le", "lt")
-_TEXT_MAX = 300
 
 _COLUMNS = ("g.id, g.strategy_id, s.name, g.rule_id, g.kind, g.trigger_id, g.stage, g.value, g.threshold, g.shown_at, "
             "g.outcome, g.answer, g.answered_at, g.no_longer_true_since, g.dismiss_reason, g.timeline::text, g.escalated_at")
@@ -77,7 +77,8 @@ _INSERT_NOTE = text(
     "INSERT INTO public.adjustment_suggestions (strategy_id, rule_id, kind, outcome, answer, answered_at, shown_at, "
     "timeline) VALUES (:strategy_id, :rule_id, :kind, 'dismissed', 'noted', CAST(:at AS TIMESTAMPTZ), "
     "CAST(:at AS TIMESTAMPTZ), jsonb_build_array(jsonb_build_object('at', CAST(:at AS TIMESTAMPTZ), "
-    "'outcome', 'dismissed', 'event', 'info', 'text', CAST(:text AS TEXT)))) RETURNING id")
+    "'outcome', 'dismissed', 'event', 'info', 'template', CAST(:template AS TEXT), "
+    "'values', CAST(:values AS JSONB)))) RETURNING id")
 
 
 class AlertAnswerRefused(ValueError):
@@ -125,10 +126,13 @@ class Alert:
         return self.timeline[0].get("unit") if self.timeline else None
 
     @property
-    def text(self) -> str | None:
-        """The words of an informational note (History only); None for every other row."""
+    def note(self) -> tuple[str, dict[str, Any]] | None:
+        """An informational note's catalogue id and slot values (History only; the route renders them); None for every
+        other row. No plain string is ever stored as the words of a note (F4)."""
         first = self.timeline[0] if self.timeline else {}
-        return first.get("text") if first.get("event") == "info" else None
+        if first.get("event") != "info" or "template" not in first:
+            return None
+        return first["template"], {k: _decode(v) for k, v in first.get("values", {}).items()}
 
     @property
     def closed_reason(self) -> str | None:
@@ -140,6 +144,23 @@ class Alert:
     @property
     def cmp(self) -> str | None:
         return self.timeline[0].get("cmp") if self.timeline else None
+
+
+def _encode(value: Any) -> Any:
+    """A slot value as JSON: Decimal and datetime carry a tag so that read-back gives the exact typed value."""
+    if isinstance(value, Decimal):
+        return {"$decimal": str(value)}
+    if isinstance(value, datetime):
+        return {"$datetime": _aware(value).isoformat()}
+    return value
+
+
+def _decode(value: Any) -> Any:
+    if isinstance(value, dict) and "$decimal" in value:
+        return Decimal(value["$decimal"])
+    if isinstance(value, dict) and "$datetime" in value:
+        return datetime.fromisoformat(value["$datetime"])
+    return value
 
 
 def _alert(row: Any) -> Alert:
@@ -321,15 +342,17 @@ async def _rows(conn: Any, sql: str, user_ref: str) -> list[Any]:
     return list((await conn.execute(statement, {**params, "user_ref": user_ref})).all())
 
 
-async def inform(conn: Any, user_ref: str, strategy_id: int, kind: str, text: str, *, at: datetime) -> int:  # noqa: PLR0913
+async def inform(conn: Any, user_ref: str, strategy_id: int, kind: str, template_id: str,  # noqa: PLR0913
+                 values: dict[str, Any], *, at: datetime) -> int:
     """An informational message (ADR-330 (3b)): a History row, answered at once ('noted'), never open, never counted.
-    ``text`` is catalogue wording rendered by the caller. Returns the row id."""
+    The words are a catalogue id plus its slot values (rendered when read, so History can never hold a plain string);
+    ``values`` are checked by rendering once now. Returns the row id."""
     if kind not in kinds.KINDS or kinds.is_actionable(kind):
         raise ValueError(f"{kind!r} is not an informational alert kind")
-    if not isinstance(text, str) or not text.strip() or len(text) > _TEXT_MAX:
-        raise ValueError(f"the text of an informational note is 1 to {_TEXT_MAX} characters")
+    render_explanation(template_id, **values)  # unknown id, missing/extra slot or wrong type: refused, nothing written
     _aware(at)
     async with conn.begin_nested():
         await pb.require_owned(conn, user_ref, strategy_id)
-        return int((await conn.execute(_INSERT_NOTE, {"strategy_id": strategy_id, "rule_id": f"info:{kind}",
-                                                      "kind": kind, "at": at, "text": text})).scalar_one())
+        return int((await conn.execute(_INSERT_NOTE, {
+            "strategy_id": strategy_id, "rule_id": f"info:{kind}", "kind": kind, "at": at, "template": template_id,
+            "values": json.dumps({k: _encode(v) for k, v in values.items()})})).scalar_one())

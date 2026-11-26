@@ -100,9 +100,10 @@ def _kind(a: aa.Alert) -> str:
 
 def _words(a: aa.Alert, by_id: dict[int, store.Suggestion]) -> Any:
     """The words the inbox already shows for the record (Active says what today's record says); an informational note
-    carries its own text; a record the inbox cannot word falls back to its stage-less rule label, never a raw id."""
-    if a.text is not None:
-        return a.text
+    is rendered from the catalogue id and values stored with it; a record the inbox cannot word falls back to its stage-less rule label, never a raw id."""
+    if a.note is not None:
+        template_id, values = a.note
+        return render_explanation(template_id, **values)
     found = by_id.get(a.id)
     shown = None if found is None else condition_text(found)
     return shown if shown is not None else render_explanation("adjust_condition_line_id", label=a.strategy_name)

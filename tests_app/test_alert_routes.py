@@ -92,9 +92,12 @@ async def test_a_noted_row_in_history_is_catalogue_worded_and_never_a_500(app_db
     with; it is never a stored plain string returned as catalogue text (that was a 500 for the whole History)."""
     sid = await _clean(app_db_url, await _seeded(app_db_url, monkeypatch, "ADJ-02"))
     async with app_db_url.begin() as conn:
-        note_id = await aa.inform(conn, "owner", sid, "stop_fired", "Stop fired at 11:10", at=FIRED)
+        note_id = await aa.inform(conn, "owner", sid, "stop_fired", "stop_fired_loss", {
+            "loss": D("12000.00"), "loss_pct": D("61.5"), "stop": D("11700.00"), "stop_pct": D("60")}, at=FIRED)
     status, history = await _call("GET", "/api/alerts/answered")
     row = next(i for i in history["items"] if i["id"] == note_id)
     assert status == OK and set(row) == HISTORY_KEYS and (row["answer"], row["kind"]) == ("noted", "stop_fired")
     assert row["text"] == ("Stop reached: loss now ₹12,000.00 (61.5 % of max loss); "
                            "stop line ₹11,700.00 (60 % of max loss)")
+    active = (await _call("GET", "/api/alerts/active"))[1]
+    assert active["count"] == len(active["alerts"]) and note_id not in [a["id"] for a in active["alerts"]]  # never counted
