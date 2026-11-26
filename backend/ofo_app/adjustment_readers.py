@@ -318,8 +318,9 @@ _CLOSING_KINDS = ("exit", "settle", "stop")
 
 
 def closed_at_of(orders: Any) -> datetime.datetime | None:
-    """The trade's close time (owner Q2b: "the trade closed at HH:MM"): the ``placed_at`` of its last exit, settle or
-    stop order, on the app's clock; None when no such order states one (never a guess, never the worker's notice time)."""
+    """The trade's close time (owner Q2b: "the trade closed at HH:MM"): the ``placed_at`` of its last exit, settle
+    or stop order, on the app's clock; None when no such order states one (never a guess, never the worker's notice
+    time)."""
     times = [p for p in (getattr(o.order, "placed_at", None) for o in orders if o.order.kind in _CLOSING_KINDS)
              if isinstance(p, datetime.datetime)]
     return max(times) if times else None

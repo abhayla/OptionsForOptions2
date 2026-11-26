@@ -1,4 +1,5 @@
-"""ADR-330 standing instruction: ONE module raises, answers and closes alerts. AST scan of backend/ofo_app and backend/ofo.
+"""ADR-330 standing instruction: ONE module raises, answers and closes alerts. AST scan of backend/ofo_app and
+backend/ofo.
 
 Writing side: a call of open_suggestion, record_held, add_alert; a call of lapse, lapse_all, close_suggestion, _close,
 dismiss or act_on on the playbook store (``store.`` / ``pb.`` / ``playbook_store.`` / a bare name); an SQL string with
@@ -53,19 +54,27 @@ def _sql_writes(value: str) -> str | None:
     return None
 
 
+def _import_problems(node: ast.Import | ast.ImportFrom) -> list[tuple[str, int, str]]:
+    """The import-statement bypasses of one import node (an alias of the module, a renamed call)."""
+    found: list[tuple[str, int, str]] = []
+    module = getattr(node, "module", None) or ""
+    for a in node.names:
+        full = module + "." + a.name
+        from_pkg = isinstance(node, ast.ImportFrom) and module == "ofo_app" and a.name == "actionable_alerts"
+        if a.asname == "actionable_alerts" and not full.endswith("ofo_app.actionable_alerts") and not from_pkg:
+            found.append(("<module>", node.lineno, f"{a.name} imported as actionable_alerts: use {USE} itself"))
+        if isinstance(node, ast.ImportFrom) and a.name in CALLS and a.asname and a.asname != a.name:
+            found.append(("<module>", node.lineno, f"{a.name} renamed on import: call it by its name from {USE}"))
+    return found
+
+
 def problems_in(name: str, source: str) -> list[tuple[str, int, str]]:
     """(function, line, message) for every bypass in one file's source."""
     found: list[tuple[str, int, str]] = []
     tree = ast.parse(source)
     for node in ast.walk(tree):
         if isinstance(node, ast.Import | ast.ImportFrom):
-            module = getattr(node, "module", None) or ""
-            for a in node.names:
-                if a.asname == "actionable_alerts" and not (module + "." + a.name).endswith("ofo_app.actionable_alerts") \
-                        and not (isinstance(node, ast.ImportFrom) and module == "ofo_app" and a.name == "actionable_alerts"):
-                    found.append(("<module>", node.lineno, f"{a.name} imported as actionable_alerts: use {USE} itself"))
-                if isinstance(node, ast.ImportFrom) and a.name in CALLS and a.asname and a.asname != a.name:
-                    found.append(("<module>", node.lineno, f"{a.name} renamed on import: call it by its name from {USE}"))
+            found.extend(_import_problems(node))
 
     def walk(node: ast.AST, fn: str) -> None:
         for child in ast.iter_child_nodes(node):
@@ -74,8 +83,9 @@ def problems_in(name: str, source: str) -> list[tuple[str, int, str]]:
                 f = child.func
                 called = f.attr if isinstance(f, ast.Attribute) else getattr(f, "id", None)
                 owner = getattr(f.value, "id", "") if isinstance(f, ast.Attribute) else None
+                lapse_bare = owner is None and called == "lapse"
                 if called in CALLS and owner != "actionable_alerts" and name not in CALLS[called] \
-                        and (called not in GENERIC or owner in STORE_NAMES or owner is None and called == "lapse"):
+                        and (called not in GENERIC or owner in STORE_NAMES or lapse_bare):
                     found.append((fn, child.lineno, f"{called}() outside the one module: use {USE}"))
             if isinstance(child, ast.Constant) and isinstance(child.value, str) and name not in SQL_HOMES:
                 verb = _sql_writes(child.value)
@@ -146,7 +156,10 @@ def test_an_import_alias_of_the_one_module_or_a_writer_is_caught(src):
     assert len(scan({APP + "other.py": src})) == 1
 
 
-@pytest.mark.parametrize("src", ["from ofo_app import actionable_alerts\n", "import ofo_app.actionable_alerts as actionable_alerts\n",
-                                 "from ofo_app import actionable_alerts as actionable_alerts\n"])
+@pytest.mark.parametrize("src", [
+    "from ofo_app import actionable_alerts\n",
+    "import ofo_app.actionable_alerts as actionable_alerts\n",
+    "from ofo_app import actionable_alerts as actionable_alerts\n",
+])
 def test_the_real_import_of_the_one_module_is_not_a_problem(src):
     assert scan({APP + "other.py": src}) == []

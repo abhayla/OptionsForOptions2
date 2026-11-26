@@ -816,7 +816,8 @@ class DbGateStore:
 
     async def lapse_expired(self, w: Watched, today: datetime.date) -> bool:
         """D-30: the open records of a strategy whose last expiry is before ``today`` lapse as contract_expired
-        (``playbook_store.lapse_expired``); True when any did. A failure raises (the rebuild contains it per strategy)."""
+        (``playbook_store.lapse_expired``); True when any did. A failure raises (the rebuild contains it per
+        strategy)."""
         from ofo_app import actionable_alerts  # noqa: PLC0415 - database layer at run time
         from ofo_app.db import get_sessionmaker  # noqa: PLC0415
         legs = w.tracked.position.legs
@@ -1842,8 +1843,9 @@ LISTER_LAPSE_FAILURES: dict[int, int] = {}
 
 async def _lapse_exited(db: Any, user_ref: str, sid: int, reason: str | None = None, **when: Any) -> None:
     """Lapse an exited strategy's open records (``reason`` default strategy_closed; #652 not_monitored for a strategy
-    that dropped out of the list for good; ``at``: the trade's own close time when known, M5), contained to that strategy: a failing write (a record no longer open,
-    the database refusing) is rolled back, counted and logged once per strategy, and never drops the other strategies
+    that dropped out of the list for good; ``at``: the trade's own close time when known, M5), contained to that
+    strategy: a failing write (a record no longer open, the database refusing) is rolled back, counted and logged
+    once per strategy, and never drops the other strategies
     from the list or skips their gate read (the whole lister failing kept the old list; at start-up 0 monitored)."""
     from ofo_app import actionable_alerts, playbook_store  # noqa: PLC0415 - database layer at run time only
     try:

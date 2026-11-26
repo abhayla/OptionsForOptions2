@@ -100,4 +100,5 @@ async def test_a_noted_row_in_history_is_catalogue_worded_and_never_a_500(app_db
     assert row["text"] == ("Stop reached: loss now ₹12,000.00 (61.5 % of max loss); "
                            "stop line ₹11,700.00 (60 % of max loss)")
     active = (await _call("GET", "/api/alerts/active"))[1]
-    assert active["count"] == len(active["alerts"]) and note_id not in [a["id"] for a in active["alerts"]]  # never counted
+    # never counted
+    assert active["count"] == len(active["alerts"]) and note_id not in [a["id"] for a in active["alerts"]]

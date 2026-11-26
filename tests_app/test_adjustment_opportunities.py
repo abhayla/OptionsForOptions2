@@ -16,10 +16,9 @@ import test_adjustment_check as check_test
 from httpx import ASGITransport, AsyncClient
 from ofo.adjustment.playbook_eval import RuleValue
 from ofo.errors.explanations import BUILT_APPROACH_NAMES
-from ofo_app import actionable_alerts
+from ofo_app import actionable_alerts, playbook_store
 from ofo_app import adjustment_check as chk
 from ofo_app import db as app_db
-from ofo_app import playbook_store
 from ofo_app.adjustment_readers import TrackedExited
 from ofo_app.routes.adjustment_opportunities import condition_text
 from sqlalchemy import text
@@ -365,7 +364,8 @@ async def test_t19_list_line_names_the_same_approach_and_cost_as_the_check(app_d
     assert clock["reason"]["what_happened"] == "Waiting: this rule acts on expiry day only (03 Nov 2026)."
     assert clock["reason"]["impact"] == "It raises no alert before then."
     flag = next((x for x in first["results"] if x["kind"] == "flag" and x["trigger_id"] == "T-19"), None)
-    assert flag is not None, [(x["kind"], str(x["reason"])[:400]) for x in first["results"] if x["trigger_id"] == "T-19"]
+    t19 = [(x["kind"], str(x["reason"])[:400]) for x in first["results"] if x["trigger_id"] == "T-19"]
+    assert flag is not None, t19
     # Measured 2026-11-05 (t19_support.cheapest on ADJ-43, the same cheapest_offered): A-26 (named by the catalogue,
     # so a rename cannot break this line; built since GC-IC1 s2, c899dccb) costs 26.86 < A-28's, 2 offered
     # approaches unpriced; premium left 19.50 / 26.86 = 0.7260, the flag's value. The #629 wording (9ab9aabf)

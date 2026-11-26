@@ -65,7 +65,8 @@ GUARD = _M36.SUGGESTION_GUARD
 #: copy of ``ofo.alerts`` kinds (a test compares the two)
 KINDS = ("plan_loss_stop", "plan_profit_target", "plan_rupee_loss", "plan_rupee_profit", "plan_time_exit",
          "adjustment_rule", "side_closed", "stop_fired", "settled", "orders_placed", "stop_saved")
-INFORMATIONAL_KINDS = ("stop_fired", "settled", "orders_placed", "stop_saved")  # ofo.alerts: actionable False (a test compares)
+# ofo.alerts: actionable False (a test compares)
+INFORMATIONAL_KINDS = ("stop_fired", "settled", "orders_placed", "stop_saved")
 ANSWERS = ("exit", "continue", "add_legs", "confirm_new_shape", "closed_by_system", "noted")
 NEW_COLUMNS = ("kind", "answer", "answered_at", "no_longer_true_since", "escalated_at")
 INSERT_COLUMNS = (*_M36.SUGGESTION_INSERT_COLUMNS, "shown_at", "kind", "outcome", "answer", "answered_at")

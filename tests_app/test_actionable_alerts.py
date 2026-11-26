@@ -219,7 +219,8 @@ async def test_inform_adds_a_history_row_and_never_changes_the_count(db):
         with pytest.raises(ValueError, match="informational"):
             await aa.inform(db, user, stored.id, bad_kind, "alert_fired_at", {"time": LATER}, at=LATER)
     for bad_words in (("no_such_template", {}), ("alert_fired_at", {}), ("alert_fired_at", {"time": "11:10"})):
-        with pytest.raises((ValueError, TypeError)):  # unknown id, missing slot, plain string for a time: nothing written
+        # unknown id, missing slot, plain string for a time: nothing written
+        with pytest.raises((ValueError, TypeError)):
             await aa.inform(db, user, stored.id, "settled", *bad_words, at=LATER)
     assert await aa.unanswered_count(db, user) == 1
 
