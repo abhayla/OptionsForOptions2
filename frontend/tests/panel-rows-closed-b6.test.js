@@ -88,4 +88,30 @@ describe('B6: the Paper P&L panel rows are the legs table rows', () => {
     const w = await page(book({ closed: [closed(IC[0], '65.00')] }), true)
     expect(panelRows(w)).toEqual(['—', '—', '—', '—', '—'])
   })
+  it('R2-1: the book is one poll AHEAD (C flat, closed C +65.00), tracking still has C open +60.00: rows D and closed C only', async () => {
+    const C = IC[0]; const D = IC[1]
+    TRACK = track([tLeg(C, 0, { pnl_text: '+60.00' }), tLeg(D, 1, { pnl_text: '+10.00' })])
+    const flat = pos(C, { net_quantity: 0, ltp_text: null, unbooked_text: null, total_text: '0.00', booked_text: '65.00' })
+    const w = await page(book({ positions: [flat, pos(D, { total_text: '+10.00' })], closed: [closed(C, '+65.00')], total_text: '+75.00' }))
+    expect(panelRows(w)).toEqual(['+10.00', '+65.00'])
+    expect(texts(w, 'tracking-leg-ltp')).toEqual(['120.00', 'Exited at 90.00'])
+  })
+  it('R2-2: the book is one poll BEHIND (C open +60.00, closed L1 +65.00), tracking says C exited +130.00: open C and closed L1 both show', async () => {
+    const C = IC[0]
+    TRACK = track([tLeg(C, 0, { exit_price_display: '90.00', exited_at: AT, pnl_kind: 'booked', pnl_text: '+130.00', current_price_display: null })])
+    const w = await page(book({ positions: [pos(C, { total_text: '+60.00' })], closed: [closed(C, '+65.00')], total_text: '+125.00' }))
+    expect(panelRows(w)).toEqual(['+60.00', '+65.00'])
+  })
+  it('R2-3: a failed book read, held book shows C open with no closed entry, tracking says exited: the dash, never a booked figure', async () => {
+    const C = IC[0]
+    TRACK = track([tLeg(C, 0, { exit_price_display: '90.00', exited_at: AT, pnl_kind: 'booked', pnl_text: '+65.00 booked', current_price_display: null })])
+    const w = await page(book({ positions: [pos(C)], closed: [] }), true)
+    expect(panelRows(w)).toEqual(['—'])
+  })
+  it('R2-4: a book read for another strategy (171) is not used in 170\'s panel: rows and headline come from tracking', async () => {
+    TRACK = track(IC.map((l, i) => tLeg(l, i)))
+    const w = await page(book({ strategy_id: 171, closed: [closed(IC[0], '+999.00')] }))
+    expect(panelRows(w)).toEqual(['+1.00', '+1.00', '+1.00', '+1.00'])
+    expect(w.get('[data-testid="paper-pnl"]').text()).not.toContain('98.00')
+  })
 })

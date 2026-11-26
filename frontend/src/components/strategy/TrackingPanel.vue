@@ -98,7 +98,7 @@ import Chip from '@/components/common/Chip.vue'
 import FigureHint from '@/components/common/FigureHint.vue'
 import api, { NEUTRAL_PARTS } from '@/services/api'
 import { LEG_PNL_MISSING, NOT_CONNECTED_TEXT, PAPER_PNL_PREFIX, readTracking } from '@/lib/tracking'
-import { closedLegRowsOf, paperPnlBlock } from '@/lib/usePaperBookRead'
+import { closedLegRowsOf, openLegRowsOf, paperPnlBlock } from '@/lib/usePaperBookRead'
 import { EARLIER_SHOWN_MAX, QUOTE_TIME_UNAVAILABLE_TEXT, RULES_LOAD_FAILED_TEXT, checkStaleLine, earlierMoreText, firedAtText, liveNowText, ruleEarlierText, ruleNotCheckedText } from '@/lib/sharedStateText'
 import { istClock, istStamp } from '@/lib/displayFormat'
 import { openRecords, settledRecords } from '@/lib/paperAlerts'
@@ -122,7 +122,9 @@ const reviewBtn = ref(null)
 // The headline total: from the page's shared paper read when there is one (so it equals the paper panel and the P&L table TOTAL
 // row); what still comes from the tracking read: legs, per-leg P&L, detections, the rule check, and the headline when no shared read.
 // Prices not live = the paused sentence, no number (REQ-109 AC-5).
-const block = computed(() => (props.shared ? paperPnlBlock(props.shared, props.sharedFailed) : null)) // D-41: the page's one book read
+// B6 round 2: a book read for ANOTHER strategy is not this strategy's book (the headline and the rows then come from the tracking reply)
+const bookIsHere = computed(() => !!props.shared && (props.shared.strategy_id == null || String(props.shared.strategy_id) === String(props.savedId)))
+const block = computed(() => (bookIsHere.value ? paperPnlBlock(props.shared, props.sharedFailed) : null)) // D-41: the page's one book read
 const headline = computed(() => {
   const v = view.value
   const s = block.value && v ? block.value : null
@@ -135,17 +137,17 @@ const headline = computed(() => {
 // CONTRACT ID (the reply's contract_id), never by `key` (the feed identity). An exited leg, a leg the book does not hold, and a reply without
 // a contract id keep the tracking row: it fails to the old source, never to another contract's price. Up to 5 s after an exit the book and
 // tracking reads can differ for one row (two polls); the next tick settles it.
-// B6 (ADR-328 (3), D-10): the rows are the legs table's rows: the open rows above plus the book's closed lifecycles, each its own row
-// (a contract closed and opened again has both), so the rows add up to the book total. A closed row replaces the tracking row of an
-// exited contract (the same lifecycle); a failed read prints the dash in every row.
+// B6 round 2 (ADR-328 (3), D-10): with a book read for this strategy the rows are built from the book ONLY, as the legs table builds them:
+// its open positions (net != 0), then its closed lifecycles, each its own row, so the rows add up to the book total whatever the tracking
+// reply says (it may be one poll behind). The tracking reply only supplies the open row's label (with its lots), joined by contract id.
+// No usable book read: the tracking reply's rows. A failed read prints the one dash in every row.
 const rows = computed(() => {
-  const closed = block.value ? closedLegRowsOf(props.shared, props.sharedFailed) : []
-  const closedIds = new Set(closed.map((c) => String(c.contractId)))
-  const open = (view.value?.legs ?? []).filter((leg) => !(leg.exited && closedIds.has(String(leg.contractId)))).map((leg) => {
-    const own = leg.exited || leg.contractId == null ? undefined : block.value?.legs.get(String(leg.contractId))
-    return own === undefined ? leg : { ...leg, current: own.ltp, quoteAt: own.at, pnl: own.total ?? own.noPrice ?? LEG_PNL_MISSING }
-  })
-  return [...open, ...closed]
+  const tracked = view.value?.legs ?? []
+  if (!block.value) return tracked // no usable book read: the tracking reply's rows
+  const label = new Map((view.value?.legs ?? []).filter((l) => l.contractId != null && !l.exited).map((l) => [String(l.contractId), l.text]))
+  const open = openLegRowsOf(props.shared, props.sharedFailed).map((r) => ({ ...r, text: label.get(String(r.contractId)) ?? r.text }))
+  const all = [...open, ...closedLegRowsOf(props.shared, props.sharedFailed)]
+  return all.length ? all : tracked // a book that holds no open contract and no closed lifecycle (empty, or all flat): nothing to build rows from
 })
 const drawerOpen = ref(false)
 const drawerLines = ref([]) // layer 1: the detection's own text; kept when the detection lapses while the drawer is open
