@@ -2372,6 +2372,28 @@ _EXPLANATIONS: tuple[ExplanationTemplate, ...] = (
                         "Version {version} of this system playbook is not stored.", {"version": Recorded}),
     ExplanationTemplate("system_playbook_refused_approved", "rule",
                         "This system playbook is already approved."),
+    # Lane S (REQ-044 AC-3; ADR-330 (10), (24)): the Real P&L figure
+    # and the reason it is not shown
+    ExplanationTemplate("real_pnl_caption", "values_seen", "Zerodha, as at {time} IST", {"time": Recorded}),
+    ExplanationTemplate("real_pnl_excludes", "rule",
+                        "Excludes contracts not in a strategy here and contracts closed today."),
+    ExplanationTemplate("real_pnl_total_empty", "rule", "No real positions are open in your strategies."),
+    ExplanationTemplate("real_pnl_total_partial", "rule",
+                        "{missing} of {total} contracts have no figure, so no total is shown.",
+                        {"missing": Count, "total": Count}),
+    ExplanationTemplate("real_pnl_not_available", "rule",
+                        "Zerodha's reply for {contract} lacks a figure needed to check its P&L; no figure is shown.",
+                        {"contract": Recorded}),
+    ExplanationTemplate("real_pnl_mismatch", "rule",
+                        "Zerodha's P&L for {contract} does not match its own trade values; no figure is shown.",
+                        {"contract": Recorded}),
+    ExplanationTemplate("real_pnl_shared", "rule",
+                        "This contract is shared (with another strategy or outside lots); Zerodha reports one P&L "
+                        "for the whole contract, so no split is shown."),
+    ExplanationTemplate("real_pnl_pending", "rule", "This contract is not yet confirmed, so no P&L is shown."),
+    ExplanationTemplate("real_pnl_stale", "rule",
+                        "Zerodha was last read more than {seconds} seconds ago, so no figure is shown until it is "
+                        "read again.", {"seconds": Count}),
 )
 
 EXPLANATIONS: Mapping[str, ExplanationTemplate] = MappingProxyType({t.id: t for t in _EXPLANATIONS})

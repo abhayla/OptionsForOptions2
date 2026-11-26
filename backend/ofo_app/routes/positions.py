@@ -28,21 +28,25 @@ from __future__ import annotations
 import dataclasses
 import datetime
 from collections.abc import Callable
-from typing import Annotated, Any, Optional
+from typing import Annotated, Any, Literal, Optional
 
 from fastapi import APIRouter, Depends
+from ofo.engine import broker_pnl
 from ofo.errors import render
+from ofo.errors.explanations import render_explanation
 from ofo.instruments.models import is_lot_aligned
+from ofo.timeutil import IST
 
 from ofo_app import kite_period_reads
 from ofo_app import reconcile_attribution as ra
 from ofo_app import strategy_store as store
-from ofo_app.api_models import ApiModel, Identifier
+from ofo_app.api_models import ApiModel, CatalogueText, Identifier, Money
 from ofo_app.catalogue_store import load_catalogue
 from ofo_app.db import get_db
 from ofo_app.errors import ClosedRoute, Failure
 from ofo_app.kite_reads import KiteReadError, unconfirmed_template
 from ofo_app.kite_replies import ContractIndex, KiteReplyError, log_ignored, orders_from_reply, positions_from_reply
+from ofo_app.routes import paper
 from ofo_app.routes.broker import current_user_ref
 from ofo_app.routes.execute import KiteSession, get_execute_clock, get_kite_session
 from ofo_app.routes.strategies import StrategyRefused
@@ -56,6 +60,12 @@ class StrategyContractOut(ApiModel):
     units: int | None  # this strategy's own units (signed: BUY +, SELL -); null while pending (no own/outside split)
     pending: bool  # an open plan of this strategy is not final at Zerodha yet (ADR-110)
     pending_plans: list[int]  # this strategy's plan numbers that keep the contract pending (empty when not pending)
+    # Lane S (ADR-330 (24)): Zerodha's own P&L for the contract, re-derived by the engine from Zerodha's own
+    # fields and shown only when both agree; no split of a shared contract, ever
+    pnl: Money | None  # exact Decimal (2 dp, a string on the wire), null unless pnl_state is "stated"
+    pnl_text: CatalogueText | None  # the server's signed-paisa text of that figure
+    pnl_state: Literal["stated", "not_available", "mismatch", "shared", "pending", "stale"]
+    pnl_reason: CatalogueText | None  # the catalogue sentence for a state without a figure
 
 
 class StrategyPositionsOut(ApiModel):
@@ -64,8 +74,24 @@ class StrategyPositionsOut(ApiModel):
     contracts: list[StrategyContractOut]  # tradingsymbol order; empty for a blocked strategy with no own row
 
 
+class RealPnlOut(ApiModel):
+    """ADR-330 (10): the "Real P&L" total of the one Positions list: the exact sum of the rows' figures, never added to
+    Paper P&L. ``state``: stated | empty | partial | stale (no figure in any state but stated)."""
+
+    value: Money | None
+    pnl_text: CatalogueText | None
+    state: Literal["stated", "empty", "partial", "stale"]
+    reason: CatalogueText | None
+    source: Literal["Zerodha"]
+    read_at: datetime.datetime
+    caption: CatalogueText  # "Zerodha, as at HH:MM:SS IST"
+    excludes_note: CatalogueText | None  # what the total leaves out, when it leaves something out (ADR-330 (24))
+
+
 class PositionsOut(ApiModel):
     read_at: datetime.datetime
+    real_pnl: RealPnlOut
+    pnl_text: CatalogueText | None  # the one reader's figure: equal to real_pnl.pnl_text
     strategies: list[StrategyPositionsOut]  # strategy-id order; only contracts linked to a strategy (ADR-138 (2))
     has_outside: bool  # Zerodha holds units on a NIFTY/SENSEX contract that no strategy owns (ADR-109 (2))
     outside_lots: int | None  # those units in lots, summed; null when a lot size cannot be read exactly (never guessed)
@@ -83,6 +109,8 @@ class _Zerodha:
     orders: tuple[Any, ...]
     index: ContractIndex
     read_at: datetime.datetime  # when Zerodha was read (the periodic job's read or this request's), never "now"
+    money: Any = None  # Lane S: per contract, the P&L fields of Zerodha's non-flat rows (kite_replies.PositionsRead.money)
+    flat_platform: int = 0  # Lane S: closed-today rows of ours (flat); the total leaves them out
 
 
 def _read(session: KiteSession, catalogue: Any) -> _Zerodha:
@@ -97,7 +125,7 @@ def _read(session: KiteSession, catalogue: Any) -> _Zerodha:
     except (KiteReadError, KiteReplyError, ValueError) as exc:
         raise _refuse(unconfirmed_template(exc)) from None
     log_ignored(read, "positions read")  # rows never ours, named in one line (as the Execute and return routes do)
-    return _Zerodha(read.net, orders, index, answer.read_at)
+    return _Zerodha(read.net, orders, index, answer.read_at, read.money, read.flat_platform)
 
 
 async def _attribute(db: Any, user_ref: str, zerodha: _Zerodha, sources: ra.Sources,
@@ -129,10 +157,37 @@ def _outside_lots(result: ra.Attribution, index: ContractIndex) -> int | None:
     return lots
 
 
-def _groups(result: ra.Attribution, index: ContractIndex) -> list[dict[str, Any]]:
+STALE_AFTER_SECONDS = 90  # Lane S: a figure from a Zerodha read older than this is not shown (against the route's clock)
+SOURCE = "Zerodha"
+_NO_FIGURE = {"pnl": None, "pnl_text": None}
+
+
+def _row_pnl(key: Any, row: dict[str, Any], symbol: str, zerodha: _Zerodha, stale: bool) -> dict[str, Any]:
+    """One real contract row's P&L (ADR-330 (24)): stale, pending and shared rows and every engine state other
+    than "stated" carry no figure and the catalogue's reason; the figure is Zerodha's own, checked by the engine."""
+    def none(state: str, template: str, **slots: Any) -> dict[str, Any]:
+        return {**_NO_FIGURE, "pnl_state": state, "pnl_reason": render_explanation(template, **slots)}
+
+    if stale:
+        return none("stale", "real_pnl_stale", seconds=STALE_AFTER_SECONDS)
+    if row["pending"]:
+        return none("pending", "real_pnl_pending")
+    if zerodha.net.get(key, 0) != row["units"]:
+        return none("shared", "real_pnl_shared")  # another strategy or outside lots hold part: never a split
+    figure = broker_pnl.broker_contract_pnl(list((zerodha.money or {}).get(key, ())))
+    if figure.state == broker_pnl.STATED and figure.value is not None:
+        return {"pnl": figure.value, "pnl_text": paper.signed(figure.value), "pnl_state": "stated",
+                "pnl_reason": None, "_value": figure}
+    template = "real_pnl_mismatch" if figure.state == broker_pnl.MISMATCH else "real_pnl_not_available"
+    return none(figure.state, template, contract=symbol)
+
+
+def _groups(result: ra.Attribution, index: ContractIndex, zerodha: _Zerodha,
+            stale: bool) -> tuple[list[dict[str, Any]], list[broker_pnl.BrokerPnl]]:
     """ADR-138 (2): one group per strategy, holding only the contracts linked to it: its own units (W-108's ``held``)
     or its plans that keep a contract pending (ADR-110: no own/outside split there). A blocked strategy with no such
-    contract still gets its group, so its badge is shown. Outside-only contracts are never a row."""
+    contract still gets its group, so its badge is shown. Outside-only contracts are never a row. Also returns the
+    engine's figure of every row (the total's input)."""
     rows: dict[str, dict[Any, dict[str, Any]]] = {}
     for sid, units in result.held.items():
         for key, own in units.items():
@@ -147,21 +202,53 @@ def _groups(result: ra.Attribution, index: ContractIndex) -> list[dict[str, Any]
     for sid in result.blocked:
         rows.setdefault(str(sid), {})
     groups = []
+    figures: list[broker_pnl.BrokerPnl] = []
     for sid in sorted(rows, key=int):
-        contracts = [{"tradingsymbol": _symbol(key, index), "zerodha_units": result.raw_net.get(key, 0),
-                      **row, "pending_plans": sorted(row["pending_plans"])} for key, row in rows[sid].items()]
+        contracts = []
+        for key, row in rows[sid].items():
+            symbol = _symbol(key, index)
+            pnl = _row_pnl(key, row, symbol, zerodha, stale)
+            figures.append(pnl.pop("_value", None) or broker_pnl.BrokerPnl(pnl["pnl_state"], None, None, None))
+            contracts.append({"tradingsymbol": symbol, "zerodha_units": result.raw_net.get(key, 0),
+                              **row, **pnl, "pending_plans": sorted(row["pending_plans"])})
         groups.append({"strategy_id": int(sid), "blocked": sid in result.blocked,
                        "contracts": sorted(contracts, key=lambda c: c["tradingsymbol"])})
-    return groups
+    return groups, figures
 
 
-def _answer(result: ra.Attribution, index: ContractIndex, read_at: datetime.datetime) -> PositionsOut:
-    groups = _groups(result, index)
+def _real_total(figures: list[broker_pnl.BrokerPnl], has_outside: bool, zerodha: _Zerodha,
+                stale: bool) -> dict[str, Any]:
+    """ADR-330 (10) / LQS-2 (a): the exact sum of the rows' figures, only when EVERY row is stated; stale, empty and
+    partial carry no figure and say why. The note says what the total leaves out (outside lots, contracts closed today)."""
+    clock_text = zerodha.read_at.astimezone(IST).strftime("%H:%M:%S")
+    total = broker_pnl.broker_total(figures)
+    missing = broker_pnl.count_without_figure(figures)
+    if stale:
+        state, reason = "stale", render_explanation("real_pnl_stale", seconds=STALE_AFTER_SECONDS)
+    elif not figures:
+        state, reason = "empty", render_explanation("real_pnl_total_empty")
+    elif total is None:
+        state, reason = "partial", render_explanation("real_pnl_total_partial", missing=missing, total=len(figures))
+    else:
+        state, reason = "stated", None
+    leaves_out = has_outside or zerodha.flat_platform > 0
+    return {"value": total if state == "stated" else None,
+            "pnl_text": paper.signed(total) if state == "stated" else None, "state": state,
+            "reason": reason, "source": SOURCE, "read_at": zerodha.read_at,
+            "caption": render_explanation("real_pnl_caption", time=clock_text),
+            "excludes_note": render_explanation("real_pnl_excludes") if leaves_out else None}
+
+
+def _answer(result: ra.Attribution, zerodha: _Zerodha, now: datetime.datetime) -> PositionsOut:
+    stale = (now - zerodha.read_at).total_seconds() > STALE_AFTER_SECONDS
+    groups, figures = _groups(result, zerodha.index, zerodha, stale)
     blocked_ids = sorted(int(sid) for sid in result.blocked)
+    has_outside = any(result.outside.values())
+    real = _real_total(figures, has_outside, zerodha, stale)
     return PositionsOut.model_validate({
-        "read_at": read_at, "strategies": groups, "has_outside": any(result.outside.values()),
-        "outside_lots": _outside_lots(result, index), "blocked": bool(blocked_ids),
-        "blocked_strategy_ids": blocked_ids})
+        "read_at": zerodha.read_at, "real_pnl": real, "pnl_text": real["pnl_text"], "strategies": groups,
+        "has_outside": has_outside, "outside_lots": _outside_lots(result, zerodha.index),
+        "blocked": bool(blocked_ids), "blocked_strategy_ids": blocked_ids})
 
 
 @router.get("/positions", response_model=PositionsOut)
@@ -179,7 +266,7 @@ async def read_positions(
         result = await _attribute(db, user_ref, zerodha, ra.Sources(catalogue, clock), now)
     except (ra.AttributionError, store.StrategyStoreError, ValueError):
         raise _refuse("strategy_stored_unreadable") from None
-    return _answer(result, zerodha.index, zerodha.read_at)
+    return _answer(result, zerodha, now)
 
 
-__all__ = ["PositionsOut", "StrategyContractOut", "StrategyPositionsOut", "read_positions"]
+__all__ = ["PositionsOut", "RealPnlOut", "StrategyContractOut", "StrategyPositionsOut", "read_positions"]

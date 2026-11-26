@@ -4477,7 +4477,6 @@
   },
   "explanation:suggestion_lapsed_contract_expired": {
     "sha256": "555637ef88c67b94651c99048afae3d5c03b7d085735c08ef5af7f1f75e6e61d",
-    "reviewed": "pending owner read",
     "reviewed": "owner read 2026-11-25 (ADR-322 point 4, answered by the owner in the question tool)"
   },
   "explanation:money_time_value_live": {
@@ -4630,6 +4629,42 @@
   },
   "explanation:paper_today_none": {
     "sha256": "6d782178d298b637a3f0945333fc7f0b137ab3ed40d303b892348fe2a6bdd8f6",
+    "reviewed": "pending owner read"
+  },
+  "explanation:real_pnl_caption": {
+    "sha256": "832d80ad538a068fa665f4d04d3ba220cd5e537dc8874624261c94a26ccd662b",
+    "reviewed": "pending owner read"
+  },
+  "explanation:real_pnl_excludes": {
+    "sha256": "4d53a45a7d467c341ff16ecd5edb2f58a39c7c45d6ca8eece1898f721c6afaeb",
+    "reviewed": "pending owner read"
+  },
+  "explanation:real_pnl_total_empty": {
+    "sha256": "f77b3aee69741b37700adaf5f072b6ddff9050de1dfccf8c57746feee4a5dbcc",
+    "reviewed": "pending owner read"
+  },
+  "explanation:real_pnl_total_partial": {
+    "sha256": "33f5261595d30bb8c52fe017e6d69a1b94399ac6c8c48efd839430dc64ce0b2e",
+    "reviewed": "pending owner read"
+  },
+  "explanation:real_pnl_not_available": {
+    "sha256": "51e10d4a8d79418fed241f72f086d959e089d60ef2a7ce78d6a828e75151c852",
+    "reviewed": "pending owner read"
+  },
+  "explanation:real_pnl_mismatch": {
+    "sha256": "ba41f8028199b71c4a6e30088502e31bd05233fce82d64a0ccc737d9de24f473",
+    "reviewed": "pending owner read"
+  },
+  "explanation:real_pnl_shared": {
+    "sha256": "34df787cc37f41914fae2c8b0ba8c5f39ac748c72e3323542feddbd774b65fb2",
+    "reviewed": "pending owner read"
+  },
+  "explanation:real_pnl_pending": {
+    "sha256": "fd8b0901addc344f8d474acd0fa9ed0a3299acb19ec19ef6b0c039292ce35598",
+    "reviewed": "pending owner read"
+  },
+  "explanation:real_pnl_stale": {
+    "sha256": "c07d60a2f08560f37adc50b78f10bd917bd324ae78717d0156bd60d86c79b961",
     "reviewed": "pending owner read"
   }
 }

@@ -26,7 +26,7 @@ import logging
 import math
 import re
 from collections.abc import Iterable, Mapping
-from dataclasses import dataclass
+from dataclasses import dataclass, field
 from decimal import Decimal
 from typing import Final
 
@@ -228,6 +228,12 @@ class PositionsRead:
     net: Mapping[ContractKey, int]
     lines: tuple[BrokerPositionLine, ...]
     ignored: tuple[str, ...] = ()
+    #: Lane S: per contract, the money fields of each platform-owned NON-flat row (pnl, buy_value, sell_value, quantity,
+    #: last_price, multiplier), exact Decimal; a field that is absent or malformed is None (that contract then has no
+    #: P&L figure; the read is never refused for it).
+    money: Mapping[ContractKey, tuple[Mapping[str, Decimal | None], ...]] = field(default_factory=dict)
+    #: Lane S: flat (quantity 0) rows the platform could own (closed today); the total says it leaves them out.
+    flat_platform: int = 0
 
 
 #: A Kite F&O tradingsymbol: underlying, 2-digit year, then a monthly ``OCT`` or weekly ``O19`` expiry, then a strike
@@ -270,6 +276,28 @@ def platform_may_own(row: Mapping[str, object]) -> bool:
     return SUPPORTED_UNDERLYINGS.get(shape["underlying"]) == segment
 
 
+#: The six Zerodha fields the engine's P&L check reads (``ofo.engine.broker_pnl.FIELDS``).
+_MONEY_FIELDS: Final = ("pnl", "buy_value", "sell_value", "quantity", "last_price", "multiplier")
+
+
+def _money_fields(row: Mapping[str, object]) -> dict[str, Decimal | None]:
+    """The six P&L fields of one row, exact; one that is absent, null or malformed is None (never refuses the read)."""
+    out: dict[str, Decimal | None] = {}
+    for name in _MONEY_FIELDS:
+        try:
+            out[name] = kite_money(row[name], name, exact=True) if name in row else None
+        except KiteReplyError:
+            out[name] = None
+    return out
+
+
+def _flat_row_may_be_ours(row: Mapping[str, object]) -> bool:
+    try:
+        return platform_may_own(row)
+    except KiteReplyError:
+        return True  # a flat row the allow-list cannot place could be ours: the total says it leaves closed rows out
+
+
 def positions_from_reply(data: Mapping[str, object], index: ContractIndex) -> PositionsRead:
     rows = _field(data, "net")
     if not isinstance(rows, list):
@@ -277,8 +305,11 @@ def positions_from_reply(data: Mapping[str, object], index: ContractIndex) -> Po
     net: dict[ContractKey, int] = {}
     lines = []
     ignored = []
+    money: dict[ContractKey, list[Mapping[str, Decimal | None]]] = {}
+    flat_platform = 0
     for row in rows:
         if is_flat_row(row):
+            flat_platform += _flat_row_may_be_ours(row)
             continue  # quantity 0: no position (never a 0-price holding)
         if not platform_may_own(row):
             ignored.append(f"{_text(row, 'exchange')}:{_text(row, 'tradingsymbol')}")
@@ -292,8 +323,11 @@ def positions_from_reply(data: Mapping[str, object], index: ContractIndex) -> Po
             raise KiteReplyError(f"position row {row.get('tradingsymbol')!r}: {exc}") from None
         key = index.resolve(row)
         net[key] = net.get(key, 0) + line.net_quantity
+        money.setdefault(key, []).append(_money_fields(row))
         lines.append(line)
-    return PositionsRead({k: q for k, q in net.items() if q != 0}, tuple(lines), tuple(ignored))
+    live = {k: q for k, q in net.items() if q != 0}
+    return PositionsRead(live, tuple(lines), tuple(ignored), {k: tuple(v) for k, v in money.items() if k in live},
+                         flat_platform)
 
 
 def fill_from_trade_row(row: Mapping[str, object]) -> FillEvent:
