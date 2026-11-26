@@ -15,6 +15,7 @@ import json
 from http import HTTPStatus
 
 import pytest
+from ofo.strategy import stored_form as sf
 from ofo_app import strategy_store as store
 from sqlalchemy import text
 from test_execution_plan_store import _new_strategy, _Tx
@@ -174,9 +175,10 @@ async def test_the_history_route_lists_both_entries_with_their_times_and_labels(
         sid = tx.strategy_id
         revision = await _revision(tx.conn, sid)
         async with _client(_app(_ConnMaker(tx.conn), tx.user)) as ac:
-            assert (await ac.delete(f"/strategies/{sid}", params={"expected_revision": revision})).status_code == 200
+            gone = await ac.delete(f"/strategies/{sid}", params={"expected_revision": revision})
+            assert gone.status_code == HTTPStatus.OK
             assert (await ac.post(f"/strategies/{sid}/undelete", params={"expected_revision": revision})
-                    ).status_code == 200
+                    ).status_code == HTTPStatus.OK
             answer = await ac.get(f"/strategies/{sid}/history")
             assert answer.status_code == HTTPStatus.OK, answer.text
             entries = answer.json()["entries"]
@@ -191,8 +193,6 @@ async def test_the_history_route_lists_both_entries_with_their_times_and_labels(
 
 
 def test_the_two_items_render_and_the_kinds_are_closed():
-    from ofo.strategy import stored_form as sf
-
     assert sf.render_summary(sf.summary_text(DELETED)) == "Deleted"
     assert sf.render_summary(sf.summary_text(UNDELETED)) == "Restored"
     assert sf.delete_summary() == sf.summary_text(DELETED) and sf.undelete_summary() == sf.summary_text(UNDELETED)
