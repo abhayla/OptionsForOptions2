@@ -16,11 +16,11 @@ Companion: `screen-inventory.json` (machine-readable, same IDs). Extractor: `fro
 | of which unbuilt placeholder pages | 15 |
 | Distinct page components | 24 (plus the app shell and shared components, listed as their own sections) |
 | Pages whose first path carries controls | 21 |
-| **Controls (rows)** | **452** |
-| **Covered** (a test clicks, types in or asserts the control) | **354** |
+| **Controls (rows)** | **454** |
+| **Covered** (a test clicks, types in or asserts the control) | **356** |
 | **Not covered** | **98** |
 | **Spec-silent** | **30** |
-| Rows against screen-inventory.json | match (452 controls, one row each) |
+| Rows against screen-inventory.json | match (454 controls, one row each) |
 
 | Section (ID prefix) | Controls | Covered | Not covered | Spec-silent |
 |---|---|---|---|---|
@@ -32,7 +32,7 @@ Companion: `screen-inventory.json` (machine-readable, same IDs). Extractor: `fro
 | PLACE | 1 | 1 | 0 | 0 |
 | MYSTR | 18 | 17 | 1 | 0 |
 | CREATE | 13 | 11 | 2 | 0 |
-| BUILD | 197 | 144 | 53 | 17 |
+| BUILD | 199 | 146 | 53 | 17 |
 | LIVE | 6 | 6 | 0 | 0 |
 | ADJ | 66 | 47 | 19 | 0 |
 | POS | 4 | 4 | 0 | 0 |
@@ -588,6 +588,8 @@ Same page component also serves: `/strategy/builder`.
 | BUILD-195 | &gt; [aria-label: Later] `target-date-forward` _(button)_ | src/components/strategy/TargetBlock.vue:83 | Step the target date back or forward. | REQ-084 AC-2 | NONE |  | live prices |
 | BUILD-196 | Reset `target-date-reset` _(button)_ | src/components/strategy/TargetBlock.vue:84 | Reset the target date. | REQ-084 AC-2 | NONE |  | live prices |
 | BUILD-197 | Open My Strategies `open-error-my-strategies` _(link)_ | src/pages/StrategyBuilderPage.vue:1250 | After a ?strategy= that does not exist: goes to /strategies/my-strategies. | REQ-134 AC-5; ADR-330 (37) | e2e/screen-builder-drafts.spec.ts › ST-4 |  | none |
+| BUILD-198 | Change expiry of leg N `leg-expiry-select` _(field)_ | src/components/strategy/LegList.vue:242 | Put this one leg on another listed expiry, keeping strike, side and lots; nothing moves if the strike is not listed there. Off with a reason for a leg with an exit waiting. | REQ-078 AC-11, AC-12, AC-13; ADR-330 (42) | e2e/screen-builder-legs.spec.ts › D-48 |  | none |
+| BUILD-199 | Change expiry of all legs `expiry-all` _(field)_ | src/components/strategy/StrategyControls.vue:111 | Put every leg on the chosen listed expiry; one missing strike refuses the whole change and names it. | REQ-078 AC-11, AC-12, AC-13; ADR-330 (42) | e2e/screen-builder-legs.spec.ts › D-48 |  | none |
 
 ### `/strategies/live-strategies` - LiveStrategiesPage.vue
 
