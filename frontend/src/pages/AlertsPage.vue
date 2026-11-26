@@ -7,7 +7,7 @@
 import PageHeader from '@/components/common/PageHeader.vue'
 import EmptyState from '@/components/states/EmptyState.vue'
 import { computed, onMounted, ref } from 'vue'
-import { RouterLink, useRoute, useRouter } from 'vue-router'
+import { useRoute, useRouter } from 'vue-router'
 import ErrorMessage from '@/components/common/ErrorMessage.vue'
 import { istTime } from '@/lib/displayFormat'
 import { plainName } from '@/lib/saveDraft'
