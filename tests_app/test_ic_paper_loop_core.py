@@ -185,7 +185,11 @@ async def _core(app_engine) -> None:  # noqa: PLR0915 - one readable walk of the
         assert placed.status_code == CREATED, placed.text
         new = (await _rows("SELECT id, price FROM public.paper_orders WHERE strategy_id = :s ORDER BY id",
                            s=sid))[before:]
-        assert [format(p, "f") for _i, p in new] == [o["price"] for o in orders]  # fill = frame 6 mid (REQ-109 AC-1)
+        # fill = frame 6 mid (REQ-109 AC-1). The batch is against an open position, so it is RECORDED buys first,
+        # buy-backs of shorts before other buys (D-02; REQ-159 AC-6 "short buy-backs before long sales"); the
+        # request order above is not the stored order. Stable among equals.
+        recorded = sorted(orders, key=lambda o: (o["side"] != "BUY", o["kind"] != "exit"))
+        assert [format(p, "f") for _i, p in new] == [o["price"] for o in recorded]
         timeline = (await _rows("SELECT timeline FROM public.adjustment_suggestions WHERE id = :r", r=record[0]))[0][0]
         placed_events = [e for e in timeline if e.get("event") == "orders_placed"]
         assert [sorted(e["order_ids"]) for e in placed_events] == [sorted(i for i, _p in new)]  # linked

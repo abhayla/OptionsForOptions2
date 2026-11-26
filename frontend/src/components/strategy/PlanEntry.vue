@@ -38,6 +38,9 @@
       </template>
       <AdjustPlanSheet :open="sheetOpen" :strategy-id="strategyId" :edit="!!read.plan" @close="sheetOpen = false" @saved="(next) => { read = next }" />
     </div>
+    <!-- GC-ICLIVE D-24: the armed (or fired) index conditional exits, the server's level text; a failed read says so, never "none set" -->
+    <p v-for="x in exits" :key="x.id" class="mt-1" :data-testid="`plan-entry-exit-${x.id}`">{{ exitLineText(x.direction, x.level_text, x.state) }}</p>
+    <p v-if="exitsFailed" class="mt-1 text-xs text-red-700" data-testid="plan-entry-exits-failed">{{ EXITS_LOAD_FAILED_TEXT }}</p>
   </div>
 </template>
 
@@ -47,7 +50,7 @@ import AdjustPlanSheet from '@/components/strategy/AdjustPlanSheet.vue'
 import LoadFailed from '@/components/common/LoadFailed.vue'
 import api from '@/services/api'
 import { fetchPlan } from '@/lib/adjustPlan'
-import { checkStaleLine, LIMITS_LOADING_TEXT, LIMITS_LOAD_FAILED_TEXT, LIMITS_NONE_TEXT, PLAN_LOADING_TEXT, PLAN_LOAD_FAILED_TEXT } from '@/lib/sharedStateText'
+import { checkStaleLine, EXITS_LOAD_FAILED_TEXT, exitLineText, LIMITS_LOADING_TEXT, LIMITS_LOAD_FAILED_TEXT, LIMITS_NONE_TEXT, PLAN_LOADING_TEXT, PLAN_LOAD_FAILED_TEXT } from '@/lib/sharedStateText'
 
 // the rule check's reply and the state of the panel's one read of it: 'loading' | 'ok' | 'failed'
 const props = defineProps({
@@ -56,6 +59,8 @@ const props = defineProps({
   checkStatus: { type: String, default: 'loading' },
   checkRefusal: { type: String, default: '' }, // the server's sentence when the last check read was refused
   checkStale: { type: Boolean, default: false }, // a background re-read failed: the lines are the last good ones
+  exits: { type: Array, default: () => [] }, // GC-ICLIVE D-24: the armed / fired index conditional exits (GET /paper/strategies/{id}/triggers)
+  exitsFailed: { type: Boolean, default: false }, // the exits read failed: said so, never "none set"
 })
 defineEmits(['retry-check'])
 const read = ref(null)

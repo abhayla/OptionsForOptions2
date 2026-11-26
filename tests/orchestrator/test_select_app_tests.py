@@ -120,6 +120,7 @@ PR241_SELECTION = {
     # GC-ICFIX merges: imports ofo_app.strategy_refused / the routes.strategies list model the diff changes
     "tests_app/test_fired_state_follows_record.py", "tests_app/test_strategy_has_order_rule.py",
     "tests_app/test_compare_estimate_note.py",  # moved from tests/: imports ofo.errors.explanations (changed here)
+    "tests_app/test_may_act.py",  # Phase 2 (B4): imports strategy_refused / routes.outcome (changed here)
 }
 
 

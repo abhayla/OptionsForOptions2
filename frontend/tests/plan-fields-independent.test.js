@@ -17,7 +17,7 @@ vi.mock('@/services/api', async (importActual) => {
 })
 import AdjustPlanSheet from '@/components/strategy/AdjustPlanSheet.vue'
 import PlanEntry from '@/components/strategy/PlanEntry.vue'
-import { PLAN_REFILLED_TEXT } from '@/lib/sharedStateText'
+import { PLAN_LOAD_FAILED_TEXT, PLAN_REFILLED_TEXT } from '@/lib/sharedStateText'
 
 const LABELS = {
   title: "When tracking starts: this strategy's plan", playbook: 'Playbook', target: 'Target', stop: 'Stop', max_adjustments: 'Max adjustments',
@@ -110,14 +110,22 @@ describe('picking a playbook refills the fields and says so in one line', () => 
     expect(t(w, 'plan-refilled').text()).toBe(PLAN_REFILLED_TEXT('Iron condor (system)'))
   })
 
-  it('a pick whose read fails shows the could-not-load state and no refilled note', async () => {
+  // D-38 (f87a0579 / 186d5070): a failed pick keeps the sheet and what was typed and shows the error inline
+  // (plan-sheet-pick-error); a non-timeout failure says the could-not-load text, a timeout says PLAN_PICK_TIMED_OUT_TEXT.
+  it('a pick whose read fails shows the could-not-load line inline, no refilled note, and the fields keep what was there', async () => {
     answers[`GET ${PATH}`] = sheetAnswer()
     answers[`GET ${PATH}?playbook_id=1`] = () => Promise.reject({ message: 'x', parts: null, status: 503 })
     const w = await sheet()
+    await t(w, 'plan-stop').setValue('35')
+    const before = inputs(w)
     await t(w, 'plan-playbook').setValue('1')
     await flushPromises()
-    expect(t(w, 'plan-sheet-error').exists()).toBe(true)
+    expect(t(w, 'plan-sheet-pick-error').exists()).toBe(true)
+    expect(t(w, 'plan-sheet-pick-error').text()).toBe(PLAN_LOAD_FAILED_TEXT)
+    expect(t(w, 'plan-sheet-error').exists()).toBe(false)
     expect(t(w, 'plan-refilled').exists()).toBe(false)
+    expect(inputs(w)).toEqual({ ...before, playbook: '9' })
+    expect(before).toMatchObject({ stop: '35', target: '50' })
   })
 
   it('reopening a saved plan shows the saved values and no note', async () => {

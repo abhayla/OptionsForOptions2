@@ -45,7 +45,18 @@ from ofo.errors.gate_slots import (
     WorstCase,
 )
 from ofo.errors.model import UserFacingError, _build, _claim_render_token
-from ofo.errors.slots import Code, Count, ExternalText, Instrument, Int, Money, SlotType, Time, Underlying
+from ofo.errors.slots import (
+    Code,
+    Count,
+    ExternalText,
+    Instrument,
+    Int,
+    Money,
+    PnLMoney,
+    SlotType,
+    Time,
+    Underlying,
+)
 from ofo.instruments.catalogue import SUPPORTED_UNDERLYINGS
 
 _PART_NAMES: tuple[str, ...] = ("what_happened", "impact", "what_is_blocked", "next_action")
@@ -988,11 +999,12 @@ _STRATEGY_DRAFT_TEMPLATES: tuple[MessageTemplate, ...] = (
           "Placing these paper orders.", "Choose a contract that is still live, then place the orders again."),
     # GC-ICGUIDE g10 (audit C9; ADR-255): the plan's most adjustments, enforced when the orders are saved.
     _gate("paper_adjustment_limit", _SV, 505,
-          "This plan allows at most {limit} adjustments, and these orders would make adjustment {number}.",
+          "These orders open or add to a leg, and there is no room left: plan maximum of {limit} reached.",
           "No order was stored; a partial exit counts as an adjustment, the entry does not.",
           "Placing these paper orders.",
-          "Exit the whole strategy, or raise the plan's most adjustments, then place the orders again.",
-          {"limit": Count, "number": Count}),
+          "Close or reduce legs instead, exit the whole strategy, or raise the plan's most adjustments, then place "
+          "the orders again.",
+          {"limit": Count}),
     _gate("paper_adjustment_limit_unread", _SV, 506,
           "The plan's most adjustments could not be read, so these orders cannot be checked against it.",
           "No order was stored; an adjustment is never saved without checking the plan's limit.",
@@ -1038,6 +1050,23 @@ _STRATEGY_DRAFT_TEMPLATES: tuple[MessageTemplate, ...] = (
           "This strategy has nothing open, so there is nothing for a stop to exit.",
           "No stop was set.",
           "Setting this paper stop.", "Place a paper order to open a position first, then set the stop."),
+    _gate("paper_trigger_already_crossed", _SV, 444,
+          "the live price is already at or beyond this level, so this exit would close the trade straight away. "
+          "To close now, use Exit.",
+          "No stop was set; nothing was exited.",
+          "Setting this paper stop.",
+          "Choose a level the price has not reached yet, or use Exit to close the trade now."),
+    _gate("paper_trigger_leg_already_crossed", _SV, 445,
+          "the live price is already at or beyond this level, so this stop would close the leg straight away. "
+          "To close now, use Exit.",
+          "No stop was set; nothing was exited.",
+          "Setting this paper stop.",
+          "Choose a level the price has not reached yet, or use Exit to close the leg now."),
+    _gate("paper_trigger_price_unreadable", _SV, 446,  # ADR-327 (2): market open, the live price cannot be read
+          "the live price could not be read, so this level cannot be checked. Try again in a moment.",
+          "No stop was set; nothing was exited.",
+          "Setting this paper stop.",
+          "Press Save again once the live prices are showing."),
     _gate("paper_trigger_already_fired", _SV, 443,
           "This stop has already fired (or was already cancelled) and cannot be cancelled.",
           "Nothing was changed; a fired stop has already exited its legs.",
@@ -1475,9 +1504,10 @@ _PLAYBOOK_TEMPLATES: tuple[MessageTemplate, ...] = (
           "No short leg is priced within the buy-back limit of {limit} your playbook sets for this stage.",
           _ADJ_REFUSED, _ADJ_BLOCKED, _ADJ_PICK_OTHER, {"limit": Money}),
     _gate("adjust_time_exit_not_set", _UI, 184,
-          "Your playbook sets no time exit, so this approach is not built.",
+          "This approach is not built because your playbook sets no exit time.",
           _ADJ_REFUSED, _ADJ_BLOCKED, _ADJ_PICK_OTHER, {}),
-    _gate("adjust_time_exit_not_yet", _UI, 185, "The time exit is offered on expiry day from {time}.",
+    _gate("adjust_time_exit_not_yet", _UI, 185,
+          "This approach opens on the expiry day, from {time}; it is not offered before then.",
           _ADJ_REFUSED, _ADJ_BLOCKED, _ADJ_PICK_OTHER, {"time": ClockTime}),
     # ADR-239 (GC-IC1 step 3): the roll approaches A-02 and A-04
     _gate("adjust_roll_short_past_wing", _UI, 186,
@@ -1498,6 +1528,17 @@ _PLAYBOOK_TEMPLATES: tuple[MessageTemplate, ...] = (
     _gate("adjust_take_profit_booked_unknown", _UI, 190,
           "The profit or loss booked so far is not known, so whether the whole trade is in profit cannot be worked "
           "out and this approach is not built.",
+          _ADJ_REFUSED, _ADJ_BLOCKED, _ADJ_PICK_OTHER, {}),
+    # ADR-326 (1) (D-25): take profit is also refused when the whole trade is a loss AFTER charges
+    _gate("adjust_take_profit_not_in_profit_after_charges", _UI, 198,
+          "Not in profit after charges: {after}", _ADJ_REFUSED, _ADJ_BLOCKED, _ADJ_PICK_OTHER, {"after": PnLMoney}),
+    _gate("adjust_take_profit_two_expiries", _UI, 200,
+          "The result after charges cannot be worked out for a trade that would be left with two expiries, so whether "
+          "it is in profit after charges is not known and this approach is not built.",
+          _ADJ_REFUSED, _ADJ_BLOCKED, _ADJ_PICK_OTHER, {}),
+    _gate("adjust_take_profit_charges_unknown", _UI, 199,
+          "The charges of closing the whole trade cannot be worked out, so whether it is in profit after charges is "
+          "not known and this approach is not built.",
           _ADJ_REFUSED, _ADJ_BLOCKED, _ADJ_PICK_OTHER, {}),
 )
 

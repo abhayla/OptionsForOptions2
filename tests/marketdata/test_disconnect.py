@@ -36,11 +36,18 @@ def nifty_quote(*, feed_connected: bool):
 
 
 def test_ac5_exact_message_text_with_time_converted_to_ist():
-    """ADR-015's own example format: 'Live market data disconnected. Last updated: 10:42:17 AM. Live strategy
+    """ADR-015's own example format: 'Live market data disconnected. Last updated: 10:42:17 IST. Live strategy
     monitoring is paused.' UTC 05:12:17 -> IST (+5:30) 10:42:17."""
     last_updated_utc = datetime.datetime(2026, 9, 29, 5, 12, 17, tzinfo=UTC)
     msg = disconnect_message(last_updated_utc)
-    assert msg == "Live market data disconnected. Last updated: 10:42:17 AM. Live strategy monitoring is paused."
+    assert msg == "Live market data disconnected. Last updated: 10:42:17 IST. Live strategy monitoring is paused."
+
+
+def test_ac5_afternoon_time_is_24_hour_ist_without_am_pm():
+    """ADR-326 (4) (D-57): 10:15:00 UTC is 15:45:00 IST, shown "15:45:00 IST", never "03:45:00 PM"."""
+    msg = disconnect_message(datetime.datetime(2026, 9, 29, 10, 15, 0, tzinfo=UTC))
+    assert msg == "Live market data disconnected. Last updated: 15:45:00 IST. Live strategy monitoring is paused."
+    assert "AM" not in msg and "PM" not in msg
 
 
 def test_ac5_rejects_naive_datetime():

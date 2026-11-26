@@ -9,8 +9,8 @@ catalogue_refresh pattern). It never reaches Zerodha: it records PAPER orders on
 (tests_app/test_paper_order_door.py walks this module's import graph).
 
 - Load: every armed trigger in ONE query (paper_trigger_store.armed), their strategies' orders in ONE query, their
-  contracts in one batch; subscribes on the market's fan-out the index of each conditional exit, the contract of each
-  leg stop and every open contract of a strategy with a conditional exit (its exit prices are read from the provider).
+  contracts in one batch; subscribes on the market's fan-out the index of every armed trigger (S-20), the contract of
+  each leg stop and every open contract of a strategy with a conditional exit (prices read from the provider).
   Reloads when a route adds or cancels a trigger (``notify``), every ``RELOAD_SECONDS``, and when the market's feed
   object changes (a new login).
 - On a quote: per-tick work is the armed triggers watching that instrument. Nothing fires outside market hours (a
@@ -44,9 +44,9 @@ from ofo.strategy import stored_form as sf
 from ofo.strategy.definition import display_contract
 from ofo.tracking import paper, stops
 from ofo.tracking.orderbook import net_positions
-from ofo.tracking.paper_alert import alert_body
+from ofo.tracking.paper_alert import alert_body, stop_reason_at
 
-from ofo_app import paper_store, tracked_contracts
+from ofo_app import paper_exit, paper_store, tracked_contracts
 from ofo_app import paper_trigger_store as triggers
 from ofo_app.live_push import LiveFeed
 from ofo_app.routes.outcome import SettingsReader, feed_scope, with_rate_in_force
@@ -136,11 +136,14 @@ class PaperMonitor:
             t = a.trigger
             if feed is None:
                 break
+            index_key = feed.ctx.provider.index_id(a.underlying)  # type: ignore[attr-defined]
             if t.kind == "conditional_exit":
-                key = feed.ctx.provider.index_id(t.underlying)  # type: ignore[attr-defined]
+                key = index_key
                 extra.update(k for k in (found[c].feed_key for c in open_ids[t.strategy_id]) if k is not None)
             else:
                 key = found[t.contract_id].feed_key  # type: ignore[index]
+            if index_key is not None:
+                extra.add(index_key)  # S-20: every armed trigger holds its index, so a fire's record carries its value
             if key is not None:
                 watch.setdefault(key, []).append(_Watch(a, key))
         self._watch = watch
@@ -224,20 +227,38 @@ class PaperMonitor:
             prices = self._exit_prices(feed, a, w, price, targets, found)
             if prices is None:
                 return None  # a contract without a live price: not yet, the trigger stays armed
-            if not await triggers.claim_fire(session, t.id):
-                return {"fired": set(), "cancelled": {t.id}}  # fired before (another tick, monitor or run)
             texts = {c: _contract_text(found[c]) for c in targets}
-            reason = self._reason(t, texts)
-            await paper_store.place(session, a.user_ref, t.strategy_id, [
-                paper_store.NewOrder(c, "SELL" if open_net[c] > 0 else "BUY", abs(open_net[c]), prices[c], "stop",
-                                     now, str(reason), t.id) for c in targets], entry=None)  # a stop: never first
-            body = alert_body(reason, [(texts[c], prices[c]) for c in targets], names_contract=t.kind == "leg_stop")
+            reason = stop_reason_at(self._reason(t, texts), a.underlying, self._index_now(feed, a.underlying))
+            # the door: the strategy lock FIRST, the net read under it (a lot added since the look above is closed
+            # too), then the claim, then the write (a stop: never a first fill)
+            done = await paper_exit.exit_strategy(
+                session, user_ref=a.user_ref, strategy_id=t.strategy_id, kind="stop", prices=prices, placed_at=now,
+                only=[t.contract_id] if t.kind == "leg_stop" else sorted, reason=str(reason), trigger_id=t.id,
+                before_write=lambda: triggers.claim_fire(session, t.id),
+                write=lambda orders: paper_store.place(session, a.user_ref, t.strategy_id, orders, entry=None))
+            if not isinstance(done, paper_exit.Exited):
+                return await self._not_written(session, t, done)
+            stored = done.book
+            # D-02: the stored (buys first) order
+            recorded = [o.order.contract_id for o in stored if o.order.trigger_id == t.id]
+            body = alert_body(reason, [(texts[c], prices[c]) for c in recorded], names_contract=t.kind == "leg_stop")
             name = sf.shown_name(a.name) if a.name else render_explanation("cell_dash")
             await triggers.add_alert(session, t.strategy_id, t.id, str(render_explanation("paper_alert_title",
                                                                                           name=name)),
                                      str(body))
         self.fires += 1
         return {"fired": {t.id}, "cancelled": set()}
+
+    @staticmethod
+    async def _not_written(session: Any, t: stops.Trigger, done: Any) -> dict[str, set[int]] | None:
+        """The door wrote nothing: flat since the look (cancel), no live price (not yet: stays armed), or the trigger
+        fired before (another tick, monitor or run)."""
+        if isinstance(done, paper_exit.Flat):
+            gone = None if done.strategy_flat or t.kind != "leg_stop" else t.id
+            return {"cancelled": set(await triggers.cancel(session, t.strategy_id, gone)), "fired": set()}
+        if isinstance(done, paper_exit.NotYet):
+            return None
+        return {"fired": set(), "cancelled": {t.id}}
 
     def _exit_prices(self, feed: LiveFeed, a: triggers.ArmedTrigger, w: _Watch,  # noqa: PLR0913
                      price: paper.Price, targets: list[int],
@@ -255,6 +276,17 @@ class PaperMonitor:
                 return None
             out[c] = p.price
         return out
+
+    @staticmethod
+    def _index_now(feed: LiveFeed, underlying: str) -> Decimal | None:
+        """D-22: the index's live value at this fire (the provider's spot quote); None when it has no live price."""
+        try:
+            key = feed.ctx.provider.index_id(underlying)  # type: ignore[attr-defined]
+            quote = feed.ctx.provider.underlying_quote(underlying)  # type: ignore[attr-defined]
+            answer = paper.price_of(quote, key or underlying)
+        except Exception:  # noqa: BLE001 - the value is a record detail: never block a stop on it
+            return None
+        return answer.price if paper.is_live(answer) else None
 
     @staticmethod
     def _reason(t: stops.Trigger, texts: Mapping[int, ExplanationText]) -> ExplanationText:

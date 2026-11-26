@@ -54,6 +54,14 @@ export function targetFields(pick, stops) {
 /** GC-TP R-18 (ADR-209): the request fields of the chart card's "Add Booked P&L" switch. Only a paper strategy (Drafts Mode,
  *  `paperId` set) names itself; the server reads its booked P&L (nothing is computed here). A plan sends nothing. */
 export const BOOKED_SWITCH_LABEL = 'Add Booked P&L' // Sensibull screen 020, catalogue line 46
+/** S-06 (ADR-321 (3)): the plan summary's basis sentences, the one home of the wording (the card and the open-legs lines use them). */
+export const PLAN_BASIS_AFTER_CHARGES_TEXT = 'Max Profit and Max Loss are after charges estimated at entry prices; breakevens are before charges.'
+export const PLAN_BASIS_BEFORE_CHARGES_TEXT = 'Max Profit, Max Loss and breakevens are before charges.'
+const OPEN_LEGS_PREFIX = 'Open legs only: the booked P&L is not included. '
+/** D-11 (ADR-209): the line under the tiles of a paper trade with the Add Booked switch OFF: they are the open legs alone. */
+export const OPEN_LEGS_ONLY_TEXT = OPEN_LEGS_PREFIX + PLAN_BASIS_AFTER_CHARGES_TEXT
+/** The same line when the served summary has no charges figure (no rates, a futures leg): the tiles are before charges. */
+export const OPEN_LEGS_ONLY_BEFORE_CHARGES_TEXT = OPEN_LEGS_PREFIX + PLAN_BASIS_BEFORE_CHARGES_TEXT
 export function bookedFields(paperId, includeBooked) {
   if (!paperId) return {}
   return includeBooked ? { paper_strategy_id: paperId } : { paper_strategy_id: paperId, include_booked: false }

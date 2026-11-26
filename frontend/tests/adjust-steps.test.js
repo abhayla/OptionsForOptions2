@@ -144,3 +144,51 @@ describe('AdjustSteps', () => {
     expect(w.find('[data-testid="steps-totals"]').exists()).toBe(false)
   })
 })
+
+// D-27 (REQ-163 AC-1): the section never opens to an empty block. Real case: C1 155, "Adjustment history" opened empty after
+// 2 adjustments. While the read is pending it says so; each opening reads again (a section opened before an adjustment would
+// otherwise keep the old rows); a reply with no rows says so; an earlier failure's line is gone once a read succeeds.
+describe('AdjustSteps never opens to an empty block (D-27)', () => {
+  const toggle = async (w, openIt) => {
+    const d = tid(w, 'adjust-steps')
+    d.element.open = openIt
+    await d.trigger('toggle')
+    await flushPromises()
+  }
+  it('says it is reading while the read is pending, then shows the rows', async () => {
+    let release
+    reply = () => new Promise((resolve) => { release = () => resolve({ data: body() }) })
+    const w = mount(AdjustSteps, { props: { strategyId: 155 } })
+    await toggle(w, true)
+    expect(w.get('[data-testid="steps-loading"]').text()).toContain('Reading')
+    release()
+    await flushPromises()
+    expect(w.find('[data-testid="steps-loading"]').exists()).toBe(false)
+    expect(w.findAll('[data-testid="steps-row"]')).toHaveLength(2)
+  })
+  it('reads again on each opening, so rows added by an adjustment since the last opening show', async () => {
+    const w = mount(AdjustSteps, { props: { strategyId: 155 } })
+    reply = () => Promise.resolve({ data: body(totals(), [row()]) })
+    await toggle(w, true)
+    expect(w.findAll('[data-testid="steps-row"]')).toHaveLength(1)
+    await toggle(w, false)
+    reply = () => Promise.resolve({ data: body() })
+    await toggle(w, true)
+    expect(w.findAll('[data-testid="steps-row"]')).toHaveLength(2)
+    expect(calls.filter((c) => c === '/strategies/155/adjustment-history')).toHaveLength(2)
+  })
+  it('a reply with no rows says no step is recorded; a failed read keeps its line until the next read succeeds', async () => {
+    reply = () => Promise.resolve({ data: body(totals(), []) })
+    const w = mount(AdjustSteps, { props: { strategyId: 155 } })
+    await toggle(w, true)
+    expect(w.get('[data-testid="steps-none"]').text()).toContain('No entry or adjustment')
+    await toggle(w, false)
+    reply = () => Promise.reject({ message: 'x', parts: null, status: 503 })
+    await toggle(w, true)
+    expect(w.find('[data-testid="steps-error"]').exists()).toBe(true)
+    await toggle(w, false)
+    reply = () => Promise.resolve({ data: body() })
+    await toggle(w, true)
+    expect(w.find('[data-testid="steps-error"]').exists()).toBe(false)
+  })
+})

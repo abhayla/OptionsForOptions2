@@ -81,11 +81,24 @@ const order = (contractId, side, units, lotSize, kind, leg) => ({
   contract_id: contractId, side, quantity: units, lots: units / lotSize, lot_size: lotSize, kind, leg,
 })
 
+/** The contract ids that more than one row holds with the same action (a kept duplicate); rows with lots 0 do not count. */
+function keptDuplicateIds(legs) {
+  const seen = new Set()
+  const out = new Set()
+  for (const l of legs ?? []) {
+    if (!(l.lots > 0)) continue
+    const key = `${l.contract_id}:${l.action}`
+    if (seen.has(key)) out.add(l.contract_id)
+    seen.add(key)
+  }
+  return out
+}
+
 /** THE one diff of Drafts Mode: the paper orders that turn the net position (`net`, builder legs) into the edited legs.
  *  Per contract, comparing signed units: same side and larger -> one `add` (the position's side); same side and smaller ->
  *  one `exit` (opposite side) of the difference; to zero -> `exit` of the whole held quantity; crossing zero -> `exit` of the
- *  held quantity + `add` of the rest on the new side; a new contract -> `add`. Exits first, then adds, each in the order
- *  the contracts first appear (net, then edited). Each order carries the leg it came from (`leg`) for the dialog's text and
+ *  held quantity + `add` of the rest on the new side; a new contract -> `add`. Listed BUY exits, BUY adds, SELL exits, SELL adds (REQ-159 AC-6: hedge
+ *  first on entry, short buy-backs before long sales), each group in the order the contracts first appear (net, then edited). Each order carries the leg it came from (`leg`) for the dialog's text and
  *  default price. Null (fail closed) when any leg cannot be read: no orders are offered from an unreadable list. */
 export function paperOrdersFor(net, edited) {
   const before = signedByContract(net)
@@ -93,7 +106,16 @@ export function paperOrdersFor(net, edited) {
   if (!before || !after) return null
   const exits = []
   const adds = []
-  const ids = [...new Set([...before.keys(), ...after.keys()])]
+  // D-60 (ADR-319 (3), A4 review 3 finding 1): two rows of one contract and action are a KEPT duplicate. It is never summed into
+  // one order: each row goes as its own `add`, so the server's duplicate check (the one refusal source) sees both and refuses
+  // with its gate sentence. Netting stays per contract for every other edit (one row's lots changed, a buy and a sell).
+  const dups = keptDuplicateIds(edited)
+  for (const id of dups) {
+    for (const l of edited) {
+      if (l.contract_id === id && l.lots > 0) adds.push(order(id, l.action, l.lots * l.lot_size, l.lot_size, 'add', l))
+    }
+  }
+  const ids = [...new Set([...before.keys(), ...after.keys()])].filter((id) => !dups.has(id))
   for (const id of ids) {
     const held = before.get(id)?.units ?? 0
     const want = after.get(id)?.units ?? 0
@@ -115,7 +137,9 @@ export function paperOrdersFor(net, edited) {
       exits.push(order(id, opposite(held), size(held) - size(want), lotSize, 'exit', heldLeg))
     }
   }
-  return [...exits, ...adds]
+  // REQ-159 AC-6 / REQ-058: buy legs first, whatever the diff produced: short buy-backs, new hedges, old-hedge sales, new shorts.
+  const rank = (o) => (o.side === 'BUY' ? 0 : 2) + (o.kind === 'exit' ? 0 : 1)
+  return [...exits, ...adds].sort((a, b) => rank(a) - rank(b)) // stable (ES2019)
 }
 
 /** The confirm list's rows for `orders` (PaperConfirmDialog props). Default price: an exit at the contract's live LTP text from
@@ -137,6 +161,7 @@ export function confirmRowsFor(orders, book, nameOf, livePriceById = {}) {
       lots: o.lots,
       lot_size: o.lot_size,
       price,
+      price_at: o.kind === 'exit' && live && typeof p.price_at === 'string' ? p.price_at : null, // D-09: the shown quote's own time
       kind: o.kind,
       price_note: o.kind === 'exit' ? (live ? '' : LAST_CLOSE_LABEL) : entry.price_note,
     }
@@ -162,6 +187,9 @@ export async function readPaperBook(client, id) {
     contracts.push(...(await client.get(`/catalogue/${book.underlying}/contracts?expiry=${expiry}`)).data.contracts)
   }
   const net = netLegsFromBook(book, contracts)
+  // D-40: an open leg on an expired contract is not in the catalogue; the server says so (expired_open) and why nothing is priced.
+  // Any other unreadable book (catalogue, net mismatch, a leg that is not live but not expired) still throws below.
+  if (!net && book.expired_open === true) return { kind: 'unpriced', book }
   if (!net) throw new Error('unreadable paper book')
   return { kind: 'paper', book, net }
 }
@@ -174,6 +202,9 @@ export const PAPER_REREAD_DELAYS_MS = Object.freeze([0, 400, 1200])
 /** R-11: a leg loaded from the book carries the paper fill's average, not a price the user typed (no time beside it). */
 export const PAPER_AVERAGE_LABEL = 'Paper average'
 export const PROFIT_LEFT_LABEL = 'Profit left'
+// D-14 (ADR-320 (2)): on the trade's expiry day only, Max profit and Profit left are shown twice under these two labels
+export const HELD_TO_EXPIRY_LABEL = 'If held to expiry'
+export const EXITED_NOW_LABEL = 'If exited now'
 export const LOSS_LEFT_LABEL = 'Loss left'
 // ADR-302: when Profit left (after charges) is larger than Max profit the server sends `recover_text`; this one sentence says why
 export const RECOVER_LINE_PREFIX = 'includes Rs '
@@ -205,12 +236,28 @@ export function paperLeftOf(book, pausedText = null) {
     reason: serverText(book.extremes_reason_text), // R-20: the server's sentence for extremes_reason, never written here
     // F-94: the server's sentence on whether the round-trip charges are inside Max Profit / Max Loss; `after` = the server sent the
     // charges amount (its presence, not a number made here). Nothing beside a paused figure.
-    extremes: profit.kind === 'paused' ? null : { text: serverText(book.extremes_charges_text), after: serverText(book.extremes_charges) !== null },
+    // D-14 round 2: a paused book's Max Profit is before charges: the server's sentence says so beside it (after: false)
+    extremes: { text: serverText(book.extremes_charges_text), after: profit.kind !== 'paused' && serverText(book.extremes_charges) !== null },
+    // D-14 (ADR-320 (2)): the server sends the held pair on the trade's expiry day only; the exited pair is the usual figures
+    expiryPair: serverText(book.max_profit_hold_text) === null || profit.kind !== 'after' ? null : {
+      held: { maxProfit: serverText(book.max_profit_hold_text), profitLeft: serverText(book.profit_left_hold_text) },
+      exited: { maxProfit: serverText(book.max_profit_text), profitLeft: profit.text },
+    },
   }
+}
+/** D-13/D-14 round 2: what the Charges dialog shows in Drafts Mode, the paper reply's own texts as sent (no sum made here):
+ *  charges paid, the estimated cost to close at the live price, and `total` = extremes_charges (the charges inside Max Profit and
+ *  Max Loss; null when those are before charges). Null when the reply has no paid-charges text (the dialog then has nothing to show). */
+export function paperChargesOf(book) {
+  const paid = serverText(book?.charges_paid_text ?? book?.charges_text)
+  if (paid === null) return null
+  return { paid, toClose: serverText(book.charges_to_close_text), total: serverText(book.extremes_charges), sentence: serverText(book.extremes_charges_text) }
 }
 export const EXIT_ALL_LABEL = 'Exit all'
 export const EXIT_LABEL = 'Exit'
 export const ADD_KIND_LABEL = 'Add'
+export const STOP_KIND_LABEL = 'Stop'
+export const SETTLE_KIND_LABEL = 'Settled'
 export const NET_POSITIONS_LABEL = 'Net Positions'
 export const ORDERBOOK_LABEL = 'Orderbook'
 
@@ -225,8 +272,10 @@ export function paperDialogTitle(orders) {
   if (exits === 0) return PAPER_TITLE_ADD
   return exits === list.length ? PAPER_TITLE_EXIT : PAPER_TITLE_BOTH
 }
-/** Each row's kind beside B/S ('open' and 'add' both add to the position). */
-export const paperKindLabel = (kind) => (kind === 'exit' ? EXIT_LABEL : ADD_KIND_LABEL)
+/** Each row's kind beside B/S ('open' and 'add' both add to the position; D-23: a stop-out and an expiry settlement keep their own
+ *  kind, the server's `stop` and `settle`, so they never read as a new buy). */
+const KIND_LABELS = { exit: EXIT_LABEL, stop: STOP_KIND_LABEL, settle: SETTLE_KIND_LABEL }
+export const paperKindLabel = (kind) => KIND_LABELS[kind] ?? ADD_KIND_LABEL
 
 /** The open lots of `contractId` in the net position (a count), or 0. */
 export function openLots(net, contractId) {

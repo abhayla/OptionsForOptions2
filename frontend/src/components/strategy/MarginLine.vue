@@ -21,6 +21,7 @@ import { istTime } from '@/lib/displayFormat'
 import { displayOrDash, exactLine } from '@/lib/summaryFigures'
 import { MARGIN_LINE_HIDDEN_REASON, capabilityOn } from '@/lib/brokerCapabilities'
 import FigureHint from '@/components/common/FigureHint.vue'
+import { SHORT_FUNDS_LINE } from '@/lib/sharedStateText'
 
 const props = defineProps({
   margin: { type: Object, required: true },
@@ -68,7 +69,7 @@ const checkedAtLine = computed(() => `Checked at ${istTime(props.margin.checked_
            figures and the ways forward) is one tap away behind More, every word kept -->
       <div v-if="short" class="mt-0.5 text-[13px] text-loss" data-testid="margin-shortfall">
         <p class="flex flex-wrap items-baseline gap-x-1">
-          <span class="font-medium" data-testid="margin-short-line">Not enough funds for this strategy</span>
+          <span class="font-medium" data-testid="margin-short-line">{{ SHORT_FUNDS_LINE }}</span>
           <button type="button" class="text-xs underline" :aria-expanded="openShort ? 'true' : 'false'" data-testid="margin-shortfall-more" @click="openShort = !openShort">{{ openShort ? 'Less' : 'More' }}</button>
         </p>
         <p v-if="openShort" class="mt-0.5 text-xs" data-testid="margin-shortfall-text">{{ shortfallText }}</p>

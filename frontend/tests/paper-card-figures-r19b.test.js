@@ -86,6 +86,15 @@ describe('the card figures (the real reply)', () => {
     expect(c.text()).not.toMatch(CODE)
   })
 
+  it('prices not live: the server sentence that Max Profit is before charges stays beside it (D-14 round 2)', async () => {
+    const BEFORE = 'Maximum profit and maximum loss are before charges and taxes: the charges could not be priced.'
+    const reply = clone(PAUSED)
+    open(reply).extremes_charges_text = BEFORE
+    answers['GET /paper/strategies'] = ok(reply)
+    const w = await show()
+    expect(q(card(w, open(reply).strategy_id), 'paper-max-profit-basis').text()).toBe(BEFORE)
+  })
+
   it('prices not live: Max Profit and Breakeven stay (they need no price); Greeks are a dash with the paused sentence', async () => {
     answers['GET /paper/strategies'] = ok(PAUSED)
     const s = open(PAUSED)

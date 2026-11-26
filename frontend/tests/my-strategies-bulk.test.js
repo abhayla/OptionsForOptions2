@@ -48,8 +48,8 @@ async function open(meta = { title: 'My Strategies', parent: 'Strategies' }) {
   await flushPromises()
   return w
 }
-const mk = (id, extra = {}) => ({ id, name: `"S${id}"`, underlying: 'NIFTY', status: 'draft', created_at: '2026-11-01T04:00:00Z', updated_at: `2026-11-0${id}T04:00:00Z`, can_delete: true, ...extra })
-const THREE = () => [mk(1), mk(2, { has_order: true, has_paper_order: true }), mk(3)] // row 2 is Running
+const mk = (id, extra = {}) => ({ id, name: `"S${id}"`, underlying: 'NIFTY', status: 'draft', status_word: 'Draft', created_at: '2026-11-01T04:00:00Z', updated_at: `2026-11-0${id}T04:00:00Z`, can_delete: true, ...extra })
+const THREE = () => [mk(1), mk(2, { has_order: true, has_paper_order: true, status_word: 'Running' }), mk(3)] // row 2 is Running
 const bulkCall = () => calls.find((c) => c.url === '/strategies/bulk-delete')
 const tick = (w, id) => w.get(`[data-testid="select-${id}"]`).setValue(true)
 const rowIds = (w) => w.findAll('[data-testid="strategy-row"]').map((r) => r.attributes('data-strategy-id'))
@@ -97,7 +97,7 @@ describe('bulk delete selection', () => {
   })
 
   it('works on the Completed list too', async () => {
-    listAnswer = () => Promise.resolve({ data: { strategies: [mk(1, { status: 'closed' }), mk(2, { status: 'closed' })] } })
+    listAnswer = () => Promise.resolve({ data: { strategies: [mk(1, { status: 'closed', status_word: 'Completed' }), mk(2, { status: 'closed', status_word: 'Completed' })] } })
     const w = await open({ title: 'Completed Strategies', parent: 'Strategies', completedOnly: true })
     await tick(w, 1)
     expect(w.get('[data-testid="delete-selected"]').text()).toBe('Delete selected (1)')

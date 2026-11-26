@@ -21,7 +21,7 @@
           </tr>
         </thead>
         <tbody>
-          <tr v-for="leg in view.legs" :key="leg.key" class="border-b border-line" data-testid="tracking-leg">
+          <tr v-for="leg in rows" :key="leg.key" class="border-b border-line" data-testid="tracking-leg">
             <td class="py-1.5 text-left">
               <span class="inline-flex flex-wrap items-center gap-1.5">
                 <Chip :kind="leg.action === 'BUY' ? 'buy' : 'sell'" :label="leg.action === 'BUY' ? 'B' : 'S'" />
@@ -29,7 +29,11 @@
               </span>
             </td>
             <td class="py-1.5 pl-6 text-right tabular-nums">{{ leg.entry }}</td>
-            <td class="py-1.5 pl-6 text-right tabular-nums">{{ leg.exited ? `Exited at ${leg.exitPrice ?? '—'}` : (leg.current ?? '-') }}</td>
+            <td class="py-1.5 pl-6 text-right tabular-nums">
+              <span data-testid="tracking-leg-ltp">{{ leg.exited ? `Exited at ${leg.exitPrice ?? '—'}` : (leg.current ?? '-') }}</span>
+              <!-- D-18: the leg's own quote time beside its price (the server's price_at); "time not available" when it sent none -->
+              <span v-if="!leg.exited && leg.current !== null" class="ml-1 text-xs text-ink-muted" data-testid="tracking-leg-quote-at">{{ istClock(leg.quoteAt) ?? QUOTE_TIME_UNAVAILABLE_TEXT }}</span>
+            </td>
             <!-- GC-UI b2 D-B48: the server's per-leg paper P&L text (booked legs say so), "—" when it sent none -->
             <td class="py-1.5 pl-6 text-right tabular-nums" data-testid="tracking-leg-pnl">{{ leg.pnl }}</td>
           </tr>
@@ -61,7 +65,7 @@
       <p v-if="settledRecords.state === 'failed'" class="mt-1 text-xs text-red-700" data-testid="rules-earlier-failed">{{ RULES_LOAD_FAILED_TEXT }}</p>
       <ul v-if="notChecked.length || earlier.length" class="mt-1 space-y-0.5 text-xs text-ink-muted" data-testid="rules-line">
         <li v-for="n in notChecked" :key="n.rule_id" data-testid="rules-not-checked">{{ ruleNotCheckedText(n.reason) }}</li>
-        <li v-for="e in earlier" :key="e.id" data-testid="rules-earlier">{{ ruleEarlierText(e.text, e.outcome_text, istStamp(e.shown_at)) }}</li>
+        <li v-for="e in earlier" :key="e.id" data-testid="rules-earlier">{{ ruleEarlierText(e.text, e.outcome_text, istStamp(e.shown_at), istStamp(e.closed_at)) }}</li>
         <li v-if="earlierMore" data-testid="rules-earlier-more">{{ earlierMoreText(earlierMore) }}</li>
       </ul>
       <p v-if="typed && withheldText" class="mt-1 text-xs text-ink-muted" data-testid="check-withheld">{{ withheldText }}</p>
@@ -69,11 +73,11 @@
       <p v-if="typed && check.as_of_text" class="mt-1 text-xs text-ink-muted" data-testid="check-as-of">{{ check.as_of_text }}</p>
       <p v-if="typed && checkStale" class="mt-1 text-xs text-red-700" data-testid="check-stale">{{ checkStaleLine(checkRefusal) }}</p>
       <p v-for="a in alreadyTrue" :key="a.rule_id" class="mt-1 text-xs text-ink-muted" data-testid="playbook-already-true">{{ a.wording?.what_happened }} {{ a.condition }}</p>
-      <button v-if="view.detections.length || flags.length" ref="reviewBtn" type="button" class="mt-2 rounded border border-line bg-surface px-2 py-1 text-xs font-medium" data-testid="review-adjustment" @click="openDrawer">{{ REVIEW_BUTTON_TEXT }}</button>
+      <button v-if="view.detections.length || flags.length || liveHere" ref="reviewBtn" type="button" class="mt-2 rounded border border-line bg-surface px-2 py-1 text-xs font-medium" data-testid="review-adjustment" @click="openDrawer">{{ REVIEW_BUTTON_TEXT }}</button>
     </div>
     <!-- GC-ADJ2 step 6 (REQ-163): the entry, every adjustment and the whole-trade totals; read when opened -->
     <AdjustSteps :strategy-id="savedId" />
-    <PlanEntry v-if="status === 'tracked'" :strategy-id="savedId" :check="check" :check-status="checkStatus" :check-stale="checkStale" :check-refusal="checkRefusal" @retry-check="retryCheck" />
+    <PlanEntry v-if="status === 'tracked'" :strategy-id="savedId" :check="check" :check-status="checkStatus" :check-stale="checkStale" :check-refusal="checkRefusal" :exits="exits" :exits-failed="exitsFailed" @retry-check="retryCheck" />
     <AdjustDrawer
       :open="drawerOpen" :strategy-id="savedId" :lines="drawerLines" :detected="!!view?.detections?.length || flags.length > 0" :card-rows="cardRows(raw)"
       :suggestion-ids="flagIds"
@@ -93,12 +97,14 @@ import { REVIEW_BUTTON_TEXT, cardRows } from '@/lib/adjustDrawer'
 import Chip from '@/components/common/Chip.vue'
 import FigureHint from '@/components/common/FigureHint.vue'
 import api, { NEUTRAL_PARTS } from '@/services/api'
-import { NOT_CONNECTED_TEXT, PAPER_PNL_PREFIX, readTracking, sharedTotal } from '@/lib/tracking'
-import { EARLIER_SHOWN_MAX, RULES_LOAD_FAILED_TEXT, checkStaleLine, earlierMoreText, firedAtText, liveNowText, ruleEarlierText, ruleNotCheckedText } from '@/lib/sharedStateText'
-import { istStamp } from '@/lib/displayFormat'
-import { settledRecords } from '@/lib/paperAlerts'
+import { LEG_PNL_MISSING, NOT_CONNECTED_TEXT, PAPER_PNL_PREFIX, readTracking } from '@/lib/tracking'
+import { paperPnlBlock } from '@/lib/usePaperBookRead'
+import { EARLIER_SHOWN_MAX, QUOTE_TIME_UNAVAILABLE_TEXT, RULES_LOAD_FAILED_TEXT, checkStaleLine, earlierMoreText, firedAtText, liveNowText, ruleEarlierText, ruleNotCheckedText } from '@/lib/sharedStateText'
+import { istClock, istStamp } from '@/lib/displayFormat'
+import { openRecords, settledRecords } from '@/lib/paperAlerts'
 import { said } from '@/lib/playbookEditor'
 import { usePaperRefresh } from '@/lib/usePaperRefresh'
+import { armedIndexExits, triggerListOf, triggersPath } from '@/lib/paperTriggers'
 
 const props = defineProps({
   savedId: { type: Number, default: null },
@@ -116,13 +122,23 @@ const reviewBtn = ref(null)
 // The headline total: from the page's shared paper read when there is one (so it equals the paper panel and the P&L table TOTAL
 // row); what still comes from the tracking read: legs, per-leg P&L, detections, the rule check, and the headline when no shared read.
 // Prices not live = the paused sentence, no number (REQ-109 AC-5).
+const block = computed(() => (props.shared ? paperPnlBlock(props.shared, props.sharedFailed) : null)) // D-41: the page's one book read
 const headline = computed(() => {
   const v = view.value
-  const s = props.shared && v ? sharedTotal(props.shared, props.sharedFailed) : null
+  const s = block.value && v ? block.value : null
   if (!s) return { ...v, line: null, unpriced: v?.unpriced ?? null }
   const text = s.text === null ? (s.line ?? NOT_CONNECTED_TEXT) : `${PAPER_PNL_PREFIX}${s.text} ${s.label}${v.kind === 'exited' ? ' - exited' : ''}`.replace(/ +$/, '')
   return { text, kind: s.kind, breakdown: s.breakdown, afterReason: s.reason, line: s.text === null ? null : s.line, unpriced: s.unpriced ?? v.unpriced ?? null }
 })
+// D-41 (modular doors, Phase 3): with the page's book read, an OPEN leg's LTP, quote time and P&L are that book's own (its display price,
+// ADR-212), the very LegPrice the Net Positions table shows; P&L is the leg's TOTAL, the table's figure (ADR-328 (3)). The leg is found by its
+// CONTRACT ID (the reply's contract_id), never by `key` (the feed identity). An exited leg, a leg the book does not hold, and a reply without
+// a contract id keep the tracking row: it fails to the old source, never to another contract's price. Up to 5 s after an exit the book and
+// tracking reads can differ for one row (two polls); the next tick settles it.
+const rows = computed(() => (view.value?.legs ?? []).map((leg) => {
+  const own = leg.exited || leg.contractId == null ? undefined : block.value?.legs.get(String(leg.contractId))
+  return own === undefined ? leg : { ...leg, current: own.ltp, quoteAt: own.at, pnl: own.total ?? own.noPrice ?? LEG_PNL_MISSING }
+}))
 const drawerOpen = ref(false)
 const drawerLines = ref([]) // layer 1: the detection's own text; kept when the detection lapses while the drawer is open
 // GC-ADJ2 step 5: the playbook check answer. A typed strategy (strategy_type set) shows its flags; an untyped one keeps
@@ -138,6 +154,9 @@ const notChecked = computed(() => (typed.value ? (check.value.results ?? []) : [
 // this trade's settled records only, newest first, at most EARLIER_SHOWN_MAX; the app's one read of the records (header), never a second fetch
 const allEarlier = computed(() => [...(settledRecords.byStrategy[props.savedId] ?? [])].sort((a, b) => Date.parse(b.shown_at) - Date.parse(a.shown_at)))
 const earlier = computed(() => allEarlier.value.slice(0, EARLIER_SHOWN_MAX))
+// D-26: a live idea (an open record of this trade in the app's one read) keeps the Review button even when this panel's own
+// rule check gave no flag (failed, not read yet): the button is the way to the approaches
+const liveHere = computed(() => openRecords.list.some((o) => o.strategy_id === props.savedId))
 const earlierMore = computed(() => allEarlier.value.length - earlier.value.length)
 const firedClock = (f) => istStamp(f.fired_at)
 const flagIds = computed(() => flags.value.map((f) => f.suggestion_id).filter((x) => x !== null && x !== undefined))
@@ -162,6 +181,21 @@ async function readCheck(id, background = false) {
     checkReading = false
   }
 }
+// GC-ICLIVE D-24: the armed / fired index exits of this strategy, read on the same rhythm as the check (never a second timer)
+let lastKind = null // the previous tick's tracking kind
+const exits = ref([])
+const exitsFailed = ref(false)
+async function readExits(id) {
+  try {
+    const { data } = await api.get(triggersPath(id))
+    if (id !== props.savedId) return
+    const list = triggerListOf(data)
+    exits.value = armedIndexExits(list ?? [])
+    exitsFailed.value = list === null
+  } catch {
+    if (id === props.savedId) exitsFailed.value = true // the last good lines stay
+  }
+}
 const retryCheck = () => readCheck(props.savedId)
 function onDismissed({ ids }) {
   dismissed.value = [...dismissed.value, ...ids]
@@ -170,7 +204,11 @@ function onDismissed({ ids }) {
 function openDrawer() {
   drawerLines.value = [
     ...(view.value?.detections ?? []).flatMap((d) => [d.line, ...d.details]),
-    ...flags.value.flatMap((f) => [f.wording, f.condition].filter(Boolean)),
+    ...flags.value.flatMap((f) => {
+      const name = String(f.condition ?? '').split(':')[0] || f.rule_id // the rule's own label, as its condition line names it
+      return [f.wording, f.condition, firedClock(f) ? `${name}: ${firedAtText(firedClock(f))}` : null,
+        f.live_value != null && f.live_value !== f.value ? `${name}: ${liveNowText(f.live_value, f.live_as_of_text)}` : null].filter(Boolean)
+    }),
   ]
   drawerOpen.value = true
 }
@@ -197,6 +235,9 @@ async function load(id) {
   checkStatus.value = 'loading'
   checkStale.value = false
   checkRefusal.value = ''
+  exits.value = []
+  exitsFailed.value = false
+  lastKind = null
   dismissed.value = []
   drawerOpen.value = false
   error.value = ''
@@ -207,7 +248,7 @@ async function load(id) {
     status.value = 'tracked'
     view.value = readTracking(data, props.legs)
     raw.value = data
-    await readCheck(id)
+    await Promise.all([readCheck(id), readExits(id)])
   } catch (e) {
     if (id !== props.savedId) return
     if (e?.status === 404) status.value = 'untracked'
@@ -225,7 +266,11 @@ usePaperRefresh({
     view.value = readTracking(data, props.legs)
     raw.value = data
     // GC-ICFIX u141: the rule check rides the same rhythm (no second timer); a closed trade's check is not re-read (as before)
-    if (view.value?.kind !== 'exited') readCheck(props.savedId, true)
+    // the exits are read on every tick not exited AND on the tick the kind turns exited (a fired exit is what exited it); the check keeps its skip
+    const wasExited = lastKind === 'exited'
+    lastKind = view.value?.kind
+    if (lastKind !== 'exited') readCheck(props.savedId, true)
+    if (lastKind !== 'exited' || !wasExited) readExits(props.savedId)
   },
   onError: failed,
 })

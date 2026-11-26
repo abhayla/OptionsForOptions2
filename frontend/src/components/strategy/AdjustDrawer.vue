@@ -17,7 +17,7 @@
       <div class="flex-1 overflow-y-auto p-3">
         <section data-testid="drawer-why">
           <h3 class="text-sm font-semibold">1 · Why detected</h3>
-          <p v-for="l in lines" :key="l" class="mt-1 text-sm" data-testid="drawer-why-line">{{ l }}</p>
+          <p v-for="(l, i) in lines" :key="i" class="mt-1 text-sm" data-testid="drawer-why-line">{{ l }}</p>
           <p v-if="!detected" class="mt-1 text-sm" data-testid="drawer-lapsed">{{ LAPSED_TEXT }}</p>
         </section>
         <section class="mt-4" data-testid="drawer-state">
@@ -34,7 +34,10 @@
           <p class="mt-1 text-xs text-ink-muted" data-testid="drawer-pick-note">{{ PICK_NOTE }}</p>
           <p v-if="reply?.limit" class="mt-1 text-sm font-semibold text-warn" data-testid="drawer-limit">{{ reply.limit.text }}</p>
           <p v-if="state === 'loading'" class="mt-2 text-sm text-ink-muted" data-testid="drawer-loading">{{ LOADING_TEXT }}</p>
-          <ErrorMessage v-else-if="state === 'error'" :parts="errorParts" compact prefix="drawer-error" data-testid="drawer-error" />
+          <template v-else-if="state === 'error'">
+            <ErrorMessage :parts="errorParts" compact prefix="drawer-error" data-testid="drawer-error" />
+            <button type="button" class="mt-1 rounded border border-line px-2 py-1 text-sm" data-testid="drawer-retry" @click="retry">{{ RETRY_LABEL }}</button>
+          </template>
           <ul class="mt-2 flex flex-col gap-2">
             <li v-for="a in approaches" :key="a.id" class="rounded border border-line p-2" :data-applicable="a.applicable ? 'true' : 'false'">
               <label class="flex items-start gap-2">
@@ -76,6 +79,7 @@ import ErrorMessage from '@/components/common/ErrorMessage.vue'
 import { NO_CHANGE_ID, refusalText } from '@/lib/adjustCompare'
 import AfterChargesTap from '@/components/common/AfterChargesTap.vue'
 import { CURRENT_STATE_BODY, LAPSED_TEXT, LOADING_TEXT, PICK_NOTE, availableOf, compareUrl, replyRows } from '@/lib/adjustDrawer'
+import { RETRY_LABEL } from '@/lib/sharedStateText'
 
 const props = defineProps({
   open: { type: Boolean, default: false },
@@ -98,17 +102,25 @@ const rows = computed(() => [...props.cardRows, ...replyRows(reply.value)])
 // ADR-297: at the adjustment limit the server withholds some approaches; id -> its reason (shown, not selectable)
 const withheld = computed(() => new Map((reply.value?.not_offered ?? []).map((n) => [n.id, n.reason])))
 
+let newest = 0 // D-36 round 2: only the newest read's reply is shown
+async function retry() {
+  if (state.value === 'loading') return // one read in flight: a second click is ignored
+  await load()
+}
 async function load() {
+  const mine = ++newest
   state.value = 'loading'
   reply.value = null
   ticked.value = [NO_CHANGE_ID]
   try {
     const res = await props.client.post(`/strategies/${props.strategyId}/adjustment-approaches`, CURRENT_STATE_BODY)
+    if (mine !== newest) return
     reply.value = res.data
     state.value = 'ready'
     ticked.value = approaches.value.filter((a) => a.applicable && !withheld.value.has(a.id)).map((a) => a.id) // every applicable approach starts ticked
     if (!ticked.value.includes(NO_CHANGE_ID)) ticked.value.unshift(NO_CHANGE_ID)
   } catch (e) {
+    if (mine !== newest) return
     errorParts.value = e?.parts ?? NEUTRAL_PARTS
     state.value = 'error'
   }

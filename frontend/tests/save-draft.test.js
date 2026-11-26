@@ -239,7 +239,7 @@ describe('REQ-134 AC-1: the first Save of a never-saved strategy asks for a name
     await t(w, 'save-draft').trigger('click')
     expect(t(w, 'name-input').element.value).toBe(STRATEGY_NAME_DEFAULT)
     expect(t(w, 'name-input').attributes('maxlength')).toBe('20')
-    expect(t(w, 'name-count').text()).toBe('12/20 characters')
+    expect(t(w, 'name-limit').text()).toBe('A name can be up to 20 characters.')
     expect(calls).toEqual([])
   })
   it('confirming POSTs the typed name; the saved name is shown without its quotes and the page is told id, revision and name', async () => {

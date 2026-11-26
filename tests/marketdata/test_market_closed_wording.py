@@ -21,7 +21,7 @@ def test_adr_177_one_wording_in_backend_and_frontend_and_the_old_wording_nowhere
     front = (root / "frontend" / "src" / "lib" / "sharedStateText.js").read_text(encoding="utf-8")
     prefix = re.search(r"MARKET_CLOSED_PREFIX = '([^']+)'", front)
     assert prefix is not None and prefix.group(1) == "Market closed. Prices are from "
-    assert market_closed_message(AFTER_CLOSE) == f"{prefix.group(1)}03:30:00 PM."
+    assert market_closed_message(AFTER_CLOSE) == f"{prefix.group(1)}15:30:00 IST."
     needle = "Market closed - last price"
     trees = [root / "backend", root / "frontend" / "src", root / "frontend" / "e2e", root / "frontend" / "tests",
              root / "tests_app", root / "tests"]

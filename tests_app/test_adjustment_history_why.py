@@ -54,15 +54,18 @@ async def _book(engine, sid: int) -> list:
         return list(await paper_book.load_owned(conn, "owner", sid))
 
 
-async def _add_one(engine, sid: int) -> dict:
-    """One 'add' order on the first open contract: same side, one lot, its own entry price (always a valid tick)."""
+async def _add_one(engine, sid: int, *, reduce: bool = False) -> dict:
+    """One 'add' order on the first open contract: same side, one lot, its own entry price (always a valid tick).
+    ``reduce``: one 'exit' order instead, the opposite side of the same leg (a reducing basket, ADR-318 (5))."""
     first = (await _book(engine, sid))[0].order
-    return {"contract_id": first.contract_id, "side": first.side, "quantity": first.quantity,
-            "price": str(first.price), "kind": "add"}
+    side = ({"BUY": "SELL", "SELL": "BUY"}[first.side]) if reduce else first.side
+    return {"contract_id": first.contract_id, "side": side, "quantity": first.quantity,
+            "price": str(first.price), "kind": "exit" if reduce else "add"}
 
 
-async def _place(engine, sid: int, suggestion_ids: list | None, user: str | None = None) -> tuple[int, dict]:
-    body: dict = {"orders": [await _add_one(engine, sid)]}
+async def _place(engine, sid: int, suggestion_ids: list | None, user: str | None = None, *,
+                 reduce: bool = False) -> tuple[int, dict]:
+    body: dict = {"orders": [await _add_one(engine, sid, reduce=reduce)]}
     if suggestion_ids is not None:
         body["suggestion_ids"] = suggestion_ids
     return await _call("POST", f"/paper/strategies/{sid}/orders", body, user=user, overrides=ORDERS_ON)
@@ -137,7 +140,10 @@ async def test_an_adjustment_from_a_suggestion_names_its_rule_and_every_bad_link
     # order whatever order the ids were sent in), never only the last record read
     t01 = await _acted(app_db_url, sid, "T-01")
     t09 = await _acted(app_db_url, sid, "T-09")
-    status, out = await _place(app_db_url, sid, [t09.id, t01.id])
+    # ADR-318 (5): this is the THIRD basket after the entry, over the fixture plan's maximum of 2, so the server accepts
+    # only a basket that reduces (kind exit); an "add" here is refused STRATEGY_VALIDATION_505. The test is about the
+    # why text, which a reducing basket carries the same way.
+    status, out = await _place(app_db_url, sid, [t09.id, t01.id], reduce=True)
     assert status == CREATED, out
     both_id = (await _book(app_db_url, sid))[-1].id
     for rule in ("T-01", "T-09"):

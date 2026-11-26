@@ -19,7 +19,7 @@
         <!-- GC-ICGUIDE g21 (audit C10): the server prices an exit (live price, or the last close after hours), so it is text here -->
         <span v-if="row.kind === 'exit'" class="flex items-center gap-1" data-testid="paper-exit-price">
           <span class="text-ink-muted">Price</span>
-          <span class="text-xs text-ink-muted">{{ row.price ? `about ${row.price}, ` : '' }}{{ PAPER_EXIT_PRICED_BY_SERVER_TEXT }}</span>
+          <span class="text-xs text-ink-muted">{{ row.price ? `about ${row.price}${quoteClock(row) ? ', as of ' + quoteClock(row) : ''}, ` : '' }}{{ PAPER_EXIT_PRICED_BY_SERVER_TEXT }}</span>
         </span>
         <label v-else class="flex items-center gap-1">
           <span class="text-ink-muted">Price</span>
@@ -29,6 +29,11 @@
         </label>
         <span v-if="reasons[i]" class="w-full text-xs text-warn" data-testid="paper-reason">{{ reasons[i] }}</span>
       </li>
+    </ul>
+    <!-- D-03 part B (ADR-317 (7)): the server's one line per armed index exit, judged on the legs after these orders; nothing is moved -->
+    <p v-if="armedUnchecked" class="mt-3 text-sm text-ink-muted" data-testid="paper-armed-exits-unchecked">{{ ARMED_UNCHECKED }}</p>
+    <ul v-if="armedLines.length" class="mt-3 text-sm text-ink-muted" data-testid="paper-armed-exits">
+      <li v-for="line in armedLines" :key="line" data-testid="paper-armed-exit">{{ line }}</li>
     </ul>
     <!-- GC-TRACK1 k10 (ADR-292): the strategy's first basket may be a condor already held at the user's broker -->
     <div v-if="firstBasket && rows.length && rows.every((r) => r.kind === 'open')" class="mt-3 text-sm" data-testid="held-form">
@@ -67,11 +72,12 @@ import { computed, onBeforeUnmount, ref, watch } from 'vue'
 import Chip from '@/components/common/Chip.vue'
 import Modal from '@/components/common/Modal.vue'
 import {
-  PAPER_EXIT_CHECKING_TEXT, PAPER_EXIT_PRICED_BY_SERVER_TEXT, PAPER_EXIT_UNCHECKED_TEXT, PAPER_NOT_REAL_TEXT, PAPER_OPEN_ORDERBOOK_LABEL, PAPER_PLACED_NOT_REFRESHED_TEXT, PAPER_PRICE_REASON, PAPER_LOTS_REASON, PAPER_UNKNOWN_HOLD_MS,
-  PAPER_UNKNOWN_TEXT, HELD_LABEL, heldBlock, paperLotsOk, paperPriceOk,
+  PAPER_EXIT_CHECKING_TEXT, PAPER_EXIT_PRICED_BY_SERVER_TEXT, PAPER_EXIT_UNCHECKED_TEXT, PAPER_NOT_REAL_TEXT, PAPER_OPEN_ORDERBOOK_LABEL, PAPER_PLACED_NOT_REFRESHED_TEXT, PAPER_LOTS_REASON, PAPER_UNKNOWN_HOLD_MS,
+  PAPER_UNKNOWN_TEXT, HELD_LABEL, heldBlock, paperLotsOk, paperPriceOk, paperPriceReason,
 } from '@/lib/tracking'
 import { paperDialogTitle, paperKindLabel } from '@/lib/paperDrafts'
 import api from '@/services/api'
+import { istClock } from '@/lib/displayFormat'
 
 const props = defineProps({
   open: { type: Boolean, default: false },
@@ -91,9 +97,12 @@ watch(() => [props.open, props.orders], () => {
   if (props.open) rows.value = props.orders.map((o) => ({ ...o, lots: String(o.lots), price: String(o.price ?? '') }))
 }, { immediate: true })
 
+// D-09: the time of the quote an exit row shows (its own quote time from the book, India time); '' when the server gave none
+const quoteClock = (row) => (row.price_at ? istClock(row.price_at) ?? '' : '')
+
 // GC-TP step 3b2: the title says what the list holds (adds, exits or both)
 const title = computed(() => paperDialogTitle(props.orders))
-const reasons = computed(() => rows.value.map((r) => (!paperLotsOk(r.lots) ? PAPER_LOTS_REASON : (r.kind !== 'exit' && !paperPriceOk(r.price)) ? PAPER_PRICE_REASON : '')))
+const reasons = computed(() => rows.value.map((r) => (!paperLotsOk(r.lots) ? PAPER_LOTS_REASON : (r.kind !== 'exit' && !paperPriceOk(r.price)) ? paperPriceReason(r.price) : '')))
 const heldOn = ref(false)
 const heldAt = ref('')
 const heldBroker = ref('')
@@ -126,6 +135,28 @@ async function askExitRisk() {
   if (seq === askSeq) { exitState.value = state; exitWarning.value = line }
 }
 watch(() => [props.open, props.orders, props.strategyId, rows.value.map((r) => `${r.lots}/${r.price}`).join()], askExitRisk, { immediate: true })
+
+// D-03 part B: the lines naming each armed index exit against the legs after these orders (the server words them). A read that
+// fails shows "Could not check your armed exits."; rows not yet valid show nothing; the exit stays armed either way and the panel marks it after the change.
+const ARMED_UNCHECKED = 'Could not check your armed exits.' // pending owner read (frontend text, pinned by paper-armed-exits.test.js)
+const armedLines = ref([])
+const armedUnchecked = ref(false)
+let armedSeq = 0
+async function askArmedExits() {
+  const seq = ++armedSeq
+  const basket = props.open && props.strategyId && rows.value.length && ready.value ? rows.value : []
+  let lines = []
+  let unchecked = false
+  if (basket.length) {
+    try {
+      const { data } = await api.get(`/paper/strategies/${props.strategyId}/armed-exits`, { params: { orders: JSON.stringify(basket.map(orderOf)) } })
+      if (Array.isArray(data?.lines)) lines = data.lines.filter((l) => typeof l === 'string' && l)
+      else unchecked = true
+    } catch { lines = []; unchecked = true }
+  }
+  if (seq === armedSeq) { armedLines.value = lines; armedUnchecked.value = unchecked }
+}
+watch(() => [props.open, props.orders, props.strategyId, rows.value.map((r) => `${r.lots}/${r.price}`).join()], askArmedExits, { immediate: true })
 
 // the rows as they were when the server refused them: Confirm unlocks only once the user has changed something
 const snapshot = () => JSON.stringify(rows.value.map((r) => [r.lots, r.price]))

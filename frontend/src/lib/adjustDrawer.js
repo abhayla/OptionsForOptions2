@@ -41,6 +41,8 @@ const REPLY_ROWS = Object.freeze([
 
 /** REQ-046 AC-2 Layer 2, the part from the No-change-only reply: figures, Greeks, margin, days to expiry, each as the
  *  server's text; "-" when the reply (or the cell) has none. */
+const thetaLabel = (reply) => text(reply?.criteria?.find((c) => c.id === 'theta')?.label)
+
 export function replyRows(reply) {
   const cell = (id) => {
     const v = reply?.criteria?.find((c) => c.id === id)?.values?.[NO_CHANGE_ID]
@@ -57,7 +59,8 @@ export function replyRows(reply) {
       id, label: atZero ? MAX_PROFIT_AT_ZERO_LABEL : label, value: cell(id),
     })),
     { id: 'max_loss', label: 'Max loss', value: fig(cur?.max_loss) },
-    ...REPLY_ROWS.slice(1).map(([id, label]) => ({ id, label, value: cell(id) })),
+    // D-12 (ADR-320 (1)): on expiry day the server renames the Theta row ("Decay left today (Rs)"); its label as sent
+    ...REPLY_ROWS.slice(1).map(([id, label]) => ({ id, label: id === 'theta' ? (thetaLabel(reply) ?? label) : label, value: cell(id) })),
     { id: 'margin_utilisation', label: 'Margin utilisation', value: fig(cur?.margin_utilisation) },
     ...(Array.isArray(cur?.legs) ? cur.legs : []).map((l) => ({ id: `leg-${l.tradingsymbol}`, label: text(l.label), value: text(l.text) })),
     { id: 'margin', label: 'Margin needed', value: margin?.state === 'stated' ? rupeesText(text(margin.value)) : NONE },

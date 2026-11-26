@@ -33,6 +33,12 @@ export const STATUS_DRAFT = 'Draft'
 export const STATUS_RUNNING = 'Running'
 export const STATUS_COMPLETED = 'Completed'
 // pending owner read (15 Nov 2026), issue 16 round 2: a status the server never sends is said plainly, never guessed as Draft
+// pending owner read (25 Nov 2026), D-66: the Completed page shows when the trade closed (the server's close time), never the last save
+export const CLOSED_HEADER = 'Closed'
+export const CLOSED_PREFIX = 'closed '
+export const CLOSED_UNAVAILABLE_TEXT = 'closed: time not available'
+// pending owner read (25 Nov 2026), D-18 round 1: a leg price whose quote time the server did not send says so, never a blank
+export const QUOTE_TIME_UNAVAILABLE_TEXT = 'time not available'
 export const STATUS_UNKNOWN = 'Status not available'
 // pending owner read (15 Nov 2026): a Live Strategies card waiting in the page's start queue (ADR-299 (2): "Waiting to start" is retired)
 export const CARD_QUEUED_TEXT = 'Loading next...'
@@ -49,6 +55,16 @@ export const PLAN_LOAD_FAILED_TEXT = 'Could not load the plan. Nothing was chang
 // pending owner read (15 Nov 2026), GC-ICFIX issue 18: the practice orders were stored but the position could not be read back
 export const PAPER_REREAD_FAILED_TEXT = 'Your paper orders were placed, but the position could not be loaded. Nothing was lost.'
 export const PLAN_LOADING_TEXT = 'Loading the plan…'
+// pending owner read (25 Nov 2026), D-38: a read that hit the client's time limit says it took too long, never "could not"
+export const PLAN_TIMED_OUT_TEXT = 'The plan took too long to load. Nothing was changed.'
+export const PLAN_PICK_TIMED_OUT_TEXT = 'The playbook took too long to load, so the fields are as you left them. Nothing was changed.'
+export const SETTINGS_TIMED_OUT_TEXT = 'The settings took too long to load, so no value is shown.'
+export const TIMED_OUT_PARTS = Object.freeze({
+  what_happened: 'The server took too long to answer.',
+  impact: 'The prices and figures it was asked for are not shown, so none of them can be mistaken for current values.',
+  what_is_blocked: 'Nothing was changed and no order was placed. Your choices on this page are kept.',
+  next_action: 'Try again in a moment.',
+})
 // GC-ICFIX issue 15 (pending owner read): shown after a playbook is picked in the plan box, because the pick replaces what was typed
 export const PLAN_REFILLED_TEXT = (name) => `The fields were refilled from the playbook ${name}.`
 // pending owner read (13 Nov 2026), GC-ICFIX u113 round 3 (ADR-304 (3)): the states of the plan card's limit lines, read from the rule check
@@ -63,7 +79,8 @@ export const firedAtText = (stamp) => `Fired at ${stamp}` // the stamp is today'
 export const liveNowText = (value, asOf) => (asOf ? `Now ${value} (${asOf})` : `Now ${value}`) // ADR-309: the value at the check, with its own time (the server's "As of ..." text)
 // the reason is the server's sentence or its four-part message object: said() takes the sentence; none -> no dangling colon
 export const ruleNotCheckedText = (reason) => (said(reason) ? `Rule not checked: ${said(reason)}` : 'Rule not checked')
-export const ruleEarlierText = (text, outcome, stamp) => `${text} - ${outcome}${stamp ? `, fired ${stamp}` : ''}`
+// D-26: a lapsed (or otherwise closed) rule says when it closed, beside when it fired
+export const ruleEarlierText = (text, outcome, stamp, closedStamp = null) => `${text} - ${outcome}${closedStamp ? ` at ${closedStamp}` : ''}${stamp ? `, fired ${stamp}` : ''}`
 export const OPPORTUNITY_PAGE_SIZE = 25
 // u511: N counts every row the server returned in its one read (the list has no server paging)
 export const ROWS_ONE_TEXT = 'Showing 1 of 1 row'
@@ -71,6 +88,14 @@ export const rowsRangeText = (from, to, total) => (total === 1 ? ROWS_ONE_TEXT :
 export const BROKER_BACK_LINK_TEXT = 'Back to Broker & Market Data' // the page /settings/broker-market-data is titled so
 export const EARLIER_SHOWN_MAX = 5
 export const earlierMoreText = (n) => `and ${n} earlier`
+// pending owner read (25 Nov 2026), GC-ICLIVE D-24: the Plan block lists the armed index exits (REQ-109 AC-8) with level and state
+export const EXITS_LOAD_FAILED_TEXT = 'Could not read the conditional exits. Nothing was changed.'
+// pending owner read (25 Nov 2026), GC-ICLIVE D-32 (ADR-242): the watch box heading says what a watch does: it alerts, it never exits
+export const WATCH_LEVEL_LABEL = 'Watch an index level: it only alerts and does not exit'
+// pending owner read (25 Nov 2026), GC-ICLIVE D-33 (ADR-320 (5), ADR-298): the one visible short-funds line on the builder; the practice order is still allowed
+export const SHORT_FUNDS_LINE = 'Not enough funds. Paper trade: this practice order is still allowed; a real order of this size would be refused.'
+export const exitLineText = (direction, levelText, state) =>
+  `Conditional exit: all legs exit if the index goes ${direction === 'below' ? 'below' : 'above'} ${levelText}. ${state === 'fired' ? 'Fired' : 'Armed'}.`
 export const LIMITS_NONE_TEXT = 'No rules are being checked for this trade'
 export const RETURN_DONE_TEXT = 'Zerodha confirmed your orders.' // ADR-129
 
@@ -84,3 +109,8 @@ export const EMPTY_S7_BUTTON = EMPTY_S4_BUTTON
 // ADR-130 (4): "Each button opens the Create Strategy screen." Addressed by route NAME (nav item `create-strategy` in
 // the `strategies` section, router/routes.js), so it follows the page whether it is the placeholder or the real screen.
 export const CREATE_STRATEGY_ROUTE = { name: 'strategies-create-strategy' }
+
+// pending owner read (D-54, ADR-320 point 6): the question before a playbook is deleted
+// pending owner read (D-54 round 2): the out-of-V1 line when the labels read failed (the server's own sentence is preferred when present)
+export const PLAYBOOK_TEST_OUT_OF_V1_TEXT = 'Testing against past expiries is not in this version: it needs licensed historical option data.'
+export const PLAYBOOK_DELETE_CONFIRM_TEXT = 'Delete this playbook?'

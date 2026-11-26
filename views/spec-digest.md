@@ -4,23 +4,9 @@
 
 One line per decision, requirement and spec section. Read it before asking the owner anything; cite the ids you rely on in a `Spec basis:` line, or write `Spec basis: none (searched: <terms>)`.
 
-## Decisions (303)
+## Decisions (317)
 
-- Older decisions: 263 rows, ADR-1..ADR-276 (oldest first). Read spec/decisions/*.md, or find one by meaning: python tools/spec_similar.py . "<text>"
-- ADR-277 2026-11-08: Owner 2026-11-08 ~18:00 IST (GC-ICTRACK, answer A2). [Un-greys T-11c and T-20b in the iron condor playb…]
-- ADR-278 2026-11-08: Owner 2026-11-08 ~18:00 IST (GC-ICTRACK, answer A3). [Supersedes ADR-253 in full (ADR-270 superseded it…]
-- ADR-279 2026-11-08: Owner 2026-11-08 ~18:00 IST (GC-ICTRACK, answer A4). [Makes the price source (ADR-275 (3)) a property o…]
-- ADR-280 2026-11-08: Owner delegation 2026-11-05: decided under "go with your recommendation" (strategy behaviour), GC-I… [Fixes the measures behind 12 playbook triggers th…]
-- ADR-281 2026-11-09: Owner answer 2026-11-09 (question tool, GC-ICGUIDE planning). [Holds live order placement for GC-ICGUIDE; record…]
-- ADR-282 2026-11-09: Owner answer 2026-11-09 (question tool, GC-ICGUIDE planning). [Fixes what "iron condor adjustments proven" means…]
-- ADR-283 2026-11-09: Decided under the owner's strategy delegation (owner 2026-11-09 ~15:00 IST: "Wherever you have ques… [Implements ADR-258 (starting point at the fill, n…]
-- ADR-284 2026-11-10: SPEC CHANGE of ADR-058 ("refuse the whole update, writing nothing, if more than 10% of an index's l… [amends ADR-058; amends ADR-059]
-- ADR-285 2026-11-10: Decided by the GC-ICSAFE plan review as a technical call under the owner's approval of that contrac… [extends ADR-119 (2): says what happens after the…]
-- ADR-286 2026-11-10: Technical call under the owner's approval of the GC-ICSAFE contract (2026-11-10), for the alert hal… [amends the egress rule of REQ-073 as built in ofo…]
-- ADR-287 2026-11-11: Owner answer 2026-11-11 (question tool, after GC-ICSAFE): "Approve as written". [closes standing direction step 2 ("The owner has…]
-- ADR-288 2026-11-11: Owner answer 2026-11-11 (question tool, standing direction step 4): "Hostinger VPS, Redis there". [decides Q273 (option a); applies REQ-113 AC-3 and…]
-- ADR-289 2026-11-11: Owner answers 2026-11-11 (question tool, standing direction step 4): "Yes, one order, I press Execu… [amends ADR-281 (one exception, step 4 only); stat…]
-- ADR-290 2026-11-11: Owner, 2026-11-11 (chat, then question tool "Both: by hand now, Zerodha later"): "I don't want to p… [withdraws ADR-289 part (2); restates the standing…]
+- Older decisions: 277 rows, ADR-1..ADR-290 (oldest first). Read spec/decisions/*.md, or find one by meaning: python tools/spec_similar.py . "<text>"
 - ADR-291 2026-11-12: Owner, 2026-11-12 ~00:1x IST (chat): "It is mandatory that whoever connects to kite should have kit… [narrows the current scope of ADR-290 to the owner…]
 - ADR-292 2026-11-12: How ADR-290 (2) works for the one user of ADR-291, as approved with the GC-TRACK1 contract (owner 2… [adds the held_elsewhere source to the strategy st…]
 - ADR-293 2026-11-13: Owner decision 2026-11-13 ~09:15 IST (question tool, picked "Allow delete for paper (Recommended)"). [supersedes ADR-271 parts (1), (2) and (3); ADR-27…]
@@ -47,6 +33,20 @@ One line per decision, requirement and spec section. Read it before asking the o
 - ADR-314 2026-11-15: Decided by the run on 2026-11-15 under the owner rule of 14 Nov ("whenever you have question, go wi… [Narrows ADR-237 (3) and ADR-309 (1): both say a r…]
 - ADR-315 2026-11-15: Decided by the run on 2026-11-15 under the owner rule of 14 Nov ("whenever you have question, go wi… [Extends ADR-259 (a strategy with no open leg is C…]
 - ADR-316 2026-11-15: Decided by the run on 2026-11-15 under the owner rule of 14 Nov ("whenever you have question, go wi… [Refines ADR-310 (the clock rule, named "Time exit…]
+- ADR-317 2026-11-23: Decided under the owner rule of 14 Nov ("whenever you have question, go with your recommendation"),… [Refines REQ-109 AC-8 (which covered firing at the…]
+- ADR-318 2026-11-23: Owner decided 23 Nov 2026 17:20 IST (question D-04 of the 23 Nov live test). [Refines ADR-255 and REQ-163 AC-2, which define th…]
+- ADR-319 2026-11-23: Decided by the lead on 23 Nov 2026 23:45 IST as conformant with REQ-030 AC-5, AC-11, AC-12 and the… [Applies REQ-030 AC-12 to the builder paths that s…]
+- ADR-320 2026-11-24: Owner decided 24 Nov 2026 (question batch before the cloud run; one point per tracker item). [Refines REQ-145 (the Decay column) and the theta…]
+- ADR-321 2026-11-25: Taken by the unattended Part B run on 24-25 Nov 2026 (owner away), each point as the least change t… [Refines ADR-209 (switch scope), ADR-263 and ADR-3…]
+- ADR-322 2026-11-25: Owner decided 25 Nov 2026, answering five questions in the orchestrating cloud session. [Answers docs/process/owner-questions-2026-11-24.m…]
+- ADR-323 2026-11-25: PENDING OWNER READ. [Refines ADR-309 (1) (D-31), ADR-299 (D-28), ADR-3…]
+- ADR-324 2026-11-25: PENDING OWNER READ. [Refines REQ-109 AC-5 (header totals), ADR-311 (th…]
+- ADR-325 2026-11-25: PENDING OWNER READ. [Refines REQ-109 AC-5 (Today figure), REQ-029 AC-2…]
+- ADR-326 2026-11-25: Owner answers, 25 Nov 2026: Q2 to Q6 answered one at a time with the question tool in the GC-ICLIVE… [Amends ADR-015 Q182 and REQ-049 AC-5 (24-hour tim…]
+- ADR-327 2026-11-25: OWNER DECIDED 25 Nov 2026 ~16:10 IST (question tool, after the live screen test of 25 Nov). [Supersedes ADR-317 (2) in market hours; ADR-317 (…]
+- ADR-328 2026-11-25: Owner decided 25 Nov 2026 (evening), answering five questions one at a time in the orchestrating cl… [Amends ADR-319 (4) and the REQ-109 AC-9 sentence…]
+- ADR-329 2026-11-25: Owner decided 25 Nov 2026 (about 22:35 IST) in the orchestrating cloud session; he first answered "… [Settles finding S-08 of the 25 Nov live screen te…]
+- ADR-330 2026-11-25: Owner decided 25 Nov 2026 (night, chat in the orchestrating cloud session; the question tool is clo… [Refines ADR-247 and ADR-230: the base of the "% o…]
 
 ## Requirements (161)
 

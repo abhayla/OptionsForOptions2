@@ -716,6 +716,40 @@ async def test_one_exited_strategys_failing_lapse_never_drops_the_others_or_thei
     assert {exited: 2} == background.LISTER_LAPSE_FAILURES  # counted each time, logged once
 
 
+async def test_d30_an_exited_strategys_failed_lapse_is_retried_at_the_next_re_list(app_db_url, monkeypatch):
+    """D-30 round 2 (real case C10, 23 Nov: exited 14:31:24, row still Open at 14:33): the first lapse write fails (the
+    database blips), the record stays open and the NEXT re-list lapses it as strategy_closed."""
+    from ofo_app import adjustment_readers  # noqa: PLC0415
+    sid, _scn, _now, worker = await _ready(app_db_url, monkeypatch)
+    async with app_db_url.begin() as conn:
+        await playbook_store.lapse_all(conn, "owner", sid, playbook_store.LAPSE_CONDITION_STOPPED)
+        rec = (await playbook_store.open_suggestion(conn, "owner", sid, "T-03", trigger_id="T-03", stage="Middle",
+                                                    value=D("0.36"), threshold=D("0.35"))).id
+    real_lapse_all, fails = playbook_store.lapse_all, [1]
+
+    async def flaky(conn, user_ref, strategy_id, reason):
+        if fails[0]:
+            fails[0] -= 1
+            raise ConnectionError("database blip")
+        return await real_lapse_all(conn, user_ref, strategy_id, reason)
+
+    async def exited(_sid, _rates):
+        raise adjustment_readers.TrackedExited("every leg exited")
+    monkeypatch.setattr(adjustment_readers, "read_tracked", exited)
+    monkeypatch.setattr(playbook_store, "lapse_all", flaky)
+    monkeypatch.setattr(background, "LISTER_LAPSE_FAILURES", {}, raising=False)
+
+    async def states():
+        async with app_db_url.connect() as conn:
+            return [(x.outcome, x.lapse_reason) for x in await playbook_store.suggestions(conn, "owner", sid)
+                    if x.id == rec]
+    await worker.rebuild()
+    assert await states() == [("open", None)]
+    assert background.LISTER_LAPSE_FAILURES.get(sid) == 1
+    await worker.rebuild()
+    assert await states() == [("lapsed", "strategy_closed")]
+
+
 async def test_an_escalation_lapses_the_old_record_as_superseded_by_worse_and_a_cleared_one_as_condition_stopped(
         app_db_url, monkeypatch):
     """Review round 2, finding 5: the record an escalation closes lapsed because a worse one replaced it, not because

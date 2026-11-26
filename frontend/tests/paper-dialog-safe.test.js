@@ -193,7 +193,7 @@ describe('item 2: entry rows start at the live price the page holds, else the pl
     const prices = [...document.body.querySelectorAll('[data-testid="paper-price"]')].map((i) => i.value)
     expect(prices).toEqual(['129.05', '98.40'])
     const notes = [...document.body.querySelectorAll('[data-testid="paper-price-note"]')].map((n) => n.textContent)
-    expect(notes).toEqual([PAPER_PLANNED_PRICE_NOTE])
+    expect(notes).toEqual(['plan 126.00', PAPER_PLANNED_PRICE_NOTE]) // D-15 (c): live 129.05 against plan 126.00 says so
     expect(legs[0].planned_entry).toBe('126.00') // the planned-entry field itself is unchanged
     w.unmount()
   })
@@ -201,7 +201,7 @@ describe('item 2: entry rows start at the live price the page holds, else the pl
     const orders = [{ kind: 'add', contract_id: 1, side: 'SELL', lots: 1, lot_size: 65, leg: leg(1, '126.00') },
       { kind: 'add', contract_id: 2, side: 'SELL', lots: 1, lot_size: 65, leg: leg(2, '98.40') }]
     const rows = confirmRowsFor(orders, { positions: [] }, () => 'x', { 'NSE_FO:1': '129.05' })
-    expect(rows.map((r) => [r.price, r.price_note])).toEqual([['129.05', ''], ['98.40', PAPER_PLANNED_PRICE_NOTE]])
+    expect(rows.map((r) => [r.price, r.price_note])).toEqual([['129.05', 'plan 126.00'], ['98.40', PAPER_PLANNED_PRICE_NOTE]])
   })
 })
 

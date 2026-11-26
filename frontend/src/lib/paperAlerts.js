@@ -29,6 +29,20 @@ export function dropAlerts(e) {
   Object.assign(paperAlerts, { unread: 0, alerts: [], parts: e ? (e.parts ?? NEUTRAL_PARTS) : NEUTRAL_PARTS, loaded: true })
 }
 
+// D-22 / D-71: the Alerts page's third tab = the server's records of every fired stop and every expiry settlement, newest first, text as sent.
+export const RECORDS_EMPTY = 'No stops or expiry settlements yet.'
+export const paperRecords = reactive({ records: [], parts: null, loaded: false })
+const recordOk = (r) => r && typeof r.at === 'string' && typeof r.title === 'string' && typeof r.body === 'string' && Number.isInteger(r.strategy_id)
+export async function loadPaperRecords() {
+  try {
+    const data = (await api.get('/paper/alerts/records')).data
+    if (!data || !Array.isArray(data.records) || !data.records.every(recordOk)) throw new Error('unreadable')
+    Object.assign(paperRecords, { records: data.records, parts: null, loaded: true })
+  } catch (e) {
+    Object.assign(paperRecords, { records: [], parts: e?.parts ?? NEUTRAL_PARTS, loaded: true })
+  }
+}
+
 export const readPaperAlerts = async () => (await api.get('/paper/alerts')).data
 
 /** Mark every alert read (one POST). A failure keeps what is shown; the next read brings the server's count back. */
@@ -94,17 +108,20 @@ export function takeOpportunities(data) {
   for (const g of groups) {
     for (const r of Array.isArray(g?.records) ? g.records : []) {
       if (r && r.outcome === 'open' && Number.isInteger(r.id)) {
-        open.push({ id: r.id, strategy_id: g.strategy_id, strategy_name: g.strategy_name ?? null, text: r.condition || g.label || '' })
+        // D-67 (ADR-326 (5)): popup_due is the SERVER's answer (ofo.adjustment.popup_quiet); absent = due (fail open)
+        open.push({ id: r.id, strategy_id: g.strategy_id, strategy_name: g.strategy_name ?? null, text: r.condition || g.label || '', shown_at: r.shown_at ?? g.shown_at ?? null, popup_due: r.popup_due !== false })
       } else if (r && Number.isInteger(r.id) && r.outcome !== 'open') {
-        (settled[g.strategy_id] ??= []).push({ id: r.id, text: r.condition || g.label || '', outcome_text: r.outcome_text ?? '', shown_at: r.shown_at ?? null })
+        (settled[g.strategy_id] ??= []).push({ id: r.id, text: r.condition || g.label || '', outcome_text: r.outcome_text ?? '', shown_at: r.shown_at ?? g.shown_at ?? null, closed_at: r.closed_at ?? null })
       }
     }
   }
   openRecords.list = open
   settledRecords.byStrategy = settled
   settledRecords.state = 'ok'
-  const fresh = open.filter((r) => !announced.has(r.id))
-  open.forEach((r) => announced.add(r.id))
+  // D-67: a quiet record is counted (openRecords) but not announced yet; it is announced on the poll that finds it due
+  const due = open.filter((r) => r.popup_due)
+  const fresh = due.filter((r) => !announced.has(r.id))
+  due.forEach((r) => announced.add(r.id))
   const first = !opportunitiesLoaded
   opportunitiesLoaded = true
   return first ? [] : fresh

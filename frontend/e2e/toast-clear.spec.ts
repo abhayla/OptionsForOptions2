@@ -1,6 +1,6 @@
 // u506: a pop-up must never cover a page control. jsdom has no layout, so the
 // pixel check lives here. My Strategies has its Search box at the top right (MyStrategiesPage.vue:124); with three pop-ups
-// shown (bottom right, stacking upward) the box must still be the topmost element at its own centre, and no pop-up box may
+// shown (in the page flow under the header, D-67) the box must still be the topmost element at its own centre, and no pop-up box may
 // intersect it.
 import { test, expect } from '@playwright/test'
 

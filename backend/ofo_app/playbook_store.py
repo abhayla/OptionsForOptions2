@@ -61,8 +61,10 @@ LAPSE_SUPERSEDED_BY_WORSE = "superseded_by_worse"
 LAPSE_NOT_MONITORED = "not_monitored"
 #: #685 item 3: a basket was booked, so the record was raised for a position the strategy no longer holds.
 LAPSE_POSITION_CHANGED = "position_changed"
+#: D-30: every contract of the strategy expired (its last expiry is before today, IST).
+LAPSE_CONTRACT_EXPIRED = "contract_expired"
 LAPSE_REASONS = (LAPSE_CONDITION_STOPPED, LAPSE_STRATEGY_CLOSED, LAPSE_SUPERSEDED_BY_WORSE, LAPSE_NOT_MONITORED,
-                 LAPSE_POSITION_CHANGED)
+                 LAPSE_POSITION_CHANGED, LAPSE_CONTRACT_EXPIRED)
 WORSE_MARKS = (None, "last", "dismissed")  # = migration 0036 WORSE plus none (a test asserts it)
 HELD_REASONS = ("daily_limit", "quiet_time")  # = alert_gate.HELD_DAILY_LIMIT / HELD_QUIET_TIME
 SOURCE_SYSTEM = "system"  # "Adjustment opportunity detected" (a system playbook's flag)
@@ -237,6 +239,23 @@ class Suggestion:
         return "completed" if len(set(placed)) == legs else "partly_completed"
 
     @property
+    def closed_at(self) -> datetime | None:
+        """D-26: when the record left "open" (the last timeline entry with an ``outcome``: the close's own ``at``); None
+        while open or when the stored time is missing or unreadable (never a guess)."""
+        if self.outcome == "open":
+            return None
+        # the entry the close wrote carries "outcome"; later appends (condition_cleared, orders_placed) do not
+        closing = [e for e in self.timeline if isinstance(e, dict) and "outcome" in e]
+        if not closing:
+            return None
+        raw = closing[-1].get("at")
+        try:
+            found = datetime.fromisoformat(raw) if isinstance(raw, str) else None
+        except ValueError:
+            return None
+        return found if found is not None and found.tzinfo is not None else None
+
+    @property
     def lapse_reason(self) -> str | None:
         """condition_stopped / strategy_closed / superseded_by_worse on a lapsed record (its last timeline entry)."""
         return self.timeline[-1].get("reason") if self.outcome == "lapsed" and self.timeline else None
@@ -359,10 +378,17 @@ _LINK_ORDERS = text(
 _SUGGESTION_OF_STRATEGY = text(
     "SELECT g.outcome FROM public.adjustment_suggestions g JOIN public.strategies s ON s.id = g.strategy_id "
     "WHERE g.id = :id AND g.strategy_id = :strategy_id AND s.user_ref = :user_ref")
-_INBOX = text(f"SELECT {', '.join('g.' + c for c in _SG_COLUMNS.split(', '))}, s.name, "  # noqa: S608 constant
+#: D-29: ``{scope}`` = ``scenario_mode.scope_clause("s")``: the inbox readers see this process's own strategies only.
+_INBOX_SQL = (f"SELECT {', '.join('g.' + c for c in _SG_COLUMNS.split(', '))}, s.name, "  # noqa: S608 constant
               "EXISTS (SELECT 1 FROM public.paper_orders o WHERE o.strategy_id = s.id) "
               "FROM public.adjustment_suggestions g JOIN public.strategies s ON s.id = g.strategy_id "
-              "WHERE s.user_ref = :user_ref AND s.deleted_at IS NULL ORDER BY g.shown_at DESC, g.id DESC")
+              "WHERE s.user_ref = :user_ref AND s.deleted_at IS NULL AND {scope} ORDER BY g.shown_at DESC, g.id DESC")
+
+
+def _scoped(sql: str) -> tuple[Any, dict]:
+    from ofo_app.scenario_mode import scope_clause  # noqa: PLC0415 - the one isolation helper
+    clause, params = scope_clause("s")
+    return text(sql.format(scope=clause)), params
 _LIST_SUGGESTIONS = text(f"SELECT {', '.join('g.' + c for c in _SG_COLUMNS.split(', '))} "  # noqa: S608 constant
                          "FROM public.adjustment_suggestions g JOIN public.strategies s ON s.id = g.strategy_id "
                          "WHERE g.strategy_id = :strategy_id AND s.user_ref = :user_ref ORDER BY g.id")
@@ -841,6 +867,15 @@ def changed_position(open_records: Iterable[Suggestion], current: int | None) ->
     return [s for s in open_records if s.adjustments is not None and s.adjustments != current]
 
 
+async def lapse_expired(conn: Any, user_ref: str, strategy_id: int, expiry: Any, today: Any) -> list[Suggestion]:
+    """D-30: the strategy's open records lapse as contract_expired once its last expiry is before ``today``. The expiry
+    day itself is still live; an unknown expiry or day lapses nothing (never a guess)."""
+    if expiry is None or today is None or not expiry < today:
+        return []
+    return [await lapse(conn, user_ref, s.id, LAPSE_CONTRACT_EXPIRED)
+            for s in await open_suggestions(conn, user_ref, strategy_id)]
+
+
 async def lapse_changed(conn: Any, user_ref: str, strategy_id: int, current: int | None) -> list[Suggestion]:
     """The strategy's open records of an earlier position lapse as position_changed (``changed_position``)."""
     stale = changed_position(await open_suggestions(conn, user_ref, strategy_id), current)
@@ -849,7 +884,8 @@ async def lapse_changed(conn: Any, user_ref: str, strategy_id: int, current: int
 
 async def inbox(conn: Any, user_ref: str) -> list[InboxRow]:
     """REQ-162 AC-1: every record of the user's strategies, newest first."""
-    rows = (await conn.execute(_INBOX, {"user_ref": user_ref})).all()
+    query, scope = _scoped(_INBOX_SQL)
+    rows = (await conn.execute(query, {"user_ref": user_ref, **scope})).all()
     return [InboxRow(_suggestion(r), r[11], r[12] is True) for r in rows]
 
 
@@ -942,10 +978,10 @@ class HeldToday:
     held_at: datetime
 
 
-_HELD_INBOX = text(
+_HELD_INBOX_SQL = (
     "SELECT h.id, h.strategy_id, h.rule_id, h.trigger_id, h.reason, h.held_at, s.name "
     "FROM public.adjustment_held_crossings h JOIN public.strategies s ON s.id = h.strategy_id "
-    "WHERE s.user_ref = :user_ref AND s.deleted_at IS NULL ORDER BY h.held_at DESC, h.id DESC")
+    "WHERE s.user_ref = :user_ref AND s.deleted_at IS NULL AND {scope} ORDER BY h.held_at DESC, h.id DESC")
 
 
 @dataclass(frozen=True)
@@ -959,9 +995,33 @@ class HeldInboxRow:
     strategy_name: str
 
 
+_POPUP_ENTRY = text("SELECT o.strategy_id, MIN(o.placed_at) FROM public.paper_orders o "
+                    "JOIN public.strategies s ON s.id = o.strategy_id "
+                    "WHERE o.strategy_id = ANY(:ids) AND s.user_ref = :user_ref GROUP BY o.strategy_id")
+_POPUP_CLEAR = text("SELECT DISTINCT ON (r.strategy_id, r.rule_id) r.strategy_id, r.rule_id, r.seen_clear "
+                    "FROM public.adjustment_rule_state r JOIN public.strategies s ON s.id = r.strategy_id "
+                    "WHERE r.strategy_id = ANY(:ids) AND s.user_ref = :user_ref "
+                    "ORDER BY r.strategy_id, r.rule_id, r.adjustment_no DESC")
+PopupClear = dict[tuple[int, str], bool]  # (strategy id, rule id) -> seen_clear
+
+
+async def popup_facts(conn: Any, user_ref: str, strategy_ids: Iterable[int]) -> tuple[dict[int, datetime], PopupClear]:
+    """D-67 (ADR-326 (5), ``ofo.adjustment.popup_quiet``): what decides a record's pop-up: strategy id -> its first
+    order's time (as ``adjustment_readers.entered_at``), and the rule memory at the newest starting point. A strategy
+    with no stored order or a rule with no memory row is simply absent (pop-up at once)."""
+    ids = sorted(set(strategy_ids))
+    if not ids:
+        return {}, {}
+    args = {"ids": ids, "user_ref": user_ref}
+    entry = {int(r[0]): r[1] for r in (await conn.execute(_POPUP_ENTRY, args)).all() if r[1] is not None}
+    clear = {(int(r[0]), r[1]): bool(r[2]) for r in (await conn.execute(_POPUP_CLEAR, args)).all()}
+    return entry, clear
+
+
 async def held_inbox(conn: Any, user_ref: str) -> list[HeldInboxRow]:
     """REQ-170 AC-4: every crossing the gate held on the user's strategies, newest first (the timeline's reader)."""
-    rows = (await conn.execute(_HELD_INBOX, {"user_ref": user_ref})).all()
+    query, scope = _scoped(_HELD_INBOX_SQL)
+    rows = (await conn.execute(query, {"user_ref": user_ref, **scope})).all()
     return [HeldInboxRow(*r) for r in rows]
 
 

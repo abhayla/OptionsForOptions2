@@ -27,6 +27,7 @@ import { settingsData } from './helpers/servedLots'
 
 // the page passes the served lot caps down (REQ-167 AC-5); a picker mounted alone gets them as props
 const mount = (C, o = {}) => mountRaw(C, C === LegPicker ? { ...o, props: { maxLots: 10000, lotChoiceCount: 10, ...o.props } } : o)
+import { DRAFT_HOLDS_TEXT } from '@/lib/legDoor'
 import { NOT_CONNECTED_LABEL, REPRICE_PROMPT, lotsValid, lotChoices, instrumentId, buildDraft, oiCompact } from '@/lib/legPicker'
 
 const AT = '2026-10-08T09:20:09+05:30'
@@ -1944,5 +1945,48 @@ describe('GC-UI 6c Straddles / Strangles tabs and the type-change confirm (D-C08
     await t(w, 'tab-straddles').trigger('click')
     await flushPromises()
     expect(t(w, 'strikes-error').text()).toBe('The strikes could not be read right now.')
+  })
+})
+
+// D-47 (ic-live-test 2026-11-23, K-1): the picker said "0 legs selected" while the draft held 4, and B / S showed only on hover.
+describe('D-47 strike picker clarity', () => {
+  beforeEach(() => {
+    answers['GET /catalogue/NIFTY/contracts?expiry=2026-10-13'] = catalogue13
+    answers[STRIKES_URL()] = strikesAnswer()
+  })
+  const draftLeg = (i, type, strike, action) => ({
+    id: `d${i}`, instrument_id: `NSE_FO:${900 + i}`, underlying: 'NIFTY', expiry: '2026-10-13', instrument_type: type, strike, action, lots: 1,
+    planned_entry: '100.00', captured_at: AT, contract_id: 900 + i, exchange_segment: 'NSE_FO', exchange_token: 900 + i,
+  })
+  const four = [draftLeg(1, 'CE', '22800.00', 'SELL'), draftLeg(2, 'CE', '23000.00', 'BUY'), draftLeg(3, 'PE', '22400.00', 'SELL'), draftLeg(4, 'PE', '22200.00', 'BUY')]
+
+  it('with 4 legs already in the draft and none picked, the count line keeps "0 legs selected" and says the draft holds 4', async () => {
+    const w = mountPicker(four)
+    await flushPromises()
+    await openStrikes(w)
+    expect(t(w, 'picker-count').text()).toBe('0 legs selected')
+    expect(t(w, 'picker-draft-count').text()).toBe(DRAFT_HOLDS_TEXT(4))
+    expect(DRAFT_HOLDS_TEXT(4)).toContain('4')
+    expect(DRAFT_HOLDS_TEXT(4)).toContain('draft')
+  })
+
+  it('an empty draft says nothing extra; one leg uses the singular', async () => {
+    const w = mountPicker()
+    await flushPromises()
+    await openStrikes(w)
+    expect(t(w, 'picker-draft-count').exists()).toBe(false)
+    const w1 = mountPicker([four[0]])
+    await flushPromises()
+    await openStrikes(w1)
+    expect(t(w1, 'picker-draft-count').text()).toBe(DRAFT_HOLDS_TEXT(1))
+  })
+
+  it('B and S buttons are drawn on every strike cell before any click, not only on hover', async () => {
+    const w = mountPicker()
+    await flushPromises()
+    await openStrikes(w)
+    const btns = w.findAll('[data-testid="cell-buy"], [data-testid="cell-sell"]')
+    expect(btns.length).toBeGreaterThan(0)
+    for (const b of btns) expect(b.classes().join(' ')).not.toContain('opacity-0')
   })
 })

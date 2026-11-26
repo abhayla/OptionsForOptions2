@@ -6,6 +6,8 @@
 //   'available' without a string figure, any unknown state  -> the read-failed reason (never 0);
 //   not_connected / not_offered / empty / busy / session_expired / read_failed -> that reason;
 //   the request failed or the body is not an object         -> the could-not-read reason, no id.
+import { istTime } from '@/lib/displayFormat'
+
 export const MARGIN_REASON = Object.freeze({
   not_connected: 'Connect Zerodha to see your available margin.',
   not_offered: 'Available margin is not shown for this account.',
@@ -16,10 +18,6 @@ export const MARGIN_REASON = Object.freeze({
 })
 export const ACCOUNT_UNREADABLE = 'Your Zerodha account details could not be read.'
 export const ID_HIDDEN = '*'
-
-function istTime(at) {
-  return new Date(at).toLocaleString('en-IN', { timeZone: 'Asia/Kolkata', dateStyle: 'medium', timeStyle: 'medium' }) + ' IST'
-}
 
 /** The masked id as shown (`AB**34`), or null. Built only from the parts the server sends. */
 export function maskedId(userId) {

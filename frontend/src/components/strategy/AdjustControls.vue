@@ -22,7 +22,7 @@
     </div>
 
     <div class="rounded-lg border border-line bg-surface p-3" data-testid="watch-card">
-      <h3 class="text-sm font-semibold">Watch an index level</h3>
+      <h3 class="text-sm font-semibold" data-testid="watch-label">{{ WATCH_LEVEL_LABEL }}</h3>
       <div v-for="d in DIRECTIONS" :key="d" class="mt-2 flex flex-wrap items-center gap-2 text-sm" :data-testid="`watch-${d}`">
         <span class="w-14 capitalize">{{ d }}</span>
         <span class="min-w-16 tabular-nums" :data-testid="`watch-${d}-now`">{{ watch.data?.[d] ?? 'None' }}</span>
@@ -48,6 +48,7 @@
 import { computed, onMounted, reactive, ref } from 'vue'
 import api, { NEUTRAL_PARTS } from '@/services/api'
 import ErrorMessage from '@/components/common/ErrorMessage.vue'
+import { WATCH_LEVEL_LABEL } from '@/lib/sharedStateText'
 
 const props = defineProps({
   strategyId: { type: [String, Number], required: true },

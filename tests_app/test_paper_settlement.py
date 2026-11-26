@@ -158,8 +158,10 @@ async def test_core_real_sensex_strategies_settle_once_at_intrinsic_value_and_ar
     placed = datetime.datetime(2026, 10, 29, 15, 30, tzinfo=IST)
     for real, sid in sids.items():
         want, booked = EXPECTED[real]
+        # D-71: the settle order's reason names the official close it was priced from
+        reason = "Paper - settled at expiry: SENSEX closed at 73,246.03"
         assert await _settles(db, sid) == sorted(
-            [(ids[t], side, qty, price, placed, ps.SETTLE_REASON) for t, side, qty, price in want])
+            [(ids[t], side, qty, price, placed, reason) for t, side, qty, price in want])
         view = await _book(db, sid)
         assert all(p.net_quantity == 0 for p in view.positions)
         assert (view.booked, view.total) == (booked, booked)
@@ -330,8 +332,8 @@ async def test_run_forever_schedules_from_the_settings_read_after_each_run(monke
     ("CE", "73000", "73246.03", "246.03"), ("CE", "73300", "73246.03", "0"),
     ("PE", "73300", "73246.03", "53.97"), ("PE", "73000", "73246.03", "0"), ("FUT", "0", "73246.03", "73246.03")])
 def test_settle_price_is_the_intrinsic_value(instrument, strike, close, price):
-    from ofo.engine.legs import Instrument  # noqa: PLC0415
-    assert ps.settle_price(Instrument(instrument), D(strike), D(close)) == D(price)
+    from ofo.engine.legs import Instrument, intrinsic_value  # noqa: PLC0415 - R5: the engine owns the value
+    assert intrinsic_value(Instrument(instrument), D(strike), D(close)) == D(price)
 
 
 async def test_detection_the_real_settle_job_leaves_a_fully_settled_strategy_closed(db):

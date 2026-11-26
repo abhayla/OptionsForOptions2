@@ -801,6 +801,18 @@
               }
             ],
             "title": "Health"
+          },
+          "quote_at": {
+            "anyOf": [
+              {
+                "type": "string",
+                "format": "date-time"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Quote At"
           }
         },
         "additionalProperties": false,
@@ -1507,6 +1519,18 @@
             ],
             "title": "Leg Quotes"
           },
+          "oldest_quote_at": {
+            "anyOf": [
+              {
+                "type": "string",
+                "format": "date-time"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Oldest Quote At"
+          },
           "dividend_yields": {
             "anyOf": [
               {
@@ -1572,6 +1596,15 @@
               }
             ]
           },
+          "curve_includes_booked_text": {
+            "anyOf": [
+              {},
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Curve Includes Booked Text"
+          },
           "open_interest": {
             "anyOf": [
               {
@@ -1591,6 +1624,15 @@
                 "type": "null"
               }
             ]
+          },
+          "target_not_live_text": {
+            "anyOf": [
+              {},
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Target Not Live Text"
           },
           "seq": {
             "anyOf": [
@@ -2471,6 +2513,33 @@
                 "type": "null"
               }
             ]
+          },
+          "price_basis_text": {
+            "anyOf": [
+              {},
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Price Basis Text"
+          },
+          "time_value_basis_text": {
+            "anyOf": [
+              {},
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Time Value Basis Text"
+          },
+          "plan_line": {
+            "anyOf": [
+              {},
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Plan Line"
           }
         },
         "additionalProperties": false,
@@ -2720,6 +2789,15 @@
               }
             ],
             "title": "Total Display"
+          },
+          "decay_left_today_text": {
+            "anyOf": [
+              {},
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Decay Left Today Text"
           },
           "dividend_yields": {
             "patternProperties": {

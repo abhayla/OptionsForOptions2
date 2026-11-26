@@ -48,12 +48,12 @@ async function list(over) {
 beforeEach(() => { calls.length = 0; answers = {} })
 
 describe('paper list: a held strategy', () => {
-  it('shows the label, the entry time (IST, short), "Rules start from", the broker as given, and the record-here line beside the actions', async () => {
+  it('shows the label, the entry time (IST, short), "Rules start from", the broker without the API quotes (D-58), and the record-here line beside the actions', async () => {
     const w = await list({ held: HELD })
     expect(t(w, 'held-label').text()).toBe('Held at my broker')
     expect(t(w, 'held-entry').text()).toBe('Entry 12 Nov 09:20')
     expect(t(w, 'held-rules').text()).toBe('Rules start from 12 Nov 09:45')
-    expect(t(w, 'held-broker-name').text()).toBe('"Zerodha"')
+    expect(t(w, 'held-broker-name').text()).toBe('Zerodha')
     expect(t(w, 'paper-actions').text()).toContain(NOTE)
   })
   it('rules_start_at null -> no "Rules start" line (never a guessed time); no broker -> no broker line', async () => {
@@ -87,7 +87,7 @@ describe('paper book: a held strategy', () => {
     expect(t(w, 'held-label').text()).toBe('Held at my broker')
     expect(t(w, 'held-entry').text()).toBe('Entry 12 Nov 09:20')
     expect(t(w, 'held-rules').text()).toBe('Rules start from 12 Nov 09:45')
-    expect(t(w, 'held-broker-name').text()).toBe('"Zerodha"')
+    expect(t(w, 'held-broker-name').text()).toBe('Zerodha')
     expect(t(w, 'held-record-note').text()).toBe(NOTE)
   })
   it.each([['null', null], ['missing', undefined], ['not an object', 5], ['entry_at unparsable', { ...HELD, entry_at: 'x' }]])('held %s -> none of it, no crash', (_n, held) => {

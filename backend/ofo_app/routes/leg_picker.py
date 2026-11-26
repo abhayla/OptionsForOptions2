@@ -160,6 +160,8 @@ class StrikesOut(ApiModel):
     #: ADR-200 (2)/(4): with ``market_closed`` the drawer's banner time, the latest own last-price time among the quotes
     #: the cells and the engine spot used (never a reconnect frame's time); None in market hours or with no such quote
     last_price_at: datetime.datetime | None = None
+    #: GC-ICLIVE-B D-18: the OLDEST time of the quotes the cells were made from ("prices as of"), not the reply time
+    prices_at: datetime.datetime | None = None
 
 
 class FutureOut(ApiModel):
@@ -457,6 +459,8 @@ def strikes_answer(feed: LiveFeed | None, underlying: str, expiry: datetime.date
     reason = "NOT_CONNECTED" if ctx is None else _list_reason(centre.kind, list(cell_of.values()), closed)
     if closed:  # ADR-200 (4): the label time is the used quotes' own time (in hours: no banner, no time)
         head["last_price_at"] = label_time(mstate, (q.price_at for q in (*usable, engine_spot) if q is not None))
+    times = [q.price_at for q in usable]  # a quote may have no price time (no calendar data for its date)
+    head["prices_at"] = None if any(t is None for t in times) else min(times, default=None)  # D-18: "time not given"
     return StrikesOut(state=state, reason=reason, spot=None if centre.spot is None else centre.spot.quantize(PAISE),
                       spot_at=centre.spot_at, centre=centre.kind,
                       atm_strike=None if centre.atm is None else centre.atm.quantize(PAISE), rows=rows, **head)

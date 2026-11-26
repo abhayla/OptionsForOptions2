@@ -7,7 +7,7 @@
 import { computed, ref } from 'vue'
 import Card from '@/components/common/Card.vue'
 import FigureHint from '@/components/common/FigureHint.vue'
-import { GREEK_COLUMNS, greekModeHeading, greekRows, greekText } from '@/lib/chartCard'
+import { greekColumns, greekModeHeading, greekRows, greekText } from '@/lib/chartCard'
 
 const props = defineProps({
   table: { type: Object, default: null },
@@ -16,7 +16,7 @@ const props = defineProps({
 })
 
 const mode = ref('unit') // REQ-084 AC-8: Per unit (default) or Per position
-const names = GREEK_COLUMNS.filter((c) => c.id !== 'iv')
+const names = computed(() => greekColumns(props.table).filter((c) => c.id !== 'iv')) // D-12: the reply's headings
 const rows = computed(() => greekRows(props.table, props.legs))
 const totalRow = computed(() => (rows.value ?? []).find((r) => r.isTotal) ?? null)
 const heading = computed(() => greekModeHeading(rows.value, mode.value))

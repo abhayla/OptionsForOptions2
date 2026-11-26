@@ -41,12 +41,16 @@ async function read() {
   }
 }
 
+// D-18 round 1: Escape closes the popover wherever the focus is (the key handler on the dialog only saw keys pressed inside it)
+const onEscape = (e) => { if (e.key === 'Escape') emit('close') }
 onMounted(() => {
   read()
   timer = setInterval(read, DEPTH_REFRESH_MS)
+  document.addEventListener('keydown', onEscape)
 })
 onBeforeUnmount(() => {
   closed = true
+  document.removeEventListener('keydown', onEscape)
   clearInterval(timer)
 })
 
@@ -74,7 +78,7 @@ const levels = computed(() => {
 
 <template>
   <!-- UI-115 (I-11): a 360 px popover; every value is its own padded table cell, never run together. -->
-  <div class="w-[360px] rounded-lg border border-line bg-surface p-3 text-sm shadow" role="dialog" :aria-label="`Market depth${title ? `: ${title}` : ''}`" data-testid="depth-popup" :data-instrument-id="instrumentId" @keydown.esc="emit('close')">
+  <div class="w-[360px] rounded-lg border border-line bg-surface p-3 text-sm shadow" role="dialog" :aria-label="`Market depth${title ? `: ${title}` : ''}`" data-testid="depth-popup" :data-instrument-id="instrumentId">
     <div class="flex items-center justify-between">
       <h3 class="truncate font-medium">Market depth{{ title ? `: ${title}` : '' }}</h3>
       <button type="button" data-testid="depth-close" class="text-accent" @click="emit('close')">Close</button>

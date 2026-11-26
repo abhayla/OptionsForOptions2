@@ -124,10 +124,11 @@ describe('Alerts page', () => {
     const w2 = await page()
     expect(w2.findAll('[data-testid="alert-row"]')).toHaveLength(2)
   })
-  it('History and Notification settings stay the honest empty lines and read nothing', async () => {
+  it('History (D-22: its own read, records) and Notification settings (still the honest empty line) never read the Active list', async () => {
     answers['GET /paper/alerts'] = ok(TWO)
+    answers['GET /paper/alerts/records'] = ok({ records: [] })
     const h = await page('/alerts/history')
-    expect(h.text()).toContain('No alerts yet.')
+    expect(h.text()).toContain('No stops or expiry settlements yet.')
     const n = await page('/alerts/notification-settings')
     expect(n.text()).toContain('No notification channels are set up yet.')
     expect(count('GET', '/paper/alerts')).toBe(0)

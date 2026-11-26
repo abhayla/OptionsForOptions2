@@ -2,7 +2,7 @@
 
 # Coverage register
 
-Generated from commit c16cc78
+Generated from commit 38daa110
 
 ## Stage S0
 
@@ -84,7 +84,7 @@ Generated from commit c16cc78
 | 4a | decision | ADR-065 | - | Pricing and stale-data guards stop accidental misuse by our own code; deliberate forging is flagged in CI, not resisted at runtime |
 | 4a | decision | ADR-066 | - | Kite Connect's historical candles are used internally only in V1; users see no history screens |
 | 4a | decision | ADR-067 | - | The one-minute history tier is built live from the feed and made final after the close from Kite's own candles |
-| 4a | decision | ADR-068 | - | First screen - a draft's planned entry price, live push cadence, UX level per request, and leg entry in 4a |
+| 4a | decision | ADR-068 | - | First screen - a draft's planned entry price, live push cadence, no level per request, and leg entry in 4a |
 | 4a | decision | ADR-069 | - | A strategy's settings values are short identifiers or numbers; sentences are refused |
 | 4a | decision | ADR-071 | - | Max-loss and max-profit sentences say they are before charges and taxes |
 | 4a | decision | ADR-072 | - | "Where do I start losing?" names every price region where the expiry P&L is below zero |
@@ -97,14 +97,16 @@ Generated from commit c16cc78
 | 4a | decision | ADR-086 | - | The Builder screen names each leg by its contract and shows every time in IST words; a catalogue error always shows all four parts with their labels |
 | 4a | decision | ADR-088 | - | Every non-normal state on the Builder screen shows "Checked at" with the server's answer time in IST |
 | 4a | decision | ADR-089 | - | Lower BE / Upper BE labels follow the edges of the loss regions, not the sign of the P&L next to a breakeven |
+| 4a | decision | ADR-179 | - | A user read after a Kite 429 is refused busy unless Kite states a wait that fits its 5 s limit |
+| 4a | decision | ADR-284 | - | The truncated-download guard judges a list by whether every stored expiry is still carried; a strike-grid change is accepted with counts |
 | 4a | finding | F-21 | - | Exchange contract numbers are reused for different contracts after expiry (NSE), so (segment, number) is unique only on a given day |
 | 4a | finding | F-23 | - | Live exchange prices: SEBI bars sharing them with platforms, NSE bars redistribution without an agreement, and Kite's terms bar public display |
 | 4a | finding | F-29 | - | Core data proof on the owner's own account: live Kite login, quotes and basket margin work; the real field shapes differ from our model in three ways |
 | 4a | finding | F-30 | - | The exchange removes contracts before their expiry and reuses their numbers; "any unexpired contract disappears" is not a sign of a broken download |
 | 4a | finding | F-33 | - | Afternoon market-hours capture: strikes are added during the day, Kite's REST includes charges and historical candles, money arrives as binary floats, and the expiry close was not recorded live |
+| 4a | finding | F-57 | - | Zerodha rule constants checked against Zerodha's current docs; a reported NIFTY freeze-limit rise to 3,510 is unconfirmed |
 | 4a | issue | #126 | - |  |
 | 4a | issue | #148 | - |  |
-| 4a | issue | #159 | - |  |
 | 4a | issue | #191 | - |  |
 | 4a | issue | #199 | - |  |
 | 4a | issue | #200 | - |  |
@@ -112,9 +114,36 @@ Generated from commit c16cc78
 | 4a | issue | #234 | - |  |
 | 4a | issue | #247 | - |  |
 | 4a | issue | #297 | - |  |
-| 4a | issue | #370 | - |  |
+| 4a | issue | #402 | - |  |
+| 4a | issue | #404 | - |  |
+| 4a | issue | #513 | - |  |
+| 4a | issue | #514 | - |  |
+| 4a | issue | #516 | - |  |
+| 4a | issue | #517 | - |  |
+| 4a | issue | #518 | - |  |
+| 4a | issue | #519 | - |  |
+| 4a | issue | #520 | - |  |
+| 4a | issue | #521 | - |  |
+| 4a | issue | #522 | - |  |
+| 4a | issue | #523 | - |  |
+| 4a | issue | #526 | - |  |
+| 4a | issue | #527 | - |  |
+| 4a | issue | #528 | - |  |
+| 4a | issue | #529 | - |  |
+| 4a | issue | #530 | - |  |
+| 4a | issue | #532 | - |  |
+| 4a | issue | #537 | - |  |
+| 4a | issue | #548 | - |  |
+| 4a | issue | #550 | - |  |
+| 4a | issue | #558 | - |  |
+| 4a | issue | #560 | - |  |
+| 4a | issue | #561 | - |  |
 | 4a | question | Q210 | - | What Zerodha allows, and what it costs each user |
 | 4a | requirement | REQ-001 | - | V1 scope: underlyings, leg types, broker |
+| 4a | requirement | REQ-015 | AC-10 | With no broker connected, the action that opens the order screen for a saved strategy is shown disabled, with the sentence 'Log in with Zerodha to trade. Use Connect Zerodha in Settings, then come back.' visible before any click; it is enabled only while the server states the account connection is Connected, and a failed or unreadable status read counts as not connected (reference-register RD-012). |
+| 4a | requirement | REQ-015 | AC-11 | While the account is not Connected, the Connect Zerodha panel shows an 'Is it safe to connect?' explainer (what the connection is used for, and that the platform never sees the Zerodha password, PIN or OTP), a line that connecting adds no charge from the platform, and the configured account-opening link with no referrer (ADR-175); with no configured link the panel shows no link and still explains (reference-register RD-010). |
+| 4a | requirement | REQ-015 | AC-12 | Positions are read from Zerodha once when a session connects and then on a fixed period (REQ-118 AC-7), with no manual step such as opening Execute; the job stops on disconnect or when Zerodha refuses the token, and a new login starts it again with one read at connect (extends AC-5; reference-register RD-014). |
+| 4a | requirement | REQ-015 | AC-13 | While connected, Settings shows the Zerodha client id masked to its first 2 and last 2 characters, and, while the funds_read flag is on, Zerodha's own available margin exactly as read, with its read time; it is never computed and never defaulted: not connected, flag off, an empty or failed read, a busy answer or an expired login each show their reason, never 0 (ADR-016; reference-register RD-013). |
 | 4a | requirement | REQ-015 | AC-4 | Settings → Broker & Market Data → Zerodha shows four separate statuses — account connection, live market data, position/account sync, order-execution readiness — as Connected, Partially connected (naming what to fix) or Disconnected (with the guide); Connected shows 'Last successful sync' time and Reconnect / Disconnect actions (Q181; T2 #124). |
 | 4a | requirement | REQ-015 | AC-5 | When the connection drops within a valid Zerodha session the platform reconnects automatically, validates and resynchronises, then resumes monitoring; reconnecting never places or submits an order (Q183). Auto-reconnect cannot renew the daily Zerodha session; after that expiry the user must authenticate again (owner T1 #265). |
 | 4a | requirement | REQ-015 | AC-6 | The platform never asks for the user's Zerodha password, PIN or OTP; Zerodha authentication happens on Zerodha's side and is separate from platform login. |
@@ -130,14 +159,14 @@ Generated from commit c16cc78
 | 4a | requirement | REQ-047 | AC-4 | Adjustment-relevant data is collected even when the user has no adjustment rule (Q165). |
 | 4a | requirement | REQ-048 | - | Market-data pipeline and browser boundary |
 | 4a | requirement | REQ-049 | - | Normalized market data and data health |
-| 4a | requirement | REQ-051 | AC-1 | In V1 historical data, historical simulation and historical adjustment analysis are disabled until a licensed historical source exists; the UI says so (Q180, owner T2 #121). |
+| 4a | requirement | REQ-051 | AC-1 | In V1 historical simulation and historical adjustment analysis are disabled until a licensed historical source exists, and the UI says so (Q180, owner T2 #121). User-facing history, IV and OI charts are specified by ADR-158 and stay off in production until display rights are confirmed in writing; until then each held history field is absent from the screen, not a placeholder. |
 | 4a | requirement | REQ-051 | AC-2 | No complete tick-by-tick history is stored for every option (Q168). |
 | 4a | requirement | REQ-051 | AC-3 | Tiers: real-time, aggregated intraday (1-minute/5-minute), daily, strategy snapshots (active user strategies only). Derived metrics are computed on demand, or materialised only when expensive or useful; they are not stored for every timestamp (Q168; T2 #102). |
 | 4a | requirement | REQ-051 | AC-4 | Aggregated history is built from the live feed where practical and licensed (Q169); a separate historical provider can plug into the same abstraction (Q99). |
 | 4a | requirement | REQ-051 | AC-5 | Historical data and simulation never block live strategy creation, Option Chain, execution or monitoring (Q101 owner note, Q180). |
 | 4a | requirement | REQ-052 | - | Market-data sourcing and licensing |
 | 4a | requirement | REQ-053 | - | Broker authority and contract eligibility |
-| 4a | requirement | REQ-054 | AC-1 | A broker interface offers: authenticate, fetch account, fetch margin, fetch positions, fetch orders, build an order basket for the user to place on the broker's own page (ADR-054; the adapter never places orders through the API), fetch order status, reconcile. |
+| 4a | requirement | REQ-054 | AC-1 | A broker interface offers: authenticate, fetch account, fetch margin, fetch positions, fetch orders, build an order basket for the user to place on the broker's own page (ADR-054; the adapter never places orders through the API, except for the one stop-loss module of REQ-100/REQ-101 named in REQ-073 AC-4, ADR-162), fetch order status, reconcile. |
 | 4a | requirement | REQ-063 | AC-1 | Broker, market-data and payment integrations each sit behind an adapter. |
 | 4a | requirement | REQ-063 | AC-2 | Business rules live in backend/domain services, not only in UI code. |
 | 4a | requirement | REQ-063 | AC-3 | Shared calculations are centralised. |
@@ -147,7 +176,25 @@ Generated from commit c16cc78
 | 4a | requirement | REQ-072 | - | Index spot prices for NIFTY 50 and SENSEX |
 | 4a | work item | W-070 | - | Response door, part 2 - every header, the status and the send path of a door response are minted at construction and sent as frozen |
 | 4a | work item | W-089 | - | Settings -> Broker & Market Data page - four connection statuses, last sync, Reconnect / Disconnect, and the V1 "no historical data" statement |
-| 4a | work item | W-090 | - | Strategy Builder - the user customises the scenario range and step, and switches columns between At Expiry and Estimated Now |
+| 4a | work item | W-090 | - | Strategy Builder - the user customises the scenario range, and switches columns between At Expiry and Estimated Now |
+| 4a | work item | W-109 | - | My Strategies - the list of the user's saved strategies, with a Completed filter and links to the Builder and Execute |
+| 4a | work item | W-110 | - | Repo-wide money guard - no money arithmetic outside the calculation engine (REQ-063 AC-3) |
+| 4a | work item | W-112 | - | No historical market data shown to users - repo_scan allow-list guard (REQ-052 AC-1) |
+| 4a | work item | W-129 | - | Scope: underlyings and leg types (NIFTY/SENSEX now; BANKNIFTY/FINNIFTY at row 46) [builder sequence row 1] |
+| 4a | work item | W-130 | - | Zerodha connection (Kite login, reads only) [builder sequence row 2] |
+| 4a | work item | W-131 | - | Broker adapter, read part [builder sequence row 3] |
+| 4a | work item | W-133 | - | Contract eligibility: daily instrument list, valid strikes and expiries (read part) [builder sequence row 5] |
+| 4a | work item | W-134 | - | Market-data pipeline (prices reach the server, never the browser directly) [builder sequence row 6] |
+| 4a | work item | W-135 | - | Data health: fresh, stale and missing prices labelled honestly [builder sequence row 7] |
+| 4a | work item | W-140 | - | Index spot price [builder sequence row 12] |
+| 4a | work item | W-141 | - | Calculation engine [builder sequence row 13] |
+| 4a | work item | W-142 | - | Expiry and live P&L formulas [builder sequence row 14] |
+| 4a | work item | W-143 | - | Shape templates and shape matching [builder sequence row 15] |
+| 4a | work item | W-144 | - | Save a strategy and load it back exactly [builder sequence row 16] |
+| 4a | work item | W-146 | - | Strategy table: every leg's P&L at each level [builder sequence row 18] |
+| 4a | work item | W-150 | - | Outcome view and scenario levels [builder sequence row 22] |
+| 4a | work item | W-185 | - | Market-data sourcing and licensing (needed by rows 58, 62) [builder sequence row 57] |
+| 4a | work item | W-187 | - | Historical price storage (needed by rows 60-61) [builder sequence row 59] |
 
 ## Stage 4b
 
@@ -184,6 +231,46 @@ Generated from commit c16cc78
 | 4b | decision | ADR-104 | - | What "Zerodha data allows" means for a leg - the current instrument list, the expiry date and the margin reply |
 | 4b | decision | ADR-105 | - | The basket tag's plan version is a per-strategy plan number, stored before the basket is handed out, one open plan at a time |
 | 4b | decision | ADR-107 | - | Before a live run, each open Tier A deferred issue is triaged against the run's path; only a 'yes' blocks |
+| 4b | decision | ADR-108 | - | The GC-3 live test starts under eight operating rules while F-42's criteria fail, and trades the 2026-10-27 expiry |
+| 4b | decision | ADR-109 | - | The |
+| 4b | decision | ADR-110 | - | A contract with an open plan shows as waiting for Check on Positions and blocks its strategy until the plan's orders are final at Zerodha |
+| 4b | decision | ADR-111 | - | A live-run position whose EXIT did not fill is closed through the app after the |
+| 4b | decision | ADR-114 | - | Screen content and layout are decided by a design role that studies similar apps; the requirement ACs stay the business rules; look and feel comes from the owner's global design preferences |
+| 4b | decision | ADR-115 | - | The project takes kit 1.10.1; every merge passes the full sha of the reviewed commit to the kit merge gate, and the kit's own verifier snapshot cleanup replaces the project stand-in |
+| 4b | decision | ADR-116 | - | When Zerodha shows a contract shared by several strategies flat, one recorded action marks that contract's legs exited in every holder; any non-flat state stays blocked |
+| 4b | decision | ADR-117 | - | Entry is two baskets when any sell depends on a protective buy; basket 2 is offered only after Zerodha confirms the buys |
+| 4b | decision | ADR-118 | - | A never-executed draft may be deleted, hidden from every list and kept server-side for audit; a strategy that ever sent a basket cannot be deleted |
+| 4b | decision | ADR-119 | - | Execute only runs in NSE market hours, 09:15 to 15:30 IST on trading days, with the holiday list kept as dated data |
+| 4b | decision | ADR-120 | - | Two owner answers that change nothing - no what-if sliders in V1, and a reconciliation mismatch is never guessed away |
+| 4b | decision | ADR-121 | - | A lopsided expected range reads as a direction, otherwise neutral; the market-closed message names the next trading day as "Wed 21 Oct" |
+| 4b | decision | ADR-122 | - | The range-reading line says "Your range leans up", "Your range leans down" or "Your range is balanced" |
+| 4b | decision | ADR-123 | - | A shared contract whose fresh Zerodha read matches what every holder expects is unblocked by one recorded "Kite now matches" action |
+| 4b | decision | ADR-124 | - | The range-flow view picker reads "Mildly bullish", "Mildly bearish" and "Neutral" under the caption "Strategies will use this view" |
+| 4b | decision | ADR-125 | - | A strategy blocked because an earlier-day plan could not be read back is cleared by one recorded "Use Zerodha's number" action |
+| 4b | decision | ADR-126 | - | An adopted leg keeps Zerodha's exact average price, even finer than a paisa; screens show 2 decimals |
+| 4b | decision | ADR-127 | - | The owner's kill switch stops every basket build and the Execute screen says "Execution is paused by the platform right now" |
+| 4b | decision | ADR-128 | - | While the kill switch is on, a screen with an open position adds "You can still close positions directly on Kite." |
+| 4b | decision | ADR-129 | - | After "Check with Zerodha" succeeds, the return page says "Zerodha confirmed your orders." |
+| 4b | decision | ADR-130 | - | The empty Orders and Positions screens offer a [Create Strategy] button, like My Strategies |
+| 4b | decision | ADR-131 | - | On the Option Chain a second tap on the same action unselects that contract; lots change only through the stepper |
+| 4b | decision | ADR-132 | - | Option Chain selection texts - already-in-strategy prompt, template resemblance, unavailable reasons |
+| 4b | decision | ADR-133 | - | A basket opened on Kite but never placed shows the status "Cancelled" with the note "Not placed on Kite" |
+| 4b | decision | ADR-134 | - | The app complements the broker and never duplicates what the broker already does; orders show only "Order placed" or "Executed" |
+| 4b | decision | ADR-135 | - | A strategy's order line shows one of four states - "Not sent to Zerodha", "Order placed", "Executed n of m", "Not executed - see Kite" |
+| 4b | decision | ADR-136 | - | A partly executed strategy shows its actual risk and offers Check with Zerodha, Place missing legs, Close filled legs, I'll manage it on Kite, and a Change price on Kite link |
+| 4b | decision | ADR-137 | - | A blocked strategy is cleared by two actions - "Use Zerodha's numbers for this contract" and "Close via a basket" |
+| 4b | decision | ADR-138 | - | Eight scope cuts so the app does not copy Kite (orders, positions, order store, timeline, connection page, texts, margin re-check, one row) |
+| 4b | decision | ADR-139 | - | The Execute screen opens with one plain sentence in one pattern for every basket shape |
+| 4b | decision | ADR-140 | - | Execute risk tiers - normal, elevated and exceptional are set by worst-case loss against the user's limit and Zerodha funds |
+| 4b | decision | ADR-141 | - | Use Zerodha's numbers for this contract may be confirmed at any hour; only actions that build a basket follow market hours |
+| 4b | decision | ADR-142 | - | The texts a user reads when a recovery action cannot run - a short fact and the next step |
+| 4b | decision | ADR-143 | - | When the engine cannot estimate the worst-case loss, the Execute risk tier is at least Elevated, and Exceptional if a short is uncovered |
+| 4b | decision | ADR-144 | - | While the paid plan is held, the public landing page's Pricing block reads "Free during early access" with no rupee amount |
+| 4b | decision | ADR-145 | - | The public landing page footer carries the Zerodha AP disclosure block, the market-risk warning and a not-advice line; it is not published before Zerodha approves it |
+| 4b | decision | ADR-146 | - | While the paid plan is held, the in-app Subscription, Free Eligibility and Referrals pages show the early-access line, no trial and no action buttons |
+| 4b | decision | ADR-149 | - | "Placed only on the owner's own account" on the Kite-basket path means three controls the product enforces |
+| 4b | decision | ADR-182 | - | Price protection is measured from the market price at Execute time, never from a typed or saved planning price |
+| 4b | decision | ADR-285 | - | When the market calendar runs out: a warning from 30 days before its last date, and a date it does not cover reads "no calendar", never "market closed" |
 | 4b | finding | F-07 | - | Zerodha API order behaviour the broker phase must handle |
 | 4b | finding | F-17 | - | Every order sent through a broker API counts as an algo order, even one the user confirms; only the broker's own front end is not |
 | 4b | finding | F-22 | - | Zerodha's "offsite order execution" (Kite basket / Publisher) lets the user place our prepared multi-leg orders on Zerodha's own exchange-approved order page |
@@ -194,13 +281,26 @@ Generated from commit c16cc78
 | 4b | finding | F-39 | - | Kite's basket margin for an option BUY is quantity x the LOWER of the limit price and the live price, not the limit |
 | 4b | finding | F-40 | - | The 4b domain chain (fill ledger, reconcile, P&L) is right on the real order, but no code turns Kite's orders/trades/positions replies into its input |
 | 4b | finding | F-41 | - | Kite returns the browser from a basket to the SAME registered redirect URL the login uses, and our login callback would show a login error |
+| 4b | finding | F-42 | - | REQ-058 and REQ-060 were Verified on domain modules the Kite-basket routes never call |
+| 4b | finding | F-43 | - | On Mon 2026-10-19 the nearest NIFTY weekly contract expires the same day |
+| 4b | finding | F-44 | - | On Sun 2026-10-18 Kite reported zero funds on the owner's account (net, cash and opening balance all 0) |
+| 4b | finding | F-45 | - | The app's database role allows 5 connections in total, while ONE API process's pool can open about 19 |
+| 4b | finding | F-46 | - | A live screen keeps showing its last answer's numbers after its own connection drops |
+| 4b | finding | F-47 | - | The live feed carries no previous close, so the Option Chain's default Change column cannot be filled |
+| 4b | finding | F-48 | - | A live socket's once-a-second limit guarded only its normal push, so its error path flooded the client |
+| 4b | finding | F-49 | - | The Strategy Builder page is built but missing from the route map, so its nav item opens the placeholder |
+| 4b | finding | F-50 | - | Kite's basket page shows Required margin and Final margin; order sequence changes the required one, not the final one; for F&O, buy options first |
+| 4b | finding | F-51 | - | No studied app shows a guided objective, market-view and range flow; ours rests on the spec alone |
+| 4b | finding | F-52 | - | The generated build order and a work item still say REQ-061 AC-2 waits on OQ-7, which ADR-096 answered on 2026-10-16 |
+| 4b | finding | F-53 | - | Every workflow runs on every PR push including drafts, and a frontend-only change also runs the API suite |
+| 4b | finding | F-54 | - | The legacy algochanakya 2026 holiday list is wrong: it misses Tue 2026-10-20 and lists Wed 2026-10-21 |
+| 4b | finding | F-55 | - | A net-only next-day read cannot see a same-day round trip: a filled-then-hand-sold entry reads "nothing placed" |
+| 4b | finding | F-56 | - | Zerodha's instrument list is generated once each morning; Kite's docs say fetch it at about 08:30 IST |
 | 4b | issue | #115 | - |  |
 | 4b | issue | #240 | - |  |
 | 4b | issue | #255 | - |  |
-| 4b | issue | #257 | - |  |
 | 4b | issue | #263 | - |  |
 | 4b | issue | #269 | - |  |
-| 4b | issue | #271 | - |  |
 | 4b | issue | #273 | - |  |
 | 4b | issue | #279 | - |  |
 | 4b | issue | #313 | - |  |
@@ -209,8 +309,31 @@ Generated from commit c16cc78
 | 4b | issue | #344 | - |  |
 | 4b | issue | #352 | - |  |
 | 4b | issue | #353 | - |  |
+| 4b | issue | #380 | - |  |
+| 4b | issue | #381 | - |  |
+| 4b | issue | #386 | - |  |
+| 4b | issue | #389 | - |  |
+| 4b | issue | #390 | - |  |
+| 4b | issue | #400 | - |  |
+| 4b | issue | #401 | - |  |
+| 4b | issue | #403 | - |  |
+| 4b | issue | #405 | - |  |
+| 4b | issue | #411 | - |  |
+| 4b | issue | #422 | - |  |
+| 4b | issue | #423 | - |  |
 | 4b | issue | #43 | - |  |
+| 4b | issue | #434 | - |  |
+| 4b | issue | #435 | - |  |
+| 4b | issue | #439 | - |  |
+| 4b | issue | #442 | - |  |
+| 4b | issue | #444 | - |  |
 | 4b | issue | #45 | - |  |
+| 4b | issue | #475 | - |  |
+| 4b | issue | #481 | - |  |
+| 4b | issue | #483 | - |  |
+| 4b | issue | #485 | - |  |
+| 4b | issue | #486 | - |  |
+| 4b | issue | #488 | - |  |
 | 4b | issue | #63 | - |  |
 | 4b | open area | OA-02 | - | bid/ask/slippage |
 | 4b | open area | OA-03 | - | charges model |
@@ -226,7 +349,7 @@ Generated from commit c16cc78
 | 4b | question | Q271 | - | Are the trades of orders placed outside the platform written to the audit log? |
 | 4b | requirement | REQ-036 | - | Strategy-only execution |
 | 4b | requirement | REQ-039 | - | Strategy state machine and exception states |
-| 4b | requirement | REQ-054 | AC-1 | A broker interface offers: authenticate, fetch account, fetch margin, fetch positions, fetch orders, build an order basket for the user to place on the broker's own page (ADR-054; the adapter never places orders through the API), fetch order status, reconcile. |
+| 4b | requirement | REQ-054 | AC-1 | A broker interface offers: authenticate, fetch account, fetch margin, fetch positions, fetch orders, build an order basket for the user to place on the broker's own page (ADR-054; the adapter never places orders through the API, except for the one stop-loss module of REQ-100/REQ-101 named in REQ-073 AC-4, ADR-162), fetch order status, reconcile. |
 | 4b | requirement | REQ-055 | - | Margin checks |
 | 4b | requirement | REQ-056 | - | Multi-leg execution plan and review |
 | 4b | requirement | REQ-057 | - | Order lifecycle |
@@ -234,8 +357,9 @@ Generated from commit c16cc78
 | 4b | requirement | REQ-059 | - | Pre-execution safety checks and validation |
 | 4b | requirement | REQ-060 | - | Reconciliation with Zerodha |
 | 4b | requirement | REQ-061 | - | Existing positions on connect |
-| 4b | requirement | REQ-063 | AC-4 | No API allows an order outside a strategy context, a bypass of a reconciliation block, or a bypass of safety checks by UX level. |
+| 4b | requirement | REQ-063 | AC-4 | No API allows an order outside a strategy context, a bypass of a reconciliation block, or a bypass of safety checks by any setting or screen (level wording removed by ADR-168 (4), 2026-10-24). |
 | 4b | requirement | REQ-063 | AC-5 | Vendor credentials never reach the browser; broker credentials are never stored beyond the official secure-token mechanism. Audit and other stored payloads use a per-event-type field ALLOWLIST (each event type declares the fields it may carry; anything else is dropped before storage), never a list of forbidden key names - a denylist failed twice (W-015 - over-blocked instrument_token, under-blocked X-Api-Key and Kite's enctoken). Delegated overnight after an independent review (ADR-045); work item W-017, blocked until real Kite responses exist. |
+| 4b | requirement | REQ-063 | AC-6 | A third-party tool that receives user data gets only allowlisted fields under the same rule as AC-5: the error tracker from now (ADR-156 (2)), and product analytics or session replay only for users who consented and only once ADR-156's consent check has cleared (REQ-130); no broker token, Client ID, quantity or money figure reaches any of them. |
 | 4b | requirement | REQ-073 | - | Orders reach Zerodha as a read-only basket the user places on Kite's own page |
 | 4b | work item | W-017 | - | Per-event-type payload allowlist for stored audit/broker data (no stored credentials) |
 | 4b | work item | W-081 | - | Margin check with Zerodha before the basket is built - available funds vs the basket's required margin, insufficient blocks the basket (REQ-055 AC-1/3/4) |
@@ -256,6 +380,17 @@ Generated from commit c16cc78
 | 4b | work item | W-104 | - | The Execute screen - exact orders and full cost, the owner's two clicks, a basket-return landing page |
 | 4b | work item | W-105 | - | A basket return on the shared redirect URL lands on the "returned" page, never a login error |
 | 4b | work item | W-106 | - | Holdings read on the Kite read door - ADR-097 (4)'s before/after check |
+| 4b | work item | W-107 | - | Execute refuses while the strategy's own closed plan has drifted at Zerodha |
+| 4b | work item | W-108 | - | Attribute before compare - the app's own fills are the strategy side, an outside surplus is reported apart (#380 T1) |
+| 4b | work item | W-111 | - | Positions screen, part 1 - strategy-linked positions and outside lots, no P&L figures (REQ-044 AC-3) |
+| 4b | work item | W-115 | - | Home overview - the adaptive states REQ-008 can back today, the new-user lines, the live index strip and Zerodha offered only in context |
+| 4b | work item | W-116 | - | Option Chain read route and live socket - Calls \| Strike \| Puts rows around ATM on the shared feed, each cell with its own health (no screen) |
+| 4b | work item | W-117 | - | Learn, Alerts and Market context screens - display-only shells; Learn's strategy education from the reviewed template catalogue |
+| 4b | work item | W-118 | - | Option Chain screen, display only - Calls \| Strike \| Puts from the chain socket, ATM row, expiry selector, per-cell health, no order placement |
+| 4b | work item | W-119 | - | Create Strategy, guided - two paths, objective, market view, expiry and expected range, strategy cards priced by the engine, Open in Strategy Builder |
+| 4b | work item | W-120 | - | Option Chain leg selection and import - selector and explicit Buy/Sell per cell, Selected Legs summary, "Add Selected (N)" opens the Strategy Builder with exactly those legs |
+| 4b | work item | W-121 | - | Order path switched off - one server switch, every order route refuses (builder scope Step 1) |
+| 4b | work item | W-153 | - | Margin check, read part (Zerodha's margin for the plan) [builder sequence row 25] |
 
 ## Stage 4c
 
@@ -266,6 +401,8 @@ Generated from commit c16cc78
 | 4c | decision | ADR-028 | - | Notifications |
 | 4c | decision | ADR-053 | - | V1 uses each user's own Zerodha feed, and monitoring pauses visibly when that user's daily session has ended |
 | 4c | decision | ADR-060 | - | Build the whole core on the owner's own Kite Connect app until a production-ready demo exists, then apply to Zerodha |
+| 4c | decision | ADR-112 | - | Stage 4c is built after the 4b fixes, and every decided build-ahead item is tracked in goal contracts until closed |
+| 4c | issue | #433 | - |  |
 | 4c | open area | OA-10 | - | alert provider, consent, quiet hours, templates, escalation, dedupe, rate limits |
 | 4c | requirement | REQ-040 | - | Activity timeline and rule-trigger audit |
 | 4c | requirement | REQ-041 | - | Rule engine: entry, exit and rule defaults |
@@ -287,6 +424,7 @@ Generated from commit c16cc78
 | S5 | decision | ADR-040 | - | WhatsApp OTP is sent through the shared Notifier gateway |
 | S5 | decision | ADR-074 | - | The Stage 4 core gate may pass with REQ-065 open; REQ-065 must be Verified before Stage 5 |
 | S5 | issue | #129 | - |  |
+| S5 | issue | #482 | - |  |
 | S5 | requirement | REQ-002 | - | Account boundaries |
 | S5 | requirement | REQ-003 | - | Public multi-user SaaS |
 | S5 | requirement | REQ-004 | - | Responsive web, desktop and mobile priorities |
@@ -296,8 +434,9 @@ Generated from commit c16cc78
 | S5 | requirement | REQ-014 | - | Zerodha Client ID binding and anti-abuse |
 | S5 | requirement | REQ-015 | AC-1 | Connection is requested only when a broker-dependent function is used: execution, live positions/orders/account data, or direct-customer eligibility (Q79). |
 | S5 | requirement | REQ-015 | AC-2 | The contextual prompt reads: 'Connect your Zerodha account to continue. We'll use your Zerodha account to verify availability, check margin and prepare/execute your strategy.' |
-| S5 | requirement | REQ-015 | AC-3 | A guided Zerodha API setup walks the user through: open Zerodha Developer Console → create the API app → enter our redirect URL → generate credentials → connect → authorise → test; it ends with 'Zerodha connected · Live market data connected · Positions synchronized' and 'Historical market data: Not currently available' (owner T2 #121, Q178). |
+| S5 | requirement | REQ-015 | AC-3 | A user connects only by logging in to Zerodha on Zerodha's own page through the platform's Kite Connect app, as on Sensibull; no screen asks a user to create a developer app or to enter an API key or secret (ADR-169, which dropped the guided own-app setup of Q178). |
 | S5 | requirement | REQ-050 | - | Shared computation and scale |
+| S5 | work item | W-136 | - | Shared computation (market-wide figures computed once) [builder sequence row 8] |
 
 ## Stage S6
 
@@ -313,9 +452,116 @@ Generated from commit c16cc78
 | Stage | Kind | Id | AC | Text |
 | --- | --- | --- | --- | --- |
 | S6.1 | decision | ADR-007 | - | Option Chain |
+| S6.1 | decision | ADR-150 | - | Strike moves on strikes the user chose (Shift / Width / Hedge) are allowed now; rule-placed strikes wait for the legal check |
+| S6.1 | decision | ADR-152 | - | Sensibull is the default reference for user-facing features, except where OFO2 is stricter on safety, or the item is legal, compliance or money |
+| S6.1 | decision | ADR-157 | - | The product covers four index underlyings - NIFTY, BANKNIFTY, FINNIFTY and SENSEX - and no stock options |
+| S6.1 | decision | ADR-159 | - | A strategy's orders may use the intraday product (MIS) as well as carry-forward (NRML), as Sensibull allows, with the same-day auto square-off stated before Execute |
+| S6.1 | decision | ADR-163 | - | Execute always sends the whole strategy; trading only some legs is done by editing the strategy, not by unticking legs |
+| S6.1 | decision | ADR-166 | - | The action that starts following a saved strategy is called "Start tracking" |
+| S6.1 | decision | ADR-168 | - | The builder is built one requirement at a time in a fixed 59-row order, before the rest of the builder scope |
+| S6.1 | decision | ADR-169 | - | No guided own-app Zerodha setup; users connect by logging in to Zerodha through the platform's app, as on Sensibull |
+| S6.1 | decision | ADR-174 | - | A user without a Zerodha connection sees no prices or P&L; the reference product's delayed feed for logged-out users is not copied for now |
+| S6.1 | decision | ADR-175 | - | The Connect Zerodha panel carries an account-opening link with the PIFS partner code, and an "is it safe" explainer |
+| S6.1 | decision | ADR-183 | - | A strategy name is at most 20 characters, as in Sensibull |
+| S6.1 | decision | ADR-184 | - | Strategy history and delete follow Sensibull - rename entries shown but not restorable, view-only after execution, a tracked draft deletes like any draft |
+| S6.1 | decision | ADR-186 | - | Hedge and the Shift total follow Sensibull - unequal hedges even out; a Width or Hedge click resets the Shift total |
+| S6.1 | decision | ADR-192 | - | Save As shortens the original name so "<name> copy" fits 20 characters |
+| S6.1 | decision | ADR-193 | - | Every screen the spec has takes Sensibull's layout and interactions, under our own brand |
+| S6.1 | decision | ADR-194 | - | The builder's P&L Table tab opens compact like Sensibull, with the full locked strategy table one switch away |
+| S6.1 | decision | ADR-195 | - | With any leg left out of the numbers, the builder names no shape and disables Width and Hedge, as Sensibull does |
+| S6.1 | decision | ADR-196 | - | The builder and option chain take every Sensibull feature that lives in or feeds them, with our requirements on top; indices only |
+| S6.1 | decision | ADR-197 | - | After market hours the builder works from the last close, as Sensibull does, under the market-closed banner |
+| S6.1 | decision | ADR-198 | - | Thirteen builder features that had no requirement are approved as REQ-142 to REQ-154, with Indian digit grouping and server-kept unsaved drafts |
+| S6.1 | decision | ADR-199 | - | After the market closes on an expiry day, the builder's default expiry rolls to the next expiry |
+| S6.1 | decision | ADR-200 | - | ADR-197 is built now; "the last close" defined; closing-price walks on the real app prove the GC-BM contract |
+| S6.1 | decision | ADR-201 | - | Paper-tracked strategies show on the Positions screen in a separate Paper tab; this round tests the builder flow functionally |
+| S6.1 | decision | ADR-202 | - | Builder and paper screens keep every required meaning but take Sensibull's form for explanations, markers and labels |
+| S6.1 | decision | ADR-203 | - | The builder's Strategy Chart is built from Kite Connect's historical candles; every wrong number found in the UI round is fixed in that round |
+| S6.1 | decision | ADR-204 | - | The UI-match differences document is approved as recommended, including its ten SPEC CHANGE rows |
+| S6.1 | decision | ADR-205 | - | The charges breakdown keeps ADR-082's exact amounts; its rounded lines may differ from the total by a paisa or two, with no note |
+| S6.1 | decision | ADR-206 | - | The order flow stays ADR-165 / ADR-201 - builder trades are paper, real Zerodha positions are imported read-only - and Funds needed (REQ-142) is held |
+| S6.1 | decision | ADR-207 | - | Paper trading follows Sensibull's Draft Portfolios - an Add to Paper confirm list, an order book that adjustments add to, expiry settlement, paper stop-losses, what-if sliders, charges beside P&L, and percentages of margin needed |
+| S6.1 | decision | ADR-208 | - | The what-if sliders' three user sentences - the estimate label, the clamp sentence, and "no Greeks at expiry" |
+| S6.1 | decision | ADR-209 | - | On a paper strategy the what-if P&L at target includes the booked P&L of exited legs |
+| S6.1 | decision | ADR-210 | - | Seven user sentences for paper figures that cannot be shown, and for a stale what-if figure |
+| S6.1 | decision | ADR-211 | - | Eight user sentences for the projected badge, the Target block and paper figures that cannot be worked out |
+| S6.1 | decision | ADR-212 | - | After market hours, paper positions show LTP and P&L from the last close, as the builder does |
+| S6.1 | finding | F-61 | - | A false "data disconnected" alarm after a reconnect comes from the SERVER's Kite feed reconnecting, not the browser's socket |
+| S6.1 | finding | F-62 | - | Zerodha's basket margin reply carries no buy-first figure, so REQ-142 "Funds needed" cannot be taken from it |
+| S6.1 | finding | F-63 | - | Sensibull's Greeks-tab Decay is the time value lost between the strategy's time and the next market open, about 0.73-0.84 of one day's theta overnight |
+| S6.1 | finding | F-64 | - | Kite's historical minute candles cover the Strategy Chart's 10-day window for a leg and the future, but an option leg misses about 5% of the future's minutes and prices arrive as JSON numbers |
+| S6.1 | finding | F-65 | - | Editing a paper-tracked strategy in the builder changes the saved plan but not the paper position, with no warning |
+| S6.1 | finding | F-66 | - | The builder prices an open paper position at the plan's entry prices, not its paper fills |
+| S6.1 | finding | F-67 | - | Paper entry is the LTP at "Start tracking", not the planned or typed entry price, and there is no confirm step |
+| S6.1 | finding | F-68 | - | An open paper leg has no expiry settlement: after expiry it has no price and its exit is refused |
+| S6.1 | finding | F-69 | - | The Positions screen opens on a tab that says the user holds nothing while paper positions are open |
+| S6.1 | finding | F-70 | - | "% of funds" divides by available funds; at low cash it reads as a meaningless 1045%, and Sensibull divides by funds needed |
+| S6.1 | finding | F-71 | - | The "near a short strike" adjustment detection fires at entry for a shape whose short strike is near spot by design |
+| S6.1 | finding | F-72 | - | Kite's day candle for an index carries the exchange's official closing value (SENSEX 28 Oct: 73,246.03 on both) |
+| S6.1 | issue | #495 | - |  |
+| S6.1 | issue | #497 | - |  |
+| S6.1 | issue | #499 | - |  |
+| S6.1 | issue | #500 | - |  |
+| S6.1 | issue | #502 | - |  |
+| S6.1 | issue | #512 | - |  |
+| S6.1 | issue | #515 | - |  |
+| S6.1 | issue | #582 | - |  |
+| S6.1 | issue | #583 | - |  |
 | S6.1 | requirement | REQ-029 | - | Option Chain display and live data |
 | S6.1 | requirement | REQ-030 | - | Option Chain leg selection and import |
 | S6.1 | requirement | REQ-031 | - | Option Chain live strategy preview |
+| S6.1 | requirement | REQ-076 | - | Builder leg rows - strike stepper, multiplier, analysis-only leg toggle and the shape name |
+| S6.1 | requirement | REQ-077 | - | Builder entry prices - a typed price per leg, Reset Prices, and a "price has moved" marker with explicit re-pricing |
+| S6.1 | requirement | REQ-078 | - | Shift, Width and Hedge move the user's own strikes by one strike step per click, computed on the server |
+| S6.1 | requirement | REQ-079 | - | Ready-made shapes and straddle/strangle quick picks load into the builder at strikes placed by a fixed rule (held for the legal check) |
+| S6.1 | requirement | REQ-080 | - | Leg picker with live prices per strike, a market-depth popup per leg, and the futures and forward price per expiry |
+| S6.1 | requirement | REQ-087 | - | Option Chain display options - per-lot prices, ITM shading, strikes around ATM, and intrinsic value, time value and breakeven % columns |
+| S6.1 | requirement | REQ-090 | - | Four index underlyings - NIFTY, BANKNIFTY, FINNIFTY and SENSEX - with every per-underlying value read from the exchange's files |
+| S6.1 | requirement | REQ-102 | - | A strategy's entry may use intraday (MIS) or carry-forward (NRML), with Zerodha's auto square-off stated before Execute and recognised by reconciliation |
+| S6.1 | requirement | REQ-119 | - | The builder drops late replies, so an older answer never draws over a newer edit |
+| S6.1 | requirement | REQ-133 | - | A live frame for an older strategy version is dropped, and a just-connected screen waits for its first price instead of reporting bad data |
+| S6.1 | requirement | REQ-134 | - | Saved strategies have a name the user chooses, Save As makes a copy, a saved strategy can be renamed, and the saved list can be searched |
+| S6.1 | requirement | REQ-135 | - | Builder leg list housekeeping - clear all legs with Undo, days to expiry beside each expiry, one "prices as of" stamp, and a lone futures leg shown as unlimited |
+| S6.1 | requirement | REQ-136 | - | Every builder figure has a plain definition on hover or tap, and the builder carries one note that its numbers are projections |
+| S6.1 | requirement | REQ-137 | - | A payoff table lists P&L at target date and at expiry for index levels at a chosen interval, and a standard-deviation table shows the 1SD and 2SD ranges |
+| S6.1 | requirement | REQ-138 | - | Builder settings are saved per user - lots or quantity, the expected-move days, which expiries' OI the chart shows, include open positions in margin, and show manual P&L |
+| S6.1 | requirement | REQ-139 | - | The builder header shows the underlying's spot with the day's change and percent and the day's open, high, low and previous close |
+| S6.1 | requirement | REQ-142 | - | The builder summary shows Funds needed - the money the user must have to place the strategy with buy legs placed first - beside Margin needed and Margin available (held - no broker order in the current scope, ADR-206; no Zerodha source, F-62) |
+| S6.1 | requirement | REQ-144 | - | The payoff chart shows a Projected profit or Projected loss badge, the engine's P&L at the what-if target level and date |
+| S6.1 | requirement | REQ-145 | - | The builder Greeks tab has a Decay column, and IV is shown as a percent with two decimals |
+| S6.1 | requirement | REQ-146 | - | The P&L Table Full table view adds per-leg Target P&L and Target Price columns when a what-if target is set, and shows contract dates as 3 Nov |
+| S6.1 | requirement | REQ-147 | - | The builder shows target-day futures prices, the forward price of each expiry in the strategy at the what-if target level and date |
+| S6.1 | requirement | REQ-148 | - | Calendar and mixed-expiry strategies work in the builder, each leg shows its own expiry, and figures that cannot be computed say why |
+| S6.1 | requirement | REQ-149 | - | Phone layout of the builder at 390 px wide - tabs instead of a squeezed desktop page, compact legs, no sideways scroll |
+| S6.1 | requirement | REQ-150 | - | Strike drawer Greeks view - call delta, IV, put delta, theta, vega and gamma per strike, and the drawer opens on the nearest expiry |
+| S6.1 | requirement | REQ-151 | - | Strikes are shown without trailing zeros - 22300, not 22300.00 |
+| S6.1 | requirement | REQ-152 | - | Number format of builder figures - whole rupees, Indian grouping and signs on summary money, paise kept on per-unit prices |
+| S6.1 | requirement | REQ-153 | - | Breakeven percent from spot beside each breakeven, for Expiry and Target |
+| S6.1 | requirement | REQ-154 | - | An unsaved builder strategy survives a page reload - kept on the server for the signed-in user until saved or cleared |
+| S6.1 | work item | W-125 | - | Held-feature switch, ready-made shapes and quick picks, probability of profit (built OFF in production; builder scope lane B4) |
+| S6.1 | work item | W-147 | - | Leg picker: strikes with live prices, futures, depth popup [builder sequence row 19] |
+| S6.1 | work item | W-148 | - | Leg rows: strike -/+, lots, multiplier, leave a leg out, shape name [builder sequence row 20] |
+| S6.1 | work item | W-149 | - | Entry prices: typed price, Reset Prices, "price has moved" mark [builder sequence row 21] |
+| S6.1 | work item | W-151 | - | An old reply never draws over a newer edit [builder sequence row 23] |
+| S6.1 | work item | W-152 | - | Old live frames dropped; a new screen waits for its first price [builder sequence row 24] |
+| S6.1 | work item | W-155 | - | Clear all legs, days to expiry, "Prices as of" stamp, lone futures leg [builder sequence row 27] |
+| S6.1 | work item | W-157 | - | Name a strategy, Save As, rename, saved list with search [builder sequence row 29] |
+| S6.1 | work item | W-158 | - | Shift / Width / Hedge [builder sequence row 30] |
+| S6.1 | work item | W-160 | - | Figure definitions and the projections note [builder sequence row 32] |
+| S6.1 | work item | W-161 | - | Option chain display and live data [builder sequence row 33] |
+| S6.1 | work item | W-162 | - | Pick legs from the option chain into the builder [builder sequence row 34] |
+| S6.1 | work item | W-163 | - | Option chain live strategy preview [builder sequence row 35] |
+| S6.1 | work item | W-166 | - | Payoff table and SD table [builder sequence row 38] |
+| S6.1 | work item | W-168 | - | Builder settings saved per user [builder sequence row 40] |
+| S6.1 | work item | W-169 | - | Header with the day's change and OHLC [builder sequence row 41] |
+| S6.1 | work item | W-173 | - | Option chain display options [builder sequence row 45] |
+| S6.1 | work item | W-174 | - | Adds BANKNIFTY and FINNIFTY (also closes REQ-001 AC-1) [builder sequence row 46] |
+| S6.1 | work item | W-183 | - | Ready-made shapes and quick picks (held, Q211) [builder sequence row 55] |
+| S6.1 | work item | W-191 | - | UI redesign PR-1: design tokens, Inter, Sensibull-style app shell and shared parts [ADR-193] |
+| S6.1 | work item | W-192 | - | UI redesign PR-2a: builder left column (underlying bar, compact leg table, strike controls, money and action rows, bottom tabs with Saved search, depth popover) [ADR-193] |
+| S6.1 | work item | W-193 | - | UI redesign PR-2b: builder summary card (Max Profit, Max Loss, Breakeven, Reward/Risk, Time and Intrinsic value, Funds & Margins, one margin message, projections note) [ADR-193] |
+| S6.1 | work item | W-194 | - | UI redesign PR-2c: builder chart card - Payoff (graph and table), P&L Table (compact + Full table), Greeks and Strategy chart tabs [ADR-193, ADR-194] |
+| S6.1 | work item | W-195 | - | UI redesign PR-3: the leg picker becomes Sensibull's slide-in strike drawer (Strikes / Futures tabs, B/S per strike, Done) [ADR-193] |
 
 ## Stage S6.2
 
@@ -323,6 +569,9 @@ Generated from commit c16cc78
 | --- | --- | --- | --- | --- |
 | S6.2 | decision | ADR-005 | - | Strategy creation: guided builder, discovery, expected range and setups |
 | S6.2 | decision | ADR-032 | - | Strategy preferences |
+| S6.2 | decision | ADR-151 | - | The Strategy Builder gets what-if controls for target index level, target date and an implied-volatility change, as Sensibull has |
+| S6.2 | decision | ADR-164 | - | The builder shows max profit and max loss as a percentage of the user's funds, as Sensibull does |
+| S6.2 | decision | ADR-167 | - | Payoff curves and scenario values are shown before charges, as Sensibull does; charges are one separate breakdown |
 | S6.2 | finding | F-24 | - | SEBI's Research Analyst definition is broad and has no exemption for tools; a comparable app holds RA registration |
 | S6.2 | question | Q261 | - | Which features count as research or advice, and does the platform need RA registration or an RA partner? |
 | S6.2 | requirement | REQ-016 | - | Strategies without Zerodha |
@@ -332,16 +581,41 @@ Generated from commit c16cc78
 | S6.2 | requirement | REQ-027 | - | Strike selection modes |
 | S6.2 | requirement | REQ-068 | - | Strategy preferences |
 | S6.2 | requirement | REQ-069 | - | Suggested setups in the Guided Builder |
+| S6.2 | requirement | REQ-081 | - | Builder summary money figures - net premium Pay/Get, itemised charges, time and intrinsic value, reward/risk, max profit and loss as a percentage of funds, and margin with open positions counted |
+| S6.2 | requirement | REQ-082 | - | Probability of profit, labelled as a model estimate from today's prices (held for the legal check) |
+| S6.2 | requirement | REQ-083 | - | Payoff chart - expiry and estimated curves together, a two-value hover, expected-move bands and open-interest bars |
+| S6.2 | requirement | REQ-084 | - | What-if at a target index level, a target date and an IV change, with strike-wise IV and a Greeks panel with rupee examples |
+| S6.2 | requirement | REQ-085 | - | Builder warnings as engine codes on measured conditions, and "How this trade works" bullets for a matched shape |
+| S6.2 | requirement | REQ-089 | - | Manual P&L entries on a strategy, always on their own labelled line and never merged into P&L from Zerodha fills |
+| S6.2 | requirement | REQ-106 | - | A market context strip shows ATM IV, put-call ratio, max pain and India VIX, computed once per snapshot from the user's own feed |
+| S6.2 | work item | W-128 | - | Probability of profit from the engine, held behind the W-125 switch (builder scope lane B4, REQ-082 half) |
+| S6.2 | work item | W-154 | - | Money summary: net premium, charges, margin, reward/risk [builder sequence row 26] |
+| S6.2 | work item | W-159 | - | Warnings and "How this trade works" [builder sequence row 31] |
+| S6.2 | work item | W-164 | - | Payoff chart extras: "now" curve, hover, SD bands, OI bars [builder sequence row 36] |
+| S6.2 | work item | W-165 | - | What-if (level, date, IV) and the Greeks panel [builder sequence row 37] |
+| S6.2 | work item | W-167 | - | Manual P&L entries [builder sequence row 39] |
+| S6.2 | work item | W-170 | - | Market context strip: ATM IV, PCR, max pain, VIX [builder sequence row 42] |
+| S6.2 | work item | W-175 | - | Guided strategy creation (Create Strategy screen) [builder sequence row 47] |
+| S6.2 | work item | W-176 | - | Expected market range input [builder sequence row 48] |
+| S6.2 | work item | W-177 | - | Strategy preferences [builder sequence row 49] |
+| S6.2 | work item | W-178 | - | Strategy discovery and preferences [builder sequence row 50] |
+| S6.2 | work item | W-179 | - | Strike selection modes (rule-placed part held, Q211) [builder sequence row 51] |
+| S6.2 | work item | W-180 | - | Suggested setups (rule-placed part held, Q211) [builder sequence row 52] |
+| S6.2 | work item | W-184 | - | Probability of profit (held, Q211) [builder sequence row 56] |
 
 ## Stage S6.3
 
 | Stage | Kind | Id | AC | Text |
 | --- | --- | --- | --- | --- |
 | S6.3 | decision | ADR-027 | - | Home, navigation and the public site |
+| S6.3 | decision | ADR-160 | - | The app shows its own Orders page, a funds view and imports the user's Zerodha orders, as Sensibull does; Zerodha stays the authority on every status |
 | S6.3 | requirement | REQ-008 | - | Home dashboard |
 | S6.3 | requirement | REQ-037 | - | Strategy modification |
 | S6.3 | requirement | REQ-044 | - | Strategy control center and Positions screen |
 | S6.3 | requirement | REQ-070 | - | Builder history and restore |
+| S6.3 | requirement | REQ-103 | - | An Orders page and a funds view show the user's Zerodha orders and funds, read from Zerodha with their read time |
+| S6.3 | requirement | REQ-104 | - | The user can import Zerodha orders and positions into the app and group them into strategies, never attached without the user |
+| S6.3 | work item | W-156 | - | Builder history and restore [builder sequence row 28] |
 
 ## Stage S6.4
 
@@ -349,24 +623,113 @@ Generated from commit c16cc78
 | --- | --- | --- | --- | --- |
 | S6.4 | conflict | C-20 | - | adjustment-data-contract still lists 7 unclear rows; Q246 resolved 5 (rows 12, 13 remain) |
 | S6.4 | decision | ADR-011 | - | Adjustment engine: configurable rules, playbooks and platform-detected opportunities |
+| S6.4 | decision | ADR-213 | - | When a page's own index socket drops, the index strip keeps showing fresh values under the not-live message |
+| S6.4 | decision | ADR-214 | - | Adjustments live on the strategy card, the builder (adjust mode), an opportunities inbox and a My playbooks page |
+| S6.4 | decision | ADR-215 | - | In the adjustment compare, an approach that leaves no open position shows no Greeks after and cannot lead the Greeks rows |
+| S6.4 | decision | ADR-216 | - | The iron condor system playbook (PB-04) numbers are approved as the starting defaults |
+| S6.4 | decision | ADR-217 | - | A dismissed adjustment opportunity stays dismissed until its condition clears and holds again |
+| S6.4 | decision | ADR-221 | - | T-19 compares premium left with the cheapest adjustment the playbook offers at that check |
+| S6.4 | decision | ADR-222 | - | Every number a calculation uses is a setting with a default, edited on one admin Settings page, never typed in code |
+| S6.4 | decision | ADR-230 | - | GC-ADJ3 product answers: liquidity limits flag and refuse, a card mark for opportunities, two new Compare cost rows, two stops mean whichever comes first |
+| S6.4 | decision | ADR-231 | - | Roll debit limit "Rs 500 or 10% of max profit" means the higher of the two |
+| S6.4 | decision | ADR-232 | - | The Live Strategies card counts open conditions, not inbox rows |
+| S6.4 | decision | ADR-234 | - | Theta is stated on the forward, the same for the call and the put at a strike, like the reference product |
+| S6.4 | decision | ADR-286 | - | The API process may also connect to the owner's configured Notifier address; the watcher heartbeat lives in the feed bus store and is judged at 2 minutes |
+| S6.4 | finding | F-100 | - | No feed we use supplies IV or Greeks; every app studied computes its own, and "one IV per strike" is a modelling choice |
+| S6.4 | finding | F-73 | - | The engine prices an adjustment's After correctly and fast on a real chain; the cost is the database and broker round trips |
+| S6.4 | finding | F-74 | - | An adjustment's After shows open legs only: booked P&L of closed legs and the adjustment trade's own charges are left out |
+| S6.4 | finding | F-75 | - | POP fails on a real adjusted iron condor because the after-charges breakeven is finer than paise |
+| S6.4 | finding | F-76 | - | The NIFTY spot cannot be read over Kite REST: the quote allow-list refuses index symbols with a space |
+| S6.4 | finding | F-77 | - | The T-19 trigger compares premium left with a different "adjustment cost" than the spec and the Compare table |
+| S6.4 | finding | F-78 | - | Three playbook limits are saved and shown in the editor but nothing applies them |
+| S6.4 | finding | F-79 | - | The Undo window in code is 8 s and 10 s; the spec says about 5 s, admin-configurable |
+| S6.4 | finding | F-80 | - | Every playbook check where the clock trigger T-10b fires answered 500 |
+| S6.4 | finding | F-81 | - | Every playbook check in a stage whose name has a space answered 500 |
+| S6.4 | finding | F-82 | - | On a chain with a parity forward, the risk-free rate moves the implied yield, not the Greeks a user reads |
+| S6.4 | finding | F-83 | - | Scenario mode lost every contract's price once a builder socket let go |
+| S6.4 | finding | F-90 | - | The range-reading rule (REQ-026 AC-1) lives only in the browser; the server has no copy |
+| S6.4 | finding | F-92 | - | Compare cannot price a leg that the paper book prices at the same moment, so it offers no approach |
+| S6.4 | finding | F-93 | - | Compare says "no plan maximum set" for a strategy whose plan sets 2 adjustments |
+| S6.4 | finding | F-94 | - | One strategy shows two different max profit / max loss figures on different screens, without saying which includes charges |
+| S6.4 | finding | F-95 | - | Every ready-made shape with a futures leg is refused, with a message about a strike |
+| S6.4 | finding | F-96 | - | Adding a futures leg turns live numbers into "Live market data disconnected" while the feed is connected |
+| S6.4 | finding | F-98 | - | Our theta splits call and put by a carry term that drifts; the reference states one theta per strike (T3) |
+| S6.4 | issue | #586 | - |  |
+| S6.4 | issue | #587 | - |  |
+| S6.4 | issue | #588 | - |  |
+| S6.4 | issue | #592 | - |  |
+| S6.4 | issue | #596 | - |  |
+| S6.4 | issue | #597 | - |  |
+| S6.4 | issue | #598 | - |  |
+| S6.4 | issue | #599 | - |  |
+| S6.4 | issue | #600 | - |  |
+| S6.4 | issue | #601 | - |  |
+| S6.4 | issue | #602 | - |  |
+| S6.4 | issue | #603 | - |  |
+| S6.4 | issue | #605 | - |  |
+| S6.4 | issue | #606 | - |  |
+| S6.4 | issue | #607 | - |  |
+| S6.4 | issue | #608 | - |  |
+| S6.4 | issue | #612 | - |  |
+| S6.4 | issue | #613 | - |  |
+| S6.4 | issue | #614 | - |  |
+| S6.4 | issue | #615 | - |  |
+| S6.4 | issue | #616 | - |  |
+| S6.4 | issue | #623 | - |  |
+| S6.4 | issue | #624 | - |  |
+| S6.4 | issue | #625 | - |  |
+| S6.4 | issue | #626 | - |  |
+| S6.4 | issue | #627 | - |  |
+| S6.4 | issue | #628 | - |  |
+| S6.4 | issue | #629 | - |  |
+| S6.4 | issue | #630 | - |  |
+| S6.4 | issue | #631 | - |  |
+| S6.4 | issue | #632 | - |  |
+| S6.4 | issue | #633 | - |  |
 | S6.4 | open area | OA-11 | - | adjustment rule priority/conflict/ |
 | S6.4 | requirement | REQ-045 | - | Adjustment detection and triggers |
 | S6.4 | requirement | REQ-046 | - | Adjustment Opportunity panel and Before/After |
-| S6.4 | requirement | REQ-047 | AC-1 | Historical time series of adjustment-relevant metrics are kept using the storage tiers (Q161). This means the platform's own strategy history (strategy snapshots of active strategies, activity history, trigger records), which is always kept. Historical MARKET data (candles, multi-day market metrics such as the 20-day move of Q170) is separate: in V1 the user has no historical market data (owner T2 #121, Q180; REQ-051 AC-1); whether the platform may build market history from the interim Zerodha feed (Q169, "where licensed") waits on Q210. |
+| S6.4 | requirement | REQ-047 | AC-1 | Historical time series of adjustment-relevant metrics are kept using the storage tiers (Q161). This means the platform's own strategy history (strategy snapshots of active strategies, activity history, trigger records), which is always kept. Historical MARKET data (candles, multi-day market metrics such as the 20-day move of Q170) is separate: user-facing history screens (strategy price history, IV percentile and IV chart, OI over time, straddle charts, candle chart with OI profile) are specified (ADR-158) but stay off in production until Zerodha or a licensed vendor confirms display rights in writing and the charting library's licence is checked; until then the user sees no historical market data (owner T2 #121, Q180; REQ-051 AC-1); whether the platform may build market history from the interim Zerodha feed (Q169, "where licensed") waits on Q210. |
 | S6.4 | requirement | REQ-047 | AC-2 | The engine can use individual-leg data, strategy-level aggregates and underlying-level data independently (Q162, Q163). |
 | S6.4 | requirement | REQ-047 | AC-3 | A new metric can be added without redesigning the data layer (Q164). |
 | S6.4 | requirement | REQ-047 | AC-5 | Every new metric is documented against the Data Feasibility Test: raw data?, source?, can we calculate it?, scale impact?, historical availability?, legal/licensing?, update frequency?, storage?, calculation method? (Q166). A calculated value (e.g. a Greek) records what produced it: inputs, pricing model, volatility, interest rate, timestamp, contract, and whether the contract was actually tradable then (T2 #102). |
 | S6.4 | requirement | REQ-047 | AC-6 | Licensed raw data is preferred and metrics are derived in-house where practical; derived metrics are not bought unnecessarily (Q167). |
 | S6.4 | requirement | REQ-071 | - | Adjustment data requirements from the owner's reference video |
+| S6.4 | requirement | REQ-109 | - | A saved strategy can be paper-tracked on its own, with paper P&L since it was saved and a paper exit, never through a global switch |
+| S6.4 | requirement | REQ-110 | - | Each trading day the user gets a "does Zerodha agree with us" report for their strategies |
+| S6.4 | requirement | REQ-112 | - | Every adjustment or exit suggestion records what the user did with it - dismissed, acted on, completed or lapsed |
+| S6.4 | requirement | REQ-140 | - | For a strategy already being tracked, the builder summary shows the profit still possible and the loss still possible from now first, with the original maximums below |
+| S6.4 | requirement | REQ-141 | - | The builder's Positions tab lists the user's Zerodha positions and loads ticked ones into the builder as a draft to analyse, attaching and reconciling nothing |
+| S6.4 | requirement | REQ-143 | - | A chart toggle Add Booked P&L adds the booked P&L of closed legs of a tracked strategy to the payoff curve (not in this phase) |
+| S6.4 | requirement | REQ-155 | - | Adjustment approach builder - the server builds a picked approach's exact legs and prices the whole trade's After |
+| S6.4 | requirement | REQ-156 | - | Compare adjustment approaches side by side on named criteria, each criterion naming its leader, never an overall winner |
+| S6.4 | requirement | REQ-157 | - | Filters on the approach compare are computed from the current approaches, never a fixed list |
+| S6.4 | requirement | REQ-158 | - | Adjustment playbooks - one read-only system playbook per strategy type, any number of named user playbooks, one active |
+| S6.4 | requirement | REQ-159 | - | What a playbook holds - user-defined stages, triggers per stage, day-and-date rules, situations, limits and guards |
+| S6.4 | requirement | REQ-160 | - | Playbook editor is one step-by-step flow with a plain-words summary, and Test shows what the playbook would flag today |
+| S6.4 | requirement | REQ-161 | - | Add to Paper opens a strategy plan sheet pre-filled from the type's active playbook, accepted in one click |
+| S6.4 | requirement | REQ-162 | - | Positions > Adjustment opportunities lists every opportunity across strategies with its label and outcome |
+| S6.4 | requirement | REQ-163 | - | A strategy's adjustment history shows the entry, every adjustment and the whole-trade totals |
+| S6.4 | requirement | REQ-168 | - | Each user sets their own adjustment preferences on a Preferences tab of the Adjustments screen, starting from the admin's defaults |
+| S6.4 | requirement | REQ-169 | - | The admin edits a system playbook in the same playbook editor and saves it as a new version with history and audit |
+| S6.4 | work item | W-122 | - | Start tracking a saved strategy + one platform detection from the live feed (builder scope Step 2, the core) |
+| S6.4 | work item | W-123 | - | Platform detection, Q253 condition 1 - index within the threshold of a short strike or breakeven (REQ-045) |
+| S6.4 | work item | W-181 | - | Start tracking (paper P&L) [builder sequence row 53] |
+| S6.4 | work item | W-182 | - | Profit left and loss left for a tracked strategy [builder sequence row 54] |
+| S6.4 | work item | W-196 | - | Adjustment approach builder + whole-trade After (GC-ADJ1 step 1, the core) [ADR-214] |
+| S6.4 | work item | W-197 | - | Compare adjustment approaches in Strategy Builder adjust mode (GC-ADJ1 step 2) [ADR-214] |
+| S6.4 | work item | W-198 | - | Filters on the adjustment approach compare, built from the current approaches (GC-ADJ1 step 2) [ADR-214] |
+| S6.4 | work item | W-199 | - | Review-adjustment drawer on the Live Strategies card + hand-off to compare and builder (GC-ADJ1 step 3) [ADR-214] |
 
 ## Stage S6.5
 
 | Stage | Kind | Id | AC | Text |
 | --- | --- | --- | --- | --- |
-| S6.5 | decision | ADR-004 | - | Users and UX levels |
+| S6.5 | decision | ADR-004 | - | Users and one level for everyone |
 | S6.5 | requirement | REQ-005 | - | Product language and positioning |
 | S6.5 | requirement | REQ-006 | - | Three UX levels |
 | S6.5 | requirement | REQ-007 | - | Strategy information density |
+| S6.5 | work item | W-145 | - | Remove UX levels: one full screen for everyone; spec rewrite first (ADR-168 (4)(5)) [builder sequence row 17] |
 
 ## Stage S6.6
 
@@ -374,14 +737,252 @@ Generated from commit c16cc78
 | --- | --- | --- | --- | --- |
 | S6.6 | requirement | REQ-010 | - | Public site and live-data access |
 | S6.6 | requirement | REQ-011 | - | Learn section |
+| S6.6 | requirement | REQ-086 | - | Share a read-only link to a strategy plan, opened only by signed-in users and never listed or ranked |
+| S6.6 | requirement | REQ-092 | - | Optional pre-trade check-in - today's count, a 10-second pause and "Have you checked your exit plan?" before an entry |
+| S6.6 | requirement | REQ-093 | - | Instrument watchlists of index, futures and option contracts with live prices and no order buttons |
+| S6.6 | requirement | REQ-094 | - | Dark theme - light, dark or follow the device, readable on every screen, with colour meanings kept |
+| S6.6 | requirement | REQ-111 | - | The user can keep private notes on a strategy |
+| S6.6 | work item | W-171 | - | Private notes on a strategy [builder sequence row 43] |
+| S6.6 | work item | W-172 | - | Share a read-only link [builder sequence row 44] |
 
 ## Stage S6.7
 
 | Stage | Kind | Id | AC | Text |
 | --- | --- | --- | --- | --- |
 | S6.7 | decision | ADR-013 | - | Historical data, adjustment data and simulation |
+| S6.7 | decision | ADR-170 | - | Keep per-user Kite feeds; the multi-user Zerodha application asks in writing for more websocket connections per app |
+| S6.7 | decision | ADR-171 | - | Builder sequence: the next row may be built while the current row is verified; rows close strictly in order |
+| S6.7 | decision | ADR-172 | - | Each leg's IV is implied from its bid-ask mid when both sides are live, else from its last traded price |
+| S6.7 | decision | ADR-173 | - | Reference product first is binding - every brief cites the study, and builder rows 1-14 are re-studied and fixed where they differ |
+| S6.7 | decision | ADR-176 | - | Every difference from the reference product is one checked record, and the product always copies it except for bugs and ADR-152's exceptions |
+| S6.7 | decision | ADR-177 | - | One market-closed wording everywhere - "Market closed. Prices are from <time>." |
+| S6.7 | decision | ADR-178 | - | A leaner builder sequence - findings-only second rounds, reference-product gaps per chunk, paperwork per chunk |
+| S6.7 | decision | ADR-180 | - | One-time manual merge of PR |
+| S6.7 | decision | ADR-181 | - | Chunk 3 may build two process-tool items - a local gate command and a dispatch command |
+| S6.7 | decision | ADR-187 | - | The project takes kit 1.12.0; the merge path switches off git grafts; no UTF-8 prefix; the 300-file chunk limit is lifted |
+| S6.7 | decision | ADR-188 | - | Chunk 4 gets a second process item - the overlap gate ignores generated files; the audit's technical speed-ups are adopted |
+| S6.7 | decision | ADR-189 | - | Kit 1.14.0 lean delivery adopted - small CLAUDE.md, no ADR-178 tracker, one checker per tier, ci_local before a push |
+| S6.7 | decision | ADR-190 | - | The project takes kit 1.15.0 (Factory OD-124, PL-008); savings are reported only after 3 measured rows |
+| S6.7 | decision | ADR-191 | - | Records-only PRs run the three record tests; migration, API-reply and socket changes get CI app tests on a draft PR before review |
+| S6.7 | decision | ADR-220 | - | Five server roles on one machine first, split by measured lines; four calculation speeds with a safety valve; the pricing model kept and checked against the reference |
+| S6.7 | decision | ADR-233 | - | Background playbook checks run at most once every 30 seconds per strategy by default |
+| S6.7 | decision | ADR-235 | - | The background check speed follows the strategy's trading style: intraday 10 s, weekly 30 s, monthly 2 min |
+| S6.7 | decision | ADR-236 | - | A dismiss silences the same level; one stage worse still opens a new suggestion at once |
+| S6.7 | decision | ADR-237 | - | Alert discipline, technical definitions: re-arm band, candle close, record timing, lapse, storage, one writer |
+| S6.7 | decision | ADR-238 | - | Iron condor exit and reduce approaches A-24, A-25, A-26, A-27, A-35: legs, limits and refusals |
+| S6.7 | decision | ADR-239 | - | Iron condor roll approaches A-02, A-04, A-06: which legs move, how far, and refusals |
+| S6.7 | decision | ADR-240 | - | Iron condor situations: which act as rules, which are labelled guidance |
+| S6.7 | decision | ADR-241 | - | Adjustment approach trades are priced at the live bid-ask mid first (SPEC CHANGE to ADR-068 (1) for the Compare) |
+| S6.7 | decision | ADR-242 | - | A-37 "watch a level" is an adjustment alert: stored per strategy, a yes/no rule through the alert gate |
+| S6.7 | decision | ADR-243 | - | A roll places the new short strike at the playbook's target delta, not at its entry distance from spot (SPEC CHANGE to REQ-046 Q255) |
+| S6.7 | decision | ADR-244 | - | Iron condor system playbook adds S-08 (event day) and S-09 (weekend or holiday) as Guidance situations |
+| S6.7 | decision | ADR-245 | - | Every adjustment number and rule is a three-layer setting: admin default, user override, strategy override |
+| S6.7 | decision | ADR-246 | - | Alert-discipline presets kept after the first live day; the intraday preset is reviewed after two more expiry days |
+| S6.7 | decision | ADR-247 | - | Default stop for the iron condor playbook: 50 % of max loss or 2x the credit received, whichever comes first; % of margin off by default |
+| S6.7 | decision | ADR-248 | - | "Suggested for you" ranks only the approaches within the user's limits, by cost / credit by default, and every card states what it costs |
+| S6.7 | decision | ADR-249 | - | "Suggested for you" shows one or two suggestions, each shaped by several of the user's preferences; combined two-step adjustments come later |
+| S6.7 | decision | ADR-250 | - | The ADR-247 stop default applies to new plans only; saved plans keep the alerts they already hold |
+| S6.7 | decision | ADR-251 | - | "2x the credit received" means 2x the net credit collected so far: entry credit plus or minus every roll's net credit or debit |
+| S6.7 | decision | ADR-252 | - | The "% of max loss" stop has ONE source: the playbook's per-stage T-06 value at the strategy's current stage |
+| S6.7 | decision | ADR-253 | - | T-14 gamma is evaluated in test-data (scenario) mode only for now; live strategies keep T-14 "not checked yet" |
+| S6.7 | decision | ADR-254 | - | T-19 (adjustment cost vs premium left) is checked by the background worker in live and test-data mode |
+| S6.7 | decision | ADR-255 | - | A partial exit counts as an adjustment against the plan maximum; Exit all does not |
+| S6.7 | decision | ADR-256 | - | An exit that leaves a sold leg unprotected shows a factual warning; the user can still confirm |
+| S6.7 | decision | ADR-257 | - | Arming a stop on a sold leg asks whether to close its wing too (default on) |
+| S6.7 | decision | ADR-258 | - | Every adjustment is a new starting point for the "already true" rule (F-71) |
+| S6.7 | decision | ADR-259 | - | A strategy with no open leg moves to Completed Strategies with its final totals |
+| S6.7 | decision | ADR-260 | - | Alerts > Active is the one list of everything needing attention; the bell counts only live strategies |
+| S6.7 | decision | ADR-261 | - | Every open strategy has a "Compare approaches" action, with or without an alert |
+| S6.7 | decision | ADR-262 | - | The ready-made Short Iron Condor places its strikes by a per-user preference (default: sold strikes at delta 0.20) |
+| S6.7 | decision | ADR-263 | - | Every headline money figure is after charges and says so |
+| S6.7 | decision | ADR-264 | - | Behaviours and numbers are settings, not code: admin default, user override, optional admin lock |
+| S6.7 | decision | ADR-265 | - | Planned entries are captured at the bid-ask mid (LTP only without a quote); an impossible credit is flagged |
+| S6.7 | decision | ADR-266 | - | Paper P&L and rule checks mark a leg at the bid-ask mid when its last trade is stale |
+| S6.7 | decision | ADR-267 | - | A level the user asked to watch is never held by the daily alert cap |
+| S6.7 | decision | ADR-268 | - | A breached or intrinsic-only short is never "not checked": delta 1/0 at intrinsic, and T-01 flags at or beyond the strike |
+| S6.7 | decision | ADR-269 | - | A roll into a later expiry closes the strategy and opens a new, linked one |
+| S6.7 | decision | ADR-270 | - | T-11 (IV change) and T-14 (gamma) work on live strategies; every related function is proven on test data first, then live |
+| S6.7 | decision | ADR-271 | - | Paper orders count as "orders sent": a strategy with any paper order cannot be deleted, and its Undo shows where the user clicked |
+| S6.7 | decision | ADR-272 | - | Stale prices on Compare and on the tracking panel: every price-based figure says how old it is, rules say they are not checked, and Prepare waits for fresh prices |
+| S6.7 | decision | ADR-273 | - | An adjustment prepared from Compare is recorded with the approach it came from |
+| S6.7 | decision | ADR-274 | - | One adjustment basket sends ONE order per contract and side: a close and an open of the same contract on the same side are combined |
+| S6.7 | decision | ADR-275 | - | Paper and live are two modes of ONE code path: only the place a fill comes from differs |
+| S6.7 | decision | ADR-276 | - | Every iron condor trigger tracks real Zerodha strategies as well as paper ones, on live prices and on test data |
+| S6.7 | decision | ADR-277 | - | T-11b, T-11c and T-20b read India VIX and daily index candles from Kite; the app stores its own daily ATM IV from day one |
+| S6.7 | decision | ADR-278 | - | T-14 is computed on live prices and switched on for live strategies |
+| S6.7 | decision | ADR-279 | - | Two trigger checkers run the same code: live is always on, a test-data checker starts on demand |
+| S6.7 | decision | ADR-280 | - | What each of the 12 new iron condor triggers measures (T-04, T-05, T-06b, T-08, T-11b, T-11c, T-12, T-14t, T-14v, T-15, T-20, T-20b) |
+| S6.7 | decision | ADR-281 | - | Order placement on Kite is on hold for the iron condor guidance round (GC-ICGUIDE): paper only |
+| S6.7 | decision | ADR-282 | - | Iron condor proof matrix: NIFTY only, 5 condor types, test data first then live prices, through the screens |
+| S6.7 | decision | ADR-283 | - | A rule starting point is the market at the fill (entry or adjustment N), stored with the fill; a time-of-day rule is never "already true" |
+| S6.7 | decision | ADR-287 | - | The demo-ready checklist is approved as written: it is the finish line before the owner reapplies to Zerodha for multi-user access |
+| S6.7 | decision | ADR-288 | - | The app is hosted on the existing Hostinger Linux VPS with Redis on the same box; the database stays on the Windows VPS Postgres |
+| S6.7 | decision | ADR-289 | - | Step 4: a second person signs in with their own app login and works on paper; ONE real 1-lot iron condor is placed on the owner's account by the owner |
+| S6.7 | decision | ADR-290 | - | The goal is tracking, not order placing: any user creates an iron condor or enters one already held at any broker by hand, and the app tracks it and suggests adjustments until the user exits |
+| S6.7 | decision | ADR-291 | - | Current work serves ONE user: the owner's own Kite account; whoever connects to Kite must have a Kite Connect app with the data API enabled; multi-user waits |
+| S6.7 | decision | ADR-292 | - | A held iron condor typed in by hand: labelled "Held at my broker", entry time stated by the user, rules start when it is saved, broker changes recorded by hand, order placing hidden |
+| S6.7 | decision | ADR-293 | - | A strategy that only ever had paper orders can be deleted from its row; a real-order strategy still cannot |
+| S6.7 | decision | ADR-294 | - | The profit target compares profit before charges and says so; "Take profit" uses the same basis and shows the after-charges result beside it |
+| S6.7 | decision | ADR-295 | - | A trade may have no plan, but the trade page must say so and show the default rules |
+| S6.7 | decision | ADR-296 | - | After the user adjusts a stopped trade, the stop goes quiet until the loss clears the line and crosses it again |
+| S6.7 | decision | ADR-297 | - | At the adjustment limit the offer screen says so and offers only exit and reduce; the other approaches are listed as not offered with the reason |
+| S6.7 | decision | ADR-298 | - | A practice trade behaves exactly like a real one: "Not enough funds" stays as a message on practice and does not refuse the practice order |
+| S6.7 | decision | ADR-299 | - | A strategy has three status words everywhere: Draft, Running, Completed |
+| S6.7 | decision | ADR-300 | - | The guided builder shows a condor that breaks the entry guide, with a plain warning line, instead of hiding it |
+| S6.7 | decision | ADR-301 | - | "Profit left" and "Loss left" are shown after all charges, the same basis as Max profit and Max loss |
+| S6.7 | decision | ADR-302 | - | "Profit left" is not capped at Max profit; one line explains it when it is larger |
+| S6.7 | decision | ADR-303 | - | Booked P&L carries all charges already paid; Unbooked P&L carries the estimated cost to close; the two add up to Total after charges |
+| S6.7 | decision | ADR-304 | - | A saved plan Target is acted on (any usable value); what the percent divides by is recorded as it stands; every screen limit comes from the rule check itself |
+| S6.7 | decision | ADR-305 | - | What the plan box shows is what the app does: a saved Target acts even when the rule set has the profit rule off, and an empty Target means no target alert for that trade |
+| S6.7 | decision | ADR-306 | - | Profit left and Loss left add up with the other figures: Profit left = Max profit minus Total P&L so far, Loss left = Max loss minus Total P&L so far, all after charges |
+| S6.7 | decision | ADR-307 | - | A two-expiry trade on the adjustment compare chart keeps its nearer-expiry estimate curve, and says in words that the loss is not capped and the maximum loss cannot be estimated |
+| S6.7 | decision | ADR-308 | - | On the adjustment offer screen, "Showing N of M" counts M as every approach that applies to the trade, not the ones the user ticked |
+| S6.7 | decision | ADR-309 | - | A rule shown as fired on the trade page stays shown as fired until its alert record clears; the on-screen flag follows the alert gate, not each poll |
+| S6.7 | decision | ADR-310 | - | A clock-time rule raises its alert only on a day when its action can be taken; the plan calls it "Time exit (on expiry day)" |
+| S6.7 | decision | ADR-311 | - | When an open leg has no live price, the practice total stays paused, the leg without a price is named, and every other open leg keeps its own figure |
+| S6.7 | decision | ADR-312 | - | A strategy with a position held at the broker cannot be deleted, the same refusal as a strategy with real orders |
+| S6.7 | decision | ADR-313 | - | A menu entry whose page is not built yet is left out of the menus until it is built; the landing address opens My Strategies |
+| S6.7 | decision | ADR-314 | - | A stored alert record keeps the value, threshold and limit of the sample that confirmed it, never the latest check's |
+| S6.7 | decision | ADR-315 | - | A draft whose paper book is flat after a reducing order is closed, deleted rows included; real-order strategies are left alone |
+| S6.7 | decision | ADR-316 | - | Yes/no and clock rule alerts show the rule's own label; the clock time follows once it is stored; the breakeven line names its figure |
+| S6.7 | decision | ADR-317 | - | A paper trigger already crossed at save time is refused; the same armed trigger is not stored twice; triggers follow the legs |
+| S6.7 | decision | ADR-318 | - | At the plan maximum of adjustments only risk-cutting routes are offered, each with the true count; the maximum set at entry holds for the life of the trade |
+| S6.7 | decision | ADR-319 | - | A contract already in the strategy is asked about on every way of adding a leg; a kept duplicate blocks Add to Paper |
+| S6.7 | decision | ADR-320 | - | Owner decisions for the remaining items of the 23 Nov live iron condor test |
+| S6.7 | decision | ADR-321 | - | Money numbers of the 23 Nov live test: one basis per number, labelled (GC-ICLIVE Part B) |
+| S6.7 | decision | ADR-322 | - | Owner decisions of 25 Nov 2026 on the GC-ICLIVE run (rounds, time value, paper exits, ADR-321, spot gate) |
+| S6.7 | decision | ADR-323 | - | Suggestions and alerts of the 23 Nov live test: records, times, one word, one value (GC-ICLIVE Part C) - PENDING OWNER READ |
+| S6.7 | decision | ADR-324 | - | Paper page header totals leave out strategies whose open contract has expired (GC-ICLIVE Part D, D-40) - PENDING OWNER READ |
+| S6.7 | decision | ADR-325 | - | Labels, small features and post-close messages of the 23 Nov live test (GC-ICLIVE Part E) - PENDING OWNER READ |
+| S6.7 | decision | ADR-326 | - | Owner answers of 25 Nov 2026 to the GC-ICLIVE questions Q2 to Q8 (Take profit, header totals, timeouts, 24-hour time, pop-up quiet period, Today, lots box) |
+| S6.7 | decision | ADR-327 | - | In market hours a paper trigger whose level cannot be checked against a live price is refused, not saved |
+| S6.7 | decision | ADR-328 | - | Owner decisions of 25 Nov 2026 evening for the modular-doors plan, phases 3 to 8 (opposite-side step, Add Selected, per-leg P&L, stale Exit, unreadable-price wording) |
+| S6.7 | decision | ADR-329 | - | Unsaved builder legs: kept across the Option Chain trip and added to by Add Selected; leaving for any other page asks first (S-08) |
+| S6.7 | decision | ADR-330 | - | Owner decisions of 25 Nov 2026 night on the open choices of the live screen test (plan stop after a partial close, and the items that follow) |
+| S6.7 | finding | F-101 | - | Live alert discipline cut suggestion noise by three quarters; a 1-day SENSEX condor past its breakeven still flaps |
+| S6.7 | finding | F-102 | - | Kite's own basket runs in sequence; the Kite Publisher basket (our path) does not guarantee order |
+| S6.7 | finding | F-103 | - | The market calendar holds one year; outside it every day reads as closed |
+| S6.7 | finding | F-58 | - | The pure-Python Redis stand-in (fakeredis 2.40.0 TcpFakeServer) does not deliver pub/sub over the network; Streams work |
+| S6.7 | finding | F-59 | - | Kite's 3-websocket limit is per API key across ALL users of one Kite Connect app, not per user |
+| S6.7 | finding | F-60 | - | Kite REST rate limits per endpoint group; a 429 starts a 10 s sliding cooldown; the scope of the read limits is unstated |
+| S6.7 | finding | F-91 | - | The background role records opportunities with no screen open, but not within 1 s: its check path waits on the database |
+| S6.7 | finding | F-97 | - | A request with no screen open answers LIVE before any price arrives, and the playbook check never warms in bus mode |
+| S6.7 | finding | F-99 | - | Stopping a second Kite feed process blanks the API's chain for about a minute while broker status still says connected |
+| S6.7 | issue | #524 | - |  |
+| S6.7 | issue | #634 | - |  |
+| S6.7 | issue | #636 | - |  |
+| S6.7 | issue | #637 | - |  |
+| S6.7 | issue | #638 | - |  |
+| S6.7 | issue | #639 | - |  |
+| S6.7 | issue | #640 | - |  |
+| S6.7 | issue | #641 | - |  |
+| S6.7 | issue | #642 | - |  |
+| S6.7 | issue | #643 | - |  |
+| S6.7 | issue | #644 | - |  |
+| S6.7 | issue | #645 | - |  |
+| S6.7 | issue | #646 | - |  |
+| S6.7 | issue | #647 | - |  |
+| S6.7 | issue | #648 | - |  |
+| S6.7 | issue | #650 | - |  |
+| S6.7 | issue | #651 | - |  |
+| S6.7 | issue | #652 | - |  |
+| S6.7 | issue | #653 | - |  |
+| S6.7 | issue | #654 | - |  |
+| S6.7 | issue | #655 | - |  |
+| S6.7 | issue | #656 | - |  |
+| S6.7 | issue | #657 | - |  |
+| S6.7 | issue | #658 | - |  |
+| S6.7 | issue | #659 | - |  |
+| S6.7 | issue | #660 | - |  |
+| S6.7 | issue | #661 | - |  |
+| S6.7 | issue | #662 | - |  |
+| S6.7 | issue | #664 | - |  |
+| S6.7 | issue | #669 | - |  |
+| S6.7 | issue | #672 | - |  |
+| S6.7 | issue | #673 | - |  |
+| S6.7 | issue | #674 | - |  |
+| S6.7 | issue | #676 | - |  |
+| S6.7 | issue | #678 | - |  |
+| S6.7 | issue | #680 | - |  |
+| S6.7 | issue | #681 | - |  |
+| S6.7 | issue | #682 | - |  |
+| S6.7 | issue | #683 | - |  |
+| S6.7 | issue | #684 | - |  |
+| S6.7 | issue | #685 | - |  |
+| S6.7 | issue | #686 | - |  |
+| S6.7 | issue | #689 | - |  |
+| S6.7 | issue | #691 | - |  |
+| S6.7 | issue | #692 | - |  |
+| S6.7 | issue | #694 | - |  |
+| S6.7 | issue | #695 | - |  |
+| S6.7 | issue | #699 | - |  |
+| S6.7 | issue | #700 | - |  |
+| S6.7 | issue | #701 | - |  |
+| S6.7 | issue | #702 | - |  |
+| S6.7 | issue | #707 | - |  |
+| S6.7 | issue | #708 | - |  |
+| S6.7 | issue | #709 | - |  |
+| S6.7 | issue | #710 | - |  |
+| S6.7 | issue | #711 | - |  |
+| S6.7 | issue | #712 | - |  |
+| S6.7 | issue | #713 | - |  |
+| S6.7 | issue | #714 | - |  |
+| S6.7 | issue | #715 | - |  |
+| S6.7 | issue | #716 | - |  |
+| S6.7 | issue | #717 | - |  |
+| S6.7 | issue | #719 | - |  |
+| S6.7 | issue | #723 | - |  |
+| S6.7 | issue | #724 | - |  |
+| S6.7 | issue | #725 | - |  |
+| S6.7 | issue | #726 | - |  |
+| S6.7 | issue | #727 | - |  |
+| S6.7 | issue | #728 | - |  |
+| S6.7 | issue | #729 | - |  |
+| S6.7 | issue | #730 | - |  |
+| S6.7 | issue | #731 | - |  |
+| S6.7 | issue | #732 | - |  |
+| S6.7 | issue | #733 | - |  |
+| S6.7 | issue | #734 | - |  |
+| S6.7 | issue | #735 | - |  |
+| S6.7 | issue | #736 | - |  |
+| S6.7 | issue | #737 | - |  |
+| S6.7 | issue | #738 | - |  |
+| S6.7 | issue | #739 | - |  |
+| S6.7 | issue | #740 | - |  |
+| S6.7 | issue | #741 | - |  |
 | S6.7 | requirement | REQ-051 | AC-6 | Simulation, when built, is simple strategy simulation (EOD default, intraday later), not quant backtesting (Q19, Q100). |
 | S6.7 | requirement | REQ-051 | AC-7 | Simulation results may show best/worst outcome, winning days, drawdown and historical behaviour, and are always labelled historical/simulation, never a future guarantee. |
+| S6.7 | requirement | REQ-113 | - | The live price feed and the broker order-update feed run in their own process, so an API deploy never cuts users' feeds |
+| S6.7 | requirement | REQ-114 | - | Every live-feed connection checks its health every 15 s, reconnects after 60 s of silence, and backs off with a cap and jitter |
+| S6.7 | requirement | REQ-115 | - | Background workers run monitoring, reconciliation, data finalising and alerts, recover after a restart, pause on stale data, and never place an order |
+| S6.7 | requirement | REQ-116 | - | Every outbound notification goes through the shared Notifier gateway, and alert sending never sits in the order path |
+| S6.7 | requirement | REQ-117 | - | The broker adapter declares named capability flags, and features ask the flag, never the broker's name |
+| S6.7 | requirement | REQ-118 | - | Calls to Zerodha stay within Zerodha's stated rate limits, and a busy broker slows the platform down instead of failing users silently |
+| S6.7 | requirement | REQ-125 | - | Every request acts for one signed-in user, and no user can read or act on another user's data |
+| S6.7 | requirement | REQ-164 | - | The API runs as several copies; no request depends on the memory of one copy, and one copy stopping cuts no user |
+| S6.7 | requirement | REQ-165 | - | Adjustment playbook triggers are checked by the background workers on fresh prices, at most once per the strategy style's check interval (intraday 10 s, weekly 30 s, monthly 2 min; ADR-235), with no screen open |
+| S6.7 | requirement | REQ-166 | - | Calculations run at four speeds held as admin settings, the background uses light sums, and a safety valve slows every screen together under load |
+| S6.7 | requirement | REQ-167 | - | One admin Settings page holds every app-wide business number a calculation uses, each with a default, the date it took effect and who set it |
+| S6.7 | requirement | REQ-170 | - | An adjustment suggestion is raised once per crossing, confirmed on a candle close, then held quiet until it re-arms or gets worse |
+| S6.7 | work item | W-132 | - | Broker adapter capability flags [builder sequence row 4] |
+| S6.7 | work item | W-137 | - | Price feed in its own process (price socket part) [builder sequence row 9] |
+| S6.7 | work item | W-138 | - | Zerodha rate limits for read calls [builder sequence row 10] |
+| S6.7 | work item | W-139 | - | Price feed health check and reconnect (price socket part) [builder sequence row 11] |
+| S6.7 | work item | W-200 | - | GC-IC1 step 10 verification: REQ-046 on the iron condor paths |
+| S6.7 | work item | W-201 | - | GC-IC1 step 10 verification: REQ-112 on the iron condor paths |
+| S6.7 | work item | W-202 | - | GC-IC1 step 10 verification: REQ-155 on the iron condor paths |
+| S6.7 | work item | W-203 | - | GC-IC1 step 10 verification: REQ-156 on the iron condor paths |
+| S6.7 | work item | W-204 | - | GC-IC1 step 10 verification: REQ-157 on the iron condor paths |
+| S6.7 | work item | W-205 | - | GC-IC1 step 10 verification: REQ-158 on the iron condor paths |
+| S6.7 | work item | W-206 | - | GC-IC1 step 10 verification: REQ-159 on the iron condor paths |
+| S6.7 | work item | W-207 | - | GC-IC1 step 10 verification: REQ-160 on the iron condor paths |
+| S6.7 | work item | W-208 | - | GC-IC1 step 10 verification: REQ-161 on the iron condor paths |
+| S6.7 | work item | W-209 | - | GC-IC1 step 10 verification: REQ-162 on the iron condor paths |
+| S6.7 | work item | W-210 | - | GC-IC1 step 10 verification: REQ-163 on the iron condor paths |
+| S6.7 | work item | W-211 | - | GC-IC1 step 10 verification: REQ-167 on the iron condor paths |
+| S6.7 | work item | W-212 | - | GC-IC1 step 10 verification: REQ-168 on the iron condor paths |
+| S6.7 | work item | W-213 | - | GC-IC1 step 10 verification: REQ-169 on the iron condor paths |
+| S6.7 | work item | W-214 | - | GC-IC1 step 10 verification: REQ-170 on the iron condor paths |
 
 ## Stage S7
 
@@ -391,6 +992,10 @@ Generated from commit c16cc78
 | S7 | issue | #107 | - |  |
 | S7 | open area | OA-14 | - | admin/system-health screens |
 | S7 | requirement | REQ-074 | - | Security incident reporting and log retention |
+| S7 | requirement | REQ-126 | - | Production is watched, backed up and restorable, and staging never shares production's data or keys |
+| S7 | requirement | REQ-127 | - | Data-protection duties under the DPDP Rules - notice, consent, user rights and breach report |
+| S7 | requirement | REQ-128 | - | One retention schedule names how long each kind of data is kept, and a daily job enforces it |
+| S7 | requirement | REQ-129 | - | Support can look up one user's order trail, read-only, with every lookup audited |
 
 ## Stage S8
 
@@ -408,6 +1013,13 @@ Generated from commit c16cc78
 | S8 | decision | ADR-038 | - | A referral reward is 30 days, not a calendar month |
 | S8 | decision | ADR-044 | - | Referral success arrives by admin upload of confirmed Zerodha openings |
 | S8 | decision | ADR-055 | - | Until written compliance answers arrive, the product is built to the strictest reading of the AP and research-analyst rules |
+| S8 | decision | ADR-153 | - | A strategy's stop-loss and conditional exits are held at Zerodha as a broker trigger, created by the platform after one user confirmation |
+| S8 | decision | ADR-154 | - | Static-IP plan B (intent only): prove whether the trigger endpoint needs it, then prefer one platform-owned IP registered through Zerodha |
+| S8 | decision | ADR-155 | - | Before a broker login, users see prices delayed by 1 minute with a "connect Zerodha for real-time" banner, as Sensibull does; going live needs written data permission |
+| S8 | decision | ADR-156 | - | Six Sensibull features are specified now, each held until its own check clears (POP, analytics, events calendar, Excel download, support chat, video courses) |
+| S8 | decision | ADR-158 | - | History, IV and OI charts are specified as Sensibull has them, and stay off until display rights are confirmed in writing |
+| S8 | decision | ADR-161 | - | Manual P&L entries, FII/DII data and native mobile apps are in scope, as Sensibull has them |
+| S8 | decision | ADR-162 | - | A strategy's P&L stop-loss is executed automatically by the platform server, after one user confirmation; price-level stops are held at Zerodha |
 | S8 | finding | F-26 | - | An Authorised Person may not charge clients and brokers may not give incentives for account opening or subscription plans |
 | S8 | issue | #112 | - |  |
 | S8 | open area | OA-17 | - | complimentary list |
@@ -419,9 +1031,21 @@ Generated from commit c16cc78
 | S8 | requirement | REQ-022 | - | Free-eligibility loop |
 | S8 | requirement | REQ-023 | - | Paid Pro and billing |
 | S8 | requirement | REQ-063 | AC-1 | Broker, market-data and payment integrations each sit behind an adapter. |
+| S8 | requirement | REQ-063 | AC-6 | A third-party tool that receives user data gets only allowlisted fields under the same rule as AC-5: the error tracker from now (ADR-156 (2)), and product analytics or session replay only for users who consented and only once ADR-156's consent check has cleared (REQ-130); no broker token, Client ID, quantity or money figure reaches any of them. |
 | S8 | requirement | REQ-066 | - | Compliance gates |
 | S8 | requirement | REQ-067 | AC-7 | A concise project control center tracks feature, spec/story/task, owner/agent, status, dependency, blocker, verification, screenshot and branch, updated compactly. |
 | S8 | requirement | REQ-074 | - | Security incident reporting and log retention |
+| S8 | requirement | REQ-091 | - | Strategy price history chart in the builder (on by ADR-203 behind one flag) |
+| S8 | requirement | REQ-095 | - | In-app help - FAQ, a "What's New" page and support chat (held for the chat tool's cost) |
+| S8 | requirement | REQ-096 | - | Video courses in Learn, with lesson progress and captions (held for content cost and scope) |
+| S8 | requirement | REQ-100 | - | A strategy's stop-loss - price-level stops are held at Zerodha as a broker trigger, P&L stops are sent by the platform server, each after one user confirmation |
+| S8 | requirement | REQ-101 | - | A broker-held stop-loss stays in step with the strategy, is shown with its read time, can be removed, and its firing is reconciled |
+| S8 | requirement | REQ-105 | - | Before a Zerodha connection, signed-in users see prices delayed by 1 minute, clearly labelled, and can plan and paper-track on them |
+| S8 | requirement | REQ-107 | - | IV percentile, IV history, open interest over time, straddle charts and a candle chart with an OI profile, held until display rights are confirmed |
+| S8 | requirement | REQ-108 | - | An events calendar, "events before this expiry" on a strategy, and daily FII and DII activity, each held until its data source is cleared |
+| S8 | requirement | REQ-130 | - | Product analytics and session replay run only for users who opted in, and stay off until the consent design clears |
+| S8 | requirement | REQ-131 | - | The option chain can be downloaded as a spreadsheet, held until exchange-data redistribution is permitted in writing |
+| S8 | requirement | REQ-132 | - | Native Android and iOS apps use the same backend and the one engine, and add no rule of their own |
 | S8 | vendor enquiry | VE-BSE | - |  |
 | S8 | vendor enquiry | VE-GlobalDatafeeds | - |  |
 | S8 | vendor enquiry | VE-NSE | - |  |
@@ -429,6 +1053,10 @@ Generated from commit c16cc78
 | S8 | work item | W-008 | - | Trial and Limited/Read-Only access policy |
 | S8 | work item | W-009 | - | Referral rewards and confirmed-openings CSV import |
 | S8 | work item | W-011 | - | Complimentary Pro for qualifying Zerodha customers: match, grant, audit |
+| S8 | work item | W-186 | - | Delayed prices before a Zerodha login (held; needs REQ-016 approved first) [builder sequence row 58] |
+| S8 | work item | W-188 | - | IV and OI history charts (held, display rights) [builder sequence row 60] |
+| S8 | work item | W-189 | - | Strategy price history chart (held, display rights) [builder sequence row 61] |
+| S8 | work item | W-190 | - | Events calendar, FII/DII (held, data source) [builder sequence row 62] |
 
 ## Stage all
 
@@ -448,6 +1076,7 @@ Generated from commit c16cc78
 | all | decision | ADR-078 | - | Live runs use a separate development database, ofo_dev; the test database stays empty for the test suites |
 | all | decision | ADR-093 | - | Coding standards are enforced by automatic checks or marked review-only; a check is adopted only when it guards something real or costs no new CI job |
 | all | decision | ADR-106 | - | Delivery process - safeguards run where they catch defects, not on every small unit |
+| all | decision | ADR-165 | - | Current scope: the strategy builder and adjustment suggestions work end to end; no orders are placed |
 | all | requirement | REQ-054 | AC-2 | Only the Zerodha implementation exists in V1; no unused broker implementations are built. |
 | all | requirement | REQ-067 | AC-1 | Data is proven first (owner T1 #175: an earlier attempt failed on live data): the Phase-0 tests — reliable live ticks, full chain rebuilt, own Greeks, stale/missing detection, reconnect survival, one normalised feed serving many users, licence permits the use — run on real input before product screens. The core (Zerodha login → live NIFTY/SENSEX quotes → margin) is proven on real input before other work; then the core domain and one vertical slice (Create Strategy → Configure Legs → Calculate → Save Draft → Connect Zerodha → Validate → Prepare Execution Plan → Review → Execute → Confirm Broker Execution → Reconcile → Active Monitoring) before broad UI work. |
 | all | requirement | REQ-067 | AC-2 | Every domain invariant in spec/testing/core-invariants.md has an automated test. |
@@ -519,6 +1148,10 @@ Generated from commit c16cc78
 | done | requirement | REQ-059 | - | Pre-execution safety checks and validation |
 | done | requirement | REQ-060 | - | Reconciliation with Zerodha |
 | done | requirement | REQ-070 | - | Builder history and restore |
+| done | work item | W-141 | - | Calculation engine [builder sequence row 13] |
+| done | work item | W-142 | - | Expiry and live P&L formulas [builder sequence row 14] |
+| done | work item | W-144 | - | Save a strategy and load it back exactly [builder sequence row 16] |
+| done | work item | W-156 | - | Builder history and restore [builder sequence row 28] |
 
 ## Counts
 
@@ -527,19 +1160,19 @@ Generated from commit c16cc78
 | S0 | 1 | 0 | 0 | 0 | 0 | 0 | 0 | 0 | 0 | 0 | 0 | 1 |
 | S1 | 0 | 0 | 0 | 0 | 0 | 0 | 1 | 0 | 0 | 0 | 0 | 1 |
 | S3 | 0 | 18 | 0 | 2 | 0 | 0 | 3 | 0 | 0 | 0 | 0 | 23 |
-| 4a | 7 | 0 | 42 | 5 | 0 | 11 | 0 | 1 | 31 | 0 | 3 | 100 |
-| 4b | 1 | 0 | 30 | 10 | 0 | 18 | 9 | 3 | 13 | 0 | 19 | 103 |
-| 4c | 0 | 0 | 5 | 0 | 0 | 0 | 1 | 0 | 7 | 0 | 0 | 13 |
-| S5 | 2 | 0 | 5 | 0 | 0 | 1 | 0 | 0 | 11 | 0 | 0 | 19 |
+| 4a | 7 | 0 | 44 | 6 | 0 | 33 | 0 | 1 | 35 | 0 | 21 | 147 |
+| 4b | 1 | 0 | 70 | 25 | 0 | 39 | 9 | 3 | 14 | 0 | 30 | 191 |
+| 4c | 0 | 0 | 6 | 0 | 0 | 1 | 1 | 0 | 7 | 0 | 0 | 15 |
+| S5 | 2 | 0 | 5 | 0 | 0 | 2 | 0 | 0 | 11 | 0 | 1 | 21 |
 | S6 | 1 | 0 | 1 | 0 | 0 | 0 | 0 | 0 | 2 | 0 | 0 | 4 |
-| S6.1 | 0 | 0 | 1 | 0 | 0 | 0 | 0 | 0 | 3 | 0 | 0 | 4 |
-| S6.2 | 0 | 0 | 2 | 1 | 0 | 0 | 0 | 1 | 7 | 0 | 0 | 11 |
-| S6.3 | 0 | 0 | 1 | 0 | 0 | 0 | 0 | 0 | 4 | 0 | 0 | 5 |
-| S6.4 | 0 | 1 | 1 | 0 | 0 | 0 | 1 | 0 | 8 | 0 | 0 | 11 |
-| S6.5 | 0 | 0 | 1 | 0 | 0 | 0 | 0 | 0 | 3 | 0 | 0 | 4 |
-| S6.6 | 0 | 0 | 0 | 0 | 0 | 0 | 0 | 0 | 2 | 0 | 0 | 2 |
-| S6.7 | 0 | 0 | 1 | 0 | 0 | 0 | 0 | 0 | 2 | 0 | 0 | 3 |
-| S7 | 1 | 0 | 0 | 0 | 0 | 1 | 1 | 0 | 1 | 0 | 0 | 4 |
-| S8 | 2 | 0 | 10 | 1 | 0 | 1 | 1 | 1 | 10 | 4 | 3 | 33 |
-| all | 0 | 0 | 14 | 0 | 0 | 0 | 0 | 0 | 10 | 0 | 0 | 24 |
-| done | 5 | 4 | 0 | 23 | 11 | 0 | 1 | 0 | 12 | 0 | 0 | 56 |
+| S6.1 | 0 | 0 | 35 | 12 | 0 | 9 | 0 | 0 | 31 | 0 | 24 | 111 |
+| S6.2 | 0 | 0 | 5 | 1 | 0 | 0 | 0 | 1 | 14 | 0 | 14 | 35 |
+| S6.3 | 0 | 0 | 2 | 0 | 0 | 0 | 0 | 0 | 6 | 0 | 1 | 9 |
+| S6.4 | 0 | 1 | 13 | 19 | 0 | 32 | 1 | 0 | 25 | 0 | 8 | 99 |
+| S6.5 | 0 | 0 | 1 | 0 | 0 | 0 | 0 | 0 | 3 | 0 | 1 | 5 |
+| S6.6 | 0 | 0 | 0 | 0 | 0 | 0 | 0 | 0 | 7 | 0 | 2 | 9 |
+| S6.7 | 0 | 0 | 110 | 9 | 0 | 82 | 0 | 0 | 14 | 0 | 19 | 234 |
+| S7 | 1 | 0 | 0 | 0 | 0 | 1 | 1 | 0 | 5 | 0 | 0 | 8 |
+| S8 | 2 | 0 | 17 | 1 | 0 | 1 | 1 | 1 | 22 | 4 | 7 | 56 |
+| all | 0 | 0 | 15 | 0 | 0 | 0 | 0 | 0 | 10 | 0 | 0 | 25 |
+| done | 5 | 4 | 0 | 23 | 11 | 0 | 1 | 0 | 12 | 0 | 4 | 60 |

@@ -27,7 +27,7 @@ from ofo.adjustment.compare import Column, MarginRead, approach_cost, cheapest_a
 from ofo.adjustment.offered import EXIT_REDUCE, offered_now
 from ofo.engine import adjust_money
 from ofo_app import adjustment_check as check
-from ofo_app.routes.adjustment import priced_approach
+from ofo_app.routes.adjustment import as_of_market, priced_approach
 
 pytestmark = pytest.mark.repo_scan  # reads every scenario fixture file
 
@@ -53,6 +53,16 @@ def test_t19_cost_equals_the_cheapest_compare_cell_for_every_scenario(sid):
     tracked, market, spot = s.inputs(sc)
     cells = {a: c for a, c in s.compare_costs(tracked, market, spot).items() if c.value is not None}
     got = s.cheapest(sc)  # the engine path; the expected figures are the generator's independent hand path
+    want = sc["expected"]["adjustment_approach"]
+    if want in ("A-24", "A-25") and got.approach == "A-31":
+        # ADR-326 (1): the hand path (before charges only) picks Take profit; the engine refuses it when the whole
+        # trade is a loss after charges, and Exit (A-31, the same trades and cost) is the cheapest offered instead
+        tr, mk, spot = s.inputs(sc)
+        built, priced = priced_approach(want, as_of_market(tr, mk), mk, spot, s.RATES, s.PREFS.approach,
+                                        roll_basis=s.BASIS)
+        assert priced is None and built.refusal.startswith("Not in profit after charges: ")
+        assert str(got.cost) == sc["expected"]["adjustment_cost"]
+        return
     if sc["expected"]["adjustment_approach"] is None:
         assert (got.approach, got.cost, got.reason) == (None, None, cmp.NO_APPROACH_PRICED)
     else:

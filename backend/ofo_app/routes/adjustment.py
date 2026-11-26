@@ -23,6 +23,7 @@ held-switch environment (``held_switches``' own ``environ`` seam).
 """
 from __future__ import annotations
 
+import asyncio
 import dataclasses
 import datetime
 import functools
@@ -33,7 +34,7 @@ from decimal import Decimal
 from typing import Annotated, Any
 
 from fastapi import APIRouter, Depends
-from ofo.adjustment import liquidity
+from ofo.adjustment import liquidity, what_changes
 from ofo.adjustment.approaches import (
     APPROACH_IDS,
     NO_CHANGE,
@@ -69,6 +70,7 @@ from ofo.engine.whole_trade import (
     near_expiry_after,
     whole_trade_after,
 )
+from ofo.errors import UserFacingError, render
 from ofo.errors.explanations import EXPLANATIONS, approach_about_id, approach_name_id, render_explanation
 from ofo.marketdata.spot_source import SourceReading, SpotAnswer, feed_reading
 from ofo.money import to_paise
@@ -81,7 +83,7 @@ from ofo_app.api_models import AdjustApproachesOut
 from ofo_app.config import app_env
 from ofo_app.db import get_db
 from ofo_app.errors import ClosedRoute, Failure
-from ofo_app.outcome_margin import OutcomeMargin, PlannedOrderIn, margin_answer
+from ofo_app.outcome_margin import OutcomeMargin, PlannedOrderIn, RequestFunds, margin_answer
 from ofo_app.routes.adjustment_preferences import UserPreferences, UserValuesIn
 from ofo_app.routes.outcome import (
     MarketContext,
@@ -114,6 +116,9 @@ class Tracked:
     real_book: bool = False
     #: the charges already paid, exact (``paper_charges(...).total``); ``paid_charges`` is it rounded up; None = unknown
     paid_exact: Decimal | None = None
+    #: D-04 (ADR-318 (4)): the shape AT ENTRY = the first batch of paper orders (same ``placed_at`` as the first order),
+    #: netted like ``position``; None = not readable / a real book, so the current shape stands. It picks the playbook.
+    entry_position: Position | None = None
 
 
 @dataclasses.dataclass(frozen=True)
@@ -160,6 +165,9 @@ class MarketInputs:
     #: ADR-280: the market-wide inputs (``regime_inputs.RegimeInputs``: margin, VIX, VIX percentile, ADX); None = not
     #: read, so the triggers that read them answer not checked
     regime: Any = None
+    #: D-12 (ADR-320 (1)): on the position's expiry day, trading symbol -> the engine's per-unit Decay left today
+    #: (``unit_decay_left_today``, the chain model's own figure); None on any other day
+    leg_decay_left: Mapping[str, Decimal] | None = None
 
     def feed_at(self, judged: datetime.datetime) -> SourceReading | None:
         """The feed reading as of ``judged``: a LIVE quote is stamped at the judging instant (``feed_reading``'s one
@@ -178,7 +186,7 @@ RestSpotReader = Callable[[str], Awaitable[SourceReading]]
 ApproachMargin = Callable[[list[PlannedOrderIn]], Awaitable[Margin]]
 #: strategy id, position, spot -> the guards of the strategy's playbook (None: no playbook, so no limits)
 #: ``GUARDS_UNREADABLE`` (adjustment_readers): the playbook could not be read, so the reply says no limit was applied
-GuardsReader = Callable[[int, Position, Decimal | None, list | None], Awaitable[Any]]
+GuardsReader = Callable[[int, Tracked, Decimal | None, list | None], Awaitable[Any]]
 
 
 def get_tracked_reader(db: Annotated[Any, Depends(get_db)] = None) -> TrackedReader:
@@ -295,9 +303,13 @@ def get_rest_spot_reader() -> RestSpotReader:
 
 def get_approach_margin(ctx: Annotated[MarketContext | None, Depends(get_market_context)],
                         source: Annotated[OutcomeMargin | None, Depends(get_margin_source)]) -> ApproachMargin:
-    """Zerodha's basket margin for one approach's After legs, through the outcome's own margin path (ADR-099)."""
+    """Zerodha's basket margin for one approach's After legs, through the outcome's own margin path (ADR-099).
+    Each call makes a NEW ``RequestFunds``: call it once per unit of work (FastAPI does, per request; the background
+    worker, per margin read via ``background.worker_margin_of``), never once for a long-lived caller."""
+    funds = RequestFunds()  # D-36 (a): this request's one available-funds read, shared by all its basket reads
+
     async def read(legs: list[PlannedOrderIn]) -> Margin:
-        return await margin_answer(source, ctx, legs)
+        return await margin_answer(source, ctx, legs, funds)
     return read
 
 
@@ -428,8 +440,12 @@ def price_after(legs: Sequence[PositionLeg], position: Position, booked: Decimal
     adjustment = exits = Decimal(0)
     if known:
         try:
-            closing = [ChargeOrder(segment, "SELL" if x.side == "BUY" else "BUY", x.lots * position.lot, x.entry)
-                       for x in legs]
+            # D-14: the cost to close is priced at each leg's LIVE price (the chain's LTP), as the trade page's
+            # max_after_charges and Total after price it; a leg the chain does not quote (a new leg of the approach)
+            # closes at its entry, which is the quote it is entered at now
+            now = {r.tradingsymbol: r.ltp for r in market.chain if r.ltp is not None}
+            closing = [ChargeOrder(segment, "SELL" if x.side == "BUY" else "BUY", x.lots * position.lot,
+                                   now.get(x.tradingsymbol, x.entry)) for x in legs]
             adjustment, exits = review_charge_lines(paid, paid_exact, own_orders, closing, rates)  # type: ignore[arg-type]
         except ValueError:
             known = False
@@ -507,8 +523,31 @@ def priced_approach(a: str, tracked: Tracked, market: MarketInputs, spot: Decima
     if built.refusal is not None:
         return built, None
     booked = None if tracked.booked is None else tracked.booked + _closed_booked(built)
-    return built, price_after(built.after, position, booked, tracked.paid_charges,
-                              _trade_orders(built, position.underlying), rates, market, tracked.paid_exact)
+    priced = price_after(built.after, position, booked, tracked.paid_charges,
+                         _trade_orders(built, position.underlying), rates, market, tracked.paid_exact)
+    refused = take_profit_after_charges_refusal(built, priced)
+    if refused is not None:  # ADR-326 (1): the ONE place the after-charges test is made; every route reads this path
+        return dataclasses.replace(built, trades=(), after=(), closed=(), warnings=(), warning_messages=(),
+                                   whole_before_charges=None, refusal=refused.what_happened,
+                                   refusal_message=refused), None
+    return built, priced
+
+
+def take_profit_after_charges_refusal(built: ApproachLegs, priced: Priced) -> UserFacingError | None:
+    """ADR-326 (1) (D-25): an offerable Take profit (A-24, A-25: ``whole_before_charges`` is set) is refused when the
+    whole trade closed at the planned prices is not in profit AFTER charges (the engine's ``after_charges`` and
+    ``in_profit``; the before-charges test already passed in the builder). Charges not priced (no rates, no paid
+    charges, no whole-trade figure) -> refused with its own reason (fail closed). Any other approach: None."""
+    if built.whole_before_charges is None:
+        return None
+    if not priced.charges_known:
+        return render("adjust_take_profit_charges_unknown")
+    if priced.after is None:  # charges known, but the legs left span two expiries: no whole-trade figure (fail closed)
+        return render("adjust_take_profit_two_expiries")
+    after = adjust_money.after_charges(built.whole_before_charges, priced.after.total_charges)
+    if not adjust_money.in_profit(after):
+        return render("adjust_take_profit_not_in_profit_after_charges", after=_rupees(after))
+    return None
 
 
 def _after_block(priced: Priced, pop_on: bool) -> dict:
@@ -549,7 +588,8 @@ async def adjustment_approaches(  # noqa: PLR0913, PLR0915 - FastAPI dependencie
         prefs: UserPreferences,
         more_reader: Annotated[MoreMarketReader, Depends(get_more_market_reader)],
         user_values: UserValuesIn,
-        roll_inputs: Annotated[RollInputsReader, Depends(get_roll_inputs_reader)]) -> AdjustApproachesOut:
+        roll_inputs: Annotated[RollInputsReader, Depends(get_roll_inputs_reader)],
+        db: Annotated[Any, Depends(get_db)]) -> AdjustApproachesOut:
     started = time.perf_counter()
     from ofo_app import adjustment_check as check  # noqa: PLC0415 - it imports this module's dataclasses
     from ofo_app.adjustment_readers import TrackedUnreadable  # noqa: PLC0415 - as above
@@ -566,6 +606,7 @@ async def adjustment_approaches(  # noqa: PLR0913, PLR0915 - FastAPI dependencie
     plan_layer, facts = await roll_inputs(strategy_id)
     basis = check.basis_in_force(user_values, plan_layer, facts)  # the same resolution as the adjustment check
     cfg = with_basis(prefs.approach, basis)
+    await release_connection(db)  # D-36 (c): market and REST reads wait on the broker
     market = await market_reader(tracked, ctx)
     tracked = as_of_market(tracked, market)
     spot = judge_spot(market, await rest_reader(tracked.position.underlying), ctx)
@@ -583,7 +624,9 @@ async def adjustment_approaches(  # noqa: PLR0913, PLR0915 - FastAPI dependencie
         built_list: list[tuple[str, ApproachLegs | None]] = []
     else:
         t0 = time.perf_counter()
-        guards = await guards_of(strategy_id, position, spot.value, check.listed_of(ctx))
+        # D-04 (ADR-318 (4)): the playbook is found by check.entry_type, the one function the server's limit uses
+        # (shape at entry, else the current shape), with no spot at all, so offered == accepted
+        guards = await guards_of(strategy_id, tracked, None, check.listed_of(ctx))
         guards = _guards_or_reason(guards, reply)
         # goal contract decision 14 / catalogue S-11: at the plan maximum only exit and reduce approaches are offered,
         # through THE filter the check's T-19 pick uses (offered.limit_filter), never a second copy
@@ -603,6 +646,8 @@ async def adjustment_approaches(  # noqa: PLR0913, PLR0915 - FastAPI dependencie
         # GC-IC1 round 3: the landing strikes nobody held are held ONCE more and everything is built again; never a
         # third read, whatever is still unpriced after it (bounded: at most one more LEG_WAIT_S)
         extra = second_pass_ids([b for _, (b, _) in answers], market, position, cfg)
+        if extra:
+            await release_connection(db)  # D-36 (c): the second market read waits on the broker too
         more = await more_reader(tracked, ctx, extra) if extra else None
         if more is not None:
             market = more
@@ -613,8 +658,12 @@ async def adjustment_approaches(  # noqa: PLR0913, PLR0915 - FastAPI dependencie
         engine = time.perf_counter() - t0
         out = []
         columns: list[Column] = []
+        # D-36 (c): every database read of this request is done; the request's session gives its connection back
+        # BEFORE the broker is waited on (the pool is small: a held connection is a 503 for the next request)
+        await release_connection(db)
+        margins = await _margins_of(built_list, margin_of, market)  # D-36 (d): the independent reads together
         for a, built in built_list:
-            item = await _approach_item(a, built, priced, pop_on, margin_of, market)
+            item = _approach_item(a, built, priced, pop_on, margins.get(a))
             item["liquidity_flags"] = strike_flags(built, position, market.chain, limits)
             if built is not None and built.refusal_message is None:
                 columns.append(Column(built, priced[a].after, priced[a].reason, priced[a].charges_known,
@@ -705,7 +754,7 @@ def _not_offered_by_limit(limit: Mapping[str, Any] | None,
     limit reason (never silently dropped). Not in ``approaches``, so "Showing N of M" counts only what is offered."""
     if limit is None:
         return []
-    reason = render_explanation("adjust_limit_reason")
+    reason = render_explanation("adjust_limit_reason", max=limit["max"])
     return [{"id": a["id"], "name": a["name"], "reason_id": "adjustment_limit_reached", "reason": reason}
             for a in available if a["applicable"] and a["id"] not in EXIT_REDUCE]
 
@@ -717,10 +766,75 @@ def _days_to_expiry(position: Position) -> int | None:
     return max((min(x.expiry for x in position.legs) - position.today).days, 0)
 
 
-async def _approach_item(a: str, built: ApproachLegs | None, priced: Mapping[str, Priced], pop_on: bool,  # noqa: PLR0913
-                         margin_of: ApproachMargin, market: MarketInputs) -> dict[str, Any]:
+def take_profit_block(built: ApproachLegs | None, priced: Priced | None) -> dict[str, Any] | None:
+    """D-25 (ADR-238 (6), ADR-294 (4)): an OFFERED Take profit (A-24, A-25) names the whole trade's result
+    before charges
+    (the figure its profit test used) and, beside it, the result after charges (before charges less every charge line,
+    the engine's ``total_charges``). Refused, other approaches: None (charges not priced is a refusal now)."""
+    if built is None or built.refusal_message is not None or built.whole_before_charges is None or priced is None \
+            or priced.after is None:  # an offered take profit always has its whole-trade figure (ADR-326 (1))
+        return None
+    before = _rupees(built.whole_before_charges)
+    after = _rupees(adjust_money.after_charges(built.whole_before_charges, priced.after.total_charges))
+    return {"before_charges": before, "after_charges": after,
+            "text": render_explanation("adjust_take_profit_basis", before=before, after=after)}
+
+
+async def refuse_take_profit_at_loss(approach_id: str | None, strategy_id: int,  # noqa: PLR0913
+                                     tracked_reader: TrackedReader, ctx: MarketContext | None,
+                                     rates: ChargeRates | None, prefs: Preferences, roll_basis: RollBasis) -> None:
+    """ADR-326 (1) (D-25): a basket placed as Take profit (A-24, A-25) is refused at an after-charges loss, by the SAME
+    build path that offers it (``priced_approach``), so offered and accepted agree. Any other id (or none): nothing.
+    Strategy not read / spot not available: refused (fail closed, nothing placed)."""
+    if approach_id not in ("A-24", "A-25"):
+        return
+    tracked = await tracked_reader(strategy_id, rates)
+    if tracked is None:
+        raise StrategyRefused("user_input_request_not_available", Failure.NOT_FOUND)
+    market = await get_market_reader()(tracked, ctx)
+    tracked = as_of_market(tracked, market)
+    spot = judge_spot(market, await get_rest_spot_reader()(tracked.position.underlying), ctx)
+    if not spot.available:
+        raise StrategyRefused("adjust_take_profit_charges_unknown")
+    built, _ = priced_approach(approach_id, tracked, market, spot.value, rates, prefs.approach, roll_basis=roll_basis)
+    if built is not None and built.refusal_message is not None:
+        raise StrategyRefused("adjust_take_profit_charges_unknown", Failure.CONFLICT, message=built.refusal_message)
+
+
+async def release_connection(db: Any) -> None:
+    """D-36 (c): end the request session's read-only transaction so its pooled connection goes back BEFORE the broker is
+    waited on (DB_POOL_SIZE is small: a connection held across a Kite call is a 503 for the next request). The session
+    stays usable (its next statement starts a new transaction; ``expire_on_commit`` is off, so rows read stay readable).
+    A request with no real session (a test double without ``commit``) has nothing to give back."""
+    commit = getattr(db, "commit", None)
+    if commit is not None:
+        await commit()
+
+
+#: D-36 (d): the most basket reads asked of Zerodha together. Kite's "other" group allows 10 a second and a call waits
+#: at most 5 s for its turn (ofo/broker/rate_limit.py), so 4 together stay inside both; more would only queue.
+MARGIN_TOGETHER = 4
+
+
+async def _margins_of(built_list: Sequence[tuple[str, ApproachLegs | None]], margin_of: ApproachMargin,
+                      market: MarketInputs) -> dict[str, dict]:
+    """The margin block of every built approach, read together under ``MARGIN_TOGETHER``. Each read's failure stays its
+    own (``_margin`` turns it into that approach's "not available"; no retry, nothing guessed); a basket asked by two
+    approaches is asked once (OutcomeMargin's in-flight read). Keyed by approach id."""
+    gate = asyncio.Semaphore(MARGIN_TOGETHER)
+
+    async def one(built: ApproachLegs) -> dict:
+        async with gate:
+            return await _margin(margin_of, built, market)
+    todo = [(a, b) for a, b in built_list if b is not None and b.refusal_message is None]
+    blocks = await asyncio.gather(*(one(b) for _a, b in todo))
+    return {a: block for (a, _b), block in zip(todo, blocks, strict=True)}
+
+
+def _approach_item(a: str, built: ApproachLegs | None, priced: Mapping[str, Priced], pop_on: bool,
+                   margin: dict | None) -> dict[str, Any]:
     """One approach of the reply: unknown id -> refused by name (attack 2); refused -> its reason; else the full
-    answer with its margin."""
+    answer with its margin (read beforehand by ``_margins_of``)."""
     if built is None:
         return {"id": a, "refusal": render_explanation("adjust_unknown_approach", approach=a)}
     item: dict[str, Any] = {"id": built.id, "name": render_explanation(approach_name_id(built.id)),
@@ -731,7 +845,8 @@ async def _approach_item(a: str, built: ApproachLegs | None, priced: Mapping[str
     if built.refusal_message is None:
         item |= {"trades": [_leg_out(t) for t in built.trades], "after_legs": [_leg_out(x) for x in built.after],
                  "closed_legs": [_leg_out(c) for c in built.closed], **_after_block(priced[a], pop_on)}
-        item["margin"] = await _margin(margin_of, built, market)
+        item["margin"] = margin
+        item["take_profit"] = take_profit_block(built, priced[a])
     return item
 
 
@@ -743,14 +858,29 @@ async def _compare_reply(columns: list[Column], tracked: Tracked, spot: Decimal,
     """REQ-156: the compare over the built approaches; the current legs' margin is "No change"'s (read once more
     only when A-36 was not asked)."""
     position = tracked.position
-    before_margin = next((c.margin for c in columns if is_no_change(c.built)), None)
-    if before_margin is None:
-        unchanged = build_approach(position, market.chain, spot, NO_CHANGE, prefs.approach)
-        before_margin = _margin_read(await _margin(margin_of, unchanged, market))
+    no_change = next((c for c in columns if is_no_change(c.built)), None)
+    unchanged = no_change.built if no_change is not None else build_approach(position, market.chain, spot, NO_CHANGE,
+                                                                             prefs.approach)
+    before_margin = no_change.margin if no_change is not None else _margin_read(
+        await _margin(margin_of, unchanged, market))
     warn_pct, warn_off = warn_threshold(guards)  # REQ-159 AC-6: no playbook / no level -> no warning and a reason
     ctx = Context(position, spot, market.chain, rates, pop_on, before_margin, market.leg_greeks,
-                  tracked.adjustments_used, prefs.compare, limits, plan_max(guards), warn_pct, warn_off)
-    return _compare_block(compare(columns, ctx, before.after, before.charges_known, before.near))
+                  tracked.adjustments_used, prefs.compare, limits, plan_max(guards), warn_pct, warn_off,
+                  leg_decay_left=market.leg_decay_left)
+    out = _compare_block(compare(columns, ctx, before.after, before.charges_known, before.near))
+    # D-21 (ADR-320 (3)): the "What changes" block of each built approach, against the position as it stands (the Before
+    # priced above: the same legs as "No change", so the block and the table read one engine answer)
+    before_col = Column(unchanged, before.after, before.reason, before.charges_known, before_margin,
+                        before.adjustment_charges, before.near)
+    out["what_changes"] = {a: _what_changes_out(b) for a, b in what_changes.blocks(columns, ctx, before_col).items()}
+    return out
+
+
+def _what_changes_out(b: what_changes.Block) -> dict:
+    return {"title": b.title, "reason_line": b.reason_line,
+            "rows": [{"id": r.id, "label": r.label, "before_text": r.before_text, "after_text": r.after_text,
+                      "direction": r.direction, "direction_text": r.direction_text,
+                      "unavailable_reason": r.unavailable_reason} for r in b.rows]}
 
 
 def _margin_read(block: Mapping[str, Any]) -> MarginRead:

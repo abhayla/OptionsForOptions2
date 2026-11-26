@@ -16,7 +16,7 @@ vi.mock('@/services/api', async (importActual) => {
   return {
     ...actual,
     default: {
-      get: (url) => (url === '/features' ? features() : answer(url)),
+      get: (url) => (url === '/features' ? features() : Promise.resolve(answer(url)).then((r) => ({ ...r, data: withWords(r.data) }))),
       patch: (url, body) => {
         sent.push({ url, body })
         return patchAnswer(url, body)
@@ -32,6 +32,7 @@ vi.mock('@/services/api', async (importActual) => {
     },
   }
 })
+import { withWords } from './_statusWord'
 import MyStrategiesPage from '@/pages/MyStrategiesPage.vue'
 
 const Stub = { template: '<i />' }
@@ -144,11 +145,12 @@ describe('ADR-183: a name stored with more than 20 characters opens in full and 
     await w.get('[data-testid="rename-7"]').trigger('click')
     expect(w.get('[data-testid="rename-input"]').element.value).toBe(longName)
     expect(w.get('[data-testid="rename-input"]').attributes('maxlength')).toBe('20')
-    expect(w.get('[data-testid="rename-count"]').text()).toBe('26/20')
-    expect(w.get('[data-testid="rename-count"]').classes()).toContain('text-warn')
+    expect(w.get('[data-testid="rename-limit"]').text()).toBe('This name is longer than 20 characters: shorten it to save.')
+    expect(w.get('[data-testid="rename-limit"]').classes()).toContain('text-warn')
     await w.get('[data-testid="rename-input"]').setValue('y'.repeat(20))
-    expect(w.get('[data-testid="rename-count"]').text()).toBe('20/20')
-    expect(w.get('[data-testid="rename-count"]').classes()).toContain('text-ink-muted')
+    expect(w.get('[data-testid="rename-limit"]').text()).toBe('That is the 20-character limit: nothing more can be typed.')
+    expect(w.get('[data-testid="rename-limit"]').classes()).toContain('text-ink-muted')
+    expect(w.find('[data-testid="rename-count"]').exists()).toBe(false)
   })
 })
 

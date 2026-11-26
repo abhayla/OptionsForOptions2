@@ -63,8 +63,10 @@ function script({ chain } = {}) {
 // SETTLE_ROUNDS times (a test whose settings read fails on purpose stops after them, never hangs). 2026-11-01: rows 33
 // and attack 6 failed once under the full parallel gate run (sent 15 instead of 5; no request) and passed in 7 reruns.
 const SETTLE_ROUNDS = 10
+const mounted = [] // every page this file mounts: unmounted in afterEach so no reconnect timer outlives its test
 async function mountPage() {
   const w = mount(OptionChainPage)
+  mounted.push(w)
   await flushPromises()
   const settings = useSettingsValues()
   for (let round = 0; round < SETTLE_ROUNDS && settings.values === null; round += 1) await flushPromises()
@@ -80,7 +82,12 @@ beforeEach(() => {
   reads.length = 0
   vi.stubGlobal('WebSocket', FakeSocket)
 })
-afterEach(() => vi.unstubAllGlobals())
+afterEach(() => {
+  // A test that closes its socket without unmounting leaves a reconnect timer (1 s+); under load it fired in a LATER test,
+  // opened a stale FakeSocket that became sock(), and the later test read that page's request (row 33: sent 15, not 5).
+  for (const w of mounted.splice(0)) { try { w.unmount() } catch { /* already unmounted by the test */ } }
+  vi.unstubAllGlobals()
+})
 
 describe('Option Chain screen', () => {
   it('AC-1: lays out Calls | Strike | Puts, ascending, for the chosen underlying and expiry', async () => {
@@ -94,12 +101,12 @@ describe('Option Chain screen', () => {
     expect(heads).toEqual(['Calls', 'Strike', 'Puts'])
     const bodyRow = w.findAll('[data-testid="chain-row"]').at(1)
     const tds = bodyRow.findAll('td:not([data-testid^="sel-"])').map((t) => t.text())
-    expect(tds).toEqual(['120.50', '-', '1000', '50', '12.34', '24500', '95.25', '-', '1000', '50', '12.34'])
+    expect(tds).toEqual(['120.50', 'not available', '1000', '50', '12.34', '24500', '95.25', 'not available', '1000', '50', '12.34'])
     expect(cellsOf(w, 'strike')).toEqual(['24450', '24500', '24550'])
     expect(w.find('[data-testid="underlying-select"]').element.value).toBe('NIFTY')
   })
 
-  it('AC-2 (row 33): default columns per side are LTP, Change, OI, Volume and IV for every user; Change is "-"', async () => {
+  it('AC-2 (row 33): default columns per side are LTP, Change, OI, Volume and IV for every user; Change says "not available" while the feed has none (D-55)', async () => {
     script({ chain: () => Promise.resolve({ data: notConnected() }) })
     const w = await mountPage()
     sock().serverOpen()
@@ -109,8 +116,8 @@ describe('Option Chain screen', () => {
     expect(cols).toEqual(['LTP', 'Change', 'OI', 'Volume', 'IV', 'Strike', 'LTP', 'Change', 'OI', 'Volume', 'IV'])
     expect(cols.join(' ')).not.toMatch(/Delta|Bid|Ask/)
     expect(cellsOf(w, 'ce-iv')).toEqual(['12.34', '12.34', '12.34'])
-    expect(cellsOf(w, 'ce-change')).toEqual(['-', '-', '-'])
-    expect(cellsOf(w, 'pe-change')).toEqual(['-', '-', '-'])
+    expect(cellsOf(w, 'ce-change')).toEqual(['not available', 'not available', 'not available'])
+    expect(cellsOf(w, 'pe-change')).toEqual(['not available', 'not available', 'not available'])
   })
 
   it('AC-8: the server ATM row is marked, spot with time is shown, the expiry selector is present', async () => {
@@ -249,6 +256,32 @@ describe('Option Chain screen', () => {
     }
   })
 
+  it('D-19: a cell with a last trade time shows it under its LTP; a cell without shows nothing extra', async () => {
+    script({ chain: () => Promise.resolve({ data: notConnected() }) })
+    const w = await mountPage()
+    sock().serverOpen()
+    const a = answer('63.10')
+    a.rows[1].ce = { ...a.rows[1].ce, bid: '63.90', ask: '64.10', last_trade_at: '2026-10-19T09:19:53+05:30' }
+    a.rows[1].pe = { ...a.rows[1].pe, last_trade_at: null }
+    sock().serverPush({ ...a, expiry: '2026-10-20' })
+    await flushPromises()
+    expect(w.findAll('[data-testid="ce-last-trade"]').map((x) => x.text())).toEqual(['Last trade 09:19:53 IST'])
+    expect(w.find('[data-testid="pe-last-trade"]').exists()).toBe(false)
+  })
+
+  it('D-19 round 2: a last trade from an earlier day shows its date; one from the cell\'s own day shows the time only', async () => {
+    script({ chain: () => Promise.resolve({ data: notConnected() }) })
+    const w = await mountPage()
+    sock().serverOpen()
+    const a = answer('63.10') // every cell's `at` is 19 Oct 2026
+    a.rows[1].ce = { ...a.rows[1].ce, last_trade_at: '2026-10-16T15:29:58+05:30' }
+    a.rows[1].pe = { ...a.rows[1].pe, last_trade_at: '2026-10-19T09:19:53+05:30' }
+    sock().serverPush({ ...a, expiry: '2026-10-20' })
+    await flushPromises()
+    expect(w.get('[data-testid="ce-last-trade"]').text()).toBe('Last trade 16 Oct 2026, 15:29:58 IST')
+    expect(w.get('[data-testid="pe-last-trade"]').text()).toBe('Last trade 09:19:53 IST')
+  })
+
   it('shows the reason when the server sends no rows, the cell health word, and the unreadable catalogue', async () => {
     script({ chain: () => Promise.resolve({ data: notConnected() }) })
     const w = await mountPage()
@@ -357,6 +390,7 @@ describe('Option Chain screen', () => {
     sock().serverOpen()
     await w.find('[data-testid="filter-strike-range"]').setValue('5')
     await flushPromises()
+    await new Promise((r) => setTimeout(r, 350)) // D-55 round 2: a change is sent after a short pause
     expect(JSON.parse(sock().sent.at(-1))).toEqual({ underlying: 'NIFTY', expiry: '2026-10-20', strikes_each_side: 5 })
   })
 
@@ -376,6 +410,7 @@ describe('Option Chain screen', () => {
     const sentBefore = sock().sent.length
     await w.find('[data-testid="filter-min-ltp"]').setValue('1000')
     await flushPromises()
+    await new Promise((r) => setTimeout(r, 350)) // D-55 round 2: a change is sent after a short pause
     expect(sock().sent.length).toBe(sentBefore + 1)
     expect(JSON.parse(sock().sent.at(-1))).toEqual({ underlying: 'NIFTY', expiry: '2026-10-20', strikes_each_side: 15, min_ltp: '1000' })
     sock().serverPush({ ...answer(), expiry: '2026-10-20', rows: [] })
@@ -385,6 +420,7 @@ describe('Option Chain screen', () => {
     expect(w.findAll('[data-testid="selected-leg"]')).toHaveLength(1)
     await w.find('[data-testid="filter-reset"]').trigger('click')
     await flushPromises()
+    await new Promise((r) => setTimeout(r, 350)) // D-55 round 2
     expect(JSON.parse(sock().sent.at(-1))).toEqual({ underlying: 'NIFTY', expiry: '2026-10-20', strikes_each_side: 15 })
     sock().serverPush({ ...answer(), expiry: '2026-10-20' })
     await flushPromises()

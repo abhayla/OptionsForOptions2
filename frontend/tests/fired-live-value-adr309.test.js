@@ -17,10 +17,10 @@ import TrackingPanel from '@/components/strategy/TrackingPanel.vue'
 
 const flag = (over = {}) => ({ kind: 'flag', rule_id: 'T-01', trigger_id: 'T-01', cmp: 'le', value: '0.3482', threshold: '0.3500', reason: null,
   wording: 'Your rule was triggered', condition: 'Spot distance: 0.3482 % (rule 0.3500 %)', suggestion_id: 11, note: null, stop_text: null,
-  fired_at: '2026-11-13T08:18:00Z', live_value: '0.3510', live_as_of_text: 'As of 02:15:00 PM IST', ...over })
+  fired_at: '2026-11-13T08:18:00Z', live_value: '0.3510', live_as_of_text: 'As of 14:15:00 IST', ...over })
 const mounted = []
 async function panel(results) {
-  CHECK = { strategy_id: 7, as_of: '2026-11-13T08:45:00Z', as_of_text: 'As of 02:15:00 PM IST', strategy_type: 'ic', type_name: 'Iron condor',
+  CHECK = { strategy_id: 7, as_of: '2026-11-13T08:45:00Z', as_of_text: 'As of 14:15:00 IST', strategy_type: 'ic', type_name: 'Iron condor',
     playbook: { source: 'system', id: 1, status: null, draft: false }, stage: { name: null, index: null }, withheld: null, results, limits: [], paused: null }
   const w = mount(TrackingPanel, { props: { savedId: 7, legs: [] } })
   mounted.push(w)
@@ -34,7 +34,7 @@ describe('fired state beside the value now (ADR-309)', () => {
     const w = await panel([flag()])
     expect(w.find('[data-testid="playbook-flag"]').exists()).toBe(true)
     expect(w.find('[data-testid="playbook-flag-condition"]').text()).toContain('0.3482')
-    expect(w.find('[data-testid="playbook-flag-live"]').text()).toBe('Now 0.3510 (As of 02:15:00 PM IST)')
+    expect(w.find('[data-testid="playbook-flag-live"]').text()).toBe('Now 0.3510 (As of 14:15:00 IST)')
   })
   it('adds nothing when the value now is the fired value', async () => {
     const w = await panel([flag({ live_value: '0.3482' })])

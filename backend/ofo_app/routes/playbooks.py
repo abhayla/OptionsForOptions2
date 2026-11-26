@@ -473,13 +473,12 @@ async def _read_bounded(row: Any, seams: _Seams, listed: Any, gate: asyncio.Sema
                       time.monotonic() - started)
             if read.tracked is None:
                 return None  # not even its legs are read: its type is not known
-            known = check.strategy_type(read.tracked.position, None, listed)
+            known = check.entry_type(read.tracked, listed)  # D-04
             return _not_checked(row, data.body) if known == data.type else None
         log.debug("playbook test: strategy %s read in %.2fs", row.id, time.monotonic() - started)
     if read.tracked is None:
         return None
-    spot = read.spot
-    if check.strategy_type(read.tracked.position, spot.value if spot.available else None, listed) != data.type:
+    if check.entry_type(read.tracked, listed) != data.type:  # D-04
         return None
     return row, read
 
@@ -503,7 +502,7 @@ async def _tested(db: Any, user_ref: str, data: TestIn, seams: _Seams) -> list[d
 
     rows = await strategy_store.list_strategies(db, user_ref)
     tracked_ids = await paper_store.tracked_ids(db, [r.id for r in rows])
-    listed = None if seams.ctx is None else seams.ctx.provider.instrument_master()
+    listed = check.listed_of(seams.ctx)
     gate = asyncio.Semaphore(TEST_READ_CONCURRENCY)
     answers = await asyncio.gather(*(_read_bounded(r, seams, listed, gate, data)
                                      for r in rows if r.id in tracked_ids))

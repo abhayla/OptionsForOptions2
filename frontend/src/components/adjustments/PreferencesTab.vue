@@ -14,6 +14,7 @@
 <script setup>
 import { computed, onMounted, reactive, ref, watch } from 'vue'
 import api from '@/services/api'
+import { istTime } from '@/lib/displayFormat'
 import ErrorMessage from '@/components/common/ErrorMessage.vue'
 import { ALERT_KEY, CHIPS, GROUPS, OPEN_BY_DEFAULT, groupOf, isYours, matches, sourceWord } from '@/lib/settingsGroups'
 import { fetchPlan, saveBody, sendPlan } from '@/lib/adjustPlan'
@@ -45,7 +46,7 @@ function formFor(key) {
   return forms[key]
 }
 function when(iso) {
-  return iso ? new Date(iso).toLocaleString('en-IN', { timeZone: 'Asia/Kolkata', dateStyle: 'medium', timeStyle: 'short' }) + ' IST' : ''
+  return iso ? istTime(iso) : '' // D-57: the one formatter, '23 Nov 2026, 15:45:00 IST'
 }
 const hasValue = (p) => p.value !== null && p.value !== undefined && p.value !== ''
 

@@ -37,6 +37,7 @@
 <script setup>
 import { computed, ref, watch } from 'vue'
 import api from '@/services/api'
+import { istTime } from '@/lib/displayFormat'
 import { useViewer } from '@/stores/viewer'
 import { refusalText } from '@/lib/playbookEditor'
 
@@ -55,7 +56,7 @@ const top = computed(() => versions.value.find((v) => v.current) ?? null)
 const isDraft = computed(() => top.value?.draft === true)
 // the server's own sentence: the catalogue refusal of this API ({reason}) or the editor's explanation parts
 const sentence = (err) => err?.reason ?? err?.data?.reason ?? refusalText(err) ?? err?.message ?? null
-const when = (iso) => { const d = new Date(iso); return Number.isNaN(d.getTime()) ? String(iso) : d.toLocaleString() }
+const when = (iso) => istTime(iso) // D-57: the one formatter, '23 Nov 2026, 15:45:00 IST'
 
 async function load() {
   if (!viewer.isAdmin || !props.strategyType) { versions.value = []; return }

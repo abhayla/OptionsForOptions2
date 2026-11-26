@@ -35,6 +35,14 @@ export const STRATEGY_NAME_DEFAULT = 'New Strategy'
 export const STRATEGY_NAME_MAX = 20
 export const SAVE_AS_SUFFIX = ' copy'
 
+// pending owner read (25 Nov 2026), D-53: the name box stops at the limit, so the limit is said beside it in three states:
+// room left, exactly at the limit (typing stops), over it (a name stored before ADR-183 keeps its length but cannot be saved as is)
+export function nameLimitText(length) {
+  if (length > STRATEGY_NAME_MAX) return `This name is longer than ${STRATEGY_NAME_MAX} characters: shorten it to save.`
+  if (length === STRATEGY_NAME_MAX) return `That is the ${STRATEGY_NAME_MAX}-character limit: nothing more can be typed.`
+  return `A name can be up to ${STRATEGY_NAME_MAX} characters.`
+}
+
 /** ADR-192 (REQ-134 AC-2): the Save As pre-fill. The original name (the API's quotes stripped; the default when there is none)
  *  is cut from its end, and trailing spaces dropped, so that the original part plus " copy" is 20 characters or fewer. */
 export function saveAsName(shown) {
@@ -57,7 +65,14 @@ export function plainName(shown) {
  *  the list and the builder. Returns the reply (id, quoted name, revision unchanged); throws the mapped error on a refusal and
  *  an Error when the reply carries no name (fail closed: nothing is shown as renamed). `name` is sent as typed; the server owns the rule. */
 export async function renameStrategy(client, id, revision, name) {
-  const done = (await client.patch(`/strategies/${id}/name`, { name, expected_revision: revision })).data
+  // D-65: a paper trade opened in Drafts Mode holds no revision (the paper book has none): read the saved copy's revision first,
+  // never send null (the server refuses it as "missing or not in the expected form"); an unreadable answer sends nothing
+  let held = revision
+  if (!Number.isInteger(held)) {
+    held = (await client.get(`/strategies/${id}`)).data?.revision
+    if (!Number.isInteger(held)) throw new Error('unreadable answer')
+  }
+  const done = (await client.patch(`/strategies/${id}/name`, { name, expected_revision: held })).data
   if (typeof done?.name !== 'string') throw new Error('unreadable answer')
   return done
 }

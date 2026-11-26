@@ -6,6 +6,7 @@ from __future__ import annotations
 
 import dataclasses
 import datetime
+import re
 from decimal import Decimal as D
 from types import SimpleNamespace
 
@@ -36,7 +37,7 @@ def test_fresh_prices_say_so_and_still_rank():
     body, _ = _reply(stale=False, at_minutes_old=0)
     p = body["prices"]
     assert p["stale"] is False and p["banner"] is None and p["prepare_blocked_reason"] is None
-    assert p["label"].startswith("prices from ") and p["label"].endswith(("AM", "PM"))  # ADR-015 clock form
+    assert re.fullmatch(r"prices from \d\d:\d\d:\d\d", p["label"])  # 24-hour IST clock (D-57, ADR-325 (17))
     assert any(c["leaders"] for c in body["criteria"])
 
 
