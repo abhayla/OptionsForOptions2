@@ -731,7 +731,7 @@
      "id": "SHARED-41",
      "kind": "dialog",
      "tag": "Modal",
-     "label": "{{leave.question.value ? leaveQuestion(leave.question.value.count) : ''}} Stay Leave",
+     "label": "{{leave.question.value ? leaveQuestion(leave.question.value.count, leave.question.value.pending) : ''}} Stay Leave",
      "labelFrom": "text",
      "ariaLabel": "",
      "testid": "",
@@ -1304,6 +1304,66 @@
      ],
      "type": "button",
      "component": "pages/MyStrategiesPage.vue"
+    },
+    {
+     "id": "MYSTR-15",
+     "kind": "button",
+     "tag": "button",
+     "label": "Undo",
+     "labelFrom": "text",
+     "ariaLabel": "",
+     "testid": "result-undo",
+     "source": "frontend/src/pages/MyStrategiesPage.vue:242",
+     "handlers": [
+      "click"
+     ],
+     "type": "button",
+     "component": "pages/MyStrategiesPage.vue"
+    },
+    {
+     "id": "MYSTR-16",
+     "kind": "button",
+     "tag": "button",
+     "label": "Dismiss",
+     "labelFrom": "text",
+     "ariaLabel": "",
+     "testid": "result-dismiss",
+     "source": "frontend/src/pages/MyStrategiesPage.vue:243",
+     "handlers": [
+      "click"
+     ],
+     "type": "button",
+     "component": "pages/MyStrategiesPage.vue"
+    },
+    {
+     "id": "MYSTR-17",
+     "kind": "button",
+     "tag": "button",
+     "label": "Undo",
+     "labelFrom": "text",
+     "ariaLabel": "",
+     "testid": "result-undo",
+     "source": "frontend/src/pages/MyStrategiesPage.vue:252",
+     "handlers": [
+      "click"
+     ],
+     "type": "button",
+     "component": "pages/MyStrategiesPage.vue"
+    },
+    {
+     "id": "MYSTR-18",
+     "kind": "button",
+     "tag": "button",
+     "label": "Dismiss",
+     "labelFrom": "text",
+     "ariaLabel": "",
+     "testid": "result-dismiss",
+     "source": "frontend/src/pages/MyStrategiesPage.vue:253",
+     "handlers": [
+      "click"
+     ],
+     "type": "button",
+     "component": "pages/MyStrategiesPage.vue"
     }
    ]
   },
@@ -1599,17 +1659,16 @@
     },
     {
      "id": "BUILD-09",
-     "kind": "button",
-     "tag": "button",
+     "kind": "click",
+     "tag": "ExitButton",
      "label": "{{REVIEW_AND_ADD_LABEL}}",
      "labelFrom": "text",
      "ariaLabel": "",
      "testid": "paper-review",
-     "source": "frontend/src/pages/StrategyBuilderPage.vue:1169",
+     "source": "frontend/src/pages/StrategyBuilderPage.vue:1226",
      "handlers": [
       "click"
      ],
-     "type": "button",
      "component": "pages/StrategyBuilderPage.vue"
     },
     {

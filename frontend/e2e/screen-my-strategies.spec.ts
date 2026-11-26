@@ -144,7 +144,12 @@ async function openLoaded(page: Page, over: Over = {}, list: Row[] = LIST) {
   await expect(rows(page).first()).toBeVisible()
   return F
 }
-const ORDER = ['Iron Condor Nov', 'Bull Put Spread', 'Short Straddle', 'Held IC k10', 'Sent Basket'] // newest save first (U2)
+// ADR-330 (19): every list row shows "<name> (#<id>, <expiry>)", the expiry being the first leg's, written by the one expiry formatter.
+// This page sets no shown date, so the year is printed ("1 Dec 2026"). Built here from the same stub row, never typed twice.
+const MON = ['Jan', 'Feb', 'Mar', 'Apr', 'May', 'Jun', 'Jul', 'Aug', 'Sep', 'Oct', 'Nov', 'Dec']
+const expShown = (iso: string) => `${Number(iso.slice(8, 10))} ${MON[Number(iso.slice(5, 7)) - 1]} ${iso.slice(0, 4)}`
+const lbl = (r: Row, name?: string) => `${name ?? String(r.name).replace(/^"|"$/g, '')} (#${r.id}, ${expShown((r.first_leg as { expiry: string }).expiry)})`
+const ORDER = [R21, R17, R9, R5, R4].map((r) => lbl(r)) // newest save first (U2)
 const callsTo = (F: Fake, m: string, re: RegExp) => F.calls.filter((c) => c.m === m && re.test(c.path))
 
 // =============================================================================================== the list
@@ -217,11 +222,11 @@ test.describe('My Strategies: the list (REQ-134 AC-4, REQ-009 AC-2, ADR-299, ADR
     // Spec basis: REQ-134 AC-1 ("Two strategies of one user may share a name; each keeps its own id"); owner N-14 (four strategies all named Short Iron Condor)
     const same = [mk(41, 'Short Iron Condor', '2026-11-25T10:00:00+05:30'), mk(42, 'Short Iron Condor', '2026-11-24T10:00:00+05:30'), mk(43, 'Short Iron Condor', '2026-11-23T10:00:00+05:30')]
     const F = await openLoaded(page, {}, same)
-    await expect(names(page)).toHaveText(['Short Iron Condor', 'Short Iron Condor', 'Short Iron Condor'])
+    await expect(names(page)).toHaveText(same.map((r) => lbl(r))) // ADR-330 (19): lists show the label with the trade number and expiry
     await rowOf(page, 42).getByTestId('rename-42').click()
     await page.getByTestId('rename-input').fill('Condor B')
     await page.getByTestId('rename-save').click()
-    await expect(names(page)).toHaveText(['Short Iron Condor', 'Condor B', 'Short Iron Condor'])
+    await expect(names(page)).toHaveText([lbl(same[0]), lbl(same[1], 'Condor B'), lbl(same[2])]) // ADR-330 (19): lists show the label with the trade number and expiry
     expect(callsTo(F, 'PATCH', /strategies\/42\/name/)).toHaveLength(1)
     expect(callsTo(F, 'PATCH', /strategies\/4[13]\/name/)).toHaveLength(0)
   })
@@ -369,12 +374,12 @@ test.describe('My Strategies: search (REQ-134 AC-4, REQ-070 AC-7)', () => {
     await openLoaded(page)
     const box = page.getByTestId('strategy-search')
     await box.fill('S')
-    await expect(names(page)).toHaveText(['Iron Condor Nov', 'Bull Put Spread', 'Short Straddle', 'Held IC k10', 'Sent Basket'].filter((n) => n.toLowerCase().includes('s')))
+    await expect(names(page)).toHaveText([R21, R17, R9, R5, R4].filter((r) => lbl(r).split(' (#')[0].toLowerCase().includes('s')).map((r) => lbl(r))) // ADR-330 (19): lists show the label with the trade number and expiry
     await box.fill('')
     await box.pressSequentially('BULL')
-    await expect(names(page)).toHaveText(['Bull Put Spread'])
+    await expect(names(page)).toHaveText([lbl(R17)]) // ADR-330 (19): lists show the label with the trade number and expiry
     await box.fill('condor')
-    await expect(names(page)).toHaveText(['Iron Condor Nov'])
+    await expect(names(page)).toHaveText([lbl(R21)]) // ADR-330 (19): lists show the label with the trade number and expiry
   })
 
   test('SEARCH-2 (Q2-4) no match shows exactly "No saved strategy matches <text>" and no rows', async ({ page }) => {
@@ -416,7 +421,7 @@ test.describe('My Strategies: search (REQ-134 AC-4, REQ-070 AC-7)', () => {
     // Spec basis: REQ-134 AC-3 / AC-4 (rename changes only the name; the list stays filtered by the search)
     await openLoaded(page)
     await page.getByTestId('strategy-search').fill('straddle')
-    await expect(names(page)).toHaveText(['Short Straddle'])
+    await expect(names(page)).toHaveText([lbl(R9)]) // ADR-330 (19): lists show the label with the trade number and expiry
     await rowOf(page, 9).getByTestId('rename-9').click()
     await page.getByTestId('rename-input').fill('Quiet Strangle')
     await page.getByTestId('rename-save').click()
@@ -448,7 +453,7 @@ test.describe('My Strategies: rename (REQ-134 AC-1, AC-3, ADR-183)', () => {
     await rowOf(page, 17).getByTestId('rename-17').click()
     await box(page).fill('Put Spread Dec')
     await page.getByTestId('rename-save').click()
-    await expect(rowOf(page, 17).getByTestId('row-name')).toHaveText('Put Spread Dec')
+    await expect(rowOf(page, 17).getByTestId('row-name')).toHaveText(lbl(R17, 'Put Spread Dec')) // ADR-330 (19): lists show the label with the trade number and expiry
     await expect(page.getByTestId('rename-form')).toHaveCount(0)
     const after = await rowOf(page, 17).innerText()
     expect(after.replace('Put Spread Dec', 'Bull Put Spread')).toBe(before)
@@ -456,7 +461,7 @@ test.describe('My Strategies: rename (REQ-134 AC-1, AC-3, ADR-183)', () => {
     expect(patch).toHaveLength(1)
     expect(patch[0].body).toEqual({ name: 'Put Spread Dec', expected_revision: 3 })
     expect(callsTo(F, 'GET', /^\/api\/strategies\/17$/)).toHaveLength(1) // the revision is read once, then sent
-    await expect(names(page)).toHaveText(['Iron Condor Nov', 'Put Spread Dec', 'Short Straddle', 'Held IC k10', 'Sent Basket']) // order unchanged
+    await expect(names(page)).toHaveText([lbl(R21), lbl(R17, 'Put Spread Dec'), lbl(R9), lbl(R5), lbl(R4)]) // ADR-330 (19): lists show the label with the trade number and expiry; order unchanged
   })
 
   test('RENAME-3 (MYSTR-11) pressing Enter in the name box saves', async ({ page }) => {
@@ -465,7 +470,7 @@ test.describe('My Strategies: rename (REQ-134 AC-1, AC-3, ADR-183)', () => {
     await rowOf(page, 9).getByTestId('rename-9').click()
     await box(page).fill('Straddle Dec')
     await box(page).press('Enter')
-    await expect(rowOf(page, 9).getByTestId('row-name')).toHaveText('Straddle Dec')
+    await expect(rowOf(page, 9).getByTestId('row-name')).toHaveText(lbl(R9, 'Straddle Dec')) // ADR-330 (19): lists show the label with the trade number and expiry
     expect(callsTo(F, 'PATCH', /strategies\/9\/name/)).toHaveLength(1)
   })
 
@@ -476,7 +481,7 @@ test.describe('My Strategies: rename (REQ-134 AC-1, AC-3, ADR-183)', () => {
     await box(page).fill('Never saved')
     await page.getByTestId('rename-cancel').click()
     await expect(page.getByTestId('rename-form')).toHaveCount(0)
-    await expect(rowOf(page, 17).getByTestId('row-name')).toHaveText('Bull Put Spread')
+    await expect(rowOf(page, 17).getByTestId('row-name')).toHaveText(lbl(R17)) // ADR-330 (19): lists show the label with the trade number and expiry
     expect(callsTo(F, 'PATCH', /name/)).toHaveLength(0)
   })
 
@@ -489,7 +494,7 @@ test.describe('My Strategies: rename (REQ-134 AC-1, AC-3, ADR-183)', () => {
     await box(page).fill('Never saved')
     await box(page).press('Escape')
     await expect(page.getByTestId('rename-form')).toHaveCount(0, { timeout: 2000 })
-    await expect(rowOf(page, 17).getByTestId('row-name')).toHaveText('Bull Put Spread')
+    await expect(rowOf(page, 17).getByTestId('row-name')).toHaveText(lbl(R17)) // ADR-330 (19): lists show the label with the trade number and expiry
     expect(callsTo(F, 'PATCH', /name/)).toHaveLength(0)
   })
 
@@ -512,7 +517,7 @@ test.describe('My Strategies: rename (REQ-134 AC-1, AC-3, ADR-183)', () => {
     await expect(page.getByTestId('rename-limit')).toHaveText('This name is longer than 20 characters: shorten it to save.')
     await page.getByTestId('rename-save').click()
     await expect(page.getByTestId('rename-error-what')).toHaveText('Names can be 1 to 20 characters.')
-    await expect(rowOf(page, 60).getByTestId('row-name')).toHaveText('Nifty weekly iron condor 26')
+    await expect(rowOf(page, 60).getByTestId('row-name')).toHaveText(lbl(long)) // ADR-330 (19): lists show the label with the trade number and expiry
     expect(callsTo(F, 'PATCH', /name/)).toHaveLength(1)
   })
 
@@ -524,7 +529,7 @@ test.describe('My Strategies: rename (REQ-134 AC-1, AC-3, ADR-183)', () => {
     await page.getByTestId('rename-save').click()
     await expect(page.getByTestId('rename-error-what')).toHaveText('Give the strategy a name')
     await expect(page.getByTestId('rename-form')).toHaveCount(1)
-    await expect(rowOf(page, 17).getByTestId('row-name')).toHaveText('Bull Put Spread')
+    await expect(rowOf(page, 17).getByTestId('row-name')).toHaveText(lbl(R17)) // ADR-330 (19): lists show the label with the trade number and expiry
   })
 
   test('RENAME-9 a name another strategy already has is accepted (REQ-134 AC-1: two strategies may share a name)', async ({ page }) => {
@@ -533,7 +538,7 @@ test.describe('My Strategies: rename (REQ-134 AC-1, AC-3, ADR-183)', () => {
     await rowOf(page, 17).getByTestId('rename-17').click()
     await box(page).fill('Short Straddle')
     await page.getByTestId('rename-save').click()
-    await expect(names(page)).toHaveText(['Iron Condor Nov', 'Short Straddle', 'Short Straddle', 'Held IC k10', 'Sent Basket'])
+    await expect(names(page)).toHaveText([lbl(R21), lbl(R17, 'Short Straddle'), lbl(R9), lbl(R5), lbl(R4)]) // ADR-330 (19): lists show the label with the trade number and expiry
     await expect(page.getByTestId('rename-error')).toHaveCount(0)
   })
 
@@ -547,7 +552,7 @@ test.describe('My Strategies: rename (REQ-134 AC-1, AC-3, ADR-183)', () => {
     await expect(page.getByTestId('rename-error-impact')).toHaveText('Nothing else changed.')
     await expect(page.getByTestId('rename-error-blocked')).toHaveText('Nothing.')
     await expect(page.getByTestId('rename-error-next')).toHaveText('Try again.')
-    await expect(rowOf(page, 17).getByTestId('row-name')).toHaveText('Bull Put Spread')
+    await expect(rowOf(page, 17).getByTestId('row-name')).toHaveText(lbl(R17)) // ADR-330 (19): lists show the label with the trade number and expiry
     await expect(box(page)).toHaveValue('Another Name')
   })
 
@@ -562,7 +567,7 @@ test.describe('My Strategies: rename (REQ-134 AC-1, AC-3, ADR-183)', () => {
     await expect(page.getByTestId('rename-error-blocked')).toHaveText(NEUTRAL.blocked)
     await expect(page.getByTestId('rename-error-next')).toHaveText(NEUTRAL.next)
     await expect(page.getByTestId('rename-error')).not.toContainText('Traceback')
-    await expect(rowOf(page, 17).getByTestId('row-name')).toHaveText('Bull Put Spread')
+    await expect(rowOf(page, 17).getByTestId('row-name')).toHaveText(lbl(R17)) // ADR-330 (19): lists show the label with the trade number and expiry
   })
 
   test('RENAME-12 connection refused on Save: the neutral message shows and the old name is kept', async ({ page }) => {
@@ -572,7 +577,7 @@ test.describe('My Strategies: rename (REQ-134 AC-1, AC-3, ADR-183)', () => {
     await box(page).fill('Another Name')
     await page.getByTestId('rename-save').click()
     await expect(page.getByTestId('rename-error-what')).toHaveText(NEUTRAL.what)
-    await expect(rowOf(page, 17).getByTestId('row-name')).toHaveText('Bull Put Spread')
+    await expect(rowOf(page, 17).getByTestId('row-name')).toHaveText(lbl(R17)) // ADR-330 (19): lists show the label with the trade number and expiry
   })
 
   test('RENAME-13 an unreadable PATCH answer (no name in it) is not shown as renamed: the neutral message shows and the old name stays', async ({ page }) => {
@@ -582,7 +587,7 @@ test.describe('My Strategies: rename (REQ-134 AC-1, AC-3, ADR-183)', () => {
     await box(page).fill('Another Name')
     await page.getByTestId('rename-save').click()
     await expect(page.getByTestId('rename-error-what')).toHaveText(NEUTRAL.what)
-    await expect(rowOf(page, 17).getByTestId('row-name')).toHaveText('Bull Put Spread')
+    await expect(rowOf(page, 17).getByTestId('row-name')).toHaveText(lbl(R17)) // ADR-330 (19): lists show the label with the trade number and expiry
   })
 
   test('RENAME-14 when the revision cannot be read first, no PATCH is sent (fail closed) and the neutral message shows', async ({ page }) => {
@@ -623,7 +628,7 @@ test.describe('My Strategies: rename (REQ-134 AC-1, AC-3, ADR-183)', () => {
     await rowOf(page, 5).getByTestId('rename-5').click()
     await box(page).fill('Held renamed')
     await page.getByTestId('rename-save').click()
-    await expect(rowOf(page, 5).getByTestId('row-name')).toHaveText('Held renamed')
+    await expect(rowOf(page, 5).getByTestId('row-name')).toHaveText(lbl(R5, 'Held renamed')) // ADR-330 (19): lists show the label with the trade number and expiry
   })
 })
 
@@ -656,7 +661,7 @@ test.describe('My Strategies: delete one and Undo (REQ-070 AC-6, ADR-293, ADR-29
     await page.getByTestId('delete-17').click()
     await page.getByTestId('delete-confirm').click()
     await expect(rowOf(page, 17)).toHaveCount(0)
-    await expect(names(page)).toHaveText(['Iron Condor Nov', 'Short Straddle', 'Held IC k10', 'Sent Basket'])
+    await expect(names(page)).toHaveText([lbl(R21), lbl(R9), lbl(R5), lbl(R4)]) // ADR-330 (19): lists show the label with the trade number and expiry
     await expect(page.getByTestId('delete-toast')).toContainText('Strategy deleted.')
     await expect(page.getByTestId('delete-undo')).toHaveText('Undo')
     expect(callsTo(F, 'DELETE', /strategies\/17\?expected_revision=3$/)).toHaveLength(1)
@@ -934,12 +939,12 @@ test.describe('My Strategies: bulk select and Delete selected (ADR-330 (8) S-01,
     await expect(page.getByTestId('bulk-confirm-text')).toHaveText('Delete 1 strategy?')
   })
 
-  test('BULK-7 (Q2-4, S-01) with a RUNNING paper strategy among the ticked rows the confirmation says "Delete 3 strategies? 1 of them are running."', async ({ page }) => {
+  test('BULK-7 (Q2-4, S-01) with a RUNNING paper strategy among the ticked rows the confirmation says "Delete 3 strategies? 1 of them is running."', async ({ page }) => {
     // Spec basis: ADR-330 (8) ('"Delete 14 strategies? 3 of them are running."'); REQ-070 AC-7 (K counts rows whose status word is Running)
     await openLoaded(page)
     await page.getByTestId('select-all').check()
     await deleteSelected(page).click()
-    await expect(page.getByTestId('bulk-confirm-text')).toHaveText('Delete 3 strategies? 1 of them are running.')
+    await expect(page.getByTestId('bulk-confirm-text')).toHaveText('Delete 3 strategies? 1 of them is running.') // REQ-070 AC-7 (Lane R, N-25 b): K = 1 reads "1 of them is running."
   })
 
   test('BULK-8 (MYSTR-05, S-01) confirm sends ONE POST /strategies/bulk-delete with every id and the revision read; the rows go, the summary line shows, the ticks clear', async ({ page }) => {
@@ -949,7 +954,7 @@ test.describe('My Strategies: bulk select and Delete selected (ADR-330 (8) S-01,
     await deleteSelected(page).click()
     await page.getByTestId('bulk-confirm').click()
     await expect(page.getByTestId('bulk-summary')).toHaveText('3 deleted')
-    await expect(names(page)).toHaveText(['Held IC k10', 'Sent Basket'])
+    await expect(names(page)).toHaveText([lbl(R5), lbl(R4)]) // ADR-330 (19): lists show the label with the trade number and expiry
     await expect(page.getByTestId('bulk-kept')).toHaveCount(0)
     await expect(page.getByTestId('bulk-confirm-box')).toHaveCount(0)
     const posts = callsTo(F, 'POST', BULK_URL)
@@ -991,8 +996,8 @@ test.describe('My Strategies: bulk select and Delete selected (ADR-330 (8) S-01,
     await deleteSelected(page).click()
     await page.getByTestId('bulk-confirm').click()
     await expect(page.getByTestId('bulk-summary')).toHaveText(`2 deleted, 1 kept: ${CHANGED}`)
-    await expect(page.getByTestId('bulk-kept')).toHaveText([`Short Straddle: ${CHANGED}`])
-    await expect(names(page)).toHaveText(['Short Straddle', 'Held IC k10', 'Sent Basket'])
+    await expect(page.getByTestId('bulk-kept')).toHaveText([`${lbl(R9)}: ${CHANGED}`]) // ADR-330 (19): lists show the label with the trade number and expiry
+    await expect(names(page)).toHaveText([lbl(R9), lbl(R5), lbl(R4)]) // ADR-330 (19): lists show the label with the trade number and expiry
     await expect(page.getByTestId('delete-toast')).toContainText('2 strategies deleted.')
     await page.getByTestId('delete-undo').click()
     await expect(names(page)).toHaveText(ORDER)
@@ -1011,7 +1016,7 @@ test.describe('My Strategies: bulk select and Delete selected (ADR-330 (8) S-01,
     await deleteSelected(page).click()
     await page.getByTestId('bulk-confirm').click()
     await expect(page.getByTestId('bulk-summary')).toHaveText('0 deleted, 5 kept: see each row')
-    await expect(page.getByTestId('bulk-kept')).toHaveText([`K Held: ${HELD}`, `K Orders: ${SENT}`, `K Gone: ${NOT_FOUND}`, `K Changed: ${CHANGED}`, `K Failed: ${FAILED_ITEM}`])
+    await expect(page.getByTestId('bulk-kept')).toHaveText([`${lbl(five[0])}: ${HELD}`, `${lbl(five[1])}: ${SENT}`, `${lbl(five[2])}: ${NOT_FOUND}`, `${lbl(five[3])}: ${CHANGED}`, `${lbl(five[4])}: ${FAILED_ITEM}`]) // ADR-330 (19): lists show the label with the trade number and expiry
     await expect(rows(page)).toHaveCount(5) // none deleted: nothing removed
     await expect(page.getByTestId('delete-undo')).toHaveCount(0) // and no Undo for nothing
   })
@@ -1033,7 +1038,7 @@ test.describe('My Strategies: bulk select and Delete selected (ADR-330 (8) S-01,
     await tick(page, 9)
     await deleteSelected(page).click()
     await page.getByTestId('bulk-confirm').click()
-    await expect(page.getByTestId('bulk-kept')).toHaveText(['Short Straddle: The strategy could not be read, so it was not deleted.'])
+    await expect(page.getByTestId('bulk-kept')).toHaveText([`${lbl(R9)}: The strategy could not be read, so it was not deleted.`]) // ADR-330 (19): lists show the label with the trade number and expiry
     await expect(rowOf(page, 9)).toBeVisible()
     await expect(rowOf(page, 17)).toHaveCount(0)
     expect(callsTo(F, 'POST', BULK_URL)[0].body.items).toEqual([{ id: 17, expected_revision: 3 }])
@@ -1045,7 +1050,7 @@ test.describe('My Strategies: bulk select and Delete selected (ADR-330 (8) S-01,
     await tick(page, 17)
     await deleteSelected(page).click()
     await page.getByTestId('bulk-confirm').click()
-    await expect(page.getByTestId('bulk-kept')).toHaveText(['Bull Put Spread: The strategy could not be read, so it was not deleted.'])
+    await expect(page.getByTestId('bulk-kept')).toHaveText([`${lbl(R17)}: The strategy could not be read, so it was not deleted.`]) // ADR-330 (19): lists show the label with the trade number and expiry
     await expect(page.getByTestId('bulk-summary')).toHaveText('0 deleted, 1 kept.')
     expect(callsTo(F, 'POST', BULK_URL)).toHaveLength(0)
     await expect(rows(page)).toHaveCount(5)

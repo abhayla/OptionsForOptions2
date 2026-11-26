@@ -16,21 +16,21 @@ Companion: `screen-inventory.json` (machine-readable, same IDs). Extractor: `fro
 | of which unbuilt placeholder pages | 15 |
 | Distinct page components | 24 (plus the app shell and shared components, listed as their own sections) |
 | Pages whose first path carries controls | 21 |
-| **Controls (rows)** | **446** |
-| **Covered** (a test clicks, types in or asserts the control) | **348** |
+| **Controls (rows)** | **450** |
+| **Covered** (a test clicks, types in or asserts the control) | **352** |
 | **Not covered** | **98** |
 | **Spec-silent** | **30** |
-| Rows against screen-inventory.json | match (446 controls, one row each) |
+| Rows against screen-inventory.json | match (450 controls, one row each) |
 
 | Section (ID prefix) | Controls | Covered | Not covered | Spec-silent |
 |---|---|---|---|---|
 | SHELL | 13 | 12 | 1 | 4 |
-| SHARED | 44 | 36 | 8 | 4 |
+| SHARED | 44 | 37 | 7 | 4 |
 | UNROUTED | 8 | 6 | 2 | 0 |
 | LAND | 5 | 2 | 3 | 0 |
 | HOME | 7 | 7 | 0 | 0 |
 | PLACE | 1 | 1 | 0 | 0 |
-| MYSTR | 14 | 14 | 0 | 0 |
+| MYSTR | 18 | 17 | 1 | 0 |
 | CREATE | 13 | 11 | 2 | 0 |
 | BUILD | 196 | 143 | 53 | 17 |
 | LIVE | 6 | 6 | 0 | 0 |
@@ -291,7 +291,7 @@ Dialogs and panels used by several pages (the paper list and its Stops/Exit, the
 | SHARED-38 | {{busy ? 'Saving...' : 'Save'}} `stop-save-${l.index}` _(button)_ | src/components/strategy/PaperStops.vue:195 | Save that leg's stop. | ADR-309; ADR-327; REQ-109 AC-8 | e2e/screen-positions.spec.ts › STOP-20 | A02-retry (S-20), Q2-11 (S-23) | paper trade / live prices |
 | SHARED-39 | Cancel `trigger-cancel-${t.id}` _(button)_ | src/components/strategy/PaperStops.vue:219 | Cancel an armed stop or conditional exit. | REQ-109 AC-8; ADR-309 | tests/paper-stops.test.js › lists armed / fired / cancelled; Cancel only on armed ones, and DELETE (acts)<br>tests/paper-stops.test.js › D-03: a marked exit prints the server note and Keep this level; an unm (asserts) |  | paper trade |
 | SHARED-40 | Keep this level `trigger-keep-${t.id}` _(button)_ | src/components/strategy/PaperStops.vue:222 | Keep this level: keeps an armed trigger when a change was proposed. | Spec basis: none (searched: keep this level, trigger keep; ADR-309, ADR-327, REQ-109 AC-8 name stops but not this choice) | tests/paper-stops.test.js › D-03: Keep this level POSTs keep for that trigger and the mark goes fr (acts)<br>tests/paper-stops.test.js › D-03: a marked exit prints the server note and Keep this level; an unm (asserts) |  | paper trade |
-| SHARED-41 | {{leave.question.value ? leaveQuestion(leave.question.value.count) : ''}} Stay Leave _(dialog)_ | src/components/strategy/LeaveBuilderDialog.vue:11 | "Leave the builder? The N unsaved legs will be lost." dialog. | ADR-329 (2); REQ-070 | NONE | row 10 (A10), row 15 (A15), N-11 | none |
+| SHARED-41 | {{leave.question.value ? leaveQuestion(leave.question.value.count, leave.question.value.pending) : ''}} Stay Leave _(dialog)_ | src/components/strategy/LeaveBuilderDialog.vue:11 | "Leave the builder? The N unsaved legs will be lost." for a new strategy; for a running trade with staged changes "Leave the builder? The N pending changes will be lost." | ADR-329 (2); ADR-330 (22); REQ-070 | e2e/screen-builder-drafts.spec.ts › LV-10 (asserts the pending wording) | row 10 (A10), row 15 (A15), N-11 | none |
 | SHARED-42 | Stay `leave-stay` _(button)_ | src/components/strategy/LeaveBuilderDialog.vue:14 | Stay: closes the question and keeps the legs. | ADR-329 (2) | e2e/screen-builder-drafts.spec.ts › LV-2 | row 10 (A10), row 15 | none |
 | SHARED-43 | Leave `leave-leave` _(button)_ | src/components/strategy/LeaveBuilderDialog.vue:15 | Leave: goes on to the page asked for and drops the unsaved legs. | ADR-329 (2) | e2e/screen-builder-drafts.spec.ts › LV-3<br>e2e/screen-option-chain.spec.ts › LEAVE A10 Leave drops the held legs | row 10, row 15 (Discard) | none |
 | SHARED-44 | Check with Zerodha `check-with-zerodha` _(button)_ | src/components/execution/ReturnCheck.vue:34 | Check with Zerodha: re-reads the order states and positions after Kite (two-basket step). | REQ-056 AC-4; REQ-073 AC-3; REQ-058 | e2e/execute-screen.spec.ts › AC-1 + AC-3: live first, exact orders and cost, Kite form byte-equal o (acts)<br>e2e/execute-screen.spec.ts › AC-3: /execution/returned calls nothing on load and checks only on the (acts)<br>tests/execute-screen.test.js › AC-3: a return reply without contracts or plans still renders (acts)<br>+3 more |  | broker |
@@ -361,6 +361,10 @@ Same page component also serves: `/strategies/completed-strategies`.
 | MYSTR-12 | New strategy name `rename-input` _(field)_ | src/pages/MyStrategiesPage.vue:225 | New strategy name; "A name can be up to 20 characters." | REQ-134 AC-1, AC-3; ADR-183 | e2e/my-strategies.spec.ts › a saved draft is listed after a reload and its Builder and Execute lin (acts)<br>tests/my-strategies.test.js › rename opens a 26-character name whole, the hint reads 26/20 in the wa (acts)<br>tests/my-strategies.test.js › the name field is prefilled without quotes; Save reads the revision an (acts)<br>+1 more | R-05 | none |
 | MYSTR-13 | Save `rename-save` _(button)_ | src/pages/MyStrategiesPage.vue:227 | Save the new name (changes only the name, adds a history entry). | REQ-134 AC-3 | e2e/my-strategies.spec.ts › a saved draft is listed after a reload and its Builder and Execute lin (acts) |  | none |
 | MYSTR-14 | Cancel `rename-cancel` _(button)_ | src/pages/MyStrategiesPage.vue:228 | Cancel the rename. | REQ-134 AC-3 | tests/my-strategies.test.js › Cancel closes the field and sends nothing (acts) | R-05 (Escape) | none |
+| MYSTR-15 | Undo `result-undo` _(button)_ | src/pages/MyStrategiesPage.vue:242 | Undo after a bulk delete that stays on the result line once the toast is gone: restores every deleted strategy. | REQ-070 AC-7; ADR-330 (8) | tests/my-strategies-bulk.test.js › (a) bulk delete 2: the toast expires, the line Undo stays, click restores both and the line goes (acts) |  | none |
+| MYSTR-16 | Dismiss `result-dismiss` _(button)_ | src/pages/MyStrategiesPage.vue:243 | Dismiss the bulk result line's Undo (nothing is restored, no call is sent). | REQ-070 AC-7; ADR-330 (8) | NONE |  | none |
+| MYSTR-17 | Undo `result-undo` _(button)_ | src/pages/MyStrategiesPage.vue:252 | Undo after a single delete that stays on the "Strategy deleted." line once the toast is gone: restores the row. | REQ-070 AC-7; REQ-134 | tests/my-strategies-bulk.test.js › (b) single delete: the line Undo outlives the toast; click restores the row (acts) |  | none |
+| MYSTR-18 | Dismiss `result-dismiss` _(button)_ | src/pages/MyStrategiesPage.vue:253 | Dismiss the "Strategy deleted." line: the line goes and no restore is sent. | REQ-070 AC-7; REQ-134 | tests/my-strategies-bulk.test.js › (b2) Dismiss removes the line and no restore is sent (acts) |  | none |
 
 ### `/strategies/create-strategy` - CreateStrategyPage.vue
 

@@ -1224,15 +1224,15 @@ test.describe('Option Chain: Add Selected opens the builder with exactly those l
     await expect(legRows(page)).toHaveCount(5)
   })
 
-  test('CHAIN-23 N-08 after Add Selected the chain still lists the ticked legs (the chain keeps its selection)', async ({ page }) => {
-    // Spec basis: none (searched: selection after import, Add Selected clears; REQ-030 AC-10 says selections persist across expiry tabs only): see questions (owner N-08: had to Remove by hand)
+  test('CHAIN-23 N-08 after Add Selected the ticks on the chain are cleared (they persist until they are added)', async ({ page }) => {
+    // Spec basis: ADR-330 (20) (once Add Selected has put the ticked contracts into the builder the ticks are cleared; REQ-030 AC-10 amended: selections persist until they are added); owner N-08 (had to Remove by hand)
     await tripToChain(page)
     await pick(page, '25100', 'pe', 'buy')
     await addSelected(page).click()
     await expect(legRows(page)).toHaveCount(4)
     await page.getByTestId('nav-market').click()
     await expect(page).toHaveURL(/\/market\/option-chain$/)
-    await expect(page.getByTestId('selected-leg')).toHaveCount(1)
+    await expect(page.getByTestId('selected-leg')).toHaveCount(0) // ADR-330 (20): the add cleared the tick, so Selected Legs is empty
   })
 
   test('LEAVE A10 (row 10, ADR-329 (2)) leaving the chain for another page while it holds the builder\'s 3 legs asks "Leave the builder? The 3 unsaved legs will be lost." Stay keeps the chain', async ({ page }) => {

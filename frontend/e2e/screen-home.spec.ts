@@ -505,7 +505,7 @@ test.describe('Home: Recent strategies (REQ-008 AC-2, screen fix S-18)', () => {
     const rows = page.getByTestId('recent-row')
     await expect(rows).toHaveCount(3)
     const second = rows.nth(1)
-    await expect(second.getByTestId('recent-name')).toHaveText('Bull Put Spread')
+    await expect(second.getByTestId('recent-name')).toHaveText('Bull Put Spread (#7)') // ADR-330 (19): lists show the label with the trade number; Home rows carry no first_leg, so no expiry part
     await second.getByRole('link', { name: 'Open in Strategy Builder' }).click()
     await expect(page).toHaveURL(/\/strategy\/builder\?strategy=7$/)
     await expect(title(page)).toHaveText('Strategy Builder')
@@ -522,7 +522,7 @@ test.describe('Home: Recent strategies (REQ-008 AC-2, screen fix S-18)', () => {
     await page.goBack()
     await expect(home(page)).toHaveAttribute('data-state', 'has-strategies')
     const first = page.getByTestId('recent-row').first()
-    await expect(first.getByTestId('recent-name')).toHaveText('Iron Condor Nov')
+    await expect(first.getByTestId('recent-name')).toHaveText('Iron Condor Nov (#12)') // ADR-330 (19): name plus (#id); no expiry in this stub row
     await first.getByRole('link', { name: 'Open in Strategy Builder' }).click()
     await expect(page).toHaveURL(/\/strategy\/builder\?strategy=12$/)
     await expect(builderTitle(page)).toHaveText('Iron Condor Nov')
@@ -579,7 +579,7 @@ test.describe('Home: Recent strategies (REQ-008 AC-2, screen fix S-18)', () => {
     const same = [row(41, 'Paper trade', '2026-11-25T10:00:00+05:30', 'Running'), row(40, 'Paper trade', '2026-11-24T10:00:00+05:30', 'Running')]
     await stubApi(page, { strategies: ok({ strategies: same }) })
     await openHome(page)
-    await expect(page.getByTestId('recent-name')).toHaveText(['Paper trade', 'Paper trade'])
+    await expect(page.getByTestId('recent-name')).toHaveText(['Paper trade (#41)', 'Paper trade (#40)']) // ADR-330 (19): the number tells same-named rows apart
     await page.getByTestId('recent-row').nth(1).getByRole('link', { name: 'Open in Strategy Builder' }).click()
     await expect(page).toHaveURL(/\/strategy\/builder\?strategy=40$/)
   })
@@ -605,7 +605,7 @@ test.describe('Home: Recent strategies (REQ-008 AC-2, screen fix S-18)', () => {
     await expect(rows.nth(0).getByTestId('recent-name')).toHaveCount(0)
     await expect(rows.nth(0)).toContainText('NIFTY, Status not available, last saved 25 Nov 2026, 10:00:00 IST')
     await expect(rows.nth(0)).not.toContainText('Draft')
-    await expect(rows.nth(1).getByTestId('recent-name')).toHaveText('Quoted Name') // the API's quotes are not shown
+    await expect(rows.nth(1).getByTestId('recent-name')).toHaveText('Quoted Name (#31)') // the API's quotes are not shown; ADR-330 (19): name plus (#id)
   })
 })
 
@@ -626,8 +626,6 @@ test.describe('Home: the figures Running strategies / Unread alerts / Total P&L 
 
   test('R-06 / N-18 the total\'s name reads "Total P&L (after charges)" once, never "(after charges) (after charges)"', async ({ page }) => {
     // Spec basis: owner R-06 / N-18 (26 Nov: Home shows "(after charges) (after charges)" with no name); REQ-109 AC-10 (the label beside the P&L); ADR-320 (6) D-56
-    // expected-fail: N-18: HomeOverviewPage.vue spreads pnlCell (its label "(after charges)") over the figure's label "Total P&L" and then prints pnlCell.label again, so the name is lost and the words are doubled
-    test.fail()
     await stubApi(page)
     await openHome(page)
     await expect(fig(page, 'pnl')).toHaveText('+13,410.44')
@@ -649,8 +647,6 @@ test.describe('Home: the figures Running strategies / Unread alerts / Total P&L 
 
   test('FIG-2 before charges: the server sent no after-charges text -> the total shows the before-charges text and says "(before charges)"', async ({ page }) => {
     // Spec basis: REQ-109 AC-10 / lib/tracking.js afterFigure (the labelled before text when no after text); ADR-008
-    // expected-fail: N-18: same doubled/lost label defect as the after-charges case (the figure's label replaces the name "Total P&L")
-    test.fail()
     await stubApi(page, { paper: ok(paperOk({ total_text: '+14,231.04', total_after_text: null, booked_text: '+0.00', unbooked_text: '+14,231.04', after_charges_reason: null })) })
     await openHome(page)
     await expect(fig(page, 'pnl')).toHaveText('+14,231.04')
@@ -705,8 +701,6 @@ test.describe('Home: the figures Running strategies / Unread alerts / Total P&L 
 
   test('STALE-3 a paused or unreadable total keeps its name "Total P&L" (the figure is "—", the tile is not left unnamed)', async ({ page }) => {
     // Spec basis: ADR-320 (6) D-56 (Home shows total P&L under the paused rule); ADR-325 (7) names the other labels; owner R-06 (a figure with no name is a defect)
-    // expected-fail: NEW-T03: pnlFigure returns label '' for paused and failed, which replaces the name, so the dt is empty
-    test.fail()
     await stubApi(page, { paper: { status: 500, json: {} } })
     await openHome(page)
     await expect(fig(page, 'pnl')).toHaveText('—')

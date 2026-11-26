@@ -57,6 +57,13 @@ const TOTALS = {
   total_text: '+673.50', total_after_text: '+600.00', booked_text: '+90.00', unbooked_text: '+583.50', after_charges_reason: null,
   closed_text: 'Includes 1 closed strategy', charges_text: '73.50', decay_text: '+12.00', totals_as_of: T_NOW,
 }
+// ADR-330 (19): a paper card's name reads "<name> (#<id>, <expiry>)" when its positions share ONE expiry (several or none: "(#<id>)" only);
+// the year is printed because this page sets no shown date. Built from the same stub book, never typed twice.
+const MON = ['Jan', 'Feb', 'Mar', 'Apr', 'May', 'Jun', 'Jul', 'Aug', 'Sep', 'Oct', 'Nov', 'Dec']
+const plbl = (b: { strategy_id: number; name: string | null; positions: object[] }) => {
+  const days = [...new Set((b.positions as { expiry: string }[]).map((x) => `${Number(x.expiry.slice(8, 10))} ${MON[Number(x.expiry.slice(5, 7)) - 1]} ${x.expiry.slice(0, 4)}`))]
+  return `${b.name} (#${b.strategy_id}${days.length === 1 ? `, ${days[0]}` : ''})`
+}
 const paperOk = (strategies: object[] = [CONDOR, STRANGLE, OLD], totals: object | null = TOTALS) => ({ strategies, totals, answered_at: T_NOW })
 const SYMBOL = 'NIFTY26O1923650CE'
 const realOk = (over: object = {}) => ({
@@ -206,7 +213,7 @@ test.describe('Current positions: heading and the All / Real / Paper filter (ADR
     await expect(page.getByTestId('position-row')).toHaveCount(1)
     await expect(groups(page)).toHaveCount(2) // 171 and 172; 173 is Completed and closed positions are off
     await expect(page.getByTestId('paper-tag')).toHaveText(['PAPER', 'PAPER'])
-    await expect(page.getByTestId('paper-group-name')).toHaveText(['Short Iron Condor', 'Short Strangle'])
+    await expect(page.getByTestId('paper-group-name')).toHaveText([plbl(CONDOR), plbl(STRANGLE)]) // ADR-330 (19): lists show the label with the trade number and expiry
     await expect(page.getByTestId('paper-count')).toHaveText(['2 of 2 positions', '1 of 1 positions'])
   })
 
@@ -701,7 +708,7 @@ test.describe('Current positions: the paper list states (REQ-109 AC-2, AC-5, ADR
     await openPositions(page)
     await expect(page.getByTestId('paper-unreadable')).toHaveText('Paper P&L is not available right now.')
     await expect(groups(page)).toHaveCount(2)
-    await expect(page.getByTestId('paper-group-name')).toHaveText(['Short Iron Condor'])
+    await expect(page.getByTestId('paper-group-name')).toHaveText([plbl(CONDOR)]) // ADR-330 (19): lists show the label with the trade number and expiry
   })
 
   test('PAP-8 a card shows the legs: side, name, lots, average, price and the time of that price', async ({ page }) => {
@@ -1172,6 +1179,7 @@ test.describe('Current positions: Exit (n) and the confirm dialog (REQ-109 AC-4,
     await openPositions(page)
     await openExit(page)
     await page.getByTestId('paper-confirm-button').click()
+    await expect(page.getByTestId('paper-unknown')).toBeVisible() // the 5 s hold timer starts when the 500 is answered (PaperConfirmDialog watch on state); run the fake clock only after that, or a slow answer arrives after the clock has run
     await expect(page.getByTestId('paper-confirm-button')).toBeDisabled()
     await page.clock.runFor(5100)
     await expect(page.getByTestId('paper-confirm-button')).toBeEnabled()
@@ -1405,7 +1413,8 @@ test.describe('Current positions: the Stops panel (REQ-109 AC-8, ADR-207 (4), AD
 
   test('STOP-9 saving a level that is already armed says "Already set: ..." and stores nothing new', async ({ page }) => {
     // Spec basis: ADR-317 (5) ("Saved", "Already set" or "Not saved": exactly one line)
-    await stubApi(page, { triggerPost: ok({ already_set: true, triggers: [trig(5)] }) })
+    const S = await stubApi(page, { triggerPost: ok({ already_set: true, triggers: [trig(5)] }) })
+    S.trig = [trig(5)] // the level is ALREADY armed on the server, so every read of the list (the panel's own and the re-read after Save) must list it; an empty read would contradict "Already set"
     await openPositions(page)
     await openStops(page)
     await page.getByTestId('ce-above').fill('25700')
@@ -1429,8 +1438,6 @@ test.describe('Current positions: the Stops panel (REQ-109 AC-8, ADR-207 (4), AD
 
   test('STOP-11 the "Not saved" refusal line stays on screen after the list re-reads (owner N-01: it vanished within seconds)', async ({ page }) => {
     // Spec basis: owner N-01 (a refusal line that disappears by itself leaves a user who looked away never knowing the save was refused); ADR-317 (5)
-    // expected-fail: N-01: the "Not saved" line is cleared by the next good re-read of the paper list (PaperStops watch on goodReadToken)
-    test.fail()
     const S = await stubApi(page, { triggerPost: { status: 422, json: catalogue('the live price is already at or beyond this level.') } })
     await frozenClock(page)
     await openPositions(page)

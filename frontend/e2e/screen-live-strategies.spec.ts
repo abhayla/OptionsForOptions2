@@ -203,7 +203,7 @@ test.describe('Live Strategies card: fields and figures (REQ-049 AC-4, REQ-151, 
   test('CARD-1 a Running card: title, status word, checked-at, spot with its time, breakevens, max profit and max loss as the server sent them', async ({ page }) => {
     // Spec basis: REQ-049 AC-4; REQ-151/REQ-152 (server display strings, shown untouched); ADR-299 (status word)
     const c = card(page, 172)
-    await expect(c.getByTestId('live-strategy-title')).toHaveText('Short Iron Condor, NIFTY')
+    await expect(c.getByTestId('live-strategy-title')).toHaveText('Short Iron Condor (#172), NIFTY') // ADR-330 (19): lists show the label with the trade number; this stub has no first_leg, so no expiry part
     await expect(c.getByTestId('live-strategy-status')).toHaveText('Running')
     await expect(c).toHaveAttribute('data-state', 'ready')
     await expect(c.getByTestId('live-checked-at')).toHaveText('Checked at 26 Nov 2026, 10:00:01 IST')
@@ -232,7 +232,7 @@ test.describe('Live Strategies card: fields and figures (REQ-049 AC-4, REQ-151, 
   test('CARD-3 a Draft card: status "Draft", header "Planned entry", server display strings "+2,500" / "−1,000" for max profit / loss, no P&L line', async ({ page }) => {
     // Spec basis: ADR-299; ADR-330 (10) S-14 (Draft keeps "Planned entry"); REQ-152 (display strings); ADR-320 (5) (P&L line only for a trade)
     const c = card(page, 170)
-    await expect(c.getByTestId('live-strategy-title')).toHaveText('Bull Put Spread, NIFTY')
+    await expect(c.getByTestId('live-strategy-title')).toHaveText('Bull Put Spread (#170), NIFTY') // ADR-330 (19): lists show the label with the trade number; this stub has no first_leg, so no expiry part
     await expect(c.getByTestId('live-strategy-status')).toHaveText('Draft')
     await expect(c.getByTestId('live-legs').locator('thead th')).toHaveText(['Instrument', 'Lots', 'Planned entry', 'LTP'])
     await expect(c.getByTestId('live-max-profit')).toHaveText('+2,500')
@@ -416,7 +416,7 @@ test.describe('Live Strategies card: states (REQ-049 AC-4..AC-6, REQ-077 AC-9, D
     await expect(c.getByTestId('live-error-what')).toHaveText(CATALOGUE_PARTS.what_happened)
     await expect(c.getByTestId('live-error-next')).toHaveText(CATALOGUE_PARTS.next_action)
     await expect(c.getByRole('link')).toHaveCount(0)
-    await expect(c.getByTestId('live-strategy-title')).toHaveText('Bull Put Spread, NIFTY')
+    await expect(c.getByTestId('live-strategy-title')).toHaveText('Bull Put Spread (#170), NIFTY') // ADR-330 (19): lists show the label with the trade number; this stub has no first_leg, so no expiry part
     await expect(card(page, 168).getByTestId('live-leg-ltp')).toHaveText('48.00')
   })
 
@@ -640,7 +640,7 @@ test.describe('Live Strategies card: links (S-14, ADR-330 (10), ADR-230 (2), REQ
     await openLive(page)
     const link = card(page, 172).getByTestId('live-strategy-open')
     await expect(link).toHaveAttribute('href', '/strategy/builder?strategy=172')
-    await expect(link).toHaveText('Short Iron Condor, NIFTY')
+    await expect(link).toHaveText('Short Iron Condor (#172), NIFTY') // ADR-330 (19): lists show the label with the trade number; this stub has no first_leg, so no expiry part
     await link.click()
     await expect(page).toHaveURL(`${BASE}/strategy/builder?strategy=172`)
     await expect(page.getByTestId('page-title')).toHaveText('Strategy Builder')
@@ -750,8 +750,6 @@ test.describe('Live Strategies card: links (S-14, ADR-330 (10), ADR-230 (2), REQ
 
   test('LINK-11 N-14: two paper trades saved under the same name can be told apart on their cards', async ({ page }) => {
     // Spec basis: none (searched: "same name", "told apart", "distinguish" in REQ-134, ADR-183, ADR-330; REQ-134 AC-1 lets two strategies share a name); owner N-14 (26 Nov: every paper trade has the same name so they cannot be told apart)
-    // expected-fail: N-14: both cards read "Short Iron Condor, NIFTY" with no id, leg line or time to tell them apart (Lane R is fixing it)
-    test.fail()
     await world(page, [R172, R171])
     await openLive(page)
     // both cards must have drawn (the second one starts only after the first has its answer), or "Checked at" alone would differ
