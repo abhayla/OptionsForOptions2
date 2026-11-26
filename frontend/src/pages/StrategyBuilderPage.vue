@@ -1215,7 +1215,7 @@ const leaveGuard = useLeaveBuilder({
             <button
               ref="settingsButton" type="button" class="flex h-10 items-center gap-1 rounded-lg border border-line bg-surface px-3" aria-haspopup="dialog" :aria-expanded="settingsOpen ? 'true' : 'false'"
               data-testid="builder-settings" @click="settingsOpen ? closeSettings() : (settingsOpen = true)"
-            ><Icon name="gear" :size="14" />Settings</button>
+            ><Icon name="gear" :size="14" />View</button>
             <span v-show="settingsOpen" role="dialog" aria-label="Builder settings" class="absolute right-0 top-full z-20 mt-1 w-[320px] rounded-lg border border-line bg-surface p-3 shadow" data-testid="settings-popover">
               <label class="flex items-center justify-between gap-2">Show legs as
                 <select v-model="legUnit" class="rounded border border-line px-1" data-testid="lots-quantity-switch">
