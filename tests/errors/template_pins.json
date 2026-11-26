@@ -4774,5 +4774,25 @@
   "explanation:limit_stop_rupees": {
     "sha256": "a561fd61c385e518b588715a77da3afdfc813e4d2b55486375571086fd715205",
     "reviewed": "pending owner read"
+  },
+  "explanation:alert_title_label": {
+    "sha256": "8c162f793ef770d884fec96f88fe24f4e0cb49e6d17de93067045bfd2a5c7949",
+    "reviewed": "pending owner read"
+  },
+  "explanation:alert_title_label_no_expiry": {
+    "sha256": "91ff54a90e6fc8d561d0aa586094b86ae08f02938a7b4b59a54865ebe03441ed",
+    "reviewed": "pending owner read"
+  },
+  "explanation:alert_title_unnamed": {
+    "sha256": "ebb09b96e28f74a18da64f57350c92fb80bcc47ae1e63464b4785d51024810b7",
+    "reviewed": "pending owner read"
+  },
+  "explanation:stop_fired_note": {
+    "sha256": "1e59c74437a676c5440098cf1837d15bcd484049d2fce382afff59017645fed3",
+    "reviewed": "pending owner read"
+  },
+  "explanation:stop_fired_note_with_line": {
+    "sha256": "e8d8850d2eb02ab6ae5b4bd1a19710d3e9e344391fc2c3c3a69609832ccf0d2e",
+    "reviewed": "pending owner read"
   }
 }

@@ -59,7 +59,7 @@ async def test_active_answer_history_replies_and_errors(app_db_url, monkeypatch)
     assert (row["answer"], row["answer_label"]) == ("continue", "Continue with the position")
     assert (row["fired_line"], row["answered_at"]) == ("Fired at 11:02", done["answered_at"])
     assert row["closed_reason"] is None
-    assert mine["strategy_name"] == row["strategy_name"] == '"Scenario ADJ-02"'  # the user's name in the quoted slot
+    assert mine["strategy_name"] == row["strategy_name"] == f'"Scenario ADJ-02" (#{mine["strategy_id"]}, 9 Nov)'  # W2-A pin changed: ADR-330 (19)(b) label (was the bare quoted name)
 
 
 ESCALATED = datetime.datetime(2026, 11, 25, 11, 9, 0, tzinfo=IST)

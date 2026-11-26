@@ -12,12 +12,18 @@ from decimal import Decimal
 from ofo.errors.explanations import ExplanationText, render_explanation, restore_explanation
 from ofo.outcome.price_text import price_text
 
-__all__ = ["alert_body", "restore_alert_body", "restore_order_reason", "settle_history_body", "stop_reason_at"]
+__all__ = ["ALERT_BODY_TEMPLATES", "STOP_LINE_TEMPLATES", "alert_body","restore_alert_body", "restore_order_reason", "settle_history_body", "stop_reason_at"]
 
 # Every wording a stored alert body can have. The store keeps the text only, not the template id, so a read tries each
 # one; rows written before #614 (7babdba9) only ever fit the multi-leg form ("exited 1 legs at ..."). Stored text is
 # never rewritten.
 ALERT_BODY_TEMPLATES = ("paper_alert_body_one", "paper_alert_body_one_named", "paper_alert_body")
+#: Every wording the max-loss line of a fired stop can have (ADR-330 (6): the leg-stop sentences; the exit
+#: confirmation's sentences and their join, which routes.paper._exit_warning builds), for reading a stored line back.
+STOP_LINE_TEMPLATES = (
+    "paper_leg_stop_widens_loss", "paper_leg_stop_unlimited_loss", "paper_leg_stop_from_profit",
+    "paper_leg_stop_unlimited_from_profit", "paper_leg_stop_to_profit", "paper_leg_stop_still_profit",
+    "paper_exit_widens_loss", "paper_exit_less_protected", "paper_exit_warning_join")
 
 
 def restore_alert_body(stored: str) -> ExplanationText:

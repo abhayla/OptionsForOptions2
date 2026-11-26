@@ -29,7 +29,7 @@ from decimal import Decimal
 from typing import Any
 
 from ofo import alerts as kinds
-from ofo.errors.explanations import render_explanation
+from ofo.errors.explanations import ExplanationText, render_explanation, restore_explanation
 from sqlalchemy import text
 
 from ofo_app import playbook_store as pb
@@ -135,7 +135,10 @@ class Alert:
         first = self.timeline[0] if self.timeline else {}
         if first.get("event") != "info" or "template" not in first:
             return None
-        return first["template"], {k: _decode(v) for k, v in first.get("values", {}).items()}
+        try:
+            return first["template"], {k: _decode(v) for k, v in first.get("values", {}).items()}
+        except ValueError:  # a nested line that no longer fits its templates: the route words the row without it
+            return None
 
     @property
     def closed_reason(self) -> str | None:
@@ -149,8 +152,14 @@ class Alert:
         return self.timeline[0].get("cmp") if self.timeline else None
 
 
-def _encode_slot(value: Any) -> Any:
-    """A slot value as JSON: Decimal and datetime carry a tag so that read-back gives the exact typed value."""
+def _encode_slot(value: Any, restore: tuple[str, ...] | None = None) -> Any:
+    """A slot value as JSON: Decimal and datetime carry a tag so that read-back gives the exact typed value. A nested
+    explanation line (``ExplanationText``) is kept with the catalogue ids it may be read back through (``restore``);
+    one with no ids is refused (it could not be read back as an explanation)."""
+    if isinstance(value, ExplanationText):
+        if not restore:
+            raise ValueError("a nested explanation slot needs the template ids it is restored through")
+        return {"$explained": str(value), "as": list(restore)}
     if isinstance(value, Decimal):
         return {"$decimal": str(value)}
     if isinstance(value, datetime):
@@ -159,6 +168,13 @@ def _encode_slot(value: Any) -> Any:
 
 
 def _decode(value: Any) -> Any:
+    if isinstance(value, dict) and "$explained" in value:  # ValueError when no listed template fits it any more
+        for template_id in value.get("as", []):
+            try:
+                return restore_explanation(template_id, value["$explained"])
+            except ValueError:
+                continue
+        raise ValueError("stored explanation fits none of its templates")
     if isinstance(value, dict) and "$decimal" in value:
         return Decimal(value["$decimal"])
     if isinstance(value, dict) and "$datetime" in value:
@@ -361,10 +377,11 @@ async def _rows(conn: Any, sql: str, user_ref: str) -> list[Any]:
 
 
 async def inform(conn: Any, user_ref: str, strategy_id: int, kind: str, template_id: str,  # noqa: PLR0913
-                 values: dict[str, Any], *, at: datetime) -> int:
+                 values: dict[str, Any], *, at: datetime, restore: dict[str, tuple[str, ...]] | None = None) -> int:
     """An informational message (ADR-330 (3b)): a History row, answered at once ('noted'), never open, never counted.
     The words are a catalogue id plus its slot values (rendered when read, so History can never hold a plain string);
-    ``values`` are checked by rendering once now. Returns the row id."""
+    ``values`` are checked by rendering once now. A slot holding a nested explanation line names, in ``restore``, the
+    catalogue ids it is read back through. Returns the row id."""
     if not kinds.is_informational(kind):
         raise ValueError(f"{kind!r} is not an informational alert kind")
     render_explanation(template_id, **values)  # unknown id, missing/extra slot or wrong type: refused, nothing written
@@ -373,4 +390,5 @@ async def inform(conn: Any, user_ref: str, strategy_id: int, kind: str, template
         await pb.require_owned(conn, user_ref, strategy_id)
         return int((await conn.execute(_INSERT_NOTE, {
             "strategy_id": strategy_id, "rule_id": f"info:{kind}", "kind": kind, "at": at, "template": template_id,
-            "values": json.dumps({k: _encode_slot(v) for k, v in values.items()})})).scalar_one())
+            "values": json.dumps({k: _encode_slot(v, (restore or {}).get(k))
+                                  for k, v in values.items()})})).scalar_one())

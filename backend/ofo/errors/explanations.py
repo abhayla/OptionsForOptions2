@@ -2026,6 +2026,17 @@ _EXPLANATIONS: tuple[ExplanationTemplate, ...] = (
                         {"level": Points}),
     ExplanationTemplate("paper_exit_set_before_unchecked", "values_seen",
                         "This exit could not be checked against your current legs. Check this level.", {}),
+    # ADR-330 (19)(b): the one label every alert title carries: the name with the trade's number and, when the trade has
+    # exactly one expiry, that expiry: Short Iron Condor (#172, 1 Dec)
+    ExplanationTemplate("alert_title_label", "values_seen", "{name} (#{id}, {day} {month})",
+                        {"name": Explained, "id": Recorded, "day": Recorded, "month": Recorded}),
+    ExplanationTemplate("alert_title_label_no_expiry", "values_seen", "{name} (#{id})",
+                        {"name": Explained, "id": Recorded}),
+    ExplanationTemplate("alert_title_unnamed", "values_seen", "Strategy {id}", {"id": Recorded}),
+    # ADR-330 (3b), (6): the message of a fired Stops-panel exit (History only); the line is the ADR-330 (6) max-loss line
+    ExplanationTemplate("stop_fired_note", "what_triggered", "{body}", {"body": Explained}),
+    ExplanationTemplate("stop_fired_note_with_line", "what_triggered", "{body} {line}",
+                        {"body": Explained, "line": Explained}),
     ExplanationTemplate("paper_alert_title", "what_triggered", "Paper strategy — {name}", {"name": Explained}),
     ExplanationTemplate("paper_alert_leg", "values_seen", "{contract} at {price}",
                         {"contract": Explained, "price": Explained}),

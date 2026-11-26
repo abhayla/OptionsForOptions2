@@ -41,7 +41,7 @@ STORE_NAMES = {"store", "pb", "playbook_store"}
 TABLES = ("adjustment_suggestions", "paper_alerts")
 SQL_HOMES = frozenset({AA, PB, PTS})
 USE = "ofo_app.actionable_alerts"
-EXEMPT = {(APP + "paper_monitor.py", "_fire"): "wave2-refactor-owns-file"}
+EXEMPT: dict[tuple[str, str], str] = {}
 
 
 def _sql_writes(value: str) -> str | None:

@@ -58,6 +58,9 @@ export function saveAsName(shown) {
 export function plainName(shown) {
   if (typeof shown !== 'string' || !shown) return null
   if (shown.length >= 3 && shown.startsWith('"') && shown.endsWith('"')) return shown.slice(1, -1)
+  // ADR-330 (19)(b): an alert's title label is the quoted name plus the server's '(#172, 1 Dec)' / '(#172)': only the name's quotes go
+  const label = /^"(.+)"( \(#\d+(?:, \d{1,2} [A-Z][a-z]{2})?\))$/s.exec(shown)
+  if (label) return `${label[1]}${label[2]}`
   return shown
 }
 
