@@ -952,15 +952,20 @@ async def reset_plan(  # noqa: PLR0913 - FastAPI dependencies, one per input
         user_values: UserValuesIn) -> AdjustmentPlanOut:
     """ADR-330 (9) "Reset to playbook" (the browser asks once, the server does the copy): every condition of the plan
     goes back to its playbook's and the stop base is worked out again (a plan edit recomputes it, ADR-330 (1)). A plan
-    with no playbook (saved before playbooks were pointed at, or its playbook deleted) or no plan: refused with the
-    playbook's own not-found sentence, the plan unchanged."""
+    with no playbook (saved before playbooks were pointed at, or its playbook deleted) or no plan: refused
+    (no plan: "not available", 404; no playbook: the playbook's not-found sentence), the plan
+    unchanged. The sheet levels and plan settings are kept."""
     rates = rates if isinstance(rates, ChargeRates) else None
     tracked = await _own_strategy(strategy_id, tracked_reader, rates)
     await release_connection(db)  # D-38: the market read waits on the broker; a held connection starves other pages
     market = await _market(tracked, market_reader, ctx)
-    stype, _plan_before = await _type_of(db, user_ref, strategy_id, tracked, ctx)
+    stype, plan_before = await _type_of(db, user_ref, strategy_id, tracked, ctx)
     money = in_force_mod.money_inputs(tracked, market, rates)
     bases = bases_of(tracked, market, rates)
+    if stype is None:
+        raise StrategyRefused(_GENERIC, Failure.CONFLICT)
+    if plan_before is None:  # no plan: the plan route's own "not available" (as editing with no plan answers)
+        raise StrategyRefused(_NOT_AVAILABLE, Failure.NOT_FOUND)
 
     async def work() -> AdjustmentPlanOut:
         saved = await store.reset_plan(db, user_ref, strategy_id, _base_json(tracked))

@@ -256,7 +256,9 @@ async def test_reset_to_playbook_goes_back_marks_what_differed_and_a_gone_playbo
     status, out = await _call("POST", _plan_path(sid) + "/reset")
     assert status == OK, out
     assert (out["plan"]["changed"], out["plan"]["switched_off"], out["plan"]["playbook_id"]) == ([], [], system)
-    assert json.loads((await _plan_row(app_db_url, sid)).body) == (await _system_ic(app_db_url)).body
+    stored, book = json.loads((await _plan_row(app_db_url, sid)).body), (await _system_ic(app_db_url)).body
+    assert stored["triggers"] == book["triggers"]  # every condition is the playbook's again
+    assert stored["guards"]["profit_target_pct_of_max_profit"] == "60"  # the sheet's level is kept (LP-5 (a))
     async with app_db_url.begin() as conn:  # a plan of the user's own playbook, which is then deleted
         own = await playbook_store.duplicate(conn, USER, system, "Reset source")
     status, out = await _call("POST", _plan_path(sid), json={"playbook_id": own.id, "stop": "30"})

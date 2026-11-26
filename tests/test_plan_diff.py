@@ -62,3 +62,17 @@ def test_reset_equals_the_playbook_body_and_is_a_copy():
     assert got is not BOOK
     assert got["triggers"] is not BOOK["triggers"]
     assert plan_diff.diff(got, BOOK) == EMPTY
+
+
+def test_reset_keeps_the_plans_sheet_levels_and_settings_and_drops_a_stored_condition():
+    plan = copy.deepcopy(BOOK)
+    plan["guards"].update({"loss_stop_rupees": "400", "time_exit": {"at": "15:00", "on": "2026-12-31"}})
+    plan["guards"]["hide_oi_below"] = "9"
+    plan["settings"] = {"other.carry_gap_percent": "1.5"}
+    plan["triggers"]["T-02"]["on"] = False
+    got = plan_diff.reset(plan, BOOK)
+    kept = {"loss_stop_rupees": "400", "time_exit": {"at": "15:00", "on": "2026-12-31"}}
+    assert got["guards"] == {"hide_oi_below": "3", **kept}
+    assert got["settings"] == {"other.carry_gap_percent": "1.5"}
+    assert got["triggers"] == BOOK["triggers"]
+    assert got["settings"] is not plan["settings"]

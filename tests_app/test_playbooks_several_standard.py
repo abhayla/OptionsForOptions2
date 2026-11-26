@@ -57,9 +57,8 @@ async def test_two_standard_ic_playbooks_coexist(second, app_engine):
 def test_the_sheet_level_keys_equal_the_plan_routes_guard_keys():
     from ofo_app.routes import adjustment_plan as route  # noqa: PLC0415
 
-    assert {route.TARGET_KEY, route.MAX_KEY, route.TIME_KEY} <= plan_diff.SHEET_LEVELS
-    assert route.sl.RUPEE_LOSS_KEY in plan_diff.SHEET_LEVELS
-    assert route.sl.RUPEE_PROFIT_KEY in plan_diff.SHEET_LEVELS
+    keys = {route.TARGET_KEY, route.MAX_KEY, route.TIME_KEY, route.sl.RUPEE_PROFIT_KEY, route.sl.RUPEE_LOSS_KEY}
+    assert keys == plan_diff.SHEET_LEVELS
 
 
 def _tweaked(body: dict, value: str = "9.5") -> dict:
@@ -132,9 +131,9 @@ async def test_reset_with_the_source_deleted_or_never_set_is_refused_and_the_pla
                 await store.reset_plan(c, user, strategy.id)
             assert refused.value.code == store.NOT_FOUND
             assert (await store.plan_for(c, user, strategy.id)).body == before.body == _tweaked(base)
-            with pytest.raises(store.PlaybookStoreError) as nothing:  # no plan at all
+            with pytest.raises(store.strategy_store.StrategyStoreError) as nothing:  # locked first (F7)
                 await store.reset_plan(c, user, strategy.id + 10**6)
-            assert nothing.value.code == store.NOT_FOUND
+            assert nothing.value.code == store.strategy_store.NOT_FOUND
         finally:
             await outer.rollback()
 
@@ -210,7 +209,7 @@ async def test_check_the_plan_refuses_an_added_condition_naming_it(app_engine):
             with pytest.raises(store.PlaybookStoreError) as refused:
                 await store.accept_plan(c, user, strategy.id, source.id, body)
             assert refused.value.code == store.BODY_INVALID
-            assert refused.value.slots == {"field": "triggers.T-77"}
+            assert refused.value.slots == {"field": "triggers"}  # the section is named, never the sender's key (F5)
             assert await store.plan_for(c, user, strategy.id) is None
         finally:
             await outer.rollback()

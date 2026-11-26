@@ -3,7 +3,8 @@
 A plan is a COPY of its playbook's body. Each condition (a trigger, a guard, a day rule, an approach, a rule, a
 situation, a plan setting) can be changed or switched off for this trade, never added: ``subset_of`` is False when the
 plan holds a condition the playbook lacks. ``diff`` lists what differs ("the plan marks the conditions the user changed
-or switched off"); ``reset`` is the playbook's body again (a deep copy, never shared with the playbook).
+or switched off"); ``reset`` is the playbook's conditions again (a deep copy)
+with the plan's own sheet levels and settings kept.
 
 A condition's name is its path: ``triggers.T-01``, ``guards.max_adjustments``, ``day_rules.<id or position>``. Values
 compare as stored (decimal strings, never floats).
@@ -76,5 +77,14 @@ def diff(plan_body: dict, playbook_body: dict) -> dict[str, list[str]]:
 
 
 def reset(plan_body: dict, playbook_body: dict) -> dict:
-    """Every condition back to the playbook's: its body, copied."""
-    return copy.deepcopy(playbook_body)
+    """Every condition back to the playbook's (a deep copy). The plan's own sheet levels (``SHEET_LEVELS`` guards) and
+    plan settings are values of the trade, not conditions: they are kept as stored (LP-5 (a))."""
+    out = copy.deepcopy(playbook_body)
+    plan_guards = plan_body.get("guards") if isinstance(plan_body.get("guards"), dict) else {}
+    guards = {k: v for k, v in (out.get("guards") or {}).items() if k not in SHEET_LEVELS}
+    guards.update({k: copy.deepcopy(v) for k, v in plan_guards.items() if k in SHEET_LEVELS})
+    if guards or "guards" in out:
+        out["guards"] = guards
+    if layers.PLAN_SETTINGS in plan_body:
+        out[layers.PLAN_SETTINGS] = copy.deepcopy(plan_body[layers.PLAN_SETTINGS])
+    return out

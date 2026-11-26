@@ -721,8 +721,11 @@ async def accept_plan(conn: Any, user_ref: str, strategy_id: int, playbook_id: i
         raise PlaybookStoreError(BODY_INVALID, f"plan of strategy {strategy_id} is {current.strategy_type}, "
                                  f"playbook {source.id} is {source.strategy_type}", field="strategy_type")
     copy = check_body(source.body if body is None else body, source.strategy_type)
-    if extra := plan_diff.added(copy, source.body):  # ADR-330 (9): a plan cannot add a condition its playbook lacks
-        raise _bad(extra[0])
+    extra = plan_diff.added(copy, source.body)
+    if extra and current is not None and current.playbook_id == source.id:  # ADR-250/247: what the plan already held
+        extra = sorted(set(extra) - set(plan_diff.added(current.body, source.body)))  # stays; only NEW ones are refused
+    if extra:  # ADR-330 (9): a plan cannot add a condition its playbook lacks; the section is named, never the key
+        raise _bad(extra[0].split(".", 1)[0])
     row = (await conn.execute(_UPSERT_PLAN, {"strategy_id": strategy_id, "playbook_id": source.id,
                                              "type": source.strategy_type, "body": _dump(copy),
                                              "stop_base": None if stop_base is None else _dump(stop_base)})).one()
@@ -731,8 +734,10 @@ async def accept_plan(conn: Any, user_ref: str, strategy_id: int, playbook_id: i
 
 async def reset_plan(conn: Any, user_ref: str, strategy_id: int, stop_base: dict | None = None) -> Plan:
     """ADR-330 (9) "Reset to playbook": every condition of the plan goes back to its playbook's (the server does the
-    copy). Refused, plan unchanged: no plan (not found); a plan saved before playbooks were pointed at (playbook_id
-    NULL) or whose playbook was deleted (not found, the playbook's own sentence)."""
+    copy); the sheet levels and the plan settings, which are values of the trade, are kept (LP-5 (a)).
+    Refused, plan unchanged: no plan (not found); a plan saved before playbooks were pointed at (playbook_id NULL)
+    or whose playbook was deleted (not found, the playbook's own sentence)."""
+    await strategy_store.lock_strategy(conn, user_ref, strategy_id)  # first: the plan is read under the lock
     current = await plan_for(conn, user_ref, strategy_id)
     if current is None or current.playbook_id is None:
         raise _not_found(None if current is None else "of this plan")
