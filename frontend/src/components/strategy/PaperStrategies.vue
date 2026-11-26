@@ -10,6 +10,7 @@
   <section class="rounded-lg border-2 border-dashed border-accent text-sm" :class="compact ? 'p-2' : 'p-3'" data-testid="paper-strategies">
     <p class="mb-2 rounded bg-accent-soft px-2 py-1 text-xs font-semibold text-accent" data-testid="paper-mode-header">Paper mode</p>
     <p class="rounded bg-amber-50 px-2 py-1 font-medium" data-testid="paper-banner">{{ BANNER }}</p>
+    <p v-if="exitNote" class="mt-2 text-xs text-ink-muted" data-testid="paper-exit-link-note">{{ exitNote }}</p>
     <p v-if="loading" class="mt-2" data-testid="paper-loading">Reading your paper strategies.</p>
     <!-- D-05 r3: a failed refresh is a banner above the last loaded list, whose figures are paused (full-page error only when nothing ever loaded), so an open Stops panel and what was typed in it stay -->
     <ErrorMessage v-if="!loading && errorParts" class="mt-2" :parts="errorParts" compact prefix="paper-error" />
@@ -175,7 +176,7 @@ import PaperStops from '@/components/strategy/PaperStops.vue'
 import AfterChargesTap from '@/components/common/AfterChargesTap.vue'
 import PaperConfirmDialog from '@/components/strategy/PaperConfirmDialog.vue'
 import HeldNote from '@/components/strategy/HeldNote.vue'
-import { ALL_CLOSED_TEXT, DECAY_LEFT_TODAY_HEADING, GREEK_COLUMNS, PAPER_NO_FIGURE, PAPER_PAUSED, SHOW_CLOSED_LABEL, exitRowsFor, readPaperList, visibleGroups } from '@/lib/paperList'
+import { ALL_CLOSED_TEXT, DECAY_LEFT_TODAY_HEADING, GREEK_COLUMNS, PAPER_NO_FIGURE, PAPER_PAUSED, SHOW_CLOSED_LABEL, exitRowsFor, isOpenGroup, readPaperList, visibleGroups } from '@/lib/paperList'
 import { usePriceFreshness } from '@/lib/priceState'
 import { usePaperExit } from '@/lib/usePaperExit'
 import ExitButton from '@/components/strategy/ExitButton.vue'
@@ -187,7 +188,7 @@ import { signOf } from '@/lib/chartCard'
 
 // ADR-330 (10): headlineAbove = the Positions page shows the Paper total in its own header, so this list omits its Total P&L figure
 // (and the closed-strategies line that goes with it); it emits `summary` so that header prints the server's figure, never a sum.
-defineProps({ compact: { type: Boolean, default: false }, headlineAbove: { type: Boolean, default: false } })
+const props = defineProps({ compact: { type: Boolean, default: false }, headlineAbove: { type: Boolean, default: false } })
 const emit = defineEmits(['summary'])
 // GC-TRACK1 k27: the OPEN leg count; an unreadable open_count shows nothing (never the total). "open" only when closed ones exist.
 const legsText = (g) => {
@@ -285,6 +286,7 @@ const dialogState = ref(PAPER_STATE.READY) // fix/paper-dialog-safe: the dialog'
 const router = useRouter()
 
 function show({ data, token }) {
+  const exitId = takeExitParam()
   const read = readPaperList(data)
   if (read === null) {
     confirm.value = null // like fail(): no open exit from old prices
@@ -297,11 +299,43 @@ function show({ data, token }) {
     errorParts.value = null
     goodReadToken.value = token // the token travels with the answer from the read that made it
     settle(items.value)
+    openExitFromLink(exitId)
   }
   loading.value = false
 }
+// S-14 (ADR-330 (10)): the Live card's Exit links here with `exit=<strategy id>` (Positions list only, never the compact one).
+// The parameter is ONE-SHOT: consumed (dropped from the route) on the first answer of any kind, acted on only if that answer is good,
+// so a later timer read or a back-navigation never opens the dialog without a new click. It acts only when `strategy` is absent or
+// equal, and only on a group the list itself draws as open (isOpenGroup, the list's own rule). It never throws into show().
+const EXIT_NOTE = 'This strategy has no open paper legs to exit.'
+const exitNote = ref('')
+function takeExitParam() {
+  if (props.compact || !router) return null
+  const q = router.currentRoute.value.query
+  if (q.exit === undefined) return null
+  const { exit, ...rest } = q
+  try { router.replace({ query: rest }) } catch { /* the route stays as it is; the parameter was read once */ }
+  const id = String(Array.isArray(exit) ? exit[0] : exit)
+  const strategy = q.strategy === undefined ? undefined : String(Array.isArray(q.strategy) ? q.strategy[0] : q.strategy)
+  return strategy !== undefined && strategy !== id ? null : id
+}
+function openExitFromLink(id) {
+  if (id === null) return // no new request: an earlier note stays until the user leaves
+  exitNote.value = ''
+  if (confirm.value || busy.value) return
+  try {
+    const g = (items.value ?? []).find((x) => isOpenGroup(x) && String(x.id) === id)
+    const rows = g ? g.positions.filter(canExit) : []
+    if (!rows.length) exitNote.value = EXIT_NOTE
+    else if (exitGate.blocked.value) exitNote.value = exitGate.reason.value ?? EXIT_NOTE
+    else ask(g, rows)
+  } catch {
+    exitNote.value = EXIT_NOTE
+  }
+}
 // D-05 r2: a failed read keeps the last loaded list (and any open Stops panel) under an error banner marked as last loaded
 function fail(e) {
+  takeExitParam() // one-shot: a failed first read consumes the parameter and opens nothing
   confirm.value = null
   dialogError.value = ''
   errorParts.value = e?.parts ?? NEUTRAL_PARTS
