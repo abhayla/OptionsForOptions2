@@ -11,7 +11,7 @@ P12. Highest status claimed for anything here: **Fixed, not tested** (the owner 
 | P1 one actionable-alert module + one info pop-up | Fixed, not tested | Opus round 1: REVISE (F1-F5, M1-M7); fix passes A and B merged; Opus round 2: every round-1 finding CLOSED, verdict PARK on two NEW MAJORs (NEW-1: after a worse step "no longer true" is judged against that step, so the row can flap each minute and the timeline grows; NEW-2: a watched-level crossing gets no pop-up any more) - both are item P1c (running; second push if not done in time) | Wave 2 steps below |
 | P2 only a strategy's own plan applies | Fixed, not tested | Sonnet: FIX (1 MAJOR, fixed inside P1b: plan-less strategies' open records close by system); 1 regression (A-27/A-35 test lacked a plan) fixed | |
 | P3 stop amounts fixed at entry | Fixed, not tested | Opus round 1 FIX (F1 CRITICAL: T-06 still fired on the live max loss), round 2 SHIP | |
-| P4 rupee plan levels | **PARKED with N1 open** after two rounds | Opus round 1 FIX (F1-F9), round 2 SHIP on money with NEW N1 MAJOR (the levels preview drops the 2x-credit part while typing) | Both P4 merge commits are on the branch: "Merge P4 (ADR-330 (5), owner Q3) ..." and "Merge P4 Opus fixes F1-F9 ...". P4b (N1) is a new item for the second push |
+| P4 rupee plan levels | Fixed, not tested: complete with P4b (P4 itself was PARKED with N1 open after two rounds; P4b closed N1, Sonnet round 2 SHIP) | Opus round 1 FIX (F1-F9), round 2 SHIP on money with NEW N1 MAJOR (the levels preview drops the 2x-credit part while typing) | Both P4 merge commits are on the branch: "Merge P4 (ADR-330 (5), owner Q3) ..." and "Merge P4 Opus fixes F1-F9 ...". P4b (N1) is a new item for the second push |
 | P5 plan time exit on any day | Fixed, not tested | Sonnet FIX (MAJOR: blank date used the playbook's time), fixed | |
 | P6 max-loss line before a leg stop is saved (server) | Fixed, not tested (server only) | Sonnet SHIP + 3 minors fixed | the Stops panel line is Lane Q's PaperStops.vue |
 | P10 Plan watch (server) | Fixed, not tested (server only) | not yet reviewed (Tier B) | PlanWatch.vue is Wave 2 |
@@ -109,9 +109,11 @@ list hides N closed ones.
 P12 top menu: on My Strategies, click the word "Strategies" in the top menu: its menu opens; click again: it closes. On
 another page the same click goes to My Strategies. Ctrl-click opens a new tab.
 
-P4 rupee levels (PARKED, on the branch): the plan sheet has "Target (Rs)" and "Stop (Rs)" boxes; typing in one fills the
-other from the server. Known wrong until P4b lands: while typing a stop, the sentence under it drops "2x the credit
-received ... whichever comes first" (the saved plan says it correctly).
+P4 rupee levels (ADR-330 (5)): the plan sheet has "Target (Rs)" and "Stop (Rs)" boxes. Type 400 in "Stop (Rs)" on a
+1-lot iron condor with max loss Rs 2,600: the percent box fills with 15.38 (from the server) and the line under it reads
+"a loss of Rs 400.00 (15.38 % of max loss), 2x the credit received ... whichever comes first" - the same sentence the
+saved plan shows after Save. Exactly one stop alert fires when the loss reaches Rs 400. Not built yet (second push):
+the LP-4 warning line for a stop above the max loss.
 
 ## Process notes (counters)
 
