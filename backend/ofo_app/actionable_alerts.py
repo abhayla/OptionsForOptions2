@@ -24,12 +24,13 @@ from __future__ import annotations
 import json
 from collections.abc import Iterable
 from dataclasses import dataclass, field
-from datetime import UTC, datetime
+from datetime import UTC, datetime, time, timedelta
 from decimal import Decimal
 from typing import Any
 
 from ofo import alerts as kinds
 from ofo.errors.explanations import ExplanationText, render_explanation, restore_explanation
+from ofo.timeutil import IST
 from sqlalchemy import text
 
 from ofo_app import playbook_store as pb
@@ -160,6 +161,11 @@ class Alert:
     @property
     def cmp(self) -> str | None:
         return self.timeline[0].get("cmp") if self.timeline else None
+
+
+_NOTE_TODAY = text(
+    "SELECT 1 FROM public.adjustment_suggestions WHERE strategy_id = :strategy_id AND rule_id = :rule_id "
+    "AND shown_at >= :start AND shown_at < :end LIMIT 1")
 
 
 def _encode_slot(value: Any, restore: tuple[str, ...] | None = None) -> Any:
@@ -393,11 +399,13 @@ async def _rows(conn: Any, sql: str, user_ref: str) -> list[Any]:
 
 
 async def inform(conn: Any, user_ref: str, strategy_id: int, kind: str, template_id: str,  # noqa: PLR0913
-                 values: dict[str, Any], *, at: datetime, restore: dict[str, tuple[str, ...]] | None = None) -> int:
+                 values: dict[str, Any], *, at: datetime, restore: dict[str, tuple[str, ...]] | None = None,
+                 rule_id: str | None = None) -> int:
     """An informational message (ADR-330 (3b)): a History row, answered at once ('noted'), never open, never counted.
     The words are a catalogue id plus its slot values (rendered when read, so History can never hold a plain string);
     ``values`` are checked by rendering once now. A slot holding a nested explanation line names, in ``restore``, the
-    catalogue ids it is read back through. Returns the row id."""
+    catalogue ids it is read back through. ``rule_id`` names what the message is about (default ``info:<kind>``); a
+    message that must not repeat gives it its own id (``inform_once_per_day``). Returns the row id."""
     if not kinds.is_informational(kind):
         raise ValueError(f"{kind!r} is not an informational alert kind")
     render_explanation(template_id, **values)  # unknown id, missing/extra slot or wrong type: refused, nothing written
@@ -405,6 +413,29 @@ async def inform(conn: Any, user_ref: str, strategy_id: int, kind: str, template
     async with conn.begin_nested():
         await pb.require_owned(conn, user_ref, strategy_id)
         return int((await conn.execute(_INSERT_NOTE, {
-            "strategy_id": strategy_id, "rule_id": f"info:{kind}", "kind": kind, "at": at, "template": template_id,
+            "strategy_id": strategy_id, "rule_id": rule_id or f"info:{kind}", "kind": kind, "at": at, "template": template_id,
             "values": json.dumps({k: _encode_slot(v, (restore or {}).get(k))
                                   for k, v in values.items()})})).scalar_one())
+
+
+def india_day_bounds(at: datetime) -> tuple[datetime, datetime]:
+    """The India calendar day (00:00 to 24:00 IST) that holds ``at``, as aware datetimes (start, next day's start)."""
+    start = datetime.combine(_aware(at).astimezone(IST).date(), time.min, IST)
+    return start, start + timedelta(days=1)
+
+
+async def inform_once_per_day(conn: Any, user_ref: str, strategy_id: int, kind: str, rule_id: str,  # noqa: PLR0913
+                              template_id: str, values: dict[str, Any], *, at: datetime,
+                              restore: dict[str, tuple[str, ...]] | None = None) -> int | None:
+    """THE once-a-day rule (ADR-330 (44)): an informational message of ``rule_id`` is written only when this strategy has
+    no row of that rule id in the India day of ``at``. The answer is the stored rows themselves, so a restart cannot
+    repeat a message. Returns the new row id, or None when the day already has one. Same savepoint and checks as
+    ``inform``; a store that cannot answer raises (the caller decides what a failed message means)."""
+    start, end = india_day_bounds(at)
+    async with conn.begin_nested():
+        known = (await conn.execute(_NOTE_TODAY, {"strategy_id": strategy_id, "rule_id": rule_id,
+                                                  "start": start, "end": end})).first()
+        if known is not None:
+            return None
+        return await inform(conn, user_ref, strategy_id, kind, template_id, values, at=at, restore=restore,
+                            rule_id=rule_id)

@@ -69,13 +69,13 @@ async def _closing(db, sid: int, ids: list[int], tid: int | None = None) -> list
 # --- goldens, captured from 491ca7e2 (the pre-phase head) ----------------------------------------------------------
 
 GOLDEN_TRACKING_ALL: list[tuple] = [
-    (0, 'BUY', 65, D('39.15'), 'exit', None, None, dt(2026, 10, 8, 3, 50, 8)),
-    (2, 'BUY', 65, D('82.75'), 'exit', None, None, dt(2026, 10, 8, 3, 50, 9)),
-    (1, 'SELL', 65, D('12.95'), 'exit', None, None, dt(2026, 10, 8, 3, 50, 9)),
-    (3, 'SELL', 65, D('35.80'), 'exit', None, None, dt(2026, 10, 8, 3, 50, 9)),
+    (0, 'BUY', 65, D('39.15'), 'exit', None, None, dt(2026, 10, 8, 4, 0)),
+    (2, 'BUY', 65, D('82.75'), 'exit', None, None, dt(2026, 10, 8, 4, 0)),
+    (1, 'SELL', 65, D('12.95'), 'exit', None, None, dt(2026, 10, 8, 4, 0)),
+    (3, 'SELL', 65, D('35.80'), 'exit', None, None, dt(2026, 10, 8, 4, 0)),
 ]
 GOLDEN_TRACKING_ONE: list[tuple] = [
-    (1, 'SELL', 65, D('12.95'), 'exit', None, None, dt(2026, 10, 8, 3, 50, 9)),
+    (1, 'SELL', 65, D('12.95'), 'exit', None, None, dt(2026, 10, 8, 4, 0)),
 ]
 GOLDEN_MANUAL_ALL: list[tuple] = [
     (0, 'BUY', 65, D('39.15'), 'exit', None, None, dt(2026, 10, 8, 4, 0)),
@@ -292,15 +292,15 @@ async def test_no_market_context_is_refused_not_connected_and_nothing_is_stored(
     assert await _closing(db, stored.id, list(stored.saved.contract_ids)) == []
 
 
-@pytest.mark.parametrize(("caller", "template"), [("tracking", "tracking_not_connected"),
-                                                  ("orders", "tracking_exit_prices_not_live")])
-async def test_a_disconnected_provider_is_refused_per_caller_and_nothing_is_stored(db, monkeypatch, caller, template):
-    """L3 kept: the tracking route asks the provider's status first; the orders route only has "no context"."""
-    app, stored, provider, clock, last = await _opened(db)
+@pytest.mark.parametrize("caller", CALLERS)
+async def test_a_disconnected_provider_is_refused_not_connected_for_both_callers_and_nothing_is_stored(
+        db, monkeypatch, caller):
+    """#728: one rule inside the door, the stricter one (fail closed): a market context whose provider says not
+    connected is "not connected" on the tracking route AND the orders route, with quotes still fresh."""
+    app, stored, provider, *_ = await _opened(db)
     monkeypatch.setattr(provider, "status", lambda: SimpleNamespace(connected=False))
-    clock.now = last + datetime.timedelta(minutes=10)  # a lost connection: the quotes age out
     reply = await _exit_call(app, stored, caller, [0, 1])
-    _refused(reply, template)
+    _refused(reply, "tracking_not_connected")
     assert await _closing(db, stored.id, list(stored.saved.contract_ids)) == []
 
 
@@ -342,19 +342,17 @@ async def test_one_stale_leg_among_live_ones_refuses_the_whole_exit_and_nothing_
     assert await _closing(db, stored.id, ids) == []
 
 
-@pytest.mark.parametrize(("caller", "status", "code"), [("orders", CONFLICT, "tracking_exit_prices_not_live"),
-                                                         ("tracking", HTTPStatus.INTERNAL_SERVER_ERROR, None)])
-async def test_a_price_read_that_raises_is_409_for_orders_and_500_for_tracking(db, monkeypatch, caller, status, code):
-    """L2 kept: a failed read is "no price" on the orders route, an unhandled error on the tracking route."""
+@pytest.mark.parametrize("caller", CALLERS)
+async def test_a_price_read_that_raises_is_409_prices_not_live_for_both_callers(db, monkeypatch, caller):
+    """#727: one behaviour: a failed price read is "no price" (the named 409) on the tracking route and the orders
+    route alike, never a 500; nothing is stored."""
     app, stored, *_ = await _opened(db)
 
     async def broken(*_a, **_k):
         raise RuntimeError("the price read failed")
     monkeypatch.setattr(tracking_routes, "_snapshot", broken)
     reply = await _exit_call(app, stored, caller, [0, 1], raise_app=False)
-    assert reply.status_code == status
-    if code is not None:
-        assert reply.json()["code"] == _code(code)
+    _refused(reply, "tracking_exit_prices_not_live")
     assert await _closing(db, stored.id, list(stored.saved.contract_ids)) == []
 
 
@@ -451,13 +449,13 @@ async def _add_a_lot(db, stored, leg: int) -> None:
 
 
 GOLDEN_RACE_TRACKING: list[tuple] = [
-    (0, "BUY", 65, D("39.15"), "exit", None, None, dt(2026, 10, 8, 3, 50, 8)),
+    (0, "BUY", 130, D("39.15"), "exit", None, None, dt(2026, 10, 8, 4, 0)),
 ]
 
 
-async def test_a_leg_added_between_read_and_lock_tracking_route_part_closes_the_old_quantity(db, monkeypatch):
-    """The tracking route keeps today's sides and quantities (5.4.3): it closes what its own book read showed (65), the
-    lot added after the read stays open."""
+async def test_a_leg_added_between_read_and_lock_tracking_route_closes_the_whole_locked_quantity(db, monkeypatch):
+    """#729 (REQ-109 AC-4): the tracking route lets the door re-read the net under the strategy lock, so a lot added
+    after the route's book read is closed too (130, not the 65 the pre-lock read showed)."""
     app, stored, *_ = await _opened(db)
     real = tracking_routes._snapshot
 
@@ -467,7 +465,43 @@ async def test_a_leg_added_between_read_and_lock_tracking_route_part_closes_the_
     monkeypatch.setattr(tracking_routes, "_snapshot", racing)
     reply = await _exit_call(app, stored, "tracking", [0])
     assert reply.status_code == OK, reply.text
-    assert await _closing(db, stored.id, list(stored.saved.contract_ids)) == GOLDEN_RACE_TRACKING
+    rows = await _closing(db, stored.id, list(stored.saved.contract_ids))
+    assert [r[:6] for r in rows] == [r[:6] for r in GOLDEN_RACE_TRACKING]
+
+
+async def test_tracking_exit_order_time_is_the_answer_time_not_the_quote_time(db):
+    """#726: the stored exit order's placed_at is the one time the route answers (here 04:00:00, the answer clock), as
+    the orders-screen exit and the monitor store; never the quote's own time (the replayed quotes are 03:50:08-09).
+    The leg's exited_at shown on the tracking reply is that time."""
+    app, stored, *_ = await _setup(db)
+    async with _client(app) as client:
+        await _open_book(client, stored)
+        reply = await client.post(f"/strategies/{stored.id}/tracking/exit", json={"legs": [0, 1]})
+        assert reply.status_code == OK, reply.text
+        legs = {leg["leg_index"]: leg for leg in reply.json()["legs"]}
+    ids = list(stored.saved.contract_ids)
+    rows = await _closing(db, stored.id, ids)
+    assert [r[7] for r in rows] == [ANSWERED, ANSWERED]
+    assert legs[0]["price_at"] is None or legs[0]["price_at"] != ANSWERED.isoformat()  # the quote time is not it
+    assert datetime.datetime.fromisoformat(legs[0]["exited_at"].replace("Z", "+00:00")) == ANSWERED
+
+
+@pytest.mark.parametrize("legs", [[0], [0, 1]])
+async def test_a_leg_flat_between_read_and_lock_tracking_route_is_refused_already_exited(db, monkeypatch, legs):
+    """#729: a named contract already flat under the lock answers tracking_leg_already_exited
+    (a flat leg among open ones is not silently dropped; the failed write rolls the shared test connection back)."""
+    app, stored, *_ = await _opened(db)
+    ids = list(stored.saved.contract_ids)
+    real = tracking_routes._snapshot
+
+    async def racing(*args, **kwargs):
+        held = stored.saved.definition.legs[0]  # another exit closes leg 0 after the route's book read
+        await paper_store.place(db, stored.user_ref, stored.id, [paper_store.NewOrder(
+            ids[0], "BUY" if held.action.value == "SELL" else "SELL", 65, D("40.00"), "exit", ANSWERED)])
+        return await real(*args, **kwargs)
+    monkeypatch.setattr(tracking_routes, "_snapshot", racing)
+    reply = await _exit_call(app, stored, "tracking", legs)
+    _refused(reply, "tracking_leg_already_exited")
 
 
 class _After:

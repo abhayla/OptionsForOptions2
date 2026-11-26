@@ -347,15 +347,16 @@ async def test_ac2_each_cell_carries_its_quotes_own_health(health):
     assert {row[s]["health"] for row in channel.sent[0]["rows"] for s in ("ce", "pe")} == {health.value}
 
 
-async def test_ac2_a_held_contract_without_a_quote_reads_unavailable():
-    """REQ-049 AC-2: a subscribed contract with no quote yet is shown unavailable with no number."""
+async def test_ac2_a_held_contract_without_a_quote_is_waiting_not_unavailable():
+    """#748 / REQ-133 AC-3: a subscribed, known contract with no first tick yet is WAITING (health None, no number, no
+    claim that no price exists); an unknown contract stays "unavailable" (test_..._unknown_contract below)."""
     provider, _feed, channel, _mono, push = make_rig()
     provider.tick(index_quote("25162.30"))
     task = await start(push, channel)
     await close(channel, task)
     assert channel.sent[0]["rows"][0]["ce"] == {"instrument_id": cid("25050", "CE"), "ltp": None, "bid": None,
                                                 "ask": None, "change": None, "oi": None, "oi_change": None,
-                                                "volume": None, "health": "unavailable", "at": None,
+                                                "volume": None, "health": None, "at": None,
                                                 "last_trade_at": None,
                                                     "permitted": False, "unavailable_reason": "unknown",
                                                 "iv": None, "delta": None, "gamma": None, "theta": None, "vega": None,

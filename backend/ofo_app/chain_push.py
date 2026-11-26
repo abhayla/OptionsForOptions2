@@ -410,12 +410,15 @@ def _last_trade_at(ctx: MarketContext, instrument_id: str, *, market_closed: boo
 
 def _cell(contract: PickableContract, quote: NormalizedQuote | None, slow: SlowValues | None,  # noqa: PLR0913
           catalogue: ChainCatalogue, model: ChainModel | None, *, market_closed: bool = False,
-          last_trade_at: datetime.datetime | None = None, previous_close: Decimal | None = None) -> ChainCellOut:
+          last_trade_at: datetime.datetime | None = None, previous_close: Decimal | None = None,
+          known: bool = False) -> ChainCellOut:
     permitted, reason = _permission(catalogue, contract)
     if quote is None:  # held, but no quote yet, or a contract the provider does not know: shown as such
+        # #748 / REQ-133 AC-3: a contract the provider knows and holds, with no first tick yet, is WAITING: health None
+        # (no health word is claimed; the screen says it waits for the first price). Unknown stays "unavailable".
         return ChainCellOut(instrument_id=contract.instrument_id, ltp=None, bid=None, ask=None, change=None, oi=None,
-                            oi_change=None, volume=None, health="unavailable", at=None, last_trade_at=None,
-                            permitted=permitted, unavailable_reason=reason, **_NO_GREEKS)
+                            oi_change=None, volume=None, health=None if known else "unavailable", at=None,
+                            last_trade_at=None, permitted=permitted, unavailable_reason=reason, **_NO_GREEKS)
     oi, oi_change = (quote.oi, quote.oi_change) if slow is None else slow.get(contract.instrument_id,
                                                                               (quote.oi, quote.oi_change))
     return ChainCellOut(instrument_id=contract.instrument_id, ltp=_given_money(quote.ltp), bid=_given_money(quote.bid),
@@ -487,11 +490,13 @@ def _rows(ctx: MarketContext, req: ChainRequest, catalogue: ChainCatalogue,  # n
                                ce=None if ce is None else _cell(ce, quotes.get(ce.instrument_id), slow, catalogue,
                                                                 model, market_closed=market_closed,
                                                                 last_trade_at=trade_at(ce),
-                                                                previous_close=close_of(ce)),
+                                                                previous_close=close_of(ce),
+                                                                known=ce.instrument_id not in unknown),
                                pe=None if pe is None else _cell(pe, quotes.get(pe.instrument_id), slow, catalogue,
                                                                 model, market_closed=market_closed,
                                                                 last_trade_at=trade_at(pe),
-                                                                previous_close=close_of(pe))))
+                                                                previous_close=close_of(pe),
+                                                                known=pe.instrument_id not in unknown)))
     return [r for r in out if row_passes(r, req)]
 
 

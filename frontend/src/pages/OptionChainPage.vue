@@ -19,7 +19,7 @@ import { ACTIONS, contractOf, useChainSelection } from '@/stores/chainSelection'
 import { UNAVAILABLE_LABEL, isPermitted, reasonLine } from '@/lib/chainUnavailable'
 import { UNDERLYINGS } from '@/lib/underlyings'
 import api from '@/services/api'
-import { healthSentence, missingCode, missingReason, shownHealth } from '@/lib/dataHealthText'
+import { WAITING_FIRST_PRICE_TEXT, healthSentence, isWaitingCell, missingCode, missingReason, shownHealth } from '@/lib/dataHealthText'
 import { contractName as legName, daysByExpiry, expiryWithDays, istClock, istStamp, setShownDate, strikeLabel } from '@/lib/displayFormat'
 import MarketClosedBanner from '@/components/states/MarketClosedBanner.vue'
 import LeaveBuilderDialog from '@/components/strategy/LeaveBuilderDialog.vue'
@@ -175,6 +175,8 @@ const text = (v) => (typeof v === 'string' || typeof v === 'number' ? String(v) 
 // D-55: Change / OI Change missing from the feed say "not available"; a side with no contract keeps the dash
 const cellText = (cell, key) => (!cell ? VALUE_UNAVAILABLE : FEED_VALUE_KEYS.includes(key) && cell[key] == null ? CHAIN_NOT_AVAILABLE : text(cell[key]))
 const healthWord = (cell) => shownHealth(cell?.health, view.value?.market_closed)
+// the line under a price: the waiting text for a held cell with no first price, else the health sentence ('' when there is none to say)
+const healthLine = (cell) => (isWaitingCell(cell, view.value?.market_closed) ? WAITING_FIRST_PRICE_TEXT : healthWord(cell) ? healthSentence(healthWord(cell)) : '')
 // D-19: the time of the cell's last trade as the server gave it (HH:MM:SS, India time); nothing when the server sent none
 // a trade from another India day carries its date (istStamp); `at`, the cell's own quote time, names that day
 const lastTrade = (cell) => (cell?.last_trade_at ? istStamp(cell.last_trade_at, cell.at ?? undefined) : null)
@@ -294,11 +296,11 @@ const resetFilters = () => (filters.value = { ...NO_FILTERS })
               </template>
             </td>
             <td v-for="[key] in SIDE_FIELDS" :key="'c' + key" class="ui-num px-2 py-1" :data-testid="'ce-' + key" :title="missingReason(row.ce, key) || greeksStaleLabel(view, key) || undefined" :data-reason="missingCode(row.ce, key)" :data-stale="greeksStaleLabel(view, key) || null">
-              {{ cellText(row.ce, key) }}<span v-if="key === 'ltp' && healthWord(row.ce)" class="ml-1 text-xs text-ink-muted" data-testid="ce-health">{{ healthSentence(healthWord(row.ce)) }}</span><span v-if="key === 'ltp' && lastTrade(row.ce)" class="block text-xs text-ink-muted" data-testid="ce-last-trade">Last trade {{ lastTrade(row.ce) }}</span>
+              {{ cellText(row.ce, key) }}<span v-if="key === 'ltp' && healthLine(row.ce)" class="ml-1 text-xs text-ink-muted" data-testid="ce-health">{{ healthLine(row.ce) }}</span><span v-if="key === 'ltp' && lastTrade(row.ce)" class="block text-xs text-ink-muted" data-testid="ce-last-trade">Last trade {{ lastTrade(row.ce) }}</span>
             </td>
             <td class="num px-3 py-1 text-center font-medium" :class="isAtm(row) ? 'bg-accent-soft text-accent' : 'bg-surface-muted'" data-testid="strike">{{ strikeLabel(row.strike) }}</td>
             <td v-for="[key] in SIDE_FIELDS" :key="'p' + key" class="ui-num px-2 py-1" :data-testid="'pe-' + key" :title="missingReason(row.pe, key) || greeksStaleLabel(view, key) || undefined" :data-reason="missingCode(row.pe, key)" :data-stale="greeksStaleLabel(view, key) || null">
-              {{ cellText(row.pe, key) }}<span v-if="key === 'ltp' && healthWord(row.pe)" class="ml-1 text-xs text-ink-muted" data-testid="pe-health">{{ healthSentence(healthWord(row.pe)) }}</span><span v-if="key === 'ltp' && lastTrade(row.pe)" class="block text-xs text-ink-muted" data-testid="pe-last-trade">Last trade {{ lastTrade(row.pe) }}</span>
+              {{ cellText(row.pe, key) }}<span v-if="key === 'ltp' && healthLine(row.pe)" class="ml-1 text-xs text-ink-muted" data-testid="pe-health">{{ healthLine(row.pe) }}</span><span v-if="key === 'ltp' && lastTrade(row.pe)" class="block text-xs text-ink-muted" data-testid="pe-last-trade">Last trade {{ lastTrade(row.pe) }}</span>
             </td>
             <td class="whitespace-nowrap px-1 py-1" data-testid="sel-pe">
               <template v-if="row.pe">

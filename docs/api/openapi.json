@@ -22856,7 +22856,7 @@
     },
     "/paper/strategies/{strategy_id}/triggers/{trigger_id}/keep": {
       "post": {
-        "description": "D-03 \"Keep this level\": the trader has read the mark and keeps the exit. The same exit is stored again as a new\narmed row (created after the adjustment, so it is no longer marked) and the old row is cancelled, in ONE\ntransaction under the strategy lock. The level is the same: nothing is moved (no silent substitution).",
+        "description": "D-03 \"Keep this level\": the trader has read the mark and keeps the exit. The same exit is stored again as a new\narmed row (created after the adjustment, so it is no longer marked) and the old row is cancelled, in ONE\ntransaction under the strategy lock. The level is the same: nothing is moved (no silent substitution).\n#733 (ADR-317 (1)): keeping stores the exit again, so the SAME crossed-level check as the save route\n(``check_trigger_levels``) runs first, before the lock (the price read may wait up to 3 s): a level the live price\nhas already reached is refused and the old exit stays as it is.",
         "operationId": "keep_paper_trigger_paper_strategies__strategy_id__triggers__trigger_id__keep_post",
         "parameters": [
           {
@@ -23485,7 +23485,7 @@
     },
     "/strategies/{strategy_id}/tracking/exit": {
       "post": {
-        "description": "REQ-109 AC-4 / AC-5 (GC-BP step 5): paper-exit the named legs at their live price now, read by the server from\nthe same market context as the start: one `exit` order per named leg for its whole open quantity. Any named leg\nnot live refuses the whole exit (nothing stored): a contract no longer live answers\ntracking_exit_contract_not_live (it never comes back), a live contract whose price is stale or missing answers\ntracking_exit_prices_not_live (AC-5: try again when prices update). The store re-checks under the strategy's row\nlock that each exit reduces and never exceeds the open quantity, so a leg exits once even when two exits race.",
+        "description": "REQ-109 AC-4 / AC-5 (GC-BP step 5): paper-exit the named legs at their live price now, read by the server from\nthe same market context as the start: one `exit` order per named leg for its whole open quantity. Any named leg\nnot live refuses the whole exit (nothing stored): a contract no longer live answers\ntracking_exit_contract_not_live (it never comes back), a live contract whose price is stale or missing answers\ntracking_exit_prices_not_live (AC-5: try again when prices update). The store re-checks under the strategy's row\nlock (paper_exit, closes=\"locked\"): each named leg closes its whole locked net, a leg already flat is refused, so a\nleg exits once even when two exits race and a leg that grew since the read closes whole.",
         "operationId": "exit_tracking_strategies__strategy_id__tracking_exit_post",
         "parameters": [
           {

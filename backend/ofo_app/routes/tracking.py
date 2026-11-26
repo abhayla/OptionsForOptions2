@@ -21,7 +21,7 @@ from __future__ import annotations  # noqa: I001 - the import-door test pins the
 
 import dataclasses
 import datetime
-from collections.abc import Coroutine, Sequence
+from collections.abc import Callable, Coroutine, Hashable, Mapping, Sequence
 from dataclasses import dataclass
 from decimal import Decimal
 from typing import Annotated, Any, Literal
@@ -44,7 +44,6 @@ from ofo.outcome.price_text import price_text
 from ofo.strategy import stored_form as sf
 from ofo.strategy.definition import display_contract
 from ofo.tracking import book, paper
-from ofo.tracking.closing import open_legs_to_close
 from ofo.tracking.orderbook import PaperOrder
 from pydantic import BaseModel, ConfigDict, Field
 
@@ -311,8 +310,10 @@ def _book_figures(bk: _Book, view: paper.TrackingView | None
         leg.instrument_id: view.legs[i] for i, leg in enumerate(bk.legs) if not leg.exited}
     money = strategy_money_view(bk.orders, prices, totals_priced=view is not None and not view.paused)
     by_id = money.by_contract  # ADR-311: per leg, at the legs that have a price
-    pnls: list[Decimal | None] = [by_id[leg.instrument_id].booked if leg.exited else by_id[leg.instrument_id].unbooked
-                                  for leg in bk.legs]
+    # #725 (ADR-328 (3)): a leg's figure is the engine's own total for its contract (booked + unbooked, the same figure
+    # as the legs table), so an open leg keeps the booked part of an earlier closed lifecycle or partial exit; None
+    # while the open contract is unpriced (the engine gives no total then); an exited leg's total is its booked.
+    pnls: list[Decimal | None] = [by_id[leg.instrument_id].total for leg in bk.legs]
     return money.book, pnls, money.live  # every TOTAL (and the after-charges figures) stays paused, never a mix
 
 
@@ -512,6 +513,17 @@ async def get_tracking(strategy_id: int,  # noqa: PLR0913 - FastAPI dependencies
     return await _answer(db, stored, bk, ctx, feed, threshold, now(), rates)
 
 
+def _locked_ids(ids: list[int]) -> Callable[[Mapping[Hashable, int]], list[int]]:
+    """#729: the named contract ids as the door's ``only``, judged on the net re-read under the strategy lock
+    (``closes="locked"``): a leg that grew since the route's read closes whole; a named contract already flat there is
+    the existing already-exited refusal (a flat leg among open ones is never silently dropped)."""
+    def chosen(net: Mapping[Hashable, int]) -> list[int]:
+        if any(not net.get(c) for c in ids):
+            raise StrategyRefused("tracking_leg_already_exited", Failure.CONFLICT)
+        return ids
+    return chosen
+
+
 @router.post("/strategies/{strategy_id}/tracking/exit", response_model=TrackingOut,
              dependencies=[Depends(guard_paper_order)])  # IC e2e 5: scenario mode = own scenario only
 async def exit_tracking(strategy_id: int, body: TrackingExitIn,  # noqa: PLR0913 - FastAPI dependencies
@@ -527,7 +539,8 @@ async def exit_tracking(strategy_id: int, body: TrackingExitIn,  # noqa: PLR0913
     not live refuses the whole exit (nothing stored): a contract no longer live answers
     tracking_exit_contract_not_live (it never comes back), a live contract whose price is stale or missing answers
     tracking_exit_prices_not_live (AC-5: try again when prices update). The store re-checks under the strategy's row
-    lock that each exit reduces and never exceeds the open quantity, so a leg exits once even when two exits race."""
+    lock (paper_exit, closes="locked"): each named leg closes its whole locked net, a leg already flat is refused, so a
+    leg exits once even when two exits race and a leg that grew since the read closes whole."""
     stored = await _load(db, user_ref, strategy_id)
     bk = await _load_book(db, strategy_id)
     if bk is None:
@@ -544,22 +557,17 @@ async def exit_tracking(strategy_id: int, body: TrackingExitIn,  # noqa: PLR0913
     # a retired / delisted / token-reassigned contract never comes back (Review M2): the door's own contract-not-live
     # refusal, never "try again"; every other refusal of the one live exit read is its own (paper_exit.live_exit_prices)
     keys = [None if reasons[i] is not None else legs[i].instrument_id for i in body.legs]
-    live = await paper_exit.live_exit_prices(ctx, feed, stored.saved.definition.underlying, keys,
-                                             connected_rule="provider", on_read_error="raise")
+    live = await paper_exit.live_exit_prices(ctx, feed, stored.saved.definition.underlying, keys)
     if isinstance(live, may_act.Refused):
         may_act.require(live)
     ids = [bk.contract_ids[i] for i in body.legs]
-    # the closes from this route's own pre-read book (side and whole open quantity), used as given by the door: a leg
-    # that shrank or went flat since is refused by the store, a racing exit makes this one exceed the open quantity
-    held = {bk.contract_ids[i]: bk.legs[i].quantity if bk.legs[i].side == "BUY" else -bk.legs[i].quantity
-            for i in body.legs}
     by_leg = {bk.contract_ids[i]: live[legs[i].instrument_id] for i in body.legs}  # type: ignore[index] - live: dict
 
     async def exit_orders() -> Sequence[paper_store.StoredOrder]:
         done = await paper_exit.exit_strategy(
             db, user_ref=user_ref, strategy_id=strategy_id, kind="exit",
             prices={c: p.price for c, p in by_leg.items()},  # type: ignore[misc] - live: price set
-            placed_at={c: p.at or answered for c, p in by_leg.items()}, closes=open_legs_to_close(held, ids),
+            placed_at=answered, only=_locked_ids(ids),  # #726: the time the route answers, never the quote time
             write=lambda orders: paper_limit.place_checked(db, user_ref, strategy_id, orders, entry=None, ctx=ctx,
                                                           at=answered, reader=tracked_reader, rates=rates))  # an exit
         if isinstance(done, paper_exit.Exited):

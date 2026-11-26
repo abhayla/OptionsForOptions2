@@ -615,7 +615,7 @@ def _reference() -> str:
 
 
 def _internal_response(exc: BaseException, request: Request) -> ClosedResponse:
-    if _busy_database_error(exc):  # S-02: the one door every unhandled error passes (see BUSY_SQLSTATES)
+    if busy_database_error(exc):  # S-02: the one door every unhandled error passes (see BUSY_SQLSTATES)
         log.warning("store busy (%s) on %s %s", type(exc).__name__, request.method, request.url.path)
         return _body(render("store_busy"), Failure.CONFLICT.status)
     reference = _reference()
@@ -669,7 +669,7 @@ def _allowed_methods(exc: StarletteHTTPException) -> tuple[str, ...] | None:
 BUSY_SQLSTATES = frozenset({"55P03", "57014", "40P01"})
 
 
-def _busy_database_error(exc: BaseException | None) -> bool:
+def busy_database_error(exc: BaseException | None) -> bool:
     """True when ``exc`` is, or was raised from, a SQLAlchemy DBAPIError whose sqlstate is one of BUSY_SQLSTATES. Any
     other database error is not busy (it stays the internal answer). The write itself is rolled back by the request's
     session (``_run`` and ``get_db`` close it), so the refusal never hides a half-written change."""

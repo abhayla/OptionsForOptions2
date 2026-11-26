@@ -51,10 +51,8 @@ CATEGORY = re.compile(r"own_process|display|real_path|awaiting_phase_\d+")
 Key = tuple[str, str, str]  # (file under backend/, enclosing function, name)
 
 #: side-flip leftovers in the four paper modules after Phase 4 (none awaits a phase)
-EXEMPT: dict[Key, tuple[str, str]] = {
-    ("ofo_app/routes/tracking.py", "exit_tracking", SIDE_FLIP): (
-        "own_process", "a signed held quantity (BUY +qty, SELL -qty) for the exit's lot check; no order is built"),
-}
+# #729: the tracking exit reads the net under the lock (no signed held qty left)
+EXEMPT: dict[Key, tuple[str, str]] = {}
 
 
 def _name_of(node: ast.expr) -> str | None:
@@ -220,13 +218,6 @@ def test_mutation_an_exempt_flip_passes_and_a_deleted_one_is_stale():
     assert problems({"ofo_app/routes/paper.py": FLIP}, exempt=FLIP_ENTRY, homes={}) == []
     found = problems({"ofo_app/routes/paper.py": "def f(side):\n    return side\n"}, exempt=FLIP_ENTRY, homes={})
     assert found == [f"stale exemption: ofo_app/routes/paper.py::f no longer calls {SIDE_FLIP}; delete the entry"]
-
-
-def test_mutation_deleting_the_real_exempt_site_goes_red_with_the_stale_message():
-    sources = load_sources()
-    sources["ofo_app/routes/tracking.py"] = "def exit_tracking():\n    return None\n"
-    assert problems(sources) == [
-        f"stale exemption: ofo_app/routes/tracking.py::exit_tracking no longer calls {SIDE_FLIP}; delete the entry"]
 
 
 def test_mutation_a_home_function_that_stopped_building_is_stale():

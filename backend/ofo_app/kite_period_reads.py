@@ -76,9 +76,10 @@ def vix_values(quote: Any) -> tuple[Decimal | None, Decimal | None]:
     """(India VIX now, its previous close) from Kite's quote object (``last_price``, ``ohlc.close``): each exact
     Decimal, or None when absent, not a number, or not above 0 (a 0 is Kite's "no value", never a VIX of 0)."""
     def one(value: Any) -> Decimal | None:
-        if isinstance(value, bool) or not isinstance(value, (Decimal, int)) or value <= 0:
+        if isinstance(value, bool) or not isinstance(value, (Decimal, int)):
             return None
-        return Decimal(value)
+        number = Decimal(value)
+        return number if number.is_finite() and number > 0 else None  # NaN / Infinity is no VIX (ADR-008)
     if not isinstance(quote, dict):
         return None, None
     ohlc = quote.get("ohlc")

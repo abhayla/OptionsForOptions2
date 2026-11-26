@@ -315,6 +315,20 @@ describe('Option Chain screen', () => {
     expect(w.get('[data-testid="pe-last-trade"]').text()).toBe('Last trade 09:19:53 IST')
   })
 
+  it('#748: a held contract with no first price (cell health null) says it waits for the first live price, never "Unavailable"; an unknown one still says unavailable', async () => {
+    script({ chain: () => Promise.resolve({ data: notConnected() }) })
+    const w = await mountPage()
+    sock().serverOpen()
+    const a = answer()
+    a.rows[0].ce = { ...a.rows[0].ce, ltp: null, health: null, at: null }
+    a.rows[0].pe = { ...a.rows[0].pe, ltp: null, health: 'unavailable', at: null }
+    sock().serverPush({ ...a, expiry: '2026-10-20' })
+    await flushPromises()
+    expect(w.get('[data-testid="ce-health"]').text()).toBe('Waiting for the first live price')
+    expect(w.get('[data-testid="ce-health"]').text()).not.toMatch(/Unavailable/)
+    expect(w.get('[data-testid="pe-health"]').text()).toBe(healthSentence('unavailable'))
+  })
+
   it('shows the reason when the server sends no rows, the cell health word, and the unreadable catalogue', async () => {
     script({ chain: () => Promise.resolve({ data: notConnected() }) })
     const w = await mountPage()
