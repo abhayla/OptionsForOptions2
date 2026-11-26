@@ -25,7 +25,8 @@ const stopRowOk = (r) => r && Number.isInteger(r.id) && typeof r.kind === 'strin
 export function takeStopFired(data) {
   if (!data || !Array.isArray(data.items) || !data.items.every(stopRowOk)) return []
   const rows = data.items.filter((r) => r.kind === 'stop_fired')
-  const top = rows.reduce((m, r) => Math.max(m, r.id), stopSeen ?? 0)
+  let top = stopSeen ?? 0 // the highest row id seen (an id, not an amount: ADR-008 is about money)
+  for (const r of rows) if (r.id > top) top = r.id
   const first = stopSeen === null
   const fresh = first ? [] : rows.filter((r) => r.id > stopSeen)
   stopSeen = top
