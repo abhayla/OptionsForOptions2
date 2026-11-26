@@ -16,7 +16,7 @@ import pytest
 import test_ic_approaches_paper_legs as b3
 import test_ic_paper_loop_core as core
 from httpx import ASGITransport, AsyncClient
-from ofo_app import playbook_store, scenario_mode
+from ofo_app import actionable_alerts, playbook_store, scenario_mode
 from ofo_app.playbook_store import Suggestion
 
 OK, CREATED = 200, 201
@@ -183,7 +183,7 @@ async def test_lapsed_when_the_crossing_clears_and_it_is_no_longer_open(app_engi
     await core._move(FRAME)
     rid = await _record(sid)
     async with core._engine().begin() as conn:
-        await playbook_store.lapse(conn, "owner", rid, playbook_store.LAPSE_CONDITION_STOPPED)
+        await actionable_alerts.close_by_system(conn, "owner", sid, playbook_store.LAPSE_STRATEGY_CLOSED)  # 0054: no other lapse
     from ofo_app.main import create_app  # noqa: PLC0415
     scenario_mode._loaded.clear()
     async with AsyncClient(transport=ASGITransport(app=create_app()), base_url="http://t") as ac:
