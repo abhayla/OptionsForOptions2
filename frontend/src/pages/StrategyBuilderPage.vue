@@ -502,7 +502,11 @@ function exitPaper(contractId, lots) {
 // them), so no "pending change" outlives a dialog the page closed. The user's own Cancel is userCancelPaperDialog: u513 (owner test note
 // #85) keeps the exits the user chose as edits, counted and discardable. A dialog of "Review and add" keeps its edits. While a POST is in
 // flight nothing closes it: its answer (or the unknown-outcome text) decides.
-const userCancelPaperDialog = () => { if (!paperBusy.value) paperDialog.value = false }
+const userCancelPaperDialog = () => {
+  if (paperBusy.value) return
+  paperDialog.value = false
+  if (exitOrigin.value) { exitOrigin.value = false; legsBeforeExit = null } // the kept exits are ordinary edits now: the next Exit takes a fresh snapshot
+}
 function cancelPaperDialog() {
   if (paperBusy.value) return
   const wasExit = exitOrigin.value
@@ -516,8 +520,8 @@ function cancelPaperDialog() {
 }
 // ADR-328 (4) / D-05: a paper dialog posts nothing while the read failed or the trade changed elsewhere (any dialog: its orders are
 // built from the net on screen); it closes through the same cancel as the user's, the panel's reason line says why.
-watch(exitBlocked, (blocked) => {
-  if (blocked && paperDialog.value && !paperBusy.value && !paperStale.value && paperState.value !== PAPER_STATE.UNKNOWN) cancelPaperDialog()
+watch([exitBlocked, paperBusy], ([blocked]) => { // also when a POST answers: a block that arrived meanwhile is acted on now
+  if (blocked &&paperDialog.value && !paperBusy.value && !paperStale.value && paperState.value !== PAPER_STATE.UNKNOWN) cancelPaperDialog()
 })
 // Drafts Mode summary: the book's Profit left / Loss left first (or the words for its extremes_reason), its original Max Profit /
 // Max Loss below; every figure the book reply's text as sent. Null outside Drafts Mode: the summary is unchanged.
@@ -1228,7 +1232,7 @@ const leaveGuard = useLeaveBuilder({
         </div>
         <PaperBookPanel v-if="paper" :book="paper.book" :net="paper.net" :read-failed="paperBookFailed" :contracts-changed="paperContractsChanged" :show-orders="showOrdersTick" @exit="exitPaper" @exit-all="exitAllPaper" />
         </div>
-        <PaperConfirmDialog :open="paperDialog" :orders="paperRows" :strategy-id="route.query.strategy" :busy="paperBusy" :error="paperError" :state="paperState" @confirm="confirmPending" @cancel="userCancelPaperDialog" @orderbook="openPaperOrderbook" />
+        <PaperConfirmDialog :open="paperDialog" :orders="paperRows" :strategy-id="route.query.strategy" :busy="paperBusy" :blocked="exitBlocked" :error="paperError" :state="paperState" @confirm="confirmPending" @cancel="userCancelPaperDialog" @orderbook="openPaperOrderbook" />
         <SaveDraftBar ref="barRef" :legs="legs" :rules-ref="String(route.query.rules_ref || '')" :current="openStrategy" :shown-name="shapeName ?? ''" :paper-mode="paper !== null" :live-price-by-id="livePriceById" class="max-[1099px]:contents" @open="openFromBar" @saved="onSaved" @paper-added="onPaperAdded" @renamed="onRenamed" @deleted="onDeleted">
           <template #add-edit>
             <button type="button" class="h-10 flex-1 basis-0 rounded-lg border border-line font-medium" aria-haspopup="dialog" :aria-expanded="pickerOpen ? 'true' : 'false'" data-testid="add-edit" @click="pickerOpen = !pickerOpen">Add/Edit</button>

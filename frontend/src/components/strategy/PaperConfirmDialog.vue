@@ -89,6 +89,7 @@ const props = defineProps({
   open: { type: Boolean, default: false },
   orders: { type: Array, default: () => [] },
   busy: { type: Boolean, default: false },
+  blocked: { type: Boolean, default: false }, // ADR-328 (4): the page's blocked rule (read failed / trade changed elsewhere): no Confirm
   error: { type: String, default: '' },
   // fix/paper-dialog-safe: '' ready | 'refused' (4xx, shown in `error`) | 'unknown' (no answer / 5xx) | 'placed' (stored, refresh failed)
   state: { type: String, default: '' },
@@ -178,7 +179,7 @@ watch(() => props.state, (s) => {
 }, { immediate: true })
 onBeforeUnmount(() => clearTimeout(holdTimer))
 const canConfirm = computed(() => {
-  if (props.busy || !ready.value || props.state === 'placed' || held.value) return false
+  if (props.busy || props.blocked || !ready.value || props.state === 'placed' || held.value) return false
   return props.state !== 'refused' || refusedAt.value === null || snapshot() !== refusedAt.value
 })
 
