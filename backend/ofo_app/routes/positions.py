@@ -104,7 +104,7 @@ def _refuse(template: str) -> StrategyRefused:
 
 
 @dataclasses.dataclass(frozen=True)
-class _BrokerRead:
+class _ReadSnapshot:
     net: Any
     orders: tuple[Any, ...]
     index: ContractIndex
@@ -114,7 +114,7 @@ class _BrokerRead:
     flat_keys: frozenset[Any] = frozenset()  # Lane S: the contracts those flat rows are on (reported apart)
 
 
-def _read(session: KiteSession, catalogue: Any) -> _BrokerRead:
+def _read(session: KiteSession, catalogue: Any) -> _ReadSnapshot:
     """Both Zerodha reads, or a refusal: a failed or unreadable orders reply is refused exactly like a positions
     reply, never replaced by an empty book. An empty list read successfully is a real answer (no orders today)."""
     index = ContractIndex.from_catalogue(catalogue)
@@ -126,15 +126,15 @@ def _read(session: KiteSession, catalogue: Any) -> _BrokerRead:
     except (KiteReadError, KiteReplyError, ValueError) as exc:
         raise _refuse(unconfirmed_template(exc)) from None
     log_ignored(read, "positions read")  # rows never ours, named in one line (as the Execute and return routes do)
-    return _BrokerRead(read.net, orders, index, answer.read_at, read.money, read.flat_platform, read.flat_keys)
+    return _ReadSnapshot(read.net, orders, index, answer.read_at, read.money, read.flat_platform, read.flat_keys)
 
 
-async def _attribute(db: Any, user_ref: str, broker: _BrokerRead, sources: ra.Sources,
+async def _attribute(db: Any, user_ref: str, snap: _ReadSnapshot, sources: ra.Sources,
                      now: datetime.datetime) -> ra.Attribution:
     """The ONE call into W-108: the route hands over only the account (connection + user), Zerodha's net and Zerodha's
     order book; W-108 loads the strategies and plans itself (never held units, plans or outside lots from here or the
     client)."""
-    return await ra.attribute_and_compare(ra.Account(db, user_ref), STANDALONE, broker.net, broker.orders, sources,
+    return await ra.attribute_and_compare(ra.Account(db, user_ref), STANDALONE, snap.net, snap.orders, sources,
                                           at=now)
 
 
@@ -168,11 +168,11 @@ STANDALONE: dict[Any, int] = {}  # no recorded standalone store yet (REQ-060 AC-
 # sole-holder check both read, so a future standalone cannot pass the check unseen
 
 
-def _foreign_fill(symbol: str, sid: str, broker: _BrokerRead) -> bool:
+def _foreign_fill(symbol: str, sid: str, snap: _ReadSnapshot) -> bool:
     """(e): any order on this contract today with a filled quantity (any status) whose tag does not decode (new or
     legacy grammar) to THIS strategy: another strategy's, an outside or an unreadable fill, all inside Zerodha's
     buy_value / sell_value for the contract, so the row is not the strategy's alone."""
-    for order in broker.orders:
+    for order in snap.orders:
         if order.tradingsymbol != symbol or not order.filled_quantity:
             continue
         if ra.tag_strategy_id(order.tag) == int(sid):
@@ -181,7 +181,7 @@ def _foreign_fill(symbol: str, sid: str, broker: _BrokerRead) -> bool:
     return False
 
 
-def _sole_reason(key: Any, sid: str, result: ra.Attribution, broker: _BrokerRead,
+def _sole_reason(key: Any, sid: str, result: ra.Attribution, snap: _ReadSnapshot,
                  standalone: Any = None) -> str | None:
     """None when this strategy is the sole holder of Zerodha's whole figure for the contract, else the reason
     template of the row: "real_pnl_shared" or "real_pnl_part_closed". Sole holder = (a) exactly one strategy holds the
@@ -193,25 +193,25 @@ def _sole_reason(key: Any, sid: str, result: ra.Attribution, broker: _BrokerRead
     holders = [h for h, held in result.held.items() if held.get(key, 0) != 0]
     if holders != [sid] or result.outside.get(key, 0) or standalone.get(key, 0):
         return "real_pnl_shared"
-    symbol = _symbol(key, broker.index)
-    if units != broker.net.get(key, 0) or _foreign_fill(symbol, sid, broker):
+    symbol = _symbol(key, snap.index)
+    if units != snap.net.get(key, 0) or _foreign_fill(symbol, sid, snap):
         return "real_pnl_shared"
-    if key in broker.flat_keys:
+    if key in snap.flat_keys:
         return "real_pnl_part_closed"
     return None
 
 
-def sole_holder(key: Any, sid: str, result: ra.Attribution, broker: _BrokerRead, standalone: Any = None) -> bool:
+def sole_holder(key: Any, sid: str, result: ra.Attribution, snap: _ReadSnapshot, standalone: Any = None) -> bool:
     """The one predicate every stated Real P&L row passes through (ADR-330 (24)): see ``_sole_reason``."""
     own = result.held.get(sid, {}).get(key, 0)
-    return own != 0 and _sole_reason(key, sid, result, broker, standalone) is None
+    return own != 0 and _sole_reason(key, sid, result, snap, standalone) is None
 
 
-def _row_pnl(key: Any, sid: str, skip: str | None, result: ra.Attribution, broker: _BrokerRead) -> dict[str, Any]:
+def _row_pnl(key: Any, sid: str, skip: str | None, result: ra.Attribution, snap: _ReadSnapshot) -> dict[str, Any]:
     """One real contract row's P&L (ADR-330 (24)): stale, pending and shared rows and every engine state other
     than "stated" carry no figure and the catalogue's reason; the figure is Zerodha's own, checked by the engine.
     ``skip`` is "stale" or "pending" (checked in that order) or None."""
-    symbol = _symbol(key, broker.index)
+    symbol = _symbol(key, snap.index)
 
     def none(state: str, template: str, **slots: Any) -> dict[str, Any]:
         return {**_NO_FIGURE, "pnl_state": state, "pnl_reason": render_explanation(template, **slots)}
@@ -220,10 +220,10 @@ def _row_pnl(key: Any, sid: str, skip: str | None, result: ra.Attribution, broke
         return none("stale", "real_pnl_stale", seconds=STALE_AFTER_SECONDS)
     if skip == "pending":
         return none("pending", "real_pnl_pending")
-    if not sole_holder(key, sid, result, broker):  # another strategy, outside lots or trades, or a closed sibling
-        reason = _sole_reason(key, sid, result, broker) or "real_pnl_shared"  # row: never a split
+    if not sole_holder(key, sid, result, snap):  # another strategy, outside lots or trades, or a closed sibling
+        reason = _sole_reason(key, sid, result, snap) or "real_pnl_shared"  # row: never a split
         return none("shared", reason, **({"contract": symbol} if reason == "real_pnl_part_closed" else {}))
-    figure = real_pnl.broker_contract_pnl(list((broker.money or {}).get(key, ())))
+    figure = real_pnl.broker_contract_pnl(list((snap.money or {}).get(key, ())))
     if figure.state == real_pnl.STATED and figure.value is not None:
         return {"pnl": figure.value, "pnl_text": paper.signed(figure.value), "pnl_state": "stated",
                 "pnl_reason": None, "_value": figure}
@@ -231,7 +231,7 @@ def _row_pnl(key: Any, sid: str, skip: str | None, result: ra.Attribution, broke
     return none(figure.state, template, contract=symbol)
 
 
-def _groups(result: ra.Attribution, index: ContractIndex, broker: _BrokerRead,
+def _groups(result: ra.Attribution, index: ContractIndex, snap: _ReadSnapshot,
             stale: bool) -> tuple[list[dict[str, Any]], list[tuple[Any, real_pnl.BrokerPnl]]]:
     """ADR-138 (2): one group per strategy, holding only the contracts linked to it: its own units (W-108's ``held``)
     or its plans that keep a contract pending (ADR-110: no own/outside split there). A blocked strategy with no such
@@ -257,7 +257,7 @@ def _groups(result: ra.Attribution, index: ContractIndex, broker: _BrokerRead,
         for key, row in rows[sid].items():
             symbol = _symbol(key, index)
             skip = "stale" if stale else ("pending" if row["pending"] else None)
-            pnl = _row_pnl(key, sid, skip, result, broker)
+            pnl = _row_pnl(key, sid, skip, result, snap)
             figures.append((key, pnl.pop("_value", None)
                            or real_pnl.BrokerPnl(pnl["pnl_state"], None, None, None)))
             contracts.append({"tradingsymbol": symbol, "zerodha_units": result.raw_net.get(key, 0),
@@ -267,12 +267,12 @@ def _groups(result: ra.Attribution, index: ContractIndex, broker: _BrokerRead,
     return groups, figures
 
 
-def _real_total(figures: list[tuple[Any, real_pnl.BrokerPnl]], has_outside: bool, broker: _BrokerRead,
+def _real_total(figures: list[tuple[Any, real_pnl.BrokerPnl]], has_outside: bool, snap: _ReadSnapshot,
                 stale: bool) -> dict[str, Any]:
     """ADR-330 (10) / LQS-2 (a): the exact sum of the rows' figures, only when EVERY row is stated; stale, empty and
     partial carry no figure and say why. The note says what the total leaves out (outside lots, contracts closed
     today)."""
-    clock_text = broker.read_at.astimezone(IST).strftime("%H:%M:%S")
+    clock_text = snap.read_at.astimezone(IST).strftime("%H:%M:%S")
     total = real_pnl.broker_total([f for _, f in figures])
     missing, contracts = real_pnl.contracts_without_figure(figures)
     if stale:
@@ -283,23 +283,23 @@ def _real_total(figures: list[tuple[Any, real_pnl.BrokerPnl]], has_outside: bool
         state, reason = "partial", render_explanation("real_pnl_total_partial", missing=missing, total=contracts)
     else:
         state, reason = "stated", None
-    leaves_out = has_outside or broker.flat_platform > 0
+    leaves_out = has_outside or snap.flat_platform > 0
     return {"value": total if state == "stated" else None,
             "pnl_text": paper.signed(total) if state == "stated" else None, "state": state,
-            "reason": reason, "source": SOURCE, "read_at": broker.read_at,
+            "reason": reason, "source": SOURCE, "read_at": snap.read_at,
             "caption": render_explanation("real_pnl_caption", time=clock_text),
             "excludes_note": render_explanation("real_pnl_excludes") if leaves_out else None}
 
 
-def _answer(result: ra.Attribution, broker: _BrokerRead, now: datetime.datetime) -> PositionsOut:
-    stale = (now - broker.read_at).total_seconds() > STALE_AFTER_SECONDS
-    groups, figures = _groups(result, broker.index, broker, stale)
+def _answer(result: ra.Attribution, snap: _ReadSnapshot, now: datetime.datetime) -> PositionsOut:
+    stale = (now - snap.read_at).total_seconds() > STALE_AFTER_SECONDS
+    groups, figures = _groups(result, snap.index, snap, stale)
     blocked_ids = sorted(int(sid) for sid in result.blocked)
     has_outside = any(result.outside.values())
-    real = _real_total(figures, has_outside, broker, stale)
+    real = _real_total(figures, has_outside, snap, stale)
     return PositionsOut.model_validate({
-        "read_at": broker.read_at, "real_pnl": real, "pnl_text": real["pnl_text"], "strategies": groups,
-        "has_outside": has_outside, "outside_lots": _outside_lots(result, broker.index),
+        "read_at": snap.read_at, "real_pnl": real, "pnl_text": real["pnl_text"], "strategies": groups,
+        "has_outside": has_outside, "outside_lots": _outside_lots(result, snap.index),
         "blocked": bool(blocked_ids), "blocked_strategy_ids": blocked_ids})
 
 
@@ -312,13 +312,13 @@ async def read_positions(
     if session is None:
         raise _refuse("gate_broker_not_connected")
     catalogue = await load_catalogue(db)
-    broker = _read(session, catalogue)
+    snap = _read(session, catalogue)
     now = clock()
     try:
-        result = await _attribute(db, user_ref, broker, ra.Sources(catalogue, clock), now)
+        result = await _attribute(db, user_ref, snap, ra.Sources(catalogue, clock), now)
     except (ra.AttributionError, store.StrategyStoreError, ValueError):
         raise _refuse("strategy_stored_unreadable") from None
-    return _answer(result, broker, now)
+    return _answer(result, snap, now)
 
 
 __all__ = ["PositionsOut", "RealPnlOut", "StrategyContractOut", "StrategyPositionsOut", "read_positions"]
