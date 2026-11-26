@@ -94,7 +94,7 @@ async def test_a_book_with_locked_in_profit_still_a_profit_after_the_stop(db):
     app, stored, ids = await _locked_profit_book(db)
     body = (await _ask(app, stored.id, ids[SHORT_CALL], "140.70")).json()
     assert body["state"] == "yes"
-    assert body["warning_text"] == ("If this stop fires, there is still no loss: at least Rs 7,429.50 profit "
+    assert body["warning_text"] == ("If this stop fires, the book shows a profit of at least Rs 7,429.50 "
                                     "(now at least Rs 3,575.00).")
 
 
@@ -102,14 +102,14 @@ async def test_a_book_with_locked_in_profit_turned_into_a_loss_by_the_stop(db):
     app, stored, ids = await _locked_profit_book(db)
     body = (await _ask(app, stored.id, ids[SHORT_CALL], "400.00")).json()  # buys back for 26,000.00: 16,575 - 26,000
     assert body["warning_text"] == ("If this stop fires, max loss becomes Rs 9,425.00 "
-                                    "(now no loss: at least Rs 3,575.00 profit).")
+                                    "(now a profit: at least Rs 3,575.00).")
 
 
 async def test_a_book_with_locked_in_profit_turned_unlimited_by_the_stop(db):
     app, stored, ids = await _locked_profit_book(db)
     body = (await _ask(app, stored.id, ids[LONG_CALL], "5.00")).json()
     assert body["warning_text"].startswith("If this stop fires, there is no fixed maximum loss "
-                                           "(now no loss: at least Rs 3,575.00 profit).")
+                                           "(now a profit: at least Rs 3,575.00).")
     assert "-" not in body["warning_text"].split("Sold option")[0]
 
 
