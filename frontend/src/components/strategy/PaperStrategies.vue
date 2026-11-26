@@ -14,8 +14,8 @@
     <p v-if="loading" class="mt-2" data-testid="paper-loading">Reading your paper strategies.</p>
     <!-- D-05 r3: a failed refresh is a banner above the last loaded list, whose figures are paused (full-page error only when nothing ever loaded), so an open Stops panel and what was typed in it stay -->
     <ErrorMessage v-if="!loading && errorParts" class="mt-2" :parts="errorParts" compact prefix="paper-error" />
-    <p v-if="!loading && items && !items.length" class="mt-2" data-testid="paper-empty">{{ EMPTY }}</p>
-    <template v-else-if="!loading && items">
+    <p v-if="!exitOnlyFor && !loading && items && !items.length" class="mt-2" data-testid="paper-empty">{{ EMPTY }}</p>
+    <template v-else-if="!exitOnlyFor && !loading && items">
       <!-- Sensibull 050-053: the totals sit above the rows. A figure the reply omits is a dash with the server's reason. -->
       <dl v-if="totals && !compact" class="mt-2 flex flex-wrap gap-6 rounded bg-surface-muted px-3 py-2" data-testid="paper-totals">
         <div v-for="f in totalFigures.filter((x) => !(headlineAbove && x.id === 'total'))" :key="f.id" class="text-right">
@@ -155,6 +155,8 @@
                 <ExitButton v-if="g.openCount" :blocked="exitGate.blocked.value" :reason="exitGate.reason.value" :extra-disabled="!tickedOpen(g).length" class="rounded border border-line px-2 py-1" :data-testid="`exit-selected-${g.id}`" @click="ask(g, tickedOpen(g))">Exit ({{ tickedOpen(g).length }})</ExitButton>
               </div>
             </div>
+            <!-- P10 (ADR-330 (13)): the Plan watch of an open strategy; it re-reads on this list's own good-read token -->
+            <PlanWatch v-if="g.openCount" :strategy-id="g.id" :refresh-token="goodReadToken" :stale="stale" compact class="mt-2" />
             <PaperStops v-if="stopsOpen[g.id]" :strategy-id="g.id" :underlying="g.underlying" :legs="stopLegs(g)" :leg-names="legNamesOf(g)" :good-read-token="goodReadToken" @changed="onStopsChanged" />
           </template>
         </div>
@@ -174,6 +176,7 @@ import { computed, onMounted, ref, shallowRef, watch } from 'vue'
 import api, { NEUTRAL_ERROR, NEUTRAL_PARTS } from '@/services/api'
 import ErrorMessage from '@/components/common/ErrorMessage.vue'
 import PaperStops from '@/components/strategy/PaperStops.vue'
+import PlanWatch from '@/components/strategy/PlanWatch.vue'
 import AfterChargesTap from '@/components/common/AfterChargesTap.vue'
 import PaperConfirmDialog from '@/components/strategy/PaperConfirmDialog.vue'
 import HeldNote from '@/components/strategy/HeldNote.vue'
@@ -189,8 +192,12 @@ import { signOf } from '@/lib/chartCard'
 
 // ADR-330 (10): headlineAbove = the Positions page shows the Paper total in its own header, so this list omits its Total P&L figure
 // (and the closed-strategies line that goes with it); it emits `summary` so that header prints the server's figure, never a sum.
-const props = defineProps({ compact: { type: Boolean, default: false }, headlineAbove: { type: Boolean, default: false } })
-const emit = defineEmits(['summary'])
+// W2-B (ADR-330 (3), (12)): `exitOnlyFor` = a strategy id: the Alerts page mounts this same door for ONE exit, drawing only the
+// banner, the door's note and the shared confirm list (no list, no totals). The id is one-shot, acted on by the first good read
+// by the same rule as the `exit=` link (open legs, gate not blocked); `exit-closed` is emitted when its dialog ends (confirmed or cancelled).
+const props = defineProps({ compact: { type: Boolean, default: false }, headlineAbove: { type: Boolean, default: false }, exitOnlyFor: { type: String, default: null } })
+const emit = defineEmits(['summary', 'exit-closed'])
+let exitForPending = props.exitOnlyFor
 // GC-TRACK1 k27: the OPEN leg count; an unreadable open_count shows nothing (never the total). "open" only when closed ones exist.
 const legsText = (g) => {
   const n = g.openCount
@@ -286,7 +293,7 @@ const router = useRouter()
 
 function show({ data, token }) {
   const hadExit = !props.compact && router?.currentRoute.value.query.exit !== undefined
-  const exitId = takeExitParam()
+  const exitId = takeExitParam() ?? takeExitFor()
   const read = readPaperList(data)
   if (read === null) {
     confirm.value = null // like fail(): no open exit from old prices
@@ -300,7 +307,7 @@ function show({ data, token }) {
     goodReadToken.value = token // the token travels with the answer from the read that made it
     settle(items.value)
     openExitFromLink(exitId)
-    if (!hadExit) openStopsFromLink()
+    if (!hadExit && !props.exitOnlyFor) openStopsFromLink()
   }
   loading.value = false
 }
@@ -310,6 +317,7 @@ function show({ data, token }) {
 // equal, and only on a group the list itself draws as open (isOpenGroup, the list's own rule). It never throws into show().
 const EXIT_NOTE = 'This strategy has no open paper legs to exit.'
 const exitNote = ref('')
+function takeExitFor() { const id = exitForPending; exitForPending = null; return id === null ? null : String(id) }
 function takeExitParam() {
   if (props.compact || !router) return null
   const q = router.currentRoute.value.query
@@ -352,6 +360,7 @@ function openExitFromLink(id) {
 }
 // D-05 r2: a failed read keeps the last loaded list (and any open Stops panel) under an error banner marked as last loaded
 function fail(e) {
+  takeExitFor()
   takeExitParam() // one-shot: a failed first read consumes the parameter and opens nothing
   confirm.value = null
   dialogError.value = ''
@@ -378,6 +387,7 @@ function settle(now) {
     if (!stillOpen) cancelExit()
   }
 }
+watch(confirm, (now, was) => { if (was && !now && props.exitOnlyFor) emit('exit-closed') })
 function cancelExit() {
   confirm.value = null
   dialogError.value = ''

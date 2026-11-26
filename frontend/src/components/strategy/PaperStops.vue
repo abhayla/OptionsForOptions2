@@ -4,7 +4,7 @@
      judged on its text (a multiple of 0.05, not zero) and sent as typed; every level and contract shown is the server's text
      (ADR-008). A refusal shows the server's words, never swallowed. -->
 <script setup>
-import { computed, nextTick, onMounted, ref, watch } from 'vue'
+import { computed, nextTick, onBeforeUnmount, onMounted, ref, watch } from 'vue'
 import api, { NEUTRAL_ERROR } from '@/services/api'
 import { paperPriceOk, paperPriceReason } from '@/lib/tracking'
 import { istClock } from '@/lib/displayFormat'
@@ -31,6 +31,7 @@ const LABEL = 'Paper - exits are recorded in the app, not sent to Zerodha'
 const AT_LEAST_ONE = 'Enter at least one level'
 const LIST_STALE = 'Could not refresh this list. It shows the last read.'
 const path = triggersPath(props.strategyId)
+const riskPath = `/paper/strategies/${props.strategyId}/leg-stop-risk`
 
 const triggers = ref(null) // null = not read (or unreadable)
 const error = ref('')
@@ -52,6 +53,46 @@ const ceReason = computed(() => {
   return bad === undefined ? '' : paperPriceReason(bad)
 })
 const stopReason = (i) => paperPriceReason(stopOf(i).level)
+
+// W2-B (ADR-330 (6), ADR-008): while a leg and a valid level are typed, ask the server what the trade becomes if this stop fires and
+// print its sentence as sent (GET .../leg-stop-risk). It informs only: Save never reads it, and every state but "yes" prints nothing
+// (no, cannot_tell, a failed or unreadable answer, a 404, a refused level). One debounced read per leg after the typing pauses (no timer
+// loop); an answer counts only if the box still holds the leg and level it was asked for, and only the newest ask per leg is kept.
+const RISK_DEBOUNCE_MS = 400
+const risk = ref({}) // leg index -> { key, text }: the server's sentence for exactly that contract and level
+const riskKey = (leg) => `${leg.contractId}|${typed(stopOf(leg.index).level)}`
+const riskText = (leg) => (risk.value[leg.index]?.key === riskKey(leg) && !stopReason(leg.index) ? risk.value[leg.index].text : '')
+const riskTimers = {}
+const riskLast = {} // leg index -> the key last asked
+const riskAsk = {} // leg index -> the newest ask's number
+function dropRisk(index) {
+  if (risk.value[index]) { const { [index]: _gone, ...rest } = risk.value; risk.value = rest }
+}
+async function askRisk(leg, key) {
+  const n = (riskAsk[leg.index] = (riskAsk[leg.index] ?? 0) + 1)
+  let text = ''
+  try {
+    const data = (await api.get(`${riskPath}?contract_id=${encodeURIComponent(leg.contractId)}&level=${encodeURIComponent(typed(stopOf(leg.index).level))}`)).data
+    if (data?.state === 'yes' && typeof data.warning_text === 'string') text = data.warning_text
+  } catch { /* an error says nothing: the stop can still be saved */ }
+  if (n !== riskAsk[leg.index] || key !== riskKey(leg)) return // an older answer, or the boxes moved on
+  if (text) risk.value = { ...risk.value, [leg.index]: { key, text } }
+  else dropRisk(leg.index)
+}
+watch(stop, () => {
+  for (const leg of props.legs) {
+    const key = riskKey(leg)
+    if (risk.value[leg.index] && risk.value[leg.index].key !== key) dropRisk(leg.index) // the level or leg changed: the old sentence goes at once
+    if (riskTimers[leg.index]?.key === key || riskLast[leg.index] === key) continue // already waiting or asked for this exact leg and level (a direction change asks nothing new)
+    clearTimeout(riskTimers[leg.index]?.id)
+    riskAsk[leg.index] = (riskAsk[leg.index] ?? 0) + 1 // anything still in flight is now old
+    delete riskTimers[leg.index]
+    delete riskLast[leg.index]
+    if (!typed(stopOf(leg.index).level) || stopReason(leg.index)) continue
+    riskTimers[leg.index] = { key, id: setTimeout(() => { delete riskTimers[leg.index]; riskLast[leg.index] = key; askRisk(leg, key) }, RISK_DEBOUNCE_MS) }
+  }
+}, { deep: true })
+onBeforeUnmount(() => Object.values(riskTimers).forEach((t) => clearTimeout(t.id)))
 
 // D-05: a Save ends in exactly one line: "Saved: ...", "Already set: ..." or "Not saved: ..." (ADR-317 (5))
 const NO_ANSWER = 'Not saved: could not get an answer from the server. Your levels are still in the boxes, press Save again.'
@@ -200,6 +241,7 @@ async function keep(t) {
         </select>
         <input :value="stopOf(l.index).level" type="text" inputmode="decimal" placeholder="Stop price" class="w-24 rounded border border-line px-1 py-0.5" :data-testid="`stop-level-${l.index}`" :aria-label="`Stop price for ${l.label}`" @input="setStop(l.index, { level: $event.target.value })" />
         <button type="button" class="rounded border border-line px-3 py-1" :disabled="busy || !!stopReason(l.index)" :data-testid="`stop-save-${l.index}`" @click="saveStop(l)">{{ busy ? 'Saving...' : 'Save' }}</button>
+        <span class="block min-h-4 basis-full text-xs text-ink-muted" :data-testid="`stop-risk-slot-${l.index}`"><span v-if="riskText(l)" :data-testid="`stop-risk-${l.index}`">{{ riskText(l) }}</span></span>
         <span class="block min-h-4 basis-full text-xs text-ink-muted" :data-testid="`stop-reason-slot-${l.index}`"><span v-if="stopReason(l.index) && typed(stopOf(l.index).level)" :data-testid="`stop-reason-${l.index}`">{{ stopReason(l.index) }}</span></span>
       </div>
     </div>
