@@ -4,6 +4,10 @@ Branch `fix/suite-findings-1126`. Each row is a place where the spec is silent, 
 Lane T finding. Where the recommended option is reversible it is built on this branch (column "Built"); the rest keep
 Lane T's expected-fail test until answered. Recommendation first in each option list.
 
+**Answered 26 Nov evening** (coordinator message about 18:00 IST): U-Q1 (a), U-Q2 (a), U-Q3 (a), U-Q4 (a), U-Q5 (a), U-Q8 (a)
+by the coordinator applying existing rules; U-Q6 by the owner (ADR-330 (34), REQ-154 stands); U-Q7 by the owner (ADR-330
+(37)). All built on this branch; see RESULTS-lane-u.md. The "Built" column below is the state before those answers.
+
 | # | Finding | Question | Real case | Options | Recommendation | Built | Spec basis |
 |---|---|---|---|---|---|---|---|
 | U-Q1 | NEW-T10 (Lane T Q1) | Does Escape cancel an open rename on My Strategies? | My Strategies > Rename > type > Escape: the box stayed open (test `RENAME-5`) | (a) Escape cancels, nothing is sent; (b) Escape does nothing | (a): every dialog and menu on the site already closes on Escape (tests `KEY-*`, `NAV-5`) | (a), commit 3dded597 | none: the spec says nothing about Escape in rename (searched: Escape, Esc, rename, cancel) |

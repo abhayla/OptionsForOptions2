@@ -48,22 +48,28 @@ own POST); inventory guard rows SHARED-41, BUILD-09 updated, MYSTR-15..18 added.
 | NEW-T41 | Option Chain | product question U-Q3, recommended built | Fixed, not tested | The chain had its own contract-name template | second name formatters: 1 -> 0 (builder's `contractName`) | ea58705d, fa5d4b8e |
 | N-04, N-05, N-07 | Builder | already fixed on base | PASS, marks removed | Lane R | - | 1bf1a4d2 |
 | NEW-T50 | Builder | defect, fix now | Fixed, not tested | `removeLeg` only filtered the list; the Undo could start only from Clear all | removal paths with Undo: 1 of 2 -> 2 of 2 (same Undo, same served window) | 80049722 |
-| NEW-T51 | Builder | product question U-Q4 | expected-fail kept until answered | "Pick from Option Chain" opens the picker's strike view by design (W-195 review 7) | - | - |
+| NEW-T51 | Builder | not a defect (U-Q4 answered (a), coordinator 26 Nov) | test corrected to the spec, PASS | "Pick from Option Chain" opens the picker's strike view inside the builder by design (W-195 review 7); the full chain is Market > Option Chain; REQ-029 AC-5 now says so | - | 7f887a37 |
 | NEW-T52 | Builder | defect, fix now | Fixed, not tested | Modal and Drawer were both `z-50`; the later-mounted drawer covered the dialog | dialogs that open under a drawer: 7 -> 0 (Modal primitive) | 80049722 |
-| NEW-T53 / NEW-T68 | Builder (phone) | product question U-Q5, option (b) built | Fixed, not tested | The 520 px drawer pushed its edge tab past a 390 px screen | drawers whose tab leaves a phone screen: 1 -> 0 (Drawer primitive) | 572c568f |
+| NEW-T53 / NEW-T68 | Builder (phone) | U-Q5 answered (a) (coordinator 26 Nov) | Fixed, not tested | The 520 px drawer pushed its edge tab past a 390 px screen | drawers whose way back leaves a phone screen: 1 -> 0 (Drawer primitive: below 640 px full width, the control in the drawer's own header; REQ-080 AC-10) | 572c568f, 2211842b |
 | NEW-T60 | Builder | defect, deferred + question U-Q6 | expected-fail kept; issue #751 | REQ-154 not built (it stands, ADR-330 (34); built with sign-in); ADR-329 (3) is what ships until then | - | - |
 | NEW-T61 | Builder | defect, fix now | Fixed, not tested | The catalogue text was "The strategy has no name." | empty-name texts differing from REQ-134 AC-1: 1 -> 0 | 359af7db |
 | NEW-T62, NEW-T63 | Builder | defect, deferred | expected-fail kept; issue #750 | REQ-138 not built (needs server storage: a migration) | - | - |
 | NEW-T64 | Builder | defect, fix now | Fixed, not tested | The saved list printed its own literal instead of the shared `noMatchText` | 1 -> 0 | 359af7db |
 | NEW-T65 (N-13) | Builder | already fixed on base | PASS, mark removed | Lane R | - | 1bf1a4d2 |
-| NEW-T66 | Builder | product question U-Q7, built in part | Fixed in part, not tested | A bare 404 carried no catalogue parts, so the page showed the connection line | bare-404 callers showing the connection line: all -> 0 (shared `mapError`) | af807755 |
+| NEW-T66 | Builder | U-Q7 answered (owner, ADR-330 (37)) | Fixed, not tested | The open-by-id route answered the generic not-available reply, and the page showed the connection line for it | missing-strategy opens without the specific sentence: 1 -> 0 (catalogue `strategy_not_found`, pin pending owner read; "Open My Strategies" link; REQ-134 AC-5). A bare 404 elsewhere stays the neutral message (af807755's blanket mapping reverted in e2f74915: it broke Home FAIL-3 and Live FAIL-4) | 9972cae7, e2f74915 |
 | NEW-T67 | Builder | defect, fix now | Fixed, not tested | `renameRow` cleared its pending id before the async open finished | 1 -> 0 | 359af7db |
 | NEW-T70 | Orders placeholder | defect (observation), fix now | Fixed, not tested | The note described the old strategy-linked scope | 1 -> 0 | 5d3a1f91, 9d485211 |
 | NEW-T71 | Placeholders | defect (observation), fix now | Fixed, not tested | One developer sentence on every placeholder | 15 -> 0 (`COMING_LINES` in nav.js, REQ-009 text; "your broker" wording per the broker-name guard; one page on the fallback line pending an allow-list line) | 5d3a1f91, 9d485211, 23ec7b9a |
+| U-Q8 (label year) | My Strategies, Live, Home, Positions | coordinator 26 Nov (a) | Fixed, not tested | List pages never learnt the server's shown date, so every label kept the year | list pages printing the year inside the shown year: 4 -> 0 (`shown_date` on GET /strategies and GET /paper/strategies; one reactive shown date in displayFormat.js) | 7397330f, 44afc32d |
 
 Detection: the un-marked Lane T tests are the detection for each class, plus `frontend/tests/api-unreadable-body.test.js`
 (the shared client's rule) and EXIT-6b (Cancel keeps the ticks). Spec text changed: REQ-009 (wording of unbuilt pages),
 REQ-030 AC-15 (the leg Undo), catalogue `strategy_name_empty`.
+
+## Re-test: U-Q8 (dates in lists)
+
+1. My Strategies, Live Strategies, Positions > Paper. Expected: labels read "IC wk1 (#172, 1 Dec)" and legs "NIFTY 1 Dec
+   25650 PE": no year for an expiry in this year; a next-year expiry keeps its year.
 
 ## Re-test: NEW-T11, NEW-T20, NEW-T24, NEW-T31 (unreadable answers)
 
@@ -107,16 +113,16 @@ REQ-030 AC-15 (the leg Undo), catalogue `strategy_name_empty`.
    shows; Undo puts it back in row 2 with its values.
 2. A draft with SELL 22800 CE: Add/Edit, pick SELL 22800 CE, Done. Expected: "Already in this strategy" with Increase
    quantity / Keep separate / Cancel, each clickable.
-3. On a phone (or a 390 px browser window): Add/Edit. Expected: "Show Editor >>" is visible at the right edge; it
-   returns to the editor.
+3. On a phone (or a browser window narrower than 640 px): Add/Edit. Expected: the drawer fills the screen and its own
+   header row carries "Show Editor"; it returns to the editor. On a PC the tab stays on the drawer's edge.
 
 ## Re-test: NEW-T61, NEW-T64, NEW-T66, NEW-T67 (builder save and saved list)
 
 1. Rename a saved strategy to an empty name; Save. Expected: "Give the strategy a name."
 2. Saved tab, search "zzz". Expected: "No saved strategy matches zzz".
 3. Saved tab, pencil on a row that is not open. Expected: it opens and the rename box follows.
-4. Open `/strategy/builder?strategy=999999` (no such strategy). Expected: "The page or action you asked for is not
-   available here." (not the connection message).
+4. Open `/strategy/builder?strategy=999999` (no such strategy). Expected: "This strategy was not found. It may have been
+   deleted." and an "Open My Strategies" button; the button opens My Strategies.
 
 ## Re-test: NEW-T70, NEW-T71 (placeholders)
 
@@ -125,3 +131,7 @@ REQ-030 AC-15 (the leg Undo), catalogue `strategy_name_empty`.
    page.", not "This page is a placeholder. It is built in a later work item."
 3. `/settings/zerodha-connection` reads "Zerodha connection is not built yet." for now: its own sentence needs one line on
    the broker-name allow-list (the owner's edit; feature code never names the broker, ADR-012/ADR-029).
+
+## To file as deferred issues
+
+None new after the coordinator's 17:17 rule (#750 and #751 were filed before it, with their stage rows).
