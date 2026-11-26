@@ -65,7 +65,8 @@
                 v-model="exitText[p.contract_id]" type="text" inputmode="numeric" class="h-7 w-10 rounded border border-line px-1 text-right"
                 :aria-label="`Lots to exit for ${p.contract_text}`" data-testid="net-exit-lots"
               />
-              <ExitButton :blocked="exitGate.blocked.value" :extra-disabled="!exitLotsOk(exitText[p.contract_id], lotsOf(p))" :show-reason="false" class="ml-1 h-7 rounded border border-line px-2 disabled:opacity-50" data-testid="net-exit" @click="exitOne(p)">{{ EXIT_LABEL }}</ExitButton>
+              <ExitButton :blocked="exitGate.blocked.value" :extra-disabled="!exitLotsOk(exitText[p.contract_id], lotsOf(p)) || changeWaiting(p)" :show-reason="false" :title="changeWaiting(p) ? EXIT_BLOCKED_BY_CHANGE : undefined" class="ml-1 h-7 rounded border border-line px-2 disabled:opacity-50" data-testid="net-exit" @click="exitOne(p)">{{ EXIT_LABEL }}</ExitButton>
+              <p v-if="changeWaiting(p)" class="text-xs text-ink-muted" data-testid="net-exit-reason">{{ EXIT_BLOCKED_BY_CHANGE }}</p>
             </td>
           </tr>
         </tbody>
@@ -106,13 +107,14 @@ import AfterChargesTap from '@/components/common/AfterChargesTap.vue'
 import { PAPER_NO_FIGURE, withAsOf } from '@/lib/paperList'
 import ClosedRows from '@/components/strategy/ClosedRows.vue'
 import HeldNote from '@/components/strategy/HeldNote.vue'
-import { EXIT_ALL_LABEL, EXIT_LABEL, NET_POSITIONS_LABEL, ORDERBOOK_LABEL, exitLotsFrom, exitLotsOk, openLots, paperKindLabel } from '@/lib/paperDrafts'
+import { EXIT_ALL_LABEL, EXIT_BLOCKED_BY_CHANGE, EXIT_LABEL, NET_POSITIONS_LABEL, ORDERBOOK_LABEL, exitLotsFrom, exitLotsOk, openLots, paperKindLabel } from '@/lib/paperDrafts'
 
 const props = defineProps({
   book: { type: Object, required: true }, // GET /paper/strategies/{id} as sent
   net: { type: Array, required: true }, // the net legs (netLegsFromBook): whole lots per open contract
   readFailed: { type: Boolean, default: false },
   contractsChanged: { type: Boolean, default: false },
+  changedIds: { type: Array, default: () => [] }, // D-48 review: contracts with a staged change other than an Exit (stagedChangeIds): their row Exit is off
   showOrders: { type: Number, default: 0 }, // fix/paper-dialog-safe: a bump switches to the Orderbook view (the unknown-outcome link)
 })
 const emit = defineEmits(['exit', 'exit-all'])
@@ -144,7 +146,9 @@ const kindText = (kind) => (kind === 'open' ? 'Open' : paperKindLabel(kind))
 // each lots box starts at the full open lots; a new book resets them
 const exitText = ref({})
 watch(() => props.net, (net) => { exitText.value = Object.fromEntries(net.map((l) => [l.contract_id, String(l.lots)])) }, { immediate: true })
+const changeWaiting = (p) => props.changedIds.includes(p.contract_id)
 function exitOne(p) {
+  if (changeWaiting(p)) return
   const lots = exitLotsFrom(exitText.value[p.contract_id], lotsOf(p)) // a count of lots, never money
   if (lots !== null) emit('exit', p.contract_id, lots)
 }

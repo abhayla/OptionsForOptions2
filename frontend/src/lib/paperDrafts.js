@@ -300,12 +300,30 @@ export function exitLotsFrom(text, max) {
   return null
 }
 export const exitLotsOk = (text, max) => exitLotsFrom(text, max) !== null
+/** D-48 review (ADR-328 (4)): the sentence of a row Exit on a contract that has a change waiting that is not an exit. */
+export const EXIT_BLOCKED_BY_CHANGE = 'This leg has a change waiting; review or discard it first.'
+
+/** The contract ids of the net position that have a staged change other than an Exit: the row moved to another contract (Change
+ *  expiry or a strike step keeps the row's id `paper-<contract id>`, so a row with that id on another contract is the moved one),
+ *  or more lots / the other side than the net position holds. A row Exit on such a contract is refused (legsAfterExit). */
+export function stagedChangeIds(net, legs) {
+  return (net ?? []).filter((n) => {
+    const rows = (legs ?? []).filter((l) => l.contract_id === n.contract_id)
+    const movedAway = (legs ?? []).some((l) => l.id === `paper-${n.contract_id}` && l.contract_id !== n.contract_id)
+    const flipped = rows.some((l) => l.action !== n.action)
+    let lots = 0 // the lots kept on this contract, summed over its rows
+    for (const l of rows) lots += Number.isInteger(l.lots) ? l.lots : 0
+    return movedAway || flipped || lots > n.lots
+  }).map((n) => n.contract_id)
+}
+
 /** The EDITED legs for "exit `lots` of `contractId`": every other contract keeps the legs on screen; this contract becomes its
  *  net leg less `lots` (gone at zero), in its place. Only legs change: the orders still come from paperOrdersFor(net, edited),
  *  never a second order-building path. Null when `lots` is not 1..open lots. */
 export function legsAfterExit(net, legs, contractId, lots) {
   const held = (net ?? []).find((l) => l.contract_id === contractId)
   if (!held || !Number.isInteger(lots) || lots < 1 || lots > held.lots) return null
+  if (stagedChangeIds(net, legs).includes(contractId)) return null // the ONE door: an Exit never combines with a staged move or add
   const rest = held.lots - lots
   const out = []
   let placed = false
@@ -323,7 +341,9 @@ export function legsAfterExit(net, legs, contractId, lots) {
  *  page's own copies, no number is formed. */
 export function stagedExitIds(net, legs) {
   const held = new Map((net ?? []).map((l) => [l.contract_id, l.lots]))
-  return (legs ?? []).filter((l) => held.has(l.contract_id) && l.lots < held.get(l.contract_id)).map((l) => l.contract_id)
+  const kept = new Map() // the lots kept per contract, summed over its rows (1 + 1 against 2 held is no Exit)
+  for (const l of legs ?? []) if (held.has(l.contract_id)) kept.set(l.contract_id, (kept.get(l.contract_id) ?? 0) + (Number.isInteger(l.lots) ? l.lots : 0))
+  return [...kept].filter(([id, lots]) => lots < held.get(id)).map(([id]) => id)
 }
 
 /** R-11: a leg is the book's paper fill while its entry and its time are still the ones the net position loaded. */
