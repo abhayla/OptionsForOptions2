@@ -45,7 +45,7 @@ from ofo.strategy import stored_form as sf
 from pydantic import BaseModel, ConfigDict, Field, model_validator
 
 from ofo_app import eligibility_from_zerodha as elig
-from ofo_app import paper_store, playbook_store, tracked_contracts
+from ofo_app import open_legs, paper_store, playbook_store, tracked_contracts
 from ofo_app import strategy_store as store
 from ofo_app.api_models import ApiModel, CatalogueText, Identifier, Money
 from ofo_app.db import get_db
@@ -687,7 +687,7 @@ async def confirm_version(strategy_id: int, number: int, db: Any = Depends(get_d
 
 PRICE_HISTORY_HELD = "price_history_held"
 PriceHistoryState = Literal["available", "leg_not_listed", "no_future_candles", "all_gaps", "no_session",
-                            "broker_refused", "future_not_in_catalogue", "quantity_not_whole_lots"]
+                            "broker_refused", "future_not_in_catalogue", "quantity_not_whole_lots", "no_open_legs"]
 
 
 def require_price_history() -> None:
@@ -756,8 +756,13 @@ async def strategy_price_history(  # noqa: PLR0913 - one query parameter or seam
         # connection per request (ADR-048); a store error answers no_session, never a 500.
         reader = await opener(db)
         stored = await store.load(db, user_ref, strategy_id)
+        # D-51 (ADR-330 (43), REQ-091 AC-8): what is OPEN on the strategy, from the one door (the book; the saved plan
+        # only when nothing was placed). A failed book read raises to the error door: never answered from saved legs.
+        found = await open_legs.open_legs(db, stored)
+        if not found.legs:  # every leg closed: nothing to chart (fail-closed, owner question U-Q11)
+            return sph.Answer("no_open_legs", render_explanation("price_history_no_open_legs"))
         # Issue #500: a stored contract id reaches a ListedContract only through tracked_contracts.resolve, the one door.  # noqa: E501 - long line kept whole
-        answers = await tracked_contracts.resolve(db, stored.saved.contract_ids)
+        answers = await tracked_contracts.resolve(db, [leg.contract_id for leg in found.legs])
         if any(a.stored is None for a in answers):
             raise StrategyRefused("strategy_stored_unreadable", Failure.CONFLICT)
         listed = [a.stored.listed for a in answers]  # type: ignore[union-attr]
@@ -767,8 +772,8 @@ async def strategy_price_history(  # noqa: PLR0913 - one query parameter or seam
                                                                        leg=sph.label(a.stored.listed)))  # type: ignore[union-attr]
         definition = stored.saved.definition
         legs = []
-        for leg, lc in zip(definition.legs, listed, strict=True):  # saved quantity is lots x lot size
-            lots, rest = divmod(leg.quantity, lc.contract.lot_size)
+        for leg, lc in zip(found.legs, listed, strict=True):  # open units are lots x lot size
+            lots, rest = divmod(leg.units, lc.contract.lot_size)
             if rest or lots < 1:  # F4: a lot-size change after saving; never a silent floor, never a 500
                 return sph.Answer("quantity_not_whole_lots", render_explanation("price_history_quantity_not_whole_lots",
                                                                                 leg=sph.label(lc)))
