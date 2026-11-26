@@ -390,7 +390,7 @@ def state_of(tracked: Tracked, market: MarketInputs, spot: SpotAnswer, margin: M
     stops = None
     if resolved is not None:
         from ofo_app import settings_in_force as sif  # noqa: PLC0415 - it imports this module
-        base = getattr(tracked, "stop_base", None)  # ADR-330 (1): fixed at entry, never the live legs (None: not checked)
+        base = getattr(tracked, "stop_base", None)  # ADR-330 (1): fixed at entry, None = not checked
         stops = sif.stops_of(resolved, sif.MoneyInputs(None if base is None else base.max_loss,
                                                        None if base is None else base.credit, stated_margin),
                              sif.StageAt(kind, (expiry - now.date()).days))

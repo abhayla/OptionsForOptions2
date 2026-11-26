@@ -254,6 +254,7 @@ def compute_stop_base(legs: Sequence[Any], lot: int, booked: Decimal, taken_at: 
     orders only (``adjustment_readers.entry_stop_base`` nets them), through the same engine path ``price_after`` uses
     (``whole_trade_after``, gross, no charges). Several expiries or an engine refusal -> None (not worked out)."""
     from ofo.engine.whole_trade import MultiExpiryError, whole_trade_after  # noqa: PLC0415 - engine only here
+
     from ofo_app.routes.adjustment import _strategy  # noqa: PLC0415 - it imports this package's routes
 
     if not legs:
@@ -536,23 +537,23 @@ __all__ = [
     "MoneyInputs",
     "SettingInForce",
     "StageAt",
+    "StopBase",
     "StopInForce",
     "StopsInForce",
     "TriggerInForce",
     "check_stop_values",
+    "compute_stop_base",
     "covered_keys",
     "credit_line_applies",
     "first_stage_of",
     "in_force",
     "margin_line_on",
     "money_inputs",
-    "StopBase",
-    "compute_stop_base",
-    "stop_base_from_json",
     "set_max_loss_stop",
     "setting_of",
     "settings_of",
     "sheet_stop",
+    "stop_base_from_json",
     "stops_of",
     "triggers_of",
 ]

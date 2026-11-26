@@ -304,7 +304,8 @@ _MAKE_ACTIVE = text("INSERT INTO public.adjustment_playbook_active (user_ref, st
                     "VALUES (:user_ref, :type, :id) ON CONFLICT (user_ref, strategy_type) "
                     "DO UPDATE SET playbook_id = EXCLUDED.playbook_id")
 _PLAN_COLUMNS = "strategy_id, playbook_id, strategy_type, body::text, accepted_at, stop_base::text"
-_UPSERT_PLAN = text("INSERT INTO public.strategy_adjustment_plans (strategy_id, playbook_id, strategy_type, body, stop_base) "  # noqa: S608
+_UPSERT_PLAN = text("INSERT INTO public.strategy_adjustment_plans "  # noqa: S608
+                    "(strategy_id, playbook_id, strategy_type, body, stop_base) "
                     "VALUES (:strategy_id, :playbook_id, :type, CAST(:body AS JSONB), CAST(:stop_base AS JSONB)) "
                     "ON CONFLICT (strategy_id) "
                     "DO UPDATE SET playbook_id = EXCLUDED.playbook_id, body = EXCLUDED.body, "
@@ -666,7 +667,7 @@ def _plan(row: Any) -> Plan:
                 stop_base=None if row[5] is None else _load(row[5]))
 
 
-async def accept_plan(conn: Any, user_ref: str, strategy_id: int, playbook_id: int,
+async def accept_plan(conn: Any, user_ref: str, strategy_id: int, playbook_id: int,  # noqa: PLR0913 - the stop base is stored with the plan
                       body: object | None = None, stop_base: dict | None = None) -> Plan:
     """REQ-161 AC-2/AC-3: the plan is a copy of the chosen playbook's body (or the customised sheet's body, same
     type); accepting again replaces the strategy's own plan. ADR-330 (1): ``stop_base`` (worked out from the entry
