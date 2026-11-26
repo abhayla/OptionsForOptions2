@@ -142,7 +142,7 @@ async function typed(field) {
   const run = ++levelsRun[level]
   if (own.trim() === '') { f[other] = ''; words.forEach((k) => { f[k] = '' }); return } // nothing typed: nothing to show
   try {
-    const got = (await fetchLevels(api, props.strategyId, { [field]: own }))[level]
+    const got = (await fetchLevels(api, props.strategyId, { [field]: own }, f.playbookId))[level]
     if (run !== levelsRun[level] || form.value !== f) return
     if (!got) return
     f[other] = rupees ? got.percent : got.rupees

@@ -92,11 +92,11 @@ const levelsPath = (id, typed) => {
 const level = (l) => (l && typeof l === 'object'
   ? { percent: decimal(l.percent), rupees: decimal(l.rupees), words: text(l.words), rupeeWords: text(l.rupee_words) } : null)
 
-/** GET .../adjustment-plan/levels for the box just typed in (`{ target }`, `{ target_rupees }`, `{ stop }` or
+/** GET .../adjustment-plan/levels (with the picked playbook_id, so the sentence is the one the save will say) for the box just typed in (`{ target }`, `{ target_rupees }`, `{ stop }` or
  *  `{ stop_rupees }`): the server works out both figures and the hint words; the browser computes nothing (ADR-008).
  *  Returns `{ target, stop }` (each `{ percent, rupees, words, rupeeWords }` or null). Throws the client error. */
-export async function fetchLevels(client, strategyId, typed) {
-  const { data } = await client.get(levelsPath(strategyId, typed))
+export async function fetchLevels(client, strategyId, typed, playbookId = null) {
+  const { data } = await client.get(levelsPath(strategyId, { ...typed, playbook_id: playbookId == null ? '' : String(playbookId) }))
   return { target: level(data?.target), stop: level(data?.stop) }
 }
 

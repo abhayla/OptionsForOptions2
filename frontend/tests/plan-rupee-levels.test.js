@@ -40,15 +40,15 @@ async function sheet() {
 
 describe('typed percents: the hints and the rupee boxes come from the network reply', () => {
   it('typed 25.7 and 15.4 -> two levels reads; hints and rupee boxes are the server\'s words', async () => {
-    answers[`GET ${PATH}/levels?target=25.7`] = { target: { percent: '25.70', rupees: '1002.30', per_lot: '501.15', words: '25.70 % of max profit',
+    answers[`GET ${PATH}/levels?target=25.7&playbook_id=9`] = { target: { percent: '25.70', rupees: '1002.30', per_lot: '501.15', words: '25.70 % of max profit',
       rupee_words: 'Rs 1002.30 for the whole trade (Rs 501.15 per lot), before charges' }, stop: null }
-    answers[`GET ${PATH}/levels?stop=15.4`] = { stop: { percent: '15.40', rupees: '400.40', per_lot: '200.20', words: '15.40 % of max loss',
+    answers[`GET ${PATH}/levels?stop=15.4&playbook_id=9`] = { stop: { percent: '15.40', rupees: '400.40', per_lot: '200.20', words: '15.40 % of max loss',
       rupee_words: 'Rs 400.40 for the whole trade (Rs 200.20 per lot), before charges' }, target: null }
     const w = await sheet()
     await t(w, 'plan-target').setValue('25.7')
     await t(w, 'plan-stop').setValue('15.4')
     await flushPromises()
-    expect(calls.filter((c) => c.url.includes('/levels')).map((c) => c.url)).toEqual([`${PATH}/levels?target=25.7`, `${PATH}/levels?stop=15.4`])
+    expect(calls.filter((c) => c.url.includes('/levels')).map((c) => c.url)).toEqual([`${PATH}/levels?target=25.7&playbook_id=9`, `${PATH}/levels?stop=15.4&playbook_id=9`])
     expect(t(w, 'plan-target-words').text()).toBe('25.70 % of max profit')
     expect(t(w, 'plan-target-rupees').element.value).toBe('1002.30')
     expect(t(w, 'plan-target-rupee-words').text()).toBe('Rs 1002.30 for the whole trade (Rs 501.15 per lot), before charges')
@@ -57,14 +57,14 @@ describe('typed percents: the hints and the rupee boxes come from the network re
   })
 
   it('a rupee box typed fills the percent box from the reply, and Save sends only the rupee box', async () => {
-    answers[`GET ${PATH}/levels?stop_rupees=400`] = { target: null, stop: { percent: '15.38', rupees: '400.00', per_lot: '200.00',
+    answers[`GET ${PATH}/levels?stop_rupees=400&playbook_id=9`] = { target: null, stop: { percent: '15.38', rupees: '400.00', per_lot: '200.00',
       words: '15.38 % of max loss', rupee_words: 'Rs 400.00 for the whole trade (Rs 200.00 per lot), before charges' } }
     answers[`PUT ${PATH}`] = ANSWER
     const w = await sheet()
     await w.setProps({ edit: true })
     await t(w, 'plan-stop-rupees').setValue('400')
     await flushPromises()
-    expect(calls.some((c) => c.url === `${PATH}/levels?stop_rupees=400`)).toBe(true)
+    expect(calls.some((c) => c.url === `${PATH}/levels?stop_rupees=400&playbook_id=9`)).toBe(true)
     expect(t(w, 'plan-stop').element.value).toBe('15.38')
     await t(w, 'plan-save').trigger('click')
     await flushPromises()
