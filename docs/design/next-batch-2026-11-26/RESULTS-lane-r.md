@@ -29,7 +29,7 @@ walk-through was possible in the cloud: the app needs the broker feed and the ow
 | N-12, Stops link does not reach the trade | Fixed, not tested (ADR-330 (21)) | The Positions page ignored `?strategy=` unless an exit was asked. | 1 link; it now opens that trade's Stops panel and scrolls to it; the list is not filtered. | `paper-exit-link-s14.test.js`: red, then pass. |
 | N-08, chain ticks stay after Add Selected | Fixed, not tested (ADR-330 (20)) | Add Selected pushed the draft link and never cleared the selection. | 1 store; the builder clears the ticks only after it has added them (Cancel on a clash, the other-index refusal or an error keeps them). REQ-030 AC-10 amended. | N08a, N08d failed without the fix (lead's run), then 57 pass. |
 | N-15, Orderbook quantity in units | Fixed, not tested (ADR-330 (23), #747) | The order rows carried units only, no lots or lot size, and the browser must not divide by a guessed lot size. | 1 table; the server now sends `lots` per order row (catalogue lot size, same source as the closed rows; a quantity that is not whole lots sends null and shows "-"); the column reads "Lots". Caveat: an NSE lot-size revision re-divides old orders with the new lot. | `tests_app/test_paper_order_lots.py` (real DB): 3 failed (KeyError 'lots'), then 3 passed; vitest 28 pass. |
-| S-02, a lock wait on delete ends as a raw 500 | Fixed, not tested (wording pending owner read, ADR-NB-1) | The error door had no case for a busy database (sqlstate 55P03, 57014, 40P01), so it answered the generic internal error. | Write routes that end as ERR-xxxx on a busy database: 49 in 21 route files; 0 after. Left: `order_book_store.py:152` answers BAD_HOLDING (#746). | `tests_app/test_store_busy.py` (real DB): 6 failed, then 10 passed. |
+| S-02, a lock wait on delete ends as a raw 500 | Fixed, not tested (wording approved by the owner, ADR-330 (26)) | The error door had no case for a busy database (sqlstate 55P03, 57014, 40P01), so it answered the generic internal error. | Write routes that end as ERR-xxxx on a busy database: 49 in 21 route files; 0 after. Left: `order_book_store.py:152` answers BAD_HOLDING (#746). | `tests_app/test_store_busy.py` (real DB): 6 failed, then 10 passed. |
 | N-02 | Deferred #745 | A timed-out parallel read leaves the box after the other read succeeds. | - | - |
 | N-03, N-06, N-09, N-16, N-17, N-19 | Not a defect | N-03 legal hold (REQ-079); N-06 by design (D-C50); N-09 and N-17 test-tool artefacts; N-16 name vs engine shape (REQ-076 AC-8/9); N-19 by design (REQ-080 AC-9). | - | - |
 
@@ -103,7 +103,7 @@ review agent runs, so a review blocked three builders for about 15 minutes: run 
 1. Not clickable on purpose: the case needs a second database session holding a lock on the strategy row.
 2. What changed for the user: a delete or other write that waits on a busy database now says "This strategy is busy with
    another action, so nothing was changed." and "Wait a moment, then try again." instead of ERR-xxxx.
-3. Wording pending the owner's read (ADR-NB-1 in ADR-330 (8)).
+3. Wording approved by the owner as written, 26 Nov 2026 (ADR-330 (26)).
 4. Normal deletes: My Strategies > Delete on a draft still deletes as before.
 5. Nothing to check after 15:30.
 

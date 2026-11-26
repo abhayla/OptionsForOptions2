@@ -64,14 +64,14 @@ and adds the ADR-328 pointer; that pointer is a spec text change, so the row num
 - N-11 = ADR-330 (22): "The N pending changes will be lost." for a running trade. Built.
 - N-15 = ADR-330 (23): Orderbook in lots. Blocked on a server field: issue #747.
 
-## LR-Q7 S-02 wording (open, ADR-NB-1)
+## LR-Q7 S-02 wording (ANSWERED 26 Nov 14:25 IST, question tool: "Approve as written" = ADR-330 (26))
 
 Spec basis: ADR-330 (8) busy-store paragraph (Lane R, 26 Nov 2026); ADR-003. Built as reversible new wording, catalogue
 entry `store_busy` (STRATEGY_VALIDATION_522): "This strategy is busy with another action, so nothing was changed." /
 "Wait a moment, then try again." Real case: the owner's ERR-6960F002 on a strategy delete, 25 Nov. Recommendation:
 approve as built. A new decision row number for it is the coordinator's.
 
-## LR-Q8 N-28: how a closed leg's exit price reads when it is an average of several exits (open, 26 Nov 2026)
+## LR-Q8 N-28: how a closed leg's exit price reads when it is an average of several exits (ANSWERED 26 Nov 14:25 IST, question tool: "Add '(avg of 2)'" = ADR-330 (27), built)
 
 Spec basis: none: the spec is silent on labelling a closed exit average (searched: "average exit", "exit prices"); ADR-321 (6)
 ("a closed lifecycle is its own row with entry, exit and booked"); ADR-008 (the average is served, `routes/paper.py:617-624`).

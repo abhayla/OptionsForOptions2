@@ -1653,7 +1653,7 @@
   },
   "store_busy": {
     "sha256": "84c37432ab87cc86590405477c0d41508d0424630788e5e976cf3fe15b14f678",
-    "reviewed": "pending owner read"
+    "reviewed": "owner read 2026-11-26 (ADR-330 (26), approved as written by the owner in the question tool)"
   },
   "strategy_delete_held_at_broker": {
     "sha256": "1e9e20ae48be7c6fcdfa77d3b0103be8333144a000af51d5aaad51067ddca4c3",
