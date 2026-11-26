@@ -43,14 +43,14 @@ def test_a_close_below_the_band_lapses_once_then_true_again_on_recrossing():
     assert _count(events, ag.TrueAgain) == 1
 
 
-# ---- #743: a held episode ends by the LINE's band, not by the held step's band ----------------------------------------
+# ---- #743: a held episode ends by the LINE's band, not by the held step's band --------------------------------
 
 def _held_run(start, values, state=None):
     state = state if state is not None else ag.initial_state()
     events = []
     candle = ag.INTRADAY.candle
     base = at(start)
-    for i, v in enumerate(list(values) + [values[-1]]):  # the last extra step closes the final candle
+    for i, v in enumerate([*values, values[-1]]):  # the last extra step closes the final candle
         state, ev = ag.step(state, now=base + candle * i + timedelta(seconds=1), preset=ag.INTRADAY,
                             readings={SPEC.rule_id: (SPEC, D(v))})
         events += ev
@@ -58,8 +58,7 @@ def _held_run(start, values, state=None):
 
 
 def test_held_by_daily_cap_is_one_episode_while_the_close_stays_past_the_lines_band():
-    state = ag.restore(ag.GateRows((), 6), at("11:00").date(), {})
-    assert ag.INTRADAY.daily_cap <= 6
+    state = ag.restore(ag.GateRows((), ag.INTRADAY.daily_cap), at("11:00").date(), {})  # the day's cap is used up
     events = _held_run("11:00", ["120", "160", "130", "160", "130", "160", "130", "160"], state)
     held = [e for e in events if isinstance(e, ag.Held)]
     # 120 holds at the line; 160 is one level worse (a new hold step); 130 is NOT beyond the band of the line (90), so
