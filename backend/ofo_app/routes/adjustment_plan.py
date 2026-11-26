@@ -668,8 +668,8 @@ class LevelsOut(ApiModel):
 
 def preview_stop_figures(body: dict | None, saved_before: bool, kind: str | None, bases: Bases,
                          typed_in: PlanIn) -> dict[str, Any] | None:
-    """The stop sentence and the above-max-loss warning of the levels preview: the SAME builder the saved plan uses (``with_overrides`` then
-    ``with_rupee_figures`` -> ``_stop_words``, which keeps the lines still in force), on a copy of the body with the
+    """The stop sentence and the above-max-loss warning of the levels preview: the SAME builder the saved plan uses
+    (``with_overrides`` then ``with_rupee_figures`` -> ``_stop_words``, which keeps the lines still in force), on a copy of the body with the
     typed level put in. Nothing is stored. None when there is no body to read the lines from."""
     if body is None:
         return None

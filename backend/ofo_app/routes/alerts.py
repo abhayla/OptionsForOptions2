@@ -142,6 +142,29 @@ def _reason(a: aa.Alert) -> Any:
     return render_explanation("suggestion_lapsed_" + a.closed_reason)
 
 
+async def _labels(db: Any, rows: list[aa.Alert]) -> dict[int, Any]:
+    """ADR-330 (19)(b): strategy id -> "<name> (#<id>, <nearest open-leg expiry as D Mon>)" through THIS one function
+    (Active and History share it). Answer states: stated -> with the expiry; no open leg / book unreadable / not found
+    -> "(#<id>)" only, never a guessed date."""
+    from ofo_app import adjustment_readers as readers  # noqa: PLC0415 - it imports the route modules
+    out: dict[int, Any] = {}
+    for a in rows:
+        if a.strategy_id in out:
+            continue
+        name = shown_name(a.strategy_name)
+        expiry = None
+        try:
+            tracked = await readers.read_tracked(a.strategy_id, None, db)
+            expiry = min((leg.expiry for leg in tracked.position.legs), default=None) if tracked else None
+        except readers.TrackedUnreadable:
+            expiry = None
+        out[a.strategy_id] = (
+            render_explanation("alert_strategy_label_no_expiry", name=name, number=a.strategy_id) if expiry is None
+            else render_explanation("alert_strategy_label", name=name, number=a.strategy_id, day=expiry.day,
+                                    month=expiry.strftime("%b")))
+    return out
+
+
 async def _texts(db: Any, user_ref: str) -> dict[int, store.Suggestion]:
     return {r.suggestion.id: r.suggestion for r in await store.inbox(db, user_ref)}
 
@@ -151,8 +174,9 @@ async def active_alerts(db: Annotated[Any, Depends(get_db)],
                         user_ref: Annotated[str, Depends(current_user_ref)]) -> ActiveOut:
     rows = await aa.unanswered(db, user_ref)  # ONE query: the count below is len() of these rows
     by_id = await _texts(db, user_ref)
+    labels = await _labels(db, rows)
     from ofo.alerts import allowed_answers  # noqa: PLC0415 - stdlib table
-    alerts = [{"id": a.id, "strategy_id": a.strategy_id, "strategy_name": shown_name(a.strategy_name), "kind": _kind(a),
+    alerts = [{"id": a.id, "strategy_id": a.strategy_id, "strategy_name": labels[a.strategy_id], "kind": _kind(a),
                "text": _words(a, by_id), "fired_at": a.fired_at, "fired_line": _fired(a),
                "no_longer_true_since": a.no_longer_true_since, "no_longer_true_line": _stopped(a),
                "escalated_at": a.escalated_at, "worse_line": _worse(a),
@@ -191,10 +215,12 @@ async def answer_alert(alert_id: int, body: AnswerIn, db: Annotated[Any, Depends
 async def alert_answered(db: Annotated[Any, Depends(get_db)],
                         user_ref: Annotated[str, Depends(current_user_ref)]) -> HistoryOut:
     by_id = await _texts(db, user_ref)
-    items = [{"id": a.id, "strategy_id": a.strategy_id, "strategy_name": shown_name(a.strategy_name), "kind": _kind(a),
+    history = await aa.history(db, user_ref)
+    labels = await _labels(db, history)
+    items = [{"id": a.id, "strategy_id": a.strategy_id, "strategy_name": labels[a.strategy_id], "kind": _kind(a),
               "text": _words(a, by_id), "fired_at": a.fired_at, "fired_line": _fired(a),
               "escalated_at": a.escalated_at, "worse_line": _worse(a),
               "answer": a.answer, "answer_label": _label(a.answer),
               "answered_at": a.answered_at,
-              "closed_reason": _reason(a)} for a in await aa.history(db, user_ref)]
+              "closed_reason": _reason(a)} for a in history]
     return HistoryOut.model_validate({"items": items})

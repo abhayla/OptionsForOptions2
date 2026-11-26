@@ -3975,6 +3975,14 @@
     "sha256": "d4a1f2f4128afc9683ca095870118463d9841b7c9b9f630fc81672a2988020b6",
     "reviewed": "pending owner read"
   },
+  "explanation:alert_strategy_label": {
+    "sha256": "71c7fb7be4332d32007d5433f1487ee0b74185a426fdfa1cd58f3b4a1c5225fb",
+    "reviewed": "pending owner read"
+  },
+  "explanation:alert_strategy_label_no_expiry": {
+    "sha256": "7693c93af9e497ad03255b7c70f6d6a5ad10215fe945027cded8cea97fb14e20",
+    "reviewed": "pending owner read"
+  },
   "explanation:plan_stop_above_max_loss": {
     "sha256": "1d4738327ec269bde3265df4ce92e7b388a4bab7bb589767aad668725c9fb14d",
     "reviewed": "pending owner read"

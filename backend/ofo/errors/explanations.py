@@ -1693,6 +1693,11 @@ _EXPLANATIONS: tuple[ExplanationTemplate, ...] = (
                         {"a": Explained, "b": Explained, "c": Explained}),
     ExplanationTemplate("plan_stop_words_first", "values_seen", "{words}, whichever comes first",
                         {"words": Explained}),
+    # ADR-330 (19)(b) (pending owner read): the trade's number and nearest expiry beside its (quoted) name in alert lists
+    ExplanationTemplate("alert_strategy_label", "values_seen", "{name} (#{number}, {day} {month})",
+                        {"name": Explained, "number": Recorded, "day": Recorded, "month": Recorded}),
+    ExplanationTemplate("alert_strategy_label_no_expiry", "values_seen", "{name} (#{number})",
+                        {"name": Explained, "number": Recorded}),
     # ADR-330 (25) / LP-4 (pending owner read): a rupee stop above the stop base's max loss; informs, never blocks.
     ExplanationTemplate("plan_stop_above_max_loss", "values_seen",
                         "This stop (Rs {stop}) is above the trade's max loss (Rs {loss}), so it cannot be reached.",

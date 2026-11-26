@@ -11,11 +11,14 @@ from decimal import Decimal as D
 import test_adjustment_check as check_test
 from ofo.timeutil import IST
 from ofo_app import actionable_alerts as aa
+from ofo_app import adjustment_readers as readers
+from sqlalchemy import text
 from test_adjustment_check import _seeded
 from test_adjustment_opportunities import _call, _clean
 
 app_db_url = check_test.app_db_url
 OK, NOT_FOUND, CONFLICT, REFUSED = 200, 404, 409, 422
+TRADES = 3  # strategies sharing one name in the alert-label test
 FIRED = datetime.datetime(2026, 11, 25, 11, 2, 20, tzinfo=IST)
 STOPPED = datetime.datetime(2026, 11, 25, 11, 5, 1, tzinfo=IST)
 ACTIVE_KEYS = {"id", "strategy_id", "strategy_name", "kind", "text", "fired_at", "fired_line", "no_longer_true_since",
@@ -59,7 +62,8 @@ async def test_active_answer_history_replies_and_errors(app_db_url, monkeypatch)
     assert (row["answer"], row["answer_label"]) == ("continue", "Continue with the position")
     assert (row["fired_line"], row["answered_at"]) == ("Fired at 11:02", done["answered_at"])
     assert row["closed_reason"] is None
-    assert mine["strategy_name"] == row["strategy_name"] == '"Scenario ADJ-02"'  # the user's name in the quoted slot
+    # the user's name in the quoted slot, then the trade's number and nearest expiry (ADR-330 (19)(b))
+    assert mine["strategy_name"] == row["strategy_name"] == f'"Scenario ADJ-02" (#{sid}, 9 Nov)'
 
 
 ESCALATED = datetime.datetime(2026, 11, 25, 11, 9, 0, tzinfo=IST)
@@ -102,3 +106,36 @@ async def test_a_noted_row_in_history_is_catalogue_worded_and_never_a_500(app_db
     active = (await _call("GET", "/api/alerts/active"))[1]
     # never counted
     assert active["count"] == len(active["alerts"]) and note_id not in [a["id"] for a in active["alerts"]]
+
+
+async def test_alert_lists_carry_the_trade_number_and_expiry_beside_the_name(app_db_url, monkeypatch):
+    """ADR-330 (19)(b): three strategies may share a name (REQ-134 AC-1); each Active / History row says which one."""
+    sids = []
+    for _ in range(TRADES):  # the seed reuses a strategy by name, so each is renamed before the next is seeded
+        sid = await _clean(app_db_url, await _seeded(app_db_url, monkeypatch, "ADJ-03"))
+        async with app_db_url.begin() as conn:
+            await conn.execute(text("UPDATE public.strategies SET name = 'Short Iron Condor' WHERE id = :id"),
+                               {"id": sid})
+        sids.append(sid)
+    assert len(set(sids)) == TRADES
+    ids = {sid: await _raise(app_db_url, sid) for sid in sids}
+    status, active = await _call("GET", "/api/alerts/active")
+    assert status == OK
+    named = {a["id"]: a["strategy_name"] for a in active["alerts"]}
+    assert [named[ids[sid]] for sid in sids] == [f'"Short Iron Condor" (#{sid}, 9 Nov)' for sid in sids]
+    assert (await _call("POST", f"/api/alerts/{ids[sids[0]]}/answer", {"answer": "continue"}))[0] == OK
+    history = {i["id"]: i["strategy_name"] for i in (await _call("GET", "/api/alerts/answered"))[1]["items"]}
+    assert history[ids[sids[0]]] == f'"Short Iron Condor" (#{sids[0]}, 9 Nov)'
+
+
+async def test_a_trade_with_no_readable_open_leg_shows_its_number_only(app_db_url, monkeypatch):
+    """No expiry readable (the book is flat, or cannot be read): "(#id)" only, never a guessed date."""
+    sid = await _clean(app_db_url, await _seeded(app_db_url, monkeypatch, "ADJ-02"))
+    alert_id = await _raise(app_db_url, sid)
+
+    async def flat(*args, **kwargs):
+        raise readers.TrackedExited("no open option leg")
+    monkeypatch.setattr(readers, "read_tracked", flat)
+    status, active = await _call("GET", "/api/alerts/active")
+    named = {a["id"]: a["strategy_name"] for a in active["alerts"]}
+    assert status == OK and named[alert_id] == f'"Scenario ADJ-02" (#{sid})'

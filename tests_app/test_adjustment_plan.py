@@ -433,7 +433,7 @@ async def test_levels_preview_equals_saved_with_no_stored_base(app_db_url, monke
     assert preview == saved == "a loss of Rs 400.00 or 2x the credit received, whichever comes first"
 
 
-# --- ADR-330 (25) / LP-4: a rupee stop above the trade's max loss is saved, with one warning line ------------------------
+# --- ADR-330 (25) / LP-4: a rupee stop above the trade's max loss is saved, with one warning line --------------
 STOP_WARNING = "This stop (Rs 5,000) is above the trade's max loss (Rs 2,600), so it cannot be reached."
 
 
