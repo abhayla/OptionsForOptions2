@@ -1879,6 +1879,10 @@
     "sha256": "1500d2520c2e72efd128f0092aae83f3fb50800909cd9560138d5fcffe4672d6",
     "reviewed": "owner read 2026-11-02 (accepted after independent screen, not read line by line)"
   },
+  "explanation:price_history_no_open_legs": {
+    "sha256": "eabc7e36f079c439825f9210da10cdb576baeda43fc50d4be51067d16f9e35d0",
+    "reviewed": "pending owner read"
+  },
   "paper_price_invalid": {
     "sha256": "fe202aee8570667847f1b1199b109c546a8c1865b328482b0da68d64ff74a00e",
     "reviewed": "owner read 2026-11-02 (accepted after independent screen, not read line by line)"

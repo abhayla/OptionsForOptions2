@@ -2,7 +2,7 @@
 
 # Coverage register
 
-Generated from commit 802270bc
+Generated from commit ae01cc67
 
 ## Stage S0
 
@@ -144,6 +144,7 @@ Generated from commit 802270bc
 | 4a | requirement | REQ-015 | AC-11 | While the account is not Connected, the Connect Zerodha panel shows an 'Is it safe to connect?' explainer (what the connection is used for, and that the platform never sees the Zerodha password, PIN or OTP), a line that connecting adds no charge from the platform, and the configured account-opening link with no referrer (ADR-175); with no configured link the panel shows no link and still explains (reference-register RD-010). |
 | 4a | requirement | REQ-015 | AC-12 | Positions are read from Zerodha once when a session connects and then on a fixed period (REQ-118 AC-7), with no manual step such as opening Execute; the job stops on disconnect or when Zerodha refuses the token, and a new login starts it again with one read at connect (extends AC-5; reference-register RD-014). |
 | 4a | requirement | REQ-015 | AC-13 | While connected, Settings shows the Zerodha client id masked to its first 2 and last 2 characters, and, while the funds_read flag is on, Zerodha's own available margin exactly as read, with its read time; it is never computed and never defaulted: not connected, flag off, an empty or failed read, a busy answer or an expired login each show their reason, never 0 (ADR-016; reference-register RD-013). |
+| 4a | requirement | REQ-015 | AC-14 | When the Zerodha connection cannot be checked the page shows no status as connected and offers "Check again", which reads the four statuses once more and replaces the message with the rows if the read works (Lane T Q9, coordinator 26 Nov). |
 | 4a | requirement | REQ-015 | AC-4 | Settings → Broker & Market Data → Zerodha shows four separate statuses — account connection, live market data, position/account sync, order-execution readiness — as Connected, Partially connected (naming what to fix) or Disconnected (with the guide); Connected shows 'Last successful sync' time and Reconnect / Disconnect actions (Q181; T2 #124). |
 | 4a | requirement | REQ-015 | AC-5 | When the connection drops within a valid Zerodha session the platform reconnects automatically, validates and resynchronises, then resumes monitoring; reconnecting never places or submits an order (Q183). Auto-reconnect cannot renew the daily Zerodha session; after that expiry the user must authenticate again (owner T1 #265). |
 | 4a | requirement | REQ-015 | AC-6 | The platform never asks for the user's Zerodha password, PIN or OTP; Zerodha authentication happens on Zerodha's side and is separate from platform login. |
@@ -1174,7 +1175,7 @@ Generated from commit 802270bc
 | S0 | 1 | 0 | 0 | 0 | 0 | 0 | 0 | 0 | 0 | 0 | 0 | 1 |
 | S1 | 0 | 0 | 0 | 0 | 0 | 0 | 1 | 0 | 0 | 0 | 0 | 1 |
 | S3 | 0 | 18 | 0 | 2 | 0 | 0 | 3 | 0 | 0 | 0 | 0 | 23 |
-| 4a | 7 | 0 | 44 | 6 | 0 | 33 | 0 | 1 | 35 | 0 | 21 | 147 |
+| 4a | 7 | 0 | 44 | 6 | 0 | 33 | 0 | 1 | 36 | 0 | 21 | 148 |
 | 4b | 1 | 0 | 70 | 25 | 0 | 39 | 9 | 3 | 14 | 0 | 30 | 191 |
 | 4c | 0 | 0 | 6 | 0 | 0 | 1 | 1 | 0 | 7 | 0 | 0 | 15 |
 | S5 | 2 | 0 | 5 | 0 | 0 | 2 | 0 | 0 | 11 | 0 | 1 | 21 |

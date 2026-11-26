@@ -13051,7 +13051,8 @@
               "no_session",
               "broker_refused",
               "future_not_in_catalogue",
-              "quantity_not_whole_lots"
+              "quantity_not_whole_lots",
+              "no_open_legs"
             ],
             "title": "State",
             "type": "string"

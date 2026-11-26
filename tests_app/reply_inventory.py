@@ -2775,7 +2775,7 @@ INVENTORY = (
     'FIELD PriceHistoryOut.reason: CatalogueText',
     'FIELD PriceHistoryOut.reason: None',
     'FIELD PriceHistoryOut.source: CatalogueText',
-    "FIELD PriceHistoryOut.state: Literal['available','leg_not_listed','no_future_candles','all_gaps','no_session','broker_refused','future_not_in_catalogue','quantity_not_whole_lots']",
+    "FIELD PriceHistoryOut.state: Literal['available','leg_not_listed','no_future_candles','all_gaps','no_session','broker_refused','future_not_in_catalogue','quantity_not_whole_lots','no_open_legs']",
     "FIELD ReadyMadeOut.legs[].action: Literal['BUY','SELL']",
     'FIELD ReadyMadeOut.legs[].expiry: date',
     "FIELD ReadyMadeOut.legs[].instrument: Literal['CE','PE','FUT']",
