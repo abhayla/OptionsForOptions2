@@ -201,10 +201,9 @@ class StageAt:
     days_left: int | None
 
 
-#: ADR-330 (1), plan question Q4 (a): which paper order kinds the stop base is worked out from. ONLY the entry orders:
-#: an adjustment ('add', a roll) does not move it, only a plan edit recomputes it. To let an adjustment move the
-#: base, add "add" here (one line; the stored bases of existing plans stay as they are until the plan is edited).
-STOP_BASE_KINDS: Final = ("open",)
+#: ADR-330 (1), plan question Q4 (a): the stop base is worked out from the trade as entered ONLY (the first basket,
+#: ``adjustment_readers.entry_batch``, the one definition of entry): an adjustment does not move it, only a plan edit
+#: recomputes it. The Q4 choice lives in that one function.
 BASE_ENTRY: Final = "entry"  # worked out from the entry orders when the plan was saved or edited
 BASE_BACKFILL: Final = "backfill"  # a plan saved before ADR-330: worked out once, at its first read
 BASE_SOURCES: Final = (BASE_ENTRY, BASE_BACKFILL)

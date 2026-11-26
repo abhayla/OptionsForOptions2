@@ -173,12 +173,13 @@ _ENTRY_SOURCE = "entry"  # = settings_in_force.BASE_ENTRY (imported lazily: that
 
 def entry_stop_base(orders: Any, found: Mapping[int, Any], source: str) -> Any:
     """ADR-330 (1): the stop base worked out from the strategy's ENTRY orders only (kinds in
-    ``settings_in_force.STOP_BASE_KINDS``), netted and priced by the engine (``compute_stop_base``). No entry order
-    (empty), a book that is not whole-lot options, several expiries or an engine refusal -> None (not worked out):
-    the stop lines then say "not checked", never a number from the live legs."""
+    the first batch, ``entry_batch``: ONE definition of "the trade as entered", shared with D-04's entry position),
+    netted and priced by the engine (``compute_stop_base``). No entry order (empty, or none states a time), a book
+    that is not whole-lot options, several expiries or an engine refusal -> None (not worked out): the stop lines
+    then say "not checked", never a number from the live legs."""
     from ofo_app import settings_in_force as sif  # noqa: PLC0415 - it imports the check module
 
-    entry = [o for o in orders if o.order.kind in sif.STOP_BASE_KINDS]
+    entry = entry_batch(orders)
     if not entry:
         return None
     try:
@@ -242,17 +243,27 @@ def _legs_of(book: Any, found: Mapping[int, Any]) -> tuple[str | None, int | Non
     return underlying, lot, legs
 
 
+def entry_batch(orders: Any) -> list[Any]:
+    """The ONE definition of "the trade as entered" (D-04's entry position and ADR-330 (1)'s stop base): every order
+    with the first order's ``placed_at``. A later basket, whatever its kind, and every adjustment is NOT part of it
+    (plan question Q4 (a): an adjustment does not move the stop base; reversing that is a change here, in this one
+    function, and it moves D-04's entry position with it). No order states a time -> [] (never a guess)."""
+    times = [getattr(o.order, "placed_at", None) for o in orders]
+    if not times or not all(isinstance(t, datetime.datetime) for t in times):
+        return []
+    first = min(times)
+    return [o for o in orders if o.order.placed_at == first]
+
+
 def entry_position_of(orders: Any, found: Mapping[int, Any]) -> Position | None:
     """D-04: the position the first batch of orders opened (every order with the first order's ``placed_at``), read as
     ``_tracked_on`` reads the book. None when no order states a time, the first batch is not whole-lot options, or it
     nets to nothing: the caller then keeps the current shape (never a guess)."""
-    times = [getattr(o.order, "placed_at", None) for o in orders]
-    if not times or not all(isinstance(t, datetime.datetime) for t in times):
+    batch = entry_batch(orders)
+    if not batch:
         return None
-    first = min(times)
     try:
-        underlying, lot, legs = _legs_of(net_positions([o.order.as_paper() for o in orders
-                                                        if o.order.placed_at == first], {}), found)
+        underlying, lot, legs = _legs_of(net_positions([o.order.as_paper() for o in batch], {}), found)
     except TrackedUnreadable:
         return None
     return None if not legs or underlying is None or lot is None else Position(underlying, lot, "", datetime.date.min,

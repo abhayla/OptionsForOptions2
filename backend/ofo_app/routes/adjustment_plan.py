@@ -482,7 +482,10 @@ async def _write(strategy_id: int, data: PlanIn, edit: bool, db: Any, user_ref: 
         keep = edit and plan is not None and plan.playbook_id == source.id  # editing the plan keeps its own body
         body = with_overrides(plan.body if keep and plan is not None else source.body, data, _kind_of(tracked, money))
         saved = await store.accept_plan(db, user_ref, strategy_id, source.id, body, _base_json(tracked))
-        return await _sheet(db, user_ref, strategy_id, stype, saved, None, user_values, money, _kind_of(tracked, money))
+        # ADR-330 (1): the reply shows the base now STORED (the one the checks read), not the one read before the save
+        stored = dataclasses.replace(tracked, stop_base=in_force_mod.stop_base_from_json(saved.stop_base))
+        return await _sheet(db, user_ref, strategy_id, stype, saved, None, user_values,
+                            in_force_mod.money_inputs(stored, market, rates), _kind_of(tracked, money))
     return await _run(db, work)
 
 

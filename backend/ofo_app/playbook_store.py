@@ -309,7 +309,7 @@ _UPSERT_PLAN = text("INSERT INTO public.strategy_adjustment_plans "  # noqa: S60
                     "VALUES (:strategy_id, :playbook_id, :type, CAST(:body AS JSONB), CAST(:stop_base AS JSONB)) "
                     "ON CONFLICT (strategy_id) "
                     "DO UPDATE SET playbook_id = EXCLUDED.playbook_id, body = EXCLUDED.body, "
-                    "stop_base = EXCLUDED.stop_base "
+                    "stop_base = COALESCE(EXCLUDED.stop_base, public.strategy_adjustment_plans.stop_base) "
                     f"RETURNING {_PLAN_COLUMNS}")
 _SELECT_PLAN = text(f"SELECT {', '.join('p.' + c for c in _PLAN_COLUMNS.split(', '))} "  # noqa: S608 constant columns
                     "FROM public.strategy_adjustment_plans p JOIN public.strategies s ON s.id = p.strategy_id "
@@ -671,8 +671,10 @@ async def accept_plan(conn: Any, user_ref: str, strategy_id: int, playbook_id: i
                       body: object | None = None, stop_base: dict | None = None) -> Plan:
     """REQ-161 AC-2/AC-3: the plan is a copy of the chosen playbook's body (or the customised sheet's body, same
     type); accepting again replaces the strategy's own plan. ADR-330 (1): ``stop_base`` (worked out from the entry
-    orders by the caller) is stored with it and REPLACES the old one, so a plan edit recomputes it; None = none
-    stored (the first check works it out once)."""
+    orders by the caller) is stored with it and REPLACES the old one, so a plan edit recomputes it; None = nothing
+    worked
+    out now: a stored base is KEPT (never overwritten by NULL), and none stored stays none (the first check works it
+    out once)."""
     await strategy_store.lock_strategy(conn, user_ref, strategy_id)  # not_found for a missing / another user's
     source = await get(conn, user_ref, playbook_id)
     current = await plan_for(conn, user_ref, strategy_id)

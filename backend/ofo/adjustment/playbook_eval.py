@@ -1028,7 +1028,7 @@ def _stop_hit(c: _Ctx, tid: str, line: sl.StopInForce) -> Hit:
     else:
         pnl = _need(c.state.pnl, "pnl")
         num, den = ratios.loss_pct_of_max_loss(pnl, _finite(c.state.stop_max_loss, "max_loss"))  # the entry's (ADR-330)
-        live = _need(c.state.max_loss, "max_loss")  # ADR-266 reads the LIVE legs: a loss above their max loss is not real
+        live = _need(c.state.max_loss, "max_loss")  # ADR-266: the LIVE legs; a loss above their max loss is not real
         if live not in (UNLIMITED, 0):  # unlimited live loss: no bound to exceed
             live_num, live_den = ratios.loss_pct_of_max_loss(pnl, live)
             if live_num > live_den * 100:

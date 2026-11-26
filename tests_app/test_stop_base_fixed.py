@@ -3,7 +3,7 @@
 The rupee amounts of the "% of max loss" stop and the "2x the credit received" stop are worked out ONCE from the trade
 as entered (paper_orders kind 'open'), stored on the plan row, and read by every stop check. Closing a side or a leg
 does not move them; an adjustment ('add' orders, a roll) does not move them either (plan question Q4, built as
-recommended (a): ``settings_in_force.STOP_BASE_KINDS`` is the one place that says so); only a plan edit recomputes.
+recommended (a): ``adjustment_readers.entry_batch`` is the one place that says so); only a plan edit recomputes.
 
 Real case (25 Nov, strategy S-21): an iron condor, 1 lot of NIFTY (lot 65), call spread 24000/24100 and put spread
 23600/23500, width 100 points on each side. Entry premiums per unit: call 90 sold / 55 bought (net 35), put 70 sold /
@@ -141,7 +141,7 @@ def amounts(tracked) -> tuple[D | None, D | None]:
 
 
 # ---- item 1: the core ----------------------------------------------------------------------------------------------
-REAL_CLOSE = [_order(1, "BUY", "exit", T1, "90.60"), _order(2, "SELL", "exit", T1, "55")]  # the 25 Nov close, booked -39
+REAL_CLOSE = [_order(1, "BUY", "exit", T1, "90.60"), _order(2, "SELL", "exit", T1, "55")]  # 25 Nov, booked -39
 LIVE_MAX_LOSS, LIVE_CREDIT = D("4914"), D("1586")  # what the old path (the live put spread) read after that close
 
 
@@ -198,9 +198,15 @@ def _stored(max_loss="1000", credit="500", source="entry") -> dict:
     return {"max_loss": max_loss, "credit": credit, "taken_at": T0.isoformat(), "source": source}
 
 
-def test_stop_base_is_worked_out_from_entry_orders_only_and_the_choice_is_one_constant():
-    """Q4 (a): the one place that says which order kinds make the base."""
-    assert sif.STOP_BASE_KINDS == ("open",)
+def test_the_entry_is_the_first_basket_the_one_definition_d04_uses(seams):
+    """Q4 (a), F6: a later basket sent as 'open' (routes/paper.py accepts it) is NOT the trade as entered: the base
+    stays Rs 2,600 / Rs 3,900 and it is the same batch D-04's entry position reads."""
+    later_open = [_order(1, "SELL", "open", T2, "30"), _order(2, "BUY", "open", T2, "15")]
+    seams.plan = _plan(None)
+    tracked = _read(seams, ENTRY + later_open)
+    assert amounts(tracked) == (LINE_PCT, LINE_CREDIT)
+    assert [o.order.placed_at for o in readers.entry_batch(ENTRY + later_open)] == [T0] * 4
+    assert (seams.writes[0]["max_loss"], seams.writes[0]["credit"]) == ("2600", "3900")
 
 
 def test_stored_base_is_used_as_it_is_even_when_the_entry_orders_say_otherwise(seams):
@@ -263,9 +269,10 @@ def test_stored_base_that_cannot_be_read_says_not_checked_and_is_left_alone(seam
 
 
 def test_no_entry_order_says_not_checked(seams):
-    """Empty: the book holds only an 'add' order (no 'open' kind) -> both lines not checked, nothing stored."""
+    """Empty: no order states a time, so no entry batch can be named (never a guess) -> both lines not checked,
+    nothing stored."""
     seams.plan = _plan(None)
-    only_add = [_order(1, "SELL", "add", T0, "90")]
+    only_add = [_order(1, "SELL", "add", None, "90")]
     got = lines_of(_read(seams, only_add))
     assert (got[sif.STOP_MAX_LOSS].amount, got[sif.STOP_MAX_LOSS].reason) == (None, sl.MAX_LOSS_UNKNOWN)
     assert (got[sif.STOP_CREDIT].amount, got[sif.STOP_CREDIT].reason) == (None, sl.CREDIT_UNKNOWN)
@@ -317,8 +324,18 @@ async def test_a_plan_edit_recomputes_and_a_backfill_writes_only_where_nothing_i
     assert saved.stop_base == first
     again = await playbook_store.accept_plan(db, user, strategy.id, system.id, None, second)  # a plan edit
     assert again.stop_base == second
-    cleared = await playbook_store.accept_plan(db, user, strategy.id, system.id, None, None)
+    kept = await playbook_store.accept_plan(db, user, strategy.id, system.id, None, None)  # F8: nothing worked out now
+    assert kept.stop_base == second  # a stored base is kept, never overwritten by NULL
+    async with db.begin_nested():
+        await db.execute(text("UPDATE public.strategy_adjustment_plans SET stop_base = NULL WHERE strategy_id = :s"),
+                         {"s": strategy.id})
+    cleared = await playbook_store.plan_for(db, user, strategy.id)
     assert cleared.stop_base is None
+    assert await playbook_store.backfill_stop_base(db, strategy.id, first) is True  # on the caller's own connection
+    assert await playbook_store.backfill_stop_base(db, strategy.id, second) is False
+    async with db.begin_nested():
+        await db.execute(text("UPDATE public.strategy_adjustment_plans SET stop_base = NULL WHERE strategy_id = :s"),
+                         {"s": strategy.id})
     won = await db.execute(playbook_store._BACKFILL_STOP_BASE,
                            {"strategy_id": strategy.id, "value": json.dumps(first)})
     lost = await db.execute(playbook_store._BACKFILL_STOP_BASE,

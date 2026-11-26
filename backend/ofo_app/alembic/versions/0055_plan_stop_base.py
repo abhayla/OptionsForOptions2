@@ -15,7 +15,8 @@ Changes (owner-run, one transaction; ADDITIVE: no row rewritten, no back-fill he
   back-fill writes it only where it is NULL). The 0031 / 0041 plan guard is unchanged (it never looked at the column).
 - public.ofo_assert_app_role_allowlist: 0052's chain text with the plan block's INSERT and UPDATE column sets widened
   (fails closed when 0031's two column checks are not in the chain exactly once).
-- downgrade (as 0046's): the allow-list 'pre' check, then locks the table and REFUSES (SQLSTATE OF039, counted) while any
+- downgrade (as 0046's): the allow-list 'pre' check, then locks the table and REFUSES (SQLSTATE OF039, counted)
+  while any
   plan row holds a stop_base; else drops the column and restores 0052's chain text.
 
 Revision ID: 0055_plan_stop_base
