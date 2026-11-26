@@ -633,8 +633,18 @@ async function openPaperOrderbook() {
     openError.value = unreadableParts(e)
   }
 }
+// N-13: while a strategy is being opened (its book read is out) the builder is not empty, it is loading: the empty-builder
+// state and "No legs yet" are not shown until the read answers. One counter, so overlapping opens end it only when the last ends.
+const opening = ref(false)
+let openingCount = 0
+async function whileOpening(fn) {
+  openingCount += 1
+  opening.value = true
+  try { return await fn() } finally { openingCount -= 1; opening.value = openingCount > 0 }
+}
 // the Saved tab's Open goes through the same check: a strategy with paper orders opens as its net position, never its plan
-async function openFromBar(next, id, revision, name) {
+const openFromBar = (next, id, revision, name) => whileOpening(() => openFromBarRead(next, id, revision, name))
+async function openFromBarRead(next, id, revision, name) {
   if (Number.isInteger(id)) {
     try {
       const read = await readPaperBook(api, id)
@@ -652,9 +662,12 @@ async function openFromBar(next, id, revision, name) {
 async function onPaperAdded(id) {
   await rereadAfterPlace(id, () => { openError.value = unreadableParts(null) })
 }
-async function openFromUrl() {
+function openFromUrl() {
+  if (!STRATEGY_ID.test(String(route.query.strategy ?? ''))) return Promise.resolve()
+  return whileOpening(readUrlStrategy)
+}
+async function readUrlStrategy() {
   const id = String(route.query.strategy ?? '')
-  if (!STRATEGY_ID.test(id)) return
   const before = legs.value
   let read
   try {
@@ -820,7 +833,7 @@ async function addFromChain() {
   const heldUnderlying = legs.value[0]?.underlying
   const tickedUnderlying = fresh[0]?.underlying
   if (heldUnderlying && tickedUnderlying && heldUnderlying !== tickedUnderlying) {
-    chainError = { ...NEUTRAL_PARTS, what_happened: `These contracts are on ${tickedUnderlying}; the legs in the builder are on ${heldUnderlying}. Nothing was added.` }
+    chainError = { ...INVALID_LINK_PARTS, what_happened: `These contracts are on ${tickedUnderlying}; the legs in the builder are on ${heldUnderlying}. Nothing was added.` }
     return false
   }
   const used = new Set(legs.value.map((l) => l.id))
@@ -833,7 +846,7 @@ async function addFromChain() {
   const r = await door.admit(legs.value, incoming, { opposite: 'allow' })
   if (!r) return false // Cancel: the held legs stay as they were
   if (r.error) {
-    chainError = { ...NEUTRAL_PARTS, what_happened: r.error } // shown after the held legs' first reads, which clear editError
+    chainError = { ...INVALID_LINK_PARTS, what_happened: r.error } // shown after the held legs' first reads, which clear editError
     return false
   }
   setLegs([...r.legs, ...r.kept])
@@ -842,7 +855,7 @@ async function addFromChain() {
 }
 onMounted(async () => {
   index.start() // the page holds the index itself (its own socket), so an empty builder still has a spot
-  if (heldBack?.paperId != null) await restoreDrafts(heldBack)
+  if (heldBack?.paperId != null) await whileOpening(() => restoreDrafts(heldBack))
   const sameAdd = heldBack?.addedDraft != null && heldBack.addedDraft === (route.query.draft ?? null) // F3: already added to this hold
   const added = heldBack && draftQuery && canonicalQueryLegs && !sameAdd ? await addFromChain() : false
   if (!added) {
@@ -1182,6 +1195,7 @@ const leaveGuard = useLeaveBuilder({
         <div :class="paper ? 'rounded-lg border-2 border-dashed border-warn p-2' : 'contents'" data-testid="legs-frame" :data-paper-mode="paper ? 'true' : 'false'">
         <p v-if="paper" class="mb-2 text-xs font-semibold text-warn" data-testid="paper-mode-label">{{ PAPER_MODE_LABEL }}</p>
         <LegList
+          :opening="opening"
           :multiplier-max="served.integer(MULTIPLIER_MAX_KEY)" :legs="legs" :pending-steps="pendingSteps" :paper-fills="paperFills" :quote-at-by-id="quoteAtById" :oldest-quote-at="data?.oldest_quote_at ?? null" :shape-name="shapeName" :has-reply="hasReply" :controls="controls" :updating="updating" :error-parts="editError" :error-index="editErrorIndex" :ltp-by-id="ltpById" :price-text-by-id="priceTextById"
           :undo-offered="undoHeld !== null" :leg-unit="legUnit" :strategy-name="openStrategy?.name ?? null"
           @edit="editLeg" @edit-leg="openInPicker" @include-all="includeAll" @remove="removeLeg" @add-leg="focusPicker" @pick-chain="pickFromChain" @clear-all="clearAll" @undo-clear="undoClear"
@@ -1244,7 +1258,7 @@ const leaveGuard = useLeaveBuilder({
         <ScenarioControls v-if="state !== 'no-draft' && !showNumbers" :choice="choice" :scenario-label="data?.scenario?.label ?? ''" :estimate-note="data?.output_label ?? ''" @update:choice="setChoice" />
 
         <p v-if="state === 'loading' && keptWhileLoading" class="sr-only" data-testid="state-loading" data-kept="true">Working out the outcome...</p>
-        <p v-else-if="state === 'loading'" class="mt-4" data-testid="state-loading">
+        <p v-else-if="state === 'loading' || (opening && state === 'no-draft')" class="mt-4" data-testid="state-loading">
           Working out the outcome...<span v-if="slow" data-testid="state-slow"> This is taking longer than usual.</span>
         </p>
 
@@ -1284,7 +1298,7 @@ const leaveGuard = useLeaveBuilder({
         </div>
 
         <!-- GC-ICFIX 21 (X-7, ADR-259): a strategy with orders and no open leg (Completed) has no tracking panel; its history stays readable. Not strategyStatus.js: a practice strategy opens from GET /paper/strategies/{id}, which carries no status. -->
-        <AdjustSteps v-if="paper && savedId && !showNumbers && state === 'no-draft'" :strategy-id="savedId" />
+        <AdjustSteps v-if="paper && savedId && !showNumbers && state === 'no-draft' && !opening" :strategy-id="savedId" />
 
         <div v-if="showNumbers" :class="updating || keptWhileLoading ? 'opacity-60' : ''" :data-updating="updating || keptWhileLoading ? 'true' : 'false'" data-testid="numbers">
           <!-- UI study Region E: the data-health strip at the top of the summary, now only for stale legs and the

@@ -35,6 +35,7 @@ import { useChainSelection } from '@/stores/chainSelection'
 import { lotsRangeText } from '@/lib/legDoor'
 import { paperOrdersFor } from '@/lib/paperDrafts'
 import real from './fixtures/outcome-condor.json'
+import { INVALID_LINK_PARTS } from '@/lib/draftLink'
 
 class FakeSocket {
   static all = []
@@ -279,6 +280,14 @@ describe.runIf(WIRED.hold)('review round: chain trip and replace question', () =
     expect(shown()).toEqual(HELD_SHOWN)
     noDialogs()
     expect(w.text()).toContain('These contracts are on SENSEX; the legs in the builder are on NIFTY. Nothing was added.')
+    // N-10: a refusal of the request, not a failure: the refusal parts, never the neutral "numbers not shown / try again" lines
+    const shownParts = w.get('[data-testid="edit-error"]').text()
+    expect(shownParts).not.toContain('Try again in a moment')
+    expect(shownParts).not.toContain('numbers on this page are not shown')
+    expect(shownParts).toContain(INVALID_LINK_PARTS.impact)
+    expect(shownParts).toContain(INVALID_LINK_PARTS.what_is_blocked)
+    expect(shownParts).toContain(INVALID_LINK_PARTS.next_action)
+    console.log('N10 SHOWN: ' + shownParts)
   })
 
   it('F3 Back from the chain into the builder?draft=X entry does not add the same ticks again', async () => {
@@ -437,5 +446,84 @@ describe.runIf(WIRED.hold)('row 12: Back to a ?strategy= entry of the held strat
     expect(useBuilderHold().held).toBeNull()
     expect(builder().openStrategy.id).toBe(7)
     expect(rowCount()).toBe(4)
+  })
+})
+
+// N-13 (owner 2026-11-26): while ?strategy=N is being opened the builder shows its loading state, never the empty builder.
+describe.runIf(WIRED.hold)('N-13: opening ?strategy=N shows the loading state until the book read answers', () => {
+  const EMPTY = 'No draft strategy is open'
+  const book63 = async () => {
+    const BOOK = (await import('../../tests/fixtures/paper/strategy-63-roll.json')).default
+    answers['GET /catalogue/NIFTY/contracts?expiry=2026-11-03'] = { underlying: 'NIFTY', contracts: BOOK.positions.map((p) => ({ contract_id: p.contract_id,
+      exchange_segment: 'NSE_FO', exchange_token: p.contract_id, instrument_type: p.instrument, expiry: p.expiry, strike: p.strike, lot_size: 65, symbol: `N${p.strike}${p.instrument}` })) }
+    return BOOK
+  }
+  const notEmpty = () => {
+    expect(w.text()).not.toContain(EMPTY)
+    expect(t(w, 'state-no-draft').exists()).toBe(false)
+    expect(t(w, 'no-legs').exists()).toBe(false)
+    expect(t(w, 'state-loading').exists()).toBe(true)
+  }
+
+  it('slow read: loading, no empty builder; the answer shows the legs', async () => {
+    const BOOK = await book63()
+    let release
+    answers['GET /paper/strategies/63'] = () => new Promise((res) => { release = () => res({ data: BOOK }) })
+    await start(BUILDER, { strategy: '63' })
+    notEmpty()
+    release()
+    await flushPromises()
+    await flushPromises()
+    expect(builder().paper).not.toBeNull()
+    expect(rowCount()).toBe(BOOK.positions.filter((p) => p.net_quantity !== 0).length || rowCount())
+    expect(rowCount()).toBeGreaterThan(0)
+    expect(w.text()).not.toContain(EMPTY)
+  })
+
+  it('read failed: the unreadable text shows, and the page leaves the loading state', async () => {
+    await book63()
+    answers['GET /paper/strategies/63'] = () => Promise.reject({ status: 500 })
+    await start(BUILDER, { strategy: '63' })
+    expect(t(w, 'open-error').text()).toContain('could not be read')
+    expect(t(w, 'state-loading').exists()).toBe(false)
+  })
+
+  it('not a paper strategy (404): the saved draft is read; loading until it answers, then the legs', async () => {
+    let release
+    answers['GET /strategies/7'] = () => new Promise((res) => { release = () => res({ data: SAVED }) })
+    await start(BUILDER, { strategy: '7' })
+    notEmpty()
+    release()
+    await flushPromises()
+    await flushPromises()
+    expect(rowCount()).toBe(4)
+    expect(w.text()).not.toContain(EMPTY)
+  })
+
+  it('not found anywhere: the catalogue message shows and the opening state ends', async () => {
+    answers['GET /strategies/9'] = () => Promise.reject({ status: 404, parts: { what_happened: 'That strategy was not found.', impact: 'x', what_is_blocked: 'y', next_action: 'z' } })
+    await start(BUILDER, { strategy: '9' })
+    expect(t(w, 'open-error').text()).toContain('That strategy was not found.')
+    expect(t(w, 'state-loading').exists()).toBe(false)
+  })
+
+  it('Back to the held ?strategy= entry: no empty builder while the held book is re-read; then the held edit shows', async () => {
+    const BOOK = await book63()
+    answers['GET /paper/strategies/63'] = BOOK
+    await start(BUILDER, { strategy: '63' })
+    builder().legs.splice(0, 1)
+    await flushPromises()
+    const edited = builder().legs.length
+    await goChain()
+    let release
+    answers['GET /paper/strategies/63'] = () => new Promise((res) => { release = () => res({ data: BOOK }) })
+    router.back()
+    await flushPromises()
+    notEmpty()
+    release()
+    await flushPromises()
+    await flushPromises()
+    expect(rowCount()).toBe(edited)
+    expect(w.text()).not.toContain(EMPTY)
   })
 })

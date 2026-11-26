@@ -29,6 +29,7 @@ import { NAME_FLOOR_CLASS } from '@/lib/nameFloor'
 import { PAPER_AVERAGE_LABEL, paperFillKey } from '@/lib/paperDrafts'
 
 const props = defineProps({
+  opening: { type: Boolean, default: false }, // N-13: a strategy is being opened; the empty-legs block is not shown until its read answers
   legs: { type: Array, required: true },
   // 2026-11-06: clicks of a strike step not yet confirmed by the server, per move key ({ 'step:2': 4 }); shown on the row at
   // once as "+4" (a count of listed strikes to move, never a strike the browser computed: REQ-076 AC-1)
@@ -172,7 +173,7 @@ function setMultiplier(index) {
       {{ LEGS_CLEARED }} <button type="button" class="text-accent underline" data-testid="clear-undo" @click="emit('undo-clear')">Undo</button>
     </p>
 
-    <div v-if="!legs.length" class="py-6 text-center" :style="cardPadding" data-testid="no-legs">
+    <div v-if="!legs.length && !opening" class="py-6 text-center" :style="cardPadding" data-testid="no-legs">
       <p class="font-medium" data-testid="no-legs-text">{{ NO_LEGS_YET }}</p>
       <p class="mt-1 text-xs text-ink-muted" data-testid="no-legs-hint">{{ readyMadeTab === null ? '' : readyMadeTab ? NO_LEGS_HINT_TAB : NO_LEGS_HINT_PAGE }}</p>
       <div class="mt-3 flex justify-center gap-2">
@@ -181,7 +182,7 @@ function setMultiplier(index) {
       </div>
     </div>
 
-    <template v-else>
+    <template v-else-if="legs.length">
       <div class="flex h-8 items-center justify-between" :style="cardPadding">
         <p class="flex min-w-0 items-center gap-2 text-ink-muted" data-testid="leg-edit-header">
           <input
