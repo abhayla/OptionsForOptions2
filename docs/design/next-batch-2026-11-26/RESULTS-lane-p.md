@@ -1,5 +1,24 @@
 # Lane P results (26 Nov 2026) - first push
 
+## PC set-up (do these first, in this order)
+
+1. **Back up the database** (the PC's PostgreSQL is the live one): a full `pg_dump` of the app database, kept outside
+   the repo; check the dump file is non-empty before going on.
+2. `git fetch origin` and check out `feat/nb-plan-alerts-1126` at the pushed head.
+3. Migrate: `python scripts/orchestrator/db_run.py . python -m alembic -c backend/ofo_app/alembic.ini upgrade head`.
+   It runs `0054_actionable_alert_answers` then `0055_plan_stop_base` (both additive; see "What the PC needs" below).
+4. Restart the API, the background worker supervisor (`python scripts/orchestrator/supervise_worker.py`) and rebuild
+   the frontend (`cd frontend && npm run build`).
+5. Post-migration checks: (a) Positions > Adjustment opportunities still lists the old records (rows written before
+   0054 have no kind and are read as adjustment rules); (b) Alerts > Active opens and shows a number equal to the bell.
+6. **Switching back to another branch afterwards is safe for runtime code.** Measured: the code at `e01f747` (before
+   Lane P) run against a database migrated to 0055 passes its worker and store tests (test_background_worker 24,
+   test_adjustment_opportunities 34, test_background_cycle 78, test_held_tracking 6, test_playbook_store 51 passed);
+   0054's guard accepts a row without a kind from older code. One old-tree test fails by design
+   (`test_alert_gate_storage`, the one that downgrades through old migrations), because an older branch cannot run a
+   downgrade of migrations it does not know. Do not run `alembic downgrade` from an older branch; 0054's own downgrade
+   refuses once new alerts exist (it would drop their answers).
+
 Branch `feat/nb-plan-alerts-1126`, cut from `fix/ic-live-test-1123` at `e01f747`. Standing-direction step: step 4 item 10
 (defects that make the tracking journey wrong) for P1 to P3; "iron-condor depth (freeze lifted 2026-11-26)" for P4 to
 P12. Highest status claimed for anything here: **Fixed, not tested** (the owner tests on his PC in market hours).
