@@ -1619,6 +1619,46 @@
     "sha256": "3d38562149284ea4780da1470db4f1f0a237375d84a7d7e78810cf8bfc73166e",
     "reviewed": "owner read 2026-11-02 (decided in session under owner delegation, independent screen)"
   },
+  "strategy_bulk_summary_none_kept": {
+    "sha256": "fa377ae8b9065bff5aa48d52ec9344c2ee3cb850784e14a14d2aa4131d760da8",
+    "reviewed": "pending owner read"
+  },
+  "strategy_bulk_summary_each": {
+    "sha256": "31ff2004ca518d42c89ff0ffd91ed216faf15ee32346ec03ff585551dc9ba5f1",
+    "reviewed": "pending owner read"
+  },
+  "strategy_bulk_summary_held_at_broker": {
+    "sha256": "a76864d5ad4c5a2b28a1faec52ed790a510f70947a8673675017403494d379ee",
+    "reviewed": "pending owner read"
+  },
+  "strategy_bulk_summary_orders_sent": {
+    "sha256": "89b229bb55f073a53ef81e33ff189bd39c90bd83ed13fb8fc03cc511b329c3b1",
+    "reviewed": "pending owner read"
+  },
+  "strategy_bulk_summary_not_found": {
+    "sha256": "cddfb046563d1725813e1817d6210070c42e51d2fae70487d03555e2f6982e7e",
+    "reviewed": "pending owner read"
+  },
+  "strategy_bulk_summary_changed": {
+    "sha256": "33110c8fda9c914f95362c7a19f4201336e1b2689dd4ec32fd97f3b8d8a6c53d",
+    "reviewed": "pending owner read"
+  },
+  "strategy_bulk_summary_failed": {
+    "sha256": "83e8f17f78f1e64da392b90e918e121bb6325f61ead97a90deb79551dc2ed6fd",
+    "reviewed": "pending owner read"
+  },
+  "strategy_delete_held_at_broker": {
+    "sha256": "1e9e20ae48be7c6fcdfa77d3b0103be8333144a000af51d5aaad51067ddca4c3",
+    "reviewed": "pending owner read"
+  },
+  "strategy_bulk_delete_item_failed": {
+    "sha256": "f429a8cd60966fab8fe64a6b0e1988a20b877738825b8973bde0fe2465ca0955",
+    "reviewed": "pending owner read"
+  },
+  "strategy_bulk_delete_too_many": {
+    "sha256": "2d9eb0de55e744982f8981c6d63dbee3517539a691865ecd86613bdb02e5bfe3",
+    "reviewed": "pending owner read"
+  },
   "tracking_exit_prices_not_live": {
     "sha256": "8e9b743393a8285037720b57610cc24635474f33cd191315aaaf8dee44f941ba",
     "reviewed": "owner read 2026-11-02 (accepted after independent screen, not read line by line)"
