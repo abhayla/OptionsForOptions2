@@ -25,16 +25,10 @@ import MarketClosedBanner from '@/components/states/MarketClosedBanner.vue'
 import LeaveBuilderDialog from '@/components/strategy/LeaveBuilderDialog.vue'
 import { useLeaveBuilder } from '@/composables/useLeaveBuilder'
 import { useSettingsValues } from '@/stores/settingsValues'
-import { CHAIN_ADD_NOTHING_TICKED } from '@/lib/sharedStateText'
+import { CHAIN_ADD_NOTHING_TICKED, CHAIN_EXPIRIES_UNREADABLE_TEXT, CHAIN_NO_STRIKES_MATCH_TEXT, CHAIN_ROWS_MISSING_TEXTS, CHAIN_SPOT_MISSING_ROWS_KEPT_TEXT, CHAIN_WAITING_TEXT } from '@/lib/sharedStateText'
 import { strikeRangesOf } from '@/lib/settingsValues'
 import { NOT_LIVE_LABEL, VALUE_UNAVAILABLE, chainRequest, useChainAnswer } from '@/composables/useChainLive'
 import { CHAIN_NOT_AVAILABLE, FEED_VALUE_KEYS, GREEKS_BASIS_LINES, GREEKS_MISSING_LINES, MONEYNESS, NO_FILTERS, anyServerFilter, fieldsFor, filterParams, onExpiryDay, filterRows, greeksStaleLabel } from '@/lib/chainDisplay'
-const ROWS_MISSING_LABELS = {
-  SPOT_MISSING: 'The underlying price is missing, so no strikes can be chosen yet.',
-  EXPIRY_UNKNOWN: 'This expiry is not in the catalogue.',
-  CATALOGUE_EMPTY: 'The catalogue lists no options for this expiry.',
-  CATALOGUE_UNREADABLE: 'The catalogue could not be read.',
-}
 
 const UNDO_SECONDS_KEY = 'other.undo_one_leg_seconds' // how long the short Undo (REQ-030 AC-15) stays offered (REQ-167 AC-7)
 const STRIKES_KEY = 'limits.chain_strikes_each_side'
@@ -163,11 +157,10 @@ const cellsOf = (v) => (v ? v.rows.flatMap((r) => [r.ce, r.pe]).filter(Boolean) 
 const anyUnavailable = computed(() => cellsOf(view.value).some((c) => !isPermitted(c)))
 watch(view, (v) => selection.syncPermissions(cellsOf(v)), { immediate: true })
 // The spot dropped out of a window we hold: the option rows stay and this line says what is missing (never "no strikes match").
-const SPOT_MISSING_ROWS_KEPT = 'The underlying price is missing right now: option prices are shown, but the ATM strike, moneyness, IV and Greeks are not.'
 const rowsMissing = computed(() => {
   const code = view.value?.rows_missing
   if (!code) return ''
-  return code === 'SPOT_MISSING' && view.value.rows.length ? SPOT_MISSING_ROWS_KEPT : ROWS_MISSING_LABELS[code]
+  return code === 'SPOT_MISSING' && view.value.rows.length ? CHAIN_SPOT_MISSING_ROWS_KEPT_TEXT : CHAIN_ROWS_MISSING_TEXTS[code]
 })
 // REQ-135 AC-2: the server counted the days (IST); a missing or unreadable count shows no number, never the browser's own count
 const days = computed(() => { const d = expiryDays.value[expiry.value]; return Number.isInteger(d) && d >= 0 ? d : null })
@@ -248,9 +241,9 @@ const resetFilters = () => (filters.value = { ...NO_FILTERS })
     <MarketClosedBanner v-if="answer?.market_closed" class="mt-3" :prices-at="answer.last_price_at" />
     <p v-if="reconnecting" class="mt-3 text-sm font-medium" data-testid="live-reconnecting">{{ reconnectingText }}</p>
 
-    <p v-if="catalogueFailed" class="mt-3 text-sm" data-testid="catalogue-unreadable">The expiries could not be read, so no chain is shown.</p>
+    <p v-if="catalogueFailed" class="mt-3 text-sm" data-testid="catalogue-unreadable">{{ CHAIN_EXPIRIES_UNREADABLE_TEXT }}</p>
     <p v-else-if="notLive()" class="mt-3 text-sm" data-testid="not-live">{{ NOT_LIVE_LABEL }}</p>
-    <p v-else-if="!view && request" class="mt-3 text-sm text-ink-muted" data-testid="chain-waiting">Waiting for live data.</p>
+    <p v-else-if="!view && request" class="mt-3 text-sm text-ink-muted" data-testid="chain-waiting">{{ CHAIN_WAITING_TEXT }}</p>
     <p v-if="rowsMissing" class="mt-3 text-sm" data-testid="rows-missing">{{ rowsMissing }}</p>
 
     <p v-if="anyUnavailable" class="mt-3 text-sm" data-testid="unavailable-notice">
@@ -260,7 +253,7 @@ const resetFilters = () => (filters.value = { ...NO_FILTERS })
       <button type="button" class="btn btn-sm" data-testid="chain-refresh" @click="refresh">Refresh</button>
     </p>
 
-    <p v-if="nothingMatches" class="mt-3 text-sm" data-testid="filtered-empty">No strikes match the filters.</p>
+    <p v-if="nothingMatches" class="mt-3 text-sm" data-testid="filtered-empty">{{ CHAIN_NO_STRIKES_MATCH_TEXT }}</p>
     <p v-if="greeksLine" class="mt-3 text-xs text-ink-muted" data-testid="greeks-line">{{ greeksLine }}</p>
     <p v-if="staleLine" class="mt-3 text-xs text-ink-muted" data-testid="greeks-stale-line">IV and Greeks: {{ staleLine }}.</p>
     <div v-if="view && view.rows.length" class="mt-3 max-h-[calc(100vh-240px)] overflow-auto rounded-lg border border-line bg-surface" data-testid="chain-card">

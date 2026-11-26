@@ -159,6 +159,25 @@ describe('Option Chain screen', () => {
     }
   })
 
+  it('REQ-029 AC-11 (T-Q10): the page\'s own sentences come from the wording catalogue unchanged, and the page carries none of them as text', async () => {
+    const cat = await import('@/lib/sharedStateText')
+    expect(cat.CHAIN_WAITING_TEXT).toBe('Waiting for live data.')
+    expect(cat.CHAIN_NO_STRIKES_MATCH_TEXT).toBe('No strikes match the filters.')
+    expect(cat.CHAIN_EXPIRIES_UNREADABLE_TEXT).toBe('The expiries could not be read, so no chain is shown.')
+    expect(Object.values(cat.CHAIN_ROWS_MISSING_TEXTS)).toEqual([
+      'The underlying price is missing, so no strikes can be chosen yet.', 'This expiry is not in the catalogue.',
+      'The catalogue lists no options for this expiry.', 'The catalogue could not be read.'])
+    const src = readFileSync(resolve(__dirname, '../src/pages/OptionChainPage.vue'), 'utf8')
+    for (const t of [cat.CHAIN_WAITING_TEXT, cat.CHAIN_NO_STRIKES_MATCH_TEXT, cat.CHAIN_EXPIRIES_UNREADABLE_TEXT, cat.CHAIN_SPOT_MISSING_ROWS_KEPT_TEXT, ...Object.values(cat.CHAIN_ROWS_MISSING_TEXTS)]) expect(src).not.toContain(t)
+    // and the page shows them from there
+    script({ chain: () => Promise.resolve({ data: notConnected() }) })
+    const w = await mountPage()
+    sock().serverOpen()
+    sock().serverPush(answer('120.50', { rows: [], rows_missing: 'EXPIRY_UNKNOWN', expiry: '2026-10-20' }))
+    await flushPromises()
+    expect(w.get('[data-testid="rows-missing"]').text()).toBe('This expiry is not in the catalogue.')
+  })
+
   it('AC-6: no order, execute, buy/sell button or link anywhere on the screen', async () => {
     script({ chain: () => Promise.resolve({ data: notConnected() }) })
     const w = await mountPage()
