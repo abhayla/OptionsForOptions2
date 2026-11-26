@@ -776,10 +776,11 @@ class DbGateStore:
     async def apply(self, w: Watched, events: Iterable[alert_gate.Event]) -> dict[str, int]:
         """The gate's events in ONE transaction, every write through ``actionable_alerts`` (ADR-330: the one module);
         rule id -> id of each alert raised. A closed candle that clears the line (Lapsed) only notes "no longer true
-        since" on the open alert: it stays in Active until the user answers (ADR-330 (3)). A worse escalation updates the
-        same open row (one open alert per rule, REQ-112); a re-cross after "no longer true" clears the note and opens no
-        second row. Every field of a record's snapshot comes from the event's own sample (``record_fields``)."""
+        since" on the open alert: it stays in Active until the user answers (ADR-330 (3)). A worse escalation updates
+        the same open row (one open alert per rule, REQ-112); a re-cross after "no longer true" clears the note and
+        opens no second row. Every field of a record's snapshot is from the event's own sample (``record_fields``)."""
         from ofo.alerts import kind_of  # noqa: PLC0415
+
         from ofo_app import actionable_alerts, playbook_store  # noqa: PLC0415 - database layer at run time
         from ofo_app.db import get_sessionmaker  # noqa: PLC0415
         source = playbook_store.SOURCE_SYSTEM if w.is_system else playbook_store.SOURCE_OWN
@@ -1929,14 +1930,13 @@ async def owner_lister(provider: Any, gate: Any = None,
             log.exception("background: listing strategy %s failed; it is skipped", s.id)
             unread.add(s.id)  # not read is not gone: its queued alert events stay (#636 r6 review)
             continue
-        if resolved.source == "none":  # P2 / ADR-330 (11): no plan = nothing watched, a DEFINITE answer (a failed read raised above)
+        if resolved.body is None:  # ADR-330 (11): no plan = nothing watched; a DEFINITE answer (a failed read raised)
             async with held(gate, GATE_REBUILD), get_sessionmaker()() as db:  # its open alerts close: not_monitored
                 await _lapse_exited(db, OWNER_REF, s.id, "not_monitored")
             continue
-        if resolved.body is not None:
-            out.append(Watched(OWNER_REF, s.id, tracked, resolved.body, resolved.is_system, OWNER_REF,
-                               resolved.strategy_layer, facts, resolved=resolved, charge_rates=rates,
-                               regime=await regimes.read(tracked.position.underlying), basket_facts=baskets))
+        out.append(Watched(OWNER_REF, s.id, tracked, resolved.body, resolved.is_system, OWNER_REF,
+                           resolved.strategy_layer, facts, resolved=resolved, charge_rates=rates,
+                           regime=await regimes.read(tracked.position.underlying), basket_facts=baskets))
     return Listed(out, unread)
 
 

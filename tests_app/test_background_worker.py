@@ -22,8 +22,8 @@ import pytest
 from _scenario_catalogue import load_library
 from ofo.adjustment import alert_gate
 from ofo.adjustment.preferences import from_values
-from ofo.timeutil import IST
 from ofo.settings import defaults as registry_defaults
+from ofo.timeutil import IST
 from ofo_app import actionable_alerts, background, playbook_store, scenario_mode, strategy_alert_style_store
 from ofo_app import db as app_db
 from ofo_app.config import get_settings
@@ -290,7 +290,7 @@ async def _t03_rows(engine, sid: int, since: int) -> list[tuple]:
 
 async def test_a_recross_after_no_longer_true_opens_no_second_row_and_grows_the_timeline_once(app_db_url, monkeypatch):
     """The gate's later closes (ADR-330 (3)): Opened, Lapsed, Lapsed again (a restart), Opened again at the same value
-    -> still ONE row, no_longer_true_since cleared, timeline = opened + stopped + true again (3), never one per candle."""
+    -> still ONE row, no_longer_true_since cleared, timeline = opened + stopped + true again (3), not one per candle."""
     w, _ = await _watched_and_fresh_t03(app_db_url, monkeypatch)
     t0 = datetime.datetime(2026, 11, 25, 11, 2, 20, tzinfo=IST)
     minute = datetime.timedelta(minutes=1)
@@ -802,11 +802,13 @@ async def test_s16_a_gate_condition_stopped_never_closes_the_record(app_db_url, 
     stopped = datetime.datetime(2026, 11, 25, 11, 5, 1, tzinfo=IST)
     opened = await background.DbGateStore().apply(w, [alert_gate.Opened("T-06", fired, 0, D("15.4000"), D("15.5750"))])
     await background.DbGateStore().apply(w, [alert_gate.Lapsed("T-06", stopped, D("15.2000"))])
-    await background.DbGateStore().apply(w, [alert_gate.Lapsed("T-06", stopped + datetime.timedelta(minutes=5), D("15"))])
+    again = stopped + datetime.timedelta(minutes=5)
+    await background.DbGateStore().apply(w, [alert_gate.Lapsed("T-06", again, D("15"))])
     async with app_db_url.connect() as conn:
         rows = (await conn.execute(text(
             "SELECT id, outcome, kind, shown_at, no_longer_true_since, value, answer, jsonb_array_length(timeline) "
-            "FROM public.adjustment_suggestions WHERE strategy_id = :s AND rule_id = 'T-06'"), {"s": w.strategy_id})).all()
+            "FROM public.adjustment_suggestions WHERE strategy_id = :s AND rule_id = 'T-06'"),
+            {"s": w.strategy_id})).all()
     assert [tuple(r) for r in rows] == [(opened["T-06"], "open", "plan_loss_stop", fired, stopped, D("15.5750"), None,
                                          2)], rows  # a repeat Lapsed adds nothing: one entry for opening, one stopped
 
@@ -827,7 +829,8 @@ async def test_an_escalation_updates_and_a_cleared_band_notes_no_longer_true_wit
                                            "WHERE id = :i"), {"i": old})).scalar_one()
     assert opened == {"T-03": old} and (recs[old].outcome, recs[old].lapse_reason) == ("open", None)
     assert stopped == later
-    assert str(render_explanation("suggestion_lapsed_superseded_by_worse")) == "A worse reading of the same rule replaced it"
+    shown = render_explanation("suggestion_lapsed_superseded_by_worse")
+    assert str(shown) == "A worse reading of the same rule replaced it"
 
 
 async def test_a_yes_no_record_stores_the_confirming_reading_and_none_when_it_had_no_number(app_db_url, monkeypatch):

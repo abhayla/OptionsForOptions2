@@ -247,7 +247,7 @@ async def close_by_system(conn: Any, user_ref: str, strategy_id: int, reason: st
     return closed
 
 
-async def note_rule_condition(conn: Any, user_ref: str, strategy_id: int, rule_id: str, *, still_true: bool,
+async def note_rule_condition(conn: Any, user_ref: str, strategy_id: int, rule_id: str, *, still_true: bool,  # noqa: PLR0913
                               at: datetime) -> Alert | None:
     """The gate's word on one RULE of a strategy (it knows rules, not row ids): ``note_condition`` on the rule's open
     row. None when no row of the rule is open, or when it was answered or closed meanwhile (a race with the user's
@@ -280,7 +280,7 @@ async def close_changed(conn: Any, user_ref: str, strategy_id: int, current: int
                                  ids=[s.id for s in stale])
 
 
-async def close_expired(conn: Any, user_ref: str, strategy_id: int, expiry: Any, today: Any, *,
+async def close_expired(conn: Any, user_ref: str, strategy_id: int, expiry: Any, today: Any, *,  # noqa: PLR0913
                         at: datetime | None = None) -> list[Alert]:
     """D-30: a strategy whose last expiry is before ``today`` closes its open alerts as contract_expired; an unknown
     expiry or day closes nothing (never a guess)."""
