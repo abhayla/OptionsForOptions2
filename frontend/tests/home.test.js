@@ -104,7 +104,7 @@ describe('Home states from GET /strategies', () => {
     expect(rows[1].text()).toContain('NIFTY, Draft, last saved 17 Oct 2026, 10:00:00 IST')
     expect(rows[2].text()).toContain('NIFTY, Draft, last saved 16 Oct 2026, 10:00:00 IST')
     expect(w.find('[data-testid="recent-open-1"]').exists()).toBe(false) // the oldest is not shown
-    expect(hrefs(w, 'recent-strategies')).toEqual(['/strategy/builder', '/strategy/builder', '/strategy/builder'])
+    expect(hrefs(w, 'recent-strategies')).toEqual(['/strategy/builder?strategy=2', '/strategy/builder?strategy=3', '/strategy/builder?strategy=4']) // S-18: each link carries its row's id
     expect(w.text()).not.toContain('Welcome')
   })
 

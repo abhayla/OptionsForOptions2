@@ -14,6 +14,7 @@ import { PAPER_BOOK_UNREADABLE, readPaperBook } from '@/lib/paperDrafts'
 import PnlLine from '@/components/live/PnlLine.vue'
 import { CARD_LEGS_AS_SAVED_TEXT, CARD_QUEUED_TEXT } from '@/lib/sharedStateText'
 import { isRunning, strategyStatusWord } from '@/lib/strategyStatus'
+import { builderLinkOf, paperStopsLinkOf } from '@/lib/strategyLinks'
 import { istTime, maxLine, nameFromPool } from '@/lib/displayFormat'
 import { RouterLink } from 'vue-router'
 import Chip from '@/components/common/Chip.vue'
@@ -188,6 +189,10 @@ watch(closed, (now) => { if (now) emit('closed', data.value.last_price_at) })
 const breakevens = computed(() => ((paperBook.value ? (bookFailed.value ? [] : paperBook.value.breakevens_display) : data.value?.summary?.breakevens_display) ?? []).join(', '))
 const hasLots = computed(() => (data.value?.legs ?? []).some((l) => l.lots != null))
 const hasEntry = computed(() => (data.value?.legs ?? []).some((l) => (l.planned_entry_display ?? l.planned_entry) != null))
+// S-14: links only while the card is not in the error state; a Running (placed paper) strategy shows its fill as "Entry price"
+const openLink = computed(() => (state.value === 'error' ? null : builderLinkOf(props.strategy.id)))
+const stopsLink = computed(() => (state.value !== 'error' && isRunning(props.strategy) ? paperStopsLinkOf(props.strategy.id) : null))
+const entryHead = computed(() => (isRunning(props.strategy) ? 'Entry price' : 'Planned entry'))
 const legName = (leg) => nameFromPool(leg, [], data.value?.underlying) // never the raw trading symbol (issue 297, REQ-151)
 // REQ-049 AC-4: any health other than `available` (also a missing one) is marked with its word.
 // RD-045: the word is followed by one sentence with its reason (lib/dataHealthText.js).
@@ -199,10 +204,12 @@ const healthWord = (leg) => (closed.value ? null : leg.health === 'available' ? 
 class="rounded border border-line bg-surface p-4" data-testid="live-strategy-card" :data-strategy-id="strategy.id"
            :data-state="state" :data-paused="paused ? 'true' : 'false'" :data-live="live.status.value">
     <header class="flex flex-wrap items-baseline gap-2">
-      <h2 class="text-base font-semibold" data-testid="live-strategy-title">{{ strategyLabel(strategy, `Draft ${strategy.id}`) }}, {{ strategy.underlying }}</h2>
+      <!-- S-14: the name opens the strategy (not in the error state); a running paper strategy also links to its Stops. Exit waits for ExitButton. -->
+      <h2 class="text-base font-semibold"><component :is="openLink ? RouterLink : 'span'" v-bind="openLink ? { to: openLink, class: 'hover:underline', 'data-testid': 'live-strategy-open' } : {}"><span data-testid="live-strategy-title">{{ strategyLabel(strategy, `Draft ${strategy.id}`) }}, {{ strategy.underlying }}</span></component></h2>
       <span class="rounded bg-gray-100 px-1.5 text-xs text-ink-muted" data-testid="live-strategy-status">{{ strategyStatusWord(strategy) }}</span>
       <!-- GC-MU A3 (ADR-230 (2)): the server's words for the open adjustment records; none at 0 or when unread -->
       <RouterLink v-if="strategy.open_opportunities_text" :to="{ path: '/positions/adjustment-opportunities', query: { strategy: String(strategy.id) } }" class="text-sm text-accent underline" data-testid="live-opportunity-mark">{{ strategy.open_opportunities_text }}</RouterLink>
+      <RouterLink v-if="stopsLink" :to="stopsLink" class="text-sm text-accent underline" data-testid="live-strategy-stops">Stops</RouterLink>
       <span v-if="paused" class="text-sm" data-testid="live-paused-badge">⏸ Monitoring paused</span>
       <span v-if="paused" class="inline-flex items-center gap-1 text-sm text-ink-muted" data-testid="live-health-dot" data-health="unknown">
         <span class="inline-block h-2 w-2 rounded-full bg-gray-400" aria-hidden="true"></span>Health unknown
@@ -237,7 +244,7 @@ class="rounded border border-line bg-surface p-4" data-testid="live-strategy-car
         <p v-for="line in figuresBasis" :key="line" class="text-xs text-ink-muted" data-testid="live-figures-basis">{{ line }}</p>
         <table class="mt-2 w-full text-sm" data-testid="live-legs">
           <thead class="text-xs text-ink-muted">
-            <tr><th class="text-left font-normal">Instrument</th><th v-if="hasLots" class="text-right font-normal">Lots</th><th v-if="hasEntry" class="text-right font-normal">Planned entry</th><th class="text-right font-normal">LTP</th></tr>
+            <tr><th class="text-left font-normal">Instrument</th><th v-if="hasLots" class="text-right font-normal">Lots</th><th v-if="hasEntry" class="text-right font-normal">{{ entryHead }}</th><th class="text-right font-normal">LTP</th></tr>
           </thead>
           <tbody>
             <tr v-for="leg in data.legs" :key="leg.instrument_id" data-testid="live-leg" :data-health="leg.health ?? 'unavailable'">
