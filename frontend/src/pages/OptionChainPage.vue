@@ -25,6 +25,7 @@ import MarketClosedBanner from '@/components/states/MarketClosedBanner.vue'
 import LeaveBuilderDialog from '@/components/strategy/LeaveBuilderDialog.vue'
 import { useLeaveBuilder } from '@/composables/useLeaveBuilder'
 import { useSettingsValues } from '@/stores/settingsValues'
+import { CHAIN_ADD_NOTHING_TICKED } from '@/lib/sharedStateText'
 import { strikeRangesOf } from '@/lib/settingsValues'
 import { NOT_LIVE_LABEL, VALUE_UNAVAILABLE, chainRequest, useChainAnswer } from '@/composables/useChainLive'
 import { CHAIN_NOT_AVAILABLE, FEED_VALUE_KEYS, GREEKS_BASIS_LINES, GREEKS_MISSING_LINES, MONEYNESS, NO_FILTERS, anyServerFilter, fieldsFor, filterParams, onExpiryDay, filterRows, greeksStaleLabel } from '@/lib/chainDisplay'
@@ -126,6 +127,8 @@ const isChosen = (cell, action) => entriesOf(cell).some((e) => e.action === acti
 const tick = (row, type) => selection.toggleContract(contractFor(row, type))
 const choose = (row, type, action) => selection.chooseAction(contractFor(row, type), action)
 const canAdd = computed(() => legs.value.length > 0 && pending.value.length === 0)
+// ADR-328 (4), T-Q8: a blocked control looks blocked and says why. Nothing ticked: the button is there, dimmed, with its reason.
+const addReason = computed(() => (picked.value.length ? '' : CHAIN_ADD_NOTHING_TICKED))
 // One module names a contract (lib/displayFormat.js), the builder's own name: 'NIFTY 1 Dec 25150 CE' (REQ-148 AC-2).
 const contractName = (e) => legName({ ...e, instrument_type: e.type })
 
@@ -318,7 +321,8 @@ const resetFilters = () => (filters.value = { ...NO_FILTERS })
       </table>
     </div>
 
-    <div v-if="picked.length" ref="summary" class="sticky bottom-0 mt-3 rounded-lg border border-line bg-surface p-4" data-testid="selected-legs">
+    <div ref="summary" class="sticky bottom-0 mt-3 rounded-lg border border-line bg-surface p-4" :data-testid="picked.length ? 'selected-legs' : 'add-selected-bar'">
+      <template v-if="picked.length">
       <h2 class="text-sm font-semibold">Selected Legs</h2>
       <ul class="mt-1 text-sm">
         <li v-for="e in picked" :key="e.id" class="flex flex-wrap items-center gap-2" data-testid="selected-leg" :data-action="e.action ?? ''">
@@ -341,7 +345,9 @@ const resetFilters = () => (filters.value = { ...NO_FILTERS })
         <button type="button" class="mr-2 rounded border border-line px-2" data-testid="multi-expiry-continue" @click="openBuilder">Continue</button>
         <button type="button" class="rounded border border-line px-2" data-testid="multi-expiry-review" @click="reviewSelection">Review Selection</button>
       </div>
-      <button type="button" class="btn btn-primary mt-3" :disabled="!canAdd" data-testid="add-selected" @click="addSelected">Add Selected ({{ legs.length }})</button>
+      </template>
+      <button type="button" class="btn btn-primary mt-3" :disabled="!canAdd" :aria-describedby="addReason ? 'add-selected-reason' : undefined" data-testid="add-selected" @click="addSelected">Add Selected ({{ legs.length }})</button>
+      <p v-if="addReason" id="add-selected-reason" class="mt-1 text-sm text-ink-muted" data-testid="add-selected-reason">{{ addReason }}</p>
     </div>
   </section>
 </template>

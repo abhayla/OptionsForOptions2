@@ -114,3 +114,5 @@ export const CREATE_STRATEGY_ROUTE = { name: 'strategies-create-strategy' }
 // pending owner read (D-54 round 2): the out-of-V1 line when the labels read failed (the server's own sentence is preferred when present)
 export const PLAYBOOK_TEST_OUT_OF_V1_TEXT = 'Testing against past expiries is not in this version: it needs licensed historical option data.'
 export const PLAYBOOK_DELETE_CONFIRM_TEXT = 'Delete this playbook?'
+// pending owner read (26 Nov 2026), T-Q8 (ADR-328 (4)): Option Chain, nothing ticked: the greyed Add Selected (0) says why
+export const CHAIN_ADD_NOTHING_TICKED = 'Tick at least one contract to add.'

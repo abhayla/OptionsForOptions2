@@ -319,7 +319,7 @@ test.describe('Option Chain: opening, underlying and expiry (REQ-029 AC-1, AC-8,
       await page.goto(CHAIN)
       await expect(page.getByTestId('rows-missing')).toHaveText(text)
       await expect(page.getByTestId('chain-table')).toHaveCount(0)
-      await expect(addSelected(page)).toHaveCount(0)
+      await expect(addSelected(page)).toBeDisabled() // nothing can be ticked: it stays, greyed (T-Q8)
       if (code === 'SPOT_MISSING') await expect(page.getByTestId('spot')).toHaveText('-')
     })
   }
@@ -684,7 +684,8 @@ test.describe('Option Chain: ticking, Buy / Sell, lots, Remove, Undo (REQ-030 AC
     await expect(addSelected(page)).toHaveText('Add Selected (1)')
     await rowOf(page, '25100').getByTestId('select-pe').uncheck()
     await expect(page.getByTestId('selected-legs')).toHaveCount(0)
-    await expect(addSelected(page)).toHaveCount(0)
+    await expect(addSelected(page)).toHaveText('Add Selected (0)') // T-Q8: it stays, greyed
+    await expect(addSelected(page)).toBeDisabled()
   })
 
   test('CHAIN-16 the Buy / Sell buttons on a Selected Legs row choose, change and switch off that leg\'s action', async ({ page }) => {
@@ -1060,7 +1061,7 @@ test.describe('Option Chain: stale, paused and absent prices, market closed, loa
       await expect(page.getByTestId('not-live')).toHaveText('Option chain unavailable: not connected to live data.')
       await expect(rows(page)).toHaveCount(0)
       await expect(page.getByTestId('spot')).toHaveText('-')
-      await expect(addSelected(page)).toHaveCount(0)
+      await expect(addSelected(page)).toBeDisabled() // T-Q8
       await shot(page, 'chain-fail')
     })
   }
@@ -1121,10 +1122,15 @@ async function tripToChain(page: Page, o: Opts = {}) {
 }
 
 test.describe('Option Chain: Add Selected opens the builder with exactly those legs (REQ-030 AC-9, AC-11, AC-12; ADR-002; ADR-328 (1); ADR-329)', () => {
-  test('CHAIN-23 with nothing ticked there is no Add Selected to press; with a tick but no Buy/Sell it is there and greyed', async ({ page }) => {
-    // Spec basis: REQ-030 AC-8, AC-9; the page shows the button only inside Selected Legs: see questions (should it be there greyed, "Add Selected (0)"?)
+  test('CHAIN-23 with nothing ticked Add Selected (0) is there, greyed, with its reason; with a tick but no Buy/Sell it stays greyed', async ({ page }) => {
+    // Spec basis: REQ-030 AC-9 (the button shows the count, "Add Selected (0)" with nothing ticked); ADR-328 (4) (a blocked control looks blocked, with its reason); T-Q8
     await openNifty(page)
-    await expect(addSelected(page)).toHaveCount(0)
+    await expect(addSelected(page)).toHaveText('Add Selected (0)')
+    await expect(addSelected(page)).toBeDisabled()
+    await expect(addSelected(page)).toHaveCSS('opacity', '0.5')
+    await expect(page.getByTestId('add-selected-reason')).toHaveText('Tick at least one contract to add.')
+    await addSelected(page).click({ force: true }) // pressing a greyed button does nothing
+    await expect(page).toHaveURL(/\/market\/option-chain$/)
     await rowOf(page, '25150').getByTestId('select-ce').check()
     await expect(addSelected(page)).toBeDisabled()
     await addSelected(page).click({ force: true }) // pressing a greyed button does nothing
