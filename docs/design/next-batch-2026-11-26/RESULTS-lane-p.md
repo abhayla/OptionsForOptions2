@@ -72,6 +72,25 @@ trade shows its entry shape name again (the builder went past its brief here; it
 (c) The Adjustment-opportunities inbox heading for a side_closed row still reads "Adjustment opportunity detected"
 (the Active row itself carries no adjustment wording). (d) Old-tree test above fails on 0056 by design.
 
+## To file as deferred issues (coordinator files them; Lane P filed none after 17:17 IST)
+
+| Title | Evidence | Spec basis | Done when |
+|---|---|---|---|
+| P7: a closure between two worker re-lists is missed | `side_closed.raise_if_closed` writes the `side_reopened` marker only when a re-list sees the side with legs again (builder report, P7 r2) | ADR-330 (33) "ask again each time" | legs added and closed again inside one cycle raise a new side_closed row; a test pins it |
+| Inbox heading of a side_closed row reads "Adjustment opportunity detected" | `routes/adjustment_opportunities.py` group label falls back to that text when `source` is None | ADR-330 (2) (b), (3) | the inbox shows the side-closed wording, no adjustment heading; a route test pins it |
+| P7 r2 test does not fail on the old `source` value | `test_a_side_closed_row_in_active_has_no_adjustment_wording` passes either way (builder note) | ADR-330 (3) | a mutation of `source` turns that test red |
+| Browser "watch.level." prefix not pinned to the Python constant | P1c review MINOR | ADR-330 (4) | one test reads both and compares |
+| Engine rule ids (stop.credit_x, plan.rupee_*, T-06, T-16, T-18) accepted as user rule ids | P1c review MINOR | ADR-330 (3) | a user rule with such an id is refused naming the field |
+
+## Hand-over (Lane P stops after the second push; Lane J takes the page work)
+
+DONE (server, Fixed, not tested): P1, P1c, P2, P3, P4, P4b, P5, P6 server, P7 backend, P8 mechanism + P8b, P10 server,
+P11 server, P12, LP-4 line, alert titles; migrations 0054, 0055, 0056 with old-code proofs above.
+LEFT (Wave 2, the steps below): paper_monitor `_fire` -> inform + P6 line + stop titles; AlertsPage Exit -> usePaperExit;
+PaperStops leg-stop-risk line; PlanWatch.vue; PaperStrategies closed_text; P7 page flow (two answers + "Not applicable"
+line, needs a reply field and an owner-approved inventory note); P8 Reset button and change markers.
+OPEN FOR THE OWNER: the three second-push points under "Deferred issues and open findings".
+
 ## Wave 2 steps left (for the lane that joins with the screens line)
 
 1. `backend/ofo_app/paper_monitor.py` `_fire` (~:238): replace `triggers.add_alert(...)` with
