@@ -3,6 +3,7 @@
      Create Strategy, the three most recently updated). A failed read -> `error` with the server's message. The live index
      strip shows in every state. Zerodha is a quiet line only: no connect control anywhere on this page (AC-5). No money. -->
 <script setup>
+import { builderLinkOf } from '@/lib/strategyLinks'
 import { computed, onMounted, ref } from 'vue'
 import api, { NEUTRAL_PARTS } from '@/services/api'
 import ErrorMessage from '@/components/common/ErrorMessage.vue'
@@ -118,7 +119,8 @@ onMounted(async () => {
             <span v-if="plainName(s.name)" class="min-w-0 truncate font-medium" data-testid="recent-name">{{ plainName(s.name) }}</span>
             <span v-else class="text-ink-subtle" aria-hidden="true">—</span>
             <span class="min-w-0 truncate text-ink-muted">{{ s.underlying }}, {{ strategyStatusWord(s) }}, last saved {{ istTime(s.updated_at) }}</span>
-            <router-link to="/strategy/builder" class="text-accent hover:underline" :data-testid="`recent-open-${s.id}`">Open in Strategy Builder</router-link>
+            <router-link v-if="builderLinkOf(s.id)" :to="builderLinkOf(s.id)" class="text-accent hover:underline" :data-testid="`recent-open-${s.id}`">Open in Strategy Builder</router-link>
+            <span v-else aria-hidden="true"></span><!-- S-18: no usable id, no link; the grid cell stays -->
           </li>
         </ul>
       </Card>
