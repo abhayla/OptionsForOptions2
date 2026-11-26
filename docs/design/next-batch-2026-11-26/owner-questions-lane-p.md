@@ -83,3 +83,18 @@ Options:
 - (b) Reset puts back everything, the sheet's levels too (the confirmation says so).
 
 Built meanwhile: (a), in one place (`backend/ofo/adjustment/plan_diff.reset`), reversible.
+
+## LP-6 A side that closes a second time
+
+Spec basis: ADR-330 (2)(b) "When a side closes, the user is told so and asked whether he wants to add new positions on
+the closed side"; silent on a side that closes again after the user added new legs on it (searched: "closes again").
+
+Real case: none yet (P7 is new). Example: the call side of an iron condor closes, the user answers "add legs", adds a
+new call spread, and later that new call side also closes.
+
+Options:
+- (a) Ask again: a new "side closed" alert each time a side closes after it was re-opened with new legs.
+  **Recommended**: each close is a new decision for the trader.
+- (b) Ask once per side for the life of the trade (as built in P7).
+
+Built meanwhile: (b) (one alert per side, ever), in one place (`backend/ofo_app/side_closed.py`); (a) is the next step.
