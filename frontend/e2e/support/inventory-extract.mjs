@@ -322,8 +322,9 @@ async function loadRoutes() {
 // routes.js cannot be imported in plain Node (it dynamic-imports .vue files lazily, which is fine until called, but
 // `String(factory)` gives `() => import('../pages/X.vue')`, so the file name is readable). The module itself imports only
 // nav.js and lib/orderPath.js, so importing it works.
-export async function main(argv) {
-  const out = argv.includes('--out') ? resolve(argv[argv.indexOf('--out') + 1]) : DEFAULT_OUT
+// Pure builder: returns the inventory object (no file written, no process exit). The guard test
+// frontend/tests/screen-inventory-guard.test.js calls it; main() below is the CLI around it.
+export async function buildInventory() {
   const routes = await loadRoutes()
   const routeList = routes.map((r) => {
     let component = '(redirect)'
@@ -430,7 +431,12 @@ export async function main(argv) {
     for (const c of scanFile(f).controls) unrouted.push({ id: `UNROUTED-${String(++un).padStart(2, '0')}`, ...c, component: relative(SRC, f).replace(/\\/g, '/') })
   }
   result.routes.splice(2, 0, { path: '(unrouted components)', component: 'components that no route or the shell renders', controls: unrouted })
+  return result
+}
 
+export async function main(argv) {
+  const out = argv.includes('--out') ? resolve(argv[argv.indexOf('--out') + 1]) : DEFAULT_OUT
+  const result = await buildInventory()
   const text = JSON.stringify(result, null, 1) + '\n'
   if (argv.includes('--check')) {
     const cur = existsSync(out) ? readFileSync(out, 'utf8') : ''
