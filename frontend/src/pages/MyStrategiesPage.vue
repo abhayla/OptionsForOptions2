@@ -7,12 +7,14 @@
      exited, alembic 0049) and shows each one's final P&L, adjustments made and their cost exactly as the server worded them
      (a figure the server could not give shows the server's reason, never 0; no money arithmetic here). -->
 <script setup>
-import { computed, onBeforeUnmount, onMounted, ref } from 'vue'
+import { computed, onBeforeUnmount, onMounted, ref, watch } from 'vue'
 import { useRoute, useRouter } from 'vue-router'
 import api, { NEUTRAL_PARTS } from '@/services/api'
 import ErrorMessage from '@/components/common/ErrorMessage.vue'
 import PageHeader from '@/components/common/PageHeader.vue'
 import EmptyState from '@/components/states/EmptyState.vue'
+import LoadFailed from '@/components/common/LoadFailed.vue'
+import DraftDeleteConfirm from '@/components/strategy/DraftDeleteConfirm.vue'
 import DraftDelete from '@/components/strategy/DraftDelete.vue'
 import DraftDeleteStatus from '@/components/strategy/DraftDeleteStatus.vue'
 import { istTime } from '@/lib/displayFormat'
@@ -25,9 +27,9 @@ const netBreakdown = (s) => afterFigure(s, typeof s.final_pnl_text === 'string' 
 import AfterChargesTap from '@/components/common/AfterChargesTap.vue'
 const notAvailable = (s) => s.after_charges_reason_text ?? s.completed_reason_text ?? 'the server sent no figure'
 import { STRATEGY_NAME_MAX, legsLine, noMatchText, plainName, renameStrategy, searchStrategies, strategyLabel } from '@/lib/saveDraft'
-import { isCompleted, strategyStatusWord } from '@/lib/strategyStatus'
+import { isCompleted, isRunning, strategyStatusWord } from '@/lib/strategyStatus'
 import { useOrderPath } from '@/lib/orderPath'
-import { useDeleteFlow } from '@/lib/strategyActivity'
+import { bulkConfirmText, canDelete, useDeleteFlow } from '@/lib/strategyActivity'
 import { CLEAR_UNDO_SECONDS_KEY } from '@/lib/legEdit'
 import { useSettingsValues } from '@/stores/settingsValues'
 
@@ -55,15 +57,33 @@ const newestFirst = (list) => [...list].sort((a, b) => String(b.updated_at).loca
 const shown = computed(() => newestFirst(completedOnly.value ? rows.value.filter(isCompleted) : rows.value.filter((r) => !isCompleted(r)))) // ADR-259: a closed trade leaves this list
 const visible = computed(() => searchStrategies(shown.value, query.value))
 
+// S-05 (ADR-320): the list read shows a skeleton while it runs; a failure, or no answer within the page's limit, shows LoadFailed
+// with Retry (which reads again). A late answer after the limit is ignored (the user already saw the failure and may retry).
+const LIST_LIMIT_MS = 15000
+const LIST_LOAD_FAILED_TEXT = 'Could not load your strategies. Nothing was changed.'
+const loadFailed = ref(false)
+let readNo = 0
 async function loadList() {
+  const mine = ++readNo
+  let timer = null
+  const limit = new Promise((_, reject) => { timer = setTimeout(() => reject(new Error('timed out')), LIST_LIMIT_MS) })
   try {
-    const list = (await api.get('/strategies')).data?.strategies
+    const list = (await Promise.race([api.get('/strategies'), limit])).data?.strategies
+    if (mine !== readNo) return
     rows.value = Array.isArray(list) ? list : []
-  } catch (e) {
-    errorParts.value = e?.parts ?? NEUTRAL_PARTS
-  } finally {
+    loadFailed.value = false
     loaded.value = true
+  } catch {
+    if (mine !== readNo) return
+    if (!loaded.value) loadFailed.value = true // a failed re-read after a good first read keeps the list on screen
+  } finally {
+    clearTimeout(timer)
   }
+}
+function retryList() {
+  loadFailed.value = false
+  loaded.value = false
+  return loadList()
 }
 onMounted(loadList)
 
@@ -75,6 +95,19 @@ const deleteFlow = useDeleteFlow(api, {
   reload: loadList,
 })
 onBeforeUnmount(() => deleteFlow.dispose())
+
+// ADR-330 (8): tick boxes. Only rows the server lets be deleted (and not held at the broker) can be ticked; the selection is
+// always a subset of the rows shown, so a hidden row is never deleted by a click on Delete selected.
+const selectable = computed(() => visible.value.filter(canDelete))
+const chosen = computed(() => selectable.value.filter((r) => deleteFlow.selected.includes(r.id)))
+const allTicked = computed(() => selectable.value.length > 0 && chosen.value.length === selectable.value.length)
+watch(query, () => deleteFlow.setSelection(chosen.value.map((r) => r.id)))
+const toggleAll = (on) => deleteFlow.setSelection(on ? selectable.value.map((r) => r.id) : [])
+function askBulk() {
+  deleteFlow.setSelection(chosen.value.map((r) => r.id))
+  deleteFlow.askBulk(chosen.value.filter(isRunning).length)
+}
+const keptName = (id) => { const r = rows.value.find((x) => x.id === id); return r ? strategyLabel(r, `Strategy ${id}`) : `Strategy ${id}` }
 
 // REQ-134 AC-5: the Builder opens the saved strategy from its `strategy` link and reads the saved copy itself (legs, planned
 // entries and revision as saved), so a reload opens it again and Save there updates this strategy.
@@ -126,12 +159,27 @@ async function confirmRename(row) {
       </template>
     </PageHeader>
     <ErrorMessage v-if="errorParts" :parts="errorParts" compact prefix="list-error" data-testid="list-error" />
-    <p v-else-if="!loaded" class="text-sm text-ink-muted" data-testid="list-loading">Loading...</p>
+    <LoadFailed v-else-if="loadFailed" :text="LIST_LOAD_FAILED_TEXT" prefix="list-load" @retry="retryList" />
+    <div v-else-if="!loaded" class="space-y-2" role="status" aria-label="Loading your strategies" data-testid="list-skeleton">
+      <div v-for="n in 4" :key="n" class="h-9 animate-pulse rounded bg-surface-muted"></div>
+    </div>
     <EmptyState
       v-else-if="!shown.length" data-testid="list-empty"
       :message="completedOnly ? 'No strategy is completed yet.' : 'You have no saved strategies yet. Save a draft from the Strategy Builder and it will appear here.'"
     />
     <template v-else>
+      <div v-if="visible.length" class="mb-2 flex flex-wrap items-center gap-3 text-[13px]" data-testid="bulk-bar">
+        <label class="inline-flex items-center gap-2" data-testid="select-all-label">
+          <input type="checkbox" :checked="allTicked" :disabled="!selectable.length || deleteFlow.busy" data-testid="select-all" @change="toggleAll($event.target.checked)" />
+          <span>Select all {{ selectable.length }} shown</span>
+        </label>
+        <button type="button" class="btn btn-sm" :disabled="!chosen.length || deleteFlow.busy" data-testid="delete-selected" @click="askBulk">Delete selected ({{ chosen.length }})</button>
+        <span v-if="deleteFlow.bulkConfirming" class="flex flex-wrap items-center gap-2" role="alertdialog" data-testid="bulk-confirm-box">
+          <span data-testid="bulk-confirm-text">{{ bulkConfirmText(deleteFlow.bulkConfirming.count, deleteFlow.bulkConfirming.running) }}</span>
+          <button type="button" class="link" :disabled="deleteFlow.busy" data-testid="bulk-confirm" @click="deleteFlow.confirmBulk()">Delete</button>
+          <button type="button" class="link" data-testid="bulk-cancel" @click="deleteFlow.cancelBulk()">Cancel</button>
+        </span>
+      </div>
       <p v-if="!visible.length" class="text-sm text-ink-muted" data-testid="search-no-match">{{ noMatchText(query) }}</p>
       <div v-else class="overflow-hidden rounded-lg border border-line bg-surface">
       <div class="hidden gap-x-3 border-b border-line bg-surface-muted px-4 py-1.5 text-[11px] leading-4 font-medium text-ink-muted" :class="COLS" aria-hidden="true">
@@ -139,7 +187,11 @@ async function confirmRename(row) {
       </div>
       <ul class="divide-y divide-line" data-testid="strategy-list">
         <li v-for="s in visible" :key="s.id" class="flex flex-wrap min-h-9 items-center gap-x-3 gap-y-1 px-4 py-1.5 text-[13px] hover:bg-surface-muted" :class="COLS" data-testid="strategy-row" :data-strategy-id="s.id">
-          <span class="min-w-0 max-w-full truncate font-medium" :title="strategyLabel(s, `Strategy ${s.id}`)" data-testid="row-name">{{ strategyLabel(s, `Strategy ${s.id}`) }}</span>
+          <span class="flex min-w-0 max-w-full items-center gap-2">
+            <input v-if="canDelete(s)" type="checkbox" :checked="deleteFlow.selected.includes(s.id)" :disabled="deleteFlow.busy" :aria-label="`Select ${strategyLabel(s, `Strategy ${s.id}`)}`" :data-testid="`select-${s.id}`" @change="deleteFlow.toggle(s.id, $event.target.checked)" />
+            <span v-else class="inline-block w-[13px] shrink-0" aria-hidden="true"></span>
+            <span class="min-w-0 max-w-full truncate font-medium" :title="strategyLabel(s, `Strategy ${s.id}`)" data-testid="row-name">{{ strategyLabel(s, `Strategy ${s.id}`) }}</span>
+          </span>
           <span data-testid="row-underlying">{{ s.underlying }}</span>
           <span v-if="legsLine(s)" class="min-w-0 max-w-full truncate text-ink-muted" :title="legsLine(s)" data-testid="row-legs">{{ legsLine(s) }}</span>
           <span v-else class="hidden lg:block" aria-hidden="true"></span>
@@ -148,7 +200,7 @@ async function confirmRename(row) {
           <span class="flex flex-wrap items-center justify-end gap-x-3 gap-y-1" data-testid="row-actions">
           <button type="button" class="link" :disabled="busy" :data-testid="`open-builder-${s.id}`" @click="openInBuilder(s.id)">Open in Builder</button>
           <button v-if="'name' in s" type="button" class="link" :disabled="busy" :data-testid="`rename-${s.id}`" @click="startRename(s)">Rename</button>
-          <DraftDelete :row="s" :flow="deleteFlow" />
+          <DraftDelete :row="s" :flow="deleteFlow" confirm-below />
           <router-link v-if="orderPathOn" :to="`/strategy/${s.id}/execute`" class="link" :data-testid="`open-execute-${s.id}`">Execute Strategy</router-link>
           </span>
           <p v-if="isCompleted(s)" class="col-span-full w-full text-ink-muted" data-testid="row-completed">
@@ -165,11 +217,18 @@ async function confirmRename(row) {
             <button type="submit" class="btn btn-sm btn-primary" :disabled="busy" data-testid="rename-save">Save</button>
             <button type="button" class="btn btn-sm" data-testid="rename-cancel" @click="renaming = null">Cancel</button>
           </form>
+          <DraftDeleteConfirm v-if="deleteFlow.confirming === s.id" :row="s" :flow="deleteFlow" class="col-span-full w-full" />
           <ErrorMessage v-if="renameError && renameError.id === s.id" class="col-span-full w-full" :parts="renameError.parts" compact prefix="rename-error" data-testid="rename-error" />
         </li>
       </ul>
       </div>
     </template>
+    <div v-if="deleteFlow.bulkResult" class="mt-2 text-sm" data-testid="bulk-result">
+      <p data-testid="bulk-summary">{{ deleteFlow.bulkResult.summary }}</p>
+      <ul v-if="deleteFlow.bulkResult.kept.length" class="list-disc pl-5">
+        <li v-for="k in deleteFlow.bulkResult.kept" :key="k.id" data-testid="bulk-kept">{{ keptName(k.id) }}: {{ k.text }}</li>
+      </ul>
+    </div>
     <DraftDeleteStatus :flow="deleteFlow" />
   </section>
 </template>

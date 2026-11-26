@@ -7,7 +7,9 @@ import { draftFromReply } from "@/lib/saveDraft";
 /** REQ-070 AC-6: shown INSTEAD of Delete once a basket was sent (or when the server could not say). */
 export const DELETE_REFUSED_TEXT = "Orders were already sent for this strategy, so it cannot be deleted.";
 /** ADR-293: a refusal always means real orders were sent (practice orders never block Delete). */
-export const refusedText = () => DELETE_REFUSED_TEXT;
+/** S-03: a row the server marks held at the broker gets its own sentence; every other refusal is the orders sentence. */
+export const HELD_REFUSED_TEXT = "This strategy is marked as held at your broker, so it cannot be deleted.";
+export const refusedText = (row) => (row?.held_at_broker === true ? HELD_REFUSED_TEXT : DELETE_REFUSED_TEXT);
 export const DELETE_CONFIRM_TEXT =
   "Delete this draft? Its history is kept, and you can Undo right after.";
 /** ADR-293 (4): a strategy with practice orders says so in the confirm; "draft" only when it never had an order. */
@@ -18,7 +20,12 @@ export const NOTHING_TO_UNDO_TEXT = "Nothing to undo";
 export const NO_EARLIER_TEXT = "No earlier versions yet";
 
 /** Fail closed: only an explicit true from the server offers Delete (a missing field is false). */
-export const canDelete = (row) => row?.can_delete === true;
+export const canDelete = (row) => row?.can_delete === true && row?.held_at_broker !== true;
+
+/** ADR-330 (8): the one confirmation of a bulk delete ("Delete 14 strategies? 3 of them are running."). */
+export const bulkConfirmText = (count, running) =>
+  `Delete ${count} ${count === 1 ? "strategy" : "strategies"}?${running > 0 ? ` ${running} of them are running.` : ""}`;
+export const BULK_UNREADABLE_TEXT = "The strategy could not be read, so it was not deleted.";
 
 /** The history entries as the API sends them (seq ascending). Throws the mapped error. */
 export async function historyEntries(client, id) {
@@ -88,6 +95,9 @@ export function useDeleteFlow(client, hooks) {
     undo: null,
     notice: null,
     errorParts: null,
+    selected: [], // ADR-330 (8): ticked ids
+    bulkConfirming: null, // { count, running } while the one bulk confirmation is open
+    bulkResult: null, // { summary, kept: [{ id, reason, text }] } as the server worded it
   });
   let timer = null;
   const dropUndo = () => {
@@ -136,6 +146,24 @@ export function useDeleteFlow(client, hooks) {
       if (!held || state.busy) return;
       state.busy = true;
       dropUndo();
+      if (held.bulk) {
+        let failed = 0;
+        for (const d of held.bulk) {
+          try {
+            await undeleteDraft(client, d.id, d.revision);
+          } catch {
+            failed += 1;
+          }
+        }
+        if (failed) state.notice = `${failed} of ${held.bulk.length} could not be brought back.`;
+        state.bulkResult = null;
+        try {
+          await hooks.reload();
+        } finally {
+          state.busy = false;
+        }
+        return;
+      }
       try {
         const reply = await undeleteDraft(client, held.id, held.revision);
         await hooks.onBack(held.id, reply?.data);
@@ -143,6 +171,69 @@ export function useDeleteFlow(client, hooks) {
         if (e?.status === 404) state.notice = NOTHING_TO_UNDO_TEXT;
         else state.errorParts = e?.parts ?? NEUTRAL_PARTS;
         await hooks.reload();
+      } finally {
+        state.busy = false;
+      }
+    },
+    toggle(id, on) {
+      const has = state.selected.includes(id);
+      if (on && !has) state.selected = [...state.selected, id];
+      else if (!on && has) state.selected = state.selected.filter((x) => x !== id);
+    },
+    setSelection(ids) {
+      state.selected = [...ids];
+    },
+    askBulk(running) {
+      if (!state.selected.length) return;
+      state.bulkConfirming = { count: state.selected.length, running };
+      state.errorParts = null;
+      state.notice = null;
+      state.bulkResult = null;
+    },
+    cancelBulk() {
+      state.bulkConfirming = null;
+    },
+    /** One POST /strategies/bulk-delete for the whole selection. A failed call keeps the selection and removes nothing. */
+    async confirmBulk() {
+      if (state.busy || !state.bulkConfirming) return;
+      state.busy = true;
+      state.errorParts = null;
+      try {
+        const items = [];
+        const unreadable = [];
+        for (const id of state.selected) {
+          try {
+            items.push({ id, expected_revision: await readRevision(client, id) });
+          } catch {
+            unreadable.push({ id, reason: "failed", text: BULK_UNREADABLE_TEXT });
+          }
+        }
+        let deleted = [];
+        let kept = [];
+        let summary = null;
+        if (items.length) {
+          const body = (await client.post("/strategies/bulk-delete", { items })).data;
+          if (!Array.isArray(body?.deleted) || !Array.isArray(body?.kept)) throw new Error("unreadable answer"); // fail closed
+          deleted = body.deleted;
+          kept = body.kept;
+          summary = typeof body.summary_text === "string" ? body.summary_text : null;
+        }
+        state.bulkConfirming = null;
+        state.selected = [];
+        for (const d of deleted) hooks.onRemoved(d.id);
+        state.bulkResult = {
+          summary: summary ?? `${deleted.length} deleted, ${kept.length + unreadable.length} kept.`,
+          kept: [...kept, ...unreadable],
+        };
+        dropUndo();
+        if (!deleted.length) return;
+        const ms = await hooks.undoMs();
+        if (ms === null) return;
+        state.undo = { bulk: deleted.map((d) => ({ id: d.id, revision: d.revision })) };
+        timer = setTimeout(dropUndo, ms);
+      } catch (e) {
+        state.bulkConfirming = null; // the selection stays so the user can try again
+        state.errorParts = e?.parts ?? NEUTRAL_PARTS;
       } finally {
         state.busy = false;
       }

@@ -19,7 +19,7 @@ defineProps({ flow: { type: Object, required: true } });
       aria-live="polite"
       data-testid="delete-toast"
     >
-      <span>Strategy deleted.</span>
+      <span>{{ flow.undo.bulk ? `${flow.undo.bulk.length} ${flow.undo.bulk.length === 1 ? "strategy" : "strategies"} deleted.` : "Strategy deleted." }}</span>
       <button
         type="button"
         class="font-semibold text-accent-soft underline"

@@ -92,7 +92,7 @@ describe('My Strategies page', () => {
   it('shows the neutral message when the list fails', async () => {
     answer = () => Promise.reject(new Error('down'))
     const w = await open()
-    expect(w.find('[data-testid="list-error"]').exists()).toBe(true)
+    expect(w.find('[data-testid="list-load-error"]').exists()).toBe(true)
     expect(w.find('[data-testid="strategy-list"]').exists()).toBe(false)
   })
 
