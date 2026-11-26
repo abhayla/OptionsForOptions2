@@ -2052,6 +2052,8 @@ INVENTORY = (
     'FIELD PaperBookOut.orders[].contract_text: CatalogueText',
     'FIELD PaperBookOut.orders[].id: int',
     "FIELD PaperBookOut.orders[].kind: Literal['open','add','exit','settle','stop']",
+    'FIELD PaperBookOut.orders[].lots: None',
+    'FIELD PaperBookOut.orders[].lots: int',
     'FIELD PaperBookOut.orders[].placed_at: datetime',
     'FIELD PaperBookOut.orders[].price: Money',
     'FIELD PaperBookOut.orders[].price_text: CatalogueText',

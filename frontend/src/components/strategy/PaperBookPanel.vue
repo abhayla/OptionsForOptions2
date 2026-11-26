@@ -2,7 +2,8 @@
      Net Positions | Orderbook switch. Net Positions: per OPEN contract Lots, Avg, LTP, Booked, Unbooked, P&L (the book reply's
      texts as sent; lots = the net leg's whole lots, a count), an Exit with a lots box (1..open lots: a partial exit), and the
      closed contracts below with their booked P&L. Orderbook: the reply's orders in the reply's order (newest last): time IST,
-     B/S, contract, qty, price, kind. "Exit all" and "Exit" only EMIT: the page turns them into edited legs, so the orders still
+     B/S, contract, lots, price, kind (lots = the reply's `lots`, ADR-330 (23): units / lot size computed by the server; "-" when the
+     units are not whole lots; no division here). "Exit all" and "Exit" only EMIT: the page turns them into edited legs, so the orders still
      come from paperOrdersFor (no second order-building path). No money is formed here (ADR-008). -->
 <template>
   <section class="mt-3 text-sm" data-testid="paper-book">
@@ -78,14 +79,14 @@
     <!-- S-25: every cell has px-2 and Qty / Price are right-aligned tabular figures, so "65" and "101.20" never read as 65101.20 -->
     <table v-else class="num-table mt-2 w-full text-xs" data-testid="order-table">
       <thead class="text-ink-muted">
-        <tr><th class="px-2 text-left font-normal">Time</th><th class="px-2 text-center font-normal">B/S</th><th class="px-2 text-left font-normal">Contract</th><th class="px-2 text-right font-normal">Qty</th><th class="px-2 text-right font-normal">Price</th><th class="px-2 text-center font-normal">Kind</th></tr>
+        <tr><th class="px-2 text-left font-normal">Time</th><th class="px-2 text-center font-normal">B/S</th><th class="px-2 text-left font-normal">Contract</th><th class="px-2 text-right font-normal">Lots</th><th class="px-2 text-right font-normal">Price</th><th class="px-2 text-center font-normal">Kind</th></tr>
       </thead>
       <tbody>
         <tr v-for="o in book.orders" :key="o.id" class="border-t border-line" data-testid="order-row">
           <td class="num px-2 py-1" data-testid="order-time">{{ istClock(o.placed_at) ?? '-' }}</td>
           <td class="px-2 text-center" data-testid="order-side">{{ o.side === 'BUY' ? 'B' : 'S' }}</td>
           <td class="px-2" data-testid="order-contract">{{ o.contract_text }}<span v-if="o.reason_text" class="block text-[11px] text-ink-muted" data-testid="order-reason">{{ o.reason_text }}</span></td>
-          <td class="num px-2 text-right tabular-nums" data-testid="order-qty">{{ o.quantity }}</td>
+          <td class="num px-2 text-right tabular-nums" data-testid="order-qty">{{ o.lots ?? '-' }}</td>
           <td class="num px-2 text-right tabular-nums" data-testid="order-price">{{ o.price_text }}</td>
           <td class="px-2 text-center" data-testid="order-kind">{{ kindText(o.kind) }}</td>
         </tr>

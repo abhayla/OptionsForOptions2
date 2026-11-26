@@ -184,8 +184,9 @@ describe('Net Positions | Orderbook switch on the REAL reply', () => {
     await t(w, 'book-tab-orders').trigger('click')
     const rows = all(w, 'order-row')
     expect(rows).toHaveLength(8)
+    // ADR-330 (23): order-qty now prints the reply's lots (65 units of a 65 lot = 1), not the units
     expect(['order-time', 'order-side', 'order-contract', 'order-qty', 'order-price', 'order-kind'].map((id) => rows[7].find(`[data-testid="${id}"]`).text()))
-      .toEqual(['13:50:15', 'S', 'NIFTY 22650 PE 2026-11-03', '65', '63.25', 'Add'])
+      .toEqual(['13:50:15', 'S', 'NIFTY 22650 PE 2026-11-03', '1', '63.25', 'Add'])
     expect(rows[0].find('[data-testid="order-time"]').text()).toBe('10:24:02')
     expect(t(w, 'net-row').exists()).toBe(false)
   })

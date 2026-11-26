@@ -252,6 +252,9 @@ class PaperOrderOut(ApiModel):
     contract_id: int
     contract_text: CatalogueText
     quantity: int
+    #: ADR-330 (23): quantity in lots, units / the contract's catalogue lot size (as the Net Positions lots); None when
+    #: the units are not whole lots or the lot size is not positive. The browser never divides.
+    lots: int | None
     price: Money
     price_text: CatalogueText
     kind: Literal["open", "add", "exit", "settle", "stop"]
@@ -849,8 +852,11 @@ def _order_rows(orders: Sequence[paper_store.StoredOrder], found: dict[int, trac
     rows = []
     for stored in orders:
         o = stored.order
+        identity = _identity(found[o.contract_id])  # refuses a contract with no stored row
+        lot = found[o.contract_id].stored.listed.contract.lot_size
+        lots = o.quantity // lot if lot > 0 and is_lot_aligned(o.quantity, lot) else None  # ADR-330 (23)
         rows.append({"id": stored.id, "placed_at": o.placed_at, "side": o.side, "contract_id": o.contract_id,
-                     "contract_text": describe_contract(_identity(found[o.contract_id])), "quantity": o.quantity,
+                     "contract_text": describe_contract(identity), "quantity": o.quantity, "lots": lots,
                      "price": o.price, "price_text": price_text(o.price), "kind": o.kind,
                      "reason_text": restore_order_reason(o.reason)})
     return rows
