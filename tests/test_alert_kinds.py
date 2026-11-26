@@ -52,5 +52,5 @@ def test_the_migration_copies_the_table() -> None:
     assert found is not None and found.loader is not None
     module = importlib.util.module_from_spec(found)
     found.loader.exec_module(module)
-    assert module.KINDS == tuple(alerts.KINDS)
+    assert tuple(alerts.KINDS) == module.KINDS
     assert module.ANSWERS == alerts.ANSWERS

@@ -33,6 +33,7 @@ from ofo.adjustment.cap_scope import count_capped
 from ofo.adjustment.gate_rows import GateRow, GateRows
 from ofo.adjustment.playbook_eval import validate_body
 from ofo.adjustment.playbook_types import BODY_SCHEMA, NAME_MAX, SHOWN_NAMES
+from ofo.alerts import CONTINUE as ANSWER_CONTINUE  # ADR-330 (3): Dismiss and Act on both leave the position as is
 from ofo.errors.explanations import render_explanation
 from ofo.settings import layers
 from sqlalchemy import text
@@ -325,7 +326,8 @@ _OPEN_FOR_RULE = text(f"SELECT {_SG_COLUMNS} FROM public.adjustment_suggestions 
                       "WHERE strategy_id = :strategy_id AND rule_id = :rule_id AND outcome = 'open'")
 _INSERT_SUGGESTION = text(
     "INSERT INTO public.adjustment_suggestions (strategy_id, rule_id, trigger_id, stage, value, threshold, worse, "  # noqa: S608
-    "timeline) VALUES (:strategy_id, :rule_id, :trigger_id, :stage, :value, :threshold, CAST(:worse AS TEXT), "
+    "kind, shown_at, timeline) VALUES (:strategy_id, :rule_id, :trigger_id, :stage, :value, :threshold, "
+    "CAST(:worse AS TEXT), CAST(:kind AS TEXT), COALESCE(CAST(:shown_at AS TIMESTAMPTZ), now()), "
     "jsonb_build_array(jsonb_build_object('at', clock_timestamp(), 'outcome', 'open', "
     "'group', CAST(:group AS TEXT), 'source', CAST(:source AS TEXT), 'cmp', CAST(:cmp AS TEXT), "
     "'label', CAST(:label AS TEXT), 'unit', CAST(:unit AS TEXT), 'approach', CAST(:approach AS TEXT), "
@@ -335,7 +337,10 @@ _INSERT_SUGGESTION = text(
     f"RETURNING {_SG_COLUMNS}")
 _CLOSE_SUGGESTION = text(
     "UPDATE public.adjustment_suggestions AS g SET outcome = CAST(:outcome AS TEXT), "  # noqa: S608
-    "dismiss_reason = CAST(:reason AS TEXT), timeline = g.timeline || jsonb_build_array(jsonb_build_object("
+    "dismiss_reason = CAST(:reason AS TEXT), answer = CAST(:answer AS TEXT), "
+    "answered_at = CASE WHEN CAST(:answer AS TEXT) IS NULL THEN NULL "
+    "ELSE COALESCE(CAST(:answered_at AS TIMESTAMPTZ), clock_timestamp()) END, "
+    "timeline = g.timeline || jsonb_build_array(jsonb_build_object("
     "'at', clock_timestamp(), 'outcome', CAST(:outcome AS TEXT), 'suggestion_id', g.id, "
     "'reason', CAST(:note AS TEXT))) "
     "FROM public.strategies s WHERE g.id = :id AND s.id = g.strategy_id "
@@ -382,7 +387,8 @@ _SUGGESTION_OF_STRATEGY = text(
 _INBOX_SQL = (f"SELECT {', '.join('g.' + c for c in _SG_COLUMNS.split(', '))}, s.name, "  # noqa: S608 constant
               "EXISTS (SELECT 1 FROM public.paper_orders o WHERE o.strategy_id = s.id) "
               "FROM public.adjustment_suggestions g JOIN public.strategies s ON s.id = g.strategy_id "
-              "WHERE s.user_ref = :user_ref AND s.deleted_at IS NULL AND {scope} ORDER BY g.shown_at DESC, g.id DESC")
+              "WHERE s.user_ref = :user_ref AND s.deleted_at IS NULL AND g.answer IS DISTINCT FROM 'noted' AND {scope} "
+              "ORDER BY g.shown_at DESC, g.id DESC")
 
 
 def _scoped(sql: str) -> tuple[Any, dict]:
@@ -391,7 +397,8 @@ def _scoped(sql: str) -> tuple[Any, dict]:
     return text(sql.format(scope=clause)), params
 _LIST_SUGGESTIONS = text(f"SELECT {', '.join('g.' + c for c in _SG_COLUMNS.split(', '))} "  # noqa: S608 constant
                          "FROM public.adjustment_suggestions g JOIN public.strategies s ON s.id = g.strategy_id "
-                         "WHERE g.strategy_id = :strategy_id AND s.user_ref = :user_ref ORDER BY g.id")
+                         "WHERE g.strategy_id = :strategy_id AND s.user_ref = :user_ref "
+                         "AND g.answer IS DISTINCT FROM 'noted' ORDER BY g.id")
 
 
 # ---------------------------------------------------------------------------------------------------------------
@@ -747,12 +754,15 @@ async def open_suggestion(conn: Any, user_ref: str, strategy_id: int, rule_id: s
                           worse: str | None = None, carry: Mapping[str, str | None] | None = None,
                           beyond: tuple[str, Decimal, Decimal] | None = None,
                           limit: Decimal | None = None, adjustments: int | None = None,
-                          target: Mapping[str, str | None] | None = None) -> Suggestion:
+                          target: Mapping[str, str | None] | None = None,
+                          kind: str | None = None, shown_at: datetime | None = None) -> Suggestion:
     """REQ-112 AC-1: one open record per (strategy, rule); a rule still open returns its existing record.
     ``limit``: the limit in force at the stage (``Suggestion.limit``), beside the gate's rung ``threshold``.
     ``adjustments``: the strategy's adjustment count now (``Suggestion.adjustments``, ``lapse_changed``).
     ``carry``: a carry check's content (GC-IC1 1b; money as strings, None = not known with its reason code).
-    ``worse``: None / 'last' / 'dismissed' (REQ-170 AC-3, ADR-237 (5)), written once at insert."""
+    ``worse``: None / 'last' / 'dismissed' (REQ-170 AC-3, ADR-237 (5)), written once at insert.
+    ``kind`` (ADR-330, ``ofo.alerts``) and ``shown_at`` (the event time, "Fired at"; None = now): written once.
+    Only ``actionable_alerts.raise_actionable`` passes them (it is the one writer)."""
     if worse not in WORSE_MARKS:
         raise ValueError(f"unknown worse marker {worse!r}")
     await _owned(conn, user_ref, strategy_id)
@@ -761,6 +771,7 @@ async def open_suggestion(conn: Any, user_ref: str, strategy_id: int, rule_id: s
     if existing is not None:
         return _suggestion(existing)
     row = (await conn.execute(_INSERT_SUGGESTION, {**params, "trigger_id": trigger_id, "stage": stage,
+                                                   "kind": kind, "shown_at": shown_at,
                                                    "value": value, "threshold": threshold, "group": group,
                                                    "source": source, "cmp": cmp, "label": label,
                                                    "unit": unit, "approach": approach, "unpriced": unpriced,
@@ -777,13 +788,15 @@ async def open_suggestion(conn: Any, user_ref: str, strategy_id: int, rule_id: s
 
 
 async def _close(conn: Any, user_ref: str, suggestion_id: int, outcome: str, reason: str | None,  # noqa: PLR0913
-                 note: str | None = None) -> Suggestion:
+                 note: str | None = None, answer: str | None = None,
+                 answered_at: datetime | None = None) -> Suggestion:
     if outcome not in SUGGESTION_FINAL:
         raise ValueError(f"unknown suggestion outcome {outcome!r}")
     if type(suggestion_id) is not int:
         raise strategy_store.StrategyStoreError(SUGGESTION_NOT_FOUND, f"suggestion {suggestion_id}")
     row = (await conn.execute(_CLOSE_SUGGESTION, {"id": suggestion_id, "user_ref": user_ref, "outcome": outcome,
-                                                  "reason": reason, "note": note})).one_or_none()
+                                                  "reason": reason, "note": note, "answer": answer,
+                                                  "answered_at": answered_at})).one_or_none()
     if row is None:  # the outcome is never written twice: missing / another user's, or already final
         found = (await conn.execute(_SUGGESTION_OUTCOME, {"id": suggestion_id, "user_ref": user_ref})).first()
         if found is None:
@@ -793,11 +806,11 @@ async def _close(conn: Any, user_ref: str, suggestion_id: int, outcome: str, rea
 
 
 async def dismiss(conn: Any, user_ref: str, suggestion_id: int, reason: str | None = None) -> Suggestion:
-    return await _close(conn, user_ref, suggestion_id, "dismissed", reason)
+    return await _close(conn, user_ref, suggestion_id, "dismissed", reason, answer=ANSWER_CONTINUE)
 
 
 async def act_on(conn: Any, user_ref: str, suggestion_id: int) -> Suggestion:
-    return await _close(conn, user_ref, suggestion_id, "acted_on", None)
+    return await _close(conn, user_ref, suggestion_id, "acted_on", None, answer=ANSWER_CONTINUE)
 
 
 async def link_orders(conn: Any, user_ref: str, strategy_id: int, suggestion_id: int,  # noqa: PLR0913
@@ -831,10 +844,13 @@ async def placed_links(conn: Any, user_ref: str, strategy_id: int) -> dict[int, 
     return out
 
 
-async def lapse(conn: Any, user_ref: str, suggestion_id: int, reason: str = LAPSE_CONDITION_STOPPED) -> Suggestion:
+async def lapse(conn: Any, user_ref: str, suggestion_id: int, reason: str = LAPSE_CONDITION_STOPPED, *,  # noqa: PLR0913
+                answer: str | None = None, answered_at: datetime | None = None) -> Suggestion:
+    """Closes a record as lapsed. A record of an ADR-330 kind is closed only through
+    ``actionable_alerts.close_by_system`` (it passes ``answer`` closed_by_system; the table guard refuses the rest)."""
     if reason not in LAPSE_REASONS:
         raise ValueError(f"unknown lapse reason {reason!r}")
-    return await _close(conn, user_ref, suggestion_id, "lapsed", None, reason)
+    return await _close(conn, user_ref, suggestion_id, "lapsed", None, reason, answer, answered_at)
 
 
 async def open_suggestions(conn: Any, user_ref: str, strategy_id: int) -> list[Suggestion]:
@@ -915,10 +931,11 @@ _INSERT_HELD = text(
 _GATE_LAST = text(
     "SELECT DISTINCT ON (g.rule_id) g.rule_id, g.shown_at, g.threshold, g.outcome, g.id "
     "FROM public.adjustment_suggestions g JOIN public.strategies s ON s.id = g.strategy_id "
-    "WHERE g.strategy_id = :strategy_id AND s.user_ref = :user_ref ORDER BY g.rule_id, g.id DESC")
+    "WHERE g.strategy_id = :strategy_id AND s.user_ref = :user_ref AND g.answer IS DISTINCT FROM 'noted' "
+    "ORDER BY g.rule_id, g.id DESC")
 _GATE_TODAY = text(
     "SELECT g.rule_id FROM public.adjustment_suggestions g JOIN public.strategies s ON s.id = g.strategy_id "  # noqa: S608 constant zone fragment
-    "WHERE g.strategy_id = :strategy_id AND s.user_ref = :user_ref "
+    "WHERE g.strategy_id = :strategy_id AND s.user_ref = :user_ref AND g.answer IS DISTINCT FROM 'noted' "
     f"AND (g.shown_at {IST_SQL_ZONE})::date = :today")
 
 

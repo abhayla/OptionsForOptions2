@@ -109,6 +109,14 @@ async def test_a_note_is_history_only_and_nothing_else_is_stored_closed(db):
     assert open_count == 1
 
 
+async def test_a_suggestion_may_carry_its_event_time_but_never_one_in_the_future(db):
+    sid, _ = await _open(db)
+    insert = ("INSERT INTO public.adjustment_suggestions (strategy_id, rule_id, kind, shown_at, timeline) "
+              "VALUES (:i, :rule, 'plan_loss_stop', now() + :shift * interval '1 hour', '[]'::jsonb)")
+    await db.execute(text(insert), {"i": sid, "rule": "r_past", "shift": -24})
+    await _refused(db, insert, {"i": sid, "rule": "r_future", "shift": 1})
+
+
 async def test_downgrade_is_refused_with_a_kind_and_round_trips_without_one(admin_engine):
     own_down = recorded(MIGRATION, "downgrade")
     _, own_up, down, up = round_trip_sql(MIGRATION)
@@ -132,6 +140,6 @@ async def test_downgrade_is_refused_with_a_kind_and_round_trips_without_one(admi
             assert (await conn.execute(text(cols), {"c": list(_COLUMNS)})).scalar() == 0
             for sql in up:
                 await conn.execute(text(sql))
-            assert (await conn.execute(text(cols), {"c": list(_COLUMNS)})).scalar() == 4
+            assert (await conn.execute(text(cols), {"c": list(_COLUMNS)})).scalar() == len(_COLUMNS)
         finally:
             await trans.rollback()

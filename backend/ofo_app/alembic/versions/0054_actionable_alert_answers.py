@@ -19,7 +19,8 @@ Changes (owner-run, one transaction; ADDITIVE columns, no back-fill, old rows ke
     open row); id, strategy, rule, trigger, shown_at (= "Fired at"), worse and kind never change;
   * an INSERT is open and unanswered, or an informational note: outcome 'dismissed', answer 'noted', answered_at set,
     kind set (History only, never open, so never counted).
-- Grants: INSERT (kind, outcome, answer, answered_at); UPDATE (stage, value, threshold, answer, answered_at,
+- Grants: INSERT (shown_at, kind, outcome, answer, answered_at) (shown_at = the event time "Fired at", never in the
+  future); UPDATE (stage, value, threshold, answer, answered_at,
   no_longer_true_since). public.ofo_assert_app_role_allowlist: block 23's suggestion part re-pinned.
 - downgrade: refuses (OF031) while any row has a kind, answer or no_longer_true_since; otherwise restores 0036's guard.
 
@@ -63,7 +64,7 @@ KINDS = ("plan_loss_stop", "plan_profit_target", "plan_rupee_loss", "plan_rupee_
          "adjustment_rule", "side_closed", "stop_fired", "settled", "orders_placed", "stop_saved")
 ANSWERS = ("exit", "continue", "add_legs", "confirm_new_shape", "closed_by_system", "noted")
 NEW_COLUMNS = ("kind", "answer", "answered_at", "no_longer_true_since")
-INSERT_COLUMNS = (*_M36.SUGGESTION_INSERT_COLUMNS, "kind", "outcome", "answer", "answered_at")
+INSERT_COLUMNS = (*_M36.SUGGESTION_INSERT_COLUMNS, "shown_at", "kind", "outcome", "answer", "answered_at")
 UPDATE_COLUMNS = (*_M36.SUGGESTION_UPDATE_COLUMNS, "stage", "value", "threshold", "answer", "answered_at",
                   "no_longer_true_since")
 _FINAL = "('dismissed', 'acted_on', 'lapsed')"
@@ -80,6 +81,9 @@ def guard_sql() -> str:
                 {raise_('a suggestion record is never deleted')}
             END IF;
             IF TG_OP = 'INSERT' THEN
+                IF NEW.shown_at > clock_timestamp() THEN
+                    {raise_('a suggestion is never shown in the future')}
+                END IF;
                 IF NEW.answer IS NULL THEN
                     IF NEW.outcome <> 'open' OR NEW.dismiss_reason IS NOT NULL OR NEW.answered_at IS NOT NULL
                        OR NEW.no_longer_true_since IS NOT NULL THEN
@@ -180,10 +184,10 @@ def upgrade() -> None:
             ADD COLUMN answered_at TIMESTAMPTZ NULL,
             ADD COLUMN no_longer_true_since TIMESTAMPTZ NULL,
             ADD CONSTRAINT adjustment_suggestions_answer_pair CHECK ((answer IS NULL) = (answered_at IS NULL))
-        """  # noqa: S608 constant names
+        """
     )
     op.execute(guard_sql())
-    op.execute(f'GRANT INSERT (kind, outcome, answer, answered_at) ON TABLE {SUGGESTIONS} TO "{role}"')
+    op.execute(f'GRANT INSERT (shown_at, kind, outcome, answer, answered_at) ON TABLE {SUGGESTIONS} TO "{role}"')
     op.execute(f'GRANT UPDATE (stage, value, threshold, answer, answered_at, no_longer_true_since) '
                f'ON TABLE {SUGGESTIONS} TO "{role}"')
     op.execute(extended_allowlist_sql())
@@ -212,7 +216,7 @@ def downgrade() -> None:
     role = _BASE._app_role()
     allowlist = _BASE.ALLOWLIST_FUNCTION
     op.execute(f"SELECT {allowlist}('{role}', 'pre')")
-    op.execute(f'REVOKE INSERT (kind, outcome, answer, answered_at) ON TABLE {SUGGESTIONS} FROM "{role}"')
+    op.execute(f'REVOKE INSERT (shown_at, kind, outcome, answer, answered_at) ON TABLE {SUGGESTIONS} FROM "{role}"')
     op.execute(f'REVOKE UPDATE (stage, value, threshold, answer, answered_at, no_longer_true_since) '
                f'ON TABLE {SUGGESTIONS} FROM "{role}"')
     op.execute(f"ALTER TABLE {SUGGESTIONS} DROP CONSTRAINT adjustment_suggestions_answer_pair")

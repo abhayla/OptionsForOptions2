@@ -42,7 +42,8 @@ async def _strategy(conn, user: str | None = None) -> tuple[str, object]:
     return user, stored
 
 
-async def _raise(conn, user, sid, *, rule=RULE, kind="plan_loss_stop", value=S16_VALUE, at=FIRED, **extra):
+async def _raise(conn, user, sid, *,  # noqa: PLR0913
+                  rule=RULE, kind="plan_loss_stop", value=S16_VALUE, at=FIRED, **extra):
     return await aa.raise_actionable(conn, user, sid, rule, kind, at=at, value=value, threshold=D("15.4000"),
                                      trigger_id=extra.pop("trigger_id", rule), stage=None, **extra)
 
@@ -201,7 +202,7 @@ async def test_one_unanswered_and_three_answered_counts_one(db):
         await aa.answer(db, user, alert_id, "continue", at=LATER)
     listed = await aa.unanswered(db, user)
     assert [r.id for r in listed] == ids[3:] and await aa.unanswered_count(db, user) == 1
-    assert len(await aa.history(db, user)) == 3
+    assert len(await aa.history(db, user)) == len(ids) - 1
 
 
 # 4 -------------------------------------------------------------------------------------------------------------
