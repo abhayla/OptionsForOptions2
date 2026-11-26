@@ -6,8 +6,9 @@ The book is the app's iron condor (65 units a leg, both spreads 200 wide): SELL 
 SELL 22400 PE 130, BUY 22200 PE 34. Net credit 156 a unit = 10,140.00; Max Loss before = 13,000.00 - 10,140.00 =
 2,860.00 (the 25 Nov "now" figure). A stop on the short call at 140.70 buys it back for 9,145.50, leaving the long call
 and the put spread: Max Loss after = 2,860.00 + 9,145.50 = 12,005.50. The 25 Nov cent (12,005.51) is not reachable with
-orders at 0.05 steps in any quantity (every booked amount is a multiple of 0.05), so it came from something else
-(charges); the engine figure for this book is 12,005.50 and the test pins that, not a bent number."""
+orders at 0.05 steps in any quantity (every booked amount is a multiple of 0.05). The real stop fills at the live
+price, which can carry paisa; this line is an estimate at the stop level. The engine figure for this book is 12,005.50
+and the test pins that, not a bent number."""
 from __future__ import annotations
 
 import datetime
@@ -65,15 +66,51 @@ async def test_25_nov_short_call_stop(db):
     assert reply.status_code == HTTPStatus.OK, reply.text
     body = reply.json()
     assert body["state"] == "yes"
-    assert body["warning_text"] == "If this stop fires, max loss becomes Rs 12,005.50 (now Rs 2,860.00)"
+    assert body["warning_text"] == "If this stop fires, max loss becomes Rs 12,005.50 (now Rs 2,860.00)."
     assert (body["max_loss_before"], body["max_loss_after"]) == ("-2860.00", "-12005.50")
     assert await _orders(db, stored.id) == LEGS  # read only
 
 
-async def test_a_stop_that_does_not_widen_is_no(db):
+async def test_a_small_change_still_shows_the_line_whatever_its_size(db):
+    """ADR-330 (6) states no threshold (ADR-256's "more than double" is the exit confirmation's): 2,860 -> 3,510."""
     app, stored, ids = await _book(db)
-    body = (await _ask(app, stored.id, ids[SHORT_PUT], "10.00")).json()  # 3,510.00 is not double 2,860.00
-    assert body["state"] == "no" and body["warning_text"] is None
+    body = (await _ask(app, stored.id, ids[SHORT_PUT], "10.00")).json()
+    assert body["state"] == "yes"
+    assert body["warning_text"] == "If this stop fires, max loss becomes Rs 3,510.00 (now Rs 2,860.00)."
+    assert (body["max_loss_before"], body["max_loss_after"]) == ("-2860.00", "-3510.00")
+
+
+async def _locked_profit_book(db):
+    """Put side closed (short put bought back at 1, long put sold at 100): cash 16,575.00, calls open, so max loss is
+    16,575.00 - 13,000.00 = +3,575.00, a profit, never a loss (M2)."""
+    app, stored, ids = await _book(db)
+    await paper_store.place(db, stored.user_ref, stored.id, [
+        paper_store.NewOrder(ids[SHORT_PUT], "BUY", 65, D("1"), "exit", AT),
+        paper_store.NewOrder(ids[LONG_PUT], "SELL", 65, D("100"), "exit", AT)])
+    return app, stored, ids
+
+
+async def test_a_book_with_locked_in_profit_still_a_profit_after_the_stop(db):
+    app, stored, ids = await _locked_profit_book(db)
+    body = (await _ask(app, stored.id, ids[SHORT_CALL], "140.70")).json()
+    assert body["state"] == "yes"
+    assert body["warning_text"] == ("If this stop fires, there is still no loss: at least Rs 7,429.50 profit "
+                                    "(now at least Rs 3,575.00).")
+
+
+async def test_a_book_with_locked_in_profit_turned_into_a_loss_by_the_stop(db):
+    app, stored, ids = await _locked_profit_book(db)
+    body = (await _ask(app, stored.id, ids[SHORT_CALL], "400.00")).json()  # buys back for 26,000.00: 16,575 - 26,000
+    assert body["warning_text"] == ("If this stop fires, max loss becomes Rs 9,425.00 "
+                                    "(now no loss: at least Rs 3,575.00 profit).")
+
+
+async def test_a_book_with_locked_in_profit_turned_unlimited_by_the_stop(db):
+    app, stored, ids = await _locked_profit_book(db)
+    body = (await _ask(app, stored.id, ids[LONG_CALL], "5.00")).json()
+    assert body["warning_text"].startswith("If this stop fires, there is no fixed maximum loss "
+                                           "(now no loss: at least Rs 3,575.00 profit).")
+    assert "-" not in body["warning_text"].split("Sold option")[0]
 
 
 async def test_a_stop_on_a_long_wing_leaves_the_short_leg_bare_so_it_is_yes_with_no_fixed_maximum(db):
@@ -81,8 +118,8 @@ async def test_a_stop_on_a_long_wing_leaves_the_short_leg_bare_so_it_is_yes_with
     app, stored, ids = await _book(db)
     body = (await _ask(app, stored.id, ids[LONG_CALL], "5.00")).json()
     assert body["state"] == "yes" and body["max_loss_after"] == "unlimited"
-    assert body["warning_text"].startswith("If this stop fires, there is no fixed maximum loss (now Rs 2,860.00)")
-    assert "less protection" in body["warning_text"]
+    assert body["warning_text"].startswith(
+        "If this stop fires, there is no fixed maximum loss (now Rs 2,860.00). Sold option with less protection: ")
 
 
 async def test_a_stop_that_cannot_be_priced_is_cannot_tell_with_no_figure(db, monkeypatch):
