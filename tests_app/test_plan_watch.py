@@ -11,7 +11,11 @@ from httpx import ASGITransport, AsyncClient
 from ofo.errors.explanations import NO_PLAN_TEXT
 from ofo_app import db as app_db
 from ofo_app import paper_store, paper_trigger_store
-from test_adjustment_check import _reset_engine, _seeded, app_db_url  # noqa: F401 - the fixture and seed of the check tests
+from test_adjustment_check import (
+    _reset_engine,
+    _seeded,
+    app_db_url,  # noqa: F401 - the fixture of the check tests
+)
 
 OK, NOT_FOUND = 200, 404
 KEYS = {"key", "kind", "label", "unit", "fires_at", "now", "distance_rs", "distance_pct", "state", "reason"}
@@ -73,3 +77,31 @@ async def test_unknown_strategy_is_404(app_db_url, monkeypatch):  # noqa: F811
     await _seeded(app_db_url, monkeypatch, "ADJ-01")
     status, _out = await _watch(987654)
     assert status == NOT_FOUND
+
+
+async def test_prices_not_live_every_line_is_paused_with_no_now(app_db_url, monkeypatch):  # noqa: F811
+    from ofo_app import adjustment_check as check  # noqa: PLC0415
+
+    sid = await _seeded(app_db_url, monkeypatch, "ADJ-01")
+    await _arm(app_db_url, sid)
+    monkeypatch.setattr(check, "prices_fresh", lambda _ctx: False)
+    status, out = await _watch(sid)
+    assert status == OK, out
+    assert out["lines"] and all(x["state"] in ("paused", "not_computable", "not_applicable") for x in out["lines"])
+    assert all(x["now"] is None and x["distance_rs"] is None for x in out["lines"])  # absent, never 0
+    assert {x["state"] for x in out["lines"] if x["kind"] in ("index_exit", "leg_stop")} == {"paused"}
+    target = next(x for x in out["lines"] if x["kind"] == "target")
+    assert target["state"] in ("paused", "not_computable")  # the check itself reads a stale price as not checked
+
+
+async def test_records_store_unreadable_is_a_refusal_with_no_lines(app_db_url, monkeypatch):  # noqa: F811
+    from ofo_app import playbook_store  # noqa: PLC0415
+    from sqlalchemy.exc import OperationalError  # noqa: PLC0415
+
+    sid = await _seeded(app_db_url, monkeypatch, "ADJ-01")
+
+    async def broken(*_a, **_k):
+        raise OperationalError("SELECT", {}, Exception("connection lost"))
+    monkeypatch.setattr(playbook_store, "open_suggestions", broken)
+    status, out = await _watch(sid)
+    assert status == 503 and "lines" not in out, out  # noqa: PLR2004 - Failure.UPSTREAM_BUSY

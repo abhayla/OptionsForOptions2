@@ -4674,5 +4674,25 @@
   "explanation:paper_leg_stop_still_profit": {
     "sha256": "15b512201105dc3a9d7fe0ec84349b00c6d6fce4f51257de2d5bc00403df6ff0",
     "reviewed": "pending owner read"
+  },
+  "explanation:plan_watch_index_above": {
+    "sha256": "da3117b20ae50ea831a7ed33630dc318c7fef905e337676c5aefc8b7500c47a8",
+    "reviewed": "pending owner read"
+  },
+  "explanation:plan_watch_index_below": {
+    "sha256": "f6c850d2713dce2fd846a3bb553c818fe57cc1777aad58b77cf624daa0054882",
+    "reviewed": "pending owner read"
+  },
+  "explanation:plan_watch_leg_above": {
+    "sha256": "50323a027cbdd230324202287ca1025e955a9013aa3cc7790432f9795e859143",
+    "reviewed": "pending owner read"
+  },
+  "explanation:plan_watch_leg_below": {
+    "sha256": "e71aa9d87bef9bda08a0620a8a0bd4ec5c5b5f00a45d95d86c53d60d7e18ad41",
+    "reviewed": "pending owner read"
+  },
+  "explanation:plan_watch_armed_heading": {
+    "sha256": "a304b4801200d43f8ee5d98c06f0cf44036a3a9167781b8d562886116fa850d7",
+    "reviewed": "pending owner read"
   }
 }

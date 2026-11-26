@@ -568,6 +568,9 @@ def _identity(found: tracked_contracts.TrackedContract) -> tuple[str, Instrument
     return contract.name, instrument, strike, contract.expiry
 
 
+identity_of = _identity  # the public name other routes import (plan_watch.py)
+
+
 def _exact(value: Decimal | None) -> Decimal | None:
     """The engine's exact value; a value that is a whole number of paise goes out with its two decimals."""
     if value is None:

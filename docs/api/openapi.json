@@ -11949,6 +11949,78 @@
         "title": "PlanPlaybookOut",
         "type": "object"
       },
+      "PlanWatchOut": {
+        "additionalProperties": false,
+        "properties": {
+          "armed_heading": {
+            "anyOf": [
+              {},
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Armed Heading"
+          },
+          "as_of": {
+            "format": "date-time",
+            "title": "As Of",
+            "type": "string"
+          },
+          "as_of_text": {
+            "title": "As Of Text"
+          },
+          "lines": {
+            "items": {
+              "$ref": "#/components/schemas/WatchLineOut"
+            },
+            "title": "Lines",
+            "type": "array"
+          },
+          "no_plan_text": {
+            "anyOf": [
+              {},
+              {
+                "type": "null"
+              }
+            ],
+            "title": "No Plan Text"
+          },
+          "paused": {
+            "anyOf": [
+              {
+                "$ref": "#/components/schemas/CheckPauseOut"
+              },
+              {
+                "type": "null"
+              }
+            ]
+          },
+          "plan_state": {
+            "enum": [
+              "planned",
+              "no_plan",
+              "paused"
+            ],
+            "title": "Plan State",
+            "type": "string"
+          },
+          "strategy_id": {
+            "title": "Strategy Id",
+            "type": "integer"
+          }
+        },
+        "required": [
+          "strategy_id",
+          "as_of",
+          "as_of_text",
+          "plan_state",
+          "no_plan_text",
+          "armed_heading",
+          "lines"
+        ],
+        "title": "PlanWatchOut",
+        "type": "object"
+      },
       "PlannedEntriesOut": {
         "additionalProperties": false,
         "properties": {
@@ -17035,6 +17107,129 @@
         "title": "WatchIn",
         "type": "object"
       },
+      "WatchLineOut": {
+        "additionalProperties": false,
+        "description": "One trigger. ``fires_at`` / ``now`` / ``distance_rs`` are in the line's ``unit``; ``distance_pct`` is the\ndistance as a percent (of the fires-at level for a P&L line, of ``now`` for a price line, percentage points for a\npercent rule). ``now`` and the distances are None (never 0) when the line is paused or not computable.",
+        "properties": {
+          "distance_pct": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Distance Pct"
+          },
+          "distance_rs": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Distance Rs"
+          },
+          "fires_at": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Fires At"
+          },
+          "key": {
+            "pattern": "^[A-Za-z0-9_\\-.]{1,64}$",
+            "title": "Key",
+            "type": "string"
+          },
+          "kind": {
+            "enum": [
+              "target",
+              "stop",
+              "credit_stop",
+              "rule",
+              "index_exit",
+              "leg_stop"
+            ],
+            "title": "Kind",
+            "type": "string"
+          },
+          "label": {
+            "title": "Label"
+          },
+          "now": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Now"
+          },
+          "reason": {
+            "anyOf": [
+              {},
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Reason"
+          },
+          "section": {
+            "enum": [
+              "plan",
+              "armed"
+            ],
+            "title": "Section",
+            "type": "string"
+          },
+          "state": {
+            "enum": [
+              "watching",
+              "fired",
+              "not_applicable",
+              "not_computable",
+              "paused"
+            ],
+            "title": "State",
+            "type": "string"
+          },
+          "unit": {
+            "enum": [
+              "pnl_rupees",
+              "index_points",
+              "option_price",
+              "percent",
+              "rule_unit"
+            ],
+            "title": "Unit",
+            "type": "string"
+          }
+        },
+        "required": [
+          "key",
+          "kind",
+          "section",
+          "label",
+          "unit",
+          "fires_at",
+          "now",
+          "distance_rs",
+          "distance_pct",
+          "state"
+        ],
+        "title": "WatchLineOut",
+        "type": "object"
+      },
       "WatchOut": {
         "additionalProperties": false,
         "properties": {
@@ -20997,6 +21192,45 @@
           }
         },
         "summary": "Set Pause"
+      }
+    },
+    "/api/strategies/{strategy_id}/plan-watch": {
+      "get": {
+        "operationId": "plan_watch_api_strategies__strategy_id__plan_watch_get",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "strategy_id",
+            "required": true,
+            "schema": {
+              "title": "Strategy Id",
+              "type": "integer"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/PlanWatchOut"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "summary": "Plan Watch"
       }
     },
     "/api/strategy-templates": {
