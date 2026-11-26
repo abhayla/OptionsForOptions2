@@ -12,13 +12,14 @@ Answer states: stated -> row leaves Active; absent -> stays; not found / not ope
 """
 from __future__ import annotations
 
+import datetime
 from typing import Annotated, Any
 
 from fastapi import APIRouter, Depends
 from ofo.alerts import CLOSED_BY_SYSTEM
 from ofo.errors import render
-from ofo.errors.explanations import ALERT_ANSWER_LABEL_TEXT, render_explanation
-from ofo.timeutil import IST
+from ofo.errors.explanations import render_explanation
+from ofo.strategy.stored_form import shown_name
 from pydantic import BaseModel
 
 from ofo_app import actionable_alerts as aa
@@ -33,7 +34,6 @@ from ofo_app.strategy_store import StrategyStoreError
 
 router = APIRouter(route_class=ClosedRoute)
 _STATUS = {store.SUGGESTION_NOT_FOUND: Failure.NOT_FOUND, store.SUGGESTION_NOT_OPEN: Failure.CONFLICT}
-_HM = "%H:%M"
 
 
 class AnswerIn(BaseModel):
@@ -51,10 +51,10 @@ class ActiveAlert(ApiModel):
     strategy_name: CatalogueText
     kind: Identifier
     text: CatalogueText
-    fired_at: Identifier | str
-    fired_at_hm: str
-    no_longer_true_since: str | None
-    no_longer_true_since_hm: str | None
+    fired_at: datetime.datetime
+    fired_line: CatalogueText
+    no_longer_true_since: datetime.datetime | None
+    no_longer_true_line: CatalogueText | None
     answers: list[AnswerChoice]
 
 
@@ -67,8 +67,7 @@ class AnsweredOut(ApiModel):
     id: int
     answer: Identifier
     answer_label: CatalogueText
-    answered_at: str
-    answered_at_hm: str
+    answered_at: datetime.datetime
 
 
 class HistoryItem(ApiModel):
@@ -77,12 +76,11 @@ class HistoryItem(ApiModel):
     strategy_name: CatalogueText
     kind: Identifier
     text: CatalogueText
-    fired_at: Identifier | str
-    fired_at_hm: str
+    fired_at: datetime.datetime
+    fired_line: CatalogueText
     answer: Identifier | None
     answer_label: CatalogueText | None
-    answered_at: str | None
-    answered_at_hm: str | None
+    answered_at: datetime.datetime | None
     closed_reason: CatalogueText | None
 
 
@@ -104,12 +102,17 @@ def _words(a: aa.Alert, by_id: dict[int, store.Suggestion]) -> Any:
     return shown if shown is not None else render_explanation("adjust_condition_line_id", label=a.strategy_name)
 
 
-def _iso(at: Any) -> str | None:
-    return None if at is None else at.astimezone(IST).isoformat()
+def _fired(a: aa.Alert) -> Any:
+    return render_explanation("alert_fired_at", time=a.fired_at)
 
 
-def _hm(at: Any) -> str | None:
-    return None if at is None else at.astimezone(IST).strftime(_HM)
+def _stopped(a: aa.Alert) -> Any:
+    at = a.no_longer_true_since
+    return None if at is None else render_explanation("alert_no_longer_true_since", time=at)
+
+
+def _label(code: str | None) -> Any:
+    return None if code is None else render_explanation("alert_answer_" + code)
 
 
 def _reason(a: aa.Alert) -> Any:
@@ -131,11 +134,10 @@ async def active_alerts(db: Annotated[Any, Depends(get_db)],
     rows = await aa.unanswered(db, user_ref)  # ONE query: the count below is len() of these rows
     by_id = await _texts(db, user_ref)
     from ofo.alerts import allowed_answers  # noqa: PLC0415 - stdlib table
-    alerts = [{"id": a.id, "strategy_id": a.strategy_id, "strategy_name": a.strategy_name, "kind": _kind(a),
-               "text": _words(a, by_id), "fired_at": _iso(a.fired_at), "fired_at_hm": _hm(a.fired_at),
-               "no_longer_true_since": _iso(a.no_longer_true_since),
-               "no_longer_true_since_hm": _hm(a.no_longer_true_since),
-               "answers": [{"code": c, "label": ALERT_ANSWER_LABEL_TEXT[c]}
+    alerts = [{"id": a.id, "strategy_id": a.strategy_id, "strategy_name": shown_name(a.strategy_name), "kind": _kind(a),
+               "text": _words(a, by_id), "fired_at": a.fired_at, "fired_line": _fired(a),
+               "no_longer_true_since": a.no_longer_true_since, "no_longer_true_line": _stopped(a),
+               "answers": [{"code": c, "label": _label(c)}
                            for c in (allowed_answers(a.kind) if a.kind else ("exit", "continue"))]} for a in rows]
     return ActiveOut.model_validate({"count": len(rows), "alerts": alerts})
 
@@ -162,17 +164,17 @@ async def answer_alert(alert_id: int, body: AnswerIn, db: Annotated[Any, Depends
         await db.rollback()
         raise
     return AnsweredOut.model_validate({
-        "id": done.id, "answer": done.answer, "answer_label": ALERT_ANSWER_LABEL_TEXT[done.answer or ""],
-        "answered_at": _iso(done.answered_at), "answered_at_hm": _hm(done.answered_at)})
+        "id": done.id, "answer": done.answer, "answer_label": _label(done.answer),
+        "answered_at": done.answered_at})
 
 
 @router.get("/api/alerts/history", response_model=HistoryOut)
 async def alert_history(db: Annotated[Any, Depends(get_db)],
                         user_ref: Annotated[str, Depends(current_user_ref)]) -> HistoryOut:
     by_id = await _texts(db, user_ref)
-    items = [{"id": a.id, "strategy_id": a.strategy_id, "strategy_name": a.strategy_name, "kind": _kind(a),
-              "text": _words(a, by_id), "fired_at": _iso(a.fired_at), "fired_at_hm": _hm(a.fired_at),
-              "answer": a.answer, "answer_label": ALERT_ANSWER_LABEL_TEXT.get(a.answer or ""),
-              "answered_at": _iso(a.answered_at), "answered_at_hm": _hm(a.answered_at),
+    items = [{"id": a.id, "strategy_id": a.strategy_id, "strategy_name": shown_name(a.strategy_name), "kind": _kind(a),
+              "text": _words(a, by_id), "fired_at": a.fired_at, "fired_line": _fired(a),
+              "answer": a.answer, "answer_label": _label(a.answer),
+              "answered_at": a.answered_at,
               "closed_reason": _reason(a)} for a in await aa.history(db, user_ref)]
     return HistoryOut.model_validate({"items": items})

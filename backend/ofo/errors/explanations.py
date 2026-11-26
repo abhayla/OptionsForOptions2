@@ -1712,6 +1712,8 @@ _EXPLANATIONS: tuple[ExplanationTemplate, ...] = (
     # ADR-330 (3), owner Q2b: an unanswered alert whose trade closed first stays in History with this line
     ExplanationTemplate("alert_closed_trade_closed", "values_seen", "Closed by system: the trade closed at {time}",
                         {"time": HourMinute}),
+    *(ExplanationTemplate(f"alert_answer_{key}", "values_seen", text)  # ADR-330 (3): each answer's label, as the page shows it
+      for key, text in ALERT_ANSWER_LABEL_TEXT.items()),
     ExplanationTemplate("stop_fired_loss", "values_seen",
                         "Stop reached: loss now {loss} ({loss_pct} % of max loss); stop line {stop} ({stop_pct} % of max loss)",
                         {"loss": Rupees, "loss_pct": Amount, "stop": Rupees, "stop_pct": Amount}),

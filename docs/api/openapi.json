@@ -1,6 +1,102 @@
 {
   "components": {
     "schemas": {
+      "ActiveAlert": {
+        "additionalProperties": false,
+        "properties": {
+          "answers": {
+            "items": {
+              "$ref": "#/components/schemas/AnswerChoice"
+            },
+            "title": "Answers",
+            "type": "array"
+          },
+          "fired_at": {
+            "format": "date-time",
+            "title": "Fired At",
+            "type": "string"
+          },
+          "fired_line": {
+            "title": "Fired Line"
+          },
+          "id": {
+            "title": "Id",
+            "type": "integer"
+          },
+          "kind": {
+            "pattern": "^[A-Za-z0-9_\\-.]{1,64}$",
+            "title": "Kind",
+            "type": "string"
+          },
+          "no_longer_true_line": {
+            "anyOf": [
+              {},
+              {
+                "type": "null"
+              }
+            ],
+            "title": "No Longer True Line"
+          },
+          "no_longer_true_since": {
+            "anyOf": [
+              {
+                "format": "date-time",
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "No Longer True Since"
+          },
+          "strategy_id": {
+            "title": "Strategy Id",
+            "type": "integer"
+          },
+          "strategy_name": {
+            "title": "Strategy Name"
+          },
+          "text": {
+            "title": "Text"
+          }
+        },
+        "required": [
+          "id",
+          "strategy_id",
+          "strategy_name",
+          "kind",
+          "text",
+          "fired_at",
+          "fired_line",
+          "no_longer_true_since",
+          "no_longer_true_line",
+          "answers"
+        ],
+        "title": "ActiveAlert",
+        "type": "object"
+      },
+      "ActiveOut": {
+        "additionalProperties": false,
+        "properties": {
+          "alerts": {
+            "items": {
+              "$ref": "#/components/schemas/ActiveAlert"
+            },
+            "title": "Alerts",
+            "type": "array"
+          },
+          "count": {
+            "title": "Count",
+            "type": "integer"
+          }
+        },
+        "required": [
+          "count",
+          "alerts"
+        ],
+        "title": "ActiveOut",
+        "type": "object"
+      },
       "AdjustAfterOut": {
         "additionalProperties": false,
         "properties": {
@@ -2082,6 +2178,66 @@
           "unread"
         ],
         "title": "AlertsOut",
+        "type": "object"
+      },
+      "AnswerChoice": {
+        "additionalProperties": false,
+        "properties": {
+          "code": {
+            "pattern": "^[A-Za-z0-9_\\-.]{1,64}$",
+            "title": "Code",
+            "type": "string"
+          },
+          "label": {
+            "title": "Label"
+          }
+        },
+        "required": [
+          "code",
+          "label"
+        ],
+        "title": "AnswerChoice",
+        "type": "object"
+      },
+      "AnswerIn": {
+        "properties": {
+          "answer": {
+            "default": "",
+            "title": "Answer",
+            "type": "string"
+          }
+        },
+        "title": "AnswerIn",
+        "type": "object"
+      },
+      "AnsweredOut": {
+        "additionalProperties": false,
+        "properties": {
+          "answer": {
+            "pattern": "^[A-Za-z0-9_\\-.]{1,64}$",
+            "title": "Answer",
+            "type": "string"
+          },
+          "answer_label": {
+            "title": "Answer Label"
+          },
+          "answered_at": {
+            "format": "date-time",
+            "title": "Answered At",
+            "type": "string"
+          },
+          "id": {
+            "title": "Id",
+            "type": "integer"
+          }
+        },
+        "required": [
+          "id",
+          "answer",
+          "answer_label",
+          "answered_at"
+        ],
+        "title": "AnsweredOut",
         "type": "object"
       },
       "ApproachesIn": {
@@ -5754,6 +5910,95 @@
           "held_at"
         ],
         "title": "HeldOut",
+        "type": "object"
+      },
+      "HistoryItem": {
+        "additionalProperties": false,
+        "properties": {
+          "answer": {
+            "anyOf": [
+              {
+                "pattern": "^[A-Za-z0-9_\\-.]{1,64}$",
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Answer"
+          },
+          "answer_label": {
+            "anyOf": [
+              {},
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Answer Label"
+          },
+          "answered_at": {
+            "anyOf": [
+              {
+                "format": "date-time",
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Answered At"
+          },
+          "closed_reason": {
+            "anyOf": [
+              {},
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Closed Reason"
+          },
+          "fired_at": {
+            "format": "date-time",
+            "title": "Fired At",
+            "type": "string"
+          },
+          "fired_line": {
+            "title": "Fired Line"
+          },
+          "id": {
+            "title": "Id",
+            "type": "integer"
+          },
+          "kind": {
+            "pattern": "^[A-Za-z0-9_\\-.]{1,64}$",
+            "title": "Kind",
+            "type": "string"
+          },
+          "strategy_id": {
+            "title": "Strategy Id",
+            "type": "integer"
+          },
+          "strategy_name": {
+            "title": "Strategy Name"
+          },
+          "text": {
+            "title": "Text"
+          }
+        },
+        "required": [
+          "id",
+          "strategy_id",
+          "strategy_name",
+          "kind",
+          "text",
+          "fired_at",
+          "fired_line",
+          "answer",
+          "answer_label",
+          "answered_at",
+          "closed_reason"
+        ],
+        "title": "HistoryItem",
         "type": "object"
       },
       "HistoryOrderOut": {
@@ -16841,6 +17086,23 @@
         "title": "SetIn",
         "type": "object"
       },
+      "ofo_app__routes__alerts__HistoryOut": {
+        "additionalProperties": false,
+        "properties": {
+          "items": {
+            "items": {
+              "$ref": "#/components/schemas/HistoryItem"
+            },
+            "title": "Items",
+            "type": "array"
+          }
+        },
+        "required": [
+          "items"
+        ],
+        "title": "HistoryOut",
+        "type": "object"
+      },
       "ofo_app__routes__outcome__LegIn": {
         "additionalProperties": false,
         "properties": {
@@ -18472,6 +18734,91 @@
           }
         },
         "summary": "Reset Preference"
+      }
+    },
+    "/api/alerts/active": {
+      "get": {
+        "operationId": "active_alerts_api_alerts_active_get",
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ActiveOut"
+                }
+              }
+            },
+            "description": "Successful Response"
+          }
+        },
+        "summary": "Active Alerts"
+      }
+    },
+    "/api/alerts/history": {
+      "get": {
+        "operationId": "alert_history_api_alerts_history_get",
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ofo_app__routes__alerts__HistoryOut"
+                }
+              }
+            },
+            "description": "Successful Response"
+          }
+        },
+        "summary": "Alert History"
+      }
+    },
+    "/api/alerts/{alert_id}/answer": {
+      "post": {
+        "operationId": "answer_alert_api_alerts__alert_id__answer_post",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "alert_id",
+            "required": true,
+            "schema": {
+              "title": "Alert Id",
+              "type": "integer"
+            }
+          }
+        ],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/AnswerIn"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/AnsweredOut"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "summary": "Answer Alert"
       }
     },
     "/api/broker/account": {
