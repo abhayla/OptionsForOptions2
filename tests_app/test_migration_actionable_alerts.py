@@ -48,7 +48,7 @@ async def _refused(conn, sql, params) -> None:
             await conn.execute(text(sql) if isinstance(sql, str) else sql, params)
 
 
-async def test_the_four_columns_exist_and_a_new_row_without_a_kind_is_refused(db):
+async def test_the_four_columns_exist_and_a_legacy_row_without_a_kind_is_still_accepted(db):
     found = {r[0] for r in (await db.execute(text(
         "SELECT column_name FROM information_schema.columns WHERE table_name = 'adjustment_suggestions'"))).all()}
     assert set(_COLUMNS) <= found
@@ -56,7 +56,10 @@ async def test_the_four_columns_exist_and_a_new_row_without_a_kind_is_refused(db
     row = (await db.execute(text("SELECT kind, answer, answered_at, no_longer_true_since "
                                  "FROM public.adjustment_suggestions WHERE id = :id"), {"id": rid})).one()
     assert tuple(row) == ("plan_loss_stop", None, None, None)
-    await _refused(db, _OPEN, {"i": sid, "rule": "r_nokind", "kind": None})  # M3: a new row names its kind
+    # compat: a writer from before 0054 inserts no kind; the row is accepted, open and unanswered
+    legacy = (await db.execute(_OPEN, {"i": sid, "rule": "r_nokind", "kind": None})).scalar_one()
+    assert (await db.execute(text("SELECT kind, outcome FROM public.adjustment_suggestions WHERE id = :id"),
+                             {"id": legacy})).one() == (None, "open")
 
 
 async def test_checks_refuse_a_bad_kind_a_bad_answer_and_an_unpaired_answer(db):
@@ -85,19 +88,13 @@ async def test_a_record_of_a_kind_leaves_open_only_with_its_answer(db):
     await _refused(db, _SET.format("answer = 'exit'"), {"id": rid})
 
 
-async def test_an_old_record_without_a_kind_still_closes_as_before(admin_engine):
-    """Rows written before 0054 have no kind (the insert guard now refuses a new one): build one with the guard off,
-    in a rolled-back owner transaction, then close it with the guard on."""
-    async with admin_engine.connect() as conn:
-        outer = await conn.begin()
-        try:
-            _, rid = await _open(conn)
-            await conn.execute(text("ALTER TABLE public.adjustment_suggestions DISABLE TRIGGER USER"))
-            await conn.execute(text("UPDATE public.adjustment_suggestions SET kind = NULL WHERE id = :id"), {"id": rid})
-            await conn.execute(text("ALTER TABLE public.adjustment_suggestions ENABLE TRIGGER USER"))
-            await conn.execute(_CLOSE, {"id": rid, "outcome": "lapsed", "answer": None})
-        finally:
-            await outer.rollback()
+async def test_a_record_without_a_kind_keeps_the_pre_0054_lifecycle(db):
+    """Old code writes no kind: it closes with no answer by dismissal, act_on or any lapse reason; kind stays NULL."""
+    for outcome in ("dismissed", "acted_on", "lapsed"):
+        _, rid = await _open(db, kind=None)
+        await db.execute(_CLOSE, {"id": rid, "outcome": outcome, "answer": None})
+    _, rid = await _open(db, kind=None)
+    await _refused(db, _SET.format("kind = 'plan_loss_stop'"), {"id": rid})
 
 
 async def test_value_and_no_longer_true_since_change_only_while_open(db):

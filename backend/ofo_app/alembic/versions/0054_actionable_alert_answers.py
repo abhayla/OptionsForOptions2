@@ -21,7 +21,8 @@ Changes (owner-run, one transaction; ADDITIVE columns, no back-fill, old rows ke
   * no_longer_true_since and escalated_at change only while the record is open and stays open;
   * stage, value and threshold change only while the record is open and stays open (a worse escalation updates the
     open row); id, strategy, rule, trigger, shown_at (= "Fired at"), worse and kind never change;
-  * an INSERT names its kind (NULL refused) and is open and unanswered (an actionable kind), or an informational
+  * an INSERT is open and unanswered (an actionable kind, or kind NULL = a writer from before this change: the app
+    reads NULL as an adjustment rule and the row keeps the pre-0054 lifecycle), or an informational
     note (kind stop_fired, settled, orders_placed or stop_saved only): outcome 'dismissed', answer 'noted',
     answered_at set (History only, never open, so never counted); 'noted' is never written by an UPDATE.
 - Grants: INSERT (shown_at, kind, outcome, answer, answered_at) (shown_at = the event time "Fired at", never in the
@@ -91,9 +92,6 @@ def guard_sql() -> str:
                 IF NEW.shown_at > clock_timestamp() THEN
                     {raise_('a suggestion is never shown in the future')}
                 END IF;
-                IF NEW.kind IS NULL THEN
-                    {raise_('a new suggestion record names its kind')}
-                END IF;
                 IF NEW.answer IS NULL THEN
                     IF NEW.kind IN ({_list(INFORMATIONAL_KINDS)}) THEN
                         {raise_('an informational note is never open: it is stored already noted')}
@@ -103,7 +101,8 @@ def guard_sql() -> str:
                         {raise_('a suggestion record starts open')}
                     END IF;
                 ELSIF NOT (NEW.answer = 'noted' AND NEW.outcome = 'dismissed' AND NEW.dismiss_reason IS NULL
-                           AND NEW.kind IN ({_list(INFORMATIONAL_KINDS)}) AND NEW.answered_at IS NOT NULL
+                           AND coalesce(NEW.kind IN ({_list(INFORMATIONAL_KINDS)}), false)
+                           AND NEW.answered_at IS NOT NULL
                            AND NEW.no_longer_true_since IS NULL AND NEW.escalated_at IS NULL) THEN
                     {raise_('only an informational note is stored already answered')}
                 END IF;
