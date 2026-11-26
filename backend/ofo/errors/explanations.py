@@ -1788,11 +1788,9 @@ _EXPLANATIONS: tuple[ExplanationTemplate, ...] = (
                         {"time": HourMinute}),
     # ADR-330 (2) (b), (33), P7 page flow (pending owner read): the side_closed row's words and its confirmation
     ExplanationTemplate("alert_side_closed_text", "values_seen",
-                        "The {side} side of this trade is closed. Do you want to add new positions on that side?",
-                        {"side": ClosedSide}),
-    ExplanationTemplate("alert_side_closed_confirm", "values_seen",
-                        "If you do not add legs, this strategy will change from its entry shape to {shape}. "
-                        "Confirm the change?", {"shape": RemainingShape}),
+                        "The {side} side of this trade is closed. Add the legs again, or confirm the new shape: "
+                        "this strategy will change from its entry shape to {shape}.",
+                        {"side": ClosedSide, "shape": RemainingShape}),
     *(ExplanationTemplate(f"alert_answer_{key}", "values_seen", text)  # ADR-330 (3): each answer's label, as the page shows it
       for key, text in ALERT_ANSWER_LABEL_TEXT.items()),
     ExplanationTemplate("stop_fired_loss", "values_seen",

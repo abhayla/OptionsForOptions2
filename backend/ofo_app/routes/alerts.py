@@ -61,9 +61,6 @@ class ActiveAlert(ApiModel):
     no_longer_true_line: CatalogueText | None
     escalated_at: datetime.datetime | None
     worse_line: CatalogueText | None
-    #: ADR-330 (2) (b): a side_closed row only: the sentence naming the shape that remains, shown before "Confirm the
-    #: new shape" stores anything; None for every other kind
-    confirm_text: CatalogueText | None = None
     answers: list[AnswerChoice]
 
 
@@ -108,8 +105,9 @@ def _words(a: aa.Alert, by_id: dict[int, store.Suggestion]) -> Any:
     is rendered from the catalogue id and values stored with it; a record the inbox cannot word falls back to its
     stage-less rule label, never a raw id."""
     side = _closed_side(a)
-    if side is not None:  # ADR-330 (2) (b): the side_closed row tells the user the side closed and asks (no rule words)
-        return render_explanation("alert_side_closed_text", side=side)
+    shape = None if side is None else side_closed.remaining_shape_name(side)
+    if shape is not None:  # ADR-330 (2) (b): the side_closed row says the side closed, the shape that remains, asks
+        return render_explanation("alert_side_closed_text", side=side, shape=shape)
     if a.note is not None:
         template_id, values = a.note
         return render_explanation(template_id, **values)
@@ -125,12 +123,6 @@ def _closed_side(a: aa.Alert) -> str | None:
     if a.kind != SIDE_CLOSED or not a.rule_id.startswith(prefix) or side not in ("call", "put"):
         return None
     return side
-
-
-def _confirm(a: aa.Alert) -> Any:
-    side = _closed_side(a)
-    shape = None if side is None else side_closed.remaining_shape_name(side)
-    return None if shape is None else render_explanation("alert_side_closed_confirm", shape=shape)
 
 
 def _fired(a: aa.Alert) -> Any:
@@ -180,7 +172,7 @@ async def active_alerts(db: Annotated[Any, Depends(get_db)],
     alerts = [{"id": a.id, "strategy_id": a.strategy_id, "strategy_name": titles[a.strategy_id], "kind": _kind(a),
                "text": _words(a, by_id), "fired_at": a.fired_at, "fired_line": _fired(a),
                "no_longer_true_since": a.no_longer_true_since, "no_longer_true_line": _stopped(a),
-               "escalated_at": a.escalated_at, "worse_line": _worse(a), "confirm_text": _confirm(a),
+               "escalated_at": a.escalated_at, "worse_line": _worse(a),
                "answers": [{"code": c, "label": _label(c)}
                            for c in (allowed_answers(a.kind) if a.kind else ("exit", "continue"))]} for a in rows]
     return ActiveOut.model_validate({"count": len(rows), "alerts": alerts})

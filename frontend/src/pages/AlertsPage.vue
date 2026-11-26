@@ -39,14 +39,14 @@ const exitFor = ref(null)
 
 // P7 (ADR-330 (2)(b), (33)): a side_closed row. "Add the legs again" stores add_legs then opens that strategy's builder (the builder
 // cannot be told a side: it shows the strategy and the server's notice). "Confirm the new shape" first shows the server's sentence
-// naming the shape that remains; only its Confirm stores confirm_new_shape; Cancel stores nothing and the row stays asking.
+// naming the shape that remains (the row's own text); only its Confirm stores confirm_new_shape; Cancel stores nothing and the row stays asking.
 const confirming = ref(null) // the alert id whose confirmation sentence is showing
 const isSideClosed = (a) => a.kind === 'side_closed'
 
 async function answer(a, code) {
   if (busy.value) return
   if (isSideClosed(a) && code === 'confirm_new_shape' && confirming.value !== a.id) {
-    if (typeof a.confirm_text !== 'string' || a.confirm_text === '') { // no sentence from the server: store nothing (fail closed)
+    if (typeof a.text !== 'string' || a.text === '') { // no sentence from the server: store nothing (fail closed)
       answerError.value = { ...answerError.value, [a.id]: NEUTRAL_PARTS }
       return
     }
@@ -129,7 +129,7 @@ onMounted(async () => {
           <button v-for="x in a.answers" :key="x.code" type="button" class="rounded border border-line px-2 py-1 text-sm" :disabled="busy" :data-testid="`alert-answer-${x.code}`" @click="answer(a, x.code)">{{ x.label }}</button>
         </div>
         <div v-if="confirming === a.id" class="mt-2 rounded border border-line p-2" data-testid="side-closed-confirm">
-          <p class="text-sm">{{ a.confirm_text }}</p>
+          <p class="text-sm">{{ a.text }}</p>
           <div class="mt-2 flex gap-2">
             <button type="button" class="rounded border border-line px-2 py-1 text-sm" :disabled="busy" data-testid="side-closed-confirm-yes" @click="answer(a, 'confirm_new_shape')">{{ a.answers.find((x) => x.code === 'confirm_new_shape')?.label }}</button>
             <button type="button" class="rounded border border-line px-2 py-1 text-sm" :disabled="busy" data-testid="side-closed-confirm-no" @click="confirming = null">Cancel</button>

@@ -11,15 +11,6 @@
             "title": "Answers",
             "type": "array"
           },
-          "confirm_text": {
-            "anyOf": [
-              {},
-              {
-                "type": "null"
-              }
-            ],
-            "title": "Confirm Text"
-          },
           "escalated_at": {
             "anyOf": [
               {

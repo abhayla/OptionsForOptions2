@@ -4868,11 +4868,7 @@
     "reviewed": "pending owner read"
   },
   "explanation:alert_side_closed_text": {
-    "sha256": "0c57043f0b7b1649230dea2253b619ef596da3b27f234a1ed80789fccdfa9d32",
-    "reviewed": "pending owner read"
-  },
-  "explanation:alert_side_closed_confirm": {
-    "sha256": "0aa73049a29ea9e45ea5b48737f8dae7c09e1644413c73b3033252bb68796c11",
+    "sha256": "ad1da34af4dfa666719d4fc48305f7d9e8470dbd460c5f490b50c3d5d9a0e611",
     "reviewed": "pending owner read"
   },
   "explanation:plan_sheet_reset": {

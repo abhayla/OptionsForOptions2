@@ -21,17 +21,17 @@ vi.mock('@/services/api', async (importActual) => {
 import AlertsPage from '@/pages/AlertsPage.vue'
 import { activeAlerts, resetActiveAlerts, resetOpenRecords } from '@/lib/paperAlerts'
 
-const CONFIRM = 'If you do not add legs, this strategy will change from its entry shape to Bull Put Spread. Confirm the change?'
+const CONFIRM = 'The call side of this trade is closed. Add the legs again, or confirm the new shape: this strategy will change from its entry shape to Bull Put Spread.'
 const sideClosed = (over = {}) => ({
   id: 5, strategy_id: 7, strategy_name: '"Trade 7"', kind: 'side_closed',
-  text: 'The call side of this trade is closed. Do you want to add new positions on that side?',
+  text: CONFIRM,
   fired_at: '2026-11-25T05:32:20Z', fired_line: 'Fired at 11:02', no_longer_true_since: null, no_longer_true_line: null,
-  escalated_at: null, worse_line: null, confirm_text: CONFIRM,
+  escalated_at: null, worse_line: null,
   answers: [{ code: 'add_legs', label: 'Add the legs again' }, { code: 'confirm_new_shape', label: 'Confirm the new shape' }], ...over,
 })
 const other = () => ({
   id: 1, strategy_id: 7, strategy_name: '"Trade 7"', kind: 'plan_loss_stop', text: 'Loss stop reached', fired_at: '2026-11-25T05:32:20Z',
-  fired_line: 'Fired at 11:02', no_longer_true_since: null, no_longer_true_line: null, escalated_at: null, worse_line: null, confirm_text: null,
+  fired_line: 'Fired at 11:02', no_longer_true_since: null, no_longer_true_line: null, escalated_at: null, worse_line: null,
   answers: [{ code: 'exit', label: 'Exit the position' }, { code: 'continue', label: 'Continue with the position' }],
 })
 const list = (...a) => () => Promise.resolve({ data: { count: a.length, alerts: a } })
@@ -107,8 +107,8 @@ describe('P7 side_closed answers on Alerts > Active', () => {
     expect(w.find('[data-testid="alert-answer-add_legs"]').exists() && w.find('[data-testid="alert-answer-confirm_new_shape"]').exists()).toBe(true)
     expect(activeAlerts.alerts).toHaveLength(1)
   })
-  it('confirm new shape: the server sent no sentence -> nothing is stored (fail closed), the neutral reason shows', async () => {
-    answers['GET /alerts/active'] = list(sideClosed({ confirm_text: null }))
+  it('confirm new shape: the server sent no text -> nothing is stored (fail closed), the neutral reason shows', async () => {
+    answers['GET /alerts/active'] = list(sideClosed({ text: '' }))
     const w = await mountPage()
     await click(w, 'alert-answer-confirm_new_shape')
     expect(posts()).toHaveLength(0)
