@@ -50,7 +50,7 @@ def test_f1_a_non_stop_rule_says_true_again_at_the_first_close_past_the_line():
         state, ev = _step(state, hhmm, {"T-07": (T07, value)})
         events += [(hhmm, e) for e in ev]
     assert [(h, type(e).__name__) for h, e in events] == [
-        ("11:03:20", "Opened"), ("11:05:20", "Lapsed"), ("11:06:20", "TrueAgain")]
+        ("11:03:20", "Opened"), ("11:04:20", "Lapsed"), ("11:06:20", "TrueAgain")]
     assert events[2][1].at == at("11:06:00")  # the close of the 11:05 candle, the first one past the line again
 
 

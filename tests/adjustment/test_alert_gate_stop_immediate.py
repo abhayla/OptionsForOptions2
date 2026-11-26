@@ -52,7 +52,7 @@ def test_a_worse_level_of_a_raised_stop_escalates_at_once():
     spec = ag.RuleSpec("T-06", "ge", (D("10"), D("20")))
     state, ev = ag.step(ag.initial_state(), now=at("10:40:30"), preset=ag.WEEKLY, readings={"T-06": (spec, D("11"))})
     state, worse = ag.step(state, now=at("10:40:40"), preset=ag.WEEKLY, readings={"T-06": (spec, D("21"))})
-    assert [(type(e), e.level, e.worse) for e in ev + worse] == [(ag.Opened, 0, None), (ag.Opened, 1, "last")]
+    assert [(type(e), e.level, e.worse) for e in ev + worse] == [(ag.Opened, 0, None), (ag.Escalated, 1, "last")]
 
 
 def test_a_stop_below_its_line_still_waits_and_opens_nothing():

@@ -106,14 +106,42 @@ class Held:
 
 @dataclass(frozen=True)
 class Lapsed:
-    """ADR-237 (4): an open record's episode ended (a close cleared its line by the re-arm band). Once per record."""
+    """ADR-330 (3): an open record's condition stopped (a close cleared its line by the re-arm band): "no longer true
+    since". The record stays open; once per stop (a ``TrueAgain`` re-arms the next one)."""
 
     rule_id: str
     at: datetime
     value: Value
 
 
-Event = Union[Opened, Held, Lapsed]  # noqa: UP007
+@dataclass(frozen=True)
+class TrueAgain:
+    """ADR-330 (3): the first close past the line again of a rule whose open record was marked "no longer true"; the
+    record stays the same one (no cool-down, cap or quiet time applies; nothing is opened or counted)."""
+
+    rule_id: str
+    at: datetime
+    value: Value
+
+
+@dataclass(frozen=True)
+class Escalated:
+    """ADR-330 (3), REQ-170 AC-3: a close one ladder level WORSE than the rule's still-unanswered record. It updates
+    that open alert (one open alert per rule); it opens no record and is not counted against the daily cap."""
+
+    rule_id: str
+    at: datetime
+    level: int
+    threshold: Decimal | None
+    value: Value
+    worse: Literal["last", "dismissed"] | None = "last"
+    shown_value: Decimal | None = None
+    shown_threshold: Decimal | None = None
+    limit: Decimal | None = None
+    sample: object = field(default=None, compare=False)
+
+
+Event = Union[Opened, Held, Lapsed, TrueAgain, Escalated]  # noqa: UP007
 
 
 @dataclass(frozen=True)
@@ -122,7 +150,8 @@ class _Record:
     threshold: Decimal | None
     at: datetime
     dismissed: bool = False
-    final: bool = False  # lapsed / acted on / dismissed: no Lapsed event any more
+    final: bool = False  # answered (acted on / dismissed) or closed by the system: no longer an open record
+    stopped: bool = False  # its "condition stopped" was emitted and no close past the line has come since
     unleveled: bool = False  # restored with a stored threshold but no real ladder yet: levelled at the first real close
     record_id: int | None = None  # the stored record's id (restored, or set after the open is written; #639 item 2)
     #: the (cmp, ladder) its level was taken against; a close with another ladder re-levels it (ADR-237 (8))
@@ -216,8 +245,8 @@ def _refresh(rule_id: str, rule: _Rule, pend: _Pending, level: int, preset: Pres
     events: list[Event] = []
     if rec is not None and not rule.cleared and _safe_by_band(pend.spec, pend.value, rec.threshold, preset):
         rule = replace(rule, cleared=True)
-        if not (rec.dismissed or rec.final):
-            rule = replace(rule, record=replace(rec, final=True))
+        if not (rec.dismissed or rec.final or rec.stopped):
+            rule = replace(rule, record=replace(rec, stopped=True))
             events.append(Lapsed(rule_id, pend.end, pend.value))
     if hold is not None and (
         _safe_by_band(pend.spec, pend.value, hold.threshold, preset)
@@ -279,6 +308,8 @@ def _decide(  # noqa: PLR0913 - one close's inputs
     rec, hold = rule.record, rule.hold
     if level < 0:
         return state.with_rule(rule_id, rule), []
+    if rec is not None and not (rec.dismissed or rec.final):
+        return _on_open_record(state, rule_id, rule, rec, pend, level)
     armed = rec is None or (rule.cleared and t >= rec.at + preset.cooldown)
     if armed:
         worse = None
@@ -305,6 +336,27 @@ def _decide(  # noqa: PLR0913 - one close's inputs
     limit = spec.ladder[0] if spec.ladder else spec.shown_threshold
     return state, [Opened(rule_id, t, level, threshold, value, worse, spec.shown_value,
                                 spec.shown_threshold, limit, spec.sample)]
+
+
+def _on_open_record(  # noqa: PLR0913 - one close's inputs
+    state: GateState, rule_id: str, rule: _Rule, rec: _Record, pend: _Pending, level: int,
+) -> tuple[GateState, list[Event]]:
+    """ADR-330 (3): a close past the line while the rule's record is still unanswered. It never re-opens and never
+    counts: a record marked stopped says "true again" at once; one ladder level worse says "escalated"."""
+    t, value, spec = pend.end, pend.value, pend.spec
+    events: list[Event] = []
+    if rec.stopped:
+        rule = replace(rule, record=replace(rec, stopped=False), cleared=False)
+        rec = rule.record
+        events.append(TrueAgain(rule_id, t, value))
+    if level > rec.level:
+        threshold = spec.ladder[level] if spec.ladder else None
+        rule = replace(rule, record=replace(rec, level=level, threshold=threshold, stopped=False), cleared=False)
+        limit = spec.ladder[0] if spec.ladder else spec.shown_threshold
+        events = [e for e in events if not isinstance(e, TrueAgain)]  # the escalation says it too (same row update)
+        events.append(Escalated(rule_id, t, level, threshold, value, "last", spec.shown_value, spec.shown_threshold,
+                                limit, spec.sample))
+    return state.with_rule(rule_id, rule), events
 
 
 def step(
@@ -371,6 +423,15 @@ def dismiss(state: GateState, rule_id: str, record_id: int | None = None) -> Gat
     return state.with_rule(rule_id, replace(rule, record=replace(rule.record, dismissed=True)))
 
 
+def answered(state: GateState, rule_id: str, record_id: int | None = None) -> GateState:
+    """The rule's record was answered (acted on) or closed by the system: it is no longer an open record, so the rule
+    re-arms as before (cleared by the band + cool-down). ``record_id`` as ``dismiss``."""
+    rule = state.rule(rule_id)
+    if rule.record is None or (record_id is not None and rule.record.record_id != record_id):
+        return state
+    return state.with_rule(rule_id, replace(rule, record=replace(rule.record, final=True)))
+
+
 def _restored_level(spec: RuleSpec | None, threshold: Decimal | None) -> int:
     """The current ladder's level of a stored threshold: the most severe rung the stored one reaches; -1 when it is
     less severe than the current line (the stage moved on: a close beyond the current line is then worse)."""
@@ -394,8 +455,8 @@ def restore(rows: GateRows, today: date, specs: Mapping[str, RuleSpec]) -> GateS
         spec = specs.get(row.rule_id)
         rec = _Record(_restored_level(spec, row.threshold), row.threshold, _ist(row.at),
                       dismissed=row.dismissed, final=not row.open, unleveled=_unleveled(spec, row.threshold),
-                      record_id=row.id, ladder=_ladder_key(spec))
-        state = state.with_rule(row.rule_id, _Rule(record=rec))
+                      record_id=row.id, ladder=_ladder_key(spec), stopped=row.stopped and row.open)
+        state = state.with_rule(row.rule_id, _Rule(record=rec, cleared=rec.stopped))
     return state
 
 

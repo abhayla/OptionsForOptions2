@@ -35,7 +35,7 @@ def _frames(path, k: int):
 
 
 def _walk(path, frames, rule_id: str, adjust=None):
-    """Steps the gate over ``frames`` (CYCLES checks per frame); -> {frame: [Opened events of rule_id]}."""
+    """Steps the gate over ``frames`` (CYCLES checks per frame); -> {frame: [Opened / Escalated events of rule_id]} (a worse close of the open alert is an Escalated, ADR-330)."""
     st, out = gate.initial_state(), {}
     for k in frames:
         (body, s), clock = _frames(path, k)
@@ -47,7 +47,7 @@ def _walk(path, frames, rule_id: str, adjust=None):
         for sec in range(CYCLES):
             st, events = gate.step(st, now=clock + datetime.timedelta(seconds=sec), preset=gate.INTRADAY,
                                    readings={rule_id: reading})
-            got += [e for e in events if isinstance(e, gate.Opened)]
+            got += [e for e in events if isinstance(e, (gate.Opened, gate.Escalated))]
         out[k] = got
     return out
 
