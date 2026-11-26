@@ -108,6 +108,7 @@ export function useDeleteFlow(client, hooks) {
   };
   return Object.assign(state, {
     ask(id) {
+      state.bulkConfirming = null;
       state.confirming = id;
       state.errorParts = null;
       state.notice = null;
@@ -187,6 +188,7 @@ export function useDeleteFlow(client, hooks) {
     },
     askBulk(running) {
       if (!state.selected.length) return;
+      state.confirming = null;
       state.bulkConfirming = { count: state.selected.length, running };
       state.errorParts = null;
       state.notice = null;

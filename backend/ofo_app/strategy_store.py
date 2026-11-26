@@ -126,12 +126,9 @@ _DELETABLE_SQL = ("(NOT EXISTS (SELECT 1 FROM public.execution_plans p WHERE p.s
                   # ADR-292: a condor held at the broker is a REAL position stored as practice orders: never deletable
                   "AND NOT EXISTS (SELECT 1 FROM public.strategy_held_entries h WHERE h.strategy_id = s.id))")
 _DELETABLE = text(f"SELECT {_DELETABLE_SQL} AS can_delete FROM public.strategies AS s WHERE s.id = :id")  # noqa: S608
-#: ADR-292: the held entry is the ONLY reason a delete is refused: picks the held sentence.
-_HELD_ONLY = text("SELECT (EXISTS (SELECT 1 FROM public.strategy_held_entries h WHERE h.strategy_id = s.id) "
-                  "AND NOT EXISTS (SELECT 1 FROM public.execution_plans p WHERE p.strategy_id = s.id) "
-                  "AND NOT EXISTS (SELECT 1 FROM public.strategy_versions v WHERE v.strategy_id = s.id)) AS held "
-                  "FROM public.strategies AS s WHERE s.id = :id")
+#: ADR-292: ONE rule for "held at the broker" (a held entry exists), read by the list flag and by the delete reason.
 _HELD_SQL = "EXISTS (SELECT 1 FROM public.strategy_held_entries hh WHERE hh.strategy_id = s.id)"
+_HELD = text(f"SELECT {_HELD_SQL} AS held FROM public.strategies AS s WHERE s.id = :id")  # noqa: S608
 _HAS_PAPER_SQL = "EXISTS (SELECT 1 FROM public.paper_orders o WHERE o.strategy_id = s.id)"
 #: ADR-299 / ADR-298: "an order was placed", practice OR real, in ONE place: a paper order, or an execution plan
 #: (a basket was sent to the broker). The one status word on every screen reads this (Draft = no order yet).
@@ -350,11 +347,11 @@ async def _deletable(conn: Any, strategy_id: int) -> bool:
         return False
 
 
-async def _held_only(conn: Any, strategy_id: int) -> bool:
-    """True when the held entry is the only reason Delete is refused. Unreadable -> False (the orders sentence)."""
+async def _held(conn: Any, strategy_id: int) -> bool:
+    """True when a held entry exists (ADR-292: the more specific reason). Unreadable -> False (orders sentence)."""
     try:
         async with conn.begin_nested():
-            return (await conn.execute(_HELD_ONLY, {"id": strategy_id})).scalar_one() is True
+            return (await conn.execute(_HELD, {"id": strategy_id})).scalar_one() is True
     except Exception:  # noqa: BLE001 - an unreadable answer keeps the orders sentence
         return False
 
@@ -367,7 +364,7 @@ async def delete_draft(conn: Any, user_ref: str, strategy_id: int, *, expected_r
         row = await _locked(conn, user_ref, strategy_id)
         _check_revision(row, expected_revision)
         if not await _deletable(conn, row.id):
-            if await _held_only(conn, row.id):
+            if await _held(conn, row.id):
                 raise StrategyStoreError(DELETE_HELD_AT_BROKER, f"strategy {strategy_id} is held at the broker")
             raise StrategyStoreError(DELETE_AFTER_BASKET, f"strategy {strategy_id} sent a basket or may have")
         await conn.execute(_SET_DELETED, {"id": row.id})

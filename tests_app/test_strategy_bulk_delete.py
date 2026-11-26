@@ -47,8 +47,7 @@ async def _fourteen(tx: _Tx) -> tuple[list[int], int, int]:
     """Real-shaped rows of one user: 12 deletable (3 running on paper orders), 1 held at the broker, 1 with a real
     basket. Returns (ids in order, held id, basket id)."""
     ids = [tx.strategy_id]
-    for _ in range(DELETED + 1):
-        ids.append(await _new_strategy(tx.conn, tx.user, catalogue=False))
+    ids.extend([await _new_strategy(tx.conn, tx.user, catalogue=False) for _ in range(DELETED + 1)])
     for sid in ids[1:1 + RUNNING]:
         await _paper_order(tx.conn, sid)
     held, basket = ids[-2], ids[-1]
@@ -186,6 +185,21 @@ async def test_list_rows_carry_held_at_broker_from_one_batched_read(app_engine):
         async with _client(_app(_ConnMaker(tx.conn), tx.user)) as ac:
             rows = {s["id"]: s["held_at_broker"] for s in (await ac.get("/strategies")).json()["strategies"]}
         assert rows == {tx.strategy_id: False, held: True}
+
+
+async def test_held_with_a_plan_row_says_held_in_the_list_and_in_single_and_bulk_delete(app_engine):
+    """One rule: a held entry makes the reason 'held' even when a basket was also sent (still undeletable)."""
+    async with _Tx(app_engine) as tx:
+        await _held(tx.conn, tx.strategy_id)
+        await _send_basket(tx.conn, tx.user, tx.strategy_id, "open")
+        revision = await _revision(tx.conn, tx.strategy_id)
+        async with _client(_app(_ConnMaker(tx.conn), tx.user)) as ac:
+            row = (await ac.get("/strategies")).json()["strategies"][0]
+            assert (row["held_at_broker"], row["can_delete"]) == (True, False)
+            single = await ac.delete(f"/strategies/{tx.strategy_id}", params={"expected_revision": revision})
+            assert (single.status_code, single.json()["what_happened"]) == (HTTPStatus.CONFLICT, HELD_TEXT)
+            out = (await ac.post(URL, json={"items": [{"id": tx.strategy_id, "expected_revision": revision}]})).json()
+            assert [(k["reason"], k["text"]["what_happened"]) for k in out["kept"]] == [("held_at_broker", HELD_TEXT)]
 
 
 async def test_single_delete_of_a_held_strategy_says_held_not_orders_sent(app_engine):

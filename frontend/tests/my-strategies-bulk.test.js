@@ -201,6 +201,36 @@ describe('bulk delete confirmation and result', () => {
   })
 })
 
+describe('one confirmation open at a time', () => {
+  it('askBulk closes an open single-row confirm, and a single-row Delete closes the bulk confirm', async () => {
+    const { useDeleteFlow } = await import('@/lib/strategyActivity.js')
+    const flow = useDeleteFlow({}, { reload() {}, onRemoved() {}, onBack() {}, undoMs: () => null })
+    flow.ask(7)
+    flow.setSelection([1, 2])
+    flow.askBulk(0)
+    expect(flow.confirming).toBe(null)
+    expect(flow.bulkConfirming).toEqual({ count: 2, running: 0 })
+    flow.ask(7)
+    expect(flow.bulkConfirming).toBe(null)
+    expect(flow.confirming).toBe(7)
+  })
+})
+
+describe('the screen sentences equal REQ-070 AC-7', () => {
+  it('each fixed frontend sentence is written in the requirement', async () => {
+    const fs = await import('node:fs')
+    const req = fs.readFileSync('../spec/requirements/REQ-070.md', 'utf8').replace(/\s+/g, ' ')
+    const { BULK_UNREADABLE_TEXT } = await import('@/lib/strategyActivity.js')
+    const src = fs.readFileSync('src/lib/strategyActivity.js', 'utf8')
+    expect(req).toContain(BULK_UNREADABLE_TEXT)
+    expect(src).toContain('${deleted.length} deleted, ${kept.length + unreadable.length} kept.')
+    expect(src).toContain('${failed} of ${held.bulk.length} could not be brought back.')
+    for (const s of ['N deleted, M kept.', 'N of M could not be brought back.', 'N strategies deleted.', '1 strategy deleted.']) {
+      expect(req).toContain(s)
+    }
+  })
+})
+
 describe('S-04 single delete confirm keeps Rename in place', () => {
   it('the confirm is its own line outside the action cluster; the cluster children are unchanged', async () => {
     const w = await open()
