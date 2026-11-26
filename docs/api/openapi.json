@@ -18224,6 +18224,10 @@
             ],
             "title": "Open Opportunities Text"
           },
+          "revision": {
+            "title": "Revision",
+            "type": "integer"
+          },
           "status": {
             "pattern": "^[A-Za-z0-9_\\-.]{1,64}$",
             "title": "Status",
@@ -18291,6 +18295,7 @@
           "status_word",
           "created_at",
           "updated_at",
+          "revision",
           "name",
           "leg_count",
           "first_leg",

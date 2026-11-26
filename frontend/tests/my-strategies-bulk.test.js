@@ -121,6 +121,32 @@ describe('bulk delete confirmation and result', () => {
     expect(bulkCall()).toBeUndefined()
   })
 
+  it('N-30: a bulk delete of 3 rows that carry a revision sends 0 per-row GETs and exactly 1 delete request', async () => {
+    listAnswer = () => Promise.resolve({ data: { strategies: [mk(1, { revision: 4 }), mk(2, { revision: 9 }), mk(3, { revision: 2 })] } })
+    bulkAnswer = () => Promise.resolve({ data: { deleted: [{ id: 1, revision: 4 }, { id: 2, revision: 9 }, { id: 3, revision: 2 }], kept: [], summary_text: cat('3 deleted.') } })
+    const w = await open()
+    await tick(w, 1); await tick(w, 2); await tick(w, 3)
+    await w.get('[data-testid="delete-selected"]').trigger('click')
+    calls.length = 0 // count only what Confirm sends
+    await w.get('[data-testid="bulk-confirm"]').trigger('click')
+    await flushPromises()
+    expect(calls.filter((c) => c.method === 'GET' && /^\/strategies\/\d+$/.test(c.url))).toHaveLength(0)
+    expect(calls.filter((c) => c.url === '/strategies/bulk-delete')).toHaveLength(1)
+    expect([...bulkCall().body.items].sort((a, b) => a.id - b.id)).toEqual([{ id: 1, expected_revision: 4 }, { id: 2, expected_revision: 9 }, { id: 3, expected_revision: 2 }])
+    expect(calls.length).toBe(1) // no list reload either: the rows leave locally
+  })
+
+  it('N-30: a single delete of a row that carries a revision sends no extra GET', async () => {
+    listAnswer = () => Promise.resolve({ data: { strategies: [mk(1, { revision: 4 })] } })
+    const w = await open()
+    await w.get('[data-testid="delete-1"]').trigger('click')
+    calls.length = 0
+    await w.get('[data-testid="delete-confirm"]').trigger('click')
+    await flushPromises()
+    expect(calls.filter((c) => c.method === 'GET' && /^\/strategies\/\d+$/.test(c.url))).toHaveLength(0)
+    expect(calls.filter((c) => c.method === 'DELETE').map((c) => c.url)).toEqual(['/strategies/1?expected_revision=4'])
+  })
+
   it('all deleted: one call with ids and revisions, the summary line shown, rows leave, one Undo restores every id', async () => {
     bulkAnswer = () => Promise.resolve({ data: { deleted: [{ id: 1, revision: 6 }, { id: 3, revision: 7 }], kept: [], summary_text: cat('2 deleted.') } })
     const w = await open()

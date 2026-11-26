@@ -80,8 +80,11 @@ export const deleteDraft = (client, id, revision) =>
 export const undeleteDraft = (client, id, revision) =>
   client.post(`/strategies/${id}/undelete?expected_revision=${revision}`);
 
-/** The saved revision of strategy `id` (the list rows carry none). Throws when unreadable: no delete is sent. */
-async function readRevision(client, id) {
+/** The saved revision of strategy `id`: the one the list row already carries (N-30: no extra request), else one GET.
+ *  Throws when unreadable: no delete is sent. A stale row revision is refused by the server (409 / "changed"). */
+async function readRevision(client, id, held) {
+  const known = held?.(id);
+  if (Number.isInteger(known)) return known;
   const revision = (await client.get(`/strategies/${id}`)).data?.revision;
   if (!Number.isInteger(revision)) throw new Error("unreadable answer");
   return revision;
@@ -127,7 +130,7 @@ export function useDeleteFlow(client, hooks) {
       state.errorParts = null;
       state.notice = null;
       try {
-        const revision = await readRevision(client, id);
+        const revision = await readRevision(client, id, hooks.revisionOf);
         await deleteDraft(client, id, revision);
         state.confirming = null;
         hooks.onRemoved(id);
@@ -218,7 +221,7 @@ export function useDeleteFlow(client, hooks) {
         const unreadable = [];
         for (const id of state.selected) {
           try {
-            items.push({ id, expected_revision: await readRevision(client, id) });
+            items.push({ id, expected_revision: await readRevision(client, id, hooks.revisionOf) });
           } catch {
             unreadable.push({ id, reason: "failed", text: BULK_UNREADABLE_TEXT });
           }

@@ -99,6 +99,7 @@ const menuDo = (fn) => {
 let deletedOpenId = null // the id of the OPEN strategy this bar deleted: its Undo re-opens it in the Builder (same id)
 const deleteFlow = useDeleteFlow(api, {
   undoMs: () => useSettingsValues().waitMs(CLEAR_UNDO_SECONDS_KEY),
+  revisionOf: (id) => drafts.value.find((d) => d.id === id)?.revision, // N-30: the list row's revision, no GET
   onRemoved: (id) => { drafts.value = drafts.value.filter((d) => d.id !== id) },
   onDeleted: (id) => { if (props.current?.id === id) { deletedOpenId = id; emit('deleted', id) } },
   onBack: async (id, body) => {

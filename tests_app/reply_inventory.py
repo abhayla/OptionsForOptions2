@@ -2749,6 +2749,7 @@ INVENTORY = (
     'FIELD StrategyListOut.strategies[].open_opportunities: int',
     'FIELD StrategyListOut.strategies[].open_opportunities_text: CatalogueText',
     'FIELD StrategyListOut.strategies[].open_opportunities_text: None',
+    'FIELD StrategyListOut.strategies[].revision: int',
     'FIELD StrategyListOut.strategies[].status: Identifier',
     "FIELD StrategyListOut.strategies[].status_word: Literal['Draft','Running','Completed','Unknown']",
     'FIELD StrategyListOut.strategies[].total_after: Money',

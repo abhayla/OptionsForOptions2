@@ -84,6 +84,7 @@ PR241_SELECTION = {
     "tests_app/test_strategy_versions_app.py",  # row 16: PUT /strategies/{strategy_id} and its versions
     "tests_app/test_leg_picker_routes.py",  # row 19: imports ofo_app.catalogue_picker, which the #241 diff changes
     "tests_app/test_leg_edit_route.py",  # row 20: POST /api/strategies/leg-edit, a /api/strategies/... route
+    "tests_app/test_strategy_list_revision.py",  # N-30: GET /strategies list reply carries revision
     "tests_app/test_strategy_name_app.py",  # row 29b: POST/PATCH/GET /strategies routes and the strategy store
     "tests_app/test_leg_edit_db_trips.py",  # batch 1 gate leftover: names the leg-edit route/store
     "tests_app/test_leg_edit_eligibility_db.py",  # row 30b: imports the leg-edit route's eligibility/list checks
