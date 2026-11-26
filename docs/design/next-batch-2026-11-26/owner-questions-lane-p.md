@@ -84,6 +84,8 @@ Options:
 
 Built meanwhile: (a), in one place (`backend/ofo/adjustment/plan_diff.reset`), reversible.
 
+**Answered** by the owner on 26 Nov 2026 (question tool, through the coordinator): "Conditions only; keep my levels" = option (a); recorded in ADR-330 (32). The Reset confirmation (button not built yet) must say that the typed levels stay.
+
 ## LP-6 A side that closes a second time
 
 Spec basis: ADR-330 (2)(b) "When a side closes, the user is told so and asked whether he wants to add new positions on
@@ -98,3 +100,5 @@ Options:
 - (b) Ask once per side for the life of the trade (as built in P7).
 
 Built meanwhile: (b) (one alert per side, ever), in one place (`backend/ofo_app/side_closed.py`); (a) is the next step.
+
+**Answered** by the owner on 26 Nov 2026: "Ask again each time" = option (a); recorded in ADR-330 (33). Being built in the P7 fix round before the second push.
