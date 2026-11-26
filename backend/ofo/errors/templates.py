@@ -1005,6 +1005,11 @@ _STRATEGY_DRAFT_TEMPLATES: tuple[MessageTemplate, ...] = (
           "This strategy could not be deleted because of an unexpected error, so it was left as it is.",
           "The kept strategies were not changed.", "Deleting the kept strategies.",
           "Read the reason on each kept row.", {"deleted": Count, "kept": Count}),
+    # ADR-330 (8) busy store (S-02; new wording, ADR-NB-1 pending owner read, Lane R 26 Nov 2026).
+    _gate("store_busy", _SV, 522,
+          "This strategy is busy with another action, so nothing was changed.",
+          "The strategy and its history were not changed.", "This action on this strategy.",
+          "Wait a moment, then try again."),
     # GC-BP step 5 (REQ-109 AC-4, AC-5): paper exit of tracked legs.
     _gate("tracking_exit_prices_not_live", _SV, 433,
           "Prices are not live; try again when they update.",

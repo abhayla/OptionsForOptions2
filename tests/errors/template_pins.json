@@ -1647,6 +1647,10 @@
     "sha256": "83e8f17f78f1e64da392b90e918e121bb6325f61ead97a90deb79551dc2ed6fd",
     "reviewed": "pending owner read"
   },
+  "store_busy": {
+    "sha256": "84c37432ab87cc86590405477c0d41508d0424630788e5e976cf3fe15b14f678",
+    "reviewed": "pending owner read"
+  },
   "strategy_delete_held_at_broker": {
     "sha256": "1e9e20ae48be7c6fcdfa77d3b0103be8333144a000af51d5aaad51067ddca4c3",
     "reviewed": "pending owner read"
@@ -4477,7 +4481,6 @@
   },
   "explanation:suggestion_lapsed_contract_expired": {
     "sha256": "555637ef88c67b94651c99048afae3d5c03b7d085735c08ef5af7f1f75e6e61d",
-    "reviewed": "pending owner read",
     "reviewed": "owner read 2026-11-25 (ADR-322 point 4, answered by the owner in the question tool)"
   },
   "explanation:money_time_value_live": {

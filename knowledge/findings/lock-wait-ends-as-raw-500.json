@@ -1,0 +1,30 @@
+{
+ "id": "lock-wait-ends-as-raw-500",
+ "scope": "project",
+ "class": "A store write that waits on a row lock past lock_timeout or statement_timeout (or is a deadlock victim) raised a raw DBAPIError (sqlstate 55P03, 57014, 40P01) that no route mapped, so the user saw ERR-xxxx 500 instead of a refusal sentence.",
+ "mechanism": "routes/strategies.py _run rolls back and re-raises any error that is not a StrategyStoreError or StoredFormError; the app's single error door (ofo_app/errors.py handle_error) had no case for a database error, so it answered the generic internal message with a reference and no log line survived.",
+ "first_seen": {
+  "date": "2026-11-25",
+  "where": "owner screen check, strategy delete, ERR-6960F002 (S-02)",
+  "evidence": "Lane Q2 measured it 26 Nov: a second connection holding FOR UPDATE on a strategy row with lock_timeout 300 ms made strategy_store.delete_draft raise LockNotAvailableError (55P03); the route answered 500. Lane R reproduced it through DELETE /strategies/{id}: 500 INTERNAL_SYSTEM_002 for lock_timeout and for statement_timeout (57014)."
+ },
+ "fix": "One structural catch in the one error door, handle_error: a DBAPIError (or an exception raised from one) with sqlstate 55P03, 57014 or 40P01 is answered with the catalogue entry store_busy (STRATEGY_VALIDATION_522, HTTP 409): 'This strategy is busy with another action, so nothing was changed.' Every route passes this door (49 write routes in 21 route files). The request session is rolled back first (_run, get_db), so the write is all-or-nothing. Any other database error is unchanged. Wording is new and pending the owner's read (ADR-330 (8), ADR-NB-1).",
+ "detection": {
+  "status": "guarded",
+  "checks": [
+   "tests_app/test_store_busy.py"
+  ],
+  "note": "The test holds a real row lock from a second connection and deletes through the route under lock_timeout and under statement_timeout; it also pins the three sqlstates, a wrapped error, and that other database errors stay internal. Left out: order_book_store.py adopt-holding insert maps every DBAPIError inside its savepoint to BAD_HOLDING, so a busy state there is a wrong refusal, not a 500 (deferred)."
+ },
+ "spec_ref": [
+  "spec/decisions/ADR-330.md",
+  "spec/decisions/ADR-292.md"
+ ],
+ "occurrences": [
+  {
+   "date": "2026-11-25",
+   "where": "owner screen check, strategy delete, ERR-6960F002 (S-02)",
+   "evidence": "Raw 500 on a strategy delete; no log line survived."
+  }
+ ]
+}
