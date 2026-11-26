@@ -41,6 +41,7 @@ from ofo_app import (
     scenario_mode,
     strategy_store,
 )
+from ofo_app import settings_in_force as sif
 from ofo_app.routes.adjustment import Tracked
 from ofo_app.routes.outcome import MarketContext, ctx_in_force
 
@@ -528,7 +529,11 @@ async def _both(scn, body: dict | None = None) -> tuple[dict, pe.StrategyState, 
     prov = Prov(scn)
     at = _price_time(prov)  # the screen's clock reads the price's own time
     body = _system_body("ic") if body is None else body
-    w = dataclasses.replace(_watched(scn)[0], body=body, resolved=_followed(body))
+    w = _watched(scn)[0]
+    # ADR-330 (1): a stop reads the stored entry base only (a scenario book has none, so it is given one here)
+    entry = sif.StopBase(Decimal("3000"), Decimal("1000"), at, "entry")
+    w = dataclasses.replace(w, body=body, resolved=_followed(body),
+                            tracked=dataclasses.replace(w.tracked, stop_base=entry))
     return body, await _screen_state(prov, w.tracked, at, body, w.resolved), _background_state(prov, w, at)
 
 

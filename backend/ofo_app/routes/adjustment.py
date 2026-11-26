@@ -119,6 +119,11 @@ class Tracked:
     #: D-04 (ADR-318 (4)): the shape AT ENTRY = the first batch of paper orders (same ``placed_at`` as the first order),
     #: netted like ``position``; None = not readable / a real book, so the current shape stands. It picks the playbook.
     entry_position: Position | None = None
+    #: ADR-330 (1): the stop base the two stop amounts are read from (``settings_in_force.StopBase``); None = not
+    #: worked out (no entry orders, unreadable, a real book without kinds): both stop lines say "not checked"
+    stop_base: Any = None
+    #: the same figures worked out NOW from the entry orders only (source "entry"): what a plan save or edit stores
+    entry_stop_base: Any = None
 
 
 @dataclasses.dataclass(frozen=True)

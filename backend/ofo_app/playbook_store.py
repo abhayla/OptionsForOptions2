@@ -110,6 +110,8 @@ class Plan:
     strategy_type: str
     body: dict
     accepted_at: datetime
+    #: ADR-330 (1): the stored stop base (``settings_in_force.StopBase.to_json``); None = none stored yet
+    stop_base: dict | None = None
 
 
 @dataclass(frozen=True)
@@ -301,10 +303,13 @@ _DELETE = text("DELETE FROM public.adjustment_playbooks WHERE id = :id AND user_
 _MAKE_ACTIVE = text("INSERT INTO public.adjustment_playbook_active (user_ref, strategy_type, playbook_id) "
                     "VALUES (:user_ref, :type, :id) ON CONFLICT (user_ref, strategy_type) "
                     "DO UPDATE SET playbook_id = EXCLUDED.playbook_id")
-_PLAN_COLUMNS = "strategy_id, playbook_id, strategy_type, body::text, accepted_at"
-_UPSERT_PLAN = text("INSERT INTO public.strategy_adjustment_plans (strategy_id, playbook_id, strategy_type, body) "  # noqa: S608
-                    "VALUES (:strategy_id, :playbook_id, :type, CAST(:body AS JSONB)) ON CONFLICT (strategy_id) "
-                    "DO UPDATE SET playbook_id = EXCLUDED.playbook_id, body = EXCLUDED.body "
+_PLAN_COLUMNS = "strategy_id, playbook_id, strategy_type, body::text, accepted_at, stop_base::text"
+_UPSERT_PLAN = text("INSERT INTO public.strategy_adjustment_plans "  # noqa: S608
+                    "(strategy_id, playbook_id, strategy_type, body, stop_base) "
+                    "VALUES (:strategy_id, :playbook_id, :type, CAST(:body AS JSONB), CAST(:stop_base AS JSONB)) "
+                    "ON CONFLICT (strategy_id) "
+                    "DO UPDATE SET playbook_id = EXCLUDED.playbook_id, body = EXCLUDED.body, "
+                    "stop_base = COALESCE(EXCLUDED.stop_base, public.strategy_adjustment_plans.stop_base) "
                     f"RETURNING {_PLAN_COLUMNS}")
 _SELECT_PLAN = text(f"SELECT {', '.join('p.' + c for c in _PLAN_COLUMNS.split(', '))} "  # noqa: S608 constant columns
                     "FROM public.strategy_adjustment_plans p JOIN public.strategies s ON s.id = p.strategy_id "
@@ -658,13 +663,18 @@ async def active_for(conn: Any, user_ref: str, strategy_type: str) -> Playbook:
 
 
 def _plan(row: Any) -> Plan:
-    return Plan(strategy_id=row[0], playbook_id=row[1], strategy_type=row[2], body=_load(row[3]), accepted_at=row[4])
+    return Plan(strategy_id=row[0], playbook_id=row[1], strategy_type=row[2], body=_load(row[3]), accepted_at=row[4],
+                stop_base=None if row[5] is None else _load(row[5]))
 
 
-async def accept_plan(conn: Any, user_ref: str, strategy_id: int, playbook_id: int,
-                      body: object | None = None) -> Plan:
+async def accept_plan(conn: Any, user_ref: str, strategy_id: int, playbook_id: int,  # noqa: PLR0913 - the stop base is stored with the plan
+                      body: object | None = None, stop_base: dict | None = None) -> Plan:
     """REQ-161 AC-2/AC-3: the plan is a copy of the chosen playbook's body (or the customised sheet's body, same
-    type); accepting again replaces the strategy's own plan."""
+    type); accepting again replaces the strategy's own plan. ADR-330 (1): ``stop_base`` (worked out from the entry
+    orders by the caller) is stored with it and REPLACES the old one, so a plan edit recomputes it; None = nothing
+    worked
+    out now: a stored base is KEPT (never overwritten by NULL), and none stored stays none (the first check works it
+    out once)."""
     await strategy_store.lock_strategy(conn, user_ref, strategy_id)  # not_found for a missing / another user's
     source = await get(conn, user_ref, playbook_id)
     current = await plan_for(conn, user_ref, strategy_id)
@@ -673,8 +683,24 @@ async def accept_plan(conn: Any, user_ref: str, strategy_id: int, playbook_id: i
                                  f"playbook {source.id} is {source.strategy_type}", field="strategy_type")
     copy = check_body(source.body if body is None else body, source.strategy_type)
     row = (await conn.execute(_UPSERT_PLAN, {"strategy_id": strategy_id, "playbook_id": source.id,
-                                             "type": source.strategy_type, "body": _dump(copy)})).one()
+                                             "type": source.strategy_type, "body": _dump(copy),
+                                             "stop_base": None if stop_base is None else _dump(stop_base)})).one()
     return _plan(row)
+
+
+_BACKFILL_STOP_BASE = text("UPDATE public.strategy_adjustment_plans SET stop_base = CAST(:value AS JSONB) "
+                           "WHERE strategy_id = :strategy_id AND stop_base IS NULL")
+
+
+async def backfill_stop_base(conn: Any, strategy_id: int, value: dict) -> bool:
+    """ADR-330 (1), a plan saved before the stop base existed: store ``value`` ONCE, only where nothing is stored (the
+    first writer wins; True = this call stored it). Written on the CALLER's connection (a request uses ONE connection,
+    #682; the worker never holds two) inside a savepoint, so a failed write cannot poison the caller's transaction.
+    It is kept when the caller commits; a caller that does not commit loses only the write, and the next read works
+    out the same figure again from the (never changing) entry orders."""
+    async with conn.begin_nested():
+        done = (await conn.execute(_BACKFILL_STOP_BASE, {"strategy_id": strategy_id, "value": _dump(value)})).rowcount
+    return done == 1
 
 
 #: ADR-250: when migration 0040 saved the iron condor ADR-247 version (margin stop and T-16 off). The row is found by
