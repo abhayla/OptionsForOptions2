@@ -3,7 +3,7 @@
      sentence, as sent by the gate, under the button (test id paper-exit-reason). Attributes (test ids, class, click) go to the button. -->
 <template>
   <span class="contents">
-    <button v-bind="$attrs" type="button" :disabled="blocked || extraDisabled">
+    <button v-bind="$attrs" type="button" class="disabled:cursor-not-allowed disabled:opacity-50" :disabled="blocked || extraDisabled">
       <slot />
     </button>
     <p v-if="showReason && reason" class="text-xs text-ink-muted" data-testid="paper-exit-reason">{{ reason }}</p>

@@ -1020,6 +1020,17 @@ test.describe('Current positions: Exit (n) and the confirm dialog (REQ-109 AC-4,
     await expect(page.getByTestId('paper-count').first()).toHaveText('2 of 2 positions')
   })
 
+  test('EXIT-6b the user\'s own Cancel keeps the ticked legs (owner u513; only a page-side close clears them, N-04)', async ({ page }) => {
+    // Spec basis: owner u513 (Cancel keeps the chosen exits); ADR-330 (17)
+    await stubApi(page)
+    await openPositions(page)
+    await openExit(page)
+    await page.getByTestId('paper-cancel').click()
+    await expect(dialog(page)).toHaveCount(0)
+    await expect(exitBtn(page, 171)).toHaveText('Exit (1)')
+    await expect(tick(page, 171, 1001)).toBeChecked()
+  })
+
   test('EXIT-7 Escape closes the dialog like Cancel, and the Exit button is back in the page', async ({ page }) => {
     // Spec basis: ADR-328 (1) (Escape, x and the overlay act as Cancel); owner A07
     const S = await stubApi(page)
@@ -1206,8 +1217,6 @@ test.describe('Current positions: Exit (n) and the confirm dialog (REQ-109 AC-4,
 
   test('EXIT-20 a disabled (blocked) Exit button looks disabled, not like a usable one (owner N-05)', async ({ page }) => {
     // Spec basis: owner N-05 ("Review and add still blue though blocked": a blocked action must look disabled); ADR-328 (4) (disabled with the reason)
-    // expected-fail: NEW-T21: the blocked Exit button is disabled but styled exactly like the enabled one (no dimmed look)
-    test.fail()
     await stubApi(page, { paper: (n) => (n === 1 ? ok(paperOk()) : { status: 500, json: {} }) })
     await frozenClock(page)
     await openPositions(page)
@@ -1222,8 +1231,6 @@ test.describe('Current positions: Exit (n) and the confirm dialog (REQ-109 AC-4,
 
   test('EXIT-21 the page closing the dialog itself (a failed re-read) leaves no staged exit behind: ticks are cleared (owner N-04)', async ({ page }) => {
     // Spec basis: owner N-04 (after the page closed an Exit dialog by itself the staged exit stayed); ADR-330 (17) (no dialog that comes back by itself)
-    // expected-fail: NEW-T22: after the failed re-read closes the dialog the leg stays ticked, so Exit (1) comes back enabled when prices return
-    test.fail()
     await stubApi(page, { paper: (n) => (n === 2 ? { status: 500, json: {} } : ok(paperOk())) })
     await frozenClock(page)
     await openPositions(page)

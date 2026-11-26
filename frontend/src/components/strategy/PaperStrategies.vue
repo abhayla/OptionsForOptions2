@@ -289,8 +289,7 @@ function show({ data, token }) {
   const exitId = takeExitParam()
   const read = readPaperList(data)
   if (read === null) {
-    confirm.value = null // like fail(): no open exit from old prices
-    dialogError.value = ''
+    closeByPage() // like fail(): no open exit from old prices
     errorParts.value = NEUTRAL_PARTS // an unreadable answer keeps the last loaded list, like a failed read
   } else {
     items.value = read.groups
@@ -353,8 +352,7 @@ function openExitFromLink(id) {
 // D-05 r2: a failed read keeps the last loaded list (and any open Stops panel) under an error banner marked as last loaded
 function fail(e) {
   takeExitParam() // one-shot: a failed first read consumes the parameter and opens nothing
-  confirm.value = null
-  dialogError.value = ''
+  closeByPage()
   errorParts.value = e?.parts ?? NEUTRAL_PARTS
   loading.value = false
 }
@@ -375,8 +373,16 @@ function settle(now) {
   if (c) {
     const g = now.find((x) => x.id === c.id)
     const stillOpen = g && g.readable && c.units.every((u) => g.positions.some((p) => p.contractId === u.id && p.units === u.units))
-    if (!stillOpen) cancelExit()
+    if (!stillOpen) closeByPage()
   }
+}
+// N-04 / ADR-330 (17): the ONE way the PAGE closes an Exit dialog by itself (failed or unreadable read, the legs changed elsewhere, a
+// Confirm while paused): it drops the strategy's ticks too, so no staged exit outlives it and comes back enabled when prices return.
+// The user's own Cancel (cancelExit) keeps the ticks (owner u513).
+function closeByPage() {
+  const c = confirm.value
+  if (c) ticks.value = { ...ticks.value, [c.id]: [] }
+  cancelExit()
 }
 function cancelExit() {
   confirm.value = null
@@ -396,7 +402,7 @@ function ask(g, rows) {
 async function doExit(orders) {
   const c = confirm.value
   if (!c || busy.value) return
-  if (stale.value) return cancelExit() // prices paused: no POST; the list's exit reason line says why
+  if (stale.value) return closeByPage() // prices paused: no POST; the list's exit reason line says why
   busy.value = true
   dialogError.value = ''
   dialogState.value = PAPER_STATE.READY
