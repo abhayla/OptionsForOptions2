@@ -695,7 +695,8 @@ async def read_levels(  # noqa: PLR0913 - FastAPI dependencies, one per input
         target: Annotated[str | None, Query(max_length=12)] = None,
         target_rupees: Annotated[str | None, Query(max_length=16)] = None,
         stop: Annotated[str | None, Query(max_length=12)] = None,
-        stop_rupees: Annotated[str | None, Query(max_length=16)] = None) -> LevelsOut:
+        stop_rupees: Annotated[str | None, Query(max_length=16)] = None,
+        playbook_id: Annotated[int | None, Query(ge=1, le=ID_MAX)] = None) -> LevelsOut:
     """ADR-330 (5) / S-12: both figures of the typed level(s), worked out on the server, the per-lot figure beside the
     rupees. The last edited box is sent alone; both boxes with different values -> refused naming the rupee field."""
     rates = rates if isinstance(rates, ChargeRates) else None
@@ -711,7 +712,9 @@ async def read_levels(  # noqa: PLR0913 - FastAPI dependencies, one per input
         if reply["stop"] is not None:  # the one stop sentence of the saved plan, for the level typed (ADR-330 (5)/LP-2)
             stype, plan = await _type_of(db, user_ref, strategy_id, tracked, ctx)
             body = None
-            if plan is not None:
+            if stype is not None and playbook_id is not None:  # the picked playbook, as the save reads it
+                body = _body_to_save(await _picked(db, user_ref, playbook_id, stype), plan, plan is not None)
+            elif plan is not None:
                 body = plan.body
             elif stype is not None:
                 body = (await store.active_for(db, user_ref, stype)).body
@@ -719,7 +722,7 @@ async def read_levels(  # noqa: PLR0913 - FastAPI dependencies, one per input
             saved_before = plan is not None and await check.plan_saved_before_adr247(db, plan)
             words = preview_stop_words(body, saved_before, kind, bases,
                                        PlanIn(playbook_id=0, stop=stop or None, stop_rupees=stop_rupees or None))
-            reply["stop"]["words"] = words if words is not None else reply["stop"]["words"]
+            reply["stop"]["words"] = words  # no body to read the lines from: no words, never the partial sentence
     except store.PlaybookStoreError as exc:
         raise _refused(exc) from None
     return LevelsOut.model_validate(reply)
@@ -749,6 +752,23 @@ async def read_plan(  # noqa: PLR0913 - FastAPI dependencies, one per input
     return await _run(db, work)
 
 
+async def _picked(db: Any, user_ref: str, playbook_id: int, stype: str) -> Any:
+    """The playbook the user picked: in range, theirs or the system's, and of the strategy's type (else refused)."""
+    if not 1 <= playbook_id <= ID_MAX:
+        raise _bad("playbook_id")
+    source = await store.get(db, user_ref, playbook_id)
+    if source.strategy_type != stype:
+        raise _bad("playbook_id")
+    return source
+
+
+def _body_to_save(source: Any, plan: Any, edit: bool) -> dict:
+    """The ONE rule for which body the typed levels go into, shared by the save and the levels preview: editing the
+    plan keeps its own body when the pick is the plan's own playbook, else the picked playbook's body."""
+    keep = edit and plan is not None and plan.playbook_id == source.id
+    return plan.body if keep else source.body
+
+
 async def _write(strategy_id: int, data: PlanIn, edit: bool, db: Any, user_ref: str,  # noqa: PLR0913
                  tracked_reader: TrackedReader, market_reader: MarketReader, rest_reader: RestSpotReader,
                  ctx: MarketContext | None, rates: ChargeRates | None, user_values: Any = None) -> AdjustmentPlanOut:
@@ -765,14 +785,8 @@ async def _write(strategy_id: int, data: PlanIn, edit: bool, db: Any, user_ref: 
         raise StrategyRefused(_NOT_AVAILABLE, Failure.NOT_FOUND)
 
     async def work() -> AdjustmentPlanOut:
-        if not 1 <= data.playbook_id <= ID_MAX:
-            raise _bad("playbook_id")
-        source = await store.get(db, user_ref, data.playbook_id)
-        if source.strategy_type != stype:
-            raise _bad("playbook_id")
-        keep = edit and plan is not None and plan.playbook_id == source.id  # editing the plan keeps its own body
-        body = with_overrides(plan.body if keep and plan is not None else source.body, data, _kind_of(tracked, money),
-                              bases)
+        source = await _picked(db, user_ref, data.playbook_id, stype)
+        body = with_overrides(_body_to_save(source, plan, edit), data, _kind_of(tracked, money), bases)
         if data.time_exit is not None:  # ADR-330 (7): the day is judged against today and the legs, never trusted
             legs = tracked.position.legs
             check_time_exit_day(body["guards"].get(TIME_KEY),

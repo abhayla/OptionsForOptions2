@@ -369,5 +369,68 @@ async def test_levels_preview_follows_the_picked_playbook_not_the_active_one(app
     assert status == OK, saved
     assert "3x the credit received" in saved["plan"]["stop_words"]
     assert preview["stop"]["words"] == saved["plan"]["stop_words"]
+    status, edited = await _call("PUT", _plan_path(sid), json={"playbook_id": own.id, "stop_rupees": "500"})
+    status2, again = await _call("GET", levels, params={"stop_rupees": "500", "playbook_id": own.id})
+    assert (status, status2) == (OK, OK) and again["stop"]["words"] == edited["plan"]["stop_words"]  # editing keeps it
     assert (await _call("GET", levels, params={"stop_rupees": "400", "playbook_id": 0}))[0] == UNPROCESSABLE
-    assert (await _call("GET", levels, params={"stop_rupees": "400", "playbook_id": 999999999}))[0] == UNPROCESSABLE
+    missing = {"stop_rupees": "400", "playbook_id": 999999999}  # in range, not there: the refusal the save gives
+    assert (await _call("GET", levels, params=missing))[0] == (await _call("POST", _plan_path(sid), json={
+        "playbook_id": 999999999, "stop_rupees": "400"}))[0] == NOT_FOUND
+
+
+async def test_levels_preview_of_a_generic_shape_has_no_stop_words_not_the_partial_sentence(app_db_url, monkeypatch):
+    from ofo_app.routes import adjustment_plan as route
+    sid = await _seeded(app_db_url, monkeypatch, "ADJ-42")
+    real = route._type_of
+
+    async def no_type(*args):
+        return (None, (await real(*args))[1])  # no playbook matches and no plan: no body to read the lines from
+    monkeypatch.setattr(route, "_type_of", no_type)
+    status, out = await _call("GET", _plan_path(sid) + "/levels", params={"stop": "40"})
+    assert status == OK, out
+    assert out["stop"]["percent"] == "40" and out["stop"]["words"] is None
+
+
+async def _preview_and_saved(app_db_url, monkeypatch, pick_body=None, typed=None):
+    """Seed ADJ-01, pick the system playbook (or the user's own copy holding ``pick_body``), return the levels preview
+    and the saved plan's stop sentence for the same typed level."""
+    sid = await _seeded(app_db_url, monkeypatch, "ADJ-01")
+    system = await _system_ic(app_db_url)
+    pick = system.id
+    if pick_body is not None:
+        async with app_db_url.begin() as conn:
+            own = await playbook_store.duplicate(conn, USER, system.id, "Regression copy")
+            await conn.execute(text("UPDATE public.adjustment_playbooks SET body = CAST(:b AS jsonb) WHERE id = :id"),
+                               {"b": json.dumps(pick_body(own.body)), "id": own.id})
+        pick = own.id
+    typed = typed or {"stop_rupees": "400"}
+    status, preview = await _call("GET", _plan_path(sid) + "/levels", params={**typed, "playbook_id": pick})
+    assert status == OK, preview
+    status, saved = await _call("POST", _plan_path(sid), json={"playbook_id": pick, **typed})
+    assert status == OK, saved
+    return preview["stop"]["words"], saved["plan"]["stop_words"]
+
+
+async def test_levels_preview_equals_saved_when_the_rupee_stop_replaces_the_credit_line(app_db_url, monkeypatch):
+    from ofo_app import settings_in_force
+    monkeypatch.setattr(settings_in_force, "RUPEE_STOP_KEEPS_CREDIT", False)
+    preview, saved = await _preview_and_saved(app_db_url, monkeypatch)
+    assert preview == saved and "credit" not in preview
+
+
+async def test_levels_preview_equals_saved_for_a_body_with_no_credit_line(app_db_url, monkeypatch):
+    from ofo_app import settings_in_force  # the stored body's strategy type is pinned by a CHECK; the rule is not
+    monkeypatch.setattr(settings_in_force, "credit_line_applies", lambda resolved: False)
+    preview, saved = await _preview_and_saved(app_db_url, monkeypatch)
+    assert preview == saved and "credit" not in preview
+
+
+async def test_levels_preview_equals_saved_with_no_stored_base(app_db_url, monkeypatch):
+    import dataclasses
+
+    from ofo_app.routes import adjustment_plan as route
+    real = route.bases_of
+    monkeypatch.setattr(route, "bases_of", lambda *a, **k: dataclasses.replace(real(*a, **k), max_loss=None))
+    monkeypatch.setattr(route, "_stored_loss", lambda stored, bases: None)
+    preview, saved = await _preview_and_saved(app_db_url, monkeypatch)
+    assert preview == saved == "a loss of Rs 400.00 or 2x the credit received, whichever comes first"
