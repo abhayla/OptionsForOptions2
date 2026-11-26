@@ -155,6 +155,7 @@ NOT_MONEY_FRONTEND_WHY: dict[str, str] = {
     "frontend/src/lib/oiBars.js": 'open-interest COUNTS (contracts, not rupees) scaled to a CSS bar width',
     "frontend/src/lib/settingsValues.js": 'whole-number setting COUNTS (strikes each side) parsed and split for a picker',
     "frontend/src/components/strategy/TrackingPanel.vue": 'count of earlier alert rows ("and N earlier"), not money',
+    "frontend/src/lib/chartCard.js": 'a 1-based leg number from the reply turned into a list index (N-07 join); not money',
 }
 NOT_MONEY_FRONTEND: dict[str, tuple[str, ...]] = {
     "frontend/src/lib/guided.js": (
@@ -182,6 +183,9 @@ NOT_MONEY_FRONTEND: dict[str, tuple[str, ...]] = {
     "frontend/src/lib/settingsValues.js": (
         'return Number(text)',
         'return [...new Set([1, 2, 3].map((k) => Math.max(1, Math.round((max * k) / 3))))]',
+    ),
+    "frontend/src/lib/chartCard.js": (
+        'const leg = legs?.[Number(table.rows[i]?.cells?.leg?.value) - 1]',
     ),
     "frontend/src/components/strategy/TrackingPanel.vue": (
         'const earlierMore = computed(() => allEarlier.value.length - earlier.value.length)',

@@ -122,6 +122,7 @@ PR241_SELECTION = {
     "tests_app/test_compare_estimate_note.py",  # moved from tests/: imports ofo.errors.explanations (changed here)
     "tests_app/test_may_act.py",  # Phase 2 (B4): imports strategy_refused / routes.outcome (changed here)
     "tests_app/test_strategy_bulk_delete.py",  # Q1 bulk delete: calls the /api/strategies/... routes
+    "tests_app/test_store_busy.py",  # S-02 (Lane R): imports ofo.errors (render) and the error door, changed here
 }
 
 
