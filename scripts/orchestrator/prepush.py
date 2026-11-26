@@ -18,11 +18,22 @@ the frontend steps run in frontend/, as app-tests.yml does in CI: npm run lint, 
 npx vitest related --run <changed src/tests files> (every test file with --full or when a deletion / non-src file
 changed). A missing frontend/node_modules or tool is a FAIL with the reason, never a skip (orchestrator finding 1,
 2026-10-27: a marker was written over 37 red vitest tests).
+Jobs (--jobs N or PREPUSH_JOBS, the option wins; default os.cpu_count(); N < 1 or not a number = usage error, exit
+2): N == 1 is the reference mode, the serial loop above. N > 1 runs the same serial prefix (the cheap checks,
+frontend_lint, frontend_build), then preflight, ci_checks, domain_tests, app_tests and frontend_unit side by side in
+min(N, steps) threads, preflight submitted first; each keeps its own log, seconds and STEP_TIMEOUT_S. A red preflight
+sets a stop event: steps not started are reported `FAIL <name> 0.0s stopped: preflight failed`, running ones are killed
+with their whole process tree (POSIX: own session + killpg SIGTERM then SIGKILL after KILL_GRACE_S; Windows:
+CREATE_NEW_PROCESS_GROUP + `taskkill /F /T`), then the STOP line. The same tree kill ends a step at STEP_TIMEOUT_S.
+Isolation (both modes): every child gets its own TMPDIR/TEMP/TMP, <tempdir>/ofo-prepush-tmp/<sha1(repo)[:12]>/<step>
+(stable across runs, so the preflight's mypy cache stays warm; no two stages share one).
 Each step's output goes to a log file outside the repo; one line per step. A step that times out
 (STEP_TIMEOUT_S) or cannot start is a FAIL. The child environment never carries TEST_DATABASE_URL,
 TEST_ADMIN_DATABASE_URL or ALEMBIC_DATABASE_URL (this host's PostgreSQL serves production; DB tests are CI's).
 
-Marker: written to <git-common-dir>/ofo-prepush/<full HEAD sha>.json only when every step passed AND the tracked tree
+Marker: written to <git-common-dir>/ofo-prepush/<full HEAD sha>.json only when every step passed (structurally: the
+set of result step names equals the planned set and every rc is 0, so a step that never ran or was stopped cannot
+count; body "mode": {"jobs": N, "lane": "full"}) AND the tracked tree
 was clean at the start and at the end AND HEAD is the same sha at the end as at the start AND no untracked,
 not-ignored file sits under backend/, tests*/, scripts/ or frontend/src/ (CI sees only the committed tree; such
 files are named in the refusal). scripts/hooks/prepush_gate.py refuses `git push` without the marker for the pushed
@@ -32,19 +43,25 @@ Known gaps (not chased): Playwright e2e is CI's only; `vitest related` trusts vi
 reaches a changed file only at run time, e.g. a dynamic import by computed name, is not picked: use --full); an
 untracked file that .gitignore hides is not counted; a change outside backend/, tests*/, scripts/, frontend/src/ left
 untracked is not counted.
+TOTAL line: `TOTAL PASS|FAIL <wall-clock>s (steps sum <s>s, jobs N) <note>`.
 Exit 0 only when every step passed. Every external command goes through an injected runner(cmd, cwd, log_path) -> rc.
 """
 from __future__ import annotations
 
 import argparse
+import contextlib
+import hashlib
 import json
 import os
 import re
 import shutil
+import signal
 import subprocess
 import sys
 import tempfile
+import threading
 import time
+from concurrent.futures import ThreadPoolExecutor
 from datetime import UTC, datetime
 
 HERE = os.path.dirname(os.path.abspath(__file__))
@@ -228,30 +245,104 @@ class Plan:
 DB_ENV = ("TEST_DATABASE_URL", "TEST_ADMIN_DATABASE_URL", "ALEMBIC_DATABASE_URL")
 STEP_TIMEOUT_S = 3600
 TIMEOUT_RC = 124
+STOPPED_RC = 125
+KILL_GRACE_S = 10  # SIGTERM, then SIGKILL for the whole group after this long
+POLL_S = 0.2
+TMP_ROOT_NAME = "ofo-prepush-tmp"
+STOP_REASON = "stopped: preflight failed"
+#: steps that run side by side with jobs > 1 (preflight first); everything before preflight in the plan is the serial
+#: prefix. Order here is the submit order.
+LONG_STEPS = ("preflight", "ci_checks", "domain_tests", "app_tests", "frontend_unit")
 
 
-def child_env(environ=None) -> dict:
+def step_temp_root(repo, step) -> str:
+    """<tempdir>/ofo-prepush-tmp/<sha1 of the abs repo path, 12 chars>/<step>, created. Stable across runs (the
+    preflight's mypy cache lives under gettempdir()); one per step, so no two stages share a temp root."""
+    key = hashlib.sha1(os.path.abspath(repo).encode("utf-8"), usedforsecurity=False).hexdigest()[:12]
+    path = os.path.join(tempfile.gettempdir(), TMP_ROOT_NAME, key, step)
+    os.makedirs(path, exist_ok=True)
+    return path
+
+
+def child_env(environ=None, tmp_root=None) -> dict:
     """The parent environment minus every DB URL, always (review F4): this host's PostgreSQL also serves production,
-    so the selected DB tests must skip here even when the run sits under db_run.py; CI runs them."""
+    so the selected DB tests must skip here even when the run sits under db_run.py; CI runs them. With tmp_root the
+    child's TMPDIR, TEMP and TMP point at it."""
     env = dict(os.environ if environ is None else environ)
     for key in DB_ENV:
         env.pop(key, None)
+    if tmp_root:
+        for key in ("TMPDIR", "TEMP", "TMP"):
+            env[key] = tmp_root
     return env
 
 
-def real_runner(cmd, cwd, log_path):
-    # otherwise the plain environment: gate_env.no_graft_env() would leak GIT_GRAFT_FILE into pytest and break
-    # tests/orchestrator/test_gate_env.py (the graft test needs git to honour grafts)
-    with open(log_path, "w", encoding="utf-8", errors="replace") as log:
-        try:
-            return subprocess.run(cmd, cwd=cwd, stdout=log, stderr=subprocess.STDOUT, check=False,  # noqa: S603
-                                  env=child_env(), timeout=STEP_TIMEOUT_S).returncode
-        except subprocess.TimeoutExpired:
-            log.write(f"\nFAIL: timed out after {STEP_TIMEOUT_S}s\n")
-            return TIMEOUT_RC
-        except OSError as exc:  # the tool could not start: a FAIL, never a pass
-            log.write(f"\nFAIL: could not start {cmd[0]}: {exc!r}\n")
-            return 1
+IS_WINDOWS = os.name == "nt"
+
+
+def _spawn_kwargs() -> dict:
+    """Own session (POSIX) or process group (Windows), so the whole tree can be killed."""
+    if IS_WINDOWS:
+        return {"creationflags": getattr(subprocess, "CREATE_NEW_PROCESS_GROUP", 0x200)}
+    return {"start_new_session": True}
+
+
+def _signal_group(pid, sig) -> None:
+    with contextlib.suppress(ProcessLookupError, PermissionError):
+        os.killpg(pid, sig)
+
+
+def kill_tree(proc) -> None:
+    """Kill the child and everything it started. POSIX: SIGTERM to the group, SIGKILL after KILL_GRACE_S (and always
+    once the leader is gone: a grandchild may outlive it). Windows: taskkill /F /T."""
+    if IS_WINDOWS:
+        cmd = ["taskkill", "/F", "/T", "/PID", str(proc.pid)]
+        subprocess.run(cmd, capture_output=True, check=False)  # noqa: S603
+    else:
+        _signal_group(proc.pid, signal.SIGTERM)
+        with contextlib.suppress(subprocess.TimeoutExpired):
+            proc.wait(timeout=KILL_GRACE_S)
+        _signal_group(proc.pid, signal.SIGKILL)
+    proc.wait()
+
+
+class RealRunner:
+    """runner(cmd, cwd, log_path) -> rc, with a stop event: when it is set a running child is killed with its whole
+    tree and the step is a FAIL (STOPPED_RC). The same tree kill ends a step at STEP_TIMEOUT_S."""
+
+    def __init__(self, repo=None, stop=None):
+        self.repo = repo
+        self.stop = stop if stop is not None else threading.Event()
+
+    def __call__(self, cmd, cwd, log_path):
+        # otherwise the plain environment: gate_env.no_graft_env() would leak GIT_GRAFT_FILE into pytest and break
+        # tests/orchestrator/test_gate_env.py (the graft test needs git to honour grafts)
+        step = os.path.splitext(os.path.basename(log_path))[0]
+        with open(log_path, "w", encoding="utf-8", errors="replace") as log:
+            try:
+                env = child_env(tmp_root=step_temp_root(self.repo or cwd, step))
+                proc = subprocess.Popen(cmd, cwd=cwd, stdout=log, stderr=subprocess.STDOUT, env=env,  # noqa: S603
+                                        **_spawn_kwargs())
+            except OSError as exc:  # the tool could not start: a FAIL, never a pass
+                log.write(f"\nFAIL: could not start {cmd[0]}: {exc!r}\n")
+                return 1
+            deadline = time.monotonic() + STEP_TIMEOUT_S
+            while True:
+                try:
+                    return proc.wait(timeout=POLL_S)
+                except subprocess.TimeoutExpired:
+                    pass
+                if self.stop.is_set():
+                    kill_tree(proc)
+                    log.write(f"\nFAIL: {STOP_REASON}\n")
+                    return STOPPED_RC
+                if time.monotonic() >= deadline:
+                    kill_tree(proc)
+                    log.write(f"\nFAIL: timed out after {STEP_TIMEOUT_S}s\n")
+                    return TIMEOUT_RC
+
+
+real_runner = RealRunner()  # stays importable; run_all builds its own (repo-bound) instance
 
 
 def _git(repo, *args):
@@ -292,6 +383,7 @@ def tree_is_clean(repo) -> bool:
     return rc == 0 and out == ""
 
 
+UNTRACKED_SHOWN = 10
 UNTRACKED_SOURCE = ("backend/", "tests", "scripts/", "frontend/src/")  # "tests" = tests/, tests_app/, tests_*
 
 
@@ -305,10 +397,11 @@ def untracked_source(repo) -> list[str] | None:
     return [p for p in out.splitlines() if p.replace("\\", "/").startswith(UNTRACKED_SOURCE)]
 
 
-def write_marker(repo, sha, results) -> str:
+def write_marker(repo, sha, results, mode=None) -> str:
     path = marker_path(repo, sha)
     os.makedirs(os.path.dirname(path), exist_ok=True)
     body = {"sha": sha, "at": datetime.now(UTC).isoformat(timespec="seconds"),
+            "mode": mode or {"jobs": 1, "lane": "full"},
             "steps": [{"name": n, "rc": rc, "seconds": s} for n, rc, s, _ in results]}
     tmp = path + ".tmp"
     with open(tmp, "w", encoding="utf-8") as handle:
@@ -317,9 +410,13 @@ def write_marker(repo, sha, results) -> str:
     return path
 
 
+def _line(name, rc, seconds, log_path) -> str:
+    return f"{'PASS' if rc == 0 else 'FAIL'} {name} {seconds}s {log_path}"
+
+
 def _run_steps(plan: Plan, log_dir: str, clock) -> list:
     """Every step in order, one PASS/FAIL line each; a red preflight stops the run (a broken merge is caught in
-    minutes, and the long steps would only repeat it)."""
+    minutes, and the long steps would only repeat it). The reference mode (jobs == 1)."""
     results = []
     for name, step in plan.steps():
         log_path = os.path.join(log_dir, f"{name}.log")
@@ -327,64 +424,167 @@ def _run_steps(plan: Plan, log_dir: str, clock) -> list:
         rc = step(log_path)
         seconds = round(clock() - t0, 1)
         results.append((name, rc, seconds, log_path))
-        print(f"{'PASS' if rc == 0 else 'FAIL'} {name} {seconds}s {log_path}")
+        print(_line(name, rc, seconds, log_path))
         if name == "preflight" and rc != 0:
             print("STOP: preflight failed; the long steps were not run (fix it, commit, run again)")
             break
     return results
 
 
-def run_all(repo, full=False, runner=real_runner, log_dir=None, clock=time.monotonic,  # noqa: PLR0913
-            select_domain=None, select_app=None, select_frontend=None, which=shutil.which) -> int:
+def _run_parallel(plan: Plan, log_dir: str, clock, jobs: int, stop: threading.Event) -> list:
+    """The serial prefix first (as _run_steps), then the long steps in min(jobs, count) threads, preflight submitted
+    first. A red preflight sets `stop`: queued steps are not started (FAIL, 0.0s) and running ones are stopped by the
+    runner. Results come back in plan order."""
+    steps = plan.steps()
+    prefix = [(n, f) for n, f in steps if n not in LONG_STEPS]
+    long_steps = sorted(((n, f) for n, f in steps if n in LONG_STEPS), key=lambda nf: LONG_STEPS.index(nf[0]))
+    results = []
+    for name, step in prefix:
+        log_path = os.path.join(log_dir, f"{name}.log")
+        t0 = clock()
+        rc = step(log_path)
+        seconds = round(clock() - t0, 1)
+        results.append((name, rc, seconds, log_path))
+        print(_line(name, rc, seconds, log_path))
+    lock = threading.Lock()
+
+    def work(name, step):
+        log_path = os.path.join(log_dir, f"{name}.log")
+        if stop.is_set():
+            _note(log_path, "FAIL: " + STOP_REASON)
+            with lock:
+                print(f"FAIL {name} 0.0s {STOP_REASON} {log_path}")
+            return name, STOPPED_RC, 0.0, log_path
+        t0 = clock()
+        try:
+            rc = step(log_path)
+        except Exception as exc:  # noqa: BLE001 - an exception inside a worker is a FAIL, never a pass
+            rc = 1
+            with open(log_path, "a", encoding="utf-8") as handle:
+                handle.write(f"\nFAIL: step raised {exc!r}\n")
+        seconds = round(clock() - t0, 1)
+        if name == "preflight" and rc != 0:
+            stop.set()
+        with lock:
+            print(_line(name, rc, seconds, log_path))
+        return name, rc, seconds, log_path
+
+    if long_steps:
+        with ThreadPoolExecutor(max_workers=max(1, min(jobs, len(long_steps)))) as pool:
+            futures = [pool.submit(work, n, f) for n, f in long_steps]
+            parallel = [fut.result() for fut in futures]
+        by_name = {r[0]: r for r in parallel}
+        results += [by_name[n] for n, _ in steps if n in by_name]
+        if by_name.get("preflight", ("", 0))[1] != 0:
+            print("STOP: preflight failed; steps not yet started were not run and running ones were stopped "
+                  "(fix it, commit, run again)")
+    return results
+
+
+def complete(results, planned) -> bool:
+    """Structural check for the marker: the result names are exactly the planned names (each once) and every rc is 0.
+    A step that never ran or was stopped can never count as passed."""
+    names = [n for n, _, _, _ in results]
+    return len(names) == len(set(names)) and set(names) == set(planned) and all(rc == 0 for _, rc, _, _ in results)
+
+
+def _blocker(repo, sha, clean_at_start) -> str | None:
+    """Why no marker may be written for this finished run, or None."""
+    untracked = untracked_source(repo)
+    end_sha = head_sha(repo) if sha is not None and clean_at_start else None
+    if sha is None:
+        reason = "no HEAD sha"
+    elif not clean_at_start:
+        reason = "tracked tree was dirty when the run started: commit or stash, then run again"
+    elif end_sha != sha:
+        reason = f"HEAD moved during the run: started on {sha[:7]}, now {(end_sha or '?')[:7]}; run again"
+    elif not tree_is_clean(repo):
+        reason = "tracked tree is dirty: commit or stash, then run again"
+    elif untracked is None:
+        reason = "could not list untracked files"
+    elif untracked:
+        more = f" and {len(untracked) - UNTRACKED_SHOWN} more" if len(untracked) > UNTRACKED_SHOWN else ""
+        reason = ("untracked source files CI will not see: " + ", ".join(untracked[:UNTRACKED_SHOWN]) + more
+                  + "; add or remove them, then run again")
+    else:
+        reason = None
+    return reason
+
+
+def _marker_note(repo, start, results, ok, mode) -> str:
+    """Write the marker when every condition holds and say so; otherwise the reason it was not written.
+    start = (sha, tree was clean at the start)."""
+    note = "marker not written"
+    if not ok:
+        failed = ", ".join(n for n, rc, _, _ in results if rc != 0)
+        return note + f" (failed: {failed})"
+    if (reason := _blocker(repo, *start)) is not None:
+        return note + f" ({reason})"
+    return "marker " + write_marker(repo, start[0], results, mode)
+
+
+def run_all(repo, full=False, runner=None, log_dir=None, clock=time.monotonic,  # noqa: PLR0913
+            select_domain=None, select_app=None, select_frontend=None, which=shutil.which, jobs=1) -> int:
     select_domain = select_domain or select_domain_tests
     select_app = select_app or select_app_tests
     select_frontend = select_frontend or frontend_changes
     repo = os.path.abspath(repo)
+    runner = runner or RealRunner(repo=repo)
+    stop = getattr(runner, "stop", None)
+    if not isinstance(stop, threading.Event):
+        stop = threading.Event()
     log_dir = log_dir or tempfile.mkdtemp(prefix="prepush-")
     os.makedirs(log_dir, exist_ok=True)
+    started = clock()
     sha = head_sha(repo)
     clean_at_start = tree_is_clean(repo)  # review F3: the tree is the commit for the whole run, not only at the end
     try:
         frontend = select_frontend(repo)
     except Exception:  # noqa: BLE001 - cannot tell: fail closed, run every frontend step
         frontend = None
-    results = _run_steps(Plan(repo, full, runner, log_dir, select_domain, select_app, frontend, which), log_dir, clock)
-    ok = all(rc == 0 for _, rc, _, _ in results)
-    note = "marker not written"
-    untracked = untracked_source(repo) if ok else []
-    if ok and sha is None:
-        note += " (no HEAD sha)"
-    elif ok and not clean_at_start:
-        note += " (tracked tree was dirty when the run started: commit or stash, then run again)"
-    elif ok and (end_sha := head_sha(repo)) != sha:
-        note += f" (HEAD moved during the run: started on {(sha or '?')[:7]}, now {(end_sha or '?')[:7]}; run again)"
-    elif ok and not tree_is_clean(repo):
-        note += " (tracked tree is dirty: commit or stash, then run again)"
-    elif ok and untracked is None:
-        note += " (could not list untracked files)"
-    elif ok and untracked:
-        note += (" (untracked source files CI will not see: " + ", ".join(untracked[:10])
-                 + (f" and {len(untracked) - 10} more" if len(untracked) > 10 else "")  # noqa: PLR2004
-                 + "; add or remove them, then run again)")
-    elif ok:
-        note = "marker " + write_marker(repo, sha, results)
-    else:
-        failed = ", ".join(n for n, rc, _, _ in results if rc != 0)
-        note += f" (failed: {failed})"
+    plan = Plan(repo, full, runner, log_dir, select_domain, select_app, frontend, which)
+    planned = [n for n, _ in plan.steps()]
+    serial = jobs <= 1
+    results = _run_steps(plan, log_dir, clock) if serial else _run_parallel(plan, log_dir, clock, jobs, stop)
+    ok = complete(results, planned)
+    note = _marker_note(repo, (sha, clean_at_start), results, ok, {"jobs": jobs, "lane": "full"})
+    wall = round(clock() - started, 1)
     total = round(sum(s for _, _, s, _ in results), 1)
-    print(f"TOTAL {'PASS' if ok else 'FAIL'} {total}s {note}")
+    print(f"TOTAL {'PASS' if ok else 'FAIL'} {wall}s (steps sum {total}s, jobs {jobs}) {note}")
     return 0 if ok else 1
+
+
+def resolve_jobs(option=None, environ=None) -> int:
+    """--jobs wins over PREPUSH_JOBS; default os.cpu_count() or 1. ValueError (a usage error) for N < 1 or text."""
+    env = os.environ if environ is None else environ
+    raw = option if option is not None else env.get("PREPUSH_JOBS")
+    if raw is None or str(raw).strip() == "":
+        return os.cpu_count() or 1
+    try:
+        jobs = int(str(raw).strip())
+    except ValueError:
+        raise ValueError(f"jobs must be a whole number >= 1, got {raw!r}") from None
+    if jobs < 1:
+        raise ValueError(f"jobs must be >= 1, got {jobs}")
+    return jobs
 
 
 def main(argv=None) -> int:
     ap = argparse.ArgumentParser()
     ap.add_argument("--full", action="store_true", help="run all of tests/ as the domain tests, and every vitest file")
     ap.add_argument("--repo", default=ROOT, help="the checkout to check (default: this one)")
+    ap.add_argument("--jobs", default=None, metavar="N",
+                    help="long steps side by side (default: PREPUSH_JOBS, else the CPU count; 1 = serial reference)")
     a = ap.parse_args(argv)
     if not os.path.isdir(a.repo):
         print("repo not found: " + a.repo)
         return 2
-    return run_all(a.repo, a.full)
+    try:
+        jobs = resolve_jobs(a.jobs)
+    except ValueError as exc:
+        print("usage error: " + str(exc))
+        return 2
+    return run_all(a.repo, a.full, jobs=jobs)
 
 
 if __name__ == "__main__":

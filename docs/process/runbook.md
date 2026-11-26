@@ -79,9 +79,14 @@ cheap-check-after-expensive-one), then, when the change touches `frontend/`, `np
 build before everything that reads `frontend/dist`: the preflight and the domain tests' bundle scan), then the
 preflight, ci_local, the domain tests, the app tests and vitest (the changed files' tests; all with `--full`) in
 `frontend/` (needs `frontend/node_modules`: a missing one is a FAIL). Every step runs even when an earlier one is red,
-except that a red preflight stops the run. It writes the marker that `git push` and
+except that a red preflight stops the run. `--jobs N` (or `PREPUSH_JOBS`; the option wins; default the CPU count; below 1
+or not a number is a usage error, exit 2) runs the preflight, ci_checks, domain tests, app tests and vitest side by side
+after the serial cheap checks and the frontend lint and build; `--jobs 1` is the plain serial reference. A red preflight
+then stops the steps not yet started and kills the running ones with their whole process tree. Every child gets its own
+temp root (`<tempdir>/ofo-prepush-tmp/<repo hash>/<step>`) in both modes. It writes the marker that `git push` and
 `land.py` require for that exact HEAD only when every step passed, the tree was clean from start to end, HEAD did not
-move and no untracked file sits under backend/, tests*/, scripts/ or frontend/src/ (an amend needs a new run). A push
+move and no untracked file sits under backend/, tests*/, scripts/ or frontend/src/, and every planned step has a
+passing result (an amend needs a new run; the marker records `mode`: jobs and lane). A push
 whose folder the gate cannot find is refused. Bypass, with a reason:
 `PREPUSH_GATE_ALLOW=<reason> git push ...` or `land.py --skip-prepush <reason>`.
 Underneath, `python tools/ci_local.py` (`--full` after a large

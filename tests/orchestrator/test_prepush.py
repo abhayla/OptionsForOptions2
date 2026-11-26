@@ -1,9 +1,14 @@
 """prepush.py: step order, every step runs, exit code, marker only on all-pass + clean tracked tree.
 Injected runner and a temp git repo; the real suites are never run here."""
 import json
+import os
+import re
 import subprocess
 import sys
+import threading
+import time
 from pathlib import Path
+from typing import ClassVar
 
 import pytest
 import yaml
@@ -326,39 +331,136 @@ def test_dirty_at_start_clean_at_end_writes_no_marker(tmp_path, capsys):
     assert "dirty when the run started" in capsys.readouterr().out
 
 
-class FakeRun:
-    def __init__(self, exc=None):
-        self.exc, self.kwargs = exc, None
+class FakePopen:
+    """Stands in for subprocess.Popen: records the keyword arguments, finishes at once with rc 0."""
+    kwargs: ClassVar[dict] = {}
 
-    def __call__(self, cmd, **kwargs):
-        self.kwargs = kwargs
-        if self.exc:
-            raise self.exc
-        return subprocess.CompletedProcess(cmd, 0)
+    def __init__(self, cmd, **kwargs):
+        type(self).kwargs = kwargs
+        self.pid = 1
+
+    def wait(self, timeout=None):
+        return 0
 
 
-def test_the_child_run_never_carries_the_db_urls(tmp_path, monkeypatch):
+def test_the_child_run_never_carries_the_db_urls_and_gets_its_own_temp_root(tmp_path, monkeypatch):
     # review F4: under db_run.py these are set; the selected DB tests must still not reach the shared host
     for key in prepush.DB_ENV:
         monkeypatch.setenv(key, "postgresql://prod-host/x")
     monkeypatch.setenv("OFO_KEEP_ME", "1")
-    fake = FakeRun()
-    monkeypatch.setattr(prepush.subprocess, "run", fake)
-    assert prepush.real_runner(["python", "-V"], str(tmp_path), str(tmp_path / "x.log")) == 0
-    env = fake.kwargs["env"]
+    monkeypatch.setattr(prepush.tempfile, "tempdir", str(tmp_path))
+    monkeypatch.setattr(prepush.subprocess, "Popen", FakePopen)
+    runner = prepush.RealRunner(repo=str(tmp_path / "r"))
+    assert runner(["python", "-V"], str(tmp_path), str(tmp_path / "x.log")) == 0
+    env = FakePopen.kwargs["env"]
     assert set(prepush.DB_ENV) == {"TEST_DATABASE_URL", "TEST_ADMIN_DATABASE_URL", "ALEMBIC_DATABASE_URL"}
     assert not set(prepush.DB_ENV) & set(env)
     assert env["OFO_KEEP_ME"] == "1"
+    root = prepush.step_temp_root(str(tmp_path / "r"), "x")
+    assert env["TMPDIR"] == env["TEMP"] == env["TMP"] == root
+    assert FakePopen.kwargs["start_new_session"] is True or prepush.IS_WINDOWS
+    assert not set(prepush.DB_ENV) & set(prepush.child_env({"TEST_DATABASE_URL": "x", "ALEMBIC_DATABASE_URL": "y",
+                                                             "TEST_ADMIN_DATABASE_URL": "z", "A": "1"}))
+    assert prepush.child_env({"A": "1"}) == {"A": "1"}  # no tmp_root given: temp variables untouched
+
+
+def test_the_temp_root_is_per_repo_per_step_and_stable(tmp_path, monkeypatch):
+    monkeypatch.setattr(prepush.tempfile, "tempdir", str(tmp_path))
+    one = prepush.step_temp_root(str(tmp_path / "a"), "domain_tests")
+    assert one == prepush.step_temp_root(str(tmp_path / "a"), "domain_tests")  # stable across runs: caches stay warm
+    assert one != prepush.step_temp_root(str(tmp_path / "a"), "app_tests")  # no two stages share a temp root
+    assert one != prepush.step_temp_root(str(tmp_path / "b"), "domain_tests")
+    rel = Path(one).relative_to(tmp_path)
+    assert rel.parts[0] == "ofo-prepush-tmp" and len(rel.parts[1]) == 12 and rel.parts[2] == "domain_tests"  # noqa: PLR2004
+    assert Path(one).is_dir()
+
+
+def test_a_real_child_sees_the_step_temp_root_in_all_three_variables(tmp_path, monkeypatch):
+    monkeypatch.setattr(prepush.tempfile, "tempdir", str(tmp_path))
+    log = tmp_path / "ruff_ratchet.log"
+    code = "import os; print(os.environ['TMPDIR'], os.environ['TEMP'], os.environ['TMP'], sep='|')"
+    assert prepush.RealRunner(repo=str(tmp_path))([sys.executable, "-c", code], str(tmp_path), str(log)) == 0
+    root = prepush.step_temp_root(str(tmp_path), "ruff_ratchet")
+    assert log.read_text(encoding="utf-8").strip() == "|".join([root] * 3)
 
 
 def test_a_timed_out_or_unstartable_step_fails(tmp_path, monkeypatch):
-    monkeypatch.setattr(prepush.subprocess, "run", FakeRun(subprocess.TimeoutExpired("x", 1)))
+    monkeypatch.setattr(prepush, "STEP_TIMEOUT_S", 0)
+    monkeypatch.setattr(prepush, "POLL_S", 0.05)
     log = tmp_path / "t.log"
-    assert prepush.real_runner(["x"], str(tmp_path), str(log)) == prepush.TIMEOUT_RC
+    sleeper = [sys.executable, "-c", "import time; time.sleep(60)"]
+    assert prepush.RealRunner(repo=str(tmp_path))(sleeper, str(tmp_path), str(log)) == prepush.TIMEOUT_RC
     assert "timed out" in log.read_text(encoding="utf-8")
-    monkeypatch.setattr(prepush.subprocess, "run", FakeRun(FileNotFoundError("npm")))
-    assert prepush.real_runner(["npm"], str(tmp_path), str(log)) == 1
-    assert "could not start npm" in log.read_text(encoding="utf-8")
+
+    def cannot_start(cmd, **kwargs):
+        raise FileNotFoundError(cmd[0])
+
+    monkeypatch.setattr(prepush.subprocess, "Popen", cannot_start)
+    assert prepush.RealRunner(repo=str(tmp_path))(["npm"], str(tmp_path), str(log)) == 1
+    assert "could not start" in log.read_text(encoding="utf-8")
+
+
+def test_real_runner_stays_importable_and_callable():
+    assert callable(prepush.real_runner) and isinstance(prepush.real_runner, prepush.RealRunner)
+
+
+CHILD = """
+import subprocess, sys, time
+grand = subprocess.Popen([sys.executable, "-c", "import time; time.sleep(60)"])
+open(sys.argv[1], "w").write(str(grand.pid))
+time.sleep(60)
+"""
+
+
+def alive(pid):
+    try:
+        with open(f"/proc/{pid}/stat", encoding="utf-8") as handle:
+            return handle.read().rsplit(")", 1)[1].split()[0] != "Z"  # a zombie is gone
+    except OSError:
+        return False
+
+
+@pytest.mark.skipif(sys.platform == "win32", reason="process groups and killpg are POSIX; the Windows path is taskkill")
+def test_stop_kills_the_whole_process_tree(tmp_path, monkeypatch):  # the timeout path calls the same kill_tree
+    pid_file = tmp_path / "grand.pid"
+    runner = prepush.RealRunner(repo=str(tmp_path))
+    monkeypatch.setattr(prepush, "POLL_S", 0.05)
+    result = {}
+    thread = threading.Thread(target=lambda: result.update(rc=runner([sys.executable, "-c", CHILD, str(pid_file)],
+                                                                      str(tmp_path), str(tmp_path / "s.log"))))
+    thread.start()
+    for _ in range(600):  # wait until the grandchild exists (a count, not a clock assert)
+        if pid_file.exists() and pid_file.read_text(encoding="utf-8"):
+            break
+        time.sleep(0.05)
+    grand = int(pid_file.read_text(encoding="utf-8"))
+    assert alive(grand)
+    runner.stop.set()
+    thread.join(timeout=60)
+    assert not thread.is_alive()
+    assert result["rc"] == prepush.STOPPED_RC
+    for _ in range(100):
+        if not alive(grand):
+            break
+        time.sleep(0.05)
+    assert not alive(grand)
+    assert "stopped: preflight failed" in (tmp_path / "s.log").read_text("utf-8")
+
+
+def test_the_windows_kill_is_taskkill_of_the_whole_tree(monkeypatch):
+    calls = []
+    monkeypatch.setattr(prepush, "IS_WINDOWS", True)
+    monkeypatch.setattr(prepush.subprocess, "run", lambda cmd, **kw: calls.append(cmd))
+
+    class Proc:
+        pid = 4242
+
+        def wait(self, timeout=None):
+            return 1
+
+    prepush.kill_tree(Proc())
+    assert calls == [["taskkill", "/F", "/T", "/PID", "4242"]]
+    assert prepush._spawn_kwargs() == {"creationflags": 0x200}  # CREATE_NEW_PROCESS_GROUP
 
 
 def which(tool):
@@ -526,3 +628,169 @@ def test_the_preflight_skips_its_tests_repo_scan_only_when_all_of_tests_runs_nex
     prepush.run_all(str(repo), full=full, runner=runner, log_dir=str(tmp_path / "l"))
     preflight = next(c[0] for c in runner.calls if "merge_preflight.py" in " ".join(c[0]))
     assert ("--no-domain-scans" in preflight) is skips
+
+
+# ---- parallel mode (--jobs N) ----
+
+TWO_WORKERS = 2
+USAGE_RC = 2
+LONG = ["preflight", "ci_checks", "domain_tests", "app_tests"]
+
+
+class ThreadRunner(Runner):
+    """Runner for threads. Steps named in `block` wait on the stop event (like a real child that gets killed) and
+    return STOPPED_RC when it is set; `raises` raise; the preflight waits until `ci_checks` has started."""
+
+    def __init__(self, fail=(), block=(), raises=()):
+        super().__init__(fail)
+        self.stop = threading.Event()
+        self.block, self.raises = set(block), set(raises)
+        self.ci_started = threading.Event()
+        self.lock = threading.Lock()
+
+    def __call__(self, cmd, cwd, log_path):
+        name = Path(log_path).stem
+        with self.lock:
+            self.calls.append((cmd, cwd, log_path))
+        if name == "ci_checks":
+            self.ci_started.set()
+        if name in self.raises:
+            raise RuntimeError("worker blew up")
+        if name == "preflight" and name in self.fail:
+            self.ci_started.wait(timeout=60)
+        if name in self.block:
+            return prepush.STOPPED_RC if self.stop.wait(timeout=60) else 0  # 0 when never stopped: the test fails
+        return 1 if name in self.fail else 0
+
+
+def step_lines(out):
+    return [ln for ln in out.splitlines() if re.match(r"(PASS|FAIL) \w+ ", ln)]
+
+
+def run_jobs(repo, tmp_path, runner, jobs, **kw):
+    return prepush.run_all(str(repo), runner=runner, log_dir=str(tmp_path / "l"), jobs=jobs, **kw)
+
+
+def test_parallel_mode_runs_the_same_commands_in_the_same_places_with_the_same_logs(tmp_path):
+    repo = make_repo(tmp_path)
+    serial, parallel = Runner(), ThreadRunner()
+    assert run_jobs(repo, tmp_path, serial, 1) == 0
+    assert run_jobs(repo, tmp_path, parallel, 4) == 0
+    assert len(parallel.calls) == len(serial.calls) == len(NAMES)
+    as_set = lambda calls: {(tuple(c[0]), c[1], c[2]) for c in calls}  # noqa: E731
+    assert as_set(parallel.calls) == as_set(serial.calls)
+
+
+@pytest.mark.parametrize("jobs", [1, 2, 4, 16])
+def test_every_planned_step_gets_exactly_one_line(tmp_path, capsys, jobs):
+    repo = frontend_repo(tmp_path)
+    assert run_jobs(repo, tmp_path, ThreadRunner(), jobs, select_frontend=lambda r: ["src/a.js"], which=which) == 0
+    names = [ln.split()[1] for ln in step_lines(capsys.readouterr().out)]
+    planned = [*CHEAP, "frontend_lint", "frontend_build", *LONG, "frontend_unit"]
+    assert sorted(names) == sorted(planned)
+    if jobs == 1:
+        assert names == planned  # the reference mode prints in plan order
+    else:
+        assert names[:5] == planned[:5]  # the serial prefix prints first, in order
+
+
+@pytest.mark.parametrize("jobs", [2, 4])
+def test_a_red_preflight_stops_the_others_and_writes_no_marker(tmp_path, capsys, jobs):
+    repo = make_repo(tmp_path)
+    runner = ThreadRunner(fail={"preflight"}, block={"ci_checks", "domain_tests", "app_tests"})
+    assert run_jobs(repo, tmp_path, runner, jobs) == 1
+    out = capsys.readouterr().out
+    ran = [Path(c[2]).stem for c in runner.calls]
+    assert ran[:3] == CHEAP and set(ran) >= {"preflight", "ci_checks"}
+    if jobs == TWO_WORKERS:  # two workers: domain_tests and app_tests were queued and never started
+        assert set(ran) == {*CHEAP, "preflight", "ci_checks"}
+        assert "FAIL domain_tests 0.0s stopped: preflight failed" in out
+        assert "FAIL app_tests 0.0s stopped: preflight failed" in out
+        assert "stopped: preflight failed" in (tmp_path / "l" / "domain_tests.log").read_text(encoding="utf-8")
+    assert "FAIL preflight " in out and "FAIL ci_checks " in out  # the killed one is a FAIL too
+    assert "STOP: preflight failed" in out and "TOTAL FAIL" in out
+    assert not any(ln.startswith("PASS ci_checks") for ln in out.splitlines())
+    assert not prepush.has_marker(str(repo), sha_of(repo))
+
+
+def test_a_red_non_preflight_step_in_parallel_lets_the_others_finish_and_writes_no_marker(tmp_path, capsys):
+    repo = make_repo(tmp_path)
+    runner = ThreadRunner(fail={"domain_tests"})
+    assert run_jobs(repo, tmp_path, runner, 4) == 1
+    assert sorted(Path(c[2]).stem for c in runner.calls) == sorted(NAMES)
+    out = capsys.readouterr().out
+    assert "FAIL domain_tests " in out and "PASS app_tests " in out and "PASS ci_checks " in out
+    assert "STOP" not in out and "failed: domain_tests" in out
+    assert not prepush.has_marker(str(repo), sha_of(repo))
+
+
+def test_an_exception_inside_a_worker_is_a_fail_and_writes_no_marker(tmp_path, capsys):
+    repo = make_repo(tmp_path)
+    runner = ThreadRunner(raises={"app_tests"})
+    assert run_jobs(repo, tmp_path, runner, 4) == 1
+    out = capsys.readouterr().out
+    assert "FAIL app_tests " in out and "PASS ci_checks " in out and "failed: app_tests" in out
+    assert "worker blew up" in (tmp_path / "l" / "app_tests.log").read_text(encoding="utf-8")
+    assert not prepush.has_marker(str(repo), sha_of(repo))
+
+
+def test_jobs_1_prints_exactly_the_serial_loops_lines(tmp_path, capsys):
+    repo = make_repo(tmp_path)
+    assert run_jobs(repo, tmp_path, Runner(), 1) == 0
+    lines = capsys.readouterr().out.splitlines()
+    steps = [ln for ln in lines if ln.startswith("PASS ") and "TOTAL" not in ln]
+    assert [ln.split()[1] for ln in steps] == NAMES
+    assert all(re.fullmatch(r"PASS \w+ \d+\.\d+s \S+\.log", ln) for ln in steps)
+    assert lines[-1].startswith("TOTAL PASS ")
+
+
+@pytest.mark.parametrize(("option", "env", "want"), [("3", {}, 3), (None, {"PREPUSH_JOBS": "5"}, 5),
+                                                      ("2", {"PREPUSH_JOBS": "9"}, 2),  # the option wins
+                                                      (None, {}, os.cpu_count() or 1), (" 4 ", {}, 4)])
+def test_resolve_jobs(option, env, want):
+    assert prepush.resolve_jobs(option, env) == want
+
+
+@pytest.mark.parametrize("bad", ["0", "-1", "abc", "1.5", "2x"])
+def test_resolve_jobs_rejects_bad_values_and_main_exits_2(tmp_path, monkeypatch, capsys, bad):
+    with pytest.raises(ValueError, match="jobs"):
+        prepush.resolve_jobs(bad, {})
+    with pytest.raises(ValueError, match="jobs"):
+        prepush.resolve_jobs(None, {"PREPUSH_JOBS": bad})
+    monkeypatch.delenv("PREPUSH_JOBS", raising=False)
+    assert prepush.main(["--repo", str(tmp_path), "--jobs", bad]) == USAGE_RC
+    monkeypatch.setenv("PREPUSH_JOBS", bad)
+    assert prepush.main(["--repo", str(tmp_path)]) == USAGE_RC
+    assert "usage error" in capsys.readouterr().out
+
+
+def test_the_marker_records_the_mode_and_the_total_line_form(tmp_path, capsys):
+    repo = make_repo(tmp_path)
+    assert run_jobs(repo, tmp_path, ThreadRunner(), 3) == 0
+    body = json.loads(Path(prepush.marker_path(str(repo), sha_of(repo))).read_text(encoding="utf-8"))
+    assert body["mode"] == {"jobs": 3, "lane": "full"}
+    last = capsys.readouterr().out.strip().splitlines()[-1]
+    assert re.fullmatch(r"TOTAL PASS \d+\.\d+s \(steps sum \d+\.\d+s, jobs 3\) marker \S.*\.json", last), last
+    assert [s["name"] for s in body["steps"]] == NAMES  # plan order whatever the finishing order
+
+
+def test_a_step_that_never_ran_can_not_count_as_passed(tmp_path, monkeypatch, capsys):
+    repo = make_repo(tmp_path)
+    full = prepush._run_steps
+
+    def partial(plan, log_dir, clock):
+        return full(plan, log_dir, clock)[:-1]  # every rc 0, but app_tests has no result
+
+    monkeypatch.setattr(prepush, "_run_steps", partial)
+    assert run_jobs(repo, tmp_path, Runner(), 1) == 1
+    assert not prepush.has_marker(str(repo), sha_of(repo))
+    assert "TOTAL FAIL" in capsys.readouterr().out
+
+
+def test_complete_is_a_structural_check():
+    row = lambda n, rc=0: (n, rc, 0.0, "x.log")  # noqa: E731
+    assert prepush.complete([row("a"), row("b")], ["b", "a"])
+    assert not prepush.complete([row("a")], ["a", "b"])  # missing
+    assert not prepush.complete([row("a"), row("b"), row("c")], ["a", "b"])  # unplanned
+    assert not prepush.complete([row("a"), row("a")], ["a"])  # duplicate
+    assert not prepush.complete([row("a"), row("b", prepush.STOPPED_RC)], ["a", "b"])  # stopped
