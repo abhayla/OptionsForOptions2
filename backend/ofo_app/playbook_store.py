@@ -325,8 +325,9 @@ _UPSERT_PLAN = text("INSERT INTO public.strategy_adjustment_plans "  # noqa: S60
                     f"RETURNING {_PLAN_COLUMNS}")
 _SELECT_PLAN = text(f"SELECT {', '.join('p.' + c for c in _PLAN_COLUMNS.split(', '))} "  # noqa: S608 constant columns
                     "FROM public.strategy_adjustment_plans p JOIN public.strategies s ON s.id = p.strategy_id "
-                    "WHERE p.strategy_id = :strategy_id AND s.user_ref = :user_ref")
-_OWNS_STRATEGY = text("SELECT 1 FROM public.strategies WHERE id = :strategy_id AND user_ref = :user_ref")
+                    "WHERE p.strategy_id = :strategy_id AND s.user_ref = :user_ref AND s.deleted_at IS NULL")
+_OWNS_STRATEGY = text("SELECT 1 FROM public.strategies WHERE id = :strategy_id AND user_ref = :user_ref "
+                      "AND deleted_at IS NULL")
 _SELECT_STATE = text("SELECT adjustment_no, rule_id, held_at_entry, seen_clear FROM public.adjustment_rule_state "
                      "WHERE strategy_id = :strategy_id ORDER BY adjustment_no, rule_id")
 #: ADR-258 (migration 0045): the row's starting point comes from the column DEFAULT, read from this transaction-local
