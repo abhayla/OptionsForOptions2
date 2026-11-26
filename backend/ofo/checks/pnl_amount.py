@@ -6,7 +6,6 @@ an actionable alert and nothing exits by itself (ADR-003). Money is Decimal, nev
 from __future__ import annotations
 
 import re
-from dataclasses import dataclass
 from decimal import Decimal, InvalidOperation
 from typing import Final
 
@@ -20,22 +19,7 @@ UNKNOWN_SIDE: Final = "unknown_side"
 LEVEL_PATTERN: Final = re.compile(r"[0-9]{1,12}([.][0-9]{1,2})?")
 
 
-@dataclass(frozen=True)
-class Met:
-    pass
-
-
-@dataclass(frozen=True)
-class NotMet:
-    pass
-
-
-@dataclass(frozen=True)
-class NotComputable:
-    reason: str
-
-
-Outcome = Met | NotMet | NotComputable
+from ofo.checks.outcome import Met, NotComputable, NotMet, Outcome  # noqa: F401 - the one answer type, re-exported
 
 
 def _usable(value: object) -> bool:

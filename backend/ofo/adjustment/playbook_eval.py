@@ -35,6 +35,8 @@ from ofo.adjustment import stop_lines as sl
 from ofo.adjustment.approaches import KINDS, ExitInputs, is_expiry_day
 from ofo.adjustment.offered import offered_now
 from ofo.checks import pnl_amount as rupee
+from ofo.checks.outcome import Met
+from ofo.checks.pnl_percent import pnl_percent
 from ofo.checks.time_of_day import ON_EXPIRY, resolve_on, time_exit_due, time_exit_parts
 from ofo.engine import adjust_money
 from ofo.engine import adjust_ratios as ratios
@@ -507,9 +509,7 @@ def _tightened(c: _Ctx, tid: str, lim: Decimal, cmp: str) -> Decimal:
 def _exact(tid: str, num: Decimal, den: Decimal, lim: Decimal, cmp: Cmp) -> Hit:
     """value = num / den (den > 0) against ``lim``, exact and inclusive (the one comparison every trigger and day
     rule uses)."""
-    with localcontext(_EXACT):
-        scaled = lim * den
-        fired = num <= scaled if cmp == "le" else num >= scaled
+    fired = isinstance(pnl_percent(num, den, lim, cmp), Met)  # the stand-alone check; a bad figure never fires
     with localcontext(_SHOW):
         value = num / den
     return Hit(tid, value, lim, cmp, fired)
