@@ -23,6 +23,7 @@ const props = defineProps({
   expiries: { type: Array, default: () => [] },
   expiryState: { type: String, default: "loading" },
   expiryOffReason: { type: String, default: null },
+  legExpiries: { type: Array, default: () => [] }, // the expiry text of each leg: the select is off when no listed expiry differs from them (AC-13)
 });
 const emit = defineEmits(["edit"]);
 
@@ -30,7 +31,7 @@ const expiryOff = computed(() => {
   if (props.locked) return props.lockReason;
   if (props.expiryOffReason) return props.expiryOffReason;
   if (props.expiryState === "failed") return EXPIRY_LIST_UNREADABLE;
-  if (props.expiryState === "read" && !props.expiries.length) return NO_OTHER_EXPIRY;
+  if (props.expiryState === "read" && !props.expiries.some((e) => props.legExpiries.some((x) => x !== e.expiry))) return NO_OTHER_EXPIRY;
   return props.expiryState === "loading" ? "The expiry list is loading." : null;
 });
 const pickAll = (event) => {
@@ -119,7 +120,7 @@ const STEPPERS = [
           <option value="">Change expiry</option>
           <option v-for="e in expiries" :key="e.expiry" :value="e.expiry">{{ expiryWithDays(e.expiry, e.days) }}</option>
         </select>
-        <span v-if="expiryOff !== null && expiryOffReason" class="sr-only" data-testid="expiry-all-reason">{{ expiryOff }}</span>
+        <span v-if="expiryOff !== null && !locked" class="sr-only" data-testid="expiry-all-reason">{{ expiryOff }}</span>
       </div>
     </div>
   </div>

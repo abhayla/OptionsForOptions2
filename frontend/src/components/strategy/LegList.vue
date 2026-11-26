@@ -20,7 +20,7 @@ import { capturedCaption, contractName, expiryWithDays, istTime, strikeLabel } f
 import { NOT_CONNECTED_LABEL, REPRICE_PROMPT } from '@/lib/legPicker'
 import {
   CUSTOM_STRATEGY, LEFT_OUT_LABEL, LEGS_CLEARED, LEG_CARD_PADDING_PX, LEG_ROW_COLUMNS, MULTIPLIER_MIN, multiplierChoices,
-  EXPIRY_BLOCKED_BY_EXIT, NO_CONTROLS, NO_LEGS_HINT_PAGE, NO_LEGS_HINT_TAB, NO_LEGS_YET, PLANNED_ENTRY_LABEL, YOUR_PRICE_LABEL,
+  EXPIRY_BLOCKED_BY_EXIT, EXPIRY_FUTURES_LEG, NO_CONTROLS, NO_LEGS_HINT_PAGE, NO_LEGS_HINT_TAB, NO_LEGS_YET, PLANNED_ENTRY_LABEL, YOUR_PRICE_LABEL,
   anyUnticked, canStep, controlsForSelection, movedMarker, priceReasonText, removeAllPrompt, replacedPriceNote, showsControls,
 } from '@/lib/legEdit'
 import { plainName } from '@/lib/saveDraft'
@@ -91,6 +91,8 @@ const shownControls = computed(() => controlsForSelection(props.controls, props.
 const expiryChoices = useExpiryChoices(() => props.legs[0]?.underlying ?? null)
 const hasStagedExit = (leg) => props.stagedExitIds.includes(leg?.contract_id)
 const anyStagedExit = computed(() => props.legs.some(hasStagedExit))
+// the all-legs select is refused by the server for a futures leg (AC-12): it looks blocked before the click, with the server's sentence
+const allLegsExpiryOff = computed(() => (anyStagedExit.value ? EXPIRY_BLOCKED_BY_EXIT : props.legs.some((l) => !canStep(l)) ? EXPIRY_FUTURES_LEG : null))
 function expiryOff(leg) { // the reason this leg's Change expiry is off, or null
   if (props.locked) return props.lockReason
   if (hasStagedExit(leg)) return EXPIRY_BLOCKED_BY_EXIT
@@ -319,7 +321,7 @@ function setMultiplier(index) {
       </ul>
 
       <div v-if="showsControls(legs)" class="border-t border-line py-2" :style="cardPadding">
-        <StrategyControls :controls="shownControls" :locked="locked" :lock-reason="lockReason" :expiries="expiryChoices.list.value" :expiry-state="expiryChoices.state.value" :expiry-off-reason="anyStagedExit ? EXPIRY_BLOCKED_BY_EXIT : null" @edit="(e) => emit('edit', e)" />
+        <StrategyControls :controls="shownControls" :locked="locked" :lock-reason="lockReason" :expiries="expiryChoices.list.value" :expiry-state="expiryChoices.state.value" :expiry-off-reason="allLegsExpiryOff" :leg-expiries="legs.map((l) => l.expiry)" @edit="(e) => emit('edit', e)" />
       </div>
       <div class="flex min-h-10 items-center justify-between gap-3 max-[639px]:flex-wrap border-t border-line py-2" :style="cardPadding" data-testid="money-row">
         <label class="flex items-center gap-2" :title="`Strategy multiplier (${MULTIPLIER_MIN} to ${multiplierMax ?? '...'})`">Multiplier

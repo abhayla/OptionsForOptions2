@@ -1206,4 +1206,11 @@ test.describe('Builder Change expiry (REQ-078 AC-11, AC-12; ADR-330 (42))', () =
     expect(S.sent[0].edit).toEqual({ control: 'expiry', index: 0, expiry: NEXT })
     for (let i = 0; i < 4; i++) await expect(rows(page).nth(i)).toHaveAttribute('data-expiry', '2026-10-13')
   })
+  test('CE-3 the only listed expiry is the one every leg is on: the all-legs select is disabled with "No other expiry is listed."', async ({ page }) => {
+    // Spec basis: REQ-078 AC-13 (no other expiry listed disables the controls); ADR-328 (4)
+    await stub(page, { expiries: ['2026-10-13'] })
+    await openDraft(page)
+    await expect(page.getByTestId('expiry-all')).toBeDisabled()
+    await expect(page.getByTestId('expiry-all')).toHaveAttribute('title', 'No other expiry is listed.')
+  })
 })

@@ -59,6 +59,8 @@ export const RELATIVE_CONTROLS = Object.freeze(['step', 'shift', 'width', 'hedge
 export const MOVE_CONTROLS = Object.freeze([...RELATIVE_CONTROLS, 'expiry'])
 /** D-48 (REQ-078 AC-13): the sentence of the Change expiry control for a leg that already has an Exit waiting. */
 export const EXPIRY_BLOCKED_BY_EXIT = 'This leg has an exit waiting; review or discard it first.'
+/** D-48 (REQ-078 AC-11, AC-12): the server's sentence (leg_edit_expiry_futures) shown BEFORE the click on the all-legs select while a futures leg is present. */
+export const EXPIRY_FUTURES_LEG = 'Expiry change applies to option legs.'
 export const MAX_STEPS = 20 // the server's cap per request (EditIn.steps)
 
 /** The key two relative clicks share when they add up: the control and, for a strike step, the leg. */

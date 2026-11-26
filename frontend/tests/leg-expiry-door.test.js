@@ -157,3 +157,33 @@ describe('D-48 a leg with an exit waiting (REQ-078 AC-13)', () => {
     expect(t(w, 'expiry-all-reason').text()).toBe(EXPIRY_BLOCKED_BY_EXIT)
   })
 })
+
+describe('D-48 review: the all-legs select looks blocked before the click (REQ-078 AC-12, AC-13; ADR-328 (4))', () => {
+  const mountLegs = async (legs, expiries) => {
+    answers['GET /catalogue/NIFTY/expiries'] = expiries
+    const w = mount(LegList, { props: { legs }, global: { stubs: { PayoffChart: true } } })
+    await flushPromises()
+    return w
+  }
+  const mk = () => real.legs.map((l, i) => ({ id: `l${i}`, ...replyLeg(l), instrument_type: l.instrument, contract_id: 100 + i, underlying: 'NIFTY' }))
+  it('the only listed expiry is the one every leg is on: disabled with "No other expiry is listed."', async () => {
+    const only = real.legs[0].expiry
+    const w = await mountLegs(mk(), { ...EXPIRIES, expiries: [only], expiry_days: [{ expiry: only, days: 3 }] })
+    expect(t(w, 'expiry-all').attributes('disabled')).toBeDefined()
+    expect(t(w, 'expiry-all').attributes('title')).toBe('No other expiry is listed.')
+    expect(t(w, 'expiry-all-reason').text()).toBe('No other expiry is listed.')
+  })
+  it('two listed expiries: enabled', async () => {
+    const w = await mountLegs(mk(), EXPIRIES)
+    expect(t(w, 'expiry-all').attributes('disabled')).toBeUndefined()
+  })
+  it('a futures leg present: disabled before the click with the server sentence', async () => {
+    const legs = mk()
+    legs[1] = { ...legs[1], instrument_type: 'FUT' }
+    const w = await mountLegs(legs, EXPIRIES)
+    expect(t(w, 'expiry-all').attributes('disabled')).toBeDefined()
+    expect(t(w, 'expiry-all').attributes('title')).toBe('Expiry change applies to option legs.')
+    expect(t(w, 'expiry-all-reason').text()).toBe('Expiry change applies to option legs.')
+    expect(w.findAll('[data-testid="leg-expiry-select"]')[0].attributes('disabled')).toBeUndefined() // an option leg keeps its own chip
+  })
+})
