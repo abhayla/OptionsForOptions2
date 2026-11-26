@@ -5,6 +5,7 @@ an actionable alert and nothing exits by itself (ADR-003). Money is Decimal, nev
 """
 from __future__ import annotations
 
+import re
 from dataclasses import dataclass
 from decimal import Decimal, InvalidOperation
 from typing import Final
@@ -14,6 +15,9 @@ PROFIT: Final = "profit"
 NO_PNL: Final = "no_pnl"  # reasons are codes: the words live in the catalogue
 PNL_UNREADABLE: Final = "pnl_unreadable"
 UNKNOWN_SIDE: Final = "unknown_side"
+#: the ONE shape of a typed rupee level (rupees to the paisa, ASCII digits only): the plan route's box and the stored
+#: guard are both read by it (``level_of``), so "1e3", "400.005" and full-width digits never pass
+LEVEL_PATTERN: Final = re.compile(r"[0-9]{1,12}([.][0-9]{1,2})?")
 
 
 @dataclass(frozen=True)
@@ -42,6 +46,8 @@ def level_of(text: str | None) -> Decimal | None:
     """The stored text level -> a positive finite Decimal; blank or absent -> None (no check); else ValueError."""
     if text is None or not text.strip():
         return None
+    if not LEVEL_PATTERN.fullmatch(text.strip()):
+        raise ValueError(f"rupee level is not a plain amount of rupees and paise: {text!r}")
     try:
         level = Decimal(text.strip())
     except InvalidOperation:

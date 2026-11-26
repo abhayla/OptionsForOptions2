@@ -74,3 +74,9 @@ def test_module_is_pure_and_float_free():
     assert "float(" not in src
     for banned in ("import datetime", "import time", "ofo_app", "sqlalchemy"):
         assert banned not in src
+
+
+@pytest.mark.parametrize("bad", ["1e3", "400.005", "\uff14\uff10\uff10", "+400", "4_00", "1,000", "0x10", "400."])
+def test_f8_one_parser_level_of_takes_only_the_route_pattern(bad):
+    with pytest.raises(ValueError):
+        level_of(bad)

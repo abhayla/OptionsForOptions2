@@ -25,6 +25,7 @@ from ofo.adjustment import playbook_eval as pe
 from ofo.adjustment import stop_lines as sl
 from ofo.adjustment.playbook_types import SHOWN_NAMES
 from ofo.charges import ChargeRates
+from ofo.checks import pnl_amount as rupee
 from ofo.errors import render
 from ofo.errors.explanations import render_explanation
 from ofo.money import PAISE
@@ -209,7 +210,7 @@ def limit_text(x: pe.LimitNow, reason: Any, percent_stop_checked: bool, target_u
     state (an unknown state, a checked row with nothing to compare) -> None."""
     if x.state not in ("checked", "not_checked", "already_true"):
         return None
-    target, credit = x.trigger_id == "T-07", x.rule_id == sl.CREDIT_RULE
+    target, credit = x.trigger_id == "T-07" or x.rule_id == sl.RUPEE_PROFIT_RULE, x.rule_id == sl.CREDIT_RULE
     if x.state == "not_checked":
         # ADR-305: the Target was emptied for this trade; not "switched off in the rule set"
         if target and target_unset:
@@ -219,7 +220,9 @@ def limit_text(x: pe.LimitNow, reason: Any, percent_stop_checked: bool, target_u
         return None
     pct = x.threshold.normalize()
     money = isinstance(x.amount, Decimal)
-    if target:
+    if x.rule_id in sl.RUPEE_RULES:  # ADR-330 (5): the typed rupee level itself, whole trade, before charges
+        line = render_explanation("limit_target_rupees" if target else "limit_stop_rupees", amount=x.threshold)
+    elif target:
         line = render_explanation("limit_target", pct=pct)
     elif credit:
         line = render_explanation("limit_stop_credit", multiple=pct, amount=x.amount) if money else \
@@ -239,9 +242,21 @@ def limit_text(x: pe.LimitNow, reason: Any, percent_stop_checked: bool, target_u
     return line
 
 
+def target_is_unset(source: str, guards: object) -> bool:
+    """ADR-305: the plan's Target was emptied for this trade (the percent guard is ""), AND no readable rupee target
+    stands in for it (ADR-330 (5): a rupee target save sets the percent guard to "" on purpose)."""
+    if source != "plan" or not isinstance(guards, Mapping) or guards.get("profit_target_pct_of_max_profit") != "":
+        return False
+    raw = guards.get(sl.RUPEE_PROFIT_KEY)
+    try:
+        return not (isinstance(raw, str) and rupee.level_of(raw) is not None)
+    except ValueError:
+        return True
+
+
 def limits_out(limits: tuple[pe.LimitNow, ...], target_unset: bool = False) -> list[dict]:
     """The limits now as the reply states them: numbers in the reply's shown scale, the reason as its catalogue text."""
-    race = any(x.trigger_id == sl.TRIGGER_MAX_LOSS and x.state != "not_checked" for x in limits)
+    race = any(x.trigger_id in (sl.TRIGGER_MAX_LOSS, sl.RUPEE_LOSS_RULE) and x.state != "not_checked" for x in limits)
     out = []
     for x in limits:
         reason = None if x.reason is None else render(x.reason, **dict(x.slots))
@@ -513,8 +528,7 @@ async def run_check(  # noqa: PLR0913 - the route's inputs, passed on
     wording = render_explanation("adjust_check_flag_system" if resolved.is_system else "adjust_check_flag_user")
     guards = resolved.body.get("guards")
     # ADR-305: emptied for this trade
-    target_unset = (resolved.source == "plan" and isinstance(guards, Mapping)
-                    and guards.get("profit_target_pct_of_max_profit") == "")
+    target_unset = target_is_unset(resolved.source, guards)
     reply |= {"stage": check.stage_out(ev.stage_name, ev.stage_index),
               "withheld": None if ev.withheld is None else render(ev.withheld),
               "results": [result_out(r, wording, opened, dismissed=dismissed, body=resolved.body,

@@ -1025,14 +1025,21 @@ def _outcomes(body: Mapping, state: StrategyState, gap_until: str) -> tuple[_Ctx
 
 
 def _without_t06(body: Mapping) -> dict:
-    """The body with T-06 taken out of every rule (a rule left with no member is dropped)."""
-    rules = []
-    for rule in body.get("rules", []):
-        key = "any_of" if "any_of" in rule else "all_of"
-        left = [m for m in rule[key] if m != sl.TRIGGER_MAX_LOSS]
-        if left:
-            rules.append({**rule, key: left})
-    return {**body, "rules": rules}
+    """The rupee loss IS the plan's one loss stop (``plan.rupee_loss`` carries its alert), so a rule made of T-06 alone
+    is dropped (it would alert twice). T-06 inside a mixed rule is NOT dropped: ``_stop_answer`` answers it from the
+    rupee level, so an all_of rule still needs the loss and an any_of rule still fires on it (review F6)."""
+    return {**body, "rules": [r for r in body.get("rules", [])
+                              if set(r.get("any_of") or r.get("all_of") or ()) != {sl.TRIGGER_MAX_LOSS}]}
+
+
+def _rupee_loss_answer(c: _Ctx) -> Hit | _Missing:
+    """T-06 when the rupee level is the stop (ADR-330 (5)(a)): the same ``pnl_amount`` check, as a Hit named T-06."""
+    guards = c.body.get("guards")
+    level = rupee.level_of(guards.get(sl.RUPEE_LOSS_KEY) if isinstance(guards, Mapping) else None)
+    answer = rupee.pnl_amount(level, c.state.pnl, rupee.LOSS)  # type: ignore[arg-type]
+    if isinstance(answer, rupee.NotComputable):
+        return _Missing(f"{P}missing_pnl")
+    return Hit(sl.TRIGGER_MAX_LOSS, -c.state.pnl, level, "ge", isinstance(answer, rupee.Met))  # type: ignore[operator,arg-type]
 
 
 def _rupee_outcomes(body: Mapping, state: StrategyState, why: str | None) -> list[_Outcome]:
@@ -1098,6 +1105,8 @@ def _stop_threshold(c: _Ctx, tid: str, line: sl.StopInForce) -> Decimal:
 
 
 def _stop_answer(c: _Ctx, tid: str) -> Hit | _Missing:  # noqa: PLR0911 - one answer per reason a stop is not checked
+    if tid == sl.TRIGGER_MAX_LOSS and sl.rupee_loss_is_the_stop(c.body):
+        return _rupee_loss_answer(c)
     t = c.body.get("triggers", {}).get(tid) or {}
     if t.get("greyed"):
         return _Missing(f"{P}greyed")
@@ -1238,7 +1247,13 @@ def limits_now(body: Mapping, state: StrategyState, results: tuple[Result, ...] 
     why = _withheld(state)
     held = {r.rule_id: r.after for r in results if isinstance(r, AlreadyTrue)}
     out: list[LimitNow] = []
+    guards = body.get("guards")
+    guards = guards if isinstance(guards, Mapping) else {}
+    rupee_rows = {o.rule_id: o for o in _rupee_outcomes(body, state, why)}
+    replaced = {sl.TRIGGER_MAX_LOSS: sl.RUPEE_LOSS_RULE, "T-07": sl.RUPEE_PROFIT_RULE}
     for tid in ("T-07", sl.TRIGGER_MAX_LOSS):
+        if _rupee_level_of(guards, replaced[tid]) is not None:  # the rupee level replaces the percent row (review F2)
+            continue
         t = body.get("triggers", {}).get(tid)
         line = _line(state, tid) if tid in sl.STOP_TRIGGERS else None
         if t is None and line is None:
@@ -1265,6 +1280,7 @@ def limits_now(body: Mapping, state: StrategyState, results: tuple[Result, ...] 
         tight = None if threshold is None else _tighten_of(c, tid)
         out.append(_limit_row(_rule_of(body, tid), tid, why, held, ans.code if isinstance(ans, _Missing) else None,
                               (threshold, amount, later, tight), ans.slots if isinstance(ans, _Missing) else ()))
+    out.extend(_rupee_limit_rows(guards, rupee_rows, held))
     credit = _credit_outcome(state, why)
     for o in credit:
         line = _credit_line_of(state)
@@ -1274,6 +1290,26 @@ def limits_now(body: Mapping, state: StrategyState, results: tuple[Result, ...] 
                                hit.threshold if hit and isinstance(hit.threshold, Decimal) else
                                (line.amount if line is not None else None), (), None), o.slots))
     return tuple(out)
+
+
+def _rupee_limit_rows(guards: Mapping, rows: Mapping[str, _Outcome], held: Mapping[str, int]) -> list[LimitNow]:
+    """A readable rupee level is a limit row of its own: threshold = amount = the level (review F2)."""
+    out = []
+    for rid in (sl.RUPEE_PROFIT_RULE, sl.RUPEE_LOSS_RULE):
+        level, o = _rupee_level_of(guards, rid), rows.get(rid)
+        if level is not None and o is not None:
+            out.append(_limit_row(rid, rid, None, held, o.reason, (level, level, (), None), o.slots))
+    return out
+
+
+def _rupee_level_of(guards: Mapping, rid: str) -> Decimal | None:
+    """The readable rupee level of rupee rule ``rid`` (None: none typed, or one that cannot be read)."""
+    key = sl.RUPEE_LOSS_KEY if rid == sl.RUPEE_LOSS_RULE else sl.RUPEE_PROFIT_KEY
+    raw = guards.get(key)
+    try:
+        return rupee.level_of(raw) if isinstance(raw, str) else None
+    except ValueError:
+        return None
 
 
 def _credit_line_of(state: StrategyState) -> sl.StopInForce | None:
