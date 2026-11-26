@@ -114,7 +114,7 @@ def test_rupee_stop_on_the_s21_base_shows_the_percent_derived_beside_it():
     body = edited(stop_rupees="400")
     out = plan.with_rupee_figures(plan._values(body, False, "weekly"), body, plan.Bases(max_loss=D("2600"), lots=2))
     assert (out["stop"], out["stop_rupees"]) == (D("15.38"), D("400.00"))
-    assert out["stop_words"] == "15.38 % of max loss"
+    assert out["stop_words"].startswith("a loss of Rs 400.00 (15.38 % of max loss)")
 
 
 # --- Opus review round (P4 fix round): F1, F3, F5, F9 -----------------------------------------------------------------------
@@ -129,7 +129,8 @@ def test_f1_a_rupee_stop_keeps_the_2x_credit_line_and_the_words_say_both():
     out = shown_on(edited(stop_rupees="400"), S21)
     words = out["stop_words"]
     assert "400" in words and "15.38 % of max loss" in words
-    assert words.endswith("or 2x the credit received, whichever comes first")
+    assert "2x the credit received" in words and words.endswith(", whichever comes first")
+    assert words.startswith("a loss of Rs 400.00 (15.38 % of max loss), ")
 
 
 def test_f1_the_choice_lives_in_one_constant_of_settings_in_force():

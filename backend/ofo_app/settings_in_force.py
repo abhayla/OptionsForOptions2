@@ -421,6 +421,12 @@ def _first(lines: list[StopInForce]) -> StopsInForce:
     return StopsInForce(tuple(lines), first.kind, None)
 
 
+#: LP-2 (owner question, build option (a)): a rupee stop keeps the 2x-credit line beside it, "whichever comes first"
+#: (ADR-247). Option (b), the rupee stop replacing the credit line too, is this one value set to False: the evaluator,
+#: the limits strip and the plan words all read the lines ``stops_of`` returns.
+RUPEE_STOP_KEEPS_CREDIT: Final = True
+
+
 def stops_of(resolved: check.Resolved, money: MoneyInputs | None,
              at: StageAt | str | None = None) -> StopsInForce:
     """THE stop lines in force (the live check's only stop source, ``adjustment_check.state_of``). ADR-252: the % of
@@ -436,7 +442,7 @@ def stops_of(resolved: check.Resolved, money: MoneyInputs | None,
     lines = [x for x in (_trigger_line(body, STOP_MAX_LOSS, max_loss, at, source),) if x is not None]
     if sl.rupee_loss_is_the_stop(body):  # ADR-330 (5)(a): the rupee level is the plan's stop, T-06 is not a second one
         lines = [dataclasses.replace(x, active=False, figure=None, amount=None, later=()) for x in lines]
-    if credit_line_applies(resolved):
+    if credit_line_applies(resolved) and (RUPEE_STOP_KEEPS_CREDIT or not sl.rupee_loss_is_the_stop(body)):
         lines.append(_credit_line(body, None if money is None else money.credit, source))
     lines.extend(x for x in (_trigger_line(body, STOP_MARGIN, margin, at, source),) if x is not None)
     return _first(lines)

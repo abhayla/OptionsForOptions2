@@ -78,7 +78,7 @@ ID_MAX = 9_223_372_036_854_775_807  # the id column is BIGSERIAL
 MAX_ADJUSTMENTS_LIMIT = 10
 _PERCENT = re.compile(r"[0-9]{1,3}(\.[0-9]{1,4})?")
 _COUNT = re.compile(r"[0-9]{1,3}")
-_RUPEES = re.compile(r"[0-9]{1,12}(\.[0-9]{1,2})?")  # whole-trade rupees, to the paisa
+_RUPEES = rupee.LEVEL_PATTERN  # whole-trade rupees, to the paisa: the one pattern (F8), shared with the stored guard
 #: The sheet field -> the guard of the plan's copy that holds it (docs/design/playbook-body-v1.md "guards")
 TARGET_KEY = "profit_target_pct_of_max_profit"
 #: the sheet's stop is the % of max loss trigger's value (ADR-252: ``settings_in_force.set_max_loss_stop`` /
@@ -273,7 +273,7 @@ _STOP_WORD_IDS = {in_force_mod.STOP_MAX_LOSS: "plan_stop_words_loss",
                   in_force_mod.STOP_MARGIN: "plan_stop_words_margin"}
 _STOP_SLOTS = {in_force_mod.STOP_MAX_LOSS: "pct", in_force_mod.STOP_CREDIT: "multiple",
                in_force_mod.STOP_MARGIN: "margin"}
-def _stop_words(body: dict, saved_before: bool, kind: str | None = None) -> Any:
+def _stop_words(body: dict, saved_before: bool, kind: str | None = None, rupee_part: Any = None) -> Any:
     """ADR-247/252: the ACTIVE stops from the ONE settings-in-force stops list (``settings_in_force.stops_of`` at the
     first stage: T-06 % of max loss, N x the credit received where it applies, T-16 % of margin only when on), joined
     "..., whichever comes first". Read for every plan, whatever guard keys its body holds."""
@@ -281,6 +281,8 @@ def _stop_words(body: dict, saved_before: bool, kind: str | None = None) -> Any:
                                   None, in_force_mod.first_stage_of(kind)).lines
     parts = [render_explanation(_STOP_WORD_IDS[x.kind], **{_STOP_SLOTS[x.kind]: format(x.figure, "f")})
              for x in lines if x.active and x.figure is not None]
+    if rupee_part is not None:  # ADR-330 (5)/LP-2: the rupee stop leads; the lines still in force follow it
+        parts.insert(0, rupee_part)
     if not parts:
         return None
     if len(parts) == 1:
@@ -330,8 +332,9 @@ def bases_of(tracked: Any, market: Any, rates: Any) -> Bases:
         except Exception:  # noqa: BLE001 - an optional display figure: unknown, never a guess; logged
             log.warning("adjustment plan: max profit not worked out for the rupee figures", exc_info=True)
     legs = getattr(getattr(tracked, "position", None), "legs", None) or ()
+    counts = {x.lots for x in legs}  # LP-3: the per-lot figure only when every leg has the same lot count
     return Bases(profit, loss if isinstance(loss, Decimal) and loss.is_finite() else None,
-                 max((x.lots for x in legs), default=None))
+                 counts.pop() if len(counts) == 1 else None)
 
 
 def _rupee_guard(guards: dict, key: str) -> Decimal | None:
@@ -349,7 +352,16 @@ def _rupee_words(found: figs.Figures) -> Any:
     return render_explanation("plan_level_rupees", rupees=found.rupees, per_lot=found.per_lot)
 
 
-def with_rupee_figures(values: dict[str, Any], body: dict, bases: Bases) -> dict[str, Any]:
+def _rupee_stop_part(stop: figs.Figures) -> Any:
+    if stop.rupees is None:
+        return None
+    if stop.percent is None:
+        return render_explanation("plan_stop_words_rupees_plain", rupees=stop.rupees)
+    return render_explanation("plan_stop_words_rupees", rupees=stop.rupees, pct=stop.percent)
+
+
+def with_rupee_figures(values: dict[str, Any], body: dict, bases: Bases, *, kind: str | None = None,
+                       saved_before: bool = False) -> dict[str, Any]:
     """ADR-330 (5): the plan shows BOTH figures of each level, worked out here (the browser computes nothing). A stored
     rupee target is the source: its percent is derived from max profit; otherwise the rupees come from the percent."""
     found = body.get("guards")
@@ -370,9 +382,10 @@ def with_rupee_figures(values: dict[str, Any], body: dict, bases: Bases) -> dict
     out["stop_source"] = SOURCE_PERCENT if level is None else SOURCE_RUPEES
     if level is not None:
         stop = figs.from_rupees(level, bases.max_loss, bases.lots)
-        if stop.percent is not None:  # the rupee level IS the stop; its percent is the derived display figure only
-            out["stop"] = stop.percent
-            out["stop_words"] = render_explanation("plan_stop_words_loss", pct=format(stop.percent, "f"))
+        # the rupee level IS the stop; its percent is the derived display figure only (None when not computable: never
+        # the stale T-06 value, review F3), and the words say every stop in force (LP-2: the 2x-credit line too)
+        out["stop"] = stop.percent
+        out["stop_words"] = _stop_words(body, saved_before, kind, _rupee_stop_part(stop))
     elif values.get("stop") is None:
         stop = figs.NONE
     else:
@@ -399,7 +412,7 @@ def _apply_rupee(out: dict, key: str, typed: str | None, percent: str | None,  #
                  base: Decimal | None, lots: int | None, field: str) -> bool:
     """One level's rupee box. Returns True when the rupee level is the SOURCE (typed, no percent beside it): the caller
     then switches the percent target off. Both typed -> they must be the same level (else refused naming the rupee
-    field; a base that cannot judge refuses too) and the percent is the one stored. A percent typed alone drops the
+    field; a base that cannot judge refuses too) and the rupee level is the one stored. A percent typed alone drops the
     rupee level (the last edited box is the source of truth)."""
     guards = out.setdefault("guards", {})
     if typed is None:
@@ -408,14 +421,13 @@ def _apply_rupee(out: dict, key: str, typed: str | None, percent: str | None,  #
         return False
     level = _rupee_in(typed, field)
     if level is None:
+        if key == sl.RUPEE_LOSS_KEY and not percent and key in guards:
+            raise _bad(field)  # a plan always has a stop: clearing the rupee one with no percent would restore a stale T-06
         guards.pop(key, None)
         return False
-    if percent:
-        if not figs.agree(Decimal(percent), level, base, lots):
-            raise _bad(field)
-        guards.pop(key, None)
-        return False
-    guards[key] = format(level, "f")
+    if percent and not figs.agree(Decimal(percent), level, base, lots):
+        raise _bad(field)
+    guards[key] = format(level, "f")  # agreeing boxes store the RUPEE level: the rounded percent would move it (F4)
     return True
 
 
@@ -543,9 +555,10 @@ async def _plan_out(db: Any, user_ref: str, plan: store.Plan, kind: str | None =
             name = name_shown((await store.get(db, user_ref, plan.playbook_id)).name)
         except store.PlaybookStoreError:
             name = None
+    saved_before = await check.plan_saved_before_adr247(db, plan)
     return {"playbook_id": plan.playbook_id, "playbook_name": name, "accepted_at": plan.accepted_at,
-            **with_rupee_figures(_values(plan.body, await check.plan_saved_before_adr247(db, plan), kind), plan.body,
-                                 bases or Bases())}
+            **with_rupee_figures(_values(plan.body, saved_before, kind), plan.body, bases or Bases(),
+                                 kind=kind, saved_before=saved_before)}
 
 
 def _in_force_reply(found: in_force_mod.InForce) -> dict[str, Any]:
@@ -599,10 +612,11 @@ async def _sheet(db: Any, user_ref: str, strategy_id: int, stype: str | None, pl
         chosen = found
     if plan is not None and pick is None:
         saved_before = await check.plan_saved_before_adr247(db, plan)
-        values = with_rupee_figures(_values(plan.body, saved_before, kind), plan.body, bases or Bases())
+        values = with_rupee_figures(_values(plan.body, saved_before, kind), plan.body, bases or Bases(), kind=kind,
+                                    saved_before=saved_before)
         source_id = plan.playbook_id if plan.playbook_id is not None else active.id
     else:
-        values = with_rupee_figures(_values(chosen.body, False, kind), chosen.body, bases or Bases())
+        values = with_rupee_figures(_values(chosen.body, False, kind), chosen.body, bases or Bases(), kind=kind)
         source_id = chosen.id  # a playbook, not a saved plan
         if (_t07_of(chosen.body) or {}).get("on") is False:  # ADR-305: the profit rule is off -> the box opens empty
             values |= {"target": None, "target_words": None}

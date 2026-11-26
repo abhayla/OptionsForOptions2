@@ -7,8 +7,9 @@ from dataclasses import dataclass
 from decimal import ROUND_HALF_UP, Decimal
 from typing import Final
 
+from ofo.engine import adjust_money
+
 PAISE: Final = Decimal("0.01")
-_HUNDRED: Final = Decimal(100)
 _MAX_PERCENT: Final = Decimal(100)
 
 
@@ -36,7 +37,7 @@ def from_percent(percent: Decimal, base: Decimal | None, lots: int | None) -> Fi
     """A percent of ``base`` (max profit for a target, max loss for a stop) in rupees to the paisa, half up."""
     if not _base_ok(base) or not percent.is_finite() or not 0 < percent <= _MAX_PERCENT:
         return Figures(percent if percent.is_finite() and 0 < percent <= _MAX_PERCENT else None, None, None)
-    rupees = (base * percent / _HUNDRED).quantize(PAISE, rounding=ROUND_HALF_UP)  # type: ignore[operator]
+    rupees = adjust_money.stop_at_pct(base, percent)  # type: ignore[arg-type]  # the engine's one % -> rupees
     return Figures(percent, rupees, _per_lot(rupees, lots))
 
 
@@ -48,7 +49,7 @@ def from_rupees(rupees: Decimal, base: Decimal | None, lots: int | None) -> Figu
     per = _per_lot(rupees, lots)
     if not _base_ok(base):
         return Figures(None, rupees, per)
-    pct = (rupees / base * _HUNDRED).quantize(PAISE, rounding=ROUND_HALF_UP)  # type: ignore[operator]
+    pct = adjust_money.level_as_pct(rupees, base)  # type: ignore[arg-type]  # the engine's one rupees -> %
     return Figures(pct if pct <= _MAX_PERCENT else None, rupees, per)
 
 

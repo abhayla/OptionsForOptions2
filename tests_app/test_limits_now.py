@@ -345,8 +345,8 @@ def test_f2_a_rupee_stop_and_target_have_a_limits_row_each_and_no_not_checked_ro
     strip = route.limits_out(ev.limits, True)
     assert not any("not being checked" in (x["text"] or "") or "no target is set" in (x["text"] or "") for x in strip)
     by_rule = {x["rule_id"]: x for x in strip}
-    assert by_rule[sl.RUPEE_LOSS_RULE]["threshold"] == "400" and "400" in by_rule[sl.RUPEE_LOSS_RULE]["text"]
-    assert by_rule[sl.RUPEE_PROFIT_RULE]["threshold"] == "600" and "600" in by_rule[sl.RUPEE_PROFIT_RULE]["text"]
+    assert by_rule[sl.RUPEE_LOSS_RULE]["threshold"] == D(400) and "400" in by_rule[sl.RUPEE_LOSS_RULE]["text"]
+    assert by_rule[sl.RUPEE_PROFIT_RULE]["threshold"] == D(600) and "600" in by_rule[sl.RUPEE_PROFIT_RULE]["text"]
     assert "whichever comes first" in by_rule[sl.CREDIT_RULE]["text"]  # the 2x-credit line races the rupee stop
 
 

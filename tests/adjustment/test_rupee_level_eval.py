@@ -108,6 +108,6 @@ def test_f6_t06_in_a_mixed_rule_is_replaced_by_the_rupee_loss_never_dropped():
     body["rules"].append({"id": "R-X", "all_of": ["T-06", "T-07"]})
     body.setdefault("guards", {})[sl.RUPEE_LOSS_KEY] = "400"
     ev = evaluate(body, replace(state_of(sc), pnl=D("100000")), {}, None)
-    mine = _only(ev, "R-X")
-    assert mine and not any(isinstance(r, Flag) for r in mine)
-    assert "R-X" not in [r.rule_id for r in ev.results if isinstance(r, Flag)]
+    assert "R-X" in ev.clear and _only(ev, "R-X") == []  # evaluated and false: the member was not dropped
+    loss = evaluate(body, replace(state_of(sc), pnl=D("-100000")), {}, None)
+    assert "R-X" in loss.clear  # a loss of Rs 400 or more but no profit target met: the all_of is still false
