@@ -655,6 +655,36 @@ class ApproachLabel(SlotType):
         return BUILT_APPROACH_NAMES[value]
 
 
+class ClosedSide(SlotType):
+    """ADR-330 (2): the closed side of an iron condor, "call" or "put" (the two ids of ``side_remaining_shape.json``)."""
+
+    @staticmethod
+    def validate(value: object) -> None:
+        if value not in ("call", "put"):
+            raise ValueError(f"ClosedSide slot must be call or put, got {value!r}")
+
+    @staticmethod
+    def format(value: str) -> str:
+        return str.__str__(value)
+
+
+class RemainingShape(SlotType):
+    """ADR-330 (2) (b): the shape name that remains after a side closes ("Bull Put Spread" / "Bear Call Spread"), the
+    strategy template's own name (``ofo.strategy.loader``), never a typed one."""
+
+    @staticmethod
+    def validate(value: object) -> None:
+        from ofo.adjustment.side_scope import REMAINING_SHAPE
+        from ofo.strategy.loader import load_templates
+        names = {t.name for t in load_templates() if t.id in REMAINING_SHAPE.values()}
+        if not isinstance(value, str) or value not in names:
+            raise ValueError(f"RemainingShape slot must be one of {sorted(names)}, got {value!r:.40}")
+
+    @staticmethod
+    def format(value: str) -> str:
+        return str.__str__(value)
+
+
 class WholeRupees(SlotType):
     """REQ-152: a summary money figure in whole rupees, Indian grouping, no sign (net premium, margin figures)."""
 
@@ -1082,6 +1112,10 @@ PLAN_SHEET_LABEL_TEXT: Mapping[str, str] = MappingProxyType({
     "max_adjustments": "Max adjustments", "time_exit": "Time exit",
     "time_exit_on": "Time exit date (blank = expiry day)",  # ADR-330 (7): any trading day, one date and one time
     "customise": "Customise triggers", "use_as_is": "Use playbook as is", "save": "Save plan", "close": "Close",
+    "reset": "Reset to playbook",  # ADR-330 (9), (32), P8 (pending owner read)
+    "reset_confirm": ("Reset to playbook puts back this playbook's conditions only. The levels you typed on the sheet "
+                      "(profit target, rupee target, rupee stop, time exit, the adjustment limit) and the plan's "
+                      "settings stay as you set them. Reset the conditions?"),
     "plan_entry": "Plan", "edit": "Edit plan", "no_plan": NO_PLAN_TEXT, "set_plan": "Set plan",
     "hour": "Hour", "minute": "Minute",
 })
@@ -1749,6 +1783,13 @@ _EXPLANATIONS: tuple[ExplanationTemplate, ...] = (
     # ADR-330 (3), owner Q2b: an unanswered alert whose trade closed first stays in History with this line
     ExplanationTemplate("alert_closed_trade_closed", "values_seen", "Closed by system: the trade closed at {time}",
                         {"time": HourMinute}),
+    # ADR-330 (2) (b), (33), P7 page flow (pending owner read): the side_closed row's words and its confirmation
+    ExplanationTemplate("alert_side_closed_text", "values_seen",
+                        "The {side} side of this trade is closed. Do you want to add new positions on that side?",
+                        {"side": ClosedSide}),
+    ExplanationTemplate("alert_side_closed_confirm", "values_seen",
+                        "If you do not add legs, this strategy will change from its entry shape to {shape}. "
+                        "Confirm the change?", {"shape": RemainingShape}),
     *(ExplanationTemplate(f"alert_answer_{key}", "values_seen", text)  # ADR-330 (3): each answer's label, as the page shows it
       for key, text in ALERT_ANSWER_LABEL_TEXT.items()),
     ExplanationTemplate("stop_fired_loss", "values_seen",

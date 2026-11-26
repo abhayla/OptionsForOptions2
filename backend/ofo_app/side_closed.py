@@ -61,6 +61,12 @@ def remaining_label(entry_legs: Any, closed: frozenset[str]) -> str | None:
     return _names().get(_REMAINING[next(iter(closed))])
 
 
+def remaining_shape_name(side: str) -> str | None:
+    """The shape name that remains when this side is closed ("call" -> Bull Put Spread); None for an unknown side."""
+    key = _REMAINING.get(side)
+    return None if key is None else _names().get(key)
+
+
 async def raise_if_closed(conn: Any, user_ref: str, strategy_id: int, tracked: Any, *,  # noqa: PLR0913
                           at: datetime, source: str | None = None) -> int | None:
     """Raise the one side_closed alert when a side of the entry condor is closed now. Returns the alert id, or None

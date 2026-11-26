@@ -18,6 +18,8 @@ INVENTORY = (
     'ERROR what_is_blocked: CatalogueText',
     'FIELD ActiveOut.alerts[].answers[].code: Identifier',
     'FIELD ActiveOut.alerts[].answers[].label: CatalogueText',
+    'FIELD ActiveOut.alerts[].confirm_text: CatalogueText',
+    'FIELD ActiveOut.alerts[].confirm_text: None',
     'FIELD ActiveOut.alerts[].escalated_at: None',
     'FIELD ActiveOut.alerts[].escalated_at: datetime',
     'FIELD ActiveOut.alerts[].fired_at: datetime',
@@ -3499,6 +3501,7 @@ INVENTORY = (
 )
 
 NOTES = {
+    'ActiveAlert.confirm_text': 'UNREVIEWED',
     'ActiveAlert.fired_line': 'catalogue text: only a render()/render_explanation() result (a catalogue sentence; its parameters are server-computed figures, never a stored credential)',
     'ActiveAlert.kind': 'Identifier: a closed token chosen by server code (a catalogue key, state, label or display token); never read from the token store (value canary in test_reply_inventory)',
     'ActiveAlert.no_longer_true_line': 'catalogue text: only a render()/render_explanation() result (a catalogue sentence; its parameters are server-computed figures, never a stored credential)',

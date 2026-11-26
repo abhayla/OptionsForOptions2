@@ -50,6 +50,15 @@
           </label>
         </div>
         <button type="button" class="mt-3 text-sm font-semibold text-accent underline" data-testid="plan-customise" :disabled="busy" @click="customise">{{ labels.customise }}</button>
+        <button v-if="canReset" type="button" class="ml-4 mt-3 text-sm font-semibold text-accent underline" data-testid="plan-reset" :disabled="busy" @click="resetAsking = true">{{ labels.reset }}</button>
+        <div v-if="resetAsking" class="mt-2 rounded border border-line p-2" data-testid="plan-reset-confirm">
+          <p class="text-sm">{{ labels.reset_confirm }}</p>
+          <div class="mt-2 flex gap-2">
+            <button type="button" class="rounded border border-line px-2 py-1 text-sm" :disabled="busy" data-testid="plan-reset-yes" @click="reset">{{ labels.reset }}</button>
+            <button type="button" class="rounded border border-line px-2 py-1 text-sm" :disabled="busy" data-testid="plan-reset-no" @click="resetAsking = false">Cancel</button>
+          </div>
+        </div>
+        <p v-if="resetMarkers" class="mt-2 text-xs text-ink-muted" data-testid="plan-reset-markers">{{ resetMarkers }}</p>
       </template>
       <AlertStylePicker v-if="open && sheet" :strategy-id="strategyId" />
     </div>
@@ -75,7 +84,7 @@ import ErrorMessage from '@/components/common/ErrorMessage.vue'
 import AlertStylePicker from '@/components/strategy/AlertStylePicker.vue'
 import api, { NEUTRAL_PARTS } from '@/services/api'
 import { PLAN_LOADING_TEXT, PLAN_LOAD_FAILED_TEXT, PLAN_PICK_TIMED_OUT_TEXT, PLAN_REFILLED_TEXT, PLAN_TIMED_OUT_TEXT } from '@/lib/sharedStateText'
-import { asIsBody, customiseUrl, fetchLevels, fetchPlan, formOf, saveBody, sendPlan } from '@/lib/adjustPlan'
+import { asIsBody, customiseUrl, fetchLevels, fetchPlan, formOf, resetPlan, saveBody, sendPlan } from '@/lib/adjustPlan'
 
 const props = defineProps({
   open: { type: Boolean, default: false },
@@ -93,12 +102,42 @@ const loadError = ref('')
 const loading = ref(false)
 const errorParts = ref(null)
 const labels = computed(() => sheet.value?.labels ?? {})
+// P8 (ADR-330 (9), (32)): Reset to playbook shows only for a saved plan whose playbook is still listed, with the server's own words for it
+const resetAsking = ref(false)
+const resetMarkers = ref('') // the server's changed / switched_off markers of the reply, as sent
+const canReset = computed(() => {
+  const s = sheet.value
+  const id = s?.plan?.playbookId
+  return props.edit && s?.kind === 'sheet' && Number.isInteger(id) && s.playbooks.some((p) => p.id === id) &&
+    !!labels.value.reset && !!labels.value.reset_confirm
+})
+async function reset() {
+  if (busy.value) return
+  busy.value = true
+  errorParts.value = null
+  try {
+    const read = await resetPlan(api, props.strategyId)
+    if (read.kind !== 'sheet') { errorParts.value = NEUTRAL_PARTS; return }
+    sheet.value = read
+    form.value = { ...read.prefill }
+    resetMarkers.value = [...(read.plan?.changed ?? []), ...(read.plan?.switchedOff ?? [])].join(', ')
+    resetAsking.value = false
+    emit('saved', read)
+  } catch (e) {
+    errorParts.value = e?.parts ?? NEUTRAL_PARTS // a refusal (playbook deleted): the server's sentence; the sheet stays as it was
+    resetAsking.value = false
+  } finally {
+    busy.value = false
+  }
+}
 const refilledFrom = ref('') // the playbook name the fields were just refilled from; empty on open, reopen and failed reads
 
 async function load(pickId = null, pickName = '') {
   const id = props.strategyId
   loadError.value = ''
   refilledFrom.value = ''
+  resetAsking.value = false
+  resetMarkers.value = ''
   errorParts.value = null
   loading.value = true
   try {
