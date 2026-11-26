@@ -15,7 +15,7 @@ from __future__ import annotations
 import datetime
 from typing import Annotated, Any
 
-from fastapi import APIRouter, Depends
+from fastapi import APIRouter, Depends, Query
 from ofo.alerts import CLOSED_BY_SYSTEM
 from ofo.errors import render
 from ofo.errors.explanations import render_explanation
@@ -189,10 +189,12 @@ async def answer_alert(alert_id: int, body: AnswerIn, db: Annotated[Any, Depends
 
 
 @router.get("/api/alerts/answered", response_model=HistoryOut)
-async def alert_answered(db: Annotated[Any, Depends(get_db)],
-                        user_ref: Annotated[str, Depends(current_user_ref)]) -> HistoryOut:
+async def alert_answered(db: Annotated[Any, Depends(get_db)], user_ref: Annotated[str, Depends(current_user_ref)],
+                        after: Annotated[int | None, Query(ge=0, le=ID_MAX)] = None) -> HistoryOut:
+    """``after``: only the rows with an id above it (the header's pop-up reader asks for what is new since the last
+    row it saw; the page History asks without it)."""
     by_id = await _texts(db, user_ref)
-    rows = await aa.history(db, user_ref)
+    rows = [a for a in await aa.history(db, user_ref) if after is None or a.id > after]
     titles = await alert_title.labels(db, [(a.strategy_id, a.strategy_name) for a in rows])  # ADR-330 (19)(b)
     items = [{"id": a.id, "strategy_id": a.strategy_id, "strategy_name": titles[a.strategy_id], "kind": _kind(a),
               "text": _words(a, by_id), "fired_at": a.fired_at, "fired_line": _fired(a),

@@ -1511,11 +1511,11 @@ async def paper_leg_stop_risk(strategy_id: int, contract_id: Annotated[int, Quer
     held = {p.instrument_id: p.net_quantity for p in net_positions(_paper(booked), {}).positions} if booked else {}
     if held.get(str(contract_id), 0) == 0:
         raise StrategyRefused("paper_trigger_leg_not_open")
-    names, terms = await _names_and_terms(db, stored.saved.definition.underlying, booked)
-    return _leg_stop_answer(booked, held[str(contract_id)], contract_id, level, names, terms, now())
+    names, terms = await names_and_terms(db, stored.saved.definition.underlying, booked)
+    return leg_stop_answer(booked, held[str(contract_id)], contract_id, level, names, terms, now())
 
 
-async def _names_and_terms(db: Any, underlying: str, booked: Sequence[Any]) -> tuple[dict[str, Any], dict[str, Any]]:
+async def names_and_terms(db: Any, underlying: str, booked: Sequence[Any]) -> tuple[dict[str, Any], dict[str, Any]]:
     """The shown name and engine terms of every contract the book holds (one reader for the routes and the monitor)."""
     found = {c.contract_id: c for c in await tracked_contracts.resolve(
         db, sorted({o.order.contract_id for o in booked}))}
@@ -1529,7 +1529,7 @@ async def _names_and_terms(db: Any, underlying: str, booked: Sequence[Any]) -> t
     return names, terms
 
 
-def _leg_stop_answer(booked: Sequence[Any], net: int, contract_id: int, level: Decimal,  # noqa: PLR0913
+def leg_stop_answer(booked: Sequence[Any], net: int, contract_id: int, level: Decimal,  # noqa: PLR0913
                      names: Mapping[str, Any], terms: Mapping[str, Any], at: datetime.datetime) -> ExitRiskOut:
     """THE ADR-330 (6) answer for one leg stop (the route and the monitor's fired-stop message both call this, so the
     figure is computed one way): the one-leg exit of the whole open quantity ``net`` at ``level``."""

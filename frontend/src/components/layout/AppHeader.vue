@@ -13,7 +13,7 @@ import { useRoute, useRouter } from 'vue-router'
 import Icon from '@/components/common/Icon.vue'
 import { showInfo } from '@/lib/infoPopup'
 import { compareAllUrl } from '@/lib/adjustDrawer'
-import { bellCount, dropActive, isLevelWatch, openRecords, readActive, readOpportunities, takeActive, takeOpportunities } from '@/lib/paperAlerts'
+import { bellCount, dropActive, isLevelWatch, openRecords, readActive, readOpportunities, readStopFired, takeActive, takeOpportunities, takeStopFired } from '@/lib/paperAlerts'
 import { plainName } from '@/lib/saveDraft'
 import { usePaperRefresh } from '@/lib/usePaperRefresh'
 import { ACCOUNT_LABEL, ACCOUNT_MENU_ITEMS, ITEM_DESCRIPTIONS, MEGA_MENUS, MENU_SECTIONS, firstBuiltPath } from '@/router/nav'
@@ -59,11 +59,13 @@ function announceActive(fresh) {
 const { refresh: refreshAlerts } = usePaperRefresh({
   key: () => 'alerts',
   read: async () => {
-    const [a, o] = await Promise.allSettled([readActive(), readOpportunities()])
+    const [a, o, f] = await Promise.allSettled([readActive(), readOpportunities(), readStopFired()])
     // fills the records; the pop-up is announceActive's, except a watched level (never in /alerts/active): ADR-242 (3), once per record id
     for (const w of takeOpportunities(o.status === 'fulfilled' ? o.value : null).filter(isLevelWatch)) {
       showInfo([plainName(w.strategy_name), w.text].filter(Boolean).join(': '))
     }
+    // ADR-330 (3)(b): a fired stop's informational row pops once (never counted, never in the bell); a failed read pops nothing
+    if (f.status === 'fulfilled') for (const r of takeStopFired(f.value)) showInfo([plainName(r.strategy_name), r.text].filter(Boolean).join(': '))
     if (a.status === 'rejected') throw a.reason
     return a.value
   },

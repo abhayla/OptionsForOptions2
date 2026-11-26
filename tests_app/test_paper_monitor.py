@@ -17,10 +17,10 @@ from decimal import Decimal
 
 import pytest
 from ofo import settings
+from ofo.errors.explanations import render_explanation
 from ofo.marketdata.fanout import FanOut
 from ofo.rules.inputs import DataHealth
 from ofo.tracking import paper, stops
-from ofo.errors.explanations import render_explanation
 from ofo_app import actionable_alerts as aa
 from ofo_app import alert_title, paper_monitor, paper_store, settings_store, tracked_contracts
 from ofo_app import paper_trigger_store as triggers
@@ -142,7 +142,7 @@ async def test_core_a_crossing_tick_fires_once_through_the_fan_out_and_never_aga
                                            (ids[1], "SELL", 65, D("12.50"), reason, tid)]
     assert await _trigger_state(db, tid) == (True, False)
     [(title, body)] = await _alerts(db, stored.id)
-    assert f"(#{stored.id}" in title  # W2-A pin changed: the title is the ADR-330 (19)(b) label, not "Paper strategy — "
+    assert f"(#{stored.id}" in title  # W2-A pin changed: the ADR-330 (19)(b) label, not "Paper strategy — "
     assert await _paper_alert_rows(db, stored.id) == 0  # W2-A: written once, through the one module
     assert body.startswith("Stop-loss on the index: ")
     assert "Paper strategy — " not in body  # the title shows once, as the alert title

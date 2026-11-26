@@ -12,7 +12,8 @@ from decimal import Decimal
 from ofo.errors.explanations import ExplanationText, render_explanation, restore_explanation
 from ofo.outcome.price_text import price_text
 
-__all__ = ["ALERT_BODY_TEMPLATES", "STOP_LINE_TEMPLATES", "alert_body","restore_alert_body", "restore_order_reason", "settle_history_body", "stop_reason_at"]
+__all__ = ["ALERT_BODY_TEMPLATES", "STOP_LINE_TEMPLATES", "alert_body", "restore_alert_body", "restore_order_reason",
+           "settle_history_body", "stop_reason_at"]
 
 # Every wording a stored alert body can have. The store keeps the text only, not the template id, so a read tries each
 # one; rows written before #614 (7babdba9) only ever fit the multi-leg form ("exited 1 legs at ..."). Stored text is

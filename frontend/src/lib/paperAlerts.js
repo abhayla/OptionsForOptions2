@@ -14,7 +14,29 @@ const announcedActive = new Set()
 const announceKey = (a) => `${a.id}|${a.escalated_at ?? ''}`
 let activeSeen = false
 
+// ADR-330 (3)(b): a fired Stops-panel exit is an informational History row (kind stop_fired), popped once as a short
+// message. ONE reader: GET /alerts/answered?after=<last id seen>. Rows present at the page's first good read never pop
+// (no flood of old messages); a failed or unreadable read pops nothing and changes nothing (bell included: these rows
+// are never in activeAlerts).
+let stopSeen = null
+const stopRowOk = (r) => r && Number.isInteger(r.id) && typeof r.kind === 'string' && typeof r.text === 'string'
+
+/** The stop_fired rows of one answer of GET /alerts/answered that are new since the last good read (never on the first). */
+export function takeStopFired(data) {
+  if (!data || !Array.isArray(data.items) || !data.items.every(stopRowOk)) return []
+  const rows = data.items.filter((r) => r.kind === 'stop_fired')
+  const top = rows.reduce((m, r) => Math.max(m, r.id), stopSeen ?? 0)
+  const first = stopSeen === null
+  const fresh = first ? [] : rows.filter((r) => r.id > stopSeen)
+  stopSeen = top
+  return fresh
+}
+
+export const readStopFired = async () =>
+  (await api.get('/alerts/answered', { params: stopSeen === null ? {} : { after: stopSeen } })).data
+
 export function resetActiveAlerts() {
+  stopSeen = null
   Object.assign(activeAlerts, { count: 0, alerts: [], parts: null, loaded: false })
   announcedActive.clear()
   activeSeen = false

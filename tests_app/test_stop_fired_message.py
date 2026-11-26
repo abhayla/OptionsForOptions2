@@ -1,9 +1,9 @@
 """W2-A (ADR-330 (3b), (6), (19)(b); owner Q2; the owner's one-module instruction): a fired Stops-panel exit is raised
 through ``actionable_alerts.inform`` (kind stop_fired) in the exit's own transaction, with the max-loss line from the
-ONE function the Stops panel's route uses (``routes.paper._leg_stop_answer``), priced at the stop level.
+ONE function the Stops panel's route uses (``routes.paper.leg_stop_answer``), priced at the stop level.
 
-The book is the app's iron condor of tests_app/test_leg_stop_risk.py (65 units a leg): a stop on the short call at 140.70
-turns Max Loss 2,860.00 into 12,005.50. Answer states of the line: yes -> line; no / cannot_tell -> no line; an exception
+The book is the app's iron condor of tests_app/test_leg_stop_risk.py: a stop on the short call at 140.70
+turns Max Loss 2,860.00 into 12,005.50. States: yes -> line; no / cannot_tell -> no line; an exception
 while computing it -> no line, logged, the exit and the record are still written. Every test rolls back.
 """
 from __future__ import annotations
@@ -59,7 +59,7 @@ async def _fire_leg(db, which: int, level: str, tick: str):
 
 
 async def test_a_fired_leg_stop_is_one_informational_history_row_with_the_max_loss_line(db):
-    monitor, stored, ids, fires = await _fire_leg(db, SHORT_CALL, "140.70", "141.00")
+    monitor, stored, _ids, fires = await _fire_leg(db, SHORT_CALL, "140.70", "141.00")
     assert fires == 1 and monitor.fires == 1
     [(title, text)] = await _alerts(db, stored.id)
     assert LINE in text and text.startswith("Stop-loss: ")
@@ -77,7 +77,7 @@ async def test_a_failing_line_computation_never_stops_the_exit_or_the_record(db,
     def broken(*_a, **_k):
         raise RuntimeError("engine fell over")
 
-    monkeypatch.setattr(paper_routes, "_leg_stop_answer", broken)
+    monkeypatch.setattr(paper_routes, "leg_stop_answer", broken)
     monitor, stored, _, fires = await _fire_leg(db, SHORT_CALL, "140.70", "141.00")
     assert fires == 1 and monitor.fires == 1 and monitor.failures == 0
     [(_, text)] = await _alerts(db, stored.id)
@@ -87,7 +87,7 @@ async def test_a_failing_line_computation_never_stops_the_exit_or_the_record(db,
 
 @pytest.mark.parametrize("state", ["no", "cannot_tell"])
 async def test_an_answer_of_no_or_cannot_tell_writes_no_line_and_no_figure(db, monkeypatch, state):
-    monkeypatch.setattr(paper_routes, "_leg_stop_answer", lambda *a, **k: paper_routes._exit_risk_answer(state))
+    monkeypatch.setattr(paper_routes, "leg_stop_answer", lambda *a, **k: paper_routes._exit_risk_answer(state))
     _, stored, _, fires = await _fire_leg(db, SHORT_CALL, "140.70", "141.00")
     [(_, text)] = await _alerts(db, stored.id)
     assert fires == 1 and "max loss" not in text and "Rs" not in text
@@ -103,7 +103,7 @@ async def test_a_long_wing_stop_gets_the_engines_own_answer_no_fixed_maximum(db)
 
 async def test_an_index_exit_gets_a_line_only_when_the_exit_check_says_yes(db):
     market = Market()
-    stored, ids, keys = await _condor(db)
+    stored, _ids, keys = await _condor(db)
     await triggers.add(db, stored.id, triggers.NewTrigger("conditional_exit", "below", D("22850.00"),
                                                           underlying="NIFTY"))
     monitor = _monitor(db, market)

@@ -51,6 +51,7 @@ from ofo_app.live_push import LiveFeed
 from ofo_app.routes.outcome import SettingsReader, feed_scope, with_rate_in_force
 
 log = logging.getLogger(__name__)
+# ADR-330 (3)(b): a fired stop is raised through ofo_app.actionable_alerts.inform, never a table write of its own
 
 RELOAD_SECONDS: Final = 60.0
 POLL_SECONDS: Final = 0.5
@@ -266,9 +267,9 @@ class PaperMonitor:
         from ofo_app.routes import paper as paper_routes  # noqa: PLC0415 - the routes import this module
         try:
             async with session.begin_nested():
-                names, terms = await paper_routes._names_and_terms(session, a.underlying, book)
+                names, terms = await paper_routes.names_and_terms(session, a.underlying, book)
                 if t.kind == "leg_stop":
-                    answer = paper_routes._leg_stop_answer(
+                    answer = paper_routes.leg_stop_answer(
                         book, open_net[t.contract_id], t.contract_id, t.level, names, terms, now)
                 else:
                     answer = paper_routes.index_exit_answer(book, {c: prices[c] for c in sorted(open_net)}, terms,
