@@ -120,16 +120,7 @@ describe('Active page', () => {
     expect(ids(page, 'alert-row')).toHaveLength(1)
     expect(bellCount()).toBe(1)
   })
-  it('Exit posts exit, goes to the strategy builder page, and never calls a /paper/.../exit endpoint', async () => {
-    answers['GET /alerts/active'] = () => Promise.resolve(active(1))
-    answers['POST /alerts/1/answer'] = () => Promise.resolve({ data: { id: 1 } })
-    const page = await mountAt('/alerts/active', AlertsPage)
-    await page.get('[data-testid="alert-answer-exit"]').trigger('click')
-    await flushPromises()
-    expect(calls.filter((c) => c.method === 'POST')).toEqual([{ method: 'POST', url: '/alerts/1/answer', body: { answer: 'exit' } }])
-    expect(calls.some((c) => /\/paper\/.*exit/.test(c.url))).toBe(false)
-    expect(r.currentRoute.value.fullPath).toBe('/strategy/builder?strategy=7')
-  })
+  // W2-B: Exit no longer navigates; it opens the shared exit confirmation on this page (tests/alerts-exit-door-w2b.test.js)
   it('a 409 answer shows the server reason and keeps the row; Exit then stays on the page', async () => {
     answers['GET /alerts/active'] = () => Promise.resolve(active(1))
     const parts = { what_happened: 'This alert is already answered.', impact: 'It was answered elsewhere.', what_is_blocked: 'Nothing was changed.', next_action: 'Reload.' }

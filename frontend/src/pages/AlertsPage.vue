@@ -6,9 +6,10 @@
 <script setup>
 import PageHeader from '@/components/common/PageHeader.vue'
 import EmptyState from '@/components/states/EmptyState.vue'
-import { computed, onMounted, ref } from 'vue'
-import { useRoute, useRouter } from 'vue-router'
+import { computed, nextTick, onMounted, ref } from 'vue'
+import { useRoute } from 'vue-router'
 import ErrorMessage from '@/components/common/ErrorMessage.vue'
+import PaperStrategies from '@/components/strategy/PaperStrategies.vue'
 import { istHm, istTime } from '@/lib/displayFormat'
 import { plainName } from '@/lib/saveDraft'
 import { NEUTRAL_PARTS } from '@/services/api'
@@ -20,7 +21,6 @@ const alertBody = (a) => (a.body.startsWith(`${a.title}: `) ? a.body.slice(a.tit
 const NO_CHANNELS = 'No notification channels are set up yet.'
 
 const route = useRoute()
-const router = useRouter()
 const isActive = computed(() => route.path.endsWith('/active'))
 // the third tab is the one that is neither Active nor Notification settings (no path literal: ADR-066's scan)
 const isRecords = computed(() => !isActive.value && !route.path.endsWith('/notification-settings'))
@@ -30,6 +30,10 @@ const line = computed(() => (route.path.endsWith('/notification-settings') ? NO_
 const answerError = ref({})
 const busy = ref(false)
 const exitCode = 'exit'
+// W2-B (ADR-330 (3), (12)): after the answer is stored, Exit opens the ONE shared paper exit confirmation (the Paper list's door:
+// usePaperExit gate + PaperConfirmDialog + the one addToPaper post) for that strategy, here on this page. Nothing exits before the
+// user confirms in it; a flat strategy gets the door's own note; closing it (confirm or cancel) leaves the alert answered.
+const exitFor = ref(null)
 
 async function answer(a, code) {
   if (busy.value) return
@@ -51,8 +55,7 @@ async function answer(a, code) {
     return
   }
   busy.value = false
-  // WAVE 2: open usePaperExit confirmation. Until then Exit goes to the strategy's builder page; it never exits by itself.
-  if (code === exitCode) await router.push({ path: '/strategy/builder', query: { strategy: String(a.strategy_id) } })
+  if (code === exitCode) { exitFor.value = null; await nextTick(); exitFor.value = String(a.strategy_id) }
 }
 
 onMounted(async () => {
@@ -106,5 +109,6 @@ onMounted(async () => {
       </li>
     </ul>
     <EmptyState v-else :message="line" icon="bell" data-testid="alerts-empty" />
+    <PaperStrategies v-if="exitFor !== null" :key="exitFor" :exit-only-for="exitFor" class="mt-3" data-testid="alerts-exit-door" @exit-closed="exitFor = null" />
   </section>
 </template>
