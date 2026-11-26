@@ -122,6 +122,9 @@ def _closed(run: CheckRun) -> frozenset[str]:
     return side_scope.closed_sides(getattr(entry, "legs", None), getattr(now, "legs", None))
 
 
+_NOT_APPLICABLE = {"call": "plan_watch_side_not_applicable_call", "put": "plan_watch_side_not_applicable_put"}
+
+
 def _plan_lines(run: CheckRun, live: bool) -> list[dict]:
     lines = _plan_lines_all(run, live)
     gone = side_scope.rule_notes(run.body, _closed(run))  # rule id -> its closed side(s); {} when nothing is closed
@@ -132,9 +135,10 @@ def _plan_lines(run: CheckRun, live: bool) -> list[dict]:
     for x in lines:
         rid = rule_of.get(x["key"], x["key"])  # a rule line's key is its rule id; a limit's, its trigger
         side = sorted(gone[rid])[0] if rid in gone else None
-        out.append(x if side is None else _line(
+        # one sentence per side; a side the catalogue does not name keeps the line as it was (fail closed)
+        out.append(x if side not in _NOT_APPLICABLE else _line(
             x["key"], x["kind"], "plan", x["label"], x["unit"], "not_applicable",
-            reason=render_explanation("plan_watch_side_not_applicable", side=side)))
+            reason=render_explanation(_NOT_APPLICABLE[side])))
     return out
 
 

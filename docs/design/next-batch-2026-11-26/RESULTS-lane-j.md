@@ -124,8 +124,10 @@ N10. Side closed, the answers (ADR-330 (2)(b), (33)). After N8, Alerts > Active,
     the new shape": the confirmation shows the row's own sentence "The call side of this trade is closed. Add the legs
     again, or confirm the new shape: this strategy will change from its entry shape to Bull Put Spread." (the shape as
     the server names it); Cancel: nothing
-    is stored and the row stays asking; Confirm: the row leaves Active, the bell drops by 1. Not built: the plan's
-    rule lines reading "Not applicable: the <side> side is closed" (ADR-330 (2)(a)).
+    is stored and the row stays asking; Confirm: the row leaves Active, the bell drops by 1.
+    Plan watch after a side closed (ADR-330 (2)(a)): a plan rule that needs the closed side reads "Not applicable: the
+    call side is closed" with dashes for now and distance; the other side's rules keep working. Note: the stock iron
+    condor plan has no side-scoped rule (only T-05 is, and it is off), so this line shows only on a plan with T-05 on.
 N11. Reset to playbook (ADR-330 (9), (32)). A plan saved from a playbook: switch one condition off, type a Rs 400 stop
     and a 15:15 time exit, Save. Open the plan sheet > Edit > "Reset to playbook": one confirmation says the typed
     levels stay; Confirm: the condition is on again, the Rs 400 stop and 15:15 stay, the changed / switched-off markers
@@ -133,6 +135,9 @@ N11. Reset to playbook (ADR-330 (9), (32)). A plan saved from a playbook: switch
 N12. Deleted / Restored in the history (ADR-330 (31)). My Strategies: delete one draft, then Undo. Open its history:
     two entries "Deleted" and "Restored", each with its time, and no Restore button on either. Bulk: tick 3 rows,
     Delete selected, Undo: each of the 3 histories has one "Deleted" and one "Restored".
+N13. Customise triggers keeps the plan (S-11). Plan sheet: type 400 in "Stop (Rs)" and a time exit (today, 15:15),
+    then press "Customise triggers": the customise page opens. Come back to the builder: the plan sheet opens again by
+    itself with 400 and 15:15 still typed; Save saves them. Another strategy's sheet shows nothing held.
 Re-checks after the merge (quick):
 R1. Exit from Positions: Positions > Paper > a trade > Exit: the confirmation, Cancel exits nothing, Confirm exits.
 R2. Positions: the real and paper lists load; the Stops link of a Live Strategies card opens Positions at that trade's
@@ -234,7 +239,8 @@ current, none hand-edited.
 
 | 2 | 7d81d0a | ic docs 3d66541, Lane R ce5316e, Step 2, Step 3, the review fix | `prepush.py --full` TOTAL PASS 2137 s |
 | 3 | 3d7aaf7 | ic docs e40a5ad, Lane R ecb3655, Lane P a59f7a9 (0056), Lane U b81970b, Lane S d344d82 | `prepush.py --full` TOTAL PASS 2460 s |
-| 4 | (this push) | P7 page answers, P8 Reset button, ADR-330 (31) with 0057, health e2e fix | see the commit's gate |
+| 4 | (see push 5 row) | P7 page answers, P8 Reset button, ADR-330 (31) with 0057, health e2e fix, side-closed templates | `prepush.py --full` |
+| 5 | (this push) | Not-applicable plan line, S-11 hold, Lane R 71ed990, Lane U 63091d7 | see the commit's gate |
 
 Coordinator message for push 1 could not be sent: the session-message service refused this session (untrusted
 device); recorded here instead.
@@ -262,4 +268,4 @@ device); recorded here instead.
   (W2-A); `alert_side_closed_text` (now also names the shape that remains), `plan_sheet_reset`, `plan_sheet_reset_confirm` and
   the `labels:plan_sheet` pin (P7/P8); `change_deleted` "Deleted", `change_undeleted` "Restored" (ADR-330 (31)).
 - REQ-070 AC-8 text (ADR-330 (31)); the 0057 downgrade refusal rule.
-- Owner question LJ-1 (fired-stop line priced at the fill), `owner-questions-lane-j.md`.
+- Owner question LJ-1: answered (ADR-330 (41), the recorded fill, as built).

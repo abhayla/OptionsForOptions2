@@ -100,14 +100,20 @@ def _kind(a: aa.Alert) -> str:
     return a.kind or "adjustment_rule"  # a record written before migration 0054 is an adjustment rule
 
 
+_SIDE_CLOSED_TEXT = {("call", "Bull Put Spread"): "alert_side_closed_text_call",
+                     ("put", "Bear Call Spread"): "alert_side_closed_text_put"}
+
+
 def _words(a: aa.Alert, by_id: dict[int, store.Suggestion]) -> Any:
     """The words the inbox already shows for the record (Active says what today's record says); an informational note
     is rendered from the catalogue id and values stored with it; a record the inbox cannot word falls back to its
     stage-less rule label, never a raw id."""
     side = _closed_side(a)
     shape = None if side is None else side_closed.remaining_shape_name(side)
-    if shape is not None:  # ADR-330 (2) (b): the side_closed row says the side closed, the shape that remains, asks
-        return render_explanation("alert_side_closed_text", side=side, shape=shape)
+    # ADR-330 (2) (b): the side_closed row says the side closed, the shape that remains, and asks; the sentence names
+    # the shape, so it is used only when the shape data still names that one (else the row's earlier words, fail closed)
+    if (side, shape) in _SIDE_CLOSED_TEXT:
+        return render_explanation(_SIDE_CLOSED_TEXT[(side, shape)])
     if a.note is not None:
         template_id, values = a.note
         return render_explanation(template_id, **values)

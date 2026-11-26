@@ -1,6 +1,9 @@
 # Lane J owner questions (26 Nov 2026)
 
-## LJ-1 The fired leg stop's max-loss line: priced at the stop level or at the fill?
+## LJ-1 The fired leg stop's max-loss line: priced at the stop level or at the fill? ANSWERED
+
+Owner 26 Nov evening (question tool, through the coordinator): "The real exit price", option 1, as built. Recorded as
+ADR-330 (41) on fix/ic-live-test-1123.
 
 Spec basis: ADR-330 (6): "If this stop fires, max loss becomes Rs X (now Rs Y)" ... "The same line is in the alert
 when the stop fires." The spec does not say which price the alert's figure uses when the fill gaps past the level.
