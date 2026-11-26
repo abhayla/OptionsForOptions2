@@ -125,7 +125,7 @@ describe('D-05 builder half: a failed read of the book blocks every Exit (REQ-10
     expect(orderPosts()).toHaveLength(0)
   })
 
-  it('failed: an open Exit dialog closes, nothing is posted, the edit (all legs out) is kept', async () => {
+  it('failed: an open Exit dialog closes, nothing is posted, the staged exit is dropped (legs as before the click)', async () => {
     const w = await builder()
     await t(w, 'paper-exit-all').trigger('click')
     await flushPromises()
@@ -133,7 +133,7 @@ describe('D-05 builder half: a failed read of the book blocks every Exit (REQ-10
     await failRead(w)
     expect(t(w, 'paper-confirm').exists()).toBe(false)
     expect(orderPosts()).toHaveLength(0)
-    expect(w.vm.$.setupState.legs).toEqual([])
+    expect(w.vm.$.setupState.legs).toEqual(w.vm.$.setupState.paper.net) // N-04: dropped through the same cancel as the user's
     expect(t(w, 'paper-exit-reason').text()).toBe(NOT_LIVE)
   })
 
@@ -197,7 +197,7 @@ describe('ADR-328 (4): an Exit is never built from an old net', () => {
     expect(t(w, 'paper-confirm').exists()).toBe(false)
     await s.confirmPending(rows)
     expect(orderPosts()).toHaveLength(0)
-    expect(s.legs).toEqual([])
+    expect(s.legs).toEqual(s.paper.net) // N-04: the staged exit is dropped with the dialog
   })
 
   it('changed elsewhere, Confirm called in the same tick as the mark: posts nothing and closes the dialog', async () => {
@@ -220,14 +220,14 @@ describe('ADR-328 (4): an Exit is never built from an old net', () => {
     expect(t(w, 'paper-confirm').exists()).toBe(true)
   })
 
-  it('changed elsewhere: Exit edits kept after the dialog closed are not posted by "Review and add" (ADR-328 (4))', async () => {
+  it('changed elsewhere: no Exit edit outlives the closed dialog; Review and add is gone and nothing is posted (ADR-328 (4))', async () => {
     const w = await builder()
     await t(w, 'paper-exit-all').trigger('click')
     await flushPromises()
     await setMark(w, true)
     expect(t(w, 'paper-confirm').exists()).toBe(false)
-    expect(w.vm.$.setupState.legs).toEqual([]) // the edits are kept
-    await t(w, 'paper-review').trigger('click')
+    expect(w.vm.$.setupState.legs).toEqual(w.vm.$.setupState.paper.net) // N-04: dropped, nothing left to review
+    expect(t(w, 'paper-review').exists()).toBe(false)
     await flushPromises()
     if (t(w, 'paper-confirm-button').exists()) await t(w, 'paper-confirm-button').trigger('click')
     await flushPromises()
@@ -237,12 +237,13 @@ describe('ADR-328 (4): an Exit is never built from an old net', () => {
     expect(t(w, 'paper-exit-reason').text()).toBe(CHANGED)
   })
 
-  it('failed read: Exit edits kept after the dialog closed are not posted by "Review and add" either', async () => {
+  it('failed read: no Exit edit outlives the closed dialog either; nothing is posted', async () => {
     const w = await builder()
     await t(w, 'paper-exit-all').trigger('click')
     await flushPromises()
     await failRead(w)
-    await t(w, 'paper-review').trigger('click')
+    expect(t(w, 'paper-review').exists()).toBe(false) // N-04: the staged exit went with the dialog
+    expect(w.vm.$.setupState.legs).toEqual(w.vm.$.setupState.paper.net)
     await flushPromises()
     if (t(w, 'paper-confirm-button').exists()) await t(w, 'paper-confirm-button').trigger('click')
     await flushPromises()

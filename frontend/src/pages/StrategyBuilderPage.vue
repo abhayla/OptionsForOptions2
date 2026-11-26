@@ -29,6 +29,7 @@ import TrackingPanel from '@/components/strategy/TrackingPanel.vue'
 import AdjustSteps from '@/components/strategy/AdjustSteps.vue'
 import { ADD_TO_PAPER_LABEL, PAPER_PLACED_NOT_REFRESHED_TEXT, PAPER_STATE, addToPaper as postPaperOrders, paperPostOutcome } from '@/lib/tracking'
 import PaperConfirmDialog from '@/components/strategy/PaperConfirmDialog.vue'
+import ExitButton from '@/components/strategy/ExitButton.vue'
 import LoadFailed from '@/components/common/LoadFailed.vue'
 import { PAPER_REREAD_FAILED_TEXT } from '@/lib/sharedStateText'
 import {
@@ -39,6 +40,7 @@ import { withAsOf } from '@/lib/paperList'
 import PaperBookPanel from '@/components/strategy/PaperBookPanel.vue'
 import { paperPnlBlock, usePaperBookRead } from '@/lib/usePaperBookRead'
 import { usePriceFreshness } from '@/lib/priceState'
+import { usePaperExit } from '@/lib/usePaperExit'
 import PaperStrategies from '@/components/strategy/PaperStrategies.vue'
 import AdjustCompare from '@/components/strategy/AdjustCompare.vue'
 import { opportunitiesFromQuery, picksFromQuery } from '@/lib/adjustDrawer'
@@ -459,13 +461,16 @@ const { readFailed: paperBookFailed } = usePriceFreshness({
   held: () => paper.value?.book ?? null,
   serverState: () => paper.value?.book?.state,
 })
-const exitBlocked = computed(() => paperBookFailed.value || paperContractsChanged.value)
+// N-04 / N-05: the ONE blocked rule (the book panel's own usePaperExit, same inputs): per-leg Exit, Exit all and "Review and add" all
+// read exitGate.blocked, so they are disabled in exactly the same states; the reason line is the one the panel shows under Exit all.
+const exitGate = usePaperExit({ readFailed: paperReadFailed, held: () => paper.value?.book ?? null, changed: paperContractsChanged })
+const exitBlocked = exitGate.blocked
 const exitOrigin = ref(false) // the pending edits came from Exit all or a per-leg Exit; stays true until they are posted or discarded (ADR-328 (4))
 const paperTotal = computed(() => (paper.value ? paperPnlBlock(paper.value.book, paperBookFailed.value) : null))
 function reviewPending(fromExit = false) { // the "Review and add" button passes its click event: only `true` marks an Exit
   if (!paper.value || paperStale.value || !pendingOrders.value?.length) return
   if (fromExit === true) exitOrigin.value = true // never reset here: "Review and add" of Exit edits is still an Exit
-  if (exitOrigin.value && exitBlocked.value) return // post nothing; the panel's reason line says why
+  if (exitBlocked.value) return // post nothing; the panel's reason line says why
   paperError.value = ''
   paperState.value = PAPER_STATE.READY
   paperRows.value = confirmRowsFor(pendingOrders.value, paper.value.book, contractName, livePriceById.value)
@@ -487,10 +492,18 @@ function exitPaper(contractId, lots) {
   setLegs(next)
   reviewPending(true)
 }
-// ADR-328 (4) / D-05: an Exit dialog posts nothing while the read failed or the trade changed elsewhere; it closes, the edits stay,
-// the panel's reason line says why. A dialog of "Review and add" for other edits is not touched (L6, deferred).
+// N-04 / N-05: the ONE way an Exit dialog closes without a Confirm: the user's Cancel, and every close the page does itself (the read
+// failed, the trade changed elsewhere, a Confirm that arrives while blocked). It drops the staged exits too (legs back to the net the
+// book holds), so no "pending change" outlives a dialog nobody confirmed. A dialog of "Review and add" for other edits keeps its edits.
+function cancelPaperDialog() {
+  const wasExit = exitOrigin.value
+  paperDialog.value = false
+  if (wasExit && !paperStale.value) { exitOrigin.value = false; discardPending() } // stored orders (stale net): nothing to drop, the re-read replaces the legs
+}
+// ADR-328 (4) / D-05: an Exit dialog posts nothing while the read failed or the trade changed elsewhere; it closes through the same
+// cancel as the user's, the panel's reason line says why. A dialog of "Review and add" for other edits is not touched (L6, deferred).
 watch(exitBlocked, (blocked) => {
-  if (blocked && paperDialog.value && exitOrigin.value && !paperBusy.value && !paperStale.value && paperState.value !== PAPER_STATE.UNKNOWN) paperDialog.value = false
+  if (blocked && paperDialog.value && exitOrigin.value && !paperBusy.value && !paperStale.value && paperState.value !== PAPER_STATE.UNKNOWN) cancelPaperDialog()
 })
 // Drafts Mode summary: the book's Profit left / Loss left first (or the words for its extremes_reason), its original Max Profit /
 // Max Loss below; every figure the book reply's text as sent. Null outside Drafts Mode: the summary is unchanged.
@@ -506,8 +519,8 @@ const paperLeft = computed(() => { // GC-ICFIX u124: after-charges forms, labell
 // R-11: legs still carrying the entry and time the book loaded are paper fills ("Paper average", no time)
 const paperFills = computed(() => (paper.value ? paper.value.net.map(paperFillKey) : []))
 async function confirmPending(orders) {
-  if (paperBusy.value || !paper.value) return
-  if (exitOrigin.value && exitBlocked.value) { paperDialog.value = false; return } // post nothing (the watch may not have run yet)
+  if (paperBusy.value || !paper.value || !paperDialog.value) return // a Confirm for a dialog that is no longer open (the page closed it) posts nothing
+  if (exitOrigin.value && exitBlocked.value) { cancelPaperDialog(); return } // post nothing (the watch may not have run yet)
   const { id } = paper.value
   paperBusy.value = true
   paperError.value = ''
@@ -1170,12 +1183,12 @@ const leaveGuard = useLeaveBuilder({
         <div v-if="paper && !paperDialog" class="mt-2 flex flex-wrap items-center gap-2 text-sm" data-testid="paper-pending">
           <span v-if="paperStale && rereadBusy" class="flex-1" data-testid="paper-pending-stale">{{ PAPER_PLACED_NOT_REFRESHED_TEXT }}</span>
           <span v-else class="flex-1" data-testid="paper-pending-count">{{ pendingOrders === null ? PAPER_PENDING_UNREADABLE : pendingText(pendingOrders.length) }}</span>
-          <button v-if="!paperStale && pendingOrders?.length" type="button" class="h-9 rounded-lg bg-accent px-3 font-medium text-white" data-testid="paper-review" @click="reviewPending">{{ REVIEW_AND_ADD_LABEL }}</button>
+          <ExitButton v-if="!paperStale && pendingOrders?.length" :blocked="exitBlocked" :show-reason="false" class="h-9 rounded-lg bg-accent px-3 font-medium text-white disabled:opacity-50" data-testid="paper-review" @click="reviewPending">{{ REVIEW_AND_ADD_LABEL }}</ExitButton>
           <button v-if="pendingOrders === null || pendingOrders.length" type="button" class="h-9 rounded-lg border border-line px-3 font-medium" data-testid="paper-discard" @click="discardPending">{{ DISCARD_LABEL }}</button>
         </div>
         <PaperBookPanel v-if="paper" :book="paper.book" :net="paper.net" :read-failed="paperBookFailed" :contracts-changed="paperContractsChanged" :show-orders="showOrdersTick" @exit="exitPaper" @exit-all="exitAllPaper" />
         </div>
-        <PaperConfirmDialog :open="paperDialog" :orders="paperRows" :strategy-id="route.query.strategy" :busy="paperBusy" :error="paperError" :state="paperState" @confirm="confirmPending" @cancel="paperDialog = false" @orderbook="openPaperOrderbook" />
+        <PaperConfirmDialog :open="paperDialog" :orders="paperRows" :strategy-id="route.query.strategy" :busy="paperBusy" :error="paperError" :state="paperState" @confirm="confirmPending" @cancel="cancelPaperDialog" @orderbook="openPaperOrderbook" />
         <SaveDraftBar ref="barRef" :legs="legs" :rules-ref="String(route.query.rules_ref || '')" :current="openStrategy" :shown-name="shapeName ?? ''" :paper-mode="paper !== null" :live-price-by-id="livePriceById" class="max-[1099px]:contents" @open="openFromBar" @saved="onSaved" @paper-added="onPaperAdded" @renamed="onRenamed" @deleted="onDeleted">
           <template #add-edit>
             <button type="button" class="h-10 flex-1 basis-0 rounded-lg border border-line font-medium" aria-haspopup="dialog" :aria-expanded="pickerOpen ? 'true' : 'false'" data-testid="add-edit" @click="pickerOpen = !pickerOpen">Add/Edit</button>
