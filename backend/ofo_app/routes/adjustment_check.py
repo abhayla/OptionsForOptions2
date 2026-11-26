@@ -24,8 +24,8 @@ from fastapi import APIRouter, Depends
 from ofo.adjustment import playbook_eval as pe
 from ofo.adjustment import stop_lines as sl
 from ofo.adjustment.playbook_types import SHOWN_NAMES
-from ofo.checks import pnl_amount as rupee
 from ofo.charges import ChargeRates
+from ofo.checks import pnl_amount as rupee
 from ofo.errors import render
 from ofo.errors.explanations import render_explanation
 from ofo.money import PAISE

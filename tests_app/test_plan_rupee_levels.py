@@ -11,10 +11,12 @@ import copy
 import json
 import pathlib
 from decimal import Decimal as D
+from types import SimpleNamespace as NS
 
 import pytest
 from ofo.adjustment import stop_lines as sl
 from ofo_app import playbook_store
+from ofo_app import settings_in_force as sif
 from ofo_app.routes import adjustment_plan as plan
 
 SEED = json.loads((pathlib.Path(__file__).parent.parent / "backend/ofo/adjustment/system_playbooks.json")
@@ -117,7 +119,9 @@ def test_rupee_stop_on_the_s21_base_shows_the_percent_derived_beside_it():
     assert out["stop_words"].startswith("a loss of Rs 400.00 (15.38 % of max loss)")
 
 
-# --- Opus review round (P4 fix round): F1, F3, F5, F9 -----------------------------------------------------------------------
+# --- P4 review round: F1, F3, F5, F9 ---
+# --- Opus review round (P4 fix round): F1, F3, F5, F9 ---------------------------------------------------------
+EQUAL_LOTS = 2
 S21 = plan.Bases(max_loss=D("2600"), lots=2)
 
 
@@ -134,7 +138,6 @@ def test_f1_a_rupee_stop_keeps_the_2x_credit_line_and_the_words_say_both():
 
 
 def test_f1_the_choice_lives_in_one_constant_of_settings_in_force():
-    from ofo_app import settings_in_force as sif
     assert sif.RUPEE_STOP_KEEPS_CREDIT is True
 
 
@@ -159,12 +162,11 @@ def test_f5_clearing_the_rupee_stop_with_no_percent_is_refused_naming_stop_rupee
 
 
 def _tracked(*lots):
-    from types import SimpleNamespace as NS
     return NS(stop_base=None, position=NS(legs=[NS(lots=n) for n in lots]))
 
 
 def test_f9_the_per_lot_figure_only_when_every_leg_has_the_same_lot_count():
-    assert plan.bases_of(_tracked(2, 2, 2, 2), None, None).lots == 2
+    assert plan.bases_of(_tracked(*[EQUAL_LOTS] * 4), None, None).lots == EQUAL_LOTS
     assert plan.bases_of(_tracked(1, 2, 2, 1), None, None).lots is None
     out = shown_on(edited(stop_rupees="400"), plan.Bases(max_loss=D("2600"), lots=None))
     assert out["stop_per_lot"] is None and "per lot" not in out["stop_rupee_words"]

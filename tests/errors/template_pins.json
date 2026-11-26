@@ -4710,5 +4710,21 @@
   "explanation:plan_watch_armed_heading": {
     "sha256": "a304b4801200d43f8ee5d98c06f0cf44036a3a9167781b8d562886116fa850d7",
     "reviewed": "pending owner read"
+  },
+  "explanation:plan_stop_words_rupees": {
+    "sha256": "4536bae876576ff744d24fda94d27fda5211b7328ed6e116cdbddd6633dffb54",
+    "reviewed": "pending owner read"
+  },
+  "explanation:plan_stop_words_rupees_plain": {
+    "sha256": "5d5960ba73105141613e77f32bfe73ec7cb7eb7992d235b4f72b51cc6fab2367",
+    "reviewed": "pending owner read"
+  },
+  "explanation:limit_target_rupees": {
+    "sha256": "774308f777e17dcdc3523db338d3f3d37a7cff48daadf1ed38f30088e429dcb1",
+    "reviewed": "pending owner read"
+  },
+  "explanation:limit_stop_rupees": {
+    "sha256": "a561fd61c385e518b588715a77da3afdfc813e4d2b55486375571086fd715205",
+    "reviewed": "pending owner read"
   }
 }

@@ -422,7 +422,7 @@ def _apply_rupee(out: dict, key: str, typed: str | None, percent: str | None,  #
     level = _rupee_in(typed, field)
     if level is None:
         if key == sl.RUPEE_LOSS_KEY and not percent and key in guards:
-            raise _bad(field)  # a plan always has a stop: clearing the rupee one with no percent would restore a stale T-06
+            raise _bad(field)  # a plan always has a stop: clearing it with no percent would restore a stale T-06
         guards.pop(key, None)
         return False
     if percent and not figs.agree(Decimal(percent), level, base, lots):

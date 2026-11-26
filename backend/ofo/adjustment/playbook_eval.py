@@ -1280,11 +1280,7 @@ def limits_now(body: Mapping, state: StrategyState, results: tuple[Result, ...] 
         tight = None if threshold is None else _tighten_of(c, tid)
         out.append(_limit_row(_rule_of(body, tid), tid, why, held, ans.code if isinstance(ans, _Missing) else None,
                               (threshold, amount, later, tight), ans.slots if isinstance(ans, _Missing) else ()))
-    for rid in (sl.RUPEE_PROFIT_RULE, sl.RUPEE_LOSS_RULE):  # a readable rupee level is a limit row of its own
-        level = _rupee_level_of(guards, rid)
-        o = rupee_rows.get(rid)
-        if level is not None and o is not None:
-            out.append(_limit_row(rid, rid, None, held, o.reason, (level, level, (), None), o.slots))
+    out.extend(_rupee_limit_rows(guards, rupee_rows, held))
     credit = _credit_outcome(state, why)
     for o in credit:
         line = _credit_line_of(state)
@@ -1294,6 +1290,16 @@ def limits_now(body: Mapping, state: StrategyState, results: tuple[Result, ...] 
                                hit.threshold if hit and isinstance(hit.threshold, Decimal) else
                                (line.amount if line is not None else None), (), None), o.slots))
     return tuple(out)
+
+
+def _rupee_limit_rows(guards: Mapping, rows: Mapping[str, _Outcome], held: Mapping[str, int]) -> list[LimitNow]:
+    """A readable rupee level is a limit row of its own: threshold = amount = the level (review F2)."""
+    out = []
+    for rid in (sl.RUPEE_PROFIT_RULE, sl.RUPEE_LOSS_RULE):
+        level, o = _rupee_level_of(guards, rid), rows.get(rid)
+        if level is not None and o is not None:
+            out.append(_limit_row(rid, rid, None, held, o.reason, (level, level, (), None), o.slots))
+    return out
 
 
 def _rupee_level_of(guards: Mapping, rid: str) -> Decimal | None:
