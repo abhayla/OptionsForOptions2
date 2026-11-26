@@ -5,6 +5,10 @@ owner only through the coordinator. Where an option is reversible, Lane R builds
 
 ## LR-Q1 Row 11: the "Replace the N legs?" question on a draft link (asked 26 Nov 2026)
 
+**ANSWERED 26 Nov 2026 about 12:00 IST** (owner, question tool, via the coordinator): option 1, "Keep as is, correct the
+check". Written into ADR-329 (3) and ADR-328 (2); row 11 of RESULTS.md rewritten; `draft-link.test.js` stays the test of
+the in-app case.
+
 Spec basis: ADR-328 (2) (Option Chain "Add Selected" asks "Replace the N legs?"); ADR-329 (1) (the chain trip now ADDS,
 it does not replace) and ADR-329 (3) ("ADR-328 (2) stays for the case where the builder, already showing legs,
 receives a draft link that replaces them (a pasted or shared link, not the chain's Add Selected)"); ADR-329 (2) and

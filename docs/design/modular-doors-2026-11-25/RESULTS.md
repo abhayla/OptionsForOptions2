@@ -423,9 +423,10 @@ Market hours unless stated. Tick each box. Lane A rows 1-5 (plan section 8), Lan
     builder? The 3 unsaved legs will be lost." Stay / Leave (one leg: "The 1 unsaved leg will be lost."). The same
     question from the Option Chain while it holds the legs. Empty builder, or a saved strategy unchanged: no question.
     Closing or reloading the tab: no question (decided: the browser's own box cannot show the sentence). [ ]
-11. **Replace question on a draft link, ADR-328 (2).** With legs shown, paste a different `?draft=` link into the
-    address bar of the same tab: "Replace the N legs in the builder?" Replace / Cancel; Cancel keeps the legs and puts the
-    old link back. [ ]
+11. **Pasted draft link, ADR-329 (3).** With unsaved legs shown, paste a different `?draft=` link into the address bar
+    of the same tab and press Enter: the page loads fresh with the link's legs and asks nothing (the same as a reload,
+    row 10). The Replace question is only for a draft link that arrives inside the app (unit test `draft-link.test.js`;
+    no screen does that today). Rewritten 26 Nov 2026 after the owner's answer to LR-Q1. [ ]
 12. **Drafts Mode across the chain trip.** Open a paper strategy, remove one leg (a pending change), go to the Option
     Chain and back: the pending change is still there. If the book changed meanwhile: "The strategy changed while you
     were away. Your unsaved edits were not restored." [ ]
