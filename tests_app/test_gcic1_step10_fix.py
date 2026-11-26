@@ -10,7 +10,6 @@ import datetime
 from decimal import Decimal as D
 from types import SimpleNamespace
 
-import pytest
 from ofo.adjustment import carry
 from ofo.settings import calc as settings_calc
 from ofo.settings import defaults, registry
@@ -21,27 +20,31 @@ from ofo_app import playbook_store
 NOW = datetime.datetime(2026, 10, 30, 15, 0, tzinfo=IST)
 
 
-def _resolve(monkeypatch, *, is_system: bool, status: str):
+def _resolve(monkeypatch, *, plan):
     async def plan_for(*_a):
-        return None
+        return plan
 
-    async def active_for(*_a):
-        return SimpleNamespace(is_system=is_system, status=status, body={"x": 1}, id=7)
+    async def active_for(*_a):  # ADR-330 (11): never consulted any more
+        raise AssertionError("the active playbook must not be read")
+
+    async def saved_before(*_a):
+        return False
     monkeypatch.setattr(playbook_store, "plan_for", plan_for)
     monkeypatch.setattr(playbook_store, "active_for", active_for)
+    monkeypatch.setattr(check, "plan_saved_before_adr247", saved_before)
     return asyncio.run(check.resolve(None, "u", 1, "iron_condor"))
 
 
-@pytest.mark.parametrize(("is_system", "status", "draft"), [
-    (False, "draft", False),     # the user's OWN copy: the column defaults to 'draft', it is not a draft
-    (False, "approved", False),
-    (True, "draft", True),
-    (True, "approved", False),
-])
-def test_draft_is_a_property_of_system_playbooks_only(monkeypatch, is_system, status, draft):
-    got = _resolve(monkeypatch, is_system=is_system, status=status)
-    assert got.draft is draft
-    assert got.status == (status if is_system else None)
+def test_a_plan_is_never_a_draft_and_has_no_system_status(monkeypatch):
+    """REQ-158 AC-2 under ADR-330 (11): ``draft`` / ``status`` belong to system playbooks, which are no longer a
+    source of watching; the strategy's own plan resolves as source ``plan``, draft False, status None."""
+    got = _resolve(monkeypatch, plan=SimpleNamespace(body={"x": 1}, playbook_id=7))
+    assert (got.source, got.draft, got.status, got.is_system, got.playbook_id) == ("plan", False, None, False, 7)
+
+
+def test_no_plan_resolves_to_none_whatever_playbook_is_active(monkeypatch):
+    got = _resolve(monkeypatch, plan=None)
+    assert (got.source, got.body, got.playbook_id, got.draft, got.status) == ("none", None, None, False, None)
 
 
 def test_carry_gap_follows_a_changed_setting_with_no_restart():
