@@ -388,17 +388,18 @@ def state_of(tracked: Tracked, market: MarketInputs, spot: SpotAnswer, margin: M
     day = market.day_open
     kind = market.expiry_kind or position.expiry_kind or "weekly"
     stops = None
+    stop_base = getattr(tracked, "stop_base", None)  # ADR-330 (1): fixed at entry, None = not checked
     if resolved is not None:
         from ofo_app import settings_in_force as sif  # noqa: PLC0415 - it imports this module
-        base = getattr(tracked, "stop_base", None)  # ADR-330 (1): fixed at entry, None = not checked
-        stops = sif.stops_of(resolved, sif.MoneyInputs(None if base is None else base.max_loss,
-                                                       None if base is None else base.credit, stated_margin),
+        stops = sif.stops_of(resolved, sif.MoneyInputs(None if stop_base is None else stop_base.max_loss,
+                                                       None if stop_base is None else stop_base.credit, stated_margin),
                              sif.StageAt(kind, (expiry - now.date()).days))
     return with_gamma(with_carry(pe.StrategyState(stops=stops,
         expiry_kind=market.expiry_kind or position.expiry_kind or "weekly",  # type: ignore[arg-type]
         days_left=(expiry - now.date()).days, hhmm=hhmm, spot=value, shorts=shorts, pnl=pnl,
         pnl_after=pnl_after, pnl_after_reason=pnl_after_reason,
         max_loss=None if gross is None else _limit_value(gross.max_loss),
+        stop_max_loss=None if stop_base is None else _limit_value(stop_base.max_loss),
         max_profit=None if gross is None else _limit_value(gross.max_profit),
         margin=stated_margin, margin_unreadable=margin_unreadable, premium_left=left, adjustment_cost=cheap.cost,
         adjustment_approach=cheap.approach,

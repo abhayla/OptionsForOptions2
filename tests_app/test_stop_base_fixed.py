@@ -18,6 +18,7 @@ from __future__ import annotations
 
 import asyncio
 import copy
+import dataclasses
 import datetime
 import json
 import pathlib
@@ -25,12 +26,18 @@ from decimal import Decimal as D
 from types import SimpleNamespace
 
 import pytest
+import t19_support as t19
+from ofo.adjustment import playbook_eval as pe
 from ofo.adjustment import stop_lines as sl
+from ofo.adjustment.approaches import ChainRow
+from ofo.marketdata.spot_source import SpotAnswer
+from ofo.rules.inputs import DataHealth
 from ofo_app import adjustment_check as check
 from ofo_app import adjustment_readers as readers
 from ofo_app import paper_book, playbook_store, tracked_contracts
 from ofo_app import settings_in_force as sif
 from ofo_app.routes import adjustment_plan as ap
+from ofo_app.routes.adjustment import MarketInputs
 from sqlalchemy import text
 from test_strategy_store import _user, _with_draft
 
@@ -92,7 +99,7 @@ def seams(monkeypatch):
     async def plan_for(*_a):
         return store.plan
 
-    async def backfill(_sid, value):  # the plan store's own write: only where nothing is stored yet
+    async def backfill(_db, _sid, value):  # the plan store's own write: only where nothing is stored yet
         store.writes.append(value)
         if store.plan is not None and store.plan.stop_base is None:
             store.plan.stop_base = value
@@ -134,15 +141,56 @@ def amounts(tracked) -> tuple[D | None, D | None]:
 
 
 # ---- item 1: the core ----------------------------------------------------------------------------------------------
+REAL_CLOSE = [_order(1, "BUY", "exit", T1, "90.60"), _order(2, "SELL", "exit", T1, "55")]  # the 25 Nov close, booked -39
+LIVE_MAX_LOSS, LIVE_CREDIT = D("4914"), D("1586")  # what the old path (the live put spread) read after that close
+
+
+def _state_after(tracked, pnl: str) -> pe.StrategyState:
+    """The check's real state build (``state_of``) on the live put spread, then the loss set to ``pnl`` (the marks of
+    two puts cannot hit an exact rupee figure)."""
+    rows = tuple(ChainRow(D(k), "PE", EXPIRY, f"NIFTYPE{k}", D(ltp), D(ltp) - D("0.05"), D(ltp) + D("0.05"),
+                          D("0.3"), True, True, "stated", False, None, DataHealth.AVAILABLE)
+                 for k, ltp in (("23600", "75"), ("23500", "45")))
+    market = MarketInputs(rows, {}, None, None, None, None, None, NOW)
+    resolved = check.Resolved("plan", plan_body(), 9, None, False, saved_before_adr247=False)
+    state = check.state_of(tracked, market, SpotAnswer(D("23800"), "feed", NOW), None, t19.RATES, True, plan_body(),
+                           config=t19.PREFS.approach, user_values=None, strategy_layer=None, entry_facts=None,
+                           resolved=resolved)
+    return dataclasses.replace(state, pnl=D(pnl), prices_fresh=True, hhmm="11:00", days_left=1)
+
+
+def _fires_t06(state: pe.StrategyState) -> bool:
+    ev = pe.evaluate(plan_body(), state, gap_until="09:30")
+    return any(getattr(r, "rule_id", None) == sl.TRIGGER_MAX_LOSS and isinstance(r, pe.Flag) for r in ev.results)
+
+
 def test_s21_call_side_closed_keeps_stop(seams):
-    """CORE. Entered: 15.4 % of Rs 2,600 = Rs 400.40 and 2x Rs 3,900 = Rs 7,800. The call side then closes (two
-    'exit' orders): the two lines still read Rs 400.40 and Rs 7,800 (the live put spread alone would give other
-    figures)."""
+    """CORE (25 Nov, S-21). Entered: 15.4 % of Rs 2,600 = Rs 400.40 and 2x Rs 3,900 = Rs 7,800. The call side then
+    closes as it did (BUY 24000 @ 90.60, SELL 24100 @ 55, booked -39): the live put spread alone reads max loss
+    Rs 4,914 and credit Rs 1,586 (what the old path used), yet a loss of Rs 401 FIRES the % stop (T-06), Rs 400 does
+    not, and the 2x credit line stays Rs 7,800."""
     seams.plan = _plan()
     assert amounts(_read(seams, ENTRY)) == (LINE_PCT, LINE_CREDIT)
-    after = _read(seams, ENTRY + CALL_SIDE_CLOSED)
-    assert len(after.position.legs) == PUT_SPREAD_LEGS  # the live book is a put spread now
+    after = _read(seams, ENTRY + REAL_CLOSE)
+    assert len(after.position.legs) == PUT_SPREAD_LEGS and after.booked == D("-39")
+    live = sif.compute_stop_base(list(after.position.legs), after.position.lot, after.booked, NOW, "entry")
+    assert (live.max_loss, live.credit) == (LIVE_MAX_LOSS, LIVE_CREDIT)  # the old (live) figures
     assert amounts(after) == (LINE_PCT, LINE_CREDIT)
+    state = _state_after(after, "-401")
+    assert state.max_loss == LIVE_MAX_LOSS  # the live figure stays for the ADR-266 check only
+    assert _fires_t06(state)
+    assert not _fires_t06(_state_after(after, "-400"))
+    lim = {x.trigger_id: x for x in pe.limits_now(plan_body(), state, ())}
+    assert lim[sl.TRIGGER_MAX_LOSS].amount == LINE_PCT
+
+
+def test_base_unavailable_never_falls_back_to_the_live_max_loss(seams):
+    """Failed/absent: no readable base -> the T-06 stop is not checked, even at a loss the live figure would flag."""
+    seams.plan = _plan({"max_loss": "abc"})
+    after = _read(seams, ENTRY + REAL_CLOSE)
+    state = _state_after(after, "-5000")
+    assert state.stop_max_loss is None
+    assert not _fires_t06(state)
 
 
 # ---- the stored base: what each answer state does --------------------------------------------------------------------
@@ -185,7 +233,7 @@ def test_plan_saved_before_the_change_is_backfilled_once_from_the_entry_orders(s
 
 
 def test_a_failed_backfill_write_still_reads_the_entry_figures_never_the_live_legs(seams, monkeypatch):
-    async def broken(_sid, _value):
+    async def broken(_db, _sid, _value):
         raise RuntimeError("database down")
     monkeypatch.setattr(playbook_store, "backfill_stop_base", broken)
     seams.plan = _plan(None)

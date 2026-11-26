@@ -72,3 +72,25 @@ async def test_the_plan_guard_still_keeps_accepted_at_when_only_stop_base_change
             assert second.accepted_at == first.accepted_at and second.stop_base == {"max_loss": "1"}
         finally:
             await outer.rollback()
+
+
+async def test_downgrade_is_refused_with_a_count_while_a_plan_holds_a_stop_base(admin_engine):
+    """As 0046's: the downgrade counts the stored bases under a table lock and refuses (never drops them silently)."""
+    from _migration_replay import recorded  # noqa: PLC0415
+    from sqlalchemy.exc import DBAPIError  # noqa: PLC0415
+
+    async with admin_engine.connect() as c:
+        outer = await c.begin()
+        try:
+            user = _user()
+            _, strategy = await _with_draft(c, user)
+            system = await playbook_store.active_for(c, user, "ic")
+            await playbook_store.accept_plan(c, user, strategy.id, system.id, None, {"max_loss": "1"})
+            sql = recorded("0055_plan_stop_base.py", "downgrade")
+            assert "'pre'" in sql[0] and "ACCESS EXCLUSIVE" in sql[1]
+            with pytest.raises(DBAPIError, match=r"refusing to downgrade 0055_plan_stop_base: \d+ stored stop bases"):
+                async with c.begin_nested():
+                    for statement in sql:
+                        await c.execute(text(statement))
+        finally:
+            await outer.rollback()

@@ -48,7 +48,7 @@ def run(body, *, kind="weekly", stage=0, days=None, hhmm="11:00", pnl="100", max
     money_loss = ENGINE_UNLIMITED if max_loss == pe.UNLIMITED else max_loss
     stops = sif.stops_of(resolved, sif.MoneyInputs(money_loss, credit, None), sif.StageAt(kind, days))
     state = pe.StrategyState(expiry_kind=kind, days_left=days, hhmm=hhmm, spot=None if spot is None else D(spot),
-                             pnl=None if pnl is None else D(pnl), max_profit=max_profit, max_loss=max_loss,
+                             pnl=None if pnl is None else D(pnl), max_profit=max_profit, max_loss=max_loss, stop_max_loss=max_loss,
                              prices_fresh=fresh, tighten_percent=tighten, stops=stops, adjustments_used=used)
     return state, pe.evaluate(resolved.body, state, memory, None, gap_until="09:30")
 

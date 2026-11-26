@@ -44,7 +44,7 @@ def state_at(k: int) -> tuple[dict, StrategyState]:
     days_left = (datetime.date.fromisoformat(sc["expiry"]) - clock.date()).days
     state = StrategyState(
         stops=None, expiry_kind=sc["expiry_kind"], days_left=days_left, hhmm=clock.strftime("%H:%M"), spot=D(sc["market"]["spot"]),
-        shorts=shorts, pnl=pnl, max_loss=width * qty - credit, max_profit=credit, margin=D(sc["broker"]["margin"]["value"]),
+        shorts=shorts, pnl=pnl, max_loss=width * qty - credit, stop_max_loss=width * qty - credit, max_profit=credit, margin=D(sc["broker"]["margin"]["value"]),
         atm_iv=D(sc["market"]["atm_iv"]), entry_atm_iv=D(sc["position"]["entry"]["atm_iv"]), day_open=None,
         prev_close=None, adjustments_used=0, prices_fresh=True)
     body = body_from_fixture(PLAYBOOKS, "ic")

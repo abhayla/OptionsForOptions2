@@ -15,7 +15,8 @@ Changes (owner-run, one transaction; ADDITIVE: no row rewritten, no back-fill he
   back-fill writes it only where it is NULL). The 0031 / 0041 plan guard is unchanged (it never looked at the column).
 - public.ofo_assert_app_role_allowlist: 0052's chain text with the plan block's INSERT and UPDATE column sets widened
   (fails closed when 0031's two column checks are not in the chain exactly once).
-- downgrade: drops the column (the base is derivable from the entry orders) and restores 0052's chain text.
+- downgrade (as 0046's): the allow-list 'pre' check, then locks the table and REFUSES (SQLSTATE OF039, counted) while any
+  plan row holds a stop_base; else drops the column and restores 0052's chain text.
 
 Revision ID: 0055_plan_stop_base
 Revises: 0053_close_finished_strategies
@@ -45,12 +46,14 @@ def _load(filename: str, name: str):
 
 
 _M31 = _load("0031_adjustment_playbooks.py", "ofo_migration_0031_for_0055")
+_M39 = _load("0039_strategy_entry_facts.py", "ofo_migration_0039_for_0055")
 _M52 = _load("0052_strategy_held_entries.py", "ofo_migration_0052_for_0055")
 _BASE = _M31._BASE
 _M3 = _M31._M16._M3
 TABLE = _M31.PLANS
 LABEL = "strategy_adjustment_plans"
 COLUMN = "stop_base"
+SQLSTATE = _M39.SQLSTATE
 OLD_INSERT_COLUMNS = _M31.PLAN_INSERT_COLUMNS
 OLD_UPDATE_COLUMNS = _M31.PLAN_UPDATE_COLUMNS
 INSERT_COLUMNS = (*OLD_INSERT_COLUMNS, COLUMN)
@@ -94,6 +97,23 @@ def upgrade() -> None:
 
 def downgrade() -> None:
     role = _BASE._app_role()
+    op.execute(f"SELECT {_BASE.ALLOWLIST_FUNCTION}('{role}', 'pre')")
+    op.execute(
+        f"""
+        DO $down$
+        DECLARE
+            n BIGINT;
+        BEGIN
+            EXECUTE 'LOCK TABLE {TABLE} IN ACCESS EXCLUSIVE MODE';
+            EXECUTE 'SELECT count(*) FROM {TABLE} WHERE {COLUMN} IS NOT NULL' INTO n;
+            IF n > 0 THEN
+                RAISE EXCEPTION 'refusing to downgrade {revision}: % stored stop bases', n
+                    USING ERRCODE = '{SQLSTATE}';
+            END IF;
+        END
+        $down$;
+        """  # noqa: S608 - constant names only
+    )
     op.execute(f"ALTER TABLE {TABLE} DROP COLUMN {COLUMN}")
     op.execute(previous_allowlist_sql())
     op.execute(f"REVOKE ALL ON FUNCTION {_BASE.ALLOWLIST_FUNCTION}(TEXT, TEXT) FROM PUBLIC")

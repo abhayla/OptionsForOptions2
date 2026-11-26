@@ -147,7 +147,11 @@ class StrategyState:
     #: a reason code = not available. No rule reads it: it is words for the target alert.
     pnl_after: Decimal | None = None
     pnl_after_reason: str | None = None
-    max_loss: Decimal | str | None = None  # Decimal, UNLIMITED or None
+    max_loss: Decimal | str | None = None  # Decimal, UNLIMITED or None: the LIVE legs' (ADR-266 "loss above max loss")
+    #: ADR-330 (1): the max loss of the trade AS ENTERED (the stored stop base), the one the "% of max loss" stop (T-06)
+    #: is compared against and its due-day tighten amount is worked out from. None = no base = T-06 not checked; it
+    #: never falls back to the live ``max_loss``.
+    stop_max_loss: Decimal | str | None = None
     max_profit: Decimal | str | None = None
     margin: Decimal | None = None  # None = the broker did not state it
     #: B2: True when the margin reply could not be read (``margin_block`` state "failed", or a figure that is not a
@@ -1023,9 +1027,12 @@ def _stop_hit(c: _Ctx, tid: str, line: sl.StopInForce) -> Hit:
             raise _Missing(f"{P}margin_not_positive") from None
     else:
         pnl = _need(c.state.pnl, "pnl")
-        num, den = ratios.loss_pct_of_max_loss(pnl, _finite(c.state.max_loss, "max_loss"))
-        if num > den * 100:  # ADR-266: a marked loss above max loss is not real: never flagged
-            raise _Missing(f"{P}inconsistent_prices")
+        num, den = ratios.loss_pct_of_max_loss(pnl, _finite(c.state.stop_max_loss, "max_loss"))  # the entry's (ADR-330)
+        live = _need(c.state.max_loss, "max_loss")  # ADR-266 reads the LIVE legs: a loss above their max loss is not real
+        if live not in (UNLIMITED, 0):  # unlimited live loss: no bound to exceed
+            live_num, live_den = ratios.loss_pct_of_max_loss(pnl, live)
+            if live_num > live_den * 100:
+                raise _Missing(f"{P}inconsistent_prices")
     return _exact(tid, num, den, _stop_threshold(c, tid, line), "ge")
 
 
@@ -1188,8 +1195,8 @@ def limits_now(body: Mapping, state: StrategyState, results: tuple[Result, ...] 
             usable = line is not None and line.active and line.figure is not None
             threshold = hit.threshold if hit else (_stop_threshold(c, tid, line) if usable else None)  # type: ignore[arg-type]
             amount = line.amount if usable else None  # type: ignore[union-attr]
-            if amount is not None and _tighten_of(c, tid) is not None and isinstance(state.max_loss, Decimal):
-                amount = adjust_money.stop_at_pct(state.max_loss, threshold)  # type: ignore[arg-type]
+            if amount is not None and _tighten_of(c, tid) is not None and isinstance(state.stop_max_loss, Decimal):
+                amount = adjust_money.stop_at_pct(state.stop_max_loss, threshold)  # type: ignore[arg-type]
         else:
             threshold = hit.threshold if hit else None
             if hit is None and t.get("on") and not t.get("greyed"):  # type: ignore[union-attr]

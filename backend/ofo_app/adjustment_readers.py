@@ -133,7 +133,9 @@ async def read_tracked(strategy_id: int, rates: ChargeRates | None, db: Any = No
     if db is not None:
         return await _tracked_on(db, strategy_id, rates)
     async with get_sessionmaker()() as own:
-        return await _tracked_on(own, strategy_id, rates)
+        found = await _tracked_on(own, strategy_id, rates)
+        await own.commit()  # the worker's own session: keeps a stop base stored once (ADR-330), nothing else is written
+        return found
 
 
 async def _tracked_on(db: Any, strategy_id: int, rates: ChargeRates | None) -> Tracked | None:
@@ -210,7 +212,7 @@ async def stop_base_in_force(db: Any, strategy_id: int, fresh: Any) -> Any:
         return None
     filled = replace(fresh, source=sif.BASE_BACKFILL)
     try:
-        if await playbook_store.backfill_stop_base(strategy_id, filled.to_json()):
+        if await playbook_store.backfill_stop_base(db, strategy_id, filled.to_json()):
             return filled
         again = await playbook_store.plan_for(db, current_user_ref(), strategy_id)
         return sif.stop_base_from_json(getattr(again, "stop_base", None)) if again is not None else filled

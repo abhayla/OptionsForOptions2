@@ -690,15 +690,14 @@ _BACKFILL_STOP_BASE = text("UPDATE public.strategy_adjustment_plans SET stop_bas
                            "WHERE strategy_id = :strategy_id AND stop_base IS NULL")
 
 
-async def backfill_stop_base(strategy_id: int, value: dict) -> bool:
+async def backfill_stop_base(conn: Any, strategy_id: int, value: dict) -> bool:
     """ADR-330 (1), a plan saved before the stop base existed: store ``value`` ONCE, only where nothing is stored (the
-    first writer wins; True = this call stored it). Its own short transaction: a read path never leaves a write
-    open on the request's session."""
-    from ofo_app.db import get_sessionmaker  # noqa: PLC0415 - the store otherwise takes its connection as a parameter
-
-    async with get_sessionmaker()() as own:
-        done = (await own.execute(_BACKFILL_STOP_BASE, {"strategy_id": strategy_id, "value": _dump(value)})).rowcount
-        await own.commit()
+    first writer wins; True = this call stored it). Written on the CALLER's connection (a request uses ONE connection,
+    #682; the worker never holds two) inside a savepoint, so a failed write cannot poison the caller's transaction.
+    It is kept when the caller commits; a caller that does not commit loses only the write, and the next read works
+    out the same figure again from the (never changing) entry orders."""
+    async with conn.begin_nested():
+        done = (await conn.execute(_BACKFILL_STOP_BASE, {"strategy_id": strategy_id, "value": _dump(value)})).rowcount
     return done == 1
 
 
