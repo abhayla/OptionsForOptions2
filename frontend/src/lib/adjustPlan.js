@@ -23,6 +23,7 @@ export const formOf = (src) => ({
   targetRupees: decimal(src?.target_rupees), stopRupees: decimal(src?.stop_rupees),
   stopRupeesShown: decimal(src?.stop_rupees),
   targetRupeeWords: text(src?.target_rupee_words), stopRupeeWords: text(src?.stop_rupee_words),
+  stopWarning: text(src?.stop_warning), // ADR-330 (25): the server's line when the rupee stop is above the max loss
   targetLast: src?.target_source === 'rupees' ? 'rupees' : 'percent', stopLast: src?.stop_source === 'rupees' ? 'rupees' : 'percent',
 })
 
@@ -90,7 +91,7 @@ const levelsPath = (id, typed) => {
   return `${planPath(id)}/levels${q ? `?${q}` : ''}`
 }
 const level = (l) => (l && typeof l === 'object'
-  ? { percent: decimal(l.percent), rupees: decimal(l.rupees), words: text(l.words), rupeeWords: text(l.rupee_words) } : null)
+  ? { percent: decimal(l.percent), rupees: decimal(l.rupees), words: text(l.words), rupeeWords: text(l.rupee_words), warning: text(l.warning) } : null)
 
 /** GET .../adjustment-plan/levels (with the picked playbook_id, so the sentence is the one the save will say) for the box just typed in (`{ target }`, `{ target_rupees }`, `{ stop }` or
  *  `{ stop_rupees }`): the server works out both figures and the hint words; the browser computes nothing (ADR-008).
