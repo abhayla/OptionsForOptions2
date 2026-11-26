@@ -273,7 +273,8 @@ async def test_the_application_role_cannot_insert_a_system_row_and_the_owner_can
         trans = await conn.begin()
         try:
             await _refused(conn, "INSERT INTO public.adjustment_playbooks (user_ref, strategy_type, name, is_system, "
-                                 "body, slug) VALUES (NULL, 'ic', 'Second system', true, CAST(:b AS JSONB), 'ic-default')",
+                                 "body, slug) VALUES (NULL, 'ic', 'Second system', true, CAST(:b AS JSONB), "
+                                 "'ic-default')",
                            "adjustment_playbooks_standard_slug", b=pb._dump(_body()))
         finally:
             await trans.rollback()
