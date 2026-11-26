@@ -10,9 +10,10 @@ figures (``state_of``); ``strategy_money_view`` is a later phase.
 Answer states: plan present -> its lines; no plan (source "none") -> ``no_plan_text`` and NO plan lines, the armed
 triggers still listed (ADR-330 (11)); the user's pause in force -> no plan lines (no evaluation), triggers paused;
 prices not live or no spot -> state "paused" and no ``now`` (absent, never 0); a limit or rule the evaluator could not
-check -> "not_computable" with its reason; a rule true since tracking started -> "not_applicable" (F-71); a rule that needs a side the entry strategy had and
-no longer has open -> "not_applicable" with "Not applicable: the call / put side is closed" (ADR-330 (2) (a); entry or
-open legs unreadable -> no side judged closed, the rule keeps its state); a rule fired
+check -> "not_computable" with its reason; a rule true since tracking started -> "not_applicable" (F-71); a rule that
+needs a side the entry strategy had and no longer has open -> "not_applicable" with "Not applicable: the call / put
+side is closed" (ADR-330 (2) (a); entry or open legs unreadable -> no side judged closed, the rule keeps its state);
+a rule fired
 -> "fired"; evaluation unreadable, trigger store unreadable -> the check's refusal, no lines (fail closed); strategy
 not found or another user's -> its 404. Writes nothing. Suggest-only (ADR-003): nothing here exits anything.
 """
@@ -130,11 +131,10 @@ def _plan_lines(run: CheckRun, live: bool) -> list[dict]:
     out = []
     for x in lines:
         rid = rule_of.get(x["key"], x["key"])  # a rule line's key is its rule id; a limit's, its trigger
-        if rid in gone:
-            side = sorted(gone[rid])[0]
-            x = _line(x["key"], x["kind"], "plan", x["label"], x["unit"], "not_applicable",
-                      reason=render_explanation("plan_watch_side_not_applicable", side=side))
-        out.append(x)
+        side = sorted(gone[rid])[0] if rid in gone else None
+        out.append(x if side is None else _line(
+            x["key"], x["kind"], "plan", x["label"], x["unit"], "not_applicable",
+            reason=render_explanation("plan_watch_side_not_applicable", side=side)))
     return out
 
 

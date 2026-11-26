@@ -67,6 +67,20 @@ describe('PlanWatch.vue', () => {
     expect(t(w, 'pw-reason').text()).toBe('Prices are not live')
     expect(t(w, 'pw-fires').text()).toBe('₹1,200.00')
   })
+  it('ADR-330 (2)(a): a rule of a closed side reads not_applicable: dashes for fires at / now / distance and the server reason', async () => {
+    const reason = 'Not applicable: the call side is closed'
+    replies = [ok(SERVER({ lines: [line({ key: 'T-05', kind: 'rule', label: 'One side against the other', unit: 'rule_unit', fires_at: null, now: null, distance_rs: null, distance_pct: null, state: 'not_applicable', reason }), line()] }))]
+    const w = mountIt()
+    await flushPromises()
+    const rows = w.findAll('[data-testid="plan-watch-line"]')
+    expect(rows[0].attributes('data-state')).toBe('not_applicable')
+    expect(rows[0].find('[data-testid="pw-fires"]').text()).toBe('—')
+    expect(rows[0].find('[data-testid="pw-now"]').text()).toBe('—')
+    expect(rows[0].find('[data-testid="pw-distance"]').text()).toBe('—')
+    expect(rows[0].find('[data-testid="pw-state"]').text()).toBe('Not applicable' + reason)
+    expect(rows[0].find('[data-testid="pw-reason"]').text()).toBe(reason)
+    expect(rows[1].attributes('data-state')).toBe('watching')
+  })
   it('404, failed and malformed replies print a neutral message and no figures', async () => {
     for (const [r, text] of [
       [fail({ status: 404, parts: null }), 'This strategy was not found, so there is nothing to watch.'],
