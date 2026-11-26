@@ -77,11 +77,13 @@
 
 <script setup>
 import { computed, inject, ref, watch } from 'vue'
+import { getActivePinia } from 'pinia'
 import { routerKey } from 'vue-router'
 import Modal from '@/components/common/Modal.vue'
 import LoadFailed from '@/components/common/LoadFailed.vue'
 import ErrorMessage from '@/components/common/ErrorMessage.vue'
 import AlertStylePicker from '@/components/strategy/AlertStylePicker.vue'
+import { useBuilderHold } from '@/stores/builderHold'
 import api, { NEUTRAL_PARTS } from '@/services/api'
 import { PLAN_LOADING_TEXT, PLAN_LOAD_FAILED_TEXT, PLAN_PICK_TIMED_OUT_TEXT, PLAN_REFILLED_TEXT, PLAN_TIMED_OUT_TEXT } from '@/lib/sharedStateText'
 import { asIsBody, customiseUrl, fetchLevels, fetchPlan, formOf, resetPlan, saveBody, sendPlan } from '@/lib/adjustPlan'
@@ -94,6 +96,9 @@ const props = defineProps({
 })
 const emit = defineEmits(['close', 'saved'])
 const router = inject(routerKey, null)
+// S-11: the unsaved form is held in the builder-hold store while Customise triggers is open; no store (no pinia) = behave as before
+const planHold = () => { try { return getActivePinia() ? useBuilderHold() : null } catch { return null } }
+let baseKey = '' // the server's reading as this sheet loaded it (equality only)
 
 const sheet = ref(null)
 const form = ref(formOf(null))
@@ -151,6 +156,12 @@ async function load(pickId = null, pickName = '') {
     sheet.value = read
     if (read.kind === 'sheet') {
       form.value = { ...read.prefill }
+      baseKey = JSON.stringify([read.prefill, read.plan])
+      if (pickId === null) {
+        // S-11: the form held while Customise triggers was open comes back, if the server's plan is as it was; else the server's wins
+        const held = planHold()?.takePlan(id) ?? null
+        if (held && held.base === baseKey) form.value = { ...read.prefill, ...held.form }
+      } else planHold()?.clearPlan()
       if (pickId !== null) refilledFrom.value = pickName
     }
   } catch (e) {
@@ -209,6 +220,7 @@ async function send(body) {
       errorParts.value = NEUTRAL_PARTS
       return
     }
+    planHold()?.clearPlan()
     emit('saved', read)
     emit('close')
   } catch (e) {
@@ -221,6 +233,7 @@ const useAsIs = () => send(asIsBody(form.value.playbookId))
 const save = () => send(saveBody(form.value))
 function customise() {
   const url = customiseUrl(props.strategyId)
+  if (sheet.value?.kind === 'sheet') planHold()?.holdPlan(props.strategyId, { base: baseKey, form: form.value }) // S-11
   emit('close')
   router?.push(url)
 }
