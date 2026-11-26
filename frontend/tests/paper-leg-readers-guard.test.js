@@ -39,7 +39,7 @@ export const READERS = [
 export const REMAINING = [
   { file: 'src/components/strategy/StrategyTable.vue', line: 54, text: '<StrategyLegRow v-for="row in table.rows"', why: 'Full table: every cell (LTP, entry, P&L) is the outcome reply row; deferred issue' },
   { file: 'src/components/strategy/AdvancedDetails.vue', line: 23, text: 'adv-bid', why: 'bid / ask per leg from the reply leg_quotes (not an LTP or P&L); listed for completeness' },
-  { file: 'src/components/strategy/LegList.vue', line: 42, text: 'priceTextById', why: 'leg list "Price has moved ... now" text from the reply ltp_display; deferred issue' },
+  { file: 'src/components/strategy/LegList.vue', line: 43, text: 'priceTextById', why: 'leg list "Price has moved ... now" text from the reply ltp_display; deferred issue' },
 ]
 
 function walk(dir, out = []) {
