@@ -754,8 +754,13 @@ test.describe('Live Strategies card: links (S-14, ADR-330 (10), ADR-230 (2), REQ
     test.fail()
     await world(page, [R172, R171])
     await openLive(page)
-    const a = (await card(page, 172).locator('header').innerText())
-    const b = (await card(page, 171).locator('header').innerText())
+    // both cards must have drawn (the second one starts only after the first has its answer), or "Checked at" alone would differ
+    await expect(card(page, 172).getByTestId('live-checked-at')).toBeVisible()
+    await expect(card(page, 171).getByTestId('live-checked-at')).toBeVisible()
+    // the header minus the "Checked at" time (the same moment for both here): what the user reads to tell the trades apart
+    const head = async (id: number) => (await card(page, id).locator('header').innerText()).replace(/Checked at .*/, '').trim()
+    const a = await head(172)
+    const b = await head(171)
     await shot(page, 'N-14')
     expect(a).not.toEqual(b)
   })
@@ -1334,5 +1339,378 @@ test.describe('Adjustments: the playbook editor (REQ-158 AC-1..AC-6, REQ-159, RE
     await expect(page.getByTestId('pb-pick')).toBeHidden()
     await page.getByRole('tab', { name: 'Playbooks' }).click()
     await expect(page.getByTestId('pb-pick')).toBeVisible()
+  })
+})
+
+// =============================================================================================== Adjustment settings tab and system playbook admin
+// ADJ-27..60 (REQ-168 AC-1..AC-4, ADR-245, ADR-247) and ADJ-61..66 (REQ-169 AC-1..AC-3, ADR-222 (10)). Shapes are those of
+// tests/adjustment-settings-screen.test.js (GET /api/adjustments/preferences) and SystemPlaybookAdmin.vue (/api/system-playbooks/ic/...).
+const prefOf = (key: string, label: string, value: string, source: string, extra: Record<string, unknown> = {}) => ({
+  key, label, unit: 'delta', type: 'decimal', what_it_changes: `What ${label} changes.`, value, source, admin_default: value, min: '0', max: '100', since: null, history: [], ...extra,
+})
+const PREFS = () => [
+  prefOf('adjustments.short_delta_weekly', 'Target short delta, weekly', '0.20', 'default'),
+  prefOf('adjustments.near_level_percent', 'Near-level distance', '0.75', 'yours', { unit: 'percent', admin_default: '0.5' }),
+  prefOf('adjustments.compare_steps', 'Compare chart steps', '20', 'default', { unit: 'count' }),
+  prefOf('alerts.weekly.cooldown_minutes', 'Weekly expiry: cool-down, same rule', '45', 'yours', { unit: 'minutes' }),
+]
+type Prefs = { list: ReturnType<typeof PREFS>; posts: { path: string; body: any }[]; get: Reply | null; post: ((path: string, body: any) => Reply | null) }
+
+async function prefWorld(page: Page, over: Partial<Prefs> = {}) {
+  const { S, P } = await adjWorld(page)
+  S.strategies = ok({ strategies: [{ id: 82, name: 'Owner IC Dec', underlying: 'NIFTY', status_word: 'Draft', updated_at: '2026-11-20T09:00:00+05:30' }] })
+  const X: Prefs = { list: PREFS(), posts: [], get: null, post: () => null, ...over }
+  await page.route(/\/api\/adjustments\/preferences/, async (route) => {
+    const req = route.request()
+    const path = new URL(req.url()).pathname.replace('/api', '')
+    const send = async (r: Reply) => {
+      if (r.wait) await r.wait
+      if (r.abort) return route.abort('connectionrefused')
+      if (r.text !== undefined) return route.fulfill({ status: r.status ?? 200, contentType: 'application/json', body: r.text })
+      return route.fulfill({ status: r.status ?? 200, json: r.json ?? {} })
+    }
+    if (req.method() === 'GET') return send(X.get ?? ok({ preferences: X.list }))
+    const body = req.postDataJSON()
+    X.posts.push({ path, body })
+    const custom = X.post(path, body)
+    if (custom) return send(custom)
+    const m = /^\/adjustments\/preferences\/(.+?)(\/reset)?$/.exec(path)!
+    const p = X.list.find((x) => x.key === m[1])!
+    if (m[2]) { p.value = p.admin_default; p.source = 'default' } else { p.value = body.value; p.source = 'yours' }
+    return send(ok({}))
+  })
+  return { S, P, X }
+}
+const openPrefs = async (page: Page) => {
+  await page.goto(ADJ)
+  await page.getByRole('tab', { name: 'Adjustment settings' }).click()
+  await expect(page.getByTestId('settings-title')).toHaveText('Adjustment settings')
+}
+const prefRow = (page: Page, key: string) => page.getByTestId(`pref-${key}`)
+
+test.describe('Adjustments: Adjustment settings tab (REQ-168 AC-1..AC-4, ADR-245, ADR-247)', () => {
+  test('PREF-1 loaded: the groups in the approved order with the two open ones expanded; a row shows label, value, source tag, admin default and allowed range (ADJ-35)', async ({ page }) => {
+    // Spec basis: REQ-168 AC-1 (grouped by the trader's question); ADR-245
+    await prefWorld(page)
+    await openPrefs(page)
+    await expect(page.getByTestId('set-group-title')).toHaveText(['Where a moved leg lands', 'How much to adjust', 'When to tell me', 'Alert pace and sound', 'Exits and targets', 'Plan limits', 'Playbook triggers', 'Order defaults', 'Display only', 'Set by the admin only'])
+    const open = page.locator('[data-testid="set-group-toggle"][aria-expanded="true"]')
+    await expect(open).toHaveCount(2)
+    const r = prefRow(page, 'adjustments.short_delta_weekly')
+    await expect(r.getByRole('heading', { level: 3 })).toHaveText('Target short delta, weekly')
+    await expect(r.getByTestId('pref-value')).toHaveText('0.20')
+    await expect(r.getByTestId('pref-admin-default')).toHaveText('Admin default: 0.20')
+    await expect(r.getByTestId('pref-range')).toHaveText('Allowed: 0 to 100')
+  })
+
+  test('PREF-2 a group header toggles its body: Display only is closed, opens on click and closes again (ADJ-35)', async ({ page }) => {
+    // Spec basis: REQ-168 AC-1
+    await prefWorld(page)
+    await openPrefs(page)
+    const t = page.getByTestId('set-group-toggle').filter({ hasText: 'Display only' })
+    await expect(t).toHaveAttribute('aria-expanded', 'false')
+    await expect(prefRow(page, 'adjustments.compare_steps')).toBeHidden()
+    await t.click()
+    await expect(t).toHaveAttribute('aria-expanded', 'true')
+    await expect(prefRow(page, 'adjustments.compare_steps')).toBeVisible()
+    await t.click()
+    await expect(t).toHaveAttribute('aria-expanded', 'false')
+  })
+
+  test('PREF-3 Expand all opens every group and reads "Collapse all"; a second click closes them (ADJ-33)', async ({ page }) => {
+    // Spec basis: REQ-168 AC-1
+    await prefWorld(page)
+    await openPrefs(page)
+    await expect(page.getByTestId('settings-expand-all')).toHaveText('Expand all')
+    await page.getByTestId('settings-expand-all').click()
+    await expect(page.getByTestId('settings-expand-all')).toHaveText('Collapse all')
+    await expect(page.locator('[data-testid="set-group-toggle"][aria-expanded="true"]')).toHaveCount(10)
+    await page.getByTestId('settings-expand-all').click()
+    await expect(page.locator('[data-testid="set-group-toggle"][aria-expanded="true"]')).toHaveCount(0)
+  })
+
+  test('PREF-4 search narrows to the matching settings and says so; Clear filters brings every group back (ADJ-28, ADJ-32, ADJ-34)', async ({ page }) => {
+    // Spec basis: REQ-168 AC-2 (search); REQ-168 AC-1
+    await prefWorld(page)
+    await openPrefs(page)
+    await page.getByTestId('settings-search').fill('delta')
+    await expect(prefRow(page, 'adjustments.short_delta_weekly')).toBeVisible()
+    await expect(prefRow(page, 'adjustments.compare_steps')).toHaveCount(0)
+    await expect(page.getByText('Showing the groups with a matching setting.')).toBeVisible()
+    await page.getByTestId('settings-clear').click()
+    await expect(page.getByTestId('settings-search')).toHaveValue('')
+    await expect(page.getByTestId('set-group-title')).toHaveCount(10)
+  })
+
+  test('PREF-5 search with no match: "No setting matches these filters." and its Clear filters button (ADJ-32)', async ({ page }) => {
+    // Spec basis: REQ-168 AC-2
+    await prefWorld(page)
+    await openPrefs(page)
+    await page.getByTestId('settings-search').fill('zzzz-nothing')
+    await expect(page.getByTestId('settings-no-match')).toContainText('No setting matches these filters.')
+    await page.getByTestId('settings-no-match').getByTestId('settings-clear').click()
+    await expect(page.getByTestId('set-group-title')).toHaveCount(10)
+  })
+
+  test('PREF-6 a chip filters (Weekly) and is shown pressed; pressing it again lifts the filter (ADJ-29)', async ({ page }) => {
+    // Spec basis: REQ-168 AC-2 (filter chips)
+    await prefWorld(page)
+    await openPrefs(page)
+    const chip = page.getByTestId('settings-chip-weekly')
+    await expect(chip).toHaveAttribute('aria-pressed', 'false')
+    await chip.click()
+    await expect(chip).toHaveAttribute('aria-pressed', 'true')
+    await expect(prefRow(page, 'adjustments.short_delta_weekly')).toBeVisible()
+    await expect(prefRow(page, 'alerts.weekly.cooldown_minutes')).toBeVisible()
+    await expect(prefRow(page, 'adjustments.near_level_percent')).toHaveCount(0)
+    await chip.click()
+    await expect(chip).toHaveAttribute('aria-pressed', 'false')
+    await expect(page.getByTestId('set-group-title')).toHaveCount(10)
+  })
+
+  test('PREF-7 the scope list holds "All my strategies (your values)" and the strategy; choosing it says the settings are shown for that strategy', async ({ page }) => {
+    // Spec basis: REQ-168 AC-4 (three layers: default, yours, one strategy); ADR-247
+    await prefWorld(page)
+    await openPrefs(page)
+    await expect(page.getByTestId('settings-scope').locator('option').first()).toHaveText('All my strategies (your values)')
+    await expect(page.getByTestId('settings-scope').locator('option')).toHaveCount(2)
+    await page.getByTestId('settings-scope').selectOption('82')
+    await expect(page.getByTestId('settings-intro')).toContainText('Shown for')
+    await expect(page.getByTestId('settings-intro')).toContainText('Owner IC Dec')
+  })
+
+  test('PREF-8 changing a value: click the value, type the new one and a note, Save posts it as text, then the row shows it with the "yours" tag (ADJ-46, 47..51)', async ({ page }) => {
+    // Spec basis: REQ-168 AC-2 (change a value, with a note); decimal-money rule (a value travels as text)
+    const { X } = await prefWorld(page)
+    await openPrefs(page)
+    const r = prefRow(page, 'adjustments.short_delta_weekly')
+    await expect(r.getByTestId('pref-source')).not.toHaveText(/yours/i)
+    await r.getByTestId('pref-edit').click()
+    await expect(r.getByLabel('New value (from 0 to 100)')).toBeVisible()
+    await r.getByTestId('pref-input').fill('0.25')
+    await r.getByTestId('pref-note').fill('tighter')
+    await r.getByTestId('pref-save').click()
+    await expect(r.getByTestId('pref-value')).toHaveText('0.25')
+    await expect(r.getByTestId('pref-source')).toHaveText(/yours/i)
+    await expect(page.getByTestId('pref-form-adjustments.short_delta_weekly')).toHaveCount(0)
+    expect(X.posts).toEqual([{ path: '/adjustments/preferences/adjustments.short_delta_weekly', body: { value: '0.25', note: 'tighter' } }])
+  })
+
+  test('PREF-9 a refused change shows the server\'s reason in that row and keeps the old value', async ({ page }) => {
+    // Spec basis: REQ-168 AC-3 (a refusal is said in the server's words); the allowed range is shown on the row
+    await prefWorld(page, { post: () => ({ status: 422, json: { reason: 'The value must be between 0 and 100.' } }) })
+    await openPrefs(page)
+    const r = prefRow(page, 'adjustments.short_delta_weekly')
+    await r.getByTestId('pref-edit').click()
+    await r.getByTestId('pref-input').fill('500')
+    await r.getByTestId('pref-save').click()
+    await expect(r.getByTestId('pref-refusal')).toHaveText('The value must be between 0 and 100.')
+    await expect(r.getByTestId('pref-value')).toHaveText('0.20')
+  })
+
+  test('PREF-10 a change that fails with no reason (connection refused) says "The change was not saved. Try again."', async ({ page }) => {
+    // Spec basis: REQ-065 (failed write is said, nothing assumed saved)
+    await prefWorld(page, { post: () => ({ abort: true }) })
+    await openPrefs(page)
+    const r = prefRow(page, 'adjustments.short_delta_weekly')
+    await r.getByTestId('pref-edit').click()
+    await r.getByTestId('pref-input').fill('0.3')
+    await r.getByTestId('pref-save').click()
+    await expect(r.getByTestId('pref-refusal')).toHaveText('The change was not saved. Try again.')
+    await expect(r.getByTestId('pref-value')).toHaveText('0.20')
+  })
+
+  test('PREF-11 Reset to default posts the reset and the row returns to the admin default (ADJ-52, ADJ-59)', async ({ page }) => {
+    // Spec basis: REQ-168 AC-2 (reset to the admin default)
+    const { X } = await prefWorld(page)
+    await openPrefs(page)
+    await page.getByTestId('set-group-toggle').filter({ hasText: 'When to tell me' }).click()
+    const r = prefRow(page, 'adjustments.near_level_percent')
+    await expect(r.getByTestId('pref-value')).toHaveText('0.75')
+    await r.getByTestId('pref-edit').click()
+    await r.getByTestId('pref-reset').click()
+    await expect(r.getByTestId('pref-value')).toHaveText('0.5') // back to the admin default of this setting
+    expect(X.posts[0].path).toBe('/adjustments/preferences/adjustments.near_level_percent/reset')
+    await expect(r.getByTestId('pref-source')).not.toHaveText(/yours/i)
+  })
+
+  test('PREF-12 a settings read that fails (500): the server\'s parts or the neutral sentence, and Try again reads again and shows the settings (ADJ-30)', async ({ page }) => {
+    // Spec basis: REQ-065; ADR-330 (S-05 wording: a failed read says so and offers Try again)
+    const { X } = await prefWorld(page, { get: { status: 500, json: { detail: 'boom' } } })
+    await openPrefs(page)
+    await expect(page.getByTestId('prefs-unavailable')).toContainText('The settings could not be read, so no value is shown.')
+    await expect(prefRow(page, 'adjustments.short_delta_weekly')).toHaveCount(0)
+    X.get = null
+    await page.getByTestId('prefs-retry').click()
+    await expect(prefRow(page, 'adjustments.short_delta_weekly')).toBeVisible()
+    await expect(page.getByTestId('prefs-unavailable')).toHaveCount(0)
+  })
+
+  test('PREF-13 connection refused on the settings read: the same unavailable sentence, no value shown', async ({ page }) => {
+    // Spec basis: REQ-065
+    await prefWorld(page, { get: { abort: true } })
+    await openPrefs(page)
+    await expect(page.getByTestId('prefs-unavailable')).toContainText('The settings could not be read, so no value is shown.')
+    await expect(page.getByTestId('pref-value')).toHaveCount(0)
+  })
+
+  test('PREF-14 loading: "Loading settings…" until the read answers', async ({ page }) => {
+    // Spec basis: shared states (loading)
+    const g = gate()
+    await prefWorld(page, { get: { json: { preferences: PREFS() }, wait: g.wait } })
+    await openPrefs(page)
+    await expect(page.getByTestId('prefs-loading')).toHaveText('Loading settings…')
+    g.open()
+    await expect(prefRow(page, 'adjustments.short_delta_weekly')).toBeVisible()
+  })
+
+  test('PREF-15 no setting came back: "No setting came back from the server for you, so no value is shown here."', async ({ page }) => {
+    // Spec basis: REQ-168 AC-1 (an empty answer is said, no value invented)
+    await prefWorld(page, { get: ok({ preferences: [] }) })
+    await openPrefs(page)
+    await expect(page.getByTestId('prefs-empty')).toHaveText('No setting came back from the server for you, so no value is shown here.')
+  })
+
+  test('PREF-16 "Reset this group to the defaults" resets every changed setting in that group (ADJ-60)', async ({ page }) => {
+    // Spec basis: REQ-168 AC-2 (reset a group)
+    const { X } = await prefWorld(page)
+    await openPrefs(page)
+    await page.getByTestId('set-group-toggle').filter({ hasText: 'When to tell me' }).click()
+    await page.getByTestId('group-reset-g-tell').click()
+    await expect.poll(() => X.posts.map((p) => p.path)).toEqual(['/adjustments/preferences/adjustments.near_level_percent/reset'])
+  })
+})
+
+const SYS_VERSIONS = [
+  { version: 2, current: true, draft: false, saved_by: 'owner', saved_at: '2026-11-20T10:00:00+05:30', restored_from: null },
+  { version: 1, current: false, draft: false, saved_by: 'owner', saved_at: '2026-11-01T10:00:00+05:30', restored_from: null },
+]
+type Sys = { versions: Reply; calls: { method: string; path: string; body: any }[]; post: (path: string) => Reply | null }
+async function sysWorld(page: Page, over: Partial<Sys> = {}) {
+  const w = await adjWorld(page)
+  const Y: Sys = { versions: ok({ versions: SYS_VERSIONS }), calls: [], post: () => null, ...over }
+  await page.route(/\/api\/system-playbooks\//, async (route) => {
+    const req = route.request()
+    const path = new URL(req.url()).pathname.replace('/api', '')
+    const body = req.method() === 'POST' ? req.postDataJSON() : null
+    Y.calls.push({ method: req.method(), path, body })
+    const send = async (r: Reply) => (r.abort ? route.abort('connectionrefused') : route.fulfill({ status: r.status ?? 200, json: r.json ?? {} }))
+    if (req.method() === 'GET') return send(Y.versions)
+    return send(Y.post(path) ?? ok({ version: 3, body: BODY }))
+  })
+  return { ...w, Y }
+}
+const sys = (page: Page) => page.getByTestId('sys-admin')
+
+test.describe('Adjustments: system playbook admin (REQ-169 AC-1..AC-3, ADR-222 (10))', () => {
+  test('SYS-1 a system playbook shows the admin box: "Edit system playbook", the current version and the earlier versions with who and when; Restore only on the older one (ADJ-61, ADJ-66)', async ({ page }) => {
+    // Spec basis: REQ-169 AC-1, AC-2
+    await sysWorld(page)
+    await openAdj(page)
+    await expect(sys(page).getByTestId('sys-edit')).toHaveText('Edit system playbook')
+    await expect(sys(page).getByTestId('sys-version')).toHaveText('Version 2')
+    await expect(page.getByTestId('sys-version-2')).toContainText('Version 2 (current)')
+    await expect(page.getByTestId('sys-version-1')).toContainText('saved by owner on 1 Nov 2026, 10:00:00 IST')
+    await expect(page.getByTestId('sys-restore-2')).toHaveCount(0)
+    await expect(page.getByTestId('sys-restore-1')).toHaveText('Restore this version')
+    await expect(page.getByTestId('sys-approve')).toHaveCount(0) // not a Draft
+  })
+
+  test('SYS-2 an own (not system) playbook has no admin box', async ({ page }) => {
+    // Spec basis: REQ-169 (the admin edits SYSTEM playbooks only)
+    await sysWorld(page)
+    await openAdj(page)
+    await pickOwn(page)
+    await expect(sys(page)).toHaveCount(0)
+  })
+
+  test('SYS-3 Edit opens Save as a new version and Done editing; Done editing closes them (ADJ-61, ADJ-64)', async ({ page }) => {
+    // Spec basis: REQ-169 AC-1
+    await sysWorld(page)
+    await openAdj(page)
+    await expect(page.getByTestId('sys-save')).toHaveCount(0)
+    await sys(page).getByTestId('sys-edit').click()
+    await expect(page.getByTestId('sys-save')).toHaveText('Save as a new version')
+    await expect(page.getByTestId('sys-edit')).toHaveCount(0)
+    await page.getByTestId('sys-cancel').click()
+    await expect(page.getByTestId('sys-save')).toHaveCount(0)
+    await expect(page.getByTestId('sys-edit')).toBeVisible()
+  })
+
+  test('SYS-4 Save with no reason is refused on the page: "Say why you are making this change." and nothing is sent (ADJ-62, ADJ-63)', async ({ page }) => {
+    // Spec basis: REQ-169 AC-2 (a reason is required)
+    const { Y } = await sysWorld(page)
+    await openAdj(page)
+    await sys(page).getByTestId('sys-edit').click()
+    await page.getByTestId('sys-save').click()
+    await expect(page.getByTestId('sys-form-error')).toHaveText('Say why you are making this change.')
+    expect(Y.calls.filter((c) => c.method === 'POST')).toHaveLength(0)
+  })
+
+  test('SYS-5 Save with a reason posts the working body, the reason and the version it was read at, then says "Saved as version 3." and clears the reason', async ({ page }) => {
+    // Spec basis: REQ-169 AC-2 (saved as a new version with the reason)
+    const { Y } = await sysWorld(page)
+    await openAdj(page)
+    await sys(page).getByTestId('sys-edit').click()
+    await page.getByTestId('pb-stage-name-0').fill('Sooner')
+    await page.getByTestId('sys-reason').fill('Tighten the first stage')
+    await page.getByTestId('sys-save').click()
+    await expect(page.getByTestId('sys-notice')).toHaveText('Saved as version 3.')
+    await expect(page.getByTestId('sys-reason')).toHaveValue('')
+    const post = Y.calls.find((c) => c.method === 'POST')!
+    expect(post.path).toBe('/system-playbooks/ic/versions')
+    expect(post.body).toMatchObject({ reason: 'Tighten the first stage', base_version: 2 })
+    expect(post.body.body.stages.weekly[0].name).toBe('Sooner')
+  })
+
+  test('SYS-6 a refused Save shows the server\'s sentence and keeps the reason', async ({ page }) => {
+    // Spec basis: REQ-169 AC-2; REQ-065 (refusal verbatim)
+    await sysWorld(page, { post: () => ({ status: 409, json: { reason: 'Someone saved version 3 first. Reload and try again.' } }) })
+    await openAdj(page)
+    await sys(page).getByTestId('sys-edit').click()
+    await page.getByTestId('sys-reason').fill('x')
+    await page.getByTestId('sys-save').click()
+    await expect(page.getByTestId('sys-refusal')).toHaveText('Someone saved version 3 first. Reload and try again.')
+    await expect(page.getByTestId('sys-reason')).toHaveValue('x')
+  })
+
+  test('SYS-7 Restore this version posts the restore with the reason and the base version (ADJ-66)', async ({ page }) => {
+    // Spec basis: REQ-169 AC-2 (restore an earlier version, with a reason)
+    const { Y } = await sysWorld(page)
+    await openAdj(page)
+    await page.getByTestId('sys-reason').fill('Back to the first one')
+    await page.getByTestId('sys-restore-1').click()
+    await expect(page.getByTestId('sys-notice')).toHaveText('Saved as version 3.')
+    const post = Y.calls.find((c) => c.method === 'POST')!
+    expect(post.path).toBe('/system-playbooks/ic/versions/1/restore')
+    expect(post.body).toEqual({ reason: 'Back to the first one', base_version: 2 })
+  })
+
+  test('SYS-8 Restore with no reason is refused on the page and sends nothing', async ({ page }) => {
+    // Spec basis: REQ-169 AC-2
+    const { Y } = await sysWorld(page)
+    await openAdj(page)
+    await page.getByTestId('sys-restore-1').click()
+    await expect(page.getByTestId('sys-form-error')).toHaveText('Say why you are making this change.')
+    expect(Y.calls.filter((c) => c.method === 'POST')).toHaveLength(0)
+  })
+
+  test('SYS-9 a Draft current version offers Approve; Approve posts the reason (ADJ-65)', async ({ page }) => {
+    // Spec basis: REQ-169 AC-3 (a draft system playbook is approved with a reason)
+    const { Y } = await sysWorld(page, { versions: ok({ versions: [{ ...SYS_VERSIONS[0], draft: true }, SYS_VERSIONS[1]] }) })
+    await openAdj(page)
+    await expect(page.getByTestId('sys-version-2')).toContainText('Version 2 (current) - Draft')
+    await page.getByTestId('sys-reason').fill('Reviewed')
+    await page.getByTestId('sys-approve').click()
+    await expect(page.getByTestId('sys-notice')).toHaveText('Saved as version 3.')
+    expect(Y.calls.find((c) => c.method === 'POST')).toMatchObject({ path: '/system-playbooks/ic/approve', body: { reason: 'Reviewed', base_version: 2 } })
+  })
+
+  test('SYS-10 the versions cannot be read (500): the server\'s sentence is shown and no version list', async ({ page }) => {
+    // Spec basis: REQ-065; REQ-169
+    await sysWorld(page, { versions: { status: 500, json: CATALOGUE_PARTS } })
+    await openAdj(page)
+    await expect(page.getByTestId('sys-refusal')).toHaveText(CATALOGUE_PARTS.what_happened)
+    await expect(page.getByTestId('sys-versions')).toHaveCount(0)
   })
 })
