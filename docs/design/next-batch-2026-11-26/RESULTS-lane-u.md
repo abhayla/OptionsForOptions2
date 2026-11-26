@@ -132,6 +132,48 @@ REQ-030 AC-15 (the leg Undo), catalogue `strategy_name_empty`.
 3. `/settings/zerodha-connection` reads "Zerodha connection is not built yet." for now: its own sentence needs one line on
    the broker-name allow-list (the owner's edit; feature code never names the broker, ADR-012/ADR-029).
 
+## Third batch (26 Nov evening): Lane T answers, D-51
+
+| Item | Decision | State | What changed | Commit |
+|---|---|---|---|---|
+| T-Q5 Buy twice | owner, ADR-330 (40) | test corrected to the spec, PASS | the second Buy on a ticked contract removes the leg and unticks it; REQ-030 AC-5 says so | b92cd874 |
+| T-Q4 Clear filters | coordinator (a) | spec corrected | REQ-029 AC-9: strike range and Details are view settings and stay | e329e82b |
+| T-Q7 days left | coordinator (a), REQ-135 AC-2 | Fixed, not tested | the chain's "N days left" reads the server's `expiry_days`; the browser clock is no longer used (class: chain day counts from the browser clock 1 -> 0) | 025e15ee |
+| T-Q8 Add Selected (0) | coordinator (a), ADR-328 (4) | Fixed, not tested | always shown, greyed, "Tick at least one contract to add."; U-Q12: with a tick but no Buy/Sell, "Choose Buy or Sell for each ticked contract." | 67cfebbe, 0836bb92 |
+| T-Q9 30 spec-silent controls | coordinator (a) | spec lines written (table below) | 13 sentences in 9 REQs | 78790a40 |
+| T-Q10 chain sentences | coordinator (a) | adopted, pending owner read | the chain's own sentences live in `lib/sharedStateText.js`; REQ-029 AC-12 lists them | b4dfb7c7 |
+| D-51 Strategy Chart | owner, ADR-330 (43) | Fixed, not tested | the chart draws the strategy's open legs through one door `open_legs()` (backend/ofo_app/open_legs.py; the book today, Zerodha positions later), not the saved definition; a fully closed strategy: "This strategy has no open legs, so there is no strategy chart." (U-Q11, pending owner read); switch untouched | 53aaed67 |
+
+## Re-test: T-Q7, T-Q8 (Option Chain)
+
+1. Market > Option Chain near midnight or with the PC clock set a day off: "N days left" still matches the server's count.
+2. Nothing ticked: "Add Selected (0)" shows greyed with "Tick at least one contract to add.".
+3. Tick a contract without pressing Buy or Sell: greyed with "Choose Buy or Sell for each ticked contract."; press Buy: it turns blue.
+
+## For the PC session: turn the Strategy Chart on (D-51, ADR-203, ADR-330 (43))
+
+Reference: backend/ofo_app/held_switches.py:57-60 (`_is_on`): outside development/test the chart is on only when BOTH
+variables are set. The app reads them from the process environment, else the `.env` file (ofo_app/config.py `app_env`,
+same source as APP_ENV). So put the two lines in the server's `.env` (or the service's environment file):
+
+```
+OFO_HELD_STRATEGY_PRICE_HISTORY=1
+OFO_HELD_STRATEGY_PRICE_HISTORY_REF=ADR-203
+```
+
+(`_TRUE` accepts 1/true/yes/on style values; the `_REF` must be non-blank and should name ADR-203, REQ-091 AC-7.)
+Nothing in the repo sets them: no default or test environment was changed.
+
+Restart: stop the backend (Ctrl+C in its window) and start it again the way you normally start it; the `.env` is read
+when the app starts.
+
+Check on a running paper trade after an exit:
+1. Open a running paper trade (4-leg condor), Positions > Paper, and exit ONE leg (for example the SELL 22800 CE). Confirm it shows closed.
+2. Open the trade in the builder (Live Strategies > its name) > Strategy Chart tab. The tab must draw a line, not "The strategy chart is not available."
+3. The chart's legs must be the 3 still-open legs: the data call `GET /strategies/<id>/price-history` (browser Network tab) answers for the 3 open contracts only.
+4. Exit the remaining legs one by one: after the last one the tab says "This strategy has no open legs, so there is no strategy chart." (U-Q11), and switching the two lines off again gives "The strategy chart is not available." (409).
+
+
 ## To file as deferred issues
 
 None new after the coordinator's 17:17 rule (#750 and #751 were filed before it, with their stage rows).
