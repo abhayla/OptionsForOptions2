@@ -129,7 +129,8 @@ describe('Option Chain screen', () => {
     expect(w.findAll('[data-testid="chain-row"]').map((r) => r.attributes('data-atm'))).toEqual(['false', 'true', 'false'])
     expect(w.find('[data-testid="spot"]').text()).toBe('24510.00')
     expect(w.find('[data-testid="spot-time"]').text()).toMatch(/^as of /)
-    expect(w.find('[data-testid="expiry-select"]').findAll('option').map((o) => o.text())).toEqual(['2026-10-20', EXPIRY])
+    // U-Q3 (a): the chain names contracts as the builder does (REQ-148 AC-2)
+    expect(w.find('[data-testid="expiry-select"]').findAll('option').map((o) => o.text())).toEqual(['20 Oct 2026', '27 Oct 2026'])
     // the mark follows the server: a push with another atm_strike moves it, whatever the spot says
     sock().serverPush({ ...answer(), expiry: '2026-10-20', atm_strike: '24550.00' })
     await flushPromises()
@@ -406,7 +407,8 @@ describe('Option Chain screen', () => {
     await w.find('[data-testid="filter-moneyness"]').setValue('OTM')
     expect(cellsOf(w, 'strike')).toEqual(['24550'])
     expect(cellsOf(w, 'ce-ltp')).toEqual(['90.00'])
-    expect(w.find('[data-testid="selected-leg-name"]').text()).toContain('24450.00')
+    // U-Q3 (a): the chain names contracts as the builder does (REQ-148 AC-2)
+    expect(w.find('[data-testid="selected-leg-name"]').text()).toContain('24450')
     const sentBefore = sock().sent.length
     await w.find('[data-testid="filter-min-ltp"]').setValue('1000')
     await flushPromises()
