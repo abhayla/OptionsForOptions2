@@ -51,7 +51,8 @@ CATEGORY = re.compile(r"own_process|display|real_path|awaiting_phase_\d+")
 Key = tuple[str, str, str]  # (file under backend/, enclosing function, name)
 
 #: side-flip leftovers in the four paper modules after Phase 4 (none awaits a phase)
-EXEMPT: dict[Key, tuple[str, str]] = {}  # #729: the tracking exit reads the net under the lock (no signed held qty left)
+# #729: the tracking exit reads the net under the lock (no signed held qty left)
+EXEMPT: dict[Key, tuple[str, str]] = {}
 
 
 def _name_of(node: ast.expr) -> str | None:

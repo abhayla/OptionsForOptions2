@@ -414,11 +414,11 @@ def _cell(contract: PickableContract, quote: NormalizedQuote | None, slow: SlowV
           known: bool = False) -> ChainCellOut:
     permitted, reason = _permission(catalogue, contract)
     if quote is None:  # held, but no quote yet, or a contract the provider does not know: shown as such
-        # #748 / REQ-133 AC-3: a contract the provider knows and holds, with no first tick yet, is WAITING: health None (no
-        # health word is claimed; the screen says it waits for the first price). Unknown stays "unavailable".
+        # #748 / REQ-133 AC-3: a contract the provider knows and holds, with no first tick yet, is WAITING: health None
+        # (no health word is claimed; the screen says it waits for the first price). Unknown stays "unavailable".
         return ChainCellOut(instrument_id=contract.instrument_id, ltp=None, bid=None, ask=None, change=None, oi=None,
-                            oi_change=None, volume=None, health=None if known else "unavailable", at=None, last_trade_at=None,
-                            permitted=permitted, unavailable_reason=reason, **_NO_GREEKS)
+                            oi_change=None, volume=None, health=None if known else "unavailable", at=None,
+                            last_trade_at=None, permitted=permitted, unavailable_reason=reason, **_NO_GREEKS)
     oi, oi_change = (quote.oi, quote.oi_change) if slow is None else slow.get(contract.instrument_id,
                                                                               (quote.oi, quote.oi_change))
     return ChainCellOut(instrument_id=contract.instrument_id, ltp=_given_money(quote.ltp), bid=_given_money(quote.bid),
