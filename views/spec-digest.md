@@ -4,9 +4,9 @@
 
 One line per decision, requirement and spec section. Read it before asking the owner anything; cite the ids you rely on in a `Spec basis:` line, or write `Spec basis: none (searched: <terms>)`.
 
-## Decisions (316)
+## Decisions (317)
 
-- Older decisions: 276 rows, ADR-1..ADR-290 (oldest first). Read spec/decisions/*.md, or find one by meaning: python tools/spec_similar.py . "<text>"
+- Older decisions: 277 rows, ADR-1..ADR-290 (oldest first). Read spec/decisions/*.md, or find one by meaning: python tools/spec_similar.py . "<text>"
 - ADR-291 2026-11-12: Owner, 2026-11-12 ~00:1x IST (chat): "It is mandatory that whoever connects to kite should have kit… [narrows the current scope of ADR-290 to the owner…]
 - ADR-292 2026-11-12: How ADR-290 (2) works for the one user of ADR-291, as approved with the GC-TRACK1 contract (owner 2… [adds the held_elsewhere source to the strategy st…]
 - ADR-293 2026-11-13: Owner decision 2026-11-13 ~09:15 IST (question tool, picked "Allow delete for paper (Recommended)"). [supersedes ADR-271 parts (1), (2) and (3); ADR-27…]
