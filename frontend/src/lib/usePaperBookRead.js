@@ -11,6 +11,7 @@ import { ref, watch } from 'vue'
 import api from '@/services/api'
 import { usePaperRefresh } from '@/lib/usePaperRefresh'
 import { sharedTotal } from '@/lib/tracking'
+import { PAPER_NO_FIGURE } from '@/lib/paperList'
 
 const text = (v) => (typeof v === 'string' && v.trim() !== '' ? v.trim() : null)
 
@@ -20,7 +21,22 @@ export function legPricesOf(book) {
   const out = new Map()
   for (const p of Array.isArray(book?.positions) ? book.positions : []) {
     if (p.net_quantity === 0) continue
-    out.set(String(p.contract_id), { ltp: text(p.ltp_text), at: p.price_at ?? null, total: text(p.total_text), noPrice: text(p.no_price_text) })
+    out.set(String(p.contract_id), { entry: text(p.average_text), ltp: text(p.ltp_text), at: p.price_at ?? null, total: text(p.total_text), noPrice: text(p.no_price_text) })
+  }
+  return out
+}
+
+/** N-07: the P&L Table's per-leg figures for a paper trade, keyed by the page leg's instrument_id (the outcome reply's leg identity). Each is
+ *  the legs table's own cell text (entry = Avg, ltp = LTP, pnl = the leg's TOTAL); a failed read prints the same dash the table does. A page
+ *  leg whose contract the book does not hold is absent (the P&L Table keeps the reply's row for it). null = not a paper trade (no book or net). */
+export function paperLegsOf(net, book, failed = false) {
+  if (!book || !Array.isArray(net)) return null
+  const prices = legPricesOf(book)
+  const out = new Map()
+  for (const l of net) {
+    const p = l?.contract_id == null || typeof l.instrument_id !== 'string' ? undefined : prices.get(String(l.contract_id))
+    if (p === undefined) continue
+    out.set(l.instrument_id, failed ? { entry: PAPER_NO_FIGURE, ltp: PAPER_NO_FIGURE, pnl: PAPER_NO_FIGURE } : { entry: p.entry ?? '-', ltp: p.ltp ?? '-', pnl: p.total ?? '-' })
   }
   return out
 }

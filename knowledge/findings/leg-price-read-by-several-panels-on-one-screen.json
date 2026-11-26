@@ -1,0 +1,34 @@
+{
+ "id": "leg-price-read-by-several-panels-on-one-screen",
+ "scope": "project",
+ "class": "One leg of a paper trade shows its price and P&L in several panels of the same screen, and a panel that reads another endpoint or reply than the page's one book read prints a different LTP and P&L at the same moment. Each reader is correct by itself; the screen contradicts itself.",
+ "mechanism": "D-41 (25 Nov 2026, builder ?strategy=170): the Paper P&L panel read /strategies/{id}/tracking while the legs table read the page's book read (26000 CE 149.70 vs 150.15). N-07 (26 Nov 2026, builder of paper strategy 172): the P&L Table tab read the outcome reply (its LTP, the plan's Planned entry) while the legs table read the book (25650 PE LTP 166.35 vs 166.20, P&L +695.50 vs +715.00; after a 1-lot exit of a 2-lot leg 25850 CE +45.50 vs +149.50).",
+ "first_seen": {
+  "date": "2026-11-25",
+  "where": "frontend/tests/one-source-d41.test.js (D-41); N-07 in frontend/src/components/strategy/ChartCard.vue compact view",
+  "evidence": "owner screen checks 25 and 26 Nov 2026; N-07 red test frontend/tests/pnl-table-one-source-n07.test.js: expected [ '₹999.10', '₹100.00', '₹100.00' ] to deeply equal [ '60.65', '-776.75', '72.60' ]"
+ },
+ "fix": "Every per-leg price / P&L of a paper trade is read through lib/usePaperBookRead (legPricesOf, paperPnlBlock, paperLegsOf), joined by contract id (the page leg carries instrument_id and contract_id). A panel that cannot join a leg keeps its own source and says so in the guard's registry.",
+ "detection": {
+  "status": "guarded",
+  "checks": ["frontend/tests/paper-leg-readers-guard.test.js", "frontend/tests/pnl-table-one-source-n07.test.js", "frontend/tests/one-source-d41.test.js"],
+  "note": "The guard is a text scan: a file naming a leg price or P&L field must be on its registry, and ChartCard must receive and use paperLegs. Still on the outcome reply for a paper trade (registered as REMAINING): the Full table (StrategyTable), the leg list 'Price has moved ... now' text, Advanced Details."
+ },
+ "spec_ref": [
+  "spec/decisions/ADR-328.md",
+  "spec/decisions/ADR-212.md",
+  "spec/decisions/ADR-008.md"
+ ],
+ "occurrences": [
+  {
+   "date": "2026-11-25",
+   "where": "D-41 Paper P&L panel vs legs table",
+   "evidence": "frontend/tests/one-source-d41.test.js header"
+  },
+  {
+   "date": "2026-11-26",
+   "where": "N-07 P&L Table tab vs legs table (strategy 172)",
+   "evidence": "frontend/tests/pnl-table-one-source-n07.test.js"
+  }
+ ]
+}

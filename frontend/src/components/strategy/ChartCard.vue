@@ -24,7 +24,7 @@ import StrategyPriceChart from './StrategyPriceChart.vue'
 import StrategyTable from './StrategyTable.vue'
 import ClosedRows from './ClosedRows.vue'
 import {
-  COMPACT_COLUMNS, GREEK_COLUMNS, PAYOFF_STEPS, greekColumns, compactRows, greekModeHeading, greekRows, greekText, payoffLevelRows, payoffStepTable, signOf,
+  COMPACT_COLUMNS, ENTRY_PRICE_LABEL, GREEK_COLUMNS, PAYOFF_STEPS, greekColumns, compactRows, greekModeHeading, greekRows, greekText, payoffLevelRows, payoffStepTable, signOf,
 } from '@/lib/chartCard'
 import { BOOKED_SWITCH_LABEL } from '@/lib/targetBlock'
 import { BEFORE_CHARGES } from '@/lib/tracking'
@@ -57,6 +57,7 @@ const props = defineProps({
   savedId: { type: Number, default: null },
   charges: { type: Object, default: null }, // D-63 round 3: the paper reply's charges texts {paid, close}, as sent; shown only beside an after-charges TOTAL
   closed: { type: Array, default: null }, // D-63 (a): the paper reply's closed rows; its TOTAL includes their booked P&L, so they are listed under the table
+  paperLegs: { type: Object, default: null }, // N-07: paperLegsOf() of the page's one paper read (a Map); the P&L Table's per-leg entry, LTP and P&L come from it
   paperTotal: { type: Object, default: null }, // GC-ICFIX round 2 (F4): paperPnlBlock() of the page's one paper read; the TOTAL row's P&L shows it, not the socket's figure
   savedRevision: { type: [Number, String], default: null }, // changes on every re-save: the Strategy Chart re-asks
 })
@@ -70,7 +71,7 @@ const cellText = (r, c) => (r.isTotal && c.id === 'unrealized_pnl' && props.pape
   // the shared read has no percent form: a dash, never the socket's before-charges percent beside an after-charges total
   : r.isTotal && c.id === 'pnl_percent' && props.paperTotal ? '—' : r.values[c.id].display)
 // a paper trade's per-row P&L cells are before charges: said once, in the column header (the TOTAL cell carries its own label)
-const headText = (c) => (c.id === 'unrealized_pnl' && props.paperTotal ? `${c.label} ${BEFORE_CHARGES}` : c.label)
+const headText = (c) => (c.id === 'unrealized_pnl' && props.paperTotal ? `${c.label} ${BEFORE_CHARGES}` : c.id === 'entry_price' && props.paperLegs ? ENTRY_PRICE_LABEL : c.label)
 // D-63 round 3: with an after-charges TOTAL, the reply's paid and to-close charges texts are shown as sent (no sum here);
 // charges unknown means the TOTAL is before charges and no line shows
 const chargeLines = computed(() => (props.paperTotal?.kind === 'after' && props.charges
@@ -99,7 +100,7 @@ const fullTable = defineModel('fullTable', { type: Boolean, default: false }) //
 const includeBooked = defineModel('includeBooked', { type: Boolean, default: true }) // R-18 (ADR-209): Add Booked P&L, ON
 const showPct = ref(false) // D-B26 (REQ-137 AC-2): Show % adds the server's move_pct_display per row
 const greekMode = ref('unit') // REQ-084 AC-8: one toggle, Per unit (default) or Per position
-const compact = computed(() => compactRows(props.table, props.legs))
+const compact = computed(() => compactRows(props.table, props.legs, props.paperLegs))
 const greeks = computed(() => greekRows(props.table, props.legs))
 // D-63: the Greeks Total adds every leg; with legs on two expiries it says so (a count of expiries, no money)
 const greeksTotalLabel = computed(() => {

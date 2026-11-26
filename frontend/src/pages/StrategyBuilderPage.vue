@@ -38,7 +38,7 @@ import {
 } from '@/lib/paperDrafts'
 import { withAsOf } from '@/lib/paperList'
 import PaperBookPanel from '@/components/strategy/PaperBookPanel.vue'
-import { paperPnlBlock, usePaperBookRead } from '@/lib/usePaperBookRead'
+import { paperLegsOf, paperPnlBlock, usePaperBookRead } from '@/lib/usePaperBookRead'
 import { usePriceFreshness } from '@/lib/priceState'
 import { usePaperExit } from '@/lib/usePaperExit'
 import PaperStrategies from '@/components/strategy/PaperStrategies.vue'
@@ -1377,6 +1377,7 @@ const leaveGuard = useLeaveBuilder({
             :payoff-table="data.payoff_table ?? null"
             :saved-id="savedId"
             :paper-total="paperTotal"
+            :paper-legs="paper ? paperLegsOf(paper.net, paper.book, paperBookFailed) : null"
             :closed="paper?.book?.closed ?? null"
             :charges="paper ? { paid: paper.book.charges_paid_text ?? paper.book.charges_text ?? null, close: paper.book.charges_to_close_text ?? null } : null"
             :saved-revision="savedRevision"

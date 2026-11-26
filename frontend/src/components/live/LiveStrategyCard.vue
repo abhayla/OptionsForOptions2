@@ -19,6 +19,7 @@ import { istTime, maxLine, nameFromPool } from '@/lib/displayFormat'
 import { RouterLink } from 'vue-router'
 import Chip from '@/components/common/Chip.vue'
 import { healthSentence } from '@/lib/dataHealthText'
+import { ENTRY_PRICE_LABEL } from '@/lib/chartCard'
 import { useStrategyLive } from '@/composables/useStrategyLive'
 
 // `start` false = waiting in the page's start queue (one card loads at a time); `settled` is emitted once, when this card
@@ -193,7 +194,7 @@ const hasEntry = computed(() => (data.value?.legs ?? []).some((l) => (l.planned_
 const openLink = computed(() => (state.value === 'error' ? null : builderLinkOf(props.strategy.id)))
 const exitLink = computed(() => (state.value !== 'error' && isRunning(props.strategy) ? paperExitLinkOf(props.strategy.id) : null))
 const stopsLink = computed(() => (state.value !== 'error' && isRunning(props.strategy) ? paperStopsLinkOf(props.strategy.id) : null))
-const entryHead = computed(() => (isRunning(props.strategy) ? 'Entry price' : 'Planned entry'))
+const entryHead = computed(() => (isRunning(props.strategy) ? ENTRY_PRICE_LABEL : 'Planned entry'))
 const legName = (leg) => nameFromPool(leg, [], data.value?.underlying) // never the raw trading symbol (issue 297, REQ-151)
 // REQ-049 AC-4: any health other than `available` (also a missing one) is marked with its word.
 // RD-045: the word is followed by one sentence with its reason (lib/dataHealthText.js).

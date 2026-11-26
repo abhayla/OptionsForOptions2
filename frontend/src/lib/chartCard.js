@@ -9,6 +9,9 @@ export { instrumentText }
 
 export const TOTAL_ROW_ID = 'TOTAL'
 
+/** The entry column's heading for a paper trade (its fill, not a plan's entry); the Live card's S-14 wording. */
+export const ENTRY_PRICE_LABEL = 'Entry price'
+
 /** The compact P&L view's value columns (ADR-194 (1)), in its order: Planned entry, LTP, P&L, P&L %. */
 export const COMPACT_COLUMNS = [
   { id: 'entry_price', label: 'Planned entry' },
@@ -97,10 +100,19 @@ export function greekModeHeading(rows, mode) {
 
 /** ADR-194 (1): one row per leg plus the reply's own TOTAL row when it sent one (never a browser sum). Null when the
  *  reply's table lacks a compact column. */
-export function compactRows(table, legs = null) {
+export function compactRows(table, legs = null, paperLegs = null) {
   const ids = COMPACT_COLUMNS.map((c) => c.id)
   if (!table || !hasColumns(table, [...INSTRUMENT_PARTS, ...ids])) return null
-  return viewRows(table, ids, legs)
+  const rows = viewRows(table, ids, legs)
+  if (!paperLegs) return rows
+  // N-07: a paper trade's leg shows the page's one book read (paperLegsOf): its entry, LTP and TOTAL, as the legs table prints them. A leg
+  // the book does not hold keeps the reply's cells. No percent: the book sends none and the reply's is of the plan's entry (ADR-008).
+  return rows.map((r, i) => {
+    const own = r.isTotal ? undefined : paperLegs.get(legs?.[Number(table.rows[i]?.cells?.leg?.value) - 1]?.instrument_id)
+    if (own === undefined) return r
+    const put = (id, text) => ({ ...r.values[id], display: text, value: null })
+    return { ...r, values: { ...r.values, entry_price: put('entry_price', own.entry), ltp: put('ltp', own.ltp), unrealized_pnl: put('unrealized_pnl', own.pnl), pnl_percent: put('pnl_percent', DASH) } }
+  })
 }
 
 /** ADR-194 (2): the per-leg Greeks and IV the reply carries, with its TOTAL row only if sent. Null when the reply
