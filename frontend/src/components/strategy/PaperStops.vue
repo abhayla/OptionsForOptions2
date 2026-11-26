@@ -7,6 +7,8 @@
 import { computed, nextTick, onMounted, ref, watch } from 'vue'
 import api, { NEUTRAL_ERROR } from '@/services/api'
 import { paperPriceOk, paperPriceReason } from '@/lib/tracking'
+import { istClock } from '@/lib/displayFormat'
+import { NOT_LIVE_LABEL, useIndexAnswer } from '@/composables/useIndexLive'
 import { triggerListOf, triggersPath } from '@/lib/paperTriggers'
 
 const props = defineProps({
@@ -26,11 +28,13 @@ const props = defineProps({
 
 const LABEL = 'Paper - exits are recorded in the app, not sent to Zerodha'
 const AT_LEAST_ONE = 'Enter at least one level'
+const LIST_STALE = 'Could not refresh this list. It shows the last read.'
 const path = triggersPath(props.strategyId)
 
 const triggers = ref(null) // null = not read (or unreadable)
 const error = ref('')
 const busy = ref(false)
+const listError = ref('') // S-23: a failed quiet reread; the last list stays on screen
 const saved = ref('') // the one-line confirmation of the last save
 const above = ref('')
 const below = ref('')
@@ -57,6 +61,7 @@ const notSaved = (e) => (e?.status >= 400 && e.status < 500 && e?.parts?.what_ha
 async function run(call, saving = false) {
   if (busy.value) return null
   busy.value = true
+  gen += 1
   error.value = ''
   saved.value = ''
   try {
@@ -80,8 +85,34 @@ async function run(call, saving = false) {
 }
 
 onMounted(() => run(() => api.get(path)))
+
+// S-19: the index level the levels are judged against, from the one reader every index screen uses (no price text of its own)
+const index = useIndexAnswer()
+onMounted(index.start)
+const indexLine = computed(() => {
+  const row = index.rowFor(props.underlying)
+  const clock = row?.at ? istClock(row.at) : null
+  if (index.isLive() && typeof row?.value === 'string' && clock) return `${props.underlying} now ${index.shownValue(row)} as of ${clock}`
+  return index.notLive() ? NOT_LIVE_LABEL : ''
+})
+
+// S-23: a trigger can fire on the server (state armed -> fired) while this panel is open. Root cause: the list was read once on
+// mount only. Follow the parent list's good-read token (its one timer; none here). Quiet: not through run(), so a Saved / Not saved
+// line is untouched; skipped while a save or cancel is in flight; a failure keeps the last list and has its own line.
+let gen = 0
+async function reread() {
+  if (busy.value) return
+  const mine = gen
+  try {
+    const list = triggerListOf((await api.get(path)).data)
+    if (mine !== gen) return // an action ran meanwhile: its answer is newer
+    if (list) { triggers.value = list; listError.value = '' } else listError.value = LIST_STALE
+  } catch {
+    if (mine === gen) listError.value = LIST_STALE
+  }
+}
 let failedAtToken = null // the latest-started read token when the last save failed
-watch(() => props.goodReadToken, (t) => { if (!busy.value && error.value.startsWith('Not saved') && t && t !== failedAtToken) error.value = '' })
+watch(() => props.goodReadToken, (t, old) => { if (t && t !== old) reread(); if (!busy.value && error.value.startsWith('Not saved') && t && t !== failedAtToken) error.value = '' })
 
 async function saveExit() {
   if (ceReason.value) return
@@ -136,6 +167,7 @@ async function keep(t) {
 <template>
   <div ref="rootEl" class="mt-2 rounded border border-line p-2" data-testid="paper-stops">
     <p class="text-xs font-semibold" data-testid="stops-label">{{ LABEL }}</p>
+    <p class="min-h-5 text-xs text-ink-muted" data-testid="stops-index">{{ indexLine }}</p>
 
     <!-- D-44 round 1: from lg up the form (first) and the list of stops (second) sit side by side; narrower they stack -->
     <div class="grid gap-x-6 lg:grid-cols-2" data-testid="stops-columns">
@@ -165,14 +197,18 @@ async function keep(t) {
       </div>
     </div>
 
-    <p v-if="error" class="mt-2 text-red-700" role="alert" data-testid="stops-error">{{ error }}</p>
-    <p v-else-if="saved" class="mt-2 text-xs text-ink-muted" role="status" data-testid="stops-saved">{{ saved }}</p>
+    <!-- S-26: one reserved status slot, so a line appearing or going does not move the boxes the user is typing in -->
+    <div class="mt-2 min-h-5" data-testid="stops-status-slot">
+      <p v-if="error" class="text-red-700" role="alert" data-testid="stops-error">{{ error }}</p>
+      <p v-else-if="saved" class="text-xs text-ink-muted" role="status" data-testid="stops-saved">{{ saved }}</p>
+    </div>
 
     </div>
 
     <div class="min-w-0" data-testid="stops-list">
     <div class="mt-2" data-testid="triggers">
       <p class="font-medium">Stops on this strategy</p>
+      <p v-if="listError" class="text-xs text-ink-muted" data-testid="stops-list-error">{{ listError }}</p>
       <p v-if="triggers && !triggers.length" class="text-xs text-ink-muted" data-testid="stops-empty">No stops set.</p>
       <ul v-else-if="triggers">
         <li v-for="t in triggers" :key="t.id" class="flex flex-wrap items-center gap-2 border-b border-line py-1" data-testid="trigger-row" :data-trigger-id="t.id">

@@ -237,17 +237,18 @@ describe('Stops panel', () => {
       vi.useRealTimers()
     }
   })
-  it('S-23: a quiet reread does not clear a refusal the user is reading', async () => {
+  it('S-23: a quiet reread does not clear the Saved line the user is reading', async () => {
     vi.useFakeTimers({ toFake: ['setInterval', 'clearInterval'] })
     try {
-      const w = await open({ triggers: [trig(1)] })
+      const w = await open({ triggers: [] })
       await t(w, 'ce-above').setValue('24500')
-      answers[`POST ${TRIG}`] = refuse('That level is not valid.')
+      answers[`POST ${TRIG}`] = ok({ triggers: [trig(1)] })
       await t(w, 'ce-save').trigger('click')
       await flushPromises()
+      expect(t(w, 'stops-saved').text()).toContain('Saved')
       await vi.advanceTimersByTimeAsync(5000)
       await flushPromises()
-      expect(t(w, 'stops-error').text()).toContain('That level is not valid.')
+      expect(t(w, 'stops-saved').text()).toContain('Saved')
     } finally {
       vi.useRealTimers()
     }
@@ -260,7 +261,7 @@ describe('Stops panel', () => {
     expect(t(w, 'stops-index').text()).not.toMatch(/\d/)
   })
   it('S-19: a live index answer shows "NIFTY now <value> as of <time>" as the reader gives them', async () => {
-    answers['GET /indices'] = ok({ state: 'LIVE', market_closed: false, last_price_at: '2026-11-26T05:11:05Z',
+    answers['GET /market/indices'] = ok({ state: 'LIVE', market_closed: false, last_price_at: '2026-11-26T05:11:05Z',
       indices: [{ underlying: 'NIFTY', instrument_id: '1', value: '25,735.00', at: '2026-11-26T05:11:05Z', health: null }] })
     const w = await open()
     expect(t(w, 'stops-index').text()).toBe('NIFTY now 25,735.00 as of 10:41:05')
