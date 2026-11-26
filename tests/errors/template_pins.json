@@ -2823,6 +2823,14 @@
     "sha256": "a4450901a96c79e28de050acfa2bd5778fdd7c36938f5579f469bc273b298769",
     "reviewed": "owner read 2026-10-31 (accepted after independent screen, not read line by line)"
   },
+  "explanation:plan_sheet_target_rupees": {
+    "sha256": "53daa9ee7f5dec903a3c843b0df1cc469690ea8e4d5db666794831d4cd2d16a4",
+    "reviewed": "pending owner read"
+  },
+  "explanation:plan_sheet_stop_rupees": {
+    "sha256": "b604ef1c8eb50a69845c9ce6c693fab17830633463824b6ad7de20ccac072dec",
+    "reviewed": "pending owner read"
+  },
   "explanation:plan_sheet_max_adjustments": {
     "sha256": "1943d115a4841c691f3d94c86f3cc563bb38c55a15033def2a692364ebda174c",
     "reviewed": "owner read 2026-10-31 (accepted after independent screen, not read line by line)"
@@ -2872,7 +2880,7 @@
     "reviewed": "owner read 2026-10-31 (accepted after independent screen, not read line by line)"
   },
   "labels:plan_sheet": {
-    "sha256": "ba1d392e3f5a4464e58e2759eea48fdbce74e9831b71fe67471f3e91eda8fff4",
+    "sha256": "8c15084ea917304441c78424f6e4d06a4903903221f49aeceaf827ede6a76f57",
     "reviewed": "pending owner read"
   },
   "explanation:playbook_test_no_strategy": {

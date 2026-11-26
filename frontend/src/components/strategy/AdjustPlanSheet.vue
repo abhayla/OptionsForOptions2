@@ -23,12 +23,20 @@
         <p v-if="refilledFrom" class="mt-1 text-xs text-ink-muted" data-testid="plan-refilled">{{ PLAN_REFILLED_TEXT(refilledFrom) }}</p>
         <div class="mt-3 grid grid-cols-2 gap-3">
           <label class="block text-sm font-medium">{{ labels.target }}
-            <input v-model="form.target" class="mt-1 h-10 w-full rounded border border-line px-2" inputmode="decimal" data-testid="plan-target" />
+            <input v-model="form.target" class="mt-1 h-10 w-full rounded border border-line px-2" inputmode="decimal" data-testid="plan-target" @input="typed('target')" />
             <span v-if="form.targetWords" class="mt-1 block text-xs font-normal text-ink-muted" data-testid="plan-target-words">{{ form.targetWords }}</span>
           </label>
+          <label class="block text-sm font-medium">{{ labels.target_rupees }}
+            <input v-model="form.targetRupees" class="mt-1 h-10 w-full rounded border border-line px-2" inputmode="decimal" data-testid="plan-target-rupees" @input="typed('target_rupees')" />
+            <span v-if="form.targetRupeeWords" class="mt-1 block text-xs font-normal text-ink-muted" data-testid="plan-target-rupee-words">{{ form.targetRupeeWords }}</span>
+          </label>
           <label class="block text-sm font-medium">{{ labels.stop }}
-            <input v-model="form.stop" class="mt-1 h-10 w-full rounded border border-line px-2" inputmode="decimal" data-testid="plan-stop" />
+            <input v-model="form.stop" class="mt-1 h-10 w-full rounded border border-line px-2" inputmode="decimal" data-testid="plan-stop" @input="typed('stop')" />
             <span v-if="form.stopWords" class="mt-1 block text-xs font-normal text-ink-muted" data-testid="plan-stop-words">{{ form.stopWords }}</span>
+          </label>
+          <label class="block text-sm font-medium">{{ labels.stop_rupees }}
+            <input v-model="form.stopRupees" class="mt-1 h-10 w-full rounded border border-line px-2" inputmode="decimal" data-testid="plan-stop-rupees" @input="typed('stop_rupees')" />
+            <span v-if="form.stopRupeeWords" class="mt-1 block text-xs font-normal text-ink-muted" data-testid="plan-stop-rupee-words">{{ form.stopRupeeWords }}</span>
           </label>
           <label class="block text-sm font-medium">{{ labels.max_adjustments }}
             <input v-model="form.maxAdjustments" class="mt-1 h-10 w-full rounded border border-line px-2" inputmode="numeric" data-testid="plan-max" />
@@ -66,7 +74,7 @@ import ErrorMessage from '@/components/common/ErrorMessage.vue'
 import AlertStylePicker from '@/components/strategy/AlertStylePicker.vue'
 import api, { NEUTRAL_PARTS } from '@/services/api'
 import { PLAN_LOADING_TEXT, PLAN_LOAD_FAILED_TEXT, PLAN_PICK_TIMED_OUT_TEXT, PLAN_REFILLED_TEXT, PLAN_TIMED_OUT_TEXT } from '@/lib/sharedStateText'
-import { asIsBody, customiseUrl, fetchPlan, formOf, saveBody, sendPlan } from '@/lib/adjustPlan'
+import { asIsBody, customiseUrl, fetchLevels, fetchPlan, formOf, saveBody, sendPlan } from '@/lib/adjustPlan'
 
 const props = defineProps({
   open: { type: Boolean, default: false },
@@ -116,6 +124,34 @@ async function load(pickId = null, pickName = '') {
     loadError.value = timedOut ? PLAN_TIMED_OUT_TEXT : PLAN_LOAD_FAILED_TEXT
   } finally {
     if (id === props.strategyId) loading.value = false
+  }
+}
+const levelsRun = { target: 0, stop: 0 } // per level, only the newest reply is applied (a slow earlier one never overwrites a later one)
+/** ADR-330 (5) / S-12: typing in one box of a percent / rupee pair asks the server for both figures and the hint words;
+ *  the other box and the hints are filled from the reply (the browser computes nothing). The typed box is the one saved. */
+async function typed(field) {
+  const isTarget = field.startsWith('target')
+  const rupees = field.endsWith('_rupees')
+  const f = form.value
+  if (isTarget) f.targetLast = rupees ? 'rupees' : 'percent'
+  else f.stopLast = rupees ? 'rupees' : 'percent'
+  const own = isTarget ? (rupees ? f.targetRupees : f.target) : (rupees ? f.stopRupees : f.stop)
+  const other = isTarget ? (rupees ? 'target' : 'targetRupees') : (rupees ? 'stop' : 'stopRupees')
+  const words = isTarget ? ['targetWords', 'targetRupeeWords'] : ['stopWords', 'stopRupeeWords']
+  const level = isTarget ? 'target' : 'stop'
+  const run = ++levelsRun[level]
+  if (own.trim() === '') { f[other] = ''; words.forEach((k) => { f[k] = '' }); return } // nothing typed: nothing to show
+  try {
+    const got = (await fetchLevels(api, props.strategyId, { [field]: own }))[level]
+    if (run !== levelsRun[level] || form.value !== f) return
+    if (!got) return
+    f[other] = rupees ? got.percent : got.rupees
+    f[words[0]] = got.words
+    f[words[1]] = got.rupeeWords
+  } catch (e) {
+    if (run !== levelsRun[level]) return
+    f[other] = '' // a level the server will not read shows no figure (fail closed); Save names the field
+    words.forEach((k) => { f[k] = '' })
   }
 }
 function pick(value) {

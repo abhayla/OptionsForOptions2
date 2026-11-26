@@ -83,7 +83,9 @@ _RUPEES = re.compile(r"[0-9]{1,12}(\.[0-9]{1,2})?")  # whole-trade rupees, to th
 TARGET_KEY = "profit_target_pct_of_max_profit"
 #: the sheet's stop is the % of max loss trigger's value (ADR-252: ``settings_in_force.set_max_loss_stop`` /
 #: ``sheet_stop``), never a guard key
-EITHER_RULE = "whichever comes first"
+SOURCE_RUPEES = "rupees"  # which box is the saved level (the other figure is derived for display)
+SOURCE_PERCENT = "percent"
+EITHER_RULE ="whichever comes first"
 MAX_KEY = "max_adjustments"
 TIME_KEY = "time_exit"
 
@@ -147,6 +149,8 @@ class PrefillOut(ApiModel):
     stop_rupees: Money | None = None
     stop_per_lot: Money | None = None
     stop_rupee_words: CatalogueText | None = None
+    target_source: Identifier | None = None  # the saved level's own box: "rupees" or "percent" (the other is derived)
+    stop_source: Identifier | None = None
 
 
 class PlanOut(ApiModel):
@@ -165,6 +169,8 @@ class PlanOut(ApiModel):
     stop_rupees: Money | None = None
     stop_per_lot: Money | None = None
     stop_rupee_words: CatalogueText | None = None
+    target_source: Identifier | None = None  # the saved level's own box: "rupees" or "percent" (the other is derived)
+    stop_source: Identifier | None = None
     accepted_at: datetime.datetime
 
 
@@ -350,6 +356,7 @@ def with_rupee_figures(values: dict[str, Any], body: dict, bases: Bases) -> dict
     guards: dict = found if isinstance(found, dict) else {}
     out = dict(values)
     level = _rupee_guard(guards, sl.RUPEE_PROFIT_KEY)
+    out["target_source"] = SOURCE_PERCENT if level is None else SOURCE_RUPEES
     if level is not None:
         target = figs.from_rupees(level, bases.max_profit, bases.lots)
         out["target"] = target.percent
@@ -360,6 +367,7 @@ def with_rupee_figures(values: dict[str, Any], body: dict, bases: Bases) -> dict
     else:
         target = figs.from_percent(values["target"], bases.max_profit, bases.lots)
     level = _rupee_guard(guards, sl.RUPEE_LOSS_KEY)
+    out["stop_source"] = SOURCE_PERCENT if level is None else SOURCE_RUPEES
     if level is not None:
         stop = figs.from_rupees(level, bases.max_loss, bases.lots)
         if stop.percent is not None:  # the rupee level IS the stop; its percent is the derived display figure only

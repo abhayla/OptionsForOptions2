@@ -7197,28 +7197,35 @@
         "title": "LegQuoteOut",
         "type": "object"
       },
-      "LevelOut": {
+      "LevelsOut": {
         "additionalProperties": false,
         "properties": {
-          "current": {
-            "title": "Current",
-            "type": "boolean"
+          "stop": {
+            "anyOf": [
+              {
+                "$ref": "#/components/schemas/ofo_app__routes__adjustment_plan__LevelOut"
+              },
+              {
+                "type": "null"
+              }
+            ]
           },
-          "level": {
-            "title": "Level",
-            "type": "string"
-          },
-          "zero_pnl": {
-            "title": "Zero Pnl",
-            "type": "boolean"
+          "target": {
+            "anyOf": [
+              {
+                "$ref": "#/components/schemas/ofo_app__routes__adjustment_plan__LevelOut"
+              },
+              {
+                "type": "null"
+              }
+            ]
           }
         },
         "required": [
-          "level",
-          "current",
-          "zero_pnl"
+          "target",
+          "stop"
         ],
-        "title": "LevelOut",
+        "title": "LevelsOut",
         "type": "object"
       },
       "LoadTemplateIn": {
@@ -11760,6 +11767,17 @@
             ],
             "title": "Stop"
           },
+          "stop_rupees": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Stop Rupees"
+          },
           "target": {
             "anyOf": [
               {
@@ -11770,6 +11788,17 @@
               }
             ],
             "title": "Target"
+          },
+          "target_rupees": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Target Rupees"
           },
           "time_exit": {
             "anyOf": [
@@ -11842,6 +11871,49 @@
             ],
             "title": "Stop"
           },
+          "stop_per_lot": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Stop Per Lot"
+          },
+          "stop_rupee_words": {
+            "anyOf": [
+              {},
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Stop Rupee Words"
+          },
+          "stop_rupees": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Stop Rupees"
+          },
+          "stop_source": {
+            "anyOf": [
+              {
+                "pattern": "^[A-Za-z0-9_\\-.]{1,64}$",
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Stop Source"
+          },
           "stop_words": {
             "anyOf": [
               {},
@@ -11861,6 +11933,49 @@
               }
             ],
             "title": "Target"
+          },
+          "target_per_lot": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Target Per Lot"
+          },
+          "target_rupee_words": {
+            "anyOf": [
+              {},
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Target Rupee Words"
+          },
+          "target_rupees": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Target Rupees"
+          },
+          "target_source": {
+            "anyOf": [
+              {
+                "pattern": "^[A-Za-z0-9_\\-.]{1,64}$",
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Target Source"
           },
           "target_words": {
             "anyOf": [
@@ -12481,6 +12596,49 @@
             ],
             "title": "Stop"
           },
+          "stop_per_lot": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Stop Per Lot"
+          },
+          "stop_rupee_words": {
+            "anyOf": [
+              {},
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Stop Rupee Words"
+          },
+          "stop_rupees": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Stop Rupees"
+          },
+          "stop_source": {
+            "anyOf": [
+              {
+                "pattern": "^[A-Za-z0-9_\\-.]{1,64}$",
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Stop Source"
+          },
           "stop_words": {
             "anyOf": [
               {},
@@ -12500,6 +12658,49 @@
               }
             ],
             "title": "Target"
+          },
+          "target_per_lot": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Target Per Lot"
+          },
+          "target_rupee_words": {
+            "anyOf": [
+              {},
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Target Rupee Words"
+          },
+          "target_rupees": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Target Rupees"
+          },
+          "target_source": {
+            "anyOf": [
+              {
+                "pattern": "^[A-Za-z0-9_\\-.]{1,64}$",
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Target Source"
           },
           "target_words": {
             "anyOf": [
@@ -13267,7 +13468,7 @@
           },
           "levels": {
             "items": {
-              "$ref": "#/components/schemas/LevelOut"
+              "$ref": "#/components/schemas/ofo_app__routes__outcome__LevelOut"
             },
             "title": "Levels",
             "type": "array"
@@ -17132,6 +17333,71 @@
         "title": "GroupOut",
         "type": "object"
       },
+      "ofo_app__routes__adjustment_plan__LevelOut": {
+        "additionalProperties": false,
+        "properties": {
+          "per_lot": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Per Lot"
+          },
+          "percent": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Percent"
+          },
+          "rupee_words": {
+            "anyOf": [
+              {},
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Rupee Words"
+          },
+          "rupees": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Rupees"
+          },
+          "words": {
+            "anyOf": [
+              {},
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Words"
+          }
+        },
+        "required": [
+          "percent",
+          "rupees",
+          "per_lot",
+          "words",
+          "rupee_words"
+        ],
+        "title": "LevelOut",
+        "type": "object"
+      },
       "ofo_app__routes__adjustment_preferences__PreferencesOut": {
         "additionalProperties": false,
         "properties": {
@@ -17454,6 +17720,30 @@
           "label"
         ],
         "title": "LegOut",
+        "type": "object"
+      },
+      "ofo_app__routes__outcome__LevelOut": {
+        "additionalProperties": false,
+        "properties": {
+          "current": {
+            "title": "Current",
+            "type": "boolean"
+          },
+          "level": {
+            "title": "Level",
+            "type": "string"
+          },
+          "zero_pnl": {
+            "title": "Zero Pnl",
+            "type": "boolean"
+          }
+        },
+        "required": [
+          "level",
+          "current",
+          "zero_pnl"
+        ],
+        "title": "LevelOut",
         "type": "object"
       },
       "ofo_app__routes__outcome__MarginOut": {
@@ -20549,6 +20839,114 @@
           }
         },
         "summary": "Edit Plan"
+      }
+    },
+    "/api/strategies/{strategy_id}/adjustment-plan/levels": {
+      "get": {
+        "description": "ADR-330 (5) / S-12: both figures of the typed level(s), worked out on the server, the per-lot figure beside the\nrupees. The last edited box is sent alone; both boxes with different values -> refused naming the rupee field.",
+        "operationId": "read_levels_api_strategies__strategy_id__adjustment_plan_levels_get",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "strategy_id",
+            "required": true,
+            "schema": {
+              "title": "Strategy Id",
+              "type": "integer"
+            }
+          },
+          {
+            "in": "query",
+            "name": "target",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "maxLength": 12,
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Target"
+            }
+          },
+          {
+            "in": "query",
+            "name": "target_rupees",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "maxLength": 16,
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Target Rupees"
+            }
+          },
+          {
+            "in": "query",
+            "name": "stop",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "maxLength": 12,
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Stop"
+            }
+          },
+          {
+            "in": "query",
+            "name": "stop_rupees",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "maxLength": 16,
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Stop Rupees"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/LevelsOut"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "summary": "Read Levels"
       }
     },
     "/api/strategies/{strategy_id}/adjustment-plan/rules": {
