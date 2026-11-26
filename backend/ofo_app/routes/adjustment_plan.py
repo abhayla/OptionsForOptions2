@@ -30,6 +30,7 @@ from typing import Annotated, Any
 
 from fastapi import APIRouter, Depends, Query
 from ofo import market_calendar
+from ofo.adjustment import plan_diff
 from ofo.adjustment import playbook_stages as stages
 from ofo.adjustment import stop_lines as sl
 from ofo.adjustment.playbook_text import name_shown
@@ -174,6 +175,10 @@ class PlanOut(ApiModel):
     target_source: Identifier | None = None  # the saved level's own box: "rupees" or "percent" (the other is derived)
     stop_source: Identifier | None = None
     accepted_at: datetime.datetime
+    #: ADR-330 (9): the conditions of the plan's playbook this plan changed / switched off (paths such as
+    #: ``triggers.T-01``); both empty when the plan is as its playbook, or its playbook is gone (nothing to compare)
+    changed: list[Identifier]
+    switched_off: list[Identifier]
 
 
 class SettingInForceOut(ApiModel):
@@ -561,13 +566,16 @@ def _kind_of(tracked: Any, money: in_force_mod.MoneyInputs | None) -> str:
 async def _plan_out(db: Any, user_ref: str, plan: store.Plan, kind: str | None = None,
                     bases: Bases | None = None) -> dict[str, Any]:
     name = None
+    shown: dict[str, list[str]] = {"changed": [], "switched_off": []}
     if plan.playbook_id is not None:  # a deleted playbook leaves the plan's playbook_id NULL
         try:
-            name = name_shown((await store.get(db, user_ref, plan.playbook_id)).name)
+            source = await store.get(db, user_ref, plan.playbook_id)
+            name = name_shown(source.name)
+            shown = plan_diff.diff(plan.body, source.body)
         except store.PlaybookStoreError:
             name = None
     saved_before = await check.plan_saved_before_adr247(db, plan)
-    return {"playbook_id": plan.playbook_id, "playbook_name": name, "accepted_at": plan.accepted_at,
+    return {"playbook_id": plan.playbook_id, "playbook_name": name, "accepted_at": plan.accepted_at, **shown,
             **with_rupee_figures(_values(plan.body, saved_before, kind), plan.body, bases or Bases(),
                                  kind=kind, saved_before=saved_before)}
 
@@ -944,3 +952,38 @@ async def edit_plan(  # noqa: PLR0913 - FastAPI dependencies, one per input
     """REQ-161 AC-3: edit the strategy's plan later (REQ-158 AC-5); 404 when it has none."""
     return await _write(strategy_id, data, True, db, user_ref, tracked_reader, market_reader, rest_reader, ctx, rates,
                         user_values)
+
+
+@router.post("/api/strategies/{strategy_id}/adjustment-plan/reset", response_model=AdjustmentPlanOut)
+async def reset_plan(  # noqa: PLR0913 - FastAPI dependencies, one per input
+        strategy_id: int, db: Annotated[Any, Depends(get_db)], user_ref: Annotated[str, Depends(current_user_ref)],
+        tracked_reader: Annotated[TrackedReader, Depends(get_tracked_reader)],
+        market_reader: Annotated[MarketReader, Depends(get_market_reader)],
+        rest_reader: Annotated[RestSpotReader, Depends(get_rest_spot_reader)],
+        ctx: Annotated[MarketContext | None, Depends(get_market_context)],
+        rates: Annotated[ChargeRates | None, Depends(load_charge_rates)],
+        user_values: UserValuesIn) -> AdjustmentPlanOut:
+    """ADR-330 (9) "Reset to playbook" (the browser asks once, the server does the copy): every condition of the plan
+    goes back to its playbook's and the stop base is worked out again (a plan edit recomputes it, ADR-330 (1)). A plan
+    with no playbook (saved before playbooks were pointed at, or its playbook deleted) or no plan: refused
+    (no plan: "not available", 404; no playbook: the playbook's not-found sentence), the plan
+    unchanged. The sheet levels and plan settings are kept."""
+    rates = rates if isinstance(rates, ChargeRates) else None
+    tracked = await _own_strategy(strategy_id, tracked_reader, rates)
+    await release_connection(db)  # D-38: the market read waits on the broker; a held connection starves other pages
+    market = await _market(tracked, market_reader, ctx)
+    stype, plan_before = await _type_of(db, user_ref, strategy_id, tracked, ctx)
+    money = in_force_mod.money_inputs(tracked, market, rates)
+    bases = bases_of(tracked, market, rates)
+    if stype is None:
+        raise StrategyRefused(_GENERIC, Failure.CONFLICT)
+    if plan_before is None:  # no plan: the plan route's own "not available" (as editing with no plan answers)
+        raise StrategyRefused(_NOT_AVAILABLE, Failure.NOT_FOUND)
+
+    async def work() -> AdjustmentPlanOut:
+        saved = await store.reset_plan(db, user_ref, strategy_id, _base_json(tracked))
+        stored = dataclasses.replace(tracked, stop_base=in_force_mod.stop_base_from_json(saved.stop_base))
+        return await _sheet(db, user_ref, strategy_id, stype, saved, None, user_values,
+                            in_force_mod.money_inputs(stored, market, rates), _kind_of(tracked, money),
+                            dataclasses.replace(bases, max_loss=_stored_loss(stored, bases)))
+    return await _run(db, work)
