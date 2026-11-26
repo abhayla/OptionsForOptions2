@@ -92,7 +92,7 @@ export type Stub = {
   book: Record<number, Reply>; saved: Record<number, Reply>; catalogue: Reply; outcome: Reply
   /** the answer sent on a socket when it receives its follow; by owner (strategy id). Absent: no answer is sent. */
   auto: Record<number, () => unknown>
-  sockets: { owner: number; ws: WebSocketRoute; stamp: (p: object) => object; body: any }[]
+  sockets: { owner: number; ws: WebSocketRoute; stamp: (p: object) => object; pushStamped: (p: object) => void; body: any }[]
   follows: { owner: number; body: any }[]
   refuseSockets: boolean
   posts: { path: string; body: unknown }[]
@@ -116,7 +116,7 @@ export async function stubLive(page: Page, over: Partial<Stub> = {}): Promise<St
     strategies: ok({ strategies: [] }), paperList: ok(paperList([])), alerts: ok({ unread: 0, alerts: [] }), opps: { status: 503, json: {} }, dismiss: () => ({ status: 503, json: {} }),
     book: {}, saved: {}, catalogue: ok({ contracts: CONTRACTS }), outcome: { status: 503, json: {} },
     auto: {}, sockets: [], follows: [], refuseSockets: false, posts: [], calls: [],
-    push: (owner, msg) => S.last(owner).ws.send(JSON.stringify(S.last(owner).stamp(msg))),
+    push: (owner, msg) => S.last(owner).pushStamped(msg), // same payload plus the version stamp (REQ-133 AC-2)
     drop: async (owner) => { S.refuseSockets = true; await S.last(owner).ws.close() },
     last: (owner) => S.sockets.filter((s) => s.owner === owner).at(-1)!,
     ...over,
@@ -154,7 +154,7 @@ export async function stubLive(page: Page, over: Partial<Stub> = {}): Promise<St
   await page.routeWebSocket('**/api/strategies/live', (ws) => {
     if (S.refuseSockets) { ws.close(); return }
     const seq = echoSeq()
-    const entry = { owner: 0, ws, stamp: (p: object) => seq.stamp(p), body: null as any }
+    const entry = { owner: 0, ws, stamp: (p: object) => seq.stamp(p), pushStamped: (p: object) => ws.send(JSON.stringify(seq.stamp(p))), body: null as any }
     S.sockets.push(entry)
     ws.onMessage((m) => {
       seq.remember(m)

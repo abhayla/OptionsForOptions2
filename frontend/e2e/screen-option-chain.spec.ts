@@ -126,7 +126,7 @@ type Stub = {
 async function stubChain(page: Page, o: Opts = {}): Promise<Stub> {
   await page.clock.setFixedTime(new Date(NOW_ISO)) // days left, "today" and every clock-reading label are deterministic
   const S: Stub = { sent: [], sockets: [], calls: [], rest: [], hosts: new Set(), wsHosts: new Set(), answer: o.answer ?? ((req) => chainAnswer(req)),
-    push: (msg) => S.sockets.at(-1)?.send(JSON.stringify(msg)) }
+    push: (msg) => { const ws = S.sockets.at(-1); if (ws) ws.send(JSON.stringify(msg)) } }
   page.on('request', (r) => { S.hosts.add(new URL(r.url()).host) })
   const serve = async (route: Route, r: Reply) => {
     if (r.wait) await r.wait
@@ -170,7 +170,7 @@ async function stubChain(page: Page, o: Opts = {}): Promise<Stub> {
     }
     return route.fulfill({ status: 503, json: catalogue }) // anything this page does not need: a plain failure, never a proxy hang
   })
-  await page.routeWebSocket(/.*/, (ws) => { S.wsHosts.add(new URL(ws.url()).host); ws.close() }) // any other socket is recorded and refused
+  await page.routeWebSocket(/^(?!.*\/api\/strategies\/live).*/, (ws) => { S.wsHosts.add(new URL(ws.url()).host); ws.close() }) // any other socket (not the strategy live one, which this page never plays) is recorded and refused
   await page.routeWebSocket('**/api/market/indices/live', (ws) => { S.wsHosts.add(new URL(ws.url()).host) }) // held open and silent
   await page.routeWebSocket('**/api/market/chain/live', (ws) => {
     S.wsHosts.add(new URL(ws.url()).host)
