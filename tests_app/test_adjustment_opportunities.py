@@ -16,6 +16,7 @@ import test_adjustment_check as check_test
 from httpx import ASGITransport, AsyncClient
 from ofo.adjustment.playbook_eval import RuleValue
 from ofo.errors.explanations import BUILT_APPROACH_NAMES
+from ofo_app import actionable_alerts
 from ofo_app import adjustment_check as chk
 from ofo_app import db as app_db
 from ofo_app import playbook_store
@@ -73,7 +74,7 @@ MARK: dict[int, int] = {}
 async def _clean(engine, sid: int) -> int:
     """Lapse what earlier tests left open on the strategy; later reads see only records above the mark."""
     async with engine.begin() as conn:
-        await playbook_store.lapse_all(conn, "owner", sid, playbook_store.LAPSE_STRATEGY_CLOSED)
+        await actionable_alerts.close_by_system(conn, "owner", sid, playbook_store.LAPSE_STRATEGY_CLOSED)
         for held in (await playbook_store.dismissed_holding(conn, "owner", sid)).values():  # ADR-217: forget dismissals
             await playbook_store.mark_cleared(conn, "owner", held.id)
         MARK[sid] = max((r.id for r in await playbook_store.suggestions(conn, "owner", sid)), default=0)

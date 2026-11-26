@@ -48,9 +48,6 @@ class _Store:
     async def load(self, _w, _today):
         return background.GateLoad(background.alert_gate.GateRows((), 0))
 
-    async def lapse_changed(self, _w):
-        return False
-
     async def lapse_expired(self, _w, _today):
         return False
 
@@ -381,9 +378,6 @@ class _IdStore:
 
     async def load(self, _w, _today):
         return background.GateLoad(background.alert_gate.GateRows((), 0))
-
-    async def lapse_changed(self, _w):
-        return False
 
     async def lapse_expired(self, _w, _today):
         return False

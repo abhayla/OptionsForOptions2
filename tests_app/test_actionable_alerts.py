@@ -278,8 +278,7 @@ async def test_raising_never_exits_by_itself(db):
 
 
 # 8 -------------------------------------------------------------------------------------------------------------
-@pytest.mark.parametrize("reason", [pb.LAPSE_STRATEGY_CLOSED, pb.LAPSE_CONTRACT_EXPIRED,
-                                    pb.LAPSE_POSITION_CHANGED, pb.LAPSE_NOT_MONITORED])
+@pytest.mark.parametrize("reason", [pb.LAPSE_STRATEGY_CLOSED, pb.LAPSE_CONTRACT_EXPIRED, pb.LAPSE_NOT_MONITORED])
 async def test_close_by_system_answers_it_and_moves_it_to_history(db, reason):
     user, stored = await _strategy(db)
     alert = await _raise(db, user, stored.id)
@@ -291,7 +290,8 @@ async def test_close_by_system_answers_it_and_moves_it_to_history(db, reason):
     assert kept.answered_at == LATER
 
 
-@pytest.mark.parametrize("reason", [pb.LAPSE_CONDITION_STOPPED, pb.LAPSE_SUPERSEDED_BY_WORSE, "other"])
+@pytest.mark.parametrize("reason", [pb.LAPSE_CONDITION_STOPPED, pb.LAPSE_SUPERSEDED_BY_WORSE,
+                                    pb.LAPSE_POSITION_CHANGED, "other"])  # F5a: a basket ends no alert
 async def test_close_by_system_refuses_the_reasons_that_no_longer_end_an_alert(db, reason):
     user, stored = await _strategy(db)
     alert = await _raise(db, user, stored.id)

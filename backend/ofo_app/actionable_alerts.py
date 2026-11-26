@@ -37,7 +37,7 @@ from ofo_app import strategy_store
 
 ALERT_ANSWER_REFUSED = "alert_answer_refused"
 #: the reasons that still end an alert because the position the question is about is gone (ADR-330 (3))
-SYSTEM_REASONS = (pb.LAPSE_STRATEGY_CLOSED, pb.LAPSE_CONTRACT_EXPIRED, pb.LAPSE_POSITION_CHANGED,
+SYSTEM_REASONS = (pb.LAPSE_STRATEGY_CLOSED, pb.LAPSE_CONTRACT_EXPIRED,
                   pb.LAPSE_NOT_MONITORED)
 #: the final outcome each user answer is stored with (Dismiss = continue keeps its old outcome 'dismissed')
 _OUTCOME_OF: dict[str, str] = {kinds.EXIT: "acted_on", kinds.ADD_LEGS: "acted_on",
@@ -301,16 +301,6 @@ async def record_held(conn: Any, user_ref: str, strategy_id: int, rule_id: str, 
     """A capped or quiet-time crossing (REQ-170 AC-4): a stored row that is never an alert and never counted; written
     here so that no other module writes alert-table rows."""
     return await pb.record_held(conn, user_ref, strategy_id, rule_id, **facts)
-
-
-async def close_changed(conn: Any, user_ref: str, strategy_id: int, current: int | None, *,
-                        at: datetime | None = None) -> list[Alert]:
-    """#685 item 3: the open alerts raised at another adjustment count than ``current`` close as position_changed."""
-    stale = pb.changed_position(await pb.open_suggestions(conn, user_ref, strategy_id), current)
-    if not stale:
-        return []
-    return await close_by_system(conn, user_ref, strategy_id, pb.LAPSE_POSITION_CHANGED, at=at,
-                                 ids=[s.id for s in stale])
 
 
 async def close_expired(conn: Any, user_ref: str, strategy_id: int, expiry: Any, today: Any, *,  # noqa: PLR0913

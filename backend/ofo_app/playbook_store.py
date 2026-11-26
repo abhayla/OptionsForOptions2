@@ -785,7 +785,7 @@ async def open_suggestion(conn: Any, user_ref: str, strategy_id: int, rule_id: s
                           kind: str | None = None, shown_at: datetime | None = None) -> Suggestion:
     """REQ-112 AC-1: one open record per (strategy, rule); a rule still open returns its existing record.
     ``limit``: the limit in force at the stage (``Suggestion.limit``), beside the gate's rung ``threshold``.
-    ``adjustments``: the strategy's adjustment count now (``Suggestion.adjustments``, ``lapse_changed``).
+    ``adjustments``: the strategy's adjustment count now (``Suggestion.adjustments``).
     ``carry``: a carry check's content (GC-IC1 1b; money as strings, None = not known with its reason code).
     ``worse``: None / 'last' / 'dismissed' (REQ-170 AC-3, ADR-237 (5)), written once at insert.
     ``kind`` (ADR-330, ``ofo.alerts``) and ``shown_at`` (the event time, "Fired at"; None = now): written once.
@@ -871,7 +871,7 @@ async def placed_links(conn: Any, user_ref: str, strategy_id: int) -> dict[int, 
     return out
 
 
-async def lapse(conn: Any, user_ref: str, suggestion_id: int, reason: str = LAPSE_CONDITION_STOPPED, *,  # noqa: PLR0913
+async def lapse(conn: Any, user_ref: str, suggestion_id: int, reason: str, *,  # noqa: PLR0913
                 answer: str | None = None, answered_at: datetime | None = None) -> Suggestion:
     """Closes a record as lapsed. A record of an ADR-330 kind is closed only through
     ``actionable_alerts.close_by_system`` (it passes ``answer`` closed_by_system; the table guard refuses the rest)."""
@@ -895,34 +895,6 @@ async def open_strategy_ids(conn: Any, user_ref: str) -> list[int]:
     """#652: the ids of the user's strategies with at least one open record (a hidden one is left out:
     its records stay open for Undo, ADR-293 (3))."""
     return [int(r[0]) for r in (await conn.execute(_OPEN_STRATEGY_IDS, {"user_ref": user_ref})).all()]
-
-
-async def lapse_all(conn: Any, user_ref: str, strategy_id: int, reason: str) -> list[Suggestion]:
-    """Every open record of the strategy lapses (REQ-112 AC-2: the strategy closed)."""
-    return [await lapse(conn, user_ref, s.id, reason) for s in await open_suggestions(conn, user_ref, strategy_id)]
-
-
-def changed_position(open_records: Iterable[Suggestion], current: int | None) -> list[Suggestion]:
-    """#685 item 3: the open records opened at a different adjustment count than ``current``. Nothing when the count
-    now is unreadable or the record stored none: never a guess."""
-    if not isinstance(current, int) or isinstance(current, bool):
-        return []
-    return [s for s in open_records if s.adjustments is not None and s.adjustments != current]
-
-
-async def lapse_expired(conn: Any, user_ref: str, strategy_id: int, expiry: Any, today: Any) -> list[Suggestion]:
-    """D-30: the strategy's open records lapse as contract_expired once its last expiry is before ``today``. The expiry
-    day itself is still live; an unknown expiry or day lapses nothing (never a guess)."""
-    if expiry is None or today is None or not expiry < today:
-        return []
-    return [await lapse(conn, user_ref, s.id, LAPSE_CONTRACT_EXPIRED)
-            for s in await open_suggestions(conn, user_ref, strategy_id)]
-
-
-async def lapse_changed(conn: Any, user_ref: str, strategy_id: int, current: int | None) -> list[Suggestion]:
-    """The strategy's open records of an earlier position lapse as position_changed (``changed_position``)."""
-    stale = changed_position(await open_suggestions(conn, user_ref, strategy_id), current)
-    return [await lapse(conn, user_ref, s.id, LAPSE_POSITION_CHANGED) for s in stale]
 
 
 async def inbox(conn: Any, user_ref: str) -> list[InboxRow]:

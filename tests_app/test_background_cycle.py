@@ -173,9 +173,6 @@ class FakeGate:
         self.events.extend((w.strategy_id, e) for e in events)
         return {}
 
-    async def lapse_changed(self, _w):
-        return False
-
     async def lapse_expired(self, _w, _today):
         return False
 
@@ -1325,31 +1322,13 @@ async def test_t19_the_worker_prices_with_the_listed_rates_and_checks_t19(scn, s
     assert states["none"].adjustment_cost_reason == "adjust_trigger_no_approach_priced"
 
 
-# ---- GC-ICSAFE c13/c14 (#685 item 3): records of a position the user has since changed -----------------------------
-def _stored(rule, count):
-    """An open record as the store holds it: ``count`` is the adjustment count stored when it opened."""
-    return playbook_store.Suggestion(1, 1, rule, rule, None, None, None, None, "open", None,
-                                     [{} if count is None else {"adjustments": count}])
-
-
+# ---- ADR-330 (3) (P1 round 3 F5a): an adjustment basket no longer closes an open actionable alert ------------------
 class OpenRecordsGate(FakeGate):
-    """FakeGate plus the open records of the strategy ((rule id, stored count)) judged by the store's own rule."""
+    """FakeGate that remembers the open records of the strategy (rule ids): a worker re-list must never touch them."""
 
-    def __init__(self, open_rules=(), fail_lapse: int = 0) -> None:
+    def __init__(self, open_rules=()) -> None:
         super().__init__()
-        self.records, self.fail_lapse = [_stored(r, n) for r, n in open_rules], fail_lapse
-
-    @property
-    def open(self):
-        return [r.rule_id for r in self.records]
-
-    async def lapse_changed(self, w):
-        if self.fail_lapse:
-            self.fail_lapse -= 1
-            raise ConnectionError("database blip")
-        stale = playbook_store.changed_position(self.records, w.tracked.adjustments_used)
-        self.records = [r for r in self.records if r not in stale]
-        return bool(stale)
+        self.open = list(open_rules)
 
 
 class _CommitSession(_Session):
@@ -1387,92 +1366,40 @@ async def _rebuilt_with(before, after, gate, queued=False):
     return w, sid
 
 
-async def test_path_60_records_raised_for_the_position_before_the_2nd_adjustment_lapse_when_it_is_booked():
-    gate = OpenRecordsGate([("T-07", 1), ("S-12", 1)])
-    assert len(gate.open) == SECOND  # the class before: open records of a strategy whose position changed
+async def test_path_60_records_raised_before_the_2nd_adjustment_stay_open_when_it_is_booked():
+    gate = OpenRecordsGate(["T-07", "S-12"])
     await _rebuilt_with(1, 2, gate)
-    assert gate.open == []  # after
+    assert gate.open == ["T-07", "S-12"]  # ADR-330 (3): only the user's answer, the trade closing or expiry ends them
 
 
-async def test_a_worker_rebuilt_from_nothing_lapses_a_record_of_an_earlier_position():
-    gate = OpenRecordsGate([("T-07", 1)])
+async def test_a_worker_rebuilt_from_nothing_keeps_every_open_record():
+    gate = OpenRecordsGate(["T-07"])
     listed: list = []
     w = _rig(gate, listed)
     listed[0] = _with_count(listed[0], 2)
     assert w.monitors == []  # a restart: no baseline in memory
     await w.rebuild()
-    assert gate.open == []
-
-
-async def test_a_strategy_unread_at_one_refresh_is_judged_at_the_next_by_the_stored_count():
-    gate = OpenRecordsGate([("T-07", 1)])
-    listed: list = []
-    w = _rig(gate, listed)
-    for count in (1, None, 2):  # read, unread (a failed read), read again with a booked basket
-        listed.append(_with_count(listed[0], count))
-        await w._rebuild_safely()
-        assert gate.open == (["T-07"] if count != SECOND else [])
-
-
-async def test_a_record_opened_late_for_the_old_position_lapses_at_the_next_re_list():
-    gate = OpenRecordsGate([("T-07", 1)])
-    w, _sid = await _rebuilt_with(1, 2, gate)
-    gate.records.append(_stored("S-12", 1))  # a check cycle of the old list opened it after the lapse
-    await w._rebuild_safely()
-    assert gate.open == []
-
-
-async def test_an_unchanged_position_keeps_its_open_records():
-    gate = OpenRecordsGate([("T-07", 2)])
-    await _rebuilt_with(2, 2, gate)
     assert gate.open == ["T-07"]
 
 
-@pytest.mark.parametrize(("stored", "now"), [(None, 2), (2, None), (None, None)])
-async def test_an_unreadable_adjustment_count_lapses_nothing(stored, now):
-    gate = OpenRecordsGate([("T-07", stored)])
-    await _rebuilt_with(now, now, gate)
-    assert gate.open == ["T-07"]
+@pytest.mark.parametrize(("before", "after"), [(2, 2), (None, 2), (2, None), (None, None), (0, 3)])
+async def test_no_adjustment_count_reading_closes_an_open_record(before, after):
+    gate = OpenRecordsGate(["T-07", "S-12", "T-03"])
+    await _rebuilt_with(before, after, gate)
+    assert gate.open == ["T-07", "S-12", "T-03"]
 
 
-async def test_only_the_records_of_an_earlier_count_lapse_when_several_are_open():
-    gate = OpenRecordsGate([("T-07", 1), ("S-12", 2), ("T-03", None)])
-    await _rebuilt_with(2, 2, gate)
-    assert gate.open == ["S-12", "T-03"]
-
-
-async def test_two_baskets_booked_between_two_re_lists_lapse_once_and_reset_the_strategys_gate():
-    gate = OpenRecordsGate([("T-07", 0), ("S-12", 0)])
+async def test_two_baskets_booked_between_two_re_lists_reset_the_strategys_gate_memory_but_close_nothing():
+    gate = OpenRecordsGate(["T-07", "S-12"])
     w, sid = await _rebuilt_with(0, 2, gate, queued=True)
-    assert gate.open == [] and sid not in w._gate_events and sid not in w._gate  # stale events dropped, gate restored
+    assert gate.open == ["T-07", "S-12"]
+    assert sid not in w._gate_events and sid not in w._gate  # stale events dropped, gate restored from the store
 
 
-async def test_a_failed_lapse_keeps_the_last_list_and_is_retried_at_the_next_re_list():
-    gate = OpenRecordsGate([("T-07", 1)])
-    listed: list = []
-    w = _rig(gate, listed)
-    listed[0] = _with_count(listed[0], 1)
-    await w.rebuild()
-    gate.fail_lapse = 1  # the database blips as the booked basket is read
-    listed.append(_with_count(listed[0], 2))
-    await w._rebuild_safely()
-    assert gate.open == ["T-07"] and w.monitors[0].tracked.adjustments_used == 1 and w.errors
-    await w._rebuild_safely()
-    assert gate.open == [] and w.monitors[0].tracked.adjustments_used == SECOND
+def test_the_db_gate_store_has_no_position_changed_close_any_more():
+    assert not hasattr(background.DbGateStore, "lapse_changed")
+    assert not hasattr(actionable_alerts, "close_changed")
 
-
-async def test_the_db_gate_store_lapses_the_records_of_an_earlier_count_as_position_changed(monkeypatch):
-    seen = []
-
-    async def close_changed(_db, user_ref, sid, current):
-        seen.append((user_ref, sid, current))
-        return [object()]
-    monkeypatch.setattr(db, "get_sessionmaker", lambda: _CommitSession)
-    monkeypatch.setattr(actionable_alerts, "close_changed", close_changed)
-    w = _with_count(_watched(scenario_mode.load("ADJ-60")), 2)[0]
-    assert await background.DbGateStore().lapse_changed(w) is True
-    assert seen == [("owner", w.strategy_id, 2)]
-    assert str(render_explanation("suggestion_lapsed_position_changed")) == "The position changed"
 
 
 class FailingExpiryGate(FakeGate):
@@ -1481,9 +1408,6 @@ class FailingExpiryGate(FakeGate):
     def __init__(self) -> None:
         super().__init__()
         self.asked, self.fail = [], 1
-
-    async def lapse_changed(self, _w):
-        return False
 
     async def lapse_expired(self, w, _today):
         self.asked.append(w.strategy_id)

@@ -272,7 +272,7 @@ async def test_gate_rows_none_rows_and_restore(db):
     today = (await db.execute(text("SELECT (clock_timestamp() AT TIME ZONE 'Asia/Kolkata')::date"))).scalar_one()
     assert await pb.gate_rows(db, user, sid, today) == ag.GateRows((), 0)  # none
     first = await _open(db, user, sid, "T-03", threshold=D("0.35"))
-    await pb.lapse(db, user, first.id)
+    await pb.lapse(db, user, first.id, pb.LAPSE_CONDITION_STOPPED)
     second = await _open(db, user, sid, "T-03", threshold=D("0.40"), worse="last")
     await pb.dismiss(db, user, second.id)
     await _open(db, user, sid, "T-01", threshold=D("0.5"))
