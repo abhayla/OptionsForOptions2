@@ -1403,7 +1403,7 @@ def _exit_risk_answer(state: Literal["yes", "no", "cannot_tell"]) -> ExitRiskOut
 
 
 def _stop_line(before: Decimal, after: Decimal | str) -> str:
-    """ADR-330 (6): "If this stop fires, max loss becomes Rs X (now Rs Y)"; unlimited after -> the no-fixed-maximum words."""
+    """ADR-330 (6): "If this stop fires, max loss becomes Rs X (now Rs Y)"; unlimited: no fixed maximum."""
     if after == "unlimited":
         return render_explanation("paper_leg_stop_unlimited_loss", before=abs(before))
     return render_explanation("paper_leg_stop_widens_loss", before=abs(before), after=abs(Decimal(after)))

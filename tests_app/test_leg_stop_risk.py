@@ -4,8 +4,8 @@ engine (exit_risk, ADR-008) and answered with the widening line; it informs only
 
 The book is the app's iron condor (65 units a leg, both spreads 200 wide): SELL 22800 CE 80, BUY 23000 CE 20,
 SELL 22400 PE 130, BUY 22200 PE 34. Net credit 156 a unit = 10,140.00; Max Loss before = 13,000.00 - 10,140.00 =
-2,860.00 (the 25 Nov "now" figure). A stop on the short call at 140.70 buys it back for 9,145.50, leaving the long call and
-the put spread: Max Loss after = 2,860.00 + 9,145.50 = 12,005.50. The 25 Nov cent (12,005.51) is not reachable with
+2,860.00 (the 25 Nov "now" figure). A stop on the short call at 140.70 buys it back for 9,145.50, leaving the long call
+and the put spread: Max Loss after = 2,860.00 + 9,145.50 = 12,005.50. The 25 Nov cent (12,005.51) is not reachable with
 orders at 0.05 steps in any quantity (every booked amount is a multiple of 0.05), so it came from something else
 (charges); the engine figure for this book is 12,005.50 and the test pins that, not a bent number."""
 from __future__ import annotations
@@ -15,7 +15,9 @@ from decimal import Decimal
 from http import HTTPStatus
 
 import pytest
+from ofo.engine.extremes import ExitRisk
 from ofo_app import paper_store
+from ofo_app.routes import paper as paper_routes
 from sqlalchemy import text
 from test_strategy_store import _client
 from test_strategy_tracking import _setup
@@ -25,6 +27,7 @@ AT = datetime.datetime(2026, 11, 25, 5, 0, tzinfo=datetime.UTC)
 PRICES = ("80", "20", "130", "34")  # SELL 22800 CE, BUY 23000 CE, SELL 22400 PE, BUY 22200 PE
 SIDES = ("SELL", "BUY", "SELL", "BUY")
 SHORT_CALL, LONG_CALL, SHORT_PUT, LONG_PUT = range(4)
+LEGS = len(SIDES)
 
 
 @pytest.fixture
@@ -64,7 +67,7 @@ async def test_25_nov_short_call_stop(db):
     assert body["state"] == "yes"
     assert body["warning_text"] == "If this stop fires, max loss becomes Rs 12,005.50 (now Rs 2,860.00)"
     assert (body["max_loss_before"], body["max_loss_after"]) == ("-2860.00", "-12005.50")
-    assert await _orders(db, stored.id) == 4  # read only
+    assert await _orders(db, stored.id) == LEGS  # read only
 
 
 async def test_a_stop_that_does_not_widen_is_no(db):
@@ -83,8 +86,6 @@ async def test_a_stop_on_a_long_wing_leaves_the_short_leg_bare_so_it_is_yes_with
 
 
 async def test_a_stop_that_cannot_be_priced_is_cannot_tell_with_no_figure(db, monkeypatch):
-    from ofo.engine.extremes import ExitRisk
-    from ofo_app.routes import paper as paper_routes
     monkeypatch.setattr(paper_routes, "exit_risk", lambda *a, **k: ExitRisk("cannot_tell", None, None, ()))
     app, stored, ids = await _book(db)
     body = (await _ask(app, stored.id, ids[SHORT_CALL], "140.70")).json()
