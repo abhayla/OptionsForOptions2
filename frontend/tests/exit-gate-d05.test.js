@@ -151,11 +151,12 @@ describe('D-05 builder half: a failed read of the book blocks every Exit (REQ-10
     expect(t(w, 'paper-confirm').exists()).toBe(false)
   })
 
-  it('failed: a "Review and add" dialog of adds only stays open', async () => {
+  it('failed: a "Review and add" dialog of adds closes too (Tier A F2: its orders come from the net on screen), the edit stays', async () => {
     const w = await builder()
     await reviewAdd(w)
     await failRead(w)
-    expect(t(w, 'paper-confirm').exists()).toBe(true)
+    expect(t(w, 'paper-confirm').exists()).toBe(false)
+    expect(w.vm.$.setupState.pendingOrders.length).toBe(1)
   })
 
   it('failed, then the next good read: every Exit is enabled again, the reason and the dashes are gone', async () => {
@@ -213,11 +214,12 @@ describe('ADR-328 (4): an Exit is never built from an old net', () => {
     expect(t(w, 'paper-confirm').exists()).toBe(false)
   })
 
-  it('changed elsewhere: a "Review and add" dialog of other edits is unchanged (L6, deferred)', async () => {
+  it('changed elsewhere: a "Review and add" dialog of other edits closes too (Tier A F2), the edit stays', async () => {
     const w = await builder()
     await reviewAdd(w)
     await setMark(w, true)
-    expect(t(w, 'paper-confirm').exists()).toBe(true)
+    expect(t(w, 'paper-confirm').exists()).toBe(false)
+    expect(w.vm.$.setupState.pendingOrders.length).toBe(1)
   })
 
   it('changed elsewhere: no Exit edit outlives the closed dialog; Review and add is gone and nothing is posted (ADR-328 (4))', async () => {

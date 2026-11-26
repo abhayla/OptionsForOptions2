@@ -480,8 +480,11 @@ watch(pendingOrders, (o) => { if (!o?.length) exitOrigin.value = false }) // pos
 const discardPending = () => { if (paper.value) setLegs(copyLegs(paper.value.net)) }
 // GC-TP step 3b2 (Sensibull Drafts Mode 274-279): Exit all / a (partial) Exit only EDIT the legs (none / the contract less N lots),
 // then open the same confirm list: the orders are paperOrdersFor(net, legs) like every other edit, never built here.
+let legsBeforeExit = null // the legs as the user left them just before the first Exit click: what a cancelled Exit dialog restores
+const markExit = () => { if (!exitOrigin.value) legsBeforeExit = copyLegs(legs.value) }
 function exitAllPaper() {
   if (!paper.value || paperStale.value || exitBlocked.value) return
+  markExit()
   setLegs([])
   reviewPending(true)
 }
@@ -489,21 +492,29 @@ function exitPaper(contractId, lots) {
   if (!paper.value || paperStale.value || exitBlocked.value) return
   const next = legsAfterExit(paper.value.net, legs.value, contractId, lots)
   if (!next) return
+  markExit()
   setLegs(next)
   reviewPending(true)
 }
 // N-04 / N-05: the ONE way an Exit dialog closes without a Confirm: the user's Cancel, and every close the page does itself (the read
-// failed, the trade changed elsewhere, a Confirm that arrives while blocked). It drops the staged exits too (legs back to the net the
-// book holds), so no "pending change" outlives a dialog nobody confirmed. A dialog of "Review and add" for other edits keeps its edits.
+// failed, the trade changed elsewhere, a Confirm that arrives while blocked). It drops the staged exits too (the legs the user had before
+// the Exit click come back, their other edits with them), so no "pending change" outlives a dialog nobody confirmed. A dialog of
+// "Review and add" for other edits keeps its edits. While a POST is in flight nothing closes it: its answer (or the unknown-outcome text) decides.
 function cancelPaperDialog() {
+  if (paperBusy.value) return
   const wasExit = exitOrigin.value
   paperDialog.value = false
-  if (wasExit && !paperStale.value) { exitOrigin.value = false; discardPending() } // stored orders (stale net): nothing to drop, the re-read replaces the legs
+  if (wasExit && !paperStale.value) { // stored orders (stale net): nothing to drop, the re-read replaces the legs
+    exitOrigin.value = false
+    if (legsBeforeExit) setLegs(legsBeforeExit)
+    else discardPending()
+    legsBeforeExit = null
+  }
 }
-// ADR-328 (4) / D-05: an Exit dialog posts nothing while the read failed or the trade changed elsewhere; it closes through the same
-// cancel as the user's, the panel's reason line says why. A dialog of "Review and add" for other edits is not touched (L6, deferred).
+// ADR-328 (4) / D-05: a paper dialog posts nothing while the read failed or the trade changed elsewhere (any dialog: its orders are
+// built from the net on screen); it closes through the same cancel as the user's, the panel's reason line says why.
 watch(exitBlocked, (blocked) => {
-  if (blocked && paperDialog.value && exitOrigin.value && !paperBusy.value && !paperStale.value && paperState.value !== PAPER_STATE.UNKNOWN) cancelPaperDialog()
+  if (blocked && paperDialog.value && !paperBusy.value && !paperStale.value && paperState.value !== PAPER_STATE.UNKNOWN) cancelPaperDialog()
 })
 // Drafts Mode summary: the book's Profit left / Loss left first (or the words for its extremes_reason), its original Max Profit /
 // Max Loss below; every figure the book reply's text as sent. Null outside Drafts Mode: the summary is unchanged.
@@ -520,7 +531,7 @@ const paperLeft = computed(() => { // GC-ICFIX u124: after-charges forms, labell
 const paperFills = computed(() => (paper.value ? paper.value.net.map(paperFillKey) : []))
 async function confirmPending(orders) {
   if (paperBusy.value || !paper.value || !paperDialog.value) return // a Confirm for a dialog that is no longer open (the page closed it) posts nothing
-  if (exitOrigin.value && exitBlocked.value) { cancelPaperDialog(); return } // post nothing (the watch may not have run yet)
+  if (exitBlocked.value) { cancelPaperDialog(); return } // post nothing (the watch may not have run yet)
   const { id } = paper.value
   paperBusy.value = true
   paperError.value = ''

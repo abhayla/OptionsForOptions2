@@ -166,3 +166,99 @@ describe('N-04 / N-05: an Exit dialog the PAGE closes drops its staged exits, li
     expect(S(w).pendingOrders.length).toBe(1)
   })
 })
+
+describe('Tier A review round 2: the staged exit is dropped, the user\'s own edits stay; a blocked Confirm posts nothing; a POST in flight cannot be cancelled', () => {
+  const removeFirst = (w) => S(w).setLegs(S(w).legs.slice(1))
+  const lots9 = (w) => S(w).setLegs(S(w).paper.net.map((l, i) => (i === 0 ? { ...l, lots: 9 } : { ...l })))
+  const exitLeg = async (w, i) => { S(w).exitPaper(S(w).paper.net[i].contract_id, 1); await flushPromises() }
+
+  it('F1 A1: a lot change, then a per-leg Exit on another leg, then Cancel: the lot change stays (1 pending)', async () => {
+    const w = await builder()
+    lots9(w)
+    await flushPromises()
+    expect(S(w).pendingOrders.length).toBe(1)
+    await exitLeg(w, 2)
+    expect(S(w).pendingOrders.length).toBe(2)
+    expect(t(w, 'paper-confirm').exists()).toBe(true)
+    await t(w, 'paper-cancel').trigger('click')
+    await flushPromises()
+    expect(S(w).pendingOrders.length).toBe(1)
+    expect(S(w).legs[0].lots).toBe(9)
+  })
+
+  it('F1 A2: a leg removed, then a per-leg Exit, then the read fails: the removal stays (1 pending)', async () => {
+    const w = await builder()
+    removeFirst(w)
+    await flushPromises()
+    expect(S(w).pendingOrders.length).toBe(1)
+    await exitLeg(w, 2)
+    expect(t(w, 'paper-confirm').exists()).toBe(true)
+    await failRead()
+    expect(t(w, 'paper-confirm').exists()).toBe(false)
+    expect(S(w).pendingOrders.length).toBe(1)
+  })
+
+  it('F2 A3: a leg removed, Review and add open, the trade changes elsewhere: dialog closes, Confirm posts nothing, the edit stays', async () => {
+    const w = await builder()
+    removeFirst(w)
+    await flushPromises()
+    await t(w, 'paper-review').trigger('click')
+    await flushPromises()
+    expect(t(w, 'paper-confirm').exists()).toBe(true)
+    const rows = S(w).paperRows
+    await setMark(w, true)
+    expect(t(w, 'paper-confirm').exists()).toBe(false)
+    await S(w).confirmPending(rows)
+    await flushPromises()
+    expect(orderPosts()).toHaveLength(0)
+    expect(S(w).pendingOrders.length).toBe(1)
+  })
+
+  it('F2 A3b: Confirm in the same tick as the mark, on a Review and add dialog: nothing posted, edit kept', async () => {
+    const w = await builder()
+    removeFirst(w)
+    await flushPromises()
+    await t(w, 'paper-review').trigger('click')
+    await flushPromises()
+    const rows = S(w).paperRows
+    S(w).paperContractsChanged = true
+    await S(w).confirmPending(rows)
+    await flushPromises()
+    expect(orderPosts()).toHaveLength(0)
+    expect(S(w).pendingOrders.length).toBe(1)
+  })
+
+  it('F3 A6: Confirm (POST pending), Cancel, then the POST fails 503: the dialog stays and shows the unknown-outcome text', async () => {
+    const w = await builder()
+    let fail
+    answers['POST /paper/strategies/86/orders'] = () => new Promise((_, rej) => { fail = rej })
+    await t(w, 'paper-exit-all').trigger('click')
+    await flushPromises()
+    await t(w, 'paper-confirm-button').trigger('click')
+    await flushPromises()
+    expect(S(w).paperBusy).toBe(true)
+    await t(w, 'paper-cancel').trigger('click')
+    await flushPromises()
+    expect(t(w, 'paper-confirm').exists()).toBe(true)
+    expect(S(w).pendingOrders.length).toBe(4)
+    fail({ status: 503, message: 'x', parts: null })
+    await flushPromises()
+    expect(t(w, 'paper-unknown').exists()).toBe(true)
+    expect(t(w, 'paper-confirm').exists()).toBe(true)
+  })
+
+  it('F4 A9: POST 201 then the re-read fails, Close: the legs stay as they were (nothing restored over stored orders)', async () => {
+    const w = await builder()
+    await t(w, 'paper-exit-all').trigger('click')
+    await flushPromises()
+    answers['GET /paper/strategies/86'] = FAIL_503
+    await t(w, 'paper-confirm-button').trigger('click')
+    await vi.advanceTimersByTimeAsync(100) // the first re-read failed, the next try is 400 ms away: the dialog says it was placed
+    await flushPromises()
+    expect(orderPosts()).toHaveLength(1)
+    expect(t(w, 'paper-placed').exists()).toBe(true)
+    await t(w, 'paper-cancel').trigger('click')
+    await flushPromises()
+    expect(S(w).legs).toEqual([])
+  })
+})
