@@ -8,8 +8,8 @@ from decimal import ROUND_HALF_UP, Decimal
 from typing import Final
 
 from ofo.engine import adjust_money
+from ofo.money import PAISE
 
-PAISE: Final = Decimal("0.01")
 _MAX_PERCENT: Final = Decimal(100)
 
 

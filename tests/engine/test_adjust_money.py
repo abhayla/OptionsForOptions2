@@ -48,3 +48,9 @@ def test_fell_at_least_pct_boundary():
     assert adjust_money.fell_at_least_pct(D("100"), D("20"), 80) is True      # exactly 80%
     assert adjust_money.fell_at_least_pct(D("100"), D("20.01"), 80) is False  # 79.99%
     assert adjust_money.fell_at_least_pct(D("0"), D("0"), 80) is False        # no entry
+
+
+def test_distance_to_level_rising_and_falling_and_past():
+    assert adjust_money.distance_to_level(D("5000"), D("3200"), True) == D("1800")
+    assert adjust_money.distance_to_level(D("-4000"), D("-1000"), False) == D("3000")  # stop below P&L: now - level
+    assert adjust_money.distance_to_level(D("5000"), D("5200.50"), True) == D("-200.50")  # past the line: negative

@@ -814,7 +814,8 @@ class DbGateStore:
                                                         threshold=threshold, reason=e.reason)
                     continue
                 rec = await actionable_alerts.raise_actionable(
-                    db, w.user_ref, w.strategy_id, e.rule_id, kind_of(_trigger_of_kind(e.rule_id, f.trigger)), at=e.at, value=value,
+                    db, w.user_ref, w.strategy_id, e.rule_id, kind_of(_trigger_of_kind(e.rule_id, f.trigger)),
+                    at=e.at, value=value,
                     threshold=threshold, trigger_id=f.trigger, stage=f.stage, group=gate_group(w.strategy_id, e.at),
                     source=source, cmp=f.cmp, label=f.label, unit=f.unit, worse=e.worse, beyond=f.beyond,
                     limit=_quantized(e.limit),

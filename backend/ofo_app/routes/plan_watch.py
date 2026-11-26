@@ -25,8 +25,9 @@ from fastapi import APIRouter, Depends
 from ofo.adjustment import playbook_eval as pe
 from ofo.adjustment import stop_lines as sl
 from ofo.charges import ChargeRates
+from ofo.engine import adjust_money
 from ofo.errors.explanations import render_explanation
-from ofo.money import PAISE
+from ofo.money import HUNDREDTH, PAISE
 from ofo.strategy.definition import describe_contract
 from sqlalchemy.exc import SQLAlchemyError
 
@@ -56,7 +57,7 @@ log = logging.getLogger(__name__)
 router = APIRouter(route_class=ClosedRoute)
 _NOT_AVAILABLE = "user_input_request_not_available"
 PERCENT = Decimal(100)
-SHOWN_PCT = Decimal("0.01")
+SHOWN_PCT = HUNDREDTH
 _PCT_UNIT = "%"
 
 LineKind = Literal["target", "stop", "credit_stop", "rule", "index_exit", "leg_stop"]
@@ -134,7 +135,8 @@ def _plan_lines(run: CheckRun, live: bool) -> list[dict]:
         if not live or pnl is None:
             lines.append(_line(lim.trigger_id, kind, "plan", label, "pnl_rupees", "paused", fires=fires))
             continue
-        distance = fires - pnl if kind == "target" else pnl - fires  # rupees still to go before the line is reached
+        # rupees still to go before the line is reached
+        distance = adjust_money.distance_to_level(fires, pnl, kind == "target")
         lines.append(_line(lim.trigger_id, kind, "plan", label, "pnl_rupees",
                            "fired" if lim.rule_id in fired else "watching", fires=fires, now=pnl, distance=distance,
                            pct=_pct(distance, fires)))
@@ -163,7 +165,7 @@ def _fires_at(kind: str, lim: pe.LimitNow, state: pe.StrategyState) -> Decimal |
     evaluator's own rupee loss line (``LimitNow.amount``); None = not known (never a guess)."""
     if kind == "target":
         if isinstance(state.max_profit, Decimal) and isinstance(lim.threshold, Decimal):
-            return state.max_profit * lim.threshold / PERCENT
+            return adjust_money.pct_of(state.max_profit, lim.threshold)
         return None
     return -lim.amount if isinstance(lim.amount, Decimal) else None
 
@@ -178,7 +180,7 @@ def _rule_line(v: pe.RuleValue, run: CheckRun, live: bool, fired: bool) -> dict:
     kind = "percent" if percent else "rule_unit"
     if not live:
         return _line(v.rule_id, "rule", "plan", label, kind, "paused", fires=v.threshold)
-    distance = v.threshold - v.value if v.cmp == "ge" else v.value - v.threshold  # still to go (negative: past)
+    distance = adjust_money.distance_to_level(v.threshold, v.value, v.cmp == "ge")  # still to go (negative: past)
     return _line(v.rule_id, "rule", "plan", label, kind, "fired" if fired else "watching", fires=v.threshold,
                  now=v.value, pct=_q(distance) if percent else None)
 
@@ -215,7 +217,7 @@ async def _armed_lines(db: Any, strategy_id: int, run: CheckRun, live: bool) -> 
             lines.append(_line(key, kind_out, "armed", label, unit, "paused" if not live else "not_computable",
                                fires=t.level))
             continue
-        distance = t.level - price if up else price - t.level
+        distance = adjust_money.distance_to_level(t.level, price, up)
         lines.append(_line(key, kind_out, "armed", label, unit, "fired" if r.fired_at is not None else "watching",
                            fires=t.level, now=price, distance=distance, pct=_pct(distance, price)))
     return lines

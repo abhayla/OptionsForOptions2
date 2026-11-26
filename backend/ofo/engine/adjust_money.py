@@ -148,3 +148,10 @@ def stop_at_multiple(credit: Decimal, multiple: Decimal) -> Decimal:
     """ADR-247: the loss at which a "``multiple`` x the credit received" stop fires, to the paisa (half up). Example
     (strategy 82): credit 8,918 at 2 -> 17,836."""
     return (credit * multiple).quantize(PAISE, rounding=ROUND_HALF_UP)
+
+
+def distance_to_level(level: Decimal, now: Decimal, rising: bool) -> Decimal:
+    """ADR-330 (5): how far ``now`` still is from a watched ``level``, in the same unit; negative once it is past.
+    ``rising`` = the line is reached from below (a target, an upside trigger): level - now; else now - level.
+    Example: target 5,000 with P&L 3,200 -> 1,800; stop -4,000 with P&L -1,000 -> 3,000."""
+    return level - now if rising else now - level

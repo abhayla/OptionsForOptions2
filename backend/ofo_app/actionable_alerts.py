@@ -149,7 +149,7 @@ class Alert:
         return self.timeline[0].get("cmp") if self.timeline else None
 
 
-def _encode(value: Any) -> Any:
+def _encode_slot(value: Any) -> Any:
     """A slot value as JSON: Decimal and datetime carry a tag so that read-back gives the exact typed value."""
     if isinstance(value, Decimal):
         return {"$decimal": str(value)}
@@ -373,4 +373,4 @@ async def inform(conn: Any, user_ref: str, strategy_id: int, kind: str, template
         await pb.require_owned(conn, user_ref, strategy_id)
         return int((await conn.execute(_INSERT_NOTE, {
             "strategy_id": strategy_id, "rule_id": f"info:{kind}", "kind": kind, "at": at, "template": template_id,
-            "values": json.dumps({k: _encode(v) for k, v in values.items()})})).scalar_one())
+            "values": json.dumps({k: _encode_slot(v) for k, v in values.items()})})).scalar_one())
