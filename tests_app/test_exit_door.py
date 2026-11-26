@@ -451,13 +451,13 @@ async def _add_a_lot(db, stored, leg: int) -> None:
 
 
 GOLDEN_RACE_TRACKING: list[tuple] = [
-    (0, "BUY", 65, D("39.15"), "exit", None, None, dt(2026, 10, 8, 3, 50, 8)),
+    (0, "BUY", 130, D("39.15"), "exit", None, None, dt(2026, 10, 8, 3, 50, 9)),
 ]
 
 
-async def test_a_leg_added_between_read_and_lock_tracking_route_part_closes_the_old_quantity(db, monkeypatch):
-    """The tracking route keeps today's sides and quantities (5.4.3): it closes what its own book read showed (65), the
-    lot added after the read stays open."""
+async def test_a_leg_added_between_read_and_lock_tracking_route_closes_the_whole_locked_quantity(db, monkeypatch):
+    """#729 (REQ-109 AC-4): the tracking route lets the door re-read the net under the strategy lock, so a lot added
+    after the route's book read is closed too (130, not the 65 the pre-lock read showed)."""
     app, stored, *_ = await _opened(db)
     real = tracking_routes._snapshot
 
@@ -467,7 +467,26 @@ async def test_a_leg_added_between_read_and_lock_tracking_route_part_closes_the_
     monkeypatch.setattr(tracking_routes, "_snapshot", racing)
     reply = await _exit_call(app, stored, "tracking", [0])
     assert reply.status_code == OK, reply.text
-    assert await _closing(db, stored.id, list(stored.saved.contract_ids)) == GOLDEN_RACE_TRACKING
+    rows = await _closing(db, stored.id, list(stored.saved.contract_ids))
+    assert [r[:6] for r in rows] == [r[:6] for r in GOLDEN_RACE_TRACKING]
+
+
+@pytest.mark.parametrize("legs", [[0], [0, 1]])
+async def test_a_leg_flat_between_read_and_lock_tracking_route_is_refused_already_exited(db, monkeypatch, legs):
+    """#729: a named contract already flat under the lock answers tracking_leg_already_exited
+    (a flat leg among open ones is not silently dropped; the failed write rolls the shared test connection back)."""
+    app, stored, *_ = await _opened(db)
+    ids = list(stored.saved.contract_ids)
+    real = tracking_routes._snapshot
+
+    async def racing(*args, **kwargs):
+        held = stored.saved.definition.legs[0]  # another exit closes leg 0 after the route's book read
+        await paper_store.place(db, stored.user_ref, stored.id, [paper_store.NewOrder(
+            ids[0], "BUY" if held.action.value == "SELL" else "SELL", 65, D("40.00"), "exit", ANSWERED)])
+        return await real(*args, **kwargs)
+    monkeypatch.setattr(tracking_routes, "_snapshot", racing)
+    reply = await _exit_call(app, stored, "tracking", legs)
+    _refused(reply, "tracking_leg_already_exited")
 
 
 class _After:
