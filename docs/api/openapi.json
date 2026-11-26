@@ -11,6 +11,18 @@
             "title": "Answers",
             "type": "array"
           },
+          "escalated_at": {
+            "anyOf": [
+              {
+                "format": "date-time",
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Escalated At"
+          },
           "fired_at": {
             "format": "date-time",
             "title": "Fired At",
@@ -58,6 +70,15 @@
           },
           "text": {
             "title": "Text"
+          },
+          "worse_line": {
+            "anyOf": [
+              {},
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Worse Line"
           }
         },
         "required": [
@@ -70,6 +91,8 @@
           "fired_line",
           "no_longer_true_since",
           "no_longer_true_line",
+          "escalated_at",
+          "worse_line",
           "answers"
         ],
         "title": "ActiveAlert",
@@ -5957,6 +5980,18 @@
             ],
             "title": "Closed Reason"
           },
+          "escalated_at": {
+            "anyOf": [
+              {
+                "format": "date-time",
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Escalated At"
+          },
           "fired_at": {
             "format": "date-time",
             "title": "Fired At",
@@ -5983,6 +6018,15 @@
           },
           "text": {
             "title": "Text"
+          },
+          "worse_line": {
+            "anyOf": [
+              {},
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Worse Line"
           }
         },
         "required": [
@@ -5993,6 +6037,8 @@
           "text",
           "fired_at",
           "fired_line",
+          "escalated_at",
+          "worse_line",
           "answer",
           "answer_label",
           "answered_at",

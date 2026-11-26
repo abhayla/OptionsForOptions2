@@ -4607,6 +4607,14 @@
     "sha256": "7a0b2fe85f9e53c24b7dfe881401114746307bafb030e5798b1d83557af23015",
     "reviewed": "pending owner read"
   },
+  "explanation:alert_worse_than_fired": {
+    "sha256": "a248e13ea7adaab910fd8a8a385d0c55220e46cb533490a28fe7d5db35f3b6b3",
+    "reviewed": "pending owner read"
+  },
+  "explanation:alert_worse_than_fired_plain": {
+    "sha256": "7b623cd3c4ab65821714235aa037452ca2c247002c0b92a6e1cffb91203248cf",
+    "reviewed": "pending owner read"
+  },
   "labels:alert_answer": {
     "sha256": "a4dc3ce54ea870fb01210ed297a5dd92e749ad3dd23d377b31c4c83604d00ed9",
     "reviewed": "pending owner read"

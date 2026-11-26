@@ -9,19 +9,21 @@ ADR-048 (limited app role, allow-list); 0031 / 0036 (the suggestion guard, copie
 Changes (owner-run, one transaction; ADDITIVE columns, no back-fill, old rows keep NULL):
 - public.adjustment_suggestions: kind TEXT NULL (CHECK in KINDS = ofo.alerts kinds, a test compares), answer TEXT NULL
   (CHECK in ANSWERS), answered_at TIMESTAMPTZ NULL, no_longer_true_since TIMESTAMPTZ NULL,
+  escalated_at TIMESTAMPTZ NULL (the last time a WORSE value of the same rule updated this open alert; the existing
+  ``worse`` column keeps its meaning, how the row was opened relative to an earlier record, and never changes),
   CHECK (answer and answered_at are both set or both NULL).
 - Guard adjustment_suggestions_guard (0036's, every protection kept) plus:
   * a record of a kind (kind NOT NULL) leaves 'open' only with an answer; a 'lapsed' one only as 'closed_by_system'
     and 'closed_by_system' only with 'lapsed' (no path closes an actionable record without the user or the position);
   * the answer and its time are written once, with the final outcome;
-  * no_longer_true_since changes only while the record is open and stays open;
+  * no_longer_true_since and escalated_at change only while the record is open and stays open;
   * stage, value and threshold change only while the record is open and stays open (a worse escalation updates the
     open row); id, strategy, rule, trigger, shown_at (= "Fired at"), worse and kind never change;
   * an INSERT is open and unanswered, or an informational note: outcome 'dismissed', answer 'noted', answered_at set,
     kind set (History only, never open, so never counted).
 - Grants: INSERT (shown_at, kind, outcome, answer, answered_at) (shown_at = the event time "Fired at", never in the
   future); UPDATE (stage, value, threshold, answer, answered_at,
-  no_longer_true_since). public.ofo_assert_app_role_allowlist: block 23's suggestion part re-pinned.
+  no_longer_true_since, escalated_at). public.ofo_assert_app_role_allowlist: block 23's suggestion part re-pinned.
 - downgrade: refuses (OF031) while any row has a kind, answer or no_longer_true_since; otherwise restores 0036's guard.
 
 Revision ID: 0054_actionable_alert_answers
@@ -63,10 +65,10 @@ GUARD = _M36.SUGGESTION_GUARD
 KINDS = ("plan_loss_stop", "plan_profit_target", "plan_rupee_loss", "plan_rupee_profit", "plan_time_exit",
          "adjustment_rule", "side_closed", "stop_fired", "settled", "orders_placed", "stop_saved")
 ANSWERS = ("exit", "continue", "add_legs", "confirm_new_shape", "closed_by_system", "noted")
-NEW_COLUMNS = ("kind", "answer", "answered_at", "no_longer_true_since")
+NEW_COLUMNS = ("kind", "answer", "answered_at", "no_longer_true_since", "escalated_at")
 INSERT_COLUMNS = (*_M36.SUGGESTION_INSERT_COLUMNS, "shown_at", "kind", "outcome", "answer", "answered_at")
 UPDATE_COLUMNS = (*_M36.SUGGESTION_UPDATE_COLUMNS, "stage", "value", "threshold", "answer", "answered_at",
-                  "no_longer_true_since")
+                  "no_longer_true_since", "escalated_at")
 _FINAL = "('dismissed', 'acted_on', 'lapsed')"
 
 
@@ -86,12 +88,12 @@ def guard_sql() -> str:
                 END IF;
                 IF NEW.answer IS NULL THEN
                     IF NEW.outcome <> 'open' OR NEW.dismiss_reason IS NOT NULL OR NEW.answered_at IS NOT NULL
-                       OR NEW.no_longer_true_since IS NOT NULL THEN
+                       OR NEW.no_longer_true_since IS NOT NULL OR NEW.escalated_at IS NOT NULL THEN
                         {raise_('a suggestion record starts open')}
                     END IF;
                 ELSIF NOT (NEW.answer = 'noted' AND NEW.outcome = 'dismissed' AND NEW.dismiss_reason IS NULL
                            AND NEW.kind IS NOT NULL AND NEW.answered_at IS NOT NULL
-                           AND NEW.no_longer_true_since IS NULL) THEN
+                           AND NEW.no_longer_true_since IS NULL AND NEW.escalated_at IS NULL) THEN
                     {raise_('only an informational note is stored already answered')}
                 END IF;
                 RETURN NEW;
@@ -128,9 +130,10 @@ def guard_sql() -> str:
                AND NEW.answer IS NOT NULL THEN
                 {raise_('closed_by_system goes with lapsed, and only with it')}
             END IF;
-            IF NEW.no_longer_true_since IS DISTINCT FROM OLD.no_longer_true_since
+            IF (NEW.no_longer_true_since, NEW.escalated_at)
+               IS DISTINCT FROM (OLD.no_longer_true_since, OLD.escalated_at)
                AND NOT (OLD.outcome = 'open' AND NEW.outcome = 'open') THEN
-                {raise_('no longer true since changes only while the record is open and stays open')}
+                {raise_('no longer true since and escalated at change only while the record is open and stays open')}
             END IF;
             IF NEW.outcome IS DISTINCT FROM OLD.outcome AND (
                jsonb_array_length(NEW.timeline) <> jsonb_array_length(OLD.timeline) + 1
@@ -183,12 +186,13 @@ def upgrade() -> None:
             ADD COLUMN answer TEXT NULL CHECK (answer IS NULL OR answer IN ({_list(ANSWERS)})),
             ADD COLUMN answered_at TIMESTAMPTZ NULL,
             ADD COLUMN no_longer_true_since TIMESTAMPTZ NULL,
+            ADD COLUMN escalated_at TIMESTAMPTZ NULL,
             ADD CONSTRAINT adjustment_suggestions_answer_pair CHECK ((answer IS NULL) = (answered_at IS NULL))
         """
     )
     op.execute(guard_sql())
     op.execute(f'GRANT INSERT (shown_at, kind, outcome, answer, answered_at) ON TABLE {SUGGESTIONS} TO "{role}"')
-    op.execute(f'GRANT UPDATE (stage, value, threshold, answer, answered_at, no_longer_true_since) '
+    op.execute(f'GRANT UPDATE (stage, value, threshold, answer, answered_at, no_longer_true_since, escalated_at) '
                f'ON TABLE {SUGGESTIONS} TO "{role}"')
     op.execute(extended_allowlist_sql())
     op.execute(f"REVOKE ALL ON FUNCTION {allowlist}(TEXT, TEXT) FROM PUBLIC")
@@ -204,7 +208,7 @@ def downgrade() -> None:
         BEGIN
             EXECUTE 'LOCK TABLE {SUGGESTIONS} IN ACCESS EXCLUSIVE MODE';
             EXECUTE 'SELECT count(*) FROM {SUGGESTIONS} WHERE kind IS NOT NULL OR answer IS NOT NULL '
-                    'OR no_longer_true_since IS NOT NULL' INTO n;
+                    'OR no_longer_true_since IS NOT NULL OR escalated_at IS NOT NULL' INTO n;
             IF n > 0 THEN
                 RAISE EXCEPTION 'refusing to downgrade {revision}: % suggestions carry a kind or an answer', n
                     USING ERRCODE = '{_M31.SQLSTATE}';
@@ -217,12 +221,12 @@ def downgrade() -> None:
     allowlist = _BASE.ALLOWLIST_FUNCTION
     op.execute(f"SELECT {allowlist}('{role}', 'pre')")
     op.execute(f'REVOKE INSERT (shown_at, kind, outcome, answer, answered_at) ON TABLE {SUGGESTIONS} FROM "{role}"')
-    op.execute(f'REVOKE UPDATE (stage, value, threshold, answer, answered_at, no_longer_true_since) '
+    op.execute(f'REVOKE UPDATE (stage, value, threshold, answer, answered_at, no_longer_true_since, escalated_at) '
                f'ON TABLE {SUGGESTIONS} FROM "{role}"')
     op.execute(f"ALTER TABLE {SUGGESTIONS} DROP CONSTRAINT adjustment_suggestions_answer_pair")
     op.execute(_M36.suggestions_guard_sql())
-    op.execute(f"ALTER TABLE {SUGGESTIONS} DROP COLUMN no_longer_true_since, DROP COLUMN answered_at, "
-               "DROP COLUMN answer, DROP COLUMN kind")
+    op.execute(f"ALTER TABLE {SUGGESTIONS} DROP COLUMN escalated_at, "
+               "DROP COLUMN no_longer_true_since, DROP COLUMN answered_at, DROP COLUMN answer, DROP COLUMN kind")
     op.execute(previous_allowlist_sql())
     op.execute(f"REVOKE ALL ON FUNCTION {allowlist}(TEXT, TEXT) FROM PUBLIC")
     op.execute(f"SELECT {allowlist}('{role}', 'post')")

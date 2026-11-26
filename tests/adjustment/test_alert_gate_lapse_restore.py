@@ -100,7 +100,9 @@ def test_restore_then_escalation_opens_worded_by_the_dismissed_flag():
         row = ag.GateRow("T-03", at("10:00"), D("0.30"), dismissed=dismissed, open=not dismissed)
         state = ag.restore(_rows(row), DAY, {"T-03": T03})
         _, events = steps(state, ag.WEEKLY, [(at("11:00"), D("0.36")), (at("11:05"), D("0.36"))], T03)
-        assert [(e.level, e.threshold, e.worse) for e in opened(events)] == [(1, D("0.35"), worse)]
+        # an answered record: a new, worse record; an unanswered one: the open alert is escalated (ADR-330 (3))
+        got = opened(events) if dismissed else [e for e in events if isinstance(e, ag.Escalated)]
+        assert [(e.level, e.threshold, e.worse) for e in got] == [(1, D("0.35"), worse)]
 
 
 def test_restore_with_todays_cap_used_holds_the_next_crossing():
@@ -132,7 +134,7 @@ def test_restore_stored_threshold_less_severe_than_the_current_line_is_below_lev
     spec = ag.RuleSpec("T-03", "ge", (D("0.35"), D("0.40")))
     state = ag.restore(_rows(row), DAY, {"T-03": spec})
     _, events = steps(state, ag.WEEKLY, [(at("11:00"), D("0.36")), (at("11:05"), D("0.36"))], spec)
-    assert [(e.level, e.worse) for e in opened(events)] == [(0, "last")]
+    assert [(e.level, e.worse) for e in events if isinstance(e, ag.Escalated)] == [(0, "last")]
 
 
 def test_restore_refuses_a_negative_count_and_a_naive_time():
@@ -163,7 +165,7 @@ def test_restore_with_the_placeholder_never_escalates_a_close_at_the_stored_leve
 def test_restore_with_the_placeholder_still_escalates_one_level_worse_than_the_stored_threshold():
     state = _restored_with_placeholder(D("0.35"))
     _, events = steps(state, ag.WEEKLY, [(at("10:41"), D("0.41")), (at("10:46"), D("0.41"))], T03)
-    assert [(e.level, e.threshold, e.worse) for e in opened(events)] == [(2, D("0.40"), "last")]
+    assert [(e.level, e.threshold, e.worse) for e in events if isinstance(e, ag.Escalated)] == [(2, D("0.40"), "last")]
 
 
 def test_a_yes_no_close_leaves_a_placeholder_restore_unlevelled_and_a_held_restore_keeps_its_threshold():

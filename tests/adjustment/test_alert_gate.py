@@ -28,6 +28,20 @@ def opened(events):
     return [e for e in events if isinstance(e, ag.Opened)]
 
 
+def escalated(events):
+    return [e for e in events if isinstance(e, ag.Escalated)]
+
+
+def feed_answering(first, rest, spec=None, **kw):
+    """ADR-330 (3): an unanswered record never re-opens; a re-arm needs the record ANSWERED first. `first` is fed, the
+    rule's record is answered, then `rest`; returns (state, events of both)."""
+    spec = spec or T07
+    state, ev = feed(first, spec=spec, **kw)
+    state = ag.answered(state, spec.rule_id)
+    state, ev2 = feed(rest, spec=spec, state=state, **{k: v for k, v in kw.items() if k != "state"})
+    return state, ev + ev2
+
+
 def held(events):
     return [e for e in events if isinstance(e, ag.Held)]
 
@@ -94,8 +108,7 @@ def test_wobble_inside_candle_ending_below_gives_no_record():
 
 # 3. Re-arm: band AND cool-down
 def test_rearm_needs_band_and_cooldown():
-    samples = [("10:40:30", D("81")), ("10:41:30", D("71")), *minutes("10:42", 5, D("81"))]
-    state, ev = feed(samples)
+    state, ev = feed_answering([("10:40:30", D("81")), ("10:41:30", D("71"))], minutes("10:42", 5, D("81")))
     state, ev2 = flush(state, "10:47:05")
     got = opened(ev + ev2)
     assert [(e.at.time(), e.level, e.worse) for e in got] == [(time(10, 41), 0, None), (time(10, 46), 0, None)]
@@ -151,8 +164,8 @@ def test_dismiss_the_worse_one_then_same_worse_level_stays_quiet():
 # 5. Escalation without dismiss
 def test_escalation_without_dismiss_is_worse_than_last_and_ignores_cooldown():
     _, ev = feed([("10:40:30", D("81")), ("10:41:30", D("90")), ("10:42:05", D("90"))])
-    got = [(e.level, e.worse, e.at.time()) for e in opened(ev)]
-    assert got == [(0, None, time(10, 41)), (1, "last", time(10, 42))]
+    assert [(e.level, e.worse, e.at.time()) for e in opened(ev)] == [(0, None, time(10, 41))]
+    assert [(e.level, e.worse, e.at.time()) for e in escalated(ev)] == [(1, "last", time(10, 42))]  # the open alert
 
 
 def test_jump_two_levels_at_once_gives_one_record_at_the_higher_level():
@@ -209,18 +222,19 @@ def test_none_never_clears():
 # 9. le and bool rules
 def test_le_rule_t01_symmetric():
     spec = ag.RuleSpec("T-01", "le", ag.ladder_for("le", D("0.75"), [D("0.5"), D("0.3")]))
-    samples = [("10:40:30", D("0.74")), ("10:41:30", D("0.80")), ("10:42:30", D("0.74")),
-               ("10:43:30", D("0.83")), *minutes("10:44", 3, D("0.70")), ("10:47:30", D("0.45")),
-               ("10:48:05", None)]
-    _, ev = feed(samples, spec=spec)
+    first = [("10:40:30", D("0.74")), ("10:41:30", D("0.80"))]
+    rest = [("10:42:30", D("0.74")), ("10:43:30", D("0.83")), *minutes("10:44", 3, D("0.70")),
+            ("10:47:30", D("0.45")), ("10:48:05", None)]
+    _, ev = feed_answering(first, rest, spec=spec)
     assert [(e.at.time(), e.level, e.worse) for e in opened(ev)] == [
-        (time(10, 41), 0, None), (time(10, 46), 0, None), (time(10, 48), 1, "last")]
+        (time(10, 41), 0, None), (time(10, 46), 0, None)]
+    assert [(e.at.time(), e.level, e.worse) for e in escalated(ev)] == [(time(10, 48), 1, "last")]
 
 
 def test_bool_rule_t02_symmetric():
     spec = ag.RuleSpec("T-02", "bool", ())
-    samples = [("10:40:30", True), ("10:41:30", True), ("10:42:30", False), *minutes("10:43", 4, True)]
-    _, ev = feed(samples, spec=spec)
+    first = [("10:40:30", True), ("10:41:30", True)]
+    _, ev = feed_answering(first, [("10:42:30", False), *minutes("10:43", 4, True)], spec=spec)
     assert [(e.at.time(), e.level, e.threshold, e.value) for e in opened(ev)] == [
         (time(10, 41), 0, None, True), (time(10, 46), 0, None, True)]
 
@@ -365,7 +379,7 @@ def test_a_stage_change_re_levels_the_open_record_and_a_close_beyond_the_new_lin
     state, ev = feed([("10:40:30", D("0.45")), ("10:41:05", D("0.45"))], spec=T01_WEEKLY)
     assert [(e.level, e.threshold) for e in opened(ev)] == [(0, D("0.5"))]
     state, ev = feed([("10:41:30", D("0.256")), ("10:42:05", D("0.256"))], spec=T01_EXPIRY_DAY, state=state)
-    assert [(e.level, e.threshold, e.worse) for e in opened(ev)] == [(0, D("0.3"), "last")]
+    assert [(e.level, e.threshold, e.worse) for e in escalated(ev)] == [(0, D("0.3"), "last")]  # same open alert
 
 
 def test_the_same_ladder_keeps_the_record_level_quiet():

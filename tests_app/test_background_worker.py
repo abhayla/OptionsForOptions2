@@ -508,15 +508,22 @@ def _only_t01(scn):
     return lister
 
 
-async def test_cap_reached_writes_exactly_one_held_row_for_the_episode(app_db_url, monkeypatch):
+async def test_a_worse_reading_of_the_open_alert_is_not_held_by_the_cap_and_marks_it_escalated(app_db_url,
+                                                                                            monkeypatch):
+    """ADR-330 (3), P1 round 3: with the day's one slot used, one level worse is NOT a new record, so the cap does not
+    hold it: it escalates the ONE open alert (no Held row, no second row; escalated_at set)."""
     sid, scn, now, worker = await _ready(app_db_url, monkeypatch, overrides=CAP_ONE, lister_for=_only_t01)
     base, rec = await _open_one(app_db_url, worker, scn, now, sid)  # the day's one record
     held = await _held_reasons(app_db_url, sid)
     now[0] += ONE_SECOND
-    _push_spot(scn, LEVEL_ONE_SPOT, now[0])  # one level worse, but the cap is used
+    _push_spot(scn, LEVEL_ONE_SPOT, now[0])  # one level worse; the cap is used
     await _advance(worker, now, 300, step=5)
-    assert await _held_reasons(app_db_url, sid) == [*held, "daily_limit"]
+    assert await _held_reasons(app_db_url, sid) == held
     assert await _t01_rows(app_db_url, sid, base) == [(rec, "open", None)] and worker.errors == []
+    async with app_db_url.connect() as conn:
+        escalated = (await conn.execute(text("SELECT escalated_at FROM public.adjustment_suggestions WHERE id = :i"),
+                                        {"i": rec})).scalar_one()
+    assert escalated is not None
 
 
 async def test_the_ist_day_rollover_resets_the_cap(app_db_url, monkeypatch):
@@ -924,3 +931,72 @@ async def test_a_failed_strategy_list_lapses_nothing(app_db_url, monkeypatch):
         await background.owner_lister(scenario_mode.current().provider)
     async with app_db_url.connect() as conn:
         assert [s.id for s in await playbook_store.open_suggestions(conn, "owner", w.strategy_id)] == [rec]
+
+
+async def test_f1_s16_true_again_clears_no_longer_true_since_at_the_first_close_past_the_line(app_db_url, monkeypatch):
+    """P1 round 3 F1, the reviewer's S-16 run through the gate: opened 11:02, stopped 11:03, past the line again at
+    the 11:04 close -> the ONE open row's no_longer_true_since is cleared there (it used to stay until 11:07)."""
+    w, _ = await _watched_and_fresh_t03(app_db_url, monkeypatch)
+    spec = alert_gate.RuleSpec("T-06", "ge", (D("15.4000"),))
+    state, events = alert_gate.initial_state(), []
+    for hhmm, value in (("11:02:20", D("15.9")), ("11:03:20", D("13.0")), ("11:04:20", D("15.9"))):
+        h, m, s = (int(x) for x in hhmm.split(":"))
+        state, ev = alert_gate.step(state, now=datetime.datetime(2026, 11, 25, h, m, s, tzinfo=IST),
+                                    preset=alert_gate.INTRADAY, readings={"T-06": (spec, value)})
+        events += ev
+    assert [type(e).__name__ for e in events] == ["Opened", "Lapsed", "TrueAgain"]
+    await background.DbGateStore().apply(w, events)
+    async with app_db_url.connect() as conn:
+        rows = (await conn.execute(text(
+            "SELECT outcome, no_longer_true_since, jsonb_array_length(timeline) FROM public.adjustment_suggestions "
+            "WHERE strategy_id = :s AND rule_id = 'T-06'"), {"s": w.strategy_id})).all()
+    assert [tuple(r) for r in rows] == [("open", None, 3)], rows  # opened, stopped, true again: nothing per candle
+
+
+async def test_f2_a_rule_flipping_every_3_minutes_for_an_hour_is_one_row_and_a_restart_counts_one(app_db_url,
+                                                                                                  monkeypatch):
+    """P1 round 3 F2: true/clear every 3 minutes for an hour -> ONE row for the rule, opened_today 1 (live and rebuilt
+    from the rows after a restart), and a second rule's first crossing at 12:16 is opened, not Held daily_limit."""
+    w, _ = await _watched_and_fresh_t03(app_db_url, monkeypatch)
+    spec = alert_gate.RuleSpec("T-06", "ge", (D("15.4000"),))
+    other = alert_gate.RuleSpec("T-07", "ge", (D("80"),))
+    day = datetime.date(2026, 11, 25)
+    state, events = alert_gate.initial_state(), []
+    base = datetime.datetime(2026, 11, 25, 11, 2, 20, tzinfo=IST)
+    for i in range(60):
+        value = D("15.9") if (i // 3) % 2 == 0 else D("13.0")
+        state, ev = alert_gate.step(state, now=base + datetime.timedelta(minutes=i), preset=alert_gate.INTRADAY,
+                                    readings={"T-06": (spec, value)})
+        events += ev
+    for minute in range(74, 77):
+        state, ev = alert_gate.step(state, now=base + datetime.timedelta(minutes=minute), preset=alert_gate.INTRADAY,
+                                    readings={"T-06": (spec, D("15.9")), "T-07": (other, D("85"))})
+        events += ev
+    assert not [e for e in events if isinstance(e, alert_gate.Held)]
+    await background.DbGateStore().apply(w, events)
+    async with app_db_url.connect() as conn:
+        counts = dict((await conn.execute(text(
+            "SELECT rule_id, count(*) FROM public.adjustment_suggestions WHERE strategy_id = :s "
+            "AND rule_id IN ('T-06', 'T-07') GROUP BY rule_id"), {"s": w.strategy_id})).all())
+        rebuilt = await playbook_store.gate_rows(conn, w.user_ref, w.strategy_id, day)
+    assert counts == {"T-06": 1, "T-07": 1}
+    assert state.opened_today == len(counts) == rebuilt.opened_today  # live gate and restart agree
+
+
+async def test_f3_a_worse_close_marks_the_open_alert_escalated_and_a_stopped_note_is_cleared(app_db_url, monkeypatch):
+    """P1 round 3 F3: Escalated updates the ONE open alert (value, threshold), sets escalated_at, clears the "no longer
+    true" note; the fired value stays in the first timeline entry; ``worse`` (how the row was opened) is untouched."""
+    w, old = await _watched_and_fresh_t03(app_db_url, monkeypatch)
+    at = await _db_now(app_db_url)
+    store = background.DbGateStore()
+    await store.apply(w, [alert_gate.Opened("T-03", at, 0, D("0.30"), D("0.31"))])
+    await store.apply(w, [alert_gate.Lapsed("T-03", at + datetime.timedelta(minutes=1), D("0.20"))])
+    worse_at = at + datetime.timedelta(minutes=2)
+    ids = await store.apply(w, [alert_gate.Escalated("T-03", worse_at, 2, D("0.40"), D("0.41"))])
+    async with app_db_url.connect() as conn:
+        rows = (await conn.execute(text(
+            "SELECT id, value, threshold, escalated_at, no_longer_true_since, worse, timeline -> 0 ->> 'fired_value' "
+            "FROM public.adjustment_suggestions WHERE strategy_id = :s AND rule_id = 'T-03' AND outcome = 'open'"),
+            {"s": w.strategy_id})).all()
+    assert ids == {"T-03": old}
+    assert [tuple(r) for r in rows] == [(old, D("0.4100"), D("0.4000"), worse_at, None, None, "0.36")], rows

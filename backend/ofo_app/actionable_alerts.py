@@ -45,7 +45,7 @@ _LESS_IS_WORSE = ("le", "lt")
 _TEXT_MAX = 300
 
 _COLUMNS = ("g.id, g.strategy_id, s.name, g.rule_id, g.kind, g.trigger_id, g.stage, g.value, g.threshold, g.shown_at, "
-            "g.outcome, g.answer, g.answered_at, g.no_longer_true_since, g.dismiss_reason, g.timeline::text")
+            "g.outcome, g.answer, g.answered_at, g.no_longer_true_since, g.dismiss_reason, g.timeline::text, g.escalated_at")
 _FROM = ("FROM public.adjustment_suggestions g JOIN public.strategies s ON s.id = g.strategy_id "
          "WHERE s.user_ref = :user_ref AND s.deleted_at IS NULL")
 _ONE = text(f"SELECT {_COLUMNS} {_FROM} AND g.id = :id")
@@ -61,7 +61,7 @@ _HISTORY_SQL = (f"SELECT {_COLUMNS} {_FROM} AND g.outcome <> 'open' AND {{scope}
 _UPDATE_FACTS = text(
     "UPDATE public.adjustment_suggestions AS g SET value = CAST(:value AS NUMERIC), "
     "threshold = CAST(:threshold AS NUMERIC), stage = CAST(:stage AS TEXT), "
-    "no_longer_true_since = NULL, timeline = g.timeline || jsonb_build_array(jsonb_build_object("
+    "no_longer_true_since = NULL, escalated_at = CAST(:at AS TIMESTAMPTZ), timeline = g.timeline || jsonb_build_array(jsonb_build_object("
     "'at', CAST(:at AS TIMESTAMPTZ), 'event', 'worse', 'value', CAST(:value_text AS TEXT), "
     "'threshold', CAST(:threshold_text AS TEXT))) WHERE g.id = :id AND g.outcome = 'open'")
 _SET_STOPPED = text(
@@ -111,6 +111,18 @@ class Alert:
     no_longer_true_since: datetime | None
     dismiss_reason: str | None
     timeline: list = field(default_factory=list)
+    #: the last time a WORSE value of the same rule updated this open alert (REQ-170 AC-3); None if never
+    escalated_at: datetime | None = None
+
+    @property
+    def fired_value(self) -> Decimal | None:
+        """The value the alert fired at (kept in its first timeline entry; ``value`` moves with a worse reading)."""
+        raw = self.timeline[0].get("fired_value") if self.timeline else None
+        return None if raw is None else Decimal(raw)
+
+    @property
+    def unit(self) -> str | None:
+        return self.timeline[0].get("unit") if self.timeline else None
 
     @property
     def text(self) -> str | None:
@@ -134,7 +146,7 @@ def _alert(row: Any) -> Alert:
     return Alert(id=row[0], strategy_id=row[1], strategy_name=row[2], rule_id=row[3], kind=row[4], trigger_id=row[5],
                  stage=row[6], value=row[7], threshold=row[8], fired_at=row[9], outcome=row[10], answer=row[11],
                  answered_at=row[12], no_longer_true_since=row[13], dismiss_reason=row[14],
-                 timeline=json.loads(row[15]))
+                 timeline=json.loads(row[15]), escalated_at=row[16])
 
 
 def _not_found(alert_id: object) -> strategy_store.StrategyStoreError:
@@ -178,7 +190,7 @@ async def raise_actionable(conn: Any, user_ref: str, strategy_id: int, rule_id: 
     go to ``playbook_store.open_suggestion``: group, source, cmp, label, unit, approach, ..., target).
 
     One open row per (strategy, rule): a second call returns the same row; a WORSE value updates value / threshold /
-    stage and adds one timeline entry, keeping ``fired_at``; the condition being true again clears
+    stage, sets ``escalated_at`` and adds one timeline entry, keeping ``fired_at``; the condition being true again clears
     ``no_longer_true_since`` (one timeline entry); an equal or better value writes nothing. Never closes anything."""
     if kind not in kinds.KINDS or not kinds.is_actionable(kind):
         raise ValueError(f"{kind!r} is not an actionable alert kind")
