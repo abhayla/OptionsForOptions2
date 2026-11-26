@@ -8,7 +8,9 @@ code, no spec rows, no migration. Owner evidence: comment 7184365037 on PR #722 
 | Screen | Spec file | Tests (x2 viewports) | Expected-fail (ids) | New findings | Pushed head |
 |---|---|---|---|---|---|
 | Core proof (Home row 2 > builder) | `frontend/e2e/screen-home.spec.ts` | 1 | 0 | 0 | 57508da |
-| Home | `frontend/e2e/screen-home.spec.ts` | 79 | 5 (N-18 x2, NEW-T01, NEW-T02, NEW-T03) | 3 | (this commit) |
+| Home | `frontend/e2e/screen-home.spec.ts` | 79 | 5 (N-18 x2, NEW-T01, NEW-T02, NEW-T03) | 3 | 7c90919 |
+| Coverage guard | `frontend/tests/screen-inventory-guard.test.js` (vitest, runs in `npm run test:run`) | 1 | 0 | 0 | 2796b56 |
+| My Strategies | `frontend/e2e/screen-my-strategies.spec.ts` | 100 (LIST-9 mobile only) | 2 (NEW-T10, NEW-T11) | 2 | a6ed1c6 |
 
 Core proof: the row-2 test failed under one mutation (`HomeOverviewPage.vue` row link pinned to row 1: "Expected
 /strategy\/builder\?strategy=7$/ Received .../strategy/builder?strategy=12") and passed again after the revert.
@@ -27,7 +29,22 @@ migrated, 2026-10-08 catalogue seeded, uvicorn 8000-8002, previews 4173-4176) al
 | NEW-T02 | Home | Paper list answers `prices_not_live` with `totals_as_of` 10:00 IST | "Paper P&L paused - prices not live, as of 26 Nov 2026, 10:00:00 IST" (REQ-109 AC-5) | Sentence without the as-of time | `STALE-2` | `NEW-T02-1280.png` |
 | NEW-T03 | Home | Paper list answers 500 or paused | Tile keeps the name "Total P&L" with "—" | Name is empty: `pnlFigure` returns `label: ''` and overrides it (same code path as N-18) | `STALE-3` | `NEW-T03-1280.png` |
 
+| NEW-T10 | My Strategies | Rename on any row, type, press Escape | Esc cancels the rename (inventory MYSTR-11; owner R-05 left Escape unverified). Spec text is silent on Escape: question for the coordinator | The rename box stays open | `RENAME-5` | `NEW-T10-1280.png` |
+| NEW-T11 | My Strategies | `GET /strategies` answers 200 with an unreadable body (proxy HTML page) | Fail closed: "Could not load your strategies. Nothing was changed." with Retry (ADR-330 S-05, REQ-065) | Read as an empty list: shows "You have no saved strategies yet..." and no Retry | `LOAD-4` | `NEW-T11-1280.png` |
+
 Screenshots are written by the tests to `frontend/test-results/lane-t/` (gitignored; regenerated on each run).
+
+## Coverage guard
+
+`screen-inventory-guard.test.js` rebuilds the inventory from the router and the `.vue` templates and fails, naming
+file:line and label, when a route or control has no row in `screen-inventory.json`, or a row's control is gone.
+Matching is on source file + kind + testid-or-label, not the positional id. Proof: a temporary `<button>Lane T probe</button>`
+in `HomeOverviewPage.vue` made it fail with `HomeOverviewPage.vue:81 button "Lane T probe"`; reverted.
+
+## Not covered yet (My Strategies)
+
+- Real-API round trip stays in `my-strategies.spec.ts` (needs the live catalogue); this suite is stubbed.
+- After-charges tap on a Completed row's net figure (SHARED-09); Builder's Saved-list delete (Builder screen).
 
 ## Not covered yet (Home)
 
