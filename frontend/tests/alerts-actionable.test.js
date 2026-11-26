@@ -24,7 +24,7 @@ import { toasts } from '@/composables/useToast'
 
 const row = (id, extra = {}) => ({
   id, strategy_id: 7, strategy_name: `"Trade ${id}"`, kind: 'plan_loss_stop', text: `Loss stop ${id} reached`,
-  fired_at: '2026-11-25T05:32:20Z', fired_at_hm: '11:02', no_longer_true_since: null, no_longer_true_since_hm: null,
+  fired_at: '2026-11-25T05:32:20Z', fired_line: 'Fired at 11:02', no_longer_true_since: null, no_longer_true_line: null,
   answers: [{ code: 'exit', label: 'Exit the position' }, { code: 'continue', label: 'Continue with the position' }], ...extra,
 })
 const active = (n, extra) => ({ data: { count: n, alerts: Array.from({ length: n }, (_, i) => row(i + 1, extra)) } })
@@ -92,7 +92,7 @@ describe('Active page', () => {
     expect(calls.filter((c) => c.method === 'POST')).toEqual([])
   })
   it('a row shows the strategy, the text, Fired at HH:MM, and "no longer true since HH:MM" when set', async () => {
-    answers['GET /alerts/active'] = () => Promise.resolve({ data: { count: 2, alerts: [row(1), row(2, { no_longer_true_since: '2026-11-25T05:35:01Z', no_longer_true_since_hm: '11:05' })] } })
+    answers['GET /alerts/active'] = () => Promise.resolve({ data: { count: 2, alerts: [row(1), row(2, { no_longer_true_since: '2026-11-25T05:35:01Z', no_longer_true_line: 'no longer true since 11:05' })] } })
     const page = await mountAt('/alerts/active', AlertsPage)
     const [a, b] = ids(page, 'alert-row')
     expect(a.text()).toContain('Fired at 11:02')
@@ -154,7 +154,7 @@ describe('Active page', () => {
 
 describe('History tab', () => {
   it('lists answered rows (label and time) with the stop and settlement records', async () => {
-    answers['GET /alerts/history'] = () => Promise.resolve({ data: { items: [{ id: 3, strategy_id: 7, strategy_name: '"Trade A"', kind: 'plan_loss_stop', text: 'Loss stop reached', fired_at: 'x', fired_at_hm: '11:02', answer: 'continue', answer_label: 'Continue with the position', answered_at: 'y', answered_at_hm: '11:09', closed_reason: null }] } })
+    answers['GET /alerts/history'] = () => Promise.resolve({ data: { items: [{ id: 3, strategy_id: 7, strategy_name: '"Trade A"', kind: 'plan_loss_stop', text: 'Loss stop reached', fired_at: '2026-11-25T11:02:20+05:30', fired_line: 'Fired at 11:02', answer: 'continue', answer_label: 'Continue with the position', answered_at: '2026-11-25T11:09:00+05:30', closed_reason: null }] } })
     answers['GET /paper/alerts/records'] = () => Promise.resolve({ data: { records: [{ at: '2026-11-25T09:00:00Z', kind: 'stop', title: 'Stop fired', body: 'Leg stop reached', strategy_id: 7, strategy_name: '"Trade A"' }] } })
     const page = await mountAt('/alerts/history', AlertsPage)
     expect(ids(page, 'history-row')).toHaveLength(1)

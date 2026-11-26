@@ -21,6 +21,7 @@ from ofo_app import db as app_db
 from ofo_app import playbook_store
 from ofo_app.adjustment_readers import TrackedExited
 from ofo_app.routes.adjustment_opportunities import condition_text
+from sqlalchemy import text
 from test_adjustment_check import _reset_engine, _seeded, seed_mod
 from worker_records import lapse_through_worker, open_flags
 
@@ -214,13 +215,16 @@ async def test_a_worker_lapse_reads_lapsed_and_a_screen_check_never_lapses(app_d
     assert {r.outcome for r in await _records(app_db_url, sid)} == {"open"}
     await lapse_through_worker(sid, "T-01")
     recs = {r.rule_id: r for r in await _records(app_db_url, sid)}
-    assert (recs["T-01"].outcome, recs["T-01"].lapse_reason) == ("lapsed", "condition_stopped")
+    # ADR-330 (3): the gate's "condition stopped" no longer lapses the record; it stays open and says since when
+    assert (recs["T-01"].outcome, recs["T-01"].lapse_reason) == ("open", None)
     assert (recs["T-03"].outcome, recs["T-09"].outcome) == ("open", "open")
-    row = next(r for g in _mine(await _inbox(), sid) for r in g["records"] if r["id"] == recs["T-01"].id)
-    assert (row["outcome_text"], row["detail"]) == ("Lapsed", "The condition stopped holding")
+    async with app_db_url.connect() as conn:
+        stopped = (await conn.execute(text("SELECT no_longer_true_since FROM public.adjustment_suggestions "
+                                           "WHERE id = :i"), {"i": recs["T-01"].id})).scalar_one()
+    assert stopped is not None
     answer = await _check(sid)  # T-01 still true on screen: a flag, no record opened, none named
     t01 = next(x for x in answer["results"] if x["rule_id"] == "T-01")
-    assert (t01["kind"], t01["suggestion_id"], t01["note"]) == ("flag", None, None)
+    assert (t01["kind"], t01["suggestion_id"], t01["note"]) == ("flag", recs["T-01"].id, None)  # still open: named
     assert len(await _records(app_db_url, sid)) == ADJ02_FLAGS
 
 

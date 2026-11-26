@@ -21,7 +21,7 @@ export function resetActiveAlerts() {
 const answerOk = (x) => x && typeof x.code === 'string' && typeof x.label === 'string'
 const rowOk = (a) =>
   a && Number.isInteger(a.id) && Number.isInteger(a.strategy_id) && typeof a.text === 'string' && typeof a.kind === 'string' &&
-  typeof a.fired_at_hm === 'string' && Array.isArray(a.answers) && a.answers.every(answerOk)
+  typeof a.fired_line === 'string' && Array.isArray(a.answers) && a.answers.every(answerOk)
 
 /** Take one answer of GET /alerts/active. Returns the alerts NEW since the last good read (never on the first good read). */
 export function takeActive(data) {
@@ -41,6 +41,10 @@ export function takeActive(data) {
 export function dropActive(e) {
   Object.assign(activeAlerts, { count: 0, alerts: [], parts: e ? (e.parts ?? NEUTRAL_PARTS) : NEUTRAL_PARTS, loaded: true })
 }
+
+// The clock word of an ISO time as IST HH:MM (the server sends the instant; the sentence "Fired at HH:MM" comes from the server).
+export const hmIst = (iso) =>
+  iso ? new Date(iso).toLocaleTimeString('en-GB', { hour: '2-digit', minute: '2-digit', hour12: false, timeZone: 'Asia/Kolkata' }) : ''
 
 export const readActive = async () => (await api.get('/alerts/active')).data
 

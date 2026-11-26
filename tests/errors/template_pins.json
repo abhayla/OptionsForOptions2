@@ -4610,5 +4610,37 @@
   "labels:alert_answer": {
     "sha256": "a4dc3ce54ea870fb01210ed297a5dd92e749ad3dd23d377b31c4c83604d00ed9",
     "reviewed": "pending owner read"
+  },
+  "alert_answer_refused": {
+    "sha256": "2dbe3df1c919f7843b6099c14f512e5114e310c20a3c7b0e8f7fa93b3c02a209",
+    "reviewed": "pending owner read"
+  },
+  "explanation:alert_closed_trade_closed": {
+    "sha256": "3ae1dbfd9af4d25b227c48a09ed71d3cb83a370e060a99a3b90ae25ca76c78bf",
+    "reviewed": "pending owner read"
+  },
+  "explanation:alert_answer_exit": {
+    "sha256": "28617f1805699cee02666a48fe0be14a54d441a714cbd431f3679bc02f254459",
+    "reviewed": "pending owner read"
+  },
+  "explanation:alert_answer_continue": {
+    "sha256": "5a9b79551421076e091c37f50b46b75be2e5504b73e40cbdd0d3e9a63ac18a3c",
+    "reviewed": "pending owner read"
+  },
+  "explanation:alert_answer_add_legs": {
+    "sha256": "758aa95278c8ccb8bd66f53a36a25a0fd674400c5b780c78ab079b6fc3780050",
+    "reviewed": "pending owner read"
+  },
+  "explanation:alert_answer_confirm_new_shape": {
+    "sha256": "b0b08fca4920a636035b1906e3cc928b3b8d3ffafa8e40abc29cd18a9aa9172b",
+    "reviewed": "pending owner read"
+  },
+  "explanation:alert_answer_closed_by_system": {
+    "sha256": "77bb93fc6fca1662aea3f71921c4e8470ba303ecb6faeca86382c0d516bed41d",
+    "reviewed": "pending owner read"
+  },
+  "explanation:alert_answer_noted": {
+    "sha256": "380d8b6a8e1b45020066a431166b018475b9484002fdd935f82f09e9af80564c",
+    "reviewed": "pending owner read"
   }
 }

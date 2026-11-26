@@ -710,13 +710,6 @@ def gate_group(strategy_id: int, at: datetime.datetime) -> str:
     return f"{strategy_id}-{at.astimezone(IST):%Y%m%dT%H%M%S%f}"
 
 
-async def _lapse_open_of(db: Any, w: Watched, rule_id: str, reason: str) -> None:
-    from ofo_app import playbook_store  # noqa: PLC0415 - database layer at run time
-    for rec in await playbook_store.open_suggestions(db, w.user_ref, w.strategy_id):
-        if rec.rule_id == rule_id:
-            await playbook_store.lapse(db, w.user_ref, rec.id, reason)
-
-
 @dataclass(frozen=True)
 class RecordFields:
     """Every snapshot field of a stored record, from ONE check (the event's own sample); all None without one."""
@@ -781,17 +774,22 @@ class DbGateStore:
         return GateLoad(rows, held, pin.style, until, watches, memory)
 
     async def apply(self, w: Watched, events: Iterable[alert_gate.Event]) -> dict[str, int]:
-        """The gate's events in ONE transaction; rule id -> id of each record opened. An escalation while the
-        previous record of the rule is still open lapses that one first (REQ-112: one open record per rule). Every
-        field of a record's snapshot comes from the event's own sample (``record_fields``)."""
-        from ofo_app import playbook_store  # noqa: PLC0415 - database layer at run time
+        """The gate's events in ONE transaction, every write through ``actionable_alerts`` (ADR-330: the one module);
+        rule id -> id of each alert raised. A closed candle that clears the line (Lapsed) only notes "no longer true
+        since" on the open alert: it stays in Active until the user answers (ADR-330 (3)). A worse escalation updates
+        the same open row (one open alert per rule, REQ-112); a re-cross after "no longer true" clears the note and
+        opens no second row. Every field of a record's snapshot is from the event's own sample (``record_fields``)."""
+        from ofo.alerts import kind_of  # noqa: PLC0415
+
+        from ofo_app import actionable_alerts, playbook_store  # noqa: PLC0415 - database layer at run time
         from ofo_app.db import get_sessionmaker  # noqa: PLC0415
         source = playbook_store.SOURCE_SYSTEM if w.is_system else playbook_store.SOURCE_OWN
         opened: dict[str, int] = {}
         async with get_sessionmaker()() as db:
             for e in events:
                 if isinstance(e, alert_gate.Lapsed):
-                    await _lapse_open_of(db, w, e.rule_id, playbook_store.LAPSE_CONDITION_STOPPED)
+                    await actionable_alerts.note_rule_condition(db, w.user_ref, w.strategy_id, e.rule_id,
+                                                                still_true=False, at=e.at)
                     continue
                 f = record_fields(e)
                 # GC-ICFIX: the event's own numbers (the confirming sample's), never the latest check's
@@ -800,16 +798,14 @@ class DbGateStore:
                 if threshold is None:  # 0 is a real threshold (T-02), so no `or`
                     threshold = _quantized(e.shown_threshold)
                 if isinstance(e, alert_gate.Held):
-                    await playbook_store.record_held(db, w.user_ref, w.strategy_id, e.rule_id, trigger_id=f.trigger,
-                                                     stage=f.stage_name, value=value, threshold=threshold,
-                                                     reason=e.reason)
+                    await actionable_alerts.record_held(db, w.user_ref, w.strategy_id, e.rule_id,
+                                                        trigger_id=f.trigger, stage=f.stage_name, value=value,
+                                                        threshold=threshold, reason=e.reason)
                     continue
-                if e.worse is not None:
-                    await _lapse_open_of(db, w, e.rule_id, playbook_store.LAPSE_SUPERSEDED_BY_WORSE)  # finding 5
-                rec = await playbook_store.open_suggestion(
-                    db, w.user_ref, w.strategy_id, e.rule_id, trigger_id=f.trigger, stage=f.stage, value=value,
-                    threshold=threshold, group=gate_group(w.strategy_id, e.at), source=source,
-                    cmp=f.cmp, label=f.label, unit=f.unit, worse=e.worse, beyond=f.beyond,
+                rec = await actionable_alerts.raise_actionable(
+                    db, w.user_ref, w.strategy_id, e.rule_id, kind_of(f.trigger or e.rule_id), at=e.at, value=value,
+                    threshold=threshold, trigger_id=f.trigger, stage=f.stage, group=gate_group(w.strategy_id, e.at),
+                    source=source, cmp=f.cmp, label=f.label, unit=f.unit, worse=e.worse, beyond=f.beyond,
                     limit=_quantized(e.limit),
                     adjustments=_count_of(w.tracked) if f.adjustments is None else f.adjustments, **f.extra)
                 opened[e.rule_id] = rec.id
@@ -820,10 +816,10 @@ class DbGateStore:
         """#685 item 3: the open records raised at another adjustment count than the strategy holds now lapse as
         position_changed (``playbook_store.lapse_changed``); True when any did. A failure raises (the rebuild keeps
         its last list and tries again), unlike the contained lapse of an exited strategy."""
-        from ofo_app import playbook_store  # noqa: PLC0415 - database layer at run time
+        from ofo_app import actionable_alerts  # noqa: PLC0415 - database layer at run time
         from ofo_app.db import get_sessionmaker  # noqa: PLC0415
         async with get_sessionmaker()() as db:
-            lapsed = await playbook_store.lapse_changed(db, w.user_ref, w.strategy_id, _count_of(w.tracked))
+            lapsed = await actionable_alerts.close_changed(db, w.user_ref, w.strategy_id, _count_of(w.tracked))
             await db.commit()
         return bool(lapsed)
 
@@ -831,12 +827,12 @@ class DbGateStore:
     async def lapse_expired(self, w: Watched, today: datetime.date) -> bool:
         """D-30: the open records of a strategy whose last expiry is before ``today`` lapse as contract_expired
         (``playbook_store.lapse_expired``); True when any did. A failure raises, as ``lapse_changed``."""
-        from ofo_app import playbook_store  # noqa: PLC0415 - database layer at run time
+        from ofo_app import actionable_alerts  # noqa: PLC0415 - database layer at run time
         from ofo_app.db import get_sessionmaker  # noqa: PLC0415
         legs = w.tracked.position.legs
         expiry = max((x.expiry for x in legs), default=None)
         async with get_sessionmaker()() as db:
-            lapsed = await playbook_store.lapse_expired(db, w.user_ref, w.strategy_id, expiry, today)
+            lapsed = await actionable_alerts.close_expired(db, w.user_ref, w.strategy_id, expiry, today)
             await db.commit()
         return bool(lapsed)
 
@@ -1859,10 +1855,10 @@ async def _lapse_exited(db: Any, user_ref: str, sid: int, reason: str | None = N
     that dropped out of the list for good), contained to that strategy: a failing write (a record no longer open,
     the database refusing) is rolled back, counted and logged once per strategy, and never drops the other strategies
     from the list or skips their gate read (the whole lister failing kept the old list; at start-up 0 monitored)."""
-    from ofo_app import playbook_store  # noqa: PLC0415 - database layer at run time only
+    from ofo_app import actionable_alerts, playbook_store  # noqa: PLC0415 - database layer at run time only
     try:
         if await playbook_store.open_suggestions(db, user_ref, sid):
-            await playbook_store.lapse_all(db, user_ref, sid, reason or playbook_store.LAPSE_STRATEGY_CLOSED)
+            await actionable_alerts.close_by_system(db, user_ref, sid, reason or playbook_store.LAPSE_STRATEGY_CLOSED)
             await db.commit()
     except Exception:  # contained per strategy; retried at the next re-list
         await db.rollback()
@@ -1934,10 +1930,13 @@ async def owner_lister(provider: Any, gate: Any = None,
             log.exception("background: listing strategy %s failed; it is skipped", s.id)
             unread.add(s.id)  # not read is not gone: its queued alert events stay (#636 r6 review)
             continue
-        if resolved.body is not None:
-            out.append(Watched(OWNER_REF, s.id, tracked, resolved.body, resolved.is_system, OWNER_REF,
-                               resolved.strategy_layer, facts, resolved=resolved, charge_rates=rates,
-                               regime=await regimes.read(tracked.position.underlying), basket_facts=baskets))
+        if resolved.body is None:  # ADR-330 (11): no plan = nothing watched; a DEFINITE answer (a failed read raised)
+            async with held(gate, GATE_REBUILD), get_sessionmaker()() as db:  # its open alerts close: not_monitored
+                await _lapse_exited(db, OWNER_REF, s.id, "not_monitored")
+            continue
+        out.append(Watched(OWNER_REF, s.id, tracked, resolved.body, resolved.is_system, OWNER_REF,
+                           resolved.strategy_layer, facts, resolved=resolved, charge_rates=rates,
+                           regime=await regimes.read(tracked.position.underlying), basket_facts=baskets))
     return Listed(out, unread)
 
 

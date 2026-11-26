@@ -24,7 +24,7 @@ from __future__ import annotations
 import json
 from collections.abc import Iterable
 from dataclasses import dataclass, field
-from datetime import datetime
+from datetime import UTC, datetime
 from decimal import Decimal
 from typing import Any
 
@@ -235,6 +235,7 @@ async def close_by_system(conn: Any, user_ref: str, strategy_id: int, reason: st
     if reason not in SYSTEM_REASONS:
         raise ValueError(f"{reason!r} is not a reason the system may close an alert for: {SYSTEM_REASONS}")
     chosen = None if ids is None else set(ids)
+    at = datetime.now(UTC) if at is None else _aware(at)
     closed: list[Alert] = []
     async with conn.begin_nested():
         rows = (await conn.execute(_OPEN_OF_STRATEGY, {"user_ref": user_ref, "strategy_id": strategy_id})).all()
@@ -244,6 +245,48 @@ async def close_by_system(conn: Any, user_ref: str, strategy_id: int, reason: st
             await pb.lapse(conn, user_ref, row[0], reason, answer=kinds.CLOSED_BY_SYSTEM, answered_at=at)
             closed.append(await _get(conn, user_ref, row[0]))
     return closed
+
+
+async def note_rule_condition(conn: Any, user_ref: str, strategy_id: int, rule_id: str, *, still_true: bool,  # noqa: PLR0913
+                              at: datetime) -> Alert | None:
+    """The gate's word on one RULE of a strategy (it knows rules, not row ids): ``note_condition`` on the rule's open
+    row. None when no row of the rule is open, or when it was answered or closed meanwhile (a race with the user's
+    answer is normal: the row is already out of Active, nothing to note)."""
+    row = (await conn.execute(_OPEN_OF_RULE, {"user_ref": user_ref, "strategy_id": strategy_id,
+                                              "rule_id": rule_id})).one_or_none()
+    if row is None:
+        return None
+    try:
+        return await note_condition(conn, user_ref, row[0], still_true=still_true, at=at)
+    except strategy_store.StrategyStoreError as gone:
+        if gone.code not in (pb.SUGGESTION_NOT_OPEN, pb.SUGGESTION_NOT_FOUND):
+            raise
+        return None
+
+
+async def record_held(conn: Any, user_ref: str, strategy_id: int, rule_id: str, **facts: Any) -> Any:
+    """A capped or quiet-time crossing (REQ-170 AC-4): a stored row that is never an alert and never counted; written
+    here so that no other module writes alert-table rows."""
+    return await pb.record_held(conn, user_ref, strategy_id, rule_id, **facts)
+
+
+async def close_changed(conn: Any, user_ref: str, strategy_id: int, current: int | None, *,
+                        at: datetime | None = None) -> list[Alert]:
+    """#685 item 3: the open alerts raised at another adjustment count than ``current`` close as position_changed."""
+    stale = pb.changed_position(await pb.open_suggestions(conn, user_ref, strategy_id), current)
+    if not stale:
+        return []
+    return await close_by_system(conn, user_ref, strategy_id, pb.LAPSE_POSITION_CHANGED, at=at,
+                                 ids=[s.id for s in stale])
+
+
+async def close_expired(conn: Any, user_ref: str, strategy_id: int, expiry: Any, today: Any, *,  # noqa: PLR0913
+                        at: datetime | None = None) -> list[Alert]:
+    """D-30: a strategy whose last expiry is before ``today`` closes its open alerts as contract_expired; an unknown
+    expiry or day closes nothing (never a guess)."""
+    if expiry is None or today is None or not expiry < today:
+        return []
+    return await close_by_system(conn, user_ref, strategy_id, pb.LAPSE_CONTRACT_EXPIRED, at=at)
 
 
 async def unanswered(conn: Any, user_ref: str) -> list[Alert]:

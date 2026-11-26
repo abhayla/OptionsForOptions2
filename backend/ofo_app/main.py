@@ -40,6 +40,7 @@ from ofo_app.routes import (
     adjustment_check,
     adjustment_history,
     adjustment_opportunities,
+    alerts,
     adjustment_plan,
     adjustment_preferences,
     alert_style,
@@ -123,6 +124,7 @@ def _mount_routes(app: FastAPI, config: BrokerConfig) -> None:
     app.include_router(adjustment_check.router)  # GC-ADJ2 1C: the playbook check (REQ-158 AC-5)
     app.include_router(adjustment_history.router)  # GC-ADJ2 6: history + totals (REQ-163)
     app.include_router(adjustment_opportunities.router)  # GC-ADJ2 5: the opportunities inbox (REQ-162, REQ-112)
+    app.include_router(alerts.router)  # ADR-330 (3)(4): Active, answer, History of actionable alerts
     app.include_router(playbooks.router)  # GC-ADJ2 2: playbooks (REQ-158)
     app.include_router(settings.router)  # GC-SET 2: the admin Settings page (REQ-167)
     app.include_router(system_playbooks.router)  # REQ-169: the admin's system playbook versions

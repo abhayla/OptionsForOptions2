@@ -31,6 +31,7 @@ from ofo.scenario import views as scenario_views
 from ofo.settings import defaults as registry_defaults
 from ofo.table import model as table_model
 from ofo_app import (
+    actionable_alerts,
     adjustment_check,
     adjustment_readers,
     background,
@@ -709,8 +710,14 @@ async def test_owner_lister_watches_nothing_for_a_strategy_with_no_plan_and_open
     from ofo_app import adjustment_readers  # noqa: PLC0415 - the lister imports it at call time
     monkeypatch.setattr(adjustment_readers, "entry_facts_in", facts)
     monkeypatch.setattr(background, "_baskets_in", baskets)
+    closed: list[tuple] = []
+
+    async def lapse_exited(_db, user_ref, sid, reason=None):
+        closed.append((user_ref, sid, reason))
+    monkeypatch.setattr(background, "_lapse_exited", lapse_exited)
     assert await background.owner_lister(Prov(scn)) == []
     assert opened == []
+    assert closed == [("owner", FIRST_ID, "not_monitored")]  # its open alerts close (a definite answer, P1b)
 
 
 async def test_owner_lister_skips_a_strategy_whose_instrument_list_raises(scn, monkeypatch):
@@ -1457,11 +1464,11 @@ async def test_a_failed_lapse_keeps_the_last_list_and_is_retried_at_the_next_re_
 async def test_the_db_gate_store_lapses_the_records_of_an_earlier_count_as_position_changed(monkeypatch):
     seen = []
 
-    async def lapse_changed(_db, user_ref, sid, current):
+    async def close_changed(_db, user_ref, sid, current):
         seen.append((user_ref, sid, current))
         return [object()]
     monkeypatch.setattr(db, "get_sessionmaker", lambda: _CommitSession)
-    monkeypatch.setattr(playbook_store, "lapse_changed", lapse_changed)
+    monkeypatch.setattr(actionable_alerts, "close_changed", close_changed)
     w = _with_count(_watched(scenario_mode.load("ADJ-60")), 2)[0]
     assert await background.DbGateStore().lapse_changed(w) is True
     assert seen == [("owner", w.strategy_id, 2)]
@@ -1505,14 +1512,11 @@ async def test_d30_the_real_store_lapses_nothing_while_a_far_leg_is_live(monkeyp
     """A near leg expired on 16 Nov and a far leg expiring 30 Nov, read 23 Nov: the position is live, nothing lapses."""
     lapsed: list = []
 
-    async def open_suggestions(_db, _user, _sid):
-        return [type("R", (), {"id": 1})()]
-
-    async def lapse(_db, _user, sid, reason="x"):
+    async def close_by_system(_db, _user, sid, reason, **_k):
         lapsed.append((sid, reason))
+        return [object()]
     monkeypatch.setattr(db, "get_sessionmaker", lambda: _CommitSession)
-    monkeypatch.setattr(playbook_store, "open_suggestions", open_suggestions)
-    monkeypatch.setattr(playbook_store, "lapse", lapse)
+    monkeypatch.setattr(actionable_alerts, "close_by_system", close_by_system)
     w = _watched(scenario_mode.load("ADJ-60"))[0]
     near, far = datetime.date(2026, 11, 16), datetime.date(2026, 11, 30)
     legs = (dataclasses.replace(w.tracked.position.legs[0], expiry=near),
@@ -1522,7 +1526,7 @@ async def test_d30_the_real_store_lapses_nothing_while_a_far_leg_is_live(monkeyp
     today = datetime.date(2026, 11, 23)
     assert await background.DbGateStore().lapse_expired(w, today) is False and lapsed == []
     assert await background.DbGateStore().lapse_expired(w, datetime.date(2026, 12, 1)) is True
-    assert lapsed == [(1, "contract_expired")]
+    assert lapsed == [(w.strategy_id, "contract_expired")]
 
 
 def test_d30_the_contract_expired_lapse_reason_has_its_words():
