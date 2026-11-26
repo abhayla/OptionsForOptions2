@@ -44,6 +44,7 @@ from ofo.tracking import paper, stops
 from ofo.tracking.orderbook import net_positions
 from ofo.tracking.paper_alert import ALERT_BODY_TEMPLATES, STOP_LINE_TEMPLATES, alert_body, stop_reason_at
 
+# may_act.market_open is the ONE market-open rule (#740); the settings-reader guard names this file by line number
 from ofo_app import actionable_alerts, may_act, paper_exit, paper_store, tracked_contracts
 from ofo_app import paper_trigger_store as triggers
 from ofo_app.live_push import LiveFeed
