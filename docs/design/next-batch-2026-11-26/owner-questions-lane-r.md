@@ -150,3 +150,8 @@ out: their prices are not live.", "{count} strategies left out: their contracts 
 Options: (a) keep the build: a total over the priced trades with the count line (recommended: one unpriced trade no
 longer hides the other five); (b) revert to the blank total; (c) as (a), but a settled or settling trade counts at its
 booked result instead of being left out (needs a settlement rule for the header).
+
+## LR-Q10 to LR-Q13 (ANSWERED 26 Nov ~16:00 IST, question tool): ADR-330 (28) to (31)
+
+LR-Q12 = (28) allow with a confirmed line (built); LR-Q10 = (29) keep the error block (closed, no build); LR-Q11 = (30)
+"View" (built); LR-Q13 = (31) Deleted / Restored history entries (handed to Lane J: needs a migration).
