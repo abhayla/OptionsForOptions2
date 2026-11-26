@@ -184,3 +184,21 @@ async def test_a_system_closed_row_does_not_stop_a_new_raise(db):
 
 def test_the_worker_has_the_hook():
     assert callable(background.DbGateStore.raise_side_closed)
+
+
+@pytest.mark.parametrize("answer", [kinds.ADD_LEGS, kinds.CONFIRM_NEW_SHAPE])
+async def test_ask_again_each_time_the_side_closes_again(db, answer):
+    """ADR-330 (33): closed, alert, answer, new legs on that side (it re-opens), closed again: a NEW alert."""
+    user, sid = await _setup(db)
+    first = await side_closed.raise_if_closed(db, user, sid, CALL_EXITED, at=AT)
+    await aa.answer(db, user, first, answer, LATER)
+    # still closed (no legs added yet): the answered row stands, nothing new
+    assert await side_closed.raise_if_closed(db, user, sid, CALL_EXITED, at=LATER) is None
+    # call legs added again: the side is open; the watch sees it, nothing raised
+    assert await side_closed.raise_if_closed(db, user, sid, _tracked(CONDOR), at=LATER) is None
+    assert await aa.unanswered(db, user) == []
+    again = await side_closed.raise_if_closed(db, user, sid, CALL_EXITED, at=LATER + datetime.timedelta(hours=1))
+    assert again is not None and again != first
+    # an OPEN row for the side stops a duplicate
+    assert await side_closed.raise_if_closed(db, user, sid, CALL_EXITED, at=LATER) is None
+    assert [r.id for r in await aa.unanswered(db, user)] == [again]

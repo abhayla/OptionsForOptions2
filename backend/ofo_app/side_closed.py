@@ -7,9 +7,12 @@ confirm. If he confirms, the strategy is shown as the new shape from then on ...
 entry shape name with the notice showing ... nothing is added without the user."
 
 The alert is raised through ``actionable_alerts.raise_actionable`` (kind ``side_closed``), never by its own code, once
-per (strategy, closed side): an open row or the user's answer stops a second one (a system-closed row does not). It is
-not closed by a position change (P1). Storing the confirmed shape needs no column: the answered row IS the record (answer
-``confirm_new_shape``), read back by ``confirmed_shape``. ``add_legs`` stores the answer only and places no order.
+per (strategy, closed side) and closure episode (ADR-330 (33), "ask again each time"): an open row or the user's
+answer to this closure stops a second one; a system-closed row does not, and neither does an answer given before the
+side re-opened (the answered row then gets one ``side_reopened`` timeline entry, so the next closure is a new
+episode; read from the database only). It is not closed by a position change (P1). Storing the confirmed shape needs
+no column: the answered row IS the record (answer ``confirm_new_shape``), read back by ``confirmed_shape``.
+``add_legs`` stores the answer only and places no order.
 Answer states of ``confirmed_shape``: stated (a confirmed row) -> the label; absent / not answered / answered
 ``add_legs`` -> None (the trade keeps its entry shape name); a closed side with no known remaining shape -> never
 raised.
@@ -68,15 +71,23 @@ async def raise_if_closed(conn: Any, user_ref: str, strategy_id: int, tracked: A
     now = getattr(tracked, "position", None)
     if entry is None or now is None:
         return None
+    rows = [*await aa.unanswered(conn, user_ref), *await aa.history(conn, user_ref)]
+    mine = [r for r in rows if r.strategy_id == strategy_id and r.kind == kinds.SIDE_CLOSED]
+    # ADR-330 (33): a side with open legs again ends its closure episode; an answer given before no longer stops the
+    # next notice. Read from the answered row's own timeline, so a restart loses nothing.
+    for side in side_scope.open_sides(now.legs):
+        for r in mine:
+            if r.rule_id == rule_id(side) and r.outcome != "open" and not r.side_reopened:
+                await aa.mark_side_reopened(conn, r.id, at)
     closed = side_scope.closed_sides(entry.legs, now.legs)
     label = remaining_label(entry.legs, closed)
     if label is None:
         return None
     rule = rule_id(next(iter(closed)))
-    rows = [*await aa.unanswered(conn, user_ref), *await aa.history(conn, user_ref)]
-    # only an open row or the user's own answer stops a new raise; a row the system closed (plan removed, not monitored)
-    # does not: the side is still closed and the user was never asked
-    if any(r.strategy_id == strategy_id and r.rule_id == rule and r.answer != kinds.CLOSED_BY_SYSTEM for r in rows):
+    # an open row, or the user's answer to THIS closure, stops a new raise; a row the system closed (plan removed, not
+    # monitored) does not, nor does an answer given before the side re-opened
+    if any(r.rule_id == rule and r.answer != kinds.CLOSED_BY_SYSTEM and (r.outcome == "open" or not r.side_reopened)
+           for r in mine):
         return None
     alert = await aa.raise_actionable(conn, user_ref, strategy_id, rule, kinds.SIDE_CLOSED, at=at, value=None,
                                       threshold=None, source=source, label=label)
@@ -89,6 +100,7 @@ async def confirmed_shape(conn: Any, user_ref: str, strategy_id: int) -> str | N
 
     for row in await aa.history(conn, user_ref):  # newest first
         if (row.strategy_id == strategy_id and row.kind == kinds.SIDE_CLOSED
-                and row.answer == kinds.CONFIRM_NEW_SHAPE and row.rule_id.startswith(RULE_PREFIX)):
+                and row.answer == kinds.CONFIRM_NEW_SHAPE and row.rule_id.startswith(RULE_PREFIX)
+                and not row.side_reopened):  # new legs on the closed side: the shape it was confirmed for is gone
             return _names().get(_REMAINING[row.rule_id.removeprefix(RULE_PREFIX)])
     return None
