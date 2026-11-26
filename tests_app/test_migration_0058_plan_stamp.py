@@ -11,7 +11,8 @@ import pathlib
 import pytest
 from sqlalchemy import text
 
-PATH = pathlib.Path(__file__).resolve().parents[1] / "backend/ofo_app/alembic/versions/0058_plan_stamp_only_on_switch.py"
+PATH = (pathlib.Path(__file__).resolve().parents[1]
+        / "backend/ofo_app/alembic/versions/0058_plan_stamp_only_on_switch.py")
 
 
 def _m58():

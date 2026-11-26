@@ -23,7 +23,6 @@ from sqlalchemy import text
 from sqlalchemy.exc import DBAPIError
 from test_strategy_store import _user, _with_draft
 
-TABLE = "public.strategy_adjustment_plans"
 DAY = datetime.timedelta(days=1)
 
 
@@ -39,10 +38,10 @@ async def db(admin_engine):
 
 async def _backdate(db, strategy_id: int, when: datetime.datetime) -> None:
     """The owner's database holds plans saved long ago: set accepted_at as the table owner with the guard off."""
-    await db.execute(text(f"ALTER TABLE {TABLE} DISABLE TRIGGER USER"))  # noqa: S608 - constant names
-    await db.execute(text(f"UPDATE {TABLE} SET accepted_at = :t WHERE strategy_id = :s"),  # noqa: S608
+    await db.execute(text("ALTER TABLE public.strategy_adjustment_plans DISABLE TRIGGER USER"))
+    await db.execute(text("UPDATE public.strategy_adjustment_plans SET accepted_at = :t WHERE strategy_id = :s"),
                      {"t": when, "s": strategy_id})
-    await db.execute(text(f"ALTER TABLE {TABLE} ENABLE TRIGGER USER"))  # noqa: S608
+    await db.execute(text("ALTER TABLE public.strategy_adjustment_plans ENABLE TRIGGER USER"))
 
 
 async def _old_plan(db):
@@ -138,7 +137,7 @@ async def test_a_plan_whose_playbook_was_deleted_and_is_re_pointed_is_a_new_acce
     user, strategy, system, _ = await _old_plan(db)
     own = await pbs.duplicate(db, user, system.id, "Gone")
     await pbs.accept_plan(db, user, strategy.id, own.id)
-    await db.execute(text(f"UPDATE {TABLE} SET playbook_id = NULL WHERE strategy_id = :s"),  # noqa: S608
+    await db.execute(text("UPDATE public.strategy_adjustment_plans SET playbook_id = NULL WHERE strategy_id = :s"),
                      {"s": strategy.id})  # what ON DELETE SET NULL does
     nulled = await pbs.plan_for(db, user, strategy.id)
     assert nulled.playbook_id is None
@@ -152,8 +151,8 @@ async def test_the_application_role_cannot_set_accepted_at_directly(app_engine):
         outer = await c.begin()
         try:
             got = {priv: (await c.execute(text(
-                f"SELECT has_column_privilege('ofo_app', '{TABLE}', 'accepted_at', :p)"), {"p": priv})).scalar_one()
-                for priv in ("INSERT", "UPDATE")}
+                "SELECT has_column_privilege('ofo_app', 'public.strategy_adjustment_plans', 'accepted_at', :p)"),
+                {"p": priv})).scalar_one() for priv in ("INSERT", "UPDATE")}
             assert got == {"INSERT": False, "UPDATE": False}
             user = _user()
             _, strategy = await _with_draft(c, user)
@@ -161,8 +160,9 @@ async def test_the_application_role_cannot_set_accepted_at_directly(app_engine):
             await pbs.accept_plan(c, user, strategy.id, system.id)
             with pytest.raises(DBAPIError, match="permission denied"):
                 async with c.begin_nested():
-                    await c.execute(text(f"UPDATE {TABLE} SET accepted_at = now() - interval '9 days' "  # noqa: S608
-                                         "WHERE strategy_id = :s"), {"s": strategy.id})
+                    await c.execute(text("UPDATE public.strategy_adjustment_plans "
+                                         "SET accepted_at = now() - interval '9 days' WHERE strategy_id = :s"),
+                                    {"s": strategy.id})
         finally:
             await outer.rollback()
 
