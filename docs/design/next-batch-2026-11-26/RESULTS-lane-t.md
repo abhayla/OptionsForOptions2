@@ -13,6 +13,7 @@ code, no spec rows, no migration. Owner evidence: comment 7184365037 on PR #722 
 | My Strategies | `frontend/e2e/screen-my-strategies.spec.ts` | 100 (LIST-9 mobile only) | 2 (NEW-T10, NEW-T11) | 2 | a6ed1c6 |
 | Current positions | `frontend/e2e/screen-positions.spec.ts` | 142 (stable: 568 passed with `--repeat-each 2`) | 6 (NEW-T20, NEW-T21/N-05, NEW-T22/N-04, NEW-T23, NEW-T24, N-01) | 5 | 4d9cbaa |
 | Live Strategies, Adjustment opportunities, Adjustments (playbooks, settings, system admin) | `frontend/e2e/screen-live-strategies.spec.ts` (+ `e2e/support/live-card-stub.ts`) | 130 (stable: 520 passed with `--repeat-each 2`; round 2 fixed a race in LINK-11) | 2 (N-14, NEW-T31) | 2 (NEW-T31, NEW-T32 observation) | 433f60c |
+| Option Chain | `frontend/e2e/screen-option-chain.spec.ts` | 105 (stable: 630 passed with `--repeat-each 3`) | 3 (NEW-T40, NEW-T41, row 12) | 2 | 247bcfd |
 
 Core proof: the row-2 test failed under one mutation (`HomeOverviewPage.vue` row link pinned to row 1: "Expected
 /strategy\/builder\?strategy=7$/ Received .../strategy/builder?strategy=12") and passed again after the revert.
@@ -45,6 +46,10 @@ migrated, 2026-10-08 catalogue seeded, uvicorn 8000-8002, previews 4173-4176) al
 | NEW-T31 | Adjustment opportunities | Inbox answers 200 with `<html>gateway</html>`; open /positions/adjustment-opportunities | Unread inbox shows the neutral four-part error (REQ-065, REQ-162) | Empty inbox "Showing 0-0 of 0 rows", no error | `OPP-15` | `NEW-T31-1280.png` |
 | NEW-T32 (observation) | Adjustment opportunities | A dismissed outcome with a detail | Outcome and detail are separate words | DOM text "You dismissed thisNot relevant" (CSS margin only; a screen reader reads one word) | `OPP-1`, `OPP-5` (match with `\s*`) | - |
 
+| row 12 (owner) | Option Chain / Builder | Builder `?strategy=63` (paper), remove one leg ("1 pending change"), Market link, browser Back | The pending change is still there (owner check 12, ADR-329 (1)) | "0 pending changes": `StrategyBuilderPage.vue:135` runs `builderHold.clear()` whenever the URL has `strategy=`, so Back drops the held edit. The vitest round trip `chain-trip-adr329.test.js` passes only because it returns with `router.push` to a URL without `strategy=` | `ROW-12` | `row-12-after-back-1280.png` |
+| NEW-T40 | Option Chain | Open the chain; read the Expiry selector | Dates read "1 Dec (5 days)", never raw ISO (REQ-148 AC-2 names builder legs; applies to the chain? question) | Options "2026-12-01", "2026-12-08", "2026-12-29" | `CHAIN-02 expiry dates...` | `NEW-T40-1280.png` |
+| NEW-T41 | Option Chain | Tick 25150 CE, press Buy; read Selected Legs | "NIFTY 1 Dec 25150 CE", as the builder names it (REQ-029 AC-10, REQ-148 AC-2) | "NIFTY 2026-12-01 25150.00 CE", also in the Remove button's accessible name | `CHAIN-NAMES...` | `NEW-T41-1280.png` |
+
 Screenshots are written by the tests to `frontend/test-results/lane-t/` (gitignored; regenerated on each run).
 
 ## Coverage guard
@@ -53,6 +58,11 @@ Screenshots are written by the tests to `frontend/test-results/lane-t/` (gitigno
 file:line and label, when a route or control has no row in `screen-inventory.json`, or a row's control is gone.
 Matching is on source file + kind + testid-or-label, not the positional id. Proof: a temporary `<button>Lane T probe</button>`
 in `HomeOverviewPage.vue` made it fail with `HomeOverviewPage.vue:81 button "Lane T probe"`; reverted.
+
+## Not covered yet (Option Chain)
+
+- Leave dialog x and overlay close (Escape, Stay, Leave are covered); builder-side leave paths (rows 11, 15) belong to the builder screen.
+- Real-backend eligibility path (stubbed; `chain-selection.spec.ts` covers the real outcome route in CI).
 
 ## Not covered yet (Live Strategies and Adjustments; 2 rounds used)
 
