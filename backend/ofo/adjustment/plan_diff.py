@@ -13,8 +13,16 @@ from __future__ import annotations
 import copy
 from typing import Any
 
-#: top-level keys that are not conditions (identity and layout of the body)
-_NOT_CONDITIONS = frozenset({"schema", "strategy_type", "status", "stages"})
+from ofo.adjustment import stop_lines as sl
+from ofo.settings import layers
+
+#: top-level keys that are not conditions: identity and layout of the body, and the strategy layer's own values
+#: (ADR-245: a plan's settings are the trade's values, never a playbook condition)
+_NOT_CONDITIONS = frozenset({"schema", "strategy_type", "status", "stages", layers.PLAN_SETTINGS})
+#: the plan sheet's own levels (ADR-330 (5)): a user may type one where the playbook holds none, so they are values
+#: of the trade, not conditions. The three literals equal the plan route's TARGET_KEY, MAX_KEY, TIME_KEY (a test pins it)
+SHEET_LEVELS = frozenset({"profit_target_pct_of_max_profit", sl.RUPEE_PROFIT_KEY, sl.RUPEE_LOSS_KEY,
+                          "max_adjustments", "time_exit"})
 
 
 def _item_key(item: Any, position: int) -> str:
@@ -30,7 +38,8 @@ def conditions(body: dict) -> dict[str, Any]:
         if key in _NOT_CONDITIONS:
             continue
         if isinstance(value, dict):
-            found.update({f"{key}.{name}": item for name, item in value.items()})
+            found.update({f"{key}.{name}": item for name, item in value.items()
+                          if not (key == "guards" and name in SHEET_LEVELS)})
         elif isinstance(value, list):
             found.update({f"{key}.{_item_key(item, i)}": item for i, item in enumerate(value)})
         else:

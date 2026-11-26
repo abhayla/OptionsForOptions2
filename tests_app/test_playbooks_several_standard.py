@@ -54,6 +54,14 @@ async def test_two_standard_ic_playbooks_coexist(second, app_engine):
     assert all(p.body["strategy_type"] == "ic" for p in standard)
 
 
+def test_the_sheet_level_keys_equal_the_plan_routes_guard_keys():
+    from ofo_app.routes import adjustment_plan as route  # noqa: PLC0415
+
+    assert {route.TARGET_KEY, route.MAX_KEY, route.TIME_KEY} <= plan_diff.SHEET_LEVELS
+    assert route.sl.RUPEE_LOSS_KEY in plan_diff.SHEET_LEVELS
+    assert route.sl.RUPEE_PROFIT_KEY in plan_diff.SHEET_LEVELS
+
+
 def _tweaked(body: dict, value: str = "9.5") -> dict:
     """The same body with one trigger's first value changed and another trigger switched off."""
     out = copy.deepcopy(body)
