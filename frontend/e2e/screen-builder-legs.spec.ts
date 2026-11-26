@@ -361,8 +361,6 @@ test.describe('Builder legs table (REQ-076, REQ-077, REQ-135)', () => {
 
   test('LT-18 removing a leg offers a short Undo that brings the leg back', async ({ page }) => {
     // Spec basis: REQ-030 AC-15 ("Removing a leg is immediate, with a short Undo")
-    // expected-fail: NEW-T50: today the row trash has no Undo (only Clear all does), the leg is gone for good
-    test.fail()
     await stub(page); await openDraft(page)
     await rows(page).nth(1).getByTestId('remove-leg').click()
     await expect(rows(page)).toHaveCount(3)
@@ -796,8 +794,6 @@ test.describe('Builder leg door: edit form and the duplicate question (REQ-080 A
 
   test('ED-5b the dialog\'s own buttons can be clicked while the picker drawer is open: Cancel keeps the legs (BUILD-126)', async ({ page }) => {
     // Spec basis: ADR-328 (1) (Cancel: legs stay as they were; the buttons are the answer)
-    // expected-fail: NEW-T52: the picker drawer's overlay sits above the question, so none of its buttons can be clicked (only Escape answers)
-    test.fail()
     await stub(page); await openDraft(page)
     await pickHeld(page, 'cell-sell')
     await expect(page.getByTestId('dup-dialog')).toBeVisible()
@@ -809,8 +805,6 @@ test.describe('Builder leg door: edit form and the duplicate question (REQ-080 A
 
   test('ED-6 Increase quantity adds the lots to the held leg (still four rows) (BUILD-124)', async ({ page }) => {
     // Spec basis: REQ-030 AC-12; ADR-132
-    // expected-fail: NEW-T52: same cause, the Increase quantity button is under the drawer overlay when the question comes from Done
-    test.fail()
     await stub(page); await openDraft(page)
     await pickHeld(page, 'cell-sell')
     await page.getByTestId('dup-increase').click({ timeout: 3000 })
@@ -820,8 +814,6 @@ test.describe('Builder leg door: edit form and the duplicate question (REQ-080 A
 
   test('ED-7 Keep separate adds a second row for the contract; both rows carry the gate\'s duplicate sentence (BUILD-125)', async ({ page }) => {
     // Spec basis: REQ-030 AC-11; ADR-319 (3) (the gate's own words, D-60)
-    // expected-fail: NEW-T52: same cause (the question is under the drawer overlay)
-    test.fail()
     await stub(page); await openDraft(page)
     await pickHeld(page, 'cell-sell')
     await page.getByTestId('dup-separate').click({ timeout: 3000 })
