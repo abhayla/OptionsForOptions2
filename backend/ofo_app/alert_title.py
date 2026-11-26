@@ -33,7 +33,7 @@ async def labels(conn: Any, rows: Sequence[tuple[int, str | None]]) -> dict[int,
         try:
             async with conn.begin_nested():  # a failed statement rolls back to here; the caller's session stays usable
                 expiry = await readers.nearest_expiry(conn, sid)
-        except Exception:
+        except Exception:  # noqa: BLE001 - a label must never stop the Active list, History or the bell (ADR-330 (3)(4))
             log.warning("alert label: the expiry of strategy %s could not be read; its number is shown alone", sid,
                         exc_info=True)
         out[sid] = (render_explanation("alert_strategy_label_no_expiry", name=shown, number=sid) if expiry is None
