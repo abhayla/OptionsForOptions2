@@ -142,7 +142,15 @@ REQ-030 AC-15 (the leg Undo), catalogue `strategy_name_empty`.
 | T-Q8 Add Selected (0) | coordinator (a), ADR-328 (4) | Fixed, not tested | always shown, greyed, "Tick at least one contract to add."; U-Q12: with a tick but no Buy/Sell, "Choose Buy or Sell for each ticked contract." | 67cfebbe, 0836bb92 |
 | T-Q9 30 spec-silent controls | coordinator (a) | spec lines written (table below) | 13 sentences in 9 REQs | 78790a40 |
 | T-Q10 chain sentences | coordinator (a) | adopted, pending owner read | the chain's own sentences live in `lib/sharedStateText.js`; REQ-029 AC-12 lists them | b4dfb7c7 |
+| D-48 Change expiry | owner, ADR-330 (42) | Fixed, not tested | a separate "Change expiry" action (per-leg chip and an all-legs select) through the one leg door; any missing strike: nothing moves and the strike is named (`leg_edit_expiry_not_listed`, pending owner read); REQ-078 AC-7 amended, AC-11..AC-13; a running trade stages exit-old + add-new; Tier A review x2 (Opus): a row Exit could combine with a staged move and add lots (2 -> 3); fixed structurally: one predicate `rowExitBlocked` (paperDrafts.js) shared by the door and the panel, so a row Exit never carries an add | 9a67a100..a00ccf55 |
 | D-51 Strategy Chart | owner, ADR-330 (43) | Fixed, not tested | the chart draws the strategy's open legs through one door `open_legs()` (backend/ofo_app/open_legs.py; the book today, Zerodha positions later), not the saved definition; a fully closed strategy: "This strategy has no open legs, so there is no strategy chart." (U-Q11, pending owner read); switch untouched | 53aaed67 |
+
+## Re-test: D-48 (Change expiry)
+
+1. Builder, a new NIFTY iron condor: click a leg's expiry chip, pick the next weekly. Expected: that leg moves, strike, side and lots unchanged.
+2. The all-legs "Change expiry" select: pick an expiry where one strike is not listed. Expected: "No <strike> <CE/PE> is listed for <date>, so leg <n> cannot move there." and no leg moved.
+3. A running paper trade: change one leg's expiry: "1 pending change"; Review shows exit of the old contract and add of the new one.
+4. Then try that row's Exit in Net Positions. Expected: greyed, "This leg has a change waiting; review or discard it first."; Discard brings Exit back.
 
 ## Re-test: T-Q7, T-Q8 (Option Chain)
 
@@ -176,7 +184,14 @@ Check on a running paper trade after an exit:
 
 ## To file as deferred issues
 
-None new after the coordinator's 17:17 rule (#750 and #751 were filed before it, with their stage rows).
+None new after the coordinator's 17:17 rule (#750 and #751 were filed before it, with their stage rows), except:
+
+### D-48 Tier A review leftovers (for the coordinator to file)
+
+| Title | Evidence | Spec basis | Done when |
+|---|---|---|---|
+| Stops do not follow a leg whose expiry (or strike) changes | Opus review 26 Nov: the confirm dialog's armed-exits check covers only index exits (backend/ofo_app/routes/paper.py:1513); a per-leg stop on the old contract stays listed as armed after Confirm and protects nothing (backend/ofo_app/paper_monitor.py:223 cancels it only when it next tries to fire); the new contract has no stop | ADR-330 (42); ADR-016..019; Lane P's stops area | staging a move on a leg with a stop says so before Confirm, and after Confirm the stop is either moved or shown as ended |
+| A reply arriving after a row Exit can redraw the moved legs (1-leg trade) | Opus review (read, not run): setLegs aborts the in-flight edit only via readShape, which runs for 2+ legs (StrategyBuilderPage.vue:788); sendEdit captures `shown` at reply time (:991). Confirm posts the dialog's own rows, so no wrong order | ADR-328 (4), N-04 | an in-flight edit is cancelled by any setLegs, with a vitest |
 
 ## Spec lines for the 30 spec-silent controls (Lane T Q9 (a), coordinator 26 Nov)
 
