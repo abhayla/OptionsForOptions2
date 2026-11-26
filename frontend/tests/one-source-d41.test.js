@@ -119,9 +119,10 @@ describe('D-41: the Net Positions table and the Paper P&L panel read one book', 
   it('5 the join is by contract id: the tracking legs in another order each show their own contract\'s book LTP', async () => {
     TRACK = track({ legs: [...track().legs].reverse() })
     const w = await page(book())
-    expect(rowsOf(w).map((r) => r.get('[data-testid="instrument-text"]').text().includes('24900'))).toEqual([true, false, false, false])
-    expect(texts(w, 'tracking-leg-ltp')).toEqual(['92.60', '122.40', '191.85', '149.70'])
-    expect(col(w, 3)).toEqual(['13.00', '-10.00', '30.00', '-20.00'])
+    // B6 round 2: the rows are the book's, in the book's contract order, whatever order the tracking reply has; it supplies only the label
+    expect(rowsOf(w).map((r) => r.get('[data-testid="instrument-text"]').text().includes('24900'))).toEqual([false, false, false, true])
+    expect(texts(w, 'tracking-leg-ltp')).toEqual(['149.70', '191.85', '122.40', '92.60'])
+    expect(col(w, 3)).toEqual(['-20.00', '30.00', '-10.00', '13.00'])
   })
   it('6 a leg the book has no price for: LTP "-", P&L "no price", no quote time; the priced legs keep their figures', async () => {
     const unpriced = pos(LEGS[1], { price_state: 'stale', ltp_text: null, unbooked_text: null, total_text: null, no_price_text: 'no price', price_at: null })
@@ -174,16 +175,16 @@ describe('D-41: the Net Positions table and the Paper P&L panel read one book', 
     expect(rowsOf(w)[1].get('[data-testid="tracking-leg-pnl"]').text()).toBe('25.00')
     expect(texts(w, 'net-pnl')[1]).toBe('25.00')
   })
-  it('14 a tracking leg with no contract id (older reply) or one the book lacks keeps the tracking figures; a book contract the reply lacks adds no row', async () => {
+  it('14 B6 round 2: the rows are the book\'s: a tracking leg with no contract id, or one the book lacks, adds no row and changes no figure; a book contract the reply lacks IS a row', async () => {
     const legs = track().legs
     delete legs[0].contract_id // an older reply
     legs[1].contract_id = 9999 // a contract the book does not hold
     TRACK = track({ legs })
     const extra = pos({ id: 5009, text: 'NIFTY 27000 CE', action: 'BUY', ltp: '10.00', unbooked: '1.00' })
     const w = await page(book({ positions: [...LEGS.map((l) => pos(l)), extra] }))
-    expect(rowsOf(w)).toHaveLength(4)
-    expect(texts(w, 'tracking-leg-ltp')).toEqual(['150.95', '192.60', '122.40', '92.60'])
-    expect(col(w, 3)).toEqual(['+10.00', '+20.00', '-10.00', '13.00'])
+    expect(rowsOf(w)).toHaveLength(5)
+    expect(texts(w, 'tracking-leg-ltp')).toEqual(['149.70', '191.85', '122.40', '92.60', '10.00'])
+    expect(col(w, 3)).toEqual(['-20.00', '30.00', '-10.00', '13.00', '1.00'])
   })
 })
 
