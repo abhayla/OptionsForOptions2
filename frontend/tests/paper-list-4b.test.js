@@ -268,6 +268,15 @@ describe('Paper tab from GET /paper/strategies (the real reply)', () => {
     answers['GET /paper/strategies'] = ok(none)
     expect(has(await show(), 'totals-left-out')).toBe(false)
   })
+  it('AC-R06 / N-46: a paused strategy among priced ones: the header keeps the server\'s total and its count line', async () => {
+    const LINE = '1 strategy left out: its price is not live.'
+    const d = clone()
+    Object.assign(d.totals, { left_out_count: 1, left_out_text: LINE })
+    answers['GET /paper/strategies'] = ok(d)
+    const w = await show()
+    expect(t(w, 'totals-left-out').text()).toBe(LINE)
+    expect(t(w, 'totals-total').text()).toBe(REAL.totals.total_text)
+  })
   it('D-40 r2: the compact list shows no header figure, so no left-out line is missing beside one', async () => {
     const d = clone()
     Object.assign(d.totals, { left_out_count: 2, left_out_text: '2 strategies left out: their contracts have expired.' })

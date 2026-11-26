@@ -2078,6 +2078,15 @@ _EXPLANATIONS: tuple[ExplanationTemplate, ...] = (
     ExplanationTemplate("paper_totals_left_out_one", "values_seen", "1 strategy left out: its contract has expired."),
     ExplanationTemplate("paper_totals_left_out_many", "values_seen",
                         "{count} strategies left out: their contracts have expired.", {"count": Count}),
+    # AC-R06 / N-46 (ADR-324 (1) to (3), wording new, pending owner read): a strategy with no live price is left out of the
+    # header figures and counted, as an expired one is; the line names the reason(s) of the strategies left out
+    ExplanationTemplate("paper_totals_left_out_unpriced_one", "values_seen",
+                        "1 strategy left out: its price is not live."),
+    ExplanationTemplate("paper_totals_left_out_unpriced_many", "values_seen",
+                        "{count} strategies left out: their prices are not live.", {"count": Count}),
+    ExplanationTemplate("paper_totals_left_out_mixed", "values_seen",
+                        "{count} strategies left out: their contracts have expired or their prices are not live.",
+                        {"count": Count}),
     ExplanationTemplate("paper_reason_multi_expiry", "values_seen",
                         "Profit left and Loss left are not worked out: the open contracts have different expiries."),
     ExplanationTemplate("paper_extremes_prices_not_live", "values_seen",

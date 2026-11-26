@@ -29,7 +29,8 @@ def _s(total_after: str | None, unbooked: str | None = "10.00", reason: str | No
             "charges": D("1.00"), "charges_reason": None, "total": None if after is None else after + D("3.00"),
             "total_after": after, "charges_paid": D("2.00"), "charges_to_close": D("1.00"),
             "after_charges_reason": None if after is not None else "prices_not_live",
-            "booked_after": D("3.00"), "unbooked_after": D("9.00"), "as_of": None}
+            "booked_after": D("3.00"), "unbooked_after": D("9.00"), "as_of": None,
+            "open_count": 1}  # AC-R06: a book with an open leg (the header's priced-set rule reads it)
 
 
 def _item(figures: dict, opened: datetime.datetime, closed: datetime.datetime | None = None,
@@ -75,12 +76,21 @@ def test_the_ist_day_boundary_not_the_utc_day():
     assert (got["count"], got["total_after"]) == (1, D("1.00"))
 
 
-def test_paused_one_trade_without_a_live_price_pauses_the_figure_with_the_reason_never_a_partial_sum():
+def test_paused_one_trade_without_a_live_price_is_left_out_and_counted_never_pauses_the_figure():
+    """AC-R06 (ADR-324 (3b)): the Today total is the sum over the trades that can be priced, with the count line."""
     items = [_item(_s("100.10"), _at(25)), _item(_s(None, unbooked=None, reason="prices_not_live"), _at(25, 5))]
     got = today(items)
     assert got["count"] == len(items)
+    assert (got["total_after"], got["totals_reason"]) == (D("100.10"), None)
+    assert (got["left_out_count"], got["left_out_text"]) == (1, "1 strategy left out: its price is not live.")
+
+
+def test_paused_every_trade_without_a_live_price_pauses_the_figure_with_the_reason():
+    items = [_item(_s(None, unbooked=None, reason="prices_not_live"), _at(25, h)) for h in (1, 5)]
+    got = today(items)
     assert (got["total"], got["total_after"], got["totals_reason"]) == (None, None, "prices_not_live")
     assert got["after_charges_reason"] == "prices_not_live"
+    assert got["left_out_count"] == 0
 
 
 def test_nothing_today_says_so_and_is_not_a_zero_figure():

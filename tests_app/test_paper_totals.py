@@ -438,6 +438,47 @@ async def test_a4_an_expired_strategy_and_stale_prices_the_stale_reason_wins_and
     assert (totals["left_out_count"], totals["left_out_text"]) == (1, "1 strategy left out: its contract has expired.")
 
 
+# --- AC-R06 / N-46 (26 Nov 2026, ADR-324 (1) to (3)): one strategy that cannot be priced never pauses the total ------
+# Owner case: six running strategies, five priced at the last close, #173 (a SENSEX trade expiring that day) paused:
+# Home and the Positions header showed "-" and "Paper P&L paused". Here: 48 holds a delisted contract (paused, not
+# expired); 50 and 46 are priced. The header is the sum over 50 and 46, with a count line.
+_DELIST = "UPDATE public.catalogue_contracts SET delisted = TRUE, currently_listed = FALSE WHERE id = :id"
+_PAUSED_ONE = "1 strategy left out: its price is not live."
+
+
+async def test_ac_r06_one_paused_strategy_is_left_out_and_the_total_is_over_the_priced_ones(db):
+    app, _provider, _clock, _last, sid = await _seed_three(db)
+    await db.execute(text(_DELIST), {"id": sid["contracts"][1]})  # held only by 48
+    body = await _list(app)
+    rows = {s["strategy_id"]: s for s in body["strategies"]}
+    assert rows[sid["48"]]["state"] == "PAUSED" and rows[sid["48"]]["expired_open"] is False
+    kept = [rows[sid["50"]], rows[sid["46"]]]
+    booked = sum((D(s["booked"]) for s in kept), D(0))
+    unbooked = sum((D(s["unbooked"]) for s in kept), D(0))
+    totals = body["totals"]
+    assert (D(totals["booked"]), D(totals["unbooked"]), D(totals["total"])) == (booked, unbooked, booked + unbooked)
+    assert (totals["totals_reason"], totals["totals_reason_text"]) == (None, None)
+    assert (totals["left_out_count"], totals["left_out_text"]) == (1, _PAUSED_ONE)
+    assert rows[sid["48"]]["unbooked"] is None  # its own row stays paused with its reason
+
+
+async def test_ac_r06_every_strategy_paused_keeps_the_blank_total_with_its_reason(db):
+    app, _provider, clock, last, _sid = await _seed_three(db)
+    clock.now = last + datetime.timedelta(minutes=10)
+    totals = (await _list(app))["totals"]
+    assert (totals["total"], totals["total_after"], totals["totals_reason"]) == (None, None, "prices_not_live")
+    assert (totals["left_out_count"], totals["left_out_text"]) == (0, None)
+
+
+def test_ac_r06_the_count_line_names_expired_unpriced_or_both():
+    from ofo_app.routes.paper import _left_out_text  # noqa: PLC0415
+
+    assert _left_out_text(0, 0) is None
+    assert _left_out_text(1, 0) == "1 strategy left out: its contract has expired."
+    assert _left_out_text(0, 3) == "3 strategies left out: their prices are not live."
+    assert _left_out_text(1, 1) == "2 strategies left out: their contracts have expired or their prices are not live."
+
+
 # --- D-36: a finished book (no open leg) costs the list no pricing, decay or live-figure work ------------------------
 
 _FINISHED = 6
