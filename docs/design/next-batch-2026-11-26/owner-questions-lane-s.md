@@ -60,3 +60,26 @@ Options:
 - (b) Split pro rata by units. Not chosen: wrong whenever the entry prices differ, which is the normal case.
 
 Built meanwhile: (a).
+
+## Answers (26 Nov 2026 about 12:30 IST)
+
+LQS-1 and LQS-3: option (a), decided by the coordinator as the spec's own rule (ADR-016 to ADR-019). LQS-2: option
+(a), the owner by the question tool ("Sum of the rows shown"), with the line "Excludes contracts not in a strategy
+here and contracts closed today." Recorded in spec/decisions/ADR-330.md point (24) (fix/ic-live-test-1123).
+
+A second real row already in the repo: `tests/fixtures/kite_replies/positions-122104.json` (16 Oct 12:21:07, OPEN):
+NIFTY26O1923650CE quantity 65, buy_value 331.5, sell_value 0, last_price 5.1, pnl 0; derived 0 - 331.5 + 65 x 5.1 = 0.
+
+## For the PC session (read-only capture of a real OPEN position)
+
+Not a blocker: the two recorded rows above prove the core. Take it when a real NIFTY/SENSEX option position is open.
+
+1. Owner's Kite session connected, market hours, at least one real NIFTY/SENSEX option position open.
+2. From the repo root: `python scripts/live/probe.py pnl --save-dir D:/Abhay/Ventures/ofo-kite-ticks/2026-11-26/real-pnl-open`
+   (folder new or empty; the same command as `docs/process/gc-3l-runbook-2026-10-19.md:35` without `--tag-prefix`).
+   `probe.py` only reads: every call goes through `KiteReads` and the runtime door's allow-list; it has no order,
+   modify or cancel call.
+3. Hand back `positions-saved.json` from that folder and the printed line comparing Kite's position P&L with the
+   fills P&L. Do not hand back `orders-saved.json` unless the client id (`placed_by`, `account_id`) is replaced by `XX0000`.
+4. At the same minute, note the P&L Kite's own Positions screen shows for that contract (number or screenshot): the
+   figure the app must equal.
