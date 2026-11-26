@@ -52,6 +52,14 @@ async def _seeded(app_engine, monkeypatch, sid: str) -> int:
     return await seed_mod.seed(sid)
 
 
+async def _planned(app_engine, strategy_id: int) -> None:
+    """ADR-330 (11): only a strategy's own plan applies, so a test that needs the system iron condor rules gives the
+    strategy a plan copied from that playbook (what the plan sheet's "Use playbook as is" does)."""
+    async with app_engine.begin() as conn:
+        system = await playbook_store.active_for(conn, "owner", "ic")
+        await playbook_store.accept_plan(conn, "owner", strategy_id, system.id)
+
+
 async def _check(sid: str, strategy_id: int) -> tuple[int, dict]:
     from ofo_app.main import create_app  # noqa: PLC0415 - the env above must be set first
     _reset_engine()
@@ -74,11 +82,12 @@ def _by_kind(body: dict, kind: str) -> list[tuple]:
 
 async def test_adj02_flags_exactly_t01_t03_t09_with_the_system_wording(app_db_url, monkeypatch):
     sid = await _seeded(app_db_url, monkeypatch, "ADJ-02")
+    await _planned(app_db_url, sid)
     status, body = await _check("ADJ-02", sid)
     assert status == OK, body
     assert (body["strategy_type"], body["type_name"], body["stage"]) == ("ic", "Iron condor",
                                                                        {"name": "Middle", "index": 1})
-    assert body["playbook"]["source"] == "system" and body["playbook"]["status"] == "approved"
+    assert body["playbook"]["source"] == "plan" and body["playbook"]["status"] is None
     flags = [x for x in body["results"] if x["kind"] == "flag" and not _is_sit(x)]  # sit.S-02 / S-12: step 6a tests
     # GC-ADJ2 step 5 item 1: rounded half-up to 4 places, as the fixture writes them (ADJ-02.json triggers_fired)
     assert sorted((x["trigger_id"], x["value"], x["threshold"], x["cmp"]) for x in flags) == [
@@ -88,7 +97,7 @@ async def test_adj02_flags_exactly_t01_t03_t09_with_the_system_wording(app_db_ur
         "Spot within this % of a short strike: 0.3416 % (rule 0.5000 %) (call side tested)")
     assert by_trigger["T-03"]["condition"] == "Tested short's delta reaches: 0.4103 delta (rule 0.3500 delta)"
     assert not any("T-0" in x["condition"] for x in flags)
-    assert {x["wording"] for x in flags} == {"Adjustment opportunity detected"}
+    assert {x["wording"] for x in flags} == {"Your rule was triggered"}  # a plan's rules are the user's own (ADR-330 (11))
     assert all(x["reason"] for x in body["results"] if x["kind"] == "not_checked")
 
 
@@ -104,6 +113,7 @@ async def test_adr237_6_the_screen_check_writes_no_record_and_shows_the_stored_o
     records. Two checks with T-01 true leave the record table unchanged; a record the worker's store function opened
     is named by the T-01 flag (suggestion_id), and a dismissed one gives the "You dismissed this" note."""
     sid = await _seeded(app_db_url, monkeypatch, "ADJ-02")
+    await _planned(app_db_url, sid)
     assert await _record_rows(app_db_url, sid) == []
     for _ in range(2):
         status, body = await _check("ADJ-02", sid)
@@ -132,6 +142,7 @@ async def test_a_records_store_read_failure_is_a_refusal_never_an_empty_answer(a
     from sqlalchemy.exc import OperationalError  # noqa: PLC0415
 
     sid = await _seeded(app_db_url, monkeypatch, "ADJ-02")
+    await _planned(app_db_url, sid)
 
     async def broken(*_a, **_k):
         raise OperationalError("SELECT", {}, Exception("connection lost"))
@@ -146,14 +157,16 @@ async def test_adj01_no_flag(app_db_url, monkeypatch):
     assert status == OK and body["strategy_type"] == "ic" and _by_kind(body, "flag") == []
 
 
-async def test_user_active_playbook_is_read_when_the_strategy_has_no_plan(app_db_url, monkeypatch):
+async def test_a_strategy_with_no_plan_is_not_checked_whatever_playbook_is_active(app_db_url, monkeypatch):
+    """ADR-330 (11): was "the user's active playbook is read when the strategy has no plan". Now no plan = source
+    "none": no results, nothing watched (the system and the user's own active playbooks are only sources to copy)."""
     sid = await _seeded(app_db_url, monkeypatch, "ADJ-01")
     async with app_db_url.begin() as conn:
         system = await playbook_store.active_for(conn, "owner", "ic")
         own = await playbook_store.duplicate(conn, "owner", system.id, "Mine")
         await playbook_store.make_active(conn, "owner", own.id)
     status, out = await _check("ADJ-01", sid)
-    assert status == OK and (out["playbook"]["source"], out["playbook"]["id"]) == ("active", own.id)
+    assert status == OK and (out["playbook"]["source"], out["playbook"]["id"], out["results"]) == ("none", None, [])
 
 
 _STATE_ROWS = text("SELECT 'memory', rule_id, held_at_entry::text, seen_clear::text "
@@ -171,6 +184,7 @@ async def test_two_screen_checks_write_no_adjustment_state_at_all(app_db_url, mo
     before the fix the first screen check wrote the rule memory (T-01 held at entry), which the worker had cached
     differently."""
     sid = await _seeded(app_db_url, monkeypatch, "ADJ-42")
+    await _planned(app_db_url, sid)
     async with app_db_url.connect() as conn:
         before = (await conn.execute(_STATE_ROWS, {"s": sid})).all()
     for _ in range(2):
@@ -183,6 +197,7 @@ async def test_two_screen_checks_write_no_adjustment_state_at_all(app_db_url, mo
 
 async def test_adj42_f71_already_true_at_entry_then_flags_after_a_clear_check(app_db_url, monkeypatch):
     sid = await _seeded(app_db_url, monkeypatch, "ADJ-42")
+    await _planned(app_db_url, sid)
     status, body = await _check("ADJ-42", sid)
     assert status == OK
     assert [x[0] for x in _by_kind(body, "already_true")] == ["T-01"] and _by_kind(body, "flag") == []
@@ -199,6 +214,7 @@ async def test_adj42_f71_already_true_at_entry_then_flags_after_a_clear_check(ap
 
 async def test_adj24b_no_spot_every_rule_not_checked_with_its_reason_never_a_flag(app_db_url, monkeypatch):
     sid = await _seeded(app_db_url, monkeypatch, "ADJ-24b")
+    await _planned(app_db_url, sid)
     status, body = await _check("ADJ-24b", sid)
     assert status == OK and body["strategy_type"] == "ic"
     assert body["results"] and {x["kind"] for x in body["results"]} == {"not_checked"}
