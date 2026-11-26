@@ -125,4 +125,72 @@ describe('Stops panel', () => {
     expect(has(bad, 'trigger-row')).toBe(false)
     expect(has(bad, 'stops-error')).toBe(true)
   })
+
+  // S-23: a fired stop must not read "armed" until reload. Root cause: triggers were read once on mount only.
+  it('S-23: a new good list read re-reads the triggers quietly (fired shows), no new timer, no cleared status', async () => {
+    vi.useFakeTimers({ toFake: ['setInterval', 'clearInterval'] })
+    try {
+      const w = await open({ triggers: [trig(1)] })
+      expect(t(w, 'trigger-state').text()).toBe('armed')
+      const timers = vi.getTimerCount()
+      answers[`GET ${TRIG}`] = ok({ triggers: [trig(1, { state: 'fired', fired_at: '2026-10-29T06:00:00Z' })] })
+      await vi.advanceTimersByTimeAsync(5000)
+      await flushPromises()
+      expect(t(w, 'trigger-state').text()).toBe('fired')
+      expect(vi.getTimerCount()).toBe(timers)
+      // a failed quiet reread keeps the last list and says so on its own line, not in the action error
+      answers[`GET ${TRIG}`] = () => Promise.reject({ message: 'net', status: null, parts: null })
+      await vi.advanceTimersByTimeAsync(5000)
+      await flushPromises()
+      expect(t(w, 'trigger-state').text()).toBe('fired')
+      expect(has(w, 'stops-list-error')).toBe(true)
+      expect(has(w, 'stops-error')).toBe(false)
+    } finally {
+      vi.useRealTimers()
+    }
+  })
+  it('S-23: a quiet reread does not clear a refusal the user is reading', async () => {
+    vi.useFakeTimers({ toFake: ['setInterval', 'clearInterval'] })
+    try {
+      const w = await open({ triggers: [trig(1)] })
+      await t(w, 'ce-above').setValue('24500')
+      answers[`POST ${TRIG}`] = refuse('That level is not valid.')
+      await t(w, 'ce-save').trigger('click')
+      await flushPromises()
+      await vi.advanceTimersByTimeAsync(5000)
+      await flushPromises()
+      expect(t(w, 'stops-error').text()).toContain('That level is not valid.')
+    } finally {
+      vi.useRealTimers()
+    }
+  })
+
+  // S-19: the panel says the index level it is judged against, from the one reader (useIndexAnswer), or says it is not live.
+  it('S-19: with no live index answer the panel says the index is not live, with no digits', async () => {
+    const w = await open()
+    expect(t(w, 'stops-index').text()).toBe('Index values unavailable.')
+    expect(t(w, 'stops-index').text()).not.toMatch(/\d/)
+  })
+  it('S-19: a live index answer shows "NIFTY now <value> as of <time>" as the reader gives them', async () => {
+    answers['GET /indices'] = ok({ state: 'LIVE', market_closed: false, last_price_at: '2026-11-26T05:11:05Z',
+      indices: [{ underlying: 'NIFTY', instrument_id: '1', value: '25,735.00', at: '2026-11-26T05:11:05Z', health: null }] })
+    const w = await open()
+    expect(t(w, 'stops-index').text()).toBe('NIFTY now 25,735.00 as of 10:41:05')
+  })
+
+  // S-26: typing in a level must keep the same element, value and focus while the panel refreshes and a status line appears.
+  it('S-26: typing keeps the same input element, value and focus across a refresh and a status line; the status slot keeps its height class', async () => {
+    const w = await open({ triggers: [trig(1)] })
+    const before = t(w, 'ce-above').element
+    before.focus()
+    await t(w, 'ce-above').setValue('24500.07')
+    const slotClass = t(w, 'stops-status-slot').attributes('class')
+    answers[`POST ${TRIG}`] = refuse('That level is not valid.')
+    await t(w, 'ce-save').trigger('click')
+    await flushPromises()
+    expect(t(w, 'ce-above').element).toBe(before)
+    expect(before.value).toBe('24500.07')
+    expect(t(w, 'stops-status-slot').attributes('class')).toBe(slotClass)
+    expect(t(w, 'stops-status-slot').classes()).toContain('min-h-5')
+  })
 })
