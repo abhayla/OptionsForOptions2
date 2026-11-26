@@ -41,5 +41,22 @@ export const useBuilderHold = defineStore('builderHold', () => {
   }
   const clear = () => { held.value = null }
 
-  return { held, count, hold, take, clear }
+  // S-11: the plan sheet's whole unsaved form, held (in memory, one slot) while "Customise triggers" takes the user to the trigger editor.
+  // { strategyId, base, form }: `base` is the server's reading when the sheet loaded (compared for equality only, to see that the plan
+  // was not changed elsewhere meanwhile); `form` is a copy of the typed text and the server's last answers, exactly as they were.
+  const planHeld = ref(null)
+  function holdPlan(strategyId, { base, form }) {
+    planHeld.value = { strategyId, base, form: JSON.parse(JSON.stringify(form)) }
+  }
+  /** True when a plan form is held for this strategy (no taking). */
+  const hasPlan = (strategyId) => planHeld.value?.strategyId === strategyId
+  /** The held form for this strategy, once: any hold is emptied in the same step. Another strategy's hold is not returned. */
+  function takePlan(strategyId) {
+    const got = planHeld.value
+    planHeld.value = null
+    return got && got.strategyId === strategyId ? got : null
+  }
+  const clearPlan = () => { planHeld.value = null }
+
+  return { held, count, hold, take, clear, planHeld, holdPlan, hasPlan, takePlan, clearPlan }
 })

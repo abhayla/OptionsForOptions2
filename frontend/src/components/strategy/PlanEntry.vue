@@ -48,6 +48,8 @@
 import { computed, ref, watch } from 'vue'
 import AdjustPlanSheet from '@/components/strategy/AdjustPlanSheet.vue'
 import LoadFailed from '@/components/common/LoadFailed.vue'
+import { getActivePinia } from 'pinia'
+import { useBuilderHold } from '@/stores/builderHold'
 import api from '@/services/api'
 import { fetchPlan } from '@/lib/adjustPlan'
 import { checkStaleLine, EXITS_LOAD_FAILED_TEXT, exitLineText, LIMITS_LOADING_TEXT, LIMITS_LOAD_FAILED_TEXT, LIMITS_NONE_TEXT, PLAN_LOADING_TEXT, PLAN_LOAD_FAILED_TEXT } from '@/lib/sharedStateText'
@@ -80,6 +82,8 @@ const limits = computed(() => {
   return { paused: null, rows }
 })
 
+const heldPlanFor = (id) => { try { return !!getActivePinia() && useBuilderHold().hasPlan(id) } catch { return false } }
+
 async function reload() {
   const id = props.strategyId
   read.value = null
@@ -91,7 +95,10 @@ async function reload() {
     const next = await fetchPlan(api, id)
     if (id !== props.strategyId) return // another strategy opened meanwhile: drop this
     if (next.kind === 'invalid') failed.value = true // fail closed: nothing is drawn from a reply that cannot be read
-    else read.value = next
+    else {
+      read.value = next
+      if (heldPlanFor(id)) sheetOpen.value = true // S-11: back from Customise triggers: the sheet reopens, the held form is in it
+    }
   } catch {
     if (id === props.strategyId) failed.value = true // network, 5xx or the 30 s limit
   } finally {
