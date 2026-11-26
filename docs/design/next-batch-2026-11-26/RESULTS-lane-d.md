@@ -11,11 +11,11 @@ ADR-330 (3), (23), (34), (36); REQ-049, REQ-109, REQ-133 AC-3, REQ-138, REQ-154.
 
 | Class | Count | Issues |
 |---|---|---|
-| FIX NOW | 19 | #725 #726 #727 #728 #729 #730 #732 #733 #734 #736 #737 #738 #739 #740 #743 #745 #746 #748 #749 (#730 not reached tonight) |
+| FIX NOW | 18 | #725 #726 #727 #728 #729 #732 #733 #734 #736 #737 #738 #739 #740 #743 #745 #746 #748 #749 |
 | NEEDS THE OWNER | 0 | #732 answered: ADR-330 (44), option 1. #741: the coordinator read ADR-328 (3) as already answering it |
 | NOT REPRODUCED | 1 | #741 (the order door refuses holding a contract both ways, code 438; guard test added) |
 | WAITS FOR A STAGE | 4 | #735 #742 (D-12, after step 4), #750 #751 (step 4: sign-in, migration) |
-| ALREADY FIXED | 1 | #747 (46b970e) |
+| ALREADY FIXED | 2 | #747 (46b970e); #730 (the existing exit gate already refuses; regression test d41534f) |
 | OTHER LANE NOW | 6 | #724 #744 #752 (Lane R), #753 (Lane J, carries the migrations), #754 #755 (Lane G) |
 | NOT WORTH DOING | 1 | #731 |
 
@@ -33,7 +33,7 @@ Harm: what a user loses. Size: small = one small push. Line numbers are on this 
 | 727 | Exiting from the tracking panel when the price read fails shows a raw server error; the same failure on the orders screen shows a named "prices not live" refusal | medium | small | FIX NOW | `tracking.py:548` `on_read_error="raise"` |
 | 728 | The two exit screens disagree on "not connected": one refuses when the broker link is down, the other goes on with what it has | low | small | FIX NOW | `paper_exit.py:64` `connected_rule`; one rule (provider status) for both, fail closed |
 | 729 | An exit from the tracking panel closes only the lots read before the lock; if the leg grew in between, part of it stays open without a word | high | small | FIX NOW | `tracking.py:554`; `paper_exit` already supports `closes="locked"` |
-| 730 | "Review and add" dialog built on an old view of the trade can still post an exit after the trade changed in another tab (the server still refuses an exit larger than what is open) | low | small-medium | FIX NOW | `StrategyBuilderPage.vue:434`; reuse the `contractsChanged` gate. Hot file (Lane R/U): last in order |
+| 730 | "Review and add" built on an old view of the trade could post an exit after the trade changed in another tab | none | - | ALREADY FIXED | The exit gate `usePaperExit({changed: paperContractsChanged})` already refuses Review and add and Confirm and closes an open dialog; regression test through the real book poll `frontend/tests/paper-dialog-contracts-changed-b6.test.js` (removing the gate: 2 red), d41534f |
 | 731 | Two tabs can each send a partial exit of the same lot; both are stored | none | medium + migration | NOT WORTH DOING | The store locks the strategy and re-checks the open quantity under the lock (`paper_store.py:85-95,128-138`), so the two exits can never close more than is open; each is a legal order the user sent. An idempotency key needs a migration for no loss |
 | 732 | A price-level exit does not fire while any of the trade's contracts has no live price, and nothing tells the user it is waiting | medium | medium | FIX NOW | Owner answer ADR-330 (44): one INFORMATIONAL alert per exit per day ("Your exit at 26,100 could not run: <contract> has no live price. It is still set."), the exit stays set, no order; through the one alert module; also covers ADR-330 (39) (index value too old) using the price reader's verdict |
 | 733 | "Keep this level" re-arms a level that the index may already have crossed, so it fires on the next tick | low | medium | FIX NOW | Spec settled (found on the subject search, so not asked): ADR-317 (1) refuses a level already crossed at save time with the approved "Not saved: ..." wording; (2) no live price = kept; (7) "keeps it" is a save |
@@ -129,6 +129,33 @@ session itself on the old source: 12 + 6 failed).
 - #737, #738, #740, #743, #746: no screen step that can be forced on demand; covered by the named tests.
 
 
+## Push 2 (panel rows; #730)
+
+| Item | Root cause | Class before -> after | Tests red -> green | Commits | Review |
+|---|---|---|---|---|---|
+| #741 follow-up: builder Paper P&L panel rows | The panel built its rows from the tracking reply (one row per contract, 5 s poll) and never showed the book's closed lifecycles, so a closed-and-reopened contract showed +65.00 with no closed row against a book total of +130.00; round 1's mix of tracking rows and book rows doubled an exit for one poll (135 vs 75). | panel row sources: tracking rows + book figures -> the book's own rows (open positions, then closed lifecycles) whenever the book read is this strategy's | `frontend/tests/panel-rows-closed-b6.test.js`: round 1 2 of 3 red; round 2 cases R2-1..R2-4 4 of 8 red on round 1, all green; mutation (old panel) 4 red | 85dee14, 34095da | Tier A Opus round 1 REVISE (1 major, 3 minor), round 2 PASS (5 minors below) |
+| #730 | Not a defect: the existing exit gate (`usePaperExit({changed: paperContractsChanged})`) already refuses Review and add and Confirm, and closes an open dialog, when the open contracts changed. | - | `frontend/tests/paper-dialog-contracts-changed-b6.test.js` through the real book poll: 3 passed; removing `changed:` from the page: 2 red | d41534f (test only) | - |
+
+Re-test #741 follow-up: on a paper trade, exit one leg, then buy the same contract again; open the builder's Paper P&L
+panel. Expect: two rows for that contract, the closed one ("Exited at ...") and the open one, each with the same
+figure as the legs table beside it, and the rows add up to the panel's total. Also right after pressing Exit on a leg:
+that leg never shows twice.
+
+Re-test #730: open the same paper trade in two tabs; in tab 2 exit a leg; in tab 1 (not reloaded) open "Review and
+add" of another edit. Expect: the existing "changed elsewhere" line, and nothing is sent.
+
+To file as deferred (round-2 review minors, rounds used up):
+- panel: a failed read on a book with no open and no closed entry falls back to tracking rows without the dash
+  (`TrackingPanel.vue:150`); a book with no `strategy_id` is accepted (`:126`; the server always sends it); a label
+  from the tracking reply can show the pre-exit quantity for one poll (`:147-148`); `v-if="view.legs.length"` hides
+  book rows when the tracking reply has no legs (`:14`, pre-existing); one-source-d41 test 5 no longer pins the label's
+  source (`:123`).
+
+Process note: the first prepush run failed in preflight on `tests_app/test_openapi_drift.py`: the fast pre-check
+built the OpenAPI document but did not compare it with the committed one. Lane D's own two route changes (#733 keep,
+#729 tracking exit) caused the drift; regenerated in 91cc43b. Lesson for briefs: "openapi check" means running
+`tests_app/test_openapi_drift.py`, not only the generator.
+
 ## Tier A review (independent Opus, 26 Nov evening): PASS, 4 minors, all to file as deferred
 
 - R1 (#726 + #729) `routes/tracking.py:549,570`: `placed_at` is the route's answer time, read before the price read
@@ -145,7 +172,7 @@ session itself on the old source: 12 + 6 failed).
 ## Ready to close (for the coordinator)
 
 - #747: fixed by 46b970e (already on integration/nb-1126).
-- After the owner's re-test: #725 #726 #727 #728 #729 #732 #733 #734 #736 #737 #738 #739 #740 #743 #745 #746 #748 #749 (each commit carries the issue number; no `Fixes` line was written, per the rule, since the owner's screen check is part of done). #741: close as not reproducible (guard added).
+- After the owner's re-test: #725 #726 #727 #728 #729 #732 #733 #734 #736 #737 #738 #739 #740 #743 #745 #746 #748 #749 (each commit carries the issue number; no `Fixes` line was written, per the rule, since the owner's screen check is part of done). #741: close as not reproducible (guard added; the panel's closed-lifecycle rows are fixed in push 2). #730: close as already guarded (test added).
 
 ## To file as deferred issues
 

@@ -44,6 +44,33 @@ export function paperLegsOf(net, book, failed = false) {
   return out
 }
 
+/** B6 (ADR-328 (3), D-10): the Paper P&L panel's rows for the book's closed lifecycles, one per `closed` entry, the legs table's Closed rows
+ *  (ClosedRows.vue): the contract, entry and exit text and the lifecycle's own booked P&L, all as the server sent them (nothing added here).
+ *  A failed read prints the one dash the legs table prints. Empty when the book has none. */
+export function closedLegRowsOf(book, failed = false) {
+  const dash = (v) => (failed ? PAPER_NO_FIGURE : (text(v) ?? PAPER_NO_FIGURE))
+  return (Array.isArray(book?.closed) ? book.closed : []).map((c, i) => ({
+    key: `closed:${i}:${c.contract_id}:${c.opened_at}`, contractId: c.contract_id, action: c.side, text: c.contract_text ?? '',
+    entry: dash(c.average_entry_text), current: null, quoteAt: null, exited: true, exitPrice: dash(c.average_exit_text), pnl: dash(c.booked_text), closed: true,
+  }))
+}
+
+/** B6 round 2 (ADR-328 (3), D-10): the Paper P&L panel's OPEN rows, built from the book alone, as the legs table builds them: one per position
+ *  with a non-zero net, in the book's order. Side from the sign of the net (a count, no arithmetic); entry, LTP, quote time and TOTAL are the
+ *  book's texts (a failed read: the one dash). `text` is the server's contract text; the panel may swap it for the label it joins by contract id. */
+export function openLegRowsOf(book, failed = false) {
+  const prices = legPricesOf(book, failed === true)
+  const out = []
+  for (const p of Array.isArray(book?.positions) ? book.positions : []) {
+    if (p.net_quantity === 0 || p.net_quantity == null) continue
+    const own = prices.get(String(p.contract_id))
+    if (own === undefined) continue
+    out.push({ key: `open:${p.contract_id}`, contractId: p.contract_id, action: p.net_quantity < 0 ? 'SELL' : 'BUY', text: p.contract_text ?? '',
+      entry: own.entry ?? '-', current: own.ltp, quoteAt: own.at, exited: false, exitPrice: null, pnl: own.total ?? own.noPrice ?? PAPER_NO_FIGURE, closed: false })
+  }
+  return out
+}
+
 /** The one P&L block of a paper book: the headline (sharedTotal: after charges, or the labelled before text, or paused, with its
  *  as-of line) and the LegPrice of every open contract. null = no book. */
 export function paperPnlBlock(book, failed = false) {
