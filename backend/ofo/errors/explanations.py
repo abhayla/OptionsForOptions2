@@ -2038,6 +2038,9 @@ _EXPLANATIONS: tuple[ExplanationTemplate, ...] = (
     ExplanationTemplate("price_history_quantity_not_whole_lots", "values_seen",
                         "{leg}: the saved quantity is not a whole number of lots at today's lot size.",
                         {"leg": LegRef}),
+    # D-51 (ADR-330 (43), REQ-091 AC-8): every leg of the strategy is closed, so there is nothing to chart
+    ExplanationTemplate("price_history_no_open_legs", "values_seen",
+                        "This strategy has no open legs, so there is no strategy chart."),
     # W-102: the Execute reply's cost when no charge rate set could be read (charges null, never a default)
     ExplanationTemplate("execute_cost_charges_not_included", "values_seen",
                         "Charges and taxes are not included: the charge rates could not be read."),
