@@ -11914,6 +11914,15 @@
             ],
             "title": "Stop Source"
           },
+          "stop_warning": {
+            "anyOf": [
+              {},
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Stop Warning"
+          },
           "stop_words": {
             "anyOf": [
               {},
@@ -12710,6 +12719,15 @@
               }
             ],
             "title": "Stop Source"
+          },
+          "stop_warning": {
+            "anyOf": [
+              {},
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Stop Warning"
           },
           "stop_words": {
             "anyOf": [
@@ -17572,6 +17590,15 @@
               }
             ],
             "title": "Rupees"
+          },
+          "warning": {
+            "anyOf": [
+              {},
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Warning"
           },
           "words": {
             "anyOf": [

@@ -100,7 +100,8 @@ async def _system_ic(engine) -> playbook_store.Playbook:
 
 def _without_rupees(prefill: dict) -> dict:
     """ADR-330 (5): the rupee figures of a level are asserted on their own (tests_app/test_plan_rupee_levels.py)."""
-    return {k: v for k, v in prefill.items() if "rupee" not in k and "per_lot" not in k and not k.endswith("_source")}
+    return {k: v for k, v in prefill.items() if "rupee" not in k and "per_lot" not in k and not k.endswith("_source")
+            and k != "stop_warning"}  # LP-4: asserted on its own (below)
 
 
 async def test_get_without_a_plan_prefills_from_the_active_system_playbook_and_pick_refills(app_db_url, monkeypatch):
@@ -430,3 +431,47 @@ async def test_levels_preview_equals_saved_with_no_stored_base(app_db_url, monke
     monkeypatch.setattr(route, "_stored_loss", lambda stored, bases: None)
     preview, saved = await _preview_and_saved(app_db_url, monkeypatch)
     assert preview == saved == "a loss of Rs 400.00 or 2x the credit received, whichever comes first"
+
+
+# --- ADR-330 (25) / LP-4: a rupee stop above the trade's max loss is saved, with one warning line --------------
+STOP_WARNING = "This stop (Rs 5,000) is above the trade's max loss (Rs 2,600), so it cannot be reached."
+
+
+def _base_loss(monkeypatch, loss):
+    real = route.bases_of
+    monkeypatch.setattr(route, "bases_of", lambda *a, **k: dataclasses.replace(real(*a, **k), max_loss=loss))
+    monkeypatch.setattr(route, "_stored_loss", lambda stored, bases: loss)
+
+
+async def test_a_stop_above_max_loss_is_saved_with_the_warning_in_reply_prefill_and_preview(app_db_url, monkeypatch):
+    _base_loss(monkeypatch, D("2600"))
+    sid = await _seeded(app_db_url, monkeypatch, "ADJ-01")
+    system = await _system_ic(app_db_url)
+    status, preview = await _call("GET", _plan_path(sid) + "/levels", params={"stop_rupees": "5000"})
+    assert status == OK and preview["stop"]["warning"] == STOP_WARNING, preview
+    status, saved = await _call("POST", _plan_path(sid), json={"playbook_id": system.id, "stop_rupees": "5000"})
+    assert status == OK, saved  # it informs and does not block
+    assert saved["plan"]["stop_rupees"] == "5000.00" and saved["plan"]["stop_warning"] == STOP_WARNING
+    assert saved["prefill"]["stop_warning"] == STOP_WARNING
+    status, again = await _call("GET", _plan_path(sid))
+    assert status == OK and again["plan"]["stop_warning"] == STOP_WARNING
+
+
+async def test_a_stop_within_max_loss_has_no_warning(app_db_url, monkeypatch):
+    _base_loss(monkeypatch, D("2600"))
+    sid = await _seeded(app_db_url, monkeypatch, "ADJ-01")
+    system = await _system_ic(app_db_url)
+    status, preview = await _call("GET", _plan_path(sid) + "/levels", params={"stop_rupees": "400"})
+    assert status == OK and preview["stop"]["warning"] is None
+    status, saved = await _call("POST", _plan_path(sid), json={"playbook_id": system.id, "stop_rupees": "400"})
+    assert status == OK and saved["plan"]["stop_warning"] is None and saved["prefill"]["stop_warning"] is None
+
+
+async def test_a_stop_with_no_known_max_loss_has_no_warning(app_db_url, monkeypatch):
+    _base_loss(monkeypatch, None)
+    sid = await _seeded(app_db_url, monkeypatch, "ADJ-01")
+    system = await _system_ic(app_db_url)
+    status, preview = await _call("GET", _plan_path(sid) + "/levels", params={"stop_rupees": "5000"})
+    assert status == OK and preview["stop"]["warning"] is None
+    status, saved = await _call("POST", _plan_path(sid), json={"playbook_id": system.id, "stop_rupees": "5000"})
+    assert status == OK and saved["plan"]["stop_warning"] is None
