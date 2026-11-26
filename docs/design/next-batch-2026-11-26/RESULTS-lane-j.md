@@ -36,8 +36,13 @@ Old-code safety of each migration on this branch (so switching the PC back to an
   0055; `alembic heads` printed one head.
 - 0056: Lane P measured the code at e01f747 against 0056 (worker, opportunities, cycle, held, playbook routes, system
   playbook versions, plan: all pass; one test fails by design: it expects the database to refuse a second standard
-  playbook per type, which 0056 allows on purpose). The same check with the PC's code 7bf64eb: see "0056 with 7bf64eb"
-  below (recorded when it ends).
+  playbook per type, which 0056 allows on purpose). With the PC's code 7bf64eb against a database the merged tree
+  migrated to 0056 (Lane J run, 26 Nov; the old fixtures run no alembic, so the old code met the real 0056 schema):
+  test_background_worker 24, test_adjustment_opportunities 34, test_background_cycle 78, test_held_tracking 6,
+  test_playbook_routes 18, test_system_playbook_versions 23, test_adjustment_plan 10, test_paper_monitor 23,
+  test_paper_triggers_routes 65, test_exit_door 34 passed; test_playbook_store 50 passed, 1 failed by design
+  (`test_the_application_role_cannot_insert_a_system_row_and_the_owner_cannot_add_a_second`: DID NOT RAISE, 0056
+  drops that rule on purpose, ADR-330 (9)).
 - Do not run `alembic downgrade` from an older branch.
 
 ## (b) Screen-check list (owner, paper only, market hours 09:15-15:30 IST; Ctrl+F5 once after the rebuild)
@@ -132,6 +137,10 @@ R4. Alert titles and lists carry the number and the NEAREST open-leg expiry, as 
 | fix/suite-findings-1126 (Lane U, includes test/screen-suite-1126) | b81970b | merged (push 3) |
 | feat/nb-real-pnl-1126 (Lane S, Real P&L total) | d344d82 | merged (push 3) |
 
+Screen inventory (Lane U's guard `frontend/tests/screen-inventory-guard.test.js`): the merged code had 7 controls with
+no row and 3 stale rows; rows updated (SHARED-21 paper-not-live-ack, BUILD-05, BUILD-52, BUILD-55/57/60 plan rupee and
+time fields, ALERT-01 now the alert answer buttons; "Compare approaches" is gone). The IDs are positional, so later
+rows were renumbered; e2e test titles that quote old BUILD numbers are now stale text (no test reads them).
 Push 3 merge notes: alert titles were built on both lines; ONE function now (`backend/ofo_app/alert_title.py`, Lane
 P's rule: the nearest open-leg expiry; a failed read leaves that row "(#id)"), W2-A's duplicate templates removed.
 StrategyBuilderPage: Lane R's props and Lane U's undo-text both kept; PaperStrategies: W2-B's exit-closed watch and
