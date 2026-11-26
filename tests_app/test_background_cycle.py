@@ -686,6 +686,28 @@ async def test_owner_lister_skips_the_one_strategy_whose_playbook_lookup_raises(
     assert [x.strategy_id for x in out] == [FIRST_ID + 1]
 
 
+async def test_owner_lister_watches_nothing_for_a_strategy_with_no_plan_and_opens_no_record(scn, monkeypatch):
+    """ADR-330 (11): resolve answers "none" (no plan) -> the strategy is not listed, and neither its entry facts nor its
+    baskets nor any record are read (zero records opened)."""
+    _patch_store(monkeypatch, scn, [FIRST_ID])
+    opened: list[str] = []
+
+    async def resolve(_db, _owner, _sid, _stype):
+        return adjustment_check.Resolved("none", None, None, None, False, saved_before_adr247=False)
+
+    async def facts(*_a, **_k):
+        opened.append("facts")
+
+    async def baskets(*_a, **_k):
+        opened.append("baskets")
+    monkeypatch.setattr(adjustment_check, "resolve", resolve)
+    from ofo_app import adjustment_readers  # noqa: PLC0415 - the lister imports it at call time
+    monkeypatch.setattr(adjustment_readers, "entry_facts_in", facts)
+    monkeypatch.setattr(background, "_baskets_in", baskets)
+    assert await background.owner_lister(Prov(scn)) == []
+    assert opened == []
+
+
 async def test_owner_lister_skips_a_strategy_whose_instrument_list_raises(scn, monkeypatch):
     _patch_store(monkeypatch, scn, [FIRST_ID])
     prov = Prov(scn)

@@ -29,7 +29,7 @@ import PlanEntry from '@/components/strategy/PlanEntry.vue'
 const LABELS = {
   title: "When tracking starts: this strategy's plan", playbook: 'Playbook', target: 'Target', stop: 'Stop', max_adjustments: 'Max adjustments',
   time_exit: 'Time exit', customise: 'Customise triggers', use_as_is: 'Use playbook as is', save: 'Save plan', close: 'Close',
-  plan_entry: 'Plan', edit: 'Edit plan', no_plan: 'No plan saved yet: default rules apply', set_plan: 'Set plan', hour: 'Hour', minute: 'Minute',
+  plan_entry: 'Plan', edit: 'Edit plan', no_plan: 'No plan: nothing is watched for this strategy', set_plan: 'Set plan', hour: 'Hour', minute: 'Minute',
 }
 const PLAYBOOKS = [
   { id: 1, name: 'Iron condor (system)', type: 'ic', type_name: 'Iron condor', is_system: true, draft: false, active: false },
@@ -186,7 +186,8 @@ describe('REQ-161 AC-3: the Plan entry on the tracking panel', () => {
     answers[`GET ${PATH}`] = sheetAnswer()
     answers[`POST ${PATH}`] = sheetAnswer({ plan: PLAN })
     const w = await entry()
-    expect(t(w, 'plan-entry-none').text()).toBe('No plan saved yet: default rules apply')
+    expect(t(w, 'plan-entry-none').text()).toBe('No plan: nothing is watched for this strategy')
+    expect(t(w, 'plan-entry-none').text()).not.toContain('default rules apply') // ADR-330 (11): never the old line
     await t(w, 'plan-entry-edit').trigger('click')
     await flushPromises()
     await t(w, 'plan-use-as-is').trigger('click')
@@ -272,7 +273,7 @@ describe('ADR-295: the plan card and the plan box never show nothing', () => {
   it('card: no plan -> the ADR-295 card with the default target and stop and a Set plan button; nothing is saved', async () => {
     answers[`GET ${PATH}`] = sheetAnswer()
     const w = await entry()
-    expect(t(w, 'plan-entry-none').text()).toBe('No plan saved yet: default rules apply')
+    expect(t(w, 'plan-entry-none').text()).toBe('No plan: nothing is watched for this strategy')
     expect(t(w, 'plan-entry-defaults').exists()).toBe(false) // the limit lines come from the rule check, not the plan read
     expect(t(w, 'plan-entry-edit').text()).toBe('Set plan')
     expect(t(w, 'plan-entry-error').exists()).toBe(false)

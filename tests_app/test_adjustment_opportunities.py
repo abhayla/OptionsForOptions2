@@ -34,6 +34,7 @@ OK, NOT_FOUND, CONFLICT, INVALID = 200, 404, 409, 422
 ADJ02_FLAGS = 4
 S02_THRESHOLD = Decimal("0.1500")  # other.situation_net_delta_per_lot, default 0.15 (REQ-167 AC-4)
 SYSTEM_LABEL = "Adjustment opportunity detected"
+OWN_LABEL = "Your rule was triggered"  # a plan-watched strategy (ADR-330 (11))
 OWN_LABEL = "Your rule was triggered"
 
 
@@ -107,7 +108,7 @@ async def test_adj02_worker_opens_three_records_the_screen_check_names_them_and_
     assert sorted((r.rule_id, r.outcome) for r in recs) == [
         ("T-01", "open"), ("T-03", "open"), ("T-09", "open"), ("sit.S-02", "open")]
     assert len({r.group for r in recs}) == 1 and recs[0].group  # one check = one group (REQ-045 AC-8)
-    assert {r.source for r in recs} == {"system"}
+    assert {r.source for r in recs} == {"own"}  # a plan-watched record carries source own (ADR-330 (11))
     assert sorted((r.value, r.threshold) for r in recs if r.rule_id == "T-01") == [
         (Decimal("0.3416"), Decimal("0.5000"))]
     s02 = next(r for r in recs if r.rule_id == "sit.S-02")
@@ -121,7 +122,7 @@ async def test_adj02_worker_opens_three_records_the_screen_check_names_them_and_
     assert len(_mine(inbox, sid)) == 1
     g = _mine(inbox, sid)[0]
     assert (g["strategy_id"], g["strategy_name"], g["label"], g["summary"], g["has_open"]) == (
-        sid, f'"{seed_mod.strategy_name("ADJ-02")}"', SYSTEM_LABEL, "4 adjustment conditions triggered", True)
+        sid, f'"{seed_mod.strategy_name("ADJ-02")}"', OWN_LABEL, "4 adjustment conditions triggered", True)
     assert sorted((r["rule_id"], r["outcome_text"], r["can_act"]) for r in g["records"]) == [
         ("T-01", "Open", True), ("T-03", "Open", True), ("T-09", "Open", True), ("sit.S-02", "Open", True)]
     assert g["records"][0]["condition"] == "Spot within this % of a short strike: 0.3416 % (rule 0.5000 %)"

@@ -1,5 +1,5 @@
-"""D-04 (ADR-318 (4)): a strategy with no plan of its own follows the playbook of the shape it had AT ENTRY, so the
-plan maximum and every other rule survive an adjustment that changes the shape (real case 23 Nov, strategy 164: a
+"""D-04 (ADR-318 (4), ADR-330 (11)): the shape a strategy had AT ENTRY is its type; its OWN plan keeps its rules and
+maximum through an adjustment that changes the shape (real case 23 Nov, strategy 164: a
 condor reduced to a put spread read "1 used; no plan maximum set").
 
 No database: the readers' two seams (the paper book rows, the contract rows) and the playbook store are faked; the
@@ -85,6 +85,13 @@ def seams(monkeypatch):
     return store
 
 
+def _own_plan(store, body=None):
+    """ADR-330 (11): only a strategy's own plan applies. The condor's plan (a copy of the system iron condor
+    playbook) is what keeps its rules and maximum through a shape change; with no plan, nothing applies."""
+    store.plan = SimpleNamespace(body=copy.deepcopy(SYSTEM["ic"] if body is None else body), playbook_id=9,
+                                 accepted_at=T0)
+
+
 def _read(store, orders):
     store.orders = orders
     return asyncio.run(readers._tracked_on(None, 164, None))
@@ -95,17 +102,19 @@ def _playbook_of(store, tracked):
     return stype, asyncio.run(check.resolve(None, "u", 164, stype))
 
 
-def test_condor_reduced_to_a_put_spread_keeps_the_condor_playbook_and_its_maximum(seams):
+def test_condor_reduced_to_a_put_spread_keeps_the_condor_plan_and_its_maximum(seams):
+    _own_plan(seams)
     tracked = _read(seams, ENTRY + REDUCE_CALL_SIDE)
     assert len(tracked.position.legs) == SPREAD_LEGS  # now a put spread ...
     assert check.strategy_type(tracked.position, SPOT, []) == "credit"  # ... which reads the credit playbook today
     stype, resolved = _playbook_of(seams, tracked)
     assert stype == "ic"
-    assert resolved.source == "system" and resolved.body["guards"]["max_adjustments"] == IC_MAX
+    assert resolved.source == "plan" and resolved.body["guards"]["max_adjustments"] == IC_MAX
     assert tracked.adjustments_used == 1  # "1 of 2"
 
 
-def test_the_whole_rule_set_comes_from_the_entry_shape_not_only_the_maximum(seams):
+def test_the_whole_rule_set_comes_from_the_plan_not_only_the_maximum(seams):
+    _own_plan(seams)
     tracked = _read(seams, ENTRY + REDUCE_CALL_SIDE)
     _, resolved = _playbook_of(seams, tracked)
     assert resolved.body["guards"]["time_exit"] == "14:30"  # an iron condor only value (the credit one has none)
@@ -136,11 +145,12 @@ def test_an_entry_whose_contracts_are_no_longer_listed_falls_back_to_the_current
     close_all = [_order(1, "BUY", "exit", T1), _order(2, "SELL", "exit", T1),
                  _order(3, "BUY", "exit", T1), _order(4, "SELL", "exit", T1)]
     roll = [_order(5, "SELL", "open", T2), _order(6, "BUY", "open", T2)]
+    _own_plan(seams)
     tracked = _read(seams, ENTRY + close_all + roll)
     assert check.strategy_type(tracked.entry_position, SPOT, []) is None  # the entry shape cannot be classified
     stype, resolved = _playbook_of(seams, tracked)
     assert stype == "credit" == check.strategy_type(tracked.position, SPOT, [])
-    assert resolved.source == "system" and resolved.body is not None
+    assert resolved.source == "plan" and resolved.body is not None  # the plan, not the credit playbook (ADR-330 (11))
 
 
 def test_a_trade_entered_in_two_confirms_is_classified_by_its_first_confirm_only(seams):
@@ -153,6 +163,7 @@ def test_a_trade_entered_in_two_confirms_is_classified_by_its_first_confirm_only
 
 
 def test_a_condor_reduced_twice_counts_two_of_two(seams):
+    _own_plan(seams)
     entry2 = [_order(o.order.contract_id, o.order.side, "open", T0, lots=2) for o in ENTRY]
     first = [_order(1, "BUY", "exit", T1), _order(2, "SELL", "exit", T1)]  # one lot of the call spread closed
     second = [_order(3, "BUY", "exit", T2), _order(4, "SELL", "exit", T2)]  # one lot of the put spread closed
@@ -164,6 +175,7 @@ def test_a_condor_reduced_twice_counts_two_of_two(seams):
 
 def test_an_entry_rule_that_cannot_be_read_on_the_current_legs_says_so(seams):
     from ofo.adjustment import playbook_eval as pe  # noqa: PLC0415
+    _own_plan(seams)
     # both shorts bought back
     tracked = _read(seams, [*ENTRY, _order(1, "BUY", "exit", T1), _order(3, "BUY", "exit", T1)])
     _, resolved = _playbook_of(seams, tracked)
@@ -202,3 +214,10 @@ def test_the_offer_path_reads_the_guards_with_the_servers_entry_shape_fallback(s
     guards = asyncio.run(readers.read_guards(164, tracked, None, []))  # the server's spot argument: None
     assert seen == [check.entry_type(tracked, [])] == ["credit"]
     assert guards == {"max_adjustments": IC_MAX}
+
+
+def test_a_strategy_with_no_plan_resolves_none_whatever_its_shape(seams):
+    """ADR-330 (11): no plan -> no body, though the entry shape ("ic") has an active system playbook."""
+    tracked = _read(seams, ENTRY + REDUCE_CALL_SIDE)
+    stype, resolved = _playbook_of(seams, tracked)
+    assert (stype, resolved.source, resolved.body) == ("ic", "none", None)

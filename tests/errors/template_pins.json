@@ -2856,7 +2856,7 @@
     "reviewed": "owner read 2026-10-31 (accepted after independent screen, not read line by line)"
   },
   "explanation:plan_sheet_no_plan": {
-    "sha256": "938b83a211dc4f58e824dfc2c99b25cb039b52e434c7beb4ed7aaa9cd3244791",
+    "sha256": "d16ba0d27131ba77fe47335377c34e34faf189dc7c8bb6418ce5b383d59d3b2d",
     "reviewed": "pending owner read"
   },
   "explanation:plan_sheet_hour": {
@@ -2868,7 +2868,7 @@
     "reviewed": "owner read 2026-10-31 (accepted after independent screen, not read line by line)"
   },
   "labels:plan_sheet": {
-    "sha256": "c0b3ca36cd3c2e8b27592cbb47d0f6da1567de9097c664f841a8f4eac697d9af",
+    "sha256": "14de6086dc062e85f906e37429c00e9bedc43bfd799a029e9a5a0bef34d28126",
     "reviewed": "pending owner read"
   },
   "explanation:playbook_test_no_strategy": {

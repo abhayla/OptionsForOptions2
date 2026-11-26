@@ -8,7 +8,7 @@
   "hour": "Hour",
   "max_adjustments": "Max adjustments",
   "minute": "Minute",
-  "no_plan": "No plan saved yet: default rules apply",
+  "no_plan": "No plan: nothing is watched for this strategy",
   "plan_entry": "Plan",
   "playbook": "Playbook",
   "save": "Save plan",

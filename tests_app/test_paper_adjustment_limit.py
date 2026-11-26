@@ -148,6 +148,16 @@ async def test_a_plan_with_no_maximum_does_not_limit(db, monkeypatch):
     assert reply.status_code == HTTPStatus.CREATED, reply.text
 
 
+async def test_no_plan_no_limit_applies_to_a_manual_order(db):
+    """ADR-330 (11), plan question Q7: a condor with no plan of its own has no maximum, though its type's active
+    playbook has one (2): the third adjustment is stored (was: refused by the playbook's maximum)."""
+    app, stored, ids = await _condor(db, adjustments=2, plan=False)
+    before = await _count(db, stored.id)
+    reply = await _post_orders(app, stored.id, [_leg(ids[0], "SELL", "open", 65)])
+    assert reply.status_code == HTTPStatus.CREATED, reply.text
+    assert await _count(db, stored.id) == before + 1
+
+
 @pytest.fixture
 def only_the_condor_is_limited(monkeypatch):
     """No plan of its own: the active playbook of the position's type gives the maximum. The system condor playbook
@@ -163,9 +173,10 @@ def only_the_condor_is_limited(monkeypatch):
     monkeypatch.setattr(playbook_store, "active_for", active_for)
 
 
-async def _condor(db, adjustments: int):
-    """A four-leg condor with NO plan of its own that has used ``adjustments``: each takes the first leg out and puts
-    it back in one batch, so the four legs stay open."""
+async def _condor(db, adjustments: int, *, plan: bool = True):
+    """A four-leg condor that has used ``adjustments``: each takes the first leg out and puts it back in one batch, so
+    the four legs stay open. ADR-330 (11): only the strategy's own plan sets a maximum, so ``plan`` (default) saves one
+    copied from the system condor playbook (maximum 2); ``plan=False`` leaves the strategy with no plan."""
     app, stored, *_ = await _setup(db)
     ids = stored.saved.contract_ids
     await paper_store.place(db, stored.user_ref, stored.id, [_new(ids[i], s, p, "open", T0)
@@ -174,6 +185,9 @@ async def _condor(db, adjustments: int):
         at = T0 + datetime.timedelta(hours=n + 1)
         await paper_store.place(db, stored.user_ref, stored.id, [_new(ids[0], "BUY", "50.00", "exit", at),
                                                                  _new(ids[0], "SELL", "50.00", "open", at)])
+    if plan:
+        system = await playbook_store.active_for(db, stored.user_ref, "ic")
+        await playbook_store.accept_plan(db, stored.user_ref, stored.id, system.id)
     return app, stored, ids
 
 
