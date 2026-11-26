@@ -20,7 +20,7 @@ from ofo.settings import layers
 #: (ADR-245: a plan's settings are the trade's values, never a playbook condition)
 _NOT_CONDITIONS = frozenset({"schema", "strategy_type", "status", "stages", layers.PLAN_SETTINGS})
 #: the plan sheet's own levels (ADR-330 (5)): a user may type one where the playbook holds none, so they are values
-#: of the trade, not conditions. The three literals equal the plan route's TARGET_KEY, MAX_KEY, TIME_KEY (a test pins it)
+#: of the trade, not conditions. The three literals equal the plan route's TARGET_KEY, MAX_KEY, TIME_KEY (test-pinned)
 SHEET_LEVELS = frozenset({"profit_target_pct_of_max_profit", sl.RUPEE_PROFIT_KEY, sl.RUPEE_LOSS_KEY,
                           "max_adjustments", "time_exit"})
 
@@ -75,6 +75,6 @@ def diff(plan_body: dict, playbook_body: dict) -> dict[str, list[str]]:
     return {"changed": changed, "switched_off": off}
 
 
-def reset(plan_body: dict, playbook_body: dict) -> dict:  # noqa: ARG001 - the plan's own values are all discarded
+def reset(plan_body: dict, playbook_body: dict) -> dict:
     """Every condition back to the playbook's: its body, copied."""
     return copy.deepcopy(playbook_body)

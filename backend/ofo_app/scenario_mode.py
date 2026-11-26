@@ -114,7 +114,7 @@ NON_ORDER_ROUTES: frozenset[tuple[str, str]] = frozenset({
     ("POST", "/api/strategies/{strategy_id}/adjustment-approaches"),  # REQ-155 engine answer, suggest-only (a read)
     ("POST", "/api/strategies/{strategy_id}/adjustment-plan"),  # GC-ADJ2 4: accept a plan (data, no order)
     ("PUT", "/api/strategies/{strategy_id}/adjustment-plan"),  # GC-ADJ2 4: edit the plan (data, no order)
-    ("POST", "/api/strategies/{strategy_id}/adjustment-plan/reset"),  # P8: the plan back to its playbook (data, no order)
+    ("POST", "/api/strategies/{strategy_id}/adjustment-plan/reset"),  # P8: plan back to its playbook (data)
     ("PUT", "/api/strategies/{strategy_id}/adjustment-plan/rules"),  # issue 7: this trade's own rules (data, no order)
     ("PUT", "/api/strategies/{strategy_id}/alert-style"),  # GC-ALERT1 4: pin a strategy's alert style (data, no order)
     ("PUT", "/api/strategies/{strategy_id}/monitoring-pause"),  # GC-IC1 4a A-38: pause adjustment checks (data)

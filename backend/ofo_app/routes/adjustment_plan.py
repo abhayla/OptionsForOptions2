@@ -30,8 +30,8 @@ from typing import Annotated, Any
 
 from fastapi import APIRouter, Depends, Query
 from ofo import market_calendar
-from ofo.adjustment import playbook_stages as stages
 from ofo.adjustment import plan_diff
+from ofo.adjustment import playbook_stages as stages
 from ofo.adjustment import stop_lines as sl
 from ofo.adjustment.playbook_text import name_shown
 from ofo.adjustment.playbook_types import SHOWN_NAMES
@@ -175,8 +175,8 @@ class PlanOut(ApiModel):
     accepted_at: datetime.datetime
     #: ADR-330 (9): the conditions of the plan's playbook this plan changed / switched off (paths such as
     #: ``triggers.T-01``); both empty when the plan is as its playbook, or its playbook is gone (nothing to compare)
-    changed: list[Identifier] = []
-    switched_off: list[Identifier] = []
+    changed: list[Identifier]
+    switched_off: list[Identifier]
 
 
 class SettingInForceOut(ApiModel):
