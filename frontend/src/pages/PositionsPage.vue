@@ -103,7 +103,7 @@ onMounted(async () => {
       </div>
       <!-- GC-UI D-C40 (Sensibull 050): the shared empty state; the title is new text (owner read), the line is ours as before. -->
       <div v-if="!result.strategies.length && !result.has_outside" data-testid="positions-empty">
-        <EmptyState title="No open positions" message="Zerodha shows no open positions, and none of your strategies holds any." />
+        <EmptyState title="Real positions" message="No open Zerodha positions." />
       </div>
       <p v-else-if="!result.strategies.length" class="text-ink-muted" data-testid="positions-no-strategy">
         None of your strategies holds a position.

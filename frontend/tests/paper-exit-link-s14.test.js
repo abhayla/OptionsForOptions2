@@ -55,7 +55,7 @@ describe('S-14 exit link target on the Paper list', () => {
     expect(dialog(w).props('open')).toBe(true)
     expect(dialog(w).props('orders')).toHaveLength(4)
     expect(dialog(w).props('orders').every((o) => o.kind === 'exit')).toBe(true)
-    expect(document.body.textContent + w.text()).toMatch(/Exit paper positions/)
+    expect(document.body.textContent + w.text()).toMatch(/Exit Paper positions/)
     expect(calls.filter((c) => c[0] === 'POST')).toHaveLength(0)
     expect(router.currentRoute.value.query.exit).toBeUndefined() // not re-opened by the next refresh
   })

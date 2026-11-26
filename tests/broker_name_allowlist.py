@@ -305,7 +305,7 @@ LINES: dict[str, tuple[str, ...]] = {
         "const WAITING = 'Order placed - waiting for Check with Zerodha'",
         "const BLOCKED = 'blocked until its position matches Zerodha'",
         "const VIEW_ON_KITE = 'view on Kite'",
-        '<EmptyState title="No open positions" message="Zerodha shows no open positions, and none of your strategies holds any." />',
+        '<EmptyState title="Real positions" message="No open Zerodha positions." />',
         # ADR-330 (10) replaces ADR-201 (2): the one list tags each real group with its source, user-facing wording
         "const REAL_TAG = 'REAL (Zerodha)'",
     ),
@@ -342,6 +342,10 @@ LINES: dict[str, tuple[str, ...]] = {
     ),
     'frontend/src/components/strategy/PaperStops.vue': (
         "const LABEL = 'Paper - exits are recorded in the app, not sent to Zerodha'",
+    ),
+    'frontend/src/lib/paperDrafts.js': (
+        # ADR-330 (10): the exit-title word for a real exit, user-facing wording in the one title door (no real exit is rendered, ADR-281)
+        "const REAL_KIND_WORD = 'Real (Zerodha order)'",
     ),
     'frontend/src/lib/dataHealthText.js': (
         "not_sent: 'Zerodha did not send this figure for this contract.',",

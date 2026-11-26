@@ -357,14 +357,14 @@ describe('Positions page default tab (F-69) and Alerts names (R-8)', () => {
     answers['GET /positions'] = ok(POS())
     answers['GET /paper/strategies'] = ok(REAL)
     const w = await show(PositionsPage, '/p?tab=positions')
-    expect(t(w, 'positions-empty').text()).toContain('No open positions')
+    expect(t(w, 'positions-empty').text()).toContain('No open Zerodha positions') // ADR-330 (10): one list
     expect(w.text()).not.toContain('see Paper')
   })
   it('with no paper strategy open the real empty text stays', async () => {
     answers['GET /positions'] = ok(POS())
     answers['GET /paper/strategies'] = ok(EMPTY)
     const w = await show(PositionsPage, '/p')
-    expect(t(w, 'positions-empty').text()).toContain('No open positions')
+    expect(t(w, 'positions-empty').text()).toContain('No open Zerodha positions') // ADR-330 (10): one list
   })
   it('u504: the bare /positions route opens the first built Positions page; every sub-item page stays reachable by its own address', () => {
     // GC-CLEAN 2026-10-30 kept the section page so the menu listed all four sub-items. u504 (2026-11-15) changed that: a

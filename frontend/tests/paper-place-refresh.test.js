@@ -49,7 +49,7 @@ const setup = (id) => {
 const posts = (id) => calls.filter((c) => c.method === 'POST' && c.url === `/paper/strategies/${id}/orders`)
 const router = () => createRouter({ history: createMemoryHistory(), routes: [{ path: '/strategy/builder', component: StrategyBuilderPage }, { path: '/positions/current-positions', component: { template: '<p />' } }] })
 
-// the builder opened on paper strategy 86 (Drafts Mode), then Exit all -> the "Exit paper positions" dialog
+// the builder opened on paper strategy 86 (Drafts Mode), then Exit all -> the "Exit Paper positions" dialog
 async function exitDialog() {
   setup(86)
   const r = router()

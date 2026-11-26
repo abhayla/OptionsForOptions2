@@ -432,3 +432,37 @@ describe('G3 rule 5: the one Positions list starts no order', () => {
     expect(oneListProblems({ a: base + '\n// api.post(\n' })).toEqual([])
   })
 })
+
+// Rule 5, second half (ADR-330 (10), Chunk C): the exit-title word 'Real (Zerodha order)' is spelled in ONE place, lib/paperDrafts.js
+// (positionKindWord). A second copy in any other src file is a second door. Comments are not counted. No real exit button exists
+// on the Positions page (ADR-281): it imports no ExitButton, usePaperExit or PaperConfirmDialog.
+const KIND_WORD_HOME = 'src/lib/paperDrafts.js'
+const KIND_WORD = /Real \(Zerodha order\)/
+const kindWordProblems = (sources) => Object.entries(sources)
+  .filter(([file, src]) => file !== KIND_WORD_HOME && KIND_WORD.test(stripComments(src))).map(([file]) => `${file}: holds the real exit word`)
+const REAL_EXIT_BANNED = [/\bExitButton\b/, /\busePaperExit\b/, /\bPaperConfirmDialog\b/, /data-testid="[^"]*exit[^"]*"/i]
+describe('G3 rule 5 (exit title): one spelling of Real (Zerodha order); no real exit on Positions', () => {
+  it('the literal appears only in lib/paperDrafts.js, and is there (not vacuous)', () => {
+    const files = realFiles()
+    expect(kindWordProblems(files)).toEqual([])
+    expect(KIND_WORD.test(stripComments(files[KIND_WORD_HOME]))).toBe(true)
+  })
+  it('mutation: the literal in another src file is one problem; in a comment or in the home none', () => {
+    const files = realFiles()
+    const scratch = { ...files, 'src/pages/Scratch.vue': "const t = 'Exit Real (Zerodha order) positions'\n" }
+    expect(kindWordProblems(scratch)).toEqual(['src/pages/Scratch.vue: holds the real exit word'])
+    expect(kindWordProblems({ ...files, 'src/pages/Scratch.vue': '// Real (Zerodha order)\n' })).toEqual([])
+    expect(kindWordProblems({ [KIND_WORD_HOME]: "const w = 'Real (Zerodha order)'" })).toEqual([])
+  })
+  it('the Positions page and its totals render no real exit button or exit dialog', () => {
+    const files = realFiles()
+    for (const f of ['src/pages/PositionsPage.vue', 'src/components/positions/PositionsTotals.vue']) {
+      const src = stripComments(files[f])
+      expect(REAL_EXIT_BANNED.filter((re) => re.test(src)), f).toEqual([])
+    }
+  })
+  it('mutation: an ExitButton in a scratch copy of the Positions page is caught', () => {
+    const src = stripComments(realFiles()['src/pages/PositionsPage.vue'] + '\n<ExitButton />')
+    expect(REAL_EXIT_BANNED.some((re) => re.test(src))).toBe(true)
+  })
+})
