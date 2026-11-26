@@ -87,8 +87,8 @@ onMounted(index.start)
 const indexLine = computed(() => {
   const row = index.rowFor(props.underlying)
   const clock = row?.at ? istClock(row.at) : null
-  if (index.isLive() && typeof row?.value === 'string' && clock) return `${props.underlying} now ${index.shownValue(row)} as of ${clock}`
-  return index.notLive() ? NOT_LIVE_LABEL : ''
+  if (index.rowLive(row) && typeof row?.value === 'string' && clock) return `${props.underlying} now ${index.shownValue(row)} as of ${clock}`
+  return index.rowNotLive(row) ? NOT_LIVE_LABEL : ''
 })
 
 // S-23: a trigger can fire on the server (state armed -> fired) while this panel is open. Root cause: the list was read once on
