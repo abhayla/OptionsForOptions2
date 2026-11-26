@@ -390,10 +390,9 @@ def state_of(tracked: Tracked, market: MarketInputs, spot: SpotAnswer, margin: M
     stops = None
     if resolved is not None:
         from ofo_app import settings_in_force as sif  # noqa: PLC0415 - it imports this module
-        credit = None if booked is None else adjust_money.net_credit_so_far(
-            booked, ((x.side, x.entry, qty[x.tradingsymbol]) for x in position.legs))
-        stops = sif.stops_of(resolved, sif.MoneyInputs(None if gross is None else gross.max_loss, credit,
-                                                       stated_margin),
+        base = getattr(tracked, "stop_base", None)  # ADR-330 (1): fixed at entry, never the live legs (None: not checked)
+        stops = sif.stops_of(resolved, sif.MoneyInputs(None if base is None else base.max_loss,
+                                                       None if base is None else base.credit, stated_margin),
                              sif.StageAt(kind, (expiry - now.date()).days))
     return with_gamma(with_carry(pe.StrategyState(stops=stops,
         expiry_kind=market.expiry_kind or position.expiry_kind or "weekly",  # type: ignore[arg-type]

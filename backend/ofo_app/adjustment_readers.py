@@ -148,9 +148,12 @@ async def _tracked_on(db: Any, strategy_id: int, rates: ChargeRates | None) -> T
     underlying, lot, legs = _legs_of(book, found)
     if not legs or underlying is None or lot is None:
         raise TrackedExited("no open option leg")
+    fresh = entry_stop_base(orders, found, _ENTRY_SOURCE)  # ADR-330 (1): from the entry orders only
+    base = await stop_base_in_force(db, strategy_id, fresh)
     if real:  # paid charges and adjustments used before the app saw it: not readable yet ("not checked", ADR-276 (4))
         return Tracked(Position(underlying, lot, "", datetime.date.min, tuple(legs)), book.booked, None,
-                       adjustments_used=None, entered_at=entered_at(orders), real_book=True)
+                       adjustments_used=None, entered_at=entered_at(orders), real_book=True, stop_base=base,
+                       entry_stop_base=fresh)
     paid, paid_exact = paid_of(orders, found, underlying, rates) if rates is not None else (None, None)
     booked = book.booked  # the same paper orders ``read_booked`` would read again on a second session
     # expiry kind and today are set by the route from the market reader (the calendar and clock live there)
@@ -160,7 +163,60 @@ async def _tracked_on(db: Any, strategy_id: int, rates: ChargeRates | None) -> T
                          and found[cid].stored.listed.contract.instrument_type in _OPTION_TYPES)
     return Tracked(Position(underlying, lot, "", datetime.date.min, tuple(legs)), booked, paid,
                    adjustments_used=used, entered_at=entered_at(orders), paid_exact=paid_exact,
-                   entry_position=entry_position_of(orders, found))
+                   entry_position=entry_position_of(orders, found), stop_base=base, entry_stop_base=fresh)
+
+
+_ENTRY_SOURCE = "entry"  # = settings_in_force.BASE_ENTRY (imported lazily: that module imports the check)
+
+
+def entry_stop_base(orders: Any, found: Mapping[int, Any], source: str) -> Any:
+    """ADR-330 (1): the stop base worked out from the strategy's ENTRY orders only (kinds in
+    ``settings_in_force.STOP_BASE_KINDS``), netted and priced by the engine (``compute_stop_base``). No entry order
+    (empty), a book that is not whole-lot options, several expiries or an engine refusal -> None (not worked out):
+    the stop lines then say "not checked", never a number from the live legs."""
+    from ofo_app import settings_in_force as sif  # noqa: PLC0415 - it imports the check module
+
+    entry = [o for o in orders if o.order.kind in sif.STOP_BASE_KINDS]
+    if not entry:
+        return None
+    try:
+        book = net_positions([o.order.as_paper() for o in entry], {})
+        _, lot, legs = _legs_of(book, found)
+    except (TrackedUnreadable, ValueError, KeyError, AttributeError, TypeError):
+        log.warning("stop base: the entry orders cannot be read", exc_info=True)
+        return None
+    if lot is None or not legs:
+        return None
+    return sif.compute_stop_base(legs, lot, book.booked, datetime.datetime.now(datetime.UTC), source)
+
+
+async def stop_base_in_force(db: Any, strategy_id: int, fresh: Any) -> Any:
+    """The stop base the checks read. Answer states: STORED on the plan row (stated) -> that one, never recomputed;
+    stored but not readable (failed) -> None, left as it is; plan with no base (absent, a plan saved before ADR-330)
+    -> ``fresh`` stored ONCE with source "backfill" (a lost race reads the winner's); no plan -> ``fresh`` as it is
+    (nothing to store it on); nothing worked out (empty, ambiguous) -> None."""
+    from dataclasses import replace  # noqa: PLC0415
+
+    from ofo_app import playbook_store  # noqa: PLC0415 - one import site with the check's own
+    from ofo_app import settings_in_force as sif  # noqa: PLC0415
+
+    plan = await playbook_store.plan_for(db, current_user_ref(), strategy_id)
+    if plan is None:
+        return fresh
+    stored = getattr(plan, "stop_base", None)
+    if stored is not None:
+        return sif.stop_base_from_json(stored)
+    if fresh is None:
+        return None
+    filled = replace(fresh, source=sif.BASE_BACKFILL)
+    try:
+        if await playbook_store.backfill_stop_base(strategy_id, filled.to_json()):
+            return filled
+        again = await playbook_store.plan_for(db, current_user_ref(), strategy_id)
+        return sif.stop_base_from_json(getattr(again, "stop_base", None)) if again is not None else filled
+    except Exception:  # noqa: BLE001 - a failed write must not stop the check; the figure is still the entry's
+        log.warning("stop base: the backfill could not be stored (strategy %s)", strategy_id, exc_info=True)
+        return filled
 
 
 def _legs_of(book: Any, found: Mapping[int, Any]) -> tuple[str | None, int | None, list[PositionLeg]]:

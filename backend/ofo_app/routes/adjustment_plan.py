@@ -481,7 +481,7 @@ async def _write(strategy_id: int, data: PlanIn, edit: bool, db: Any, user_ref: 
             raise _bad("playbook_id")
         keep = edit and plan is not None and plan.playbook_id == source.id  # editing the plan keeps its own body
         body = with_overrides(plan.body if keep and plan is not None else source.body, data, _kind_of(tracked, money))
-        saved = await store.accept_plan(db, user_ref, strategy_id, source.id, body)
+        saved = await store.accept_plan(db, user_ref, strategy_id, source.id, body, _base_json(tracked))
         return await _sheet(db, user_ref, strategy_id, stype, saved, None, user_values, money, _kind_of(tracked, money))
     return await _run(db, work)
 
@@ -522,14 +522,21 @@ def _rules_to_save(base: dict, submitted: dict, is_plan: bool) -> dict:
     return out
 
 
+def _base_json(tracked: Any) -> dict | None:
+    """ADR-330 (1): a plan save or edit stores the stop base worked out from the entry orders NOW (None: not worked
+    out; the first check then works it out once, source "backfill")."""
+    base = getattr(tracked, "entry_stop_base", None)
+    return None if base is None else base.to_json()
+
+
 async def _rules_scope(strategy_id: int, db: Any, user_ref: str, tracked_reader: TrackedReader,  # noqa: PLR0913
                        market_reader: MarketReader, rest_reader: RestSpotReader, ctx: MarketContext | None,
-                       rates: ChargeRates | None) -> tuple[str, store.Plan | None]:
+                       rates: ChargeRates | None) -> tuple[str, store.Plan | None, Any]:
     tracked = await _own_strategy(strategy_id, tracked_reader, rates if isinstance(rates, ChargeRates) else None)
     stype, plan = await _type_of(db, user_ref, strategy_id, tracked, ctx)
     if stype is None:
         raise StrategyRefused(_GENERIC, Failure.CONFLICT)
-    return stype, plan
+    return stype, plan, tracked
 
 
 @router.get("/api/strategies/{strategy_id}/adjustment-plan/rules", response_model=pb_routes.PlaybookFullOut)
@@ -542,7 +549,8 @@ async def read_rules(  # noqa: PLR0913 - FastAPI dependencies, one per input
         rates: Annotated[ChargeRates | None, Depends(load_charge_rates)]) -> Any:
     """Issue 7 (REQ-158 AC-6): "Customise triggers" from a trade opens THIS trade's rules: its plan copy, else a copy of
     the type's active playbook that is written only when the user saves. Never a playbook row."""
-    stype, plan = await _rules_scope(strategy_id, db, user_ref, tracked_reader, market_reader, rest_reader, ctx, rates)
+    stype, plan, _ = await _rules_scope(strategy_id, db, user_ref, tracked_reader, market_reader, rest_reader, ctx,
+                                        rates)
 
     async def work() -> Any:
         if plan is not None:  # the applied view: what the rule check reads (ADR-304), via the one function
@@ -562,7 +570,8 @@ async def save_rules(  # noqa: PLR0913 - FastAPI dependencies, one per input
         ctx: Annotated[MarketContext | None, Depends(get_market_context)],
         rates: Annotated[ChargeRates | None, Depends(load_charge_rates)]) -> Any:
     """Save this trade's rules: the strategy's plan body only (``accept_plan`` writes the plan row; no playbook row)."""
-    stype, plan = await _rules_scope(strategy_id, db, user_ref, tracked_reader, market_reader, rest_reader, ctx, rates)
+    stype, plan, tracked = await _rules_scope(strategy_id, db, user_ref, tracked_reader, market_reader, rest_reader,
+                                              ctx, rates)
 
     async def work() -> Any:
         try:
@@ -573,7 +582,8 @@ async def save_rules(  # noqa: PLR0913 - FastAPI dependencies, one per input
         source_id = plan.playbook_id if keep and plan is not None else (await store.active_for(db, user_ref, stype)).id
         base = plan.body if plan is not None else (await store.active_for(db, user_ref, stype)).body
         saved = await store.accept_plan(
-            db, user_ref, strategy_id, source_id, _rules_to_save(base, data.body, plan is not None))
+            db, user_ref, strategy_id, source_id, _rules_to_save(base, data.body, plan is not None),
+            _base_json(tracked))
         return _rules_out(stype, dict(check.with_plan_target(saved.body)), saved.accepted_at)
     return await _run(db, work)
 
