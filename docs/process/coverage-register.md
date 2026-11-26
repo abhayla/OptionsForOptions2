@@ -2,7 +2,7 @@
 
 # Coverage register
 
-Generated from commit 02c48b35
+Generated from commit 8ec8c764
 
 ## Stage S0
 
@@ -507,6 +507,8 @@ Generated from commit 02c48b35
 | S6.1 | issue | #515 | - |  |
 | S6.1 | issue | #582 | - |  |
 | S6.1 | issue | #583 | - |  |
+| S6.1 | issue | #750 | - |  |
+| S6.1 | issue | #751 | - |  |
 | S6.1 | requirement | REQ-029 | - | Option Chain display and live data |
 | S6.1 | requirement | REQ-030 | - | Option Chain leg selection and import |
 | S6.1 | requirement | REQ-031 | - | Option Chain live strategy preview |
@@ -1172,7 +1174,7 @@ Generated from commit 02c48b35
 | 4c | 0 | 0 | 6 | 0 | 0 | 1 | 1 | 0 | 7 | 0 | 0 | 15 |
 | S5 | 2 | 0 | 5 | 0 | 0 | 2 | 0 | 0 | 11 | 0 | 1 | 21 |
 | S6 | 1 | 0 | 1 | 0 | 0 | 0 | 0 | 0 | 2 | 0 | 0 | 4 |
-| S6.1 | 0 | 0 | 35 | 12 | 0 | 9 | 0 | 0 | 31 | 0 | 24 | 111 |
+| S6.1 | 0 | 0 | 35 | 12 | 0 | 11 | 0 | 0 | 31 | 0 | 24 | 113 |
 | S6.2 | 0 | 0 | 5 | 1 | 0 | 0 | 0 | 1 | 14 | 0 | 14 | 35 |
 | S6.3 | 0 | 0 | 2 | 0 | 0 | 0 | 0 | 0 | 6 | 0 | 1 | 9 |
 | S6.4 | 0 | 1 | 13 | 19 | 0 | 32 | 1 | 0 | 25 | 0 | 8 | 99 |
