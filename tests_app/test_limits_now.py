@@ -327,3 +327,37 @@ def test_u145_an_emptied_target_has_its_own_sentence_and_reason_code_the_playboo
     assert other["reason_code"] is None and other["text"].startswith("Target: not being checked:")
     stop = next(x for x in route.limits_out(ev.limits, True) if x["rule_id"] != "T-07" and x["state"] != "not_checked")
     assert stop["reason_code"] is None
+
+
+# --- P4 review F2: a rupee level is a limit row of its own, and the percent row it replaces is not shown -------------------
+def with_rupees(body, **guards):
+    out = copy.deepcopy(body)
+    out["guards"].update(guards)
+    return out
+
+
+def test_f2_a_rupee_stop_and_target_have_a_limits_row_each_and_no_not_checked_row():
+    body = with_rupees(IC, **{sl.RUPEE_LOSS_KEY: "400", sl.RUPEE_PROFIT_KEY: "600", KEY: ""})
+    _, ev = run(body, plan=True)
+    loss, profit = row(ev, sl.RUPEE_LOSS_RULE), row(ev, sl.RUPEE_PROFIT_RULE)
+    assert (loss.threshold, loss.state) == (D(400), "checked") and (profit.threshold, profit.state) == (D(600), "checked")
+    assert {x.trigger_id for x in ev.limits}.isdisjoint({"T-06", "T-07"})  # the rupee levels replace both percent rows
+    strip = route.limits_out(ev.limits, True)
+    assert not any("not being checked" in (x["text"] or "") or "no target is set" in (x["text"] or "") for x in strip)
+    by_rule = {x["rule_id"]: x for x in strip}
+    assert by_rule[sl.RUPEE_LOSS_RULE]["threshold"] == "400" and "400" in by_rule[sl.RUPEE_LOSS_RULE]["text"]
+    assert by_rule[sl.RUPEE_PROFIT_RULE]["threshold"] == "600" and "600" in by_rule[sl.RUPEE_PROFIT_RULE]["text"]
+    assert "whichever comes first" in by_rule[sl.CREDIT_RULE]["text"]  # the 2x-credit line races the rupee stop
+
+
+def test_f2_a_rupee_stop_with_no_pnl_is_a_not_checked_row_with_its_reason_never_a_number():
+    body = with_rupees(IC, **{sl.RUPEE_LOSS_KEY: "400"})
+    _, ev = run(body, plan=True, pnl=None)
+    assert row(ev, sl.RUPEE_LOSS_RULE).state == "not_checked" and row(ev, sl.RUPEE_LOSS_RULE).reason
+
+
+def test_f2_the_route_says_the_target_is_set_when_a_rupee_target_is_readable():
+    guards = {KEY: "", sl.RUPEE_PROFIT_KEY: "600"}
+    assert route.target_is_unset("plan", guards) is False
+    assert route.target_is_unset("plan", {KEY: ""}) is True
+    assert route.target_is_unset("plan", {KEY: "", sl.RUPEE_PROFIT_KEY: "bad"}) is True

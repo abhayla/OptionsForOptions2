@@ -67,9 +67,13 @@ def test_both_boxes_with_different_values_are_refused_naming_the_field():
     assert err.value.slots["field"] == "stop_rupees"
 
 
-def test_both_boxes_with_the_same_level_keep_the_percent_only():
+def test_both_boxes_with_the_same_level_store_the_rupee_level_not_the_rounded_percent():
+    """F4: 25.64 % of 3,900 is 999.96, not 1,000: storing the percent would move the level the user typed."""
     body = edited(target="25.64", target_rupees="1000")
-    assert sl.RUPEE_PROFIT_KEY not in body["guards"] and body["guards"]["profit_target_pct_of_max_profit"] == "25.64"
+    assert body["guards"][sl.RUPEE_PROFIT_KEY] == "1000" and body["guards"]["profit_target_pct_of_max_profit"] == ""
+    body = plan.with_overrides(copy.deepcopy(BODY), plan.PlanIn(playbook_id=3, stop="15.38", stop_rupees="400"),
+                               "weekly", plan.Bases(max_loss=D("2600"), lots=2))
+    assert body["guards"][sl.RUPEE_LOSS_KEY] == "400"
 
 
 def test_both_boxes_with_no_base_cannot_be_judged_and_are_refused():
@@ -111,3 +115,55 @@ def test_rupee_stop_on_the_s21_base_shows_the_percent_derived_beside_it():
     out = plan.with_rupee_figures(plan._values(body, False, "weekly"), body, plan.Bases(max_loss=D("2600"), lots=2))
     assert (out["stop"], out["stop_rupees"]) == (D("15.38"), D("400.00"))
     assert out["stop_words"] == "15.38 % of max loss"
+
+
+# --- Opus review round (P4 fix round): F1, F3, F5, F9 -----------------------------------------------------------------------
+S21 = plan.Bases(max_loss=D("2600"), lots=2)
+
+
+def shown_on(body: dict, bases: plan.Bases) -> dict:
+    return plan.with_rupee_figures(plan._values(body, False, "weekly"), body, bases)
+
+
+def test_f1_a_rupee_stop_keeps_the_2x_credit_line_and_the_words_say_both():
+    out = shown_on(edited(stop_rupees="400"), S21)
+    words = out["stop_words"]
+    assert "400" in words and "15.38 % of max loss" in words
+    assert words.endswith("or 2x the credit received, whichever comes first")
+
+
+def test_f1_the_choice_lives_in_one_constant_of_settings_in_force():
+    from ofo_app import settings_in_force as sif
+    assert sif.RUPEE_STOP_KEEPS_CREDIT is True
+
+
+@pytest.mark.parametrize("bases", [plan.Bases(max_loss=None, lots=2), plan.Bases(max_loss=D("2600"), lots=2)])
+def test_f3_a_rupee_stop_whose_percent_cannot_be_worked_out_never_shows_the_stale_t06(bases):
+    """Max loss unreadable, or Rs 3,000 against a base of 2,600 (> 100 %): the percent is not computable (None)."""
+    out = shown_on(edited(stop_rupees="400" if bases.max_loss is None else "3000"), bases)
+    assert out["stop"] is None
+    assert "50" not in out["stop_words"] and "% of max loss" not in out["stop_words"]
+    assert out["stop_rupees"] is not None
+
+
+def test_f5_clearing_the_rupee_stop_with_no_percent_is_refused_naming_stop_rupees():
+    body = edited(stop_rupees="400")
+    with pytest.raises(playbook_store.PlaybookStoreError) as err:
+        plan.with_overrides(body, plan.PlanIn(playbook_id=3, stop_rupees=""), "weekly", BASES)
+    assert err.value.slots["field"] == "stop_rupees"
+    again = plan.with_overrides(body, plan.PlanIn(playbook_id=3, stop="10", stop_rupees=""), "weekly", BASES)
+    assert sl.RUPEE_LOSS_KEY not in again["guards"]
+    plain = plan.with_overrides(copy.deepcopy(BODY), plan.PlanIn(playbook_id=3, stop_rupees=""), "weekly", BASES)
+    assert sl.RUPEE_LOSS_KEY not in plain["guards"]
+
+
+def _tracked(*lots):
+    from types import SimpleNamespace as NS
+    return NS(stop_base=None, position=NS(legs=[NS(lots=n) for n in lots]))
+
+
+def test_f9_the_per_lot_figure_only_when_every_leg_has_the_same_lot_count():
+    assert plan.bases_of(_tracked(2, 2, 2, 2), None, None).lots == 2
+    assert plan.bases_of(_tracked(1, 2, 2, 1), None, None).lots is None
+    out = shown_on(edited(stop_rupees="400"), plan.Bases(max_loss=D("2600"), lots=None))
+    assert out["stop_per_lot"] is None and "per lot" not in out["stop_rupee_words"]

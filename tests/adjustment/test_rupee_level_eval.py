@@ -98,3 +98,16 @@ def test_percent_stop_alone_still_fires_t06_once():
 def test_rupee_stop_unreadable_keeps_t06_checking():
     flags = _plan_loss_flags(_one_stop_run({sl.RUPEE_LOSS_KEY: "abc"}, D("-400.00")))
     assert [kind_of(f.trigger_id) for f in flags] == ["plan_loss_stop"]
+
+
+def test_f6_t06_in_a_mixed_rule_is_replaced_by_the_rupee_loss_never_dropped():
+    """P4 review F6: {"all_of": ["T-06","T-07"]} must need BOTH the loss and the profit condition; dropping T-06 left
+    T-07 alone, so the rule fired more often. With a profit and no loss of Rs 400 it does not fire."""
+    sc = load("ADJ-01")
+    body = copy.deepcopy(body_of(sc))
+    body["rules"].append({"id": "R-X", "all_of": ["T-06", "T-07"]})
+    body.setdefault("guards", {})[sl.RUPEE_LOSS_KEY] = "400"
+    ev = evaluate(body, replace(state_of(sc), pnl=D("100000")), {}, None)
+    mine = _only(ev, "R-X")
+    assert mine and not any(isinstance(r, Flag) for r in mine)
+    assert "R-X" not in [r.rule_id for r in ev.results if isinstance(r, Flag)]
