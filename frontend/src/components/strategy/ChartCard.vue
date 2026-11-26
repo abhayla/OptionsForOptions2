@@ -28,6 +28,7 @@ import {
 } from '@/lib/chartCard'
 import { BOOKED_SWITCH_LABEL } from '@/lib/targetBlock'
 import { BEFORE_CHARGES } from '@/lib/tracking'
+import { PAPER_NO_FIGURE } from '@/lib/paperList'
 
 const props = defineProps({
   points: { type: Array, default: () => [] },
@@ -67,11 +68,11 @@ const emit = defineEmits(['zoom', 'payoff-step'])
 
 // the TOTAL row's P&L is the page's one paper read (after charges, labelled; no number when prices are not live); every other cell is the reply's
 const cellText = (r, c) => (r.isTotal && c.id === 'unrealized_pnl' && props.paperTotal
-  ? (props.paperTotal.text === null ? '—' : `${props.paperTotal.text} ${props.paperTotal.label}`.trim())
+  ? (props.paperTotal.failed ? PAPER_NO_FIGURE : props.paperTotal.text === null ? '-' : `${props.paperTotal.text} ${props.paperTotal.label}`.trim())
   // the shared read has no percent form: a dash, never the socket's before-charges percent beside an after-charges total
   : r.isTotal && c.id === 'pnl_percent' && props.paperTotal ? '—' : r.values[c.id].display)
 // a paper trade's per-row P&L cells are before charges: said once, in the column header (the TOTAL cell carries its own label)
-const headText = (c) => (c.id === 'unrealized_pnl' && props.paperTotal ? `${c.label} ${BEFORE_CHARGES}` : c.id === 'entry_price' && props.paperLegs ? ENTRY_PRICE_LABEL : c.label)
+const headText = (c) => (c.id === 'unrealized_pnl' && props.paperTotal ? `${c.label} ${BEFORE_CHARGES}` : c.id === 'entry_price' && bookRows.value ? ENTRY_PRICE_LABEL : c.label)
 // D-63 round 3: with an after-charges TOTAL, the reply's paid and to-close charges texts are shown as sent (no sum here);
 // charges unknown means the TOTAL is before charges and no line shows
 const chargeLines = computed(() => (props.paperTotal?.kind === 'after' && props.charges
@@ -101,6 +102,8 @@ const includeBooked = defineModel('includeBooked', { type: Boolean, default: tru
 const showPct = ref(false) // D-B26 (REQ-137 AC-2): Show % adds the server's move_pct_display per row
 const greekMode = ref('unit') // REQ-084 AC-8: one toggle, Per unit (default) or Per position
 const compact = computed(() => compactRows(props.table, props.legs, props.paperLegs))
+// N-07: the entry column is the paper entry only when every shown leg row is a book row; a draft leg beside them keeps "Planned entry"
+const bookRows = computed(() => { const legRows = (compact.value ?? []).filter((r) => !r.isTotal); return legRows.length > 0 && legRows.every((r) => r.book === true) })
 const greeks = computed(() => greekRows(props.table, props.legs))
 // D-63: the Greeks Total adds every leg; with legs on two expiries it says so (a count of expiries, no money)
 const greeksTotalLabel = computed(() => {

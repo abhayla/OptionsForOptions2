@@ -156,7 +156,7 @@ describe('item 4: the P&L table', () => {
   })
   it('paper, prices not live: no number and a dash percent', () => {
     const r = totalRow(mountCard(shared({ state: 'PAUSED', total_after_text: null, total_text: null, after_charges_reason: 'prices_not_live' })))
-    expect(cell(r, 'unrealized_pnl')).toBe('—')
+    expect(cell(r, 'unrealized_pnl')).toBe('-')
     expect(cell(r, 'pnl_percent')).toBe('—')
   })
   it('paper, rates unavailable: the before figure says so and the percent is a dash', () => {

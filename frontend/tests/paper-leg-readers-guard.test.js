@@ -35,6 +35,13 @@ export const READERS = [
   { file: 'src/lib/adjustDrawer.js', source: 'adjust plan reply', why: 'Adjust drawer' },
 ]
 
+// REMAINING readers of the outcome reply on a paper trade, by file and the text of the line (shrink only: a changed line fails and must be re-read).
+export const REMAINING = [
+  { file: 'src/components/strategy/StrategyTable.vue', line: 54, text: '<StrategyLegRow v-for="row in table.rows"', why: 'Full table: every cell (LTP, entry, P&L) is the outcome reply row; deferred issue' },
+  { file: 'src/components/strategy/AdvancedDetails.vue', line: 23, text: 'adv-bid', why: 'bid / ask per leg from the reply leg_quotes (not an LTP or P&L); listed for completeness' },
+  { file: 'src/components/strategy/LegList.vue', line: 42, text: 'priceTextById', why: 'leg list "Price has moved ... now" text from the reply ltp_display; deferred issue' },
+]
+
 function walk(dir, out = []) {
   for (const name of readdirSync(dir)) {
     const p = join(dir, name)
@@ -57,8 +64,16 @@ export function problems(map) {
   for (const [f, text] of Object.entries(map)) {
     if (/<ChartCard\b/.test(text) && !/:paper-legs=/.test(text)) out.push(`ChartCard used without :paper-legs: ${f}`)
   }
+  // wiring (round 2): the page hands the book join (never null / a literal) and compactRows really uses what it is given
+  const page = map['src/pages/StrategyBuilderPage.vue'] ?? ''
+  if (!/:paper-legs="paper \? paperLegsOf\(paper\.net, paper\.book, paperBookFailed\) : null"/.test(page)) out.push('the page does not pass :paper-legs from paperLegsOf(paper.net, paper.book, paperBookFailed)')
+  const lib = map['src/lib/chartCard.js'] ?? ''
+  if (!/paperLegs\.get\(/.test(lib) || !/if \(!paperLegs\) return rows/.test(lib)) out.push('compactRows does not read paperLegs')
   const card = map['src/components/strategy/ChartCard.vue'] ?? ''
   if (!/compactRows\(props\.table,\s*props\.legs,\s*props\.paperLegs\)/.test(card)) out.push('ChartCard.vue does not hand props.paperLegs to compactRows')
+  for (const r of REMAINING) {
+    if (!(map[r.file] ?? '').includes(r.text)) out.push(`remaining reader changed or gone (update the registry): ${r.file}`)
+  }
   return out
 }
 
@@ -76,10 +91,20 @@ describe('N-07 guard: one reader of a paper leg price / P&L', () => {
     expect(prefix).not.toBe(map['src/components/strategy/ChartCard.vue'])
     expect(problems({ ...map, 'src/components/strategy/ChartCard.vue': prefix })).toEqual(['ChartCard.vue does not hand props.paperLegs to compactRows'])
   })
+  it('MUTATION: compactRows ignoring paperLegs, and the page passing :paper-legs=null, are red', () => {
+    const map = files()
+    const lib = map['src/lib/chartCard.js'].replace('paperLegs.get(', 'new Map().get(')
+    expect(problems({ ...map, 'src/lib/chartCard.js': lib })).toEqual(['compactRows does not read paperLegs'])
+    const page = map['src/pages/StrategyBuilderPage.vue'].replace(/:paper-legs="[^"]*"/, ':paper-legs="null"')
+    expect(problems({ ...map, 'src/pages/StrategyBuilderPage.vue': page })).toEqual(['the page does not pass :paper-legs from paperLegsOf(paper.net, paper.book, paperBookFailed)'])
+  })
+  it('the REMAINING registry lines are where it says (file:line)', () => {
+    for (const r of REMAINING) expect(readFileSync(join(process.cwd(), r.file), 'utf8').split('\n')[r.line - 1]).toContain(r.text)
+  })
   it('MUTATION: a page that mounts ChartCard without :paper-legs, and a new file reading ltp_text, are red', () => {
     const map = files()
     const page = map['src/pages/StrategyBuilderPage.vue'].replace(/:paper-legs="[^"]*"/, '')
-    expect(problems({ ...map, 'src/pages/StrategyBuilderPage.vue': page })).toEqual(['ChartCard used without :paper-legs: src/pages/StrategyBuilderPage.vue'])
+    expect(problems({ ...map, 'src/pages/StrategyBuilderPage.vue': page })).toContain('ChartCard used without :paper-legs: src/pages/StrategyBuilderPage.vue')
     expect(problems({ ...map, 'src/components/strategy/NewLegView.vue': 'const x = leg.ltp_text' })).toEqual(['unlisted reader of leg price / P&L: src/components/strategy/NewLegView.vue'])
   })
 })

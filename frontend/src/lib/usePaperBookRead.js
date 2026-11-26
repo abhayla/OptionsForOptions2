@@ -28,7 +28,7 @@ export function legPricesOf(book) {
 
 /** N-07: the P&L Table's per-leg figures for a paper trade, keyed by the page leg's instrument_id (the outcome reply's leg identity). Each is
  *  the legs table's own cell text (entry = Avg, ltp = LTP, pnl = the leg's TOTAL); a failed read prints the same dash the table does. A page
- *  leg whose contract the book does not hold is absent (the P&L Table keeps the reply's row for it). null = not a paper trade (no book or net). */
+ *  leg whose contract the book does not hold is absent. Each entry carries the net leg's side and lots: the P&L Table uses it only for a reply row of the same contract, side and lots. null = not a paper trade (no book or net). */
 export function paperLegsOf(net, book, failed = false) {
   if (!book || !Array.isArray(net)) return null
   const prices = legPricesOf(book)
@@ -36,7 +36,7 @@ export function paperLegsOf(net, book, failed = false) {
   for (const l of net) {
     const p = l?.contract_id == null || typeof l.instrument_id !== 'string' ? undefined : prices.get(String(l.contract_id))
     if (p === undefined) continue
-    out.set(l.instrument_id, failed ? { entry: PAPER_NO_FIGURE, ltp: PAPER_NO_FIGURE, pnl: PAPER_NO_FIGURE } : { entry: p.entry ?? '-', ltp: p.ltp ?? '-', pnl: p.total ?? '-' })
+    out.set(l.instrument_id, { action: l.action, lots: l.lots, ...(failed ? { entry: PAPER_NO_FIGURE, ltp: PAPER_NO_FIGURE, pnl: PAPER_NO_FIGURE } : { entry: p.entry ?? '-', ltp: p.ltp ?? '-', pnl: p.total ?? '-' }) })
   }
   return out
 }
@@ -45,7 +45,9 @@ export function paperLegsOf(net, book, failed = false) {
  *  as-of line) and the LegPrice of every open contract. null = no book. */
 export function paperPnlBlock(book, failed = false) {
   const total = sharedTotal(book, failed)
-  return total === null ? null : { ...total, legs: legPricesOf(book) }
+  if (total === null) return null
+  const legs = legPricesOf(book) // failed read: the Paper P&L panel's own per-leg rows keep the last figures (TrackingPanel.vue:139-141, D-41 test 8): deferred, not changed here
+  return { ...total, failed, legs }
 }
 
 const openKey = (b) => (b?.positions ?? []).filter((p) => p.net_quantity !== 0).map((p) => `${p.contract_id}:${p.net_quantity}`).join(',')

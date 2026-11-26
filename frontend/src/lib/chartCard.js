@@ -105,13 +105,20 @@ export function compactRows(table, legs = null, paperLegs = null) {
   if (!table || !hasColumns(table, [...INSTRUMENT_PARTS, ...ids])) return null
   const rows = viewRows(table, ids, legs)
   if (!paperLegs) return rows
-  // N-07: a paper trade's leg shows the page's one book read (paperLegsOf): its entry, LTP and TOTAL, as the legs table prints them. A leg
-  // the book does not hold keeps the reply's cells. No percent: the book sends none and the reply's is of the plan's entry (ADR-008).
+  // N-07: a paper trade's leg shows the page's one book read (paperLegsOf): its entry, LTP and TOTAL, as the legs table prints them. The book
+  // figure is used only when the reply row's contract, side AND lots equal the net leg's and no other reply row names that contract; any
+  // other row (a draft leg, an edited lot count, a flipped side) shows the dash, never the reply's plan figure (one source per screen). No
+  // percent: the book sends none (ADR-008).
+  const named = new Map()
+  for (const l of legs ?? []) named.set(l?.instrument_id, (named.get(l?.instrument_id) ?? 0) + 1)
   return rows.map((r, i) => {
-    const own = r.isTotal ? undefined : paperLegs.get(legs?.[Number(table.rows[i]?.cells?.leg?.value) - 1]?.instrument_id)
-    if (own === undefined) return r
+    if (r.isTotal) return r
+    const leg = legs?.[Number(table.rows[i]?.cells?.leg?.value) - 1]
+    const own = paperLegs.get(leg?.instrument_id)
+    const book = own !== undefined && named.get(leg.instrument_id) === 1 && leg.action === own.action && String(leg.lots) === String(own.lots)
     const put = (id, text) => ({ ...r.values[id], display: text, value: null })
-    return { ...r, values: { ...r.values, entry_price: put('entry_price', own.entry), ltp: put('ltp', own.ltp), unrealized_pnl: put('unrealized_pnl', own.pnl), pnl_percent: put('pnl_percent', DASH) } }
+    const t = book ? own : { entry: DASH, ltp: DASH, pnl: DASH }
+    return { ...r, book, values: { ...r.values, entry_price: put('entry_price', t.entry), ltp: put('ltp', t.ltp), unrealized_pnl: put('unrealized_pnl', t.pnl), pnl_percent: put('pnl_percent', DASH) } }
   })
 }
 
