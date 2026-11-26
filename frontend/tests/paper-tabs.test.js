@@ -87,7 +87,11 @@ describe('Positions page filter (was: tabs)', () => {
     expect(t(w, 'filter-paper').attributes('aria-pressed')).toBe('true')
     expect(t(w, 'paper-total').text()).toBe('+71.50')
     expect(has(w, 'real-state')).toBe(false) // the Paper filter removes the real section, so its error is not shown
-    expect(w.text()).not.toContain('Zerodha down')
+    // ADR-330 (24): the refusal shows only in the totals' real reason, with the Real total as a dash
+    expect(t(w, 'totals-real-reason').text()).toContain('Zerodha down')
+    expect(t(w, 'totals-real').text()).toBe('—')
+    const outsideTotals = w.text().replace(t(w, 'positions-totals').text(), '')
+    expect(outsideTotals).not.toContain('Zerodha down')
   })
   it('the paper list is not held up by a Zerodha read that never answers', async () => {
     answers['GET /positions'] = () => new Promise(() => {})
