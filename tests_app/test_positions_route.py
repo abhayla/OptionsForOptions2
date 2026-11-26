@@ -264,6 +264,8 @@ async def _run(engines, monkeypatch, data, *, url="/positions", **opts):
         trans = await conn.begin()
         try:
             user, ids = await _world(conn, app_engine, monkeypatch, plans)
+            if callable(orders):  # a book that names the strategies' stored ids
+                orders = orders(ids)
             transport = _Transport(data, status, orders, orders_status)
             resp = await _get(_app_for(conn, user, transport if session else None), url)
             return resp, transport, ids
@@ -786,7 +788,7 @@ async def test_review_two_strategies_each_holding_65_against_zerodha_65_are_both
     """Reviewer's case: strategies 1 and 2 each BUY 65, the user sold 65 on Kite, net 65: neither row is stated and
     the total is partial, counting the ONE contract once."""
     body = await _pnl(monkeypatch, (app_engine, admin_engine), _reply(POSITIONS_ENTRY), plans="two_holders",
-                      orders=_second_holders_orders(2))
+                      orders=lambda ids: _second_holders_orders(ids["second"]))
     rows = [c for g in body["strategies"] for c in g["contracts"]]
     assert len(rows) == 2, body
     assert [(r["pnl"], r["pnl_state"], r["pnl_reason"]) for r in rows] == [(None, "shared", SHARED)] * 2
@@ -809,6 +811,61 @@ async def test_review_an_outside_round_trip_in_the_order_book_makes_the_row_shar
     row = body["strategies"][0]["contracts"][0]
     assert (row["pnl"], row["pnl_state"], row["pnl_reason"]) == (None, "shared", SHARED)
     assert body["real_pnl"]["state"] == "partial"
+
+
+def _round_trip(tag: str, *, status: str = "COMPLETE", filled: int = 65) -> list:
+    """A BUY 65 and a SELL 65 of the contract today with ``tag`` (hand-made derivations of the recorded order row)."""
+    rows = []
+    for number, side in enumerate(("BUY", "SELL")):
+        row = copy.deepcopy(_orders()[0])
+        row.update(order_id=f"26101617058{number}00", tag=tag, tags=[tag], transaction_type=side, status=status,
+                   filled_quantity=filled)
+        rows.append(row)
+    return rows
+
+
+ROUND_TRIP = dict(buy_value=D("656.5"), sell_value=D("260"), pnl=D("-65"))
+
+
+@pytest.mark.usefixtures("app_engine")
+@pytest.mark.parametrize("legacy", [False, True])
+async def test_round2_another_strategys_round_trip_makes_the_row_shared(app_engine, admin_engine, monkeypatch, legacy):
+    """Strategy 1 BUY 65 @5.1; another strategy (stored id differs) BUY 65 and exit 65 today under ITS tag (new Q
+    grammar, or legacy OFS): Zerodha row qty 65, buy 656.5, sell 260, pnl -65 is not strategy 1's own."""
+    from ofo.execution.basket import make_tag  # noqa: PLC0415
+
+    def book(ids):
+        other = ids["first"] + 1
+        return [*_orders(), *_round_trip(f"OFS{other}V1L0" if legacy else make_tag(other, 1, 0))]
+
+    body = await _pnl(monkeypatch, (app_engine, admin_engine), _entry(**ROUND_TRIP), orders=book)
+    row = body["strategies"][0]["contracts"][0]
+    assert (row["pnl"], row["pnl_state"], row["pnl_reason"]) == (None, "shared", SHARED)
+    assert (body["real_pnl"]["state"], body["real_pnl"]["value"]) == ("partial", None)
+
+
+@pytest.mark.usefixtures("app_engine")
+async def test_round2_the_strategys_own_round_trip_stays_stated(app_engine, admin_engine, monkeypatch):
+    from ofo.execution.basket import make_tag  # noqa: PLC0415
+
+    body = await _pnl(monkeypatch, (app_engine, admin_engine), _entry(**ROUND_TRIP),
+                      orders=lambda ids: [*_orders(), *_round_trip(make_tag(ids["first"], 3, 0))])
+    row = body["strategies"][0]["contracts"][0]
+    assert (row["pnl"], row["pnl_state"]) == ("-65.00", "stated")
+    assert (body["real_pnl"]["state"], body["real_pnl"]["value"]) == ("stated", "-65.00")
+
+
+@pytest.mark.usefixtures("app_engine")
+async def test_round2_a_partly_filled_cancelled_order_of_another_strategy_makes_the_row_shared(
+        app_engine, admin_engine, monkeypatch):
+    from ofo.execution.basket import make_tag  # noqa: PLC0415
+
+    def book(ids):
+        return [*_orders(), *_round_trip(make_tag(ids["first"] + 1, 1, 0), status="CANCELLED", filled=25)[:1]]
+
+    body = await _pnl(monkeypatch, (app_engine, admin_engine), _entry(), orders=book)
+    row = body["strategies"][0]["contracts"][0]
+    assert (row["pnl"], row["pnl_state"], row["pnl_reason"]) == (None, "shared", SHARED)
 
 
 @pytest.mark.usefixtures("app_engine")

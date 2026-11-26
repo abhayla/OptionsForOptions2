@@ -169,16 +169,19 @@ STANDALONE: dict[Any, int] = {}  # no recorded standalone store yet (REQ-060 AC-
 # sole-holder check both read, so a future standalone cannot pass the check unseen
 
 
-def _foreign_fill(symbol: str, zerodha: _Zerodha) -> bool:
-    """(e): a filled order (any filled quantity) on this contract today whose tag is not one this app made: an outside
-    round trip that is inside Zerodha's buy_value / sell_value for the contract."""
+def _foreign_fill(symbol: str, sid: str, zerodha: _Zerodha) -> bool:
+    """(e): any order on this contract today with a filled quantity (any status) whose tag does not decode (new or
+    legacy grammar) to THIS strategy: another strategy's, an outside or an unreadable fill, all inside Zerodha's
+    buy_value / sell_value for the contract, so the row is not the strategy's alone."""
     for order in zerodha.orders:
         if order.tradingsymbol != symbol or not order.filled_quantity:
             continue
         try:
-            parse_tag(order.tag)
+            if parse_tag(order.tag).strategy_id == int(sid):
+                continue
         except ValueError:
-            return True  # untagged or another tag grammar: not this app's
+            pass  # untagged or another tag grammar: not this app's
+        return True
     return False
 
 
@@ -186,14 +189,14 @@ def _sole_reason(key: Any, sid: str, units: int, result: ra.Attribution, zerodha
                  standalone: Any = None) -> str | None:
     """None when this strategy is the sole holder of Zerodha's whole figure for the contract, else the reason
     template of the row: "real_pnl_shared" or "real_pnl_part_closed". Sole holder = (a) exactly one strategy holds the
-    contract, (b) no outside units on it, (c) no recorded standalone on it, (d) own units == Zerodha's net, (e) no
-    filled order of another tag on it today, (f) no flat (closed today) row of another product on it."""
+    contract, (b) no outside units on it, (c) no recorded standalone on it, (d) own units == Zerodha's net, (e)
+    every order filled on it today carries this strategy's own tag, (f) no flat (closed today) row of another product on it."""
     standalone = STANDALONE if standalone is None else standalone
     holders = [h for h, held in result.held.items() if held.get(key, 0) != 0]
     if holders != [sid] or result.outside.get(key, 0) or standalone.get(key, 0):
         return "real_pnl_shared"
     symbol = _symbol(key, zerodha.index)
-    if units != zerodha.net.get(key, 0) or _foreign_fill(symbol, zerodha):
+    if units != zerodha.net.get(key, 0) or _foreign_fill(symbol, sid, zerodha):
         return "real_pnl_shared"
     if key in zerodha.flat_keys:
         return "real_pnl_part_closed"
@@ -217,8 +220,8 @@ def _row_pnl(key: Any, sid: str, row: dict[str, Any], symbol: str, result: ra.At
         return none("stale", "real_pnl_stale", seconds=STALE_AFTER_SECONDS)
     if row["pending"]:
         return none("pending", "real_pnl_pending")
-    reason = _sole_reason(key, sid, row["units"], result, zerodha)
-    if reason is not None:  # another strategy, outside lots or trades, or a closed sibling row hold part: never a split
+    if not sole_holder(key, sid, result, zerodha):  # another strategy, outside lots or trades, or a closed sibling
+        reason = _sole_reason(key, sid, row["units"], result, zerodha) or "real_pnl_shared"  # row: never a split
         return none("shared", reason, **({"contract": symbol} if reason == "real_pnl_part_closed" else {}))
     figure = broker_pnl.broker_contract_pnl(list((zerodha.money or {}).get(key, ())))
     if figure.state == broker_pnl.STATED and figure.value is not None:
