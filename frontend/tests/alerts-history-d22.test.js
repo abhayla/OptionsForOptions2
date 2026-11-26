@@ -37,7 +37,7 @@ beforeEach(() => { answers = {}; resetActiveAlerts(); resetOpenRecords() })
 
 describe('Alerts > History (D-22, D-71)', () => {
   it('lists the fired stop and the expiry settlement with time, index value and prices as the server sent them', async () => {
-    answers['GET /alerts/history'] = () => Promise.resolve({ data: { items: [] } })
+    answers['GET /alerts/answered'] = () => Promise.resolve({ data: { items: [] } })
     answers['GET /paper/alerts/records'] = () => Promise.resolve({ data: { records: [SETTLED, STOP] } })
     const w = await mountAt('/alerts/history')
     const rows = w.findAll('[data-testid="record-row"]')
@@ -48,7 +48,7 @@ describe('Alerts > History (D-22, D-71)', () => {
     expect(w.find('[data-testid="alerts-empty"]').exists()).toBe(false)
   })
   it('says so when there is nothing yet, and shows no rows and no empty line when the read fails', async () => {
-    answers['GET /alerts/history'] = () => Promise.resolve({ data: { items: [] } })
+    answers['GET /alerts/answered'] = () => Promise.resolve({ data: { items: [] } })
     answers['GET /paper/alerts/records'] = () => Promise.resolve({ data: { records: [] } })
     expect((await mountAt('/alerts/history')).get('[data-testid="alerts-empty"]').text()).toContain('No stops or expiry settlements yet')
     answers = {}

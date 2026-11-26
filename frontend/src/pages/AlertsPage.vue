@@ -1,7 +1,7 @@
 <!-- W-117 (REQ-009 AC-6; ADR-114, ADR-003): the Alerts pages - Active, History, Notification settings.
      ADR-330 (3), (4): Active lists exactly the server's unanswered actionable alerts (GET /alerts/active), the same read the header
      bell counts; opening it writes nothing. Each row: "Fired at HH:MM", "no longer true since HH:MM" when set, one button per server
-     answer. The alert only informs and asks: it never exits by itself. History = the answered rows (GET /alerts/history) plus D-22 /
+     answer. The alert only informs and asks: it never exits by itself. History = the answered rows (GET /alerts/answered) plus D-22 /
      D-71 every fired stop and every expiry settlement (GET /paper/alerts/records). Notification settings stays an honest empty state. -->
 <script setup>
 import PageHeader from '@/components/common/PageHeader.vue'
@@ -71,13 +71,13 @@ onMounted(async () => {
     <!-- Owner 2026-10-30 (Sensibull 171 / 172): shared header; alerts as one card with a row each; empty = shared empty state -->
     <PageHeader parent="Alerts" :title="route.meta.title" />
     <template v-if="isRecords">
-      <ErrorMessage v-if="alertHistory.parts" :parts="alertHistory.parts" compact prefix="history-error" />
+      <ErrorMessage v-if="alertHistory.parts" :parts="alertHistory.parts" compact prefix="answered-error" />
       <ul v-else-if="alertHistory.items.length" class="mb-4 divide-y divide-line overflow-hidden rounded-lg border border-line bg-surface" data-testid="alerts-answered">
-        <li v-for="h in alertHistory.items" :key="`h${h.id}`" class="px-4 py-3 hover:bg-surface-muted" data-testid="history-row">
-          <p class="font-medium" data-testid="history-strategy">{{ plainName(h.strategy_name) ?? `Strategy ${h.strategy_id}` }}</p>
+        <li v-for="h in alertHistory.items" :key="`h${h.id}`" class="px-4 py-3 hover:bg-surface-muted" data-testid="answered-row">
+          <p class="font-medium" data-testid="answered-strategy">{{ plainName(h.strategy_name) ?? `Strategy ${h.strategy_id}` }}</p>
           <p class="mt-1 text-sm">{{ h.text }}</p>
           <p class="text-xs text-ink-muted">{{ h.fired_line }}<template v-if="h.answer_label"> - {{ h.answer_label }} at {{ hmIst(h.answered_at) }}</template><template v-else-if="h.closed_reason"> - closed: {{ h.closed_reason }}</template></p>
-          <p v-if="h.worse_line" class="text-xs text-ink-muted" data-testid="history-worse">{{ h.worse_line }}</p>
+          <p v-if="h.worse_line" class="text-xs text-ink-muted" data-testid="answered-worse">{{ h.worse_line }}</p>
         </li>
       </ul>
       <ErrorMessage v-if="paperRecords.parts" :parts="paperRecords.parts" compact prefix="records-error" />

@@ -13,6 +13,10 @@ from __future__ import annotations
 import ast
 import pathlib
 
+import pytest
+
+pytestmark = pytest.mark.repo_scan
+
 ROOT = pathlib.Path(__file__).resolve().parent.parent
 HOMES = {"actionable_alerts.py", "playbook_store.py", "paper_trigger_store.py"}
 CALLS = {"open_suggestion", "record_held", "add_alert"}
