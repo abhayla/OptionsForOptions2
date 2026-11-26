@@ -10,7 +10,7 @@ import { defineStore } from 'pinia'
 export const netKeyOf = (net) => (Array.isArray(net) ? net.map((l) => `${l.contract_id}|${l.action}|${l.lots}`) : null)
 
 export const useBuilderHold = defineStore('builderHold', () => {
-  /** null, or { legs, openStrategy, savedId, savedRevision, shapeName, paperId, netKey, addedDraft } (copies); addedDraft = the ?draft= text already added to these legs (F3). */
+  /** null, or { legs, openStrategy, savedId, savedRevision, shapeName, paperId, netKey, fills, addedDraft } (copies); addedDraft = the ?draft= text already added to these legs (F3). */
   const held = ref(null)
   const count = computed(() => held.value?.legs.length ?? 0)
 
@@ -29,6 +29,7 @@ export const useBuilderHold = defineStore('builderHold', () => {
       shapeName: snapshot.shapeName ?? null,
       paperId: snapshot.paperId ?? null,
       netKey: snapshot.netKey ?? null,
+      fills: Array.isArray(snapshot.fills) ? [...snapshot.fills] : [], // Drafts Mode: the keys of the legs that were the book's own fills (N-37)
       addedDraft: snapshot.addedDraft ?? null,
     }
   }

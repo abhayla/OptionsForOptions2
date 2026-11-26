@@ -827,7 +827,15 @@ async function restoreDrafts(h) {
   if (legs.value !== before) return // the legs changed while the read was out: never overwrite them
   if (read.kind !== 'paper' || String(read.book.strategy_id) !== String(h.paperId)) { openError.value = unreadableParts(null); return }
   enterDrafts(read.book.strategy_id, read)
-  if (h.netKey && JSON.stringify(netKeyOf(read.net)) === JSON.stringify(h.netKey)) setLegs(h.legs.map((l) => ({ ...l })))
+  if (h.netKey && JSON.stringify(netKeyOf(read.net)) === JSON.stringify(h.netKey)) {
+    // N-37: a leg that was the book's own fill when held stays the book's fill: it takes the fill the book just answered (the average and its
+    // quote time), so the page still knows it as a fill and never calls it a price the user typed. Other legs come back as held.
+    const fills = new Set(h.fills ?? [])
+    setLegs(h.legs.map((l) => {
+      const fill = fills.has(paperFillKey(l)) ? read.net.find((n) => n.contract_id === l.contract_id) : undefined
+      return fill ? { ...l, planned_entry: fill.planned_entry, captured_at: fill.captured_at } : { ...l }
+    }))
+  }
   else restoreNote.value = DRAFTS_CHANGED_TEXT
 }
 // ADR-329 (3): Add Selected arrives as a ?draft= link on the builder's held legs: the ticked contracts go through the one door
@@ -1151,7 +1159,7 @@ const leaveGuard = useLeaveBuilder({
   unsaved: () => unsavedCount({ legCount: legs.value.length, savedId: savedId.value, inDrafts: paper.value !== null, pendingCount: pendingOrders.value?.length ?? 0 }),
   snapshot: () => (legs.value.length
     ? { legs: legs.value, openStrategy: openStrategy.value, savedId: savedId.value, savedRevision: savedRevision.value, shapeName: shapeName.value,
-      paperId: paper.value ? (paper.value.book?.strategy_id ?? paper.value.id) : null, netKey: paper.value ? netKeyOf(paper.value.net) : null, addedDraft }
+      paperId: paper.value ? (paper.value.book?.strategy_id ?? paper.value.id) : null, netKey: paper.value ? netKeyOf(paper.value.net) : null, fills: paperFills.value, addedDraft }
     : null),
 })
 </script>

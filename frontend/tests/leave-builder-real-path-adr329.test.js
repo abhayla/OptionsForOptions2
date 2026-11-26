@@ -95,3 +95,27 @@ describe('D-N11 the leave question on the real path', () => {
     await nav
   })
 })
+
+describe('N-37 a restored edit keeps the paper fills as they were: nothing reads "Your price, typed"', () => {
+  const lines = () => w.findAll('[data-testid="leg-row"]').map((r) => r.text())
+  it('N37 remove one leg, Option Chain, Back; the book is read again with newer price times: no typed line, the price lines equal the ones before the trip', async () => {
+    await openBuilder({ strategy: '63' })
+    await w.findAll('[data-testid="remove-leg"]')[0].trigger('click')
+    await flushPromises()
+    expect(w.findAll('[data-testid="leg-typed-line"]')).toHaveLength(0)
+    const before = lines()
+    const edited = builder().legs.map((l) => `${l.action} ${l.contract_id} ${l.lots}`)
+    await router.push({ name: 'market-option-chain' })
+    await flushPromises()
+    // the book answers again a moment later: the same positions, each priced at a newer quote time (as the live book does)
+    answers['GET /paper/strategies/63'] = { ...BOOK, positions: BOOK.positions.map((p) => (p.price_at ? { ...p, price_at: p.price_at.replace(/:(\d\d)\+/, ':59+') } : p)) }
+    router.back()
+    await flushPromises()
+    await flushPromises()
+    expect(builder().legs.map((l) => `${l.action} ${l.contract_id} ${l.lots}`)).toEqual(edited)
+    expect(builder().pendingOrders).toHaveLength(1)
+    expect(w.findAll('[data-testid="leg-typed-line"]')).toHaveLength(0)
+    expect(w.text()).not.toContain('Your price, typed')
+    expect(lines()).toEqual(before)
+  })
+})
