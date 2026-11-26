@@ -300,12 +300,14 @@ class EditLegIn(LegIn):
 class EditIn(BaseModel):
     model_config = ConfigDict(extra="forbid")
     control: Literal["step", "multiplier", "include", "price", "reset_prices", "reset_leg", "read",
-                     "shift", "width", "hedge"]
+                     "shift", "width", "hedge", "expiry"]
     direction: Literal[1, -1] | None = None  # strict by _strict_direction: True and 1.0 are not 1
     index: StrictInt | None = Field(default=None, ge=0, lt=20)
     multiplier: StrictInt | None = Field(default=None, ge=edit.MULTIPLIER_MIN, le=edit.MULTIPLIER_MAX)  # '3', 2.5: 422
     included: StrictBool | None = None
     price: str | None = Field(default=None, max_length=64)  # the user's text: edit.set_typed_price is the one judge
+    # D-48 (REQ-078 AC-11): the absolute target expiry of the "expiry" control; index absent = every leg
+    expiry: datetime.date | None = None
     # 2026-11-06 (REQ-076 AC-1, REQ-119): N quick clicks of one relative control (step / shift / width / hedge)
     # arrive as ONE request with steps=N; the server moves N listed strikes one at a time, so every click lands.
     # Absent = 1.
@@ -324,9 +326,10 @@ class EditIn(BaseModel):
         """Each control needs its own fields and nothing is guessed: a missing one is a plain 422, not a refusal."""
         needs = {"step": ("index", "direction"), "include": ("index", "included"), "price": ("index", "price"),
                  "multiplier": ("multiplier",), "reset_prices": (), "reset_leg": ("index",), "read": (),
-                 "shift": ("direction",), "width": ("direction",), "hedge": ("direction",)}[self.control]
+                 "shift": ("direction",), "width": ("direction",), "hedge": ("direction",),
+                 "expiry": ("expiry",)}[self.control]
         given = {"index": self.index, "direction": self.direction, "included": self.included, "price": self.price,
-                 "multiplier": self.multiplier}
+                 "multiplier": self.multiplier, "expiry": self.expiry}
         missing = [name for name in needs if given[name] is None]
         if missing:
             raise ValueError(f"{self.control} needs {missing}")
@@ -573,6 +576,13 @@ def apply_edit(cat: Catalogue, req: LegEditIn, legs: list[EditLeg], today: datet
     e, name = req.edit, req.underlying
     if e.control in MOVES:
         return _apply_move(cat, req, legs, today, gate)
+    if e.control == "expiry":  # D-48 (REQ-078 AC-11, AC-12): one leg or every leg onto one listed expiry, or nothing moves
+        if gate is None:  # unreachable: the route always passes it for the expiry control
+            raise RuntimeError("leg edit 'expiry' reached apply_edit without its control check")
+        if gate[0]["expiry"] is not None:  # today's list not loaded: no expiry is read from it
+            raise LegEditRefused(gate[0]["expiry"])
+        moved = edit.change_expiry(edit.Listing(cat, today), name, legs, e.index, e.expiry)
+        return moved.legs, moved.moved
     if e.control == "include":
         return edit.include_leg(legs, _need_index(e, legs), bool(e.included)), frozenset()
     if e.control == "multiplier":
@@ -588,6 +598,8 @@ def apply_edit(cat: Catalogue, req: LegEditIn, legs: list[EditLeg], today: datet
 def _move_gate(cat: Catalogue, req: LegEditIn, ctx: MarketContext | None, legs: list[EditLeg],
                list_current: bool) -> Gate | None:
     """AC-2/AC-10: for a move, the server decides from the legs as sent whether the control applies; else None."""
+    if req.edit.control == "expiry":
+        return {"expiry": None if list_current else "leg_edit_list_not_loaded_today"}, frozenset(), None
     if req.edit.control not in MOVES:
         return None
     template, hedged = shape_and_marks(cat, ctx, req.underlying, legs)
@@ -611,7 +623,7 @@ def _next_shift_total(req: LegEditIn, cat: Catalogue, today: datetime.date, legs
     if control == "shift":
         step = int(edit.shift_step(edit.Listing(cat, today), req.underlying, legs))
         return (req.shift_total or 0) + (req.edit.direction or 1) * step * (req.edit.steps or 1)
-    return None if control in ("step", "width", "hedge") else req.shift_total
+    return None if control in ("step", "width", "hedge", "expiry") else req.shift_total
 
 
 def _recaptured(e: EditIn, legs: list[EditLeg]) -> frozenset[int]:
@@ -662,7 +674,7 @@ async def leg_edit(req: LegEditIn,  # noqa: PLR0913 - FastAPI dependencies, one 
                                                        for i in range(len(new_legs))])
     ids = [f"{e.contract.exchange_segment}:{e.contract.exchange_token}" for e in entries_of]
     stored_ids = await phases.wait("contract_ids_db", contract_ids(ids))
-    if req.edit.control in MOVES:
+    if req.edit.control in (*MOVES, "expiry"):
         stored_of = {i: stored_ids[ids[i]] for i in moved if ids[i] in stored_ids}
         await phases.wait("eligibility_db", _check_landing(tradable, req.underlying, new_legs, moved, stored_of))
     shift_total = _next_shift_total(req, cat, today, legs)
