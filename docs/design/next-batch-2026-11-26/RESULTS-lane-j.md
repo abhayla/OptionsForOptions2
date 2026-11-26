@@ -56,6 +56,10 @@ Old-code safety of each migration on this branch (so switching the PC back to an
 
 ## (b) Screen-check list (owner, paper only, market hours 09:15-15:30 IST; Ctrl+F5 once after the rebuild)
 
+Each row starts with "[needs live prices: yes/no]". Step 2 (the wiring: fired stops through the one alert module
+with the max-loss line, Exit on an alert through the one exit door, the leg-stop risk line, the Plan watch box) has
+been on origin since push 2 (7d81d0a, 26 Nov evening); rows L1 to L8 test it.
+
 Live-price checks first (rows L1 to L9 need ticking prices), then the rest. Each row: the clicks, then the exact text
 expected. Write PASS / FAIL and what you saw beside each.
 
@@ -63,63 +67,63 @@ Set-up for the live rows: one paper iron condor WITH a plan (Positions > Paper >
 plan sheet: Set plan, a Stop (Rs) a little above the current loss so it can be crossed, Save), and one paper iron condor
 WITHOUT a plan.
 
-L1. Plan watch on the builder (ADR-330 (13)). Open the planned trade in the builder (My Strategies > its row > Open in
+L1. [needs live prices: yes] Plan watch on the builder (ADR-330 (13)). Open the planned trade in the builder (My Strategies > its row > Open in
     Builder). Expected: beside the live P&L a box titled "Plan watch", one row per trigger (profit target, loss stop,
     2x credit, each adjustment rule; each armed Stops-panel exit under "Armed in the Stops panel"), each row showing
     fires at, now, distance as "₹X (Y%)", and a state. The "now" and distance figures change with the prices.
-L2. Plan watch on Positions. Positions > Paper: the planned trade's row shows the same box in its compact form, with the
+L2. [needs live prices: yes] Plan watch on Positions. Positions > Paper: the planned trade's row shows the same box in its compact form, with the
     same figures as L1 at the same moment. The trade WITHOUT a plan reads "No plan: nothing is watched for this
     strategy" and still lists its armed Stops-panel exits, if any. A fully closed trade shows no box.
-L3. Max-loss line before a leg stop is saved (ADR-330 (6)). Positions > Paper > the planned trade > Stops. Pick the
+L3. [needs live prices: no] Max-loss line before a leg stop is saved (ADR-330 (6)). Positions > Paper > the planned trade > Stops. Pick the
     short CALL leg, type a stop price above its price. Within about half a second a line appears under the box:
     "If this stop fires, max loss becomes Rs X (now Rs Y)." (or "If this stop fires, there is no fixed maximum loss
     (now Rs Y)." when the leg's wing would be left alone). Change the price: the line goes away and comes back for the
     new price. Clear the box: no line. Save is clickable in every case.
-L4. Save that leg stop at a price the market will reach soon. When it fires: a pop-up appears for about 6 seconds,
+L4. [needs live prices: yes] Save that leg stop at a price the market will reach soon. When it fires: a pop-up appears for about 6 seconds,
     titled with the trade's name, number and expiry, as in "Short Iron Condor (#172, 1 Dec)", whose text ends with the
     same "If this stop fires, max loss becomes Rs X (now Rs Y)." line as L3. The bell number does NOT go up.
     Alerts > History shows the same message once. The leg is exited on the Paper Orderbook (one exit order).
-L5. Actionable alert stays until answered (ADR-330 (3), (4)). Wait for (or arrange) the plan's loss stop on the planned
+L5. [needs live prices: yes] Actionable alert stays until answered (ADR-330 (3), (4)). Wait for (or arrange) the plan's loss stop on the planned
     trade to be crossed. Expected: a short pop-up, and the bell number goes up by 1. Alerts > Active: as many rows as
     the bell; the row shows "Fired at HH:MM", its title with "(#<number>, <d Mon>)", and two buttons "Exit the
     position" and "Continue with the position". Opening the page does not lower the bell.
-L6. If the loss comes back inside the stop: the row stays and adds "no longer true since HH:MM"; when it crosses again
+L6. [needs live prices: yes] If the loss comes back inside the stop: the row stays and adds "no longer true since HH:MM"; when it crosses again
     that line goes away. If the loss gets worse, a second pop-up "Worse than when it fired: ...".
-L7. Press "Continue with the position": the row leaves Active, the bell drops by 1, Alerts > History shows the answer
+L7. [needs live prices: yes] Press "Continue with the position": the row leaves Active, the bell drops by 1, Alerts > History shows the answer
     and its time. Nothing is exited (Paper Orderbook unchanged).
-L8. Exit from an alert (ADR-330 (3), (12)). On another alert press "Exit the position". Expected: the answer is stored
+L8. [needs live prices: yes] Exit from an alert (ADR-330 (3), (12)). On another alert press "Exit the position". Expected: the answer is stored
     and the SAME exit confirmation as on Positions opens on the Alerts page for that trade. Press Cancel: nothing is
     exited (Orderbook unchanged). Raise another alert, press "Exit the position", then Confirm: one exit per open leg
     appears on the Paper Orderbook, and the trade reads closed on Positions.
-L9. Time exit on any day (ADR-330 (7)). Plan sheet: "Time exit" with a date box (blank = expiry day). Set today and a
+L9. [needs live prices: yes] Time exit on any day (ADR-330 (7)). Plan sheet: "Time exit" with a date box (blank = expiry day). Set today and a
     time 5 minutes ahead; Save. At that time an alert appears as in L5; nothing exits.
 
 Without live prices (any time):
 
-N1. Stop fixed at entry (ADR-330 (1)). On an iron condor with a plan, note the plan's stop line (e.g. "15.4 % of max
+N1. [needs live prices: yes] Stop fixed at entry (ADR-330 (1)). On an iron condor with a plan, note the plan's stop line (e.g. "15.4 % of max
     loss (Rs 400.40)" and "2x credit Rs 7,800"). Close the call side (two exits). Reopen the plan: the same rupees.
-N2. Rupee levels with the preview sentence (ADR-330 (5)). Plan sheet: type 400 in "Stop (Rs)" on a 1-lot iron condor:
+N2. [needs live prices: no] Rupee levels with the preview sentence (ADR-330 (5)). Plan sheet: type 400 in "Stop (Rs)" on a 1-lot iron condor:
     the percent box fills from the server and the line under it reads "a loss of Rs 400.00 (<p> % of max loss), 2x the
     credit received ... whichever comes first"; after Save the saved plan shows the same sentence.
-N3. Own-plan rule (ADR-330 (11)). The trade without a plan: plan card reads "No plan: nothing is watched for this
+N3. [needs live prices: no] Own-plan rule (ADR-330 (11)). The trade without a plan: plan card reads "No plan: nothing is watched for this
     strategy"; no adjustment suggestions or target/stop alerts for it; its Stops-panel exits still fire.
-N4. Paper total line (ADR-330 (15)). Positions > Paper with at least one closed paper trade: under the total
+N4. [needs live prices: no] Paper total line (ADR-330 (15)). Positions > Paper with at least one closed paper trade: under the total
     "Includes 1 closed strategy." (or "Includes N closed strategies."). If a trade has no live price, the left-out line
     "1 strategy left out: its price is not live." is shown too, and the total adds up to the rows it shows.
-N5. Whole-trade close closes its alert. Exit a whole paper trade that has an unanswered alert: Alerts > History shows
+N5. [needs live prices: yes] Whole-trade close closes its alert. Exit a whole paper trade that has an unanswered alert: Alerts > History shows
     "Closed by system: the trade closed at HH:MM"; the bell drops by 1.
-N6. Top menu (P12): on My Strategies click "Strategies" in the top menu: its menu opens; click again: closes.
-N7. Stop above the max loss (ADR-330 (25), Lane P LP-4). Plan sheet of a 1-lot iron condor with max loss Rs 2,600: type
+N6. [needs live prices: no] Top menu (P12): on My Strategies click "Strategies" in the top menu: its menu opens; click again: closes.
+N7. [needs live prices: no] Stop above the max loss (ADR-330 (25), Lane P LP-4). Plan sheet of a 1-lot iron condor with max loss Rs 2,600: type
     3000 in "Stop (Rs)": one line under the box reads "This stop (Rs 3,000) is above the trade's max loss (Rs 2,600),
     so it cannot be reached." Save still works. Type 400 again: the line goes.
-N8. Side closed (ADR-330 (2), (33), Lane P P7, server side only): on a paper iron condor with a plan exit both call legs.
+N8. [needs live prices: yes] Side closed (ADR-330 (2), (33), Lane P P7, server side only): on a paper iron condor with a plan exit both call legs.
     Within one worker cycle Alerts > Active gains one row naming the closed side and the bell goes up by 1. Its two
     page answers (add legs / confirm the new shape) are not built yet (Lane P Wave 2, Lane J next).
-N9. Real P&L total (Lane S): Positions with no real position in a strategy: "Real P&L" shows a dash and "No real
+N9. [needs live prices: yes] Real P&L total (Lane S): Positions with no real position in a strategy: "Real P&L" shows a dash and "No real
     positions are open in your strategies."; "Paper P&L" shows its own figure beside it, not added. With one real
     position: the total shows the row's figure with "Zerodha, as at HH:MM:SS IST" and equals Kite's P&L for that
     contract at the same minute. Filter All / Real / Paper: the two totals stay separate.
-N10. Side closed, the answers (ADR-330 (2)(b), (33)). After N8, Alerts > Active, the side-closed row: press "Add the
+N10. [needs live prices: yes] Side closed, the answers (ADR-330 (2)(b), (33)). After N8, Alerts > Active, the side-closed row: press "Add the
     legs again": the answer is stored and the builder of that trade opens. On another side-closed row press "Confirm
     the new shape": the confirmation shows the row's own sentence "The call side of this trade is closed. Add the legs
     again, or confirm the new shape: this strategy will change from its entry shape to Bull Put Spread." (the shape as
@@ -128,23 +132,23 @@ N10. Side closed, the answers (ADR-330 (2)(b), (33)). After N8, Alerts > Active,
     Plan watch after a side closed (ADR-330 (2)(a)): a plan rule that needs the closed side reads "Not applicable: the
     call side is closed" with dashes for now and distance; the other side's rules keep working. Note: the stock iron
     condor plan has no side-scoped rule (only T-05 is, and it is off), so this line shows only on a plan with T-05 on.
-N11. Reset to playbook (ADR-330 (9), (32)). A plan saved from a playbook: switch one condition off, type a Rs 400 stop
+N11. [needs live prices: no] Reset to playbook (ADR-330 (9), (32)). A plan saved from a playbook: switch one condition off, type a Rs 400 stop
     and a 15:15 time exit, Save. Open the plan sheet > Edit > "Reset to playbook": one confirmation says the typed
     levels stay; Confirm: the condition is on again, the Rs 400 stop and 15:15 stay, the changed / switched-off markers
     show. A plan whose playbook was deleted: the reset is refused with the server's sentence.
-N12. Deleted / Restored in the history (ADR-330 (31)). My Strategies: delete one draft, then Undo. Open its history:
+N12. [needs live prices: no] Deleted / Restored in the history (ADR-330 (31)). My Strategies: delete one draft, then Undo. Open its history:
     two entries "Deleted" and "Restored", each with its time, and no Restore button on either. Bulk: tick 3 rows,
     Delete selected, Undo: each of the 3 histories has one "Deleted" and one "Restored".
-N13. Customise triggers keeps the plan (S-11). Plan sheet: type 400 in "Stop (Rs)" and a time exit (today, 15:15),
+N13. [needs live prices: no] Customise triggers keeps the plan (S-11). Plan sheet: type 400 in "Stop (Rs)" and a time exit (today, 15:15),
     then press "Customise triggers": the customise page opens. Come back to the builder: the plan sheet opens again by
     itself with 400 and 15:15 still typed; Save saves them. Another strategy's sheet shows nothing held.
 Re-checks after the merge (quick):
-R1. Exit from Positions: Positions > Paper > a trade > Exit: the confirmation, Cancel exits nothing, Confirm exits.
-R2. Positions: the real and paper lists load; the Stops link of a Live Strategies card opens Positions at that trade's
+R1. [needs live prices: yes] Exit from Positions: Positions > Paper > a trade > Exit: the confirmation, Cancel exits nothing, Confirm exits.
+R2. [needs live prices: no] Positions: the real and paper lists load; the Stops link of a Live Strategies card opens Positions at that trade's
     Stops panel (ADR-330 (21)).
-R3. Builder: open a saved paper trade; the payoff, Greeks and live P&L show; Add Selected from the chain adds legs; the
+R3. [needs live prices: yes] Builder: open a saved paper trade; the payoff, Greeks and live P&L show; Add Selected from the chain adds legs; the
     leave question reads "Leave the builder? The N pending changes will be lost." (ADR-330 (22)).
-R4. Alert titles and lists carry the number and the NEAREST open-leg expiry, as in "Short Iron Condor" (#172, 1 Dec)
+R4. [needs live prices: yes] Alert titles and lists carry the number and the NEAREST open-leg expiry, as in "Short Iron Condor" (#172, 1 Dec)
     (ADR-330 (19)); a trade with no open leg shows "(#172)" only. Two paper trades with the same name show two numbers.
 
 ## (c) What is merged, what is left out
