@@ -1101,8 +1101,6 @@ test.describe('Builder running paper trade: edits, Review and add, Exit (REQ-109
 
   test('PP-20 N-05 a blocked Review and add must look disabled: with an Exit staged and the book unreadable the button is disabled', async ({ page }) => {
     // Spec basis: owner N-05; ADR-328 (4) (no exit built from old prices; the panel says why)
-    // expected-fail: N-05: today the button stays blue and clickable while Review and add silently does nothing (StrategyBuilderPage reviewPending returns)
-    test.fail()
     const S = await stub(page); await openPaper(page)
     await page.getByTestId('paper-exit-all').click()
     await page.getByTestId('paper-cancel').click()
@@ -1125,8 +1123,6 @@ test.describe('Builder running paper trade: edits, Review and add, Exit (REQ-109
 
   test('PP-22 N-04 when the page closes the Exit list itself (book becomes unreadable) the staged exit does not remain', async ({ page }) => {
     // Spec basis: owner N-04 (after the dialog closed by itself the builder still held the exit as an unsaved change)
-    // expected-fail: N-04: today the legs stay staged ("N pending changes" with Review and add) after the page closed the dialog
-    test.fail()
     const S = await stub(page); await openPaper(page)
     await page.getByTestId('paper-exit-all').click()
     await expect(page.getByTestId('paper-confirm')).toBeVisible()
@@ -1150,8 +1146,6 @@ test.describe('Builder running paper trade: edits, Review and add, Exit (REQ-109
 
   test('PP-24 N-07 the P&L Table tab and the Net Positions table show the same LTP for the same contract (one price reader, ADR-008)', async ({ page }) => {
     // Spec basis: owner N-07; ADR-008 (one engine owns every P&L number); ADR-328 (3) (one reader)
-    // expected-fail: N-07: today the P&L Table prints the outcome's leg LTP (39.15) while Net Positions prints the paper book's LTP (41.00) for the same contract
-    test.fail()
     const one = { ...paperBook(), positions: [{ ...book63.positions[0], contract_id: 44624, contract_text: 'NIFTY 22800 CE 2026-10-13', instrument: 'CE', strike: '22800.00', expiry: '2026-10-13',
       net_quantity: -65, average: '100.00', average_text: '100.00', ltp: '41.00', ltp_text: '41.00' }], orders: [{ ...book63.orders[0], contract_id: 44624, side: 'SELL', contract_text: 'NIFTY 22800 CE 2026-10-13' }], expired_open: false }
     await stub(page, { book: { json: one } })
@@ -1178,8 +1172,6 @@ test.describe('Builder running paper trade: edits, Review and add, Exit (REQ-109
 
   test('PP-27 row 12 an edit to a running trade is kept after a trip to the Option Chain and back', async ({ page }) => {
     // Spec basis: owner row 12 (A12, A12-retry); ADR-207 (2); ADR-329 (1) (the builder's edits survive the chain trip)
-    // expected-fail: row 12: today after Back the builder shows "0 pending changes" and all four legs again (the pending removal is lost)
-    test.fail()
     await stub(page); await openPaper(page)
     await rows(page).nth(0).getByTestId('remove-leg').click()
     await expect(page.getByTestId('paper-pending-count')).toHaveText('1 pending change')

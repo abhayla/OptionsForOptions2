@@ -197,6 +197,8 @@ async function navTo(page: Page, testid: string) {
   const link = page.getByTestId(testid)
   await link.click()
 }
+// ADR-330 (22): a RUNNING trade with staged changes asks "The N pending change(s) will be lost."; a new unsaved strategy keeps "unsaved leg(s)"
+const leavePendingText = (n: number) => `Leave the builder? The ${n} pending ${n === 1 ? 'change' : 'changes'} will be lost.`
 const leaveText = (n: number) => `Leave the builder? The ${n} unsaved ${n === 1 ? 'leg' : 'legs'} will be lost.`
 
 // =============================================================================================== opening a strategy, Drafts Mode
@@ -334,7 +336,6 @@ test.describe('Builder: opening a saved strategy and Drafts Mode (REQ-134 AC-5, 
   // Owner check row 12 / A12: Lane R is fixing it. Written to the spec (ADR-329 (1) and the Phase 5 check 12).
   test('A12 / row 12 Drafts Mode across the chain trip: a pending removal is still there after Market > Option Chain and Back', async ({ page }, info) => {
     // Spec basis: ADR-329 (1) (the builder's legs are kept across the Option Chain trip, Drafts Mode too); modular-doors RESULTS owner check 12
-    test.fail() // expected-fail: A12 row 12: after the trip and Back the pending change is gone ("0 pending changes", both legs); Lane R is fixing it on fix/screen-findings-1126
     const S = await stubBuilder(page)
     S.paper.set(172, PAPER_BOOK())
     await openPaper(page)
@@ -351,7 +352,6 @@ test.describe('Builder: opening a saved strategy and Drafts Mode (REQ-134 AC-5, 
 
   test('A12b row 12 (changed book): after the trip the book changed meanwhile, the book stands and the page says "The strategy changed while you were away. Your unsaved edits were not restored."', async ({ page }) => {
     // Spec basis: modular-doors RESULTS owner check 12; ADR-329 (1)
-    test.fail() // expected-fail: A12 row 12: the same loss as A12, so the sentence is never reached; Lane R is fixing it
     const S = await stubBuilder(page)
     S.paper.set(172, PAPER_BOOK())
     await openPaper(page)
@@ -473,7 +473,7 @@ test.describe('Builder: the leave question (ADR-329 (2), REQ-154)', () => {
     await expect(page.getByTestId('modal-actions').getByRole('button')).toHaveText(['Stay', 'Leave'])
   })
 
-  test('LV-10 N-11 Drafts Mode: the question counts the pending change ("The 1 unsaved leg will be lost.") although a removal is staged', async ({ page }) => {
+  test('LV-10 N-11 Drafts Mode: the question counts the pending change ("The 1 pending change will be lost.") although a removal is staged', async ({ page }) => {
     // Spec basis: ADR-329 (2) wording; owner check 15 (the question counts the same number the bar shows); N-11 is an observation (wording says "leg" for a staged removal), the spec has no other sentence
     const S = await stubBuilder(page)
     S.paper.set(172, PAPER_BOOK())
@@ -481,7 +481,7 @@ test.describe('Builder: the leave question (ADR-329 (2), REQ-154)', () => {
     await removeLegAt(page, 1)
     await expect(page.getByTestId('paper-pending-count')).toHaveText('1 pending change')
     await page.getByTestId('nav-alerts').click()
-    await expect(page.getByTestId('leave-question')).toHaveText(leaveText(1))
+    await expect(page.getByTestId('leave-question')).toHaveText(leavePendingText(1)) // ADR-330 (22): running paper trade 172 with a staged removal says "pending change"
   })
 
   test('LV-11 A15 Drafts Mode: Stay, then Discard, then Alerts opens with no question ("0 pending changes")', async ({ page }) => {
@@ -1682,7 +1682,6 @@ test.describe('Builder: the leg drawer tabs, History drawer and the Drawer primi
 test.describe('Builder: loading, not found and failure states (REQ-134 AC-5, REQ-065, REQ-035)', () => {
   test('ST-1 N-13 while a saved strategy is being read the page does not say "No draft strategy is open"', async ({ page }, info) => {
     // Spec basis: none (searched: loading saved strategy; REQ-154 "Why" names the same sentence as the problem a user sees when work seems gone); owner N-13
-    test.fail() // expected-fail: NEW-T65 (owner N-13): for the 4-5 s the strategy is read the page says "No draft strategy is open. Add a leg to start one." and "No legs yet"
     const S = await stubBuilder(page)
     const g = gate()
     S.one.set(7, { wait: g.wait, json: SAVED_7() })
