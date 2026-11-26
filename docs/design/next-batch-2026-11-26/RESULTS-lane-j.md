@@ -7,6 +7,16 @@ for these items by the owner on 26 Nov, see RESULTS-lane-p.md). Highest status c
 
 Spec basis: ADR-330 (1) to (27) and its one-module instruction; ADR-002; ADR-003; ADR-008; ADR-016 to ADR-019.
 
+## Status for the coordinator (this session cannot send messages: the session-message service refuses it as untrusted)
+
+1. On origin: Step 2 wiring since push 2 (7d81d0a); every head you named through 3d7aaf7 (push 3). Built and gated in
+   this push or the one before: P7 answers, P8 Reset, ADR-330 (31) with 0057, S-11, the Not-applicable line, Lane R
+   71ed990, Lane U 63091d7. #753 (0058) is still being built: it goes in only with its review and proof by 07:00 IST.
+2. Each push runs the full pre-push gate (about 35-40 min); the head of section (c) "Push log" is the latest.
+3. Next pushes: every gate pass until 07:00 IST; final head by 07:30 IST; nothing after until you say.
+4. Blocking: nothing. Approvals the owner may give later (none block the test): see "Lines waiting for a person's
+   approval" at the end.
+
 ## (a) PC set-up (do these first, in this order)
 
 1. **Back up the database FIRST** (the PC's PostgreSQL is the owner's live one). In a terminal on the PC:
