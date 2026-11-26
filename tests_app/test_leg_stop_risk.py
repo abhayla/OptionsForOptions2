@@ -107,7 +107,7 @@ async def test_a_contract_that_is_not_open_is_refused_like_the_save(db):
         reply = await _ask(app, stored.id, contract, "140.70")
         assert HTTPStatus.BAD_REQUEST <= reply.status_code < HTTPStatus.INTERNAL_SERVER_ERROR, reply.text
         assert "state" not in reply.json()
-        assert reply.json()["code"] == "paper_trigger_leg_not_open", reply.text
+        assert reply.json()["code"] == "STRATEGY_VALIDATION_441", reply.text
 
 
 async def test_a_level_that_is_not_a_multiple_of_five_paise_is_refused_like_the_save(db):
@@ -116,4 +116,4 @@ async def test_a_level_that_is_not_a_multiple_of_five_paise_is_refused_like_the_
         reply = await _ask(app, stored.id, ids[SHORT_CALL], bad)
         assert HTTPStatus.BAD_REQUEST <= reply.status_code < HTTPStatus.INTERNAL_SERVER_ERROR, (bad, reply.text)
         assert "state" not in reply.json()
-        assert reply.json()["code"] == "paper_trigger_level_invalid", reply.text
+        assert reply.json()["code"] == "STRATEGY_VALIDATION_440", reply.text
