@@ -1676,12 +1676,14 @@ test.describe('Builder: the leg drawer tabs, History drawer and the Drawer primi
 // =============================================================================================== loading, not found, failure
 test.describe('Builder: loading, not found and failure states (REQ-134 AC-5, REQ-065, REQ-035)', () => {
   test('ST-1 N-13 while a saved strategy is being read the page does not say "No draft strategy is open"', async ({ page }, info) => {
-    // Spec basis: none (searched: loading saved strategy; REQ-154 "Why" names the same sentence as the problem a user sees when work seems gone); owner N-13
+    // Spec basis: none (searched: loading saved strategy; REQ-154 "Why" names the same sentence as the problem a user sees when work seems gone); owner N-13;
+    // D-N13 / N-34 (RESULTS-lane-r.md): while opening the left card is the loading line, not an empty "New Strategy" shell
     const S = await stubBuilder(page)
     const g = gate()
     S.one.set(7, { wait: g.wait, json: SAVED_7() })
     await page.goto(`${BUILDER}?strategy=7`)
-    await expect(page.getByTestId('strategy-card-name')).toBeVisible()
+    await expect(page.getByTestId('opening-card')).toHaveText('Working out the outcome...')
+    await expect(page.getByTestId('strategy-card-name')).toHaveCount(0)
     await shot(page, `NEW-T65-${info.project.name}`)
     await expect(page.getByTestId('state-no-draft')).toHaveCount(0)
     g.open()
