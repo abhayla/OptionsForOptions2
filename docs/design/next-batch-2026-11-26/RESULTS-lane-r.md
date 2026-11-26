@@ -227,3 +227,25 @@ Result on the PC: 15 PASS with this morning's failure gone, 3 PASS with a remain
 3. N-35: open the trade in two tabs; in tab 2 exit one leg; in tab 1: the bins, strike +/-, lots, Clear all, Add/Edit and Shift/Width/Hedge are greyed, with "This trade changed elsewhere. Reload to see the current legs."; reload: all enabled.
 4. D-N13: open `/strategy/builder?strategy=<a running trade>` fresh. Expected: one loading card, never an empty "New Strategy" with Save / Add to Paper, then the trade.
 5. N-36 / N-39: chain clash > Cancel > Back: no question again; My Strategies bulk delete > Undo: the "2 deleted" line goes at once.
+
+## After the close (owner comment 7189204004, run 15:31 to 15:50 IST on 7bf64eb)
+
+Result on the PC: 3 PASS (AC-01 market-closed Save, AC-03 the three P&L places equal at the last close, AC-SETTLE SENSEX
+trade 173 settled with the right sum), 1 FAIL (AC-R06), 1 NOT CHECKED (AC-R10).
+
+| Finding | Status | Root cause (one sentence) | Class before / after | Tests red, then green |
+|---|---|---|---|---|
+| AC-R06 / N-46, Home and Positions totals pause when one trade cannot be priced | Fixed, not tested; SPEC CHANGE pending owner read (ADR-324 (3b), placeholder ADR-NB-2; question LR-Q15) | The server summed every non-expired strategy and blanked the whole total on any other missing price, exactly as ADR-324 (1) says ("Any other reason a price is missing ... keeps today's behaviour: the figure is blank with its reason"); #173, expiring that day and awaiting settlement, had no live price. | Totals over several paper strategies that blank on one unpriced member: 3 (Positions header, Today total, Home Total P&L); 0 after: the server sums the strategies that can be priced and a count line names how many were left out and why. All unpriced: blank with the reason, as before. | `tests_app/test_paper_totals.py` -k ac_r06: 2 failed, then 22 passed; `test_d68_today_total.py` 10 passed (one test that pinned the whole-pause rule rewritten); frontend `home-figures-d56`, `paper-list-4b`: 45 passed. |
+| N-47, settled trade's Positions card has no settlement sentence | Fixed, not tested | The list reply already carried the server's settlement sentence; the card's reader dropped it. | 1 screen; the card prints the same server sentence as the builder. A leg that expired worthless still shows the server's exit text (e.g. 0.00) - that is the settlement price. | `paper-list-4b.test.js`: 1 failed without the fix (lead's run), then 29 pass; app test `test_paper_triggers_routes.py` -k settlement: 2 passed. |
+| N-48, settled trade's builder shows "No legs yet" and Add leg | Fixed, not tested | The empty-legs block did not know the trade was finished. | 1 screen; a trade whose book has closed rows and no open position shows no empty-legs block and no Add leg / Add/Edit. | `builder-completed-n48.test.js`: red, then pass. |
+| N-44, "No price for:" above a priced table after the close | Fixed, not tested | The Paper P&L panel took the unpriced line from the tracking reply (live prices only) when the book had none. | One reader: the line comes from the book read only. | `one-source-d41.test.js`: 1 failed with the old line, then 18 pass. |
+| N-45, prices keep moving after the close under "Prices are from 15:30:00" | Deferred #752, question LR-Q14 | The label time is clamped to the close; the figure is the feed's latest quote. | - | - |
+| AC-R10, Compare's "Open in builder and prepare basket" greyed after the close | NOT CHECKED (by design after the close: "Wait for fresh prices") | - | - | Re-test at the open, below. |
+
+## Re-test: after-close items (next market day)
+
+1. AC-R10 (at the open, after 09:15): Alerts > "Compare approaches" on a paper trade's alert > "Open in builder and prepare basket" is enabled once prices are live; click it: the builder opens on that trade with the chosen approach's legs staged.
+2. N-47 (after the close on an expiry day, or on SENSEX trade 173 now): Positions > Paper > Show closed positions > the settled card's closed legs read "Paper - settled at expiry: SENSEX closed at 84,328.59", the same as the builder.
+3. N-48: open the builder of trade 173: no "No legs yet", no Add leg; the closed legs and "Closed: result" show.
+4. N-44 (after the close): builder of a running paper trade > Paper P&L panel: no "No price for: ..." line when every leg shows a price.
+5. AC-R06 (after the close, with one settled trade): Home's "Total P&L" shows a figure over the trades that can be priced, with the count line, and equals the sum of those rows on My Strategies.

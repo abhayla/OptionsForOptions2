@@ -125,3 +125,28 @@ Spec basis: REQ-070 (the delete confirm reads "Delete this draft? Its history is
 Real case: drafts 182 and 183 reappeared and nothing on screen says when or how; `delete_draft` and `undelete_draft`
 (backend/ofo_app/strategy_store.py ~359-383) set or clear `deleted_at` and write no history entry. Options: (a) keep;
 (b) add "Deleted" and "Restored" events to the strategy's history (server, small). Recommendation: (b).
+
+## LR-Q14 N-45: what "the last close" is when the feed keeps moving after 15:30 (open, 26 Nov 2026)
+
+Spec basis: ADR-200 (2) ("last close" is "the last price the feed or a REST read holds ... (the LTP at the close)"; the
+label time "is that price's own time"); ADR-212 (the paper screens after hours show "the last close the feed holds"). Real
+case (after-close check, 15:33-15:37): trade 185's 25750 PE read 99.75, then 99.60, then 100.10 under "Prices are from
+15:30:00". Issue #752. Paper only, no fills after hours.
+Options: (a) hold the last price received up to the calendar close (15:30) and ignore later frames for the figure
+(recommended: the label and the figure then agree; it amends ADR-200 (2)'s "the last price the feed holds"); (b) keep the
+latest price and label it with its own time ("as of 15:37:12"); (c) leave as is. Needs a row.
+
+## LR-Q15 AC-R06: does one unpriced trade blank the whole Total P&L? (open, 26 Nov 2026; built as recommended, reversible)
+
+Business call: which total a trader sees on Home and the Positions header when one running trade has no live price.
+Spec basis: ADR-324 (1) (status proposed, pending owner read; taken unattended on 25 Nov): header figures are sums over
+the strategies that can be priced; expired ones are left out and counted; "Any other reason a price is missing (prices
+not live, not connected, delisted, reassigned) keeps today's behaviour: the figure is blank with its reason." SPEC CHANGE
+built as ADR-324 (3b) [placeholder ADR-NB-2]: the same left-out-and-counted rule for any unpriced trade; all unpriced still
+blanks. Real case (after-close check, 15:32): five of six running trades priced at the last close (rows sum +15,775.80),
+#173 (SENSEX, expiring that day, awaiting settlement) paused; Home showed "Total P&L -" with "Paper P&L paused - prices not
+live". New wording (pinned "pending owner read"): "1 strategy left out: its price is not live.", "{count} strategies left
+out: their prices are not live.", "{count} strategies left out: their contracts have expired or their prices are not live."
+Options: (a) keep the build: a total over the priced trades with the count line (recommended: one unpriced trade no
+longer hides the other five); (b) revert to the blank total; (c) as (a), but a settled or settling trade counts at its
+booked result instead of being left out (needs a settlement rule for the header).
