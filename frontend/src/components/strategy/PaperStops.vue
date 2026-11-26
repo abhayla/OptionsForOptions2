@@ -171,7 +171,7 @@ async function keep(t) {
 
     <!-- D-44 round 1: from lg up the form (first) and the list of stops (second) sit side by side; narrower they stack -->
     <div class="grid gap-x-6 lg:grid-cols-2" data-testid="stops-columns">
-    <div class="min-w-0" data-testid="stops-form">
+    <div :key="strategyId" class="min-w-0" data-testid="stops-form">
     <div class="mt-2" data-testid="conditional-exit">
       <p class="font-medium">Conditional exit{{ underlying ? ` - ${underlying}` : '' }}</p>
       <p class="text-xs text-ink-muted">Exit all legs when the index crosses a level. Fill one or both.</p>
@@ -180,7 +180,7 @@ async function keep(t) {
         <label class="text-xs">Below<input v-model="below" type="text" inputmode="decimal" class="ml-1 w-28 rounded border border-line px-1 py-0.5 text-sm" data-testid="ce-below" /></label>
         <button type="button" class="rounded border border-line px-3 py-1" :disabled="busy || !!ceReason" data-testid="ce-save" @click="saveExit">{{ busy ? 'Saving...' : 'Save' }}</button>
       </div>
-      <p v-if="ceReason && !(saved && ceReason === AT_LEAST_ONE)" class="text-xs text-ink-muted" data-testid="ce-reason">{{ ceReason }}</p>
+      <div class="min-h-4" data-testid="ce-reason-slot"><p v-if="ceReason && !(saved && ceReason === AT_LEAST_ONE)" class="text-xs text-ink-muted" data-testid="ce-reason">{{ ceReason }}</p></div>
     </div>
 
     <div v-if="legs.length" class="mt-2" data-testid="leg-stops">
@@ -193,7 +193,7 @@ async function keep(t) {
         </select>
         <input :value="stopOf(l.index).level" type="text" inputmode="decimal" placeholder="Stop price" class="w-24 rounded border border-line px-1 py-0.5" :data-testid="`stop-level-${l.index}`" :aria-label="`Stop price for ${l.label}`" @input="setStop(l.index, { level: $event.target.value })" />
         <button type="button" class="rounded border border-line px-3 py-1" :disabled="busy || !!stopReason(l.index)" :data-testid="`stop-save-${l.index}`" @click="saveStop(l)">{{ busy ? 'Saving...' : 'Save' }}</button>
-        <span v-if="stopReason(l.index) && typed(stopOf(l.index).level)" class="text-xs text-ink-muted" :data-testid="`stop-reason-${l.index}`">{{ stopReason(l.index) }}</span>
+        <span class="block min-h-4 basis-full text-xs text-ink-muted" :data-testid="`stop-reason-slot-${l.index}`"><span v-if="stopReason(l.index) && typed(stopOf(l.index).level)" :data-testid="`stop-reason-${l.index}`">{{ stopReason(l.index) }}</span></span>
       </div>
     </div>
 
@@ -208,7 +208,7 @@ async function keep(t) {
     <div class="min-w-0" data-testid="stops-list">
     <div class="mt-2" data-testid="triggers">
       <p class="font-medium">Stops on this strategy</p>
-      <p v-if="listError" class="text-xs text-ink-muted" data-testid="stops-list-error">{{ listError }}</p>
+      <div class="min-h-4" data-testid="stops-list-slot"><p v-if="listError" class="text-xs text-ink-muted" data-testid="stops-list-error">{{ listError }}</p></div>
       <p v-if="triggers && !triggers.length" class="text-xs text-ink-muted" data-testid="stops-empty">No stops set.</p>
       <ul v-else-if="triggers">
         <li v-for="t in triggers" :key="t.id" class="flex flex-wrap items-center gap-2 border-b border-line py-1" data-testid="trigger-row" :data-trigger-id="t.id">

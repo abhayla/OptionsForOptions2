@@ -268,6 +268,34 @@ describe('Stops panel', () => {
   })
 
   // S-26: typing in a level must keep the same element, value and focus while the panel refreshes and a status line appears.
+  // S-26 root cause (measured against the pre-fix panel in jsdom): the inputs were never re-mounted and kept value and focus; what moved
+  // the boxes was the reason lines (ce-reason, stop-reason) and status lines coming and going as v-if lines in the flow.
+  it('S-26: every line that comes and goes while typing lives in an always-rendered reserved slot; inputs and form block are the same nodes', async () => {
+    const w = await open({ triggers: [trig(1)] })
+    const slots = ['stops-status-slot', 'ce-reason-slot', 'stops-list-slot']
+    for (const s of slots) expect(has(w, s)).toBe(true)
+    const stopSlot = w.find('[data-testid^="stop-reason-slot-"]')
+    expect(stopSlot.exists()).toBe(true)
+    const inputs = [t(w, 'ce-above').element, t(w, 'ce-below').element, w.get('[data-testid^="stop-level-"]').element]
+    const form = t(w, 'stops-form').element
+    inputs[0].focus()
+    await t(w, 'ce-above').setValue('24500.07') // ce-reason appears
+    await w.get('[data-testid^="stop-level-"]').setValue('1.07') // stop-reason appears
+    expect(has(w, 'ce-reason')).toBe(true)
+    expect(stopSlot.find('[data-testid^="stop-reason-"]').exists()).toBe(true)
+    expect(t(w, 'ce-reason-slot').element.contains(t(w, 'ce-reason').element)).toBe(true)
+    await t(w, 'ce-above').setValue('24500') // ce-reason goes
+    expect(has(w, 'ce-reason')).toBe(false)
+    for (const s of slots) expect(has(w, s)).toBe(true)
+    expect(w.find('[data-testid^="stop-reason-slot-"]').element).toBe(stopSlot.element)
+    inputs[0].focus()
+    answers[`GET ${TRIG}`] = () => Promise.reject({ message: 'net', status: null, parts: null })
+    await w.vm.$nextTick()
+    expect([t(w, 'ce-above').element, t(w, 'ce-below').element, w.get('[data-testid^="stop-level-"]').element]).toEqual(inputs)
+    expect(t(w, 'stops-form').element).toBe(form)
+    expect(inputs[0].value).toBe('24500')
+    expect(document.activeElement === inputs[0] || document.activeElement === document.body).toBe(true)
+  })
   it('S-26: typing keeps the same input element, value and focus across a refresh and a status line; the status slot keeps its height class', async () => {
     const w = await open({ triggers: [trig(1)] })
     const before = t(w, 'ce-above').element
