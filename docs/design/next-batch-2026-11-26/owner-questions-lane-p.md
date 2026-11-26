@@ -42,6 +42,8 @@ Options:
 
 Built meanwhile: (a), the words say both, in one place (`settings_in_force.stops_of` and the stop words), reversible.
 
+**Answered** by the owner on 26 Nov 2026 (question tool, through the coordinator): "Rupees replace only the % part (Recommended)" = option (a); recorded in ADR-330 (5). The flag is `settings_in_force.RUPEE_STOP_KEEPS_CREDIT = True`.
+
 ## LP-3 (decided, B2) The per-lot figure when the legs have different lot counts
 
 Spec basis: owner answer Q3 (ADR-330): "per-lot figure shown beside it"; silent on legs of different sizes (searched:
