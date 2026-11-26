@@ -44,21 +44,27 @@
       </div>
     </div>
     <!-- GC-ICFIX Issue 10 (ADR-256): the server's one factual line when this exit leaves a sold leg unprotected; Confirm stays enabled -->
-    <p v-if="exitState === 'risk'" class="mt-3 text-sm font-medium text-warn" role="status" data-testid="paper-exit-warning">{{ exitWarning }}</p>
-    <!-- fail closed: a check that could not run is said so, never shown as "no risk"; Confirm is not locked by either line -->
-    <p v-else-if="exitState === 'unchecked'" class="mt-3 text-sm font-medium text-warn" role="status" data-testid="paper-exit-unchecked">{{ PAPER_EXIT_UNCHECKED_TEXT }}</p>
-    <p v-else-if="exitState === 'checking'" class="mt-3 text-sm text-ink-muted" role="status" data-testid="paper-exit-checking">{{ PAPER_EXIT_CHECKING_TEXT }}</p>
+    <!-- N-22 (same class as S-26): one always-rendered slot with a reserved height; the checking / risk / unchecked line comes and goes inside it, so the buttons below never move -->
+    <div :class="rows.some((r) => r.kind === 'exit') ? 'min-h-[3.75rem]' : ''" class="mt-3" data-testid="paper-exit-slot">
+      <p v-if="exitState === 'risk'" class="text-sm font-medium text-warn" role="status" data-testid="paper-exit-warning">{{ exitWarning }}</p>
+      <!-- fail closed: a check that could not run is said so, never shown as "no risk"; Confirm is not locked by either line -->
+      <p v-else-if="exitState === 'unchecked'" class="text-sm font-medium text-warn" role="status" data-testid="paper-exit-unchecked">{{ PAPER_EXIT_UNCHECKED_TEXT }}</p>
+      <p v-else-if="exitState === 'checking'" class="text-sm text-ink-muted" role="status" data-testid="paper-exit-checking">{{ PAPER_EXIT_CHECKING_TEXT }}</p>
+    </div>
     <p class="mt-3 text-xs text-ink-muted" data-testid="paper-not-real">{{ PAPER_NOT_REAL_TEXT }}</p>
     <!-- fix/paper-dialog-safe (ADR-017): a stored order is never offered again; an answer of unknown outcome sends the user to the
          Orderbook first and keeps Confirm locked for PAPER_UNKNOWN_HOLD_MS; a refusal (4xx: nothing stored) unlocks after an edit -->
     <!-- GC-ICFIX Issue 6: these result lines sit in the frame's pinned status area (not the scrolling body), so they show with the buttons -->
-    <template v-if="state === 'placed' || state === 'unknown' || error" #status>
+    <!-- N-22: the status slot is always rendered (reserved height), so a result or error line fills it instead of adding a row above the buttons -->
+    <template #status>
+      <div class="min-h-10" data-testid="paper-status-slot">
       <p v-if="state === 'placed'" class="text-sm font-medium" role="status" data-testid="paper-placed">{{ PAPER_PLACED_NOT_REFRESHED_TEXT }}</p>
       <p v-else-if="state === 'unknown'" class="text-sm text-red-700" role="alert" data-testid="paper-unknown">
         {{ PAPER_UNKNOWN_TEXT }}
         <button type="button" class="ml-1 font-semibold text-accent underline" data-testid="paper-open-orderbook" @click="emit('orderbook')">{{ PAPER_OPEN_ORDERBOOK_LABEL }}</button>
       </p>
       <p v-else-if="error" class="text-sm text-red-700" role="alert" data-testid="paper-error">{{ error }}</p>
+      </div>
     </template>
     <template #actions>
       <button type="button" class="h-10 rounded-lg border border-line px-3 font-medium" data-testid="paper-cancel" @click="emit('cancel')">{{ state === 'placed' ? 'Close' : 'Cancel' }}</button>

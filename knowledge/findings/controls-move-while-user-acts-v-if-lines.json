@@ -1,0 +1,27 @@
+{
+  "id": "controls-move-while-user-acts-v-if-lines",
+  "scope": "generic",
+  "class": "A status, risk-check, result or error line is shown with v-if above or beside buttons or inputs and appears or disappears on an async answer, so the control moves under the user's pointer and the click lands beside it.",
+  "mechanism": "The line has no reserved height: when it is removed (check finished, no warning) the dialog (centred, content-sized) shrinks and the buttons move; when a result line is added to the pinned status area the buttons move the other way.",
+  "first_seen": {
+    "date": "2026-11-26",
+    "where": "S-26 Stops panel (Lane Q2), then N-22 paper 'Exit Paper positions' dialog (owner C-02 12:11: Cancel moved up about 26 px when 'Checking whether this exit leaves a sold option without protection...' finished; first Cancel click missed)",
+    "evidence": "docs/design/next-batch-2026-11-26/RESULTS-lane-q2.md S-26; frontend/tests/paper-confirm-no-shift-n22.test.js (red 2 of 2, green)"
+  },
+  "fix": "Put every such line inside an always-rendered slot with a reserved min-height (v-if only on the text inside the slot); the Modal status slot is always passed. jsdom has no layout, so tests pin structure (same slot element before and after, same count of siblings above the actions); the pixels are checked on screen.",
+  "detection": {
+    "status": "unguarded",
+    "checks": ["frontend/tests/paper-confirm-no-shift-n22.test.js (paper confirm dialog only)"],
+    "note": "No generic detector; candidates still open: frontend/src/components/strategy/AdjustPlanSheet.vue:44 (template v-if #status), LegList.vue:167 (confirmingClear line), LegList.vue:200 and :283 (ErrorMessage v-if above rows), SaveDraftBar.vue:491, BrokerSettingsPage.vue:160 (confirming block)."
+  },
+  "spec_ref": [
+    "spec/decisions/ADR-003.md"
+  ],
+  "occurrences": [
+    {
+      "date": "2026-11-26",
+      "where": "N-22 paper confirm dialog, frontend/src/components/strategy/PaperConfirmDialog.vue (risk line, placed/unknown/error lines)",
+      "evidence": "owner C-02 12:11; fixed in lane-r-m"
+    }
+  ]
+}
