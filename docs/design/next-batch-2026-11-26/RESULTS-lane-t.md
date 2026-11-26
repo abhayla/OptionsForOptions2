@@ -12,6 +12,7 @@ code, no spec rows, no migration. Owner evidence: comment 7184365037 on PR #722 
 | Coverage guard | `frontend/tests/screen-inventory-guard.test.js` (vitest, runs in `npm run test:run`) | 1 | 0 | 0 | 2796b56 |
 | My Strategies | `frontend/e2e/screen-my-strategies.spec.ts` | 100 (LIST-9 mobile only) | 2 (NEW-T10, NEW-T11) | 2 | a6ed1c6 |
 | Current positions | `frontend/e2e/screen-positions.spec.ts` | 142 (stable: 568 passed with `--repeat-each 2`) | 6 (NEW-T20, NEW-T21/N-05, NEW-T22/N-04, NEW-T23, NEW-T24, N-01) | 5 | 4d9cbaa |
+| Live Strategies, Adjustment opportunities, Adjustments (playbooks, settings, system admin) | `frontend/e2e/screen-live-strategies.spec.ts` (+ `e2e/support/live-card-stub.ts`) | 130 (stable: 520 passed with `--repeat-each 2`; round 2 fixed a race in LINK-11) | 2 (N-14, NEW-T31) | 2 (NEW-T31, NEW-T32 observation) | 433f60c |
 
 Core proof: the row-2 test failed under one mutation (`HomeOverviewPage.vue` row link pinned to row 1: "Expected
 /strategy\/builder\?strategy=7$/ Received .../strategy/builder?strategy=12") and passed again after the revert.
@@ -40,6 +41,10 @@ migrated, 2026-10-08 catalogue seeded, uvicorn 8000-8002, previews 4173-4176) al
 | NEW-T24 | Current positions | `GET /positions` 500, then `GET /broker/status` answers non-JSON | Unreadable status is a failed read, not "not connected" (REQ-015 AC-10; PositionsPage's own rule); AC-10 is ambiguous: question | `data-state=not_connected` | `REAL-13` | `NEW-T24-1280.png` |
 | N-01 (owner) | Current positions | Stops: save a refused level, wait for the next good list re-read | The "Not saved:" refusal line stays (owner N-01) | Cleared by the next re-read | `STOP-11` | - |
 
+| N-14 (owner) | Live Strategies | Two Running paper trades both named "Short Iron Condor" | The two cards can be told apart (owner N-14; REQ-134 AC-1 allows shared names, silent on telling cards apart) | Identical headers "Short Iron Condor, NIFTY" on both viewports | `LINK-11` | `N-14-1280.png` |
+| NEW-T31 | Adjustment opportunities | Inbox answers 200 with `<html>gateway</html>`; open /positions/adjustment-opportunities | Unread inbox shows the neutral four-part error (REQ-065, REQ-162) | Empty inbox "Showing 0-0 of 0 rows", no error | `OPP-15` | `NEW-T31-1280.png` |
+| NEW-T32 (observation) | Adjustment opportunities | A dismissed outcome with a detail | Outcome and detail are separate words | DOM text "You dismissed thisNot relevant" (CSS margin only; a screen reader reads one word) | `OPP-1`, `OPP-5` (match with `\s*`) | - |
+
 Screenshots are written by the tests to `frontend/test-results/lane-t/` (gitignored; regenerated on each run).
 
 ## Coverage guard
@@ -48,6 +53,12 @@ Screenshots are written by the tests to `frontend/test-results/lane-t/` (gitigno
 file:line and label, when a route or control has no row in `screen-inventory.json`, or a row's control is gone.
 Matching is on source file + kind + testid-or-label, not the positional id. Proof: a temporary `<button>Lane T probe</button>`
 in `HomeOverviewPage.vue` made it fail with `HomeOverviewPage.vue:81 button "Lane T probe"`; reverted.
+
+## Not covered yet (Live Strategies and Adjustments; 2 rounds used)
+
+- ADJ-36 "Stop at % of margin" switch; ADJ-37..45 plan-edit block (needs `GET/POST /strategies/{id}/adjustment-plan` stubbed); ADJ-53/54 "Earlier values (N)" and its Change; ADJ-31 rail links; ADJ-48 time-of-day input.
+- Playbook editor approach checkboxes, day-rule inputs, situations step, stage from/to: rendered, not edited.
+- 25 s card give-up timer (D-41).
 
 ## Not covered yet (Current positions)
 
