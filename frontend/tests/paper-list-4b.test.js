@@ -92,6 +92,18 @@ describe('Paper tab from GET /paper/strategies (the real reply)', () => {
     expect(all(w, 'paper-group')[0].get('[data-testid="paper-state"]').text()).toBe('Exited')
   })
 
+  it('N-47: a settled closed leg prints the server settlement sentence under its exit, never a bare 0.00', async () => {
+    const r = clone()
+    const why = 'Paper - settled at expiry: SENSEX closed at 84,328.59'
+    r.strategies[1].closed = [{ ...r.strategies[1].closed[0], average_exit_text: '0.00 (settled)', reason_text: why }]
+    answers['GET /paper/strategies'] = ok(r)
+    const w = await show()
+    await t(w, 'show-closed').setValue(true)
+    const leg = all(w, 'paper-group')[1].get('[data-testid="paper-closed-leg"]')
+    expect(leg.get('[data-testid="paper-closed-reason"]').text()).toBe(why)
+    expect(leg.get('[data-testid="paper-closed-exit"]').text()).toContain('0.00 (settled)')
+  })
+
   it('a position row has Lots, Avg, LTP, Booked, Unbooked and P&L as the reply sent them', async () => {
     answers['GET /paper/strategies'] = ok(REAL)
     const w = await show()
