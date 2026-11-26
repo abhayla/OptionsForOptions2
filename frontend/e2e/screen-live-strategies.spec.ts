@@ -793,7 +793,7 @@ test.describe('Adjustment opportunities inbox (REQ-162 AC-1..AC-3, REQ-112, ADR-
     await expect(r.getByTestId('opp-summary')).toHaveText('3 adjustment conditions triggered')
     await expect(r.getByTestId('opp-condition')).toHaveText([C1, C2, 'A short leg premium falls'])
     await expect(r.getByTestId('opp-source')).toHaveText(LABEL)
-    await expect(r.getByTestId('opp-outcome')).toHaveText(['Open', 'Open', /You dismissed this\s*Not relevant/])
+    await expect(r.getByTestId('opp-outcome')).toHaveText(['Open', 'Open', 'You dismissed this Not relevant'])
   })
 
   test('OPP-2 the counts as the server sent them', async ({ page }) => {
@@ -834,7 +834,7 @@ test.describe('Adjustment opportunities inbox (REQ-162 AC-1..AC-3, REQ-112, ADR-
     await page.getByTestId('opp-dismiss-reason').selectOption('not_relevant')
     S.opps = ok(inbox([grp(1, 1, [rec(1, C1, 'dismissed', 'You dismissed this', 'Not relevant'), rec(2, C2, 'dismissed', 'You dismissed this', 'Not relevant'), rec(3, 'A short leg premium falls', 'dismissed', 'You dismissed this')], false)], { counts: counts(0, 3) }))
     await page.getByTestId('opp-dismiss').click()
-    await expect(page.getByTestId('opp-outcome')).toHaveText([/You dismissed this\s*Not relevant/, /You dismissed this\s*Not relevant/, 'You dismissed this'])
+    await expect(page.getByTestId('opp-outcome')).toHaveText(['You dismissed this Not relevant', 'You dismissed this Not relevant', 'You dismissed this'])
     expect(S.posts.filter((p) => p.path.endsWith('/dismiss'))).toEqual([
       { path: '/api/adjustment-opportunities/1/dismiss', body: { reason: 'not_relevant' } },
       { path: '/api/adjustment-opportunities/2/dismiss', body: { reason: 'not_relevant' } },
