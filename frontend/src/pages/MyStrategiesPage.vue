@@ -171,7 +171,7 @@ async function confirmRename(row) {
     <ErrorMessage v-if="errorParts" :parts="errorParts" compact prefix="list-error" data-testid="list-error" />
     <LoadFailed v-else-if="loadFailed" :text="LIST_LOAD_FAILED_TEXT" prefix="list-load" @retry="retryList" />
     <div v-else-if="!loaded" class="space-y-2" role="status" aria-label="Loading your strategies" data-testid="list-skeleton">
-      <div v-for="n in 4" :key="n" class="h-9 animate-pulse rounded bg-surface-muted"></div>
+      <div v-for="n in 4" :key="n" class="h-9 animate-pulse rounded bg-line"></div>
     </div>
     <EmptyState
       v-else-if="!shown.length" data-testid="list-empty"

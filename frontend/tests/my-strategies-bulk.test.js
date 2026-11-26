@@ -258,6 +258,16 @@ describe('S-05 list read states', () => {
     expect(w.find('[data-testid="list-skeleton"]').exists()).toBe(true)
     expect(w.text()).not.toContain('Loading...')
   })
+  it('N-29: the placeholder bars use the visible bg-line token, not the near-white surface-muted', async () => {
+    listAnswer = () => new Promise(() => {})
+    const w = await open()
+    const bars = w.get('[data-testid="list-skeleton"]').findAll('div')
+    expect(bars.length).toBeGreaterThan(0)
+    for (const b of bars) {
+      expect(b.classes()).toContain('bg-line')
+      expect(b.classes()).not.toContain('bg-surface-muted')
+    }
+  })
   it('failed shows LoadFailed and Retry reads again', async () => {
     listAnswer = () => Promise.reject(new Error('boom'))
     const w = await open()
