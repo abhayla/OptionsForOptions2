@@ -722,7 +722,8 @@ async def accept_plan(conn: Any, user_ref: str, strategy_id: int, playbook_id: i
                                  f"playbook {source.id} is {source.strategy_type}", field="strategy_type")
     copy = check_body(source.body if body is None else body, source.strategy_type)
     extra = plan_diff.added(copy, source.body)
-    if extra and current is not None and current.playbook_id == source.id:  # ADR-250/247: what the plan already held
+    if extra and current is not None and current.playbook_id in (source.id, None):  # ADR-250/247: what the plan already
+        # held (also a plan whose playbook was deleted, REQ-158 AC-5: it is re-pointed at the active one)
         extra = sorted(set(extra) - set(plan_diff.added(current.body, source.body)))  # stays; only NEW ones are refused
     if extra:  # ADR-330 (9): a plan cannot add a condition its playbook lacks; the section is named, never the key
         raise _bad(extra[0].split(".", 1)[0])
