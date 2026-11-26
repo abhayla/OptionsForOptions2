@@ -782,7 +782,7 @@ async def open_suggestion(conn: Any, user_ref: str, strategy_id: int, rule_id: s
                           beyond: tuple[str, Decimal, Decimal] | None = None,
                           limit: Decimal | None = None, adjustments: int | None = None,
                           target: Mapping[str, str | None] | None = None,
-                          kind: str | None = None, shown_at: datetime | None = None) -> Suggestion:
+                          kind: str = "adjustment_rule", shown_at: datetime | None = None) -> Suggestion:
     """REQ-112 AC-1: one open record per (strategy, rule); a rule still open returns its existing record.
     ``limit``: the limit in force at the stage (``Suggestion.limit``), beside the gate's rung ``threshold``.
     ``adjustments``: the strategy's adjustment count now (``Suggestion.adjustments``).

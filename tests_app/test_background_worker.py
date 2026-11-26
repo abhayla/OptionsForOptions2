@@ -1000,3 +1000,37 @@ async def test_f3_a_worse_close_marks_the_open_alert_escalated_and_a_stopped_not
             {"s": w.strategy_id})).all()
     assert ids == {"T-03": old}
     assert [tuple(r) for r in rows] == [(old, D("0.4100"), D("0.4000"), worse_at, None, None, "0.36")], rows
+
+
+async def test_m5_a_trade_that_closed_at_1114_says_1114_not_when_the_worker_noticed(app_db_url, monkeypatch):
+    """P1 round 3 M5 (owner Q2b: 'Closed by system: the trade closed at HH:MM'): the exited strategy's alert closes with
+    the time of the trade's last exit order (carried by TrackedExited), not the worker's clock."""
+    from ofo_app import adjustment_readers  # noqa: PLC0415
+    sid, _scn, _now, worker = await _ready(app_db_url, monkeypatch)
+    traded = datetime.datetime(2026, 11, 25, 11, 14, 3, tzinfo=IST)
+    async with app_db_url.begin() as conn:
+        await actionable_alerts.close_by_system(conn, "owner", sid, playbook_store.LAPSE_NOT_MONITORED)
+        alert = await actionable_alerts.raise_actionable(conn, "owner", sid, "T-06", "plan_loss_stop",
+                                                         at=traded - datetime.timedelta(minutes=12), value=D("15.5"),
+                                                         threshold=D("15.4"), trigger_id="T-06", stage=None)
+
+    async def exited(_sid, _rates):
+        raise adjustment_readers.TrackedExited("every leg exited", closed_at=traded)
+    monkeypatch.setattr(adjustment_readers, "read_tracked", exited)
+    await worker.rebuild()
+    async with app_db_url.connect() as conn:
+        closed = next(a for a in await actionable_alerts.history(conn, "owner") if a.id == alert.id)
+    assert (closed.answer, closed.closed_reason, closed.answered_at) == ("closed_by_system", "strategy_closed", traded)
+
+
+def test_m5_the_trades_close_time_is_its_last_exit_settle_or_stop_order():
+    from types import SimpleNamespace as NS  # noqa: PLC0415
+
+    from ofo_app.adjustment_readers import closed_at_of  # noqa: PLC0415
+    at = [datetime.datetime(2026, 11, 25, h, m, tzinfo=IST) for h, m in ((9, 20), (10, 5), (11, 14), (11, 30))]
+    rows = [NS(order=NS(kind=k, placed_at=t)) for k, t in zip(("open", "add", "exit", "open"), at, strict=True)]
+    assert closed_at_of(rows) == at[2]  # the last exit-like order: a later 'open' is not a close
+    assert closed_at_of([NS(order=NS(kind="settle", placed_at=at[3])), rows[2]]) == at[3]
+    assert closed_at_of([NS(order=NS(kind="stop", placed_at=at[1]))]) == at[1]
+    assert closed_at_of(rows[:2]) is None and closed_at_of([]) is None  # no exit order: never a guess
+    assert closed_at_of([NS(order=NS(kind="exit", placed_at=None))]) is None

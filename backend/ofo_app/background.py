@@ -1840,15 +1840,16 @@ class _NothingTraded(Exception):
 LISTER_LAPSE_FAILURES: dict[int, int] = {}
 
 
-async def _lapse_exited(db: Any, user_ref: str, sid: int, reason: str | None = None) -> None:
+async def _lapse_exited(db: Any, user_ref: str, sid: int, reason: str | None = None, **when: Any) -> None:
     """Lapse an exited strategy's open records (``reason`` default strategy_closed; #652 not_monitored for a strategy
-    that dropped out of the list for good), contained to that strategy: a failing write (a record no longer open,
+    that dropped out of the list for good; ``at``: the trade's own close time when known, M5), contained to that strategy: a failing write (a record no longer open,
     the database refusing) is rolled back, counted and logged once per strategy, and never drops the other strategies
     from the list or skips their gate read (the whole lister failing kept the old list; at start-up 0 monitored)."""
     from ofo_app import actionable_alerts, playbook_store  # noqa: PLC0415 - database layer at run time only
     try:
         if await playbook_store.open_suggestions(db, user_ref, sid):
-            await actionable_alerts.close_by_system(db, user_ref, sid, reason or playbook_store.LAPSE_STRATEGY_CLOSED)
+            await actionable_alerts.close_by_system(db, user_ref, sid, reason or playbook_store.LAPSE_STRATEGY_CLOSED,
+                                                    **when)
             await db.commit()
     except Exception:  # contained per strategy; retried at the next re-list
         await db.rollback()
@@ -1911,7 +1912,9 @@ async def owner_lister(provider: Any, gate: Any = None,
                     baskets = await _baskets_in(db, s.id) if resolved.body is not None else {}
         except (TrackedExited, _NothingTraded) as gone:  # all legs exited (REQ-112 AC-2; one writer, ADR-237 (6))
             async with held(gate, GATE_REBUILD), get_sessionmaker()() as db:  # one session at a time (#636 r4)
-                await _lapse_exited(db, OWNER_REF, s.id, getattr(gone, "lapse_reason", None))
+                closed_at = getattr(gone, "closed_at", None)  # the trade's own time, not when this worker noticed
+                await _lapse_exited(db, OWNER_REF, s.id, getattr(gone, "lapse_reason", None),
+                                    **({} if closed_at is None else {"at": closed_at}))
             continue
         except TrackedUnreadable:
             unread.add(s.id)
