@@ -1677,6 +1677,12 @@ _EXPLANATIONS: tuple[ExplanationTemplate, ...] = (
                         {"pct": PlaybookField, "margin": PlaybookField}),
     ExplanationTemplate("plan_stop_words_credit", "values_seen", "{multiple}x the credit received",
                         {"multiple": PlaybookField}),
+    # ADR-330 (5) / owner Q3: a rupee level is the whole trade, before charges, the per-lot figure beside it
+    ExplanationTemplate("plan_level_rupees", "values_seen",
+                        "Rs {rupees} for the whole trade (Rs {per_lot} per lot), before charges",
+                        {"rupees": Amount, "per_lot": Amount}),
+    ExplanationTemplate("plan_level_rupees_whole", "values_seen", "Rs {rupees} for the whole trade, before charges",
+                        {"rupees": Amount}),
     ExplanationTemplate("plan_stop_words_or", "values_seen", "{a} or {b}", {"a": Explained, "b": Explained}),
     ExplanationTemplate("plan_stop_words_or3", "values_seen", "{a}, {b} or {c}",
                         {"a": Explained, "b": Explained, "c": Explained}),

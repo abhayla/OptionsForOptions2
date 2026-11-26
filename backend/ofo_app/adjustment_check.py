@@ -224,6 +224,16 @@ async def resolve(conn: Any, user_ref: str, strategy_id: int, stype: str | None)
     return Resolved("none", None, None, None, False, saved_before_adr247=False)
 
 
+def max_profit_of(tracked: Any, market: Any, rates: Any) -> Decimal | None:
+    """ADR-330 (5): the whole-trade max profit before charges (the Before's gross figure, as the live check reads it),
+    the base a rupee target is shown against. Unlimited, not priced or unreadable -> None, never a guess."""
+    before = price_after(tracked.position.legs, tracked.position, tracked.booked, tracked.paid_charges, (), rates,
+                         market, tracked.paid_exact)
+    gross = None if before.after is None else before.after.gross
+    value = None if gross is None else gross.max_profit
+    return value if isinstance(value, Decimal) and value.is_finite() else None
+
+
 def _limit_value(v: Any) -> Decimal | str:
     return pe.UNLIMITED if v is UNLIMITED else v
 

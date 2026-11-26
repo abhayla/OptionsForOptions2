@@ -975,7 +975,7 @@ def _later(c: _Ctx, tid: str) -> tuple[Decimal | str, ...]:
     if tid in sl.STOP_TRIGGERS:  # the line in force carries its later figures (a flat line: none)
         line = _line(c.state, tid)
         return () if line is None or line.figure is None else tuple(_tightened(c, tid, x, "ge") for x in line.later)
-    if c.stage is None or sl.is_stop_rule(tid) or tid in sl.RUPEE_RULES:  # the 2x-credit line is one amount, not a per-stage value
+    if c.stage is None or sl.is_stop_rule(tid) or tid in sl.RUPEE_RULES:  # one amount each, not per stage
         return ()
     out = []
     for i in range(c.stage + 1, len(c.body["stages"][c.state.expiry_kind])):
