@@ -51,7 +51,7 @@ own POST); inventory guard rows SHARED-41, BUILD-09 updated, MYSTR-15..18 added.
 | NEW-T51 | Builder | product question U-Q4 | expected-fail kept until answered | "Pick from Option Chain" opens the picker's strike view by design (W-195 review 7) | - | - |
 | NEW-T52 | Builder | defect, fix now | Fixed, not tested | Modal and Drawer were both `z-50`; the later-mounted drawer covered the dialog | dialogs that open under a drawer: 7 -> 0 (Modal primitive) | 80049722 |
 | NEW-T53 / NEW-T68 | Builder (phone) | product question U-Q5, option (b) built | Fixed, not tested | The 520 px drawer pushed its edge tab past a 390 px screen | drawers whose tab leaves a phone screen: 1 -> 0 (Drawer primitive) | 572c568f |
-| NEW-T60 | Builder | defect, deferred + question U-Q6 | expected-fail kept; issue #751 | REQ-154 not built; ADR-329 (3) is the newer rule | - | - |
+| NEW-T60 | Builder | defect, deferred + question U-Q6 | expected-fail kept; issue #751 | REQ-154 not built (it stands, ADR-330 (34); built with sign-in); ADR-329 (3) is what ships until then | - | - |
 | NEW-T61 | Builder | defect, fix now | Fixed, not tested | The catalogue text was "The strategy has no name." | empty-name texts differing from REQ-134 AC-1: 1 -> 0 | 359af7db |
 | NEW-T62, NEW-T63 | Builder | defect, deferred | expected-fail kept; issue #750 | REQ-138 not built (needs server storage: a migration) | - | - |
 | NEW-T64 | Builder | defect, fix now | Fixed, not tested | The saved list printed its own literal instead of the shared `noMatchText` | 1 -> 0 | 359af7db |
