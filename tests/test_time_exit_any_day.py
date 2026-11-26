@@ -12,11 +12,14 @@ import datetime
 import sys
 from dataclasses import replace
 from pathlib import Path
+from types import SimpleNamespace
 
 import pytest
 
 sys.path.insert(0, str(Path(__file__).parent / "adjustment"))  # the evaluator tests' own builders
-from ofo.adjustment.playbook_eval import Flag
+from ofo.adjustment.approaches import _Refused, _time_exit_due
+from ofo.adjustment.playbook_eval import Flag, exit_inputs
+from ofo.checks.time_of_day import day_of, is_hhmm, time_exit_parts
 from test_adjust_scenarios import load
 from test_playbook_eval import body_of, entry_of, evaluate, state_of
 
@@ -84,7 +87,7 @@ _SHAPES = [pytest.param({"at": "15:15", "on": "expiry"}, id="mapping"), pytest.p
 
 @pytest.mark.parametrize("te", _SHAPES)
 def test_plan_time_beats_the_playbook_stage_time_on_expiry(te):
-    """The plan's own time decides; the playbook's T-10b stage value (14:30 in ADJ-14) is only for a plan without one."""
+    """The plan's own time decides; the playbook's T-10b stage value (14:30 in ADJ-14) is for a plan without one."""
     assert "14:30" in str(body_of(load("ADJ-14")))
     assert not isinstance(_t10b(_run(today=EXPIRY, hhmm="14:40", time_exit=te)), Flag)
     r = _t10b(_run(today=EXPIRY, hhmm="15:15", time_exit=te))
@@ -93,25 +96,18 @@ def test_plan_time_beats_the_playbook_stage_time_on_expiry(te):
 
 @pytest.mark.parametrize("te", _SHAPES)
 def test_a35_agrees_with_the_evaluator(te):
-    from types import SimpleNamespace
-
-    from ofo.adjustment.approaches import _time_exit_due
-    from ofo.adjustment.playbook_eval import exit_inputs
-
     sc = load("ADJ-14")
     pos = SimpleNamespace(today=EXPIRY, legs=[SimpleNamespace(expiry=EXPIRY)])
-    early = exit_inputs(body_of(sc), {"time_exit": te}, replace(state_of(sc), today=EXPIRY, expiry=EXPIRY, hhmm="14:40"))
-    on_time = exit_inputs(body_of(sc), {"time_exit": te}, replace(state_of(sc), today=EXPIRY, expiry=EXPIRY, hhmm="15:15"))
+    at = {h: replace(state_of(sc), today=EXPIRY, expiry=EXPIRY, hhmm=h) for h in ("14:40", "15:15")}
+    early, on_time = (exit_inputs(body_of(sc), {"time_exit": te}, at[h]) for h in ("14:40", "15:15"))
     assert early.time_exit == on_time.time_exit == "15:15"
     _time_exit_due(pos, on_time)
-    with pytest.raises(Exception):  # noqa: B017, PT011 - the A-35 refusal type is private
+    with pytest.raises(_Refused):
         _time_exit_due(pos, early)
 
 
 @pytest.mark.parametrize("bad", ["25:99", "24:00", "9:30", "12:6x", "20261125", "2026-1-5"])
 def test_unreadable_clock_or_day_is_no_time_exit(bad):
-    from ofo.checks.time_of_day import day_of, is_hhmm, time_exit_parts
-
     assert not is_hhmm(bad) and day_of(bad) is None
     assert time_exit_parts(bad) is None
     assert time_exit_parts({"at": "15:15", "on": bad}) is None
