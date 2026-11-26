@@ -434,6 +434,8 @@ def stops_of(resolved: check.Resolved, money: MoneyInputs | None,
     max_loss = None if money is None else money.max_loss
     margin = None if money is None else money.margin
     lines = [x for x in (_trigger_line(body, STOP_MAX_LOSS, max_loss, at, source),) if x is not None]
+    if sl.rupee_loss_is_the_stop(body):  # ADR-330 (5)(a): the rupee level is the plan's stop, T-06 is not a second one
+        lines = [dataclasses.replace(x, active=False, figure=None, amount=None, later=()) for x in lines]
     if credit_line_applies(resolved):
         lines.append(_credit_line(body, None if money is None else money.credit, source))
     lines.extend(x for x in (_trigger_line(body, STOP_MARGIN, margin, at, source),) if x is not None)

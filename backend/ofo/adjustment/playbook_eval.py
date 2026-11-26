@@ -996,6 +996,9 @@ def _value_of(c: _Ctx, rule: Mapping | None, o: _Outcome) -> RuleValue | None:
 
 
 def _outcomes(body: Mapping, state: StrategyState, gap_until: str) -> tuple[_Ctx, str | None, list[_Outcome]]:
+    replaced = sl.rupee_loss_is_the_stop(body)
+    if replaced:  # ADR-330 (5)(a): the plan's one loss stop is the rupee level; T-06 is not a second stop
+        body = _without_t06(body)
     c = dataclasses.replace(_context(body, state), gap_until=gap_until)
     why = _withheld(state)
     out = []
@@ -1011,13 +1014,24 @@ def _outcomes(body: Mapping, state: StrategyState, gap_until: str) -> tuple[_Ctx
         else:
             out.append(_rule(c, rule))
     named = {m for rule in body.get("rules", []) for m in (rule.get("any_of") or rule["all_of"])}
-    for tid in sorted(sl.STOP_TRIGGERS - named):  # an active line no body rule names is still checked (ADR-252)
+    for tid in sorted(sl.STOP_TRIGGERS - named - ({sl.TRIGGER_MAX_LOSS} if replaced else set())):  # an active line no body rule names is still checked (ADR-252)
         line = _line(state, tid)
         if line is not None and line.active:
             out.append(_stop_rule(c, {"id": tid, "any_of": [tid]}, why))
     out.extend(_credit_outcome(state, why))
     out.extend(_rupee_outcomes(body, state, why))
     return c, why, out
+
+
+def _without_t06(body: Mapping) -> dict:
+    """The body with T-06 taken out of every rule (a rule left with no member is dropped)."""
+    rules = []
+    for rule in body.get("rules", []):
+        key = "any_of" if "any_of" in rule else "all_of"
+        left = [m for m in rule[key] if m != sl.TRIGGER_MAX_LOSS]
+        if left:
+            rules.append({**rule, key: left})
+    return {**body, "rules": rules}
 
 
 def _rupee_outcomes(body: Mapping, state: StrategyState, why: str | None) -> list[_Outcome]:

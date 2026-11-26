@@ -362,6 +362,9 @@ def with_rupee_figures(values: dict[str, Any], body: dict, bases: Bases) -> dict
     level = _rupee_guard(guards, sl.RUPEE_LOSS_KEY)
     if level is not None:
         stop = figs.from_rupees(level, bases.max_loss, bases.lots)
+        if stop.percent is not None:  # the rupee level IS the stop; its percent is the derived display figure only
+            out["stop"] = stop.percent
+            out["stop_words"] = render_explanation("plan_stop_words_loss", pct=format(stop.percent, "f"))
     elif values.get("stop") is None:
         stop = figs.NONE
     else:

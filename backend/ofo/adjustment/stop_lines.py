@@ -15,6 +15,8 @@ import dataclasses
 from decimal import Decimal
 from typing import Final
 
+from ofo.checks import pnl_amount as rupee
+
 STOP_MAX_LOSS: Final = "max_loss_pct"
 STOP_CREDIT: Final = "credit_multiple"
 STOP_MARGIN: Final = "margin_pct"
@@ -70,6 +72,18 @@ NOT_CHECKED: Final = {
 }
 
 
+def rupee_loss_is_the_stop(body: object) -> bool:
+    """ADR-330 (5)(a): a plan has ONE loss stop. When it is typed in rupees (a readable level in the guards), that level
+    IS the stop and the T-06 percent line is not a second one. A level that cannot be read does not replace it (fail
+    closed: the percent line keeps checking). Pure."""
+    guards = body.get("guards") if isinstance(body, dict) else None
+    raw = guards.get(RUPEE_LOSS_KEY) if isinstance(guards, dict) else None
+    try:
+        return isinstance(raw, str) and rupee.level_of(raw) is not None
+    except ValueError:
+        return False
+
+
 def not_checked_code(reason: str | None) -> str:
     return NOT_CHECKED.get(reason or "", NOT_CHECKED_OTHER)
 
@@ -119,6 +133,7 @@ __all__ = [
     "RUPEE_PROFIT_KEY",
     "RUPEE_PROFIT_RULE",
     "RUPEE_RULES",
+    "rupee_loss_is_the_stop",
     "STAGE_UNKNOWN",
     "STOPS_NOT_SUPPLIED",
     "STOP_CREDIT",
