@@ -75,6 +75,7 @@ from ofo.strategy.definition import describe_contract, display_contract
 from ofo.table.model import display_number
 from ofo.timeutil import IST
 from ofo.tracking import paper, paper_decay, paper_greeks, stops
+from ofo.tracking.closing import open_legs_to_close
 from ofo.tracking.orderbook import ClosedLeg, NetPosition, PaperOrder, is_typed_price, net_positions
 from ofo.tracking.paper_alert import restore_alert_body, restore_order_reason, settle_history_body
 from pydantic import AwareDatetime, BaseModel, ConfigDict, Field, field_validator
@@ -1518,9 +1519,10 @@ async def paper_leg_stop_risk(strategy_id: int, contract_id: Annotated[int, Quer
             _, instrument, strike, expiry = _identity(one)
             names[str(cid)] = describe_contract((stored.saved.definition.underlying, instrument, strike, expiry))
             terms[str(cid)] = ContractTerms(instrument, strike, expiry)
-    net = held[str(contract_id)]
+    # the close's side and quantity from the exit door's own rule (G2: no side flipped outside it); no order is built
+    close = open_legs_to_close({str(contract_id): held[str(contract_id)]})[0]
     try:
-        leg = PaperOrder(str(contract_id), "BUY" if net < 0 else "SELL", abs(net), level, "exit", now())
+        leg = PaperOrder(str(close.key), close.side, close.quantity, level, "exit", now())
     except ValueError:
         return _exit_risk_answer("cannot_tell")
     risk = exit_risk(_paper(booked), [leg], terms, priced=True)

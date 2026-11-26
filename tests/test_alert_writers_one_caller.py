@@ -4,7 +4,11 @@ Rule, over ``backend/ofo_app`` (tests excluded):
 
 - ``add_alert`` (a paper trigger's alert row) only in ``paper_monitor.py`` (or ``paper_exit.py``, if the exit door took
   it over);
-- ``open_suggestion`` and ``playbook_store.record_held`` (playbook rows) only in ``background.py``;
+- ``open_suggestion`` (an actionable playbook row) only in ``actionable_alerts.py``, the one alert module of ADR-330's
+  one-module instruction (Lane J 26 Nov: Lane P moved the call there from ``background.py``; which callers may raise
+  an alert through that module is the guard ``test_actionable_alert_one_module.py``);
+- ``playbook_store.record_held`` (a held playbook row) only in ``actionable_alerts.py`` (the write) and
+  ``background.py`` (its one caller, ``actionable_alerts.record_held``: the name is matched, not the module);
 - ``notifier.notify`` (the one outbound notice) only in ``worker_watch.py``.
 
 A call, a reference (``w = add_alert``), ``getattr(obj, "add_alert")`` and a
@@ -34,8 +38,8 @@ NOTIFY = "notifier.notify"
 #: writer -> the files (under backend/) that may call it
 HOMES: dict[str, frozenset[str]] = {
     "add_alert": frozenset({"ofo_app/paper_monitor.py", "ofo_app/paper_exit.py"}),
-    "open_suggestion": frozenset({"ofo_app/background.py"}),
-    "record_held": frozenset({"ofo_app/background.py"}),
+    "open_suggestion": frozenset({"ofo_app/actionable_alerts.py"}),
+    "record_held": frozenset({"ofo_app/actionable_alerts.py", "ofo_app/background.py"}),
     NOTIFY: frozenset({"ofo_app/worker_watch.py"}),
 }
 PLAIN = frozenset({"add_alert", "open_suggestion", "record_held"})
@@ -146,7 +150,7 @@ def test_each_home_still_calls_its_writer():
 # ---- mutation tests: the guard goes red where it should and only there -----------------------------------------------
 CALLS = {
     "add_alert": ("ofo_app/paper_monitor.py", "async def f(c):\n    return await triggers.add_alert(c, 1)\n"),
-    "open_suggestion": ("ofo_app/background.py", "async def f(c):\n    return await store.open_suggestion(c)\n"),
+    "open_suggestion": ("ofo_app/actionable_alerts.py", "async def f(c):\n    return await store.open_suggestion(c)\n"),
     "record_held": ("ofo_app/background.py", "async def f(c):\n    return await store.record_held(c)\n"),
     NOTIFY: ("ofo_app/worker_watch.py", "async def f():\n    return await notifier.notify('a', 'b')\n"),
 }
