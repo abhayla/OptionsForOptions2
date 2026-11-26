@@ -205,7 +205,7 @@ const healthWord = (leg) => (closed.value ? null : leg.health === 'available' ? 
 class="rounded border border-line bg-surface p-4" data-testid="live-strategy-card" :data-strategy-id="strategy.id"
            :data-state="state" :data-paused="paused ? 'true' : 'false'" :data-live="live.status.value">
     <header class="flex flex-wrap items-baseline gap-2">
-      <!-- S-14: the name opens the strategy (not in the error state); a running paper strategy also links to its Stops. Exit links to the Paper list, whose own confirm (the one exit door) opens; the card holds no exit code. -->
+      <!-- S-14: the name opens the strategy (not in the error state); a running paper strategy also links to its Stops. Exit links to the Paper list, whose own exit dialog (the one exit door) opens; the card holds no exit code. -->
       <h2 class="text-base font-semibold"><component :is="openLink ? RouterLink : 'span'" v-bind="openLink ? { to: openLink, class: 'hover:underline', 'data-testid': 'live-strategy-open' } : {}"><span data-testid="live-strategy-title">{{ strategyLabel(strategy, `Draft ${strategy.id}`) }}, {{ strategy.underlying }}</span></component></h2>
       <span class="rounded bg-gray-100 px-1.5 text-xs text-ink-muted" data-testid="live-strategy-status">{{ strategyStatusWord(strategy) }}</span>
       <!-- GC-MU A3 (ADR-230 (2)): the server's words for the open adjustment records; none at 0 or when unread -->
@@ -244,7 +244,7 @@ class="rounded border border-line bg-surface p-4" data-testid="live-strategy-car
         </p>
         <p v-if="figuresReason" class="text-xs text-ink-muted" data-testid="live-figures-reason">{{ figuresReason }}</p>
         <p v-for="line in figuresBasis" :key="line" class="text-xs text-ink-muted" data-testid="live-figures-basis">{{ line }}</p>
-        <table class="mt-2 w-full text-sm" data-testid="live-legs">
+        <table class="num-table mt-2 w-full text-sm" data-testid="live-legs">
           <thead class="text-xs text-ink-muted">
             <tr><th class="text-left font-normal">Instrument</th><th v-if="hasLots" class="text-right font-normal">Lots</th><th v-if="hasEntry" class="text-right font-normal">{{ entryHead }}</th><th class="text-right font-normal">LTP</th></tr>
           </thead>

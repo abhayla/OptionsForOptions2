@@ -4,8 +4,8 @@
 <template>
   <div v-if="rows.length">
     <p class="mt-2 text-xs text-ink-muted" :data-testid="`${prefix}-basis`">Closed: booked P&amp;L (before charges)</p>
-    <table class="w-full text-xs text-ink-muted" :data-testid="`${prefix}-list`">
-      <thead><tr><th class="text-left font-normal">Contract</th><th class="font-normal">Lots</th><th class="font-normal">Entry</th><th class="font-normal">Exit</th><th class="font-normal">Booked</th></tr></thead>
+    <table class="num-table w-full text-xs text-ink-muted" :data-testid="`${prefix}-list`">
+      <thead><tr><th class="text-left font-normal">Contract</th><th class="text-center font-normal">Lots</th><th class="text-right font-normal">Entry</th><th class="text-right font-normal">Exit</th><th class="text-right font-normal">Booked</th></tr></thead>
       <tbody>
         <tr v-for="c in rows" :key="c.opened_at + c.contract_id" class="border-t border-line" :data-testid="`${prefix}-row`">
           <td class="py-1 pr-2" :data-testid="`${prefix}-contract`"><span class="mr-1 font-semibold">{{ c.side === 'BUY' ? 'B' : 'S' }}</span>{{ c.contract_text }}</td>

@@ -173,10 +173,10 @@ const toneOf = (v) => ({ profit: 'text-profit', loss: 'text-loss' })[signOf(v)] 
               </select>
             </label>
           </div>
-          <table v-if="stepTable.available" class="w-full text-sm" data-testid="payoff-step-table">
+          <table v-if="stepTable.available" class="num-table w-full text-sm" data-testid="payoff-step-table">
             <thead>
               <tr class="border-b border-line text-left text-ink-muted">
-                <th scope="col" class="py-2 font-medium" data-testid="payoff-step-head">Index level</th>
+                <th scope="col" class="py-2 text-left font-medium" data-testid="payoff-step-head">Index level</th>
                 <th v-for="c in stepTable.columns" :key="c.view" scope="col" class="py-2 text-right font-medium" data-testid="payoff-step-head">{{ c.label }}</th>
                 <th v-if="showPct && stepTable.hasPct" scope="col" class="py-2 text-right font-medium" data-testid="payoff-step-pct-head">Move from spot</th>
               </tr>
@@ -207,10 +207,10 @@ const toneOf = (v) => ({ profit: 'text-profit', loss: 'text-loss' })[signOf(v)] 
             data-testid="payoff-table-empty"
           />
         </template>
-        <table v-else-if="levels" class="w-full text-sm">
+        <table v-else-if="levels" class="num-table w-full text-sm">
           <thead>
             <tr class="border-b border-line text-left text-ink-muted">
-              <th scope="col" class="py-2 font-medium">{{ table.scenario_heading?.[0] ?? 'Index level' }}</th>
+              <th scope="col" class="py-2 text-left font-medium">{{ table.scenario_heading?.[0] ?? 'Index level' }}</th>
               <th scope="col" class="py-2 text-right font-medium">{{ table.scenario_heading?.[1] ?? 'P&L' }}</th>
             </tr>
           </thead>
@@ -240,10 +240,10 @@ const toneOf = (v) => ({ profit: 'text-profit', loss: 'text-loss' })[signOf(v)] 
         </label>
       </div>
       <div v-show="!fullTable" data-testid="compact-view">
-        <table v-if="compact" class="w-full text-sm" data-testid="compact-table">
+        <table v-if="compact" class="num-table w-full text-sm" data-testid="compact-table">
           <thead>
             <tr class="border-b border-line text-left text-ink-muted">
-              <th scope="col" class="py-2 font-medium">Instrument</th>
+              <th scope="col" class="py-2 text-left font-medium">Instrument</th>
               <th v-for="c in COMPACT_COLUMNS" :key="c.id" scope="col" class="py-2 text-right font-medium" data-testid="compact-head">{{ headText(c) }}</th>
             </tr>
           </thead>
@@ -307,10 +307,10 @@ const toneOf = (v) => ({ profit: 'text-profit', loss: 'text-loss' })[signOf(v)] 
           >Per position</button>
         </div>
       </div>
-      <table v-if="greeks" class="w-full text-sm" data-testid="greeks-table">
+      <table v-if="greeks" class="num-table w-full text-sm" data-testid="greeks-table">
         <thead>
           <tr class="border-b border-line text-left text-ink-muted">
-            <th scope="col" class="py-2 font-medium">Instrument</th>
+            <th scope="col" class="py-2 text-left font-medium">Instrument</th>
             <th v-for="c in greekColumns(props.table)" :key="c.id" scope="col" class="py-2 text-right font-medium" data-testid="greeks-head">{{ c.label }}<FigureHint v-if="c.id === 'decay' || c.id === 'theta'" :id="c.id" /></th>
           </tr>
         </thead>

@@ -20,7 +20,6 @@ vi.mock('@/services/api', async (importActual) => {
 import { withPriceTexts } from './_priceTexts'
 import PaperStrategies from '@/components/strategy/PaperStrategies.vue'
 import PaperConfirmDialog from '@/components/strategy/PaperConfirmDialog.vue'
-import { readTrackingItem, readTracking, TRACKING_REFRESH_MS, NOT_CONNECTED_TEXT } from '@/lib/tracking'
 
 const leg = (i, over = {}) => withPriceTexts({
   leg_index: i, instrument_id: `NSE_FO:${i + 1}`, action: i % 2 ? 'SELL' : 'BUY', instrument: i < 2 ? 'PE' : 'CE',
@@ -32,11 +31,7 @@ const item = (over = {}) => withPriceTexts({
   pause_reason: null, as_of: null, total: '71.50', booked: '0.00', unbooked: '71.50', legs: [leg(0), leg(1), leg(2), leg(3)], ...over,
 })
 const REAL_REPLY = { strategies: [item()], answered_at: '2026-10-28T06:00:00Z' }
-const list = (...strategies) => ({ strategies, answered_at: '2026-10-28T06:00:00Z' })
 const ok = (data) => () => Promise.resolve({ data })
-const t = (w, id) => w.get(`[data-testid="${id}"]`)
-const has = (w, id) => w.find(`[data-testid="${id}"]`).exists()
-const gets = () => calls.filter((c) => c[0] === 'GET' && c[1] === '/paper/strategies').length
 
 
 async function showAt(path) {
