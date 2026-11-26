@@ -1279,6 +1279,7 @@ const leaveGuard = useLeaveBuilder({
             v-model:flipped="ratioFlipped"
             class="mt-4"
             :left="paperLeft"
+            :summary="data.summary"
             :max-profit="wholeTrade ? paper.book.max_profit_text ?? '-' : summaryFigure(data.summary, 'profit')"
             :max-loss="wholeTrade ? paper.book.max_loss_text ?? '-' : summaryFigure(data.summary, 'loss')"
             :max-profit-exact="wholeTrade ? paper.book.max_profit ?? null : data.summary.max_profit ?? null"
