@@ -58,7 +58,7 @@ const unreadCell = computed(() => {
 const pnlCell = computed(() => {
   const c = pnl.totalCell.value
   if (c.kind === 'loading') return { text: PAPER_NO_FIGURE, note: null }
-  return { text: c.text, label: c.label, note: c.note }
+  return { text: c.text, suffix: c.label, note: c.note } // c.label is the charges suffix, never the figure's name
 })
 const figures = computed(() => [
   { id: 'running', label: HOME_RUNNING_LABEL, ...runningCell.value },
@@ -84,7 +84,7 @@ onMounted(async () => {
 
     <dl v-if="state !== 'loading'" class="mt-4 flex flex-wrap gap-6 rounded-lg border border-line bg-surface px-4 py-3" data-testid="home-figures">
       <div v-for="f in figures" :key="f.id" :data-testid="`home-${f.id}`">
-        <dt class="text-xs text-ink-muted">{{ f.label }}<template v-if="f.label && f.id === 'pnl' && f.text !== PAPER_NO_FIGURE && pnlCell.label">{{ ' ' }}{{ pnlCell.label }}</template></dt>
+        <dt class="text-xs text-ink-muted">{{ f.label }}<template v-if="f.suffix && f.text !== PAPER_NO_FIGURE">{{ ' ' }}{{ f.suffix }}</template></dt>
         <dd class="text-lg font-semibold tabular-nums" :data-testid="`home-${f.id}-figure`">{{ f.text }}</dd>
         <p v-if="f.note" class="text-xs text-ink-muted" :data-testid="`home-${f.id}-note`">{{ f.note }}</p>
       </div>

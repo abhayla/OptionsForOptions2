@@ -110,6 +110,12 @@ describe('D-56 Home: total P&L (the Positions total)', () => {
     expect(fig(w, 'pnl')).toBe(fromPositions.text)
     expect(tile(w, 'pnl')).toContain('(after charges)')
   })
+  it('R-06 / N-18: the tile names the figure and carries "(after charges)" exactly once, before and after the figure arrives', async () => {
+    const w = await mountHome()
+    const label = w.get('[data-testid="home-pnl"] dt').text()
+    expect(label).toBe('Total P&L (after charges)')
+    expect(tile(w, 'pnl').split('(after charges)')).toHaveLength(2)
+  })
   it('zero: a total of nothing is shown as the server wrote it, not as a dash', async () => {
     paperAnswer = paper(totals({ total_text: '+0.00', total_after_text: '+0.00' }))
     expect(fig(await mountHome(), 'pnl')).toBe('+0.00')
