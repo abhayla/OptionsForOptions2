@@ -22,6 +22,7 @@ import pytest
 from _scenario_catalogue import load_library
 from ofo.adjustment import alert_gate
 from ofo.adjustment.preferences import from_values
+from ofo.timeutil import IST
 from ofo.settings import defaults as registry_defaults
 from ofo_app import background, playbook_store, scenario_mode, strategy_alert_style_store
 from ofo_app import db as app_db
@@ -751,6 +752,23 @@ async def test_d30_an_exited_strategys_failed_lapse_is_retried_at_the_next_re_li
     assert background.LISTER_LAPSE_FAILURES.get(sid) == 1
     await worker.rebuild()
     assert await states() == [("lapsed", "strategy_closed")]
+
+
+async def test_s16_a_gate_condition_stopped_never_closes_the_record(app_db_url, monkeypatch):
+    """ADR-330 (3), the real S-16 of 25 Nov: the plan loss stop opened 11:02:20 (15.5750 past 15.4000), the gate's
+    "condition stopped" at 11:05:01 -> ONE open row, no_longer_true_since 11:05:01, never lapsed (it used to lapse)."""
+    w, _ = await _watched_and_fresh_t03(app_db_url, monkeypatch)
+    fired = datetime.datetime(2026, 11, 25, 11, 2, 20, tzinfo=IST)
+    stopped = datetime.datetime(2026, 11, 25, 11, 5, 1, tzinfo=IST)
+    opened = await background.DbGateStore().apply(w, [alert_gate.Opened("T-06", fired, 0, D("15.4000"), D("15.5750"))])
+    await background.DbGateStore().apply(w, [alert_gate.Lapsed("T-06", stopped, D("15.2000"))])
+    await background.DbGateStore().apply(w, [alert_gate.Lapsed("T-06", stopped + datetime.timedelta(minutes=5), D("15"))])
+    async with app_db_url.connect() as conn:
+        rows = (await conn.execute(text(
+            "SELECT id, outcome, kind, shown_at, no_longer_true_since, value, answer, jsonb_array_length(timeline) "
+            "FROM public.adjustment_suggestions WHERE strategy_id = :s AND rule_id = 'T-06'"), {"s": w.strategy_id})).all()
+    assert [tuple(r) for r in rows] == [(opened["T-06"], "open", "plan_loss_stop", fired, stopped, D("15.5750"), None,
+                                         2)], rows  # a repeat Lapsed adds nothing: one entry for opening, one stopped
 
 
 async def test_an_escalation_lapses_the_old_record_as_superseded_by_worse_and_a_cleared_one_as_condition_stopped(
