@@ -124,9 +124,10 @@ const choose = (row, type, action) => selection.chooseAction(contractFor(row, ty
 const canAdd = computed(() => legs.value.length > 0 && pending.value.length === 0)
 const contractName = (e) => `${e.underlying} ${e.expiry} ${e.strike} ${e.type}`
 
+let entrySeq = 0
 function openBuilder() {
   askExpiries.value = false
-  router?.push({ name: BUILDER_ROUTE, query: { draft: JSON.stringify(selection.draftOf(underlying.value)) } })
+  router?.push({ name: BUILDER_ROUTE, query: { draft: JSON.stringify(selection.draftOf(underlying.value)) }, state: { addEntry: `${Date.now()}-${++entrySeq}` } }) // N-36: each Add Selected is its own history entry
 }
 function addSelected() {
   if (!canAdd.value) return

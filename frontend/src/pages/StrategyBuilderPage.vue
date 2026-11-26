@@ -853,6 +853,9 @@ function clearAddedTicks() {
   if (JSON.stringify(chainTicks.draftOf(u)) === q) chainTicks.clear()
 }
 let addedDraft = heldBack?.addedDraft ?? null
+// N-36: the handled mark is the ?draft= text plus the history entry that carried it, so Back into the same entry asks nothing
+// while a NEW Add Selected with the very same ticks (a new entry) still asks.
+const entryMark = () => JSON.stringify([route.query.draft ?? null, router?.options?.history?.state?.addEntry ?? null])
 async function addFromChain() {
   const fresh = legsFromQuery()
   // F1: a strategy has one underlying; ticked contracts of another underlying than the held legs are refused, nothing is added
@@ -870,20 +873,23 @@ async function addFromChain() {
     return { ...l, id: `chain-${n}` }
   })
   const r = await door.admit(legs.value, incoming, { opposite: 'allow' })
-  if (!r) return false // Cancel: the held legs stay as they were
+  if (!r) { // Cancel: the held legs stay as they were, the ticks stay (ADR-330 (20)); Back into this same ?draft= entry asks nothing again (N-36)
+    addedDraft = entryMark()
+    return false
+  }
   if (r.error) {
     chainError = { ...INVALID_LINK_PARTS, what_happened: r.error } // shown after the held legs' first reads, which clear editError
     return false
   }
   setLegs([...r.legs, ...r.kept])
-  addedDraft = route.query.draft ?? null // F3: Back into this same ?draft= entry must not add the same ticks again
+  addedDraft = entryMark() // F3: Back into this same ?draft= entry must not add the same ticks again
   clearAddedTicks()
   return true
 }
 onMounted(async () => {
   index.start() // the page holds the index itself (its own socket), so an empty builder still has a spot
   if (heldBack?.paperId != null) await whileOpening(() => restoreDrafts(heldBack))
-  const sameAdd = heldBack?.addedDraft != null && heldBack.addedDraft === (route.query.draft ?? null) // F3: already added to this hold
+  const sameAdd = heldBack?.addedDraft != null && heldBack.addedDraft === entryMark() // F3: already added to this hold
   const added = heldBack && draftQuery && canonicalQueryLegs && !sameAdd ? await addFromChain() : false
   if (!added) {
     load()
