@@ -19,10 +19,12 @@ test('the health page shows the live database status from the real backend', asy
   // stage B4, design decision 10: GET /adjustment-opportunities on the same tick, AppHeader.vue) and the scenario banner's
   // GET /features (GC-ADJ1 step 1b, ScenarioBanner.vue) and the calendar-end banner's one read of the index reply,
   // the only reply that carries the two calendar fields (ADR-285, GC-ICSAFE c28: GET /market/indices once per
-  // shell open); nothing else
+  // shell open), the stop-fired pop-up's read of History (ADR-330 (3)(b), Lane J W2-A: GET /alerts/answered on the same
+  // tick, AppHeader.vue); nothing else
   const origin = new URL(page.url()).origin
   expect([...new Set(apiCalls)].sort()).toEqual(
-    ['/api/adjustment-opportunities', '/api/alerts/active', '/api/features', '/api/health', '/api/market/indices'].map(
+    ['/api/adjustment-opportunities', '/api/alerts/active', '/api/alerts/answered', '/api/features', '/api/health',
+      '/api/market/indices'].map(
       (p) => origin + p,
     ),
   )
