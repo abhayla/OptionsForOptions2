@@ -460,6 +460,11 @@ const { readFailed: paperReadFailed, contractsChanged: paperContractsChanged } =
 // F1: the page's book-read state through the one freshness rule (priceState). Phase 4 (D-05, ADR-328 (4)): the Exit buttons of the
 // book panel read it (usePaperExit), and so do the handlers below: no exit is built from old prices (a failed read) or from an old net
 // (the contracts changed elsewhere). The panel says which, in the words of priceState.
+// ADR-330 (28): the same rule for Add to Paper. The builder answer is live only when it computed with no labelled (stale) leg and the
+// market is open and the feed is not reconnecting; anything else is not live and the confirm list says so.
+const { live: pricesLive } = usePriceFreshness({
+  serverState: () => (state.value === 'computed' && !data.value?.market_closed && !live.reconnecting.value ? 'LIVE' : 'PAUSED'),
+})
 const { readFailed: paperBookFailed } = usePriceFreshness({
   readFailed: paperReadFailed,
   held: () => paper.value?.book ?? null,
@@ -1253,7 +1258,7 @@ const leaveGuard = useLeaveBuilder({
         <PaperBookPanel v-if="paper" :book="paper.book" :net="paper.net" :read-failed="paperBookFailed" :contracts-changed="paperContractsChanged" :show-orders="showOrdersTick" @exit="exitPaper" @exit-all="exitAllPaper" />
         </div>
         <PaperConfirmDialog :open="paperDialog" :orders="paperRows" :strategy-id="route.query.strategy" :busy="paperBusy" :blocked="exitBlocked" :error="paperError" :state="paperState" @confirm="confirmPending" @cancel="userCancelPaperDialog" @orderbook="openPaperOrderbook" />
-        <SaveDraftBar v-show="!(opening && !legs.length)" ref="barRef" :legs="legs" :rules-ref="String(route.query.rules_ref || '')" :current="openStrategy" :shown-name="shapeName ?? ''" :paper-mode="paper !== null" :live-price-by-id="livePriceById" class="max-[1099px]:contents" @open="openFromBar" @saved="onSaved" @paper-added="onPaperAdded" @renamed="onRenamed" @deleted="onDeleted">
+        <SaveDraftBar v-show="!(opening && !legs.length)" ref="barRef" :legs="legs" :rules-ref="String(route.query.rules_ref || '')" :current="openStrategy" :shown-name="shapeName ?? ''" :paper-mode="paper !== null" :live-price-by-id="livePriceById" :prices-live="pricesLive" class="max-[1099px]:contents" @open="openFromBar" @saved="onSaved" @paper-added="onPaperAdded" @renamed="onRenamed" @deleted="onDeleted">
           <template #add-edit>
             <button v-if="!paperCompleted" type="button" class="h-10 flex-1 basis-0 rounded-lg border border-line font-medium" aria-haspopup="dialog" :aria-expanded="pickerOpen ? 'true' : 'false'" data-testid="add-edit" :disabled="exitBlocked" :title="exitBlocked ? exitGate.reason.value : undefined" @click="pickerOpen = !pickerOpen">Add/Edit</button>
           </template>

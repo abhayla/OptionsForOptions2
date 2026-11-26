@@ -21,6 +21,7 @@ import DraftDeleteStatus from '@/components/strategy/DraftDeleteStatus.vue'
 import PaperConfirmDialog from '@/components/strategy/PaperConfirmDialog.vue'
 import AdjustPlanSheet from '@/components/strategy/AdjustPlanSheet.vue'
 import { contractName, istTime } from '@/lib/displayFormat'
+import { notLiveEntryLine, oldestCapture } from '@/lib/priceState'
 import { ADD_TO_PAPER_LABEL, PAPER_ADDED_TEXT, PAPER_STATE, addToPaper, entryPriceFor, paperPostOutcome } from '@/lib/tracking'
 import { useRouter } from 'vue-router'
 import { CLEAR_UNDO_SECONDS_KEY } from '@/lib/legEdit'
@@ -42,6 +43,7 @@ const props = defineProps({
   // GC-TP step 3b1 (ADR-207 (2), F-65): the builder shows a paper strategy's NET position (Drafts Mode). Save, Save As and Add to
   // Paper are not offered and refuse to run: an edit reaches the server only as the reviewed paper orders, never as a plan.
   paperMode: { type: Boolean, default: false },
+  pricesLive: { type: Boolean, default: true }, // ADR-330 (28): the page's price state through priceState (live or not); false adds the tick-to-confirm line
   livePriceById: { type: Object, default: () => ({}) }, // instrument id -> the live price the table shows (fix/paper-dialog-safe item 2)
 })
 const emit = defineEmits(['open', 'saved', 'renamed', 'deleted', 'paper-added'])
@@ -473,7 +475,7 @@ id="strategy-name" ref="nameInput" v-model="nameText" data-testid="name-input" t
         <button type="submit" form="strategy-name-form" data-testid="name-confirm" class="h-10 rounded-lg bg-accent px-3 font-medium text-white disabled:opacity-50" :disabled="busy">Save</button>
       </template>
     </Modal>
-    <PaperConfirmDialog first-basket :open="paperOpen" :orders="paperOrders" :busy="paperBusy" :error="paperError" :state="paperState" @confirm="confirmPaper" @cancel="paperOpen = false" @orderbook="openPaperOrderbook" />
+    <PaperConfirmDialog first-basket :open="paperOpen" :orders="paperOrders" :busy="paperBusy" :error="paperError" :state="paperState" :not-live-line="props.pricesLive ? '' : notLiveEntryLine(oldestCapture(tickedLegs))" @confirm="confirmPaper" @cancel="paperOpen = false" @orderbook="openPaperOrderbook" />
     <AdjustPlanSheet :open="planFor !== null" :strategy-id="planFor" @close="planFor = null" />
     <!-- GC-TP step 3b2 (R-6): the toast is FIXED to the viewport (bottom centre), not inline under the action row. Inline it sat inside
          the left column's own scroll (sticky, overflow-y-auto at 1100 px and up; `contents` below), so after the save-first path
