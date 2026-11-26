@@ -9,7 +9,9 @@ export const PAPER_ALERTS_EMPTY = 'No alerts yet. Alerts start when strategy mon
 // parse leaves NO count and NO rows (an old figure is never kept as if current).
 export const activeAlerts = reactive({ count: 0, alerts: [], parts: null, loaded: false })
 
+// ADR-330 (3), REQ-170 AC-3: an alert is announced once per (id, escalated_at): a new id or a later escalation re-announces, nothing else.
 const announcedActive = new Set()
+const announceKey = (a) => `${a.id}|${a.escalated_at ?? ''}`
 let activeSeen = false
 
 export function resetActiveAlerts() {
@@ -23,15 +25,20 @@ const rowOk = (a) =>
   a && Number.isInteger(a.id) && Number.isInteger(a.strategy_id) && typeof a.text === 'string' && typeof a.kind === 'string' &&
   typeof a.fired_line === 'string' && Array.isArray(a.answers) && a.answers.every(answerOk)
 
-/** Take one answer of GET /alerts/active. Returns the alerts NEW since the last good read (never on the first good read). */
-export function takeActive(data) {
+/**
+ * Take one answer of GET /alerts/active. Returns the alerts NEW or newly escalated since the last good read (never on the first
+ * good read). isDue(alert) is the D-67 quiet rule (ADR-326 (5)): a not-due alert is counted but neither announced nor marked, so it
+ * is announced on the poll that finds it due; the default is due (fail open toward telling the trader).
+ */
+export function takeActive(data, isDue = () => true) {
   if (!data || !Number.isInteger(data.count) || data.count < 0 || !Array.isArray(data.alerts) || !data.alerts.every(rowOk)) {
     dropActive(null)
     return []
   }
   Object.assign(activeAlerts, { count: data.count, alerts: data.alerts, parts: null, loaded: true })
-  const fresh = data.alerts.filter((a) => !announcedActive.has(a.id))
-  data.alerts.forEach((a) => announcedActive.add(a.id))
+  const due = data.alerts.filter(isDue)
+  const fresh = due.filter((a) => !announcedActive.has(announceKey(a)))
+  due.forEach((a) => announcedActive.add(announceKey(a)))
   const first = !activeSeen
   activeSeen = true
   return first ? [] : fresh
