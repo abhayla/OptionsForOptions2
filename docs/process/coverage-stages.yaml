@@ -738,6 +738,8 @@ issues:
   "#750": S6.7  # Builder settings are not saved per user (REQ-138 AC-1/AC-2 not built; Lane T NEW-T62, NEW-T63)
   "#751": S6.7  # Unsaved builder strategy is lost on reload (REQ-154 not built; Lane T NEW-T60; ADR-329 conflict)
   "#752": S6.7  # After the close, option prices keep moving while the banner says "Prices are from 15:30:00" (N-45)
+  "#753": S6.7  # deferred: the first edit of a plan saved before ADR-247 makes it read as saved after (accepted_at restamped by 0041)
+  "#754": S6.7  # Egress gate test red when HTTPS_PROXY is set (test_attack2 gets proxy 400, not EgressRefused)
 
 # Work items whose status is not done.
 work_items:
