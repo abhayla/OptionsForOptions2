@@ -14,7 +14,15 @@ Coarse and safe, file level (no call graph):
      `__init__.py` keys on its package).
      A changed migration under backend/ofo_app/alembic/ selects a FIXED set: every tests_app file named *migration*
      plus every one whose text mentions alembic, NEW_PINS or the migration replay helper (MIGRATION_TEXT).
-     Only one filter: a file whose +/- lines are all comments, blank lines or docstrings selects nothing.
+     Only one filter: a file whose +/- lines are all comments, blank lines or docstrings selects nothing. It applies
+     to backend/ files ONLY, never to tests_app/ (a test edit is never "comments only" safe).
+  A2. a changed file under tests_app/ (the diff covers it too; lane G item b, finding
+     nodb-app-tests-skipped-by-step-gates): an added / modified tests_app/**/test_*.py selects itself; a changed
+     conftest.py selects every test file at or below its folder; any other file (helper such as reply_inventory.py,
+     data such as golden_d36/*.json) selects every test file whose text names it (module name as a word for a .py,
+     file name or relative path for data); if NO test file names it, EVERY tests_app test file is selected (fail
+     closed: it may be read by a computed path). A deleted test file selects nothing; a deleted conftest selects its
+     subtree; a deleted helper/data file is treated like a changed one. Only ADDS to what A selects (union).
   B. a tests_app file is selected when it contains any key: a route path as a string literal / f-string prefix, a
      class name as a word, a module import.
   C. fail closed: a diff that cannot be read (binary, rename only, a changed file missing from the diff, an
@@ -27,7 +35,8 @@ helper in another module is reached only through the route file that imports it)
 select nothing; a selection above MAX_FILES is NOT truncated here, atool.py refuses it (the red run 40132982617 had its
 file selected but over the cap).
 
-CLI: python select_app_tests.py <worktree>   (diff = git diff origin/main...HEAD -- backend/; exit 3 if not parsed)
+CLI: python select_app_tests.py <worktree>
+  (diff = git diff origin/main...HEAD -- backend/ tests_app/; exit 3 if not parsed)
 """
 import ast
 import collections
@@ -274,14 +283,63 @@ def keys_for(changed_files, diff_text: str, root, read_source=None, route_files=
     return list(dict.fromkeys(keys))
 
 
+def _test_texts(tests_dir: str) -> dict:
+    """{"tests_app/<rel>/test_x.py": text} for every test file at or below tests_dir."""
+    base = os.path.basename(os.path.abspath(tests_dir))
+    texts = {}
+    for dirpath, dirs, names in os.walk(tests_dir):
+        dirs[:] = sorted(d for d in dirs if d != "__pycache__")
+        for n in sorted(names):
+            if n.startswith("test_") and n.endswith(".py"):
+                rel = os.path.relpath(os.path.join(dirpath, n), tests_dir).replace(os.sep, "/")
+                texts[f"{base}/{rel}"] = open(os.path.join(dirpath, n), encoding="utf-8").read()
+    return texts
+
+
+def _names_file(rel: str, text: str) -> bool:
+    """True when a test file's text names a tests_app helper (module name as a word) or data file (name or path)."""
+    name = rel.rsplit("/", 1)[-1]
+    if name.endswith(".py"):
+        return bool(re.search(r"\b" + re.escape(name[:-3]) + r"\b", text))
+    return name in text or rel in text
+
+
+def tests_app_selection(changed_files, diff_text: str, tests_dir) -> set:
+    """Rule A2: the tests_app test files a change under tests_app/ selects (see the module docstring)."""
+    tests_dir = os.fspath(tests_dir)
+    base = os.path.basename(os.path.abspath(tests_dir))
+    mine = [f for f in changed_files if f.startswith(base + "/")]
+    if not mine:
+        return set()
+    parsed = parse_diff(diff_text)
+    texts = _test_texts(tests_dir)
+    chosen: set = set()
+    for f in mine:
+        if f not in parsed:
+            raise DiffNotParsed(f"{f} changed but is absent from the diff")
+        if parsed[f] is None:
+            raise DiffNotParsed(f"{f} has no hunk in the diff (rename or mode change only)")
+        gone = parsed[f] == DELETED
+        name = f.rsplit("/", 1)[-1]
+        folder = f.rsplit("/", 1)[0] + "/"
+        if name.startswith("test_") and name.endswith(".py"):
+            if gone:
+                continue  # nothing left to run
+            if f not in texts:
+                raise DiffNotParsed(f"{f} is in the diff but not on disk")
+            chosen.add(f)
+        elif name == "conftest.py":
+            chosen.update(p for p in texts if p.startswith(folder))  # deleted or changed: its whole subtree
+        else:
+            named = {p for p, t in texts.items() if _names_file(f, t)}
+            chosen.update(named or texts)  # nothing names it: fail closed, run them all
+    return chosen
+
+
 def select_by_key(changed_files, diff_text: str, tests_dir, read_source=None, route_files=None) -> dict:
     tests_dir = os.fspath(tests_dir)
     root = os.path.dirname(os.path.abspath(tests_dir))
-    base = os.path.basename(os.path.abspath(tests_dir))
-    texts = {}
-    for n in sorted(os.listdir(tests_dir)):
-        if n.startswith("test_") and n.endswith(".py"):
-            texts[f"{base}/{n}"] = open(os.path.join(tests_dir, n), encoding="utf-8").read()
+    texts = _test_texts(tests_dir)
     def hit(k: Key, p: str, t: str) -> bool:
         return bool(k.regex().search(t)) or (k.kind == "migration" and "migration" in os.path.basename(p))
 
@@ -293,15 +351,16 @@ def select(changed_files, diff_text: str, tests_dir, read_source=None, route_fil
     chosen: set = set()
     for files in select_by_key(changed_files, diff_text, tests_dir, read_source, route_files).values():
         chosen.update(files)
+    chosen |= tests_app_selection(changed_files, diff_text, tests_dir)
     return sorted(chosen)
 
 
 def main(argv: list) -> int:
     wt = os.path.abspath(argv[0] if argv else ".")
-    names = subprocess.run(["git", "diff", "--name-only", "origin/main...HEAD", "--", "backend/"], cwd=wt,
+    names = subprocess.run(["git", "diff", "--name-only", "origin/main...HEAD", "--", "backend/", "tests_app/"], cwd=wt,
                            capture_output=True, text=True)
-    diff = subprocess.run(["git", "diff", "origin/main...HEAD", "--", "backend/"], cwd=wt, capture_output=True,
-                          text=True, encoding="utf-8")
+    diff = subprocess.run(["git", "diff", "origin/main...HEAD", "--", "backend/", "tests_app/"], cwd=wt,
+                          capture_output=True, text=True, encoding="utf-8")
     if names.returncode or diff.returncode:
         print(f"route tests: git diff failed (rc {names.returncode}/{diff.returncode}) - run the route files by hand")
         return 3
