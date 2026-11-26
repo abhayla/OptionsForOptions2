@@ -69,13 +69,13 @@ async def _closing(db, sid: int, ids: list[int], tid: int | None = None) -> list
 # --- goldens, captured from 491ca7e2 (the pre-phase head) ----------------------------------------------------------
 
 GOLDEN_TRACKING_ALL: list[tuple] = [
-    (0, 'BUY', 65, D('39.15'), 'exit', None, None, dt(2026, 10, 8, 3, 50, 8)),
-    (2, 'BUY', 65, D('82.75'), 'exit', None, None, dt(2026, 10, 8, 3, 50, 9)),
-    (1, 'SELL', 65, D('12.95'), 'exit', None, None, dt(2026, 10, 8, 3, 50, 9)),
-    (3, 'SELL', 65, D('35.80'), 'exit', None, None, dt(2026, 10, 8, 3, 50, 9)),
+    (0, 'BUY', 65, D('39.15'), 'exit', None, None, dt(2026, 10, 8, 4, 0)),
+    (2, 'BUY', 65, D('82.75'), 'exit', None, None, dt(2026, 10, 8, 4, 0)),
+    (1, 'SELL', 65, D('12.95'), 'exit', None, None, dt(2026, 10, 8, 4, 0)),
+    (3, 'SELL', 65, D('35.80'), 'exit', None, None, dt(2026, 10, 8, 4, 0)),
 ]
 GOLDEN_TRACKING_ONE: list[tuple] = [
-    (1, 'SELL', 65, D('12.95'), 'exit', None, None, dt(2026, 10, 8, 3, 50, 9)),
+    (1, 'SELL', 65, D('12.95'), 'exit', None, None, dt(2026, 10, 8, 4, 0)),
 ]
 GOLDEN_MANUAL_ALL: list[tuple] = [
     (0, 'BUY', 65, D('39.15'), 'exit', None, None, dt(2026, 10, 8, 4, 0)),
@@ -449,7 +449,7 @@ async def _add_a_lot(db, stored, leg: int) -> None:
 
 
 GOLDEN_RACE_TRACKING: list[tuple] = [
-    (0, "BUY", 130, D("39.15"), "exit", None, None, dt(2026, 10, 8, 3, 50, 9)),
+    (0, "BUY", 130, D("39.15"), "exit", None, None, dt(2026, 10, 8, 4, 0)),
 ]
 
 
@@ -467,6 +467,24 @@ async def test_a_leg_added_between_read_and_lock_tracking_route_closes_the_whole
     assert reply.status_code == OK, reply.text
     rows = await _closing(db, stored.id, list(stored.saved.contract_ids))
     assert [r[:6] for r in rows] == [r[:6] for r in GOLDEN_RACE_TRACKING]
+
+
+async def test_tracking_exit_order_time_is_the_answer_time_not_the_quote_time(db):
+    """#726: the stored exit order's placed_at is the one time the route answers (here 04:00:00, the answer clock), as
+    the orders-screen exit and the monitor store; never the quote's own time (the replayed quotes are 03:50:08-09).
+    The leg's exited_at shown on the tracking reply is that time."""
+    app, stored, *_ = await _setup(db)
+    async with _client(app) as client:
+        await _open_book(client, stored)
+        reply = await client.post(f"/strategies/{stored.id}/tracking/exit", json={"legs": [0, 1]})
+        assert reply.status_code == OK, reply.text
+        legs = {leg["leg_index"]: leg for leg in reply.json()["legs"]}
+    ids = list(stored.saved.contract_ids)
+    rows = await _closing(db, stored.id, ids)
+    assert len(rows) == 2
+    assert {r[7] for r in rows} == {ANSWERED}
+    assert legs[0]["price_at"] is None or legs[0]["price_at"] != ANSWERED.isoformat()  # the quote time is not it
+    assert datetime.datetime.fromisoformat(legs[0]["exited_at"].replace("Z", "+00:00")) == ANSWERED
 
 
 @pytest.mark.parametrize("legs", [[0], [0, 1]])

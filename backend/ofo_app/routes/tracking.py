@@ -562,7 +562,7 @@ async def exit_tracking(strategy_id: int, body: TrackingExitIn,  # noqa: PLR0913
         done = await paper_exit.exit_strategy(
             db, user_ref=user_ref, strategy_id=strategy_id, kind="exit",
             prices={c: p.price for c, p in by_leg.items()},  # type: ignore[misc] - live: price set
-            placed_at={c: p.at or answered for c, p in by_leg.items()}, only=chosen,
+            placed_at=answered, only=chosen,  # #726: the time the route answers, never the quote time
             write=lambda orders: paper_limit.place_checked(db, user_ref, strategy_id, orders, entry=None, ctx=ctx,
                                                           at=answered, reader=tracked_reader, rates=rates))  # an exit
         if isinstance(done, paper_exit.Exited):
