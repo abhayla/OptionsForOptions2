@@ -2,7 +2,7 @@
 
 # Coverage register
 
-Generated from commit 7bf64ebb
+Generated from commit 21672a36
 
 ## Stage S0
 
@@ -957,6 +957,10 @@ Generated from commit 7bf64ebb
 | S6.7 | issue | #746 | - |  |
 | S6.7 | issue | #747 | - |  |
 | S6.7 | issue | #748 | - |  |
+| S6.7 | issue | #749 | - |  |
+| S6.7 | issue | #750 | - |  |
+| S6.7 | issue | #751 | - |  |
+| S6.7 | issue | #752 | - |  |
 | S6.7 | requirement | REQ-051 | AC-6 | Simulation, when built, is simple strategy simulation (EOD default, intraday later), not quant backtesting (Q19, Q100). |
 | S6.7 | requirement | REQ-051 | AC-7 | Simulation results may show best/worst outcome, winning days, drawdown and historical behaviour, and are always labelled historical/simulation, never a future guarantee. |
 | S6.7 | requirement | REQ-113 | - | The live price feed and the broker order-update feed run in their own process, so an API deploy never cuts users' feeds |
@@ -1178,7 +1182,7 @@ Generated from commit 7bf64ebb
 | S6.4 | 0 | 1 | 13 | 19 | 0 | 32 | 1 | 0 | 25 | 0 | 8 | 99 |
 | S6.5 | 0 | 0 | 1 | 0 | 0 | 0 | 0 | 0 | 3 | 0 | 1 | 5 |
 | S6.6 | 0 | 0 | 0 | 0 | 0 | 0 | 0 | 0 | 7 | 0 | 2 | 9 |
-| S6.7 | 0 | 0 | 110 | 9 | 0 | 89 | 0 | 0 | 14 | 0 | 19 | 241 |
+| S6.7 | 0 | 0 | 110 | 9 | 0 | 93 | 0 | 0 | 14 | 0 | 19 | 245 |
 | S7 | 1 | 0 | 0 | 0 | 0 | 1 | 1 | 0 | 5 | 0 | 0 | 8 |
 | S8 | 2 | 0 | 17 | 1 | 0 | 1 | 1 | 1 | 22 | 4 | 7 | 56 |
 | all | 0 | 0 | 15 | 0 | 0 | 0 | 0 | 0 | 10 | 0 | 0 | 25 |
