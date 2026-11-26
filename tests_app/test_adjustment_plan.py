@@ -7,6 +7,7 @@ that share ADJ-02 run in file order: the core proof first, the overrides next, t
 from __future__ import annotations
 
 import copy
+import dataclasses
 import importlib.util
 import json
 import pathlib
@@ -16,9 +17,10 @@ import pytest
 from _scenario_catalogue import load_library
 from httpx import ASGITransport, AsyncClient
 from ofo.adjustment.playbook_types import SHOWN_NAMES
-from ofo_app import adjustment_check, adjustment_readers, playbook_store
+from ofo_app import adjustment_check, adjustment_readers, playbook_store, settings_in_force
 from ofo_app import db as app_db
 from ofo_app.config import get_settings
+from ofo_app.routes import adjustment_plan as route
 from sqlalchemy import text
 
 ROOT = pathlib.Path(__file__).resolve().parent.parent
@@ -379,7 +381,6 @@ async def test_levels_preview_follows_the_picked_playbook_not_the_active_one(app
 
 
 async def test_levels_preview_of_a_generic_shape_has_no_stop_words_not_the_partial_sentence(app_db_url, monkeypatch):
-    from ofo_app.routes import adjustment_plan as route
     sid = await _seeded(app_db_url, monkeypatch, "ADJ-42")
     real = route._type_of
 
@@ -412,23 +413,18 @@ async def _preview_and_saved(app_db_url, monkeypatch, pick_body=None, typed=None
 
 
 async def test_levels_preview_equals_saved_when_the_rupee_stop_replaces_the_credit_line(app_db_url, monkeypatch):
-    from ofo_app import settings_in_force
     monkeypatch.setattr(settings_in_force, "RUPEE_STOP_KEEPS_CREDIT", False)
     preview, saved = await _preview_and_saved(app_db_url, monkeypatch)
     assert preview == saved and "credit" not in preview
 
 
 async def test_levels_preview_equals_saved_for_a_body_with_no_credit_line(app_db_url, monkeypatch):
-    from ofo_app import settings_in_force  # the stored body's strategy type is pinned by a CHECK; the rule is not
     monkeypatch.setattr(settings_in_force, "credit_line_applies", lambda resolved: False)
     preview, saved = await _preview_and_saved(app_db_url, monkeypatch)
     assert preview == saved and "credit" not in preview
 
 
 async def test_levels_preview_equals_saved_with_no_stored_base(app_db_url, monkeypatch):
-    import dataclasses
-
-    from ofo_app.routes import adjustment_plan as route
     real = route.bases_of
     monkeypatch.setattr(route, "bases_of", lambda *a, **k: dataclasses.replace(real(*a, **k), max_loss=None))
     monkeypatch.setattr(route, "_stored_loss", lambda stored, bases: None)
