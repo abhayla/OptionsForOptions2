@@ -25,7 +25,8 @@ def _q(at: datetime.datetime, *, index: bool = False) -> NormalizedQuote:
     kind, strike = (None, None) if index else (Instrument.CE, D("22500"))
     return NormalizedQuote("NSE_INDEX:256265" if index else "NSE_FO:44612", "NIFTY", "NSE",
                            "INDICES" if index else "NSE_FO", kind, None if index else EXPIRY, strike, D("100.00"),
-                           None, None, *([None] * 8), at, SourceMetadata("recorded", "kite-2026-10-08"),
+                           None, None, None, None, None, None,
+                           None, None, None, None, at, SourceMetadata("recorded", "kite-2026-10-08"),
                            DataHealth.STALE)
 
 
