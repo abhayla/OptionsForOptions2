@@ -24,7 +24,7 @@ TRADES = 3  # strategies sharing one name in the alert-label test
 FIRED = datetime.datetime(2026, 11, 25, 11, 2, 20, tzinfo=IST)
 STOPPED = datetime.datetime(2026, 11, 25, 11, 5, 1, tzinfo=IST)
 ACTIVE_KEYS = {"id", "strategy_id", "strategy_name", "kind", "text", "fired_at", "fired_line", "no_longer_true_since",
-               "no_longer_true_line", "escalated_at", "worse_line", "answers"}
+               "no_longer_true_line", "escalated_at", "worse_line", "confirm_text", "answers"}
 HISTORY_KEYS = {"id", "strategy_id", "strategy_name", "kind", "text", "fired_at", "fired_line", "escalated_at",
                 "worse_line", "answer", "answer_label", "answered_at", "closed_reason"}
 
@@ -47,6 +47,7 @@ async def test_active_answer_history_replies_and_errors(app_db_url, monkeypatch)
     assert (mine["fired_line"], mine["no_longer_true_line"]) == ("Fired at 11:02", "no longer true since 11:05")
     assert (mine["fired_at"], mine["no_longer_true_since"]) == ("2026-11-25T05:32:20Z", "2026-11-25T05:35:01Z")
     assert (mine["escalated_at"], mine["worse_line"]) == (None, None)  # never worse: null, not an empty line
+    assert mine["confirm_text"] is None  # only a side_closed row carries the confirmation sentence
     assert [a["code"] for a in mine["answers"]] == ["exit", "continue"] and set(mine["answers"][0]) == {"code", "label"}
     for body, code in (({"answer": ""}, REFUSED), ({"answer": "add_legs"}, REFUSED),  # empty, not for this kind
                        ({"answer": "continue", "unnamed": 1}, REFUSED)):  # a closed body: an extra field is refused
@@ -208,3 +209,17 @@ async def test_a_side_closed_row_in_active_has_no_adjustment_wording(app_db_url,
     assert mine["kind"] == "side_closed"
     for words in ("Adjustment opportunity detected", "Your rule was triggered"):
         assert words not in str(mine["text"])
+
+
+async def test_a_side_closed_row_in_active_names_the_closed_side_and_the_shape_that_remains(app_db_url, monkeypatch):
+    """P7 page flow (ADR-330 (2)(b)): the row says the call side is closed and asks; confirm_text names the shape that
+    remains (bull put spread when the call side closed); both answers are offered."""
+    from ofo_app import side_closed
+    from test_side_closed_alert import CALL_EXITED
+    sid = await _clean(app_db_url, await _seeded(app_db_url, monkeypatch, "ADJ-02"))
+    async with app_db_url.begin() as conn:
+        alert_id = await side_closed.raise_if_closed(conn, "owner", sid, CALL_EXITED, at=FIRED, source=None)
+    mine = next(a for a in (await _call("GET", "/api/alerts/active"))[1]["alerts"] if a["id"] == alert_id)
+    assert "call side of this trade is closed" in str(mine["text"])
+    assert "Bull Put Spread" in str(mine["confirm_text"])
+    assert [x["code"] for x in mine["answers"]] == ["add_legs", "confirm_new_shape"]

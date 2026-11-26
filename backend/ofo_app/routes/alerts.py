@@ -17,7 +17,7 @@ import logging
 from typing import Annotated, Any
 
 from fastapi import APIRouter, Depends, Query
-from ofo.alerts import CLOSED_BY_SYSTEM
+from ofo.alerts import CLOSED_BY_SYSTEM, SIDE_CLOSED
 from ofo.errors import render
 from ofo.errors.explanations import render_explanation
 from pydantic import BaseModel, ConfigDict
@@ -25,6 +25,7 @@ from pydantic import BaseModel, ConfigDict
 from ofo_app import actionable_alerts as aa
 from ofo_app import alert_title
 from ofo_app import playbook_store as store
+from ofo_app import side_closed
 from ofo_app.api_models import ApiModel, CatalogueText, Identifier
 from ofo_app.db import get_db
 from ofo_app.errors import ClosedRoute, Failure
@@ -60,6 +61,9 @@ class ActiveAlert(ApiModel):
     no_longer_true_line: CatalogueText | None
     escalated_at: datetime.datetime | None
     worse_line: CatalogueText | None
+    #: ADR-330 (2) (b): a side_closed row only: the sentence that names the shape that remains, shown before "Confirm the
+    #: new shape" stores anything; None for every other kind
+    confirm_text: CatalogueText | None = None
     answers: list[AnswerChoice]
 
 
@@ -103,12 +107,29 @@ def _words(a: aa.Alert, by_id: dict[int, store.Suggestion]) -> Any:
     """The words the inbox already shows for the record (Active says what today's record says); an informational note
     is rendered from the catalogue id and values stored with it; a record the inbox cannot word falls back to its
     stage-less rule label, never a raw id."""
+    side = _closed_side(a)
+    if side is not None:  # ADR-330 (2) (b): the side_closed row tells the user the side closed and asks (no rule words)
+        return render_explanation("alert_side_closed_text", side=side)
     if a.note is not None:
         template_id, values = a.note
         return render_explanation(template_id, **values)
     found = by_id.get(a.id)
     shown = None if found is None else condition_text(found)
     return shown if shown is not None else render_explanation("adjust_condition_line_id", label=a.strategy_name)
+
+
+def _closed_side(a: aa.Alert) -> str | None:
+    """"call" / "put" for a side_closed row (its rule id is ``side.closed.<side>``), else None."""
+    prefix = side_closed.RULE_PREFIX
+    if a.kind != SIDE_CLOSED or not a.rule_id.startswith(prefix) or a.rule_id.removeprefix(prefix) not in ("call", "put"):
+        return None
+    return a.rule_id.removeprefix(prefix)
+
+
+def _confirm(a: aa.Alert) -> Any:
+    side = _closed_side(a)
+    shape = None if side is None else side_closed.remaining_shape_name(side)
+    return None if shape is None else render_explanation("alert_side_closed_confirm", shape=shape)
 
 
 def _fired(a: aa.Alert) -> Any:
@@ -158,7 +179,7 @@ async def active_alerts(db: Annotated[Any, Depends(get_db)],
     alerts = [{"id": a.id, "strategy_id": a.strategy_id, "strategy_name": titles[a.strategy_id], "kind": _kind(a),
                "text": _words(a, by_id), "fired_at": a.fired_at, "fired_line": _fired(a),
                "no_longer_true_since": a.no_longer_true_since, "no_longer_true_line": _stopped(a),
-               "escalated_at": a.escalated_at, "worse_line": _worse(a),
+               "escalated_at": a.escalated_at, "worse_line": _worse(a), "confirm_text": _confirm(a),
                "answers": [{"code": c, "label": _label(c)}
                            for c in (allowed_answers(a.kind) if a.kind else ("exit", "continue"))]} for a in rows]
     return ActiveOut.model_validate({"count": len(rows), "alerts": alerts})
