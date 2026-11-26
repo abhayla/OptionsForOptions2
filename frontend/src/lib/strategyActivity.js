@@ -24,7 +24,7 @@ export const canDelete = (row) => row?.can_delete === true && row?.held_at_broke
 
 /** ADR-330 (8): the one confirmation of a bulk delete ("Delete 14 strategies? 3 of them are running."). */
 export const bulkConfirmText = (count, running) =>
-  `Delete ${count} ${count === 1 ? "strategy" : "strategies"}?${running > 0 ? ` ${running} of them are running.` : ""}`;
+  `Delete ${count} ${count === 1 ? "strategy" : "strategies"}?${running > 0 ? ` ${running} of them ${running === 1 ? "is" : "are"} running.` : ""}`;
 /** The server's catalogue sentence: an object {what_happened, ...} (a bare string is accepted too). Never composed here. */
 export const sentenceOf = (t) => (typeof t === "string" ? t : typeof t?.what_happened === "string" ? t.what_happened : "");
 export const BULK_UNREADABLE_TEXT = "The strategy could not be read, so it was not deleted.";
@@ -94,7 +94,8 @@ export function useDeleteFlow(client, hooks) {
   const state = reactive({
     confirming: null,
     busy: false,
-    undo: null,
+    undo: null, // the timed pop-up's hold (dropped after the served wait)
+    kept: null, // C-04: the same hold, kept for the page's result line until dismissed, replaced by the next delete, or used
     notice: null,
     errorParts: null,
     selected: [], // ADR-330 (8): ticked ids
@@ -105,6 +106,10 @@ export function useDeleteFlow(client, hooks) {
   const dropUndo = () => {
     clearTimeout(timer);
     state.undo = null;
+  };
+  const dropAll = () => {
+    dropUndo();
+    state.kept = null;
   };
   return Object.assign(state, {
     ask(id) {
@@ -127,10 +132,11 @@ export function useDeleteFlow(client, hooks) {
         state.confirming = null;
         hooks.onRemoved(id);
         hooks.onDeleted?.(id);
-        dropUndo();
+        dropAll();
         const ms = await hooks.undoMs(); // the served Undo wait (REQ-167 AC-7); unknown = no Undo is offered, never a typed time
         if (ms === null) return;
         state.undo = { id, revision };
+        state.kept = state.undo;
         timer = setTimeout(dropUndo, ms);
       } catch (e) {
         state.confirming = null;
@@ -145,19 +151,22 @@ export function useDeleteFlow(client, hooks) {
       }
     },
     async undoDelete() {
-      const held = state.undo;
+      const held = state.undo ?? state.kept;
       if (!held || state.busy) return;
       state.busy = true;
-      dropUndo();
+      dropAll();
       if (held.bulk) {
         let failed = 0;
+        let firstParts = null;
         for (const d of held.bulk) {
           try {
             await undeleteDraft(client, d.id, d.revision);
-          } catch {
+          } catch (e) {
             failed += 1;
+            firstParts ??= e?.parts ?? null;
           }
         }
+        if (firstParts) state.errorParts = firstParts; // the server's own refusal text
         if (failed) state.notice = `${failed} of ${held.bulk.length} could not be brought back.`;
         state.bulkResult = null;
         try {
@@ -229,11 +238,12 @@ export function useDeleteFlow(client, hooks) {
           summary: summary ?? `${deleted.length} deleted, ${kept.length + unreadable.length} kept.`,
           kept: [...kept.map((k) => ({ ...k, text: sentenceOf(k.text) })), ...unreadable],
         };
-        dropUndo();
+        dropAll();
         if (!deleted.length) return;
         const ms = await hooks.undoMs();
         if (ms === null) return;
         state.undo = { bulk: deleted.map((d) => ({ id: d.id, revision: d.revision })) };
+        state.kept = state.undo;
         timer = setTimeout(dropUndo, ms);
       } catch (e) {
         state.bulkConfirming = null; // the selection stays so the user can try again
@@ -242,6 +252,8 @@ export function useDeleteFlow(client, hooks) {
         state.busy = false;
       }
     },
-    dispose: dropUndo,
+    /** The result line's Dismiss: the Undo is let go (the rows stay deleted). */
+    dismissUndo: dropAll,
+    dispose: dropAll,
   });
 }

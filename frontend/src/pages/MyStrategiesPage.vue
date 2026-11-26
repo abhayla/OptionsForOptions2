@@ -236,11 +236,22 @@ async function confirmRename(row) {
       </div>
     </template>
     <div v-if="deleteFlow.bulkResult" class="mt-2 text-sm" data-testid="bulk-result">
-      <p data-testid="bulk-summary">{{ deleteFlow.bulkResult.summary }}</p>
+      <p class="flex flex-wrap items-center gap-3">
+        <span data-testid="bulk-summary">{{ deleteFlow.bulkResult.summary }}</span>
+        <template v-if="deleteFlow.kept?.bulk">
+          <button type="button" class="link" :disabled="deleteFlow.busy" data-testid="result-undo" @click="deleteFlow.undoDelete()">Undo</button>
+          <button type="button" class="link" data-testid="result-dismiss" @click="deleteFlow.dismissUndo()">Dismiss</button>
+        </template>
+      </p>
       <ul v-if="deleteFlow.bulkResult.kept.length" class="list-disc pl-5">
         <li v-for="k in deleteFlow.bulkResult.kept" :key="k.id" data-testid="bulk-kept">{{ keptName(k.id) }}: {{ k.text }}</li>
       </ul>
     </div>
+    <p v-if="deleteFlow.kept && !deleteFlow.kept.bulk" class="mt-2 flex flex-wrap items-center gap-3 text-sm" data-testid="delete-result">
+      <span>Strategy deleted.</span>
+      <button type="button" class="link" :disabled="deleteFlow.busy" data-testid="result-undo" @click="deleteFlow.undoDelete()">Undo</button>
+      <button type="button" class="link" data-testid="result-dismiss" @click="deleteFlow.dismissUndo()">Dismiss</button>
+    </p>
     <DraftDeleteStatus :flow="deleteFlow" />
   </section>
 </template>

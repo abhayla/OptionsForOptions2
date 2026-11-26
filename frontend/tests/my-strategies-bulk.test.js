@@ -5,6 +5,7 @@ import { createRouter, createMemoryHistory } from 'vue-router'
 import { createPinia, setActivePinia } from 'pinia'
 
 let listAnswer
+let undoWait = 60000
 let bulkAnswer
 let undeleteAnswer
 const calls = []
@@ -33,7 +34,7 @@ vi.mock('@/services/api', async (importActual) => {
     },
   }
 })
-vi.mock('@/stores/settingsValues', () => ({ useSettingsValues: () => ({ waitMs: () => Promise.resolve(60000) }) }))
+vi.mock('@/stores/settingsValues', () => ({ useSettingsValues: () => ({ waitMs: () => Promise.resolve(undoWait) }) }))
 import MyStrategiesPage from '@/pages/MyStrategiesPage.vue'
 
 const Stub = { template: '<i />' }
@@ -63,6 +64,7 @@ beforeEach(() => {
   listAnswer = () => Promise.resolve({ data: { strategies: THREE() } })
   bulkAnswer = () => Promise.reject(new Error('no bulk answer'))
   undeleteAnswer = () => Promise.resolve({ data: {} })
+  undoWait = 60000
 })
 
 describe('bulk delete selection', () => {
@@ -110,7 +112,7 @@ describe('bulk delete confirmation and result', () => {
     const w = await open()
     await tick(w, 1); await tick(w, 2); await tick(w, 3)
     await w.get('[data-testid="delete-selected"]').trigger('click')
-    expect(w.get('[data-testid="bulk-confirm-text"]').text()).toBe('Delete 3 strategies? 1 of them are running.')
+    expect(w.get('[data-testid="bulk-confirm-text"]').text()).toBe('Delete 3 strategies? 1 of them is running.')
     await w.get('[data-testid="bulk-cancel"]').trigger('click')
     await w.get('[data-testid="select-2"]').setValue(false)
     await w.get('[data-testid="select-3"]').setValue(false)
@@ -281,5 +283,91 @@ describe('S-05 list read states', () => {
     listAnswer = () => Promise.resolve({ data: { strategies: [] } })
     const w = await open()
     expect(w.get('[data-testid="list-empty"]').text()).toContain('You have no saved strategies yet')
+  })
+})
+
+// C-04 (owner check 2026-11-26): the pop-up lasts a few seconds; the result line on the page keeps its own Undo.
+const sleep = (ms) => new Promise((r) => setTimeout(r, ms))
+const undoUrls = () => calls.filter((c) => /undelete/.test(c.url)).map((c) => c.url).sort()
+async function bulkDelete(w, ids) {
+  for (const id of ids) await tick(w, id)
+  await w.get('[data-testid="delete-selected"]').trigger('click')
+  await w.get('[data-testid="bulk-confirm"]').trigger('click')
+  await flushPromises()
+}
+describe('C-04 the result line carries Undo after the pop-up is gone', () => {
+  it('(a) bulk delete 2: the toast expires, the line Undo stays, click restores both and the line goes', async () => {
+    undoWait = 30
+    bulkAnswer = () => Promise.resolve({ data: { deleted: [{ id: 1, revision: 6 }, { id: 3, revision: 7 }], kept: [], summary_text: cat('2 deleted.') } })
+    const w = await open()
+    await bulkDelete(w, [1, 3])
+    await sleep(120); await flushPromises()
+    expect(w.find('[data-testid="delete-toast"]').exists()).toBe(false)
+    expect(w.get('[data-testid="bulk-result"]').text()).toContain('2 deleted.')
+    await w.get('[data-testid="result-undo"]').trigger('click')
+    await flushPromises()
+    expect(undoUrls()).toEqual(['/strategies/1/undelete?expected_revision=6', '/strategies/3/undelete?expected_revision=7'])
+    expect(rowIds(w).sort()).toEqual(['1', '2', '3'])
+    expect(w.find('[data-testid="result-undo"]').exists()).toBe(false)
+    expect(w.find('[data-testid="bulk-result"]').exists()).toBe(false)
+  })
+
+  it('(b) single delete: the line Undo outlives the toast; click restores the row', async () => {
+    undoWait = 30
+    const w = await open()
+    listAnswer = () => Promise.resolve({ data: { strategies: [mk(2, { has_order: true, has_paper_order: true, status_word: 'Running' }), mk(3)] } })
+    await w.get('[data-testid="delete-1"]').trigger('click')
+    await w.get('[data-testid="delete-confirm"]').trigger('click')
+    await flushPromises()
+    expect(w.find('[data-testid="delete-result"]').exists()).toBe(true)
+    await sleep(120); await flushPromises()
+    expect(w.find('[data-testid="delete-toast"]').exists()).toBe(false)
+    listAnswer = () => Promise.resolve({ data: { strategies: THREE() } })
+    await w.get('[data-testid="result-undo"]').trigger('click')
+    await flushPromises()
+    expect(undoUrls()).toEqual(['/strategies/1/undelete?expected_revision=5'])
+    expect(rowIds(w).sort()).toEqual(['1', '2', '3'])
+    expect(w.find('[data-testid="delete-result"]').exists()).toBe(false)
+  })
+
+  it('(b2) Dismiss removes the line and no restore is sent', async () => {
+    undoWait = 30
+    const w = await open()
+    await w.get('[data-testid="delete-1"]').trigger('click')
+    await w.get('[data-testid="delete-confirm"]').trigger('click')
+    await flushPromises()
+    await w.get('[data-testid="result-dismiss"]').trigger('click')
+    expect(w.find('[data-testid="delete-result"]').exists()).toBe(false)
+    expect(undoUrls()).toEqual([])
+  })
+
+  it('(c) a second delete replaces the first line; Undo restores only the latest', async () => {
+    undoWait = 30
+    bulkAnswer = () => Promise.resolve({ data: { deleted: [{ id: 3, revision: 7 }], kept: [], summary_text: cat('1 deleted.') } })
+    const w = await open()
+    await w.get('[data-testid="delete-1"]').trigger('click')
+    await w.get('[data-testid="delete-confirm"]').trigger('click')
+    await flushPromises()
+    await bulkDelete(w, [3])
+    await sleep(120); await flushPromises()
+    expect(w.find('[data-testid="delete-result"]').exists()).toBe(false)
+    expect(w.findAll('[data-testid="result-undo"]')).toHaveLength(1)
+    await w.get('[data-testid="result-undo"]').trigger('click')
+    await flushPromises()
+    expect(undoUrls()).toEqual(['/strategies/3/undelete?expected_revision=7'])
+  })
+
+  it('(d) a refused restore shows the reply text and the rows stay deleted', async () => {
+    undoWait = 30
+    bulkAnswer = () => Promise.resolve({ data: { deleted: [{ id: 1, revision: 6 }, { id: 3, revision: 7 }], kept: [], summary_text: cat('2 deleted.') } })
+    undeleteAnswer = () => Promise.reject(Object.assign(new Error('409'), { status: 409, parts: { what_happened: 'The server refused to bring it back.', impact: 'i', what_is_blocked: 'b', next_action: 'n' } }))
+    const w = await open()
+    await bulkDelete(w, [1, 3])
+    listAnswer = () => Promise.resolve({ data: { strategies: [mk(2, { has_order: true, has_paper_order: true, status_word: 'Running' })] } })
+    await sleep(120); await flushPromises()
+    await w.get('[data-testid="result-undo"]').trigger('click')
+    await flushPromises()
+    expect(w.get('[data-testid="delete-status"]').text()).toContain('The server refused to bring it back.')
+    expect(rowIds(w)).toEqual(['2'])
   })
 })
