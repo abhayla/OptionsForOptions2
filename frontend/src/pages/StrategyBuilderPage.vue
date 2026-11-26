@@ -497,10 +497,12 @@ function exitPaper(contractId, lots) {
   setLegs(next)
   reviewPending(true)
 }
-// N-04 / N-05: the ONE way an Exit dialog closes without a Confirm: the user's Cancel, and every close the page does itself (the read
-// failed, the trade changed elsewhere, a Confirm that arrives while blocked). It drops the staged exits too (the legs the user had before
-// the Exit click come back, their other edits with them), so no "pending change" outlives a dialog nobody confirmed. A dialog of
-// "Review and add" for other edits keeps its edits. While a POST is in flight nothing closes it: its answer (or the unknown-outcome text) decides.
+// N-04 / N-05: the ONE way the PAGE closes an Exit dialog without a Confirm (the read failed, the trade changed elsewhere, a Confirm that
+// arrives while blocked). It drops the staged exits too (the legs the user had before the Exit click come back, their other edits with
+// them), so no "pending change" outlives a dialog the page closed. The user's own Cancel is userCancelPaperDialog: u513 (owner test note
+// #85) keeps the exits the user chose as edits, counted and discardable. A dialog of "Review and add" keeps its edits. While a POST is in
+// flight nothing closes it: its answer (or the unknown-outcome text) decides.
+const userCancelPaperDialog = () => { if (!paperBusy.value) paperDialog.value = false }
 function cancelPaperDialog() {
   if (paperBusy.value) return
   const wasExit = exitOrigin.value
@@ -1226,7 +1228,7 @@ const leaveGuard = useLeaveBuilder({
         </div>
         <PaperBookPanel v-if="paper" :book="paper.book" :net="paper.net" :read-failed="paperBookFailed" :contracts-changed="paperContractsChanged" :show-orders="showOrdersTick" @exit="exitPaper" @exit-all="exitAllPaper" />
         </div>
-        <PaperConfirmDialog :open="paperDialog" :orders="paperRows" :strategy-id="route.query.strategy" :busy="paperBusy" :error="paperError" :state="paperState" @confirm="confirmPending" @cancel="cancelPaperDialog" @orderbook="openPaperOrderbook" />
+        <PaperConfirmDialog :open="paperDialog" :orders="paperRows" :strategy-id="route.query.strategy" :busy="paperBusy" :error="paperError" :state="paperState" @confirm="confirmPending" @cancel="userCancelPaperDialog" @orderbook="openPaperOrderbook" />
         <SaveDraftBar ref="barRef" :legs="legs" :rules-ref="String(route.query.rules_ref || '')" :current="openStrategy" :shown-name="shapeName ?? ''" :paper-mode="paper !== null" :live-price-by-id="livePriceById" class="max-[1099px]:contents" @open="openFromBar" @saved="onSaved" @paper-added="onPaperAdded" @renamed="onRenamed" @deleted="onDeleted">
           <template #add-edit>
             <button type="button" class="h-10 flex-1 basis-0 rounded-lg border border-line font-medium" aria-haspopup="dialog" :aria-expanded="pickerOpen ? 'true' : 'false'" data-testid="add-edit" @click="pickerOpen = !pickerOpen">Add/Edit</button>

@@ -143,16 +143,18 @@ describe('N-04 / N-05: an Exit dialog the PAGE closes drops its staged exits, li
     expect(t(w, 'paper-exit-reason').text()).toBe(CHANGED)
   })
 
-  it('(d) the user\'s Cancel on an Exit dialog drops the staged exit (same function the page uses)', async () => {
+  it('(d) u513: the user\'s own Cancel on an Exit dialog keeps the exits they chose as edits (only a PAGE close drops them)', async () => {
     const w = await builder()
     const legsBefore = snap(w)
     await t(w, 'paper-exit-all').trigger('click')
     await flushPromises()
+    const staged = S(w).pendingOrders.length
+    expect(staged).toBeGreaterThan(0)
     await t(w, 'paper-cancel').trigger('click')
     await flushPromises()
     expect(t(w, 'paper-confirm').exists()).toBe(false)
-    expect(S(w).pendingOrders.length).toBe(0)
-    expect(snap(w)).toEqual(legsBefore)
+    expect(S(w).pendingOrders.length).toBe(staged)
+    expect(snap(w)).not.toEqual(legsBefore)
   })
 
   it('(d2) Cancel of a "Review and add" dialog of adds keeps the user\'s edit (only Exit edits are dropped)', async () => {
@@ -172,7 +174,7 @@ describe('Tier A review round 2: the staged exit is dropped, the user\'s own edi
   const lots9 = (w) => S(w).setLegs(S(w).paper.net.map((l, i) => (i === 0 ? { ...l, lots: 9 } : { ...l })))
   const exitLeg = async (w, i) => { S(w).exitPaper(S(w).paper.net[i].contract_id, 1); await flushPromises() }
 
-  it('F1 A1: a lot change, then a per-leg Exit on another leg, then Cancel: the lot change stays (1 pending)', async () => {
+  it('F1 A1: a lot change, then a per-leg Exit on another leg, then the user\'s Cancel: both edits stay (u513, 2 pending)', async () => {
     const w = await builder()
     lots9(w)
     await flushPromises()
@@ -182,7 +184,7 @@ describe('Tier A review round 2: the staged exit is dropped, the user\'s own edi
     expect(t(w, 'paper-confirm').exists()).toBe(true)
     await t(w, 'paper-cancel').trigger('click')
     await flushPromises()
-    expect(S(w).pendingOrders.length).toBe(1)
+    expect(S(w).pendingOrders.length).toBe(2)
     expect(S(w).legs[0].lots).toBe(9)
   })
 

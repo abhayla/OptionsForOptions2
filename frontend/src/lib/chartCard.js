@@ -111,9 +111,10 @@ export function compactRows(table, legs = null, paperLegs = null) {
   // percent: the book sends none (ADR-008).
   const named = new Map()
   for (const l of legs ?? []) named.set(l?.instrument_id, (named.get(l?.instrument_id) ?? 0) + 1)
+  const byLegNo = new Map((legs ?? []).map((l, k) => [String(k + 1), l])) // the reply's 1-based leg number, matched as text (no parsing)
   return rows.map((r, i) => {
     if (r.isTotal) return r
-    const leg = legs?.[Number(table.rows[i]?.cells?.leg?.value) - 1]
+    const leg = byLegNo.get(String(table.rows[i]?.cells?.leg?.value))
     const own = paperLegs.get(leg?.instrument_id)
     const book = own !== undefined && named.get(leg.instrument_id) === 1 && leg.action === own.action && String(leg.lots) === String(own.lots)
     const put = (id, text) => ({ ...r.values[id], display: text, value: null })

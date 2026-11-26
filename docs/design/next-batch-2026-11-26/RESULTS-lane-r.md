@@ -17,7 +17,7 @@ walk-through was possible in the cloud: the app needs the broker feed and the ow
 |---|---|---|---|---|
 | Row 12, Drafts Mode across the chain trip | Fixed, not tested | The builder dropped the chain-trip hold whenever the URL carried `?strategy=`, and Back from the chain returns to the `?strategy=<id>` entry, so the book was read again over the held edit. | Chain-to-builder returns whose URL names the held strategy: 3 of 3 tested paths lost the edit (paper, saved, changed book); 0 after. | `chain-trip-adr329.test.js` R12a-c: 3 failed on the old page; pass after. |
 | Row 11, replace question on a draft link | Answered (LR-Q1, option 1) | A pasted link is a full page load and unsaved legs live in page memory only, so no code can ask. | Spec and check text corrected (ADR-329 (3), ADR-328 (2), modular-doors RESULTS.md row 11); no code. | n/a; `draft-link.test.js` stays the in-app test. |
-| N-04, staged exit stays after the page closes the Exit dialog | Fixed, not tested | The page closed the dialog but left the exit staged in the legs; the user's own Cancel did the same. | Closes without the user's choice that left staged exits: 2; 0 after (one `cancelPaperDialog`, restoring the legs as they were before the Exit click). | `exit-dialog-page-close.test.js`: 6 failed, then 13 pass; review round 2: 6 more failed, then pass. |
+| N-04, staged exit stays after the page closes the Exit dialog | Fixed, not tested | The page closed the dialog but left the exit staged in the legs. | Page-side closes that left staged exits: 2; 0 after (one `cancelPaperDialog`, restoring the legs as they were before the Exit click). The user's own Cancel keeps the chosen exits as edits, as u513 (owner test note #85) decided; the gate caught round 1 dropping them (`exit-preview-not-pending.test.js`). | `exit-dialog-page-close.test.js`: 6 failed, then 13 pass; review round 2: 6 more failed, then pass. |
 | N-05, "Review and add" looks usable while blocked | Fixed, not tested | Review and add read the blocked rule only for edits that came from an Exit, and an open dialog's Confirm ignored it. | Buttons that commit paper orders reading one blocked rule: 2 of 3; 3 of 3 after; a blocked Confirm posts nothing for any paper dialog. | same files; A3: 1 POST before, 0 after. |
 | N-07, third price reader (P&L Table) | Fixed, not tested (part; rest #744) | The P&L Table printed the outcome reply's LTP and P&L and the plan's entry, while the legs table and the Paper P&L panel read the book. | Builder views of a paper leg's price/P&L: 3 of 6 on the book before (legs table, Paper P&L, and none other); after, the P&L Table too (joined by contract, side and lots; a failed read shows "-" in rows and TOTAL). Left: Full table, leg-list "now" price, Paper P&L rows after a failed read (#744). | `pnl-table-one-source-n07.test.js`: 5 failed, then round 2: 7 of 12 failed, then pass; guard `paper-leg-readers-guard.test.js` red on 3 mutations. |
 | N-01, refusal line vanishes | Fixed, not tested | A watcher in `PaperStops.vue` cleared every "Not saved" line when the list's next good poll arrived. | Clear paths not driven by a user edit or a new Save: 1; 0 after. "First Save showed nothing" not reproduced. | `paper-stops.test.js`: 2 failed, then pass. |
@@ -68,8 +68,8 @@ review agent runs, so a review blocked three builders for about 15 minutes: run 
 
 ## Re-test: N-04 / N-05 (push 2)
 
-1. Builder on a running paper trade: change the lots of one leg ("1 pending change"), then click the per-leg Exit of another leg; Cancel.
-2. Expected: still "1 pending change" (your lot change), the other leg not staged for exit, the figures as before the Exit click.
+1. Builder on a running paper trade: change the lots of one leg ("1 pending change"), then click the per-leg Exit of another leg; leave the dialog open and stop the API (as in row 4).
+2. Expected: the dialog closes by itself, "1 pending change" (your lot change only), the other leg not staged for exit. (Your own Cancel keeps the exit as an edit, by the earlier u513 rule.)
 3. Click Exit all (dialog open, do not confirm); in a second tab exit one leg of that trade. Back in the first tab.
 4. Expected: the dialog closes by itself, "This trade changed elsewhere. Reload to see the current legs.", no "No legs yet" and no staged exits; "Review and add", "Exit all" and every "Exit" are greyed out.
 5. Reload: the current legs, every button enabled.
@@ -140,16 +140,16 @@ review agent runs, so a review blocked three builders for about 15 minutes: run 
 |---|---|---|
 | C-01b | not a defect | A placed paper book follows ADR-263 (2) ("a paper book's breakevens carry the same charges as its Max Profit / Max Loss and booked P&L, with a line saying so"; server text `routes/paper.py:772`, `errors/explanations.py:1905,1912`); ADR-330 (17) is about the plan summary only. Two bases on two screens: if the owner wants one, that is a new question (LR-Q9). |
 | N-20 | not a defect | Home "Total P&L —" right after the API restart is the first-read / paused state (`paperPnl.js:25-30, 62-66`), not a wrong figure. |
-| N-21 | defect, fixing now | The Stops panel re-read only its own list after Save; the legs come from the parent's 5 s timer (`PaperStops.vue:58-75`, `PaperStrategies.vue:362`). The server refuses an exit of a fired leg, so a display lag only. |
+| N-21 | fixed, not tested | The Stops panel re-read only its own list after Save; the legs come from the parent's 5 s timer (`PaperStops.vue:58-75`, `PaperStrategies.vue:362`). The server refuses an exit of a fired leg, so a display lag only. |
 | N-22 | fixed | above. |
 | N-23 | not a defect | The "taking longer than usual" notice is designed (`StrategyBuilderPage.vue:277, 1275`); the delay is the outcome call's round trip (a speed item, not measured). |
 | N-24 | not a defect (fixed by N-14) | The builder's compact paper list already uses `strategyListLabel` since the N-14 commit, after the tested a9bd41a8. Re-test on this branch. |
 | N-25 (a) | not a defect | The after-charges line belongs on every plan summary, saved or not (ADR-330 (17), ADR-263). |
 | N-25 (b) | fixed | with C-04. |
 | N-26, N-30 | fixed (N-26) / open (N-30) | with C-04; the ~3 s before the result shows is not addressed. |
-| N-27 | defect, fixing now | `PaperBookPanel.vue:59` price and time inline; Exit cell cut off. |
-| N-28 | layout fixing now; product question LR-Q8 | The exit average is served (`routes/paper.py:617-624`), not computed in the browser (ADR-008 holds); the cell split ships with N-27; how to label an average of several exits is the owner's. |
-| N-29 | placeholders fixing now; hyphen not a defect | Placeholder bars `bg-surface-muted` on white (`MyStrategiesPage.vue:173-174`); the hyphen is a test-tool artefact (plain v-model, saved name right). |
+| N-27 | fixed, not tested (the Exit column may still need a scroll in the narrow panel) | `PaperBookPanel.vue:59` price and time inline; Exit cell cut off. |
+| N-28 | cell split fixed, not tested; product question LR-Q8 | The exit average is served (`routes/paper.py:617-624`), not computed in the browser (ADR-008 holds); the cell split ships with N-27; how to label an average of several exits is the owner's. |
+| N-29 | placeholders fixed, not tested; hyphen not a defect | Placeholder bars `bg-surface-muted` on white (`MyStrategiesPage.vue:173-174`); the hyphen is a test-tool artefact (plain v-model, saved name right). |
 | S-09 | defect, deferred #748 | A newly subscribed contract shows the "unavailable" health word instead of the REQ-133 AC-3 waiting state. |
 
 ## Re-test: C-04 (Part C push)
@@ -167,3 +167,11 @@ review agent runs, so a review blocked three builders for about 15 minutes: run 
 3. Start the feed again: the number comes back without a reload.
 4. Live Strategies > Exit on a running trade: watch the Cancel button while "Checking whether this exit leaves a sold option without protection..." finishes.
 5. Expected: Cancel does not move; one click on it closes the dialog.
+
+## Re-test: N-21, N-27, N-28, N-29 (Part C push)
+
+1. Positions > Paper > Stops on a running trade: set a leg stop just beyond the leg's price so it fires. Expected: the leg row leaves the card within a second or two of "fired" (not ~9 s).
+2. Builder of a running paper trade > Net Positions: each LTP shows its time on its own small line under the price.
+3. Closed rows: the exit price stands alone on the right, the stop-loss sentence on its own line under it.
+4. My Strategies: reload; the grey loading bars are clearly visible for the moment before the list shows.
+5. Nothing else on these screens changed wording.
