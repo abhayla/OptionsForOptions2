@@ -485,7 +485,7 @@ test.describe('Unbuilt placeholder pages: the 15 addresses (REQ-009 AC-1..AC-8, 
     ['/orders/failed-partial', 'Orders', 'Failed/partial', "Your rejected and partly filled broker orders will be listed on this page, with your broker's reason."],
     ['/orders/execution-history', 'Orders', 'Execution history', "Your past broker orders will be listed on this page, with the time we read them."],
     ['/settings/profile', 'Account & Settings', 'Profile', "Your name and contact details will show on this page."],
-    ['/settings/zerodha-connection', 'Account & Settings', 'Zerodha connection', "Your broker connection will be managed on this page."],
+    ['/settings/zerodha-connection', 'Account & Settings', 'Zerodha connection', 'Zerodha connection is not built yet.'], // fallback line: a COMING_LINES key for this path needs a broker-name allow-list entry (owner's edit)
     ['/settings/notifications', 'Account & Settings', 'Notifications', "Your notification choices will be set on this page."],
     ['/settings/security', 'Account & Settings', 'Security', "Your sign-in and security options will be set on this page."],
     ['/settings/preferences', 'Account & Settings', 'Preferences', "Your display preferences will be set on this page."],

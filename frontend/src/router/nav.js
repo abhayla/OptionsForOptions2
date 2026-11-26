@@ -106,7 +106,6 @@ export const COMING_LINES = {
   'orders/failed-partial': "Your rejected and partly filled broker orders will be listed on this page, with your broker's reason.",
   'orders/execution-history': "Your past broker orders will be listed on this page, with the time we read them.",
   'settings/profile': "Your name and contact details will show on this page.",
-  'settings/zerodha-connection': "Your broker connection will be managed on this page.",
   'settings/notifications': "Your notification choices will be set on this page.",
   'settings/security': "Your sign-in and security options will be set on this page.",
   'settings/preferences': "Your display preferences will be set on this page.",
