@@ -10,6 +10,18 @@ export const triggerListOf = (data) => (Array.isArray(data?.triggers) ? data.tri
 // The Conditional exits still on the screen: armed and fired ones; cancelled ones and per-leg stops are dropped.
 export const armedIndexExits = (list) => list.filter((x) => x.kind === 'conditional_exit' && x.state !== 'cancelled')
 
+// I-24 (Lane FC): the exits of a trade are read from ONE route, the paper one. A real-mode trade has no such route yet, so its exits are neither
+// shown nor called "none": the card says this sentence (pending owner read; ADR-330 (58): paper and real read alike, this is the gap).
+export const EXITS_REAL_UNREADABLE_TEXT = 'Exits of a real-mode trade cannot be read here yet.'
+
+// What the Plan card prints about exits: { kind: 'rows' | 'none' | 'failed' | 'real_unreadable', rows }. Any mode but 'real' is read as paper.
+export function exitsViewOf(mode, exits, failed) {
+  if (mode === 'real') return { kind: 'real_unreadable', rows: [] }
+  if (failed) return { kind: 'failed', rows: [] }
+  const rows = Array.isArray(exits) ? exits : []
+  return { kind: rows.length ? 'rows' : 'none', rows }
+}
+
 // #774, ADR-330 (48) (owner, 27 Nov): a leg's stop goes with a move of that leg; afterwards the app offers a new one on the new leg through the
 // existing leg-stop control. The words are pending owner read (pinned by tests/paper-move-stop-offer-774.test.js).
 export const STOP_OFFER_LABEL = (leg) => `Set a stop on ${leg}`
