@@ -68,6 +68,7 @@ describe('Stops panel', () => {
     await t(w, 'ce-below').setValue('24000.05')
     expect(t(w, 'ce-save').attributes('disabled')).toBeUndefined()
     answers[`POST ${TRIG}`] = ok({ triggers: [trig(2, { direction: 'below', level: '24000.05', level_text: 'Index at or below 24,000.05' }), trig(1)] })
+    answers[`GET ${TRIG}`] = answers[`POST ${TRIG}`] // N-21: the list re-read now follows a Save, as the server's would
     await t(w, 'ce-save').trigger('click')
     await flushPromises()
     expect(posts()).toEqual([['POST', TRIG, { kind: 'conditional_exit', above: '24500', below: '24000.05' }]])
@@ -158,6 +159,7 @@ describe('Stops panel', () => {
     expect(rows.map((r) => r.get('[data-testid="trigger-state"]').text())).toEqual(['fired', 'cancelled', 'armed'])
     expect(w.findAll('[data-testid^="trigger-cancel-"]')).toHaveLength(1)
     answers['DELETE /paper/strategies/48/triggers/1'] = ok({ triggers: [trig(3, { state: 'fired' }), trig(2, { state: 'cancelled' }), trig(1, { state: 'cancelled' })] })
+    answers[`GET ${TRIG}`] = answers['DELETE /paper/strategies/48/triggers/1']
     await t(w, 'trigger-cancel-1').trigger('click')
     await flushPromises()
     expect(calls.filter((c) => c[0] === 'DELETE')).toHaveLength(1)
@@ -212,6 +214,103 @@ describe('Stops panel', () => {
     const bad = await open({ nope: 1 })
     expect(has(bad, 'trigger-row')).toBe(false)
     expect(has(bad, 'stops-error')).toBe(true)
+  })
+
+  // S-23: a fired stop must not read "armed" until reload. Root cause: triggers were read once on mount only.
+  it('S-23: a new good list read re-reads the triggers quietly (fired shows), no new timer, no cleared status', async () => {
+    vi.useFakeTimers({ toFake: ['setInterval', 'clearInterval'] })
+    try {
+      const w = await open({ triggers: [trig(1)] })
+      expect(t(w, 'trigger-state').text()).toBe('armed')
+      const timers = vi.getTimerCount()
+      answers[`GET ${TRIG}`] = ok({ triggers: [trig(1, { state: 'fired', fired_at: '2026-10-29T06:00:00Z' })] })
+      await vi.advanceTimersByTimeAsync(5000)
+      await flushPromises()
+      expect(t(w, 'trigger-state').text()).toBe('fired')
+      expect(vi.getTimerCount()).toBe(timers)
+      // a failed quiet reread keeps the last list and says so on its own line, not in the action error
+      answers[`GET ${TRIG}`] = () => Promise.reject({ message: 'net', status: null, parts: null })
+      await vi.advanceTimersByTimeAsync(5000)
+      await flushPromises()
+      expect(t(w, 'trigger-state').text()).toBe('fired')
+      expect(has(w, 'stops-list-error')).toBe(true)
+      expect(has(w, 'stops-error')).toBe(false)
+    } finally {
+      vi.useRealTimers()
+    }
+  })
+  it('S-23: a quiet reread does not clear the Saved line the user is reading', async () => {
+    vi.useFakeTimers({ toFake: ['setInterval', 'clearInterval'] })
+    try {
+      const w = await open({ triggers: [] })
+      await t(w, 'ce-above').setValue('24500')
+      answers[`POST ${TRIG}`] = ok({ triggers: [trig(1)] })
+      await t(w, 'ce-save').trigger('click')
+      await flushPromises()
+      expect(t(w, 'stops-saved').text()).toContain('Saved')
+      await vi.advanceTimersByTimeAsync(5000)
+      await flushPromises()
+      expect(t(w, 'stops-saved').text()).toContain('Saved')
+    } finally {
+      vi.useRealTimers()
+    }
+  })
+
+  // S-19: the panel says the index level it is judged against, from the one reader (useIndexAnswer), or says it is not live.
+  it('S-19: with no live index answer the panel says the index is not live, with no digits', async () => {
+    const w = await open()
+    expect(t(w, 'stops-index').text()).toBe('Index values unavailable.')
+    expect(t(w, 'stops-index').text()).not.toMatch(/\d/)
+  })
+  it('S-19: a live index answer shows "NIFTY now <value> as of <time>" as the reader gives them', async () => {
+    answers['GET /market/indices'] = ok({ state: 'LIVE', market_closed: false, last_price_at: '2026-11-26T05:11:05Z',
+      indices: [{ underlying: 'NIFTY', instrument_id: '1', value: '25,735.00', at: '2026-11-26T05:11:05Z', health: null }] })
+    const w = await open()
+    expect(t(w, 'stops-index').text()).toBe('NIFTY now 25,735.00 as of 10:41:05')
+  })
+
+  // S-26: typing in a level must keep the same element, value and focus while the panel refreshes and a status line appears.
+  // S-26 root cause (measured against the pre-fix panel in jsdom): the inputs were never re-mounted and kept value and focus; what moved
+  // the boxes was the reason lines (ce-reason, stop-reason) and status lines coming and going as v-if lines in the flow.
+  it('S-26: every line that comes and goes while typing lives in an always-rendered reserved slot; inputs and form block are the same nodes', async () => {
+    const w = await open({ triggers: [trig(1)] })
+    const slots = ['stops-status-slot', 'ce-reason-slot', 'stops-list-slot']
+    for (const s of slots) expect(has(w, s)).toBe(true)
+    const stopSlot = w.find('[data-testid^="stop-reason-slot-"]')
+    expect(stopSlot.exists()).toBe(true)
+    const inputs = [t(w, 'ce-above').element, t(w, 'ce-below').element, w.get('[data-testid^="stop-level-"]').element]
+    const form = t(w, 'stops-form').element
+    inputs[0].focus()
+    await t(w, 'ce-above').setValue('24500.07') // ce-reason appears
+    await w.get('[data-testid^="stop-level-"]').setValue('1.07') // stop-reason appears
+    expect(has(w, 'ce-reason')).toBe(true)
+    expect(stopSlot.find('[data-testid^="stop-reason-"]').exists()).toBe(true)
+    expect(t(w, 'ce-reason-slot').element.contains(t(w, 'ce-reason').element)).toBe(true)
+    await t(w, 'ce-above').setValue('24500') // ce-reason goes
+    expect(has(w, 'ce-reason')).toBe(false)
+    for (const s of slots) expect(has(w, s)).toBe(true)
+    expect(w.find('[data-testid^="stop-reason-slot-"]').element).toBe(stopSlot.element)
+    inputs[0].focus()
+    answers[`GET ${TRIG}`] = () => Promise.reject({ message: 'net', status: null, parts: null })
+    await w.vm.$nextTick()
+    expect([t(w, 'ce-above').element, t(w, 'ce-below').element, w.get('[data-testid^="stop-level-"]').element]).toEqual(inputs)
+    expect(t(w, 'stops-form').element).toBe(form)
+    expect(inputs[0].value).toBe('24500')
+    expect(document.activeElement === inputs[0] || document.activeElement === document.body).toBe(true)
+  })
+  it('S-26: typing keeps the same input element, value and focus across a refresh and a status line; the status slot keeps its height class', async () => {
+    const w = await open({ triggers: [trig(1)] })
+    const before = t(w, 'ce-above').element
+    before.focus()
+    await t(w, 'ce-above').setValue('24500.07')
+    const slotClass = t(w, 'stops-status-slot').attributes('class')
+    answers[`POST ${TRIG}`] = refuse('That level is not valid.')
+    await t(w, 'ce-save').trigger('click')
+    await flushPromises()
+    expect(t(w, 'ce-above').element).toBe(before)
+    expect(before.value).toBe('24500.07')
+    expect(t(w, 'stops-status-slot').attributes('class')).toBe(slotClass)
+    expect(t(w, 'stops-status-slot').classes()).toContain('min-h-5')
   })
 })
 
@@ -325,15 +424,56 @@ describe('Stops panel: the Not saved line and the empty-level hint (D-05, ADR-31
   }
   const tick = async () => { await vi.advanceTimersByTimeAsync(TRACKING_REFRESH_MS); await flushPromises() }
 
-  it('Not saved is gone after the next good refresh; the typed levels stay', async () => {
+  const CROSSED = 'the live price is already at or beyond this level, so this exit would close the trade straight away. To close now, use Exit.'
+  const NOTE = `Not saved: ${CROSSED}`
+  // N-01 (26 Nov 2026): the refusal stays until the user edits the form or saves again; a good list refresh never clears it
+  it('N-01: the FIRST Save click shows the refusal, and it survives the poll and timers; typed levels stay', async () => {
     vi.useFakeTimers()
     const w = await open()
-    await t(w, 'ce-above').setValue('24500')
-    await failSave(w)
-    expect(t(w, 'stops-error').text().startsWith('Not saved:')).toBe(true)
-    await tick() // the list's own refresh answers well
+    await t(w, 'ce-above').setValue('25700')
+    answers[`POST ${TRIG}`] = refuse(CROSSED)
+    await t(w, 'ce-save').trigger('click')
+    await flushPromises()
+    expect(t(w, 'stops-error').text()).toBe(NOTE)
+    await tick()
+    await tick()
+    await vi.advanceTimersByTimeAsync(60000)
+    await flushPromises()
+    expect(t(w, 'stops-error').text()).toBe(NOTE)
+    expect(t(w, 'ce-above').element.value).toBe('25700')
+  })
+  it('N-01: a leg-stop refusal also stays through the poll and clears on a level edit', async () => {
+    vi.useFakeTimers()
+    const w = await open()
+    const level = w.get('[data-testid^="stop-level-"]')
+    const id = level.attributes('data-testid').replace('stop-level-', '')
+    await level.setValue('110')
+    answers[`POST ${TRIG}`] = refuse(CROSSED)
+    await t(w, `stop-save-${id}`).trigger('click')
+    await flushPromises()
+    await tick()
+    expect(t(w, 'stops-error').text()).toBe(NOTE)
+    await level.setValue('111')
     expect(has(w, 'stops-error')).toBe(false)
-    expect(t(w, 'ce-above').element.value).toBe('24500')
+  })
+  it('N-01: changing the level clears the line; Save again replaces it', async () => {
+    vi.useFakeTimers()
+    const w = await open()
+    await t(w, 'ce-above').setValue('25700')
+    answers[`POST ${TRIG}`] = refuse(CROSSED)
+    await t(w, 'ce-save').trigger('click')
+    await flushPromises()
+    expect(has(w, 'stops-error')).toBe(true)
+    await t(w, 'ce-above').setValue('25800')
+    expect(has(w, 'stops-error')).toBe(false)
+    await t(w, 'ce-save').trigger('click')
+    await flushPromises()
+    expect(t(w, 'stops-error').text()).toBe(NOTE)
+    answers[`POST ${TRIG}`] = ok({ triggers: [trig(1)] })
+    await t(w, 'ce-save').trigger('click')
+    await flushPromises()
+    expect(has(w, 'stops-error')).toBe(false)
+    expect(t(w, 'stops-saved').text()).toBe('Saved: exit above 25800')
   })
   it('a failed refresh leaves the Not saved line on screen', async () => {
     vi.useFakeTimers()
@@ -354,24 +494,6 @@ describe('Stops panel: the Not saved line and the empty-level hint (D-05, ADR-31
     expect(t(w, 'stops-saved').text()).toBe('Saved: exit above 24500')
     expect(w.text()).not.toContain('Enter at least one level')
   })
-  it('a refresh that started before the failed Save does not clear Not saved; a later good refresh does', async () => {
-    vi.useFakeTimers()
-    const w = await open()
-    await t(w, 'ce-above').setValue('24500')
-    let release
-    const good = { strategies: [item], answered_at: '2026-10-28T06:00:00Z' }
-    answers['GET /tracking'] = () => new Promise((resolve) => { release = () => resolve({ data: good }) })
-    await tick() // a refresh starts and waits
-    await failSave(w)
-    expect(t(w, 'stops-error').text().startsWith('Not saved:')).toBe(true)
-    release()
-    await flushPromises() // the older refresh lands, good
-    expect(t(w, 'stops-error').text().startsWith('Not saved:')).toBe(true)
-    answers['GET /tracking'] = ok(good)
-    await tick() // a refresh that started after the failure
-    expect(has(w, 'stops-error')).toBe(false)
-    expect(t(w, 'ce-above').element.value).toBe('24500')
-  })
   it('after Saved, a bad price still shows its reason; empty boxes show no at-least-one hint', async () => {
     const w = await open()
     await t(w, 'ce-above').setValue('24500')
@@ -390,5 +512,26 @@ describe('Stops panel: the Not saved line and the empty-level hint (D-05, ADR-31
     await flushPromises()
     expect(t(w, 'ce-reason').text()).toBe('Enter at least one level')
     expect(posts()).toHaveLength(0)
+  })
+  it('N-21: a Save whose stops reply shows fired asks the parent list to read at once (no wait for its timer)', async () => {
+    const w = await open()
+    const listReads = () => calls.filter((c) => c[0] === 'GET' && c[1] === '/paper/strategies').length
+    const before = listReads()
+    const level = w.get('[data-testid^="stop-level-"]')
+    const id = level.attributes('data-testid').replace('stop-level-', '')
+    await level.setValue('110')
+    answers[`POST ${TRIG}`] = ok({ triggers: [trig(1, { kind: 'leg_stop', contract_id: 5000, state: 'fired', fired_at: '2026-10-29T06:00:00Z' })] })
+    await t(w, `stop-save-${id}`).trigger('click')
+    await flushPromises()
+    expect(listReads()).toBeGreaterThan(before)
+  })
+  it('N-21: a Cancel also asks the parent list to read at once', async () => {
+    const w = await open({ triggers: [trig(1)] })
+    const listReads = () => calls.filter((c) => c[0] === 'GET' && c[1] === '/paper/strategies').length
+    const before = listReads()
+    answers[`DELETE ${TRIG}/1`] = ok({ triggers: [trig(1, { state: 'cancelled' })] })
+    await w.get('[data-testid^="trigger-cancel"]').trigger('click')
+    await flushPromises()
+    expect(listReads()).toBeGreaterThan(before)
   })
 })

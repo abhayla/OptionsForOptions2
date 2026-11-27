@@ -2,7 +2,8 @@
      Net Positions | Orderbook switch. Net Positions: per OPEN contract Lots, Avg, LTP, Booked, Unbooked, P&L (the book reply's
      texts as sent; lots = the net leg's whole lots, a count), an Exit with a lots box (1..open lots: a partial exit), and the
      closed contracts below with their booked P&L. Orderbook: the reply's orders in the reply's order (newest last): time IST,
-     B/S, contract, qty, price, kind. "Exit all" and "Exit" only EMIT: the page turns them into edited legs, so the orders still
+     B/S, contract, lots, price, kind (lots = the reply's `lots`, ADR-330 (23): units / lot size computed by the server; "-" when the
+     units are not whole lots; no division here). "Exit all" and "Exit" only EMIT: the page turns them into edited legs, so the orders still
      come from paperOrdersFor (no second order-building path). No money is formed here (ADR-008). -->
 <template>
   <section class="mt-3 text-sm" data-testid="paper-book">
@@ -12,7 +13,10 @@
         <button type="button" class="rounded-r-md px-2 py-1" :class="view === 'orders' ? 'bg-accent-soft font-medium text-accent' : ''" :aria-pressed="view === 'orders' ? 'true' : 'false'" data-testid="book-tab-orders" @click="view = 'orders'">{{ ORDERBOOK_LABEL }}</button>
       </div>
       <span class="flex-1"></span>
-      <button v-if="open.length" type="button" class="h-8 rounded-lg border border-line px-3 font-medium" data-testid="paper-exit-all" @click="emit('exit-all')">{{ EXIT_ALL_LABEL }}</button>
+      <!-- Phase 4 (D-05, ADR-328 (4)): no exit from old prices, none from an old net; the one sentence says which -->
+      <div v-if="open.length" class="flex flex-col items-end gap-1">
+        <ExitButton :blocked="exitGate.blocked.value" :reason="exitGate.reason.value" class="h-8 rounded-lg border border-line px-3 font-medium disabled:opacity-50" data-testid="paper-exit-all" @click="emit('exit-all')">{{ EXIT_ALL_LABEL }}</ExitButton>
+      </div>
     </div>
 
     <!-- GC-TP step 8b (REQ-109 AC-10; Sensibull Drafts Mode 278-279): the strategy's Charges beside its P&L, each the book reply's
@@ -25,9 +29,9 @@
     <dl class="mt-2 flex gap-6 text-xs" data-testid="book-strip">
       <!-- GC-ICFIX u123 (ADR-263): the headline total is the server's after-charges text, labelled; else the before text, labelled, with the reason -->
       <div>
-        <dt class="text-ink-muted" data-testid="book-total-label">Total P&amp;L {{ total.label }}</dt>
-        <dd class="num text-sm font-semibold" data-testid="book-total"><AfterChargesTap :breakdown="total.breakdown">{{ total.text ?? '-' }}</AfterChargesTap></dd>
-        <p v-if="total.reason" class="max-w-xs text-ink-muted" data-testid="book-after-reason">{{ total.reason }}</p>
+        <dt class="text-ink-muted" data-testid="book-total-label">Total P&amp;L {{ readFailed ? '' : total.label }}</dt>
+        <dd class="num text-sm font-semibold" data-testid="book-total"><template v-if="readFailed">{{ PAPER_NO_FIGURE }}</template><AfterChargesTap v-else :breakdown="total.breakdown">{{ total.text ?? '-' }}</AfterChargesTap></dd>
+        <p v-if="total.reason && !readFailed" class="max-w-xs text-ink-muted" data-testid="book-after-reason">{{ total.reason }}</p>
       </div>
       <!-- D-14: the line says which charges it shows: those paid, and beside them the estimate to close now (both inside the total) -->
       <div>
@@ -41,27 +45,28 @@
     </dl>
 
     <div v-if="view === 'net'" class="mt-2 overflow-x-auto">
-      <table class="w-full text-xs" data-testid="net-table">
+      <table class="num-table w-full text-xs" data-testid="net-table">
         <thead class="text-ink-muted">
           <!-- GC-ICFIX round 2 (F2): the server sends no after-charges form per contract: Booked / Unbooked / P&L are before charges, said once -->
-          <tr><th colspan="4"></th><th colspan="3" class="font-normal" data-testid="net-basis">(before charges)</th><th></th></tr>
-          <tr><th class="text-left font-normal">Contract</th><th class="font-normal">Lots</th><th class="font-normal">Avg</th><th class="font-normal">LTP</th><th class="font-normal">Booked</th><th class="font-normal">Unbooked</th><th class="font-normal">P&amp;L</th><th></th></tr>
+          <tr><th colspan="4"></th><th colspan="3" class="text-center font-normal" data-testid="net-basis">(before charges)</th><th></th></tr>
+          <tr><th class="text-left font-normal">Contract</th><th class="text-center font-normal">Lots</th><th class="text-right font-normal">Avg</th><th class="text-right font-normal">LTP</th><th class="text-right font-normal">Booked</th><th class="text-right font-normal">Unbooked</th><th class="text-right font-normal">P&amp;L</th><th></th></tr>
         </thead>
         <tbody>
           <tr v-for="p in open" :key="p.contract_id" class="border-t border-line" data-testid="net-row" :data-contract-id="p.contract_id">
             <td class="py-1 pr-2" data-testid="net-contract">{{ p.contract_text }}</td>
             <td class="num text-center" data-testid="net-lots">{{ lotsOf(p) }}</td>
-            <td class="num text-right" data-testid="net-avg">{{ p.average_text ?? '-' }}</td>
-            <td class="num text-right"><span data-testid="net-ltp">{{ p.ltp_text ?? '-' }}</span><span v-if="p.ltp_text" class="ml-1 text-ink-muted" data-testid="net-ltp-at">{{ istClock(p.price_at ?? null) ?? 'time n/a' }}</span></td>
-            <td class="num text-right" data-testid="net-booked">{{ p.booked_text }}</td>
-            <td class="num text-right" data-testid="net-unbooked">{{ p.unbooked_text ?? '-' }}</td>
-            <td class="num text-right" data-testid="net-pnl">{{ p.total_text ?? '-' }}</td>
+            <td class="num text-right" data-testid="net-avg">{{ readFailed ? PAPER_NO_FIGURE : (p.average_text ?? '-') }}</td>
+            <td class="num text-right"><span data-testid="net-ltp">{{ readFailed ? PAPER_NO_FIGURE : (p.ltp_text ?? '-') }}</span><span v-if="p.ltp_text && !readFailed" class="block text-[11px] text-ink-muted" data-testid="net-ltp-at">{{ istClock(p.price_at ?? null) ?? 'time n/a' }}</span></td>
+            <td class="num text-right" data-testid="net-booked">{{ readFailed ? PAPER_NO_FIGURE : p.booked_text }}</td>
+            <td class="num text-right" data-testid="net-unbooked">{{ readFailed ? PAPER_NO_FIGURE : (p.unbooked_text ?? '-') }}</td>
+            <td class="num text-right" data-testid="net-pnl">{{ readFailed ? PAPER_NO_FIGURE : (p.total_text ?? '-') }}</td>
             <td class="whitespace-nowrap pl-2 text-right">
               <input
                 v-model="exitText[p.contract_id]" type="text" inputmode="numeric" class="h-7 w-10 rounded border border-line px-1 text-right"
                 :aria-label="`Lots to exit for ${p.contract_text}`" data-testid="net-exit-lots"
               />
-              <button type="button" class="ml-1 h-7 rounded border border-line px-2 disabled:opacity-50" :disabled="!exitLotsOk(exitText[p.contract_id], lotsOf(p))" data-testid="net-exit" @click="exitOne(p)">{{ EXIT_LABEL }}</button>
+              <ExitButton :blocked="exitGate.blocked.value" :extra-disabled="!exitLotsOk(exitText[p.contract_id], lotsOf(p)) || changeWaiting(p)" :show-reason="false" :title="changeWaiting(p) ? EXIT_BLOCKED_BY_CHANGE : undefined" class="ml-1 h-7 rounded border border-line px-2 disabled:opacity-50" data-testid="net-exit" @click="exitOne(p)">{{ EXIT_LABEL }}</ExitButton>
+              <p v-if="changeWaiting(p)" class="text-xs text-ink-muted" data-testid="net-exit-reason">{{ EXIT_BLOCKED_BY_CHANGE }}</p>
             </td>
           </tr>
         </tbody>
@@ -72,18 +77,19 @@
       <p v-if="book.closed_text" class="mt-2 text-xs font-semibold" data-testid="closed-result">{{ book.closed_text }}</p>
     </div>
 
-    <table v-else class="mt-2 w-full text-xs" data-testid="order-table">
+    <!-- S-25: every cell has px-2 and Qty / Price are right-aligned tabular figures, so "65" and "101.20" never read as 65101.20 -->
+    <table v-else class="num-table mt-2 w-full text-xs" data-testid="order-table">
       <thead class="text-ink-muted">
-        <tr><th class="text-left font-normal">Time</th><th class="font-normal">B/S</th><th class="text-left font-normal">Contract</th><th class="font-normal">Qty</th><th class="font-normal">Price</th><th class="font-normal">Kind</th></tr>
+        <tr><th class="px-2 text-left font-normal">Time</th><th class="px-2 text-center font-normal">B/S</th><th class="px-2 text-left font-normal">Contract</th><th class="px-2 text-right font-normal">Lots</th><th class="px-2 text-right font-normal">Price</th><th class="px-2 text-center font-normal">Kind</th></tr>
       </thead>
       <tbody>
         <tr v-for="o in book.orders" :key="o.id" class="border-t border-line" data-testid="order-row">
-          <td class="num py-1" data-testid="order-time">{{ istClock(o.placed_at) ?? '-' }}</td>
-          <td class="text-center" data-testid="order-side">{{ o.side === 'BUY' ? 'B' : 'S' }}</td>
-          <td data-testid="order-contract">{{ o.contract_text }}<span v-if="o.reason_text" class="block text-[11px] text-ink-muted" data-testid="order-reason">{{ o.reason_text }}</span></td>
-          <td class="num text-right" data-testid="order-qty">{{ o.quantity }}</td>
-          <td class="num text-right" data-testid="order-price">{{ o.price_text }}</td>
-          <td class="text-center" data-testid="order-kind">{{ kindText(o.kind) }}</td>
+          <td class="num px-2 py-1" data-testid="order-time">{{ istClock(o.placed_at) ?? '-' }}</td>
+          <td class="px-2 text-center" data-testid="order-side">{{ o.side === 'BUY' ? 'B' : 'S' }}</td>
+          <td class="px-2" data-testid="order-contract">{{ o.contract_text }}<span v-if="o.reason_text" class="block text-[11px] text-ink-muted" data-testid="order-reason">{{ o.reason_text }}</span></td>
+          <td class="num px-2 text-right tabular-nums" data-testid="order-qty">{{ o.lots ?? '-' }}</td>
+          <td class="num px-2 text-right tabular-nums" data-testid="order-price">{{ o.price_text }}</td>
+          <td class="px-2 text-center" data-testid="order-kind">{{ kindText(o.kind) }}</td>
         </tr>
       </tbody>
     </table>
@@ -93,18 +99,22 @@
 <script setup>
 import { computed, ref, watch } from 'vue'
 import { istClock } from '@/lib/displayFormat'
-import { CONTRACTS_CHANGED_TEXT, afterFigure, pausedText } from '@/lib/tracking'
+import { CONTRACTS_CHANGED_TEXT, afterFigure } from '@/lib/tracking'
+import { bookNotLive, pausedText } from '@/lib/priceState'
+import { usePaperExit } from '@/lib/usePaperExit'
+import ExitButton from '@/components/strategy/ExitButton.vue'
 import AfterChargesTap from '@/components/common/AfterChargesTap.vue'
-import { withAsOf } from '@/lib/paperList'
+import { PAPER_NO_FIGURE, withAsOf } from '@/lib/paperList'
 import ClosedRows from '@/components/strategy/ClosedRows.vue'
 import HeldNote from '@/components/strategy/HeldNote.vue'
-import { EXIT_ALL_LABEL, EXIT_LABEL, NET_POSITIONS_LABEL, ORDERBOOK_LABEL, exitLotsFrom, exitLotsOk, openLots, paperKindLabel } from '@/lib/paperDrafts'
+import { EXIT_ALL_LABEL, EXIT_BLOCKED_BY_CHANGE, EXIT_LABEL, NET_POSITIONS_LABEL, ORDERBOOK_LABEL, exitLotsFrom, exitLotsOk, openLots, paperKindLabel } from '@/lib/paperDrafts'
 
 const props = defineProps({
   book: { type: Object, required: true }, // GET /paper/strategies/{id} as sent
   net: { type: Array, required: true }, // the net legs (netLegsFromBook): whole lots per open contract
   readFailed: { type: Boolean, default: false },
   contractsChanged: { type: Boolean, default: false },
+  changedIds: { type: Array, default: () => [] }, // D-48 review: contracts with a staged change other than an Exit (stagedChangeIds): their row Exit is off
   showOrders: { type: Number, default: 0 }, // fix/paper-dialog-safe: a bump switches to the Orderbook view (the unknown-outcome link)
 })
 const emit = defineEmits(['exit', 'exit-all'])
@@ -115,8 +125,11 @@ const emit = defineEmits(['exit', 'exit-all'])
 // the paused sentence (REQ-109 AC-5) from the book's as_of; a failed read says the same with the last good answer's time
 const asOfLine = computed(() => {
   if (props.readFailed) return pausedText(props.book.answered_at ?? null)
-  return props.book.state === 'PAUSED' || props.book.state === 'NOT_CONNECTED' ? pausedText(props.book.as_of ?? null) : null
+  return bookNotLive(props.book) ? pausedText(props.book.as_of ?? null) : null
 })
+
+// Phase 4 (F2): the Exit gate of this panel (a failed read: no exit from old prices; the contracts changed: no exit from an old net)
+const exitGate = usePaperExit({ readFailed: () => props.readFailed, held: () => props.book, changed: () => props.contractsChanged })
 
 const readAt = computed(() => istClock(props.book.answered_at ?? null))
 
@@ -133,7 +146,9 @@ const kindText = (kind) => (kind === 'open' ? 'Open' : paperKindLabel(kind))
 // each lots box starts at the full open lots; a new book resets them
 const exitText = ref({})
 watch(() => props.net, (net) => { exitText.value = Object.fromEntries(net.map((l) => [l.contract_id, String(l.lots)])) }, { immediate: true })
+const changeWaiting = (p) => props.changedIds.includes(p.contract_id)
 function exitOne(p) {
+  if (changeWaiting(p)) return
   const lots = exitLotsFrom(exitText.value[p.contract_id], lotsOf(p)) // a count of lots, never money
   if (lots !== null) emit('exit', p.contract_id, lots)
 }

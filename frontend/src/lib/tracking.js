@@ -1,7 +1,7 @@
 // W-122 (REQ-109 AC-1, AC-2, AC-5; REQ-045 AC-1; REQ-046 AC-1; ADR-166): the paper-tracking panel's words and the one
 // reading of the tracking answer. The browser computes no money: every figure is the server's Decimal string, only
 // re-grouped for display. An answer this module cannot read shows no figure (fail closed).
-import { instrumentText, istClock, istTime, strikeLabel } from '@/lib/displayFormat'
+import { groupedIndian, instrumentText, istClock, istTime, strikeLabel } from '@/lib/displayFormat'
 
 /** GC-UI b2 D-B48 (REQ-109 AC-1, REQ-152): one leg's paper P&L as the server wrote it (`pnl_text`, signed, to the paisa),
  *  "booked" added for a leg the server marks booked (paper-exited); no text -> "—", never a browser figure (ADR-008). */
@@ -13,6 +13,7 @@ const legPnlText = (leg) => {
   return leg.pnl_kind === 'booked' ? `${text} booked` : text
 }
 import { plainName } from '@/lib/saveDraft'
+import { NOT_CONNECTED_TEXT, bookNotLive, pausedText } from '@/lib/priceState'
 
 /** GC-TP step 2 (ADR-207 (1)): the builder's action replaces "Start tracking". REQ-109 AC-1's footer, said plainly. */
 export const ADD_TO_PAPER_LABEL = 'Add to Paper'
@@ -106,25 +107,15 @@ export const TRACKING_REFRESH_MS = 5000
 export const PLATFORM_DETECTION_LABEL = 'Adjustment opportunity detected'
 /** REQ-109 AC-2: every paper figure says it is not real. */
 export const PAPER_PNL_PREFIX = 'Paper P&L (not real): '
-export const NOT_CONNECTED_TEXT = 'Paper P&L paused - live prices are not connected'
 export const UNREADABLE_TEXT = 'Paper P&L is not available right now.'
 export const CONDITION_TEXT = Object.freeze({
   near_short_strike: 'Index is near a short strike',
   near_breakeven: 'Index is near a breakeven',
 })
 
-/** REQ-109 AC-5's paused text, with the time of the last price; null time reads as not available. */
-export function pausedText(asOf) {
-  return `Paper P&L paused - prices not live, as of ${istTime(asOf)}`
-}
+export { NOT_CONNECTED_TEXT, pausedText } // the one wording lives in lib/priceState.js (REQ-109 AC-5)
 
 const MONEY = /^(-?)(\d+)\.(\d{2})$/
-
-function groupIndian(digits) {
-  if (digits.length <= 3) return digits
-  const head = digits.slice(0, -3)
-  return `${head.replace(/\B(?=(\d{2})+(?!\d))/g, ',')},${digits.slice(-3)}`
-}
 
 /** A 2-decimal money string as "+1,240.50" / "-390.00" (zero reads "+0.00"); null for anything else. */
 export function signedRupees(text) {
@@ -132,7 +123,7 @@ export function signedRupees(text) {
   if (!m) return null
   const [, minus, whole, paise] = m
   const zero = /^0+$/.test(whole) && paise === '00'
-  return `${minus && !zero ? '-' : '+'}${groupIndian(String(BigInt(whole)))}.${paise}`
+  return `${minus && !zero ? '-' : '+'}${groupedIndian(String(BigInt(whole)))}.${paise}`
 }
 
 /** Exited is the server's own marker (exited_at, or a booked P&L), never the presence of a price text. */
@@ -180,7 +171,7 @@ export function afterFigure(src, before, pausedText = null, afterKey = 'total_af
 export const CONTRACTS_CHANGED_TEXT = 'The open contracts changed, so the screen could not refresh them: reload to see them.'
 export function sharedTotal(book, failed = false) {
   if (!book || typeof book !== 'object') return null
-  const notLive = book.state === 'PAUSED' || book.state === 'NOT_CONNECTED'
+  const notLive = bookNotLive(book)
   const shown = afterFigure(book, serverText(book.total_text), pausedText(book.as_of ?? null))
   const at = istClock(book.answered_at ?? null)
   const closedLine = serverText(book.after_close_text) // D-64: after the close the server's sentence says why, in place of "prices not live"
@@ -212,6 +203,7 @@ export function readTracking(body, replyLegs = null) {
   if (!body || typeof body !== 'object' || !STATES.has(body.state) || !Array.isArray(body.legs)) return INVALID
   const legs = body.legs.map((leg) => ({
     key: leg.instrument_id,
+    contractId: leg.contract_id, // D-41: the book's key of this leg (key is the feed identity "NSE_FO:..."); absent in an older reply
     action: leg.action,
     instrument: leg.instrument,
     strike: leg.strike,

@@ -1,0 +1,4 @@
+{
+ "call": "bull_put_spread",
+ "put": "bear_call_spread"
+}

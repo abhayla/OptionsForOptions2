@@ -25,7 +25,7 @@ from __future__ import annotations
 
 from dataclasses import dataclass
 from decimal import Decimal
-from typing import Any, Literal
+from typing import Any, Literal, NoReturn
 
 from ofo.engine.product import Product
 from ofo.strategy.definition import MAX_UNITS
@@ -34,6 +34,7 @@ from sqlalchemy.exc import DBAPIError
 
 from ofo_app import execute_plan as ep
 from ofo_app import execution_plan_store as plans
+from ofo_app.errors import busy_database_error
 from ofo_app.reconciliation_store import MAX_TEXT
 
 NOT_FOUND = "not_found"
@@ -123,6 +124,19 @@ def _row(r: Any) -> AdoptedHolding:
                           version_number=int(r.version_number))
 
 
+def _refuse_insert(exc: DBAPIError) -> NoReturn:
+    """The insert's database error as the store's refusal. A lock wait / timeout / deadlock is not a bad holding: it
+    is re-raised for the error door to answer store_busy (ADR-330 (8)); the savepoint has rolled back."""
+    if busy_database_error(exc):
+        raise exc
+    message = str(exc.orig)
+    if _HOLDING_KEY in message:
+        raise OrderBookError(ALREADY_HELD, message) from exc
+    if _REFERENCE_KEY in message:
+        raise OrderBookError(REFERENCE_TAKEN, message) from exc
+    raise OrderBookError(BAD_HOLDING, message) from exc
+
+
 async def record_adopted(conn: Any, user_ref: str, strategy_id: int, holding: AdoptedHolding) -> AdoptedHolding:
     """Stores one adopted holding under the strategy's row lock. Call it in the transaction that wrote the new
     strategy version (ADR-096); the caller commits. Returns the stored row (with the version number it carries)."""
@@ -150,12 +164,7 @@ async def record_adopted(conn: Any, user_ref: str, strategy_id: int, holding: Ad
                                          "product": holding.product, "px": holding.average_price,
                                          "ref": holding.reference, "v": version})
     except DBAPIError as exc:
-        message = str(exc.orig)
-        if _HOLDING_KEY in message:
-            raise OrderBookError(ALREADY_HELD, message) from exc
-        if _REFERENCE_KEY in message:
-            raise OrderBookError(REFERENCE_TAKEN, message) from exc
-        raise OrderBookError(BAD_HOLDING, message) from exc
+        _refuse_insert(exc)
     return next(h for h in await _adopted(conn, strategy_id) if h.reference == holding.reference)
 
 

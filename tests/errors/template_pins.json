@@ -491,6 +491,10 @@
     "sha256": "11c795ba45e0011039572240bb6205f6127787a56591c789659aeb541279bd92",
     "reviewed": "owner read 2026-11-02 (accepted after independent screen, not read line by line)"
   },
+  "strategy_not_found": {
+    "sha256": "6347d0929484e4fa4875822a0f8b1e8aca21051708402c3c1bbd415af4c44b90",
+    "reviewed": "pending owner read"
+  },
   "entitlement_access_sign_in_required": {
     "sha256": "dbe6af4fed56c9531c4e98e08eea5f5bac8329d5e1e850a2f87e3e15bf9543d5",
     "reviewed": "owner read 2026-11-02 (accepted after independent screen, not read line by line)"
@@ -1251,6 +1255,10 @@
     "sha256": "8461935265421850080cd604591d7c73fcae4aca56478d139ffb97314a917403",
     "reviewed": "owner read 2026-11-02 (accepted after independent screen, not read line by line)"
   },
+  "explanation:closed_exit_average": {
+    "sha256": "56274fa5a621a8ccb262252fc668dc07433e2e8ec2bf384ce581e8510b409373",
+    "reviewed": "owner read 2026-11-26 (ADR-330 (27), answered by the owner in the question tool)"
+  },
   "explanation:execute_cost_charges_not_included": {
     "sha256": "a7f0559e88aa53f42ab25de4b9ff301d7f8eefc573a52ce3fd4109fbb5902290",
     "reviewed": "owner read 2026-11-02 (accepted after independent screen, not read line by line)"
@@ -1600,8 +1608,8 @@
     "reviewed": "owner read 2026-11-02 (accepted after independent screen, not read line by line)"
   },
   "strategy_name_empty": {
-    "sha256": "567d6dbc9f465cf8a76d6424c8e3db21d59f5003fc5e05ef317be0d41a987ecb",
-    "reviewed": "owner read 2026-11-02 (decided in session under owner delegation, independent screen)"
+    "sha256": "3d0abbca45fe441be3f34b7213f76970d66ebd311fc0b0dbd9623789c7f5a76a",
+    "reviewed": "pending owner read"
   },
   "strategy_name_invalid": {
     "sha256": "46638a9e28c3761e23f7781579fc0fb82345272079fafc0bc9c16ecd0eae77a0",
@@ -1615,9 +1623,61 @@
     "sha256": "3fe9ee4a130c6fe38e4adc1fb5895210f0027f3ef00dafb7e564d0bbfb434cfb",
     "reviewed": "owner read 2026-11-02 (accepted after independent screen, not read line by line)"
   },
+  "explanation:change_deleted": {
+    "sha256": "d2ca1edf09b33802cd20244a6bfb355669303bdd137081d6afe4da696a82721e",
+    "reviewed": "pending owner read"
+  },
+  "explanation:change_undeleted": {
+    "sha256": "7b755cdab22e4bec0d510be4511fd6e83aeda7273723c4a6f711c5a358dd2616",
+    "reviewed": "pending owner read"
+  },
   "strategy_delete_after_basket": {
     "sha256": "3d38562149284ea4780da1470db4f1f0a237375d84a7d7e78810cf8bfc73166e",
     "reviewed": "owner read 2026-11-02 (decided in session under owner delegation, independent screen)"
+  },
+  "strategy_bulk_summary_none_kept": {
+    "sha256": "fa377ae8b9065bff5aa48d52ec9344c2ee3cb850784e14a14d2aa4131d760da8",
+    "reviewed": "pending owner read"
+  },
+  "strategy_bulk_summary_each": {
+    "sha256": "31ff2004ca518d42c89ff0ffd91ed216faf15ee32346ec03ff585551dc9ba5f1",
+    "reviewed": "pending owner read"
+  },
+  "strategy_bulk_summary_held_at_broker": {
+    "sha256": "a76864d5ad4c5a2b28a1faec52ed790a510f70947a8673675017403494d379ee",
+    "reviewed": "pending owner read"
+  },
+  "strategy_bulk_summary_orders_sent": {
+    "sha256": "89b229bb55f073a53ef81e33ff189bd39c90bd83ed13fb8fc03cc511b329c3b1",
+    "reviewed": "pending owner read"
+  },
+  "strategy_bulk_summary_not_found": {
+    "sha256": "cddfb046563d1725813e1817d6210070c42e51d2fae70487d03555e2f6982e7e",
+    "reviewed": "pending owner read"
+  },
+  "strategy_bulk_summary_changed": {
+    "sha256": "33110c8fda9c914f95362c7a19f4201336e1b2689dd4ec32fd97f3b8d8a6c53d",
+    "reviewed": "pending owner read"
+  },
+  "strategy_bulk_summary_failed": {
+    "sha256": "83e8f17f78f1e64da392b90e918e121bb6325f61ead97a90deb79551dc2ed6fd",
+    "reviewed": "pending owner read"
+  },
+  "store_busy": {
+    "sha256": "84c37432ab87cc86590405477c0d41508d0424630788e5e976cf3fe15b14f678",
+    "reviewed": "owner read 2026-11-26 (ADR-330 (26), approved as written by the owner in the question tool)"
+  },
+  "strategy_delete_held_at_broker": {
+    "sha256": "1e9e20ae48be7c6fcdfa77d3b0103be8333144a000af51d5aaad51067ddca4c3",
+    "reviewed": "pending owner read"
+  },
+  "strategy_bulk_delete_item_failed": {
+    "sha256": "f429a8cd60966fab8fe64a6b0e1988a20b877738825b8973bde0fe2465ca0955",
+    "reviewed": "pending owner read"
+  },
+  "strategy_bulk_delete_too_many": {
+    "sha256": "2d9eb0de55e744982f8981c6d63dbee3517539a691865ecd86613bdb02e5bfe3",
+    "reviewed": "pending owner read"
   },
   "tracking_exit_prices_not_live": {
     "sha256": "8e9b743393a8285037720b57610cc24635474f33cd191315aaaf8dee44f941ba",
@@ -1818,6 +1878,10 @@
   "explanation:price_history_quantity_not_whole_lots": {
     "sha256": "1500d2520c2e72efd128f0092aae83f3fb50800909cd9560138d5fcffe4672d6",
     "reviewed": "owner read 2026-11-02 (accepted after independent screen, not read line by line)"
+  },
+  "explanation:price_history_no_open_legs": {
+    "sha256": "eabc7e36f079c439825f9210da10cdb576baeda43fc50d4be51067d16f9e35d0",
+    "reviewed": "pending owner read"
   },
   "paper_price_invalid": {
     "sha256": "fe202aee8570667847f1b1199b109c546a8c1865b328482b0da68d64ff74a00e",
@@ -2823,12 +2887,24 @@
     "sha256": "a4450901a96c79e28de050acfa2bd5778fdd7c36938f5579f469bc273b298769",
     "reviewed": "owner read 2026-10-31 (accepted after independent screen, not read line by line)"
   },
+  "explanation:plan_sheet_target_rupees": {
+    "sha256": "53daa9ee7f5dec903a3c843b0df1cc469690ea8e4d5db666794831d4cd2d16a4",
+    "reviewed": "pending owner read"
+  },
+  "explanation:plan_sheet_stop_rupees": {
+    "sha256": "b604ef1c8eb50a69845c9ce6c693fab17830633463824b6ad7de20ccac072dec",
+    "reviewed": "pending owner read"
+  },
   "explanation:plan_sheet_max_adjustments": {
     "sha256": "1943d115a4841c691f3d94c86f3cc563bb38c55a15033def2a692364ebda174c",
     "reviewed": "owner read 2026-10-31 (accepted after independent screen, not read line by line)"
   },
   "explanation:plan_sheet_time_exit": {
-    "sha256": "f69b827c104abe0efc40696c8852a186b6583604f1fd5ab91043adc24f093617",
+    "sha256": "3da7b1b276527a6ece178561b4c942351b9a3bc4ed6888a4e4a2973029ce9cda",
+    "reviewed": "pending owner read"
+  },
+  "explanation:plan_sheet_time_exit_on": {
+    "sha256": "86d2e26dabfe780e2e7fe2c133ae0d43438fa5ed605189b84f92537f137f7287",
     "reviewed": "pending owner read"
   },
   "explanation:plan_sheet_customise": {
@@ -2856,7 +2932,7 @@
     "reviewed": "owner read 2026-10-31 (accepted after independent screen, not read line by line)"
   },
   "explanation:plan_sheet_no_plan": {
-    "sha256": "938b83a211dc4f58e824dfc2c99b25cb039b52e434c7beb4ed7aaa9cd3244791",
+    "sha256": "d16ba0d27131ba77fe47335377c34e34faf189dc7c8bb6418ce5b383d59d3b2d",
     "reviewed": "pending owner read"
   },
   "explanation:plan_sheet_hour": {
@@ -2868,7 +2944,7 @@
     "reviewed": "owner read 2026-10-31 (accepted after independent screen, not read line by line)"
   },
   "labels:plan_sheet": {
-    "sha256": "c0b3ca36cd3c2e8b27592cbb47d0f6da1567de9097c664f841a8f4eac697d9af",
+    "sha256": "2e554adc87dda65cf125228fba97165efb496b8aac2b4d0e9c5814a85f253c56",
     "reviewed": "pending owner read"
   },
   "explanation:playbook_test_no_strategy": {
@@ -3348,7 +3424,7 @@
     "reviewed": "owner read 2026-10-31 (accepted after independent screen, not read line by line)"
   },
   "explanation:playbook_guard_time_exit": {
-    "sha256": "f69b827c104abe0efc40696c8852a186b6583604f1fd5ab91043adc24f093617",
+    "sha256": "3da7b1b276527a6ece178561b4c942351b9a3bc4ed6888a4e4a2973029ce9cda",
     "reviewed": "pending owner read"
   },
   "explanation:playbook_guard_warn_cost_pct_of_premium_left": {
@@ -3356,7 +3432,7 @@
     "reviewed": "owner read 2026-10-31 (accepted after independent screen, not read line by line)"
   },
   "labels:playbook_guard": {
-    "sha256": "f959b311738817ca3883e0fc0e3d374c6ae9e74cd66aba3f7b65a65a15861be5",
+    "sha256": "549ee2e2d6d7f4df36ed728953fc2dee7265ad74090e41a9decba553040168f9",
     "reviewed": "pending owner read"
   },
   "explanation:playbook_summary_plan_target": {
@@ -3963,6 +4039,22 @@
     "sha256": "d4a1f2f4128afc9683ca095870118463d9841b7c9b9f630fc81672a2988020b6",
     "reviewed": "pending owner read"
   },
+  "explanation:alert_strategy_label": {
+    "sha256": "71c7fb7be4332d32007d5433f1487ee0b74185a426fdfa1cd58f3b4a1c5225fb",
+    "reviewed": "pending owner read"
+  },
+  "explanation:alert_strategy_label_no_expiry": {
+    "sha256": "7693c93af9e497ad03255b7c70f6d6a5ad10215fe945027cded8cea97fb14e20",
+    "reviewed": "pending owner read"
+  },
+  "explanation:plan_stop_above_max_loss": {
+    "sha256": "1d4738327ec269bde3265df4ce92e7b388a4bab7bb589767aad668725c9fb14d",
+    "reviewed": "pending owner read"
+  },
+  "explanation:plan_stop_above_max_loss_paise": {
+    "sha256": "26d4b218eee34d02f07a18bf2ccc702f621639f0fcc306f2492e561a5e751309",
+    "reviewed": "pending owner read"
+  },
   "adjust_trigger_stop_not_supplied": {
     "sha256": "801657f720eeec57f47e7c7695e2dd893f7740a678ffa3f7fe23460c1c2a6fe4",
     "reviewed": "pending owner read"
@@ -4331,6 +4423,26 @@
     "sha256": "a68739cce66043b300fb760ceb54f45c96b922503b071737e91faa2a33e0088d",
     "reviewed": "pending owner read"
   },
+  "explanation:paper_totals_closed_one": {
+    "sha256": "6f4736d24c413147a0ade57249f9898cd8663dbb0c1232791f468877ad6c9124",
+    "reviewed": "pending owner read"
+  },
+  "explanation:paper_totals_closed_many": {
+    "sha256": "29d7b3c3804f5c769dedeabf858f6b826b7ff58aa3e23dbd25fccc355d9f18af",
+    "reviewed": "pending owner read"
+  },
+  "explanation:paper_totals_left_out_unpriced_one": {
+    "sha256": "a1fd59f182d835c6bee817e8a352c419fb1c7c3955f2f42ca32d6c57a0866e19",
+    "reviewed": "owner read 2026-11-26 (ADR-330 (35), approved as written by the owner in the question tool)"
+  },
+  "explanation:paper_totals_left_out_unpriced_many": {
+    "sha256": "4c9c71b8dd4b65919e9ef05bf322bcb1f9a4ed3fe6d85ad5ceb03047664303e2",
+    "reviewed": "owner read 2026-11-26 (ADR-330 (35), approved as written by the owner in the question tool)"
+  },
+  "explanation:paper_totals_left_out_mixed": {
+    "sha256": "26096d53714a657b3c560b26884489b629daebdf53c2845fc07c1ef756c70549",
+    "reviewed": "owner read 2026-11-26 (ADR-330 (35), approved as written by the owner in the question tool)"
+  },
   "paper_trigger_already_crossed": {
     "sha256": "75f3b8659d6d4aa95d0f7dc8d3c4f9c8cfad4d72452461ed06c06cbc79c801be",
     "reviewed": "owner read 2026-11-23 (approved in session)"
@@ -4338,6 +4450,10 @@
   "paper_trigger_leg_already_crossed": {
     "sha256": "9fce35fa22d13bba002ac14177014bd82174db1d4b1092d59c76cbc42ae21524",
     "reviewed": "pending owner read"
+  },
+  "paper_trigger_price_unreadable": {
+    "sha256": "58495b65968dea39c3f403817271fe2b23da2057ca7fb86ec4e8283dfd0aa4f0",
+    "reviewed": "owner read 2026-11-25 (ADR-328 point 5, answered by the owner in the question tool)"
   },
   "explanation:paper_breakevens_with_charges": {
     "sha256": "93abe1e127f6a953b9eec29ca4211b899e0173795e367f3a302113d029f16372",
@@ -4433,7 +4549,6 @@
   },
   "explanation:suggestion_lapsed_contract_expired": {
     "sha256": "555637ef88c67b94651c99048afae3d5c03b7d085735c08ef5af7f1f75e6e61d",
-    "reviewed": "pending owner read",
     "reviewed": "owner read 2026-11-25 (ADR-322 point 4, answered by the owner in the question tool)"
   },
   "explanation:money_time_value_live": {
@@ -4587,5 +4702,221 @@
   "explanation:paper_today_none": {
     "sha256": "6d782178d298b637a3f0945333fc7f0b137ab3ed40d303b892348fe2a6bdd8f6",
     "reviewed": "pending owner read"
+  },
+  "explanation:alert_fired_at": {
+    "sha256": "c9f3ac33774fc3d79e57b28ba91ccab499b118f75c45c155663b801f81ff2e39",
+    "reviewed": "pending owner read"
+  },
+  "explanation:alert_no_longer_true_since": {
+    "sha256": "7a0b2fe85f9e53c24b7dfe881401114746307bafb030e5798b1d83557af23015",
+    "reviewed": "pending owner read"
+  },
+  "explanation:alert_worse_than_fired": {
+    "sha256": "a248e13ea7adaab910fd8a8a385d0c55220e46cb533490a28fe7d5db35f3b6b3",
+    "reviewed": "pending owner read"
+  },
+  "explanation:alert_worse_than_fired_plain": {
+    "sha256": "7b623cd3c4ab65821714235aa037452ca2c247002c0b92a6e1cffb91203248cf",
+    "reviewed": "pending owner read"
+  },
+  "labels:alert_answer": {
+    "sha256": "a4dc3ce54ea870fb01210ed297a5dd92e749ad3dd23d377b31c4c83604d00ed9",
+    "reviewed": "pending owner read"
+  },
+  "alert_answer_refused": {
+    "sha256": "2dbe3df1c919f7843b6099c14f512e5114e310c20a3c7b0e8f7fa93b3c02a209",
+    "reviewed": "pending owner read"
+  },
+  "explanation:alert_closed_trade_closed": {
+    "sha256": "3ae1dbfd9af4d25b227c48a09ed71d3cb83a370e060a99a3b90ae25ca76c78bf",
+    "reviewed": "pending owner read"
+  },
+  "explanation:alert_answer_exit": {
+    "sha256": "28617f1805699cee02666a48fe0be14a54d441a714cbd431f3679bc02f254459",
+    "reviewed": "pending owner read"
+  },
+  "explanation:alert_answer_continue": {
+    "sha256": "5a9b79551421076e091c37f50b46b75be2e5504b73e40cbdd0d3e9a63ac18a3c",
+    "reviewed": "pending owner read"
+  },
+  "explanation:alert_answer_add_legs": {
+    "sha256": "758aa95278c8ccb8bd66f53a36a25a0fd674400c5b780c78ab079b6fc3780050",
+    "reviewed": "pending owner read"
+  },
+  "explanation:alert_answer_confirm_new_shape": {
+    "sha256": "b0b08fca4920a636035b1906e3cc928b3b8d3ffafa8e40abc29cd18a9aa9172b",
+    "reviewed": "pending owner read"
+  },
+  "explanation:alert_answer_closed_by_system": {
+    "sha256": "77bb93fc6fca1662aea3f71921c4e8470ba303ecb6faeca86382c0d516bed41d",
+    "reviewed": "pending owner read"
+  },
+  "explanation:alert_answer_noted": {
+    "sha256": "380d8b6a8e1b45020066a431166b018475b9484002fdd935f82f09e9af80564c",
+    "reviewed": "pending owner read"
+  },
+  "explanation:plan_level_rupees": {
+    "sha256": "821d20d978ae65a38cb01ef88dfb7407fb587416463687e42fdf6a7e1b4b190c",
+    "reviewed": "pending owner read"
+  },
+  "explanation:plan_level_rupees_whole": {
+    "sha256": "337d9a4a39689766f94d5825ed79baa6d73798c8bdce733d55cc9c37cb673498",
+    "reviewed": "pending owner read"
+  },
+  "explanation:paper_leg_stop_widens_loss": {
+    "sha256": "c70ac417600bc310c7614f10edec75ee1cc6bf83d93c90af679336c299fcbb75",
+    "reviewed": "pending owner read"
+  },
+  "explanation:paper_leg_stop_unlimited_loss": {
+    "sha256": "b2bf658f44033a95e217468372cb8bca71a71f68f022527a5cd8163ac0f05edf",
+    "reviewed": "pending owner read"
+  },
+  "explanation:paper_leg_stop_from_profit": {
+    "sha256": "463238f9ada1d016ac2c0086e9ffe6e3b091eec6c18dbeafbefb61cf9939a217",
+    "reviewed": "pending owner read"
+  },
+  "explanation:paper_leg_stop_unlimited_from_profit": {
+    "sha256": "e47aa44a58aebb775b3e225e045800c130e563fec38c07d57b40c270447f1364",
+    "reviewed": "pending owner read"
+  },
+  "explanation:paper_leg_stop_to_profit": {
+    "sha256": "80e80c8e789aa854d13e4240b13e7101ae5b98580c77b69fdaae856d8f31d2b1",
+    "reviewed": "pending owner read"
+  },
+  "explanation:paper_leg_stop_still_profit": {
+    "sha256": "15b512201105dc3a9d7fe0ec84349b00c6d6fce4f51257de2d5bc00403df6ff0",
+    "reviewed": "pending owner read"
+  },
+  "explanation:plan_watch_index_above": {
+    "sha256": "da3117b20ae50ea831a7ed33630dc318c7fef905e337676c5aefc8b7500c47a8",
+    "reviewed": "pending owner read"
+  },
+  "explanation:plan_watch_index_below": {
+    "sha256": "f6c850d2713dce2fd846a3bb553c818fe57cc1777aad58b77cf624daa0054882",
+    "reviewed": "pending owner read"
+  },
+  "explanation:plan_watch_leg_above": {
+    "sha256": "50323a027cbdd230324202287ca1025e955a9013aa3cc7790432f9795e859143",
+    "reviewed": "pending owner read"
+  },
+  "explanation:plan_watch_leg_below": {
+    "sha256": "e71aa9d87bef9bda08a0620a8a0bd4ec5c5b5f00a45d95d86c53d60d7e18ad41",
+    "reviewed": "pending owner read"
+  },
+  "explanation:plan_watch_armed_heading": {
+    "sha256": "a304b4801200d43f8ee5d98c06f0cf44036a3a9167781b8d562886116fa850d7",
+    "reviewed": "pending owner read"
+  },
+  "explanation:plan_stop_words_rupees": {
+    "sha256": "4536bae876576ff744d24fda94d27fda5211b7328ed6e116cdbddd6633dffb54",
+    "reviewed": "pending owner read"
+  },
+  "explanation:plan_stop_words_rupees_plain": {
+    "sha256": "5d5960ba73105141613e77f32bfe73ec7cb7eb7992d235b4f72b51cc6fab2367",
+    "reviewed": "pending owner read"
+  },
+  "explanation:limit_target_rupees": {
+    "sha256": "774308f777e17dcdc3523db338d3f3d37a7cff48daadf1ed38f30088e429dcb1",
+    "reviewed": "pending owner read"
+  },
+  "explanation:limit_stop_rupees": {
+    "sha256": "a561fd61c385e518b588715a77da3afdfc813e4d2b55486375571086fd715205",
+    "reviewed": "pending owner read"
+  },
+  "explanation:alert_title_unnamed": {
+    "sha256": "ebb09b96e28f74a18da64f57350c92fb80bcc47ae1e63464b4785d51024810b7",
+    "reviewed": "pending owner read"
+  },
+  "explanation:stop_fired_note": {
+    "sha256": "1e59c74437a676c5440098cf1837d15bcd484049d2fce382afff59017645fed3",
+    "reviewed": "pending owner read"
+  },
+  "explanation:stop_fired_note_with_line": {
+    "sha256": "e8d8850d2eb02ab6ae5b4bd1a19710d3e9e344391fc2c3c3a69609832ccf0d2e",
+    "reviewed": "pending owner read"
+  },
+  "explanation:real_pnl_caption": {
+    "sha256": "832d80ad538a068fa665f4d04d3ba220cd5e537dc8874624261c94a26ccd662b",
+    "reviewed": "pending owner read"
+  },
+  "explanation:real_pnl_excludes": {
+    "sha256": "4d53a45a7d467c341ff16ecd5edb2f58a39c7c45d6ca8eece1898f721c6afaeb",
+    "reviewed": "pending owner read"
+  },
+  "explanation:real_pnl_total_empty": {
+    "sha256": "f77b3aee69741b37700adaf5f072b6ddff9050de1dfccf8c57746feee4a5dbcc",
+    "reviewed": "pending owner read"
+  },
+  "explanation:real_pnl_total_partial": {
+    "sha256": "33f5261595d30bb8c52fe017e6d69a1b94399ac6c8c48efd839430dc64ce0b2e",
+    "reviewed": "pending owner read"
+  },
+  "explanation:real_pnl_not_available": {
+    "sha256": "51e10d4a8d79418fed241f72f086d959e089d60ef2a7ce78d6a828e75151c852",
+    "reviewed": "pending owner read"
+  },
+  "explanation:real_pnl_mismatch": {
+    "sha256": "ba41f8028199b71c4a6e30088502e31bd05233fce82d64a0ccc737d9de24f473",
+    "reviewed": "pending owner read"
+  },
+  "explanation:real_pnl_shared": {
+    "sha256": "34df787cc37f41914fae2c8b0ba8c5f39ac748c72e3323542feddbd774b65fb2",
+    "reviewed": "pending owner read"
+  },
+  "explanation:real_pnl_part_closed": {
+    "sha256": "0e5c5d28046caa9865662061859ec8a28c4417c5fe74ebf8720aaea77f7ff9d5",
+    "reviewed": "pending owner read"
+  },
+  "explanation:real_pnl_pending": {
+    "sha256": "fd8b0901addc344f8d474acd0fa9ed0a3299acb19ec19ef6b0c039292ce35598",
+    "reviewed": "pending owner read"
+  },
+  "explanation:real_pnl_stale": {
+    "sha256": "c07d60a2f08560f37adc50b78f10bd917bd324ae78717d0156bd60d86c79b961",
+    "reviewed": "pending owner read"
+  },
+  "explanation:alert_side_closed_text_call": {
+    "sha256": "58d11dd621042c6e7e7b7b5098662e1053336820d3a02b54e1c4be43ddf22b9c",
+    "reviewed": "pending owner read"
+  },
+  "explanation:alert_side_closed_text_put": {
+    "sha256": "e66aec4225483b0ec56f53157cb7fdb3aa408466361a633df430f6690db86814",
+    "reviewed": "pending owner read"
+  },
+  "explanation:plan_watch_side_not_applicable_call": {
+    "sha256": "17463fb8a1f845c49a807edfa3dc55e370fbd1e32f7507a3b00bdbb29c5b387e",
+    "reviewed": "pending owner read"
+  },
+  "explanation:plan_watch_side_not_applicable_put": {
+    "sha256": "e6b7951cae3d624347ad0bf7c75c22b253ef83b8690a2235bbabc32098f7fd48",
+    "reviewed": "pending owner read"
+  },
+  "explanation:plan_sheet_reset": {
+    "sha256": "0e2286f8d28624e9bfdd43e478a9f771eebc992a53df5409f730db9ad32b3699",
+    "reviewed": "pending owner read"
+  },
+  "explanation:plan_sheet_reset_confirm": {
+    "sha256": "f332c40238c5db52adad732c248b5e09308fb7f50491f84c42c83b40f28d893a",
+    "reviewed": "pending owner read"
+  },
+  "explanation:exit_not_run_no_price": {
+    "sha256": "9f4e2dd5f7ab2f0dd4adea6f1389b3300f4d7ce8c3673e7ef25aef7bcee10e19",
+    "reviewed": "pending owner read"
+  },
+  "leg_edit_expiry_not_listed": {
+    "sha256": "53bfe893829cdb7a1b060c1e7e06cf12b33124c563ba3c6ea9ec50ec45150e31",
+    "reviewed": "pending owner read"
+  },
+  "leg_edit_expiry_futures": {
+    "sha256": "01b1db55a6fb8c0d3d6e878134a81f519837bc2864e7c447fd109aaca985569a",
+    "reviewed": "pending owner read"
+  },
+  "explanation:closed_prices_mixed_one": {
+    "sha256": "866e1a74de14876c604729f5836bb8570b473fa76d568e334d43a8bf580a3717",
+    "reviewed": "owner read 2026-11-26 (ADR-330 (36) (LR-Q18), answered by the owner in the question tool, option b)"
+  },
+  "explanation:closed_prices_mixed_many": {
+    "sha256": "2e2b189d37f20118e29b9f21a553dffecdbc0fd1f1aeb3a01746d5b73c331a3e",
+    "reviewed": "owner read 2026-11-26 (ADR-330 (36) (LR-Q18), answered by the owner in the question tool, option b)"
   }
 }

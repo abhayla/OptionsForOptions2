@@ -20,6 +20,8 @@ class GateRow:
     #: the stored record's id (#639 item 2: a dismiss read on the rebuild matches THIS record, never the rule); None =
     #: not known (a caller without ids), and a dismiss without an id matches nothing in the worker
     id: int | None = None
+    #: ADR-330 (3): the open record says "no longer true since" (stored), so a restart knows it is stopped
+    stopped: bool = False
 
 
 @dataclass(frozen=True)

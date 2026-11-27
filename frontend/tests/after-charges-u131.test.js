@@ -28,7 +28,7 @@ import PaperStrategies from '@/components/strategy/PaperStrategies.vue'
 import ChartCard from '@/components/strategy/ChartCard.vue'
 import { paperLeftOf } from '@/lib/paperDrafts'
 import { sharedTotal } from '@/lib/tracking'
-import { resetPaperAlerts } from '@/lib/paperAlerts'
+import { resetActiveAlerts } from '@/lib/paperAlerts'
 
 const ok = (data) => () => Promise.resolve({ data })
 const t = (w, id) => w.get(`[data-testid="${id}"]`)
@@ -41,7 +41,7 @@ const CONDOR = { profit_left_text: '+2,900.00', loss_left_text: '-3,600.00', pro
 const WITH = 'Maximum profit and maximum loss include about Rs 235.17 of charges and taxes.'
 const BEFORE = 'Maximum profit and maximum loss are before charges and taxes: the charges could not be priced.'
 
-beforeEach(() => { answers = {}; resetPaperAlerts(); vi.useFakeTimers() })
+beforeEach(() => { answers = {}; resetActiveAlerts(); vi.useFakeTimers() })
 afterEach(() => vi.useRealTimers())
 
 const card = (book, extra = {}) => mount(SummaryCards, { props: { left: paperLeftOf(book), maxProfit: book.max_profit_text ?? '-', maxLoss: book.max_loss_text ?? '-', ...extra } })
@@ -156,7 +156,7 @@ describe('item 4: the P&L table', () => {
   })
   it('paper, prices not live: no number and a dash percent', () => {
     const r = totalRow(mountCard(shared({ state: 'PAUSED', total_after_text: null, total_text: null, after_charges_reason: 'prices_not_live' })))
-    expect(cell(r, 'unrealized_pnl')).toBe('—')
+    expect(cell(r, 'unrealized_pnl')).toBe('-')
     expect(cell(r, 'pnl_percent')).toBe('—')
   })
   it('paper, rates unavailable: the before figure says so and the percent is a dash', () => {

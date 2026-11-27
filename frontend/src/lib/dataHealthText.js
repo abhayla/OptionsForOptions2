@@ -23,6 +23,13 @@ export function shownHealth(health, marketClosed) {
   return health
 }
 
+// #748 / REQ-133 AC-3: a contract the server holds that has sent no first price yet (its cell health is null in a live answer) waits for
+// it; the wording is the catalogue's template outcome_waiting_first_price. Not a health word: REQ-049's five words stay as they are.
+export const WAITING_FIRST_PRICE_TEXT = 'Waiting for the first live price'
+
+/** True for a cell the server marks as held with no first price yet (health null; an answer with no cell or a closed market: false). */
+export const isWaitingCell = (cell, marketClosed) => !!cell && marketClosed !== true && cell.health === null
+
 export const MISSING_REASONS = {
   no_contract: 'There is no contract at this strike for this expiry.',
   no_quote: 'No price has been received for this contract yet.',
@@ -35,7 +42,7 @@ export function missingCode(cell, key) {
   if (!cell) return 'no_contract'
   const v = cell[key]
   if (typeof v === 'string' || typeof v === 'number') return null
-  return cell.health && cell.health !== 'available' ? 'no_quote' : 'not_sent'
+  return cell.health === null || (cell.health && cell.health !== 'available') ? 'no_quote' : 'not_sent'
 }
 
 export const missingReason = (cell, key) => {

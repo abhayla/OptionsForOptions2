@@ -6,7 +6,8 @@
 // always ends, the client has a timeout, so this state never lasts).
 import { computed, onMounted, ref } from 'vue'
 import api from '@/services/api'
-import { PAPER_NO_FIGURE, PAPER_PAUSED, listIsStale, readPaperList } from '@/lib/paperList'
+import { PAPER_NO_FIGURE, PAPER_PAUSED, readPaperList } from '@/lib/paperList'
+import { usePriceFreshness } from '@/lib/priceState'
 import { UNREADABLE_TEXT } from '@/lib/tracking'
 import { usePaperRefresh } from '@/lib/usePaperRefresh'
 
@@ -21,7 +22,8 @@ export const FIGURE_READ_FAILED_TEXT = 'Could not be read right now.' // pending
  *  (not readable). `notLive`: the list itself is old (a failed refresh) or the strategy's state says prices are not live. */
 export function pnlFigure(fig, notLive = false) {
   if (!fig) return { kind: 'failed', text: PAPER_NO_FIGURE, label: '', note: UNREADABLE_TEXT }
-  if (notLive || fig.kind === 'paused') return { kind: 'paused', text: PAPER_NO_FIGURE, label: '', note: PAPER_PAUSED }
+  if (notLive) return { kind: 'paused', text: PAPER_NO_FIGURE, label: '', note: PAPER_PAUSED }
+  if (fig.kind === 'paused') return { kind: 'paused', text: PAPER_NO_FIGURE, label: '', note: fig.reason ?? PAPER_PAUSED } // the list's own sentence, with its as-of time (REQ-109 AC-5)
   if (fig.text === null) return { kind: 'failed', text: PAPER_NO_FIGURE, label: '', note: fig.reason ?? UNREADABLE_TEXT }
   return { kind: 'value', text: fig.text, label: fig.label, note: fig.reason }
 }
@@ -43,7 +45,8 @@ export function usePaperPnl() {
     onError: () => { failed.value = true; loaded.value = true },
   })
   onMounted(refresh)
-  const stale = computed(() => listIsStale(failed.value, list.value))
+  const { readOk } = usePriceFreshness({ readFailed: failed, held: list })
+  const stale = computed(() => !readOk.value)
   /** The cell of one strategy: {kind: loading | none | value | paused | failed, text, label, note}. */
   const cellFor = (id) => {
     if (!loaded.value) return { kind: 'loading' }
@@ -58,7 +61,8 @@ export function usePaperPnl() {
     if (!loaded.value) return { kind: 'loading' }
     if (list.value === null) return pnlFigure(null)
     if (list.value.totals === null) return pnlFigure(null)
-    return pnlFigure(list.value.totals.totalAfter, stale.value)
+    // AC-R06 / N-46 (ADR-324): the server's count line (strategies left out of the total) rides with the figure, as sent
+    return { ...pnlFigure(list.value.totals.totalAfter, stale.value), leftOut: list.value.totals.leftOut ?? null }
   })
   return { cellFor, totalCell, loaded }
 }

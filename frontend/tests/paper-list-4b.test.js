@@ -24,10 +24,11 @@ vi.mock('@/services/api', async (importActual) => {
 import PaperStrategies from '@/components/strategy/PaperStrategies.vue'
 import PositionsPage from '@/pages/PositionsPage.vue'
 import AlertsPage from '@/pages/AlertsPage.vue'
-import { resetPaperAlerts } from '@/lib/paperAlerts'
+import { resetActiveAlerts } from '@/lib/paperAlerts'
 import { routes } from '@/router/routes'
 
 const ok = (data) => () => Promise.resolve({ data })
+const ACTIVE_ROW = { id: 1, strategy_id: 64, kind: 'plan_loss_stop', text: 'Stop hit', fired_line: 'Fired at 11:02', answers: [] } // GET /alerts/active row
 const t = (w, id) => w.get(`[data-testid="${id}"]`)
 const all = (w, id) => w.findAll(`[data-testid="${id}"]`)
 const has = (w, id) => w.find(`[data-testid="${id}"]`).exists()
@@ -51,7 +52,7 @@ async function show(Comp = PaperStrategies, url = '/', meta = {}) {
   return w
 }
 
-beforeEach(() => { calls.length = 0; answers = {}; resetPaperAlerts(); vi.useFakeTimers() })
+beforeEach(() => { calls.length = 0; answers = {}; resetActiveAlerts(); vi.useFakeTimers() })
 afterEach(() => vi.useRealTimers())
 
 describe('Paper tab from GET /paper/strategies (the real reply)', () => {
@@ -90,6 +91,18 @@ describe('Paper tab from GET /paper/strategies (the real reply)', () => {
     expect(all(w, 'paper-group')[1].findAll('[data-testid="paper-closed-leg"]')).toHaveLength(1) // the closed one, with entry and exit
     expect(all(w, 'paper-group')[1].get('[data-testid="paper-closed-exit"]').text()).toBe(REAL.strategies[1].closed[0].average_exit_text)
     expect(all(w, 'paper-group')[0].get('[data-testid="paper-state"]').text()).toBe('Exited')
+  })
+
+  it('N-47: a settled closed leg prints the server settlement sentence under its exit, never a bare 0.00', async () => {
+    const r = clone()
+    const why = 'Paper - settled at expiry: SENSEX closed at 84,328.59'
+    r.strategies[1].closed = [{ ...r.strategies[1].closed[0], average_exit_text: '0.00 (settled)', reason_text: why }]
+    answers['GET /paper/strategies'] = ok(r)
+    const w = await show()
+    await t(w, 'show-closed').setValue(true)
+    const leg = all(w, 'paper-group')[1].get('[data-testid="paper-closed-leg"]')
+    expect(leg.get('[data-testid="paper-closed-reason"]').text()).toBe(why)
+    expect(leg.get('[data-testid="paper-closed-exit"]').text()).toContain('0.00 (settled)')
   })
 
   it('a position row has Lots, Avg, LTP, Booked, Unbooked and P&L as the reply sent them', async () => {
@@ -256,6 +269,15 @@ describe('Paper tab from GET /paper/strategies (the real reply)', () => {
     answers['GET /paper/strategies'] = ok(none)
     expect(has(await show(), 'totals-left-out')).toBe(false)
   })
+  it('AC-R06 / N-46: a paused strategy among priced ones: the header keeps the server\'s total and its count line', async () => {
+    const LINE = '1 strategy left out: its price is not live.'
+    const d = clone()
+    Object.assign(d.totals, { left_out_count: 1, left_out_text: LINE })
+    answers['GET /paper/strategies'] = ok(d)
+    const w = await show()
+    expect(t(w, 'totals-left-out').text()).toBe(LINE)
+    expect(t(w, 'totals-total').text()).toBe(REAL.totals.total_text)
+  })
   it('D-40 r2: the compact list shows no header figure, so no left-out line is missing beside one', async () => {
     const d = clone()
     Object.assign(d.totals, { left_out_count: 2, left_out_text: '2 strategies left out: their contracts have expired.' })
@@ -337,32 +359,34 @@ describe('the builder compact Paper list (same reply)', () => {
 
 describe('Positions page default tab (F-69) and Alerts names (R-8)', () => {
   const POS = (over = {}) => ({ read_at: '2026-10-29T10:00:00+05:30', strategies: [], has_outside: false, outside_lots: 0, blocked: false, blocked_strategy_ids: [], ...over })
-  it('opens on Paper with an open paper strategy and no real position', async () => {
+  // ADR-330 (10) replaces ADR-201 (2): no jump to a Paper tab; the default All shows the real section and the paper list together
+  it('with an open paper strategy and no real position, the page shows the paper rows (default All)', async () => {
     answers['GET /positions'] = ok(POS())
     answers['GET /paper/strategies'] = ok(REAL)
     const w = await show(PositionsPage, '/p')
     await flushPromises()
     expect(has(w, 'positions-paper')).toBe(true)
+    expect(all(w, 'paper-group').length).toBeGreaterThan(0)
   })
-  it('stays on Positions when the Zerodha read shows a position', async () => {
+  it('with the Zerodha read showing a position, both the outside-lots line and the paper rows show', async () => {
     answers['GET /positions'] = ok(POS({ has_outside: true, outside_lots: 2 }))
     answers['GET /paper/strategies'] = ok(REAL)
     const w = await show(PositionsPage, '/p')
-    expect(has(w, 'positions-paper')).toBe(false)
+    expect(has(w, 'positions-paper')).toBe(true)
     expect(has(w, 'positions-outside')).toBe(true)
   })
-  it('with paper open and nothing real, the Positions tab says so (F-69)', async () => {
+  it('with paper open and nothing real, the real section says no open positions and never points at a Paper tab', async () => {
     answers['GET /positions'] = ok(POS())
     answers['GET /paper/strategies'] = ok(REAL)
     const w = await show(PositionsPage, '/p?tab=positions')
-    expect(t(w, 'positions-empty').text()).toContain('No open Zerodha positions. 2 paper strategies are open - see Paper.')
-    expect(w.text()).not.toContain('none of your strategies holds any')
+    expect(t(w, 'positions-empty').text()).toContain('No open Zerodha positions') // ADR-330 (10): one list
+    expect(w.text()).not.toContain('see Paper')
   })
   it('with no paper strategy open the real empty text stays', async () => {
     answers['GET /positions'] = ok(POS())
     answers['GET /paper/strategies'] = ok(EMPTY)
     const w = await show(PositionsPage, '/p')
-    expect(t(w, 'positions-empty').text()).toContain('No open positions')
+    expect(t(w, 'positions-empty').text()).toContain('No open Zerodha positions') // ADR-330 (10): one list
   })
   it('u504: the bare /positions route opens the first built Positions page; every sub-item page stays reachable by its own address', () => {
     // GC-CLEAN 2026-10-30 kept the section page so the menu listed all four sub-items. u504 (2026-11-15) changed that: a
@@ -374,14 +398,14 @@ describe('Positions page default tab (F-69) and Alerts names (R-8)', () => {
     }
   })
   it('an alert row shows the strategy name from the reply, not "Strategy 64"', async () => {
-    answers['GET /paper/alerts'] = ok({ unread: 0, alerts: [{ id: 1, strategy_id: 64, strategy_name: '"Iron Fly"', trigger_id: 3, created_at: '2026-10-29T05:00:00Z', title: 'Stop hit', body: 'b', read: true }] })
+    answers['GET /alerts/active'] = ok({ count: 1, alerts: [{ ...ACTIVE_ROW, strategy_name: '"Iron Fly"' }] })
     const w = await show(AlertsPage, '/p/active', { title: 'Alerts' })
     expect(t(w, 'alert-strategy').text()).toBe('Iron Fly')
   })
   it('GC-TPD R-8: an alert with no strategy name (absent, null or empty) falls back to "Strategy N", never a blank cell', async () => {
-    const row = { id: 1, strategy_id: 64, trigger_id: 3, created_at: '2026-10-29T05:00:00Z', title: 'Stop hit', body: 'b', read: true }
+    const row = ACTIVE_ROW
     for (const gone of [{}, { strategy_name: null }, { strategy_name: '' }]) {
-      answers['GET /paper/alerts'] = ok({ unread: 0, alerts: [{ ...row, ...gone }] })
+      answers['GET /alerts/active'] = ok({ count: 1, alerts: [{ ...row, ...gone }] })
       const w = await show(AlertsPage, '/p/active', { title: 'Alerts' })
       expect(t(w, 'alert-strategy').text()).toBe('Strategy 64')
     }

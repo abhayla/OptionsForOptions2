@@ -6,14 +6,14 @@
 import { plainName } from '@/lib/saveDraft'
 import { contractName, CONTRACT_UNAVAILABLE } from '@/lib/displayFormat'
 import { UNREADABLE_TEXT, EXITED_TEXT, afterFigure } from '@/lib/tracking'
-import { istTime } from '@/lib/displayFormat'
+import { istTime, noteShownDate } from '@/lib/displayFormat'
 import { LAST_CLOSE_LABEL } from '@/lib/paperDrafts'
+import { PAUSED_TEXT as PAPER_PAUSED, NOT_CONNECTED_TEXT as PAPER_NOT_CONNECTED, listIsStale } from '@/lib/priceState'
 
 const WORDS = ['Draft', 'Running', 'Completed']
 const STATES = new Set(['LIVE', 'PAUSED', 'NOT_CONNECTED', 'EXITED'])
 export const PAPER_NO_FIGURE = '—'
-export const PAPER_PAUSED = 'Paper P&L paused - prices not live'
-export const PAPER_NOT_CONNECTED = 'Paper P&L paused - live prices are not connected'
+export { PAPER_PAUSED, PAPER_NOT_CONNECTED, listIsStale } // the one rule and wording live in lib/priceState.js
 export const NOT_WHOLE_LOTS_TEXT = 'Not a whole number of lots'
 export const SHOW_CLOSED_LABEL = 'Show closed positions'
 export const ALL_CLOSED_TEXT = 'No open paper positions. Turn on Show closed positions to see the exited ones.'
@@ -45,6 +45,7 @@ function readPosition(p, underlying) {
   return {
     key: String(p.contract_id),
     contractId: p.contract_id,
+    expiry: typeof p.expiry === 'string' ? p.expiry : null, // ADR-330 (19): the group label's expiry
     name: shownName(p, underlying),
     side: p.net_quantity > 0 ? 'B' : p.net_quantity < 0 ? 'S' : null,
     open,
@@ -76,6 +77,7 @@ function readClosed(c, underlying) {
     qtyText: Number.isInteger(c.lots) ? `${c.lots} ${c.lots === 1 ? 'lot' : 'lots'}` : `${c.quantity} units`,
     entryText: text(c.average_entry_text),
     exitText: text(c.average_exit_text),
+    reasonText: text(c.reason_text), // N-47: the server's settlement / stop sentence, as the builder's closed rows print it
     booked: text(c.booked_text),
   }
 }
@@ -128,6 +130,7 @@ export function readPaperStrategy(s, index = 0) {
     readable: true,
     id,
     name: plainName(s.name),
+    expiries: positions.map((p) => p.expiry).filter((e) => e !== null), // ADR-330 (19): the dates the group label may show
     underlying: s.underlying,
     state: s.state,
     statusWord: WORDS.includes(s.status_word) ? s.status_word : null, // ADR-299 (4): the server's word, never derived here
@@ -155,13 +158,15 @@ export function readPaperStrategy(s, index = 0) {
 
 function readTotals(t) {
   if (!t || typeof t !== 'object') return null
-  const totalReason = withAsOf(text(t.totals_reason_text), t.totals_as_of)
+  // REQ-109 AC-5: a paused total always says so, with the time of the last price: ONE sentence for Positions and Home (pnlFigure reads it)
+  const totalReason = withAsOf(text(t.totals_reason_text) ?? (t.after_charges_reason === 'prices_not_live' ? PAPER_PAUSED : null), t.totals_as_of)
   return {
     totalAfter: afterFigure(t, text(t.total_text), totalReason), // GC-ICFIX u123: one total from the engine's sum, never a partial one
     bookedAfter: afterFigure(t, text(t.booked_text), totalReason, 'booked_after_text', ['paid']),
     unbookedAfter: afterFigure(t, text(t.unbooked_text), totalReason, 'unbooked_after_text', ['close']),
     total: text(t.total_text), booked: text(t.booked_text), unbooked: text(t.unbooked_text), decay: text(t.decay_text),
     charges: text(t.charges_text), chargesReason: text(t.charges_reason_text),
+    closedNote: text(t.closed_text), // ADR-330 (15): the server's "Includes N closed strategies" line, never built here
     leftOut: text(t.left_out_text), // D-40 (ADR-324): the server's line saying how many expired strategies the figures leave out
     totalReason, decayReason: t.decay_reason === 'prices_not_live' ? withAsOf(text(t.decay_reason_text), t.totals_as_of) : text(t.decay_reason_text),
   }
@@ -179,11 +184,9 @@ function readToday(t) {
 /** The whole reply: {groups, totals, today}, or null when it does not read (the caller shows the neutral error, no figure). */
 export function readPaperList(data) {
   if (!data || !Array.isArray(data.strategies)) return null
+  noteShownDate(data) // ADR-330 (19): before any group label is written
   return { groups: data.strategies.map(readPaperStrategy), totals: readTotals(data.totals), today: readToday(data.today) }
 }
-
-/** The ONE paused decision of every paper P&L screen (REQ-109 AC-5): a refresh failed or did not read while a list is held. */
-export const listIsStale = (failed, list) => !!failed && !!list
 
 /** A group is open when the server counts an open position in it (never a fully exited one). */
 export const isOpenGroup = (g) => g.readable && g.state !== 'EXITED' && g.openCount > 0

@@ -3,17 +3,18 @@
      Create Strategy, the three most recently updated). A failed read -> `error` with the server's message. The live index
      strip shows in every state. Zerodha is a quiet line only: no connect control anywhere on this page (AC-5). No money. -->
 <script setup>
+import { builderLinkOf } from '@/lib/strategyLinks'
 import { computed, onMounted, ref } from 'vue'
 import api, { NEUTRAL_PARTS } from '@/services/api'
 import ErrorMessage from '@/components/common/ErrorMessage.vue'
 import IndexStrip from '@/components/layout/IndexStrip.vue'
 import Card from '@/components/common/Card.vue'
 import PageHeader from '@/components/common/PageHeader.vue'
-import { istTime } from '@/lib/displayFormat'
-import { plainName } from '@/lib/saveDraft'
+import { istTime, noteShownDate } from '@/lib/displayFormat'
+import { plainName, strategyListLabel } from '@/lib/saveDraft'
 import { isRunning, strategyStatusWord } from '@/lib/strategyStatus'
 import { FIGURE_READ_FAILED_TEXT, HOME_PNL_LABEL, HOME_RUNNING_LABEL, HOME_UNREAD_LABEL, usePaperPnl } from '@/lib/paperPnl'
-import { bellCount, dropAlerts, paperAlerts, readPaperAlerts, takeAlerts } from '@/lib/paperAlerts'
+import { activeAlerts, bellCount, dropActive, readActive, takeActive } from '@/lib/paperAlerts'
 import { PAPER_NO_FIGURE } from '@/lib/paperList'
 import { SECTIONS } from '@/router/nav'
 
@@ -50,14 +51,14 @@ const runningCell = computed(() => {
   return { text: String(strategies.value.filter(isRunning).length), note: null }
 })
 const unreadCell = computed(() => {
-  if (!paperAlerts.loaded) return { text: PAPER_NO_FIGURE, note: null }
-  if (paperAlerts.parts) return { text: PAPER_NO_FIGURE, note: FIGURE_READ_FAILED_TEXT }
-  return { text: String(bellCount()), note: null } // the bell badge's own number (unread stops plus open adjustment records)
+  if (!activeAlerts.loaded) return { text: PAPER_NO_FIGURE, note: null }
+  if (activeAlerts.parts) return { text: PAPER_NO_FIGURE, note: FIGURE_READ_FAILED_TEXT }
+  return { text: String(bellCount()), note: null } // the bell badge's own number (the server's count of unanswered actionable alerts)
 })
 const pnlCell = computed(() => {
   const c = pnl.totalCell.value
   if (c.kind === 'loading') return { text: PAPER_NO_FIGURE, note: null }
-  return { text: c.text, label: c.label, note: c.note }
+  return { text: c.text, suffix: c.label, note: c.note, leftOut: c.leftOut ?? null } // c.label is the charges suffix, never the figure's name
 })
 const figures = computed(() => [
   { id: 'running', label: HOME_RUNNING_LABEL, ...runningCell.value },
@@ -65,9 +66,9 @@ const figures = computed(() => [
   { id: 'pnl', label: HOME_PNL_LABEL, ...pnlCell.value },
 ])
 onMounted(async () => {
-  readPaperAlerts().then(takeAlerts, dropAlerts)
+  readActive().then(takeActive, dropActive)
   try {
-    const list = (await api.get('/strategies')).data?.strategies
+    const list = noteShownDate((await api.get('/strategies')).data)?.strategies
     if (!Array.isArray(list)) throw new Error('unreadable answer') // fail closed: no state is guessed
     strategies.value = list
   } catch (e) {
@@ -83,9 +84,10 @@ onMounted(async () => {
 
     <dl v-if="state !== 'loading'" class="mt-4 flex flex-wrap gap-6 rounded-lg border border-line bg-surface px-4 py-3" data-testid="home-figures">
       <div v-for="f in figures" :key="f.id" :data-testid="`home-${f.id}`">
-        <dt class="text-xs text-ink-muted">{{ f.label }}<template v-if="f.label && f.id === 'pnl' && f.text !== PAPER_NO_FIGURE && pnlCell.label">{{ ' ' }}{{ pnlCell.label }}</template></dt>
+        <dt class="text-xs text-ink-muted">{{ f.label }}<template v-if="f.suffix && f.text !== PAPER_NO_FIGURE">{{ ' ' }}{{ f.suffix }}</template></dt>
         <dd class="text-lg font-semibold tabular-nums" :data-testid="`home-${f.id}-figure`">{{ f.text }}</dd>
         <p v-if="f.note" class="text-xs text-ink-muted" :data-testid="`home-${f.id}-note`">{{ f.note }}</p>
+        <p v-if="f.leftOut" class="text-xs text-ink-muted" :data-testid="`home-${f.id}-left-out`">{{ f.leftOut }}</p>
       </div>
     </dl>
 
@@ -115,10 +117,11 @@ onMounted(async () => {
             class="grid min-h-9 grid-cols-[minmax(0,1.2fr)_minmax(0,2fr)_auto] items-center gap-3 px-4 py-2 hover:bg-surface-muted"
             data-testid="recent-row"
           >
-            <span v-if="plainName(s.name)" class="min-w-0 truncate font-medium" data-testid="recent-name">{{ plainName(s.name) }}</span>
+            <span v-if="plainName(s.name)" class="min-w-0 truncate font-medium" data-testid="recent-name">{{ strategyListLabel({ name: s.name, id: s.id, expiries: [s.first_leg?.expiry], fallback: '' }) }}</span>
             <span v-else class="text-ink-subtle" aria-hidden="true">—</span>
             <span class="min-w-0 truncate text-ink-muted">{{ s.underlying }}, {{ strategyStatusWord(s) }}, last saved {{ istTime(s.updated_at) }}</span>
-            <router-link to="/strategy/builder" class="text-accent hover:underline" :data-testid="`recent-open-${s.id}`">Open in Strategy Builder</router-link>
+            <router-link v-if="builderLinkOf(s.id)" :to="builderLinkOf(s.id)" class="text-accent hover:underline" :data-testid="`recent-open-${s.id}`">Open in Strategy Builder</router-link>
+            <span v-else aria-hidden="true"></span><!-- S-18: no usable id, no link; the grid cell stays -->
           </li>
         </ul>
       </Card>

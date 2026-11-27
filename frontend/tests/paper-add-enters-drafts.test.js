@@ -7,6 +7,7 @@ import StrategyBuilderPage from '@/pages/StrategyBuilderPage.vue'
 import { PAPER_BOOK_UNREADABLE, PAPER_MODE_LABEL, netLegsFromBook } from '@/lib/paperDrafts'
 import { PAPER_ADDED_TEXT } from '@/lib/tracking'
 import REAL from './fixtures/paper-book-63.json'
+import { confirmPaperName } from './helpers/paperName'
 
 const calls = []
 let answers = {}
@@ -53,6 +54,11 @@ const mountPage = async () => {
   await flushPromises()
   return w
 }
+// ADR-330 (28): this page's outcome never answers, so its prices are not live and the confirm list asks for the tick first
+const confirmList = async (w) => {
+  await t(w, 'paper-not-live-ack').setValue(true)
+  await t(w, 'paper-confirm-button').trigger('click')
+}
 const posts = () => calls.filter((c) => c.method === 'POST' && c.url === '/paper/strategies/70/orders')
 
 describe('Add to Paper ends in Drafts Mode', () => {
@@ -60,7 +66,8 @@ describe('Add to Paper ends in Drafts Mode', () => {
     const w = await mountPage()
     await t(w, 'add-to-paper').trigger('click')
     await flushPromises()
-    await t(w, 'paper-confirm-button').trigger('click')
+    await confirmPaperName(w)
+    await confirmList(w)
     await flushPromises()
     expect(t(w, 'paper-mode-label').text()).toBe(PAPER_MODE_LABEL)
     expect(t(w, 'add-to-paper').exists()).toBe(false)
@@ -75,7 +82,8 @@ describe('Add to Paper ends in Drafts Mode', () => {
     await t(w, 'more-menu').trigger('click')
     await t(w, 'menu-add-to-paper').trigger('click')
     await flushPromises()
-    await t(w, 'paper-confirm-button').trigger('click')
+    await confirmPaperName(w)
+    await confirmList(w)
     await flushPromises()
     expect(t(w, 'paper-mode-label').exists()).toBe(true)
     expect(t(w, 'menu-add-to-paper').exists()).toBe(false)
@@ -87,7 +95,8 @@ describe('Add to Paper ends in Drafts Mode', () => {
     const w = await mountPage()
     await t(w, 'add-to-paper').trigger('click')
     await flushPromises()
-    await t(w, 'paper-confirm-button').trigger('click')
+    await confirmPaperName(w)
+    await confirmList(w)
     await flushPromises()
     expect(t(w, 'paper-mode-label').exists()).toBe(false)
     expect(w.text()).toContain('Refused for a test reason.')
@@ -100,7 +109,8 @@ describe('Add to Paper ends in Drafts Mode', () => {
     const w = await mountPage()
     await t(w, 'add-to-paper').trigger('click')
     await flushPromises()
-    await t(w, 'paper-confirm-button').trigger('click')
+    await confirmPaperName(w)
+    await confirmList(w)
     await flushPromises()
     expect(t(w, 'paper-mode-label').exists()).toBe(false)
     expect(t(w, 'add-to-paper').attributes('disabled')).toBeUndefined()
@@ -110,8 +120,9 @@ describe('Add to Paper ends in Drafts Mode', () => {
     const w = await mountPage()
     await t(w, 'add-to-paper').trigger('click')
     await flushPromises()
+    await confirmPaperName(w)
     answers['GET /paper/strategies/70'] = () => Promise.reject(new Error('network'))
-    await t(w, 'paper-confirm-button').trigger('click')
+    await confirmList(w)
     await flushPromises()
     expect(posts()).toHaveLength(1)
     expect(t(w, 'paper-mode-label').exists()).toBe(false)

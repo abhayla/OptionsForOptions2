@@ -149,7 +149,6 @@ class StoredPlan:
     strategy_version: Optional[int] = None  # noqa: UP045 - W-144: the version it was built from; None never activates
 
 
-_OWNED = text("SELECT 1 FROM public.strategies WHERE id = :s AND user_ref = :u AND deleted_at IS NULL")
 _HIGHEST = text("SELECT coalesce(max(plan_number), 0) FROM public.execution_plans WHERE strategy_id = :s")
 _OPEN = text("SELECT plan_number FROM public.execution_plans WHERE strategy_id = :s AND status = 'open'")
 _INSERT_PLAN = text("INSERT INTO public.execution_plans (strategy_id, plan_number, action, strategy_version) "
@@ -259,7 +258,7 @@ async def owned_strategy(conn: Any, user_ref: str, strategy_id: Any) -> int:
         strategy_id = strategy_store.check_strategy_id(strategy_id)
     except strategy_store.StrategyStoreError as exc:
         raise PlanStoreError(NOT_FOUND, f"strategy {strategy_id!r}") from exc
-    if (await conn.execute(_OWNED, {"s": strategy_id, "u": user_ref})).first() is None:
+    if not await strategy_store.owns(conn, user_ref, strategy_id):
         raise PlanStoreError(NOT_FOUND, f"strategy {strategy_id}")
     return strategy_id
 

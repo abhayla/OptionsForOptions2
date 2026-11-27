@@ -9,8 +9,10 @@ state) changed since the last push, it sends :func:`indices_answer` - the same f
 push goes at once. When the connection ends, on every exit path, its subscription is released (``finally``).
 
 Health is the quote's OWN health as the provider gives it (the same rule as option prices, REQ-072 AC-2), read at every
-poll, so a feed that goes stale while no tick arrives still changes the row. No new staleness rule is added here:
-per-instrument staleness is a known open gap (finding staleness-by-last-change-age). The client sends nothing this
+poll, so a feed that goes stale while no tick arrives still changes the row. No staleness rule is added here:
+the one index age rule (an index quote older than ``detection.index_quote_max_age_seconds`` in market hours is not
+live, ADR-330 (39)) lives in ``FeedState.quote_health`` and arrives as the quote's own health (finding
+staleness-by-last-change-age). The client sends nothing this
 socket needs: any client message is answered with one catalogue message (``user_input_request_invalid``) and changes
 nothing. The REST read's ``fallback`` answer is not live whoever else holds the indices (finding
 liveness-from-shared-subscribers): no number is ever sent as live from a page whose own socket is down.

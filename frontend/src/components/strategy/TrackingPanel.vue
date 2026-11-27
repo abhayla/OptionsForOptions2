@@ -21,7 +21,7 @@
           </tr>
         </thead>
         <tbody>
-          <tr v-for="leg in view.legs" :key="leg.key" class="border-b border-line" data-testid="tracking-leg">
+          <tr v-for="leg in rows" :key="leg.key" class="border-b border-line" data-testid="tracking-leg">
             <td class="py-1.5 text-left">
               <span class="inline-flex flex-wrap items-center gap-1.5">
                 <Chip :kind="leg.action === 'BUY' ? 'buy' : 'sell'" :label="leg.action === 'BUY' ? 'B' : 'S'" />
@@ -97,12 +97,14 @@ import { REVIEW_BUTTON_TEXT, cardRows } from '@/lib/adjustDrawer'
 import Chip from '@/components/common/Chip.vue'
 import FigureHint from '@/components/common/FigureHint.vue'
 import api, { NEUTRAL_PARTS } from '@/services/api'
-import { NOT_CONNECTED_TEXT, PAPER_PNL_PREFIX, readTracking, sharedTotal } from '@/lib/tracking'
+import { LEG_PNL_MISSING, NOT_CONNECTED_TEXT, PAPER_PNL_PREFIX, readTracking } from '@/lib/tracking'
+import { closedLegRowsOf, openLegRowsOf, paperPnlBlock } from '@/lib/usePaperBookRead'
 import { EARLIER_SHOWN_MAX, QUOTE_TIME_UNAVAILABLE_TEXT, RULES_LOAD_FAILED_TEXT, checkStaleLine, earlierMoreText, firedAtText, liveNowText, ruleEarlierText, ruleNotCheckedText } from '@/lib/sharedStateText'
 import { istClock, istStamp } from '@/lib/displayFormat'
 import { openRecords, settledRecords } from '@/lib/paperAlerts'
 import { said } from '@/lib/playbookEditor'
 import { usePaperRefresh } from '@/lib/usePaperRefresh'
+import { armedIndexExits, triggerListOf, triggersPath } from '@/lib/paperTriggers'
 
 const props = defineProps({
   savedId: { type: Number, default: null },
@@ -120,12 +122,32 @@ const reviewBtn = ref(null)
 // The headline total: from the page's shared paper read when there is one (so it equals the paper panel and the P&L table TOTAL
 // row); what still comes from the tracking read: legs, per-leg P&L, detections, the rule check, and the headline when no shared read.
 // Prices not live = the paused sentence, no number (REQ-109 AC-5).
+// B6 round 2: a book read for ANOTHER strategy is not this strategy's book (the headline and the rows then come from the tracking reply)
+const bookIsHere = computed(() => !!props.shared && (props.shared.strategy_id == null || String(props.shared.strategy_id) === String(props.savedId)))
+const block = computed(() => (bookIsHere.value ? paperPnlBlock(props.shared, props.sharedFailed) : null)) // D-41: the page's one book read
 const headline = computed(() => {
   const v = view.value
-  const s = props.shared && v ? sharedTotal(props.shared, props.sharedFailed) : null
+  const s = block.value && v ? block.value : null
   if (!s) return { ...v, line: null, unpriced: v?.unpriced ?? null }
   const text = s.text === null ? (s.line ?? NOT_CONNECTED_TEXT) : `${PAPER_PNL_PREFIX}${s.text} ${s.label}${v.kind === 'exited' ? ' - exited' : ''}`.replace(/ +$/, '')
-  return { text, kind: s.kind, breakdown: s.breakdown, afterReason: s.reason, line: s.text === null ? null : s.line, unpriced: s.unpriced ?? v.unpriced ?? null }
+  return { text, kind: s.kind, breakdown: s.breakdown, afterReason: s.reason, line: s.text === null ? null : s.line, unpriced: s.unpriced ?? null }
+})
+// D-41 (modular doors, Phase 3): with the page's book read, an OPEN leg's LTP, quote time and P&L are that book's own (its display price,
+// ADR-212), the very LegPrice the Net Positions table shows; P&L is the leg's TOTAL, the table's figure (ADR-328 (3)). The leg is found by its
+// CONTRACT ID (the reply's contract_id), never by `key` (the feed identity). An exited leg, a leg the book does not hold, and a reply without
+// a contract id keep the tracking row: it fails to the old source, never to another contract's price. Up to 5 s after an exit the book and
+// tracking reads can differ for one row (two polls); the next tick settles it.
+// B6 round 2 (ADR-328 (3), D-10): with a book read for this strategy the rows are built from the book ONLY, as the legs table builds them:
+// its open positions (net != 0), then its closed lifecycles, each its own row, so the rows add up to the book total whatever the tracking
+// reply says (it may be one poll behind). The tracking reply only supplies the open row's label (with its lots), joined by contract id.
+// No usable book read: the tracking reply's rows. A failed read prints the one dash in every row.
+const rows = computed(() => {
+  const tracked = view.value?.legs ?? []
+  if (!block.value) return tracked // no usable book read: the tracking reply's rows
+  const label = new Map((view.value?.legs ?? []).filter((l) => l.contractId != null && !l.exited).map((l) => [String(l.contractId), l.text]))
+  const open = openLegRowsOf(props.shared, props.sharedFailed).map((r) => ({ ...r, text: label.get(String(r.contractId)) ?? r.text }))
+  const all = [...open, ...closedLegRowsOf(props.shared, props.sharedFailed)]
+  return all.length ? all : tracked // a book that holds no open contract and no closed lifecycle (empty, or all flat): nothing to build rows from
 })
 const drawerOpen = ref(false)
 const drawerLines = ref([]) // layer 1: the detection's own text; kept when the detection lapses while the drawer is open
@@ -175,10 +197,11 @@ const exits = ref([])
 const exitsFailed = ref(false)
 async function readExits(id) {
   try {
-    const { data } = await api.get(`/paper/strategies/${id}/triggers`)
+    const { data } = await api.get(triggersPath(id))
     if (id !== props.savedId) return
-    exits.value = (Array.isArray(data?.triggers) ? data.triggers : []).filter((x) => x.kind === 'conditional_exit' && x.state !== 'cancelled')
-    exitsFailed.value = !Array.isArray(data?.triggers)
+    const list = triggerListOf(data)
+    exits.value = armedIndexExits(list ?? [])
+    exitsFailed.value = list === null
   } catch {
     if (id === props.savedId) exitsFailed.value = true // the last good lines stay
   }

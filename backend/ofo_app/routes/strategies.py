@@ -45,13 +45,14 @@ from ofo.strategy import stored_form as sf
 from pydantic import BaseModel, ConfigDict, Field, model_validator
 
 from ofo_app import eligibility_from_zerodha as elig
-from ofo_app import paper_store, playbook_store, tracked_contracts
+from ofo_app import open_legs, paper_store, playbook_store, tracked_contracts
 from ofo_app import strategy_store as store
 from ofo_app.api_models import ApiModel, CatalogueText, Identifier, Money
 from ofo_app.db import get_db
 from ofo_app.errors import ClosedRoute, Failure, refuse_request
 from ofo_app.routes import adjustment_opportunities as opportunities
 from ofo_app.routes.broker import current_user_ref
+from ofo_app.routes.catalogue import get_shown_date
 from ofo_app.routes.outcome import AnswerClock, get_answer_clock, get_settings_reader, load_charge_rates
 from ofo_app.strategy_refused import StrategyRefused
 from ofo_app.tracked_contracts import ContractState
@@ -206,6 +207,7 @@ class SummaryOut(ApiModel):
     status_word: Literal["Draft", "Running", "Completed", "Unknown"]  # ADR-299: store.status_word
     created_at: datetime.datetime
     updated_at: datetime.datetime
+    revision: int  # N-30: the saved revision, so Delete / bulk delete send it without a read per row
     name: CatalogueText  # REQ-134 AC-4: quoted user text
     leg_count: int  # legs of the active definition; "and N more" is leg_count - 1
     first_leg: FirstLegOut
@@ -213,6 +215,7 @@ class SummaryOut(ApiModel):
     can_delete: bool  # REQ-070 AC-6: False once a basket was sent (or when that could not be read)
     has_paper_order: bool  # ADR-271: True once a paper order was placed (the refusal says "paper orders")
     has_order: bool  # ADR-299: True once ANY order was placed, practice or real (the one status word reads it)
+    held_at_broker: bool  # ADR-292: a held entry exists (Delete is refused with the held sentence)
     open_opportunities: Optional[int]  # noqa: UP045 - GC-MU A3: open adjustment records; None = could not be read
     open_opportunities_text: Optional[CatalogueText]  # noqa: UP045 - "N adjustment opportunities"; None at 0 or unread
     # GC-ICGUIDE g23 (Completed tab): set only for a closed strategy, all from the engine; None + reason when unreadable
@@ -247,8 +250,42 @@ class DeletedOut(ApiModel):
     revision: int  # unchanged by a delete or its Undo
 
 
+BulkReason = Literal["held_at_broker", "orders_sent", "not_found", "changed", "failed"]
+BULK_DELETE_LIMIT = 200  # ADR-330 (8): the catalogue sentence "strategy_bulk_delete_too_many" names the same number
+
+
+class BulkDeleteItemIn(BaseModel):
+    model_config = ConfigDict(extra="forbid", strict=True)
+
+    id: int = Field(gt=0, le=store.BIGINT_MAX)
+    expected_revision: int = Field(gt=0, le=store.BIGINT_MAX)
+
+
+class BulkDeleteIn(BaseModel):
+    """ADR-330 (8): the ticked rows with the revision the screen showed. The limit is checked in the route so the
+    refusal is the catalogue sentence that names it (an empty list is refused here, 422)."""
+
+    model_config = ConfigDict(extra="forbid", strict=True)
+
+    items: list[BulkDeleteItemIn] = Field(min_length=1)
+
+
+class BulkKeptOut(ApiModel):
+    id: int
+    reason: BulkReason
+    text: CatalogueText
+
+
+class BulkDeleteOut(ApiModel):
+    deleted: list[DeletedOut]
+    kept: list[BulkKeptOut]
+    summary_text: CatalogueText
+
+
 class StrategyListOut(ApiModel):
     strategies: list[SummaryOut]
+    # the server's shown date: a list label leaves the year off inside this year (ADR-330 (19))
+    shown_date: datetime.date
 
 
 class EntryOut(ApiModel):
@@ -274,7 +311,7 @@ _FORM_TEMPLATE = MappingProxyType({
     sf.QUANTITY_NOT_LOT_MULTIPLE: "strategy_quantity_not_lot_multiple",
     sf.UNDERLYING_MISMATCH: "strategy_underlying_mismatch",
     sf.UNKNOWN_NAME: "strategy_name_not_allowed",
-    sf.STRATEGY_NAME_EMPTY: "strategy_name_empty",  # REQ-134 AC-1: "The strategy has no name."
+    sf.STRATEGY_NAME_EMPTY: "strategy_name_empty",  # REQ-134 AC-1: "Give the strategy a name."
     sf.STRATEGY_NAME_INVALID: "strategy_name_invalid",
     sf.VALUE_NOT_ALLOWED: "user_input_request_invalid",  # ADR-069: the fixed input error (422), value never echoed
     sf.INVALID_PLANNED_ENTRY: "user_input_request_invalid",  # ADR-075: a malformed / one-sided / future entry (422)
@@ -293,12 +330,16 @@ _STORE_REFUSAL = MappingProxyType({
     store.VERSION_PENDING: ("strategy_version_pending", Failure.CONFLICT),  # W-144, ADR-019 Q191
     store.RECONCILIATION_REQUIRED: ("strategy_reconciliation_required", Failure.CONFLICT),  # ADR-018, Q222
     store.DELETE_AFTER_BASKET: ("strategy_delete_after_basket", Failure.CONFLICT),  # REQ-070 AC-6, ADR-118
+    store.DELETE_HELD_AT_BROKER: ("strategy_delete_held_at_broker", Failure.CONFLICT),  # ADR-292, ADR-330 (8)
 })
 
 
-def refused_answer(exc: Exception, form_status: int) -> Exception:
-    """The exception the boundary answers: 404 for a missing strategy or entry, else a catalogue message."""
+def refused_answer(exc: Exception, form_status: int, *, open_by_id: bool = False) -> Exception:
+    """The exception the boundary answers: 404 for a missing strategy or entry, else a catalogue message.
+    ``open_by_id``: the read that opens one strategy; its missing strategy has its own words (ADR-330 (37))."""
     if isinstance(exc, store.StrategyStoreError):
+        if open_by_id and exc.code == store.NOT_FOUND:
+            return StrategyRefused("strategy_not_found", Failure.NOT_FOUND)
         template, failure = _STORE_REFUSAL.get(exc.code, ("strategy_underlying_fixed", None))
         return StrategyRefused(template, failure)
     assert isinstance(exc, sf.StoredFormError)
@@ -414,14 +455,14 @@ async def _check_eligible(db: Any, saved: sf.SavedDefinition, today_of: elig.Tod
         raise StrategyRefused(template, message=render(template, leg=value))
 
 
-async def _run(db: Any, work: Callable, *, form_status: int) -> Any:
+async def _run(db: Any, work: Callable, *, form_status: int, open_by_id: bool = False) -> Any:
     """Runs one store call; commits on success, rolls back on any error (nothing half-written)."""
     try:
         result = await work()
         await db.commit()
     except (store.StrategyStoreError, sf.StoredFormError) as exc:
         await db.rollback()
-        raise refused_answer(exc, form_status) from None
+        raise refused_answer(exc, form_status, open_by_id=open_by_id) from None
     except Exception:
         await db.rollback()
         raise
@@ -441,7 +482,8 @@ async def save_draft(body: StrategyCreateIn, today_of: Annotated[elig.TodayReade
 
 @router.get("/strategies", response_model=StrategyListOut)
 async def list_strategies(db: Annotated[Any, Depends(get_db)], user_ref: Annotated[str, Depends(current_user_ref)],
-                          rates: Annotated[Any, Depends(load_charge_rates)]) -> StrategyListOut:
+                          rates: Annotated[Any, Depends(load_charge_rates)],
+                          shown_date: Annotated[datetime.date, Depends(get_shown_date)]) -> StrategyListOut:
     async def work():
         rows = await store.list_strategies(db, user_ref)
         from ofo_app.routes.adjustment_history import closed_figures_many  # noqa: PLC0415 - it imports routes.paper
@@ -451,15 +493,16 @@ async def list_strategies(db: Annotated[Any, Depends(get_db)], user_ref: Annotat
         tracked = await _tracked_ids(db, [r.id for r in rows])
         opened = await _open_opportunities(db, user_ref)
         current = await current_legs_many(db, user_ref)  # D-42: the legs and the word the Positions page reads
-        return StrategyListOut.model_validate({"strategies": [
+        return StrategyListOut.model_validate({"shown_date": shown_date, "strategies": [
             {"id": r.id, "underlying": r.underlying, "status": r.status, "created_at": r.created_at,
-             "updated_at": r.updated_at, "name": sf.shown_name(r.name),
+             "updated_at": r.updated_at, "revision": r.revision, "name": sf.shown_name(r.name),
              **{"status_word": store.status_word(r.status, r.has_order),
                 "leg_count": r.leg_count,
                 "first_leg": {"instrument": r.first_leg.instrument, "strike": r.first_leg.strike,
                               "expiry": r.first_leg.expiry}} | current.get(r.id, {}),
              "tracked": None if tracked is None else r.id in tracked, "can_delete": r.can_delete,
              "has_paper_order": r.has_paper_order, "has_order": r.has_order,
+             "held_at_broker": r.held_at_broker,
              "open_opportunities": None if opened is None else opened.get(r.id, 0),
              "open_opportunities_text": None if opened is None else opportunities.open_mark(opened.get(r.id, 0)),
              **closed.get(r.id, _NO_FIGURES)}
@@ -516,6 +559,59 @@ async def delete_strategy(strategy_id: int, db: Annotated[Any, Depends(get_db)],
     return await _run(db, work, form_status=409)
 
 
+#: A store refusal's code -> the bulk result's reason (the sentence is the single delete's own, from _STORE_REFUSAL).
+_BULK_REASON = MappingProxyType({
+    store.NOT_FOUND: "not_found", store.REVISION_CONFLICT: "changed", store.DELETE_AFTER_BASKET: "orders_sent",
+    store.DELETE_HELD_AT_BROKER: "held_at_broker",
+})
+_BULK_FAILED_TEMPLATE = "strategy_bulk_delete_item_failed"
+
+
+def _kept(strategy_id: int, reason: str, template: str) -> dict:
+    return {"id": strategy_id, "reason": reason, "text": render(template)}
+
+
+def _bulk_summary(deleted: int, kept: list[dict]) -> Any:
+    """'12 deleted, 2 kept: <the one shared reason's sentence, else 'see each row'>' (ADR-330 (8)), a catalogue
+    template per case (no sentence is built here)."""
+    if not kept:
+        return render("strategy_bulk_summary_none_kept", deleted=deleted)
+    reasons = {k["reason"] for k in kept}
+    template = f"strategy_bulk_summary_{reasons.pop()}" if len(reasons) == 1 else "strategy_bulk_summary_each"
+    return render(template, deleted=deleted, kept=len(kept))
+
+
+@router.post("/strategies/bulk-delete", response_model=BulkDeleteOut)
+async def bulk_delete_strategies(body: BulkDeleteIn, db: Annotated[Any, Depends(get_db)],
+                                 user_ref: Annotated[str, Depends(current_user_ref)]) -> BulkDeleteOut:
+    """ADR-330 (8): the single delete's rule (``store.delete_draft``) per id, one savepoint per item; a strategy it
+    refuses is kept with its reason. Another user's or a hidden id is "not_found" (never says it exists). Undo is the
+    existing per-id undelete route."""
+    if len(body.items) > BULK_DELETE_LIMIT:
+        raise StrategyRefused("strategy_bulk_delete_too_many")
+    unique = list({item.id: item for item in reversed(body.items)}.values())[::-1]
+    deleted: list[dict] = []
+    kept: list[dict] = []
+    for item in unique:
+        try:
+            async with db.begin_nested():
+                await store.delete_draft(db, user_ref, item.id, expected_revision=item.expected_revision)
+            deleted.append({"id": item.id, "revision": item.expected_revision})
+        except (store.StrategyStoreError, sf.StoredFormError) as exc:
+            reason = _BULK_REASON.get(getattr(exc, "code", None)) if isinstance(exc, store.StrategyStoreError) else None
+            if reason is None:
+                log.error("bulk delete: strategy %s refused unexpectedly", item.id, exc_info=True)
+                kept.append(_kept(item.id, "failed", _BULK_FAILED_TEMPLATE))
+            else:
+                kept.append(_kept(item.id, reason, _STORE_REFUSAL[exc.code][0]))
+        except Exception:  # one item must not stop the others: one item must not stop the others
+            log.error("bulk delete: strategy %s failed", item.id, exc_info=True)
+            kept.append(_kept(item.id, "failed", _BULK_FAILED_TEMPLATE))
+    await db.commit()
+    return BulkDeleteOut.model_validate({"deleted": deleted, "kept": kept,
+                                         "summary_text": _bulk_summary(len(deleted), kept)})
+
+
 @router.post("/strategies/{strategy_id}/undelete", response_model=StrategyOut, response_model_exclude_unset=True)
 async def undelete_strategy(strategy_id: int, db: Annotated[Any, Depends(get_db)],
                             user_ref: Annotated[str, Depends(current_user_ref)],
@@ -532,7 +628,7 @@ async def get_strategy(strategy_id: int, db: Any = Depends(get_db),
                        user_ref: str = Depends(current_user_ref)) -> StrategyOut:
     async def work():
         return await _strategy_out(db, await store.load(db, user_ref, strategy_id))
-    return await _run(db, work, form_status=409)
+    return await _run(db, work, form_status=409, open_by_id=True)
 
 
 @router.put("/strategies/{strategy_id}", response_model=StrategyOut, response_model_exclude_unset=True)
@@ -592,7 +688,7 @@ async def confirm_version(strategy_id: int, number: int, db: Any = Depends(get_d
 
 PRICE_HISTORY_HELD = "price_history_held"
 PriceHistoryState = Literal["available", "leg_not_listed", "no_future_candles", "all_gaps", "no_session",
-                            "broker_refused", "future_not_in_catalogue", "quantity_not_whole_lots"]
+                            "broker_refused", "future_not_in_catalogue", "quantity_not_whole_lots", "no_open_legs"]
 
 
 def require_price_history() -> None:
@@ -661,8 +757,13 @@ async def strategy_price_history(  # noqa: PLR0913 - one query parameter or seam
         # connection per request (ADR-048); a store error answers no_session, never a 500.
         reader = await opener(db)
         stored = await store.load(db, user_ref, strategy_id)
+        # D-51 (ADR-330 (43), REQ-091 AC-8): what is OPEN on the strategy, from the one door (the book; the saved plan
+        # only when nothing was placed). A failed book read raises to the error door: never answered from saved legs.
+        found = await open_legs.open_legs(db, stored)
+        if not found.legs:  # every leg closed: nothing to chart (fail-closed, owner question U-Q11)
+            return sph.Answer("no_open_legs", render_explanation("price_history_no_open_legs"))
         # Issue #500: a stored contract id reaches a ListedContract only through tracked_contracts.resolve, the one door.  # noqa: E501 - long line kept whole
-        answers = await tracked_contracts.resolve(db, stored.saved.contract_ids)
+        answers = await tracked_contracts.resolve(db, [leg.contract_id for leg in found.legs])
         if any(a.stored is None for a in answers):
             raise StrategyRefused("strategy_stored_unreadable", Failure.CONFLICT)
         listed = [a.stored.listed for a in answers]  # type: ignore[union-attr]
@@ -672,8 +773,8 @@ async def strategy_price_history(  # noqa: PLR0913 - one query parameter or seam
                                                                        leg=sph.label(a.stored.listed)))  # type: ignore[union-attr]
         definition = stored.saved.definition
         legs = []
-        for leg, lc in zip(definition.legs, listed, strict=True):  # saved quantity is lots x lot size
-            lots, rest = divmod(leg.quantity, lc.contract.lot_size)
+        for leg, lc in zip(found.legs, listed, strict=True):  # open units are lots x lot size
+            lots, rest = divmod(leg.units, lc.contract.lot_size)
             if rest or lots < 1:  # F4: a lot-size change after saving; never a silent floor, never a 500
                 return sph.Answer("quantity_not_whole_lots", render_explanation("price_history_quantity_not_whole_lots",
                                                                                 leg=sph.label(lc)))

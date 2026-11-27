@@ -16,7 +16,7 @@ import t19_support
 from _scenario_catalogue import load_library
 from ofo.adjustment.preferences import from_values
 from ofo.settings import defaults as registry_defaults
-from ofo_app import background, scenario_mode, strategy_alert_style_store
+from ofo_app import background, playbook_store, scenario_mode, strategy_alert_style_store
 from ofo_app import db as app_db
 from ofo_app.config import get_settings
 from ofo_app.routes.outcome import load_charge_rates
@@ -82,6 +82,10 @@ async def seed_path(app_engine, path_id: str, style: str = "intraday") -> int:
     reset_engine()
     async with app_db.get_engine().connect() as conn:
         await strategy_alert_style_store.set_pin(conn, "owner", sid, style)
+        # ADR-330 (11): only a strategy's own plan is watched, so the path's condor gets a plan copied from the
+        # system iron condor playbook (the plan sheet's "Use playbook as is")
+        system = await playbook_store.active_for(conn, "owner", "ic")
+        await playbook_store.accept_plan(conn, "owner", sid, system.id)
         await conn.commit()
     return sid
 

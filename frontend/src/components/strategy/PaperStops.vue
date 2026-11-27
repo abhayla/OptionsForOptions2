@@ -4,9 +4,12 @@
      judged on its text (a multiple of 0.05, not zero) and sent as typed; every level and contract shown is the server's text
      (ADR-008). A refusal shows the server's words, never swallowed. -->
 <script setup>
-import { computed, nextTick, onMounted, ref, watch } from 'vue'
+import { computed, nextTick, onBeforeUnmount, onMounted, ref, watch } from 'vue'
 import api, { NEUTRAL_ERROR } from '@/services/api'
 import { paperPriceOk, paperPriceReason } from '@/lib/tracking'
+import { istClock } from '@/lib/displayFormat'
+import { NOT_LIVE_LABEL, useIndexAnswer } from '@/composables/useIndexLive'
+import { triggerListOf, triggersPath } from '@/lib/paperTriggers'
 
 const props = defineProps({
   strategyId: { type: Number, required: true },
@@ -16,20 +19,24 @@ const props = defineProps({
   // D-44: contract id -> the leg label the form rows use (every position of the strategy, open or closed), so the list names a
   // stop's leg the same way; a contract not in it keeps the server's contract text
   legNames: { type: Object, default: () => ({}) },
-  // D-05: the parent list's latest-started read token and the token of its last good read; a "Not saved" line clears only
-  // when a good read is set and is not the token stamped at the failure (reads never overlap, so a different good token
-  // means a read started after the failure; a failed refresh does not move goodReadToken)
-  latestReadToken: { type: Object, default: null },
+  // the token of the parent list's last good read: a new one makes the stops list read again (S-23)
   goodReadToken: { type: Object, default: null },
 })
 
+// N-21: after a good Save or Cancel, or when a re-read shows a fired stop, the parent list reads at once (its legs and book
+// move with a stop); the panel has no timer of its own
+const emit = defineEmits(['changed'])
+
 const LABEL = 'Paper - exits are recorded in the app, not sent to Zerodha'
 const AT_LEAST_ONE = 'Enter at least one level'
-const path = `/paper/strategies/${props.strategyId}/triggers`
+const LIST_STALE = 'Could not refresh this list. It shows the last read.'
+const path = triggersPath(props.strategyId)
+const riskPath = `/paper/strategies/${props.strategyId}/leg-stop-risk`
 
 const triggers = ref(null) // null = not read (or unreadable)
 const error = ref('')
 const busy = ref(false)
+const listError = ref('') // S-23: a failed quiet reread; the last list stays on screen
 const saved = ref('') // the one-line confirmation of the last save
 const above = ref('')
 const below = ref('')
@@ -47,30 +54,71 @@ const ceReason = computed(() => {
 })
 const stopReason = (i) => paperPriceReason(stopOf(i).level)
 
+// W2-B (ADR-330 (6), ADR-008): while a leg and a valid level are typed, ask the server what the trade becomes if this stop fires and
+// print its sentence as sent (GET .../leg-stop-risk). It informs only: Save never reads it, and every state but "yes" prints nothing
+// (no, cannot_tell, a failed or unreadable answer, a 404, a refused level). One debounced read per leg after the typing pauses (no timer
+// loop); an answer counts only if the box still holds the leg and level it was asked for, and only the newest ask per leg is kept.
+const RISK_DEBOUNCE_MS = 400
+const risk = ref({}) // leg index -> { key, text }: the server's sentence for exactly that contract and level
+const riskKey = (leg) => `${leg.contractId}|${typed(stopOf(leg.index).level)}`
+const riskText = (leg) => (risk.value[leg.index]?.key === riskKey(leg) && !stopReason(leg.index) ? risk.value[leg.index].text : '')
+const riskTimers = {}
+const riskLast = {} // leg index -> the key last asked
+const riskAsk = {} // leg index -> the newest ask's number
+function dropRisk(index) {
+  if (risk.value[index]) { const { [index]: _gone, ...rest } = risk.value; risk.value = rest }
+}
+async function askRisk(leg, key) {
+  const n = (riskAsk[leg.index] = (riskAsk[leg.index] ?? 0) + 1)
+  let text = ''
+  try {
+    const data = (await api.get(`${riskPath}?contract_id=${encodeURIComponent(leg.contractId)}&level=${encodeURIComponent(typed(stopOf(leg.index).level))}`)).data
+    if (data?.state === 'yes' && typeof data.warning_text === 'string') text = data.warning_text
+  } catch { /* an error says nothing: the stop can still be saved */ }
+  if (n !== riskAsk[leg.index] || key !== riskKey(leg)) return // an older answer, or the boxes moved on
+  if (text) risk.value = { ...risk.value, [leg.index]: { key, text } }
+  else dropRisk(leg.index)
+}
+watch(stop, () => {
+  for (const leg of props.legs) {
+    const key = riskKey(leg)
+    if (risk.value[leg.index] && risk.value[leg.index].key !== key) dropRisk(leg.index) // the level or leg changed: the old sentence goes at once
+    if (riskTimers[leg.index]?.key === key || riskLast[leg.index] === key) continue // already waiting or asked for this exact leg and level (a direction change asks nothing new)
+    clearTimeout(riskTimers[leg.index]?.id)
+    riskAsk[leg.index] = (riskAsk[leg.index] ?? 0) + 1 // anything still in flight is now old
+    delete riskTimers[leg.index]
+    delete riskLast[leg.index]
+    if (!typed(stopOf(leg.index).level) || stopReason(leg.index)) continue
+    riskTimers[leg.index] = { key, id: setTimeout(() => { delete riskTimers[leg.index]; riskLast[leg.index] = key; askRisk(leg, key) }, RISK_DEBOUNCE_MS) }
+  }
+}, { deep: true })
+onBeforeUnmount(() => Object.values(riskTimers).forEach((t) => clearTimeout(t.id)))
+
 // D-05: a Save ends in exactly one line: "Saved: ...", "Already set: ..." or "Not saved: ..." (ADR-317 (5))
 const NO_ANSWER = 'Not saved: could not get an answer from the server. Your levels are still in the boxes, press Save again.'
 const refusal = (e) => e?.parts?.what_happened || NEUTRAL_ERROR
 const notSaved = (e) => (e?.status >= 400 && e.status < 500 && e?.parts?.what_happened ? `Not saved: ${e.parts.what_happened}` : NO_ANSWER)
 
 // Returns the reply data on success (a reply without a triggers array is a failure), null otherwise.
-async function run(call, saving = false) {
+async function run(call, saving = false, notify = false) {
   if (busy.value) return null
   busy.value = true
+  gen += 1
   error.value = ''
   saved.value = ''
   try {
     const data = (await call()).data
-    if (data && Array.isArray(data.triggers)) {
-      triggers.value = data.triggers
+    const list = triggerListOf(data)
+    if (list) {
+      triggers.value = list
+      if (notify) emit('changed')
       return data
     }
     triggers.value = null
     error.value = saving ? NO_ANSWER : NEUTRAL_ERROR
-    failedAtToken = props.latestReadToken
     return null
   } catch (e) {
     error.value = saving ? notSaved(e) : refusal(e)
-    failedAtToken = props.latestReadToken
     return null
   } finally {
     busy.value = false
@@ -78,15 +126,48 @@ async function run(call, saving = false) {
 }
 
 onMounted(() => run(() => api.get(path)))
-let failedAtToken = null // the latest-started read token when the last save failed
-watch(() => props.goodReadToken, (t) => { if (!busy.value && error.value.startsWith('Not saved') && t && t !== failedAtToken) error.value = '' })
+
+// S-19: the index level the levels are judged against, from the one reader every index screen uses (no price text of its own)
+const index = useIndexAnswer()
+onMounted(index.start)
+const indexLine = computed(() => {
+  const row = index.rowFor(props.underlying)
+  const clock = row?.at ? istClock(row.at) : null
+  if (index.rowLive(row) && typeof row?.value === 'string' && clock) return `${props.underlying} now ${index.shownValue(row)} as of ${clock}`
+  return index.rowNotLive(row) ? NOT_LIVE_LABEL : ''
+})
+
+// S-23: a trigger can fire on the server (state armed -> fired) while this panel is open. Root cause: the list was read once on
+// mount only. Follow the parent list's good-read token (its one timer; none here). Quiet: not through run(), so a Saved / Not saved
+// line is untouched; skipped while a save or cancel is in flight; a failure keeps the last list and has its own line.
+let gen = 0
+async function reread() {
+  if (busy.value) return
+  const mine = gen
+  try {
+    const list = triggerListOf((await api.get(path)).data)
+    if (mine !== gen) return // an action ran meanwhile: its answer is newer
+    if (list) {
+      const hadFired = (triggers.value ?? []).some((x) => x.state === 'fired')
+      triggers.value = list
+      listError.value = ''
+      if (!hadFired && list.some((x) => x.state === 'fired')) emit('changed')
+    } else listError.value = LIST_STALE
+  } catch {
+    if (mine === gen) listError.value = LIST_STALE
+  }
+}
+// N-01: the one clear rule for the status line of every form here (conditional exit, leg stop, keep, cancel): it goes only when
+// the user edits a level or direction, or presses a button again (run() clears it). A list refresh never clears it.
+watch(() => props.goodReadToken, (t, old) => { if (t && t !== old) reread() })
+watch([above, below, stop], () => { if (!busy.value) error.value = '' })
 
 async function saveExit() {
   if (ceReason.value) return
   const body = { kind: 'conditional_exit' }
   if (typed(above.value)) body.above = typed(above.value)
   if (typed(below.value)) body.below = typed(below.value)
-  const data = await run(() => api.post(path, body), true)
+  const data = await run(() => api.post(path, body), true, true)
   if (data) {
     // D-05 r3: the line is built only from the server's answer: already_armed names the submitted levels it did NOT store
     const dupDirs = data.already_set ? ['above', 'below'] : (data.already_armed ?? [])
@@ -103,7 +184,7 @@ async function saveExit() {
 async function saveStop(leg) {
   if (stopReason(leg.index)) return
   const s = stopOf(leg.index)
-  const data = await run(() => api.post(path, { kind: 'leg_stop', contract_id: leg.contractId, direction: s.direction, level: typed(s.level) }), true)
+  const data = await run(() => api.post(path, { kind: 'leg_stop', contract_id: leg.contractId, direction: s.direction, level: typed(s.level) }), true, true)
   if (data) {
     saved.value = `${data.already_set || data.already_armed?.length ? 'Already set' : 'Saved'}: stop ${s.direction} ${typed(s.level)}`
     setStop(leg.index, { level: '' })
@@ -119,7 +200,7 @@ function showSaved(match) {
     el?.scrollIntoView?.({ block: 'nearest' })
   })
 }
-const cancel = (t) => run(() => api.delete(`${path}/${t.id}`))
+const cancel = (t) => run(() => api.delete(`${path}/${t.id}`), false, true)
 // D-03: same level, stored again after the change to the legs. Ends in one line: Kept / Already kept (the exit was not marked,
 // so the server stored nothing) / Not saved (same path as Save). The level is written as the row writes it.
 async function keep(t) {
@@ -134,10 +215,11 @@ async function keep(t) {
 <template>
   <div ref="rootEl" class="mt-2 rounded border border-line p-2" data-testid="paper-stops">
     <p class="text-xs font-semibold" data-testid="stops-label">{{ LABEL }}</p>
+    <p class="min-h-5 text-xs text-ink-muted" data-testid="stops-index">{{ indexLine }}</p>
 
     <!-- D-44 round 1: from lg up the form (first) and the list of stops (second) sit side by side; narrower they stack -->
     <div class="grid gap-x-6 lg:grid-cols-2" data-testid="stops-columns">
-    <div class="min-w-0" data-testid="stops-form">
+    <div :key="strategyId" class="min-w-0" data-testid="stops-form">
     <div class="mt-2" data-testid="conditional-exit">
       <p class="font-medium">Conditional exit{{ underlying ? ` - ${underlying}` : '' }}</p>
       <p class="text-xs text-ink-muted">Exit all legs when the index crosses a level. Fill one or both.</p>
@@ -146,7 +228,7 @@ async function keep(t) {
         <label class="text-xs">Below<input v-model="below" type="text" inputmode="decimal" class="ml-1 w-28 rounded border border-line px-1 py-0.5 text-sm" data-testid="ce-below" /></label>
         <button type="button" class="rounded border border-line px-3 py-1" :disabled="busy || !!ceReason" data-testid="ce-save" @click="saveExit">{{ busy ? 'Saving...' : 'Save' }}</button>
       </div>
-      <p v-if="ceReason && !(saved && ceReason === AT_LEAST_ONE)" class="text-xs text-ink-muted" data-testid="ce-reason">{{ ceReason }}</p>
+      <div class="min-h-4" data-testid="ce-reason-slot"><p v-if="ceReason && !(saved && ceReason === AT_LEAST_ONE)" class="text-xs text-ink-muted" data-testid="ce-reason">{{ ceReason }}</p></div>
     </div>
 
     <div v-if="legs.length" class="mt-2" data-testid="leg-stops">
@@ -159,18 +241,23 @@ async function keep(t) {
         </select>
         <input :value="stopOf(l.index).level" type="text" inputmode="decimal" placeholder="Stop price" class="w-24 rounded border border-line px-1 py-0.5" :data-testid="`stop-level-${l.index}`" :aria-label="`Stop price for ${l.label}`" @input="setStop(l.index, { level: $event.target.value })" />
         <button type="button" class="rounded border border-line px-3 py-1" :disabled="busy || !!stopReason(l.index)" :data-testid="`stop-save-${l.index}`" @click="saveStop(l)">{{ busy ? 'Saving...' : 'Save' }}</button>
-        <span v-if="stopReason(l.index) && typed(stopOf(l.index).level)" class="text-xs text-ink-muted" :data-testid="`stop-reason-${l.index}`">{{ stopReason(l.index) }}</span>
+        <span class="block min-h-4 basis-full text-xs text-ink-muted" :data-testid="`stop-risk-slot-${l.index}`"><span v-if="riskText(l)" :data-testid="`stop-risk-${l.index}`">{{ riskText(l) }}</span></span>
+        <span class="block min-h-4 basis-full text-xs text-ink-muted" :data-testid="`stop-reason-slot-${l.index}`"><span v-if="stopReason(l.index) && typed(stopOf(l.index).level)" :data-testid="`stop-reason-${l.index}`">{{ stopReason(l.index) }}</span></span>
       </div>
     </div>
 
-    <p v-if="error" class="mt-2 text-red-700" role="alert" data-testid="stops-error">{{ error }}</p>
-    <p v-else-if="saved" class="mt-2 text-xs text-ink-muted" role="status" data-testid="stops-saved">{{ saved }}</p>
+    <!-- S-26: one reserved status slot, so a line appearing or going does not move the boxes the user is typing in -->
+    <div class="mt-2 min-h-5" data-testid="stops-status-slot">
+      <p v-if="error" class="text-red-700" role="alert" data-testid="stops-error">{{ error }}</p>
+      <p v-else-if="saved" class="text-xs text-ink-muted" role="status" data-testid="stops-saved">{{ saved }}</p>
+    </div>
 
     </div>
 
     <div class="min-w-0" data-testid="stops-list">
     <div class="mt-2" data-testid="triggers">
       <p class="font-medium">Stops on this strategy</p>
+      <div class="min-h-4" data-testid="stops-list-slot"><p v-if="listError" class="text-xs text-ink-muted" data-testid="stops-list-error">{{ listError }}</p></div>
       <p v-if="triggers && !triggers.length" class="text-xs text-ink-muted" data-testid="stops-empty">No stops set.</p>
       <ul v-else-if="triggers">
         <li v-for="t in triggers" :key="t.id" class="flex flex-wrap items-center gap-2 border-b border-line py-1" data-testid="trigger-row" :data-trigger-id="t.id">

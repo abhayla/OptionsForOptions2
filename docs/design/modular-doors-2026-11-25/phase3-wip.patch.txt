@@ -1,0 +1,669 @@
+From 8de187b44bc0b3f9bd501d1edfe8de090fec7b0f Mon Sep 17 00:00:00 2001
+From: Claude <noreply@anthropic.com>
+Date: Wed, 25 Nov 2026 12:37:17 +0000
+Subject: [PATCH] Paper: Phase 3 tests first, one book source for both builder
+ panels and strategy_money_view (red)
+
+D-41: the Net Positions table and the Paper P&L panel must show one price per leg and rows that add up to the
+before-charges total; the paper and tracking figures must come from one assembly (B6).
+
+Co-Authored-By: Claude Opus 5.5 <noreply@anthropic.com>
+Claude-Session: https://claude.ai/code/session_01QaT8YKmFCDGFv3aZmCYLRr
+---
+ frontend/tests/one-source-d41.test.js | 115 ++++++++++++++++++++++++++
+ tests_app/test_strategy_money_view.py | 114 +++++++++++++++++++++++++
+ 2 files changed, 229 insertions(+)
+ create mode 100644 frontend/tests/one-source-d41.test.js
+ create mode 100644 tests_app/test_strategy_money_view.py
+
+diff --git a/frontend/tests/one-source-d41.test.js b/frontend/tests/one-source-d41.test.js
+new file mode 100644
+index 00000000..93e9c4f2
+--- /dev/null
++++ b/frontend/tests/one-source-d41.test.js
+@@ -0,0 +1,115 @@
++// Phase 3 (modular doors; D-41, owner screen check 25 Nov, builder ?strategy=170): the builder's Net Positions table and the
++// "Paper P&L (not real)" panel showed two prices for one leg (26000 CE 149.70 vs 150.15) and leg rows that did not add up to
++// their own total (+13.00 vs +42.25), because the panel's rows came from /strategies/{id}/tracking (its own poll, live-only price)
++// while the table came from the page's one book read. One book read, one price per leg, rows that add up (ADR-008: texts as sent).
++// ADR-212: the paper screens' price is the book's display price (the last close after hours), the same on both panels.
++import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
++import { flushPromises, mount } from '@vue/test-utils'
++import { defineComponent, h, ref } from 'vue'
++
++const calls = []
++let TRACK = {}
++vi.mock('@/services/api', async (importActual) => {
++  const actual = await importActual()
++  const get = (url) => {
++    calls.push(url)
++    if (url === '/paper/strategies/170') return Promise.reject(new Error('the page read is not under test'))
++    if (url === '/strategies/170/tracking') return Promise.resolve({ data: TRACK })
++    return Promise.reject({ status: 404, parts: null })
++  }
++  return { ...actual, default: { get, post: get, put: get } }
++})
++
++import PaperBookPanel from '@/components/strategy/PaperBookPanel.vue'
++import TrackingPanel from '@/components/strategy/TrackingPanel.vue'
++import { legPricesOf, paperPnlBlock, usePaperBookRead } from '@/lib/usePaperBookRead'
++
++// the owner's four legs; the book's figures are before charges, the total after charges is the server's own text
++const LEGS = [
++  { id: 1, text: 'NIFTY 26000 CE', action: 'SELL', ltp: '149.70', unbooked: '-20.00' },
++  { id: 2, text: 'NIFTY 26100 CE', action: 'BUY', ltp: '191.85', unbooked: '30.00' },
++  { id: 3, text: 'NIFTY 25000 PE', action: 'SELL', ltp: '122.40', unbooked: '-10.00' },
++  { id: 4, text: 'NIFTY 24900 PE', action: 'BUY', ltp: '92.60', unbooked: '13.00' },
++]
++const pos = (l) => ({ contract_id: l.id, contract_text: l.text, net_quantity: l.action === 'SELL' ? -65 : 65, average_text: '100.00', ltp_text: l.ltp,
++  booked_text: '0.00', unbooked_text: l.unbooked, total_text: l.unbooked, price_state: 'live', price_at: '2026-11-25T09:43:27Z' })
++const book = (over = {}) => ({
++  strategy_id: 170, name: '"IC"', orders: [], state: 'LIVE', as_of: null, answered_at: '2026-11-25T09:43:27Z',
++  total_text: '+13.00', total_after_text: '-262.86', after_charges_reason: null, charges_text: '275.86',
++  booked_text: '0.00', unbooked_text: '+13.00', positions: LEGS.map(pos), ...over,
++})
++// the tracking route's own, older reading of the same legs: other prices, rows that sum to +42.25 (the owner's right-hand panel)
++const OTHER = [['150.95', '+10.00'], ['192.60', '+20.00'], ['122.20', '+7.25'], ['92.65', '+5.00']]
++const track = () => ({
++  strategy_id: 170, state: 'LIVE', paper_pnl: '-262.86', paper_pnl_text: '-262.86', total_after_text: '-262.86', as_of: null, detections: [],
++  legs: LEGS.map((l, i) => ({ instrument_id: String(l.id), action: l.action, instrument: 'CE', strike: '26000.00', expiry: '2026-12-02', quantity: 65,
++    entry_price_display: '100.00', current_price_display: OTHER[i][0], price_state: 'live', exit_price_display: null, exited_at: null,
++    pnl_text: OTHER[i][1], pnl_kind: 'unbooked', no_price_text: null })),
++})
++
++const Host = defineComponent({
++  props: { first: { type: Object, required: true } },
++  setup(p) {
++    const b = ref(p.first)
++    const { readFailed, contractsChanged } = usePaperBookRead({ key: () => b.value.strategy_id, book: () => b.value, onBook: (nb) => { b.value = nb } })
++    return () => h('div', [
++      h(PaperBookPanel, { book: b.value, net: [], readFailed: readFailed.value, contractsChanged: contractsChanged.value }),
++      h(TrackingPanel, { savedId: 170, legs: [], shared: b.value, sharedFailed: readFailed.value }),
++    ])
++  },
++})
++
++const mounted = []
++async function page(first) {
++  const w = mount(Host, { props: { first } })
++  mounted.push(w)
++  await flushPromises()
++  return w
++}
++const col = (w, n) => w.findAll('[data-testid="tracking-leg"]').map((r) => r.findAll('td')[n].text())
++const texts = (w, id) => w.findAll(`[data-testid="${id}"]`).map((x) => x.text())
++// test-only reading of a signed server text into whole paise (integers; the app itself never adds money)
++const paise = (s) => {
++  const m = /^([+\-−])?([\d,]+)\.(\d\d)$/.exec(s.trim())
++  if (!m) throw new Error(`not a figure: ${s}`)
++  return (m[1] === '-' || m[1] === '−' ? -1 : 1) * (Number(m[2].replace(/,/g, '')) * 100 + Number(m[3]))
++}
++
++beforeEach(() => { calls.length = 0; TRACK = track() })
++afterEach(() => { mounted.splice(0).forEach((w) => w.unmount()) })
++
++describe('D-41: the Net Positions table and the Paper P&L panel read one book', () => {
++  it('every leg shows the same LTP on both panels (the book\'s, not the tracking reply\'s)', async () => {
++    const w = await page(book())
++    expect(texts(w, 'net-ltp')).toEqual(['149.70', '191.85', '122.40', '92.60'])
++    expect(col(w, 2)).toEqual(texts(w, 'net-ltp'))
++  })
++  it('the leg rows add up to the before-charges total, on both panels', async () => {
++    const w = await page(book())
++    const total = paise(book().total_text)
++    expect(texts(w, 'net-pnl').map(paise).reduce((a, b) => a + b, 0)).toBe(total)
++    expect(col(w, 3).map(paise).reduce((a, b) => a + b, 0)).toBe(total)
++    expect(w.get('[data-testid="tracking-leg-pnl-head"]').text()).toContain('before charges')
++  })
++  it('the headline total stays the server\'s after-charges text', async () => {
++    const w = await page(book())
++    expect(w.get('[data-testid="paper-pnl"]').text()).toContain('-262.86')
++    expect(w.get('[data-testid="book-total"]').text()).toContain('-262.86')
++  })
++})
++
++describe('the one reader (lib/usePaperBookRead)', () => {
++  it('legPricesOf: one LegPrice per open contract, the book\'s texts as sent; a flat contract has none', () => {
++    const b = book({ positions: [...LEGS.map(pos), { ...pos({ id: 9, text: 'x', action: 'BUY', ltp: '1.00', unbooked: '0.00' }), net_quantity: 0 }] })
++    const m = legPricesOf(b)
++    expect([...m.keys()]).toEqual(['1', '2', '3', '4'])
++    expect(m.get('1')).toMatchObject({ ltp: '149.70', unbooked: '-20.00' })
++    expect(legPricesOf(null).size).toBe(0)
++  })
++  it('paperPnlBlock: total, booked, unbooked, as-of line and legs from the one book; null for no book', () => {
++    const blk = paperPnlBlock(book())
++    expect(blk).toMatchObject({ kind: 'after', text: '-262.86', booked: '0.00', unbooked: '+13.00', line: 'As of 15:13:27 IST' })
++    expect(blk.legs.get('2').ltp).toBe('191.85')
++    expect(paperPnlBlock(null)).toBeNull()
++  })
++})
+diff --git a/tests_app/test_strategy_money_view.py b/tests_app/test_strategy_money_view.py
+new file mode 100644
+index 00000000..2a2d2298
+--- /dev/null
++++ b/tests_app/test_strategy_money_view.py
+@@ -0,0 +1,114 @@
++"""Phase 3 / B6 (modular doors; D-41 server half): the strategy's money figures are ASSEMBLED once.
++
++Before: ``routes/paper.py _figures`` / ``_extremes`` / ``_after`` and ``routes/tracking.py _book_figures`` each turned the
++open contracts' price answers into a live-price map and called the one engine (net_positions / lifecycles) themselves, so
++the book page and the tracking page could not be shown to agree except by luck (D-41, two readers). After:
++``ofo_app.strategy_money.strategy_money_view`` is the one assembly; the engine maths stays in ``ofo.tracking.orderbook``
++(ADR-008: one engine owns every P&L number), and each route keeps its own reply shape. No database.
++
++Rows: all live; one open contract unpriced (paused: no unbooked, no total; the priced one keeps its own figure, ADR-311);
++no price at all; a closed book; the tracking route's "totals paused" basis; and the two routes' figures agree at one price set.
++"""
++from __future__ import annotations
++
++import datetime
++import inspect
++from decimal import Decimal
++from types import SimpleNamespace
++
++import pytest
++from ofo.tracking import paper
++from ofo.tracking.orderbook import PaperOrder, lifecycles, net_positions
++from ofo_app import strategy_money
++from ofo_app.routes import paper as P
++from ofo_app.routes import tracking as T
++
++D = Decimal
++AT = datetime.datetime(2026, 11, 25, 4, 0, tzinfo=datetime.UTC)
++
++
++def _orders(*rows):
++    return [PaperOrder(str(cid), side, 65, D(price), kind, AT) for cid, side, price, kind in rows]
++
++
++BOOK = _orders((1, "SELL", "100", "open"), (2, "BUY", "50", "open"))
++LIVE = {1: paper.Price("NSE_FO:1", paper.LIVE, D("90.00"), AT), 2: paper.Price("NSE_FO:2", paper.LIVE, D("60.00"), AT)}
++HALF = {1: paper.Price("NSE_FO:1", paper.LIVE, D("90.00"), AT), 2: paper.Price("NSE_FO:2", "missing", None, None)}
++NONE = {1: paper.Price("NSE_FO:1", "missing", None, None), 2: paper.Price("NSE_FO:2", "stale", None, AT)}
++
++
++def test_core_live_prices_give_the_engines_own_figures():
++    view = strategy_money_view(BOOK, LIVE)
++    gold = net_positions(BOOK, {"1": D("90.00"), "2": D("60.00")})
++    assert (view.book.booked, view.book.unbooked, view.book.total) == (gold.booked, gold.unbooked, gold.total)
++    assert view.paused is False
++    assert view.priced == view.live == {"1": D("90.00"), "2": D("60.00")}
++    assert view.lifecycle().total == gold.total  # the list's lifecycle split gives the same totals (D-10)
++
++
++def test_one_unpriced_contract_pauses_the_totals_but_the_priced_one_keeps_its_figure():
++    view = strategy_money_view(BOOK, HALF)
++    assert view.paused is True
++    assert (view.book.unbooked, view.book.total) == (None, None)
++    assert view.priced == {"1": D("90.00")}
++    assert view.by_contract["1"].unbooked == D("650.00")  # ADR-311: its own figure (SELL 100, now 90, 65 units)
++    assert view.by_contract["2"].unbooked is None
++
++
++def test_no_price_at_all_is_paused_with_the_booked_figure_known():
++    view = strategy_money_view(BOOK, NONE)
++    assert view.paused is True and view.priced == {}
++    assert view.book.booked == D("0") and view.book.total is None
++
++
++def test_a_closed_book_is_not_paused_and_has_no_price_to_read():
++    closed = _orders((1, "SELL", "100", "open"), (1, "BUY", "80", "exit"))
++    view = strategy_money_view(closed, {})
++    assert view.paused is False
++    assert view.book.booked == D("1300.00") and view.book.total == D("1300.00")
++
++
++def test_the_tracking_routes_paused_or_unconnected_basis_empties_the_totals_only():
++    view = strategy_money_view(BOOK, LIVE, totals_priced=False)
++    assert view.live == {} and (view.book.unbooked, view.book.total) == (None, None)
++    assert view.priced == {"1": D("90.00"), "2": D("60.00")}  # per contract the legs still show their own price
++    assert view.by_contract["1"].unbooked == D("650.00")
++
++
++@pytest.mark.parametrize("prices", [LIVE, HALF, NONE], ids=["live", "half", "none"])
++def test_core_the_paper_page_and_the_tracking_page_show_the_same_money_at_one_price_set(prices):
++    """D-41 server half: ``routes/paper.py _figures`` and ``routes/tracking.py _book_figures`` at the same prices."""
++    found = {c: SimpleNamespace(contract_id=c, state="live", feed_key=f"NSE_FO:{c}", identity=f"c{c}",
++                                stored=SimpleNamespace(listed=SimpleNamespace(contract=SimpleNamespace(
++                                    name="NIFTY", instrument_type="CE", strike=D("23000"),
++                                    expiry=datetime.date(2026, 12, 2), lot_size=65)))) for c in (1, 2)}
++    stored = [SimpleNamespace(order=SimpleNamespace(contract_id=int(o.instrument_id), as_paper=lambda o=o: o, kind=o.kind,
++                                                    reason=None, placed_at=o.placed_at)) for o in BOOK]
++    page = P._figures(stored, found, prices, True, datetime.date(2026, 11, 25))
++    legs = tuple(SimpleNamespace(instrument_id=str(c), exited=False) for c in (1, 2))
++    bk = SimpleNamespace(strategy_id=170, orders=tuple(BOOK), legs=legs)
++    view = SimpleNamespace(paused=any(not paper.is_live(p) for p in prices.values()), legs=[prices[1], prices[2]])
++    figures, per_leg, _ = T._book_figures(bk, view)
++    assert (page["booked"], page["unbooked"], page["total"]) == tuple(
++        None if v is None else P._exact(v) for v in (figures.booked, figures.unbooked, figures.total))
++    assert per_leg == [p.unbooked for p in net_positions(BOOK, {k: p.price for k, p in
++                                                                ((str(c), prices[c]) for c in prices) if paper.is_live(p)}).positions]
++
++
++@pytest.mark.parametrize("fn", [P._figures, P._extremes, P._after, T._book_figures])
++def test_core_the_routes_assemble_through_the_door_and_call_no_engine_function_themselves(fn):
++    """C3 (a structural guarantee): the one assembly is the only path; the detector is the second layer."""
++    source = inspect.getsource(fn)
++    assert "strategy_money_view(" in source
++    assert "net_positions(" not in source and "lifecycles(" not in source
++
++
++def test_the_assembly_does_no_arithmetic_of_its_own():
++    """ADR-008: the module only picks live prices and calls the engine."""
++    import ast  # noqa: PLC0415
++    tree = ast.parse(inspect.getsource(strategy_money))
++    assert not [n for n in ast.walk(tree) if isinstance(n, ast.BinOp | ast.AugAssign)]
++    assert lifecycles is not None
++
++
++strategy_money_view = strategy_money.strategy_money_view
+-- 
+2.43.0
+
+
+# ---- uncommitted green-attempt diff on top of 8de187b4 ----
+diff --git a/backend/ofo_app/routes/paper.py b/backend/ofo_app/routes/paper.py
+index 4955064c..bcc7625a 100644
+--- a/backend/ofo_app/routes/paper.py
++++ b/backend/ofo_app/routes/paper.py
+@@ -23,9 +23,9 @@ The user comes from the session (``current_user_ref``), never from the request.
+ from __future__ import annotations
+ 
+ import datetime
+-from dataclasses import dataclass
+ import logging
+ from collections.abc import Mapping, Sequence
++from dataclasses import dataclass
+ from decimal import ROUND_HALF_EVEN, Decimal
+ from typing import Annotated, Any, Literal, get_args
+ 
+@@ -75,7 +75,7 @@ from ofo.strategy.definition import describe_contract, display_contract
+ from ofo.table.model import display_number
+ from ofo.timeutil import IST
+ from ofo.tracking import paper, paper_decay, paper_greeks, stops
+-from ofo.tracking.orderbook import ClosedLeg, NetPosition, PaperOrder, is_typed_price, lifecycles, net_positions
++from ofo.tracking.orderbook import ClosedLeg, NetPosition, PaperOrder, is_typed_price, net_positions
+ from ofo.tracking.paper_alert import restore_alert_body, restore_order_reason, settle_history_body
+ from pydantic import AwareDatetime, BaseModel, ConfigDict, Field, field_validator
+ 
+@@ -116,6 +116,7 @@ from ofo_app.routes.outcome import (
+ from ofo_app.routes.planned_entry import get_live_feed
+ from ofo_app.routes.strategies import StrategyRefused, refused_answer
+ from ofo_app.scenario_guard import guard_paper_order
++from ofo_app.strategy_money import strategy_money_view
+ from ofo_app.underlying import Underlying
+ 
+ _LOG = logging.getLogger(__name__)
+@@ -654,8 +655,7 @@ def _book_day(snapshot: Any, answered_at: datetime.datetime) -> datetime.date:
+ def _figures(orders: Sequence[paper_store.StoredOrder], found: dict[int, tracked_contracts.TrackedContract],
+              prices: dict[int, paper.Price], connected: bool, today: datetime.date | None = None) -> dict:
+     """The strategy's figures from the one engine at the live prices of its open contracts."""
+-    live = {str(cid): p.price for cid, p in prices.items() if paper.is_live(p) and p.price is not None}
+-    view = lifecycles(_paper(orders), live)  # D-10: the net_positions totals, split at every flat point
++    view = strategy_money_view(_paper(orders), prices).lifecycle()  # D-10: the book's totals, split at every flat point
+     positions = [_position(p, found[int(p.instrument_id)], prices.get(int(p.instrument_id))) for p in view.positions]
+     why = _closing_reasons(orders)
+     closed = [_closed_row(leg, found[int(leg.instrument_id)], why.get((int(leg.instrument_id), leg.closed_at)))
+@@ -707,9 +707,9 @@ def _extremes(orders: Sequence[paper_store.StoredOrder], found: dict[int, tracke
+     has no after total (ADR-306 (6): never a gross range beside a net maximum). ``today`` = the trade's nearest open
+     expiry (ADR-320 (2), D-14): the "If held to expiry" pair (``max_profit_hold`` / ``profit_left_hold``) is served
+     beside the usual figures, which are the "If exited now" pair; other days it is absent."""
+-    live = {str(cid): p.price for cid, p in prices.items() if paper.is_live(p) and p.price is not None}
++    money = strategy_money_view(_paper(orders), prices)
++    live, view = money.live, money.book
+     terms = terms_of(orders, found)
+-    view = net_positions(_paper(orders), live)
+     paid = paid_exact_of(orders, found, underlying, rates)  # ADR-263: the charges really paid on every filled order
+     got = max_after_charges(view, terms, live, underlying, rates, paid) if paid is not None else \
+         book_extremes(view, terms, live)  # unpriced: before charges, and says so
+@@ -941,8 +941,8 @@ def left_fields(got: AfterSplit) -> dict:
+ 
+ def _after(orders: Sequence[paper_store.StoredOrder], found: dict[int, tracked_contracts.TrackedContract],  # noqa: PLR0913
+            prices: dict[int, paper.Price], charges: dict, underlying: str, rates: ChargeRates | None) -> dict:
+-    live = {str(cid): p.price for cid, p in prices.items() if paper.is_live(p) and p.price is not None}
+-    view = net_positions(_paper(orders), live)
++    money = strategy_money_view(_paper(orders), prices)
++    live, view = money.live, money.book
+     terms = terms_of(orders, found)
+     got = after_charges(view, terms, live, charges["charges"], charges["charges_reason"], underlying, rates)
+     split = after_split(view, terms, live, underlying, rates, got, paid_exact_of(orders, found, underlying, rates))
+diff --git a/backend/ofo_app/routes/tracking.py b/backend/ofo_app/routes/tracking.py
+index ec357b78..37012c19 100644
+--- a/backend/ofo_app/routes/tracking.py
++++ b/backend/ofo_app/routes/tracking.py
+@@ -44,7 +44,7 @@ from ofo.outcome.price_text import price_text
+ from ofo.strategy import stored_form as sf
+ from ofo.strategy.definition import display_contract
+ from ofo.tracking import book, paper
+-from ofo.tracking.orderbook import PaperOrder, net_positions
++from ofo.tracking.orderbook import PaperOrder
+ from pydantic import BaseModel, ConfigDict, Field
+ 
+ from ofo_app import may_act, paper_limit, paper_reasons
+@@ -76,6 +76,7 @@ from ofo_app.routes.paper import (
+ from ofo_app.routes.planned_entry import get_live_feed, hold_until_priced
+ from ofo_app.routes.strategies import StrategyRefused, refused_answer
+ from ofo_app.scenario_guard import guard_paper_order  # dev/test scenario guard; reaches no Execute code
++from ofo_app.strategy_money import strategy_money_view
+ from ofo_app.underlying import Underlying
+ 
+ router = APIRouter(route_class=ClosedRoute)
+@@ -298,15 +299,13 @@ def _book_figures(bk: _Book, view: paper.TrackingView | None
+     """REQ-109 AC-4: every figure from the one engine on the orders (ofo.engine.orderbook.net_positions), exact. The
+     open legs are priced only when the view is live (not paused, connected): a paused or unconnected view gives no
+     open leg a figure and no unbooked / total (AC-5); an exited leg keeps its booked figure."""
+-    priced = {} if view is None else {
+-        leg.instrument_id: view.legs[i].price for i, leg in enumerate(bk.legs)
+-        if not leg.exited and paper.is_live(view.legs[i]) and view.legs[i].price is not None}
+-    live = {} if view is None or view.paused else priced
+-    figures = net_positions(bk.orders, live)  # every TOTAL (and the after-charges figures) stays paused, never a mix
+-    by_id = {p.instrument_id: p for p in net_positions(bk.orders, priced).positions}  # ADR-311: per leg
++    prices = {} if view is None else {
++        leg.instrument_id: view.legs[i] for i, leg in enumerate(bk.legs) if not leg.exited}
++    money = strategy_money_view(bk.orders, prices, totals_priced=view is not None and not view.paused)
++    by_id = money.by_contract  # ADR-311: per leg, at the legs that have a price
+     pnls: list[Decimal | None] = [by_id[leg.instrument_id].booked if leg.exited else by_id[leg.instrument_id].unbooked
+                                   for leg in bk.legs]
+-    return figures, pnls, live
++    return money.book, pnls, money.live  # every TOTAL (and the after-charges figures) stays paused, never a mix
+ 
+ 
+ def _figures(bk: _Book, legs: list[paper.TrackedLeg], view: paper.TrackingView | None,  # noqa: PLR0913
+diff --git a/backend/ofo_app/strategy_money.py b/backend/ofo_app/strategy_money.py
+new file mode 100644
+index 00000000..b066de11
+--- /dev/null
++++ b/backend/ofo_app/strategy_money.py
+@@ -0,0 +1,62 @@
++"""B6 (modular doors, Phase 3; D-41 server half): the ONE assembly of a strategy's money figures for the API.
++
++The paper book page (``routes/paper.py``) and the tracking page (``routes/tracking.py``) each used to turn the open
++contracts' price answers into a live-price map and call the engine (``ofo.tracking.orderbook``) themselves. They now
++ask ``strategy_money_view``: it picks the live prices (``paper.is_live``, the one predicate) and calls the engine;
++every figure is the engine's (ADR-008: one engine owns every P&L number). Nothing is added, subtracted or rounded
++here, and each route keeps its own reply shape and its own text / rounding of the figures.
++
++The PRICE BASIS is the caller's: the book page passes ``paper.display_price`` answers (ADR-212, the last close after
++hours), the tracking page passes ``paper.leg_price`` answers (live only). That difference is data in ``prices``, not
++code here. Paper only: no order, no broker call.
++"""
++from __future__ import annotations
++
++import dataclasses
++from collections.abc import Mapping, Sequence
++from decimal import Decimal
++
++from ofo.tracking import paper
++from ofo.tracking.orderbook import BookView, LifecycleView, NetPosition, PaperOrder, lifecycles, net_positions
++
++
++def live_prices(prices: Mapping[int | str, paper.Price]) -> dict[str, Decimal]:
++    """The open contracts that have a live price, by contract id text (the engine's key). A stale or missing answer is
++    left out whatever number it carries (REQ-109 AC-5)."""
++    return {str(cid): p.price for cid, p in prices.items() if paper.is_live(p) and p.price is not None}
++
++
++@dataclasses.dataclass(frozen=True)
++class MoneyView:
++    """One strategy's figures from the engine at one set of prices.
++
++    ``priced``: every open contract with a live price. ``live``: the totals' basis, ``priced`` unless the caller said
++    the totals stay paused. ``book``: the engine's book at ``live`` (booked always known; unbooked and total ``None``
++    while any open contract is unpriced). ``by_contract``: each contract's own figure at ``priced`` (ADR-311: a priced
++    leg keeps its figure while the totals are paused)."""
++
++    orders: tuple[PaperOrder, ...]
++    priced: dict[str, Decimal]
++    live: dict[str, Decimal]
++    book: BookView
++    by_contract: dict[str, NetPosition]
++
++    @property
++    def paused(self) -> bool:
++        """An open contract is unpriced: the book has no unbooked figure and no total (REQ-109 AC-5)."""
++        return self.book.unbooked is None
++
++    def lifecycle(self) -> LifecycleView:
++        """The same book split at every flat point (D-10), at ``priced``: the paper page's positions and closed rows."""
++        return lifecycles(self.orders, self.priced)
++
++
++def strategy_money_view(orders: Sequence[PaperOrder], prices: Mapping[int | str, paper.Price], *,
++                        totals_priced: bool = True) -> MoneyView:
++    """The strategy's figures at ``prices`` (one price answer per open contract). ``totals_priced=False``: the totals
++    stay paused whatever the prices (the tracking page for a paused or unconnected book)."""
++    held = tuple(orders)
++    priced = live_prices(prices)
++    live = priced if totals_priced else {}
++    return MoneyView(held, priced, live, net_positions(held, live),
++                     {p.instrument_id: p for p in net_positions(held, priced).positions})
+diff --git a/docs/design/modular-doors-2026-11-25/RESULTS.md b/docs/design/modular-doors-2026-11-25/RESULTS.md
+index dc95bf1e..9e6fb9b8 100644
+--- a/docs/design/modular-doors-2026-11-25/RESULTS.md
++++ b/docs/design/modular-doors-2026-11-25/RESULTS.md
+@@ -102,4 +102,60 @@ tracking, tracking list, IC exits, monitor); whole vitest suite green. One pin u
+ 
+ **Commits.** `707bc5d4` tests (red), then the code commit (see `git log`).
+ 
+-## Phase 3..8: not started
++## Phase 3: F3 + F5 + B6 one paper book source (D-41)
++
++**Price basis (decided before the source changed).** The Paper P&L panel's leg rows (LTP, per-leg P&L) now use the
++paper book's own price, `ofo.tracking.paper.display_price` (the book route `_prices`, `routes/paper.py`), the same price
++the Net Positions table, the Total and the P&L table already use. Before, the rows came from `/strategies/{id}/tracking`,
++which prices every leg with `leg_price` (live only) on its own poll and its own snapshot. Spec line: ADR-212 "After
++market hours, paper positions show LTP and P&L from the last close, as the builder does": "the paper screens (Positions >
++Paper, the builder's paper panel, the totals) show each open leg's LTP, its unbooked P&L, the strategy totals and decay from
++the last close the feed holds ... In market hours REQ-109 AC-5 is unchanged". So after hours the panel rows show the last
++close (what ADR-212 says) and the panel's own headline total already did; in hours the two prices are the same live price
++(`display_price` is exactly `leg_price` in market hours). Behaviour change on screen: only the after-hours rows of the panel
++(a dash before, the last close now), which is what the spec says; fills, stops and triggers keep `leg_price` (unchanged).
++The tracking reply's shape and numbers are unchanged (the server-side fills and the tracking page keep `leg_price`).
++
++**Doors.**
++- Screen: `frontend/src/lib/usePaperBookRead.js` is the one reader of the page's book read. It gained `legPricesOf(book)`
++  (one `LegPrice` per open contract: ltp, price time, booked, unbooked, total, no-price text; texts as sent) and
++  `paperPnlBlock(book, failed)` (total / booked / unbooked / as-of line / unpriced / legs). No new `usePaperBook`.
++  `TrackingPanel.vue`: an open leg's LTP and P&L come from the book's `LegPrice`; an exited leg and a leg the book does not
++  hold (no book yet) keep the tracking row. The headline and the builder's `paperTotal` both come from `paperPnlBlock`.
++- Server: `backend/ofo_app/strategy_money.py` `strategy_money_view(orders, prices, *, totals_priced=True)` returns a
++  `MoneyView` (priced / live prices, the engine's book, each contract's own figure, `paused`, and `lifecycle()` for the
++  list's closed rows). It does no arithmetic (a test pins that); the engine maths stays in `ofo.tracking.orderbook`. The
++  signature differs from the plan's `(strategy_id, prices)`: the callers already hold the orders, so the view takes them
++  and no strategy id (the paper `_figures` signature, pinned by `test_paper_unpriced_names.py`, has none). Added to
++  `PAPER_MODULES`.
++
++**Callers, before -> after.**
++- Server, "price answers -> live map -> engine call": `routes/paper.py` `_figures`, `_extremes`, `_after` and
++  `routes/tracking.py` `_book_figures` (4 copies of the map, 4 direct engine calls) -> 1 door + 0 copies.
++- Screen, readers of the book's P&L block: `TrackingPanel` headline and the builder `paperTotal` (`sharedTotal` called
++  twice) -> `paperPnlBlock` (1 reader). Leg prices: the panel's `/tracking` rows (a second poll of the same legs) -> the
++  book's `LegPrice` (0 extra polls for the rows).
++
++**Left, with the reason.**
++- `routes/outcome.py read_booked` (booked only, no prices, a different question), `routes/adjustment_history.py
++  closed_figures` (`ah.adjustment_history` over closed orders, no price read) and `routes/adjustment.py price_after`
++  (`whole_trade_after` over the approach's legs and the chain's prices, not the paper book): not the same assembly, not moved.
++- Rounding of the money fields stays per route (`_exact` on the book page, `to_paise` on the tracking page): the reply
++  shapes must not change, and the two differ for a value finer than a paisa.
++- `PaperBookPanel` total (`afterFigure` with the server's paused sentence) and `readPaperList` / `usePaperPnl` (the list of
++  all strategies on Positions, My Strategies, Live): other replies and other paused wording (merging would change visible
++  text); `readTracking` (the headline when no book read exists yet) and `AdjustCompare.vue :262` (reads `/tracking` for the
++  detection lines and the layer-2 rows, not leg prices): kept.
++- Pollers of `/paper/strategies` (the list: `usePaperPnl`, `PaperStrategies`) stay separate from the builder's per-strategy
++  read: different endpoint (list vs one strategy), not the same poll. The builder's panel poll of `/tracking` still runs for
++  detections, rules and exits (not leg prices).
++
++**Tests.** `frontend/tests/one-source-d41.test.js`: 5 (the same LTP per leg on both panels, the rows add up to the
++before-charges total on both panels, the headline stays the after-charges text, `legPricesOf`, `paperPnlBlock`);
++`tests_app/test_strategy_money_view.py`: 13, no DB (engine parity per price set, the paper page and the tracking page agree
++on booked / unbooked / total at one price set, the four routes' figure functions call the door and no engine function, no
++arithmetic in the module). Callers' tests unmodified.
++
++**Commits.** `8de187b4` tests (red), then the code commit (see `git log`).
++
++## Phase 4..8: not started
+diff --git a/frontend/src/components/strategy/ChartCard.vue b/frontend/src/components/strategy/ChartCard.vue
+index ca5405cc..8ac8a79d 100644
+--- a/frontend/src/components/strategy/ChartCard.vue
++++ b/frontend/src/components/strategy/ChartCard.vue
+@@ -57,7 +57,7 @@ const props = defineProps({
+   savedId: { type: Number, default: null },
+   charges: { type: Object, default: null }, // D-63 round 3: the paper reply's charges texts {paid, close}, as sent; shown only beside an after-charges TOTAL
+   closed: { type: Array, default: null }, // D-63 (a): the paper reply's closed rows; its TOTAL includes their booked P&L, so they are listed under the table
+-  paperTotal: { type: Object, default: null }, // GC-ICFIX round 2 (F4): sharedTotal() of the page's one paper read; the TOTAL row's P&L shows it, not the socket's figure
++  paperTotal: { type: Object, default: null }, // GC-ICFIX round 2 (F4): paperPnlBlock() of the page's one paper read; the TOTAL row's P&L shows it, not the socket's figure
+   savedRevision: { type: [Number, String], default: null }, // changes on every re-save: the Strategy Chart re-asks
+ })
+ // D-B10: the graph's Zoom asks the page for a new range; D-B24: the interval menu asks for a new payoff_step (the server
+diff --git a/frontend/src/components/strategy/TrackingPanel.vue b/frontend/src/components/strategy/TrackingPanel.vue
+index ccfbb572..e2d5c1b8 100644
+--- a/frontend/src/components/strategy/TrackingPanel.vue
++++ b/frontend/src/components/strategy/TrackingPanel.vue
+@@ -21,7 +21,7 @@
+           </tr>
+         </thead>
+         <tbody>
+-          <tr v-for="leg in view.legs" :key="leg.key" class="border-b border-line" data-testid="tracking-leg">
++          <tr v-for="leg in rows" :key="leg.key" class="border-b border-line" data-testid="tracking-leg">
+             <td class="py-1.5 text-left">
+               <span class="inline-flex flex-wrap items-center gap-1.5">
+                 <Chip :kind="leg.action === 'BUY' ? 'buy' : 'sell'" :label="leg.action === 'BUY' ? 'B' : 'S'" />
+@@ -29,7 +29,7 @@
+               </span>
+             </td>
+             <td class="py-1.5 pl-6 text-right tabular-nums">{{ leg.entry }}</td>
+-            <td class="py-1.5 pl-6 text-right tabular-nums">{{ leg.exited ? `Exited at ${leg.exitPrice ?? '—'}` : (leg.current ?? '-') }}</td>
++            <td class="py-1.5 pl-6 text-right tabular-nums" data-testid="tracking-leg-ltp">{{ leg.exited ? `Exited at ${leg.exitPrice ?? '—'}` : (leg.current ?? '-') }}</td>
+             <!-- GC-UI b2 D-B48: the server's per-leg paper P&L text (booked legs say so), "—" when it sent none -->
+             <td class="py-1.5 pl-6 text-right tabular-nums" data-testid="tracking-leg-pnl">{{ leg.pnl }}</td>
+           </tr>
+@@ -93,7 +93,8 @@ import { REVIEW_BUTTON_TEXT, cardRows } from '@/lib/adjustDrawer'
+ import Chip from '@/components/common/Chip.vue'
+ import FigureHint from '@/components/common/FigureHint.vue'
+ import api, { NEUTRAL_PARTS } from '@/services/api'
+-import { NOT_CONNECTED_TEXT, PAPER_PNL_PREFIX, readTracking, sharedTotal } from '@/lib/tracking'
++import { LEG_PNL_MISSING, NOT_CONNECTED_TEXT, PAPER_PNL_PREFIX, readTracking } from '@/lib/tracking'
++import { paperPnlBlock } from '@/lib/usePaperBookRead'
+ import { EARLIER_SHOWN_MAX, RULES_LOAD_FAILED_TEXT, checkStaleLine, earlierMoreText, firedAtText, liveNowText, ruleEarlierText, ruleNotCheckedText } from '@/lib/sharedStateText'
+ import { istStamp } from '@/lib/displayFormat'
+ import { openRecords, settledRecords } from '@/lib/paperAlerts'
+@@ -116,13 +117,21 @@ const reviewBtn = ref(null)
+ // The headline total: from the page's shared paper read when there is one (so it equals the paper panel and the P&L table TOTAL
+ // row); what still comes from the tracking read: legs, per-leg P&L, detections, the rule check, and the headline when no shared read.
+ // Prices not live = the paused sentence, no number (REQ-109 AC-5).
++const block = computed(() => (props.shared ? paperPnlBlock(props.shared, props.sharedFailed) : null)) // D-41: the page's one book read
+ const headline = computed(() => {
+   const v = view.value
+-  const s = props.shared && v ? sharedTotal(props.shared, props.sharedFailed) : null
++  const s = block.value && v ? block.value : null
+   if (!s) return { ...v, line: null, unpriced: v?.unpriced ?? null }
+   const text = s.text === null ? (s.line ?? NOT_CONNECTED_TEXT) : `${PAPER_PNL_PREFIX}${s.text} ${s.label}${v.kind === 'exited' ? ' - exited' : ''}`.replace(/ +$/, '')
+   return { text, kind: s.kind, breakdown: s.breakdown, afterReason: s.reason, line: s.text === null ? null : s.line, unpriced: s.unpriced ?? v.unpriced ?? null }
+ })
++// D-41 (modular doors, Phase 3): with the page's book read, an open leg's LTP and P&L are that book's own (the display price, ADR-212),
++// the same LegPrice the Net Positions table shows, so one screen has one price per leg and the rows (before charges) add up to the
++// book's before-charges total. An exited leg, and a leg the book does not hold (no book yet), keep the tracking reply's row.
++const rows = computed(() => (view.value?.legs ?? []).map((leg) => {
++  const own = leg.exited ? undefined : block.value?.legs.get(String(leg.key))
++  return own === undefined ? leg : { ...leg, current: own.ltp, pnl: own.unbooked ?? own.noPrice ?? LEG_PNL_MISSING }
++}))
+ const drawerOpen = ref(false)
+ const drawerLines = ref([]) // layer 1: the detection's own text; kept when the detection lapses while the drawer is open
+ // GC-ADJ2 step 5: the playbook check answer. A typed strategy (strategy_type set) shows its flags; an untyped one keeps
+diff --git a/frontend/src/lib/usePaperBookRead.js b/frontend/src/lib/usePaperBookRead.js
+index 9239d437..5024a974 100644
+--- a/frontend/src/lib/usePaperBookRead.js
++++ b/frontend/src/lib/usePaperBookRead.js
+@@ -3,9 +3,33 @@
+ // always taken (it is the truth); when its open contracts differ from the shown ones `contractsChanged` stays true (the screen's net
+ // legs belong to the old set: the panel says so and asks for a reload). A failed read sets `readFailed`: the last figures stay.
+ // A trade with no open contract is final: no more reads.
++// D-41 (modular doors, Phase 3): this module is also the ONE reader of that reply for every panel that shows a leg price or the P&L
++// block: `legPricesOf` (LegPrice per open contract) and `paperPnlBlock` (total / booked / unbooked / as-of / legs). The Net Positions
++// table and the Paper P&L panel read the same book, so a leg has one price and the rows add up to the before-charges total.
++// Price basis: the book's own, the display price (ADR-212: in hours the live price, after hours the last close). Texts as sent (ADR-008).
+ import { ref, watch } from 'vue'
+ import api from '@/services/api'
+ import { usePaperRefresh } from '@/lib/usePaperRefresh'
++import { sharedTotal } from '@/lib/tracking'
++
++const text = (v) => (typeof v === 'string' && v.trim() !== '' ? v.trim() : null)
++
++/** LegPrice: one open contract's price and figures as the book sent them (texts as sent; null = the server sent none). */
++export function legPricesOf(book) {
++  const out = new Map()
++  for (const p of Array.isArray(book?.positions) ? book.positions : []) {
++    if (p.net_quantity === 0) continue
++    out.set(String(p.contract_id), { ltp: text(p.ltp_text), at: p.price_at ?? null, booked: text(p.booked_text), unbooked: text(p.unbooked_text), total: text(p.total_text), noPrice: text(p.no_price_text) })
++  }
++  return out
++}
++
++/** The one P&L block of a paper book: the headline total (sharedTotal: after charges, or the labelled before text, or paused),
++ *  Booked, Unbooked (before charges, as sent), the as-of / paused line and the LegPrice of every open contract. null = no book. */
++export function paperPnlBlock(book, failed = false) {
++  const total = sharedTotal(book, failed)
++  return total === null ? null : { ...total, booked: text(book.booked_text), unbooked: text(book.unbooked_text), legs: legPricesOf(book) }
++}
+ 
+ const openKey = (b) => (b?.positions ?? []).filter((p) => p.net_quantity !== 0).map((p) => `${p.contract_id}:${p.net_quantity}`).join(',')
+ 
+diff --git a/frontend/src/pages/StrategyBuilderPage.vue b/frontend/src/pages/StrategyBuilderPage.vue
+index 4b4cc6cd..41274d62 100644
+--- a/frontend/src/pages/StrategyBuilderPage.vue
++++ b/frontend/src/pages/StrategyBuilderPage.vue
+@@ -27,7 +27,7 @@ import ProjectionsNote from '@/components/strategy/ProjectionsNote.vue'
+ import StrategyActions from '@/components/strategy/StrategyActions.vue'
+ import TrackingPanel from '@/components/strategy/TrackingPanel.vue'
+ import AdjustSteps from '@/components/strategy/AdjustSteps.vue'
+-import { ADD_TO_PAPER_LABEL, PAPER_PLACED_NOT_REFRESHED_TEXT, PAPER_STATE, addToPaper as postPaperOrders, paperPostOutcome, sharedTotal } from '@/lib/tracking'
++import { ADD_TO_PAPER_LABEL, PAPER_PLACED_NOT_REFRESHED_TEXT, PAPER_STATE, addToPaper as postPaperOrders, paperPostOutcome } from '@/lib/tracking'
+ import PaperConfirmDialog from '@/components/strategy/PaperConfirmDialog.vue'
+ import LoadFailed from '@/components/common/LoadFailed.vue'
+ import { PAPER_REREAD_FAILED_TEXT } from '@/lib/sharedStateText'
+@@ -37,7 +37,7 @@ import {
+ } from '@/lib/paperDrafts'
+ import { withAsOf } from '@/lib/paperList'
+ import PaperBookPanel from '@/components/strategy/PaperBookPanel.vue'
+-import { usePaperBookRead } from '@/lib/usePaperBookRead'
++import { paperPnlBlock, usePaperBookRead } from '@/lib/usePaperBookRead'
+ import { usePriceFreshness } from '@/lib/priceState'
+ import PaperStrategies from '@/components/strategy/PaperStrategies.vue'
+ import AdjustCompare from '@/components/strategy/AdjustCompare.vue'
+@@ -432,7 +432,7 @@ const { readFailed: paperBookFailed } = usePriceFreshness({
+   held: () => paper.value?.book ?? null,
+   serverState: () => paper.value?.book?.state,
+ })
+-const paperTotal = computed(() => (paper.value ? sharedTotal(paper.value.book, paperBookFailed.value) : null))
++const paperTotal = computed(() => (paper.value ? paperPnlBlock(paper.value.book, paperBookFailed.value) : null))
+ function reviewPending() {
+   if (!paper.value || paperStale.value || !pendingOrders.value?.length) return
+   paperError.value = ''
+diff --git a/tests_app/test_paper_order_door.py b/tests_app/test_paper_order_door.py
+index 5b05a4f4..dd3f010b 100644
+--- a/tests_app/test_paper_order_door.py
++++ b/tests_app/test_paper_order_door.py
+@@ -22,7 +22,7 @@ pytestmark = pytest.mark.repo_scan
+ PAPER_MODULES: tuple[str, ...] = ("ofo_app.routes.paper", "ofo_app.paper_store", "ofo.engine.orderbook",
+                                   "ofo.tracking.orderbook", "ofo_app.paper_monitor", "ofo_app.paper_trigger_store",
+                                   "ofo.tracking.stops", "ofo_app.paper_settlement", "ofo_app.market_read",
+-                                  "ofo_app.may_act")
++                                  "ofo_app.may_act", "ofo_app.strategy_money")
+ #: Order doors beyond the shared order list: the order audit, order book and order-path-switch modules. A paper module
+ #: reaching one is red. The Kite client is NOT listed: the paper book reads live prices through it (a read), and the
+ #: order, GTT and basket doors sit in the modules above. A GTT or alert-trigger module added later must be listed
+diff --git a/tests_app/test_strategy_money_view.py b/tests_app/test_strategy_money_view.py
+index 2a2d2298..9f4f1006 100644
+--- a/tests_app/test_strategy_money_view.py
++++ b/tests_app/test_strategy_money_view.py
+@@ -107,7 +107,8 @@ def test_the_assembly_does_no_arithmetic_of_its_own():
+     """ADR-008: the module only picks live prices and calls the engine."""
+     import ast  # noqa: PLC0415
+     tree = ast.parse(inspect.getsource(strategy_money))
+-    assert not [n for n in ast.walk(tree) if isinstance(n, ast.BinOp | ast.AugAssign)]
++    math = (ast.Add, ast.Sub, ast.Mult, ast.Div, ast.FloorDiv, ast.Mod, ast.Pow)  # `int | str` annotations are BitOr
++    assert not [n for n in ast.walk(tree) if isinstance(n, ast.AugAssign) or (isinstance(n, ast.BinOp) and isinstance(n.op, math))]
+     assert lifecycles is not None
+ 
+ 

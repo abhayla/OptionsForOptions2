@@ -34,6 +34,7 @@ FRAME = (FIX / "full-frame-12080386-150720.bin").read_bytes()
 LEG = "NSE_FO:47189"  # the contract in the recorded full frame
 SATURDAY = datetime.datetime(2026, 10, 24, 10, 0, tzinfo=IST)
 WEDNESDAY = datetime.datetime(2026, 10, 21, 10, 0, tzinfo=IST)
+RECORDED_OPEN = datetime.datetime(2026, 10, 8, 9, 20, 0, tzinfo=IST)  # the recording's own minute, market open
 HOLIDAY = datetime.datetime(2026, 10, 20, 10, 0, tzinfo=IST)  # ADR-119 calendar: a trading holiday (Tuesday)
 AFTER_HOURS = datetime.datetime(2026, 10, 21, 16, 0, tzinfo=IST)
 PAST_CALENDAR = datetime.datetime(2031, 3, 5, 10, 0, tzinfo=IST)  # past the calendar's data: fail closed
@@ -64,7 +65,7 @@ def _answer(start: datetime.datetime):
     return indices_answer(MarketContext(provider, clock, Decimal("0.065")), live=True, now=clock)
 
 
-def _index_fed(start: datetime.datetime) -> tuple[KiteProvider, Clock]:
+def _index_fed(start: datetime.datetime, tail: int = 300) -> tuple[KiteProvider, Clock]:
     """The REAL 2026-10-08 recording (NIFTY index token 256265 = NSE_INDEX:1001 among its frames), its receive times
     moved to ``start``, then a heartbeat a second for 5 minutes: the socket is up and no new price arrives."""
     items, frames = _load_recording()
@@ -75,9 +76,9 @@ def _index_fed(start: datetime.datetime) -> tuple[KiteProvider, Clock]:
     provider.on_connected(start)
     for at, frame in frames:
         provider.on_frame(frame, start + (at - first))
-    for second in range(11, 300):
+    for second in range(11, tail):
         provider.on_frame(b"\x00", start + datetime.timedelta(seconds=second))
-    clock.now = start + datetime.timedelta(seconds=299, milliseconds=500)
+    clock.now = start + datetime.timedelta(seconds=tail - 1, milliseconds=500)
     return provider, clock
 
 
@@ -100,11 +101,22 @@ def test_closed_market_index_answer_is_never_live_and_keeps_the_last_value_as_st
 
 
 def test_open_market_index_answer_with_real_frames_is_live_and_available():
-    """AC-7 negative case: Wednesday 10:00 IST, same real frames: LIVE, NIFTY's value available."""
-    provider, clock = _index_fed(WEDNESDAY)
+    """AC-7 negative case: market open at the recording's own time (the exchange stamp 09:20:09 is 30 s old), same
+    real frames: LIVE, NIFTY's value available."""
+    provider, clock = _index_fed(RECORDED_OPEN, tail=40)
     body = indices_answer(MarketContext(provider, clock, Decimal("0.065")), live=True, now=clock)
     assert (body.state, body.market_closed) == ("LIVE", False)
     assert (body.indices[0].value, body.indices[0].health) == (NIFTY_LAST, "available")
+
+
+def test_open_market_index_silent_for_five_minutes_on_a_live_socket_is_stale_with_its_own_time():
+    """ADR-330 (39) / D-69: heartbeats keep the socket live for 5 minutes but NIFTY's last tick (09:20:09) is older
+    than the 60 s setting: the row keeps the value and its own time, labelled stale (an index quiet that long is not
+    live, whatever the feed as a whole says)."""
+    provider, clock = _index_fed(RECORDED_OPEN)
+    body = indices_answer(MarketContext(provider, clock, Decimal("0.065")), live=True, now=clock)
+    nifty = body.indices[0]
+    assert (nifty.value, nifty.at, nifty.health) == (NIFTY_LAST, NIFTY_AT, "stale")
 
 
 def test_closed_market_not_held_shows_no_value():

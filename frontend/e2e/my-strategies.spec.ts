@@ -55,7 +55,7 @@ test('a saved draft is listed after a reload and its Builder and Execute links o
   await expect(row.getByTestId('row-underlying')).toHaveText(/NIFTY|SENSEX/)
   await expect(row.getByTestId('row-status')).toHaveText('Draft')
   // REQ-134 AC-4: name, first leg (one leg: no "and N more"), last saved (no tracked state, ADR-299), from the real list read
-  await expect(row.getByTestId('row-name')).toHaveText(NAME)
+  await expect(row.getByTestId('row-name')).toHaveText(new RegExp(`^${NAME} \\(#\\d+`)) // ADR-330 (19): the label adds the number and expiry
   await expect(row.getByTestId('row-legs')).toHaveText(/^(NIFTY|SENSEX) \d{1,2} [A-Z][a-z]{2} \d{4} \d+ (CE|PE)$/) // u510: this page has read no expiries reply, so no shown date: the year prints
   await expect(row.getByTestId('row-saved')).toContainText('last saved')
   await expect(row.getByTestId('row-tracked')).toHaveCount(0) // ADR-299 (2): "Tracked" is no longer shown anywhere
@@ -72,9 +72,9 @@ test('a saved draft is listed after a reload and its Builder and Execute links o
   await page.getByTestId(`rename-${id}`).click()
   await page.getByTestId('rename-input').fill(RENAMED)
   await page.getByTestId('rename-save').click()
-  await expect(row.getByTestId('row-name')).toHaveText(RENAMED)
+  await expect(row.getByTestId('row-name')).toHaveText(new RegExp(`^${RENAMED} \\(#\\d+`))
   await page.reload()
-  await expect(row.getByTestId('row-name')).toHaveText(RENAMED)
+  await expect(row.getByTestId('row-name')).toHaveText(new RegExp(`^${RENAMED} \\(#\\d+`))
   await expect(row.getByTestId('row-legs')).toHaveText(legsBefore)
 
   // REQ-134 AC-5: Open in Builder names the strategy in the URL; a reload opens it again

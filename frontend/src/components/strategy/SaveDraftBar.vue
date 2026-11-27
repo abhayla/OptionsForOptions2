@@ -4,7 +4,7 @@
      /api/strategies/{id} with the revision THIS PAGE loaded and asks nothing (REQ-134 AC-2); Save As asks for a name
      prefilled "<name> copy", POSTs a new strategy and opens the copy; the original is never sent. The list (GET /api/strategies)
      reopens a draft (GET /api/strategies/{id}) with the legs exactly as stored: a planned entry and its capture time are never
-     re-captured here. Every refusal shows the API's catalogue message (an empty name: "The strategy has no name.", from the API,
+     re-captured here. Every refusal shows the API's catalogue message (an empty name: "Give the strategy a name.", from the API,
      not retyped); the draft on screen is never cleared by a failure. A name is shown as text, never as HTML. No number is computed. -->
 <script setup>
 import { computed, nextTick, onBeforeUnmount, onMounted, ref, watch } from 'vue'
@@ -21,6 +21,7 @@ import DraftDeleteStatus from '@/components/strategy/DraftDeleteStatus.vue'
 import PaperConfirmDialog from '@/components/strategy/PaperConfirmDialog.vue'
 import AdjustPlanSheet from '@/components/strategy/AdjustPlanSheet.vue'
 import { contractName, istTime } from '@/lib/displayFormat'
+import { notLiveEntryLine, oldestCapture } from '@/lib/priceState'
 import { ADD_TO_PAPER_LABEL, PAPER_ADDED_TEXT, PAPER_STATE, addToPaper, entryPriceFor, paperPostOutcome } from '@/lib/tracking'
 import { useRouter } from 'vue-router'
 import { CLEAR_UNDO_SECONDS_KEY } from '@/lib/legEdit'
@@ -29,7 +30,7 @@ import { newestEntry, newestSeq, restoreEntry, useDeleteFlow } from '@/lib/strat
 import { isCompleted, strategyStatusWord } from '@/lib/strategyStatus'
 import { RUNNING_TAB_EMPTY_MESSAGE, RUNNING_TAB_EMPTY_TITLE } from '@/lib/sharedStateText'
 import {
-  STRATEGY_NAME_DEFAULT, STRATEGY_NAME_MAX, buildSaveBody, nameLimitText, buildUpdateBody, canSaveLegs, fetchSavedDraft, legsLine, plainName, renameStrategy, saveAsName, strategyLabel,
+  STRATEGY_NAME_DEFAULT, STRATEGY_NAME_MAX, buildSaveBody, nameLimitText, noMatchText, buildUpdateBody, canSaveLegs, fetchSavedDraft, legsLine, plainName, renameStrategy, saveAsName, strategyLabel,
 } from '@/lib/saveDraft'
 
 const props = defineProps({
@@ -42,6 +43,7 @@ const props = defineProps({
   // GC-TP step 3b1 (ADR-207 (2), F-65): the builder shows a paper strategy's NET position (Drafts Mode). Save, Save As and Add to
   // Paper are not offered and refuse to run: an edit reaches the server only as the reviewed paper orders, never as a plan.
   paperMode: { type: Boolean, default: false },
+  pricesLive: { type: Boolean, default: true }, // ADR-330 (28): the page's price state through priceState (live or not); false adds the tick-to-confirm line
   livePriceById: { type: Object, default: () => ({}) }, // instrument id -> the live price the table shows (fix/paper-dialog-safe item 2)
 })
 const emit = defineEmits(['open', 'saved', 'renamed', 'deleted', 'paper-added'])
@@ -97,6 +99,7 @@ const menuDo = (fn) => {
 let deletedOpenId = null // the id of the OPEN strategy this bar deleted: its Undo re-opens it in the Builder (same id)
 const deleteFlow = useDeleteFlow(api, {
   undoMs: () => useSettingsValues().waitMs(CLEAR_UNDO_SECONDS_KEY),
+  revisionOf: (id) => drafts.value.find((d) => d.id === id)?.revision, // N-30: the list row's revision, no GET
   onRemoved: (id) => { drafts.value = drafts.value.filter((d) => d.id !== id) },
   onDeleted: (id) => { if (props.current?.id === id) { deletedOpenId = id; emit('deleted', id) } },
   onBack: async (id, body) => {
@@ -239,7 +242,7 @@ watch(asking, async (mode) => {
   await nextTick()
   nameInput.value?.focus?.()
 })
-const NAME_TITLES = { save: 'Save New Strategy', 'save-as': 'Save As', rename: 'Update Strategy Name' }
+const NAME_TITLES = { save: 'Save New Strategy', 'save-as': 'Save As', rename: 'Update Strategy Name', paper: 'Name this paper trade' }
 
 // GC-UI 6b D-C12: the row's pencil opens the EXISTING rename (REQ-134 AC-3) on that strategy. Rename needs the revision the page
 // loaded, so a row that is not the open one is opened first and the dialog follows once the page holds it.
@@ -247,10 +250,8 @@ let pendingRename = null
 async function renameRow(d) {
   if (busy.value) return
   if (props.current?.id === d.id) return renameOpen()
-  pendingRename = d.id
-  await open(d.id)
-  await nextTick()
-  pendingRename = null
+  pendingRename = d.id // kept until the page holds the opened strategy (the watch below) or the open fails
+  if (!(await open(d.id))) pendingRename = null
 }
 watch(() => props.current?.id, (id) => {
   if (pendingRename !== null && id === pendingRename) {
@@ -287,6 +288,7 @@ async function confirmRename() {
 async function confirmName() {
   if (asking.value === 'rename' && props.current && !busy.value) return confirmRename()
   if (props.paperMode || busy.value || !asking.value || !canSaveLegs(props.legs)) return
+  if (asking.value === 'paper' && paperRecorded.value) return
   const mode = asking.value
   const legs = snapshot(props.legs)
   busy.value = true
@@ -296,6 +298,12 @@ async function confirmName() {
     const res = await api.post('/strategies', buildSaveBody(legs, props.rulesRef, nameText.value))
     const revision = done(res.data)
     asking.value = null
+    if (mode === 'paper') {
+      emit('saved', res.data.id, revision, savedName.value, legs)
+      await refresh()
+      openPaperDialog(res.data.id)
+      return
+    }
     if (mode === 'save-as') emit('open', legs, res.data.id, revision, savedName.value)
     else emit('saved', res.data.id, revision, savedName.value, legs)
     await refresh()
@@ -307,15 +315,18 @@ async function confirmName() {
 }
 
 async function open(id) {
-  if (busy.value) return
+  if (busy.value) return false
+  if (pendingRename !== id) pendingRename = null // any other open cancels a rename waiting on a row
   busy.value = true
   errorParts.value = null
   try {
     const { legs, revision, name } = await fetchSavedDraft(api, id) // throws when unreadable: the draft on screen stays
     asking.value = null
     emit('open', legs, id, revision, name)
+    return true
   } catch (e) {
     errorParts.value = e?.parts ?? NEUTRAL_PARTS
+    return false
   } finally {
     busy.value = false
   }
@@ -341,28 +352,22 @@ const paperRecorded = ref(false)
 watch(() => props.current?.id, () => { paperRecorded.value = false })
 const canAddToPaper = computed(() => !props.paperMode && !paperRecorded.value && !busy.value && !paperBusy.value && canSaveLegs(props.legs) && tickedLegs.value.length > 0)
 
-async function startPaper() {
+// ADR-330 (19): an UNSAVED strategy asks for its name first (the name dialog, prefilled with the shape name); Confirm saves it under
+// that name and goes on to the paper confirm, Cancel adds nothing. A strategy already saved asks nothing: the code cannot tell a name
+// the user typed from a shape name saved earlier, so it never asks twice for a strategy that has an id (REQ-134 AC-1).
+function startPaper() {
   if (!canAddToPaper.value) return
   paperError.value = ''
   errorParts.value = null
-  let id = props.current?.id ?? null
-  const sentNow = snapshot(props.legs)
-  if (id === null) {
-    busy.value = true
-    try {
-      const name = props.shownName.length >= 1 && props.shownName.length <= STRATEGY_NAME_MAX ? props.shownName : STRATEGY_NAME_DEFAULT
-      const res = await api.post('/strategies', buildSaveBody(sentNow, props.rulesRef, name))
-      const revision = done(res.data)
-      id = res.data.id
-      emit('saved', id, revision, savedName.value, sentNow)
-      await refresh()
-    } catch (e) {
-      errorParts.value = e?.parts ?? NEUTRAL_PARTS
-      return
-    } finally {
-      busy.value = false
-    }
+  if (props.current?.id == null) {
+    asking.value = 'paper'
+    nameText.value = props.shownName.length >= 1 && props.shownName.length <= STRATEGY_NAME_MAX ? props.shownName : STRATEGY_NAME_DEFAULT
+    return
   }
+  openPaperDialog(props.current.id)
+}
+
+function openPaperDialog(id) {
   paperTarget.value = id
   paperOrders.value = tickedLegs.value.map((l, i) => ({
     key: l.id ?? `leg-${i}`, contract_id: l.contract_id, side: l.action, text: contractName(l), lots: l.lots, lot_size: l.lot_size,
@@ -472,7 +477,7 @@ id="strategy-name" ref="nameInput" v-model="nameText" data-testid="name-input" t
         <button type="submit" form="strategy-name-form" data-testid="name-confirm" class="h-10 rounded-lg bg-accent px-3 font-medium text-white disabled:opacity-50" :disabled="busy">Save</button>
       </template>
     </Modal>
-    <PaperConfirmDialog first-basket :open="paperOpen" :orders="paperOrders" :busy="paperBusy" :error="paperError" :state="paperState" @confirm="confirmPaper" @cancel="paperOpen = false" @orderbook="openPaperOrderbook" />
+    <PaperConfirmDialog first-basket :open="paperOpen" :orders="paperOrders" :busy="paperBusy" :error="paperError" :state="paperState" :not-live-line="props.pricesLive ? '' : notLiveEntryLine(oldestCapture(tickedLegs))" @confirm="confirmPaper" @cancel="paperOpen = false" @orderbook="openPaperOrderbook" />
     <AdjustPlanSheet :open="planFor !== null" :strategy-id="planFor" @close="planFor = null" />
     <!-- GC-TP step 3b2 (R-6): the toast is FIXED to the viewport (bottom centre), not inline under the action row. Inline it sat inside
          the left column's own scroll (sticky, overflow-y-auto at 1100 px and up; `contents` below), so after the save-first path
@@ -519,7 +524,7 @@ class="flex shrink-0 items-center gap-1 opacity-100 md:opacity-0 md:focus-within
             </span>
           </li>
         </ul>
-        <p v-else class="mt-2 text-ink-muted" data-testid="saved-empty">{{ search.trim() ? 'No saved strategy matches.' : 'No saved strategies yet.' }}</p>
+        <p v-else class="mt-2 text-ink-muted" data-testid="saved-empty">{{ search.trim() ? noMatchText(search) : 'No saved strategies yet.' }}</p>
         <router-link to="/strategies/my-strategies" class="mt-2 inline-block text-accent" data-testid="saved-show-all">Show all in My Strategies</router-link>
       </div>
       <div v-show="tab === 'tracked'" class="mt-3" data-testid="tab-panel-tracked"><slot name="tracked" :active="tab === 'tracked'"><EmptyState icon="pulse" :title="RUNNING_TAB_EMPTY_TITLE" :message="RUNNING_TAB_EMPTY_MESSAGE" /></slot></div>

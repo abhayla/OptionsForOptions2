@@ -12,7 +12,7 @@ let answer
 let features = { order_path: 'on' } // GET /features; the Execute links show only on "on" (W-121)
 vi.mock('@/services/api', async (importActual) => {
   const actual = await importActual()
-  return { ...actual, default: { get: (url) => (url === '/features' ? Promise.resolve({ data: features }) : answer()) } }
+  return { ...actual, default: { get: (url) => (url === '/features' ? Promise.resolve({ data: features }) : url === '/paper/strategies' ? Promise.resolve({ data: { strategies: [], totals: null } }) : answer()) } } // ADR-330 (10) replaces ADR-201 (2): the one list also reads the paper list (empty here)
 })
 
 const SYMBOL = 'NIFTY26O1923650CE'
@@ -59,8 +59,8 @@ describe('Positions pages', () => {
       expect(w.get('[data-testid=positions-outside-kite]').attributes('href')).toBe(KITE_POSITIONS_URL)
       expect(w.get('[data-testid=positions-outside]').text()).toBe('1 outside lot - view on Kite')
       expect(w.findAll('[data-testid=position-row]')).toHaveLength(1)
-      expect(w.text()).not.toMatch(/P&L|price|margin|₹|Rs|you should|best/i)
-      expect(w.find('button:not([role=tab])').exists()).toBe(false) // GC-BP step 6: the two tab buttons are not actions
+      expect(w.get('[data-testid=real-state]').text()).not.toMatch(/price|margin|₹|Rs|you should|best/i) // ADR-330 (10) replaces ADR-201 (2): the real section only; the page header now carries the two totals
+      expect(w.find('button:not([data-testid^=filter-])').exists()).toBe(false) // ADR-330 (10) replaces ADR-201 (2): the filter buttons are not actions
     })
   }
 
@@ -142,7 +142,8 @@ describe('Positions pages', () => {
   it('AC-3: an empty book says so in words', async () => {
     answer = () => Promise.resolve({ data: reply([]) })
     const w = await show('current')
-    expect(w.get('[data-testid=positions-empty]').text()).toContain('no open positions')
+    // ADR-330 (10): one list - the real part's empty text names only the real part
+    expect(w.get('[data-testid=positions-empty]').text()).toContain('No open Zerodha positions')
     expect(w.find('[data-testid=positions-outside]').exists()).toBe(false)
   })
 
@@ -151,8 +152,9 @@ describe('Positions pages', () => {
     const w = await show('current')
     const empty = w.get('[data-testid=positions-empty]')
     expect(empty.find('[data-testid=empty-state]').exists()).toBe(true)
-    expect(empty.get('[data-testid=empty-state-title]').text()).toBe('No open positions')
-    expect(empty.get('[data-testid=empty-state-message]').text()).toBe('Zerodha shows no open positions, and none of your strategies holds any.')
+    // ADR-330 (10): one list - the real part's empty text names only the real part (paper rows may sit below it)
+    expect(empty.get('[data-testid=empty-state-title]').text()).toBe('Real positions')
+    expect(empty.get('[data-testid=empty-state-message]').text()).toBe('No open Zerodha positions.')
     expect(w.get('[data-testid=positions-read-at]').exists()).toBe(true)
   })
 

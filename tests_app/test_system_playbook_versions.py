@@ -84,9 +84,9 @@ async def test_core_proof_new_version_reaches_the_next_check_copies_and_plans_un
     _, planned = await _with_draft(db, user)
     await pbs.accept_plan(db, user, planned.id, system.id)  # a saved plan made before the change
     tracked_user = _user()
-    _, tracked = await _with_draft(db, tracked_user)  # a strategy tracked on the system playbook itself (no plan)
-    assert _t06((await check.resolve(db, tracked_user, tracked.id, "ic")).body) == "50"
-    assert _t06_flag((await check.resolve(db, tracked_user, tracked.id, "ic")).body) == []  # 47 < 50: no flag
+    _, tracked = await _with_draft(db, tracked_user)  # a strategy with no plan: ADR-330 (11) watches nothing for it
+    unplanned = await check.resolve(db, tracked_user, tracked.id, "ic")
+    assert (unplanned.source, unplanned.body) == ("none", None)
     audits = await _count(db, AUDIT)
 
     saved = await sys_store.save(db, ADMIN, "ic", _edited(system.body), "  tighter stop  after review ", icv)
@@ -98,9 +98,15 @@ async def test_core_proof_new_version_reaches_the_next_check_copies_and_plans_un
     assert await _count(db, AUDIT) == audits + 1
     action, reason, actor = (await db.execute(LAST_AUDIT)).one()
     assert (action, actor) == (sys_store.AUDIT_SAVED, ADMIN) and "tighter stop after review" in reason
-    # AC-4: the system-tracked strategy checks against 45 at its next check; the copy and the plan keep 50
-    resolved = await check.resolve(db, tracked_user, tracked.id, "ic")
-    assert (resolved.source, _t06(resolved.body)) == ("system", "45")
+    # AC-4 (ADR-330 (11)): the new version reaches the next plan made from the system playbook; the strategy with no
+    # plan stays unwatched; the copy and the plan made before keep 50
+    unplanned = await check.resolve(db, tracked_user, tracked.id, "ic")
+    assert (unplanned.source, unplanned.body) == ("none", None)
+    late_user = _user()
+    _, late = await _with_draft(db, late_user)
+    await pbs.accept_plan(db, late_user, late.id, system.id)
+    resolved = await check.resolve(db, late_user, late.id, "ic")
+    assert (resolved.source, _t06(resolved.body)) == ("plan", "45")
     # (ADR-252: a stop trigger is answered from the stop lines in force, not from the body's value, so with
     # ``stops=None`` T-06 is never flagged; the body value reaching the check is the line above)
     assert _t06_flag(resolved.body) == []
@@ -112,7 +118,11 @@ async def test_core_proof_new_version_reaches_the_next_check_copies_and_plans_un
     restored = await sys_store.restore(db, ADMIN, "ic", icv, "back to the approved numbers", icv + 1)
     assert (restored.version, restored.restored_from, _t06(restored.body)) == (icv + 2, icv, "50")
     assert [v.version for v in await sys_store.history(db, "ic")][:3] == [icv + 2, icv + 1, icv]  # appends only
-    assert _t06((await check.resolve(db, tracked_user, tracked.id, "ic")).body) == "50"
+    again_user = _user()
+    _, again = await _with_draft(db, again_user)
+    await pbs.accept_plan(db, again_user, again.id, system.id)  # a plan made after the restore copies 50 again
+    assert _t06((await check.resolve(db, again_user, again.id, "ic")).body) == "50"
+    assert _t06((await check.resolve(db, late_user, late.id, "ic")).body) == "45"  # the earlier plan is unchanged
     assert (await db.execute(LAST_AUDIT)).one()[0] == sys_store.AUDIT_RESTORED
 
 

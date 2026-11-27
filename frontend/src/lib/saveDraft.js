@@ -1,6 +1,6 @@
 // Save Draft / reopen helpers (W-071; REQ-038 AC-5, ADR-057, ADR-068 item 1, ADR-075, ADR-008). Pure functions.
 // Adapted from the legacy strategy save/load calls only (legacy-reuse row 146): no client P&L, no price fallback.
-import { CONTRACT_UNAVAILABLE, contractName } from '@/lib/displayFormat'
+import { CONTRACT_UNAVAILABLE, contractName, expiryText } from '@/lib/displayFormat'
 // Strings stay strings: a planned entry and a capture time are sent and shown exactly as the API gave them.
 
 /** The Save Draft body. Per leg exactly: contract_id, action, quantity (units = lots x lot size, a count, not money) and,
@@ -51,6 +51,9 @@ export function saveAsName(shown) {
   return `${(original.length > room ? original.slice(0, room).join('').trimEnd() : original.join(''))}${SAVE_AS_SUFFIX}`
 }
 
+/** ADR-330 (19)(b): an alert row's name arrives as `"name" (#172, 1 Dec)`: the trade's number and expiry follow the quoted name. */
+const TRADE_LABEL = /^"(.+)"( \(#\d+(?:, \d{1,2} [A-Z][a-z]{2})?\))$/s
+
 /** The API sends a name as the user's quoted words (ADR-003, template strategy_name_shown): "NIFTY Oct condor" arrives
  *  wrapped in one pair of double quotes. Strips exactly one outer pair for display and for prefilling a name field; inner
  *  quote marks stay ('"say "hi""' -> 'say "hi"'). A value not wrapped in a pair, or empty inside it, is returned as
@@ -58,7 +61,8 @@ export function saveAsName(shown) {
 export function plainName(shown) {
   if (typeof shown !== 'string' || !shown) return null
   if (shown.length >= 3 && shown.startsWith('"') && shown.endsWith('"')) return shown.slice(1, -1)
-  return shown
+  const labelled = TRADE_LABEL.exec(shown) // an alert row's `"name" (#172, 1 Dec)`: the server's label, only the name's quotes go
+  return labelled ? `${labelled[1]}${labelled[2]}` : shown
 }
 
 /** REQ-134 AC-3: rename a saved strategy (PATCH /strategies/{id}/name) with the revision the caller holds. The one rename call for
@@ -80,6 +84,18 @@ export async function renameStrategy(client, id, revision, name) {
 /** The label of a saved strategy row: its name, or `fallback` when the server (an older one) sent none. */
 export function strategyLabel(row, fallback) {
   return plainName(row?.name) ?? fallback
+}
+
+/** ADR-330 (19): the label every strategy LIST shows (My Strategies, Live Strategies, Positions > Paper, Home): the name with the
+ *  trade's number and expiry beside it, 'Short Iron Condor (#172, 1 Dec)', so four strategies of one name can be told apart.
+ *  `expiries` = the expiry dates (ISO text) the reply carries for that strategy; exactly ONE distinct readable date prints it
+ *  (written by the one expiry formatter); none or several print only the number, '(#172)'. A strategy with no name shows the
+ *  caller's `fallback` as is (it already carries the number). Text only, no date arithmetic. */
+export function strategyListLabel({ name, id, expiries = [], fallback }) {
+  const base = plainName(name)
+  if (base === null) return fallback
+  const days = [...new Set((Array.isArray(expiries) ? expiries : [expiries]).map((e) => expiryText(e)).filter((t) => t !== null))]
+  return `${base} (#${id}${days.length === 1 ? `, ${days[0]}` : ''})`
 }
 
 /** REQ-134 AC-4: 'NIFTY 27 Oct 22500 PE and 3 more' from the list row's first_leg and leg_count (Sensibull screen 117).
@@ -192,3 +208,6 @@ export async function draftFromReply(client, body) {
   if (!legs) throw new Error('unreadable draft') // fail closed: the caller keeps what is on screen
   return { legs, id: Number.isInteger(body.id) ? body.id : null, revision: Number.isInteger(body.revision) ? body.revision : null, name: typeof body.name === 'string' ? body.name : null }
 }
+
+/** ADR-330 (34), LR-Q16: the one line under the builder's unsaved-legs bar. Remove with its use when REQ-154 (unsaved strategy kept across a reload) ships. */
+export const UNSAVED_RELOAD_NOTE = 'Unsaved legs are not kept if you reload or close this page. Save to keep them.'

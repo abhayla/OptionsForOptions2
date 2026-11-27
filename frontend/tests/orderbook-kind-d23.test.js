@@ -6,7 +6,7 @@ import PaperBookPanel from '@/components/strategy/PaperBookPanel.vue'
 import { paperKindLabel } from '@/lib/paperDrafts'
 
 const order = (id, side, contract_text, quantity, price_text, kind) => ({
-  id, side, contract_text, quantity, price_text, kind, placed_at: '2026-11-23T05:50:00Z',
+  id, side, contract_text, quantity, lots: quantity / 65, price_text, kind, placed_at: '2026-11-23T05:50:00Z',
 })
 const book = {
   positions: [], closed: [], state: 'LIVE', total_text: '₹0.00',

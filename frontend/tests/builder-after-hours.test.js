@@ -84,6 +84,15 @@ describe('ADR-200: the builder after the close', () => {
     expect(w.text().split(BANNER)).toHaveLength(2) // the banner sentence appears once on the page, nowhere else
   })
 
+  it('ADR-330 (36) (LR-Q18): a trade with a leg first priced after the close prints the server banner text as sent', async () => {
+    const SERVER = 'Market closed. Prices are from 15:30:00; 1 leg as of 15:33:48.'
+    answers['POST /strategies/outcome'] = () => ({ ...afterClose(), closed_prices_text: SERVER })
+    const w = await openBuilder()
+    const banners = w.findAll('[data-testid="market-closed-text"]')
+    expect(banners).toHaveLength(1)
+    expect(banners[0].text()).toBe(SERVER)
+  })
+
   it('no leg reads "not connected" or "stale since" when it has a last price', async () => {
     const w = await openBuilder()
     const text = w.text().toLowerCase()

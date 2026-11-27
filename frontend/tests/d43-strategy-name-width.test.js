@@ -29,8 +29,8 @@ describe('D-43: the strategy name keeps its room beside the fixed columns', () =
   it('the row shows the whole name with the whole name as its title', async () => {
     const w = await grid()
     const name = w.get('[data-testid="row-name"]')
-    expect(name.text()).toBe(NAME)
-    expect(name.attributes('title')).toBe(NAME)
+    expect(name.text()).toBe(`${NAME} (#5, 26 Nov)`) // ADR-330 (19): the label carries the number and the expiry
+    expect(name.attributes('title')).toBe(`${NAME} (#5, 26 Nov)`)
   })
 
   it('the Name column has a floor of at least 9.5rem and the Legs column can shrink to nothing', async () => {

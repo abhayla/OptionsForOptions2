@@ -11,9 +11,9 @@
 import { computed, nextTick, onBeforeUnmount, onMounted, ref, watch } from 'vue'
 import { useRoute, useRouter } from 'vue-router'
 import Icon from '@/components/common/Icon.vue'
-import { useToast } from '@/composables/useToast'
+import { showInfo } from '@/lib/infoPopup'
 import { compareAllUrl } from '@/lib/adjustDrawer'
-import { bellCount, dropAlerts, openRecords, readOpportunities, readPaperAlerts, takeAlerts, takeOpportunities } from '@/lib/paperAlerts'
+import { bellCount, dropActive, isLevelWatch, openRecords, readActive, readOpportunities, readStopFired, takeActive, takeOpportunities, takeStopFired } from '@/lib/paperAlerts'
 import { plainName } from '@/lib/saveDraft'
 import { usePaperRefresh } from '@/lib/usePaperRefresh'
 import { ACCOUNT_LABEL, ACCOUNT_MENU_ITEMS, ITEM_DESCRIPTIONS, MEGA_MENUS, MENU_SECTIONS, firstBuiltPath } from '@/router/nav'
@@ -35,30 +35,42 @@ const ITEM_ICONS = {
 
 const route = useRoute()
 const router = useRouter()
-const { showToast } = useToast()
 const total = computed(() => bellCount())
-// IC e2e B4: a new OPEN adjustment record shows one toast; clicking it opens the strategy's compare (suggestion drawer)
-// Issue 8: one toast per trade with a new record, naming the trade and the rule (the server's words) and opening THAT trade's offer
-function announce(fresh) {
-  for (const sid of new Set(fresh.map((r) => r.strategy_id))) {
-    const mine = fresh.filter((r) => r.strategy_id === sid)
+// ADR-330 (3), REQ-170 AC-3: ONE announcer, fed by GET /alerts/active, once per (id, escalated_at): a new alert or a later
+// escalation of the same one; never two pop-ups for one plan stop. D-67 (ADR-326 (5)): the quiet rule is the popup_due of the
+// open adjustment record with the same id (absent record or field = due). An adjustment-rule alert keeps the Open button
+// (IC e2e B4: it opens that trade's compare); the other kinds stay in Active and the bell.
+const isDue = (a) => openRecords.list.find((r) => r.id === a.id)?.popup_due !== false
+function announceActive(fresh) {
+  const line = (a) => [plainName(a.strategy_name), a.text].filter(Boolean).join(': ')
+  const worse = (as) => as.map((a) => a.worse_line).filter(Boolean).map((w) => ` ${w}`).join('')
+  for (const a of fresh.filter((x) => x.kind !== 'adjustment_rule')) showInfo(`${line(a)}${worse([a])}`)
+  // Issue 8: one Open pop-up per trade with a new adjustment-rule alert, naming the trade and every rule (the server's words)
+  const rules = fresh.filter((x) => x.kind === 'adjustment_rule')
+  for (const sid of new Set(rules.map((a) => a.strategy_id))) {
+    const mine = rules.filter((a) => a.strategy_id === sid)
     const ids = openRecords.list.filter((r) => r.strategy_id === sid).map((r) => r.id)
-    const what = [plainName(mine[0].strategy_name), mine.map((r) => r.text).filter(Boolean).join('; ')].filter(Boolean).join(': ')
-    showToast(`New adjustment opportunity${what ? ` - ${what}` : ''}. Open it?`, 'info', { onClick: () => router.push(compareAllUrl(sid, ids)) })
+    const what = [plainName(mine[0].strategy_name), mine.map((a) => a.text).filter(Boolean).join('; ')].filter(Boolean).join(': ')
+    showInfo(`New adjustment opportunity${what ? ` - ${what}` : ''}.${worse(mine)} Open it?`, { onClick: () => router.push(compareAllUrl(sid, ids.length ? ids : mine.map((a) => a.id))) })
   }
 }
-// GC-TP step 7b: the bell's count is the server's unread number, re-read on the paper refresh tick (no timer of its own);
-// IC e2e B4: the open adjustment records are read on that same tick; a failed read of them leaves the paper count alone
+// ADR-330 (4): the bell's count is the server's count of unanswered actionable alerts (GET /alerts/active), re-read on the paper
+// refresh tick (no timer of its own); the open adjustment records are read on that same tick for their pop-up only
 const { refresh: refreshAlerts } = usePaperRefresh({
   key: () => 'alerts',
   read: async () => {
-    const [a, o] = await Promise.allSettled([readPaperAlerts(), readOpportunities()])
-    announce(takeOpportunities(o.status === 'fulfilled' ? o.value : null))
+    const [a, o, f] = await Promise.allSettled([readActive(), readOpportunities(), readStopFired()])
+    // fills the records; the pop-up is announceActive's, except a watched level (never in /alerts/active): ADR-242 (3), once per record id
+    for (const w of takeOpportunities(o.status === 'fulfilled' ? o.value : null).filter(isLevelWatch)) {
+      showInfo([plainName(w.strategy_name), w.text].filter(Boolean).join(': '))
+    }
+    // ADR-330 (3)(b): a fired stop's informational row pops once (never counted, never in the bell); a failed read pops nothing
+    if (f.status === 'fulfilled') for (const r of takeStopFired(f.value)) showInfo([plainName(r.strategy_name), r.text].filter(Boolean).join(': '))
     if (a.status === 'rejected') throw a.reason
     return a.value
   },
-  onData: takeAlerts,
-  onError: dropAlerts,
+  onData: (data) => announceActive(takeActive(data, isDue)),
+  onError: dropActive,
 })
 onMounted(refreshAlerts)
 const header = ref(null)
@@ -133,6 +145,17 @@ function toggleMenu(key) {
 function onToggleClick(e, key) {
   toggleMenu(key)
   if (openKey.value === key && e.detail === 0) focusItem(0)
+}
+// The label is a link to the section's first path; when the page is already there, the click toggles the menu instead
+// of a no-op navigation that would close it. Elsewhere it navigates as before, with the menu closed.
+function onLabelClick(e, key) {
+  if (e.metaKey || e.ctrlKey || e.shiftKey || e.altKey || e.button) return
+  if (route.path === firstBuiltPath(key)) {
+    e.preventDefault()
+    toggleMenu(key)
+  } else {
+    closeMenu()
+  }
 }
 function menuLinks() {
   return panel.value ? [...panel.value.querySelectorAll('[role="menuitem"]')] : []
@@ -265,7 +288,7 @@ onBeforeUnmount(() => {
               class="flex items-center pl-3 text-[15px] leading-5 font-medium"
               :class="activeSection === s.key ? 'text-accent' : 'text-ink hover:text-accent'"
               :data-testid="`nav-${s.key}`"
-              @click="closeMenu()"
+              @click="onLabelClick($event, s.key)"
               >{{ s.label }}</router-link
             >
             <button

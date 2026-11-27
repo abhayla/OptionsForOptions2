@@ -12,6 +12,7 @@ const posts = []
 let inFlight = 0
 let maxInFlight = 0
 let plannedFails = null
+let indicesFails = null
 const leg = (action, instrument, strike_steps) => ({ action, instrument, strike_steps, expiry_slot: 'near', quantity_multiplier: 1 })
 const TEMPLATES = { templates: [
   { id: 'bull_call_spread', name: 'Bull Call Spread', description: 'd', level: 'Beginner', views: ['bullish'], objectives: ['directional'], legs: [leg('BUY', 'CE', 0), leg('SELL', 'CE', 2)] },
@@ -37,7 +38,7 @@ vi.mock('@/services/api', async (importActual) => {
       if (url === '/strategy-templates') return Promise.resolve({ data: TEMPLATES })
       if (url === '/catalogue/NIFTY/expiries') return Promise.resolve({ data: { underlying: 'NIFTY', today: '2026-10-10', expiries: ['2026-10-13'] } })
       if (url.startsWith('/catalogue/NIFTY/contracts')) return Promise.resolve({ data: { underlying: 'NIFTY', contracts: CONTRACTS } })
-      if (url === '/market/indices') return Promise.resolve({ data: { state: 'LIVE', indices: [{ underlying: 'NIFTY', value: '22812.40' }] } })
+      if (url === '/market/indices') return indicesFails ? Promise.reject(indicesFails) : Promise.resolve({ data: { state: 'LIVE', indices: [{ underlying: 'NIFTY', value: '22812.40' }] } })
       return Promise.reject(new Error(url))
     },
     post: (url, body) => {
@@ -71,7 +72,7 @@ async function toResults(w) {
   await new Promise((r) => setTimeout(r, 60))
   await flushPromises()
 }
-beforeEach(() => { posts.length = 0; inFlight = 0; maxInFlight = 0; plannedFails = null })
+beforeEach(() => { posts.length = 0; inFlight = 0; maxInFlight = 0; plannedFails = null; indicesFails = null })
 
 describe('D-38 Create Strategy step 4: requests counted', () => {
   it('asks the planned entries ONCE for the distinct contracts of all cards, then one outcome per card, together', async () => {
@@ -110,5 +111,26 @@ describe('D-38 a step that timed out says so and keeps what was picked', () => {
     expect(err.text()).toContain('took too long')
     expect(w.find('[data-testid="create-strategy"]').attributes('data-step')).toBe('4')
     expect(w.findAll('[data-testid="strategy-card"]').length).toBeGreaterThanOrEqual(2) // the unpriced cards, never wiped
+  })
+})
+
+describe('#745 one error slot per read: a failed read keeps its box only while it is still failed', () => {
+  it('indices timed out while expiries loaded: the box says so; a click that retries and succeeds leaves no box', async () => {
+    indicesFails = { message: 'x', parts: null, status: null, code: 'ECONNABORTED' }
+    const w = await mountPage()
+    await w.find('[data-testid="path-guided"]').trigger('click')
+    await w.find('[data-testid="objective"][data-key="know"]').trigger('click')
+    await flushPromises()
+    await w.find('[data-testid="pick-expiry"]').setValue('2026-10-13')
+    await flushPromises()
+    expect(w.find('[data-testid="create-error"]').text()).toContain('took too long')
+    const btn = w.find('[data-testid="show-strategies"]')
+    expect(btn.attributes('disabled')).toBeUndefined() // still failed: the click is the retry, not a silent dead button
+    indicesFails = null
+    await btn.trigger('click')
+    await new Promise((r) => setTimeout(r, 60))
+    await flushPromises()
+    expect(w.find('[data-testid="create-error"]').exists()).toBe(false)
+    expect(w.findAll('[data-testid="strategy-card"]').length).toBeGreaterThanOrEqual(1)
   })
 })

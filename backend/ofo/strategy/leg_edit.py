@@ -135,6 +135,33 @@ def step_strike(listing: Listing, underlying: str, legs: list[EditLeg], index: i
     return _land(listing, underlying, legs, {index: grid[at]})
 
 
+def change_expiry(listing: Listing, underlying: str, legs: list[EditLeg], index: int | None, expiry: date) -> Moved:
+    """REQ-078 AC-11 (D-48): put one leg (``index``) or every leg (``index`` None) on ``expiry``, keeping strike, type,
+    side and lots. Fail closed (AC-12): a futures leg (nothing moves), or a target expiry that does not list a leg's
+    strike (unlisted, expired or unknown expiry included), refuses the whole change naming that leg; the strike is never
+    rounded to another. A leg already on ``expiry`` stays and is not re-captured. A moved leg is a new contract, so its
+    typed mark goes."""
+    wanted = range(len(legs)) if index is None else (index,)
+    for i in wanted:
+        if legs[i].leg.instrument not in OPTIONS:
+            raise LegEditRefused("leg_edit_expiry_futures")
+    out, moved = list(legs), set()
+    for i in wanted:
+        leg = legs[i].leg
+        if leg.expiry == expiry:
+            continue
+        if leg.strike not in listing.strikes(underlying, expiry, leg.instrument):
+            raise LegEditRefused("leg_edit_expiry_not_listed", strikes=(leg.strike,), kind=leg.instrument,
+                                 expiry=expiry, number=i + 1)
+        # the new contract's own lot size (never the old one's): quantity = lots x the file's lot size (REQ-076 AC-5)
+        lot_size = next(e.contract.lot_size for e in listing.cat.all_entries()
+                        if e.currently_listed and e.contract.name == underlying and e.contract.expiry == expiry
+                        and e.contract.instrument_type == leg.instrument.value and e.contract.strike == leg.strike)
+        out[i] = replace(legs[i], leg=replace(leg, expiry=expiry, quantity=legs[i].lots * lot_size), typed=False)
+        moved.add(i)
+    return Moved(out, frozenset(moved))
+
+
 def leg_steps(listing: Listing, underlying: str, legs: list[EditLeg]) -> dict[int, Decimal]:
     """REQ-078 AC-3: one strike step of each option leg (by index) = the strike gap the instrument file gives for THAT
     leg's own expiry (a calendar's two expiries may list different gaps). An option leg on an expired expiry, or an

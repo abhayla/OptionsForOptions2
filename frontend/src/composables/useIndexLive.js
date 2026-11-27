@@ -125,7 +125,11 @@ export function useIndexAnswer({ url, WebSocketImpl } = {}) {
   // ADR-177: a closed market shows the banner once, never a per-index "stale" word or sentence
   const healthOf = (row) => shownHealth(row?.health, marketClosed())
   const notLive = () => (answer.value !== null && !isLive()) || failed.value
-  return { answer, status, reconnecting, reconnectingText, start, rowFor, shownValue, isLive, notLive, marketClosed, healthOf }
+  // C-12b: the socket stays open while the feed is down; the server then keeps the answer LIVE but marks the row's health
+  // (stale / unavailable / ...). A screen that prints a bare number reads this: live answer AND a row not marked unhealthy.
+  const rowLive = (row) => isLive() && !!row && (row.health == null || row.health === 'available')
+  const rowNotLive = (row) => notLive() || (isLive() && !rowLive(row))
+  return { answer, status, reconnecting, reconnectingText, start, rowFor, shownValue, isLive, notLive, rowLive, rowNotLive, marketClosed, healthOf }
 }
 
 /**

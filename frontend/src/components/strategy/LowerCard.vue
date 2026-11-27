@@ -63,10 +63,10 @@ const show = (v) => (String(v ?? '').trim() || '—')
 
       <section data-column="sd" data-testid="lower-column">
         <h3 class="mb-2 text-sm font-semibold">Standard Deviation</h3>
-        <table v-if="sdRows.length" class="w-full text-sm" data-testid="lower-sd-table">
+        <table v-if="sdRows.length" class="num-table w-full text-sm" data-testid="lower-sd-table">
           <thead>
             <tr class="border-b border-line text-left text-ink-muted">
-              <th scope="col" class="py-1.5 font-medium">SD</th>
+              <th scope="col" class="py-1.5 text-left font-medium">SD</th>
               <th scope="col" class="py-1.5 text-right font-medium">Move</th>
               <th scope="col" class="py-1.5 text-right font-medium">Lower</th>
               <th scope="col" class="py-1.5 text-right font-medium">Upper</th>

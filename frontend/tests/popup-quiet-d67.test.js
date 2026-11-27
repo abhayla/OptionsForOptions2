@@ -2,23 +2,23 @@
 // only for a due record and keeps counting every open record in the bell. Real case 23 Nov 2026: condor C10 (strategy
 // 166, gamma 2.95 % vs 2 %) and C11 (167, tested delta 0.3809 vs 0.35) popped up 1 to 3 minutes after opening.
 import { describe, it, expect, beforeEach } from 'vitest'
-import { openRecords, resetOpenRecords, takeOpportunities, bellCount, resetPaperAlerts } from '@/lib/paperAlerts'
+import { openRecords, resetOpenRecords, takeOpportunities, bellCount, resetActiveAlerts } from '@/lib/paperAlerts'
 
 const rec = (id, due, outcome = 'open') => ({ id, outcome, condition: `rule ${id}`, popup_due: due })
 const reply = (...recs) => ({ groups: [{ group: 'g', strategy_id: 166, strategy_name: 'C10', records: recs }] })
 
 beforeEach(() => {
-  resetPaperAlerts()
+  resetActiveAlerts()
   resetOpenRecords()
 })
 
 describe('the toast waits for the server\'s popup_due', () => {
-  it('a record quiet on a later poll raises nothing, but the bell counts it', () => {
+  it('a record quiet on a later poll raises nothing (the bell is the server count, ADR-330 (4))', () => {
     takeOpportunities(reply())
     const fresh = takeOpportunities(reply(rec(1, false)))
     expect(fresh).toEqual([])
     expect(openRecords.list).toHaveLength(1)
-    expect(bellCount()).toBe(1)
+    expect(bellCount()).toBe(0)
   })
   it('the same record raises exactly once when the server turns it due, and not again', () => {
     takeOpportunities(reply())

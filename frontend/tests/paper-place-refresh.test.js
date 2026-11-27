@@ -10,6 +10,7 @@ import { createMemoryHistory, createRouter } from 'vue-router'
 import StrategyBuilderPage from '@/pages/StrategyBuilderPage.vue'
 import { PAPER_MODE_LABEL, netLegsFromBook } from '@/lib/paperDrafts'
 import REAL from './fixtures/paper-book-63.json'
+import { confirmPaperName, tickNotLive } from './helpers/paperName'
 
 const calls = []
 let answers = {}
@@ -49,7 +50,7 @@ const setup = (id) => {
 const posts = (id) => calls.filter((c) => c.method === 'POST' && c.url === `/paper/strategies/${id}/orders`)
 const router = () => createRouter({ history: createMemoryHistory(), routes: [{ path: '/strategy/builder', component: StrategyBuilderPage }, { path: '/positions/current-positions', component: { template: '<p />' } }] })
 
-// the builder opened on paper strategy 86 (Drafts Mode), then Exit all -> the "Exit paper positions" dialog
+// the builder opened on paper strategy 86 (Drafts Mode), then Exit all -> the "Exit Paper positions" dialog
 async function exitDialog() {
   setup(86)
   const r = router()
@@ -76,9 +77,10 @@ async function firstBasket() {
   await flushPromises()
   await t(w, 'add-to-paper').trigger('click')
   await flushPromises()
+  await confirmPaperName(w)
   return w
 }
-const confirm = async (w) => { await t(w, 'paper-confirm-button').trigger('click'); await flushPromises() }
+const confirm = async (w) => { await tickNotLive(w); await t(w, 'paper-confirm-button').trigger('click'); await flushPromises() }
 const later = async (ms) => { await vi.advanceTimersByTimeAsync(ms); await flushPromises() }
 
 beforeEach(() => vi.useFakeTimers())
@@ -230,11 +232,14 @@ describe('a re-read never lands on another strategy', () => {
 describe('round 2 smaller states', () => {
   it('a "contracts changed" mark left by a poll is cleared once the re-read succeeds', async () => {
     const w = await exitDialog()
-    w.vm.$.setupState.paperContractsChanged = true
-    await flushPromises()
-    expect(t(w, 'book-contracts-changed').exists()).toBe(true)
+    // ADR-328 (4): an Exit dialog never posts while the trade changed elsewhere, so the mark is set after the Confirm's POST has
+    // returned (a poll of the book landing while the re-read is not yet through), then the first re-read is not ready
+    answers['POST /paper/strategies/86/orders'] = () => { w.vm.$.setupState.paperContractsChanged = true; return Promise.resolve({ data: { ...REAL, strategy_id: 86, name: '"IC"' } }) }
+    notReady = 1
     await confirm(w)
-    await later(100)
+    expect(posts(86)).toHaveLength(1)
+    expect(t(w, 'book-contracts-changed').exists()).toBe(true)
+    await later(2000)
     expect(t(w, 'book-contracts-changed').exists()).toBe(false)
   })
 

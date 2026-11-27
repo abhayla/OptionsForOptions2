@@ -25,6 +25,7 @@ from ofo.adjustment import playbook_eval as pe
 from ofo.adjustment import stop_lines as sl
 from ofo.adjustment.playbook_types import SHOWN_NAMES
 from ofo.charges import ChargeRates
+from ofo.checks import pnl_amount as rupee
 from ofo.errors import render
 from ofo.errors.explanations import render_explanation
 from ofo.money import PAISE
@@ -209,7 +210,7 @@ def limit_text(x: pe.LimitNow, reason: Any, percent_stop_checked: bool, target_u
     state (an unknown state, a checked row with nothing to compare) -> None."""
     if x.state not in ("checked", "not_checked", "already_true"):
         return None
-    target, credit = x.trigger_id == "T-07", x.rule_id == sl.CREDIT_RULE
+    target, credit = x.trigger_id == "T-07" or x.rule_id == sl.RUPEE_PROFIT_RULE, x.rule_id == sl.CREDIT_RULE
     if x.state == "not_checked":
         # ADR-305: the Target was emptied for this trade; not "switched off in the rule set"
         if target and target_unset:
@@ -219,7 +220,9 @@ def limit_text(x: pe.LimitNow, reason: Any, percent_stop_checked: bool, target_u
         return None
     pct = x.threshold.normalize()
     money = isinstance(x.amount, Decimal)
-    if target:
+    if x.rule_id in sl.RUPEE_RULES:  # ADR-330 (5): the typed rupee level itself, whole trade, before charges
+        line = render_explanation("limit_target_rupees" if target else "limit_stop_rupees", amount=x.threshold)
+    elif target:
         line = render_explanation("limit_target", pct=pct)
     elif credit:
         line = render_explanation("limit_stop_credit", multiple=pct, amount=x.amount) if money else \
@@ -239,9 +242,21 @@ def limit_text(x: pe.LimitNow, reason: Any, percent_stop_checked: bool, target_u
     return line
 
 
+def target_is_unset(source: str, guards: object) -> bool:
+    """ADR-305: the plan's Target was emptied for this trade (the percent guard is ""), AND no readable rupee target
+    stands in for it (ADR-330 (5): a rupee target save sets the percent guard to "" on purpose)."""
+    if source != "plan" or not isinstance(guards, Mapping) or guards.get("profit_target_pct_of_max_profit") != "":
+        return False
+    raw = guards.get(sl.RUPEE_PROFIT_KEY)
+    try:
+        return not (isinstance(raw, str) and rupee.level_of(raw) is not None)
+    except ValueError:
+        return True
+
+
 def limits_out(limits: tuple[pe.LimitNow, ...], target_unset: bool = False) -> list[dict]:
     """The limits now as the reply states them: numbers in the reply's shown scale, the reason as its catalogue text."""
-    race = any(x.trigger_id == sl.TRIGGER_MAX_LOSS and x.state != "not_checked" for x in limits)
+    race = any(x.trigger_id in (sl.TRIGGER_MAX_LOSS, sl.RUPEE_LOSS_RULE) and x.state != "not_checked" for x in limits)
     out = []
     for x in limits:
         reason = None if x.reason is None else render(x.reason, **dict(x.slots))
@@ -421,6 +436,22 @@ async def current_margin(margin_of: ApproachMargin, tracked: Any, market: Any) -
         return None
 
 
+@dataclass(frozen=True)
+class CheckRun:
+    """One adjustment check as ``run_check`` leaves it: the reply, and the pieces it was built from (None when no
+    evaluation ran: no playbook, or the user's pause is in force). The plan-watch route reads these, never a second
+    evaluation (ADR-008)."""
+
+    out: AdjustmentCheckOut
+    state: pe.StrategyState | None = None
+    ev: pe.Evaluation | None = None
+    body: Mapping | None = None
+    tracked: Any = None
+    market: Any = None
+    spot: Decimal | None = None  # the judged spot; None = no usable spot
+    fresh: bool | None = None  # the prices' health (check.prices_fresh): True fresh, False stale, None unknown
+
+
 @router.get("/api/strategies/{strategy_id}/adjustment-check", response_model=AdjustmentCheckOut)
 async def adjustment_check(  # noqa: PLR0913 - FastAPI dependencies, one per input
         strategy_id: int,
@@ -432,6 +463,15 @@ async def adjustment_check(  # noqa: PLR0913 - FastAPI dependencies, one per inp
         ctx: Annotated[MarketContext | None, Depends(get_market_context)],
         rates: Annotated[ChargeRates | None, Depends(load_charge_rates)],
         prefs: UserPreferences, user_values: UserValuesIn) -> AdjustmentCheckOut:
+    return (await run_check(strategy_id, db=db, user_ref=user_ref, tracked_reader=tracked_reader,
+                            market_reader=market_reader, rest_reader=rest_reader, margin_of=margin_of, ctx=ctx,
+                            rates=rates, prefs=prefs, user_values=user_values)).out
+
+
+async def run_check(  # noqa: PLR0913 - the route's inputs, passed on
+        strategy_id: int, *, db: Any, user_ref: str, tracked_reader: TrackedReader, market_reader: MarketReader,
+        rest_reader: RestSpotReader, margin_of: ApproachMargin, ctx: MarketContext | None,
+        rates: ChargeRates | None, prefs: Any, user_values: Any) -> CheckRun:
     from ofo_app.adjustment_readers import (  # noqa: PLC0415 - imports routes.adjustment
         TrackedExited,
         TrackedUnreadable,
@@ -468,7 +508,8 @@ async def adjustment_check(  # noqa: PLR0913 - FastAPI dependencies, one per inp
         "stage": {"name": None, "index": None}, "withheld": None, "results": []}
     reply["paused"] = await pause_in_force(db, user_ref, strategy_id, market.now)
     if resolved.body is None or reply["paused"] is not None:  # A-38: paused -> shown with its end, not evaluated
-        return AdjustmentCheckOut.model_validate(reply)
+        return CheckRun(AdjustmentCheckOut.model_validate(reply), body=resolved.body, tracked=tracked, market=market,
+                        spot=spot.value if spot.available else None, fresh=check.prices_fresh(ctx))
     # D-36 (c): the reads above are done; give the request's connection back BEFORE the broker is waited on (the next
     # statement below starts a new transaction on a fresh checkout; rows read so far stay readable, no expiry on commit)
     await release_connection(db)
@@ -487,8 +528,7 @@ async def adjustment_check(  # noqa: PLR0913 - FastAPI dependencies, one per inp
     wording = render_explanation("adjust_check_flag_system" if resolved.is_system else "adjust_check_flag_user")
     guards = resolved.body.get("guards")
     # ADR-305: emptied for this trade
-    target_unset = (resolved.source == "plan" and isinstance(guards, Mapping)
-                    and guards.get("profit_target_pct_of_max_profit") == "")
+    target_unset = target_is_unset(resolved.source, guards)
     reply |= {"stage": check.stage_out(ev.stage_name, ev.stage_index),
               "withheld": None if ev.withheld is None else render(ev.withheld),
               "results": [result_out(r, wording, opened, dismissed=dismissed, body=resolved.body,
@@ -498,4 +538,5 @@ async def adjustment_check(  # noqa: PLR0913 - FastAPI dependencies, one per inp
                               | live_fields(r.rule_id, live, fired_at, reply["as_of_text"])
                           for r in shown],
               "limits": limits_out(ev.limits, target_unset)}
-    return AdjustmentCheckOut.model_validate(reply)
+    return CheckRun(AdjustmentCheckOut.model_validate(reply), state, ev, resolved.body, tracked, market,
+                    spot.value if spot.available else None, check.prices_fresh(ctx))

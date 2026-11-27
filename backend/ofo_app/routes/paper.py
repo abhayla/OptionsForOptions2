@@ -23,9 +23,9 @@ The user comes from the session (``current_user_ref``), never from the request.
 from __future__ import annotations
 
 import datetime
-from dataclasses import dataclass
 import logging
 from collections.abc import Mapping, Sequence
+from dataclasses import dataclass
 from decimal import ROUND_HALF_EVEN, Decimal
 from typing import Annotated, Any, Literal, get_args
 
@@ -75,12 +75,17 @@ from ofo.strategy.definition import describe_contract, display_contract
 from ofo.table.model import display_number
 from ofo.timeutil import IST
 from ofo.tracking import paper, paper_decay, paper_greeks, stops
-from ofo.tracking.orderbook import ClosedLeg, NetPosition, PaperOrder, is_typed_price, lifecycles, net_positions
+from ofo.tracking.closing import open_legs_to_close
+from ofo.tracking.orderbook import ClosedLeg, NetPosition, PaperOrder, is_typed_price, net_positions
 from ofo.tracking.paper_alert import restore_alert_body, restore_order_reason, settle_history_body
 from pydantic import AwareDatetime, BaseModel, ConfigDict, Field, field_validator
 
 from ofo_app import (
+    alert_title,
     held_entry_store,
+    market_read,
+    may_act,
+    paper_exit,
     paper_limit,
     paper_monitor,
     paper_store,
@@ -103,6 +108,7 @@ from ofo_app.paper_reasons import (
 )
 from ofo_app.routes.adjustment import TrackedReader, get_tracked_reader
 from ofo_app.routes.broker import current_user_ref
+from ofo_app.routes.catalogue import get_shown_date
 from ofo_app.routes.outcome import (
     AnswerClock,
     MarketContext,
@@ -114,9 +120,11 @@ from ofo_app.routes.outcome import (
 from ofo_app.routes.planned_entry import get_live_feed
 from ofo_app.routes.strategies import StrategyRefused, refused_answer
 from ofo_app.scenario_guard import guard_paper_order
+from ofo_app.strategy_money import strategy_money_view
 from ofo_app.underlying import Underlying
 
 _LOG = logging.getLogger(__name__)
+_UNREADABLE = may_act.TRIGGER_PRICE_UNREADABLE  # ADR-327 (2)
 
 router = APIRouter(route_class=ClosedRoute)
 #: REQ-163 AC-1: a basket naming a suggestion record it may not link (the opportunities routes' own answers)
@@ -213,7 +221,8 @@ class PaperClosedOut(ApiModel):
     average_entry: Money
     average_entry_text: CatalogueText
     average_exit: Money  # 0.00 for an option that expired worthless (settled)
-    average_exit_text: CatalogueText
+    average_exit_text: CatalogueText  # "174.73 (avg of 2)" when over more than one exit (N-28, ADR-330 (27))
+    exit_fills: int  # how many exit orders the average exit is over; the Orderbook keeps each fill
     booked: Money
     booked_text: CatalogueText
     opened_at: datetime.datetime
@@ -247,6 +256,9 @@ class PaperOrderOut(ApiModel):
     contract_id: int
     contract_text: CatalogueText
     quantity: int
+    #: ADR-330 (23): quantity in lots, units / the contract's catalogue lot size (as the Net Positions lots); None when
+    #: the units are not whole lots or the lot size is not positive. The browser never divides.
+    lots: int | None
     price: Money
     price_text: CatalogueText
     kind: Literal["open", "add", "exit", "settle", "stop"]
@@ -469,6 +481,9 @@ class PaperTotalsOut(ApiModel):
     # D-40 (ADR-324): strategies whose open contract has expired are left out of every figure above, and counted here
     left_out_count: int = 0
     left_out_text: CatalogueText | None = None
+    # P11 (ADR-330 (10)): how many closed strategies the figures include (the screen prints closed_text)
+    closed_count: int = 0
+    closed_text: CatalogueText | None = None
 
 
 class PaperTodayOut(PaperTotalsOut):
@@ -484,6 +499,8 @@ class PaperListOut(ApiModel):
     totals: PaperTotalsOut
     today: PaperTodayOut | None = None
     answered_at: datetime.datetime
+    # the server's shown date: a list label leaves the year off inside this year (ADR-330 (19))
+    shown_date: datetime.date
 
 
 def _connected(ctx: MarketContext | None) -> bool:
@@ -565,6 +582,9 @@ def _identity(found: tracked_contracts.TrackedContract) -> tuple[str, Instrument
     return contract.name, instrument, strike, contract.expiry
 
 
+identity_of = _identity  # the public name other routes import (plan_watch.py)
+
+
 def _exact(value: Decimal | None) -> Decimal | None:
     """The engine's exact value; a value that is a whole number of paise goes out with its two decimals."""
     if value is None:
@@ -602,6 +622,13 @@ def _closing_reasons(orders: Sequence[paper_store.StoredOrder]) -> dict[tuple[in
             if o.order.kind in ("stop", "settle") and o.order.reason}
 
 
+def _exit_text(exit_: Decimal, fills: int) -> Any:
+    """N-28 (ADR-330 (27)): the bare price for one exit, "174.73 (avg of 2)" for an average over several exits."""
+    if fills <= 1:
+        return price_text(exit_)
+    return render_explanation("closed_exit_average", value=exit_, count=fills)
+
+
 def _closed_row(leg: ClosedLeg, found: tracked_contracts.TrackedContract, reason: str | None = None) -> dict:
     underlying, instrument, strike, expiry = _identity(found)
     lot = found.stored.listed.contract.lot_size
@@ -613,7 +640,7 @@ def _closed_row(leg: ClosedLeg, found: tracked_contracts.TrackedContract, reason
             "quantity": leg.quantity, "lot_size": lot,
             "lots": leg.quantity // lot if is_lot_aligned(leg.quantity, lot) else None,
             "average_entry": entry, "average_entry_text": price_text(entry),
-            "average_exit": exit_, "average_exit_text": price_text(exit_),
+            "average_exit": exit_, "average_exit_text": _exit_text(exit_, leg.exit_fills), "exit_fills": leg.exit_fills,
             "booked": _exact(leg.booked), "booked_text": _signed(leg.booked),
             "opened_at": leg.opened_at, "closed_at": leg.closed_at, "reason_text": restore_order_reason(reason)}
 
@@ -654,8 +681,7 @@ def _book_day(snapshot: Any, answered_at: datetime.datetime) -> datetime.date:
 def _figures(orders: Sequence[paper_store.StoredOrder], found: dict[int, tracked_contracts.TrackedContract],
              prices: dict[int, paper.Price], connected: bool, today: datetime.date | None = None) -> dict:
     """The strategy's figures from the one engine at the live prices of its open contracts."""
-    live = {str(cid): p.price for cid, p in prices.items() if paper.is_live(p) and p.price is not None}
-    view = lifecycles(_paper(orders), live)  # D-10: the net_positions totals, split at every flat point
+    view = strategy_money_view(_paper(orders), prices).lifecycle()  # D-10: the book's totals, split at every flat point
     positions = [_position(p, found[int(p.instrument_id)], prices.get(int(p.instrument_id))) for p in view.positions]
     why = _closing_reasons(orders)
     closed = [_closed_row(leg, found[int(leg.instrument_id)], why.get((int(leg.instrument_id), leg.closed_at)))
@@ -707,9 +733,9 @@ def _extremes(orders: Sequence[paper_store.StoredOrder], found: dict[int, tracke
     has no after total (ADR-306 (6): never a gross range beside a net maximum). ``today`` = the trade's nearest open
     expiry (ADR-320 (2), D-14): the "If held to expiry" pair (``max_profit_hold`` / ``profit_left_hold``) is served
     beside the usual figures, which are the "If exited now" pair; other days it is absent."""
-    live = {str(cid): p.price for cid, p in prices.items() if paper.is_live(p) and p.price is not None}
+    money = strategy_money_view(_paper(orders), prices)
+    live, view = money.live, money.book
     terms = terms_of(orders, found)
-    view = net_positions(_paper(orders), live)
     paid = paid_exact_of(orders, found, underlying, rates)  # ADR-263: the charges really paid on every filled order
     got = max_after_charges(view, terms, live, underlying, rates, paid) if paid is not None else \
         book_extremes(view, terms, live)  # unpriced: before charges, and says so
@@ -845,8 +871,11 @@ def _order_rows(orders: Sequence[paper_store.StoredOrder], found: dict[int, trac
     rows = []
     for stored in orders:
         o = stored.order
+        identity = _identity(found[o.contract_id])  # refuses a contract with no stored row
+        lot = found[o.contract_id].stored.listed.contract.lot_size
+        lots = o.quantity // lot if lot > 0 and is_lot_aligned(o.quantity, lot) else None  # ADR-330 (23)
         rows.append({"id": stored.id, "placed_at": o.placed_at, "side": o.side, "contract_id": o.contract_id,
-                     "contract_text": describe_contract(_identity(found[o.contract_id])), "quantity": o.quantity,
+                     "contract_text": describe_contract(identity), "quantity": o.quantity, "lots": lots,
                      "price": o.price, "price_text": price_text(o.price), "kind": o.kind,
                      "reason_text": restore_order_reason(o.reason)})
     return rows
@@ -941,8 +970,8 @@ def left_fields(got: AfterSplit) -> dict:
 
 def _after(orders: Sequence[paper_store.StoredOrder], found: dict[int, tracked_contracts.TrackedContract],  # noqa: PLR0913
            prices: dict[int, paper.Price], charges: dict, underlying: str, rates: ChargeRates | None) -> dict:
-    live = {str(cid): p.price for cid, p in prices.items() if paper.is_live(p) and p.price is not None}
-    view = net_positions(_paper(orders), live)
+    money = strategy_money_view(_paper(orders), prices)
+    live, view = money.live, money.book
     terms = terms_of(orders, found)
     got = after_charges(view, terms, live, charges["charges"], charges["charges_reason"], underlying, rates)
     split = after_split(view, terms, live, underlying, rates, got, paid_exact_of(orders, found, underlying, rates))
@@ -1001,7 +1030,8 @@ async def list_paper_strategies(db: Annotated[Any, Depends(get_db)],  # noqa: PL
                                 ctx: Annotated[MarketContext | None, Depends(get_market_context)],
                                 feed: Annotated[LiveFeed | None, Depends(get_live_feed)],
                                 now: Annotated[AnswerClock, Depends(get_answer_clock)],
-                                rates: Annotated[ChargeRates | None, Depends(load_charge_rates)]) -> PaperListOut:
+                                rates: Annotated[ChargeRates | None, Depends(load_charge_rates)],
+                                shown_date: Annotated[datetime.date, Depends(get_shown_date)]) -> PaperListOut:
     """Every paper strategy of the signed-in user, newest first: fixed cost whatever the count (finding F-3): one orders
     query, one contract batch (two queries) and ONE market read per underlying for every open contract together."""
     books = await paper_store.load_all(db, user_ref)
@@ -1035,12 +1065,16 @@ async def list_paper_strategies(db: Annotated[Any, Depends(get_db)],  # noqa: PL
                               "held": _held_out(held_rows.get(b.strategy_id)),
                               "status_word": _paper_word(b.status, figures["positions"]),
                               "open_count": open_legs, "position_count": len(figures["positions"])})
-    kept = [i for i, s in enumerate(out) if not _expired_open(s)]  # D-40: the strategies that can be priced
-    totals = _totals([out[i] for i in kept], [decays[i] for i in kept], len(out) - len(kept))
+    live = [i for i, s in enumerate(out) if not _expired_open(s)]  # D-40: not expired
+    kept = _priced(live, [out[i] for i in live])  # AC-R06 (ADR-324): the strategies that can be priced
+    expired = len(out) - len(live)
+    totals = _totals([out[i] for i in kept], [decays[i] for i in kept], expired, len(live) - len(kept),
+                     sum(1 for s in out if s["open_count"] == 0 or s["state"] == "EXITED"))  # ADR-330 (15)
     sorted_books = sorted(books, key=_newest_first, reverse=True)
     day = today_day([snapshots.get(b.underlying) for b in sorted_books], answered)
-    today = today_totals([_today_item(out[i], decays[i], sorted_books[i]) for i in kept], day)
-    return PaperListOut.model_validate({"strategies": out, "totals": totals, "today": today, "answered_at": now()})
+    today = today_totals([_today_item(out[i], decays[i], sorted_books[i]) for i in live], day)
+    return PaperListOut.model_validate({"strategies": out, "totals": totals, "today": today, "answered_at": now(),
+                                       "shown_date": shown_date})
 
 
 async def settle_line_after_close(db: Any, now: datetime.datetime, figures: Mapping[str, Any]) -> dict[str, Any]:
@@ -1118,8 +1152,21 @@ def _decay(figures: dict, found: dict[int, tracked_contracts.TrackedContract], s
     return paper_decay.book_decay(snapshot, underlying, contracts)
 
 
-def _totals(strategies: Sequence[dict], decays: Sequence[paper_decay.Decay], left_out: int = 0) -> dict:
-    """The exact sums over every strategy that can be priced (the ``left_out`` expired ones are only counted).
+def _priced(keys: Sequence[Any], strategies: Sequence[Mapping[str, Any]]) -> list[Any]:
+    """AC-R06 / N-46 (ADR-324 (1) to (3)): the members of ``keys`` (parallel to ``strategies``) that CAN be priced, i.e.
+    whose unbooked figure is present (a fully exited or settled book is). A strategy with no live price never pauses
+    the whole total: it is left out and counted. When NONE can be priced the figure stays absent with its reason
+    (every member kept), as before."""
+    priced = [(k, s) for k, s in zip(keys, strategies, strict=True) if s["unbooked"] is not None]
+    # a fully exited book needs no price, so it alone does not make the others "unpriceable": at least one book with an
+    # open leg must be priced, else every member stays and the figure is absent with its reason
+    return [k for k, _ in priced] if any(s["open_count"] for _, s in priced) else list(keys)
+
+
+def _totals(strategies: Sequence[dict], decays: Sequence[paper_decay.Decay], expired: int = 0,
+            unpriced: int = 0, closed: int = 0) -> dict:
+    """The exact sums over every strategy that can be priced (the ``expired`` and ``unpriced`` ones left out are only
+    counted, in one line). ``closed`` is the number of closed strategies the whole-paper total keeps (ADR-330 (15)).
     Unbooked and total are absent with the first absent strategy's reason, and Decay with the first absent book's
     reason: never a partial sum shown as a total (REQ-109 AC-5)."""
     got = book_totals([(s["booked"], s["unbooked"]) for s in strategies], [d.value for d in decays])
@@ -1135,7 +1182,8 @@ def _totals(strategies: Sequence[dict], decays: Sequence[paper_decay.Decay], lef
             "totals_reason": totals_reason, "totals_reason_text": reason_text(totals_reason),
             "decay": decay, "decay_text": _signed(decay), "decay_reason": decay_reason,
             "decay_reason_text": reason_text(decay_reason),
-            "left_out_count": left_out, "left_out_text": _left_out_text(left_out),
+            "left_out_count": expired + unpriced, "left_out_text": _left_out_text(expired, unpriced),
+            "closed_count": closed, "closed_text": _closed_text(closed),
             **_charges_total(strategies), **_after_total(strategies)}
 
 
@@ -1171,15 +1219,31 @@ def today_totals(items: Sequence[TodayItem], day: datetime.date) -> dict:
     def on_day(at: datetime.datetime | None) -> bool:
         return at is not None and at.astimezone(paper.IST).date() == day
     chosen = [x for x in items if x.scenario_id is None and (on_day(x.opened) or on_day(x.closed))]
-    out = _totals([x.figures for x in chosen], [x.decay for x in chosen])
+    kept = _priced(chosen, [x.figures for x in chosen])  # AC-R06: the same rule as the header (ADR-324 (1) to (3))
+    out = _totals([x.figures for x in kept], [x.decay for x in kept], 0, len(chosen) - len(kept))
     return out | {"count": len(chosen), "empty_text": None if chosen else render_explanation("paper_today_none")}
 
 
-def _left_out_text(count: int) -> Any:
+def _left_out_text(expired: int, unpriced: int) -> Any:
+    """The count line of the header (ADR-324 (1)): the reason is expiry, no live price, or both."""
+    count = expired + unpriced
     if count == 0:
         return None
-    return render_explanation("paper_totals_left_out_one") if count == 1 else render_explanation(
-        "paper_totals_left_out_many", count=count)
+    if expired and unpriced:
+        return render_explanation("paper_totals_left_out_mixed", count=count)
+    if expired:
+        return render_explanation("paper_totals_left_out_one") if count == 1 else render_explanation(
+            "paper_totals_left_out_many", count=count)
+    return render_explanation("paper_totals_left_out_unpriced_one") if count == 1 else render_explanation(
+        "paper_totals_left_out_unpriced_many", count=count)
+
+
+def _closed_text(count: int) -> Any:
+    """P11: the sentence saying how many closed strategies the Paper totals include; absent when none."""
+    if count == 0:
+        return None
+    return render_explanation("paper_totals_closed_one") if count == 1 else render_explanation(
+        "paper_totals_closed_many", count=count)
 
 
 def _after_total(strategies: Sequence[dict]) -> dict:
@@ -1227,23 +1291,16 @@ async def _server_exit_prices(ctx: MarketContext | None, feed: LiveFeed | None, 
     tracking_not_connected; a contract not live (token reassigned, delisted, retired, missing) ->
     tracking_exit_contract_not_live; a leg with no live price (missing, failed read) ->
     tracking_exit_prices_not_live; nothing is written on any refusal. The browser's price is never used."""
-    from ofo_app.routes.tracking import _snapshot  # noqa: PLC0415 - the exit route's own market read
     exits = [(i, state[o.contract_id]) for i, o in enumerate(orders) if o.kind == "exit"]
     if not exits:
         return {}
-    if ctx is None:
-        raise StrategyRefused("tracking_not_connected", Failure.CONFLICT)
-    if any(c.feed_key is None for _, c in exits):  # never priced from another contract's quote (token reused etc.)
-        raise StrategyRefused("tracking_exit_contract_not_live", Failure.CONFLICT)
-    try:
-        snapshot = await _snapshot(ctx, feed, underlying, sorted({c.feed_key for _, c in exits}))  # type: ignore[type-var]
-        prices = {i: paper.leg_price(snapshot, c.feed_key) for i, c in exits}  # type: ignore[arg-type]
-    except Exception:  # noqa: BLE001 - any failed read is "no price": refused by name, nothing written
-        _LOG.exception("paper exit price read failed")
-        raise StrategyRefused("tracking_exit_prices_not_live", Failure.CONFLICT) from None
-    if not all(paper.is_live(p) and p.price is not None for p in prices.values()):
-        raise StrategyRefused("tracking_exit_prices_not_live", Failure.CONFLICT)
-    return {i: p.price for i, p in prices.items()}  # type: ignore[misc] - priced: price set
+    keys = [c.feed_key for _, c in exits]
+    # the one live exit read (paper_exit.live_exit_prices): the refusals and their order are the ones named above
+    live = await paper_exit.live_exit_prices(
+        ctx, feed, underlying, [None] if None in keys else sorted(set(keys)))  # type: ignore[type-var]
+    if isinstance(live, may_act.Refused):
+        may_act.require(live)
+    return {i: live[c.feed_key].price for i, c in exits}  # type: ignore[index, misc] - priced: price set
 
 
 async def entry_facts(ctx: MarketContext | None, underlying: str, orders: Sequence[Any],
@@ -1334,7 +1391,7 @@ async def place_paper_orders(strategy_id: int, body: PaperOrdersIn,  # noqa: PLR
     if body.approach_id is not None:  # ADR-326 (1): the offer's own build path decides, before any price read
         await _refuse_take_profit_at_loss(db, user_ref, strategy_id, body.approach_id, ctx, rates, tracked_reader)
     placed_at = now()
-    paper_limit.refuse_when_closed(ctx, placed_at)  # ADR-212: before any price read
+    may_act.refuse_unless_allowed(ctx, "place", placed_at)  # ADR-212: before any price read
     exit_prices = await _server_exit_prices(ctx, feed, stored.saved.definition.underlying, body.orders, state)
     # only a strategy with no paper order yet can be at its first fill (a book never shrinks): a later fill reads no IV
     first = not await paper_store.tracked_ids(db, [strategy_id])
@@ -1388,13 +1445,31 @@ def _exit_risk_answer(state: Literal["yes", "no", "cannot_tell"]) -> ExitRiskOut
     return ExitRiskOut(state=state, max_loss_before=None, max_loss_after=None, warning_text=None)
 
 
-def _exit_warning(risk: ExitRisk, names: Mapping[str, Any]) -> ExitRiskOut:
+def _stop_line(before: Decimal, after: Decimal | str) -> str:
+    """ADR-330 (6): "If this stop fires, max loss becomes Rs X (now Rs Y)." A figure is negative for a loss; a figure
+    that is >= 0 is a profit and has its own sentence (never abs). Unlimited after: no fixed maximum."""
+    if after == "unlimited":
+        return (render_explanation("paper_leg_stop_unlimited_from_profit", before=before) if before >= 0
+                else render_explanation("paper_leg_stop_unlimited_loss", before=-before))
+    figure = Decimal(after)
+    if before >= 0 and figure >= 0:
+        return render_explanation("paper_leg_stop_still_profit", before=before, after=figure)
+    if before >= 0:
+        return render_explanation("paper_leg_stop_from_profit", before=before, after=-figure)
+    if figure >= 0:
+        return render_explanation("paper_leg_stop_to_profit", before=-before, after=figure)
+    return render_explanation("paper_leg_stop_widens_loss", before=-before, after=-figure)
+
+
+def _exit_warning(risk: ExitRisk, names: Mapping[str, Any], leg_stop: bool = False) -> ExitRiskOut:
     """The yes answer says only what is known: the Max Loss figures (the catalogue's "No fixed maximum" when unlimited)
-    when the engine gave them, and the sold legs left with less cover. Nothing known to say -> cannot_tell."""
+    when the engine gave them, and the sold legs left with less cover. Nothing known to say -> cannot_tell.
+    ``leg_stop``: the figures are worded as the leg-stop line (ADR-330 (6)) instead of the exit confirmation's."""
     (before, before_text), (after, after_text) = _extreme(risk.max_loss_before), _extreme(risk.max_loss_after)
     lines = []
     if before is not None and after is not None:
-        lines.append(render_explanation("paper_exit_widens_loss", before=before_text, after=after_text))
+        lines.append(_stop_line(before, after) if leg_stop else render_explanation(
+            "paper_exit_widens_loss", before=before_text, after=after_text))
     if risk.exposed:
         legs_text = names[risk.exposed[0]]
         for other in risk.exposed[1:]:
@@ -1448,6 +1523,86 @@ async def paper_exit_risk(strategy_id: int, orders: Annotated[str, Query(max_len
     except ValueError:
         return _exit_risk_answer("cannot_tell")
     risk = exit_risk(_paper(booked), legs, terms, priced=len(prices) == exits)
+    if risk.state != "yes":
+        return _exit_risk_answer(risk.state)
+    return _exit_warning(risk, names)
+
+
+@router.get("/paper/strategies/{strategy_id}/leg-stop-risk", response_model=ExitRiskOut)
+async def paper_leg_stop_risk(strategy_id: int, contract_id: Annotated[int, Query(gt=0, le=INTEGER_MAX)],  # noqa: PLR0913
+                              level: Annotated[Decimal, Query(allow_inf_nan=False)],
+                              db: Annotated[Any, Depends(get_db)], user_ref: Annotated[str, Depends(current_user_ref)],
+                              now: Annotated[AnswerClock, Depends(get_answer_clock)]) -> ExitRiskOut:
+    """ADR-330 (6), read only, nothing stored, never blocks a save: what the book becomes if a stop on ``contract_id``
+    fires at ``level``. The one-leg exit (the whole open quantity, the opposite side) is priced AT THE LEVEL, a given
+    price and never a live read, and judged by the same ``exit_risk`` as the exit confirmation. Answer states: stated
+    (yes, with the line) / no (proven not wider) / cannot_tell (the engine could not judge: no figure); another user's
+    or a missing strategy -> 404; a level that is not above 0 and a multiple of 0.05, or a contract not open -> the
+    save's own refusals (paper_trigger_level_invalid, paper_trigger_leg_not_open)."""
+    stored = await _load_strategy(db, user_ref, strategy_id)
+    if not is_typed_price(level):
+        raise StrategyRefused("paper_trigger_level_invalid")
+    booked = await paper_store.load(db, strategy_id)
+    held = {p.instrument_id: p.net_quantity for p in net_positions(_paper(booked), {}).positions} if booked else {}
+    if held.get(str(contract_id), 0) == 0:
+        raise StrategyRefused("paper_trigger_leg_not_open")
+    names, terms = await names_and_terms(db, stored.saved.definition.underlying, booked)
+    net = held[str(contract_id)]  # the open quantity (signed); a key, not reply text
+    return leg_stop_answer(booked, net, contract_id, level, names, terms, now())
+
+
+async def names_and_terms(db: Any, underlying: str, booked: Sequence[Any]) -> tuple[dict[str, Any], dict[str, Any]]:
+    """The shown name and engine terms of every contract the book holds (one reader for the routes and the monitor)."""
+    found = {c.contract_id: c for c in await tracked_contracts.resolve(
+        db, sorted({o.order.contract_id for o in booked}))}
+    names: dict[str, Any] = {}
+    terms: dict[str, Any] = {}
+    for cid, one in found.items():
+        if one.stored is not None:
+            _, instrument, strike, expiry = _identity(one)
+            names[str(cid)] = describe_contract((underlying, instrument, strike, expiry))
+            terms[str(cid)] = ContractTerms(instrument, strike, expiry)
+    return names, terms
+
+
+def leg_stop_answer(booked: Sequence[Any], net: int, contract_id: int, level: Decimal,  # noqa: PLR0913
+                     names: Mapping[str, Any], terms: Mapping[str, Any], at: datetime.datetime) -> ExitRiskOut:
+    """THE ADR-330 (6) answer for one leg stop (the route and the monitor's fired-stop message both call this, so the
+    figure is computed one way): the one-leg exit of the whole open quantity ``net`` at ``level``."""
+    # the close's side and quantity from the exit door's own rule (G2: no side flipped outside it); no order is built
+    close = open_legs_to_close({str(contract_id): net})[0]
+    try:
+        leg = PaperOrder(str(close.key), close.side, close.quantity, level, "exit", at)
+    except ValueError:
+        return _exit_risk_answer("cannot_tell")
+    risk = exit_risk(_paper(booked), [leg], terms, priced=True)
+    if risk.state == "cannot_tell":
+        return _exit_risk_answer("cannot_tell")
+    # ADR-330 (6) has no threshold: the line shows whenever the engine prices both figures (ADR-256's "more than double"
+    # is the exit confirmation's rule, whose figures exit_risk hides below it), so read the same engine's figures here
+    try:
+        loss0 = book_extremes(net_positions(_paper(booked), {}), terms, {}).max_loss
+        loss1 = book_extremes(net_positions([*_paper(booked), leg], {}), terms, {}).max_loss
+    except (ValueError, KeyError):
+        loss0 = loss1 = None
+    if isinstance(loss0, Decimal) and (loss1 is UNLIMITED or isinstance(loss1, Decimal)):
+        risk = ExitRisk("yes", loss0, loss1, risk.exposed)
+    elif risk.state != "yes":
+        return _exit_risk_answer(risk.state)
+    return _exit_warning(risk, names, leg_stop=True)
+
+
+def index_exit_answer(booked: Sequence[Any], exits: Mapping[int, Decimal], terms: Mapping[str, Any],
+                      names: Mapping[str, Any], at: datetime.datetime) -> ExitRiskOut:
+    """The same exit_risk / _exit_warning the exit confirmation uses, for an index exit that closes every open leg
+    (``exits``: contract id -> the fill price). The confirmation's own rule: a line only when the engine says yes."""
+    held = {p.instrument_id: p.net_quantity for p in net_positions(_paper(booked), {}).positions}
+    try:
+        legs = [PaperOrder(str(c.key), c.side, c.quantity, exits[int(c.key)], "exit", at)
+                for c in open_legs_to_close({str(c): held[str(c)] for c in sorted(exits)})]
+    except (ValueError, KeyError):
+        return _exit_risk_answer("cannot_tell")
+    risk = exit_risk(_paper(booked), legs, terms, priced=True)
     if risk.state != "yes":
         return _exit_risk_answer(risk.state)
     return _exit_warning(risk, names)
@@ -1655,49 +1810,76 @@ def _new_triggers(body: TriggerIn, underlying: str, open_ids: Sequence[int]) -> 
     return new
 
 
-async def _already_crossed(db: Any, ctx: MarketContext | None, underlying: str,
-                           new: Sequence[paper_trigger_store.NewTrigger]) -> str | None:
-    """ADR-317 (1): the refusal code when the live price the monitor would compare against has already crossed a new
-    level (the same ``stops.crossed``: at the level counts). Answer states: no market context, the market closed, a
-    read that fails, or a price that is not live -> None (saved, arms at the next live tick: REQ-109 AC-8)."""
-    if ctx is None:
+async def check_trigger_levels(db: Any, ctx: MarketContext | None, feed: LiveFeed | None, underlying: str,  # noqa: PLR0913
+                               new: Sequence[paper_trigger_store.NewTrigger], now: AnswerClock,
+                               wait: market_read.Wait = market_read.DEFAULT_WAIT) -> str | None:
+    """The refusal template id when a new level cannot be saved, else None (ADR-317 (1), ADR-327), judged on the ONE
+    price door ``market_read.read_market`` (the same price the monitor compares with: ``stops.crossed``, at the level
+    counts; a conditional exit on the index, a leg stop only on its own contract's price).
+    Answer states: market closed (the calendar, ``market_state``; no context uses ``now()``) -> None, saved, arms at the
+    next live tick (ADR-327 (3)); market open and no context, a leg with no feed key, a read that raises, or a price not
+    live after asking the feed and waiting up to 3 s (stale, missing) -> ``paper_trigger_price_unreadable`` (ADR-327
+    (2)); a live price at or beyond a level -> ``paper_trigger_already_crossed`` / ``paper_trigger_leg_already_crossed``
+    (a crossed level is reported before an unreadable one: the trader can act on it)."""
+    if not may_act.market_open(ctx, now() if ctx is None else ctx.clock()):
         return None
+    if ctx is None:
+        return _UNREADABLE
     keys = {c.contract_id: c.feed_key for c in await tracked_contracts.resolve(
         db, sorted({n.contract_id for n in new if n.contract_id is not None}))}
+    leg_keys = [keys.get(n.contract_id) for n in new if n.contract_id is not None]
+    if any(k is None for k in leg_keys):
+        return _UNREADABLE  # no feed key = no live leg price to check against (never the index)
     try:
-        snapshot = read_snapshot(ctx.provider, underlying, sorted({k for k in keys.values() if k is not None}),
-                                 ctx.clock(), ctx.rate, feed_scope(ctx), quality=ctx.forward_quality)
-        if snapshot.market_closed:
-            return None
-        for n in new:
-            if n.contract_id is None:
-                price = paper.price_of(snapshot.spot, underlying)  # a conditional exit is judged on the index
-            elif keys.get(n.contract_id):
-                price = paper.leg_price(snapshot, keys[n.contract_id])  # a leg stop only on its own contract's price
-            else:
-                continue  # no feed key = no live leg price: saved, armed at the next live tick (never the index)
-            if stops.crossed(stops.Trigger(0, 0, n.kind, n.direction, n.level, n.contract_id, n.underlying),  # type: ignore[arg-type]
-                             price):
-                return "paper_trigger_already_crossed" if n.contract_id is None else "paper_trigger_leg_already_crossed"
-    except Exception:  # noqa: BLE001 - any failed read is "no price": the trigger is saved as before
+        read = await market_read.read_market(ctx, feed, underlying, sorted({k for k in leg_keys if k is not None}),
+                                             any(n.contract_id is None for n in new), "trigger_check", wait=wait)
+        return _judge_levels(new, read, keys)
+    except Exception:  # noqa: BLE001 - a read that fails is "cannot be checked": refused in market hours (ADR-327)
         _LOG.exception("paper trigger price read failed")
-    return None
+        return _UNREADABLE
+
+
+def _judge_levels(new: Sequence[paper_trigger_store.NewTrigger], read: market_read.MarketRead,
+                  keys: Mapping[int, str | None]) -> str | None:
+    if read.market_closed:
+        return None
+    states: list[str] = []
+    for n in new:
+        answer = read.index if n.contract_id is None else read.legs[keys[n.contract_id]]  # type: ignore[index]
+        states.append(may_act.MISSING if answer is None else answer.state)
+        if answer is not None and answer.state == paper.LIVE and stops.crossed(
+                stops.Trigger(0, 0, n.kind, n.direction, n.level, n.contract_id, n.underlying),  # type: ignore[arg-type]
+                market_read.live_price(answer)):
+            return "paper_trigger_already_crossed" if n.contract_id is None else "paper_trigger_leg_already_crossed"
+    decision = may_act.prices_ok("set_trigger", states)
+    return decision.reason if isinstance(decision, may_act.Refused) else None
+
+
+async def _validated_triggers(db: Any, strategy_id: int, body: TriggerIn,
+                              underlying: str) -> list[paper_trigger_store.NewTrigger]:
+    open_ids = _open_ids(await paper_store.load(db, strategy_id))
+    if not open_ids:
+        raise StrategyRefused("paper_trigger_nothing_open")
+    return _new_triggers(body, underlying, open_ids)
 
 
 @router.post("/paper/strategies/{strategy_id}/triggers", status_code=201, response_model=TriggersOut,
              dependencies=[Depends(guard_paper_order)])  # IC e2e 5: scenario mode = own scenario only
-async def add_paper_triggers(strategy_id: int, body: TriggerIn, db: Annotated[Any, Depends(get_db)],
+async def add_paper_triggers(strategy_id: int, body: TriggerIn, db: Annotated[Any, Depends(get_db)],  # noqa: PLR0913
                              user_ref: Annotated[str, Depends(current_user_ref)],
-                             ctx: Annotated[MarketContext | None, Depends(get_market_context)]) -> TriggersOut:
+                             ctx: Annotated[MarketContext | None, Depends(get_market_context)],
+                             feed: Annotated[LiveFeed | None, Depends(get_live_feed)],
+                             now: Annotated[AnswerClock, Depends(get_answer_clock)]) -> TriggersOut:
     stored = await _load_strategy(db, user_ref, strategy_id)
+    underlying = stored.saved.definition.underlying
+    # ADR-327: the price read (up to 3 s) happens BEFORE the strategy row lock, so a slow feed never holds the lock the
+    # monitor's fire waits behind; what the read decided is re-validated under the lock below (D-05: the open legs)
+    if crossed := await check_trigger_levels(db, ctx, feed, underlying,
+                                             await _validated_triggers(db, strategy_id, body, underlying), now):
+        raise StrategyRefused(crossed)
     # D-05: two saves at one instant cannot both pass the read below
     await store.lock_strategy(db, user_ref, strategy_id)
-    open_ids = _open_ids(await paper_store.load(db, strategy_id))
-    if not open_ids:
-        raise StrategyRefused("paper_trigger_nothing_open")
-    new = _new_triggers(body, stored.saved.definition.underlying, open_ids)
-    if crossed := await _already_crossed(db, ctx, stored.saved.definition.underlying, new):
-        raise StrategyRefused(crossed)
+    new = await _validated_triggers(db, strategy_id, body, underlying)
     # ADR-317 (3): the same armed trigger is not stored twice (read under the strategy's row lock taken above)
     armed = {(r.trigger.kind, r.trigger.direction, r.trigger.level, r.trigger.contract_id)
              for r in await paper_trigger_store.list_for(db, strategy_id) if _state(r) == "armed"}
@@ -1736,12 +1918,24 @@ async def cancel_paper_trigger(strategy_id: int, trigger_id: int, db: Annotated[
 
 @router.post("/paper/strategies/{strategy_id}/triggers/{trigger_id}/keep", response_model=TriggersOut,
              dependencies=[Depends(guard_paper_order)])
-async def keep_paper_trigger(strategy_id: int, trigger_id: int, db: Annotated[Any, Depends(get_db)],
-                             user_ref: Annotated[str, Depends(current_user_ref)]) -> TriggersOut:
+async def keep_paper_trigger(strategy_id: int, trigger_id: int, db: Annotated[Any, Depends(get_db)],  # noqa: PLR0913
+                             user_ref: Annotated[str, Depends(current_user_ref)],
+                             ctx: Annotated[MarketContext | None, Depends(get_market_context)],
+                             feed: Annotated[LiveFeed | None, Depends(get_live_feed)],
+                             now: Annotated[AnswerClock, Depends(get_answer_clock)]) -> TriggersOut:
     """D-03 "Keep this level": the trader has read the mark and keeps the exit. The same exit is stored again as a new
     armed row (created after the adjustment, so it is no longer marked) and the old row is cancelled, in ONE
-    transaction under the strategy lock. The level is the same: nothing is moved (no silent substitution)."""
-    await _load_strategy(db, user_ref, strategy_id)
+    transaction under the strategy lock. The level is the same: nothing is moved (no silent substitution).
+    #733 (ADR-317 (1)): keeping stores the exit again, so the SAME crossed-level check as the save route
+    (``check_trigger_levels``) runs first, before the lock (the price read may wait up to 3 s): a level the live price
+    has already reached is refused and the old exit stays as it is."""
+    stored = await _load_strategy(db, user_ref, strategy_id)
+    current = {r.trigger.id: r for r in await paper_trigger_store.list_for(db, strategy_id)}.get(trigger_id)
+    if current is not None and current.trigger.kind == "conditional_exit" and _state(current) == "armed":
+        again = paper_trigger_store.NewTrigger("conditional_exit", current.trigger.direction, current.trigger.level,
+                                               underlying=current.trigger.underlying)
+        if refusal := await check_trigger_levels(db, ctx, feed, stored.saved.definition.underlying, [again], now):
+            raise StrategyRefused(refusal)
     try:
         await store.lock_strategy(db, user_ref, strategy_id)
         rows = {r.trigger.id: r for r in await paper_trigger_store.list_for(db, strategy_id)}
@@ -1766,15 +1960,17 @@ async def keep_paper_trigger(strategy_id: int, trigger_id: int, db: Annotated[An
 
 async def _alerts_out(db: Any, user_ref: str) -> AlertsOut:
     rows, unread = await paper_trigger_store.alerts(db, user_ref)
+    titles = await alert_title.labels(db, [(a.strategy_id, a.strategy_name) for a in rows])  # ADR-330 (19)(b)
     shown: list[dict[str, Any]] = []
     for a in rows:
         try:  # one unreadable row is left out of the list (and logged), never a 500 for every alert
-            title = restore_explanation("paper_alert_title", a.title)
+            restore_explanation("paper_alert_title", a.title)  # the stored title must still fit; it is worded afresh
+            title = render_explanation("paper_alert_title", name=titles[a.strategy_id])
             body = restore_alert_body(a.body)
         except ValueError:
             _LOG.warning("paper alert %s left out: stored text fits no alert template", a.id)
             continue
-        shown.append({"id": a.id, "strategy_id": a.strategy_id, "strategy_name": sf.shown_name(a.strategy_name),
+        shown.append({"id": a.id, "strategy_id": a.strategy_id, "strategy_name": titles[a.strategy_id],
                       "trigger_id": a.trigger_id, "created_at": a.created_at, "title": title, "body": body,
                       "read": a.read_at is not None})
     return AlertsOut.model_validate({"unread": unread, "alerts": shown})
@@ -1810,6 +2006,7 @@ async def _settled_records(db: Any, user_ref: str) -> list[dict[str, Any]]:
     for name, o in rows:
         groups.setdefault((o.strategy_id, o.order.placed_at, o.order.reason), []).append((name, o))
     out: list[dict[str, Any]] = []
+    titles = await alert_title.labels(db, [(sid, items[0][0]) for (sid, _, _), items in groups.items()])
     for (sid, at, reason), items in groups.items():
         what = restore_order_reason(reason)
         if what is None:
@@ -1817,9 +2014,8 @@ async def _settled_records(db: Any, user_ref: str) -> list[dict[str, Any]]:
             continue
         name = items[0][0]
         legs = [(describe_contract(_identity(found[o.order.contract_id])), o.order.price) for _, o in items]
-        out.append({"kind": "settled", "strategy_id": sid, "strategy_name": sf.shown_name(name), "at": at,
-                    "title": render_explanation("paper_alert_title", name=sf.shown_name(name) if name
-                                                else render_explanation("cell_dash")),
+        out.append({"kind": "settled", "strategy_id": sid, "strategy_name": titles[sid], "at": at,
+                    "title": render_explanation("paper_alert_title", name=titles[sid]),
                     "body": settle_history_body(what, legs)})
     return out
 

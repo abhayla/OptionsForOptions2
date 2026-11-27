@@ -2,7 +2,7 @@
 
 # Coverage register
 
-Generated from commit c0f7aec3
+Generated from commit 2d258fd8
 
 ## Stage S0
 
@@ -144,6 +144,7 @@ Generated from commit c0f7aec3
 | 4a | requirement | REQ-015 | AC-11 | While the account is not Connected, the Connect Zerodha panel shows an 'Is it safe to connect?' explainer (what the connection is used for, and that the platform never sees the Zerodha password, PIN or OTP), a line that connecting adds no charge from the platform, and the configured account-opening link with no referrer (ADR-175); with no configured link the panel shows no link and still explains (reference-register RD-010). |
 | 4a | requirement | REQ-015 | AC-12 | Positions are read from Zerodha once when a session connects and then on a fixed period (REQ-118 AC-7), with no manual step such as opening Execute; the job stops on disconnect or when Zerodha refuses the token, and a new login starts it again with one read at connect (extends AC-5; reference-register RD-014). |
 | 4a | requirement | REQ-015 | AC-13 | While connected, Settings shows the Zerodha client id masked to its first 2 and last 2 characters, and, while the funds_read flag is on, Zerodha's own available margin exactly as read, with its read time; it is never computed and never defaulted: not connected, flag off, an empty or failed read, a busy answer or an expired login each show their reason, never 0 (ADR-016; reference-register RD-013). |
+| 4a | requirement | REQ-015 | AC-14 | When the Zerodha connection cannot be checked the page shows no status as connected and offers "Check again", which reads the four statuses once more and replaces the message with the rows if the read works (Lane T Q9, coordinator 26 Nov). |
 | 4a | requirement | REQ-015 | AC-4 | Settings → Broker & Market Data → Zerodha shows four separate statuses — account connection, live market data, position/account sync, order-execution readiness — as Connected, Partially connected (naming what to fix) or Disconnected (with the guide); Connected shows 'Last successful sync' time and Reconnect / Disconnect actions (Q181; T2 #124). |
 | 4a | requirement | REQ-015 | AC-5 | When the connection drops within a valid Zerodha session the platform reconnects automatically, validates and resynchronises, then resumes monitoring; reconnecting never places or submits an order (Q183). Auto-reconnect cannot renew the daily Zerodha session; after that expiry the user must authenticate again (owner T1 #265). |
 | 4a | requirement | REQ-015 | AC-6 | The platform never asks for the user's Zerodha password, PIN or OTP; Zerodha authentication happens on Zerodha's side and is separate from platform login. |
@@ -507,6 +508,8 @@ Generated from commit c0f7aec3
 | S6.1 | issue | #515 | - |  |
 | S6.1 | issue | #582 | - |  |
 | S6.1 | issue | #583 | - |  |
+| S6.1 | issue | #750 | - |  |
+| S6.1 | issue | #751 | - |  |
 | S6.1 | requirement | REQ-029 | - | Option Chain display and live data |
 | S6.1 | requirement | REQ-030 | - | Option Chain leg selection and import |
 | S6.1 | requirement | REQ-031 | - | Option Chain live strategy preview |
@@ -855,6 +858,9 @@ Generated from commit c0f7aec3
 | S6.7 | decision | ADR-324 | - | Paper page header totals leave out strategies whose open contract has expired (GC-ICLIVE Part D, D-40) - PENDING OWNER READ |
 | S6.7 | decision | ADR-325 | - | Labels, small features and post-close messages of the 23 Nov live test (GC-ICLIVE Part E) - PENDING OWNER READ |
 | S6.7 | decision | ADR-326 | - | Owner answers of 25 Nov 2026 to the GC-ICLIVE questions Q2 to Q8 (Take profit, header totals, timeouts, 24-hour time, pop-up quiet period, Today, lots box) |
+| S6.7 | decision | ADR-327 | - | In market hours a paper trigger whose level cannot be checked against a live price is refused, not saved |
+| S6.7 | decision | ADR-328 | - | Owner decisions of 25 Nov 2026 evening for the modular-doors plan, phases 3 to 8 (opposite-side step, Add Selected, per-leg P&L, stale Exit, unreadable-price wording) |
+| S6.7 | decision | ADR-329 | - | Unsaved builder legs: kept across the Option Chain trip and added to by Add Selected; leaving for any other page asks first (S-08) |
 | S6.7 | decision | ADR-330 | - | Owner decisions of 25 Nov 2026 night on the open choices of the live screen test (plan stop after a partial close, and the items that follow) |
 | S6.7 | finding | F-101 | - | Live alert discipline cut suggestion noise by three quarters; a 1-day SENSEX condor past its breakeven still flaps |
 | S6.7 | finding | F-102 | - | Kite's own basket runs in sequence; the Kite Publisher basket (our path) does not guarantee order |
@@ -955,8 +961,6 @@ Generated from commit c0f7aec3
 | S6.7 | issue | #747 | - |  |
 | S6.7 | issue | #748 | - |  |
 | S6.7 | issue | #749 | - |  |
-| S6.7 | issue | #750 | - |  |
-| S6.7 | issue | #751 | - |  |
 | S6.7 | issue | #752 | - |  |
 | S6.7 | issue | #753 | - |  |
 | S6.7 | issue | #754 | - |  |
@@ -1202,18 +1206,18 @@ Generated from commit c0f7aec3
 | S0 | 1 | 0 | 0 | 0 | 0 | 0 | 0 | 0 | 0 | 0 | 0 | 1 |
 | S1 | 0 | 0 | 0 | 0 | 0 | 0 | 1 | 0 | 0 | 0 | 0 | 1 |
 | S3 | 0 | 18 | 0 | 2 | 0 | 0 | 3 | 0 | 0 | 0 | 0 | 23 |
-| 4a | 7 | 0 | 44 | 6 | 0 | 33 | 0 | 1 | 35 | 0 | 21 | 147 |
+| 4a | 7 | 0 | 44 | 6 | 0 | 33 | 0 | 1 | 36 | 0 | 21 | 148 |
 | 4b | 1 | 0 | 70 | 25 | 0 | 39 | 9 | 3 | 14 | 0 | 30 | 191 |
 | 4c | 0 | 0 | 6 | 0 | 0 | 1 | 1 | 0 | 7 | 0 | 0 | 15 |
 | S5 | 2 | 0 | 5 | 0 | 0 | 2 | 0 | 0 | 11 | 0 | 1 | 21 |
 | S6 | 1 | 0 | 1 | 0 | 0 | 0 | 0 | 0 | 2 | 0 | 0 | 4 |
-| S6.1 | 0 | 0 | 35 | 12 | 0 | 9 | 0 | 0 | 31 | 0 | 24 | 111 |
+| S6.1 | 0 | 0 | 35 | 12 | 0 | 11 | 0 | 0 | 31 | 0 | 24 | 113 |
 | S6.2 | 0 | 0 | 5 | 1 | 0 | 0 | 0 | 1 | 14 | 0 | 14 | 35 |
 | S6.3 | 0 | 0 | 2 | 0 | 0 | 0 | 0 | 0 | 6 | 0 | 1 | 9 |
 | S6.4 | 0 | 1 | 13 | 19 | 0 | 32 | 1 | 0 | 25 | 0 | 8 | 99 |
 | S6.5 | 0 | 0 | 1 | 0 | 0 | 0 | 0 | 0 | 3 | 0 | 1 | 5 |
 | S6.6 | 0 | 0 | 0 | 0 | 0 | 0 | 0 | 0 | 7 | 0 | 2 | 9 |
-| S6.7 | 0 | 0 | 107 | 9 | 0 | 127 | 0 | 0 | 14 | 0 | 19 | 276 |
+| S6.7 | 0 | 0 | 110 | 9 | 0 | 94 | 0 | 0 | 14 | 0 | 19 | 246 |
 | S7 | 1 | 0 | 0 | 0 | 0 | 1 | 1 | 0 | 5 | 0 | 0 | 8 |
 | S8 | 2 | 0 | 17 | 1 | 0 | 1 | 1 | 1 | 22 | 4 | 7 | 56 |
 | all | 0 | 0 | 15 | 0 | 0 | 0 | 0 | 0 | 10 | 0 | 0 | 25 |

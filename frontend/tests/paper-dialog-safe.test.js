@@ -57,7 +57,7 @@ afterEach(() => {
   document.body.innerHTML = ''
 })
 
-// the builder opened on paper strategy 86 (Drafts Mode), then Exit all -> the "Exit paper positions" dialog
+// the builder opened on paper strategy 86 (Drafts Mode), then Exit all -> the "Exit Paper positions" dialog
 async function exitDialog() {
   const router = createRouter({ history: createMemoryHistory(), routes: [{ path: '/strategy/builder', component: StrategyBuilderPage }, { path: '/positions/current-positions', component: { template: '<p />' } }] })
   await router.push('/strategy/builder?strategy=86')
@@ -224,10 +224,11 @@ describe('GC-ICFIX Issue 6: result lines sit in the pinned status area, not the 
     if (id === 'paper-unknown') expect(w.find('[data-testid="paper-open-orderbook"]').exists()).toBe(true)
     w.unmount()
   })
-  it('no outcome: no status area at all (frame unchanged)', async () => {
+  it('no outcome: the status slot is reserved but empty (N-22: it is always rendered so a result line never moves the buttons)', async () => {
     const w = open({})
     await flushPromises()
-    expect(w.find('[data-testid="modal-status"]').exists()).toBe(false)
+    expect(w.get('[data-testid="paper-status-slot"]').text()).toBe('')
+    for (const id of ['paper-placed', 'paper-unknown', 'paper-error']) expect(w.find(`[data-testid="${id}"]`).exists()).toBe(false)
     w.unmount()
   })
 })

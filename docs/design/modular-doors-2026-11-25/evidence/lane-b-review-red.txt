@@ -1,0 +1,80 @@
+    104| const shown = () => builder().legs.map((l) => `${l.action} ${l.instrum…
+    105| const noDialogs = () => ['dup-dialog', 'draft-replace-dialog', 'leave-…
+       |                                                                                                                              ^
+    106| const HELD_SHOWN = HELD.map((l) => `${l.action} ${l.instrument_id} 1`)
+    107| const closers = [(x) => t(x, 'dup-cancel').trigger('click'), (x) => t(…
+ ❯ noDialogs tests/chain-trip-adr329.test.js:105:80
+ ❯ tests/chain-trip-adr329.test.js:295:5
+⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯[2/7]⎯
+ FAIL  tests/chain-trip-adr329.test.js > review round: chain trip and replace question > F5 the draft query dropped (Save) while the replace question is open: the question closes as Cancel; a late Replace cannot apply the stale link
+AssertionError: expected true to be false // Object.is equality
+- Expected
++ Received
+- false
++ true
+ ❯ tests/chain-trip-adr329.test.js:306:51
+    304|     await router.replace({ name: BUILDER, query: {} })
+    305|     await flushPromises()
+    306|     expect(t(w, 'draft-replace-dialog').exists()).toBe(false)
+       |                                                   ^
+    307|     expect(shown()).toEqual(HELD_SHOWN)
+    308|     expect(router.currentRoute.value.query.draft).toBeUndefined() // t…
+⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯[3/7]⎯
+ FAIL  tests/chain-trip-adr329.test.js > review round: chain trip and replace question > F7 unmount with the replace question open settles it (no dangling promise)
+AssertionError: expected { count: 3, resolve: [Function] } to be null
+- Expected: 
+null
++ Received: 
+{
+  "count": 3,
+  "resolve": [Function anonymous],
+}
+ ❯ tests/chain-trip-adr329.test.js:318:27
+    316|     expect(vm.replaceAsk).not.toBeNull()
+    317|     w.unmount()
+    318|     expect(vm.replaceAsk).toBeNull()
+       |                           ^
+    319|   })
+    320| })
+⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯[4/7]⎯
+ FAIL  tests/leave-builder-adr329.test.js > the leave guard (harness) > F2 a second navigation while the question is open settles the first as Stay: the hold survives, one question stays open
+AssertionError: expected +0 to be 3 // Object.is equality
+- Expected
++ Received
+- 3
++ 0
+ ❯ tests/leave-builder-adr329.test.js:103:36
+    101|     const second = router.push({ name: 'market-other' })
+    102|     await flushPromises()
+    103|     expect(useBuilderHold().count).toBe(3) // the first guard did not …
+       |                                    ^
+    104|     expect(t(w, 'leave-dialog').exists()).toBe(true)
+    105|     await t(w, 'leave-stay').trigger('click')
+⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯[5/7]⎯
+ FAIL  tests/leave-builder-adr329.test.js > the leave guard (harness) > F2 a navigation that needs no question (to the chain) while one is open settles the open one as Stay
+Error: Test timed out in 15000ms.
+If this is a long-running test, pass a timeout value as the last argument or configure it globally with "testTimeout".
+ ❯ tests/leave-builder-adr329.test.js:110:5
+    108|     expect(useBuilderHold().count).toBe(3)
+    109|   })
+    110|   it('F2 a navigation that needs no question (to the chain) while one …
+       |     ^
+    111|     unsaved.value = 3
+    112|     snapshot = { legs: [{ id: 'a' }, { id: 'b' }, { id: 'c' }] }
+⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯[6/7]⎯
+ FAIL  tests/leave-builder-adr329.test.js > the leave guard (harness) > F7 unmount with the question open settles it: the pending navigation ends
+AssertionError: expected 'dangling' to be 'settled' // Object.is equality
+Expected: "settled"
+Received: "dangling"
+ ❯ tests/leave-builder-adr329.test.js:131:18
+    129|     w.unmount()
+    130|     const done = await Promise.race([nav.then(() => 'settled'), new Pr…
+    131|     expect(done).toBe('settled')
+       |                  ^
+    132|   })
+    133|   it('L1 no unsaved legs: the push to Home resolves with no dialog (ab…
+⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯[7/7]⎯
+ Test Files  2 failed (2)
+      Tests  7 failed | 28 passed (35)
+   Start at  22:36:14
+   Duration  17.95s (transform 1.09s, setup 233ms, collect 2.70s, tests 20.23s, environment 263ms, prepare 82ms)

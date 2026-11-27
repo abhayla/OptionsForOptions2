@@ -8,9 +8,12 @@ import { calendarMissingYear } from '@/lib/calendarNotice'
 
 const props = defineProps({
   pricesAt: { type: String, default: null },
+  // ADR-330 (36) (LR-Q18): the server's whole sentence for a trade with legs frozen at the close and legs first priced later;
+  // printed as sent (ADR-008: the browser builds no sentence). Absent: the one-time sentence below.
+  serverText: { type: String, default: null },
   disablesExecute: { type: Boolean, default: false },
 })
-const text = computed(() => marketClosedText(istTime(props.pricesAt)))
+const text = computed(() => props.serverText || marketClosedText(istTime(props.pricesAt)))
 </script>
 
 <template>

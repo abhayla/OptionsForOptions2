@@ -204,8 +204,22 @@ async def test_cancel_an_armed_trigger_then_a_fired_one_is_409_and_a_missing_one
 import dataclasses  # noqa: E402
 
 from ofo.engine.legs import Instrument  # noqa: E402
-from ofo_app import paper_settlement  # noqa: E402
+from ofo_app import market_read, paper_settlement  # noqa: E402
 from ofo_app.routes import paper as paper_routes  # noqa: E402
+from ofo_app.routes.outcome import get_answer_clock, get_market_context  # noqa: E402
+
+# ADR-327 (25 Nov 2026, supersedes ADR-317 (2) in market hours): market open and the level cannot be checked against a
+# live price -> 422 and nothing stored; market closed -> saved. The replay is 09:20 IST on a Thursday (market open).
+UNREADABLE_SENTENCE = "the live price could not be read, so this level cannot be checked. Try again in a moment."
+SATURDAY = datetime.datetime(2026, 10, 10, 6, 0, tzinfo=datetime.UTC)  # 11:30 IST
+
+
+def _close_the_market(app) -> None:
+    """The same replay context with a Saturday clock (the market calendar says closed); the answer clock too."""
+    ctx = app.dependency_overrides[get_market_context]()
+    closed = dataclasses.replace(ctx, clock=lambda: SATURDAY) if ctx is not None else None
+    app.dependency_overrides[get_market_context] = lambda: closed
+    app.dependency_overrides[get_answer_clock] = lambda: lambda: SATURDAY
 
 
 async def _stored(db, strategy_id: int) -> list[tuple]:
@@ -250,34 +264,77 @@ async def test_f1_a_level_not_yet_crossed_is_saved(db, notified):
                                                               ("conditional_exit", "below", D("22400.00"))]
 
 
-async def test_f1_no_market_context_saves_as_before_it_arms_at_the_next_live_tick(db, notified):
+async def test_f1_no_market_context_in_market_hours_is_refused_and_when_closed_it_saves(db, notified):
     app, stored, *_ = await _setup(db, ctx=None)
     ids = stored.saved.contract_ids
     await paper_store.place(db, stored.user_ref, stored.id, [_new(ids[0], "SELL", 65, "39.15")])
     async with _client(app) as c:
         reply = await c.post(_url(stored), json={"kind": "conditional_exit", "above": "22500"})
+        assert reply.status_code == HTTPStatus.UNPROCESSABLE_ENTITY and UNREADABLE_SENTENCE in reply.text
+        assert await _stored(db, stored.id) == [] and notified == []
+        _close_the_market(app)  # ADR-327 (3): closed, unchanged: saved, arms at the next live tick
+        reply = await c.post(_url(stored), json={"kind": "conditional_exit", "above": "22500"})
     assert reply.status_code == HTTPStatus.CREATED, reply.text
     assert len(await _stored(db, stored.id)) == 1 and notified == [1]
 
 
-async def test_f1_a_failed_price_read_saves_as_before(db, notified, monkeypatch):
+async def test_f1_a_failed_price_read_in_market_hours_is_refused(db, notified, monkeypatch):
     app, stored, _ids = await _open(db)
 
     def boom(*_a, **_k):
         raise RuntimeError("feed down")
 
-    monkeypatch.setattr(paper_routes, "read_snapshot", boom)
+    monkeypatch.setattr(market_read, "read_snapshot", boom)
     async with _client(app) as c:
         reply = await c.post(_url(stored), json={"kind": "conditional_exit", "above": "22500"})
-    assert reply.status_code == HTTPStatus.CREATED, reply.text
-    assert len(await _stored(db, stored.id)) == 1
+    assert reply.status_code == HTTPStatus.UNPROCESSABLE_ENTITY and UNREADABLE_SENTENCE in reply.text
+    assert await _stored(db, stored.id) == []
 
 
-async def test_f1_a_closed_market_saves_as_before(db, notified, monkeypatch):
+async def test_d01_route_an_unheld_index_already_crossed_is_refused_through_the_live_feed_dependency(db, notified):
+    """D-01 on the real route: the API's provider holds nothing and the frames arrive only AFTER the save's own hold
+    subscribes (bus mode drops a tick for a token nobody holds). The recorded NIFTY is 22,533.25, so "above 22,500"
+    is crossed: 422 with the crossed code's sentence, nothing stored."""
+    from marketdata._kite_fixture import new_provider, recorded_frames  # noqa: PLC0415 - tests/ is on sys.path here
+    from ofo.marketdata.fanout import FanOut  # noqa: PLC0415
+    from ofo_app.live_push import LiveFeed  # noqa: PLC0415
+    from ofo_app.routes.outcome import MarketContext  # noqa: PLC0415
+    from ofo_app.routes.planned_entry import get_live_feed  # noqa: PLC0415
+
     app, stored, _ids = await _open(db)
-    real = paper_routes.read_snapshot
-    monkeypatch.setattr(paper_routes, "read_snapshot",
-                        lambda *a, **k: dataclasses.replace(real(*a, **k), market_closed=True))
+    provider, clock, _items = new_provider()
+    frames = recorded_frames()
+    provider.on_connected(frames[0][0])
+    held_when_pushed: list[list[int]] = []
+
+    def push() -> None:
+        held_when_pushed.append(provider.subscribed_tokens())
+        for at, frame in frames:
+            clock.now = at
+            provider.on_frame(frame, at)
+
+    real_subscribe = provider.subscribe
+
+    def subscribe(ids):
+        real_subscribe(ids)
+        asyncio.get_running_loop().call_later(0.1, push)  # the feed answers after the hold exists
+
+    provider.subscribe = subscribe  # type: ignore[method-assign]
+    ctx = MarketContext(provider, clock, D("0.065"))
+    app.dependency_overrides[get_market_context] = lambda: ctx
+    app.dependency_overrides[get_live_feed] = lambda: LiveFeed(ctx, FanOut(provider))
+    assert provider.subscribed_tokens() == []
+    async with _client(app) as c:
+        reply = await c.post(_url(stored), json={"kind": "conditional_exit", "above": "22500"})
+    assert reply.status_code == HTTPStatus.UNPROCESSABLE_ENTITY, reply.text
+    assert CE_SENTENCE in reply.text
+    assert held_when_pushed == [[provider._token_of[provider.index_id("NIFTY")]]]  # only the index, held before frames
+    assert await _stored(db, stored.id) == [] and notified == []
+
+
+async def test_f1_a_closed_market_saves_as_before(db, notified):
+    app, stored, _ids = await _open(db)
+    _close_the_market(app)
     async with _client(app) as c:
         reply = await c.post(_url(stored), json={"kind": "conditional_exit", "above": "22500"})
     assert reply.status_code == HTTPStatus.CREATED, reply.text
@@ -547,9 +604,10 @@ async def test_d01_a_crossed_side_with_a_safe_side_refuses_the_whole_request(db,
     assert await _stored(db, stored.id) == [] and notified == []  # the safe "below" half is not stored
 
 
-async def test_d01_a_price_that_is_not_live_is_never_used_to_refuse(db, notified, monkeypatch):
+async def test_d01_a_price_that_is_not_live_is_never_used_to_refuse_and_in_market_hours_refuses_the_save(
+        db, notified, monkeypatch):
     app, stored, _ids = await _open(db)
-    real = paper_routes.read_snapshot
+    real = market_read.read_snapshot
     body = {"kind": "conditional_exit", "above": "22500"}
     async with _client(app) as c:  # control: the live index price refuses this level, so the check really runs
         control = await c.post(_url(stored), json=body)
@@ -559,16 +617,16 @@ async def test_d01_a_price_that_is_not_live_is_never_used_to_refuse(db, notified
         snap = real(*a, **k)
         return dataclasses.replace(snap, spot=dataclasses.replace(snap.spot, health=DataHealth.STALE))
 
-    monkeypatch.setattr(paper_routes, "read_snapshot", stale)
+    monkeypatch.setattr(market_read, "read_snapshot", stale)
     async with _client(app) as c:
         reply = await c.post(_url(stored), json=body)
-    assert reply.status_code == HTTPStatus.CREATED, reply.text
-    assert len(await _stored(db, stored.id)) == 1
+    assert reply.status_code == HTTPStatus.UNPROCESSABLE_ENTITY and UNREADABLE_SENTENCE in reply.text  # ADR-327
+    assert await _stored(db, stored.id) == []
 
 
 @pytest.mark.parametrize("direction, level", [("above", "35.00"), ("below", "35.00")])
-async def test_d01_a_leg_with_no_feed_key_is_never_judged_on_the_index_and_saves(db, notified, monkeypatch,
-                                                                              direction, level):
+async def test_d01_a_leg_with_no_feed_key_is_never_judged_on_the_index_and_is_refused_in_market_hours(
+        db, notified, monkeypatch, direction, level):
     app, stored, ids = await _open(db)
     real = paper_routes.tracked_contracts.resolve
 
@@ -576,20 +634,25 @@ async def test_d01_a_leg_with_no_feed_key_is_never_judged_on_the_index_and_saves
         return [dataclasses.replace(c, state="contract_retired") for c in await real(d, cids)]
 
     monkeypatch.setattr(paper_routes.tracked_contracts, "resolve", no_key)
+    body = {"kind": "leg_stop", "contract_id": ids[0], "direction": direction, "level": level}
     async with _client(app) as c:
-        reply = await c.post(_url(stored), json={"kind": "leg_stop", "contract_id": ids[0], "direction": direction,
-                                                 "level": level})
+        reply = await c.post(_url(stored), json=body)
+        assert reply.status_code == HTTPStatus.UNPROCESSABLE_ENTITY and UNREADABLE_SENTENCE in reply.text  # ADR-327
+        assert await _stored(db, stored.id) == []
+        _close_the_market(app)  # closed: ADR-327 (3), saved as before
+        reply = await c.post(_url(stored), json=body)
     assert reply.status_code == HTTPStatus.CREATED, reply.text
     assert [r[:4] for r in await _stored(db, stored.id)] == [("leg_stop", direction, D(level), ids[0])]
 
 
-async def test_d01_a_stale_leg_price_with_a_live_index_saves_but_a_live_leg_price_refuses(db, notified, monkeypatch):
+async def test_d01_a_stale_leg_price_with_a_live_index_is_refused_as_unreadable_and_a_live_one_as_crossed(
+        db, notified, monkeypatch):
     app, stored, ids = await _open(db)
     body = {"kind": "leg_stop", "contract_id": ids[0], "direction": "above", "level": "35.00"}
     async with _client(app) as c:  # control: live leg price 39.15 is above 35 -> refused
         control = await c.post(_url(stored), json=body)
     assert control.status_code == HTTPStatus.UNPROCESSABLE_ENTITY and await _stored(db, stored.id) == []
-    real = paper_routes.read_snapshot
+    real = market_read.read_snapshot
 
     def stale_legs(*a, **k):
         snap = real(*a, **k)
@@ -597,24 +660,24 @@ async def test_d01_a_stale_leg_price_with_a_live_index_saves_but_a_live_leg_pric
                 for k2, m in snap.legs.items()}
         return dataclasses.replace(snap, legs=legs)
 
-    monkeypatch.setattr(paper_routes, "read_snapshot", stale_legs)
+    monkeypatch.setattr(market_read, "read_snapshot", stale_legs)
     async with _client(app) as c:
         reply = await c.post(_url(stored), json=body)
-    assert reply.status_code == HTTPStatus.CREATED, reply.text
-    assert len(await _stored(db, stored.id)) == 1
+    assert reply.status_code == HTTPStatus.UNPROCESSABLE_ENTITY and UNREADABLE_SENTENCE in reply.text  # ADR-327
+    assert await _stored(db, stored.id) == []
 
 
-async def test_d01_a_failed_price_read_saves_and_is_logged(db, notified, monkeypatch, caplog):
+async def test_d01_a_failed_price_read_is_refused_and_is_logged(db, notified, monkeypatch, caplog):
     app, stored, _ids = await _open(db)
 
     def boom(*_a, **_k):
         raise RuntimeError("feed down")
 
-    monkeypatch.setattr(paper_routes, "read_snapshot", boom)
+    monkeypatch.setattr(market_read, "read_snapshot", boom)
     async with _client(app) as c:
         reply = await c.post(_url(stored), json={"kind": "conditional_exit", "above": "22500"})
-    assert reply.status_code == HTTPStatus.CREATED, reply.text
-    assert len(await _stored(db, stored.id)) == 1
+    assert reply.status_code == HTTPStatus.UNPROCESSABLE_ENTITY and UNREADABLE_SENTENCE in reply.text
+    assert await _stored(db, stored.id) == []
     assert any("paper trigger price read failed" in r.getMessage() for r in caplog.records)
 
 
@@ -785,6 +848,21 @@ async def test_d03r2_keep_on_an_exit_that_is_not_marked_answers_normally_and_sto
     assert [(r["id"], r["state"]) for r in rows] == [(first, "armed")]
 
 
+async def test_733_keep_on_an_exit_the_live_price_has_crossed_is_refused_and_nothing_changes(db, notified):
+    """#733 (ADR-317 (1)): Keep stores the exit again, so the same crossed-level refusal as the save route applies. The
+    spot is 22,533.25: an exit above 22,500 (stored before it crossed) is marked after an adjustment; Keep says no."""
+    app, stored, ids = await _open(db)
+    old = await paper_trigger_store.add(db, stored.id, paper_trigger_store.NewTrigger(
+        "conditional_exit", "above", D("22500"), underlying="NIFTY"))
+    await _adjust(db, stored, [_new(ids[2], "SELL", 65, "82.75"), _new(ids[3], "BUY", 65, "35.80")], 1)
+    before = await _stored(db, stored.id)
+    async with _client(app) as c:
+        kept = await c.post(_url(stored, f"/{old}/keep"))
+    assert kept.status_code == HTTPStatus.UNPROCESSABLE_ENTITY, kept.text
+    assert CE_SENTENCE in kept.text
+    assert await _stored(db, stored.id) == before and notified == []  # the old exit is still armed, no new row
+
+
 async def test_d03r2_keep_on_a_cancelled_exit_is_409(db, notified):
     app, stored, _ids = await _open(db)
     async with _client(app) as c:
@@ -898,3 +976,21 @@ async def test_the_closed_row_carries_the_settlement_reason_and_a_scenario_settl
         records = (await c.get("/paper/alerts/records")).json()["records"]
     assert sorted(r["reason_text"] for r in closed) == [why, why]
     assert [r["strategy_id"] for r in records] == [stored.id]
+
+
+# N-47: the Positions list closed legs carry the same settlement sentence and exit text as the builder book.
+async def test_the_list_closed_legs_carry_the_settlement_sentence_and_exit_text(db, notified):
+    from ofo_app import paper_settlement  # noqa: PLC0415
+    app, stored, ids = await _open(db)
+    at = datetime.datetime(2026, 11, 24, 10, 0, tzinfo=datetime.UTC)
+    why = str(paper_settlement.settle_reason("NIFTY", D("25641.35")))
+    legs = [paper_store.NewOrder(ids[0], "BUY", 65, D("0.00"), "settle", at, why),
+            paper_store.NewOrder(ids[1], "SELL", 65, D("246.03"), "settle", at, why)]
+    await paper_store.place(db, stored.user_ref, stored.id, legs, entry=None)
+    async with _client(app) as c:
+        book = (await c.get(f"/paper/strategies/{stored.id}")).json()["closed"]
+        listed = (await c.get("/paper/strategies")).json()["strategies"]
+    row = next(s for s in listed if s["strategy_id"] == stored.id)
+    assert row["closed"], "the list reply carries the closed legs"
+    assert [c["reason_text"] for c in row["closed"]] == [why, why]
+    assert [c["average_exit_text"] for c in row["closed"]] == [c["average_exit_text"] for c in book]

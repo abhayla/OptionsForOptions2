@@ -118,8 +118,12 @@ async def test_existing_user_copies_and_plans_keep_the_margin_stop_when_the_vers
     assert _stop_shape((await pbs.get(db, user, copy_before.id)).body) == ("4", True, T16_VALUES, T16_VALUES)
     plan = await check.resolve(db, user, planned.id, "ic")
     assert (plan.source, _stop_shape(plan.body)) == ("plan", ("4", True, T16_VALUES, T16_VALUES))
+    # ADR-330 (11): the system playbook is only a source to copy from; a strategy with no plan is watched by nothing
     tracked_now = await check.resolve(db, tracked_user, tracked.id, "ic")
-    assert (tracked_now.source, _stop_shape(tracked_now.body)[:2]) == ("system", (None, False))
+    assert (tracked_now.source, tracked_now.body) == ("none", None)
+    await pbs.accept_plan(db, tracked_user, tracked.id, system.id)  # a plan made now copies the new version
+    tracked_now = await check.resolve(db, tracked_user, tracked.id, "ic")
+    assert (tracked_now.source, _stop_shape(tracked_now.body)[:2]) == ("plan", (None, False))
 
 
 async def test_the_upgrade_statement_is_re_runnable_and_never_writes_an_empty_version(db):

@@ -44,4 +44,32 @@ describe('Net Positions closed rows show the reason (D-22, D-71)', () => {
     const w = mount(PaperBookPanel, { props: { book: book({ positions: [], closed: [stopRow, settledRow, plain] }), net: [] } })
     expect(w.findAll('[data-testid="closed-reason"]').map((n) => n.text())).toEqual([stopRow.reason_text, settledRow.reason_text])
   })
+  // N-28 (ADR-330 (27), ADR-008): the server sends the average with its count; the browser prints it as sent
+  it('N-28: an exit averaged over two fills shows "174.73 (avg of 2)" exactly as the server sent it', () => {
+    const avg = { ...closed, average_exit_text: '174.73 (avg of 2)', exit_fills: 2 }
+    const w = mount(PaperBookPanel, { props: { book: book({ positions: [], closed: [avg] }), net: [] } })
+    expect(w.get('[data-testid="closed-exit-price"]').text()).toBe('174.73 (avg of 2)')
+  })
+  // #749: jsdom has no layout, so this checks the structure only: the reason is its own full-width row under the closed row (colspan = all
+  // five columns), never inside the narrow Exit cell; the Exit cell holds the price alone
+  it('#749: the reason is its own full-width row under the closed row, not inside the Exit cell', () => {
+    const w = mount(PaperBookPanel, { props: { book: book({ positions: [], closed: [stopRow] }), net: [] } })
+    const cell = w.get('[data-testid="closed-exit"]')
+    expect(cell.get('[data-testid="closed-exit-price"]').text()).toBe('₹115.71')
+    expect(cell.find('[data-testid="closed-reason"]').exists()).toBe(false)
+    const reason = w.get('[data-testid="closed-reason"]')
+    expect(reason.text()).toBe(stopRow.reason_text)
+    expect(reason.element.tagName).toBe('TD')
+    expect(reason.attributes('colspan')).toBe('5')
+    const row = w.get('[data-testid="closed-row"]').element
+    expect(reason.element.parentElement).toBe(row.nextElementSibling)
+  })
+  it('N-27: the LTP time is a block element under the price span, not inline beside it', () => {
+    const w = mount(PaperBookPanel, { props: { book: book(), net: [{ contract_id: 7, lots: 2 }] } })
+    const price = w.get('[data-testid="net-ltp"]')
+    const at = w.get('[data-testid="net-ltp-at"]')
+    expect(at.classes()).toContain('block')
+    expect(price.element.parentElement).toBe(at.element.parentElement)
+    expect(price.element.contains(at.element)).toBe(false)
+  })
 })

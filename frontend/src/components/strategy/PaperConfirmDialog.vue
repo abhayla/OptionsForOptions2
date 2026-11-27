@@ -44,21 +44,31 @@
       </div>
     </div>
     <!-- GC-ICFIX Issue 10 (ADR-256): the server's one factual line when this exit leaves a sold leg unprotected; Confirm stays enabled -->
-    <p v-if="exitState === 'risk'" class="mt-3 text-sm font-medium text-warn" role="status" data-testid="paper-exit-warning">{{ exitWarning }}</p>
-    <!-- fail closed: a check that could not run is said so, never shown as "no risk"; Confirm is not locked by either line -->
-    <p v-else-if="exitState === 'unchecked'" class="mt-3 text-sm font-medium text-warn" role="status" data-testid="paper-exit-unchecked">{{ PAPER_EXIT_UNCHECKED_TEXT }}</p>
-    <p v-else-if="exitState === 'checking'" class="mt-3 text-sm text-ink-muted" role="status" data-testid="paper-exit-checking">{{ PAPER_EXIT_CHECKING_TEXT }}</p>
+    <!-- N-22 (same class as S-26): one always-rendered slot with a reserved height; the checking / risk / unchecked line comes and goes inside it, so the buttons below never move -->
+    <div :class="rows.some((r) => r.kind === 'exit') ? 'min-h-[3.75rem]' : ''" class="mt-3" data-testid="paper-exit-slot">
+      <p v-if="exitState === 'risk'" class="text-sm font-medium text-warn" role="status" data-testid="paper-exit-warning">{{ exitWarning }}</p>
+      <!-- fail closed: a check that could not run is said so, never shown as "no risk"; Confirm is not locked by either line -->
+      <p v-else-if="exitState === 'unchecked'" class="text-sm font-medium text-warn" role="status" data-testid="paper-exit-unchecked">{{ PAPER_EXIT_UNCHECKED_TEXT }}</p>
+      <p v-else-if="exitState === 'checking'" class="text-sm text-ink-muted" role="status" data-testid="paper-exit-checking">{{ PAPER_EXIT_CHECKING_TEXT }}</p>
+    </div>
+    <!-- ADR-330 (28), REQ-109 AC-1: prices not live: the owner's sentence is the label of the box the user ticks before Confirm -->
+    <label v-if="notLiveLine" class="mt-3 flex items-start gap-2 text-sm font-medium text-warn" data-testid="paper-not-live">
+      <input v-model="notLiveAck" type="checkbox" class="mt-1" data-testid="paper-not-live-ack" />{{ notLiveLine }}
+    </label>
     <p class="mt-3 text-xs text-ink-muted" data-testid="paper-not-real">{{ PAPER_NOT_REAL_TEXT }}</p>
     <!-- fix/paper-dialog-safe (ADR-017): a stored order is never offered again; an answer of unknown outcome sends the user to the
          Orderbook first and keeps Confirm locked for PAPER_UNKNOWN_HOLD_MS; a refusal (4xx: nothing stored) unlocks after an edit -->
     <!-- GC-ICFIX Issue 6: these result lines sit in the frame's pinned status area (not the scrolling body), so they show with the buttons -->
-    <template v-if="state === 'placed' || state === 'unknown' || error" #status>
+    <!-- N-22: the status slot is always rendered (reserved height), so a result or error line fills it instead of adding a row above the buttons -->
+    <template #status>
+      <div class="min-h-10" data-testid="paper-status-slot">
       <p v-if="state === 'placed'" class="text-sm font-medium" role="status" data-testid="paper-placed">{{ PAPER_PLACED_NOT_REFRESHED_TEXT }}</p>
       <p v-else-if="state === 'unknown'" class="text-sm text-red-700" role="alert" data-testid="paper-unknown">
         {{ PAPER_UNKNOWN_TEXT }}
         <button type="button" class="ml-1 font-semibold text-accent underline" data-testid="paper-open-orderbook" @click="emit('orderbook')">{{ PAPER_OPEN_ORDERBOOK_LABEL }}</button>
       </p>
       <p v-else-if="error" class="text-sm text-red-700" role="alert" data-testid="paper-error">{{ error }}</p>
+      </div>
     </template>
     <template #actions>
       <button type="button" class="h-10 rounded-lg border border-line px-3 font-medium" data-testid="paper-cancel" @click="emit('cancel')">{{ state === 'placed' ? 'Close' : 'Cancel' }}</button>
@@ -83,12 +93,15 @@ const props = defineProps({
   open: { type: Boolean, default: false },
   orders: { type: Array, default: () => [] },
   busy: { type: Boolean, default: false },
+  blocked: { type: Boolean, default: false }, // ADR-328 (4): the page's blocked rule (read failed / trade changed elsewhere): no Confirm
   error: { type: String, default: '' },
   // fix/paper-dialog-safe: '' ready | 'refused' (4xx, shown in `error`) | 'unknown' (no answer / 5xx) | 'placed' (stored, refresh failed)
   state: { type: String, default: '' },
   holdMs: { type: Number, default: PAPER_UNKNOWN_HOLD_MS },
   firstBasket: { type: Boolean, default: false }, // GC-TRACK1 k10: offer "Held at my broker" (the strategy's first basket only)
   strategyId: { type: [Number, String], default: '' }, // GC-ICFIX Issue 10: with it, exit rows ask the server whether the exit widens the maximum loss
+  notLiveLine: { type: String, default: '' }, // ADR-330 (28): set while the page's prices are not live; Confirm waits for the tick
+  kind: { type: String, default: 'paper' }, // ADR-330 (10): 'paper' | 'real'; names what an exit confirmation exits, via paperDrafts.exitConfirmTitle
 })
 const emit = defineEmits(['confirm', 'cancel', 'orderbook'])
 
@@ -101,8 +114,10 @@ watch(() => [props.open, props.orders], () => {
 const quoteClock = (row) => (row.price_at ? istClock(row.price_at) ?? '' : '')
 
 // GC-TP step 3b2: the title says what the list holds (adds, exits or both)
-const title = computed(() => paperDialogTitle(props.orders))
+const title = computed(() => paperDialogTitle(props.orders, props.kind))
 const reasons = computed(() => rows.value.map((r) => (!paperLotsOk(r.lots) ? PAPER_LOTS_REASON : (r.kind !== 'exit' && !paperPriceOk(r.price)) ? paperPriceReason(r.price) : '')))
+const notLiveAck = ref(false)
+watch(() => [props.open, props.notLiveLine], () => { notLiveAck.value = false }) // each opening asks again
 const heldOn = ref(false)
 const heldAt = ref('')
 const heldBroker = ref('')
@@ -171,7 +186,7 @@ watch(() => props.state, (s) => {
 }, { immediate: true })
 onBeforeUnmount(() => clearTimeout(holdTimer))
 const canConfirm = computed(() => {
-  if (props.busy || !ready.value || props.state === 'placed' || held.value) return false
+  if (props.busy || props.blocked || (props.notLiveLine && !notLiveAck.value) || !ready.value || props.state === 'placed' || held.value) return false
   return props.state !== 'refused' || refusedAt.value === null || snapshot() !== refusedAt.value
 })
 

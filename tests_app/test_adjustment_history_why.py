@@ -104,7 +104,7 @@ async def _refused(engine, sid: int, ids: list[int], expected: int, user: str | 
 
 
 async def test_an_adjustment_from_a_suggestion_names_its_rule_and_every_bad_link_is_refused(app_db_url, monkeypatch):
-    sid = await _clean(app_db_url, await _seeded(app_db_url, monkeypatch, "ADJ-02"))
+    sid = await _clean(app_db_url, await _seeded(app_db_url, monkeypatch, "ADJ-02"))  # with a plan (ADR-330 (11))
     await _opened(app_db_url, sid)
     # refused before any link: a record still open (not acted on), another user's placement, a missing record
     t01 = await _record(app_db_url, sid, "T-01")

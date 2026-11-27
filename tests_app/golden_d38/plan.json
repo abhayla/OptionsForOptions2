@@ -8,18 +8,48 @@
   "hour": "Hour",
   "max_adjustments": "Max adjustments",
   "minute": "Minute",
-  "no_plan": "No plan saved yet: default rules apply",
+  "no_plan": "No plan: nothing is watched for this strategy",
   "plan_entry": "Plan",
   "playbook": "Playbook",
+  "reset": "Reset to playbook",
+  "reset_confirm": "Reset to playbook puts back this playbook's conditions only. The levels you typed on the sheet (profit target, rupee target, rupee stop, time exit, the adjustment limit) and the plan's settings stay as you set them. Reset the conditions?",
   "save": "Save plan",
   "set_plan": "Set plan",
   "stop": "Stop",
+  "stop_rupees": "Stop (Rs)",
   "target": "Target",
-  "time_exit": "Time exit (on expiry day)",
+  "target_rupees": "Target (Rs)",
+  "time_exit": "Time exit",
+  "time_exit_on": "Time exit date (blank = expiry day)",
   "title": "When tracking starts: this strategy's plan",
   "use_as_is": "Use playbook as is"
  },
- "plan": null,
+ "plan": {
+  "accepted_at": "<the clock of the run>",
+  "changed": [],
+  "max_adjustments": 2,
+  "playbook_id": 3,
+  "playbook_name": "\"Iron condor: system default\"",
+  "stop": "50",
+  "stop_per_lot": "5068.38",
+  "stop_rupee_words": "Rs 10136.75 for the whole trade (Rs 5068.38 per lot), before charges",
+  "stop_rupees": "10136.75",
+  "stop_source": "percent",
+  "stop_warning": null,
+  "stop_words": "50 % of max loss or 2x the credit received, whichever comes first",
+  "switched_off": [],
+  "target": "50",
+  "target_per_lot": "1431.63",
+  "target_rupee_words": "Rs 2863.25 for the whole trade (Rs 1431.63 per lot), before charges",
+  "target_rupees": "2863.25",
+  "target_source": "percent",
+  "target_words": "50 % of max profit",
+  "time_exit": {
+   "hour": 14,
+   "minute": 30
+  },
+  "time_exit_on": null
+ },
  "playbooks": [
   {
    "active": true,
@@ -35,13 +65,23 @@
   "max_adjustments": 2,
   "playbook_id": 3,
   "stop": "50",
+  "stop_per_lot": "5068.38",
+  "stop_rupee_words": "Rs 10136.75 for the whole trade (Rs 5068.38 per lot), before charges",
+  "stop_rupees": "10136.75",
+  "stop_source": "percent",
+  "stop_warning": null,
   "stop_words": "50 % of max loss or 2x the credit received, whichever comes first",
   "target": "50",
+  "target_per_lot": "1431.63",
+  "target_rupee_words": "Rs 2863.25 for the whole trade (Rs 1431.63 per lot), before charges",
+  "target_rupees": "2863.25",
+  "target_source": "percent",
   "target_words": "50 % of max profit",
   "time_exit": {
    "hour": 14,
    "minute": 30
-  }
+  },
+  "time_exit_on": null
  },
  "settings": [
   {
@@ -249,7 +289,7 @@
      "40"
     ],
     "reason": null,
-    "source": "default"
+    "source": "strategy"
    },
    {
     "active": true,
@@ -267,7 +307,7 @@
     "kind": "margin_pct",
     "later": [],
     "reason": null,
-    "source": "default"
+    "source": "strategy"
    }
   ],
   "reason": null
@@ -284,7 +324,7 @@
    ],
    "on": true,
    "reason": null,
-   "source": "default",
+   "source": "strategy",
    "unit": "pct",
    "weekly": [
     "0.75",
@@ -298,7 +338,7 @@
    "monthly": null,
    "on": true,
    "reason": null,
-   "source": "default",
+   "source": "strategy",
    "unit": null,
    "weekly": null
   },
@@ -312,7 +352,7 @@
    ],
    "on": true,
    "reason": null,
-   "source": "default",
+   "source": "strategy",
    "unit": "delta",
    "weekly": [
     "0.30",
@@ -330,7 +370,7 @@
    ],
    "on": false,
    "reason": null,
-   "source": "default",
+   "source": "strategy",
    "unit": "delta_per_lot",
    "weekly": [
     "0.15",
@@ -348,7 +388,7 @@
    ],
    "on": false,
    "reason": null,
-   "source": "default",
+   "source": "strategy",
    "unit": "x",
    "weekly": [
     "3",
@@ -366,7 +406,7 @@
    ],
    "on": true,
    "reason": null,
-   "source": "default",
+   "source": "strategy",
    "unit": "pct",
    "weekly": [
     "50",
@@ -380,16 +420,16 @@
    "monthly": [
     "50",
     "50",
-    "75"
+    "50"
    ],
    "on": true,
    "reason": null,
-   "source": "default",
+   "source": "strategy",
    "unit": "pct",
    "weekly": [
     "50",
     "50",
-    "80"
+    "50"
    ]
   },
   {
@@ -402,7 +442,7 @@
    ],
    "on": false,
    "reason": null,
-   "source": "default",
+   "source": "strategy",
    "unit": "x",
    "weekly": [
     "2",
@@ -420,7 +460,7 @@
    ],
    "on": true,
    "reason": null,
-   "source": "default",
+   "source": "strategy",
    "unit": "rs",
    "weekly": [
     "3",
@@ -438,7 +478,7 @@
    ],
    "on": true,
    "reason": null,
-   "source": "default",
+   "source": "strategy",
    "unit": "pts",
    "weekly": [
     "3",
@@ -456,7 +496,7 @@
    ],
    "on": false,
    "reason": null,
-   "source": "default",
+   "source": "strategy",
    "unit": "sd",
    "weekly": [
     "1",
@@ -474,7 +514,7 @@
    ],
    "on": true,
    "reason": null,
-   "source": "default",
+   "source": "strategy",
    "unit": "pct",
    "weekly": [
     "0.75",
@@ -492,7 +532,7 @@
    ],
    "on": true,
    "reason": null,
-   "source": "default",
+   "source": "strategy",
    "unit": "pct",
    "weekly": [
     "3",
@@ -510,7 +550,7 @@
    ],
    "on": false,
    "reason": null,
-   "source": "default",
+   "source": "strategy",
    "unit": "pct",
    "weekly": [
     "80",
@@ -528,7 +568,7 @@
    ],
    "on": false,
    "reason": null,
-   "source": "default",
+   "source": "strategy",
    "unit": "pct",
    "weekly": [
     "4",
@@ -542,7 +582,7 @@
    "monthly": null,
    "on": true,
    "reason": null,
-   "source": "default",
+   "source": "strategy",
    "unit": null,
    "weekly": null
   },
@@ -556,7 +596,7 @@
    ],
    "on": true,
    "reason": null,
-   "source": "default",
+   "source": "strategy",
    "unit": "x",
    "weekly": [
     "1",
@@ -570,7 +610,7 @@
    "monthly": null,
    "on": false,
    "reason": null,
-   "source": "default",
+   "source": "strategy",
    "unit": "pts",
    "weekly": null
   },
@@ -580,7 +620,7 @@
    "monthly": null,
    "on": true,
    "reason": null,
-   "source": "default",
+   "source": "strategy",
    "unit": null,
    "weekly": null
   },
@@ -594,7 +634,7 @@
    ],
    "on": false,
    "reason": null,
-   "source": "default",
+   "source": "strategy",
    "unit": "pts",
    "weekly": [
     "180",
@@ -612,7 +652,7 @@
    ],
    "on": false,
    "reason": null,
-   "source": "default",
+   "source": "strategy",
    "unit": "x",
    "weekly": [
     "1",
@@ -640,7 +680,7 @@
    ],
    "on": false,
    "reason": null,
-   "source": "default",
+   "source": "strategy",
    "unit": "pct",
    "weekly": [
     "10",
@@ -658,7 +698,7 @@
    ],
    "on": false,
    "reason": null,
-   "source": "default",
+   "source": "strategy",
    "unit": "pct",
    "weekly": [
     "80",
@@ -676,7 +716,7 @@
    ],
    "on": false,
    "reason": null,
-   "source": "default",
+   "source": "strategy",
    "unit": "pct",
    "weekly": [
     "5",
@@ -694,7 +734,7 @@
    ],
    "on": false,
    "reason": null,
-   "source": "default",
+   "source": "strategy",
    "unit": "pct",
    "weekly": [
     "10",
@@ -712,7 +752,7 @@
    ],
    "on": false,
    "reason": null,
-   "source": "default",
+   "source": "strategy",
    "unit": null,
    "weekly": [
     "25",

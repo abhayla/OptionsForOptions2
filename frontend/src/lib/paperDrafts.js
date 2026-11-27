@@ -261,16 +261,27 @@ export const SETTLE_KIND_LABEL = 'Settled'
 export const NET_POSITIONS_LABEL = 'Net Positions'
 export const ORDERBOOK_LABEL = 'Orderbook'
 
-/** The confirm list's title by what it holds: only adds (an `open` is the first add) -> Add to Paper; only exits -> Exit paper
- *  positions; both -> Review paper orders. */
+/** ADR-330 (10): every exit confirmation names what it exits in its title. The ONE place the word is spelled: 'Paper', or
+ *  'Real (Zerodha order)' for a real exit (none is rendered today, ADR-281). Anything but 'real' reads Paper (fail closed). */
+const KIND_WORDS = { paper: 'Paper', real: 'Real (Zerodha order)' }
+/** Only exactly 'paper' or 'real' is accepted; anything else THROWS (fail closed: a wrong word on a confirmation is worse than none). */
+export const positionKindWord = (kind) => {
+  if (kind !== 'paper' && kind !== 'real') throw new Error(`positionKindWord: unknown kind ${String(kind)}`)
+  return KIND_WORDS[kind]
+}
+export const exitConfirmTitle = (kind) => `Exit ${positionKindWord(kind)} positions`
+export const reviewConfirmTitle = (kind) => `Review ${positionKindWord(kind)} orders`
+
+/** The confirm list's title by what it holds: only adds (an `open` is the first add) -> Add to Paper; only exits ->
+ *  exitConfirmTitle; both -> reviewConfirmTitle. */
 export const PAPER_TITLE_ADD = 'Add to Paper'
-export const PAPER_TITLE_EXIT = 'Exit paper positions'
-export const PAPER_TITLE_BOTH = 'Review paper orders'
-export function paperDialogTitle(orders) {
+export const PAPER_TITLE_EXIT = exitConfirmTitle('paper')
+export const PAPER_TITLE_BOTH = reviewConfirmTitle('paper')
+export function paperDialogTitle(orders, kind = 'paper') {
   const list = orders ?? []
   const exits = list.filter((o) => o?.kind === 'exit').length
   if (exits === 0) return PAPER_TITLE_ADD
-  return exits === list.length ? PAPER_TITLE_EXIT : PAPER_TITLE_BOTH
+  return exits === list.length ? exitConfirmTitle(kind) : reviewConfirmTitle(kind)
 }
 /** Each row's kind beside B/S ('open' and 'add' both add to the position; D-23: a stop-out and an expiry settlement keep their own
  *  kind, the server's `stop` and `settle`, so they never read as a new buy). */
@@ -289,12 +300,36 @@ export function exitLotsFrom(text, max) {
   return null
 }
 export const exitLotsOk = (text, max) => exitLotsFrom(text, max) !== null
+/** D-48 review (ADR-328 (4)): the sentence of a row Exit on a contract that has a change waiting that is not an exit. */
+export const EXIT_BLOCKED_BY_CHANGE = 'This leg has a change waiting; review or discard it first.'
+
+/** D-48 review round 2 (C3, structural): a row Exit never carries an add. True when, with the rows of `contractId` set aside (the
+ *  Exit rebuilds that contract from the net position), the orders the page's other legs already stage hold anything but an exit
+ *  (a move onto another contract, lots or a side changed, a new leg), or cannot be formed. This reads the ORDERS, not row ids: a
+ *  move answered with Increase or an adjustment roll drops the row id `paper-<contract>`, an id detector misses it. ONE predicate:
+ *  legsAfterExit (the door) and the panel (stagedChangeIds) both use it. */
+export function rowExitBlocked(net, legs, contractId) {
+  const others = (n) => n.contract_id !== contractId
+  const orders = paperOrdersFor((net ?? []).filter(others), (legs ?? []).filter(others))
+  const held = (net ?? []).find((n) => !others(n))
+  let kept = 0 // the lots of this contract's own rows, summed (1 + 1 against 2 held is no change); a row of the other side is an add
+  let flipped = false
+  for (const l of (legs ?? []).filter((x) => !others(x))) {
+    kept += Number.isInteger(l.lots) ? l.lots : 0
+    if (held && l.action !== held.action) flipped = true
+  }
+  return orders === null || orders.some((o) => o.kind !== 'exit') || flipped || kept > (held?.lots ?? 0)
+}
+/** The contract ids whose row Exit is off before the click (the panel's `changedIds`): rowExitBlocked, per open contract. */
+export const stagedChangeIds = (net, legs) => (net ?? []).filter((n) => rowExitBlocked(net, legs, n.contract_id)).map((n) => n.contract_id)
+
 /** The EDITED legs for "exit `lots` of `contractId`": every other contract keeps the legs on screen; this contract becomes its
  *  net leg less `lots` (gone at zero), in its place. Only legs change: the orders still come from paperOrdersFor(net, edited),
  *  never a second order-building path. Null when `lots` is not 1..open lots. */
 export function legsAfterExit(net, legs, contractId, lots) {
   const held = (net ?? []).find((l) => l.contract_id === contractId)
   if (!held || !Number.isInteger(lots) || lots < 1 || lots > held.lots) return null
+  if (rowExitBlocked(net, legs, contractId)) return null // the ONE door: an Exit never combines with a staged move, add or new leg
   const rest = held.lots - lots
   const out = []
   let placed = false
@@ -305,6 +340,16 @@ export function legsAfterExit(net, legs, contractId, lots) {
   }
   if (!placed && rest > 0) out.push({ ...held, lots: rest })
   return out
+}
+
+/** D-48 (REQ-078 AC-13): the contract ids of the legs that have an Exit waiting in Drafts Mode: the leg is still there but
+ *  holds fewer lots than the net position (a partial Exit; a whole Exit leaves no leg). A texts-only comparison of the
+ *  page's own copies, no number is formed. */
+export function stagedExitIds(net, legs) {
+  const held = new Map((net ?? []).map((l) => [l.contract_id, l.lots]))
+  const kept = new Map() // the lots kept per contract, summed over its rows (1 + 1 against 2 held is no Exit)
+  for (const l of legs ?? []) if (held.has(l.contract_id)) kept.set(l.contract_id, (kept.get(l.contract_id) ?? 0) + (Number.isInteger(l.lots) ? l.lots : 0))
+  return [...kept].filter(([id, lots]) => lots < held.get(id)).map(([id]) => id)
 }
 
 /** R-11: a leg is the book's paper fill while its entry and its time are still the ones the net position loaded. */

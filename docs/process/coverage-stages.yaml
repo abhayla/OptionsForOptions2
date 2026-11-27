@@ -20,7 +20,7 @@ requirements:
   REQ-012: S5
   REQ-013: S5
   REQ-014: S5
-  REQ-015: {AC-1: S5, AC-2: S5, AC-3: S5, AC-4: 4a, AC-5: 4a, AC-6: 4a, AC-7: 4a, AC-8: 4a, AC-9: 4a, AC-10: 4a, AC-11: 4a, AC-12: 4a, AC-13: 4a}
+  REQ-015: {AC-1: S5, AC-2: S5, AC-3: S5, AC-4: 4a, AC-5: 4a, AC-6: 4a, AC-7: 4a, AC-8: 4a, AC-9: 4a, AC-10: 4a, AC-11: 4a, AC-12: 4a, AC-13: 4a, AC-14: 4a}
   REQ-016: S6.2
   REQ-017: S8
   REQ-018: S8
@@ -486,6 +486,9 @@ decisions:
   ADR-324: S6.7         # Part D of the 23 Nov live test: paper header totals leave out expired strategies (pending owner read)
   ADR-325: S6.7         # Part E of the 23 Nov live test: labels, small features and post-close messages (pending owner read)
   ADR-326: S6.7         # Owner answers of 25 Nov 2026 to the GC-ICLIVE questions Q2 to Q8 (accepted)
+  ADR-327: S6.7         # in market hours a paper trigger whose level cannot be checked against a live price is refused
+  ADR-328: S6.7         # owner 25 Nov evening: modular-doors phases 3-8 (opposite-side step, Add Selected, per-leg P&L, stale Exit, 446 wording)
+  ADR-329: S6.7         # owner 25 Nov late evening: unsaved builder legs kept for the chain trip, Add Selected adds, leaving elsewhere asks
   ADR-330: S6.7         # owner decisions of 25 Nov night on the open choices of the live screen test (S-21 and following)
 
 questions:
@@ -729,14 +732,14 @@ issues:
   "#741": S6.7  # Two tracking legs of one contract each show the whole net figure on the Paper P&L panel, rows sum to twice the book total
   "#742": S6.7  # Read-only routes reach order code through playbook_store's strategy_store import (17 routes pinned)
   "#743": S6.7  # A held alert episode ends on the held step, not the rule's line (one held row per close after the cap)
-  "#744": S6.7  # Builder of a paper trade: Full table, leg-list "now" price and Paper P&L rows after a failed read read another source (N-07 remainder)
-  "#745": S6.7  # Create Strategy: a timed-out expiries or indices read leaves the red "took too long" box after the other read succeeds (N-02)
-  "#746": S6.7  # order_book_store maps every database error inside its savepoint to BAD_HOLDING
+  "#744": S6.7  # Builder of a paper trade: Full table, leg-list now price, Paper P&L rows after a failed read read another source (N-07 remainder)
+  "#745": S6.7  # Create Strategy: a timed-out expiries or indices read leaves the took-too-long box (N-02)
+  "#746": S6.7  # order_book_store maps every database error in its savepoint to BAD_HOLDING (busy database)
   "#747": S6.7  # Paper Orderbook in lots (ADR-330 (23), N-15): order rows carry no lots or lot size
-  "#748": S6.7  # Option Chain: a newly picked expiry shows "Unavailable: no price has been received" for 13-26 s (S-09)
+  "#748": S6.7  # Option Chain: a newly picked expiry shows Unavailable for 13-26 s instead of a waiting state (S-09)
   "#749": S6.7  # Builder closed-leg table: the stop-loss sentence wraps to 3 lines in the narrow Exit column and overflows it (N-43)
-  "#750": S6.7  # Builder settings are not saved per user (REQ-138 AC-1/AC-2 not built; Lane T NEW-T62, NEW-T63)
-  "#751": S6.7  # Unsaved builder strategy is lost on reload (REQ-154 not built; Lane T NEW-T60; ADR-329 conflict)
+  "#750": S6.1  # Builder settings not saved per user (REQ-138 AC-1/AC-2 not built; Lane T NEW-T62, NEW-T63)
+  "#751": S6.1  # Unsaved builder strategy lost on reload (REQ-154 not built; NEW-T60; ADR-329 (3) conflict, U-Q6)
   "#752": S6.7  # After the close, option prices keep moving while the banner says "Prices are from 15:30:00" (N-45)
   "#753": S6.7  # deferred: the first edit of a plan saved before ADR-247 makes it read as saved after (accepted_at restamped by 0041)
   "#754": S6.7  # Egress gate test red when HTTPS_PROXY is set (test_attack2 gets proxy 400, not EgressRefused)

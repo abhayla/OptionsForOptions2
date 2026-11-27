@@ -176,11 +176,54 @@ describe('G-051 core: the tooltip shows the engine point at the nearest sent lev
     w.unmount()
   })
 
-  it('a new reply drops the hover: no tooltip until the user hovers the new answer', async () => {
+  // ADR-330 (38): the reading stays through every live refresh and re-reads the new reply at the same index level.
+  // the table the same reply carries: the TOTAL cell at `level` re-worded (the tooltip prints the table's own text)
+  const tableWith = (level, display) => {
+    const t2 = JSON.parse(JSON.stringify(real.table))
+    if (level) t2.rows.find((r) => r.row_id === 'TOTAL').cells[level].display = display
+    return t2
+  }
+  const refreshed = (mut) => real.payoff.points.filter((p) => !mut.drop || p.level !== mut.drop).map((p) => ({ ...p, ...(mut.at === p.level ? { pnl: '1234.50', display: '+₹1,234.50' } : {}) }))
+  it('ADR-330 (38): a refresh keeps the mouse reading; changed figures show in place, an equal copy keeps it, a gone level moves to the nearest', async () => {
     const w = card()
     await hover(w, 22300)
+    expect(t(w, 'payoff-tooltip-title').text()).toBe('At 22,300 (-1.0%)')
+    // 1: the figure at that level changed
+    await w.setProps({ points: refreshed({ at: '22300' }), table: tableWith('22300', '+₹1,234.50') })
+    expect(t(w, 'payoff-tooltip-title').text()).toBe('At 22,300 (-1.0%)')
+    expect(t(w, 'payoff-tooltip-pnl').text()).toBe('+₹1,234.50')
+    // 2: an equal copy
+    await w.setProps({ points: refreshed({ at: '22300' }).map((p) => ({ ...p })), table: tableWith('22300', '+₹1,234.50') })
     expect(tip(w).exists()).toBe(true)
-    await w.setProps({ points: real.payoff.points.map((p) => ({ ...p })) }) // the next answer for an edited strategy
+    expect(t(w, 'payoff-tooltip-pnl').text()).toBe('+₹1,234.50')
+    // 3: that exact level is gone
+    await w.setProps({ points: refreshed({ drop: '22300' }), table: tableWith() })
+    expect(tip(w).exists()).toBe(true)
+    const title = t(w, 'payoff-tooltip-title').text()
+    expect(title).toBe('At 22,200 (-1.5%)') // 22200 and 22400 are 100 away each: the tie takes the lower level
+    // mouse leaving still clears it
+    await t(w, 'payoff-plot').trigger('mouseleave')
+    expect(tip(w).exists()).toBe(false)
+    w.unmount()
+  })
+
+  it('ADR-330 (38): the arrow-key position survives a refresh the same way, and the next arrow steps from it', async () => {
+    const w = card()
+    const plot = t(w, 'payoff-plot')
+    await plot.trigger('focus')
+    await plot.trigger('keydown', { key: 'ArrowRight' })
+    expect(t(w, 'payoff-tooltip-title').text()).toBe('At 22,600 (+0.3%)')
+    await w.setProps({ points: refreshed({ at: '22600' }), table: tableWith('22600', '+₹1,234.50') })
+    expect(t(w, 'payoff-tooltip-title').text()).toBe('At 22,600 (+0.3%)')
+    expect(t(w, 'payoff-tooltip-pnl').text()).toBe('+₹1,234.50')
+    await w.setProps({ points: refreshed({ at: '22600' }).map((p) => ({ ...p })) })
+    expect(t(w, 'payoff-tooltip-title').text()).toBe('At 22,600 (+0.3%)')
+    await w.setProps({ points: refreshed({ drop: '22600' }) })
+    const nearest = t(w, 'payoff-tooltip-title').text()
+    expect(nearest).toBe('At 22,533.25 (0.0%)') // 66.75 from 22600 vs 100 for 22500 or 22700
+    await plot.trigger('keydown', { key: 'ArrowRight' })
+    expect(tip(w).exists()).toBe(true)
+    await plot.trigger('blur')
     expect(tip(w).exists()).toBe(false)
     w.unmount()
   })

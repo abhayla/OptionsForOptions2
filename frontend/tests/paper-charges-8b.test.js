@@ -19,7 +19,7 @@ vi.mock('@/services/api', async (importActual) => {
 
 import PaperStrategies from '@/components/strategy/PaperStrategies.vue'
 import PaperBookPanel from '@/components/strategy/PaperBookPanel.vue'
-import { resetPaperAlerts } from '@/lib/paperAlerts'
+import { resetActiveAlerts } from '@/lib/paperAlerts'
 
 const ok = (data) => () => Promise.resolve({ data })
 const t = (w, id) => w.get(`[data-testid="${id}"]`)
@@ -38,7 +38,7 @@ async function show() {
   return w
 }
 
-beforeEach(() => { answers = {}; resetPaperAlerts(); vi.useFakeTimers() })
+beforeEach(() => { answers = {}; resetActiveAlerts(); vi.useFakeTimers() })
 afterEach(() => vi.useRealTimers())
 
 describe('Charges beside the P&L on the Paper tab (the real reply)', () => {

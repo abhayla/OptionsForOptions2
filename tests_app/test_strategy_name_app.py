@@ -90,7 +90,7 @@ async def test_ac1_an_empty_name_is_refused_with_the_catalogue_message_and_store
                 before = len((await ac.get("/strategies")).json()["strategies"])
                 refused = await _post(ac, ids, name)
                 assert (refused.status_code, refused.json()["code"]) == (422, EMPTY_NAME_CODE), refused.text
-                assert refused.json()["what_happened"] == "The strategy has no name."
+                assert refused.json()["what_happened"] == "Give the strategy a name."
                 assert len((await ac.get("/strategies")).json()["strategies"]) == before
         finally:
             await trans.rollback()
@@ -369,8 +369,10 @@ async def test_ac6_another_user_cannot_list_read_or_rename_a_strategy_and_the_an
                 rename = await ac.patch(f"/strategies/{mine.id}/name", json={"name": "Stolen", "expected_revision": 1})
                 missing = await ac.patch(f"/strategies/{MISSING_ID}/name",
                                          json={"name": "Stolen", "expected_revision": 1})
-            assert listed.json() == {"strategies": []} and "Private" not in listed.text
-            assert (read.status_code, read.json()["code"]) == (404, NOT_FOUND_CODE)
+            # the list reply also carries the server's shown_date (U-Q8, REQ-148 AC-2); no strategy of another user
+            assert listed.json()["strategies"] == [] and "Private" not in listed.text
+            # opening by id answers strategy_not_found (ADR-330 (37), REQ-134 AC-5)
+            assert (read.status_code, read.json()["code"]) == (404, "STRATEGY_VALIDATION_523")
             assert (rename.status_code, rename.json()) == (missing.status_code, missing.json()) == (404, missing.json())
             assert "Private" not in rename.text + read.text
             assert await _snapshot(conn, mine.id) == before

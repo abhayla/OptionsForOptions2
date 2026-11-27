@@ -227,6 +227,8 @@ async def test_a_fully_exited_strategy_counts_in_booked_and_decays_nothing(db):
                               "charges_reason_text": str(reason_text("rates_unavailable")),
                               "totals_as_of": None,  # GC-LIVE L3a: no paused book, no pause time
                               "left_out_count": 0, "left_out_text": None,  # D-40: nothing expired
+                              # P11: the one fully exited strategy is a closed one
+                              "closed_count": 1, "closed_text": render_explanation("paper_totals_closed_one"),
                               # ADR-301 to ADR-311: the after-charges figures wait for the same missing rates
                               "total_after": None, "total_after_text": None, "booked_after": None,
                               "booked_after_text": None, "unbooked_after": None, "unbooked_after_text": None,
@@ -250,6 +252,7 @@ async def test_no_paper_strategies_answers_an_empty_list_and_zero_totals(db):
                               "charges_reason": None, "totals_reason_text": None, "decay_reason_text": None,
                               "charges_reason_text": None, "totals_as_of": None,
                               "left_out_count": 0, "left_out_text": None,
+                              "closed_count": 0, "closed_text": None,  # P11
                               # ADR-301 to ADR-311: nothing traded, so every after-charges figure is zero
                               "total_after": "0.00", "total_after_text": zero, "booked_after": "0.00",
                               "booked_after_text": zero, "unbooked_after": "0.00", "unbooked_after_text": zero,
@@ -278,7 +281,11 @@ async def test_each_alert_row_names_its_strategy(db):
     async with _client(app) as c:
         alerts = (await c.get("/paper/alerts")).json()["alerts"]
         book = (await c.get(f"/paper/strategies/{stored.id}")).json()
-    assert [(a["strategy_id"], a["strategy_name"]) for a in alerts] == [(stored.id, book["name"])]
+    # the alert row names its strategy with the ONE ADR-330 (19)(b) label (alert_title.labels, Lane P's rule: the
+    # nearest open-leg expiry, read as the V1 owner); this strategy is a test user's, so the expiry is not readable
+    # and only the number prints (never a guessed date)
+    assert [(a["strategy_id"], a["strategy_name"]) for a in alerts] == [
+        (stored.id, f'{book["name"]} (#{stored.id})')]
     assert alerts[0]["strategy_name"]
 
 
@@ -438,10 +445,54 @@ async def test_a4_an_expired_strategy_and_stale_prices_the_stale_reason_wins_and
     assert (totals["left_out_count"], totals["left_out_text"]) == (1, "1 strategy left out: its contract has expired.")
 
 
+# --- AC-R06 / N-46 (26 Nov 2026, ADR-324 (1) to (3)): one strategy that cannot be priced never pauses the total ------
+# Owner case: six running strategies, five priced at the last close, #173 (a SENSEX trade expiring that day) paused:
+# Home and the Positions header showed "-" and "Paper P&L paused". Here: 48 holds a delisted contract (paused, not
+# expired); 50 and 46 are priced. The header is the sum over 50 and 46, with a count line.
+_DELIST = "UPDATE public.catalogue_contracts SET delisted = TRUE, currently_listed = FALSE WHERE id = :id"
+_PAUSED_ONE = "1 strategy left out: its price is not live."
+
+
+async def test_ac_r06_one_paused_strategy_is_left_out_and_the_total_is_over_the_priced_ones(db):
+    app, _provider, _clock, _last, sid = await _seed_three(db)
+    await db.execute(text(_DELIST), {"id": sid["contracts"][1]})  # held only by 48
+    body = await _list(app)
+    rows = {s["strategy_id"]: s for s in body["strategies"]}
+    assert rows[sid["48"]]["state"] == "PAUSED" and rows[sid["48"]]["expired_open"] is False
+    kept = [rows[sid["50"]], rows[sid["46"]]]
+    booked = sum((D(s["booked"]) for s in kept), D(0))
+    unbooked = sum((D(s["unbooked"]) for s in kept), D(0))
+    totals = body["totals"]
+    assert (D(totals["booked"]), D(totals["unbooked"]), D(totals["total"])) == (booked, unbooked, booked + unbooked)
+    assert (totals["totals_reason"], totals["totals_reason_text"]) == (None, None)
+    assert (totals["left_out_count"], totals["left_out_text"]) == (1, _PAUSED_ONE)
+    assert rows[sid["48"]]["unbooked"] is None  # its own row stays paused with its reason
+
+
+async def test_ac_r06_every_strategy_paused_keeps_the_blank_total_with_its_reason(db):
+    app, _provider, clock, last, _sid = await _seed_three(db)
+    clock.now = last + datetime.timedelta(minutes=10)
+    totals = (await _list(app))["totals"]
+    assert (totals["total"], totals["total_after"], totals["totals_reason"]) == (None, None, "prices_not_live")
+    assert (totals["left_out_count"], totals["left_out_text"]) == (0, None)
+
+
+def test_ac_r06_the_count_line_names_expired_unpriced_or_both():
+    from ofo_app.routes.paper import _left_out_text  # noqa: PLC0415
+
+    assert _left_out_text(0, 0) is None
+    assert _left_out_text(1, 0) == "1 strategy left out: its contract has expired."
+    assert _left_out_text(0, 3) == "3 strategies left out: their prices are not live."
+    assert _left_out_text(1, 1) == "2 strategies left out: their contracts have expired or their prices are not live."
+
+
 # --- D-36: a finished book (no open leg) costs the list no pricing, decay or live-figure work ------------------------
 
 _FINISHED = 6
-_STATEMENTS = 6  # the list's fixed database work
+# 6 -> 8 (Lane U 7397330f, ADR-330 (19), REQ-134 AC-4): the list reply carries `shown_date`, read by the one shown-date
+# source of the expiries reply (catalogue.get_shown_date: database date + database clock, scenario clock in scenario
+# mode), which costs SAVEPOINT + SELECT clock_timestamp() = 2 statements. Still fixed whatever the count of strategies.
+_STATEMENTS = 8  # the list's fixed database work
 _WORK = ("_prices", "_figures", "_summary", "_decay", "_charges", "_after")
 
 
@@ -490,7 +541,7 @@ async def test_d36_the_list_does_fixed_database_work_and_finished_books_cost_onl
     finally:
         event.remove(sync, "before_cursor_execute", record)
     # D-36 count (measured 2026-11-25, 6 finished + 1 open): the per-book helpers run once per finished book, pure
-    # arithmetic of about 0.3 ms each (6 books: 2 ms in all); the database work is a fixed 6 statements whatever the
+    # arithmetic of about 0.3 ms each (6 books: 2 ms in all); the database work is a fixed 8 statements whatever the
     # count of strategies and no broker is called. Finished books cost nothing measurable, so nothing is skipped.
     assert {name: seen[name]["finished"] for name in _WORK} == dict.fromkeys(_WORK, _FINISHED)
     assert len(statements) == _STATEMENTS

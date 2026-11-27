@@ -237,6 +237,25 @@ async def test_accepting_again_replaces_the_strategys_own_plan_and_another_user_
     assert missing.value.code == store.NOT_FOUND
 
 
+async def test_736_a_soft_deleted_strategys_plan_is_not_read_and_not_written(db):
+    """#736: the ownership check and the plan read leave a soft-deleted strategy (strategy_store._OWNED does the same);
+    restored, the plan is back. Answer states: read -> absent (None), write -> NOT_FOUND."""
+    user = _user()
+    _, stored = await _with_draft(db, user)
+    system = await pb.active_for(db, user, "ic")
+    await pb.accept_plan(db, user, stored.id, system.id)
+    assert await pb.plan_for(db, user, stored.id) is not None
+    await _set_deleted(db, stored.id, True)
+    assert await pb.plan_for(db, user, stored.id) is None
+    for call in (pb.require_owned(db, user, stored.id), pb.accept_plan(db, user, stored.id, system.id),
+                 pb.rule_states(db, user, stored.id)):
+        with pytest.raises(store.StrategyStoreError) as missing:
+            await call
+        assert missing.value.code == store.NOT_FOUND
+    await _set_deleted(db, stored.id, False)
+    assert await pb.plan_for(db, user, stored.id) is not None
+
+
 async def test_a_plan_is_never_deleted_and_keeps_its_type(db):
     user = _user()
     _, stored = await _with_draft(db, user)
@@ -265,7 +284,7 @@ async def test_the_application_role_cannot_update_or_delete_a_system_row_in_raw_
     await _refused(db, "DELETE FROM public.adjustment_playbooks WHERE is_system AND strategy_type = 'ic'", "OF031")
 
 
-async def test_the_application_role_cannot_insert_a_system_row_and_the_owner_cannot_add_a_second(db, admin_engine):
+async def test_the_application_role_cannot_insert_a_system_row_and_the_owner_cannot_repeat_a_slug(db, admin_engine):
     await _refused(db, "INSERT INTO public.adjustment_playbooks (user_ref, strategy_type, name, is_system, body) "
                        "VALUES (NULL, 'ic', 'Fake', true, CAST(:b AS JSONB))", "permission denied",
                    b=pb._dump(_body()))
@@ -273,8 +292,9 @@ async def test_the_application_role_cannot_insert_a_system_row_and_the_owner_can
         trans = await conn.begin()
         try:
             await _refused(conn, "INSERT INTO public.adjustment_playbooks (user_ref, strategy_type, name, is_system, "
-                                 "body) VALUES (NULL, 'ic', 'Second system', true, CAST(:b AS JSONB))",
-                           "adjustment_playbooks_one_system", b=pb._dump(_body()))
+                                 "body, slug) VALUES (NULL, 'ic', 'Second system', true, CAST(:b AS JSONB), "
+                                 "'ic-default')",
+                           "adjustment_playbooks_standard_slug", b=pb._dump(_body()))
         finally:
             await trans.rollback()
 
@@ -312,6 +332,10 @@ async def test_another_users_playbook_answers_not_found_everywhere(db):
     (lambda b: b["triggers"]["T-01"].update(weekly=[0.5, ""]), "triggers.T-01.weekly.0"),
     (lambda b: b["triggers"]["T-01"].update(weekly=["half", ""]), "triggers.T-01.weekly.0"),
     (lambda b: b["rules"].append({"id": "R-2", "all_of": ["T-99"]}), "rules.1"),
+    (lambda b: b["rules"].append({"id": "watch.level.above", "any_of": ["T-01"]}), "rules.1.id"),  # P1c NEW-3
+    (lambda b: b["rules"].append({"id": "day.x", "any_of": ["T-01"]}), "rules.1.id"),
+    (lambda b: b["rules"].append({"id": "sit.x", "any_of": ["T-01"]}), "rules.1.id"),
+    (lambda b: b["rules"].append({"id": "sit:x", "any_of": ["T-01"]}), "rules.1"),  # a colon fails the id shape first
     (lambda b: b.pop("stages"), "stages"),
     (lambda b: b.update(day_rules=[_carry_rule("2:30 pm")]), "day_rules.0.at"),
     (lambda b: b.update(day_rules=[_carry_rule(1430)]), "day_rules.0.at"),
@@ -450,9 +474,9 @@ async def test_an_outcome_change_must_append_exactly_one_timeline_entry(db):
                        "WHERE id = :id", "OF031", o="dismissed", id=opened.id)  # the entry names another outcome
     await _refused(db, "UPDATE public.adjustment_suggestions SET outcome = 'lapsed', timeline = timeline || "
                        "'[{\"outcome\": \"lapsed\"}]'::jsonb WHERE id = :id", "OF031", id=opened.id)  # no id link
-    await db.execute(text(_SET_OUTCOME), {"o": "lapsed", "id": opened.id})
+    await pb.dismiss(db, user, opened.id)  # 0054: a record of a kind leaves open only with its answer
     timeline = (await pb.suggestions(db, user, opened.strategy_id))[0].timeline
-    assert [e["outcome"] for e in timeline] == ["open", "lapsed"]
+    assert [e["outcome"] for e in timeline] == ["open", "dismissed"]
 
 
 async def test_a_plan_row_pointing_at_another_users_or_another_types_playbook_is_refused(db):

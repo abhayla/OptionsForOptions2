@@ -1,22 +1,32 @@
 // Display formats for the Strategy Builder screen (W-072; ADR-086). Display only: the API keeps sending ids and ISO
 // times. No money value is read, parsed or formatted here (ADR-008); a strike is a contract label, handled as text.
 
+import { ref } from 'vue'
+
 export const CONTRACT_UNAVAILABLE = 'Contract details not available'
 export const TIME_UNAVAILABLE = 'Time not available'
 
 const MONTHS = ['Jan', 'Feb', 'Mar', 'Apr', 'May', 'Jun', 'Jul', 'Aug', 'Sep', 'Oct', 'Nov', 'Dec']
 const MONTH_BY_TEXT = Object.fromEntries(MONTHS.map((m, i) => [String(i + 1).padStart(2, '0'), m])) // '01' -> 'Jan'
 
-let shownDate = null
+const shownDate = ref(null) // reactive: a label computed before the date arrives recomputes when it is noted
 /** u510: the server's shown date ('2026-11-15', from an expiries reply), kept once so every expiry text can leave the year
  *  off for the current year. Null (never set, or an older reply without it) = every expiry prints its year. */
 export function setShownDate(today) {
-  shownDate = /^\d{4}-\d{2}-\d{2}/.test(String(today ?? '')) ? String(today) : null
+  shownDate.value = /^\d{4}-\d{2}-\d{2}/.test(String(today ?? '')) ? String(today) : null
+}
+
+/** ADR-330 (19), REQ-148 AC-2: a list reply (GET /strategies, GET /paper/strategies) carries the server's `shown_date`; keep it
+ *  before the labels render so an expiry in that year prints without the year. A reply without a readable one changes nothing
+ *  (the year stays on, the fail-safe). Never the browser clock (REQ-135 AC-2). Returns `data` so a reader can chain it. */
+export function noteShownDate(data) {
+  if (/^\d{4}-\d{2}-\d{2}/.test(String(data?.shown_date ?? ''))) setShownDate(data.shown_date)
+  return data
 }
 
 /** THE one expiry-text rule (u510): '2026-10-19' -> '19 Oct 2026', or '19 Oct' only when the expiry is known to be in the
  *  year of the shown date (`today`, else the one set by setShownDate); text compare, no clock. Null when not a date. */
-export function expiryText(expiry, today = shownDate) {
+export function expiryText(expiry, today = shownDate.value) {
   const m = /^(\d{4})-(\d{2})-(\d{2})/.exec(String(expiry ?? ''))
   if (!m) return null
   const month = MONTH_BY_TEXT[m[2]]
@@ -108,7 +118,7 @@ const ISO_INSTANT = /^(\d{4})-(\d{2})-(\d{2})T(\d{2}):(\d{2}):(\d{2})(?:\.\d+)?(
 
 /** The instant of a strict ISO string in milliseconds, or null: an impossible calendar date (2026-02-30), time or offset
  *  is refused, never rolled over to the next month. */
-function isoMillis(text) {
+export function isoMillis(text) {
   const m = ISO_INSTANT.exec(text.trim())
   if (!m) return null
   const [y, mo, d, h, mi, s] = m.slice(1, 7).map((x) => +x)
@@ -132,10 +142,11 @@ export function istTime(iso) {
   return `${p.day} ${MONTHS[new Date(ms + 19800000).getUTCMonth()]} ${p.year}, ${p.hour}:${p.minute}:${p.second} IST`
 }
 
-/** D-57: today's date as 'YYYY-MM-DD' from the browser's calendar day. A date KEY for day arithmetic, never shown to a
- *  reader; it lives here so that this file stays the only place a locale date function is called. */
-export function localDay(date = new Date()) {
-  return date.toLocaleDateString('en-CA')
+/** An ISO instant as IST 'HH:MM' (24-hour); '' when empty or unreadable. */
+export function istHm(iso) {
+  const ms = typeof iso === 'string' ? isoMillis(iso) : null
+  if (ms === null) return ''
+  return istTime(iso).slice(-12, -7)
 }
 
 /** An ISO instant (with an offset or Z) as 'HH:MM:SS' in India time, or null when it cannot be read (never the raw string,
@@ -201,7 +212,7 @@ export function groupMoney(text) {
 // nothing is parsed to a float and no money is computed (ADR-008); the server's own forms are "₹1,865.50", "−₹916.50" and "65.18%".
 const RUPEE = '₹'
 const MINUS = '−' // U+2212, the sign the server prints before the rupee sign
-const groupedIndian = (digits) => (digits.length <= 3 ? digits : `${digits.slice(0, -3).replace(/\B(?=(\d{2})+$)/g, ',')},${digits.slice(-3)}`)
+export const groupedIndian = (digits) => (digits.length <= 3 ? digits : `${digits.slice(0, -3).replace(/\B(?=(\d{2})+$)/g, ',')},${digits.slice(-3)}`)
 
 /** A plain decimal text as rupees with Indian grouping: '720252.00' -> '₹7,20,252.00', '-2453.75' -> '−₹2,453.75'. Digits after the
  *  point are kept as sent (a whole number gets '.00'). Anything that is not a plain decimal comes back unchanged. */

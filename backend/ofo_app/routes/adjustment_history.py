@@ -44,7 +44,7 @@ from ofo.strategy.definition import describe_contract
 from ofo.tracking import paper as paper_prices
 from ofo.tracking.orderbook import net_positions
 
-from ofo_app import paper_book, playbook_store, tracked_contracts
+from ofo_app import paper_book, playbook_store, strategy_money, tracked_contracts
 from ofo_app.api_models import ApiModel, CatalogueText, Identifier, Money
 from ofo_app.db import get_db
 from ofo_app.errors import ClosedRoute, Failure
@@ -153,18 +153,8 @@ def _per_order_charges(orders: Any, found: dict, underlying: str,
 
 async def _plan_max(db: Any, user_ref: str, strategy_id: int, reader: tuple[TrackedReader, ChargeRates | None],
                     ctx: MarketContext | None) -> int | None:
-    from ofo_app import adjustment_check as check  # noqa: PLC0415 - it imports routes.adjustment
-    from ofo_app.adjustment_readers import TrackedUnreadable  # noqa: PLC0415
-    plan = await playbook_store.plan_for(db, user_ref, strategy_id)
+    plan = await playbook_store.plan_for(db, user_ref, strategy_id)  # ADR-330 (11): only the strategy's own plan
     body: Any = None if plan is None else plan.body
-    if body is None:
-        try:
-            tracked = await reader[0](strategy_id, reader[1])
-        except TrackedUnreadable:
-            tracked = None  # nothing open: no type, so no type playbook
-        if tracked is not None:
-            stype = check.entry_type(tracked, check.listed_of(ctx))  # D-04
-            body = (await check.resolve(db, user_ref, strategy_id, stype)).body
     mx = None if body is None else body.get("guards", {}).get("max_adjustments")
     return mx if type(mx) is int and mx >= 0 else None
 
@@ -253,7 +243,7 @@ async def adjustment_history(  # noqa: PLR0913 - FastAPI dependencies, one per i
     if paper.connected(ctx) and keys:
         snapshot = await paper.market_snapshot(ctx, feed, underlying, keys)  # type: ignore[arg-type]
     prices = paper.open_prices(open_ids, found, snapshot)
-    live = {str(cid): p.price for cid, p in prices.items() if paper_prices.is_live(p) and p.price is not None}
+    live = strategy_money.live_prices(prices)  # B6: the one pick of the open contracts that have a live price
     per_order, charges_reason = _per_order_charges(orders, found, underlying, rates)
     plan_max = await _plan_max(db, user_ref, strategy_id, (tracked_reader, rates), ctx)
     links = await playbook_store.placed_links(db, user_ref, strategy_id)  # order id -> every record that placed it

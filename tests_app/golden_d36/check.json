@@ -6,13 +6,13 @@
    "after": null,
    "amount": null,
    "later": [
-    "80.0000"
+    "50.0000"
    ],
    "reason": null,
    "reason_code": null,
    "rule_id": "T-07",
    "state": "checked",
-   "text": "Target: profit of 50 % of max profit, before charges; 80 % nearer expiry",
+   "text": "Target: profit of 50 % of max profit, before charges",
    "threshold": "50.0000",
    "tightened_by": null,
    "trigger_id": "T-07"
@@ -50,8 +50,8 @@
  "playbook": {
   "draft": false,
   "id": 3,
-  "source": "system",
-  "status": "approved"
+  "source": "plan",
+  "status": null
  },
  "results": [
   {
@@ -69,7 +69,7 @@
    "threshold": "0.5000",
    "trigger_id": "T-01",
    "value": "0.3416",
-   "wording": "Adjustment opportunity detected"
+   "wording": "Your rule was triggered"
   },
   {
    "cmp": null,
@@ -111,7 +111,7 @@
    "threshold": "0.3500",
    "trigger_id": "T-03",
    "value": "0.4103",
-   "wording": "Adjustment opportunity detected"
+   "wording": "Your rule was triggered"
   },
   {
    "cmp": "le",
@@ -128,7 +128,7 @@
    "threshold": "3.0000",
    "trigger_id": "T-09",
    "value": "2.7000",
-   "wording": "Adjustment opportunity detected"
+   "wording": "Your rule was triggered"
   },
   {
    "cmp": null,
@@ -220,7 +220,7 @@
    "threshold": "0.1500",
    "trigger_id": "sit.S-02",
    "value": "0.2120",
-   "wording": "Adjustment opportunity detected"
+   "wording": "Your rule was triggered"
   }
  ],
  "stage": {

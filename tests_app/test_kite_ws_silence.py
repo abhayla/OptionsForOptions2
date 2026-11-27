@@ -45,8 +45,11 @@ def _build(scripts, *, step=0.5, **extra):
 
 
 def _healths(provider, clock):
-    quotes = provider.book.quotes(clock.now)
-    assert quotes, "no quote is held: the probe would prove nothing"
+    # REQ-114 is about the socket: judge the option quotes. The recording's index frame carries an exchange stamp far
+    # older than its 09:20 arrival, so ADR-330 (39) (an index quote older than its max age is not live) reads it
+    # stale on its own; that rule is tested in tests/marketdata/test_index_quote_age.py.
+    quotes = [q for q in provider.book.quotes(clock.now) if q.instrument_type is not None]
+    assert quotes, "no option quote is held: the probe would prove nothing"
     return {q.health for q in quotes}
 
 

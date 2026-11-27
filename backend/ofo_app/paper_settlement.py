@@ -41,16 +41,14 @@ from decimal import Decimal
 from typing import Any, Final
 
 from ofo import market_calendar
-from ofo.engine.legs import Instrument
+from ofo.engine.legs import Instrument, intrinsic_value
 from ofo.errors.explanations import ExplanationText, render_explanation
 from ofo.instruments.models import INDEX_ROWS, ZERODHA
 from ofo.settings import calc
 from ofo.timeutil import IST, SESSION_CLOSE
-from ofo.tracking.orderbook import net_positions
 from sqlalchemy import text
 
-from ofo_app import paper_store, settings_store
-from ofo_app import strategy_store as store
+from ofo_app import paper_exit, paper_store, settings_store
 
 log = logging.getLogger(__name__)
 
@@ -61,8 +59,8 @@ SKIP_REASON: Final = "settlement price not available"
 #: the closing value after its 15:30 close). While a group had no close, the job retries every RETRY_MINUTES until the
 #: ``facts.paper_retry_until`` setting (default 18:00 IST). Both are read at each run (REQ-167 AC-4), never held.
 RETRY_MINUTES: Final = 15
-_ZERO: Final = Decimal(0)
 _MIDDAY: Final = datetime.time(12, 0)
+_ZERO: Final = Decimal(0)
 
 #: (underlying, expiry date) -> the index's official close that day, or None when it is not available.
 CloseOf = Callable[[str, datetime.date], Awaitable[Decimal | None]]
@@ -122,15 +120,6 @@ def last_due_day(now: datetime.datetime, settle_from: datetime.time) -> datetime
     return local.date() if local.time() >= settle_from else local.date() - datetime.timedelta(days=1)
 
 
-def settle_price(instrument: Instrument, strike: Decimal, close: Decimal) -> Decimal:
-    """The intrinsic value at expiry (REQ-109 AC-7): CE max(0, close - strike), PE max(0, strike - close), FUT close."""
-    if instrument is Instrument.CE:
-        return max(_ZERO, close - strike)
-    if instrument is Instrument.PE:
-        return max(_ZERO, strike - close)
-    return close
-
-
 def settle_reason(underlying: str, close: Decimal) -> ExplanationText:
     """D-71: the settle order's reason: the AC-7 label and the official close it was priced from."""
     return render_explanation("paper_settle_reason", underlying=underlying, level=close)
@@ -165,24 +154,19 @@ async def _settle_strategy(conn: Any, due: Sequence[DueContract], closes: dict[t
                            ) -> list[Settled]:
     """Under the strategy's row lock: one settle per due contract still open, for exactly its open quantity."""
     first = due[0]
-    await store.lock_strategy(conn, first.user_ref, first.strategy_id)
-    book = [o.order.as_paper() for o in await paper_store.load(conn, first.strategy_id)]
-    open_now = {int(p.instrument_id): p.net_quantity for p in net_positions(book, {}).positions} if book else {}
-    orders: list[paper_store.NewOrder] = []
-    settled: list[Settled] = []
-    for d in due:
-        net = open_now.get(d.contract_id, 0)
-        if net == 0:  # already flat (another run or process settled it, or the user exited it)
-            continue
-        side = "BUY" if net < 0 else "SELL"
-        price = settle_price(d.instrument, d.strike, closes[(d.underlying, d.expiry)])
-        orders.append(paper_store.NewOrder(d.contract_id, side, abs(net), price, SETTLE, settle_time(d.expiry),
-                                           str(settle_reason(d.underlying, closes[(d.underlying, d.expiry)]))))
-        settled.append(Settled(d.strategy_id, d.contract_id, d.underlying, d.expiry, side, abs(net), price))
-    if orders:
-        # a settle: never a first fill
-        await paper_store.place(conn, first.user_ref, first.strategy_id, orders, entry=None)
-    return settled
+    by_id = {d.contract_id: d for d in due}
+    done = await paper_exit.exit_strategy(
+        conn, user_ref=first.user_ref, strategy_id=first.strategy_id, kind=SETTLE,
+        prices={d.contract_id: intrinsic_value(d.instrument, d.strike, closes[(d.underlying, d.expiry)]) for d in due},
+        placed_at={d.contract_id: settle_time(d.expiry) for d in due},
+        reason={d.contract_id: str(settle_reason(d.underlying, closes[(d.underlying, d.expiry)])) for d in due},
+        only=[d.contract_id for d in due],  # a contract already flat (another run, or exited by the user) is skipped
+        write=lambda orders: paper_store.place(conn, first.user_ref, first.strategy_id, orders,
+                                               entry=None))  # a settle: never a first fill
+    if not isinstance(done, paper_exit.Exited):
+        return []
+    return [Settled(first.strategy_id, w.key, by_id[w.key].underlying, by_id[w.key].expiry, w.side, w.quantity,
+                    w.price) for w in done.written]
 
 
 async def settle_expired(conn: Any, now: datetime.datetime, close_of: CloseOf) -> SettleRun:
@@ -219,8 +203,7 @@ async def settle_expired(conn: Any, now: datetime.datetime, close_of: CloseOf) -
 # --- the scheduled job -------------------------------------------------------------------------------------------
 
 
-def is_trading_day(day: datetime.date, holidays: market_calendar.Holidays | None = None) -> bool:
-    return market_calendar.is_market_open(datetime.datetime.combine(day, _MIDDAY, IST), holidays)
+is_trading_day = market_calendar.is_trading_day  # the calendar's own function; kept here for this module's callers
 
 
 def next_run(now: datetime.datetime, retry: bool, holidays: market_calendar.Holidays | None = None, *,

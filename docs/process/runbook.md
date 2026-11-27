@@ -81,12 +81,26 @@ frontend/dist is a build of this tree, mypy call/import mismatches in every chan
 calls), collect-only of both suites, and the repo-wide scans no per-item build runs. prepush runs it first and stops on
 a red one, so it never spends ~35 min on a merge the preflight would reject.
 One command, the whole list on a committed, clean tree: `python scripts/orchestrator/prepush.py` (`--full` after a
-large merge). It runs the preflight, ci_local, the ruff ratchet, the coverage check and the alembic guard, plus, when
-the change touches `frontend/`, `npm run build` FIRST (the domain tests' bundle scan reads `frontend/dist`), then
-`npm run lint` and vitest (the changed files' tests; all with `--full`) in
-`frontend/` (needs `frontend/node_modules`: a missing one is a FAIL). It writes the marker that `git push` and
+large merge). Order: the seconds-long checks first (ruff ratchet, coverage check, alembic guard; finding
+cheap-check-after-expensive-one), then, when the change touches `frontend/`, `npm run lint` and `npm run build` (the
+build before everything that reads `frontend/dist`: the preflight and the domain tests' bundle scan), then the
+preflight, ci_local, the domain tests, the app tests and vitest (the changed files' tests; all with `--full`) in
+`frontend/` (needs `frontend/node_modules`: a missing one is a FAIL). Every step runs even when an earlier one is red,
+except that a red preflight stops the run. `--jobs N` (or `PREPUSH_JOBS`; the option wins; default the CPU count; below 1
+or not a number is a usage error, exit 2) runs the preflight, ci_checks, domain tests, app tests and vitest side by side
+after the serial cheap checks and the frontend lint and build; `--jobs 1` is the plain serial reference. A red preflight
+then stops the steps not yet started and kills the running ones with their whole process tree. Every child gets its own
+temp root (`<tempdir>/ofo-prepush-tmp/<repo hash>/<step>`) in both modes. In a cloud container, unset the proxy
+variables for the gate: `env -u HTTPS_PROXY -u HTTP_PROXY -u https_proxy -u http_proxy -u ALL_PROXY -u all_proxy python
+scripts/orchestrator/prepush.py`; the owner's PC sets none (the gate prints a NOTICE naming any it finds). Docs-only lane (not with `--full`): when every path changed between the merge base and the start sha is a records file
+(`tools/change_scope.py` `path_is_docs`; added, modified or deleted; no rename, mode change or symlink; a change to
+`change_scope.py` itself or any doubt = full lane), the report and the marker say `docs-only (<n> files)`. The lane
+skips nothing: on a docs-only change today's selectors already run no code-only stage (domain tests narrow to the
+records tests, the code app selection is empty, no frontend step), so it removes nothing and only adds the `tests_app`
+files that read a docs-folder path. Ctrl-C kills every running child's process tree and writes no marker. It writes the marker that `git push` and
 `land.py` require for that exact HEAD only when every step passed, the tree was clean from start to end, HEAD did not
-move and no untracked file sits under backend/, tests*/, scripts/ or frontend/src/ (an amend needs a new run). A push
+move and no untracked file sits under backend/, tests*/, scripts/ or frontend/src/, and every planned step has a
+passing result (an amend needs a new run; the marker records `mode`: jobs and lane). A push
 whose folder the gate cannot find is refused. Bypass, with a reason:
 `PREPUSH_GATE_ALLOW=<reason> git push ...` or `land.py --skip-prepush <reason>`.
 Underneath, `python tools/ci_local.py` (`--full` after a large
@@ -95,17 +109,12 @@ CI. Add, when relevant: `python scripts/ruff_ratchet.py`; `python scripts/orches
 `python scripts/orchestrator/coverage.py . --check`; a migration or DB store runs its own test file (below); a
 regenerated file its `--check`. Red CI: read `gh run view <id> --log-failed`, fix, push again.
 
-**Fast pre-check before every prepush run (owner, 2026-11-26; applies to every session and every lane brief).** On
-26 Nov, 12 prepush runs failed in preflight on repo scans and each cost a second ~35 min run (four runs for one push).
-Before starting prepush, run on the exact tree (about 5 to 8 min) and start prepush only when all are green:
-`python -m pytest tests -m repo_scan -q` (with `python -m`: a bare `pytest` cannot import `tests`); `python scripts/ruff_ratchet.py`; `python scripts/orchestrator/coverage.py . --check
---no-gh`; the regenerated files' checks (openapi, spec digest, findings index); `tests_app/test_reply_inventory.py`
-and `tests_app/test_order_closure_all_routes.py` when a route or reply model changed; `python tools/ci_local.py`;
-vitest for the touched files (all of it after a merge). Run prepush in the background with a 2-hour limit and build
-the next item in another worktree meanwhile; batch related fixes into one gated push; a guard that needs a person's
-edit (reply_inventory notes, ROUTE_ORDER_EDGES, an allow-list) goes to the owner the moment it is known, not after
-the gate. Counter: prepush runs per push (target 1). The gate itself is being made faster on
-`chore/gate-speed-1126`; until that lands and is proven, this pre-check is the rule.
+**One gated run per push (owner, 2026-11-26).** The gate itself now runs the seconds-long checks first and the long stages
+side by side, so a red ruff, coverage, alembic or spec check shows in seconds and the separate fast pre-check is no longer the rule
+once a lane has adopted `chore/gate-speed-1126` (results: `docs/process/gate-speed-2026-11-26.md`). Run prepush in the
+background with a 2-hour limit and build the next item in another worktree meanwhile; batch related fixes into one gated
+push; a guard that needs a person's edit (reply_inventory notes, ROUTE_ORDER_EDGES, an allow-list) goes to the owner the
+moment it is known, not after the gate. Counter: prepush runs per push (target 1).
 
 ## Merge
 - Only `python scripts/orchestrator/merge.py <pr> --reviewed-sha <full 40-char sha>` (or `land.py <worktree> --title T
@@ -130,7 +139,10 @@ the gate. Counter: prepush runs per push (target 1). The gate itself is being ma
   `python scripts/orchestrator/db_run.py . python -m alembic -c backend/ofo_app/alembic.ini upgrade head`
   `python scripts/orchestrator/db_run.py . python -m pytest -q -rs -p no:cacheprovider -c pytest-app.ini tests_app/<file>.py`
 - Which `tests_app` files a backend change can break: `python scripts/orchestrator/select_app_tests.py <worktree>`
-  (exit 3 = diff not parsed; fails closed). Tests marked `network` hit Zerodha's public instrument list.
+  (exit 3 = diff not parsed; fails closed). It also selects a changed `tests_app` test file itself; every test that
+  imports (names) a changed or deleted `tests_app` module, test files included, followed transitively; a changed or deleted
+  conftest/`__init__` subtree; the tests naming a changed data file; all of them if nothing names a changed non-test file.
+  Renames count as delete + add; a git-quoted path name exits 3. It does not follow computed imports. Tests marked `network` hit Zerodha's public instrument list.
 - Background worker (REQ-115 AC-6, ADR-286): start it through the supervisor, which restarts it when it dies (1, 2, 4 .. 60 s
   backoff; gives up after 5 restarts in 10 minutes so the heartbeat watch says "stopped"; a clean exit 0 is not restarted):
   `python scripts/orchestrator/supervise_worker.py` (same as `-- python -m ofo_app.background`; run it with the env the worker needs). Stop the supervisor with `taskkill /PID <pid> /T /F`: without /T the worker it started keeps running (measured 12 Nov: the child outlived `taskkill /PID <supervisor> /F`).

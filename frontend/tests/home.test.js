@@ -104,7 +104,7 @@ describe('Home states from GET /strategies', () => {
     expect(rows[1].text()).toContain('NIFTY, Draft, last saved 17 Oct 2026, 10:00:00 IST')
     expect(rows[2].text()).toContain('NIFTY, Draft, last saved 16 Oct 2026, 10:00:00 IST')
     expect(w.find('[data-testid="recent-open-1"]').exists()).toBe(false) // the oldest is not shown
-    expect(hrefs(w, 'recent-strategies')).toEqual(['/strategy/builder', '/strategy/builder', '/strategy/builder'])
+    expect(hrefs(w, 'recent-strategies')).toEqual(['/strategy/builder?strategy=2', '/strategy/builder?strategy=3', '/strategy/builder?strategy=4']) // S-18: each link carries its row's id
     expect(w.text()).not.toContain('Welcome')
   })
 
@@ -187,7 +187,7 @@ describe('REQ-134 reader sweep: a recent row shows the strategy name (quoted use
     strategiesAnswer = [{ ...draft(1, 'NIFTY', '2026-10-18T10:00:00+05:30'), name: '"NIFTY Oct condor"' }, draft(2, 'NIFTY', '2026-10-17T10:00:00+05:30')]
     const w = await mountHome()
     const rows = w.findAll('[data-testid="recent-row"]')
-    expect(rows[0].get('[data-testid="recent-name"]').text()).toBe('NIFTY Oct condor')
+    expect(rows[0].get('[data-testid="recent-name"]').text()).toBe('NIFTY Oct condor (#1)') // ADR-330 (19): number added; this row carries no first leg, so no expiry
     expect(rows[1].find('[data-testid="recent-name"]').exists()).toBe(false)
     expect(rows[1].text()).toContain('NIFTY, Draft, last saved 17 Oct 2026')
   })

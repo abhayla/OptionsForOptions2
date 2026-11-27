@@ -41,6 +41,7 @@ from fastapi import FastAPI, Request, WebSocket, WebSocketDisconnect
 from fastapi.exceptions import RequestValidationError
 from fastapi.responses import RedirectResponse
 from fastapi.routing import APIRoute, APIWebSocketRoute
+from sqlalchemy.exc import DBAPIError
 from starlette.exceptions import HTTPException as StarletteHTTPException
 from starlette.responses import Response
 from starlette.types import ASGIApp, Message, Receive, Scope, Send
@@ -89,6 +90,7 @@ class Failure(Enum):
     UPSTREAM_BUSY = (503, "60")  # the upstream answered "too many requests"
     UPSTREAM_BAD_GATEWAY = (502, None)  # the upstream could not be reached, or answered junk
     NOT_FOUND = (404, None)  # W-061: a strategy or history entry that is not there (or is another user's)
+    UNPROCESSABLE = (422, None)  # ADR-330 (3): understood, but the value is refused (nothing written)
     CONFLICT = (409, None)  # W-061: the change is based on a stale revision, or the saved form no longer reads
 
     def __init__(self, status: int, retry_after: str | None) -> None:
@@ -613,6 +615,9 @@ def _reference() -> str:
 
 
 def _internal_response(exc: BaseException, request: Request) -> ClosedResponse:
+    if busy_database_error(exc):  # S-02: the one door every unhandled error passes (see BUSY_SQLSTATES)
+        log.warning("store busy (%s) on %s %s", type(exc).__name__, request.method, request.url.path)
+        return _body(render("store_busy"), Failure.CONFLICT.status)
     reference = _reference()
     log.error("unhandled error %s on %s %s", reference, request.method, request.url.path, exc_info=exc)
     return _body(render("internal_system_request_failed", reference=reference), 500)
@@ -656,6 +661,26 @@ def _allowed_methods(exc: StarletteHTTPException) -> tuple[str, ...] | None:
     given = next((v for k, v in (exc.headers or {}).items() if k.lower() == "allow"), "")
     tokens = tuple(t for t in (p.strip() for p in given.split(",")) if t in _METHODS) if type(given) is str else ()
     return tokens or None
+
+
+#: PostgreSQL's three "someone else holds what this write needs" answers: lock_not_available (lock_timeout),
+#: query_canceled (statement_timeout, also what a lock wait ends as under it) and deadlock_detected. S-02 (owner screen
+#: check 25 Nov 2026, ERR-6960F002 on a strategy delete): each is "busy, nothing was changed", never an ERR-xxxx 500.
+BUSY_SQLSTATES = frozenset({"55P03", "57014", "40P01"})
+
+
+def busy_database_error(exc: BaseException | None) -> bool:
+    """True when ``exc`` is, or was raised from, a SQLAlchemy DBAPIError whose sqlstate is one of BUSY_SQLSTATES. Any
+    other database error is not busy (it stays the internal answer). The write itself is rolled back by the request's
+    session (``_run`` and ``get_db`` close it), so the refusal never hides a half-written change."""
+    seen: set[int] = set()
+    while exc is not None and id(exc) not in seen:
+        seen.add(id(exc))
+        if isinstance(exc, DBAPIError):
+            orig = exc.orig
+            return (getattr(orig, "sqlstate", None) or getattr(orig, "pgcode", None)) in BUSY_SQLSTATES
+        exc = exc.__cause__ or exc.__context__
+    return False
 
 
 async def handle_error(request: Request, exc: Exception) -> ClosedResponse:

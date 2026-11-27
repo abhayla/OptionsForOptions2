@@ -108,11 +108,13 @@ NON_ORDER_ROUTES: frozenset[tuple[str, str]] = frozenset({
     # GC-ADJ2 5: a suggestion's outcome (REQ-112) is a record, no order
     ("POST", "/api/adjustment-opportunities/{suggestion_id}/dismiss"),
     ("POST", "/api/adjustment-opportunities/{suggestion_id}/acted-on"),
+    ("POST", "/api/alerts/{alert_id}/answer"),  # ADR-330 (3): an answer is a record, no order
     ("POST", "/api/strategies/leg-edit"),  # engine answer for one edited leg
     ("POST", "/api/strategies/outcome"),  # engine answer (a read)
     ("POST", "/api/strategies/{strategy_id}/adjustment-approaches"),  # REQ-155 engine answer, suggest-only (a read)
     ("POST", "/api/strategies/{strategy_id}/adjustment-plan"),  # GC-ADJ2 4: accept a plan (data, no order)
     ("PUT", "/api/strategies/{strategy_id}/adjustment-plan"),  # GC-ADJ2 4: edit the plan (data, no order)
+    ("POST", "/api/strategies/{strategy_id}/adjustment-plan/reset"),  # P8: plan back to its playbook (data)
     ("PUT", "/api/strategies/{strategy_id}/adjustment-plan/rules"),  # issue 7: this trade's own rules (data, no order)
     ("PUT", "/api/strategies/{strategy_id}/alert-style"),  # GC-ALERT1 4: pin a strategy's alert style (data, no order)
     ("PUT", "/api/strategies/{strategy_id}/monitoring-pause"),  # GC-IC1 4a A-38: pause adjustment checks (data)
@@ -126,6 +128,7 @@ NON_ORDER_ROUTES: frozenset[tuple[str, str]] = frozenset({
     ("POST", "/strategies"),
     ("PATCH", "/strategies/{strategy_id}/name"),
     ("DELETE", "/strategies/{strategy_id}"),
+    ("POST", "/strategies/bulk-delete"),  # ADR-330 (8): the single delete per id (app data, no order)
     ("POST", "/strategies/{strategy_id}/undelete"),
     ("PUT", "/strategies/{strategy_id}"),
     ("POST", "/strategies/{strategy_id}/restore/{seq}"),

@@ -1,5 +1,5 @@
 <!-- Positions pages, part 1 (W-111; REQ-044 AC-3, ADR-109 (2), ADR-027, ADR-138 (2)). Reads GET /api/positions once on
-     load and shows QUANTITIES grouped by strategy, with each strategy's link: no price, P&L, margin or Greek (part 2), no
+     load and shows QUANTITIES and each contract's Zerodha P&L (Lane S: the server's figure, or a dash with its reason) grouped by strategy, with each strategy's link: no price, margin or Greek, no
      order button (every action routes back to the strategy). ADR-138 (2): "strategy groups, strategy P&L, the mismatch
      badge and "N outside lots - view on Kite"; no copy of Kite's full position list" - so only contracts linked to a
      strategy are rows; units no strategy owns are one count with a link to Kite. A refused read (no Zerodha session,
@@ -8,33 +8,33 @@
      to the strategy's Execute screen where Check is. Both Positions menu items show this same strategy-grouped page.
      New file, copy from: none. -->
 <script setup>
-import { onMounted, ref, watch } from 'vue'
+import { computed, onMounted, ref, watch } from 'vue'
 import { useRoute } from 'vue-router'
-import api, { NEUTRAL_PARTS } from '@/services/api'
+import api, { NEUTRAL_PARTS, hasShape } from '@/services/api'
 import ErrorMessage from '@/components/common/ErrorMessage.vue'
 import PageHeader from '@/components/common/PageHeader.vue'
-import Tabs from '@/components/common/Tabs.vue'
 import EmptyState from '@/components/states/EmptyState.vue'
-import { panelId, tabId } from '@/components/common/tabIds.js'
+import PositionsTotals from '@/components/positions/PositionsTotals.vue'
 import PaperStrategies from '@/components/strategy/PaperStrategies.vue'
 import { istTime } from '@/lib/displayFormat'
+import { PAPER_NO_FIGURE as NO_FIGURE } from '@/lib/paperList'
 import { KITE_POSITIONS_URL } from '@/lib/execute'
 import { useOrderPath } from '@/lib/orderPath'
 import { brokerIsConnected } from '@/lib/brokerConnected'
 
 const route = useRoute()
-const POSITION_TABS = [{ key: 'positions', label: 'Positions' }, { key: 'paper', label: 'Paper' }]
-const tab = ref(route.query.tab === 'paper' ? 'paper' : 'positions')
-// GC-TP 4b (F-69): with at least one open paper strategy and no Zerodha position, the page opens on Paper. The count is the
-// server's rows (open_count above 0), read once; a tab the user (or the URL) chose is never moved.
-const paperOpen = ref(0)
-let chosen = route.query.tab !== undefined
-let moving = false
-watch(tab, () => { if (!moving) chosen = true }, { flush: 'sync' })
-const paperOpenText = (n) => `${n} paper ${n === 1 ? 'strategy is' : 'strategies are'} open - see Paper.`
-const NO_ZERODHA = 'No open Zerodha positions.'
-const notConnected = ref(false) // the read was refused AND the connection read says not connected (any other failure stays on Positions)
-const noReal = () => notConnected.value || (!!result.value && !result.value.strategies.length && !result.value.has_outside)
+// ADR-330 (10) replaces ADR-201 (2): ONE list for real and paper trades, filtered All / Real / Paper (default All). The old
+// ?tab=paper opens Paper and ?tab=positions opens Real, so bookmarks and the builder's links still land where they did.
+const FILTERS = [{ key: 'all', label: 'All' }, { key: 'real', label: 'Real' }, { key: 'paper', label: 'Paper' }]
+const filterOf = (tab) => (tab === 'paper' ? 'paper' : tab === 'positions' ? 'real' : 'all')
+// ?exit= (the Live card's Exit link) always opens on Paper, so the exit confirm never opens over the Real view; the filter stays Paper
+// after PaperStrategies consumes the parameter (the tab did not change, so nothing resets it).
+const hasExit = () => route.query.exit !== undefined
+const filter = ref(hasExit() ? 'paper' : filterOf(route.query.tab))
+watch(() => route.query.tab, (tab) => { filter.value = hasExit() ? 'paper' : filterOf(tab) })
+watch(() => route.query.exit, (x) => { if (x !== undefined) filter.value = 'paper' })
+const paperSummary = ref(null) // PaperStrategies' emitted figures: this page reads no paper list itself (one reader)
+const notConnected = ref(false) // the read was refused AND the connection read says not connected
 // W-121 (REQ-073 AC-6, ADR-165): a link to the strategy's Execute screen is absent (not disabled) unless the server said
 // the order path is on; off, the strategy is named in plain text.
 const orderPathOn = useOrderPath()
@@ -49,36 +49,37 @@ const BLOCKED = 'blocked until its position matches Zerodha'
 // A pending contract's other holders are blocked too (ADR-110 + Q224); the answer names them in blocked_strategy_ids.
 const HOLDERS = 'Every other strategy holding units on this contract is blocked too (listed above).'
 const NO_ROW = 'No confirmed position of this strategy to show yet.'
+const REAL_TAG = 'REAL (Zerodha)'
 const VIEW_ON_KITE = 'view on Kite'
 const outsideText = (lots) => (lots === null ? 'Positions outside your strategies' : `${lots} outside ${lots === 1 ? 'lot' : 'lots'}`)
 
-async function readPaperOpen() {
-  try {
-    const list = (await api.get('/paper/strategies')).data?.strategies
-    paperOpen.value = Array.isArray(list) ? list.filter((x) => x && x.state !== 'EXITED' && x.open_count > 0).length : 0
-  } catch {
-    paperOpen.value = 0 // unreadable: the page stays as it was
-  }
-}
+const realEmpty = computed(() => !!result.value && !result.value.strategies.length && !result.value.has_outside)
+// the five answer states of the real section; the paper section below it never waits for, or hides behind, any of them
+const realState = computed(() => {
+  if (loading.value) return 'loading'
+  if (errorParts.value) return notConnected.value ? 'not_connected' : 'read_failed'
+  return realEmpty.value ? 'empty' : 'connected'
+})
+// ADR-330 (10), (24): the Real P&L total is the server's real_pnl, every string printed as sent (no arithmetic here). A refused read
+// shows its own message as the reason; only a reply with no real_pnl key keeps the legacy "not shown yet" line.
+const realTotals = computed(() => {
+  if (errorParts.value) return { text: null, reason: errorParts.value.what_happened ?? null, caption: null, note: null }
+  const r = result.value?.real_pnl
+  if (result.value && !r) return { text: typeof result.value.pnl_text === 'string' ? result.value.pnl_text : null, legacy: true }
+  if (!r) return null
+  return { text: r.state === 'stated' ? r.pnl_text : null, reason: r.reason, caption: r.caption, note: r.excludes_note }
+})
 onMounted(async () => {
-  await Promise.all([
-    (async () => {
-      try {
-        result.value = (await api.get('/positions')).data
-      } catch (e) {
-        errorParts.value = e?.parts ?? NEUTRAL_PARTS
-        // fail closed: only a connection read that succeeded and says not connected moves the tab; an unreadable one keeps Positions
-        try { notConnected.value = !brokerIsConnected((await api.get('/broker/status')).data) } catch { notConnected.value = false }
-      } finally {
-        loading.value = false
-      }
-    })(),
-    readPaperOpen(),
-  ])
-  if (!chosen && paperOpen.value > 0 && noReal()) {
-    moving = true
-    tab.value = 'paper'
-    moving = false
+  try {
+    const body = (await api.get('/positions')).data
+    if (!hasShape(body, ['strategies']) || !Array.isArray(body.strategies)) throw { unreadable: true } // ADR-008: an answer with no strategies list is a failed read, never an empty one
+    result.value = body
+  } catch (e) {
+    errorParts.value = e?.parts ?? NEUTRAL_PARTS
+    // fail closed: only a connection read that succeeded and says not connected is "not connected"; an unreadable one is a failed read
+    try { notConnected.value = !brokerIsConnected((await api.get('/broker/status')).data) } catch { notConnected.value = false }
+  } finally {
+    loading.value = false
   }
 })
 </script>
@@ -88,12 +89,14 @@ onMounted(async () => {
        card per strategy with its contracts in an aligned table (Contract | Your units | Zerodha | Status). -->
   <section data-testid="positions-page" :data-view="view">
     <PageHeader :parent="route.meta.parent ?? ''" :title="route.meta.title" />
-    <!-- GC-BP step 6 (ADR-201 (2)): "Positions" = this page as it was; "Paper" = the shared paper list, which loads by
-         itself and is never held up by the Zerodha read. Paper figures never appear in the Positions tab. -->
-    <Tabs v-model="tab" :tabs="POSITION_TABS" label="Positions or paper trades" id-prefix="positions" />
-    <div :id="panelId('positions', tab)" role="tabpanel" :aria-labelledby="tabId('positions', tab)" class="mt-4">
-    <PaperStrategies v-if="tab === 'paper'" data-testid="positions-paper" />
-    <template v-else>
+    <!-- ADR-330 (10) replaces ADR-201 (2): ONE list. Two totals (never added), a filter All / Real / Paper, the real section (read
+         from Zerodha first, ADR-016) and the one paper list, which loads by itself and is never held up by the Zerodha read. -->
+    <div class="mt-4 grid gap-4">
+    <PositionsTotals :real="realTotals" :paper="paperSummary" />
+    <div role="group" aria-label="Show real trades, paper trades or both" class="flex gap-2" data-testid="positions-filter">
+      <button v-for="f in FILTERS" :key="f.key" type="button" class="rounded border border-line px-3 py-1 text-sm" :class="filter === f.key ? 'bg-accent-soft font-semibold text-accent' : ''" :aria-pressed="filter === f.key" :data-testid="`filter-${f.key}`" @click="filter = f.key">{{ f.label }}</button>
+    </div>
+    <div v-if="filter !== 'paper'" :data-state="realState" data-testid="real-state">
     <p v-if="loading" class="text-sm text-ink-muted" data-testid="positions-loading">Reading your positions from Zerodha.</p>
     <ErrorMessage v-else-if="errorParts" :parts="errorParts" compact prefix="positions-error" />
     <div v-else-if="result" class="grid gap-4 text-sm">
@@ -114,14 +117,14 @@ onMounted(async () => {
       </div>
       <!-- GC-UI D-C40 (Sensibull 050): the shared empty state; the title is new text (owner read), the line is ours as before. -->
       <div v-if="!result.strategies.length && !result.has_outside" data-testid="positions-empty">
-        <p v-if="paperOpen > 0" data-testid="positions-paper-open">{{ NO_ZERODHA }} {{ paperOpenText(paperOpen) }}</p>
-        <EmptyState v-else title="No open positions" message="Zerodha shows no open positions, and none of your strategies holds any." />
+        <EmptyState title="Real positions" message="No open Zerodha positions." />
       </div>
       <p v-else-if="!result.strategies.length" class="text-ink-muted" data-testid="positions-no-strategy">
         None of your strategies holds a position.
       </p>
       <section v-for="g in result.strategies" :key="g.strategy_id" class="overflow-hidden rounded-lg border border-line bg-surface" data-testid="position-group" :data-strategy="g.strategy_id">
         <h2 class="flex h-11 items-center gap-2 border-b border-line px-4 text-sm font-semibold">
+          <span class="rounded bg-surface-muted px-1 text-xs font-semibold" data-testid="real-tag">{{ REAL_TAG }}</span>
           <RouterLink v-if="orderPathOn" :to="`/strategy/${g.strategy_id}/execute`" class="link" data-testid="position-strategy-link">Strategy {{ g.strategy_id }}</RouterLink><span v-else data-testid="position-strategy-name">Strategy {{ g.strategy_id }}</span>
           <span v-if="g.blocked" class="font-normal text-warn" data-testid="position-mismatch-badge">({{ BLOCKED }})</span>
         </h2>
@@ -129,7 +132,7 @@ onMounted(async () => {
         <div v-else class="overflow-x-auto">
         <table class="ui-table">
           <thead>
-            <tr><th>Contract</th><th class="ui-num">Your units</th><th class="ui-num">Zerodha units</th><th>Status</th></tr>
+            <tr><th>Contract</th><th class="ui-num">Your units</th><th class="ui-num">Zerodha units</th><th class="ui-num">P&amp;L</th><th>Status</th></tr>
           </thead>
           <tbody>
             <tr v-for="c in g.contracts" :key="c.tradingsymbol" data-testid="position-row" :data-symbol="c.tradingsymbol">
@@ -137,11 +140,13 @@ onMounted(async () => {
               <template v-if="c.pending">
                 <td class="ui-num"><span data-testid="position-waiting">{{ WAITING }}</span> (plan <span data-testid="position-pending-plans">{{ c.pending_plans.join(', ') }}</span>)</td>
                 <td class="ui-num"><span data-testid="position-zerodha">{{ c.zerodha_units }}</span></td>
+                <td class="ui-num"><span data-testid="position-pnl">{{ c.pnl_state === 'stated' ? c.pnl_text : NO_FIGURE }}</span><span v-if="c.pnl_reason" class="block text-xs text-ink-muted" data-testid="position-pnl-reason">{{ c.pnl_reason }}</span></td>
                 <td class="text-ink-muted"><span data-testid="position-unconfirmed">{{ UNCONFIRMED }}</span>. <span data-testid="position-pending-holders">{{ HOLDERS }}</span></td>
               </template>
               <template v-else>
                 <td class="ui-num"><span data-testid="position-own-units">{{ c.units }}</span></td>
                 <td class="ui-num"><span data-testid="position-zerodha">{{ c.zerodha_units }}</span></td>
+                <td class="ui-num"><span data-testid="position-pnl">{{ c.pnl_state === 'stated' ? c.pnl_text : NO_FIGURE }}</span><span v-if="c.pnl_reason" class="block text-xs text-ink-muted" data-testid="position-pnl-reason">{{ c.pnl_reason }}</span></td>
                 <td></td>
               </template>
             </tr>
@@ -150,7 +155,8 @@ onMounted(async () => {
         </div>
       </section>
     </div>
-    </template>
+    </div>
+    <PaperStrategies v-show="filter !== 'real'" headline-above data-testid="positions-paper" @summary="paperSummary = $event" />
     </div>
   </section>
 </template>

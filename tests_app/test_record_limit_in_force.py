@@ -12,7 +12,7 @@ from types import SimpleNamespace
 
 import pytest
 from ofo.adjustment import alert_gate
-from ofo_app import background, playbook_store
+from ofo_app import actionable_alerts, background, playbook_store
 from ofo_app import db as app_db
 from ofo_app.routes import adjustment_check as check_route
 from ofo_app.routes.adjustment_opportunities import condition_text
@@ -54,11 +54,11 @@ class _Session:
 async def test_the_worker_stamps_the_limit_in_force_beside_the_gate_rung(monkeypatch):
     stamped: dict = {}
 
-    async def open_suggestion(db, user, sid, rule, **fields):
+    async def raise_actionable(db, user, sid, rule, kind, **fields):
         stamped.update(fields)
         return SimpleNamespace(id=1)
 
-    monkeypatch.setattr(playbook_store, "open_suggestion", open_suggestion)
+    monkeypatch.setattr(actionable_alerts, "raise_actionable", raise_actionable)
     monkeypatch.setattr(app_db, "get_sessionmaker", lambda: _Session)
     monkeypatch.setattr(check_route, "cheapest", lambda state: None)
     monkeypatch.setattr(check_route, "t19_record", lambda trigger, cheap: {})
@@ -85,11 +85,11 @@ async def test_an_event_with_no_check_still_stores_the_writers_adjustment_count(
     """Review MINOR: no sample leaves the words empty, but the count keeps the record lapsing on a position change."""
     stamped: dict = {}
 
-    async def open_suggestion(db, user, sid, rule, **fields):
+    async def raise_actionable(db, user, sid, rule, kind, **fields):
         stamped.update(fields)
         return SimpleNamespace(id=1)
 
-    monkeypatch.setattr(playbook_store, "open_suggestion", open_suggestion)
+    monkeypatch.setattr(actionable_alerts, "raise_actionable", raise_actionable)
     monkeypatch.setattr(app_db, "get_sessionmaker", lambda: _Session)
     watched = SimpleNamespace(user_ref="owner", strategy_id=123, body={}, is_system=True,
                               tracked=SimpleNamespace(adjustments_used=BOOKED))

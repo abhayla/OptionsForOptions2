@@ -10,6 +10,8 @@ from __future__ import annotations
 
 UI = 'user-facing wording or a fixed broker URL: V1 is Zerodha only and its texts/links name Zerodha/Kite (ADR-002, REQ-073 wording); no branch on the broker'
 REASONS: dict[str, str] = {
+    'frontend/src/lib/strategyActivity.js':
+        "ADR-292 / REQ-070 AC-7: the pinned sentence 'held at your broker' says 'broker' generically and 'held_at_broker' is a server flag read as true/not-true; no broker name, no branch on the broker",
     'frontend/src/lib/tracking.js':
         "ADR-292 (2): shows the broker name the user typed for a held condor (free text, 'shown and never used'); no branch on the broker",
     'backend/ofo_app/routes/broker.py':
@@ -127,23 +129,19 @@ LINES: dict[str, tuple[str, ...]] = {
         '__all__ = ["ReturnOut", "return_from_kite"]',
     ),
     'backend/ofo_app/routes/positions.py': (
+        'source: Literal["Zerodha"]',
+        'SOURCE = "Zerodha"',
+        '"reason": reason, "source": SOURCE, "read_at": snap.read_at,',
+        'def _read(session: KiteSession, catalogue: Any) -> _ReadSnapshot:',
+        'contracts.append({"tradingsymbol": symbol, "zerodha_units": result.raw_net.get(key, 0),',
         'from ofo_app.kite_reads import KiteReadError, unconfirmed_template',
         'from ofo_app.kite_replies import ContractIndex, KiteReplyError, log_ignored, orders_from_reply, positions_from_reply',
         'from ofo_app.routes.execute import KiteSession, get_execute_clock, get_kite_session',
         'zerodha_units: int  # Zerodha\'s net units on this contract, as read (a pending row marks them "not yet confirmed")',
-        'class _Zerodha:',
-        'def _read(session: KiteSession, catalogue: Any) -> _Zerodha:',
         'except (KiteReadError, KiteReplyError, ValueError) as exc:',
-        'async def _attribute(db: Any, user_ref: str, zerodha: _Zerodha, sources: ra.Sources,',
-        'return await ra.attribute_and_compare(ra.Account(db, user_ref), {}, zerodha.net, zerodha.orders, sources, at=now)',
         'from ofo_app import kite_period_reads',
         'answer = kite_period_reads.screen_positions(session.reads)  # REQ-118 AC-7: at most one read per 45 s per user',
-        'return _Zerodha(read.net, orders, index, answer.read_at)',
-        'return _answer(result, zerodha.index, zerodha.read_at)',
-        'contracts = [{"tradingsymbol": _symbol(key, index), "zerodha_units": result.raw_net.get(key, 0),',
         'session: Annotated[Optional[KiteSession], Depends(get_kite_session)],  # noqa: UP045',
-        'zerodha = _read(session, catalogue)',
-        'result = await _attribute(db, user_ref, zerodha, ra.Sources(catalogue, clock), now)',
     ),
     'backend/ofo_app/routes/zerodha_account.py': (
         'from ofo.broker import kite_flags',
@@ -299,16 +297,19 @@ LINES: dict[str, tuple[str, ...]] = {
         '<p v-if="loading" class="text-sm text-ink-muted" data-testid="positions-loading">Reading your positions from Zerodha.</p>',
         '<p class="text-ink-muted">Read from Zerodha at <span class="num font-medium text-ink" data-testid="positions-read-at">{{ istTime(result.read_at) }}</span>.</p>',
         '<a :href="KITE_POSITIONS_URL" target="_blank" rel="noopener noreferrer" class="link" data-testid="positions-outside-kite">{{ VIEW_ON_KITE }}</a>',
-        '<tr><th>Contract</th><th class="ui-num">Your units</th><th class="ui-num">Zerodha units</th><th>Status</th></tr>',
+        '<tr><th>Contract</th><th class="ui-num">Your units</th><th class="ui-num">Zerodha units</th><th class="ui-num">P&amp;L</th><th>Status</th></tr>',
         '<td class="ui-num"><span data-testid="position-zerodha">{{ c.zerodha_units }}</span></td>',
         "import { KITE_POSITIONS_URL } from '@/lib/execute'",
         "const WAITING = 'Order placed - waiting for Check with Zerodha'",
         "const BLOCKED = 'blocked until its position matches Zerodha'",
         "const VIEW_ON_KITE = 'view on Kite'",
-        '<EmptyState v-else title="No open positions" message="Zerodha shows no open positions, and none of your strategies holds any." />',
-        # GC-TP 4b (F-69, ADR-207 (3)): while paper strategies are open, the real Positions tab names Zerodha as the source
-        "const NO_ZERODHA = 'No open Zerodha positions.'",
-        '<p v-if="paperOpen > 0" data-testid="positions-paper-open">{{ NO_ZERODHA }} {{ paperOpenText(paperOpen) }}</p>',
+        '<EmptyState title="Real positions" message="No open Zerodha positions." />',
+        # ADR-330 (10) replaces ADR-201 (2): the one list tags each real group with its source, user-facing wording
+        "const REAL_TAG = 'REAL (Zerodha)'",
+    ),
+    'frontend/src/components/positions/PositionsTotals.vue': (
+        # ADR-330 (10): the Real P&L line says why there is no figure (user-facing wording)
+        "const REAL_NOT_SHOWN = 'Real P&L is not shown yet: the server does not price Zerodha positions.'",
     ),
     'frontend/src/router/nav.js': (
         "['zerodha-connection', 'Zerodha connection'],",
@@ -339,6 +340,15 @@ LINES: dict[str, tuple[str, ...]] = {
     ),
     'frontend/src/components/strategy/PaperStops.vue': (
         "const LABEL = 'Paper - exits are recorded in the app, not sent to Zerodha'",
+    ),
+    'frontend/src/lib/paperDrafts.js': (
+        # ADR-330 (10): the exit-title word for a real exit, user-facing wording in the one title door (no real exit is rendered, ADR-281)
+        "const KIND_WORDS = { paper: 'Paper', real: 'Real (Zerodha order)' }",
+    ),
+    'frontend/src/lib/strategyActivity.js': (
+        'export const HELD_REFUSED_TEXT = "This strategy is marked as held at your broker, so it cannot be deleted.";',
+        'export const refusedText = (row) => (row?.held_at_broker === true ? HELD_REFUSED_TEXT : DELETE_REFUSED_TEXT);',
+        'export const canDelete = (row) => row?.can_delete === true && row?.held_at_broker !== true;',
     ),
     'frontend/src/lib/dataHealthText.js': (
         "not_sent: 'Zerodha did not send this figure for this contract.',",

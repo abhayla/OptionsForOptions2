@@ -201,6 +201,7 @@ class ClosedLeg:
     booked: Decimal
     opened_at: datetime.datetime
     closed_at: datetime.datetime
+    exit_fills: int = 1  # how many exit orders the average exit is over (N-28, ADR-330 (27))
 
 
 @dataclass(frozen=True)
@@ -218,13 +219,14 @@ class LifecycleView:
 
 
 class _Life(_Running):
-    __slots__ = ("entry_cost", "entry_qty", "exit_proceeds", "exit_qty")
+    __slots__ = ("entry_cost", "entry_qty", "exit_fills", "exit_proceeds", "exit_qty")
 
     def __init__(self, first: PaperOrder) -> None:
         super().__init__(first)
         self.entry_qty = 0
         self.entry_cost = Fraction(0)
         self.exit_qty = 0
+        self.exit_fills = 0
         self.exit_proceeds = Fraction(0)
 
     def take(self, order: PaperOrder, quantity: int) -> int:
@@ -244,6 +246,7 @@ class _Life(_Running):
             self.cost -= average * closing
             self.net += closing if self.net < 0 else -closing
             self.exit_qty += closing
+            self.exit_fills += 1
             self.exit_proceeds += price * closing
             rest = quantity - closing
         self.last = order
@@ -252,7 +255,7 @@ class _Life(_Running):
     def closed_leg(self) -> ClosedLeg:
         return ClosedLeg(self.first.instrument_id, self.first.side, self.entry_qty,
                          _decimal(self.entry_cost / self.entry_qty), _decimal(self.exit_proceeds / self.exit_qty),
-                         _decimal(self.booked), self.first.placed_at, self.last.placed_at)
+                         _decimal(self.booked), self.first.placed_at, self.last.placed_at, max(self.exit_fills, 1))
 
 
 def lifecycles(orders: Sequence[PaperOrder], live_prices: Mapping[str, Decimal]) -> LifecycleView:

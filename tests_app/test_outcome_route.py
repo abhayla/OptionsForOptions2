@@ -81,7 +81,8 @@ async def test_condor_outcome_has_every_ac1_part(replayed):
     assert resp.status_code == 200, resp.text
     out = resp.json()
     assert set(out) == {"state", "underlying", "status_label", "reason", "output_label", "valuation",
-                        "answered_at", "market_closed", "last_price_at", "spot_level", "spot_at", "legs", "margin",
+                        "answered_at", "market_closed", "last_price_at", "closed_prices_text",
+                        "spot_level", "spot_at", "legs", "margin",
                         "table", "scenario", "payoff", "summary", "leg_quotes", "charges_breakdown", "target",
                         "dividend_yields", "entry_guide_state", "entry_guide_line",
                         "oldest_quote_at"}  # GC-LIVE: q priced with; ADR-300

@@ -281,3 +281,19 @@ describe('D-60 r3: Increase raises base lots with lots', () => {
     expect(leg.base_lots).toBe(3) // x1: lots = base_lots x 1, so a later multiplier edit keeps 3
   })
 })
+
+// Phase 5 (ADR-328 (1)): the door's `opposite` option (new `it`s only; the rest of this file is unchanged)
+describe('Phase 5: legDoor opposite option', () => {
+  const held = [{ id: 'a', instrument_id: 'NSE_FO:1', action: 'BUY', lots: 1 }]
+  it('the default is silent: a SELL of a held BUY asks nothing and is kept as its own row', async () => {
+    const ask = vi.fn()
+    const r = await admitLegs(held, [{ id: 'n', instrument_id: 'NSE_FO:1', action: 'SELL', lots: 1 }], { ask, maxLots: 10 })
+    expect(ask).not.toHaveBeenCalled()
+    expect(r.kept).toHaveLength(1)
+  })
+  it('opposite: ask asks with kind "opposite"; Cancel returns null', async () => {
+    const ask = vi.fn().mockResolvedValue('cancel')
+    expect(await admitLegs(held, [{ id: 'n', instrument_id: 'NSE_FO:1', action: 'SELL', lots: 1 }], { ask, maxLots: 10, opposite: 'ask' })).toBeNull()
+    expect(ask).toHaveBeenCalledWith(held[0], 'opposite')
+  })
+})

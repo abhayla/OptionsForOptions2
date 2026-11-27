@@ -114,7 +114,12 @@ class TrackedUnreadable(Exception):
 
 
 class TrackedExited(TrackedUnreadable):
-    """Every leg of the strategy is exited (no open leg): the strategy closed (GC-ADJ2 step 5, REQ-112 AC-2 lapse)."""
+    """Every leg of the strategy is exited (no open leg): the strategy closed (GC-ADJ2 step 5, REQ-112 AC-2 lapse).
+    ``closed_at``: the trade's own close time (its last exit, settle or stop order), None when no order states one."""
+
+    def __init__(self, *args: object, closed_at: datetime.datetime | None = None) -> None:
+        super().__init__(*args)
+        self.closed_at = closed_at
 
 
 def index_name(underlying: str) -> str | None:
@@ -133,7 +138,9 @@ async def read_tracked(strategy_id: int, rates: ChargeRates | None, db: Any = No
     if db is not None:
         return await _tracked_on(db, strategy_id, rates)
     async with get_sessionmaker()() as own:
-        return await _tracked_on(own, strategy_id, rates)
+        found = await _tracked_on(own, strategy_id, rates)
+        await own.commit()  # the worker's own session: keeps a stop base stored once (ADR-330), nothing else is written
+        return found
 
 
 async def _tracked_on(db: Any, strategy_id: int, rates: ChargeRates | None) -> Tracked | None:
@@ -147,10 +154,13 @@ async def _tracked_on(db: Any, strategy_id: int, rates: ChargeRates | None) -> T
     book = net_positions([o.order.as_paper() for o in orders], {})
     underlying, lot, legs = _legs_of(book, found)
     if not legs or underlying is None or lot is None:
-        raise TrackedExited("no open option leg")
+        raise TrackedExited("no open option leg", closed_at=closed_at_of(orders))
+    fresh = entry_stop_base(orders, found, _ENTRY_SOURCE)  # ADR-330 (1): from the entry orders only
+    base = await stop_base_in_force(db, strategy_id, fresh)
     if real:  # paid charges and adjustments used before the app saw it: not readable yet ("not checked", ADR-276 (4))
         return Tracked(Position(underlying, lot, "", datetime.date.min, tuple(legs)), book.booked, None,
-                       adjustments_used=None, entered_at=entered_at(orders), real_book=True)
+                       adjustments_used=None, entered_at=entered_at(orders), real_book=True, stop_base=base,
+                       entry_stop_base=fresh)
     paid, paid_exact = paid_of(orders, found, underlying, rates) if rates is not None else (None, None)
     booked = book.booked  # the same paper orders ``read_booked`` would read again on a second session
     # expiry kind and today are set by the route from the market reader (the calendar and clock live there)
@@ -160,7 +170,77 @@ async def _tracked_on(db: Any, strategy_id: int, rates: ChargeRates | None) -> T
                          and found[cid].stored.listed.contract.instrument_type in _OPTION_TYPES)
     return Tracked(Position(underlying, lot, "", datetime.date.min, tuple(legs)), booked, paid,
                    adjustments_used=used, entered_at=entered_at(orders), paid_exact=paid_exact,
-                   entry_position=entry_position_of(orders, found))
+                   entry_position=entry_position_of(orders, found), stop_base=base, entry_stop_base=fresh)
+
+
+async def nearest_expiry(db: Any, strategy_id: int) -> datetime.date | None:
+    """ADR-330 (19)(b): the nearest expiry among the strategy's OPEN contracts, from a light read (orders, contracts,
+    the netted book): no stop-base backfill, no write. None: not this user's, nothing traded, or no open leg."""
+    paper = await paper_book.load_owned(db, current_user_ref(), strategy_id)
+    orders: Any = paper or await _real_rows(db, strategy_id)
+    if not orders:
+        return None
+    found = {c.contract_id: c for c in await tracked_contracts.resolve(db, sorted({o.order.contract_id
+                                                                                   for o in orders}))}
+    book = net_positions([o.order.as_paper() for o in orders], {})
+    expiries = [found[int(p.instrument_id)].stored.listed.contract.expiry for p in book.positions
+                if p.net_quantity != 0 and found.get(int(p.instrument_id)) is not None
+                and found[int(p.instrument_id)].stored is not None]
+    return min(expiries, default=None)
+
+
+_ENTRY_SOURCE = "entry"  # = settings_in_force.BASE_ENTRY (imported lazily: that module imports the check)
+
+
+def entry_stop_base(orders: Any, found: Mapping[int, Any], source: str) -> Any:
+    """ADR-330 (1): the stop base worked out from the strategy's ENTRY orders only (kinds in
+    the first batch, ``entry_batch``: ONE definition of "the trade as entered", shared with D-04's entry position),
+    netted and priced by the engine (``compute_stop_base``). No entry order (empty, or none states a time), a book
+    that is not whole-lot options, several expiries or an engine refusal -> None (not worked out): the stop lines
+    then say "not checked", never a number from the live legs."""
+    from ofo_app import settings_in_force as sif  # noqa: PLC0415 - it imports the check module
+
+    entry = entry_batch(orders)
+    if not entry:
+        return None
+    try:
+        book = net_positions([o.order.as_paper() for o in entry], {})
+        _, lot, legs = _legs_of(book, found)
+    except (TrackedUnreadable, ValueError, KeyError, AttributeError, TypeError):
+        log.warning("stop base: the entry orders cannot be read", exc_info=True)
+        return None
+    if lot is None or not legs:
+        return None
+    return sif.compute_stop_base(legs, lot, book.booked, datetime.datetime.now(datetime.UTC), source)
+
+
+async def stop_base_in_force(db: Any, strategy_id: int, fresh: Any) -> Any:
+    """The stop base the checks read. Answer states: STORED on the plan row (stated) -> that one, never recomputed;
+    stored but not readable (failed) -> None, left as it is; plan with no base (absent, a plan saved before ADR-330)
+    -> ``fresh`` stored ONCE with source "backfill" (a lost race reads the winner's); no plan -> ``fresh`` as it is
+    (nothing to store it on); nothing worked out (empty, ambiguous) -> None."""
+    from dataclasses import replace  # noqa: PLC0415
+
+    from ofo_app import playbook_store  # noqa: PLC0415 - one import site with the check's own
+    from ofo_app import settings_in_force as sif  # noqa: PLC0415
+
+    plan = await playbook_store.plan_for(db, current_user_ref(), strategy_id)
+    if plan is None:
+        return fresh
+    stored = getattr(plan, "stop_base", None)
+    if stored is not None:
+        return sif.stop_base_from_json(stored)
+    if fresh is None:
+        return None
+    filled = replace(fresh, source=sif.BASE_BACKFILL)
+    try:
+        if await playbook_store.backfill_stop_base(db, strategy_id, filled.to_json()):
+            return filled
+        again = await playbook_store.plan_for(db, current_user_ref(), strategy_id)
+        return sif.stop_base_from_json(getattr(again, "stop_base", None)) if again is not None else filled
+    except Exception:  # noqa: BLE001 - a failed write must not stop the check; the figure is still the entry's
+        log.warning("stop base: the backfill could not be stored (strategy %s)", strategy_id, exc_info=True)
+        return filled
 
 
 def _legs_of(book: Any, found: Mapping[int, Any]) -> tuple[str | None, int | None, list[PositionLeg]]:
@@ -184,17 +264,27 @@ def _legs_of(book: Any, found: Mapping[int, Any]) -> tuple[str | None, int | Non
     return underlying, lot, legs
 
 
+def entry_batch(orders: Any) -> list[Any]:
+    """The ONE definition of "the trade as entered" (D-04's entry position and ADR-330 (1)'s stop base): every order
+    with the first order's ``placed_at``. A later basket, whatever its kind, and every adjustment is NOT part of it
+    (plan question Q4 (a): an adjustment does not move the stop base; reversing that is a change here, in this one
+    function, and it moves D-04's entry position with it). No order states a time -> [] (never a guess)."""
+    times = [getattr(o.order, "placed_at", None) for o in orders]
+    if not times or not all(isinstance(t, datetime.datetime) for t in times):
+        return []
+    first = min(times)
+    return [o for o in orders if o.order.placed_at == first]
+
+
 def entry_position_of(orders: Any, found: Mapping[int, Any]) -> Position | None:
     """D-04: the position the first batch of orders opened (every order with the first order's ``placed_at``), read as
     ``_tracked_on`` reads the book. None when no order states a time, the first batch is not whole-lot options, or it
     nets to nothing: the caller then keeps the current shape (never a guess)."""
-    times = [getattr(o.order, "placed_at", None) for o in orders]
-    if not times or not all(isinstance(t, datetime.datetime) for t in times):
+    batch = entry_batch(orders)
+    if not batch:
         return None
-    first = min(times)
     try:
-        underlying, lot, legs = _legs_of(net_positions([o.order.as_paper() for o in orders
-                                                        if o.order.placed_at == first], {}), found)
+        underlying, lot, legs = _legs_of(net_positions([o.order.as_paper() for o in batch], {}), found)
     except TrackedUnreadable:
         return None
     return None if not legs or underlying is None or lot is None else Position(underlying, lot, "", datetime.date.min,
@@ -238,6 +328,18 @@ def entered_at(orders: Any) -> datetime.datetime | None:
     times = [p for p in (getattr(getattr(o, "order", None), "placed_at", None) for o in orders)
              if isinstance(p, datetime.datetime)]
     return min(times) if times else None
+
+
+_CLOSING_KINDS = ("exit", "settle", "stop")
+
+
+def closed_at_of(orders: Any) -> datetime.datetime | None:
+    """The trade's close time (owner Q2b: "the trade closed at HH:MM"): the ``placed_at`` of its last exit, settle
+    or stop order, on the app's clock; None when no such order states one (never a guess, never the worker's notice
+    time)."""
+    times = [p for p in (getattr(o.order, "placed_at", None) for o in orders if o.order.kind in _CLOSING_KINDS)
+             if isinstance(p, datetime.datetime)]
+    return max(times) if times else None
 
 
 def history_count(orders: Any, is_option: Any) -> int | None:

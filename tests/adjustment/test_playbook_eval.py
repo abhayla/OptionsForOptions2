@@ -114,9 +114,10 @@ def state_of(sc: dict) -> StrategyState:
                                    datetime.date.fromisoformat(x["expiry"]), x["quantity"], D(x["entry"])) for x in legs))
         expiry_pnl = strat.expiry_pnl_at(spot) + booked
     margin = sc["broker"]["margin"]
+    max_loss = (whole["max_loss"] if whole["max_loss"] == "UNLIMITED" else D(whole["max_loss"])) if whole["exact"] else None
     state = StrategyState(stops=None,
         expiry_kind=sc["expiry_kind"], days_left=sc["dte"], hhmm=hhmm, spot=spot, shorts=shorts, pnl=pnl,
-        max_loss=(whole["max_loss"] if whole["max_loss"] == "UNLIMITED" else D(whole["max_loss"])) if whole["exact"] else None,
+        max_loss=max_loss, stop_max_loss=max_loss,  # ADR-330 (1): the entry's figure = the live one in these scenarios
         max_profit=(whole["max_profit"] if whole["max_profit"] == "UNLIMITED" else D(whole["max_profit"])) if whole["exact"] else None,
         margin=D(margin["value"]) if margin["state"] == "stated" else None, premium_left=left, adjustment_cost=cost,
         adjustment_approach=approach, adjustment_cost_reason=no_cost,
@@ -133,7 +134,7 @@ def _stops(body, state) -> sl.StopsInForce:
     per-stage stop values (ADR-250 shape): T-06 % of max loss, T-16 % of margin (amounts by the engine)."""
     stage = None if state.days_left is None else pe.stage_of(body, state.expiry_kind, state.days_left)
     lines = []
-    for kind, tid, base in ((sl.STOP_MAX_LOSS, sl.TRIGGER_MAX_LOSS, state.max_loss),
+    for kind, tid, base in ((sl.STOP_MAX_LOSS, sl.TRIGGER_MAX_LOSS, state.stop_max_loss),
                             (sl.STOP_MARGIN, sl.TRIGGER_MARGIN, state.margin)):
         trig = body["triggers"].get(tid) or {}
         if trig.get("on") is not True:
@@ -315,8 +316,8 @@ def test_unpriced_short_is_not_checked_for_t09():
 @pytest.mark.parametrize(("field", "value", "tid", "code", "text"), [
     ("margin", None, "T-16", "missing_margin", "Margin not available."),
     ("margin", D(0), "T-16", "margin_not_positive", "Margin not positive."),
-    ("max_loss", "UNLIMITED", "T-06", "max_loss_not_finite", "Max loss not finite (unlimited or multi-expiry)."),
-    ("max_loss", D(0), "T-06", "max_loss_not_finite", "Max loss not finite (unlimited or multi-expiry)."),
+    ("stop_max_loss", "UNLIMITED", "T-06", "max_loss_not_finite", "Max loss not finite (unlimited or multi-expiry)."),
+    ("stop_max_loss", D(0), "T-06", "max_loss_not_finite", "Max loss not finite (unlimited or multi-expiry)."),
     ("adjustment_cost", D(0), "T-19", "cost_not_positive", "Adjustment cost not positive."),
     ("premium_left", D(-1), "T-19", "net_long_premium", "No premium to earn (net long premium)."),
     ("atm_iv", None, "T-11", "missing_atm_iv", "ATM IV not available."),
@@ -461,7 +462,7 @@ def test_stop_with_marked_loss_above_max_loss_is_not_checked_inconsistent_prices
     """ADR-266: a loss larger than the max loss is inconsistent prices -> T-06 not checked with that reason, never flagged."""
     sc = load("ADJ-14")
     s = state_of(sc)
-    s = replace(s, max_loss=D(300), pnl=D(-723), stops=None)
+    s = replace(s, max_loss=D(300), stop_max_loss=D(300), pnl=D(-723), stops=None)
     s = replace(s, stops=_stops(body_of(sc), s))
     ev = evaluate(body_of(sc), s, {}, None)
     assert NotChecked("T-06", "T-06", "adjust_trigger_inconsistent_prices") in ev.results

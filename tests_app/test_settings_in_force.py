@@ -174,11 +174,17 @@ def test_the_max_loss_guard_key_is_never_a_source_t06_is():
     assert (stated.figure, stated.amount, stated.source) == (D(30), D("7169.11"), "strategy")
 
 
-def test_money_inputs_credit_is_the_engine_entry_credit_and_no_market_prices_no_max_loss():
+def test_money_inputs_read_the_stored_stop_base_and_never_the_live_legs():
+    """ADR-330 (1): the credit and max loss come from ``tracked.stop_base`` (worked out once from the entry orders);
+    the live legs here would give a credit of Rs 7,020 and are not read; no base -> not worked out (None), no market ->
+    no stage."""
     leg = lambda side, entry: SimpleNamespace(side=side, entry=D(entry), lots=1)  # noqa: E731
-    tracked = SimpleNamespace(position=SimpleNamespace(lot=65, legs=[
-        leg("BUY", "10"), leg("SELL", "60"), leg("SELL", "70"), leg("BUY", "12")]), booked=D(0), paid_charges=D(0))
-    assert sif.money_inputs(tracked, None, None) == sif.MoneyInputs(None, D(108) * 65)
+    position = SimpleNamespace(lot=65, legs=[leg("BUY", "10"), leg("SELL", "60"), leg("SELL", "70"), leg("BUY", "12")])
+    base = sif.StopBase(D("2600"), D("3900"), datetime.datetime(2026, 11, 25, tzinfo=datetime.UTC), sif.BASE_ENTRY)
+    tracked = SimpleNamespace(position=position, booked=D(0), paid_charges=D(0), stop_base=base)
+    assert sif.money_inputs(tracked, None, None) == sif.MoneyInputs(D("2600"), D("3900"))
+    unread = SimpleNamespace(position=position, booked=D(0), paid_charges=D(0), stop_base=None)
+    assert sif.money_inputs(unread, None, None) == sif.MoneyInputs(None, None)
 
 
 # ---- order defaults (gap 4): two layers, admin default -> user ------------------------------------------------------

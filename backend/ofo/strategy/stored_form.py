@@ -109,7 +109,7 @@ UNDERLYING_MISMATCH = "underlying_mismatch"
 LIVE_STATE_FIELD = "live_state_field"
 UNKNOWN_NAME = "unknown_name"
 VALUE_NOT_ALLOWED = "value_not_allowed"  # ADR-069: a setting value that is not an identifier or a number
-STRATEGY_NAME_EMPTY = "strategy_name_empty"  # REQ-134 AC-1: an empty name ("The strategy has no name.")
+STRATEGY_NAME_EMPTY = "strategy_name_empty"  # REQ-134 AC-1: an empty name ("Give the strategy a name.")
 STRATEGY_NAME_INVALID = "strategy_name_invalid"  # REQ-134 AC-1: over 20 characters typed, a control character, not text
 INVALID_PLANNED_ENTRY = "invalid_planned_entry"  # ADR-075: not a positive paise price with an aware capture time
 
@@ -622,6 +622,16 @@ def shown_broker(stored: str) -> object:
 def rename_summary(old: str, new: str) -> str:
     """The history summary of a rename (REQ-134 AC-3): one closed ``renamed`` item holding the two names as typed."""
     return summary_text([{"kind": "renamed", "from": old, "to": new}])
+
+
+def delete_summary() -> str:
+    """The history summary of a delete (ADR-330 (31)): one closed ``deleted`` item, shown "Deleted"."""
+    return summary_text([{"kind": "deleted"}])
+
+
+def undelete_summary() -> str:
+    """The history summary of the Undo of a delete (ADR-330 (31)): one closed ``undeleted`` item, shown "Restored"."""
+    return summary_text([{"kind": "undeleted"}])
 
 
 def change_summary(old: SavedDefinition, new: SavedDefinition) -> str:

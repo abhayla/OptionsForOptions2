@@ -23,7 +23,7 @@ import PaperStrategies from '@/components/strategy/PaperStrategies.vue'
 import PaperBookPanel from '@/components/strategy/PaperBookPanel.vue'
 import TrackingPanel from '@/components/strategy/TrackingPanel.vue'
 import MyStrategiesPage from '@/pages/MyStrategiesPage.vue'
-import { resetPaperAlerts } from '@/lib/paperAlerts'
+import { resetActiveAlerts } from '@/lib/paperAlerts'
 import { withPriceTexts } from './_priceTexts'
 
 const ok = (data) => () => Promise.resolve({ data })
@@ -35,7 +35,7 @@ const PAUSED = 'Paper P&L paused - prices not live'
 const AFTER = { total_after: '-435.95', total_after_text: '-435.95', charges_paid: '403.45', charges_to_close: '0.00', charges_to_close_text: '₹0.00', after_charges_reason: null, after_charges_reason_text: null }
 const NO_AFTER = (reason, text) => ({ total_after: null, total_after_text: null, charges_paid: null, charges_to_close: null, charges_to_close_text: null, after_charges_reason: reason, after_charges_reason_text: text })
 
-beforeEach(() => { answers = {}; resetPaperAlerts(); vi.useFakeTimers() })
+beforeEach(() => { answers = {}; resetActiveAlerts(); vi.useFakeTimers() })
 afterEach(() => vi.useRealTimers())
 
 describe('u123 trade page book panel: Total P&L after charges', () => {
