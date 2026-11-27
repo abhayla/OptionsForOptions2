@@ -2279,7 +2279,7 @@
      "id": "BUILD-53",
      "kind": "dialog",
      "tag": "Modal",
-     "label": "{{PLAN_LOADING_TEXT}} {{sheet.text}} {{loadError}} {{sheet.typeName}} {{labels.playbook}} {{p.name}} {{PLAN_REFILLED_TEXT(refilledFrom)}} {{labels.target}} {{form.targetWords}} {{labels.target_rupees}} {{form.targetRupeeWords}} {{labels.stop}} {{form.stopWords}} {{labels.stop_rupees}} {{form.stopRupeeWords}} {{form.stopWarning}} {{labels.max_adjustments}} {{labels.time_exit}} {{labels.time_exit_on}} {{labels.customise}} {{labels.reset}} {{labels.reset_confirm}} {{labels.reset}} Cancel {{resetMarkers}} {{PLAN_NOT_CONFIRMED_TEXT}} {{labels.close}} {{labels.save}} {{labels.use_as_is}}",
+     "label": "{{PLAN_LOADING_TEXT}} {{sheet.text}} {{loadError}} {{sheet.typeName}} {{labels.playbook}} {{p.name}} {{PLAN_REFILLED_TEXT(refilledFrom)}} {{labels.target}} {{form.targetWords}} {{labels.target_rupees}} {{form.targetRupeeWords}} {{labels.stop}} {{form.stopWords}} {{labels.stop_rupees}} {{form.stopRupeeWords}} {{form.stopWarning}} {{labels.max_adjustments}} {{labels.time_exit}} {{labels.time_exit_on}} {{labels.customise}} {{labels.reset}} {{labels.reset_confirm}} {{labels.reset}} Cancel {{labels.reset_put_back_none}} {{labels.reset_put_back}} {{resetDone.changed.join(', ')}} {{labels.reset_put_back_off}} {{resetDone.off.join(', ')}} {{PLAN_NOT_CONFIRMED_TEXT}} {{labels.close}} {{labels.save}} {{labels.use_as_is}}",
      "labelFrom": "text",
      "ariaLabel": "",
      "testid": "",
@@ -2444,7 +2444,7 @@
      "labelFrom": "text",
      "ariaLabel": "",
      "testid": "plan-close",
-     "source": "frontend/src/components/strategy/AdjustPlanSheet.vue:70",
+     "source": "frontend/src/components/strategy/AdjustPlanSheet.vue:74",
      "handlers": [
       "click"
      ],
@@ -2459,7 +2459,7 @@
      "labelFrom": "text",
      "ariaLabel": "",
      "testid": "plan-save",
-     "source": "frontend/src/components/strategy/AdjustPlanSheet.vue:72",
+     "source": "frontend/src/components/strategy/AdjustPlanSheet.vue:76",
      "handlers": [
       "click"
      ],
@@ -2474,7 +2474,7 @@
      "labelFrom": "text",
      "ariaLabel": "",
      "testid": "plan-use-as-is",
-     "source": "frontend/src/components/strategy/AdjustPlanSheet.vue:73",
+     "source": "frontend/src/components/strategy/AdjustPlanSheet.vue:77",
      "handlers": [
       "click"
      ],
@@ -4797,7 +4797,7 @@
      "labelFrom": "text",
      "ariaLabel": "",
      "testid": "settings-scope",
-     "source": "frontend/src/components/adjustments/PreferencesTab.vue:276",
+     "source": "frontend/src/components/adjustments/PreferencesTab.vue:282",
      "component": "components/adjustments/PreferencesTab.vue"
     },
     {
@@ -4808,7 +4808,7 @@
      "labelFrom": "aria-label",
      "ariaLabel": "Search settings",
      "testid": "settings-search",
-     "source": "frontend/src/components/adjustments/PreferencesTab.vue:281",
+     "source": "frontend/src/components/adjustments/PreferencesTab.vue:287",
      "type": "search",
      "component": "components/adjustments/PreferencesTab.vue"
     },
@@ -4820,7 +4820,7 @@
      "labelFrom": "text",
      "ariaLabel": "",
      "testid": "``settings-chip-${c.id}``",
-     "source": "frontend/src/components/adjustments/PreferencesTab.vue:286",
+     "source": "frontend/src/components/adjustments/PreferencesTab.vue:292",
      "handlers": [
       "click"
      ],
@@ -4835,7 +4835,7 @@
      "labelFrom": "text",
      "ariaLabel": "",
      "testid": "prefs-retry",
-     "source": "frontend/src/components/adjustments/PreferencesTab.vue:304",
+     "source": "frontend/src/components/adjustments/PreferencesTab.vue:310",
      "handlers": [
       "click"
      ],
@@ -4850,7 +4850,7 @@
      "labelFrom": "text",
      "ariaLabel": "",
      "testid": "",
-     "source": "frontend/src/components/adjustments/PreferencesTab.vue:310",
+     "source": "frontend/src/components/adjustments/PreferencesTab.vue:316",
      "handlers": [
       "click.prevent"
      ],
@@ -4865,7 +4865,7 @@
      "labelFrom": "text",
      "ariaLabel": "",
      "testid": "settings-clear",
-     "source": "frontend/src/components/adjustments/PreferencesTab.vue:324",
+     "source": "frontend/src/components/adjustments/PreferencesTab.vue:330",
      "handlers": [
       "click"
      ],
@@ -4880,7 +4880,7 @@
      "labelFrom": "text",
      "ariaLabel": "",
      "testid": "settings-expand-all",
-     "source": "frontend/src/components/adjustments/PreferencesTab.vue:327",
+     "source": "frontend/src/components/adjustments/PreferencesTab.vue:333",
      "handlers": [
       "click"
      ],
@@ -4895,7 +4895,7 @@
      "labelFrom": "text",
      "ariaLabel": "",
      "testid": "settings-clear",
-     "source": "frontend/src/components/adjustments/PreferencesTab.vue:329",
+     "source": "frontend/src/components/adjustments/PreferencesTab.vue:335",
      "handlers": [
       "click"
      ],
@@ -4910,7 +4910,7 @@
      "labelFrom": "text",
      "ariaLabel": "",
      "testid": "set-group-toggle",
-     "source": "frontend/src/components/adjustments/PreferencesTab.vue:333",
+     "source": "frontend/src/components/adjustments/PreferencesTab.vue:339",
      "handlers": [
       "click"
      ],
@@ -4925,7 +4925,7 @@
      "labelFrom": "aria-label",
      "ariaLabel": "Stop at % of margin: off",
      "testid": "margin-stop-switch",
-     "source": "frontend/src/components/adjustments/PreferencesTab.vue:372",
+     "source": "frontend/src/components/adjustments/PreferencesTab.vue:378",
      "type": "checkbox",
      "component": "components/adjustments/PreferencesTab.vue"
     },
@@ -4937,7 +4937,7 @@
      "labelFrom": "text",
      "ariaLabel": "",
      "testid": "",
-     "source": "frontend/src/components/adjustments/PreferencesTab.vue:391",
+     "source": "frontend/src/components/adjustments/PreferencesTab.vue:397",
      "handlers": [
       "click"
      ],
@@ -4952,7 +4952,7 @@
      "labelFrom": "text",
      "ariaLabel": "",
      "testid": "plan-edit",
-     "source": "frontend/src/components/adjustments/PreferencesTab.vue:400",
+     "source": "frontend/src/components/adjustments/PreferencesTab.vue:406",
      "handlers": [
       "click"
      ],
@@ -4967,7 +4967,7 @@
      "labelFrom": "text",
      "ariaLabel": "",
      "testid": "plan-form",
-     "source": "frontend/src/components/adjustments/PreferencesTab.vue:401",
+     "source": "frontend/src/components/adjustments/PreferencesTab.vue:407",
      "component": "components/adjustments/PreferencesTab.vue"
     },
     {
@@ -4978,7 +4978,7 @@
      "labelFrom": "attr",
      "ariaLabel": "",
      "testid": "",
-     "source": "frontend/src/components/adjustments/PreferencesTab.vue:402",
+     "source": "frontend/src/components/adjustments/PreferencesTab.vue:408",
      "component": "components/adjustments/PreferencesTab.vue"
     },
     {
@@ -4989,7 +4989,7 @@
      "labelFrom": "attr",
      "ariaLabel": "",
      "testid": "",
-     "source": "frontend/src/components/adjustments/PreferencesTab.vue:403",
+     "source": "frontend/src/components/adjustments/PreferencesTab.vue:409",
      "component": "components/adjustments/PreferencesTab.vue"
     },
     {
@@ -5000,7 +5000,7 @@
      "labelFrom": "attr",
      "ariaLabel": "",
      "testid": "",
-     "source": "frontend/src/components/adjustments/PreferencesTab.vue:404",
+     "source": "frontend/src/components/adjustments/PreferencesTab.vue:410",
      "component": "components/adjustments/PreferencesTab.vue"
     },
     {
@@ -5011,7 +5011,7 @@
      "labelFrom": "attr",
      "ariaLabel": "",
      "testid": "",
-     "source": "frontend/src/components/adjustments/PreferencesTab.vue:405",
+     "source": "frontend/src/components/adjustments/PreferencesTab.vue:411",
      "type": "time",
      "component": "components/adjustments/PreferencesTab.vue"
     },
@@ -5023,7 +5023,7 @@
      "labelFrom": "text",
      "ariaLabel": "",
      "testid": "",
-     "source": "frontend/src/components/adjustments/PreferencesTab.vue:406",
+     "source": "frontend/src/components/adjustments/PreferencesTab.vue:412",
      "type": "submit",
      "component": "components/adjustments/PreferencesTab.vue"
     },
@@ -5035,7 +5035,7 @@
      "labelFrom": "text",
      "ariaLabel": "",
      "testid": "",
-     "source": "frontend/src/components/adjustments/PreferencesTab.vue:407",
+     "source": "frontend/src/components/adjustments/PreferencesTab.vue:413",
      "handlers": [
       "click"
      ],
@@ -5050,7 +5050,7 @@
      "labelFrom": "text",
      "ariaLabel": "`Change ${p.label}, now ${shown(p, p.value)}`",
      "testid": "pref-edit",
-     "source": "frontend/src/components/adjustments/PreferencesTab.vue:438",
+     "source": "frontend/src/components/adjustments/PreferencesTab.vue:444",
      "handlers": [
       "click"
      ],
@@ -5065,7 +5065,7 @@
      "labelFrom": "text",
      "ariaLabel": "",
      "testid": "",
-     "source": "frontend/src/components/adjustments/PreferencesTab.vue:451",
+     "source": "frontend/src/components/adjustments/PreferencesTab.vue:457",
      "component": "components/adjustments/PreferencesTab.vue"
     },
     {
@@ -5076,7 +5076,7 @@
      "labelFrom": "attr",
      "ariaLabel": "",
      "testid": "pref-input",
-     "source": "frontend/src/components/adjustments/PreferencesTab.vue:453",
+     "source": "frontend/src/components/adjustments/PreferencesTab.vue:459",
      "type": "time",
      "component": "components/adjustments/PreferencesTab.vue"
     },
@@ -5088,7 +5088,7 @@
      "labelFrom": "attr",
      "ariaLabel": "",
      "testid": "pref-input",
-     "source": "frontend/src/components/adjustments/PreferencesTab.vue:456",
+     "source": "frontend/src/components/adjustments/PreferencesTab.vue:462",
      "component": "components/adjustments/PreferencesTab.vue"
     },
     {
@@ -5099,7 +5099,7 @@
      "labelFrom": "attr",
      "ariaLabel": "",
      "testid": "pref-note",
-     "source": "frontend/src/components/adjustments/PreferencesTab.vue:459",
+     "source": "frontend/src/components/adjustments/PreferencesTab.vue:465",
      "component": "components/adjustments/PreferencesTab.vue"
     },
     {
@@ -5110,7 +5110,7 @@
      "labelFrom": "text",
      "ariaLabel": "",
      "testid": "pref-save",
-     "source": "frontend/src/components/adjustments/PreferencesTab.vue:461",
+     "source": "frontend/src/components/adjustments/PreferencesTab.vue:467",
      "type": "submit",
      "component": "components/adjustments/PreferencesTab.vue"
     },
@@ -5122,7 +5122,7 @@
      "labelFrom": "text",
      "ariaLabel": "",
      "testid": "pref-reset",
-     "source": "frontend/src/components/adjustments/PreferencesTab.vue:462",
+     "source": "frontend/src/components/adjustments/PreferencesTab.vue:468",
      "handlers": [
       "click"
      ],
@@ -5137,7 +5137,7 @@
      "labelFrom": "text",
      "ariaLabel": "",
      "testid": "",
-     "source": "frontend/src/components/adjustments/PreferencesTab.vue:467",
+     "source": "frontend/src/components/adjustments/PreferencesTab.vue:473",
      "component": "components/adjustments/PreferencesTab.vue"
     },
     {
@@ -5148,7 +5148,7 @@
      "labelFrom": "text",
      "ariaLabel": "",
      "testid": "pref-edit",
-     "source": "frontend/src/components/adjustments/PreferencesTab.vue:500",
+     "source": "frontend/src/components/adjustments/PreferencesTab.vue:506",
      "handlers": [
       "click"
      ],
@@ -5163,7 +5163,7 @@
      "labelFrom": "text",
      "ariaLabel": "",
      "testid": "``pref-form-${p.key}``",
-     "source": "frontend/src/components/adjustments/PreferencesTab.vue:504",
+     "source": "frontend/src/components/adjustments/PreferencesTab.vue:510",
      "component": "components/adjustments/PreferencesTab.vue"
     },
     {
@@ -5174,7 +5174,7 @@
      "labelFrom": "attr",
      "ariaLabel": "",
      "testid": "pref-input",
-     "source": "frontend/src/components/adjustments/PreferencesTab.vue:506",
+     "source": "frontend/src/components/adjustments/PreferencesTab.vue:512",
      "type": "time",
      "component": "components/adjustments/PreferencesTab.vue"
     },
@@ -5186,7 +5186,7 @@
      "labelFrom": "attr",
      "ariaLabel": "",
      "testid": "pref-input",
-     "source": "frontend/src/components/adjustments/PreferencesTab.vue:507",
+     "source": "frontend/src/components/adjustments/PreferencesTab.vue:513",
      "component": "components/adjustments/PreferencesTab.vue"
     },
     {
@@ -5197,7 +5197,7 @@
      "labelFrom": "text",
      "ariaLabel": "",
      "testid": "pref-save",
-     "source": "frontend/src/components/adjustments/PreferencesTab.vue:509",
+     "source": "frontend/src/components/adjustments/PreferencesTab.vue:515",
      "type": "submit",
      "component": "components/adjustments/PreferencesTab.vue"
     },
@@ -5209,7 +5209,7 @@
      "labelFrom": "text",
      "ariaLabel": "",
      "testid": "pref-reset",
-     "source": "frontend/src/components/adjustments/PreferencesTab.vue:510",
+     "source": "frontend/src/components/adjustments/PreferencesTab.vue:516",
      "handlers": [
       "click"
      ],
@@ -5224,7 +5224,7 @@
      "labelFrom": "text",
      "ariaLabel": "",
      "testid": "``group-reset-${g.id}``",
-     "source": "frontend/src/components/adjustments/PreferencesTab.vue:525",
+     "source": "frontend/src/components/adjustments/PreferencesTab.vue:531",
      "handlers": [
       "click"
      ],
