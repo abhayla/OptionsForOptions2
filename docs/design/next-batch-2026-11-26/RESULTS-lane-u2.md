@@ -1,4 +1,4 @@
-STATUS 19:50 | item 1: gate 2 running (push after TOTAL PASS) | items 2, 3: built, Opus round 1 fixed, push after item 1 | next push 20:40 | blocker: none (send_message refused: untrusted device; this line is the report)
+STATUS 20:48 | item 1: pushed 1f6f7436 (gate TOTAL PASS) | items 2, 3: built, Opus-reviewed, final gate running | next push 21:15 | blocker: none (send_message refused: untrusted device; this line is the report)
 
 # Lane U2 results (branch fix/exit-all-1127, from f61f7935)
 
@@ -6,7 +6,7 @@ Highest status of everything below: **Fixed, not tested** (owner PC).
 
 ## Item 1: an exit whose outcome is unknown is never sent twice (ADR-017, ADR-016..019)
 
-Core / Proof: tests/exit-unknown-resend-adr017.test.js CORE, run red on the old code (the second Confirm was enabled after the 5 s hold, so a second POST), then green.
+Pushed as 1f6f7436. Core / Proof: tests/exit-unknown-resend-adr017.test.js CORE, run red on the old code (the second Confirm was enabled after the 5 s hold, so a second POST), then green.
 
 | | |
 |---|---|
