@@ -116,8 +116,7 @@ def rule_id(kind: str) -> str:
 #: alert gate's fast path reads: the % of max loss (T-06), % of margin (T-16) and 2x-credit lines, and the typed rupee
 #: level (``plan.rupee_loss``, ADR-330 (5)(a): when typed it IS the plan's one loss stop). Case: paper trade A-E #202
 #: (2026-11-27, Stop Rs 50, loss Rs 85.75 at 12:13:44) opened no alert while the rupee stop waited for candle closes.
-#: The profit targets (T-07, ``plan.rupee_profit``) and the time exit (T-10b) are not loss stops: they keep the
-#: candle-close confirmation.
+#: The profit targets and the time exit are not loss stops but are plan exits too (``PLAN_EXIT_RULES``, ADR-330 (47)).
 LOSS_STOP_RULES: Final = frozenset({*RULE_OF_LINE.values(), RUPEE_LOSS_RULE})
 
 
@@ -126,21 +125,50 @@ def is_stop_rule(rule_id_: object) -> bool:
     return isinstance(rule_id_, str) and rule_id_ in LOSS_STOP_RULES
 
 
-def loss_stop_rule_ids(body: object) -> frozenset[str]:
-    """Lane J 2026-11-27 (gap 3): EVERY rule id that carries a loss stop in this plan, by trigger, not by id: the fixed
-    set ``LOSS_STOP_RULES`` plus each body rule whose members name a loss-stop trigger (T-06, T-16), whatever its own
-    id (a mixed any/all rule, or ``{"id": "MYSTOP", "any_of": ["T-16"]}``; ``playbook_store._check_rules`` allows any
-    id). The ONE place the alert gate (via ``gate_readings``), the cap count on a worker start
-    (``cap_scope.count_capped``) and the F-71 entry hold (``playbook_eval.never_held``) read. An unreadable body ->
-    the fixed set (never fewer). Pure."""
+#: ADR-330 (47): the % profit target. With the loss stops, the rupee profit target and the time exit it makes the ONE
+#: set of the plan's own exits: each alerts on the first check past its level or time (no candle close, no quiet time,
+#: no daily cap); only adjustment suggestions keep those. Case: A-G #207 (27 Nov 2026), A-E #202.
+TRIGGER_PROFIT_PCT: Final = "T-07"
+PLAN_EXIT_TRIGGERS: Final = frozenset({*STOP_TRIGGERS, TRIGGER_PROFIT_PCT, TRIGGER_TIME_EXIT})
+PLAN_EXIT_RULES: Final = frozenset({*LOSS_STOP_RULES, TRIGGER_PROFIT_PCT, RUPEE_PROFIT_RULE, TRIGGER_TIME_EXIT})
+
+
+def is_plan_exit_rule(rule_id_: object) -> bool:
+    """A plan exit by its fixed rule id (``PLAN_EXIT_RULES``). Pure."""
+    return isinstance(rule_id_, str) and rule_id_ in PLAN_EXIT_RULES
+
+
+def _ids_naming(body: object, triggers: frozenset[str], fixed: frozenset[str]) -> frozenset[str]:
+    """``fixed`` plus each body rule whose members name one of ``triggers``, whatever its own id
+    (``playbook_store._check_rules`` allows any id). An unreadable body -> ``fixed`` (never fewer). Pure."""
     rules = body.get("rules") if isinstance(body, Mapping) else None
-    out = set(LOSS_STOP_RULES)
+    out = set(fixed)
     for rule in rules if isinstance(rules, list) else ():
         members = (rule.get("any_of") or rule.get("all_of")) if isinstance(rule, Mapping) else None
         named = {m for m in members if isinstance(m, str)} if isinstance(members, list) else set()
-        if isinstance(rule, Mapping) and isinstance(rule.get("id"), str) and STOP_TRIGGERS & named:
+        if isinstance(rule, Mapping) and isinstance(rule.get("id"), str) and triggers & named:
             out.add(rule["id"])
     return frozenset(out)
+
+
+def loss_stop_rule_ids(body: object) -> frozenset[str]:
+    """Every rule id that carries a LOSS stop in this plan, by trigger, not by id: ``LOSS_STOP_RULES`` plus each body
+    rule whose members name T-06 / T-16 (a mixed any/all rule, or ``{"id": "MYSTOP", "any_of": ["T-16"]}``). Pure."""
+    return _ids_naming(body, STOP_TRIGGERS, LOSS_STOP_RULES)
+
+
+def plan_exit_rule_ids(body: object) -> frozenset[str]:
+    """ADR-330 (47): EVERY rule id that is one of the plan's own exits in this plan: ``PLAN_EXIT_RULES`` plus each body
+    rule whose members name a loss stop, the % profit target or the time exit. The ONE set the alert gate (via
+    ``gate_readings``: fast path, quiet-time, paused-candle), the daily cap (``cap_scope.cap_exempt``), the
+    store's restart count (``cap_scope.count_capped``) and the F-71 entry hold (``playbook_eval.never_held``) read.
+    An unreadable body -> the fixed set (never fewer). Pure."""
+    return _ids_naming(body, PLAN_EXIT_TRIGGERS, PLAN_EXIT_RULES)
+
+
+def is_plan_exit(rule_id_: object, exits: frozenset[str] = frozenset()) -> bool:
+    """A plan exit: in the fixed set, or in ``exits`` (``plan_exit_rule_ids`` of the plan). Pure."""
+    return is_plan_exit_rule(rule_id_) or (isinstance(rule_id_, str) and rule_id_ in exits)
 
 
 def is_loss_stop(rule_id_: object, stops: frozenset[str] = frozenset()) -> bool:
@@ -161,6 +189,8 @@ __all__ = [
     "NOT_CHECKED",
     "NOT_CHECKED_OTHER",
     "NO_CREDIT",
+    "PLAN_EXIT_RULES",
+    "PLAN_EXIT_TRIGGERS",
     "RULE_OF_LINE",
     "RUPEE_LOSS_KEY",
     "RUPEE_LOSS_RULE",
@@ -176,13 +206,17 @@ __all__ = [
     "STOP_VALUE_UNREADABLE",
     "TRIGGER_MARGIN",
     "TRIGGER_MAX_LOSS",
+    "TRIGGER_PROFIT_PCT",
     "TRIGGER_TIME_EXIT",
     "StopInForce",
     "StopsInForce",
     "is_loss_stop",
+    "is_plan_exit",
+    "is_plan_exit_rule",
     "is_stop_rule",
     "loss_stop_rule_ids",
     "not_checked_code",
+    "plan_exit_rule_ids",
     "rule_id",
     "rupee_loss_is_the_stop",
 ]

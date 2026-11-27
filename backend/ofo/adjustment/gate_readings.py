@@ -48,8 +48,8 @@ def reading(v: RuleValue) -> Reading:
 
 
 def readings(evaluation: Evaluation, *, stops: frozenset[str]) -> Mapping[str, Reading]:
-    """Every rule of the evaluation -> (RuleSpec, value | None). ``stops`` = ``stop_lines.loss_stop_rule_ids`` of the
-    plan (Lane J gap 3): each rule it names carries ``RuleSpec.loss_stop``, so the gate gives it the stop fast path and
+    """Every rule of the evaluation -> (RuleSpec, value | None). ``stops`` = ``stop_lines.plan_exit_rule_ids`` of the
+    plan (Lane J gap 3): each rule it names carries ``RuleSpec.plan_exit``, so the gate gives it the stop fast path and
     the quiet-time and cap exemptions whatever its id."""
     out: dict[str, Reading] = {}
     for r in evaluation.results:
@@ -59,5 +59,5 @@ def readings(evaluation: Evaluation, *, stops: frozenset[str]) -> Mapping[str, R
         out.setdefault(rule_id, (gate.RuleSpec(rule_id, "bool", ()), None))
     for v in evaluation.values:
         out[v.rule_id] = reading(v)
-    return {rid: (dataclasses.replace(spec, loss_stop=True), value) if sl.is_loss_stop(rid, stops) else (spec, value)
+    return {rid: (dataclasses.replace(spec, plan_exit=True), value) if sl.is_plan_exit(rid, stops) else (spec, value)
             for rid, (spec, value) in out.items()}

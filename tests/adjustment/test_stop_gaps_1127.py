@@ -30,7 +30,7 @@ from test_playbook_eval import body_of, evaluate, load, state_of
 D = Decimal
 DAY = date(2026, 11, 27)
 LOSS_STOPS = sorted(sl.LOSS_STOP_RULES)
-CAPPED_OF_FOUR = 2  # T-03 and T-07 count; the two stop rules do not
+CAPPED_OF_FOUR = 1  # only T-03 counts; the two stop rules and the T-07 target are plan exits (ADR-330 (47))
 FULL_CAP = 99  # a count far past every preset's daily cap
 STYLES = {"weekly": ag.WEEKLY, "monthly": ag.MONTHLY, "intraday": ag.INTRADAY}
 
@@ -40,7 +40,7 @@ def at(hhmm: str) -> datetime:
 
 
 def _stop_spec(rule_id: str, *, loss_stop: bool = False) -> ag.RuleSpec:
-    return ag.RuleSpec(rule_id, "ge", (D("80"),), loss_stop=loss_stop)
+    return ag.RuleSpec(rule_id, "ge", (D("80"),), plan_exit=loss_stop)
 
 
 def _opened(events, rule_id):
@@ -59,7 +59,7 @@ def test_loss_stop_is_not_held_by_quiet_time(style, rule_id):
     assert not [e for e in events if isinstance(e, ag.Held)]
 
 
-@pytest.mark.parametrize("rule_id", ["T-07", sl.RUPEE_PROFIT_RULE, "T-03"])
+@pytest.mark.parametrize("rule_id", ["T-03", "T-14"])  # ADR-330 (47): T-07 and the rupee target are plan exits
 def test_other_rules_keep_quiet_time(rule_id):
     state, events = ag.step(ag.initial_state(), now=at("09:16:44"), preset=ag.WEEKLY,
                             readings={rule_id: (ag.RuleSpec(rule_id, "ge", (D("1"),)), D("2"))})
@@ -118,7 +118,7 @@ def test_loss_stop_rule_ids_reads_the_triggers():
 def test_one_place_decides_the_stop_for_gate_and_store():
     stops = sl.loss_stop_rule_ids(_mixed_body())
     assert sl.is_loss_stop("R-LOSS", stops) and sl.is_loss_stop("T-06", frozenset())
-    assert cap_exempt("R-LOSS", loss_stop=True) and not cap_exempt("R-LOSS")
+    assert cap_exempt("R-LOSS", plan_exit=True) and not cap_exempt("R-LOSS")
     # the store's restart count reads the same function: the mixed stop rule is not counted
     assert count_capped(["R-LOSS", "MYSTOP", "T-03", "T-07"], stops=stops) == CAPPED_OF_FOUR
 
@@ -128,12 +128,12 @@ def test_mixed_stop_rule_reading_carries_the_stop_flag():
     ev = evaluate(body, replace(base, pnl=D("-20000")), {}, None)
     readings = gate_readings.readings(ev, stops=sl.loss_stop_rule_ids(body))
     spec, value = readings["R-LOSS"]
-    assert spec.loss_stop and value is True
-    assert not readings["T-07"][0].loss_stop
+    assert spec.plan_exit and value is True
+    assert readings["T-07"][0].plan_exit  # ADR-330 (47): the % target is a plan exit too
 
 
 def test_mixed_stop_rule_opens_at_once_in_quiet_time_and_past_the_cap():
-    spec = ag.RuleSpec("R-LOSS", "bool", (), loss_stop=True)
+    spec = ag.RuleSpec("R-LOSS", "bool", (), plan_exit=True)
     state = replace(ag.initial_state(), day=DAY, opened_today=FULL_CAP)
     _, events = ag.step(state, now=at("09:16:44"), preset=ag.WEEKLY, readings={"R-LOSS": (spec, True)})
     assert [e.at for e in _opened(events, "R-LOSS")] == [at("09:16:44")]

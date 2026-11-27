@@ -31,7 +31,7 @@ def test_stop_beyond_its_line_is_raised_mid_candle(preset, rule_id):
 
 
 @pytest.mark.parametrize("preset", STYLES)
-@pytest.mark.parametrize("rule_id", ["T-03", "T-07", "T-99"])
+@pytest.mark.parametrize("rule_id", ["T-03", "T-99"])
 def test_other_rule_and_unknown_kind_keep_the_candle_wait(preset, rule_id):
     state, ev = ag.step(ag.initial_state(), now=at("10:40:30"), preset=preset, readings=_read(rule_id, "11"))
     assert ev == []

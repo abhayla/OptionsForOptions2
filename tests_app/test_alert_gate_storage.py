@@ -302,7 +302,7 @@ async def test_gate_rows_restored_count_does_not_count_watch_and_day_records(db)
 
 async def test_gate_rows_restored_count_does_not_count_a_stop_under_its_own_rule_id(db):
     """Lane J gap 3 (2026-11-27): a plan rule carrying T-06 / T-16 under its own id is a loss stop, so the restart count
-    skips it exactly as the gate does (``stop_lines.loss_stop_rule_ids``, the one function both read)."""
+    skips it exactly as the gate does (``stop_lines.plan_exit_rule_ids``, the one function both read)."""
     from ofo.adjustment import stop_lines as sl  # noqa: PLC0415
 
     user, sid = await _strategy(db)
@@ -311,7 +311,7 @@ async def test_gate_rows_restored_count_does_not_count_a_stop_under_its_own_rule
         await _open(db, user, sid, rule)
     body = {"rules": [{"id": "R-LOSS", "any_of": ["T-03", "T-06"]}, {"id": "MYSTOP", "all_of": ["T-16"]},
                       {"id": "T-01", "any_of": ["T-01"]}]}
-    assert (await pb.gate_rows(db, user, sid, today, stops=sl.loss_stop_rule_ids(body))).opened_today == 1
+    assert (await pb.gate_rows(db, user, sid, today, stops=sl.plan_exit_rule_ids(body))).opened_today == 1
     # no plan read: only the fixed set is exempt
     assert (await pb.gate_rows(db, user, sid, today, stops=frozenset())).opened_today == 3  # noqa: PLR2004
 

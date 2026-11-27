@@ -653,12 +653,13 @@ TIME_TRIGGERS = frozenset({sl.TRIGGER_TIME_EXIT})  # ADR-283 (2): a clock-time r
 
 
 def never_held(body: Mapping) -> frozenset[str]:
-    """Rule ids never held at a starting point: the counter rules (#662) and every rule with a clock-time trigger
+    """Rule ids never held at a starting point: the counter rules (#662), every plan exit (ADR-330 (47)) and every rule
+    with a clock-time trigger
     (ADR-283 (2): T-10b, or a playbook trigger whose unit is "time"): once its time has passed it warns."""
     trigs = body.get("triggers") or {}
     timed = TIME_TRIGGERS | {t for t, v in trigs.items() if isinstance(v, Mapping) and v.get("unit") == "time"}
     # Lane J gap 4 (REQ-170 AC-5): a loss stop already true at the starting point is not "already true": it alerts
-    return COUNTER_RULES | sl.loss_stop_rule_ids(body) | {r["id"] for r in body.get("rules", [])
+    return COUNTER_RULES | sl.plan_exit_rule_ids(body) | {r["id"] for r in body.get("rules", [])
                                                            if timed & set(r.get("any_of") or r.get("all_of") or ())}
 
 

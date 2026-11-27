@@ -774,7 +774,7 @@ class DbGateStore:
         from ofo_app.db import get_sessionmaker  # noqa: PLC0415
         async with get_sessionmaker()() as db:
             rows = await playbook_store.gate_rows(db, w.user_ref, w.strategy_id, today,
-                                                  stops=sl.loss_stop_rule_ids(w.body))
+                                                  stops=sl.plan_exit_rule_ids(w.body))
             held = await playbook_store.held_today(db, w.user_ref, w.strategy_id, today)
             pin = await strategy_alert_style_store.pin_of(db, w.user_ref, w.strategy_id)
             until = await strategy_pause_store.pause_of(db, w.user_ref, w.strategy_id)
@@ -1534,7 +1534,7 @@ class Worker:
         ctx = self._gate_ctx[sid] = GateContext(ev, state, w)
         # the check travels with each rule's sample: the event it confirms takes its words from it (#709 item 7)
         sampled = {rid: (dataclasses.replace(spec, sample=ctx), v)
-                   for rid, (spec, v) in gate_readings.readings(ev, stops=sl.loss_stop_rule_ids(w.body)).items()}
+                   for rid, (spec, v) in gate_readings.readings(ev, stops=sl.plan_exit_rule_ids(w.body)).items()}
         await self._gate_step(w, now, preset, sampled)
         return True
 
@@ -1553,7 +1553,8 @@ class Worker:
         if paused is not None:  # a pause since the last step: the candle it fell in has no close (finding 2)
             state = alert_gate.pause(state, paused)
             self._gate[sid] = state  # kept even when the step below fails to write
-        new, events = alert_gate.step(state, now=now, preset=preset, readings=readings)
+        hold = alert_gate.entry_period_end(getattr(w.tracked, "entered_at", None))  # ADR-330 (47)
+        new, events = alert_gate.step(state, now=now, preset=preset, readings=readings, entry_hold_until=hold)
         self._gate[sid] = new
         if events:  # #636 r6: queued in step order for the ONE writer; the check never waits for the database
             self._gate_events.setdefault(sid, collections.deque()).append(

@@ -72,7 +72,7 @@ def _loss_dips(t: datetime) -> Decimal:
 
 def test_rupee_loss_is_a_stop_rule():
     assert sl.is_stop_rule(sl.RUPEE_LOSS_RULE)
-    assert frozenset(LOSS_STOPS) == sl.LOSS_STOP_RULES  # the one set; targets and the time exit are not in it
+    assert frozenset(LOSS_STOPS) == sl.LOSS_STOP_RULES
     assert not any(sl.is_stop_rule(r) for r in (sl.RUPEE_PROFIT_RULE, "T-07", sl.TRIGGER_TIME_EXIT, None, 6))
 
 
@@ -97,7 +97,7 @@ def test_every_loss_stop_is_on_the_fast_path(rule_id):
     assert [(type(e), e.at) for e in ev] == [(ag.Opened, at("12:13:44"))]
 
 
-@pytest.mark.parametrize("rule_id", [sl.RUPEE_PROFIT_RULE, "T-07", sl.TRIGGER_TIME_EXIT, "T-03"])
+@pytest.mark.parametrize("rule_id", ["T-03", "T-14"])  # ADR-330 (47): targets and the time exit are on the fast path
 def test_targets_time_exit_and_adjustments_keep_the_candle_wait(rule_id):
     state, ev = ag.step(ag.initial_state(), now=at("12:13:44"), preset=ag.WEEKLY,
                         readings={rule_id: (ag.RuleSpec(rule_id, "ge", (D("50"),)), D("85.75"))})
