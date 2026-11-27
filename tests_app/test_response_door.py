@@ -434,6 +434,7 @@ APP_MODELS = (
     "ofo_app.routes.execution_return.ReturnExternalOut",
     "ofo_app.routes.execution_return.ReturnOut",
     "ofo_app.routes.execution_return.ReturnPlanOut",
+    "ofo_app.routes.exit_market.ExitMarketOut",
     "ofo_app.routes.features.FeaturesOut",
     "ofo_app.routes.health.HealthOut",
     "ofo_app.routes.leg_edit.ControlReasonsOut",

@@ -4922,5 +4922,13 @@
   "explanation:closed_prices_mixed_many": {
     "sha256": "2e2b189d37f20118e29b9f21a553dffecdbc0fd1f1aeb3a01746d5b73c331a3e",
     "reviewed": "owner read 2026-11-26 (ADR-330 (36) (LR-Q18), answered by the owner in the question tool, option b)"
+  },
+  "explanation:exit_market_closed": {
+    "sha256": "bce67f0c2776cb461102f03709b1a8224e3d4a5c204da2bc883f51aeb069fce1",
+    "reviewed": "pending owner read"
+  },
+  "explanation:exit_market_closed_no_day": {
+    "sha256": "7364959a3721b56ffc466bdc67cad939b7a2d1ef200837e63122abcfc502719d",
+    "reviewed": "pending owner read"
   }
 }
