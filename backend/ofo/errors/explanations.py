@@ -941,6 +941,10 @@ class ClockSeconds(SlotType):
         return Clock.format(value)
 
 
+_DAY_NAMES = ("Monday", "Tuesday", "Wednesday", "Thursday", "Friday", "Saturday", "Sunday")
+_MONTH_NAMES = ("Jan", "Feb", "Mar", "Apr", "May", "Jun", "Jul", "Aug", "Sep", "Oct", "Nov", "Dec")
+
+
 class DayLabel(SlotType):
     """A calendar day as "Monday 30 Nov" (ADR-330 (60): the market-closed Exit line): exactly `datetime.date`."""
 
@@ -950,7 +954,8 @@ class DayLabel(SlotType):
 
     @staticmethod
     def format(value: datetime.date) -> str:
-        return value.strftime("%A %d %b").replace(" 0", " ", 1)
+        # #875: English names from a table, never strftime (its day and month names follow the host locale)
+        return f"{_DAY_NAMES[value.weekday()]} {value.day} {_MONTH_NAMES[value.month - 1]}"
 
 
 class ClockHms(SlotType):
@@ -1884,10 +1889,10 @@ _EXPLANATIONS: tuple[ExplanationTemplate, ...] = (
     ExplanationTemplate("stop_held_credit", "values_seen",
                         "Stop was reached earlier: loss then {loss}; stop line {stop}",
                         {"loss": Rupees, "stop": Rupees}),
-    ExplanationTemplate("stop_fired_at", "values_seen", "{line}; reached at {time} IST",
+    ExplanationTemplate("stop_fired_at", "values_seen", "{line}; seen by the check at {time} IST",
                         {"line": Explained, "time": HourMinute}),
     # issue 19: a stop read on a later day than the one it was reached on names that day (the server decides "today")
-    ExplanationTemplate("stop_fired_on", "values_seen", "{line}; reached on {date} at {time} IST",
+    ExplanationTemplate("stop_fired_on", "values_seen", "{line}; seen by the check on {date} at {time} IST",
                         {"line": Explained, "date": Date, "time": HourMinute}),
     ExplanationTemplate("adjust_spot_from_feed", "values_seen", "Spot from the live feed"),
     ExplanationTemplate("adjust_spot_from_rest_quote", "values_seen", "Spot from a one-time price request"),

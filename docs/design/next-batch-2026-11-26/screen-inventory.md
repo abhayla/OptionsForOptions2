@@ -16,11 +16,11 @@ Companion: `screen-inventory.json` (machine-readable, same IDs). Extractor: `fro
 | of which unbuilt placeholder pages | 15 |
 | Distinct page components | 24 (plus the app shell and shared components, listed as their own sections) |
 | Pages whose first path carries controls | 21 |
-| **Controls (rows)** | **463** |
-| **Covered** (a test clicks, types in or asserts the control) | **365** |
+| **Controls (rows)** | **466** |
+| **Covered** (a test clicks, types in or asserts the control) | **368** |
 | **Not covered** | **98** |
 | **Spec-silent** | **0** |
-| Rows against screen-inventory.json | match (463 controls, one row each) |
+| Rows against screen-inventory.json | match (466 controls, one row each) |
 
 | Section (ID prefix) | Controls | Covered | Not covered | Spec-silent |
 |---|---|---|---|---|
@@ -32,7 +32,7 @@ Companion: `screen-inventory.json` (machine-readable, same IDs). Extractor: `fro
 | PLACE | 1 | 1 | 0 | 0 |
 | MYSTR | 18 | 17 | 1 | 0 |
 | CREATE | 13 | 11 | 2 | 0 |
-| BUILD | 188 | 144 | 44 | 0 |
+| BUILD | 191 | 147 | 44 | 0 |
 | LIVE | 6 | 6 | 0 | 0 |
 | ADJ | 66 | 47 | 19 | 0 |
 | POS | 4 | 4 | 0 | 0 |
@@ -433,6 +433,7 @@ Same page component also serves: `/strategy/builder`.
 | BUILD-40 | Execute Strategy `execute-strategy` _(link)_ | src/components/strategy/StrategyActions.vue:11 | Execute Strategy: opens the execute screen. | REQ-056 AC-1; REQ-076 AC-7; REQ-015 AC-10 | tests/gcui-s4fe-layout.test.js › a saved strategy with the order path on: the bar and the Execute actio (asserts)<br>tests/leg-edit.test.js › AC-7: all ticked -> the Execute link; one unticked -> a disabled butto (asserts)<br>tests/order-path-off.test.js › on + a saved strategy -> the action is there (asserts)<br>+2 more |  | broker |
 | BUILD-41 | Execute Strategy `execute-strategy-disabled` _(button)_ | src/components/strategy/StrategyActions.vue:20 | Execute Strategy shown disabled with the sentence "Log in with Zerodha to trade". | REQ-015 AC-10; REQ-076 AC-7 | tests/leg-edit.test.js › AC-7: all ticked -> the Execute link; one unticked -> a disabled butto (acts)<br>tests/trade-needs-broker.test.js › connected -> the link is there and no disabled stand-in (asserts)<br>tests/trade-needs-broker.test.js › order path off -> neither the link nor the disabled stand-in (absent,  (asserts)<br>+1 more |  | none |
 | BUILD-42 | {{REVIEW_BUTTON_TEXT}} `review-adjustment` _(button)_ | src/components/strategy/TrackingPanel.vue:76 | Review adjustment: opens the adjustment drawer. | REQ-045 AC-1; REQ-046; REQ-156 | tests/drawer-trigger-value-d31.test.js › the drawer says when the value fired and what it is now (acts)<br>tests/drawer-trigger-value-d31.test.js › two rules firing in the same minute give two distinct, labelled lines  (acts) |  | paper trade |
+| BUILD-191 | {{notCheckedGroupText(g.rules.length, g.said)}} `rules-not-checked-summary` _(disclosure)_ | src/components/strategy/TrackingPanel.vue:72 | N rules not checked: one line for rules sharing a reason; the rules behind it. | REQ-045 AC-1; ADR-272 (3) | tests/plan-screens-r2-fc3.test.js › 17 rules with one reason: one line with the count and the reason; the 17 behind an expand (asserts) |  | paper trade |
 | BUILD-43 | (no label) `adjust-drawer-scrim` _(click)_ | src/components/strategy/AdjustDrawer.vue:8 | Adjustment drawer frame (scrim, Esc, close). | REQ-046; REQ-156 | tests/adjust-drawer.test.js › Escape and the scrim close it and focus returns to the Review adjustme (acts) |  | paper trade |
 | BUILD-44 | Review adjustment Close 1 · Why detected {{l}} {{LAPSED_TEXT}} 2 · Current state {{r.label}} {{r.value}} 3 · Possible approaches {{PICK_NOTE}} {{reply.limit.text}} {{LOADING_TEXT}} {{RETRY_LABEL}} {{a.name}} {{a.explanation}} {{f}} {{withheld.get(a.id)}} {{refusalText({ refusal: a.reason })}} Compare Reason - {{r.text}} Dismiss `adjust-drawer` _(dialog)_ | src/components/strategy/AdjustDrawer.vue:9 | Adjustment drawer frame (scrim, Esc, close). | REQ-046; REQ-156 | NONE |  | paper trade |
 | BUILD-45 | Close `adjust-drawer-close` _(button)_ | src/components/strategy/AdjustDrawer.vue:15 | Adjustment drawer frame (scrim, Esc, close). | REQ-046; REQ-156 | tests/adjust-drawer.test.js › Escape and the scrim close it and focus returns to the Review adjustme (acts) |  | paper trade |

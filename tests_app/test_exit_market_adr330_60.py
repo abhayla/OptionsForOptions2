@@ -71,3 +71,15 @@ async def test_route_answers_the_sentence() -> None:
     assert body["closed"] is True
     assert body["sentence"] == "The market is closed. Exits can be placed from 09:15 on Monday 30 Nov."
     assert body["next_open_at"].startswith("2026-11-30T09:15:00")
+
+
+def test_day_label_does_not_follow_the_host_locale(monkeypatch: pytest.MonkeyPatch) -> None:
+    """#875: strftime names days and months in the host locale. Every strftime now answers in German; the sentence is the same English one."""
+    import time
+
+    def _german(fmt: str, *args: object) -> str:
+        return fmt.replace("%A", "Montag").replace("%b", "Nov.").replace("%d", "30")
+
+    monkeypatch.setattr(time, "strftime", _german)
+    _, sentence, _ = exit_market_answer(_ctx(FRIDAY_1602), FRIDAY_1602)
+    assert str(sentence) == "The market is closed. Exits can be placed from 09:15 on Monday 30 Nov."
