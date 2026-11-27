@@ -1,13 +1,16 @@
-"""ADR-330 (60): the Exit dialog's market-closed answer, from the ONE market-state answer (calendar behind it), whether the feed
-process runs or not. Spec basis: ADR-330 (60), ADR-212, ADR-119. No database. Answer states: open (no sentence), closed with a
-day named, closed past the calendar's data (sentence without a day), no context (calendar answer, fail closed)."""
+"""ADR-330 (60): the Exit dialog's market-closed answer, from the ONE market-state answer (calendar behind it),
+whether the feed process runs or not. Spec basis: ADR-330 (60), ADR-212, ADR-119. No database. Answer states: open
+(no sentence), closed with a day named, closed past the calendar's data (sentence without a day), no context (calendar
+answer, fail closed)."""
 from __future__ import annotations
 
 import datetime
 from decimal import Decimal
+from http import HTTPStatus
 
 import pytest
 from httpx import ASGITransport, AsyncClient
+from ofo.market_calendar import is_market_open
 from ofo.marketdata.kite_provider import IST
 from ofo_app.exit_market import exit_market_answer
 from ofo_app.main import create_app
@@ -21,7 +24,6 @@ PAST_CALENDAR = datetime.datetime(2031, 3, 5, 10, 0, tzinfo=IST)
 
 class _Feed:  # a provider whose feed answers market_closed by the same calendar: "feed running"
     def market_closed(self, at: datetime.datetime) -> bool:
-        from ofo.market_calendar import is_market_open
         return not is_market_open(at)
 
 
@@ -64,7 +66,7 @@ async def test_route_answers_the_sentence() -> None:
     app.dependency_overrides[get_market_context] = lambda: None
     async with AsyncClient(transport=ASGITransport(app=app), base_url="http://test") as ac:
         r = await ac.get("/api/market/exit-state")
-    assert r.status_code == 200
+    assert r.status_code == HTTPStatus.OK
     body = r.json()
     assert body["closed"] is True
     assert body["sentence"] == "The market is closed. Exits can be placed from 09:15 on Monday 30 Nov."

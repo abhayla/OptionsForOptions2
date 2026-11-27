@@ -931,7 +931,7 @@ class ClockSeconds(SlotType):
 
 
 class DayLabel(SlotType):
-    """A calendar day as "Monday 30 Nov" (ADR-330 (60): the next trading day in the market-closed Exit line): exactly `datetime.date`."""
+    """A calendar day as "Monday 30 Nov" (ADR-330 (60): the market-closed Exit line): exactly `datetime.date`."""
 
     @staticmethod
     def validate(value: object) -> None:
