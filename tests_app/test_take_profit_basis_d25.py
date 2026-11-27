@@ -113,7 +113,9 @@ async def test_the_place_route_refuses_a_take_profit_basket_at_an_after_charges_
     async def rest(_u):
         return None
     monkeypatch.setattr(adj, "get_rest_spot_reader", lambda: rest)
-    monkeypatch.setattr(adj, "judge_spot", lambda *_a: type("S", (), {"available": True, "value": spot})())
+    async def _spot(*_a):
+        return type("S", (), {"available": True, "value": spot})()
+    monkeypatch.setattr(adj, "index_spot_of", _spot)
     with pytest.raises(Exception) as err:  # the route's refusal exception, it carries ``.message``
         await adj.refuse_take_profit_at_loss(a, 1, tracked_reader, None, t.RATES, t.PREFS, t.BASIS)
     assert REASON in str(err.value.message.what_happened)
@@ -155,7 +157,9 @@ async def test_the_paper_place_helper_refuses_with_the_sentence_and_passes_an_or
         return registry_defaults()
     monkeypatch.setattr(adj, "get_market_reader", lambda: market_reader)
     monkeypatch.setattr(adj, "get_rest_spot_reader", lambda: rest)
-    monkeypatch.setattr(adj, "judge_spot", lambda *_a: type("S", (), {"available": True, "value": spot})())
+    async def _spot(*_a):
+        return type("S", (), {"available": True, "value": spot})()
+    monkeypatch.setattr(adj, "index_spot_of", _spot)
     monkeypatch.setattr(ups, "values_for", values)
     with pytest.raises(Exception) as err:  # the route's refusal exception, it carries ``.message``
         await paper._refuse_take_profit_at_loss(None, "owner", 1, a, None, t.RATES, tracked_reader)
