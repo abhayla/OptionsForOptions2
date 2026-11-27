@@ -1,4 +1,4 @@
-STATUS 03:50 | item: I-02..I-58 proven (6 of 15) | next push 04:45 | blocker: none
+STATUS 04:10 | item: all 15 tested; Opus review of I-63 and I-103 and the gate are open | next push after the gate | blocker: none
 
 # Lane TA: database tests for 15 backend items (28 Nov 2026)
 
@@ -23,24 +23,40 @@ two families cannot share one database: a note for the owner PC, not a defect).
 | I-82 | PASS (order decided) | `tests_app/test_adjustment_opportunities_order_r2_1128.py` 1 passed, `tests/adjustment/test_popup_order_r2_1128.py` 6 passed. Decided: Active and the ideas list newest first by raise time; a lapsed idea leaves Active and keeps its raise-time place in the ideas list; History by end time, newest first (stop-out notes and lapsed rows). Pop-ups: a stop-out crossed at 3 minutes waits with a rule true at entry and both fall due at entry + 5. |
 | I-90 | PASS | `tests_app/test_deleted_trade_plan_hidden_r2_1128.py` 7 passed: plan, rules, levels, plan-watch, check and history links of a deleted trade are 404 (body equal to a missing id's) and 200 again after Undo; its alert leaves Active and the bell, its ideas leave the list, its batch row is refused 404, answering its alert is 404. |
 | I-105 | PASS (structural) | `tests/test_pool_release_playbooks_r2_1128.py` 2 passed: a transitive scan sees `playbooks._tested` reach the market through helpers and finds `release_connection(db)` before it; mutation (release line removed) is flagged. Runtime twin already exists (`tests_app/test_playbook_test_pool.py`). See Observation 2. |
+| I-103 | PASS | Joined build (conflicts-1127 merged first, `3a98681d`): `tests/adjustment` 1284 passed; `tests_app`: `test_plan_rupee_worker` 1, `test_clock_ahead_records` 2, `test_paper_monitor` 35, `test_monitoring_state` 10, `test_plan_stop_worker_chain` 12 (worker as its own process, 459 s), plus `test_worker_j3` and `test_background_cycle` 82 passed together. No failure. Opus review pending. |
+| I-107 | PASS | `tests_app/test_adjustment_check_slow_quote_r2_1128.py` 2 passed. A quote that never answers is cut at the price budget (0.05 s set), cancelled, held no pooled connection, and the check answers 200 with the visible state `withheld`: "No adjustment opportunity checked: spot not available." / "Wait for the spot price to come back.", no flag raised on an invented spot; a quote inside the budget is read as before. Red proof: with `price_budget.budgeted` switched off in memory the same test fails (the route hangs until the 5 s cap). |
 
 ## Gate
-Push 1: `prepush.py`: ruff_ratchet PASS, coverage PASS, alembic_guard PASS; ci_checks 14 passed, 1 failed (`git merge-base origin/main HEAD`: this clone has no origin/main), frontend_lint/build/unit FAIL (no `frontend/node_modules`: environment, not the tests), app_tests FAIL (cannot select by `git diff`: same missing base). Not `TOTAL PASS` for environment reasons; my files pass ruff and their own DB runs.
+`prepush.py` needed three things this clone lacked, all fixed locally and not in the repo: `origin/main` with full history (`git fetch --unshallow`), `frontend/node_modules` (`npm ci`), and more than the 30-minute background limit (its `app_tests` step is long). Result is in the last line of this section when the run ends.
+
+## Observations (not defects of this lane's items)
+1. Leg stop, sold leg: the route also saves a level BELOW the price that is not yet crossed (SELL 22800 CE at 39.15, "below 35.00": saved, line "If this stop fires, max loss becomes Rs 572.00 (now Rs 11,297.00)"). That is a profit exit worded as a stop, with no word saying which side. Not the P0 of I-63 (the stop the user sets above the price is on the right side), but the owner lane should decide whether to word or refuse it. Pinned only as far as the code does today: above-price saves, already-crossed is refused.
+2. I-105: a coarse transitive scan over all routes lists 19 functions with a `db` parameter that reach a market wait through a helper and have no `release_connection(db)` of their own (adjustment_check.adjustment_check, adjustment_history.closed_figures(_many), adjustment_plan._run/read_rules/save_rules/accept_plan/edit_plan, alert_style._reply/read/pin, execute.execute_strategy, execution_return.return_from_kite, paper.get_paper_strategy/add_paper_triggers/keep_paper_trigger, tracking._answer/get_tracking, playbooks.test_playbook). Many release inside a callee; the scan cannot tell. Not asserted. Lane R should check them by the runtime pool test.
+3. I-59 and I-58 pass on this build: the fixes they cover are in.
 
 ## Decided for the owner
-- Fresh database per test file (template copy, 0.4 s) because the seeded and rolled-back test families pollute each other on one database.
+- Fresh database per test file (template copy, 0.4 s): the seeded tests commit the scenario library and the rolled-back tests need an empty catalogue, so the two families cannot share one database.
+- I-82 order: Active and the ideas list newest first by raise time; a lapsed idea keeps its raise-time place in the ideas list; History by end time. Taken from the code's sort rules.
+- I-63: the stop on a sold leg sits above the leg's price (a price rising to the level is the loss).
 
 ## Defects found
-(none yet)
+None. Every item's test passes on this build. I-02 and I-107 were shown red with the guard switched off in memory.
 
 ## For the owner lane
-- I-39: `side_closed.raise_if_closed` itself has no plan check; the guard is the lister (tested). If another caller is added, it needs its own guard.
-- I-39: the Completed header number is computed in the frontend; Lane TB should assert header count == rows shown there.
+- Completed header (I-39): the number is not computed by the server (`StrategyListOut` has no count); Lane TB should assert header count equals rows shown in the page.
+- `side_closed.raise_if_closed` has no plan check itself; the guard is the worker's lister (tested). A new caller needs its own guard.
+- `frontend/tests/two-stops-words.test.js` (I-63 words) is Lane TB territory.
+- Observation 1 and 2 above.
+
+## Pending owner read (new sentences)
+None added by this lane (tests only).
 
 ## To file as deferred issues
-(none yet)
+- Observation 1 (leg stop below the price on a sold leg: side not worded).
+- Observation 2 (19 route functions not proven to release before a market wait).
 
 ## Models
 | task | model | minutes |
 |---|---|---|
-| items 1-5 | Sonnet | 12 |
+| items 1-15, runs | Sonnet | about 65 |
+| Opus review of I-63 and I-103 | Opus | pending |
