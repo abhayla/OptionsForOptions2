@@ -97,7 +97,9 @@ onMounted(async () => {
     <!-- Owner 2026-10-30 (Sensibull 171 / 172): shared header; alerts as one card with a row each; empty = shared empty state -->
     <PageHeader parent="Alerts" :title="route.meta.title" />
     <template v-if="isRecords">
+      <h2 class="mb-2 text-sm font-semibold text-ink-muted" data-testid="history-answered-heading">Answered alerts</h2>
       <ErrorMessage v-if="alertHistory.parts" :parts="alertHistory.parts" compact prefix="answered-error" />
+      <p v-else-if="alertHistory.loaded && !alertHistory.items.length && paperRecords.records.length" class="mb-4 text-sm text-ink-muted" data-testid="answered-none">No answered alerts yet.</p>
       <ul v-else-if="alertHistory.items.length" class="mb-4 divide-y divide-line overflow-hidden rounded-lg border border-line bg-surface" data-testid="alerts-answered">
         <li v-for="h in alertHistory.items" :key="`h${h.id}`" class="px-4 py-3 hover:bg-surface-muted" data-testid="answered-row">
           <p class="font-medium" data-testid="answered-strategy">{{ plainName(h.strategy_name) ?? `Strategy ${h.strategy_id}` }}</p>
@@ -106,6 +108,7 @@ onMounted(async () => {
           <p v-if="h.worse_line" class="text-xs text-ink-muted" data-testid="answered-worse">{{ h.worse_line }}</p>
         </li>
       </ul>
+      <h2 class="mb-2 text-sm font-semibold text-ink-muted" data-testid="history-records-heading">Stops and expiry settlements</h2>
       <ErrorMessage v-if="paperRecords.parts" :parts="paperRecords.parts" compact prefix="records-error" />
       <ul v-else-if="paperRecords.records.length" class="divide-y divide-line overflow-hidden rounded-lg border border-line bg-surface" data-testid="alerts-records">
         <li v-for="(r, n) in paperRecords.records" :key="`${r.kind}${n}`" class="px-4 py-3 hover:bg-surface-muted" data-testid="record-row">

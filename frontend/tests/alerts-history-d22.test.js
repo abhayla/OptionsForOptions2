@@ -76,4 +76,16 @@ describe('Active shows a time on each alert (D-29, ADR-330 (3))', () => {
     const w = await mountAt('/alerts/active')
     expect(w.get('[data-testid="alert-fired"]').text()).toBe('Fired at 11:21')
   })
+  it('item 3: a failed answered-alerts read sits under its own heading, not over the loaded records', async () => {
+    answers['GET /paper/alerts/records'] = () => Promise.resolve({ data: { records: [SETTLED, STOP] } })
+    const w = await mountAt('/alerts/history') // GET /alerts/answered has no answer = it failed
+    const html = w.html()
+    expect(w.get('[data-testid="history-answered-heading"]').text()).toBe('Answered alerts')
+    expect(w.get('[data-testid="history-records-heading"]').text()).toBe('Stops and expiry settlements')
+    expect(w.findAll('[data-testid="record-row"]')).toHaveLength(2)
+    const heading = html.indexOf('history-answered-heading'), error = html.indexOf('answered-error'), records = html.indexOf('history-records-heading')
+    expect(heading).toBeGreaterThan(-1)
+    expect(error).toBeGreaterThan(heading) // the error line belongs to the answered section ...
+    expect(error).toBeLessThan(records) // ... and ends before the records section starts
+  })
 })
