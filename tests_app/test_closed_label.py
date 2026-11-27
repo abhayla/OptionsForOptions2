@@ -64,9 +64,30 @@ def test_all_frozen_is_unchanged():
     assert (out.text, out.last_price_at) == (None, _t(15, 29, 59))
 
 
-def test_all_first_priced_after_is_as_built_today_the_latest_own_time_and_no_added_text():
-    out = closed_label(CLOSED, [_q(_t(15, 31, 10)), _q(_t(15, 33, 48))], SPOT)
+def test_all_first_priced_after_one_shared_time_is_unchanged_no_added_text():
+    out = closed_label(CLOSED, [_q(_t(15, 33, 48)), _q(_t(15, 33, 48))], SPOT)
     assert (out.text, out.last_price_at) == (None, _t(15, 33, 48))  # banner: "Market closed. Prices are from 15:33:48."
+
+
+def test_f4_all_first_priced_after_at_different_times_names_the_earliest_and_counts_the_later_legs():
+    """Review F4: legs first priced at 15:33:48 and 15:59:10 read "Prices are from 15:33:48; 1 leg as of 15:59:10",
+    never the latest time over a figure that is older."""
+    out = closed_label(CLOSED, [_q(_t(15, 33, 48)), _q(_t(15, 59, 10))], SPOT)
+    assert str(out.text) == "Market closed. Prices are from 15:33:48; 1 leg as of 15:59:10."
+    assert out.last_price_at == _t(15, 33, 48)
+    three = closed_label(CLOSED, [_q(_t(15, 33, 48)), _q(_t(15, 59, 10)), _q(_t(16, 2, 0))], SPOT)
+    assert str(three.text) == "Market closed. Prices are from 15:33:48; 2 legs as of 15:59:10."
+
+
+def test_f1_a_price_time_from_an_earlier_day_carries_its_date():
+    """Review F1: a leg whose price is from Thursday 8 Oct while the other is from Friday 9 Oct is not read as today's:
+    its time is printed with its date."""
+    fri = lambda hh, mm, ss: datetime.datetime(2026, 10, 9, hh, mm, ss, tzinfo=IST)  # noqa: E731
+    state = MarketState(closed=True, last_price_at=fri(21, 5, 0))
+    out = closed_label(state, [_q(fri(15, 30, 0)), _q(_t(15, 40, 0))], None)
+    assert str(out.text) == "Market closed. Prices are from 15:30:00; 1 leg as of 8 Oct, 15:40:00."
+    older_frozen = closed_label(state, [_q(_t(15, 29, 59)), _q(fri(15, 33, 48))], None)
+    assert str(older_frozen.text) == "Market closed. Prices are from 8 Oct, 15:29:59; 1 leg as of 15:33:48."
 
 
 def test_in_session_is_unchanged():

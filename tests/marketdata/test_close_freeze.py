@@ -263,3 +263,77 @@ def test_a_removed_quote_still_keeps_no_price():
     provider, _clock = _real_sequence()
     provider.book.remove(OPTION_ID)
     assert provider.book.get(OPTION_ID, _at(TUE, 15, 34, 0)) is None
+
+
+# ---- round 2 (Tier A review of 4c8016b0): once a price is served after the close it never moves until the next open
+MON = datetime.date(2026, 11, 30)
+WED = datetime.date(2026, 12, 2)
+
+
+def _frame_at(provider: KiteProvider, clock: Clock, ltp: str, stamp: datetime.datetime) -> None:
+    clock.now = stamp
+    provider.on_frame(_packet(ltp, stamp), stamp)
+
+
+def test_a7_an_earlier_sessions_close_is_frozen_when_first_served_and_a_later_post_close_frame_never_moves_it():
+    """Case A7: Mon 15:29:59 held at 80, no Tue frame. Tue 15:31 serves it (own date-time Mon 15:29:59); a Tue 15:35
+    frame at 85 arrives; Tue 15:41 still serves 80 (the figure shown does not move until the next open)."""
+    provider, clock = _feed(("80.00", _at(MON, 15, 29, 59), _at(MON, 15, 29, 59)))
+    first = _served(provider, clock, _at(TUE, 15, 31, 0))
+    assert (first.ltp, first.price_at) == (Decimal("80.00"), _at(MON, 15, 29, 59))
+    _frame_at(provider, clock, "85.00", _at(TUE, 15, 35, 0))
+    later = _served(provider, clock, _at(TUE, 15, 41, 0))
+    assert (later.ltp, later.price_at) == (Decimal("80.00"), _at(MON, 15, 29, 59))
+    assert [q.ltp for q in provider.book.quotes(_at(TUE, 15, 41, 0)) if q.instrument_id == OPTION_ID] == [
+        Decimal("80.00")]
+    held = provider.book.depth_after_close(OPTION_ID, _at(TUE, 15, 41, 0))
+    assert held is not None and held[0] is not None and held[0].bids[0].price == Decimal("79.95")  # Mon's frame depth
+
+
+def test_a7_never_read_after_the_close_the_first_post_close_frame_is_the_figure():
+    """The same sequence with no read between 15:31 and 15:35: nothing was served, so the first frame of the session
+    (85 at 15:35, own time) is the figure and the later 90 does not move it."""
+    provider, clock = _feed(("80.00", _at(MON, 15, 29, 59), _at(MON, 15, 29, 59)))
+    _frame_at(provider, clock, "85.00", _at(TUE, 15, 35, 0))
+    _frame_at(provider, clock, "90.00", _at(TUE, 15, 50, 0))
+    quote = _served(provider, clock, _at(TUE, 15, 51, 0))
+    assert (quote.ltp, quote.price_at) == (Decimal("85.00"), _at(TUE, 15, 35, 0))
+
+
+def test_a4e_a_frame_before_the_open_is_that_days_price_at_its_close_not_the_previous_days_frozen_one():
+    """Case A4e: Tue frozen 15:33:48 at 100.10. Wed 09:10 frame at 103 shows in hours AND at Wed 15:31 (it is made by
+    Wed's close); the screen never jumps back to Tue's 100.10."""
+    provider, clock = _feed(("100.10", _at(TUE, 15, 33, 48), _at(TUE, 15, 33, 48)))
+    assert _served(provider, clock, _at(TUE, 15, 34, 0)).ltp == Decimal("100.10")
+    _frame_at(provider, clock, "103.00", _at(WED, 9, 10, 0))
+    assert _served(provider, clock, _at(WED, 9, 20, 0)).ltp == Decimal("103.00")
+    after = _served(provider, clock, _at(WED, 15, 31, 0))
+    assert (after.ltp, after.timestamp) == (Decimal("103.00"), _at(WED, 9, 10, 0))
+
+
+def test_a_quiet_contract_with_only_yesterdays_post_close_frame_keeps_it_with_its_own_date_time():
+    provider, clock = _feed(("100.10", _at(TUE, 15, 33, 48), _at(TUE, 15, 33, 48)))
+    quote = _served(provider, clock, _at(WED, 15, 31, 0))
+    assert (quote.ltp, quote.price_at) == (Decimal("100.10"), _at(TUE, 15, 33, 48))
+    _frame_at(provider, clock, "105.00", _at(WED, 15, 40, 0))
+    assert _served(provider, clock, _at(WED, 15, 41, 0)).ltp == Decimal("100.10")
+
+
+def test_a3_a_late_frame_made_by_the_close_wins_only_if_nothing_was_served_yet():
+    """F3: a frame stamped 15:29:58 at 99.70 arrives after the first post-close frame (15:33:48 at 100.10). Not yet
+    served: the true close (99.70) is the figure. Already served: the shown 100.10 never moves."""
+    unread, clock_u = _feed(("100.10", _at(TUE, 15, 33, 48), _at(TUE, 15, 33, 48)))
+    _frame_at(unread, clock_u, "99.70", _at(TUE, 15, 29, 58))
+    quote = _served(unread, clock_u, _at(TUE, 15, 40, 0))
+    assert (quote.ltp, quote.price_at) == (Decimal("99.70"), _at(TUE, 15, 29, 58))
+    read, clock_r = _feed(("100.10", _at(TUE, 15, 33, 48), _at(TUE, 15, 33, 48)))
+    assert _served(read, clock_r, _at(TUE, 15, 34, 0)).ltp == Decimal("100.10")
+    _frame_at(read, clock_r, "99.70", _at(TUE, 15, 29, 58))
+    again = _served(read, clock_r, _at(TUE, 15, 40, 0))
+    assert (again.ltp, again.price_at) == (Decimal("100.10"), _at(TUE, 15, 33, 48))
+
+
+def test_a_frame_stamped_before_the_close_never_replaces_a_newer_in_session_close_frame():
+    provider, clock = _feed(("99.75", _at(TUE, 15, 29, 59), _at(TUE, 15, 29, 59)))
+    _frame_at(provider, clock, "99.10", _at(TUE, 15, 29, 10))  # arrives late, stamped earlier
+    assert _served(provider, clock, _at(TUE, 15, 40, 0)).ltp == Decimal("99.75")
