@@ -1,4 +1,4 @@
-STATUS 22:25 | merged: exit-all 1f6f7436, perf/speed-fixes 90c4fed5, pnl-totals (Lane L's 3 own commits only, see row P1), plan-door fb66dfb+, order-limits 8880aa24, last-close 1ff969f2, stop-follows-leg 6bd22cb6, plan-save 8b45807a (+plan-watch), plan-read 1d0f56e7, live-test-small bcbff804 (arrived with plan-read), alert-screens b07425fc | unresolved: none | reds: full gate on HEAD running (gate3), Opus review running | not merged: fix/order-door-2-1127 (not on origin at 22:20), hotfix/plan-read-2-1127 (Lane Z, later) | next push: after the gate | blocker: none (send_message to "@parent" refused: elevated_session_untrusted_device; this line is the report)
+STATUS 22:55 | gate TOTAL PASS on 7948bdc5 (the code commit; this status line is the only later change) | merged: exit-all, perf/speed-fixes, pnl-totals (Lane L's 3 commits), plan-door, order-limits, last-close, stop-follows-leg, plan-save+plan-watch, plan-read, live-test-small, alert-screens | unresolved: none | not merged: fix/order-door-2-1127 (not on origin), hotfix/plan-read-2-1127 (Lane Z) | blocker: none | SAFE TO CLOSE after K2's branch is merged on top
 
 # Lane M3: conflicts and reds of the weekend build (27 Nov 2026)
 
@@ -83,4 +83,4 @@ Branch `integration/conflicts-1127` from `origin/integration/weekend-1127` (c9f9
 
 ## Verification
 
-Gate result below.
+Full gate (`scripts/orchestrator/prepush.py`, no DB env) on 7948bdc5: TOTAL PASS, 982 s (ruff_ratchet, coverage, alembic_guard, frontend_lint, frontend_build, ci_checks, frontend_unit, domain_tests, preflight, app_tests all PASS). Earlier gates on earlier commits failed on the items listed above and were fixed.
