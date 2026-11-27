@@ -1,4 +1,4 @@
-STATUS 22:00 | part 1: done | part 2: item 1 pushed; items 2 (resume, on) and 3 (docs-since-pass, opt-in) built and reviewed once; items 4, 5 (build), 6 not built | next push 22:25 | blocker: none
+STATUS 22:08 | part 1: done | part 2: item 1 pushed; items 2 (resume, on) and 3 (docs-since-pass, opt-in) built, reviewed once, measured; items 4, 5 (build), 6 not built | final push 22:20 | blocker: none
 
 # Lane G2: gate speed, part 1 (27 Nov 2026)
 
@@ -173,7 +173,29 @@ Residual risk to read before enabling it by default: a test that reads a records
 branch also had code changes. The repo_scan tests and every generated-view check still run in the lane, which covers the
 repo-wide walkers it knows of.
 
-SINCE_PASS_MEASURED
+### Measured (27 Nov, 4 cores, same container, one gate at a time; logs `/tmp/*.log`, tails read)
+
+| stage | before: current gate (s) | after: fast gate, code push (s) | after: docs-since-pass (s) | how |
+|---|---|---|---|---|
+| ruff_ratchet, coverage, alembic_guard | 2 | 2 | 2 | unchanged, now first |
+| frontend_lint + build | 12 | 11 | 11 | unchanged |
+| preflight | 566 | 615 (4 stages share 4 cores) | 477 | since-pass skips interface 49 s + collect 28 s; scans kept |
+| ci_checks | 130 | 134 | 124 | kept in full |
+| domain_tests | 581 | 623 | 129 | kit records selection against the full-pass commit + docs readers |
+| app_tests | 955 | 1077 | 66 | docs-reading `tests_app` files only |
+| frontend_unit | 130 | 336 | 164 | planned as in the full lane (review F1) |
+| **TOTAL** | **2375** | **1090** (1052 and 1138 on the next two commits) | **490** | stages side by side; docs lane as above |
+
+| scenario | before (current gate) | after | what did it |
+|---|---|---|---|
+| (i) code push | 2375 s | 1052 to 1138 s | Lane G's parallel stages (adopted); resume adds nothing on a first run |
+| (ii) docs-only or decision-row push, after a full pass on the branch | 2375 s (the gate diffs against `main`: 418 files) | 490 s with `--since-pass` (opt-in); 1052 s without | docs-since-pass lane; the floor is preflight's repo scans 477 s, not 2 minutes |
+| (iii) re-run on the same tree after a failed or killed run | 2375 s | 12.4 s when the five long steps had passed (measured); only the failed step re-runs otherwise | resume. A code fix is a new tree and runs everything |
+
+The coordinator's target for (ii), about 2 minutes, is NOT met: 490 s. What is left is preflight's three serial repo-scan runs
+(`tests -m repo_scan` 230 s, `tests_app -m repo_scan` 175 s, guard files 117 s) plus frontend_unit 164 s. The scans read the
+whole tree, so cutting them needs proof of which `repo_scan` tests read records files; running the three groups side by side
+would bring preflight to about 230 s without removing anything (not built, time).
 
 **Items not built (time), with what I measured:**
 - Item 5, preflight (615 s on the 27 Nov base): interface 49 s + collect 28 s + scans 538 s. The scans are three serial pytest runs:
