@@ -458,3 +458,60 @@ Spec basis: ADR-330 (1), (5); REQ-161 AC-2/AC-3; ADR-016 to ADR-019; ADR-008.
 - Tests (real `read_market(tracked, None)`, fresh DB): percent stop with no stored kind -> 422 and the row unchanged; with a stated monthly kind -> stored in the monthly row; rupee stop, target-only, reset -> 200; `_stored_kind` over a stored catalogue (future on the leg's day -> monthly, on another day -> weekly, none -> None).
 - `tests/errors/template_pins.json`: the pin for `plan_save_prices_not_read` added, `reviewed: "pending owner read"`.
 - Frontend: AdjustmentsPage trade rules treat an unreadable 200 as Not confirmed (no `show(null)`); `sendPlan`/`resetPlan` move the save count only for a readable answer; `readPlan` reads generic text as a plain string, a catalogue object or null (a local copy of the shared rule: `lib/serverText.js` is on another branch).
+
+## Plan watch box never fills (AX-14, 27 Nov)
+
+Spec basis: ADR-330 (13), REQ-119 AC-3/AC-4. Real PC bodies: A-G #207 (14 lines) and A-H #209 (16 lines, all not_computable); #209's stop line is pinned exactly as served. Fields not stated by the PC were filled from `PlanWatchOut` / `WatchLineOut` (listed in `frontend/tests/plan-watch-fill.test.js`, section (e)).
+
+### Step 1: what the server can send that the old `parsePlanWatch` rejected (old = `frontend/src/lib/planWatch.js` at 248f817a)
+
+| Server side (backend/ofo_app) | Old reader | Effect |
+|---|---|---|
+| `reason` / `label` / `as_of_text` / `no_plan_text` / `armed_heading` are `CatalogueText`; a `UserFacingError` is written as an OBJECT (`api_models.py:37-45` `_serialize` -> `ofo/errors/model.py:89` `as_dict`); a not-checked rule's reason is `render(r.code)` (`routes/adjustment_check.py:203`, `:262`; `routes/plan_watch.py:173,195`) | `textOrNull` returns false for a non-string (`planWatch.js:33`), `isText(label)` fails (`:44`), `asOfText === false` (`:58`) -> whole reply null | whole reply "unavailable" |
+| `plan_state` Literal (`plan_watch.py:104`) | unknown value -> null (`:51`) | whole reply rejected |
+| `kind` / `unit` / `state` Literals (`plan_watch.py:77-79`) | `readLine` returns null (`:44`), `lines.includes(null)` (`:54`) | whole reply rejected on any new value |
+| figures: `Money` = `format(v, "f")`, so no exponent, no grouping; sign "-" only | regex `^-?\d+(\.\d+)?$` (`:34`); "+" rejected | whole reply rejected |
+| `no_plan` with null text, `paused` without text (`plan_watch.py:105,107`) | null (`:59,:63`) | whole reply rejected |
+| `as_of` datetime, extra keys, absent `reason` | not read / ignored / ok | fine |
+
+### Root cause: proven by the PC's raw body (PR #722 comment 7214826976)
+
+`lines[].reason` is an OBJECT (keys code, error_class, external_text, impact, next_action, what_happened, what_is_blocked) on every #209 line, and on #207 it is null on some lines and an object on others in the same reply. `label` and `as_of_text` are strings; `no_plan_text` and `armed_heading` are null. The old `readLine` / `textOrNull` (planWatch.js:33, :44) refuse a non-string reason, so ONE object reason rejected the WHOLE 200 reply as "unavailable". Proof run: the 248f817a parser given #209 (16 lines, the stop line pinned exactly as served) and #207 (14 lines, mixed null and object reasons) returned `unavailable` with 0 lines for both; the fixed parser renders 16 and 14 rows. The earlier note that the relayed bodies were accepted was wrong only because the relay showed the reason as the string "USER_INPUT_151" (its `code`), not the object.
+
+After a first read ends "unavailable", the box showed "Updating the numbers..." on every retry and then the same not-available sentence again: that is the AX-14 symptom.
+
+### Fix (frontend only)
+
+- `parsePlanWatch`: a text is a string or an object with `what_happened`; a "+" sign is read; one bad line becomes "Not checked" (state not_computable, no figures, no reason) with ONE `console.warn` naming the fields only; unknown plan_state reads as planned; the reply is rejected only when it is not an object, has no `lines` array, or answers another strategy.
+- `PlanWatch.vue`: "Updating the numbers..." only over good rows; with no good answer a read in progress says "Loading the rule check...".
+- Supersede: no path. `newestWins` KINDS are outcome, leg-edit, execute only; plan-watch GETs are never aborted; the queue coalesces per box key (separate keys for full box, compact box, remount), so two boxes of one strategy are read one after the other and both render (tested).
+
+### Numbers
+
+| Run | Result |
+|---|---|
+| `plan-watch-fill.test.js` before the fix | 14 failed, 4 passed (of 18; (e) added after) |
+| `plan-watch-*.test.js` + `plan-save-outcome.test.js` after | 7 files, 86 passed |
+| old `plan-watch-reader` "malformed" test | rewritten: top level unusable -> unavailable; one bad line -> kept, Not checked |
+
+### PC re-test (3 steps)
+
+1. Load the new build, open Positions with plan rows, and watch one box: it must read "Loading the rule check..." then the rows. It must never read "Updating the numbers..." before its first rows.
+2. Open the browser console: a `plan watch: line N degraded ... field(s): ...` warning names the field if the server sent something unreadable. Send that line, and the raw 200 body of `/api/strategies/<id>/plan-watch` from the network tab.
+3. Open the builder with `?strategy=<id>`: the Stops panel and the plan rows must show; A-H #209 must show 16 rows marked Not checked.
+
+### Round 2: one reader for server catalogue text
+
+`frontend/src/lib/serverText.js`: a text is a string (itself), null (none) or the error object (its `what_happened`; `next_action` is available). A not-checked line shows the server's `what_happened` and `next_action`, placed and never composed. The #209 stop label already carries `what_happened` ("Stop: not being checked: <what_happened>"), so for such a line only `next_action` is shown under it (a rule line whose label does not carry it shows both).
+
+| Reader | Where | Action |
+|---|---|---|
+| plan-watch reader (reason, label, as_of_text, no_plan_text, armed_heading, paused.text) | `lib/planWatch.js` | changed, uses the helper |
+| adjustment-check reader `said` (used by TrackingPanel.vue:158, :67 and `ruleNotCheckedText`, sharedStateText.js:83) | `lib/playbookEditor.js:124` | changed, uses the helper |
+| adjustment-history totals `reasonOf` | `components/strategy/AdjustSteps.vue:80` | changed, uses the helper |
+| `tracking.js:132` / `paperDrafts.js:212` string-only `serverText` (paper book `*_text`, plain sentences) | lib | checked, left: paper book fields, and `tracking.js:159-160` already reads the object |
+| `LiveStrategyCard.vue:179` | component | checked, left: already object-aware |
+| `adjustCompare.js:93`, `legEdit.js:170`, `strategyActivity.js:29` | lib | checked, left: already read `what_happened` |
+| `TrackingPanel.vue:75` (`a.wording?.what_happened`), `:52` (`f.wording`) | component | checked, left: `wording` is always `render()` (object) / a flag sentence |
+| `TargetBlock.vue:87` `at_refused_reason` | component | checked, left: an outcome field, not plan / check / levels |
+| `adjustPlan.js:12` `parts()` (object-only for `generic_text`) | lib | not touched (another builder); reads `what_happened` of an object only, a string `generic_text` would read as '' |
