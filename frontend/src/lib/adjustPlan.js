@@ -3,12 +3,15 @@
 // the browser computes nothing: the percents are the server's decimal strings, the clock is the server's hour and minute,
 // only re-shaped for an <input type="time"> and back. An answer this module cannot read is `invalid` (fail closed).
 
+import { markSaved } from '@/lib/planSaveClock'
 const planPath = (id) => `/strategies/${id}/adjustment-plan`
 
 const clockText = (c) => (c && Number.isInteger(c.hour) && Number.isInteger(c.minute)
   ? `${String(c.hour).padStart(2, '0')}:${String(c.minute).padStart(2, '0')}` : '')
 const parts = (v) => (v && typeof v === 'object' && typeof v.what_happened === 'string' ? v : null)
 const text = (v) => (typeof v === 'string' ? v : '')
+// The server's generic text as a plain string, a catalogue object ({ what_happened }) or null (local copy of the shared rule: lib/serverText.js is on another branch)
+const genericText = (v) => (typeof v === 'string' ? v : parts(v)?.what_happened ?? '')
 const decimal = (v) => (typeof v === 'string' ? v : '')
 const count = (v) => (Number.isInteger(v) ? String(v) : '')
 
@@ -33,7 +36,7 @@ export function readPlan(body) {
     return { kind: 'invalid' }
   }
   const labels = Object.fromEntries(Object.entries(body.labels).map(([k, v]) => [k, text(v)]))
-  if (body.generic) return { kind: 'generic', labels, text: parts(body.generic_text)?.what_happened ?? '' }
+  if (body.generic) return { kind: 'generic', labels, text: genericText(body.generic_text) }
   if (!Array.isArray(body.playbooks) || !body.prefill || !Number.isInteger(body.prefill.playbook_id)) return { kind: 'invalid' }
   return {
     kind: 'sheet',
@@ -103,16 +106,29 @@ export async function fetchLevels(client, strategyId, typed, playbookId = null) 
   return { target: level(data?.target), stop: level(data?.stop) }
 }
 
-/** POST (accept) or PUT (edit the plan later). Returns the new reading; throws the client error. */
-export async function sendPlan(client, strategyId, body, edit) {
-  const { data } = edit ? await client.put(planPath(strategyId), body) : await client.post(planPath(strategyId), body)
-  return readPlan(data)
+/** The plan SAVE's own limit (Lane R hotfix plan-save-1127: the shared 10 s gave up on a save the server then stored). Set per request,
+ *  never on the client. The server's own bound is a 4 s price read (routes/adjustment_plan PLAN_SAVE_PRICE_BUDGET_S); 30 s covers it. */
+export const PLAN_SAVE_TIMEOUT_MS = 30000
+const SAVE_CONFIG = Object.freeze({ timeout: PLAN_SAVE_TIMEOUT_MS })
+
+/** The save count moves only for a save the browser can read (a 200 it cannot read is "not confirmed", never counted as saved). */
+const saved = (strategyId, read) => {
+  if (read.kind !== 'invalid') markSaved(strategyId)
+  return read
 }
+
+/** POST (accept) or PUT (edit the plan later). Returns the new reading; throws the client error. Never re-sent here (no auto retry). */
+export async function sendPlan(client, strategyId, body, edit) {
+  const { data } = edit ? await client.put(planPath(strategyId), body, SAVE_CONFIG) : await client.post(planPath(strategyId), body, SAVE_CONFIG)
+  return saved(strategyId, readPlan(data))
+}
+
+export { isRefusal } from '@/lib/planSaveResult' // the one rule lives in planSaveResult.js
 
 /** ADR-330 (9), (32) "Reset to playbook": the server puts the playbook's conditions back (the typed levels stay) and answers the sheet. Throws the client error. */
 export async function resetPlan(client, strategyId) {
-  const { data } = await client.post(`${planPath(strategyId)}/reset`)
-  return readPlan(data)
+  const { data } = await client.post(`${planPath(strategyId)}/reset`, undefined, SAVE_CONFIG)
+  return saved(strategyId, readPlan(data))
 }
 
 /** "Customise triggers": the editor opened on THIS trade's own rules (issue 7), never on a playbook other trades follow. */

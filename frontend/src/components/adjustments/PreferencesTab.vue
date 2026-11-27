@@ -18,6 +18,8 @@ import { istTime } from '@/lib/displayFormat'
 import ErrorMessage from '@/components/common/ErrorMessage.vue'
 import { ALERT_KEY, CHIPS, GROUPS, OPEN_BY_DEFAULT, groupOf, isYours, matches, sourceWord } from '@/lib/settingsGroups'
 import { fetchPlan, saveBody, sendPlan } from '@/lib/adjustPlan'
+import { saveStamp, savedSince } from '@/lib/planSaveClock'
+import { planSaveResult } from '@/lib/planSaveResult'
 
 const prefs = ref([])
 const state = ref('loading') // loading | ready | unavailable
@@ -130,11 +132,17 @@ async function loadPlan() {
   }
   plan.state = 'loading'
   plan.form = null
+  const id = strategyIdOf(scope.value)
+  const stamp = saveStamp(id)
   try {
-    const sheet = await fetchPlan(api, strategyIdOf(scope.value))
+    const sheet = await fetchPlan(api, id)
+    // another strategy was picked while this read was out, or a save of this one was stored since it began (plan-save-1127): drop it
+    if (strategyIdOf(scope.value) !== id) return
+    if (savedSince(id, stamp)) { loadPlan(); return }
     plan.sheet = sheet
     plan.state = sheet.kind === 'invalid' ? 'unavailable' : sheet.kind === 'generic' ? 'generic' : sheet.plan ? 'plan' : 'none'
   } catch (e) {
+    if (strategyIdOf(scope.value) !== id) return
     plan.error = e
     plan.sheet = null
     plan.state = 'unavailable'
@@ -172,15 +180,13 @@ async function savePlan() {
   plan.busy = true
   plan.reason = ''
   try {
-    const sheet = await sendPlan(api, strategyIdOf(scope.value), saveBody(plan.form), true)
-    plan.form = null
-    if (sheet.kind === 'invalid') await loadPlan()
-    else {
-      plan.sheet = sheet
-      plan.state = sheet.plan ? 'plan' : 'none'
-    }
-  } catch (e) {
-    plan.reason = e.reason || e.parts?.what_happened || 'The plan change was not saved. Try again.'
+    // plan-save-1127: one shared mapping (planSaveResult): the server's value, the server's reason, or "Not confirmed" (typed values stay, no re-send)
+    const out = await planSaveResult(() => sendPlan(api, strategyIdOf(scope.value), saveBody(plan.form), true), { readable: (r) => r.kind !== 'invalid' })
+    if (out.kind === 'saved') {
+      plan.form = null
+      plan.sheet = out.value
+      plan.state = out.value.plan ? 'plan' : 'none'
+    } else plan.reason = out.text
   } finally {
     plan.busy = false
   }

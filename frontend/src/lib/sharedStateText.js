@@ -59,6 +59,8 @@ export const PLAN_OPEN_FAILED_TEXT = 'Could not open the plan. Try again.'
 export const PAPER_STOP_RISK_LOADING_TEXT = 'Working out max loss for this stop...'
 // pending owner read (15 Nov 2026), GC-ICFIX issue 18: the practice orders were stored but the position could not be read back
 export const PAPER_REREAD_FAILED_TEXT = 'Your paper orders were placed, but the position could not be loaded. Nothing was lost.'
+// new wording, pending owner read (27 Nov 2026), hotfix plan-save-1127: a plan save with no answer in time; the page never re-sends it
+export const PLAN_NOT_CONFIRMED_TEXT = 'Not confirmed: reload to see whether it was saved.'
 export const PLAN_LOADING_TEXT = 'Loading the plan…'
 // pending owner read (25 Nov 2026), D-38: a read that hit the client's time limit says it took too long, never "could not"
 export const PLAN_TIMED_OUT_TEXT = 'The plan took too long to load. Nothing was changed.'

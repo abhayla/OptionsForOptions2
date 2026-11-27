@@ -113,6 +113,13 @@ describe('AdjustSteps', () => {
     expect(r.get('[data-testid="steps-fill"]').text()).toBe('Not yet confirmed by Zerodha')
   })
 
+  it('a reason written as the server error object (lib/serverText) shows its what_happened; null shows nothing', async () => {
+    const obj = { error_class: 'USER_INPUT', code: 'USER_INPUT_151', what_happened: 'Prices are not live.', impact: 'i', what_is_blocked: 'b', next_action: 'n' }
+    const t = totals({ open_pnl: null, open_pnl_text: null, open_reason: 'prices', open_reason_text: obj, premium_left: null, premium_left_text: null, premium_reason_text: null })
+    const w = await open(body(t))
+    expect(tid(w, 'steps-reason-open').text()).toBe('Prices are not live.')
+  })
+
   it('missing prices and no plan maximum: a dash with the server reason, booked still shown', async () => {
     const t = totals({ pnl: null, pnl_text: null, open_pnl: null, open_pnl_text: null, premium_left: null, premium_left_text: null,
       prices_reason: 'prices_not_live', prices_reason_text: 'Prices are not live.', open_reason: 'prices',

@@ -177,6 +177,8 @@ import Tabs from '@/components/common/Tabs.vue'
 import PreferencesTab from '@/components/adjustments/PreferencesTab.vue'
 import SystemPlaybookAdmin from '@/components/adjustments/SystemPlaybookAdmin.vue'
 import { PLAYBOOK_DELETE_CONFIRM_TEXT, PLAYBOOK_TEST_OUT_OF_V1_TEXT } from '@/lib/sharedStateText'
+import { PLAN_SAVE_TIMEOUT_MS } from '@/lib/adjustPlan'
+import { planSaveResult } from '@/lib/planSaveResult'
 import { STEPS, EXPIRY_KINDS, addStage, clone, dayRuleNotChecked, isDirty, labelMaps, refusalText, removeStage, ruleMembers, said, stagesOf, summaryLines,
   valuesOf } from '@/lib/playbookEditor'
 
@@ -217,6 +219,7 @@ const approaches = computed(() => {
 })
 const allApproaches = computed(() => [...approaches.value.applicable, ...approaches.value.off_in_playbook].sort())
 const fail = (err) => { refusal.value = refusalText(err) ?? err?.message ?? null }
+// plan-save-1127: this trade's rules save with no catalogue answer (timeout, dropped connection) ends on the one sentence; it is never re-sent here
 
 // the select's own value first, then the read: the handler never reads a value v-model has not written yet
 function pickType(key) { typeKey.value = key; loadList() }
@@ -299,7 +302,14 @@ const activate = () => act(() => api.post(`/playbooks/${current.value.id}/activa
 const saveInPlace = () => act(() => api.put(`/playbooks/${current.value.id}`, { body: work.value, version: current.value.version }), async (pb) => { show(pb); await loadList(pb.id) })
 const saveAsNew = () => act(() => api.post('/playbooks', { type: typeKey.value, name: newName.value, body: work.value }), async (pb) => { newName.value = ''; show(pb); await loadList(pb.id) })
 // issue 7: from a trade, the rules are the trade's own plan copy; the only write is this one, to that trade's plan
-const saveTrade = () => act(() => api.put(tradeRules(), { body: work.value }), (pb) => show(pb))
+const saveTrade = async () => {
+  refusal.value = null
+  notice.value = null
+  // plan-save-1127: the shared mapping: the server's rules, the server's reason, or "Not confirmed" (never re-sent)
+  const out = await planSaveResult(async () => (await api.put(tradeRules(), { body: work.value }, { timeout: PLAN_SAVE_TIMEOUT_MS })).data, { markId: tradeId, readable: (pb) => !!pb && typeof pb === 'object' && !!pb.body && typeof pb.body === 'object' })
+  if (out.kind === 'saved') show(out.value)
+  else refusal.value = out.text
+}
 const remove = () => { confirmingDelete.value = false; return act(() => api.delete(`/playbooks/${current.value.id}`), async (out) => { await loadList(); notice.value = out.message ? said(out.message) : null }) }
 
 async function loadLabels() {

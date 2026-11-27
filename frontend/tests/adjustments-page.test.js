@@ -23,6 +23,7 @@ vi.mock('@/services/api', async (importActual) => {
   return { ...actual, default: { get: reply('GET'), post: reply('POST'), put: reply('PUT'), delete: reply('DELETE') } }
 })
 import AdjustmentsPage from '@/pages/AdjustmentsPage.vue'
+import { saveStamp } from '@/lib/planSaveClock'
 import { EXPIRY_KINDS, STEPS, labelMaps, summaryLines } from '@/lib/playbookEditor'
 import { readFileSync } from 'node:fs'
 import { resolve } from 'node:path'
@@ -230,6 +231,64 @@ describe('trade mode: the trade\'s own rules (issue 7)', () => {
     const [method, url, payload] = writes()[0]
     expect([method, url]).toEqual(['PUT', RULES])
     expect(payload.body.triggers['T-01'].weekly[1]).toBe('0.2')
+  })
+
+  const NOT_CONFIRMED = 'Not confirmed: reload to see whether it was saved.'
+  const editAndSave = async (w) => {
+    await w.get('[data-testid=pb-step-when]').trigger('click')
+    await w.get('[data-testid=pb-value-T-01-1]').setValue('0.2')
+    await w.get('[data-testid=pb-trade-save]').trigger('click')
+    await flushPromises()
+  }
+
+  it('plan-save-1127: a timeout or dropped connection ends on Not confirmed and sends nothing twice', async () => {
+    const w = await openTrade()
+    answers[`PUT ${RULES}`] = Object.assign(new Error('timeout of 30000ms exceeded'), { code: 'ECONNABORTED' })
+    await editAndSave(w)
+    expect(w.get('[data-testid=pb-refusal]').text()).toBe(NOT_CONFIRMED)
+    expect(writes()).toHaveLength(1)
+    expect(w.text()).not.toContain('Try again')
+  })
+
+  it('plan-save-1127: a 500 with a catalogue body ends on Not confirmed, not on the body\'s sentence', async () => {
+    const w = await openTrade()
+    answers[`PUT ${RULES}`] = { ...refusal('The change was not completed.'), status: 500 }
+    await editAndSave(w)
+    expect(w.get('[data-testid=pb-refusal]').text()).toBe(NOT_CONFIRMED)
+    expect(writes()).toHaveLength(1)
+  })
+
+  it('plan-save-1127 round 2: a 200 the page cannot read is Not confirmed, moves no save count and does not throw', async () => {
+    const w = await openTrade()
+    const before = saveStamp(70)
+    answers[`PUT ${RULES}`] = { nothing: 'readable' }
+    await editAndSave(w)
+    expect(w.get('[data-testid=pb-refusal]').text()).toBe(NOT_CONFIRMED)
+    expect(saveStamp(70)).toBe(before)
+    expect(writes()).toHaveLength(1)
+  })
+
+  it('plan-save-1127 round 2: a 200 the page can read moves the save count once', async () => {
+    const w = await openTrade()
+    const before = saveStamp(70)
+    answers[`PUT ${RULES}`] = (payload) => ({ ...mine(), body: payload.body })
+    await editAndSave(w)
+    expect(saveStamp(70)).toBe(before + 1)
+  })
+
+  it('plan-save-1127: a 422 shows the server\'s reason', async () => {
+    const w = await openTrade()
+    answers[`PUT ${RULES}`] = { ...refusal('Prices could not be read.'), status: 422 }
+    await editAndSave(w)
+    expect(w.get('[data-testid=pb-refusal]').text()).toBe('Prices could not be read.')
+  })
+
+  it('plan-save-1127: a 200 shows the server\'s value, from the save\'s own answer', async () => {
+    const w = await openTrade()
+    answers[`PUT ${RULES}`] = (payload) => ({ ...mine(), body: payload.body })
+    await editAndSave(w)
+    expect(w.find('[data-testid=pb-refusal]').exists()).toBe(false)
+    expect(writes()).toHaveLength(1)
   })
 
   it('a refused save shows the server\'s sentence and writes nothing else', async () => {

@@ -349,3 +349,189 @@ Core of the step: find out whether the server has the adjustment rows for strate
 1. Two testers each open a running paper trade and the Positions page; time /health in a third tab while prices load: under 0.5 s (was 2.5 s).
 2. The API's stderr shows one line per request, e.g. `... request GET /paper/strategies/{strategy_id} 200 2412.0ms`; no strategy ids or query strings in it.
 3. Add to Paper and Exit on a paper trade work as before (same confirm list, same result).
+## Plan-watch load hotfix (27 Nov 2026, branch lane-r-pwl on 6067ca3a; frontend only)
+
+Spec basis: ADR-330 (11) and (13) (the live Plan watch box), REQ-119 AC-3/AC-4 (no stacking, "Updating the numbers..."); the pacing is a load decision by the coordinator on 27 Nov.
+
+- Root cause: every Positions row with a plan mounted its own Plan watch box, each polling on its own, so Lane J's 15 s gap held per box but not across the page (PC log: n=204 in about 6 minutes, 34 a minute from two tabs, 5,821 ms average, 10,671 ms max).
+- Class: pollers per page. Before: N boxes x 1 request in flight each, and N reads per 15 s window (10 rows = up to 10 in flight, 40 a minute). After: 1 in flight page-wide; compact reads start at least 20 s apart (option (a), at most 3 a minute per page, 6 for two tabs), each row also waits 60 s from its own last answer, only while on screen and the tab is visible; the builder box keeps 15 s and goes first. Cost: with 10 rows each row refreshes about every 200 s (it keeps its rows and shows "Updating the numbers..." meanwhile).
+- Red (before the change, `npx vitest run tests/plan-watch-load.test.js`): 5 of 5 failed. Hidden tab: 10 fetches, expected 0. Scrolled-out box 3 fetched ([1,2,3,4,5]). Unmounted queued box 3 fetched ([1,2,3]). Full box did not go ahead ([1,2], expected [1,99]). 10 boxes: all 10 start at once (10 in flight).
+- Green (after): plan-watch-load 5 of 5 pass (max in flight 1, 9 reads in 179 s). The 3 existing plan-watch test files pass unchanged except a queue reset in the component test's beforeEach.
+- PC re-test, 3 steps: (1) Open Positions with 5 or more planned rows, devtools Network filtered on "plan-watch", leave it 3 minutes: no more than one request pending at any moment and about 9 or fewer in all; rows keep their numbers and show "Updating the numbers..." and never "not available". (2) Switch to another browser tab for 2 minutes: no plan-watch requests; switch back: one starts. (3) Open the builder on a planned strategy: its box still reads about every 15 s.
+
+### To file as deferred issues (hotfix plan-watch-load-1127, review 27 Nov; not filed)
+
+- **The queue has no watchdog of its own** (MINOR): `frontend/src/lib/planWatchQueue.js:41-57` frees its slot on a rejection or a throw, but a fetch that never settles is bounded only by axios `timeout: 10000` (`services/api.js`). Plan-watch's own max on the PC was 10,671 ms, so a slow read times out and shows "not available" (as before this change). Done when the queue has its own bound and a test with a hung fetch.
+- **The load test's IntersectionObserver mock calls back synchronously** (MINOR): `frontend/tests/plan-watch-load.test.js:40-45` queues a duplicate first read for box 1; a browser calls back later. The 10-box `maxInflight` check passes even without the in-flight guard (5 s latency is under the 20 s gap); only the full-box test catches it. Done when the mock is async and a compact-only case with latency above 20 s pins concurrency 1.
+- **No test for a rejecting or hung fetch** (MINOR).
+- **First read can wait ~180 s with 10 rows** (MINOR, by design of the 20 s page gap): a box waiting on its first read shows "Reading the plan watch..." that long; a failed box shows "Updating the numbers..." on each retry.
+
+## Hotfix plan-watch box rendering (27 Nov)
+
+Spec basis: ADR-330 (13), the live Plan watch box; REQ-119 AC-3 (no stacking, newest wins) and AC-4 (a slow or failed read after a good one keeps the last rows with the as-of time).
+
+**Root cause (one sentence).** The plan-watch GET inherited the shared client's 10 s timeout while the route answers a full 200 in 6 to 11 s (its bounds are about 12 s), so good answers were thrown away and the box said "not available"; separately, `textOrNull` in `frontend/src/lib/planWatch.js` (line 33 before the fix) read an empty-string optional text (a row's `reason`, or `as_of_text`) as "present but wrong", so `parsePlanWatch` rejected the WHOLE reply as "unavailable" and a good 200 showed no rows.
+
+**Class, before and after.**
+- Before: any good 200 slower than 10 s, or any 200 with one blank optional text, became a box with no rows. After: the request has its own `PLAN_WATCH_REQUEST_TIMEOUT_MS = 20000` (per request; the shared client stays 10000), and an empty or blank optional text means "none". A non-string is still rejected (ADR-008: no guessing).
+- The route's real "prices not live" shape (plan_state planned, rows paused or not computable, `now` and distances null, `fires_at` kept) already rendered per row as sent once it was under the timeout; the proven hider of rows was the blank-text rejection above.
+- A first read now says "Loading the rule check..." (new wording, pending owner read; no catalogue or label match existed). Later reads keep "Updating the numbers...". A failure after a good read keeps the rows and the as-of time (pinned by tests); "not available" only when there was never a good answer.
+
+**Numbers.** `frontend/tests/plan-watch-render.test.js`: 16 cases (8 each for the full and the compact box). Red before the fix: 16 of 16 failed on the first run (real defects: timeout 10000 not 20000, 15 s answer dropped, blank-reason reply dropped, old loading wording; plus harness faults I then fixed). Green after: 16 of 16; all `plan-watch-*.test.js`: 55 of 55.
+
+**3-step PC re-test.**
+1. Open the builder of a strategy with a plan. While the first read runs the box says "Loading the rule check..."; a 6 to 11 s answer then shows its rows with the as-of time.
+2. Open Positions with plan rows: each compact box shows rows, not "not available", after its turn in the queue.
+3. Outside market hours (prices not live) the rows show Paused or Not checked with the server's text, never an empty box. Stop the backend for a minute: the last rows stay, marked "Could not refresh the rule check...", with the as-of time.
+
+## Hotfix plan-save-1127
+
+Spec basis: ADR-330 (1) (the stop base is stored with the plan and read by the checks), (5) (a rupee level and a percent must agree against a base; "a base that cannot judge refuses"), (7) (a dated time exit is judged against today and the legs); REQ-161 AC-2/AC-3 (accept and edit the plan); ADR-016 to ADR-019 (no auto retry, submitted is not executed); ADR-008 (every figure is the server's).
+
+**Real case.** 27 Nov 13:50 trade A-H #209: stop (Rs) 100 typed and saved; the DB holds `loss_stop_rupees "100"` (accepted 13:50:50, PUT 200 in 5,199.6 ms), yet the Plan block kept Rs 996.13. 11:08-11:16 trade #201: "no server answer in 3 tries", then "saved despite the error". Adjustment-plan requests averaged 6,537 ms (max 10,214) against the shared 10 s axios timeout.
+
+**Root cause (one sentence).** The page let a read that started BEFORE the save (plan GET, levels GET, plan-watch GET, each 3-20 s) answer AFTER it and put the old value back; and the save, slow only because of its price read (`_market` in `_write`), ran under the shared 10 s limit and ended on a false "nothing was changed".
+
+**RCA with file:line (code at 9d39c82f).**
+- (i) What takes 6-10 s: ONLY the price read. Measured with the market stubbed instant (round 1 diagnostic): `_own_strategy` 0.018 s, `_type_of` 0.001, `_picked` 0.003, `accept_plan` 0.007, `_sheet` (the answer rebuild, DB reads only) 0.020, whole request about 0.8 s with app start. `_sheet` has no margin or run_check call. The slow step is `_market(...)` in `_write` and `reset_plan` (the read_quotes door, Lane U's area).
+- (ii) Client abort: no `BaseHTTPMiddleware` or disconnect check in backend/ofo_app (grep), so the handler runs to its end. `accept_plan` (playbook_store.py ~710) is ONE upsert under `lock_strategy`, committed once by `_run` after `work()`: all or nothing, no half-save.
+- (iii) Page on timeout: `AdjustPlanSheet.send` showed the neutral four-part message ("Nothing was changed"), false for a stored save; Save could be pressed again: a second write of the same body (harmless to the data, wrong sentence). The words "got no server answer in 3 tries" and "saved despite the error" are not in this tree (grep), so nothing was reused.
+
+**What changed (round 2, the smallest safe server change).**
+- Server: ONE change in `backend/ofo_app/routes/adjustment_plan.py`. The price read before the write in `_write` and in `reset_plan` goes through `_bounded_market`: `asyncio.wait_for(_market(...), PLAN_SAVE_PRICE_BUDGET_S = 4.0)` (the plan watch route's own `PRICE_BUDGET_S`, the code's one price budget). Past it the save is refused with the new catalogue row `plan_save_prices_not_read` (SV_524, wording pending owner read; no existing row fit) and nothing is stored. The order is exactly the old one: read the market, write, build the answer; `_run` still commits after `work()` (unchanged, so the transaction is as before). The rules PUT reads no market (`_rules_scope` has no `_market` call): left as is. The stored body is the old code's, because the market still supplies the expiry kind, stage and today.
+- Client: saves (POST, PUT, reset, trade-rules PUT) carry `PLAN_SAVE_TIMEOUT_MS = 30000` per request, never re-sent. Only a 4xx with a catalogue reason is a refusal (shown as the server's reason); a 5xx, a timeout or no answer shows "Not confirmed: reload to see whether it was saved." (new wording, pending owner read) and keeps the typed value. `lib/planSaveClock.js` keeps a per-strategy save count; the sheet load, levels, PlanEntry, PlanWatch and PreferencesTab `loadPlan` take the stamp when they start and drop an answer when a save of the same strategy happened since (PreferencesTab also drops an answer for a strategy no longer picked). PlanWatch then makes a fresh read that starts after the save. Plan watch lines are computed by the server (ADR-008), so they are re-read, not taken from the save's answer.
+
+**Review findings (Opus Tier A, REVISE) and what was done.**
+- BLOCKER, a percent stop on a monthly strategy stored in the weekly row (no-price path, `_kind_of` fell back to `position.expiry_kind`, always ""): the no-price path is removed. Test `test_a_percent_stop_on_a_monthly_strategy_is_stored_in_the_monthly_row` (user playbook, T-06 weekly [50,50,40], monthly [30,30,20], market stubbed monthly, stop "50": monthly becomes [50,50,20], weekly stays [50,50,40]) and the rupee-stop twin (both rows unchanged, `loss_stop_rupees "100"` stored).
+- MAJOR, the 0.5 s answer cap could cancel mid-query and leave the session needing a rollback (500 with the row stored): the cap, the fallback answer and commit-before-answer are removed. The answer is rebuilt as before (about 0.02 s).
+- MAJOR, a 5xx was treated as a refusal by `isRefusal`: now only 4xx with a catalogue message; test: a 500 shows Not confirmed, keeps the typed value, moves no clock (`saveStamp` unchanged), one PUT.
+- Test gaps: `loadPlan` guard added (a); a save on strategy 70 does not drop strategy 71's answers (b); the PlanWatch drop test asserts the stale answer is never drawn (the render between the stale answer and the fresh one) (c); the race test now drives the real `@saved` wiring of PlanEntry and a second test checks a stale levels answer does not refill the sheet (d). Mutation check: removing the sheet guard fails the levels test; removing the PlanWatch guard fails the PlanWatch and 70/71 tests.
+
+**Class, before and after.** Before: any plan read slower than a save could overwrite it, and a save over 10 s or a 5xx ended on a false "nothing was changed". After: a read older than the last save of its strategy is dropped everywhere the page reads the plan; a save has its own 30 s, a 4 s price bound with a refusal, and one honest sentence. Not covered: PreferencesTab `savePlan` still words its own failure with its older sentence.
+
+**3-step PC re-test (trade like #209).**
+1. Open the plan of a running trade, type Stop (Rs) 100, press Save. The block shows the stop from the answer and stays on it after the next Plan watch read.
+2. With prices slow (over 4 s), press Save: within about 5 s it is refused with "Prices could not be read in time to check this plan." and the old plan is unchanged.
+3. Stop the backend, press Save: the sheet stays open with the typed value and the single sentence "Not confirmed: reload to see whether it was saved."; the Network tab shows one request.
+
+## Who did what, 27 Nov (owner rule: the task picks the model)
+
+| Task | Model that did it |
+|---|---|
+| LR-Q19 (a) D-15 plan line: build, round-2 fixes | Sonnet (builder) |
+| D-15 plan line: Tier A review | Opus (reviewer; money line) |
+| API slowness: root-cause read of the code | Opus (Explore; hard debugging on the live API) |
+| Request duration log line: build, round 2 | Sonnet (builder) |
+| Request log: move the registration into errors.install | Haiku (mechanical) |
+| Request log: middleware-list pin in test_response_door | Haiku (mechanical) |
+| Over-long comment rewrap (E501 ratchet) | Haiku (mechanical) |
+| Pool fix (release before market waits), pool-4 measurement, scan | Sonnet (builder) |
+| Pool fix: Tier A review | Opus (reviewer; order and exit paths commit mid-request) |
+| Plan-watch page-wide queue | Sonnet (builder) |
+| Plan-watch queue: review | Sonnet (reviewer, Tier B) |
+| Plan watch box rendering (20 s timeout, blank-text hider) | Sonnet (builder) |
+| Plan save / Plan block (rounds 1 and 2) | Sonnet (builder) |
+| Plan save: Tier A reviews | Opus (reviewer; the user's stop) |
+| Step timing and route profiling (started, stopped at 14:14 on the coordinator's word; moved to a fresh lane) | Sonnet (builders, stopped) |
+| Splitting, routing, verifying, reporting; reading diffs and re-running key tests to verify | Opus (main session) |
+| Prepush gate runs and git merge/push steps before 14:14 | Opus (main session) - against the rule: gate runs belong to a Sonnet helper; from 14:14 they go to one |
+| Two RESULTS notes (api-blocking deferred list, plan-watch-load deferred list) and this table | Opus (main session) - report writing |
+
+### Plan-save-1127: Opus Tier A re-review of round 2 (REVISE; shipped with these listed, B1: two rounds used)
+
+Server change confirmed right: only `_bounded_market` (4 s, refusal 422 `plan_save_prices_not_read`, raised before anything is written); the builder's Plan block, levels line and Plan watch box end on the saved value. Left, to file as deferred issues (not filed):
+- **MAJOR: Settings > "Change plan values" says "not saved" when the save may be stored.** `frontend/src/components/adjustments/PreferencesTab.vue:190`: a dropped connection or a client timeout shows "The plan change was not saved. Try again." (and a 5xx shows its `what_happened`), never "Not confirmed: reload to see whether it was saved."; "Try again" invites a second send. Older than this change. Done when it uses the same `isRefusal` / not-confirmed rule as the plan sheet, with a test.
+- **MAJOR (read, not run): the trade's rules editor.** `frontend/src/pages/AdjustmentsPage.vue:223` `failSave` treats any error with `parts` as a refusal, so a 500 with a catalogue body shows "The action you asked for was not completed." even if the row was stored. Done when it uses `isRefusal`.
+- **Older than this change, same class as round 1's BLOCKER:** a price read that fails at once returns `None`, and `_kind_of` (`backend/ofo_app/routes/adjustment_plan.py:583`) then falls back to the position's expiry kind, which is always "" -> "weekly". A percent stop saved while the price read fails outright on a MONTHLY strategy with a user playbook whose weekly and monthly T-06 rows differ is written to the weekly row. Done when a save with no market read refuses (like the 4 s bound) or reads the expiry kind from the contracts, with the monthly test of `tests_app/test_plan_save_1127.py` run with the market reader returning None.
+- MINOR: `AdjustPlanSheet.vue:231` a 200 that `readPlan` cannot read shows "Something went wrong. Please try again." after the save was counted; `PlanEntry.vue:99-101` clears `loading` while the fresh read after a dropped stale one is still out; removing the sheet's load guard (`AdjustPlanSheet.vue:155`) leaves all 10 tests green.
+
+### Plan-save-1127, round 3 (branch `lane-r-psave3`): the no-market save, one save-result helper
+
+Spec basis: ADR-330 (1), (5); REQ-161 AC-2/AC-3; ADR-016 to ADR-019; ADR-008.
+
+**RCA (one sentence).** When the price read failed at once `_market` returned None, `_kind_of` fell back to the position's `expiry_kind` (always "" per `adjustment_readers.py:161/171`) and then to "weekly", so `with_overrides` -> `set_max_loss_stop` wrote a percent stop into the WEEKLY T-06 row of a MONTHLY strategy.
+
+**Fix.** `_bounded_market` (`routes/adjustment_plan.py`, the one door of a plan write) refuses a None market with `plan_save_prices_not_read` (422, nothing written), like the 4 s bound. No default kind is ever written.
+
+**Class list (every place that derives the expiry kind or another market input):**
+
+| Place | Verdict |
+|---|---|
+| `adjustment_plan.py` `_write` (POST/PUT plan) | fixed (goes through `_bounded_market`) |
+| `adjustment_plan.py` `reset_plan` | fixed (same door) |
+| `adjustment_plan.py` `save_rules` (PUT rules) | not affected: writes the submitted body; no kind or market input (`_base_json(tracked)` is from the tracked position only) |
+| `adjustment_plan.py` `read_plan` (GET), `read_levels` (GET) | reads, unchanged: with no market the sheet shows the stop amounts as `stop_max_loss_unknown` and the kind falls back to weekly for the words only; nothing is stored |
+| `adjustment.py:295,501` | not a writer (approach read; `as_of_market` is a pure copy) |
+| `adjustment_check.py:299,396,405` | not a writer (the check; its fallback is read-only) |
+| `playbooks.py` (POST/PATCH/PUT/activate) | not affected: stores the user's body as typed, no market input |
+| `settings_in_force.py:282` `money_inputs` | pure function called by the readers above; not a writer |
+| `routes/alert_style.py:98`, `background.py:397,1505` | reads / alert code (Lane J), not touched |
+
+**Red and green.** Red: the two new tests (`test_a_save_with_no_market_read_is_refused_and_writes_no_row`, `test_a_reset_with_no_market_read_is_refused_and_writes_no_row`) failed against `1f3c1b44` (`assert 200 == 422` on both: the save and the reset were accepted with no market). Green: `tests_app/test_plan_save_1127.py` 6 passed. Frontend: `lib/planSaveResult.js` maps a save to saved / refused / not confirmed; used by AdjustPlanSheet (save and reset), Settings PreferencesTab "Change plan values" and AdjustmentsPage trade rules (`failSave` removed). Red against the old screens: 5 failed (Preferences timeout and 500, page 500, sheet unreadable 200, PlanEntry loading); green after: all pass. The sheet's load guard (`AdjustPlanSheet.vue:155`) now has a test that fails (the sheet shows `OLD-VALUE`) when the guard line is removed.
+
+**PC re-test (owner).** (1) With the price feed off, open a MONTHLY strategy's plan, type a percent stop, Save: expect the price-read refusal and the stored plan unchanged; same for Reset to playbook. (2) Feed on: save a percent stop on the monthly strategy; its monthly T-06 row changes and the weekly one does not. (3) Settings > Adjustments > Show for one strategy > Change plan values, unplug the network and Save: expect "Not confirmed: reload to see whether it was saved.", the typed values still in the boxes, and no "Try again".
+
+**Round 2 of round 3 (Tier A BLOCKER: the no-session path).** With no Kite session (`get_market_context` gives none) the real `read_market(tracked, None)` answers a MarketInputs with `expiry_kind=None`, not None, so the blanket "market is None" refusal let the save through; `_kind_of` then fell to "" -> "weekly" and a typed 50 equal to the weekly row was judged "no change": 200, nothing written. Fix at the use point:
+- `_known_kind` (`adjustment_plan.py`): the market's kind, else `_stored_kind` (the stored catalogue's instrument list, `catalogue_store.load_catalogue`, by the ONE rule `adjustment_readers.expiry_kind_of`: monthly = an index future of the underlying also expires on the leg's day; a scenario's own stated kind wins), else None. No calendar guess: a catalogue with no future of the underlying cannot judge, so it answers None.
+- A save that types a percent stop (`with_overrides(..., strict_kind=True)` -> `_set_stop`) with the kind unknown is refused: `plan_save_prices_not_read`, 422, nothing written. `_bounded_market` keeps only the 4 s refusal. Reset, a target-only save, a rupee-stop save and a playbook-only save work with no session as before (none reads a kind row).
+- Reads (GET plan, levels) unchanged: no kind -> the weekly row is shown.
+- Tests (real `read_market(tracked, None)`, fresh DB): percent stop with no stored kind -> 422 and the row unchanged; with a stated monthly kind -> stored in the monthly row; rupee stop, target-only, reset -> 200; `_stored_kind` over a stored catalogue (future on the leg's day -> monthly, on another day -> weekly, none -> None).
+- `tests/errors/template_pins.json`: the pin for `plan_save_prices_not_read` added, `reviewed: "pending owner read"`.
+- Frontend: AdjustmentsPage trade rules treat an unreadable 200 as Not confirmed (no `show(null)`); `sendPlan`/`resetPlan` move the save count only for a readable answer; `readPlan` reads generic text as a plain string, a catalogue object or null (a local copy of the shared rule: `lib/serverText.js` is on another branch).
+
+## Plan watch box never fills (AX-14, 27 Nov)
+
+Spec basis: ADR-330 (13), REQ-119 AC-3/AC-4. Real PC bodies: A-G #207 (14 lines) and A-H #209 (16 lines, all not_computable); #209's stop line is pinned exactly as served. Fields not stated by the PC were filled from `PlanWatchOut` / `WatchLineOut` (listed in `frontend/tests/plan-watch-fill.test.js`, section (e)).
+
+### Step 1: what the server can send that the old `parsePlanWatch` rejected (old = `frontend/src/lib/planWatch.js` at 248f817a)
+
+| Server side (backend/ofo_app) | Old reader | Effect |
+|---|---|---|
+| `reason` / `label` / `as_of_text` / `no_plan_text` / `armed_heading` are `CatalogueText`; a `UserFacingError` is written as an OBJECT (`api_models.py:37-45` `_serialize` -> `ofo/errors/model.py:89` `as_dict`); a not-checked rule's reason is `render(r.code)` (`routes/adjustment_check.py:203`, `:262`; `routes/plan_watch.py:173,195`) | `textOrNull` returns false for a non-string (`planWatch.js:33`), `isText(label)` fails (`:44`), `asOfText === false` (`:58`) -> whole reply null | whole reply "unavailable" |
+| `plan_state` Literal (`plan_watch.py:104`) | unknown value -> null (`:51`) | whole reply rejected |
+| `kind` / `unit` / `state` Literals (`plan_watch.py:77-79`) | `readLine` returns null (`:44`), `lines.includes(null)` (`:54`) | whole reply rejected on any new value |
+| figures: `Money` = `format(v, "f")`, so no exponent, no grouping; sign "-" only | regex `^-?\d+(\.\d+)?$` (`:34`); "+" rejected | whole reply rejected |
+| `no_plan` with null text, `paused` without text (`plan_watch.py:105,107`) | null (`:59,:63`) | whole reply rejected |
+| `as_of` datetime, extra keys, absent `reason` | not read / ignored / ok | fine |
+
+### Root cause: proven by the PC's raw body (PR #722 comment 7214826976)
+
+`lines[].reason` is an OBJECT (keys code, error_class, external_text, impact, next_action, what_happened, what_is_blocked) on every #209 line, and on #207 it is null on some lines and an object on others in the same reply. `label` and `as_of_text` are strings; `no_plan_text` and `armed_heading` are null. The old `readLine` / `textOrNull` (planWatch.js:33, :44) refuse a non-string reason, so ONE object reason rejected the WHOLE 200 reply as "unavailable". Proof run: the 248f817a parser given #209 (16 lines, the stop line pinned exactly as served) and #207 (14 lines, mixed null and object reasons) returned `unavailable` with 0 lines for both; the fixed parser renders 16 and 14 rows. The earlier note that the relayed bodies were accepted was wrong only because the relay showed the reason as the string "USER_INPUT_151" (its `code`), not the object.
+
+After a first read ends "unavailable", the box showed "Updating the numbers..." on every retry and then the same not-available sentence again: that is the AX-14 symptom.
+
+### Fix (frontend only)
+
+- `parsePlanWatch`: a text is a string or an object with `what_happened`; a "+" sign is read; one bad line becomes "Not checked" (state not_computable, no figures, no reason) with ONE `console.warn` naming the fields only; unknown plan_state reads as planned; the reply is rejected only when it is not an object, has no `lines` array, or answers another strategy.
+- `PlanWatch.vue`: "Updating the numbers..." only over good rows; with no good answer a read in progress says "Loading the rule check...".
+- Supersede: no path. `newestWins` KINDS are outcome, leg-edit, execute only; plan-watch GETs are never aborted; the queue coalesces per box key (separate keys for full box, compact box, remount), so two boxes of one strategy are read one after the other and both render (tested).
+
+### Numbers
+
+| Run | Result |
+|---|---|
+| `plan-watch-fill.test.js` before the fix | 14 failed, 4 passed (of 18; (e) added after) |
+| `plan-watch-*.test.js` + `plan-save-outcome.test.js` after | 7 files, 86 passed |
+| old `plan-watch-reader` "malformed" test | rewritten: top level unusable -> unavailable; one bad line -> kept, Not checked |
+
+### PC re-test (3 steps)
+
+1. Load the new build, open Positions with plan rows, and watch one box: it must read "Loading the rule check..." then the rows. It must never read "Updating the numbers..." before its first rows.
+2. Open the browser console: a `plan watch: line N degraded ... field(s): ...` warning names the field if the server sent something unreadable. Send that line, and the raw 200 body of `/api/strategies/<id>/plan-watch` from the network tab.
+3. Open the builder with `?strategy=<id>`: the Stops panel and the plan rows must show; A-H #209 must show 16 rows marked Not checked.
+
+### Round 2: one reader for server catalogue text
+
+`frontend/src/lib/serverText.js`: a text is a string (itself), null (none) or the error object (its `what_happened`; `next_action` is available). A not-checked line shows the server's `what_happened` and `next_action`, placed and never composed. The #209 stop label already carries `what_happened` ("Stop: not being checked: <what_happened>"), so for such a line only `next_action` is shown under it (a rule line whose label does not carry it shows both).
+
+| Reader | Where | Action |
+|---|---|---|
+| plan-watch reader (reason, label, as_of_text, no_plan_text, armed_heading, paused.text) | `lib/planWatch.js` | changed, uses the helper |
+| adjustment-check reader `said` (used by TrackingPanel.vue:158, :67 and `ruleNotCheckedText`, sharedStateText.js:83) | `lib/playbookEditor.js:124` | changed, uses the helper |
+| adjustment-history totals `reasonOf` | `components/strategy/AdjustSteps.vue:80` | changed, uses the helper |
+| `tracking.js:132` / `paperDrafts.js:212` string-only `serverText` (paper book `*_text`, plain sentences) | lib | checked, left: paper book fields, and `tracking.js:159-160` already reads the object |
+| `LiveStrategyCard.vue:179` | component | checked, left: already object-aware |
+| `adjustCompare.js:93`, `legEdit.js:170`, `strategyActivity.js:29` | lib | checked, left: already read `what_happened` |
+| `TrackingPanel.vue:75` (`a.wording?.what_happened`), `:52` (`f.wording`) | component | checked, left: `wording` is always `render()` (object) / a flag sentence |
+| `TargetBlock.vue:87` `at_refused_reason` | component | checked, left: an outcome field, not plan / check / levels |
+| `adjustPlan.js:12` `parts()` (object-only for `generic_text`) | lib | not touched (another builder); reads `what_happened` of an object only, a string `generic_text` would read as '' |

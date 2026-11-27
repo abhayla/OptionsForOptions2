@@ -78,15 +78,26 @@ describe('readPlanWatch', () => {
     reply = fail({ status: null, message: 'network', parts: null })
     expect(await readPlanWatch(7)).toMatchObject({ state: 'failed', text: PLAN_WATCH_UNAVAILABLE })
   })
-  it('malformed: every wrong shape reads as unavailable with no lines', async () => {
-    const bad = [
-      null, 'x', {}, SERVER({ lines: 'no' }), SERVER({ plan_state: 'weird' }), SERVER({ lines: [line({ state: 'maybe' })] }),
-      SERVER({ lines: [line({ section: 'other' })] }), SERVER({ lines: [line({ now: 12 })] }), SERVER({ lines: [line({ label: '' })] }),
-      SERVER({ plan_state: 'no_plan', no_plan_text: null }), SERVER({ lines: [null] }), SERVER({ lines: [line({ fires_at: undefined })] }),
-    ]
+  it('malformed: an unusable top level reads as unavailable with no lines', async () => {
+    const bad = [null, 'x', {}, [], SERVER({ lines: 'no' }), SERVER({ lines: null })]
     for (const b of bad) {
       reply = ok(b)
       expect(await readPlanWatch(7), JSON.stringify(b)).toMatchObject({ state: 'unavailable', text: PLAN_WATCH_UNAVAILABLE, planLines: [], armedLines: [] })
+    }
+  })
+  it('malformed line (Lane R, 27 Nov 2026): the reply is kept and that line reads Not checked with no figures', async () => {
+    vi.spyOn(console, 'warn').mockImplementation(() => {})
+    const bad = [
+      line({ state: 'maybe' }), line({ section: 'other' }), line({ now: 12 }), line({ label: '' }), null, line({ fires_at: 'abc' }), line({ key: '' }),
+    ]
+    for (const b of bad) {
+      reply = ok(SERVER({ lines: [line({ key: 'T-06' }), b] }))
+      const v = await readPlanWatch(7)
+      expect(v.state, JSON.stringify(b)).toBe('ok')
+      const all = [...v.planLines, ...v.armedLines]
+      expect(all, JSON.stringify(b)).toHaveLength(2)
+      expect(all.find((l) => l.key === 'T-06').state).toBe('watching')
+      expect(all[1]).toMatchObject({ state: 'not_computable', firesAt: null, now: null, distanceRs: null, distancePct: null })
     }
   })
   it('a reply for another strategy is unavailable (an answer for a key no longer shown)', async () => {

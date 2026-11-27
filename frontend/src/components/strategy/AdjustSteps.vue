@@ -57,6 +57,7 @@
 import { computed, ref } from 'vue'
 import api, { NEUTRAL_PARTS } from '@/services/api'
 import { istTime } from '@/lib/displayFormat'
+import { serverSentence } from '@/lib/serverText'
 import { BEFORE_CHARGES, afterFigure } from '@/lib/tracking'
 import AfterChargesTap from '@/components/common/AfterChargesTap.vue'
 
@@ -77,7 +78,7 @@ const stepText = (r) => (r.is_exit === true ? 'Exit' : r.step === 'adjustment' ?
 const tiles = computed(() => {
   const t = data.value?.totals
   if (!t) return []
-  const reasonOf = (v) => (v && typeof v === 'object' ? v.what_happened : v)
+  const reasonOf = (v) => serverSentence(v) ?? null // a string, null or the error object (lib/serverText)
   const pnl = afterFigure(t, t.pnl_text ?? null, reasonOf(t.open_reason_text)) // GC-ICFIX (ADR-263): the whole-trade P&L after charges, labelled
   return [
     { id: 'pnl', label: `Whole-trade P&L ${pnl.label}`.trim(), value: pnl.text ?? DASH, reason: pnl.reason, breakdown: pnl.breakdown },

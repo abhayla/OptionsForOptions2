@@ -52,6 +52,7 @@ import { getActivePinia } from 'pinia'
 import { useBuilderHold } from '@/stores/builderHold'
 import api from '@/services/api'
 import { fetchPlan } from '@/lib/adjustPlan'
+import { saveStamp, savedSince } from '@/lib/planSaveClock'
 import { checkStaleLine, EXITS_LOAD_FAILED_TEXT, exitLineText, LIMITS_LOADING_TEXT, LIMITS_LOAD_FAILED_TEXT, LIMITS_NONE_TEXT, PLAN_LOADING_TEXT, PLAN_LOAD_FAILED_TEXT } from '@/lib/sharedStateText'
 
 // the rule check's reply and the state of the panel's one read of it: 'loading' | 'ok' | 'failed'
@@ -84,16 +85,23 @@ const limits = computed(() => {
 
 const heldPlanFor = (id) => { try { return !!getActivePinia() && useBuilderHold().hasPlan(id) } catch { return false } }
 
+let readSeq = 0 // the newest read owns `loading`: a dropped stale read must not clear it while its fresh read is still out
 async function reload() {
   const id = props.strategyId
+  const mine = ++readSeq
   read.value = null
   failed.value = false
   loading.value = false
   if (!Number.isInteger(id)) return
   loading.value = true
+  const stamp = saveStamp(id)
   try {
     const next = await fetchPlan(api, id)
     if (id !== props.strategyId) return // another strategy opened meanwhile: drop this
+    if (savedSince(id, stamp)) { // began before a save of this strategy: never put the old plan back (plan-save-1127); read again if nothing is shown
+      if (read.value === null) reload()
+      return
+    }
     if (next.kind === 'invalid') failed.value = true // fail closed: nothing is drawn from a reply that cannot be read
     else {
       read.value = next
@@ -102,7 +110,7 @@ async function reload() {
   } catch {
     if (id === props.strategyId) failed.value = true // network, 5xx or the 30 s limit
   } finally {
-    if (id === props.strategyId) loading.value = false
+    if (id === props.strategyId && mine === readSeq) loading.value = false
   }
 }
 watch(() => props.strategyId, reload, { immediate: true })
