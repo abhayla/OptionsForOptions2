@@ -7,7 +7,7 @@
 import { computed, nextTick, onBeforeUnmount, onMounted, ref, watch } from 'vue'
 import api, { NEUTRAL_ERROR } from '@/services/api'
 import { paperPriceOk, paperPriceReason } from '@/lib/tracking'
-import { istClock } from '@/lib/displayFormat'
+import { expiryText, istClock } from '@/lib/displayFormat'
 import { PAPER_STOP_RISK_LOADING_TEXT } from '@/lib/sharedStateText'
 import { CLOSED_REFERENCE_TEXT, NOT_LIVE_LABEL, lastCloseUnavailableText, useIndexAnswer } from '@/composables/useIndexLive'
 import { triggerListOf, triggersPath } from '@/lib/paperTriggers'
@@ -55,6 +55,8 @@ const ceReason = computed(() => {
   const bad = set.find((x) => !paperPriceOk(x))
   return bad === undefined ? '' : paperPriceReason(bad)
 })
+// D2: a stop whose contract is not among the open legs shows the server's contract text; its ISO date reads through the app's one date rule (expiryText)
+const serverLegText = (text) => (typeof text === 'string' ? text.replace(/\d{4}-\d{2}-\d{2}/g, (d) => expiryText(d) ?? d) : null)
 const stopReason = (i) => paperPriceReason(stopOf(i).level)
 
 // W2-B (ADR-330 (6), ADR-008): while a leg and a valid level are typed, ask the server what the trade becomes if this stop fires and
@@ -281,7 +283,7 @@ async function keep(t) {
       <p v-if="triggers && !triggers.length" class="text-xs text-ink-muted" data-testid="stops-empty">No stops set.</p>
       <ul v-else-if="triggers">
         <li v-for="t in triggers" :key="t.id" class="flex flex-wrap items-center gap-2 border-b border-line py-1" data-testid="trigger-row" :data-trigger-id="t.id">
-          <span>{{ t.kind === 'leg_stop' ? (legNames[t.contract_id] ?? t.contract_text ?? 'Leg stop') : 'Conditional exit' }}</span>
+          <span>{{ t.kind === 'leg_stop' ? (legNames[t.contract_id] ?? serverLegText(t.contract_text) ?? 'Leg stop') : 'Conditional exit' }}</span>
           <span class="font-medium" data-testid="trigger-direction">{{ t.direction === 'above' ? 'Above' : t.direction === 'below' ? 'Below' : '' }}</span>
           <span data-testid="trigger-level">{{ t.level_text }}</span>
           <span class="rounded bg-surface-muted px-1" data-testid="trigger-state">{{ t.state }}</span>

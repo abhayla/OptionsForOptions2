@@ -236,8 +236,13 @@ const canConfirm = computed(() => {
   return props.state !== 'refused' || refusedAt.value === null || snapshot() !== refusedAt.value
 })
 
-function confirm() {
+async function confirm() {
   if (!canConfirm.value) return
+  // #872 (ADR-330 (60), ADR-212): the market may have closed while this dialog sat open: ask the server's one answer again and send only on 'open'
+  if (rows.value.some((r) => r.kind === 'exit')) {
+    await askMarket()
+    if (marketState.value !== 'open') return
+  }
   // third argument: the not-live line was shown AND ticked (ADR-330 (28)); false otherwise
   const ticked = !!props.notLiveLine && notLiveAck.value === true
   if (heldActive.value) emit('confirm', rows.value.map(orderOf), heldBlock(heldAt.value, heldBroker.value), ticked)
