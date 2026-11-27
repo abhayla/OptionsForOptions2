@@ -139,6 +139,7 @@ REVIEWED_RAW_IDENTITY = {
     "backend/ofo_app/seed_test_catalogue.py": "test seeding: counts rows; no key handed out",
     "backend/ofo_app/execute_replay.py": "APP_ENV=test replay seeding: inserts the recorded contract",
     "backend/ofo_app/execution_plan_store.py": "key -> broker symbol with its live flag (key -> row)",
+    "backend/ofo_app/last_close_store.py": "seed command: loads the catalogue to name a file row; returns no feed key",
     "backend/ofo_app/live_market.py": "imports the store for load_catalogue (live rows by key); no stored id read",
     "backend/ofo_app/routes/leg_edit.py": "key -> LIVE holder -> its stored id (live_contract_id): never id -> key",
     "backend/ofo_app/routes/outcome.py": "key -> LIVE holder -> its row (live_contract_id first): never id -> key",

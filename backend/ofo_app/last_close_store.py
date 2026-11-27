@@ -163,7 +163,7 @@ _LATEST = """
 
 
 class PostgresLastCloseStore:
-    """Synchronous port over a private event loop on a daemon thread (as ``PostgresHistoryStore``): callers in the
+    """Synchronous port over a private event loop on a daemon thread (as the history store does): callers in the
     API's loop use ``asyncio.to_thread``. A dead database: one bounded wait, then calls fail at once for a while."""
 
     def __init__(self, url: str, *, down_backoff_s: float = DOWN_BACKOFF_S) -> None:
