@@ -392,27 +392,21 @@ class PaperMonitor:
     async def _max_loss_line(session: Any, a: Any, t: stops.Trigger, book: Sequence[Any],  # noqa: PLR0913
                              open_net: Mapping[int, int],
                              prices: Mapping[int, Any], now: datetime.datetime) -> ExplanationText | None:
-        """ADR-330 (6): "If this stop fires, max loss becomes Rs X (now Rs Y)", from the one engine through the SAME
-        functions the Stops panel's route uses (``routes.paper``), judged on the book BEFORE the exit was written.
-        A leg stop is priced AT ITS RECORDED FILL (the "exited at" price of the same message), so the figure is the
-        position actually held after the exit, the one the Positions page shows (Lane J review 26 Nov: a tick that gaps
-        past the level, e.g. stop 140.70 filled at 180.00, priced at the level understated max loss by Rs 2,554.50;
-        without a gap the fill equals the level and the line is the one the user saw when saving). An index exit
-        closes every open leg at the fill prices and gets a line only when the exit confirmation's own check says yes.
-        Answer states: yes -> line;
-        no / cannot_tell -> None (no figure); any failure -> logged, None. The exit and its record never wait on it
-        (the exit already happened): the read runs in a savepoint so a failed statement cannot poison the fire."""
+        """UX-A03 (27 Nov): a stop that has ALREADY FIRED carries no "If this stop fires..." line: that is a future case
+        and its "now" figure is the one from before the fire. A leg stop therefore gets no line here. An index exit
+        closes every open leg at the fill prices and gets a line only when the exit confirmation's own check says yes
+        (the same ``routes.paper`` function as the exit confirmation, judged on the book BEFORE the exit was written).
+        Answer states: yes -> line; no / cannot_tell -> None (no figure); any failure -> logged, None. The exit and its
+        record never wait on it (the exit already happened): the read runs in a savepoint so a failed statement
+        cannot poison the fire."""
+        if t.kind == "leg_stop":
+            return None
         from ofo_app.routes import paper as paper_routes  # noqa: PLC0415 - the routes import this module
         try:
             async with session.begin_nested():
                 names, terms = await paper_routes.names_and_terms(session, a.underlying, book)
-                if t.kind == "leg_stop":
-                    answer = paper_routes.leg_stop_answer(
-                        book, open_net[t.contract_id], t.contract_id, prices[t.contract_id],
-                        names, terms, now)
-                else:
-                    answer = paper_routes.index_exit_answer(book, {c: prices[c] for c in sorted(open_net)}, terms,
-                                                            names, now)
+                answer = paper_routes.index_exit_answer(book, {c: prices[c] for c in sorted(open_net)}, terms,
+                                                        names, now)
         except Exception as exc:  # noqa: BLE001 - the message is written without the line, never not at all
             log.error("max-loss line of fired trigger %s left out: %s", t.id, type(exc).__name__)
             return None

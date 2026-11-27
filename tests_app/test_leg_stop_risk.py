@@ -108,9 +108,9 @@ async def test_a_book_with_locked_in_profit_turned_into_a_loss_by_the_stop(db):
 async def test_a_book_with_locked_in_profit_turned_unlimited_by_the_stop(db):
     app, stored, ids = await _locked_profit_book(db)
     body = (await _ask(app, stored.id, ids[LONG_CALL], "5.00")).json()
-    assert body["warning_text"].startswith("If this stop fires, there is no fixed maximum loss "
-                                           "(now a profit: at least Rs 3,575.00).")
-    assert "-" not in body["warning_text"].split("Sold option")[0]
+    assert body["warning_lines"][1:] == [
+        "Max loss now: none (the book shows a profit of at least Rs 3,575.00).",
+        "Max loss then: no upper limit (worst case: NIFTY keeps rising)."]
 
 
 async def test_a_stop_on_a_long_wing_leaves_the_short_leg_bare_so_it_is_yes_with_no_fixed_maximum(db):
@@ -118,8 +118,11 @@ async def test_a_stop_on_a_long_wing_leaves_the_short_leg_bare_so_it_is_yes_with
     app, stored, ids = await _book(db)
     body = (await _ask(app, stored.id, ids[LONG_CALL], "5.00")).json()
     assert body["state"] == "yes" and body["max_loss_after"] == "unlimited"
-    assert body["warning_text"].startswith(
-        "If this stop fires, there is no fixed maximum loss (now Rs 2,860.00). Sold option with less protection: ")
+    assert body["warning_lines"] == [
+        "If this stop fires, the sold NIFTY 13 Oct 22800 CE is left without protection.",
+        "Max loss now: Rs 2,860.00.",
+        "Max loss then: no upper limit (worst case: NIFTY keeps rising)."]  # a sold call: no amount is made up
+    assert "Rs" not in body["warning_lines"][2]
 
 
 async def test_a_stop_that_cannot_be_priced_is_cannot_tell_with_no_figure(db, monkeypatch):
@@ -166,8 +169,11 @@ async def test_m1_a_long_put_stop_keeps_the_engine_figure_and_names_the_bare_put
     body = (await _ask(app, stored.id, ids[LONG_PUT], "5.00")).json()
     assert body["state"] == "yes"
     assert (body["max_loss_before"], body["max_loss_after"]) == ("-2860.00", "-1445535.00")
-    assert body["warning_text"] == ("If this stop fires, max loss becomes Rs 14,45,535.00 (now Rs 2,860.00). "
-                                    "Sold option with less protection: NIFTY 13 Oct 22400 PE.")
+    assert body["warning_lines"] == [  # ADR-330 (55): three lines, each fact on its own line, built by the server
+        "If this stop fires, the sold NIFTY 13 Oct 22400 PE is left without protection.",
+        "Max loss now: Rs 2,860.00.",
+        "Max loss then: Rs 14,45,535.00 (worst case: NIFTY at zero)."]
+    assert body["warning_text"] == "\n".join(body["warning_lines"])
 
 
 async def _twin_2028(db, contract_id: int) -> int:
@@ -193,8 +199,122 @@ async def test_m3_a_2028_twin_of_the_bare_put_is_never_named_or_used(db):
     twin = await _twin_2028(db, ids[SHORT_PUT])
     body = (await _ask(app, stored.id, ids[LONG_PUT], "5.00")).json()
     assert (body["max_loss_before"], body["max_loss_after"]) == ("-2860.00", "-1445535.00")  # one expiry: the figure
-    assert body["warning_text"].endswith("Sold option with less protection: NIFTY 13 Oct 22400 PE.")
+    assert body["warning_lines"][0] == "If this stop fires, the sold NIFTY 13 Oct 22400 PE is left without protection."
     booked = await paper_store.load(db, stored.id)
     names, terms = await paper_routes.names_and_terms(db, "NIFTY", booked)
     assert str(twin) not in names and str(twin) not in terms
     assert terms[str(ids[SHORT_PUT])].expiry == datetime.date(2026, 10, 13)
+
+
+async def test_55_a_stop_that_leaves_nothing_bare_keeps_the_one_line(db):
+    """No sold option loses its cover: the old single sentence, and no lines list (the page prints the sentence)."""
+    app, stored, ids = await _book(db)
+    body = (await _ask(app, stored.id, ids[SHORT_CALL], "140.70")).json()
+    assert body["warning_lines"] is None
+    assert body["warning_text"] == "If this stop fires, max loss becomes Rs 12,005.50 (now Rs 2,860.00)."
+
+
+# --- ADR-330 (55): the builder itself, with the index name from the trade and every answer state -----------------
+
+from ofo.engine.extremes import ContractTerms  # noqa: E402
+from ofo.engine.legs import Instrument  # noqa: E402
+from ofo.engine.metrics import UNLIMITED  # noqa: E402
+
+_EXP = datetime.date(2026, 12, 3)
+_TERMS = {"sp": ContractTerms(Instrument.PE, D("84000"), _EXP), "sc": ContractTerms(Instrument.CE, D("86000"), _EXP)}
+_NAMES = {k: paper_routes.display_contract(("SENSEX", t.instrument, t.strike, t.expiry)) for k, t in _TERMS.items()}
+
+
+def _lines(exposed, before, after, underlying="SENSEX", at_zero=None):
+    risk = ExitRisk("yes", before, after, tuple(exposed))
+    return paper_routes.leg_stop_lines(risk, _NAMES, _TERMS, underlying, at_zero if at_zero is not None else after)
+
+
+def test_55_sensex_trade_says_sensex_never_nifty():
+    lines = _lines(["sp"], D("-7800"), D("-1674725"), "SENSEX")  # at zero = the max loss: the label is true
+    assert lines == ["If this stop fires, the sold SENSEX 3 Dec 84000 PE is left without protection.",
+                     "Max loss now: Rs 7,800.00.",
+                     "Max loss then: Rs 16,74,725.00 (worst case: SENSEX at zero)."]
+    assert "NIFTY" not in " ".join(lines)
+
+
+def test_55_a_bare_call_has_no_amount_and_says_so_in_words():
+    lines = _lines(["sc"], D("-7800"), UNLIMITED)
+    assert lines[2] == "Max loss then: no upper limit (worst case: SENSEX keeps rising)."
+
+
+def test_55_both_bare_unlimited_wins_and_both_legs_are_named():
+    lines = _lines(["sp", "sc"], D("-7800"), UNLIMITED)
+    assert "SENSEX 3 Dec 84000 PE" in lines[0] and "SENSEX 3 Dec 86000 CE" in lines[0]
+    assert lines[0].startswith("If this stop fires, these sold options are left with less protection: ")
+    assert lines[2].startswith("Max loss then: no upper limit")
+
+
+def test_55_a_profit_now_is_never_printed_as_a_loss():
+    lines = _lines(["sp"], D("3575"), D("-1000"))
+    assert lines[1] == "Max loss now: none (the book shows a profit of at least Rs 3,575.00)."
+    assert lines[2] == "Max loss then: Rs 1,000.00 (worst case: SENSEX at zero)."
+
+
+def test_55_figures_that_cannot_be_worked_out_print_no_number():
+    lines = _lines(["sp"], None, None)
+    assert lines[1:] == ["Max loss now: could not be worked out.", "Max loss then: could not be worked out."]
+    assert not any(ch.isdigit() for ch in lines[1] + lines[2])
+
+
+def test_55_nothing_exposed_has_no_three_lines():
+    assert _lines([], D("-7800"), D("-9000")) is None
+
+
+def test_55_review_f2_the_zero_label_is_printed_only_when_the_loss_is_the_loss_at_zero():
+    """Opus review (27 Nov) F2: a bare put whose max loss comes from elsewhere (a call spread above) must not read
+    "worst case: NIFTY at zero"; the amount stays, no case is named."""
+    lines = _lines(["sp"], D("-7800"), D("-1765125"), "NIFTY", at_zero=D("-1540125"))
+    assert lines[2] == "Max loss then: Rs 17,65,125.00."
+    assert "worst case" not in lines[2]
+
+
+# --- the review's book shapes, through the whole answer (the engine's own figures, no database) ------------------
+
+from types import SimpleNamespace  # noqa: E402
+
+from ofo.tracking.orderbook import PaperOrder  # noqa: E402
+
+_IST = datetime.timezone(datetime.timedelta(hours=5, minutes=30))
+_T0 = datetime.datetime(2026, 11, 27, 10, 0, tzinfo=_IST)
+_E1, _E2 = datetime.date(2026, 12, 1), datetime.date(2026, 12, 29)
+
+
+def _answer(legs, stop_id, level):
+    """legs: (id, instrument, strike, expiry, side, quantity, price); the stop closes ``stop_id`` at ``level``."""
+    from ofo.strategy.definition import display_contract  # noqa: PLC0415
+    from ofo.tracking.orderbook import net_positions  # noqa: PLC0415
+    terms = {i: ContractTerms(ins, D(k), e) for i, ins, k, e, *_ in legs}
+    names = {i: display_contract(("NIFTY", ins, D(k), e)) for i, ins, k, e, *_ in legs}
+    booked = []
+    for i, _ins, _k, _e, side, qty, price in legs:
+        order = PaperOrder(i, side, qty, D(price), "open", _T0)
+        booked.append(SimpleNamespace(order=SimpleNamespace(as_paper=lambda o=order: o)))
+    held = {p.instrument_id: p.net_quantity for p in net_positions(paper_routes._paper(booked), {}).positions}
+    return paper_routes.leg_stop_answer(booked, held[stop_id], int(stop_id), D(level), names, terms, _T0, "NIFTY")
+
+
+def test_55_review_f1_a_ratio_call_spread_says_no_upper_limit_both_before_and_after():
+    legs = [("1", Instrument.CE, "25000", _E1, "BUY", 75, "200"), ("2", Instrument.CE, "25500", _E1, "SELL", 150, "80")]
+    got = _answer(legs, "1", "5.00")
+    assert got.warning_lines[1:] == ["Max loss now: no upper limit.",
+                                     "Max loss then: no upper limit (worst case: NIFTY keeps rising)."]
+
+
+def test_55_review_f1_a_calendar_call_keeps_the_unlimited_figure_the_engine_has():
+    legs = [("1", Instrument.CE, "25000", _E1, "SELL", 75, "100"), ("2", Instrument.CE, "25000", _E2, "BUY", 75, "200")]
+    got = _answer(legs, "2", "5.00")
+    assert got.warning_lines[1:] == ["Max loss now: could not be worked out.",  # two expiries: no figure before
+                                     "Max loss then: no upper limit (worst case: NIFTY keeps rising)."]
+
+
+def test_55_review_f2_a_book_whose_worst_case_is_a_call_spread_above_does_not_say_zero():
+    legs = [("1", Instrument.PE, "22000", _E1, "SELL", 75, "20"), ("2", Instrument.PE, "21500", _E1, "BUY", 75, "10"),
+            ("3", Instrument.CE, "25000", _E1, "SELL", 750, "150"), ("4", Instrument.CE, "27500", _E1, "BUY", 750, "5")]
+    got = _answer(legs, "2", "5.00")
+    assert got.warning_lines[2] == "Max loss then: Rs 17,65,125.00."

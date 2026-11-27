@@ -8,6 +8,7 @@ import { computed, nextTick, onBeforeUnmount, onMounted, ref, watch } from 'vue'
 import api, { NEUTRAL_ERROR } from '@/services/api'
 import { paperPriceOk, paperPriceReason } from '@/lib/tracking'
 import { istClock } from '@/lib/displayFormat'
+import { PAPER_STOP_RISK_LOADING_TEXT } from '@/lib/sharedStateText'
 import { NOT_LIVE_LABEL, useIndexAnswer } from '@/composables/useIndexLive'
 import { triggerListOf, triggersPath } from '@/lib/paperTriggers'
 
@@ -61,7 +62,13 @@ const stopReason = (i) => paperPriceReason(stopOf(i).level)
 const RISK_DEBOUNCE_MS = 400
 const risk = ref({}) // leg index -> { key, text }: the server's sentence for exactly that contract and level
 const riskKey = (leg) => `${leg.contractId}|${typed(stopOf(leg.index).level)}`
-const riskText = (leg) => (risk.value[leg.index]?.key === riskKey(leg) && !stopReason(leg.index) ? risk.value[leg.index].text : '')
+const riskNow = (leg) => (risk.value[leg.index]?.key === riskKey(leg) && !stopReason(leg.index) ? risk.value[leg.index] : null)
+const riskText = (leg) => riskNow(leg)?.text ?? ''
+const riskLoading = (leg) => riskPending.value[leg.index] === riskKey(leg) && !riskText(leg) && !stopReason(leg.index)
+const riskLines = (leg) => riskNow(leg)?.lines ?? null
+// ADR-330 (55): the server's three lines, each printed on its own line as sent; anything but three non-empty texts is not used
+const threeLines = (v) => (Array.isArray(v) && v.length === 3 && v.every((x) => typeof x === 'string' && x !== '') ? v : null)
+const riskPending = ref({}) // UX-A02: leg index -> the key being worked out (waiting to ask, or asked and not answered)
 const riskTimers = {}
 const riskLast = {} // leg index -> the key last asked
 const riskAsk = {} // leg index -> the newest ask's number
@@ -71,12 +78,14 @@ function dropRisk(index) {
 async function askRisk(leg, key) {
   const n = (riskAsk[leg.index] = (riskAsk[leg.index] ?? 0) + 1)
   let text = ''
+  let lines = null
   try {
     const data = (await api.get(`${riskPath}?contract_id=${encodeURIComponent(leg.contractId)}&level=${encodeURIComponent(typed(stopOf(leg.index).level))}`)).data
-    if (data?.state === 'yes' && typeof data.warning_text === 'string') text = data.warning_text
+    if (data?.state === 'yes' && typeof data.warning_text === 'string') { text = data.warning_text; lines = threeLines(data.warning_lines) }
   } catch { /* an error says nothing: the stop can still be saved */ }
   if (n !== riskAsk[leg.index] || key !== riskKey(leg)) return // an older answer, or the boxes moved on
-  if (text) risk.value = { ...risk.value, [leg.index]: { key, text } }
+  if (riskPending.value[leg.index] === key) { const { [leg.index]: _done, ...rest } = riskPending.value; riskPending.value = rest }
+  if (text) risk.value = { ...risk.value, [leg.index]: { key, text, lines } }
   else dropRisk(leg.index)
 }
 watch(stop, () => {
@@ -88,7 +97,9 @@ watch(stop, () => {
     riskAsk[leg.index] = (riskAsk[leg.index] ?? 0) + 1 // anything still in flight is now old
     delete riskTimers[leg.index]
     delete riskLast[leg.index]
+    if (riskPending.value[leg.index] !== undefined) { const { [leg.index]: _gone, ...rest } = riskPending.value; riskPending.value = rest } // the old key is no longer being worked out
     if (!typed(stopOf(leg.index).level) || stopReason(leg.index)) continue
+    riskPending.value = { ...riskPending.value, [leg.index]: key }
     riskTimers[leg.index] = { key, id: setTimeout(() => { delete riskTimers[leg.index]; riskLast[leg.index] = key; askRisk(leg, key) }, RISK_DEBOUNCE_MS) }
   }
 }, { deep: true })
@@ -241,7 +252,7 @@ async function keep(t) {
         </select>
         <input :value="stopOf(l.index).level" type="text" inputmode="decimal" placeholder="Stop price" class="w-24 rounded border border-line px-1 py-0.5" :data-testid="`stop-level-${l.index}`" :aria-label="`Stop price for ${l.label}`" @input="setStop(l.index, { level: $event.target.value })" />
         <button type="button" class="rounded border border-line px-3 py-1" :disabled="busy || !!stopReason(l.index)" :data-testid="`stop-save-${l.index}`" @click="saveStop(l)">{{ busy ? 'Saving...' : 'Save' }}</button>
-        <span class="block min-h-4 basis-full text-xs text-ink-muted" :data-testid="`stop-risk-slot-${l.index}`"><span v-if="riskText(l)" :data-testid="`stop-risk-${l.index}`">{{ riskText(l) }}</span></span>
+        <span class="block min-h-4 basis-full whitespace-pre-line text-xs text-ink-muted" :data-testid="`stop-risk-slot-${l.index}`"><span v-if="riskLoading(l)" :data-testid="`stop-risk-loading-${l.index}`">{{ PAPER_STOP_RISK_LOADING_TEXT }}</span><span v-else-if="riskText(l)" :data-testid="`stop-risk-${l.index}`"><template v-if="riskLines(l)"><span v-for="(t, n) in riskLines(l)" :key="n" class="block" :data-testid="`stop-risk-line-${l.index}-${n}`">{{ t }}</span></template><template v-else>{{ riskText(l) }}</template></span></span>
         <span class="block min-h-4 basis-full text-xs text-ink-muted" :data-testid="`stop-reason-slot-${l.index}`"><span v-if="stopReason(l.index) && typed(stopOf(l.index).level)" :data-testid="`stop-reason-${l.index}`">{{ stopReason(l.index) }}</span></span>
       </div>
     </div>

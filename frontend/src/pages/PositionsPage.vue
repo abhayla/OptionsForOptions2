@@ -16,6 +16,7 @@ import PageHeader from '@/components/common/PageHeader.vue'
 import EmptyState from '@/components/states/EmptyState.vue'
 import PositionsTotals from '@/components/positions/PositionsTotals.vue'
 import PaperStrategies from '@/components/strategy/PaperStrategies.vue'
+import PlanDoor from '@/components/strategy/PlanDoor.vue'
 import { istTime } from '@/lib/displayFormat'
 import { PAPER_NO_FIGURE as NO_FIGURE } from '@/lib/paperList'
 import { KITE_POSITIONS_URL } from '@/lib/execute'
@@ -127,6 +128,8 @@ onMounted(async () => {
           <span class="rounded bg-surface-muted px-1 text-xs font-semibold" data-testid="real-tag">{{ REAL_TAG }}</span>
           <RouterLink v-if="orderPathOn" :to="`/strategy/${g.strategy_id}/execute`" class="link" data-testid="position-strategy-link">Strategy {{ g.strategy_id }}</RouterLink><span v-else data-testid="position-strategy-name">Strategy {{ g.strategy_id }}</span>
           <span v-if="g.blocked" class="font-normal text-warn" data-testid="position-mismatch-badge">({{ BLOCKED }})</span>
+          <!-- ADR-330 (54): the Plan button of a running real trade; the same plan sheet as the paper rows and the builder -->
+          <PlanDoor v-if="g.contracts.length" :strategy-id="g.strategy_id" tag="real" class="ml-auto" />
         </h2>
         <p v-if="!g.contracts.length" class="px-4 py-3 text-ink-muted" data-testid="position-group-empty">{{ NO_ROW }}</p>
         <div v-else class="overflow-x-auto">

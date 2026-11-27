@@ -5246,6 +5246,18 @@
             "title": "State",
             "type": "string"
           },
+          "warning_lines": {
+            "anyOf": [
+              {
+                "items": {},
+                "type": "array"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Warning Lines"
+          },
           "warning_text": {
             "anyOf": [
               {},
@@ -8844,6 +8856,15 @@
             ],
             "title": "Pause Reason Text"
           },
+          "plan_final_text": {
+            "anyOf": [
+              {},
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Plan Final Text"
+          },
           "positions": {
             "items": {
               "$ref": "#/components/schemas/PaperNetOut"
@@ -10358,6 +10379,15 @@
               }
             ],
             "title": "Pause Reason Text"
+          },
+          "plan_final_text": {
+            "anyOf": [
+              {},
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Plan Final Text"
           },
           "position_count": {
             "title": "Position Count",
