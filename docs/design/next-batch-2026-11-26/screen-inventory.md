@@ -89,13 +89,13 @@ Per section, before (9de2c9b) and after the Lane T screen suites (rows moved fro
 
 30 controls had no REQ acceptance criterion or ADR that governed them; on 26 Nov the coordinator chose to write today's behaviour into the spec, one line per group (the REQ and AC are in each row's Spec basis). The groups below are the questions as asked; each group lists the row IDs. Nearest design note where one exists: `docs/design/ui-study-2026-10-26.md` (a design note, not the spec).
 
-1. **Keyboard behaviour is not specified anywhere.** Esc, Enter and arrow keys on the header menus, the Modal and Drawer primitives, tooltips and figure definitions, the settings popovers, the depth popup, the More menu and the after-charges popover. The spec says what each opens (REQ-136 AC-1, REQ-080 AC-7) but not how it closes by keyboard. Rows: SHELL-01, SHELL-10, SHARED-08, SHARED-11, BUILD-05, BUILD-24, BUILD-34, BUILD-91, BUILD-130, BUILD-142, BUILD-149. Question: add one accessibility requirement (Esc closes, focus returns, Tab stays inside a dialog) so these have a basis, or leave them as design-note behaviour?
-2. **Modal and Drawer primitives.** Rows SHARED-13, BUILD-143, BUILD-144, BUILD-145, BUILD-146. Layout is in ADR-193 and the design note (UI-018); close by "x", overlay and Esc is checked by the owner only for the clash dialog (ADR-328 (1)). Same question as 1.
+1. **Keyboard behaviour is not specified anywhere.** Esc, Enter and arrow keys on the header menus, the Modal and Drawer primitives, tooltips and figure definitions, the settings popovers, the depth popup, the More menu and the after-charges popover. The spec says what each opens (REQ-136 AC-1, REQ-080 AC-7) but not how it closes by keyboard. Rows: SHELL-01, SHELL-10, SHARED-08, SHARED-11, BUILD-05, BUILD-26, BUILD-36, BUILD-93, BUILD-132, BUILD-144, BUILD-151. Question: add one accessibility requirement (Esc closes, focus returns, Tab stays inside a dialog) so these have a basis, or leave them as design-note behaviour?
+2. **Modal and Drawer primitives.** Rows SHARED-13, BUILD-145, BUILD-146, BUILD-147, BUILD-148. Layout is in ADR-193 and the design note (UI-018); close by "x", overlay and Esc is checked by the owner only for the clash dialog (ADR-328 (1)). Same question as 1.
 3. **Log out** (SHELL-09). REQ-009 AC-8 lists the account menu items but does not name Log out. Should a REQ say where Log out sits and what it clears?
 4. **Toast "Dismiss"** (SHELL-13). Toasts are named in REQ-070 and ADR-271 but no rule says a toast can be dismissed or how long it stays.
 5. **"Keep this level"** on an armed paper trigger (SHARED-41). REQ-109 AC-8, ADR-309 and ADR-327 name stops and conditional exits but not this choice. What does it do and when does it show?
-6. **Builder Add/Edit button and the Show Editor / Show Strikes edge tabs** (BUILD-11, BUILD-15, BUILD-16). REQ-080 AC-1 describes the leg picker; the buttons that open and fold it are only in the design note. Confirm they are the intended controls on desktop and phone (REQ-149).
-7. **Builder saved-list extras** (BUILD-150, BUILD-162, BUILD-167). REQ-134 AC-4 describes the rows; the "..." menu, the search box and the "Show all in My Strategies" link have no AC.
+6. **Builder Add/Edit button and the Show Editor / Show Strikes edge tabs** (BUILD-13, BUILD-17, BUILD-18). REQ-080 AC-1 describes the leg picker; the buttons that open and fold it are only in the design note. Confirm they are the intended controls on desktop and phone (REQ-149).
+7. **Builder saved-list extras** (BUILD-152, BUILD-164, BUILD-169). REQ-134 AC-4 describes the rows; the "..." menu, the search box and the "Show all in My Strategies" link have no AC.
 8. **Single controls with no AC:** Option Chain "Clear filters" (CHAIN-10; REQ-029 AC-9 names the filters only), Learn "Back to the list" and "Search by title" (LEARN-02, LEARN-04; REQ-011 names the three groups only), Broker settings "Check again" (BROKER-01; REQ-015 AC-4 names the four statuses only), the not-found page "Go to Home" (NF-01; ADR-193 (4) names no not-found page).
 
 Full list (ID, kind, label, source):
@@ -109,22 +109,22 @@ Full list (ID, kind, label, source):
 - SHARED-13 (dialog) {{title}} - `src/components/common/Modal.vue:64`
 - SHARED-41 (button) Keep this level - `src/components/strategy/PaperStops.vue:222`
 - BUILD-05 (key) Settings Show legs as Lots Quantity - `src/pages/StrategyBuilderPage.vue:1134`
-- BUILD-11 (button) Add/Edit - `src/pages/StrategyBuilderPage.vue:1177`
-- BUILD-15 (button) Show Editor &gt;&gt; - `src/pages/StrategyBuilderPage.vue:1195`
-- BUILD-16 (button) &lt;&lt; Show Strikes - `src/pages/StrategyBuilderPage.vue:1198`
-- BUILD-24 (key) {{figure.text}}{{line}} - `src/components/common/FigureHint.vue:60`
-- BUILD-34 (key) {{body}} - `src/components/common/Tooltip.vue:48`
-- BUILD-91 (key) Settings Strikes each side {{w}} Size in Lots Quantity - `src/components/strategy/LegPicker.vue:706`
-- BUILD-130 (key) keydown listener (script) - `src/components/strategy/DepthPopup.vue:49`
-- BUILD-142 (key) {{title}} - `src/components/common/Drawer.vue:65`
-- BUILD-143 (click) (no label) - `src/components/common/Drawer.vue:73`
-- BUILD-144 (dialog) {{title}} - `src/components/common/Drawer.vue:78`
-- BUILD-145 (button) Close - `src/components/common/Drawer.vue:91`
-- BUILD-146 (button) Close - `src/components/common/Drawer.vue:108`
-- BUILD-149 (key) Save Save As Rename - `src/components/strategy/SaveDraftBar.vue:437`
-- BUILD-150 (button) More actions - `src/components/strategy/SaveDraftBar.vue:438`
-- BUILD-162 (field) Search name or underlying - `src/components/strategy/SaveDraftBar.vue:498`
-- BUILD-167 (link) Show all in My Strategies - `src/components/strategy/SaveDraftBar.vue:523`
+- BUILD-13 (button) Add/Edit - `src/pages/StrategyBuilderPage.vue:1177`
+- BUILD-17 (button) Show Editor &gt;&gt; - `src/pages/StrategyBuilderPage.vue:1195`
+- BUILD-18 (button) &lt;&lt; Show Strikes - `src/pages/StrategyBuilderPage.vue:1198`
+- BUILD-26 (key) {{figure.text}}{{line}} - `src/components/common/FigureHint.vue:60`
+- BUILD-36 (key) {{body}} - `src/components/common/Tooltip.vue:48`
+- BUILD-93 (key) Settings Strikes each side {{w}} Size in Lots Quantity - `src/components/strategy/LegPicker.vue:706`
+- BUILD-132 (key) keydown listener (script) - `src/components/strategy/DepthPopup.vue:49`
+- BUILD-144 (key) {{title}} - `src/components/common/Drawer.vue:65`
+- BUILD-145 (click) (no label) - `src/components/common/Drawer.vue:73`
+- BUILD-146 (dialog) {{title}} - `src/components/common/Drawer.vue:78`
+- BUILD-147 (button) Close - `src/components/common/Drawer.vue:91`
+- BUILD-148 (button) Close - `src/components/common/Drawer.vue:108`
+- BUILD-151 (key) Save Save As Rename - `src/components/strategy/SaveDraftBar.vue:437`
+- BUILD-152 (button) More actions - `src/components/strategy/SaveDraftBar.vue:438`
+- BUILD-164 (field) Search name or underlying - `src/components/strategy/SaveDraftBar.vue:498`
+- BUILD-169 (link) Show all in My Strategies - `src/components/strategy/SaveDraftBar.vue:523`
 - CHAIN-10 (button) Clear filters - `src/pages/OptionChainPage.vue:235`
 - LEARN-02 (button) Back to the list - `src/pages/LearnPage.vue:91`
 - LEARN-04 (field) Search by title - `src/pages/LearnPage.vue:128`
@@ -478,6 +478,8 @@ Same page component also serves: `/strategy/builder`.
 | BUILD-67 | Open in builder and prepare basket `adjust-open` _(button)_ | src/components/strategy/AdjustCompare.vue:188 | Open in builder and prepare basket: builds the approach's exact legs. | REQ-155 | NONE |  | paper trade |
 | BUILD-68 | Pause until `pause-time` _(field)_ | src/components/strategy/AdjustControls.vue:16 | Pause monitoring until a time / clear the pause. | REQ-165; REQ-045 | NONE |  | paper trade |
 | BUILD-69 | Pause `pause-set` _(button)_ | src/components/strategy/AdjustControls.vue:17 | Pause monitoring until a time / clear the pause. | REQ-165; REQ-045 | NONE |  | paper trade |
+| BUILD-189 | {{STOP_OFFER_LABEL(l.label)}} `stop-offer-open` _(button)_ | src/pages/StrategyBuilderPage.vue:1313 | "Set a stop on <new leg>": after a move that removed a leg stop, opens the existing leg-stop control for the new leg (same POST .../triggers). Wording pending owner read. | REQ-109 AC-13; ADR-330 (48) | frontend/tests/paper-move-stop-offer-774.test.js | none | paper trade |
+| BUILD-190 | Not now `stop-offer-dismiss` _(button)_ | src/pages/StrategyBuilderPage.vue:1314 | Dismisses the offer. | REQ-109 AC-13; ADR-330 (48) | frontend/tests/paper-move-stop-offer-774.test.js | none | paper trade |
 | BUILD-70 | Clear `pause-clear` _(button)_ | src/components/strategy/AdjustControls.vue:18 | Pause monitoring until a time / clear the pause. | REQ-165; REQ-045 | NONE |  | paper trade |
 | BUILD-71 | `Level ${d}` `watch-${d}-input` _(field)_ | src/components/strategy/AdjustControls.vue:29 | Watch an index level / clear it. | REQ-045; REQ-165 | NONE |  | paper trade |
 | BUILD-72 | Watch `watch-${d}-set` _(button)_ | src/components/strategy/AdjustControls.vue:30 | Watch an index level / clear it. | REQ-045; REQ-165 | NONE |  | paper trade |

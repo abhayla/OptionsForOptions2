@@ -5,8 +5,14 @@ PostgreSQL."""
 from __future__ import annotations
 
 import json
+from datetime import date
+from decimal import Decimal as D
 from http import HTTPStatus
 
+from ofo.engine.legs import Instrument
+from ofo.errors.explanations import render_explanation
+from ofo.strategy.definition import display_contract
+from ofo_app import paper_trigger_store
 from test_paper_routes import _new
 from test_paper_triggers_routes import _open, _setup, _url, db, notified  # noqa: F401 - fixtures
 from test_strategy_store import _client
@@ -71,3 +77,83 @@ async def test_another_users_or_a_missing_strategy_is_refused_by_armed_exits(db,
     async with _client(app) as c:
         missing = await c.get("/paper/strategies/999999999/armed-exits", params=params)
         assert missing.status_code == HTTPStatus.NOT_FOUND
+
+
+# --- #774: a leg stop goes with its closed contract, said before Confirm and done at Confirm ---------------------
+
+async def _stop(app, stored, contract, direction="above", level="120.00"):
+    async with _client(app) as c:
+        reply = await c.post(_url(stored), json={"kind": "leg_stop", "contract_id": contract, "direction": direction,
+                                                 "level": level})
+    assert reply.status_code == HTTPStatus.CREATED, reply.text
+
+
+async def _armed_stops(db, stored):
+    return [(r.trigger.contract_id, r.trigger.level, r.cancelled_at is None)
+            for r in await paper_trigger_store.list_for(db, stored.id) if r.trigger.kind == "leg_stop"]
+
+
+def _post_body(orders) -> dict:
+    return {"orders": [_order(o) for o in orders]}
+
+
+async def test_a_move_lists_the_leg_stop_it_removes_and_the_route_removes_exactly_that(db, notified):
+    app, stored, ids = await _open(db)  # short 22800 CE (ids[0]), long 23000 CE (ids[1])
+    await _stop(app, stored, ids[0])
+    await _stop(app, stored, ids[1], "below", "5.00")
+    move = [_new(ids[0], "BUY", 65, "30", "exit"), _new(ids[2], "SELL", 65, "82.75")]  # exit A, add A'
+    lines = await _lines(app, stored, move)
+    assert lines == ["The stop on NIFTY 13 Oct 22800 CE will be removed; set a new one after the move."], lines
+    async with _client(app) as c:
+        assert (await c.post(f"/paper/strategies/{stored.id}/orders", json=_post_body(move))).status_code == \
+            HTTPStatus.CREATED
+    # the preview named exactly what the route did: the stop on A is cancelled, the stop on the untouched leg stays
+    assert await _armed_stops(db, stored) == [(ids[0], D("120.00"), False), (ids[1], D("5.00"), True)]
+
+
+async def test_a_refused_order_set_changes_no_stop(db, notified):
+    app, stored, ids = await _open(db)
+    await _stop(app, stored, ids[0])
+    too_big = [_new(ids[0], "BUY", 650, "30", "exit"), _new(ids[2], "SELL", 65, "82.75")]
+    async with _client(app) as c:
+        reply = await c.post(f"/paper/strategies/{stored.id}/orders", json=_post_body(too_big))
+    assert reply.status_code == HTTPStatus.UNPROCESSABLE_ENTITY, reply.text
+    assert await _armed_stops(db, stored) == [(ids[0], D("120.00"), True)]
+
+
+async def test_a_partial_exit_keeps_the_stop_and_a_full_exit_of_every_leg_lists_none(db, notified):
+    app, stored, ids = await _open(db)
+    await _stop(app, stored, ids[0])
+    assert await _lines(app, stored, [_new(ids[0], "BUY", 30, "30", "exit")]) == []  # part of the leg stays open
+    both_close = [_new(ids[0], "BUY", 65, "30", "exit"), _new(ids[1], "SELL", 65, "10", "exit")]
+    assert await _lines(app, stored, both_close) == []  # flat: the existing rule cancels every trigger (ADR-317)
+
+
+# --- ADR-330 (48), owner 27 Nov: the stop is REMOVED with the move; the review says so in the owner's words ----
+
+def test_the_review_sentence_is_the_owners_words_exactly():
+    leg = display_contract(("NIFTY", Instrument.CE, D("22800"), date(2026, 11, 3)))
+    assert leg == "NIFTY 3 Nov 22800 CE"
+    assert render_explanation("paper_leg_stop_removed_on_move", contract=leg) == (
+        "The stop on NIFTY 3 Nov 22800 CE will be removed; set a new one after the move.")
+
+
+async def test_a_move_of_a_leg_without_a_stop_has_no_sentence_and_keeps_the_other_stop(db, notified):
+    app, stored, ids = await _open(db)
+    await _stop(app, stored, ids[1], "below", "5.00")  # on the leg that stays; ids[0] moves
+    move = [_new(ids[0], "BUY", 65, "30", "exit"), _new(ids[2], "SELL", 65, "82.75")]
+    assert await _lines(app, stored, move) == []
+    async with _client(app) as c:
+        assert (await c.post(f"/paper/strategies/{stored.id}/orders", json=_post_body(move))).status_code == \
+            HTTPStatus.CREATED
+    assert await _armed_stops(db, stored) == [(ids[1], D("5.00"), True)]
+
+
+async def test_a_move_to_an_unlisted_contract_is_refused_and_the_stop_is_kept(db, notified):
+    app, stored, ids = await _open(db)
+    await _stop(app, stored, ids[0])
+    unlisted = [_new(ids[0], "BUY", 65, "30", "exit"), _new(999999999, "SELL", 65, "82.75")]  # not listed
+    async with _client(app) as c:
+        reply = await c.post(f"/paper/strategies/{stored.id}/orders", json=_post_body(unlisted))
+    assert HTTPStatus.BAD_REQUEST <= reply.status_code < HTTPStatus.INTERNAL_SERVER_ERROR, reply.text
+    assert await _armed_stops(db, stored) == [(ids[0], D("120.00"), True)]  # nothing stored, the stop stays armed

@@ -22,6 +22,8 @@ const props = defineProps({
   legNames: { type: Object, default: () => ({}) },
   // the token of the parent list's last good read: a new one makes the stops list read again (S-23)
   goodReadToken: { type: Object, default: null },
+  // #774 (ADR-330 (48)): the offer after a move shows the one leg-stop control only (same route, same Save), not the conditional exit or the list
+  legStopOnly: { type: Boolean, default: false },
 })
 
 // N-21: after a good Save or Cancel, or when a re-read shows a fired stop, the parent list reads at once (its legs and book
@@ -233,7 +235,7 @@ async function keep(t) {
     <!-- D-44 round 1: from lg up the form (first) and the list of stops (second) sit side by side; narrower they stack -->
     <div class="grid gap-x-6 lg:grid-cols-2" data-testid="stops-columns">
     <div :key="strategyId" class="min-w-0" data-testid="stops-form">
-    <div class="mt-2" data-testid="conditional-exit">
+    <div v-if="!legStopOnly" class="mt-2" data-testid="conditional-exit">
       <p class="font-medium">Conditional exit{{ underlying ? ` - ${underlying}` : '' }}</p>
       <p class="text-xs text-ink-muted">Exit all legs when the index crosses a level. Fill one or both.</p>
       <div class="mt-1 flex flex-wrap items-end gap-3">
@@ -267,7 +269,7 @@ async function keep(t) {
 
     </div>
 
-    <div class="min-w-0" data-testid="stops-list">
+    <div v-if="!legStopOnly" class="min-w-0" data-testid="stops-list">
     <div class="mt-2" data-testid="triggers">
       <p class="font-medium">Stops on this strategy</p>
       <div class="min-h-4" data-testid="stops-list-slot"><p v-if="listError" class="text-xs text-ink-muted" data-testid="stops-list-error">{{ listError }}</p></div>

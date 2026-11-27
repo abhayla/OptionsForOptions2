@@ -8,8 +8,8 @@ from decimal import Decimal as D
 from types import SimpleNamespace
 
 import pytest
-from ofo.rules.inputs import DataHealth
 from ofo.marketdata.spot_source import SourceReading, SourceState
+from ofo.rules.inputs import DataHealth
 from ofo_app import adjustment_readers as readers
 from ofo_app.routes import paper
 from ofo_app.strategy_refused import StrategyRefused

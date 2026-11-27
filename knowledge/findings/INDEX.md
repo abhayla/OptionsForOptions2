@@ -2,7 +2,7 @@
 
 # Findings index
 
-198 finding(s), generated from `knowledge/findings/*.json`.
+199 finding(s), generated from `knowledge/findings/*.json`.
 
 | id | class | detection status | other fields |
 |---|---|---|---|

@@ -1971,6 +1971,10 @@
     "sha256": "78ac497c0e9fad8d5ce270f958d956eb2c74cf4b4778caa66cac3c688d778c52",
     "reviewed": "pending owner read"
   },
+  "explanation:paper_leg_stop_removed_on_move": {
+    "sha256": "7f5719ec8172041657b866a84ab90669efa1c945c459832ba4a891ce0b7d414c",
+    "reviewed": "pending owner read"
+  },
   "explanation:paper_exit_confirm_no_put": {
     "sha256": "20ddc7625d06aeeb68d59691fc7ae9e88e5c5c04de39b07de3f05129febee14f",
     "reviewed": "pending owner read"
