@@ -223,7 +223,7 @@ async def test_5000_lots_sold_on_one_leg_is_refused_and_nothing_is_stored(db):
     """Q2's gap 8 (real case 27 Nov 14:28, a SELL of 5,000 lots accepted): refused now, the sentence names the leg."""
     app, stored, *_ = await _setup(db)
     c = stored.saved.contract_ids
-    await _store_freeze(db, c[0], BIG_FREEZE)
+    await _store_freeze(db, c[0], 10_000 * LOT)
     reply = await _post(app, stored, [_order(c[0], 5000, side="SELL")])
     assert reply.status_code == UNPROCESSABLE, reply.text
     assert "would hold 5000 lots after this order; a leg can hold at most 100 lots (0 held, 5000 added)." in reply.text
