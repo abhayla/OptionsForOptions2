@@ -128,6 +128,7 @@ describe('ADR-330 (49): Exit of an untouched leg exits that leg only', () => {
     S(w).exitPaper(OPEN_IDS[0], 1)
     await flushPromises()
     answers['POST /paper/strategies/86/orders'] = () => Promise.reject({ status: 503, message: 'x', parts: null })
+    answers['GET /paper/strategies/86'] = () => new Promise(() => {}) // U2 (ADR-017): the automatic re-read does not answer, so the outcome stays unknown
     await t(w, 'paper-confirm-button').trigger('click')
     await flushPromises()
     expect(orderPosts()).toHaveLength(1)
@@ -284,6 +285,7 @@ describe('Round 2 F4: the staged change is never lost silently', () => {
     const w = await builder()
     await stageLeg2(w)
     answers['POST /paper/strategies/86/orders'] = () => Promise.reject({ status: 503, message: 'x', parts: null })
+    answers['GET /paper/strategies/86'] = () => new Promise(() => {}) // U2 (ADR-017): the automatic re-read does not answer, so the outcome stays unknown
     await exit1(w, OPEN_IDS[0])
     expect(S(w).paperState).toBe('unknown')
     answers['GET /paper/strategies/86'] = afterExitOf(OPEN_IDS[0]) // the exit WAS stored
@@ -295,6 +297,7 @@ describe('Round 2 F4: the staged change is never lost silently', () => {
     const w = await builder()
     await stageLeg2(w)
     answers['POST /paper/strategies/86/orders'] = () => Promise.reject({ status: 503, message: 'x', parts: null })
+    answers['GET /paper/strategies/86'] = () => new Promise(() => {}) // U2 (ADR-017): the automatic re-read does not answer, so the outcome stays unknown
     await exit1(w, OPEN_IDS[0])
     answers['GET /paper/strategies/86'] = withNet(afterExitOf(OPEN_IDS[0]), { 5587: 0 })
     await S(w).openPaperOrderbook()

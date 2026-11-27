@@ -457,7 +457,19 @@ function restoreStaged(newNet, allowNotStored = false) { // allowNotStored: the 
     setLegs(out)
     return
   }
-  if (allowNotStored && netKey(newNet) === netKey(rec.net)) { setLegs(rec.snapshot); return } // not stored: the exit stays a staged edit beside the rest
+  if (allowNotStored && netKey(newNet) === netKey(rec.net)) { // not stored (ADR-017): the other legs' edits come back, the exit does NOT stay staged; only a fresh Exit click sends it
+    const nrow = (newNet ?? []).find((l) => l.contract_id === rec.id)
+    const out = []
+    let placed = false
+    for (const l of rec.snapshot) {
+      if (l.contract_id !== rec.id) { out.push(l); continue }
+      if (!placed && nrow) out.push({ ...nrow })
+      placed = true
+    }
+    if (!placed && nrow) out.push({ ...nrow })
+    setLegs(out)
+    return
+  }
   let names = ''
   try {
     const diff = paperOrdersFor(expected, rec.snapshot)
@@ -511,8 +523,10 @@ const { readFailed: paperBookFailed } = usePriceFreshness({
 // read exitGate.blocked, so they are disabled in exactly the same states; the reason line is the one the panel shows under Exit all.
 // Lane U hotfix 27 Nov (A-H #209): an open dialog's EXIT rows are judged on the latest good book too (exitLegsNotLive, the one rule), not only a failed read
 const dialogLegsNotLive = () => { const b = paper.value?.book; return paperDialog.value && !!b && exitLegsNotLive(b.state, b.positions?.map((p) => ({ id: p.contract_id, live: p.price_state === 'live' })), paperRows.value.filter((r) => r.kind === 'exit').map((r) => r.contract_id)) }
-const exitGate = usePaperExit({ readFailed: paperReadFailed, held: () => paper.value?.book ?? null, changed: paperContractsChanged, notLive: dialogLegsNotLive })
+const exitGate = usePaperExit({ readFailed: paperReadFailed, held: () => paper.value?.book ?? null, changed: paperContractsChanged, notLive: dialogLegsNotLive, unresolved: () => !!exitUnknown.value })
 const exitBlocked = exitGate.blocked
+// Lane U2 (ADR-017, ADR-016..019): set when an Exit's POST ended with an unknown outcome; { attempt, names, before, expected } until a good re-read of the book decides it
+const exitUnknown = ref(null)
 const exitOrigin = ref(false) // the pending edits came from Exit all or a per-leg Exit; stays true until they are posted or discarded (ADR-328 (4))
 // P10: the strategy the Plan watch reads: the saved id, or in Drafts Mode (savedId stays null there) the paper book's own integer id
 const planWatchId = computed(() => (Number.isInteger(savedId.value) ? savedId.value : Number.isInteger(paper.value?.book?.strategy_id) ? paper.value.book.strategy_id : null))
@@ -583,7 +597,7 @@ const paperLegNames = () => paperRows.value.map((r) => r.text).filter(Boolean)
 const EXIT_KEY = 'builder'
 const exitRec = createExitRecords()
 const paperExitNote = computed(() => exitRec.cur(EXIT_KEY)?.text ?? '') // the sentence of the record (hotfix 27 Nov T2-08)
-const paperNotLiveLine = computed(() => (paperDialog.value && exitBlocked.value && !paperContractsChanged.value ? exitEndText('not_live', paperLegNames()) : ''))
+const paperNotLiveLine = computed(() => (paperDialog.value && exitBlocked.value && !paperContractsChanged.value ? exitEndText(exitUnknown.value ? 'checking' : 'not_live', paperLegNames()) : ''))
 function closeChanged() {
   exitRec.put(EXIT_KEY, 'changed', exitEndText('changed', paperLegNames()))
   cancelPaperDialog()
@@ -624,7 +638,14 @@ async function confirmPending(orders) {
     if (outcome === PAPER_STATE.REFUSED) { // 4xx: the server stored nothing (one transaction or none)
       paperError.value = (e?.parts ?? NEUTRAL_PARTS).what_happened || NEUTRAL_PARTS.what_happened
     }
-    if (outcome === PAPER_STATE.UNKNOWN) exitRec.settle(EXIT_KEY, attempt, 'unknown')
+    if (outcome === PAPER_STATE.UNKNOWN) {
+      exitRec.settle(EXIT_KEY, attempt, 'unknown')
+      if (wasExit) { // ADR-017: this exit may be stored; it is never sent again until a re-read decides it
+        const exp = own ? legsAfterExit(own.net, own.net, own.id, own.lots) : null
+        exitUnknown.value = { attempt, names, before: netKey(paper.value?.net), expected: exp ? netKey(exp) : null }
+        void recheckUnknownExit()
+      }
+    }
     else if (outcome === PAPER_STATE.REFUSED) exitRec.settle(EXIT_KEY, attempt, 'refused')
     paperState.value = outcome // hotfix 27 Nov: a superseded POST is UNKNOWN (paperPostOutcome), never READY
     // REQ-163: a refused record is dropped, so the next request differs from the refused one; Confirm is ready again (text kept)
@@ -706,6 +727,45 @@ async function rereadAfterPlace(id, onFirstFail) {
   return false
 }
 const retryReread = () => (rereadId === null ? null : rereadAfterPlace(rereadId, rereadFirstFail))
+// Lane U2 (ADR-017, ADR-016..019): a good re-read of the book (the server's truth) decides an exit whose outcome was unknown: stored (the net moved to what
+// the exit leaves, or to anything else) or not stored (the net equals the net before). Either way the lock ends; a not-stored exit is never kept as a staged edit.
+function decideUnknownExit(newNet) {
+  const u = exitUnknown.value
+  if (!u) return
+  exitUnknown.value = null
+  const key = netKey(newNet)
+  if (key === u.before) { // not stored: say so, put the other legs' edits back without the exit
+    restoreStaged(newNet, true)
+    exitRec.put(EXIT_KEY, 'not_stored', exitEndText('not_stored', u.names))
+  } else { // stored (or the trade changed): the book decides
+    restoreStaged(newNet)
+    if (u.expected !== null ? key === u.expected : true) exitRec.settle(EXIT_KEY, u.attempt, 'placed', exitEndText('done', u.names, { orders: null, sent: 0 }))
+    else exitRec.put(EXIT_KEY, 'changed', exitEndText('changed', u.names))
+  }
+  paperDialog.value = false
+  paperState.value = PAPER_STATE.READY
+  exitOrigin.value = false
+  legsBeforeExit = null
+}
+async function recheckUnknownExit() { // the automatic re-read; a failed one leaves the lock (the Orderbook link and a reload read again)
+  const u = exitUnknown.value
+  if (!u || !paper.value) return
+  const { id } = paper.value
+  for (const wait of PAPER_REREAD_DELAYS_MS) {
+    if (wait) await sleep(wait)
+    if (leaving || exitUnknown.value !== u) return
+    let read = null
+    try { read = await readPaperBook(api, id) } catch { read = null }
+    if (leaving || exitUnknown.value !== u) return
+    if (read?.kind === 'paper') {
+      const kept = keepStaged
+      enterDrafts(id, read) // cancelReread ends keepStaged unless it is put back
+      keepStaged = kept
+      decideUnknownExit(read.net)
+      return
+    }
+  }
+}
 // the unknown-outcome link: re-read the book (the server's truth) and show its Orderbook; a failed read is said plainly
 async function openPaperOrderbook() {
   if (!paper.value) return
@@ -717,7 +777,8 @@ async function openPaperOrderbook() {
     const kept = keepStaged // enterDrafts ends a re-read run that is not this strategy's (cancelReread) and would drop it
     enterDrafts(id, read)
     keepStaged = kept
-    restoreStaged(read.net, true)
+    if (exitUnknown.value) decideUnknownExit(read.net)
+    else restoreStaged(read.net, true)
     showOrdersTick.value += 1
   } catch (e) {
     paperStale.value = true // the screen's net cannot be trusted until a book is read
@@ -1349,9 +1410,9 @@ const leaveGuard = useLeaveBuilder({
           <ExitButton v-if="!paperStale && pendingOrders?.length" :blocked="exitBlocked" :show-reason="false" class="h-9 rounded-lg bg-accent px-3 font-medium text-white disabled:opacity-50" data-testid="paper-review" @click="reviewPending">{{ REVIEW_AND_ADD_LABEL }}</ExitButton>
           <button v-if="pendingOrders === null || pendingOrders.length" type="button" class="h-9 rounded-lg border border-line px-3 font-medium" data-testid="paper-discard" @click="discardPending">{{ DISCARD_LABEL }}</button>
         </div>
-        <PaperBookPanel v-if="paper" :book="paper.book" :net="paper.net" :changed-ids="stagedChangeIds(paper.net, legs)" :read-failed="paperBookFailed" :contracts-changed="paperContractsChanged" :show-orders="showOrdersTick" @exit="exitPaper" @exit-all="exitAllPaper" />
+        <PaperBookPanel v-if="paper" :book="paper.book" :net="paper.net" :changed-ids="stagedChangeIds(paper.net, legs)" :read-failed="paperBookFailed" :contracts-changed="paperContractsChanged" :exit-unresolved="!!exitUnknown" :show-orders="showOrdersTick" @exit="exitPaper" @exit-all="exitAllPaper" />
         </div>
-        <PaperConfirmDialog :open="paperDialog" :orders="paperRows" :strategy-id="route.query.strategy" :busy="paperBusy" :blocked="exitBlocked" :error="paperError || paperNotLiveLine" :state="paperState" @confirm="confirmPending" @cancel="userCancelPaperDialog" @orderbook="openPaperOrderbook" />
+        <PaperConfirmDialog :open="paperDialog" :orders="paperRows" :strategy-id="route.query.strategy" :busy="paperBusy" :blocked="exitBlocked" :locked="!!exitUnknown" :error="paperError || paperNotLiveLine" :state="paperState" @confirm="confirmPending" @cancel="userCancelPaperDialog" @orderbook="openPaperOrderbook" />
         <SaveDraftBar v-show="!(opening && !legs.length)" ref="barRef" :legs="legs" :rules-ref="String(route.query.rules_ref || '')" :current="openStrategy" :shown-name="shapeName ?? ''" :paper-mode="paper !== null" :live-price-by-id="livePriceById" :prices-live="pricesLive" class="max-[1099px]:contents" @open="openFromBar" @saved="onSaved" @paper-added="onPaperAdded" @renamed="onRenamed" @deleted="onDeleted">
           <template #add-edit>
             <button v-if="!paperCompleted" type="button" class="h-10 flex-1 basis-0 rounded-lg border border-line font-medium" aria-haspopup="dialog" :aria-expanded="pickerOpen ? 'true' : 'false'" data-testid="add-edit" :disabled="exitBlocked" :title="exitBlocked ? exitGate.reason.value : undefined" @click="pickerOpen = !pickerOpen">Add/Edit</button>

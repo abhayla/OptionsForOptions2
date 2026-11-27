@@ -110,6 +110,7 @@ import HeldNote from '@/components/strategy/HeldNote.vue'
 import { EXIT_ALL_LABEL, EXIT_BLOCKED_BY_CHANGE, EXIT_LABEL, NET_POSITIONS_LABEL, ORDERBOOK_LABEL, exitLotsFrom, exitLotsOk, openLots, paperKindLabel } from '@/lib/paperDrafts'
 
 const props = defineProps({
+  exitUnresolved: { type: Boolean, default: false }, // Lane U2 (ADR-017): an exit's outcome is unknown; no second exit until a re-read has decided it
   book: { type: Object, required: true }, // GET /paper/strategies/{id} as sent
   net: { type: Array, required: true }, // the net legs (netLegsFromBook): whole lots per open contract
   readFailed: { type: Boolean, default: false },
@@ -129,7 +130,7 @@ const asOfLine = computed(() => {
 })
 
 // Phase 4 (F2): the Exit gate of this panel (a failed read: no exit from old prices; the contracts changed: no exit from an old net)
-const exitGate = usePaperExit({ readFailed: () => props.readFailed, held: () => props.book, changed: () => props.contractsChanged })
+const exitGate = usePaperExit({ readFailed: () => props.readFailed, held: () => props.book, changed: () => props.contractsChanged, unresolved: () => props.exitUnresolved })
 
 const readAt = computed(() => istClock(props.book.answered_at ?? null))
 
