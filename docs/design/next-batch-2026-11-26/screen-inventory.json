@@ -392,7 +392,7 @@
      "id": "SHARED-15",
      "kind": "dialog",
      "tag": "Modal",
-     "label": "{{PLAN_LOADING_TEXT}} {{sheet.text}} {{loadError}} {{sheet.typeName}} {{labels.playbook}} {{p.name}} {{PLAN_REFILLED_TEXT(refilledFrom)}} {{labels.target}} {{form.targetWords}} {{labels.target_rupees}} {{form.targetRupeeWords}} {{labels.stop}} {{form.stopWords}} {{labels.stop_rupees}} {{form.stopRupeeWords}} {{form.stopWarning}} {{labels.max_adjustments}} {{labels.time_exit}} {{labels.time_exit_on}} {{labels.customise}} {{labels.reset}} {{labels.reset_confirm}} {{labels.reset}} Cancel {{labels.reset_put_back_none}} {{labels.reset_put_back}} {{resetDone.changed.join(', ')}} {{labels.reset_put_back_off}} {{resetDone.off.join(', ')}} {{PLAN_NOT_CONFIRMED_TEXT}} {{labels.close}} {{labels.save}} {{labels.use_as_is}}",
+     "label": "{{PLAN_LOADING_TEXT}} {{sheet.text}} {{loadError}} {{sheet.typeName}} {{labels.playbook}} {{p.name}} {{PLAN_REFILLED_TEXT(refilledFrom)}} {{labels.target}} {{form.targetWords}} {{labels.target_rupees}} {{form.targetRupeeWords}} {{labels.stop}} {{form.stopWords}} {{sheet.stopKindReason}} {{labels.stop_rupees}} {{form.stopRupeeWords}} {{form.stopWarning}} {{labels.max_adjustments}} {{labels.time_exit}} {{labels.time_exit_on}} {{labels.customise}} {{labels.reset}} {{labels.reset_confirm}} {{labels.reset}} Cancel {{labels.reset_put_back_none}} {{labels.reset_put_back}} {{resetDone.changed.join(', ')}} {{labels.reset_put_back_off}} {{resetDone.off.join(', ')}} {{PLAN_NOT_CONFIRMED_TEXT}} {{labels.close}} {{labels.save}} {{labels.use_as_is}}",
      "labelFrom": "text",
      "ariaLabel": "",
      "testid": "",
@@ -436,7 +436,7 @@
      "id": "SHARED-19",
      "kind": "field",
      "tag": "input",
-     "label": "{{labels.stop}} {{form.stopWords}}",
+     "label": "{{labels.stop}} {{form.stopWords}} {{sheet.stopKindReason}}",
      "labelFrom": "attr",
      "ariaLabel": "",
      "testid": "plan-stop",
@@ -451,7 +451,7 @@
      "labelFrom": "attr",
      "ariaLabel": "",
      "testid": "plan-stop-rupees",
-     "source": "frontend/src/components/strategy/AdjustPlanSheet.vue:38",
+     "source": "frontend/src/components/strategy/AdjustPlanSheet.vue:40",
      "component": "components/strategy/AdjustPlanSheet.vue"
     },
     {
@@ -462,7 +462,7 @@
      "labelFrom": "attr",
      "ariaLabel": "",
      "testid": "plan-max",
-     "source": "frontend/src/components/strategy/AdjustPlanSheet.vue:43",
+     "source": "frontend/src/components/strategy/AdjustPlanSheet.vue:45",
      "component": "components/strategy/AdjustPlanSheet.vue"
     },
     {
@@ -473,7 +473,7 @@
      "labelFrom": "attr",
      "ariaLabel": "",
      "testid": "plan-time",
-     "source": "frontend/src/components/strategy/AdjustPlanSheet.vue:46",
+     "source": "frontend/src/components/strategy/AdjustPlanSheet.vue:48",
      "type": "time",
      "component": "components/strategy/AdjustPlanSheet.vue"
     },
@@ -485,7 +485,7 @@
      "labelFrom": "attr",
      "ariaLabel": "",
      "testid": "plan-time-on",
-     "source": "frontend/src/components/strategy/AdjustPlanSheet.vue:49",
+     "source": "frontend/src/components/strategy/AdjustPlanSheet.vue:51",
      "type": "date",
      "component": "components/strategy/AdjustPlanSheet.vue"
     },
@@ -497,7 +497,7 @@
      "labelFrom": "text",
      "ariaLabel": "",
      "testid": "plan-customise",
-     "source": "frontend/src/components/strategy/AdjustPlanSheet.vue:52",
+     "source": "frontend/src/components/strategy/AdjustPlanSheet.vue:54",
      "handlers": [
       "click"
      ],
@@ -512,7 +512,7 @@
      "labelFrom": "text",
      "ariaLabel": "",
      "testid": "plan-reset",
-     "source": "frontend/src/components/strategy/AdjustPlanSheet.vue:53",
+     "source": "frontend/src/components/strategy/AdjustPlanSheet.vue:55",
      "handlers": [
       "click"
      ],
@@ -527,7 +527,7 @@
      "labelFrom": "text",
      "ariaLabel": "",
      "testid": "plan-reset-yes",
-     "source": "frontend/src/components/strategy/AdjustPlanSheet.vue:57",
+     "source": "frontend/src/components/strategy/AdjustPlanSheet.vue:59",
      "handlers": [
       "click"
      ],
@@ -542,7 +542,7 @@
      "labelFrom": "text",
      "ariaLabel": "",
      "testid": "plan-reset-no",
-     "source": "frontend/src/components/strategy/AdjustPlanSheet.vue:58",
+     "source": "frontend/src/components/strategy/AdjustPlanSheet.vue:60",
      "handlers": [
       "click"
      ],
@@ -557,7 +557,7 @@
      "labelFrom": "text",
      "ariaLabel": "",
      "testid": "plan-close",
-     "source": "frontend/src/components/strategy/AdjustPlanSheet.vue:74",
+     "source": "frontend/src/components/strategy/AdjustPlanSheet.vue:76",
      "handlers": [
       "click"
      ],
@@ -572,7 +572,7 @@
      "labelFrom": "text",
      "ariaLabel": "",
      "testid": "plan-save",
-     "source": "frontend/src/components/strategy/AdjustPlanSheet.vue:76",
+     "source": "frontend/src/components/strategy/AdjustPlanSheet.vue:78",
      "handlers": [
       "click"
      ],
@@ -587,7 +587,7 @@
      "labelFrom": "text",
      "ariaLabel": "",
      "testid": "plan-use-as-is",
-     "source": "frontend/src/components/strategy/AdjustPlanSheet.vue:77",
+     "source": "frontend/src/components/strategy/AdjustPlanSheet.vue:79",
      "handlers": [
       "click"
      ],
@@ -609,7 +609,7 @@
      "id": "SHARED-32",
      "kind": "dialog",
      "tag": "Modal",
-     "label": "{{paperKindLabel(row.kind)}} {{row.text}} Lots Price {{row.price ? `about ${row.price}${quoteClock(row) ? ', as of ' + quoteClock(row) : ''}, ` : ''}}{{PAPER_EXIT_PRICED_BY_SERVER_TEXT}} Price {{row.price_note}} {{reasons[i]}} {{ARMED_UNCHECKED}} {{line}} {{HELD_LABEL}} Entry date and time Broker {{exitWarning}} {{PAPER_EXIT_UNCHECKED_TEXT}} {{PAPER_EXIT_CHECKING_TEXT}} {{notLiveLine}} {{PAPER_NOT_REAL_TEXT}} {{PAPER_PLACED_NOT_REFRESHED_TEXT}} {{PAPER_UNKNOWN_TEXT}} {{PAPER_OPEN_ORDERBOOK_LABEL}} {{error}} {{state === 'placed' ? 'Close' : 'Cancel'}} Confirm",
+     "label": "{{paperKindLabel(row.kind)}} {{row.text}} Lots Price {{row.price ? `about ${row.price}${quoteClock(row) ? ', as of ' + quoteClock(row) : ''}, ` : ''}}{{PAPER_EXIT_PRICED_BY_SERVER_TEXT}} Price {{row.price_note}} {{reasons[i]}} {{ARMED_UNCHECKED}} {{line}} {{HELD_LABEL}} Entry date and time Broker {{exitWarning}} {{PAPER_EXIT_UNCHECKED_TEXT}} {{PAPER_EXIT_CHECKING_TEXT}} {{notLiveLine}} {{note}} {{PAPER_NOT_REAL_TEXT}} {{PAPER_PLACED_NOT_REFRESHED_TEXT}} {{marketLine}} {{PAPER_UNKNOWN_TEXT}} {{PAPER_OPEN_ORDERBOOK_LABEL}} {{error}} {{state === 'placed' ? 'Close' : 'Cancel'}} Confirm",
      "labelFrom": "text",
      "ariaLabel": "",
      "testid": "paper-confirm",
@@ -696,7 +696,7 @@
      "labelFrom": "text",
      "ariaLabel": "",
      "testid": "paper-open-orderbook",
-     "source": "frontend/src/components/strategy/PaperConfirmDialog.vue:68",
+     "source": "frontend/src/components/strategy/PaperConfirmDialog.vue:70",
      "handlers": [
       "click"
      ],
@@ -711,7 +711,7 @@
      "labelFrom": "text",
      "ariaLabel": "",
      "testid": "paper-cancel",
-     "source": "frontend/src/components/strategy/PaperConfirmDialog.vue:74",
+     "source": "frontend/src/components/strategy/PaperConfirmDialog.vue:76",
      "handlers": [
       "click"
      ],
@@ -726,7 +726,7 @@
      "labelFrom": "text",
      "ariaLabel": "",
      "testid": "paper-confirm-button",
-     "source": "frontend/src/components/strategy/PaperConfirmDialog.vue:75",
+     "source": "frontend/src/components/strategy/PaperConfirmDialog.vue:77",
      "handlers": [
       "click"
      ],
@@ -1809,7 +1809,7 @@
      "labelFrom": "text",
      "ariaLabel": "",
      "testid": "",
-     "source": "frontend/src/pages/StrategyBuilderPage.vue:1380",
+     "source": "frontend/src/pages/StrategyBuilderPage.vue:1412",
      "component": "pages/StrategyBuilderPage.vue"
     },
     {
@@ -1820,7 +1820,7 @@
      "labelFrom": "text",
      "ariaLabel": "",
      "testid": "draft-replace-yes",
-     "source": "frontend/src/pages/StrategyBuilderPage.vue:1383",
+     "source": "frontend/src/pages/StrategyBuilderPage.vue:1415",
      "handlers": [
       "click"
      ],
@@ -1835,7 +1835,7 @@
      "labelFrom": "text",
      "ariaLabel": "",
      "testid": "draft-replace-cancel",
-     "source": "frontend/src/pages/StrategyBuilderPage.vue:1384",
+     "source": "frontend/src/pages/StrategyBuilderPage.vue:1416",
      "handlers": [
       "click"
      ],
@@ -1850,7 +1850,7 @@
      "labelFrom": "text",
      "ariaLabel": "Underlying",
      "testid": "underlying-select",
-     "source": "frontend/src/pages/StrategyBuilderPage.vue:1406",
+     "source": "frontend/src/pages/StrategyBuilderPage.vue:1438",
      "component": "pages/StrategyBuilderPage.vue"
     },
     {
@@ -1861,7 +1861,7 @@
      "labelFrom": "text",
      "ariaLabel": "",
      "testid": "",
-     "source": "frontend/src/pages/StrategyBuilderPage.vue:1411",
+     "source": "frontend/src/pages/StrategyBuilderPage.vue:1443",
      "handlers": [
       "keydown.esc"
      ],
@@ -1875,7 +1875,7 @@
      "labelFrom": "text",
      "ariaLabel": "",
      "testid": "builder-settings",
-     "source": "frontend/src/pages/StrategyBuilderPage.vue:1412",
+     "source": "frontend/src/pages/StrategyBuilderPage.vue:1444",
      "handlers": [
       "click"
      ],
@@ -1890,7 +1890,7 @@
      "labelFrom": "text",
      "ariaLabel": "Builder settings",
      "testid": "settings-popover",
-     "source": "frontend/src/pages/StrategyBuilderPage.vue:1416",
+     "source": "frontend/src/pages/StrategyBuilderPage.vue:1448",
      "component": "pages/StrategyBuilderPage.vue"
     },
     {
@@ -1901,7 +1901,7 @@
      "labelFrom": "text",
      "ariaLabel": "",
      "testid": "lots-quantity-switch",
-     "source": "frontend/src/pages/StrategyBuilderPage.vue:1418",
+     "source": "frontend/src/pages/StrategyBuilderPage.vue:1450",
      "component": "pages/StrategyBuilderPage.vue"
     },
     {
@@ -1912,7 +1912,7 @@
      "labelFrom": "text",
      "ariaLabel": "",
      "testid": "open-error-my-strategies",
-     "source": "frontend/src/pages/StrategyBuilderPage.vue:1429",
+     "source": "frontend/src/pages/StrategyBuilderPage.vue:1461",
      "to": "/strategies/my-strategies",
      "component": "pages/StrategyBuilderPage.vue"
     },
@@ -1924,7 +1924,7 @@
      "labelFrom": "text",
      "ariaLabel": "",
      "testid": "stop-offer-open",
-     "source": "frontend/src/pages/StrategyBuilderPage.vue:1437",
+     "source": "frontend/src/pages/StrategyBuilderPage.vue:1469",
      "handlers": [
       "click"
      ],
@@ -1939,7 +1939,7 @@
      "labelFrom": "text",
      "ariaLabel": "",
      "testid": "stop-offer-dismiss",
-     "source": "frontend/src/pages/StrategyBuilderPage.vue:1438",
+     "source": "frontend/src/pages/StrategyBuilderPage.vue:1470",
      "handlers": [
       "click"
      ],
@@ -1954,7 +1954,7 @@
      "labelFrom": "text",
      "ariaLabel": "",
      "testid": "paper-review",
-     "source": "frontend/src/pages/StrategyBuilderPage.vue:1458",
+     "source": "frontend/src/pages/StrategyBuilderPage.vue:1490",
      "handlers": [
       "click"
      ],
@@ -1968,7 +1968,7 @@
      "labelFrom": "text",
      "ariaLabel": "",
      "testid": "paper-discard",
-     "source": "frontend/src/pages/StrategyBuilderPage.vue:1459",
+     "source": "frontend/src/pages/StrategyBuilderPage.vue:1491",
      "handlers": [
       "click"
      ],
@@ -1983,7 +1983,7 @@
      "labelFrom": "text",
      "ariaLabel": "",
      "testid": "add-edit",
-     "source": "frontend/src/pages/StrategyBuilderPage.vue:1466",
+     "source": "frontend/src/pages/StrategyBuilderPage.vue:1498",
      "handlers": [
       "click"
      ],
@@ -1998,7 +1998,7 @@
      "labelFrom": "text",
      "ariaLabel": "",
      "testid": "menu-activity",
-     "source": "frontend/src/pages/StrategyBuilderPage.vue:1469",
+     "source": "frontend/src/pages/StrategyBuilderPage.vue:1501",
      "handlers": [
       "click"
      ],
@@ -2013,7 +2013,7 @@
      "labelFrom": "text",
      "ariaLabel": "",
      "testid": "menu-add-to-paper",
-     "source": "frontend/src/pages/StrategyBuilderPage.vue:1470",
+     "source": "frontend/src/pages/StrategyBuilderPage.vue:1502",
      "handlers": [
       "click"
      ],
@@ -2028,7 +2028,7 @@
      "labelFrom": "text",
      "ariaLabel": "",
      "testid": "",
-     "source": "frontend/src/pages/StrategyBuilderPage.vue:1484",
+     "source": "frontend/src/pages/StrategyBuilderPage.vue:1516",
      "component": "pages/StrategyBuilderPage.vue"
     },
     {
@@ -2039,7 +2039,7 @@
      "labelFrom": "text",
      "ariaLabel": "",
      "testid": "show-editor",
-     "source": "frontend/src/pages/StrategyBuilderPage.vue:1487",
+     "source": "frontend/src/pages/StrategyBuilderPage.vue:1519",
      "handlers": [
       "click"
      ],
@@ -2054,7 +2054,7 @@
      "labelFrom": "text",
      "ariaLabel": "",
      "testid": "show-strikes",
-     "source": "frontend/src/pages/StrategyBuilderPage.vue:1490",
+     "source": "frontend/src/pages/StrategyBuilderPage.vue:1522",
      "handlers": [
       "click"
      ],
@@ -2069,7 +2069,7 @@
      "labelFrom": "attr",
      "ariaLabel": "",
      "testid": "",
-     "source": "frontend/src/pages/StrategyBuilderPage.vue:1494",
+     "source": "frontend/src/pages/StrategyBuilderPage.vue:1526",
      "component": "pages/StrategyBuilderPage.vue"
     },
     {
@@ -4423,7 +4423,7 @@
      "labelFrom": "text",
      "ariaLabel": "",
      "testid": "",
-     "source": "frontend/src/pages/LiveStrategiesPage.vue:87",
+     "source": "frontend/src/pages/LiveStrategiesPage.vue:89",
      "to": "/strategies/completed-strategies",
      "component": "pages/LiveStrategiesPage.vue"
     },
@@ -4435,7 +4435,7 @@
      "labelFrom": "text",
      "ariaLabel": "",
      "testid": "",
-     "source": "frontend/src/pages/LiveStrategiesPage.vue:88",
+     "source": "frontend/src/pages/LiveStrategiesPage.vue:90",
      "to": "/strategy/builder",
      "component": "pages/LiveStrategiesPage.vue"
     },
@@ -4447,7 +4447,7 @@
      "labelFrom": "text",
      "ariaLabel": "",
      "testid": "live-strategy-open",
-     "source": "frontend/src/components/live/LiveStrategyCard.vue:216",
+     "source": "frontend/src/components/live/LiveStrategyCard.vue:223",
      "to": "openLink",
      "component": "components/live/LiveStrategyCard.vue"
     },
@@ -4459,7 +4459,7 @@
      "labelFrom": "text",
      "ariaLabel": "",
      "testid": "live-opportunity-mark",
-     "source": "frontend/src/components/live/LiveStrategyCard.vue:219",
+     "source": "frontend/src/components/live/LiveStrategyCard.vue:226",
      "to": "{ path: '/positions/adjustment-opportunities', query: { strategy: String(strategy.id) } }",
      "component": "components/live/LiveStrategyCard.vue"
     },
@@ -4471,7 +4471,7 @@
      "labelFrom": "text",
      "ariaLabel": "",
      "testid": "live-strategy-stops",
-     "source": "frontend/src/components/live/LiveStrategyCard.vue:220",
+     "source": "frontend/src/components/live/LiveStrategyCard.vue:227",
      "to": "stopsLink",
      "component": "components/live/LiveStrategyCard.vue"
     },
@@ -4483,7 +4483,7 @@
      "labelFrom": "text",
      "ariaLabel": "",
      "testid": "live-strategy-exit",
-     "source": "frontend/src/components/live/LiveStrategyCard.vue:221",
+     "source": "frontend/src/components/live/LiveStrategyCard.vue:228",
      "to": "exitLink",
      "component": "components/live/LiveStrategyCard.vue"
     }
@@ -5456,7 +5456,7 @@
      "labelFrom": "text",
      "ariaLabel": "",
      "testid": "opp-compare",
-     "source": "frontend/src/pages/AdjustmentOpportunitiesPage.vue:45",
+     "source": "frontend/src/pages/AdjustmentOpportunitiesPage.vue:49",
      "to": "linkOf(g)",
      "component": "pages/AdjustmentOpportunitiesPage.vue"
     },
@@ -5468,7 +5468,7 @@
      "labelFrom": "text",
      "ariaLabel": "",
      "testid": "opp-dismiss-reason",
-     "source": "frontend/src/pages/AdjustmentOpportunitiesPage.vue:49",
+     "source": "frontend/src/pages/AdjustmentOpportunitiesPage.vue:53",
      "component": "pages/AdjustmentOpportunitiesPage.vue"
     },
     {
@@ -5479,7 +5479,7 @@
      "labelFrom": "text",
      "ariaLabel": "",
      "testid": "opp-dismiss",
-     "source": "frontend/src/pages/AdjustmentOpportunitiesPage.vue:54",
+     "source": "frontend/src/pages/AdjustmentOpportunitiesPage.vue:58",
      "handlers": [
       "click"
      ],
@@ -5494,7 +5494,7 @@
      "labelFrom": "text",
      "ariaLabel": "",
      "testid": "opp-prev",
-     "source": "frontend/src/pages/AdjustmentOpportunitiesPage.vue:65",
+     "source": "frontend/src/pages/AdjustmentOpportunitiesPage.vue:69",
      "handlers": [
       "click"
      ],
@@ -5509,7 +5509,7 @@
      "labelFrom": "text",
      "ariaLabel": "",
      "testid": "opp-next",
-     "source": "frontend/src/pages/AdjustmentOpportunitiesPage.vue:66",
+     "source": "frontend/src/pages/AdjustmentOpportunitiesPage.vue:70",
      "handlers": [
       "click"
      ],
@@ -5939,7 +5939,7 @@
      "labelFrom": "text",
      "ariaLabel": "",
      "testid": "``alert-answer-${x.code}``",
-     "source": "frontend/src/pages/AlertsPage.vue:132",
+     "source": "frontend/src/pages/AlertsPage.vue:137",
      "handlers": [
       "click"
      ],
@@ -5954,7 +5954,7 @@
      "labelFrom": "text",
      "ariaLabel": "",
      "testid": "side-closed-confirm-yes",
-     "source": "frontend/src/pages/AlertsPage.vue:137",
+     "source": "frontend/src/pages/AlertsPage.vue:142",
      "handlers": [
       "click"
      ],
@@ -5969,7 +5969,7 @@
      "labelFrom": "text",
      "ariaLabel": "",
      "testid": "side-closed-confirm-no",
-     "source": "frontend/src/pages/AlertsPage.vue:138",
+     "source": "frontend/src/pages/AlertsPage.vue:143",
      "handlers": [
       "click"
      ],
@@ -6717,6 +6717,7 @@
    "components/common/LoadFailed.vue",
    "components/strategy/AlertStylePicker.vue",
    "components/strategy/PlanWatch.vue",
+   "components/common/MonitoringBadge.vue",
    "components/strategy/PaperConfirmDialog.vue",
    "components/strategy/ExitButton.vue",
    "components/strategy/PaperBookPanel.vue",
@@ -6755,6 +6756,7 @@
    "components/live/LiveStrategyCard.vue",
    "components/live/PnlLine.vue",
    "components/common/Chip.vue",
+   "components/common/MonitoringBadge.vue",
    "components/states/PriceNotice.vue",
    "components/states/MarketClosedBanner.vue"
   ],
@@ -6779,6 +6781,7 @@
    "components/strategy/PaperStrategies.vue",
    "components/strategy/PaperStops.vue",
    "components/strategy/PlanWatch.vue",
+   "components/common/MonitoringBadge.vue",
    "components/strategy/PlanDoor.vue",
    "components/strategy/AdjustPlanSheet.vue",
    "components/common/Modal.vue",
@@ -6824,6 +6827,7 @@
    "components/strategy/PaperStrategies.vue",
    "components/strategy/PaperStops.vue",
    "components/strategy/PlanWatch.vue",
+   "components/common/MonitoringBadge.vue",
    "components/strategy/PlanDoor.vue",
    "components/strategy/AdjustPlanSheet.vue",
    "components/common/Modal.vue",
