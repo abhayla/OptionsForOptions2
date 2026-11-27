@@ -574,8 +574,9 @@ async function confirmPending(orders) {
   paperBusy.value = true
   paperError.value = ''
   paperState.value = PAPER_STATE.READY
+  let reply = null
   try {
-    await postPaperOrders(api, id, orders, actedSuggestionIds.value, preparedBasketLegs.value, null, preparedApproachId.value)
+    reply = await postPaperOrders(api, id, orders, actedSuggestionIds.value, preparedBasketLegs.value, null, preparedApproachId.value)
   } catch (e) {
     const outcome = paperPostOutcome(e)
     if (outcome === PAPER_STATE.REFUSED) { // 4xx: the server stored nothing (one transaction or none)
@@ -593,7 +594,7 @@ async function confirmPending(orders) {
     return
   }
   // STORED (201). From here nothing may offer these orders again: a failure below is only a failed refresh.
-  exitRec.settle(EXIT_KEY, attempt, 'placed', wasExit ? exitEndText('done', names) : '') // the server answered: placed replaces a page-side guess
+  exitRec.settle(EXIT_KEY, attempt, 'placed', wasExit ? exitEndText('done', names, { orders: reply?.orders, sent: orders.length }) : '') // the server answered: placed replaces a page-side guess
   paperStale.value = true
   try {
     await dropActed({ withApproach: true }) // one basket answers the records once

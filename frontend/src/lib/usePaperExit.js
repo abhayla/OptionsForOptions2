@@ -26,7 +26,7 @@ export function exitEndText(reason, legNames = [], parts = null, neutral = 'Some
   else if (reason === 'done') { // 201: the order numbers are the last N ids of the reply's orders (N = rows sent), shown only when the reply has them
     const n = Number.isInteger(parts?.sent) ? parts.sent : 0
     const ids = Array.isArray(parts?.orders) && n > 0 ? parts.orders.slice(-n).map((o) => o?.id).filter((x) => Number.isInteger(x)) : []
-    sentence = `${EXIT_DONE_TEXT}${ids.length ? ` (order ${ids.join(', ')})` : ''}.`
+    sentence = `${EXIT_DONE_TEXT}${ids.length ? ` (order${ids.length > 1 ? 's' : ''} ${ids.join(', ')})` : ''}.`
   }
   else {
     const given = PART_KEYS.map((k) => parts?.[k]).filter((x) => typeof x === 'string' && x)
