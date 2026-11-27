@@ -7,7 +7,8 @@ label. Rebuilt here with 15:29:59 -> 99.75, 15:31:10 -> 99.60, 15:33:48 -> 100.1
 decoded by the real ``parse_frame`` in the real ``KiteProvider``; the clock is injected.
 
 Answer states: in session (latest, unchanged); after close with a pre-close quote (the at-close one); after close with
-only post-close quotes (nothing at close is held: the latest frame, its OWN time, LR-Q17);
+only post-close quotes (nothing at close is held: the FIRST post-close frame is frozen, with its OWN time, LR-Q17;
+later frames are ignored, owner PC 27 Nov, Lane N A2);
 holiday (the previous session's close quote); no exchange time (the frame's arrival time is its time, so it is
 cut by when it arrived)."""
 from __future__ import annotations
@@ -92,27 +93,115 @@ def test_a_frame_stamped_exactly_at_the_close_is_the_close_price():
     assert _served(provider, clock, _at(TUE, 15, 40, 0)).ltp == Decimal("99.80")
 
 
-def test_only_post_close_quotes_held_serves_the_latest_with_its_own_time():
-    """ADR-330 (36) path (b), LR-Q17: a contract first priced after the close (an API restart after 15:30, a strike
-    first subscribed after hours) has no at-close quote. The latest frame is served and labelled with ITS OWN time
-    (15:33:48), never clamped to "15:30:00"."""
+def test_only_post_close_quotes_held_freezes_the_first_frame_with_its_own_time():
+    """ADR-330 (36) + ADR-200 (2)(b), owner PC 27 Nov: a contract first priced after the close (an API restart after
+    15:30, a strike first subscribed after hours) has no at-close quote. Its FIRST frame (99.60 at 15:31:10) is frozen
+    as its close and carries its own time; the later 100.10 at 15:33:48 is ignored for the figure, so the price does
+    not keep moving under "Market closed"."""
     provider, clock = _feed(("99.60", _at(TUE, 15, 31, 10), _at(TUE, 15, 31, 10)),
                             ("100.10", _at(TUE, 15, 33, 48), _at(TUE, 15, 33, 48)))
     quote = _served(provider, clock, _at(TUE, 15, 34, 0))
-    assert (quote.ltp, quote.price_at) == (Decimal("100.10"), _at(TUE, 15, 33, 48))
-    assert quote.price_at != _at(TUE, 15, 30, 0)
+    assert (quote.ltp, quote.price_at) == (Decimal("99.60"), _at(TUE, 15, 31, 10))
+    assert quote.price_at != _at(TUE, 15, 30, 0)  # never clamped to the calendar close
+    assert [q.ltp for q in provider.book.quotes(_at(TUE, 15, 34, 0)) if q.instrument_id == OPTION_ID] == [
+        Decimal("99.60")]
+
+
+def test_a_later_frame_never_changes_the_served_price_of_a_frozen_first_frame_contract():
+    """Serve, then three more frames arrive, serve again: the figure and its time are unchanged each time."""
+    provider, clock = _feed(("99.60", _at(TUE, 15, 31, 10), _at(TUE, 15, 31, 10)))
+    first = _served(provider, clock, _at(TUE, 15, 31, 20))
+    for ltp, at in (("100.10", _at(TUE, 15, 33, 48)), ("98.00", _at(TUE, 16, 5, 0)), ("101.00", _at(TUE, 18, 0, 0))):
+        clock.now = at
+        provider.on_frame(_packet(ltp, at), at)
+        again = _served(provider, clock, at)
+        assert (again.ltp, again.price_at) == (first.ltp, first.price_at) == (Decimal("99.60"), _at(TUE, 15, 31, 10))
 
 
 def test_path_a_label_is_the_last_price_made_by_the_close_path_b_label_is_its_own():
     """Both paths side by side on the real sequence: (a) a process that ran through the close serves 99.75 made at
-    15:29:59; (b) a fresh provider fed only the two post-close frames serves 100.10 made at 15:33:48."""
+    15:29:59; (b) a fresh provider fed only the two post-close frames serves its FIRST, 99.60 made at 15:31:10."""
     ran, clock_a = _real_sequence()
     a = _served(ran, clock_a, _at(TUE, 15, 40, 0))
     fresh, clock_b = _feed(("99.60", _at(TUE, 15, 31, 10), _at(TUE, 15, 31, 10)),
                            ("100.10", _at(TUE, 15, 33, 48), _at(TUE, 15, 33, 48)))
     b = _served(fresh, clock_b, _at(TUE, 15, 40, 0))
     assert (a.ltp, a.price_at) == (Decimal("99.75"), _at(TUE, 15, 29, 59))
-    assert (b.ltp, b.price_at) == (Decimal("100.10"), _at(TUE, 15, 33, 48))
+    assert (b.ltp, b.price_at) == (Decimal("99.60"), _at(TUE, 15, 31, 10))
+
+
+def test_the_market_opening_again_releases_the_frozen_first_frame():
+    """Frozen after the close on Tue; Wed 09:15:00 the market is open: the latest frame is served, and a new in-session
+    frame becomes the new at-close quote for Wed's close."""
+    nxt = datetime.date(2026, 12, 2)
+    provider, clock = _feed(("99.60", _at(TUE, 15, 31, 10), _at(TUE, 15, 31, 10)),
+                            ("100.10", _at(TUE, 15, 33, 48), _at(TUE, 15, 33, 48)))
+    assert _served(provider, clock, _at(nxt, 9, 14, 59)).ltp == Decimal("99.60")  # one second before: still frozen
+    assert _served(provider, clock, _at(nxt, 9, 15, 0)).ltp == Decimal("100.10")  # open: released
+    clock.now = _at(nxt, 10, 0, 0)
+    provider.on_frame(_packet("103.00", _at(nxt, 10, 0, 0)), _at(nxt, 10, 0, 0))
+    assert _served(provider, clock, _at(nxt, 10, 0, 1)).ltp == Decimal("103.00")
+    clock.now = _at(nxt, 15, 40, 0)
+    provider.on_frame(_packet("104.00", _at(nxt, 15, 40, 0)), _at(nxt, 15, 40, 0))
+    assert _served(provider, clock, _at(nxt, 15, 41, 0)).ltp == Decimal("103.00")  # Wed's own close, not Tue's
+
+
+def test_no_frame_at_all_is_unpriced_with_its_reason_never_a_default():
+    from ofo.marketdata.provider import NOT_HELD  # noqa: PLC0415
+
+    provider, _clock = _feed(("99.60", _at(TUE, 15, 31, 10), _at(TUE, 15, 31, 10)))
+    other = "NSE_FO:44632"  # a held-by-catalogue contract that never got a frame
+    now = _at(TUE, 15, 40, 0)
+    assert provider.book.get(other, now) is None
+    assert provider.book.depth_after_close(other, now) is None
+    answer = provider.book.latest_day_stats(other, now)
+    assert (answer.stats, answer.reason) == (None, NOT_HELD)
+
+
+def test_depth_after_close_comes_from_the_frozen_frame_not_a_later_one():
+    """Depth levels carry prices: after the close they must be the frame the served quote came from. Frame 1 (99.60):
+    best bid 99.55, best ask 99.65; the later 100.10 frame (bid 100.05) is ignored. ``latest_depth`` (an order
+    input, AVAILABLE only) is None while the market is closed: unchanged."""
+    provider, _clock = _feed(("99.60", _at(TUE, 15, 31, 10), _at(TUE, 15, 31, 10)),
+                             ("100.10", _at(TUE, 15, 33, 48), _at(TUE, 15, 33, 48)))
+    now = _at(TUE, 15, 34, 0)
+    held = provider.book.depth_after_close(OPTION_ID, now)
+    assert held is not None and held[0] is not None
+    assert (held[0].bids[0].price, held[0].asks[0].price) == (Decimal("99.55"), Decimal("99.65"))
+    assert provider.book.latest_depth(OPTION_ID, now) is None
+
+
+def test_depth_after_close_of_a_contract_that_ran_through_the_close_is_the_close_frames():
+    provider, _clock = _real_sequence()
+    held = provider.book.depth_after_close(OPTION_ID, _at(TUE, 15, 34, 0))
+    assert held is not None and held[0] is not None
+    assert held[0].bids[0].price == Decimal("99.70")  # the 15:29:59 frame (99.75), not the 15:33:48 one
+
+
+def test_a1_fresh_book_after_a_restart_a_frame_for_a_held_leg_shows_its_price_with_its_own_time():
+    """A1 (owner PC 27 Nov): API restarted at 15:50 IST (a fresh book, nothing before the close); the open paper leg is
+    held (subscribed), a frame arrives at 15:50:12. The paper DISPLAY price (ADR-212) is that price with its own time,
+    not "no live quote"; a later frame does not move it."""
+    from ofo.outcome import read_snapshot  # noqa: PLC0415
+    from ofo.settings import calc as fq_calc  # noqa: PLC0415
+    from ofo.settings import defaults as fq_defaults  # noqa: PLC0415
+    from ofo.tracking import paper  # noqa: PLC0415
+
+    day = datetime.date(2026, 10, 12)  # Monday, a trading day; the fixture's NIFTY expiry is 13 Oct
+    provider, clock = _feed(("99.60", _at(day, 15, 50, 12), _at(day, 15, 50, 12)))
+    quality = fq_calc.forward_quality(fq_defaults())
+
+    def shown(at: datetime.datetime):
+        clock.now = at
+        snap = read_snapshot(provider, "NIFTY", [OPTION_ID], at, Decimal("0.065"), quality=quality)
+        assert snap.market_closed is True
+        return paper.display_price(snap, OPTION_ID)
+
+    price = shown(_at(day, 15, 51, 0))
+    assert (price.state, price.price, price.at) == ("live", Decimal("99.60"), _at(day, 15, 50, 12))
+    provider.on_frame(_packet("101.00", _at(day, 15, 55, 0)), _at(day, 15, 55, 0))
+    again = shown(_at(day, 15, 56, 0))
+    assert (again.price, again.at) == (Decimal("99.60"), _at(day, 15, 50, 12))
 
 
 def _held_overnight() -> tuple[KiteProvider, Clock]:

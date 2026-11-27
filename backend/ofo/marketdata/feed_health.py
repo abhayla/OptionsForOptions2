@@ -281,7 +281,13 @@ class BookEntry:
     day_stats: DayStats | None = None  # the day values of the SAME packet; None when it carried none
     #: ADR-330 (36): the last quote whose time is at or before the calendar close of its day (None: none held yet).
     #: Served instead of ``quote`` while the market is closed, so the figure and the label "from 15:30:00" agree.
+    #: A contract with no frame made by the close this session (restart after 15:30, a strike first opened after hours)
+    #: holds its FIRST frame here instead (Lane N A2, owner PC 27 Nov), never replaced until the market opens.
     close_quote: NormalizedQuote | None = None
+    #: the depth and day values of the SAME frame as ``close_quote``: a depth price read after the close is never from
+    #: a later frame than the served quote (same class: every read of a contract's price while the market is closed)
+    close_depth: Depth | None = None
+    close_day_stats: DayStats | None = None
 
 
 def made_by_the_close(quote: NormalizedQuote) -> bool:
@@ -292,9 +298,24 @@ def made_by_the_close(quote: NormalizedQuote) -> bool:
     return made is None or made >= quote.timestamp
 
 
-def _close_after(previous: BookEntry | None, quote: NormalizedQuote) -> NormalizedQuote | None:
-    """The at-close quote once ``quote`` arrives: it, when made by the close; else the one already held."""
-    return quote if made_by_the_close(quote) else (None if previous is None else previous.close_quote)
+def _same_session(held: NormalizedQuote, quote: NormalizedQuote) -> bool:
+    """True when ``held`` belongs to the session whose close ``quote`` is read under (a quiet contract's Monday close is
+    not Tuesday's close). A date the calendar cannot answer: True (keep what is held)."""
+    a, b = price_time(held.timestamp), price_time(quote.timestamp)
+    return a is None or b is None or a.date() == b.date()
+
+
+def _close_after(previous: BookEntry | None, quote: NormalizedQuote, depth: Depth | None,
+                 day_stats: DayStats | None) -> tuple[NormalizedQuote, Depth | None, DayStats | None]:
+    """The at-close frame (quote, its depth, its day values) once ``quote`` arrives: it, when made by the close; else
+    the one already held for this session; else (no frame made by the close: a restart after 15:30, a strike first
+    opened after hours) ``quote`` itself, the FIRST frame, frozen with its own time (ADR-330 (36): later prices are
+    ignored, so the figure does not keep moving under "Market closed")."""
+    if made_by_the_close(quote):
+        return quote, depth, day_stats
+    if previous is not None and previous.close_quote is not None and _same_session(previous.close_quote, quote):
+        return previous.close_quote, previous.close_depth, previous.close_day_stats
+    return quote, depth, day_stats
 
 
 class QuoteBook:
@@ -354,14 +375,16 @@ class QuoteBook:
         if quote.instrument_id not in self._parked:
             return False
         self._parked[quote.instrument_id] = BookEntry(
-            quote, quote.timestamp, depth, day_stats, _close_after(self._parked[quote.instrument_id], quote))
+            quote, quote.timestamp, depth, day_stats,
+            *_close_after(self._parked[quote.instrument_id], quote, depth, day_stats))
         return True
 
     def update(self, quote: NormalizedQuote, depth: Depth | None = None, day_stats: DayStats | None = None) -> None:
         parked = self._parked.pop(quote.instrument_id, None)
         self._ended_times.pop(instrument_id := quote.instrument_id, None)  # held again: the quote itself speaks
         self._entries[instrument_id] = BookEntry(
-            quote, quote.timestamp, depth, day_stats, _close_after(self._entries.get(instrument_id) or parked, quote))
+            quote, quote.timestamp, depth, day_stats,
+            *_close_after(self._entries.get(instrument_id) or parked, quote, depth, day_stats))
 
     def __len__(self) -> int:
         return len(self._entries)
@@ -379,8 +402,8 @@ class QuoteBook:
 
     def _served(self, e: BookEntry, now: datetime.datetime) -> NormalizedQuote:
         """ADR-330 (36), the one place that applies the close cut-off: while the market is closed the quote is the
-        at-close one (a later frame is ignored for the figure); in market hours always the latest. None held at close (a
-        contract first seen after the close): the latest frame, as before."""
+        at-close one (a later frame is ignored for the figure); in market hours always the latest. Every entry holds a
+        close frame (a contract first seen after the close froze its first frame, ``_close_after``)."""
         if e.close_quote is not None and self.feed.market_closed(now):
             return e.close_quote
         return e.quote
@@ -390,7 +413,8 @@ class QuoteBook:
         latest packet was not a full frame, or the quote is not AVAILABLE (feed stale / disconnected / ended, or the
         quote itself invalid or delayed). Health is ``FeedState.quote_health``: the feed's word, so an option's own
         age is not a limit (a quiet contract keeps its depth, F-32); an index quote older than the index age limit is
-        not AVAILABLE (ADR-330 (39))."""
+        not AVAILABLE (ADR-330 (39)). Lane N A2: an ORDER input, so it reads the latest frame and only while the
+        market is open; closed, the health is STALE and it is None (never a price from a frame the screen hides)."""
         e = self._entries.get(instrument_id)
         if e is None or e.depth is None:
             return None
@@ -399,21 +423,27 @@ class QuoteBook:
 
     def depth_after_close(self, instrument_id: str,
                           now: datetime.datetime) -> tuple[Depth | None, DayStats | None] | None:
-        """READ-ONLY display (REQ-080 AC-7, ADR-200 (1)): outside market hours, the last full frame's depth and day
-        values held for a sound quote (``quote.planning_price_usable``), or None (market open, not held, or the quote
+        """READ-ONLY display (REQ-080 AC-7, ADR-200 (1)): outside market hours, the depth and day values of the frame
+        ``get`` serves (the at-close or first-after-close frame, ADR-330 (36)), held for a sound quote
+        (``quote.planning_price_usable``), or None (market open, not held, or the quote
         not sound). NEVER an order input: the Execute price reads ``latest_depth``, which stays AVAILABLE-only."""
         from ofo.marketdata.quote import planning_price_usable  # noqa: PLC0415 - one rule, read where it is used
         e = self._entries.get(instrument_id)
         if e is None or not self.feed.market_closed(now):
             return None
-        if not planning_price_usable(with_feed_health(e.quote, self.feed.health(now)), market_closed=True):
+        # the SAME frame ``get`` serves (``_served``): a depth price never comes from a later frame than the quote's
+        served = self._served(e, now)
+        if not planning_price_usable(with_feed_health(served, self.feed.health(now)), market_closed=True):
             return None
+        if served is e.close_quote:
+            return e.close_depth, e.close_day_stats
         return e.depth, e.day_stats
 
     def latest_day_stats(self, instrument_id: str, now: datetime.datetime) -> DayStatsAnswer:
         """The day values of the instrument's latest packet, or the reason there are none: not held (never seen,
         removed or parked), the quote is not AVAILABLE (the feed's health, as for depth), or the latest packet was an
-        ltp packet (or a zero index packet) that carries no day fields."""
+        ltp packet (or a zero index packet) that carries no day fields. Lane N A2: closed market -> FEED_NOT_HEALTHY
+        (STALE), so no day value of a later frame shows; the closed-market display reads ``depth_after_close``."""
         e = self._entries.get(instrument_id)
         if e is None:
             return DayStatsAnswer.unavailable(NOT_HELD)
