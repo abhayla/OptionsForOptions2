@@ -11,6 +11,7 @@ import api, { NEUTRAL_PARTS } from '@/services/api'
 import { TIMED_OUT_PARTS } from '@/lib/sharedStateText'
 import ErrorMessage from '@/components/common/ErrorMessage.vue'
 import PageHeader from '@/components/common/PageHeader.vue'
+import MarketClosedBanner from '@/components/states/MarketClosedBanner.vue'
 import { UNDERLYINGS } from '@/lib/legPicker'
 import { setShownDate } from '@/lib/displayFormat'
 import { useSettingsValues } from '@/stores/settingsValues'
@@ -34,7 +35,8 @@ const objective = ref(null)
 const viewKey = ref(null)
 const underlying = ref(UNDERLYINGS[0])
 const templates = ref([])
-const current = ref(null) // the index level as the server sent it (string) or null
+const current = ref(null) // the index level as the server sent it (string) or null; before the open it is the last close (ADR-212)
+const closedAt = ref(null) // market closed: the time of that close (ISO), '' when the server named none; null: open or unread
 const expiries = ref([])
 const expiry = ref('')
 const contracts = ref([])
@@ -117,7 +119,12 @@ function chooseView(key) {
   loadExpiries()
 }
 
-const readIndices = () => read('indices', async () => (await api.get('/market/indices')).data?.indices)
+// ADR-212: the same answer also says whether the market is closed and when the held close was made (the one banner)
+const readIndices = () => read('indices', async () => {
+  const data = (await api.get('/market/indices')).data
+  closedAt.value = data?.market_closed === true ? (data.last_price_at ?? '') : null
+  return data?.indices
+})
 const levelOf = (idx) => (Array.isArray(idx) ? (idx.find((i) => i.underlying === underlying.value)?.value ?? null) : null)
 
 async function loadExpiries() {
@@ -246,6 +253,7 @@ v-for="v in MARKET_VIEWS" :key="v.key" type="button" class="min-h-[44px] w-full 
             <option v-for="e in expiryLabels(expiries, shownToday)" :key="e.value" :value="e.value">{{ e.label }}</option>
           </select>
         </label>
+        <MarketClosedBanner v-if="closedAt !== null" :prices-at="closedAt || null" />
         <p v-if="current === null" class="text-sm" data-testid="no-level"><span class="font-semibold text-danger">Not available:</span> {{ NO_LEVEL }}</p>
         <template v-if="notSure && lists">
           <label class="field-label grid gap-1">Expected lower level

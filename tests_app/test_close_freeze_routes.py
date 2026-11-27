@@ -73,11 +73,12 @@ async def test_in_hours_the_paper_book_still_shows_the_latest_frame(db):
     assert (position["ltp"], position["price_state"]) == ("99.75", "live")
 
 
-async def test_after_the_close_with_only_post_close_frames_shows_the_latest_with_its_own_time(db):
-    """ADR-330 (36) path (b), LR-Q17: first priced after the close -> 100.10 labelled 15:33:48, never 15:30:00."""
+async def test_after_the_close_with_only_post_close_frames_shows_the_first_with_its_own_time(db):
+    """ADR-330 (36) path (b), LR-Q17, Lane N A2: first priced after the close -> the FIRST frame, 99.60 labelled
+    15:31:10, never 15:30:00; the later 100.10 does not move it."""
     position = await _read_at(db, [("99.60", _t(15, 31, 10)), ("100.10", _t(15, 33, 48))], _t(15, 34, 0))
-    assert D(position["ltp"]) == D("100.10")
-    assert position["price_at"].startswith("2026-10-08T15:33:48")
+    assert D(position["ltp"]) == D("99.60")
+    assert position["price_at"].startswith("2026-10-08T15:31:10")
 
 
 async def test_a_trade_with_one_leg_of_each_kind_labels_each_leg_with_its_own_time(db):

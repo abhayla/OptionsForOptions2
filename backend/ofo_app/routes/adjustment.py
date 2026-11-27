@@ -91,6 +91,7 @@ from ofo_app.routes.outcome import (
     get_market_context,
     judge_spot,
     load_charge_rates,
+    rest_spot_if_needed,
 )
 from ofo_app.strategy_refused import StrategyRefused
 
@@ -614,7 +615,7 @@ async def adjustment_approaches(  # noqa: PLR0913, PLR0915 - FastAPI dependencie
     await release_connection(db)  # D-36 (c): market and REST reads wait on the broker
     market = await market_reader(tracked, ctx)
     tracked = as_of_market(tracked, market)
-    spot = judge_spot(market, await rest_reader(tracked.position.underlying), ctx)
+    spot = judge_spot(market, await rest_spot_if_needed(market, rest_reader, tracked.position.underlying, ctx), ctx)
     pop_on = held_switches.held_on(held_switches.PROBABILITY_OF_PROFIT, held_environ)
     asked = list(dict.fromkeys(body.approaches)) if body.approaches is not None else list(APPROACH_IDS)
     reply: dict[str, Any] = {"strategy_id": strategy_id, "view": body.view, "spot": _spot_block(spot),
@@ -798,7 +799,8 @@ async def refuse_take_profit_at_loss(approach_id: str | None, strategy_id: int, 
         raise StrategyRefused("user_input_request_not_available", Failure.NOT_FOUND)
     market = await get_market_reader()(tracked, ctx)
     tracked = as_of_market(tracked, market)
-    spot = judge_spot(market, await get_rest_spot_reader()(tracked.position.underlying), ctx)
+    rest = await rest_spot_if_needed(market, get_rest_spot_reader(), tracked.position.underlying, ctx)
+    spot = judge_spot(market, rest, ctx)
     if not spot.available:
         raise StrategyRefused("adjust_take_profit_charges_unknown")
     built, _ = priced_approach(approach_id, tracked, market, spot.value, rates, prefs.approach, roll_basis=roll_basis)

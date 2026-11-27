@@ -143,20 +143,19 @@ describe('CORE: a stored paper order is never offered again (the live case, buil
     expect(confirmBtn(w).attributes('disabled')).toBeUndefined()
   })
 
-  it('superseded (the page cancelled it) -> silent: no message, Confirm stays available', async () => {
+  it('superseded (hotfix 27 Nov, ADR-016..019): outcome unknown, never READY: the unknown line and Orderbook link show, Confirm is locked', async () => {
     const w = await exitDialog()
     answers[`POST ${ORDERS_URL}`] = () => Promise.reject({ superseded: true })
     await click(w)
-    expect(t(w, 'paper-error').exists()).toBe(false)
-    expect(t(w, 'paper-unknown').exists()).toBe(false)
+    expect(t(w, 'paper-unknown').exists()).toBe(true)
     expect(t(w, 'paper-placed').exists()).toBe(false)
-    expect(confirmBtn(w).attributes('disabled')).toBeUndefined()
+    expect(confirmBtn(w).attributes('disabled')).toBeDefined()
   })
 })
 
 describe('paperPostOutcome: every answer state', () => {
   it.each([
-    [{ superseded: true }, 'superseded'], [REFUSED, 'refused'], [{ status: 409 }, 'refused'], [TIMEOUT, 'unknown'],
+    [{ superseded: true }, 'unknown'], [{ status: 429 }, 'unknown'], [{ status: 408 }, 'unknown'], [REFUSED, 'refused'], [{ status: 409 }, 'refused'], [{ status: 400 }, 'refused'], [{ status: 404 }, 'refused'], [TIMEOUT, 'unknown'],
     [{ status: null }, 'unknown'], [{ status: 504 }, 'unknown'], [{ status: 500 }, 'unknown'], [new Error('network'), 'unknown'], [undefined, 'unknown'],
   ])('%j -> %s', (e, want) => expect(paperPostOutcome(e)).toBe(want))
 })

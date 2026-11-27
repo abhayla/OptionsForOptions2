@@ -70,6 +70,7 @@ from ofo_app.routes.outcome import (
     get_market_context,
     judge_spot,
     load_charge_rates,
+    rest_spot_if_needed,
 )
 from ofo_app.strategy_refused import StrategyRefused
 
@@ -446,7 +447,8 @@ async def _read_one(row: Any, seams: _Seams, listed: Any, read: _Read) -> None:
         return
     market = await seams.market_reader(read.tracked, seams.ctx)
     read.market = market
-    read.spot = judge_spot(market, await seams.rest_reader(read.tracked.position.underlying), seams.ctx)
+    rest = await rest_spot_if_needed(market, seams.rest_reader, read.tracked.position.underlying, seams.ctx)
+    read.spot = judge_spot(market, rest, seams.ctx)
     read.margin = await current_margin(seams.margin_of, read.tracked, market)
     read.done = True
 

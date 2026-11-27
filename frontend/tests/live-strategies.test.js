@@ -10,6 +10,7 @@ let listAnswer
 let postAnswer
 let failDetailFor = new Set()
 let notLiveFor = new Set() // issue #500: drafts whose leg's stored contract is no longer live
+let indicesAnswer = null // ADR-177/212: the page's own market read (GET /market/indices); null = the read fails
 let partlyPricedFor = new Set() // REQ-077 AC-9: drafts with one priced leg and one leg that has no planned entry
 vi.mock('@/services/api', async (importActual) => {
   const actual = await importActual()
@@ -52,6 +53,7 @@ vi.mock('@/services/api', async (importActual) => {
       return Promise.resolve({ data: { contracts: [...Array(40).keys()].map((i) => ({ contract_id: i + 1, exchange_segment: 'NSE_FO', exchange_token: 1001 + i,
         instrument_type: 'CE', expiry: '2026-10-13', strike: '22800.00', lot_size: 65, symbol: `NIFTY${i + 1}` })) } })
     }
+    if (url === '/market/indices') return indicesAnswer ? Promise.resolve({ data: indicesAnswer }) : Promise.reject(new Error('indices failed'))
     return Promise.reject(new Error(`unmocked get ${url}`))
   }
   const post = (url, body) => {
@@ -141,6 +143,7 @@ beforeEach(() => {
   failDetailFor = new Set()
   notLiveFor = new Set()
   partlyPricedFor = new Set()
+  indicesAnswer = null
   listAnswer = { strategies: [row(1), row(2)] }
   postAnswer = notConnected()
   global.WebSocket = FakeSocket
@@ -148,6 +151,28 @@ beforeEach(() => {
 afterEach(() => {
   while (mountedPages.length) mountedPages.pop().unmount()
   vi.restoreAllMocks()
+})
+
+const closedIndices = (over = {}) => ({ state: 'NOT_CONNECTED', indices: [], answered_at: '2026-11-27T08:30:00+05:30', market_closed: true, last_price_at: '2026-11-26T15:30:00+05:30', ...over })
+
+describe('A3 (ADR-177, ADR-212): the one market-closed banner comes from the page-level market read, not from a card', () => {
+  it('before the open, every card unpriced (none ever says market_closed): the banner still shows, with the close time', async () => {
+    indicesAnswer = closedIndices()
+    const w = await mountPage()
+    expect(w.findAll('[data-testid="market-closed-text"]')).toHaveLength(1)
+    expect(w.get('[data-testid="market-closed-text"]').text()).toBe('Market closed. Prices are from 26 Nov 2026, 15:30:00 IST.')
+  })
+
+  it('market open: no banner, even when the market read answers', async () => {
+    indicesAnswer = closedIndices({ state: 'LIVE', market_closed: false })
+    const w = await mountPage()
+    expect(w.find('[data-testid="market-closed-banner"]').exists()).toBe(false)
+  })
+
+  it('the market read fails: no banner (never a made-up time)', async () => {
+    const w = await mountPage()
+    expect(w.find('[data-testid="market-closed-banner"]').exists()).toBe(false)
+  })
 })
 
 describe('U20: after hours and Sensibull 090 layout', () => {
@@ -158,6 +183,7 @@ describe('U20: after hours and Sensibull 090 layout', () => {
       max_profit_unlimited: false, max_loss_unlimited: false }, legs: [closedLeg()], ...over })
 
   it('closed market: price-time banner, no fetch time, no stale noise, contract name, server money strings', async () => {
+    indicesAnswer = closedIndices({ last_price_at: '2026-10-29T15:30:00+05:30' })
     const w = await mountPage()
     openAll()
     FakeSocket.all[0].serverPush(closedAnswer())
@@ -665,5 +691,34 @@ describe('GC-MU A3: the adjustment opportunities mark', () => {
     const three = byId(3).find('[data-testid="live-opportunity-mark"]')
     expect(three.text()).toBe('3 adjustment opportunities')
     expect(three.attributes('href')).toBe('/positions/adjustment-opportunities?strategy=3')
+  })
+})
+
+// ADR-330 (56) round 2: ONE notice at the top; tiles greyed with no sentence of their own; exactly one affected: only it carries the line
+describe('ADR-330 (56): price notice and cards', () => {
+  const down = { state: 'NOT_CONNECTED', market_closed: false, last_price_at: '2026-10-19T04:28:01Z', indices: [] }
+  it('two strategies with no price and the feed down: one page notice, greyed cards, no per-card sentence', async () => {
+    notLiveFor = new Set([1, 2])
+    indicesAnswer = down
+    listAnswer = { strategies: [row(1), row(2)] }
+    const w = await mountPage()
+    expect(w.findAll('[data-testid="price-notice"]')).toHaveLength(1)
+    expect(w.get('[data-testid="price-notice-text"]').text()).toBe('Prices are not live. Figures are as of 09:58:01 IST.')
+    for (const c of cards(w)) {
+      expect(c.find('[data-testid="live-status-label"]').exists()).toBe(false)
+      expect(c.classes()).toContain('price-greyed')
+    }
+  })
+  it('exactly one strategy with no price: no page notice, only that card carries the line', async () => {
+    notLiveFor = new Set([1])
+    indicesAnswer = down
+    listAnswer = { strategies: [row(1), row(2)] }
+    const w = await mountPage()
+    expect(w.find('[data-testid="price-notice"]').exists()).toBe(false)
+    const c1 = w.get('[data-strategy-id="1"]')
+    const c2 = w.get('[data-strategy-id="2"]')
+    expect(c1.get('[data-testid="live-status-label"]').text()).toBe(LEG_NOT_LIVE_LABEL)
+    expect(c1.classes()).toContain('price-greyed')
+    expect(c2.classes()).not.toContain('price-greyed')
   })
 })

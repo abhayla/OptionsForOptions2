@@ -359,3 +359,14 @@ def redis_url() -> Iterator[str]:
     closer = threading.Thread(target=server.server_close, daemon=True)
     closer.start()
     closer.join(timeout=3)
+
+
+@pytest.fixture(autouse=True)
+def _read_door_lease_ends_with_each_test():
+    """Hotfix 27 Nov: the read door's standing lease is process-wide; a test never inherits another test's holds."""
+    from ofo_app import read_door  # noqa: PLC0415
+    read_door._lease = None
+    yield
+    if read_door._lease is not None:
+        read_door._lease.release()
+    read_door._lease = None

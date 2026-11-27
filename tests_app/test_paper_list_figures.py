@@ -255,3 +255,4 @@ async def test_an_exited_book_has_no_as_of(db):  # noqa: F811
                                                               _new(c0, "BUY", 65, "80.00", "exit")])
     _single, listed = await _both(app, stored.id)
     assert listed["state"] == "EXITED" and listed["as_of"] is None
+

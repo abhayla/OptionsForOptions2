@@ -24,6 +24,7 @@ sys.path.insert(0, str(ROOT / "tests"))
 from marketdata._kite_fixture import new_provider_with_futures  # noqa: E402
 from ofo.marketdata.fanout import FanOut  # noqa: E402
 from ofo.marketdata.provider import NotSupported  # noqa: E402
+from ofo_app import read_door  # noqa: E402
 from ofo_app.live_push import LiveFeed  # noqa: E402
 from ofo_app.main import create_app  # noqa: E402
 from ofo_app.routes import planned_entry as route  # noqa: E402
@@ -83,13 +84,19 @@ async def test_core_a_ticking_future_is_captured_at_its_ltp_and_released(fast_wa
     entry = await rig.post()
     assert (entry["planned_entry"], entry["source"], entry["reason_code"]) == ("22800.00", "ltp", None)
     assert entry["captured_at"] is not None
-    assert rig.fanout.subscriber_count(rig.future_id) == 0  # the route's own hold ended
+    # hotfix 27 Nov: a read holds on a standing lease (read door)
+    assert rig.fanout.subscriber_count(rig.future_id) == 1  # held on the lease after the read
+    read_door.read_lease().release()
+    assert rig.fanout.subscriber_count(rig.future_id) == 0  # the lease ended: nothing stays held
 
 
 async def test_a_future_with_no_tick_in_time_is_no_live_price_and_nothing_stays_held(fast_wait):
     rig = Rig()
     entry = await rig.post()
     assert (entry["planned_entry"], entry["reason_code"]) == (None, "no_live_price")
+    # hotfix 27 Nov: a read holds on a standing lease (read door)
+    assert rig.fanout.subscriber_count(rig.future_id) == 1  # held on the lease after the read
+    read_door.read_lease().release()
     assert rig.fanout.subscriber_count(rig.future_id) == 0
 
 

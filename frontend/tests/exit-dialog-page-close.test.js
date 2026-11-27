@@ -73,7 +73,7 @@ afterEach(() => {
 })
 
 describe('N-04 / N-05: an Exit dialog the PAGE closes drops its staged exits, like the user\'s Cancel', () => {
-  it('(a) per-leg Exit clicked, then the book read fails: dialog closed, pending orders and legs as before the click', async () => {
+  it('(a) per-leg Exit clicked, then the book read fails (dialog stays) and the trade changes elsewhere: dialog closed, pending orders and legs as before the click', async () => {
     const w = await builder()
     const legsBefore = snap(w)
     const pendingBefore = S(w).pendingOrders.length
@@ -81,7 +81,11 @@ describe('N-04 / N-05: an Exit dialog the PAGE closes drops its staged exits, li
     await flushPromises()
     expect(t(w, 'paper-confirm').exists()).toBe(true)
     expect(S(w).pendingOrders.length).toBe(pendingBefore + 1)
-    await failRead()
+    await failRead() // hotfix 27 Nov T2-08, ADR-016..019: a failed read keeps the dialog open with its sentence; only a change elsewhere closes it
+    expect(t(w, 'paper-confirm').exists()).toBe(true)
+    expect(t(w, 'paper-error').text()).toContain(NOT_LIVE)
+    expect(orderPosts()).toHaveLength(0)
+    await setMark(w, true)
     expect(t(w, 'paper-confirm').exists()).toBe(false)
     expect(S(w).pendingOrders.length).toBe(pendingBefore)
     expect(snap(w)).toEqual(legsBefore)
@@ -198,14 +202,18 @@ describe('Tier A review round 2: the staged exit is dropped, the user\'s own edi
     expect(t(w, 'paper-confirm').exists()).toBe(false)
   })
 
-  it('F1 A2: a leg removed, then a per-leg Exit, then the read fails: the removal stays (1 pending)', async () => {
+  it('F1 A2: a leg removed, then a per-leg Exit, then the read fails, then it changes elsewhere: the removal stays (1 pending)', async () => {
     const w = await builder()
     removeFirst(w)
     await flushPromises()
     expect(S(w).pendingOrders.length).toBe(1)
     await exitLeg(w, 2)
     expect(t(w, 'paper-confirm').exists()).toBe(true)
-    await failRead()
+    await failRead() // hotfix 27 Nov T2-08, ADR-016..019: a failed read keeps the dialog open with its sentence; only a change elsewhere closes it
+    expect(t(w, 'paper-confirm').exists()).toBe(true)
+    expect(t(w, 'paper-error').text()).toContain(NOT_LIVE)
+    expect(orderPosts()).toHaveLength(0)
+    await setMark(w, true)
     expect(t(w, 'paper-confirm').exists()).toBe(false)
     expect(S(w).pendingOrders.length).toBe(1)
   })
@@ -280,7 +288,7 @@ describe('Tier A review round 3: the Exit snapshot ends with the dialog; a block
   const exitLeg = async (w, i) => { S(w).exitPaper(S(w).paper.net[i].contract_id, 1); await flushPromises() }
   const cancel = async (w) => { await t(w, 'paper-cancel').trigger('click'); await flushPromises() }
 
-  it('A1: Exit leg 2, Cancel, 9 lots on leg 0, Exit leg 3, the read fails: only the leg-3 exit is dropped (2 pending)', async () => {
+  it('A1: Exit leg 2, Cancel, 9 lots on leg 0, Exit leg 3, the read fails then the trade changes: only the leg-3 exit is dropped (2 pending)', async () => {
     const w = await builder()
     await exitLeg(w, 2)
     await cancel(w)
@@ -288,14 +296,14 @@ describe('Tier A review round 3: the Exit snapshot ends with the dialog; a block
     S(w).setLegs(S(w).legs.map((l, i) => (i === 0 ? { ...l, lots: 9 } : l)))
     await flushPromises()
     expect(S(w).pendingOrders.length).toBe(2)
-    await exitLeg(w, 3)
+    await exitLeg(w, 3) // refused with an add waiting (D-48): no dialog opens, so a failed read has none to keep (hotfix 27 Nov T2-08)
     await failRead()
     expect(t(w, 'paper-confirm').exists()).toBe(false)
     expect(S(w).pendingOrders.length).toBe(2)
     expect(S(w).legs[0].lots).toBe(9)
   })
 
-  it('A3: Exit leg 2, Cancel, remove another leg, Review and add, the read fails: removal and kept exit stay (2 pending)', async () => {
+  it('A3: Exit leg 2, Cancel, remove another leg, Review and add, the read fails then the trade changes: removal and kept exit stay (2 pending)', async () => {
     const w = await builder()
     await exitLeg(w, 2)
     await cancel(w)
@@ -305,7 +313,11 @@ describe('Tier A review round 3: the Exit snapshot ends with the dialog; a block
     await t(w, 'paper-review').trigger('click')
     await flushPromises()
     expect(t(w, 'paper-confirm').exists()).toBe(true)
-    await failRead()
+    await failRead() // hotfix 27 Nov T2-08, ADR-016..019: a failed read keeps the dialog open with its sentence; only a change elsewhere closes it
+    expect(t(w, 'paper-confirm').exists()).toBe(true)
+    expect(t(w, 'paper-error').text()).toContain(NOT_LIVE)
+    expect(orderPosts()).toHaveLength(0)
+    await setMark(w, true)
     expect(t(w, 'paper-confirm').exists()).toBe(false)
     expect(S(w).pendingOrders.length).toBe(2)
   })

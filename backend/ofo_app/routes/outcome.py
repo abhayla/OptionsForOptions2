@@ -26,7 +26,7 @@ from ofo.adjustment.strategy_type import strike_gap_of, type_of
 from ofo.charges import ChargeRates
 from ofo.engine.legs import Action, Leg
 from ofo.errors import render
-from ofo.errors.explanations import render_explanation
+from ofo.errors.explanations import EarlierDay, render_explanation
 from ofo.errors.slots import INT_ABS_MAX
 from ofo.instruments.models import InstrumentId as ContractKey
 from ofo.instruments.models import ListedContract
@@ -41,7 +41,7 @@ from ofo.marketdata.forward import ForwardQuality
 from ofo.marketdata.provider import MarketDataProvider
 from ofo.marketdata.quote import NormalizedQuote
 from ofo.marketdata.shared_compute import FeedScope, SharedCompute
-from ofo.marketdata.spot_source import resolve_spot
+from ofo.marketdata.spot_source import SOURCE_FEED, resolve_spot
 from ofo.money import shown_price
 from ofo.outcome import (
     OutcomeState,
@@ -150,6 +150,17 @@ def judge_spot(market: Any, rest: Any, ctx: MarketContext | None) -> Any:
     caller of ``resolve_spot`` in the routes (a repo-scan test holds it)."""
     judged = spot_judging_now(ctx)
     return resolve_spot(market.feed_at(judged), rest, market.last_close, now=judged, windows=feed_windows_of(ctx))
+
+
+async def rest_spot_if_needed(market: Any, rest_reader: Any, underlying: str, ctx: MarketContext | None) -> Any:
+    """THE one door to the REST index quote for a route (REQ-118; ADR-330 (39); finding
+    page-poll-calls-vendor-rest-before-tick-store): the tick store is judged FIRST with the feed's age rule
+    (``judge_spot``'s own feed -> last close order); the REST reader is awaited only when the feed cannot give the
+    spot (and that reader is itself the shared cached single-flight door, ``live_market.index_spot``). A fresh tick:
+    None, no REST call. A repo-scan test holds that no route awaits a REST reader outside this helper."""
+    if judge_spot(market, None, ctx).source == SOURCE_FEED:
+        return None
+    return await rest_reader(underlying)
 
 
 def get_answer_clock() -> AnswerClock:
@@ -274,16 +285,34 @@ def closed_label(state: MarketState, leg_quotes: Iterable[NormalizedQuote | None
     if not state.closed:
         return ClosedLabel(label_time(state, all_times))
     later = [q.price_at for q in legs if not made_by_the_close(q)]
-    frozen = [q.price_at for q in legs if made_by_the_close(q)]
-    if not later or not frozen:
+    # Lane N review M3: legs made by the close on an OLDER trading day than the newest priced day are a group of their
+    # own: the latest day leads, the older legs read "as of <their own dated time>" (never under the newer day's time)
+    newest = max((t.astimezone(IST).date() for t in all_times), default=None)
+    frozen = [q.price_at for q in legs if made_by_the_close(q) and q.price_at.astimezone(IST).date() == newest]
+    older = [q.price_at for q in legs if made_by_the_close(q) and newest and q.price_at.astimezone(IST).date() < newest]
+    if not frozen and later:  # no leg made by the close on the newest day: older frozen legs are the frozen group
+        frozen, older = [q.price_at for q in legs if made_by_the_close(q)], []
+    if (not later and not older) or (not frozen and not later):
         return ClosedLabel(label_time(state, all_times))
-    if spot is not None and _aware(spot.price_at) and made_by_the_close(spot):
-        frozen.append(spot.price_at)
-    frozen_at, later_at = max(frozen), min(later)
-    if len(later) == 1:
-        text = render_explanation("closed_prices_mixed_one", frozen=frozen_at, later=later_at)
+    if frozen:
+        if spot is not None and _aware(spot.price_at) and made_by_the_close(spot) \
+                and spot.price_at.astimezone(IST).date() == newest:
+            frozen.append(spot.price_at)
+        frozen_at, later_group = max(frozen), [*later, *older]
+    else:  # every leg first priced after the close: the earliest time labels the group, only newer legs are "as of"
+        frozen_at = min(later)
+        later_group = [*(t for t in later if t > frozen_at), *older]
+        if not later_group:
+            return ClosedLabel(label_time(state, all_times))
+    later_at = min(later_group)
+    seen = [*all_times, *([state.last_price_at] if _aware(state.last_price_at) else [])]
+    newest_day = max(t.astimezone(IST).date() for t in seen)
+    shown = {t: (EarlierDay(t) if t.astimezone(IST).date() < newest_day else t) for t in (frozen_at, later_at)}
+    if len(later_group) == 1:
+        text = render_explanation("closed_prices_mixed_one", frozen=shown[frozen_at], later=shown[later_at])
     else:
-        text = render_explanation("closed_prices_mixed_many", frozen=frozen_at, later=later_at, count=len(later))
+        text = render_explanation("closed_prices_mixed_many", frozen=shown[frozen_at], later=shown[later_at],
+                                  count=len(later_group))
     return ClosedLabel(frozen_at, text)
 
 

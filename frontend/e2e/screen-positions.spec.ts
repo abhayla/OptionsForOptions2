@@ -1146,7 +1146,9 @@ test.describe('Current positions: Exit (n) and the confirm dialog (REQ-109 AC-4,
     await openPositions(page)
     await openExit(page, 171, [1001, 1002])
     await page.getByTestId('paper-confirm-button').click()
-    await expect(page.getByTestId('paper-error')).toHaveText('Prices are not live; try again when they update')
+    // hotfix 27 Nov (REQ-065): the refusal names the legs and carries all four parts
+    await expect(page.getByTestId('paper-error')).toContainText('25700 PE')
+    await expect(page.getByTestId('paper-error')).toContainText('Prices are not live; try again when they update')
     await expect(dialog(page)).toBeVisible()
     await expect(page.getByTestId('paper-confirm-button')).toBeDisabled()
     expect(S.count('POST', /\/orders$/)).toBe(1) // no automatic retry
@@ -1229,29 +1231,31 @@ test.describe('Current positions: Exit (n) and the confirm dialog (REQ-109 AC-4,
     expect(await look()).not.toBe(enabled)
   })
 
-  test('EXIT-21 the page closing the dialog itself (a failed re-read) leaves no staged exit behind: ticks are cleared (owner N-04)', async ({ page }) => {
-    // Spec basis: owner N-04 (after the page closed an Exit dialog by itself the staged exit stayed); ADR-330 (17) (no dialog that comes back by itself)
+  test('EXIT-21 a failed re-read while the dialog is open keeps it open, blocked, with the leg and the not-live sentence; nothing is posted; ticks are kept (hotfix 27 Nov, ADR-016..019, owner T1-02; replaces NEW-T22)', async ({ page }) => {
+    // Spec basis: ADR-016..019 (no silent end), ADR-328 (4) (a blocked control says why), owner N-04 (nothing staged outlives a page close: a page close now happens only when the legs change)
     await stubApi(page, { paper: (n) => (n === 2 ? { status: 500, json: {} } : ok(paperOk())) })
     await frozenClock(page)
     await openPositions(page)
     await openExit(page)
-    await page.clock.runFor(5000) // the re-read fails: the page closes the dialog by itself
-    await expect(dialog(page)).toHaveCount(0)
-    await page.clock.runFor(5000) // prices are back
-    await expect(page.getByTestId('paper-error-what')).toHaveCount(0)
+    await page.clock.runFor(5000) // the re-read fails: the dialog stays, blocked, with the reason
+    await expect(dialog(page)).toHaveCount(1)
+    await expect(page.getByTestId('paper-confirm-button')).toBeDisabled()
+    await expect(page.getByTestId('paper-error')).toContainText('Prices are not live; try again when they update')
     await shot(page, 'NEW-T22')
-    await expect(exitBtn(page, 171)).toHaveText('Exit (0)')
-    await expect(tick(page, 171, 1001)).not.toBeChecked()
+    await page.clock.runFor(5000) // prices are back: Confirm unlocks
+    await expect(page.getByTestId('paper-confirm-button')).toBeEnabled()
+    await expect(tick(page, 171, 1001)).toBeChecked()
   })
 
-  test('EXIT-22 the dialog closed by the page itself does not come back by itself when prices return (ADR-330 (17))', async ({ page }) => {
-    // Spec basis: ADR-330 (14)(17) (no dialog that comes back by itself); owner N-04
+  test('EXIT-22 the dialog never leaves on a failed read, so no second dialog comes back by itself when prices return (ADR-330 (17))', async ({ page }) => {
+    // Spec basis: ADR-330 (14)(17) (no dialog that comes back by itself); hotfix 27 Nov: it never left
     await stubApi(page, { paper: (n) => (n === 2 ? { status: 500, json: {} } : ok(paperOk())) })
     await frozenClock(page)
     await openPositions(page)
     await openExit(page)
     await page.clock.runFor(5000)
-    await expect(dialog(page)).toHaveCount(0)
+    await expect(dialog(page)).toHaveCount(1)
+    await page.getByTestId('paper-cancel').click() // the user closes it: it does not return
     await page.clock.runFor(10000)
     await expect(dialog(page)).toHaveCount(0)
   })

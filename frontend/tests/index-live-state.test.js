@@ -34,8 +34,8 @@ const T1 = '2026-10-19T09:20:00+05:30'
 const T2 = '2026-10-19T09:20:01+05:30'
 
 const SCREENS = [
-  { name: 'index page', component: IndexViewPage, value: 'index-value', state: 'index-state' },
-  { name: 'Home strip', component: IndexStrip, value: 'strip-value', state: 'strip-state' },
+  { name: 'index page', component: IndexViewPage, value: 'index-value', state: 'price-notice' },
+  { name: 'Home strip', component: IndexStrip, value: 'strip-value', state: 'price-notice' },
 ]
 
 beforeEach(() => {
@@ -75,7 +75,7 @@ describe.each(SCREENS)('$name: after its own socket drops no old number is shown
       expect(w.text()).not.toContain('25150.00')
       expect(w.text()).not.toContain('82010.25')
       expect(values(w)).toEqual(['Not available', 'Not available'])
-      expect(w.get(`[data-testid="${screen.state}"]`).text()).toBe('Index values unavailable.')
+      expect(w.get(`[data-testid="${screen.state}"]`).text()).toMatch(/^Prices are not live\./)
     })
   }
 
@@ -86,7 +86,7 @@ describe.each(SCREENS)('$name: after its own socket drops no old number is shown
     await liveThenDrop(w)
     expect(values(w)).toEqual(['25160.00', '82020.50'])
     expect(w.text()).not.toContain('25150.00') // never the dead socket's number
-    expect(w.get(`[data-testid="${screen.state}"]`).text()).toBe('Index values unavailable.')
+    expect(w.get(`[data-testid="${screen.state}"]`).text()).toMatch(/^Prices are not live\./)
   })
 
   it('ADR-213: after the drop and before the fallback answer comes, no number (the dead socket value is not kept)', async () => {
@@ -102,7 +102,7 @@ describe.each(SCREENS)('$name: after its own socket drops no old number is shown
     const w = await mountScreen()
     await liveThenDrop(w)
     expect(values(w)).toEqual(['25160.00', 'Not available'])
-    expect(w.get(`[data-testid="${screen.state}"]`).text()).toBe('Index values unavailable.')
+    expect(w.get(`[data-testid="${screen.state}"]`).text()).toMatch(/^Prices are not live\./)
   })
 
   it('ADR-213: a LIVE answer is unchanged (values, no message)', async () => {
@@ -125,7 +125,7 @@ describe.each(SCREENS)('$name: after its own socket drops no old number is shown
     await liveThenDrop(w)
     expect(w.text()).not.toContain('25150.00')
     expect(values(w)).toEqual(['Not available', 'Not available'])
-    expect(w.get(`[data-testid="${screen.state}"]`).text()).toBe('Index values unavailable.')
+    expect(w.get(`[data-testid="${screen.state}"]`).text()).toMatch(/^Prices are not live\./)
   })
 
   it('AC-4: a read sent before the drop that resolves LIVE after it is ignored', async () => {

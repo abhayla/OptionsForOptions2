@@ -97,7 +97,7 @@ from ofo_app import strategy_store as store
 from ofo_app.api_models import ApiModel, CatalogueText, Money
 from ofo_app.db import get_db
 from ofo_app.errors import ClosedRoute, Failure, refuse_request
-from ofo_app.live_push import POLL_SECONDS, LiveFeed, hold_and_read
+from ofo_app.live_push import POLL_SECONDS, LiveFeed
 from ofo_app.paper_reasons import (
     breakevens_reason_text,
     extremes_reason_text,
@@ -106,6 +106,7 @@ from ofo_app.paper_reasons import (
     reason_text,
     unpriced_text,
 )
+from ofo_app.read_door import NO_TOKEN, read_quotes
 from ofo_app.routes.adjustment import TrackedReader, get_tracked_reader
 from ofo_app.routes.broker import current_user_ref
 from ofo_app.routes.catalogue import get_shown_date
@@ -180,6 +181,9 @@ class PaperOrdersIn(BaseModel):
     #: ADR-326 (1) (D-25): the approach this basket was prepared as; a Take profit (A-24, A-25) is refused at an
     #: after-charges loss by the build path that offers it (offered and accepted agree). Other ids: nothing checked
     approach_id: Literal["A-24", "A-25"] | None = None
+    #: ADR-330 (28): the user ticked the "prices are not live" line; only then may the save start its rules from the
+    #: last index value the app holds. Absent / false: a save without a live index price is refused.
+    prices_not_live_confirmed: bool = False
 
 
 class PaperNetOut(ApiModel):
@@ -545,12 +549,13 @@ async def _hold_until_ready(feed: LiveFeed, ctx: MarketContext, underlying: str,
     index_id = getattr(provider, "index_id", lambda _u: None)(underlying)
     wanted = [*ids, *([index_id] if index_id else []),
               *forward_strike_ids(provider.instrument_master(), underlying, ids, live_spot)]
-    held = await hold_and_read(
-        feed.fanout, wanted,
+    held = await read_quotes(
+        feed, wanted,
         lambda: read_snapshot(provider, underlying, ids, ctx.clock(), ctx.rate, feed_scope(ctx),
                               quality=ctx.forward_quality),
         lambda snap: _read_ready(snap, ids), lambda: provider.status().connected, FORWARD_WAIT_S, POLL_SECONDS)
-    return snapshot if held is None else held  # None: a contract the provider has no token for, the answer stands
+    # NO_TOKEN: a contract the provider has no token for, the answer stands
+    return snapshot if held is NO_TOKEN else held
 
 
 async def _snapshot(ctx: MarketContext, feed: LiveFeed | None, underlying: str, ids: list[str]):
@@ -558,7 +563,7 @@ async def _snapshot(ctx: MarketContext, feed: LiveFeed | None, underlying: str, 
     no IV inputs) holds what it needs in one hold until it is, or the wait passes (GC-LIVE F-1, F-3)."""
     snapshot = read_snapshot(ctx.provider, underlying, ids, ctx.clock(), ctx.rate, feed_scope(ctx),
                              quality=ctx.forward_quality)
-    if feed is not None and ids and not _read_ready(snapshot, ids):
+    if feed is not None and ids:
         snapshot = await _hold_until_ready(feed, ctx, underlying, ids, snapshot)
     return snapshot
 
@@ -1418,7 +1423,8 @@ async def place_paper_orders(strategy_id: int, body: PaperOrdersIn,  # noqa: PLR
         from ofo_app.adjustment_readers import record_basket_facts  # noqa: PLC0415 - the readers import the routes
         await record_basket_facts(db, ctx, feed, strategy_id, (
             stored.saved.definition.underlying, book, placed_at,
-            {o.contract_id: exit_prices.get(i, o.price) for i, o in enumerate(body.orders)}))
+            {o.contract_id: exit_prices.get(i, o.price) for i, o in enumerate(body.orders)},
+            body.prices_not_live_confirmed))
         if body.held is not None and len(book) != len(body.orders):  # the store's own first-fill view, under its lock
             raise StrategyRefused("held_entry_not_a_first_open_basket")  # rolled back below: nothing stored
         await _record_held(db, strategy_id, body.held)  # ADR-292: the held row and its first basket: one transaction

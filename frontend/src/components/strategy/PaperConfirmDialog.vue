@@ -98,6 +98,7 @@ const props = defineProps({
   // fix/paper-dialog-safe: '' ready | 'refused' (4xx, shown in `error`) | 'unknown' (no answer / 5xx) | 'placed' (stored, refresh failed)
   state: { type: String, default: '' },
   holdMs: { type: Number, default: PAPER_UNKNOWN_HOLD_MS },
+  locked: { type: Boolean, default: false }, // Lane U r1 (ADR-016/017/019): an unknown outcome is unresolved: Confirm stays off until the page's re-read decides (never a timer)
   firstBasket: { type: Boolean, default: false }, // GC-TRACK1 k10: offer "Held at my broker" (the strategy's first basket only)
   strategyId: { type: [Number, String], default: '' }, // GC-ICFIX Issue 10: with it, exit rows ask the server whether the exit widens the maximum loss
   notLiveLine: { type: String, default: '' }, // ADR-330 (28): set while the page's prices are not live; Confirm waits for the tick
@@ -174,7 +175,7 @@ async function askArmedExits() {
 watch(() => [props.open, props.orders, props.strategyId, rows.value.map((r) => `${r.lots}/${r.price}`).join()], askArmedExits, { immediate: true })
 
 // the rows as they were when the server refused them: Confirm unlocks only once the user has changed something
-const snapshot = () => JSON.stringify(rows.value.map((r) => [r.lots, r.price]))
+const snapshot = () => JSON.stringify([rows.value.map((r) => [r.lots, r.price]), notLiveAck.value]) // the tick changes the request too
 const refusedAt = ref(null)
 const held = ref(false)
 let holdTimer = null
@@ -186,13 +187,15 @@ watch(() => props.state, (s) => {
 }, { immediate: true })
 onBeforeUnmount(() => clearTimeout(holdTimer))
 const canConfirm = computed(() => {
-  if (props.busy || props.blocked || (props.notLiveLine && !notLiveAck.value) || !ready.value || props.state === 'placed' || held.value) return false
+  if (props.busy || props.blocked || exitState.value === 'checking' || (props.notLiveLine && !notLiveAck.value) || !ready.value || props.state === 'placed' || held.value || props.locked) return false
   return props.state !== 'refused' || refusedAt.value === null || snapshot() !== refusedAt.value
 })
 
 function confirm() {
   if (!canConfirm.value) return
-  if (heldActive.value) emit('confirm', rows.value.map(orderOf), heldBlock(heldAt.value, heldBroker.value))
-  else emit('confirm', rows.value.map(orderOf))
+  // third argument: the not-live line was shown AND ticked (ADR-330 (28)); false otherwise
+  const ticked = !!props.notLiveLine && notLiveAck.value === true
+  if (heldActive.value) emit('confirm', rows.value.map(orderOf), heldBlock(heldAt.value, heldBroker.value), ticked)
+  else emit('confirm', rows.value.map(orderOf), null, ticked)
 }
 </script>

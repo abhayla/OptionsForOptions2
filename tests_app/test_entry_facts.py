@@ -29,6 +29,7 @@ from ofo.adjustment.approaches import (
     build_approach,
     entry_facts_of,
 )
+from ofo.rules.inputs import DataHealth
 from ofo.settings import layers
 from ofo_app import adjustment_check as check
 from ofo_app import entry_facts_store, paper_store, user_preferences_store
@@ -124,7 +125,7 @@ def test_admin_of_reads_the_admin_layer_only():
 
 
 def _ctx(ltp, connected=True):
-    quote = None if ltp is None else SimpleNamespace(ltp=ltp)
+    quote = None if ltp is None else SimpleNamespace(ltp=ltp, health=DataHealth.AVAILABLE)
     provider = SimpleNamespace(status=lambda: SimpleNamespace(connected=connected),
                                underlying_quote=lambda _u: quote)
     return SimpleNamespace(provider=provider)
