@@ -1,5 +1,5 @@
-"""Hotfix plan-save-1127 (Lane R, 27 Nov 2026; ADR-330 (1), (5), (7); REQ-161 AC-2/AC-3): the plan save never waits on a slow
-price read it does not need, never hangs on one it does, and answers from the stored plan. Same harness as
+"""Hotfix plan-save-1127 (Lane R, 27 Nov 2026; ADR-330 (1), (5), (7); REQ-161 AC-2/AC-3): the plan save never waits on
+a slow price read it does not need, never hangs on one it does, and answers from the stored plan. Same harness as
 test_adjustment_plan.py (fresh migrated DB, scenario ADJ-02)."""
 # ruff: noqa: F811 - the sibling file's fixture is imported by name, as the other tests_app files do
 from __future__ import annotations

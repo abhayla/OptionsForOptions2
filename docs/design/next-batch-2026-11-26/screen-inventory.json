@@ -1141,7 +1141,7 @@
      "labelFrom": "aria-label",
      "ariaLabel": "Search saved strategies by name",
      "testid": "strategy-search",
-     "source": "frontend/src/pages/MyStrategiesPage.vue:166",
+     "source": "frontend/src/pages/MyStrategiesPage.vue:167",
      "type": "search",
      "component": "pages/MyStrategiesPage.vue"
     },
@@ -1153,7 +1153,7 @@
      "labelFrom": "attr",
      "ariaLabel": "",
      "testid": "select-all",
-     "source": "frontend/src/pages/MyStrategiesPage.vue:183",
+     "source": "frontend/src/pages/MyStrategiesPage.vue:184",
      "type": "checkbox",
      "component": "pages/MyStrategiesPage.vue"
     },
@@ -1165,7 +1165,7 @@
      "labelFrom": "text",
      "ariaLabel": "",
      "testid": "delete-selected",
-     "source": "frontend/src/pages/MyStrategiesPage.vue:186",
+     "source": "frontend/src/pages/MyStrategiesPage.vue:187",
      "handlers": [
       "click"
      ],
@@ -1180,7 +1180,7 @@
      "labelFrom": "text",
      "ariaLabel": "",
      "testid": "bulk-confirm-box",
-     "source": "frontend/src/pages/MyStrategiesPage.vue:187",
+     "source": "frontend/src/pages/MyStrategiesPage.vue:188",
      "component": "pages/MyStrategiesPage.vue"
     },
     {
@@ -1191,7 +1191,7 @@
      "labelFrom": "text",
      "ariaLabel": "",
      "testid": "bulk-confirm",
-     "source": "frontend/src/pages/MyStrategiesPage.vue:189",
+     "source": "frontend/src/pages/MyStrategiesPage.vue:190",
      "handlers": [
       "click"
      ],
@@ -1206,7 +1206,7 @@
      "labelFrom": "text",
      "ariaLabel": "",
      "testid": "bulk-cancel",
-     "source": "frontend/src/pages/MyStrategiesPage.vue:190",
+     "source": "frontend/src/pages/MyStrategiesPage.vue:191",
      "handlers": [
       "click"
      ],
@@ -1221,7 +1221,7 @@
      "labelFrom": "aria-label",
      "ariaLabel": "`Select ${listLabel(s)}`",
      "testid": "``select-${s.id}``",
-     "source": "frontend/src/pages/MyStrategiesPage.vue:201",
+     "source": "frontend/src/pages/MyStrategiesPage.vue:202",
      "type": "checkbox",
      "component": "pages/MyStrategiesPage.vue"
     },
@@ -1233,7 +1233,7 @@
      "labelFrom": "text",
      "ariaLabel": "",
      "testid": "``open-builder-${s.id}``",
-     "source": "frontend/src/pages/MyStrategiesPage.vue:212",
+     "source": "frontend/src/pages/MyStrategiesPage.vue:213",
      "handlers": [
       "click"
      ],
@@ -1248,7 +1248,7 @@
      "labelFrom": "text",
      "ariaLabel": "",
      "testid": "``rename-${s.id}``",
-     "source": "frontend/src/pages/MyStrategiesPage.vue:213",
+     "source": "frontend/src/pages/MyStrategiesPage.vue:214",
      "handlers": [
       "click"
      ],
@@ -1263,7 +1263,7 @@
      "labelFrom": "text",
      "ariaLabel": "",
      "testid": "``open-execute-${s.id}``",
-     "source": "frontend/src/pages/MyStrategiesPage.vue:215",
+     "source": "frontend/src/pages/MyStrategiesPage.vue:216",
      "to": "`/strategy/${s.id}/execute`",
      "component": "pages/MyStrategiesPage.vue"
     },
@@ -1275,7 +1275,7 @@
      "labelFrom": "text",
      "ariaLabel": "",
      "testid": "rename-form",
-     "source": "frontend/src/pages/MyStrategiesPage.vue:226",
+     "source": "frontend/src/pages/MyStrategiesPage.vue:227",
      "handlers": [
       "keydown.esc.stop"
      ],
@@ -1289,7 +1289,7 @@
      "labelFrom": "aria-label",
      "ariaLabel": "New strategy name",
      "testid": "rename-input",
-     "source": "frontend/src/pages/MyStrategiesPage.vue:227",
+     "source": "frontend/src/pages/MyStrategiesPage.vue:228",
      "type": "text",
      "component": "pages/MyStrategiesPage.vue"
     },
@@ -1301,7 +1301,7 @@
      "labelFrom": "text",
      "ariaLabel": "",
      "testid": "rename-save",
-     "source": "frontend/src/pages/MyStrategiesPage.vue:229",
+     "source": "frontend/src/pages/MyStrategiesPage.vue:230",
      "type": "submit",
      "component": "pages/MyStrategiesPage.vue"
     },
@@ -1313,7 +1313,7 @@
      "labelFrom": "text",
      "ariaLabel": "",
      "testid": "rename-cancel",
-     "source": "frontend/src/pages/MyStrategiesPage.vue:230",
+     "source": "frontend/src/pages/MyStrategiesPage.vue:231",
      "handlers": [
       "click"
      ],
@@ -1328,7 +1328,7 @@
      "labelFrom": "text",
      "ariaLabel": "",
      "testid": "result-undo",
-     "source": "frontend/src/pages/MyStrategiesPage.vue:242",
+     "source": "frontend/src/pages/MyStrategiesPage.vue:243",
      "handlers": [
       "click"
      ],
@@ -1343,7 +1343,7 @@
      "labelFrom": "text",
      "ariaLabel": "",
      "testid": "result-dismiss",
-     "source": "frontend/src/pages/MyStrategiesPage.vue:243",
+     "source": "frontend/src/pages/MyStrategiesPage.vue:244",
      "handlers": [
       "click"
      ],
@@ -1358,7 +1358,7 @@
      "labelFrom": "text",
      "ariaLabel": "",
      "testid": "result-undo",
-     "source": "frontend/src/pages/MyStrategiesPage.vue:252",
+     "source": "frontend/src/pages/MyStrategiesPage.vue:253",
      "handlers": [
       "click"
      ],
@@ -1373,7 +1373,7 @@
      "labelFrom": "text",
      "ariaLabel": "",
      "testid": "result-dismiss",
-     "source": "frontend/src/pages/MyStrategiesPage.vue:253",
+     "source": "frontend/src/pages/MyStrategiesPage.vue:254",
      "handlers": [
       "click"
      ],
@@ -2279,7 +2279,7 @@
      "id": "BUILD-53",
      "kind": "dialog",
      "tag": "Modal",
-     "label": "{{PLAN_LOADING_TEXT}} {{sheet.text}} {{loadError}} {{sheet.typeName}} {{labels.playbook}} {{p.name}} {{PLAN_REFILLED_TEXT(refilledFrom)}} {{labels.target}} {{form.targetWords}} {{labels.target_rupees}} {{form.targetRupeeWords}} {{labels.stop}} {{form.stopWords}} {{labels.stop_rupees}} {{form.stopRupeeWords}} {{form.stopWarning}} {{labels.max_adjustments}} {{labels.time_exit}} {{labels.time_exit_on}} {{labels.customise}} {{labels.reset}} {{labels.reset_confirm}} {{labels.reset}} Cancel {{resetMarkers}} {{labels.close}} {{labels.save}} {{labels.use_as_is}}",
+     "label": "{{PLAN_LOADING_TEXT}} {{sheet.text}} {{loadError}} {{sheet.typeName}} {{labels.playbook}} {{p.name}} {{PLAN_REFILLED_TEXT(refilledFrom)}} {{labels.target}} {{form.targetWords}} {{labels.target_rupees}} {{form.targetRupeeWords}} {{labels.stop}} {{form.stopWords}} {{labels.stop_rupees}} {{form.stopRupeeWords}} {{form.stopWarning}} {{labels.max_adjustments}} {{labels.time_exit}} {{labels.time_exit_on}} {{labels.customise}} {{labels.reset}} {{labels.reset_confirm}} {{labels.reset}} Cancel {{resetMarkers}} {{PLAN_NOT_CONFIRMED_TEXT}} {{labels.close}} {{labels.save}} {{labels.use_as_is}}",
      "labelFrom": "text",
      "ariaLabel": "",
      "testid": "",
@@ -2444,7 +2444,7 @@
      "labelFrom": "text",
      "ariaLabel": "",
      "testid": "plan-close",
-     "source": "frontend/src/components/strategy/AdjustPlanSheet.vue:69",
+     "source": "frontend/src/components/strategy/AdjustPlanSheet.vue:70",
      "handlers": [
       "click"
      ],
@@ -2459,7 +2459,7 @@
      "labelFrom": "text",
      "ariaLabel": "",
      "testid": "plan-save",
-     "source": "frontend/src/components/strategy/AdjustPlanSheet.vue:71",
+     "source": "frontend/src/components/strategy/AdjustPlanSheet.vue:72",
      "handlers": [
       "click"
      ],
@@ -2474,7 +2474,7 @@
      "labelFrom": "text",
      "ariaLabel": "",
      "testid": "plan-use-as-is",
-     "source": "frontend/src/components/strategy/AdjustPlanSheet.vue:72",
+     "source": "frontend/src/components/strategy/AdjustPlanSheet.vue:73",
      "handlers": [
       "click"
      ],
@@ -3601,7 +3601,7 @@
      "labelFrom": "text",
      "ariaLabel": "",
      "testid": "save-draft",
-     "source": "frontend/src/components/strategy/SaveDraftBar.vue:435",
+     "source": "frontend/src/components/strategy/SaveDraftBar.vue:436",
      "handlers": [
       "click"
      ],
@@ -3616,7 +3616,7 @@
      "labelFrom": "text",
      "ariaLabel": "",
      "testid": "add-to-paper",
-     "source": "frontend/src/components/strategy/SaveDraftBar.vue:438",
+     "source": "frontend/src/components/strategy/SaveDraftBar.vue:439",
      "handlers": [
       "click"
      ],
@@ -3631,7 +3631,7 @@
      "labelFrom": "text",
      "ariaLabel": "",
      "testid": "",
-     "source": "frontend/src/components/strategy/SaveDraftBar.vue:441",
+     "source": "frontend/src/components/strategy/SaveDraftBar.vue:442",
      "handlers": [
       "keydown.esc"
      ],
@@ -3645,7 +3645,7 @@
      "labelFrom": "aria-label",
      "ariaLabel": "More actions",
      "testid": "more-menu",
-     "source": "frontend/src/components/strategy/SaveDraftBar.vue:442",
+     "source": "frontend/src/components/strategy/SaveDraftBar.vue:443",
      "handlers": [
       "click"
      ],
@@ -3660,7 +3660,7 @@
      "labelFrom": "text",
      "ariaLabel": "",
      "testid": "menu-save",
-     "source": "frontend/src/components/strategy/SaveDraftBar.vue:446",
+     "source": "frontend/src/components/strategy/SaveDraftBar.vue:447",
      "handlers": [
       "click"
      ],
@@ -3675,7 +3675,7 @@
      "labelFrom": "text",
      "ariaLabel": "",
      "testid": "save-as",
-     "source": "frontend/src/components/strategy/SaveDraftBar.vue:449",
+     "source": "frontend/src/components/strategy/SaveDraftBar.vue:450",
      "handlers": [
       "click"
      ],
@@ -3690,7 +3690,7 @@
      "labelFrom": "text",
      "ariaLabel": "",
      "testid": "rename-open",
-     "source": "frontend/src/components/strategy/SaveDraftBar.vue:452",
+     "source": "frontend/src/components/strategy/SaveDraftBar.vue:453",
      "handlers": [
       "click"
      ],
@@ -3705,7 +3705,7 @@
      "labelFrom": "text",
      "ariaLabel": "",
      "testid": "name-modal",
-     "source": "frontend/src/components/strategy/SaveDraftBar.vue:466",
+     "source": "frontend/src/components/strategy/SaveDraftBar.vue:467",
      "component": "components/strategy/SaveDraftBar.vue"
     },
     {
@@ -3716,7 +3716,7 @@
      "labelFrom": "text",
      "ariaLabel": "",
      "testid": "name-form",
-     "source": "frontend/src/components/strategy/SaveDraftBar.vue:467",
+     "source": "frontend/src/components/strategy/SaveDraftBar.vue:468",
      "component": "components/strategy/SaveDraftBar.vue"
     },
     {
@@ -3727,7 +3727,7 @@
      "labelFrom": "none",
      "ariaLabel": "",
      "testid": "name-input",
-     "source": "frontend/src/components/strategy/SaveDraftBar.vue:469",
+     "source": "frontend/src/components/strategy/SaveDraftBar.vue:470",
      "type": "text",
      "component": "components/strategy/SaveDraftBar.vue"
     },
@@ -3739,7 +3739,7 @@
      "labelFrom": "text",
      "ariaLabel": "",
      "testid": "name-cancel",
-     "source": "frontend/src/components/strategy/SaveDraftBar.vue:475",
+     "source": "frontend/src/components/strategy/SaveDraftBar.vue:476",
      "handlers": [
       "click"
      ],
@@ -3754,7 +3754,7 @@
      "labelFrom": "text",
      "ariaLabel": "",
      "testid": "name-confirm",
-     "source": "frontend/src/components/strategy/SaveDraftBar.vue:476",
+     "source": "frontend/src/components/strategy/SaveDraftBar.vue:477",
      "type": "submit",
      "component": "components/strategy/SaveDraftBar.vue"
     },
@@ -3766,7 +3766,7 @@
      "labelFrom": "text",
      "ariaLabel": "",
      "testid": "paper-open-builder",
-     "source": "frontend/src/components/strategy/SaveDraftBar.vue:487",
+     "source": "frontend/src/components/strategy/SaveDraftBar.vue:488",
      "handlers": [
       "click"
      ],
@@ -3781,7 +3781,7 @@
      "labelFrom": "text",
      "ariaLabel": "",
      "testid": "paper-open-positions",
-     "source": "frontend/src/components/strategy/SaveDraftBar.vue:488",
+     "source": "frontend/src/components/strategy/SaveDraftBar.vue:489",
      "to": "/positions/current-positions?tab=paper",
      "component": "components/strategy/SaveDraftBar.vue"
     },
@@ -3793,7 +3793,7 @@
      "labelFrom": "text",
      "ariaLabel": "",
      "testid": "save-undo",
-     "source": "frontend/src/components/strategy/SaveDraftBar.vue:492",
+     "source": "frontend/src/components/strategy/SaveDraftBar.vue:493",
      "handlers": [
       "click"
      ],
@@ -3808,7 +3808,7 @@
      "labelFrom": "aria-label",
      "ariaLabel": "Search name or underlying",
      "testid": "saved-search",
-     "source": "frontend/src/components/strategy/SaveDraftBar.vue:502",
+     "source": "frontend/src/components/strategy/SaveDraftBar.vue:503",
      "type": "search",
      "component": "components/strategy/SaveDraftBar.vue"
     },
@@ -3820,7 +3820,7 @@
      "labelFrom": "text",
      "ariaLabel": "",
      "testid": "saved-draft-row",
-     "source": "frontend/src/components/strategy/SaveDraftBar.vue:509",
+     "source": "frontend/src/components/strategy/SaveDraftBar.vue:510",
      "handlers": [
       "keydown.enter.self",
       "click"
@@ -3835,7 +3835,7 @@
      "labelFrom": "text",
      "ariaLabel": "",
      "testid": "``open-draft-${d.id}``",
-     "source": "frontend/src/components/strategy/SaveDraftBar.vue:513",
+     "source": "frontend/src/components/strategy/SaveDraftBar.vue:514",
      "type": "button",
      "component": "components/strategy/SaveDraftBar.vue"
     },
@@ -3847,7 +3847,7 @@
      "labelFrom": "none",
      "ariaLabel": "",
      "testid": "``actions-${d.id}``",
-     "source": "frontend/src/components/strategy/SaveDraftBar.vue:518",
+     "source": "frontend/src/components/strategy/SaveDraftBar.vue:519",
      "handlers": [
       "keydown.enter.stop",
       "click.stop"
@@ -3862,7 +3862,7 @@
      "labelFrom": "aria-label",
      "ariaLabel": "`Rename ${strategyLabel(d, `Draft ${d.id}`)}`",
      "testid": "``rename-draft-${d.id}``",
-     "source": "frontend/src/components/strategy/SaveDraftBar.vue:521",
+     "source": "frontend/src/components/strategy/SaveDraftBar.vue:522",
      "handlers": [
       "click"
      ],
@@ -3877,7 +3877,7 @@
      "labelFrom": "text",
      "ariaLabel": "",
      "testid": "saved-show-all",
-     "source": "frontend/src/components/strategy/SaveDraftBar.vue:527",
+     "source": "frontend/src/components/strategy/SaveDraftBar.vue:528",
      "to": "/strategies/my-strategies",
      "component": "components/strategy/SaveDraftBar.vue"
     },

@@ -308,7 +308,7 @@ const saveTrade = async () => {
   notice.value = null
   try {
     const pb = (await api.put(tradeRules(), { body: work.value }, { timeout: PLAN_SAVE_TIMEOUT_MS })).data
-    markSaved(Number(tradeId))
+    markSaved(tradeId)
     show(pb)
   } catch (err) { failSave(err) }
 }

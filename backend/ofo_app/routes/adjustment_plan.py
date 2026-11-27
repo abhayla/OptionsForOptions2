@@ -79,11 +79,12 @@ _NOT_AVAILABLE = "user_input_request_not_available"
 _GENERIC = "adjust_plan_no_playbook"
 _PRICES_NOT_READ = "plan_save_prices_not_read"
 #: Hotfix plan-save-1127: the longest a plan SAVE waits for a price read, and only when the typed levels need one (see
-#: ``_needs_prices``). Same 4 s as the plan watch route's PRICE_BUDGET_S (routes/plan_watch.py), the code's one price budget:
-#: it leaves the page's own 30 s save timeout ample room. Over it the save is REFUSED (nothing stored), never left hanging.
+#: ``_needs_prices``). Same 4 s as the plan watch route's PRICE_BUDGET_S (routes/plan_watch.py), the code's one price
+#: budget: it leaves the page's own 30 s save timeout ample room. Over it the save is REFUSED (nothing stored), never
+#: left hanging.
 PLAN_SAVE_PRICE_BUDGET_S = 4.0
-#: The longest the save waits to rebuild the whole sheet AFTER the write is committed; over it the answer is built from the
-#: stored plan alone and the page reads the full sheet with GET. The write is never held by it.
+#: The longest the save waits to rebuild the whole sheet AFTER the write is committed; over it the answer is built
+#: from the stored plan alone and the page reads the full sheet with GET. The write is never held by it.
 PLAN_SAVE_REPLY_BUDGET_S = 0.5
 ID_MAX = 9_223_372_036_854_775_807  # the id column is BIGSERIAL
 MAX_ADJUSTMENTS_LIMIT = 10
@@ -804,8 +805,9 @@ def _body_to_save(source: Any, plan: Any, edit: bool) -> dict:
 
 def _needs_prices(data: PlanIn) -> bool:
     """Which typed levels need a price read to be judged (ADR-330 (5), (7)): a rupee Target beside a percent Target (the
-    max profit is worked out from prices) and a dated time exit (today is the market's day). A stop in rupees or percent,
-    a lone Target, the counts and the playbook pick are judged from the stored stop base and the legs: no price read."""
+    max profit is worked out from prices) and a dated time exit (today is the market's day). A stop in rupees or
+    percent, a lone Target, the counts and the playbook pick are judged from the stored stop base and the legs: no
+    price read."""
     return bool(data.target_rupees and data.target) or data.time_exit is not None
 
 
@@ -820,12 +822,12 @@ async def _bounded_market(tracked: Any, market_reader: MarketReader, ctx: Market
 
 async def _saved_reply(db: Any, user_ref: str, strategy_id: int, stype: str, saved: store.Plan,  # noqa: PLR0913
                        user_values: Any, money: Any, kind: str, bases: Bases) -> AdjustmentPlanOut:
-    """The save's answer, built after the write is committed. The whole sheet under ``PLAN_SAVE_REPLY_BUDGET_S``; a sheet
-    that is slow or fails is replaced by the stored plan's own figures (plan and prefill, the page then reads the full
-    sheet with GET), never a hanging answer and never an error for a plan that is stored."""
+    """The save's answer, built after the write is committed. The whole sheet under ``PLAN_SAVE_REPLY_BUDGET_S``; a
+    sheet that is slow or fails is replaced by the stored plan's own figures (plan and prefill, the page then reads the
+    full sheet with GET), never a hanging answer and never an error for a plan that is stored."""
     try:
-        return await asyncio.wait_for(_sheet(db, user_ref, strategy_id, stype, saved, None, user_values, money, kind, bases),
-                                      PLAN_SAVE_REPLY_BUDGET_S)
+        sheet = _sheet(db, user_ref, strategy_id, stype, saved, None, user_values, money, kind, bases)
+        return await asyncio.wait_for(sheet, PLAN_SAVE_REPLY_BUDGET_S)
     except Exception:  # noqa: BLE001 - TimeoutError or a failed read: the stored plan alone answers, logged
         log.warning("adjustment plan: sheet not rebuilt for the save answer", exc_info=True)
     none = check.Resolved("none", None, None, None, False, saved_before_adr247=False)
@@ -865,7 +867,7 @@ async def _write(strategy_id: int, data: PlanIn, edit: bool, db: Any, user_ref: 
                                 None if market is None else market.now.astimezone(IST).date(),
                                 max((x.expiry for x in legs), default=None))
         saved = await store.accept_plan(db, user_ref, strategy_id, source.id, body, _base_json(tracked))
-        await db.commit()  # the write is durable BEFORE anything is read for the answer: a slow or dropped answer loses nothing
+        await db.commit()  # durable BEFORE anything is read for the answer: a slow or dropped answer loses nothing
         # ADR-330 (1): the reply shows the base now STORED (the one the checks read), not the one read before the save
         stored = dataclasses.replace(tracked, stop_base=in_force_mod.stop_base_from_json(saved.stop_base))
         return await _saved_reply(db, user_ref, strategy_id, stype, saved, user_values,
