@@ -437,6 +437,29 @@ describe('PaperStrategies: an UNKNOWN outcome keeps that strategy\'s exit unreso
     expect(note(w)).not.toMatch(/elsewhere|changed/i)
     expect(posts()).toHaveLength(1)
   })
+  it('PC 27 Nov 11:51: POST 503 while the order IS stored; the first scheduled re-read FAILS, the next 5 s tick shows the leg reduced: "<leg>: Exit placed on paper." with no reload and no click (order number only when the re-read has it)', async () => {
+    let reply = REAL_REPLY
+    let failing = false
+    answers['GET /tracking'] = () => (failing ? Promise.reject({ status: 503, parts: null }) : Promise.resolve({ data: reply }))
+    answers['POST /paper/strategies/48/orders'] = () => Promise.reject({ status: 503, parts: null })
+    const w = await show()
+    await exitLeg(w, 0)
+    await t(w, 'paper-confirm-button').trigger('click')
+    await flushPromises()
+    expect(has(w, 'paper-unknown')).toBe(true)
+    expect(confirmOff(w)).toBe(true)
+    reply = out0 // the order was stored
+    failing = true
+    await vi.advanceTimersByTimeAsync(TRACKING_REFRESH_MS) // first re-read fails: still unknown, Confirm off
+    expect(has(w, 'paper-unknown')).toBe(true)
+    expect(confirmOff(w)).toBe(true)
+    failing = false
+    await vi.advanceTimersByTimeAsync(TRACKING_REFRESH_MS) // the next regular tick resolves it
+    expect(has(w, 'paper-confirm')).toBe(false)
+    expect(note(w)).toMatch(/^.*22300.*: Exit placed on paper\.$/)
+    expect(note(w)).not.toMatch(/elsewhere|changed|not stored/i)
+    expect(posts()).toHaveLength(1)
+  })
   it('a good re-read after the reply that shows the legs unchanged: "not stored" sentence, then Confirm is on and a click posts again', async () => {
     answers['GET /tracking'] = ok(REAL_REPLY)
     answers['POST /paper/strategies/48/orders'] = () => Promise.reject({ status: 503, parts: null })

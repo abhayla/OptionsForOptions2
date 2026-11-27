@@ -125,19 +125,48 @@ describe('D-05 builder half: a failed read of the book blocks every Exit (REQ-10
     expect(orderPosts()).toHaveLength(0)
   })
 
-  it('failed: an open Exit dialog closes, nothing is posted, the staged exit is dropped (legs as before the click)', async () => {
+  // hotfix 27 Nov T2-08, ADR-016..019: a failed read never closes the Exit dialog with nothing said (the old rule closed it silently)
+  it('failed read while the dialog is in its "checking" step: it stays open, Confirm disabled, "<legs>: Prices are not live..." shown, nothing posted, staged exit kept; a good read enables Confirm (hotfix 27 Nov T2-08, ADR-016..019)', async () => {
+    const w = await builder()
+    let finish
+    answers['GET /paper/strategies/86/exit-risk'] = () => new Promise((resolve) => { finish = () => resolve({ data: { state: 'no' } }) })
+    await t(w, 'paper-exit-all').trigger('click')
+    await flushPromises()
+    expect(t(w, 'paper-exit-checking').exists()).toBe(true)
+    const names = w.vm.$.setupState.paperRows.map((r) => r.text).join(', ')
+    expect(names).not.toBe('')
+    await failRead(w)
+    expect(t(w, 'paper-confirm').exists()).toBe(true)
+    expect(t(w, 'paper-confirm-button').attributes('disabled')).toBeDefined()
+    expect(t(w, 'paper-error').text()).toBe(`${names}: ${NOT_LIVE}`)
+    expect(orderPosts()).toHaveLength(0)
+    expect(w.vm.$.setupState.legs).toEqual([]) // the staged exit is kept
+    finish()
+    await flushPromises()
+    expect(t(w, 'paper-confirm-button').attributes('disabled')).toBeDefined() // the check ended, the read is still failed
+    await goodRead()
+    expect(t(w, 'paper-confirm').exists()).toBe(true)
+    expect(t(w, 'paper-error').exists()).toBe(false)
+    expect(t(w, 'paper-confirm-button').attributes('disabled')).toBeUndefined()
+    expect(orderPosts()).toHaveLength(0)
+  })
+
+  it('failed: an open Exit dialog stays open, nothing is posted, the staged exit is kept, the sentence is in the dialog (hotfix 27 Nov T2-08, ADR-016..019)', async () => {
     const w = await builder()
     await t(w, 'paper-exit-all').trigger('click')
     await flushPromises()
     expect(t(w, 'paper-confirm').exists()).toBe(true)
     await failRead(w)
-    expect(t(w, 'paper-confirm').exists()).toBe(false)
+    expect(t(w, 'paper-confirm').exists()).toBe(true)
+    expect(t(w, 'paper-error').text()).toContain(NOT_LIVE)
     expect(orderPosts()).toHaveLength(0)
-    expect(w.vm.$.setupState.legs).toEqual(w.vm.$.setupState.paper.net) // N-04: dropped through the same cancel as the user's
+    expect(w.vm.$.setupState.legs).toEqual([])
     expect(t(w, 'paper-exit-reason').text()).toBe(NOT_LIVE)
+    await t(w, 'paper-cancel').trigger('click') // the user's own Cancel still works
+    expect(t(w, 'paper-confirm').exists()).toBe(false)
   })
 
-  it('failed: a Confirm that reaches the page while the read is failed posts nothing and closes the dialog', async () => {
+  it('failed: a Confirm that reaches the page while the read is failed posts nothing, the dialog stays and says why (hotfix 27 Nov T2-08, ADR-016..019)', async () => {
     const w = await builder()
     await t(w, 'paper-exit-all').trigger('click')
     await flushPromises()
@@ -148,15 +177,20 @@ describe('D-05 builder half: a failed read of the book blocks every Exit (REQ-10
     await s.confirmPending(rows)
     await flushPromises()
     expect(orderPosts()).toHaveLength(0)
-    expect(t(w, 'paper-confirm').exists()).toBe(false)
+    expect(t(w, 'paper-confirm').exists()).toBe(true)
+    expect(t(w, 'paper-error').text()).toContain(NOT_LIVE)
+    expect(t(w, 'paper-confirm-button').attributes('disabled')).toBeDefined()
   })
 
-  it('failed: a "Review and add" dialog of adds closes too (Tier A F2: its orders come from the net on screen), the edit stays', async () => {
+  it('failed: a "Review and add" dialog of adds stays open too, Confirm disabled with the sentence, the edit stays (hotfix 27 Nov T2-08, ADR-016..019)', async () => {
     const w = await builder()
     await reviewAdd(w)
     await failRead(w)
-    expect(t(w, 'paper-confirm').exists()).toBe(false)
+    expect(t(w, 'paper-confirm').exists()).toBe(true)
+    expect(t(w, 'paper-confirm-button').attributes('disabled')).toBeDefined()
+    expect(t(w, 'paper-error').text()).toContain(NOT_LIVE)
     expect(w.vm.$.setupState.pendingOrders.length).toBe(1)
+    expect(orderPosts()).toHaveLength(0)
   })
 
   it('failed, then the next good read: every Exit is enabled again, the reason and the dashes are gone', async () => {
@@ -196,6 +230,7 @@ describe('ADR-328 (4): an Exit is never built from an old net', () => {
     const rows = s.paperRows
     await setMark(w, true)
     expect(t(w, 'paper-confirm').exists()).toBe(false)
+    expect(t(w, 'paper-exit-note').text()).toBe(`${rows.map((r) => r.text).join(', ')}: ${CHANGED}`) // hotfix 27 Nov T2-08, ADR-016..019: closed with a sentence
     await s.confirmPending(rows)
     expect(orderPosts()).toHaveLength(0)
     expect(s.legs).toEqual(s.paper.net) // N-04: the staged exit is dropped with the dialog
@@ -212,6 +247,7 @@ describe('ADR-328 (4): an Exit is never built from an old net', () => {
     await flushPromises()
     expect(orderPosts()).toHaveLength(0)
     expect(t(w, 'paper-confirm').exists()).toBe(false)
+    expect(t(w, 'paper-exit-note').text()).toContain(CHANGED) // hotfix 27 Nov T2-08: no silent close
   })
 
   it('changed elsewhere: a "Review and add" dialog of other edits closes too (Tier A F2), the edit stays', async () => {
@@ -239,18 +275,22 @@ describe('ADR-328 (4): an Exit is never built from an old net', () => {
     expect(t(w, 'paper-exit-reason').text()).toBe(CHANGED)
   })
 
-  it('failed read: no Exit edit outlives the closed dialog either; nothing is posted', async () => {
+  it('failed read: the dialog stays with its staged exit, Confirm posts nothing; only a change elsewhere drops the exit (hotfix 27 Nov T2-08, ADR-016..019)', async () => {
     const w = await builder()
     await t(w, 'paper-exit-all').trigger('click')
     await flushPromises()
     await failRead(w)
-    expect(t(w, 'paper-review').exists()).toBe(false) // N-04: the staged exit went with the dialog
-    expect(w.vm.$.setupState.legs).toEqual(w.vm.$.setupState.paper.net)
-    await flushPromises()
-    if (t(w, 'paper-confirm-button').exists()) await t(w, 'paper-confirm-button').trigger('click')
+    expect(t(w, 'paper-confirm').exists()).toBe(true)
+    expect(w.vm.$.setupState.legs).toEqual([])
+    await t(w, 'paper-confirm-button').trigger('click') // disabled: no effect
+    await w.vm.$.setupState.confirmPending(w.vm.$.setupState.paperRows) // and no direct confirm either
     await flushPromises()
     expect(orderPosts()).toHaveLength(0)
     expect(t(w, 'paper-exit-reason').text()).toBe(NOT_LIVE)
+    await setMark(w, true) // then the trade really changed elsewhere: closed with the sentence, the exit dropped (N-04)
+    expect(t(w, 'paper-confirm').exists()).toBe(false)
+    expect(w.vm.$.setupState.legs).toEqual(w.vm.$.setupState.paper.net)
+    expect(t(w, 'paper-exit-note').text()).toContain(CHANGED)
   })
 
   it('both flags: the not-live reason comes first', async () => {
