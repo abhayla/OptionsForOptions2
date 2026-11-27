@@ -285,16 +285,23 @@ def closed_label(state: MarketState, leg_quotes: Iterable[NormalizedQuote | None
     if not state.closed:
         return ClosedLabel(label_time(state, all_times))
     later = [q.price_at for q in legs if not made_by_the_close(q)]
-    frozen = [q.price_at for q in legs if made_by_the_close(q)]
-    if not later:
+    # Lane N review M3: legs made by the close on an OLDER trading day than the newest priced day are a group of their
+    # own: the latest day leads, the older legs read "as of <their own dated time>" (never under the newer day's time)
+    newest = max((t.astimezone(IST).date() for t in all_times), default=None)
+    frozen = [q.price_at for q in legs if made_by_the_close(q) and q.price_at.astimezone(IST).date() == newest]
+    older = [q.price_at for q in legs if made_by_the_close(q) and newest and q.price_at.astimezone(IST).date() < newest]
+    if not frozen and later:  # no leg made by the close on the newest day: older frozen legs are the frozen group
+        frozen, older = [q.price_at for q in legs if made_by_the_close(q)], []
+    if (not later and not older) or (not frozen and not later):
         return ClosedLabel(label_time(state, all_times))
     if frozen:
-        if spot is not None and _aware(spot.price_at) and made_by_the_close(spot):
+        if spot is not None and _aware(spot.price_at) and made_by_the_close(spot) \
+                and spot.price_at.astimezone(IST).date() == newest:
             frozen.append(spot.price_at)
-        frozen_at, later_group = max(frozen), later
+        frozen_at, later_group = max(frozen), [*later, *older]
     else:  # every leg first priced after the close: the earliest time labels the group, only newer legs are "as of"
         frozen_at = min(later)
-        later_group = [t for t in later if t > frozen_at]
+        later_group = [t for t in later if t > frozen_at] + older
         if not later_group:
             return ClosedLabel(label_time(state, all_times))
     later_at = min(later_group)
