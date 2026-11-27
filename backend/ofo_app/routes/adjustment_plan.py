@@ -49,6 +49,7 @@ from pydantic import BaseModel, ConfigDict
 
 from ofo_app import adjustment_check as check
 from ofo_app import playbook_store as store
+from ofo_app import scenario_mode
 from ofo_app import settings_in_force as in_force_mod
 from ofo_app.api_models import ApiModel, CatalogueText, Identifier, Money
 from ofo_app.catalogue_store import load_catalogue
@@ -595,7 +596,7 @@ async def _stored_kind(db: Any, tracked: Any) -> str | None:
     own stated kind wins). Used when the market read gave no kind (no live session, market closed). None when the
     catalogue holds no future of the underlying (the rule cannot judge) or cannot be read: never a guess."""
     from ofo_app import adjustment_readers as readers  # noqa: PLC0415 - it imports routes.adjustment
-    scn = readers._scenario()  # noqa: SLF001 - the reader scenario switch, as read_market uses it
+    scn = scenario_mode.current()  # the scenario switch read_market uses
     legs = getattr(tracked.position, "legs", ())
     if not legs:
         return None

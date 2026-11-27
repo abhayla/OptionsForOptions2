@@ -112,7 +112,7 @@ async def test_a_slow_price_read_on_a_reset_is_refused_in_time(app_db_url, monke
 
 
 
-# --- no live session (market closed, LIVE_MARKET off): the REAL read_market(tracked, None), expiry_kind None ---------------
+# --- no live session (market closed, LIVE_MARKET off): the REAL read_market(tracked, None), expiry_kind None ---
 
 
 class _Scn:
@@ -130,7 +130,8 @@ def _no_session(monkeypatch, scenario_kind):
     async def real(tracked, market_reader, ctx):
         return await readers.read_market(tracked, None)
     monkeypatch.setattr(route, "_market", real)
-    monkeypatch.setattr(readers, "_scenario", lambda: None if scenario_kind is None else _Scn(scenario_kind))
+    shim = type("S", (), {"current": staticmethod(lambda: None if scenario_kind is None else _Scn(scenario_kind))})
+    monkeypatch.setattr(route, "scenario_mode", shim)
 
 
 ROWS_AFTER_50 = {"weekly": [D("50"), D("50"), D("40")], "monthly": [D("50"), D("50"), D("20")]}
@@ -161,7 +162,7 @@ async def test_a_percent_stop_with_no_session_and_no_stored_kind_is_refused_and_
         assert before == await _plan_row(app_db_url, sid)
 
 
-async def test_a_percent_stop_with_no_session_uses_the_stored_kind_and_lands_in_the_monthly_row(app_db_url, monkeypatch):
+async def test_a_percent_stop_with_no_session_uses_the_stored_kind_and_lands_in_monthly(app_db_url, monkeypatch):
     sid, own = await _accepted(app_db_url, monkeypatch, "Stored kind percent")
     _no_session(monkeypatch, "monthly")
     status, out = await _call("PUT", _plan_path(sid), json={"playbook_id": own.id, "stop": "50"})
@@ -190,7 +191,7 @@ async def test_a_target_only_save_with_no_session_is_stored(app_db_url, monkeypa
 
 
 async def test_a_reset_with_no_session_works(app_db_url, monkeypatch):
-    sid, own = await _accepted(app_db_url, monkeypatch, "No kind reset")
+    sid, _own = await _accepted(app_db_url, monkeypatch, "No kind reset")
     _no_session(monkeypatch, None)
     status, out = await _call("POST", _plan_path(sid) + "/reset")
     assert status == OK, out
@@ -213,9 +214,9 @@ class _Cat:
 
 
 async def test_the_stored_kind_is_the_one_rule_over_the_stored_catalogue(monkeypatch):
-    """Monthly = the leg's expiry is also a future's expiry; a catalogue with no future cannot judge (None, never a guess)."""
+    """Monthly = the leg expiry is also a future expiry; a catalogue with no future cannot judge (None, no guess)."""
     from ofo_app import adjustment_readers as readers  # noqa: PLC0415
-    monkeypatch.setattr(readers, "_scenario", lambda: None)
+    monkeypatch.setattr(route, "scenario_mode", type("S", (), {"current": staticmethod(lambda: None)}))
     leg_day, other = datetime.date(2026, 12, 29), datetime.date(2026, 12, 3)
     tracked = type("T", (), {"position": type("P", (), {
         "underlying": "NIFTY", "legs": (type("L", (), {"expiry": leg_day})(),)})()})()
