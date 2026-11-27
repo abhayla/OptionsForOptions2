@@ -59,7 +59,7 @@ from ofo_app import (
 from ofo_app.db import get_sessionmaker
 from ofo_app.errors import Failure
 from ofo_app.outcome_oi import oi_of
-from ofo_app.read_door import read_quotes
+from ofo_app.read_door import NO_TOKEN, read_quotes
 from ofo_app.routes.adjustment import MarketInputs, Tracked
 from ofo_app.routes.broker import current_user_ref
 from ofo_app.routes.outcome import feed_windows_of, market_state, server_now, spot_judging_now
@@ -499,7 +499,7 @@ async def held_read(provider: Any, underlying: str, expiry: datetime.date, leg_i
             not index_wait or snap.index is not None)
     held = await read_quotes(feed, missing, read, done, lambda: provider.status().connected, LEG_WAIT_S,
                                LEG_POLL_S)
-    return first if held is None else held
+    return first if held is NO_TOKEN else held
 
 
 def window_ids(listed: Iterable[Any], underlying: str, expiry: datetime.date, spot: Decimal | None,
@@ -916,7 +916,7 @@ async def _index_spot_held(ctx: Any, feed: Any, underlying: str) -> Decimal:
         if quote is None and feed is not None and index_id is not None:
             held = await read_quotes(feed, [index_id], read, lambda q: q is not None,
                                        lambda: provider.status().connected, LEG_WAIT_S, LEG_POLL_S)
-            quote = quote if held is None else held
+            quote = quote if held is NO_TOKEN else held
         spot = None if quote is None else quote.ltp
     if not isinstance(spot, Decimal) or spot <= 0:
         raise StrategyRefused("paper_index_price_unavailable", Failure.CONFLICT)

@@ -106,7 +106,7 @@ from ofo_app.paper_reasons import (
     reason_text,
     unpriced_text,
 )
-from ofo_app.read_door import read_quotes
+from ofo_app.read_door import NO_TOKEN, read_quotes
 from ofo_app.routes.adjustment import TrackedReader, get_tracked_reader
 from ofo_app.routes.broker import current_user_ref
 from ofo_app.routes.catalogue import get_shown_date
@@ -550,7 +550,8 @@ async def _hold_until_ready(feed: LiveFeed, ctx: MarketContext, underlying: str,
         lambda: read_snapshot(provider, underlying, ids, ctx.clock(), ctx.rate, feed_scope(ctx),
                               quality=ctx.forward_quality),
         lambda snap: _read_ready(snap, ids), lambda: provider.status().connected, FORWARD_WAIT_S, POLL_SECONDS)
-    return snapshot if held is None else held  # None: a contract the provider has no token for, the answer stands
+    # NO_TOKEN: a contract the provider has no token for, the answer stands
+    return snapshot if held is NO_TOKEN else held
 
 
 async def _snapshot(ctx: MarketContext, feed: LiveFeed | None, underlying: str, ids: list[str]):

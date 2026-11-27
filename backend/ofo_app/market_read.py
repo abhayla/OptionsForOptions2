@@ -29,7 +29,7 @@ from ofo.tracking import paper
 
 from ofo_app import may_act
 from ofo_app.live_push import POLL_SECONDS, LiveFeed
-from ofo_app.read_door import read_quotes
+from ofo_app.read_door import NO_TOKEN, read_quotes
 from ofo_app.routes.outcome import MarketContext, feed_scope
 
 log = logging.getLogger(__name__)
@@ -113,7 +113,7 @@ async def read_market(ctx: MarketContext, feed: LiveFeed | None, underlying: str
     held = await read_quotes(feed, [*keys, *([index_id] if index_id else [])], read,
                                lambda a: a.ready, lambda: provider.status().connected, wait.seconds, POLL_SECONDS,
                                sleep=wait.sleep, now=wait.now)
-    if held is None:  # the fan-out has no token for an id: nothing was held, the read stands
+    if held is NO_TOKEN:  # the fan-out has no token for any id: nothing was held, the read stands
         log.info("market read (%s): nothing to hold for %s", purpose, underlying)
         return answer
     if not held.ready:

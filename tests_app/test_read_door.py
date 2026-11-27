@@ -50,11 +50,14 @@ class FakeProvider:
         self.subscribed: list[str] = []
         self.unsubscribed: list[str] = []
         self.reads = 0
+        self.unknown: set[str] = set()  # ids the provider has no token for (the master does not list them yet)
 
     def live_quote_stream(self, _cb) -> None:
         pass
 
     def subscribe(self, ids) -> None:
+        if self.unknown & set(ids):
+            raise KeyError(sorted(self.unknown & set(ids)))
         for i in ids:
             self.subscribed.append(i)
             self.since[i] = self.clock.t
@@ -161,3 +164,96 @@ async def test_the_age_rule_is_unchanged_an_old_index_quote_still_waits():
                                        lambda q: feed_state.quote_health(q, now).name == "AVAILABLE",
                                        lambda: True, 0.1, 0.01, sleep=clock.sleep, now=clock.now)
     assert snap is index and clock.waits >= POLLS_IN_A_WAIT  # waited to the deadline, ended stale
+
+
+# ---- review round 1 (hotfix 27 Nov): the sentinel, unknown ids, the cap, the one sweeper ---------------------------
+
+async def test_a_read_that_is_itself_none_is_not_the_no_token_answer():
+    """Finding 1: the door's "no token" is its own value; a caller's read of None is the read."""
+    clock = Clock()
+    p = FakeProvider(clock)
+    feed = _feed(p)
+    got = await read_door.read_quotes(feed, ["NFO:1"], lambda: None, lambda _s: True, lambda: True, 0.5, 0.01,
+                                      sleep=clock.sleep, now=clock.now)
+    assert got is None and got is not read_door.NO_TOKEN
+    p.unknown = {"NFO:7", "NFO:8"}
+    out: set[str] = set()
+    none_known = await read_door.read_quotes(feed, ["NFO:7", "NFO:8"], lambda: None, lambda _s: True, lambda: True,
+                                             0.5, 0.01, sleep=clock.sleep, now=clock.now, unknown_out=out)
+    assert none_known is read_door.NO_TOKEN and out == {"NFO:7", "NFO:8"}
+
+
+async def test_an_unknown_id_is_never_leased_and_the_next_read_asks_again():
+    """Finding 3: a read before the token map knows an id waits for nothing; once the map learns it the second read
+    subscribes and returns the quote."""
+    clock = Clock()
+    p = FakeProvider(clock)
+    p.unknown = {"NFO:9"}
+    feed = _feed(p)
+    out: set[str] = set()
+    first = await read_door.read_quotes(feed, ["NFO:9"], p.book, lambda s: "NFO:9" in s, lambda: True, 0.5, 0.01,
+                                        sleep=clock.sleep, now=clock.now, unknown_out=out)
+    assert first is read_door.NO_TOKEN and out == {"NFO:9"} and clock.waits == 0
+    assert read_door.read_lease().held_ids == frozenset()  # nothing leased for an id with no token
+    p.unknown = set()  # the master refresh learns it
+    p.preloaded.add("NFO:9")
+    second = await _read(feed, p, clock, ["NFO:9"])
+    assert "NFO:9" in second and p.subscribed == ["NFO:9"]
+
+
+async def test_one_known_fresh_and_one_unknown_make_zero_waits():
+    """Finding 4: an id nobody can quote is never waited for (the old door returned at once)."""
+    clock = Clock()
+    p = FakeProvider(clock)
+    p.unknown = {"NFO:9"}
+    p.preloaded.add("NFO:1")
+    feed = _feed(p)
+    out: set[str] = set()
+    snap = await read_door.read_quotes(feed, ["NFO:1", "NFO:9"], p.book, lambda s: {"NFO:1", "NFO:9"} <= set(s),
+                                       lambda: True, 3.0, 0.05, sleep=clock.sleep, now=clock.now, unknown_out=out)
+    assert "NFO:1" in snap and out == {"NFO:9"} and clock.waits == 0 and clock.t == 0.0
+    # with the caller's rule for the KNOWN ids only, a known id still missing is waited for, the unknown one is not
+    p.delays["NFO:2"] = DELAY
+    got = await read_door.read_quotes(feed, ["NFO:1", "NFO:2", "NFO:9"], p.book, lambda s: False, lambda: True, 1.0,
+                                      0.05, sleep=clock.sleep, now=clock.now,
+                                      done_known=lambda s, known: set(known) <= set(s))
+    assert "NFO:2" in got and DELAY <= clock.t < DELAY + 0.06
+
+
+async def test_two_hundred_distinct_sets_hold_a_bounded_number_of_tokens(monkeypatch):
+    """Finding 5: one handle per token (a token in many sets is held once) and a cap; the oldest-renewed goes first."""
+    monkeypatch.setattr(read_door, "MAX_HELD_TOKENS", 500)
+    clock = Clock()
+    p = FakeProvider(clock)
+    feed = _feed(p)
+    for n in range(200):  # 200 distinct sets of 4 tokens drawn from 700 distinct tokens
+        ids = [f"T:{(n * 3 + k) % 700}" for k in range(4)]
+        await read_door.read_quotes(feed, ids, p.book, lambda _s: True, lambda: True, 0.0, 0.01,
+                                    sleep=clock.sleep, now=clock.now)
+    held = read_door.read_lease().held_ids
+    assert len(held) <= 500 and "T:600" in held and "T:0" not in held  # noqa: PLR2004 - bounded, oldest let go first
+    assert all(feed.fanout.subscriber_count(t) == 1 for t in held)
+    assert set(p.since) == set(held)  # the vendor holds exactly the leased tokens
+    read_door.read_lease().release()
+    assert p.since == {}
+
+
+async def test_one_sweeper_timer_for_many_reads_and_it_releases_the_expired_tokens(monkeypatch):
+    """Finding 7: a read arms no timer of its own; ONE sweeper per door ends the leases."""
+    monkeypatch.setattr(leg_picker, "LEASE_SECONDS", 0.05)
+    clock = Clock()
+    p = FakeProvider(clock)
+    feed = _feed(p)
+    loop = asyncio.get_running_loop()
+    real = loop.call_later
+    armed: list[float] = []
+    loop.call_later = lambda delay, cb, *a: armed.append(delay) or real(delay, cb, *a)
+    try:
+        for n in range(30):
+            await read_door.read_quotes(feed, [f"T:{n}"], p.book, lambda _s: True, lambda: True, 0.0, 0.01,
+                                        sleep=clock.sleep, now=clock.now)
+        assert len(armed) == 1
+        await asyncio.sleep(0.3)  # the sweeper runs, finds every token expired and lets them go
+    finally:
+        loop.call_later = real
+    assert read_door.read_lease().held_ids == frozenset() and p.since == {}

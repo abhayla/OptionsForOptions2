@@ -28,7 +28,7 @@ from ofo_app import live_market
 from ofo_app.api_models import ApiModel, Identifier, Money
 from ofo_app.errors import ClosedRoute
 from ofo_app.live_push import POLL_SECONDS, LiveFeed
-from ofo_app.read_door import read_quotes
+from ofo_app.read_door import NO_TOKEN, read_quotes
 from ofo_app.routes.outcome import (
     AnswerClock,
     MarketContext,
@@ -125,7 +125,7 @@ async def hold_until_priced(feed: LiveFeed, ctx: MarketContext, underlying: str,
     held = await read_quotes(feed, unpriced, lambda: _read(ctx, underlying, ids),
                              lambda result: all(result[2].get(i) is not None for i in unpriced),
                              lambda: ctx.provider.status().connected, PLANNED_ENTRY_WAIT_S, POLL_SECONDS)
-    return _read(ctx, underlying, ids) if held is None else held
+    return _read(ctx, underlying, ids) if held is NO_TOKEN else held
 
 
 @router.post("/api/strategies/planned-entry", response_model=PlannedEntriesOut)
