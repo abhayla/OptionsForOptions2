@@ -1974,6 +1974,22 @@
               }
             ]
           },
+          "put_back": {
+            "items": {
+              "pattern": "^[A-Za-z0-9_\\-.]{1,64}$",
+              "type": "string"
+            },
+            "title": "Put Back",
+            "type": "array"
+          },
+          "put_back_off": {
+            "items": {
+              "pattern": "^[A-Za-z0-9_\\-.]{1,64}$",
+              "type": "string"
+            },
+            "title": "Put Back Off",
+            "type": "array"
+          },
           "settings": {
             "items": {
               "$ref": "#/components/schemas/SettingInForceOut"
