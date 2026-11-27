@@ -115,6 +115,25 @@ describe('Add to Paper in every state (the page passes priceNow into the bar)', 
       w.unmount()
     })
   }
+  it('the request carries prices_not_live_confirmed only when the line was shown and ticked', async () => {
+    answers['POST /paper/strategies/7/orders'] = { strategy_id: 7, orders: [] }
+    const w = await addToPaper({ pricesLive: false, priceAsOf: CLOSE })
+    await w.get('[data-testid="paper-not-live-ack"]').setValue(true)
+    await w.get('[data-testid="paper-confirm-button"]').trigger('click')
+    await flushPromises()
+    const post = calls.find((c) => c.method === 'POST' && c.url === '/paper/strategies/7/orders')
+    expect(post.body.prices_not_live_confirmed).toBe(true)
+    w.unmount()
+  })
+  it('live: the request has no prices_not_live_confirmed', async () => {
+    answers['POST /paper/strategies/7/orders'] = { strategy_id: 7, orders: [] }
+    const w = await addToPaper({ pricesLive: true })
+    await w.get('[data-testid="paper-confirm-button"]').trigger('click')
+    await flushPromises()
+    const post = calls.find((c) => c.method === 'POST' && c.url === '/paper/strategies/7/orders')
+    expect('prices_not_live_confirmed' in post.body).toBe(false)
+    w.unmount()
+  })
   it('live: no tick box, Confirm is active', async () => {
     const w = await addToPaper({ pricesLive: true })
     expect(w.find('[data-testid="paper-not-live"]').exists()).toBe(false)

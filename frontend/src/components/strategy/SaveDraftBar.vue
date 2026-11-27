@@ -384,7 +384,8 @@ async function confirmPaper(orders, held = null) {
   paperError.value = ''
   paperState.value = PAPER_STATE.READY
   try {
-    await addToPaper(api, paperTarget.value, orders, [], null, held)
+    // ADR-330 (28): Confirm is enabled only after the line is ticked, so a confirm while the line is shown IS the tick
+    await addToPaper(api, paperTarget.value, orders, [], null, held, null, !props.pricesLive)
   } catch (e) {
     const outcome = paperPostOutcome(e)
     if (outcome === PAPER_STATE.REFUSED) paperError.value = (e?.parts ?? NEUTRAL_PARTS).what_happened || NEUTRAL_PARTS.what_happened // 4xx: nothing stored
