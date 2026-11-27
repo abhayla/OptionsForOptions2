@@ -1,4 +1,4 @@
-STATUS 22:45 | item 1 PUSHED (head 3e30e66, prepush TOTAL PASS 2268 s); item 2 written, gate running: 206a9f0: 7 expected-fail, 3 pass; loss-stop 3e0b978: 10 pass; worker-join 903a0f3: 10 pass; (h) not reproduced on 206a9f0 | next push: item 2 after prepush TOTAL PASS, then item 3 if time | blocker: none (send_message to "@parent" refused: untrusted device; this top line is the report)
+STATUS 00:05 | item 1 PUSHED (prepush TOTAL PASS): 206a9f0 7 expected-fail 3 pass; loss-stop 3e0b978 10 pass; worker-join 903a0f3 10 pass; (h) NOT reproduced on 206a9f0 | item 2 PUSHED (head e3cf60b, TOTAL PASS 2255 s): 46 strict expected-fail, 1 pass | item 3: cannot be dry-run: the relay `tests_app/holdback_relay.py` is not built (Q2 only designed it) | SAFE TO CLOSE | blocker: none (send_message to "@parent" refused: untrusted device; this line is the report)
 
 # Lane Q3 results (27 Nov 2026, tests only; branch test/worker-chain-1127 from bc0d00aa)
 
@@ -52,7 +52,7 @@ All 47 names of Lane E's section C list, as table rows `PARITY` (name -> the sym
 - Not built: the decision-level half (the same input run through both doors up to the fake adapter, comparing refusal code, sentence and record): the real door has no stop, exit dialog, expiry or P&L to run (audit section 1).
 
 ## Not done
-- Item 3 (hold-back relay dry run for one contract's price, T1-23): not started.
+- Item 3 (hold-back relay dry run for one contract's price, T1-23): cannot be dry-run: `tests_app/holdback_relay.py` does not exist (Q2 designed it in RESULTS-lane-q2 "Gap 7" and built only the rules file, `filter_frame` and the route delay). Building it (a loopback Kite socket that passes the feed's subscribe messages up and filters binary messages down) was not possible in the budget left. Monday's T1-23 therefore has no tested command; the route delay for T2-08 can start now: `OFO_HOLDBACK_FILE=<rules.json> python -m uvicorn --factory holdback:create_app --app-dir tests_app`.
 
 ## task | model | minutes
 | Task | Model | Minutes |
