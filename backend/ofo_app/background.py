@@ -1470,7 +1470,7 @@ class Worker:
     def _plan_changed(self, w: Watched) -> bool:
         """J3 item 3: the plan in the list is not the one this strategy's last check ran with (saved since). Such a
         strategy's first check with the new plan is never held by the tick, signature or style interval holds, whatever
-        a check that ran with the old plan meanwhile left behind (the re-read awaits the database before it publishes)."""
+        a check with the old plan left behind meanwhile (the re-read awaits the database before it publishes)."""
         kept = self._checked_body.get(w.strategy_id, _GONE)
         return kept is not _GONE and kept != w.body
 
