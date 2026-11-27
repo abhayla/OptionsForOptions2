@@ -365,6 +365,8 @@ accept; a level edit never carries it. An edit of an old plan with no playbook n
 margin stop "4" and T-16), so R1/R2-MAJOR-2 is fixed in the same route (`_body_to_save`), not deferred. Known leftover:
 "Use playbook as is" from the sheet on a plan that already follows that playbook now copies the playbook's body (as
 POST does) instead of keeping the plan's customisations; this is what "as is" says. No deferred issue is needed.
+| A plan sheet opened while another tab switched the plan's playbook gets "playbook_id is not valid. Correct that value" on Save | 0058 final review (Opus, 27 Nov): routes/adjustment_plan.py PUT refuses a different stored playbook without accept (nothing written); the words read as a typing error | ADR-330 (45); ADR-003 | the refusal says the plan changed elsewhere and offers to reload |
+| PreferencesTab cannot edit a plan with no playbook | 0058 final review: it sends playbook_id null and gets 422, nothing written; unchanged since 206a9f06 | ADR-330 (45); ADR-250 | an edit from PreferencesTab of a no-playbook plan saves, keeps its own stops, and stamps nothing |
 
 ## Lines waiting for a person's approval (none written by Lane J)
 
