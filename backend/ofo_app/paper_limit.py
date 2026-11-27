@@ -125,8 +125,6 @@ async def check_order_size(db: Any, existing: Sequence[Any], new: Sequence[Any],
     the leg will hold after EACH order of the batch (held + added, signed net of its contract, in stored order) may
     not exceed ``limits.max_lots`` (default 100, (52)); an order that does not grow the leg's net (a cut back of a
     leg already over a lowered limit) passes. An unreadable setting or store raises: nothing placed."""
-    from ofo.instruments.freeze_limits import StoredFreeze, largest_allowed_units  # noqa: PLC0415
-    from ofo.instruments.models import InstrumentId  # noqa: PLC0415
     from ofo.settings import calc  # noqa: PLC0415
     from ofo.strategy.definition import display_contract  # noqa: PLC0415
 
@@ -134,13 +132,19 @@ async def check_order_size(db: Any, existing: Sequence[Any], new: Sequence[Any],
     from ofo_app.routes.paper import identity_of  # noqa: PLC0415 - it imports the route layer
     if not new:
         return
-    top = calc.max_lots(settings)
     found = {c.contract_id: c for c in await tracked_contracts.resolve(db, sorted({o.contract_id for o in new}))}
-    stored = await freeze_read.limits_in_force(db)
 
     def name_of(contract_id: int) -> str:
         return display_contract(identity_of(found[contract_id]))
-    for o in new:  # per order: the freeze quantity, every kind
+    _check_freeze(await freeze_read.limits_in_force(db), found, new, name_of)
+    _check_leg_totals(calc.max_lots(settings), found, existing, new, name_of)
+
+
+def _check_freeze(stored: Any, found: Mapping[int, Any], new: Sequence[Any], name_of: Any) -> None:
+    """Per order, every kind: the freeze quantity (see ``check_order_size``)."""
+    from ofo.instruments.freeze_limits import StoredFreeze, largest_allowed_units  # noqa: PLC0415
+    from ofo.instruments.models import InstrumentId  # noqa: PLC0415
+    for o in new:
         c = found[o.contract_id].stored.listed.contract  # a contract with no stored row was refused before the door
         limit = stored.get(InstrumentId(c.exchange_segment, c.exchange_token))
         if limit is None and o.kind in paper_store.REDUCING_KINDS:
@@ -158,7 +162,12 @@ async def check_order_size(db: Any, existing: Sequence[Any], new: Sequence[Any],
         raise StrategyRefused("paper_leg_over_order_limit", message=render(
             "paper_leg_over_order_limit", contract=name_of(o.contract_id),
             lots=-(-o.quantity // freeze.lot), max_lots=top_lots))
-    for cid, leg in found.items():  # per leg: the total it holds after EACH order, in stored order (ADR-330 (50))
+
+
+def _check_leg_totals(top: int, found: Mapping[int, Any], existing: Sequence[Any], new: Sequence[Any],
+                      name_of: Any) -> None:
+    """Per leg: the total it holds after EACH order, in stored order (ADR-330 (50))."""
+    for cid, leg in found.items():
         lot = leg.stored.listed.contract.lot_size
         held = sum(_signed(r.order) for r in existing if r.order.contract_id == cid)
         held_lots = -(-abs(held) // lot)

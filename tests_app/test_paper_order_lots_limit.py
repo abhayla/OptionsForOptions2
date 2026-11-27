@@ -10,7 +10,6 @@ from http import HTTPStatus
 import pytest
 from ofo_app.strategy_refused import StrategyRefused
 from sqlalchemy import text
-from ofo_app import settings_store
 from test_strategy_store import _client
 from test_strategy_tracking import _setup
 
@@ -33,7 +32,8 @@ async def db(app_engine):
 async def _store_freeze(db, contract_id: int, limit: int = FREEZE, days_ahead: int = 0) -> None:
     await db.execute(text(
         "INSERT INTO public.exchange_freeze_limits (exchange_segment, exchange_token, file_date, freeze_limit, "
-        "file_name) SELECT exchange_segment, exchange_token, CURRENT_DATE + CAST(:d AS integer), :limit, 'NSE_FO_contract.csv.gz' "
+        "file_name) SELECT exchange_segment, exchange_token, CURRENT_DATE + CAST(:d AS integer), :limit, "
+        "'NSE_FO_contract.csv.gz' "
         "FROM public.catalogue_contracts WHERE id = :id"), {"limit": limit, "id": contract_id, "d": days_ahead})
 
 
@@ -121,6 +121,7 @@ async def test_an_exit_within_the_limit_succeeds_and_the_book_shows_it_closed(db
 
 
 # ---- Lane K, ADR-330 (50)-(52): the total a leg will hold after the order, default 100 lots, exits over freeze ----
+DEFAULT_MAX_LOTS = 100
 BIG_FREEZE = 500 * LOT  # a freeze limit that does not bind: the lots limit is what is under test
 
 
@@ -175,7 +176,7 @@ async def test_a_cut_back_of_a_leg_held_over_a_lowered_limit_is_not_refused_and_
     from ofo.settings import defaults  # noqa: PLC0415
     from ofo_app import paper_limit, paper_store  # noqa: PLC0415
     from ofo_app.paper_book import StoredOrder  # noqa: PLC0415
-    app, stored, *_ = await _setup(db)
+    _app, stored, *_ = await _setup(db)
     c = stored.saved.contract_ids
     await _store_freeze(db, c[0], BIG_FREEZE)
     at = datetime.datetime.now(datetime.UTC)
@@ -216,7 +217,7 @@ async def test_a_contract_with_no_stored_freeze_quantity_is_refused_by_name(db):
 def test_the_one_lots_limit_is_100_lots_per_leg_by_default():
     """(52): Q2's test pinned 10,000; the owner's default is 100."""
     from ofo.settings import calc, defaults  # noqa: PLC0415
-    assert calc.max_lots(dict(defaults())) == 100
+    assert calc.max_lots(dict(defaults())) == DEFAULT_MAX_LOTS
 
 
 async def test_5000_lots_sold_on_one_leg_is_refused_and_nothing_is_stored(db):
@@ -262,7 +263,7 @@ async def test_a_flip_long_to_short_past_the_limit_and_a_mid_batch_peak_are_refu
     from ofo.settings import defaults  # noqa: PLC0415
     from ofo_app import paper_limit, paper_store  # noqa: PLC0415
     from ofo_app.paper_book import StoredOrder  # noqa: PLC0415
-    app, stored, *_ = await _setup(db)
+    _app, stored, *_ = await _setup(db)
     c = stored.saved.contract_ids
     await _store_freeze(db, c[0], 10_000 * LOT)
     at = datetime.datetime.now(datetime.UTC)

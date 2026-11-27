@@ -87,6 +87,7 @@ class _UnboundFreeze(dict):
 
     def get(self, key, default=None):
         from datetime import date  # noqa: PLC0415
+
         from ofo_app.freeze_read import StoredLimit  # noqa: PLC0415
         return StoredLimit(10**9, date(2026, 1, 1))
 
