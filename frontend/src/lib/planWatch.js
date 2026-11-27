@@ -11,6 +11,8 @@ import api, { NEUTRAL_PARTS } from '@/services/api'
  *  answers). Trigger distances change slowly; 15 s keeps them fresh enough at a third of the load. The first read (mount, a new
  *  strategy) is immediate. */
 export const PLAN_WATCH_MIN_READ_GAP_MS = 15000
+/** A compact box on Positions: at most one read a minute, counted from its last answer (Lane R, 27 Nov 2026; see lib/planWatchQueue). */
+export const PLAN_WATCH_COMPACT_READ_GAP_MS = 60000
 
 export const PLAN_WATCH_UNAVAILABLE = 'The plan watch is not available right now.'
 export const PLAN_WATCH_NOT_FOUND = 'This strategy was not found, so there is nothing to watch.'

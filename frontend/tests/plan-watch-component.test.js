@@ -12,6 +12,7 @@ vi.mock('@/services/api', async (importActual) => {
 
 import PlanWatch from '@/components/strategy/PlanWatch.vue'
 import { PLAN_WATCH_MIN_READ_GAP_MS } from '@/lib/planWatch'
+import { resetPlanWatchQueueForTests } from '@/lib/planWatchQueue'
 import { CHECK_STALE_TEXT } from '@/lib/sharedStateText'
 
 const line = (over = {}) => ({
@@ -27,7 +28,7 @@ const fail = (e) => () => Promise.reject(e)
 const mountIt = (props = {}) => mount(PlanWatch, { props: { strategyId: 7, ...props } })
 const t = (w, id) => w.find(`[data-testid="${id}"]`)
 
-beforeEach(() => { calls.length = 0 })
+beforeEach(() => { calls.length = 0; resetPlanWatchQueueForTests() })
 afterEach(() => { vi.useRealTimers() })
 const GAP = PLAN_WATCH_MIN_READ_GAP_MS
 const later = async (ms) => { await vi.advanceTimersByTimeAsync(ms); await flushPromises() }

@@ -6,9 +6,10 @@
      A slow or failed read after a good one keeps the last rows, marked updating / not current, with the server's as-of time. A figure the server sent as absent shows a dash and the reason, never 0.
      Decision support only: nothing here exits or places anything. -->
 <template>
-  <section class="rounded-lg border border-line bg-surface p-3 text-sm" data-testid="plan-watch" :data-currency="marked ? (notCurrent ? 'not_current' : 'updating') : 'current'" :data-compact="compact ? 'true' : 'false'" :data-strategy="strategyId">
+  <section ref="rootEl" class="rounded-lg border border-line bg-surface p-3 text-sm" data-testid="plan-watch" :data-currency="marked ? (notCurrent ? 'not_current' : 'updating') : 'current'" :data-compact="compact ? 'true' : 'false'" :data-strategy="strategyId">
     <h3 class="font-semibold" data-testid="plan-watch-title">Plan watch</h3>
     <p v-if="view === null" class="text-xs text-ink-muted" data-testid="plan-watch-loading">Reading the plan watch...</p>
+    <p v-else-if="view.state !== 'ok' && updating" class="text-xs text-ink-muted" data-testid="plan-watch-updating">{{ UPDATING_TEXT }}</p>
     <p v-else-if="view.state !== 'ok'" class="text-xs text-ink-muted" data-testid="plan-watch-message">{{ view.text }}</p>
     <template v-else>
       <p v-if="view.planState === 'no_plan'" class="text-ink-muted" data-testid="plan-watch-no-plan">{{ view.noPlanText }}</p>
@@ -51,7 +52,8 @@
 
 <script setup>
 import { computed, onBeforeUnmount, onMounted, ref, watch } from 'vue'
-import { PLAN_WATCH_MIN_READ_GAP_MS, readPlanWatch } from '@/lib/planWatch'
+import { PLAN_WATCH_COMPACT_READ_GAP_MS, PLAN_WATCH_MIN_READ_GAP_MS, readPlanWatch } from '@/lib/planWatch'
+import { cancelPlanWatchRead, submitPlanWatchRead } from '@/lib/planWatchQueue'
 import { rupeesText } from '@/lib/displayFormat'
 import { PAUSED_TEXT } from '@/lib/priceState'
 import { CHECK_STALE_TEXT } from '@/lib/sharedStateText'
@@ -79,47 +81,97 @@ const notCurrent = ref(false)
 const marked = computed(() => view.value?.state === 'ok' && (updating.value || notCurrent.value))
 const markedLine = computed(() => [notCurrent.value ? CHECK_STALE_TEXT : UPDATING_TEXT, view.value?.asOfText].filter(Boolean).join(' '))
 let seq = 0
-let reading = false // one request at a time: asks while it is unanswered are folded into ONE catch-up read (no stacking)
+let reading = false // one request at a time per box: asks while it is unanswered are folded into ONE catch-up read (no stacking)
+let queued = false // this box has a read waiting in the page queue (lib/planWatchQueue): a second ask is folded into it
 let again = false
 let againNow = false
 let lastStart = null
+let lastAnswer = null
 let timer = null
 let gone = false
+const rootEl = ref(null)
+const onScreen = ref(!props.compact || typeof IntersectionObserver === 'undefined') // no observer: treat as visible
+const tabShown = ref(typeof document === 'undefined' || document.visibilityState === 'visible')
+const active = () => !props.compact || (onScreen.value && tabShown.value)
+const queueKey = Symbol('plan-watch-box')
+let observer = null
+
+// The builder's full box keeps the 15 s gap from the last START; a compact Positions row waits 60 s from its last ANSWER. Every read of
+// every box goes through the one page queue (one in flight; compact reads also page-gapped; the full box goes first).
+const gapMs = () => (props.compact ? PLAN_WATCH_COMPACT_READ_GAP_MS : PLAN_WATCH_MIN_READ_GAP_MS)
+const lastMark = () => (props.compact ? lastAnswer : lastStart)
+
+function clearTimer() { if (timer !== null) { clearTimeout(timer); timer = null } }
+function drop() { clearTimer(); if (queued) { cancelPlanWatchRead(queueKey); queued = false; updating.value = false } }
 
 function ask(now) {
-  if (gone) return
+  if (gone || !active()) return
   if (reading) { again = true; againNow = againNow || now; return }
-  const wait = now || lastStart === null ? 0 : lastStart + PLAN_WATCH_MIN_READ_GAP_MS - Date.now()
+  if (queued) return // coalesced: one queued read per box
+  const wait = now || lastMark() === null ? 0 : lastMark() + gapMs() - Date.now()
   if (wait > 0) {
     if (timer === null) timer = setTimeout(() => { timer = null; ask(true) }, wait)
     return
   }
-  run()
+  clearTimer()
+  queued = true
+  updating.value = true // rows stay, marked "Updating the numbers..." while the read waits in the queue or is in flight
+  submitPlanWatchRead(queueKey, props.compact ? 'compact' : 'full', run)
 }
 async function run() {
+  queued = false
   reading = true
   lastStart = Date.now()
   const mine = ++seq
   const id = props.strategyId
-  updating.value = view.value !== null
+  updating.value = true
   try {
     const v = await readPlanWatch(id)
-    if (gone || mine !== seq) return // unmounted, or the strategy changed meanwhile
+    if (gone || mine !== seq) return // unmounted, or the strategy changed meanwhile: the answer is ignored
     if (v.state === 'superseded') return
     if (view.value?.state === 'ok' && (v.state === 'failed' || v.state === 'unavailable')) { notCurrent.value = true; return }
     view.value = v
     notCurrent.value = false
   } finally {
     reading = false
-    updating.value = false
-    if (again && !gone) { const now = againNow; again = false; againNow = false; ask(now) }
+    lastAnswer = Date.now()
+    if (!gone) updating.value = false
+    if (!gone && again) { const now = againNow; again = false; againNow = false; ask(now) }
+    else if (!gone && props.compact) ask(false) // the next compact read is due 60 s after this answer
   }
 }
-onMounted(() => ask(true))
-onBeforeUnmount(() => { gone = true; if (timer !== null) clearTimeout(timer); timer = null })
+function syncActive() {
+  if (gone) return
+  if (active()) ask(false)
+  else drop()
+}
+function onVisibility() { tabShown.value = document.visibilityState === 'visible'; syncActive() }
+onMounted(() => {
+  if (props.compact) {
+    document.addEventListener('visibilitychange', onVisibility)
+    tabShown.value = document.visibilityState === 'visible'
+    if (typeof IntersectionObserver !== 'undefined' && rootEl.value) {
+      observer = new IntersectionObserver((entries) => {
+        const last = entries[entries.length - 1]
+        if (last) { onScreen.value = last.isIntersecting; syncActive() }
+      })
+      observer.observe(rootEl.value)
+    }
+  }
+  ask(true)
+})
+onBeforeUnmount(() => {
+  gone = true
+  clearTimer()
+  cancelPlanWatchRead(queueKey)
+  if (observer) observer.disconnect()
+  if (props.compact) document.removeEventListener('visibilitychange', onVisibility)
+})
 watch(() => props.strategyId, () => {
   view.value = null; notCurrent.value = false; seq++
-  if (timer !== null) { clearTimeout(timer); timer = null }
+  clearTimer()
+  if (queued) { cancelPlanWatchRead(queueKey); queued = false }
+  lastAnswer = null; lastStart = null
   ask(true)
 })
 watch(() => props.readTick, (t, old) => { if (t !== old) ask(false) })
