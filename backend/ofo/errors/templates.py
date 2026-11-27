@@ -22,6 +22,7 @@ from ofo.errors.classes import ErrorClass
 from ofo.errors.gate_slots import (
     Clock,
     ClockTime,
+    ContractName,
     ContractSymbol,
     DataHealthState,
     DataInputName,
@@ -37,6 +38,7 @@ from ofo.errors.gate_slots import (
     RiskRows,
     Rupees,
     ShapeFamilies,
+    SideWord,
     Strikes,
     Symbol,
     UnitsByContract,
@@ -894,6 +896,18 @@ _STRATEGY_DRAFT_TEMPLATES: tuple[MessageTemplate, ...] = (
     _gate("strategy_definition_invalid", _SV, 408,
           "This strategy definition cannot be saved as sent.",
           "The draft was not saved or changed.", "Saving this strategy.", "Check the legs, risk limits and preferences and try again."),
+    # 27 Nov 2026 live screen test, item 4 (wording pending owner read): the cause of "cannot be saved as sent"
+    # when two legs are one contract; the legs are named as numbered on screen and the contract as the screens print it.
+    _gate("strategy_duplicate_leg_same_side", _SV, 524,
+          "Legs {first} and {second} are the same contract and side ({contract}, {side}).",
+          "The draft was not saved or changed.", "Saving this strategy.",
+          "Join them into one leg with more lots, or change one of them.",
+          {"first": Count, "second": Count, "contract": ContractName, "side": SideWord}),
+    _gate("strategy_duplicate_leg_opposite_sides", _SV, 525,
+          "Legs {first} and {second} are the same contract ({contract}), one {side} and one {other}.",
+          "The draft was not saved or changed.", "Saving this strategy.",
+          "A strategy holds one leg per contract: remove one of them, or change one to a different contract.",
+          {"first": Count, "second": Count, "contract": ContractName, "side": SideWord, "other": SideWord}),
     _gate("strategy_revision_conflict", _SV, 409,
           "This strategy was changed by another action after you opened it.",
           "The draft was not saved or changed.", "Applying your change to the newer version.", "Reload the strategy and make the change again."),
@@ -1301,6 +1315,35 @@ _LEG_EDIT_TEMPLATES: tuple[MessageTemplate, ...] = (
           "A leg can hold at most {max_lots} lots; this leg has {lots}.",
           "The strategy was not checked and nothing changed.", "This strategy, until the leg is within the limit.",
           "Reduce the lots on this leg to {max_lots} or fewer.", {"lots": Count, "max_lots": Count}),
+    # Item 15 (T2-10, ADR-081 / ADR-092): a paper leg at or above the stored exchange freeze limit. Pending owner read.
+    _gate("paper_leg_over_order_limit", _UI, 573,
+          "{contract} asks for {lots} lots; the most one order can hold is {max_lots} lots.",
+          "Nothing was added to paper.", "This basket, until the leg is within the limit.",
+          "Reduce {contract} to {max_lots} lots or fewer.",
+          {"contract": ContractName, "lots": Count, "max_lots": Count}),
+    # Lane K (ADR-330 (50), (52); owner 27 Nov): the leg's TOTAL after the order, not the single order. Pending read.
+    _gate("paper_leg_total_over_limit", _UI, 575,
+          "{contract} would hold {total} lots after this order; a leg can hold at most {max_lots} lots "
+          "({held} held, {added} added).",
+          "Nothing was added to paper.", "This basket, until the leg is within the limit.",
+          "Reduce {contract} to {room} more lots or fewer.",
+          {"contract": ContractName, "total": Count, "max_lots": Count, "held": Count, "added": Count,
+           "room": Count}),
+    # Lane K (owner 27 Nov): no stored freeze quantity for the contract -> the order cannot be checked. Pending read.
+    _gate("paper_leg_freeze_unknown", _UI, 576,
+          "The exchange freeze quantity for {contract} is not known, so an order for it cannot be checked.",
+          "Nothing was placed.", "Orders for this contract, until the exchange's freeze file is loaded.",
+          "Try again after the next daily freeze file load.", {"contract": ContractName}),
+    # Lane K item 4 (PC check T3-13, 27 Nov): an entry price of 0 or below, named by leg. Pending owner read.
+    _gate("paper_entry_price_not_above_zero", _UI, 577,
+          "The entry price for {contract} must be above 0.",
+          "Nothing was added to paper.", "This basket, until the price is above 0.",
+          "Type a price above 0 for {contract}, then add it to paper again.", {"contract": ContractName}),
+    _gate("paper_leg_limit_below_one_lot", _UI, 574,
+          "The exchange limit for {contract} is smaller than one lot ({limit} units, lot {lot}), "
+          "so it cannot be ordered.",
+          "Nothing was added to paper.", "This basket, until the contract is removed.",
+          "Remove {contract} from the basket.", {"contract": ContractName, "limit": Count, "lot": Count}),
 )
 
 # W-196 (REQ-155 AC-1, AC-8; ADR-214): the adjustment approach builder. A refusal leaves that one approach out and every
@@ -1519,6 +1562,21 @@ _PLAYBOOK_TEMPLATES: tuple[MessageTemplate, ...] = (
           "Nothing was changed.", "Opening or changing this playbook.", "Pick a playbook from your list."),
     _gate("playbook_body_invalid", _UI, 157, "The playbook value {field} is not valid.",
           _PB_NOT_SAVED, _PB_BLOCKED, "Correct that value, then save again.", {"field": PlaybookField}),
+    # 27 Nov 10:28 (pending owner read): a plan-sheet box is named as the sheet prints it, never by its code word. The
+    # words are PLAN_SHEET_LABEL_TEXT's (a test holds them equal); the route picks the template by the box.
+    *(_gate(f"plan_sheet_invalid_{key}", _UI, number, f"{label} is not valid.", _PB_NOT_SAVED, "Saving this plan.",
+            "Correct that value, then save again.")
+      for key, number, label in (("target", 702, "Target"), ("stop", 703, "Stop"),
+                                 ("target_rupees", 704, "Target (Rs)"),
+                                 ("stop_rupees", 705, "Stop (Rs)"), ("max_adjustments", 706, "Max adjustments"),
+                                 ("time_exit", 707, "Time exit"), ("time_exit_on", 708, "Time exit date"))),
+    # both of a level's boxes typed with different values: the sentence names both (27 Nov, wording pending owner read)
+    *(_gate(f"plan_sheet_levels_differ_{key}", _UI, number, f"{label} and {label} (Rs) show different values.",
+            _PB_NOT_SAVED, "Saving this plan.",
+            "Clear one of the two boxes, or make them the same level, then save again.")
+      for key, number, label in (("target", 710, "Target"), ("stop", 711, "Stop"))),
+    _gate("plan_sheet_invalid_time_exit_on_past", _UI, 709, "Time exit date is in the past.", _PB_NOT_SAVED,
+          "Saving this plan.", "Pick today or a later trading day, then save again."),
     # GC-ADJ2 step 2 (REQ-159 AC-1): the stages of one expiry kind leave a gap or overlap; the days and stage names
     _gate("playbook_stage_overlap", _UI, 158, "Days {from_day} to {to_day} are in both {first} and {second} "
           "({expiry} expiries).", _PB_NOT_SAVED, _PB_BLOCKED, "Change the days so each day is in one stage only.",

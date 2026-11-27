@@ -268,7 +268,7 @@ describe('REQ-112 AC-2: Dismiss refusals and the compare\'s acted-on', () => {
     expect(document.body.querySelector('[data-testid="drawer-dismiss"]')).toBeNull()
   })
 
-  it('the prepare button posts acted-on for each record before handing the legs on; no other POST', async () => {
+  it('the prepare button posts no acted-on (only a placed paper order stamps it) and hands the ids on with the legs', async () => {
     const contracts = adj02approaches.approaches.flatMap((a) => a.after_legs.map((l, i) => ({
       contract_id: 100 + i, symbol: l.tradingsymbol, expiry: l.expiry, instrument_type: l.type, strike: l.strike, lot_size: 65, exchange_segment: 'NFO', exchange_token: 900 + i })))
     const order = []
@@ -285,7 +285,8 @@ describe('REQ-112 AC-2: Dismiss refusals and the compare\'s acted-on', () => {
     await t(w, 'adjust-pick').setValue('A-01')
     await t(w, 'adjust-open').trigger('click')
     await flushPromises()
-    expect(order.filter((u) => u.includes('adjustment-opportunities'))).toEqual(['/adjustment-opportunities/11/acted-on', '/adjustment-opportunities/12/acted-on'])
+    expect(order.filter((u) => u.includes('adjustment-opportunities'))).toEqual([]) // staging marks nothing (item 10)
+    expect(w.emitted('prepare')[0][0].suggestionIds).toEqual(['11', '12']) // they travel with the basket to its paper order
     expect(w.emitted('prepare')).toHaveLength(1)
   })
 })

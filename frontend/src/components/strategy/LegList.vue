@@ -20,7 +20,7 @@ import { capturedCaption, contractName, expiryWithDays, istTime, strikeLabel } f
 import { NOT_CONNECTED_LABEL, REPRICE_PROMPT } from '@/lib/legPicker'
 import {
   CUSTOM_STRATEGY, LEFT_OUT_LABEL, LEGS_CLEARED, LEG_CARD_PADDING_PX, LEG_ROW_COLUMNS, MULTIPLIER_MIN, multiplierChoices,
-  EXPIRY_BLOCKED_BY_EXIT, EXPIRY_FUTURES_LEG, NO_CONTROLS, NO_LEGS_HINT_PAGE, NO_LEGS_HINT_TAB, NO_LEGS_YET, PLANNED_ENTRY_LABEL, YOUR_PRICE_LABEL,
+  EXPIRY_BLOCKED_BY_EXIT, EXPIRY_FUTURES_LEG, NO_CONTROLS, NO_LEGS_HINT_PAGE, NO_LEGS_HINT_TAB, NO_LEGS_YET, EXITING_LEGS_LABEL, emptyListKind, PLANNED_ENTRY_LABEL, YOUR_PRICE_LABEL,
   anyUnticked, canStep, controlsForSelection, movedMarker, priceReasonText, removeAllPrompt, replacedPriceNote, showsControls,
 } from '@/lib/legEdit'
 import { plainName } from '@/lib/saveDraft'
@@ -34,6 +34,8 @@ const props = defineProps({
   locked: { type: Boolean, default: false },
   lockReason: { type: String, default: null },
   done: { type: Boolean, default: false }, // N-48: the paper trade is Completed (every leg closed): no empty-legs block, no add-leg controls (the panel's closed rows say the result)
+  heldLegs: { type: Array, default: () => [] }, // item 11: the held legs whose exits are staged while the list itself is empty (a full Exit)
+  failed: { type: Boolean, default: false }, // item 11: a read failed; the page's error line speaks, the card does not say "No legs yet"
   opening: { type: Boolean, default: false }, // N-13: a strategy is being opened; the empty-legs block is not shown until its read answers
   legs: { type: Array, required: true },
   // 2026-11-06: clicks of a strike step not yet confirmed by the server, per move key ({ 'step:2': 4 }); shown on the row at
@@ -105,6 +107,7 @@ function pickExpiry(i, value) {
 }
 const tickState = computed(() => (selectedCount.value === props.legs.length ? 'all' : selectedCount.value === 0 ? 'none' : 'some'))
 const legName = (l) => contractName(l)
+const kind = computed(() => emptyListKind({ legs: props.legs, held: props.heldLegs, loading: props.opening, done: props.done, failed: props.failed }))
 /** D-60 (REQ-059 gate): two rows on one contract and action are never merged silently. The words are the gate's own
  *  (gate_duplicate_leg in backend/ofo/errors/templates.py), shown on both rows. Index of the other row, or null. */
 const sameContractAs = (leg, i) => {
@@ -198,7 +201,18 @@ function setMultiplier(index) {
       {{ undoText ?? LEGS_CLEARED }} <button type="button" class="text-accent underline" data-testid="clear-undo" @click="emit('undo-clear')">Undo</button>
     </p>
 
-    <div v-if="!legs.length && !opening && !done" class="py-6 text-center" :style="cardPadding" data-testid="no-legs">
+    <div v-if="kind === 'exiting'" class="py-3" :style="cardPadding" data-testid="exiting-legs">
+      <p class="font-medium" data-testid="exiting-label">{{ EXITING_LEGS_LABEL }}</p>
+      <ul class="mt-1">
+        <li v-for="(l, i) in heldLegs" :key="l.id ?? i" class="flex items-center gap-2 py-1" data-testid="exiting-leg">
+          <span :class="l.action === 'BUY' ? 'tag tag-buy' : 'tag tag-sell'" :title="l.action">{{ l.action === 'BUY' ? 'B' : 'S' }}</span>
+          <span class="min-w-0 flex-1 truncate">{{ legName(l) }}</span>
+          <span class="num">{{ l.lots }} lot</span>
+        </li>
+      </ul>
+    </div>
+
+    <div v-else-if="kind === 'empty'" class="py-6 text-center" :style="cardPadding" data-testid="no-legs">
       <p class="font-medium" data-testid="no-legs-text">{{ NO_LEGS_YET }}</p>
       <p class="mt-1 text-xs text-ink-muted" data-testid="no-legs-hint">{{ readyMadeTab === null ? '' : readyMadeTab ? NO_LEGS_HINT_TAB : NO_LEGS_HINT_PAGE }}</p>
       <div class="mt-3 flex justify-center gap-2">

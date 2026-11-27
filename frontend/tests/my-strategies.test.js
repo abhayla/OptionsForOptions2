@@ -37,7 +37,7 @@ import MyStrategiesPage from '@/pages/MyStrategiesPage.vue'
 
 const Stub = { template: '<i />' }
 let router
-async function open(meta = { title: 'My Strategies', parent: 'Strategies' }) {
+async function open(meta = { title: 'My Strategies', parent: 'Strategies' }, attachTo = undefined) {
   router = createRouter({
     history: createMemoryHistory(),
     routes: [
@@ -48,7 +48,7 @@ async function open(meta = { title: 'My Strategies', parent: 'Strategies' }) {
   })
   await router.push('/s')
   await router.isReady()
-  const w = mount(MyStrategiesPage, { global: { plugins: [router] } })
+  const w = mount(MyStrategiesPage, { attachTo, global: { plugins: [router] } })
   await flushPromises()
   return w
 }
@@ -229,6 +229,17 @@ describe('REQ-134 AC-3 (attack 5): rename in the list changes only the name', ()
   }
   beforeEach(() => {
     sent.length = 0
+  })
+  it('opening the Rename box focuses its field, and Esc closes it without a click first', async () => {
+    serve()
+    const w = await open(undefined, document.body)
+    await w.get('[data-testid="rename-7"]').trigger('click')
+    await flushPromises()
+    const input = w.get('[data-testid="rename-input"]')
+    expect(document.activeElement).toBe(input.element)
+    await input.trigger('keydown', { key: 'Escape' })
+    expect(w.find('[data-testid="rename-form"]').exists()).toBe(false)
+    w.unmount()
   })
   it('the name field is prefilled without quotes; Save reads the revision and PATCHes name + revision; only the name in the row changes', async () => {
     serve()

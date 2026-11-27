@@ -981,10 +981,10 @@ def test_g065_a_single_expiry_condor_keeps_its_width_and_hedge():
 
 
 def test_gcset_lots_the_leg_edit_route_refuses_lots_above_the_max_lots_setting_with_a_reason():
-    """REQ-167 AC-5: the leg-edit route passes the same shared check as the outcome route. Default 10000 accepts a
-    10000-lot leg; a 500 setting refuses 600 lots, and a 600 base, with the reason (422), and accepts 500."""
+    """REQ-167 AC-5: the leg-edit route passes the same shared check as the outcome route. Default 100 accepts a
+    100-lot leg; a 500 setting refuses 600 lots, and a 600 base, with the reason (422), and accepts 500."""
     edit = {"control": "step", "index": 2, "direction": 1}
-    status, _ = post({"legs": legs(lots=10000), "edit": edit})
+    status, _ = post({"legs": legs(lots=100), "edit": edit})
     assert status == HTTP_OK
     status, reply = post({"legs": legs(lots=600), "edit": edit}, max_lots=500)
     assert status == HTTP_UNPROCESSABLE and "at most 500 lots; this leg has 600" in str(reply) and "legs" not in reply

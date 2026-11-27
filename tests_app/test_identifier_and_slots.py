@@ -72,6 +72,11 @@ PINNED_SLOT_TYPES = frozenset({
         "LegRef", "LegContract", "Date", "Strikes", "Rupees", "WorstCase", "VersionStateName", "VersionStates",
         "DataInputName", "DataHealthState", "ExecutionStatusName", "Symbol", "Clock", "ContractSymbol", "RiskRows",
         "OrderRef", "UnitsByContract",
+        # 27 Nov 2026 live screen test item 4 (needs the owner's read, with the pending duplicate-leg wording):
+        # ContractName is one printed contract ("NIFTY 1 Dec 25900 CE", fullmatch, exact str); SideWord is exactly
+        # "Buy" or "Sell". Neither carries user text. LegContract was not reusable: it needs an engine LegValue, and the
+        # stored-form check only has the definition's printed fields.
+        "ContractName", "SideWord",
         # W-081 (margin gate): exact Decimal only, shown by the engine's rupee formatter (ADR-008)
         "DisplayRupees",
         # W-158 (row 30, REQ-078 AC-2): only family_plural labels the loaded catalogue holds; the row 30 Opus check's

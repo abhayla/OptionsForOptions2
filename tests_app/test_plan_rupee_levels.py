@@ -15,6 +15,7 @@ from types import SimpleNamespace as NS
 
 import pytest
 from ofo.adjustment import stop_lines as sl
+from ofo.errors import render
 from ofo_app import playbook_store
 from ofo_app import settings_in_force as sif
 from ofo_app.routes import adjustment_plan as plan
@@ -63,10 +64,12 @@ def test_rupee_stop_shows_figures_and_keeps_the_percent_stop():
 def test_both_boxes_with_different_values_are_refused_naming_the_field():
     with pytest.raises(playbook_store.PlaybookStoreError) as err:
         edited(target="50", target_rupees="1000")
-    assert err.value.slots["field"] == "target_rupees"
+    assert err.value.code == "plan_sheet_levels_differ_target"
+    assert render(err.value.code, **err.value.slots).what_happened == "Target and Target (Rs) show different values."
     with pytest.raises(playbook_store.PlaybookStoreError) as err:
         edited(stop="50", stop_rupees="1000")
-    assert err.value.slots["field"] == "stop_rupees"
+    assert err.value.code == "plan_sheet_levels_differ_stop"
+    assert render(err.value.code, **err.value.slots).what_happened == "Stop and Stop (Rs) show different values."
 
 
 def test_both_boxes_with_the_same_level_store_the_rupee_level_not_the_rounded_percent():
@@ -88,7 +91,7 @@ def test_both_boxes_with_no_base_cannot_be_judged_and_are_refused():
 def test_unreadable_rupee_text_is_refused_naming_the_field(raw):
     with pytest.raises(playbook_store.PlaybookStoreError) as err:
         edited(target_rupees=raw)
-    assert err.value.slots["field"] == "target_rupees"
+    assert err.value.code == "plan_sheet_invalid_target_rupees"
 
 
 def test_empty_rupee_box_clears_the_level():
@@ -154,7 +157,7 @@ def test_f5_clearing_the_rupee_stop_with_no_percent_is_refused_naming_stop_rupee
     body = edited(stop_rupees="400")
     with pytest.raises(playbook_store.PlaybookStoreError) as err:
         plan.with_overrides(body, plan.PlanIn(playbook_id=3, stop_rupees=""), "weekly", BASES)
-    assert err.value.slots["field"] == "stop_rupees"
+    assert err.value.code == "plan_sheet_invalid_stop_rupees"
     again = plan.with_overrides(body, plan.PlanIn(playbook_id=3, stop="10", stop_rupees=""), "weekly", BASES)
     assert sl.RUPEE_LOSS_KEY not in again["guards"]
     plain = plan.with_overrides(copy.deepcopy(BODY), plan.PlanIn(playbook_id=3, stop_rupees=""), "weekly", BASES)

@@ -52,6 +52,7 @@ from ofo.strategy.definition import (
     render_change_items,
     DefinitionLeg,
     StrategyDefinition,
+    display_contract,
     UnknownNameError,
     ValueRefusedError,
     check_names,
@@ -101,6 +102,7 @@ SCHEMA_VERSION_UNKNOWN = "schema_version_unknown"
 MISSING_CONTRACT_ID = "missing_contract_id"
 NOT_DECIMAL_STRING = "not_decimal_string"
 INVALID_DEFINITION = "invalid_definition"
+DUPLICATE_LEG = "duplicate_leg"  # two legs on one contract; the error carries `slots` for its own sentence
 CONTRACT_NOT_IN_CATALOGUE = "contract_not_in_catalogue"
 CONTRACT_TERMS_CHANGED = "contract_terms_changed"
 CONTRACT_NOT_LIVE = "contract_not_live"
@@ -117,9 +119,10 @@ INVALID_PLANNED_ENTRY = "invalid_planned_entry"  # ADR-075: not a positive paise
 class StoredFormError(ValueError):
     """A stored or submitted strategy form was refused. ``code`` is one of the fixed codes above."""
 
-    def __init__(self, code: str, detail: str) -> None:
+    def __init__(self, code: str, detail: str, slots: Mapping[str, Any] | None = None) -> None:
         self.code = code
         self.detail = detail
+        self.slots = dict(slots or {})  # typed values of the refusal's own sentence (DUPLICATE_LEG); else empty
         super().__init__(": ".join((code, detail)))
 
 
@@ -528,6 +531,24 @@ class LegChoice:
     entry: Optional[LegEntry] = None  # ADR-075: the leg's planned entry, when the user has one
 
 
+def _refuse_duplicate_contract(underlying: str, legs: Sequence[DefinitionLeg]) -> None:
+    """27 Nov 2026: two legs on one contract get their own refusal naming the legs (numbered as on screen), the contract
+    (display_contract) and the side(s), not the generic "cannot be saved as sent". The first pair, in leg order."""
+    seen: dict[tuple, int] = {}
+    for i, leg in enumerate(legs):
+        key = (leg.instrument, leg.strike, leg.expiry)
+        if key not in seen:
+            seen[key] = i
+            continue
+        first = legs[seen[key]]
+        slots: dict[str, Any] = {
+            "first": seen[key] + 1, "second": i + 1, "side": first.action.value.capitalize(),
+            "contract": str.__str__(display_contract((underlying, leg.instrument, leg.strike, leg.expiry)))}
+        if first.action is not leg.action:
+            slots["other"] = leg.action.value.capitalize()
+        raise StoredFormError(DUPLICATE_LEG, f"legs {seen[key] + 1} and {i + 1} are the same contract", slots)
+
+
 def build_from_catalogue(underlying: str, choices: Sequence[LegChoice], resolve: Resolver, *,
                          rules_ref: Optional[str] = None,
                          risk_limits: Mapping[str, Decimal] | tuple = (),
@@ -561,6 +582,7 @@ def build_from_catalogue(underlying: str, choices: Sequence[LegChoice], resolve:
             raise StoredFormError(INVALID_PLANNED_ENTRY, f"leg {i + 1}: entry must be a LegEntry or None")
         ids.append(choice.contract_id)
         entries.append(choice.entry)
+    _refuse_duplicate_contract(underlying, legs)
     try:
         definition = StrategyDefinition(underlying, tuple(legs), rules_ref=rules_ref, risk_limits=risk_limits,
                                         preferences=preferences)

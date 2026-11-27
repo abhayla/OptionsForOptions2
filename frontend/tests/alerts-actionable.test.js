@@ -153,4 +153,11 @@ describe('History tab', () => {
     expect(ids(page, 'answered-row')[0].text()).toContain('11:09')
     expect(ids(page, 'record-row')).toHaveLength(1)
   })
+  it('shows a system-closed row as the server sentence alone, not the answer label (ADR-330 (3), 27 Nov 10:26)', async () => {
+    answers['GET /alerts/answered'] = () => Promise.resolve({ data: { items: [{ id: 4, strategy_id: 7, strategy_name: '"Trade A"', kind: 'plan_loss_stop', text: 'Loss stop reached', fired_at: '2026-11-27T10:00:00+05:30', fired_line: 'Fired at 10:00', answer: 'closed_by_system', answer_label: 'Closed: the position ended', answered_at: '2026-11-27T10:23:00+05:30', closed_reason: 'Closed by system: the trade closed at 10:23' }] } })
+    const page = await mountAt('/alerts/history', AlertsPage)
+    const t = ids(page, 'answered-row')[0].text()
+    expect(t).toContain('Closed by system: the trade closed at 10:23')
+    expect(t).not.toContain('the position ended')
+  })
 })

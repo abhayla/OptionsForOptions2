@@ -1684,6 +1684,9 @@ _EXPLANATIONS: tuple[ExplanationTemplate, ...] = (
     ExplanationTemplate("adjust_condition_line_t01_beyond_pe", "values_seen",
                         "{label}: spot is beyond the sold {strike} PE by {points} points",
                         {"label": PlaybookTriggerLabel, "strike": WholePoints, "points": Points}),
+    # ADR-330 (7), 27 Nov 10:28 (pending owner read): the alert of the PLAN's own time exit names it as such
+    ExplanationTemplate("adjust_condition_line_plan_time_exit", "values_seen",
+                        "Time exit reached: the plan's time exit is {threshold}", {"threshold": ClockTime}),
     # D-58 (pending owner read): after an adjustment the T-01 line says which side is tested (its short is nearer spot)
     ExplanationTemplate("adjust_condition_side_put", "values_seen", "{line} (put side tested)", {"line": Explained}),
     ExplanationTemplate("adjust_condition_side_call", "values_seen", "{line} (call side tested)", {"line": Explained}),

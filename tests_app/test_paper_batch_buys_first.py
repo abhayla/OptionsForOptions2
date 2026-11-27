@@ -182,6 +182,7 @@ async def test_an_exit_that_needs_an_add_of_the_same_batch_is_refused_and_nothin
 
 async def test_place_checked_records_a_mixed_batch_buys_first(db, monkeypatch):
     """D-02 review: the batch goes through the one write both user routes use, against an open position."""
+    from ofo import settings  # noqa: PLC0415
     from ofo_app import paper_limit  # noqa: PLC0415
 
     async def no_max(*_a, **_k):
@@ -193,5 +194,5 @@ async def test_place_checked_records_a_mixed_batch_buys_first(db, monkeypatch):
     user, sid, c = await _held(db)
     await paper_limit.place_checked(
         db, user, sid, [_new(c[0], "SELL", 65, "11.00", "exit"), _new(c[1], "BUY", 65, "19.00", "exit")],
-        entry=None, ctx=None, at=AT, reader=reader, rates=None)
+        entry=None, ctx=None, at=AT, reader=reader, rates=None, settings=settings.defaults())
     assert (await _book(db, sid))[4:] == [(c[1], "BUY", "exit"), (c[0], "SELL", "exit")]

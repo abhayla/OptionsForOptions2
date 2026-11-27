@@ -7,7 +7,7 @@
      exited, alembic 0049) and shows each one's final P&L, adjustments made and their cost exactly as the server worded them
      (a figure the server could not give shows the server's reason, never 0; no money arithmetic here). -->
 <script setup>
-import { computed, onBeforeUnmount, onMounted, ref, watch } from 'vue'
+import { computed, nextTick, onBeforeUnmount, onMounted, ref, watch } from 'vue'
 import { useRoute, useRouter } from 'vue-router'
 import api, { NEUTRAL_PARTS } from '@/services/api'
 import ErrorMessage from '@/components/common/ErrorMessage.vue'
@@ -142,6 +142,7 @@ async function openInBuilder(id) {
 function startRename(row) {
   renaming.value = { id: row.id, text: plainName(row.name) ?? '' }
   renameError.value = null
+  nextTick(() => document.querySelector('[data-testid="rename-input"]')?.focus()) // typing works at once, no click first
 }
 async function confirmRename(row) {
   if (busy.value || !renaming.value || renaming.value.id !== row.id) return
