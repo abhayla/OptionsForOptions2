@@ -5,10 +5,11 @@ import { flushPromises, mount } from '@vue/test-utils'
 import PaperConfirmDialog from '@/components/strategy/PaperConfirmDialog.vue'
 
 let marketAnswers = []
+let hold = null // a promise the NEXT market answer waits for
 const asked = vi.fn()
 vi.mock('@/services/api', () => ({ default: {
   get: (url) => {
-    if (url === '/market/exit-state') { asked(); const a = marketAnswers.length > 1 ? marketAnswers.shift() : marketAnswers[0]; return a instanceof Error ? Promise.reject(a) : Promise.resolve({ data: a }) }
+    if (url === '/market/exit-state') { asked(); const a = marketAnswers.length > 1 ? marketAnswers.shift() : marketAnswers[0]; const gate = hold; hold = null; const out = a instanceof Error ? Promise.reject(a) : Promise.resolve({ data: a }); return gate ? gate.then(() => out) : out }
     return Promise.reject(new Error('unmocked'))
   },
 } }))
@@ -62,6 +63,50 @@ describe('#872: Confirm re-asks the market state', () => {
     await flushPromises()
     await press(w)
     expect(asked).not.toHaveBeenCalled()
+    expect(w.emitted('confirm')).toHaveLength(1)
+  })
+
+  // review F1 (Opus): a re-ask of opening A that ends after the dialog was cancelled and reopened for B must send nothing
+  it('cancel and reopen while the Confirm re-ask is pending: the late answer never sends the new opening\'s rows', async () => {
+    marketAnswers = [OPEN]
+    const w = await open()
+    let release
+    hold = new Promise((r) => { release = r })
+    const pending = w.get('[data-testid="paper-confirm-button"]').trigger('click') // A's re-ask now waits
+    await flushPromises()
+    await w.setProps({ open: false })
+    await w.setProps({ open: true, orders: [{ ...ROW, key: 'b', contract_id: 2, text: 'NIFTY 25400 CE' }] }) // opening B
+    await flushPromises()
+    release()
+    await pending
+    await flushPromises()
+    expect(w.emitted('confirm')).toBeUndefined()
+  })
+  // review F2: anything that turns Confirm off while the re-ask runs is honoured after it
+  it('blocked set while the re-ask is pending: nothing is sent', async () => {
+    marketAnswers = [OPEN]
+    const w = await open()
+    let release
+    hold = new Promise((r) => { release = r })
+    const pending = w.get('[data-testid="paper-confirm-button"]').trigger('click')
+    await flushPromises()
+    await w.setProps({ blocked: true })
+    release()
+    await pending
+    await flushPromises()
+    expect(w.emitted('confirm')).toBeUndefined()
+  })
+  it('the lots boxes are off while the re-ask runs, so an edit cannot slip in', async () => {
+    marketAnswers = [OPEN]
+    const w = await open()
+    let release
+    hold = new Promise((r) => { release = r })
+    const pending = w.get('[data-testid="paper-confirm-button"]').trigger('click')
+    await flushPromises()
+    expect(w.get('[data-testid="paper-lots"]').attributes('disabled')).toBeDefined()
+    release()
+    await pending
+    await flushPromises()
     expect(w.emitted('confirm')).toHaveLength(1)
   })
 })

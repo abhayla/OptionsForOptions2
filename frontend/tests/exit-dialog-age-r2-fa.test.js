@@ -32,7 +32,7 @@ describe('priceAgeLine: the one as-of formatter', () => {
   it('absent price', () => expect(priceAgeLine([row({ price: '', price_at: null })], { nowMs: NOW })).toEqual({ state: 'no_price', text: 'No price for 1 of 1 legs; the server prices the exit when you confirm.' }))
   it('price without a time', () => expect(priceAgeLine([row({ price_at: null })], { nowMs: NOW })).toEqual({ state: 'no_time', text: 'The time of the price is not available.' }))
   it('unparseable time is a different state from absent', () => expect(priceAgeLine([row({ price_at: '27/11 10:41' })], { nowMs: NOW })).toEqual({ state: 'unreadable', text: 'The time of the price could not be read.' }))
-  it('a quote from the future is never "ago"', () => expect(at('2026-11-27T10:50:00+05:30').text).toBe('Price as of 10:50:00 IST.'))
+  it('a quote from the future is never "ago" and is not called fresh', () => expect(at('2026-11-27T10:50:00+05:30')).toEqual({ state: 'ahead', text: 'Price as of 10:50:00 IST.' }))
   it('no exit rows: nothing', () => expect(priceAgeLine([row({ kind: 'open' })], { nowMs: NOW })).toEqual({ state: '', text: '' }))
 })
 
@@ -48,4 +48,20 @@ describe('the dialog shows the line', () => {
   it('unreadable time', async () => expect(line(await open([row({ price_at: 'garbage' })])).text()).toBe('The time of the price could not be read.'))
   it('not live line set: age line says not live', async () => expect(line(await open([row({ price_at: '2026-11-27T10:35:00+05:30' })], { notLiveLine: 'x' })).text()).toBe('Prices are not live. Last price as of 10:35:00 IST, 7 minutes ago.'))
   it('an entry-only dialog has no age line', async () => expect(line(await open([row({ kind: 'open' })])).exists()).toBe(false))
+})
+
+describe('review F3: the line is told against the time of the Confirm press, not only the opening', () => {
+  it('after minutes with the dialog open, pressing Confirm refreshes the line (no 5 seconds ago)', async () => {
+    vi.useFakeTimers({ toFake: ['Date'] })
+    vi.setSystemTime(Date.parse('2026-11-27T10:41:25+05:30'))
+    const w = mount(PaperConfirmDialog, { props: { open: true, orders: [row()] }, attachTo: document.body })
+    mounted.push(w)
+    await flushPromises()
+    expect(line(w).text()).toBe('Price as of 10:41:20 IST, 5 seconds ago.')
+    vi.setSystemTime(Date.parse('2026-11-27T10:58:00+05:30'))
+    await w.get('[data-testid="paper-confirm-button"]').trigger('click')
+    await flushPromises()
+    vi.useRealTimers()
+    expect(line(w).text()).toBe('Price as of 10:41:20 IST, 16 minutes ago.')
+  })
 })

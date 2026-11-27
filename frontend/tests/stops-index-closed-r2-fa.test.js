@@ -24,7 +24,7 @@ class FakeSocket {
   serverPush(obj) { this.onmessage?.({ data: JSON.stringify(echoSeq(this, obj)) }) }
 }
 const CLOSE = '2026-11-27T10:00:00Z' // 15:30:00 IST
-const REF = 'The market is closed. Levels are judged against the last close.'
+const REF = 'The market is closed. A level you save is checked from the next market open; the last close is shown for reference.'
 const answer = (state, value, over = {}) => ({ state, market_closed: true, last_price_at: CLOSE, answered_at: CLOSE,
   indices: ['NIFTY', 'SENSEX'].map((u) => ({ underlying: u, instrument_id: u, value, at: value ? CLOSE : null, health: value ? 'available' : null })), ...over })
 const t = (w, id) => w.find(`[data-testid="${id}"]`)

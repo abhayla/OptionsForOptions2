@@ -155,5 +155,5 @@ export function priceAgeLine(rows, { nowMs = Date.now(), notLive = false } = {})
   const ago = secs < 0 ? '' : secs < 60 ? unit(secs, 'second') : secs < 3600 ? unit(whole(secs / 60), 'minute') : secs < 86400 ? unit(whole(secs / 3600), 'hour') : unit(whole(secs / 86400), 'day')
   const asOf = `${stamp}${ago ? `, ${ago}` : ''}`
   if (notLive) return { state: 'not_live', text: `Prices are not live. Last price as of ${asOf}.` }
-  return { state: secs < 60 ? 'fresh' : 'stale', text: `Price as of ${asOf}.` }
+  return { state: secs < 0 ? 'ahead' : secs < 60 ? 'fresh' : 'stale', text: `Price as of ${asOf}.` }
 }

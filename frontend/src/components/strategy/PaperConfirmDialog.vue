@@ -14,7 +14,7 @@
         <span class="min-w-0 flex-1" data-testid="paper-order-text">{{ row.text }}</span>
         <label class="flex items-center gap-1">
           <span class="text-ink-muted">Lots</span>
-          <input v-model="row.lots" :disabled="state === 'placed'" type="text" inputmode="numeric" class="h-9 w-14 rounded border border-line px-2 text-right" :aria-label="`Lots for ${row.text}`" data-testid="paper-lots" />
+          <input v-model="row.lots" :disabled="state === 'placed' || marketState === 'checking'" type="text" inputmode="numeric" class="h-9 w-14 rounded border border-line px-2 text-right" :aria-label="`Lots for ${row.text}`" data-testid="paper-lots" />
         </label>
         <!-- GC-ICGUIDE g21 (audit C10): the server prices an exit (live price, or the last close after hours), so it is text here -->
         <span v-if="row.kind === 'exit'" class="flex items-center gap-1" data-testid="paper-exit-price">
@@ -186,7 +186,8 @@ async function askExitRisk() {
   } catch { state = 'unchecked' }
   if (seq === askSeq) { exitState.value = state; exitWarning.value = line }
 }
-watch(() => [props.open, props.orders], askMarket, { immediate: true }) // once per opening / new list, not per typed edit
+let openSeq = 0 // review F1: counts openings / new lists
+watch(() => [props.open, props.orders], () => { openSeq += 1; askMarket() }, { immediate: true }) // once per opening / new list, not per typed edit
 watch(() => [props.open, props.orders, props.strategyId, rows.value.map((r) => `${r.lots}/${r.price}`).join()], askExitRisk, { immediate: true })
 
 // D-03 part B: the lines naming each armed index exit against the legs after these orders (the server words them). A read that
@@ -240,8 +241,10 @@ async function confirm() {
   if (!canConfirm.value) return
   // #872 (ADR-330 (60), ADR-212): the market may have closed while this dialog sat open: ask the server's one answer again and send only on 'open'
   if (rows.value.some((r) => r.kind === 'exit')) {
+    const mine = openSeq // review F1: the opening this press belongs to; a cancel / reopen / new list in between makes the answer late
+    openedAtMs.value = Date.now() // review F3: the age line is told against the time of the press
     await askMarket()
-    if (marketState.value !== 'open') return
+    if (mine !== openSeq || marketState.value !== 'open' || !canConfirm.value) return // review F2: whatever turned Confirm off meanwhile is honoured
   }
   // third argument: the not-live line was shown AND ticked (ADR-330 (28)); false otherwise
   const ticked = !!props.notLiveLine && notLiveAck.value === true
