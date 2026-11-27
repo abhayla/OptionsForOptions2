@@ -15,10 +15,14 @@ Mechanism: this replaces ONLY ``public.strategy_adjustment_plans_guard``. On UPD
 (clock) only while the transaction-local setting ``ofo.plan_acceptance`` is ``'on'``; otherwise it keeps its old value,
 whatever the body or ``playbook_id`` do. INSERT (the first save) takes the column default, a stamp, as before. The
 store sets the signal (``SELECT set_config('ofo.plan_acceptance', 'on', true)``) right before the write of an explicit
-acceptance and sets it ``'off'`` right after: (a) the first save, (b) the user accepting a playbook (POST
-/adjustment-plan, any playbook id, the same one included: it takes the newest version, ADR-252 addendum), (c) Reset to
-playbook. A plan-sheet edit (PUT) never sets it, so it never stamps, also when it re-points a plan whose playbook was
-deleted (playbook_id NULL) at the active playbook. A bare ``playbook_id`` change without the signal does not stamp (0041
+acceptance and sets it ``'off'`` right after a successful write (no SQL after a failure: the setting is
+transaction-local, so the aborted transaction drops it and the original error is the one the caller sees): (a) the first
+save, (b) the user accepting a playbook (POST /adjustment-plan, any playbook id, the same one included: it takes the
+newest version, ADR-252 addendum; and PUT /adjustment-plan carrying ``accept: true``, which the plan sheet sends when the
+user picked a playbook in its selector or pressed "Use playbook as is", because the page edits an EXISTING plan with
+PUT), (c) Reset to playbook. A plan-sheet edit (PUT without ``accept``) never sets it, so it never stamps, also when it
+re-points a plan whose playbook was deleted (playbook_id NULL) at the active playbook (the sheet's prefill is no
+choice, LJ-2 option 1). A bare ``playbook_id`` change without the signal does not stamp (0041
 stamped on it; the NULL toggle of an earlier draft of this migration made a sheet edit of an old plan read as saved
 after ADR-247). The stop base (0055) is not looked at by the guard and follows ``accept_plan`` unchanged.
 
@@ -36,7 +40,11 @@ re-installs 0041's function and 0057's chain text exactly. Both end with the ``'
 Old-code safety: code before this migration (12bc1852) never sets the signal, so on a 0058 database an accept it makes
 (POST or Reset) does NOT stamp: the plan keeps its earlier ``accepted_at`` (an old plan stays "saved before ADR-247",
 no credit stop gained), and its edits no longer restamp. New code against a 0057 database (0041's function) still
-works: it stamps on every body change and the extra setting is ignored. Deploy: migrate, then new code.
+works: it stamps on every body change and the extra setting is ignored.
+Deploy order: migrate (0058), then restart the app on the new code. ROLLBACK RULE: a code rollback must ALSO downgrade
+0058 (``alembic downgrade 0057_history_delete_entries``): old code never sends the signal, so on a 0058 database none of
+its accepts (POST, Reset) would stamp, and a plan the user re-accepts would stay "saved before ADR-247". The downgrade
+re-installs 0041's function and 0057's allow-list text exactly.
 
 Revision ID: 0058_plan_stamp_only_on_switch
 Revises: 0057_history_delete_entries

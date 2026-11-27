@@ -739,13 +739,13 @@ async def accept_plan(conn: Any, user_ref: str, strategy_id: int, playbook_id: i
         raise _bad(extra[0].split(".", 1)[0])
     if accepts:
         await conn.execute(_SET_ACCEPTANCE, {"v": "on"})
-    try:
-        row = (await conn.execute(_UPSERT_PLAN, {"strategy_id": strategy_id, "playbook_id": source.id,
-                                                 "type": source.strategy_type, "body": _dump(copy),
-                                                 "stop_base": None if stop_base is None else _dump(stop_base)})).one()
-    finally:
-        if accepts:
-            await conn.execute(_SET_ACCEPTANCE, {"v": "off"})
+    # No SQL after a failure (a `finally` would run in the aborted transaction and hide the real error with 25P02): the
+    # setting is transaction-local, so a failed write rolls it back with the transaction.
+    row = (await conn.execute(_UPSERT_PLAN, {"strategy_id": strategy_id, "playbook_id": source.id,
+                                             "type": source.strategy_type, "body": _dump(copy),
+                                             "stop_base": None if stop_base is None else _dump(stop_base)})).one()
+    if accepts:
+        await conn.execute(_SET_ACCEPTANCE, {"v": "off"})
     return _plan(row)
 
 

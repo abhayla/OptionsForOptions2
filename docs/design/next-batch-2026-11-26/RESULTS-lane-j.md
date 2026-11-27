@@ -92,6 +92,16 @@ Migrations on this branch (the PC is at 0053), each with its old-code safety and
 These old-code tests build their own throwaway databases (they are run here, on test databases, not on the PC); the
 PC runs only the read-only checks above.
 
+**#753 / migration 0058 (round 3): order and rollback.** Owner rule (ADR-330 (45)): only the first save, accepting a
+playbook (also the same one again) and Reset to playbook stamp a new acceptance; a plan-sheet edit never stamps.
+Deploy order: run `alembic upgrade head` (0058 included) FIRST, then restart the API on the new code. Rollback rule:
+a code rollback must ALSO run `alembic downgrade 0057_history_delete_entries`, because old code never sends the
+acceptance signal and on a 0058 database its accepts (POST, Reset) would not stamp (a plan the user re-accepts would
+stay "saved before ADR-247"; its edits no longer restamp). New code on a 0057 database still works (0041's function
+stamps on every body change). PC read-only check after 0058 (changes nothing): `SELECT position('ofo.plan_acceptance'
+in pg_get_functiondef('public.strategy_adjustment_plans_guard()'::regprocedure)) > 0;` returns `t` (and `f` after the
+downgrade); `alembic current` names `0058_plan_stamp_only_on_switch`.
+
 ## (b) Screen-check list (owner, paper only, market hours 09:15-15:30 IST; Ctrl+F5 once after the rebuild)
 
 Each row starts with "[needs live prices: yes/no]". Step 2 (the wiring: fired stops through the one alert module
@@ -347,6 +357,13 @@ Reset send and an edit does not (the route cannot tell a switch from an edit tod
 review's minors (an error inside the accept path is hidden by the finally at playbook_store.py:746; the source-scan
 test is a weak pin), and the deploy order rule (a code rollback must also downgrade 0058).
 Today's behaviour on the branch is unchanged from 0041 (every body edit restamps accepted_at): #753 stays open.
+
+Round 3 (owner decided LJ-2 option 1; branch feat/0058-plan-acceptance-1127): the plan sheet sends `accept: true` on
+PUT only when the user picked a playbook in its selector or pressed "Use playbook as is"; POST and Reset always
+accept; a level edit never carries it. An edit of an old plan with no playbook now keeps the plan's own body (its own
+margin stop "4" and T-16), so R1/R2-MAJOR-2 is fixed in the same route (`_body_to_save`), not deferred. Known leftover:
+"Use playbook as is" from the sheet on a plan that already follows that playbook now copies the playbook's body (as
+POST does) instead of keeping the plan's customisations; this is what "as is" says. No deferred issue is needed.
 
 ## Lines waiting for a person's approval (none written by Lane J)
 

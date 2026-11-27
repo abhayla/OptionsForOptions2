@@ -119,6 +119,10 @@ class PlanIn(_In):
     #: else the default); left out -> kept as the body has them. Each key must be a three-layer setting and each value
     #: one the registry accepts, else refused naming ``settings.<key>`` (never dropped, never clamped)
     settings: dict[str, str] | None = None
+    #: #753 / ADR-330 (45): True only when the user CHOSE a playbook in the sheet (picked one in the playbook selector,
+    #: or "Use playbook as is"): that is accepting it, so ``accepted_at`` is stamped and the plan takes that playbook's
+    #: body. A pure edit of levels / conditions never carries it. POST is always an acceptance, so it needs none.
+    accept: bool = False
 
 
 class ClockOut(ApiModel):
@@ -718,7 +722,8 @@ async def read_levels(  # noqa: PLR0913 - FastAPI dependencies, one per input
         target_rupees: Annotated[str | None, Query(max_length=16)] = None,
         stop: Annotated[str | None, Query(max_length=12)] = None,
         stop_rupees: Annotated[str | None, Query(max_length=16)] = None,
-        playbook_id: Annotated[int | None, Query(ge=1, le=ID_MAX)] = None) -> LevelsOut:
+        playbook_id: Annotated[int | None, Query(ge=1, le=ID_MAX)] = None,
+        accept: bool = False) -> LevelsOut:
     """ADR-330 (5) / S-12: both figures of the typed level(s), worked out on the server, the per-lot figure beside the
     rupees. The last edited box is sent alone; both boxes with different values -> refused naming the rupee field."""
     rates = rates if isinstance(rates, ChargeRates) else None
@@ -735,7 +740,7 @@ async def read_levels(  # noqa: PLR0913 - FastAPI dependencies, one per input
             stype, plan = await _type_of(db, user_ref, strategy_id, tracked, ctx)
             body = None
             if stype is not None and playbook_id is not None:  # the picked playbook, as the save reads it
-                body = _body_to_save(await _picked(db, user_ref, playbook_id, stype), plan, plan is not None)
+                body = _body_to_save(await _picked(db, user_ref, playbook_id, stype), plan, plan is not None, accept)
             elif plan is not None:
                 body = plan.body
             elif stype is not None:
@@ -786,10 +791,12 @@ async def _picked(db: Any, user_ref: str, playbook_id: int, stype: str) -> Any:
     return source
 
 
-def _body_to_save(source: Any, plan: Any, edit: bool) -> dict:
+def _body_to_save(source: Any, plan: Any, edit: bool, accept: bool = False) -> dict:
     """The ONE rule for which body the typed levels go into, shared by the save and the levels preview: editing the
-    plan keeps its own body when the pick is the plan's own playbook, else the picked playbook's body."""
-    keep = edit and plan is not None and plan.playbook_id == source.id
+    plan keeps its OWN body (also a plan saved before playbooks were pointed at, playbook_id NULL: it keeps its own
+    stops) when the pick is its own playbook or it has none; a playbook the user chose (``accept``) or a different one
+    gives its body."""
+    keep = edit and plan is not None and not accept and plan.playbook_id in (source.id, None)
     return plan.body if keep else source.body
 
 
@@ -810,15 +817,16 @@ async def _write(strategy_id: int, data: PlanIn, edit: bool, db: Any, user_ref: 
 
     async def work() -> AdjustmentPlanOut:
         source = await _picked(db, user_ref, data.playbook_id, stype)
-        body = with_overrides(_body_to_save(source, plan, edit), data, _kind_of(tracked, money), bases)
+        body = with_overrides(_body_to_save(source, plan, edit, data.accept), data, _kind_of(tracked, money), bases)
         if data.time_exit is not None:  # ADR-330 (7): the day is judged against today and the legs, never trusted
             legs = tracked.position.legs
             check_time_exit_day(body["guards"].get(TIME_KEY),
                                 None if market is None else market.now.astimezone(IST).date(),
                                 max((x.expiry for x in legs), default=None))
-        # #753: POST (edit False) is the user accepting the playbook; a PUT sheet edit never stamps accepted_at
+        # #753 / ADR-330 (45): POST is the user accepting a playbook; a PUT stamps only when it carries the user's own
+        # choice of a playbook (``accept``); a PUT edit, also one that re-points a NULL-playbook plan, never does
         saved = await store.accept_plan(db, user_ref, strategy_id, source.id, body, _base_json(tracked),
-                                        accepts=not edit)
+                                        accepts=(not edit) or data.accept)
         # ADR-330 (1): the reply shows the base now STORED (the one the checks read), not the one read before the save
         stored = dataclasses.replace(tracked, stop_base=in_force_mod.stop_base_from_json(saved.stop_base))
         return await _sheet(db, user_ref, strategy_id, stype, saved, None, user_values,

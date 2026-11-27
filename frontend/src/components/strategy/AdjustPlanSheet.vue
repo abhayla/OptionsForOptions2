@@ -136,6 +136,7 @@ async function reset() {
   }
 }
 const refilledFrom = ref('') // the playbook name the fields were just refilled from; empty on open, reopen and failed reads
+const picked = ref(false) // #753: the user chose a playbook in the selector (a new acceptance); false on open and on every plain read
 
 async function load(pickId = null, pickName = '') {
   const id = props.strategyId
@@ -162,6 +163,7 @@ async function load(pickId = null, pickName = '') {
         const held = planHold()?.takePlan(id) ?? null
         if (held && held.base === baseKey) form.value = { ...read.prefill, ...held.form }
       } else planHold()?.clearPlan()
+      picked.value = pickId !== null
       if (pickId !== null) refilledFrom.value = pickName
     }
   } catch (e) {
@@ -193,7 +195,7 @@ async function typed(field) {
   const run = ++levelsRun[level]
   if (own.trim() === '') { f[other] = ''; words.forEach((k) => { f[k] = '' }); return } // nothing typed: nothing to show
   try {
-    const got = (await fetchLevels(api, props.strategyId, { [field]: own }, f.playbookId))[level]
+    const got = (await fetchLevels(api, props.strategyId, { [field]: own }, f.playbookId, picked.value))[level]
     if (run !== levelsRun[level] || form.value !== f) return
     if (!got) return
     f[other] = rupees ? got.percent : got.rupees
@@ -230,7 +232,7 @@ async function send(body) {
   }
 }
 const useAsIs = () => send(asIsBody(form.value.playbookId))
-const save = () => send(saveBody(form.value))
+const save = () => send(saveBody(form.value, picked.value))
 function customise() {
   const url = customiseUrl(props.strategyId)
   if (sheet.value?.kind === 'sheet') planHold()?.holdPlan(props.strategyId, { base: baseKey, form: form.value }) // S-11

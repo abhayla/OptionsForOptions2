@@ -194,13 +194,8 @@ async def test_the_first_save_stamps_without_any_signal(db):
     assert first.accepted_at >= await pbs.adr247_saved_at(db)
 
 
-def test_only_the_post_route_and_reset_pass_the_acceptance_flag():
-    import pathlib  # noqa: PLC0415
-
-    root = pathlib.Path(__file__).resolve().parents[1] / "backend/ofo_app"
-    route = (root / "routes/adjustment_plan.py").read_text(encoding="utf-8")
-    assert route.count("accepts=") == 1 and "accepts=not edit" in route  # PUT /rules (save_rules) passes none
-    assert "accepts=True)" in (root / "playbook_store.py").read_text(encoding="utf-8")
+# Which route stamps is pinned at the route level (POST, PUT edit, PUT with accept, Reset, the lock-timeout path) in
+# test_plan_accept_routes.py; no source scan here (R2-MINOR-4).
 
 
 async def test_the_application_role_cannot_set_accepted_at_directly(app_engine):

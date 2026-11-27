@@ -11873,6 +11873,11 @@
         "additionalProperties": false,
         "description": "Every sheet value arrives as the text typed (the browser forms no number, ADR-008): percents as decimal text,\nmax adjustments as digits, the time exit as ``HH:MM``; each is checked here and names its field when not valid.",
         "properties": {
+          "accept": {
+            "default": false,
+            "title": "Accept",
+            "type": "boolean"
+          },
           "max_adjustments": {
             "anyOf": [
               {
@@ -21525,6 +21530,16 @@
                 }
               ],
               "title": "Playbook Id"
+            }
+          },
+          {
+            "in": "query",
+            "name": "accept",
+            "required": false,
+            "schema": {
+              "default": false,
+              "title": "Accept",
+              "type": "boolean"
             }
           }
         ],

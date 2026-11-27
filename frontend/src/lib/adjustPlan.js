@@ -63,13 +63,17 @@ export async function fetchPlan(client, strategyId, pickId = null) {
   return readPlan(data)
 }
 
-/** The body for "Use playbook as is": the playbook alone, the server copies it unchanged. */
-export const asIsBody = (playbookId) => ({ playbook_id: playbookId })
+/** The body for "Use playbook as is": the playbook alone, the server copies it unchanged. `accept: true` says the user
+ *  chose this playbook (ADR-330 (45): accepting a playbook, also the same one again, is a new acceptance; #753). */
+export const asIsBody = (playbookId) => ({ playbook_id: playbookId, accept: true })
 
 /** The body for Save: the playbook and every field as typed; the server checks each and names the one that is not valid.
- *  Of each percent / rupee pair only the box last edited is sent (ADR-330 (5)); the other is the server's derived figure. */
-export function saveBody(form) {
+ *  Of each percent / rupee pair only the box last edited is sent (ADR-330 (5)); the other is the server's derived figure.
+ *  `picked`: the user chose a playbook in the sheet's selector -> `accept: true` (a new acceptance, #753); a pure edit of
+ *  levels never sends it, so it never stamps the acceptance time (ADR-330 (45)). */
+export function saveBody(form, picked = false) {
   const body = { playbook_id: form.playbookId }
+  if (picked) body.accept = true
   if (form.targetLast === 'rupees') body.target_rupees = (form.targetRupees ?? '').trim() // "" clears the level
   else body.target = form.target.trim() // ADR-305: an empty Target is sent as "" = no target alert for this trade
   // ADR-252 addendum: a stop left as the sheet showed it is not sent (the server also compares; this is the first layer)
@@ -98,8 +102,8 @@ const level = (l) => (l && typeof l === 'object'
 /** GET .../adjustment-plan/levels (with the picked playbook_id, so the sentence is the one the save will say) for the box just typed in (`{ target }`, `{ target_rupees }`, `{ stop }` or
  *  `{ stop_rupees }`): the server works out both figures and the hint words; the browser computes nothing (ADR-008).
  *  Returns `{ target, stop }` (each `{ percent, rupees, words, rupeeWords }` or null). Throws the client error. */
-export async function fetchLevels(client, strategyId, typed, playbookId = null) {
-  const { data } = await client.get(levelsPath(strategyId, { ...typed, playbook_id: playbookId == null ? '' : String(playbookId) }))
+export async function fetchLevels(client, strategyId, typed, playbookId = null, picked = false) {
+  const { data } = await client.get(levelsPath(strategyId, { ...typed, playbook_id: playbookId == null ? '' : String(playbookId), accept: picked ? 'true' : '' }))
   return { target: level(data?.target), stop: level(data?.stop) }
 }
 
