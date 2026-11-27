@@ -1,110 +1,174 @@
 # Lane N, 27 Nov 2026: one source for "the price to show and its time"
 
-Branch `fix/last-close-1127`, cut from `origin/hotfix/index-quote-1127` 2244298. Paper only; no broker order endpoint;
-no migration; no PR; no GitHub issues. Highest status: **Fixed, not tested** (the owner's PC re-tests). DB route tests
-could not run in this container (no PostgreSQL here): they are listed per item.
+Branch `fix/last-close-1127`, cut from `origin/hotfix/index-quote-1127` 2244298. Paper only; no broker order endpoint; no
+PR; no GitHub issues. Highest status: **Fixed, not tested** (the owner's PC re-tests). No PostgreSQL in this container: every
+DB test is listed per item and must run on the PC (`python scripts/orchestrator/db_run.py . python -m pytest -c pytest-app.ini
+<file>`).
 
-## Status lines (messages to the coordinator were refused: "elevated_session_untrusted_device")
+## Status lines
 
-- 16:10 IST LANE N ALIVE (send_message to @parent refused; lines kept here instead).
-- First push: head = the commit that adds this file | gate: prepush on this head (see the commit's gate log) | re-test:
-  the after-close and feed-down steps below.
+- 16:10 IST LANE N ALIVE (send_message refused until the owner allowed this session at about 16:55; sent then).
+- First push: A2, A3, C, A4, A5, B1, B2 + gate fixes | gate: prepush PASS on that head | re-test: the after-close steps.
+- Second push (this file's head): migration 0059 `last_close` + its module + the one-time seed command, ADR-330 (56) notice,
+  picker freeze proof, `next_open_at` | gate: prepush PASS on that head | re-test: step 0 then the restart walk below.
 
-## DECISION NEEDED FIRST (A1): the 15:30 closes are not stored anywhere durable
+## For the combined build (Lane Z)
 
-Finding (code read, 27 Nov): the ADR-330 (36) freeze lives only in the API process's feed book
-(`backend/ofo/marketdata/feed_health.py`). An API restart after 15:30 empties it, and nothing re-creates it: Redis holds
-only the tick stream (read from the newest entry after a restart), 10 s token snapshots and status keys; the
-`history_minute_bars` table (migration 0009) exists but no running process writes it during the day (only
-`history_finalize.py`, after the close, from Kite candles); no other table holds a per-contract close. So the exact (36)
-figure cannot be recovered after a restart without a design decision. Options (not built):
+- Migration **0059_last_close**, `down_revision = 0057_history_delete_entries`. With 0058 (plan acceptance) kept out of the
+  weekend build, the build has exactly one head (`0059_last_close`). If 0058 lands later, whichever lands second re-points its
+  `down_revision`. 0059 has never been pushed before this push nor applied anywhere; its CHECKs are final as first applied.
+- Files of other lanes touched by Lane N (first push): `frontend/src/pages/StrategyBuilderPage.vue` (lane V owns it now): A4/A5,
+  26 lines: the builder reads the one price state (`priceNow`) and mounts the index answer earlier; the closed banner takes its
+  time only from a complete reply; Add to Paper passes the tick flag. `PaperStrategies.vue`, `HomeOverviewPage.vue`,
+  `MyStrategiesPage.vue`: not changed by Lane N in either push.
+- Changes Lane N needs in files it does not own: `docs/design/next-batch-2026-11-26/lane-n-for-lanes-v-l.md` (For lane V:
+  the exact `PaperStrategies.vue` diff for ADR-330 (56) tile greying, with its 2 tests; For lane L: nothing needed).
+- For lane U2 (ADR-330 (60)): GET /market/indices and its socket push now carry `next_open_at` (ISO, the next 09:15 IST open
+  from the app's calendar; null while open or when the calendar has no next year), e.g. Fri 27 Nov 16:00 ->
+  `"next_open_at": "2026-11-30T09:15:00+05:30"`.
+- Paper-only path found: none. One price-read exemption added (tests/test_price_reads_one_door.py):
+  `adjustment_readers.py::_index_value_not_live`, because the read door returns a price only when live and a confirmed
+  not-live entry (ADR-330 (28)) needs the last held index value.
 
-| Option | What | Migration | Matches (36) exactly | Cost / risk |
-|---|---|---|---|---|
-| 1 (recommended) | A small table `last_close (instrument_id, trade_date, price, price_at)` written once at 15:30:00 by the feed book for every contract it holds, read at start-up when the market is closed | yes (one table) | yes | one writer at 15:30; needs a decision row and a migration number from the coordinator |
-| 2 | Use the existing `history_minute_bars`: write held contracts' 15:29 bar at 15:30, read its close after a restart | no | nearly (the bar's close is the last trade up to 15:30) | the table's W-067 write rules apply; a writer must be wired into the API process |
-| 3 | A Redis key per contract written at 15:30, kept until the next open | no | yes, until Redis restarts | lost on a PC reboot unless Redis persistence is on |
-| 4 | After a restart, read Kite's one-minute 15:29 candle by REST | no | nearly | Kite historical rate limit, REST at start-up, REQ-118 budget |
+## Decision row text (proposed; the coordinator records it)
 
-Built meanwhile (A2): after a restart a held leg is priced from the FIRST frame it gets after the close, labelled with that
-frame's own time, and that figure never moves until the next open. Honest about its time, but not the 15:30 figure.
-Until a leg gets a frame it stays unpriced with its reason.
+"The platform keeps each contract's and each index's last close of every trading day in one table, `last_close`, written a few
+seconds after 15:30:00 from the last price the feed delivered at or before 15:30:00 (ADR-330 (36)), only if the app was
+running at the close. While the market is closed, a restart reads the stored close back and every screen shows it with its own
+date and time; if no close was stored for the last trading day the screens say prices are not available with the reason, and
+an older day's close is shown only with its date. The stored close is never read while the market is open (the first live
+tick wins), it never replaces a price the feed itself delivered that day, and the same module serves paper and real, indices
+and contracts."
 
-## Second decision for the owner (B2 / A4): entries outside market hours
+## Old-code-safe proof (migration 0059)
 
-The coordinator's brief asked for Add to Paper to follow ADR-330 (28) (tick box + as-of line) in every not-live state,
-including after the close and before the open. ADR-212 says "A paper exit, entry or any fill stays refused outside market
-hours", and the paper order route refuses with gate_market_closed before reading any price. The ADR wins (CLAUDE.md), so
-built: in market hours with prices not live, the tick box and the line; after the close / before the open / on a holiday,
-no tick box; Confirm sends once and the server's own market-closed sentence shows (the client holds no copy of it). If
-the owner wants paper entries after hours, that is a SPEC CHANGE to ADR-212.
+0059 adds one table (`last_close`) and grants on that table only (SELECT; INSERT; UPDATE of price, price_at, source; no DELETE
+or TRUNCATE). It changes no existing table, column, constraint, trigger, function or grant, and does not rebuild the grant
+allow-list function. No code before this push reads or writes `last_close`. So old code runs unchanged with the table present;
+new code on an un-migrated database logs one error per write or read and serves no stored close (fails closed: "not
+available"). Migrate-first and migrate-last are both safe. The PC applies it only with a verified backup.
+
+## Open questions for the owner (decided meanwhile, reversible)
+
+1. ADR-330 (36) says the close is the last price "received up to 15:30:00". The book uses the tick's exchange time: a tick
+   stamped 15:29:59 that arrives at 15:30:03 counts as the close. Recommended: keep (the trade happened before the close; only
+   the delivery was late).
+2. Paper entries outside market hours: the brief asked for the ADR-330 (28) tick box after the close and before the open too;
+   ADR-212 refuses every paper entry outside market hours and the route refuses first (gate_market_closed). Built to the ADR:
+   the tick box in market hours only; after hours the server's market-closed sentence shows. A SPEC CHANGE to ADR-212 if the
+   owner wants after-hours paper entries.
+3. Once a price is shown after the close it never moves until the next open (A2 review, owner away): recorded as the rule;
+   an earlier day's price carries its date ("1 leg as of 26 Nov, 15:29:59").
 
 ## Per item
 
 | Item | Root cause (one sentence) | Fix | Tests (red first) | Status |
 |---|---|---|---|---|
-| A1 | The 15:30 close is held only in the API's memory, so a restart after the close leaves every contract with no close. | Decision above; interim through A2. | via A2 (`test_a1_fresh_book_after_a_restart...`) | DECISION NEEDED; interim fixed, not tested |
-| B2 | `_index_spot_held` (adjustment_readers.py) required a fresh index tick for the entry's starting point, so a feed-down save was refused even after the user ticked the not-live line and typed his own price; it also ignored the (39) age rule when connected. | A new request field `prices_not_live_confirmed` (default false), sent only from the ticked box; with it the save uses the last held index value (any age), refusing only when no value exists; a fresh quote is health AVAILABLE only (the (39) rule). On a `paper_index_price_unavailable` refusal the dialog shows the tick so the user can send again (one action, one request). The value's time is NOT stored (no column; see deferred). | tests_app/test_entry_not_live_confirmed.py (unit, fakes), vitest per mount | Fixed, not tested. Tier A: FIX FIRST (tick never reached the server) -> fixed in A4's round 2. DB test tests_app/test_basket_facts_unheld_index.py not run here |
-| A4 | The builder's live flag read only the builder reply's `market_closed`, so a reply without it or an index answer saying closed left Confirm active with no tick; the Drafts "Review and add" dialog had no tick at all. | One `priceNow` state in priceState.js (live / last_close / stale / unavailable) read by every Add to Paper mount; the dialog emits the tick; the flag is sent from the tick state only. | frontend/tests/price-state-now.test.js + 11 related files: 203 passed | Fixed, not tested |
-| A2 | The freeze held only for a contract with a frame by 15:30, and the earlier-day rule ran only when a frame arrived, so a strike first read after the close (or every contract after a restart) moved, and an earlier day's close could be replaced or come back. | One function `_figure` in feed_health.py chooses every closed-market figure (price, depth, day values): the figure served first in a closed spell never moves until the next open; a frame made by that day's close wins if nothing was served yet; else the first frame after the close with its own time; else the contract's own last close with its date-time. The label dates a time from an earlier day. | tests/marketdata/test_close_freeze.py 24 passed (5 red first), tests/.../test_closed_label.py 10 passed; mutants: day check removed 12 failed, served-store disabled 3 failed | Fixed, not tested. Tier A round 1: FIX FIRST (F1-F4) -> fixed in round 2; DB route files test_closed_label_route.py / test_close_freeze_routes.py not run here |
-| B1 / A5 | `pausedText` always appended ", as of" + the time, printing "Time not available" when there was none; the closed banner took its time from a partial reply while loading; Home's `as_of` is None when the paused leg's last quote time is gone (`snapshot.ended_times` is bounded). | One as-of formatter: the time when known, else no time clause; the banner shows no time until a complete reply; `as_of` is the last quote's own time, never an order time. | price-state-now, priceState, after-close-line-d64, tests/test_paused_as_of_quote_time.py (2 passed) | Fixed, not tested. A leg whose last quote time was evicted still shows the pause with no time (deferred) |
-| A3 | Live Strategies showed the closed banner only after a child card's own reply said `market_closed`; an unpriced, queued or errored card never did. | The page reads GET /market/indices itself (as Index View does), re-read every 60 s. | frontend/tests/live-strategies.test.js | Fixed, not tested |
-| C | `/market/indices` on a closed market with no socket holding the ids returned `value: null`, so Create Strategy said "Not available" instead of the last close (Lane J's 08:30 list fix is a separate cause). | `indices_read` fills the last close with its time (still marked stale); Create Strategy shows it under the shared banner; "Not available" only when no value is held. | tests_app/test_index_closed_market.py (2 red first), frontend/tests/create-strategy.test.js | Fixed, not tested. Open: whether the provider holds a close at 08:30 when no socket ever subscribed (PC check below) |
-| B3 | The no-what-if text needs a reply carrying `target_not_live_text`; with no reply nothing shows. | Not changed; check under the PC's sweep. | none | Open |
+| A1 / AF-02 | The 15:30 close lived only in the API's memory, so a restart after the close left every contract unpriced. | Table `last_close` (0059) + one module `backend/ofo_app/last_close_store.py`: written once after 15:30 from the book's by-the-close frames; read while closed and seeded into the book (`QuoteBook.seed_close`); a book waits up to 30 s for its first seed so a read in that window never freezes a post-close frame; re-login seeds the new book; one-time seed command for tonight's snapshot. | tests_app/test_last_close_store.py, _seed_*.py (144 passed, fakes); tests_app/test_migration_0059_last_close.py (DB, PC) | Fixed, not tested. Tier A: store FIX FIRST -> SHIP; seed FIX FIRST -> fixed (round 2) |
+| A2 / AF-01 | The freeze held only for a contract with a frame by 15:30, so a strike first read after the close moved. | One function `_figure` (feed_health.py) for every closed-market figure: the first figure served in a closed spell never moves until the open. The leg picker reads through it (proved). | tests/marketdata/test_close_freeze.py (24); tests_app/test_picker_closed_freeze.py | Fixed, not tested. Monday 15:30 check below |
+| B2 | `_index_spot_held` required a fresh index tick, so a feed-down save was refused even after the tick and a typed price. | `prices_not_live_confirmed` sent only from the ticked box; the save then uses the last held index value; refused only when none exists; the (39) age rule applies when connected. | tests_app/test_entry_not_live_confirmed.py | Fixed, not tested (DB test test_basket_facts_unheld_index.py on the PC) |
+| A4 | The live flag read only the builder reply's `market_closed`; the Drafts dialog had no tick. | One `priceNow` state for every Add to Paper mount; the dialog emits the tick. | frontend/tests/price-state-now.test.js + 11 files | Fixed, not tested |
+| B1 / A5 | `pausedText` printed "as of Time not available"; the banner took a partial reply's time; `as_of` lost the quote time. | One as-of formatter (no time clause when unknown); banner time only from a complete reply; load times say "Checked at". | priceState tests, tests/test_paused_as_of_quote_time.py | Fixed, not tested |
+| A3 / AX-05 | Live Strategies showed the closed banner only after a child card's reply said closed. | Page-level market answer. | frontend/tests/live-strategies.test.js | Fixed, not tested |
+| C | `/market/indices` returned no value on a closed market with no socket, so Create Strategy said "Not available". | Last close with its time. | tests_app/test_index_closed_market.py, frontend/tests/create-strategy.test.js | Fixed, not tested |
+| ADR-330 (56) | Each tile repeated the not-live sentence. | One `PriceNotice` at the top (layout mount for My Strategies; page mounts on Home strip, Index view, Live Strategies, Positions); tiles greyed; one affected -> only it carries the line. Positions Paper tiles need lane V's diff. | price-scope-adr330-56, strip-notice-adr330-56, layout-notice-adr330-56 | Fixed, not tested |
+| B3 | The no-what-if text needs a reply carrying `target_not_live_text`. | Not changed. | none | Open |
+
+## Sweep rows (PC, 27 Nov after the close, PR #722 comment 7216769012)
+
+| Screen | Finding | Status |
+|---|---|---|
+| Home | banner 15:58:01 (feed-stop time), SENSEX "Not available", Total P&L dash | fixed by the stored close (the close time and figures come back after a restart); Total P&L: lane L |
+| Positions Real | no banner | fixed (PriceNotice on PositionsPage) |
+| Positions Paper | all "no price"; no banner; Exit with Confirm enabled | prices: fixed by the stored close; banner: fixed; tile greying: lane V diff; Exit: lane U |
+| Live Strategies | "Checked at" load time moves | fixed (hidden under the notice) |
+| My Strategies | no banner; "Select all 16 shown" over 17 | banner fixed (layout mount); 16/17 by design (REQ-070, only deletable rows) |
+| Builder #209 | "as of Time not available"; "As of 16:13:47" load time; "Rule not checked" x17 | first two fixed; "Rule not checked": lane J (PlanWatch) |
+| Option Chain | every LTP "- not available" | fixed by the stored close for held contracts; strikes never held keep "not available" with the reason |
+| Alerts History | "The page could not get an answer from the server." | not mine (lane O) |
+| Stops panel | "Index values unavailable."; Save disabled | index line fixed (PaperStops.vue reads the strip's answer); Save: plan save path (lanes J/R) |
 
 ## Sentences (pending owner read)
 
-- "Market closed. Prices are from 15:30:00; 1 leg as of 26 Nov, 15:29:59." (only the date part is new; shown when a
-  leg's time is from an earlier day)
-- "Market closed. Prices are from 15:33:48; 1 leg as of 15:59:10." / "2 legs as of ..." (every leg first priced after
-  the close at different times: the earliest time leads)
-- "Paper P&L paused - prices not live" now shows with no ", as of ..." clause when no time is known (was "as of Time
-  not available").
-- The existing banner "Market closed. Prices are from <date>, 15:30:00 IST." now also on Live Strategies and the Create
-  Strategy expiry step.
-- The existing ADR-330 (28) line now also in the Drafts "Review and add" dialog, and after a paper_index_price_unavailable
-  refusal.
+- "Prices are not live. Figures are as of HH:MM:SS IST." / "Prices are not live." (no time known)
+- "Market closed. Prices are from 15:30:00; 1 leg as of 26 Nov, 15:29:59." (an earlier day's price carries its date)
+- "Market closed. Prices are from 15:33:48; 1 leg as of 15:59:10." / "2 legs as of ..."
+- "Checked at HH:MM:SS IST" (load / check time lines; "As of" is only a price's time)
+- "NIFTY last 25,607.20 as of 15:58:01" (Stops panel, closed market)
+- "Paper P&L paused - prices not live" with no ", as of" clause when no time is known
+- The existing banner "Market closed. Prices are from <date>, 15:30:00 IST." also on Live Strategies, Create Strategy, Positions,
+  My Strategies; the existing ADR-330 (28) line also in the Drafts "Review and add" dialog and after a
+  paper_index_price_unavailable refusal.
+- Seed command output lines (operator text, not product screens).
 
-## PC click steps
+## PC steps (market closed, weekend)
 
-After the close, a later evening (market closed, API running since before 15:30):
-1. Note one open paper trade's leg prices on Positions > Paper at 15:31. Wait to 15:45. Expected: the same figures, the
-   banner "Market closed. Prices are from 15:30:00".
-2. In the builder open the leg picker, open a strike with no leg. Watch it 2 minutes. Expected: the figure does not move;
-   if it was first priced after 15:30 the banner says "1 leg as of HH:MM:SS".
-3. Restart the API (as at 15:50 on 27 Nov). Reload Positions > Paper. Expected: legs priced "as of <first frame time>"
-   (not "no live quote"); the figure does not move afterwards. (The exact 15:30 figure waits for the A1 decision.)
-4. Live Strategies: expected the "Market closed. Prices are from ..." banner at once, also with a card still loading.
-5. Builder: Add to Paper. Expected: no tick box; Confirm sends once and shows the server's market-closed sentence.
-6. Paper panel: no "Time not available" anywhere; the banner never flashes a time other than the close while loading.
+Step 0, before any restart (tonight's snapshot, 17 rows expected: 15 open contracts + NIFTY 50 + SENSEX):
+1. Take a verified database backup. Apply the migration: `alembic upgrade head` as usual (one head: 0059_last_close).
+2. Run the DB tests: `python scripts/orchestrator/db_run.py . python -m pytest -c pytest-app.ini
+   tests_app/test_migration_0059_last_close.py tests_app/test_basket_facts_unheld_index.py tests_app/test_close_freeze_routes.py
+   tests_app/test_closed_label_route.py`. Expected: all pass.
+3. Dry run: `set PYTHONPATH=backend` then `python -m ofo_app.last_close_store seed
+   D:\Abhay\Ventures\ofo-snapshots\close-2026-11-27.json --check`. Read: the "database: host:port/dbname" line is the
+   production database; "keys in the first row" and "mapping chosen" (price <- the tick price, price_at <- the tick's own
+   time, never an export time); "first row" shows a 27 Nov 15:30:00 +05:30 time. Expected: "would write 17", "skipped 0". If a
+   field is reported twice, re-run with `--map price_at=<key>` (or `price=`). If a row is skipped, read its reason.
+4. Real run: the same command without `--check`. Expected: "written 17", "unchanged 0", "skipped 0", then the restart line.
+   A second run prints "written 0", "unchanged 17".
 
-Monday before the open (08:00 to 09:15):
-1. Create Strategy, pick NIFTY. Expected: the level from the last close under "Market closed. Prices are from <Fri date>,
-   15:30:00 IST", not "Not available". If it still says "Not available", note the time and whether the strip shows a
-   value (the open point under C).
-2. Live Strategies and Positions > Paper: the banner and the close figures, each leg's time its own.
+Restart and walk (after step 0; market closed):
+1. Restart the API. Within 30 s open each screen; expected on every one: the banner "Market closed. Prices are from 27 Nov 2026,
+   15:30:00 IST." and the 27 Nov 15:30 figures; no "no live quote", no "Time not available", no load or feed-stop time
+   labelled as a price time.
+   - Home: NIFTY and SENSEX at their 27 Nov closes; paper rows priced.
+   - Positions Real and Paper: the banner; the 9 running paper trades priced (tile greying waits for lane V).
+   - Live Strategies: the banner at once, also while a card is loading; no moving "Checked at".
+   - My Strategies: the banner at the top.
+   - Builder #209: legs at the close; the panel "as of" is a price time; a load time, if shown, says "Checked at".
+   - Option Chain: held contracts priced at the close; other strikes "not available" with the reason.
+   - Leg picker: a strike with no leg shows one figure that does not move over 2 minutes.
+   - Stops panel: "NIFTY last <close> as of 15:30:00" (not "Index values unavailable.").
+   - Add to Paper: no tick box; Confirm sends once and the server's market-closed sentence shows.
+2. Restart the API again: the same figures and times (read back from the table, not re-written).
+3. Stop the feed while the API runs: the banner keeps the close time, never the stop time.
 
-Market hours, feed stopped (as 27 Nov 15:06-15:12):
-1. Stop the feed. Home: "Paper P&L paused - prices not live, as of <date>, <time> IST" (time of the last quote), or the
-   sentence with no time if none is known; never "Time not available".
-2. Builder: Add to Paper, type an entry price, tick "Prices are not live; the entry is the last captured price, as of
-   HH:MM.", Confirm. Expected: saved; the entry is the typed price.
-3. Same without ticking: Confirm stays grey.
+Monday 30 Nov, before the open (08:00 to 09:15):
+1. Create Strategy, NIFTY: the level from Friday's close under the market-closed banner, not "Not available".
+2. Positions Paper and Live Strategies: Friday's figures with their own times.
+3. At 09:15:00 the first live tick replaces each figure; the banner goes; no stored price shows after the open.
+
+Monday 30 Nov, across 15:30 (AF-01):
+1. At 15:28 open the builder's leg picker on a strike with no leg and note its price and time; keep a paper trade open.
+2. At 15:31 to 15:40: the picker strike and every held leg keep the figure of the last tick at or before 15:30:00 (or, for a
+   strike first opened after 15:30, its first figure with its own time); the header "Market closed"; nothing moves.
+3. At 15:31 run in the DB: `select count(*) from last_close where trade_date = '2026-11-30'`. Expected: one row per held
+   contract and index (written at about 15:30:05).
+4. Restart the API at 15:45: the same figures, from the table.
+
+Market hours, feed stopped:
+1. Home: "Prices are not live. Figures are as of <time> IST." once at the top (the last quote's time); tiles greyed.
+2. Builder: Add to Paper, type a price, tick "Prices are not live; the entry is the last captured price, as of HH:MM.",
+   Confirm: saved at the typed price. Without the tick Confirm stays grey.
 
 ## To file as deferred issues
 
 | Title | Evidence | Spec basis | Done when |
 |---|---|---|---|
-| The 15:30 close is not stored durably | RESULTS-lane-n A1 | ADR-330 (36), ADR-212 | the owner's option is built and a restart after 15:30 shows the 15:30 figures |
-| Entry facts do not keep the index value's time and kind | strategy_basket_facts (migration 0050) has no column | ADR-330 (28), (39) | nullable spot_at / spot_kind columns, written on a confirmed save |
-| A confirmed save accepts an index quote flagged as faulty | adjustment_readers.py `_index_value_not_live` checks only ltp > 0 (Tier A B2 F2: a crossed quote returns 24000.05) | ADR-200 (4) | validation_errors refuse, as read_last_close does |
-| First-fill entry facts take a stale index value without the tick | adjustment_readers.py `entry_facts_now` has no health check; record_basket_facts returns before the index check when the adjustment count cannot be read or a non-option leg is open (Tier A B2 F3) | ADR-330 (28), (39) | the same health rule on every path that stores entry_spot |
-| The last-close branch of the confirmed save is unreachable from the route | paper.py may_act refuses gate_market_closed first (Tier A B2 F4) | ADR-212 | remove the branch or the owner changes ADR-212 |
-| A first-after-close frame stamped on a weekend or before the open is labelled with the previous close's time | quote.py `price_at` F-19 rule (Tier A A2 F4) | ADR-330 (36) | the label shows the frame's own time |
-| depth_after_close now returns the frozen frame's depth | feed_health.py (A2) | ADR-330 (36) | owner confirms the depth popup after hours shows the close's depth |
-| A paused leg whose last quote time was evicted shows no time | `snapshot.ended_times` is bounded | REQ-109 AC-5 | the last quote time is kept per open leg |
-| "Checked at Time not available" and Index View "Last updated <Time not available>" remain | checked-at.test.js, IndexViewPage.vue | REQ-049 AC-4 | the shared as-of formatter used there |
-| The builder's confirmPending and PaperStrategies' Add to Paper have no own vitest for the flag | only the dialog emit and SaveDraftBar tests | ADR-330 (28) | a mount test each |
+| Entry facts do not keep the index value's time and kind | strategy_basket_facts has no column | ADR-330 (28), (39) | nullable spot_at / spot_kind written on a confirmed save |
+| A confirmed save accepts an index quote flagged as faulty | `_index_value_not_live` checks only ltp > 0 (crossed quote -> 24000.05) | ADR-200 (4) | validation_errors refuse |
+| First-fill entry facts take a stale index value without the tick | `entry_facts_now` has no health check | ADR-330 (28), (39) | one health rule on every path storing entry_spot |
+| The last-close branch of the confirmed save is unreachable | paper.py refuses gate_market_closed first | ADR-212 | remove it or the owner changes ADR-212 |
+| A first-after-close frame stamped on a weekend or before the open is labelled with the previous close's time | quote.py `price_at` F-19 rule | ADR-330 (36) | the label shows the frame's own time |
+| An older-day leg label can take a newer leg's group | outcome.py ~299-306: legs TUE 15:29:59, MON 15:29:59, TUE 15:31:10 -> "2 legs as of 30 Nov, 15:29:59" | ADR-330 (36) | each leg's own day in the label |
+| Option Chain banner time comes from the index spot only | chain_push.py `label_time(state, (spot_at,))` | ADR-330 (36) | the chain label uses the rows' own times |
+| Pushes during the seed wait carry the raw frame | kite_provider.py ~206 `book.get(...) or quote` (the history recorder gets it) | ADR-330 (36) | no raw frame passes while the book waits |
+| A seed answered after 09:15 is still applied to an empty book (hidden, replaced by the first tick) | last_close_store.py ~320 uses the pre-read time | ADR-212 | the open is checked after the read |
+| The calendar ends 31 Dec 2026 | from 1 Jan 2027 no write and no seeding | ADR-119 | the 2027 calendar loaded |
+| Start-up after the close could rebuild the close from the Redis stream | ofo:feed:owner:ticks outlives an API restart (coordinator, 27 Nov) | ADR-330 (36) | considered with the table as the durable copy |
+| depth_after_close returns the frozen frame's depth | feed_health.py | ADR-330 (36) | the owner confirms |
+| A paused leg whose last quote time was evicted shows no time | `snapshot.ended_times` is bounded | REQ-109 AC-5 | the last quote time kept per open leg |
+| "Checked at Time not available" remains | checked-at.test.js | REQ-049 AC-4 | the shared formatter used there |
+| The builder's confirmPending has no own vitest for the flag | only the dialog emit and SaveDraftBar tests | ADR-330 (28) | a mount test |
 
 ## Task | model
 
@@ -112,7 +176,7 @@ Market hours, feed stopped (as 27 Nov 15:06-15:12):
 |---|---|
 | Split, route, verify, report (this file) | Opus (coordinator session) |
 | Root-cause search, backend and frontend | Sonnet (2 read-only helpers) |
-| Test environment set-up, first gate run, Exit-path revert | Haiku |
-| A2, B2, A4/A5/B1, A3/C builds (2 rounds each where reviewed) | Sonnet (4 builders) |
-| Tier A reviews of A2 and B2 (price and order-entry paths) | Opus |
-| Merges, pre-check, gate | Sonnet |
+| Environment set-up, gate runs, Exit-path revert, slot pin | Haiku |
+| A2, B2, A4/A5/B1, A3/C, ADR-330 (56), last_close store + seed, picker / next_open_at builds | Sonnet (builders; 2 rounds where reviewed) |
+| Merges, pre-check fixes, gate | Sonnet |
+| Tier A reviews: A2, B2, store (2 rounds), seed command | Opus |
