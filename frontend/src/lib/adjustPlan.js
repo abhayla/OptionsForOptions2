@@ -53,6 +53,9 @@ export function readPlan(body) {
       maxAdjustments: count(body.plan.max_adjustments), timeExit: clockText(body.plan.time_exit), timeExitOn: text(body.plan.time_exit_on),
     } : null,
     prefill: formOf(body.prefill),
+    // T2-19: only a reset reply fills these (what the plan had changed / switched off just before it), as the server sent them
+    putBack: Array.isArray(body.put_back) ? body.put_back.filter((x) => typeof x === 'string') : [],
+    putBackOff: Array.isArray(body.put_back_off) ? body.put_back_off.filter((x) => typeof x === 'string') : [],
   }
 }
 

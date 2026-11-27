@@ -279,7 +279,7 @@ def money_inputs(tracked: Any, market: Any, rates: Any) -> MoneyInputs:
         return MoneyInputs(max_loss, credit)
     position = tracked.position
     expiry = min(x.expiry for x in position.legs)  # the live check's stage read (``adjustment_check.state_of``)
-    at = StageAt(market.expiry_kind or position.expiry_kind or "weekly",
+    at = StageAt(market.expiry_kind or position.expiry_kind,  # "" = not known: no stage (R3)
                  (expiry - market.now.astimezone(IST).date()).days)
     return MoneyInputs(max_loss, credit, at=at)
 

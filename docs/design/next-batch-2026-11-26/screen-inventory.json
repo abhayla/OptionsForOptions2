@@ -392,7 +392,7 @@
      "id": "SHARED-15",
      "kind": "dialog",
      "tag": "Modal",
-     "label": "{{PLAN_LOADING_TEXT}} {{sheet.text}} {{loadError}} {{sheet.typeName}} {{labels.playbook}} {{p.name}} {{PLAN_REFILLED_TEXT(refilledFrom)}} {{labels.target}} {{form.targetWords}} {{labels.target_rupees}} {{form.targetRupeeWords}} {{labels.stop}} {{form.stopWords}} {{labels.stop_rupees}} {{form.stopRupeeWords}} {{form.stopWarning}} {{labels.max_adjustments}} {{labels.time_exit}} {{labels.time_exit_on}} {{labels.customise}} {{labels.reset}} {{labels.reset_confirm}} {{labels.reset}} Cancel {{resetMarkers}} {{PLAN_NOT_CONFIRMED_TEXT}} {{labels.close}} {{labels.save}} {{labels.use_as_is}}",
+     "label": "{{PLAN_LOADING_TEXT}} {{sheet.text}} {{loadError}} {{sheet.typeName}} {{labels.playbook}} {{p.name}} {{PLAN_REFILLED_TEXT(refilledFrom)}} {{labels.target}} {{form.targetWords}} {{labels.target_rupees}} {{form.targetRupeeWords}} {{labels.stop}} {{form.stopWords}} {{labels.stop_rupees}} {{form.stopRupeeWords}} {{form.stopWarning}} {{labels.max_adjustments}} {{labels.time_exit}} {{labels.time_exit_on}} {{labels.customise}} {{labels.reset}} {{labels.reset_confirm}} {{labels.reset}} Cancel {{labels.reset_put_back_none}} {{labels.reset_put_back}} {{resetDone.changed.join(', ')}} {{labels.reset_put_back_off}} {{resetDone.off.join(', ')}} {{PLAN_NOT_CONFIRMED_TEXT}} {{labels.close}} {{labels.save}} {{labels.use_as_is}}",
      "labelFrom": "text",
      "ariaLabel": "",
      "testid": "",
@@ -557,7 +557,7 @@
      "labelFrom": "text",
      "ariaLabel": "",
      "testid": "plan-close",
-     "source": "frontend/src/components/strategy/AdjustPlanSheet.vue:70",
+     "source": "frontend/src/components/strategy/AdjustPlanSheet.vue:74",
      "handlers": [
       "click"
      ],
@@ -572,7 +572,7 @@
      "labelFrom": "text",
      "ariaLabel": "",
      "testid": "plan-save",
-     "source": "frontend/src/components/strategy/AdjustPlanSheet.vue:72",
+     "source": "frontend/src/components/strategy/AdjustPlanSheet.vue:76",
      "handlers": [
       "click"
      ],
@@ -587,7 +587,7 @@
      "labelFrom": "text",
      "ariaLabel": "",
      "testid": "plan-use-as-is",
-     "source": "frontend/src/components/strategy/AdjustPlanSheet.vue:73",
+     "source": "frontend/src/components/strategy/AdjustPlanSheet.vue:77",
      "handlers": [
       "click"
      ],
