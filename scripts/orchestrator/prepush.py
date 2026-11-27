@@ -763,6 +763,12 @@ def main(argv=None) -> int:
     except ValueError as exc:
         print("usage error: " + str(exc))
         return 2
+    import tools_present  # noqa: PLC0415 - first step of every run: names every missing tool before anything runs
+    frontend = None if a.full else frontend_changes(a.repo)
+    problems = tools_present.check(a.repo, need_frontend=a.full or frontend is None or bool(frontend))
+    if problems:
+        print(tools_present.report(problems))
+        return 2
     return run_all(a.repo, a.full, jobs=jobs)
 
 

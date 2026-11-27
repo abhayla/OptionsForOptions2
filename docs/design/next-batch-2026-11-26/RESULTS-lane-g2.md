@@ -1,4 +1,4 @@
-STATUS 19:50 | part 1: done, ADOPT (final gate run in progress) | part 2: not started | next push ~20:10 | blocker: none
+STATUS 21:05 | part 1: done | part 2: item 1 built, gate run before push | next push ~21:30 | blocker: none
 
 # Lane G2: gate speed, part 1 (27 Nov 2026)
 
@@ -92,12 +92,60 @@ shell = pass. The runbook tells lanes to run prepush in the background, so this 
 `signal.default_int_handler` for its duration and restores the old disposition (class fix: every test that sends itself a
 signal; `grep -n "os.kill" tests` shows no other SIGINT sender). After the fix: `(trap '' INT; pytest <test>)` passes.
 
+## Part 2, item 1: tools-present check, cloud services (coordinator's order, 27 Nov)
+
+**Which call failed for the four lanes.** `scripts/ruff_ratchet.py:58` runs `sys.executable -m ruff`. The container has a ruff
+BINARY (`/root/.local/bin/ruff` and `/usr/local/bin/ruff`, 0.16.9) but not the module in the gate's Python, so the ratchet
+failed closed at 0.1 s with `No module named ruff`. A PATH problem is not the cause. Do not "fix" it by calling the binary:
+the baseline `scripts/ruff_baseline.json` was counted with the pin `ruff==0.15.12` (requirements-dev.txt) and 0.16.9 counts
+differently. The right fix is `python -m pip install -r requirements-dev.txt -r requirements-app.txt` (what the lanes did,
+at the cost of a run), so the gate now says so in its first 0.1 s.
+
+- `scripts/orchestrator/tools_present.py` (new), called first in `prepush.main` (after usage errors, before any step): names every
+  missing tool with its exact install command, exit 2, nothing runs. Checks: `python -m ruff` present and equal to the pin,
+  modules pytest, mypy, fastapi, sqlalchemy, git, and (only when a frontend step is planned, or `--full`) node/npm and
+  `frontend/node_modules`. Cost 0.08 s. Proof: `/tmp/v0/bin/python scripts/orchestrator/tools_present.py --frontend` in an empty venv
+  prints `TOOLS MISSING (5)` with the fix under each; 10 new tests in `tests/orchestrator/test_tools_present.py` (wrong version,
+  missing module, node_modules only when planned, the gate stops with exit 2 before any step, goes on when all present).
+- `scripts/orchestrator/cloud_services.sh [--reset]` (new, guarded by `CLAUDE_CODE_REMOTE=true`, otherwise a no-op exit 0): starts
+  the installed PostgreSQL 16 (`service postgresql start`) and Redis 7, creates `ofo_test`, the `ofo_app` role with the ADR-048
+  attributes (same statements as `app-tests.yml`), runs `alembic upgrade head` as the owner role. Throwaway local passwords
+  (the CI values). Run-and-seen-working here: first run 80 s (alembic dominates), second run 51 s (idempotent), `--reset` drops
+  `ofo_test*` and rebuilds.
+- `scripts/orchestrator/db_run.py`: in a cloud session without the owner's `GLOBAL.env`, uses those local URLs (the owner's PC path is
+  unchanged). Proof: `db_run.py . python -m pytest -c pytest-app.ini tests_app/test_audit_store.py`: 105 passed, 1 failed; the
+  one failure is `test_ac5_0017_downgrade...` marked `full_chain`, which CI excludes (`-m "not full_chain"`, nightly only).
+  Use `-m "not full_chain"` as CI does.
+- Not done by this item (owner/coordinator): the gate runs with `TEST_DATABASE_URL` unset, so DB tests still skip inside the gate;
+  turning them on would change what the gate runs and needs the owner.
+
+**Proposed, NOT wired: SessionStart hook line for `.claude/project/hooks.json`** (the coordinator decides):
+
+```json
+"SessionStart": [ { "hooks": [ { "type": "command",
+  "command": "[ \"$CLAUDE_CODE_REMOTE\" = true ] && bash \"$CLAUDE_PROJECT_DIR/scripts/orchestrator/cloud_services.sh\" || true" } ] } ]
+```
+
+It adds about a minute to a cloud session start; leave it off for lanes that never run DB tests (they use `db_run.py` only for
+migration or store files).
+
+### For the coordinator: environment setup script (each line seen working in this container, 27 Nov)
+
+```
+python -m pip install -r requirements-dev.txt -r requirements-app.txt   # ruff==0.15.12, mypy, pytest, fastapi, sqlalchemy (seen: ruff 0.15.12 in `python -m ruff --version`)
+(cd frontend && npm ci --no-audit --no-fund)                              # seen: rc=0, node 22 at /opt/node22/bin
+bash scripts/orchestrator/cloud_services.sh                               # seen: PostgreSQL 16 + Redis 7 up, ofo_test migrated, 80 s
+```
+
+Not run-and-seen: any `apt-get` line (nothing needed: PostgreSQL 16, Redis 7, node 22 are in the image).
+
 ## Tasks, models, minutes
 
 | task | model | minutes |
 |---|---|---|
 | read, set up, 2 measured runs, recipe | Sonnet (main) | in progress |
 | review of the last fix and equivalence claim | Opus (Tier A, `reviewer`) | 14 |
+| item 1: tools check, cloud services, db_run cloud mode | Sonnet (main) | about 55 |
 
 ## To file (not filed)
 
