@@ -344,7 +344,9 @@ _OPEN_FOR_RULE = text(f"SELECT {_SG_COLUMNS} FROM public.adjustment_suggestions 
 _INSERT_SUGGESTION = text(
     "INSERT INTO public.adjustment_suggestions (strategy_id, rule_id, trigger_id, stage, value, threshold, worse, "  # noqa: S608
     "kind, shown_at, timeline) VALUES (:strategy_id, :rule_id, :trigger_id, :stage, :value, :threshold, "
-    "CAST(:worse AS TEXT), CAST(:kind AS TEXT), COALESCE(CAST(:shown_at AS TIMESTAMPTZ), now()), "
+    "CAST(:worse AS TEXT), CAST(:kind AS TEXT), "
+    "CASE WHEN CAST(:shown_at AS TIMESTAMPTZ) IS NULL THEN now() "
+    "ELSE LEAST(CAST(:shown_at AS TIMESTAMPTZ), clock_timestamp()) END, "  # J2: never after the database clock
     "jsonb_build_array(jsonb_build_object('at', clock_timestamp(), 'outcome', 'open', "
     "'fired_value', CAST(CAST(:value AS NUMERIC) AS TEXT), 'group', CAST(:group AS TEXT), "
     "'source', CAST(:source AS TEXT), 'cmp', CAST(:cmp AS TEXT), "
