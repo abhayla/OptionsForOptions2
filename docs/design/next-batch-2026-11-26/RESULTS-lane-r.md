@@ -416,3 +416,45 @@ Spec basis: ADR-330 (1) (the stop base is stored with the plan and read by the c
 | Splitting, routing, verifying, reporting; reading diffs and re-running key tests to verify | Opus (main session) |
 | Prepush gate runs and git merge/push steps before 14:14 | Opus (main session) - against the rule: gate runs belong to a Sonnet helper; from 14:14 they go to one |
 | Two RESULTS notes (api-blocking deferred list, plan-watch-load deferred list) and this table | Opus (main session) - report writing |
+
+## Plan watch box never fills (AX-14, 27 Nov)
+
+Spec basis: ADR-330 (13), REQ-119 AC-3/AC-4. Raw PC body: the coordinator relayed the counts of two real 200 bodies (A-G #207, 14 lines; A-H #209, 16 lines, all not_computable). The raw JSON is still to come; fields not stated were filled from `PlanWatchOut` / `WatchLineOut` (listed in `frontend/tests/plan-watch-fill.test.js`, section (e)).
+
+### Step 1: what the server can send that the old `parsePlanWatch` rejected (old = `frontend/src/lib/planWatch.js` at 248f817a)
+
+| Server side (backend/ofo_app) | Old reader | Effect |
+|---|---|---|
+| `reason` / `label` / `as_of_text` / `no_plan_text` / `armed_heading` are `CatalogueText`; a `UserFacingError` is written as an OBJECT (`api_models.py:37-45` `_serialize` -> `ofo/errors/model.py:89` `as_dict`); a not-checked rule's reason is `render(r.code)` (`routes/adjustment_check.py:203`, `:262`; `routes/plan_watch.py:173,195`) | `textOrNull` returns false for a non-string (`planWatch.js:33`), `isText(label)` fails (`:44`), `asOfText === false` (`:58`) -> whole reply null | whole reply "unavailable" |
+| `plan_state` Literal (`plan_watch.py:104`) | unknown value -> null (`:51`) | whole reply rejected |
+| `kind` / `unit` / `state` Literals (`plan_watch.py:77-79`) | `readLine` returns null (`:44`), `lines.includes(null)` (`:54`) | whole reply rejected on any new value |
+| figures: `Money` = `format(v, "f")`, so no exponent, no grouping; sign "-" only | regex `^-?\d+(\.\d+)?$` (`:34`); "+" rejected | whole reply rejected |
+| `no_plan` with null text, `paused` without text (`plan_watch.py:105,107`) | null (`:59,:63`) | whole reply rejected |
+| `as_of` datetime, extra keys, absent `reason` | not read / ignored / ok | fine |
+
+The two PC bodies as relayed (kinds credit_stop / rule, units pnl_rupees / percent / rule_unit, states fired / not_applicable / not_computable, null fires_at, string reason "USER_INPUT_151", `paused` null) are ACCEPTED by the old reader: run on the old code, both returned state ok with all lines. So those shapes are not what rejected the PC reply.
+
+### Root cause (most likely, not proven)
+
+1. The sequence on the PC (stuck on "Updating the numbers", then "unavailable") is produced by the box itself once ANY first read returns a non-ok view: `PlanWatch.vue` showed "Updating the numbers..." whenever `view.state !== 'ok' && updating`, so every retry after a failed first read said "Updating" over nothing, then fell back to the not-available text. "failed" (timeout, network) and "unavailable" (parse) share one sentence, so the screen cannot tell them apart. The test (a) with the old code reproduced exactly `loading -> updating -> message`.
+2. What made the first read non-ok is NOT proven. Candidates: (i) the PC head may lack the 20 s per-request timeout (its first reads took 6-11 s against the 10 s shared client timeout); ff0448b3 is not in this checkout, so I could not check; (ii) a line field in the raw body that the old parser refuses, most likely an object-valued `reason` or `label` (server source above), which the relayed bodies do not show.
+
+### Fix (frontend only)
+
+- `parsePlanWatch`: a text is a string or an object with `what_happened`; a "+" sign is read; one bad line becomes "Not checked" (state not_computable, no figures, no reason) with ONE `console.warn` naming the fields only; unknown plan_state reads as planned; the reply is rejected only when it is not an object, has no `lines` array, or answers another strategy.
+- `PlanWatch.vue`: "Updating the numbers..." only over good rows; with no good answer a read in progress says "Loading the rule check...".
+- Supersede: no path. `newestWins` KINDS are outcome, leg-edit, execute only; plan-watch GETs are never aborted; the queue coalesces per box key (separate keys for full box, compact box, remount), so two boxes of one strategy are read one after the other and both render (tested).
+
+### Numbers
+
+| Run | Result |
+|---|---|
+| `plan-watch-fill.test.js` before the fix | 14 failed, 4 passed (of 18; (e) added after) |
+| `plan-watch-*.test.js` + `plan-save-outcome.test.js` after | 7 files, 86 passed |
+| old `plan-watch-reader` "malformed" test | rewritten: top level unusable -> unavailable; one bad line -> kept, Not checked |
+
+### PC re-test (3 steps)
+
+1. Load the new build, open Positions with plan rows, and watch one box: it must read "Loading the rule check..." then the rows. It must never read "Updating the numbers..." before its first rows.
+2. Open the browser console: a `plan watch: line N degraded ... field(s): ...` warning names the field if the server sent something unreadable. Send that line, and the raw 200 body of `/api/strategies/<id>/plan-watch` from the network tab.
+3. Open the builder with `?strategy=<id>`: the Stops panel and the plan rows must show; A-H #209 must show 16 rows marked Not checked.

@@ -8,8 +8,8 @@
 <template>
   <section ref="rootEl" class="rounded-lg border border-line bg-surface p-3 text-sm" data-testid="plan-watch" :data-currency="marked ? (notCurrent ? 'not_current' : 'updating') : 'current'" :data-compact="compact ? 'true' : 'false'" :data-strategy="strategyId">
     <h3 class="font-semibold" data-testid="plan-watch-title">Plan watch</h3>
-    <p v-if="view === null" class="text-xs text-ink-muted" data-testid="plan-watch-loading">{{ LOADING_TEXT }}</p>
-    <p v-else-if="view.state !== 'ok' && updating" class="text-xs text-ink-muted" data-testid="plan-watch-updating">{{ UPDATING_TEXT }}</p>
+    <!-- "Updating the numbers..." only ever sits over good rows (the mark under the table); with no good answer on screen a read in progress is "Loading" -->
+    <p v-if="view === null || (view.state !== 'ok' && updating)" class="text-xs text-ink-muted" data-testid="plan-watch-loading">{{ LOADING_TEXT }}</p>
     <p v-else-if="view.state !== 'ok'" class="text-xs text-ink-muted" data-testid="plan-watch-message">{{ view.text }}</p>
     <template v-else>
       <p v-if="view.planState === 'no_plan'" class="text-ink-muted" data-testid="plan-watch-no-plan">{{ view.noPlanText }}</p>
