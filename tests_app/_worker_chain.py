@@ -90,7 +90,8 @@ class Chain:
         return self.sid
 
     async def type_plan(self, *, guards: dict | None = None, t06_percent: str | None = None,
-                        time_exit: str | None = None, keep: tuple[str, ...] | None = ()) -> None:
+                        time_exit: str | None = None, keep: tuple[str, ...] | None = (),
+                        t06_stages: list[str] | None = None) -> None:
         """What the plan sheet saves: a copy of the system iron condor playbook with the typed guards (ADR-330 (5)).
         ``keep``: the body rules left ON (default none, so only the typed stop can raise an alert and every row read
         back is the case's own); None = the whole system rule list."""
@@ -103,6 +104,9 @@ class Chain:
             if t06_percent is not None:  # "Loss reaches this % of max loss": the same value for every stage
                 for key in ("weekly", "monthly"):
                     body["triggers"]["T-06"][key] = [t06_percent] * len(body["triggers"]["T-06"][key])
+            if t06_stages is not None:  # the PC's #207 shape: a per-stage row, e.g. [50, 5, 40]
+                body["triggers"]["T-06"]["weekly"] = list(t06_stages)
+                body["triggers"]["T-06"]["on"] = True
             if time_exit is not None:
                 body["guards"]["time_exit"] = {"at": time_exit, "on": "2026-11-06"}
                 if not any(r["id"] == "T-10b" for r in body["rules"]):
@@ -117,7 +121,8 @@ class Chain:
             env.pop(name, None)
         env["PYTHONPATH"] = os.pathsep.join([str(ROOT / "backend"), env.get("PYTHONPATH", "")])
         self.proc = subprocess.Popen([sys.executable, "-m", "ofo_app.background"], env=env, cwd=str(ROOT),
-                                     stdout=open(self.log_path, "w"), stderr=subprocess.STDOUT, text=True)  # noqa: SIM115
+                                     stdout=open(self.log_path, "w"),  # noqa: SIM115
+                                     stderr=subprocess.STDOUT, text=True)
         deadline = time.monotonic() + START_TIMEOUT
         while time.monotonic() < deadline:
             if self.proc.poll() is not None:

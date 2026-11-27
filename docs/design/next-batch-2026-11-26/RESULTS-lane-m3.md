@@ -1,4 +1,4 @@
-STATUS 01:10 | pushed 8ca36525 (gate TOTAL PASS; groups 1 and 2 + K2 5ee104a5); now: clock pin for the two Friday-afternoon plan-watch tests, gate running | unresolved: none | not merged: hotfix/worker-2-1127 (not on origin at 01:05) | next push: after the gate | blocker: none (send_message refused for me; this line is the report)
+STATUS 01:50 | pushed cdce22ce earlier; J3 (hotfix/worker-2-1127 b1d8d3ee) merged locally on the joined tree (J3 worker + R3 reader): Q3 cases (a) (b) (c) (d) (e) (f) (g) (h) (i) (j) (k) (l) = 12 of 12 PASS and tests_app/test_worker_j3.py 6 of 6 PASS on real PostgreSQL 16 (448 s); Opus review of the joined stop path: PASS (4 minor findings filed below); final gate running | unresolved: none | blocker: none (send_message refused for me; this line is the report)
 
 # Lane M3: conflicts and reds of the weekend build (27 Nov 2026)
 
@@ -75,6 +75,20 @@ Branch `integration/conflicts-1127` from `origin/integration/weekend-1127` (c9f9
 | 6 | `feat/page-handovers-1127` (546d653f) | `LiveStrategyCard.vue` (props: `monitoring` added to Lane W's `greyed`/`showLine`), `LiveStrategiesPage.vue` (both card tags keep `@affected` and get `:monitoring`), `PlanWatch.vue`: Lane H's box (queue, "Updating", gaps) kept; Lane Y's host-fed `view` added on top (`own` ref + `view` computed; a hosted box never reads: `ask()` returns, the save watcher returns before `updating`). `INDEX.md`, `template_pins.json`: regenerated / unioned. Its 7 frontend tests and 6 DB test files pass. |
 
 Two more strict xfails that now pass were deleted (`test_clock_boundary_0830.py`, fixed by builder-open; `test_load_live_day.py`). Frontend after group 2: 312 files, 3743 tests, all green.
+
+
+## Lane J3 (`hotfix/worker-2-1127` b1d8d3ee), joined with Lane R3's reader
+
+- Merged WITHOUT its `chore/gate-speed-1127` merge (your original brief: process files stay out): `git merge --no-commit`, then the 8 files that branch changes (`scripts/orchestrator/{cloud_services.sh,db_run.py,merge_preflight.py,prepush.py,tools_present.py}`, `tests/orchestrator/test_prepush_since_pass.py`, `test_tools_present.py`, `RESULTS-lane-g2.md`) restored to this build's state. J3's own 11 commits are all in (product change: `backend/ofo_app/background.py`; tests `test_worker_j3.py`, Q3 harness). Conflicts: `INDEX.md` (regenerated) and `test_plan_stop_worker_chain.py` (both sides deleted the same marks; took J3's wording).
+- The join: R3 (`hotfix/plan-read-2-1127`) was already in this tree, so the tree IS the join. With R3 in, "expiry kind not known" really occurs (J3's own tests faked it); the Opus review confirmed on this tree that the percent stop fails closed (a named not-checked state, no guessed weekly row, no wrong alert), the rupee stop and a dated time exit fire when due, the nearest leg decides the kind in the worker, the screen reader and plan save, and no path reaches `approaches.roll_distance` with an empty kind.
+- Q3 on the joined tree: cases (a) to (l), 12 of 12, plus the 6 J3 tests.
+
+To file as deferred issues (from the Opus review of the joined stop path, all minor):
+- A time exit written as plain "HH:MM" (no date) is "on expiry" and, with the kind unknown, reads `NotChecked(adjust_trigger_missing_days_left)` even on expiry day (`playbook_eval.py:621-622`); only a time exit with its own date runs. Fails closed. J3's RESULTS say "the time exit runs": true only for the dated form.
+- The worker's reason for an unknown-kind percent stop is generic ("The stop lines in force were not supplied to this check", `playbook_eval.py:1117-1118`, `templates.py:1430`) while the plan sheet says `plan_stop_kind_not_known`.
+- `background.py:1194` drops the gate on a plan change before the new list is published (`:1121`): a check with the old plan in that window rebuilds the old gate for up to 10 s. Predates J3; no re-fire found (stored open rows come back).
+- `background.py:1018` `_checked_body` is never cleared when a strategy leaves the list (memory only).
+- Not checked by the reviewer: whether SENSEX/BFO futures are in the production instrument master (if not, every SENSEX trade has an unknown kind); the worker reads chain rows of `legs[0]`'s expiry only, not the nearest leg's (predates J3).
 
 ## Tasks and models
 
