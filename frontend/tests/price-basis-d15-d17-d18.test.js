@@ -5,7 +5,6 @@
 import { describe, expect, it } from 'vitest'
 import { mount } from '@vue/test-utils'
 import MoneySummary from '@/components/strategy/MoneySummary.vue'
-import SummaryCards from '@/components/strategy/SummaryCards.vue'
 import LegList from '@/components/strategy/LegList.vue'
 import PaperBookPanel from '@/components/strategy/PaperBookPanel.vue'
 import { entryPriceFor } from '@/lib/tracking'
@@ -40,7 +39,6 @@ describe('D-15 (c) the Add to Paper price says when it differs from the plan', (
 })
 
 describe('D-18 each panel that shows a leg price says when it was quoted', () => {
-  const leg = { id: 'a', instrument_id: 'NSE_FO:1', underlying: 'NIFTY', action: 'SELL', lots: 1, planned_entry: '7.00', captured_at: '2026-11-23T05:00:00Z', expiry: '2026-11-25', instrument_type: 'PE', strike: '25300.00' }
   it('the paper book net table: the LTP carries its own quote time from price_at', () => {
     const p = { contract_id: 1, contract_text: 'NIFTY 25300 PE', net_quantity: -65, average_text: '7.00', ltp_text: '7.25', price_at: '2026-11-23T05:31:03Z', booked_text: '0', unbooked_text: '0', total_text: '0' }
     const book = { state: 'LIVE', positions: [p, { ...p, contract_id: 2, price_at: null }], orders: [] }

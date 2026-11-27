@@ -37,7 +37,7 @@ def replayed():
     return provider
 
 
-async def _post(provider, body, fills, plan=None):
+async def _post(provider, body, fills, plan=None, exited=False):
     app = create_app()
     app.dependency_overrides[get_market_context] = lambda: MarketContext(provider, lambda: VALUATION, RATE)
     app.dependency_overrides[outcome_route.get_margin_source] = lambda: source(Transport())
@@ -51,6 +51,11 @@ async def _post(provider, body, fills, plan=None):
         return plan
 
     app.dependency_overrides[outcome_route.get_plan_reader] = lambda: plan_reader
+
+    async def exits_reader(_id):  # ever an exit: True, no: False, unread: None
+        return exited
+
+    app.dependency_overrides[outcome_route.get_exits_reader] = lambda: exits_reader
     async with AsyncClient(transport=ASGITransport(app=app), base_url="http://test") as ac:
         return await ac.post("/api/strategies/outcome", json=body)
 
@@ -158,6 +163,73 @@ async def test_an_exited_plan_leg_never_prices_the_held_subset_as_the_plan_credi
     plan_all = {**plan, "NSE_FO:EXITED-WING": ("BUY", 65, Decimal("1.00"))}
     s = json.loads((await _post(replayed, body, fills, plan_all)).text)["summary"]
     assert s["plan_line"] is None
+
+
+async def test_an_exit_in_the_book_history_serves_no_plan_line_even_when_the_book_looks_whole_again(replayed):
+    """Review MAJOR: exit then re-sell the same 65 (or a partial exit, then re-add to the planned size) leaves an open
+    book equal to the plan; ADR-321 (8) / REQ-109 D-15: after any exit, partial or full, no plan line."""
+    fills = await _fills_of(replayed)
+    body = _paper_body(replayed)
+    plan = await _plan_of(replayed, body)
+    served = json.loads((await _post(replayed, body, fills, plan, exited=False)).text)["summary"]
+    assert served["plan_line"] is not None  # the same book, no exit in its history: the line is served
+    for seen in (True, None):  # an exit seen; the history could not be read
+        s = json.loads((await _post(replayed, body, fills, plan, exited=seen)).text)["summary"]
+        assert s["price_basis_text"] == "At paper fill prices" and s["plan_line"] is None
+
+
+async def test_one_contract_on_two_request_legs_is_not_the_plan_twice(replayed):
+    """Review 2: contract A sent twice against a book of -65 and a plan of SELL 65 must not price 130."""
+    fills = await _fills_of(replayed)
+    body = _paper_body(replayed)
+    plan = await _plan_of(replayed, body)
+    sell = next(x for x in body["legs"] if x["action"] == "SELL")
+    iid = sell["instrument_id"]
+    one_leg_book = {iid: fills[iid]}
+    one_leg_plan = {iid: plan[iid]}
+    body["legs"] = [sell]
+    s = json.loads((await _post(replayed, body, one_leg_book, one_leg_plan)).text)["summary"]
+    assert s["plan_line"] is not None  # one leg, one plan leg: served
+    body["legs"] = [sell, dict(sell)]
+    resp = await _post(replayed, body, one_leg_book, one_leg_plan)
+    if resp.status_code == HTTPStatus.OK:
+        assert json.loads(resp.text)["summary"]["plan_line"] is None
+
+
+async def test_a_real_partial_exit_that_the_request_matches_serves_no_plan_line(replayed):
+    """Review 3: the plan was 2 lots (130) on the first leg; one lot was exited, so the book and the request both say
+    65 (every leg IS a fill) but the plan's units differ from the position's: no plan line."""
+    fills = await _fills_of(replayed)
+    body = _paper_body(replayed)
+    plan = await _plan_of(replayed, body)
+    iid = body["legs"][0]["instrument_id"]
+    action, units, price = plan[iid]
+    plan[iid] = (action, units * 2, price)
+    s = json.loads((await _post(replayed, body, fills, plan)).text)["summary"]
+    assert s["price_basis_text"] == "At paper fill prices"  # every leg is a fill; only the plan's units differ
+    assert s["plan_line"] is None
+
+
+async def test_a_plan_leg_on_the_other_side_serves_no_plan_line(replayed):
+    fills = await _fills_of(replayed)
+    body = _paper_body(replayed)
+    plan = await _plan_of(replayed, body)
+    iid = body["legs"][0]["instrument_id"]
+    action, units, price = plan[iid]
+    plan[iid] = ("BUY" if action == "SELL" else "SELL", units, price)
+    s = json.loads((await _post(replayed, body, fills, plan)).text)["summary"]
+    assert s["price_basis_text"] == "At paper fill prices"
+    assert s["plan_line"] is None
+
+
+async def test_a_plan_that_nets_to_a_debit_says_pay(replayed):
+    """The plan priced far above the sold legs' fills turns the net to a debit: 'Plan: Pay'."""
+    fills = await _fills_of(replayed)
+    body = _paper_body(replayed)
+    planned = await _plan_of(replayed, body, "0")
+    plan = {i: (a, u, Decimal("0.05") if a == "SELL" else px) for i, (a, u, px) in planned.items()}
+    s = json.loads((await _post(replayed, body, fills, plan)).text)["summary"]
+    assert s["plan_line"] is not None and s["plan_line"].startswith("Plan: Pay ")
 
 
 async def test_a_client_sent_plan_figure_is_refused_not_read(replayed):

@@ -42,6 +42,25 @@ def test_plan_line_absent_states():
     assert money.plan_line(legs, {"i1": None}, ["i1"]) is None
 
 
+def bought_put(entry):
+    return Leg(Action.BUY, Instrument.PE, D("25300"), EXPIRY, Q, D(entry))
+
+
+def test_plan_line_says_pay_for_a_debit():
+    line = money.plan_line((bought_put("23.70"),), {"i1": D("23.85")}, ["i1"])
+    assert line == "Plan: Pay ₹1,550.25 at plan prices"  # 23.85 x 65
+
+
+def test_plan_line_is_none_when_the_plan_nets_to_zero():
+    legs = (sold_put("23.70"), bought_put("23.70"))
+    assert money.plan_line(legs, {"i1": D("20.00"), "i2": D("20.00")}, ["i1", "i2"]) is None
+
+
+def test_plan_line_is_none_for_a_futures_leg():
+    fut = Leg(Action.SELL, Instrument.FUT, None, EXPIRY, Q, D("25400"))
+    assert money.plan_line((fut,), {"i1": D("25400")}, ["i1"]) is None
+
+
 def test_basis_texts():
     assert money.basis_text("plan") == "At plan prices"
     assert money.basis_text("paper_fills") == "At paper fill prices"

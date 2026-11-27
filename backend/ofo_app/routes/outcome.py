@@ -18,7 +18,7 @@ import logging
 import time
 from dataclasses import dataclass
 from decimal import Decimal
-from typing import Annotated, Any, Awaitable, Callable, Iterable, Literal, Mapping, Union
+from typing import Annotated, Any, Awaitable, Callable, Iterable, Literal, Mapping, Sequence, Union
 
 from fastapi import APIRouter, Depends
 from ofo.adjustment.entry_guide import entry_guide_for
@@ -426,6 +426,9 @@ class Booked:
     #: D-15: the plan the SERVER stored for that paper strategy: instrument id -> (action, units, plan entry price); None
     #: when none is stored or it cannot be read. Never a client-sent figure.
     plan: Mapping[str, tuple[str, int, Decimal]] | None = None
+    #: D-15 (ADR-321 (8), REQ-109): the book's whole order history holds an exit (an exit, stop or settle order, or a
+    #: closed lifecycle); None when the history could not be read. Only False lets the plan line show.
+    exited: bool | None = None
 
 
 BookedReader = Callable[[int], Awaitable[Decimal | None]]  # strategy id -> booked P&L; None: the book could not be read
@@ -525,19 +528,53 @@ def get_plan_reader() -> PlanReader:
     return read_plan
 
 
+ExitsReader = Callable[[int], Awaitable[bool | None]]
+_EXIT_KINDS = frozenset({"exit", "stop", "settle"})
+
+
+def exit_seen(orders: Sequence[Any]) -> bool:
+    """D-15 (ADR-321 (8)): True when the order HISTORY holds any exit, partial or full: an order of kind exit, stop or
+    settle, or a lifecycle that went flat. The open book alone cannot say: an exit followed by a re-entry looks whole."""
+    from ofo.engine.orderbook import lifecycles as engine_lifecycles
+    if not orders:
+        return False
+    return any(o.kind in _EXIT_KINDS for o in orders) or bool(engine_lifecycles(list(orders), {}).closed)
+
+
+async def read_exits(strategy_id: int) -> bool | None:
+    """D-15: ``exit_seen`` over the owner-checked order history of the paper strategy. None: the read failed or it is
+    not this user's strategy (no plan line is made up)."""
+    from ofo_app import paper_book
+    from ofo_app.db import get_sessionmaker
+    from ofo_app.routes.broker import current_user_ref
+    try:
+        async with get_sessionmaker()() as db:
+            orders = await paper_book.load_owned(db, current_user_ref(), strategy_id)
+            return exit_seen([o.order.as_paper() for o in orders]) if orders else None
+    except Exception:  # noqa: BLE001 - any read failure is the one answer "could not be read"
+        return None
+
+
+def get_exits_reader() -> ExitsReader:
+    return read_exits
+
+
 async def get_booked(req: OutcomeRequest, reader: Annotated[BookedReader, Depends(get_booked_reader)],
                      fills_reader: Annotated[FillsReader, Depends(get_fills_reader)] = read_fills,
-                     plan_reader: Annotated[PlanReader, Depends(get_plan_reader)] = read_plan) -> Booked:
+                     plan_reader: Annotated[PlanReader, Depends(get_plan_reader)] = read_plan,
+                     exits_reader: Annotated[ExitsReader, Depends(get_exits_reader)] = read_exits) -> Booked:
     """ADR-209: nothing for a plan or the switch off; else the paper strategy's booked P&L or "could not be read".
     D-15: with a paper strategy id it also carries the book's open positions, whatever the switch (the basis label)."""
     if req.paper_strategy_id is None:
         return Booked()
     fills = await (fills_reader if callable(fills_reader) else read_fills)(req.paper_strategy_id)
     plan = await (plan_reader if callable(plan_reader) else read_plan)(req.paper_strategy_id)
+    exited = await (exits_reader if callable(exits_reader) else read_exits)(req.paper_strategy_id)
     if not req.include_booked:
-        return Booked(fills=fills, paper=True, plan=plan)
+        return Booked(fills=fills, paper=True, plan=plan, exited=exited)
     amount = await reader(req.paper_strategy_id)
-    return Booked(None, True, fills, True, plan) if amount is None else Booked(amount, False, fills, True, plan)
+    return (Booked(None, True, fills, True, plan, exited) if amount is None
+            else Booked(amount, False, fills, True, plan, exited))
 
 
 class OutcomeRequest(BaseModel):
@@ -1291,7 +1328,10 @@ def _plan_line_of(held: Any, booked: Booked) -> Any:
     held leg is a fill, checked by the caller): a planned leg missing from the request (fully exited), a changed
     quantity (partly exited) or no stored plan gives None. Nothing is priced from a subset of the plan."""
     plan = booked.plan
-    if not plan or not held or set(plan) != {x.instrument_id for x in held}:
+    if booked.exited is not False or not plan or not held:  # an exit anywhere in the history (or unread): no line
+        return None
+    ids = [x.instrument_id for x in held]
+    if len(ids) != len(plan) or set(ids) != set(plan):  # each plan leg matches exactly one held leg
         return None
     if any(plan[x.instrument_id][:2] != (x.action.value, x.quantity) for x in held):
         return None
