@@ -7425,6 +7425,105 @@
         "title": "MaskedUserIdOut",
         "type": "object"
       },
+      "MonitoringListOut": {
+        "additionalProperties": false,
+        "properties": {
+          "strategies": {
+            "items": {
+              "$ref": "#/components/schemas/MonitoringOut"
+            },
+            "title": "Strategies",
+            "type": "array"
+          }
+        },
+        "required": [
+          "strategies"
+        ],
+        "title": "MonitoringListOut",
+        "type": "object"
+      },
+      "MonitoringOut": {
+        "additionalProperties": false,
+        "properties": {
+          "badge_text": {
+            "anyOf": [
+              {},
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Badge Text"
+          },
+          "health_text": {
+            "anyOf": [
+              {},
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Health Text"
+          },
+          "reason": {
+            "pattern": "^[A-Za-z0-9_\\-.]{1,64}$",
+            "title": "Reason",
+            "type": "string"
+          },
+          "reason_text": {
+            "anyOf": [
+              {},
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Reason Text"
+          },
+          "since_at": {
+            "anyOf": [
+              {
+                "format": "date-time",
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Since At"
+          },
+          "since_text": {
+            "anyOf": [
+              {},
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Since Text"
+          },
+          "strategy_id": {
+            "title": "Strategy Id",
+            "type": "integer"
+          },
+          "watch_state": {
+            "enum": [
+              "active",
+              "paused"
+            ],
+            "title": "Watch State",
+            "type": "string"
+          }
+        },
+        "required": [
+          "strategy_id",
+          "watch_state",
+          "reason",
+          "badge_text",
+          "health_text",
+          "reason_text",
+          "since_at",
+          "since_text"
+        ],
+        "title": "MonitoringOut",
+        "type": "object"
+      },
       "NetPremiumOut": {
         "additionalProperties": false,
         "description": "REQ-081 AC-1: the net premium at the planned entries. ``amount`` / ``side`` are null (with a ``reason``) when a\nleg has no planned price or a leg is a future; ``side`` is null for exactly zero; ``per_unit`` is null when the\nlegs' quantities differ.",
@@ -20377,6 +20476,46 @@
           }
         },
         "summary": "Market Indices"
+      }
+    },
+    "/api/monitoring-state": {
+      "get": {
+        "operationId": "monitoring_state_api_monitoring_state_get",
+        "parameters": [
+          {
+            "in": "query",
+            "name": "ids",
+            "required": false,
+            "schema": {
+              "default": "",
+              "title": "Ids",
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/MonitoringListOut"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "summary": "Monitoring State"
       }
     },
     "/api/playbooks": {

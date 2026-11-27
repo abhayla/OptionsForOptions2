@@ -96,8 +96,8 @@ def parse_ids(raw: str) -> list[int]:
     """The asked ids: positive integers only, no repeats, at most MAX_IDS; anything else is dropped (the page treats an
     id the answer does not name as paused)."""
     out: list[int] = []
-    for part in raw.split(","):
-        part = part.strip()
+    for piece in raw.split(","):
+        part = piece.strip()
         if part.isascii() and part.isdigit() and int(part) > 0 and int(part) not in out:
             out.append(int(part))
     return sorted(out)[:MAX_IDS]
