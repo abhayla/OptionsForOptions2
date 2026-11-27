@@ -175,7 +175,7 @@ async function askArmedExits() {
 watch(() => [props.open, props.orders, props.strategyId, rows.value.map((r) => `${r.lots}/${r.price}`).join()], askArmedExits, { immediate: true })
 
 // the rows as they were when the server refused them: Confirm unlocks only once the user has changed something
-const snapshot = () => JSON.stringify(rows.value.map((r) => [r.lots, r.price]))
+const snapshot = () => JSON.stringify([rows.value.map((r) => [r.lots, r.price]), notLiveAck.value]) // the tick changes the request too
 const refusedAt = ref(null)
 const held = ref(false)
 let holdTimer = null
@@ -193,7 +193,9 @@ const canConfirm = computed(() => {
 
 function confirm() {
   if (!canConfirm.value) return
-  if (heldActive.value) emit('confirm', rows.value.map(orderOf), heldBlock(heldAt.value, heldBroker.value))
-  else emit('confirm', rows.value.map(orderOf))
+  // third argument: the not-live line was shown AND ticked (ADR-330 (28)); false otherwise
+  const ticked = !!props.notLiveLine && notLiveAck.value === true
+  if (heldActive.value) emit('confirm', rows.value.map(orderOf), heldBlock(heldAt.value, heldBroker.value), ticked)
+  else emit('confirm', rows.value.map(orderOf), null, ticked)
 }
 </script>

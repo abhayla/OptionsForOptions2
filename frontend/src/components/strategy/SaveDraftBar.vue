@@ -44,6 +44,8 @@ const props = defineProps({
   // Paper are not offered and refuse to run: an edit reaches the server only as the reviewed paper orders, never as a plan.
   paperMode: { type: Boolean, default: false },
   pricesLive: { type: Boolean, default: true }, // ADR-330 (28): the page's price state through priceState (live or not); false adds the tick-to-confirm line
+  marketClosed: { type: Boolean, default: false }, // ADR-212: outside market hours the server refuses every entry (gate_market_closed): no tick is offered, the refusal's own sentence shows
+  priceAsOf: { type: String, default: '' }, // the page's price time (priceNow.at): the line's "as of" when no leg carries a capture time
   livePriceById: { type: Object, default: () => ({}) }, // instrument id -> the live price the table shows (fix/paper-dialog-safe item 2)
 })
 const emit = defineEmits(['open', 'saved', 'renamed', 'deleted', 'paper-added'])
@@ -374,19 +376,28 @@ function openPaperDialog(id) {
     kind: 'open', ...entryPriceFor(l, props.livePriceById), // the live price the page holds, else the planned entry (noted)
   }))
   paperState.value = PAPER_STATE.READY
+  serverNotLive.value = false
   paperOpen.value = true
 }
 
-async function confirmPaper(orders, held = null) {
+// ADR-330 (28) + F-32: the line is for market hours with prices not live: the page says so, or the server's index-age rule did
+// (paper_index_price_unavailable, STRATEGY_VALIDATION_511) on the last try. Outside market hours no tick is offered (gate_market_closed refuses).
+const INDEX_AGE_REFUSAL = 'STRATEGY_VALIDATION_511'
+const serverNotLive = ref(false)
+const notLiveLine = computed(() => (!props.marketClosed && (!props.pricesLive || serverNotLive.value)
+  ? notLiveEntryLine(oldestCapture(tickedLegs.value) ?? (props.priceAsOf || null)) : ''))
+async function confirmPaper(orders, held = null, notLiveTicked = false) {
   if (paperBusy.value) return
   paperBusy.value = true
   paperError.value = ''
   paperState.value = PAPER_STATE.READY
   try {
-    await addToPaper(api, paperTarget.value, orders, [], null, held)
+    // ADR-330 (28): the flag is the dialog's own tick state (line shown AND ticked), not the page's price state
+    await addToPaper(api, paperTarget.value, orders, [], null, held, null, notLiveTicked === true)
   } catch (e) {
     const outcome = paperPostOutcome(e)
     if (outcome === PAPER_STATE.REFUSED) paperError.value = (e?.parts ?? NEUTRAL_PARTS).what_happened || NEUTRAL_PARTS.what_happened // 4xx: nothing stored
+    if (outcome === PAPER_STATE.REFUSED && e?.error_code === INDEX_AGE_REFUSAL) serverNotLive.value = true // F-32: the dialog now asks for the tick; the user sends again (one action, one request)
     paperState.value = outcome
     paperBusy.value = false
     return
@@ -477,7 +488,7 @@ id="strategy-name" ref="nameInput" v-model="nameText" data-testid="name-input" t
         <button type="submit" form="strategy-name-form" data-testid="name-confirm" class="h-10 rounded-lg bg-accent px-3 font-medium text-white disabled:opacity-50" :disabled="busy">Save</button>
       </template>
     </Modal>
-    <PaperConfirmDialog first-basket :open="paperOpen" :orders="paperOrders" :busy="paperBusy" :error="paperError" :state="paperState" :not-live-line="props.pricesLive ? '' : notLiveEntryLine(oldestCapture(tickedLegs))" @confirm="confirmPaper" @cancel="paperOpen = false" @orderbook="openPaperOrderbook" />
+    <PaperConfirmDialog first-basket :open="paperOpen" :orders="paperOrders" :busy="paperBusy" :error="paperError" :state="paperState" :not-live-line="notLiveLine" @confirm="confirmPaper" @cancel="paperOpen = false" @orderbook="openPaperOrderbook" />
     <AdjustPlanSheet :open="planFor !== null" :strategy-id="planFor" @close="planFor = null" />
     <!-- GC-TP step 3b2 (R-6): the toast is FIXED to the viewport (bottom centre), not inline under the action row. Inline it sat inside
          the left column's own scroll (sticky, overflow-y-auto at 1100 px and up; `contents` below), so after the save-first path

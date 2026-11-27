@@ -117,6 +117,7 @@ describe('#730: a Review and add dialog is refused once the book read finds the 
     await reviewAdd(w)
     await tick()
     expect(t(w, 'paper-confirm').exists()).toBe(true)
+    if (t(w, 'paper-not-live-ack').exists()) await t(w, 'paper-not-live-ack').setValue(true) // ADR-330 (28): this page's prices are not live (no outcome reply)
     await t(w, 'paper-confirm-button').trigger('click')
     await flushPromises()
     expect(orderPosts()).toHaveLength(1)
