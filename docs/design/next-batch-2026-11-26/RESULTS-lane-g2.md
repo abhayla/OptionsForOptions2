@@ -1,4 +1,4 @@
-STATUS 21:05 | part 1: done | part 2: item 1 built, gate run before push | next push ~21:30 | blocker: none
+STATUS 22:00 | part 1: done | part 2: item 1 pushed; items 2 (resume, on) and 3 (docs-since-pass, opt-in) built and reviewed once; items 4, 5 (build), 6 not built | next push 22:25 | blocker: none
 
 # Lane G2: gate speed, part 1 (27 Nov 2026)
 
@@ -139,6 +139,63 @@ bash scripts/orchestrator/cloud_services.sh                               # seen
 
 Not run-and-seen: any `apt-get` line (nothing needed: PostgreSQL 16, Redis 7, node 22 are in the image).
 
+## Part 2, items 2 and 3 (built, reviewed once by Opus, fixes applied; one of the two is OPT-IN)
+
+**Item 2, resume (default ON).** `prepush.py` writes a pass record per long step (preflight, ci_checks, domain_tests, app_tests,
+frontend_unit) under `.git/ofo-prepush/steps/`, only when the step returned 0, the tree was clean and HEAD had not moved. The key is
+the sha256 of: the step, `HEAD^{tree}`, `--full`, the lane, `origin/main`, the merge base with it, the full-pass base, the frontend
+change list, Python and Node versions, the digests of `prepush.py` and `merge_preflight.py`, the checkout path, `sys.prefix` and
+the installed frontend packages. A failed, stopped or killed step has no record, so a re-run on the same tree starts at the
+step that did not pass (`RESUME <step>: passed <time> ...` lines). Any file change changes the tree hash: nothing is reused across a
+change. An amend that keeps the tree (message only) reuses the passes. `--no-resume` ignores the records.
+Honest limit: the key is the whole tree, so a lane that fixes the failing test (a new tree) re-runs every step; resume pays
+for killed runs, flaky reds, host-load reds (the 15 s vitest timeout) and message-only amends, not for a code fix. Per-step input sets
+(for example vitest keyed to `frontend/` only) would widen it, but nobody has proved what each stage reads, so it is not built.
+Tests: `tests/orchestrator/test_prepush_since_pass.py`, 32 passed (resume after a failed step restarts at that step; a new commit, a
+moved `origin/main`, a dirty tree, a stopped step, a HEAD that moved during a step each get no reuse).
+
+**Item 3, docs-since-pass lane (OPT-IN: `--since-pass` or `PREPUSH_SINCE_PASS=1`; default OFF until re-reviewed).** When every path
+changed between this branch's last FULL-pass marker (or a docs-since-pass marker that names its full-pass `anchor`) and the start sha
+is a records file (same strict rules as the existing docs-only lane: added/modified/deleted, plain mode, no rename, symlink,
+submodule, `tools/change_scope.py`), on a committed tree, the gate runs: the cheap checks, ci_checks, preflight WITHOUT its two
+Python-only layers (mypy interface, collect) but with the build check and every scan, the domain tests the kit selects against the
+anchor plus every `tests/` file that reads a docs path (directly, or through a `scripts/` or `tools/` module that names one), the
+`tests_app` docs readers, and the frontend steps exactly as the full lane plans them. Anything else, any doubt, no marker (fresh
+container), `--full`, a classifier change: the full lane. The marker records `anchor`.
+Opus review of items 2 and 3 together (about 12 min, 32 tool calls): first verdict REVISE. MAJOR F1: tests reading records files went
+unselected (19 `frontend/tests` files read `spec/decisions/ADR-*.md`; `tests/test_reference_register_real.py` reads docs through
+`scripts/orchestrator/reference_register.py`): fixed (frontend steps planned as in the full lane; modules under `scripts/` and `tools/`
+count as readers). MINOR F2 (record saved when HEAD moved), F3 (merge base missing from the key), F4 (classifier vouching for itself
+through an older anchor), F5 (gate files, checkout and packages missing from the key), F6 (lane on a dirty tree), F7 (temp-file race,
+non-dict JSON): all fixed with a test each. NOT re-reviewed after the fixes, which is why the lane is opt-in.
+Residual risk to read before enabling it by default: a test that reads a records file by a route the reader scan cannot see
+(environment-variable path, computed glob, a repo-wide `rglob`) is not selected in this lane; the previous gate ran it when the
+branch also had code changes. The repo_scan tests and every generated-view check still run in the lane, which covers the
+repo-wide walkers it knows of.
+
+SINCE_PASS_MEASURED
+
+**Items not built (time), with what I measured:**
+- Item 5, preflight (615 s on the 27 Nov base): interface 49 s + collect 28 s + scans 538 s. The scans are three serial pytest runs:
+  `tests -m repo_scan` 1580 tests 230 s, `tests_app -m repo_scan` 484 tests 175 s, guard files 39 tests 117 s. On a big diff the
+  domain stage runs all of `tests/` (10,419 tests) and the app stage most of `tests_app`, so the first two are run twice. Safe cut: pass
+  `--no-domain-scans` when the domain selection is the whole `tests/` (nothing removed: the tests still run in domain_tests), and the
+  same for `tests_app` when the app selection covers the repo_scan files; then run the remaining scan groups side by side. Estimate:
+  about 400 s of CPU per code push; wall time moves only slightly because app_tests (about 1000 s) is the critical path.
+- Real lever on a code push: split app_tests (pytest-xdist, not installed; Lane G's plan lists the collision candidates). Not started.
+- Item 4 (select tests since the last full-pass marker, behind a switch, with a 12-seed miss-rate proof): not started.
+
+## Rule for lanes (item 7), from my own 27 Nov runs
+
+My lane ran 12 gate runs in about 5 hours: 4 were measurements the task asked for, 3 were wasted (two gates started at once on 4
+cores both died on the 15 s vitest timeout, 1535 s and 1530 s; one died on the Ctrl-C test above, 1035 s), 5 were pushes. Rule:
+1. One gate at a time per host. Never start a second one, a build or a full pytest while it runs.
+2. Before the first gate of a round: `python scripts/orchestrator/tools_present.py`, then `python scripts/ruff_ratchet.py` and the
+   test files you touched. Minutes, not 18.
+3. One push per lane per build round; decision rows batched into one commit.
+4. A red stage: read the failing lines, fix, and re-run the SAME stage by hand first; start the gate only when it is green.
+   A killed or red run on an unchanged tree resumes at the failed stage (resume is on by default).
+
 ## Tasks, models, minutes
 
 | task | model | minutes |
@@ -146,8 +203,12 @@ Not run-and-seen: any `apt-get` line (nothing needed: PostgreSQL 16, Redis 7, no
 | read, set up, 2 measured runs, recipe | Sonnet (main) | in progress |
 | review of the last fix and equivalence claim | Opus (Tier A, `reviewer`) | 14 |
 | item 1: tools check, cloud services, db_run cloud mode | Sonnet (main) | about 55 |
+| items 2 and 3: resume, docs-since-pass lane, review fixes, tests | Sonnet (main) | about 70 |
+| review of items 2 and 3 | Opus (Tier A, `reviewer`) | 12 |
+| gate runs (measurements, 5 pushes, 3 wasted) | machine | about 200 |
 
 ## To file (not filed)
 
+- `scripts/orchestrator/gate_equivalence.py` never clears `.git/ofo-prepush/steps/` between its runs: with resume on, a second "new" run would resume the first run's passes (review F5); pass `--no-resume` there before the next equivalence run.
 - Pure rename no longer refused (MINOR-2), data-file match too loose (MINOR-1), SIGTERM leaves children (MINOR-3).
 - Fresh cloud container has no `ruff`, `fastapi`, `sqlalchemy`, `frontend/node_modules`: four lanes lost a full gate run to it.
