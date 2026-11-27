@@ -454,6 +454,23 @@ async def test_m2_a_conditional_exit_quotes_the_tick_it_fired_on_not_a_different
     assert "22,849.95" in body and "22,850.20" not in body
 
 
+async def test_m2_a_later_tick_back_across_the_level_is_not_quoted_for_the_one_that_fired(db):
+    """The #196 shape without a stand-in: the crossing tick 22,849.95 waits in the fan-out queue while a later tick
+    22,850.20 (back above the level) becomes the provider's held reading; the reason quotes the crossing tick."""
+    market = Market()
+    stored, _, keys = await _strategy(db)
+    await _exit_below(db, stored.id)
+    monitor = _monitor(db, market)
+    await monitor.step()
+    market.tick(keys[0], "41.00")
+    market.tick(keys[1], "12.50")
+    market.tick(INDEX, "22849.95")
+    market.tick(INDEX, "22850.20")
+    assert await monitor.step() == 1
+    reasons = {row[4] for row in await _stops(db, stored.id)}
+    assert reasons == {"Stop-loss on the index: NIFTY crossed below 22,850.00; NIFTY was at 22,849.95 at that moment"}
+
+
 async def test_a_fully_exited_strategy_cancels_its_triggers_and_places_nothing(db):
     market = Market()
     stored, ids, _ = await _strategy(db)

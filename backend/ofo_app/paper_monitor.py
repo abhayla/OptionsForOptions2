@@ -307,7 +307,7 @@ class PaperMonitor:
         price): the held index reading; when it is not there yet (a fire in the first second after ``reload``), the one
         market reader (``market_read.read_market``, a short hold). Truly unknown -> None, and the reason says "not
         available" (never a made-up value)."""
-        if a.trigger.kind == "conditional_exit" and price.price is not None:
+        if a.trigger.kind == "conditional_exit":  # a missing value is "not available", never the held reading
             # Lane M item 2 (PC #196, 27 Nov): the tick that fired it IS the index value the decision was made on
             # (on_quote: live, market open); a held reading is another reading and may sit on the other side of the
             # level ("crossed above 25,800.00; NIFTY was at 25,796.75"), so it is never quoted for an index exit
