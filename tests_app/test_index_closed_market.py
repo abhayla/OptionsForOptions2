@@ -250,3 +250,25 @@ def test_within_thirty_days_of_the_calendar_end_the_answer_carries_the_end_date(
     clock = Clock(datetime.datetime.combine(day, datetime.time(11, 0), IST))
     body = indices_answer(None, live=False, now=clock)  # no live feed: the same fields on this path
     assert (body.calendar_missing_year, body.calendar_ends_on) == (None, ends_on)
+
+
+@pytest.mark.asyncio
+@pytest.mark.parametrize("fallback", [False, True], ids=["plain", "fallback"])
+async def test_rest_read_on_a_closed_market_carries_the_last_close_though_no_socket_holds_the_ids(fallback):
+    """ADR-212 (Create Strategy before the open): closed market, no socket holds the ids: the REST read still gives each
+    index's last close with its time, NOT_CONNECTED, market_closed true, health stale."""
+    provider, clock = _index_fed(SATURDAY)
+    ctx = MarketContext(provider, clock, Decimal("0.065"))
+    not_streaming = lambda _id: False  # noqa: E731 - names its own context, so the streaming rule applies (replay_mode)
+    not_streaming.ctx = ctx
+    app = create_app()
+    app.dependency_overrides[get_answer_clock] = lambda: clock
+    app.dependency_overrides[get_market_context] = lambda: ctx
+    app.dependency_overrides[get_streaming] = lambda: not_streaming
+    async with AsyncClient(transport=ASGITransport(app=app), base_url="http://test") as ac:
+        r = await ac.get("/api/market/indices", params={"fallback": "true"} if fallback else None)
+    assert r.status_code == HTTPStatus.OK, r.text
+    body = r.json()
+    assert (body["state"], body["market_closed"]) == ("NOT_CONNECTED", True)
+    nifty = body["indices"][0]
+    assert (nifty["value"], nifty["health"]) == (str(NIFTY_LAST), "stale")
