@@ -1,14 +1,12 @@
-"""Gap 8, 27 Nov live test day (Lane Q2): "Add to Paper" with 5,000 lots on one leg was accepted on the PC (14:28).
+"""Gap 8 (27 Nov live test day, Lane Q2): "Add to Paper" with 5,000 lots on one leg was accepted on the PC (14:28).
 
-What the spec says (searched: lots, quantity limit, freeze quantity, max lots):
- - REQ-167 AC-5 (``ofo.settings.calc.max_lots``): ONE number caps the lots of one leg, the setting
-   ``limits.max_lots`` (default 10,000); "the one check every lots-accepting route passes" (``outcome.check_lots``).
- - Freeze quantity (ADR-081, ``ofo.execution.sequence``) is a REAL-order rule: a basket is sliced under NSE's freeze
-   (NIFTY 1,800 units = 27 lots of 65). Nothing in the spec refuses a PAPER order for exceeding it: spec silent.
-So 5,000 lots on one paper leg is WITHIN the spec's limit and its acceptance is no defect; 10,001 is above it. Whether
-the paper-order door is a "lots-accepting route" of REQ-167 AC-5 is a reading: it takes units (lots x lot size) and
-never calls ``check_lots`` today. The test states that reading, as a strict xfail, for the coordinator to decide.
-Real PostgreSQL, every test rolled back.
+Decisions the coordinator relayed at 17:00 IST (ADR-330 (50), (51), (52), (58): not yet in this tree, so each test
+that needs them is a STRICT xfail naming them): the lots limit counts the TOTAL the leg will hold, not only this order
+(50); the default is 100 lots per leg (52); a paper exit above the freeze quantity is refused (51); paper differs
+from real only by its tag (58). Before them the spec gave ``limits.max_lots`` (REQ-167 AC-5, default 10,000) as the one
+limit and said nothing about freeze for paper orders. Today the paper-order door never calls ``check_lots`` and has no
+freeze check.
+Real PostgreSQL, every test rolled back. Run with ``--runxfail`` to see each red assertion.
 """
 from __future__ import annotations
 
@@ -22,7 +20,9 @@ from test_strategy_store import _client
 from test_strategy_tracking import _setup
 
 LOT = 65  # NIFTY, the scenario's lot size
-SPEC_MAX_LOTS = 10_000
+LIMIT_LOTS = 100  # ADR-330 (52)
+FREEZE_UNITS = 1800  # NIFTY, Zerodha bulletin of 1 Apr 2026 (ofo.execution.sequence.DEFAULT_FREEZE_UNITS cites it)
+DECISION = "ADR-330 (50)/(51)/(52) is not in this tree and no branch applies it"
 
 
 @pytest.fixture
@@ -35,34 +35,62 @@ async def db(app_engine):
             await outer.rollback()
 
 
-def test_the_one_lots_limit_of_the_spec_is_10000_lots_per_leg():
-    assert calc.max_lots(dict(defaults())) == SPEC_MAX_LOTS
-
-
-async def _count(db, strategy_id: int) -> int:
+async def _stored(db, strategy_id: int) -> int:
     return int((await db.execute(text("SELECT count(*) FROM public.paper_orders WHERE strategy_id = :i"),
                                  {"i": strategy_id})).scalar_one())
 
 
-async def _add(db, lots: int):
-    app, stored, *_ = await _setup(db)
-    leg = {"contract_id": stored.saved.contract_ids[0], "side": "SELL", "quantity": lots * LOT,
-           "price": str(Decimal("50.00")), "kind": "open"}
-    before = await _count(db, stored.id)
+async def _post(db, lots: int, *, kind: str = "open", side: str = "SELL", booked=None):
+    """POST one order of ``lots`` lots to the first contract of a fresh strategy (or of ``booked``, a prior call's)."""
+    if booked:
+        app, stored = booked
+    else:
+        made = await _setup(db)
+        app, stored = made[0], made[1]
+    leg = {"contract_id": stored.saved.contract_ids[0], "side": side, "quantity": lots * LOT,
+           "price": str(Decimal("50.00")), "kind": kind}
+    before = await _stored(db, stored.id)
     async with _client(app) as c:
         reply = await c.post(f"/paper/strategies/{stored.id}/orders", json={"orders": [leg]})
-    return reply, await _count(db, stored.id) - before
+    return reply, await _stored(db, stored.id) - before, (app, stored)
 
 
-async def test_5000_lots_on_one_leg_is_inside_the_spec_limit_and_is_accepted(db):
-    reply, stored = await _add(db, 5_000)
+def _refused(reply, stored_rows: int) -> bool:
+    return HTTPStatus.BAD_REQUEST <= reply.status_code < HTTPStatus.INTERNAL_SERVER_ERROR and stored_rows == 0
+
+
+@pytest.mark.xfail(strict=True, reason=f"the registry default is 10,000 lots today; {DECISION}")
+def test_the_default_lots_limit_per_leg_is_100():
+    assert calc.max_lots(dict(defaults())) == LIMIT_LOTS
+
+
+async def test_100_lots_on_one_leg_is_accepted(db):
+    reply, rows, _ = await _post(db, LIMIT_LOTS)
     assert reply.status_code == HTTPStatus.CREATED, reply.text
-    assert stored == 1
+    assert rows == 1
 
 
-@pytest.mark.xfail(strict=True, reason="paper orders never call check_lots (REQ-167 AC-5 reading); no branch fixes it: "
-                                       "owner/coordinator decides whether the paper door is a lots-accepting route")
-async def test_a_leg_above_the_spec_limit_is_refused_and_stores_nothing(db):
-    reply, stored = await _add(db, SPEC_MAX_LOTS + 1)
-    assert HTTPStatus.BAD_REQUEST <= reply.status_code < HTTPStatus.INTERNAL_SERVER_ERROR, reply.text
-    assert stored == 0
+@pytest.mark.xfail(strict=True, reason=f"the paper door never calls check_lots; {DECISION}")
+@pytest.mark.parametrize("lots", [LIMIT_LOTS + 1, 5_000])
+async def test_a_leg_above_the_limit_is_refused_and_stores_nothing(db, lots):  # 5,000 = the PC case of 14:28
+    reply, rows, _ = await _post(db, lots)
+    assert _refused(reply, rows), (reply.status_code, rows)
+
+
+@pytest.mark.xfail(strict=True, reason=f"the limit counts only this order today; {DECISION}")
+async def test_the_limit_counts_the_total_the_leg_will_hold(db):
+    first, rows, booked = await _post(db, 60)
+    assert first.status_code == HTTPStatus.CREATED and rows == 1, first.text
+    ok, rows_ok, _ = await _post(db, 40, kind="add", booked=booked)  # 60 + 40 = 100: inside
+    assert ok.status_code == HTTPStatus.CREATED and rows_ok == 1, ok.text
+    over, rows_over, _ = await _post(db, 1, kind="add", booked=booked)  # 101 in total: refused
+    assert _refused(over, rows_over), (over.status_code, rows_over)
+
+
+@pytest.mark.xfail(strict=True, reason=f"the paper door has no freeze check; {DECISION}")
+async def test_a_paper_exit_above_the_freeze_quantity_is_refused(db):
+    lots = FREEZE_UNITS // LOT + 3  # 30 lots = 1,950 units, above the 1,800 freeze
+    opened, rows, booked = await _post(db, lots)
+    assert opened.status_code == HTTPStatus.CREATED and rows == 1, opened.text  # an entry may be larger (slices)
+    reply, rows_exit, _ = await _post(db, lots, kind="exit", side="BUY", booked=booked)
+    assert _refused(reply, rows_exit), (reply.status_code, rows_exit)

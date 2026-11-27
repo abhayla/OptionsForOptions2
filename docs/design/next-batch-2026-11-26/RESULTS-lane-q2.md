@@ -5,12 +5,14 @@
 ## Status lines (send_message to "@parent" was REFUSED: elevated_session_untrusted_device; the same lines are here)
 - LANE Q2 ALIVE (27 Nov, 14:50 IST start). Paper only; tests and test tools only; no file under backend/ofo, backend/ofo_app or frontend/src changed.
 - Push 1: gaps 4 and 3 (see table). head fbbb7319 | gate PASS (prepush TOTAL PASS 2597 s) | re-test: nothing on the PC; unit tests only
-- Push 2: gaps 2, 6, 5, 1, 8, 7. head and gate on the line below once pushed.
+- Push 2: gaps 2, 6, 5, 1, 8, 7. head 5bdfdde0 | gate PASS (prepush TOTAL PASS 2649 s) | re-test: nothing on the PC; unit tests only
+- Push 3: gap 9 (door parity) and gap 8 revised for the coordinator's 17:00 IST decisions. PUSH3_LINE
 
 Bad news first:
 - Of 8 gaps, 5 test files FAIL on 206a9f0 where a named fix exists; gap 5 (every action ends with a result) and the plain load test (gap 1) PASS on 206a9f0: the code is right for those at this load, so they are guards, not proofs of a defect.
 - One finding no named fix branch covers: the adjustment check awaits its REST quote with no budget (plan-watch has one). Strict xfail in `tests_app/test_load_live_day.py`; to file as a deferred issue.
-- One reading for the coordinator: 5,000 lots on one paper leg is INSIDE the spec's limit (`limits.max_lots`, 10,000); the paper-order door never calls `check_lots`, so 10,001 is also accepted today. Whether REQ-167 AC-5 ("every lots-accepting route") covers the paper door is a spec reading, left as a strict xfail.
+- Gap 8 changed with your 17:00 IST decisions: 5,000 lots on one paper leg is now a defect (default limit 100, total counted, paper exit above freeze refused). The paper-order door never calls `check_lots`; the REAL door does not call it either (gap 9 shows the lots limit missing on both doors).
+- Gap 9: the decision-level half of your request (the same order gives the same decision and message on both doors up to the adapter) needs the one door and a fake-adapter harness for `/execute`; not built. What is built is the source parity test with FILE:LINE and the paper-door HTTP cases of gap 8.
 - "Two users" is not testable in v1: `current_user_ref()` returns one owner constant. The load test uses two browser sessions of that owner.
 - Strict xfails turn into FAILURES when a fix branch is merged (XPASS strict): that is the signal to delete the mark. Each reason names the branch.
 - A DB worker variant of gap 4 was not built (the cloud gate has no database; the chain test is in memory: real evaluator, real readings, real gate, restore from rows). The DB tests of this lane (gaps 1, 2, 8) were run here against a local PostgreSQL 16 built by the same steps as CI; they SKIP in the gate (no TEST_DATABASE_URL).
@@ -30,7 +32,8 @@ Bad news first:
 | 6 blank optional texts still render: lib/planWatch.js and lib/paperList.js | frontend/tests/blank-optional-fields-live-day.test.js (shared walker `blankVariants`) | yes, 13 cases for planWatch with "" or "   " (`it.fails`); null / absent pass; paperList passes | origin/hotfix/plan-watch-load-1127 (9d39c82f; the 13 fail there = delete `.fails`) |
 | 5 every action ends with one sentence: Save plan, Delete, Undo (components / flow), Add to Paper and Exit (door + outcome rule) x slow 2xx, 4xx, 5xx, timeout | frontend/tests/action-ends-with-result-live-day.test.js + helper frontend/tests/_actionOutcomes.js | no (20 cases pass: guards) | n/a. Not covered: the Exit / Add to Paper dialog components mounted per outcome (see leftovers) |
 | 1 load: 10 running trades, 2 browsers x 3 rounds, 186 requests | tests_app/test_load_live_day.py | plain load: no (guard; 0 "not live", pool peak 4 of 4). Same load with every 3rd quote stalled 8 s, answered inside 6 s: yes (strict xfail) | origin/hotfix/plan-watch-load-1127 for plan-watch / book / positions. The adjustment check alone stays red on every branch: no named fix |
-| 8 order door limit | tests_app/test_paper_order_lots_limit.py | 5,000 lots: accepted (spec: inside the limit); 10,001: accepted, the xfail asks for refusal | none: spec reading for the coordinator (see bad news) |
+| 8 order door limit, per the coordinator's decisions (50) total the leg will hold, (51) paper exit above freeze refused, (52) default 100 lots | tests_app/test_paper_order_lots_limit.py (6 cases) | yes: 5 strict xfails (default is 10,000 today; 101 and 5,000 lots accepted; total not counted; exit of 30 lots above the 1,800 freeze accepted); 100 lots accepted passes | none: ADR-330 (50)(51)(52) are not in the tree and no branch applies them |
+| 9 parity of the paper and real order doors (ADR-330 (58)): check inventory + branch scan | tests/test_order_door_parity_live_day.py (11 cases, source scan, no database, no broker) | yes: 4 strict xfails: lots limit missing on BOTH doors; freeze check and the one "prices not live" refusal code missing on the paper door. Duplicate-leg check is shared (passes). Branch scan: 0 paper-only branches in the real path, 0 real-only in the paper path, 0 in the shared alert module (guards) | none: the one order door |
 | 7 hold-back tools | tests_app/holdback.py + tests_app/test_holdback_tool.py (7 tests) | n/a (a tool) | n/a |
 
 ## Gap 7: hold-back tools for the screen tester (design; what lives in test folders is built)
@@ -53,8 +56,8 @@ Proposed, NOT built (it needs a live Kite socket, which this container cannot re
 
 ## Leftovers (To file as deferred issues; the coordinator files them)
 1. The adjustment check awaits its REST quote with no budget (plan-watch has one, REQ-119 AC-4). Test: `test_the_adjustment_check_under_the_same_stalled_quote_answers_inside_6_seconds`.
-2. The paper-order door does not call `check_lots` (REQ-167 AC-5 reading; also 5,000 lots seen accepted). Test: `test_a_leg_above_the_spec_limit_is_refused_and_stores_nothing`.
-3. A DB-backed worker variant of the plan-stop chain (gap 4) and component mounts of the Exit / Add to Paper dialogs per outcome (gap 5).
+2. Neither order door calls `check_lots`; the paper door has no freeze check and its own refusal codes for "prices not live". Tests: gap 8 file and `test_the_check_is_reached_from_this_door`.
+3. Gap 9 decision-level parity (needs the one door + a fake-adapter harness for `/execute`). A DB-backed worker variant of the plan-stop chain (gap 4) and component mounts of the Exit / Add to Paper dialogs per outcome (gap 5).
 4. The hold-back relay (gap 7, above).
 5. "Two users": v1 has one owner reference; a multi-user load test waits for real accounts.
 
