@@ -434,6 +434,7 @@ class _Read:
     spot: Any = None
     margin: dict | None = None
     done: bool = False
+    legs_read: bool = False  # the legs were read before the connection was released (``_tested``)
 
 
 async def _tracked_of(row: Any, seams: _Seams) -> Any:
@@ -447,6 +448,8 @@ async def _tracked_of(row: Any, seams: _Seams) -> Any:
 
 
 async def _read_one(row: Any, seams: _Seams, listed: Any, read: _Read) -> None:
+    if not read.legs_read:  # a caller that did not read them first (the preview route)
+        read.tracked = await _tracked_of(row, seams)
     if read.tracked is None:
         return
     market = await seams.market_reader(read.tracked, seams.ctx)
@@ -469,7 +472,7 @@ async def _read_bounded(row: Any, seams: _Seams, listed: Any, gate: asyncio.Sema
     """-> (row, read) when read in full and of the type; a not-checked entry when the type is known but the read timed
     out or failed; None when not of the type (or its type is not known)."""
     read = _Read()
-    read.tracked = tracked  # the legs, read before the connection was released
+    read.tracked, read.legs_read = tracked, True  # the legs, read before the connection was released
     async with gate:
         started = time.monotonic()
         try:
