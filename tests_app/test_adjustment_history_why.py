@@ -106,9 +106,8 @@ async def _refused(engine, sid: int, ids: list[int], expected: int, user: str | 
 async def test_an_adjustment_from_a_suggestion_names_its_rule_and_every_bad_link_is_refused(app_db_url, monkeypatch):
     sid = await _clean(app_db_url, await _seeded(app_db_url, monkeypatch, "ADJ-02"))  # with a plan (ADR-330 (11))
     await _opened(app_db_url, sid)
-    # refused before any link: a record still open (not acted on), another user's placement, a missing record
-    t01 = await _record(app_db_url, sid, "T-01")
-    await _refused(app_db_url, sid, [t01.id], CONFLICT)
+    # refused before any link: another user's placement, a missing record. (A record still open is no longer refused:
+    # the accepted paper order stamps it acted on, item 10 of the 27 Nov 2026 live test; see test_acted_on_at_place.py.)
     t03 = await _acted(app_db_url, sid, "T-03")
     assert (await _refused(app_db_url, sid, [987654321], NOT_FOUND))["what_happened"] == NOT_FOUND_TEXT
     # another user: scenario_guard.guard_paper_order refuses first (IC e2e decisions 3-5: "no such strategy for this

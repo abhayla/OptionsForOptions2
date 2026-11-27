@@ -186,7 +186,6 @@
           </select>
         </label>
         <button type="button" class="h-9 rounded-lg bg-accent px-3 font-medium text-white disabled:opacity-50" :disabled="!pick || stale" :title="stale ? prices.prepare_blocked_reason : null" data-testid="adjust-open" @click="openInBuilder">Open in builder and prepare basket</button>
-        <ErrorMessage v-if="actedRefusal" :parts="actedRefusal" compact prefix="adjust-acted" data-testid="adjust-acted-refusal" />
         <span v-if="stale" class="text-sm text-ink-muted" data-testid="adjust-prepare-wait">{{ prices.prepare_blocked_reason }}</span>
         <span v-if="!pickable.length" class="text-sm text-ink-muted" data-testid="adjust-pick-empty">{{ NONE_TO_PREPARE }}</span>
         <ErrorMessage v-if="prepareError" :parts="prepareError" compact prefix="adjust-prepare-error" data-testid="adjust-prepare-error" />
@@ -359,25 +358,11 @@ function setLimit(r, v) {
 }
 const clearFilters = () => { filters.value = EMPTY_FILTERS() }
 
-// GC-ADJ2 step 5 (REQ-112 AC-2): preparing a basket from the compare is "Acted on" for each record it answers, each
-// its own outcome (REQ-112 AC-4). A record already final answers its refusal; that never stops the basket (the outcome
-// is a record, not the order path), and the refusal text is shown under the button.
-const actedRefusal = ref(null)
-// REQ-163 AC-1: the ids actually marked acted on travel with the basket, so its paper orders name them (the history's
-// Why); a refused record is left out, never sent (the server would refuse the whole basket for it).
-async function markActedOn() {
-  actedRefusal.value = null
-  const acted = []
-  for (const id of props.opportunities) {
-    try {
-      await props.client.post(`/adjustment-opportunities/${id}/acted-on`)
-      acted.push(id) // ids stay strings (opportunitiesFromQuery); the server's model reads them as whole numbers
-    } catch (e) {
-      actedRefusal.value = e?.parts ?? NEUTRAL_PARTS
-    }
-  }
-  return acted
-}
+// Live test 27 Nov 2026 item 10 (REQ-112 AC-2): preparing a basket is NOT "Acted on". Nothing is marked here; the ids of
+// the records the basket answers travel with it (REQ-163 AC-1) and the server marks each one "Acted on" only when a paper
+// order of that basket is accepted. A basket staged and then cancelled leaves them "Open". Ids stay strings
+// (opportunitiesFromQuery); the server's model reads them as whole numbers.
+const answeredIds = () => [...props.opportunities]
 
 const LOCAL_FAILURE = { ...NEUTRAL_PARTS, what_happened: NOT_A_BASKET } // a failure that never called the server says so
 async function openInBuilder() {
@@ -392,8 +377,7 @@ async function openInBuilder() {
     const at = reply.value.spot?.at ?? null
     const legs = exit ? exitLegsFromApproach(underlying.value, a, contracts, at) : legsFromApproach(underlying.value, a, contracts, at)
     if (!legs) { prepareError.value = LOCAL_FAILURE; return }
-    const acted = await markActedOn()
-    emit('prepare', { legs, underlying: underlying.value, suggestionIds: acted, basketLegs: (a.trades ?? []).length, exit, approachId: a.id })
+    emit('prepare', { legs, underlying: underlying.value, suggestionIds: answeredIds(), basketLegs: (a.trades ?? []).length, exit, approachId: a.id })
   } catch (e) {
     prepareError.value = e?.parts ?? NEUTRAL_PARTS
   }

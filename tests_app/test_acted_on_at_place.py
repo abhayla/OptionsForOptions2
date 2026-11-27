@@ -10,9 +10,21 @@ from __future__ import annotations
 import test_adjustment_check as check_test
 from test_adjustment_history_why import CONFLICT, CREATED, NOT_FOUND, OK, _book, _place, _record
 from test_adjustment_check import _seeded
-from test_adjustment_opportunities import _call, _clean, _opened
+from test_adjustment_opportunities import _call, _check, _clean, chk, open_flags
 
 app_db_url = check_test.app_db_url
+
+
+async def _open_all(engine, sid: int) -> None:
+    """One record per rule the check names true (ADJ-02: T-01, T-03, T-09), as the worker's gate opens them. The
+    check's own ``flag`` kind is used where it says so; a rule it calls ``already_true`` (the sandbox clock is past the
+    scenario's time) is opened the same way, so the test starts from open records whatever the clock."""
+    reply = await _check(sid)
+    reply = {**reply, "results": [{**x, "kind": "flag"} if x["kind"] in ("flag", "already_true") else x
+                                  for x in reply["results"]]}
+    async with engine.connect() as conn:
+        body = (await chk.resolve(conn, "owner", sid, reply["strategy_type"])).body
+    await open_flags(engine, sid, reply, body)
 
 
 async def _shown(sid: int, rec_id: int) -> tuple[str, str]:
@@ -24,7 +36,7 @@ async def _shown(sid: int, rec_id: int) -> tuple[str, str]:
 
 async def test_only_an_accepted_paper_order_stamps_acted_on(app_db_url, monkeypatch):
     sid = await _clean(app_db_url, await _seeded(app_db_url, monkeypatch, "ADJ-02"))
-    await _opened(app_db_url, sid)
+    await _open_all(app_db_url, sid)
     t01 = await _record(app_db_url, sid, "T-01")
     t03 = await _record(app_db_url, sid, "T-03")
 
