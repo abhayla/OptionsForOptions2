@@ -85,8 +85,10 @@ const limits = computed(() => {
 
 const heldPlanFor = (id) => { try { return !!getActivePinia() && useBuilderHold().hasPlan(id) } catch { return false } }
 
+let readSeq = 0 // the newest read owns `loading`: a dropped stale read must not clear it while its fresh read is still out
 async function reload() {
   const id = props.strategyId
+  const mine = ++readSeq
   read.value = null
   failed.value = false
   loading.value = false
@@ -108,7 +110,7 @@ async function reload() {
   } catch {
     if (id === props.strategyId) failed.value = true // network, 5xx or the 30 s limit
   } finally {
-    if (id === props.strategyId) loading.value = false
+    if (id === props.strategyId && mine === readSeq) loading.value = false
   }
 }
 watch(() => props.strategyId, reload, { immediate: true })

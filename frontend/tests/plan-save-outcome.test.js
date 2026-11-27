@@ -207,3 +207,77 @@ describe('a read that started before the save', () => {
     expect(reads).toBe(1)
   })
 })
+
+// plan-save-1127 round 2: the sheet's own cases next to the other two screens'
+describe('the sheet: the three sentences and the guards', () => {
+  const PARTS = { what_happened: 'Prices could not be read in time to check this plan.', impact: 'x', what_is_blocked: 'y', next_action: 'z' }
+  it('a 422 shows the reason, a 200 shows the server value', async () => {
+    answers[`GET ${PATH}`] = sheetAnswer('996.13')
+    answers[`PUT ${PATH}`] = () => Promise.reject({ message: 'x', status: 422, parts: PARTS })
+    const w = await sheet()
+    await t(w, 'plan-save').trigger('click')
+    await flushPromises()
+    expect(w.text()).toContain(PARTS.what_happened)
+    answers[`PUT ${PATH}`] = sheetAnswer('100.00')
+    await t(w, 'plan-save').trigger('click')
+    await flushPromises()
+    expect(w.emitted('saved')[0][0].plan.stop).toBe('100.00')
+  })
+
+  it('a 4xx with no catalogue reason is Not confirmed', async () => {
+    answers[`GET ${PATH}`] = sheetAnswer('996.13')
+    answers[`PUT ${PATH}`] = () => Promise.reject({ message: 'x', status: 422, parts: null })
+    const w = await sheet()
+    await t(w, 'plan-save').trigger('click')
+    await flushPromises()
+    expect(w.text()).toContain(PLAN_NOT_CONFIRMED_TEXT)
+    expect(w.text()).not.toContain('Try again')
+  })
+
+  it('a 200 the sheet cannot read after the save is Not confirmed, not "Something went wrong"', async () => {
+    answers[`GET ${PATH}`] = sheetAnswer('996.13')
+    answers[`PUT ${PATH}`] = { nothing: 'readable' }
+    const w = await sheet()
+    await t(w, 'plan-save').trigger('click')
+    await flushPromises()
+    expect(w.text()).toContain(PLAN_NOT_CONFIRMED_TEXT)
+    expect(w.text()).not.toContain('Something went wrong')
+    expect(w.emitted('saved')).toBeUndefined()
+    expect(calls.filter((c) => c.method === 'PUT')).toHaveLength(1)
+  })
+
+  it('the load guard: a read that began before a save never puts the old plan back in the sheet', async () => {
+    const slow = deferred()
+    let reads = 0
+    answers[`GET ${PATH}`] = () => { reads += 1; return reads === 1 ? Promise.resolve({ data: sheetAnswer('996.13') }) : slow.promise }
+    const w = await sheet()
+    const picked = w.find('select')
+    expect(picked.exists()).toBe(true)
+    await picked.setValue('9') // a pick: a second read of the sheet is now out
+    markSaved(70) // a save of this strategy was stored while it is out
+    slow.resolve({ data: { ...sheetAnswer('OLD-VALUE'), prefill: { ...sheetAnswer('OLD-VALUE').prefill, stop: 'OLD-VALUE', stop_rupees: 'OLD-VALUE' } } })
+    await flushPromises()
+    expect(t(w, 'plan-stop-rupees').element.value).toBe('996.13')
+    expect(w.html()).not.toContain('OLD-VALUE')
+  })
+})
+
+describe('PlanEntry: the card keeps loading while the fresh read is out', () => {
+  it('a stale read dropped for a save does not clear loading before the fresh read answers', async () => {
+    const stale = deferred()
+    const fresh = deferred()
+    let reads = 0
+    answers[`GET ${PATH}`] = () => { reads += 1; return reads === 1 ? stale.promise : fresh.promise }
+    const entry = mount(PlanEntry, { attachTo: document.body, props: { strategyId: 70, check: null, checkStatus: 'loading' } })
+    mounted.push(entry)
+    await flushPromises()
+    markSaved(70)
+    stale.resolve({ data: sheetAnswer('996.13') })
+    await flushPromises()
+    expect(reads).toBe(2)
+    expect(t(entry, 'plan-entry-loading').exists()).toBe(true) // the fresh read is still out
+    fresh.resolve({ data: sheetAnswer('100.00') })
+    await flushPromises()
+    expect(t(entry, 'plan-entry-loading').exists()).toBe(false)
+  })
+})

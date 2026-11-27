@@ -85,9 +85,10 @@ import LoadFailed from '@/components/common/LoadFailed.vue'
 import ErrorMessage from '@/components/common/ErrorMessage.vue'
 import AlertStylePicker from '@/components/strategy/AlertStylePicker.vue'
 import { useBuilderHold } from '@/stores/builderHold'
-import api, { NEUTRAL_PARTS } from '@/services/api'
+import api from '@/services/api'
 import { PLAN_LOADING_TEXT, PLAN_LOAD_FAILED_TEXT, PLAN_NOT_CONFIRMED_TEXT, PLAN_PICK_TIMED_OUT_TEXT, PLAN_REFILLED_TEXT, PLAN_TIMED_OUT_TEXT } from '@/lib/sharedStateText'
-import { asIsBody, customiseUrl, fetchLevels, fetchPlan, formOf, isRefusal, resetPlan, saveBody, sendPlan } from '@/lib/adjustPlan'
+import { planSaveResult } from '@/lib/planSaveResult'
+import { asIsBody, customiseUrl, fetchLevels, fetchPlan, formOf, resetPlan, saveBody, sendPlan } from '@/lib/adjustPlan'
 import { saveStamp, savedSince } from '@/lib/planSaveClock'
 
 const props = defineProps({
@@ -124,16 +125,15 @@ async function reset() {
   errorParts.value = null
   notConfirmed.value = false
   try {
-    const read = await resetPlan(api, props.strategyId)
-    if (read.kind !== 'sheet') { errorParts.value = NEUTRAL_PARTS; return }
+    const out = await planSaveResult(() => resetPlan(api, props.strategyId), { readable: (r) => r.kind === 'sheet' })
+    resetAsking.value = false
+    if (out.kind === 'refused') { errorParts.value = out.parts; return } // a refusal (playbook deleted): the server's sentence
+    if (out.kind === 'not_confirmed') { notConfirmed.value = true; return }
+    const read = out.value
     sheet.value = read
     form.value = { ...read.prefill }
     resetMarkers.value = [...(read.plan?.changed ?? []), ...(read.plan?.switchedOff ?? [])].join(', ')
-    resetAsking.value = false
     emit('saved', read)
-  } catch (e) {
-    errorParts.value = saveEndParts(e) // a refusal (playbook deleted): the server's sentence; no answer: the one not-confirmed sentence
-    resetAsking.value = false
   } finally {
     busy.value = false
   }
@@ -216,26 +216,22 @@ function pick(value) {
   const chosen = sheet.value?.playbooks.find((p) => String(p.id) === value)
   if (chosen) load(chosen.id, chosen.name) // every field refills from the server's prefill for that playbook (REQ-161 AC-2)
 }
-// Hotfix plan-save-1127: a save ends on EXACTLY one sentence. A refusal (catalogue message with a status): the server's own reason.
-// A timeout or no answer: "Not confirmed: reload to see whether it was saved." (new wording, pending owner read). Never re-sent here.
+// Hotfix plan-save-1127: a save ends on EXACTLY one sentence, chosen by the shared planSaveResult (saved / the server's reason /
+// "Not confirmed: reload to see whether it was saved."). Never re-sent here; the typed values stay.
 const notConfirmed = ref(false)
-const saveEndParts = (e) => { notConfirmed.value = !isRefusal(e); return notConfirmed.value ? null : e.parts }
 async function send(body) {
   if (busy.value) return
   busy.value = true
   errorParts.value = null
   notConfirmed.value = false
   try {
-    const read = await sendPlan(api, props.strategyId, body, props.edit)
-    if (read.kind === 'invalid') {
-      errorParts.value = NEUTRAL_PARTS
-      return
-    }
-    planHold()?.clearPlan()
-    emit('saved', read)
-    emit('close')
-  } catch (e) {
-    errorParts.value = saveEndParts(e) // the server's reason on a refusal; on no answer the one sentence; the typed values stay as typed
+    const out = await planSaveResult(() => sendPlan(api, props.strategyId, body, props.edit), { readable: (r) => r.kind !== 'invalid' })
+    if (out.kind === 'saved') {
+      planHold()?.clearPlan()
+      emit('saved', out.value)
+      emit('close')
+    } else if (out.kind === 'refused') errorParts.value = out.parts
+    else notConfirmed.value = true // a 200 the browser cannot read is not confirmed either
   } finally {
     busy.value = false
   }
