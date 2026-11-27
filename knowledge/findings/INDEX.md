@@ -2,7 +2,7 @@
 
 # Findings index
 
-192 finding(s), generated from `knowledge/findings/*.json`.
+193 finding(s), generated from `knowledge/findings/*.json`.
 
 | id | class | detection status | other fields |
 |---|---|---|---|
@@ -32,6 +32,7 @@
 | bus-consumer-holds-no-own-tokens | A second consumer of a shared price bus that asks the feed for tokens out of band, but never marks them as held in its own provider, sees every tick as a heartbeat (health counts data only for held tokens): its feed reads STALE forever. If it also reuses the API's bus socket unchanged, it writes its (empty) wanted list to the API's own want key and wipes the API's subscriptions. | guarded | occurrences, scope, spec_ref |
 | caller-supplied-verdict-trusted | Any step that accepts, from its caller, the result of a check it depends on (a gate verdict, an 'active' version, an integrity hash computed by the caller) instead of running the check or reading the owning object itself can be bypassed by passing a forged or mismatched result; the check then protects nothing. | unguarded | occurrences, scope, spec_ref |
 | changed-user-text-left-in-other-test-files | When a user-facing text (a pinned template, a pre-filled value) changes, tests in OTHER files that copied the old literal keep asserting it; the builder's targeted run passes, and the stale assertion only fails in the full suite or in CI. Wider shape: a literal copied into a test is a second home of the text; the brief's 'search every test tree' rule is prose and is skipped. | unguarded | occurrences, scope, spec_ref |
+| cheap-check-after-expensive-one | A gate that runs its seconds-long checks after its minutes-long stages reports the cheap red only after the whole wait, so every cheap failure costs a full gate run; the cheap checks must run first. | guarded | occurrences, scope, spec_ref |
 | check-clock-read-once-per-batch | A loop that reads the clock once and then runs many slow steps against it treats every input that arrived after that one reading as 'from the future'. Any freshness guard that refuses future-stamped data (tick_in_future, clock skew checks) then refuses ALL live data once the batch takes longer than the feed's tick interval, so the loop silently decides nothing. | guarded | occurrences, scope, spec_ref |
 | check-greeks-need-chain-screen-open | A reader that feeds a model needing near-the-money inputs (a parity forward, an ATM IV) but holds only the caller's own contracts gets those inputs only while somebody else holds the near-the-money contracts (an open chain screen). For every expiry with no such holder the model has no forward, so every rule reading Greeks or IV on that path answers not_checked. Wider shape: a quote book lists only held contracts, so a read that depends on contracts it does not itself hold works by accident of another screen. | guarded | occurrences, scope, spec_ref |
 | check-latency-bound-by-db-round-trips | A real-time rule ('record within 1.0 s of the crossing tick') cannot hold while the check path makes database round trips: the cycle length becomes (round trips per cycle) x (round-trip time), and a speed valve that times wall clock per check reads that DB wait as slow maths and adds its own pause. The rule must be met with zero DB calls on the check path. | unguarded | occurrences, scope, spec_ref |
