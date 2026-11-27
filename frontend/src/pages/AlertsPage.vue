@@ -138,6 +138,7 @@ onMounted(async () => {
         <div v-if="answerError[a.id]" class="mt-2" data-testid="alert-answer-error"><ErrorMessage :parts="answerError[a.id]" compact prefix="alert-answer" /></div>
       </li>
     </ul>
+    <p v-else-if="isActive && !activeAlerts.loaded" class="text-sm text-ink-muted" data-testid="alerts-loading">Loading...</p>
     <EmptyState v-else :message="line" icon="bell" data-testid="alerts-empty" />
     <PaperStrategies v-if="exitFor !== null" :key="exitFor" :exit-only-for="exitFor" class="mt-3" data-testid="alerts-exit-door" @exit-closed="exitFor = null" />
   </section>

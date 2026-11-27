@@ -110,6 +110,23 @@ describe('Alerts page', () => {
     expect(t(w, 'alerts-empty').text()).toBe('No alerts yet. Alerts start when strategy monitoring rules are added.')
     expect(calls.filter((c) => c[0] === 'POST')).toEqual([])
   })
+  it('while the first read is in flight it shows Loading, never the empty line; a failed read never shows the empty line', async () => {
+    let release
+    answers['GET /alerts/active'] = () => new Promise((res) => { release = () => res({ data: { alerts: [], count: 0 } }) })
+    const w = mount(AlertsPage, { global: { plugins: [await router('/alerts/active')] } })
+    await flushPromises()
+    expect(t(w, 'alerts-loading').text()).toBe('Loading...')
+    expect(has(w, 'alerts-empty')).toBe(false)
+    release()
+    await flushPromises()
+    expect(has(w, 'alerts-loading')).toBe(false)
+    expect(t(w, 'alerts-empty').text()).toContain('No alerts yet.')
+    resetActiveAlerts()
+    answers['GET /alerts/active'] = fail(null)
+    const w2 = await page()
+    expect(has(w2, 'alerts-empty')).toBe(false)
+    expect(has(w2, 'alerts-loading')).toBe(false)
+  })
   it('a refused read shows the server reason and no rows', async () => {
     answers['GET /alerts/active'] = fail({ what_happened: 'Alerts are paused.', impact: 'i', what_is_blocked: 'b', next_action: 'n' }, 409)
     const w = await page()
