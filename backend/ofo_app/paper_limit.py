@@ -120,9 +120,10 @@ async def check_order_size(db: Any, existing: Sequence[Any], new: Sequence[Any],
     (``place_checked``); ``existing`` are the stored rows before this batch (``.order`` rows), ``new`` the batch's
     ``NewOrder`` rows. PAPER AND REAL ARE THE SAME (ADR-330 (58)): a real-order path calls this same function.
     Per order, every kind (an exit too, (51)): units must be below the contract's stored exchange freeze limit; no
-    stored limit -> ``paper_leg_freeze_unknown`` (fails closed: the order cannot be checked); a limit below one lot ->
-    ``paper_leg_limit_below_one_lot``. Per leg: the lots the leg will hold AFTER the batch (held + added, signed net of
-    its contract) may not exceed ``limits.max_lots`` (default 100, (52)); a batch that does not grow the leg's net
+    stored limit -> ``paper_leg_freeze_unknown`` (fails closed: the order cannot be checked; except a reducing kind, which
+    is never trapped by a missing file); a limit below one lot ->
+    ``paper_leg_limit_below_one_lot``. Per leg: the lots the leg will hold after EACH order of the batch (held + added, signed net of
+    its contract, in stored order) may not exceed ``limits.max_lots`` (default 100, (52)); a batch that does not grow the leg's net
     (a cut back of a leg already over a lowered limit) passes. An unreadable setting or store raises: nothing placed."""
     from ofo.instruments.freeze_limits import StoredFreeze, largest_allowed_units  # noqa: PLC0415
     from ofo.instruments.models import InstrumentId  # noqa: PLC0415
@@ -142,6 +143,8 @@ async def check_order_size(db: Any, existing: Sequence[Any], new: Sequence[Any],
     for o in new:  # per order: the freeze quantity, every kind
         c = found[o.contract_id].stored.listed.contract  # a contract with no stored row was refused before the door
         limit = stored.get(InstrumentId(c.exchange_segment, c.exchange_token))
+        if limit is None and o.kind in paper_store.REDUCING_KINDS:
+            continue  # an exit, stop or settle of a leg is never trapped by a missing file (Opus review 27 Nov)
         if limit is None:
             raise StrategyRefused("paper_leg_freeze_unknown", message=render(
                 "paper_leg_freeze_unknown", contract=name_of(o.contract_id)))
@@ -155,18 +158,18 @@ async def check_order_size(db: Any, existing: Sequence[Any], new: Sequence[Any],
         raise StrategyRefused("paper_leg_over_order_limit", message=render(
             "paper_leg_over_order_limit", contract=name_of(o.contract_id),
             lots=-(-o.quantity // freeze.lot), max_lots=top_lots))
-    for cid, leg in found.items():  # per leg: the total it will hold after the batch (ADR-330 (50))
+    for cid, leg in found.items():  # per leg: the total it holds after EACH order, in stored order (ADR-330 (50))
         lot = leg.stored.listed.contract.lot_size
         held = sum(_signed(r.order) for r in existing if r.order.contract_id == cid)
-        batch = [o for o in new if o.contract_id == cid]
-        after = held + sum(_signed(o) for o in batch)
-        total = -(-abs(after) // lot)
-        if total > top and abs(after) > abs(held):
-            added = sum(-(-o.quantity // lot) for o in batch if o.kind not in paper_store.REDUCING_KINDS)
-            held_lots = -(-abs(held) // lot)
-            raise StrategyRefused("paper_leg_total_over_limit", message=render(
-                "paper_leg_total_over_limit", contract=name_of(cid), total=total, max_lots=top,
-                held=held_lots, added=added, room=max(top - held_lots, 0)))
+        held_lots = -(-abs(held) // lot)
+        running = held
+        for o in (o for o in new if o.contract_id == cid):
+            before, running = running, running + _signed(o)
+            total = -(-abs(running) // lot)
+            if total > top and abs(running) > abs(before):  # grows the leg (a flip long to short counts)
+                raise StrategyRefused("paper_leg_total_over_limit", message=render(
+                    "paper_leg_total_over_limit", contract=name_of(cid), total=total, max_lots=top,
+                    held=held_lots, added=max(total - held_lots, 0), room=max(top - held_lots, 0)))
 
 
 async def place_checked(db: Any, user_ref: str, strategy_id: int, orders: Sequence[Any], *,  # noqa: PLR0913

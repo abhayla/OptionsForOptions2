@@ -238,3 +238,42 @@ async def test_100_lots_sold_is_accepted_and_one_more_sold_is_refused(db):
     assert (await _post(app, stored, [_order(c[0], 100, side="SELL")])).status_code == HTTPStatus.CREATED
     refused = await _post(app, stored, [_order(c[0], 1, kind="add", side="SELL")])
     assert refused.status_code == UNPROCESSABLE and "would hold 101 lots" in refused.text
+
+
+async def test_an_exit_with_no_stored_freeze_quantity_is_not_trapped(db):
+    """Opus review 27 Nov: a reducing kind is never refused for a missing freeze file (SENSEX has none loaded)."""
+    from decimal import Decimal  # noqa: PLC0415
+
+    from ofo_app import paper_store  # noqa: PLC0415
+    app, stored, *_ = await _setup(db)
+    c = stored.saved.contract_ids
+    at = datetime.datetime.now(datetime.UTC)
+    await paper_store.place(db, stored.user_ref, stored.id, [paper_store.NewOrder(
+        c[0], "BUY", 10 * LOT, Decimal("10.00"), "open", at)])  # a held leg; no freeze row is stored for it
+    assert (await _post(app, stored, [_order(c[1], 1)])).status_code == UNPROCESSABLE  # an OPEN still fails closed
+    reply = await _post(app, stored, [_order(c[0], 10, kind="exit", side="SELL")])
+    assert reply.status_code == HTTPStatus.CREATED, reply.text
+
+
+async def test_a_flip_long_to_short_past_the_limit_and_a_mid_batch_peak_are_refused(db):
+    """Opus review 27 Nov (3, 4, 5): each order of the batch is checked in turn, the sentence adds up."""
+    from decimal import Decimal  # noqa: PLC0415
+
+    from ofo.settings import defaults  # noqa: PLC0415
+    from ofo_app import paper_limit, paper_store  # noqa: PLC0415
+    from ofo_app.paper_book import StoredOrder  # noqa: PLC0415
+    app, stored, *_ = await _setup(db)
+    c = stored.saved.contract_ids
+    await _store_freeze(db, c[0], 10_000 * LOT)
+    at = datetime.datetime.now(datetime.UTC)
+
+    def new(side, lots, kind="add"):
+        return paper_store.NewOrder(c[0], side, lots * LOT, Decimal("10.00"), kind, at)
+    held = [StoredOrder(1, stored.id, new("BUY", 60, "open"), at)]
+    with pytest.raises(StrategyRefused) as peak:  # 60 + 50 = 110 between the two fills, then back to 60
+        await paper_limit.check_order_size(db, held, [new("BUY", 50), new("SELL", 50, "exit")], defaults())
+    assert "would hold 110 lots after this order; a leg can hold at most 100 lots (60 held, 50 added)." in str(
+        peak.value.message.what_happened)
+    with pytest.raises(StrategyRefused) as flip:  # +60 -> -101 by one sale
+        await paper_limit.check_order_size(db, held, [new("SELL", 161)], defaults())
+    assert "would hold 101 lots" in flip.value.message.what_happened

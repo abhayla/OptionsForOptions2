@@ -19,6 +19,15 @@ Highest status claimed: **Fixed, not tested.** Nothing is approved until it pass
 - Exit-above-freeze: the Positions row "exit" closes the whole leg; a leg held above its freeze quantity cannot be exited in one go and is refused with the sentence. Deliberate per (51); the Positions row has no partial-exit control (Lane V's file).
 - Messaging: the first send to "@parent" was refused (untrusted device); a later coordinator message arrived.
 
+## Independent Opus review (order path) and what I did with it
+Verdict was REVISE (7 findings). Taken in code: (1) a reducing kind (exit, stop, settle) with no stored freeze quantity is no longer refused (it was a trapped exit: SENSEX/BSE_FO has NO freeze rows, the file load reads NSE only, and nothing schedules it); (3)(4)(5) the leg total is now checked after EACH order in stored order, a flip long to short counts as growth, and the sentence's held + added = total.
+**NOT built, needs the owner or the coordinator:**
+- **SENSEX: every OPEN order is refused** ("freeze quantity not known") because no BSE_FO freeze source exists. That is the owner's fail-closed rule applied as written. If SENSEX paper must work on the PC rounds, a freeze source for BSE_FO is needed first, or the owner changes the rule for contracts with no source. Step 0 below shows it.
+- **One-click exit of a leg bigger than one order's limit** (54 + 46 lots held = 100, allowed; the Positions exit sends one 100-lot order, refused by (51)/ADR-092 "no splitting"). Needs an owner choice: cap a leg's total at the largest single order, allow a split exit, or give the row a partial-exit control.
+- A quote of any age becomes the entry starting point when the feed is down (no age or health check, no server-side confirm line for (28)): list for Lane N / owner.
+- Stop-outs and settlement call `paper_store.place` directly and skip the size check (deliberate, never trapped; "paper same as real" is not met for them).
+- ADR-330 rows (50)-(52) are not in `spec/decisions/ADR-330.md` on this branch (the full file is on fix/ic-live-test-1123): the coordinator should add: "(50) the lots limit counts the total the leg will hold after the order; (51) an exit above the exchange freeze quantity is refused, paper the same as real (ADR-092 stands); (52) the default lots limit is 100 per leg. Owner 27 Nov. Real case: Add to Paper accepted 5000 lots on one leg."
+
 ## Class
 Class: every order path that must pass the size rule. Filter: callers of `paper_limit.place_checked` = 2 (`place_paper_orders`, `exit_tracking`); total-per-leg checks before 0, after 2 (both through the door). Other writers of paper orders (`paper_store.place` direct) are tests only.
 
