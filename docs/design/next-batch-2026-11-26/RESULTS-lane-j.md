@@ -9,8 +9,8 @@ Spec basis: ADR-330 (1) to (27) and its one-module instruction; ADR-002; ADR-003
 
 ## Hotfix status for the coordinator: `hotfix/plan-watch-1127` (27 Nov, Plan watch slowness)
 
-**Head: code head 48563be1, plus the commit that adds this block (the branch head)** (cut from 206a9f0; only this fix: 5 files, `routes/plan_watch.py`, `PlanWatch.vue`,
-`lib/planWatch.js` and their two test files). **Depends on Lane U's `hotfix/index-quote-1127`: merge Lane U's first.**
+**Head: the branch head on origin (code commits 6df734e7, b16715d1, 13c4293b, 48563be1, 6e3dc306; first pushed at 6067ca3a)** (cut from 206a9f0; only this fix: `routes/plan_watch.py`, `PlanWatch.vue`, `lib/planWatch.js`,
+`routes/adjustment_history.py` and their test files). **Depends on Lane U's `hotfix/index-quote-1127`: merge Lane U's first.**
 This branch has no index reader or cache of its own (coordinator split, 09:52 IST). Highest status: Fixed, not tested.
 
 What it does:
@@ -33,7 +33,8 @@ What it does:
 (`cd frontend && npm ci && npm run build`), because the box's read pacing is browser code. **No migration.** The worker
 supervisor does not need a restart for this branch.
 
-**Re-run on the PC (market hours):** L-series Plan watch checks in section (b) (L1 to L9). Then, with two or three
+**Re-run on the PC (market hours):** test plan (docs/process/test-plan-2026-11-27.md) **T2-01** (Plan watch box on
+the builder), **T2-02** (Plan watch on the Positions row) and **T2-16** (timing in market hours); Lane J rows L1 and L2. Then, with two or three
 strategies open on Positions, the box keeps its rows (no empty box) and the API answers other pages at once. In the
 browser network tab, `/plan-watch` is called about every 15 s per box, never two at once for one box.
 
@@ -41,10 +42,20 @@ Tier A review (Opus), round 1: FIX (1 MAJOR, 7 MINOR); round 2 fixed the MAJOR a
 For Lane U, from the review: (i) a cut `to_thread` REST read keeps its thread until urllib's 4 s timeout, so allow
 one REST quote in flight per underlying; (ii) the same KeyError class exists wherever a not-connected market meets a
 live ctx and a STATED spot (`approaches.roll_distance`, `ofo/adjustment/approaches.py:475`).
-Listed for tonight (coordinator 10:16 IST), not on this branch:
-- routes/adjustment_history.py:244 holds its connection across `paper.market_snapshot` and then uses it again (`_plan_max`, `placed_links`, lines 247-248); a release needs those reads moved before the snapshot (and `_plan_max` takes the market context too) plus a pool-checked-out test like test_plan_watch's.
+- Added at 11:00 IST (6e3dc306): `routes/adjustment_history.py` now does every database read (orders, contracts, the
+  plan's max adjustments, the placing records) first, then gives its connection back (`release_connection`, the D-36 (c)
+  helper `run_check` uses) before `paper.market_snapshot` waits on the feed. Pure reordering: `_plan_max` reads only the
+  database; the answer is unchanged. Test `test_no_database_connection_is_held_while_the_market_snapshot_runs` (pool
+  checked out during the snapshot: 1 on the old code, 0 now); adjustment-history tests 11 passed. Diff read by Lane J,
+  no separate Opus review (a read reorder, no money or price logic).
+- **`lanej/builder-open-0827` (4812a3f, the 08:30 instrument list fix): reviewed, but do NOT pull it today.** Two
+  Tier A rounds (Opus); shipped after round 2 with two MAJOR findings open: the 08:35 window is hard-coded
+  (`catalogue_refresh.py:36, 63, 111`), and a failed run waits an hour before the next (`:84, :112`). It changes only the
+  start-up catalogue load, and today's load already ran, so pulling it mid-session gains nothing until tomorrow 08:30
+  and adds a restart risk. Recommendation: pull it tonight with this branch, after the MAJORs are fixed or accepted.
+Still listed for tonight, not on this branch:
 - routes/playbooks.py `_tested` (:498-520) interleaves per-strategy DB reads (`_strategy_layer`) with each strategy's market read inside one loop; a release means splitting the loop into a DB pass and a market pass. Lane U edits the same file (playbooks.py:449), so it should follow Lane U's merge.
-Not done at 10:16 because the gate alone takes about 33 minutes and the 11:00 push holds only the reviewed plan-watch change.
+Not done this morning: the loop split is not small, and Lane U edits the same file.
 Repo-scan note: `tests_app/test_kite_broker_reader.py::test_attack2_user_profile_outside_the_door_is_refused_by_the_egress_gate`
 fails in this sandbox on the base 206a9f0 too (HTTP 400 from the sandbox proxy), not caused by this branch.
 
