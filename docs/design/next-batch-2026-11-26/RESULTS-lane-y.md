@@ -1,4 +1,26 @@
-STATUS 23:20 | item 1, 1b: pushed (gate PASS) | item 2: gate running | 3: skipped (CONFLICT) | 4: for lane J2 | next push 23:40 | blocker: none (send_message to parent refused: untrusted device; this line is the report)
+STATUS 23:10 | items 1, 1b, 2 pushed (gate TOTAL PASS 87c4cb49); 3 skipped (CONFLICT); 4 written for lane J2; 5 not done | final | blocker: none (send_message to parent refused: untrusted device; this line is the report)
+
+SAFE TO CLOSE (open: items 3 and 5, and Lane J2's worker half must be merged).
+
+## Item 5: not done
+Not started: the two builder notes change `LegList.vue` and the Add-to-Paper button state in a 1,500-line page, cannot be seen or verified here (market closed, no live prices), and the refusal logic is Lane K's. Next command: open `frontend/src/components/strategy/LegList.vue` line 187 (`opening-card`, "Working out the outcome...") and pass a per-leg `working` flag from `StrategyBuilderPage.vue` (`state === 'loading'`), with a browser test on a slow outcome mock.
+
+## Status table (highest status "Fixed, not tested"; all testable on the owner's PC)
+| item | state |
+|---|---|
+| 1 Monitoring paused | Fixed, not tested; Opus review REVISE, fixed; without Lane J2's worker half every Running trade reads "Not being watched" |
+| 1b ADR-330 (64) real row and alert | Fixed, not tested; server refusal on the paper route is for lane K |
+| 2 one Plan watch batch request | Fixed, not tested (request count only) |
+| 3 not-live notice once | NOT BUILT (CONFLICT; needs Lane N's branch merged first) |
+| 4 side-closed with or without a plan | For lane J2 (patch applies cleanly) |
+| 5 builder usability | not done |
+
+## Tasks (model / minutes)
+| task | model | minutes |
+|---|---|---|
+| Items 1, 1b, 2, merges, 9 gate runs | Sonnet (this session) | about 130 |
+| Independent review of item 1 (Why Opus: it tells a trader whether his stop is watched) | Opus helper | 6 |
+| Mechanical work | no Haiku helper used | 0 |
 
 CONFLICT: tests/orchestrator/test_select_app_tests.py between feat/page-handovers-1127 and fix/last-close-1127 (item 3 merge aborted; the same merge also conflicts in LiveStrategyCard.vue, LiveStrategiesPage.vue, StrategyBuilderPage.vue, which Lane N's branch rewrote). Item 3 skipped.
 CONFLICT: backend/ofo_app/routes/plan_watch.py between feat/page-handovers-1127 and hotfix/plan-watch-load-1127 (merge aborted; I took only the new file `frontend/src/lib/planWatchQueue.js` from it).
