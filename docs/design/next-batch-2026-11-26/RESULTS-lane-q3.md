@@ -56,3 +56,5 @@ On the two fixed trees the marks must be removed first (strict: they XPASS, whic
 1. A stop typed and crossed in one minute is checked first with the old plan (reload latency; For lane J2).
 2. The paused state of a trade is not readable outside the worker process.
 3. (h) not reproduced: need the PC's saved plan body and style for the 27 Nov 13:28 case.
+
+Final run on the pushed head (tree 206a9f0 product code, marks on): `3 passed, 7 xfailed in 576.31s`.
