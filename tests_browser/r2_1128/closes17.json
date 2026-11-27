@@ -1,0 +1,106 @@
+{
+ "rows": [
+  {
+   "instrument_id": "NSE_FO:44712",
+   "price": "235.00",
+   "price_at": "2026-11-27T15:29:58+05:30",
+   "source": "tc_synthetic_2026-11-28"
+  },
+  {
+   "instrument_id": "NSE_FO:44715",
+   "price": "35.00",
+   "price_at": "2026-11-27T15:29:58+05:30",
+   "source": "tc_synthetic_2026-11-28"
+  },
+  {
+   "instrument_id": "NSE_FO:44719",
+   "price": "41.00",
+   "price_at": "2026-11-27T15:29:58+05:30",
+   "source": "tc_synthetic_2026-11-28"
+  },
+  {
+   "instrument_id": "NSE_FO:44720",
+   "price": "147.50",
+   "price_at": "2026-11-27T15:29:58+05:30",
+   "source": "tc_synthetic_2026-11-28"
+  },
+  {
+   "instrument_id": "NSE_FO:44721",
+   "price": "47.50",
+   "price_at": "2026-11-27T15:29:58+05:30",
+   "source": "tc_synthetic_2026-11-28"
+  },
+  {
+   "instrument_id": "NSE_FO:44722",
+   "price": "103.50",
+   "price_at": "2026-11-27T15:29:58+05:30",
+   "source": "tc_synthetic_2026-11-28"
+  },
+  {
+   "instrument_id": "NSE_FO:44727",
+   "price": "53.50",
+   "price_at": "2026-11-27T15:29:58+05:30",
+   "source": "tc_synthetic_2026-11-28"
+  },
+  {
+   "instrument_id": "NSE_FO:44728",
+   "price": "60.00",
+   "price_at": "2026-11-27T15:29:58+05:30",
+   "source": "tc_synthetic_2026-11-28"
+  },
+  {
+   "instrument_id": "NSE_FO:44729",
+   "price": "60.00",
+   "price_at": "2026-11-27T15:29:58+05:30",
+   "source": "tc_synthetic_2026-11-28"
+  },
+  {
+   "instrument_id": "NSE_FO:44730",
+   "price": "53.50",
+   "price_at": "2026-11-27T15:29:58+05:30",
+   "source": "tc_synthetic_2026-11-28"
+  },
+  {
+   "instrument_id": "NSE_FO:44731",
+   "price": "103.50",
+   "price_at": "2026-11-27T15:29:58+05:30",
+   "source": "tc_synthetic_2026-11-28"
+  },
+  {
+   "instrument_id": "NSE_FO:44732",
+   "price": "47.50",
+   "price_at": "2026-11-27T15:29:58+05:30",
+   "source": "tc_synthetic_2026-11-28"
+  },
+  {
+   "instrument_id": "NSE_FO:44739",
+   "price": "147.50",
+   "price_at": "2026-11-27T15:29:58+05:30",
+   "source": "tc_synthetic_2026-11-28"
+  },
+  {
+   "instrument_id": "NSE_FO:44746",
+   "price": "35.00",
+   "price_at": "2026-11-27T15:29:58+05:30",
+   "source": "tc_synthetic_2026-11-28"
+  },
+  {
+   "instrument_id": "NSE_FO:44747",
+   "price": "235.00",
+   "price_at": "2026-11-27T15:29:58+05:30",
+   "source": "tc_synthetic_2026-11-28"
+  },
+  {
+   "instrument_id": "NSE_INDEX:1001",
+   "price": "24187.35",
+   "price_at": "2026-11-27T15:29:58+05:30",
+   "source": "tc_synthetic_2026-11-28"
+  },
+  {
+   "instrument_id": "BSE_INDEX:1",
+   "price": "79234.50",
+   "price_at": "2026-11-27T15:29:58+05:30",
+   "source": "tc_synthetic_2026-11-28"
+  }
+ ]
+}
