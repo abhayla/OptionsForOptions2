@@ -2016,6 +2016,9 @@ def path_position(base: dict, spec: dict) -> dict:
     if not spec.get("legs"):
         return position
     entry = position["entry"]
+    if spec.get("entry_clock"):  # Lane Q3: the trade's own entry time (a fresh trade, or one entered a minute ago)
+        entry = {**entry, "clock": spec["entry_clock"]}
+        position["entry"] = entry
     at = datetime.datetime.fromisoformat(entry["clock"])
     atm = D(spec["entry_atm_iv"])
     expiry = position["legs"][0]["expiry"]
