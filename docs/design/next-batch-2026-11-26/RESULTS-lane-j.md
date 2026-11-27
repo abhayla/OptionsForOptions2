@@ -7,7 +7,35 @@ for these items by the owner on 26 Nov, see RESULTS-lane-p.md). Highest status c
 
 Spec basis: ADR-330 (1) to (27) and its one-module instruction; ADR-002; ADR-003; ADR-008; ADR-016 to ADR-019.
 
-## SAFE TO CLOSE (Lane J, 27 Nov, updated about 17:30 IST)
+## SAFE TO CLOSE (Lane J, 27 Nov about 18:40 IST)
+
+**STATUS: SAFE TO CLOSE. Head: the head of `hotfix/loss-stop-1127` on origin (this commit; code as reviewed at 0dcfc33e, ADR-330 (47) included, gate passed on 596c6562). The PC: restart the API and the worker supervisor; no frontend rebuild; no migration. What is left goes to Lane J2 (list below).**
+
+**Stream S1, for round 1 (coordinator about 17:15 IST): what the PC can run.**
+- (b) Proving it with the market closed, without building a second tool: Lane Q2's branch `test/live-day-gaps-1127`
+  adds tests only (`tests/adjustment/test_plan_stop_to_alert_chain.py`, five guard kinds), not a replay command. The
+  repo's own dev/test path is scenario mode, which drives the API and the SEPARATE worker process: set `APP_ENV=development`
+  and `OFO_SCENARIO=PATH-<nn>` for both processes (`backend/ofo_app/scenario_mode.py`), seed the trade with
+  `python scripts/orchestrator/dev_run.py <checkout> python scripts/seed_scenario.py PATH-<nn>` (ofo_dev only; it
+  refuses any other database), save a plan with a Stop (Rs) on "Scenario PATH-<nn>", then move the market frame by frame
+  with `POST /api/scenario/frame` (the worker reads the shared frame index before every cycle, `background.py:957`).
+  A frame past the stop must give one alert row within a minute (or at entry + 5 minutes when the stop was already
+  crossed at entry). Not proven end to end here: I did not run this chain with a plan stop on a path scenario; whether
+  a PATH fixture reaches a given rupee level must be read from its frames (`tests/fixtures/adjust_paths/`). If none
+  does, that is the one small item for Lane J2 (a path frame past a typed stop), not a new tool.
+- (c) Market-closed PC steps (round 1, about 01:00): pull the joined build; restart the API and the worker
+  supervisor (no frontend rebuild for this branch, no migration); run the scenario steps above for: a rupee stop, a %
+  stop (T-06), a profit target (T-07 and rupee), the time exit, a stop already crossed when the plan is saved; for each,
+  the read-only check `SELECT rule_id, shown_at AT TIME ZONE 'Asia/Kolkata' FROM public.adjustment_suggestions g JOIN
+  public.strategies s ON s.id = g.strategy_id WHERE s.name = 'Scenario PATH-<nn>' ORDER BY shown_at;` and the worker log
+  line `background: strategy <id> check skipped: <reason>` if no row appears.
+- Monday steps (market open): T1-05 (rupee and %), T1-06 (a stop already crossed when the plan is accepted: alert at
+  entry + 5 minutes), T1-07, T1-08, a profit target and the time exit on a fresh trade, a stop crossed before 09:30 on a
+  weekly trade, and a trade with 4+ alerts that day; each with the SQL above on the real strategy name.
+- Not on this branch, for Lane J2 (S1 items in your 17:15 list that are not built here): the visible "not being
+  watched" state for a trade the worker cannot price (the worker now logs the reason; the screen state and the one
+  alert need a spec row), closing the last leg closes its alerts (T1-09), the monitor clock ahead of the database
+  clock, the three review MINORs above, and the Plan watch spot step after a cut (needs Lane U's `index_spot_of`).
 
 **ADR-330 (47) built (owner 16:25 IST; commits ceaa1e2f to 0dcfc33e; fixed, not tested).** Every plan exit (loss stop %
 and rupee, 2x-credit stop, profit target % and rupee, time exit T-10b, and any plan rule naming one of their triggers)
