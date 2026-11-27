@@ -10,10 +10,9 @@ from __future__ import annotations
 import asyncio
 
 import test_adjustment_check as check_test
-from ofo_app import strategy_store
-from ofo_app import actionable_alerts, playbook_store
-from test_adjustment_history_why import CREATED, OK, _book, _place, _record
+from ofo_app import actionable_alerts, playbook_store, strategy_store
 from test_adjustment_check import _seeded
+from test_adjustment_history_why import CREATED, OK, _book, _place, _record
 from test_adjustment_opportunities import _call, _check, _clean, chk, open_flags
 
 app_db_url = check_test.app_db_url
@@ -101,7 +100,8 @@ async def test_a_record_that_stops_being_open_or_does_not_exist_never_refuses(ap
     await playbook_store.dismiss(dismisser, "owner", t03.id)
     placing = asyncio.create_task(_link(app_db_url, sid, t03.id))
     await asyncio.sleep(0.5)
-    assert not placing.done()  # waits on the dismisser's row lock (the lock, or act_on's own UPDATE, whichever comes first)
+    # waits on the dismisser's row lock (the lock, or act_on's own UPDATE, whichever comes first)
+    assert not placing.done()
     await tx.commit()
     await dismisser.close()
     await asyncio.wait_for(placing, 10)

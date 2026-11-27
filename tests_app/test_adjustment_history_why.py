@@ -160,7 +160,8 @@ async def test_an_adjustment_from_a_suggestion_names_its_rule_and_every_bad_link
     # a record of ANOTHER strategy (same user) is not found for this one, and the refusal names no new basket
     other = await _seeded(app_db_url, monkeypatch, "ADJ-13")
     assert other != sid
-    assert (await _record(app_db_url, sid, "T-09")).placed_order_ids == (both_id,)  # another strategy's id never links (skipped)
+    # another strategy's id never links (skipped)
+    assert (await _record(app_db_url, sid, "T-09")).placed_order_ids == (both_id,)
 
 
 def _rec(rid: int, rule: str, *, readable: bool = True) -> playbook_store.Suggestion:

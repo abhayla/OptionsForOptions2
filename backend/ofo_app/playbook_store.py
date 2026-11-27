@@ -917,7 +917,8 @@ async def link_orders(conn: Any, user_ref: str, strategy_id: int, suggestion_id:
             await act_on(conn, user_ref, suggestion_id)
         except strategy_store.StrategyStoreError:  # no longer open after all: left as it is, never a refusal
             return
-    elif seen[0] != "acted_on":  # dismissed / lapsed: final, left as it is (the migration 0031 trigger would refuse a move)
+    # dismissed / lapsed: final, left as it is (the migration 0031 trigger would refuse a move)
+    elif seen[0] != "acted_on":
         return
     # an acted_on record that already names a basket matches no row: left as it is, the placement proceeds
     await conn.execute(_LINK_ORDERS, {**args, "order_ids": json.dumps(order_ids),
