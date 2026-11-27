@@ -60,7 +60,7 @@ CHECKS = {
     DUPLICATE: (r"duplicate_leg_failure|duplicate_leg import", r"paper_duplicate_leg|duplicate_leg import"),
 }
 # which cells fail today (so they are strict xfails); the duplicate-leg check is shared through ofo.engine.duplicate_leg
-TODAY = {(LOTS, "real"), (LOTS, "paper"), (FREEZE, "paper"), (NOT_LIVE, "paper")}
+TODAY = {(NOT_LIVE, "paper")}
 
 
 def _cells():

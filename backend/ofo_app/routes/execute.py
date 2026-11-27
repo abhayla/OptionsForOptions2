@@ -67,6 +67,7 @@ from ofo.market_calendar import is_market_open as market_open  # the one shared 
 from ofo.marketdata.health import HealthThresholds
 from ofo.money import PAISE
 from ofo.settings import calc
+from ofo.strategy.definition import display_contract
 from ofo.timeutil import IST
 from pydantic import BaseModel, ConfigDict, Field
 
@@ -88,6 +89,7 @@ from ofo_app.freeze_store import review_freeze_limits
 from ofo_app.kite_margin import BasketOrder, KiteMargin
 from ofo_app.kite_reads import KiteReadError, KiteReads, unconfirmed_template
 from ofo_app.kite_replies import ContractIndex, KiteReplyError, PositionsRead, log_ignored, positions_from_reply
+from ofo_app.order_lots import LegLots, check_lots
 from ofo_app.order_path_switch import require_order_path
 from ofo_app.return_book import read_book
 from ofo_app.routes.broker import current_user_ref
@@ -405,6 +407,7 @@ async def _execute(req: _Request, stored: Any) -> ExecuteOut:
         raise _refuse_with(refused.message) from None
     except (KeyError, ValueError):  # a contract the catalogue cannot resolve: the catalogue refusal, never a 500
         raise _refuse("strategy_contract_not_in_catalogue") from None
+    await _refuse_lots_over_limit(req, wanted, units, catalogue, underlying)  # ADR-330 (58): the paper door's function
     await _gate(req, priced, context, catalogue, underlying)
     basket = await _basket(req, priced, catalogue, plan_number)
     try:
@@ -415,6 +418,22 @@ async def _execute(req: _Request, stored: Any) -> ExecuteOut:
     await order_audit.record_prepared(req.db, plan, actor=req.user_ref)  # same transaction: rolls back with the plan
     return _answer(plan_number, basket, req.session.api_key, cost_out(basket.orders, req.rates, figures),
                    priced.planned_prices)
+
+
+async def _refuse_lots_over_limit(req: _Request, wanted: list[ep.LegToPrice], held: Mapping[str, int],
+                                  catalogue: Any, underlying: str) -> None:
+    """ADR-330 (52), (58): review step only. Each leg's lots after this plan (held units plus the leg's signed
+    quantity) may not exceed ``limits.max_lots``, through ``order_lots.check_lots``, the one function the paper door
+    calls too. Nothing is ordered here; a refusal leaves the plan unwritten."""
+    top = calc.max_lots(await get_settings_reader()(req.db))
+    legs = []
+    for want in wanted:
+        ref = catalogue.get(want.instrument_id).ref(ZERODHA)
+        units = want.quantity if want.action == Action.BUY else -want.quantity
+        key = f"{want.instrument_id.exchange_segment}:{want.instrument_id.exchange_token}"
+        name = display_contract(ep.contract_key(catalogue, want.instrument_id, underlying))
+        legs.append(LegLots(name, ref.lot_size, held.get(key, 0), [units]))
+    check_lots(top, legs)
 
 
 async def _banded(req: _Request, wanted: list[ep.LegToPrice], catalogue: Any) -> ep.QuoteOf:
