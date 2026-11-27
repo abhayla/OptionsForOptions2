@@ -8,17 +8,13 @@ import datetime
 import uuid
 from decimal import Decimal as D
 
+import test_plan_save_1127 as save_test
 from ofo_app import playbook_store
 from ofo_app.routes import adjustment_plan as route
 from test_adjustment_plan import OK, UNPROCESSABLE, _call, _plan_path, _plan_row, _system_ic, _t06
-from test_plan_save_1127 import (  # noqa: F401 - helpers of the sibling file
-    ROWS_AS_IS,
-    _accepted,
-    _Cat,
-    _Entry,
-    _no_session,
-    app_db_url,
-)
+from test_plan_save_1127 import ROWS_AS_IS, _accepted, _Cat, _no_session
+
+app_db_url = save_test.app_db_url  # the sibling's fixture: the app's engine on the fresh database
 
 
 async def _saved_monthly(app_db_url, monkeypatch, name):

@@ -331,5 +331,5 @@ async def test_no_database_connection_is_held_across_the_market_read(app_db_url,
     r, _took = await _post_with_market(wrapper, body)
     assert r.status_code == OK, r.text
     # the FIRST market read: nothing has reopened a transaction yet. Later reads see the request's session again in
-    # the other strategies' spot / margin seams (listed as a deferred issue in RESULTS-lane-r2), so only the first counts
+    # the other strategies' spot / margin seams (a deferred issue in RESULTS-lane-r2): only the first counts
     assert held and held[0] <= baseline, (held, baseline)

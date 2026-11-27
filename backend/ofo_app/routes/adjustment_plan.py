@@ -610,9 +610,9 @@ async def _stored_kind(db: Any, tracked: Any) -> str | None:
     try:
         entries = [e for e in (await load_catalogue(db)).all_entries()
                    if e.currently_listed and e.contract.name == underlying and e.contract.expiry is not None]
-    except Exception as exc:  # noqa: BLE001 - any failed read means "kind not known", with its own reason
+    except Exception as exc:  # any failed read means "kind not known", with its own reason
         log.warning("adjustment plan: catalogue not read for the expiry kind", exc_info=True)
-        await db.rollback()  # a database error leaves the session in an aborted transaction: the next read needs it clean
+        await db.rollback()  # a database error aborts the transaction: the next read needs the session clean
         raise _CatalogueUnreadable from exc
     options = [e for e in entries if e.contract.is_option()]
     futures = frozenset(e.contract.expiry for e in entries if e.contract.is_future())
@@ -646,7 +646,7 @@ def _rows_alike(body: dict, saved_before: bool = False) -> bool:
     """True when the weekly and the monthly T-06 rows give the same first-stage stop and the same stop sentence, so an
     unknown kind cannot change what is shown or compared."""
     guards = body.get("guards")
-    rupee = isinstance(guards, dict) and _rupee_guard(guards, sl.RUPEE_LOSS_KEY) is not None  # T-06 is then not the stop
+    rupee = isinstance(guards, dict) and _rupee_guard(guards, sl.RUPEE_LOSS_KEY) is not None  # T-06 not the stop
     return ((rupee or in_force_mod.sheet_stop(body, "weekly") == in_force_mod.sheet_stop(body, "monthly"))
             and _stop_words(body, saved_before, "weekly") == _stop_words(body, saved_before, "monthly"))
 
@@ -711,7 +711,7 @@ def _in_force_reply(found: in_force_mod.InForce) -> dict[str, Any]:
                   "reason": found.stops.reason}}
 
 
-async def _sheet(db: Any, user_ref: str, strategy_id: int, stype: str | None, plan: store.Plan | None,  # noqa: PLR0913, PLR0917
+async def _sheet(db: Any, user_ref: str, strategy_id: int, stype: str | None, plan: store.Plan | None,  # noqa: PLR0913
                  pick: int | None, user_values: Any = None,
                  money: in_force_mod.MoneyInputs | None = None, kind: str | None = None,
                  bases: Bases | None = None, kind_reason: str | None = None) -> AdjustmentPlanOut:

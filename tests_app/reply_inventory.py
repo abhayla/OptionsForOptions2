@@ -3596,7 +3596,7 @@ NOTES = {
     'AdjustmentHistoryOut.fill_column_text': 'catalogue text: only a render()/render_explanation() result (a catalogue sentence; its parameters are server-computed figures, never a stored credential)',
     'AdjustmentPlanOut.generic_text': 'catalogue text: only a render()/render_explanation() result (a catalogue sentence; its parameters are server-computed figures, never a stored credential)',
     'AdjustmentPlanOut.labels': 'catalogue text: only a render()/render_explanation() result (a catalogue sentence; its parameters are server-computed figures, never a stored credential)',
-    'AdjustmentPlanOut.stop_kind_reason': 'catalogue text: only a render_explanation() result (one of two fixed catalogue sentences saying why the plan stop is not shown; no parameters, never a stored credential)',
+    'AdjustmentPlanOut.stop_kind_reason': 'catalogue text: only a render_explanation() result (a fixed sentence, no parameters)',
     'AdjustmentPlanOut.triggers_reason': 'Identifier: a closed token chosen by server code (a catalogue key, state, label or display token); never read from the token store (value canary in test_reply_inventory); a settings_in_force reason code',
     'AdjustmentPlanOut.type': 'Identifier: a closed token chosen by server code (a catalogue key, state, label or display token); never read from the token store (value canary in test_reply_inventory)',
     'AdjustmentPlanOut.type_name': 'catalogue text: only a render()/render_explanation() result (a catalogue sentence; its parameters are server-computed figures, never a stored credential)',
