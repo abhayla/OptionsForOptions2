@@ -51,6 +51,13 @@ Tier A reviews (Opus): Job B SHIP (round 1 fixed the unknown re-arm); Job A FIX 
 | The Kite token read before a REST call has no time bound | `owner_kite_reads()` sits outside the 9 s bound (live_market.py); with one shared read every caller waits on it | REQ-118 | the token read is inside the bound |
 | The builder's own Exit dialog still closes on a block with only the panel's reason line | StrategyBuilderPage.vue `cancelPaperDialog` on `exitBlocked`; not reachable from Positions | ADR-328 (4) | the builder uses the same endExit door |
 | A leg stop does not follow a moved leg (issue #774) | confirmed on the PC 27 Nov 09:59 | ADR-330 (42) | (already filed) |
+| After an unknown outcome the exit itself can be re-staged and sent twice | Tier A re-review A5: 2 lots held, exit 1, 503, Orderbook re-read still shows the old net, so pending holds `[add 5587, exit 5572 1]`; Review and add posts both. If the first exit committed late, a partial leg is exited twice. Same class as u513 (503 then Cancel keeps the exit) and the builder dialog having no `locked` prop. The mutation that removes the branch survives (untested). | ADR-017 (never a blind second order) | after an unknown outcome the exit is never kept as a staged edit; only a fresh Exit click sends it |
+| "was not kept" shown when nothing was staged | `restoreStaged` compares whole leg objects by JSON; the read reply adds fields, so a re-read that changed shows the sentence even with nothing pending (run N1d) | ADR-328 (4) | it decides "staged" from the orders and typed edits, not whole objects |
+| A leg whose own staged change is an exit (removed leg, partial exit, a 1+1 split) has its Exit blocked | Tier A re-review N3; fails closed; REQ-078:126-127 names only moves and added lots | ADR-330 (49) | the owner confirms or narrows it when the (49) text is written |
+| An edit made during the re-read retries is overwritten by the late re-read | Tier A A9: 5574 edited to 3 lots came back as 1 (older behaviour) | ADR-016 | a late re-read never replaces an edit made after Confirm |
+| One exit door for paper and real | ADR-330 (58) audit: the exit gate, sentences and order route exist only in paper code (usePaperExit, exitPaper/exitAllPaper, PaperStrategies, routes/paper.py) | ADR-330 (58) | gate, sentences and route are shared and the tag is the only difference |
+
+#774 (ADR-330 (48)) is on its own branch fix/stop-follows-leg-1127 (6bd22cb6), pushed separately.
 
 ## Afternoon (27 Nov, after the PC's 11:34 re-test)
 
@@ -195,3 +202,50 @@ rule those belong to Haiku (mechanical) and Sonnet (gates) and are routed so fro
 | Merges, conflict resolutions, generated-file regeneration, gate runs (to 14:14) | Opus lead (should have been Haiku / Sonnet) |
 | Not-live Exit dialog fix | Sonnet |
 | Its Tier A review | Opus (Why Opus: exit path) |
+| (49) per-leg Exit, rounds 1-2 | Sonnet |
+| (49) Tier A review and re-review | Opus (Why Opus: exit path) |
+| ADR-330 (58) paper-only audit | Haiku |
+
+## Exit on an untouched leg while another leg has a staged change (ADR-330 (49), owner 27 Nov)
+
+Branch laneu/exit-pending: a2e12edf (round 1) and af4c2bdd (round 2). Frontend only; no backend change.
+
+| | |
+|---|---|
+| RCA | `rowExitBlocked` judged a leg's Exit by the OTHER legs' staged orders, so one staged change blocked every Exit; and an Exit that did open sent the full pending diff. |
+| Rule now | Only the changed leg's Exit is blocked: "This leg has a change waiting; review or discard it first." A leg counts as untouched only when exactly one row matches its contract, side and lots. An untouched leg's Exit posts `{orders: [that one exit]}`, with no acted, basket or approach fields. After a 201 the other legs' staged edits come back only when the re-read net equals the net before minus exactly the exited lots; otherwise: "The change waiting on <legs> was not kept because the trade changed; stage it again." (pending owner read). Exit all is unchanged. |
+| Supersedes | REQ-078:126-129 ("every row Exit is disabled ... a row Exit never carries an add"); the coordinator adds the note under ADR-330 (49). |
+| Tests | Round 1: 7 new, 6 red then green. Round 2: 12 red then 30/30 green. Full vitest 3267 passed; ci_local 16 passed. |
+| Reviews | Opus Tier A: round 1 FIX FIRST (4 MAJOR: the basket fields rode on the exit; a stale restore could post an unstaged add; a merged or rolled leg's own Exit was open; staged changes were lost silently on two paths). Round 2 SHIP (F1-F5 fixed, each caught by a mutation). Shipped with 6 MINOR findings under B1 (2 rounds used): see the deferred rows. |
+
+## Exit all with a staged change (ADR-330 (59), owner 27 Nov evening): NOT built, for a fresh lane
+
+The dialog says "Exit all closes every open leg. The change waiting on <legs> is not sent and will be discarded."; after the exit: "The change waiting on <legs> was discarded."; Cancel gives the staged change back unchanged; same for paper and real. Build it on laneu/exit-pending's `restoreStaged`. Tests first, then a Tier A review (exit path). Not built here because it needs its own review round.
+
+## PC steps, market CLOSED (tonight, about 01:00)
+
+With the market closed, a leg with a held close reads 'live' (ofo/tracking/paper.py:126-133, ADR-212), and the server refuses every exit with its market-closed reply (may_act.py:18).
+
+1. Feed running. Builder, open a paper trade, Exit one leg. Expected: Confirm blue; Confirm gives the market-closed refusal sentence; no order in the Orderbook.
+2. With the Exit dialog open, stop the FEED process. Expected within about 6 s: "<legs>: Prices are not live; try again when they update", Confirm grey. The same on Positions > Paper > Exit.
+3. Start the feed again. Expected: Confirm blue again (back to step 1).
+4. (49) Stage a lots change on leg 2. Expected: leg 2's Exit is grey with "This leg has a change waiting; review or discard it first."; legs 1, 3 and 4 have Exit enabled. Exit leg 1: the dialog lists only leg 1's exit (the server then refuses: market closed); leg 2's change is still staged after Cancel or the refusal.
+
+## Paper-only paths found (ADR-330 (58))
+
+Lane U added no branch that treats paper differently from real. But today's exit fixes live inside exit code that exists only for paper: there is no real-order exit door to share it with yet.
+
+| Where | What | Added by Lane U today? |
+|---|---|---|
+| frontend/src/lib/usePaperExit.js:55 `usePaperExit` / `exitLegsNotLive` | The only exit gate. Its logic judges each leg's price_state and has no paper flag, but only the paper Exit dialogs use it (no real exit door exists in these files). | Yes (6f8fd134): rule added inside the paper-named door |
+| frontend/src/lib/usePaperExit.js:15 `EXIT_DONE_TEXT = 'Exit placed on paper'` | The done sentence names paper; a real exit needs the same sentence with its own tag. | Yes (0bdb51d8) |
+| StrategyBuilderPage.vue:480 `dialogLegsNotLive`, :502-509 `exitAllPaper` / `exitPaper` | Builder exit handlers read only `paper.value.book`. | 480 yes (6f8fd134); 502-509 no (f14c155f) |
+| PaperStrategies.vue (exit gate wiring :186, :264) | Positions exit list for paper only. | Yes (6f8fd134) |
+| backend/ofo_app/paper_monitor.py, paper_trigger_store.py | Stop/trigger watch and store for paper only; no real-order equivalent found. | Module predates; Lane U added the standing hold (open legs + indexes) |
+| backend/ofo_app/routes/paper.py | Paper order/exit route module; no real counterpart in this file. | Predates (Lane U touched `_snapshot` / hold calls only) |
+| backend/ofo_app/routes/outcome.py:1303 `if booked.paper:` | P&L basis text from fills for paper, the plan text for real. | No (f14c155f) |
+| backend/ofo_app/background.py:74 (comment) | "Risk exits (paper triggers, stop-loss) never pass through here". | No (e8ee881a) |
+| backend/ofo_app/routes/playbooks.py:499-504 | A strategy with no open paper leg is skipped before reads; real-trade counterpart not checked. | Not blamed |
+
+Shared, with no paper branch: read_door.read_quotes, routes/outcome.index_spot_of, live_market.index_spot (REST spot), the spot age rule (spot_source.rest_problem).
+Not checked: exitRecord.js, outcome.py:559 body, adjustment_readers.py:935-960, market_read.py:71-88.

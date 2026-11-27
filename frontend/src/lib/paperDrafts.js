@@ -303,22 +303,20 @@ export const exitLotsOk = (text, max) => exitLotsFrom(text, max) !== null
 /** D-48 review (ADR-328 (4)): the sentence of a row Exit on a contract that has a change waiting that is not an exit. */
 export const EXIT_BLOCKED_BY_CHANGE = 'This leg has a change waiting; review or discard it first.'
 
-/** D-48 review round 2 (C3, structural): a row Exit never carries an add. True when, with the rows of `contractId` set aside (the
- *  Exit rebuilds that contract from the net position), the orders the page's other legs already stage hold anything but an exit
- *  (a move onto another contract, lots or a side changed, a new leg), or cannot be formed. This reads the ORDERS, not row ids: a
- *  move answered with Increase or an adjustment roll drops the row id `paper-<contract>`, an id detector misses it. ONE predicate:
- *  legsAfterExit (the door) and the panel (stagedChangeIds) both use it. */
+/** ADR-330 (49) (owner, 27 Nov 2026), replacing D-48 round 2's "a row Exit never carries an add": ONLY the changed leg's Exit is
+ *  blocked. Round 2 (F3): a held leg is untouched ONLY if exactly one screen row carries its id, that row is the only row of its
+ *  contract, and it has the held contract, side and lots. Anything else blocks it: a missing row (a merge answered with Increase,
+ *  a removed leg), a row id that is gone (an adjustment roll `adjust-i`), changed lots (also the held contract a merge raised), a
+ *  flipped side, a moved contract, a second row of the contract. What the OTHER legs stage is not read here: an untouched leg's Exit
+ *  posts that leg's exit alone (exitOnlyOrders). ONE predicate: legsAfterExit (the door) and the panel (stagedChangeIds) both use it. */
 export function rowExitBlocked(net, legs, contractId) {
-  const others = (n) => n.contract_id !== contractId
-  const orders = paperOrdersFor((net ?? []).filter(others), (legs ?? []).filter(others))
-  const held = (net ?? []).find((n) => !others(n))
-  let kept = 0 // the lots of this contract's own rows, summed (1 + 1 against 2 held is no change); a row of the other side is an add
-  let flipped = false
-  for (const l of (legs ?? []).filter((x) => !others(x))) {
-    kept += Number.isInteger(l.lots) ? l.lots : 0
-    if (held && l.action !== held.action) flipped = true
-  }
-  return orders === null || orders.some((o) => o.kind !== 'exit') || flipped || kept > (held?.lots ?? 0)
+  const held = (net ?? []).find((n) => n.contract_id === contractId)
+  if (!held) return true
+  const rows = legs ?? []
+  const byId = rows.filter((l) => l.id === held.id)
+  const ofContract = rows.filter((l) => l.contract_id === contractId)
+  const only = byId.length === 1 && ofContract.length === 1 && byId[0] === ofContract[0] ? byId[0] : null
+  return !(only && only.action === held.action && only.lots === held.lots)
 }
 /** The contract ids whose row Exit is off before the click (the panel's `changedIds`): rowExitBlocked, per open contract. */
 export const stagedChangeIds = (net, legs) => (net ?? []).filter((n) => rowExitBlocked(net, legs, n.contract_id)).map((n) => n.contract_id)
@@ -340,6 +338,13 @@ export function legsAfterExit(net, legs, contractId, lots) {
   }
   if (!placed && rest > 0) out.push({ ...held, lots: rest })
   return out
+}
+
+/** ADR-330 (49): the orders of a row Exit of `lots` of `contractId`: the ONE diff (paperOrdersFor) of the NET position against
+ *  itself less those lots, so exactly one `exit` row and nothing the page's other legs stage. Null when `lots` is not 1..open. */
+export function exitOnlyOrders(net, contractId, lots) {
+  const next = legsAfterExit(net, net, contractId, lots)
+  return next ? paperOrdersFor(net, next) : null
 }
 
 /** D-48 (REQ-078 AC-13): the contract ids of the legs that have an Exit waiting in Drafts Mode: the leg is still there but
