@@ -194,3 +194,35 @@ def test_207_first_check_in_a_paused_candle_opens_the_stop():
     _, events = ag.step(gate, now=at("13:13:44"), preset=ag.WEEKLY,
                         readings=gate_readings.readings(ev, sl.loss_stop_rule_ids(body)))
     assert [e.at for e in _opened(events, sl.RUPEE_LOSS_RULE)] == [at("13:13:44")]
+
+
+
+# ---- a worker restart (coordinator 13:58: #207 still silent after the 13:33:30 restart) ------------------------------
+
+HELD_MEMORY = {"held_at_entry": True, "seen_clear": False}  # an adjustment_rule_state row as the old code left it
+
+
+@pytest.mark.parametrize("rule_id", [sl.RUPEE_LOSS_RULE, sl.TRIGGER_MAX_LOSS, sl.CREDIT_RULE])
+def test_stored_held_at_entry_row_of_a_stop_is_ignored(rule_id):
+    """A stored held_at_entry=true / seen_clear=false row for a stop answers a Flag, never "already true"."""
+    body, base = _body_207(), state_of(load("ADJ-01"))
+    ev = evaluate(body, replace(base, pnl=D("-199")), {rule_id: dict(HELD_MEMORY)}, None)
+    kinds = {r.rule_id: type(r).__name__ for r in ev.results}
+    assert kinds.get(rule_id, "Flag") != "AlreadyTrue"
+    assert kinds[sl.RUPEE_LOSS_RULE] == "Flag"
+
+
+def test_time_exit_is_never_held_at_entry():
+    assert sl.TRIGGER_TIME_EXIT in pe.never_held(_body_207())
+
+
+def test_207_restart_at_13_33_30_opens_the_stop_at_the_first_live_check():
+    """#207: no alert row stored, rule memory as the old code left it (held at entry, never seen clear), worker
+    restarted 13:33:30; the loss Rs 199 never came back inside Rs 80. The first live check opens the stop."""
+    body, base = _body_207(), state_of(load("ADJ-01"))
+    memory = {rid: dict(HELD_MEMORY) for rid in (sl.RUPEE_LOSS_RULE, sl.TRIGGER_MAX_LOSS, "T-07", "T-03")}
+    ev = evaluate(body, replace(base, pnl=D("-199")), memory, None)
+    readings = gate_readings.readings(ev, sl.loss_stop_rule_ids(body))
+    gate = ag.restore(ag.GateRows((), 0), DAY, {rid: spec for rid, (spec, _v) in readings.items()})
+    _, events = ag.step(gate, now=at("13:33:44"), preset=ag.WEEKLY, readings=readings)
+    assert [e.at for e in _opened(events, sl.RUPEE_LOSS_RULE)] == [at("13:33:44")]
