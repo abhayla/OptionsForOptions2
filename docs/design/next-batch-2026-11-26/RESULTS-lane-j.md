@@ -26,6 +26,25 @@ Spec basis: ADR-330 (1) to (27) and its one-module instruction; ADR-002; ADR-003
 - Still open, not on this branch: a plan with a stop whose check cannot compute raises no "your stop is not being
   checked" alert (as ADR-330 (44) does for paper exits). It needs a spec row and a build: for the next lane.
 
+**Your 15:09 message (Lane U's spot RCA): what is on this branch and what is left.**
+- (b) part 1, a strategy the worker cannot price is no longer silently paused: done on this branch. The worker logs
+  `background: strategy <id> check skipped: <reason>` (reasons include `prices_STALE`, `prices_LEG_MISSING`,
+  `not_ticked`, `no_gate_read`) once each time a strategy's skip reason changes (dabcc8ce, 3d16435e).
+- (b) part 2, the one "your stop is not being checked" alert for a plan with a stop that cannot be priced (the
+  ADR-330 (44) pattern): NOT built. It needs a spec row (the alert kind and its wording through the one alert module) and
+  must sit on top of Lane U's worker REST read (eac36352). It is for the next lane.
+- (a) the Plan watch budget must wrap only the market read and still resolve the spot after a cut, through Lane U's
+  `index_spot_of` (its own about 2 s deadline): NOT built. It depends on `laneu/spot-either`, which is not on origin yet,
+  so it goes on a branch cut from that branch once it is pushed (`routes/plan_watch.py` `_budgeted`, about 20 lines, plus
+  the route test). It is for the next lane. Until then a cut market read answers the whole box as not computable.
+- (c) #207 (the check says FIRED, no row): the cause in the code is the worker's stored at-entry memory
+  (`held_at_entry = t, seen_clear = f`, `playbook_eval.py:1203`), which the route's fresh check does not have. Fixed on
+  this branch (dabcc8ce: stored memory is ignored for loss stops), with the restart test. If the PC still sees no row
+  for #207 after this pull, the new skip line names the reason.
+- The stop-gaps fix (dabcc8ce, reviewed 14:00): on this branch since this push. The 14:50 push was delayed because the
+  gate failed on a test placed in `tests/` that imports the app (moved to `tests_app/`, 2bc0947f), then on a test stub of
+  `gate_readings.readings` without the new required `stops` argument (fixed in this commit).
+
 **Head: the head of `hotfix/loss-stop-1127` on origin** (this commit). Code: 206a9f0 + the daily-cap exemption
 (c040e73e) + the rupee stop fast path (468561e4) + the stop-gaps class fix (dabcc8ce, 415e98f4, 3d16435e). Fixed, not
 tested. **The PC: pull; restart the worker supervisor and the API; no frontend rebuild; no migration.** Re-run T1-05
