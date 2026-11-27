@@ -34,7 +34,7 @@ import { ADD_TO_PAPER_LABEL, PAPER_PLACED_NOT_REFRESHED_TEXT, PAPER_STATE, addTo
 import PaperConfirmDialog from '@/components/strategy/PaperConfirmDialog.vue'
 import ExitButton from '@/components/strategy/ExitButton.vue'
 import LoadFailed from '@/components/common/LoadFailed.vue'
-import { ADD_UNKNOWN_TEXT, PAPER_REREAD_FAILED_TEXT, UNKNOWN_EXIT_WINDOW_MS } from '@/lib/sharedStateText'
+import { ADD_UNKNOWN_TEXT, PAPER_REREAD_FAILED_TEXT, UNKNOWN_EXIT_WINDOW_MS, closedBannerFor } from '@/lib/sharedStateText'
 import {
   DISCARD_LABEL, PAPER_BOOK_UNREADABLE, PAPER_MODE_LABEL, PAPER_PENDING_UNREADABLE, PAPER_REREAD_DELAYS_MS, REVIEW_AND_ADD_LABEL, confirmRowsFor, paperOrdersFor, pendingText, readPaperBook,
   legsAfterExit, exitOnlyOrders, paperFillKey, paperLeftOf, paperChargesOf, stagedChangeIds, stagedExitIds,
@@ -646,9 +646,11 @@ watch([exitBlocked, paperContractsChanged, paperBusy], ([blocked]) => { // also 
 // the drawn curve's own basis, before charges, so they sit where the line crosses zero) with the switch ON, the open legs only (the
 // outcome's own summary) with it OFF; the server computes both, this only picks which served figure to show
 const wholeTrade = computed(() => !!paperLeft.value && includeBooked.value)
-const paperCharges = computed(() => (paper.value && includeBooked.value ? paperChargesOf(paper.value.book) : null)) // D-13/D-14: the charges of the tiles beside it: switch ON = the paper tiles (paid + close); OFF = the open-legs tiles, the plan's round trip at entry prices (data.charges_breakdown)
+// UX-B25: while an exit's outcome is unknown for THIS book the tiles' book figures are the book before it: not shown (the screen legs' own outcome speaks)
+const bookOutcomeUnknown = computed(() => !!exitUnknown.value && String(exitUnknown.value.id) === String(paper.value?.id))
+const paperCharges = computed(() => (paper.value && includeBooked.value && !bookOutcomeUnknown.value ? paperChargesOf(paper.value.book) : null)) // D-13/D-14: the charges of the tiles beside it: switch ON = the paper tiles (paid + close); OFF = the open-legs tiles, the plan's round trip at entry prices (data.charges_breakdown)
 const paperLeft = computed(() => { // GC-ICFIX u124: after-charges forms, labelled (lib/paperDrafts paperLeftOf)
-  const b = paper.value?.book
+  const b = bookOutcomeUnknown.value ? null : paper.value?.book
   return b ? paperLeftOf(b, withAsOf(typeof b.pause_reason_text === 'string' && b.pause_reason_text.trim() !== '' ? b.pause_reason_text.trim() : null, b.as_of)) : null
 })
 // R-11: legs still carrying the entry and time the book loaded are paper fills ("Paper average", no time)
@@ -1353,9 +1355,16 @@ const unsavedNow = computed(() => unsavedCount({ legCount: legs.value.length, sa
 const indexLevel = computed(() => headerLevel(data.value?.spot_level, index.shownValue(index.rowFor(headerUnderlying.value || pickUnderlying.value))))
 // ADR-200 (2): the page's one market-closed banner. With an outcome reply it follows that reply; with none (no legs yet,
 // the drawer priced from the last close) it follows the index answer the page already holds (its own socket / REST read)
-const closedBanner = computed(() => (pricesNow.value.kind === 'last_close'
-  ? { at: pricesNow.value.at, text: state.value !== 'loading' && data.value?.market_closed ? data.value.closed_prices_text ?? null : null }
-  : null))
+let settledClosedBanner = null // UX-AF1: the last banner that was not drawn while an answer was out
+const closedBanner = computed(() => {
+  const fresh = pricesNow.value.kind === 'last_close'
+    ? { at: pricesNow.value.at, text: state.value !== 'loading' && data.value?.market_closed ? data.value.closed_prices_text ?? null : null }
+    : null
+  const shown = closedBannerFor(state.value === 'loading', fresh, settledClosedBanner)
+  if (fresh && state.value !== 'loading') settledClosedBanner = fresh
+  if (!fresh) settledClosedBanner = null
+  return shown
+})
 const NO_LIVE_LEVEL = '—' // no live index price in this answer: the level card shows a dash, never a typed or centred number
 // W-194 (ADR-194): the chart card's tab, Payoff sub-view and Full table switch, kept across recomputes.
 const chartTab = ref('payoff')
@@ -1516,7 +1525,7 @@ const leaveGuard = useLeaveBuilder({
         <p v-if="listNotice" class="mb-2 text-sm text-ink-muted" data-testid="contract-list-notice">{{ listNotice }}</p>
         <LegList
           :opening="opening" :done="paperCompleted" :held-legs="paper && pendingOrders?.length ? paper.net : []" :failed="!!openError" :locked="exitBlocked" :lock-reason="exitGate.reason.value"
-          :multiplier-max="served.integer(MULTIPLIER_MAX_KEY)" :legs="legs" :pending-steps="pendingSteps" :paper-fills="paperFills" :staged-exit-ids="paper ? stagedExitIds(paper.net, legs) : []" :quote-at-by-id="quoteAtById" :oldest-quote-at="data?.oldest_quote_at ?? null" :shape-name="shapeName" :has-reply="hasReply" :controls="controls" :updating="updating" :working="updating" :error-parts="editError" :error-index="editErrorIndex" :ltp-by-id="legListPrices.ltpById" :price-text-by-id="legListPrices.priceTextById"
+          :multiplier-max="served.integer(MULTIPLIER_MAX_KEY)" :legs="legs" :pending-steps="pendingSteps" :paper-fills="paperFills" :staged-exit-ids="paper ? stagedExitIds(paper.net, legs) : []" :quote-at-by-id="quoteAtById" :oldest-quote-at="data?.oldest_quote_at ?? null" :shape-name="shapeName" :has-reply="hasReply" :controls="controls" :updating="updating" :working="updating" :one-line="state === 'loading' && !showNumbers" :error-parts="editError" :error-index="editErrorIndex" :ltp-by-id="legListPrices.ltpById" :price-text-by-id="legListPrices.priceTextById"
           :undo-offered="undoHeld !== null" :undo-text="undoHeld?.text" :leg-unit="legUnit" :strategy-name="openStrategy?.name ?? null"
           @edit="editLeg" @edit-leg="openInPicker" @include-all="includeAll" @remove="removeLeg" @add-leg="focusPicker" @pick-chain="pickFromChain" @clear-all="clearAll" @undo-clear="undoClear"
         >

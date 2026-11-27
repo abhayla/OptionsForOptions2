@@ -46,6 +46,7 @@ const props = defineProps({
   shapeName: { type: String, default: null }, // the server's name; null = no reply yet (nothing is invented here)
   hasReply: { type: Boolean, default: false }, // a reply named the shape (a null name then means Custom Strategy)
   updating: { type: Boolean, default: false },
+  oneLine: { type: Boolean, default: false }, // UX-C3: the page and each leg already say the outcome is being worked out (no old numbers to mark): no third "Updating the numbers..." line
   working: { type: Boolean, default: false }, // I-50: the outcome is being worked out: each priced leg says so (LEG_WORKING_TEXT) instead of its capture time or typed-price line
   errorParts: { type: Object, default: null },
   errorIndex: { type: Number, default: null }, // the leg whose typed price was refused: its error shows under that row (REQ-077 AC-2)
@@ -234,7 +235,7 @@ function setMultiplier(index) {
             @change="emit('include-all', $event.target.checked)"
           />
           <span class="truncate">{{ selectedCount }} selected<span v-if="shown" data-testid="shape-name"> - {{ shown }}</span></span>
-          <span v-if="updating" class="ml-1" data-testid="numbers-updating">Updating the numbers...</span>
+          <span v-if="updating && !oneLine" class="ml-1" data-testid="numbers-updating">Updating the numbers...</span>
         </p>
         <button type="button" class="flex items-center gap-1 text-accent" data-testid="reset-prices" :disabled="locked" :title="locked ? lockReason : undefined" @click="resetPrices">
           <Icon name="refresh" :size="14" />Reset Prices
