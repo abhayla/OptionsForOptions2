@@ -3579,6 +3579,10 @@
     "sha256": "05152cf1513670144e07bf53e1e128e6c92af00bc110ecbc86793230c6ddb0dd",
     "reviewed": "pending owner read"
   },
+  "paper_entry_price_not_above_zero": {
+    "sha256": "13dca78bab76f17df616a3d2c7dde05d7de053d9103c5db5679c544e21c899f8",
+    "reviewed": "pending owner read"
+  },
   "paper_leg_limit_below_one_lot": {
     "sha256": "a6f2be950857eccb73bd76db12edcd90f29a87582d9fda81feec9a132d6f940b",
     "reviewed": "pending owner read"

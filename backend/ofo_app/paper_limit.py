@@ -119,12 +119,12 @@ async def check_order_size(db: Any, existing: Sequence[Any], new: Sequence[Any],
     """ADR-330 (50), (51), (52), ADR-081, ADR-092 (Lane K): the size check every paper order passes, at the one door
     (``place_checked``); ``existing`` are the stored rows before this batch (``.order`` rows), ``new`` the batch's
     ``NewOrder`` rows. PAPER AND REAL ARE THE SAME (ADR-330 (58)): a real-order path calls this same function.
-    Per order, every kind (an exit too, (51)): units must be below the contract's stored exchange freeze limit; no
-    stored limit -> ``paper_leg_freeze_unknown`` (fails closed: the order cannot be checked; except a reducing kind, which
-    is never trapped by a missing file); a limit below one lot ->
-    ``paper_leg_limit_below_one_lot``. Per leg: the lots the leg will hold after EACH order of the batch (held + added, signed net of
-    its contract, in stored order) may not exceed ``limits.max_lots`` (default 100, (52)); a batch that does not grow the leg's net
-    (a cut back of a leg already over a lowered limit) passes. An unreadable setting or store raises: nothing placed."""
+    Per order, every kind (an exit too, (51)): units must be below the contract's stored exchange freeze limit. No
+    stored limit -> ``paper_leg_freeze_unknown`` (fails closed: the order cannot be checked), except a reducing kind,
+    which a missing file never traps. A limit below one lot -> ``paper_leg_limit_below_one_lot``. Per leg: the lots
+    the leg will hold after EACH order of the batch (held + added, signed net of its contract, in stored order) may
+    not exceed ``limits.max_lots`` (default 100, (52)); an order that does not grow the leg's net (a cut back of a
+    leg already over a lowered limit) passes. An unreadable setting or store raises: nothing placed."""
     from ofo.instruments.freeze_limits import StoredFreeze, largest_allowed_units  # noqa: PLC0415
     from ofo.instruments.models import InstrumentId  # noqa: PLC0415
     from ofo.settings import calc  # noqa: PLC0415

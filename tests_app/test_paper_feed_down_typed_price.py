@@ -65,3 +65,18 @@ async def test_with_no_captured_index_price_at_all_the_basket_is_still_refused_b
     await _store_freeze(db, c[0])
     reply = await _post(app, stored, c[0])
     assert reply.status_code == HTTPStatus.CONFLICT and "The live index price is not available" in reply.text
+
+
+# ---- Lane K item 4 (PC check T3-13, 27 Nov): an entry price of 0 or below is refused, naming the leg ----
+
+@pytest.mark.parametrize("price", ["0", "0.00", "-5.00"])
+@pytest.mark.parametrize("kind", ["open", "add"])
+async def test_a_zero_or_negative_entry_price_is_refused_naming_the_leg(db, price, kind):
+    app, stored, *_ = await _setup(db)
+    c = stored.saved.contract_ids
+    await _store_freeze(db, c[0])
+    async with _client(app) as client:
+        reply = await client.post(f"/paper/strategies/{stored.id}/orders", json={"orders": [
+            {"contract_id": c[0], "side": "BUY", "quantity": 65, "price": price, "kind": kind}]})
+    assert reply.status_code == HTTPStatus.UNPROCESSABLE_ENTITY, reply.text[:400]
+    assert "The entry price for NIFTY 13 Oct 22800 CE must be above 0." in reply.text

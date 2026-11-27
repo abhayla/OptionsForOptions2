@@ -9,6 +9,7 @@ Highest status claimed: **Fixed, not tested.** Nothing is approved until it pass
 |---|---|---|
 | 1 (ADR-330 (50), (51), (52)) | Fixed, not tested | `paper_limit.check_order_size`, called by `place_checked` (the door `place_paper_orders` and `exit_tracking` both use). Per order, every kind: units below the stored freeze limit (an exit too, (51)). Per leg: held + added lots after the batch must not exceed `limits.max_lots`, default now **100** (52). A contract with no stored freeze quantity is refused by name (fail closed). A batch that does not grow a leg already over a lowered limit passes (a cut back is never trapped). |
 | 2 (triage C10, ADR-330 (28)) | Fixed, not tested | The refusal was not the price check: `_index_spot_held` (basket starting point, ADR-283 (1)) refused whenever the provider was "not connected". It now uses the last captured index quote the provider still holds; no quote at all still refuses (`paper_index_price_unavailable`: a starting point is never invented). The typed price itself was never refused. |
+| 4 (PC check T3-13: entry price 0 accepted) | Fixed, not tested | On this branch the server ALREADY refused a typed 0 or negative price (422, generic sentence "A price must be above 0 and a multiple of 0.05"); I could not reproduce "accepted and saved" through `POST /paper/strategies/{id}/orders`. So the PC saw it through another path or an older build: **Lane R2 / the builder should check whether a planned entry price of 0 is saved on the plan sheet**. Added the named sentence `paper_entry_price_not_above_zero` (577), pending owner read. A typed positive price with the feed down is still accepted (ADR-330 (28)). Tests: 6 cases (0, 0.00, -5.00 on open and add). |
 | 3 | Not started | See "Next". |
 
 ## Reports for the coordinator
@@ -46,6 +47,7 @@ Test setup change: `tests_app/conftest.py` gives every contract a very large fre
 
 ## Pending owner read (new on-screen sentences; template pins say "pending owner read")
 - `paper_leg_total_over_limit` (575): "{contract} would hold {total} lots after this order; a leg can hold at most {max_lots} lots ({held} held, {added} added)." Next step line: "Reduce {contract} to {room} more lots or fewer."
+- `paper_entry_price_not_above_zero` (577): "The entry price for {contract} must be above 0." Next step line: "Type a price above 0 for {contract}, then add it to paper again."
 - `paper_leg_freeze_unknown` (576): "The exchange freeze quantity for {contract} is not known, so an order for it cannot be checked." Next step line: "Try again after the next daily freeze file load."
 - Setting "Most lots in one leg" now defaults to 100.
 

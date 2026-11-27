@@ -1334,6 +1334,11 @@ _LEG_EDIT_TEMPLATES: tuple[MessageTemplate, ...] = (
           "The exchange freeze quantity for {contract} is not known, so an order for it cannot be checked.",
           "Nothing was placed.", "Orders for this contract, until the exchange's freeze file is loaded.",
           "Try again after the next daily freeze file load.", {"contract": ContractName}),
+    # Lane K item 4 (PC check T3-13, 27 Nov): an entry price of 0 or below, named by leg. Pending owner read.
+    _gate("paper_entry_price_not_above_zero", _UI, 577,
+          "The entry price for {contract} must be above 0.",
+          "Nothing was added to paper.", "This basket, until the price is above 0.",
+          "Type a price above 0 for {contract}, then add it to paper again.", {"contract": ContractName}),
     _gate("paper_leg_limit_below_one_lot", _UI, 574,
           "The exchange limit for {contract} is smaller than one lot ({limit} units, lot {lot}), "
           "so it cannot be ordered.",
