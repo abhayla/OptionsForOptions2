@@ -339,6 +339,18 @@ describe('Lane U hotfix: the builder\'s Exit door is single-ended (ADR-016..019,
     expect(kinds(w)).toEqual({ placed: 1, other: 0 })
     expect(all(w, 'paper-exit-note')).toHaveLength(1)
   })
+  it('a 201 with orders [{id: 965}]: "<leg>: Exit placed on paper (order 965)." (same sentence as Positions)', async () => {
+    const w = await builder()
+    await t(w, 'paper-exit-all').trigger('click')
+    await flushPromises()
+    const s = w.vm.$.setupState
+    const rows = s.paperRows
+    answers['POST /paper/strategies/86/orders'] = () => Promise.resolve({ data: { ...BOOK, orders: [{ id: 965 }] } })
+    await s.confirmPending(rows)
+    await flushPromises()
+    expect(all(w, 'paper-exit-note')).toHaveLength(1)
+    expect(s.paperExitNote).toMatch(/: Exit placed on paper \(order 965\)\.$/)
+  })
   it('a closed-as-changed note with no POST stays the one line', async () => {
     const w = await builder()
     await t(w, 'paper-exit-all').trigger('click')
