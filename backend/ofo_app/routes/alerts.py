@@ -14,6 +14,7 @@ from __future__ import annotations
 
 import datetime
 import logging
+import re
 from typing import Annotated, Any
 
 from fastapi import APIRouter, Depends, Query
@@ -118,7 +119,31 @@ def _words(a: aa.Alert, by_id: dict[int, store.Suggestion]) -> Any:
         return render_explanation(template_id, **values)
     found = by_id.get(a.id)
     shown = None if found is None else condition_text(found)
-    return shown if shown is not None else render_explanation("adjust_condition_line_id", label=a.strategy_name)
+    return shown if shown is not None else _rule_in_words(a)
+
+
+#: the rule's kind in words, for a record the inbox cannot word (item 2: never the trade's name as the reason)
+_KIND_WORDS = {"plan_loss_stop": "Plan loss stop", "plan_profit_target": "Plan profit target",
+               "plan_rupee_loss": "Plan rupee stop", "plan_rupee_profit": "Plan rupee target",
+               "plan_time_exit": "Plan time exit"}
+_TRIGGER_ID = re.compile(r"T-\d{2}[a-z]?")
+
+
+def _rule_in_words(a: aa.Alert) -> Any:
+    """The rule of a record with no worded condition: its kind (or its trigger id) and, when the record holds them, its
+    value and threshold. Every answer state: kind known / trigger only / neither (the generic words); figures present
+    or absent. Server-built; the page prints it."""
+    label = _KIND_WORDS.get(_kind(a))
+    if label is None:
+        label = f"Adjustment rule {a.trigger_id}" if a.trigger_id and _TRIGGER_ID.fullmatch(a.trigger_id) \
+            else "Adjustment rule"
+    if a.value is not None and a.threshold is not None:
+        try:
+            return render_explanation("alert_rule_fallback_valued", label=label, value=format(a.value, "f"),
+                                      threshold=format(a.threshold, "f"))
+        except (TypeError, ValueError):
+            pass
+    return render_explanation("adjust_condition_line_id", label=label)
 
 
 def _closed_side(a: aa.Alert) -> str | None:

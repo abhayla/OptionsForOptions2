@@ -222,3 +222,16 @@ async def test_a_side_closed_row_in_active_names_the_closed_side_and_the_shape_t
     assert "call side of this trade is closed" in str(mine["text"])
     assert "Bull Put Spread" in str(mine["text"])
     assert [x["code"] for x in mine["answers"]] == ["add_legs", "confirm_new_shape"]
+
+
+async def test_an_alert_with_no_worded_condition_shows_its_rule_not_the_trade_name(app_db_url, monkeypatch):
+    """Item 2 (27 Nov): the row's reason was only the trade name ("Scenario ADJ-02"); now the rule and its figures."""
+    sid = await _clean(app_db_url, await _seeded(app_db_url, monkeypatch, "ADJ-02"))
+    alert_id = await _raise(app_db_url, sid)
+    mine = next(a for a in (await _call("GET", "/api/alerts/active"))[1]["alerts"] if a["id"] == alert_id)
+    assert mine["text"] == "Plan loss stop: 15.5750 (rule 15.4000)"
+    async with app_db_url.begin() as conn:  # absent figures: still the rule's kind, never the name
+        other = await aa.raise_actionable(conn, "owner", sid, "T-07", "plan_profit_target", at=FIRED, value=None,
+                                          threshold=None, trigger_id="T-07", stage=None)
+    row = next(a for a in (await _call("GET", "/api/alerts/active"))[1]["alerts"] if a["id"] == other.id)
+    assert row["text"] == "Plan profit target"
