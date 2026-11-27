@@ -302,15 +302,19 @@ class PaperMonitor:
             log.error("exit-not-run message of trigger %s not written: %s", t.id, type(exc).__name__)
 
     async def _index_at_fire(self, feed: LiveFeed, a: triggers.ArmedTrigger, price: paper.Price) -> Decimal | None:
-        """#734: the index value the fire's reason carries. The held reading first; when it is not there yet (a fire in
-        the first second after ``reload``, before the index tick arrives): the crossing tick itself when it IS the index
-        (a conditional exit), else the one market reader (``market_read.read_market``, a short hold). Truly unknown ->
-        None, and the reason says "not available" (never a made-up value)."""
+        """#734: the index value the fire's reason carries. A conditional exit: always the crossing tick itself, the
+        value the decision was made on (Lane M item 2). A leg stop (decided on the leg's own tick, quoted as the exit
+        price): the held index reading; when it is not there yet (a fire in the first second after ``reload``), the one
+        market reader (``market_read.read_market``, a short hold). Truly unknown -> None, and the reason says "not
+        available" (never a made-up value)."""
+        if a.trigger.kind == "conditional_exit" and price.price is not None:
+            # Lane M item 2 (PC #196, 27 Nov): the tick that fired it IS the index value the decision was made on
+            # (on_quote: live, market open); a held reading is another reading and may sit on the other side of the
+            # level ("crossed above 25,800.00; NIFTY was at 25,796.75"), so it is never quoted for an index exit
+            return price.price
         held = self._index_now(feed, a.underlying)
         if held is not None:
             return held
-        if a.trigger.kind == "conditional_exit":
-            return price.price  # the tick that fired it is the live index value (on_quote: live, market open)
         from ofo_app import market_read  # noqa: PLC0415 - late: market_read imports the live feed
         try:
             wait = self._index_wait or market_read.Wait(INDEX_WAIT_SECONDS)
