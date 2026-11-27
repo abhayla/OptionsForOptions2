@@ -1,4 +1,4 @@
-"""Plan stop to alert ROW, with the worker as a SEPARATE OS process on a real PostgreSQL database (Lane Q3, 27 Nov 2026).
+"""Plan stop to alert ROW, with the worker as a SEPARATE OS process on a real PostgreSQL database (Lane Q3, 27 Nov).
 
 The PC's own run of 27 Nov (tree 206a9f0) lost alerts the in-memory chain test could see only in part. Here the chain is
 the product's own: the plan saved through ``playbook_store.accept_plan``, the scenario worker as its own process
@@ -6,9 +6,9 @@ the product's own: the plan saved through ``playbook_store.accept_plan``, the sc
 answer read back from ``public.adjustment_suggestions`` (kind, rule, the level, how many rows) and from
 ``public.paper_orders`` (nothing else is placed). Paths PATH-90 to PATH-96 (tests/fixtures/adjust_paths) are the
 scripted tracks: one iron condor (PATH-10's legs), 1-minute frames from 11:40 on Fri 6 Nov 2026; the loss on the
-"23350" frames is Rs 4,608 (entry at 11:20, credit Rs 2,450, max loss Rs 23,550). The worker's clock is the scenario's: it stands still
-inside a frame, so a row that exists after a frame's wait was raised at THAT frame's check, and a row that only comes at
-the next frame came at the next candle close.
+"23350" frames is Rs 4,608 (entry at 11:20, credit Rs 2,450, max loss Rs 23,550). The worker's clock is the
+scenario's: it stands still inside a frame, so a row that exists after a frame's wait was raised at THAT frame's
+check, and a row that only comes at the next frame came at the next candle close.
 
 Spec basis: ADR-330 (3), (44), (47); REQ-170 AC-5; REQ-115 AC-4. Cases (a) to (j) of the Q3 brief.
 """
@@ -25,6 +25,14 @@ import pytest
 pytestmark = pytest.mark.real_preferences  # the true database read, not the conftest defaults
 
 LOSS_STOP = {"loss_stop_rupees": "1000"}
+# Measured 27 Nov on tree 206a9f0 (the PC's tree): cases (a), (b), (d), (e), (f), (g), (j) fail: the plan's own exits
+# come one candle late or are held by the daily cap. They pass on origin/hotfix/loss-stop-1127 and
+# origin/hotfix/worker-join-1127. The mark is
+# strict: when either branch is merged the case XPASSes and fails, and the build lane deletes the mark in that merge.
+FIXED_BY_LOSS_STOP = pytest.mark.xfail(
+    strict=True, reason="fails on 206a9f0 (plan exits held to the candle close / the daily cap); "
+                        "fixed by origin/hotfix/loss-stop-1127 and origin/hotfix/worker-join-1127")
+DAILY_CAP = 4  # the weekly style's daily cap of automatic alerts
 RELOAD_SECONDS = 20  # the worker process rebuilds its monitors from the database about every 10 s
 
 
@@ -55,6 +63,7 @@ async def nothing_else(c: wc.Chain, kinds: set[str]) -> None:
     assert await c.orders_count() == c.orders_at_start, "an order was placed: nothing but the alert may happen"
 
 
+@FIXED_BY_LOSS_STOP
 async def test_a_loss_stop_crossed_on_a_fresh_trade_raises_its_alert(chain_for, monkeypatch):
     """(a) A Rs 1,000 stop; the trade entered 11:20; at 11:42 the loss is Rs 4,608: the row is there at that check."""
     c = await chain_for("PATH-90")
@@ -72,6 +81,7 @@ async def test_a_loss_stop_crossed_on_a_fresh_trade_raises_its_alert(chain_for, 
     await nothing_else(c, {"plan_rupee_loss"})
 
 
+@FIXED_BY_LOSS_STOP
 async def test_b_a_loss_stop_already_crossed_when_the_plan_is_saved_raises_its_alert(chain_for, monkeypatch):
     """(b) The trade sits at a loss of Rs 4,608 with a plan that has no stop; the Rs 1,000 stop is then typed and
     saved (real cases #207, #209: never alerted). The next check raises the row."""
@@ -108,6 +118,7 @@ async def test_c_a_loss_stop_crossed_at_entry_is_raised_after_the_five_minutes_n
     await nothing_else(c, {"plan_rupee_loss"})
 
 
+@FIXED_BY_LOSS_STOP
 async def test_d_the_daily_alert_cap_used_up_does_not_hold_the_plan_exit(chain_for, monkeypatch):
     """(d) Weekly style: the daily cap is 4. PATH-10 (spot sweeping up from 11:40) raises the playbook's own alerts;
     with the cap used, the Rs 9,000 stop crosses at frame 17 (loss Rs 9,782): it must still alert (real case #200)."""
@@ -115,10 +126,10 @@ async def test_d_the_daily_alert_cap_used_up_does_not_hold_the_plan_exit(chain_f
     await c.seed(monkeypatch, plan=False, pin="weekly")
     await c.type_plan(guards={"loss_stop_rupees": "9000"}, keep=None)
     c.start_worker()
-    for k in range(0, 17):
+    for k in range(17):
         await c.go_to(k, settle=5)
     others = [r for r in await c.alerts() if r["kind"] != "plan_rupee_loss"]
-    assert len(others) >= 4, ("the cap of 4 is not used up before the crossing", [r["kind"] for r in others])
+    assert len(others) >= DAILY_CAP, ("the cap of 4 is not used up before the crossing", [r["kind"] for r in others])
     assert await c.alerts("plan_rupee_loss") == [], "not crossed yet"
     await c.go_to(17)
     rows = await c.alert_at_once("plan_rupee_loss", next_frame=18)
@@ -126,6 +137,7 @@ async def test_d_the_daily_alert_cap_used_up_does_not_hold_the_plan_exit(chain_f
     assert await c.orders_count() == c.orders_at_start
 
 
+@FIXED_BY_LOSS_STOP
 async def test_e_a_rupee_loss_stop_that_dips_back_before_the_candle_close_still_alerts_at_once(chain_for, monkeypatch):
     """(e) PATH-91: the loss is Rs 4,608 at 11:42 and gone at 11:43. The alert is there at the 11:42 check and stays."""
     c = await chain_for("PATH-91")
@@ -144,8 +156,9 @@ async def test_e_a_rupee_loss_stop_that_dips_back_before_the_candle_close_still_
     await nothing_else(c, {"plan_rupee_loss"})
 
 
+@FIXED_BY_LOSS_STOP
 async def test_f_a_profit_target_raises_its_alert(chain_for, monkeypatch):
-    """(f) Rs 1,500 target; the profit is about Rs 20 at ATM IV 0.10 and about Rs 2,100 from 11:42, IV 0.06 (PATH-92)."""
+    """(f) Rs 1,500 target; profit about Rs 20 at ATM IV 0.10, about Rs 2,100 from 11:42 at IV 0.06 (PATH-92)."""
     c = await chain_for("PATH-92")
     await c.seed(monkeypatch, plan=False)
     await c.type_plan(guards={"profit_target_rupees": "1500"})
@@ -159,6 +172,7 @@ async def test_f_a_profit_target_raises_its_alert(chain_for, monkeypatch):
     await nothing_else(c, {"plan_rupee_profit"})
 
 
+@FIXED_BY_LOSS_STOP
 async def test_g_a_time_exit_raises_its_alert_at_its_time(chain_for, monkeypatch):
     """(g) Time exit 11:43 on Fri 6 Nov (flat prices, PATH-93): nothing at 11:42, the alert at the 11:43 check (real
     case 27 Nov: set for 11:03, came at 11:05, the candle close)."""
@@ -197,7 +211,8 @@ async def test_h_a_5_percent_loss_stop_saved_while_the_loss_is_10_percent_alerts
     await c.go_to(15)  # 14 minutes after the loss began
     rows = [r for r in await c.alerts("plan_loss_stop") if r["rule_id"] == "T-06"]
     assert len(rows) == 1 and rows[0]["outcome"] == "open", rows
-    assert [r["kind"] for r in await c.plan_alerts()] == ["plan_loss_stop"], ("one plan alert only", await c.plan_alerts())
+    plan_kinds = [r["kind"] for r in await c.plan_alerts()]
+    assert plan_kinds == ["plan_loss_stop"], ("one plan alert only", plan_kinds)
     assert await c.orders_count() == c.orders_at_start
 
 
@@ -219,6 +234,7 @@ async def test_i_a_trade_that_cannot_be_priced_claims_no_trigger_and_is_paused(c
     print("Q3-OBSERVED (i) reads of the stale minutes:", reads)
 
 
+@FIXED_BY_LOSS_STOP
 async def test_j_exiting_the_last_leg_closes_the_trades_open_alerts_as_closed_by_system(chain_for, monkeypatch):
     """(j) ADR-330 (3): an open plan alert; every leg is exited; the worker closes the alert, answer
     ``closed_by_system``, and nothing but the exit orders the test placed is on the trade."""

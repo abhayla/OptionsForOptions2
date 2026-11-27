@@ -20,8 +20,8 @@ import time
 
 from _scenario_catalogue import load_library
 from conftest import _admin_run, _db_name, _with_db, clone_for_file
-from ofo_app import playbook_store, scenario_mode, strategy_alert_style_store
 from ofo_app import db as app_db
+from ofo_app import playbook_store, scenario_mode, strategy_alert_style_store
 from ofo_app.config import get_settings
 from sqlalchemy import text
 from sqlalchemy.ext.asyncio import create_async_engine
@@ -151,8 +151,8 @@ class Chain:
                 raise AssertionError("the worker process ended:\n" + self.log()[-1500:])
             await asyncio.sleep(0.5)
 
-    async def wait_for_alert(self, kind: str, timeout: float = 30) -> bool:
-        deadline = time.monotonic() + timeout
+    async def wait_for_alert(self, kind: str, wait_seconds: float = 30) -> bool:
+        deadline = time.monotonic() + wait_seconds
         while time.monotonic() < deadline:
             if await self.alerts(kind):
                 return True
@@ -191,11 +191,11 @@ class Chain:
         reset_engine()
         scenario_mode._loaded.clear()
 
-    async def alert_at_once(self, kind: str, *, next_frame: int | None = None, timeout: float = 20) -> list[dict]:
+    async def alert_at_once(self, kind: str, *, next_frame: int | None = None, wait_seconds: float = 20) -> list[dict]:
         """The alert row of ``rule_id`` must be there at THIS frame's check (ADR-330 (47): the plan's own exits alert on
         the first check past their level). A row that comes only at the next frame (the candle close) is a failure
         that says so: read back from the database, with the worker's log tail."""
-        if await self.wait_for_alert(kind, timeout):
+        if await self.wait_for_alert(kind, wait_seconds):
             return await self.alerts(kind)
         late = None
         if next_frame is not None:
@@ -204,5 +204,5 @@ class Chain:
             late = await self.alerts(kind)
         raise AssertionError(f"no {kind} row at frame {self.frame if next_frame is None else next_frame - 1}'s check; "
                              f"rows then: {[(r['rule_id'], r['kind']) for r in await self.alerts()]}; "
-                             f"{'it came one frame later: ' + str(late) if late else 'it did not come at the next frame either'}"
+                             f"{'it came one frame later: ' + str(late) if late else 'not at the next frame either'}"
                              f"\n{self.log()[-1500:]}")
