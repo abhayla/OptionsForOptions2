@@ -9,6 +9,34 @@ Spec basis: ADR-330 (1) to (27) and its one-module instruction; ADR-002; ADR-003
 
 ## Hotfix status for the coordinator: `hotfix/loss-stop-1127` (27 Nov, T1-05 FAIL: the Rs 100 loss stop of A-D #200 raised no alert)
 
+**Latest (13:55 IST), your 13:33/13:42 questions on A-G #207: answer so far; the fix for the remaining gaps is being built on
+this branch (ETA about 15:00 with review and gate).**
+- Did today's pulls stop the worker's alerts? **No.** On the PC's merged tree (206a9f0 + plan-watch-1127 1b576947 +
+  index-quote-1127 b8297a96 + api-blocking-1127 8fe19979 + plan-watch-load-1127 ffb63f66 + maxloss-line-1127 9d758f0d)
+  the diff along the worker's alert path is empty (`git diff 206a9f06..merged` over ofo/adjustment, ofo/alerts,
+  background.py, actionable_alerts.py, adjustment_check.py, settings_in_force.py, adjustment_readers.py, db_gate.py,
+  playbook_store.py, spot_source.py: nothing). The worker never calls run_check, the REST index quote, Lane U's door,
+  the plan-watch budget or Lane R's connection release; its only market input is the feed's ticks (background.py:426).
+  Alert and worker tests on the merged tree: 1126 domain passed; 145 worker DB tests passed (140 on 206a9f0; +5 new).
+- #207's stop is the rupee stop, not T-06: `loss_stop_rupees` "80" switches the T-06 lines off
+  (settings_in_force.py:443-444), and before 57d9ff49 the rupee stop waited for the candle close (cause 2 above); on a
+  steady Rs 199 loss on fresh, unpaused checks the old code would still have opened it at the 13:15 close (test
+  `tests/adjustment/test_stop_207_minute_cycle.py`, merged tree). So a further hold applies to #207. Two can swallow a
+  stop silently, and both are being fixed now:
+  (a) **a price pause in a candle blocks the stop fast path**: `alert_gate.py:396` returns before the fast path at :405,
+      and the pause drops the running candle; a probe pausing every 2 minutes gave no rupee alert at all; a pause is not
+      logged per check (background.py:1327, :1371), only counted in the minute line's `reads`;
+  (b) **the at-entry hold**: a rule already true when the plan is accepted (`AlreadyTrue`, playbook_eval.py:1203) gives
+      no reading until it has been seen clear; #207's loss was past the stop from about 13:14, 30 s after the 13:13:33
+      accept, so its stop may never fire (probe: no alert for 17 minutes).
+  The daily cap does not apply to #207 (zero rows; the cap counts per strategy). Quiet time and the mixed-rule gap do not
+  apply to #207 either (being fixed in the same class fix).
+- Please run on the PC (read-only) to tell (a) from (b) for #207:
+  `SELECT r.adjustment_no, r.rule_id, r.held_at_entry, r.seen_clear FROM public.adjustment_rule_state r JOIN public.strategies s ON s.id = r.strategy_id WHERE s.name ILIKE '%#207%' ORDER BY 1, 2;`
+  (`held_at_entry = t, seen_clear = f` on `plan.rupee_loss` = (b)), and the worker's `background: minute` lines from
+  13:10 to 13:30: the `reads` counts (STALE, LEG_MISSING, DISCONNECTED, NOT_TICKED = pauses, (a)) and the `outcomes`
+  counts (`already_true` = (b)).
+
 **Latest (12:50 IST, the coordinator's 12:22 case A-E #202, Stop Rs 50, 0 alert rows): second cause found and fixed
 (468561e4, a32d8101); fixed, not tested.** RCA: `stop_lines.py:114` `is_stop_rule` covered only T-06, T-16 and the
 2x-credit stop, so at `alert_gate.py:405` the plan's rupee loss stop (`plan.rupee_loss`, the plan's one loss stop when a
