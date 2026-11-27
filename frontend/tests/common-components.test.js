@@ -58,6 +58,15 @@ describe('shared parts render', () => {
     expect(w.get('[data-testid="stepper-value"]').text()).toBe('22550')
   })
 
+  it('Modal focuses the field marked data-autofocus instead of the frame; Esc from there closes', async () => {
+    const w = mount(Modal, { props: { open: true, title: 'Rename' }, slots: { default: '<input data-autofocus data-testid="f" />' }, attachTo: document.body })
+    await flushPromises()
+    expect(document.activeElement).toBe(w.get('[data-testid="f"]').element)
+    await w.get('[data-testid="f"]').trigger('keydown', { key: 'Escape' })
+    expect(w.emitted('close')).toHaveLength(1)
+    w.unmount()
+  })
+
   it('Modal renders title, body and actions; Esc emits close', async () => {
     const w = mount(Modal, { props: { open: true, title: 'Save strategy' }, slots: { default: 'Name', actions: '<button>Cancel</button><button>Save</button>' }, attachTo: document.body })
     await flushPromises()
