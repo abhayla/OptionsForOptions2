@@ -454,7 +454,9 @@ def _apply_rupee(out: dict, key: str, typed: str | None, percent: str | None,  #
         guards.pop(key, None)
         return False
     if percent and not figs.agree(Decimal(percent), level, base, lots):
-        raise _bad(field)
+        # the sentence names both boxes (the percent box and the rupee box), not only the rupee one
+        both = f"plan_sheet_levels_differ_{field.removesuffix('_rupees')}"
+        raise store.PlaybookStoreError(both, f"plan sheet fields {field.removesuffix('_rupees')} and {field}")
     guards[key] = format(level, "f")  # agreeing boxes store the RUPEE level: the rounded percent would move it (F4)
     return True
 

@@ -1541,6 +1541,11 @@ _PLAYBOOK_TEMPLATES: tuple[MessageTemplate, ...] = (
                                  ("target_rupees", 704, "Target (Rs)"),
                                  ("stop_rupees", 705, "Stop (Rs)"), ("max_adjustments", 706, "Max adjustments"),
                                  ("time_exit", 707, "Time exit"), ("time_exit_on", 708, "Time exit date"))),
+    # both of a level's boxes typed with different values: the sentence names both (27 Nov, wording pending owner read)
+    *(_gate(f"plan_sheet_levels_differ_{key}", _UI, number, f"{label} and {label} (Rs) show different values.",
+            _PB_NOT_SAVED, "Saving this plan.",
+            "Clear one of the two boxes, or make them the same level, then save again.")
+      for key, number, label in (("target", 710, "Target"), ("stop", 711, "Stop"))),
     _gate("plan_sheet_invalid_time_exit_on_past", _UI, 709, "Time exit date is in the past.", _PB_NOT_SAVED,
           "Saving this plan.", "Pick today or a later trading day, then save again."),
     # GC-ADJ2 step 2 (REQ-159 AC-1): the stages of one expiry kind leave a gap or overlap; the days and stage names
