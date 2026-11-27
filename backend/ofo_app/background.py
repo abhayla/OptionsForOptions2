@@ -280,6 +280,9 @@ def feed_state(provider: Any, now: datetime.datetime) -> PriceState | None:
     return None if health is DataHealth.AVAILABLE else PriceState.DISCONNECTED
 
 
+REST_INDEX_FEED_ID = "rest-index-quote"  # the feed id of the REST stand-in quote (``rest_index_quote``)
+
+
 def rest_index_quote(provider: Any, underlying: str, base: Any, rest: SourceReading,  # noqa: PLR0913
                      now: datetime.datetime, windows: Any) -> Any:
     """The index quote the worker's check reads when its own book has no usable tick of the index but the shared REST
@@ -298,7 +301,7 @@ def rest_index_quote(provider: Any, underlying: str, base: Any, rest: SourceRead
     if held and rest.at <= base.timestamp:
         return None  # never an older reading over a held tick
     health = DataHealth.AVAILABLE if why is None else DataHealth.STALE
-    meta = SourceMetadata("kite", "rest-index-quote")
+    meta = SourceMetadata("kite", REST_INDEX_FEED_ID)
     if base is not None:
         return dataclasses.replace(base, ltp=rest.value, timestamp=rest.at, health=health, source=meta)
     index_id = getattr(provider, "index_id", lambda _u: None)(underlying) or f"REST_INDEX:{underlying}"
@@ -1000,6 +1003,7 @@ class Worker:
         #: no REST door (scenario / tests): the index tick of the book is the only source, as before
         self._rest_spot = rest_spot
         self._rest_deadline = REST_SPOT_DEADLINE_S
+        self._index_written: dict[str, tuple[tuple, datetime.datetime]] = {}  # underlying -> (reading, written at)
         self._rest_cycle: dict[str, SourceReading] = {}  # underlying -> this cycle's ONE REST answer (F4/F5)
         self.paused_why: dict[int, str] = {}  # strategy -> the REST stand-in's reason that paused it ("rest_stale")
         self._spot_logged: set[tuple[str, str]] = set()  # (IST minute, underlying) of the not-available lines written
@@ -1498,6 +1502,7 @@ class Worker:
         self.status[sid] = MonitoringStatus.ACTIVE
         self.paused_reason.pop(sid, None)
         self.paused_why.pop(sid, None)
+        await self._publish_index(w, read, now)  # Lane FE: the reading that made it watched is the exits' reading
         self._leg_ids[sid] = (w.tracked.position.legs,
                               (read.spot.instrument_id, *(read.legs[i].instrument_id for i in sorted(read.legs))))
         tick = self._tick_key(provider, w, now)  # read with the prices, before any await (a later tick is new)
@@ -1544,6 +1549,24 @@ class Worker:
         self._checked_body[sid] = w.body
         _keep_recent(self.checks, (sid, now))
         return True
+
+    async def _publish_index(self, w: Watched, read: PriceRead, now: datetime.datetime) -> None:
+        """Lane FE (review F2): the index value this FRESH read used (the feed tick or the REST stand-in, with the
+        time of that quote) goes to the paper monitor, which evaluates the index exits from it (``paper_monitor``); a
+        trade is called watched only on a reading the exits can use. Written when it changed, and at least every
+        ``monitoring_state.REFRESH_S``; never raises (a failed write is logged; the monitor then finds no reading)."""
+        spot = read.spot
+        if self._want_client is None or spot is None or spot.ltp is None or spot.timestamp is None:
+            return
+        underlying = w.tracked.position.underlying
+        source = "rest" if getattr(spot.source, "feed_id", "") == REST_INDEX_FEED_ID else "feed"
+        stamp = (spot.ltp, spot.timestamp, source)
+        kept = self._index_written.get(underlying)
+        if kept is not None and kept[0] == stamp and _seconds(now - kept[1]) < monitoring_state.REFRESH_S:
+            return
+        if await monitoring_state.publish_index(
+                self._want_client, monitoring_state.IndexReading(underlying, spot.ltp, spot.timestamp, source), now):
+            self._index_written[underlying] = (stamp, now)
 
     async def _read_with_either_spot(self, provider: Any, w: Watched, now: datetime.datetime) -> PriceRead:
         """The price read; when THIS book's index quote is missing or not AVAILABLE, the shared REST read stands in for
