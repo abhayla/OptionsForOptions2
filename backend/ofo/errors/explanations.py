@@ -48,7 +48,7 @@ def check_explanation_wording(text: str, where: str) -> None:
     from ofo.strategy.wording import find_banned_phrases
 
     if type(text) is str and text in _PASSED:
-        _wording._verify_checker()  # noqa: SLF001 - a remembered pass still fails closed on a swapped checker (ADR-056 (1))
+        _wording.is_nfkc_clean_latin("a")  # a public entry: it verifies the checker, so a remembered pass fails closed (ADR-056 (1))
         return
     if not any(ch.isalpha() for ch in text):
         return  # a template of slots and punctuation only ("{a}: {b}") holds no platform words to check
