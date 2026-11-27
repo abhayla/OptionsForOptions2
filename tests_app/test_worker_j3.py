@@ -5,11 +5,12 @@ from __future__ import annotations
 
 import dataclasses
 import datetime
+from decimal import Decimal
 
 from ofo.adjustment import playbook_eval as pe
 from ofo.adjustment import stop_lines as sl
 from ofo.marketdata.shared_compute import FeedScope
-from ofo_app import adjustment_readers, background
+from ofo_app import adjustment_readers, background, calc_speeds
 from test_background_cycle import (
     DEFAULTS,
     FIRST_ID,
@@ -25,6 +26,7 @@ from test_background_cycle import (
 )
 
 MAX_REREAD_SECONDS = 10
+CHECKED_TWICE = 2
 
 
 def _rupee_body(level: str) -> dict:
@@ -96,3 +98,35 @@ async def test_the_worker_rereads_a_saved_plan_within_ten_seconds(scn):  # noqa:
     w._rebuild_sleep = sleeper
     await w._rebuild_loop()
     assert asked and asked[0] <= MAX_REREAD_SECONDS, asked
+
+
+async def test_a_plan_saved_during_an_old_plan_check_is_checked_at_once_not_after_the_interval(scn):  # noqa: F811
+    """J3 item 3 (review F1): the re-read awaits the database before it publishes the new plan; a check with the
+    OLD plan meanwhile used up the tick, the signature and the style interval. The first check with the new plan runs
+    at the next cycle anyway (the plan in the list is not the one the last check ran with)."""
+    prov, now, calls = Prov(scn), [scn.clock_at], Calls()
+    long = {**DEFAULTS, **{k: Decimal(600) for k in calc_speeds.BACKGROUND_KEYS.values()}}
+    w = _worker(prov, _watched(scn), now, calls, settings=lambda _at: long)
+    await w.cycle()
+    assert len(calls.states) == 1
+    now[0] += datetime.timedelta(seconds=1)
+    await w.cycle()
+    assert len(calls.states) == 1  # the control: the same plan, inside the interval, is held
+    w.monitors[0] = dataclasses.replace(w.monitors[0], body=_rupee_body("1"))  # published after the old check ran
+    now[0] += datetime.timedelta(seconds=1)
+    await w.cycle()
+    assert len(calls.states) == CHECKED_TWICE  # the saved plan is checked at once
+
+
+async def test_a_refused_pin_is_never_replaced_by_the_unknown_kind_fallback(scn, monkeypatch):  # noqa: F811
+    monkeypatch.setattr(adjustment_readers, "expiry_kind_of", lambda *_a, **_k: "")
+
+    class BogusPin(FakeGate):
+        async def load(self, _w, _today):
+            return background.GateLoad(background.alert_gate.GateRows((), 0), pin="bogus")
+    prov, now, calls = Prov(scn), [scn.clock_at], Calls()
+    watched = [dataclasses.replace(w, tracked=_unknown_kind(w.tracked)) for w in _watched(scn)]
+    w = _worker(prov, watched, now, calls, gate_store=BogusPin())
+    await w.cycle()
+    assert w.status[FIRST_ID] is background.MonitoringStatus.PAUSED
+    assert w.paused_reason[FIRST_ID] is background.PriceState.CHECK_FAILED

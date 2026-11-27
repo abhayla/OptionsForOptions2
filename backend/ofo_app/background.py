@@ -1015,6 +1015,7 @@ class Worker:
         self.errors: list[tuple[int, str]] = []
         self._signature: dict[int, tuple] = {}
         self._last_check: dict[int, datetime.datetime] = {}
+        self._checked_body: dict[int, Any] = {}  # J3: the plan body each strategy's last check ran with
         self._cursor = 0
         self._rebuilt_at: datetime.datetime | None = None
         self._stop = False
@@ -1466,6 +1467,13 @@ class Worker:
         """A check ran for ``sid``: forget its last skip reason, so the next skip is logged."""
         self._last_skip.pop(sid, None)
 
+    def _plan_changed(self, w: Watched) -> bool:
+        """J3 item 3: the plan in the list is not the one this strategy's last check ran with (saved since). Such a
+        strategy's first check with the new plan is never held by the tick, signature or style interval holds, whatever
+        a check that ran with the old plan meanwhile left behind (the re-read awaits the database before it publishes)."""
+        kept = self._checked_body.get(w.strategy_id, _GONE)
+        return kept is not _GONE and kept != w.body
+
     async def _check_unpaused(self, w: Watched, speeds: Mapping[str, Decimal],  # noqa: PLR0911, PLR0915, C901
                               now: datetime.datetime) -> bool:
         """One check at ``now`` of a strategy the user has not paused."""
@@ -1474,7 +1482,7 @@ class Worker:
         early = feed_state(provider, now)
         if early is None:
             tick = self._tick_key(provider, w, now)
-            if tick is not None and tick == self._tick.get(sid):
+            if tick is not None and tick == self._tick.get(sid) and not self._plan_changed(w):
                 self._read_states["NOT_TICKED"] = self._read_states.get("NOT_TICKED", 0) + 1
                 return self._skipped(sid, "not_ticked")  # nothing it depends on ticked: no read, no check (item c)
             read = await self._read_with_either_spot(provider, w, now)  # feed index first, Zerodha's quote second
@@ -1494,12 +1502,13 @@ class Worker:
                               (read.spot.instrument_id, *(read.legs[i].instrument_id for i in sorted(read.legs))))
         tick = self._tick_key(provider, w, now)  # read with the prices, before any await (a later tick is new)
         sig = read.signature(now)
-        if sig == self._signature.get(sid):
+        changed = self._plan_changed(w)
+        if sig == self._signature.get(sid) and not changed:
             self._tick[sid] = tick
             return self._skipped(sid, "unchanged")
         last = self._last_check.get(sid)
         every = speeds.get(self._interval_style(sid), Decimal(0))
-        if last is not None and _seconds(now - last) < every:
+        if last is not None and _seconds(now - last) < every and not changed:
             # changed, but too soon: the tick key stays old, so it is read again next cycle
             return self._skipped(sid, "interval")
         if self._values is None:
@@ -1532,6 +1541,7 @@ class Worker:
         self._signature[sid] = sig
         self._tick[sid] = tick
         self._last_check[sid] = now
+        self._checked_body[sid] = w.body
         _keep_recent(self.checks, (sid, now))
         return True
 
@@ -1675,7 +1685,7 @@ class Worker:
             try:
                 style = alert_presets.style_for(state.expiry_kind, state.days_left, pin)
             except alert_presets.StyleRefused:
-                if state.days_left is not None:
+                if state.days_left is not None or pin is not None:  # a refused pin is never replaced
                     raise
                 # J3 item 1: the expiry kind is not known (a far-month leg, R3): the fact only the percent stop and
                 # the stage rows need. The gate's TIMING takes the fastest style; every rule that needs the kind is
