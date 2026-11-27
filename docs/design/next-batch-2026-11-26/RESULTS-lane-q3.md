@@ -1,4 +1,4 @@
-STATUS 20:55 | item 1: tests written and run on three trees (206a9f0: 7 expected-fail, 3 pass; loss-stop 3e0b978: 10 pass; worker-join 903a0f3: 10 pass); gate pending | next push: after prepush TOTAL PASS | blocker: none (send_message to "@parent" refused: untrusted device; this top line is the report)
+STATUS 22:45 | item 1 PUSHED (head 3e30e66, prepush TOTAL PASS 2268 s); item 2 written, gate running: 206a9f0: 7 expected-fail, 3 pass; loss-stop 3e0b978: 10 pass; worker-join 903a0f3: 10 pass; (h) not reproduced on 206a9f0 | next push: item 2 after prepush TOTAL PASS, then item 3 if time | blocker: none (send_message to "@parent" refused: untrusted device; this top line is the report)
 
 # Lane Q3 results (27 Nov 2026, tests only; branch test/worker-chain-1127 from bc0d00aa)
 
@@ -43,8 +43,16 @@ PostgreSQL 16 as CI builds it (CREATE ROLE ofo_app, `alembic upgrade head`). `sc
 Result lines: 206a9f0 "7 failed, 3 passed" before the marks; loss-stop "1 failed, 9 passed" on the first run (case (b) before the reload wait), then (b) and (h) re-run "2 passed"; worker-join the same. The final run on the pushed head is the last line of this file.
 On the two fixed trees the marks must be removed first (strict: they XPASS, which fails).
 
+## Item 2: parity tests (tests/test_order_door_parity_live_day.py, section (3))
+All 47 names of Lane E's section C list, as table rows `PARITY` (name -> the symbol the paper side reaches, the symbol the real side must reach). Source probe only: no broker endpoint, no database, the real doors only up to the adapter boundary (nothing is sent).
+- `test_parity_the_row_is_not_vacuous` (47, all pass): at least one side has a hit today, so a wrong pattern cannot hide behind an expected fail.
+- `test_parity_the_same_input_reaches_the_same_symbol_on_both_doors`: 1 pass (duplicate leg: shared through `ofo.engine.duplicate_leg`, audit row 5) and 46 strict expected-fail, reason "one exit door (ADR-330 (58))". Each turns into a failure (XPASS) the day a real-door file reaches the symbol; delete the name from the table's expectation then (the set `GREEN_TODAY`).
+- Mutation check (tests rule): with the one-door symbol `ORDER_DOOR` replaced by a pattern the real files already contain ("execute"), 14 rows XPASS and fail: the strict marks do signal.
+- Honest limit: where no concrete real-door symbol exists to name (about 25 rows: charges, booked P&L, labels, tracked set, playbook test, confirm list, audit, record fields, race), the real side must reach `order_door|one_door`, the future name of the one door. That name is my choice, not a decision: change the constant `ORDER_DOOR` when the door is named. These rows prove the real side has no shared path today; they do not compare sentences (that needs the one door and a fake-adapter harness, as Q2 said).
+- Not built: the decision-level half (the same input run through both doors up to the fake adapter, comparing refusal code, sentence and record): the real door has no stop, exit dialog, expiry or P&L to run (audit section 1).
+
 ## Not done
-- Item 2 (parity tests, Lane E list) and item 3 (hold-back dry run): not started in this push.
+- Item 3 (hold-back relay dry run for one contract's price, T1-23): not started.
 
 ## task | model | minutes
 | Task | Model | Minutes |
