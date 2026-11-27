@@ -14,8 +14,9 @@ check -> "not_computable" with its reason; a rule true since tracking started ->
 needs a side the entry strategy had and no longer has open -> "not_applicable" with "Not applicable: the call / put
 side is closed" (ADR-330 (2) (a); entry or open legs unreadable -> no side judged closed, the rule keeps its state);
 a rule fired
--> "fired"; the price reads (market, REST index quote) not answered within ``PRICE_BUDGET_S`` -> they are cancelled and read as
-"not connected" (no chain, no spot): the same "prices not live" answer, never a wait past the client's 10 s timeout; evaluation unreadable, trigger store unreadable -> the check's refusal, no lines (fail closed); strategy
+-> "fired"; the price reads (market, REST index quote) not answered within ``PRICE_BUDGET_S`` are cancelled and read as
+"not connected" (no chain, no spot): the same "prices not live" answer, never a wait past the client's 10 s timeout;
+evaluation unreadable, trigger store unreadable -> the check's refusal, no lines (fail closed); strategy
 not found or another user's -> its 404. Writes nothing. Suggest-only (ADR-003): nothing here exits anything.
 """
 from __future__ import annotations
@@ -32,8 +33,8 @@ from ofo.adjustment import side_scope
 from ofo.adjustment import stop_lines as sl
 from ofo.charges import ChargeRates
 from ofo.engine import adjust_money
-from ofo.marketdata.spot_source import SourceReading, SourceState
 from ofo.errors.explanations import render_explanation
+from ofo.marketdata.spot_source import SourceReading, SourceState
 from ofo.money import HUNDREDTH, PAISE
 from ofo.strategy.definition import describe_contract
 from sqlalchemy.exc import SQLAlchemyError
@@ -66,10 +67,10 @@ _NOT_AVAILABLE = "user_input_request_not_available"
 PERCENT = Decimal(100)
 SHOWN_PCT = HUNDREDTH
 _PCT_UNIT = "%"
-#: REQ-119 AC-4: the route answers within this many seconds of starting its price reads (market read + REST index quote
-#: together), whatever the broker side does. The browser gives up at 10 s (frontend services/api.js timeout), so 4 s leaves
-#: the rest of the check (rule evaluation, trigger store) ample time; a read still running at the budget is cancelled and
-#: the answer is the "prices not live" one (27 Nov 2026: unbounded index quotes took 20 s).
+#: REQ-119 AC-4: the route answers within this many seconds of starting its price reads (market read + REST index
+#: quote together), whatever the broker side does. The browser gives up at 10 s (frontend services/api.js timeout), so
+#: 4 s leaves the rest of the check (rule evaluation, trigger store) ample time; a read still running at the budget is
+#: cancelled and the answer is the "prices not live" one (27 Nov 2026: unbounded index quotes took 20 s).
 PRICE_BUDGET_S = 4.0
 
 LineKind = Literal["target", "stop", "credit_stop", "rule", "index_exit", "leg_stop"]
@@ -272,9 +273,10 @@ def _leg_marks(run: CheckRun) -> dict[tuple[str, Decimal], Decimal | None]:
 
 def _budgeted(market_reader: MarketReader, rest_reader: RestSpotReader) -> tuple[MarketReader, RestSpotReader]:
     """The two price readers under ONE shared deadline (``PRICE_BUDGET_S`` from the first read). A read that has not
-    answered by then is cancelled (``asyncio.timeout`` cancels the inner task and waits for it to finish) and replaced by
-    the not-live answer: the market as when not connected (no chain, no feed spot), the REST quote as FAILED. Neither
-    reader holds the DB session (``run_check`` released it before them, D-36 c), so the cancel touches no connection."""
+    answered by then is cancelled (``asyncio.timeout`` cancels the inner task and waits for it to finish) and
+    replaced by the not-live answer: the market as when not connected (no chain, no feed spot), the REST quote as
+    FAILED. Neither reader holds the DB session (``run_check`` released it before them, D-36 c), so the cancel
+    touches no connection."""
     from ofo_app.adjustment_readers import read_market  # noqa: PLC0415 - imports routes.adjustment
     loop = asyncio.get_running_loop()
     started: list[float] = []
