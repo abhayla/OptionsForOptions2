@@ -1,4 +1,4 @@
-STATUS 18:40 | items 2,3, UX-32: Fixed, not tested; item 1 not reproducible by code; item 4 owner question; AF-07 already covered | pushed b303411 (gate TOTAL PASS); UX-32 commit next push ~19:30 | blocker: none (send_message to @parent refused: untrusted device, so this top line is the report)
+STATUS 19:10 | items 2,3, UX-32: Fixed, not tested; item 1 not reproducible by code; item 4 owner question; AF-07 already covered | pushed b303411 (gate TOTAL PASS); UX-32 pushed d94ca71 (gate TOTAL PASS) | item 4 build waits for Lane K's push (~01:00) | blocker: routes/paper.py owned by K (send_message to @parent refused: untrusted device, so this top line is the report)
 
 # Lane L: P&L totals and list counts (27 Nov 2026)
 
@@ -59,4 +59,14 @@ PASS, four minor findings, none fixed (see To file): the tie compares the count,
 ## Gate
 Run 1: TOTAL FAIL only because this container had no origin/main (ci_checks merge-base, app_tests git diff). Run 2 on b303411 (after `git fetch origin main`): TOTAL PASS (marker written), pushed.
 
-SAFE TO CLOSE after the UX-32 push below is confirmed.
+Run 3 on d94ca71: TOTAL PASS, pushed (UX-32 and RESULTS).
+
+## Item 4 build, BLOCKED on Lane K (owner decision ADR-330 (62), relayed by the coordinator 27 Nov evening)
+Rule: no running trade can be priced but closed/settled trades have a booked result -> the total shows that booked result, with "Includes N closed strategies." and the (35) count line; blank with its reason only when there is neither a priceable trade nor a booked result; a settling trade stays left out and counted.
+Exact change for `backend/ofo_app/routes/paper.py` (Lane K owns it until its push, about 01:00; origin/fix/order-limits-1127 did not exist at 19:05 IST): in `_priced`, replace the last line
+`return [k for k, _ in priced] if any(s["open_count"] for _, s in priced) else list(keys)`
+by
+`return [k for k, _ in priced] if priced else list(keys)`
+(priced = rows whose unbooked figure is present: running priced rows and fully exited/settled rows). The route then leaves out the unpriced rows and counts them (`len(live) - len(kept)`), the booked sum is `_totals` over the kept rows (one engine, Decimal), and `closed_text` is unchanged. Blank-with-reason remains when `priced` is empty. Then `test_item4_*` becomes: [SETTLED, SETTLING] -> total 40, left_out_count 1, closed_count 1; [SETTLING] only -> total None with prices_not_live. Next steps once K has pushed: merge origin/fix/order-limits-1127, tests first, build, one Opus review, gate, one push.
+
+SAFE TO CLOSE is NOT yet written: item 4 build is pending.
