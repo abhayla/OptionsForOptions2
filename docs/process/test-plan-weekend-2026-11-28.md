@@ -1,12 +1,64 @@
-STATUS 05:30 | version 2 (round 1 = commit 5fc6b102, integration/weekend-1127) | covers: the commit above (all 1127 lanes are ancestors; Lane U2, R3, Y, K2, Q3, builder-open in); round 2 lanes FA, FB, FD, FE not on origin, FC fix/r2-small-screens-1128 95218b76, TB test/r2-frontend-1128 bbd9c68e | next version when the coordinator sends the round 2 branch list
+STATUS 06:40 | version 3 (round 1 = commit 5fc6b102) | covers: the commit above, Lane TC walk (test/r2-walk-close-1128 8bbd6fbb), round 2 branches fix/r2-exit-stops-1128, fix/r2-builder-1128, fix/r2-small-screens-1128, fix/r2-backend-1128-fd, test/r2-frontend-1128, test/r2-named-green-1128; NOT PUSHED at 05:18: fix/r2-index-exit-watch-1128, fix/r2-exit-stops-2-1128, fix/r2-builder-2-1128, fix/r2-pages-1128, fix/r2-plan-screens-1128, fix/r2-backend-2-1128, test/r2-backend-1128, test/r2-walk-builder-1128 | next version when those branches land (before round 2, Sat 21:00)
 
-# Test plan for the closed-market weekend, 28 and 29 Nov 2026 (rounds 1 to 4)
+# Test plan for the closed-market weekend, 28 and 29 Nov 2026 (rounds 1 to 3)
 
-Version 2, Sat 28 Nov 2026, early morning IST. Written by Lane X2 (documents only; no product code read or changed).
-For the owner's PC session. The market is closed until Mon 30 Nov 09:15. Three rounds, each started by the owner with a **fresh PC session**; the message for each is in section 13. The app on the PC has 9 running paper trades, no Kite
+Version 3, Sat 28 Nov 2026, morning IST. Written by Lane X2 (documents only; no product code read or changed).
+For the owner's PC session. The market is closed until Mon 30 Nov 09:15. Three rounds, each started by the owner; the **PC session is reused** for all three; the message for each is in section 13. The app on the PC has 9 running paper trades, no Kite
 login and no live feed. **Paper only: never place or send a broker order.** Monday's live plan is `docs/process/test-plan-2026-11-30.md`.
 
-Version log: v1b Fri 19:40; v1 Fri 22:30 (all lane result files read); **v2 Sat (this file): round 1 is the commit named in section 1, only checks that commit can pass, every check names its board items, the three open findings F1 to F3 are known and not a round 1 failure, two PC data pulls (section 8), round 2 checks (sections 7 and 9).** Next: the round 2 update when the coordinator sends the round 2 branch list.
+Version log: v1b Fri 19:40; v1 Fri 22:30 (all lane result files read); **v2 Sat early morning: round 1 is the commit named in section 1, only checks that commit can pass, every check names its board items, the three open findings F1 to F3 are known and not a round 1 failure, two PC data pulls (section 8), round 2 checks (sections 7 and 9).** Next: the round 2 update when the coordinator sends the round 2 branch list. **v3 (this file): a one-page "What to read before 08:00" for the owner; SW-2, SW-6, T1-20 and the sweep corrected against Lane TC's walk of the round 1 commit; the five checks TC could not walk are PC checks in round 1 (TC-1 to TC-5); the round 2 section is built from the fix lanes' result files (one check per fix).**
+
+## What to read before 08:00 (for the owner; about 10 minutes)
+
+Round 1 starts at 08:00 on the commit `5fc6b102`. Three things need your eyes first; the details are in the sections named at the end of each line.
+
+### 1. The three open review findings (known; not a round 1 failure)
+Lane Z's independent Opus review of the stop and exit paths says REVISE. The three findings are open in the round 1 build and are fixed (or being fixed) in round 2:
+- **F1** After an exit whose outcome is unknown, the page can unlock Exit after 5 seconds although the server may still commit the first exit, so a second partial exit can double-exit (2 of 4 lots twice = 4 lots). Round 2 fix: Lane FB `fix/r2-builder-1128` (the unlock now waits 120 seconds); the server-side request key is Lane FD's, not done. Section 7, R2-F1.
+- **F2** When the index price feed is silent, an index exit may never fire while the trade still reads "watched" (the 23 Nov case: NIFTY ticks stopped at 15:15:18). Round 2 fix: Lane FE `fix/r2-index-exit-watch-1128` (not on origin at 05:18). Section 7, R2-F2.
+- **F3** When a leg is moved, the stop on the old leg is cancelled correctly, but you are told through two reads that can fail, so the new leg may have no stop and no line. Round 2 fix: Lanes FD and FA (not done at 05:18). Section 7, R2-F3.
+
+### 2. What the lanes decided for you tonight (21 entries from the build, plus round 2)
+The literal heading "Decided for the owner" is not in the older result files; these are their equivalent entries ("decided meanwhile", "Decisions I took (owner away)", "SPEC CHANGE pending the owner"). Each is one line with its lane. **You confirm or reverse any of them; none of them is final until you say so.**
+
+| # | Decided | Lane |
+|---|---|---|
+| 1 | A tick stamped 15:29:59 that arrives at 15:30:03 counts as the close (ADR-330 (36) says "received up to 15:30:00") | N |
+| 2 | Paper entries outside market hours stay refused (ADR-212); the tick box exists only in market hours; allowing after-hours entries would be a SPEC CHANGE | N |
+| 3 | Once a price is shown after the close it never moves until the next open; an earlier day's price carries its date | N |
+| 4 | A closed trade's ending line names only: your exit, your stop, expiry settlement, "not recorded", "No plan was set" (plan stop, target and time-exit endings are not built: a close after a plan alert reads "your exit") | V |
+| 5 | A percent plan target on a closed trade prints "target not available", never an invented number (no entry max profit is stored; that needs a migration, not done) | V |
+| 6 | The Plan button is added to real position groups too | V |
+| 7 | A fired leg stop's pop-up and History row carry no max-loss line | V |
+| 8 | The per-lot figure is shown only when every leg has the same lot count | P |
+| 9 | An unknown expiry kind gets timing style "intraday", not a guessed weekly or monthly row | J3 |
+| 10 | A paper order with no freeze limit stored is not refused (ADR-081); a hard refusal would be a SPEC CHANGE | W |
+| 11 | Paper exits are not lot-checked, so an exit is never blocked; this departs from ADR-092 "every order": SPEC CHANGE (Lane K now refuses an exit above a stored freeze limit: ADR-330 (51)) | W, K |
+| 12 | The lot check is per order: 8 lots open, then 8 more with a limit of 10 is accepted (Lane K now counts the total the leg will hold: ADR-330 (50)) | W, K |
+| 13 | Plan breakevens stay before charges, with a basis line (you answered ADR-330 (17): same) | Q |
+| 14 | The Live card "Entry price" column shows the paper book's average price; to be checked against Positions (**open question LQ-2**) | Q |
+| 15 | With no figure from the server, "Real P&L" shows a dash with a sentence (the build now shows the Connect sentence or the figure: see Lane TC below) | Q2 |
+| 16 | 30 spec-silent controls: today's behaviour is written into the requirements (a table to read in one place) | U |
+| 17 | After the close, the total is blank with its reason when no trade can be priced | L |
+| 18 | A leg with no live price blocks Confirm; after hours a held close counts as live (ADR-212) | U |
+| 19 | Lane M's side-closed question is asked with or without a plan (ADR-330 (46)); the patch is not applied in the build | M |
+| 20 | Round 2, Lane FA: the price age is told against the browser's clock when the dialog opens; the dialog re-asks the market state on every Confirm (no timer: run discipline E2); a stop row for a leg not among the open legs reads "NIFTY 22300 PE 3 Nov" | FA |
+| 21 | Round 2, Lane FB: a failed re-read keeps the contract-list line already shown; after an unknown add the page locks until the strategy is reopened; **no change** to Add to Paper's two steps (the name step, the tick): one press would be a SPEC CHANGE to ADR-330 (19) and (28) | FB |
+| 22 | Round 2, Lane FC: "Now" is the worker's stored reading with its time, for open records only; the take-profit and real-mode exits sentences are new (below); the far-month badge is the existing "Monitoring paused" with the server's reason | FC |
+| 23 | Round 2, Lane FD: nothing brought over where the build already holds the same change (booked result in the totals); the real first-fill connection hold is left as a listed gap | FD |
+| 24 | Round 2, Lane TB: "Select all N shown" is the label; the partial-failure sentence is the shared "The page could not get an answer from the server."; "staged exits" read as ADR-330 (49); the "30 second hold" is the Undo wait | TB |
+| 25 | Round 2, Lane TE: the full run excludes the `full_chain` marker; each named test file ran on its own clean database | TE |
+| 26 | Lane TC (walk of the round 1 commit): the real app with no stored Zerodha session builds no market book, so the seeded closes cannot reach any screen (defect D-1); TC used a harness with a silent socket for the other screens; paper fills were inserted by SQL because the route refuses paper orders after the close (the plan's old SW-6 line "the entry is the last captured price" conflicts with it) | TC |
+
+### 3. New on-screen sentences waiting for your read
+About 70 sentences (round 1 build) plus those of round 2. **They are listed word for word in the appendix at the end of this file (Appendix A), grouped by screen.** The ones you will see first on Saturday: the exit dialog line **"The market is closed. Exits can be placed from 09:15 on Monday 30 Nov."** (decision (60)); the three lines under a stop (**"If this stop fires, the sold <leg> is left without protection."**, **"Max loss now: Rs <amount>."**, **"Max loss then: Rs <amount> (worst case: NIFTY at zero)."**); **"Not being watched: no worker has reported in the last 2 minutes."**; **"Contract list of <date>. Today's list loads at about 08:35."**; the price banner family (**"Market closed. Prices are from 27 Nov 2026, 15:30:00 IST."**, **"Prices are not live. Figures are as of HH:MM:SS IST."**); and the round 2 sentences (the exit-dialog age lines, **"Working out the outcome..."** per leg, **"The last paper order got no answer and may be stored..."**, **"This approach is not built because the whole trade would not be in profit with every open leg closed at its planned price."**).
+
+### 4. Two things that will look wrong on Saturday and are known
+- **No Zerodha login on the weekend (Lane TC defect D-1):** with no stored Kite session the app may not show the seeded closes at all ("Not available" for the indexes). If the PC sees that, it writes "known D-1", not a seed failure (section 6, "Lane TC's corrections").
+- **The 13:28 stop case (#876) and the 2028 date** need two read-only data pulls from the PC (section 8): words and counts only, never a price value, address, login, port or key.
+
+### 5. Questions that still wait for you
+LQ-2 (Live card "Entry price"), LR-Q18 (which time the builder banner shows for a mixed trade), LR-Q19 (should "Plan: Get Rs X" come back), U-Q12 (what a greyed Add Selected says), Lane H's three unbuilt asks, Q4, Q7, Q8 and Q9 of 13 Nov, and OQ-2 of the modular-doors file (delete the dead exit door). Answers given in chat after 27 Nov evening were not checked.
 
 ## 0. Rules of the run (read first)
 
@@ -79,6 +131,7 @@ Order of the round: **W-33 first** (seed done, restart, nine screens), then A (m
 ### W-33 The nine screens after a restart, with the last close stored (Lane N; decisions (56), (62), (63))
 - **Board items:** AF-02, AX-05, A3; ADR-330 (56), (62), (63); the "no price" half of the 27 Nov sweep
 - **Proves:** AF-02 and the "no price" half of the 27 Nov sweep (27 Nov: after the API restart every running trade read "no price" and Home read "Paper P&L paused - prices not live"); AX-05; A3; decision (56). **Type:** Screen / Functionality. **First carried:** R1 (Lane N `fix/last-close-1127` b6777ce7). **Run only after set-up step 5 (the seed wrote 17 rows).** Without the seed the result is BASELINE: write what you see.
+- **Known defect D-1 (Lane TC), read before the walk:** with no stored Zerodha session the real app builds no market book and the seeded closes may not reach any screen: the banner may read only "Market closed.", the indexes "Not available", and the chain status `NIFTY- live`. The weekend PC has no Kite login: if the app still holds Friday's session the screens show the closes; if the session expired, D-1 applies. **If you see D-1, write "known D-1" and mark the walk PARTIAL; it is not a seed failure** (check the seed rows with `select count(*) from last_close` first: 17).
 - **Lane N's walk, word for word. 1. Restart the API.** Within 30 s open each screen; expected on every one: the banner **"Market closed. Prices are from 27 Nov 2026, 15:30:00 IST."** and the 27 Nov 15:30 figures; no "no live quote", no "Time not available", no load or feed-stop time labelled as a price time.
   - Home: NIFTY and SENSEX at their 27 Nov closes; paper rows priced.
   - Positions Real and Paper: the banner; the 9 running paper trades priced (tile greying waits for Lane V).
@@ -334,6 +387,22 @@ Order of the round: **W-33 first** (seed done, restart, nine screens), then A (m
 - **Steps (Lane K2, "market CLOSED, Saturday 08:00", word for word):** 1. Stop the feed process; open the app; the closed banner shows. 2. Open a fresh strategy in the builder, tick "prices are not live", type an entry price on each leg, press Add to Paper. 3. Read the strategy's entry facts: the Adjust page "Entry distance" line for that strategy (it names the entry spot and the call/put distance). **Expected: it shows the spot and distances, not "the entry spot was not stored".** Same step without the tick: the save is refused with its sentence and nothing is stored. (With the market closed Add to Paper may be refused by the market-closed sentence before this: write the sentence; then the result is PARTIAL: Monday.)
 - The real order door (a leg above 100 lots refused) is Monday.
 
+### TC-1 The charges tap on Positions > Paper (SW-3; Lane TC could not walk it)
+- **Board items:** SW-3, T1-14 (charges basis). **Type:** Screen. **First carried:** R1 (baseline).
+- **Steps:** Positions > Paper: read the totals strip, then open its charges tap. **Expected labels:** "Before charges", "Charges paid", "Estimated charges to close", "After charges". Seen elsewhere by TC: the totals strip `Charges paid ₹311.73`, `Booked P&L (after charges)`, `Unbooked P&L (after charges)`. Write what you see.
+
+### TC-2 SENSEX and a far expiry on the Option Chain (SW-7; not walked)
+- **Board items:** SW-7. **Type:** Screen. **Steps:** 1. Option Chain: hover a blank cell and write its title text. 2. Switch to SENSEX and to a far expiry; tick two contracts and read the Add controls. 3. Look for rows marked "Currently unavailable on Zerodha". **Expected:** the banner "Market closed. Prices are from <time>."; a blank cell "-"; "Currently unavailable on Zerodha" and "Some contracts are currently unavailable on Zerodha and cannot be added."; as applicable "This expiry is not in the catalogue." / "The catalogue lists no options for this expiry." / "No strikes match the filters."; on a Saturday the broker status says "market closed", never "reconnecting"; no "Stale", "Delayed" or "Unhealthy" word on closed cells.
+
+### TC-3 Notification settings and a "side closed" alert (SW-8; not walked)
+- **Board items:** SW-8. **Type:** Screen. **Steps:** 1. Alerts: open notification settings and read the empty line. 2. If a "side closed" alert exists, open its "Add the legs again" confirm and read it; do not confirm. **Expected:** "No notification channels are set up yet."; the "Add the legs again" confirm text is not in the sources: write it as an observation. If no side-closed alert exists: write "none exists" (TC could not create one).
+
+### TC-4 The stop warning text on the Stops panel (SW-9; not typed by TC)
+- **Board items:** SW-9, ADR-330 (55). **Type:** Screen. **Steps:** Stops panel (Positions > Stops): type a level in one leg stop and read its warning text; do not click Save unless a rule under test needs it; read the reason line next to Save. **Expected:** the three lines of W-29 (decision (55)) when a bought leg protects a sold leg; otherwise the server's warning text as sent; "Saved: stop <direction> <level>" / "Already set: stop ..." only after Save. Write what you see.
+
+### TC-5 A settled strategy (not seedable by TC)
+- **Board items:** T1-18, ADR-330 (57). **Type:** Screen. **Steps:** the settled SENSEX trade 173 (or any real settled row): Completed Strategies, the builder (W-29 (57)), Alerts > Records. **Expected:** Records row "Paper - settled at expiry"; Completed "closed <time>" or "closed: time not available"; "Charges not available: <reason>" where charges are missing. TC could not seed a settlement (it needs an expiry day).
+
 ## 5. Reused 27 Nov checks that can be proven with the market closed
 
 Only the steps not run on 27 Nov are listed for a PARTIAL. Expected text that the old plan did not hold is marked: write what you see as an observation.
@@ -347,12 +416,12 @@ Only the steps not run on 27 Nov are listed for a PARTIAL. Expected text that th
 - **Steps:**
   1. NEW-T02: On a weekend there is no feed. Open Home and read the Paper P&L line.
   2. D-37: Open the builder with a saved or new strategy. In the what-if, pick a level and a date (prices are not live).
-  3. ADR-330 (28): Add to Paper on a new unsaved shape. A tick box appears; Confirm stays grey until you tick it. (Confirming adds a paper trade.)
-  4. ADR-330 (28): Type your own entry price for one leg. The tick box still shows; tick it and press Confirm: the typed price is the entry.
+  3. ADR-330 (28), corrected by Lane TC: Add to Paper on a new unsaved shape and cancel (do not Confirm): there is **no tick box** after the close; the Price box is empty for a draft with no planned entry (hint "Enter a price in steps of 0.05"). The tick-box form ("Prices are not live; the entry is the last captured price, as of HH:MM.") is a market-hours, feed-stopped case: Monday.
+  4. (Monday) Type your own entry price for one leg with prices not live: the tick box still shows; tick it and press Confirm: the typed price is the entry.
 - **Expected:**
   - NEW-T02: "'Paper P&L paused - prices not live, as of <date>, <time> IST' with the time of the last price."
   - D-37: the what-if Target and Date readouts say "not shown while prices are not live" beside the dash.
-  - ADR-330 (28): "a tick box 'Prices are not live; the entry is the last captured price, as of HH:MM.'; Confirm stays grey until ticked"; with a typed price "the tick box still shows; tick, Confirm: the typed price is the entry."
+  - ADR-330 (28) (weekend, Lane TC): no tick box after the close; the server's market-closed sentence "The market is closed. Orders can be placed once it opens." appears only on Confirm (W-33). The tick-box wording is Monday's.
 - **Write down:** build head, screen text, time.
 
 ### T1-21 The API is stopped for a few seconds: Exit goes grey and the page closes the dialog by itself, nothing staged is wrongly kept
@@ -607,6 +676,29 @@ Only the steps not run on 27 Nov are listed for a PARTIAL. Expected text that th
 
 ## 6. After-close checks and the 9-screen sweep (seed first in round 1, then restart)
 
+### Lane TC's corrections to the lines below (walk of the round 1 commit 5fc6b102, 28 Nov)
+
+Lane TC (`test/r2-walk-close-1128`) walked these screens in a browser on the round 1 commit with **synthetic closes** (a stored time of 15:29:58 and five seeded strategies) and a harness market with a silent socket, because with no stored Zerodha session the real app builds no market book (defect D-1). So the **text shapes** below carry over to the PC; the figures and the time 15:29:58 do not (the PC's seed carries Friday's 15:30:00-style time). Where a sweep check below says something different from this list, this list wins.
+
+| Where | The old plan line | What the build shows (word for word) |
+|---|---|---|
+| SW-2 Real P&L | "Real P&L is not shown yet: the server does not price Zerodha positions." | With a Zerodha session: the figure with its read time, for example `+650.00` and `Zerodha, as at 03:30:41 IST`, never added to Paper P&L. With no session (the weekend): `—` and **"Connect your Zerodha account to continue. We'll use your Zerodha account to verify availability, check margin and prepare/execute your strategy."** The banner IS mounted on Positions. A red 409 `gate_broker_not_connected` console error on Positions load with no session is known defect D-2. "No open Zerodha positions." only with a session and no open position. |
+| SW-6 / T1-20 steps 3 and 4 / AF-08 Add to Paper | a tick box "Prices are not live; the entry is the last captured price, as of HH:MM." | **No tick box**, no "prices are not live" sentence. The dialog's Price box is empty for a draft with no planned entry (hint **"Enter a price in steps of 0.05"**). A Confirm sends once and the server refuses with MARKET_DATA_102: **"The market is closed. Orders can be placed once it opens."** (cancel in SW-6; Confirm only in W-33). The tick-box form is a market-hours, feed-stopped case: Monday. Open owner question (TC D-4): should the dialog say the market is closed before Confirm? |
+| SW-3 Exit dialog (one leg ticked, not confirmed) | "Prices are not live; try again when they update" | `Exit Paper positions` with `Price about 147.50, as of 15:29:58, the server sets the exit price when you confirm`; `The app could not check whether this exit leaves a sold option without protection. You can still confirm.`; `This is not a real trade. Paper orders use no real money.`; **`The market is closed. Exits can be placed from 09:15 on Monday 30 Nov.`** Cancel enabled, **Confirm disabled** (the 27 Nov FAIL "Confirm enabled" is fixed). Wording defect D-12: "You can still confirm." beside a disabled Confirm. |
+| SW-3 totals and card | "No paper total yet", totals "—" | The priced total is shown; the unpriced strategy is left out (Home count line) with the paused text on its own row: totals strip `Booked P&L (after charges)`, `Unbooked P&L (after charges)`, `Total Decay`, `Charges paid`, `Today (after charges)`; a leg cell `147.50` with `15:29:58` below; an unpriced leg `no price` with `No price for: NIFTY 8 Dec 24350 CE, NIFTY 8 Dec 24350 PE.` |
+| SW-4 Live Strategies | "Checked at" time; "Live market data disconnected. Last updated: <time>. Live strategy monitoring is paused." | There is **no "Checked at" line** on Home, Positions, My Strategies or Live Strategies ("Checked at HH:MM:SS IST" appears only in the builder's paper panel). The card reads `⏸ Monitoring paused`, `Health unknown`, **`Not being watched: no worker has reported in the last 2 minutes.`**, `estimated from spot`, `NIFTY 24187.35` with no "at <time>", an unpriced card `P&L — · Paper P&L paused - prices not live`, a draft `Draft — Live data not connected`. |
+| SW-5 My Strategies | | matches: `P&L ... (after charges)`, `P&L — · Paper P&L paused - prices not live`, Completed `closed 27 Nov 2026, 10:45:00 IST`, `Final P&L +520.00 · Charges ₹62.07 · Net after charges +457.93 · Adjustments made 0 · Adjustment cost 0.00`. The compact paper list repeats `Paper P&L paused - prices not live` twice under a paused row (D-11). |
+| SW-6 Builder | "As of HH:MM:SS IST" is a price time | `Oldest leg price as of 15:29:58 IST`, each leg `15:29:58`, `Time value at the last close prices, as of 15:29:58`, `Paper P&L (not real): +3,027.52 (after charges)`; **but** `Checked at 03:22:40 IST` and `As of 03:22:36 IST` under the Plan boxes are the **current** time (D-5). A doubled sentence `OI not available for this expiry: OI not available for this expiry: live market data is stale.` under the payoff chart (D-6). `No fixed maximum` overlaps `Intrinsic value` at 1366x768 for a strategy with no fixed maximum loss (D-10). |
+| SW-7 Option Chain | "IV and Greeks missing" | `NIFTY 24187.35 as of 15:29:58`; the banner; **"IV and Greeks: estimated from spot (the forward could not be derived from the chain)."**; seeded contracts show the close, every other cell `-`, Change `not available` (only Change says "not available"; plain cells are `-` with no reason sentence). With no session the chain status line reads `NIFTY- live` after the close (D-1). |
+| SW-8 Alerts | | matches: Active `No alerts yet. Alerts start when strategy monitoring rules are added.`; History/Records `Stops and expiry settlements` / `No stops or expiry settlements yet.` |
+| SW-9 Stops panel | "Data: paused / Data: stale" line | after the close: `NIFTY last 24187.35 as of 15:29:58`, `Paper - exits are recorded in the app, not sent to Zerodha`; **no "Data:" line exists** and no "live" word on Home, Positions, Live Strategies or the builder. |
+| SW-0 "an empty cell" | must not show | a closed row on Positions has empty Unbooked and P&L cells (D-8); expect it, write it as known. `NIFTYRunning` and `NIFTYCompleted` run together (D-7). |
+| AF-03 mixed banner | "...; 1 leg as of {later}." | did NOT appear in TC's case: one stored 15:58:00 row makes the builder read `Market closed. Prices are from 27 Nov 2026, 15:58:00 IST.` (a snapshot after the close keeps its own later time; not judged a defect). The live-feed-past-15:30 case is blocked on a weekend. |
+| AF-07 Real total, Zerodha disconnected | "no old figure stays" | after a reload yes (`—` and the Connect sentence); on an open page the figure `+650.00` stays more than 70 s after the disconnect (D-13): write "reload needed". |
+
+**Known defects of the round 1 commit (Lane TC; write them as "known", not new):** D-1 no stored Zerodha session means no stored close reaches any screen (the real weekend app may show "Not available" for the indexes and `NIFTY- live` on the chain); D-2 a red 409 on Positions load with no session; D-4 the Add to Paper wording versus the route's refusal; D-5 "Checked at" and "As of" under the builder's Plan boxes show the current time; D-6 the doubled OI sentence; D-7 `NIFTYRunning` run together; D-8 empty cells on a closed Positions row; D-10 `No fixed maximum` overlaps `Intrinsic value`; D-11 the paused text twice in the compact list; D-12 "You can still confirm." beside a disabled Confirm; D-13 an open Positions page keeps the old Real figure.
+
+
 (AF-01, AF-02, AF-08 and AX-05 of 27 Nov are now W-33, Lane N's nine-screen walk, which has the new expected texts; the freeze across 15:30 is Monday.)
 
 # Weekend re-run checks (no live feed): AF-01 to AF-08, AX-05, AX-14, sweep SW-0 to SW-9
@@ -708,7 +800,7 @@ Where a source has no exact text, the line says "expected text not in the source
 - **27 Nov result:** PARTIAL: Positions Real "No open Zerodha positions." with no banner.
 - **Fix carried first:** no fix named: baseline run in R1, re-run each round
 - **Steps:** 1. Open Positions; click "Real", then "All". 2. Read the "Real P&L" total and each Zerodha position row (Contract, "Your units", P&L). 3. With no Zerodha position open, read the empty state. 4. Reload.
-- **Expected:** total "Real P&L is not shown yet: the server does not price Zerodha positions." beside "—" unless the server serves a figure (then as sent); empty state title "Real positions", message "No open Zerodha positions."; a row's P&L cell is the server's text, else "—" with a small grey reason; a row whose first read is pending shows the "position-waiting" text (exact text not in the sources: tester writes it as an observation). A banner is expected per ADR-177 but is not mounted in the source: if none, record it as a finding. Must not show: a Real P&L number the server did not send, Real and Paper totals added together, "No open Zerodha positions." while real rows exist, a blank cell, "0".
+- **Expected (corrected by Lane TC):** with a Zerodha session: "Real P&L" shows the server's figure with its read time ("Zerodha, as at HH:MM:SS IST", for example `+650.00`), never added to Paper P&L (two separate cards). With no session (the weekend): `—` with **"Connect your Zerodha account to continue. We'll use your Zerodha account to verify availability, check margin and prepare/execute your strategy."**; the old line "Real P&L is not shown yet: the server does not price Zerodha positions." must be GONE. "No open Zerodha positions." is expected only with a session and no open position. The "Market closed. Prices are from <time>." banner IS mounted on Positions (if absent, record a finding). A red 409 `gate_broker_not_connected` console error on Positions load with no session is known defect D-2: write it as known. Must not show: a Real P&L number the server did not send, Real and Paper totals added together.
 - **Write down:** build head, total text, empty state text, banner present or not, time.
 
 ### SW-3 Positions, Paper part (filter "Paper")
@@ -744,7 +836,7 @@ Where a source has no exact text, the line says "expected text not in the source
 - **27 Nov result:** FAIL: Builder #209 "Rule not checked: No adjustment opportunity checked: prices stale or missing." x17 (and 15:55 observation: paper panel "as of Time not available" beside "As of 15:55:37 IST").
 - **Fix carried first:** no fix named: baseline run in R1, re-run each round
 - **Steps:** 1. Open the builder of a Running paper strategy. 2. Read the banner under the header, the index level card, the paper panel (Total, per-leg figures, Booked/Unbooked), the legs table LTP column, the "As of HH:MM:SS IST" line and the Orderbook. 3. Read At Expiry / Estimated Now, Greeks and IV tiles. 4. Try "Add to Paper", then cancel without confirming. 5. Read the Exit control's reason.
-- **Expected:** banner "Market closed. Prices are from <time>." or for legs priced only after the close "Market closed. Prices are from {frozen}; 1 leg as of {later}." / "...; {count} legs as of {later}."; paper panel "As of HH:MM:SS IST"; leg expiring today "Market closed. Open legs that expire today settle at HH:MM."; unpriced leg "Paper P&L paused - prices not live, as of <time>" and "no price"; money-time labels "at the last close prices, as of {time}" or "at the last close prices", never the live forms; Add to Paper: "Prices are not live; the entry is the last captured price, as of HH:MM." with a tick box before Confirm (do not Confirm); targets "not shown while prices are not live" beside "-"; level card with no index price "—"; Exit "Prices are not live; try again when they update". Must not show: the live form of a money-time label after the close, an entry price without a close label and time, a "price has moved" marker driven by a closing price, a live-looking Estimated Now, a made-up number for an unpriced leg, a successful paper fill.
+- **Expected:** banner "Market closed. Prices are from <time>." or for legs priced only after the close "Market closed. Prices are from {frozen}; 1 leg as of {later}." / "...; {count} legs as of {later}."; paper panel "As of HH:MM:SS IST"; leg expiring today "Market closed. Open legs that expire today settle at HH:MM."; unpriced leg "Paper P&L paused - prices not live, as of <time>" and "no price"; money-time labels "at the last close prices, as of {time}" or "at the last close prices", never the live forms; Add to Paper (corrected by Lane TC; cancel, do not Confirm): **no tick box**; the Price box is empty for a draft with no planned entry (hint "Enter a price in steps of 0.05"); the server refuses a Confirm with "The market is closed. Orders can be placed once it opens." (MARKET_DATA_102); targets "not shown while prices are not live" beside "-"; level card with no index price "—"; Exit "Prices are not live; try again when they update". Must not show: the live form of a money-time label after the close, an entry price without a close label and time, a "price has moved" marker driven by a closing price, a live-looking Estimated Now, a made-up number for an unpriced leg, a successful paper fill.
 - **Write down:** build head, banner text, panel "As of" text, Add to Paper dialog text, Exit reason, time.
 
 ### SW-7 Option Chain
@@ -813,6 +905,7 @@ Where a source has no exact text, the line says "expected text not in the source
 Source: Lane Z's independent Opus review of the joined stop and exit paths (RESULTS-lane-z.md; verdict REVISE). In round 1 write what you see as an observation tagged "known F1/F2/F3". These checks run in round 2 (and again in round 3) once the fix lanes' build carries them. **Market closed limits what can be proven:** an exit that completes needs the market open, so each check says what the weekend can show and what is Monday's.
 
 ### R2-F1 After an exit with an unknown outcome, no second exit is sent (finding F1; fix lane FB, with FD's request key)
+- **Update (Lane FB, `fix/r2-builder-1128`, 05:10 IST):** F1 is fixed on the page: the unknown-exit unlock now waits `UNKNOWN_EXIT_WINDOW_MS = 120 s` (not 5 s); the server-side request key (`client_request_id` on `POST /paper/strategies/{id}/orders`, also #871) is Lane FD's and was not started at 05:18. The check of R2-FB covers the page half; the key half stays open until Lane FD's RESULTS.
 - **Board items:** F1; ADR-017; ADR-330 (59) item 1 (Lane U2). **Type:** Functionality. **First carried:** R2 (Lane FB; not on origin at v2).
 - **What the finding says (Lane Z, word for word):** "StrategyBuilderPage.vue `decideUnknownExit`, `EARLY_MS = 5000`: after an UNKNOWN exit outcome the page says "not stored" and unlocks Exit if the trade looks unchanged 5 s after the client gave up; the server can still commit later (client timeout 10 s, statement timeout 30 s, pool wait up to 30 s, no idempotency key): a second per-leg partial Exit commits too (2 of 4 lots twice = 4 lots). Full-leg and Exit all are protected by EXIT_EXCEEDS_OPEN. Against ADR-017."
 - **Expected after the fix (Lane U2 text, pending owner read):** "The first exit's outcome is being checked; no second exit is sent until the book has been read."; the Confirm stays grey past 5 s; "The change waiting on <legs> was not sent; it is kept until the exit's outcome is known."
@@ -853,66 +946,82 @@ The coordinator's pull comment (28 Nov 04:20 IST): "the saved rows for the 27 No
   5. If an expiry reads 2028-12-01 the next question is the row's revision history and the loader run that wrote it: the documents give no SQL for it; **do not invent one**; write "2028 found in row <id>" and stop.
   6. Screen re-test (paper only): Positions > Paper > B-N1 > Stops, on NIFTY 1 Dec 25650 PE type a stop "Above 102.55". Expected exactly: **"If this stop fires, max loss becomes Rs 16,62,316.50 (now Rs 1,732.25). Sold option with less protection: NIFTY 1 Dec 25750 PE."** (this is W-20; the figures are the check's own text, do not copy them anywhere else).
 
-## 9. Round 2 (Saturday 21:00): checks for the fix lanes now in progress
+## 9. Round 2 (Saturday 21:00): one check per fix, from the fix lanes' own result files
 
-The fix lanes of round 2 are in progress; only Lane FC and the test lane TB have pushed (`fix/r2-small-screens-1128` `95218b76`, `test/r2-frontend-1128` `bbd9c68e`). **Every check below names the lane's RESULTS file as its source of exact steps and texts; the next version of this plan copies them when the coordinator sends the round 2 branch list.** Until then each check carries what is already known (finding text, issue text, expected texts of the lanes in the build) and "NOT WRITTEN YET" where nothing exists.
+**How this section is built:** each lane's `RESULTS-lane-*.md` ("PC steps", "New wording for the owner to read", "Decided for the owner") was read on its branch at about 05:18 IST on 28 Nov. Branches are named, not commits (heads move); the PC takes the commit the coordinator sends for round 2 and checks `git merge-base --is-ancestor` for each branch head it relies on. **Not on origin at 05:18:** `fix/r2-index-exit-watch-1128` (Lane FE), `fix/r2-exit-stops-2-1128`, `fix/r2-builder-2-1128`, `fix/r2-pages-1128`, `fix/r2-plan-screens-1128`, `fix/r2-backend-2-1128`, `test/r2-backend-1128`, `test/r2-walk-builder-1128`: their checks are written as "NOT PUSHED at 05:18" and the next version fills them. No lane reports a migration; the plan-acceptance database change (0058, renumbered 0060, Lane FD item B2) is **not done** and has no old-code-safe proof: **it is not applied; any check that needs it is BLOCKED (name 0060).** All steps below are market closed, paper only; live-market parts are listed and are Monday's (optional).
 
-### R2-FA Exit dialog and Stops panel (Lane FA; NOT WRITTEN YET)
-- **Board items:** TB defect D2 (item I-98), F3 (dialog half), UX-01, UX-04, UX-09, UX-13, UX-20, UX-25, UX-31, UX-35, Lane U2's deferred minor items. **Type:** Screen. **Known text to check:** (D2, `PaperStops.vue:279`) a stop on a leg that is not among the open legs must read **"1 Dec"** style (the one date rule), never the ISO form "NIFTY 22300 PE 2026-12-01". **Weekend steps:** Positions > Paper > Stops of a trade with a stop on a closed leg: read the line; the exit-dialog lines of W-25 again; Lane U2's minor items (market answer fixed for one opening; the lock stays on when every re-read fails, with no "Check again" control) as observations.
+### R2-FA Exit dialog and Stops panel (`fix/r2-exit-stops-1128`, Lane FA, "SAFE TO CLOSE: yes")
+- **Board items:** I-17 (price age line), I-18 ("Placing exit..."), I-29 (index exit rule after the close), D2 (the ISO date on a stop row), #872 (the dialog follows the market state), #874 (closed-market Exit tests). **Not done by FA:** UX-A01 (not its file), UX-A02 (needs a cost value), F3 (waits for FD's field `cancelled_stops`), #870, #873. **Type:** Screen / Functionality.
+- **Steps (Lane FA, word for word):** 1. Positions: open Exit on a strategy with "no price" rows: the dialog opens, shows the age line ("No price for ..."), the market-closed line and Confirm greyed. 2. Stops panel of a paper strategy: type a level above NIFTY, Save. Expect **"Saved: exit above ..."**, the reference line under the index line, no "Index values unavailable.". Repeat with SENSEX. If refused, copy the refusal text (it goes to Lane FD). 3. A stop on a leg that is not among the open legs: the date reads **"NIFTY 22300 PE 3 Nov"** (the one date rule), never "2026-12-01".
+- **Expected texts (new, pending owner read):** "No price for N of M legs; the server prices the exit when you confirm."; "The time of the price is not available."; "Prices are not live. Last price as of 10:35:00 IST, 7 minutes ago."; Stops panel with no close: **"NIFTY: the last close is not available."**; reference line: **"The market is closed. A level you save is checked from the next market open; the last close is shown for reference."**
+- **Monday (optional, live):** "Price as of HH:MM:SS IST, N seconds ago."; Confirm shows "Placing exit..." then "Exit placed on paper (order N)." in view; stop the server before Confirm: the unknown line shows in view and Confirm stays locked until the re-read.
 
-### R2-FB Builder page and F1 (Lane FB; NOT WRITTEN YET)
-- **Board items:** F1 (R2-F1), UX-B04 (Create Strategy "Loading..." words), UX-A05 (Plan button on Live cards), UX-A06, UX-A12 (settled trade wording), UX-A09, UX-SW6 ("Rule not checked..." line printed 17 times), UX-B13 ("Checked at Time not available"). **Type:** Screen / User experience. **Weekend steps:** write from Lane FB's RESULTS; today: open the builder of a settled trade (173, 205): W-29 expected text; open #209's plan panel: the "Rule not checked: No adjustment opportunity checked: prices stale or missing." line must not repeat 17 times.
+### R2-FB Builder page, finding F1 (`fix/r2-builder-1128`, Lane FB)
+- **Board items:** F1 (fixed; the unknown-exit unlock now waits `UNKNOWN_EXIT_WINDOW_MS = 120 s`), I-30 (contract-list line), I-50 (one loading state per leg), UX-B25, UX-AF1, UX-C3 (two of three lines), UX-A03 (proven already). **Not fixed:** I-49 (slow first prices: cause found in `LegPicker.vue`, fix for the owner lane), I-68 (no code change: Add to Paper one press already holds; two steps are spec decisions ADR-330 (19), (28)). **Type:** Screen / Functionality.
+- **Steps (Lane FB, "PC steps, market CLOSED", word for word):** 1. `git fetch && git checkout fix/r2-builder-1128`, start the app, open the builder with no legs. If the instrument list is yesterday's (before the load), expect the server's line above the legs. Run `cd frontend && npx vitest run tests/contract-list-line-r2-fb.test.js tests/leg-working-r2-fb.test.js tests/builder-first-prices-r2-fb.test.js tests/add-to-paper-r2-fb.test.js`. 2. Pick two legs: while the outcome is out, every leg row says **"Working out the outcome..."** and shows no capture time; the figures return when it answers.
+- **Expected texts (new, pending owner read):** after an unknown add ("Review and add"): **"The last paper order got no answer and may be stored. It is not sent again until the Paper book has been read: open the strategy again to check."**; the server's `contract_list_earlier` line "Contract list of <date>. Today's list loads at about <hh:mm>." (not new); suggested (not built): "The first exit's outcome is not known yet; no second exit is sent until the server's answer is known."
+- **R2-F1 (finding F1):** see section 7: the market-closed part is these steps; the completing part is Monday (optional).
+- **Monday (optional, live):** 08:30 to about 08:35 the contract-list line on the builder (also with no legs) and it disappears within about a minute after the list loads, no reload; time from Done to first prices for one leg (T2-11, 14 s before: expect the same, I-49 is not fixed); Add to Paper on a new strategy: Confirm not greyed with live prices; press Confirm twice quickly: one paper order only.
 
-### R2-FC Small screens and wording (Lane FC; branch pushed, `95218b76`, "SAFE TO CLOSE")
-- **Board items:** I-122, I-69 (UX-05, UX-06), I-70, I-24, F7, I-61, I-62, the far-month badge; TB defect D1 (item I-40 family). **Type:** Screen. **Source:** RESULTS-lane-fc.md, "PC steps", word for word:
-  1. `python scripts/orchestrator/db_run.py . python -m pytest -c pytest-app.ini tests_app/test_d36_adjustment_counts.py` (the new take-profit sentence in `approaches.json`).
-  2. Positions > Adjustment opportunities: every open record says **"Now: not read yet"** until Lane FD adds the fields (or **"Now <value> as of <time> IST"** once it has).
-  3. Open a plan sheet of a trade whose expiry kind is not known: the stop box shows the server's reason (`plan-stop-kind-reason`).
-  4. Alerts > History while its reads are pending (TB D1, `AlertsPage.vue:124`): it must show a loading line, **not** "No stops or expiry settlements yet." until both reads have answered.
-  5. Expected texts (all pending owner read): "This approach is not built because the whole trade would not be in profit with every open leg closed at its planned price."; "Exits of a real-mode trade cannot be read here yet."; "Delete 14 strategies? 3 of them are running."
-  6. Live or later (Lane FD hand-offs): a real-mode trade's Plan card shows the exits line only after Lane FD's `exitsMode` pass; a far-month trade shows "Monitoring paused" with its reason only after Lane FD's field (the suggested server reason: "Every exit rule is not checked because whether this trade expires weekly or monthly is not known.").
+### R2-FC Small screens and wording (`fix/r2-small-screens-1128`, Lane FC, "SAFE TO CLOSE: yes")
+- **Board items:** I-122, I-69 (UX-05, UX-06; already in the build), I-70 (bulk delete count: UX-B06 NOT confirmed closed), I-24 (exits read for a real trade: page half only), F7 (`stop_kind_reason`), I-61 ("Now" value), I-62 (take-profit wording), the far-month badge (no page change). TB defect D1 (Alerts History empty text while loading). **Not taken up:** UX-B04, UX-A05, UX-A06, UX-A12, UX-A09, UX-SW6, UX-B13, #875, #880. **Type:** Screen.
+- **Steps (Lane FC, word for word):** 2. `python scripts/orchestrator/db_run.py . python -m pytest -c pytest-app.ini tests_app/test_d36_adjustment_counts.py` (the new take-profit sentence in `approaches.json`; Lane FD notes two failures of this file on the unmodified build: `test_approaches_counts_and_reply` and `test_check_counts_and_reply`, expected strategy_id 1, got 123: write them as "known"). 3. Positions > Adjustment opportunities: every open record says **"Now: not read yet"** until Lane FD adds the fields. 4. Open a plan sheet of a trade whose expiry kind is not known: the stop box shows the server's reason (`plan-stop-kind-reason`). 5. Alerts > History while its reads are pending (TB D1): a loading line, not "No stops or expiry settlements yet." until both reads have answered. [X2: FC's step 1 is its own container's worktree cleanup: not a PC step.]
+- **Expected texts (new, pending owner read):** "Now <value> as of <time> IST" / "Now: not read yet" (open records only); **"This approach is not built because the whole trade would not be in profit with every open leg closed at its planned price."**; **"Exits of a real-mode trade cannot be read here yet."** (shows only after `TrackingPanel` passes `exitsMode`); "Delete 14 strategies? 3 of them are running."
+- **Needs Lane FD's fields (not yet):** `now_value`, `now_as_of`; a `GET /monitoring-state` entry `watch_state: "paused"`, `reason: "expiry_kind_unknown"`, `badge_text: "Monitoring paused"`, `reason_text` (suggested: "Every exit rule is not checked because whether this trade expires weekly or monthly is not known.").
 
-### R2-FD Backend totals, plan acceptance (migration renumbered 0060), connection holds, F3 reply, order request key (Lane FD; NOT WRITTEN YET)
-- **Board items:** F3 (R2-F3), the idempotency key (R2-F1), plan acceptance #0058 to 0060, REQ-165 AC-6 (#868), the `now_value`/`now_as_of` fields, issue #879. **Type:** Functionality. **Migration 0060 (plan acceptance) rule:** apply only with a written old-code-safe proof in Lane FD's RESULTS (the old code's tests run against the migrated database, with counts); without it, it is NOT applied and its checks are BLOCKED (name 0060). The "connection holds" text is in no file read at v2.
+### R2-FD Backend totals, connection holds, plan acceptance (`fix/r2-backend-1128-fd`, Lane FD, "NOT SAFE TO CLOSE: B2 and B5 remain")
+- **Board items:** B1 (ADR-330 (62) booked result in the header total: already in the build; the `place_paper_orders` connection hold fixed, 2 tests), B3 (read-path holds: already done, proven), B4 (fired-exit wording: found, not changed), B2 (plan acceptance 0058 to 0060: NOT DONE), B5 (served field: not started); not started: UX-A08, UX-A18, F3 (R2-F3), F4, #869, #871, #877, #855, #857, #858, #859, a possible migration for #868. **Type:** Functionality.
+- **PC steps:** Lane FD: "Market closed: none for B1. Live: none." So the PC check is the totals of W-06 again (header total shows the booked result of closed trades) and the connection count of set-up step 0 (no growth while the screens are open).
+- **New sentences (not built):** fired stop: "{line}; seen by the check at {time} IST" / "{line}; seen by the check on {date} at {time} IST" (replaces "{line}; reached at {time} IST").
+- **Migration 0060:** none in this lane; apply nothing (no proof). Real first fill `execution_return._return` still holds a connection: a gap, ADR-330 (58).
 
-### R2-FE Index exit with a silent feed (F2) and the worker issues #860 to #868, #878, #879 (Lane FE; NOT WRITTEN YET)
-- **Board items:** F2 (R2-F2) and the issues below. **Source:** each issue's own text (all open, label deferred, created 27 Nov 21:44 UTC); Lane FE's RESULTS gives the PC steps.
+### R2-FE Index exit with a silent feed, worker issues (`fix/r2-index-exit-watch-1128`, Lane FE): NOT PUSHED at 05:18
+- **Board items:** F2 (R2-F2), #860 to #868, #878, #879 (table below). Lane FE's RESULTS will give the PC steps; until then the table is the check list.
 
 | Issue | Meaning | What a market-closed PC check can look at |
 |---|---|---|
-| #860 | A time exit typed as plain HH:MM (no date) reads "not checked" even on expiry day (`playbook_eval.py` 621-622; fails closed) | Plan sheet with a plain "15:20" time exit and an unknown expiry kind: it says not checked (known gap); the dated form runs |
-| #861 | The worker's reason for an unknown-kind percent stop is generic | Plan sheet / monitoring state of a trade with a percent stop and an unknown expiry kind: read the reason text |
+| #860 | A time exit typed as plain HH:MM (no date) reads "not checked" even on expiry day (fails closed) | Plan sheet with a plain "15:20" time exit and an unknown expiry kind: it says not checked (known gap); the dated form runs |
+| #861 | The worker's reason for an unknown-kind percent stop is generic | Plan sheet / monitoring state of such a trade: read the reason text |
 | #862 | A stop typed and crossed within one minute is first checked with the old plan (up to 10 s) | not checkable with the market closed |
-| #863 | The worker prices a trade's market from the first-listed leg's expiry, not the nearest leg's | A paper trade with two legs of different expiries, the farther listed first: see which expiry's market the monitoring entry uses |
-| #864 | `_tracked_on` reads the whole live catalogue per strategy on every re-read | performance only; worker log timing with several paper strategies open |
+| #863 | The worker prices a trade's market from the first-listed leg's expiry, not the nearest leg's | A paper trade with two legs of different expiries, the farther listed first: which expiry's market the monitoring entry uses |
+| #864 | `_tracked_on` reads the whole live catalogue per strategy on every re-read | performance only; worker log timing |
 | #865 | The unknown-kind timing style (intraday) is fixed by no test | a test gap; no screen |
-| #866 | The T-06 not-checked reason for an unknown expiry kind says days left are missing | Plan sheet of such a trade: the reason must say the expiry kind is unknown, not that days left are missing |
+| #866 | The T-06 not-checked reason for an unknown expiry kind says days left are missing | Plan sheet of such a trade: the reason must say the expiry kind is unknown |
 | #867 | `Worker._checked_body` never removes an entry | delete or settle a paper strategy, then look for a leftover entry in the monitoring state list |
-| #868 | The paused state of a trade lives only in the worker's memory (REQ-165 AC-6 not built; related #819) | the badge of W-34; restart the worker and see whether the badge is lost |
-| #876 | Plan-save case of 27 Nov 13:28 not reproduced (Q3 case (h)) | the data pull D-1 (section 8) |
-| #878 | A strategy dropped from the worker's list can stay ACTIVE in its stored state (J2 finding 3) | close a paper strategy, then read its stored monitoring state / Stops panel: it must not show "watched" |
-| #879 | Clock skew widens the 2-minute window of the plan check | not visible on a screen (title only read) |
+| #868 | The paused state lives only in the worker's memory (REQ-165 AC-6) | the badge of W-34; restart the worker and see whether the badge is lost |
+| #876 | Plan-save case of 27 Nov 13:28 not reproduced | the data pull D-1 (section 8) |
+| #878 | A strategy dropped from the worker's list can stay ACTIVE in its stored state | close a paper strategy, then read its stored monitoring state / Stops panel: it must not show "watched" |
+| #879 | Clock skew widens the 2-minute window of the plan check | not visible on a screen |
 
-### R2-UX The PC's 41 usability notes (text in the PC's comment of 03:11 IST 28 Nov on PR #722)
+### R2-TB Frontend tests (`test/r2-frontend-1128`, Lane TB, "SAFE TO CLOSE")
+- **Items:** I-40, I-60, I-65, I-69, I-74 (could not reproduce "no legs"), I-76, I-80 (the DB half `tests_app/test_strategy_bulk_delete.py` not covered), I-83, I-94, I-98. Defects: D1 (FC) and D2 (FA, above). **PC step (Lane TB):** `cd frontend && npx vitest run tests/<file>.r2-1128.test.js` for any of the nine files, or `npm run test:run`. No on-screen sentence is added.
+
+### R2-TE Named tests green (`test/r2-named-green-1128`, Lane TE)
+- **Items:** 42 named items pass on the build (I-01, I-04 ... I-125; I-51 only half proven: the screen prints the server's three lines in order, the "theoretical worst case" wording is a fixture; I-125 proven at 15 s, not 10 s). The gate was NOT TOTAL PASS on its push (shallow clone; two frontend timeouts); the full `tests_app` section is empty at 05:18. Defect: `tests_app` files leave rows behind and fail in sequence on one database (not a product defect). **No PC steps.** The PC does not rerun these.
+
+### R2-NOT-PUSHED Second wave and remaining lanes (NOT PUSHED at 05:18)
+- `fix/r2-exit-stops-2-1128`, `fix/r2-builder-2-1128`, `fix/r2-pages-1128`, `fix/r2-plan-screens-1128`, `fix/r2-backend-2-1128`, `test/r2-backend-1128`, `test/r2-walk-builder-1128`, `fix/r2-index-exit-watch-1128`. Each gets its section in the next version: "PC steps (market closed)", "New wording for the owner to read", the board items or issue numbers.
+
+### R2-UX The PC's 41 usability notes (PC's comment of 03:11 IST on PR #722, id 7228671479)
 Each note is covered by a check (the PC writes whether the note is still there); board ids are from the triage (UX-nn).
 
 | PC note | Check or board item |
 |---|---|
-| UX-B01, UX-A18 (ISO date "2028-12-01" / "2026-12-01" in the stops and exit warning) | W-20 (Lane M), R2-FA (D2, UX-07, UX-03, UX-08) |
-| UX-B02, UX-A01, UX-B05, UX-A04, UX-B10, UX-A11, UX-A32, UX-A13, UX-A24 (Exit dialog and prices flapping) | W-25 (board UX-01, UX-04, UX-09, UX-13, UX-20, UX-25, UX-31, UX-35); the completing parts Monday |
-| UX-A02, UX-A03 (Stops lines, fired-stop toast) | W-29 |
-| UX-A05, UX-A06, UX-A12, UX-A33 (plan sheet only on the builder; settled-trade wording) | W-29 (decisions (54), (57)), R2-FB (UX-10, UX-11, UX-23) |
-| UX-A07, UX-A29, UX-A31 (Alerts empty text while loading; rows with only the strategy name) | W-28, W-17 (UX-12, UX-33), R2-FC step 4 (TB D1) |
-| UX-B08, UX-B13, UX-B23 (typed-price replaced sentence names a strike) | W-28 step 10 (UX-16, UX-24); R2-FB (UX-B13) |
-| UX-A08, UX-A10 (refusal text names "time_exit" and "playbook"; plan sheet 15 to 60 s) | W-14 (UX-17), W-29 |
-| UX-B11, UX-B12 (basket and "Acted on") | W-10 (UX-22), W-11 (UX-21) |
-| UX-B07, UX-B09, UX-C3, UX-SW6 (builder statuses at once; Rule not checked printed 17 times) | W-03, R2-FB |
-| UX-A30 (Plan block keeps the old stop) | W-01 (UX-34) |
-| UX-A09, UX-AF1, UX-AF02 (paused text, banner time, two times in one panel) | W-33 |
-| UX-AF2 (Select all 16 shown while 17 listed) | W-06 |
-| UX-B03, UX-B06 (Undo "No saved strategy matches"; a running trade selectable for delete) | T2-09 (section 5), R2-FC item I-70 |
-| UX-B25 (locked builder keeps old numbers) | T2-08 two-tab lock (Monday, optional) |
-| UX-B04, UX-A19 (Create Strategy waiting words; menu clicked twice) | R2-FB (UX-B04); UX-A19 no check: usability note, write whether it still happens |
+| UX-B01, UX-A18 (ISO date in the stops and exit warning) | W-20 (Lane M), R2-FA step 3 (D2) |
+| UX-B02, UX-A01, UX-B05, UX-A04, UX-B10, UX-A11, UX-A32, UX-A13, UX-A24 (Exit dialog; prices flapping) | W-25; R2-FA (I-17, I-18); Monday for the completing parts |
+| UX-A02, UX-A03 (Stops lines, fired-stop toast) | W-29; R2-FB (UX-A03 proven); UX-A02 not done by FA |
+| UX-A05, UX-A06, UX-A12, UX-A33 (plan sheet; settled-trade wording) | W-29 (decisions (54), (57)); not taken up by FC |
+| UX-A07, UX-A29, UX-A31 (Alerts empty text; rows with only the strategy name) | W-28, W-17, R2-FC step 5 (D1) |
+| UX-B08, UX-B13, UX-B23 (typed-price replaced sentence names a strike) | W-28 step 10; UX-B13 not taken up |
+| UX-A08, UX-A10 (refusal names "time_exit" and "playbook"; 15 to 60 s) | W-14, W-29; R2-FD (not started) |
+| UX-B11, UX-B12 (basket and "Acted on") | W-10, W-11 |
+| UX-B07, UX-B09, UX-C3, UX-SW6 | W-03; R2-FB (I-50, UX-C3 two of three lines); UX-SW6 not taken up |
+| UX-A30 (Plan block keeps the old stop) | W-01 |
+| UX-A09, UX-AF1, UX-AF02 | W-33; R2-FB (UX-AF1 fixed) |
+| UX-AF2 (Select all 16 shown while 17 listed) | W-06; R2-FC (I-70); TB I-40 test |
+| UX-B03, UX-B06 (Undo; running trade selectable for delete) | T2-09 (section 5); R2-FC (UX-B06 not confirmed closed) |
+| UX-B25 (locked builder keeps old numbers) | R2-FB (fixed) |
+| UX-B04, UX-A19 | UX-B04 not taken up; UX-A19 no check: usability note |
 
 ## 10. Which round runs what (grid)
 
@@ -931,7 +1040,8 @@ R1 runs every check of sections 4 to 6 once, on commit 5fc6b102. R2 and R3 re-ru
 | Section 5 reused checks (T1-14 to T4-04) | no fix needed: unrun steps only | R1, then only FAIL or PARTIAL |
 | AF-07 (Real total while Zerodha is disconnected) | R1, last of the round | R2, R3 only if FAIL |
 | R2-F1, R2-F2, R2-F3 (section 7) | R2 (Lanes FB, FE, FD, FA) | R3 |
-| R2-FA to R2-FE, R2-UX (section 9) | R2 | R3 |
+| R2-FA to R2-FD, R2-TB, R2-TE, R2-UX (section 9); R2-FE and the second wave when pushed | R2 | R3 |
+| TC-1 to TC-5 (the checks Lane TC could not walk) | R1 (PC) | R2 if PARTIAL |
 | MONDAY (mostly optional): completing exits, Add to Paper size checks, decision (61) line, the instrument list at 08:35, T1-05 to T1-09 real proof, AF-01 across 15:30 | Monday plan | - |
 
 ## 11. The 27 Nov results that can be re-proven now, and where
@@ -1014,3 +1124,86 @@ AX-08 to AX-12 are features that are **not built, not in this weekend, no check*
 | AX-08 to AX-12 | not built | none | none |
 | AX-13 profit-target amount on the Stops panel | PARTIAL | W-03 (Plan watch loaded) then the Stops panel | - |
 | AX-14 Plan watch rows | FAIL | W-03, W-31, section 6 AX-14 | - |
+
+## Appendix A. New on-screen sentences waiting for the owner's read
+
+Sentences of the round 1 build, word for word from the lanes' result files (file and line given; the server templates are also pinned `reviewed: "pending owner read"` in `tests/errors/template_pins.json`). Round 2 sentences follow the table.
+
+Server templates are also pinned `reviewed: "pending owner read"` in `tests/errors/template_pins.json`.
+
+| # | Screen | Sentence | Lane | File:line |
+|---|---|---|---|---|
+| B1 | Builder, contract list (before today's list loads) | "Contract list of {day}. Today's list loads at about {time}." | J2 | RESULTS-lane-j2.md:117, 163 |
+| B2 | Paper order door, leg over lot limit | "{contract} would hold {total} lots after this order; a leg can hold at most {max_lots} lots ({held} held, {added} added)." Next: "Reduce {contract} to {room} more lots or fewer." | K | RESULTS-lane-k.md:44 |
+| B3 | Paper exit over order limit | "An exit of {lots} lots on {contract} is above the most one order can carry ({max_lots} lots)." Impact: "Nothing was exited." Next: "Exit {max_lots} lots or fewer now, then exit the rest in further orders." | K | RESULTS-lane-k.md:45 |
+| B4 | Paper entry price | "The entry price for {contract} must be above 0." Next: "Type a price above 0 for {contract}, then add it to paper again." | K | RESULTS-lane-k.md:46 |
+| B5 | My Strategies / Completed Strategies | "Select all {n} of the {m} shown" | L | RESULTS-lane-l.md:35 |
+| B6 | My Strategies | "Loading your strategies..." | L | RESULTS-lane-l.md:75 |
+| B7 | Create Strategy | "Choose an expiry first." | L | RESULTS-lane-l.md:75 |
+| B8 | Create Strategy | "Waiting for the contracts to load." | L | RESULTS-lane-l.md:75 |
+| B9 | Create Strategy | "Waiting for the index price." | L | RESULTS-lane-l.md:75 |
+| B10 | Home, Positions totals (item 4) | "Includes N closed strategies." and "N strategies left out: their prices are not live." (also "1 strategy left out: its price is not live.", "{count} strategies left ..." in owner-questions-lane-r.md:148) | L | RESULTS-lane-l.md:75 |
+| B11 | Price banner (all price screens) | "Prices are not live. Figures are as of HH:MM:SS IST." / "Prices are not live." | N | RESULTS-lane-n.md:111 |
+| B12 | Price banner, mixed times | "Market closed. Prices are from 15:30:00; 1 leg as of 26 Nov, 15:29:59." | N | RESULTS-lane-n.md:112 |
+| B13 | Price banner, mixed times | "Market closed. Prices are from 15:33:48; 1 leg as of 15:59:10." / "2 legs as of ..." | N | RESULTS-lane-n.md:113 |
+| B14 | Load / check time lines | "Checked at HH:MM:SS IST" | N | RESULTS-lane-n.md:114 |
+| B15 | Stops panel, closed market | "NIFTY last 25,607.20 as of 15:58:01" | N | RESULTS-lane-n.md:115 |
+| B16 | Paper P&L total | "Paper P&L paused - prices not live" (no ", as of" clause when time unknown) | N | RESULTS-lane-n.md:116 |
+| B17 | Plan sheet | "Put back to the playbook's values:" | O | RESULTS-lane-o.md:35 |
+| B18 | Plan sheet | "Switched on again:" | O | RESULTS-lane-o.md:35 |
+| B19 | Plan sheet | "Nothing differed from the playbook, so nothing was put back." | O | RESULTS-lane-o.md:35 |
+| B20 | Alerts, rule line | "<Plan loss stop | Plan profit target | Plan rupee stop | Plan rupee target | Plan time exit | Adjustment rule T-xx>: <value> (rule <threshold>)" | O | RESULTS-lane-o.md:36 |
+| B21 | Alerts History headings | "Answered alerts", "Stops and expiry settlements" | O | RESULTS-lane-o.md:37 |
+| B22 | Alerts History empty | "No answered alerts yet." | O | RESULTS-lane-o.md:37 |
+| B23 | Leg stop alert (new) | "Leg stop on X: fires when the price rises above L" (with live price add "; price now P"; below: "falls below") | O | RESULTS-lane-o.md:38 |
+| B24 | Leg stop alert (old) | "Leg stop on X: price above L" | O | RESULTS-lane-o.md:38 |
+| B25 | Stops panel labels | "Stop when the price goes", "Stop price" | O | RESULTS-lane-o.md:80 |
+| B26 | Leg list, price replaced | "Your price for leg N was replaced by the captured price P, because <you changed the expiry | Shift/Width/Hedge moved the leg to another contract | you moved the strike>." | O | RESULTS-lane-o.md:81 |
+| B27 | Leg list, price removed | "Your price for leg N was removed, because <reason> and the new contract has no live price right now." | O | RESULTS-lane-o.md:82 |
+| B28 | Plan watch, first read | "Loading the rule check..." | R | RESULTS-lane-r.md:378 |
+| B29 | Plan save refusal (percent stop) | "The stop could not be saved: whether this trade expires weekly or monthly could not be read." Next: "Try again when prices update, or save the stop as a rupee amount." (`plan_save_percent_stop_not_read`) | R2 | RESULTS-lane-r2.md:25 |
+| B30 | Stops, kind unknown | "Stop not shown: whether this trade expires weekly or monthly is not known right now" | R2 | RESULTS-lane-r2.md:27 |
+| B31 | Stops, catalogue unreadable | "Stop not shown: the contract list could not be read, so the expiry type is not known" | R2 | RESULTS-lane-r2.md:27 |
+| B32 | Real P&L, no figure | "Zerodha's reply for {contract} lacks a figure needed to check its P&L; no figure is shown." | S | RESULTS-lane-s.md:38 |
+| B33 | Real P&L, mismatch | "Zerodha's P&L for {contract} does not match its own trade values; no figure is shown." | S | RESULTS-lane-s.md:39 |
+| B34 | Real P&L, shared contract | "This contract is shared (with another strategy or outside lots); Zerodha reports one P&L for the whole contract, so no split is shown." | S | RESULTS-lane-s.md:40 |
+| B35 | Real P&L, part closed | "Part of {contract} was closed today on Zerodha and is reported apart, so no figure is shown for it." | S | RESULTS-lane-s.md:41 |
+| B36 | Real P&L, pending | "This contract is not yet confirmed, so no P&L is shown." | S | RESULTS-lane-s.md:42 |
+| B37 | Real P&L, stale | "Zerodha was last read more than {seconds} seconds ago, so no figure is shown until it is read again." | S | RESULTS-lane-s.md:43 |
+| B38 | Real P&L total, empty | "No real positions are open in your strategies." | S | RESULTS-lane-s.md:44 |
+| B39 | Real P&L total, partial | "{missing} of {total} contracts have no figure, so no total is shown." | S | RESULTS-lane-s.md:45 |
+| B40 | Real P&L total note | "Excludes contracts not in a strategy here and contracts closed today." | S | RESULTS-lane-s.md:46 |
+| B41 | Real P&L caption | "Zerodha, as at {time} IST" | S | RESULTS-lane-s.md:37 |
+| B42 | Stops panel / fired-stop warning | "If this stop fires, the sold {leg} is left without protection." | V | RESULTS-lane-v.md:47 |
+| B43 | same | "If this stop fires, the sold options {legs} are left without protection." (several legs later reads "these sold options are left with less protection: ...", RESULTS-lane-v.md:58) | V | RESULTS-lane-v.md:47 |
+| B44 | same | "Max loss now: Rs {amount}." / "Max loss now: none (the book shows a profit of at least Rs {amount})." | V | RESULTS-lane-v.md:47 |
+| B45 | same | "Max loss then: Rs {amount} (worst case: {index} at zero)." / "Max loss then: none (the book shows a profit of at least Rs {amount})." | V | RESULTS-lane-v.md:47 |
+| B46 | same, sold call | "Max loss then: no upper limit (worst case: {index} keeps rising)." (owner gave no exact text; also "Max loss now: no upper limit.") | V | RESULTS-lane-v.md:47, 58 |
+| B47 | same | "Max loss now: could not be worked out." / "Max loss then: could not be worked out." | V | RESULTS-lane-v.md:47 |
+| B48 | Closed trade plan line | "stop Rs {amount}", "no stop", "stop not available", "target Rs {amount}", "no target", "target not available", "Plan: {stop}, {target}.", "No plan was set for this trade.", "your exit", "your stop", "expiry settlement", "Closed by {how} at {time}.", "Closed by {how} on {day} at {time}.", "Closed by {how}.", "How this trade ended is not recorded." | V | RESULTS-lane-v.md:47 |
+| B49 | Builder, Plan button | "Plan"; "Could not open the plan. Try again." | V | RESULTS-lane-v.md:48 |
+| B50 | Stops panel, while working | "Working out max loss for this stop..." | V | RESULTS-lane-v.md:69 |
+| B51 | Fired stop, NOT built (proposal) | "The sold <leg> is now without protection. Max loss now: Rs <amount> (worst case: <index> at zero)." | V | RESULTS-lane-v.md:67 |
+| B52 | Fired stop, NOT built (proposal M-A) | "If this stop fires, max loss becomes Rs 16,62,316.50 (now Rs 1,732.25): the worst case if NIFTY fell to zero, with NIFTY 1 Dec 25750 PE sold and no bought put protecting it." | M | RESULTS-lane-m.md:166 |
+| B53 | Fired stop, NOT built (proposal M-B) | "If this stop fires, NIFTY 1 Dec 25750 PE is left sold with no bought put protecting it. Worst case, if NIFTY fell to zero: a loss of Rs 16,62,316.50 (now Rs 1,732.25)." | M | RESULTS-lane-m.md:167 |
+| B54 | Paper exit (builder/Positions) | "An exit is already being sent for this strategy." | U-hotfix | RESULTS-lane-u-hotfix-1127.md:31 |
+| B55 | same | "Tick a leg to exit." | U-hotfix | RESULTS-lane-u-hotfix-1127.md:31 |
+| B56 | same | "Exit placed on paper (order n)." | U-hotfix | RESULTS-lane-u-hotfix-1127.md:31 |
+| B57 | same | "The exit was not stored. You can try again." | U-hotfix | RESULTS-lane-u-hotfix-1127.md:31 |
+| B58 | Exit on untouched leg | "This leg has a change waiting; review or discard it first." | U-hotfix | RESULTS-lane-u-hotfix-1127.md:216 |
+| B59 | same | "The change waiting on <legs> was not kept because the trade changed; stage it again." | U-hotfix | RESULTS-lane-u-hotfix-1127.md:216 |
+| B60 | Exit all dialog | "Exit all closes every open leg. The change waiting on <legs> is not sent and will be discarded." | U2 | RESULTS-lane-u2.md:45 |
+| B61 | same | "The change waiting on <legs> was discarded." | U2 | RESULTS-lane-u2.md:45 |
+| B62 | same, unknown outcome | "The change waiting on <legs> was not sent; it is kept until the exit's outcome is known." | U2 | RESULTS-lane-u2.md:45 |
+| B63 | same, not stored | "The exit was not stored. The change waiting on <legs> is back, unchanged." | U2 | RESULTS-lane-u2.md:45 |
+| B64 | Plan sheet gate | "Target and Target (Rs) show different values." / "Stop and Stop (Rs) show different values." (templates 710/711) | W | RESULTS-lane-w.md:51 |
+| B65 | Positions/Live row, real position | "Real position: exit and protect it in Kite. Stops and alerts here cover paper trades only." (`position_kind_real`) | Y | RESULTS-lane-y.md:48 |
+| B66 | same, unknown | "Cannot tell whether this is a real or a paper position, so Exit and Stops are not shown. Check it in Kite." (`position_kind_unknown`) | Y | RESULTS-lane-y.md:48 |
+| B67 | Monitoring badge | "Not being watched: no worker has reported in the last 2 minutes." (plus badge words "Monitoring paused", "Health unknown"; every `monitoring_*` catalogue sentence and `lib/monitoringState.js` fallback words are pending read, text in `explanations.py`) | Y | RESULTS-lane-y.md:37, 41 |
+| B68 | Alerts (side closed, stop fired) | Pins pending read, text not quoted in RESULTS: `stop_fired_note`, `stop_fired_note_with_line`, `alert_title_unnamed`, `alert_side_closed_text`, `plan_sheet_reset`, `plan_sheet_reset_confirm`, `labels:plan_sheet`, "Deleted" (`change_deleted`), "Restored" (`change_undeleted`) | J | RESULTS-lane-j.md:724-726 |
+| B69 | Spec-silent controls (REQ lines) | Sentences listed in the table, e.g. REQ-009 AC-11 'Unknown address shows "Page not found" with one "Go to Home" link' | U | RESULTS-lane-u.md:198-215 |
+| B70 | Chain | T-Q10 sentences ("Waiting for live data.", "No strikes match the filters.", "The expiries could not be read, so no chain is shown.", four rows-missing sentences) adopted, pending read | U / T | RESULTS-lane-u.md:144; owner-questions-lane-t.md:17 |
+
+Lane S states table also lists 10 new pins "waiting for the owner's read" (RESULTS-lane-s.md:89). B1-B70 count includes grouped rows.
+
+**Round 2 (pending owner read):** FA: "No price for N of M legs; the server prices the exit when you confirm."; "The time of the price is not available."; "Prices are not live. Last price as of 10:35:00 IST, 7 minutes ago."; "Price as of HH:MM:SS IST, N seconds ago."; "Placing exit..."; "NIFTY: the last close is not available."; "The market is closed. A level you save is checked from the next market open; the last close is shown for reference."; "NIFTY 22300 PE 3 Nov" (stop row date). FB: "The last paper order got no answer and may be stored. It is not sent again until the Paper book has been read: open the strategy again to check."; "Working out the outcome..." on each leg row. FC: "Now <value> as of <time> IST"; "Now: not read yet"; "This approach is not built because the whole trade would not be in profit with every open leg closed at its planned price."; "Exits of a real-mode trade cannot be read here yet.". FD (not built): "{line}; seen by the check at {time} IST" / "{line}; seen by the check on {date} at {time} IST". Lane TC wording defects (for a fix lane): D-6 the doubled OI sentence; D-11 the paused text twice; D-12 "You can still confirm." beside a disabled Confirm.
