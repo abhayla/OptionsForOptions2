@@ -22,6 +22,7 @@ from ofo.marketdata.provider import MarketDataProvider, ProviderStatus
 from ofo.marketdata.quote import NormalizedQuote, SourceMetadata
 from ofo.rules.inputs import DataHealth
 from ofo.tracking import paper, paper_decay
+from ofo_app import read_door
 from ofo_app.live_push import LiveFeed
 from ofo_app.routes import paper as paper_routes
 from ofo_app.routes.outcome import MarketContext
@@ -120,6 +121,9 @@ async def test_the_forward_hold_is_released_after_the_read(monkeypatch):
     monkeypatch.setattr(paper_routes, "FORWARD_WAIT_S", 0.2, raising=False)
     provider, ctx, feed, legs = _rig()
     await paper_routes._snapshot(ctx, feed, "NIFTY", legs)
+    # hotfix 27 Nov: a read holds on a standing lease (read door)
+    assert set(legs) < provider.vendor  # the legs plus the forward strikes and the index stay held while leased
+    read_door.read_lease().release()
     assert provider.vendor == set(legs)
 
 
@@ -163,7 +167,10 @@ async def test_core_f3_a_contract_nobody_holds_is_priced_and_keeps_its_iv_inputs
     snap = await paper_routes._snapshot(ctx, feed, "NIFTY", legs)
     assert [paper.leg_price(snap, k).state for k in legs] == [paper.LIVE, paper.LIVE]
     assert all(paper_decay.solved_iv(snap, "NIFTY", _open(snap, k)) is not None for k in legs)
-    assert provider.vendor == set()  # everything the read held is released
+    # hotfix 27 Nov: a read holds on a standing lease (read door)
+    assert set(legs) <= provider.vendor
+    read_door.read_lease().release()
+    assert provider.vendor == set()  # everything the read held is released when the lease ends
 
 
 async def test_nobody_holds_and_the_provider_is_cold_after_hours_does_not_wait(monkeypatch):
