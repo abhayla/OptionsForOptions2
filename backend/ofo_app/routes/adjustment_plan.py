@@ -562,10 +562,14 @@ async def _bounded_market(tracked: Any, market_reader: MarketReader, ctx: Market
     read itself is unchanged: the expiry kind, the stage and today still come from the market (ADR-330 (1), (5),
     (7))."""
     try:
-        return await asyncio.wait_for(_market(tracked, market_reader, ctx), PLAN_SAVE_PRICE_BUDGET_S)
+        market = await asyncio.wait_for(_market(tracked, market_reader, ctx), PLAN_SAVE_PRICE_BUDGET_S)
     except TimeoutError:
         log.warning("adjustment plan: price read over %.1f s, save refused", PLAN_SAVE_PRICE_BUDGET_S)
         raise StrategyRefused(_PRICES_NOT_READ) from None
+    if market is None:  # a read that failed at once: no market means no expiry kind, so no T-06 row can be chosen
+        log.warning("adjustment plan: price read failed, save refused")
+        raise StrategyRefused(_PRICES_NOT_READ)
+    return market
 
 
 async def _type_of(db: Any, user_ref: str, strategy_id: int, tracked: Any,

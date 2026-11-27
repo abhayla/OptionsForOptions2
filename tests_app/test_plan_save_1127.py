@@ -107,3 +107,45 @@ async def test_a_slow_price_read_on_a_reset_is_refused_in_time(app_db_url, monke
                                          route.PLAN_SAVE_PRICE_BUDGET_S + 1.0)
     assert status == UNPROCESSABLE, out
     assert "price" in out["what_happened"].lower()
+
+
+def _no_market(monkeypatch):
+    """The price read fails at once: ``_market`` answers None (its own contract for a failed read)."""
+    async def none(*a, **k):
+        return None
+    monkeypatch.setattr(route, "_market", none)
+
+
+async def test_a_save_with_no_market_read_is_refused_and_writes_no_row(app_db_url, monkeypatch):
+    """Blocker: no read -> the kind fell back to the position's "" -> "weekly", and a MONTHLY strategy's percent stop
+    was written into the weekly T-06 row. Now refused (plan_save_prices_not_read, 422), nothing written."""
+    sid = await _seeded(app_db_url, monkeypatch, "ADJ-02")
+    own = await _own_with_two_kinds(app_db_url, "Two kinds no market")
+    _monthly_market(monkeypatch)
+    status, out = await _call("POST", _plan_path(sid), json={"playbook_id": own.id, "stop": "50"})
+    assert status == OK, out  # a plan exists, with both rows as the playbook has them
+    before = await _plan_row(app_db_url, sid)
+    _no_market(monkeypatch)
+    status, out = await _call("PUT", _plan_path(sid), json={"playbook_id": own.id, "stop": "10"})
+    assert status == UNPROCESSABLE, out
+    assert "price" in out["what_happened"].lower()
+    after = await _plan_row(app_db_url, sid)
+    assert before == after
+    assert _t06(after.body) == {"weekly": [D("50"), D("50"), D("40")], "monthly": [D("50"), D("50"), D("20")]}
+    status, out = await _call("POST", _plan_path(sid), json={"playbook_id": own.id, "stop": "50"})
+    assert status == UNPROCESSABLE, out
+    assert before == await _plan_row(app_db_url, sid)
+
+
+async def test_a_reset_with_no_market_read_is_refused_and_writes_no_row(app_db_url, monkeypatch):
+    sid = await _seeded(app_db_url, monkeypatch, "ADJ-02")
+    own = await _own_with_two_kinds(app_db_url, "Two kinds no market reset")
+    _monthly_market(monkeypatch)
+    status, out = await _call("POST", _plan_path(sid), json={"playbook_id": own.id, "stop": "50"})
+    assert status == OK, out
+    before = await _plan_row(app_db_url, sid)
+    _no_market(monkeypatch)
+    status, out = await _call("POST", _plan_path(sid) + "/reset")
+    assert status == UNPROCESSABLE, out
+    assert "price" in out["what_happened"].lower()
+    assert before == await _plan_row(app_db_url, sid)
