@@ -606,7 +606,7 @@ async def test_adr_330_39_a_stale_index_tick_does_not_fire_an_armed_exit_and_a_f
     assert len(await _stops(db, stored.id)) == OPEN_LEGS
 
 
-async def test_hf_a_a_failed_hold_read_never_stops_the_armed_stops_being_watched_and_keeps_the_last_hold(db, monkeypatch):
+async def test_hf_a_a_failed_hold_read_keeps_the_armed_stops_watched_and_the_last_hold(db, monkeypatch):
     market = Market()
     stored, _, keys = await _strategy(db)
     await _exit_below(db, stored.id)
@@ -625,7 +625,7 @@ async def test_hf_a_a_failed_hold_read_never_stops_the_armed_stops_being_watched
     assert await monitor.step() == 1  # the armed exit still fires
 
 
-async def test_hf_a_the_standing_hold_is_never_drained_so_its_queue_is_one_quote_and_old_handles_survive_a_failed_swap(
+async def test_hf_a_the_standing_hold_keeps_one_quote_and_its_old_handles_survive_a_failed_swap(
         monkeypatch):
     market = Market()
     keys = ["NSE_FO:1", "NSE_FO:2", INDEX]

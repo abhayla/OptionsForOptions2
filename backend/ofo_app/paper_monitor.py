@@ -183,7 +183,7 @@ class PaperMonitor:
                 standing = {c.contract_id: c for c in await tracked_contracts.resolve(
                     session, sorted({cid for cid, _u in open_legs} - set(found)))}
             self._hold_open_legs(feed, self._standing_keys(feed, open_legs, {**standing, **found}))
-        except Exception:  # noqa: BLE001 - the stops are already watched; the hold is retried at the next reload
+        except Exception:  # the stops are already watched; the hold is retried at the next reload
             log.exception("paper monitor: the standing hold of open legs could not be refreshed; keeping the last hold")
 
     def _resubscribe(self, feed: LiveFeed | None, keys: list[str]) -> None:
