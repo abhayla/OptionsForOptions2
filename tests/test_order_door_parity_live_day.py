@@ -208,7 +208,10 @@ PARITY = {
 }
 # The rows that fail today, from the audit's 54 rows (section 3) and from a grep of the real files on this tree; a row
 # not listed here must PASS today (the paper and the real side already reach the same symbol).
-GREEN_TODAY = {"entry_refused_duplicate_leg_same_sentence"}  # shared through ofo.engine.duplicate_leg (audit row 5)
+GREEN_TODAY = {
+    "entry_refused_duplicate_leg_same_sentence",  # shared through ofo.engine.duplicate_leg (audit row 5)
+    "entry_over_freeze_limit_blocks_never_splits",  # fix/order-door-2-1127 (Lane K2) put the freeze check on both doors: XPASS, 27 Nov
+}
 ONE_EXIT_DOOR = "one exit door (ADR-330 (58))"
 
 

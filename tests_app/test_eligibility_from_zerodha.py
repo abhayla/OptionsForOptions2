@@ -158,7 +158,6 @@ def test_a_second_copy_of_a_stored_leg_counts_as_added():
     assert strategies_route._added_legs([(7, buy)], []) == [0]  # a new strategy: every leg is added
 
 
-    # Lane W: the refusal names the legs (strategy_duplicate_leg_same_side, STRATEGY_VALIDATION_524), the old 408 is gone
 async def test_two_legs_on_one_stored_contract_are_refused_before_eligibility(app_engine):
     """Today the definition itself refuses two legs on one contract (422), so the copy never reaches the save."""
     async with app_engine.connect() as conn:
@@ -169,6 +168,7 @@ async def test_two_legs_on_one_stored_contract_are_refused_before_eligibility(ap
             body["legs"].append(dict(body["legs"][0]))
             async with _client(_on(_app(_ConnMaker(conn), stored.user_ref), LIST_DAY)) as ac:
                 resp = await ac.put(f"/strategies/{stored.id}", json=body)
+            # Lane W: the refusal names the legs (strategy_duplicate_leg_same_side, code 524); the old 408 is gone
             assert (resp.status_code, resp.json()["code"]) == (422, "STRATEGY_VALIDATION_524"), resp.text
             assert (await store.load(conn, stored.user_ref, stored.id)).revision == 1
         finally:

@@ -717,6 +717,7 @@ async function confirmPending(orders, _held = null, notLiveTicked = false) {
   // STORED (201). From here nothing may offer these orders again: a failure below is only a failed refresh.
   exitRec.settle(EXIT_KEY, attempt, 'placed', wasExit ? exitEndText('done', names, { orders: reply?.orders, sent: orders.length }) : '') // the server answered: placed replaces a page-side guess
   paperStale.value = true
+  exitAllWaiting.value = null // cleared at once (Opus review): a later throw or a new Exit all during the re-read must not meet a stale value
   if (own) { exitOrigin.value = false; legsBeforeExit = null } // ADR-330 (49): what is left is no Exit edit; the other legs' edits are put back by restoreStaged
   try {
     if (!own) await dropActed({ withApproach: true }) // an Exit all that discards a staged change drops its acted / basket / approach too: they belong to the discarded change // one basket answers the records once (a per-leg Exit answered none)
@@ -725,7 +726,6 @@ async function confirmPending(orders, _held = null, notLiveTicked = false) {
     // the dialog stays, says it was placed, and has no Confirm, while the book is read again (issue 18: bounded retries, then Retry)
     if (waiting) stagedNote.value = DISCARDED_TEXT(waiting.names) // said at once: also when the re-read below fails
     if (await rereadAfterPlace(id, () => { paperState.value = PAPER_STATE.PLACED; paperBusy.value = false })) await offerAfterMove(check)
-    exitAllWaiting.value = null
   } finally {
     paperBusy.value = false
   }

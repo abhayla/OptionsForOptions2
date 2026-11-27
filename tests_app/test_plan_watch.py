@@ -241,7 +241,7 @@ async def test_a_hanging_market_read_is_cut_at_the_budget_and_answers_not_live(a
 
     sid = await _seeded(app_db_url, monkeypatch, "ADJ-01")
     await _arm(app_db_url, sid)
-    monkeypatch.setattr(price_budget, "PRICE_BUDGET_S", 0.05)  # Lane J2: the one budget (run_check wraps the readers)
+    monkeypatch.setattr(price_budget, "PRICE_BUDGET_S", 0.05)  # Lane J2: the one budget (watch_of wraps the readers)
     seen: dict[str, object] = {"held": None, "cancelled": False}
 
     async def hangs(_tracked, _ctx):
@@ -273,7 +273,7 @@ async def test_a_hanging_index_quote_is_cut_at_the_budget_and_cancelled(app_db_u
     from ofo_app.routes.adjustment import get_market_reader, get_rest_spot_reader  # noqa: PLC0415
 
     sid = await _seeded(app_db_url, monkeypatch, "ADJ-01")
-    monkeypatch.setattr(price_budget, "PRICE_BUDGET_S", 0.05)  # Lane J2: the one budget (run_check wraps the readers)
+    monkeypatch.setattr(price_budget, "PRICE_BUDGET_S", 0.05)  # Lane J2: the one budget (watch_of wraps the readers)
     seen = {"cancelled": False}
 
     async def no_tick(tracked, ctx):  # the real read, with the feed's index tick taken away
@@ -307,7 +307,7 @@ async def test_a_quote_answering_after_the_market_was_cut_is_not_asked(app_db_ur
 
     sid = await _seeded(app_db_url, monkeypatch, "ADJ-01")
     await _arm(app_db_url, sid)
-    monkeypatch.setattr(price_budget, "PRICE_BUDGET_S", 0.05)  # Lane J2: the one budget (run_check wraps the readers)
+    monkeypatch.setattr(price_budget, "PRICE_BUDGET_S", 0.05)  # Lane J2: the one budget (watch_of wraps the readers)
     called: list[str] = []
 
     async def hangs(_tracked, _ctx):

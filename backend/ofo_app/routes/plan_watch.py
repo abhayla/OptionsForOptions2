@@ -68,10 +68,6 @@ _NOT_AVAILABLE = "user_input_request_not_available"
 PERCENT = Decimal(100)
 SHOWN_PCT = HUNDREDTH
 _PCT_UNIT = "%"
-#: REQ-119 AC-4: the route answers within this many seconds of starting its price reads (market read + REST index
-#: quote together), whatever the broker side does. The browser gives up at 10 s (frontend services/api.js timeout), so
-#: 4 s leaves the rest of the check (rule evaluation, trigger store) ample time; a read still running at the budget is
-#: cancelled and the answer is the "prices not live" one (27 Nov 2026: unbounded index quotes took 20 s).
 
 LineKind = Literal["target", "stop", "credit_stop", "rule", "index_exit", "leg_stop"]
 LineState = Literal["watching", "fired", "not_applicable", "not_computable", "paused"]

@@ -1,4 +1,4 @@
-STATUS 22:55 | gate TOTAL PASS on 7948bdc5 (the code commit; this status line is the only later change) | merged: exit-all, perf/speed-fixes, pnl-totals (Lane L's 3 commits), plan-door, order-limits, last-close, stop-follows-leg, plan-save+plan-watch, plan-read, live-test-small, alert-screens | unresolved: none | not merged: fix/order-door-2-1127 (not on origin), hotfix/plan-read-2-1127 (Lane Z) | blocker: none | SAFE TO CLOSE after K2's branch is merged on top
+STATUS 23:50 | group 1 pushed earlier (7948bdc5, gate TOTAL PASS); group 2 merged locally, gate and Opus review running: plan-read-2 3260e094, worker-join c1eb7a67, builder-open 0faf4e71, worker-chain e3cf60b0, exit-all a7ccf4a9, order-door-2 e3897b2c, page-handovers 546d653f | unresolved: none | not merged: hotfix/worker-2-1127 (not on origin) | next push: after the gate | blocker: none (send_message to the coordinator is refused for me: untrusted device; this line is the report)
 
 # Lane M3: conflicts and reds of the weekend build (27 Nov 2026)
 
@@ -60,6 +60,21 @@ Branch `integration/conflicts-1127` from `origin/integration/weekend-1127` (c9f9
 - `tests_app/test_plan_watch.py::test_a_hanging_market_read_is_cut_at_the_budget_and_answers_not_live` and `::test_a_quote_answering_after_the_market_was_cut_is_not_asked` fail on a Friday after 15:00 IST: the seeded plan's `day.beforeWeekend.1500.0` rule reads the real clock and shows `fired`. They fail identically on Lane R's branch alone (checked in a separate worktree). DB tests, so not in the local gate; CI would see it on a Friday afternoon. Pass the date in (rule: no clock in tests).
 - `tests/test_order_door_parity_live_day.py` still pins `(LOTS, "paper")` as an expected failure although Lane W's paper lots limit is in; the pattern for the paper cell may not match the new check. Not mine to change.
 - `fix/pnl-totals-1127` carries `chore/gate-speed-1127`; whoever merges that branch gets the process files.
+
+
+## Group 2 (coordinator message of 23:00 IST), merged in the order asked
+
+| # | Branch (head) | Conflicts and how they were resolved |
+|---|---|---|
+| 1 | `hotfix/plan-read-2-1127` (3260e094; the coordinator named 7da2e173, the branch moved) | only `screen-inventory.json` (generated): regenerated. Its tests and the plan-watch/plan-save frontend tests pass. |
+| 2a | `hotfix/worker-join-1127` (c1eb7a67) | `adjustment_check.py` imports: both (`price_budget` from Lane J2, `step_timing` from Lane H). Real finding: Lane J2 wraps the readers in the adjustment-check ROUTE only, and says Plan watch should call `price_budget.budgeted` itself. I therefore deleted my own `_budgeted` wrapper and `outcome.rest_spot_within` (from group 1) and `watch_of` now calls `price_budget.budgeted(...)` as its first step (the batch route goes through `watch_of`, so it is covered). The scan test `test_rest_spot_door_scan.py` still holds: `price_budget.py` is not in `routes/`. `test_plan_watch.py` patches `price_budget.PRICE_BUDGET_S`. `test_load_live_day.py`'s strict xfail (fix: plan-watch-load) XPASSed: mark deleted. |
+| 2b | `hotfix/builder-open-1127` (0faf4e71) | the two MAJOR findings of its old review ("window from the publish-time setting", "a failed run retries in 3 minutes") are fixed on that head (`catalogue_refresh.py`: `window_open(publish)`, `RETRY_INTERVAL` 3 min), so I merged it. Only the 2 MINOR ones (info line not in the API log, PC-vs-VPS clock skew) stay open. Conflicts: `RESULTS-lane-j.md` (both kept), `INDEX.md` (regenerated). One test followed Lane W: `test_eligibility_from_zerodha.py` expects the duplicate-leg code 524 (was 408). |
+| 3 | `test/worker-chain-1127` (e3cf60b0) | clean. Its 7 strict `FIXED_BY_LOSS_STOP` marks all XPASSed (the fix is in this build): deleted in this merge, nothing else changed; the file passes, 10 of 10, on a real PostgreSQL (408 s). |
+| 4 | `fix/exit-all-1127` (a7ccf4a9) | `StrategyBuilderPage.vue` x3: the entry call is `own \|\| waiting ? post(no state) : post(..., notLiveTicked === true)`; after the post, the discarded note, then `if (await rereadAfterPlace(...)) await offerAfterMove(check)`, then `exitAllWaiting = null`; the dialog keeps both `:note` and `:not-live-line`. `template_pins.json`: key union. `reply_inventory.py` and `test_identifier_and_slots.py`: both sides' lines. Real red: the Exit dialog now asks `GET /market/exit-state` (ADR-330 (60)) and keeps Confirm off when it cannot read it, so `paper-move-stop-offer-774.test.js` now mocks `{ closed: false }`. |
+| 5 | `fix/order-door-2-1127` (e3897b2c) | clean. K2's `routes/paper.py` edit merged without touching my cancel loop. `test_paper_order_lots_limit.py` equals K2's file (Lane Y's note: Lane K's version is right). Its tests, `test_entry_not_live_confirmed` and `test_paper_order_lots_limit` pass (86). |
+| 6 | `feat/page-handovers-1127` (546d653f) | `LiveStrategyCard.vue` (props: `monitoring` added to Lane W's `greyed`/`showLine`), `LiveStrategiesPage.vue` (both card tags keep `@affected` and get `:monitoring`), `PlanWatch.vue`: Lane H's box (queue, "Updating", gaps) kept; Lane Y's host-fed `view` added on top (`own` ref + `view` computed; a hosted box never reads: `ask()` returns, the save watcher returns before `updating`). `INDEX.md`, `template_pins.json`: regenerated / unioned. Its 7 frontend tests and 6 DB test files pass. |
+
+Frontend after group 2: 312 files, 3743 tests, all green.
 
 ## Tasks and models
 

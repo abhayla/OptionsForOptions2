@@ -86,7 +86,7 @@ _PERCENT_STOP_NOT_READ = "plan_save_percent_stop_not_read"  # Hotfix plan-read-1
 _KIND_NOT_KNOWN = "plan_stop_kind_not_known"
 _KIND_CATALOGUE_UNREADABLE = "plan_stop_kind_catalogue_unreadable"
 #: Hotfix plan-save-1127: the longest a plan SAVE or RESET waits for its price read (``_bounded_market``). Same 4 s as
-#: the plan watch route's PRICE_BUDGET_S (routes/plan_watch.py), the code's one price budget; it leaves the page's own
+#: ``price_budget.PRICE_BUDGET_S`` (ofo_app/price_budget.py), the code's one price budget; it leaves the page's own
 #: 30 s save timeout ample room. Over it the save is REFUSED (nothing stored), never left hanging.
 PLAN_SAVE_PRICE_BUDGET_S = 4.0
 ID_MAX = 9_223_372_036_854_775_807  # the id column is BIGSERIAL
