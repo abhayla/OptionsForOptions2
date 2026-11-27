@@ -155,3 +155,20 @@ async def test_a_level_that_is_not_a_multiple_of_five_paise_is_refused_like_the_
         assert HTTPStatus.BAD_REQUEST <= reply.status_code < HTTPStatus.INTERNAL_SERVER_ERROR, (bad, reply.text)
         assert "state" not in reply.json()
         assert reply.json()["code"] == "STRATEGY_VALIDATION_440", reply.text
+
+
+async def test_m1_a_stop_that_leaves_a_sold_put_uncovered_prints_no_index_to_zero_figure_and_no_iso_date(db):
+    """Lane M, 27 Nov (B-N1 #194 on screen: "max loss becomes Rs 16,62,316.50 (now Rs 1,732.25)" and an ISO date). A stop
+    on the LONG put at 5.00 leaves the short 22400 PE with no bought put: the engine's lowest point is the index at 0,
+    -22400 x 65 + 10,465.00 = -14,45,535.00, a figure no one can act on. The line says the loss is not capped by the
+    trade's own legs instead (wording pending owner read), and names the leg as the screens do (REQ-151), never ISO."""
+    app, stored, ids = await _book(db)
+    body = (await _ask(app, stored.id, ids[LONG_PUT], "5.00")).json()
+    assert body["state"] == "yes"
+    assert (body["max_loss_before"], body["max_loss_after"]) == ("-2860.00", "-1445535.00")  # the engine's figures
+    text_ = body["warning_text"]
+    assert "14,45,535" not in text_ and "-" not in text_.split(".")[0]
+    assert text_.startswith("If this stop fires, a sold option is left without a bought option of its type covering "
+                            "it, so its loss grows as the index moves past its strike (now Rs 2,860.00). "
+                            "Sold option with less protection: NIFTY ")
+    assert text_.endswith("Sold option with less protection: NIFTY 13 Oct 22400 PE.") and "2026-" not in text_

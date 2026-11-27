@@ -4918,5 +4918,13 @@
   "explanation:closed_prices_mixed_many": {
     "sha256": "2e2b189d37f20118e29b9f21a553dffecdbc0fd1f1aeb3a01746d5b73c331a3e",
     "reviewed": "owner read 2026-11-26 (ADR-330 (36) (LR-Q18), answered by the owner in the question tool, option b)"
+  },
+  "explanation:paper_leg_stop_uncovered": {
+    "sha256": "72e9df6cd55fb55e471d08fb3cbb2196a88fb30a540f7c8a4fe91cdd640c3e09",
+    "reviewed": "pending owner read"
+  },
+  "explanation:paper_leg_stop_uncovered_from_profit": {
+    "sha256": "ef678222d68e8567ad915a307133c112fe6dc882f970be720e5d1a84d39aa39d",
+    "reviewed": "pending owner read"
   }
 }
