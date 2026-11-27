@@ -908,7 +908,7 @@ async def link_orders(conn: Any, user_ref: str, strategy_id: int, suggestion_id:
     # to acted_on now; one already acted on (stamped by the older staging path) just gets linked.
     seen = (await conn.execute(_SUGGESTION_OF_STRATEGY, args)).first()
     if seen is not None and seen[0] == "open":
-        await _close(conn, user_ref, suggestion_id, "acted_on", None)
+        await act_on(conn, user_ref, suggestion_id)
     row = (await conn.execute(_LINK_ORDERS, {**args, "order_ids": json.dumps(order_ids),
                                                  "basket_legs": json.dumps(basket_legs)})).one_or_none()
     if row is not None:
