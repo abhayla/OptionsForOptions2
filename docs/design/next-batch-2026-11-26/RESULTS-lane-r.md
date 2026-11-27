@@ -345,3 +345,21 @@ Spec basis: ADR-330 (11) and (13) (the live Plan watch box), REQ-119 AC-3/AC-4 (
 - **The load test's IntersectionObserver mock calls back synchronously** (MINOR): `frontend/tests/plan-watch-load.test.js:40-45` queues a duplicate first read for box 1; a browser calls back later. The 10-box `maxInflight` check passes even without the in-flight guard (5 s latency is under the 20 s gap); only the full-box test catches it. Done when the mock is async and a compact-only case with latency above 20 s pins concurrency 1.
 - **No test for a rejecting or hung fetch** (MINOR).
 - **First read can wait ~180 s with 10 rows** (MINOR, by design of the 20 s page gap): a box waiting on its first read shows "Reading the plan watch..." that long; a failed box shows "Updating the numbers..." on each retry.
+
+## Hotfix plan-watch box rendering (27 Nov)
+
+Spec basis: ADR-330 (13), the live Plan watch box; REQ-119 AC-3 (no stacking, newest wins) and AC-4 (a slow or failed read after a good one keeps the last rows with the as-of time).
+
+**Root cause (one sentence).** The plan-watch GET inherited the shared client's 10 s timeout while the route answers a full 200 in 6 to 11 s (its bounds are about 12 s), so good answers were thrown away and the box said "not available"; separately, `textOrNull` in `frontend/src/lib/planWatch.js` (line 33 before the fix) read an empty-string optional text (a row's `reason`, or `as_of_text`) as "present but wrong", so `parsePlanWatch` rejected the WHOLE reply as "unavailable" and a good 200 showed no rows.
+
+**Class, before and after.**
+- Before: any good 200 slower than 10 s, or any 200 with one blank optional text, became a box with no rows. After: the request has its own `PLAN_WATCH_REQUEST_TIMEOUT_MS = 20000` (per request; the shared client stays 10000), and an empty or blank optional text means "none". A non-string is still rejected (ADR-008: no guessing).
+- The route's real "prices not live" shape (plan_state planned, rows paused or not computable, `now` and distances null, `fires_at` kept) already rendered per row as sent once it was under the timeout; the proven hider of rows was the blank-text rejection above.
+- A first read now says "Loading the rule check..." (new wording, pending owner read; no catalogue or label match existed). Later reads keep "Updating the numbers...". A failure after a good read keeps the rows and the as-of time (pinned by tests); "not available" only when there was never a good answer.
+
+**Numbers.** `frontend/tests/plan-watch-render.test.js`: 16 cases (8 each for the full and the compact box). Red before the fix: 16 of 16 failed on the first run (real defects: timeout 10000 not 20000, 15 s answer dropped, blank-reason reply dropped, old loading wording; plus harness faults I then fixed). Green after: 16 of 16; all `plan-watch-*.test.js`: 55 of 55.
+
+**3-step PC re-test.**
+1. Open the builder of a strategy with a plan. While the first read runs the box says "Loading the rule check..."; a 6 to 11 s answer then shows its rows with the as-of time.
+2. Open Positions with plan rows: each compact box shows rows, not "not available", after its turn in the queue.
+3. Outside market hours (prices not live) the rows show Paused or Not checked with the server's text, never an empty box. Stop the backend for a minute: the last rows stay, marked "Could not refresh the rule check...", with the as-of time.

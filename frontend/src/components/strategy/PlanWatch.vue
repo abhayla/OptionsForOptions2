@@ -8,7 +8,7 @@
 <template>
   <section ref="rootEl" class="rounded-lg border border-line bg-surface p-3 text-sm" data-testid="plan-watch" :data-currency="marked ? (notCurrent ? 'not_current' : 'updating') : 'current'" :data-compact="compact ? 'true' : 'false'" :data-strategy="strategyId">
     <h3 class="font-semibold" data-testid="plan-watch-title">Plan watch</h3>
-    <p v-if="view === null" class="text-xs text-ink-muted" data-testid="plan-watch-loading">Reading the plan watch...</p>
+    <p v-if="view === null" class="text-xs text-ink-muted" data-testid="plan-watch-loading">{{ LOADING_TEXT }}</p>
     <p v-else-if="view.state !== 'ok' && updating" class="text-xs text-ink-muted" data-testid="plan-watch-updating">{{ UPDATING_TEXT }}</p>
     <p v-else-if="view.state !== 'ok'" class="text-xs text-ink-muted" data-testid="plan-watch-message">{{ view.text }}</p>
     <template v-else>
@@ -68,6 +68,8 @@ const props = defineProps({
   compact: { type: Boolean, default: false },
 })
 const NO_FIGURE = PAPER_NO_FIGURE
+// new wording, pending owner read (27 Nov 2026): a FIRST read is queued or in flight (no catalogue or label had it)
+const LOADING_TEXT = 'Loading the rule check...'
 const EMPTY_TEXT = 'Nothing to watch yet.'
 const UPDATING_TEXT = 'Updating the numbers...' // the one existing "updating" wording (LegList); REQ-119 AC-4
 const STATE_TEXT = { watching: 'Watching', fired: 'Fired', not_applicable: 'Not applicable', not_computable: 'Not checked', paused: 'Paused' }

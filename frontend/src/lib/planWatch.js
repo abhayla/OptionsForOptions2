@@ -14,6 +14,10 @@ export const PLAN_WATCH_MIN_READ_GAP_MS = 15000
 /** A compact box on Positions: at most one read a minute, counted from its last answer (Lane R, 27 Nov 2026; see lib/planWatchQueue). */
 export const PLAN_WATCH_COMPACT_READ_GAP_MS = 60000
 
+/** The plan-watch request's OWN timeout (Lane R, 27 Nov 2026): the route answered 200 in 6-11 s and the shared client's 10 s gave up on
+ *  it. The route's bounds are a 4 s price budget plus an 8 s margin (about 12 s); 20 s covers that. Set per request, never on the client. */
+export const PLAN_WATCH_REQUEST_TIMEOUT_MS = 20000
+
 export const PLAN_WATCH_UNAVAILABLE = 'The plan watch is not available right now.'
 export const PLAN_WATCH_NOT_FOUND = 'This strategy was not found, so there is nothing to watch.'
 
@@ -24,7 +28,9 @@ const KINDS = ['target', 'stop', 'credit_stop', 'rule', 'index_exit', 'leg_stop'
 const UNITS = ['pnl_rupees', 'index_points', 'option_price', 'percent', 'rule_unit']
 
 const isText = (v) => typeof v === 'string' && v.trim() !== ''
-const textOrNull = (v) => (v === null || v === undefined ? null : isText(v) ? v : false) // false = present but wrong
+// An optional text that is null, absent, empty or blank is NONE (Lane R, 27 Nov 2026: a "" reason on one not-live row used to reject the
+// whole reply as unavailable, so a good 200 showed no rows); only a non-string is present-but-wrong (false).
+const textOrNull = (v) => (v === null || v === undefined ? null : typeof v !== 'string' ? false : isText(v) ? v : null)
 const figure = (v) => (v === null ? null : typeof v === 'string' && /^-?\d+(\.\d+)?$/.test(v.trim()) ? v.trim() : false)
 
 const empty = (state, text = '') => ({
@@ -68,7 +74,7 @@ export function parsePlanWatch(data, id) {
 export async function readPlanWatch(id) {
   let data
   try {
-    data = (await api.get(`/strategies/${id}/plan-watch`)).data
+    data = (await api.get(`/strategies/${id}/plan-watch`, { timeout: PLAN_WATCH_REQUEST_TIMEOUT_MS })).data
   } catch (e) {
     if (e?.superseded) return empty('superseded')
     if (e?.status === 404) return empty('not_found', PLAN_WATCH_NOT_FOUND)
