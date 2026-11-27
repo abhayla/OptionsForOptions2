@@ -86,4 +86,31 @@ describe('Plan watch mounts', () => {
     expect(boxes.map((b) => b.props('strategyId'))).toEqual([48, 49])
     expect(boxes.every((b) => b.props('compact') === true)).toBe(true)
   })
+
+  it('Lane Y item 2: 25 open rows make ONE batch request per 20 rows, never one per row, and one bad row blanks no other', async () => {
+    const { resetPlanWatchQueueForTests } = await import('@/lib/planWatchQueue')
+    resetPlanWatchQueueForTests()
+    const leg = (i) => withPriceTexts({
+      leg_index: i, instrument_id: `NSE_FO:${i + 1}`, action: 'SELL', instrument: 'PE', strike: `${22300 + i * 100}.00`, expiry: '2026-11-03',
+      quantity: 65, entry_price: '114.25', entry_at: '2026-10-28T05:03:09Z', current_price: '113.60', price_state: 'live',
+      price_at: '2026-10-28T11:30:00+05:30', exit_price: null, exited_at: null,
+    })
+    const item = (id) => withPriceTexts({ strategy_id: id, name: `"S${id}"`, underlying: 'NIFTY', started_at: '2026-10-28T05:03:10Z', state: 'LIVE', pause_reason: null, as_of: null, total: '71.50', booked: '0.00', unbooked: '71.50', legs: [leg(0), leg(1)] })
+    const ids = Array.from({ length: 25 }, (_, i) => 100 + i)
+    const okItem = (id) => ({ strategy_id: id, state: 'ok', watch: watchOf(id) })
+    answers = { 'GET /tracking': { strategies: ids.map(item), answered_at: '2026-10-28T06:00:00Z' } }
+    answers[`GET /plan-watch?strategy_ids=${ids.slice(0, 20).join(',')}`] = { items: ids.slice(0, 20).map((id) => (id === 103 ? { strategy_id: id, state: 'refused', status: 404, refusal: null } : okItem(id))) }
+    answers[`GET /plan-watch?strategy_ids=${ids.slice(20).join(',')}`] = { items: ids.slice(20).map(okItem) }
+    const router = createRouter({ history: createMemoryHistory(), routes: [{ path: '/', component: PaperStrategies }] })
+    await router.push('/')
+    await router.isReady()
+    const w = mount(PaperStrategies, { global: { plugins: [router] } })
+    await flushPromises()
+    expect(calls.filter((c) => c.includes('/plan-watch?strategy_ids=')).length).toBe(1) // the second batch waits its turn in the queue
+    expect(calls.some((c) => /\/strategies\/\d+\/plan-watch/.test(c))).toBe(false) // no per-row request
+    const boxes = w.findAllComponents(PlanWatch)
+    expect(boxes).toHaveLength(25)
+    expect(boxes[0].find('[data-testid="pw-now"]').text()).toBe('₹350.00') // a good row shows its figure
+    expect(boxes[3].find('[data-testid="pw-now"]').exists()).toBe(false) // the bad row has none
+  })
 })

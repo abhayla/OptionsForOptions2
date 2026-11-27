@@ -159,7 +159,7 @@
             </div>
             <!-- P10 (ADR-330 (13)): the Plan watch of an open strategy; it re-reads on this list's own good-read token -->
             <MonitoringBadge v-if="g.openCount" :entry="monitoring.entryOf(g.id)" class="mt-2" />
-            <PlanWatch v-if="g.openCount" :strategy-id="g.id" :read-tick="goodReadToken" :stale="stale" compact class="mt-2" />
+            <PlanWatch v-if="g.openCount" :strategy-id="g.id" :read-tick="goodReadToken" :stale="stale" :view="planViews.get(String(g.id)) ?? null" compact class="mt-2" />
             <PaperStops v-if="stopsOpen[g.id]" :strategy-id="g.id" :underlying="g.underlying" :legs="stopLegs(g)" :leg-names="legNamesOf(g)" :good-read-token="goodReadToken" @changed="onStopsChanged" />
           </template>
         </div>
@@ -175,13 +175,15 @@ import { NAME_FLOOR_CLASS } from '@/lib/nameFloor'
 import { strategyListLabel } from '@/lib/saveDraft'
 import { istClock } from '@/lib/displayFormat'
 import { QUOTE_TIME_UNAVAILABLE_TEXT } from '@/lib/sharedStateText'
-import { computed, onMounted, ref, shallowRef, watch } from 'vue'
+import { computed, onBeforeUnmount, onMounted, ref, shallowRef, watch } from 'vue'
 import api, { NEUTRAL_ERROR, NEUTRAL_PARTS } from '@/services/api'
 import ErrorMessage from '@/components/common/ErrorMessage.vue'
 import PaperStops from '@/components/strategy/PaperStops.vue'
 import PlanWatch from '@/components/strategy/PlanWatch.vue'
 import MonitoringBadge from '@/components/common/MonitoringBadge.vue'
 import { useMonitoringState } from '@/lib/monitoringState'
+import { PLAN_WATCH_BATCH_MAX_ROWS, readPlanWatchBatch } from '@/lib/planWatchBatch'
+import { cancelPlanWatchRead, submitPlanWatchRead } from '@/lib/planWatchQueue'
 import PlanDoor from '@/components/strategy/PlanDoor.vue'
 import AfterChargesTap from '@/components/common/AfterChargesTap.vue'
 import PaperConfirmDialog from '@/components/strategy/PaperConfirmDialog.vue'
@@ -286,6 +288,28 @@ const summary = computed(() => ({
 watch(summary, (v) => emit('summary', v), { immediate: true, flush: 'sync' })
 // goodReadToken: the token of the last good read; an open Stops panel reads its own list again when it changes (S-23)
 const goodReadToken = shallowRef(null)
+// Lane Y item 2: ONE Plan watch request for the rows shown (Lane H's batch route), 1 to 20 ids; more rows: more batches through the
+// page-wide queue (one read in flight). A bad row's view is its own: the others are untouched. Nothing is computed here.
+const planViews = shallowRef(new Map())
+const planIds = computed(() => shown.value.filter((g) => g.openCount).map((g) => g.id).sort((a, b) => a - b))
+const batchKeys = []
+function readPlanBatches() {
+  while (batchKeys.length) cancelPlanWatchRead(batchKeys.pop())
+  const ids = planIds.value
+  for (let i = 0; i < ids.length; i += PLAN_WATCH_BATCH_MAX_ROWS) {
+    const chunk = ids.slice(i, i + PLAN_WATCH_BATCH_MAX_ROWS)
+    const key = `positions-batch-${i}`
+    batchKeys.push(key)
+    submitPlanWatchRead(key, 'compact', async () => {
+      const got = await readPlanWatchBatch(chunk)
+      const next = new Map(planViews.value)
+      for (const [id, v] of got) if (v.state !== 'superseded') next.set(id, v)
+      planViews.value = next
+    })
+  }
+}
+watch([() => planIds.value.join(','), goodReadToken], readPlanBatches, { immediate: true })
+onBeforeUnmount(() => { while (batchKeys.length) cancelPlanWatchRead(batchKeys.pop()) })
 const stopsOpen = ref({})
 // R-10: a Stop row for each OPEN contract, keyed by the contract id the reply carries (a digit string sent as is)
 const legNamesOf = (g) => Object.fromEntries(g.positions.map((p) => [p.contractId, p.name])) // D-44: the one leg label, for the form and the list

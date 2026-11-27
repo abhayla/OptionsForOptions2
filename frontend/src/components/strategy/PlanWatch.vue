@@ -45,7 +45,7 @@
 </template>
 
 <script setup>
-import { onMounted, ref, watch } from 'vue'
+import { computed, onMounted, ref, watch } from 'vue'
 import { readPlanWatch } from '@/lib/planWatch'
 import { rupeesText } from '@/lib/displayFormat'
 import { PAUSED_TEXT } from '@/lib/priceState'
@@ -58,23 +58,27 @@ const props = defineProps({
   readTick: { type: null, default: null },
   stale: { type: Boolean, default: false },
   compact: { type: Boolean, default: false },
+  // Lane Y item 2 (Lane H's batch route): when the host passes `view` (null while its one batch read is out) this box reads nothing itself
+  view: { type: Object, default: undefined },
 })
 const NO_FIGURE = PAPER_NO_FIGURE
 const EMPTY_TEXT = 'Nothing to watch yet.'
 const STATE_TEXT = { watching: 'Watching', fired: 'Fired', not_applicable: 'Not applicable', not_computable: 'Not checked', paused: 'Paused' }
 
-const view = ref(null)
+const own = ref(null)
+const view = computed(() => (props.view !== undefined ? props.view : own.value))
 let seq = 0
 async function reread() {
+  if (props.view !== undefined) return // the host's batch read feeds this box
   const mine = ++seq
   const id = props.strategyId
   const v = await readPlanWatch(id)
   if (mine !== seq) return // a newer read replaced this one
   if (v.state === 'superseded') return
-  view.value = v
+  own.value = v
 }
 onMounted(reread)
-watch(() => props.strategyId, () => { view.value = null; reread() })
+watch(() => props.strategyId, () => { own.value = null; reread() })
 watch(() => props.readTick, (t, old) => { if (t !== old) reread() })
 
 // the server's figure as text in the line's unit: rupees with Indian grouping; index points and percent as sent; null is a dash
