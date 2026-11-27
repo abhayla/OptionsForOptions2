@@ -304,3 +304,32 @@ async def test_the_test_route_uses_the_strategys_plan_value_over_the_users(app_d
     # the planned strategy follows its plan; the file's earlier seeded strategies (no plan) follow the user's 3
     assert seen.count((Decimal("1.5"), "strategy", None)) == 1
     assert set(seen) == {(Decimal("1.5"), "strategy", None), (Decimal("3"), "user", None)}
+
+
+_IDLE_IN_TRANSACTION = text(
+    "SELECT count(*) FROM pg_stat_activity WHERE datname = current_database() AND usename = current_user "
+    "AND state = 'idle in transaction' AND pid <> pg_backend_pid()")
+
+
+async def test_no_database_connection_is_held_across_the_market_read(app_db_url, monkeypatch):
+    """Lane R2: a connection held across a Kite call starves the pool (D-36 (c); the plan-save route fixed the same
+    pattern). While the market is read, no session the REQUEST opened may sit idle in a transaction (sessions that
+    earlier tests of this file left behind are counted before the request and allowed)."""
+    await _seeded(app_db_url, monkeypatch, "ADJ-02")
+    body = await _system_ic_body(app_db_url)
+    async with app_db_url.connect() as other:
+        baseline = (await other.execute(_IDLE_IN_TRANSACTION)).scalar_one()
+    held: list[int] = []
+
+    def wrapper(real):
+        async def read(tracked, ctx):
+            async with app_db_url.connect() as other:  # a second connection looks at the first
+                held.append((await other.execute(_IDLE_IN_TRANSACTION)).scalar_one())
+            return await real(tracked, ctx)
+        return read
+
+    r, _took = await _post_with_market(wrapper, body)
+    assert r.status_code == OK, r.text
+    # the FIRST market read: nothing has reopened a transaction yet. Later reads see the request's session again in
+    # the other strategies' spot / margin seams (listed as a deferred issue in RESULTS-lane-r2), so only the first counts
+    assert held and held[0] <= baseline, (held, baseline)

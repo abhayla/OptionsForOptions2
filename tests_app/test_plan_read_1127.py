@@ -149,3 +149,48 @@ async def test_a_percent_stop_is_saved_with_the_kind_unknown_when_both_rows_are_
     status, out = await _call("PUT", _plan_path(sid), json={"playbook_id": same.id, "stop": "45"})
     assert status == OK, out
     assert D(out["plan"]["stop"]) == D("45") and out["stop_kind_reason"] is None
+
+
+async def test_a_real_database_error_in_the_catalogue_read_leaves_the_session_usable(app_db_url, monkeypatch):
+    """Opus review: a real PostgreSQL error aborts the transaction; the reads after it must still answer (no 500)."""
+    from sqlalchemy import text  # noqa: PLC0415
+    sid, own = await _accepted_closed(app_db_url, monkeypatch, "Real db error")
+
+    async def broken(db):
+        await db.execute(text("SELECT 1/0"))  # a real error from the database, not a Python one
+    monkeypatch.setattr(route, "load_catalogue", broken)
+    status, out = await _call("GET", _plan_path(sid))
+    assert status == OK and out["stop_kind_reason"] == UNREADABLE and out["plan"]["stop"] is None, out
+    status, refused = await _call("PUT", _plan_path(sid), json={"playbook_id": own.id, "stop": "45"})
+    assert status == UNPROCESSABLE and refused["what_happened"].startswith("The stop could not be saved"), refused
+
+
+async def test_a_rupee_stop_stays_shown_with_the_kind_unknown_and_no_reason(app_db_url, monkeypatch):
+    """Opus review: with a rupee stop T-06 is not the stop, so differing T-06 rows must not blank it."""
+    sid, own = await _accepted_closed(app_db_url, monkeypatch, "Rupee stays")
+    status, saved = await _call("PUT", _plan_path(sid), json={"playbook_id": own.id, "stop_rupees": "100"})
+    assert status == OK, saved
+    status, out = await _call("GET", _plan_path(sid))
+    assert status == OK, out
+    assert D(out["plan"]["stop_rupees"]) == D("100") and out["stop_kind_reason"] is None, out
+    assert out["plan"]["stop_words"] is not None
+
+
+async def test_the_levels_warning_for_a_rupee_stop_above_max_loss_stays_with_the_kind_unknown(app_db_url, monkeypatch):
+    sid, _own = await _accepted_closed(app_db_url, monkeypatch, "Levels warning")
+    status, out = await _call("GET", _plan_path(sid) + "/levels", params={"stop_rupees": "99999999"})
+    assert status == OK, out
+    assert out["stop"]["warning"] is not None and out["stop"]["words"] is None, out
+
+
+async def test_the_reason_shows_when_the_plan_is_blanked_though_the_picked_playbook_is_not(app_db_url, monkeypatch):
+    sid, _own = await _accepted_closed(app_db_url, monkeypatch, "Reason by plan")
+    body = copy.deepcopy((await _system_ic(app_db_url)).body)
+    body["triggers"]["T-06"]["weekly"] = ["50", "50", "40"]
+    body["triggers"]["T-06"]["monthly"] = ["50", "50", "40"]
+    async with app_db_url.begin() as conn:
+        same = await playbook_store.create(conn, "owner", "ic", f"Alike2 {uuid.uuid4().hex[:8]}", body)
+    status, out = await _call("GET", _plan_path(sid), params={"playbook_id": same.id})
+    assert status == OK, out
+    assert out["prefill"]["stop"] is not None  # the picked playbook's rows agree: its stop is shown
+    assert out["plan"]["stop"] is None and out["stop_kind_reason"] == NOT_KNOWN, out  # the saved plan's is not

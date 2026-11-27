@@ -61,6 +61,7 @@ from ofo_app.routes.adjustment import (
     get_market_reader,
     get_rest_spot_reader,
     get_tracked_reader,
+    release_connection,
 )
 from ofo_app.routes.adjustment_check import CheckResultOut, CheckStageOut, current_margin, result_out
 from ofo_app.routes.adjustment_preferences import UserPreferences, UserValuesIn
@@ -435,13 +436,17 @@ class _Read:
     done: bool = False
 
 
-async def _read_one(row: Any, seams: _Seams, listed: Any, read: _Read) -> None:
+async def _tracked_of(row: Any, seams: _Seams) -> Any:
+    """The strategy's legs (None: not readable, so its type is not known and it is not "of that type"). Read on the
+    request's session, so the caller reads them one after another and releases the connection before any market read."""
     from ofo_app.adjustment_readers import TrackedUnreadable  # noqa: PLC0415 - it imports routes.adjustment
     try:
-        read.tracked = await seams.tracked_reader(row.id, seams.rates)
-    except TrackedUnreadable:  # legs not readable: its type is not known, so it is not "of that type"
-        read.tracked = None
-        return
+        return await seams.tracked_reader(row.id, seams.rates)
+    except TrackedUnreadable:
+        return None
+
+
+async def _read_one(row: Any, seams: _Seams, listed: Any, read: _Read) -> None:
     if read.tracked is None:
         return
     market = await seams.market_reader(read.tracked, seams.ctx)
@@ -459,11 +464,13 @@ def _not_checked(row: Any, body: dict[str, Any]) -> dict[str, Any]:
             "withheld": None, "results": [result_out(r, None) for r in results]}
 
 
-async def _read_bounded(row: Any, seams: _Seams, listed: Any, gate: asyncio.Semaphore, data: TestIn,
-                        ) -> tuple[Any, _Read] | dict[str, Any] | None:
+async def _read_bounded(item: tuple[Any, Any], seams: _Seams, listed: Any, gate: asyncio.Semaphore,
+                        data: TestIn) -> tuple[Any, _Read] | dict[str, Any] | None:
     """-> (row, read) when read in full and of the type; a not-checked entry when the type is known but the read timed
     out or failed; None when not of the type (or its type is not known)."""
+    row, tracked = item  # the strategy and its legs (read before the connection was released)
     read = _Read()
+    read.tracked = tracked
     async with gate:
         started = time.monotonic()
         try:
@@ -502,10 +509,13 @@ async def _tested(db: Any, user_ref: str, data: TestIn, seams: _Seams) -> list[d
 
     rows = await strategy_store.list_strategies(db, user_ref)
     tracked_ids = await paper_store.tracked_ids(db, [r.id for r in rows])
+    wanted = [r for r in rows if r.id in tracked_ids]
+    legs = [await _tracked_of(r, seams) for r in wanted]  # one after another: they share the request's session
+    await release_connection(db)  # D-36 (c): no connection is held across the market reads below
     listed = check.listed_of(seams.ctx)
     gate = asyncio.Semaphore(TEST_READ_CONCURRENCY)
-    answers = await asyncio.gather(*(_read_bounded(r, seams, listed, gate, data)
-                                     for r in rows if r.id in tracked_ids))
+    answers = await asyncio.gather(*(_read_bounded(item, seams, listed, gate, data)
+                                     for item in zip(wanted, legs, strict=True)))
     strategies = []
     for answer in answers:
         if answer is None:

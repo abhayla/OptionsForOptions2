@@ -612,6 +612,7 @@ async def _stored_kind(db: Any, tracked: Any) -> str | None:
                    if e.currently_listed and e.contract.name == underlying and e.contract.expiry is not None]
     except Exception as exc:  # noqa: BLE001 - any failed read means "kind not known", with its own reason
         log.warning("adjustment plan: catalogue not read for the expiry kind", exc_info=True)
+        await db.rollback()  # a database error leaves the session in an aborted transaction: the next read needs it clean
         raise _CatalogueUnreadable from exc
     options = [e for e in entries if e.contract.is_option()]
     futures = frozenset(e.contract.expiry for e in entries if e.contract.is_future())
@@ -644,8 +645,17 @@ async def _known_kind(db: Any, tracked: Any, market: Any) -> KindRead:
 def _rows_alike(body: dict, saved_before: bool = False) -> bool:
     """True when the weekly and the monthly T-06 rows give the same first-stage stop and the same stop sentence, so an
     unknown kind cannot change what is shown or compared."""
-    return (in_force_mod.sheet_stop(body, "weekly") == in_force_mod.sheet_stop(body, "monthly")
+    guards = body.get("guards")
+    rupee = isinstance(guards, dict) and _rupee_guard(guards, sl.RUPEE_LOSS_KEY) is not None  # T-06 is then not the stop
+    return ((rupee or in_force_mod.sheet_stop(body, "weekly") == in_force_mod.sheet_stop(body, "monthly"))
             and _stop_words(body, saved_before, "weekly") == _stop_words(body, saved_before, "monthly"))
+
+
+async def _any_blanked(db: Any, plan: store.Plan | None, shown_body: dict) -> bool:
+    """True when a body the sheet shows (the prefill's, or the saved plan's) has its stop blanked by an unknown kind."""
+    if not _rows_alike(shown_body):
+        return True
+    return plan is not None and not _rows_alike(plan.body, await check.plan_saved_before_adr247(db, plan))
 
 
 _STOP_SHOWN = ("stop", "stop_rupees", "stop_per_lot", "stop_rupee_words", "stop_warning")
@@ -747,8 +757,8 @@ async def _sheet(db: Any, user_ref: str, strategy_id: int, stype: str | None, pl
               "playbooks": [_playbook_row(p, active.id) for p in listed],
               "plan": None if plan is None else await _plan_out(db, user_ref, plan, kind, bases),
               "prefill": {"playbook_id": source_id, **values},
-              "stop_kind_reason": None if kind is not None or kind_reason is None or _rows_alike(shown_body)
-              else render_explanation(kind_reason)}
+              "stop_kind_reason": None if kind is not None or kind_reason is None or not await _any_blanked(
+                  db, plan, shown_body) else render_explanation(kind_reason)}
     return AdjustmentPlanOut.model_validate(reply)
 
 
@@ -845,11 +855,12 @@ async def read_levels(  # noqa: PLR0913 - FastAPI dependencies, one per input
                 body = (await store.active_for(db, user_ref, stype)).body
             kind = (await _known_kind(db, tracked, market)).kind  # the ONE row rule; None: no stop words
             saved_before = plan is not None and await check.plan_saved_before_adr247(db, plan)
-            shown = None if kind is None and (body is None or not _rows_alike(body, saved_before)) else \
-                preview_stop_figures(body, saved_before, kind, bases,
-                                     PlanIn(playbook_id=0, stop=stop or None, stop_rupees=stop_rupees or None))
-            # no body to read the lines from: no words, never the partial sentence
-            reply["stop"]["words"] = None if shown is None else shown["stop_words"]
+            shown = preview_stop_figures(body, saved_before, kind, bases,
+                                         PlanIn(playbook_id=0, stop=stop or None, stop_rupees=stop_rupees or None))
+            unknown = kind is None and body is not None and not _rows_alike(body, saved_before)
+            # no body to read the lines from, or the row not known: no words, never the partial sentence (the warning
+            # of a rupee stop above max loss does not follow the row, so it stays)
+            reply["stop"]["words"] = None if shown is None or unknown else shown["stop_words"]
             reply["stop"]["warning"] = None if shown is None else shown["stop_warning"]
     except store.PlaybookStoreError as exc:
         raise _refused(exc) from None
