@@ -250,3 +250,23 @@ async def test_j_exiting_the_last_leg_closes_the_trades_open_alerts_as_closed_by
     assert rows[0]["outcome"] != "open", ("the alert is still open", rows)
     assert rows[0]["answer"] == "closed_by_system", rows
     assert await c.orders_count() == c.orders_at_start + len(exits), "only the test's exit orders are on the trade"
+
+
+SAVE_TO_ALERT_SECONDS = 15  # J3 item 3: a plan saved with its stop already crossed alerts within this
+
+
+async def test_k_a_plan_saved_with_its_stop_already_crossed_alerts_within_one_cycle_of_the_save(chain_for, monkeypatch):
+    """(k) ADR-330 (47), J3 item 3: the loss is Rs 4,608 and the plan has no stop; the worker is NOT told the plan
+    changed. The Rs 1,000 stop is saved: the row comes within SAVE_TO_ALERT_SECONDS of the save, whatever the phase of
+    the worker's re-read (before: about 33 s worst case)."""
+    c = await chain_for("PATH-90")
+    await c.seed(monkeypatch, plan=False)
+    await c.type_plan(guards={})
+    c.start_worker()
+    await c.go_to(0)
+    await c.go_to(3)  # the loss is crossed; no stop in the plan
+    assert await c.plan_alerts() == []
+    await c.type_plan(guards=LOSS_STOP)
+    assert await c.wait_for_alert("plan_rupee_loss", SAVE_TO_ALERT_SECONDS), (
+        f"no row {SAVE_TO_ALERT_SECONDS} s after the save\n{c.log()[-1200:]}")
+    only(await c.alerts("plan_rupee_loss"), "plan.rupee_loss", "plan_rupee_loss", "1000")

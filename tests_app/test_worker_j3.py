@@ -5,22 +5,26 @@ from __future__ import annotations
 
 import dataclasses
 import datetime
-from decimal import Decimal
 
-import pytest
+from ofo.adjustment import playbook_eval as pe
 from ofo.adjustment import stop_lines as sl
-from ofo_app import adjustment_readers, background, scenario_mode
+from ofo.marketdata.shared_compute import FeedScope
+from ofo_app import adjustment_readers, background
 from test_background_cycle import (
+    DEFAULTS,
     FIRST_ID,
     PREFS,
     Calls,
     FakeGate,
     Prov,
+    _price_time,
     _system_body,
     _watched,
     _worker,
     scn,  # noqa: F401 - the module fixture
 )
+
+MAX_REREAD_SECONDS = 10
 
 
 def _rupee_body(level: str) -> dict:
@@ -46,7 +50,6 @@ async def test_a_far_month_leg_of_unknown_kind_still_raises_the_rupee_loss_stop(
 
 
 async def test_the_percent_stop_of_an_unknown_kind_is_reported_not_checked_with_its_reason(scn, monkeypatch):  # noqa: F811
-    from ofo.adjustment import playbook_eval as pe
     monkeypatch.setattr(adjustment_readers, "expiry_kind_of", lambda *_a, **_k: "")
     prov, now, calls = Prov(scn), [scn.clock_at], Calls()
     body = _system_body("ic")
@@ -63,8 +66,6 @@ async def test_the_percent_stop_of_an_unknown_kind_is_reported_not_checked_with_
 
 def test_the_kind_is_read_for_the_nearest_leg_not_the_first_one_listed(scn, monkeypatch):  # noqa: F811
     """J3 item 2 (R3's finding): the screen's kind is read for the nearest leg; the worker read legs[0]."""
-    from test_background_cycle import _price_time, DEFAULTS
-    from ofo.marketdata.shared_compute import FeedScope
     seen: list[datetime.date] = []
 
     def recording(expiry, *_a, **_k):
@@ -82,3 +83,16 @@ def test_the_kind_is_read_for_the_nearest_leg_not_the_first_one_listed(scn, monk
         w.tracked, position=dataclasses.replace(w.tracked.position, legs=legs)))
     background.market_inputs(w2, read, FeedScope(background.SharedCompute(), "owner"), at, DEFAULTS)
     assert seen == [near]
+
+
+async def test_the_worker_rereads_a_saved_plan_within_ten_seconds(scn):  # noqa: F811
+    """J3 item 3: the re-read of the monitors (where a saved plan is picked up) is never more than 10 s apart."""
+    asked: list[float] = []
+    w = _worker(Prov(scn), _watched(scn), [scn.clock_at], Calls())
+
+    async def sleeper(seconds):
+        asked.append(seconds)
+        w.stop()
+    w._rebuild_sleep = sleeper
+    await w._rebuild_loop()
+    assert asked and asked[0] <= MAX_REREAD_SECONDS, asked

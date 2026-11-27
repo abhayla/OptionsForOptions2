@@ -177,7 +177,10 @@ WAKE_SECONDS: Final = Decimal(1)  # ADR-233 (6): the longest the worker sleeps b
 REST_SPOT_DEADLINE_S: Final = 2.0  # a hung Kite REST index read costs the cycle at most this once per underlying (F5)
 MARGIN_REFRESH_S: Final = Decimal(300)
 MARGIN_STALE_S: Final = 2 * MARGIN_REFRESH_S  # an entry older than this is not used (a refresh that kept failing)
-REBUILD_SECONDS: Final = 30 # the monitor set is re-read this often, so a newly tracked strategy joins (AC-3: 60 s)
+# the monitor set (and with it a plan the trader just saved) is re-read this often: a newly tracked strategy joins
+# (AC-3: 60 s) and a saved stop is watched within this (J3 item 3: it was 30 s, so a stop saved already crossed waited
+# up to ~33 s with the old plan; ADR-330 (47))
+REBUILD_SECONDS: Final = 10
 _MICROS: Final = 1_000_000
 
 
@@ -1090,6 +1093,8 @@ class Worker:
             if w.strategy_id in before and before[w.strategy_id] != w.body:
                 self._signature.pop(w.strategy_id, None)
                 self._tick.pop(w.strategy_id, None)
+                self._last_check.pop(w.strategy_id, None)  # J3: the style's interval (30 s weekly, 120 s monthly)
+                # must not hold the first check with the NEW plan: a stop saved already crossed alerts at once (47)
         old = {w.strategy_id: w for w in self.monitors}
         today = self._clock().astimezone(IST).date()
         await self._lapse_expired_all(monitors, today)
