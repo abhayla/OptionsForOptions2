@@ -34,14 +34,20 @@ def _rupee_body(level: str) -> dict:
     return {**body, "guards": {**body.get("guards", {}), sl.RUPEE_LOSS_KEY: level}}
 
 
-def _unknown_kind(tracked):
-    return dataclasses.replace(tracked, position=dataclasses.replace(tracked.position, expiry_kind=""))
+def _state_without_kind(monkeypatch) -> None:
+    """The state of a trade whose expiry kind is not known (Lane R3's ``state_of``: no stop lines, ``days_left`` None,
+    the kind a placeholder), whatever the base the worker is built on: the worker's own state step answers so."""
+    real = background.state_from_market
+
+    def unknown(*a, **k):
+        return dataclasses.replace(real(*a, **k), days_left=None, stops=None)
+    monkeypatch.setattr(background, "state_from_market", unknown)
 
 
 async def test_a_far_month_leg_of_unknown_kind_still_raises_the_rupee_loss_stop(scn, monkeypatch):  # noqa: F811
-    monkeypatch.setattr(adjustment_readers, "expiry_kind_of", lambda *_a, **_k: "")  # R3: "not known"
+    _state_without_kind(monkeypatch)  # R3: "not known"
     prov, now, calls, gate = Prov(scn), [scn.clock_at], Calls(), FakeGate()
-    watched = [dataclasses.replace(w, body=_rupee_body("1"), tracked=_unknown_kind(w.tracked)) for w in _watched(scn)]
+    watched = [dataclasses.replace(w, body=_rupee_body("1")) for w in _watched(scn)]
     w = _worker(prov, watched, now, calls, gate_store=gate)
     await w.cycle()
     print("STATUS", w.status.get(FIRST_ID), w.paused_reason.get(FIRST_ID), "states", len(calls.states),
@@ -52,10 +58,10 @@ async def test_a_far_month_leg_of_unknown_kind_still_raises_the_rupee_loss_stop(
 
 
 async def test_the_percent_stop_of_an_unknown_kind_is_reported_not_checked_with_its_reason(scn, monkeypatch):  # noqa: F811
-    monkeypatch.setattr(adjustment_readers, "expiry_kind_of", lambda *_a, **_k: "")
+    _state_without_kind(monkeypatch)
     prov, now, calls = Prov(scn), [scn.clock_at], Calls()
     body = _system_body("ic")
-    watched = [dataclasses.replace(w, body=body, tracked=_unknown_kind(w.tracked)) for w in _watched(scn)]
+    watched = [dataclasses.replace(w, body=body) for w in _watched(scn)]
     w = _worker(prov, watched, now, calls, gate_store=FakeGate())
     await w.cycle()
     assert w.status[FIRST_ID] is background.MonitoringStatus.ACTIVE  # watched, not paused
@@ -119,13 +125,13 @@ async def test_a_plan_saved_during_an_old_plan_check_is_checked_at_once_not_afte
 
 
 async def test_a_refused_pin_is_never_replaced_by_the_unknown_kind_fallback(scn, monkeypatch):  # noqa: F811
-    monkeypatch.setattr(adjustment_readers, "expiry_kind_of", lambda *_a, **_k: "")
+    _state_without_kind(monkeypatch)
 
     class BogusPin(FakeGate):
         async def load(self, _w, _today):
             return background.GateLoad(background.alert_gate.GateRows((), 0), pin="bogus")
     prov, now, calls = Prov(scn), [scn.clock_at], Calls()
-    watched = [dataclasses.replace(w, tracked=_unknown_kind(w.tracked)) for w in _watched(scn)]
+    watched = [dataclasses.replace(w) for w in _watched(scn)]
     w = _worker(prov, watched, now, calls, gate_store=BogusPin())
     await w.cycle()
     assert w.status[FIRST_ID] is background.MonitoringStatus.PAUSED
