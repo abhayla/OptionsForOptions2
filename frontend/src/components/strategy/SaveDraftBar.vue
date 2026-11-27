@@ -44,6 +44,7 @@ const props = defineProps({
   // Paper are not offered and refuse to run: an edit reaches the server only as the reviewed paper orders, never as a plan.
   paperMode: { type: Boolean, default: false },
   pricesLive: { type: Boolean, default: true }, // ADR-330 (28): the page's price state through priceState (live or not); false adds the tick-to-confirm line
+  priceAsOf: { type: String, default: '' }, // the page's price time (priceNow.at): the line's "as of" when no leg carries a capture time
   livePriceById: { type: Object, default: () => ({}) }, // instrument id -> the live price the table shows (fix/paper-dialog-safe item 2)
 })
 const emit = defineEmits(['open', 'saved', 'renamed', 'deleted', 'paper-added'])
@@ -477,7 +478,7 @@ id="strategy-name" ref="nameInput" v-model="nameText" data-testid="name-input" t
         <button type="submit" form="strategy-name-form" data-testid="name-confirm" class="h-10 rounded-lg bg-accent px-3 font-medium text-white disabled:opacity-50" :disabled="busy">Save</button>
       </template>
     </Modal>
-    <PaperConfirmDialog first-basket :open="paperOpen" :orders="paperOrders" :busy="paperBusy" :error="paperError" :state="paperState" :not-live-line="props.pricesLive ? '' : notLiveEntryLine(oldestCapture(tickedLegs))" @confirm="confirmPaper" @cancel="paperOpen = false" @orderbook="openPaperOrderbook" />
+    <PaperConfirmDialog first-basket :open="paperOpen" :orders="paperOrders" :busy="paperBusy" :error="paperError" :state="paperState" :not-live-line="props.pricesLive ? '' : notLiveEntryLine(oldestCapture(tickedLegs) ?? (props.priceAsOf || null))" @confirm="confirmPaper" @cancel="paperOpen = false" @orderbook="openPaperOrderbook" />
     <AdjustPlanSheet :open="planFor !== null" :strategy-id="planFor" @close="planFor = null" />
     <!-- GC-TP step 3b2 (R-6): the toast is FIXED to the viewport (bottom centre), not inline under the action row. Inline it sat inside
          the left column's own scroll (sticky, overflow-y-auto at 1100 px and up; `contents` below), so after the save-first path
