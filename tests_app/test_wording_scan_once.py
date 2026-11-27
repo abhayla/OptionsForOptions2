@@ -42,6 +42,8 @@ async def test_one_check_scans_each_distinct_text_once(app_db_url, monkeypatch):
     url = f"/api/strategies/{sid}/adjustment-check"
     async with AsyncClient(transport=ASGITransport(app=app), base_url="http://t") as ac:
         await _get(ac, url)  # warm: imports, caches
+        for mod in ("ofo.errors.model", "ofo.errors.explanations"):  # a cold start: the scans the request itself makes
+            getattr(sys.modules[mod], "_PASSED", {}).clear()
         count = _Count()
         sys.setprofile(count)
         try:
