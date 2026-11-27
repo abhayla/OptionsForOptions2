@@ -40,8 +40,6 @@ class ExpiriesOut(ApiModel):
     expiry_days: list[ExpiryDaysOut]  # REQ-135 AC-2: the same expiries, 1:1 and in the same order, with days left
     today: datetime.date  # u510: the date the days-left are counted from (IST, scenario clock in scenario mode); a far expiry prints its year against it
     default_expiry: Optional[datetime.date] = None  # ADR-199 (4): the server's default; null when the list is empty
-    list_day: datetime.date | None = None  # India date of the latest instrument-list load; null = none loaded
-    list_current: bool = False  # false: today's list is not loaded, list_day's list is in use (ADR-016..019)
 
 
 class ContractOut(ApiModel):
@@ -100,14 +98,12 @@ async def expiries(underlying: str, db: Any = Depends(get_db),
                    shown_now: Any = Depends(get_shown_now)) -> ExpiriesOut:
     require_supported(underlying)
     listed = await picker.pickable_expiries(db, underlying, today)  # list currency: the real database date
-    status = await picker.list_status(db, today)
     now = (await shown_now(db, today)).astimezone(IST)
     today = now.date()  # from here on only what is shown: days left and the default (scenario clock in scenario mode)
     closed = _todays_expiry_spent(now)  # ADR-199 (1)(4), market calendar (ADR-119)
     usable = [e for e in listed if not (closed and e <= today)]  # ADR-199 (2): it stays LISTED, just never the default
     return ExpiriesOut.model_validate({
         "underlying": underlying, "expiries": listed, "today": today, "default_expiry": usable[0] if usable else None,
-        "list_day": status.list_day, "list_current": status.current,
         "expiry_days": [{"expiry": e, "days": days_to_expiry(e, today)} for e in listed]})  # REQ-135 AC-2
 
 

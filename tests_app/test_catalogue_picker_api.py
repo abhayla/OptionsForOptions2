@@ -213,9 +213,7 @@ async def test_catalogue_routes_offer_only_pickable_contracts_with_string_strike
                 async with await _picker_client(session, TODAY) as ac:
                     resp = await ac.get("/api/catalogue/SENSEX/expiries")
                     assert resp.status_code == 200, resp.text
-                    body = resp.json()
-                    assert body.pop("list_current") is True and body.pop("list_day")  # the list's day, loaded or not
-                    assert body == {"underlying": "SENSEX", "expiries": [
+                    assert resp.json() == {"underlying": "SENSEX", "expiries": [
                         "2026-10-08", "2026-10-15", "2026-10-29", "2026-11-26", "2026-12-31"],
                         "expiry_days": [{"expiry": "2026-10-08", "days": 1}, {"expiry": "2026-10-15", "days": 8},
                                         {"expiry": "2026-10-29", "days": 22}, {"expiry": "2026-11-26", "days": 50},
@@ -264,11 +262,6 @@ async def _default_at(monkeypatch: pytest.MonkeyPatch, today: date, at: dt, list
         return at
 
     monkeypatch.setattr(catalogue.picker, "pickable_expiries", pickable)
-
-    async def status(_db, _today):  # no database here: a loaded, current list
-        return catalogue.picker.ListStatus(list_day=_today, current=True)
-
-    monkeypatch.setattr(catalogue.picker, "list_status", status)
     monkeypatch.setattr(catalogue.picker, "judging_instant", instant)
     async with await _picker_client(None, today) as ac:
         resp = await ac.get(f"/api/catalogue/{name}/expiries")
@@ -341,11 +334,6 @@ async def test_expiry_days_are_aligned_one_to_one_with_expiries_and_count_from_t
         return dt(day.year, day.month, day.day, 12, 0, tzinfo=timezone(timedelta(hours=5, minutes=30)))
 
     monkeypatch.setattr(catalogue.picker, "pickable_expiries", pickable)
-
-    async def status(_db, _today):  # no database here: a loaded, current list
-        return catalogue.picker.ListStatus(list_day=_today, current=True)
-
-    monkeypatch.setattr(catalogue.picker, "list_status", status)
     monkeypatch.setattr(catalogue.picker, "judging_instant", instant)
     async with await _picker_client(None, today) as ac:
         body = (await ac.get("/api/catalogue/NIFTY/expiries")).json()

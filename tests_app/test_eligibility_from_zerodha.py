@@ -343,19 +343,16 @@ async def test_ac3_a_list_loaded_earlier_today_is_current(app_engine):
             await trans.rollback()
 
 
-async def test_ac3_the_picker_keeps_offering_an_earlier_sessions_list_but_says_it_is_not_current(app_engine):
-    """Same class, the other read. SPEC CHANGE 2026-11-27 (PR #722 defect): the picker no longer answers nothing from a
-    list of an earlier session (every screen lost its legs at 08:30); it keeps offering it and reports it as not
-    current (``list_status``); add-time eligibility above stays fail-closed. Test intent kept: no silent use."""
+async def test_ac3_the_picker_offers_nothing_from_a_list_from_an_earlier_session(app_engine):
+    """Same class, the other read: the picker treats a list from an earlier session as unconfirmed (nothing offered)."""
     async with app_engine.connect() as conn:
         trans = await conn.begin()
         try:
             await _seeded(conn)
             next_session_day = _next_weekday_after(await _loaded_india_date(conn))
             assert await picker.pickable_expiries(conn, "NIFTY", LIST_DAY)  # loaded today: offered
-            assert (await picker.list_status(conn, LIST_DAY)).current
-            assert not (await picker.list_status(conn, next_session_day)).current
-            # (that rows stay offered after the publish time: test_catalogue_list_carries_over.py)
+            assert await picker.pickable_expiries(conn, "NIFTY", next_session_day) == []
+            assert await picker.pickable_contracts(conn, "NIFTY", next_session_day) == []
         finally:
             await trans.rollback()
 

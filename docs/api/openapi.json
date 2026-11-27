@@ -5295,23 +5295,6 @@
             "title": "Expiry Days",
             "type": "array"
           },
-          "list_current": {
-            "default": false,
-            "title": "List Current",
-            "type": "boolean"
-          },
-          "list_day": {
-            "anyOf": [
-              {
-                "format": "date",
-                "type": "string"
-              },
-              {
-                "type": "null"
-              }
-            ],
-            "title": "List Day"
-          },
           "today": {
             "format": "date",
             "title": "Today",

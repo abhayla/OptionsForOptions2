@@ -56,11 +56,6 @@ async def _expiries(monkeypatch, real_today: date, shown_now: datetime | None, l
         return datetime(real_today.year, real_today.month, real_today.day, 11, 0, tzinfo=IST)
 
     monkeypatch.setattr(catalogue.picker, "pickable_expiries", pickable)
-
-    async def status(_db, _today):  # no database here: a loaded, current list
-        return catalogue.picker.ListStatus(list_day=_today, current=True)
-
-    monkeypatch.setattr(catalogue.picker, "list_status", status)
     monkeypatch.setattr(catalogue.picker, "judging_instant", instant)
     async with await _picker_client(None, real_today) as ac:
         if shown_now is not None:  # the same shape scenario_mode.overrides installs
