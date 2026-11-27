@@ -270,20 +270,20 @@ async def test_the_downgrade_restores_the_0031_guard_and_the_0035_allowlist_chai
 async def test_gate_rows_none_rows_and_restore(db):
     user, sid = await _strategy(db)
     today = (await db.execute(text("SELECT (clock_timestamp() AT TIME ZONE 'Asia/Kolkata')::date"))).scalar_one()
-    assert await pb.gate_rows(db, user, sid, today) == ag.GateRows((), 0)  # none
+    assert await pb.gate_rows(db, user, sid, today, stops=frozenset()) == ag.GateRows((), 0)  # none
     first = await _open(db, user, sid, "T-03", threshold=D("0.35"))
     await pb.lapse(db, user, first.id, pb.LAPSE_STRATEGY_CLOSED, answer="closed_by_system",
                    answered_at=datetime.datetime.now(datetime.UTC))  # 0054: a record of a kind lapses only so
     second = await _open(db, user, sid, "T-03", threshold=D("0.40"), worse="last")
     await pb.dismiss(db, user, second.id)
     await _open(db, user, sid, "T-01", threshold=D("0.5"))
-    got = await pb.gate_rows(db, user, sid, today)
+    got = await pb.gate_rows(db, user, sid, today, stops=frozenset())
     assert got.opened_today == 3  # noqa: PLR2004 - every record today counts for the cap
     last = {r.rule_id: r for r in got.last}
     assert (last["T-03"].threshold, last["T-03"].dismissed, last["T-03"].open) == (D("0.40"), True, False)
     assert (last["T-01"].threshold, last["T-01"].dismissed, last["T-01"].open) == (D("0.5"), False, True)
     assert last["T-03"].id == second.id  # #639 item 2: the worker's dismiss matches this record id
-    assert (await pb.gate_rows(db, user, sid, today + datetime.timedelta(days=1))).opened_today == 0
+    assert (await pb.gate_rows(db, user, sid, today + datetime.timedelta(days=1), stops=frozenset())).opened_today == 0
     spec = ag.RuleSpec("T-03", "ge", (D("0.35"), D("0.40")))
     state = ag.restore(got, today, {"T-03": spec})
     assert state.opened_today == 3 and state.rule("T-03").record.level == 1  # noqa: PLR2004
@@ -295,15 +295,31 @@ async def test_gate_rows_restored_count_does_not_count_watch_and_day_records(db)
     today = (await db.execute(text("SELECT (clock_timestamp() AT TIME ZONE 'Asia/Kolkata')::date"))).scalar_one()
     for rule in ("watch.level.above", "day.after.1500.exit", "day:after:1500:exit", "T-01"):
         await _open(db, user, sid, rule)
-    got = await pb.gate_rows(db, user, sid, today)
+    got = await pb.gate_rows(db, user, sid, today, stops=frozenset())
     assert got.opened_today == 1  # only T-01 counts
     assert ag.restore(got, today, {}).opened_today == 1
+
+
+async def test_gate_rows_restored_count_does_not_count_a_stop_under_its_own_rule_id(db):
+    """Lane J gap 3 (2026-11-27): a plan rule carrying T-06 / T-16 under its own id is a loss stop, so the restart count
+    skips it exactly as the gate does (``stop_lines.loss_stop_rule_ids``, the one function both read)."""
+    from ofo.adjustment import stop_lines as sl  # noqa: PLC0415
+
+    user, sid = await _strategy(db)
+    today = (await db.execute(text("SELECT (clock_timestamp() AT TIME ZONE 'Asia/Kolkata')::date"))).scalar_one()
+    for rule in ("R-LOSS", "MYSTOP", "T-01"):
+        await _open(db, user, sid, rule)
+    body = {"rules": [{"id": "R-LOSS", "any_of": ["T-03", "T-06"]}, {"id": "MYSTOP", "all_of": ["T-16"]},
+                      {"id": "T-01", "any_of": ["T-01"]}]}
+    assert (await pb.gate_rows(db, user, sid, today, stops=sl.loss_stop_rule_ids(body))).opened_today == 1
+    # no plan read: only the fixed set is exempt
+    assert (await pb.gate_rows(db, user, sid, today, stops=frozenset())).opened_today == 3  # noqa: PLR2004
 
 
 async def test_gate_rows_another_users_or_a_missing_strategy_is_not_found(db):
     user, sid = await _strategy(db)
     today = datetime.date(2026, 11, 2)
     with pytest.raises(strategy_store.StrategyStoreError):
-        await pb.gate_rows(db, _user(), sid, today)
+        await pb.gate_rows(db, _user(), sid, today, stops=frozenset())
     with pytest.raises(strategy_store.StrategyStoreError):
-        await pb.gate_rows(db, user, 987654321, today)
+        await pb.gate_rows(db, user, 987654321, today, stops=frozenset())

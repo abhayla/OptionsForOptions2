@@ -23,6 +23,8 @@ from ofo.settings import defaults as settings_defaults
 from ofo.strategy.settings_value import IDENTIFIER_PATTERN
 from ofo.timeutil import IST
 
+NO_STOPS: frozenset[str] = frozenset()  # no plan read: the fixed loss-stop set only
+
 ROOT = pathlib.Path(__file__).resolve().parents[2]
 SEED = ROOT / "backend" / "ofo" / "adjustment" / "system_playbooks.json"
 PRE = pathlib.Path(__file__).with_name("pre1a_ic_body.json")  # the 37824fb9 system iron condor, saved before 6a
@@ -70,7 +72,7 @@ def _value(ev: pe.Evaluation, rid: str):
 
 
 def _reading(ev: pe.Evaluation, rid: str):
-    got = gate_readings.readings(ev).get(rid)
+    got = gate_readings.readings(ev, stops=NO_STOPS).get(rid)
     return None if got is None else got[1]
 
 
@@ -84,7 +86,7 @@ def test_core_s02_beyond_015_reads_true_and_names_the_playbook_rolls():
     v = _value(ev, S02)
     assert v.fired is True and v.yes_no is True and v.value == D("0.20") and v.threshold == D("0.15")
     assert v.approaches == ROLLS
-    spec, reading = gate_readings.readings(ev)[S02]
+    spec, reading = gate_readings.readings(ev, stops=NO_STOPS)[S02]
     assert spec.cmp == "bool" and spec.ladder == () and reading is True
     assert [type(r).__name__ for r in _results(ev, S02)] == ["Flag"]
 
@@ -198,7 +200,8 @@ def _run(states) -> list:
     for minute, st in states:
         ev = pe.evaluate(_ic(), st, gap_until=GAP)
         at = datetime.datetime(2026, 10, 28, 11, minute, 1, tzinfo=IST)
-        gs, events = alert_gate.step(gs, now=at, preset=alert_gate.INTRADAY, readings=gate_readings.readings(ev))
+        read = gate_readings.readings(ev, stops=NO_STOPS)
+        gs, events = alert_gate.step(gs, now=at, preset=alert_gate.INTRADAY, readings=read)
         opened += [e for e in events if isinstance(e, alert_gate.Opened)]
     return opened
 

@@ -23,6 +23,8 @@ from ofo.adjustment.cap_scope import cap_exempt, count_capped
 from ofo.adjustment.playbook_eval import Flag
 from test_playbook_eval import body_of, evaluate, load, state_of
 
+NO_STOPS: frozenset[str] = frozenset()  # no plan read: the fixed loss-stop set only
+
 D = Decimal
 DAY = date(2026, 11, 27)
 PRESET = replace(ag.WEEKLY, quiet_until=time(9, 30))  # the weekly preset as the PC ran it: cap 4
@@ -68,7 +70,7 @@ def test_200_evaluator_flags_the_rupee_stop_at_loss_162_5():
     [f] = [r for r in ev.results if r.rule_id == sl.RUPEE_LOSS_RULE]
     assert isinstance(f, Flag) and (f.value, f.threshold, f.cmp) == (D("162.5"), D("100"), "ge")
     assert not [r for r in ev.results if r.rule_id == sl.TRIGGER_MAX_LOSS]  # one loss stop, not a second T-06
-    spec, value = gate_readings.readings(ev)[sl.RUPEE_LOSS_RULE]
+    spec, value = gate_readings.readings(ev, stops=NO_STOPS)[sl.RUPEE_LOSS_RULE]
     assert (spec.cmp, spec.ladder, value) == ("ge", (D("100"),), D("162.5"))
 
 
@@ -92,5 +94,5 @@ def test_automatic_rule_is_still_held_by_the_cap(rule_id):
 
 
 def test_restore_counts_no_plan_exit_against_the_cap():
-    assert count_capped(["T-03", "T-14", "T-01", sl.TRIGGER_TIME_EXIT, sl.RUPEE_LOSS_RULE, "T-06"]) == 3  # noqa: PLR2004
+    assert count_capped(["T-03", "T-14", "T-01", sl.TRIGGER_TIME_EXIT, sl.RUPEE_LOSS_RULE, "T-06"], stops=NO_STOPS) == 3  # noqa: PLR2004
     assert all(cap_exempt(r) for r in (*PLAN_EXITS, sl.TRIGGER_TIME_EXIT))
