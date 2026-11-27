@@ -155,9 +155,6 @@ class PaperMonitor:
                          | {c for a in armed if a.trigger.kind == "conditional_exit"
                             for c in open_ids[a.trigger.strategy_id]})
             found = {c.contract_id: c for c in await tracked_contracts.resolve(session, ids)}
-            open_legs = await triggers.open_legs(session)
-            standing = {c.contract_id: c for c in await tracked_contracts.resolve(
-                session, sorted({cid for cid, _u in open_legs} - set(found)))}
         watch: dict[str, list[_Watch]] = {}
         extra: set[str] = set()
         for a in armed:
@@ -176,7 +173,18 @@ class PaperMonitor:
                 watch.setdefault(key, []).append(_Watch(a, key))
         self._watch = watch
         self._resubscribe(feed, sorted(set(watch) | extra))
-        self._hold_open_legs(feed, self._standing_keys(feed, open_legs, {**standing, **found}))
+        await self._reload_hold(feed, found)  # AFTER the stop watch: a failed hold read never unwatches a stop
+
+    async def _reload_hold(self, feed: LiveFeed | None, found: Mapping[int, tracked_contracts.TrackedContract]) -> None:
+        """Read and apply the standing hold. A failure is logged and the LAST hold is kept (REQ-114, REQ-049)."""
+        try:
+            async with self._sessions() as session:
+                open_legs = await triggers.open_legs(session)
+                standing = {c.contract_id: c for c in await tracked_contracts.resolve(
+                    session, sorted({cid for cid, _u in open_legs} - set(found)))}
+            self._hold_open_legs(feed, self._standing_keys(feed, open_legs, {**standing, **found}))
+        except Exception:  # noqa: BLE001 - the stops are already watched; the hold is retried at the next reload
+            log.exception("paper monitor: the standing hold of open legs could not be refreshed; keeping the last hold")
 
     def _resubscribe(self, feed: LiveFeed | None, keys: list[str]) -> None:
         old_feed, old = self._feed, self._handle
@@ -209,17 +217,24 @@ class PaperMonitor:
         New holds first, old after: no vendor unsubscribe/resubscribe. An id the feed cannot hold (an expired
         contract has no token) is skipped on its own; it never drops the others."""
         old_feed, old = self._standing_feed, self._standing
-        self._standing_feed, self._standing = feed, []
-        if feed is not None and keys:
-            try:
-                self._standing = [feed.fanout.subscribe(_no_listener, keys)]
-            except KeyError:
-                for key in keys:
-                    with contextlib.suppress(KeyError):
-                        self._standing.append(feed.fanout.subscribe(_no_listener, [key]))
+        new: list[int] = []
+        try:
+            if feed is not None and keys:
+                try:
+                    new = [feed.fanout.subscribe(_no_listener, keys, max_queue=1)]  # never drained: keep one quote
+                except KeyError:
+                    for key in keys:
+                        with contextlib.suppress(KeyError):
+                            new.append(feed.fanout.subscribe(_no_listener, [key], max_queue=1))
+        except BaseException:
+            for handle in new:  # a half-made new set is released; the OLD hold stays as it was
+                feed.fanout.unsubscribe(handle)  # type: ignore[union-attr]
+            raise
+        self._standing_feed, self._standing = feed, new
         if old_feed is not None:
             for handle in old:
-                old_feed.fanout.unsubscribe(handle)
+                with contextlib.suppress(Exception):
+                    old_feed.fanout.unsubscribe(handle)
 
     def close(self) -> None:
         self._resubscribe(None, [])
