@@ -1416,8 +1416,8 @@ async def place_paper_orders(strategy_id: int, body: PaperOrdersIn,  # noqa: PLR
         from ofo_app.adjustment_readers import record_basket_facts  # noqa: PLC0415 - the readers import the routes
         await record_basket_facts(db, ctx, feed, strategy_id, (
             stored.saved.definition.underlying, book, placed_at,
-            {o.contract_id: exit_prices.get(i, o.price) for i, o in enumerate(body.orders)}),
-            body.prices_not_live_confirmed)
+            {o.contract_id: exit_prices.get(i, o.price) for i, o in enumerate(body.orders)},
+            body.prices_not_live_confirmed))
         if body.held is not None and len(book) != len(body.orders):  # the store's own first-fill view, under its lock
             raise StrategyRefused("held_entry_not_a_first_open_basket")  # rolled back below: nothing stored
         await _record_held(db, strategy_id, body.held)  # ADR-292: the held row and its first basket: one transaction

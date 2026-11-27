@@ -1,6 +1,7 @@
-"""B1 (27 Nov 2026): a paused paper book's "as of" is the time of the last quote the feed held for the leg (REQ-109 AC-5,
-ADR-330 (36): the label and the figure agree), never an order's time. When the feed stopped, the snapshot keeps the ended
-subscription's last quote time (``ended_times``); with no time known at all the answer is None (the screen then omits the clause).
+"""B1 (27 Nov 2026): a paused paper book's "as of" is the time of the last quote the feed held for the leg
+(REQ-109 AC-5, ADR-330 (36): the label and the figure agree), never an order's time. When the feed stopped, the
+snapshot keeps the ended subscription's last quote time (``ended_times``); with no time known at all the answer is
+None (the screen then omits the clause).
 Class: every PAUSED paper book (list, single, totals strip read ``paused_as_of``)."""
 from __future__ import annotations
 

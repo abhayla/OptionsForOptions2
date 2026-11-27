@@ -920,7 +920,8 @@ async def _index_spot_held(ctx: Any, feed: Any, underlying: str, confirmed: bool
     socket subscribed, so an index nobody holds is held on the shared fan-out until its first quote or ``LEG_WAIT_S``
     passes (``read_door.read_quotes``). Answer states: held / quoted within the wait -> the spot; no
     context / not connected / never quoted / not a positive price -> ``StrategyRefused`` (nothing stored), unless the
-    user confirmed the not-live line (``confirmed``, ADR-330 (28)): then the last held value (``_index_value_not_live``)."""
+    user confirmed the not-live line (``confirmed``, ADR-330 (28)): then the last held value
+    (``_index_value_not_live``)."""
     from ofo_app.chain_push import index_id_of  # noqa: PLC0415 - chain_push imports the app layer
     from ofo_app.strategy_refused import StrategyRefused  # noqa: PLC0415 - write path only
 
@@ -949,10 +950,10 @@ async def _index_spot_held(ctx: Any, feed: Any, underlying: str, confirmed: bool
 
 
 async def record_basket_facts(db: Any, ctx: Any, feed: Any, strategy_id: int,
-                              basket: tuple[str, Any, Any, Mapping[int, Decimal]],
-                              prices_not_live_confirmed: bool = False) -> None:
+                              basket: tuple[str, Any, Any, Mapping[int, Decimal], bool]) -> None:
     """ADR-283 (1): stores the market state at this basket's fill, in the fill's transaction. ``basket`` = (underlying,
-    every order of the book after the fill, the order clock, contract id -> this basket's fill price). Basket number =
+    every order of the book after the fill, the order clock, contract id -> this basket's fill price, whether the user
+    confirmed the "prices are not live" line, ADR-330 (28)). Basket number =
     the adjustments made so far after it (ADR-255, ``history_count``; 0 = the entry). Answer states: not connected / no
     positive spot (after the index is held, ``_index_spot_held``) -> REFUSED, nothing stored; the count unreadable ->
     nothing stored (the checks keep the newest starting point); no open leg (the basket closed the strategy) ->
@@ -963,7 +964,7 @@ async def record_basket_facts(db: Any, ctx: Any, feed: Any, strategy_id: int,
     from ofo_app import entry_facts_store  # noqa: PLC0415 - write path only
     from ofo_app.routes.tracking import _snapshot  # noqa: PLC0415 - the paper screen's own market read
 
-    underlying, book, clock, filled = basket
+    underlying, book, clock, filled, prices_not_live_confirmed = basket
     found = {c.contract_id: c for c in await tracked_contracts.resolve(db, sorted({o.order.contract_id
                                                                                  for o in book}))}
 
@@ -976,7 +977,8 @@ async def record_basket_facts(db: Any, ctx: Any, feed: Any, strategy_id: int,
                                                                            {}).positions if p.net_quantity != 0]
     if used is None or not open_ or not all(is_option(cid) for cid, _ in open_):
         return
-    spot = await _index_spot_held(ctx, feed, underlying, prices_not_live_confirmed)  # after the no-facts returns: an exit needs no spot
+    # after the no-facts returns: an exit needs no spot
+    spot = await _index_spot_held(ctx, feed, underlying, prices_not_live_confirmed)
     kept = [cid for cid, _ in open_ if cid not in filled and found[cid].identity is not None]
     prices: dict[int, Decimal | None] = dict(filled)
     if kept:
