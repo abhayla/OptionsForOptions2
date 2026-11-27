@@ -196,7 +196,6 @@ import { EXITED_NOW_LABEL, HELD_TO_EXPIRY_LABEL } from '@/lib/paperDrafts'
 import { PAPER_STATE, addToPaper, paperPostOutcome } from '@/lib/tracking'
 import { useRouter } from 'vue-router'
 import { signOf } from '@/lib/chartCard'
-const monitoring = useMonitoringState() // Lane Y item 1: one read for every row
 
 // ADR-330 (10): headlineAbove = the Positions page shows the Paper total in its own header, so this list omits its Total P&L figure
 // (and the closed-strategies line that goes with it); it emits `summary` so that header prints the server's figure, never a sum.
@@ -263,6 +262,7 @@ const totals = ref(null)
 const today = ref(null)
 const showClosed = ref(false)
 const shown = computed(() => visibleGroups(items.value ?? [], showClosed.value))
+const monitoring = useMonitoringState(() => shown.value.filter((g) => g.openCount).map((g) => g.id)) // Lane Y item 1: one read for every open row
 const errorParts = ref(null)
 // D-05 r3: a failed or unreadable refresh with a list on screen: figures paused, no exit from old prices
 const { readOk } = usePriceFreshness({ readFailed: errorParts, held: items })

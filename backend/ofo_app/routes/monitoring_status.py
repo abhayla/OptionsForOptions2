@@ -2,9 +2,9 @@
 
 Spec basis: REQ-115 AC-4 / AC-6 (no usable price, or no worker heartbeat for 2 minutes: "Monitoring paused"),
 REQ-049 line 38 (the badge and the grey "Health unknown" dot), REQ-165 lines 52 and 72, domain-model line 71 (the
-strategy state does not change; only its monitoring status shows paused). One computation, ``monitoring_state.read_states``
-(Lane J2); this module only words it. Every sentence is built here from the catalogue; the page prints them.
-
+strategy state does not change; only its monitoring status shows paused). One computation:
+``monitoring_state.read_states`` (Lane J2); this module only words it. Every sentence is built here from the
+catalogue; the page prints them. The page asks for the ids it shows (``?ids=1,2``, at most 50); the answer names each.
 Answer states: active -> no badge, ``since_text`` only; paused -> badge, health dot word, reason sentence, since;
 a running trade the worker does not name, a heartbeat older than 2 minutes, an unreadable snapshot -> paused, "Not being
 watched"; an unknown status or reason code -> paused (fail closed, never healthy); no running trades -> empty list.
@@ -21,12 +21,11 @@ from fastapi import APIRouter, Depends
 from ofo.errors.explanations import render_explanation
 from ofo.timeutil import IST
 
-from ofo_app import feed_bus, feed_mode, monitoring_state as ms
-from ofo_app import settings_store, strategy_store as store
+from ofo_app import feed_bus, feed_mode, settings_store
+from ofo_app import monitoring_state as ms
 from ofo_app.api_models import ApiModel, CatalogueText, Identifier
 from ofo_app.db import get_db
 from ofo_app.errors import ClosedRoute
-from ofo_app.routes.broker import current_user_ref
 
 log = logging.getLogger(__name__)
 router = APIRouter(route_class=ClosedRoute)
@@ -56,10 +55,11 @@ def compose(found: Mapping[int, ms.Entry], ids: list[int], now: datetime.datetim
     for sid in ids:
         e = found.get(sid) or ms.Entry(sid, ms.PAUSED, ms.NOT_LISTED, "", None)
         since = e.since.astimezone(IST) if e.since is not None else None
-        since_text = None if since is None else render_explanation("monitoring_since", time=since.time().replace(second=0, microsecond=0))
+        clock = None if since is None else since.time().replace(second=0, microsecond=0)
+        since_text = None if clock is None else render_explanation("monitoring_since", time=clock)
         if e.status == ms.ACTIVE:
-            out.append(MonitoringOut(strategy_id=sid, watch_state="active", reason="active", badge_text=None, health_text=None,
-                                     reason_text=None, since_at=since, since_text=since_text))
+            out.append(MonitoringOut(strategy_id=sid, watch_state="active", reason="active", badge_text=None,
+                                     health_text=None, reason_text=None, since_at=since, since_text=since_text))
             continue
         code = e.reason if e.reason in _WHY else "unknown"
         reason = e.reason if _SAFE.fullmatch(e.reason or "") else "unknown"
@@ -89,10 +89,23 @@ async def get_reader() -> Reader:
     return read_found
 
 
+MAX_IDS = 50
+
+
+def parse_ids(raw: str) -> list[int]:
+    """The asked ids: positive integers only, no repeats, at most MAX_IDS; anything else is dropped (the page treats an
+    id the answer does not name as paused)."""
+    out: list[int] = []
+    for part in raw.split(","):
+        part = part.strip()
+        if part.isascii() and part.isdigit() and int(part) > 0 and int(part) not in out:
+            out.append(int(part))
+    return sorted(out)[:MAX_IDS]
+
+
 @router.get("/api/monitoring-state", response_model=MonitoringListOut)
-async def monitoring_state(db: Annotated[Any, Depends(get_db)], user_ref: Annotated[str, Depends(current_user_ref)],
-                           reader: Annotated[Reader, Depends(get_reader)]) -> MonitoringListOut:
+async def monitoring_state(db: Annotated[Any, Depends(get_db)], reader: Annotated[Reader, Depends(get_reader)],
+                           ids: str = "") -> MonitoringListOut:
+    ask = parse_ids(ids)
     now = await settings_store.database_now(db)
-    rows = await store.list_strategies(db, user_ref)
-    ids = sorted(r.id for r in rows if store.status_word(r.status, r.has_order) == "Running")
-    return MonitoringListOut(strategies=compose(await reader(ids, now), ids, now) if ids else [])
+    return MonitoringListOut(strategies=compose(await reader(ask, now), ask, now) if ask else [])

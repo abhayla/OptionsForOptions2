@@ -11,7 +11,8 @@ import asyncio
 import datetime
 
 from ofo.timeutil import IST
-from ofo_app import feed_bus, monitoring_state as ms
+from ofo_app import feed_bus
+from ofo_app import monitoring_state as ms
 from ofo_app.routes import monitoring_status as route
 
 NOW = datetime.datetime(2026, 11, 27, 11, 0, tzinfo=IST)
@@ -44,7 +45,8 @@ def test_core_no_worker_record_for_two_minutes_reads_paused_with_a_reason():
 def test_no_heartbeat_at_all_and_unreadable_store_are_paused():
     for client in (_Client(), _Client(boom=True)):
         out = route.compose(_read(client, [1, 2]), [1, 2], NOW)
-        assert {o.watch_state for o in out} == {"paused"} and len(out) == 2
+        assert {o.watch_state for o in out} == {"paused"}
+        assert len(out) == len([1, 2])
 
 
 def test_fresh_worker_names_each_strategy_and_active_shows_no_badge():
@@ -76,3 +78,9 @@ def test_unknown_status_or_reason_fails_closed_and_empty_is_empty():
 def test_a_non_ascii_reason_code_never_fails_the_whole_reply():
     (o,) = route.compose({3: ms.Entry(3, ms.PAUSED, "stale\u00e9", "", None)}, [3], NOW)
     assert (o.watch_state, o.reason) == ("paused", "unknown")
+
+
+def test_asked_ids_are_cleaned_and_capped():
+    assert route.parse_ids("3, 1,x,-2,0,1,\u0663,") == [1, 3]
+    assert route.parse_ids("") == []
+    assert len(route.parse_ids(",".join(str(i) for i in range(1, 80)))) == route.MAX_IDS

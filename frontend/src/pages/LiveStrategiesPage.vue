@@ -15,7 +15,6 @@ import { useMonitoringState } from '@/lib/monitoringState'
 import { noteShownDate } from '@/lib/displayFormat'
 
 const MAX_CARDS = 20
-const monitoring = useMonitoringState() // Lane Y item 1: is the worker watching each running trade (one read)
 const pnl = usePaperPnl() // D-41: one read of the Positions page's paper list; each card shows its own figure
 const RELEASE_MS = 8000 // a card that gives no answer in this time lets the next one start
 const state = ref('loading') // loading | ready | error
@@ -30,6 +29,7 @@ const shown = computed(() => [...followed.value].sort((a, b) => stamp(b) - stamp
 // Two groups, newest first inside each; an empty group is not shown. Start order is the order on screen.
 const executed = computed(() => shown.value.filter(isRunning))
 const drafts = computed(() => shown.value.filter((s) => !isRunning(s)))
+const monitoring = useMonitoringState(() => executed.value.map((s) => s.id)) // Lane Y item 1: is the worker watching each running trade (one read)
 const queue = computed(() => [...executed.value, ...drafts.value])
 const startIndex = (s) => queue.value.indexOf(s)
 // Cards start one at a time (the database role allows few connections): card i may start once i <= current.

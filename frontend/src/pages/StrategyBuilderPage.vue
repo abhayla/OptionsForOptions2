@@ -520,8 +520,8 @@ const exitGate = usePaperExit({ readFailed: paperReadFailed, held: () => paper.v
 const exitBlocked = exitGate.blocked
 const exitOrigin = ref(false) // the pending edits came from Exit all or a per-leg Exit; stays true until they are posted or discarded (ADR-328 (4))
 // P10: the strategy the Plan watch reads: the saved id, or in Drafts Mode (savedId stays null there) the paper book's own integer id
-const monitoring = useMonitoringState() // Lane Y item 1: one read; shown for a trade with a paper book
 const planWatchId = computed(() => (Number.isInteger(savedId.value) ? savedId.value : Number.isInteger(paper.value?.book?.strategy_id) ? paper.value.book.strategy_id : null))
+const monitoring = useMonitoringState(() => (planWatchId.value ? [planWatchId.value] : [])) // Lane Y item 1: one read
 const paperTotal = computed(() => (paper.value ? paperPnlBlock(paper.value.book, paperBookFailed.value) : null))
 function reviewPending(fromExit = false, only = null, info = null) { // the "Review and add" button passes its click event: only `true` marks an Exit; `only`: ADR-330 (49), a leg's own exit rows
   const shown = only ?? pendingOrders.value

@@ -1,7 +1,7 @@
 // Lane Y item 1 (REQ-115 AC-4/AC-6, REQ-049 line 38, REQ-165, domain-model line 71; ADR-330 (58)): whether the worker is watching a
 // running trade. ONE read of GET /monitoring-state; every sentence comes from the server. Nothing is decided here except
 // fail closed: a read that failed, an id the answer does not name, or a status other than "active" is NOT healthy.
-import { computed, onBeforeUnmount, onMounted, ref } from 'vue'
+import { computed, onBeforeUnmount, onMounted, ref, watch } from 'vue'
 import api from '@/services/api'
 
 export const MONITORING_REFRESH_MS = 30000
@@ -29,7 +29,9 @@ export function entryFor(map, id, failed = false) {
 }
 
 /** The page's one read, repeated on a timer; `loaded` is false until the first answer (nothing is shown before it). */
-export function useMonitoringState() {
+export function useMonitoringState(idsOf) {
+  const ids = computed(() => [...new Set(idsOf())].filter((i) => Number.isInteger(i)).sort((a, b) => a - b))
+  const inflight = ref(0)
   const map = ref(null)
   const failed = ref(false)
   const loaded = ref(false)
@@ -37,18 +39,22 @@ export function useMonitoringState() {
   let timer = null
   let gone = false
   const refresh = async () => {
+    if (ids.value.length === 0) { map.value = new Map(); failed.value = false; okAt.value = Date.now(); loaded.value = true; return }
+    inflight.value++
     try {
-      const m = readMonitoring((await api.get('/monitoring-state')).data)
+      const m = readMonitoring((await api.get('/monitoring-state', { params: { ids: ids.value.join(',') } })).data)
       if (gone) return
       if (m === null) failed.value = true
       else { map.value = m; failed.value = false; okAt.value = Date.now() }
     } catch {
       if (!gone) failed.value = true
     }
+    inflight.value--
     loaded.value = true
   }
+  watch(() => ids.value.join(','), () => { if (loaded.value) refresh() })
   onMounted(() => { refresh(); timer = setInterval(refresh, MONITORING_REFRESH_MS) })
   onBeforeUnmount(() => { gone = true; clearInterval(timer) })
-  const entryOf = (id) => (loaded.value ? entryFor(map.value, id, failed.value || map.value === null || Date.now() - okAt.value > MONITORING_MAX_AGE_MS) : null)
+  const entryOf = (id) => (loaded.value && !(inflight.value > 0 && !map.value?.has(id) && !failed.value) ? entryFor(map.value, id, failed.value || map.value === null || Date.now() - okAt.value > MONITORING_MAX_AGE_MS) : null)
   return { loaded, failed, entryOf, refresh, entries: computed(() => map.value) }
 }
