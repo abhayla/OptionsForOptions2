@@ -25,10 +25,7 @@ import pytest
 pytestmark = pytest.mark.real_preferences  # the true database read, not the conftest defaults
 
 LOSS_STOP = {"loss_stop_rupees": "1000"}
-# Measured 27 Nov on tree 206a9f0 (the PC's tree): cases (a), (b), (d), (e), (f), (g), (j) failed there (the plan's
-# own exits one candle late, or held by the daily cap). The fix (hotfix/loss-stop-1127, hotfix/worker-join-1127) is
-# in this build, so the strict expected-failure marks were deleted in the merge that brought these tests (Lane M3:
-# all 7 XPASSed).
+# The marks of Q3 (cases fixed by loss-stop-1127 / worker-join-1127) are deleted here: this tree carries both fixes.
 DAILY_CAP = 4  # the weekly style's daily cap of automatic alerts
 RELOAD_SECONDS = 20  # the worker process rebuilds its monitors from the database about every 10 s
 
@@ -253,3 +250,38 @@ async def test_j_exiting_the_last_leg_closes_the_trades_open_alerts_as_closed_by
     assert rows[0]["outcome"] != "open", ("the alert is still open", rows)
     assert rows[0]["answer"] == "closed_by_system", rows
     assert await c.orders_count() == c.orders_at_start + len(exits), "only the test's exit orders are on the trade"
+
+
+SAVE_TO_ALERT_SECONDS = 15  # J3 item 3: a plan saved with its stop already crossed alerts within this
+
+
+async def test_k_a_plan_saved_with_its_stop_already_crossed_alerts_within_one_cycle_of_the_save(chain_for, monkeypatch):
+    """(k) ADR-330 (47), J3 item 3: the loss is Rs 4,608 and the plan has no stop; the worker is NOT told the plan
+    changed. The Rs 1,000 stop is saved: the row comes within SAVE_TO_ALERT_SECONDS of the save, whatever the phase of
+    the worker's re-read (before: about 33 s worst case)."""
+    c = await chain_for("PATH-90")
+    await c.seed(monkeypatch, plan=False)
+    await c.type_plan(guards={})
+    c.start_worker()
+    await c.go_to(0)
+    await c.go_to(3)  # the loss is crossed; no stop in the plan
+    assert await c.plan_alerts() == []
+    await c.type_plan(guards=LOSS_STOP)
+    assert await c.wait_for_alert("plan_rupee_loss", SAVE_TO_ALERT_SECONDS), (
+        f"no row {SAVE_TO_ALERT_SECONDS} s after the save\n{c.log()[-1200:]}")
+    only(await c.alerts("plan_rupee_loss"), "plan.rupee_loss", "plan_rupee_loss", "1000")
+
+
+async def test_l_the_pcs_207_plan_shape_rupee_stop_and_a_per_stage_percent_row_raises_its_alert(chain_for, monkeypatch):
+    """(l) The PC's real T1-06 of 27 Nov (PR #722, #207): plan accepted 13:13:33, one second after the entry; guards
+    loss_stop_rupees "80" AND T-06 weekly ["50", "5", "40"] (Middle stage 5), the whole rule list on; the loss was past
+    both levels from about 13:14 and no alert row came in 40 minutes. Here: PATH-96 (entered already at a loss), the
+    same two stops, the whole rule list: the rupee row is raised once the entry period (5 minutes) is over."""
+    c = await chain_for("PATH-96")
+    await c.seed(monkeypatch, plan=False, pin="weekly")
+    await c.type_plan(guards={"loss_stop_rupees": "80"}, t06_stages=["50", "5", "40"], keep=None)
+    c.start_worker()
+    await c.go_to(0)
+    await c.go_to(6)  # 11:46: past the 5-minute entry period
+    rows = await c.alert_at_once("plan_rupee_loss", next_frame=7)
+    only(rows, "plan.rupee_loss", "plan_rupee_loss", "80")
