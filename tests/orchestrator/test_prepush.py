@@ -1108,8 +1108,15 @@ def test_a_keyboard_interrupt_in_the_main_thread_stops_the_workers_and_writes_no
             return super().__call__(cmd, cwd, log_path)
 
     runner = Interrupting(block={"ci_checks", "domain_tests", "app_tests"})
-    with pytest.raises(KeyboardInterrupt):
-        run_jobs(repo, tmp_path, runner, 4)
+    # A process started in the background from a non-interactive shell inherits SIGINT as ignored and Python then
+    # installs no handler: the signal above would do nothing and this test failed ("DID NOT RAISE") only when the
+    # gate was launched that way. Install the default handler for the test and put the old disposition back.
+    previous = signal.signal(signal.SIGINT, signal.default_int_handler)
+    try:
+        with pytest.raises(KeyboardInterrupt):
+            run_jobs(repo, tmp_path, runner, 4)
+    finally:
+        signal.signal(signal.SIGINT, previous)
     assert runner.stop.is_set()  # the workers saw it and ended (the pool was joined before the exception left)
     assert not prepush.has_marker(str(repo), sha_of(repo))
 

@@ -1,4 +1,4 @@
-STATUS 19:22 | part 1: done, ADOPT (refusal proven; fix-pass = identical tree passed 1089.8 s) | part 2: not started | next push ~19:45 | blocker: none
+STATUS 19:50 | part 1: done, ADOPT (final gate run in progress) | part 2: not started | next push ~20:10 | blocker: none
 
 # Lane G2: gate speed, part 1 (27 Nov 2026)
 
@@ -80,6 +80,17 @@ clean tree. Findings to carry (none blocks adoption):
    known limit of the doc: one gate per host at a time), but also a finding: a load-sensitive 15 s vitest timeout turns a
    busy host into a red gate, and today a red gate restarts from zero. Part 2 item 1 (resume) removes the cost. The
    fix-pass proof on the throwaway is therefore the 1089.8 s PASS on the identical tree plus the next run; it is re-run alone later.
+
+## Finding fixed in this branch: the gate's own test fails when the gate is started in the background
+
+`tests/orchestrator/test_prepush.py::test_a_keyboard_interrupt_in_the_main_thread_stops_the_workers_and_writes_no_marker`
+sends SIGINT to itself. A process started with `&` from a non-interactive shell inherits SIGINT as IGNORED and Python then
+installs no handler, so the test fails ("DID NOT RAISE") depending on how the gate was launched. Seen in 2 of 5 real gate runs
+(the throwaway break run failed it too, next to the planted failure, and the first RESULTS run failed on it alone: TOTAL FAIL
+1035 s, no marker), 0 of 23 direct pytest runs from a normal shell. Reproduced: `(trap '' INT; pytest <test>)` = FAIL, normal
+shell = pass. The runbook tells lanes to run prepush in the background, so this is a trap for every lane. Fix: the test installs
+`signal.default_int_handler` for its duration and restores the old disposition (class fix: every test that sends itself a
+signal; `grep -n "os.kill" tests` shows no other SIGINT sender). After the fix: `(trap '' INT; pytest <test>)` passes.
 
 ## Tasks, models, minutes
 
