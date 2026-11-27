@@ -71,18 +71,19 @@ describe('exit confirm list warning (ADR-256)', () => {
     }
   })
 
-  it('read slow: shows checking, never a false safe state, Confirm enabled; then the answer replaces it', async () => {
+  it('read slow: shows checking, never a false safe state, Confirm disabled while it runs (hotfix 27 Nov); then the answer replaces it and Confirm is enabled (a risk line does not lock it)', async () => {
     let release
     pending = new Promise((resolve) => { release = resolve })
     const w = open()
     await flushPromises()
     expect(t(w, 'paper-exit-checking').text()).toBe(PAPER_EXIT_CHECKING_TEXT)
     notChecked(w)
-    expect(t(w, 'paper-confirm-button').attributes('disabled')).toBeUndefined()
+    expect(t(w, 'paper-confirm-button').attributes('disabled')).toBeDefined()
     release({ data: { state: 'yes', warning_text: WARNING } })
     await flushPromises()
     expect(t(w, 'paper-exit-checking').exists()).toBe(false)
     expect(t(w, 'paper-exit-warning').text()).toBe(WARNING)
+    expect(t(w, 'paper-confirm-button').attributes('disabled')).toBeUndefined()
     w.unmount()
   })
 

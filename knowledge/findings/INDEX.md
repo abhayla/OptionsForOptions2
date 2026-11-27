@@ -2,7 +2,7 @@
 
 # Findings index
 
-195 finding(s), generated from `knowledge/findings/*.json`.
+196 finding(s), generated from `knowledge/findings/*.json`.
 
 | id | class | detection status | other fields |
 |---|---|---|---|
@@ -67,6 +67,7 @@
 | engine-input-chosen-per-caller | When each caller of an engine function chooses the input it passes (which price an IV is solved from, which time, which spot), two screens show two different engine numbers for the same thing at the same instant; each caller's own tests pass because none compares the callers with each other. | unguarded | occurrences, scope, spec_ref |
 | entry-day-from-the-database-clock | A rule that reads 'when the position was entered' from a row's database-default creation time (clock_timestamp) instead of the order's own placed time gives the wrong day for any order written later than it was placed (a seed, an import, a backfill, a replay), and the app role cannot correct it because the column is not writable. | guarded | occurrences, scope, spec_ref |
 | entry-facts-skipped-when-the-api-holds-no-index-quote | Any paper basket (entry or adjustment, held or paper) saved while the API process holds no live quote for the strategy's index - no page with a live socket subscribing that index is open (an API client, a script, a page opened only after the save, a page on another index): ADR-283's fill-time market facts are not stored, so every rule that needs them (entry ATM IV, entry spot) is never checked for that basket, and the save answers 201 as if nothing was missing. | unguarded | occurrences, scope, spec_ref |
+| exit-ends-with-nothing-done-and-nothing-said | An Exit (Positions Paper, Exit > Confirm) ends with no order sent and no sentence naming the leg and the reason: the page closes the dialog itself (failed or unreadable 5 s re-read, legs changed), returns early (busy, stale, empty), or maps an unknown outcome (superseded POST, proxy 408/429) to ready or refused. | guarded | occurrences, scope, spec_ref |
 | fallback-time-claims-missing-data | A 'last updated <time>' label that falls back to the current time when no data was ever received tells the user data arrived when none did; the honest label for never-received data is a different message, not a time. | unguarded | occurrences, scope, spec_ref |
 | fill-not-exactly-once | Any path by which a broker fill changes order or position state that is not exactly-once, keyed by broker identity, and validated against the exact order it claims to fill. A fill store with more than one writer (an order's own cached filled quantity plus a separate position ledger, each updated by different code) drifts the moment either write path has a bug, and a dedupe key narrower than the broker's real uniqueness guarantee (a bare trade id, when the broker only guarantees it unique per order) silently merges two different orders' fills. | unguarded | occurrences, scope, spec_ref |
 | first-live-frame-before-first-price | A live socket that computes and pushes its first frame the moment it connects, before every contract it needs has had its first tick, reports a failure state (here REFUSED: a derived input such as the forward cannot be computed yet) instead of a waiting state; the screen flashes an error on every open and every reconnect, and the error clears by itself one tick later. | unguarded | occurrences, scope, spec_ref |

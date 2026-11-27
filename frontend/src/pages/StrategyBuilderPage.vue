@@ -562,7 +562,7 @@ async function confirmPending(orders) {
     if (outcome === PAPER_STATE.REFUSED) { // 4xx: the server stored nothing (one transaction or none)
       paperError.value = (e?.parts ?? NEUTRAL_PARTS).what_happened || NEUTRAL_PARTS.what_happened
     }
-    paperState.value = outcome === 'superseded' ? PAPER_STATE.READY : outcome // superseded: silent
+    paperState.value = outcome // hotfix 27 Nov: a superseded POST is UNKNOWN (paperPostOutcome), never READY
     // REQ-163: a refused record is dropped, so the next request differs from the refused one; Confirm is ready again (text kept)
     if (outcome === PAPER_STATE.REFUSED && actedSuggestionIds.value.length && ACTED_REFUSED.has(e?.status)) {
       await dropActed() // the server's sentence above says why

@@ -186,7 +186,7 @@ watch(() => props.state, (s) => {
 }, { immediate: true })
 onBeforeUnmount(() => clearTimeout(holdTimer))
 const canConfirm = computed(() => {
-  if (props.busy || props.blocked || (props.notLiveLine && !notLiveAck.value) || !ready.value || props.state === 'placed' || held.value) return false
+  if (props.busy || props.blocked || exitState.value === 'checking' || (props.notLiveLine && !notLiveAck.value) || !ready.value || props.state === 'placed' || held.value) return false
   return props.state !== 'refused' || refusedAt.value === null || snapshot() !== refusedAt.value
 })
 

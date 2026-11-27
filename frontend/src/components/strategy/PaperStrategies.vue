@@ -152,7 +152,7 @@
                 <RouterLink :to="builderLink(g)" class="rounded border border-line px-2 py-1 text-center text-accent" data-testid="paper-open-builder">Open in Builder</RouterLink>
                 <RouterLink v-if="g.statusWord !== 'Completed'" :to="builderLink(g)" class="rounded border border-line px-2 py-1 text-center text-accent" data-testid="paper-add-orders">Add orders</RouterLink>
                 <button v-if="g.openCount" type="button" class="rounded border border-line px-2 py-1" :aria-expanded="!!stopsOpen[g.id]" :data-testid="`stops-open-${g.id}`" @click="stopsOpen = { ...stopsOpen, [g.id]: !stopsOpen[g.id] }">Stops</button>
-                <ExitButton v-if="g.openCount" :blocked="exitGate.blocked.value" :reason="exitGate.reason.value" :extra-disabled="!tickedOpen(g).length" class="rounded border border-line px-2 py-1" :data-testid="`exit-selected-${g.id}`" @click="ask(g, tickedOpen(g))">Exit ({{ tickedOpen(g).length }})</ExitButton>
+                <ExitButton v-if="g.openCount" :blocked="exitGate.blocked.value" :reason="exitGate.reason.value ?? (tickedOpen(g).length ? null : EXIT_TICK_TEXT)" :extra-disabled="!tickedOpen(g).length" class="rounded border border-line px-2 py-1" :data-testid="`exit-selected-${g.id}`" @click="ask(g, tickedOpen(g))">Exit ({{ tickedOpen(g).length }})</ExitButton>
               </div>
             </div>
             <!-- P10 (ADR-330 (13)): the Plan watch of an open strategy; it re-reads on this list's own good-read token -->
@@ -163,7 +163,7 @@
       </template>
     </template>
     <!-- GC-TP step 4b round 2 (REQ-109 AC-4; Sensibull 166-173): every exit goes through the shared confirm list, in lots -->
-    <PaperConfirmDialog :open="!!confirm" :orders="confirm ? confirm.orders : []" :strategy-id="confirm ? confirm.id : ''" :busy="busy" :error="dialogError" :state="dialogState" @confirm="doExit" @cancel="cancelExit" @orderbook="openOrderbook" />
+    <PaperConfirmDialog :open="!!confirm" :orders="confirm ? confirm.orders : []" :strategy-id="confirm ? confirm.id : ''" :busy="busy" :blocked="stale" :error="dialogError || (confirm && stale ? exitEndText('not_live', confirm.names) : '')" :state="dialogState" @confirm="doExit" @cancel="cancelExit" @orderbook="openOrderbook" />
   </section>
 </template>
 
@@ -182,7 +182,7 @@ import PaperConfirmDialog from '@/components/strategy/PaperConfirmDialog.vue'
 import HeldNote from '@/components/strategy/HeldNote.vue'
 import { ALL_CLOSED_TEXT, DECAY_LEFT_TODAY_HEADING, GREEK_COLUMNS, PAPER_NO_FIGURE, PAPER_PAUSED, SHOW_CLOSED_LABEL, exitRowsFor, isOpenGroup, readPaperList, visibleGroups } from '@/lib/paperList'
 import { usePriceFreshness } from '@/lib/priceState'
-import { usePaperExit } from '@/lib/usePaperExit'
+import { EXIT_TICK_TEXT, exitEndText, usePaperExit } from '@/lib/usePaperExit'
 import ExitButton from '@/components/strategy/ExitButton.vue'
 import { usePaperRefresh } from '@/lib/usePaperRefresh'
 import { EXITED_NOW_LABEL, HELD_TO_EXPIRY_LABEL } from '@/lib/paperDrafts'
@@ -296,13 +296,13 @@ function show({ data, token }) {
   const exitId = takeExitParam() ?? takeExitFor()
   const read = readPaperList(data)
   if (read === null) {
-    closeByPage() // like fail(): no open exit from old prices
-    errorParts.value = NEUTRAL_PARTS // an unreadable answer keeps the last loaded list, like a failed read
+    errorParts.value = NEUTRAL_PARTS // the open dialog stays, blocked with the not-live line (hotfix 27 Nov) // an unreadable answer keeps the last loaded list, like a failed read
   } else {
     items.value = read.groups
     totals.value = read.totals
     today.value = read.today
     errorParts.value = null
+    if (dialogState.value === PAPER_STATE.REFUSED) dialogState.value = PAPER_STATE.READY // a good read unlocks a refused, unchanged Confirm; the server's text stays
     goodReadToken.value = token // the token travels with the answer from the read that made it
     settle(items.value)
     openExitFromLink(exitId)
@@ -361,7 +361,6 @@ function openExitFromLink(id) {
 function fail(e) {
   takeExitFor()
   takeExitParam() // one-shot: a failed first read consumes the parameter and opens nothing
-  closeByPage()
   errorParts.value = e?.parts ?? NEUTRAL_PARTS
   loading.value = false
 }
@@ -382,13 +381,22 @@ function settle(now) {
   if (c) {
     const g = now.find((x) => x.id === c.id)
     const stillOpen = g && g.readable && c.units.every((u) => g.positions.some((p) => p.contractId === u.id && p.units === u.units))
-    if (!stillOpen) closeByPage()
+    if (!stillOpen) endExit('changed', c.names)
   }
 }
 watch(confirm, (now, was) => { if (was && !now && props.exitOnlyFor) emit('exit-closed') })
-// N-04 / ADR-330 (17): the ONE way the PAGE closes an Exit dialog by itself (failed or unreadable read, the legs changed elsewhere, a
-// Confirm while paused): it drops the strategy's ticks too, so no staged exit outlives it and comes back enabled when prices return.
-// The user's own Cancel (cancelExit) keeps the ticks (owner u513).
+// Hotfix 27 Nov (ADR-016..019, ADR-328 (4), owner T1-02): endExit is the ONE door of an Exit that ends without an order or with a
+// refusal; it always leaves a sentence naming the leg(s). 'changed': the legs really changed (or the group cannot be read): the dialog
+// closes, the ticks go (N-04, ADR-330 (17): nothing staged outlives it, and it never comes back by itself) and the note says why.
+// 'not_live': a failed read does NOT close an open dialog: it stays, Confirm is blocked, the line is in the dialog (computed from `stale`).
+// 'refused': the server's four parts in the dialog. 'busy': a note. With no dialog open every reason is the note.
+function endExit(reason, legNames, parts = null) {
+  const text = exitEndText(reason, legNames, parts, NEUTRAL_ERROR)
+  if (reason === 'changed') { closeByPage(); exitNote.value = text; return }
+  if (confirm.value && reason === 'refused') { dialogError.value = text; return }
+  if (confirm.value && reason === 'not_live') return // shown in the dialog while stale
+  exitNote.value = text
+}
 function closeByPage() {
   const c = confirm.value
   if (c) ticks.value = { ...ticks.value, [c.id]: [] }
@@ -402,26 +410,32 @@ function cancelExit() {
 
 function ask(g, rows) {
   const orders = exitRowsFor(rows)
-  if (busy.value || stale.value || orders === null || !orders.length) return
+  const names = rows.map((p) => p.name)
+  if (busy.value) return endExit('busy', names)
+  if (stale.value) return endExit('not_live', names)
+  if (orders === null || !orders.length) return endExit('changed', names)
+  exitNote.value = ''
   dialogError.value = ''
   dialogState.value = PAPER_STATE.READY
-  confirm.value = { id: g.id, orders, units: rows.map((p) => ({ id: p.contractId, units: p.units })) }
+  confirm.value = { id: g.id, orders, names, units: rows.map((p) => ({ id: p.contractId, units: p.units })) }
 }
 
 // the dialog posts the rows as edited (lots x lot size, the typed price); a refusal stays in the dialog with the server's text
 async function doExit(orders) {
   const c = confirm.value
-  if (!c || busy.value) return
-  if (stale.value) return closeByPage() // prices paused: no POST; the list's exit reason line says why
+  if (!c) return endExit('changed', [])
+  if (busy.value) return endExit('busy', c.names)
+  if (stale.value) return endExit('not_live', c.names) // prices paused: no POST; the dialog says which leg and why
   busy.value = true
   dialogError.value = ''
   dialogState.value = PAPER_STATE.READY
+  let reply = null
   try {
-    await addToPaper(api, c.id, orders) // no suggestion ids: the body is exactly { orders }
+    reply = await addToPaper(api, c.id, orders) // no suggestion ids: the body is exactly { orders }
   } catch (e) {
     const outcome = paperPostOutcome(e)
-    if (outcome === PAPER_STATE.REFUSED) dialogError.value = e?.parts?.what_happened || NEUTRAL_ERROR // 4xx: nothing stored
-    dialogState.value = outcome === 'superseded' ? PAPER_STATE.READY : outcome
+    dialogState.value = outcome
+    if (outcome === PAPER_STATE.REFUSED) endExit('refused', c.names, e?.parts) // 400/409/422: nothing stored; all four parts + the legs
     busy.value = false
     return
   }
@@ -429,6 +443,7 @@ async function doExit(orders) {
   confirm.value = null
   ticks.value = { ...ticks.value, [c.id]: [] }
   busy.value = false
+  endExit('done', c.names, { orders: reply?.orders, sent: orders.length }) // the done line stays whatever the re-read does (hotfix 27 Nov, T1-02)
   try { refreshNow() } catch { /* the list says its own read failed */ }
 }
 // the unknown-outcome link: the strategy's builder shows its book (Orderbook) read from the server

@@ -236,7 +236,7 @@ describe('Paper tab from GET /paper/strategies (the real reply)', () => {
     await t(w, 'exit-selected-1').trigger('click')
     await t(w, 'paper-confirm-button').trigger('click')
     await flushPromises()
-    expect(t(w, 'paper-error').text()).toBe('Exit is larger than the open quantity')
+    expect(t(w, 'paper-error').text()).toBe('NIFTY 13 Oct 23000 CE: Exit is larger than the open quantity') // hotfix 27 Nov (REQ-065): the leg is named
     expect(has(w, 'paper-confirm')).toBe(true)
   })
 

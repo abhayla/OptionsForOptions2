@@ -387,7 +387,7 @@ async function confirmPaper(orders, held = null) {
   } catch (e) {
     const outcome = paperPostOutcome(e)
     if (outcome === PAPER_STATE.REFUSED) paperError.value = (e?.parts ?? NEUTRAL_PARTS).what_happened || NEUTRAL_PARTS.what_happened // 4xx: nothing stored
-    paperState.value = outcome === 'superseded' ? PAPER_STATE.READY : outcome
+    paperState.value = outcome
     paperBusy.value = false
     return
   }
