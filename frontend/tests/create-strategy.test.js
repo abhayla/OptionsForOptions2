@@ -396,3 +396,19 @@ describe('guided helpers', () => {
     expect(expandTemplate({ legs: [{ ...leg('BUY', 'CE', 0), expiry_slot: 'far' }] }, CONTRACTS, '22812.40')).toBeNull()
   })
 })
+
+// UX-06 (Lane L, 27 Nov): Show strategies is grey with a short reason until it can work (no expiry chosen yet), and plain after.
+describe('UX-06 Show strategies says why it is grey', () => {
+  it('no expiry: disabled with the reason; after the expiry is picked: enabled, no reason', async () => {
+    const { w } = await mountPage()
+    await w.find('[data-testid="path-guided"]').trigger('click')
+    await pick(w, 'objective', 'know')
+    const btn = () => w.find('[data-testid="show-strategies"]')
+    expect(btn().attributes('disabled')).toBeDefined()
+    expect(w.find('[data-testid="show-strategies-why"]').text()).toBe('Choose an expiry first.')
+    await w.find('[data-testid="pick-expiry"]').setValue('2026-10-13')
+    await flushPromises()
+    expect(btn().attributes('disabled')).toBeUndefined()
+    expect(w.find('[data-testid="show-strategies-why"]').exists()).toBe(false)
+  })
+})

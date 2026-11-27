@@ -45,7 +45,7 @@ def _row(booked: str, unbooked: str | None, open_count: int, state: str = "LIVE"
 
 
 def _list_totals(rows: list[dict], expired: int = 0) -> dict:
-    kept = _priced(list(range(len(rows))), rows)
+    kept = _priced(list(range(len(rows))), rows, booked_alone=True)
     closed = sum(1 for s in rows if s["open_count"] == 0 or s["state"] == "EXITED")
     return _totals([rows[i] for i in kept], [_DECAY for _ in kept], expired, len(rows) - len(kept), closed)
 
@@ -101,9 +101,29 @@ def test_the_line_texts_are_the_catalogue_sentences():
     assert _left_out_text(0, 0) is None
 
 
-def test_item4_after_close_settled_results_plus_only_unpriced_running_trades_blank_the_total():
-    """27 Nov after-close sweep: a settled trade (+40 booked) and one settling trade with no price. TODAY the total is
-    blank with "prices not live" (ADR-324 (3); ADR-330 (35) "when none can be priced the total is blank with its
-    reason"). Whether the settled +40 should show alone is an OWNER QUESTION (RESULTS-lane-l): this pins today."""
+def test_item4_after_close_settled_results_with_only_unpriced_running_trades_show_the_booked_result():
+    """ADR-330 (62) (27 Nov evening, owner): no running trade can be priced but a settled trade has a booked result: the
+    total is that booked result (+40), with the closed line and the (35) count line; the settling trade is left out."""
     got = _list_totals([SETTLED(), SETTLING()])
+    assert got["total"] == D("40") and got["booked"] == D("40")
+    assert (got["left_out_count"], got["left_out_text"]) == (1, "1 strategy left out: its price is not live.")
+    assert (got["closed_count"], got["closed_text"]) == (1, "Includes 1 closed strategy.")
+
+
+def test_item4_many_unpriced_running_trades_are_counted_in_the_line():
+    got = _list_totals([SETTLED()] + [SETTLING() for _ in range(9)])
+    assert got["total"] == D("40")
+    assert got["left_out_text"] == "9 strategies left out: their prices are not live."
+
+
+def test_item4_neither_a_priced_trade_nor_a_booked_result_stays_blank_with_its_reason():
+    got = _list_totals([SETTLING()])
     assert got["total"] is None and got["totals_reason"] == "prices_not_live"
+
+
+def test_item4_the_today_total_keeps_its_own_rule_no_running_trade_priced_is_blank():
+    """Opus review F1: the Today block (D-68) has no left-out line on screen, so (62) is the header's only: a closed trade
+    alone does not make Today a figure while a trade opened today has no price."""
+    rows = [SETTLED(), SETTLING()]
+    assert _priced([0, 1], rows) == [0, 1]  # every member kept: the figure is blank with its reason
+    assert _priced([0, 1], rows, booked_alone=True) == [0]

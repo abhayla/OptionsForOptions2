@@ -1071,7 +1071,7 @@ async def list_paper_strategies(db: Annotated[Any, Depends(get_db)],  # noqa: PL
                               "status_word": _paper_word(b.status, figures["positions"]),
                               "open_count": open_legs, "position_count": len(figures["positions"])})
     live = [i for i, s in enumerate(out) if not _expired_open(s)]  # D-40: not expired
-    kept = _priced(live, [out[i] for i in live])  # AC-R06 (ADR-324): the strategies that can be priced
+    kept = _priced(live, [out[i] for i in live], booked_alone=True)  # AC-R06 (ADR-324), ADR-330 (62)
     expired = len(out) - len(live)
     totals = _totals([out[i] for i in kept], [decays[i] for i in kept], expired, len(live) - len(kept),
                      sum(1 for s in out if s["open_count"] == 0 or s["state"] == "EXITED"))  # ADR-330 (15)
@@ -1157,14 +1157,19 @@ def _decay(figures: dict, found: dict[int, tracked_contracts.TrackedContract], s
     return paper_decay.book_decay(snapshot, underlying, contracts)
 
 
-def _priced(keys: Sequence[Any], strategies: Sequence[Mapping[str, Any]]) -> list[Any]:
+def _priced(keys: Sequence[Any], strategies: Sequence[Mapping[str, Any]], booked_alone: bool = False) -> list[Any]:
     """AC-R06 / N-46 (ADR-324 (1) to (3)): the members of ``keys`` (parallel to ``strategies``) that CAN be priced, i.e.
     whose unbooked figure is present (a fully exited or settled book is). A strategy with no live price never pauses
     the whole total: it is left out and counted. When NONE can be priced the figure stays absent with its reason
     (every member kept), as before."""
     priced = [(k, s) for k, s in zip(keys, strategies, strict=True) if s["unbooked"] is not None]
-    # a fully exited book needs no price, so it alone does not make the others "unpriceable": at least one book with an
-    # open leg must be priced, else every member stays and the figure is absent with its reason
+    # ADR-330 (62) (amends (35); the HEADER total of Home and Positions only, ``booked_alone``): a fully exited or settled
+    # book has a booked result and needs no price, so when no running book can be priced the total is that booked result
+    # and the unpriced ones are counted; absent with its reason only when NOTHING can be priced (every member stays).
+    # Without ``booked_alone`` (the Today total, D-68, which has no left-out line on screen) the old rule stands: at
+    # least one book with an open leg must be priced, else the figure is absent with its reason.
+    if booked_alone:
+        return [k for k, _ in priced] if priced else list(keys)
     return [k for k, _ in priced] if any(s["open_count"] for _, s in priced) else list(keys)
 
 
@@ -1224,7 +1229,7 @@ def today_totals(items: Sequence[TodayItem], day: datetime.date) -> dict:
     def on_day(at: datetime.datetime | None) -> bool:
         return at is not None and at.astimezone(paper.IST).date() == day
     chosen = [x for x in items if x.scenario_id is None and (on_day(x.opened) or on_day(x.closed))]
-    kept = _priced(chosen, [x.figures for x in chosen])  # AC-R06: the same rule as the header (ADR-324 (1) to (3))
+    kept = _priced(chosen, [x.figures for x in chosen])  # AC-R06: the header's rule of ADR-324 (1) to (3), not (62): Today has no left-out line on screen
     out = _totals([x.figures for x in kept], [x.decay for x in kept], 0, len(chosen) - len(kept))
     return out | {"count": len(chosen), "empty_text": None if chosen else render_explanation("paper_today_none")}
 
