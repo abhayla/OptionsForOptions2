@@ -7,9 +7,12 @@ answer moves it to acted_on, in the order's own transaction.
 """
 from __future__ import annotations
 
+import asyncio
+
 import test_adjustment_check as check_test
+from ofo_app import strategy_store
 from ofo_app import actionable_alerts, playbook_store
-from test_adjustment_history_why import CREATED, NOT_FOUND, OK, _book, _place, _record
+from test_adjustment_history_why import CREATED, OK, _book, _place, _record
 from test_adjustment_check import _seeded
 from test_adjustment_opportunities import _call, _check, _clean, chk, open_flags
 
@@ -44,15 +47,9 @@ async def test_only_an_accepted_paper_order_stamps_acted_on(app_db_url, monkeypa
     # staged / cancelled basket: nothing was sent to the server, the opportunity reads Open
     assert (await _shown(sid, t01.id))[0] == "open"
 
-    # refused placement (another strategy's record, a missing record): nothing stored, still Open
-    before = len(await _book(app_db_url, sid))
-    status, _ = await _place(app_db_url, sid, [t01.id, 987654321])
-    assert status == NOT_FOUND
-    assert len(await _book(app_db_url, sid)) == before
-    assert (await _shown(sid, t01.id))[0] == "open"  # the stamp rolled back with the refused basket
-
-    # accepted placement: acted_on, linked to the order, in the answer the inbox gives
-    status, out = await _place(app_db_url, sid, [t01.id])
+    # a basket naming an unknown id places (201): the id is skipped, never a refusal (a stale or hand-edited URL must
+    # not block an exit); the known record is stamped and linked with the order
+    status, out = await _place(app_db_url, sid, [t01.id, 987654321])
     assert status == CREATED, out
     new_id = (await _book(app_db_url, sid))[-1].id
     rec = await _record(app_db_url, sid, "T-01")
@@ -76,3 +73,37 @@ async def test_only_an_accepted_paper_order_stamps_acted_on(app_db_url, monkeypa
     t09, t03 = await _record(app_db_url, sid, "T-09"), await _record(app_db_url, sid, "T-03")
     assert (t09.outcome, t09.placed_order_ids) == ("acted_on", (last,))
     assert (t03.outcome, t03.placed_order_ids) == ("lapsed", None)
+
+
+async def _link(engine, sid: int, rec_id: int) -> None:
+    async with engine.begin() as conn:
+        await playbook_store.link_orders(conn, "owner", sid, rec_id, [1], None)
+
+
+async def test_a_record_that_stops_being_open_or_does_not_exist_never_refuses(app_db_url, monkeypatch):
+    sid = await _clean(app_db_url, await _seeded(app_db_url, monkeypatch, "ADJ-02"))
+    await _open_all(app_db_url, sid)
+    t01, t03 = await _record(app_db_url, sid, "T-01"), await _record(app_db_url, sid, "T-03")
+    # unknown id, and another strategy's id: skipped, nothing raised, nothing written
+    await _link(app_db_url, sid, 987654321)
+    await _link(app_db_url, sid + 1000, t01.id)
+    # belt and braces: act_on finds the record no longer open -> skipped, not raised
+    async def not_open(conn, user_ref, suggestion_id):
+        raise strategy_store.StrategyStoreError(playbook_store.SUGGESTION_NOT_OPEN, "x")
+    monkeypatch.setattr(playbook_store, "act_on", not_open)
+    await _link(app_db_url, sid, t01.id)
+    monkeypatch.undo()
+    assert (await _record(app_db_url, sid, "T-01")).outcome == "open"
+    # the race: a Dismiss holds the row open (uncommitted) while the placement links; the placement waits on the lock,
+    # then sees the committed state and skips - it neither raises nor stamps
+    dismisser = await app_db_url.connect()
+    tx = await dismisser.begin()
+    await playbook_store.dismiss(dismisser, "owner", t03.id)
+    placing = asyncio.create_task(_link(app_db_url, sid, t03.id))
+    await asyncio.sleep(0.5)
+    assert not placing.done()  # waits on the dismisser's row lock (the lock, or act_on's own UPDATE, whichever comes first)
+    await tx.commit()
+    await dismisser.close()
+    await asyncio.wait_for(placing, 10)
+    t03 = await _record(app_db_url, sid, "T-03")
+    assert (t03.outcome, t03.placed_order_ids) == ("dismissed", None)
