@@ -11,7 +11,13 @@ Coordinator lines (send_message to "@parent" was refused: `elevated_session_untr
   builds 2028 (the refresh refuses an expiry move of more than 6 days, ADR-059; the test seeder runs on CI only), so the
   PC's row for that contract must read 2028-12-01: SQL below. It is not used in the figure (at-expiry payoff; the
   expiry only groups legs), but it would be used by anything time-based (Greeks, days to expiry, settlement).
-- LANE M PUSH 1: see "Push" below.
+- LANE M PUSH 1: head ffeb6dd, prepush TOTAL PASS (marker written; 10,308 domain + 5,109 app tests, frontend build,
+  lint, unit). PC re-tests: B-N1 stop "Above 102.55" on the 25650 PE reads "... Rs 16,62,316.50 (now Rs 1,732.25).
+  Sold option with less protection: NIFTY 1 Dec 25750 PE."; then run the catalogue SQL (deferred item 1).
+- LANE M ITEM 2 RCA CONFIRMED: `paper_monitor._index_at_fire` quoted the provider's HELD index reading first; the exit
+  is decided on the arriving crossing tick (`on_quote` -> `stops.crossed`). Two readings: the quoted one can sit on
+  the wrong side of the level (#196: "above 25,800.00; NIFTY was at 25,796.75").
+- LANE M PUSH 2: see "Item 2" below.
 
 Spec basis: ADR-008, ADR-003, ADR-330 (6), REQ-151 (contracts named as the screens print them), REQ-100.
 
@@ -100,3 +106,34 @@ and `paper_monitor._max_loss_line` only; stored lines written before the change 
 ## Push
 
 Pre-push gate: `scripts/orchestrator/prepush.py` on the pushed head (result in the commit after the push, or below).
+
+Push 1: ffeb6dd, `scripts/orchestrator/prepush.py` TOTAL PASS 2180 s (the first run, on the same head, failed only
+the three frontend steps: `frontend/node_modules` was missing in this container; `npm ci`, then the second run).
+
+## Item 2: a fired index exit quotes the tick it fired on (coordinator 11:10 IST)
+
+Spec basis: REQ-100, ADR-330 (41) (a fired stop's alert uses the real exit price), D-22 / #734 (the reason carries the
+index value at that moment, "not available" when unknown).
+
+- RCA (one sentence): `_index_at_fire` returned the provider's held index reading (`_index_now`) before the crossing
+  tick, so the decision (the tick in `on_quote`) and the quoted value were two readings; a later tick back across the
+  level, already held while the crossing tick waited in the fan-out queue, was quoted.
+- Fix (7a168c1, 9f2d810): a conditional exit always quotes its own crossing tick (`price.price`; a missing value is
+  "not available", never the held reading). Leg stops: decided on the leg tick, which is already the recorded exit
+  price (`_exit_prices`); their "NIFTY was at" stays the held index as context (review F2: can be later than the leg
+  tick by the queue delay; it is not a level the decision used).
+- Failing first: `tests_app/test_paper_monitor.py::test_m2_*` (two tests: a held reading that differs; the #196 shape,
+  ticks 22,849.95 then 22,850.20 queued before one step, no stand-in). Both fail on the 206a9f0 code ("NIFTY was at
+  22,850.20"), pass with the fix; the file: 32 passed; `test_exit_door.py` 37 passed.
+- Tier A review (Opus, read-only): PASS, three minor; F1 (fallback to the held reading when the price is None) and F3
+  (the two-tick test) taken in 9f2d810; F2 recorded above.
+- Class, every fired reason and the value it quotes: index exit (fixed); leg stop (exit price = deciding tick, index
+  context = held reading); settlement (`paper_settlement.py`: price and reason from the same close); rule alerts
+  (`background.raise_actionable`: the confirming sample's numbers); plan stop / time exit (`routes/plan_watch.py`,
+  Lane J: not touched, listed).
+- To file as deferred issues: (a) store the deciding tick's own time with the value (today the reason holds the value
+  and the order's placed_at the fire clock, not the tick's timestamp): needs a column (migration, tonight) or a reason
+  wording change (owner read); (b) plan stop / time exit reasons (Lane J) to be checked against the same rule;
+  (c) leg stop: whether "NIFTY was at" should be the index reading at the leg tick's time.
+- PC re-test: set a conditional exit "NIFTY above <a level just above spot>" on a paper trade; when it fires, every
+  exit order's reason reads "NIFTY was at <a value at or above the level>". Paper only.
