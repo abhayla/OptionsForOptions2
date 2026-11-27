@@ -62,6 +62,8 @@ class ActiveAlert(ApiModel):
     escalated_at: datetime.datetime | None
     worse_line: CatalogueText | None
     answers: list[AnswerChoice]
+    position_kind: Identifier  # ADR-330 (64): paper | real | none | unknown (the stored fact, never the name)
+    position_kind_text: CatalogueText | None  # the real / unknown row's one line; None for paper
 
 
 class ActiveOut(ApiModel):
@@ -150,6 +152,11 @@ def _worse(a: aa.Alert) -> Any:
         return render_explanation("alert_worse_than_fired_plain", value=now, fired=fired)
 
 
+def offered(codes: tuple[str, ...], position_kind: str) -> tuple[str, ...]:
+    """ADR-330 (64): "Exit the position" is offered for a PAPER position only; real, none and unknown never get it."""
+    return codes if position_kind == "paper" else tuple(c for c in codes if c != "exit")
+
+
 def _label(code: str | None) -> Any:
     return None if code is None else render_explanation("alert_answer_" + code)
 
@@ -174,12 +181,17 @@ async def active_alerts(db: Annotated[Any, Depends(get_db)],
     by_id = await _texts(db, user_ref)
     titles = await alert_title.labels(db, [(a.strategy_id, a.strategy_name) for a in rows])  # ADR-330 (19)(b)
     from ofo.alerts import allowed_answers  # noqa: PLC0415 - stdlib table
+    from ofo_app import position_kind, strategy_store  # noqa: PLC0415 - late: it reaches the order modules
+    kinds = await strategy_store.kinds_of(db, [a.strategy_id for a in rows])
     alerts = [{"id": a.id, "strategy_id": a.strategy_id, "strategy_name": titles[a.strategy_id], "kind": _kind(a),
                "text": _words(a, by_id), "fired_at": a.fired_at, "fired_line": _fired(a),
                "no_longer_true_since": a.no_longer_true_since, "no_longer_true_line": _stopped(a),
                "escalated_at": a.escalated_at, "worse_line": _worse(a),
                "answers": [{"code": c, "label": _label(c)}
-                           for c in (allowed_answers(a.kind) if a.kind else ("exit", "continue"))]} for a in rows]
+                           for c in offered(allowed_answers(a.kind) if a.kind else ("exit", "continue"),
+                                            kinds.get(a.strategy_id, "unknown"))],
+               "position_kind": kinds.get(a.strategy_id, "unknown"),
+               "position_kind_text": position_kind.line_of(kinds.get(a.strategy_id, "unknown"))} for a in rows]
     return ActiveOut.model_validate({"count": len(rows), "alerts": alerts})
 
 

@@ -5146,5 +5146,13 @@
   "explanation:monitoring_why_unknown": {
     "sha256": "39ec88e42e6a29e459c1a8ffb0d100be6a9e8a9401d9da6901f33e9011d17b14",
     "reviewed": "pending owner read"
+  },
+  "explanation:position_kind_real": {
+    "sha256": "983f1493cdc1ce740d036b0baed4f36ed40d2b05d54638bf75aa98fc3f4e1ede",
+    "reviewed": "pending owner read"
+  },
+  "explanation:position_kind_unknown": {
+    "sha256": "09feacbdee304cedfe081b65a797e103f817f887efc5a1bf899121f695ef1109",
+    "reviewed": "pending owner read"
   }
 }

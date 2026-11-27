@@ -22,6 +22,8 @@ Transaction control (commit) stays with the caller.
 
 from __future__ import annotations
 
+import logging
+
 import dataclasses
 from dataclasses import dataclass
 from datetime import datetime
@@ -149,6 +151,27 @@ def status_word(status: str | None, has_order: bool) -> StatusWord:
     if status == "draft":
         return "Running" if has_order else "Draft"
     return "Unknown"
+
+
+_KINDS = text(
+    f"SELECT s.id AS id, {_HAS_ORDER_SQL} AS has_order, {_HAS_PAPER_SQL} AS has_paper_order, {_HELD_SQL} AS held "  # noqa: S608
+    "FROM public.strategies AS s WHERE s.id = ANY(:ids)")
+
+
+async def kinds_of(conn: Any, strategy_ids: list[int]) -> dict[int, str]:
+    """ADR-330 (64): strategy id -> position kind (position_kind.kind_of) for the asked ids, one read. An id not found,
+    or a read that fails, is "unknown" (never guessed as paper)."""
+    from ofo_app import position_kind  # noqa: PLC0415 - one rule, defined beside the sentence
+    ids = sorted(set(strategy_ids))
+    if not ids:
+        return {}
+    out = dict.fromkeys(ids, position_kind.UNKNOWN)
+    try:
+        for r in (await conn.execute(_KINDS, {"ids": ids})).all():
+            out[int(r.id)] = position_kind.kind_of(r.has_order, r.has_paper_order, r.held)
+    except Exception:  # noqa: BLE001 - fail closed: every asked id stays unknown
+        logging.getLogger(__name__).warning("position kinds could not be read", exc_info=True)
+    return out
 
 
 async def has_order(conn: Any, strategy_id: int) -> bool:

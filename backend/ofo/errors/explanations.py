@@ -2520,6 +2520,9 @@ _EXPLANATIONS: tuple[ExplanationTemplate, ...] = (
     # GC-IC1 4a (A-38): the user's pause of adjustment checks until a time (pending owner read)
     ExplanationTemplate("monitor_pause_label", "rule", "Pause adjustment checks"),
     # Lane Y item 1: the monitoring badge and its reasons (REQ-115 AC-4/AC-6, REQ-049); pending owner read
+    # ADR-330 (64): what a real position's row offers while real order placing is on hold; pending owner read
+    ExplanationTemplate("position_kind_real", "rule", "Real position: exit and protect it in Kite. Stops and alerts here cover paper trades only."),
+    ExplanationTemplate("position_kind_unknown", "rule", "Cannot tell whether this is a real or a paper position, so Exit and Stops are not shown. Check it in Kite."),
     ExplanationTemplate("monitoring_badge", "rule", "Monitoring paused"),
     ExplanationTemplate("monitoring_health_unknown", "rule", "Health unknown"),
     ExplanationTemplate("monitoring_since", "rule", "Since {time}", {"time": ClockHm}),

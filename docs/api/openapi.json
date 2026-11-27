@@ -61,6 +61,20 @@
             ],
             "title": "No Longer True Since"
           },
+          "position_kind": {
+            "pattern": "^[A-Za-z0-9_\\-.]{1,64}$",
+            "title": "Position Kind",
+            "type": "string"
+          },
+          "position_kind_text": {
+            "anyOf": [
+              {},
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Position Kind Text"
+          },
           "strategy_id": {
             "title": "Strategy Id",
             "type": "integer"
@@ -93,7 +107,9 @@
           "no_longer_true_line",
           "escalated_at",
           "worse_line",
-          "answers"
+          "answers",
+          "position_kind",
+          "position_kind_text"
         ],
         "title": "ActiveAlert",
         "type": "object"
@@ -19430,6 +19446,27 @@
               }
             ],
             "title": "Open Opportunities Text"
+          },
+          "position_kind": {
+            "anyOf": [
+              {
+                "pattern": "^[A-Za-z0-9_\\-.]{1,64}$",
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Position Kind"
+          },
+          "position_kind_text": {
+            "anyOf": [
+              {},
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Position Kind Text"
           },
           "revision": {
             "title": "Revision",

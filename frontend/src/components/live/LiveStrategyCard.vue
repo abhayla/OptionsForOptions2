@@ -22,6 +22,7 @@ import { healthSentence } from '@/lib/dataHealthText'
 import { ENTRY_PRICE_LABEL } from '@/lib/chartCard'
 import { useStrategyLive } from '@/composables/useStrategyLive'
 import MonitoringBadge from '@/components/common/MonitoringBadge.vue'
+import { KIND_UNREAD_LINE } from '@/lib/positionKind'
 
 // `start` false = waiting in the page's start queue (one card loads at a time); `settled` is emitted once, when this card
 // got its first answer, failed, or has nothing to follow - the page then starts the next card.
@@ -197,8 +198,11 @@ const hasEntry = computed(() => (data.value?.legs ?? []).some((l) => (l.planned_
 // ADR-330 (19): name, then (#id, expiry) from the list reply's first leg
 const listLabel = computed(() => strategyListLabel({ name: props.strategy.name, id: props.strategy.id, expiries: [props.strategy.first_leg?.expiry], fallback: `Draft ${props.strategy.id}` }))
 const openLink = computed(() => (state.value === 'error' ? null : builderLinkOf(props.strategy.id)))
-const exitLink = computed(() => (state.value !== 'error' && isRunning(props.strategy) ? paperExitLinkOf(props.strategy.id) : null))
-const stopsLink = computed(() => (state.value !== 'error' && isRunning(props.strategy) ? paperStopsLinkOf(props.strategy.id) : null))
+// ADR-330 (64): Exit and Stops only on a PAPER position; real and unreadable show the server's one line instead (fail closed)
+const paperPosition = computed(() => props.strategy.position_kind === 'paper')
+const kindLine = computed(() => (isRunning(props.strategy) && !paperPosition.value && props.strategy.position_kind !== 'none' ? props.strategy.position_kind_text || KIND_UNREAD_LINE : null))
+const exitLink = computed(() => (state.value !== 'error' && isRunning(props.strategy) && paperPosition.value ? paperExitLinkOf(props.strategy.id) : null))
+const stopsLink = computed(() => (state.value !== 'error' && isRunning(props.strategy) && paperPosition.value ? paperStopsLinkOf(props.strategy.id) : null))
 const entryHead = computed(() => (isRunning(props.strategy) ? ENTRY_PRICE_LABEL : 'Planned entry'))
 const legName = (leg) => nameFromPool(leg, [], data.value?.underlying) // never the raw trading symbol (issue 297, REQ-151)
 // REQ-049 AC-4: any health other than `available` (also a missing one) is marked with its word.
@@ -228,6 +232,7 @@ class="rounded border border-line bg-surface p-4" data-testid="live-strategy-car
     </header>
 
     <!-- D-41: the trade's P&L from the Positions page's function, in every state of the card (the page reads it once for all cards) -->
+    <p v-if="kindLine" class="mt-2 text-sm" data-testid="live-position-kind-line">{{ kindLine }}</p>
     <PnlLine v-if="isRunning(strategy)" class="mt-2" :cell="pnl" testid="live-pnl" />
     <p v-if="legsAsSaved" class="mt-2 text-xs text-ink-muted" data-testid="live-legs-as-saved">{{ CARD_LEGS_AS_SAVED_TEXT }}</p>
     <p v-if="live.reconnecting.value" class="mt-2 text-sm font-medium" data-testid="live-reconnecting">{{ live.reconnectingText.value }}</p>
