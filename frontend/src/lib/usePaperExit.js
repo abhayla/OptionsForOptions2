@@ -13,6 +13,7 @@ import { CHANGED_ELSEWHERE_EXIT, NOT_LIVE_EXIT, usePriceFreshness } from '@/lib/
 // EXIT_BUSY_TEXT is new wording, pending owner read (REQ-109 AC-5); EXIT_TICK_TEXT likewise.
 export const EXIT_BUSY_TEXT = 'An exit is already being sent for this strategy.'
 export const EXIT_DONE_TEXT = 'Exit placed on paper' // pending owner read (hotfix 27 Nov): the one "done" line of an Exit
+export const EXIT_NOT_STORED_TEXT = 'The exit was not stored. You can try again.' // pending owner read (Lane U r1, REQ-109 AC-5): a good re-read after an unknown outcome shows the legs unchanged
 export const EXIT_TICK_TEXT = 'Tick a leg to exit.'
 const PART_KEYS = ['what_happened', 'impact', 'what_is_blocked', 'next_action']
 export function exitEndText(reason, legNames = [], parts = null, neutral = 'Something went wrong. Please try again.') {
@@ -21,6 +22,7 @@ export function exitEndText(reason, legNames = [], parts = null, neutral = 'Some
   if (reason === 'not_live') sentence = NOT_LIVE_EXIT
   else if (reason === 'changed') sentence = CHANGED_ELSEWHERE_EXIT
   else if (reason === 'busy') sentence = EXIT_BUSY_TEXT
+  else if (reason === 'not_stored') sentence = EXIT_NOT_STORED_TEXT
   else if (reason === 'done') { // 201: the order numbers are the last N ids of the reply's orders (N = rows sent), shown only when the reply has them
     const n = Number.isInteger(parts?.sent) ? parts.sent : 0
     const ids = Array.isArray(parts?.orders) && n > 0 ? parts.orders.slice(-n).map((o) => o?.id).filter((x) => Number.isInteger(x)) : []

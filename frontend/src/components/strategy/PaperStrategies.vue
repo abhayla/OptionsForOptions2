@@ -163,7 +163,7 @@
       </template>
     </template>
     <!-- GC-TP step 4b round 2 (REQ-109 AC-4; Sensibull 166-173): every exit goes through the shared confirm list, in lots -->
-    <PaperConfirmDialog :open="!!confirm" :orders="confirm ? confirm.orders : []" :strategy-id="confirm ? confirm.id : ''" :busy="busy" :blocked="stale" :error="dialogError || (confirm && stale ? exitEndText('not_live', confirm.names) : '')" :state="dialogState" @confirm="doExit" @cancel="cancelExit" @orderbook="openOrderbook" />
+    <PaperConfirmDialog :open="!!confirm" :orders="confirm ? confirm.orders : []" :strategy-id="confirm ? confirm.id : ''" :busy="busy" :blocked="stale" :error="dialogError || (confirm && stale ? exitEndText('not_live', confirm.names) : '')" :state="dialogState" :locked="!!(confirm && unresolved[confirm.id])" @confirm="doExit" @cancel="cancelExit" @orderbook="openOrderbook" />
   </section>
 </template>
 
@@ -172,7 +172,7 @@ import { NAME_FLOOR_CLASS } from '@/lib/nameFloor'
 import { strategyListLabel } from '@/lib/saveDraft'
 import { istClock } from '@/lib/displayFormat'
 import { QUOTE_TIME_UNAVAILABLE_TEXT } from '@/lib/sharedStateText'
-import { computed, onMounted, ref, shallowRef, watch } from 'vue'
+import { computed, onMounted, reactive, ref, shallowRef, watch } from 'vue'
 import api, { NEUTRAL_ERROR, NEUTRAL_PARTS } from '@/services/api'
 import ErrorMessage from '@/components/common/ErrorMessage.vue'
 import PaperStops from '@/components/strategy/PaperStops.vue'
@@ -286,6 +286,12 @@ const canExit = (p) => p.open && p.lots !== null // a quantity that is not whole
 const tickedOpen = (g) => g.positions.filter((p) => canExit(p) && isTicked(g.id, p.contractId))
 
 const confirm = ref(null)
+// Lane U r1 (ADR-016/017/019): the ONE rule of an unknown outcome. `unresolved[strategyId]` = { names, units, seq } is set when a POST
+// ends unknown (503 / no answer / 408 / 429 / superseded). While it stands: Confirm of that strategy is off (never on a timer), a re-opened
+// Exit shows the unknown sentence, and only a good re-read that STARTED after the reply decides it (stored -> done note; legs unchanged
+// -> "not stored", Confirm may be on; anything else -> the usual changed-elsewhere end). `readSeq` counts reads as they start.
+const unresolved = reactive({})
+let readSeq = 0
 const busy = ref(false)
 const dialogError = ref('') // the server's refusal text, shown inside the confirm list
 const dialogState = ref(PAPER_STATE.READY) // fix/paper-dialog-safe: the dialog's answer state (tracking.js PAPER_STATE)
@@ -304,7 +310,7 @@ function show({ data, token }) {
     errorParts.value = null
     if (dialogState.value === PAPER_STATE.REFUSED) dialogState.value = PAPER_STATE.READY // a good read unlocks a refused, unchanged Confirm; the server's text stays
     goodReadToken.value = token // the token travels with the answer from the read that made it
-    settle(items.value)
+    settle(items.value, token?.seq ?? 0)
     openExitFromLink(exitId)
     if (!hadExit && !props.exitOnlyFor) openStopsFromLink()
   }
@@ -367,7 +373,7 @@ function fail(e) {
 
 const { refresh, refreshNow } = usePaperRefresh({
   key: () => 'list',
-  read: async () => { const token = {}; return { data: (await api.get('/paper/strategies')).data, token } },
+  read: async () => { const token = { seq: ++readSeq }; return { data: (await api.get('/paper/strategies')).data, token } },
   onData: show,
   onError: fail,
 })
@@ -376,12 +382,34 @@ onMounted(refresh)
 function onStopsChanged() { try { refreshNow() } catch { /* the list says its own read failed */ } }
 
 // a read that changes the open contracts of the group being exited ends the exit's open question
-function settle(now) {
+function settle(now, seq = 0) {
+  decideUnresolved(now, seq)
   const c = confirm.value
   if (c) {
+    if (busy.value || unresolved[c.id]) return // a difference is the pending exit's own doing: wait for the reply, then decide (Lane U r1)
     const g = now.find((x) => x.id === c.id)
     const stillOpen = g && g.readable && c.units.every((u) => g.positions.some((p) => p.contractId === u.id && p.units === u.units))
     if (!stillOpen) endExit('changed', c.names)
+  }
+}
+// a good read that started after the unknown reply decides it: stored (every exited leg reduced), unchanged, or something else
+function decideUnresolved(now, seq) {
+  for (const id of Object.keys(unresolved)) {
+    const u = unresolved[id]
+    if (seq <= u.seq) continue // started before the reply: it may predate the exit
+    const g = now.find((x) => String(x.id) === id)
+    if (!g || !g.readable) { delete unresolved[id]; continue } // the usual changed-elsewhere end follows
+    const at = (cid) => g.positions.find((p) => p.contractId === cid)?.units ?? 0
+    const unchanged = u.units.every((x) => at(x.id) === x.units)
+    const stored = u.units.every((x) => at(x.id) !== x.units && (x.units > 0 ? at(x.id) >= 0 && at(x.id) < x.units : at(x.id) <= 0 && at(x.id) > x.units)) // units only, never money: held count moved toward zero, same side
+    delete unresolved[id]
+    if (unchanged) {
+      const text = exitEndText('not_stored', u.names, null, NEUTRAL_ERROR)
+      if (confirm.value && String(confirm.value.id) === id) { dialogState.value = PAPER_STATE.READY; dialogError.value = text } else exitNote.value = text
+    } else if (stored) {
+      if (confirm.value && String(confirm.value.id) === id) { ticks.value = { ...ticks.value, [id]: [] }; cancelExit() }
+      exitNote.value = exitEndText('done', u.names, {}, NEUTRAL_ERROR)
+    }
   }
 }
 watch(confirm, (now, was) => { if (was && !now && props.exitOnlyFor) emit('exit-closed') })
@@ -416,7 +444,7 @@ function ask(g, rows) {
   if (orders === null || !orders.length) return endExit('changed', names)
   exitNote.value = ''
   dialogError.value = ''
-  dialogState.value = PAPER_STATE.READY
+  dialogState.value = unresolved[g.id] ? PAPER_STATE.UNKNOWN : PAPER_STATE.READY // an unresolved unknown outcome shows its sentence again, Confirm off
   confirm.value = { id: g.id, orders, names, units: rows.map((p) => ({ id: p.contractId, units: p.units })) }
 }
 
@@ -435,6 +463,7 @@ async function doExit(orders) {
   } catch (e) {
     const outcome = paperPostOutcome(e)
     dialogState.value = outcome
+    if (outcome === PAPER_STATE.UNKNOWN) { unresolved[c.id] = { names: c.names, units: c.units, seq: readSeq } }
     if (outcome === PAPER_STATE.REFUSED) endExit('refused', c.names, e?.parts) // 400/409/422: nothing stored; all four parts + the legs
     busy.value = false
     return

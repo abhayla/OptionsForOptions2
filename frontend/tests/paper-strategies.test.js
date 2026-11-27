@@ -21,7 +21,7 @@ vi.mock('@/services/api', async (importActual) => {
 import { withPriceTexts } from './_priceTexts'
 import PaperStrategies from '@/components/strategy/PaperStrategies.vue'
 import PaperConfirmDialog from '@/components/strategy/PaperConfirmDialog.vue'
-import { readTrackingItem, readTracking, TRACKING_REFRESH_MS, NOT_CONNECTED_TEXT } from '@/lib/tracking'
+import { readTrackingItem, readTracking, TRACKING_REFRESH_MS, NOT_CONNECTED_TEXT, PAPER_UNKNOWN_HOLD_MS } from '@/lib/tracking'
 
 const leg = (i, over = {}) => withPriceTexts({
   leg_index: i, instrument_id: `NSE_FO:${i + 1}`, action: i % 2 ? 'SELL' : 'BUY', instrument: i < 2 ? 'PE' : 'CE',
@@ -387,6 +387,122 @@ describe('PaperStrategies: an Exit never ends with nothing done and nothing said
     await vi.advanceTimersByTimeAsync(TRACKING_REFRESH_MS)
     expect(confirmOff(w)).toBe(false)
     expect(err(w)).toContain('22300')
+  })
+})
+
+describe('PaperStrategies: an UNKNOWN outcome keeps that strategy\'s exit unresolved until a good re-read decides (Lane U round 1, ADR-016/017/019)', () => {
+  const posts = () => calls.filter((c) => c[0] === 'POST')
+  const confirmOff = (w) => t(w, 'paper-confirm-button').attributes('disabled') !== undefined
+  const note = (w) => (has(w, 'paper-exit-link-note') ? t(w, 'paper-exit-link-note').text() : '')
+  const NOT_STORED = 'The exit was not stored. You can try again.'
+  const out0 = list(item({ legs: [leg(0, { exit_price: '120.00', exited_at: '2026-10-28T09:00:00Z', price_state: 'exited', current_price: null }), leg(1), leg(2), leg(3)] }))
+  const hang = () => new Promise(() => {})
+  it('A4: 503, hold passes, Cancel, Exit again: ONE post, Confirm never on, the unknown sentence is shown again (no good re-read yet)', async () => {
+    let n = 0
+    answers['GET /tracking'] = () => (n++ === 0 ? Promise.resolve({ data: REAL_REPLY }) : hang())
+    answers['POST /paper/strategies/48/orders'] = () => Promise.reject({ status: 503, parts: null })
+    const w = await show()
+    await exitLeg(w, 0)
+    await t(w, 'paper-confirm-button').trigger('click')
+    await flushPromises()
+    expect(has(w, 'paper-unknown')).toBe(true)
+    expect(confirmOff(w)).toBe(true)
+    await vi.advanceTimersByTimeAsync(PAPER_UNKNOWN_HOLD_MS + 2 * TRACKING_REFRESH_MS)
+    expect(has(w, 'paper-unknown')).toBe(true)
+    expect(confirmOff(w)).toBe(true)
+    await t(w, 'paper-confirm-button').trigger('click')
+    await t(w, 'paper-cancel').trigger('click')
+    await flushPromises()
+    await exitLeg(w, 0)
+    expect(has(w, 'paper-confirm')).toBe(true)
+    expect(has(w, 'paper-unknown')).toBe(true)
+    expect(confirmOff(w)).toBe(true)
+    await t(w, 'paper-confirm-button').trigger('click')
+    await flushPromises()
+    expect(posts()).toHaveLength(1)
+  })
+  it('a good re-read after the reply that shows the exit stored: the done note, the dialog is gone, no "changed elsewhere"', async () => {
+    let reply = REAL_REPLY
+    answers['GET /tracking'] = () => Promise.resolve({ data: reply })
+    answers['POST /paper/strategies/48/orders'] = () => Promise.reject({ status: 503, parts: null })
+    const w = await show()
+    await exitLeg(w, 0)
+    await t(w, 'paper-confirm-button').trigger('click')
+    await flushPromises()
+    reply = out0
+    await vi.advanceTimersByTimeAsync(TRACKING_REFRESH_MS)
+    expect(has(w, 'paper-confirm')).toBe(false)
+    expect(note(w)).toContain('Exit placed on paper')
+    expect(note(w)).toContain('22300')
+    expect(note(w)).not.toMatch(/elsewhere|changed/i)
+    expect(posts()).toHaveLength(1)
+  })
+  it('a good re-read after the reply that shows the legs unchanged: "not stored" sentence, then Confirm is on and a click posts again', async () => {
+    answers['GET /tracking'] = ok(REAL_REPLY)
+    answers['POST /paper/strategies/48/orders'] = () => Promise.reject({ status: 503, parts: null })
+    const w = await show()
+    await exitLeg(w, 0)
+    await t(w, 'paper-confirm-button').trigger('click')
+    await flushPromises()
+    expect(confirmOff(w)).toBe(true)
+    await vi.advanceTimersByTimeAsync(TRACKING_REFRESH_MS)
+    expect(has(w, 'paper-unknown')).toBe(false)
+    expect(t(w, 'paper-error').text()).toContain(NOT_STORED)
+    expect(confirmOff(w)).toBe(false)
+    await t(w, 'paper-confirm-button').trigger('click')
+    await flushPromises()
+    expect(posts()).toHaveLength(2)
+  })
+  it('a read that started BEFORE the reply cannot clear the unresolved state (it may predate the exit)', async () => {
+    let n = 0
+    let release
+    answers['GET /tracking'] = () => (n++ === 1 ? new Promise((r) => { release = () => r({ data: REAL_REPLY }) }) : Promise.resolve({ data: REAL_REPLY }))
+    answers['POST /paper/strategies/48/orders'] = () => Promise.reject({ status: 503, parts: null })
+    const w = await show()
+    await exitLeg(w, 0)
+    await vi.advanceTimersByTimeAsync(TRACKING_REFRESH_MS) // read #2 starts and hangs
+    await t(w, 'paper-confirm-button').trigger('click')
+    await flushPromises()
+    release() // the old read lands after the reply, legs unchanged
+    await flushPromises()
+    expect(has(w, 'paper-unknown')).toBe(true)
+    expect(confirmOff(w)).toBe(true)
+  })
+  it('A3: a re-read that shows the exit stored lands while the POST is in flight, then 503: not "changed elsewhere"; the next good read says done', async () => {
+    let reply = REAL_REPLY
+    answers['GET /tracking'] = () => Promise.resolve({ data: reply })
+    let fail
+    answers['POST /paper/strategies/48/orders'] = () => new Promise((_, rej) => { fail = () => rej({ status: 503, parts: null }) })
+    const w = await show()
+    await exitLeg(w, 0)
+    await t(w, 'paper-confirm-button').trigger('click')
+    reply = out0
+    await vi.advanceTimersByTimeAsync(TRACKING_REFRESH_MS)
+    expect(has(w, 'paper-confirm')).toBe(true)
+    expect(note(w)).not.toMatch(/elsewhere|changed/i)
+    fail()
+    await flushPromises()
+    expect(has(w, 'paper-unknown')).toBe(true)
+    expect(confirmOff(w)).toBe(true)
+    await vi.advanceTimersByTimeAsync(TRACKING_REFRESH_MS)
+    expect(note(w)).toContain('Exit placed on paper')
+    expect(note(w)).not.toMatch(/elsewhere|changed/i)
+    expect(posts()).toHaveLength(1)
+  })
+  it('A3: the same re-read, then 201: the done note, never "changed elsewhere"', async () => {
+    let reply = REAL_REPLY
+    answers['GET /tracking'] = () => Promise.resolve({ data: reply })
+    let done
+    answers['POST /paper/strategies/48/orders'] = () => new Promise((r) => { done = () => r({ data: { strategy_id: 48, orders: [{ id: 901 }] } }) })
+    const w = await show()
+    await exitLeg(w, 0)
+    await t(w, 'paper-confirm-button').trigger('click')
+    reply = out0
+    await vi.advanceTimersByTimeAsync(TRACKING_REFRESH_MS)
+    done()
+    await flushPromises()
+    expect(note(w)).toContain('Exit placed on paper')
+    expect(note(w)).not.toMatch(/elsewhere|changed/i)
   })
 })
 
