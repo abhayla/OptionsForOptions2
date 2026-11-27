@@ -5203,6 +5203,43 @@
         "title": "ExecuteOut",
         "type": "object"
       },
+      "ExitMarketOut": {
+        "additionalProperties": false,
+        "properties": {
+          "closed": {
+            "title": "Closed",
+            "type": "boolean"
+          },
+          "next_open_at": {
+            "anyOf": [
+              {
+                "format": "date-time",
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Next Open At"
+          },
+          "sentence": {
+            "anyOf": [
+              {},
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Sentence"
+          }
+        },
+        "required": [
+          "closed",
+          "sentence",
+          "next_open_at"
+        ],
+        "title": "ExitMarketOut",
+        "type": "object"
+      },
       "ExitRiskOut": {
         "additionalProperties": false,
         "description": "ADR-256: the answer for a prepared basket in three states (``no`` only when proven), the book's Max Loss before /\nafter when the answer is yes and they are known, and the one factual warning line.",
@@ -20305,6 +20342,24 @@
           }
         },
         "summary": "Market Chain"
+      }
+    },
+    "/api/market/exit-state": {
+      "get": {
+        "operationId": "market_exit_state_api_market_exit_state_get",
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ExitMarketOut"
+                }
+              }
+            },
+            "description": "Successful Response"
+          }
+        },
+        "summary": "Market Exit State"
       }
     },
     "/api/market/indices": {

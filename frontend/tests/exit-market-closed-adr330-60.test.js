@@ -115,6 +115,15 @@ describe('ADR-330 (60): the Exit dialog when the market is closed (builder)', ()
       expect(t(w, 'paper-confirm-button').attributes('disabled')).toBeDefined()
     }
   })
+  it('while the market answer is late, Confirm is off and nothing posts (checking)', async () => {
+    const w = await builder()
+    answers['GET /market/exit-state'] = () => new Promise(() => {})
+    S(w).exitPaper(OPEN_IDS[0], 1)
+    await flushPromises()
+    expect(t(w, 'paper-confirm-button').attributes('disabled')).toBeDefined()
+    await t(w, 'paper-confirm-button').trigger('click')
+    expect(orderPosts()).toHaveLength(0)
+  })
   it('an entry-only dialog never asks (ADR-330 (60) is the Exit dialog)', async () => {
     const w = await builder()
     S(w).setLegs(S(w).paper.net.map((l, i) => (i === 1 ? { ...l, lots: 2 } : { ...l })))

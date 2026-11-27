@@ -26,6 +26,7 @@ const CONTRACTS = REAL.positions.map((p) => ({ contract_id: p.contract_id, excha
 const BOOK = { ...REAL, strategy_id: 86, name: '"IC"' }
 const OPEN_IDS = BOOK.positions.filter((p) => p.net_quantity !== 0).map((p) => p.contract_id) // [5572, 5587, 5585, 5574]
 const orderPosts = () => calls.filter((c) => c.method === 'POST' && c.url === '/paper/strategies/86/orders')
+let router = null
 const mounted = []
 async function builder(query = '?strategy=86', book = BOOK) {
   calls.length = 0
@@ -37,7 +38,7 @@ async function builder(query = '?strategy=86', book = BOOK) {
     'POST /strategies/outcome': () => new Promise(() => {}),
     'POST /strategies/leg-edit': () => new Promise(() => {}),
   }
-  const r = createRouter({ history: createMemoryHistory(), routes: [{ path: '/strategy/builder', component: StrategyBuilderPage }] })
+  const r = router = createRouter({ history: createMemoryHistory(), routes: [{ path: '/strategy/builder', component: StrategyBuilderPage }] })
   await r.push(`/strategy/builder${query}`)
   await r.isReady()
   const w = mount(StrategyBuilderPage, { global: { plugins: [r], stubs: { PayoffChart: true } }, attachTo: document.body })
@@ -108,6 +109,20 @@ describe('ADR-330 (59): Exit all with a staged change', () => {
     expect(Object.keys(orderPosts()[0].body).sort()).toEqual(['orders'])
     expect(t(w, 'staged-not-kept').text()).toMatch(/^The change waiting on .+ was discarded\.$/)
     expect(S(w).pendingOrders).toEqual([])
+    expect(router.currentRoute.value.query.acted).toBeUndefined() // the discarded change's acted / basket / approach do not outlive it
+    expect(router.currentRoute.value.query.basket).toBeUndefined()
+  })
+  it('a refusal (4xx) then Cancel: the staged change comes back exactly', async () => {
+    const w = await builder()
+    await stage(w)
+    const before = JSON.stringify(S(w).legs)
+    answers['POST /paper/strategies/86/orders'] = () => Promise.reject({ status: 422, message: 'x', parts: null })
+    S(w).exitAllPaper()
+    await flushPromises()
+    await exit1(w)
+    await t(w, 'paper-cancel').trigger('click')
+    await flushPromises()
+    expect(JSON.stringify(S(w).legs)).toBe(before)
   })
   it('no staged change: no discard sentence in the dialog (nothing to discard)', async () => {
     const w = await builder()

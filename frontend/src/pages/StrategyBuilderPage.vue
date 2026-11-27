@@ -685,13 +685,13 @@ async function confirmPending(orders) {
   paperStale.value = true
   if (own) { exitOrigin.value = false; legsBeforeExit = null } // ADR-330 (49): what is left is no Exit edit; the other legs' edits are put back by restoreStaged
   try {
-    if (!own && !waiting) await dropActed({ withApproach: true }) // one basket answers the records once (a per-leg Exit answered none)
+    if (!own) await dropActed({ withApproach: true }) // an Exit all that discards a staged change drops its acted / basket / approach too: they belong to the discarded change // one basket answers the records once (a per-leg Exit answered none)
   } catch { /* the ids may stay in the URL: the stored orders are never offered again (paperStale) */ }
   try {
     // the dialog stays, says it was placed, and has no Confirm, while the book is read again (issue 18: bounded retries, then Retry)
-    const reread = await rereadAfterPlace(id, () => { paperState.value = PAPER_STATE.PLACED; paperBusy.value = false })
+    if (waiting) stagedNote.value = DISCARDED_TEXT(waiting.names) // said at once: also when the re-read below fails
+    await rereadAfterPlace(id, () => { paperState.value = PAPER_STATE.PLACED; paperBusy.value = false })
     exitAllWaiting.value = null
-    if (waiting && reread) stagedNote.value = DISCARDED_TEXT(waiting.names)
   } finally {
     paperBusy.value = false
   }
