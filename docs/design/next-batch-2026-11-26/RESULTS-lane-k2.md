@@ -38,3 +38,13 @@ Opus review (Why Opus: order path): F2 (held key with a leading zero could trap 
 | Items 1, 2, gate runs | Sonnet (this session) | about 90 |
 - F1 (MAJOR, Lane N's file `adjustment_readers.py:883`): `entry_facts_now` returns None when the feed is NOT CONNECTED before it reads `confirmed`; `_index_spot_held` takes the tick on the same path. A ticked first fill with the feed down stores no entry facts. Fix: in `entry_facts_now`, when not connected and `confirmed`, use `_index_value_not_live`. Also `entry_facts_now` reads the quote without a hold (the index may not be subscribed yet). Not edited: Lane N's file.
 - Real door returns 422 for the lots refusal where its other refusals use 409; the page shows the message either way.
+
+## PC steps (owner's PC, market CLOSED, Saturday 08:00)
+1. Stop the feed process; open the app; the closed banner shows.
+2. Open a fresh strategy in the builder, tick "prices are not live", type an entry price on each leg, press Add to Paper.
+3. Read the strategy's entry facts: the Adjust page "Entry distance" line for that strategy (it names the entry spot and the call/put distance). Expected: it shows the spot and distances, not "the entry spot was not stored". Same step without the tick: the save is refused with its sentence and nothing is stored.
+4. Real door (market open Monday, read only): Execute a strategy with a leg above 100 lots: refused "would hold N lots after this order; a leg can hold at most 100 lots"; no plan is written. Note: the disconnected-feed case is F1 above and will still store no facts.
+
+Pushed heads: item 1 e3897b2c; item 3 and review fixes 5ee104a5 (gate TOTAL PASS `--jobs 2`).
+
+SAFE TO CLOSE (head: see the branch; left: F1 in Lane N's file, the deferred issues above, NOT_LIVE/paper parity xfail).
