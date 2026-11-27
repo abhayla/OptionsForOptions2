@@ -1,4 +1,4 @@
-STATUS 19:50 | item 1: PUSHED 903a0f30 (gate TOTAL PASS) | items 2+3: built, gate running for push 2 (about 20:50) | item 4: next in a worktree | blocker: send_message to @parent refused (auto-mode classifier); this line is the report
+STATUS 20:35 | item 1+2+3: PUSHED (head 18effe14, gate TOTAL PASS) | item 5: merged, gate for push 3 next | item 4: branch hotfix/builder-open-1127 fe4b6700 built, own gate next | blocker: send_message to @parent refused by the auto-mode classifier; this line is the report
 
 # Lane J2 (27 Nov 2026), branch `hotfix/worker-join-1127` from `origin/hotfix/loss-stop-1127` (596c6562)
 
@@ -87,3 +87,80 @@ domain-model line 71, ADR-330 (44) and (58).
   means "the last known price crossed the level", that is a spec row. (b) A trade the worker never lists (no plan,
   nothing traded): `not_listed`; REQ-049 does not say whether such a trade shows paused or nothing. (c) `since` is when
   the worker first noticed (its clock), not when the market data last arrived.
+
+## Item 4: the instrument list (`hotfix/builder-open-1127`, cut from `origin/lanej/builder-open-0827`, 4812a3f; ADR-330 (61))
+Owner decision (61): from 08:30 until today's list has loaded the builder keeps working on yesterday's list and says so
+in one line; contracts that expired yesterday are left out; every leg is checked again before any order.
+- The two review findings: (1) the window opening is the setting `facts.contract_list_publish_time` + 5 minutes
+  (`catalogue_refresh.window_open`; the scheduler re-reads the setting each step; a failed read keeps the last value and
+  logs the type); no constant 08:35 is left. (2) A run that did not load (failed, refused, timed out) is tried again after 3
+  minutes (`RETRY_INTERVAL`); one that loaded waits its hour.
+- (61) built: restored the carry-over of `ea4f5188` (the picker keeps yesterday's list, logged once a day); the ONE line is
+  catalogue text `contract_list_earlier` ("Contract list of 26 Nov. Today's list loads at about 08:35."), returned as
+  `list_notice` on the expiries reply, null once today's list is in; `/health` carries `instrument_list`
+  (today | earlier | none | unknown) and `instrument_list_day`; the log says which list is in use. Expired contracts are
+  already filtered by `expiry >= today`. The pre-order check is unchanged: `execute._list_health` and the add-time
+  eligibility check still call yesterday's list stale (tested).
+- Tests first: `tests_app/test_builder_open_1127.py` (8: window from the setting, retry in minutes for failed, refused,
+  timed out, no loop faster than the retry, notice text, pre-order stale), the DB test carries the notice assertions.
+  PostgreSQL 16, one file per fresh database: carries_over 5, health 2, catalogue_refresh 27, picker_api 25, eligibility 33,
+  scenario_clock_routes 5 passed; `tests/errors` 710 passed (new template pin, "pending owner read"); ruff ratchet flat;
+  openapi regenerated.
+- Q2's `tests_app/test_clock_boundary_0830.py` is not on this branch (it is on the join branch). When the two meet:
+  its first strict xfail (08:07 start reloads at 08:35) will XPASS, delete the mark; its second (list loaded 08:07 usable at
+  08:31) asserts `loaded_before` is false, which (61) keeps true on purpose (the pre-order check must refuse it): that
+  test's premise is replaced by the picker test above.
+- Pending owner read: the line "Contract list of <date>. Today's list loads at about <time>." Not built: the builder page
+  showing the line (Lane V; it reads `list_notice`).
+- Status: Fixed, not tested on the owner's PC. Not yet gated or pushed at this line's time.
+
+## Item 5: the adjustment check's price wait (Lane Q2 leftover 1)
+RCA: `adjustment_check` awaited `market_reader` and the REST index quote with no limit. Class: a screen check that
+waits on a vendor read with no budget. Fix: new module `backend/ofo_app/price_budget.py` (one budget of 4 s for both reads;
+a cut read answers not live: the market as when not connected, the quote FAILED; the quote is not asked at all once the
+market is cut); the route wraps its readers. Tests first: `tests_app/test_price_budget.py` (6; the route wiring test
+fails without the wiring, shown by mutation). Q2's strict xfail in `test_load_live_day.py` is removed with the fix.
+Caveat, honest: on this machine (PostgreSQL 16, scenario ADJ-01) Q2's two strict xfails XPASS even on the unmodified join
+branch, because the scenario feed holds the index so the stalled REST quote is never asked; that load test cannot prove
+this fix here, which is why the route wiring test exists. Plan watch keeps its own `_budgeted` (on
+`hotfix/plan-watch-load-1127`); when merged, it should call `price_budget.budgeted`. Status: Fixed, not tested.
+
+## Item 6: no "P0 for the worker lane" message arrived.
+
+## Monday 09:15 steps (market open; the PC cannot test plan stops with the market closed)
+Set the levels on Sunday on real trades named "T1-05a" etc. (use the trade names you have; one trade per row). Alert
+minutes are IST, from the SQL in Lane J's RESULTS (`adjustment_suggestions.shown_at`); the worker's first cycle after
+09:15 is within one second of the first price.
+| Step | Trade and level set Sunday | Expected alert |
+|---|---|---|
+| T1-05 rupee stop | Stop Rs set BELOW Friday's close loss (already crossed at Friday's close) | first check after the first price: 09:15 to 09:16, no wait for 09:20 candle or 09:30 quiet time |
+| T1-05 percent stop (monthly row) | T-06 % of max loss on a monthly trade, set below Friday's loss % | 09:15 to 09:16 |
+| T1-06 stop saved already crossed, accepted Monday | accept the plan at 09:40 with the level already crossed | entry + 5 minutes = 09:45, once (never swallowed) |
+| T1-07 profit target Rs 1 | target of 1 rupee | first check where the P&L is at least Rs 1; if already in profit at open, 09:15 to 09:16 |
+| T1-08 time exit 09:25 | time exit set to 09:25 | 09:25 to 09:26 (no candle close) |
+| T1-09 close last leg | close the last leg at 10:00 | the trade's open alerts close at the next re-list, at most 30 s (not reproduced here, see item 2) |
+Also check, for any trade the worker cannot price: the worker log line `check skipped: prices_<state>`.
+
+## To file as deferred issues (the coordinator files them)
+1. A stale REST stand-in is not re-read within the IST minute when the held feed index is stale and frozen (review F1; also on Lane U's branch).
+2. Index missing + fresh REST + a stale option leg reports LEG_MISSING / "REST not usable" instead of STALE (review F2).
+3. A worker test with a plan body's own custom stop rule (review F6; `stops=frozenset()` survives).
+4. Closing the last leg: T1-09 not reproduced; needs the step text and the alert row that stayed open.
+5. `monitoring_state`: the API route and the screens (badge, grey dot) are not built (Lane K / V / L).
+6. The worker's `status` dict keeps entries of strategies that left the list: the published snapshot may still name them.
+7. Q2's load test XPASSes on the unmodified branch in a local database (the stalled quote is never asked in scenario mode).
+
+## Paper-only path found
+None met. The worker, the alert gate stores and the stop write are one path for paper and real (ADR-330 (58)). The
+paper monitor's `_tell_exit_not_run` (#732) is a paper-exit alert; the plan stop has no counterpart because it cannot
+know a level is hit with no price (item 3, case (a)).
+
+## Pending owner read (new on-screen words)
+`contract_list_earlier`: "Contract list of {day}. Today's list loads at about {time}." Nothing else new on a screen.
+
+## Today's work by model
+| Task | Model | Minutes (about) |
+|---|---|---|
+| Join, tests, items 2, 3, 4, 5 (build, test runs, gates, pushes) | Sonnet (this session) | 175 |
+| Independent review of the joined worker (Tier A: the stop path) | Opus (reviewer) | 18 |
+| Helpers for mechanical work | none used | 0 |
