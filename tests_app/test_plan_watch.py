@@ -194,3 +194,20 @@ async def test_closed_put_side_reads_put_and_unreadable_entry_judges_no_side(app
     monkeypatch.setattr(pw, "_closed", lambda _run: frozenset())  # an unreadable entry: nothing judged closed
     status, out = await _watch(sid)
     assert status == OK and not [x for x in out["lines"] if x["reason"] == NA_PUT], out
+
+
+async def test_a_just_saved_draft_reads_as_no_plan_never_not_found(app_db_url, monkeypatch):  # noqa: F811
+    """Issue-list row 3 (27 Nov): a draft saved in the builder shows "This strategy was not found" in Plan watch."""
+    from ofo_app import strategy_store  # noqa: PLC0415
+    from ofo.strategy import stored_form as sf  # noqa: PLC0415
+
+    sid = await _seeded(app_db_url, monkeypatch, "ADJ-01")
+    async with app_db_url.begin() as conn:
+        order = next(o for o in await paper_store.load(conn, sid) if o.order.side == "SELL")
+        saved = await strategy_store.build_definition(conn, "NIFTY", [sf.LegChoice(
+            contract_id=order.order.contract_id, action=sf.Action.SELL, quantity=order.order.quantity)], rules_ref="t3")
+        draft = await strategy_store.save_draft(conn, "owner", saved)
+    status, out = await _watch(draft.id)
+    assert status == OK, out
+    assert out["plan_state"] == "no_plan" and out["lines"] == []
+    assert (await _watch(draft.id + 100000))[0] == NOT_FOUND  # a strategy that does not exist stays "not found"

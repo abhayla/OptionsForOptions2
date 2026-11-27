@@ -216,6 +216,16 @@ def _rule_line(v: pe.RuleValue, run: CheckRun, live: bool, fired: bool) -> dict:
                  now=v.value, pct=_q(distance) if percent else None)
 
 
+async def _is_own(db: Any, user_ref: str, strategy_id: int) -> bool:
+    """True when the strategy exists and belongs to the user (a draft or a tracked one); any read failure: False."""
+    from ofo_app import playbook_store  # noqa: PLC0415 - database layer at run time
+    try:
+        await playbook_store.require_owned(db, user_ref, strategy_id)
+    except Exception:  # noqa: BLE001 - not owned, gone, or unreadable: the caller keeps the original refusal
+        return False
+    return True
+
+
 async def _armed_lines(db: Any, strategy_id: int, run: CheckRun, live: bool) -> list[dict]:
     try:
         rows = [r for r in reversed(await paper_trigger_store.list_for(db, strategy_id)) if r.cancelled_at is None]
@@ -279,9 +289,19 @@ async def plan_watch(  # noqa: PLR0913 - FastAPI dependencies, one per input
         prefs: UserPreferences, user_values: UserValuesIn) -> PlanWatchOut:
     from ofo_app.scenario_guard import check_screen_isolation  # noqa: PLC0415 - imports routes.broker
     await check_screen_isolation(db, user_ref, strategy_id)
-    run = await run_check(strategy_id, db=db, user_ref=user_ref, tracked_reader=tracked_reader,
-                          market_reader=market_reader, rest_reader=rest_reader, margin_of=margin_of, ctx=ctx,
-                          rates=rates, prefs=prefs, user_values=user_values)
+    try:
+        run = await run_check(strategy_id, db=db, user_ref=user_ref, tracked_reader=tracked_reader,
+                              market_reader=market_reader, rest_reader=rest_reader, margin_of=margin_of, ctx=ctx,
+                              rates=rates, prefs=prefs, user_values=user_values)
+    except StrategyRefused as refused:
+        if refused.failure is not Failure.NOT_FOUND or not await _is_own(db, user_ref, strategy_id):
+            raise  # another user's or a missing strategy stays "not found"
+        # issue-list row 3 (27 Nov): the user's own saved draft is not tracked, so nothing is watched: say so, not "not found"
+        now = datetime.datetime.now(datetime.UTC)
+        return PlanWatchOut.model_validate({
+            "strategy_id": strategy_id, "as_of": now, "as_of_text": render_explanation("check_as_of", time=now),
+            "plan_state": "no_plan", "no_plan_text": render_explanation("plan_sheet_no_plan"),
+            "armed_heading": None, "paused": None, "lines": []})
     live = run.fresh is not False and run.spot is not None  # unknown health with a spot is read as the check reads it
     out = run.out
     plan = out.playbook.source != "none"
