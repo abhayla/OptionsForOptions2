@@ -93,3 +93,79 @@ showed no such STALE change today.
 | `NO_TOKEN` is typed `Any` | read_door.py:37: a type checker cannot catch a future caller using it as a value | ADR-008 | a typed result (sentinel class) |
 | A request-local read leaves a mixed read (one known missing + one unknown) not waiting | read_door.py:158-159: `done_known` unused in production; the first read after an idle spell reads the known leg not live (fails closed; the next read has it) | REQ-133 | decide whether exit reads pass `done_known` |
 | Leg stops are premium levels, so a stop cannot follow Change expiry (#774) | built fail-closed on fix/stop-follows-leg-1127 (a013f2ee, not pushed): removed with a review line | ADR-330 (42) | owner chooses a contract-independent stop kind or keeps removal |
+| A placed outcome decided by a re-read has no order number | /paper/strategies carries no order ids, so the builder's "(order n)" is missing for an outcome decided by a re-read | REQ-065, ADR-016..019 | the re-read path carries the order id, or the sentence says why none |
+| The worker re-stamps a REST stand-in index price as feed with now (state_from_market / feed_spot): the label says feed (pre-existing) | background.py state_from_market / feed_spot: the REST reading is shown as a feed quote stamped now | REQ-100 AC-18, ADR-330 (39) | the stand-in keeps its REST label and its own time |
+
+## Spot from either source (27 Nov afternoon)
+
+Spec basis: REQ-100 AC-18, REQ-114 AC-2, ADR-330 (39), ADR-015, REQ-065, ADR-016..019.
+
+### RCA, two paths
+
+- API path: the door predicted the feed and skipped REST; a second judge (the outcome step) could disagree and found no
+  spot, so the user saw USER_INPUT_151 "No adjustment opportunity checked: spot not available."
+- Worker path: there was no REST door; with no index tick the worker paused silently. This is the likely reason there were
+  no plan-rule alert rows between 11:49 and 13:29.
+
+### The fix
+
+- routes/outcome.py `index_spot_of`: one function judges the index spot from either source (feed, else REST, else last close).
+- REST age rule in spot_source: a REST index reading older than `index_quote_max_age` in market hours is `rest_stale`, not live.
+- The worker reads REST once per cycle per underlying, with a 2 s deadline; ABSENT and exceptions are kept 10 s.
+
+### Commits and reviews
+
+- Commits: eac36352 (the fix), 9ddd97a3 (review round 1: REST reading obeys the one age rule), 5a9d6599 (round 2 minors:
+  `rest_stale` has its catalogue line plus a guard test that every `spot_source.REASON_*` has one; the true cause is logged
+  when an option leg is the missing part; `paused_why` is cleared in `_pause`; live_market.py docstring corrected).
+- Opus reviews: round 1 FIX FIRST (fixed in 9ddd97a3); round 2 SHIP (M4 accepted: fail-closed).
+- DB evidence: the 12 files alone on a fresh DB all pass; repo_scan 1560 passed.
+
+### Lane J's needed change
+
+Its 4 s budget must wrap only the market reader and must not skip the spot step. After a cut, call `index_spot_of` with the
+empty market; give that step about a 2 s deadline.
+
+## Builder order number
+
+42dcfd14: both pages build "Exit placed on paper (order n)." through `exitEndText`. A placed outcome decided by a re-read has
+no order id, because /paper/strategies carries none: still without a number (listed above under deferred issues).
+
+## PC steps and measurements for Monday's open
+
+1. Restart the API and the worker.
+2. Leave a running paper trade open in the builder (plan-watch on) and in Positions > Paper for 10 minutes.
+3. Record:
+   - builder load time (ms);
+   - plan dialog open time;
+   - plan-watch request time (ms, from the request log);
+   - count of "answered as not live" lines per 10 minutes;
+   - count of "index spot not available" lines, with their reasons;
+   - the "feed health <OLD> -> <NEW>: <reason>" lines;
+   - the "paper monitor holds N feed keys" line (N must equal open legs + indexes);
+   - plan-rule alert rows raised in those 10 minutes (must be > 0 when a rule triggers);
+   - one Exit on Positions and one in the builder: exactly one final sentence each, with "(order n)".
+
+## Who did what (task | model), 26-27 Nov
+
+The lead session (Opus) split, routed, verified and reported. Exceptions, stated plainly: the lead itself ran the git merges and
+conflict resolutions, the coverage / digest / findings-index regenerations, small doc and test-expectation edits (pin re-pin,
+two AC placements, two DB-test expectations), and every prepush / ci_local gate run through 27 Nov 14:14 IST; under the owner's
+rule those belong to Haiku (mechanical) and Sonnet (gates) and are routed so from 14:14.
+
+| Task | Model |
+|---|---|
+| Lane T suite runs on each base, evidence runs | Sonnet |
+| Stale-test corrections, inventory regeneration | Sonnet |
+| Group A fail-closed reads, group B dates/wording, group C saved list, group D leg Undo / drawer stacking | Sonnet (builder) |
+| Groups E/F (row 12 chain, phone drawer, not-found, Positions Exit look/ticks), chain vitest update, repo-scan fixes | Sonnet |
+| U-Q4/U-Q5/U-Q7/U-Q8, 404 revert, ST-1, inventory ids, selector pin, preflight fixes | Sonnet |
+| T-Q9 spec lines, T-Q4/5/7/8/10 chain answers, U-Q12 | Sonnet (builder) |
+| D-48 and D-51 design notes, D-48 build and both review rounds of fixes, D-51 build | Sonnet |
+| D-48 Tier A reviews x2 (running-trade exits) | Opus (Why Opus: exit path) |
+| Hotfix RCAs (index 429s, silent Exit, 422, stale legs, live a/b/c, read side) | Sonnet |
+| Hotfix Job A, Job B, rounds 1-2, single-ended Exit, read door and its rounds, test rewrites, diagnostics | Sonnet |
+| Real-PostgreSQL test runs | Sonnet |
+| Hotfix Tier A reviews: Job B, Job A, read door x2 | Opus (Why Opus: price / exit path) |
+| #774 stop on Change expiry (built fail-closed, branch fix/stop-follows-leg-1127) | Sonnet |
+| Merges, conflict resolutions, generated-file regeneration, gate runs (to 14:14) | Opus lead (should have been Haiku / Sonnet) |
