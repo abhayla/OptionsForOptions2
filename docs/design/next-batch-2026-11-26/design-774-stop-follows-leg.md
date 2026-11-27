@@ -48,3 +48,10 @@ paper.py (place_paper_orders, armed-exits): shared route file; Lane R's `_hold_u
 ## Not built (owner question)
 "The stop follows the leg" needs a contract-independent stop kind (rupee loss on the leg, or a premium distance).
 Recommendation: owner decides; until then the dialog states the removal.
+
+## Owner decision ADR-330 (48), 27 Nov (relayed by the coordinator 16:50 IST)
+When a leg's expiry is changed its leg stop is REMOVED with the move; the review says "The stop on <leg> will be removed; set a new one
+after the move." (already the catalogue sentence paper_leg_stop_removed_on_move; the leg is now named as the screens name it, REQ-151);
+after the move the app offers "Set a stop on <new leg>" (StrategyBuilderPage: stop-offer, PaperStops leg-stop-only, the same POST .../triggers).
+The offer reads the stops list before Confirm and after the move and the book's net before and after: no offer on a refused move, an
+unknown answer (the Orderbook re-read decides), a leg without a stop or a failed read. "Not built" above is closed by this decision.

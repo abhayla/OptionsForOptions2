@@ -1623,7 +1623,7 @@ def _leg_name(state: Mapping[int, Any], stored: Any, trigger: Any) -> str:
     if found is None or found.stored is None:
         return f"contract {trigger.contract_id}"
     _, instrument, strike, expiry = _identity(found)
-    return describe_contract((stored.saved.definition.underlying, instrument, strike, expiry))
+    return display_contract((stored.saved.definition.underlying, instrument, strike, expiry))
 
 
 class ArmedExitsOut(ApiModel):

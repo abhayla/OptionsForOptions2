@@ -44,6 +44,8 @@ import { usePriceFreshness } from '@/lib/priceState'
 import { exitEndText, usePaperExit } from '@/lib/usePaperExit'
 import { createExitRecords } from '@/lib/exitRecord'
 import PaperStrategies from '@/components/strategy/PaperStrategies.vue'
+import PaperStops from '@/components/strategy/PaperStops.vue'
+import { STOP_OFFER_LABEL, legStopsGone, triggerListOf, triggersPath } from '@/lib/paperTriggers'
 import AdjustCompare from '@/components/strategy/AdjustCompare.vue'
 import { opportunitiesFromQuery, picksFromQuery } from '@/lib/adjustDrawer'
 import AdvancedDetails from '@/components/strategy/AdvancedDetails.vue'
@@ -452,7 +454,7 @@ function enterDrafts(id, read) {
   paper.value = { id, book: read.book, net: read.net }
   openSaved(copyLegs(read.net), id, null, read.book.name ?? null)
 }
-const leaveDrafts = () => { paper.value = null; paperStale.value = false; cancelReread() }
+const leaveDrafts = () => { paper.value = null; paperStale.value = false; cancelReread(); clearStopOffer() }
 // GC-ICFIX round 2 (F4): the page's ONE read of the paper book per refresh; its reply feeds the paper panel, the tracking box's total and
 // the P&L table TOTAL row (one moment, one text). An orders re-read (paperStale) is not overwritten by it.
 const { readFailed: paperReadFailed, contractsChanged: paperContractsChanged } = usePaperBookRead({
@@ -564,6 +566,26 @@ const paperLeft = computed(() => { // GC-ICFIX u124: after-charges forms, labell
 })
 // R-11: legs still carrying the entry and time the book loaded are paper fills ("Paper average", no time)
 const paperFills = computed(() => (paper.value ? paper.value.net.map(paperFillKey) : []))
+// #774, ADR-330 (48) (owner, 27 Nov): a move of a leg removes that leg's stop (the server cancels it in the order transaction and the review
+// said so). After the move the app offers "Set a stop on <new leg>" through the existing leg-stop control (PaperStops, POST .../triggers).
+// The offer rests on two server reads, never on a guess: the stops list before the Confirm and again after, and the book's net before and
+// after. A stop the re-read shows gone AND a leg the book shows new: one offer per new leg. A refused move, an unknown answer (until the
+// re-reads say otherwise), a leg without a stop, or a failed read: no offer, nothing claimed.
+const stopOffer = ref(null) // { strategyId, legs: [{ index, label, contractId }] } | null
+const stopOfferLeg = ref(null) // the offered leg whose control is open
+let moveCheck = null // { id, stops, net }: what the page held before a Confirm whose answer is not yet known
+const clearStopOffer = () => { stopOffer.value = null; stopOfferLeg.value = null; moveCheck = null }
+async function readStops(id) {
+  try { return triggerListOf((await api.get(triggersPath(id))).data) } catch { return null } // a failed read is "unknown", never "empty"
+}
+async function offerAfterMove(check) {
+  if (!check?.stops?.length || !paper.value || paper.value.id !== check.id) return
+  const now = await readStops(check.id)
+  if (!now || !legStopsGone(check.stops, now).length) return
+  const legs = paper.value.net.filter((l) => !check.net.includes(l.contract_id) && l.lots > 0)
+    .map((l) => ({ index: l.contract_id, label: contractName(l), contractId: String(l.contract_id) }))
+  if (legs.length) stopOffer.value = { strategyId: check.id, legs }
+}
 async function confirmPending(orders) {
   if (paperBusy.value || !paper.value || !paperDialog.value) return // a Confirm for a dialog that is no longer open (the page closed it) posts nothing
   if (exitBlocked.value) { if (paperContractsChanged.value) closeChanged(); return } // post nothing (the watch may not have run yet); a failed read keeps the dialog and its sentence
@@ -574,6 +596,8 @@ async function confirmPending(orders) {
   paperBusy.value = true
   paperError.value = ''
   paperState.value = PAPER_STATE.READY
+  clearStopOffer()
+  const check = { id, stops: ((await readStops(id)) ?? []).filter((x) => x.kind === 'leg_stop' && x.state === 'armed'), net: paper.value.net.map((l) => l.contract_id) }
   try {
     await postPaperOrders(api, id, orders, actedSuggestionIds.value, preparedBasketLegs.value, null, preparedApproachId.value)
   } catch (e) {
@@ -581,7 +605,7 @@ async function confirmPending(orders) {
     if (outcome === PAPER_STATE.REFUSED) { // 4xx: the server stored nothing (one transaction or none)
       paperError.value = (e?.parts ?? NEUTRAL_PARTS).what_happened || NEUTRAL_PARTS.what_happened
     }
-    if (outcome === PAPER_STATE.UNKNOWN) exitRec.settle(EXIT_KEY, attempt, 'unknown')
+    if (outcome === PAPER_STATE.UNKNOWN) { exitRec.settle(EXIT_KEY, attempt, 'unknown'); moveCheck = check } // the re-reads decide, not this guess
     else if (outcome === PAPER_STATE.REFUSED) exitRec.settle(EXIT_KEY, attempt, 'refused')
     paperState.value = outcome // hotfix 27 Nov: a superseded POST is UNKNOWN (paperPostOutcome), never READY
     // REQ-163: a refused record is dropped, so the next request differs from the refused one; Confirm is ready again (text kept)
@@ -600,7 +624,7 @@ async function confirmPending(orders) {
   } catch { /* the ids may stay in the URL: the stored orders are never offered again (paperStale) */ }
   try {
     // the dialog stays, says it was placed, and has no Confirm, while the book is read again (issue 18: bounded retries, then Retry)
-    await rereadAfterPlace(id, () => { paperState.value = PAPER_STATE.PLACED; paperBusy.value = false })
+    if (await rereadAfterPlace(id, () => { paperState.value = PAPER_STATE.PLACED; paperBusy.value = false })) await offerAfterMove(check)
   } finally {
     paperBusy.value = false
   }
@@ -669,6 +693,9 @@ async function openPaperOrderbook() {
     if (read.kind !== 'paper') throw new Error('unreadable paper book')
     enterDrafts(id, read)
     showOrdersTick.value += 1
+    const check = moveCheck
+    moveCheck = null
+    await offerAfterMove(check) // an unknown answer: the stop state and the book come from these re-reads
   } catch (e) {
     paperStale.value = true // the screen's net cannot be trusted until a book is read
     openError.value = unreadableParts(e)
@@ -1280,6 +1307,14 @@ const leaveGuard = useLeaveBuilder({
         <!-- GC-TP step 3b1 (Sensibull Drafts Mode 274-279): a paper strategy's legs are its net position, in a dashed frame -->
         <div :class="paper ? 'rounded-lg border-2 border-dashed border-warn p-2' : 'contents'" data-testid="legs-frame" :data-paper-mode="paper ? 'true' : 'false'">
         <p v-if="paper" class="mb-2 text-xs font-semibold text-warn" data-testid="paper-mode-label">{{ PAPER_MODE_LABEL }}</p>
+        <!-- #774 (ADR-330 (48), owner 27 Nov): the stop went with the moved leg; offer a new one on each new leg (pending owner read) -->
+        <div v-if="paper && stopOffer" class="mb-2 text-sm" data-testid="stop-offer">
+          <div class="flex flex-wrap items-center gap-2">
+            <button v-for="l in stopOffer.legs" :key="l.index" type="button" class="h-9 rounded-lg border border-line px-3 font-medium" :aria-expanded="stopOfferLeg === l.index" data-testid="stop-offer-open" @click="stopOfferLeg = stopOfferLeg === l.index ? null : l.index">{{ STOP_OFFER_LABEL(l.label) }}</button>
+            <button type="button" class="h-9 rounded-lg px-3 text-ink-muted underline" data-testid="stop-offer-dismiss" @click="clearStopOffer">Not now</button>
+          </div>
+          <PaperStops v-for="l in stopOffer.legs.filter((x) => x.index === stopOfferLeg)" :key="l.index" leg-stop-only :strategy-id="stopOffer.strategyId" :legs="[l]" :leg-names="{ [l.index]: l.label }" />
+        </div>
         <LegList
           :opening="opening" :done="paperCompleted" :locked="exitBlocked" :lock-reason="exitGate.reason.value"
           :multiplier-max="served.integer(MULTIPLIER_MAX_KEY)" :legs="legs" :pending-steps="pendingSteps" :paper-fills="paperFills" :staged-exit-ids="paper ? stagedExitIds(paper.net, legs) : []" :quote-at-by-id="quoteAtById" :oldest-quote-at="data?.oldest_quote_at ?? null" :shape-name="shapeName" :has-reply="hasReply" :controls="controls" :updating="updating" :error-parts="editError" :error-index="editErrorIndex" :ltp-by-id="legListPrices.ltpById" :price-text-by-id="legListPrices.priceTextById"

@@ -9,3 +9,14 @@ export const triggerListOf = (data) => (Array.isArray(data?.triggers) ? data.tri
 
 // The Conditional exits still on the screen: armed and fired ones; cancelled ones and per-leg stops are dropped.
 export const armedIndexExits = (list) => list.filter((x) => x.kind === 'conditional_exit' && x.state !== 'cancelled')
+
+// #774, ADR-330 (48) (owner, 27 Nov): a leg's stop goes with a move of that leg; afterwards the app offers a new one on the new leg through the
+// existing leg-stop control. The words are pending owner read (pinned by tests/paper-move-stop-offer-774.test.js).
+export const STOP_OFFER_LABEL = (leg) => `Set a stop on ${leg}`
+
+// The ids of the leg stops armed in `before` that `after` (a re-read of the same list) no longer holds armed. Both are triggers arrays.
+// Nothing is guessed: a stop the re-read still shows armed, or an id it does not know, is not "removed" unless the list says it is not armed.
+export function legStopsGone(before, after) {
+  const now = new Map(after.map((x) => [x.id, x]))
+  return before.filter((x) => x.kind === 'leg_stop' && x.state === 'armed' && now.has(x.id) && now.get(x.id).state !== 'armed').map((x) => x.id)
+}
