@@ -11,9 +11,7 @@ import functools
 import time
 from collections.abc import Awaitable, Callable
 from contextvars import ContextVar, Token
-from typing import Any, TypeVar
-
-T = TypeVar("T")
+from typing import Any
 
 
 class Steps:
@@ -51,7 +49,7 @@ def snapshot() -> dict[str, tuple[float, int]]:
     return {} if steps is None else {k: (v, steps.count[k]) for k, v in steps.ms.items()}
 
 
-def timed(step: str, fn: Callable[..., Awaitable[T]]) -> Callable[..., Awaitable[T]]:
+def timed[T](step: str, fn: Callable[..., Awaitable[T]]) -> Callable[..., Awaitable[T]]:
     """Same signature as ``fn``; adds the elapsed ms to ``step`` (also when ``fn`` raises)."""
 
     @functools.wraps(fn)
@@ -76,11 +74,11 @@ def install_db_events(engine: Any) -> None:
         return
     engine._ofo_step_timing = True
 
-    def before(conn: Any, cursor: Any, statement: Any, parameters: Any, context: Any, executemany: Any) -> None:
+    def before(conn: Any, *_event_args: Any) -> None:
         if _current.get() is not None:
             conn.info.setdefault("ofo_t0", []).append(time.perf_counter())
 
-    def after(conn: Any, cursor: Any, statement: Any, parameters: Any, context: Any, executemany: Any) -> None:
+    def after(conn: Any, *_event_args: Any) -> None:
         stack = conn.info.get("ofo_t0")
         if stack:
             add("db", (time.perf_counter() - stack.pop()) * 1000.0)

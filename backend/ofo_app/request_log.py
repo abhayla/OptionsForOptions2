@@ -34,20 +34,20 @@ def _install_handler() -> None:
 _install_handler()
 
 
-def _steps_text(total: float) -> str:
+def _steps_text(elapsed_ms: float) -> str:
     """` db=120.3ms/14q price=5000.1ms margin=800.0ms compute=276.6ms`; absent steps are omitted (a request with no
-    step at all adds nothing, so the old line is unchanged). compute = total - db - price - margin, floored at 0: gathered
-    steps can overlap, so the parts may add up to more than the total."""
+    step at all adds nothing, so the old line is unchanged). compute = total - db - price - margin, floored at 0:
+    gathered steps can overlap, so the parts may add up to more than the total."""
     snap = step_timing.snapshot()
     if not snap:
         return ""
     parts = []
     if "db" in snap:
         parts.append(f"db={snap['db'][0]:.1f}ms/{snap['db'][1]}q")
-    for name in ("price", "margin"):
-        if name in snap:
-            parts.append(f"{name}={snap[name][0]:.1f}ms")
-    parts.append(f"compute={max(0.0, total - sum(v[0] for v in snap.values())):.1f}ms")
+    parts.extend(f"{name}={snap[name][0]:.1f}ms" for name in ("price", "margin") if name in snap)
+    spent_ms = sum(snap[name][0] for name in snap)
+    rest_ms = max(0.0, elapsed_ms - spent_ms)
+    parts.append(f"compute={rest_ms:.1f}ms")
     return " " + " ".join(parts)
 
 
@@ -70,9 +70,9 @@ class RequestLog:
             logged = True
             route = scope.get("route")
             path = getattr(route, "path", None) or scope.get("path", "")
-            total = (time.perf_counter() - t0) * 1000.0
-            # the step text is part of the format string (digits and letters only), so args stay (method, path, status, ms)
-            log.info("request %s %s %d %.1fms" + _steps_text(total), scope.get("method", ""), path, status, total)
+            elapsed_ms = (time.perf_counter() - t0) * 1000.0
+            # the step text joins the format string (no % in it), so the args stay (method, path, status, ms)
+            log.info("request %s %s %d %.1fms" + _steps_text(elapsed_ms), scope.get("method", ""), path, status, elapsed_ms)
 
         async def logging_send(message: Message) -> None:
             if message["type"] == "http.response.start":

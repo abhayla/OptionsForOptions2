@@ -104,7 +104,7 @@ async def test_step_timing_on_the_line(caplog: pytest.LogCaptureFixture) -> None
     async def _boom() -> None:
         raise RuntimeError
 
-    async def app(scope, receive, send):  # noqa: ANN001, ANN202
+    async def app(scope, receive, send):
         step_timing.add("db", 120.3)
         step_timing.add("db", 1.0)
         await step_timing.timed("price", _slow)()
@@ -112,10 +112,10 @@ async def test_step_timing_on_the_line(caplog: pytest.LogCaptureFixture) -> None
             await step_timing.timed("margin", _boom)()
         await send({"type": "http.response.start", "status": 200, "headers": []})
 
-    async def receive():  # noqa: ANN202
+    async def receive():
         return {"type": "http.request"}
 
-    async def send(_m):  # noqa: ANN001, ANN202
+    async def send(_m):
         return None
 
     await RequestLog(app)({"type": "http", "method": "GET", "path": "/x"}, receive, send)
