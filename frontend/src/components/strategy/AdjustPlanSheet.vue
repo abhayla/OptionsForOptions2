@@ -62,8 +62,9 @@
       </template>
       <AlertStylePicker v-if="open && sheet" :strategy-id="strategyId" />
     </div>
-    <template v-if="errorParts" #status>
-      <ErrorMessage :parts="errorParts" compact prefix="plan-error" data-testid="plan-error" />
+    <template v-if="errorParts || notConfirmed" #status>
+      <ErrorMessage v-if="errorParts" :parts="errorParts" compact prefix="plan-error" data-testid="plan-error" />
+      <p v-else class="text-sm" role="alert" data-testid="plan-not-confirmed">{{ PLAN_NOT_CONFIRMED_TEXT }}</p>
     </template>
     <template #actions>
       <button type="button" class="h-10 rounded-lg border border-line px-3 font-medium" data-testid="plan-close" @click="emit('close')">{{ labels.close }}</button>
@@ -85,8 +86,9 @@ import ErrorMessage from '@/components/common/ErrorMessage.vue'
 import AlertStylePicker from '@/components/strategy/AlertStylePicker.vue'
 import { useBuilderHold } from '@/stores/builderHold'
 import api, { NEUTRAL_PARTS } from '@/services/api'
-import { PLAN_LOADING_TEXT, PLAN_LOAD_FAILED_TEXT, PLAN_PICK_TIMED_OUT_TEXT, PLAN_REFILLED_TEXT, PLAN_TIMED_OUT_TEXT } from '@/lib/sharedStateText'
-import { asIsBody, customiseUrl, fetchLevels, fetchPlan, formOf, resetPlan, saveBody, sendPlan } from '@/lib/adjustPlan'
+import { PLAN_LOADING_TEXT, PLAN_LOAD_FAILED_TEXT, PLAN_NOT_CONFIRMED_TEXT, PLAN_PICK_TIMED_OUT_TEXT, PLAN_REFILLED_TEXT, PLAN_TIMED_OUT_TEXT } from '@/lib/sharedStateText'
+import { asIsBody, customiseUrl, fetchLevels, fetchPlan, formOf, isRefusal, resetPlan, saveBody, sendPlan } from '@/lib/adjustPlan'
+import { saveStamp, savedSince } from '@/lib/planSaveClock'
 
 const props = defineProps({
   open: { type: Boolean, default: false },
@@ -120,6 +122,7 @@ async function reset() {
   if (busy.value) return
   busy.value = true
   errorParts.value = null
+  notConfirmed.value = false
   try {
     const read = await resetPlan(api, props.strategyId)
     if (read.kind !== 'sheet') { errorParts.value = NEUTRAL_PARTS; return }
@@ -129,7 +132,7 @@ async function reset() {
     resetAsking.value = false
     emit('saved', read)
   } catch (e) {
-    errorParts.value = e?.parts ?? NEUTRAL_PARTS // a refusal (playbook deleted): the server's sentence; the sheet stays as it was
+    errorParts.value = saveEndParts(e) // a refusal (playbook deleted): the server's sentence; no answer: the one not-confirmed sentence
     resetAsking.value = false
   } finally {
     busy.value = false
@@ -145,9 +148,11 @@ async function load(pickId = null, pickName = '') {
   resetMarkers.value = ''
   errorParts.value = null
   loading.value = true
+  const stamp = saveStamp(id)
   try {
     const read = await fetchPlan(api, id, pickId)
     if (id !== props.strategyId) return // another strategy was opened while this read was out
+    if (savedSince(id, stamp)) return // began before a save of this strategy: it must not put the old plan back (plan-save-1127)
     if (read.kind === 'invalid') {
       sheet.value = null
       loadError.value = PLAN_LOAD_FAILED_TEXT
@@ -191,16 +196,17 @@ async function typed(field) {
   const words = isTarget ? ['targetWords', 'targetRupeeWords'] : ['stopWords', 'stopRupeeWords', 'stopWarning']
   const level = isTarget ? 'target' : 'stop'
   const run = ++levelsRun[level]
+  const stamp = saveStamp(props.strategyId)
   if (own.trim() === '') { f[other] = ''; words.forEach((k) => { f[k] = '' }); return } // nothing typed: nothing to show
   try {
     const got = (await fetchLevels(api, props.strategyId, { [field]: own }, f.playbookId))[level]
-    if (run !== levelsRun[level] || form.value !== f) return
+    if (run !== levelsRun[level] || form.value !== f || savedSince(props.strategyId, stamp)) return
     if (!got) return
     f[other] = rupees ? got.percent : got.rupees
     f[words[0]] = got.words
     f[words[1]] = got.rupeeWords
     if (!isTarget) f.stopWarning = got.warning
-  } catch (e) {
+  } catch {
     if (run !== levelsRun[level]) return
     f[other] = '' // a level the server will not read shows no figure (fail closed); Save names the field
     words.forEach((k) => { f[k] = '' })
@@ -210,10 +216,15 @@ function pick(value) {
   const chosen = sheet.value?.playbooks.find((p) => String(p.id) === value)
   if (chosen) load(chosen.id, chosen.name) // every field refills from the server's prefill for that playbook (REQ-161 AC-2)
 }
+// Hotfix plan-save-1127: a save ends on EXACTLY one sentence. A refusal (catalogue message with a status): the server's own reason.
+// A timeout or no answer: "Not confirmed: reload to see whether it was saved." (new wording, pending owner read). Never re-sent here.
+const notConfirmed = ref(false)
+const saveEndParts = (e) => { notConfirmed.value = !isRefusal(e); return notConfirmed.value ? null : e.parts }
 async function send(body) {
   if (busy.value) return
   busy.value = true
   errorParts.value = null
+  notConfirmed.value = false
   try {
     const read = await sendPlan(api, props.strategyId, body, props.edit)
     if (read.kind === 'invalid') {
@@ -224,7 +235,7 @@ async function send(body) {
     emit('saved', read)
     emit('close')
   } catch (e) {
-    errorParts.value = e?.parts ?? NEUTRAL_PARTS // nothing is recorded locally on any refusal
+    errorParts.value = saveEndParts(e) // the server's reason on a refusal; on no answer the one sentence; the typed values stay as typed
   } finally {
     busy.value = false
   }

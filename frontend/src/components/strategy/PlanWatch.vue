@@ -58,6 +58,7 @@ import { rupeesText } from '@/lib/displayFormat'
 import { PAUSED_TEXT } from '@/lib/priceState'
 import { CHECK_STALE_TEXT } from '@/lib/sharedStateText'
 import { PAPER_NO_FIGURE } from '@/lib/paperList'
+import { saveStamp, savedSince } from '@/lib/planSaveClock'
 
 // strategyId: the saved strategy. readTick: the host's own change signal (its last good book read); stale: the host says its last
 // read failed, so every price-derived figure is paused (the one not-live wording of priceState). compact: the Positions row layout.
@@ -126,10 +127,12 @@ async function run() {
   lastStart = Date.now()
   const mine = ++seq
   const id = props.strategyId
+  const stamp = saveStamp(id)
   updating.value = true
   try {
     const v = await readPlanWatch(id)
     if (gone || mine !== seq) return // unmounted, or the strategy changed meanwhile: the answer is ignored
+    if (savedSince(id, stamp)) { again = true; againNow = true; return } // began before a save: dropped, a fresh read follows (plan-save-1127)
     if (v.state === 'superseded') return
     if (view.value?.state === 'ok' && (v.state === 'failed' || v.state === 'unavailable')) { notCurrent.value = true; return }
     view.value = v
@@ -176,6 +179,8 @@ watch(() => props.strategyId, () => {
   lastAnswer = null; lastStart = null
   ask(true)
 })
+// a plan save of this strategy was stored: the rows stay marked "Updating" and a read that starts AFTER the save is made at once
+watch(() => saveStamp(props.strategyId), () => { updating.value = true; ask(true) })
 watch(() => props.readTick, (t, old) => { if (t !== old) ask(false) })
 
 // the server's figure as text in the line's unit: rupees with Indian grouping; index points and percent as sent; null is a dash

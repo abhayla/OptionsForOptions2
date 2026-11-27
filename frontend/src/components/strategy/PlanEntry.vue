@@ -52,6 +52,7 @@ import { getActivePinia } from 'pinia'
 import { useBuilderHold } from '@/stores/builderHold'
 import api from '@/services/api'
 import { fetchPlan } from '@/lib/adjustPlan'
+import { saveStamp, savedSince } from '@/lib/planSaveClock'
 import { checkStaleLine, EXITS_LOAD_FAILED_TEXT, exitLineText, LIMITS_LOADING_TEXT, LIMITS_LOAD_FAILED_TEXT, LIMITS_NONE_TEXT, PLAN_LOADING_TEXT, PLAN_LOAD_FAILED_TEXT } from '@/lib/sharedStateText'
 
 // the rule check's reply and the state of the panel's one read of it: 'loading' | 'ok' | 'failed'
@@ -91,9 +92,14 @@ async function reload() {
   loading.value = false
   if (!Number.isInteger(id)) return
   loading.value = true
+  const stamp = saveStamp(id)
   try {
     const next = await fetchPlan(api, id)
     if (id !== props.strategyId) return // another strategy opened meanwhile: drop this
+    if (savedSince(id, stamp)) { // began before a save of this strategy: never put the old plan back (plan-save-1127); read again if nothing is shown
+      if (read.value === null) reload()
+      return
+    }
     if (next.kind === 'invalid') failed.value = true // fail closed: nothing is drawn from a reply that cannot be read
     else {
       read.value = next

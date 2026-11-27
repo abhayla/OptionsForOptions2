@@ -3,6 +3,8 @@
 // the browser computes nothing: the percents are the server's decimal strings, the clock is the server's hour and minute,
 // only re-shaped for an <input type="time"> and back. An answer this module cannot read is `invalid` (fail closed).
 
+import { NEUTRAL_PARTS } from '@/services/api'
+import { markSaved } from '@/lib/planSaveClock'
 const planPath = (id) => `/strategies/${id}/adjustment-plan`
 
 const clockText = (c) => (c && Number.isInteger(c.hour) && Number.isInteger(c.minute)
@@ -103,15 +105,26 @@ export async function fetchLevels(client, strategyId, typed, playbookId = null) 
   return { target: level(data?.target), stop: level(data?.stop) }
 }
 
-/** POST (accept) or PUT (edit the plan later). Returns the new reading; throws the client error. */
+/** The plan SAVE's own limit (Lane R hotfix plan-save-1127: the shared 10 s gave up on a save the server then stored). Set per request,
+ *  never on the client. The server's own bound is a 4 s price read (routes/adjustment_plan PLAN_SAVE_PRICE_BUDGET_S); 30 s covers it. */
+export const PLAN_SAVE_TIMEOUT_MS = 30000
+const SAVE_CONFIG = Object.freeze({ timeout: PLAN_SAVE_TIMEOUT_MS })
+
+/** POST (accept) or PUT (edit the plan later). Returns the new reading; throws the client error. Never re-sent here (no auto retry). */
 export async function sendPlan(client, strategyId, body, edit) {
-  const { data } = edit ? await client.put(planPath(strategyId), body) : await client.post(planPath(strategyId), body)
+  const { data } = edit ? await client.put(planPath(strategyId), body, SAVE_CONFIG) : await client.post(planPath(strategyId), body, SAVE_CONFIG)
+  markSaved(strategyId)
   return readPlan(data)
 }
 
+/** The save's end sentence: the server's own reason when it refused (a catalogue message came back), else, for a timeout or no answer,
+ *  null (the caller shows PLAN_NOT_CONFIRMED_TEXT). A refusal is a catalogue message with a status; NEUTRAL_PARTS is not one. */
+export const isRefusal = (e) => !!e?.parts && e.parts !== NEUTRAL_PARTS && Number.isInteger(e.status)
+
 /** ADR-330 (9), (32) "Reset to playbook": the server puts the playbook's conditions back (the typed levels stay) and answers the sheet. Throws the client error. */
 export async function resetPlan(client, strategyId) {
-  const { data } = await client.post(`${planPath(strategyId)}/reset`)
+  const { data } = await client.post(`${planPath(strategyId)}/reset`, undefined, SAVE_CONFIG)
+  markSaved(strategyId)
   return readPlan(data)
 }
 

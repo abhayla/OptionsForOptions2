@@ -48,7 +48,6 @@ from ofo.errors.model import UserFacingError, _build, _claim_render_token
 from ofo.errors.slots import (
     Code,
     Count,
-    ExternalText,
     Instrument,
     Int,
     Money,
@@ -1015,6 +1014,12 @@ _STRATEGY_DRAFT_TEMPLATES: tuple[MessageTemplate, ...] = (
           "This strategy was not found. It may have been deleted.",
           "Nothing was opened or changed.", "Opening this strategy.",
           "Open My Strategies to choose another one."),
+    # Hotfix plan-save-1127 (ADR-330 (5)): a plan save that needs a price (a rupee Target beside a percent, a dated time exit)
+    # and did not get one in time. New wording, pending owner read (27 Nov 2026).
+    _gate("plan_save_prices_not_read", _SV, 524,
+          "Prices could not be read in time to check this plan.",
+          "The plan was not saved; the plan you had is unchanged.", "Saving this plan.",
+          "Try again when prices update, or save without the rupee Target or time-exit date."),
     # GC-BP step 5 (REQ-109 AC-4, AC-5): paper exit of tracked legs.
     _gate("tracking_exit_prices_not_live", _SV, 433,
           "Prices are not live; try again when they update.",

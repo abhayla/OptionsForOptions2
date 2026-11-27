@@ -363,3 +363,33 @@ Spec basis: ADR-330 (13), the live Plan watch box; REQ-119 AC-3 (no stacking, ne
 1. Open the builder of a strategy with a plan. While the first read runs the box says "Loading the rule check..."; a 6 to 11 s answer then shows its rows with the as-of time.
 2. Open Positions with plan rows: each compact box shows rows, not "not available", after its turn in the queue.
 3. Outside market hours (prices not live) the rows show Paused or Not checked with the server's text, never an empty box. Stop the backend for a minute: the last rows stay, marked "Could not refresh the rule check...", with the as-of time.
+
+## Hotfix plan-save-1127
+
+Spec basis: ADR-330 (1) (the stop base is stored with the plan and read by the checks), (5) (a rupee level and a percent must agree against a base; "a base that cannot judge refuses"), (7) (a dated time exit is judged against today and the legs); REQ-161 AC-2/AC-3 (accept and edit the plan); ADR-016 to ADR-019 (no auto retry, submitted is not executed); ADR-008 (every figure is the server's).
+
+**Real case.** 27 Nov 13:50 trade A-H #209: stop (Rs) 100 typed and saved; the DB holds `loss_stop_rupees "100"` (accepted 13:50:50, PUT 200 in 5,199.6 ms), yet the Plan block kept Rs 996.13. 11:08-11:16 trade #201: "no server answer in 3 tries", then "saved despite the error". Adjustment-plan requests averaged 6,537 ms (max 10,214) against the shared 10 s axios timeout.
+
+**Root cause (one sentence).** The page let a read that started BEFORE the save (plan GET, levels GET, plan-watch GET, each 3-20 s) answer AFTER it and put the old value back, and the save itself waited on a price read it did not need (`adjustment_plan.py` `_write`, the `_market(...)` call) and committed only after the whole sheet was rebuilt (`_run` commits after `work()`), under the shared 10 s limit.
+
+**RCA with file:line (code at 9d39c82f).**
+- (i) What takes 6-10 s: ONLY the price read. Measured with the market stubbed instant (`tests_app/test_plan_save_1127.py::test_step_timings_with_an_instant_market`): `_own_strategy` 0.018 s, `_type_of` 0.001, `_picked` 0.003, `accept_plan` 0.007, `_sheet` (the answer rebuild, DB reads only) 0.020, whole request 0.78 s (app start included). `_sheet` has no margin or run_check call. The slow step is `_market(...)` in `_write` (the read_quotes door, Lane U's area).
+- (ii) Client abort: no `BaseHTTPMiddleware` or disconnect check in backend/ofo_app (grep), so the handler runs to its end. `accept_plan` (playbook_store.py ~710) is ONE upsert under `lock_strategy`, committed once by `_run`: all or nothing, no half-save. Before the fix the commit came AFTER the slow rebuild; now it commits right after the write.
+- (iii) Page on timeout: `AdjustPlanSheet.send` showed the neutral four-part message ("Nothing was changed"), false for a stored save; the sheet stayed open and Save could be pressed again: a second write of the same body. Harmless to the data (same body, same stop base) but the sentence was wrong and it hid the stored state. The words "got no server answer in 3 tries" and "saved despite the error" are not in `frontend/src` or `backend/ofo_app` at this commit (grep), so nothing was reused.
+
+**Fix, server (`backend/ofo_app/routes/adjustment_plan.py`).**
+- `_needs_prices(data)`: a price read only for a rupee Target beside a percent Target (max profit) or a dated time exit. A stop (rupees or percent), a lone Target, counts and the playbook pick use the stored stop base and the legs: no read (`_apply_rupee` compares against `bases.max_loss`, which is `tracked.stop_base`, not a price).
+- A needed read is bounded by `PLAN_SAVE_PRICE_BUDGET_S = 4.0` (the plan watch route's own `PRICE_BUDGET_S`, the code's one price budget); over it the save is REFUSED, nothing stored (new catalogue row `plan_save_prices_not_read`, SV_524, wording pending owner read; no existing row fit: `tracking_exit_prices_not_live` speaks of exits).
+- `db.commit()` right after `accept_plan`; the answer comes from `_saved_reply`: the whole sheet under `PLAN_SAVE_REPLY_BUDGET_S = 0.5`, else the stored plan's own figures (plan, prefill, labels). The answer shape (AdjustmentPlanOut) is unchanged: less risk, no openapi change.
+- Refusals are as before.
+
+**Fix, client.** `lib/planSaveClock.js` keeps a per-strategy save count. Readers (sheet load, levels, PlanEntry reload, PlanWatch run) take the stamp when they start and drop an answer when a save happened since (PlanWatch then makes a fresh read that starts after the save, rows marked "Updating the numbers..."). Saves (POST, PUT, reset, trade rules PUT) carry `PLAN_SAVE_TIMEOUT_MS = 30000` per request. The page never re-sends. It ends on one sentence: saved = the server's answer; refused = the server's reason; timeout or no answer = "Not confirmed: reload to see whether it was saved." (`PLAN_NOT_CONFIRMED_TEXT`, new wording, pending owner read; no catalogue or label match) with the typed values kept. Plan watch lines are computed by the server (ADR-008), so they cannot come from the save's answer: they are re-read after the save.
+
+**Class, before and after.** Before: any plan read slower than a save could overwrite it, and any save over 10 s ended on a false "nothing was changed". After: a read older than the last save of its strategy is dropped everywhere the page reads the plan; a save has its own 30 s and one honest sentence. Not covered: the Preferences tab's plan load (`PreferencesTab.vue` loadPlan) has no stale guard yet.
+
+**Numbers.** Red before the fix: `test_plan_save_1127.py` 3 failed, 1 passed (diagnostic); a slow sheet held the answer 9.48 s; the price-needed save had no bound. `frontend/tests/plan-save-outcome.test.js` 6 failed, 1 passed of 7. Green after: 4 of 4 and 7 of 7. (A 35 s save is simulated by the client's own timeout error `ECONNABORTED`; vitest cannot make axios wait 35 s.)
+
+**3-step PC re-test (trade like #209).**
+1. Open the plan of a running trade, type Stop (Rs) 100, press Save. The block shows the stop at once from the answer and stays on it after the next Plan watch read.
+2. With prices slow, type a rupee Target beside a percent Target and Save: within about 5 s it is refused with "Prices could not be read in time to check this plan." and the old plan is unchanged.
+3. Stop the backend, press Save: the sheet stays open with the typed value and the single sentence "Not confirmed: reload to see whether it was saved."; the Network tab shows one request.
