@@ -61,7 +61,6 @@ from ofo_app.routes.adjustment import (
     get_market_reader,
     get_rest_spot_reader,
     get_tracked_reader,
-    release_connection,
 )
 from ofo_app.routes.adjustment_check import CheckResultOut, CheckStageOut, current_margin, result_out
 from ofo_app.routes.adjustment_preferences import UserPreferences, UserValuesIn

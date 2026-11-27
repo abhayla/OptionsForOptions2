@@ -21,14 +21,11 @@ WAIT_NAMES = frozenset({
     "_server_exit_prices", "owner_kite_reads", "index_spot", "market_reader", "rest_reader", "read_market",
     "to_thread", "wait_for", "read_rest_spot", "get_rest_spot_reader"})
 #: (file, function) -> why the connection is held on purpose or is not this lane's to change
-ALLOW = {
-    ("adjustment_history.py", "adjustment_history"): "open item for Lane J (adjustment*.py is not this lane's): "
-                                                    "holds the connection across paper.market_snapshot",
-}
+ALLOW: dict[tuple[str, str], str] = {}  # adjustment_history's entry was removed: it releases first now
 # Seen by hand, not by this scan (takes ``req``, not ``db``): execution_return._return keeps its connection on purpose,
 # the strategy row lock (store.lock_strategy, held to commit) makes one return close a plan once.
 #: guarded = functions that wait AND release first; pinned so a lost release or a new waiter shows
-GUARDED_COUNT = 10
+GUARDED_COUNT = 11  # 27 Nov (Lane M3): adjustment_history now releases first, so it counts here and left ALLOW
 
 
 def _name(call: ast.expr) -> str | None:

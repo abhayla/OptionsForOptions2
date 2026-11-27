@@ -578,6 +578,14 @@ def _paper(orders: Sequence[paper_store.StoredOrder]) -> list[PaperOrder]:
     return [o.order.as_paper() for o in orders]
 
 
+async def _cancel_leaving_stops(db: Any, strategy_id: int, book: Sequence[paper_store.StoredOrder]) -> None:
+    """#774 (ADR-330 (48)): cancel every armed leg stop whose contract the book no longer holds open (the same function,
+    ``paper_leg_stops.leaving``, gives the confirm list its lines)."""
+    armed = [r.trigger for r in await paper_trigger_store.list_for(db, strategy_id) if _state(r) == "armed"]
+    for gone in paper_leg_stops.leaving(armed, _open_ids(book)):
+        await paper_trigger_store.cancel(db, strategy_id, gone.id)
+
+
 def _open_ids(orders: Sequence[paper_store.StoredOrder]) -> list[int]:
     """The contracts with a non-zero net quantity (the quantity does not depend on any live price)."""
     if not orders:
@@ -1446,10 +1454,7 @@ async def place_paper_orders(strategy_id: int, body: PaperOrdersIn,  # noqa: PLR
             settings=settings)  # ADR-243: entry only if first fill; the size check is the door's (Lane K)
         # #774: a leg stop whose contract this basket closes (a move: exit A + add A') goes now, in this transaction,
         # exactly as the confirm list said; nothing is re-pointed (its premium level means another thing on A')
-        for gone in paper_leg_stops.leaving(
-                [r.trigger for r in await paper_trigger_store.list_for(db, strategy_id) if _state(r) == "armed"],
-                _open_ids(book)):
-            await paper_trigger_store.cancel(db, strategy_id, gone.id)
+        await _cancel_leaving_stops(db, strategy_id, book)
         new_ids = [o.id for o in book][-len(body.orders):]  # place inserts in order under the strategy's row lock
         for suggestion_id in dict.fromkeys(body.suggestion_ids):  # REQ-163 AC-1: same transaction, or nothing
             await playbook_store.link_orders(db, user_ref, strategy_id, suggestion_id, new_ids,

@@ -9,6 +9,7 @@
 // Spec basis: REQ-049 AC-4, ADR-016..019 (submitted is not executed; an unknown outcome is never "done"), ADR-017.
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
 import { flushPromises, mount } from '@vue/test-utils'
+import { PLAN_SAVE_TIMEOUT_MS } from '@/lib/adjustPlan'
 import { PLAN_NOT_CONFIRMED_TEXT } from '@/lib/sharedStateText'
 import api, { NEUTRAL_PARTS } from '@/services/api'
 import { addToPaper, PAPER_STATE, paperPostOutcome } from '@/lib/tracking'
@@ -129,7 +130,8 @@ describe('Save plan: the sheet ends on exactly one result', () => {
       const w = mount(AdjustPlanSheet, { attachTo: document.body, props: { open: true, strategyId: 70 } })
       await flushPromises()
       t(w, 'plan-save').trigger('click')
-      await settle()
+      await vi.advanceTimersByTimeAsync(PLAN_SAVE_TIMEOUT_MS + 1000) // Lane R: a plan save waits 30 s, not the 10 s of the other actions
+      await flushPromises()
       const error = t(w, 'plan-error')
       const saved = (w.emitted('saved') ?? []).length
       expect(t(w, 'plan-save').element.disabled).toBe(false) // never left busy
