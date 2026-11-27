@@ -32,7 +32,7 @@ from ofo.charges import ChargeRates
 from ofo.engine import adjust_money
 from ofo.errors.explanations import render_explanation
 from ofo.money import HUNDREDTH, PAISE
-from ofo.strategy.definition import describe_contract
+from ofo.strategy.definition import display_contract
 from sqlalchemy.exc import SQLAlchemyError
 
 from ofo_app import adjustment_check as check
@@ -239,9 +239,13 @@ async def _armed_lines(db: Any, strategy_id: int, run: CheckRun, live: bool) -> 
                 lines.append(_line(f"trigger-{t.id}", "leg_stop", "armed", render_explanation(
                     "adjust_condition_line_id", label="leg stop"), "option_price", "not_computable"))
                 continue
-            leg = describe_contract(identity)
-            label = render_explanation("plan_watch_leg_above" if up else "plan_watch_leg_below", leg=leg, level=t.level)
+            leg = display_contract(identity)  # the app's one contract style: "NIFTY 3 Nov 22650 PE", never an ISO date
             unit, price = "option_price", marks.get((identity[1].value, identity[2]))
+            side = "above" if up else "below"
+            if price is not None and live:  # the sentence carries the live price beside the level (item 6)
+                label = render_explanation(f"plan_watch_leg_{side}_now", leg=leg, level=t.level, now=price)
+            else:
+                label = render_explanation(f"plan_watch_leg_{side}", leg=leg, level=t.level)
         key = f"trigger-{t.id}"
         kind_out = "index_exit" if t.kind == "conditional_exit" else "leg_stop"
         if price is None or not live:  # prices not live: a paused line with no `now` (never an old number)

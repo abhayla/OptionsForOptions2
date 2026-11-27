@@ -4804,11 +4804,11 @@
     "reviewed": "pending owner read"
   },
   "explanation:plan_watch_leg_above": {
-    "sha256": "50323a027cbdd230324202287ca1025e955a9013aa3cc7790432f9795e859143",
+    "sha256": "a1a8ddad35f29fac0c489d0eb8ea352f31bf77bbadb8680f4942ab78a52f1479",
     "reviewed": "pending owner read"
   },
   "explanation:plan_watch_leg_below": {
-    "sha256": "e71aa9d87bef9bda08a0620a8a0bd4ec5c5b5f00a45d95d86c53d60d7e18ad41",
+    "sha256": "dae2acba0b09bf0f52df351e42beb45808fd8552b995ddfe2a634268550df01f",
     "reviewed": "pending owner read"
   },
   "explanation:plan_watch_armed_heading": {
@@ -4993,6 +4993,14 @@
   },
   "explanation:plan_sheet_reset_put_back_none": {
     "sha256": "67d186aabd681015f4c186877a455f503a91a2a5eef1b7e55560d5e9dc4d205c",
+    "reviewed": "pending owner read"
+  },
+  "explanation:plan_watch_leg_above_now": {
+    "sha256": "e2f0d0ce656e1ca878777725087850bb8588a901311a98112d6cc3e95b206e50",
+    "reviewed": "pending owner read"
+  },
+  "explanation:plan_watch_leg_below_now": {
+    "sha256": "b5d5dfa9616ea80df567d4c6993577325d2656e5368958bfce50b16418245868",
     "reviewed": "pending owner read"
   }
 }

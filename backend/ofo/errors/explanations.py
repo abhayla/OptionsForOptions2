@@ -2060,10 +2060,20 @@ _EXPLANATIONS: tuple[ExplanationTemplate, ...] = (
     # P10 (ADR-330 (13)): the labels of the Plan watch lines for the Stops-panel triggers, and the heading they sit under
     ExplanationTemplate("plan_watch_index_above", "values_seen", "Index exit above {level}", {"level": IndexLevel}),
     ExplanationTemplate("plan_watch_index_below", "values_seen", "Index exit below {level}", {"level": IndexLevel}),
-    ExplanationTemplate("plan_watch_leg_above", "values_seen", "Leg stop on {leg}: price above {level}",
+    # Lane O 27 Nov, items 5 and 6 (pending owner read): the stop line says the side (rises / falls), the level and,
+    # when a live price is known, the price now, so "price above 135.00" beside a price of 113.10 cannot be misread
+    ExplanationTemplate("plan_watch_leg_above", "values_seen",
+                        "Leg stop on {leg}: fires when the price rises above {level}",
                         {"leg": Explained, "level": IndexLevel}),
-    ExplanationTemplate("plan_watch_leg_below", "values_seen", "Leg stop on {leg}: price below {level}",
+    ExplanationTemplate("plan_watch_leg_below", "values_seen",
+                        "Leg stop on {leg}: fires when the price falls below {level}",
                         {"leg": Explained, "level": IndexLevel}),
+    ExplanationTemplate("plan_watch_leg_above_now", "values_seen",
+                        "Leg stop on {leg}: fires when the price rises above {level}; price now {now}",
+                        {"leg": Explained, "level": IndexLevel, "now": IndexLevel}),
+    ExplanationTemplate("plan_watch_leg_below_now", "values_seen",
+                        "Leg stop on {leg}: fires when the price falls below {level}; price now {now}",
+                        {"leg": Explained, "level": IndexLevel, "now": IndexLevel}),
     ExplanationTemplate("plan_watch_armed_heading", "values_seen", "Armed in the Stops panel", {}),
     # D-03 (ADR-317 (7)): an index exit set before an adjustment stays armed; the row names the new short strike
     ExplanationTemplate("paper_exit_set_before_call", "values_seen",

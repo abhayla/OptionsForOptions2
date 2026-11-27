@@ -5,6 +5,8 @@ prices not live -> state paused, no ``now``; strategy not found -> 404; evaluati
 """
 from __future__ import annotations
 
+import re
+
 from decimal import Decimal
 
 from httpx import ASGITransport, AsyncClient
@@ -63,6 +65,9 @@ async def test_planned_condor_lines(app_db_url, monkeypatch):  # noqa: F811
     assert (index["fires_at"], index["state"]) == ("23400.00", "watching")
     assert index["now"] == "23050.00" and index["distance_rs"] == "350.00"  # the scenario's spot, 23400 - 23050
     assert out["armed_heading"] is not None
+    for leg in (x for x in lines if x["kind"] == "leg_stop"):  # items 5 and 6 (27 Nov): the date style, level, side, price now
+        assert leg["label"].endswith(f": fires when the price rises above 90.00; price now {leg['now']}"), leg["label"]
+        assert not re.search(r"\d{4}-\d{2}-\d{2}", leg["label"]) and re.search(r"on NIFTY \d{1,2} [A-Z][a-z]{2} \d+ (CE|PE):", leg["label"])
 
 
 async def test_no_plan_sentence_and_armed_triggers_still_listed(app_db_url, monkeypatch):  # noqa: F811
@@ -92,6 +97,8 @@ async def test_prices_not_live_every_line_is_paused_with_no_now(app_db_url, monk
     assert out["lines"] and all(x["state"] in ("paused", "not_computable", "not_applicable") for x in out["lines"])
     assert all(x["now"] is None and x["distance_rs"] is None for x in out["lines"])  # absent, never 0
     assert {x["state"] for x in out["lines"] if x["kind"] in ("index_exit", "leg_stop")} == {"paused"}
+    for leg in (x for x in out["lines"] if x["kind"] == "leg_stop"):  # no price: the level and side, no "price now"
+        assert leg["label"].endswith(": fires when the price rises above 90.00"), leg["label"]
     target = next(x for x in out["lines"] if x["kind"] == "target")
     assert target["state"] in ("paused", "not_computable")  # the check itself reads a stale price as not checked
 
