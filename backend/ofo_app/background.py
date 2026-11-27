@@ -164,6 +164,9 @@ log = logging.getLogger("ofo_app.background")
 
 __all__ = ["GATE_POLL", "GATE_REBUILD", "GATE_WRITER", "DbGate"]  # the role's one gate (``db_gate``)
 
+#: J3 item 1: the alert gate's timing style for a trade whose expiry kind is not known (never a stage row: see
+#: ``_evaluate_and_gate``); the fastest style, so a stop that needs no kind is never held longer than any other.
+UNKNOWN_KIND_TIMING_STYLE: Final = "intraday"
 DEFAULT_MAX_PER_CYCLE: Final = 200  # strategies checked in one cycle; the rest roll to the next (B4 (a))
 #: the recent checks and errors kept in memory for tests and status (a long-running process must not grow without end:
 #: 1,000 strategies checked each second would add ~21.6 million entries in one market day)
@@ -1663,7 +1666,15 @@ class Worker:
         sid = w.strategy_id
         pin, user_values = style_in
         try:
-            style = alert_presets.style_for(state.expiry_kind, state.days_left, pin)
+            try:
+                style = alert_presets.style_for(state.expiry_kind, state.days_left, pin)
+            except alert_presets.StyleRefused:
+                if state.days_left is not None:
+                    raise
+                # J3 item 1: the expiry kind is not known (a far-month leg, R3): the fact only the percent stop and
+                # the stage rows need. The gate's TIMING takes the fastest style; every rule that needs the kind is
+                # answered "not checked" by the evaluation itself, and the rupee stop and time exit still run.
+                style = UNKNOWN_KIND_TIMING_STYLE
             preset = alert_presets.preset_for(style, user_values, self._values or {})
         except (ValueError, KeyError) as exc:  # StyleRefused is a ValueError: paused, never a guessed preset
             log.warning("background: strategy %s has no alert preset: %s", sid, exc)
