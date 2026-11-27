@@ -37,7 +37,7 @@ RELOAD_SECONDS = 20  # the worker process rebuilds its monitors from the databas
 
 
 @pytest.fixture
-async def chain_for(monkeypatch, tmp_path: pathlib.Path):
+async def chain_for(monkeypatch, tmp_path: pathlib.Path, app_engine, admin_engine):  # engines: skip without a database
     made: list[tuple[wc.Chain, str, str]] = []
 
     async def make(path_id: str) -> wc.Chain:
