@@ -1,4 +1,4 @@
-STATUS 19:25 | items 1 and 4: Fixed, not tested (Opus review done, gate run 4 pending); 2: Lane N's change, not built twice; 3: listed | next push: after gate | blocker: none
+STATUS 20:15 | pushed head 0a88b8d1, gate TOTAL PASS | items 1 and 4: Fixed, not tested; 2: Lane N's 5e7d34c9, not built twice; 3: listed, not built | NEEDS A DECISION: SENSEX has no freeze rows so every SENSEX open is refused; one-click exit of a leg above one order's freeze limit is refused | next push: none planned | blocker: none
 
 # Lane K: order limits at the one door (branch fix/order-limits-1127, from bcbff80)
 
