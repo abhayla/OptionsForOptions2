@@ -5295,6 +5295,32 @@
             "title": "Expiry Days",
             "type": "array"
           },
+          "list_current": {
+            "default": false,
+            "title": "List Current",
+            "type": "boolean"
+          },
+          "list_day": {
+            "anyOf": [
+              {
+                "format": "date",
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "List Day"
+          },
+          "list_notice": {
+            "anyOf": [
+              {},
+              {
+                "type": "null"
+              }
+            ],
+            "title": "List Notice"
+          },
           "today": {
             "format": "date",
             "title": "Today",
@@ -5897,6 +5923,29 @@
             ],
             "title": "Database",
             "type": "string"
+          },
+          "instrument_list": {
+            "default": "unknown",
+            "enum": [
+              "today",
+              "earlier",
+              "none",
+              "unknown"
+            ],
+            "title": "Instrument List",
+            "type": "string"
+          },
+          "instrument_list_day": {
+            "anyOf": [
+              {
+                "format": "date",
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Instrument List Day"
           },
           "status": {
             "enum": [
