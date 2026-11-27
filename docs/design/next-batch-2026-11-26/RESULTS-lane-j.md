@@ -25,6 +25,19 @@ tests_app/test_catalogue_list_carries_over.py, 5 tests failing on 206a9f06's sch
 knowledge/findings/start-up-list-expires-at-publish-time.json. Owner question LJ-3 (keep yesterday's list in use
 until today's loads, said in the log and on the health reply): recommended, NOT built (it changes REQ-053 AC-3).
 Workaround on the PC until this ships: start or restart the API after 08:35 IST.
+Tier A review (Opus, 27 Nov): FIX; shipped with these findings after the two-round limit (the 08:07 case of this
+morning IS fixed; these are what is still open, for the coordinator's re-merge decision):
+- MAJOR: the 08:35 window is the constant WINDOW_OPEN in backend/ofo_app/catalogue_refresh.py (:36, :63, :111), not
+  derived from facts.contract_list_publish_time (REQ-167 AC-4); with the setting at 08:45 the list is dark
+  08:45-09:34. With the default 08:30 the window is right.
+- MAJOR: a failed or refused 08:35 run stamps _last_started (:84, :112), so the next try is 09:35 (dark 08:30-09:34
+  after one network blip). The finding file's "guarded" wording overstates this.
+- MINOR: the "catalogue refresh loaded" info line does not reach the API log (no logging configuration in main.py; the
+  worker configures its own, background.py:2115); the refused/failed lines (warning) do.
+- MINOR: the scheduler runs on the PC's clock while the database stamps the load on the VPS clock; a PC clock more
+  than 5 minutes ahead would count the 08:35 load as before 08:30.
+To file as deferred issues: the two MAJORs and the info-log MINOR, each with the file:line above; done when the
+window follows the setting, a failed run is retried within minutes, and the loaded line is in the API log.
 
 ## Status for the coordinator (this session cannot send messages: the session-message service refuses it as untrusted)
 
