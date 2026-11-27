@@ -1,5 +1,35 @@
 # Lane M results: the leg-stop max-loss line (27 Nov 2026)
 
+SAFE TO CLOSE (14:20 IST). Head: the commit that adds this line on `hotfix/maxloss-line-1127` (pushed after its gate).
+Pushed and passed on the PC: the leg-stop line's leg names (T1-03), the fired index exit's quoted tick (T1-11), the
+by-id proof for a long-dated twin (item 3). Item 4 answered below: ADR-330 (33) is met (test); the no-plan case is
+an owner question (`owner-questions-lane-m.md` Q1). What is left:
+- Q1 (owner): on a yes, apply `lane-m-side-closed-noplan.patch` (this folder; commit df611c2, Tier A reviewed:
+  REVISE for the spec conflict only, code attacks passed) on a branch from the integration head, gate, push.
+- The 2028 contract name on 27 Nov: unexplained; three PC queries under "LANE M ITEM 3".
+- B-P2's side-closed row: the PC query under "LANE M ITEM 4 REVISED" (Active lists open rows only; History holds
+  answered and system-closed rows).
+- The deferred items listed below (exit confirm in ISO form, the server name's year rule, the fired tick's own time,
+  plan stop / time exit reasons).
+
+## Task | model that did it (owner rule 14:14 IST: the task picks the model)
+
+The main session (Opus) did far more than split, route, verify and report: it built, ran the tests and ran the gates
+itself. That breaks the CLAUDE.md hard rule; each row below says so.
+
+| Task | Model that did it | Per the rule |
+|---|---|---|
+| Reading the spec and code, RCAs (items 1-4) | Opus (main session) | verify / design: allowed |
+| Fixes and tests: leg names, figure pin, exit tick, twin proof, side-closed patch | Opus (main session) | building: should have been Sonnet |
+| Local DB set-up, targeted test runs | Opus (main session) | test runs: should have been Sonnet |
+| Pre-push gate runs (6 runs, 2 failed on setup: node_modules missing; 1 stopped for a new commit) | Opus (main session) | gate runs: should have been Sonnet |
+| Tier A review: leg-stop line (first diff, stopped as obsolete) | Opus helper, "Why Opus" stated | money path: allowed |
+| Tier A review: leg-stop net diff | Opus helper, "Why Opus" stated | money path: allowed |
+| Tier A review: fired index exit tick | Opus helper, "Why Opus" stated | exit / stop path: allowed |
+| Tier A review: side-closed no-plan patch | Opus helper, "Why Opus" stated | alert on a stop / exit-adjacent path: allowed |
+| RESULTS, owner question, commit messages | Opus (main session) | mechanical writing: should have been Haiku |
+
+
 Coordinator lines (send_message to "@parent" was refused: `elevated_session_untrusted_device`; written here instead):
 
 - LANE M ALIVE (09:46 IST)
