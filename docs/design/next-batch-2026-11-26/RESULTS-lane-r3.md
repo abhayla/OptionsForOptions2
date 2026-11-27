@@ -1,4 +1,4 @@
-STATUS 21:42 | items 1, 2, 3, 4: Fixed, not tested | one push after the gate ends TOTAL PASS (gate run 4 in progress) | blocker: messages to the coordinator are refused (untrusted device); this top line is the report
+STATUS 22:15 | items 1, 2, 3, 4: Fixed, not tested | PUSHED head 7da2e173 (gate TOTAL PASS, one push for all four items) | blocker: none (messages to the coordinator refused: untrusted device; this line is the report)
 
 # Lane R3: plan reads and the live check use the stored expiry kind (hotfix/plan-read-2-1127)
 
@@ -52,7 +52,7 @@ Note from the reviewer (spec silent): beyond the last future only monthly or qua
 4. The "not checked" reason for a trade with an unknown kind says the days left are missing (the engine's own code): a kind-specific reason code needs a change in `ofo/adjustment/playbook_eval.py` (not mine).
 5. `AdjustPlanSheet.vue` still does not show `stop_kind_reason` (R2's item 5, still open; not in my queue).
 
-## Why one push
+## Why one push (gate TOTAL PASS on the pushed head)
 The gate runs about 18 minutes and each push needs a TOTAL PASS on a clean tree; items 3 and 4 were ready before the first gate finished, so the four items go in one push to save a second gate run (hotfix/plan-read-2-1127 only, no PR).
 
 ## Tasks, models, minutes
@@ -74,4 +74,4 @@ Report any step where the stop number differs between Positions, builder and Pla
 
 New on-screen sentences (all pending owner read): "Put back to the playbook's values:", "Switched on again:", "Nothing differed from the playbook, so nothing was put back." (Lane O's; labels `reset_put_back*`).
 
-SAFE TO CLOSE once pushed (the J2 hand-overs above stay open)
+SAFE TO CLOSE (head 7da2e173 on hotfix/plan-read-2-1127; the J2 hand-overs above stay open)
