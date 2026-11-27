@@ -176,7 +176,6 @@ describe('Exit all while a change is staged: today\'s behaviour, unchanged (ADR-
   })
 })
 
-const NOT_KEPT = (names) => `The change waiting on ${names} was not kept because the trade changed; stage it again.`
 const withNet = (book, over) => ({ ...book, positions: book.positions.map((p) => (over[p.contract_id] !== undefined ? { ...p, net_quantity: over[p.contract_id] } : p)) })
 const exit1 = async (w, id) => { S(w).exitPaper(id, 1); await flushPromises(); await t(w, 'paper-confirm-button').trigger('click'); await flushPromises() }
 const setLeg = (w, i, patch) => S(w).setLegs(S(w).paper.net.map((l, k) => (k === i ? { ...l, ...patch } : { ...l })))

@@ -640,9 +640,9 @@ async function confirmPending(orders) {
     }
     if (outcome === PAPER_STATE.UNKNOWN) {
       exitRec.settle(EXIT_KEY, attempt, 'unknown')
-      if (wasExit) { // ADR-017: this exit may be stored; it is never sent again until a re-read decides it
+      if (orders.some((o) => o?.kind === 'exit')) { // ADR-017: this exit may be stored; it is never sent again until a re-read decides it (any post that carries an exit row, wherever the click came from)
         const exp = own ? legsAfterExit(own.net, own.net, own.id, own.lots) : null
-        exitUnknown.value = { attempt, names, before: netKey(paper.value?.net), expected: exp ? netKey(exp) : null }
+        exitUnknown.value = { attempt, names, at: Date.now(), before: netKey(paper.value?.net), expected: exp ? netKey(exp) : null }
         void recheckUnknownExit()
       }
     }
@@ -729,11 +729,15 @@ async function rereadAfterPlace(id, onFirstFail) {
 const retryReread = () => (rereadId === null ? null : rereadAfterPlace(rereadId, rereadFirstFail))
 // Lane U2 (ADR-017, ADR-016..019): a good re-read of the book (the server's truth) decides an exit whose outcome was unknown: stored (the net moved to what
 // the exit leaves, or to anything else) or not stored (the net equals the net before). Either way the lock ends; a not-stored exit is never kept as a staged edit.
+let readSeq = 0 // reads of the book started by the unknown-exit door; an answer older than one already applied is ignored (Tier A round 1, finding 2)
+let appliedSeq = 0
+const EARLY_MS = 5000 // a trade still unchanged this soon after the reply is not proof of "not stored" (the order may still be committing; no idempotency key yet)
 function decideUnknownExit(newNet) {
   const u = exitUnknown.value
-  if (!u) return
-  exitUnknown.value = null
+  if (!u) return true
   const key = netKey(newNet)
+  if (key === u.before && Date.now() - u.at < EARLY_MS) return false // too early to say "not stored": stays locked
+  exitUnknown.value = null
   if (key === u.before) { // not stored: say so, put the other legs' edits back without the exit
     restoreStaged(newNet, true)
     exitRec.put(EXIT_KEY, 'not_stored', exitEndText('not_stored', u.names))
@@ -746,23 +750,25 @@ function decideUnknownExit(newNet) {
   paperState.value = PAPER_STATE.READY
   exitOrigin.value = false
   legsBeforeExit = null
+  return true
 }
-async function recheckUnknownExit() { // the automatic re-read; a failed one leaves the lock (the Orderbook link and a reload read again)
+async function recheckUnknownExit() { // the automatic re-read; a failed or too-early one leaves the lock (the Orderbook link and a reload read again)
   const u = exitUnknown.value
   if (!u || !paper.value) return
   const { id } = paper.value
-  for (const wait of PAPER_REREAD_DELAYS_MS) {
+  for (const wait of [0, EARLY_MS, EARLY_MS, EARLY_MS]) {
     if (wait) await sleep(wait)
     if (leaving || exitUnknown.value !== u) return
+    const seq = ++readSeq
     let read = null
     try { read = await readPaperBook(api, id) } catch { read = null }
-    if (leaving || exitUnknown.value !== u) return
+    if (leaving || exitUnknown.value !== u || seq < appliedSeq) return
     if (read?.kind === 'paper') {
       const kept = keepStaged
       enterDrafts(id, read) // cancelReread ends keepStaged unless it is put back
       keepStaged = kept
-      decideUnknownExit(read.net)
-      return
+      appliedSeq = seq
+      if (decideUnknownExit(read.net)) return
     }
   }
 }
@@ -771,9 +777,12 @@ async function openPaperOrderbook() {
   if (!paper.value) return
   const { id } = paper.value
   paperDialog.value = false
+  const seq = ++readSeq
   try {
     const read = await readPaperBook(api, id)
     if (read.kind !== 'paper') throw new Error('unreadable paper book')
+    if (seq < appliedSeq) return // a newer read has already been applied: an older answer never reopens a leg
+    appliedSeq = seq
     const kept = keepStaged // enterDrafts ends a re-read run that is not this strategy's (cancelReread) and would drop it
     enterDrafts(id, read)
     keepStaged = kept
