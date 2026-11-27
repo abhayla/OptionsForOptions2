@@ -9,6 +9,23 @@ Spec basis: ADR-330 (1) to (27) and its one-module instruction; ADR-002; ADR-003
 
 ## SAFE TO CLOSE (Lane J, 27 Nov about 14:50 IST)
 
+**Your 14:53 message (raw Plan watch answers), read against the code:**
+- #207 (stop line FIRED in Plan watch, no alert row): the Plan watch route evaluates afresh, while the worker evaluates
+  with the stored rule memory. A stored `held_at_entry = t, seen_clear = f` row made the worker's evaluation answer
+  "already true" every minute (`playbook_eval.py:1203`), so the gate got no reading. The route has no such memory, so it
+  says FIRED. This head ignores that memory for loss stops (dabcc8ce), and a test replays #207's restart
+  (`test_207_restart_at_13_33_30_opens_the_stop_at_the_first_live_check`).
+- #209 (all 16 lines NOT_COMPUTABLE, "spot not available", USER_INPUT_151) is the Plan watch ROUTE's answer, from the
+  API process. The likely cause there is the route's 4 s price budget: a cut market read is answered as the
+  not-connected market, so the spot is not available (`routes/plan_watch.py` `_budgeted`; the API log's 54 "market read
+  over 4.0 s" lines). That is the API, not the worker. The worker reads its spot from the feed's ticks only
+  (`background.py:323-341`, `feed_spot`); it never calls the REST quote, Lane U's door or the route budget (the
+  merged-tree diff along its path is empty). So #209's route answer does not show that the worker could not read the
+  spot. The worker's new skip line (`background: strategy 209 check skipped: prices_<state>`) will show it if it could
+  not. If the PC sees that line for #209, the cause is in the worker's feed read, and I will hand it to Lane U.
+- Still open, not on this branch: a plan with a stop whose check cannot compute raises no "your stop is not being
+  checked" alert (as ADR-330 (44) does for paper exits). It needs a spec row and a build: for the next lane.
+
 **Head: the head of `hotfix/loss-stop-1127` on origin** (this commit). Code: 206a9f0 + the daily-cap exemption
 (c040e73e) + the rupee stop fast path (468561e4) + the stop-gaps class fix (dabcc8ce, 415e98f4, 3d16435e). Fixed, not
 tested. **The PC: pull; restart the worker supervisor and the API; no frontend rebuild; no migration.** Re-run T1-05
