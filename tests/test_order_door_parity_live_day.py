@@ -208,12 +208,7 @@ PARITY = {
 }
 # The rows that fail today, from the audit's 54 rows (section 3) and from a grep of the real files on this tree; a row
 # not listed here must PASS today (the paper and the real side already reach the same symbol).
-GREEN_TODAY = {  # shared through ofo.engine.duplicate_leg (audit row 5)
-    "entry_refused_duplicate_leg_same_sentence",
-    # fix/order-limits-1127 (Lane K) put the freeze check on the paper door: its strict xfail passed (XPASS), so the
-    # mark is removed in the build that brings the fix (Lane Z, 27 Nov)
-    "entry_over_freeze_limit_blocks_never_splits",
-}
+GREEN_TODAY = {"entry_refused_duplicate_leg_same_sentence"}  # shared through ofo.engine.duplicate_leg (audit row 5)
 ONE_EXIT_DOOR = "one exit door (ADR-330 (58))"
 
 
