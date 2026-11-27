@@ -107,7 +107,8 @@ class Worker:
         crossed = now >= self.start and not dipped
         ev = evaluate(self.body, self.kind.state(now, crossed), self.memory, None)
         self.memory = ev.memory
-        readings = {k: v for k, v in gate_readings.readings(ev, stops=sl.plan_exit_rule_ids(self.body)).items() if k == self.kind.rule_id}
+        stops = sl.plan_exit_rule_ids(self.body)
+        readings = {k: v for k, v in gate_readings.readings(ev, stops=stops).items() if k == self.kind.rule_id}
         if self.others_from is not None:  # four automatic rules that are true from ``others_from`` on
             on = now >= self.others_from
             for r in OTHERS:

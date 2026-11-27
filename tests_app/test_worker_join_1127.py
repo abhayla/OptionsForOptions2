@@ -15,9 +15,10 @@ from ofo_app import background
 from ofo_app import settings_in_force as sif
 from test_background_cycle import (  # noqa: F401 - the fixture is used by name
     MIN_STOP_PCT, Calls, FakeGate, Prov, _followed, _system_body, _watched, _worker, scn)
-from test_spot_either_source import MIN, _Reader, _rest  # noqa: F401
+from test_spot_either_source import MIN, _Reader, _rest
 
 STOP = "T-06"
+SID = 100
 
 
 def _stop_watched(scn_):
@@ -98,12 +99,12 @@ async def test_a_stale_reason_does_not_survive_a_later_fresh_read(scn):  # noqa:
     reader._reading = SourceReading(SourceState.STATED, Decimal("23420"), now[0])
     w._rest_cycle.clear()
     await w.cycle()
-    assert 100 not in w.paused_why and w.status[100] is background.MonitoringStatus.ACTIVE
+    assert SID not in w.paused_why and w.status[100] is background.MonitoringStatus.ACTIVE
     assert [s for s, _ in calls.states] == [100]
 
 
 async def test_a_raising_rest_reader_pauses_with_a_reason_and_is_asked_once_per_cycle(scn, caplog):  # noqa: F811
-    """Review F5: at the worker, a reader that raises is "no REST spot" (one call, paused, skipped line), never a crash."""
+    """Review F5: at the worker a reader that raises is "no REST spot" (one call, paused, a skipped line)."""
     prov, now, calls = Prov(scn), [scn.clock_at], Calls()
     prov.spot = None
     reader = _Reader(boom=RuntimeError("boom"))
