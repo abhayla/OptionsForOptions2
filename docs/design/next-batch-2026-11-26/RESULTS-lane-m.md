@@ -3,6 +3,31 @@
 Coordinator lines (send_message to "@parent" was refused: `elevated_session_untrusted_device`; written here instead):
 
 - LANE M ALIVE (09:46 IST)
+- LANE M ITEM 4 REVISED (14:00 IST; supersedes the 13:30 answer below; coordinator 13:45 narrowed the question):
+  - ADR-330 (33) IS met, from the code with a test: `side_closed.raise_if_closed` raises once per (strategy, side,
+    closure episode); an answered row (`add_legs` / `confirm_new_shape`) stops a second row only until that side has
+    open legs again, which marks the answered row `side_reopened`, and the next closure raises a NEW row. Test:
+    `tests_app/test_side_closed_alert.py::test_ask_again_each_time_the_side_closes_again` (both answers: closed ->
+    answered -> legs added -> closed again -> a new row; an open row stops a duplicate). Run this session on a fresh
+    database: 20 passed. A row the system closed never stops a new raise (`test_a_system_closed_row_does_not_stop_a_new_raise`).
+  - The OTHER side closing later: once both sides are closed nothing of the condor remains (`remaining_label` needs
+    exactly one closed side); with every leg exited the trade lapses as strategy_closed. No row then, by design.
+  - Answered or system-closed rows leave Alerts > Active (it lists open rows only, `actionable_alerts.unanswered`)
+    and are in Alerts > History. So for B-P2: if its row came at 11:28 (the database shows #201 side.closed.call at
+    11:28) and was then answered, or closed by the system (plan removed / not monitored, expiry), the tester looking in
+    Active at 11:42 and 13:03 would see nothing: History holds it. PC check: `SELECT id, rule_id, outcome, answer,
+    created_at FROM public.actionable_alerts WHERE strategy_id = 201 ORDER BY id;` plus that row's timeline.
+  - NOT A FIX, AN OWNER QUESTION (no code pushed): the no-plan case of the 13:30 answer is a CONFLICT of two owner
+    rows, found by the Tier A review of my local fix (df611c2, branch hotfix/side-closed-1127, not pushed):
+    ADR-330 (3) (owner 26 Nov): an alert waiting "when he removes the plan from its strategy (the trade stays open)
+    leaves the Active list and the bell and is kept in History marked closed by system because the plan was removed
+    ... Not chosen: keep it until answered"; against (2)(b) "When a side closes, the user is told so and asked" and
+    (33) "every time a side of the trade closes", with no plan condition. For a trade with NO plan the code today
+    follows (3)/(11): no side_closed row. Business call for the owner: does the side-closed question come for a trade
+    with no plan? Spec basis: ADR-330 (2)(b), (3), (11), (33). Recommended: yes, and it survives a plan's removal
+    (it is about the trade's shape name, not a plan rule); the fix is ready on df611c2 (no-plan trades go to the
+    side-closed check only; the not_monitored lapse leaves side_closed rows open). Not chosen by me: either option;
+    the rule is that a conflict of owner rows is asked, never decided by a lane.
 - LANE M ITEM 4 ANSWER (13:30 IST, side_closed for B-P2; from the 206a9f0 code, not yet run on the PC data):
   - What raises it: `background.Worker.rebuild` -> `_raise_side_closed_all(monitors)` ->
     `DbGateStore.raise_side_closed` -> `side_closed.raise_if_closed` (one alert module, kind side_closed), every
