@@ -9,11 +9,27 @@ without a matched route the raw path is logged with no query string. No await on
 from __future__ import annotations
 
 import logging
+import sys
 import time
 
 from starlette.types import ASGIApp, Message, Receive, Scope, Send
 
 log = logging.getLogger("ofo_app.request")
+
+
+def _install_handler() -> None:
+    """The API runs under `uvicorn --factory` with no logging config, so the root stays at WARNING and an INFO record
+    would be dropped. This one logger gets its own stderr handler (once) and does not propagate (no double print)."""
+    log.setLevel(logging.INFO)
+    log.propagate = False
+    if not any(getattr(h, "_ofo_request_log", False) for h in log.handlers):
+        handler = logging.StreamHandler(sys.stderr)
+        handler.setFormatter(logging.Formatter("%(asctime)s %(message)s"))
+        handler._ofo_request_log = True  # type: ignore[attr-defined]
+        log.addHandler(handler)
+
+
+_install_handler()
 
 
 class RequestLog:

@@ -3,7 +3,7 @@
 from __future__ import annotations
 
 import logging
-from collections.abc import AsyncIterator
+from collections.abc import AsyncIterator, Iterator
 
 import pytest
 from httpx import ASGITransport, AsyncClient
@@ -29,6 +29,15 @@ async def api() -> AsyncIterator[AsyncClient]:
     app.dependency_overrides[get_db] = _db
     async with AsyncClient(transport=ASGITransport(app=app), base_url="http://test") as ac:
         yield ac
+
+
+@pytest.fixture(autouse=True)
+def _capture_request_logger(caplog: pytest.LogCaptureFixture) -> Iterator[None]:
+    """The request logger does not propagate (it owns a stderr handler), so caplog's root handler is attached to it."""
+    logger = logging.getLogger("ofo_app.request")
+    logger.addHandler(caplog.handler)
+    yield
+    logger.removeHandler(caplog.handler)
 
 
 def _records(caplog: pytest.LogCaptureFixture) -> list[logging.LogRecord]:
