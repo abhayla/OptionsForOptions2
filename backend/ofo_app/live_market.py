@@ -514,7 +514,7 @@ def reads_client(api_key: str, access_token: str) -> KiteReads:
 async def index_spot_from(name: str, open_reads: Callable[[], Awaitable[KiteReads | None]]) -> SourceReading:
     """The same ONE shared cached REST index read (``REST_SPOT``, this process's own) for a process that holds no live
     Kite market (the background worker): ``open_reads`` builds the Kite read client from the stored login when a call is
-    really needed (never on a cache hit). None -> ABSENT (not asked, not cached)."""
+    really needed (never on a cache hit). None -> ABSENT (not asked; the answer is kept 10 s like any other)."""
     async def fetch() -> SourceReading:
         reads = await open_reads()
         if reads is None:

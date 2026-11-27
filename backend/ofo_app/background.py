@@ -203,6 +203,8 @@ class PriceRead:
     #: the held index quote's own problem ("index quote missing", "index quote stale"; "" = the index quote is fine):
     #: the REST read is asked only when this is set (an option leg missing with the index fine asks nothing)
     cause: str = ""
+    #: LEG_MISSING with the index spot itself usable (held or REST stand-in): the missing thing is an option leg
+    leg_missing: bool = False
 
     def signature(self, now: datetime.datetime) -> tuple:
         """What a check depends on: every leg's and the spot's price and time, and the IST minute (clock rules)."""
@@ -327,7 +329,8 @@ def read_prices(provider: Any, watched: Watched, now: datetime.datetime,  # noqa
             why = "" if stand_in.health is DataHealth.AVAILABLE else REASON_REST_STALE
     legs = {i: _leg_quote(chains[x.expiry], x) for i, x in enumerate(position.legs)}
     if spot is None or spot.ltp is None or any(q is None or q.ltp is None for q in legs.values()):
-        return PriceRead(PriceState.LEG_MISSING, cause=cause)
+        return PriceRead(PriceState.LEG_MISSING, cause=cause,
+                         leg_missing=spot is not None and spot.ltp is not None)
     needed = {"spot": spot, **{str(i): q for i, q in legs.items()}}
     if strategy_monitoring_status(needed) is MonitoringStatus.PAUSED:
         return PriceRead(PriceState.STALE, why=why, cause=cause)
@@ -1415,6 +1418,7 @@ class Worker:
         self._tick.pop(sid, None)
         kept = self._paused_at.get(sid)
         self._paused_at[sid] = now if kept is None else max(kept, now)
+        self.paused_why.pop(sid, None)  # a pause that names a reason sets it AFTER this call; any other pause has none
 
     def _interval_style(self, sid: int) -> str:
         """The style whose interval gates this check (ADR-235 (1)). #639 item 3: the pin the last rebuild read wins, so
@@ -1544,8 +1548,11 @@ class Worker:
         key = (now.astimezone(IST).strftime("%Y-%m-%d %H:%M"), underlying)
         if key not in self._spot_logged:
             self._spot_logged = {k for k in self._spot_logged if k[0] == key[0]} | {key}
-            rest_why = (again.why or "not usable") if rest.state is SourceState.STATED else rest.state.name.lower()
-            log.warning("index spot not available: %s; REST %s", cause, rest_why)
+            if again.leg_missing:  # the index spot is usable (REST stood in): the missing thing is an option leg
+                log.warning("option leg quote missing (the index spot itself is usable)")
+            else:
+                rest_why = (again.why or "not usable") if rest.state is SourceState.STATED else rest.state.name.lower()
+                log.warning("index spot not available: %s; REST %s", cause, rest_why)
         return again if again.why else read
 
     def _user_paused(self, sid: int, now: datetime.datetime) -> bool:

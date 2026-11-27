@@ -2607,6 +2607,10 @@
     "sha256": "56029c476a35d071ff2e65c08c6cda07ff53422ab19ad8a49638618c2dd620ff",
     "reviewed": "owner read 2026-10-31 (accepted after independent screen, not read line by line)"
   },
+  "explanation:adjust_spot_why_rest_stale": {
+    "sha256": "56029c476a35d071ff2e65c08c6cda07ff53422ab19ad8a49638618c2dd620ff",
+    "reviewed": "pending owner read"
+  },
   "explanation:adjust_spot_why_not_finite": {
     "sha256": "d51c601d40a7f0703bc60fe07ceca7265bc5d5440147074cbcc23bf69d699f56",
     "reviewed": "owner read 2026-10-31 (accepted after independent screen, not read line by line)"
