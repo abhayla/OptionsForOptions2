@@ -122,7 +122,8 @@ def test_item4_neither_a_priced_trade_nor_a_booked_result_stays_blank_with_its_r
 
 
 def test_item4_the_today_total_keeps_its_own_rule_no_running_trade_priced_is_blank():
-    """Opus review F1: the Today block (D-68) has no left-out line on screen, so (62) is the header's only: a closed trade
+    """Opus review F1: the Today block (D-68) has no left-out line on screen, so (62) is the header's only: a closed
+    trade
     alone does not make Today a figure while a trade opened today has no price."""
     rows = [SETTLED(), SETTLING()]
     assert _priced([0, 1], rows) == [0, 1]  # every member kept: the figure is blank with its reason
