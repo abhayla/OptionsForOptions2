@@ -3571,6 +3571,14 @@
     "sha256": "318ca7a19da5fde88af7a4d2cff26c2e471db3dfb316cec8111936b900bebdaa",
     "reviewed": "pending owner read"
   },
+  "paper_leg_total_over_limit": {
+    "sha256": "40e1c504783bbc79eaff880d20a827aafe8cc2d0a668c8a598c43d79df77a3dc",
+    "reviewed": "pending owner read"
+  },
+  "paper_leg_freeze_unknown": {
+    "sha256": "05152cf1513670144e07bf53e1e128e6c92af00bc110ecbc86793230c6ddb0dd",
+    "reviewed": "pending owner read"
+  },
   "paper_leg_limit_below_one_lot": {
     "sha256": "a6f2be950857eccb73bd76db12edcd90f29a87582d9fda81feec9a132d6f940b",
     "reviewed": "pending owner read"

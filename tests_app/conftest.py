@@ -81,6 +81,30 @@ def _settings_defaults_by_default(monkeypatch):
     monkeypatch.setattr(outcome, "_settings_in_force_now", defaults)
 
 
+class _UnboundFreeze(dict):
+    """Every contract has a freeze limit far above any test order (Lane K, ADR-330 (50)-(52): the order door fails
+    closed on a contract with no stored limit, which most tests are not about)."""
+
+    def get(self, key, default=None):
+        from datetime import date  # noqa: PLC0415
+        from ofo_app.freeze_read import StoredLimit  # noqa: PLC0415
+        return StoredLimit(10**9, date(2026, 1, 1))
+
+
+@pytest.fixture(autouse=True)
+def _freeze_unbound_by_default(request, monkeypatch):
+    """The order door's freeze read (``freeze_read.limits_in_force``) answers "no order is near a limit" for tests
+    that are not about it. The tests of the limit itself carry ``pytest.mark.real_freeze`` and keep the true read."""
+    if request.node.get_closest_marker("real_freeze"):
+        return
+    from ofo_app import freeze_read  # noqa: PLC0415 - import order: env placeholders are set after this module's top
+
+    async def unbound(_db):
+        return _UnboundFreeze()
+
+    monkeypatch.setattr(freeze_read, "limits_in_force", unbound)
+
+
 @pytest.fixture(autouse=True)
 def _preferences_defaults_by_default(request, monkeypatch):
     """GC-SET step 8 (REQ-168 AC-2): the adjustment routes read the user's preferences once per request through

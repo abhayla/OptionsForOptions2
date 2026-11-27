@@ -1321,6 +1321,19 @@ _LEG_EDIT_TEMPLATES: tuple[MessageTemplate, ...] = (
           "Nothing was added to paper.", "This basket, until the leg is within the limit.",
           "Reduce {contract} to {max_lots} lots or fewer.",
           {"contract": ContractName, "lots": Count, "max_lots": Count}),
+    # Lane K (ADR-330 (50), (52); owner 27 Nov): the leg's TOTAL after the order, not the single order. Pending read.
+    _gate("paper_leg_total_over_limit", _UI, 575,
+          "{contract} would hold {total} lots after this order; a leg can hold at most {max_lots} lots "
+          "({held} held, {added} added).",
+          "Nothing was added to paper.", "This basket, until the leg is within the limit.",
+          "Reduce {contract} to {room} more lots or fewer.",
+          {"contract": ContractName, "total": Count, "max_lots": Count, "held": Count, "added": Count,
+           "room": Count}),
+    # Lane K (owner 27 Nov): no stored freeze quantity for the contract -> the order cannot be checked. Pending read.
+    _gate("paper_leg_freeze_unknown", _UI, 576,
+          "The exchange freeze quantity for {contract} is not known, so an order for it cannot be checked.",
+          "Nothing was placed.", "Orders for this contract, until the exchange's freeze file is loaded.",
+          "Try again after the next daily freeze file load.", {"contract": ContractName}),
     _gate("paper_leg_limit_below_one_lot", _UI, 574,
           "The exchange limit for {contract} is smaller than one lot ({limit} units, lot {lot}), "
           "so it cannot be ordered.",

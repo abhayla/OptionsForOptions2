@@ -62,6 +62,7 @@ from ofo_app.routes.outcome import (
     MarketContext,
     feed_scope,
     get_answer_clock,
+    get_calc_settings,
     get_market_context,
     load_charge_rates,
 )
@@ -533,7 +534,8 @@ async def exit_tracking(strategy_id: int, body: TrackingExitIn,  # noqa: PLR0913
                         now: Annotated[AnswerClock, Depends(get_answer_clock)],
                         threshold: Annotated[Decimal, Depends(get_near_level_threshold)],
                         rates: Annotated[ChargeRates | None, Depends(load_charge_rates)],
-                        tracked_reader: Annotated[TrackedReader, Depends(get_tracked_reader)]) -> TrackingOut:
+                        tracked_reader: Annotated[TrackedReader, Depends(get_tracked_reader)],
+                        settings: Annotated[Mapping[str, Decimal], Depends(get_calc_settings)]) -> TrackingOut:
     """REQ-109 AC-4 / AC-5 (GC-BP step 5): paper-exit the named legs at their live price now, read by the server from
     the same market context as the start: one `exit` order per named leg for its whole open quantity. Any named leg
     not live refuses the whole exit (nothing stored): a contract no longer live answers
@@ -569,7 +571,8 @@ async def exit_tracking(strategy_id: int, body: TrackingExitIn,  # noqa: PLR0913
             prices={c: p.price for c, p in by_leg.items()},  # type: ignore[misc] - live: price set
             placed_at=answered, only=_locked_ids(ids),  # #726: the time the route answers, never the quote time
             write=lambda orders: paper_limit.place_checked(db, user_ref, strategy_id, orders, entry=None, ctx=ctx,
-                                                          at=answered, reader=tracked_reader, rates=rates))  # an exit
+                                                          at=answered, reader=tracked_reader, rates=rates,
+                                                          settings=settings))  # an exit
         if isinstance(done, paper_exit.Exited):
             return done.book
         if isinstance(done, may_act.Refused):
