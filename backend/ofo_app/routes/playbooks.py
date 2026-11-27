@@ -434,10 +434,13 @@ class _Read:
     spot: Any = None
     margin: dict | None = None
     done: bool = False
+    legs_done: bool = False  # the legs were read first (``_tracked_first``), before the connection was given back
 
 
 async def _read_one(row: Any, seams: _Seams, listed: Any, read: _Read) -> None:
-    if read.tracked is None:  # the legs were read first (``_tracked_first``); none readable: not "of that type"
+    if not read.legs_done:
+        read.tracked = await _tracked_first(seams, row)
+    if read.tracked is None:  # none readable: its type is not known, so it is not "of that type"
         return
     market = await seams.market_reader(read.tracked, seams.ctx)
     read.market = market
@@ -472,7 +475,7 @@ async def _read_bounded(row: Any, seams: _Seams, listed: Any, gate: asyncio.Sema
     """-> (row, read) when read in full and of the type; a not-checked entry when the type is known but the read timed
     out or failed; None when not of the type (or its type is not known)."""
     read = _Read()
-    read.tracked = tracked
+    read.tracked, read.legs_done = tracked, True
     async with gate:
         started = time.monotonic()
         try:
