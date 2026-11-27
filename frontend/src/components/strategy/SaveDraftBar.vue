@@ -19,8 +19,6 @@ import { useHeldFeature } from '@/lib/heldFeatures'
 import DraftDelete from '@/components/strategy/DraftDelete.vue'
 import DraftDeleteStatus from '@/components/strategy/DraftDeleteStatus.vue'
 import PaperConfirmDialog from '@/components/strategy/PaperConfirmDialog.vue'
-import { getActivePinia } from 'pinia'
-import { useBuilderHold } from '@/stores/builderHold'
 import AdjustPlanSheet from '@/components/strategy/AdjustPlanSheet.vue'
 import { contractName, istTime } from '@/lib/displayFormat'
 import { notLiveEntryLine, oldestCapture } from '@/lib/priceState'
@@ -417,16 +415,7 @@ function openPaperOrderbook() {
   paperOpen.value = false
   if (id !== null && router) router.push({ path: '/strategy/builder', query: { strategy: String(id) } })
 }
-const planFor = ref(null) // the strategy whose plan sheet is open (set only after the paper orders were recorded, or back from Customise triggers)
-const planEdit = ref(false) // true: the strategy already has a plan (Save is a PUT); only set when the sheet comes back from Customise triggers
-// S-11: back from "Customise triggers" the builder is drawn afresh, and in Drafts Mode it has no saved id (so no tracking panel and no
-// Plan entry). This bar is always drawn, so it reopens the sheet of the strategy whose unsaved form is held; the sheet takes the form.
-function reopenHeldPlan() {
-  try {
-    const h = getActivePinia() ? useBuilderHold().planHeld : null
-    if (h && Number.isInteger(h.strategyId)) { planEdit.value = h.edit === true; planFor.value = h.strategyId }
-  } catch { /* no store: nothing was held */ }
-}
+const planFor = ref(null) // the strategy whose plan sheet is open (set only after the paper orders were recorded)
 function openInBuilder() {
   const id = paperToast.value
   paperToast.value = null
@@ -434,7 +423,7 @@ function openInBuilder() {
 }
 onBeforeUnmount(() => clearTimeout(paperToastTimer))
 
-onMounted(() => { reopenHeldPlan(); refresh() })
+onMounted(refresh)
 defineExpose({ showPaperTab: () => { picked.value = 'tracked' } }) // the page calls it after orders it placed itself
 </script>
 
@@ -489,7 +478,7 @@ id="strategy-name" ref="nameInput" v-model="nameText" data-testid="name-input" d
       </template>
     </Modal>
     <PaperConfirmDialog first-basket :open="paperOpen" :orders="paperOrders" :busy="paperBusy" :error="paperError" :state="paperState" :not-live-line="props.pricesLive ? '' : notLiveEntryLine(oldestCapture(tickedLegs))" @confirm="confirmPaper" @cancel="paperOpen = false" @orderbook="openPaperOrderbook" />
-    <AdjustPlanSheet :open="planFor !== null" :strategy-id="planFor" :edit="planEdit" @close="planFor = null; planEdit = false" />
+    <AdjustPlanSheet :open="planFor !== null" :strategy-id="planFor" @close="planFor = null" />
     <!-- GC-TP step 3b2 (R-6): the toast is FIXED to the viewport (bottom centre), not inline under the action row. Inline it sat inside
          the left column's own scroll (sticky, overflow-y-auto at 1100 px and up; `contents` below), so after the save-first path
          it could be in the page but outside the visible area; its state lives here and survives the ?strategy=N route change

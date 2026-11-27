@@ -45,17 +45,16 @@ export const useBuilderHold = defineStore('builderHold', () => {
   // { strategyId, base, form }: `base` is the server's reading when the sheet loaded (compared for equality only, to see that the plan
   // was not changed elsewhere meanwhile); `form` is a copy of the typed text and the server's last answers, exactly as they were.
   const planHeld = ref(null)
-  function holdPlan(strategyId, { base, form, edit = false }) {
-    planHeld.value = { strategyId, base, edit: edit === true, form: JSON.parse(JSON.stringify(form)) }
+  function holdPlan(strategyId, { base, form }) {
+    planHeld.value = { strategyId, base, form: JSON.parse(JSON.stringify(form)) }
   }
   /** True when a plan form is held for this strategy (no taking). */
   const hasPlan = (strategyId) => planHeld.value?.strategyId === strategyId
-  /** The held form for this strategy, once: it is emptied in the same step. Another strategy's hold is not returned and is left alone. */
+  /** The held form for this strategy, once: any hold is emptied in the same step. Another strategy's hold is not returned. */
   function takePlan(strategyId) {
     const got = planHeld.value
-    if (!got || got.strategyId !== strategyId) return null
     planHeld.value = null
-    return got
+    return got && got.strategyId === strategyId ? got : null
   }
   const clearPlan = () => { planHeld.value = null }
 

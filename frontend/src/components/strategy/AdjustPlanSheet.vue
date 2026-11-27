@@ -5,7 +5,7 @@
      server names the one that is not valid. A shape with no playbook shows the server's generic text and Close only.
      Every word is the server's; the browser computes nothing. -->
 <template>
-  <Modal :open="open" :title="labels.title || ' '" @close="closeSheet">
+  <Modal :open="open" :title="labels.title || ' '" @close="emit('close')">
     <div data-testid="plan-sheet">
       <LoadFailed v-if="loadError && !sheet" :text="loadError" prefix="plan-sheet" @retry="load()" />
       <p v-else-if="loading && !sheet" class="text-sm text-ink-muted" data-testid="plan-sheet-loading">{{ PLAN_LOADING_TEXT }}</p>
@@ -66,7 +66,7 @@
       <ErrorMessage :parts="errorParts" compact prefix="plan-error" data-testid="plan-error" />
     </template>
     <template #actions>
-      <button type="button" class="h-10 rounded-lg border border-line px-3 font-medium" data-testid="plan-close" @click="closeSheet">{{ labels.close }}</button>
+      <button type="button" class="h-10 rounded-lg border border-line px-3 font-medium" data-testid="plan-close" @click="emit('close')">{{ labels.close }}</button>
       <template v-if="sheet && sheet.kind === 'sheet'">
         <button type="button" class="h-10 rounded-lg border border-line px-3 font-medium disabled:opacity-50" data-testid="plan-save" :disabled="busy" @click="save">{{ labels.save }}</button>
         <button type="button" class="h-10 rounded-lg bg-accent px-3 font-medium text-white disabled:opacity-50" data-testid="plan-use-as-is" :disabled="busy" @click="useAsIs">{{ labels.use_as_is }}</button>
@@ -231,14 +231,9 @@ async function send(body) {
 }
 const useAsIs = () => send(asIsBody(form.value.playbookId))
 const save = () => send(saveBody(form.value))
-// Close / Cancel: whatever was held for the sheet is dropped with it (Customise triggers closes the sheet itself and keeps the hold)
-function closeSheet() {
-  planHold()?.clearPlan()
-  emit('close')
-}
 function customise() {
   const url = customiseUrl(props.strategyId)
-  if (sheet.value?.kind === 'sheet') planHold()?.holdPlan(props.strategyId, { base: baseKey, form: form.value, edit: props.edit }) // S-11
+  if (sheet.value?.kind === 'sheet') planHold()?.holdPlan(props.strategyId, { base: baseKey, form: form.value }) // S-11
   emit('close')
   router?.push(url)
 }

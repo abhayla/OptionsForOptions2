@@ -126,11 +126,16 @@ describe('S-11: Customise triggers holds the unsaved plan', () => {
     expect(t(w2, 'plan-stop').element.value).toBe('50')
   })
 
-  it('PlanEntry does not open a second sheet of its own: the save bar reopens the held one (tests/plan-customise-return.test.js)', async () => {
-    useBuilderHold().holdPlan(7, { base: 'x', form: {} })
+  it('PlanEntry reopens the sheet for the strategy that holds a plan', async () => {
+    const hold = useBuilderHold()
+    hold.holdPlan(7, { base: 'x', form: {} })
     const w = mount(PlanEntry, { attachTo: document.body, props: { strategyId: 7 }, global: { provide: { [routerKey]: router } } })
     mounted.push(w)
     await flushPromises()
-    expect(w.findComponent(AdjustPlanSheet).props('open')).toBe(false)
+    expect(w.findComponent(AdjustPlanSheet).props('open')).toBe(true)
+    const w8 = mount(PlanEntry, { attachTo: document.body, props: { strategyId: 8 }, global: { provide: { [routerKey]: router } } })
+    mounted.push(w8)
+    await flushPromises()
+    expect(w8.findComponent(AdjustPlanSheet).props('open')).toBe(false)
   })
 })
