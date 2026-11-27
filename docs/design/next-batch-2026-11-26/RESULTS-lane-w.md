@@ -1,5 +1,9 @@
 # RESULTS: Lane W, 27 Nov 2026 (small fixes from the live market test)
 
+**SAFE TO CLOSE** (Lane W, 27 Nov). Code head 09923e9 (item 15); this RESULTS commit sits on it; push 2 carries both
+through the pre-push gate. Leftovers: items 5 and 6 (Lane J's files, change notes below), item 12 wording (owner),
+SPEC CHANGE REQ-112 AC-2 (owner), item 15's three owner points, the deferred list at the end.
+
 Branch `fix/live-test-small-1127`, cut from `origin/integration/nb-1126` at 206a9f0. No PR, no migration, paper only.
 
 ## Status lines (send_message to the parent and to the coordinator session was refused:
@@ -9,7 +13,10 @@ Branch `fix/live-test-small-1127`, cut from `origin/integration/nb-1126` at 206a
 - 13:18 IST coordinator: item 14 dropped (PC re-ran T3-16 at 13:04: PASS; the 12:42 failure was the sheet taking 17 s
   to load). Its commit is reverted; noted only as "plan sheet loads slowly" (deferred 9). Asked for a docs push now:
   a docs-only push needs its own gate run (~35 min), the same as the full tree, so the first push carries every item.
-- Push 1: items 10, 11, 8, 1, 2, 3, 4, 7, 9, 13 (head and gate result in the push line below).
+- Push 1 (27 Nov ~15:05 IST): head 022c108, prepush TOTAL PASS (1872 s, app_tests and frontend_unit included),
+  items 10, 11, 8, 1, 2, 3, 4, 7, 9, 13 (+ 5, 6, 12 notes; 14 reverted).
+- 14:33 IST coordinator: item 15 (HIGH, T2-10: Add to Paper accepted 5000 lots). Done with an Opus review, round 2.
+- Push 2: item 15 + this RESULTS (head and gate below in git log; gate run on the RESULTS head).
 
 ## Items
 
@@ -32,8 +39,14 @@ New wording is marked **pending owner read**; every such sentence is also pinned
 | 12 | NO CHANGE (wording is the owner's) | The spec gives an exact sentence for one take-profit refusal only, and the app already matches it. | Spec vs app: not_in_profit: ADR-238 (6) has only the fragment refused "not in profit" / app "The whole trade is not in profit with every open leg closed at its planned price, so this approach is not built."; not_in_profit_after_charges: ADR-326 (1) "Not in profit after charges: {after}" / app the same; booked_unknown, two_expiries, charges_unknown: no spec sentence. Aligning to ADR-238's bare words is a wording decision (about 20 fixtures pin the current sentence). | - |
 | 13 | DONE | The Contract cell and header of Net Positions had no `nowrap`. | `whitespace-nowrap` on both (PaperBookPanel.vue); the existing `overflow-x-auto` wrapper scrolls the table inside its box. A class check only: check by eye. | At 1366 px, a paper strategy with an open position, Net Positions: "NIFTY 1 Dec 25900 CE" on one line. |
 | 14 | DROPPED (coordinator 13:18) | Not a defect: the plan sheet took 17 s to load at 12:42; at 13:04 the typed 400 and 15:15 stayed (T3-16 PASS). | Commit 931562e reverted. | - |
+| 15 | DONE (Tier A, Opus review: FIX-FIRST, round 2 applied) | `place_paper_orders` (the one paper order door) never called the lots check (`check_lots`, REQ-167 AC-5 `limits.max_lots`) or the freeze check (ADR-081/ADR-092), which lived only in the order review and leg-edit routes. | `_refuse_legs_over_limit` in routes/paper.py (~1371, called ~1426), one check for every non-exit order (Add to Paper, Add Selected, Increase quantity, Change expiry all post through `addToPaper` to this route): refused when lots exceed `limits.max_lots` or units are not below the stored freeze limit (the same rule as freeze.py:73 / leg_edit.py:295); fails closed if settings or the freeze store fail; nothing half-written (a Change expiry exit+add is refused whole). New, **pending owner read**: "NIFTY 1 Dec 25900 CE asks for 5000 lots; the most one order can hold is 53 lots."; "The exchange limit for NIFTY 1 Dec 25900 CE is smaller than one lot (50 units, lot 65), so it cannot be ordered." | Settings: check a NIFTY freeze limit is stored (without one only `limits.max_lots`, default 10000, applies). A draft, one leg at 5000 lots, Add to Paper: the sentence, nothing in the book. At the limit minus one lot: accepted; at the limit: refused. Same with Increase quantity in Drafts Mode. |
 
 ## SPEC CHANGE pending the owner
+- Item 15, three points for the owner: (a) with NO freeze limit stored for a contract the paper order is not
+  refused (ADR-081: the review warns); a hard refuse would be a SPEC CHANGE. If the PC has no freeze rows loaded,
+  5000 lots still pass up to `limits.max_lots` (10000). (b) Paper EXITS are not checked; ADR-092 says the block covers
+  every order the platform prepares: SPEC CHANGE (departs from ADR-092 "every order"), chosen so an exit is never
+  blocked. (c) The check is per order: open 8 lots then add 8 with max_lots 10 is accepted (the leg holds 16).
 - Gate fixes added, **pending owner read**: two slot types `ContractName`, `SideWord` (gate_slots.py, pinned in
   tests_app/test_identifier_and_slots.py) for item 4; two sentences "Target and Target (Rs) show different values."
   and "Stop and Stop (Rs) show different values." (templates 710/711) for a plan sheet whose two boxes disagree.
@@ -83,4 +96,6 @@ New wording is marked **pending owner read**; every such sentence is also pinned
 | Ruff E501/I001 rewrap after the item 10 merge | Haiku builder |
 | Gate app_tests fixes (slot pin, plan rupee-level refusal tests) | Sonnet builder |
 | DB-order fix of the item 10 test, target-refusal test | Sonnet builder |
+| Item 15 build, rounds 1 and 2 | Sonnet builder |
+| Item 15 Tier A review (Why Opus: a refusal inside the one paper order door) | Opus reviewer |
 | Splitting, routing, cherry-picks, conflict resolution of template_pins.json, revert of item 14, verification runs, RESULTS | main session (Opus) |
