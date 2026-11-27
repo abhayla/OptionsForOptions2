@@ -60,3 +60,20 @@ New wording is marked **pending owner read**; every such sentence is also pinned
 7. Item 13: the nowrap is checked by class only; needs a rendered-width check.
 8. Two new codes STRATEGY_VALIDATION_524/525 (item 4) may collide with another lane's numbers at merge.
 9. Plan sheet loads slowly (17 s at 12:42 on the PC, 27 Nov): the cause of the item 14 report.
+
+## Task | model that did it
+| Task | Model |
+|---|---|
+| Item 10 build, rounds 1, 2, 2b | Sonnet builder |
+| Item 10 Tier A review (Why Opus: the stamp moved into the paper order placement transaction, the exit path) | Opus reviewer |
+| Item 11 | Sonnet builder |
+| Item 8 | Sonnet builder |
+| Items 1, 4 | Sonnet builder |
+| Items 2, 3, 6 (6 investigation only) | Sonnet builder |
+| Items 7, 9, 13 | Sonnet builder |
+| Items 5, 12 (investigation; no code) | Sonnet builder |
+| Item 14 (later dropped, reverted) | Sonnet builder |
+| Pre-push fixes: duplicate-leg test move, selector pin, ruff findings | Sonnet builder |
+| Ruff E501/I001 rewrap after the item 10 merge | Haiku builder |
+| Gate app_tests fixes (slot pin, plan rupee-level refusal tests) | Sonnet builder |
+| Splitting, routing, cherry-picks, conflict resolution of template_pins.json, revert of item 14, verification runs, RESULTS | main session (Opus) |
