@@ -957,10 +957,10 @@ async def test_f2_a_rule_flipping_every_3_minutes_for_an_hour_is_one_row_and_a_r
                                                                                                   monkeypatch):
     """P1 round 3 F2: true/clear every 3 minutes for an hour -> ONE row for the rule, opened_today 1 (live and rebuilt
     from the rows after a restart), and a second rule's first crossing at 12:16 is opened, not Held daily_limit.
-    Both rules are counted by the cap (T-01 and T-07; the plan's loss stop T-06 is not, #200)."""
+    Both rules are counted by the cap (T-01 and T-14; the plan exits T-06, T-07 are not, #200, ADR-330 (47))."""
     w, _ = await _watched_and_fresh_t03(app_db_url, monkeypatch)
     spec = alert_gate.RuleSpec("T-01", "ge", (D("15.4000"),))
-    other = alert_gate.RuleSpec("T-07", "ge", (D("80"),))
+    other = alert_gate.RuleSpec("T-14", "ge", (D("80"),))
     day = datetime.date(2026, 11, 25)
     state, events = alert_gate.initial_state(), []
     base = datetime.datetime(2026, 11, 25, 11, 2, 20, tzinfo=IST)
@@ -971,16 +971,16 @@ async def test_f2_a_rule_flipping_every_3_minutes_for_an_hour_is_one_row_and_a_r
         events += ev
     for minute in range(74, 77):
         state, ev = alert_gate.step(state, now=base + datetime.timedelta(minutes=minute), preset=alert_gate.INTRADAY,
-                                    readings={"T-01": (spec, D("15.9")), "T-07": (other, D("85"))})
+                                    readings={"T-01": (spec, D("15.9")), "T-14": (other, D("85"))})
         events += ev
     assert not [e for e in events if isinstance(e, alert_gate.Held)]
     await background.DbGateStore().apply(w, events)
     async with app_db_url.connect() as conn:
         counts = dict((await conn.execute(text(
             "SELECT rule_id, count(*) FROM public.adjustment_suggestions WHERE strategy_id = :s "
-            "AND rule_id IN ('T-01', 'T-07') GROUP BY rule_id"), {"s": w.strategy_id})).all())
+            "AND rule_id IN ('T-01', 'T-14') GROUP BY rule_id"), {"s": w.strategy_id})).all())
         rebuilt = await playbook_store.gate_rows(conn, w.user_ref, w.strategy_id, day, stops=frozenset())
-    assert counts == {"T-01": 1, "T-07": 1}
+    assert counts == {"T-01": 1, "T-14": 1}
     assert state.opened_today == len(counts) == rebuilt.opened_today  # live gate and restart agree
 
 

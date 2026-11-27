@@ -1,7 +1,8 @@
 """The worker hands the strategy's entry time to the gate: a plan exit crossed at entry waits 5 minutes, then alerts.
 
 Case A-G #207 (27 Nov 2026): accepted 13:13:33, loss past its Rs 80 stop from 13:14. Spec basis: ADR-330 (47) ("the
-5-minute period after entry delays an alert whose level is already crossed at entry and never swallows it"), REQ-170 AC-5.
+5-minute period after entry delays an alert whose level is already crossed at entry and never swallows it"),
+REQ-170 AC-5.
 """
 from __future__ import annotations
 
