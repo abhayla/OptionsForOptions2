@@ -49,7 +49,7 @@ PINNED_SLOT_TYPES = frozenset({
         # D-17 (ADR-322 point 2, reviewed): ClockHms only formats one timezone-aware time as IST "HH:MM:SS"
         # ("as of ..."): no user text, no number arithmetic
         "ClockHms",
-        # ADR-330 (60): DayLabel formats one datetime.date as "Monday 30 Nov" (exact type check; no user text, no arithmetic)
+        # ADR-330 (60): DayLabel formats one datetime.date as "Monday 30 Nov" (exact type check; no user text)
         "DayLabel",
         "UnderlyingName", "InstrumentRef", "LegRef", "LegRefs", "HealthWord", "ExpiryDate", "DayMonth", "CellText", "OiCount", "WholePoints", "SignedPercent", "WholeRupees",  # noqa: E501 - long line kept whole
         "SignedPaisa", "SignedRupeesPaisa", "SignedWholeRupees",
