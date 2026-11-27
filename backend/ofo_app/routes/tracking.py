@@ -51,7 +51,7 @@ from ofo_app import may_act, paper_exit, paper_limit, paper_reasons
 from ofo_app import paper_store, tracked_contracts
 from ofo_app import strategy_store as store
 from ofo_app.api_models import ApiModel, CatalogueText, InstrumentId, Money
-from ofo_app.db import get_db
+from ofo_app.db import get_db, release_connection
 from ofo_app.errors import ClosedRoute, Failure
 from ofo_app.live_push import LiveFeed
 from ofo_app.routes.adjustment import TrackedReader, get_tracked_reader
@@ -450,6 +450,7 @@ async def _answer_core(db: Any, stored, bk: _Book, ctx: MarketContext | None,  #
                      answered_at, reasons, rates, extra)
     if not _connected(ctx):
         return _view(bk, legs, underlying, None, answered_at, reasons, rates, extra)
+    await release_connection(db)  # D-36 (c): the feed hold waits; only reads happened in this request so far
     snapshot = await _snapshot(ctx, feed, underlying, _open_keys(bk, legs, reasons))
     view = paper.tracking_view(snapshot, legs, check_threshold(threshold), reasons, exits)
     if view.detections and _playbook_type(ctx, underlying, legs, bk, view) is not None:
@@ -557,6 +558,7 @@ async def exit_tracking(strategy_id: int, body: TrackingExitIn,  # noqa: PLR0913
     # a retired / delisted / token-reassigned contract never comes back (Review M2): the door's own contract-not-live
     # refusal, never "try again"; every other refusal of the one live exit read is its own (paper_exit.live_exit_prices)
     keys = [None if reasons[i] is not None else legs[i].instrument_id for i in body.legs]
+    await release_connection(db)  # only reads so far: the exit read waits on the feed (the row lock comes after it)
     live = await paper_exit.live_exit_prices(ctx, feed, stored.saved.definition.underlying, keys)
     if isinstance(live, may_act.Refused):
         may_act.require(live)
@@ -609,7 +611,8 @@ async def list_tracking(db: Annotated[Any, Depends(get_db)],  # noqa: PLR0913 - 
         keys.setdefault(r.underlying, [])
         keys[r.underlying] += [k for k in _open_keys(bk, legs, reasons) if k not in keys[r.underlying]]
     snapshots = {}
-    if connected:
+    if connected and keys:
+        await release_connection(db)  # D-36 (c): the feed holds below wait; the session re-checks out afterwards
         for underlying, ids in keys.items():
             if ids or any(len(bk.exit_prices) < len(lg) for r, bk, lg, _ in built if r.underlying == underlying):
                 snapshots[underlying] = await _snapshot(ctx, feed, underlying, ids)  # type: ignore[arg-type]

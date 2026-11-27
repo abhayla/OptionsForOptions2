@@ -19,6 +19,7 @@ Zerodha read (orders, trades, positions). One request = one transaction, in this
 """
 from __future__ import annotations
 
+import asyncio
 import dataclasses
 import datetime
 from collections.abc import Callable, Mapping, Sequence
@@ -360,7 +361,8 @@ def _answer(req: _Request, history: tuple[plans.StoredPlan, ...], live: Mapping[
 async def _return(req: _Request, underlying: str) -> ReturnOut:
     history = await plans.plans_for(req.db, req.user_ref, req.strategy_id)
     catalogue = await load_catalogue(req.db)
-    zerodha = _read_zerodha(req, catalogue)
+    # NOT released: the strategy row lock (store.lock_strategy, held to commit) makes one return close a plan once
+    zerodha = await asyncio.to_thread(_read_zerodha, req, catalogue)  # sync urllib reads: never on the event loop
     tags = frozenset(o.tag for p in history for o in p.orders)
     try:
         book = rb.read_book(zerodha.orders, zerodha.trades, req.strategy_id, tags)

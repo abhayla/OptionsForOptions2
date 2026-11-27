@@ -47,6 +47,18 @@ def get_sessionmaker() -> async_sessionmaker[AsyncSession]:
     return async_sessionmaker(get_engine(), class_=AsyncSession, expire_on_commit=False)
 
 
+async def release_connection(db: object) -> None:
+    """D-36 (c), D-38: end the request session's read-only transaction so its pooled connection goes back BEFORE a
+    live-feed hold or a broker/REST read is waited on (DB_POOL_SIZE is small: a connection held across a wait starves
+    /health and every other DB route). The session stays usable (its next statement starts a new transaction on a
+    fresh checkout; ``expire_on_commit`` is off, so rows read stay readable). A request with no real session (a test
+    double without ``commit``) has nothing to give back. Lane R, 27 Nov: shared; routes call it, a repo_scan test
+    (tests/test_pool_release_before_market_wait.py) checks every route that waits."""
+    commit = getattr(db, "commit", None)
+    if commit is not None:
+        await commit()
+
+
 async def get_db() -> AsyncIterator[AsyncSession]:
     """FastAPI dependency: one session per request."""
     async with get_sessionmaker()() as session:
