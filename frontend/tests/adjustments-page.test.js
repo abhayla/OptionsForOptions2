@@ -23,6 +23,7 @@ vi.mock('@/services/api', async (importActual) => {
   return { ...actual, default: { get: reply('GET'), post: reply('POST'), put: reply('PUT'), delete: reply('DELETE') } }
 })
 import AdjustmentsPage from '@/pages/AdjustmentsPage.vue'
+import { saveStamp } from '@/lib/planSaveClock'
 import { EXPIRY_KINDS, STEPS, labelMaps, summaryLines } from '@/lib/playbookEditor'
 import { readFileSync } from 'node:fs'
 import { resolve } from 'node:path'
@@ -255,6 +256,24 @@ describe('trade mode: the trade\'s own rules (issue 7)', () => {
     await editAndSave(w)
     expect(w.get('[data-testid=pb-refusal]').text()).toBe(NOT_CONFIRMED)
     expect(writes()).toHaveLength(1)
+  })
+
+  it('plan-save-1127 round 2: a 200 the page cannot read is Not confirmed, moves no save count and does not throw', async () => {
+    const w = await openTrade()
+    const before = saveStamp(70)
+    answers[`PUT ${RULES}`] = { nothing: 'readable' }
+    await editAndSave(w)
+    expect(w.get('[data-testid=pb-refusal]').text()).toBe(NOT_CONFIRMED)
+    expect(saveStamp(70)).toBe(before)
+    expect(writes()).toHaveLength(1)
+  })
+
+  it('plan-save-1127 round 2: a 200 the page can read moves the save count once', async () => {
+    const w = await openTrade()
+    const before = saveStamp(70)
+    answers[`PUT ${RULES}`] = (payload) => ({ ...mine(), body: payload.body })
+    await editAndSave(w)
+    expect(saveStamp(70)).toBe(before + 1)
   })
 
   it('plan-save-1127: a 422 shows the server\'s reason', async () => {

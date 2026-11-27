@@ -51,6 +51,7 @@ from ofo_app import adjustment_check as check
 from ofo_app import playbook_store as store
 from ofo_app import settings_in_force as in_force_mod
 from ofo_app.api_models import ApiModel, CatalogueText, Identifier, Money
+from ofo_app.catalogue_store import load_catalogue
 from ofo_app.db import get_db
 from ofo_app.errors import ClosedRoute, Failure
 from ofo_app.playbook_body_out import PlaybookBody
@@ -462,8 +463,12 @@ def _stored_loss(stored: Any, bases: Bases) -> Decimal | None:
     return found if isinstance(found, Decimal) and found.is_finite() else bases.max_loss
 
 
-def _set_stop(out: dict, raw: str, kind: str | None = None) -> None:
-    """ADR-252: the sheet's stop edit IS the T-06 value the live check reads (``settings_in_force``), every stage."""
+def _set_stop(out: dict, raw: str, kind: str | None = None, *, strict: bool = False) -> None:
+    """ADR-252: the sheet's stop edit IS the T-06 value the live check reads (``settings_in_force``), every stage.
+    ``strict`` (a SAVE): the "same as shown" test reads the strategy's own T-06 row, so an unknown kind refuses
+    (``plan_save_prices_not_read``, nothing written) instead of comparing against the weekly row."""
+    if strict and kind is None:
+        raise StrategyRefused(_PRICES_NOT_READ)
     try:
         in_force_mod.set_max_loss_stop(out, _percent(raw, "stop"), kind)
     except ValueError:
@@ -496,14 +501,15 @@ def check_time_exit_day(guard: object, today: datetime.date | None, last_expiry:
         raise _bad(TIME_KEY)
 
 
-def with_overrides(body: dict, data: PlanIn, kind: str | None = None, bases: Bases | None = None) -> dict:
+def with_overrides(body: dict, data: PlanIn, kind: str | None = None, bases: Bases | None = None,
+                   *, strict_kind: bool = False) -> dict:
     """A copy of ``body`` whose guards hold the sheet's values (a value left out stays as the body has it)."""
     out = copy.deepcopy(body)
     guards = out.setdefault("guards", {})
     if data.target is not None:
         guards[TARGET_KEY] = _percent(data.target, "target") if data.target != "" else ""  # ADR-305: "" = no Target
     if data.stop is not None:
-        _set_stop(out, data.stop, kind)
+        _set_stop(out, data.stop, kind, strict=strict_kind)
     bases = bases or Bases()
     if _apply_rupee(out, sl.RUPEE_PROFIT_KEY, data.target_rupees, data.target, bases.max_profit, bases.lots,
                     "target_rupees"):
@@ -562,14 +568,10 @@ async def _bounded_market(tracked: Any, market_reader: MarketReader, ctx: Market
     read itself is unchanged: the expiry kind, the stage and today still come from the market (ADR-330 (1), (5),
     (7))."""
     try:
-        market = await asyncio.wait_for(_market(tracked, market_reader, ctx), PLAN_SAVE_PRICE_BUDGET_S)
+        return await asyncio.wait_for(_market(tracked, market_reader, ctx), PLAN_SAVE_PRICE_BUDGET_S)
     except TimeoutError:
         log.warning("adjustment plan: price read over %.1f s, save refused", PLAN_SAVE_PRICE_BUDGET_S)
         raise StrategyRefused(_PRICES_NOT_READ) from None
-    if market is None:  # a read that failed at once: no market means no expiry kind, so no T-06 row can be chosen
-        log.warning("adjustment plan: price read failed, save refused")
-        raise StrategyRefused(_PRICES_NOT_READ)
-    return market
 
 
 async def _type_of(db: Any, user_ref: str, strategy_id: int, tracked: Any,
@@ -585,6 +587,39 @@ def _kind_of(tracked: Any, money: in_force_mod.MoneyInputs | None) -> str:
     """The strategy's own expiry kind (the live check's read): the market's, else the position's, else weekly."""
     at = None if money is None else money.at
     return (None if at is None else at.expiry_kind) or getattr(tracked.position, "expiry_kind", None) or "weekly"
+
+
+async def _stored_kind(db: Any, tracked: Any) -> str | None:
+    """The strategy's expiry kind from the STORED catalogue (the day's instrument list the app keeps), by the one rule
+    ``adjustment_readers.expiry_kind_of`` (monthly = an expiry an index FUTURE of the underlying also has; a scenario's
+    own stated kind wins). Used when the market read gave no kind (no live session, market closed). None when the
+    catalogue holds no future of the underlying (the rule cannot judge) or cannot be read: never a guess."""
+    from ofo_app import adjustment_readers as readers  # noqa: PLC0415 - it imports routes.adjustment
+    scn = readers._scenario()  # noqa: SLF001 - the reader scenario switch, as read_market uses it
+    legs = getattr(tracked.position, "legs", ())
+    if not legs:
+        return None
+    expiry, underlying = legs[0].expiry, tracked.position.underlying
+    try:
+        entries = [e for e in (await load_catalogue(db)).all_entries()
+                   if e.currently_listed and e.contract.name == underlying and e.contract.expiry is not None]
+    except Exception:  # noqa: BLE001 - an unreadable catalogue means "kind not known", logged
+        log.warning("adjustment plan: catalogue not read for the expiry kind", exc_info=True)
+        return None
+    options = [e for e in entries if e.contract.is_option()]
+    futures = frozenset(e.contract.expiry for e in entries if e.contract.is_future())
+    if not futures and not (scn is not None and scn.data.get("expiry_kind") in ("weekly", "monthly")):
+        return None
+    return readers.expiry_kind_of(expiry, options, futures, scn)
+
+
+async def _known_kind(db: Any, tracked: Any, market: Any) -> str | None:
+    """The expiry kind a SAVE may write by: the market's, else the stored catalogue's, else None (unknown). The
+    position's own kind is always "" (adjustment_readers builds it so), so it is never a source."""
+    kind = getattr(market, "expiry_kind", None)
+    if kind in ("weekly", "monthly"):
+        return str(kind)
+    return await _stored_kind(db, tracked)
 
 
 async def _plan_out(db: Any, user_ref: str, plan: store.Plan, kind: str | None = None,
@@ -824,6 +859,8 @@ async def _write(strategy_id: int, data: PlanIn, edit: bool, db: Any, user_ref: 
     stype, plan = await _type_of(db, user_ref, strategy_id, tracked, ctx)
     money = in_force_mod.money_inputs(tracked, market, rates)
     bases = bases_of(tracked, market, rates)
+    known_kind = await _known_kind(db, tracked, market)  # None: not known, a percent stop is then refused
+    shown_kind = known_kind or _kind_of(tracked, money)
     if stype is None:
         raise StrategyRefused(_GENERIC, Failure.CONFLICT)
     if edit and plan is None:
@@ -831,7 +868,7 @@ async def _write(strategy_id: int, data: PlanIn, edit: bool, db: Any, user_ref: 
 
     async def work() -> AdjustmentPlanOut:
         source = await _picked(db, user_ref, data.playbook_id, stype)
-        body = with_overrides(_body_to_save(source, plan, edit), data, _kind_of(tracked, money), bases)
+        body = with_overrides(_body_to_save(source, plan, edit), data, known_kind, bases, strict_kind=True)
         if data.time_exit is not None:  # ADR-330 (7): the day is judged against today and the legs, never trusted
             legs = tracked.position.legs
             check_time_exit_day(body["guards"].get(TIME_KEY),
@@ -841,7 +878,7 @@ async def _write(strategy_id: int, data: PlanIn, edit: bool, db: Any, user_ref: 
         # ADR-330 (1): the reply shows the base now STORED (the one the checks read), not the one read before the save
         stored = dataclasses.replace(tracked, stop_base=in_force_mod.stop_base_from_json(saved.stop_base))
         return await _sheet(db, user_ref, strategy_id, stype, saved, None, user_values,
-                            in_force_mod.money_inputs(stored, market, rates), _kind_of(tracked, money),
+                            in_force_mod.money_inputs(stored, market, rates), shown_kind,
                             dataclasses.replace(bases, max_loss=_stored_loss(stored, bases)))
     return await _run(db, work)
 

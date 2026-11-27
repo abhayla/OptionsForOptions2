@@ -7,6 +7,7 @@ from __future__ import annotations
 
 import asyncio
 import copy
+import datetime
 import json
 from decimal import Decimal as D
 
@@ -109,43 +110,123 @@ async def test_a_slow_price_read_on_a_reset_is_refused_in_time(app_db_url, monke
     assert "price" in out["what_happened"].lower()
 
 
-def _no_market(monkeypatch):
-    """The price read fails at once: ``_market`` answers None (its own contract for a failed read)."""
-    async def none(*a, **k):
-        return None
-    monkeypatch.setattr(route, "_market", none)
 
 
-async def test_a_save_with_no_market_read_is_refused_and_writes_no_row(app_db_url, monkeypatch):
-    """Blocker: no read -> the kind fell back to the position's "" -> "weekly", and a MONTHLY strategy's percent stop
-    was written into the weekly T-06 row. Now refused (plan_save_prices_not_read, 422), nothing written."""
+# --- no live session (market closed, LIVE_MARKET off): the REAL read_market(tracked, None), expiry_kind None ---------------
+
+
+class _Scn:
+    """A scenario that states the strategy's expiry kind (what ``expiry_kind_of`` reads first in scenario mode)."""
+
+    def __init__(self, kind):
+        self.data = {"expiry_kind": kind}
+
+
+def _no_session(monkeypatch, scenario_kind):
+    """The market read of a save with no Kite session: the real reader with no context. ``scenario_kind`` None: no
+    stored source of the kind (no scenario, the catalogue holds no future); else the scenario states it."""
+    from ofo_app import adjustment_readers as readers  # noqa: PLC0415
+
+    async def real(tracked, market_reader, ctx):
+        return await readers.read_market(tracked, None)
+    monkeypatch.setattr(route, "_market", real)
+    monkeypatch.setattr(readers, "_scenario", lambda: None if scenario_kind is None else _Scn(scenario_kind))
+
+
+ROWS_AFTER_50 = {"weekly": [D("50"), D("50"), D("40")], "monthly": [D("50"), D("50"), D("20")]}
+ROWS_AS_IS = {"weekly": [D("50"), D("50"), D("40")], "monthly": [D("30"), D("30"), D("20")]}
+
+
+async def _accepted(app_db_url, monkeypatch, name):
+    """A MONTHLY strategy with an accepted plan on a playbook with two different T-06 rows (market read as monthly)."""
     sid = await _seeded(app_db_url, monkeypatch, "ADJ-02")
-    own = await _own_with_two_kinds(app_db_url, "Two kinds no market")
+    own = await _own_with_two_kinds(app_db_url, name)
     _monthly_market(monkeypatch)
-    status, out = await _call("POST", _plan_path(sid), json={"playbook_id": own.id, "stop": "50"})
-    assert status == OK, out  # a plan exists, with both rows as the playbook has them
-    before = await _plan_row(app_db_url, sid)
-    _no_market(monkeypatch)
-    status, out = await _call("PUT", _plan_path(sid), json={"playbook_id": own.id, "stop": "10"})
-    assert status == UNPROCESSABLE, out
-    assert "price" in out["what_happened"].lower()
-    after = await _plan_row(app_db_url, sid)
-    assert before == after
-    assert _t06(after.body) == {"weekly": [D("50"), D("50"), D("40")], "monthly": [D("50"), D("50"), D("20")]}
-    status, out = await _call("POST", _plan_path(sid), json={"playbook_id": own.id, "stop": "50"})
-    assert status == UNPROCESSABLE, out
-    assert before == await _plan_row(app_db_url, sid)
-
-
-async def test_a_reset_with_no_market_read_is_refused_and_writes_no_row(app_db_url, monkeypatch):
-    sid = await _seeded(app_db_url, monkeypatch, "ADJ-02")
-    own = await _own_with_two_kinds(app_db_url, "Two kinds no market reset")
-    _monthly_market(monkeypatch)
-    status, out = await _call("POST", _plan_path(sid), json={"playbook_id": own.id, "stop": "50"})
+    status, out = await _call("POST", _plan_path(sid), json={"playbook_id": own.id})
     assert status == OK, out
+    assert _t06((await _plan_row(app_db_url, sid)).body) == ROWS_AS_IS
+    return sid, own
+
+
+async def test_a_percent_stop_with_no_session_and_no_stored_kind_is_refused_and_writes_nothing(app_db_url, monkeypatch):
+    """Blocker (round 2): real read_market(tracked, None) answers expiry_kind None; the weekly row (50) equals the typed
+    50, so the save said 200 and wrote nothing. With the kind unknown it is refused instead (422, nothing stored)."""
+    sid, own = await _accepted(app_db_url, monkeypatch, "No kind percent")
     before = await _plan_row(app_db_url, sid)
-    _no_market(monkeypatch)
+    _no_session(monkeypatch, None)
+    for method in ("POST", "PUT"):
+        status, out = await _call(method, _plan_path(sid), json={"playbook_id": own.id, "stop": "50"})
+        assert status == UNPROCESSABLE, out
+        assert "price" in out["what_happened"].lower()
+        assert before == await _plan_row(app_db_url, sid)
+
+
+async def test_a_percent_stop_with_no_session_uses_the_stored_kind_and_lands_in_the_monthly_row(app_db_url, monkeypatch):
+    sid, own = await _accepted(app_db_url, monkeypatch, "Stored kind percent")
+    _no_session(monkeypatch, "monthly")
+    status, out = await _call("PUT", _plan_path(sid), json={"playbook_id": own.id, "stop": "50"})
+    assert status == OK, out
+    assert _t06((await _plan_row(app_db_url, sid)).body) == ROWS_AFTER_50
+
+
+async def test_a_rupee_stop_with_no_session_is_stored(app_db_url, monkeypatch):
+    sid, own = await _accepted(app_db_url, monkeypatch, "No kind rupees")
+    _no_session(monkeypatch, None)
+    status, out = await _call("PUT", _plan_path(sid), json={"playbook_id": own.id, "stop_rupees": "100"})
+    assert status == OK, out
+    row = await _plan_row(app_db_url, sid)
+    assert json.loads(row.body)["guards"]["loss_stop_rupees"] == "100"
+    assert _t06(row.body) == ROWS_AS_IS
+
+
+async def test_a_target_only_save_with_no_session_is_stored(app_db_url, monkeypatch):
+    sid, own = await _accepted(app_db_url, monkeypatch, "No kind target")
+    _no_session(monkeypatch, None)
+    status, out = await _call("PUT", _plan_path(sid), json={"playbook_id": own.id, "target": "60"})
+    assert status == OK, out
+    row = await _plan_row(app_db_url, sid)
+    assert json.loads(row.body)["guards"]["profit_target_pct_of_max_profit"] == "60"
+    assert _t06(row.body) == ROWS_AS_IS
+
+
+async def test_a_reset_with_no_session_works(app_db_url, monkeypatch):
+    sid, own = await _accepted(app_db_url, monkeypatch, "No kind reset")
+    _no_session(monkeypatch, None)
     status, out = await _call("POST", _plan_path(sid) + "/reset")
-    assert status == UNPROCESSABLE, out
-    assert "price" in out["what_happened"].lower()
-    assert before == await _plan_row(app_db_url, sid)
+    assert status == OK, out
+    assert _t06((await _plan_row(app_db_url, sid)).body) == ROWS_AS_IS
+
+
+class _Entry:
+    def __init__(self, expiry, future):
+        self.currently_listed = True
+        self.contract = type("C", (), {"name": "NIFTY", "expiry": expiry, "is_future": lambda s: future,
+                                       "is_option": lambda s: not future})()
+
+
+class _Cat:
+    def __init__(self, entries):
+        self._entries = entries
+
+    def all_entries(self):
+        return self._entries
+
+
+async def test_the_stored_kind_is_the_one_rule_over_the_stored_catalogue(monkeypatch):
+    """Monthly = the leg's expiry is also a future's expiry; a catalogue with no future cannot judge (None, never a guess)."""
+    from ofo_app import adjustment_readers as readers  # noqa: PLC0415
+    monkeypatch.setattr(readers, "_scenario", lambda: None)
+    leg_day, other = datetime.date(2026, 12, 29), datetime.date(2026, 12, 3)
+    tracked = type("T", (), {"position": type("P", (), {
+        "underlying": "NIFTY", "legs": (type("L", (), {"expiry": leg_day})(),)})()})()
+
+    def stored(entries):
+        async def load(db):
+            return _Cat(entries)
+        monkeypatch.setattr(route, "load_catalogue", load)
+    stored([_Entry(leg_day, True), _Entry(leg_day, False), _Entry(other, False)])
+    assert await route._stored_kind(None, tracked) == "monthly"
+    stored([_Entry(other, True), _Entry(leg_day, False)])
+    assert await route._stored_kind(None, tracked) == "weekly"
+    stored([_Entry(leg_day, False), _Entry(other, False)])
+    assert await route._stored_kind(None, tracked) is None

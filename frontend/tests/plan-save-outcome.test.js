@@ -19,7 +19,7 @@ vi.mock('@/services/api', async (importActual) => {
 import AdjustPlanSheet from '@/components/strategy/AdjustPlanSheet.vue'
 import PlanEntry from '@/components/strategy/PlanEntry.vue'
 import PlanWatch from '@/components/strategy/PlanWatch.vue'
-import { PLAN_SAVE_TIMEOUT_MS } from '@/lib/adjustPlan'
+import { PLAN_SAVE_TIMEOUT_MS, readPlan, resetPlan, sendPlan } from '@/lib/adjustPlan'
 import { PLAN_NOT_CONFIRMED_TEXT } from '@/lib/sharedStateText'
 import { markSaved, saveStamp } from '@/lib/planSaveClock'
 
@@ -281,5 +281,27 @@ describe('PlanEntry: the card keeps loading while the fresh read is out', () => 
     fresh.resolve({ data: sheetAnswer('100.00') })
     await flushPromises()
     expect(t(entry, 'plan-entry-loading').exists()).toBe(false)
+  })
+})
+
+describe('plan-save-1127 round 2: the save count and the generic text', () => {
+  const fake = (data) => ({ put: () => Promise.resolve({ data }), post: () => Promise.resolve({ data }) })
+  it('sendPlan and resetPlan move the save count only for an answer the browser can read', async () => {
+    const before = saveStamp(81)
+    await sendPlan(fake({ unreadable: true }), 81, {}, true)
+    await resetPlan(fake({ unreadable: true }), 81)
+    expect(saveStamp(81)).toBe(before)
+    await sendPlan(fake(sheetAnswer('1')), 81, {}, true)
+    expect(saveStamp(81)).toBe(before + 1)
+    await resetPlan(fake(sheetAnswer('1')), 81)
+    expect(saveStamp(81)).toBe(before + 2)
+  })
+
+  it('the generic text is read from a plain string, a catalogue object, or null', () => {
+    const generic = (text) => readPlan({ generic: true, generic_text: text, labels: {} })
+    expect(generic('Nothing to adjust.').text).toBe('Nothing to adjust.')
+    expect(generic({ what_happened: 'Nothing to adjust.' }).text).toBe('Nothing to adjust.')
+    expect(generic(null).text).toBe('')
+    expect(generic(5).text).toBe('')
   })
 })

@@ -306,7 +306,7 @@ const saveTrade = async () => {
   refusal.value = null
   notice.value = null
   // plan-save-1127: the shared mapping: the server's rules, the server's reason, or "Not confirmed" (never re-sent)
-  const out = await planSaveResult(async () => (await api.put(tradeRules(), { body: work.value }, { timeout: PLAN_SAVE_TIMEOUT_MS })).data, { markId: tradeId })
+  const out = await planSaveResult(async () => (await api.put(tradeRules(), { body: work.value }, { timeout: PLAN_SAVE_TIMEOUT_MS })).data, { markId: tradeId, readable: (pb) => !!pb && typeof pb === 'object' && !!pb.body && typeof pb.body === 'object' })
   if (out.kind === 'saved') show(out.value)
   else refusal.value = out.text
 }
