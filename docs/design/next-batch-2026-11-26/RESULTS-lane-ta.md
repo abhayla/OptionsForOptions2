@@ -1,4 +1,4 @@
-STATUS 03:17 | item: I-02..I-55 proven (5 of 15) | next push 04:00 | blocker: none
+STATUS 03:50 | item: I-02..I-58 proven (6 of 15) | next push 04:45 | blocker: none
 
 # Lane TA: database tests for 15 backend items (28 Nov 2026)
 
@@ -15,6 +15,10 @@ two families cannot share one database: a note for the owner PC, not a defect).
 | I-39 | PASS (API half) | `tests_app/test_completed_header_count_r2_1128.py` 1 passed: 15 closed + 1 draft + 1 hidden closed -> `GET /strategies` returns exactly the 15 completed ids, once each. The header's number is not computed by the server (no count field in `StrategyListOut`); it is the frontend's. See "For the owner lane". |
 | I-44 | PASS | `tests_app/test_paper_totals_settled_unpriced_r2_1128.py` 5 passed: a settled trade adds booked only; an unpriced one makes unbooked and total absent with its reason; left out ones are counted. |
 | I-55 | PASS | `tests_app/test_side_closed_no_plan_r2_1128.py` 2 passed: a trade with no plan is not listed by the worker's lister, so no `side_closed` alert; control with plan is listed. |
+| I-58 | PASS | `tests_app/test_alert_reason_words_r2_1128.py` 12 passed: each of the six actionable kinds, with and without figures: Active text is never the trade name, names its rule kind in words, carries the figures when present, and History repeats the same words. (The fallback `_rule_in_words` in `routes/alerts.py` already exists; no defect.) |
+
+## Gate
+Push 1: `prepush.py`: ruff_ratchet PASS, coverage PASS, alembic_guard PASS; ci_checks 14 passed, 1 failed (`git merge-base origin/main HEAD`: this clone has no origin/main), frontend_lint/build/unit FAIL (no `frontend/node_modules`: environment, not the tests), app_tests FAIL (cannot select by `git diff`: same missing base). Not `TOTAL PASS` for environment reasons; my files pass ruff and their own DB runs.
 
 ## Decided for the owner
 - Fresh database per test file (template copy, 0.4 s) because the seeded and rolled-back test families pollute each other on one database.
