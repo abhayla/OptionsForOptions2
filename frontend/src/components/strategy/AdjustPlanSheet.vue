@@ -124,6 +124,7 @@ async function reset() {
     const read = await resetPlan(api, props.strategyId)
     if (read.kind !== 'sheet') { errorParts.value = NEUTRAL_PARTS; return }
     sheet.value = read
+    picked.value = false // the sheet now shows the saved plan again; an untouched Save is no new choice
     form.value = { ...read.prefill }
     resetMarkers.value = [...(read.plan?.changed ?? []), ...(read.plan?.switchedOff ?? [])].join(', ')
     resetAsking.value = false

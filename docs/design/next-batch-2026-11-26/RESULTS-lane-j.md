@@ -17,7 +17,7 @@ trial ENDED x3 (ADR-039), EXECUTE_REPLAY_URL unset, no INDEX row in the test cat
    12e04b9 (Change expiry), Lane D 491df12, all of Lane P, Step 2 wiring, Step 3 checks, P7, P8, S-11, the
    Not-applicable line, ADR-330 (31) with 0057.
 2. Migrations the PC applies: 0054, 0055, 0056, 0057, each with its old-code-safe proof and its read-only check in
-   section (a); 0057 first on the scratch copy ofo_rehearsal_1127. #753 (0058) is PARKED and not on the branch.
+   section (a); 0057 first on the scratch copy ofo_rehearsal_1127. #753 (0058) is built on side branch feat/0058-plan-acceptance-1127 per ADR-330 (45), waiting for the coordinator to join it to the test branch (not on this branch yet).
 3. No push to integration/nb-1126 after 07:30 IST until you say.
 4. Blocking: nothing. Waiting for the owner (none blocks the test): LJ-2 and the "pending owner read" wordings.
 
@@ -313,6 +313,7 @@ device); recorded here instead.
 | The fired-stop line is judged on the book read before the strategy lock | `paper_monitor.py:218-220,245`: a lot added between the look and the lock is exited by the door but the line is for the smaller quantity | ADR-330 (6); ADR-008 | the line is computed from the book the door returned (`done.book` before the exit) |
 | Old and new fired stops sit in two History lists | `routes/paper.py:2006-2016`, `paperAlerts.js:100` still say /paper/alerts/records holds every fired stop; new ones land only in /alerts/answered; each shows once but not in one time order | ADR-330 (3)(b) | History lists every fired stop in one time order; the comments say where each lives |
 | An alert title is computed when read, not kept from when it fired | `alert_title.py:43-52`: a rolled-then-closed trade shows "(#172)" although it fired as "(#172, 8 Dec)"; a strategy without a paper book never gets an expiry | ADR-330 (19)(b) | the title is stored with the row at fire time (or the docstring stops promising it) |
+| A plan POST on an EXISTING plan stamps and replaces its body | `SaveDraftBar.vue:481` opens the sheet with edit=false; `routes/adjustment_plan.py` POST path (`_write` edit False) accepts and replaces the body whatever exists | ADR-330 (45) | the sheet opened from the save bar for a strategy that already has a plan sends PUT (edit=true) |
 | Header poll reads the whole history until the first stop fires | `paperAlerts.js:23-36`, `routes/alerts.py:197-198`: stopSeen 0 means every poll reads all of History plus one book load per strategy | none: speed only | the first read asks for the newest id only |
 | Exit from two alerts of one strategy can offer the same legs twice | `AlertsPage.vue:57-58`: busy is released before the door opens; a second alert's Exit during the first POST offers the same legs; a second Confirm posts a second exit (needs two Confirms) | ADR-330 (3), (12); ADR-019 | the Alerts page holds one open exit per strategy until the first answers |
 | A list refresh closes the Alerts page's exit dialog without a word | `PaperStrategies.vue:387,390` in exitOnlyFor mode | ADR-330 (3) | a cancelled dialog says why |
@@ -342,7 +343,7 @@ Lane U shows the server's count of days left, Lane D an India-day count in the b
 computes it, so Lane U's stays and Lane D's localDay and its tests are dropped; template pins merged by key). Full
 vitest on the push-7 tree: 280 files, 3152 tests passed.
 
-## #753 PARKED (not on this branch; migration 0058 is NOT applied tomorrow)
+## #753 (0058): built on feat/0058-plan-acceptance-1127, not yet joined to this branch (0058 is applied only when the coordinator joins it)
 
 Built on side branch `lanej/753` (head 8b00ed77, not pushed), two rounds, both Tier A reviews (Opus) FIX:
 - Round 1 (stamp only on a playbook switch): Reset to playbook and accepting the same playbook stopped being a new

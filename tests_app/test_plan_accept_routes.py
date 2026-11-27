@@ -150,17 +150,20 @@ async def test_use_as_is_on_the_same_playbook_from_the_sheet_stamps(app_db_url, 
     assert at > then and before is False and credit is True
 
 
-async def test_a_put_without_accept_never_stamps_also_when_it_names_another_playbook(
+async def test_a_put_naming_another_playbook_without_accept_is_refused_and_changes_nothing(
     app_db_url, admin_engine, monkeypatch
 ):
+    """A switch is a choice and must say so: no half-switch (new body, old accepted_at)."""
     sid = await _seeded(app_db_url, monkeypatch, "ADJ-02")
-    system, then = await _old_plan(app_db_url, admin_engine, sid)
+    system, then = await _old_plan(app_db_url, admin_engine, sid, margin=True)
+    before = (await _plan_row(app_db_url, sid)).body
     async with app_db_url.begin() as conn:
         own = await pbs.duplicate(conn, USER, system.id, "Pointer only")
     status, out = await _call("PUT", _plan_path(sid), json={"playbook_id": own.id})
-    assert status == OK, out
-    at, playbook, before, credit = await _state(app_db_url, sid)
-    assert (at, playbook, before, credit) == (then, own.id, True, False)
+    assert status == HTTPStatus.UNPROCESSABLE_ENTITY, out
+    at, playbook, before_247, credit = await _state(app_db_url, sid)
+    assert (at, playbook, before_247, credit) == (then, system.id, True, False)
+    assert (await _plan_row(app_db_url, sid)).body == before
 
 
 async def test_a_put_level_edit_keeps_accepted_at_and_the_old_stops(app_db_url, admin_engine, monkeypatch):

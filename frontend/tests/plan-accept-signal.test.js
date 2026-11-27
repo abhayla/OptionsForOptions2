@@ -20,7 +20,8 @@ vi.mock('@/services/api', async (importActual) => {
 import AdjustPlanSheet from '@/components/strategy/AdjustPlanSheet.vue'
 
 const LABELS = { title: 'Plan', playbook: 'Playbook', target: 'Target', stop: 'Stop', max_adjustments: 'Max adjustments', time_exit: 'Time exit',
-  time_exit_on: 'Date', customise: 'Customise triggers', use_as_is: 'Use playbook as is', save: 'Save plan', close: 'Close', hour: 'Hour', minute: 'Minute' }
+  time_exit_on: 'Date', customise: 'Customise triggers', use_as_is: 'Use playbook as is', save: 'Save plan', close: 'Close', hour: 'Hour', minute: 'Minute',
+  reset: 'Reset to playbook', reset_confirm: 'Put every condition back?' }
 const PLAYBOOKS = [
   { id: 1, name: 'Iron condor (system)', type: 'ic', type_name: 'Iron condor', is_system: true, draft: false, active: false },
   { id: 9, name: '"Mine"', type: 'ic', type_name: 'Iron condor', is_system: false, draft: false, active: true },
@@ -90,6 +91,25 @@ describe('the requests the plan sheet sends on an existing plan (edit = PUT)', (
     await t(w, 'plan-save').trigger('click')
     await flushPromises()
     expect(writes()[0].body).not.toHaveProperty('accept')
+  })
+
+  it('pick, then Reset to playbook, then Save with nothing edited sends no accept and keeps the shown time exit', async () => {
+    answers[`GET ${PATH}`] = sheetAnswer()
+    answers[`GET ${PATH}?playbook_id=1`] = sheetAnswer({ prefill: { playbook_id: 1, target: '70', stop: '30', max_adjustments: 4, time_exit: { hour: 14, minute: 30 } } })
+    answers[`POST ${PATH}/reset`] = sheetAnswer()
+    answers[`PUT ${PATH}`] = sheetAnswer()
+    const w = await sheet()
+    await t(w, 'plan-playbook').setValue('1')
+    await flushPromises()
+    await t(w, 'plan-reset').trigger('click')
+    await t(w, 'plan-reset-yes').trigger('click')
+    await flushPromises()
+    expect(t(w, 'plan-time').element.value).toBe('14:45')
+    await t(w, 'plan-save').trigger('click')
+    await flushPromises()
+    const put = writes().find((c) => c.method === 'PUT')
+    expect(put.body).not.toHaveProperty('accept')
+    expect(put.body.playbook_id).toBe(9)
   })
 
   it('Use playbook as is sends PUT with the playbook and accept: true', async () => {

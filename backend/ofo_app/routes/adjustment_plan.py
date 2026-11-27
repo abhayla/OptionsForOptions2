@@ -817,6 +817,8 @@ async def _write(strategy_id: int, data: PlanIn, edit: bool, db: Any, user_ref: 
 
     async def work() -> AdjustmentPlanOut:
         source = await _picked(db, user_ref, data.playbook_id, stype)
+        if edit and plan is not None and plan.playbook_id not in (None, source.id) and not data.accept:
+            raise _bad("playbook_id")  # #753: switching to another playbook is a choice and must say so (accept)
         body = with_overrides(_body_to_save(source, plan, edit, data.accept), data, _kind_of(tracked, money), bases)
         if data.time_exit is not None:  # ADR-330 (7): the day is judged against today and the legs, never trusted
             legs = tracked.position.legs
