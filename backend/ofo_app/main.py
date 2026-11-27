@@ -35,7 +35,6 @@ from ofo_app import (
 from ofo_app.broker_config import BrokerConfig, load_broker_config
 from ofo_app.config import Settings, app_env
 from ofo_app.db import close_db, verify_pool_budget
-from ofo_app.request_log import RequestLog
 from ofo_app.routes import (
     adjustment,
     adjustment_check,
@@ -174,7 +173,6 @@ def create_app(broker_config: BrokerConfig | None = None) -> FastAPI:
     app = FastAPI(title="OptionsForOptions2 API", version="0.1.0", lifespan=_lifespan, redirect_slashes=False, **docs)
     app.router.route_class = errors.ClosedRoute  # every route added on the app itself goes through the response door
     errors.install(app)
-    app.add_middleware(RequestLog)  # outermost: one INFO line per request (route template, status, ms)
     errors.set_frontend_origin(config.frontend_origin)  # write-once (#159)
     if scenario_mode.scenario_requested():  # first: scenario test data and the real Kite feed never run together
         scenario_mode.require_no_live_market(live_market.live_requested())
