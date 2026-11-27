@@ -47,7 +47,7 @@ async def plan_final_text(db: Any, user_ref: str, strategy_id: int, orders: Sequ
         return plan_final_line(None, ending, at, today)
     base = sif.stop_base_from_json(plan.stop_base)
     loss = base.max_loss if base is not None and isinstance(base.max_loss, Decimal) else None
-    shown = await ap._plan_out(db, user_ref, plan, None, ap.Bases(None, loss, None))  # the sheet's own figures
+    shown = await ap.plan_figures(db, user_ref, plan, ap.Bases(None, loss, None))
     levels = PlanLevels(_level(shown.get("stop_rupees"), shown.get("stop")),
                         _level(shown.get("target_rupees"), shown.get("target")))
     return plan_final_line(levels, ending, at, today)

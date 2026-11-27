@@ -596,6 +596,11 @@ async def _plan_out(db: Any, user_ref: str, plan: store.Plan, kind: str | None =
                                  kind=kind, saved_before=saved_before)}
 
 
+async def plan_figures(db: Any, user_ref: str, plan: store.Plan, bases: Bases) -> dict[str, Any]:
+    """ADR-330 (57): the plan sheet's own figures (the rupee levels) for a stored plan, for readers outside this module."""
+    return await _plan_out(db, user_ref, plan, None, bases)
+
+
 def _in_force_reply(found: in_force_mod.InForce) -> dict[str, Any]:
     """The reply fields of the ONE settings-in-force read; every field is copied, nothing is recomputed here."""
     def trig_label(label: str | None) -> Any:
