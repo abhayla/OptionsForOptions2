@@ -452,6 +452,8 @@ APP_MODELS = (
     "ofo_app.routes.level_watch.WatchOut",
     "ofo_app.routes.monitoring_pause.PauseOut",
     "ofo_app.routes.monitoring_pause.RefusedOut",
+    "ofo_app.routes.monitoring_status.MonitoringListOut",
+    "ofo_app.routes.monitoring_status.MonitoringOut",
     "ofo_app.routes.outcome.CellOut",
     "ofo_app.routes.outcome.ChargesBreakdownOut",
     "ofo_app.routes.outcome.ColumnOut",
