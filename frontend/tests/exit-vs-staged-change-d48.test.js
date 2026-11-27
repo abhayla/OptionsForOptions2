@@ -28,11 +28,12 @@ describe('a row Exit never combines with a staged change on its contract', () =>
     expect(stagedChangeIds(net, [A])).toEqual([])
     expect(rowExitBlocked(net, [A], 1)).toBe(false)
     expect(legsAfterExit(net, [A], 1, 1).map((l) => l.lots)).toEqual([1])
-    expect(legsAfterExit(net, [{ ...A, lots: 1 }], 1, 2).map((l) => l.lots)).toEqual([])
+    expect(legsAfterExit(net, [{ ...A, lots: 1 }], 1, 2)).toBeNull() // round 2 F3: the leg's own lots are changed (an exit already waiting on it)
     const B = { ...A, id: 'paper-2', contract_id: 2, instrument_id: 'NSE_FO:2' }
     expect(legsAfterExit([A, B], [A], 1, 1).map((l) => l.lots)).toEqual([1]) // B removed (an exit waiting): A's Exit still allowed
-    expect(legsAfterExit(net, [{ ...A, lots: 1 }, { ...A, id: 'x', lots: 1 }], 1, 1)).not.toBeNull() // 1 + 1 rows: no change
-    expect(legsAfterExit(net, [{ ...A, lots: 1 }], 1, 1).map((l) => l.lots)).toEqual([1]) // lots 2 -> 1 (an exit waiting), then Exit 1 of the net 2
+    expect(legsAfterExit([A, B], [A], 2, 1)).toBeNull() // round 2 F3: B itself has no row now (a missing row blocks its own Exit)
+    expect(legsAfterExit(net, [{ ...A, lots: 1 }, { ...A, id: 'x', lots: 1 }], 1, 1)).toBeNull() // round 2 F3: two rows of one contract
+    expect(legsAfterExit(net, [{ ...A, lots: 1 }], 1, 1)).toBeNull() // round 2 F3: lots changed on the leg itself
     expect(legsAfterExit(net, [{ ...A, lots: 2 }], 1, 1).map((l) => l.lots)).toEqual([1]) // 2 -> 1 -> 2 is untouched
   })
   // ADR-330 (49) (owner, 27 Nov 2026) replaces D-48 round 2's "a row Exit never carries an add": only the CHANGED leg's Exit is blocked;
@@ -50,7 +51,7 @@ describe('a row Exit never combines with a staged change on its contract', () =>
     expect(legsAfterExit(net, [A, C], 1, 1).map((l) => l.contract_id)).toEqual([1, 3]) // C stays staged beside A's remaining lot
     expect(exitOnlyOrders(net, 1, 1).map((o) => [o.kind, o.contract_id, o.lots])).toEqual([['exit', 1, 1]])
   })
-  it('ATK-1: a move onto a held contract answered with Increase: the raised contract B is blocked; A (no rows left, indistinguishable from a removed leg) exits alone', async () => {
+  it('ATK-1 (round 2 F3): a move onto a held contract answered with Increase: BOTH the moved leg A and the raised B are blocked', async () => {
     const B = { ...A, id: 'paper-2', contract_id: 2, instrument_id: 'NSE_FO:2', lots: 1 }
     const mv = { ...A, instrument_id: 'NSE_FO:2', contract_id: 2, lots: 2 } // row paper-1 moved onto B
     const r = await admitLegs([B], [mv], { ask: async () => 'increase', maxLots: 100 })
@@ -58,14 +59,20 @@ describe('a row Exit never combines with a staged change on its contract', () =>
     expect(legs.map((l) => l.id)).toEqual(['paper-2'])
     expect(legs[0].lots).toBe(3)
     expect(paperOrdersFor([A, B], legs).map((o) => o.kind)).toContain('add')
-    expect(legsAfterExit([A, B], legs, 2, 1)).toBeNull() // B holds 3 lots against 1 held: its own change
-    expect(stagedChangeIds([A, B], legs)).toEqual([2])
-    expect(exitOnlyOrders([A, B], 1, 1).map((o) => [o.kind, o.contract_id])).toEqual([['exit', 1]]) // never the add of B
+    expect(legsAfterExit([A, B], legs, 1, 1)).toBeNull()
+    expect(legsAfterExit([A, B], legs, 2, 1)).toBeNull()
+    expect(stagedChangeIds([A, B], legs)).toEqual([1, 2])
+    expect(exitOnlyOrders([A, B], 1, 1).map((o) => [o.kind, o.contract_id])).toEqual([['exit', 1]]) // and the orders of an allowed Exit are never the add of B
   })
-  it('ATK-7: an adjustment roll (adjust- ids, no paper- id): any Exit posts that exit only, never the roll\'s add', () => {
+  it('ATK-7 (round 2 F3): an adjustment roll (adjust- id, no paper- id): the rolled leg\'s own Exit is blocked', () => {
     const roll = { ...A, id: 'adjust-0', contract_id: 9, instrument_id: 'NSE_FO:9', lots: 2 }
     expect(paperOrdersFor(net, [roll]).map((o) => o.kind)).toContain('add')
-    expect(exitOnlyOrders(net, 1, 1).map((o) => o.kind)).toEqual(['exit'])
+    expect(legsAfterExit(net, [roll], 1, 1)).toBeNull()
+    expect(stagedChangeIds(net, [roll])).toEqual([1])
+  })
+  it('F5: a flipped side (same row id, same lots, BUY instead of SELL) blocks the leg\'s Exit', () => {
+    expect(rowExitBlocked(net, [{ ...A, action: 'BUY' }], 1)).toBe(true)
+    expect(legsAfterExit(net, [{ ...A, action: 'BUY' }], 1, 1)).toBeNull()
   })
   it('the panel row says why and sends nothing', async () => {
     const book = { strategy_id: 1, state: 'LIVE', total_text: '0', positions: [position(1, 2)], closed: [], orders: [] }

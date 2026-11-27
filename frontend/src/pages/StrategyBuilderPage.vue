@@ -431,6 +431,40 @@ const STRATEGY_ID = /^[1-9]\d{0,17}$/
 // reaches the server is the list paperOrdersFor(net, legs) gives, reviewed in the confirm dialog. Save / Save As / Add to Paper
 // are not offered (SaveDraftBar paper-mode). A book that cannot be read is said plainly; the plan is never shown in its place.
 const paper = ref(null) // { id, book, net } while in Drafts Mode, else null
+// ADR-330 (49), round 2: a per-leg Exit posts ITS exit only. `legOnly` = { net, id, lots } while its dialog is open; `keepStaged` = that plus
+// the screen legs at Confirm, put back over the re-read net ONLY when it is the net the exit should leave (restoreStaged); else the sentence.
+let legOnly = null
+let keepStaged = null
+const stagedNote = ref('')
+const netKey = (rows) => (rows ?? []).map((l) => `${l.contract_id}|${l.action}|${l.lots}`).sort().join(';')
+const NOT_KEPT_TEXT = (names) => `The change waiting on ${names} was not kept because the trade changed; stage it again.`
+function restoreStaged(newNet, allowNotStored = false) { // allowNotStored: the Orderbook link after an unknown outcome (the exit may not have been stored)
+  const rec = keepStaged
+  keepStaged = null
+  if (!rec) return
+  const expected = legsAfterExit(rec.net, rec.net, rec.id, rec.lots)
+  if (!expected || JSON.stringify(rec.snapshot) === JSON.stringify(expected)) return // nothing was staged beside the exit
+  if (netKey(newNet) === netKey(expected)) { // the net the exit should leave: the other legs' edits come back, the exited contract's row is the re-read's
+    const nrow = (newNet ?? []).find((l) => l.contract_id === rec.id)
+    const out = []
+    let placed = false
+    for (const l of rec.snapshot) {
+      if (l.contract_id !== rec.id) { out.push(l); continue }
+      if (!placed && nrow) out.push({ ...nrow })
+      placed = true
+    }
+    if (!placed && nrow) out.push({ ...nrow })
+    setLegs(out)
+    return
+  }
+  if (allowNotStored && netKey(newNet) === netKey(rec.net)) { setLegs(rec.snapshot); return } // not stored: the exit stays a staged edit beside the rest
+  let names = ''
+  try {
+    const diff = paperOrdersFor(expected, rec.snapshot)
+    names = diff ? confirmRowsFor(diff, paper.value.book, contractName, {}).map((r) => r.text).filter(Boolean).join(', ') : ''
+  } catch { names = '' }
+  stagedNote.value = NOT_KEPT_TEXT(names || 'your edited legs') // nothing is put back: no add is ever built over a net that is not the expected one
+}
 // N-48: every leg of the paper book is closed (it has closed lifecycles, none open): Completed, nothing to add to (ADR-002)
 const paperCompleted = computed(() => { const b = paper.value?.book; return !!b && Array.isArray(b.closed) && b.closed.length > 0 && Array.isArray(b.positions) && b.positions.every((p) => p.net_quantity === 0) })
 const pendingOrders = computed(() => (paper.value ? paperOrdersFor(paper.value.net, legs.value) : []))
@@ -452,7 +486,7 @@ function enterDrafts(id, read) {
   paper.value = { id, book: read.book, net: read.net }
   openSaved(copyLegs(read.net), id, null, read.book.name ?? null)
 }
-const leaveDrafts = () => { paper.value = null; paperStale.value = false; cancelReread() }
+const leaveDrafts = () => { stagedNote.value = ''; paper.value = null; paperStale.value = false; cancelReread() }
 // GC-ICFIX round 2 (F4): the page's ONE read of the paper book per refresh; its reply feeds the paper panel, the tracking box's total and
 // the P&L table TOTAL row (one moment, one text). An orders re-read (paperStale) is not overwritten by it.
 const { readFailed: paperReadFailed, contractsChanged: paperContractsChanged } = usePaperBookRead({
@@ -483,19 +517,21 @@ const exitOrigin = ref(false) // the pending edits came from Exit all or a per-l
 // P10: the strategy the Plan watch reads: the saved id, or in Drafts Mode (savedId stays null there) the paper book's own integer id
 const planWatchId = computed(() => (Number.isInteger(savedId.value) ? savedId.value : Number.isInteger(paper.value?.book?.strategy_id) ? paper.value.book.strategy_id : null))
 const paperTotal = computed(() => (paper.value ? paperPnlBlock(paper.value.book, paperBookFailed.value) : null))
-function reviewPending(fromExit = false, only = null) { // the "Review and add" button passes its click event: only `true` marks an Exit; `only`: ADR-330 (49), a leg's own exit rows
+function reviewPending(fromExit = false, only = null, info = null) { // the "Review and add" button passes its click event: only `true` marks an Exit; `only`: ADR-330 (49), a leg's own exit rows
   const shown = only ?? pendingOrders.value
   if (!paper.value || paperStale.value || !shown?.length) return
   if (fromExit === true) exitOrigin.value = true // never reset here: "Review and add" of Exit edits is still an Exit
   if (exitBlocked.value) return // post nothing; the panel's reason line says why
   paperError.value = ''
+  stagedNote.value = ''
+  legOnly = only ? info : null // ADR-330 (49): the open dialog is one leg's own exit
   exitRec.clear(EXIT_KEY)
   paperState.value = PAPER_STATE.READY
   paperRows.value = confirmRowsFor(shown, paper.value.book, contractName, livePriceById.value)
   paperDialog.value = true
 }
 watch(pendingOrders, (o) => { if (!o?.length) exitOrigin.value = false }) // posted, discarded or edited back: no Exit edits are left
-const discardPending = () => { if (paper.value) setLegs(copyLegs(paper.value.net)) }
+const discardPending = () => { stagedNote.value = ''; if (paper.value) setLegs(copyLegs(paper.value.net)) }
 // GC-TP step 3b2 (Sensibull Drafts Mode 274-279): Exit all / a (partial) Exit only EDIT the legs (none / the contract less N lots),
 // then open the same confirm list: the orders are paperOrdersFor(net, legs) like every other edit, never built here.
 let legsBeforeExit = null // the legs as the user left them just before the first Exit click: what a cancelled Exit dialog restores
@@ -513,7 +549,7 @@ function exitPaper(contractId, lots) {
   if (!next || !only?.length) return
   markExit()
   setLegs(next)
-  reviewPending(true, only)
+  reviewPending(true, only, { net: copyLegs(paper.value.net), id: contractId, lots })
 }
 // N-04 / N-05: the ONE way the PAGE closes an Exit dialog without a Confirm (the trade changed elsewhere; a failed read no longer closes it:
 // hotfix 27 Nov T2-08, ADR-016..019). It drops the staged exits too (the legs the user had before the Exit click come back, their other edits with
@@ -574,13 +610,15 @@ async function confirmPending(orders) {
   const { id } = paper.value
   const names = paperLegNames()
   const wasExit = exitOrigin.value
+  const own = legOnly // ADR-330 (49): a per-leg Exit carries no acted / basket / approach state; it stays for the staged change
+  keepStaged = own ? { ...own, snapshot: copyLegs(legs.value) } : null
   const attempt = exitRec.begin(EXIT_KEY, names)
   paperBusy.value = true
   paperError.value = ''
   paperState.value = PAPER_STATE.READY
   let reply = null
   try {
-    reply = await postPaperOrders(api, id, orders, actedSuggestionIds.value, preparedBasketLegs.value, null, preparedApproachId.value)
+    reply = own ? await postPaperOrders(api, id, orders) : await postPaperOrders(api, id, orders, actedSuggestionIds.value, preparedBasketLegs.value, null, preparedApproachId.value)
   } catch (e) {
     const outcome = paperPostOutcome(e)
     if (outcome === PAPER_STATE.REFUSED) { // 4xx: the server stored nothing (one transaction or none)
@@ -590,7 +628,8 @@ async function confirmPending(orders) {
     else if (outcome === PAPER_STATE.REFUSED) exitRec.settle(EXIT_KEY, attempt, 'refused')
     paperState.value = outcome // hotfix 27 Nov: a superseded POST is UNKNOWN (paperPostOutcome), never READY
     // REQ-163: a refused record is dropped, so the next request differs from the refused one; Confirm is ready again (text kept)
-    if (outcome === PAPER_STATE.REFUSED && actedSuggestionIds.value.length && ACTED_REFUSED.has(e?.status)) {
+    if (outcome === PAPER_STATE.REFUSED) keepStaged = null // nothing stored: the screen legs stay as they are
+    if (outcome === PAPER_STATE.REFUSED && !own && actedSuggestionIds.value.length && ACTED_REFUSED.has(e?.status)) {
       await dropActed() // the server's sentence above says why
       paperState.value = PAPER_STATE.READY
     }
@@ -600,11 +639,9 @@ async function confirmPending(orders) {
   // STORED (201). From here nothing may offer these orders again: a failure below is only a failed refresh.
   exitRec.settle(EXIT_KEY, attempt, 'placed', wasExit ? exitEndText('done', names, { orders: reply?.orders, sent: orders.length }) : '') // the server answered: placed replaces a page-side guess
   paperStale.value = true
-  // ADR-330 (49): a per-leg Exit posted its own rows only; the other legs' changes still staged are put back over the re-read net
-  keepStaged = wasExit && pendingOrders.value && pendingOrders.value.length > orders.length ? copyLegs(legs.value) : null
-  if (keepStaged) { exitOrigin.value = false; legsBeforeExit = null } // what is left is no Exit edit
+  if (own) { exitOrigin.value = false; legsBeforeExit = null } // ADR-330 (49): what is left is no Exit edit; the other legs' edits are put back by restoreStaged
   try {
-    await dropActed({ withApproach: true }) // one basket answers the records once
+    if (!own) await dropActed({ withApproach: true }) // one basket answers the records once (a per-leg Exit answered none)
   } catch { /* the ids may stay in the URL: the stored orders are never offered again (paperStale) */ }
   try {
     // the dialog stays, says it was placed, and has no Confirm, while the book is read again (issue 18: bounded retries, then Retry)
@@ -622,7 +659,6 @@ const barRef = ref(null)
 let rereadId = null
 let rereadFirstFail = null
 let rereadRun = null // the one run whose answer still counts; another strategy opening ends it
-let keepStaged = null // ADR-330 (49): the legs (other legs' staged changes) to put back after the re-read that follows a per-leg Exit
 let leaving = false
 onBeforeUnmount(() => { leaving = true })
 const sleep = (ms) => new Promise((resolve) => setTimeout(resolve, ms))
@@ -650,7 +686,7 @@ async function rereadAfterPlace(id, onFirstFail) {
     if (read?.kind === 'paper') {
       try {
         enterDrafts(id, read)
-        if (keepStaged) { setLegs(keepStaged); keepStaged = null }
+        restoreStaged(read.net)
         openError.value = null
         paperDialog.value = false
         paperState.value = PAPER_STATE.READY
@@ -678,7 +714,10 @@ async function openPaperOrderbook() {
   try {
     const read = await readPaperBook(api, id)
     if (read.kind !== 'paper') throw new Error('unreadable paper book')
+    const kept = keepStaged // enterDrafts ends a re-read run that is not this strategy's (cancelReread) and would drop it
     enterDrafts(id, read)
+    keepStaged = kept
+    restoreStaged(read.net, true)
     showOrdersTick.value += 1
   } catch (e) {
     paperStale.value = true // the screen's net cannot be trusted until a book is read
@@ -1302,6 +1341,7 @@ const leaveGuard = useLeaveBuilder({
           </template>
         </LegList>
         <!-- GC-ICFIX P3 u513: while the confirm dialog is open its list is a preview, not "N pending changes" the user made -->
+        <p v-if="paper && stagedNote" class="mt-2 text-sm font-medium text-warn" role="status" data-testid="staged-not-kept">{{ stagedNote }}</p>
         <p v-if="paper && paperExitNote && !paperDialog" class="mt-2 text-sm font-medium text-warn" role="status" data-testid="paper-exit-note">{{ paperExitNote }}</p>
         <div v-if="paper && !paperDialog" class="mt-2 flex flex-wrap items-center gap-2 text-sm" data-testid="paper-pending">
           <span v-if="paperStale && rereadBusy" class="flex-1" data-testid="paper-pending-stale">{{ PAPER_PLACED_NOT_REFRESHED_TEXT }}</span>
