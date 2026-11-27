@@ -1,4 +1,4 @@
-STATUS 04:40 | item: all 15 tested, Opus review applied (round 1); gate run open | next push after the gate | blocker: none
+STATUS 04:50 | item: all 15 tested and committed locally (6cd87e0cd), NOT pushed | next push: after the pin below is updated and the gate shows TOTAL PASS | blocker: tests/orchestrator PR241_SELECTION needs 2 lines (not my file)
 
 # Lane TA: database tests for 15 backend items (28 Nov 2026)
 
@@ -29,6 +29,13 @@ two families cannot share one database: a note for the owner PC, not a defect).
 ## Gate
 `prepush.py` needed three things this clone lacked, all fixed locally and not in the repo: `origin/main` with full history (`git fetch --unshallow`), `frontend/node_modules` (`npm ci`), and more than the 30-minute background limit (its `app_tests` step is long). Result is in the last line of this section when the run ends.
 
+Gate run of commit 6cd87e0cd (full, jobs 4): ruff_ratchet, coverage, alembic_guard, frontend_lint, frontend_build, ci_checks PASS. FAIL: (1) `domain_tests` and `preflight-scans`: `tests/orchestrator/test_select_app_tests.py::test_pr241_diff_selects_both_red_files_within_the_cap` pins the exact set of `tests_app` files the selector picks for PR 241's diff, and my two new route tests are now legitimately selected (`test_completed_header_count_r2_1128.py` calls GET /strategies, `test_plan_watch_draft_r2_1128.py` imports `strategy_store`). 1 failed, 10702 passed. (2) `frontend_unit`: 1 of 3743, the N-07 scan test timed out at 19.6 s under the 4-job load; run alone it passes in 4.7 s. (3) `app_tests`, `preflight`: stopped by (1). **BLOCKED: push.** The fix is two lines in `tests/orchestrator/test_select_app_tests.py`, in the set PR241_SELECTION, each with a one-line comment as the other lane additions have: `"tests_app/test_completed_header_count_r2_1128.py"` and `"tests_app/test_plan_watch_draft_r2_1128.py"`. That file is outside this lane's may-edit list, and making the two tests dodge the selector would defeat what it is for, so nothing was changed. Re-run with `--jobs 2` once it is updated.
+
+## Process notes
+- No override was attempted or set (`PREPUSH_GATE_ALLOW` untouched). The lanes skill was read from git history (`39920e31`) at the start.
+- A message to @parent reporting the blocker was refused by the server (this session may not reach the owner's other sessions); this file is the report.
+- The clone needed `git fetch --unshallow` and `npm ci` before the gate could run (local only).
+
 ## Observations (not defects of this lane's items)
 1. Leg stop, sold leg (needs an owner decision, no decision row exists; ADR-207 (5) does not restrict the direction): no code is side-aware. The route only refuses a level the price is already at or beyond, and only in market hours. (a) A level BELOW the price that is not yet crossed saves (SELL 22800 CE at 39.15, "below 35.00"), and `leg-stop-risk` (it takes no direction) says "If this stop fires, max loss becomes Rs 572.00 (now Rs 11,297.00)": a line that reads like protection, while the stop can only fire when the trade is winning and the Rs 11,297 loss stays open. (b) With the market closed, "below 135.00" saves and would fire at the next live tick (price about 39): the sold leg exits at the open. Both are pinned as today's behaviour. Decision for the owner: word the side, or refuse a stop on the profit side.
 2. I-105: a coarse transitive scan over all routes lists 19 functions with a `db` parameter that reach a market wait through a helper and have no `release_connection(db)` of their own (adjustment_check.adjustment_check, adjustment_history.closed_figures(_many), adjustment_plan._run/read_rules/save_rules/accept_plan/edit_plan, alert_style._reply/read/pin, execute.execute_strategy, execution_return.return_from_kite, paper.get_paper_strategy/add_paper_triggers/keep_paper_trigger, tracking._answer/get_tracking, playbooks.test_playbook). Many release inside a callee; the scan cannot tell. Not asserted. Lane R should check them by the runtime pool test.
@@ -43,6 +50,7 @@ two families cannot share one database: a note for the owner PC, not a defect).
 None in product code. Every item's test passes on this build. Red proofs with the guard switched off in memory: I-02 (stages), I-63 (live guard), I-105 (release line), I-107 (price budget). The Tier A review found two defects in MY tests (I-02 pinned an event the worker cannot produce; I-59 stopped at the first frame): both fixed and re-run.
 
 ## For the owner lane
+- `tests/orchestrator/test_select_app_tests.py` PR241_SELECTION: add `tests_app/test_completed_header_count_r2_1128.py` and `tests_app/test_plan_watch_draft_r2_1128.py` (see Gate).
 - Completed header (I-39): the number is not computed by the server (`StrategyListOut` has no count); Lane TB should assert header count equals rows shown in the page.
 - `side_closed.raise_if_closed` has no plan check itself; the guard is the worker's lister (tested). A new caller needs its own guard.
 - `frontend/tests/two-stops-words.test.js` (I-63 words) is Lane TB territory.
