@@ -1100,6 +1100,9 @@ PLAN_SHEET_LABEL_TEXT: Mapping[str, str] = MappingProxyType({
     "reset_confirm": ("Reset to playbook puts back this playbook's conditions only. The levels you typed on the sheet "
                       "(profit target, rupee target, rupee stop, time exit, the adjustment limit) and the plan's "
                       "settings stay as you set them. Reset the conditions?"),
+    "reset_put_back": "Put back to the playbook's values:",  # T2-19 (pending owner read)
+    "reset_put_back_off": "Switched on again:",
+    "reset_put_back_none": "Nothing differed from the playbook, so nothing was put back.",
     "plan_entry": "Plan", "edit": "Edit plan", "no_plan": NO_PLAN_TEXT, "set_plan": "Set plan",
     "hour": "Hour", "minute": "Minute",
 })

@@ -58,7 +58,11 @@
             <button type="button" class="rounded border border-line px-2 py-1 text-sm" :disabled="busy" data-testid="plan-reset-no" @click="resetAsking = false">Cancel</button>
           </div>
         </div>
-        <p v-if="resetMarkers" class="mt-2 text-xs text-ink-muted" data-testid="plan-reset-markers">{{ resetMarkers }}</p>
+        <div v-if="resetDone" class="mt-2 text-xs text-ink-muted" data-testid="plan-reset-markers">
+          <p v-if="!resetDone.changed.length && !resetDone.off.length">{{ labels.reset_put_back_none }}</p>
+          <p v-if="resetDone.changed.length">{{ labels.reset_put_back }} {{ resetDone.changed.join(', ') }}</p>
+          <p v-if="resetDone.off.length">{{ labels.reset_put_back_off }} {{ resetDone.off.join(', ') }}</p>
+        </div>
       </template>
       <AlertStylePicker v-if="open && sheet" :strategy-id="strategyId" />
     </div>
@@ -109,7 +113,7 @@ const errorParts = ref(null)
 const labels = computed(() => sheet.value?.labels ?? {})
 // P8 (ADR-330 (9), (32)): Reset to playbook shows only for a saved plan whose playbook is still listed, with the server's own words for it
 const resetAsking = ref(false)
-const resetMarkers = ref('') // the server's changed / switched_off markers of the reply, as sent
+const resetDone = ref(null) // T2-19: what the reset put back (the server's put_back / put_back_off of the reply, as sent)
 const canReset = computed(() => {
   const s = sheet.value
   const id = s?.plan?.playbookId
@@ -125,7 +129,7 @@ async function reset() {
     if (read.kind !== 'sheet') { errorParts.value = NEUTRAL_PARTS; return }
     sheet.value = read
     form.value = { ...read.prefill }
-    resetMarkers.value = [...(read.plan?.changed ?? []), ...(read.plan?.switchedOff ?? [])].join(', ')
+    resetDone.value = { changed: read.putBack, off: read.putBackOff }
     resetAsking.value = false
     emit('saved', read)
   } catch (e) {
@@ -142,7 +146,7 @@ async function load(pickId = null, pickName = '') {
   loadError.value = ''
   refilledFrom.value = ''
   resetAsking.value = false
-  resetMarkers.value = ''
+  resetDone.value = null
   errorParts.value = null
   loading.value = true
   try {
