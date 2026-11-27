@@ -896,8 +896,8 @@ _STRATEGY_DRAFT_TEMPLATES: tuple[MessageTemplate, ...] = (
     _gate("strategy_definition_invalid", _SV, 408,
           "This strategy definition cannot be saved as sent.",
           "The draft was not saved or changed.", "Saving this strategy.", "Check the legs, risk limits and preferences and try again."),
-    # 27 Nov 2026 live screen test, item 4 (wording pending owner read): the cause of "cannot be saved as sent" when two legs
-    # are one contract; the legs are named as numbered on screen and the contract as the screens print it.
+    # 27 Nov 2026 live screen test, item 4 (wording pending owner read): the cause of "cannot be saved as sent"
+    # when two legs are one contract; the legs are named as numbered on screen and the contract as the screens print it.
     _gate("strategy_duplicate_leg_same_side", _SV, 524,
           "Legs {first} and {second} are the same contract and side ({contract}, {side}).",
           "The draft was not saved or changed.", "Saving this strategy.",
@@ -1537,7 +1537,8 @@ _PLAYBOOK_TEMPLATES: tuple[MessageTemplate, ...] = (
     # words are PLAN_SHEET_LABEL_TEXT's (a test holds them equal); the route picks the template by the box.
     *(_gate(f"plan_sheet_invalid_{key}", _UI, number, f"{label} is not valid.", _PB_NOT_SAVED, "Saving this plan.",
             "Correct that value, then save again.")
-      for key, number, label in (("target", 702, "Target"), ("stop", 703, "Stop"), ("target_rupees", 704, "Target (Rs)"),
+      for key, number, label in (("target", 702, "Target"), ("stop", 703, "Stop"),
+                                 ("target_rupees", 704, "Target (Rs)"),
                                  ("stop_rupees", 705, "Stop (Rs)"), ("max_adjustments", 706, "Max adjustments"),
                                  ("time_exit", 707, "Time exit"), ("time_exit_on", 708, "Time exit date"))),
     _gate("plan_sheet_invalid_time_exit_on_past", _UI, 709, "Time exit date is in the past.", _PB_NOT_SAVED,

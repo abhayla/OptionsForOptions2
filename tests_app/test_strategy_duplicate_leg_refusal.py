@@ -5,7 +5,6 @@ import datetime
 from decimal import Decimal
 
 import pytest
-
 from ofo.engine.legs import Action, Instrument
 from ofo.strategy import stored_form as sf
 from ofo_app.routes.strategies import refused_answer
@@ -27,7 +26,8 @@ def _refusal(*choices):
 
 
 def test_same_contract_same_side_names_legs_contract_and_side():
-    out = _refusal(sf.LegChoice(1, Action.SELL, LOT), sf.LegChoice(3, Action.BUY, LOT), sf.LegChoice(2, Action.SELL, LOT))
+    out = _refusal(sf.LegChoice(1, Action.SELL, LOT), sf.LegChoice(3, Action.BUY, LOT),
+                   sf.LegChoice(2, Action.SELL, LOT))
     m = out.message
     assert m.what_happened == "Legs 1 and 3 are the same contract and side (NIFTY 1 Dec 25900 CE, Sell)."
     assert "Join them into one leg with more lots, or change one of them." in m.next_action

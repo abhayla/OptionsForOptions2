@@ -346,8 +346,9 @@ def refused_answer(exc: Exception, form_status: int, *, open_by_id: bool = False
     if form_status == 409:
         own = exc.code in _STORED_OWN_MESSAGE
         return StrategyRefused(_FORM_TEMPLATE[exc.code] if own else "strategy_stored_unreadable", Failure.CONFLICT)
-    if exc.code == sf.DUPLICATE_LEG:  # 27 Nov 2026: its own sentence, naming the legs and the contract (pending owner read)
-        template = "strategy_duplicate_leg_opposite_sides" if "other" in exc.slots else "strategy_duplicate_leg_same_side"
+    if exc.code == sf.DUPLICATE_LEG:  # 27 Nov 2026: its own sentence (pending owner read)
+        template = ("strategy_duplicate_leg_opposite_sides" if "other" in exc.slots
+                    else "strategy_duplicate_leg_same_side")
         return StrategyRefused(template, message=render(template, **exc.slots))
     return StrategyRefused(_FORM_TEMPLATE.get(exc.code, "strategy_definition_invalid"))
 
