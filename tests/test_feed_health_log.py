@@ -63,4 +63,4 @@ def test_market_closed_and_counter(caplog) -> None:
     feed = _open_feed(open_=False)
     assert feed.health(T0) is DataHealth.STALE
     assert _lines(caplog)[-1].endswith(": market closed")
-    assert feed.health_changes == {"market closed": 1}
+    assert feed.health_changes == {"market_closed": 1}

@@ -179,35 +179,53 @@ class FeedState:
             return False
         return now - self._connected_at <= self.feed_stale
 
-    def _not_connected(self, now: datetime.datetime) -> tuple[DataHealth, str, str]:
+    def _not_connected(self, now: datetime.datetime) -> tuple[DataHealth, str, float]:
         if self._disconnected_at is None:
-            return DataHealth.UNAVAILABLE, "never connected", "never connected"
+            return DataHealth.UNAVAILABLE, "never_connected", 0.0
         gone = now - self._disconnected_at
         health = DataHealth.STALE if gone <= self.reconnect_window else DataHealth.UNAVAILABLE
-        return health, f"disconnected {gone.total_seconds():.1f} s ago", "disconnected"
+        return health, "disconnected", gone.total_seconds()
 
-    def _health_and_reason(self, now: datetime.datetime) -> tuple[DataHealth, str, str]:
-        """(health, reason text, reason category) in ONE place; ``health`` returns the first and logs changes."""
+    def _health_and_reason(self, now: datetime.datetime) -> tuple[DataHealth, str, float]:
+        """(health, reason category, seconds that belong to it) in ONE place; ``health`` returns the first and logs
+        changes. Categories are single words/keys; their log text sits in ``_log_change`` (log text is not a
+        user-facing producer)."""
         if self.session_ended:
-            return DataHealth.UNAVAILABLE, "session ended", "session ended"
+            return DataHealth.UNAVAILABLE, "session_ended", 0.0
         if self.market_closed(now):
             # REQ-114 AC-7 / ADR-015: a closed market's last price is never shown as live
-            return DataHealth.STALE, "market closed", "market closed"
+            return DataHealth.STALE, "market_closed", 0.0
         if not self.connected:
             return self._not_connected(now)
         if self._awaiting_data:
-            return DataHealth.STALE, "awaiting data after (re)connect", "awaiting data"
+            return DataHealth.STALE, "awaiting_data", 0.0
         if self._last_activity is None or now - self._last_activity > self.feed_stale:
             quiet = 0.0 if self._last_activity is None else (now - self._last_activity).total_seconds()
-            text = f"no feed activity for {quiet:.1f} s (limit {self.feed_stale.total_seconds():.1f} s)"
-            return DataHealth.STALE, text, "no feed activity"
-        return DataHealth.AVAILABLE, "live", "live"
+            return DataHealth.STALE, "no_feed_activity", quiet
+        return DataHealth.AVAILABLE, "live", 0.0
+
+    def _log_change(self, old: str, new: str, category: str, seconds: float) -> None:
+        if category == "session_ended":
+            log.info("feed health %s -> %s: session ended", old, new)
+        elif category == "market_closed":
+            log.info("feed health %s -> %s: market closed", old, new)
+        elif category == "never_connected":
+            log.info("feed health %s -> %s: never connected", old, new)
+        elif category == "disconnected":
+            log.info("feed health %s -> %s: disconnected %.1f s ago", old, new, seconds)
+        elif category == "awaiting_data":
+            log.info("feed health %s -> %s: awaiting data after (re)connect", old, new)
+        elif category == "no_feed_activity":
+            log.info("feed health %s -> %s: no feed activity for %.1f s (limit %.1f s)", old, new, seconds,
+                     self.feed_stale.total_seconds())
+        else:
+            log.info("feed health %s -> %s: live", old, new)
 
     def health(self, now: datetime.datetime) -> DataHealth:
-        health, reason, category = self._health_and_reason(now)
+        health, category, seconds = self._health_and_reason(now)
         if health is not self._last_logged_health:
             old = "none" if self._last_logged_health is None else self._last_logged_health.name
-            log.info("feed health %s -> %s: %s", old, health.name, reason)
+            self._log_change(old, health.name, category, seconds)
             self._last_logged_health = health
             self.health_changes[category] = self.health_changes.get(category, 0) + 1
         return health
