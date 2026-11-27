@@ -8,7 +8,7 @@ import PageHeader from '@/components/common/PageHeader.vue'
 import { onMounted } from 'vue'
 import { istTime } from '@/lib/displayFormat'
 import { healthSentence } from '@/lib/dataHealthText'
-import MarketClosedBanner from '@/components/states/MarketClosedBanner.vue'
+import PriceNotice from '@/components/states/PriceNotice.vue'
 import { INDEX_KEYS, INDEX_NAMES, NOT_LIVE_LABEL, useIndexAnswer } from '@/composables/useIndexLive'
 
 const { answer, start, reconnecting, reconnectingText, rowFor, shownValue, isLive, notLive, marketClosed, healthOf } = useIndexAnswer()
@@ -24,7 +24,7 @@ function timeText(row) {
   <section data-testid="index-view-page">
     <PageHeader parent="Market" title="Underlying/index view" />
     <!-- REQ-114 AC-7 / ADR-177: the one market-closed banner; the times then read "Last updated", never live "as of" -->
-    <MarketClosedBanner v-if="marketClosed()" class="mb-4" :prices-at="answer.last_price_at" />
+    <PriceNotice class="mb-4" :answer="answer" />
     <p v-if="reconnecting" class="mb-4 text-sm font-medium" data-testid="live-reconnecting">{{ reconnectingText }}</p>
     <p v-if="notLive() && !marketClosed()" class="mb-4 font-medium" data-testid="index-state">
       {{ NOT_LIVE_LABEL }}

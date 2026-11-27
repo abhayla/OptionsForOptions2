@@ -23,6 +23,13 @@ export const asOfClause = (asOf) => {
 /** REQ-109 AC-5's paused text, with the time of the last price when it is known. */
 export const pausedText = (asOf) => `${PAUSED_TEXT}${asOfClause(asOf)}`
 
+/** ADR-330 (56): the ONE not-live notice of a screen, "Prices are not live. Figures are as of <HH:MM:SS> IST." The time is the last
+ *  captured price's; with none readable the clause is left out, never a load time or a made-up one. */
+export const notLiveNotice = (asOf) => {
+  const clock = typeof asOf === 'string' ? istClock(asOf) : null
+  return clock ? `Prices are not live. Figures are as of ${clock} IST.` : 'Prices are not live.'
+}
+
 // A reply is complete unless the page is still loading it or the read failed: a reply held then is partial (it may be the previous legs').
 const PARTIAL_STATES = ['loading', 'error']
 /**

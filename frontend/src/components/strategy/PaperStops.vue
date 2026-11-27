@@ -134,6 +134,8 @@ const indexLine = computed(() => {
   const row = index.rowFor(props.underlying)
   const clock = row?.at ? istClock(row.at) : null
   if (index.rowLive(row) && typeof row?.value === 'string' && clock) return `${props.underlying} now ${index.shownValue(row)} as of ${clock}`
+  // ADR-330 (56): a closed market is not "unavailable": the same last value the strip shows, with its time (read of the one index answer)
+  if (index.marketClosed() && typeof row?.value === 'string' && clock) return `${props.underlying} last ${index.shownValue(row)} as of ${clock}`
   return index.rowNotLive(row) ? NOT_LIVE_LABEL : ''
 })
 

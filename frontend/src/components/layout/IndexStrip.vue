@@ -5,7 +5,7 @@
 <script setup>
 import { onMounted } from 'vue'
 import { istTime } from '@/lib/displayFormat'
-import MarketClosedBanner from '@/components/states/MarketClosedBanner.vue'
+import PriceNotice from '@/components/states/PriceNotice.vue'
 import { INDEX_KEYS, INDEX_NAMES, NOT_LIVE_LABEL, useIndexAnswer } from '@/composables/useIndexLive'
 
 defineProps({ showStatus: { type: Boolean, default: false } }) // W-117: Market context adds one status line
@@ -18,7 +18,7 @@ const timeText = (row) => (row?.at ? istTime(row.at) : '')
 
 <template>
   <div class="flex flex-wrap items-center gap-x-6 gap-y-1 rounded border border-line bg-surface px-3 py-2 text-sm" data-testid="index-strip">
-    <MarketClosedBanner v-if="marketClosed()" :prices-at="answer.last_price_at" />
+    <PriceNotice :answer="answer" />
     <span v-if="reconnecting" class="font-medium" data-testid="live-reconnecting">{{ reconnectingText }}</span>
     <span v-if="notLive() && !marketClosed()" class="font-medium" data-testid="strip-state">{{ NOT_LIVE_LABEL }}</span>
     <span v-for="u in INDEX_KEYS" :key="u" :data-testid="`strip-${u}`" class="flex items-baseline gap-2">

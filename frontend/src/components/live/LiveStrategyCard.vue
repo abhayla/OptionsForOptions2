@@ -24,7 +24,7 @@ import { useStrategyLive } from '@/composables/useStrategyLive'
 
 // `start` false = waiting in the page's start queue (one card loads at a time); `settled` is emitted once, when this card
 // got its first answer, failed, or has nothing to follow - the page then starts the next card.
-const props = defineProps({ strategy: { type: Object, required: true }, start: { type: Boolean, default: true }, pnl: { type: Object, default: null } })
+const props = defineProps({ strategy: { type: Object, required: true }, start: { type: Boolean, default: true }, pnl: { type: Object, default: null }, quiet: { type: Boolean, default: false } })
 const emit = defineEmits(['settled', 'closed'])
 
 const state = ref(props.start ? 'loading' : 'queued') // queued | loading | ready | unpriced | error
@@ -219,7 +219,7 @@ class="rounded border border-line bg-surface p-4" data-testid="live-strategy-car
       <span v-if="paused" class="inline-flex items-center gap-1 text-sm text-ink-muted" data-testid="live-health-dot" data-health="unknown">
         <span class="inline-block h-2 w-2 rounded-full bg-gray-400" aria-hidden="true"></span>Health unknown
       </span>
-      <p v-if="state === 'ready' && data" class="ml-auto text-xs text-ink-muted" data-testid="live-checked-at">Checked at {{ checkedAt }}</p>
+      <p v-if="state === 'ready' && data && !quiet" class="ml-auto text-xs text-ink-muted" data-testid="live-checked-at">Checked at {{ checkedAt }}</p>
     </header>
 
     <!-- D-41: the trade's P&L from the Positions page's function, in every state of the card (the page reads it once for all cards) -->
