@@ -188,7 +188,7 @@ def test_ac5_a_saved_draft_on_a_contract_that_has_since_expired_still_loads_exac
     ([sf.LegChoice(105, Action.SELL, LOT)], _resolve(), sf.CONTRACT_NOT_IN_CATALOGUE),
     ([sf.LegChoice(101, Action.SELL, LOT)], _resolve(live=False), sf.CONTRACT_NOT_LIVE),
     ([sf.LegChoice(101, Action.SELL, 64)], _resolve(), sf.QUANTITY_NOT_LOT_MULTIPLE),
-    ([sf.LegChoice(101, Action.SELL, LOT), sf.LegChoice(101, Action.BUY, LOT)], _resolve(), sf.INVALID_DEFINITION),
+    ([sf.LegChoice(101, Action.SELL, LOT), sf.LegChoice(101, Action.BUY, LOT)], _resolve(), sf.DUPLICATE_LEG),
 ])
 def test_ac5_save_draft_takes_terms_only_from_live_catalogue_contracts(choices, resolve, code):
     with pytest.raises(sf.StoredFormError) as err:
