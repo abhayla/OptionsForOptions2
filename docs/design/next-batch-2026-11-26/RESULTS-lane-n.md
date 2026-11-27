@@ -5,12 +5,31 @@ PR; no GitHub issues. Highest status: **Fixed, not tested** (the owner's PC re-t
 DB test is listed per item and must run on the PC (`python scripts/orchestrator/db_run.py . python -m pytest -c pytest-app.ini
 <file>`).
 
+## For lane K (read first)
+
+`backend/ofo_app/routes/paper.py:1321` and `:1404` call `entry_facts_now(...)` without the user's not-live confirmation. Since
+the third push, `entry_facts_now` stores a live index value only through the one price rule and a not-live one only when
+confirmed, so a ticked first fill while the index quote is STALE stores `entry=None` (fails closed: rolls refused with
+`adjust_roll_entry_spot_unknown`, T-12 `missing_entry_spot`; nothing defaults). It is PERMANENT for that strategy
+(`strategy_entry_facts` keeps one row per strategy; `record_first` never rewrites it). Change each call to
+`entry_facts_now(ctx, underlying, sold, confirmed=body.prices_not_live_confirmed)` (and give `entry_facts` a `confirmed`
+parameter if the call goes through it). `routes/execution_return.py:301` (real fills) has no confirmation and stays as is.
+Tier A (Opus) review of the third push: SHIP, with this as its one MAJOR.
+
 ## Status lines
 
 - 16:10 IST LANE N ALIVE (send_message refused until the owner allowed this session at about 16:55; sent then).
 - First push: A2, A3, C, A4, A5, B1, B2 + gate fixes | gate: prepush PASS on that head | re-test: the after-close steps.
 - Second push (this file's head): migration 0059 `last_close` + its module + the one-time seed command, ADR-330 (56) notice,
   picker freeze proof, `next_open_at` | gate: prepush PASS on that head | re-test: step 0 then the restart walk below.
+- Second push head b6777ce7 (gate PASS).
+- Third push (this file's head): one rule for the index value (a flagged / crossed / UNHEALTHY / non-positive index quote is
+  refused with its reason, also when confirmed; a STALE valid one only on the tick; first-fill entry facts through the same
+  rule); live pushes carry only what the feed book serves (never the raw frame, also during the seed wait); the Option
+  Chain last-trade test; the faster gate (chore/gate-speed-1127) merged | gate: prepush PASS on that head.
+- Option Chain "Last trade 15:39:59" (PC AX-05 note): already covered by the A2 freeze; the line reads QuoteBook._frame via
+  chain_push._last_trade_at -> depth_after_close. Test: tests_app/test_chain_live.py::
+  test_lane_n_chain_row_keeps_the_by_the_close_price_and_last_trade_after_a_later_frame.
 
 ## For the combined build (Lane Z)
 
@@ -155,13 +174,10 @@ Market hours, feed stopped:
 | Title | Evidence | Spec basis | Done when |
 |---|---|---|---|
 | Entry facts do not keep the index value's time and kind | strategy_basket_facts has no column | ADR-330 (28), (39) | nullable spot_at / spot_kind written on a confirmed save |
-| A confirmed save accepts an index quote flagged as faulty | `_index_value_not_live` checks only ltp > 0 (crossed quote -> 24000.05) | ADR-200 (4) | validation_errors refuse |
-| First-fill entry facts take a stale index value without the tick | `entry_facts_now` has no health check | ADR-330 (28), (39) | one health rule on every path storing entry_spot |
 | The last-close branch of the confirmed save is unreachable | paper.py refuses gate_market_closed first | ADR-212 | remove it or the owner changes ADR-212 |
 | A first-after-close frame stamped on a weekend or before the open is labelled with the previous close's time | quote.py `price_at` F-19 rule | ADR-330 (36) | the label shows the frame's own time |
 | An older-day leg label can take a newer leg's group | outcome.py ~299-306: legs TUE 15:29:59, MON 15:29:59, TUE 15:31:10 -> "2 legs as of 30 Nov, 15:29:59" | ADR-330 (36) | each leg's own day in the label |
 | Option Chain banner time comes from the index spot only | chain_push.py `label_time(state, (spot_at,))` | ADR-330 (36) | the chain label uses the rows' own times |
-| Pushes during the seed wait carry the raw frame | kite_provider.py ~206 `book.get(...) or quote` (the history recorder gets it) | ADR-330 (36) | no raw frame passes while the book waits |
 | A seed answered after 09:15 is still applied to an empty book (hidden, replaced by the first tick) | last_close_store.py ~320 uses the pre-read time | ADR-212 | the open is checked after the read |
 | The calendar ends 31 Dec 2026 | from 1 Jan 2027 no write and no seeding | ADR-119 | the 2027 calendar loaded |
 | Start-up after the close could rebuild the close from the Redis stream | ofo:feed:owner:ticks outlives an API restart (coordinator, 27 Nov) | ADR-330 (36) | considered with the table as the durable copy |
@@ -180,3 +196,11 @@ Market hours, feed stopped:
 | A2, B2, A4/A5/B1, A3/C, ADR-330 (56), last_close store + seed, picker / next_open_at builds | Sonnet (builders; 2 rounds where reviewed) |
 | Merges, pre-check fixes, gate | Sonnet |
 | Tier A reviews: A2, B2, store (2 rounds), seed command | Opus |
+
+## Third push, Tier A minor findings (deferred)
+
+| Title | Evidence | Done when |
+|---|---|---|
+| The index rule repeats the AVAILABLE check inline | adjustment_readers.py ~:970 instead of calling priced() (agrees today) | one call |
+| Decimal NaN as ltp raises InvalidOperation instead of a refusal | is_live_price on both paths (Kite whole-paise frames cannot produce it) | a refusal with its reason |
+| The seed-wait push path has no committed test with a real QuoteBook | test_push_is_what_the_book_serves.py fakes book.get | a real-book test |
