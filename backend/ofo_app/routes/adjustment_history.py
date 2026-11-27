@@ -51,7 +51,7 @@ from ofo_app.errors import ClosedRoute, Failure
 from ofo_app.live_push import LiveFeed
 from ofo_app.paper_reasons import reason_text
 from ofo_app.routes import paper
-from ofo_app.routes.adjustment import TrackedReader, get_tracked_reader
+from ofo_app.routes.adjustment import TrackedReader, get_tracked_reader, release_connection
 from ofo_app.routes.broker import current_user_ref
 from ofo_app.routes.outcome import MarketContext, get_market_context, load_charge_rates
 from ofo_app.routes.planned_entry import get_live_feed
@@ -238,6 +238,9 @@ async def adjustment_history(  # noqa: PLR0913 - FastAPI dependencies, one per i
                                                                                      for o in orders}))}
     underlying = paper.identity(found[orders[0].order.contract_id])[0]
     open_ids = paper.open_ids(orders)
+    plan_max = await _plan_max(db, user_ref, strategy_id, (tracked_reader, rates), ctx)
+    links = await playbook_store.placed_links(db, user_ref, strategy_id)  # order id -> every record that placed it
+    await release_connection(db)  # D-36 (c): every database read is done; the feed hold below waits on the market
     snapshot = None
     keys = [k for k in (found[c].feed_key for c in open_ids) if k is not None]
     if paper.connected(ctx) and keys:
@@ -245,8 +248,6 @@ async def adjustment_history(  # noqa: PLR0913 - FastAPI dependencies, one per i
     prices = paper.open_prices(open_ids, found, snapshot)
     live = strategy_money.live_prices(prices)  # B6: the one pick of the open contracts that have a live price
     per_order, charges_reason = _per_order_charges(orders, found, underlying, rates)
-    plan_max = await _plan_max(db, user_ref, strategy_id, (tracked_reader, rates), ctx)
-    links = await playbook_store.placed_links(db, user_ref, strategy_id)  # order id -> every record that placed it
     by_batch: dict[datetime.datetime, dict[int, playbook_store.Suggestion]] = {}
     for o in orders:  # a batch = every order of one placed_at (the engine's batch rule)
         if o.order.kind not in ah.OWN_KINDS:
