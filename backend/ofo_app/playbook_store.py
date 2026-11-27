@@ -894,14 +894,21 @@ async def act_on(conn: Any, user_ref: str, suggestion_id: int) -> Suggestion:
 
 async def link_orders(conn: Any, user_ref: str, strategy_id: int, suggestion_id: int,  # noqa: PLR0913
                       order_ids: list[int], basket_legs: int | None = None) -> None:
-    """REQ-163 AC-1: the acted-on record ``suggestion_id`` names the paper orders ``order_ids`` its basket placed.
+    """REQ-163 AC-1: the record ``suggestion_id`` names the paper orders ``order_ids`` its basket placed, and an open
+    record becomes acted on with them (same transaction: a refused basket rolls the stamp back).
 
     Fail closed, nothing written: a missing record, another user's, or one of another strategy -> SUGGESTION_NOT_FOUND;
-    a record not acted on, or one that already names a basket -> SUGGESTION_NOT_OPEN. The caller rolls back the orders.
+    a record already final (dismissed, lapsed), or one that already names a basket -> SUGGESTION_NOT_OPEN. The caller rolls back the orders.
     """
     if type(suggestion_id) is not int or not order_ids or any(type(i) is not int for i in order_ids):
         raise strategy_store.StrategyStoreError(SUGGESTION_NOT_FOUND, f"suggestion {suggestion_id!r}")
     args = {"id": suggestion_id, "user_ref": user_ref, "strategy_id": strategy_id}
+    # live test 27 Nov 2026 item 10 (REQ-112 AC-2): "Acted on" is stamped HERE, when the basket's paper order is placed
+    # (the caller's one transaction), never when the basket is only staged. A record of this strategy still open moves
+    # to acted_on now; one already acted on (stamped by the older staging path) just gets linked.
+    seen = (await conn.execute(_SUGGESTION_OF_STRATEGY, args)).first()
+    if seen is not None and seen[0] == "open":
+        await _close(conn, user_ref, suggestion_id, "acted_on", None)
     row = (await conn.execute(_LINK_ORDERS, {**args, "order_ids": json.dumps(order_ids),
                                                  "basket_legs": json.dumps(basket_legs)})).one_or_none()
     if row is not None:
