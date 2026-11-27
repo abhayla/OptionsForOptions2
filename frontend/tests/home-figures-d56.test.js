@@ -141,6 +141,8 @@ describe('D-56 Home: total P&L (the Positions total)', () => {
   it('ADR-330 (15) 27 Nov: Home prints the SAME closed-strategies line as Positions (the reply\'s closed_text), under the total', async () => {
     const LINE = 'Includes 8 closed strategies.'
     paperAnswer = paper(totals({ closed_count: 8, closed_text: LINE }))
+    // Lane L: the line is tied to the closed rows of the same reply, so the reply lists the 8 closed strategies it counts
+    paperAnswer.strategies = Array.from({ length: 8 }, (_, i) => ({ strategy_id: i + 1, name: `"S${i + 1}"`, underlying: 'NIFTY', state: 'EXITED', positions: [], closed: [], open_count: 0, position_count: 0 }))
     const w = await mountHome()
     expect(w.get('[data-testid="home-pnl-closed"]').text()).toBe(LINE)
     expect(readPaperList(paperAnswer).totals.closedNote).toBe(LINE) // the Positions read of the same reply says the same

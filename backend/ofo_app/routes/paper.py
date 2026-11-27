@@ -1159,7 +1159,7 @@ def _priced(keys: Sequence[Any], strategies: Sequence[Mapping[str, Any]], booked
     the whole total: it is left out and counted. When NONE can be priced the figure stays absent with its reason
     (every member kept), as before."""
     priced = [(k, s) for k, s in zip(keys, strategies, strict=True) if s["unbooked"] is not None]
-    # ADR-330 (62) (amends (35); the HEADER total of Home and Positions only, ``booked_alone``): a fully exited or settled
+    # ADR-330 (62) (amends (35); the HEADER total only, ``booked_alone``): a fully exited or settled
     # book has a booked result and needs no price, so when no running book can be priced the total is that booked result
     # and the unpriced ones are counted; absent with its reason only when NOTHING can be priced (every member stays).
     # Without ``booked_alone`` (the Today total, D-68, which has no left-out line on screen) the old rule stands: at
@@ -1225,7 +1225,7 @@ def today_totals(items: Sequence[TodayItem], day: datetime.date) -> dict:
     def on_day(at: datetime.datetime | None) -> bool:
         return at is not None and at.astimezone(paper.IST).date() == day
     chosen = [x for x in items if x.scenario_id is None and (on_day(x.opened) or on_day(x.closed))]
-    kept = _priced(chosen, [x.figures for x in chosen])  # AC-R06: the header's rule of ADR-324 (1) to (3), not (62): Today has no left-out line on screen
+    kept = _priced(chosen, [x.figures for x in chosen])  # AC-R06: ADR-324's rule, not (62): Today has no left-out line
     out = _totals([x.figures for x in kept], [x.decay for x in kept], 0, len(chosen) - len(kept))
     return out | {"count": len(chosen), "empty_text": None if chosen else render_explanation("paper_today_none")}
 
