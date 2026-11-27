@@ -121,7 +121,8 @@ class Chain:
             env.pop(name, None)
         env["PYTHONPATH"] = os.pathsep.join([str(ROOT / "backend"), env.get("PYTHONPATH", "")])
         self.proc = subprocess.Popen([sys.executable, "-m", "ofo_app.background"], env=env, cwd=str(ROOT),
-                                     stdout=open(self.log_path, "w"), stderr=subprocess.STDOUT, text=True)  # noqa: SIM115
+                                     stdout=open(self.log_path, "w"),  # noqa: SIM115
+                                     stderr=subprocess.STDOUT, text=True)
         deadline = time.monotonic() + START_TIMEOUT
         while time.monotonic() < deadline:
             if self.proc.poll() is not None:
