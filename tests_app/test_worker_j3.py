@@ -59,3 +59,26 @@ async def test_the_percent_stop_of_an_unknown_kind_is_reported_not_checked_with_
     ev = pe.evaluate(body, state, None, None, gap_until=PREFS.gap_until)
     t06 = next((r for r in ev.results if r.trigger_id == "T-06"), None)
     assert t06 is None or isinstance(t06, pe.NotChecked), t06
+
+
+def test_the_kind_is_read_for_the_nearest_leg_not_the_first_one_listed(scn, monkeypatch):  # noqa: F811
+    """J3 item 2 (R3's finding): the screen's kind is read for the nearest leg; the worker read legs[0]."""
+    from test_background_cycle import _price_time, DEFAULTS
+    from ofo.marketdata.shared_compute import FeedScope
+    seen: list[datetime.date] = []
+
+    def recording(expiry, *_a, **_k):
+        seen.append(expiry)
+        return "monthly"
+    monkeypatch.setattr(adjustment_readers, "expiry_kind_of", recording)
+    prov = Prov(scn)
+    at = _price_time(prov)
+    w = _watched(scn)[0]
+    read = background.read_prices(prov, w, at)
+    near = datetime.date(2026, 11, 2)
+    legs = (w.tracked.position.legs[0], dataclasses.replace(w.tracked.position.legs[1], expiry=near),
+            *w.tracked.position.legs[2:])
+    w2 = dataclasses.replace(w, tracked=dataclasses.replace(
+        w.tracked, position=dataclasses.replace(w.tracked.position, legs=legs)))
+    background.market_inputs(w2, read, FeedScope(background.SharedCompute(), "owner"), at, DEFAULTS)
+    assert seen == [near]

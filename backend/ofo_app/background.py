@@ -456,7 +456,8 @@ def market_inputs(watched: Watched, read: PriceRead, shared: FeedScope, now: dat
             if sym in own and iid in by_id and (iv := _figures(shared, at, by_id[iid], em)[0]) is not None:
                 leg_ivs[sym] = iv
     return MarketInputs(tuple(rows), ids, None if fwd is None else fwd.forward, years, vol, feed, last, now,
-                        expiry_kind_of(expiry, read.listed, read.futures, scenario_mode.current()), leg_greeks,
+                        expiry_kind_of(min(x.expiry for x in position.legs), read.listed, read.futures,
+                                       scenario_mode.current()), leg_greeks,
                         fwd, leg_ivs, index_day_open(read.day, now),
                         carry_gap_pct=values.get(settings_calc.CARRY_GAP_PERCENT),  # absent -> no figures, named reason
                         s02_delta_per_lot=values.get(settings_calc.SITUATION_NET_DELTA_PER_LOT),  # absent: not checked
