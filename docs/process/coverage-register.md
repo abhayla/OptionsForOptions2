@@ -2,7 +2,7 @@
 
 # Coverage register
 
-Generated from commit 075fa862
+Generated from commit fb6d9ec0
 
 ## Stage S0
 
@@ -961,6 +961,37 @@ Generated from commit 075fa862
 | S6.7 | issue | #753 | - |  |
 | S6.7 | issue | #754 | - |  |
 | S6.7 | issue | #755 | - |  |
+| S6.7 | issue | #756 | - |  |
+| S6.7 | issue | #757 | - |  |
+| S6.7 | issue | #758 | - |  |
+| S6.7 | issue | #759 | - |  |
+| S6.7 | issue | #760 | - |  |
+| S6.7 | issue | #761 | - |  |
+| S6.7 | issue | #762 | - |  |
+| S6.7 | issue | #763 | - |  |
+| S6.7 | issue | #764 | - |  |
+| S6.7 | issue | #765 | - |  |
+| S6.7 | issue | #766 | - |  |
+| S6.7 | issue | #767 | - |  |
+| S6.7 | issue | #768 | - |  |
+| S6.7 | issue | #769 | - |  |
+| S6.7 | issue | #770 | - |  |
+| S6.7 | issue | #771 | - |  |
+| S6.7 | issue | #772 | - |  |
+| S6.7 | issue | #773 | - |  |
+| S6.7 | issue | #774 | - |  |
+| S6.7 | issue | #775 | - |  |
+| S6.7 | issue | #776 | - |  |
+| S6.7 | issue | #777 | - |  |
+| S6.7 | issue | #778 | - |  |
+| S6.7 | issue | #779 | - |  |
+| S6.7 | issue | #780 | - |  |
+| S6.7 | issue | #781 | - |  |
+| S6.7 | issue | #782 | - |  |
+| S6.7 | issue | #783 | - |  |
+| S6.7 | issue | #784 | - |  |
+| S6.7 | issue | #785 | - |  |
+| S6.7 | issue | #786 | - |  |
 | S6.7 | requirement | REQ-051 | AC-6 | Simulation, when built, is simple strategy simulation (EOD default, intraday later), not quant backtesting (Q19, Q100). |
 | S6.7 | requirement | REQ-051 | AC-7 | Simulation results may show best/worst outcome, winning days, drawdown and historical behaviour, and are always labelled historical/simulation, never a future guarantee. |
 | S6.7 | requirement | REQ-113 | - | The live price feed and the broker order-update feed run in their own process, so an API deploy never cuts users' feeds |
@@ -1182,7 +1213,7 @@ Generated from commit 075fa862
 | S6.4 | 0 | 1 | 13 | 19 | 0 | 32 | 1 | 0 | 25 | 0 | 8 | 99 |
 | S6.5 | 0 | 0 | 1 | 0 | 0 | 0 | 0 | 0 | 3 | 0 | 1 | 5 |
 | S6.6 | 0 | 0 | 0 | 0 | 0 | 0 | 0 | 0 | 7 | 0 | 2 | 9 |
-| S6.7 | 0 | 0 | 107 | 9 | 0 | 96 | 0 | 0 | 14 | 0 | 19 | 245 |
+| S6.7 | 0 | 0 | 107 | 9 | 0 | 127 | 0 | 0 | 14 | 0 | 19 | 276 |
 | S7 | 1 | 0 | 0 | 0 | 0 | 1 | 1 | 0 | 5 | 0 | 0 | 8 |
 | S8 | 2 | 0 | 17 | 1 | 0 | 1 | 1 | 1 | 22 | 4 | 7 | 56 |
 | all | 0 | 0 | 15 | 0 | 0 | 0 | 0 | 0 | 10 | 0 | 0 | 25 |

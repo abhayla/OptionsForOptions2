@@ -741,6 +741,37 @@ issues:
   "#753": S6.7  # deferred: the first edit of a plan saved before ADR-247 makes it read as saved after (accepted_at restamped by 0041)
   "#754": S6.7  # Egress gate test red when HTTPS_PROXY is set (test_attack2 gets proxy 400, not EgressRefused)
   "#755": S6.7  # Pre-push gate goes red on the ruff ratchet while a builder worktree sits under .claude/worktrees/
+  "#756": S6.7  # A fired stop never executes while the monitor clock is ahead of the database clock
+  "#757": S6.7  # The fired-stop line is judged on the book read before the strategy lock
+  "#758": S6.7  # Old and new fired stops sit in two History lists
+  "#759": S6.7  # An alert title is computed when read, not kept from when it fired
+  "#760": S6.7  # Header poll reads the whole alert history until the first stop fires
+  "#761": S6.7  # Exit from two alerts of one strategy can offer the same legs twice
+  "#762": S6.7  # A list refresh closes the Alerts page's exit dialog without a word
+  "#763": S6.7  # test_settings_reader_guard pins a source line number
+  "#764": S6.7  # A playbook comparison word other than le/ge reads "checked, not met"
+  "#765": S6.7  # The checks guard restricts only calls of crossed
+  "#766": S6.7  # The plan rule line "Not applicable: the <side> side is closed" is not shown
+  "#767": S6.7  # The inbox heading of a side_closed row reads "Adjustment opportunity detected"
+  "#768": S6.7  # Start-up read of each held contract's 15:30 close
+  "#769": S6.7  # The depth popup after the close shows the latest frame, not the frozen close
+  "#770": S6.7  # The REST index spot after hours is the post-close value
+  "#771": S6.7  # A frame with no exchange time is labelled with its arrival time after the close
+  "#772": S6.7  # The broker-status reply still clamps a path-(b) price to 15:30:00
+  "#773": S6.7  # Index age has no lower bound: a future exchange stamp reads as available
+  "#774": S6.7  # Stops do not follow a leg whose expiry or strike changes
+  "#775": S6.7  # A reply arriving after a row Exit can redraw the moved legs in a 1-leg trade
+  "#776": S6.7  # Tracking exit is stamped with the route's answer time, before the price read and the lock
+  "#777": S6.7  # Exit-not-run message: once-a-day mark set before the write, and a retired contract told "still set"
+  "#778": S6.7  # The up-to-1 s index read in a stop's fire runs inside an open database transaction
+  "#779": S6.7  # The exit-not-run alert row uses the stop_fired kind
+  "#780": S6.7  # Builder Paper P&L panel shows no closed-lifecycle row for a closed-and-reopened contract
+  "#781": S6.7  # Soft-deleted strategy still readable through 11 more playbook_store queries and two shared readers
+  "#782": S6.7  # main is red at preflight: 2 mypy call-arg mismatches in tests_app/test_stored_chain_real.py:144
+  "#783": S6.7  # alembic_migration_guard does not detect a second head
+  "#784": S6.7  # A change to docs/api/openapi.json runs no frontend step in the pre-push gate
+  "#785": S6.7  # The Windows kill path of the pre-push gate is proven only by mocks
+  "#786": S6.7  # npm ci reports 11 known package weaknesses (2 critical, 3 high) in frontend dependencies
 
 # Work items whose status is not done.
 work_items:
