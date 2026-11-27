@@ -50,7 +50,7 @@
     <div :class="rows.some((r) => r.kind === 'exit') ? 'min-h-[3.75rem]' : ''" class="mt-3" data-testid="paper-exit-slot">
       <p v-if="exitState === 'risk'" class="text-sm font-medium text-warn" role="status" data-testid="paper-exit-warning">{{ exitWarning }}</p>
       <!-- fail closed: a check that could not run is said so, never shown as "no risk"; Confirm is not locked by either line -->
-      <p v-else-if="exitState === 'unchecked'" class="text-sm font-medium text-warn" role="status" data-testid="paper-exit-unchecked">{{ PAPER_EXIT_UNCHECKED_TEXT }}</p>
+      <p v-else-if="exitState === 'unchecked'" class="text-sm font-medium text-warn" role="status" data-testid="paper-exit-unchecked">{{ canConfirm ? PAPER_EXIT_UNCHECKED_TEXT : PAPER_EXIT_UNCHECKED_SHORT_TEXT }}</p>
       <p v-else-if="exitState === 'checking'" class="text-sm text-ink-muted" role="status" data-testid="paper-exit-checking">{{ PAPER_EXIT_CHECKING_TEXT }}</p>
     </div>
     <!-- ADR-330 (28), REQ-109 AC-1: prices not live: the owner's sentence is the label of the box the user ticks before Confirm -->
@@ -69,11 +69,16 @@
       <p v-if="busy && state !== 'placed' && rows.some((r) => r.kind === 'exit')" class="text-sm text-ink-muted" role="status" data-testid="paper-placing">{{ EXIT_PLACING_TEXT }}</p>
       <p v-else-if="state === 'placed'" class="text-sm font-medium" role="status" data-testid="paper-placed">{{ PAPER_PLACED_NOT_REFRESHED_TEXT }}</p>
       <p v-else-if="marketLine" class="text-sm text-red-700" role="alert" data-testid="paper-market-closed">{{ marketLine }}</p>
-      <p v-else-if="state === 'unknown'" class="text-sm text-red-700" role="alert" data-testid="paper-unknown">
-        {{ PAPER_UNKNOWN_TEXT }}
+      <p v-else-if="state === 'unknown' || lockWindowOver" class="text-sm text-red-700" role="alert" data-testid="paper-unknown" :data-window-over="lockWindowOver ? 'yes' : 'no'">
+        {{ lockWindowOver ? EXIT_UNKNOWN_AFTER_WINDOW_TEXT : PAPER_UNKNOWN_TEXT }}
         <button type="button" class="ml-1 font-semibold text-accent underline" data-testid="paper-open-orderbook" @click="emit('orderbook')">{{ PAPER_OPEN_ORDERBOOK_LABEL }}</button>
       </p>
       <p v-else-if="error" class="text-sm text-red-700" role="alert" data-testid="paper-error">{{ error }}</p>
+      <!-- Lane FA2 item 1 (ADR-330 (48)): the stops the move cancelled, told from the order reply alone (pending owner read) -->
+      <ul v-if="stopLines.length" class="mt-1 text-sm font-medium text-warn" role="status" data-testid="paper-cancelled-stops">
+        <li v-for="line in stopLines" :key="line" data-testid="paper-cancelled-stop">{{ line }}</li>
+      </ul>
+      <p v-if="stopsReplyUnreadable" class="mt-1 text-sm font-medium text-warn" role="status" data-testid="paper-stops-reply-unreadable">{{ STOP_REPLY_UNREADABLE_TEXT }}</p>
       </div>
     </template>
     <template #actions>
@@ -88,8 +93,8 @@ import { computed, nextTick, onBeforeUnmount, ref, watch } from 'vue'
 import Chip from '@/components/common/Chip.vue'
 import Modal from '@/components/common/Modal.vue'
 import {
-  PAPER_EXIT_CHECKING_TEXT, PAPER_EXIT_PRICED_BY_SERVER_TEXT, PAPER_EXIT_UNCHECKED_TEXT, PAPER_NOT_REAL_TEXT, PAPER_OPEN_ORDERBOOK_LABEL, PAPER_PLACED_NOT_REFRESHED_TEXT, PAPER_LOTS_REASON, PAPER_UNKNOWN_HOLD_MS,
-  PAPER_UNKNOWN_TEXT, HELD_LABEL, heldBlock, paperLotsOk, paperPriceOk, paperPriceReason,
+  PAPER_EXIT_CHECKING_TEXT, PAPER_EXIT_PRICED_BY_SERVER_TEXT, PAPER_EXIT_UNCHECKED_TEXT, PAPER_EXIT_UNCHECKED_SHORT_TEXT, PAPER_NOT_REAL_TEXT, PAPER_OPEN_ORDERBOOK_LABEL, PAPER_PLACED_NOT_REFRESHED_TEXT, PAPER_LOTS_REASON, PAPER_UNKNOWN_HOLD_MS,
+  PAPER_UNKNOWN_TEXT, HELD_LABEL, STOP_REPLY_UNREADABLE_TEXT, cancelledStopLines, EXIT_UNKNOWN_WINDOW_MS, EXIT_UNKNOWN_AFTER_WINDOW_TEXT, heldBlock, paperLotsOk, paperPriceOk, paperPriceReason,
 } from '@/lib/tracking'
 import { paperDialogTitle, paperKindLabel } from '@/lib/paperDrafts'
 import api from '@/services/api'
@@ -112,11 +117,14 @@ const props = defineProps({
   note: { type: String, default: '' }, // ADR-330 (59): the page's one line about a staged change an Exit all will discard (pending owner read)
   notLiveLine: { type: String, default: '' }, // ADR-330 (28): set while the page's prices are not live; Confirm waits for the tick
   nowMs: { type: Number, default: 0 }, // I-17: the clock the price age is told against (tests); 0 = the browser's, read when the dialog opens
+  cancelledStops: { type: Array, default: null }, // FA2 item 1: the order reply's `cancelled_stops`; null = the reply had none / an old reply
+  stopsReplyUnreadable: { type: Boolean, default: false }, // FA2 item 1: the reply could not be read, so what happened to the stop is unknown
   kind: { type: String, default: 'paper' }, // ADR-330 (10): 'paper' | 'real'; names what an exit confirmation exits, via paperDrafts.exitConfirmTitle
 })
 const emit = defineEmits(['confirm', 'cancel', 'orderbook'])
 
 const rows = ref([])
+const stopLines = computed(() => cancelledStopLines(props.cancelledStops))
 watch(() => [props.open, props.orders], () => {
   if (props.open) rows.value = props.orders.map((o) => ({ ...o, lots: String(o.lots), price: String(o.price ?? '') }))
 }, { immediate: true })
@@ -133,7 +141,8 @@ const ageLine = computed(() => priceAgeLine(rows.value, { nowMs: props.nowMs || 
 const title = computed(() => paperDialogTitle(props.orders, props.kind))
 const reasons = computed(() => rows.value.map((r) => (!paperLotsOk(r.lots) ? PAPER_LOTS_REASON : (r.kind !== 'exit' && !paperPriceOk(r.price)) ? paperPriceReason(r.price) : '')))
 const notLiveAck = ref(false)
-watch(() => [props.open, props.notLiveLine], () => { notLiveAck.value = false }) // each opening asks again
+// FA2 item 2: reset on the OPENING only; the line's text carries "as of HH:MM" and changes every minute, which must not un-tick the box
+watch(() => props.open, () => { notLiveAck.value = false }) // each opening asks again
 const heldOn = ref(false)
 const heldAt = ref('')
 const heldBroker = ref('')
@@ -154,19 +163,29 @@ const marketState = ref('') // '' (no exit row) | 'checking' | 'open' | 'closed'
 const marketSentence = ref('')
 let marketSeq = 0
 const marketLine = computed(() => (marketState.value === 'closed' ? marketSentence.value : marketState.value === 'unreadable' ? MARKET_UNREADABLE_TEXT : ''))
-async function askMarket() {
+// #872 (FA2): while open, the dialog asks again every MARKET_REASK_MS (09:14:50 stays grey after 09:15; 15:29:55 keeps Confirm on after 15:30).
+// A timed re-ask is "background": no 'checking' flicker, and a failed or ambiguous answer keeps the last one (nothing new is said).
+// The first ask of an opening and the ask at Confirm stay fail-closed (an unreadable answer turns Confirm off with MARKET_UNREADABLE_TEXT).
+const MARKET_REASK_MS = 15000
+async function askMarket(background = false) {
   const seq = ++marketSeq
   if (!props.open || !rows.value.some((r) => r.kind === 'exit')) { marketState.value = ''; marketSentence.value = ''; return }
-  marketState.value = 'checking'
-  marketSentence.value = ''
+  if (!background) { marketState.value = 'checking'; marketSentence.value = '' }
   try {
     const { data } = await api.get('/market/exit-state')
     if (seq !== marketSeq) return
-    if (data?.closed === false) marketState.value = 'open'
+    if (data?.closed === false) { marketState.value = 'open'; marketSentence.value = '' }
     else if (data?.closed === true && typeof data.sentence === 'string' && data.sentence) { marketState.value = 'closed'; marketSentence.value = data.sentence }
-    else marketState.value = 'unreadable' // ambiguous or without its sentence: never a guess
-  } catch { if (seq === marketSeq) marketState.value = 'unreadable' }
+    else if (!background) marketState.value = 'unreadable' // ambiguous or without its sentence: never a guess
+  } catch { if (seq === marketSeq && !background) marketState.value = 'unreadable' }
 }
+let marketTimer = null
+const stopMarketTimer = () => { clearInterval(marketTimer); marketTimer = null }
+watch(() => props.open && rows.value.some((r) => r.kind === 'exit'), (on) => {
+  stopMarketTimer()
+  if (on) marketTimer = setInterval(() => askMarket(true), MARKET_REASK_MS)
+}, { immediate: true })
+onBeforeUnmount(stopMarketTimer)
 const exitWarning = ref('')
 const exitState = ref('')
 let askSeq = 0
@@ -223,7 +242,15 @@ watch(() => props.state, (s) => {
   held.value = s === 'unknown'
   if (held.value) holdTimer = setTimeout(() => { held.value = false }, props.holdMs)
 }, { immediate: true })
-onBeforeUnmount(() => clearTimeout(holdTimer))
+// #870: how long the lock has stood; after the server's longest commit window it is said plainly. Never an unlock: `locked` alone decides Confirm.
+const lockWindowOver = ref(false)
+let windowTimer = null
+watch(() => props.locked, (on) => {
+  clearTimeout(windowTimer)
+  lockWindowOver.value = false
+  if (on) windowTimer = setTimeout(() => { lockWindowOver.value = true }, EXIT_UNKNOWN_WINDOW_MS)
+}, { immediate: true })
+onBeforeUnmount(() => { clearTimeout(holdTimer); clearTimeout(windowTimer) })
 // I-18: the result line (done, refused, unknown, the page's re-read note) arrives in the pinned status slot; bring it into view
 // (the dialog can be taller than a phone screen). Only when a result line exists, never for the empty slot.
 const statusSlot = ref(null)
@@ -237,6 +264,8 @@ const canConfirm = computed(() => {
   return props.state !== 'refused' || refusedAt.value === null || snapshot() !== refusedAt.value
 })
 
+// a UUID (version 4) from the browser's crypto; never a typed or guessed value
+const newRequestKey = () => globalThis.crypto.randomUUID?.() ?? ([1e7] + -1e3 + -4e3 + -8e3 + -1e11).replace(/[018]/g, (c) => (c ^ (globalThis.crypto.getRandomValues(new Uint8Array(1))[0] & (15 >> (c / 4)))).toString(16))
 async function confirm() {
   if (!canConfirm.value) return
   // #872 (ADR-330 (60), ADR-212): the market may have closed while this dialog sat open: ask the server's one answer again and send only on 'open'
@@ -248,7 +277,9 @@ async function confirm() {
   }
   // third argument: the not-live line was shown AND ticked (ADR-330 (28)); false otherwise
   const ticked = !!props.notLiveLine && notLiveAck.value === true
-  if (heldActive.value) emit('confirm', rows.value.map(orderOf), heldBlock(heldAt.value, heldBroker.value), ticked)
-  else emit('confirm', rows.value.map(orderOf), null, ticked)
+  // FA2 item 3 (ADR-017): ONE request key per Confirm (a UUID); the page sends it as `client_request_id` and re-sends only this same key for this Confirm
+  const requestKey = newRequestKey()
+  if (heldActive.value) emit('confirm', rows.value.map(orderOf), heldBlock(heldAt.value, heldBroker.value), ticked, requestKey)
+  else emit('confirm', rows.value.map(orderOf), null, ticked, requestKey)
 }
 </script>

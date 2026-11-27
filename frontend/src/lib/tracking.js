@@ -19,7 +19,9 @@ import { NOT_CONNECTED_TEXT, bookNotLive, pausedText } from '@/lib/priceState'
 export const ADD_TO_PAPER_LABEL = 'Add to Paper'
 export const PAPER_NOT_REAL_TEXT = 'This is not a real trade. Paper orders use no real money.'
 export const PAPER_EXIT_CHECKING_TEXT = 'Checking whether this exit leaves a sold option without protection...'
-export const PAPER_EXIT_UNCHECKED_TEXT = 'The app could not check whether this exit leaves a sold option without protection. You can still confirm.'
+// FA2 item 6 (D-12): "You can still confirm." is said only while Confirm is enabled (the dialog picks the full or the short form)
+export const PAPER_EXIT_UNCHECKED_SHORT_TEXT = 'The app could not check whether this exit leaves a sold option without protection.'
+export const PAPER_EXIT_UNCHECKED_TEXT = `${PAPER_EXIT_UNCHECKED_SHORT_TEXT} You can still confirm.`
 export const PAPER_PRICE_REASON = 'Enter a price in steps of 0.05'
 export const PAPER_PRICE_ZERO_REASON = 'A price of 0 cannot be used. Enter 0.05 or more' // pending owner read (D-58): a zero is not a step problem
 export const PAPER_LOTS_REASON = 'Enter whole lots, 1 or more'
@@ -49,6 +51,21 @@ export const PAPER_OPEN_ORDERBOOK_LABEL = 'Open Orderbook'
 export const PAPER_EXIT_PRICED_BY_SERVER_TEXT = 'the server sets the exit price when you confirm'
 export const PAPER_PLANNED_PRICE_NOTE = 'planned price, no live quote'
 /** How long Confirm stays locked after an answer of unknown outcome (the user checks the Orderbook first). */
+// Lane FA2 #870 (ADR-017): the server's longest commit window; after it, with the lock still on, the dialog says plainly that the outcome is not known (new wording, pending owner read)
+export const EXIT_UNKNOWN_WINDOW_MS = 120000
+export const EXIT_UNKNOWN_AFTER_WINDOW_TEXT = 'Two minutes have passed and the outcome of the first exit is still not known. Open the Orderbook to see whether it was placed; no second exit is sent until the answer is known.'
+// Lane FA2 item 1 (review F3, ADR-330 (48), ADR-017): the order reply's `cancelled_stops` [{leg, contract, level}] says which stops a move cancelled.
+// New wording, pending owner read: one past-tense line per entry (the reply alone, no follow-up read), and one for a reply that cannot be read.
+export const STOP_CANCELLED_LINE = (e) => `The stop on ${e.leg}${e.level ? ` (level ${e.level})` : ''} was removed with the move; set a new one on the new leg.`
+export const STOP_REPLY_UNREADABLE_TEXT = 'The stop on the old leg may have been cancelled, and the new leg has no stop until you set one.'
+export function cancelledStopLines(list) {
+  if (!Array.isArray(list)) return [] // absent on an old reply: nothing is claimed
+  const text = (v) => (typeof v === 'string' ? v.trim() : '')
+  return list.map((e) => {
+    const leg = text(e?.leg) || text(e?.contract_text) || text(e?.contract)
+    return leg ? STOP_CANCELLED_LINE({ leg, level: text(e?.level) }) : ''
+  }).filter(Boolean)
+}
 export const PAPER_UNKNOWN_HOLD_MS = 5000
 /** The dialog states after Confirm: '' (ready), 'refused', 'unknown', 'placed'. */
 export const PAPER_STATE = Object.freeze({ READY: '', REFUSED: 'refused', UNKNOWN: 'unknown', PLACED: 'placed' })

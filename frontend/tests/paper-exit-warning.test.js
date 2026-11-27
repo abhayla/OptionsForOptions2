@@ -1,7 +1,7 @@
 // GC-ICFIX Issue 10 (ADR-256, REQ-109 AC-4): the shared exit confirm list shows ONE factual warning line when the server says
 // the exit leaves a sold leg less protected (trade 139: the bought 25400 CE closed alone), and still lets the user confirm. The screen
 // compares nothing: it shows the server's `warning_text` when `state` is 'yes' ('cannot_tell' = could not check). It fails CLOSED: when the check cannot be read, the
-// list says the app could not check (never a silent "safe"); while the read is in flight it says it is checking. Confirm is never locked.
+// list says the app could not check (never a silent "safe"); while the read is in flight it says it is checking. Confirm is locked while the check runs (hotfix 27 Nov 2026); a finished check, a risk line or a could-not-check line never locks it.
 import { beforeEach, describe, expect, it, vi } from 'vitest'
 import { flushPromises, mount } from '@vue/test-utils'
 import PaperConfirmDialog from '@/components/strategy/PaperConfirmDialog.vue'

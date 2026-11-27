@@ -64,7 +64,7 @@ afterEach(() => {
   document.body.innerHTML = ''
 })
 
-const CHECKING = 'The first exit\'s outcome is being checked; no second exit is sent until the book has been read.'
+const CHECKING = 'The first exit\'s outcome is not known yet; no second exit is sent until the server\'s answer is known.'
 const orderbookGone = () => new Promise(() => {}) // the re-read never answers: the outcome stays unknown, no failed read to hide the bug
 const exit1 = async (w, id) => { S(w).exitPaper(id, 1); await flushPromises(); await t(w, 'paper-confirm-button').trigger('click'); await flushPromises() }
 const unknownThen = async (readAnswer) => {

@@ -15,7 +15,7 @@ import { triggerListOf, triggersPath } from '@/lib/paperTriggers'
 const props = defineProps({
   strategyId: { type: Number, required: true },
   underlying: { type: String, default: '' },
-  // the strategy's open legs: { index, label, contractId }
+  // the strategy's open legs: { index, label, contractId, ltpText? } (ltpText: the leg's price as the server sent it, null when not live)
   legs: { type: Array, default: () => [] },
   // D-44: contract id -> the leg label the form rows use (every position of the strategy, open or closed), so the list names a
   // stop's leg the same way; a contract not in it keeps the server's contract text
@@ -262,6 +262,8 @@ async function keep(t) {
           <option value="below">Below</option>
         </select></label>
         <label class="flex items-center gap-1 text-xs" :data-testid="`stop-box-${l.index}`"><span>Stop price</span><input :value="stopOf(l.index).level" type="text" inputmode="decimal" placeholder="Stop price" class="w-24 rounded border border-line px-1 py-0.5" :data-testid="`stop-level-${l.index}`" :aria-label="`Stop price for ${l.label}`" @input="setStop(l.index, { level: $event.target.value })" /></label>
+        <!-- FA2 item 4 (UX-A02, pending owner read): what the leg costs now, from the leg's own price; never a guess -->
+        <span class="text-xs text-ink-muted" :data-testid="`stop-cost-${l.index}`">{{ typeof l.ltpText === 'string' && l.ltpText ? `Costs now ${l.ltpText}` : 'Costs now: not priced' }}</span>
         <button type="button" class="rounded border border-line px-3 py-1" :disabled="busy || !!stopReason(l.index)" :data-testid="`stop-save-${l.index}`" @click="saveStop(l)">{{ busy ? 'Saving...' : 'Save' }}</button>
         <span class="block min-h-4 basis-full whitespace-pre-line text-xs text-ink-muted" :data-testid="`stop-risk-slot-${l.index}`"><span v-if="riskLoading(l)" :data-testid="`stop-risk-loading-${l.index}`">{{ PAPER_STOP_RISK_LOADING_TEXT }}</span><span v-else-if="riskText(l)" :data-testid="`stop-risk-${l.index}`"><template v-if="riskLines(l)"><span v-for="(t, n) in riskLines(l)" :key="n" class="block" :data-testid="`stop-risk-line-${l.index}-${n}`">{{ t }}</span></template><template v-else>{{ riskText(l) }}</template></span></span>
         <span class="block min-h-4 basis-full text-xs text-ink-muted" :data-testid="`stop-reason-slot-${l.index}`"><span v-if="stopReason(l.index) && typed(stopOf(l.index).level)" :data-testid="`stop-reason-${l.index}`">{{ stopReason(l.index) }}</span></span>
