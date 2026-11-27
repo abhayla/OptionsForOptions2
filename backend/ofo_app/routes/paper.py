@@ -1446,6 +1446,8 @@ async def place_paper_orders(strategy_id: int, body: PaperOrdersIn,  # noqa: PLR
     # only a strategy with no paper order yet can be at its first fill (a book never shrinks): a later fill reads no IV
     first = not await paper_store.tracked_ids(db, [strategy_id])
     _check_held(body.held, first, body.orders, state, placed_at)
+    if first:  # I-47: the tracked_ids read above checked a connection out again; the entry IV read waits on the broker
+        await release_connection(db)
     entry = (await entry_facts(ctx, stored.saved.definition.underlying, body.orders, state,
                                confirmed=body.prices_not_live_confirmed) if first else None)
     try:
