@@ -1,4 +1,4 @@
-STATUS 18:25 | item 1: Fixed, not tested | items 2a-2d, 3: Fixed, not tested | extra (playbooks route): Fixed, not tested | next push: none (this is the one push, made only if the gate ends TOTAL PASS) | blocker: none
+STATUS 19:35 | item 1: Fixed, not tested | items 2a-2d, 3: Fixed, not tested | extra (playbooks route): Fixed, not tested | next push: none (this is the one push, made only if the gate ends TOTAL PASS) | blocker: none
 
 # Lane R2: plan reads use the row the save uses (hotfix/plan-read-1127)
 
@@ -6,6 +6,7 @@ Spec basis: ADR-330 (1) (the stop base and the stop the checks read), (5) (a bas
 Base: origin/hotfix/plan-save-1127 8b45807. Status words: nothing here is approved until it passes on the owner's PC.
 
 ## Bad news first
+- NOT DONE (two hand-overs from the coordinator, arrived after the gate had started; a second gated push does not fit the 180-minute budget): (1) Lane O's `lane-o-item1-for-lane-r2.patch` (Reset names what it put back, T2-19). It needs a manual merge: it edits `_sheet`/`reset_plan` and calls `_kind_of`, which this branch deleted; it also edits `AdjustPlanSheet.vue`, `adjustPlan.js`, `plan-reset-p8.test.js`, `explanations.py`. (2) Lane J's cause (c): after a TIMED-OUT save the next read must return the stored plan complete (rules and exits); no test written yet. Next command for both: `git checkout hotfix/plan-read-1127 && git show origin/fix/alert-screens-1127:docs/design/next-batch-2026-11-26/lane-o-item1-for-lane-r2.patch > /tmp/o.patch && git apply --3way /tmp/o.patch`, then replace the patch's `_kind_of(tracked, money)` by `row.kind, ..., row.reason` as in this branch's `reset_plan`.
 - The far-month rule is fixed only on the plan route. The live check and the worker read the same expiry through `adjustment_readers.expiry_kind_of`, which still answers "weekly" for a leg whose own month future is not listed. That is not mine to change (live check and worker belong to other lanes). With the market OPEN such a leg can show the weekly row. See "To file".
 - Lane R's review item "read says weekly after a monthly save" was only visible when the saved stop was NOT typed: a typed percent stop writes BOTH rows (`set_max_loss_stop`), so the read-back of a typed stop was always the same number. The flip showed on a save that keeps the stop (target only, rupee stop, reset). The test uses that case.
 - Some test files fail on my scratch database only (role allowlist pins: `test_migration_plan_stop_base`, `test_strategy_alert_style` post-allowlist, `test_ic_s08_s09_guidance_migration`, `test_playbook_store` x3, `test_migration_0031` downgrade): my scratch `ofo_app` role has broad grants, so tests that pin the real role fail. They do not touch the changed code. CI's database is the check.
