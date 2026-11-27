@@ -839,6 +839,33 @@ issues:
   "#851": S6.7  # No worker test with a plan body's own custom stop rule (stops=frozenset() survives)
   "#852": S6.7  # Bulk delete lets a running strategy be ticked with a draft (note vs decision 8)
   "#853": S6.7  # The phone-width drawer cannot be checked: the test tool cannot narrow the window
+  "#854": S6.7  # Paper entry with prices marked not live has no real-door twin; parity test stays expected-failure
+  "#855": S6.7  # The real order door answers the lots refusal with 422, its other refusals with 409
+  "#856": S6.7  # Branch fix/pnl-totals-1127 carries the process files of chore/gate-speed-1127
+  "#857": S6.7  # A stated spot with an empty option chain raises KeyError in the adjustment approaches
+  "#858": S6.7  # Playbook test preview: a database error in _tracked_first reads as not of the type
+  "#859": S6.7  # Plan-watch batch: the 4 s budget is per row, a 20-row batch can pass the browser's 20 s limit
+  "#860": S6.7  # A time exit typed as plain HH:MM (no date) reads not checked even on expiry day
+  "#861": S6.7  # The worker's reason for an unknown-kind percent stop is generic
+  "#862": S6.7  # A stop typed and crossed within one minute is first checked with the old plan
+  "#863": S6.7  # The worker prices a trade's market from the first-listed leg's expiry, not the nearest leg's
+  "#864": S6.7  # _tracked_on reads the whole live catalogue for each strategy on every re-read
+  "#865": S6.7  # The unknown-kind timing style (intraday) is fixed by no test
+  "#866": S6.7  # The T-06 not-checked reason for an unknown expiry kind says days left are missing
+  "#867": S6.7  # Worker._checked_body never removes an entry
+  "#868": S6.7  # The paused state of a trade lives only in the worker's memory (REQ-165 AC-6 not built)
+  "#869": S6.7  # The paper orders route has no idempotency key
+  "#870": S6.7  # The exit lock stays on when every re-read fails; only a reload recovers
+  "#871": S6.7  # A plain add with an unknown outcome can be sent twice from the builder dialog
+  "#872": S6.7  # The Exit dialog's market-open answer is fixed for one opening of the dialog
+  "#873": S6.7  # Exit dialog mutations not pinned by a test
+  "#874": S6.7  # Positions and Alerts Exit dialogs with the market closed are covered only by the shared component
+  "#875": S6.7  # DayLabel prints day names in the host's locale
+  "#876": S6.7  # Plan-save case of 27 Nov 13:28 not reproduced; the saved plan body and style are needed
+  "#877": S6.7  # The paper route does not refuse an exit or stop request on a real position
+  "#878": S6.7  # A strategy dropped from the worker's list can stay ACTIVE
+  "#879": S6.7  # Clock skew widens the 2-minute window of the plan check
+  "#880": S6.7  # The since_text of a plan alert has no date and resets when the worker restarts
 
 # Work items whose status is not done.
 work_items:
