@@ -270,3 +270,18 @@ async def test_k_a_plan_saved_with_its_stop_already_crossed_alerts_within_one_cy
     assert await c.wait_for_alert("plan_rupee_loss", SAVE_TO_ALERT_SECONDS), (
         f"no row {SAVE_TO_ALERT_SECONDS} s after the save\n{c.log()[-1200:]}")
     only(await c.alerts("plan_rupee_loss"), "plan.rupee_loss", "plan_rupee_loss", "1000")
+
+
+async def test_l_the_pcs_207_plan_shape_rupee_stop_and_a_per_stage_percent_row_raises_its_alert(chain_for, monkeypatch):
+    """(l) The PC's real T1-06 of 27 Nov (PR #722, #207): plan accepted 13:13:33, one second after the entry; guards
+    loss_stop_rupees "80" AND T-06 weekly ["50", "5", "40"] (Middle stage 5), the whole rule list on; the loss was past
+    both levels from about 13:14 and no alert row came in 40 minutes. Here: PATH-96 (entered already at a loss), the
+    same two stops, the whole rule list: the rupee row is raised once the entry period (5 minutes) is over."""
+    c = await chain_for("PATH-96")
+    await c.seed(monkeypatch, plan=False, pin="weekly")
+    await c.type_plan(guards={"loss_stop_rupees": "80"}, t06_stages=["50", "5", "40"], keep=None)
+    c.start_worker()
+    await c.go_to(0)
+    await c.go_to(6)  # 11:46: past the 5-minute entry period
+    rows = await c.alert_at_once("plan_rupee_loss", next_frame=7)
+    only(rows, "plan.rupee_loss", "plan_rupee_loss", "80")
