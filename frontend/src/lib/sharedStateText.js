@@ -144,3 +144,8 @@ export const LEG_WORKING_TEXT = 'Working out the outcome...'
 
 // pending owner read (28 Nov 2026), Opus review F2 (ADR-016..019): shown when "Review and add" is pressed after an add got no answer
 export const ADD_UNKNOWN_TEXT = 'The last paper order got no answer and may be stored. It is not sent again until the Paper book has been read: open the strategy again to check.'
+
+// Lane Z review F1 (ADR-017, ADR-016..019): after an exit whose outcome is unknown the server may still commit it: client timeout 10 s, pool wait up
+// to 30 s, statement timeout up to 30 s, and the paper orders route has no idempotency key. A book read that shows the trade UNCHANGED decides
+// "not stored" only when the read is taken longer than this after the client gave up (60 s worst case + 10 s margin). A book that MOVED decides at once.
+export const UNKNOWN_EXIT_WINDOW_MS = 70000

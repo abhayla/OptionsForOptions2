@@ -34,7 +34,7 @@ import { ADD_TO_PAPER_LABEL, PAPER_PLACED_NOT_REFRESHED_TEXT, PAPER_STATE, addTo
 import PaperConfirmDialog from '@/components/strategy/PaperConfirmDialog.vue'
 import ExitButton from '@/components/strategy/ExitButton.vue'
 import LoadFailed from '@/components/common/LoadFailed.vue'
-import { ADD_UNKNOWN_TEXT, PAPER_REREAD_FAILED_TEXT } from '@/lib/sharedStateText'
+import { ADD_UNKNOWN_TEXT, PAPER_REREAD_FAILED_TEXT, UNKNOWN_EXIT_WINDOW_MS } from '@/lib/sharedStateText'
 import {
   DISCARD_LABEL, PAPER_BOOK_UNREADABLE, PAPER_MODE_LABEL, PAPER_PENDING_UNREADABLE, PAPER_REREAD_DELAYS_MS, REVIEW_AND_ADD_LABEL, confirmRowsFor, paperOrdersFor, pendingText, readPaperBook,
   legsAfterExit, exitOnlyOrders, paperFillKey, paperLeftOf, paperChargesOf, stagedChangeIds, stagedExitIds,
@@ -802,12 +802,13 @@ const retryReread = () => (rereadId === null ? null : rereadAfterPlace(rereadId,
 // the exit leaves, or to anything else) or not stored (the net equals the net before). Either way the lock ends; a not-stored exit is never kept as a staged edit.
 let readSeq = 0 // reads of the book started by the unknown-exit door; an answer older than one already applied is ignored (Tier A round 1, finding 2)
 let appliedSeq = 0
-const EARLY_MS = 5000 // a trade still unchanged this soon after the reply is not proof of "not stored" (the order may still be committing; no idempotency key yet)
+const REREAD_EVERY_MS = 5000 // how often the unknown exit's book is read again
+// Lane Z review F1: an UNCHANGED trade is not proof of "not stored" until the server's longest possible commit window (UNKNOWN_EXIT_WINDOW_MS) has passed; the lock stays, with its plain line, meanwhile
 function decideUnknownExit(newNet) {
   const u = exitUnknown.value
   if (!u) return true
   const key = netKey(newNet)
-  if (key === u.before && Date.now() - u.at < EARLY_MS) return false // too early to say "not stored": stays locked
+  if (key === u.before && Date.now() - u.at < UNKNOWN_EXIT_WINDOW_MS) return false // the order may still commit: stays locked, never "not stored" yet
   exitUnknown.value = null
   if (key === u.before) { // not stored: say so, put the other legs' edits back without the exit
     restoreStaged(newNet, true)
@@ -831,7 +832,8 @@ async function recheckUnknownExit() { // the automatic re-read; a failed or too-
   const u = exitUnknown.value
   if (!u || !paper.value) return
   const { id } = paper.value
-  for (const wait of [0, EARLY_MS, EARLY_MS, EARLY_MS]) {
+  const waits = [0, ...Array(Math.ceil((UNKNOWN_EXIT_WINDOW_MS + 10000) / REREAD_EVERY_MS)).fill(REREAD_EVERY_MS)] // reads until the window has passed, then one more
+  for (const wait of waits) {
     if (wait) await sleep(wait)
     if (leaving || exitUnknown.value !== u) return
     const seq = ++readSeq
