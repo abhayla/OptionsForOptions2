@@ -12,6 +12,7 @@ import { LIVE_NOTHING_RUNNING_TEXT, STATUS_DRAFT, STATUS_RUNNING } from '@/lib/s
 import { isCompleted, isRunning } from '@/lib/strategyStatus'
 import { usePaperPnl } from '@/lib/paperPnl'
 import { noteShownDate } from '@/lib/displayFormat'
+import { readAnswer } from '@/composables/useIndexLive'
 
 const MAX_CARDS = 20
 const pnl = usePaperPnl() // D-41: one read of the Positions page's paper list; each card shows its own figure
@@ -19,7 +20,16 @@ const RELEASE_MS = 8000 // a card that gives no answer in this time lets the nex
 const state = ref('loading') // loading | ready | error
 const all = ref([])
 const errorParts = ref(NEUTRAL_PARTS)
-const closedAt = ref(null) // the last-price time a card reported while the market is closed (one banner per screen)
+// ADR-177 / ADR-212 (27 Nov): the ONE market-closed banner reads the page's own market answer (GET /market/indices, the one the
+// index page and the strip use), never a card's reply: a card that is unpriced, queued or failed says nothing about the market.
+const MARKET_POLL_MS = 60000
+const closedAt = ref(null) // the last-price time while the market is closed; null: open, or the read failed
+let marketTimer = null
+async function readMarket() {
+  const a = await readAnswer(false)
+  if (a) closedAt.value = a.market_closed === true ? (a.last_price_at ?? '') : null
+  marketTimer = setTimeout(readMarket, MARKET_POLL_MS)
+}
 
 const stamp = (s) => Date.parse(s.updated_at) || 0 // sort key only
 // ADR-259 / ADR-299: a completed trade is not followed here (it is listed on Completed Strategies); the rest is Running or Draft
@@ -42,8 +52,9 @@ watch(current, (i) => {
 })
 const capped = computed(() => followed.value.length > MAX_CARDS)
 
-onBeforeUnmount(() => clearTimeout(timer))
+onBeforeUnmount(() => { clearTimeout(timer); clearTimeout(marketTimer) })
 onMounted(async () => {
+  readMarket()
   try {
     all.value = noteShownDate((await api.get('/strategies')).data).strategies
     state.value = 'ready'
@@ -59,7 +70,7 @@ onMounted(async () => {
   <section data-testid="live-strategies" :data-state="state">
     <PageHeader parent="Strategies" title="Live Strategies" note="Your saved strategies followed on live market data. This is for monitoring, not a recommendation." note-testid="live-note" />
     <!-- User test 2026-10-30: one market-closed banner per screen (ADR-177), not one per card -->
-    <MarketClosedBanner v-if="closedAt" class="mb-4" :prices-at="closedAt" />
+    <MarketClosedBanner v-if="closedAt !== null" class="mb-4" :prices-at="closedAt || null" />
     <p v-if="state === 'loading'" class="text-sm text-ink-muted" data-testid="live-list-loading">Loading your strategies...</p>
     <ErrorMessage v-else-if="state === 'error'" :parts="errorParts" data-testid="state-error" />
     <p v-else-if="!followed.length" class="rounded-lg border border-line bg-surface px-4 py-8 text-center text-sm text-ink-muted" data-testid="live-empty">
@@ -71,13 +82,13 @@ onMounted(async () => {
       <section v-if="executed.length" class="mt-4" data-testid="live-group-executed">
         <h2 class="text-sm font-semibold text-ink-muted">{{ STATUS_RUNNING }}</h2>
         <div class="mt-2 grid grid-cols-1 gap-4 lg:grid-cols-2">
-          <LiveStrategyCard v-for="s in executed" :key="s.id" :strategy="s" :pnl="pnl.cellFor(s.id)" :start="startIndex(s) <= current" @settled="release(startIndex(s))" @closed="(at) => { closedAt = at }" />
+          <LiveStrategyCard v-for="s in executed" :key="s.id" :strategy="s" :pnl="pnl.cellFor(s.id)" :start="startIndex(s) <= current" @settled="release(startIndex(s))" />
         </div>
       </section>
       <section v-if="drafts.length" class="mt-4" data-testid="live-group-drafts">
         <h2 class="text-sm font-semibold text-ink-muted">{{ STATUS_DRAFT }}</h2>
         <div class="mt-2 grid grid-cols-1 gap-4 lg:grid-cols-2">
-          <LiveStrategyCard v-for="s in drafts" :key="s.id" :strategy="s" :pnl="pnl.cellFor(s.id)" :start="startIndex(s) <= current" @settled="release(startIndex(s))" @closed="(at) => { closedAt = at }" />
+          <LiveStrategyCard v-for="s in drafts" :key="s.id" :strategy="s" :pnl="pnl.cellFor(s.id)" :start="startIndex(s) <= current" @settled="release(startIndex(s))" />
         </div>
       </section>
     </template>
