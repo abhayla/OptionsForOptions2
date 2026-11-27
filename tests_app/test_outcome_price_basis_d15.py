@@ -22,7 +22,6 @@ sys.path.insert(0, str(ROOT / "tests_app"))
 
 from httpx import ASGITransport, AsyncClient  # noqa: E402
 from marketdata._kite_fixture import all_instrument_ids, new_provider, replay  # noqa: E402
-from ofo.errors.explanations import render_explanation  # noqa: E402
 from ofo.marketdata import quote as quote_module  # noqa: E402
 from ofo_app.main import create_app  # noqa: E402
 from ofo_app.routes import outcome as outcome_route  # noqa: E402
@@ -101,7 +100,7 @@ async def test_every_leg_a_fill_says_paper_fill_prices_and_serves_the_plan_line(
     net = out["net_premium"]
     assert net["side"] == "get"
     expected = Decimal(net["amount"]) + Decimal("13.00")
-    assert out["plan_line"] == str(render_explanation("money_plan_get", amount=expected))
+    assert out["plan_line"] == f"Plan: Get \u20b9{expected:,.2f} at plan prices"  # the figure is under a lakh
     assert out["plan_line"].startswith("Plan: Get ")
 
 
