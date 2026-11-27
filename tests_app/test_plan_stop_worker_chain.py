@@ -182,12 +182,12 @@ async def test_h_a_5_percent_loss_stop_saved_while_the_loss_is_10_percent_alerts
     from 11:41. The alert is there at the first check after the save and is still one row 14 minutes later."""
     c = await chain_for("PATH-94")
     await c.seed(monkeypatch, plan=False)
-    await c.type_plan(guards={})  # a plan with no stop
+    await c.type_plan(guards={}, keep=None)  # a plan with no stop, every system rule on
     c.start_worker()
     await c.go_to(0)
     await c.go_to(1)  # 11:41: the loss is already about 10 %
     assert await c.plan_alerts() == []
-    await c.type_plan(guards={}, t06_percent="5", keep=("T-06",))
+    await c.type_plan(guards={}, t06_percent="5", keep=None)  # the PC's plan: the whole system rule list, 5 % typed
     await asyncio.sleep(RELOAD_SECONDS)
     await c.go_to(2)
     rows = [r for r in await c.alert_at_once("plan_loss_stop", next_frame=3) if r["rule_id"] == "T-06"]
@@ -198,7 +198,7 @@ async def test_h_a_5_percent_loss_stop_saved_while_the_loss_is_10_percent_alerts
     rows = [r for r in await c.alerts("plan_loss_stop") if r["rule_id"] == "T-06"]
     assert len(rows) == 1 and rows[0]["outcome"] == "open", rows
     assert [r["kind"] for r in await c.plan_alerts()] == ["plan_loss_stop"], ("one plan alert only", await c.plan_alerts())
-    await nothing_else(c, {"plan_loss_stop"})
+    assert await c.orders_count() == c.orders_at_start
 
 
 async def test_i_a_trade_that_cannot_be_priced_claims_no_trigger_and_is_paused(chain_for, monkeypatch):
