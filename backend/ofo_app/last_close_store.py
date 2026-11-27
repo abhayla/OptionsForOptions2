@@ -73,7 +73,7 @@ from collections.abc import Callable, Iterable
 from dataclasses import dataclass, field
 from decimal import Decimal, InvalidOperation
 
-from ofo.instruments.models import INDEX_ROWS
+from ofo.instruments.models import BSE_FO, BSE_INDEX, INDEX_ROWS, NSE_FO, NSE_INDEX
 from ofo.market_calendar import is_market_open, is_trading_day, last_close
 from ofo.marketdata.feed_health import expect_seed as _expect_seed
 from ofo.marketdata.quote import Instrument, NormalizedQuote, SourceMetadata
@@ -200,8 +200,8 @@ class PostgresLastCloseStore:
 
     def target(self) -> str:
         """host:port/database of the connection, for the operator to read: never the user or the password."""
-        url = make_url(self._url)
-        return f"{url.host}:{url.port or 5432}/{url.database}"
+        shown = make_url(self._url).render_as_string(hide_password=True).split("://", 1)[-1]
+        return shown.split("?", 1)[0].rsplit("@", 1)[-1]
 
     def insert_new(self, rows: Iterable[CloseRow]) -> int:
         """INSERT ... ON CONFLICT DO NOTHING (the seed command): a key already stored is left exactly as it is. Returns
@@ -505,7 +505,7 @@ FIELD_ALIASES = {
 }
 REQUIRED_FIELDS = ("instrument_id", "price", "price_at", "source")
 #: an exchange prefix may only name a contract of its own segment
-_PREFIX_SEGMENTS = {"NFO": {"NSE_FO"}, "BFO": {"BSE_FO"}, "NSE": {"NSE_INDEX"}, "BSE": {"BSE_INDEX"}}
+_PREFIX_SEGMENTS = {"NFO": {NSE_FO}, "BFO": {BSE_FO}, "NSE": {NSE_INDEX}, "BSE": {BSE_INDEX}}
 _DATE_ONLY = re.compile(r"\d{4}-\d{2}-\d{2}")
 
 

@@ -301,7 +301,7 @@ def closed_label(state: MarketState, leg_quotes: Iterable[NormalizedQuote | None
         frozen_at, later_group = max(frozen), [*later, *older]
     else:  # every leg first priced after the close: the earliest time labels the group, only newer legs are "as of"
         frozen_at = min(later)
-        later_group = [t for t in later if t > frozen_at] + older
+        later_group = [*(t for t in later if t > frozen_at), *older]
         if not later_group:
             return ClosedLabel(label_time(state, all_times))
     later_at = min(later_group)
