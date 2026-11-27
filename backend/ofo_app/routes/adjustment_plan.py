@@ -250,6 +250,10 @@ class AdjustmentPlanOut(ApiModel):
     stops: StopsOut
     #: Hotfix plan-read-1127: why the stop is not shown (the expiry kind is not known); None when it is shown
     stop_kind_reason: CatalogueText | None = None
+    #: ADR-330 (9), (32), T2-19: only the reset reply fills these: the playbook conditions the plan had changed
+    #: (``put_back``) or switched off (``put_back_off``) just before the reset, as paths such as ``triggers.T-02``
+    put_back: list[Identifier] = []
+    put_back_off: list[Identifier] = []
 
 
 def _bad(field: str) -> store.PlaybookStoreError:
@@ -714,7 +718,8 @@ def _in_force_reply(found: in_force_mod.InForce) -> dict[str, Any]:
 async def _sheet(db: Any, user_ref: str, strategy_id: int, stype: str | None, plan: store.Plan | None,  # noqa: PLR0913
                  pick: int | None, user_values: Any = None,
                  money: in_force_mod.MoneyInputs | None = None, kind: str | None = None,
-                 bases: Bases | None = None, kind_reason: str | None = None) -> AdjustmentPlanOut:
+                 bases: Bases | None = None, kind_reason: str | None = None,
+                 put_back: dict[str, list[str]] | None = None) -> AdjustmentPlanOut:
     """``kind`` None = the expiry kind is NOT KNOWN (``kind_reason`` says why): the stop is then not shown."""
     reply: dict[str, Any] = {"strategy_id": strategy_id, "type": stype, "type_name": None, "generic": stype is None,
                              "generic_text": render(_GENERIC) if stype is None else None, "playbooks": [],
@@ -759,7 +764,9 @@ async def _sheet(db: Any, user_ref: str, strategy_id: int, stype: str | None, pl
               "prefill": {"playbook_id": source_id, **values},
               "stop_kind_reason": None if kind is not None or kind_reason is None or not await _any_blanked(
                   db, plan, shown_body) else render_explanation(kind_reason)}
-    return AdjustmentPlanOut.model_validate(reply)
+    put_back = put_back or {}
+    return AdjustmentPlanOut.model_validate(
+        reply | {"put_back": put_back.get("changed", []), "put_back_off": put_back.get("switched_off", [])})
 
 
 async def _run(db: Any, work: Any) -> Any:
@@ -1101,9 +1108,16 @@ async def reset_plan(  # noqa: PLR0913 - FastAPI dependencies, one per input
         raise StrategyRefused(_NOT_AVAILABLE, Failure.NOT_FOUND)
 
     async def work() -> AdjustmentPlanOut:
+        differed = {"changed": [], "switched_off": []}  # what the plan differed in, read before the copy goes back
+        if plan_before.playbook_id is not None:
+            try:
+                differed = plan_diff.diff(plan_before.body, (await store.get(db, user_ref, plan_before.playbook_id)).body)
+            except store.PlaybookStoreError:
+                pass  # a gone playbook: store.reset_plan refuses below with its own sentence
         saved = await store.reset_plan(db, user_ref, strategy_id, _base_json(tracked))
         stored = dataclasses.replace(tracked, stop_base=in_force_mod.stop_base_from_json(saved.stop_base))
         return await _sheet(db, user_ref, strategy_id, stype, saved, None, user_values,
                             in_force_mod.money_inputs(stored, market, rates), row.kind,
-                            dataclasses.replace(bases, max_loss=_stored_loss(stored, bases)), row.reason)
+                            dataclasses.replace(bases, max_loss=_stored_loss(stored, bases)), row.reason,
+                            put_back=differed)
     return await _run(db, work)

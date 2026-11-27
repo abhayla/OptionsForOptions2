@@ -24,6 +24,8 @@ const LABELS = {
   title: "When tracking starts: this strategy's plan", playbook: 'Playbook', target: 'Target', stop: 'Stop', max_adjustments: 'Max adjustments',
   time_exit: 'Time exit', time_exit_on: 'Time exit date (blank = expiry day)', customise: 'Customise triggers', use_as_is: 'Use playbook as is',
   save: 'Save plan', close: 'Close', reset: 'Reset to playbook', reset_confirm: CONFIRM,
+  reset_put_back: "Put back to the playbook's values:", reset_put_back_off: 'Switched on again:',
+  reset_put_back_none: 'Nothing differed from the playbook, so nothing was put back.',
 }
 const PLAYBOOKS = [{ id: 9, name: '"Mine"', type: 'ic', type_name: 'Iron condor', is_system: false, draft: false, active: true }]
 const PLAN = (over = {}) => ({ playbook_id: 9, playbook_name: '"Mine"', target: '60', stop: '40', max_adjustments: 3, time_exit: null,
@@ -58,18 +60,18 @@ describe('P8 Reset to playbook on the plan sheet', () => {
   })
   it('Confirm posts the reset once, shows the reply (levels as the server sent them) and the changed marker', async () => {
     answers[`GET ${PATH}`] = sheetAnswer()
-    answers[`POST ${RESET}`] = sheetAnswer({ plan: PLAN({ changed: ['triggers.T-02'], switched_off: ['triggers.T-05'] }) })
+    answers[`POST ${RESET}`] = sheetAnswer({ plan: PLAN({ changed: [], switched_off: [] }), put_back: ['triggers.T-02'], put_back_off: ['triggers.T-05'] })
     const w = await sheet()
     await t(w, 'plan-reset').trigger('click')
     await t(w, 'plan-reset-yes').trigger('click')
     await flushPromises()
     expect(posts()).toEqual([{ method: 'POST', url: RESET, body: undefined }])
-    expect(t(w, 'plan-reset-markers').text()).toContain('triggers.T-02')
-    expect(t(w, 'plan-reset-markers').text()).toContain('triggers.T-05')
+    expect(t(w, 'plan-reset-markers').text()).toContain("Put back to the playbook's values: triggers.T-02")
+    expect(t(w, 'plan-reset-markers').text()).toContain('Switched on again: triggers.T-05')
     expect(t(w, 'plan-target').element.value).toBe('60') // the typed levels are the server's, kept
     expect(t(w, 'plan-reset-confirm').exists()).toBe(false)
   })
-  it('a reset that leaves nothing changed shows no marker line', async () => {
+  it('a reset that put nothing back says so (stated, not blank)', async () => {
     answers[`GET ${PATH}`] = sheetAnswer()
     answers[`POST ${RESET}`] = sheetAnswer({ plan: PLAN({ changed: [], switched_off: [] }) })
     const w = await sheet()
@@ -77,7 +79,7 @@ describe('P8 Reset to playbook on the plan sheet', () => {
     await t(w, 'plan-reset-yes').trigger('click')
     await flushPromises()
     expect(posts()).toHaveLength(1)
-    expect(t(w, 'plan-reset-markers').exists()).toBe(false)
+    expect(t(w, 'plan-reset-markers').text()).toBe('Nothing differed from the playbook, so nothing was put back.')
   })
   it('Cancel posts nothing and closes the question', async () => {
     answers[`GET ${PATH}`] = sheetAnswer()
