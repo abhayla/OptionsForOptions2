@@ -129,6 +129,7 @@ PR241_SELECTION = {
     "tests_app/test_strategy_bulk_delete.py",  # Q1 bulk delete: calls the /api/strategies/... routes
     "tests_app/test_store_busy.py",  # S-02 (Lane R): imports ofo.errors (render) and the error door, changed here
     "tests_app/test_plan_watch.py",  # Lane P 26 Nov: test_plan_watch.py added (P10)
+    "tests_app/test_picker_closed_freeze.py",  # Lane N 27 Nov: test_picker_closed_freeze.py added (calls the picker routes)
     "tests_app/test_history_delete_entries.py",  # ADR-330 (31): imports the strategy routes / store the diff changes
     "tests_app/test_entry_not_live_confirmed.py",  # ADR-330 (28): imports ofo_app.strategy_refused (changed)
 }
