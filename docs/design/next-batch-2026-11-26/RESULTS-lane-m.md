@@ -18,6 +18,25 @@ Coordinator lines (send_message to "@parent" was refused: `elevated_session_untr
   is decided on the arriving crossing tick (`on_quote` -> `stops.crossed`). Two readings: the quoted one can sit on
   the wrong side of the level (#196: "above 25,800.00; NIFTY was at 25,796.75").
 - LANE M PUSH 2: see "Item 2" below.
+- LANE M ITEM 3 (12:40 brief; my date RCA withdrawn: the PC reads contract 9111 at 2026-12-01): the server path
+  named in the brief does NOT look a leg up by strike and type. Every read on it is by the order's own contract id:
+  `names_and_terms` -> `tracked_contracts.resolve(ids)` -> `catalogue_store.load_contracts` (`WHERE c.id = ANY(:ids)`),
+  names keyed by that id; `exit_risk.exposed` holds ids of the book's open positions. Proof:
+  `tests_app/test_leg_stop_risk.py::test_m3_*` puts a 2028-12-01 twin of the bare short put (same name, strike, type)
+  in the catalogue: the line names the book's own contract, the figure is unchanged (one expiry), and the twin is in no
+  name or term. It passes on this head; on 206a9f0 the name would be the ISO form of the RIGHT contract. So a 2028 name
+  on this line means a 2028 contract id was in the request's book. NOT EXPLAINED YET; needs from the PC:
+  (1) `SELECT DISTINCT o.contract_id, c.expiry FROM public.paper_orders o JOIN public.catalogue_contracts c ON c.id =
+  o.contract_id WHERE o.strategy_id = 194;` (paper_orders, not the strategy's saved legs);
+  (2) `SELECT id, expiry FROM public.catalogue_contracts WHERE name = 'NIFTY' AND strike = 25750 AND instrument_type =
+  'PE';` and whether any of those ids appears in (1) or in `paper_triggers` of 194;
+  (3) the browser's request URL of `GET /paper/strategies/194/leg-stop-risk` (its contract_id) and the reply body.
+  Class (resolving a contract by strike + type): `ready_made.py:177` (one expiry's catalogue, exactly-one match or
+  refused), `routes/leg_edit.py:455` and `ofo/strategy/leg_edit.py:159` (expiry in the match), `background._leg_quote`
+  (the chain of the leg's own expiry), `outcome/service.py:639` (one expiry's chain), `adjustment/approaches.py:397`
+  (expiry or tradingsymbol), frontend `legPicker.js:53` `selectedContract` and `guided.js:138` (match on type + strike
+  in the `contracts` list the page loaded: safe only if that list is one expiry; NOT verified this session, the first
+  thing to check if (1) shows a 2028 id). No fix made: no lookup on the line's path to fix.
 
 Spec basis: ADR-008, ADR-003, ADR-330 (6), REQ-151 (contracts named as the screens print them), REQ-100.
 
