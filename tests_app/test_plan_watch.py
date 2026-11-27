@@ -12,7 +12,7 @@ from decimal import Decimal
 from httpx import ASGITransport, AsyncClient
 from ofo.errors.explanations import NO_PLAN_TEXT
 from ofo_app import db as app_db
-from ofo_app import paper_store, paper_trigger_store
+from ofo_app import paper_store, paper_trigger_store, price_budget
 from test_adjustment_check import (
     _reset_engine,
     _seeded,
@@ -237,12 +237,11 @@ async def test_a_hanging_market_read_is_cut_at_the_budget_and_answers_not_live(a
     "prices not live" shape: every line paused / not checked, no `now`, no distance (absent, never 0). The cut-off read
     is cancelled (not left running) and held no database connection while it waited. No clock is measured: a read that
     was not cut would hang this test."""
-    from ofo_app.routes import plan_watch as pw  # noqa: PLC0415
     from ofo_app.routes.adjustment import get_market_reader  # noqa: PLC0415
 
     sid = await _seeded(app_db_url, monkeypatch, "ADJ-01")
     await _arm(app_db_url, sid)
-    monkeypatch.setattr(pw, "PRICE_BUDGET_S", 0.05)
+    monkeypatch.setattr(price_budget, "PRICE_BUDGET_S", 0.05)  # Lane J2: the one budget (watch_of wraps the readers)
     seen: dict[str, object] = {"held": None, "cancelled": False}
 
     async def hangs(_tracked, _ctx):
@@ -271,11 +270,10 @@ async def test_a_hanging_index_quote_is_cut_at_the_budget_and_cancelled(app_db_u
     from ofo.marketdata.spot_source import SourceReading, SourceState  # noqa: PLC0415
     from ofo_app.adjustment_readers import read_market  # noqa: PLC0415
     from ofo_app.main import create_app  # noqa: PLC0415
-    from ofo_app.routes import plan_watch as pw  # noqa: PLC0415
     from ofo_app.routes.adjustment import get_market_reader, get_rest_spot_reader  # noqa: PLC0415
 
     sid = await _seeded(app_db_url, monkeypatch, "ADJ-01")
-    monkeypatch.setattr(pw, "PRICE_BUDGET_S", 0.05)
+    monkeypatch.setattr(price_budget, "PRICE_BUDGET_S", 0.05)  # Lane J2: the one budget (watch_of wraps the readers)
     seen = {"cancelled": False}
 
     async def no_tick(tracked, ctx):  # the real read, with the feed's index tick taken away
@@ -305,12 +303,11 @@ async def test_a_quote_answering_after_the_market_was_cut_is_not_asked(app_db_ur
     must not be called: the quote reads FAILED, so the answer is the plain "prices not live" one (never a 500)."""
     from ofo.marketdata.spot_source import SourceReading, SourceState  # noqa: PLC0415
     from ofo_app.main import create_app  # noqa: PLC0415
-    from ofo_app.routes import plan_watch as pw  # noqa: PLC0415
     from ofo_app.routes.adjustment import get_market_reader, get_rest_spot_reader  # noqa: PLC0415
 
     sid = await _seeded(app_db_url, monkeypatch, "ADJ-01")
     await _arm(app_db_url, sid)
-    monkeypatch.setattr(pw, "PRICE_BUDGET_S", 0.05)
+    monkeypatch.setattr(price_budget, "PRICE_BUDGET_S", 0.05)  # Lane J2: the one budget (watch_of wraps the readers)
     called: list[str] = []
 
     async def hangs(_tracked, _ctx):

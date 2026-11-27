@@ -14,6 +14,7 @@ const queue = []
 vi.mock('@/services/api', async (importActual) => {
   const actual = await importActual()
   return { ...actual, default: { get: (url, cfg) => {
+    if (url === '/market/exit-state') return Promise.resolve({ data: { closed: false, sentence: null, next_open_at: null } }) // ADR-330 (60)
     if (url.endsWith('/armed-exits')) return Promise.resolve({ data: { lines: [] } }) // D-03 part B: its own test file
     calls.push({ url, orders: JSON.parse(cfg.params.orders) })
     if (queue.length) return queue.shift()

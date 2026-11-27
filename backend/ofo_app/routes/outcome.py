@@ -178,19 +178,6 @@ async def index_spot_of(market: Any, rest_reader: Any, underlying: str, ctx: Mar
     return answer
 
 
-async def rest_spot_within(rest_reader: Any, underlying: str, seconds: float) -> SourceReading:
-    """A REST spot read cut at ``seconds`` (a budgeted reader, Plan watch): over the budget it is the FAILED reading, as
-    a reader that raises is in ``index_spot_of``. The caller hands the answer back to ``index_spot_of`` as its REST reader,
-    so the feed tick was judged first; this is the one place besides ``index_spot_of`` that awaits a REST reader
-    (tests_app/test_rest_spot_door_scan.py)."""
-    try:
-        async with asyncio.timeout(max(seconds, 0)):
-            return await rest_reader(underlying)
-    except TimeoutError:
-        log.warning("index spot REST read over its %.1f s budget, answered as not live", seconds)
-        return SourceReading(SourceState.FAILED)
-
-
 def get_answer_clock() -> AnswerClock:
     """The answer-time seam: tests override this dependency with a fixed clock."""
     return server_now

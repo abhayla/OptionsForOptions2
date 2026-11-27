@@ -12,6 +12,7 @@ import { LIVE_NOTHING_RUNNING_TEXT, STATUS_DRAFT, STATUS_RUNNING } from '@/lib/s
 import { isCompleted, isRunning } from '@/lib/strategyStatus'
 import { priceScope, tileNotLive } from '@/lib/priceState'
 import { usePaperPnl } from '@/lib/paperPnl'
+import { useMonitoringState } from '@/lib/monitoringState'
 import { noteShownDate } from '@/lib/displayFormat'
 import { readAnswer } from '@/composables/useIndexLive'
 
@@ -48,6 +49,7 @@ const shown = computed(() => [...followed.value].sort((a, b) => stamp(b) - stamp
 // Two groups, newest first inside each; an empty group is not shown. Start order is the order on screen.
 const executed = computed(() => shown.value.filter(isRunning))
 const drafts = computed(() => shown.value.filter((s) => !isRunning(s)))
+const monitoring = useMonitoringState(() => executed.value.map((s) => s.id)) // Lane Y item 1: is the worker watching each running trade (one read)
 const queue = computed(() => [...executed.value, ...drafts.value])
 const startIndex = (s) => queue.value.indexOf(s)
 // Cards start one at a time (the database role allows few connections): card i may start once i <= current.
@@ -92,13 +94,13 @@ onMounted(async () => {
       <section v-if="executed.length" class="mt-4" data-testid="live-group-executed">
         <h2 class="text-sm font-semibold text-ink-muted">{{ STATUS_RUNNING }}</h2>
         <div class="mt-2 grid grid-cols-1 gap-4 lg:grid-cols-2">
-          <LiveStrategyCard v-for="s in executed" :key="s.id" :strategy="s" :pnl="pnl.cellFor(s.id)" :quiet="noticeUp" :greyed="tileOf(s).greyed" :show-line="tileOf(s).line" :start="startIndex(s) <= current" @affected="onAffected" @settled="release(startIndex(s))" />
+          <LiveStrategyCard v-for="s in executed" :key="s.id" :strategy="s" :pnl="pnl.cellFor(s.id)" :monitoring="monitoring.entryOf(s.id)" :quiet="noticeUp" :greyed="tileOf(s).greyed" :show-line="tileOf(s).line" :start="startIndex(s) <= current" @affected="onAffected" @settled="release(startIndex(s))" />
         </div>
       </section>
       <section v-if="drafts.length" class="mt-4" data-testid="live-group-drafts">
         <h2 class="text-sm font-semibold text-ink-muted">{{ STATUS_DRAFT }}</h2>
         <div class="mt-2 grid grid-cols-1 gap-4 lg:grid-cols-2">
-          <LiveStrategyCard v-for="s in drafts" :key="s.id" :strategy="s" :pnl="pnl.cellFor(s.id)" :quiet="noticeUp" :greyed="tileOf(s).greyed" :show-line="tileOf(s).line" :start="startIndex(s) <= current" @affected="onAffected" @settled="release(startIndex(s))" />
+          <LiveStrategyCard v-for="s in drafts" :key="s.id" :strategy="s" :pnl="pnl.cellFor(s.id)" :monitoring="monitoring.entryOf(s.id)" :quiet="noticeUp" :greyed="tileOf(s).greyed" :show-line="tileOf(s).line" :start="startIndex(s) <= current" @affected="onAffected" @settled="release(startIndex(s))" />
         </div>
       </section>
     </template>

@@ -14,7 +14,8 @@ check -> "not_computable" with its reason; a rule true since tracking started ->
 needs a side the entry strategy had and no longer has open -> "not_applicable" with "Not applicable: the call / put
 side is closed" (ADR-330 (2) (a); entry or open legs unreadable -> no side judged closed, the rule keeps its state);
 a rule fired
--> "fired"; the price reads (market, REST index quote) not answered within ``PRICE_BUDGET_S`` are cancelled and read as
+-> "fired"; the price reads (market, REST index quote) not answered within ``price_budget.PRICE_BUDGET_S``
+(``watch_of`` wraps the readers) are cancelled and read as
 "not connected" (no chain, no spot): the same "prices not live" answer. The price reads are bounded by that budget; the
 margin read after them has its own 8 s timeout, and the cut REST read is shielded (only the waiting request is
 cancelled, the shared read finishes);
@@ -23,7 +24,6 @@ not found or another user's -> its 404. Writes nothing. Suggest-only (ADR-003): 
 """
 from __future__ import annotations
 
-import asyncio
 import datetime
 import logging
 from decimal import ROUND_HALF_UP, Decimal
@@ -36,13 +36,12 @@ from ofo.adjustment import stop_lines as sl
 from ofo.charges import ChargeRates
 from ofo.engine import adjust_money
 from ofo.errors.explanations import render_explanation
-from ofo.marketdata.spot_source import SourceReading, SourceState
 from ofo.money import HUNDREDTH, PAISE
 from ofo.strategy.definition import display_contract
 from sqlalchemy.exc import SQLAlchemyError
 
 from ofo_app import adjustment_check as check
-from ofo_app import paper_trigger_store, tracked_contracts
+from ofo_app import paper_trigger_store, price_budget, tracked_contracts
 from ofo_app.api_models import ApiModel, CatalogueText, Identifier, Money
 from ofo_app.db import get_db
 from ofo_app.errors import ClosedRoute, Failure
@@ -59,7 +58,7 @@ from ofo_app.routes.adjustment import (
 from ofo_app.routes.adjustment_check import CheckPauseOut, CheckRun, run_check
 from ofo_app.routes.adjustment_preferences import UserPreferences, UserValuesIn
 from ofo_app.routes.broker import current_user_ref
-from ofo_app.routes.outcome import MarketContext, get_market_context, load_charge_rates, rest_spot_within
+from ofo_app.routes.outcome import MarketContext, get_market_context, load_charge_rates
 from ofo_app.routes.paper import identity_of
 from ofo_app.strategy_refused import StrategyRefused
 
@@ -69,11 +68,6 @@ _NOT_AVAILABLE = "user_input_request_not_available"
 PERCENT = Decimal(100)
 SHOWN_PCT = HUNDREDTH
 _PCT_UNIT = "%"
-#: REQ-119 AC-4: the route answers within this many seconds of starting its price reads (market read + REST index
-#: quote together), whatever the broker side does. The browser gives up at 10 s (frontend services/api.js timeout), so
-#: 4 s leaves the rest of the check (rule evaluation, trigger store) ample time; a read still running at the budget is
-#: cancelled and the answer is the "prices not live" one (27 Nov 2026: unbounded index quotes took 20 s).
-PRICE_BUDGET_S = 4.0
 
 LineKind = Literal["target", "stop", "credit_stop", "rule", "index_exit", "leg_stop"]
 LineState = Literal["watching", "fired", "not_applicable", "not_computable", "paused"]
@@ -287,41 +281,6 @@ def _leg_marks(run: CheckRun) -> dict[tuple[str, Decimal], Decimal | None]:
     return {(x.type, x.strike): check.mark_of(rows.get(x.tradingsymbol)) for x in run.tracked.position.legs}
 
 
-def _budgeted(market_reader: MarketReader, rest_reader: RestSpotReader) -> tuple[MarketReader, RestSpotReader]:
-    """The two price readers under ONE shared deadline (``PRICE_BUDGET_S`` from the first read). A read that has not
-    answered by then is cancelled (``asyncio.timeout`` cancels the inner task and waits for it to finish) and
-    replaced by the not-live answer: the market as when not connected (no chain, no feed spot), the REST quote as
-    FAILED. Once the market read is cut (or no budget is left) the REST reader is not called at all: a STATED spot
-    beside a not-connected market would break the approach figures. The price reads are bounded by the budget; the
-    margin read after them has its own 8 s timeout. The market reader holds no DB session (``run_check`` released it
-    first, D-36 c); the cut REST read is shielded (REST_SPOT): only the waiting request is cancelled."""
-    from ofo_app.adjustment_readers import read_market  # noqa: PLC0415 - imports routes.adjustment
-    loop = asyncio.get_running_loop()
-    started: list[float] = []
-    market_cut: list[bool] = []
-
-    def left() -> float:
-        if not started:
-            started.append(loop.time())
-        return started[0] + PRICE_BUDGET_S - loop.time()
-
-    async def market(tracked: Any, ctx: Any) -> Any:
-        try:
-            async with asyncio.timeout(max(left(), 0)):
-                return await market_reader(tracked, ctx)
-        except TimeoutError:
-            market_cut.append(True)
-            log.warning("plan watch: market read over %.1f s, answered as not live", PRICE_BUDGET_S)
-            return await read_market(tracked, None)
-
-    async def rest(underlying: str) -> SourceReading:
-        if market_cut or left() <= 0:  # the market is the not-connected one: a STATED spot beside it would raise
-            log.warning("plan watch: no budget left for the index quote, answered as not live")
-            return SourceReading(SourceState.FAILED)
-        return await rest_spot_within(rest_reader, underlying, left())  # the one real await (outcome.py)
-    return market, rest
-
-
 async def watch_of(  # noqa: PLR0913 - the route's inputs, passed on
         strategy_id: int, *, db: Any, user_ref: str, tracked_reader: TrackedReader, market_reader: MarketReader,
         rest_reader: RestSpotReader, margin_of: ApproachMargin, ctx: MarketContext | None,
@@ -330,7 +289,9 @@ async def watch_of(  # noqa: PLR0913 - the route's inputs, passed on
     so the same lines, wording and refusals; ADR-008)."""
     from ofo_app.scenario_guard import check_screen_isolation  # noqa: PLC0415 - imports routes.broker
     await check_screen_isolation(db, user_ref, strategy_id)
-    market_reader, rest_reader = _budgeted(market_reader, rest_reader)
+    from ofo_app.adjustment_readers import read_market  # noqa: PLC0415 - imports routes.adjustment
+    # Lane J2: the one price budget (ofo_app/price_budget.py), the same wrapper the adjustment-check route uses
+    market_reader, rest_reader = price_budget.budgeted(market_reader, rest_reader, not_live_market=read_market)
     try:
         run = await run_check(strategy_id, db=db, user_ref=user_ref, tracked_reader=tracked_reader,
                               market_reader=market_reader, rest_reader=rest_reader, margin_of=margin_of, ctx=ctx,

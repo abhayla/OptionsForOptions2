@@ -33,7 +33,7 @@ from ofo.timeutil import IST
 from sqlalchemy.exc import SQLAlchemyError
 
 from ofo_app import adjustment_check as check
-from ofo_app import playbook_store, scenario_mode, step_timing
+from ofo_app import playbook_store, price_budget, scenario_mode, step_timing
 from ofo_app.api_models import ApiModel, CatalogueText, Identifier, Money
 from ofo_app.db import get_db
 from ofo_app.errors import ClosedRoute, Failure
@@ -463,6 +463,9 @@ async def adjustment_check(  # noqa: PLR0913 - FastAPI dependencies, one per inp
         ctx: Annotated[MarketContext | None, Depends(get_market_context)],
         rates: Annotated[ChargeRates | None, Depends(load_charge_rates)],
         prefs: UserPreferences, user_values: UserValuesIn) -> AdjustmentCheckOut:
+    from ofo_app.adjustment_readers import read_market  # noqa: PLC0415 - imports routes.adjustment
+    # a stalled price source never holds the page: one budget for both reads, then "not live" (Lane Q2 leftover 1)
+    market_reader, rest_reader = price_budget.budgeted(market_reader, rest_reader, not_live_market=read_market)
     return (await run_check(strategy_id, db=db, user_ref=user_ref, tracked_reader=tracked_reader,
                             market_reader=market_reader, rest_reader=rest_reader, margin_of=margin_of, ctx=ctx,
                             rates=rates, prefs=prefs, user_values=user_values)).out

@@ -168,7 +168,8 @@ async def test_two_legs_on_one_stored_contract_are_refused_before_eligibility(ap
             body["legs"].append(dict(body["legs"][0]))
             async with _client(_on(_app(_ConnMaker(conn), stored.user_ref), LIST_DAY)) as ac:
                 resp = await ac.put(f"/strategies/{stored.id}", json=body)
-            assert (resp.status_code, resp.json()["code"]) == (422, "STRATEGY_VALIDATION_408"), resp.text
+            # Lane W: the refusal names the legs (strategy_duplicate_leg_same_side, code 524); the old 408 is gone
+            assert (resp.status_code, resp.json()["code"]) == (422, "STRATEGY_VALIDATION_524"), resp.text
             assert (await store.load(conn, stored.user_ref, stored.id)).revision == 1
         finally:
             await trans.rollback()

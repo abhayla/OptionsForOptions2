@@ -155,7 +155,7 @@ from ofo.settings import calc as settings_calc
 from ofo.timeutil import IST
 
 from ofo_app import adjustment_check as check
-from ofo_app import calc_speeds, feed_bus, roles, settings_cache
+from ofo_app import calc_speeds, feed_bus, monitoring_state, roles, settings_cache
 from ofo_app.db_gate import GATE_POLL, GATE_REBUILD, GATE_WRITER, DbGate, held
 from ofo_app.regime_inputs import RegimePerList
 from ofo_app.routes.adjustment import MarketInputs
@@ -1014,6 +1014,7 @@ class Worker:
         self._speed: Mapping[str, Decimal] | None = None  # the last good speeds per style (a failed read keeps it)
         self._steps: tuple[Decimal, ...] | None = None  # the last good safety-valve steps
         self._want_client = want_client  # a Redis client (the feed bus); None = no wanted-set write
+        self._monitoring = monitoring_state.Publisher(want_client)  # which trades are not watched, why, since when
         self._listed: dict[tuple[int, str], tuple] = {}  # (id(provider), underlying) -> (provider, known listings)
         self._token_maps: dict[int, tuple] = {}  # id(provider) -> (provider, option tokens, id -> token)
         self._wants_written: dict[str, tuple[list[int], datetime.datetime]] = {}  # owner -> (tokens, when)
@@ -1954,6 +1955,7 @@ class Worker:
             slowest = max(slowest, _seconds(self._clock() - started))
         self._cursor = (self._cursor + visited) % n if n else 0
         await self._close_pass(checked)
+        await self._monitoring.publish(self.status, self.paused_reason, self.paused_why, self._clock())  # never raises
         if self._steps is not None:
             self.valve.observe(self._clock(), slowest, n - visited, self._steps)
 

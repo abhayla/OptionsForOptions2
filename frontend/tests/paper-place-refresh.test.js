@@ -19,6 +19,7 @@ vi.mock('@/services/api', async (importActual) => {
   const respond = (method, url, body) => {
     calls.push({ method, url, body })
     const a = answers[`${method} ${url}`]
+    if (a === undefined && method === 'GET' && url === '/market/exit-state') return Promise.resolve({ data: { closed: false, sentence: null, next_open_at: null } }) // ADR-330 (60)
     if (a === undefined) return Promise.reject(new Error(`unmocked ${method} ${url}`))
     return typeof a === 'function' ? a(body) : Promise.resolve({ data: a })
   }

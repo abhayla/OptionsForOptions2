@@ -22,10 +22,12 @@ import { PRICE_GREYED_CLASS } from '@/lib/priceState'
 import { healthSentence } from '@/lib/dataHealthText'
 import { ENTRY_PRICE_LABEL } from '@/lib/chartCard'
 import { useStrategyLive } from '@/composables/useStrategyLive'
+import MonitoringBadge from '@/components/common/MonitoringBadge.vue'
+import { KIND_UNREAD_LINE } from '@/lib/positionKind'
 
 // `start` false = waiting in the page's start queue (one card loads at a time); `settled` is emitted once, when this card
 // got its first answer, failed, or has nothing to follow - the page then starts the next card.
-const props = defineProps({ strategy: { type: Object, required: true }, start: { type: Boolean, default: true }, pnl: { type: Object, default: null }, quiet: { type: Boolean, default: false },
+const props = defineProps({ strategy: { type: Object, required: true }, start: { type: Boolean, default: true }, pnl: { type: Object, default: null }, monitoring: { type: Object, default: null }, quiet: { type: Boolean, default: false },
   greyed: { type: Boolean, default: false }, showLine: { type: Boolean, default: true } }) // ADR-330 (56): the page's priceScope decides both
 const emit = defineEmits(['settled', 'closed', 'affected'])
 
@@ -173,6 +175,8 @@ const notConnected = computed(() => data.value?.state === 'NOT_CONNECTED')
 // REQ-077 AC-9: FROM_ENTRIES (live data dropped, every leg has an entry) is paused monitoring too; the card shows its two labels only.
 const fromEntries = computed(() => state.value === 'ready' && data.value?.state === 'FROM_ENTRIES')
 const paused = computed(() => state.value === 'unpriced' || (state.value === 'ready' && (notConnected.value || fromEntries.value || down.value)))
+// the worker's own answer says paused: its badge (with reason and since) replaces the card's local one
+const serverPaused = computed(() => isRunning(props.strategy) && props.monitoring != null && props.monitoring.watch_state !== 'active')
 const showFigures = computed(() => state.value === 'ready' && data.value?.state === 'COMPUTED' && !paused.value)
 const refused = computed(() => state.value === 'ready' && data.value?.state === 'REFUSED')
 const spotAt = computed(() => (data.value?.spot_at ? istTime(data.value.spot_at) : '-'))
@@ -198,8 +202,11 @@ const hasEntry = computed(() => (data.value?.legs ?? []).some((l) => (l.planned_
 // ADR-330 (19): name, then (#id, expiry) from the list reply's first leg
 const listLabel = computed(() => strategyListLabel({ name: props.strategy.name, id: props.strategy.id, expiries: [props.strategy.first_leg?.expiry], fallback: `Draft ${props.strategy.id}` }))
 const openLink = computed(() => (state.value === 'error' ? null : builderLinkOf(props.strategy.id)))
-const exitLink = computed(() => (state.value !== 'error' && isRunning(props.strategy) ? paperExitLinkOf(props.strategy.id) : null))
-const stopsLink = computed(() => (state.value !== 'error' && isRunning(props.strategy) ? paperStopsLinkOf(props.strategy.id) : null))
+// ADR-330 (64): Exit and Stops only on a PAPER position; real and unreadable show the server's one line instead (fail closed)
+const paperPosition = computed(() => props.strategy.position_kind === 'paper')
+const kindLine = computed(() => (isRunning(props.strategy) && !paperPosition.value && props.strategy.position_kind !== 'none' ? props.strategy.position_kind_text || KIND_UNREAD_LINE : null))
+const exitLink = computed(() => (state.value !== 'error' && isRunning(props.strategy) && paperPosition.value ? paperExitLinkOf(props.strategy.id) : null))
+const stopsLink = computed(() => (state.value !== 'error' && isRunning(props.strategy) && paperPosition.value ? paperStopsLinkOf(props.strategy.id) : null))
 const entryHead = computed(() => (isRunning(props.strategy) ? ENTRY_PRICE_LABEL : 'Planned entry'))
 const legName = (leg) => nameFromPool(leg, [], data.value?.underlying) // never the raw trading symbol (issue 297, REQ-151)
 // REQ-049 AC-4: any health other than `available` (also a missing one) is marked with its word.
@@ -219,14 +226,17 @@ class="rounded border border-line bg-surface p-4" :class="greyed ? PRICE_GREYED_
       <RouterLink v-if="strategy.open_opportunities_text" :to="{ path: '/positions/adjustment-opportunities', query: { strategy: String(strategy.id) } }" class="text-sm text-accent underline" data-testid="live-opportunity-mark">{{ strategy.open_opportunities_text }}</RouterLink>
       <RouterLink v-if="stopsLink" :to="stopsLink" class="text-sm text-accent underline" data-testid="live-strategy-stops">Stops</RouterLink>
       <RouterLink v-if="exitLink" :to="exitLink" class="text-sm text-accent underline" data-testid="live-strategy-exit">Exit</RouterLink>
-      <span v-if="paused" class="text-sm" data-testid="live-paused-badge">⏸ Monitoring paused</span>
-      <span v-if="paused" class="inline-flex items-center gap-1 text-sm text-ink-muted" data-testid="live-health-dot" data-health="unknown">
+      <span v-if="paused && !serverPaused" class="text-sm" data-testid="live-paused-badge">⏸ Monitoring paused</span>
+      <!-- Lane Y item 1: the worker's own answer (REQ-115 AC-6), for a running trade whose card has no local pause of its own -->
+      <MonitoringBadge v-if="isRunning(strategy)" :entry="monitoring" />
+      <span v-if="paused && !serverPaused" class="inline-flex items-center gap-1 text-sm text-ink-muted" data-testid="live-health-dot" data-health="unknown">
         <span class="inline-block h-2 w-2 rounded-full bg-gray-400" aria-hidden="true"></span>Health unknown
       </span>
       <p v-if="state === 'ready' && data && !quiet" class="ml-auto text-xs text-ink-muted" data-testid="live-checked-at">Checked at {{ checkedAt }}</p>
     </header>
 
     <!-- D-41: the trade's P&L from the Positions page's function, in every state of the card (the page reads it once for all cards) -->
+    <p v-if="kindLine" class="mt-2 text-sm" data-testid="live-position-kind-line">{{ kindLine }}</p>
     <PnlLine v-if="isRunning(strategy)" class="mt-2" :cell="pnl" testid="live-pnl" />
     <p v-if="legsAsSaved" class="mt-2 text-xs text-ink-muted" data-testid="live-legs-as-saved">{{ CARD_LEGS_AS_SAVED_TEXT }}</p>
     <p v-if="live.reconnecting.value" class="mt-2 text-sm font-medium" data-testid="live-reconnecting">{{ live.reconnectingText.value }}</p>

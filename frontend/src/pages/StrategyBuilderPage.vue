@@ -27,6 +27,8 @@ import ProjectionsNote from '@/components/strategy/ProjectionsNote.vue'
 import StrategyActions from '@/components/strategy/StrategyActions.vue'
 import TrackingPanel from '@/components/strategy/TrackingPanel.vue'
 import PlanWatch from '@/components/strategy/PlanWatch.vue'
+import MonitoringBadge from '@/components/common/MonitoringBadge.vue'
+import { useMonitoringState } from '@/lib/monitoringState'
 import AdjustSteps from '@/components/strategy/AdjustSteps.vue'
 import { ADD_TO_PAPER_LABEL, PAPER_PLACED_NOT_REFRESHED_TEXT, PAPER_STATE, addToPaper as postPaperOrders, paperPostOutcome } from '@/lib/tracking'
 import PaperConfirmDialog from '@/components/strategy/PaperConfirmDialog.vue'
@@ -439,6 +441,13 @@ const paper = ref(null) // { id, book, net } while in Drafts Mode, else null
 let legOnly = null
 let keepStaged = null
 const stagedNote = ref('')
+// ADR-330 (59) (owner 27 Nov evening; all sentences pending owner read): Exit all while a change is staged and not sent. `exitAllWaiting` = { legs, names }:
+// the screen legs as the user left them and the changed legs' names; set while the Exit all dialog is open, handed to `exitUnknown` when its POST ends unknown.
+const exitAllWaiting = ref(null)
+const DISCARD_WARNING = (names) => `Exit all closes every open leg. The change waiting on ${names} is not sent and will be discarded.`
+const DISCARDED_TEXT = (names) => `The change waiting on ${names} was discarded.`
+const KEPT_UNTIL_KNOWN_TEXT = (names) => `The change waiting on ${names} was not sent; it is kept until the exit's outcome is known.`
+const BACK_UNCHANGED_TEXT = (names) => `The exit was not stored. The change waiting on ${names} is back, unchanged.`
 const netKey = (rows) => (rows ?? []).map((l) => `${l.contract_id}|${l.action}|${l.lots}`).sort().join(';')
 const NOT_KEPT_TEXT = (names) => `The change waiting on ${names} was not kept because the trade changed; stage it again.`
 function restoreStaged(newNet, allowNotStored = false) { // allowNotStored: the Orderbook link after an unknown outcome (the exit may not have been stored)
@@ -536,6 +545,7 @@ const exitUnknown = ref(null)
 const exitOrigin = ref(false) // the pending edits came from Exit all or a per-leg Exit; stays true until they are posted or discarded (ADR-328 (4))
 // P10: the strategy the Plan watch reads: the saved id, or in Drafts Mode (savedId stays null there) the paper book's own integer id
 const planWatchId = computed(() => (Number.isInteger(savedId.value) ? savedId.value : Number.isInteger(paper.value?.book?.strategy_id) ? paper.value.book.strategy_id : null))
+const monitoring = useMonitoringState(() => (planWatchId.value ? [planWatchId.value] : [])) // Lane Y item 1: one read
 const paperTotal = computed(() => (paper.value ? paperPnlBlock(paper.value.book, paperBookFailed.value) : null))
 function reviewPending(fromExit = false, only = null, info = null) { // the "Review and add" button passes its click event: only `true` marks an Exit; `only`: ADR-330 (49), a leg's own exit rows
   const shown = only ?? pendingOrders.value
@@ -558,9 +568,14 @@ let legsBeforeExit = null // the legs as the user left them just before the firs
 const markExit = () => { if (!exitOrigin.value) legsBeforeExit = copyLegs(legs.value) }
 function exitAllPaper() {
   if (!paper.value || paperStale.value || exitBlocked.value) return
+  const pending = pendingOrders.value
+  let names = ''
+  try { names = pending.length ? confirmRowsFor(pending, paper.value.book, contractName, {}).map((r) => r.text).filter(Boolean).join(', ') : '' } catch { names = '' }
+  const waiting = pending.length ? { legs: copyLegs(legs.value), names: names || 'your edited legs' } : null
   markExit()
   setLegs([])
   reviewPending(true)
+  exitAllWaiting.value = paperDialog.value ? waiting : null // only when the dialog really opened
 }
 function exitPaper(contractId, lots) {
   if (!paper.value || paperStale.value || exitBlocked.value) return
@@ -579,10 +594,19 @@ function exitPaper(contractId, lots) {
 const userCancelPaperDialog = () => {
   if (paperBusy.value) return
   paperDialog.value = false
+  if (exitAllWaiting.value) { // ADR-330 (59): Cancel gives the staged change back exactly as it was; the exits are not kept as edits
+    const back = exitAllWaiting.value.legs
+    exitAllWaiting.value = null
+    exitOrigin.value = false
+    legsBeforeExit = null
+    setLegs(copyLegs(back))
+    return
+  }
   if (exitOrigin.value) { exitOrigin.value = false; legsBeforeExit = null } // the kept exits are ordinary edits now: the next Exit takes a fresh snapshot
 }
 function cancelPaperDialog() {
   if (paperBusy.value) return
+  exitAllWaiting.value = null
   const wasExit = exitOrigin.value
   paperDialog.value = false
   if (wasExit && !paperStale.value) { // stored orders (stale net): nothing to drop, the re-read replaces the legs
@@ -652,6 +676,7 @@ async function confirmPending(orders, _held = null, notLiveTicked = false) {
   const { id } = paper.value
   const names = paperLegNames()
   const wasExit = exitOrigin.value
+  const waiting = exitAllWaiting.value // ADR-330 (59): an Exit all that discards a staged change posts the exits alone, like a per-leg Exit
   const own = legOnly // ADR-330 (49): a per-leg Exit carries no acted / basket / approach state; it stays for the staged change
   keepStaged = own ? { ...own, snapshot: copyLegs(legs.value) } : null
   const attempt = exitRec.begin(EXIT_KEY, names)
@@ -662,7 +687,7 @@ async function confirmPending(orders, _held = null, notLiveTicked = false) {
   clearStopOffer()
   const check = { id, stops: ((await readStops(id)) ?? []).filter((x) => x.kind === 'leg_stop' && x.state === 'armed'), net: paper.value.net.map((l) => l.contract_id) }
   try {
-    reply = own ? await postPaperOrders(api, id, orders) : await postPaperOrders(api, id, orders, actedSuggestionIds.value, preparedBasketLegs.value, null, preparedApproachId.value, notLiveTicked === true)
+    reply = own || waiting ? await postPaperOrders(api, id, orders) : await postPaperOrders(api, id, orders, actedSuggestionIds.value, preparedBasketLegs.value, null, preparedApproachId.value, notLiveTicked === true)
   } catch (e) {
     const outcome = paperPostOutcome(e)
     if (outcome === PAPER_STATE.REFUSED) { // 4xx: the server stored nothing (one transaction or none)
@@ -673,7 +698,8 @@ async function confirmPending(orders, _held = null, notLiveTicked = false) {
       moveCheck = check // the re-reads decide, not this guess
       if (orders.some((o) => o?.kind === 'exit')) { // ADR-017: this exit may be stored; it is never sent again until a re-read decides it (any post that carries an exit row, wherever the click came from)
         const exp = own ? legsAfterExit(own.net, own.net, own.id, own.lots) : null
-        exitUnknown.value = { attempt, names, at: Date.now(), before: netKey(paper.value?.net), expected: exp ? netKey(exp) : null }
+        exitUnknown.value = { attempt, names, waiting, at: Date.now(), before: netKey(paper.value?.net), expected: exp ? netKey(exp) : null }
+        if (waiting) { exitAllWaiting.value = null; stagedNote.value = KEPT_UNTIL_KNOWN_TEXT(waiting.names) }
         void recheckUnknownExit()
       }
     }
@@ -691,12 +717,14 @@ async function confirmPending(orders, _held = null, notLiveTicked = false) {
   // STORED (201). From here nothing may offer these orders again: a failure below is only a failed refresh.
   exitRec.settle(EXIT_KEY, attempt, 'placed', wasExit ? exitEndText('done', names, { orders: reply?.orders, sent: orders.length }) : '') // the server answered: placed replaces a page-side guess
   paperStale.value = true
+  exitAllWaiting.value = null // cleared at once (Opus review): a later throw or a new Exit all during the re-read must not meet a stale value
   if (own) { exitOrigin.value = false; legsBeforeExit = null } // ADR-330 (49): what is left is no Exit edit; the other legs' edits are put back by restoreStaged
   try {
-    if (!own) await dropActed({ withApproach: true }) // one basket answers the records once (a per-leg Exit answered none)
+    if (!own) await dropActed({ withApproach: true }) // an Exit all that discards a staged change drops its acted / basket / approach too: they belong to the discarded change // one basket answers the records once (a per-leg Exit answered none)
   } catch { /* the ids may stay in the URL: the stored orders are never offered again (paperStale) */ }
   try {
     // the dialog stays, says it was placed, and has no Confirm, while the book is read again (issue 18: bounded retries, then Retry)
+    if (waiting) stagedNote.value = DISCARDED_TEXT(waiting.names) // said at once: also when the re-read below fails
     if (await rereadAfterPlace(id, () => { paperState.value = PAPER_STATE.PLACED; paperBusy.value = false })) await offerAfterMove(check)
   } finally {
     paperBusy.value = false
@@ -776,6 +804,10 @@ function decideUnknownExit(newNet) {
     restoreStaged(newNet)
     if (u.expected !== null ? key === u.expected : true) exitRec.settle(EXIT_KEY, u.attempt, 'placed', exitEndText('done', u.names, { orders: null, sent: 0 }))
     else exitRec.put(EXIT_KEY, 'changed', exitEndText('changed', u.names))
+  }
+  if (u.waiting) { // ADR-330 (59): the staged change comes back only if the exits were not stored; otherwise it is discarded and the screen says so
+    if (key === u.before) { setLegs(copyLegs(u.waiting.legs)); stagedNote.value = BACK_UNCHANGED_TEXT(u.waiting.names) }
+    else stagedNote.value = DISCARDED_TEXT(u.waiting.names)
   }
   paperDialog.value = false
   paperState.value = PAPER_STATE.READY
@@ -1460,7 +1492,7 @@ const leaveGuard = useLeaveBuilder({
         </div>
         <PaperBookPanel v-if="paper" :book="paper.book" :net="paper.net" :changed-ids="stagedChangeIds(paper.net, legs)" :read-failed="paperBookFailed" :contracts-changed="paperContractsChanged" :exit-unresolved="!!exitUnknown" :show-orders="showOrdersTick" @exit="exitPaper" @exit-all="exitAllPaper" />
         </div>
-        <PaperConfirmDialog :open="paperDialog" :orders="paperRows" :strategy-id="route.query.strategy" :busy="paperBusy" :blocked="exitBlocked" :locked="!!exitUnknown" :error="paperError || paperNotLiveLine" :state="paperState" :not-live-line="paperEntryNotLiveLine" @confirm="confirmPending" @cancel="userCancelPaperDialog" @orderbook="openPaperOrderbook" />
+        <PaperConfirmDialog :open="paperDialog" :orders="paperRows" :strategy-id="route.query.strategy" :busy="paperBusy" :blocked="exitBlocked" :note="exitAllWaiting ? DISCARD_WARNING(exitAllWaiting.names) : ''" :locked="!!exitUnknown" :error="paperError || paperNotLiveLine" :state="paperState" :not-live-line="paperEntryNotLiveLine" @confirm="confirmPending" @cancel="userCancelPaperDialog" @orderbook="openPaperOrderbook" />
         <SaveDraftBar v-show="!(opening && !legs.length)" ref="barRef" :legs="legs" :rules-ref="String(route.query.rules_ref || '')" :current="openStrategy" :shown-name="shapeName ?? ''" :paper-mode="paper !== null" :live-price-by-id="livePriceById" :prices-live="pricesLive" :market-closed="pricesNow.kind === 'last_close'" :price-as-of="pricesNow.at ?? ''" class="max-[1099px]:contents" @open="openFromBar" @saved="onSaved" @paper-added="onPaperAdded" @renamed="onRenamed" @deleted="onDeleted">
           <template #add-edit>
             <button v-if="!paperCompleted" type="button" class="h-10 flex-1 basis-0 rounded-lg border border-line font-medium" aria-haspopup="dialog" :aria-expanded="pickerOpen ? 'true' : 'false'" data-testid="add-edit" :disabled="exitBlocked" :title="exitBlocked ? exitGate.reason.value : undefined" @click="pickerOpen = !pickerOpen">Add/Edit</button>
@@ -1658,6 +1690,7 @@ const leaveGuard = useLeaveBuilder({
           <TrackingPanel :saved-id="savedId" :legs="data.legs ?? null" :shared="paper?.book ?? null" :shared-failed="paperBookFailed" />
         </div>
         <!-- ADR-330 (57): a fully closed trade has no Plan watch (its plan line is in the book panel). P10 (ADR-330 (13)): the Plan watch under the live P&L column, whatever the numbers state is (it is its own server read); it re-reads on the page's own book read (paper.book is replaced by each good read) -->
+        <MonitoringBadge v-if="planWatchId && !paperCompleted" :entry="monitoring.entryOf(planWatchId)" class="mt-4" />
         <PlanWatch v-if="planWatchId && !paperCompleted" :strategy-id="planWatchId" :read-tick="paper?.book ?? null" :stale="paperBookFailed" class="mt-4" />
       </div>
     </div>

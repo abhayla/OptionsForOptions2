@@ -84,8 +84,9 @@ _MARK_REOPENED = text(
     "AND NOT g.timeline @> jsonb_build_array(jsonb_build_object('event', 'side_reopened'))")
 _INSERT_NOTE = text(
     "INSERT INTO public.adjustment_suggestions (strategy_id, rule_id, kind, outcome, answer, answered_at, shown_at, "
-    "timeline) VALUES (:strategy_id, :rule_id, :kind, 'dismissed', 'noted', CAST(:at AS TIMESTAMPTZ), "
-    "CAST(:at AS TIMESTAMPTZ), jsonb_build_array(jsonb_build_object('at', CAST(:at AS TIMESTAMPTZ), "
+    "timeline) VALUES (:strategy_id, :rule_id, :kind, 'dismissed', 'noted', "
+    "LEAST(CAST(:at AS TIMESTAMPTZ), clock_timestamp()), "  # Lane J2: a record is never after the database clock
+    "LEAST(CAST(:at AS TIMESTAMPTZ), clock_timestamp()), jsonb_build_array(jsonb_build_object('at', CAST(:at AS TIMESTAMPTZ), "
     "'outcome', 'dismissed', 'event', 'info', 'template', CAST(:template AS TEXT), "
     "'values', CAST(:values AS JSONB)))) RETURNING id")
 

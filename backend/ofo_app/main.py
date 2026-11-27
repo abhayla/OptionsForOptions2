@@ -52,6 +52,7 @@ from ofo_app.routes import (
     chain,
     execute,
     execution_return,
+    exit_market,
     features,
     health,
     indices,
@@ -60,6 +61,7 @@ from ofo_app.routes import (
     level_watch,
     live,
     monitoring_pause,
+    monitoring_status,
     outcome,
     paper,
     plan_watch,
@@ -122,6 +124,7 @@ async def _lifespan(app: FastAPI) -> AsyncIterator[None]:
 def _mount_routes(app: FastAPI, config: BrokerConfig) -> None:
     """Every router and door socket, in the one order the app has always mounted them (one include per route)."""
     app.include_router(health.router)
+    app.include_router(exit_market.router)  # ADR-330 (60): the Exit dialog's market-closed answer
     app.include_router(outcome.router)
     errors.add_socket_route(app, live.socket_route())  # W-065: the strategy live push, a door socket
     errors.add_socket_route(app, chain.socket_route())  # W-116: the read-only Option Chain push, a door socket
@@ -140,6 +143,7 @@ def _mount_routes(app: FastAPI, config: BrokerConfig) -> None:
     app.include_router(adjustment_preferences.router)  # REQ-168: per-user adjustment preferences
     app.include_router(alert_style.router)  # GC-ALERT1 (REQ-170 Q-AD-2): a strategy's alert-style pin
     app.include_router(monitoring_pause.router)  # GC-IC1 4a (A-38): pause adjustment checks
+    app.include_router(monitoring_status.router)  # Lane Y item 1: is each running trade being watched
     app.include_router(level_watch.router)  # GC-IC1 4c (A-37): watch an index level, alert through the gate
     app.include_router(leg_edit.router)  # W-148: one leg edit, answered by the engine
     app.include_router(leg_picker.router)  # W-147: the leg picker's strikes, futures and depth reads (REQ-080)

@@ -67,6 +67,8 @@ const props = defineProps({
   readTick: { type: null, default: null },
   stale: { type: Boolean, default: false },
   compact: { type: Boolean, default: false },
+  // Lane Y item 2 (Lane H's batch route): when the host passes `view` (null while its one batch read is out) this box reads nothing itself
+  view: { type: Object, default: undefined },
 })
 const NO_FIGURE = PAPER_NO_FIGURE
 // new wording, pending owner read (27 Nov 2026): a FIRST read is queued or in flight (no catalogue or label had it)
@@ -78,7 +80,11 @@ const STATE_TEXT = { watching: 'Watching', fired: 'Fired', not_applicable: 'Not 
 // view: the last answer worth showing (null before the first). A slow read (`updating`) or a failed one after a good answer
 // (`notCurrent`) keeps the last good rows, marked, with the server's own as-of time; the first-load / not-available states stay
 // for a screen that never had an answer.
-const view = ref(null)
+const own = ref(null) // the box's own last good answer
+// Lane Y item 2 (Lane H's batch route): a host that passes `view` (null while its ONE batch read is out) feeds this box;
+// then the box reads nothing itself (no queue, no timer); without it the box reads as before
+const hosted = () => props.view !== undefined
+const view = computed(() => (hosted() ? props.view : own.value))
 const updating = ref(false)
 const notCurrent = ref(false)
 const marked = computed(() => view.value?.state === 'ok' && (updating.value || notCurrent.value))
@@ -108,7 +114,7 @@ function clearTimer() { if (timer !== null) { clearTimeout(timer); timer = null 
 function drop() { clearTimer(); if (queued) { cancelPlanWatchRead(queueKey); queued = false; updating.value = false } }
 
 function ask(now) {
-  if (gone || !active()) return
+  if (gone || hosted() || !active()) return // a host-fed box never reads
   if (reading) { again = true; againNow = againNow || now; return }
   if (queued) return // coalesced: one queued read per box
   const wait = now || lastMark() === null ? 0 : lastMark() + gapMs() - Date.now()
@@ -135,7 +141,7 @@ async function run() {
     if (savedSince(id, stamp)) { again = true; againNow = true; return } // began before a save: dropped, a fresh read follows (plan-save-1127)
     if (v.state === 'superseded') return
     if (view.value?.state === 'ok' && (v.state === 'failed' || v.state === 'unavailable')) { notCurrent.value = true; return }
-    view.value = v
+    own.value = v
     notCurrent.value = false
   } finally {
     reading = false
@@ -173,14 +179,14 @@ onBeforeUnmount(() => {
   if (props.compact) document.removeEventListener('visibilitychange', onVisibility)
 })
 watch(() => props.strategyId, () => {
-  view.value = null; notCurrent.value = false; seq++
+  own.value = null; notCurrent.value = false; seq++
   clearTimer()
   if (queued) { cancelPlanWatchRead(queueKey); queued = false }
   lastAnswer = null; lastStart = null
   ask(true)
 })
 // a plan save of this strategy was stored: the rows stay marked "Updating" and a read that starts AFTER the save is made at once
-watch(() => saveStamp(props.strategyId), () => { updating.value = true; ask(true) })
+watch(() => saveStamp(props.strategyId), () => { if (hosted()) return; updating.value = true; ask(true) })
 watch(() => props.readTick, (t, old) => { if (t !== old) ask(false) })
 
 // the server's figure as text in the line's unit: rupees with Indian grouping; index points and percent as sent; null is a dash

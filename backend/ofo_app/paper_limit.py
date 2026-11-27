@@ -27,6 +27,7 @@ from ofo.errors import render
 from ofo.tracking.orderbook import net_positions
 
 from ofo_app import paper_store, playbook_store, tracked_contracts
+from ofo_app.order_lots import LegLots, check_lots
 from ofo_app.strategy_refused import StrategyRefused
 
 log = logging.getLogger(__name__)
@@ -164,19 +165,12 @@ def _check_freeze(stored: Any, found: Mapping[int, Any], new: Sequence[Any], nam
 
 def _check_leg_totals(top: int, found: Mapping[int, Any], existing: Sequence[Any], new: Sequence[Any],
                       name_of: Any) -> None:
-    """Per leg: the total it holds after EACH order, in stored order (ADR-330 (50))."""
-    for cid, leg in found.items():
-        lot = leg.stored.listed.contract.lot_size
-        held = sum(_signed(r.order) for r in existing if r.order.contract_id == cid)
-        held_lots = -(-abs(held) // lot)
-        running = held
-        for o in (o for o in new if o.contract_id == cid):
-            before, running = running, running + _signed(o)
-            total = -(-abs(running) // lot)
-            if total > top and abs(running) > abs(before):  # grows the leg (a flip long to short counts)
-                raise StrategyRefused("paper_leg_total_over_limit", message=render(
-                    "paper_leg_total_over_limit", contract=name_of(cid), total=total, max_lots=top,
-                    held=held_lots, added=max(total - held_lots, 0), room=max(top - held_lots, 0)))
+    """Per leg: the total it holds after EACH order, in stored order (ADR-330 (50)); both doors"""
+    check_lots(top, [
+        LegLots(name_of(cid), leg.stored.listed.contract.lot_size,
+                sum(_signed(r.order) for r in existing if r.order.contract_id == cid),
+                [_signed(o) for o in new if o.contract_id == cid])
+        for cid, leg in found.items()])
 
 
 async def place_checked(db: Any, user_ref: str, strategy_id: int, orders: Sequence[Any], *,  # noqa: PLR0913

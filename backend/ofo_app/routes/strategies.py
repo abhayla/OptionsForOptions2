@@ -216,6 +216,8 @@ class SummaryOut(ApiModel):
     has_paper_order: bool  # ADR-271: True once a paper order was placed (the refusal says "paper orders")
     has_order: bool  # ADR-299: True once ANY order was placed, practice or real (the one status word reads it)
     held_at_broker: bool  # ADR-292: a held entry exists (Delete is refused with the held sentence)
+    position_kind: Optional[Identifier] = None  # noqa: UP045 - ADR-330 (64): position_kind.kind_of
+    position_kind_text: Optional[CatalogueText] = None  # noqa: UP045 - the real / unknown row's one line; None for paper
     open_opportunities: Optional[int]  # noqa: UP045 - GC-MU A3: open adjustment records; None = could not be read
     open_opportunities_text: Optional[CatalogueText]  # noqa: UP045 - "N adjustment opportunities"; None at 0 or unread
     # GC-ICGUIDE g23 (Completed tab): set only for a closed strategy, all from the engine; None + reason when unreadable
@@ -490,6 +492,7 @@ async def list_strategies(db: Annotated[Any, Depends(get_db)], user_ref: Annotat
                           shown_date: Annotated[datetime.date, Depends(get_shown_date)]) -> StrategyListOut:
     async def work():
         rows = await store.list_strategies(db, user_ref)
+        from ofo_app import position_kind  # noqa: PLC0415 - ADR-330 (64)
         from ofo_app.routes.adjustment_history import closed_figures_many  # noqa: PLC0415 - it imports routes.paper
         from ofo_app.routes.paper import current_legs_many  # noqa: PLC0415 - routes.paper imports this module
         rates_ok = rates if isinstance(rates, ChargeRates) else None
@@ -507,6 +510,8 @@ async def list_strategies(db: Annotated[Any, Depends(get_db)], user_ref: Annotat
              "tracked": None if tracked is None else r.id in tracked, "can_delete": r.can_delete,
              "has_paper_order": r.has_paper_order, "has_order": r.has_order,
              "held_at_broker": r.held_at_broker,
+             "position_kind": (kind := position_kind.kind_of(r.has_order, r.has_paper_order, r.held_at_broker)),
+             "position_kind_text": position_kind.line_of(kind),
              "open_opportunities": None if opened is None else opened.get(r.id, 0),
              "open_opportunities_text": None if opened is None else opportunities.open_mark(opened.get(r.id, 0)),
              **closed.get(r.id, _NO_FIGURES)}

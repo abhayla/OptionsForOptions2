@@ -61,6 +61,20 @@
             ],
             "title": "No Longer True Since"
           },
+          "position_kind": {
+            "pattern": "^[A-Za-z0-9_\\-.]{1,64}$",
+            "title": "Position Kind",
+            "type": "string"
+          },
+          "position_kind_text": {
+            "anyOf": [
+              {},
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Position Kind Text"
+          },
           "strategy_id": {
             "title": "Strategy Id",
             "type": "integer"
@@ -93,7 +107,9 @@
           "no_longer_true_line",
           "escalated_at",
           "worse_line",
-          "answers"
+          "answers",
+          "position_kind",
+          "position_kind_text"
         ],
         "title": "ActiveAlert",
         "type": "object"
@@ -5237,6 +5253,43 @@
         "title": "ExecuteOut",
         "type": "object"
       },
+      "ExitMarketOut": {
+        "additionalProperties": false,
+        "properties": {
+          "closed": {
+            "title": "Closed",
+            "type": "boolean"
+          },
+          "next_open_at": {
+            "anyOf": [
+              {
+                "format": "date-time",
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Next Open At"
+          },
+          "sentence": {
+            "anyOf": [
+              {},
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Sentence"
+          }
+        },
+        "required": [
+          "closed",
+          "sentence",
+          "next_open_at"
+        ],
+        "title": "ExitMarketOut",
+        "type": "object"
+      },
       "ExitRiskOut": {
         "additionalProperties": false,
         "description": "ADR-256: the answer for a prepared basket in three states (``no`` only when proven), the book's Max Loss before /\nafter when the answer is yes and they are known, and the one factual warning line.",
@@ -7518,6 +7571,105 @@
           "end"
         ],
         "title": "MaskedUserIdOut",
+        "type": "object"
+      },
+      "MonitoringListOut": {
+        "additionalProperties": false,
+        "properties": {
+          "strategies": {
+            "items": {
+              "$ref": "#/components/schemas/MonitoringOut"
+            },
+            "title": "Strategies",
+            "type": "array"
+          }
+        },
+        "required": [
+          "strategies"
+        ],
+        "title": "MonitoringListOut",
+        "type": "object"
+      },
+      "MonitoringOut": {
+        "additionalProperties": false,
+        "properties": {
+          "badge_text": {
+            "anyOf": [
+              {},
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Badge Text"
+          },
+          "health_text": {
+            "anyOf": [
+              {},
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Health Text"
+          },
+          "reason": {
+            "pattern": "^[A-Za-z0-9_\\-.]{1,64}$",
+            "title": "Reason",
+            "type": "string"
+          },
+          "reason_text": {
+            "anyOf": [
+              {},
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Reason Text"
+          },
+          "since_at": {
+            "anyOf": [
+              {
+                "format": "date-time",
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Since At"
+          },
+          "since_text": {
+            "anyOf": [
+              {},
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Since Text"
+          },
+          "strategy_id": {
+            "title": "Strategy Id",
+            "type": "integer"
+          },
+          "watch_state": {
+            "enum": [
+              "active",
+              "paused"
+            ],
+            "title": "Watch State",
+            "type": "string"
+          }
+        },
+        "required": [
+          "strategy_id",
+          "watch_state",
+          "reason",
+          "badge_text",
+          "health_text",
+          "reason_text",
+          "since_at",
+          "since_text"
+        ],
+        "title": "MonitoringOut",
         "type": "object"
       },
       "NetPremiumOut": {
@@ -19516,6 +19668,27 @@
             ],
             "title": "Open Opportunities Text"
           },
+          "position_kind": {
+            "anyOf": [
+              {
+                "pattern": "^[A-Za-z0-9_\\-.]{1,64}$",
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Position Kind"
+          },
+          "position_kind_text": {
+            "anyOf": [
+              {},
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Position Kind Text"
+          },
           "revision": {
             "title": "Revision",
             "type": "integer"
@@ -20521,6 +20694,24 @@
         "summary": "Market Chain"
       }
     },
+    "/api/market/exit-state": {
+      "get": {
+        "operationId": "market_exit_state_api_market_exit_state_get",
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ExitMarketOut"
+                }
+              }
+            },
+            "description": "Successful Response"
+          }
+        },
+        "summary": "Market Exit State"
+      }
+    },
     "/api/market/indices": {
       "get": {
         "operationId": "market_indices_api_market_indices_get",
@@ -20561,6 +20752,46 @@
           }
         },
         "summary": "Market Indices"
+      }
+    },
+    "/api/monitoring-state": {
+      "get": {
+        "operationId": "monitoring_state_api_monitoring_state_get",
+        "parameters": [
+          {
+            "in": "query",
+            "name": "ids",
+            "required": false,
+            "schema": {
+              "default": "",
+              "title": "Ids",
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/MonitoringListOut"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "summary": "Monitoring State"
       }
     },
     "/api/plan-watch": {

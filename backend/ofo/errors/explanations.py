@@ -941,6 +941,18 @@ class ClockSeconds(SlotType):
         return Clock.format(value)
 
 
+class DayLabel(SlotType):
+    """A calendar day as "Monday 30 Nov" (ADR-330 (60): the market-closed Exit line): exactly `datetime.date`."""
+
+    @staticmethod
+    def validate(value: object) -> None:
+        _require_exact(value, datetime.date, "DayLabel")
+
+    @staticmethod
+    def format(value: datetime.date) -> str:
+        return value.strftime("%A %d %b").replace(" 0", " ", 1)
+
+
 class ClockHms(SlotType):
     """A timezone-aware time as the 24-hour IST clock time with seconds, "14:12:05" (D-17, ADR-322 point 2)."""
 
@@ -1556,6 +1568,11 @@ _EXPLANATIONS: tuple[ExplanationTemplate, ...] = (
     # GC-TP R-18 (ADR-209): the line naming the booked P&L a paper strategy's target figures include
     # ADR-330 (36) (LR-Q18, owner 26 Nov 2026): a trade after the close with legs frozen at the close AND legs first priced
     # later; the later legs carry the time they have. Singular and plural; the one function is closed_label (outcome.py).
+    # ADR-330 (60) (owner 27 Nov 2026 evening; pending owner read): the Exit dialog's one line while the market is closed.
+    ExplanationTemplate("exit_market_closed", "values_seen",
+                        "The market is closed. Exits can be placed from 09:15 on {day}.", {"day": DayLabel}),
+    ExplanationTemplate("exit_market_closed_no_day", "values_seen",
+                        "The market is closed. Exits can be placed when it opens."),
     ExplanationTemplate("closed_prices_mixed_one", "values_seen",
                         "Market closed. Prices are from {frozen}; 1 leg as of {later}.",
                         {"frozen": ClockHmsOrDated, "later": ClockHmsOrDated}),
@@ -2588,6 +2605,23 @@ _EXPLANATIONS: tuple[ExplanationTemplate, ...] = (
     # GC-ALERT1 (REQ-170 Q-AD-2): the strategy's alert style, automatic or pinned by the user (pending owner read)
     # GC-IC1 4a (A-38): the user's pause of adjustment checks until a time (pending owner read)
     ExplanationTemplate("monitor_pause_label", "rule", "Pause adjustment checks"),
+    # Lane Y item 1: the monitoring badge and its reasons (REQ-115 AC-4/AC-6, REQ-049); pending owner read
+    # ADR-330 (64): what a real position's row offers while real order placing is on hold; pending owner read
+    ExplanationTemplate("position_kind_real", "rule", "Real position: exit and protect it in Kite. Stops and alerts here cover paper trades only."),
+    ExplanationTemplate("position_kind_unknown", "rule", "Cannot tell whether this is a real or a paper position, so Exit and Stops are not shown. Check it in Kite."),
+    ExplanationTemplate("monitoring_badge", "rule", "Monitoring paused"),
+    ExplanationTemplate("monitoring_health_unknown", "rule", "Health unknown"),
+    ExplanationTemplate("monitoring_since", "rule", "Since {time}", {"time": ClockHm}),
+    ExplanationTemplate("monitoring_why_workers_down", "rule", "Not being watched: no worker has reported in the last 2 minutes."),
+    ExplanationTemplate("monitoring_why_state_unreadable", "rule", "Not being watched: the worker's report cannot be read."),
+    ExplanationTemplate("monitoring_why_not_listed", "rule", "Not being watched: the worker does not list this trade."),
+    ExplanationTemplate("monitoring_why_stale", "rule", "The last price is too old, so no rule can fire."),
+    ExplanationTemplate("monitoring_why_disconnected", "rule", "The price feed is not connected, so no rule can fire."),
+    ExplanationTemplate("monitoring_why_leg_missing", "rule", "A leg of this trade has no price, so no rule can fire."),
+    ExplanationTemplate("monitoring_why_check_failed", "rule", "The check could not run, so no rule can fire."),
+    ExplanationTemplate("monitoring_why_market_closed", "rule", "The market is closed."),
+    ExplanationTemplate("monitoring_why_user_paused", "rule", "Adjustment checks are paused until the time you set."),
+    ExplanationTemplate("monitoring_why_unknown", "rule", "Not being watched: the reason is not known."),
     ExplanationTemplate("monitor_pause_none", "rule", "Adjustment checks are running. Stop-losses and exits always run."),
     ExplanationTemplate("monitor_pause_until", "rule", "Adjustment checks paused until {time}. Stop-losses and exits still run.", {"time": ClockHm}),
     ExplanationTemplate("monitor_pause_ended", "rule", "The pause ended at {time}. Adjustment checks are running again.", {"time": ClockHm}),
