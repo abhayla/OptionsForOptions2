@@ -1,4 +1,4 @@
-STATUS 20:48 | item 1: pushed 1f6f7436 (gate TOTAL PASS) | items 2, 3: built, Opus-reviewed, final gate running | next push 21:15 | blocker: none (send_message refused: untrusted device; this line is the report)
+STATUS 22:00 | item 1: pushed 1f6f7436 | items 2, 3: pushed a7ccf4a9 (gate TOTAL PASS both) | SAFE TO CLOSE (head a7ccf4a9; not reached: Lane U other deferred rows; owner PC tests listed below) | blocker: none
 
 # Lane U2 results (branch fix/exit-all-1127, from f61f7935)
 
