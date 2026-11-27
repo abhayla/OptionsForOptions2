@@ -597,7 +597,7 @@ async def _plan_out(db: Any, user_ref: str, plan: store.Plan, kind: str | None =
 
 
 async def plan_figures(db: Any, user_ref: str, plan: store.Plan, bases: Bases) -> dict[str, Any]:
-    """ADR-330 (57): the plan sheet's own figures (the rupee levels) for a stored plan, for readers outside this module."""
+    """ADR-330 (57): the plan sheet's own figures (the rupee levels) of a stored plan, for readers elsewhere."""
     return await _plan_out(db, user_ref, plan, None, bases)
 
 
