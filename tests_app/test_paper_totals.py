@@ -541,8 +541,9 @@ async def test_d36_the_list_does_fixed_database_work_and_finished_books_cost_onl
     finally:
         event.remove(sync, "before_cursor_execute", record)
     # D-36 count (measured 2026-11-25, 6 finished + 1 open): the per-book helpers run once per finished book, pure
-    # arithmetic of about 0.3 ms each (6 books: 2 ms in all); the database work is a fixed 8 statements (10 with the Lane R release_connection) whatever the
-    # count of strategies and no broker is called. Finished books cost nothing measurable, so nothing is skipped.
+    # arithmetic of about 0.3 ms each (6 books: 2 ms in all); the database work is a fixed 8 statements (10 with the
+    # Lane R release_connection) whatever the count of strategies and no broker is called. Finished books cost nothing
+    # measurable, so nothing is skipped.
     assert {name: seen[name]["finished"] for name in _WORK} == dict.fromkeys(_WORK, _FINISHED)
     assert len(statements) == _STATEMENTS
     assert len(body["strategies"]) == _FINISHED + 1
