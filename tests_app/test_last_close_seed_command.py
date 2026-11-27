@@ -74,8 +74,9 @@ def test_a_snapshot_row_is_written_with_its_own_time_and_source_and_the_counts_a
 
 
 @pytest.mark.parametrize("over,reason", [
-    ({"price": 99.75}, "price must be a string"),
-    ({"price": 99}, "price must be a string"),
+    ({"price": True}, "price must be a string or a number"),
+    ({"price": 99.755}, "not a whole number of paise"),
+    ({"price": None}, "price must be a string or a number"),
     ({"price": "99.755"}, "not a whole number of paise"),
     ({"price": "abc"}, "price is not a number"),
     ({"price": "-1.00"}, "not a whole number of paise"),
@@ -129,12 +130,12 @@ def test_without_a_catalogue_an_unknown_id_cannot_be_told_and_the_report_says_so
 
 def test_exit_codes_unreadable_file_and_dead_database_are_2_a_refused_row_is_0(tmp_path):
     good, bad = tmp_path / "good.json", tmp_path / "bad.json"
-    good.write_text(json.dumps({"rows": [snap(), snap(price=1.5, instrument_id=INDEX_ID, expiry=None)]}))
+    good.write_text(json.dumps({"rows": [snap(), snap(price="1.505", instrument_id=INDEX_ID, expiry=None)]}))
     bad.write_text("{not json")
     out: list[str] = []
     assert lcs.seed_command(str(good), SeedStore(), KNOWN, check=False, out=out.append) == 0
     assert any("skipped 1" in line for line in out)
-    assert any("price must be a string" in line for line in out)
+    assert any("not a whole number of paise" in line for line in out)
     failed = lcs.EXIT_FAILED
     assert lcs.seed_command(str(bad), SeedStore(), KNOWN, check=False, out=out.append) == failed
     assert lcs.seed_command(str(tmp_path / "gone.json"), SeedStore(), KNOWN, check=False, out=out.append) == failed
