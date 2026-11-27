@@ -41,7 +41,8 @@ import { withAsOf } from '@/lib/paperList'
 import PaperBookPanel from '@/components/strategy/PaperBookPanel.vue'
 import { paperLegsOf, paperPnlBlock, usePaperBookRead } from '@/lib/usePaperBookRead'
 import { usePriceFreshness } from '@/lib/priceState'
-import { usePaperExit } from '@/lib/usePaperExit'
+import { exitEndText, exitLegsNotLive, usePaperExit } from '@/lib/usePaperExit'
+import { createExitRecords } from '@/lib/exitRecord'
 import PaperStrategies from '@/components/strategy/PaperStrategies.vue'
 import AdjustCompare from '@/components/strategy/AdjustCompare.vue'
 import { opportunitiesFromQuery, picksFromQuery } from '@/lib/adjustDrawer'
@@ -474,7 +475,9 @@ const { readFailed: paperBookFailed } = usePriceFreshness({
 })
 // N-04 / N-05: the ONE blocked rule (the book panel's own usePaperExit, same inputs): per-leg Exit, Exit all and "Review and add" all
 // read exitGate.blocked, so they are disabled in exactly the same states; the reason line is the one the panel shows under Exit all.
-const exitGate = usePaperExit({ readFailed: paperReadFailed, held: () => paper.value?.book ?? null, changed: paperContractsChanged })
+// Lane U hotfix 27 Nov (A-H #209): an open dialog's EXIT rows are judged on the latest good book too (exitLegsNotLive, the one rule), not only a failed read
+const dialogLegsNotLive = () => { const b = paper.value?.book; return paperDialog.value && !!b && exitLegsNotLive(b.state, b.positions?.map((p) => ({ id: p.contract_id, live: p.price_state === 'live' })), paperRows.value.filter((r) => r.kind === 'exit').map((r) => r.contract_id)) }
+const exitGate = usePaperExit({ readFailed: paperReadFailed, held: () => paper.value?.book ?? null, changed: paperContractsChanged, notLive: dialogLegsNotLive })
 const exitBlocked = exitGate.blocked
 const exitOrigin = ref(false) // the pending edits came from Exit all or a per-leg Exit; stays true until they are posted or discarded (ADR-328 (4))
 // P10: the strategy the Plan watch reads: the saved id, or in Drafts Mode (savedId stays null there) the paper book's own integer id
@@ -485,6 +488,7 @@ function reviewPending(fromExit = false) { // the "Review and add" button passes
   if (fromExit === true) exitOrigin.value = true // never reset here: "Review and add" of Exit edits is still an Exit
   if (exitBlocked.value) return // post nothing; the panel's reason line says why
   paperError.value = ''
+  exitRec.clear(EXIT_KEY)
   paperState.value = PAPER_STATE.READY
   paperRows.value = confirmRowsFor(pendingOrders.value, paper.value.book, contractName, livePriceById.value)
   paperDialog.value = true
@@ -509,8 +513,8 @@ function exitPaper(contractId, lots) {
   setLegs(next)
   reviewPending(true)
 }
-// N-04 / N-05: the ONE way the PAGE closes an Exit dialog without a Confirm (the read failed, the trade changed elsewhere, a Confirm that
-// arrives while blocked). It drops the staged exits too (the legs the user had before the Exit click come back, their other edits with
+// N-04 / N-05: the ONE way the PAGE closes an Exit dialog without a Confirm (the trade changed elsewhere; a failed read no longer closes it:
+// hotfix 27 Nov T2-08, ADR-016..019). It drops the staged exits too (the legs the user had before the Exit click come back, their other edits with
 // them), so no "pending change" outlives a dialog the page closed. The user's own Cancel is userCancelPaperDialog: u513 (owner test note
 // #85) keeps the exits the user chose as edits, counted and discardable. A dialog of "Review and add" keeps its edits. While a POST is in
 // flight nothing closes it: its answer (or the unknown-outcome text) decides.
@@ -530,10 +534,24 @@ function cancelPaperDialog() {
     legsBeforeExit = null
   }
 }
-// ADR-328 (4) / D-05: a paper dialog posts nothing while the read failed or the trade changed elsewhere (any dialog: its orders are
-// built from the net on screen); it closes through the same cancel as the user's, the panel's reason line says why.
-watch([exitBlocked, paperBusy], ([blocked]) => { // also when a POST answers: a block that arrived meanwhile is acted on now
-  if (blocked &&paperDialog.value && !paperBusy.value && !paperStale.value && paperState.value !== PAPER_STATE.UNKNOWN) cancelPaperDialog()
+// ADR-328 (4) / D-05, hotfix 27 Nov T2-08 (ADR-016..019): a paper dialog posts nothing while the read failed or the trade changed elsewhere
+// (any dialog: its orders are built from the net on screen). Same rule as Positions, through the same door (exitEndText): a FAILED READ keeps
+// the dialog open, Confirm blocked, with "<legs>: Prices are not live..." in it (it enables again after a good read); the trade really
+// CHANGED elsewhere closes it (N-04: the legs as before the Exit click) and leaves the visible sentence in paperExitNote.
+const paperLegNames = () => paperRows.value.map((r) => r.text).filter(Boolean)
+// Lane U hotfix (27 Nov, ADR-016..019; PC T1-22): the builder's Exit door is single-ended: ONE record (lib/exitRecord.js) of the latest
+// attempt holds its one final sentence; a page-side close (changed elsewhere) and the POST's own 201 both write through it, so a late
+// 201 replaces the "changed elsewhere" line with "Exit placed on paper" and never adds a second line.
+const EXIT_KEY = 'builder'
+const exitRec = createExitRecords()
+const paperExitNote = computed(() => exitRec.cur(EXIT_KEY)?.text ?? '') // the sentence of the record (hotfix 27 Nov T2-08)
+const paperNotLiveLine = computed(() => (paperDialog.value && exitBlocked.value && !paperContractsChanged.value ? exitEndText('not_live', paperLegNames()) : ''))
+function closeChanged() {
+  exitRec.put(EXIT_KEY, 'changed', exitEndText('changed', paperLegNames()))
+  cancelPaperDialog()
+}
+watch([exitBlocked, paperContractsChanged, paperBusy], ([blocked]) => { // also when a POST answers: a block that arrived meanwhile is acted on now
+  if (blocked && paperContractsChanged.value && paperDialog.value && !paperBusy.value && !paperStale.value && paperState.value !== PAPER_STATE.UNKNOWN) closeChanged()
 })
 // Drafts Mode summary: the book's Profit left / Loss left first (or the words for its extremes_reason), its original Max Profit /
 // Max Loss below; every figure the book reply's text as sent. Null outside Drafts Mode: the summary is unchanged.
@@ -550,19 +568,25 @@ const paperLeft = computed(() => { // GC-ICFIX u124: after-charges forms, labell
 const paperFills = computed(() => (paper.value ? paper.value.net.map(paperFillKey) : []))
 async function confirmPending(orders) {
   if (paperBusy.value || !paper.value || !paperDialog.value) return // a Confirm for a dialog that is no longer open (the page closed it) posts nothing
-  if (exitBlocked.value) { cancelPaperDialog(); return } // post nothing (the watch may not have run yet)
+  if (exitBlocked.value) { if (paperContractsChanged.value) closeChanged(); return } // post nothing (the watch may not have run yet); a failed read keeps the dialog and its sentence
   const { id } = paper.value
+  const names = paperLegNames()
+  const wasExit = exitOrigin.value
+  const attempt = exitRec.begin(EXIT_KEY, names)
   paperBusy.value = true
   paperError.value = ''
   paperState.value = PAPER_STATE.READY
+  let reply = null
   try {
-    await postPaperOrders(api, id, orders, actedSuggestionIds.value, preparedBasketLegs.value, null, preparedApproachId.value)
+    reply = await postPaperOrders(api, id, orders, actedSuggestionIds.value, preparedBasketLegs.value, null, preparedApproachId.value)
   } catch (e) {
     const outcome = paperPostOutcome(e)
     if (outcome === PAPER_STATE.REFUSED) { // 4xx: the server stored nothing (one transaction or none)
       paperError.value = (e?.parts ?? NEUTRAL_PARTS).what_happened || NEUTRAL_PARTS.what_happened
     }
-    paperState.value = outcome === 'superseded' ? PAPER_STATE.READY : outcome // superseded: silent
+    if (outcome === PAPER_STATE.UNKNOWN) exitRec.settle(EXIT_KEY, attempt, 'unknown')
+    else if (outcome === PAPER_STATE.REFUSED) exitRec.settle(EXIT_KEY, attempt, 'refused')
+    paperState.value = outcome // hotfix 27 Nov: a superseded POST is UNKNOWN (paperPostOutcome), never READY
     // REQ-163: a refused record is dropped, so the next request differs from the refused one; Confirm is ready again (text kept)
     if (outcome === PAPER_STATE.REFUSED && actedSuggestionIds.value.length && ACTED_REFUSED.has(e?.status)) {
       await dropActed() // the server's sentence above says why
@@ -572,6 +596,7 @@ async function confirmPending(orders) {
     return
   }
   // STORED (201). From here nothing may offer these orders again: a failure below is only a failed refresh.
+  exitRec.settle(EXIT_KEY, attempt, 'placed', wasExit ? exitEndText('done', names, { orders: reply?.orders, sent: orders.length }) : '') // the server answered: placed replaces a page-side guess
   paperStale.value = true
   try {
     await dropActed({ withApproach: true }) // one basket answers the records once
@@ -1269,6 +1294,7 @@ const leaveGuard = useLeaveBuilder({
           </template>
         </LegList>
         <!-- GC-ICFIX P3 u513: while the confirm dialog is open its list is a preview, not "N pending changes" the user made -->
+        <p v-if="paper && paperExitNote && !paperDialog" class="mt-2 text-sm font-medium text-warn" role="status" data-testid="paper-exit-note">{{ paperExitNote }}</p>
         <div v-if="paper && !paperDialog" class="mt-2 flex flex-wrap items-center gap-2 text-sm" data-testid="paper-pending">
           <span v-if="paperStale && rereadBusy" class="flex-1" data-testid="paper-pending-stale">{{ PAPER_PLACED_NOT_REFRESHED_TEXT }}</span>
           <span v-else class="flex-1" data-testid="paper-pending-count">{{ pendingOrders === null ? PAPER_PENDING_UNREADABLE : pendingText(pendingOrders.length) }}</span>
@@ -1277,7 +1303,7 @@ const leaveGuard = useLeaveBuilder({
         </div>
         <PaperBookPanel v-if="paper" :book="paper.book" :net="paper.net" :changed-ids="stagedChangeIds(paper.net, legs)" :read-failed="paperBookFailed" :contracts-changed="paperContractsChanged" :show-orders="showOrdersTick" @exit="exitPaper" @exit-all="exitAllPaper" />
         </div>
-        <PaperConfirmDialog :open="paperDialog" :orders="paperRows" :strategy-id="route.query.strategy" :busy="paperBusy" :blocked="exitBlocked" :error="paperError" :state="paperState" @confirm="confirmPending" @cancel="userCancelPaperDialog" @orderbook="openPaperOrderbook" />
+        <PaperConfirmDialog :open="paperDialog" :orders="paperRows" :strategy-id="route.query.strategy" :busy="paperBusy" :blocked="exitBlocked" :error="paperError || paperNotLiveLine" :state="paperState" @confirm="confirmPending" @cancel="userCancelPaperDialog" @orderbook="openPaperOrderbook" />
         <SaveDraftBar v-show="!(opening && !legs.length)" ref="barRef" :legs="legs" :rules-ref="String(route.query.rules_ref || '')" :current="openStrategy" :shown-name="shapeName ?? ''" :paper-mode="paper !== null" :live-price-by-id="livePriceById" :prices-live="pricesLive" class="max-[1099px]:contents" @open="openFromBar" @saved="onSaved" @paper-added="onPaperAdded" @renamed="onRenamed" @deleted="onDeleted">
           <template #add-edit>
             <button v-if="!paperCompleted" type="button" class="h-10 flex-1 basis-0 rounded-lg border border-line font-medium" aria-haspopup="dialog" :aria-expanded="pickerOpen ? 'true' : 'false'" data-testid="add-edit" :disabled="exitBlocked" :title="exitBlocked ? exitGate.reason.value : undefined" @click="pickerOpen = !pickerOpen">Add/Edit</button>

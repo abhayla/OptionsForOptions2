@@ -118,15 +118,15 @@ class _Stop(Exception):
 
 
 def _watch_judged_spot(monkeypatch, route_module, seen):
-    """Spy on the route's ``judge_spot``: record the spot it really judged.
+    """Spy on the route's ``index_spot_of``: record the spot it really answered.
 
     The classifier no longer takes a spot (D-04), so the judged spot is the observable."""
-    real = route_module.judge_spot
+    real = route_module.index_spot_of
 
-    def spy(market, rest, ctx):
-        seen["spot"] = real(market, rest, ctx)
+    async def spy(market, rest_reader, underlying, ctx):
+        seen["spot"] = await real(market, rest_reader, underlying, ctx)
         return seen["spot"]
-    monkeypatch.setattr(route_module, "judge_spot", spy)
+    monkeypatch.setattr(route_module, "index_spot_of", spy)
 
 
 async def test_check_route_judges_the_spot_at_the_later_clock(monkeypatch):

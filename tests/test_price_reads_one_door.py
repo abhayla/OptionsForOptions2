@@ -56,7 +56,7 @@ EXEMPT: dict[Key, tuple[str, str]] = {
                {"provider_prices": "read_snapshot", "_index_now": "underlying_quote"}),
     # display (shows a price, decides nothing)
     **_entries("display", "outcome screen figures", "routes/outcome.py",
-               {"judge_spot": "resolve_spot", "outcome_response": "read_snapshot"}),
+               {"judge_spot": "resolve_spot", "index_spot_of": "resolve_spot", "outcome_response": "read_snapshot"}),
     **_entries("display", "live socket push of a held index price", "live_push.py",
                {"_hold_forward": "underlying_quote"}),
     **_entries("display", "chain push rows", "chain_push.py",

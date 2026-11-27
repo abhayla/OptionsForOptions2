@@ -27,7 +27,7 @@ sys.path.insert(0, str(ROOT / "tests"))
 from marketdata._kite_fixture import NIFTY_CE_ID, all_instrument_ids, new_provider, recorded_frames  # noqa: E402
 from ofo.errors.templates import render  # noqa: E402
 from ofo.marketdata.fanout import FanOut  # noqa: E402
-from ofo_app import paper_trigger_store, tracked_contracts  # noqa: E402
+from ofo_app import paper_trigger_store, read_door, tracked_contracts  # noqa: E402
 from ofo_app.live_push import POLL_SECONDS, LiveFeed  # noqa: E402
 from ofo_app.market_read import Wait  # noqa: E402
 from ofo_app.routes import paper as paper_routes  # noqa: E402
@@ -114,13 +114,19 @@ async def test_core_an_unheld_index_above_x_is_refused_when_the_index_is_already
     assert await _check(rig, [_exit("above", "22500")]) == CROSSED
     assert rig.held_at_push, "the frames were pushed while the read held something"
     assert rig.held_at_push == [rig.provider._token_of[rig.index_id]]  # exactly the index, nothing else
-    assert rig.provider.subscribed_tokens() == []  # the hold is released
+    # hotfix 27 Nov: a read holds on a standing lease (read door)
+    assert rig.provider.subscribed_tokens() == [rig.provider._token_of[rig.index_id]]
+    read_door.read_lease().release()  # the lease ends: the hold is released
+    assert rig.provider.subscribed_tokens() == []
     assert rig.provider.counters["unwanted_tick"] > 0  # the legs' ticks WERE dropped: only the held token booked
 
 
 async def test_an_unheld_index_with_a_level_the_price_has_not_reached_is_allowed_in_market_hours(rig):
     rig.push_on_first_sleep = True
     assert await _check(rig, [_exit("above", "22600"), _exit("below", "22400")]) is None
+    # hotfix 27 Nov: a read holds on a standing lease (read door)
+    assert rig.provider.subscribed_tokens() == [rig.provider._token_of[rig.index_id]]
+    read_door.read_lease().release()
     assert rig.provider.subscribed_tokens() == []
 
 
@@ -139,6 +145,9 @@ async def test_a_held_index_above_x_is_refused_with_the_same_code_and_asks_for_n
 async def test_market_open_and_no_price_after_the_wait_is_refused_with_the_adr_327_code(rig):
     assert await _check(rig, [_exit("above", "22600")]) == UNREADABLE  # no frame ever arrives
     assert WAIT_S <= rig.elapsed < WAIT_S + 2 * POLL_SECONDS  # it waited the 3 s (injected clock), then gave up
+    # hotfix 27 Nov: a read holds on a standing lease (read door)
+    assert rig.provider.subscribed_tokens() == [rig.provider._token_of[rig.index_id]]
+    read_door.read_lease().release()
     assert rig.provider.subscribed_tokens() == []
 
 

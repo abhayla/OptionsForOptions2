@@ -141,15 +141,18 @@ describe('Drafts Mode edits are pending paper orders until Confirm', () => {
     expect(legCount(w)).toBe(3)
     expect(t(w, 'paper-pending-count').text()).toBe('0 pending changes')
   })
-  it('after hours (no live LTP): the exit row has no price box, says the server sets the price (last close, ADR-212) and Confirm is allowed', async () => {
-    answers[PAPER] = { ...BOOK, positions: BOOK.positions.map((p) => ({ ...p, price_state: 'closed', ltp: null, ltp_text: null })) }
+  it('after hours (no live LTP): the exit row has no price box, says the server sets the price (last close, ADR-212) and Confirm is blocked with the not-live sentence', async () => {
+    answers[PAPER] = { ...BOOK, state: 'PAUSED', positions: BOOK.positions.map((p) => ({ ...p, price_state: 'stale', ltp: null, ltp_text: null })) } // routes/paper.py:699-701: every open leg unpriced -> the book is PAUSED
     const w = await openBuilder()
     await removeLeg(w, '22700.00')
     await t(w, 'paper-review').trigger('click')
     await flushPromises()
     expect(w.find('[data-testid="paper-price"]').exists()).toBe(false)
     expect(t(w, 'paper-exit-price').text()).toContain('the server sets the exit price when you confirm')
-    expect(t(w, 'paper-confirm-button').attributes('disabled')).toBeUndefined()
+    // Lane U hotfix 27 Nov (A-H #209, ADR-322 (3), ADR-016..019): a leg with no live price is refused. After hours the server's display price is
+    // 'live' whenever a close is held (ADR-212, paper.display_price), so a leg that is not live here has no price at all: Confirm is off with the sentence.
+    expect(t(w, 'paper-confirm-button').attributes('disabled')).toBeDefined()
+    expect(t(w, 'paper-error').text()).toContain('Prices are not live; try again when they update')
   })
 })
 
