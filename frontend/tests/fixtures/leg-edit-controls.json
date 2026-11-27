@@ -221,6 +221,7 @@
     "captured_at": "2026-10-01T09:21:28Z",
     "price_source": "captured",
     "replaced_typed": true,
+    "replaced_note": "Your price for leg 1 was replaced by the captured price 10.00, because Shift moved the leg to another contract.",
     "included": true,
     "hedge": true,
     "price_reason": null,

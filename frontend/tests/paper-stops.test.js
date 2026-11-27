@@ -143,6 +143,13 @@ describe('Stops panel', () => {
       expect(t(w, 'stops-error').text()).toBe(`Not saved: ${reason}`)
     }
   })
+  it('UX-02: the leg stop row names its price box and its direction word on screen', async () => {
+    const w = await open()
+    const row = w.get('[data-testid^="stop-row-"]')
+    expect(row.get('[data-testid^="stop-dirword-"]').text()).toContain('Stop when the price goes')
+    expect(row.get('[data-testid^="stop-box-"]').text()).toContain('Stop price')
+    expect(row.get('[data-testid^="stop-box-"] input').exists()).toBe(true) // the label wraps the box (a click on it focuses it)
+  })
   it('a saved leg stop is confirmed with its direction and level', async () => {
     const w = await open()
     const level = w.get('[data-testid^="stop-level-"]')

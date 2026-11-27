@@ -830,6 +830,26 @@ def test_attack_5_a_typed_leg_that_moves_comes_back_captured_and_replaced_an_unm
     assert [leg["replaced_typed"] for leg in reply["legs"]] == [True, True, False, False]
 
 
+def test_ux16_ux24_a_replaced_typed_price_says_why_and_prints_the_captured_price_not_the_strike():
+    """UX-16 / UX-24 (27 Nov): the note named the strike where the price belongs and gave no reason. Now the server
+    words it: the captured price and the control that moved the leg; no note for an unmoved or untyped leg."""
+    spec = [("BUY", "PE", 22800, "41.00"), ("SELL", "PE", 23000, "80.00"), ("SELL", "CE", 23400, "91.50"),
+            ("BUY", "CE", 23600, "44.00")]
+    body = {"legs": [leg | ({"typed": True} if n < TYPED_LEGS else {}) for n, leg in enumerate(rows(spec))],
+            "edit": {"control": "hedge", "direction": 1}}
+    status, reply = post(body, capture=priced({("PE", 22750): "12.30"}))
+    out = reply["legs"]
+    assert status == HTTP_OK
+    assert out[0]["replaced_note"] == ("Your price for leg 1 was replaced by the captured price 12.30, "
+                                       "because Hedge moved the leg to another contract.")
+    assert [leg["replaced_note"] for leg in out[1:]] == [None, None, None]
+    status, reply = post(body | {"edit": {"control": "shift", "direction": 1}}, capture=priced())
+    assert reply["legs"][0]["replaced_note"].endswith("because Shift moved the leg to another contract.")
+    status, reply = post(body)  # no live price for the landing contract: the typed price is gone, and the note says so
+    gone = [leg["replaced_note"] for leg in reply["legs"] if leg["replaced_typed"]]
+    assert gone and all("has no live price" in n and "was removed" in n for n in gone), gone
+
+
 def test_a_moved_leg_with_no_live_price_is_unpriced_never_the_old_price():
     status, reply = post({"legs": rows(START), "edit": {"control": "shift", "direction": 1}})  # table lacks one
     legs_out = reply["legs"]

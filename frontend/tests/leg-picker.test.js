@@ -1421,6 +1421,20 @@ describe('W-195 strike drawer (UI-200..UI-207)', () => {
     expect(ce.find('[data-testid="cell-buy"]').classes()).toContain('bg-buy')
   })
 
+  it('UX-27: a real click on "Pick from Option Chain" works: it brings the LTP columns back; with LTP already shown nothing visibly changes', async () => {
+    const w = mountPicker()
+    await flushPromises()
+    await openStrikes(w)
+    const checked = () => t(w, 'picker-view').findAll('[role="radio"]').filter((b) => b.attributes('aria-checked') === 'true').map((b) => b.text())
+    expect(checked()).toEqual(['LTP'])
+    await t(w, 'picker-view-oi').trigger('click')
+    expect(checked()).toEqual(['OI'])
+    await t(w, 'picker-pick-chain').trigger('click')
+    expect(checked()).toEqual(['LTP']) // the click is handled
+    await t(w, 'picker-pick-chain').trigger('click')
+    expect(checked()).toEqual(['LTP']) // already on LTP: the link has nothing to open, so nothing moves (owner decision pending)
+  })
+
   it('UI-206 core: B on a strike then Done adds that leg with its planned entry and emits done (the Builder closes the drawer)', async () => {
     const w = mountPicker()
     await flushPromises()

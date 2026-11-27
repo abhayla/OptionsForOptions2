@@ -1030,13 +1030,13 @@ _STRATEGY_DRAFT_TEMPLATES: tuple[MessageTemplate, ...] = (
           "Open My Strategies to choose another one."),
     # Hotfix plan-save-1127 (ADR-330 (5)): a plan save that needs a price (a rupee Target beside a percent,
     # a dated time exit) and did not get one in time. New wording, pending owner read (27 Nov 2026).
-    _gate("plan_save_prices_not_read", _SV, 524,
+    _gate("plan_save_prices_not_read", _SV, 526,
           "Prices could not be read in time to check this plan.",
           "The plan was not saved; the plan you had is unchanged.", "Saving this plan.",
           "Try again when prices update, or save without the rupee Target or time-exit date."),
     # Hotfix plan-read-1127 (ADR-330 (5)): a PERCENT stop save whose expiry kind (weekly or monthly) is not known, so
     # the stop row to write is not known. New wording, pending owner read (27 Nov 2026).
-    _gate("plan_save_percent_stop_not_read", _SV, 525,
+    _gate("plan_save_percent_stop_not_read", _SV, 527,
           "The stop could not be saved: whether this trade expires weekly or monthly could not be read.",
           "The plan was not saved; the plan you had is unchanged.", "Saving a percent stop.",
           "Try again when prices update, or save the stop as a rupee amount."),

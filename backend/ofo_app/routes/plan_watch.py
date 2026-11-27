@@ -37,7 +37,7 @@ from ofo.engine import adjust_money
 from ofo.errors.explanations import render_explanation
 from ofo.marketdata.spot_source import SourceReading, SourceState
 from ofo.money import HUNDREDTH, PAISE
-from ofo.strategy.definition import describe_contract
+from ofo.strategy.definition import display_contract
 from sqlalchemy.exc import SQLAlchemyError
 
 from ofo_app import adjustment_check as check
@@ -226,6 +226,16 @@ def _rule_line(v: pe.RuleValue, run: CheckRun, live: bool, fired: bool) -> dict:
                  now=v.value, pct=_q(distance) if percent else None)
 
 
+async def _is_own(db: Any, user_ref: str, strategy_id: int) -> bool:
+    """True when the strategy exists and belongs to the user (a draft or a tracked one); any read failure: False."""
+    from ofo_app import playbook_store  # noqa: PLC0415 - database layer at run time
+    try:
+        await playbook_store.require_owned(db, user_ref, strategy_id)
+    except Exception:  # noqa: BLE001 - not owned, gone, or unreadable: the caller keeps the original refusal
+        return False
+    return True
+
+
 async def _armed_lines(db: Any, strategy_id: int, run: CheckRun, live: bool) -> list[dict]:
     try:
         rows = [r for r in reversed(await paper_trigger_store.list_for(db, strategy_id)) if r.cancelled_at is None]
@@ -249,9 +259,13 @@ async def _armed_lines(db: Any, strategy_id: int, run: CheckRun, live: bool) -> 
                 lines.append(_line(f"trigger-{t.id}", "leg_stop", "armed", render_explanation(
                     "adjust_condition_line_id", label="leg stop"), "option_price", "not_computable"))
                 continue
-            leg = describe_contract(identity)
-            label = render_explanation("plan_watch_leg_above" if up else "plan_watch_leg_below", leg=leg, level=t.level)
+            leg = display_contract(identity)  # the app's one contract style: "NIFTY 3 Nov 22650 PE", never an ISO date
             unit, price = "option_price", marks.get((identity[1].value, identity[2]))
+            side = "above" if up else "below"
+            if price is not None and live:  # the sentence carries the live price beside the level (item 6)
+                label = render_explanation(f"plan_watch_leg_{side}_now", leg=leg, level=t.level, now=price)
+            else:
+                label = render_explanation(f"plan_watch_leg_{side}", leg=leg, level=t.level)
         key = f"trigger-{t.id}"
         kind_out = "index_exit" if t.kind == "conditional_exit" else "leg_stop"
         if price is None or not live:  # prices not live: a paused line with no `now` (never an old number)
@@ -316,9 +330,19 @@ async def watch_of(  # noqa: PLR0913 - the route's inputs, passed on
     from ofo_app.scenario_guard import check_screen_isolation  # noqa: PLC0415 - imports routes.broker
     await check_screen_isolation(db, user_ref, strategy_id)
     market_reader, rest_reader = _budgeted(market_reader, rest_reader)
-    run = await run_check(strategy_id, db=db, user_ref=user_ref, tracked_reader=tracked_reader,
-                          market_reader=market_reader, rest_reader=rest_reader, margin_of=margin_of, ctx=ctx,
-                          rates=rates, prefs=prefs, user_values=user_values)
+    try:
+        run = await run_check(strategy_id, db=db, user_ref=user_ref, tracked_reader=tracked_reader,
+                              market_reader=market_reader, rest_reader=rest_reader, margin_of=margin_of, ctx=ctx,
+                              rates=rates, prefs=prefs, user_values=user_values)
+    except StrategyRefused as refused:
+        if refused.failure is not Failure.NOT_FOUND or not await _is_own(db, user_ref, strategy_id):
+            raise  # another user's or a missing strategy stays "not found"
+        # issue-list row 3 (27 Nov): an own saved draft is not tracked, nothing is watched: say so, not "not found"
+        now = datetime.datetime.now(datetime.UTC)
+        return PlanWatchOut.model_validate({
+            "strategy_id": strategy_id, "as_of": now, "as_of_text": render_explanation("check_as_of", time=now),
+            "plan_state": "no_plan", "no_plan_text": render_explanation("plan_sheet_no_plan"),
+            "armed_heading": None, "paused": None, "lines": []})
     live = run.fresh is not False and run.spot is not None  # unknown health with a spot is read as the check reads it
     out = run.out
     plan = out.playbook.source != "none"

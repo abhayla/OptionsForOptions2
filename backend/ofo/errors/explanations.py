@@ -1321,6 +1321,12 @@ def approach_about_id(approach_id: str) -> str:
     return "adjust_approach_about_" + approach_id.lower().replace("-", "_")
 
 
+#: the control that moved a leg onto another contract, in the words of the reason (item 10)
+_LEG_MOVE_REASONS: Mapping[str, str] = MappingProxyType({
+    "expiry": "you changed the expiry", "shift": "Shift moved the leg to another contract",
+    "width": "Width moved the leg to another contract", "hedge": "Hedge moved the leg to another contract",
+    "step": "you moved the strike"})
+
 _EXPLANATIONS: tuple[ExplanationTemplate, ...] = (
     ExplanationTemplate("why_triggered", "what_triggered", "Your rule was triggered: {rule_text} ({kind} rule {rule_id}).",
                         {"rule_text": Quoted, "kind": Recorded, "rule_id": Recorded}),
@@ -1726,6 +1732,10 @@ _EXPLANATIONS: tuple[ExplanationTemplate, ...] = (
     # D-58 (pending owner read): after an adjustment the T-01 line says which side is tested (its short is nearer spot)
     ExplanationTemplate("adjust_condition_side_put", "values_seen", "{line} (put side tested)", {"line": Explained}),
     ExplanationTemplate("adjust_condition_side_call", "values_seen", "{line} (call side tested)", {"line": Explained}),
+    # Lane O 27 Nov, item 2 (pending owner read): an alert row whose record has no worded condition shows the rule's kind
+    # and its figures, never the trade's name alone
+    ExplanationTemplate("alert_rule_fallback_valued", "values_seen", "{label}: {value} (rule {threshold})",
+                        {"label": PlaybookTriggerLabel, "value": PlaybookField, "threshold": PlaybookField}),
     # last resort (fail visible): the trigger id alone when no line can carry its value
     ExplanationTemplate("adjust_condition_line_id", "values_seen", "{label}", {"label": PlaybookTriggerLabel}),
     # ADR-221: the T-19 flag line names the cheapest approach the playbook offers and its Compare cost
@@ -2141,10 +2151,20 @@ _EXPLANATIONS: tuple[ExplanationTemplate, ...] = (
     # P10 (ADR-330 (13)): the labels of the Plan watch lines for the Stops-panel triggers, and the heading they sit under
     ExplanationTemplate("plan_watch_index_above", "values_seen", "Index exit above {level}", {"level": IndexLevel}),
     ExplanationTemplate("plan_watch_index_below", "values_seen", "Index exit below {level}", {"level": IndexLevel}),
-    ExplanationTemplate("plan_watch_leg_above", "values_seen", "Leg stop on {leg}: price above {level}",
+    # Lane O 27 Nov, items 5 and 6 (pending owner read): the stop line says the side (rises / falls), the level and,
+    # when a live price is known, the price now, so "price above 135.00" beside a price of 113.10 cannot be misread
+    ExplanationTemplate("plan_watch_leg_above", "values_seen",
+                        "Leg stop on {leg}: fires when the price rises above {level}",
                         {"leg": Explained, "level": IndexLevel}),
-    ExplanationTemplate("plan_watch_leg_below", "values_seen", "Leg stop on {leg}: price below {level}",
+    ExplanationTemplate("plan_watch_leg_below", "values_seen",
+                        "Leg stop on {leg}: fires when the price falls below {level}",
                         {"leg": Explained, "level": IndexLevel}),
+    ExplanationTemplate("plan_watch_leg_above_now", "values_seen",
+                        "Leg stop on {leg}: fires when the price rises above {level}; price now {now}",
+                        {"leg": Explained, "level": IndexLevel, "now": IndexLevel}),
+    ExplanationTemplate("plan_watch_leg_below_now", "values_seen",
+                        "Leg stop on {leg}: fires when the price falls below {level}; price now {now}",
+                        {"leg": Explained, "level": IndexLevel, "now": IndexLevel}),
     ExplanationTemplate("plan_watch_armed_heading", "values_seen", "Armed in the Stops panel", {}),
     # D-03 (ADR-317 (7)): an index exit set before an adjustment stays armed; the row names the new short strike
     ExplanationTemplate("paper_exit_set_before_call", "values_seen",
@@ -2645,6 +2665,16 @@ _EXPLANATIONS: tuple[ExplanationTemplate, ...] = (
     ExplanationTemplate("real_pnl_stale", "rule",
                         "Zerodha was last read more than {seconds} seconds ago, so no figure is shown until it is "
                         "read again.", {"seconds": Count}),
+    # Lane O 27 Nov, item 10 (UX-16, UX-24; pending owner read): a typed price a move replaced says the captured price
+    # and the reason; one pair per control that moves a leg
+    *(ExplanationTemplate(f"leg_edit_replaced_by_{key}", "values_seen",
+                          "Your price for leg {number} was replaced by the captured price {price}, because "
+                          + reason + ".", {"number": Count, "price": IndexLevel})
+      for key, reason in _LEG_MOVE_REASONS.items()),
+    *(ExplanationTemplate(f"leg_edit_removed_by_{key}", "values_seen",
+                          "Your price for leg {number} was removed, because " + reason
+                          + " and the new contract has no live price right now.", {"number": Count})
+      for key, reason in _LEG_MOVE_REASONS.items()),
 )
 
 EXPLANATIONS: Mapping[str, ExplanationTemplate] = MappingProxyType({t.id: t for t in _EXPLANATIONS})

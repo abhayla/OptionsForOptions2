@@ -32,7 +32,7 @@ import logging
 import time
 from collections.abc import Awaitable, Callable, Mapping
 from decimal import Decimal
-from typing import Annotated, Literal
+from typing import Annotated, Any, Literal
 
 from fastapi import APIRouter, Depends
 from ofo.charges import ChargeRates
@@ -375,6 +375,7 @@ class EditLegOut(ApiModel):
     close_at: datetime.datetime | None = None  # ADR-197: the quote's own time of an entry captured after hours
     price_source: Literal["captured", "typed", "none"]
     replaced_typed: bool  # AC-8: the leg had a typed price and moved, so the captured price replaced it
+    replaced_note: CatalogueText | None = None  # item 10: the server's sentence for that, with the price and the reason
     included: bool
     hedge: bool  # the leg carries the Hedge mark (REQ-076 AC-8)
     price_reason: Reason | None  # why the leg is unpriced after this edit (the planned-entry route's codes); else None
@@ -560,6 +561,15 @@ def _apply_move(cat: Catalogue, req: LegEditIn, legs: list[EditLeg], today: date
     return moved.legs, moved.moved
 
 
+def _replaced_note(control: str, index: int, leg: Any, unpriced: bool) -> Any:
+    """Item 10 (UX-16, UX-24): the sentence for a typed price a move replaced: the captured price and the reason, or
+    that the price was removed because the new contract has no live price. Server-built; the page prints it."""
+    key = control if control in ("expiry", "shift", "width", "hedge") else "step"
+    if unpriced:
+        return render_explanation(f"leg_edit_removed_by_{key}", number=index + 1)
+    return render_explanation(f"leg_edit_replaced_by_{key}", number=index + 1, price=leg.leg.entry_price)
+
+
 def apply_steps(cat: Catalogue, req: LegEditIn, legs: list[EditLeg], today: datetime.date, gate: Gate | None = None):
     """:func:`apply_edit` ``steps`` times (absent = once): N quick clicks = N single steps, each from the legs the last
     one left; any refusal refuses the whole request (nothing half-moved). The gate is the one the legs as sent got."""
@@ -713,6 +723,8 @@ async def leg_edit(req: LegEditIn,  # noqa: PLR0913 - FastAPI dependencies, one 
         "close_at": None if i in unpriced or x.typed else closes[i],
         "price_source": "none" if i in unpriced else ("typed" if x.typed else "captured"),
         "replaced_typed": legs[i].typed and i in moved,
+        "replaced_note": (_replaced_note(req.edit.control, i, x, i in unpriced)
+                          if legs[i].typed and i in moved else None),
         "included": x.included, "hedge": i in hedged, "price_reason": reasons.get(i) if i in unpriced else None,
         "block": blocks.get(i)} for i, x in enumerate(new_legs)]
     outcome = None

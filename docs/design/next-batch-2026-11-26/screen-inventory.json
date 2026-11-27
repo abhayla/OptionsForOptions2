@@ -5939,7 +5939,7 @@
      "labelFrom": "text",
      "ariaLabel": "",
      "testid": "``alert-answer-${x.code}``",
-     "source": "frontend/src/pages/AlertsPage.vue:129",
+     "source": "frontend/src/pages/AlertsPage.vue:132",
      "handlers": [
       "click"
      ],
@@ -5954,7 +5954,7 @@
      "labelFrom": "text",
      "ariaLabel": "",
      "testid": "side-closed-confirm-yes",
-     "source": "frontend/src/pages/AlertsPage.vue:134",
+     "source": "frontend/src/pages/AlertsPage.vue:137",
      "handlers": [
       "click"
      ],
@@ -5969,7 +5969,7 @@
      "labelFrom": "text",
      "ariaLabel": "",
      "testid": "side-closed-confirm-no",
-     "source": "frontend/src/pages/AlertsPage.vue:135",
+     "source": "frontend/src/pages/AlertsPage.vue:138",
      "handlers": [
       "click"
      ],
