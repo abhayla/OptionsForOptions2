@@ -29,6 +29,7 @@ from ofo_app.routes import outcome
 from test_adjustment_check import _reset_engine, _seeded, app_db_url  # noqa: F401
 from test_plan_watch import _arm
 
+STACK_DEPTH = 40
 STALLED_SAMPLES = 4  # 4 samples of 2 ms with no loop tick
 pytestmark = pytest.mark.skipif(os.environ.get("OFO_PERF") != "1", reason="measurement harness: set OFO_PERF=1")
 
@@ -178,7 +179,7 @@ async def test_profile(app_db_url, monkeypatch):  # noqa: F811, PLR0915, C901
     await app_db.close_db()
 
 
-async def test_concurrency(app_db_url, monkeypatch):  # noqa: F811, C901
+async def test_concurrency(app_db_url, monkeypatch):  # noqa: F811, C901, PLR0915
     """Q1 phase 2 step 1: N concurrent plan-watch (one per strategy) + N concurrent adjustment-check through ONE app
     instance (ASGITransport, asyncio.gather); instant price, warm margin. Median / max per request (the request log's
     own total ms). Every strategy has its plan; the app's active scenario is the last one seeded (ADJ-01)."""
@@ -247,7 +248,7 @@ async def test_concurrency(app_db_url, monkeypatch):  # noqa: F811, C901
                     if still >= STALLED_SAMPLES:
                         f = _sys._current_frames().get(loop_tid)
                         stack = []
-                        while f is not None and len(stack) < 40:
+                        while f is not None and len(stack) < STACK_DEPTH:
                             stack.append(f"{f.f_code.co_filename.split('OptionsForOptions2/')[-1]}:{f.f_code.co_name}")
                             f = f.f_back
                         own = [x for x in stack if "backend/" in x]
