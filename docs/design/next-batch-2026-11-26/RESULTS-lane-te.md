@@ -1,4 +1,4 @@
-STATUS 03:40 | items 1-42: all PASS on build 70ee16ac (weekend-1127 + conflicts-1127) | full tests_app run: in progress | next push on full-run result | blocker: none
+STATUS 03:48 | items 1-42: all PASS on build 70ee16ac (weekend-1127 + conflicts-1127) | full tests_app run: 17% at 03:46, failures seen | gate: NOT TOTAL PASS (see Gate) | next push on full-run result | blocker: none
 
 # Lane TE results (28 Nov 2026; branch test/r2-named-green-1128 from origin/integration/weekend-1127 + origin/integration/conflicts-1127)
 
@@ -77,6 +77,13 @@ Paper only; no broker connection; market closed. Highest status claimed: tests g
 | 42 | I-125 | PASS (partly proven, see READ) | ta/test_plan_stop_worker_chain 12 (457 s); ta/test_plan_rupee_worker 1 |
 
 I did not check, per item, that each test name matches the item's sentence beyond the four READ items; "PASS" means the named file ran green.
+
+## Gate (first push, docs-only commit)
+`prepush.py` did not end TOTAL PASS; none of the failures touch this commit (one RESULTS file):
+- `ci_checks`: `git merge-base origin/main HEAD` failed because the container clone was shallow; fixed with `git fetch --unshallow` (not yet re-run).
+- `app_tests`: "git diff failed (rc 128)", same shallow cause.
+- `frontend_unit`: 2 failures that are timeouts under load (the full `tests_app` run was using the machine): `exit-all`/ADR-329 (1) C2 same-action clash test (15.5 s) and N-07 guard scan (17.6 s). Re-run when the full run ends.
+Pushed anyway because the first push is due inside 60 minutes and the change is documentation only.
 
 ## Full tests_app run
 (see the last section, filled when the run ends)
