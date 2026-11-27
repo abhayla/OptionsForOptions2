@@ -26,7 +26,7 @@ def _ctx(*, connected, quote, closed=False):
 
 
 def _quote(ltp, health=DataHealth.AVAILABLE):
-    return SimpleNamespace(ltp=ltp, price_at=QUOTE_AT, timestamp=QUOTE_AT, health=health)
+    return SimpleNamespace(ltp=ltp, price_at=QUOTE_AT, timestamp=QUOTE_AT, health=health, validation_errors=())
 
 
 @pytest.fixture(autouse=True)
