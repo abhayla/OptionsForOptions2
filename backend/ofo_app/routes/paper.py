@@ -1376,8 +1376,8 @@ async def _refuse_legs_over_limit(db: Any, settings: Mapping[str, Decimal], orde
     ADR-081 / ADR-092: no leg at or above the contract's stored exchange freeze limit (``freeze_read``, the newest
     file); the largest order is the largest whole-lot order below it. Answer states of the limit: stored -> checked;
     none stored -> not a block, ADR-081 "the review warns"; contract not found -> refused before this check
-    (``paper_contract_not_tradable``); store read failed -> raises, nothing placed. The leg number is the position in
-    the basket, as the screen shows it."""
+    (``paper_contract_not_tradable``); store read failed -> raises, nothing placed. The refusal names the contract as
+    the screens print it, never a leg number (the basket's order is not the screen's)."""
     from ofo.instruments.freeze_limits import StoredFreeze, largest_allowed_units  # noqa: PLC0415
     from ofo.instruments.models import InstrumentId  # noqa: PLC0415
 
@@ -1396,10 +1396,13 @@ async def _refuse_legs_over_limit(db: Any, settings: Mapping[str, Decimal], orde
             continue
         freeze = StoredFreeze(found.freeze_limit, c.lot_size, found.file_date)
         if not o.quantity < freeze.limit:
+            name = display_contract(_identity(state[o.contract_id]))
             top = largest_allowed_units(freeze) // freeze.lot
-            lots = -(-o.quantity // freeze.lot)
+            if top < 1:  # the limit is below one lot: no whole-lot order is allowed
+                raise StrategyRefused("paper_leg_limit_below_one_lot", message=render(
+                    "paper_leg_limit_below_one_lot", contract=name, limit=freeze.limit, lot=freeze.lot))
             raise StrategyRefused("paper_leg_over_order_limit", message=render(
-                "paper_leg_over_order_limit", number=i, lots=lots, max_lots=top))
+                "paper_leg_over_order_limit", contract=name, lots=-(-o.quantity // freeze.lot), max_lots=top))
 
 
 @router.post("/paper/strategies/{strategy_id}/orders", status_code=201, response_model=PaperBookOut,
