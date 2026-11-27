@@ -20,6 +20,24 @@ PLAYBOOKS = json.loads((Path(__file__).resolve().parents[1] / "tests" / "fixture
 SAMPLE = {"time": ("15:00", "14:30")}
 
 
+# 27 Nov 10:28 / 10:59 (ADR-330 (7)): an alert from the PLAN's time exit says so; a playbook stage clock rule keeps its words
+PLAN_BODY = {"guards": {"time_exit": {"at": "11:03", "on": "expiry"}},
+             "triggers": {"T-10b": {"label": "Clock time reached (checked in this stage)", "unit": "time"}}}
+
+
+def test_plan_time_exit_alert_names_the_plans_time_exit():
+    from ofo_app.adjustment_check import trigger_words  # noqa: PLC0415
+    label, unit = trigger_words(PLAN_BODY, "T-10b")
+    assert str(condition_line("T-10b", label, unit, "11:05", "11:03")) == "Time exit reached: the plan's time exit is 11:03"
+
+
+def test_playbook_clock_rule_without_a_plan_time_exit_keeps_clock_time_reached():
+    from ofo_app.adjustment_check import trigger_words  # noqa: PLC0415
+    body = {"guards": {}, "triggers": PLAN_BODY["triggers"]}
+    label, unit = trigger_words(body, "T-10b")
+    assert str(condition_line("T-10b", label, unit, "15:00", "14:30")).startswith("Clock time reached")
+
+
 def test_t10b_clock_time_renders_its_line():
     t = PLAYBOOKS["triggers"]["T-10b"]
     line = condition_line("T-10b", t["label"], t["unit"], "15:00", "14:30")

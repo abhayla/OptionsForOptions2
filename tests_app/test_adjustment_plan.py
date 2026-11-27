@@ -157,9 +157,10 @@ async def test_invalid_values_a_wrong_type_and_put_without_a_plan_write_nothing(
     cases = [({"target": "abc"}, "target"), ({"target": "0"}, "target"), ({"stop": "101"}, "stop"),
              ({"max_adjustments": "11"}, "max_adjustments"), ({"max_adjustments": "-1"}, "max_adjustments"),
              ({"time_exit": "24:00"}, "time_exit"), ({"time_exit": "9:60"}, "time_exit")]
-    for extra, field in cases:
+    label = {"target": "Target", "stop": "Stop", "max_adjustments": "Max adjustments", "time_exit": "Time exit"}
+    for extra, field in cases:  # 27 Nov: the box is named as the sheet prints it
         status, out = await _call("POST", _plan_path(sid), json={"playbook_id": system.id, **extra})
-        assert (status, out["what_happened"]) == (UNPROCESSABLE, f"The playbook value {field} is not valid."), extra
+        assert (status, out["what_happened"]) == (UNPROCESSABLE, f"{label[field]} is not valid."), extra
     status, out = await _call("POST", _plan_path(sid), json={"playbook_id": other})  # a playbook of another type
     assert (status, out["what_happened"]) == (UNPROCESSABLE, "The playbook value playbook_id is not valid.")
     status, _ = await _call("POST", _plan_path(sid), json={"playbook_id": system.id, "max_adjustments": 3})

@@ -4926,5 +4926,41 @@
   "strategy_duplicate_leg_opposite_sides": {
     "sha256": "baa8b44c343e17df3d795861b568d5ff5c47e4692797a1a37650c4393e2ed6c6",
     "reviewed": "pending owner read"
+  },
+  "explanation:adjust_condition_line_plan_time_exit": {
+    "sha256": "41d93db276e6470ff8c7c4e19336b33417adb1df3398c95b99159298827d0a88",
+    "reviewed": "pending owner read"
+  },
+  "plan_sheet_invalid_target": {
+    "sha256": "bfc47cbd50569843f1e68339f8de14d02a16a5dffd8398672c145c81d3b270d7",
+    "reviewed": "pending owner read"
+  },
+  "plan_sheet_invalid_stop": {
+    "sha256": "f64e96c462298f0662cca4c75157d02efad7490148d0106edea0df6d8c66567b",
+    "reviewed": "pending owner read"
+  },
+  "plan_sheet_invalid_target_rupees": {
+    "sha256": "a68be16dfd202832cf9021b60f5f78dac5b480215af7e7f4f5b6a815c4158620",
+    "reviewed": "pending owner read"
+  },
+  "plan_sheet_invalid_stop_rupees": {
+    "sha256": "77700fb68f6601fb737809ead755a74f99156f3a9a4ee3a7055bb68d31594a23",
+    "reviewed": "pending owner read"
+  },
+  "plan_sheet_invalid_max_adjustments": {
+    "sha256": "f7b9acf564d6a87bf895cf43ad4dfa2c338ad24aa0ee83353186551553bc8bd7",
+    "reviewed": "pending owner read"
+  },
+  "plan_sheet_invalid_time_exit": {
+    "sha256": "21895501351317266e89384a93a37ab00a162831b06093fec78fb099a2c22323",
+    "reviewed": "pending owner read"
+  },
+  "plan_sheet_invalid_time_exit_on": {
+    "sha256": "5c88fe0fb17c9344ae077345c5c4c57cb1ded02acbe384985cd59bf627b9fbd9",
+    "reviewed": "pending owner read"
+  },
+  "plan_sheet_invalid_time_exit_on_past": {
+    "sha256": "d333cffb5710de6497a66fdf98800b60f9d2852d577bf17e5d6b47e7ade66993",
+    "reviewed": "pending owner read"
   }
 }

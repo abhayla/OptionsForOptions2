@@ -1533,6 +1533,15 @@ _PLAYBOOK_TEMPLATES: tuple[MessageTemplate, ...] = (
           "Nothing was changed.", "Opening or changing this playbook.", "Pick a playbook from your list."),
     _gate("playbook_body_invalid", _UI, 157, "The playbook value {field} is not valid.",
           _PB_NOT_SAVED, _PB_BLOCKED, "Correct that value, then save again.", {"field": PlaybookField}),
+    # 27 Nov 10:28 (pending owner read): a plan-sheet box is named as the sheet prints it, never by its code word. The
+    # words are PLAN_SHEET_LABEL_TEXT's (a test holds them equal); the route picks the template by the box.
+    *(_gate(f"plan_sheet_invalid_{key}", _UI, number, f"{label} is not valid.", _PB_NOT_SAVED, "Saving this plan.",
+            "Correct that value, then save again.")
+      for key, number, label in (("target", 702, "Target"), ("stop", 703, "Stop"), ("target_rupees", 704, "Target (Rs)"),
+                                 ("stop_rupees", 705, "Stop (Rs)"), ("max_adjustments", 706, "Max adjustments"),
+                                 ("time_exit", 707, "Time exit"), ("time_exit_on", 708, "Time exit date"))),
+    _gate("plan_sheet_invalid_time_exit_on_past", _UI, 709, "Time exit date is in the past.", _PB_NOT_SAVED,
+          "Saving this plan.", "Pick today or a later trading day, then save again."),
     # GC-ADJ2 step 2 (REQ-159 AC-1): the stages of one expiry kind leave a gap or overlap; the days and stage names
     _gate("playbook_stage_overlap", _UI, 158, "Days {from_day} to {to_day} are in both {first} and {second} "
           "({expiry} expiries).", _PB_NOT_SAVED, _PB_BLOCKED, "Change the days so each day is in one stage only.",

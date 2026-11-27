@@ -24,7 +24,10 @@ from test_adjustment_plan import (
     app_db_url,  # noqa: F401 - a fixture, found by name
 )
 
-NOT_VALID = "The playbook value time_exit is not valid."
+#: 27 Nov: the refusal names the box as the sheet prints it; unreadable text is the time box's, a day the date box's
+SAID = {"2026-11-07": "Time exit date is not valid.", "2026-11-05": "Time exit date is in the past.",
+        "2026-11-10": "Time exit date is not valid.", "2026-11-31": "Time exit is not valid.",
+        "x": "Time exit is not valid.", "2026-1-9": "Time exit is not valid."}
 
 
 async def _system_ic_id(engine) -> int:
@@ -40,7 +43,7 @@ async def test_save_refuses_weekend_past_after_expiry_and_unreadable_dates_namin
     pid = await _system_ic_id(app_db_url)
     before = await _plan_row(app_db_url, sid)  # the test database may keep a plan from an earlier case
     status, out = await _call("POST", _plan_path(sid), json={"playbook_id": pid, "time_exit": {"at": "15:15", "on": day}})
-    assert (status, out["what_happened"]) == (UNPROCESSABLE, NOT_VALID), day
+    assert (status, out["what_happened"]) == (UNPROCESSABLE, SAID[day]), day
     assert await _plan_row(app_db_url, sid) == before  # nothing written
 
 

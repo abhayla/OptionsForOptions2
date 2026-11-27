@@ -239,7 +239,16 @@ class AdjustmentPlanOut(ApiModel):
     stops: StopsOut
 
 
+#: the sheet's boxes the refusal names by their label (27 Nov): the template ``plan_sheet_invalid_<box>`` says it
+SHEET_BOXES = frozenset({"target", "stop", "target_rupees", "stop_rupees", MAX_KEY, TIME_KEY, "time_exit_on",
+                        "time_exit_on_past"})
+
+
 def _bad(field: str) -> store.PlaybookStoreError:
+    """A refused sheet value. A box the sheet labels is named by that label; any other field keeps the playbook's
+    generic sentence (``playbook_id``, ``settings.<key>``)."""
+    if field in SHEET_BOXES:
+        return store.PlaybookStoreError(f"plan_sheet_invalid_{field}", f"plan sheet field {field}")
     return store.PlaybookStoreError(store.BODY_INVALID, f"plan sheet field {field}", field=field)
 
 
@@ -485,9 +494,11 @@ def check_time_exit_day(guard: object, today: datetime.date | None, last_expiry:
     if parts is None or parts[1] == ON_EXPIRY:
         return
     day = day_of(parts[1])
-    if day is None or today is None or last_expiry is None or day < today or day > last_expiry \
+    if day is not None and today is not None and day < today:
+        raise _bad("time_exit_on_past")
+    if day is None or today is None or last_expiry is None or day > last_expiry \
             or not market_calendar.is_trading_day(day):
-        raise _bad(TIME_KEY)
+        raise _bad("time_exit_on")
 
 
 def with_overrides(body: dict, data: PlanIn, kind: str | None = None, bases: Bases | None = None) -> dict:

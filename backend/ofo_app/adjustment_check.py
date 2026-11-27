@@ -60,6 +60,7 @@ from ofo.adjustment.approaches import (
 from ofo.adjustment.compare import Cheapest, Column, MarginRead, cheapest_approach
 from ofo.adjustment.offered import offered_now
 from ofo.adjustment.strategy_type import strike_gap_of, type_of
+from ofo.checks.time_of_day import time_exit_parts
 from ofo.engine import adjust_money
 from ofo.engine.extremes import ContractTerms
 from ofo.engine.extremes_charges import NOT_PRICED, RATES_UNAVAILABLE, book_after_charges, open_exit_charges
@@ -783,6 +784,11 @@ def record_words(body: Mapping | None, rule_id: str, rv: Any) -> tuple[str | Non
     return None, None, None, None
 
 
+#: the label of a T-10b hit whose time is the PLAN's time exit (ADR-330 (7)); a playbook stage clock rule keeps its own
+PLAN_TIME_EXIT_LABEL: Final = "Time exit reached"
+TIME_EXIT_TRIGGER: Final = pe.sl.TRIGGER_TIME_EXIT
+
+
 def trigger_words(body: Mapping | None, trigger_id: str | None) -> tuple[str | None, str | None]:
     """(label, unit) of a trigger as the evaluated body holds them; (None, None) for a body or trigger without them.
     A day rule (GC-IC1 1a, ``day.<when>.<HHMM>.<n>``): its action's catalogue words and "%" (its value is a distance
@@ -804,6 +810,8 @@ def trigger_words(body: Mapping | None, trigger_id: str | None) -> tuple[str | N
     if not isinstance(trig, Mapping):
         return None, None
     label, unit = trig.get("label"), trig.get("unit")
+    if trigger_id == TIME_EXIT_TRIGGER and time_exit_parts((body.get("guards") or {}).get("time_exit")) is not None:
+        label = PLAN_TIME_EXIT_LABEL  # ADR-330 (7): the time is the plan's own time exit, so the line says so
     return (label if isinstance(label, str) else None), (unit if isinstance(unit, str) else None)
 
 
@@ -936,6 +944,8 @@ def _percent_line(trigger_id: str, label: str | None, unit: str | None, value: s
     and unit. A label the slot refuses or a body without one -> the trigger id (fail visible); a unit that is empty
     or not a plain unit -> the line without it."""
     def line(lab: str, un: str | None) -> Any:
+        if trigger_id == TIME_EXIT_TRIGGER and lab == PLAN_TIME_EXIT_LABEL:  # the plan's time exit says so
+            return render_explanation("adjust_condition_line_plan_time_exit", threshold=threshold)
         if un == CLOCK_UNIT:  # a clock trigger: HH:MM value and threshold, no unit word
             return render_explanation("adjust_condition_line_time", label=lab, value=value, threshold=threshold)
         if un:
