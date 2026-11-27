@@ -95,7 +95,7 @@ from ofo_app import (
 )
 from ofo_app import strategy_store as store
 from ofo_app.api_models import ApiModel, CatalogueText, Money
-from ofo_app.db import get_db
+from ofo_app.db import get_db, release_connection
 from ofo_app.errors import ClosedRoute, Failure, refuse_request
 from ofo_app.live_push import POLL_SECONDS, LiveFeed
 from ofo_app.paper_reasons import (
@@ -998,6 +998,7 @@ async def _book(db: Any, stored: Any, orders: Sequence[paper_store.StoredOrder],
     snapshot = None
     keys = [k for k in (found[c].feed_key for c in open_ids) if k is not None]
     if connected and keys:
+        await release_connection(db)  # D-36 (c): the feed hold below waits up to FORWARD_WAIT_S
         snapshot = await _snapshot(ctx, feed, underlying, keys)  # type: ignore[arg-type]
     prices = _prices(open_ids, found, snapshot)
     base = _figures(orders, found, prices, connected, _book_day(snapshot, answered_at))
@@ -1048,7 +1049,8 @@ async def list_paper_strategies(db: Annotated[Any, Depends(get_db)],  # noqa: PL
             if key is not None and key not in keys.setdefault(b.underlying, []):
                 keys[b.underlying].append(key)
     snapshots = {}
-    if connected:
+    if connected and keys:
+        await release_connection(db)  # D-36 (c): the feed holds below wait; the session re-checks out afterwards
         for underlying, wanted in keys.items():
             snapshots[underlying] = await _snapshot(ctx, feed, underlying, wanted)  # type: ignore[arg-type]
     held_rows = await held_entry_store.read_many(db, [b.strategy_id for b in books])
@@ -1394,6 +1396,7 @@ async def place_paper_orders(strategy_id: int, body: PaperOrdersIn,  # noqa: PLR
         await _refuse_take_profit_at_loss(db, user_ref, strategy_id, body.approach_id, ctx, rates, tracked_reader)
     placed_at = now()
     may_act.refuse_unless_allowed(ctx, "place", placed_at)  # ADR-212: before any price read
+    await release_connection(db)  # only reads so far (the strategy row lock is taken in place_checked, below)
     exit_prices = await _server_exit_prices(ctx, feed, stored.saved.definition.underlying, body.orders, state)
     # only a strategy with no paper order yet can be at its first fill (a book never shrinks): a later fill reads no IV
     first = not await paper_store.tracked_ids(db, [strategy_id])
@@ -1505,6 +1508,7 @@ async def paper_exit_risk(strategy_id: int, orders: Annotated[str, Query(max_len
         db, sorted({o.order.contract_id for o in booked} | {o.contract_id for o in basket}))}
     if any(state[o.contract_id].stored is None for o in basket):
         raise StrategyRefused("paper_contract_not_tradable")
+    await release_connection(db)  # read-only route: the live exit read waits on the feed
     try:
         prices = await _server_exit_prices(ctx, feed, stored.saved.definition.underlying, basket, state)
     except StrategyRefused:
@@ -1834,6 +1838,7 @@ async def check_trigger_levels(db: Any, ctx: MarketContext | None, feed: LiveFee
     leg_keys = [keys.get(n.contract_id) for n in new if n.contract_id is not None]
     if any(k is None for k in leg_keys):
         return _UNREADABLE  # no feed key = no live leg price to check against (never the index)
+    await release_connection(db)  # read-only so far, and both callers run this before the strategy row lock
     try:
         read = await market_read.read_market(ctx, feed, underlying, sorted({k for k in leg_keys if k is not None}),
                                              any(n.contract_id is None for n in new), "trigger_check", wait=wait)

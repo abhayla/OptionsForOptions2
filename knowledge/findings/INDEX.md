@@ -3,6 +3,7 @@
 # Findings index
 
 197 finding(s), generated from `knowledge/findings/*.json`.
+196 finding(s), generated from `knowledge/findings/*.json`.
 
 | id | class | detection status | other fields |
 |---|---|---|---|
@@ -139,6 +140,7 @@
 | parallel-branches-green-alone-red-together | Two work items built in parallel branches each pass CI on their own base, but one adds a repo-wide guard (an import scan, an inventory, an allowlist) that the other's new code violates; the clash shows only when the branches meet, so a branch merged first can turn the other red after it was verified. | unguarded | occurrences, scope, spec_ref |
 | per-touched-file-test-runs-miss-repo-wide-gates | Running only the tests of the files a change touched, per batch, misses the repo-wide gates (structure scans, import rules, the generated API description): they fail late and all at once. | unguarded | scope, spec_ref |
 | pipe-masks-gate-exit-code | A failing step does not stop the step after it: a gate piped into a filter (`gate \| tail`) takes the filter's exit status, and a command on its own line (or after `;`) runs whatever the line before returned - so a following commit, push or merge goes ahead after a failed gate; chaining with && is not enough when the gate's output is piped. | guarded | occurrences, scope, spec_ref |
+| pool-held-across-market-wait | A request handler keeps its session's pooled DB connection checked out while it awaits the live feed (hold_and_read, up to FORWARD_WAIT_S) or a broker/REST read; with a small pool (DB_POOL_SIZE 4 on the PC, no overflow) as many stalled requests as the pool is big starve /health and every other DB route until the 30 s pool timeout. | guarded | occurrences, scope, size, spec_ref |
 | positions-reply-refused-for-non-platform-rows | A reader that must resolve every row of a broker reply against the platform's own catalogue refuses the WHOLE reply when the account holds any row the platform can never own (a stock, another underlying, another exchange), so a fail-closed gate downstream blocks every action for every strategy - the user's unrelated activity disables the product. | guarded | occurrences, scope, spec_ref |
 | pr-exceeds-merge-gate-file-limit | A process that batches work into one pull request (a chunk, an integration branch) can outgrow a merge gate that reads the PR's file list from an API with a fixed cap; the gate then refuses the PR at the very end, after every review and CI run, and no history split may exist that brings each part under the cap. | unguarded | occurrences, scope, spec_ref |
 | pr-text-closes-issue-unintended | A code host that closes issues from free text (GitHub: a closing keyword - close/fix/resolve and their forms, optional colon - directly before #N in a PR body or in a commit message reaching the default branch) closes a whole issue whenever an author writes a qualified reference ('Fix #263 items 1-3') or ordinary prose ('the clash with #275 is resolved: #275 moved'); without a check on the text, every partial fix and every prose mention is a possible wrong close, found only later from the issue list. | guarded | occurrences, scope, spec_ref |

@@ -39,10 +39,17 @@ from ofo.errors.templates import MARGIN_SHORTFALL_NEXT_ACTION, ZERODHA_BUSY_TEXT
 EXPLANATION_FIELDS: tuple[str, ...] = ("what_triggered", "values_seen", "rule")
 
 
+_PASSED_MAX = 4096
+_PASSED: dict[str, None] = {}  # explanation texts that passed every check below (REQ-049 AC-4: one scan per text)
+
+
 def check_explanation_wording(text: str, where: str) -> None:
     """The platform's own words of an explanation: the old timeline phrase list AND the shared Q226/Q230 checker."""
     from ofo.strategy.wording import find_banned_phrases
 
+    if type(text) is str and text in _PASSED:
+        _wording.is_nfkc_clean_latin("a")  # a public entry: it verifies the checker, so a remembered pass fails closed (ADR-056 (1))
+        return
     if not any(ch.isalpha() for ch in text):
         return  # a template of slots and punctuation only ("{a}: {b}") holds no platform words to check
     found = find_banned_phrases(text)
@@ -50,6 +57,10 @@ def check_explanation_wording(text: str, where: str) -> None:
     if found:
         raise ValueError(f"the platform's own answer wording contains advice phrases {found}: {text!r}")
     _wording.check_platform_text(text, where)
+    if type(text) is str:  # only a PASS of an exact str is remembered; a refusal raised above and is never stored
+        if len(_PASSED) >= _PASSED_MAX:
+            _PASSED.clear()
+        _PASSED[text] = None
 
 
 # --- typed slots --------------------------------------------------------------------------------------------------

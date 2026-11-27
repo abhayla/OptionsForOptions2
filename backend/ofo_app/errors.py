@@ -50,6 +50,7 @@ from ofo.errors import CATALOGUE, ErrorClass, UserFacingError, render, user_mess
 from ofo_app.api_models import ApiModel, DoorRefused, Emitted, emit, emit_message
 from ofo_app.broker_config import validate_frontend_origin
 from ofo_app.redaction import install_redaction, keep_public_codes
+from ofo_app.request_log import RequestLog
 from ofo_app.secret_values import contains_secret
 from ofo_app.underlying import refusal_of
 
@@ -772,3 +773,4 @@ def install(app: FastAPI) -> None:
     docs = {("GET", url) for url in (app.docs_url, app.redoc_url, app.openapi_url,
                                       app.swagger_ui_oauth2_redirect_url if app.docs_url else None) if url}
     app.add_middleware(_Boundary, exempt=frozenset(docs))
+    app.add_middleware(RequestLog)  # outermost (added last): one INFO line per request (route template, status, ms)
