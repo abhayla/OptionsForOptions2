@@ -4984,7 +4984,7 @@
     "reviewed": "pending owner read"
   },
   "explanation:paper_leg_stop_bare_many": {
-    "sha256": "8812c146cd4c1895005c842dd36eac5d31d371e005ab2e1c6346a6a65e65c6e7",
+    "sha256": "46a8349fb29e79e7843794d223218e79f85176f421c0755d907587e581ca865c",
     "reviewed": "pending owner read"
   },
   "explanation:paper_leg_stop_now_loss": {
@@ -5081,6 +5081,14 @@
   },
   "explanation:plan_final_line": {
     "sha256": "42c5c2af33586efa6e81061e3fb07d93f5c9dcf027aec73bb0b238b65dd9f5ac",
+    "reviewed": "pending owner read"
+  },
+  "explanation:paper_leg_stop_now_unlimited": {
+    "sha256": "8aad5466317bce7d3ff95223cf51cca59254a507de57ea7125d386e01e7e9fe5",
+    "reviewed": "pending owner read"
+  },
+  "explanation:paper_leg_stop_then_loss": {
+    "sha256": "4358ee5f157ae6ee997c66ca6e23f18c333915e32f42c291c74641f6329cc600",
     "reviewed": "pending owner read"
   }
 }

@@ -98,6 +98,20 @@ def book_extremes(view: BookView, terms: Mapping[str, ContractTerms],
     return BookExtremes(profit_left, loss_left, max_profit, max_loss, None)
 
 
+def book_pnl_at_zero(view: BookView, terms: Mapping[str, ContractTerms]) -> Decimal | None:
+    """ADR-330 (55): the book's P&L at expiry with the index at 0 (the booked cash plus every open contract's payoff
+    at level 0, the same definition as Max Loss); None when it cannot be said (nothing open, two expiries, a leg the
+    engine will not value). The warning prints "worst case: <index> at zero" only when this equals the Max Loss."""
+    open_ = [p for p in view.positions if p.net_quantity != 0]
+    if not open_ or len({terms[p.instrument_id].expiry for p in open_}) > 1:
+        return None
+    try:
+        strategy = _strategy(open_, terms, {p.instrument_id: Decimal(0) for p in open_})
+        return view.cash + strategy.expiry_pnl_at(Decimal(0))
+    except (ValueError, KeyError, MultiExpiryError):
+        return None
+
+
 ExitState = Literal["yes", "no", "cannot_tell"]
 
 

@@ -346,7 +346,8 @@ class PaperMonitor:
                 if t.kind == "leg_stop":
                     answer = paper_routes.leg_stop_answer(
                         book, open_net[t.contract_id], t.contract_id, prices[t.contract_id],
-                        names, terms, now, a.underlying)
+                        names, terms, now, a.underlying,
+                        lines=False)  # ADR-330 (55): the fired message keeps its one sentence
                 else:
                     answer = paper_routes.index_exit_answer(book, {c: prices[c] for c in sorted(open_net)}, terms,
                                                             names, now)

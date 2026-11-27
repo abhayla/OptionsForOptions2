@@ -1,4 +1,4 @@
-STATUS 17:05 | 54: fixed, not tested | 55: fixed, not tested (Opus review pending) | 57: fixed, not tested | next push: after prepush gate | blocker: none
+STATUS 17:40 | 54: fixed, not tested | 55: fixed, not tested (Opus review done, fixes applied) | 57: fixed, not tested | next push: after prepush gate | blocker: none
 
 # Lane V RESULTS (27 Nov 2026, IST): Plan door, three-line stop warning, closed trade page
 
@@ -28,7 +28,7 @@ One-lot NIFTY condor, strikes from the real 27 Nov case (sold 25950 CE / 25850 P
 | Test file | What it covers |
 |---|---|
 | `tests_app/test_leg_stop_risk.py` (updated + 7 new) | the real condor case (three lines, Rs 14,45,535.00), bare call (no amount), profit book, SENSEX name, both bare, figures missing, nothing bare |
-| `tests_app/test_stop_fired_message.py` (updated) | the fired-stop message carries the same three lines |
+| `tests_app/test_stop_fired_message.py` (unchanged) | the fired-stop message keeps its one sentence |
 | `tests/tracking/test_plan_final.py` (14) | every ending, plan absent, level not set, level not available, no closing record, earlier day, naive time refused |
 | `tests_app/test_plan_final_line.py` (6) | route: your exit, settlement, earlier day, open book (none), no plan, percent plan with no rupee figure |
 | `frontend/tests/paper-stops-leg-risk-w2b.test.js` | the page prints three lines, one each; a malformed list falls back to the one sentence |
@@ -46,6 +46,17 @@ Ran this session: full vitest 287 files / 3221 tests pass; eslint 0 errors; `tes
 Backend (pinned "pending owner read" in `tests/errors/template_pins.json`): "If this stop fires, the sold {leg} is left without protection." / "If this stop fires, the sold options {legs} are left without protection." / "Max loss now: Rs {amount}." / "Max loss now: none (the book shows a profit of at least Rs {amount})." / "Max loss then: Rs {amount} (worst case: {index} at zero)." / "Max loss then: none (the book shows a profit of at least Rs {amount})." / **"Max loss then: no upper limit (worst case: {index} keeps rising)." (sold-call wording: the owner gave no exact text, pending owner read)** / "Max loss now: could not be worked out." / "Max loss then: could not be worked out." / "stop Rs {amount}", "no stop", "stop not available", "target Rs {amount}", "no target", "target not available", "Plan: {stop}, {target}.", "No plan was set for this trade.", "your exit", "your stop", "expiry settlement", "Closed by {how} at {time}.", "Closed by {how} on {day} at {time}.", "Closed by {how}.", "How this trade ended is not recorded."
 Frontend (`sharedStateText.js`): button "Plan"; "Could not open the plan. Try again."
 
+## Opus review of (55) (independent, commit e916854f): verdict REVISE, what was done
+| Finding | Action |
+|---|---|
+| F1 an engine figure (unlimited, or a figure the exit judge hides) was printed "could not be worked out"; a bare sold call without a "now" figure missed "no upper limit" | Fixed: the three lines use the engine's own figures as they are ("Max loss now: no upper limit." added); tests for the ratio call spread and the calendar call |
+| F2 "worst case: index at zero" was chosen because the bare leg is a put | Fixed: printed only when the engine's P&L at zero (new `book_pnl_at_zero`) equals the max loss; otherwise the amount alone ("Max loss then: Rs ...") |
+| F3 the fired-stop message printed "Max loss now" with the figure from before the fire | Fixed by keeping the fired-stop message on its one sentence as before (`lines=False`); the three lines are for the warning before a stop is saved. The old sentence's "(now ...)" has the same stale-figure wording; listed below |
+| F4 several exposed legs read "left without protection" though one may still be covered | Fixed for several legs ("these sold options are left with less protection: ..."). A single partly covered leg still reads "left without protection": listed below |
+| F5 newlines run together in plain paragraphs | Stops panel text gets `whitespace-pre-line`; the fired message no longer carries newlines |
+| F6 stored three-line text restore list | Not needed: the three lines are no longer stored |
+| F7 latent `bare_call and after is not None` | Removed |
+
 ## Decisions I took (owner away, B2) and what the owner should confirm
 1. **Endings (57).** The book records three closing orders: exit, stop (Stops panel), settle. The plan's own stop, target and time exit raise alerts only (ADR-003), nothing links a close to one, so a close after a plan alert is recorded as "your exit". The line therefore names: your exit, your stop, expiry settlement, "not recorded", and "No plan was set". The brief's "plan stop / target / time exit" endings are NOT built: they would be a guess. Owner question: should the product link an exit to the plan alert that preceded it?
 2. **Plan levels in rupees (57).** A stored rupee level prints as is; a percent level prints in rupees only when the stop base fixed at entry gives it (stop). The target as a percent needs the entry max profit, which a closed book does not hold: it prints "target not available", never an invented number. Real trade 173 will therefore often read "Plan: stop Rs X, target not available." unless the plan stored rupee levels. Owner question: store the entry max profit with the plan (needs a migration, so not done).
@@ -61,7 +72,9 @@ Frontend (`sharedStateText.js`): button "Plan"; "Could not open the plan. Try ag
 2. Link a closing exit to the plan alert that preceded it, so "plan stop / target / time exit" can be named (decision 1).
 3. Store the entry max profit with the plan so a closed trade can print its target in rupees (decision 2; needs a migration).
 4. The Positions list's closed rows (PaperStrategies) do not print `plan_final_text`; only the builder does.
-5. `ruff` baseline: `routes/paper.py` carries many PLR0917 findings from before; not touched.
+5. The fired-stop message's "(now Rs ...)" is the figure before the fire; give the message its own wording (Opus review F3).
+6. Line 1 for ONE partly covered sold leg (2 lots short, 1 covered) says "without protection"; needs the bare quantity from the engine (F4).
+7. `ruff` baseline: `routes/paper.py` carries many PLR0917 findings from before; not touched.
 
 ## Model that did each task
 | Task | Model |

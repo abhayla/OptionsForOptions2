@@ -2049,7 +2049,7 @@ _EXPLANATIONS: tuple[ExplanationTemplate, ...] = (
     ExplanationTemplate("paper_leg_stop_bare_one", "values_seen",
                         "If this stop fires, the sold {leg} is left without protection.", {"leg": Explained}),
     ExplanationTemplate("paper_leg_stop_bare_many", "values_seen",
-                        "If this stop fires, the sold options {legs} are left without protection.",
+                        "If this stop fires, these sold options are left with less protection: {legs}.",
                         {"legs": Explained}),
     ExplanationTemplate("paper_leg_stop_now_loss", "values_seen", "Max loss now: Rs {amount}.",
                         {"amount": IndexLevel}),
@@ -2066,6 +2066,9 @@ _EXPLANATIONS: tuple[ExplanationTemplate, ...] = (
                         "Max loss then: no upper limit (worst case: {index} keeps rising).", {"index": UnderlyingName}),
     ExplanationTemplate("paper_leg_stop_three_lines", "values_seen", "{first}\n{second}\n{third}",
                         {"first": Explained, "second": Explained, "third": Explained}),
+    ExplanationTemplate("paper_leg_stop_now_unlimited", "values_seen", "Max loss now: no upper limit.", {}),
+    ExplanationTemplate("paper_leg_stop_then_loss", "values_seen", "Max loss then: Rs {amount}.",
+                        {"amount": IndexLevel}),
     ExplanationTemplate("paper_leg_stop_now_unknown", "values_seen", "Max loss now: could not be worked out.", {}),
     ExplanationTemplate("paper_leg_stop_then_unknown", "values_seen", "Max loss then: could not be worked out.", {}),
     # ADR-330 (57): the one read-only line of a closed trade: what the plan was and how the trade ended

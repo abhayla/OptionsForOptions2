@@ -44,6 +44,7 @@ from ofo.engine.extremes import (
     ExtremesReason,
     book_breakevens,
     book_extremes,
+    book_pnl_at_zero,
     exit_risk,
 )
 from ofo.engine.extremes_charges import (
@@ -1524,12 +1525,13 @@ def _stop_line(before: Decimal, after: Decimal | str) -> str:
 
 
 def leg_stop_lines(risk: ExitRisk, names: Mapping[str, Any], terms: Mapping[str, Any],
-                   underlying: str) -> list[Any] | None:
+                   underlying: str, at_zero: Decimal | None = None) -> list[Any] | None:
     """ADR-330 (55), ADR-008: the three lines for a stop that leaves a sold option bare, from the engine's figures
     (Decimal, never computed in the page). None when no sold option is left bare (the one-line sentence applies).
-    The case the figure stands for: a bare sold put -> the index-at-zero figure; a bare sold call -> no upper limit,
-    said in words with no amount. A figure the engine did not give prints no number. ``underlying`` is the trade's own
-    index (NIFTY or SENSEX), never a literal."""
+    The case the figure stands for is named only when it is true: "worst case: <index> at zero" when the engine's
+    P&L at zero (``at_zero``) IS the max loss then; "no upper limit" when the engine's figure is unlimited (a sold
+    call left bare); any other loss prints its amount with no case named. A figure the engine did not give prints no
+    number. ``underlying`` is the trade's own index (NIFTY or SENSEX), never a literal."""
     if not risk.exposed:
         return None
     legs = [names[i] for i in risk.exposed]
@@ -1539,32 +1541,35 @@ def leg_stop_lines(risk: ExitRisk, names: Mapping[str, Any], terms: Mapping[str,
     first = (render_explanation("paper_leg_stop_bare_one", leg=joined) if len(legs) == 1
              else render_explanation("paper_leg_stop_bare_many", legs=joined))
     before, after = risk.max_loss_before, risk.max_loss_after
-    if not isinstance(before, Decimal):  # absent (or unlimited, which the exit judge never gives "before"): no number
+    if before is UNLIMITED:
+        now = render_explanation("paper_leg_stop_now_unlimited")
+    elif not isinstance(before, Decimal):
         now = render_explanation("paper_leg_stop_now_unknown")
     elif before >= 0:
         now = render_explanation("paper_leg_stop_now_profit", amount=before)
     else:
         now = render_explanation("paper_leg_stop_now_loss", amount=-before)
-    bare_call = any(terms[i].instrument is Instrument.CE for i in risk.exposed)
-    if after is UNLIMITED or (bare_call and after is not None):
-        # a sold call left bare has no upper limit, said in words with no amount; so does any unlimited figure
+    if after is UNLIMITED:
         then = render_explanation("paper_leg_stop_then_unlimited", index=underlying)
     elif not isinstance(after, Decimal):
         then = render_explanation("paper_leg_stop_then_unknown")
     elif after >= 0:
         then = render_explanation("paper_leg_stop_then_profit", amount=after)
-    else:
+    elif at_zero == after:
         then = render_explanation("paper_leg_stop_then_zero", amount=-after, index=underlying)
+    else:
+        then = render_explanation("paper_leg_stop_then_loss", amount=-after)
     return [first, now, then]
 
 
-def _exit_warning(risk: ExitRisk, names: Mapping[str, Any], leg_stop: bool = False,
-                  terms: Mapping[str, Any] | None = None, underlying: str = "") -> ExitRiskOut:
+def _exit_warning(risk: ExitRisk, names: Mapping[str, Any], leg_stop: bool = False,  # noqa: PLR0913
+                  terms: Mapping[str, Any] | None = None, underlying: str = "",
+                  at_zero: Decimal | None = None) -> ExitRiskOut:
     """The yes answer says only what is known: the Max Loss figures (the catalogue's "No fixed maximum" when unlimited)
     when the engine gave them, and the sold legs left with less cover. Nothing known to say -> cannot_tell.
     ``leg_stop``: the figures are worded as the leg-stop line (ADR-330 (6)) instead of the exit confirmation's."""
     if leg_stop and risk.exposed and terms is not None and underlying:  # ADR-330 (55): the three lines
-        three = leg_stop_lines(risk, names, terms, underlying)
+        three = leg_stop_lines(risk, names, terms, underlying, at_zero)
         if three is not None:
             (before, _), (after, _) = _extreme(risk.max_loss_before), _extreme(risk.max_loss_after)
             return ExitRiskOut(state="yes", max_loss_before=before, max_loss_after=after,
@@ -1675,7 +1680,7 @@ async def names_and_terms(db: Any, underlying: str, booked: Sequence[Any]) -> tu
 
 def leg_stop_answer(booked: Sequence[Any], net: int, contract_id: int, level: Decimal,  # noqa: PLR0913
                      names: Mapping[str, Any], terms: Mapping[str, Any], at: datetime.datetime,
-                     underlying: str) -> ExitRiskOut:
+                     underlying: str, *, lines: bool = True) -> ExitRiskOut:
     """THE ADR-330 (6) answer for one leg stop (the route and the monitor's fired-stop message both call this, so the
     figure is computed one way): the one-leg exit of the whole open quantity ``net`` at ``level``."""
     # the close's side and quantity from the exit door's own rule (G2: no side flipped outside it); no order is built
@@ -1689,16 +1694,24 @@ def leg_stop_answer(booked: Sequence[Any], net: int, contract_id: int, level: De
         return _exit_risk_answer("cannot_tell")
     # ADR-330 (6) has no threshold: the line shows whenever the engine prices both figures (ADR-256's "more than double"
     # is the exit confirmation's rule, whose figures exit_risk hides below it), so read the same engine's figures here
+    at_zero = None
     try:
         loss0 = book_extremes(net_positions(_paper(booked), {}), terms, {}).max_loss
-        loss1 = book_extremes(net_positions([*_paper(booked), leg], {}), terms, {}).max_loss
+        after_view = net_positions([*_paper(booked), leg], {})
+        loss1 = book_extremes(after_view, terms, {}).max_loss
+        at_zero = book_pnl_at_zero(after_view, terms)
     except (ValueError, KeyError):
         loss0 = loss1 = None
-    if isinstance(loss0, Decimal) and (loss1 is UNLIMITED or isinstance(loss1, Decimal)):
+    if lines and risk.state == "yes" and risk.exposed:
+        # ADR-330 (55): a bare sold option gets three lines from the engine's own figures as they are: an unlimited
+        # or absent figure is said as such, never replaced by the exit judge's hidden ones
+        risk = ExitRisk("yes", loss0, loss1, risk.exposed)
+    elif isinstance(loss0, Decimal) and (loss1 is UNLIMITED or isinstance(loss1, Decimal)):
         risk = ExitRisk("yes", loss0, loss1, risk.exposed)
     elif risk.state != "yes":
         return _exit_risk_answer(risk.state)
-    return _exit_warning(risk, names, leg_stop=True, terms=terms, underlying=underlying)
+    return _exit_warning(risk, names, leg_stop=True, terms=terms if lines else None, underlying=underlying,
+                         at_zero=at_zero)
 
 
 def index_exit_answer(booked: Sequence[Any], exits: Mapping[int, Decimal], terms: Mapping[str, Any],

@@ -246,7 +246,7 @@ async function keep(t) {
         </select>
         <input :value="stopOf(l.index).level" type="text" inputmode="decimal" placeholder="Stop price" class="w-24 rounded border border-line px-1 py-0.5" :data-testid="`stop-level-${l.index}`" :aria-label="`Stop price for ${l.label}`" @input="setStop(l.index, { level: $event.target.value })" />
         <button type="button" class="rounded border border-line px-3 py-1" :disabled="busy || !!stopReason(l.index)" :data-testid="`stop-save-${l.index}`" @click="saveStop(l)">{{ busy ? 'Saving...' : 'Save' }}</button>
-        <span class="block min-h-4 basis-full text-xs text-ink-muted" :data-testid="`stop-risk-slot-${l.index}`"><span v-if="riskText(l)" :data-testid="`stop-risk-${l.index}`"><template v-if="riskLines(l)"><span v-for="(t, n) in riskLines(l)" :key="n" class="block" :data-testid="`stop-risk-line-${l.index}-${n}`">{{ t }}</span></template><template v-else>{{ riskText(l) }}</template></span></span>
+        <span class="block min-h-4 basis-full whitespace-pre-line text-xs text-ink-muted" :data-testid="`stop-risk-slot-${l.index}`"><span v-if="riskText(l)" :data-testid="`stop-risk-${l.index}`"><template v-if="riskLines(l)"><span v-for="(t, n) in riskLines(l)" :key="n" class="block" :data-testid="`stop-risk-line-${l.index}-${n}`">{{ t }}</span></template><template v-else>{{ riskText(l) }}</template></span></span>
         <span class="block min-h-4 basis-full text-xs text-ink-muted" :data-testid="`stop-reason-slot-${l.index}`"><span v-if="stopReason(l.index) && typed(stopOf(l.index).level)" :data-testid="`stop-reason-${l.index}`">{{ stopReason(l.index) }}</span></span>
       </div>
     </div>
