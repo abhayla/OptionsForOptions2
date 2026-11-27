@@ -21,8 +21,8 @@ from test_background_worker import (  # noqa: F401 - the fixture is used by name
     app_db_url,
 )
 
-_ROW = ("SELECT id, outcome, kind, value, no_longer_true_since, escalated_at, answer FROM public.adjustment_suggestions "
-        "WHERE strategy_id = :s AND rule_id = :r AND id >= :first ORDER BY id")
+_ROW = ("SELECT id, outcome, kind, value, no_longer_true_since, escalated_at, answer "
+        "FROM public.adjustment_suggestions WHERE strategy_id = :s AND rule_id = :r AND id >= :first ORDER BY id")
 
 
 async def _rows(engine, sid: int, first: int) -> list:

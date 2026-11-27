@@ -25,12 +25,13 @@ async def _orders(engine) -> int:
         return (await conn.execute(text("SELECT count(*) FROM public.paper_orders"))).scalar_one()
 
 
-@pytest.mark.parametrize(("rule", "kind", "value", "threshold"), [
-    ("T-06", "plan_loss_stop", D("15.5750"), D("15.4000")),
-    (sl.RUPEE_LOSS_RULE, "plan_rupee_loss", D("400.00"), D("400.00")),
+@pytest.mark.parametrize(("rule", "kind", "reading"), [
+    ("T-06", "plan_loss_stop", (D("15.5750"), D("15.4000"))),
+    (sl.RUPEE_LOSS_RULE, "plan_rupee_loss", (D("400.00"), D("400.00"))),
 ])
-async def test_continue_on_a_stop_alert_clears_it_and_lowers_the_bell_by_one(app_db_url, monkeypatch, rule, kind,  # noqa: F811
-                                                                           value, threshold):
+async def test_continue_on_a_stop_alert_clears_it_and_lowers_the_bell_by_one(app_db_url, monkeypatch, rule, kind,
+                                                                           reading):
+    value, threshold = reading
     sid = await _clean(app_db_url, await _seeded(app_db_url, monkeypatch, "ADJ-02"))
     async with app_db_url.begin() as conn:
         alert = await aa.raise_actionable(conn, "owner", sid, rule, kind, at=FIRED, value=value, threshold=threshold,
