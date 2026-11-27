@@ -15,6 +15,7 @@ what changed on 27 Nov.
   the files it owns.
 - Nothing is called approved until it passed on the owner's PC.
 - The status page is updated every hour with every new, fixed and tested issue, no exceptions.
+- Find the fix for every problem and recommend it without being asked; the owner decides (log: `docs/process/friction-log.md`, skill: `/improve`, rule: `.claude/rules/project/improve-proactively.md`).
 
 ## Lanes started 27 Nov evening
 | Lane | Branch | Work |
