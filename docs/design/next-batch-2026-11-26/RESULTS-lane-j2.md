@@ -28,3 +28,15 @@ Q2's tests (merged `origin/test/live-day-gaps-1127`):
 - Its quiet-time guards (a stop held until 09:30; ADR-236) contradict ADR-330 (47) (no quiet time after open): changed to
   "opens at once" (`test_plan_stop_to_alert_chain.py`, `test_clock_boundary_candle_and_quiet.py`).
 - Left: its two 08:30 strict xfails (item 4).
+
+## Independent Opus review of the joined worker (Why Opus: the stop path): PASS, 6 minor findings
+No path drops a crossed plan stop without a stop alert or a visible reason; `paused_why` order correct; REST once per
+cycle per underlying; 20 mutations, 14 killed.
+- F4, F5 (test gaps): fixed, 2 new tests (stale `paused_why` cleared by a later fresh read; a raising REST reader at the worker).
+- F1 (not fixed; also in Lane U's branch): with a held-but-stale feed index, a REST stand-in that goes stale is not re-read until the
+  IST minute changes (the tick key reads held book quotes only). Bounded to ~59 s, no false alert. To file as deferred issue.
+- F2 (not fixed): index missing + fresh REST + a stale option leg reports LEG_MISSING / "REST not usable" instead of STALE
+  (`background.py` `return again if again.why else read`). Fails closed, reason slightly wrong. To file as deferred issue.
+- F3 (item 3): nothing reads `paused_why`; it is stored as "" for non-REST pauses. Item 3 builds the returned state.
+- F6 (not fixed): no worker test with a plan body's own custom stop rule (T-06 is already in the fixed set), so
+  `stops=frozenset()` at the readings call survives. To file as deferred issue.

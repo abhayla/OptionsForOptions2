@@ -85,3 +85,31 @@ async def test_a_skipped_strategy_with_no_tick_is_logged_not_silent(scn, caplog)
     with caplog.at_level(logging.INFO):
         await w.cycle()
     assert any("check skipped" in r.getMessage() for r in caplog.records)
+
+
+async def test_a_stale_reason_does_not_survive_a_later_fresh_read(scn):  # noqa: F811
+    """Review F4: ``paused_why`` is set by a stale REST pause and gone once a fresh read lets the check run."""
+    prov, now, calls = Prov(scn), [scn.clock_at], Calls()
+    prov.spot = None
+    reader = _Reader(_rest(scn, 10 * MIN))
+    w = _worker(prov, [_stop_watched(scn)], now, calls, rest_spot=reader)
+    await w.cycle()
+    assert w.paused_why[100] == "rest_stale"
+    reader._reading = SourceReading(SourceState.STATED, Decimal("23420"), now[0])
+    w._rest_cycle.clear()
+    await w.cycle()
+    assert 100 not in w.paused_why and w.status[100] is background.MonitoringStatus.ACTIVE
+    assert [s for s, _ in calls.states] == [100]
+
+
+async def test_a_raising_rest_reader_pauses_with_a_reason_and_is_asked_once_per_cycle(scn, caplog):  # noqa: F811
+    """Review F5: at the worker, a reader that raises is "no REST spot" (one call, paused, skipped line), never a crash."""
+    prov, now, calls = Prov(scn), [scn.clock_at], Calls()
+    prov.spot = None
+    reader = _Reader(boom=RuntimeError("boom"))
+    w = _worker(prov, _watched(scn, 2), now, calls, rest_spot=reader)
+    with caplog.at_level(logging.INFO):
+        await w.cycle()
+    assert reader.calls == 1 and calls.states == []
+    assert w.paused_reason[100] is background.PriceState.LEG_MISSING
+    assert any("check skipped: prices_leg_missing" in r.getMessage() for r in caplog.records)
