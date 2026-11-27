@@ -164,6 +164,9 @@ log = logging.getLogger("ofo_app.background")
 
 __all__ = ["GATE_POLL", "GATE_REBUILD", "GATE_WRITER", "DbGate"]  # the role's one gate (``db_gate``)
 
+#: J3 item 1: the alert gate's timing style for a trade whose expiry kind is not known (never a stage row: see
+#: ``_evaluate_and_gate``); the fastest style, so a stop that needs no kind is never held longer than any other.
+UNKNOWN_KIND_TIMING_STYLE: Final = "intraday"
 DEFAULT_MAX_PER_CYCLE: Final = 200  # strategies checked in one cycle; the rest roll to the next (B4 (a))
 #: the recent checks and errors kept in memory for tests and status (a long-running process must not grow without end:
 #: 1,000 strategies checked each second would add ~21.6 million entries in one market day)
@@ -174,7 +177,10 @@ WAKE_SECONDS: Final = Decimal(1)  # ADR-233 (6): the longest the worker sleeps b
 REST_SPOT_DEADLINE_S: Final = 2.0  # a hung Kite REST index read costs the cycle at most this once per underlying (F5)
 MARGIN_REFRESH_S: Final = Decimal(300)
 MARGIN_STALE_S: Final = 2 * MARGIN_REFRESH_S  # an entry older than this is not used (a refresh that kept failing)
-REBUILD_SECONDS: Final = 30 # the monitor set is re-read this often, so a newly tracked strategy joins (AC-3: 60 s)
+# the monitor set (and with it a plan the trader just saved) is re-read this often: a newly tracked strategy joins
+# (AC-3: 60 s) and a saved stop is watched within this (J3 item 3: it was 30 s, so a stop saved already crossed waited
+# up to ~33 s with the old plan; ADR-330 (47))
+REBUILD_SECONDS: Final = 10
 _MICROS: Final = 1_000_000
 
 
@@ -453,7 +459,8 @@ def market_inputs(watched: Watched, read: PriceRead, shared: FeedScope, now: dat
             if sym in own and iid in by_id and (iv := _figures(shared, at, by_id[iid], em)[0]) is not None:
                 leg_ivs[sym] = iv
     return MarketInputs(tuple(rows), ids, None if fwd is None else fwd.forward, years, vol, feed, last, now,
-                        expiry_kind_of(expiry, read.listed, read.futures, scenario_mode.current()), leg_greeks,
+                        expiry_kind_of(min(x.expiry for x in position.legs), read.listed, read.futures,
+                                       scenario_mode.current()), leg_greeks,
                         fwd, leg_ivs, index_day_open(read.day, now),
                         carry_gap_pct=values.get(settings_calc.CARRY_GAP_PERCENT),  # absent -> no figures, named reason
                         s02_delta_per_lot=values.get(settings_calc.SITUATION_NET_DELTA_PER_LOT),  # absent: not checked
@@ -1008,6 +1015,7 @@ class Worker:
         self.errors: list[tuple[int, str]] = []
         self._signature: dict[int, tuple] = {}
         self._last_check: dict[int, datetime.datetime] = {}
+        self._checked_body: dict[int, Any] = {}  # J3: the plan body each strategy's last check ran with
         self._cursor = 0
         self._rebuilt_at: datetime.datetime | None = None
         self._stop = False
@@ -1086,6 +1094,8 @@ class Worker:
             if w.strategy_id in before and before[w.strategy_id] != w.body:
                 self._signature.pop(w.strategy_id, None)
                 self._tick.pop(w.strategy_id, None)
+                self._last_check.pop(w.strategy_id, None)  # J3: the style's interval (30 s weekly, 120 s monthly)
+                # must not hold the first check with the NEW plan: a stop saved already crossed alerts at once (47)
         old = {w.strategy_id: w for w in self.monitors}
         today = self._clock().astimezone(IST).date()
         await self._lapse_expired_all(monitors, today)
@@ -1457,6 +1467,13 @@ class Worker:
         """A check ran for ``sid``: forget its last skip reason, so the next skip is logged."""
         self._last_skip.pop(sid, None)
 
+    def _plan_changed(self, w: Watched) -> bool:
+        """J3 item 3: the plan in the list is not the one this strategy's last check ran with (saved since). Such a
+        strategy's first check with the new plan is never held by the tick, signature or style interval holds, whatever
+        a check with the old plan left behind meanwhile (the re-read awaits the database before it publishes)."""
+        kept = self._checked_body.get(w.strategy_id, _GONE)
+        return kept is not _GONE and kept != w.body
+
     async def _check_unpaused(self, w: Watched, speeds: Mapping[str, Decimal],  # noqa: PLR0911, PLR0915, C901
                               now: datetime.datetime) -> bool:
         """One check at ``now`` of a strategy the user has not paused."""
@@ -1465,7 +1482,7 @@ class Worker:
         early = feed_state(provider, now)
         if early is None:
             tick = self._tick_key(provider, w, now)
-            if tick is not None and tick == self._tick.get(sid):
+            if tick is not None and tick == self._tick.get(sid) and not self._plan_changed(w):
                 self._read_states["NOT_TICKED"] = self._read_states.get("NOT_TICKED", 0) + 1
                 return self._skipped(sid, "not_ticked")  # nothing it depends on ticked: no read, no check (item c)
             read = await self._read_with_either_spot(provider, w, now)  # feed index first, Zerodha's quote second
@@ -1485,12 +1502,13 @@ class Worker:
                               (read.spot.instrument_id, *(read.legs[i].instrument_id for i in sorted(read.legs))))
         tick = self._tick_key(provider, w, now)  # read with the prices, before any await (a later tick is new)
         sig = read.signature(now)
-        if sig == self._signature.get(sid):
+        changed = self._plan_changed(w)
+        if sig == self._signature.get(sid) and not changed:
             self._tick[sid] = tick
             return self._skipped(sid, "unchanged")
         last = self._last_check.get(sid)
         every = speeds.get(self._interval_style(sid), Decimal(0))
-        if last is not None and _seconds(now - last) < every:
+        if last is not None and _seconds(now - last) < every and not changed:
             # changed, but too soon: the tick key stays old, so it is read again next cycle
             return self._skipped(sid, "interval")
         if self._values is None:
@@ -1523,6 +1541,7 @@ class Worker:
         self._signature[sid] = sig
         self._tick[sid] = tick
         self._last_check[sid] = now
+        self._checked_body[sid] = w.body
         _keep_recent(self.checks, (sid, now))
         return True
 
@@ -1663,7 +1682,15 @@ class Worker:
         sid = w.strategy_id
         pin, user_values = style_in
         try:
-            style = alert_presets.style_for(state.expiry_kind, state.days_left, pin)
+            try:
+                style = alert_presets.style_for(state.expiry_kind, state.days_left, pin)
+            except alert_presets.StyleRefused:
+                if state.days_left is not None or pin is not None:  # a refused pin is never replaced
+                    raise
+                # J3 item 1: the expiry kind is not known (a far-month leg, R3): the fact only the percent stop and
+                # the stage rows need. The gate's TIMING takes the fastest style; every rule that needs the kind is
+                # answered "not checked" by the evaluation itself, and the rupee stop and time exit still run.
+                style = UNKNOWN_KIND_TIMING_STYLE
             preset = alert_presets.preset_for(style, user_values, self._values or {})
         except (ValueError, KeyError) as exc:  # StyleRefused is a ValueError: paused, never a guessed preset
             log.warning("background: strategy %s has no alert preset: %s", sid, exc)
