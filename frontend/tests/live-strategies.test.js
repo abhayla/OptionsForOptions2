@@ -693,3 +693,32 @@ describe('GC-MU A3: the adjustment opportunities mark', () => {
     expect(three.attributes('href')).toBe('/positions/adjustment-opportunities?strategy=3')
   })
 })
+
+// ADR-330 (56) round 2: ONE notice at the top; tiles greyed with no sentence of their own; exactly one affected: only it carries the line
+describe('ADR-330 (56): price notice and cards', () => {
+  const down = { state: 'NOT_CONNECTED', market_closed: false, last_price_at: '2026-10-19T04:28:01Z', indices: [] }
+  it('two strategies with no price and the feed down: one page notice, greyed cards, no per-card sentence', async () => {
+    notLiveFor = new Set([1, 2])
+    indicesAnswer = down
+    listAnswer = { strategies: [row(1), row(2)] }
+    const w = await mountPage()
+    expect(w.findAll('[data-testid="price-notice"]')).toHaveLength(1)
+    expect(w.get('[data-testid="price-notice-text"]').text()).toBe('Prices are not live. Figures are as of 09:58:01 IST.')
+    for (const c of cards(w)) {
+      expect(c.find('[data-testid="live-status-label"]').exists()).toBe(false)
+      expect(c.classes()).toContain('price-greyed')
+    }
+  })
+  it('exactly one strategy with no price: no page notice, only that card carries the line', async () => {
+    notLiveFor = new Set([1])
+    indicesAnswer = down
+    listAnswer = { strategies: [row(1), row(2)] }
+    const w = await mountPage()
+    expect(w.find('[data-testid="price-notice"]').exists()).toBe(false)
+    const c1 = w.get('[data-strategy-id="1"]')
+    const c2 = w.get('[data-strategy-id="2"]')
+    expect(c1.get('[data-testid="live-status-label"]').text()).toBe(LEG_NOT_LIVE_LABEL)
+    expect(c1.classes()).toContain('price-greyed')
+    expect(c2.classes()).not.toContain('price-greyed')
+  })
+})

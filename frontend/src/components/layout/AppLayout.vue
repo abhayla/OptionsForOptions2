@@ -9,6 +9,7 @@ import AppHeader from './AppHeader.vue'
 import ScenarioBanner from './ScenarioBanner.vue'
 import CalendarBanner from './CalendarBanner.vue'
 import ToastHost from './ToastHost.vue'
+import LayoutPriceNotice from './LayoutPriceNotice.vue'
 
 const route = useRoute()
 const fullWidth = computed(() => Boolean(route.meta?.fullWidth))
@@ -29,6 +30,7 @@ const fullWidth = computed(() => Boolean(route.meta?.fullWidth))
       :data-width="fullWidth ? 'full' : 'column'"
       data-testid="app-content"
     >
+      <LayoutPriceNotice />
       <slot />
     </main>
   </div>

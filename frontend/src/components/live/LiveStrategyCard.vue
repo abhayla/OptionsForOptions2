@@ -18,14 +18,16 @@ import { builderLinkOf, paperExitLinkOf, paperStopsLinkOf } from '@/lib/strategy
 import { istTime, maxLine, nameFromPool } from '@/lib/displayFormat'
 import { RouterLink } from 'vue-router'
 import Chip from '@/components/common/Chip.vue'
+import { PRICE_GREYED_CLASS } from '@/lib/priceState'
 import { healthSentence } from '@/lib/dataHealthText'
 import { ENTRY_PRICE_LABEL } from '@/lib/chartCard'
 import { useStrategyLive } from '@/composables/useStrategyLive'
 
 // `start` false = waiting in the page's start queue (one card loads at a time); `settled` is emitted once, when this card
 // got its first answer, failed, or has nothing to follow - the page then starts the next card.
-const props = defineProps({ strategy: { type: Object, required: true }, start: { type: Boolean, default: true }, pnl: { type: Object, default: null } })
-const emit = defineEmits(['settled', 'closed'])
+const props = defineProps({ strategy: { type: Object, required: true }, start: { type: Boolean, default: true }, pnl: { type: Object, default: null }, quiet: { type: Boolean, default: false },
+  greyed: { type: Boolean, default: false }, showLine: { type: Boolean, default: true } }) // ADR-330 (56): the page's priceScope decides both
+const emit = defineEmits(['settled', 'closed', 'affected'])
 
 const state = ref(props.start ? 'loading' : 'queued') // queued | loading | ready | unpriced | error
 const legsAsSaved = ref(false)
@@ -41,6 +43,8 @@ const errorParts = ref(NEUTRAL_PARTS)
 let gone = false // set on unmount: a late push or answer is dropped
 let draft = null
 const expiredText = ref(null) // D-40: the server's sentence for a trade whose open legs are on expired contracts
+// ADR-330 (56): this card has a contract with no price (and no server reason of its own): the page counts these (priceScope) and decides who says what
+watch(() => state.value === 'unpriced' && expiredText.value === null, (v) => emit('affected', props.strategy.id, v), { immediate: true })
 const notLive = ref(false) // issue #500: a leg's stored contract is no longer live; nothing is priced
 const wasLive = ref(false) // a live push arrived at least once: from then on a socket that is not live pauses the card
 let seq = 0 // only the newest REST answer is shown
@@ -205,7 +209,7 @@ const healthWord = (leg) => (closed.value ? null : leg.health === 'available' ? 
 
 <template>
   <article
-class="rounded border border-line bg-surface p-4" data-testid="live-strategy-card" :data-strategy-id="strategy.id"
+class="rounded border border-line bg-surface p-4" :class="greyed ? PRICE_GREYED_CLASS : ''" data-testid="live-strategy-card" :data-strategy-id="strategy.id"
            :data-state="state" :data-paused="paused ? 'true' : 'false'" :data-live="live.status.value">
     <header class="flex flex-wrap items-baseline gap-2">
       <!-- S-14: the name opens the strategy (not in the error state); a running paper strategy also links to its Stops. Exit links to the Paper list, whose own exit dialog (the one exit door) opens; the card holds no exit code. -->
@@ -219,7 +223,7 @@ class="rounded border border-line bg-surface p-4" data-testid="live-strategy-car
       <span v-if="paused" class="inline-flex items-center gap-1 text-sm text-ink-muted" data-testid="live-health-dot" data-health="unknown">
         <span class="inline-block h-2 w-2 rounded-full bg-gray-400" aria-hidden="true"></span>Health unknown
       </span>
-      <p v-if="state === 'ready' && data" class="ml-auto text-xs text-ink-muted" data-testid="live-checked-at">Checked at {{ checkedAt }}</p>
+      <p v-if="state === 'ready' && data && !quiet" class="ml-auto text-xs text-ink-muted" data-testid="live-checked-at">Checked at {{ checkedAt }}</p>
     </header>
 
     <!-- D-41: the trade's P&L from the Positions page's function, in every state of the card (the page reads it once for all cards) -->
@@ -229,7 +233,10 @@ class="rounded border border-line bg-surface p-4" data-testid="live-strategy-car
     <p v-if="state === 'queued'" class="mt-2 text-sm text-ink-muted" data-testid="live-queued">{{ CARD_QUEUED_TEXT }}</p>
     <p v-else-if="state === 'loading'" class="mt-2 text-sm text-ink-muted" data-testid="live-loading">Loading this strategy...</p>
     <ErrorMessage v-else-if="state === 'error'" class="mt-2" :parts="errorParts" compact prefix="live-error" data-testid="live-error" />
-    <p v-else-if="state === 'unpriced'" class="mt-2 text-sm" data-testid="live-status-label" :data-not-live="notLive ? 'true' : 'false'">{{ expiredText ?? (notLive ? LEG_NOT_LIVE_LABEL : NOT_CONNECTED_LABEL) }}</p>
+    <template v-else-if="state === 'unpriced'">
+      <!-- ADR-330 (56): the generic "no price" sentence is the page notice's job when several strategies are affected; the server's own expiry reason always shows -->
+      <p v-if="expiredText || showLine" class="mt-2 text-sm" data-testid="live-status-label" :data-not-live="notLive ? 'true' : 'false'">{{ expiredText ?? (notLive ? LEG_NOT_LIVE_LABEL : NOT_CONNECTED_LABEL) }}</p>
+    </template>
 
     <template v-else>
       <p v-if="notConnected || refused || fromEntries" class="mt-2 text-sm font-medium" data-testid="live-status-label">{{ data.status_label }}</p>

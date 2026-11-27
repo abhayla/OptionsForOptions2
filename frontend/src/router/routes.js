@@ -30,6 +30,8 @@ const REAL_PAGES = {
   'strategies-completed-strategies': () => import('../pages/MyStrategiesPage.vue'), // W-109 (completedOnly)
 }
 // W-111: which view each Positions page shows (route meta.view).
+// ADR-330 (56): routes whose page mounts no price notice of its own: the layout mounts the one notice above them (AppLayout > LayoutPriceNotice)
+const PRICE_NOTICE_ROUTES = new Set(['strategies/my-strategies'])
 const POSITION_VIEWS = { 'positions/current-positions': 'current', 'positions/strategy-linked-positions': 'linked' }
 
 // Account pages with a real page, keyed by slug. GC-6 BILLING-SHELL (ADR-146): three text-only billing pages.
@@ -55,7 +57,7 @@ const sectionRoutes = SECTIONS.flatMap((s) => [
     path: `/${s.key}/${slug}`,
     name: `${s.key}-${slug}`,
     component: REAL_PAGES[`${s.key}-${slug}`] ?? Placeholder,
-    meta: { title: label, section: s.key, parent: s.label, ...(POSITION_VIEWS[`${s.key}/${slug}`] ? { view: POSITION_VIEWS[`${s.key}/${slug}`] } : {}), ...(slug === 'completed-strategies' ? { completedOnly: true } : {}) },
+    meta: { title: label, section: s.key, parent: s.label, ...(POSITION_VIEWS[`${s.key}/${slug}`] ? { view: POSITION_VIEWS[`${s.key}/${slug}`] } : {}), ...(slug === 'completed-strategies' ? { completedOnly: true } : {}), ...(PRICE_NOTICE_ROUTES.has(`${s.key}/${slug}`) ? { priceNotice: true } : {}) },
   })),
 ])
 

@@ -79,9 +79,9 @@ describe('one read feeds the paper panel, the tracking box and the P&L table TOT
     expect(tableTotal(w)).toContain('(after charges)')
     expect(boxTotal(w)).not.toContain('+22.75')
     expect(tableTotal(w)).not.toContain('+29.25')
-    expect(t(w, 'book-read-at').text()).toBe('As of 09:31:00 IST')
-    expect(t(w, 'paper-shared-line').text()).toBe('As of 09:31:00 IST')
-    expect(t(w, 'total-line').text()).toBe('As of 09:31:00 IST')
+    expect(t(w, 'book-read-at').text()).toBe('Checked at 09:31:00 IST')
+    expect(t(w, 'paper-shared-line').text()).toBe('Checked at 09:31:00 IST')
+    expect(t(w, 'total-line').text()).toBe('Checked at 09:31:00 IST')
   })
   it('refresh with changed prices: ONE read of the book, and the three show the new text and the new time (strategy 138)', async () => {
     const w = await page(book())
@@ -90,7 +90,7 @@ describe('one read feeds the paper panel, the tracking box and the P&L table TOT
     await tick()
     expect(paperReads()).toBe(1)
     for (const s of [panelTotal(w), boxTotal(w), tableTotal(w)]) { expect(s).toContain('+58.50'); expect(s).not.toContain('+29.25'); expect(s).not.toContain('+22.75') }
-    for (const id of ['book-read-at', 'paper-shared-line', 'total-line']) expect(t(w, id).text()).toBe('As of 09:31:05 IST')
+    for (const id of ['book-read-at', 'paper-shared-line', 'total-line']) expect(t(w, id).text()).toBe('Checked at 09:31:05 IST')
   })
   it('a failed refresh after a good one: the panel shows a dash for the figure and all three say the same paused sentence', async () => {
     const w = await page(book())

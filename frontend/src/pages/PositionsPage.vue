@@ -13,6 +13,8 @@ import { useRoute } from 'vue-router'
 import api, { NEUTRAL_PARTS, hasShape } from '@/services/api'
 import ErrorMessage from '@/components/common/ErrorMessage.vue'
 import PageHeader from '@/components/common/PageHeader.vue'
+import PriceNotice from '@/components/states/PriceNotice.vue'
+import { readAnswer } from '@/composables/useIndexLive'
 import EmptyState from '@/components/states/EmptyState.vue'
 import PositionsTotals from '@/components/positions/PositionsTotals.vue'
 import PaperStrategies from '@/components/strategy/PaperStrategies.vue'
@@ -69,6 +71,9 @@ const realTotals = computed(() => {
   if (!r) return null
   return { text: r.state === 'stated' ? r.pnl_text : null, reason: r.reason, caption: r.caption, note: r.excludes_note }
 })
+// ADR-330 (56): the page's one price notice reads the index answer (market closed: the banner with the close time; feed down: the not-live line)
+const marketAnswer = ref(null)
+onMounted(async () => { marketAnswer.value = await readAnswer(false) })
 onMounted(async () => {
   try {
     const body = (await api.get('/positions')).data
@@ -92,6 +97,7 @@ onMounted(async () => {
     <!-- ADR-330 (10) replaces ADR-201 (2): ONE list. Two totals (never added), a filter All / Real / Paper, the real section (read
          from Zerodha first, ADR-016) and the one paper list, which loads by itself and is never held up by the Zerodha read. -->
     <div class="mt-4 grid gap-4">
+    <PriceNotice :answer="marketAnswer" :affected="paperSummary?.affected || null" />
     <PositionsTotals :real="realTotals" :paper="paperSummary" />
     <div role="group" aria-label="Show real trades, paper trades or both" class="flex gap-2" data-testid="positions-filter">
       <button v-for="f in FILTERS" :key="f.key" type="button" class="rounded border border-line px-3 py-1 text-sm" :class="filter === f.key ? 'bg-accent-soft font-semibold text-accent' : ''" :aria-pressed="filter === f.key" :data-testid="`filter-${f.key}`" @click="filter = f.key">{{ f.label }}</button>

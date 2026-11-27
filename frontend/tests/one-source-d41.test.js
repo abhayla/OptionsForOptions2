@@ -234,7 +234,7 @@ describe('the one reader (lib/usePaperBookRead)', () => {
   })
   it('15b paperPnlBlock: kind, text, as-of line and the legs map from the one book; null for no book', () => {
     const blk = paperPnlBlock(book())
-    expect(blk).toMatchObject({ kind: 'after', text: '-262.86', line: 'As of 15:13:27 IST' })
+    expect(blk).toMatchObject({ kind: 'after', text: '-262.86', line: 'Checked at 15:13:27 IST' })
     expect(blk.legs.get('5002').ltp).toBe('191.85')
     expect(paperPnlBlock(null)).toBeNull()
   })
