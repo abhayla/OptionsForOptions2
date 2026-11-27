@@ -1017,6 +1017,8 @@ INVENTORY = (
     'FIELD IndicesOut.last_price_at: None',
     'FIELD IndicesOut.last_price_at: datetime',
     'FIELD IndicesOut.market_closed: bool',
+    'FIELD IndicesOut.next_open_at: None',
+    'FIELD IndicesOut.next_open_at: datetime',
     "FIELD IndicesOut.state: Literal['LIVE','NOT_CONNECTED']",
     'FIELD LabelsOut.approaches[].key: Identifier',
     'FIELD LabelsOut.approaches[].text: CatalogueText',

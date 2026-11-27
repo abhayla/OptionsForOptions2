@@ -954,6 +954,31 @@ class ClockHms(SlotType):
         return value.astimezone(datetime.timezone(datetime.timedelta(hours=5, minutes=30))).strftime("%H:%M:%S")
 
 
+@dataclass(frozen=True)
+class EarlierDay:
+    """A time from an earlier day than the answer's own: printed with its date ("8 Oct, 15:29:59"), so Thursday's price
+    is never read as today's (ADR-330 (36), review F1)."""
+
+    at: datetime.datetime
+
+
+class ClockHmsOrDated(SlotType):
+    """The ClockHms time, or an ``EarlierDay`` printed "8 Oct, 15:29:59" (no leading zero on the day, as ``DayMonth``)."""
+
+    @staticmethod
+    def validate(value: object) -> None:
+        if isinstance(value, EarlierDay):
+            value = value.at
+        ClockHms.validate(value)
+
+    @staticmethod
+    def format(value: object) -> str:
+        if isinstance(value, EarlierDay):
+            ist = value.at.astimezone(datetime.timezone(datetime.timedelta(hours=5, minutes=30)))
+            return f"{ist.day} {ist.strftime('%b')}, {ist.strftime('%H:%M:%S')}"
+        return ClockHms.format(value)  # type: ignore[arg-type]
+
+
 class UnderlyingName(SlotType):
     """An index name, closed to the catalogue's underlyings (NIFTY, SENSEX): never a free token (W-066 round 2)."""
 
@@ -1524,10 +1549,10 @@ _EXPLANATIONS: tuple[ExplanationTemplate, ...] = (
     # later; the later legs carry the time they have. Singular and plural; the one function is closed_label (outcome.py).
     ExplanationTemplate("closed_prices_mixed_one", "values_seen",
                         "Market closed. Prices are from {frozen}; 1 leg as of {later}.",
-                        {"frozen": ClockHms, "later": ClockHms}),
+                        {"frozen": ClockHmsOrDated, "later": ClockHmsOrDated}),
     ExplanationTemplate("closed_prices_mixed_many", "values_seen",
                         "Market closed. Prices are from {frozen}; {count} legs as of {later}.",
-                        {"frozen": ClockHms, "later": ClockHms, "count": LegCount}),
+                        {"frozen": ClockHmsOrDated, "later": ClockHmsOrDated, "count": LegCount}),
     ExplanationTemplate("target_includes_booked", "values_seen", "includes {amount} booked", {"amount": SignedRupeesPaisa}),
     ExplanationTemplate("target_booked_unreadable", "values_seen",
                         "Booked profit and loss could not be read, so these figures are for the open legs only."),

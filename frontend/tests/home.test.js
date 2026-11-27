@@ -154,7 +154,7 @@ describe('the live index strip', () => {
     indicesAnswer = notConnected(T1) // the REST fallback after the drop
     FakeSocket.all[0].serverClose()
     await flushPromises()
-    expect(w.get('[data-testid="strip-state"]').text()).toBe('Index values unavailable.')
+    expect(w.get('[data-testid="price-notice"]').text()).toMatch(/^Prices are not live\./)
     expect(w.get('[data-testid="strip-NIFTY"] [data-testid="strip-value"]').text()).toBe('Not available')
     expect(w.text()).not.toContain('25145.50')
   })

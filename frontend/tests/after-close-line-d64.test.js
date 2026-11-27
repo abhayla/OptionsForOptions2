@@ -1,6 +1,6 @@
 // GC-ICLIVE D-64 (owner decision): after the 15:30 close the page says "Market closed. Open legs that expire today settle at 15:45."
 // in place of the paused / "No price for" text; the server decides "after close" and sends `after_close_text` (one place).
-// Real case 24 Nov 2026: C2 157 at 15:30 read "Paper P&L paused - prices not live, as of Time not available" and "Total P&L -".
+// Real case 24 Nov 2026: C2 157 at 15:30 read the old "..., as of Time not available" and "Total P&L -".
 import { describe, expect, it } from 'vitest'
 import { readPaperStrategy } from '@/lib/paperList'
 import { readTracking, sharedTotal } from '@/lib/tracking'
@@ -19,7 +19,7 @@ describe('the shared total line', () => {
   })
   it('no line from the server: the paused sentence is unchanged (before 15:30, after settlement)', () => {
     const shown = sharedTotal(book())
-    expect(shown.line).toBe('Paper P&L paused - prices not live, as of Time not available')
+    expect(shown.line).toBe('Paper P&L paused - prices not live')
     expect(shown.unpriced).toBe('No price for: NIFTY 24 Nov 25600 CE')
   })
 })
@@ -61,6 +61,6 @@ describe('the tracking view (the builder paper line)', () => {
     expect(view.unpriced).toBeNull()
   })
   it('nothing to show: no line keeps the paused sentence', () => {
-    expect(readTracking(body()).text).toBe('Paper P&L paused - prices not live, as of Time not available')
+    expect(readTracking(body()).text).toBe('Paper P&L paused - prices not live')
   })
 })

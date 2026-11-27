@@ -165,6 +165,10 @@
   .link:hover {
     text-decoration: underline;
   }
+  /* ADR-330 (56): a tile whose prices are not live keeps its last figures, greyed (the one class, priceState.js PRICE_GREYED_CLASS) */
+  .price-greyed {
+    opacity: 0.6;
+  }
 }
 
 body {

@@ -6962,6 +6962,18 @@
             "title": "Market Closed",
             "type": "boolean"
           },
+          "next_open_at": {
+            "anyOf": [
+              {
+                "format": "date-time",
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Next Open At"
+          },
           "state": {
             "enum": [
               "LIVE",
@@ -9813,6 +9825,11 @@
             "minItems": 1,
             "title": "Orders",
             "type": "array"
+          },
+          "prices_not_live_confirmed": {
+            "default": false,
+            "title": "Prices Not Live Confirmed",
+            "type": "boolean"
           },
           "suggestion_ids": {
             "items": {

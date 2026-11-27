@@ -64,7 +64,10 @@ def indices_read(ctx: MarketContext | None, streaming: Callable[[str], bool] | N
                  now: AnswerClock) -> IndicesOut:
     """The REST answer. ``fallback``: this page's own socket is down, so it is not live whatever other sockets hold."""
     live_now = ctx is not None and not fallback and held_by_a_socket(ctx, streaming)
-    return indices_answer(ctx, live=live_now, now=now)
+    # ADR-212: a closed market (also before the open) carries each index's last close with its time; no socket is needed
+    # to read it, and the state stays NOT_CONNECTED (never LIVE) whoever holds the ids.
+    closed = ctx is not None and market_state(ctx, ctx.clock()).closed
+    return indices_answer(ctx, live=live_now, now=now, fill=closed)
 
 
 def _both_priced(ctx: MarketContext, ids: list[str]) -> bool:

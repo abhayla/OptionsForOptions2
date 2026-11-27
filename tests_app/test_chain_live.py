@@ -1306,3 +1306,68 @@ async def test_d55_change_is_null_without_a_previous_close(stats):
     ce = await _pushed_ce(stats)
     assert ce["ltp"] == "63.10"
     assert ce["change"] is None
+
+
+# --- Lane N (ADR-330 (36)): the chain's "Last trade" line after the close
+# comes from the SAME frozen frame as its price --
+
+class _BookProvider(FakeProvider):
+    """The fake provider's surface answered by the REAL ``QuoteBook`` (and its ``FeedState``), at the caller's clock."""
+
+    def __init__(self, clock) -> None:
+        from ofo.marketdata.feed_health import FeedState, FeedWindows, QuoteBook  # noqa: PLC0415
+        super().__init__()
+        self.clock = clock
+        self.feed = FeedState(windows=FeedWindows(datetime.timedelta(seconds=30), datetime.timedelta(seconds=60),
+                                                  datetime.timedelta(seconds=30)))
+        self.feed.on_connected(clock())
+        self.book = QuoteBook(self.feed)
+
+    def feed_frame(self, q, stats=None, at=None) -> None:
+        self.feed.on_data(at or q.timestamp)
+        self.book.update(q, None, stats)
+
+    def underlying_quote(self, underlying):
+        return self.book.get(NIFTY_ID, self.clock()) if underlying == "NIFTY" else None
+
+    def option_chain_snapshot(self, underlying, expiry):
+        now = self.clock()
+        return [q for i in list(self.book._entries) if (q := self.book.get(i, now)) is not None
+                and q.underlying == underlying and q.expiry == expiry]
+
+    def latest_day_stats(self, instrument_id, now=None):
+        return self.book.latest_day_stats(instrument_id, now or self.clock())
+
+    def depth_after_close(self, instrument_id, now=None):
+        return self.book.depth_after_close(instrument_id, now or self.clock())
+
+
+async def test_lane_n_chain_row_keeps_the_by_the_close_price_and_last_trade_after_a_later_frame():
+    """Closed market (Mon 19 Oct 2026): a contract's frame by the close (last trade 15:29:58 @99.75, frame 15:29:59) is
+    shown; a later frame (last trade 15:39:59 @100.10, frame 15:39:59) never moves the row's ltp or its last trade."""
+    at_close = datetime.datetime(2026, 10, 19, 15, 29, 59, tzinfo=IST)
+    later = datetime.datetime(2026, 10, 19, 15, 39, 59, tzinfo=IST)
+    wall = Clock(later + datetime.timedelta(seconds=1))
+    provider = _BookProvider(wall)
+    feed = LiveFeed(MarketContext(provider, wall, Decimal("0.065")), FanOut(provider))
+    ce_id = cid("25150", "CE")
+
+    def stats(t):
+        return DayStats(Decimal("60"), Decimal("120"), Decimal("55"), Decimal("58"), int(t.timestamp()))
+    provider.feed_frame(index_quote("25162.30", at=at_close))
+    provider.feed_frame(option_quote(ce_id, "99.75", at=at_close), stats(at_close - datetime.timedelta(seconds=1)))
+
+    async def one_push():
+        channel = FakeChannel()
+        push = ChainPush(channel, feed, monotonic=Clock(1000.0), now=wall, reader=Reader(), poll=0.005,
+                         read_settings=settings_with())
+        task = await start(push, channel)
+        await close(channel, task)
+        return next(r for r in channel.sent[0]["rows"] if r["strike"] == "25150.00")["ce"]
+
+    before = await one_push()
+    assert (before["ltp"], before["last_trade_at"]) == ("99.75", "2026-10-19T15:29:58+05:30")
+    provider.feed_frame(index_quote("25170.00", at=later))
+    provider.feed_frame(option_quote(ce_id, "100.10", at=later), stats(later))
+    after = await one_push()
+    assert (after["ltp"], after["last_trade_at"]) == ("99.75", "2026-10-19T15:29:58+05:30")

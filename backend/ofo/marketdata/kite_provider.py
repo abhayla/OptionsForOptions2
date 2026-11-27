@@ -119,8 +119,9 @@ class KiteProvider(MarketDataProvider):
             self.counters["ticks"] += 1
             self.book.update(quote, depth, day)
             out.append(quote)
-            if self._listener is not None:
-                self._listener(self._with_health(quote, received_at))
+            served = self._with_health(quote, received_at) if self._listener is not None else None
+            if served is not None:  # ADR-330 (39): the push carries what the book serves, never the raw frame
+                self._listener(served)
         return out
 
     def _depth_of(self, tick: RawTick) -> Depth | None:
@@ -202,8 +203,12 @@ class KiteProvider(MarketDataProvider):
             volume=tick.volume, oi=tick.oi, oi_change=None, iv=None, delta=None, gamma=None, theta=None,
             vega=None, timestamp=ts, source=SOURCE, health=DataHealth.AVAILABLE)
 
-    def _with_health(self, quote: NormalizedQuote, now: datetime.datetime) -> NormalizedQuote:
-        return self.book.get(quote.instrument_id, now) or quote
+    def _with_health(self, quote: NormalizedQuote, now: datetime.datetime) -> NormalizedQuote | None:
+        """What the book serves for this instrument now (its health, its frozen close), or None: the book holds it
+        back (awaiting its seed, rejected, hidden) and the push carries nothing. Never the raw frame, which would
+        reach a listener as health AVAILABLE with no rule having called it so. The history recorder takes the same
+        push: its bars need AVAILABLE, so it too records only what the book serves."""
+        return self.book.get(quote.instrument_id, now)
 
     # ---- MarketDataProvider ----------------------------------------------------------------------------------
     def subscribe(self, instrument_ids: Sequence[str]) -> None:

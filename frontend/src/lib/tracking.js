@@ -1,7 +1,7 @@
 // W-122 (REQ-109 AC-1, AC-2, AC-5; REQ-045 AC-1; REQ-046 AC-1; ADR-166): the paper-tracking panel's words and the one
 // reading of the tracking answer. The browser computes no money: every figure is the server's Decimal string, only
 // re-grouped for display. An answer this module cannot read shows no figure (fail closed).
-import { groupedIndian, instrumentText, istClock, istTime, strikeLabel } from '@/lib/displayFormat'
+import { TIME_UNAVAILABLE, groupedIndian, instrumentText, istClock, istTime, strikeLabel } from '@/lib/displayFormat'
 
 /** GC-UI b2 D-B48 (REQ-109 AC-1, REQ-152): one leg's paper P&L as the server wrote it (`pnl_text`, signed, to the paisa),
  *  "booked" added for a leg the server marks booked (paper-exited); no text -> "—", never a browser figure (ADR-008). */
@@ -72,12 +72,13 @@ export function entryPriceFor(leg, livePriceById = {}) {
 }
 
 /** POST the confirmed orders in ONE request (the server stores them in one transaction or none). Throws the client error. */
-export async function addToPaper(client, strategyId, orders, suggestionIds = [], basketLegs = null, held = null, approachId = null) {
+export async function addToPaper(client, strategyId, orders, suggestionIds = [], basketLegs = null, held = null, approachId = null, pricesNotLiveConfirmed = false) {
   // REQ-163 AC-1: the acted-on records this basket answers (Compare -> Open in builder); omitted when none
   const body = suggestionIds.length ? { orders, suggestion_ids: suggestionIds } : { orders }
   if (suggestionIds.length && basketLegs) body.basket_legs = basketLegs // REQ-112: the prepared basket's size
   if (approachId) body.approach_id = approachId // D-25 (ADR-326 (1)): a Take profit basket (A-24 / A-25), checked by the server
   if (held) body.held = held // GC-TRACK1 k10: only on the first basket, only when the user ticked "Held at my broker"
+  if (pricesNotLiveConfirmed === true) body.prices_not_live_confirmed = true // ADR-330 (28): only when the not-live line was ticked
   const { data } = await client.post(`/paper/strategies/${strategyId}/orders`, body)
   return data
 }
@@ -172,9 +173,12 @@ export function sharedTotal(book, failed = false) {
   if (!book || typeof book !== 'object') return null
   const notLive = bookNotLive(book)
   const shown = afterFigure(book, serverText(book.total_text), pausedText(book.as_of ?? null))
-  const at = istClock(book.answered_at ?? null)
+  // ADR-330 (56): a price time is the PRICE's (the reply's last_price_at); the time of the read is only ever labelled "Checked at"
+  const priceAt = istClock(book.last_price_at ?? null)
+  const at = priceAt ?? istClock(book.answered_at ?? null)
+  const atLabel = priceAt ? 'As of' : 'Checked at'
   const closedLine = serverText(book.after_close_text) // D-64: after the close the server's sentence says why, in place of "prices not live"
-  const line = failed ? pausedText(book.answered_at ?? null) : closedLine !== null && notLive ? closedLine : notLive ? pausedText(book.as_of ?? null) : at === null ? null : `As of ${at} IST`
+  const line = failed ? pausedText(book.answered_at ?? null) : closedLine !== null && notLive ? closedLine : notLive ? pausedText(book.as_of ?? null) : at === null ? null : `${atLabel} ${at} IST`
   // ADR-311: the legs that pause the total, named by the server (null when none); a paused total is never a number
   return { kind: shown.kind, text: shown.text, label: shown.label, reason: shown.reason, breakdown: shown.breakdown, line, unpriced: closedLine !== null ? null : serverText(book.unpriced_text) }
 }
@@ -236,7 +240,7 @@ export function readTracking(body, replyLegs = null) {
         // REQ-151 AC-2: the strike the server sent ("22400.00") trims only its trailing zeros -> "22400"
         line: `${PLATFORM_DETECTION_LABEL}: ${condition}: ${strikeLabel(d.level)}, ${distance} away`,
         details: [`Index: ${d.index_level}`, `Distance: ${distance}`, `Threshold: ${d.threshold_percent}%`,
-          dataStateText(d.price_health, body.state), `As of ${istTime(d.at)}`],
+          dataStateText(d.price_health, body.state), ...(istTime(d.at) === TIME_UNAVAILABLE ? [] : [`As of ${istTime(d.at)}`])],
       }
     })
   if (body.state === 'NOT_CONNECTED') return { kind: 'not_connected', text: NOT_CONNECTED_TEXT, figure: null, legs, detections }

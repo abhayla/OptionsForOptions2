@@ -40,7 +40,7 @@ import {
 import { withAsOf } from '@/lib/paperList'
 import PaperBookPanel from '@/components/strategy/PaperBookPanel.vue'
 import { paperLegsOf, paperPnlBlock, usePaperBookRead } from '@/lib/usePaperBookRead'
-import { usePriceFreshness } from '@/lib/priceState'
+import { notLiveEntryLine, usePriceFreshness } from '@/lib/priceState'
 import { exitEndText, exitLegsNotLive, usePaperExit } from '@/lib/usePaperExit'
 import { createExitRecords } from '@/lib/exitRecord'
 import PaperStrategies from '@/components/strategy/PaperStrategies.vue'
@@ -514,8 +514,9 @@ const { readFailed: paperReadFailed, contractsChanged: paperContractsChanged } =
 // (the contracts changed elsewhere). The panel says which, in the words of priceState.
 // ADR-330 (28): the same rule for Add to Paper. The builder answer is live only when it computed with no labelled (stale) leg and the
 // market is open and the feed is not reconnecting; anything else is not live and the confirm list says so.
-const { live: pricesLive } = usePriceFreshness({
-  serverState: () => (state.value === 'computed' && !data.value?.market_closed && !live.reconnecting.value ? 'LIVE' : 'PAUSED'),
+const index = useIndexAnswer() // the page's index answer: with the reply it decides closed / not (priceState.priceNow)
+const { live: pricesLive, now: pricesNow } = usePriceFreshness({
+  reply: () => data.value, answer: () => index.answer.value, pageState: () => state.value, reconnecting: () => live.reconnecting.value,
 })
 const { readFailed: paperBookFailed } = usePriceFreshness({
   readFailed: paperReadFailed,
@@ -593,6 +594,8 @@ function cancelPaperDialog() {
 // (any dialog: its orders are built from the net on screen). Same rule as Positions, through the same door (exitEndText): a FAILED READ keeps
 // the dialog open, Confirm blocked, with "<legs>: Prices are not live..." in it (it enables again after a good read); the trade really
 // CHANGED elsewhere closes it (N-04: the legs as before the Exit click) and leaves the visible sentence in paperExitNote.
+// ADR-330 (28): Review and add of entry orders in Drafts Mode is Add to Paper too: not-live prices show the line to tick (an Exit keeps its own gate)
+const paperEntryNotLiveLine = computed(() => (paperDialog.value && !pricesLive.value && pricesNow.value.kind !== 'last_close' && !exitOrigin.value && paperRows.value.length && paperRows.value.every((r) => r.kind !== 'exit') ? notLiveEntryLine(pricesNow.value.at) : ''))
 const paperLegNames = () => paperRows.value.map((r) => r.text).filter(Boolean)
 // Lane U hotfix (27 Nov, ADR-016..019; PC T1-22): the builder's Exit door is single-ended: ONE record (lib/exitRecord.js) of the latest
 // attempt holds its one final sentence; a page-side close (changed elsewhere) and the POST's own 201 both write through it, so a late
@@ -621,7 +624,7 @@ const paperLeft = computed(() => { // GC-ICFIX u124: after-charges forms, labell
 })
 // R-11: legs still carrying the entry and time the book loaded are paper fills ("Paper average", no time)
 const paperFills = computed(() => (paper.value ? paper.value.net.map(paperFillKey) : []))
-async function confirmPending(orders) {
+async function confirmPending(orders, _held = null, notLiveTicked = false) {
   if (paperBusy.value || !paper.value || !paperDialog.value) return // a Confirm for a dialog that is no longer open (the page closed it) posts nothing
   if (exitBlocked.value) { if (paperContractsChanged.value) closeChanged(); return } // post nothing (the watch may not have run yet); a failed read keeps the dialog and its sentence
   const { id } = paper.value
@@ -635,7 +638,7 @@ async function confirmPending(orders) {
   paperState.value = PAPER_STATE.READY
   let reply = null
   try {
-    reply = own ? await postPaperOrders(api, id, orders) : await postPaperOrders(api, id, orders, actedSuggestionIds.value, preparedBasketLegs.value, null, preparedApproachId.value)
+    reply = own ? await postPaperOrders(api, id, orders) : await postPaperOrders(api, id, orders, actedSuggestionIds.value, preparedBasketLegs.value, null, preparedApproachId.value, notLiveTicked === true)
   } catch (e) {
     const outcome = paperPostOutcome(e)
     if (outcome === PAPER_STATE.REFUSED) { // 4xx: the server stored nothing (one transaction or none)
@@ -1268,15 +1271,12 @@ onBeforeUnmount(() => {
 // ADR-329 (2): the ONE count of unsaved legs (Drafts Mode: pending changes); the leave question and the line under the bar both read it.
 const unsavedNow = computed(() => unsavedCount({ legCount: legs.value.length, savedId: savedId.value, inDrafts: paper.value !== null, pendingCount: pendingOrders.value?.length ?? 0 }))
 
-const index = useIndexAnswer()
 const indexLevel = computed(() => headerLevel(data.value?.spot_level, index.shownValue(index.rowFor(headerUnderlying.value || pickUnderlying.value))))
 // ADR-200 (2): the page's one market-closed banner. With an outcome reply it follows that reply; with none (no legs yet,
 // the drawer priced from the last close) it follows the index answer the page already holds (its own socket / REST read)
-const closedBanner = computed(() => {
-  if (data.value) return data.value.market_closed ? { at: data.value.last_price_at, text: data.value.closed_prices_text ?? null } : null
-  const a = index.answer.value
-  return a?.market_closed === true ? { at: a.last_price_at ?? null } : null
-})
+const closedBanner = computed(() => (pricesNow.value.kind === 'last_close'
+  ? { at: pricesNow.value.at, text: state.value !== 'loading' && data.value?.market_closed ? data.value.closed_prices_text ?? null : null }
+  : null))
 const NO_LIVE_LEVEL = '—' // no live index price in this answer: the level card shows a dash, never a typed or centred number
 // W-194 (ADR-194): the chart card's tab, Payoff sub-view and Full table switch, kept across recomputes.
 const chartTab = ref('payoff')
@@ -1424,8 +1424,8 @@ const leaveGuard = useLeaveBuilder({
         </div>
         <PaperBookPanel v-if="paper" :book="paper.book" :net="paper.net" :changed-ids="stagedChangeIds(paper.net, legs)" :read-failed="paperBookFailed" :contracts-changed="paperContractsChanged" :exit-unresolved="!!exitUnknown" :show-orders="showOrdersTick" @exit="exitPaper" @exit-all="exitAllPaper" />
         </div>
-        <PaperConfirmDialog :open="paperDialog" :orders="paperRows" :strategy-id="route.query.strategy" :busy="paperBusy" :blocked="exitBlocked" :locked="!!exitUnknown" :error="paperError || paperNotLiveLine" :state="paperState" @confirm="confirmPending" @cancel="userCancelPaperDialog" @orderbook="openPaperOrderbook" />
-        <SaveDraftBar v-show="!(opening && !legs.length)" ref="barRef" :legs="legs" :rules-ref="String(route.query.rules_ref || '')" :current="openStrategy" :shown-name="shapeName ?? ''" :paper-mode="paper !== null" :live-price-by-id="livePriceById" :prices-live="pricesLive" class="max-[1099px]:contents" @open="openFromBar" @saved="onSaved" @paper-added="onPaperAdded" @renamed="onRenamed" @deleted="onDeleted">
+        <PaperConfirmDialog :open="paperDialog" :orders="paperRows" :strategy-id="route.query.strategy" :busy="paperBusy" :blocked="exitBlocked" :locked="!!exitUnknown" :error="paperError || paperNotLiveLine" :state="paperState" :not-live-line="paperEntryNotLiveLine" @confirm="confirmPending" @cancel="userCancelPaperDialog" @orderbook="openPaperOrderbook" />
+        <SaveDraftBar v-show="!(opening && !legs.length)" ref="barRef" :legs="legs" :rules-ref="String(route.query.rules_ref || '')" :current="openStrategy" :shown-name="shapeName ?? ''" :paper-mode="paper !== null" :live-price-by-id="livePriceById" :prices-live="pricesLive" :market-closed="pricesNow.kind === 'last_close'" :price-as-of="pricesNow.at ?? ''" class="max-[1099px]:contents" @open="openFromBar" @saved="onSaved" @paper-added="onPaperAdded" @renamed="onRenamed" @deleted="onDeleted">
           <template #add-edit>
             <button v-if="!paperCompleted" type="button" class="h-10 flex-1 basis-0 rounded-lg border border-line font-medium" aria-haspopup="dialog" :aria-expanded="pickerOpen ? 'true' : 'false'" data-testid="add-edit" :disabled="exitBlocked" :title="exitBlocked ? exitGate.reason.value : undefined" @click="pickerOpen = !pickerOpen">Add/Edit</button>
           </template>

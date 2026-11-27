@@ -42,7 +42,7 @@ from ofo.engine.model import close_if_expiry_day
 from ofo.instruments.models import INDEX_ROWS, is_lot_aligned
 from ofo.marketdata.day_open import index_day_open
 from ofo.marketdata.forward import ForwardUnavailable, parity_forward
-from ofo.marketdata.quote import planning_price_usable
+from ofo.marketdata.quote import is_live_price, planning_price_usable, priced
 from ofo.marketdata.spot_source import SourceReading, SourceState, feed_is_live, feed_reading, resolve_spot
 from ofo.rules.inputs import DataHealth
 from ofo.timeutil import IST, SESSION_CLOSE
@@ -871,17 +871,22 @@ async def atm_iv_now(ctx: Any, underlying: str, expiry: datetime.date, spot: Dec
     return _atm_vol(list(rows), ids, model.greeks, forward)
 
 
-async def entry_facts_now(ctx: Any, underlying: str, sold: Iterable[Any]) -> EntryFacts | None:
+async def entry_facts_now(ctx: Any, underlying: str, sold: Iterable[Any], confirmed: bool = False) -> EntryFacts | None:
     """ADR-243 + ADR-270 (1): the entry facts a FIRST fill stores (paper and real alike), from the SOLD legs' listed
     contracts ``sold`` (``.instrument_type``, ``.strike``, ``.expiry``): the index's live spot now, each side's short
     distance (``entry_facts_of``) and the entry ATM IV of the nearest sold option expiry (``atm_iv_now``). Answer
     states: not connected / no quote / a quote that is not a positive price -> None (nothing stored, never a guessed
     spot); the IV not readable (no forward, unpriced chain, a read that fails) -> the facts with ``entry_atm_iv``
-    None."""
+    None. ADR-330 (39): the spot is the index's LIVE price (``priced``: AVAILABLE and above 0), the one rule a leg's
+    price follows; a not-live value (old, flagged) is stored only when the user confirmed the not-live line
+    (``confirmed``, ``_index_value_not_live``: its own flag rule), never silently."""
     if ctx is None or not ctx.provider.status().connected:
         return None
     quote = ctx.provider.underlying_quote(underlying)
-    ltp = None if quote is None else quote.ltp
+    ltp = quote.ltp if priced(quote) else None
+    if ltp is None and confirmed:
+        held = _index_value_not_live(ctx, underlying)
+        ltp = None if held is None else held[0]
     if not isinstance(ltp, Decimal) or ltp <= 0:
         return None
     sold = list(sold)
@@ -897,15 +902,59 @@ async def entry_facts_now(ctx: Any, underlying: str, sold: Iterable[Any]) -> Ent
     return dataclasses.replace(facts, entry_atm_iv=iv)
 
 
-async def _index_spot_held(ctx: Any, feed: Any, underlying: str) -> Decimal:
+def index_hold_refusal(quote: Any) -> str | None:
+    """Why ``quote`` may not be HELD as the index value of a not-live save (ADR-330 (28), (39)); None = it may. An old
+    quote (STALE / DELAYED) keeps its value and its time and may be held on the user's confirmation; a quote the feed
+    flagged (``validation_errors``, health UNHEALTHY, e.g. ``crossed_quote``) or with no price above 0 may not
+    (ADR-200 (4): no valid price stays unpriced with its reason)."""
+    if quote is None:
+        return "no_quote"
+    if quote.validation_errors:
+        return quote.validation_errors[0]
+    if quote.health is DataHealth.UNHEALTHY:
+        return "unhealthy"
+    return None if is_live_price(quote.ltp) else "no_price"
+
+
+def _index_value_not_live(ctx: Any, underlying: str) -> tuple[Decimal, datetime.datetime | None] | None:
+    """ADR-330 (28): the last index value the app holds with ITS time, for a save the user confirmed as "prices are not
+    live": the feed book's last quote (any age), else, with the market closed, the last close. None: no positive value
+    at all (the refusal stays)."""
+    if ctx is None:
+        return None
+    quote = ctx.provider.underlying_quote(underlying)
+    reason = index_hold_refusal(quote)
+    if reason is None and isinstance(quote.ltp, Decimal):
+        return quote.ltp, quote.price_at
+    if reason != "no_quote":
+        log.warning("index value not held on confirmation: %s", reason)
+        return None  # a flagged quote is not rescued by an older close
+    now = ctx.clock()
+    if market_state(ctx, now).closed:
+        close = read_last_close(quote, True, _scenario(), now)
+        if close.state is SourceState.STATED and isinstance(close.value, Decimal) and close.value > 0:
+            return close.value, close.at
+    return None
+
+
+def _index_not_held_reason(ctx: Any, quote: Any) -> str:
+    """The reason the index value is refused, for the refusal's ``.reason`` (the user's text is the template)."""
+    if ctx is None or not ctx.provider.status().connected:
+        return "not_connected"
+    return index_hold_refusal(quote) or "not_live_not_confirmed"
+
+
+async def _index_spot_held(ctx: Any, feed: Any, underlying: str, confirmed: bool = False) -> Decimal:
     """The index's live spot for the fill's starting point (ADR-283 (1)). The API process holds only what a page
     socket subscribed, so an index nobody holds is held on the shared fan-out until its first quote or ``LEG_WAIT_S``
     passes (``read_door.read_quotes``). Answer states: held / quoted within the wait -> the spot; no
-    context / not connected / never quoted / not a positive price -> ``StrategyRefused`` (nothing stored)."""
+    context / not connected / never quoted / not a positive price -> ``StrategyRefused`` (nothing stored), unless the
+    user confirmed the not-live line (``confirmed``, ADR-330 (28)): then the last held value
+    (``_index_value_not_live``)."""
     from ofo_app.chain_push import index_id_of  # noqa: PLC0415 - chain_push imports the app layer
     from ofo_app.strategy_refused import StrategyRefused  # noqa: PLC0415 - write path only
 
-    spot = None
+    spot = quote = None
     if ctx is not None and ctx.provider.status().connected:
         provider = ctx.provider
         index_id = index_id_of(ctx, underlying)
@@ -917,16 +966,25 @@ async def _index_spot_held(ctx: Any, feed: Any, underlying: str) -> Decimal:
             held = await read_quotes(feed, [index_id], read, lambda q: q is not None,
                                        lambda: provider.status().connected, LEG_WAIT_S, LEG_POLL_S)
             quote = quote if held is NO_TOKEN else held
-        spot = None if quote is None else quote.ltp
+        # ADR-330 (39): the quote's own health carries the one index age rule (``FeedState.quote_health``); a value
+        # that rule calls not live is not a live spot, whatever the feed as a whole says: it needs the user's tick
+        live = quote is not None and quote.health is DataHealth.AVAILABLE
+        spot = quote.ltp if live else None
+    if (not isinstance(spot, Decimal) or spot <= 0) and confirmed:
+        held_value = _index_value_not_live(ctx, underlying)
+        spot = None if held_value is None else held_value[0]
     if not isinstance(spot, Decimal) or spot <= 0:
-        raise StrategyRefused("paper_index_price_unavailable", Failure.CONFLICT)
+        refused = StrategyRefused("paper_index_price_unavailable", Failure.CONFLICT)
+        refused.reason = _index_not_held_reason(ctx, quote)  # type: ignore[attr-defined]
+        raise refused
     return spot
 
 
 async def record_basket_facts(db: Any, ctx: Any, feed: Any, strategy_id: int,
-                              basket: tuple[str, Any, Any, Mapping[int, Decimal]]) -> None:
+                              basket: tuple[str, Any, Any, Mapping[int, Decimal], bool]) -> None:
     """ADR-283 (1): stores the market state at this basket's fill, in the fill's transaction. ``basket`` = (underlying,
-    every order of the book after the fill, the order clock, contract id -> this basket's fill price). Basket number =
+    every order of the book after the fill, the order clock, contract id -> this basket's fill price, whether the user
+    confirmed the "prices are not live" line, ADR-330 (28)). Basket number =
     the adjustments made so far after it (ADR-255, ``history_count``; 0 = the entry). Answer states: not connected / no
     positive spot (after the index is held, ``_index_spot_held``) -> REFUSED, nothing stored; the count unreadable ->
     nothing stored (the checks keep the newest starting point); no open leg (the basket closed the strategy) ->
@@ -937,7 +995,7 @@ async def record_basket_facts(db: Any, ctx: Any, feed: Any, strategy_id: int,
     from ofo_app import entry_facts_store  # noqa: PLC0415 - write path only
     from ofo_app.routes.tracking import _snapshot  # noqa: PLC0415 - the paper screen's own market read
 
-    underlying, book, clock, filled = basket
+    underlying, book, clock, filled, prices_not_live_confirmed = basket
     found = {c.contract_id: c for c in await tracked_contracts.resolve(db, sorted({o.order.contract_id
                                                                                  for o in book}))}
 
@@ -950,7 +1008,8 @@ async def record_basket_facts(db: Any, ctx: Any, feed: Any, strategy_id: int,
                                                                            {}).positions if p.net_quantity != 0]
     if used is None or not open_ or not all(is_option(cid) for cid, _ in open_):
         return
-    spot = await _index_spot_held(ctx, feed, underlying)  # after the no-facts returns: an exit needs no spot
+    # after the no-facts returns: an exit needs no spot
+    spot = await _index_spot_held(ctx, feed, underlying, prices_not_live_confirmed)
     kept = [cid for cid, _ in open_ if cid not in filled and found[cid].identity is not None]
     prices: dict[int, Decimal | None] = dict(filled)
     if kept:
