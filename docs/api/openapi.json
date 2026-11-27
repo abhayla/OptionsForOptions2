@@ -6950,6 +6950,18 @@
             "title": "Market Closed",
             "type": "boolean"
           },
+          "next_open_at": {
+            "anyOf": [
+              {
+                "format": "date-time",
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Next Open At"
+          },
           "state": {
             "enum": [
               "LIVE",
