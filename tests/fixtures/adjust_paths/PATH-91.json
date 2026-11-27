@@ -1,0 +1,76 @@
+{
+ "id": "PATH-91",
+ "base": "ADJ-02",
+ "title": "Q3: cross and dip back inside one 5-minute candle: 23350 at 11:42 only",
+ "notes": "Lane Q3 (27 Nov 2026): scripted spot track for the worker-process chain tests; legs and entry as PATH-10",
+ "entry_atm_iv": "0.10",
+ "legs": [
+  {
+   "side": "BUY",
+   "type": "PE",
+   "strike": "22600",
+   "lots": 2
+  },
+  {
+   "side": "SELL",
+   "type": "PE",
+   "strike": "22800",
+   "lots": 2
+  },
+  {
+   "side": "SELL",
+   "type": "CE",
+   "strike": "23400",
+   "lots": 2
+  },
+  {
+   "side": "BUY",
+   "type": "CE",
+   "strike": "23600",
+   "lots": 2
+  }
+ ],
+ "frames": [
+  {
+   "clock": "2026-11-06T11:40:00",
+   "spot": "23100",
+   "atm_iv": "0.10"
+  },
+  {
+   "clock": "2026-11-06T11:41:00",
+   "spot": "23100",
+   "atm_iv": "0.10"
+  },
+  {
+   "clock": "2026-11-06T11:42:00",
+   "spot": "23350",
+   "atm_iv": "0.10"
+  },
+  {
+   "clock": "2026-11-06T11:43:00",
+   "spot": "23100",
+   "atm_iv": "0.10"
+  },
+  {
+   "clock": "2026-11-06T11:44:00",
+   "spot": "23100",
+   "atm_iv": "0.10"
+  },
+  {
+   "clock": "2026-11-06T11:45:00",
+   "spot": "23100",
+   "atm_iv": "0.10"
+  },
+  {
+   "clock": "2026-11-06T11:46:00",
+   "spot": "23100",
+   "atm_iv": "0.10"
+  },
+  {
+   "clock": "2026-11-06T11:47:00",
+   "spot": "23100",
+   "atm_iv": "0.10"
+  }
+ ],
+ "entry_clock": "2026-11-06T11:20:00+05:30"
+}
