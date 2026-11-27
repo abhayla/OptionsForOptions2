@@ -1,0 +1,31 @@
+{
+ "id": "exit-ends-with-nothing-done-and-nothing-said",
+ "scope": "project",
+ "class": "An Exit (Positions Paper, Exit > Confirm) ends with no order sent and no sentence naming the leg and the reason: the page closes the dialog itself (failed or unreadable 5 s re-read, legs changed), returns early (busy, stale, empty), or maps an unknown outcome (superseded POST, proxy 408/429) to ready or refused.",
+ "mechanism": "27 Nov 2026 live: Positions (Paper) Exit > Confirm did not exit the leg and showed no message; Exit on B-P1 did nothing. PaperStrategies.vue closed the dialog and cleared the ticks in fail(), show(), settle() and the stale branch of doExit with no text, so a failed re-read during the dialog made Confirm silent and left Exit disabled with no reason. 11 paths: ask() early return, doExit no-dialog, busy, stale, refused-unchanged lock, four-part truncation (what_happened only), superseded POST to READY, failed read, unreadable 2xx, settle on an unreadable or changed group, ticks cleared with no reason on the button.",
+ "first_seen": {
+  "date": "2026-11-27",
+  "where": "frontend/src/components/strategy/PaperStrategies.vue (closeByPage, doExit)",
+  "evidence": "owner live evidence 27 Nov 2026; frontend/tests/paper-strategies.test.js 'an Exit never ends with nothing done and nothing said' red on 206a9f06: 12 of 12 new cases failed"
+ },
+ "fix": "lib/usePaperExit.js exitEndText is the one wording door and PaperStrategies endExit(reason, legs, parts) the one path of an Exit that ends without an order or with a refusal: a failed read keeps the open dialog blocked with '<leg>: Prices are not live; ...'; changed legs close it with a note; a refusal shows all four parts and the leg; paperPostOutcome treats everything but 400/409/422 as unknown.",
+ "detection": {
+  "status": "guarded",
+  "checks": ["frontend/tests/paper-strategies.test.js", "frontend/tests/paper-dialog-safe.test.js", "frontend/e2e/screen-positions.spec.ts EXIT-21"],
+  "note": "Tests per path, not a scan. The builder (StrategyBuilderPage cancelPaperDialog on exitBlocked) still closes its dialog on a block with only the panel line; same class, not yet moved to endExit."
+ },
+ "spec_ref": [
+  "spec/decisions/ADR-016.md",
+  "spec/decisions/ADR-017.md",
+  "spec/decisions/ADR-018.md",
+  "spec/decisions/ADR-019.md",
+  "spec/decisions/ADR-328.md"
+ ],
+ "occurrences": [
+  {
+   "date": "2026-11-27",
+   "where": "Positions (Paper) Exit > Confirm, B-P1",
+   "evidence": "owner live check 27 Nov 2026; RCA-B"
+  }
+ ]
+}

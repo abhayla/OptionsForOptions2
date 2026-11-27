@@ -12,6 +12,8 @@ Rules:
   ``detection.feed_stale_seconds``); a tick
   dated more than ``CLOCK_SKEW_TOLERANCE`` (2 s, shared with the Execute gate) after the caller's clock is not fresh
   either (fail closed);
+- a REST answer is also refused when older than ``windows.index_quote_max_age`` by its own (Kite's) time in market hours
+  (``rest_stale``, ADR-330 (39)); outside market hours the calendar says so and it is not age-checked;
 - a REST answer or a last close counts only when stated with a price above 0 (``is_live_price``): a 200 with no
   ``last_price`` is EMPTY, never 0;
 - a value that is not finite (NaN, sNaN, Infinity) is ``not_finite``, checked before any comparison, never a spot and
@@ -48,6 +50,8 @@ REASON_NO_TIME: Final = "no_time"
 REASON_FUTURE: Final = "tick_in_future"
 REASON_STALE: Final = "stale"
 REASON_NOT_FINITE: Final = "not_finite"
+#: a REST index reading older than ``detection.index_quote_max_age_seconds`` (Kite's own time) in market hours: not live
+REASON_REST_STALE: Final = "rest_stale"
 
 
 class SourceState(enum.Enum):
@@ -80,13 +84,14 @@ class SpotAnswer:
         return self.value is not None
 
 
-def _why_not(name: str, reading: SourceReading | None, now: datetime.datetime, windows: FeedWindows) -> str | None:
+def _why_not(name: str, reading: SourceReading | None, now: datetime.datetime, windows: FeedWindows,
+             market_closed: bool | None = None) -> str | None:
     """None when ``reading`` is usable, else the reason in plain words."""
     if reading is None or reading.state is SourceState.ABSENT:
         return REASON_ABSENT
     if reading.state is not SourceState.STATED:
         return reading.state.name.lower()
-    return _price_problem(reading.value) or _time_problem(name, reading.at, now, windows)
+    return _price_problem(reading.value) or _time_problem(name, reading.at, now, windows, market_closed)
 
 
 def _price_problem(value: object) -> str | None:
@@ -99,13 +104,27 @@ def _price_problem(value: object) -> str | None:
 
 
 def _time_problem(name: str, at: datetime.datetime | None, now: datetime.datetime,
-                  windows: FeedWindows) -> str | None:
-    """None when a STATED reading's time is aware, not in the future and (for the feed) fresh, else the reason."""
+                  windows: FeedWindows, market_closed: bool | None = None) -> str | None:
+    """None when a STATED reading's time is aware, not in the future and (feed: within the feed window; REST: within
+    the index age limit in market hours) fresh, else the reason."""
     if at is None or at.tzinfo is None:
         return REASON_NO_TIME
     if at - now > CLOCK_SKEW_TOLERANCE:  # a stamp a moment after the caller's clock is a fresh quote, not a future one
         return REASON_FUTURE
-    return _feed_age_problem(now - at, windows) if name == SOURCE_FEED else None
+    if name == SOURCE_FEED:
+        return _feed_age_problem(now - at, windows)
+    if name == SOURCE_REST:  # ADR-330 (39), the ONE index age rule: a REST index reading is no fresher than its time
+        closed = market_closed_for(None, now) if market_closed is None else market_closed
+        return REASON_REST_STALE if not closed and now - at > windows.index_quote_max_age else None
+    return None
+
+
+def rest_problem(reading: SourceReading | None, now: datetime.datetime, windows: FeedWindows, *,
+                 market_closed: bool | None = None) -> str | None:
+    """None when a REST index reading is usable at ``now`` (stated, a live price, aware time not in the future, within
+    the index age limit in market hours), else the reason code. The worker's one test of a REST reading (never its own
+    copy of the age rule). ``market_closed`` None: the calendar's answer."""
+    return _why_not(SOURCE_REST, reading, now, windows, market_closed)
 
 
 def _feed_age_problem(age: datetime.timedelta, windows: FeedWindows) -> str | None:
@@ -150,14 +169,16 @@ def feed_reading(quote: NormalizedQuote | None, now: datetime.datetime, *, feed_
     return SourceReading(SourceState.STATED, quote.ltp, at)
 
 
-def resolve_spot(feed: SourceReading | None, rest: SourceReading | None, last_close: SourceReading | None, *,
-                 now: datetime.datetime, windows: FeedWindows) -> SpotAnswer:
+def resolve_spot(feed: SourceReading | None, rest: SourceReading | None,  # noqa: PLR0913
+                 last_close: SourceReading | None, *,
+                 now: datetime.datetime, windows: FeedWindows,
+                 market_closed: bool | None = None) -> SpotAnswer:
     """Feed -> REST quote -> last close; the first usable one is returned, labelled with its source and time."""
     if now.tzinfo is None:
         raise ValueError("now must be timezone-aware")
     reasons: list[tuple[str, str]] = []
     for name, reading in zip(SOURCE_ORDER, (feed, rest, last_close), strict=True):
-        why = _why_not(name, reading, now, windows)
+        why = _why_not(name, reading, now, windows, market_closed)
         if why is None:
             assert reading is not None and reading.at is not None  # noqa: S101 - narrowed by _why_not
             return SpotAnswer(reading.value, name, reading.at, tuple(reasons))

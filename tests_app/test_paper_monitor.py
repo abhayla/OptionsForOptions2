@@ -643,3 +643,76 @@ async def test_adr_330_39_a_stale_index_tick_does_not_fire_an_armed_exit_and_a_f
     assert await monitor.step() == 1
     assert await _trigger_state(db, tid) == (True, False)
     assert len(await _stops(db, stored.id)) == OPEN_LEGS
+
+
+async def test_hf_a_a_failed_hold_read_keeps_the_armed_stops_watched_and_the_last_hold(db, monkeypatch):
+    market = Market()
+    stored, _, keys = await _strategy(db)
+    await _exit_below(db, stored.id)
+    monitor = _monitor(db, market)
+    await monitor.reload()
+    held = list(monitor._standing)
+    assert held and monitor.watched()
+    async def broken(_session):
+        raise RuntimeError("hold read failed")
+    monkeypatch.setattr(paper_monitor.triggers, "open_legs", broken)
+    await monitor.reload()  # must not raise: the stop watch is set first
+    assert monitor.watched() and monitor._standing == held
+    market.tick(INDEX, "22800.00")
+    market.tick(keys[0], "41.00")
+    market.tick(keys[1], "12.50")
+    assert await monitor.step() == 1  # the armed exit still fires
+
+
+async def test_hf_a_the_standing_hold_keeps_one_quote_and_its_old_handles_survive_a_failed_swap(
+        monkeypatch):
+    market = Market()
+    keys = ["NSE_FO:1", "NSE_FO:2", INDEX]
+    monitor = paper_monitor.PaperMonitor(None, lambda: market.feed, leg_prices=market.leg_prices,
+                                         read_settings=None, monotonic=lambda: 0.0)
+    monitor._hold_open_legs(market.feed, keys)
+    old = list(monitor._standing)
+    for i in range(5):
+        market.tick(keys[0], f"4{i}.00")
+    assert len(market.feed.fanout._subs[old[0]].queue) <= 1  # max_queue=1: never grows
+    real = market.feed.fanout.subscribe
+    def boom(listener, ids, **kw):
+        raise RuntimeError("provider down")
+    monkeypatch.setattr(market.feed.fanout, "subscribe", boom)
+    with pytest.raises(RuntimeError):
+        monitor._hold_open_legs(market.feed, keys)
+    assert monitor._standing == old and old[0] in market.feed.fanout._subs  # old hold kept, never released blind
+    monkeypatch.setattr(market.feed.fanout, "subscribe", real)
+    monitor._hold_open_legs(market.feed, keys)
+    assert monitor._standing != old and old[0] not in market.feed.fanout._subs  # released once the swap succeeded
+
+
+async def test_hf_u2_a_reload_uses_one_connection_checkout_and_logs_the_held_count_once_per_change(db, caplog):
+    """Hotfix 27 Nov (DB pool 2 on the PC): the hold's reads run on the reload's own session (ONE checkout per reload);
+    the held-key count is logged once per change, not once per reload."""
+    import logging  # noqa: PLC0415
+    once, reloads = 1, 3
+    market = Market()
+    await _strategy(db)
+    monitor = _monitor(db, market)
+    checkouts = 0
+    real = monitor._sessions
+    def counting():
+        nonlocal checkouts
+        checkouts += 1
+        return real()
+    monitor._sessions = counting
+    with caplog.at_level(logging.INFO, logger=paper_monitor.log.name):
+        await monitor.reload()
+        assert checkouts == 1  # armed + orders + contracts + the hold's open_legs: one session
+        await monitor.reload()
+        await monitor.reload()
+        lines = [r.getMessage() for r in caplog.records if "paper monitor holds" in r.getMessage()]
+        assert len(lines) == once
+        assert lines[0].endswith("feed keys (open legs + indexes)")
+        monitor._hold_open_legs(market.feed, ["NSE_FO:1"])  # the set changed: one more line
+        monitor._hold_open_legs(market.feed, ["NSE_FO:1"])
+        lines = [r.getMessage() for r in caplog.records if "paper monitor holds" in r.getMessage()]
+        assert len(lines) == once + 1
+        assert lines[1] == "paper monitor holds 1 feed keys (open legs + indexes)"
+    assert checkouts == reloads

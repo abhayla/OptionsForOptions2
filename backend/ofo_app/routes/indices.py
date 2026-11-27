@@ -19,8 +19,6 @@ reads carry no user value.
 """
 from __future__ import annotations
 
-import asyncio
-import contextlib
 import time
 from collections.abc import Callable
 from typing import Annotated
@@ -29,7 +27,8 @@ from fastapi import APIRouter, Depends, Query
 
 from ofo_app.errors import ClosedRoute, ClosedSocket, ClosedWebSocketRoute
 from ofo_app.index_push import IndexPush, IndicesOut, index_ids, indices_answer
-from ofo_app.live_push import POLL_SECONDS, LiveFeed, no_listener
+from ofo_app.live_push import POLL_SECONDS, LiveFeed
+from ofo_app.read_door import NO_TOKEN, read_lease, read_quotes
 from ofo_app.routes import live, outcome
 from ofo_app.routes.outcome import (
     AnswerClock,
@@ -73,6 +72,20 @@ def _both_priced(ctx: MarketContext, ids: list[str]) -> bool:
     return all(r.value is not None for r in answer.indices if r.instrument_id in ids)
 
 
+def _without_the_door(feed: LiveFeed, streaming: Callable[[str], bool]) -> Callable[[str], bool]:
+    """``held_by_a_socket`` means a SOCKET holds the id. The read door's own standing lease is a fan-out holder too, so
+    an id only the door holds is not streaming (a lease alone never makes a disconnected provider answer LIVE)."""
+    lease = read_lease()
+
+    def streaming_by_a_socket(instrument_id: str) -> bool:
+        only_the_door = lease.holds(feed, instrument_id) and feed.fanout.subscriber_count(instrument_id) <= 1
+        return streaming(instrument_id) and not only_the_door
+    owner = getattr(streaming, "ctx", None)  # the replay's predicate names its own context: keep it (held_by_a_socket)
+    if owner is not None:
+        streaming_by_a_socket.ctx = owner  # type: ignore[attr-defined]
+    return streaming_by_a_socket
+
+
 async def indices_first_paint(ctx: MarketContext | None,  # noqa: PLR0913 - one seam per collaborator
                               streaming: Callable[[str], bool] | None,
                               feed: LiveFeed | None, *, fallback: bool, now: AnswerClock,
@@ -83,6 +96,8 @@ async def indices_first_paint(ctx: MarketContext | None,  # noqa: PLR0913 - one 
     is read INSIDE the hold, which is released in ``finally``. The plain read's answer is LIVE (the hold is a holder);
     the fallback read's answer (this page's own socket is down, whoever else streams) is NOT_CONNECTED with the values
     filled. A KeyError from the fan-out (no token for an id): the unheld answer stands."""
+    if feed is not None and streaming is not None:
+        streaming = _without_the_door(feed, streaming)
     closed = ctx is None or market_state(ctx, ctx.clock()).closed
     unheld = ctx is not None and not held_by_a_socket(ctx, streaming)
     if feed is None or ctx is None or closed or not (fallback or unheld):
@@ -90,23 +105,15 @@ async def indices_first_paint(ctx: MarketContext | None,  # noqa: PLR0913 - one 
     ids = [i for i in index_ids(ctx).values() if i is not None]
     if not ids:
         return indices_read(ctx, streaming, fallback=fallback, now=now)
-    try:
-        handle = feed.fanout.subscribe(no_listener, ids, max_queue=1)
-    except KeyError:
+    held = await read_quotes(feed, ids, lambda: None, lambda _s: _both_priced(ctx, ids),
+                             lambda: ctx.provider.status().connected, wait, POLL_SECONDS)
+    if held is NO_TOKEN:  # no token for any id: nothing was held, the unheld answer stands
         return indices_read(ctx, streaming, fallback=fallback, now=now)
-    try:
-        loop = asyncio.get_running_loop()
-        deadline = loop.time() + wait
-        while not _both_priced(ctx, ids) and ctx.provider.status().connected and loop.time() < deadline:  # noqa: ASYNC110
-            await asyncio.sleep(POLL_SECONDS)
-        if not ctx.provider.status().connected:  # the hold is a subscriber, so not indices_read: not live, plainly
-            return indices_answer(ctx, live=False, now=now)
-        if fallback:  # ADR-213: never LIVE for a page whose own socket is down, but the values the hold read
-            return indices_answer(ctx, live=False, now=now, fill=True)
-        return indices_answer(ctx, live=True, now=now)  # inside the hold: this read is itself a holder
-    finally:
-        with contextlib.suppress(Exception):
-            feed.fanout.unsubscribe(handle)
+    if not ctx.provider.status().connected:  # the hold is a subscriber, so not indices_read: not live, plainly
+        return indices_answer(ctx, live=False, now=now)
+    if fallback:  # ADR-213: never LIVE for a page whose own socket is down, but the values the hold read
+        return indices_answer(ctx, live=False, now=now, fill=True)
+    return indices_answer(ctx, live=True, now=now)  # inside the hold: this read is itself a holder
 
 
 @router.get(REST_PATH, response_model=IndicesOut)

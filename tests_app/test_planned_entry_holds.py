@@ -34,6 +34,7 @@ from marketdata._kite_fixture import all_instrument_ids, new_provider, replay  #
 from ofo.marketdata.fanout import FanOut  # noqa: E402
 from ofo.marketdata.shared_compute import SharedCompute  # noqa: E402
 from ofo.settings import defaults as _d  # noqa: E402
+from ofo_app import read_door  # noqa: E402
 from ofo_app.live_push import LiveFeed  # noqa: E402
 from ofo_app.main import create_app  # noqa: E402
 from ofo_app.routes import outcome as outcome_route  # noqa: E402
@@ -100,6 +101,11 @@ class Rig:
         return resp.json()["entries"]
 
 
+def _lease_ends() -> None:
+    """The door's standing lease ends (what its sweeper does LEASE_SECONDS after the last read of a token)."""
+    read_door.read_lease().release()
+
+
 @pytest.fixture
 def fast_wait(monkeypatch):
     monkeypatch.setattr(route, "PLANNED_ENTRY_WAIT_S", 0.4)
@@ -112,7 +118,10 @@ async def test_unheld_contracts_are_held_priced_then_released(fast_wait):
     assert [e["planned_entry"] for e in entries] == ["44.90", "11.75", "79.05", "37.15"]
     assert all(e["source"] == "ltp" and e["reason_code"] is None for e in entries)
     assert rig.provider.counters["vendor_subscribe"] == len(LEGS)  # each leg was taken once from the vendor
-    assert rig.held(LEGS) == [] and rig.wanted(LEGS) == []  # and nothing is left held
+    # hotfix 27 Nov: a read holds on a standing lease (read door)
+    assert rig.held(LEGS) == LEGS and rig.wanted(LEGS) == LEGS  # held on the lease after the read
+    _lease_ends()
+    assert rig.held(LEGS) == [] and rig.wanted(LEGS) == []  # and nothing is left held once the lease ends
 
 
 async def test_a_contract_held_and_live_by_another_is_priced_and_stays_held(fast_wait):
@@ -145,6 +154,9 @@ async def test_no_tick_in_time_gives_no_live_price_and_nothing_stays_subscribed(
     rig = Rig()  # no ticks: the vendor never answers
     entries = await rig.post(LEGS[:2])
     assert all(e["planned_entry"] is None and e["reason_code"] == "no_live_price" for e in entries)
+    # hotfix 27 Nov: a read holds on a standing lease (read door)
+    assert rig.held(LEGS) == LEGS[:2] and rig.wanted(LEGS) == LEGS[:2]  # held on the lease
+    _lease_ends()
     assert rig.held(LEGS) == [] and rig.wanted(LEGS) == []
 
 
@@ -153,6 +165,9 @@ async def test_a_zero_first_tick_is_not_a_price_and_is_released(fast_wait):
     rig.ticks = {LEGS[0]: "0.00"}
     entries = await rig.post([LEGS[0]])
     assert entries[0]["planned_entry"] is None and entries[0]["reason_code"] == "no_live_price"
+    # hotfix 27 Nov: a read holds on a standing lease (read door)
+    assert rig.held(LEGS) == [LEGS[0]] and rig.wanted(LEGS) == [LEGS[0]]  # held on the lease
+    _lease_ends()
     assert rig.held(LEGS) == [] and rig.wanted(LEGS) == []
 
 
@@ -177,6 +192,9 @@ async def test_a_client_that_goes_away_mid_wait_leaves_nothing_held(monkeypatch)
     with pytest.raises(asyncio.CancelledError):
         await task
     await asyncio.sleep(0.05)
+    # hotfix 27 Nov: a read holds on a standing lease (read door)
+    assert rig.held(LEGS) == [LEGS[0]] and rig.wanted(LEGS) == [LEGS[0]]  # the lease keeps it after the client goes
+    _lease_ends()
     assert rig.held(LEGS) == [] and rig.wanted(LEGS) == []
 
 
@@ -186,6 +204,9 @@ async def test_concurrent_requests_for_one_contract_share_one_vendor_subscriptio
     first, second = await asyncio.gather(rig.post([LEGS[0]]), rig.post([LEGS[0]]))
     assert first[0]["planned_entry"] == second[0]["planned_entry"] == "44.90"
     assert rig.provider.counters["vendor_subscribe"] == 1
+    # hotfix 27 Nov: a read holds on a standing lease (read door)
+    assert rig.held(LEGS) == [LEGS[0]] and rig.wanted(LEGS) == [LEGS[0]]  # one lease hold, not two
+    _lease_ends()
     assert rig.held(LEGS) == [] and rig.wanted(LEGS) == []
 
 
