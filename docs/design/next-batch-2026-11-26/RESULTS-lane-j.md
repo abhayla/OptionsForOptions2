@@ -7,6 +7,47 @@ for these items by the owner on 26 Nov, see RESULTS-lane-p.md). Highest status c
 
 Spec basis: ADR-330 (1) to (27) and its one-module instruction; ADR-002; ADR-003; ADR-008; ADR-016 to ADR-019.
 
+## Hotfix status for the coordinator: `hotfix/plan-watch-1127` (27 Nov, Plan watch slowness)
+
+**Head: code head 48563be1, plus the commit that adds this block (the branch head)** (cut from 206a9f0; only this fix: 5 files, `routes/plan_watch.py`, `PlanWatch.vue`,
+`lib/planWatch.js` and their two test files). **Depends on Lane U's `hotfix/index-quote-1127`: merge Lane U's first.**
+This branch has no index reader or cache of its own (coordinator split, 09:52 IST). Highest status: Fixed, not tested.
+
+What it does:
+- The Plan watch box reads at most once per 15 s (`PLAN_WATCH_MIN_READ_GAP_MS`, `lib/planWatch.js`), not on every
+  5 s paper tick. The first read on open and on a strategy change is immediate. No new request goes out while one is
+  unanswered (one catch-up read at most), and the timer stops when the box closes.
+- While a read is slow and an earlier answer exists, the last rows stay with their as-of time, marked "Updating the
+  numbers..." (REQ-119 AC-4). A failed read after a good one keeps the rows with "Could not refresh the rule check.
+  Showing the last answer, as of the time shown." Only a first read with no answer shows the loading or
+  not-available states.
+- The route bounds its price reads (market, and the REST index quote) by one 4 s budget (`PRICE_BUDGET_S`). Past it,
+  the read is cancelled and the answer is the existing "prices not live" one: lines paused or not checked, no `now`,
+  no distance, nothing written. After a cut market read the REST quote is not asked at all. Without that, an instant
+  (cached) REST answer would pair with the not-connected market and give HTTP 500 (Tier A MAJOR, fixed in round 2).
+  The margin read after the price reads has its own 8 s timeout, so the worst case is about 12 s. It fails closed: the
+  rows stay marked not current.
+- No reply field, no migration, no openapi change.
+
+**The PC must:** `git fetch origin` and check out the merged head; **restart the API**; **rebuild the frontend**
+(`cd frontend && npm ci && npm run build`), because the box's read pacing is browser code. **No migration.** The worker
+supervisor does not need a restart for this branch.
+
+**Re-run on the PC (market hours):** L-series Plan watch checks in section (b) (L1 to L9). Then, with two or three
+strategies open on Positions, the box keeps its rows (no empty box) and the API answers other pages at once. In the
+browser network tab, `/plan-watch` is called about every 15 s per box, never two at once for one box.
+
+Tier A review (Opus), round 1: FIX (1 MAJOR, 7 MINOR); round 2 fixed the MAJOR and MINORs 1 to 5: round 2 commit 48563be1 (no REST read after a cut market read, with a test; the hang tests are bounded so a regression fails instead of hanging; truthful comments; the mark and the as-of line share one slot). MINORs 6 (a strategy change mid-read waits for the old read) and 7 (below) are not changed.
+For Lane U, from the review: (i) a cut `to_thread` REST read keeps its thread until urllib's 4 s timeout, so allow
+one REST quote in flight per underlying; (ii) the same KeyError class exists wherever a not-connected market meets a
+live ctx and a STATED spot (`approaches.roll_distance`, `ofo/adjustment/approaches.py:475`).
+Listed for tonight (coordinator 10:16 IST), not on this branch:
+- routes/adjustment_history.py:244 holds its connection across `paper.market_snapshot` and then uses it again (`_plan_max`, `placed_links`, lines 247-248); a release needs those reads moved before the snapshot (and `_plan_max` takes the market context too) plus a pool-checked-out test like test_plan_watch's.
+- routes/playbooks.py `_tested` (:498-520) interleaves per-strategy DB reads (`_strategy_layer`) with each strategy's market read inside one loop; a release means splitting the loop into a DB pass and a market pass. Lane U edits the same file (playbooks.py:449), so it should follow Lane U's merge.
+Not done at 10:16 because the gate alone takes about 33 minutes and the 11:00 push holds only the reviewed plan-watch change.
+Repo-scan note: `tests_app/test_kite_broker_reader.py::test_attack2_user_profile_outside_the_door_is_refused_by_the_egress_gate`
+fails in this sandbox on the base 206a9f0 too (HTTP 400 from the sandbox proxy), not caused by this branch.
+
 ## Status for the coordinator (this session cannot send messages: the session-message service refuses it as untrusted)
 
 **Full app (DB) suite on the final code head 1eb5097, run as CI runs it (GITHUB_ACTIONS=true, per-file database
