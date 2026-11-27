@@ -29,6 +29,7 @@ from ofo_app.routes import outcome
 from test_adjustment_check import _reset_engine, _seeded, app_db_url  # noqa: F401
 from test_plan_watch import _arm
 
+STALLED_SAMPLES = 4  # 4 samples of 2 ms with no loop tick
 pytestmark = pytest.mark.skipif(os.environ.get("OFO_PERF") != "1", reason="measurement harness: set OFO_PERF=1")
 
 ASSUMED_BROKER_ROUND_TRIP = 0.5  # seconds; an assumption, labelled in the output
@@ -219,7 +220,7 @@ async def test_concurrency(app_db_url, monkeypatch):  # noqa: F811, C901
                 assert await one(f"/api/strategies/{sid}/{kind}") == 200  # noqa: PLR2004
         # Lane H: how long the event loop is held at a stretch while 20 checks run (a stop or alert waits this long)
         lag: list[float] = []
-        last_tick = [time.perf_counter()]
+        ticks = [0]
         stop_tick = False
 
         async def ticker() -> None:
@@ -227,8 +228,8 @@ async def test_concurrency(app_db_url, monkeypatch):  # noqa: F811, C901
             while not stop_tick:
                 await asyncio.sleep(0.001)
                 now = time.perf_counter()
-                last_tick[0] = now
                 lag.append((now - last) * 1000.0)
+                ticks[0] += 1
                 last = now
         if os.environ.get("OFO_PERF_SLOW"):  # a watchdog thread names where the loop thread is while it is held > 8 ms
             import collections as _c  # noqa: PLC0415
@@ -237,9 +238,13 @@ async def test_concurrency(app_db_url, monkeypatch):  # noqa: F811, C901
             loop_tid = _t.get_ident()
             seen = _c.Counter()
             def watch():
+                still = 0
+                prev = ticks[0]
                 while not stop_tick:
                     time.sleep(0.002)
-                    if lag and time.perf_counter() - last_tick[0] > 0.008:
+                    still = still + 1 if ticks[0] == prev else 0  # samples in a row with no tick: the loop is held
+                    prev = ticks[0]
+                    if still >= STALLED_SAMPLES:
                         f = _sys._current_frames().get(loop_tid)
                         stack = []
                         while f is not None and len(stack) < 40:
