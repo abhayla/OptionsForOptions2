@@ -31,8 +31,15 @@ def test_time_value_stays_on_the_live_price_pending_the_owner_decision():
     assert money.time_and_intrinsic((sold_put("23.70"),), D("25400")).time is None  # no live price: absent
 
 
-def test_the_plan_credit_line_is_withdrawn():
-    assert not hasattr(money, "plan_line")  # D-15 parked: no plan credit line is built
+def test_plan_line_states_the_plan_credit_beside_the_fill_credit():
+    line = money.plan_line((sold_put("23.70"),), {"i1": D("23.85")}, ["i1"])
+    assert line == "Plan: Get \u20b91,550.25 at plan prices"  # 23.85 x 65 (ADR-321 (8))
+
+
+def test_plan_line_absent_states():
+    legs = (sold_put("23.70"),)
+    assert money.plan_line(legs, {}, ["i1"]) is None  # plan with no entry price: no line, no made-up figure
+    assert money.plan_line(legs, {"i1": None}, ["i1"]) is None
 
 
 def test_basis_texts():

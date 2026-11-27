@@ -22,6 +22,7 @@ sys.path.insert(0, str(ROOT / "tests_app"))
 
 from httpx import ASGITransport, AsyncClient  # noqa: E402
 from marketdata._kite_fixture import all_instrument_ids, new_provider, replay  # noqa: E402
+from ofo.errors.explanations import render_explanation  # noqa: E402
 from ofo.marketdata import quote as quote_module  # noqa: E402
 from ofo_app.main import create_app  # noqa: E402
 from ofo_app.routes import outcome as outcome_route  # noqa: E402
@@ -82,28 +83,80 @@ async def _units_of(provider):
     return {x["instrument_id"]: x["quantity"] for x in json.loads(resp.text)["legs"]}
 
 
-async def test_every_leg_a_fill_says_paper_fill_prices_and_serves_no_plan_line(replayed):
-    fills = await _fills_of(replayed)
-    units = await _units_of(replayed)
-    body = _paper_body(replayed)
-    plan = {x["instrument_id"]: (x["action"], units[x["instrument_id"]],
-                                 Decimal(x["planned_entry"]) + (Decimal("0.10") if x["action"] == "SELL" else 0))
+async def _plan_of(provider, body, bump="0.10"):
+    units = await _units_of(provider)
+    return {x["instrument_id"]: (x["action"], units[x["instrument_id"]],
+                                 Decimal(x["planned_entry"]) + (Decimal(bump) if x["action"] == "SELL" else 0))
             for x in body["legs"]}
+
+
+async def test_every_leg_a_fill_says_paper_fill_prices_and_serves_the_plan_line(replayed):
+    """ADR-321 (8): the plan line shows only when every leg is a fill. Hand: the two SELL legs were planned 0.10 above
+    their fills, so the plan's Get is the fill Get + 2 x 0.10 x 65 = +13.00."""
+    fills = await _fills_of(replayed)
+    body = _paper_body(replayed)
+    plan = await _plan_of(replayed, body)
+    out = json.loads((await _post(replayed, body, fills, plan)).text)["summary"]
+    assert out["price_basis_text"] == "At paper fill prices"
+    net = out["net_premium"]
+    assert net["side"] == "get"
+    expected = Decimal(net["amount"]) + Decimal("13.00")
+    assert out["plan_line"] == str(render_explanation("money_plan_get", amount=expected))
+    assert out["plan_line"].startswith("Plan: Get ")
+
+
+async def test_a_partly_exited_leg_serves_no_plan_line(replayed):
+    fills = await _fills_of(replayed)
+    body = _paper_body(replayed)
+    plan = await _plan_of(replayed, body)
+    iid = body["legs"][0]["instrument_id"]
+    net, avg = fills[iid]
+    half = abs(net) // 2
+    fills[iid] = ((half if net > 0 else -half), avg)  # the book holds half the planned quantity
+    s = json.loads((await _post(replayed, body, fills, plan)).text)["summary"]
+    assert s["plan_line"] is None
+
+
+async def test_a_fully_exited_leg_serves_no_plan_line_the_23_nov_c11_shape(replayed):
+    fills = await _fills_of(replayed)
+    body = _paper_body(replayed)
+    plan = await _plan_of(replayed, body)
+    gone = body["legs"].pop()["instrument_id"]
+    fills.pop(gone)  # out of the book and out of the request; the stored plan still names it
     s = json.loads((await _post(replayed, body, fills, plan)).text)["summary"]
     assert s["price_basis_text"] == "At paper fill prices"
-    assert s["plan_line"] is None  # D-15 parked: the plan credit line is withdrawn
+    assert s["plan_line"] is None
+
+
+async def test_an_edited_leg_not_a_fill_serves_no_plan_line(replayed):
+    fills = await _fills_of(replayed)
+    body = _paper_body(replayed)
+    plan = await _plan_of(replayed, body)
+    first = body["legs"][0]
+    first["planned_entry"] = f"{Decimal(first['planned_entry']) + Decimal('0.05'):f}"
+    s = json.loads((await _post(replayed, body, fills, plan)).text)["summary"]
+    assert s["price_basis_text"].startswith("At paper fill prices for 3 of 4")
+    assert s["plan_line"] is None
+
+
+async def test_an_unplaced_plan_is_the_plan_itself_and_serves_no_plan_line(replayed):
+    s = json.loads((await _post(replayed, _body(replayed), None)).text)["summary"]
+    assert s["price_basis_text"] == "At plan prices" and s["plan_line"] is None
+
+
+async def test_an_unreadable_book_serves_no_plan_line_even_with_a_stored_plan(replayed):
+    body = _paper_body(replayed)
+    plan = await _plan_of(replayed, body)
+    s = json.loads((await _post(replayed, body, None, plan)).text)["summary"]
+    assert s["plan_line"] is None
 
 
 async def test_an_exited_plan_leg_never_prices_the_held_subset_as_the_plan_credit(replayed):
-    """Plan has one more leg than the book holds (the 23 Nov exited-wing case): no plan line, no made-up credit."""
+    """The plan has one more leg than the book holds (a planned leg no longer on the book): no plan line."""
     fills = await _fills_of(replayed)
-    units = await _units_of(replayed)
     body = _paper_body(replayed)
-    plan = {x["instrument_id"]: (x["action"], units[x["instrument_id"]], Decimal(x["planned_entry"]))
-            for x in body["legs"]}
-    held_ids = list(fills)
-    assert len(held_ids) > 1
-    plan_all = {**plan, "NSE_FO:EXITED-WING": ("BUY", 65, Decimal("1.00"))}  # a planned leg no longer on the book
+    plan = await _plan_of(replayed, body, "0")
+    plan_all = {**plan, "NSE_FO:EXITED-WING": ("BUY", 65, Decimal("1.00"))}
     s = json.loads((await _post(replayed, body, fills, plan_all)).text)["summary"]
     assert s["plan_line"] is None
 

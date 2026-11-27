@@ -191,7 +191,7 @@ Options: (a) the banner shows the EARLIEST leg time ("Prices are from 15:29:59")
 banner names both: "Prices are from 15:30:00; 1 leg as of 15:33:48" (new wording); (c) keep the latest time (as built).
 Recommendation: (b) - no figure sits under a time it does not have. Lane R builds nothing until answered; #752 stays open.
 
-## LR-Q19 D-15: should the "Plan: Get Rs X" line come back beside the paper summary, and what does it say after a leg is exited? (open, 26 Nov 2026)
+## LR-Q19 D-15: should the "Plan: Get Rs X" line come back beside the paper summary, and what does it say after a leg is exited? (SETTLED by ADR-321 (8), coordinator 27 Nov 2026: option (a); built on branch lane-r-hh)
 
 Spec basis: ADR-321 (8) ("The plan credit stays visible as one 'Plan:' line only when every leg is a fill"), ADR-322 (2) (the credit keeps its own basis label), GC-ICLIVE-B D-15, ADR-008 (the server builds the text). Silent on: the wording of the line, and a trade whose planned leg was fully exited. Today (`routes/outcome.py` `_with_price_basis`) the basis label ("At plan prices" / "At paper fill prices" / "N of M legs") is shown and `plan_line` is always null (withdrawn in 17e585a0 because after an exit it priced only the held legs).
 Real case (23 Nov, C11): header showed plan 23.85 / Get 1,550 while the fills were 23.70 (credit 1,540.50); the owner could not see the plan credit once the summary moved to fill prices. Case with an exit: a 4-leg condor with one wing exited has 3 held legs, all fills: the label says "At paper fill prices" and a plan line over those 3 legs would show a credit that is not the plan's.

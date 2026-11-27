@@ -319,6 +319,16 @@ strategy). `strategy_history.at` is stamped by the database, so the times need n
 
 Proof, run this turn: `python -m pytest -q -p no:cacheprovider -c pytest-app.ini tests_app/test_outcome_price_basis_d15.py` = 13 passed (a: `test_no_paper_strategy_says_plan_prices`; b: `test_every_leg_a_fill_says_paper_fill_prices_and_serves_no_plan_line`; c: `test_an_edited_leg_at_a_live_price_is_not_called_a_paper_fill`, `test_no_leg_matching_the_book_says_so`; d: `test_an_exited_plan_leg_never_prices_the_held_subset_as_the_plan_credit` pins only `plan_line is None`; it does not pin the basis text of the held subset, which I read from the code). `npx vitest run tests/price-basis-d15-d17-d18.test.js` = 7 passed.
 
+## D-15 plan line rebuilt (LR-Q19 option (a), branch lane-r-hh, 27 Nov 2026)
+
+| Finding | Status | What the screen shows today | Verdict |
+|---|---|---|---|
+| D-15, "Plan: Get Rs X" line | Built to ADR-321 (8), settled by the coordinator 27 Nov (LR-Q19 option (a)) | While the paper book still holds every plan leg as a fill, under the basis label: "Plan: Get Rs X at plan prices" (a debit: "Plan: Pay ..."), X from the plan the server stored. After any exit (partial or full) or any leg not a fill: no plan line | Built, not yet seen on the screen |
+
+Wording reuses the catalogue templates `money_plan_get` / `money_plan_pay` (owner read 25 Nov, ADR-322 point 4): "Plan: Get {amount} at plan prices", amount shown with the rupee sign; no new template.
+
+Re-test step (next market day, a paper condor): (1) Add a 4-leg condor to Paper at prices different from the plan, open it: the Get has "At paper fill prices" and, under it, "Plan: Get Rs X at plan prices". (2) Exit one wing (partly, then fully): the plan line disappears, the basis label stays. (3) Edit one leg's price: no plan line.
+
 ## For the PC session: D-27 (no cause proven; read-only, one step)
 
 Core of the step: find out whether the server has the adjustment rows for strategy 155 or the screen loses them.

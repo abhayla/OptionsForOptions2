@@ -1267,21 +1267,36 @@ def _is_fill(leg: Any, fills: Mapping[str, tuple[int, Decimal]]) -> bool:
 def _with_price_basis(out: Outcome, booked: Booked | None) -> Outcome:
     """GC-ICLIVE-B D-15: the summary names the prices its Get uses, DERIVED from the paper book (no client claim): plan
     prices with no paper strategy; paper fill prices when every leg matches the book's open position; else which legs
-    are not fills. The plan's own credit line is WITHDRAWN (D-15
-    parked): after a planned leg is fully exited it priced only the held subset and printed a made-up credit, so
-    ``plan_line`` is never served until it checks that every plan leg is still held."""
+    are not fills. ADR-321 (8): the plan's own credit shows as one "Plan:" line only while every plan leg is still a
+    fill (``_plan_line_of``); after any exit or any leg that is not a fill it is None."""
     if out.summary is None:
         return out
     held = out.legs
-    text = money_module.basis_text(money_module.PLAN)
+    line, text = None, money_module.basis_text(money_module.PLAN)
     if booked is not None and booked.paper:
         if booked.fills is None:
             text = money_module.basis_text(money_module.UNREAD)
         else:
             fills = sum(1 for x in held if _is_fill(x, booked.fills))
             text = money_module.basis_text(money_module.PAPER_FILLS, fills=fills, total=len(held))
-    summary = dataclasses.replace(out.summary, price_basis_text=text, plan_line=None)
+            if fills == len(held):
+                line = _plan_line_of(held, booked)
+    summary = dataclasses.replace(out.summary, price_basis_text=text, plan_line=line)
     return dataclasses.replace(out, summary=summary)
+
+
+def _plan_line_of(held: Any, booked: Booked) -> Any:
+    """The plan's credit of a paper trade, from the plan the SERVER stored for that strategy (never a client figure).
+    Only when the stored plan names exactly the held legs, each with the same side and units as the position (every
+    held leg is a fill, checked by the caller): a planned leg missing from the request (fully exited), a changed
+    quantity (partly exited) or no stored plan gives None. Nothing is priced from a subset of the plan."""
+    plan = booked.plan
+    if not plan or not held or set(plan) != {x.instrument_id for x in held}:
+        return None
+    if any(plan[x.instrument_id][:2] != (x.action.value, x.quantity) for x in held):
+        return None
+    engine_legs = [Leg(x.action, x.instrument, x.strike, x.expiry, x.quantity, x.planned_entry) for x in held]
+    return money_module.plan_line(engine_legs, {i: p[2] for i, p in plan.items()}, [x.instrument_id for x in held])
 
 
 def outcome_response(req: OutcomeRequest, ctx: MarketContext | None,  # noqa: PLR0913 - one shared computation; rates is the sixth input

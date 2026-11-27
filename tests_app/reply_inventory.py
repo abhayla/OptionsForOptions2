@@ -3824,7 +3824,7 @@ NOTES = {
     'SummaryOut.max_profit_display': 'catalogue text: only a render()/render_explanation() result (a catalogue sentence; its parameters are server-computed figures, never a stored credential)',
     'SummaryOut.name': 'catalogue text: only a render()/render_explanation() result (a catalogue sentence; its parameters are server-computed figures, never a stored credential)',
     'SummaryOut.open_opportunities_text': 'catalogue text: only a render()/render_explanation() result (a catalogue sentence; its parameters are server-computed figures, never a stored credential)',
-    'SummaryOut.plan_line': 'catalogue text slot, always None since the plan line was withdrawn (D-15 parked); would be a render_explanation() result',
+    'SummaryOut.plan_line': 'catalogue text slot: the D-15 plan line (ADR-321 (8)), a render_explanation() result only while every plan leg is a paper fill, else None',
     'SummaryOut.price_basis_text': 'catalogue text: only a render()/render_explanation() result (a catalogue sentence; its parameters are server-computed figures, never a stored credential)',
     'SummaryOut.reward_risk_reason': 'catalogue text: only a render()/render_explanation() result (a catalogue sentence; its parameters are server-computed figures, never a stored credential)',
     'SummaryOut.status': 'Identifier: a closed token chosen by server code (a catalogue key, state, label or display token); never read from the token store (value canary in test_reply_inventory)',
