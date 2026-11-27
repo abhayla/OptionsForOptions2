@@ -31,7 +31,11 @@
               <td class="py-1.5" data-testid="opp-strategy">{{ plainName(g.strategy_name) }}</td>
               <td class="py-1.5" data-testid="opp-what">
                 <p v-if="g.summary" class="font-medium" data-testid="opp-summary">{{ g.summary }}</p>
-                <p v-for="r in g.records" :key="r.id" data-testid="opp-condition">{{ r.condition }}</p>
+                <template v-for="r in g.records" :key="r.id">
+                  <p data-testid="opp-condition">{{ r.condition }}</p>
+                  <!-- I-61: the worker's stored reading with its time (one source for every reader); open records only -->
+                  <p v-if="r.can_act" class="text-xs text-ink-muted tabular-nums" data-testid="opp-now">{{ nowText(r) }}</p>
+                </template>
               </td>
               <td class="py-1.5" data-testid="opp-source">{{ g.label }}</td>
               <td class="py-1.5">
@@ -89,7 +93,7 @@ import ErrorMessage from '@/components/common/ErrorMessage.vue'
 import PageHeader from '@/components/common/PageHeader.vue'
 import api, { NEUTRAL_PARTS } from '@/services/api'
 import { compareAllUrl } from '@/lib/adjustDrawer'
-import { istTime } from '@/lib/displayFormat'
+import { TIME_UNAVAILABLE, istTime } from '@/lib/displayFormat'
 import { plainName } from '@/lib/saveDraft'
 import { OPPORTUNITY_PAGE_SIZE, rowsRangeText } from '@/lib/sharedStateText'
 
@@ -160,5 +164,13 @@ async function dismiss(g) {
   }
   busy[g.group] = false
   if (done) await load() // the list shows the truth: dismissed rows read "You dismissed this"
+}
+
+// I-61 (ADR-330 (13), (58); new sentences, pending owner read): "Now <value> as of <time> IST" from the record's stored reading (now_value, now_as_of);
+// a value without a readable time, or a time without a value, is not a reading.
+const NOW_NOT_READ_TEXT = 'Now: not read yet'
+function nowText(r) {
+  const at = typeof r.now_as_of === 'string' ? istTime(r.now_as_of) : TIME_UNAVAILABLE
+  return typeof r.now_value === 'string' && r.now_value && at !== TIME_UNAVAILABLE ? `Now ${r.now_value} as of ${at}` : NOW_NOT_READ_TEXT
 }
 </script>
