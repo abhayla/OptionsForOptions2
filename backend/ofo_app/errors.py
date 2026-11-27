@@ -624,7 +624,7 @@ def _internal_response(exc: BaseException, request: Request) -> ClosedResponse:
     return _body(render("internal_system_request_failed", reference=reference), 500)
 
 
-def row_answer(exc: Exception, where: str) -> tuple[UserFacingError, int]:  # noqa: PLR0911 - one return per answer
+def row_answer(exc: Exception, where: str) -> tuple[UserFacingError, int]:  # noqa: PLR0911, C901 - one return per answer
     """The message and HTTP status ``handle_error`` would answer for ``exc``, for a route that answers several rows in
     one reply and must show each failed row what the single-row route shows (one bad row never fails the others).
     The same three cases as ``handle_error``: a user-facing error, an HTTP error, anything else (busy store or the
@@ -634,6 +634,8 @@ def row_answer(exc: Exception, where: str) -> tuple[UserFacingError, int]:  # no
         log.info("user-facing error %s on %s", message.code, where)
         failure = getattr(exc, "failure", None)
         return message, failure.status if isinstance(failure, Failure) else STATUS_BY_CLASS[message.error_class]
+    if isinstance(exc, RequestValidationError):
+        return render("user_input_request_invalid"), 422
     if isinstance(exc, StarletteHTTPException):
         status = exc.status_code
         if status == 401:  # noqa: PLR2004

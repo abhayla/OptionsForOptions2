@@ -417,7 +417,8 @@ class _Seams:
     user_values: Mapping
 
 
-#: REQ-160 AC-3: the whole outside read of ONE strategy (tracked legs, chain/market, REST spot, margin) is bounded by
+#: REQ-160 AC-3: the outside read of ONE strategy (chain/market, REST spot, margin; the legs are read first, one by one,
+#: database only, so the connection can go back before any broker wait) is bounded by
 #: this many seconds; strategies are read TEST_READ_CONCURRENCY at a time, so N strategies take at most
 #: ceil(N / TEST_READ_CONCURRENCY) x this limit. A slow strategy is listed not checked, never a stalled answer.
 TEST_READ_LIMIT_SECONDS = 8.0

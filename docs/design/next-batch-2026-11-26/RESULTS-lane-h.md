@@ -61,7 +61,7 @@ Lane R's page-wide queue (`lib/planWatchQueue.js`, on `hotfix/plan-watch-load-11
 | task | model | minutes |
 |---|---|---|
 | Baseline harness, batch route, refactor, tests, measurements, items 2, 3, 5, frontend module, this file | Sonnet (this session) | about 75 |
-| Independent review of the plan path before push | Opus helper (Why Opus: plan path and refusals) | see below |
+| Independent review of the plan path before push | Opus helper (Why Opus: plan path and refusals) | 7 |
 | Gate run | Sonnet (this session) | about 43 |
 
 ## To file as deferred issues
@@ -70,4 +70,5 @@ Lane R's page-wide queue (`lib/planWatchQueue.js`, on `hotfix/plan-watch-load-11
 3. `_ids_of` tolerates blank entries in `1,,2` (answers `1` and `2`); tighten if the page could send them.
 4. Batch shares one price read per underlying: NOT built (each row still reads prices; the single route's reads are Lane U's and N's); gain unmeasured, price reads were 9 to 15 ms each here.
 5. The seed gives ONE strategy per scenario, so the concurrency harness's "ten strategies" are one strategy asked ten times (Q1's harness, kept as is; numbers are still the right CPU load).
-6. Test DB isolation (Q1's item 8) hit again: two plan-watch test files in one pytest run share armed triggers (`_arm` twice -> 4 leg stops). Run one file per fresh database.
+6. Opus review (PASS, 5 minor): fixed the stale comment and the missing 422 case in `row_answer`. Left: (a) the legs read of `POST /api/playbooks/test` is no longer inside the 8 s bound (a DB read; only a leg reader slower than 8 s answers differently: checked instead of left out); (b) a batch row's 503 loses `Retry-After: 60` (the page waits its own cycle); (c) a failing `rollback()` fails the whole batch (fails closed); (d) one shared margin read covers every row (fails closed); missing tests: row A raising a busy-store error with row B equal to the single route; 409/503 rows equal to the single route; a slow leg reader.
+7. Test DB isolation (Q1's item 8) hit again: two plan-watch test files in one pytest run share armed triggers (`_arm` twice -> 4 leg stops). Run one file per fresh database.
