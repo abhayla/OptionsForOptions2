@@ -14,20 +14,35 @@ Coarse and safe, file level (no call graph):
      `__init__.py` keys on its package).
      A changed migration under backend/ofo_app/alembic/ selects a FIXED set: every tests_app file named *migration*
      plus every one whose text mentions alembic, NEW_PINS or the migration replay helper (MIGRATION_TEXT).
-     Only one filter: a file whose +/- lines are all comments, blank lines or docstrings selects nothing.
+     Only one filter: a file whose +/- lines are all comments, blank lines or docstrings selects nothing. It applies
+     to backend/ files ONLY, never to tests_app/ (a test edit is never "comments only" safe).
+  A2. a changed file under tests_app/ (the diff covers it too; lane G item b, findings
+     nodb-app-tests-skipped-by-step-gates, review rounds 1-2). Exactly:
+     - an added / modified test_*.py selects itself;
+     - EVERY changed or deleted .py (test files included) and every data file also selects each tests_app test whose
+       text names it (module name as a word for a .py, file name or relative path for data), TRANSITIVELY to a fixed
+       point (a helper naming a helper naming a test: all reached); a deleted test file selects its importers only;
+     - a changed or deleted conftest.py or __init__.py selects every test file at or below its folder (also when a
+       conftest/__init__ is what names the changed helper);
+     - a changed non-test file that nothing names selects EVERY tests_app test file (fail closed);
+     - git runs with --no-renames, so a rename is a deletion of the old path plus an add of the new one;
+     - a path git quotes (non-ASCII, a double quote) raises DiffNotParsed (exit 3).
+     Only ADDS to what A selects (union).
   B. a tests_app file is selected when it contains any key: a route path as a string literal / f-string prefix, a
      class name as a word, a module import.
   C. fail closed: a diff that cannot be read (binary, rename only, a changed file missing from the diff, an
      unparseable file, a route path that is not a literal) raises DiffNotParsed; the caller treats it as an error.
      MAX_FILES bounds what the CLI / atool will run against the production-host database.
 
-Known blind spots (not chased): no call graph (a change two imports away from a test is not reached; a route handler's
+Known blind spots (not chased): a test naming a helper only through a computed string (importlib, a path built at
+run time) is not reached; no call graph (a change two imports away from a test is not reached; a route handler's
 helper in another module is reached only through the route file that imports it); module names built as strings
 (f"ofo.x.{n}" is matched by its literal prefix only); non-Python files under backend/ (catalogue.yaml, JSON schemas)
 select nothing; a selection above MAX_FILES is NOT truncated here, atool.py refuses it (the red run 40132982617 had its
 file selected but over the cap).
 
-CLI: python select_app_tests.py <worktree>   (diff = git diff origin/main...HEAD -- backend/; exit 3 if not parsed)
+CLI: python select_app_tests.py <worktree>
+  (diff = git diff origin/main...HEAD -- backend/ tests_app/; exit 3 if not parsed)
 """
 import ast
 import collections
@@ -109,6 +124,8 @@ def parse_diff(diff_text: str) -> dict:
             out[path].append(n)
 
     for line in (l.rstrip("\r") for l in diff_text.split("\n")):
+        if line.startswith('diff --git "'):
+            raise DiffNotParsed("a quoted (non-ASCII or special-character) path in the diff")
         if line.startswith("diff --git "):
             flush()
             hunk = []
@@ -274,14 +291,103 @@ def keys_for(changed_files, diff_text: str, root, read_source=None, route_files=
     return list(dict.fromkeys(keys))
 
 
+def _test_texts(tests_dir: str) -> dict:
+    """{"tests_app/<rel>/test_x.py": text} for every test file at or below tests_dir."""
+    return {p: t for p, t in _py_texts(tests_dir).items() if p.rsplit("/", 1)[-1].startswith("test_")}
+
+
+def _py_texts(tests_dir: str) -> dict:
+    """{"tests_app/<rel>.py": text} for EVERY .py at or below tests_dir (tests, helpers, conftest, __init__)."""
+    base = os.path.basename(os.path.abspath(tests_dir))
+    texts = {}
+    for dirpath, dirs, names in os.walk(tests_dir):
+        dirs[:] = sorted(d for d in dirs if d != "__pycache__")
+        for n in sorted(names):
+            if n.endswith(".py"):
+                rel = os.path.relpath(os.path.join(dirpath, n), tests_dir).replace(os.sep, "/")
+                with open(os.path.join(dirpath, n), encoding="utf-8", errors="replace") as fh:
+                    texts[f"{base}/{rel}"] = fh.read()
+    return texts
+
+
+def _names_file(rel: str, text: str) -> bool:
+    """True when a file's text names a tests_app helper/test module (module name as a word) or data file (name/path)."""
+    name = rel.rsplit("/", 1)[-1]
+    if name.endswith(".py"):
+        return bool(re.search(r"\b" + re.escape(name[:-3]) + r"\b", text))
+    return name in text or rel in text
+
+
+def _is_test(name: str) -> bool:
+    return name.startswith("test_") and name.endswith(".py")
+
+
+def _tests_below(pys: dict, folder: str) -> set:
+    return {p for p in pys if _is_test(p.rsplit("/", 1)[-1]) and p.startswith(folder)}
+
+
+def _reach(pys: dict, seed: str) -> set:
+    """Test files that name `seed` directly or through a chain of helper/test modules, to a fixed point."""
+    found: set = set()
+    seen = {seed}
+    todo = [seed]
+    while todo:
+        cur = todo.pop()
+        for p, t in pys.items():
+            if p in seen or not _names_file(cur, t):
+                continue
+            seen.add(p)
+            name = p.rsplit("/", 1)[-1]
+            if name in ("conftest.py", "__init__.py"):
+                found |= _tests_below(pys, p.rsplit("/", 1)[0] + "/")
+                continue
+            if _is_test(name):
+                found.add(p)
+            todo.append(p)  # a module naming it: whoever names that module is reached too
+    return found
+
+
+def tests_app_selection(changed_files, diff_text: str, tests_dir) -> set:
+    """Rule A2: the tests_app test files a change under tests_app/ selects (see the module docstring)."""
+    tests_dir = os.fspath(tests_dir)
+    base = os.path.basename(os.path.abspath(tests_dir))
+    mine = [f for f in changed_files if f.startswith(base + "/")]
+    if not mine:
+        return set()
+    parsed = parse_diff(diff_text)
+    pys = _py_texts(tests_dir)
+    chosen: set = set()
+
+    def subtree(folder: str) -> None:
+        chosen.update(_tests_below(pys, folder))
+
+    for f in mine:
+        if f not in parsed:
+            raise DiffNotParsed(f"{f} changed but is absent from the diff")
+        if parsed[f] is None:
+            raise DiffNotParsed(f"{f} has no hunk in the diff (rename or mode change only)")
+        gone = parsed[f] == DELETED
+        name = f.rsplit("/", 1)[-1]
+        folder = f.rsplit("/", 1)[0] + "/"
+        if name in ("conftest.py", "__init__.py"):
+            subtree(folder)  # deleted or changed: its whole subtree
+            continue
+        if _is_test(name):
+            if not gone:
+                if f not in pys:
+                    raise DiffNotParsed(f"{f} is in the diff but not on disk")
+                chosen.add(f)
+            chosen |= _reach(pys, f)  # files importing this test module (deleted too: they break)
+            continue
+        reached = _reach(pys, f)
+        chosen.update(reached or _tests_below(pys, ""))  # none: fail closed, all
+    return chosen
+
+
 def select_by_key(changed_files, diff_text: str, tests_dir, read_source=None, route_files=None) -> dict:
     tests_dir = os.fspath(tests_dir)
     root = os.path.dirname(os.path.abspath(tests_dir))
-    base = os.path.basename(os.path.abspath(tests_dir))
-    texts = {}
-    for n in sorted(os.listdir(tests_dir)):
-        if n.startswith("test_") and n.endswith(".py"):
-            texts[f"{base}/{n}"] = open(os.path.join(tests_dir, n), encoding="utf-8").read()
+    texts = _test_texts(tests_dir)
     def hit(k: Key, p: str, t: str) -> bool:
         return bool(k.regex().search(t)) or (k.kind == "migration" and "migration" in os.path.basename(p))
 
@@ -293,20 +399,34 @@ def select(changed_files, diff_text: str, tests_dir, read_source=None, route_fil
     chosen: set = set()
     for files in select_by_key(changed_files, diff_text, tests_dir, read_source, route_files).values():
         chosen.update(files)
+    chosen |= tests_app_selection(changed_files, diff_text, tests_dir)
     return sorted(chosen)
+
+
+def names_from_git(text: str) -> list:
+    """File names from `git diff --name-only`; a name git quoted (non-ASCII, a double quote) cannot be matched."""
+    names = text.splitlines()
+    bad = [n for n in names if n.startswith('"')]
+    if bad:
+        raise DiffNotParsed(f"git quoted a path name ({bad[0]})")
+    return names
+
+
+def _git(wt: str, *args: str) -> "subprocess.CompletedProcess":
+    return subprocess.run(["git", "diff", "--no-renames", *args], cwd=wt, capture_output=True,  # noqa: S603, S607
+                          text=True, encoding="utf-8", check=False)
 
 
 def main(argv: list) -> int:
     wt = os.path.abspath(argv[0] if argv else ".")
-    names = subprocess.run(["git", "diff", "--name-only", "origin/main...HEAD", "--", "backend/"], cwd=wt,
-                           capture_output=True, text=True)
-    diff = subprocess.run(["git", "diff", "origin/main...HEAD", "--", "backend/"], cwd=wt, capture_output=True,
-                          text=True, encoding="utf-8")
+    scope = ["origin/main...HEAD", "--", "backend/", "tests_app/"]
+    names = _git(wt, "--name-only", *scope)
+    diff = _git(wt, *scope)
     if names.returncode or diff.returncode:
         print(f"route tests: git diff failed (rc {names.returncode}/{diff.returncode}) - run the route files by hand")
         return 3
     try:
-        picked = select(names.stdout.splitlines(), diff.stdout, os.path.join(wt, "tests_app"))
+        picked = select(names_from_git(names.stdout), diff.stdout, os.path.join(wt, "tests_app"))
     except DiffNotParsed as e:
         print(f"route tests: diff not parsed - run the route files by hand ({e})")
         return 3
