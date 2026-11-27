@@ -328,36 +328,41 @@ async def test_everything_pinned_goes_over_the_cap_rather_than_evicting_a_pinned
     assert len(lease.held_ids) == 2 and "d" in lease.held_ids  # noqa: PLR2004
 
 
-# ---- Lane U (27 Nov 15:06-15:12 IST, feed process stopped, API up): the standing lease never serves a stale price as live ----
+# ---- Lane U (27 Nov 15:06-15:12 IST, feed process stopped, API up): the lease never serves a stale price as live ----
 
 def _quotes(wall):
-    """A real FeedState + QuoteBook (the production liveness rule) behind the door: ``read`` is what market_read builds."""
+    """A real FeedState + QuoteBook (the production liveness rule) behind the door: ``read`` is what market_read
+    builds."""
     src = SourceMetadata(provider="kite", feed_id="x")
-    feed_state = FeedState(windows=FeedWindows(stale=datetime.timedelta(seconds=3), reconnect=datetime.timedelta(seconds=30),
+    feed_state = FeedState(windows=FeedWindows(stale=datetime.timedelta(seconds=3),
+                                               reconnect=datetime.timedelta(seconds=30),
                                                index_quote_max_age=datetime.timedelta(seconds=60)),
                            market_open=lambda _t: True)
     feed_state.on_connected(wall["t"])
     book = QuoteBook(feed_state)
 
     def option(i, ts):
-        return NormalizedQuote(i, "NIFTY", "NFO", "NFO-OPT", Instrument.CE, datetime.date(2026, 12, 1), D("24000"), D("100"),
-                               D("99"), D("101"), 10, 10, None, None, None, None, None, None, ts, src, DataHealth.AVAILABLE)
+        return NormalizedQuote(i, "NIFTY", "NFO", "NFO-OPT", Instrument.CE, datetime.date(2026, 12, 1), D("24000"),
+                               D("100"), D("99"), D("101"), 10, 10, None, None, None, None, None, None, ts, src,
+                               DataHealth.AVAILABLE)
 
     def index(ts):
-        return NormalizedQuote("IDX", "NIFTY", "NSE", "INDICES", None, None, None, D("24000"), None, None, None, None, None,
-                               None, None, None, None, None, ts, src, DataHealth.AVAILABLE)
+        return NormalizedQuote("IDX", "NIFTY", "NSE", "INDICES", None, None, None, D("24000"), None, None, None,
+                               None, None, None, None, None, None, None, ts, src, DataHealth.AVAILABLE)
     return feed_state, book, option, index
 
 
 async def _door_read(feed, book, ids, wall, clock):
     read = lambda: {i: book.get(i, wall["t"]) for i in ids}  # noqa: E731
     live = lambda s: all(q is not None and q.health.name == "AVAILABLE" for q in s.values())  # noqa: E731
-    return await read_door.read_quotes(feed, ids, read, live, lambda: True, 0.05, 0.01, sleep=clock.sleep, now=clock.now)
+    return await read_door.read_quotes(feed, ids, read, live, lambda: True, 0.05, 0.01, sleep=clock.sleep,
+                                       now=clock.now)
 
 
 async def test_a_feed_silent_for_60s_reads_every_leg_not_live_even_while_the_lease_holds_the_token():
-    """Finding of 27 Nov 15:06: feed process stopped, API up. One tick, then nothing for 60 s (fake wall clock): every leg
-    is NOT live through the door, while the 30 s ReadLease still holds the tokens (a lease keeps a subscription, never a price)."""
+    """Finding of 27 Nov 15:06: feed process stopped, API up. One tick, then nothing for 60 s (fake wall clock):
+    every leg is NOT live through the door, while the 30 s ReadLease still holds the tokens (a lease keeps a
+    subscription, never a price)."""
     wall = {"t": datetime.datetime(2026, 11, 27, 9, 36, tzinfo=datetime.UTC)}
     feed_state, book, option, _index = _quotes(wall)
     clock = Clock()
@@ -393,7 +398,8 @@ async def test_a_disconnected_feed_reads_every_leg_not_live_even_while_leased():
 
 
 async def test_an_index_quote_older_than_60s_on_its_own_time_is_not_live_while_leased_and_the_feed_runs():
-    """ADR-330 (39): option frames keep the feed live; the index sat silent 61 s: the index is not live, the option is."""
+    """ADR-330 (39): option frames keep the feed live; the index sat silent 61 s: the index is not live, the option
+    is."""
     wall = {"t": datetime.datetime(2026, 11, 27, 9, 36, tzinfo=datetime.UTC)}
     feed_state, book, option, index = _quotes(wall)
     clock = Clock()
