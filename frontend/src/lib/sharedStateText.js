@@ -137,3 +137,7 @@ export const CHAIN_ROWS_MISSING_TEXTS = Object.freeze({
 export const CHAIN_SPOT_MISSING_ROWS_KEPT_TEXT = 'The underlying price is missing right now: option prices are shown, but the ATM strike, moneyness, IV and Greeks are not.'
 export const CHAIN_NO_STRIKES_MATCH_TEXT = 'No strikes match the filters.'
 export const CHAIN_EXPIRIES_UNREADABLE_TEXT = 'The expiries could not be read, so no chain is shown.'
+
+// pending owner read (28 Nov 2026), I-50 (REQ-078, ADR-330 (58)): the ONE loading line of a leg while the outcome is worked out; the same words
+// for every leg and for the opening card. Replaced by the real figure (the leg's price time) when the reply arrives.
+export const LEG_WORKING_TEXT = 'Working out the outcome...'

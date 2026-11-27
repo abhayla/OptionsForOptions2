@@ -1365,6 +1365,29 @@ const priceTextById = computed(() => Object.fromEntries((data.value?.legs ?? [])
 const legListPrices = computed(() => (paper.value ? paperLegListPrices(data.value?.legs, paperLegsOf(paper.value.net, paper.value.book, paperBookFailed.value)) : { ltpById: ltpById.value, priceTextById: priceTextById.value }))
 const legQuoteRows = computed(() => legQuotes(data.value))
 // A leg's contract name: from its own fields, else looked up from the page's draft legs by instrument id (ADR-086).
+// ADR-330 (61), I-30 (real case 27 Nov 08:30, app started 08:07: the builder went empty with "No legs yet" and said nothing about the list):
+// the server's own line while an earlier day's list is in use (expiries reply `list_notice`). Never worded here. A failed read keeps what
+// is shown (it says nothing new); the line is read again each minute only while it shows, and goes when a reply carries none.
+const listNotice = ref('')
+const LIST_NOTICE_REREAD_MS = 60000
+let listSeq = 0
+let listTimer = null
+async function readListNotice() {
+  clearTimeout(listTimer)
+  const name = headerUnderlying.value || pickUnderlying.value
+  if (!name) return
+  const mine = ++listSeq
+  try {
+    const reply = (await api.get(`/catalogue/${name}/expiries`)).data
+    if (mine !== listSeq) return
+    listNotice.value = typeof reply?.list_notice === 'string' ? reply.list_notice.trim() : ''
+  } catch {
+    if (mine !== listSeq) return
+  }
+  if (listNotice.value) listTimer = setTimeout(readListNotice, LIST_NOTICE_REREAD_MS)
+}
+watch(() => headerUnderlying.value || pickUnderlying.value, readListNotice, { immediate: true })
+onBeforeUnmount(() => { listSeq += 1; clearTimeout(listTimer) })
 const nameOf = (leg) => nameFromPool(leg, legs.value, data.value?.underlying ?? headerUnderlying.value)
 // ADR-088 "Checked at": the SERVER's answer time per state, shown in India time; never the browser clock. Unpriced: the
 // newest planned-entry answer that left a leg without a price; error: the failed answer's Date header; none -> unavailable.
@@ -1471,9 +1494,10 @@ const leaveGuard = useLeaveBuilder({
           </div>
           <PaperStops v-for="l in stopOffer.legs.filter((x) => x.index === stopOfferLeg)" :key="l.index" leg-stop-only :strategy-id="stopOffer.strategyId" :legs="[l]" :leg-names="{ [l.index]: l.label }" />
         </div>
+        <p v-if="listNotice" class="mb-2 text-sm text-ink-muted" data-testid="contract-list-notice">{{ listNotice }}</p>
         <LegList
           :opening="opening" :done="paperCompleted" :held-legs="paper && pendingOrders?.length ? paper.net : []" :failed="!!openError" :locked="exitBlocked" :lock-reason="exitGate.reason.value"
-          :multiplier-max="served.integer(MULTIPLIER_MAX_KEY)" :legs="legs" :pending-steps="pendingSteps" :paper-fills="paperFills" :staged-exit-ids="paper ? stagedExitIds(paper.net, legs) : []" :quote-at-by-id="quoteAtById" :oldest-quote-at="data?.oldest_quote_at ?? null" :shape-name="shapeName" :has-reply="hasReply" :controls="controls" :updating="updating" :error-parts="editError" :error-index="editErrorIndex" :ltp-by-id="legListPrices.ltpById" :price-text-by-id="legListPrices.priceTextById"
+          :multiplier-max="served.integer(MULTIPLIER_MAX_KEY)" :legs="legs" :pending-steps="pendingSteps" :paper-fills="paperFills" :staged-exit-ids="paper ? stagedExitIds(paper.net, legs) : []" :quote-at-by-id="quoteAtById" :oldest-quote-at="data?.oldest_quote_at ?? null" :shape-name="shapeName" :has-reply="hasReply" :controls="controls" :updating="updating" :working="updating" :error-parts="editError" :error-index="editErrorIndex" :ltp-by-id="legListPrices.ltpById" :price-text-by-id="legListPrices.priceTextById"
           :undo-offered="undoHeld !== null" :undo-text="undoHeld?.text" :leg-unit="legUnit" :strategy-name="openStrategy?.name ?? null"
           @edit="editLeg" @edit-leg="openInPicker" @include-all="includeAll" @remove="removeLeg" @add-leg="focusPicker" @pick-chain="pickFromChain" @clear-all="clearAll" @undo-clear="undoClear"
         >

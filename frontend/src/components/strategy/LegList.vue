@@ -25,6 +25,7 @@ import {
 } from '@/lib/legEdit'
 import { plainName } from '@/lib/saveDraft'
 import { fetchHeldFeatureOn } from '@/lib/heldFeatures'
+import { LEG_WORKING_TEXT } from '@/lib/sharedStateText'
 import { NAME_FLOOR_CLASS } from '@/lib/nameFloor'
 import { PAPER_AVERAGE_LABEL, paperFillKey } from '@/lib/paperDrafts'
 import { EXPIRY_LIST_UNREADABLE, NO_OTHER_EXPIRY, useExpiryChoices } from '@/composables/useExpiryChoices'
@@ -45,6 +46,7 @@ const props = defineProps({
   shapeName: { type: String, default: null }, // the server's name; null = no reply yet (nothing is invented here)
   hasReply: { type: Boolean, default: false }, // a reply named the shape (a null name then means Custom Strategy)
   updating: { type: Boolean, default: false },
+  working: { type: Boolean, default: false }, // I-50: the outcome is being worked out: each priced leg says so (LEG_WORKING_TEXT) instead of its capture time or typed-price line
   errorParts: { type: Object, default: null },
   errorIndex: { type: Number, default: null }, // the leg whose typed price was refused: its error shows under that row (REQ-077 AC-2)
   priceTextById: { type: Object, default: () => ({}) }, // GC-UI D-PX: the outcome's own two-decimal price texts by instrument id: { ltp_display, planned_entry_display }
@@ -140,6 +142,8 @@ const isHedge = (l) => l.hedge === true && !someLeftOut.value
 const strikeTitle = (l) => (isHedge(l) ? 'Hedge. Edit this leg' : 'Edit this leg')
 // Revision 1 (REQ-077 AC-1, AC-6, AC-7): a second line only when something must stay visible
 // a leg without both a planned entry and its capture time keeps the not-connected label (REQ-077 AC-5)
+// I-50: a leg left out, refused by the reply (block) or whose typed price was refused (errorIndex) is not "working": it says its own thing
+const isWorking = (l, i) => props.working && l.included !== false && !l.block && !(props.errorParts && props.errorIndex === i)
 const unpriced = (l) => !(l.planned_entry != null && l.captured_at != null)
 // R-11: a paper fill (the book's average, still as loaded) is not a price the user typed; a typed price keeps its label and time
 const isPaperFill = (l) => props.paperFills.includes(paperFillKey(l))
@@ -184,7 +188,7 @@ function setMultiplier(index) {
 
 <template>
   <!-- N-34 (F-46): a strategy being opened has no legs yet; the card is the loading line, never an empty "New Strategy" shell -->
-  <div v-if="opening && !legs.length" class="rounded-t-lg border border-b-0 border-line bg-surface py-6 text-center text-sm" :style="cardPadding" data-testid="opening-card">Working out the outcome...</div>
+  <div v-if="opening && !legs.length" class="rounded-t-lg border border-b-0 border-line bg-surface py-6 text-center text-sm" :style="cardPadding" data-testid="opening-card">{{ LEG_WORKING_TEXT }}</div>
   <div v-else class="rounded-t-lg border border-b-0 border-line bg-surface text-sm" data-testid="leg-edit-list" :data-updating="updating ? 'true' : 'false'">
     <div class="flex h-12 items-center justify-between border-b border-line" :style="cardPadding" data-testid="strategy-card-header">
       <p role="heading" aria-level="2" class="truncate text-base font-semibold" :class="NAME_FLOOR_CLASS" :title="cardName" data-testid="strategy-card-name">{{ cardName }}</p>
@@ -309,7 +313,8 @@ function setMultiplier(index) {
           </div>
           <!-- GC-ICFIX P3 u505: the line's height (h-4 = one text-xs line) is reserved whether or not it shows, so a re-capture never moves the rows below -->
           <div v-if="!unpriced(leg) && leg.typed !== true" class="h-4" data-testid="leg-caption-slot">
-            <div v-if="showsCaption(leg)" class="leg-grid grid text-xs text-ink-muted" :style="gridStyle" data-testid="leg-caption-line">
+            <p v-if="isWorking(leg, i)" class="text-right text-xs text-ink-muted max-[639px]:text-left" data-testid="leg-working">{{ LEG_WORKING_TEXT }}</p>
+            <div v-else-if="showsCaption(leg)" class="leg-grid grid text-xs text-ink-muted" :style="gridStyle" data-testid="leg-caption-line">
               <span class="whitespace-nowrap text-right [grid-column:1/8] max-[639px]:[grid-column:1/-1] max-[639px]:text-left" data-testid="leg-caption" :title="capturedText(leg)">{{ caption(leg) }}</span>
             </div>
           </div>
@@ -319,6 +324,7 @@ function setMultiplier(index) {
           <div v-if="needsSecondLine(leg, i)" class="pl-6 text-xs text-ink-muted" data-testid="leg-second-line">
             <span v-if="leg.included === false" class="mr-2" data-testid="left-out-label">{{ LEFT_OUT_LABEL }}</span>
             <span v-if="isPaperFill(leg)" class="mr-2" data-testid="leg-paper-average">{{ PAPER_AVERAGE_LABEL }}</span>
+            <span v-else-if="leg.typed === true && isWorking(leg, i)" class="mr-2" data-testid="leg-working">{{ LEG_WORKING_TEXT }}</span>
             <span v-else-if="leg.typed === true && leg.planned_entry != null" class="mr-2" data-testid="leg-typed-line">{{ YOUR_PRICE_LABEL }}, {{ capturedText(leg) }}</span>
             <template v-if="unpriced(leg)">
               <span class="mr-2" data-testid="leg-unpriced">{{ NOT_CONNECTED_LABEL }}</span>
