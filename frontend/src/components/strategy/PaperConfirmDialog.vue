@@ -43,6 +43,8 @@
         <label class="flex items-center gap-1"><span class="text-ink-muted">Broker</span><input v-model="heldBroker" type="text" maxlength="40" class="h-9 w-40 rounded border border-line px-2" data-testid="held-broker" /></label>
       </div>
     </div>
+    <!-- Lane FA r2 I-17: one plain line on how old the exit price is (priceState.priceAgeLine); an entry-only dialog has none -->
+    <p v-if="ageLine.text" class="mt-3 text-sm text-ink-muted" role="status" data-testid="paper-price-age" :data-state="ageLine.state">{{ ageLine.text }}</p>
     <!-- GC-ICFIX Issue 10 (ADR-256): the server's one factual line when this exit leaves a sold leg unprotected; Confirm stays enabled -->
     <!-- N-22 (same class as S-26): one always-rendered slot with a reserved height; the checking / risk / unchecked line comes and goes inside it, so the buttons below never move -->
     <div :class="rows.some((r) => r.kind === 'exit') ? 'min-h-[3.75rem]' : ''" class="mt-3" data-testid="paper-exit-slot">
@@ -62,8 +64,10 @@
     <!-- GC-ICFIX Issue 6: these result lines sit in the frame's pinned status area (not the scrolling body), so they show with the buttons -->
     <!-- N-22: the status slot is always rendered (reserved height), so a result or error line fills it instead of adding a row above the buttons -->
     <template #status>
-      <div class="min-h-10" data-testid="paper-status-slot">
-      <p v-if="state === 'placed'" class="text-sm font-medium" role="status" data-testid="paper-placed">{{ PAPER_PLACED_NOT_REFRESHED_TEXT }}</p>
+      <div ref="statusSlot" class="min-h-10" data-testid="paper-status-slot">
+      <!-- I-18 (ADR-017): while the post runs; the line is about sending, never about done ("Exit placed on paper" stays the only done sentence) -->
+      <p v-if="busy && state !== 'placed' && rows.some((r) => r.kind === 'exit')" class="text-sm text-ink-muted" role="status" data-testid="paper-placing">{{ EXIT_PLACING_TEXT }}</p>
+      <p v-else-if="state === 'placed'" class="text-sm font-medium" role="status" data-testid="paper-placed">{{ PAPER_PLACED_NOT_REFRESHED_TEXT }}</p>
       <p v-else-if="marketLine" class="text-sm text-red-700" role="alert" data-testid="paper-market-closed">{{ marketLine }}</p>
       <p v-else-if="state === 'unknown'" class="text-sm text-red-700" role="alert" data-testid="paper-unknown">
         {{ PAPER_UNKNOWN_TEXT }}
@@ -80,7 +84,7 @@
 </template>
 
 <script setup>
-import { computed, onBeforeUnmount, ref, watch } from 'vue'
+import { computed, nextTick, onBeforeUnmount, ref, watch } from 'vue'
 import Chip from '@/components/common/Chip.vue'
 import Modal from '@/components/common/Modal.vue'
 import {
@@ -89,7 +93,9 @@ import {
 } from '@/lib/tracking'
 import { paperDialogTitle, paperKindLabel } from '@/lib/paperDrafts'
 import api from '@/services/api'
+import { EXIT_PLACING_TEXT } from '@/lib/usePaperExit'
 import { istClock } from '@/lib/displayFormat'
+import { priceAgeLine } from '@/lib/priceState'
 
 const props = defineProps({
   open: { type: Boolean, default: false },
@@ -105,6 +111,7 @@ const props = defineProps({
   strategyId: { type: [Number, String], default: '' }, // GC-ICFIX Issue 10: with it, exit rows ask the server whether the exit widens the maximum loss
   note: { type: String, default: '' }, // ADR-330 (59): the page's one line about a staged change an Exit all will discard (pending owner read)
   notLiveLine: { type: String, default: '' }, // ADR-330 (28): set while the page's prices are not live; Confirm waits for the tick
+  nowMs: { type: Number, default: 0 }, // I-17: the clock the price age is told against (tests); 0 = the browser's, read when the dialog opens
   kind: { type: String, default: 'paper' }, // ADR-330 (10): 'paper' | 'real'; names what an exit confirmation exits, via paperDrafts.exitConfirmTitle
 })
 const emit = defineEmits(['confirm', 'cancel', 'orderbook'])
@@ -116,6 +123,11 @@ watch(() => [props.open, props.orders], () => {
 
 // D-09: the time of the quote an exit row shows (its own quote time from the book, India time); '' when the server gave none
 const quoteClock = (row) => (row.price_at ? istClock(row.price_at) ?? '' : '')
+
+// I-17: the age line, told against the time the dialog opened (or the `nowMs` prop)
+const openedAtMs = ref(Date.now())
+watch(() => props.open, (o) => { if (o) openedAtMs.value = Date.now() })
+const ageLine = computed(() => priceAgeLine(rows.value, { nowMs: props.nowMs || openedAtMs.value, notLive: !!props.notLiveLine }))
 
 // GC-TP step 3b2: the title says what the list holds (adds, exits or both)
 const title = computed(() => paperDialogTitle(props.orders, props.kind))
@@ -211,6 +223,14 @@ watch(() => props.state, (s) => {
   if (held.value) holdTimer = setTimeout(() => { held.value = false }, props.holdMs)
 }, { immediate: true })
 onBeforeUnmount(() => clearTimeout(holdTimer))
+// I-18: the result line (done, refused, unknown, the page's re-read note) arrives in the pinned status slot; bring it into view
+// (the dialog can be taller than a phone screen). Only when a result line exists, never for the empty slot.
+const statusSlot = ref(null)
+watch(() => [props.state, props.error], async ([s, e]) => {
+  if (!s && !e) return
+  await nextTick()
+  statusSlot.value?.scrollIntoView?.({ block: 'nearest' })
+})
 const canConfirm = computed(() => {
   if (props.busy || props.blocked || marketState.value === 'checking' || marketState.value === 'closed' || marketState.value === 'unreadable' || exitState.value === 'checking' || (props.notLiveLine && !notLiveAck.value) || !ready.value || props.state === 'placed' || held.value || props.locked) return false
   return props.state !== 'refused' || refusedAt.value === null || snapshot() !== refusedAt.value

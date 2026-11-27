@@ -9,7 +9,7 @@ import api, { NEUTRAL_ERROR } from '@/services/api'
 import { paperPriceOk, paperPriceReason } from '@/lib/tracking'
 import { istClock } from '@/lib/displayFormat'
 import { PAPER_STOP_RISK_LOADING_TEXT } from '@/lib/sharedStateText'
-import { NOT_LIVE_LABEL, useIndexAnswer } from '@/composables/useIndexLive'
+import { CLOSED_REFERENCE_TEXT, NOT_LIVE_LABEL, lastCloseUnavailableText, useIndexAnswer } from '@/composables/useIndexLive'
 import { triggerListOf, triggersPath } from '@/lib/paperTriggers'
 
 const props = defineProps({
@@ -149,8 +149,12 @@ const indexLine = computed(() => {
   if (index.rowLive(row) && typeof row?.value === 'string' && clock) return `${props.underlying} now ${index.shownValue(row)} as of ${clock}`
   // ADR-330 (56): a closed market is not "unavailable": the same last value the strip shows, with its time (read of the one index answer)
   if (index.marketClosed() && typeof row?.value === 'string' && clock) return `${props.underlying} last ${index.shownValue(row)} as of ${clock}`
+  // I-29: a closed market with no value for this index is not "Index values unavailable." (that is the feed-down word); it says the close is missing
+  if (index.marketClosed() && props.underlying) return lastCloseUnavailableText(props.underlying)
   return index.rowNotLive(row) ? NOT_LIVE_LABEL : ''
 })
+// I-29: after the close a level is judged against the last close: one line, only while the server's answer says the market is closed
+const referenceLine = computed(() => (index.marketClosed() ? CLOSED_REFERENCE_TEXT : ''))
 
 // S-23: a trigger can fire on the server (state armed -> fired) while this panel is open. Root cause: the list was read once on
 // mount only. Follow the parent list's good-read token (its one timer; none here). Quiet: not through run(), so a Saved / Not saved
@@ -231,6 +235,7 @@ async function keep(t) {
   <div ref="rootEl" class="mt-2 rounded border border-line p-2" data-testid="paper-stops">
     <p class="text-xs font-semibold" data-testid="stops-label">{{ LABEL }}</p>
     <p class="min-h-5 text-xs text-ink-muted" data-testid="stops-index">{{ indexLine }}</p>
+    <p v-if="referenceLine" class="text-xs text-ink-muted" data-testid="stops-reference">{{ referenceLine }}</p>
 
     <!-- D-44 round 1: from lg up the form (first) and the list of stops (second) sit side by side; narrower they stack -->
     <div class="grid gap-x-6 lg:grid-cols-2" data-testid="stops-columns">

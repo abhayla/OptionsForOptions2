@@ -56,6 +56,9 @@ export const INDEX_NAMES = { NIFTY: 'NIFTY 50', SENSEX: 'SENSEX' }
 export const INDEX_KEYS = Object.keys(INDEX_NAMES)
 export const NOT_LIVE_LABEL = 'Index values unavailable.'
 export const VALUE_UNAVAILABLE = 'Not available'
+// Lane FA r2, I-29 (ADR-330 (56), (58); pending owner read): after the close an index exit rule is judged against the last close, said once.
+export const CLOSED_REFERENCE_TEXT = 'The market is closed. Levels are judged against the last close.'
+export const lastCloseUnavailableText = (underlying) => `${underlying}: the last close is not available.`
 
 export async function readAnswer(fallback) {
   try {
