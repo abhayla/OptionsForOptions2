@@ -57,7 +57,6 @@ def _world(monkeypatch, *, first: bool):
 
     async def entry_facts(*_a, **_k):
         seen["entry_facts"] = db.open
-        return None
 
     async def place_checked(*_a, **_k):
         raise _Stop
