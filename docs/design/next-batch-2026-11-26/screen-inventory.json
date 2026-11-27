@@ -1809,7 +1809,7 @@
      "labelFrom": "text",
      "ariaLabel": "",
      "testid": "",
-     "source": "frontend/src/pages/StrategyBuilderPage.vue:1210",
+     "source": "frontend/src/pages/StrategyBuilderPage.vue:1235",
      "component": "pages/StrategyBuilderPage.vue"
     },
     {
@@ -1820,7 +1820,7 @@
      "labelFrom": "text",
      "ariaLabel": "",
      "testid": "draft-replace-yes",
-     "source": "frontend/src/pages/StrategyBuilderPage.vue:1213",
+     "source": "frontend/src/pages/StrategyBuilderPage.vue:1238",
      "handlers": [
       "click"
      ],
@@ -1835,7 +1835,7 @@
      "labelFrom": "text",
      "ariaLabel": "",
      "testid": "draft-replace-cancel",
-     "source": "frontend/src/pages/StrategyBuilderPage.vue:1214",
+     "source": "frontend/src/pages/StrategyBuilderPage.vue:1239",
      "handlers": [
       "click"
      ],
@@ -1850,7 +1850,7 @@
      "labelFrom": "text",
      "ariaLabel": "Underlying",
      "testid": "underlying-select",
-     "source": "frontend/src/pages/StrategyBuilderPage.vue:1236",
+     "source": "frontend/src/pages/StrategyBuilderPage.vue:1261",
      "component": "pages/StrategyBuilderPage.vue"
     },
     {
@@ -1861,7 +1861,7 @@
      "labelFrom": "text",
      "ariaLabel": "",
      "testid": "",
-     "source": "frontend/src/pages/StrategyBuilderPage.vue:1241",
+     "source": "frontend/src/pages/StrategyBuilderPage.vue:1266",
      "handlers": [
       "keydown.esc"
      ],
@@ -1875,7 +1875,7 @@
      "labelFrom": "text",
      "ariaLabel": "",
      "testid": "builder-settings",
-     "source": "frontend/src/pages/StrategyBuilderPage.vue:1242",
+     "source": "frontend/src/pages/StrategyBuilderPage.vue:1267",
      "handlers": [
       "click"
      ],
@@ -1890,7 +1890,7 @@
      "labelFrom": "text",
      "ariaLabel": "Builder settings",
      "testid": "settings-popover",
-     "source": "frontend/src/pages/StrategyBuilderPage.vue:1246",
+     "source": "frontend/src/pages/StrategyBuilderPage.vue:1271",
      "component": "pages/StrategyBuilderPage.vue"
     },
     {
@@ -1901,7 +1901,7 @@
      "labelFrom": "text",
      "ariaLabel": "",
      "testid": "lots-quantity-switch",
-     "source": "frontend/src/pages/StrategyBuilderPage.vue:1248",
+     "source": "frontend/src/pages/StrategyBuilderPage.vue:1273",
      "component": "pages/StrategyBuilderPage.vue"
     },
     {
@@ -1912,7 +1912,7 @@
      "labelFrom": "text",
      "ariaLabel": "",
      "testid": "open-error-my-strategies",
-     "source": "frontend/src/pages/StrategyBuilderPage.vue:1259",
+     "source": "frontend/src/pages/StrategyBuilderPage.vue:1284",
      "to": "/strategies/my-strategies",
      "component": "pages/StrategyBuilderPage.vue"
     },
@@ -1924,7 +1924,7 @@
      "labelFrom": "text",
      "ariaLabel": "",
      "testid": "paper-review",
-     "source": "frontend/src/pages/StrategyBuilderPage.vue:1278",
+     "source": "frontend/src/pages/StrategyBuilderPage.vue:1304",
      "handlers": [
       "click"
      ],
@@ -1938,7 +1938,7 @@
      "labelFrom": "text",
      "ariaLabel": "",
      "testid": "paper-discard",
-     "source": "frontend/src/pages/StrategyBuilderPage.vue:1279",
+     "source": "frontend/src/pages/StrategyBuilderPage.vue:1305",
      "handlers": [
       "click"
      ],
@@ -1953,7 +1953,7 @@
      "labelFrom": "text",
      "ariaLabel": "",
      "testid": "add-edit",
-     "source": "frontend/src/pages/StrategyBuilderPage.vue:1286",
+     "source": "frontend/src/pages/StrategyBuilderPage.vue:1312",
      "handlers": [
       "click"
      ],
@@ -1968,7 +1968,7 @@
      "labelFrom": "text",
      "ariaLabel": "",
      "testid": "menu-activity",
-     "source": "frontend/src/pages/StrategyBuilderPage.vue:1289",
+     "source": "frontend/src/pages/StrategyBuilderPage.vue:1315",
      "handlers": [
       "click"
      ],
@@ -1983,7 +1983,7 @@
      "labelFrom": "text",
      "ariaLabel": "",
      "testid": "menu-add-to-paper",
-     "source": "frontend/src/pages/StrategyBuilderPage.vue:1290",
+     "source": "frontend/src/pages/StrategyBuilderPage.vue:1316",
      "handlers": [
       "click"
      ],
@@ -1998,7 +1998,7 @@
      "labelFrom": "text",
      "ariaLabel": "",
      "testid": "",
-     "source": "frontend/src/pages/StrategyBuilderPage.vue:1304",
+     "source": "frontend/src/pages/StrategyBuilderPage.vue:1330",
      "component": "pages/StrategyBuilderPage.vue"
     },
     {
@@ -2009,7 +2009,7 @@
      "labelFrom": "text",
      "ariaLabel": "",
      "testid": "show-editor",
-     "source": "frontend/src/pages/StrategyBuilderPage.vue:1307",
+     "source": "frontend/src/pages/StrategyBuilderPage.vue:1333",
      "handlers": [
       "click"
      ],
@@ -2024,7 +2024,7 @@
      "labelFrom": "text",
      "ariaLabel": "",
      "testid": "show-strikes",
-     "source": "frontend/src/pages/StrategyBuilderPage.vue:1310",
+     "source": "frontend/src/pages/StrategyBuilderPage.vue:1336",
      "handlers": [
       "click"
      ],
@@ -2039,7 +2039,7 @@
      "labelFrom": "attr",
      "ariaLabel": "",
      "testid": "",
-     "source": "frontend/src/pages/StrategyBuilderPage.vue:1314",
+     "source": "frontend/src/pages/StrategyBuilderPage.vue:1340",
      "component": "pages/StrategyBuilderPage.vue"
     },
     {
