@@ -18,6 +18,7 @@ THREE = 3
 
 
 def go(repo, tmp_path, runner, tag="l", **kw):
+    kw.setdefault("since_pass", True)
     kw.setdefault("select_docs_app", READERS)
     kw.setdefault("select_domain", lambda r: ["tests/test_a.py"])
     kw.setdefault("select_app", lambda r: (0, ["tests_app/test_a.py"], "1 files"))
@@ -215,3 +216,85 @@ def test_a_stopped_or_killed_step_leaves_no_record(tmp_path):
     second = Runner()
     assert go(repo, tmp_path, second, "r2") == 0
     assert "app_tests" in stems(second)
+
+
+# ---- review fixes (Opus review of d7e25431) ----
+
+def test_the_since_pass_lane_is_opt_in(tmp_path, capsys):
+    repo, _ = full_pass_on_code(tmp_path)
+    commit_file(repo, "spec/decisions/ADR-7.md", "row")
+    assert go(repo, tmp_path, Runner(), "o", since_pass=False) == 0
+    assert "docs-since-pass" not in capsys.readouterr().out and marker(repo)["mode"]["lane"] == "full"
+
+
+def test_frontend_steps_are_planned_in_the_since_pass_lane_as_in_the_full_lane(tmp_path):
+    repo, _ = full_pass_on_code(tmp_path)
+    (repo / "frontend" / "node_modules").mkdir(parents=True)
+    commit_file(repo, "spec/decisions/ADR-8.md", "row")
+    runner = Runner()
+    assert go(repo, tmp_path, runner, "f", select_frontend=lambda r: ["src/a.js"],
+              select_since_domain=lambda r, b: ["tests/test_rec.py"]) == 0
+    assert "frontend_unit" in stems(runner) and marker(repo)["mode"]["lane"].startswith("docs-since-pass")
+
+
+def test_a_classifier_changed_since_main_is_never_vouched_for_by_an_older_anchor(tmp_path):
+    repo, _ = full_pass_on_code(tmp_path)
+    commit_file(repo, "tools/change_scope.py", (repo / "tools" / "change_scope.py").read_text("utf-8") + "\n# x\n")
+    assert go(repo, tmp_path, Runner(), "k") == 0
+    commit_file(repo, "spec/decisions/ADR-9.md", "row")
+    assert prepush.since_pass_lane(str(repo), False, sha_of(repo)) is None
+
+
+def test_a_dirty_tree_never_takes_the_since_pass_lane(tmp_path, capsys):
+    repo, _ = full_pass_on_code(tmp_path)
+    commit_file(repo, "spec/decisions/ADR-10.md", "row")
+    (repo / "backend" / "new.py").write_text("y = 3\n", encoding="utf-8")  # uncommitted code edit
+    go(repo, tmp_path, Runner(), "d")
+    assert "docs-since-pass" not in capsys.readouterr().out
+
+
+def test_the_resume_key_has_the_merge_base_and_the_gate_files_and_the_checkout(tmp_path):
+    repo = docs_repo(tmp_path)
+    commit_file(repo, "backend/n.py", "y = 2\n")
+    sha = sha_of(repo)
+    parts = prepush.make_resume(str(repo), sha, False, "full", None, [], True).parts
+    text = "\n".join(parts)
+    assert any(p.startswith("mergebase=") for p in parts) and any(p.startswith("gate=") for p in parts)
+    assert f"repo={repo}" in text and any(p.startswith("nm=") for p in parts)
+
+
+def test_a_record_is_not_saved_when_head_moved_during_the_step(tmp_path):
+    repo = docs_repo(tmp_path)
+    commit_file(repo, "backend/n.py", "y = 2\n")
+
+    class Moves(Runner):
+        def __call__(self, cmd, cwd, log_path):
+            if Path(log_path).stem == "domain_tests":
+                commit_file(repo, "docs/moved.md", "m")  # HEAD moves while the step runs; the tree stays clean
+            return super().__call__(cmd, cwd, log_path)
+
+    go(repo, tmp_path, Moves(), "m")
+    root = prepush.marker_dir(str(repo))
+    steps_dir = os.path.join(root, prepush.STEPS_DIR)
+    saved = os.listdir(steps_dir) if os.path.isdir(steps_dir) else []
+    assert not [f for f in saved if f.startswith("domain_tests")]
+
+
+def test_readers_include_tests_that_use_a_tools_module_naming_a_docs_path(tmp_path):
+    repo = docs_repo(tmp_path)
+    (repo / "tests").mkdir(exist_ok=True)
+    (repo / "scripts").mkdir(exist_ok=True)
+    (repo / "scripts" / "register_check.py").write_text('P = "docs/process/ref.md"\n', encoding="utf-8")
+    (repo / "tests" / "test_register.py").write_text("import register_check\n", encoding="utf-8")
+    (repo / "tests" / "test_plain.py").write_text("x = 1\n", encoding="utf-8")
+    rc, files, message = prepush.select_docs_readers(str(repo), "tests")
+    assert rc == 0, message
+    assert "tests/test_register.py" in files and "tests/test_plain.py" not in files
+
+
+def test_a_non_dict_pass_record_or_marker_is_ignored_not_a_crash(tmp_path):
+    repo, _ = full_pass_on_code(tmp_path)
+    store = prepush.Resume(str(repo), ["k"], str(tmp_path / "steps"))
+    os.makedirs(store.root)
+    Path(store._path("app_tests")).write_text("[]", encoding="utf-8")
+    assert store.hit("app_tests") is None

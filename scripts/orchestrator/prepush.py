@@ -222,6 +222,7 @@ def select_docs_readers(repo: str, subdir: str) -> tuple[int, list[str], str]:
                     (tests if name.startswith("test_") else helpers).append((rel, text))
         reads = lambda text: bool(literal.search(text) or joined.search(text))  # noqa: E731
         readers = [rel for rel, text in helpers if reads(text)]
+        readers += _tool_readers(repo, reads)  # a module under scripts/ or tools/ that names a docs path
 
         def uses(rel, text, helper):
             stem = os.path.splitext(os.path.basename(helper))[0]
@@ -266,9 +267,11 @@ def last_full_pass(repo: str, sha: str, limit: int = 5000) -> str | None:
                 body = json.load(handle)
         except (OSError, ValueError, AttributeError):
             continue
-        if body.get("sha") != cand:
+        if not isinstance(body, dict) or body.get("sha") != cand:
             continue
         mode = body.get("mode") or {}
+        if not isinstance(mode, dict):
+            continue
         anchor = cand if mode.get("lane") == "full" else mode.get("anchor")
         if isinstance(anchor, str) and len(anchor) == 40 and has_marker(repo, anchor):  # noqa: PLR2004
             rc2, _ = _git(repo, "merge-base", "--is-ancestor", anchor, sha)
@@ -284,6 +287,10 @@ def since_pass_lane(repo: str, full: bool, sha: str | None, find_base=None, docs
     if full or sha is None:
         return None
     try:
+        rc, merge_base = _git(repo, "merge-base", "origin/main", sha)
+        rc2, changed = _git(repo, "diff", "--name-only", merge_base, sha, "--", CLASSIFIER)
+        if rc != 0 or rc2 != 0 or changed:  # the classifier must not vouch for itself through an older anchor (F4)
+            return None
         base = (find_base or last_full_pass)(repo, sha)
         if base is None or base == sha:
             return None
@@ -300,8 +307,8 @@ class Resume:
     step has none, so a re-run on the same tree restarts at the step that did not pass. Any change to the tree
     changes the key: nothing is reused across a file change."""
 
-    def __init__(self, repo: str, key_parts: list[str], root: str):
-        self.repo, self.parts, self.root = repo, list(key_parts), root
+    def __init__(self, repo: str, key_parts: list[str], root: str, sha: str | None = None):
+        self.repo, self.parts, self.root, self.sha = repo, list(key_parts), root, sha
 
     def _path(self, step: str) -> str:
         digest = hashlib.sha256("\n".join([step, *self.parts]).encode()).hexdigest()
@@ -313,13 +320,14 @@ class Resume:
                 body = json.load(handle)
         except (OSError, ValueError):
             return None
-        return body if body.get("rc") == 0 and body.get("step") == step else None
+        ok = isinstance(body, dict) and body.get("rc") == 0 and body.get("step") == step
+        return body if ok else None
 
     def save(self, step: str, seconds: float) -> None:
         os.makedirs(self.root, exist_ok=True)
         body = {"step": step, "rc": 0, "seconds": seconds, "at": datetime.now(UTC).isoformat(timespec="seconds")}
-        tmp = self._path(step) + ".tmp"
-        with open(tmp, "w", encoding="utf-8") as handle:
+        fd, tmp = tempfile.mkstemp(dir=self.root, suffix=".tmp")  # two gates on one tree must not share a temp name
+        with os.fdopen(fd, "w", encoding="utf-8") as handle:
             json.dump(body, handle)
         os.replace(tmp, self._path(step))
 
@@ -332,12 +340,31 @@ def make_resume(repo: str, sha: str | None, full: bool, lane: str, base: str | N
         return None
     rc, tree = git(repo, "rev-parse", f"{sha}^{{tree}}")
     rc2, main_sha = git(repo, "rev-parse", "origin/main")
+    rc3, merge_base = git(repo, "merge-base", "origin/main", sha)  # the kit selections diff from here (review F3)
     root = marker_dir(repo)
-    if rc != 0 or rc2 != 0 or not tree or not main_sha or root is None:
+    if rc != 0 or rc2 != 0 or rc3 != 0 or not tree or not main_sha or not merge_base or root is None:
         return None
-    parts = [tree, f"full={int(full)}", f"lane={lane}", f"main={main_sha}", f"base={base}", f"frontend={frontend!r}",
-             sys.version.split()[0], _node_version()]
-    return Resume(repo, parts, os.path.join(root, STEPS_DIR))
+    parts = [tree, f"full={int(full)}", f"lane={lane}", f"main={main_sha}", f"mergebase={merge_base}", f"base={base}",
+             f"frontend={frontend!r}", sys.version.split()[0], _node_version(), *_gate_and_env_parts(repo)]
+    return Resume(repo, parts, os.path.join(root, STEPS_DIR), sha)
+
+
+def _file_digest(path: str) -> str:
+    try:
+        with open(path, "rb") as handle:
+            return hashlib.sha256(handle.read()).hexdigest()[:16]
+    except OSError:
+        return "none"
+
+
+def _gate_and_env_parts(repo: str) -> list[str]:
+    """What a step's result depends on that is not in the checked tree (review F5): the gate's own code, which
+    checkout and Python, and the installed frontend packages."""
+    here = os.path.dirname(os.path.abspath(__file__))
+    mine, theirs = (_file_digest(os.path.join(here, n)) for n in ("prepush.py", "merge_preflight.py"))
+    return [f"gate={mine}.{theirs}",
+            f"repo={os.path.abspath(repo)}", f"prefix={sys.prefix}",
+            "nm=" + _file_digest(os.path.join(repo, FRONTEND, "node_modules", ".package-lock.json"))]
 
 
 def _node_version() -> str:
@@ -349,6 +376,22 @@ def _node_version() -> str:
                                         check=False).stdout.strip()
     except (OSError, subprocess.SubprocessError):
         return "node=unknown"
+
+
+def _tool_readers(repo: str, reads) -> list[str]:
+    """scripts/ and tools/ modules (any depth) whose text names a docs path: a test that imports one reads docs
+    through it (review F1: tests/test_reference_register_real.py runs reference_register.py, which reads docs/)."""
+    found = []
+    for top in ("scripts", "tools"):
+        for here, dirs, files in os.walk(os.path.join(repo, top)):
+            dirs[:] = sorted(d for d in dirs if d not in ("__pycache__", "node_modules"))
+            for name in sorted(files):
+                if name.endswith(".py"):
+                    path = os.path.join(here, name)
+                    with open(path, encoding="utf-8", errors="replace") as handle:
+                        if reads(handle.read()):
+                            found.append(os.path.relpath(path, repo).replace(os.sep, "/"))
+    return found
 
 
 FRONTEND = "frontend"
@@ -468,7 +511,7 @@ class Plan:
                 return 0
             t0 = time.monotonic()
             rc = fn(log)
-            if rc == 0 and tree_is_clean(self.repo):
+            if rc == 0 and head_sha(self.repo) == self.resume.sha and tree_is_clean(self.repo):  # review F2
                 self.resume.save(name, round(time.monotonic() - t0, 1))
             return rc
         return run
@@ -838,7 +881,7 @@ def _frontend_changes_or_none(select_frontend, repo):
 def run_all(repo, full=False, runner=None, log_dir=None, clock=time.monotonic,  # noqa: PLR0913
             select_domain=None, select_app=None, select_frontend=None, which=shutil.which, jobs=1,
             select_docs_only=None, select_docs_app=None, resume=True, find_base=None, select_since_domain=None,
-            since_docs_only=None) -> int:
+            since_docs_only=None, since_pass=False) -> int:
     select_domain = select_domain or select_domain_tests
     select_app = select_app or select_app_tests
     select_frontend = select_frontend or frontend_changes
@@ -856,7 +899,9 @@ def run_all(repo, full=False, runner=None, log_dir=None, clock=time.monotonic,  
     clean_at_start = tree_is_clean(repo)  # review F3: the tree is the commit for the whole run, not only at the end
     lane, skips, docs_lane = _lane(repo, full, select_docs_only or docs_only_change, sha)
     base, flags = None, ()
-    if not docs_lane and (since := since_pass_lane(repo, full, sha, find_base, since_docs_only)) is not None:
+    since = since_pass_lane(repo, full, sha, find_base, since_docs_only) if (
+        since_pass and not docs_lane and clean_at_start) else None  # opt-in until re-reviewed; clean tree only (F6)
+    if since is not None:
         base, count = since  # only records files changed since the last full pass of this branch: its code is that code
         lane, docs_lane, flags = f"docs-since-pass ({count} files since {base[:8]})", True, (SINCE_PASS_FLAG,)
         pick_since = select_since_domain or select_domain_since
@@ -864,7 +909,8 @@ def run_all(repo, full=False, runner=None, log_dir=None, clock=time.monotonic,  
         def select_domain(r, b=base):
             return pick_since(r, b)
     if docs_lane:  # a docs-only change: no frontend step is planned; app_tests runs the files that read docs paths
-        frontend, select_app = [], select_docs_app or select_docs_app_tests
+        frontend = _frontend_changes_or_none(select_frontend, repo) if flags else []  # since-pass: as full (F1)
+        select_app = select_docs_app or select_docs_app_tests
         print(f"LANE {lane}: nothing is skipped that reads a records file; app_tests runs the tests_app files that "
               "read docs paths" + ("; preflight skips the two layers that read Python only" if flags else ""))
         for name, reason in skips.items():
@@ -907,6 +953,9 @@ def main(argv=None) -> int:
     ap.add_argument("--repo", default=ROOT, help="the checkout to check (default: this one)")
     ap.add_argument("--jobs", default=None, metavar="N",
                     help="long steps side by side (default: PREPUSH_JOBS, else the CPU count; 1 = serial reference)")
+    ap.add_argument("--since-pass", action="store_true", default=os.environ.get("PREPUSH_SINCE_PASS") == "1",
+                    help="OPT-IN: when only records files changed since this branch's last full-pass marker, run the "
+                         "docs-since-pass lane (cheaper) instead of the full lane (default off until re-reviewed)")
     ap.add_argument("--no-resume", action="store_true",
                     help="run every long step even if it already passed on this exact tree (pass records are ignored)")
     a = ap.parse_args(argv)
@@ -924,7 +973,7 @@ def main(argv=None) -> int:
     if problems:
         print(tools_present.report(problems))
         return 2
-    return run_all(a.repo, a.full, jobs=jobs, resume=not a.no_resume)
+    return run_all(a.repo, a.full, jobs=jobs, resume=not a.no_resume, since_pass=a.since_pass)
 
 
 if __name__ == "__main__":
