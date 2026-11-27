@@ -14,6 +14,8 @@ import time
 
 from starlette.types import ASGIApp, Message, Receive, Scope, Send
 
+from ofo_app import step_timing
+
 log = logging.getLogger("ofo_app.request")
 
 
@@ -32,6 +34,23 @@ def _install_handler() -> None:
 _install_handler()
 
 
+def _steps_text(total: float) -> str:
+    """` db=120.3ms/14q price=5000.1ms margin=800.0ms compute=276.6ms`; absent steps are omitted (a request with no
+    step at all adds nothing, so the old line is unchanged). compute = total - db - price - margin, floored at 0: gathered
+    steps can overlap, so the parts may add up to more than the total."""
+    snap = step_timing.snapshot()
+    if not snap:
+        return ""
+    parts = []
+    if "db" in snap:
+        parts.append(f"db={snap['db'][0]:.1f}ms/{snap['db'][1]}q")
+    for name in ("price", "margin"):
+        if name in snap:
+            parts.append(f"{name}={snap[name][0]:.1f}ms")
+    parts.append(f"compute={max(0.0, total - sum(v[0] for v in snap.values())):.1f}ms")
+    return " " + " ".join(parts)
+
+
 class RequestLog:
     def __init__(self, app: ASGIApp) -> None:
         self.inner = app
@@ -42,6 +61,7 @@ class RequestLog:
             return
         t0 = time.perf_counter()
         logged = False
+        token = step_timing.start()
 
         def emit(status: int) -> None:
             nonlocal logged
@@ -50,8 +70,9 @@ class RequestLog:
             logged = True
             route = scope.get("route")
             path = getattr(route, "path", None) or scope.get("path", "")
-            log.info("request %s %s %d %.1fms", scope.get("method", ""), path, status,
-                     (time.perf_counter() - t0) * 1000.0)
+            total = (time.perf_counter() - t0) * 1000.0
+            # the step text is part of the format string (digits and letters only), so args stay (method, path, status, ms)
+            log.info("request %s %s %d %.1fms" + _steps_text(total), scope.get("method", ""), path, status, total)
 
         async def logging_send(message: Message) -> None:
             if message["type"] == "http.response.start":
@@ -63,3 +84,5 @@ class RequestLog:
         except Exception:
             emit(500)
             raise
+        finally:
+            step_timing.stop(token)

@@ -2,7 +2,9 @@
 
 from __future__ import annotations
 
+import asyncio
 import logging
+import re
 from collections.abc import AsyncIterator, Iterator
 
 import pytest
@@ -87,3 +89,47 @@ async def test_escaping_exception_logs_500_and_reraises(caplog: pytest.LogCaptur
         await RequestLog(boom)(scope, None, None)  # type: ignore[arg-type]
     recs = _records(caplog)
     assert len(recs) == 1 and recs[0].args[1:3] == ("/x", HTTP_ERROR)
+
+
+async def test_step_timing_on_the_line(caplog: pytest.LogCaptureFixture) -> None:
+    """REQ-049 AC-4: db / price / margin ms on the line, compute = the rest; absent steps are omitted."""
+    from ofo_app import step_timing  # noqa: PLC0415
+
+    caplog.set_level(logging.INFO, logger="ofo_app.request")
+
+    async def _slow() -> int:
+        await asyncio.sleep(0.02)
+        return 1
+
+    async def _boom() -> None:
+        raise RuntimeError
+
+    async def app(scope, receive, send):  # noqa: ANN001, ANN202
+        step_timing.add("db", 120.3)
+        step_timing.add("db", 1.0)
+        await step_timing.timed("price", _slow)()
+        with pytest.raises(RuntimeError):
+            await step_timing.timed("margin", _boom)()
+        await send({"type": "http.response.start", "status": 200, "headers": []})
+
+    async def receive():  # noqa: ANN202
+        return {"type": "http.request"}
+
+    async def send(_m):  # noqa: ANN001, ANN202
+        return None
+
+    await RequestLog(app)({"type": "http", "method": "GET", "path": "/x"}, receive, send)
+    (rec,) = _records(caplog)
+    assert rec.args[:3] == ("GET", "/x", HTTP_OK)
+    assert re.fullmatch(r"request GET /x 200 [\d.]+ms db=121\.3ms/2q price=\d+\.\dms margin=\d+\.\dms "
+                        r"compute=\d+\.\dms", rec.getMessage()), rec.getMessage()
+    assert step_timing.snapshot() == {}  # context reset after the request; a no-op outside one
+    step_timing.add("db", 5.0)
+    assert step_timing.snapshot() == {}
+
+
+async def test_no_steps_keeps_the_old_line(api: AsyncClient, caplog: pytest.LogCaptureFixture) -> None:
+    caplog.set_level(logging.INFO, logger="ofo_app.request")
+    await api.get("/health")
+    (rec,) = _records(caplog)
+    assert re.fullmatch(r"request GET /health 200 [\d.]+ms", rec.getMessage())

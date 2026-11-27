@@ -33,7 +33,7 @@ from ofo.timeutil import IST
 from sqlalchemy.exc import SQLAlchemyError
 
 from ofo_app import adjustment_check as check
-from ofo_app import playbook_store, scenario_mode
+from ofo_app import playbook_store, scenario_mode, step_timing
 from ofo_app.api_models import ApiModel, CatalogueText, Identifier, Money
 from ofo_app.db import get_db
 from ofo_app.errors import ClosedRoute, Failure
@@ -472,6 +472,10 @@ async def run_check(  # noqa: PLR0913 - the route's inputs, passed on
         strategy_id: int, *, db: Any, user_ref: str, tracked_reader: TrackedReader, market_reader: MarketReader,
         rest_reader: RestSpotReader, margin_of: ApproachMargin, ctx: MarketContext | None,
         rates: ChargeRates | None, prefs: Any, user_values: Any) -> CheckRun:
+    # measurement only (REQ-049 AC-4): per-request price and margin ms on the request log line; same calls, same answers
+    market_reader = step_timing.timed("price", market_reader)
+    rest_reader = step_timing.timed("price", rest_reader)
+    margin_of = step_timing.timed("margin", margin_of)
     from ofo_app.adjustment_readers import (  # noqa: PLC0415 - imports routes.adjustment
         TrackedExited,
         TrackedUnreadable,

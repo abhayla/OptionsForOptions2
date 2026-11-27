@@ -14,6 +14,7 @@ from sqlalchemy import text
 from sqlalchemy.ext.asyncio import AsyncEngine, AsyncSession, async_sessionmaker, create_async_engine
 from sqlalchemy.orm import DeclarativeBase
 
+from ofo_app import step_timing
 from ofo_app.config import get_settings
 
 log = logging.getLogger(__name__)
@@ -34,12 +35,14 @@ class Base(DeclarativeBase):
 @lru_cache
 def get_engine() -> AsyncEngine:
     settings = get_settings()
-    return create_async_engine(
+    engine = create_async_engine(
         settings.DATABASE_URL,
         pool_size=settings.DB_POOL_SIZE,
         max_overflow=settings.DB_MAX_OVERFLOW,
         connect_args={"server_settings": {"jit": "off"}},
     )
+    step_timing.install_db_events(engine.sync_engine)  # per-request db ms / query count on the request log line
+    return engine
 
 
 @lru_cache
