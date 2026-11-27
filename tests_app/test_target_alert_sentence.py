@@ -348,8 +348,11 @@ async def test_the_record_takes_its_fields_from_the_confirming_check(monkeypatch
     later = _ctx("B", "Late", 2, ("A-28", "99.00", "PE", "5"))
     at = lambda hhmm: datetime.datetime.combine(AT.date(), datetime.time.fromisoformat(hhmm), tzinfo=alert_gate.IST)  # noqa: E731
     specs = lambda ctx: {t: (alert_gate.RuleSpec(t, "ge", (D("1"),), sample=ctx), D("1.77")) for t in RULES}  # noqa: E731
-    state, _ = alert_gate.step(alert_gate.initial_state(), now=at("10:04:30"), preset=alert_gate.INTRADAY, readings=specs(first))
+    state, now_events = alert_gate.step(alert_gate.initial_state(), now=at("10:04:30"), preset=alert_gate.INTRADAY,
+                                        readings=specs(first))
+    assert [e.rule_id for e in now_events] == ["T-07"]  # ADR-330 (47): the % target is a plan exit: opened at the check
     _, events = alert_gate.step(state, now=at("10:06:30"), preset=alert_gate.INTRADAY, readings=specs(later))
+    events = now_events + events
     assert len(events) == len(RULES)
     watched = later.watched  # the later check's strategy, as the writer holds it
     await background.DbGateStore().apply(watched, events)
