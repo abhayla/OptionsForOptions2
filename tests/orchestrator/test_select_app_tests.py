@@ -108,6 +108,7 @@ PR241_SELECTION = {
     "tests_app/test_api_models.py", "tests_app/test_identifier_and_slots.py", "tests_app/test_outcome_catalogue.py",
     "tests_app/test_outcome_margin.py", "tests_app/test_outcome_split_loss.py",
     "tests_app/test_strategy_templates_route.py",
+    "tests_app/test_index_one_rule.py",  # Lane N: new file importing ofo_app.adjustment_readers / route modules
     # GC-TP paper flow + target block: each names ofo.errors.explanations (5 also call /strategies routes)
     "tests_app/test_outcome_target_badge.py", "tests_app/test_outcome_target_booked.py",
     "tests_app/test_paper_list_figures.py", "tests_app/test_paper_reason_texts.py", "tests_app/test_paper_routes.py",
