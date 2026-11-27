@@ -10,6 +10,7 @@ type, stage, tightening, finite/unlimited max loss, and rule memory.
 from __future__ import annotations
 
 import copy
+import dataclasses
 import datetime
 import json
 import pathlib
@@ -141,11 +142,13 @@ def test_data_missing_rows_are_not_checked_with_the_evaluators_reason(edit):
         assert got.state == "not_checked" and got.reason == nc.code
 
 
-def test_already_true_after_an_adjustment():
+def test_a_plan_exit_is_never_already_true_whatever_the_stored_memory_says():
+    """ADR-330 (47): the % profit target is a plan exit: a stored held-at-entry memory never swallows it (it was the
+    one limits row that could read "already true"; the 5-minute period after entry delays it in the gate instead)."""
     memory = {"T-07": {"held_at_entry": True, "seen_clear": False}}
     _, ev = run(IC, pnl="2000", memory=memory)  # 72.6 % of max profit
-    assert isinstance(result(ev, "T-07"), pe.AlreadyTrue)
-    assert row(ev, "T-07").state == "already_true" and row(ev, "T-07").threshold == D(50)
+    assert isinstance(result(ev, "T-07"), pe.Flag)
+    assert row(ev, "T-07").state == "checked" and row(ev, "T-07").threshold == D(50)
 
 
 def test_a_flag_is_checked():
@@ -253,9 +256,9 @@ def test_text_a_not_checked_row_that_still_carries_numbers_prints_none_of_them()
 
 
 def test_text_already_true_keeps_the_limit_and_says_so_in_the_adr296_words():
-    memory = {"T-07": {"held_at_entry": True, "seen_clear": False}}
-    _, ev = run(IC, pnl="2000", memory=memory)
-    text = texts(ev)["T-07"]
+    _, ev = run(IC, pnl="2000")
+    already = dataclasses.replace(row(ev, "T-07"), state="already_true", after=0)  # no plan exit reads it now (ADR-330 (47))
+    text = str(route.limits_out((already,))[0]["text"])
     assert text.startswith("Target: profit of 50 % of max profit, before charges") and text.endswith(
         "Already true: alerts after it clears and crosses again")
 
@@ -282,16 +285,18 @@ def test_u141_the_reply_carries_the_checks_own_time_in_both_forms_and_refuses_a_
 def test_u143_an_already_true_row_carries_its_adjustment_number_and_the_decision_is_unchanged():
     memory = {"T-07": {"held_at_entry": True, "seen_clear": False}}
     _, ev = run(IC, pnl="2000", memory=memory, used=2)
-    assert isinstance(result(ev, "T-07"), pe.AlreadyTrue) and result(ev, "T-07").after == 2
-    assert row(ev, "T-07").state == "already_true" and row(ev, "T-07").after == 2
+    assert isinstance(result(ev, "T-07"), pe.Flag) and row(ev, "T-07").state == "checked"  # ADR-330 (47): never held
+    ev = dataclasses.replace(ev, limits=tuple(dataclasses.replace(x, state="already_true", after=2) if x.rule_id == "T-07"
+                                               else x for x in ev.limits))  # the row's wording, built directly
     out = route.limits_out(ev.limits)
     t07 = next(x for x in out if x["rule_id"] == "T-07")
     assert t07["after"] == 2
     assert t07["text"] == ("Target: profit of 50 % of max profit, before charges; 80 % nearer expiry. Already true after adjustment 2: "
                            "alerts after it clears and crosses again")
-    _, entry = run(IC, pnl="2000", memory=memory, used=0)  # N not known (the entry): the generic sentence stays
+    _, entry = run(IC, pnl="2000", used=0)  # N not known (the entry): the generic sentence stays
+    entry = dataclasses.replace(entry, limits=tuple(dataclasses.replace(x, state="already_true", after=0)
+                                                    if x.rule_id == "T-07" else x for x in entry.limits))
     assert next(x for x in route.limits_out(entry.limits) if x["rule_id"] == "T-07")["after"] is None
-    assert row(entry, "T-07").after == 0
 
 
 def test_u142_a_fired_stop_states_the_loss_and_the_stop_line_in_rupees_and_percent_and_when_it_fired():
