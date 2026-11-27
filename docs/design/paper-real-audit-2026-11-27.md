@@ -1,4 +1,4 @@
-STATUS 17:52 | A: first full draft in this push (54 rows, section C included) | B: not started | next push ~Sat 14:00 (design B); parent message refused, this line is the report
+STATUS 18:35 | A: pushed e9c41c1 (54 rows, section C) | B: done, Opus-reviewed (REVISE, all 12 findings applied), gate running for push 2 | next push ~19:15; parent message refused, this line is the report
 
 # Paper vs real: every difference, 27 Nov 2026 (Lane E, read only)
 
