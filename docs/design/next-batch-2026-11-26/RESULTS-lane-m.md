@@ -3,6 +3,33 @@
 Coordinator lines (send_message to "@parent" was refused: `elevated_session_untrusted_device`; written here instead):
 
 - LANE M ALIVE (09:46 IST)
+- LANE M ITEM 4 ANSWER (13:30 IST, side_closed for B-P2; from the 206a9f0 code, not yet run on the PC data):
+  - What raises it: `background.Worker.rebuild` -> `_raise_side_closed_all(monitors)` ->
+    `DbGateStore.raise_side_closed` -> `side_closed.raise_if_closed` (one alert module, kind side_closed), every
+    REBUILD_SECONDS, ONLY for the strategies in `monitors`, the list `owner_lister` returns.
+  - Why B-P2 got none: `owner_lister` drops every strategy whose plan resolves to nothing
+    (`if resolved.body is None: ... _lapse_exited(..., "not_monitored"); continue`, ADR-330 (11)). A trade with no
+    plan is never in `monitors`, so the side-closed check never runs for it. Not the cause: a leg stop vs Exit (the
+    check reads the position only: `side_scope.closed_sides(entry.legs, now.legs)`), a quiet period (none), one row
+    per strategy (the rule is per side and episode).
+  - Other conditions under which no row is raised even with a plan: the entry is not exactly 4 legs of a SHORT iron
+    condor with put BUY < put SELL < call SELL < call BUY (`_is_condor`); both sides closed at once; an open or
+    answered row for the same side in this episode; the strategy's tracked read failed (unread) that rebuild.
+  - Spec: a DEFECT, in my reading [Likely]. ADR-330 (11) withholds from a no-plan trade "adjustment suggestions and
+    ... target or stop alerts" and nothing else; ADR-330 (2)(b) "When a side closes, the user is told so and asked"
+    and (33) "every time a side of the trade closes the user is told and asked again" carry no plan condition, and the
+    question is about the trade's shape name, not about a plan rule. I see no conflict between the two rows, so this is
+    not an owner question; if the coordinator reads (2)(a)'s heading "the plan after one side exits" as limiting (b),
+    it becomes one.
+  - The fix must also stop the no-plan path closing the row it raises: `_lapse_exited(..., "not_monitored")` calls
+    `actionable_alerts.close_by_system` for the strategy's open records on every rebuild; a system-closed side_closed
+    row does not stop a new raise, so a plain "also raise for no-plan trades" would raise, close and raise again each
+    rebuild. Fix shape: `owner_lister` hands the no-plan tracked strategies to the side-closed check too, and the
+    not_monitored lapse leaves side_closed rows open (they are not plan records).
+  - Not the loss-stop guard path (Lane J): the side-closed raise is a separate call in `rebuild`.
+  - PC check that settles B-P2: did it have a plan at 13:03 (`SELECT ... FROM strategy plans` for B-P2), and
+    `SELECT id, kind, rule_id, outcome, answer, created_at FROM public.actionable_alerts WHERE strategy_id = <B-P2>`
+    (a side_closed row closed by the system would show the raise/close path already ran).
 - LANE M RCA (10:25 IST, after the 09:50 correction): the figure is right (bought 25650 PE stopped at 102.55 leaves
   the sold 25750 PE bare: 11,433.50 - 25,750 x 65 = -16,62,316.50, pinned through the engine). The date is printed by
   `routes/paper.py::names_and_terms`, which named every leg of the line with `describe_contract`, the ISO record form
