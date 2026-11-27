@@ -6,6 +6,7 @@ prices not live -> state paused, no ``now``; strategy not found -> 404; evaluati
 from __future__ import annotations
 
 import asyncio
+import datetime
 import re
 from decimal import Decimal
 
@@ -232,6 +233,16 @@ async def _watch_dep(strategy_id: int, dep, reader) -> tuple[int, dict]:
     return r.status_code, r.json()
 
 
+# The two cut-market tests below judge the plan against the server's own clock (``read_market(tracked, None)`` stamps
+# ``server_now()``). The seeded plan has a "before the weekend, from 15:00" rule that fires on a Friday after 15:00 IST,
+# so unpinned they failed every Friday afternoon (27 Nov 2026, 22:30 IST). They are pinned to a mid-week market time.
+CLOCK_PIN = datetime.datetime(2026, 11, 25, 5, 30, tzinfo=datetime.UTC)  # Wednesday 25 Nov 2026, 11:00 IST
+
+
+def _pin_server_clock(monkeypatch, at=CLOCK_PIN) -> None:
+    monkeypatch.setattr("ofo_app.adjustment_readers.server_now", lambda: at)
+
+
 async def test_a_hanging_market_read_is_cut_at_the_budget_and_answers_not_live(app_db_url, monkeypatch):  # noqa: F811
     """REQ-119 AC-4: the price read never answers; the route still answers (its budget cuts the read), with the existing
     "prices not live" shape: every line paused / not checked, no `now`, no distance (absent, never 0). The cut-off read
@@ -240,6 +251,7 @@ async def test_a_hanging_market_read_is_cut_at_the_budget_and_answers_not_live(a
     from ofo_app.routes.adjustment import get_market_reader  # noqa: PLC0415
 
     sid = await _seeded(app_db_url, monkeypatch, "ADJ-01")
+    _pin_server_clock(monkeypatch)
     await _arm(app_db_url, sid)
     monkeypatch.setattr(price_budget, "PRICE_BUDGET_S", 0.05)  # Lane J2: the one budget (watch_of wraps the readers)
     seen: dict[str, object] = {"held": None, "cancelled": False}
@@ -306,6 +318,7 @@ async def test_a_quote_answering_after_the_market_was_cut_is_not_asked(app_db_ur
     from ofo_app.routes.adjustment import get_market_reader, get_rest_spot_reader  # noqa: PLC0415
 
     sid = await _seeded(app_db_url, monkeypatch, "ADJ-01")
+    _pin_server_clock(monkeypatch)
     await _arm(app_db_url, sid)
     monkeypatch.setattr(price_budget, "PRICE_BUDGET_S", 0.05)  # Lane J2: the one budget (watch_of wraps the readers)
     called: list[str] = []
