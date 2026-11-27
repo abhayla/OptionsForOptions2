@@ -24,9 +24,8 @@ from ofo.errors.explanations import render_explanation
 from pydantic import BaseModel, ConfigDict
 
 from ofo_app import actionable_alerts as aa
-from ofo_app import alert_title
+from ofo_app import alert_title, side_closed
 from ofo_app import playbook_store as store
-from ofo_app import side_closed
 from ofo_app.api_models import ApiModel, CatalogueText, Identifier
 from ofo_app.db import get_db
 from ofo_app.errors import ClosedRoute, Failure

@@ -6,7 +6,6 @@ prices not live -> state paused, no ``now``; strategy not found -> 404; evaluati
 from __future__ import annotations
 
 import re
-
 from decimal import Decimal
 
 from httpx import ASGITransport, AsyncClient
@@ -65,9 +64,10 @@ async def test_planned_condor_lines(app_db_url, monkeypatch):  # noqa: F811
     assert (index["fires_at"], index["state"]) == ("23400.00", "watching")
     assert index["now"] == "23050.00" and index["distance_rs"] == "350.00"  # the scenario's spot, 23400 - 23050
     assert out["armed_heading"] is not None
-    for leg in (x for x in lines if x["kind"] == "leg_stop"):  # items 5 and 6 (27 Nov): the date style, level, side, price now
+    for leg in (x for x in lines if x["kind"] == "leg_stop"):  # items 5, 6 (27 Nov): date style, level, side, price
         assert leg["label"].endswith(f": fires when the price rises above 90.00; price now {leg['now']}"), leg["label"]
-        assert not re.search(r"\d{4}-\d{2}-\d{2}", leg["label"]) and re.search(r"on NIFTY \d{1,2} [A-Z][a-z]{2} \d+ (CE|PE):", leg["label"])
+        assert not re.search(r"\d{4}-\d{2}-\d{2}", leg["label"])
+        assert re.search(r"on NIFTY \d{1,2} [A-Z][a-z]{2} \d+ (CE|PE):", leg["label"])
 
 
 async def test_no_plan_sentence_and_armed_triggers_still_listed(app_db_url, monkeypatch):  # noqa: F811
@@ -198,8 +198,8 @@ async def test_closed_put_side_reads_put_and_unreadable_entry_judges_no_side(app
 
 async def test_a_just_saved_draft_reads_as_no_plan_never_not_found(app_db_url, monkeypatch):  # noqa: F811
     """Issue-list row 3 (27 Nov): a draft saved in the builder shows "This strategy was not found" in Plan watch."""
-    from ofo_app import strategy_store  # noqa: PLC0415
     from ofo.strategy import stored_form as sf  # noqa: PLC0415
+    from ofo_app import strategy_store  # noqa: PLC0415
 
     sid = await _seeded(app_db_url, monkeypatch, "ADJ-01")
     async with app_db_url.begin() as conn:

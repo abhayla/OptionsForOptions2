@@ -296,7 +296,7 @@ async def plan_watch(  # noqa: PLR0913 - FastAPI dependencies, one per input
     except StrategyRefused as refused:
         if refused.failure is not Failure.NOT_FOUND or not await _is_own(db, user_ref, strategy_id):
             raise  # another user's or a missing strategy stays "not found"
-        # issue-list row 3 (27 Nov): the user's own saved draft is not tracked, so nothing is watched: say so, not "not found"
+        # issue-list row 3 (27 Nov): an own saved draft is not tracked, nothing is watched: say so, not "not found"
         now = datetime.datetime.now(datetime.UTC)
         return PlanWatchOut.model_validate({
             "strategy_id": strategy_id, "as_of": now, "as_of_text": render_explanation("check_as_of", time=now),
