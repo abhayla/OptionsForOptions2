@@ -1,4 +1,4 @@
-STATUS 21:00 | item 4 (62), UX-05, UX-06 built; AF-07 covered; earlier items pushed d94ca71 | final gate and push next | blocker: none
+STATUS 22:30 | SAFE TO CLOSE (code head 36aa14a pushed, gate TOTAL PASS; this RESULTS update is a docs-only follow-up) | item 4 (62), UX-05, UX-06, UX-32: Fixed, not tested; AF-07 covered | blocker: none
 
 # Lane L: P&L totals and list counts (27 Nov 2026)
 
@@ -75,4 +75,4 @@ Run 3 on d94ca71: TOTAL PASS, pushed (UX-32 and RESULTS).
 - Pending owner read (new sentences): "Loading your strategies..."; "Choose an expiry first."; "Waiting for the contracts to load."; "Waiting for the index price."; plus "Select all {n} of the {m} shown" from before.
 - Screen steps (market CLOSED fine): My Strategies, delete a saved strategy, search a part of another name, press Undo: until the list answers the line reads "Loading your strategies...", then the row is back (no "No saved strategy matches"). Create Strategy > guided > pick "I know the strategy": "Show strategies" is grey with "Choose an expiry first."; pick an expiry: it turns normal and the line goes. Item 4 (market CLOSED, after 15:30 with a settled trade and only unpriced running ones): Home "Total P&L" shows the booked sum, Positions "Paper P&L" the same, with "Includes N closed strategies." and "N strategies left out: their prices are not live."
 
-SAFE TO CLOSE once the final push below is confirmed.
+SAFE TO CLOSE (code head 36aa14a pushed 22:25 IST; gate run 6 TOTAL PASS after two flake/ratchet reruns: run 4 failed the ruff E501 ratchet and one home test, run 5 one timeout flake in paper-leg-readers-guard that passes alone). Left for others: Lane K fixes its two bad-price tests; Lane V may show closedMismatch and a Today left-out line; owner decides whether Today follows (62).
