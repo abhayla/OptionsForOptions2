@@ -54,4 +54,13 @@ describe('paper confirm list: armed exits (D-03 part B)', () => {
     expect(w.find('[data-testid="paper-confirm-button"]').attributes('disabled')).toBeUndefined()
     w.unmount()
   })
+  // #774 (REQ-109 AC-12): the server's line for a leg stop that goes with its closed contract is printed like every other line
+  it('prints the leg-stop removal line the server words, one per stop, after the index-exit lines', async () => {
+    const STOP = 'The stop on NIFTY 25650 CE will be removed; set a new one after the move.'
+    armed = { lines: [LINE, STOP] }
+    const w = open()
+    await flushPromises()
+    expect(lines(w)).toEqual([LINE, STOP])
+    w.unmount()
+  })
 })

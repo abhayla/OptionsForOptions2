@@ -2080,6 +2080,8 @@ _EXPLANATIONS: tuple[ExplanationTemplate, ...] = (
     ExplanationTemplate("paper_exit_confirm_no_put", "values_seen",
                         "Exit below {level} stays armed at its level; after this change you will hold no short put. Check this level.",
                         {"level": Points}),
+    ExplanationTemplate("paper_leg_stop_removed_on_move", "values_seen",
+                        "The stop on {contract} will be removed; set a new one after the move.", {"contract": Explained}),
     ExplanationTemplate("paper_exit_set_before_unchecked", "values_seen",
                         "This exit could not be checked against your current legs. Check this level.", {}),
     # ADR-330 (19)(b): the one label every alert title carries: the name with the trade's number and, when the trade has

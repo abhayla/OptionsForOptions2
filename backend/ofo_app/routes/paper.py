@@ -86,6 +86,7 @@ from ofo_app import (
     market_read,
     may_act,
     paper_exit,
+    paper_leg_stops,
     paper_limit,
     paper_monitor,
     paper_store,
@@ -1403,6 +1404,12 @@ async def place_paper_orders(strategy_id: int, body: PaperOrdersIn,  # noqa: PLR
                 paper_store.NewOrder(o.contract_id, o.side, o.quantity, exit_prices.get(i, o.price), o.kind, placed_at)
                 for i, o in enumerate(body.orders)],
             entry=entry, ctx=ctx, at=placed_at, reader=tracked_reader, rates=rates)  # ADR-243: entry only if first fill
+        # #774: a leg stop whose contract this basket closes (a move: exit A + add A') goes now, in this transaction,
+        # exactly as the confirm list said; nothing is re-pointed (its premium level means another thing on A')
+        for gone in paper_leg_stops.leaving(
+                [r.trigger for r in await paper_trigger_store.list_for(db, strategy_id) if _state(r) == "armed"],
+                _open_ids(book)):
+            await paper_trigger_store.cancel(db, strategy_id, gone.id)
         new_ids = [o.id for o in book][-len(body.orders):]  # place inserts in order under the strategy's row lock
         for suggestion_id in dict.fromkeys(body.suggestion_ids):  # REQ-163 AC-1: same transaction, or nothing
             await playbook_store.link_orders(db, user_ref, strategy_id, suggestion_id, new_ids,
@@ -1608,6 +1615,15 @@ def index_exit_answer(booked: Sequence[Any], exits: Mapping[int, Decimal], terms
     return _exit_warning(risk, names)
 
 
+def _leg_name(state: Mapping[int, Any], stored: Any, trigger: Any) -> str:
+    """The name of a leg stop's contract as the book words it; the bare id only if the contract row is unknown."""
+    found = state.get(trigger.contract_id)
+    if found is None or found.stored is None:
+        return f"contract {trigger.contract_id}"
+    _, instrument, strike, expiry = _identity(found)
+    return describe_contract((stored.saved.definition.underlying, instrument, strike, expiry))
+
+
 class ArmedExitsOut(ApiModel):
     lines: list[CatalogueText]  # one per armed index exit, in the order above, below
 
@@ -1620,14 +1636,15 @@ async def paper_armed_exits(strategy_id: int, orders: Annotated[str, Query(max_l
     """D-03 part B (ADR-317 (7)): read only, nothing stored. For the prepared basket in the paper confirm list: one
     line per armed index exit naming the short strike on its side AS IT WILL BE after the basket (the exit stays at
     its level). No line when nothing is armed or the basket closes every leg (the exits are then cancelled)."""
-    await _load_strategy(db, user_ref, strategy_id)
+    stored = await _load_strategy(db, user_ref, strategy_id)
     try:
         basket = PaperOrdersIn.model_validate_json('{"orders":' + orders + "}").orders
     except ValueError:
         refuse_request(("query", "orders"), "invalid_orders")
-    armed = sorted((r.trigger for r in await paper_trigger_store.list_for(db, strategy_id)
-                    if _state(r) == "armed" and r.trigger.kind == "conditional_exit"), key=lambda t: t.direction)
-    if not armed:
+    rows = [r for r in await paper_trigger_store.list_for(db, strategy_id) if _state(r) == "armed"]
+    armed = sorted((r.trigger for r in rows if r.trigger.kind == "conditional_exit"), key=lambda t: t.direction)
+    leg_stops = [r.trigger for r in rows if r.trigger.kind == "leg_stop"]
+    if not armed and not leg_stops:
         return ArmedExitsOut(lines=[])
     booked = await paper_store.load(db, strategy_id)
     state = {c.contract_id: c for c in await tracked_contracts.resolve(
@@ -1640,6 +1657,7 @@ async def paper_armed_exits(strategy_id: int, orders: Annotated[str, Query(max_l
     positions = [p for p in net_positions(after, {}).positions if p.net_quantity]
     if not positions:
         return ArmedExitsOut(lines=[])
+    gone = paper_leg_stops.leaving(leg_stops, {int(p.instrument_id) for p in positions})  # #774: what the route cancels
     shorts = [_identity(state[int(p.instrument_id)])[1:3] for p in positions if p.net_quantity < 0]
     calls = [k for kind, k in shorts if kind is Instrument.CE]
     puts = [k for kind, k in shorts if kind is Instrument.PE]
@@ -1649,6 +1667,9 @@ async def paper_armed_exits(strategy_id: int, orders: Annotated[str, Query(max_l
                         else ("put", max(puts, default=None)))
         lines.append(render_explanation(f"paper_exit_confirm_no_{side}", level=t.level) if strike is None else
                      render_explanation(f"paper_exit_confirm_{side}", level=t.level, strike=strike))
+    # one line per leg stop that goes with its closed contract (ADR-330 (42); never silent)
+    lines.extend(render_explanation("paper_leg_stop_removed_on_move", contract=_leg_name(state, stored, t))
+                 for t in gone)
     return ArmedExitsOut(lines=lines)
 
 
