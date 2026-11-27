@@ -7,7 +7,36 @@ for these items by the owner on 26 Nov, see RESULTS-lane-p.md). Highest status c
 
 Spec basis: ADR-330 (1) to (27) and its one-module instruction; ADR-002; ADR-003; ADR-008; ADR-016 to ADR-019.
 
-## SAFE TO CLOSE (Lane J, 27 Nov about 14:50 IST)
+## SAFE TO CLOSE (Lane J, 27 Nov, updated about 17:30 IST)
+
+**ADR-330 (47) built (owner 16:25 IST; commits ceaa1e2f to 0dcfc33e; fixed, not tested).** Every plan exit (loss stop %
+and rupee, 2x-credit stop, profit target % and rupee, time exit T-10b, and any plan rule naming one of their triggers)
+alerts on the first check past its level or time: no candle-close wait, no quiet-time hold, no daily cap, no pause
+skip; one set `stop_lines.PLAN_EXIT_RULES` / `plan_exit_rule_ids(body)` read by the gate, the cap and the restart count.
+Adjustment rules keep candle, quiet time and cap. The 5-minute period after entry (`alert_gate.entry_period_end`,
+entry + the pop-up quiet period): an exit already past its level at entry, never read clear, raises nothing until entry
++ 5 minutes, then raises once if still past; never swallowed (a restart inside the period re-delays it; a level read
+clear after entry and crossed again alerts at once). #207 shape: accepted 13:13:33, crossed from 13:14: one alert at
+13:18:44. This changes the 13:03-15:27 pushes, which raised a stop at the first check inside the 5 minutes. Tests:
+`tests/adjustment/test_plan_exits_adr330.py` (41 of 64 failed before the build), domain 1250 passed; existing tests
+that used T-07 as the example capped or candle-close rule now use T-14. ADR row: the coordinator writes ADR-330 (47).
+Tier A review (Opus): SHIP (an exit crossed at entry was delayed and then raised in every run, never swallowed, also with
+the worker paused when the period ends; T-07, rupee profit and T-10b open once per crossing, no flood; restart count and
+live gate read one set; 6 of 6 mutants killed). To file as deferred issues (MINOR): the "seen clear" mark lives only in
+memory, so after a restart or a plan change a crossed-clear-crossed exit is delayed again up to 5 minutes after entry
+(`alert_gate.py` `_Rule.clear_seen`; the stored `adjustment_rule_state` could seed it); a restored open exit record gives
+no escalation until the period ends; a user rule mixing an adjustment trigger with T-07 (any_of) lets the adjustment
+trigger skip the candle, quiet time and cap (no system playbook has such a rule).
+
+**ADR-330 (58) (paper and real, one path): no paper-only path found** in the worker's alert path:
+`background.py:1930-1990` `owner_lister` lists every strategy of the owner (open paper legs, or real Zerodha trades and
+adopted holdings, ADR-276); its only filter `listable(scenario_id, mode)` separates scenario strategies from real ones,
+not paper from real; `adjustment_readers.py:155-175` builds the tracked book for real books too; `alert_gate.py` and
+`actionable_alerts.py` have no paper reference. Data gaps, not exemptions: a real-book trade has no adjustment count
+and no paid charges ("not checked", ADR-276 (4)), so T-18 and charge-based rules are not checked for it.
+
+**Push times:** `origin/hotfix/loss-stop-1127` moved 13:03 (57d9ff49) -> about 13:35 (e231a5c5) -> about 15:28 IST
+(303460ba, the stop-gaps fix) -> this push. If your copy shows 13:03, `git fetch origin`.
 
 **Your 14:53 message (raw Plan watch answers), read against the code:**
 - #207 (stop line FIRED in Plan watch, no alert row): the Plan watch route evaluates afresh, while the worker evaluates
