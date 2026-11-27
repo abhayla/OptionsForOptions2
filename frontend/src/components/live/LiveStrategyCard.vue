@@ -21,10 +21,11 @@ import Chip from '@/components/common/Chip.vue'
 import { healthSentence } from '@/lib/dataHealthText'
 import { ENTRY_PRICE_LABEL } from '@/lib/chartCard'
 import { useStrategyLive } from '@/composables/useStrategyLive'
+import MonitoringBadge from '@/components/common/MonitoringBadge.vue'
 
 // `start` false = waiting in the page's start queue (one card loads at a time); `settled` is emitted once, when this card
 // got its first answer, failed, or has nothing to follow - the page then starts the next card.
-const props = defineProps({ strategy: { type: Object, required: true }, start: { type: Boolean, default: true }, pnl: { type: Object, default: null } })
+const props = defineProps({ strategy: { type: Object, required: true }, start: { type: Boolean, default: true }, pnl: { type: Object, default: null }, monitoring: { type: Object, default: null } })
 const emit = defineEmits(['settled', 'closed'])
 
 const state = ref(props.start ? 'loading' : 'queued') // queued | loading | ready | unpriced | error
@@ -169,6 +170,8 @@ const notConnected = computed(() => data.value?.state === 'NOT_CONNECTED')
 // REQ-077 AC-9: FROM_ENTRIES (live data dropped, every leg has an entry) is paused monitoring too; the card shows its two labels only.
 const fromEntries = computed(() => state.value === 'ready' && data.value?.state === 'FROM_ENTRIES')
 const paused = computed(() => state.value === 'unpriced' || (state.value === 'ready' && (notConnected.value || fromEntries.value || down.value)))
+// the worker's own answer says paused: its badge (with reason and since) replaces the card's local one
+const serverPaused = computed(() => isRunning(props.strategy) && props.monitoring != null && props.monitoring.status !== 'active')
 const showFigures = computed(() => state.value === 'ready' && data.value?.state === 'COMPUTED' && !paused.value)
 const refused = computed(() => state.value === 'ready' && data.value?.state === 'REFUSED')
 const spotAt = computed(() => (data.value?.spot_at ? istTime(data.value.spot_at) : '-'))
@@ -215,8 +218,10 @@ class="rounded border border-line bg-surface p-4" data-testid="live-strategy-car
       <RouterLink v-if="strategy.open_opportunities_text" :to="{ path: '/positions/adjustment-opportunities', query: { strategy: String(strategy.id) } }" class="text-sm text-accent underline" data-testid="live-opportunity-mark">{{ strategy.open_opportunities_text }}</RouterLink>
       <RouterLink v-if="stopsLink" :to="stopsLink" class="text-sm text-accent underline" data-testid="live-strategy-stops">Stops</RouterLink>
       <RouterLink v-if="exitLink" :to="exitLink" class="text-sm text-accent underline" data-testid="live-strategy-exit">Exit</RouterLink>
-      <span v-if="paused" class="text-sm" data-testid="live-paused-badge">⏸ Monitoring paused</span>
-      <span v-if="paused" class="inline-flex items-center gap-1 text-sm text-ink-muted" data-testid="live-health-dot" data-health="unknown">
+      <span v-if="paused && !serverPaused" class="text-sm" data-testid="live-paused-badge">⏸ Monitoring paused</span>
+      <!-- Lane Y item 1: the worker's own answer (REQ-115 AC-6), for a running trade whose card has no local pause of its own -->
+      <MonitoringBadge v-if="isRunning(strategy)" :entry="monitoring" />
+      <span v-if="paused && !serverPaused" class="inline-flex items-center gap-1 text-sm text-ink-muted" data-testid="live-health-dot" data-health="unknown">
         <span class="inline-block h-2 w-2 rounded-full bg-gray-400" aria-hidden="true"></span>Health unknown
       </span>
       <p v-if="state === 'ready' && data" class="ml-auto text-xs text-ink-muted" data-testid="live-checked-at">Checked at {{ checkedAt }}</p>

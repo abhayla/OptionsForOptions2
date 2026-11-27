@@ -27,6 +27,8 @@ import ProjectionsNote from '@/components/strategy/ProjectionsNote.vue'
 import StrategyActions from '@/components/strategy/StrategyActions.vue'
 import TrackingPanel from '@/components/strategy/TrackingPanel.vue'
 import PlanWatch from '@/components/strategy/PlanWatch.vue'
+import MonitoringBadge from '@/components/common/MonitoringBadge.vue'
+import { useMonitoringState } from '@/lib/monitoringState'
 import AdjustSteps from '@/components/strategy/AdjustSteps.vue'
 import { ADD_TO_PAPER_LABEL, PAPER_PLACED_NOT_REFRESHED_TEXT, PAPER_STATE, addToPaper as postPaperOrders, paperPostOutcome } from '@/lib/tracking'
 import PaperConfirmDialog from '@/components/strategy/PaperConfirmDialog.vue'
@@ -518,6 +520,7 @@ const exitGate = usePaperExit({ readFailed: paperReadFailed, held: () => paper.v
 const exitBlocked = exitGate.blocked
 const exitOrigin = ref(false) // the pending edits came from Exit all or a per-leg Exit; stays true until they are posted or discarded (ADR-328 (4))
 // P10: the strategy the Plan watch reads: the saved id, or in Drafts Mode (savedId stays null there) the paper book's own integer id
+const monitoring = useMonitoringState() // Lane Y item 1: one read; shown for a trade with a paper book
 const planWatchId = computed(() => (Number.isInteger(savedId.value) ? savedId.value : Number.isInteger(paper.value?.book?.strategy_id) ? paper.value.book.strategy_id : null))
 const paperTotal = computed(() => (paper.value ? paperPnlBlock(paper.value.book, paperBookFailed.value) : null))
 function reviewPending(fromExit = false, only = null, info = null) { // the "Review and add" button passes its click event: only `true` marks an Exit; `only`: ADR-330 (49), a leg's own exit rows
@@ -1552,6 +1555,7 @@ const leaveGuard = useLeaveBuilder({
           <TrackingPanel :saved-id="savedId" :legs="data.legs ?? null" :shared="paper?.book ?? null" :shared-failed="paperBookFailed" />
         </div>
         <!-- ADR-330 (57): a fully closed trade has no Plan watch (its plan line is in the book panel). P10 (ADR-330 (13)): the Plan watch under the live P&L column, whatever the numbers state is (it is its own server read); it re-reads on the page's own book read (paper.book is replaced by each good read) -->
+        <MonitoringBadge v-if="planWatchId && !paperCompleted && paper?.book" :entry="monitoring.entryOf(planWatchId)" class="mt-4" />
         <PlanWatch v-if="planWatchId && !paperCompleted" :strategy-id="planWatchId" :read-tick="paper?.book ?? null" :stale="paperBookFailed" class="mt-4" />
       </div>
     </div>

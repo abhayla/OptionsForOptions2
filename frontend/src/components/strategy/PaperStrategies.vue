@@ -158,6 +158,7 @@
               </div>
             </div>
             <!-- P10 (ADR-330 (13)): the Plan watch of an open strategy; it re-reads on this list's own good-read token -->
+            <MonitoringBadge v-if="g.openCount" :entry="monitoring.entryOf(g.id)" class="mt-2" />
             <PlanWatch v-if="g.openCount" :strategy-id="g.id" :read-tick="goodReadToken" :stale="stale" compact class="mt-2" />
             <PaperStops v-if="stopsOpen[g.id]" :strategy-id="g.id" :underlying="g.underlying" :legs="stopLegs(g)" :leg-names="legNamesOf(g)" :good-read-token="goodReadToken" @changed="onStopsChanged" />
           </template>
@@ -179,6 +180,8 @@ import api, { NEUTRAL_ERROR, NEUTRAL_PARTS } from '@/services/api'
 import ErrorMessage from '@/components/common/ErrorMessage.vue'
 import PaperStops from '@/components/strategy/PaperStops.vue'
 import PlanWatch from '@/components/strategy/PlanWatch.vue'
+import MonitoringBadge from '@/components/common/MonitoringBadge.vue'
+import { useMonitoringState } from '@/lib/monitoringState'
 import PlanDoor from '@/components/strategy/PlanDoor.vue'
 import AfterChargesTap from '@/components/common/AfterChargesTap.vue'
 import PaperConfirmDialog from '@/components/strategy/PaperConfirmDialog.vue'
@@ -193,6 +196,7 @@ import { EXITED_NOW_LABEL, HELD_TO_EXPIRY_LABEL } from '@/lib/paperDrafts'
 import { PAPER_STATE, addToPaper, paperPostOutcome } from '@/lib/tracking'
 import { useRouter } from 'vue-router'
 import { signOf } from '@/lib/chartCard'
+const monitoring = useMonitoringState() // Lane Y item 1: one read for every row
 
 // ADR-330 (10): headlineAbove = the Positions page shows the Paper total in its own header, so this list omits its Total P&L figure
 // (and the closed-strategies line that goes with it); it emits `summary` so that header prints the server's figure, never a sum.

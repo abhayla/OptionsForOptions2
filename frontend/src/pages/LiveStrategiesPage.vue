@@ -11,9 +11,11 @@ import MarketClosedBanner from '@/components/states/MarketClosedBanner.vue'
 import { LIVE_NOTHING_RUNNING_TEXT, STATUS_DRAFT, STATUS_RUNNING } from '@/lib/sharedStateText'
 import { isCompleted, isRunning } from '@/lib/strategyStatus'
 import { usePaperPnl } from '@/lib/paperPnl'
+import { useMonitoringState } from '@/lib/monitoringState'
 import { noteShownDate } from '@/lib/displayFormat'
 
 const MAX_CARDS = 20
+const monitoring = useMonitoringState() // Lane Y item 1: is the worker watching each running trade (one read)
 const pnl = usePaperPnl() // D-41: one read of the Positions page's paper list; each card shows its own figure
 const RELEASE_MS = 8000 // a card that gives no answer in this time lets the next one start
 const state = ref('loading') // loading | ready | error
@@ -71,13 +73,13 @@ onMounted(async () => {
       <section v-if="executed.length" class="mt-4" data-testid="live-group-executed">
         <h2 class="text-sm font-semibold text-ink-muted">{{ STATUS_RUNNING }}</h2>
         <div class="mt-2 grid grid-cols-1 gap-4 lg:grid-cols-2">
-          <LiveStrategyCard v-for="s in executed" :key="s.id" :strategy="s" :pnl="pnl.cellFor(s.id)" :start="startIndex(s) <= current" @settled="release(startIndex(s))" @closed="(at) => { closedAt = at }" />
+          <LiveStrategyCard v-for="s in executed" :key="s.id" :strategy="s" :pnl="pnl.cellFor(s.id)" :monitoring="monitoring.entryOf(s.id)" :start="startIndex(s) <= current" @settled="release(startIndex(s))" @closed="(at) => { closedAt = at }" />
         </div>
       </section>
       <section v-if="drafts.length" class="mt-4" data-testid="live-group-drafts">
         <h2 class="text-sm font-semibold text-ink-muted">{{ STATUS_DRAFT }}</h2>
         <div class="mt-2 grid grid-cols-1 gap-4 lg:grid-cols-2">
-          <LiveStrategyCard v-for="s in drafts" :key="s.id" :strategy="s" :pnl="pnl.cellFor(s.id)" :start="startIndex(s) <= current" @settled="release(startIndex(s))" @closed="(at) => { closedAt = at }" />
+          <LiveStrategyCard v-for="s in drafts" :key="s.id" :strategy="s" :pnl="pnl.cellFor(s.id)" :monitoring="monitoring.entryOf(s.id)" :start="startIndex(s) <= current" @settled="release(startIndex(s))" @closed="(at) => { closedAt = at }" />
         </div>
       </section>
     </template>
