@@ -896,22 +896,20 @@ async def entry_facts_now(ctx: Any, underlying: str, sold: Iterable[Any]) -> Ent
 async def _index_spot_held(ctx: Any, feed: Any, underlying: str) -> Decimal:
     """The index's live spot for the fill's starting point (ADR-283 (1)). The API process holds only what a page
     socket subscribed, so an index nobody holds is held on the shared fan-out until its first quote or ``LEG_WAIT_S``
-    passes (``hold_and_read``, the paper book's own hold). Answer states: held / quoted within the wait -> the spot;
-    feed down with a last captured quote -> that quote (ADR-330 (28), "the entry is allowed"); no context / never
-    quoted / not
-    a positive price -> ``StrategyRefused`` (nothing stored; a starting point is never invented)."""
+    passes (``hold_and_read``, the paper book's own hold). Answer states: held / quoted within the wait -> the spot; no
+    context / not connected / never quoted / not a positive price -> ``StrategyRefused`` (nothing stored)."""
     from ofo_app.chain_push import index_id_of  # noqa: PLC0415 - chain_push imports the app layer
     from ofo_app.strategy_refused import StrategyRefused  # noqa: PLC0415 - write path only
 
     spot = None
-    if ctx is not None:
+    if ctx is not None and ctx.provider.status().connected:
         provider = ctx.provider
         index_id = index_id_of(ctx, underlying)
 
         def read() -> Any:
             return provider.underlying_quote(underlying)
-        quote = read()  # ADR-330 (28): feed down -> the last captured quote still stands
-        if quote is None and feed is not None and index_id is not None and provider.status().connected:
+        quote = read()
+        if quote is None and feed is not None and index_id is not None:
             held = await hold_and_read(feed.fanout, [index_id], read, lambda q: q is not None,
                                        lambda: provider.status().connected, LEG_WAIT_S, LEG_POLL_S)
             quote = quote if held is None else held

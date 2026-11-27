@@ -278,3 +278,15 @@ async def test_a_flip_long_to_short_past_the_limit_and_a_mid_batch_peak_are_refu
     with pytest.raises(StrategyRefused) as flip:  # +60 -> -101 by one sale
         await paper_limit.check_order_size(db, held, [new("SELL", 161)], defaults())
     assert "would hold 101 lots" in flip.value.message.what_happened
+
+
+async def test_a_paper_exit_of_30_lots_above_a_1800_unit_freeze_is_refused(db):
+    """Q2's case (51), real freeze of 27 lots (1,800 units, lot 65): an exit of 30 lots is refused, paper as real."""
+    app, stored, *_ = await _setup(db)
+    c = stored.saved.contract_ids
+    await _store_freeze(db, c[0], 10_000 * LOT, days_ahead=-1)
+    assert (await _post(app, stored, [_order(c[0], 30)])).status_code == HTTPStatus.CREATED
+    await _store_freeze(db, c[0], 1800)
+    reply = await _post(app, stored, [_order(c[0], 30, kind="exit", side="SELL")])
+    assert reply.status_code == UNPROCESSABLE, reply.text
+    assert "asks for 30 lots; the most one order can hold is 27 lots." in reply.text

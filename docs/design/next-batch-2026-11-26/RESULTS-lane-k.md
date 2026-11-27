@@ -1,4 +1,4 @@
-STATUS 18:10 | item 1 and 2: Fixed, not tested (on the owner's PC); Opus review + gate pending | next push: after gate | blocker: none
+STATUS 19:25 | items 1 and 4: Fixed, not tested (Opus review done, gate run 4 pending); 2: Lane N's change, not built twice; 3: listed | next push: after gate | blocker: none
 
 # Lane K: order limits at the one door (branch fix/order-limits-1127, from bcbff80)
 
@@ -8,9 +8,9 @@ Highest status claimed: **Fixed, not tested.** Nothing is approved until it pass
 | Item | State | What |
 |---|---|---|
 | 1 (ADR-330 (50), (51), (52)) | Fixed, not tested | `paper_limit.check_order_size`, called by `place_checked` (the door `place_paper_orders` and `exit_tracking` both use). Per order, every kind: units below the stored freeze limit (an exit too, (51)). Per leg: held + added lots after the batch must not exceed `limits.max_lots`, default now **100** (52). A contract with no stored freeze quantity is refused by name (fail closed). A batch that does not grow a leg already over a lowered limit passes (a cut back is never trapped). |
-| 2 (triage C10, ADR-330 (28)) | Fixed, not tested | The refusal was not the price check: `_index_spot_held` (basket starting point, ADR-283 (1)) refused whenever the provider was "not connected". It now uses the last captured index quote the provider still holds; no quote at all still refuses (`paper_index_price_unavailable`: a starting point is never invented). The typed price itself was never refused. |
+| 2 (triage C10, ADR-330 (28)) | Not built here: Lane N already fixed it | Lane N's `5e7d34c9` (fix/last-close-1127) changes the same function (`_index_spot_held`, with a `prices_not_live_confirmed` flag from the user's confirm line) and has its own test `tests_app/test_entry_not_live_confirmed.py`. I had built the same fix, found it on reading Lane N's change, and REMOVED mine so the merge has one fix. Finding for Lane N: the server refused only because `_index_spot_held` demanded a connected provider; no price check was involved. My reading of the reviewer's point stays open for Lane N: a held quote of any age becomes the starting point (their `_index_value_not_live` returns it with its time; the saved row should keep that time). |
 | 4 (PC check T3-13: entry price 0 accepted) | Fixed, not tested | On this branch the server ALREADY refused a typed 0 or negative price (422, generic sentence "A price must be above 0 and a multiple of 0.05"); I could not reproduce "accepted and saved" through `POST /paper/strategies/{id}/orders`. So the PC saw it through another path or an older build: **Lane R2 / the builder should check whether a planned entry price of 0 is saved on the plan sheet**. Added the named sentence `paper_entry_price_not_above_zero` (577), pending owner read. A typed positive price with the feed down is still accepted (ADR-330 (28)). Tests: 6 cases (0, 0.00, -5.00 on open and add). |
-| 3 | Not started | See "Next". |
+| 3 ("place_paper_orders waits holding a database connection") | Listed, not built | Confirmed by reading: after `place_checked` the route calls `record_basket_facts` -> `_index_spot_held` -> `hold_and_read` (up to `LEG_WAIT_S` = 3 s) while the request's session still holds its connection AND the strategy row lock (`FOR UPDATE` from `paper_store.place`). Lane R's "Pool fix (release before market waits)" on hotfix/plan-save-1127 is the same class; Lane N's `read_door` rewrites the same wait. Not built here: three branches change these lines. Fix when merged: read the spot BEFORE `place_checked` (before the row lock), pass it into `record_basket_facts`, release the connection while waiting. |
 
 ## Reports for the coordinator
 - **ADR-081 vs the owner's 27 Nov rule.** ADR-081 says no stored freeze limit: "the review warns", no block. The owner's brief says fail closed. Built fail closed; ADR-081 needs an amendment row, I did not write one (ADR-330 lives on another branch).
@@ -29,6 +29,9 @@ Verdict was REVISE (7 findings). Taken in code: (1) a reducing kind (exit, stop,
 - Stop-outs and settlement call `paper_store.place` directly and skip the size check (deliberate, never trapped; "paper same as real" is not met for them).
 - ADR-330 rows (50)-(52) are not in `spec/decisions/ADR-330.md` on this branch (the full file is on fix/ic-live-test-1123): the coordinator should add: "(50) the lots limit counts the total the leg will hold after the order; (51) an exit above the exchange freeze quantity is refused, paper the same as real (ADR-092 stands); (52) the default lots limit is 100 per leg. Owner 27 Nov. Real case: Add to Paper accepted 5000 lots on one leg."
 
+## For the one-exit-door work (the REAL door does not call the lots check either; Q2 gap 9)
+Not changed by me: the real door (`routes/execute.py` `execute_strategy` -> `_execute`, `ofo/execution`) is the broker path; it needs a settings dependency on the route and the held units, which I judged unsafe to add while its lane is not mine. Exactly what is needed: (1) add `settings: Annotated[Mapping[str, Decimal], Depends(get_calc_settings)]` to `execute_strategy`; (2) in `_execute`, right after `wanted = await _wanted(req, stored, units)`, for each leg compute the total it will hold (the held units `units` per symbol plus the leg's signed quantity, in lots by lot size) and raise `StrategyRefused("paper_leg_total_over_limit", ...)` with the same sentence; (3) move the pure part of `paper_limit._check_leg_totals` (the running total per leg, `max_lots`) to one shared function both doors call (it is already one function over `(held, new orders)`, the paper door passes stored rows, the real door would pass `units`); (4) the freeze check for the real door already exists (`ofo.execution.freeze_check`, review-time block), but a contract with no stored limit only WARNS there (ADR-081), the paper door now refuses: make the real review block too, or the owner says otherwise. After that, remove the strict expected-fail marks on Q2's `tests/test_order_door_parity_live_day.py` (not on this branch; its LOTS/real cell turns green). No broker order endpoint is called by any of this.
+
 ## Class
 Class: every order path that must pass the size rule. Filter: callers of `paper_limit.place_checked` = 2 (`place_paper_orders`, `exit_tracking`); total-per-leg checks before 0, after 2 (both through the door). Other writers of paper orders (`paper_store.place` direct) are tests only.
 
@@ -36,7 +39,7 @@ Class: every order path that must pass the size rule. Filter: callers of `paper_
 | File | Result |
 |---|---|
 | test_paper_order_lots_limit.py (17, incl. core 60+50) | 17 passed |
-| test_paper_feed_down_typed_price.py | 2 passed |
+| test_paper_entry_price_zero.py (item 4, 6 cases) | 6 passed (26 passed with the lots file) |
 | settings_lots_wiring, lots_cap_guard, leg_edit_route, settings_layers | 1, 4, 83, 53 passed |
 | paper_batch_buys_first, paper_routes, paper_save_paths_fx2, paper_server_exit_price, exit_door | 12, 48, 9, 4, 37 passed |
 | strategy_tracking, paper_adjustment_limit, held_entry, ic_exits_paper, ic_paper_loop_core | 29, 17, 25, 9, 1 passed |
