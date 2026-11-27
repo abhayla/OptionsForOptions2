@@ -155,3 +155,46 @@ async def test_a_level_that_is_not_a_multiple_of_five_paise_is_refused_like_the_
         assert HTTPStatus.BAD_REQUEST <= reply.status_code < HTTPStatus.INTERNAL_SERVER_ERROR, (bad, reply.text)
         assert "state" not in reply.json()
         assert reply.json()["code"] == "STRATEGY_VALIDATION_440", reply.text
+
+
+async def test_m1_a_long_put_stop_keeps_the_engine_figure_and_names_the_bare_put_as_the_screens_do(db):
+    """Lane M, 27 Nov (B-N1 #194: "... Sold option with less protection: NIFTY 25750 PE 2028-12-01"). A stop on the
+    LONG put at 5.00 leaves the short 22400 PE bare: the worst case is the index at 0, -22400 x 65 + 10,465.00 =
+    -14,45,535.00 (the figure is right and kept). The leg is named as every screen names it (REQ-151): "NIFTY 13 Oct
+    22400 PE", never the ISO record form "NIFTY 22400 PE 2026-10-13" (failed before the fix with exactly that text)."""
+    app, stored, ids = await _book(db)
+    body = (await _ask(app, stored.id, ids[LONG_PUT], "5.00")).json()
+    assert body["state"] == "yes"
+    assert (body["max_loss_before"], body["max_loss_after"]) == ("-2860.00", "-1445535.00")
+    assert body["warning_text"] == ("If this stop fires, max loss becomes Rs 14,45,535.00 (now Rs 2,860.00). "
+                                    "Sold option with less protection: NIFTY 13 Oct 22400 PE.")
+
+
+async def _twin_2028(db, contract_id: int) -> int:
+    """A long-dated twin of ``contract_id``: the same name, strike and type, expiry 1 Dec 2028 (the PC's catalogue holds
+    781 such rows on 27 Nov), with its own token and Zerodha row."""
+    twin = (await db.execute(text(
+        "INSERT INTO public.catalogue_contracts "
+        "(exchange_token, name, expiry, strike, instrument_type, exchange_segment) "
+        "SELECT exchange_token + 900000, name, DATE '2028-12-01', strike, instrument_type, exchange_segment "
+        "FROM public.catalogue_contracts WHERE id = :i RETURNING id"), {"i": contract_id})).scalar_one()
+    await db.execute(text(
+        "INSERT INTO public.broker_instruments (contract_id, broker, broker_token, broker_symbol, broker_segment, "
+        "lot_size, tick_size) SELECT :t, broker, broker_token || '9', broker_symbol || '-2028', broker_segment, "
+        "lot_size, tick_size FROM public.broker_instruments WHERE contract_id = :i"), {"t": twin, "i": contract_id})
+    return int(twin)
+
+
+async def test_m3_a_2028_twin_of_the_bare_put_is_never_named_or_used(db):
+    """Lane M item 3, 27 Nov (B-N1: "Sold option with less protection: NIFTY 25750 PE 2028-12-01" while the book's put,
+    contract 9111, expires 1 Dec 2026). With a 2028 twin of the short 22400 PE in the catalogue, the line and the engine
+    read the book's own contract by its id: the same figure as without the twin, and the twin is in no name or term."""
+    app, stored, ids = await _book(db)
+    twin = await _twin_2028(db, ids[SHORT_PUT])
+    body = (await _ask(app, stored.id, ids[LONG_PUT], "5.00")).json()
+    assert (body["max_loss_before"], body["max_loss_after"]) == ("-2860.00", "-1445535.00")  # one expiry: the figure
+    assert body["warning_text"].endswith("Sold option with less protection: NIFTY 13 Oct 22400 PE.")
+    booked = await paper_store.load(db, stored.id)
+    names, terms = await paper_routes.names_and_terms(db, "NIFTY", booked)
+    assert str(twin) not in names and str(twin) not in terms
+    assert terms[str(ids[SHORT_PUT])].expiry == datetime.date(2026, 10, 13)

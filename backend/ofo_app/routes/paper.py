@@ -1600,7 +1600,9 @@ async def names_and_terms(db: Any, underlying: str, booked: Sequence[Any]) -> tu
     for cid, one in found.items():
         if one.stored is not None:
             _, instrument, strike, expiry = _identity(one)
-            names[str(cid)] = describe_contract((underlying, instrument, strike, expiry))
+            # REQ-151: the screens' form ("NIFTY 1 Dec 25750 PE"), the same text the fired-stop body uses
+            # (paper_monitor._contract_text); never the ISO record form (Lane M: "2028-12-01" read on screen 27 Nov)
+            names[str(cid)] = display_contract((underlying, instrument, strike, expiry))
             terms[str(cid)] = ContractTerms(instrument, strike, expiry)
     return names, terms
 
