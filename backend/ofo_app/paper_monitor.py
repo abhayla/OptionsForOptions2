@@ -8,11 +8,6 @@ One asyncio task, started by the app lifespan only when the live market is on, s
 catalogue_refresh pattern). It never reaches Zerodha: it records PAPER orders only, through paper_store.place
 (tests_app/test_paper_order_door.py walks this module's import graph).
 
-- Index exits (Lane FE, review F2): ONE code path, ``_exits_with_reading``, judges every index exit, from ONE index
-  reading: a feed tick of the index (``on_quote``) or, every pass of ``step``, the newer of this feed's live index and
-  the reading the worker used to call a trade watched (``monitoring_state.read_index``: feed tick or REST stand-in, with
-  its time). No reading within the index age -> the exit is NOT evaluated and its trade is reported not run
-  (``monitoring_state.ExitsPublisher``: the trade reads "Monitoring paused", never watched). No order is retried.
 - Load: every armed trigger in ONE query (paper_trigger_store.armed), their strategies' orders in ONE query, their
   contracts in one batch; subscribes on the market's fan-out the index of every armed trigger (S-20), the contract of
   each leg stop and every open contract of a strategy with a conditional exit (prices read from the provider).
@@ -44,23 +39,13 @@ from ofo.errors.explanations import ExplanationText, render_explanation
 from ofo.instruments.models import FUTURE_TYPE
 from ofo.marketdata.quote import NormalizedQuote
 from ofo.outcome import read_snapshot
-from ofo.settings import calc as settings_calc
 from ofo.strategy.definition import display_contract
 from ofo.tracking import paper, stops
 from ofo.tracking.orderbook import net_positions
 from ofo.tracking.paper_alert import ALERT_BODY_TEMPLATES, STOP_LINE_TEMPLATES, alert_body, stop_reason_at
 
 # may_act.market_open is the ONE market-open rule (#740); the settings-reader guard names this file by line number
-from ofo_app import (
-    actionable_alerts,
-    feed_bus,
-    feed_mode,
-    may_act,
-    monitoring_state,
-    paper_exit,
-    paper_store,
-    tracked_contracts,
-)
+from ofo_app import actionable_alerts, may_act, monitoring_state, paper_exit, paper_store, tracked_contracts
 from ofo_app import paper_trigger_store as triggers
 from ofo_app.live_push import LiveFeed
 from ofo_app.routes.outcome import SettingsReader, feed_scope, with_rate_in_force
@@ -70,10 +55,6 @@ log = logging.getLogger(__name__)
 
 RELOAD_SECONDS: Final = 60.0
 POLL_SECONDS: Final = 0.5
-#: a crossed exit that could not run (no live leg price) is tried again from the polled reading no sooner than this
-POLLED_RETRY_SECONDS: Final = 5.0
-#: a ``_Reading`` of this monitor's own feed index (its ticks judge it); the worker's are "feed" / "rest"
-OWN_FEED: Final = "own"
 FIRE_TIMEOUT_SECONDS: Final = 10.0
 
 #: A leg-price reader: (feed, underlying, feed keys) -> each key's paper price answer, from ONE provider read.
@@ -89,6 +70,15 @@ def provider_prices(feed: LiveFeed, underlying: str, keys: Sequence[str]) -> Map
     return {k: paper.leg_price(snapshot, k) for k in keys}
 
 
+# Lane FE (28 Nov, review F2) - one judge for every armed exit. ``_exits_with_reading`` compares each exit with ONE
+# reading: a feed tick (``on_quote``) or, every pass of ``step``, the newer of this feed's own live quote and the
+# reading the worker used to call the trade watched (``monitoring_state.read_index`` / ``read_leg``: feed tick or REST
+# stand-in, with its time). No reading within the age -> the exit is NOT evaluated and its trade is reported not run
+# (``monitoring_state.ExitsPublisher``: the trade reads "Monitoring paused", never watched). No order is retried.
+#: a crossed exit that could not run (no live leg price) is tried again from the polled reading no sooner than this
+POLLED_RETRY_SECONDS: Final = 5.0
+#: a ``_Reading`` of this monitor's own feed quote (its ticks judge it); the worker's are "feed" / "rest"
+OWN_FEED: Final = "own"
 #: The kind an "exit could not run" message is stored under: the closest informational kind the alert table's kind
 #: check allows (a kind of its own needs a migration).
 EXIT_NOT_RUN_KIND: Final = "stop_fired"
@@ -117,6 +107,7 @@ def _bus_client() -> Any:
     """The bus client (Redis), or None when this process has no bus (in-process feed: no worker, no reading). One
     client per process; a test replaces this function."""
     global _bus  # noqa: PLW0603
+    from ofo_app import feed_bus, feed_mode  # noqa: PLC0415 - late: only a bus process needs them
     if feed_mode.feed_mode() != feed_mode.BUS:
         return None
     if _bus is None:
@@ -231,6 +222,7 @@ class PaperMonitor:
         """The index age rule in force (the one the worker's read applies), read at most once per reload period and
         only when a worker reading exists to be judged (a bus). A store that cannot answer leaves the last value; none
         yet means no worker reading is trusted (the exits then rest on this feed's own index)."""
+        from ofo.settings import calc as settings_calc  # noqa: PLC0415 - late: read only when a bus holds a reading
         if self._index_age_at is not None and self._monotonic() - self._index_age_at < self._reload_seconds:
             return
         self._index_age_at = self._monotonic()
@@ -379,10 +371,8 @@ class PaperMonitor:
         one age rule: this feed's quote by its health, the worker's by ``index_quote_max_age`` from its own time."""
         own = None
         held = self._index_now(feed, underlying)
-        if held is not None:
-            quote = feed.ctx.provider.underlying_quote(underlying)  # type: ignore[attr-defined]
-            if quote.timestamp is not None:
-                own = _Reading(held, quote.timestamp, OWN_FEED)
+        if held is not None and held.price is not None and held.at is not None:
+            own = _Reading(held.price, held.at, OWN_FEED)
         worker = None
         client = _bus_client()
         if client is not None:
@@ -564,7 +554,7 @@ class PaperMonitor:
             return price.price
         held = self._index_now(feed, a.underlying)
         if held is not None:
-            return held
+            return held.price
         from ofo_app import market_read  # noqa: PLC0415 - late: market_read imports the live feed
         try:
             wait = self._index_wait or market_read.Wait(INDEX_WAIT_SECONDS)
@@ -631,15 +621,16 @@ class PaperMonitor:
         return out
 
     @staticmethod
-    def _index_now(feed: LiveFeed, underlying: str) -> Decimal | None:
-        """D-22: the index's live value at this fire (the provider's spot quote); None when it has no live price."""
+    def _index_now(feed: LiveFeed, underlying: str) -> paper.Price | None:
+        """D-22: the index's live price answer at this moment (the provider's spot quote, with its time); None when
+        it has no live price."""
         try:
             key = feed.ctx.provider.index_id(underlying)  # type: ignore[attr-defined]
             quote = feed.ctx.provider.underlying_quote(underlying)  # type: ignore[attr-defined]
             answer = paper.price_of(quote, key or underlying)
         except Exception:  # noqa: BLE001 - the value is a record detail: never block a stop on it
             return None
-        return answer.price if paper.is_live(answer) else None
+        return answer if paper.is_live(answer) else None
 
     @staticmethod
     def _reason(t: stops.Trigger, texts: Mapping[int, ExplanationText]) -> ExplanationText:
