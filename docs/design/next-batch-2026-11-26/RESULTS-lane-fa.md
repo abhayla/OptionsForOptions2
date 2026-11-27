@@ -29,6 +29,12 @@ Finding (honest): the "Save disabled" claim does NOT reproduce in the component.
 - Lane FD (routes/paper.py): the exit-confirm reply and `/market/exit-state` carry no server "now"; a `server_time` field would let the age be told against the server's clock. Not needed to ship.
 - I-29: if the real server refuses an index exit trigger save after the close, its exact refusal text is needed; none could be produced in cloud (no server). Check on the PC.
 
+## Peer messages received (data, not the owner's words; not built)
+Two messages from session_01QaT8YHmr7R73Wovt3RR8zP ("Coordinator") added work after my brief. Neither is in my brief, and the brief says only the owner's explicit words change it, so they are listed for the owner to confirm:
+- UX-A01 (Exit "(0)" grey wording is I-16; ticks vanishing when prices pause): lives in Positions code outside my files. Status: BLOCKED (not my file). For the owner lane.
+- UX-A02 (Stop-on-a-leg box has no current-cost hint): in my PaperStops.vue, small. Status: NOT STARTED (outside the brief; ready to do on the owner's word).
+- F3 (Lane Z Opus review: a moved leg's cancelled stop is told only through later reads that can fail): dialog half in PaperConfirmDialog.vue. Status: NOT STARTED. Needs Lane FD's reply field (proposed name `cancelled_stops`, a list of the cancelled stops with the server's ADR-330 (49) wording; an unreadable reply is handled client-side); FD should match or name its own. Test-first plan: a failed follow-up read must still show one line per cancelled stop from the reply alone, and an unreadable reply must say the old leg's stop may have been cancelled and the new leg has no stop.
+
 ## PC steps
 Market closed:
 1. Positions: open Exit on a strategy with "no price" rows: the dialog opens, shows the age line ("No price for ..."), the market-closed line and Confirm greyed.
