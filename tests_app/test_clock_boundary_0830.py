@@ -38,8 +38,7 @@ class Clock:
         return self.at
 
 
-@pytest.mark.xfail(strict=True, reason="start-up run counts as the last run, first reload at 09:07; "
-                                       "fixed by origin/lanej/builder-open-0827 (ea4f5188)")
+# the strict xfail went when hotfix/builder-open-1127 (the fix of lanej/builder-open-0827) came in: XPASS, Lane M3
 async def test_started_0807_reloads_at_0835_whatever_ran_at_start_up():
     clock, calls = Clock(at(8, 7)), []
 
