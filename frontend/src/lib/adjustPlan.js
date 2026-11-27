@@ -54,6 +54,8 @@ export function readPlan(body) {
     } : null,
     prefill: formOf(body.prefill),
     // T2-19: only a reset reply fills these (what the plan had changed / switched off just before it), as the server sent them
+    // F7 (Lane FC): why no stop is shown (the expiry kind is not known): the server's catalogue sentence, '' when it sent none
+    stopKindReason: parts(body.stop_kind_reason)?.what_happened || text(body.stop_kind_reason),
     putBack: Array.isArray(body.put_back) ? body.put_back.filter((x) => typeof x === 'string') : [],
     putBackOff: Array.isArray(body.put_back_off) ? body.put_back_off.filter((x) => typeof x === 'string') : [],
   }
