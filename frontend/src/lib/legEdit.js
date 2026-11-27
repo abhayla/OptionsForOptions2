@@ -21,6 +21,19 @@ export const EXECUTE_WAITS_FOR_LATEST = 'Waiting for the latest numbers: Execute
 export const EXECUTE_NEEDS_ALL_TICKED = 'Tick every leg to execute: the whole strategy is sent as one plan.'
 /** REQ-076 AC-10: the empty list's sentence. */
 export const NO_LEGS_YET = 'No legs yet'
+// item 11 (live 2026-11-27 10:26), pending owner read: the label over held legs whose exits are staged
+export const EXITING_LEGS_LABEL = 'Exiting these legs (staged, not placed yet)'
+/** The ONE answer for an empty-looking leg card: 'rows' (legs exist), 'exiting' (no legs left, but held legs have staged exits),
+ *  'loading' (a strategy is being opened), 'done' (the paper trade is Completed), 'failed' (a read failed: the page's error line
+ *  speaks), else 'empty' (a truly empty draft: "No legs yet"). */
+export function emptyListKind({ legs, held = [], loading = false, done = false, failed = false }) {
+  if (Array.isArray(legs) && legs.length) return 'rows'
+  if (Array.isArray(held) && held.length) return 'exiting'
+  if (loading) return 'loading'
+  if (done) return 'done'
+  if (failed) return 'failed'
+  return 'empty'
+}
 // pending owner read (25 Nov 2026), D-52: the empty list's hint names the place that is on the screen: the Ready-made tab
 // when the server lists that held feature (REQ-079), else the Create Strategy page, where the shapes also are
 export const NO_LEGS_HINT_TAB = 'Pick strikes, or start from a ready-made shape in the Ready-made tab.'

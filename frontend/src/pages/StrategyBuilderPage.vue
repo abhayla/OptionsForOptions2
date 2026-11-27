@@ -158,7 +158,8 @@ const preparedBasketLegs = computed(() => { const n = String(route.query.basket 
 // D-25 (ADR-326 (1)): a Take profit basket names its approach (`approach=A-24`, set by prepare, travels with `acted`) so the
 // server asks the same build path that offered it; only A-24 / A-25 are ever sent, anything else in the URL is ignored.
 const preparedApproachId = computed(() => { const a = String(route.query.approach ?? ''); return a === 'A-24' || a === 'A-25' ? a : null })
-async function prepareApproach({ legs: next, suggestionIds = [], basketLegs = 0, exit = false, approachId = null }) { // the chosen approach's legs become the builder's legs; no order is placed
+const prepareApproach = (a) => whileOpening(() => prepareApproachRead(a)) // item 11: the card says loading, not "No legs yet", while the book read is out
+async function prepareApproachRead({ legs: next, suggestionIds = [], basketLegs = 0, exit = false, approachId = null }) { // the chosen approach's legs become the builder's legs; no order is placed
   const { adjust: _gone, pick: _picks, opp: _opp, acted: _acted, basket: _basket, approach: _approach, ...rest } = route.query
   const acted = opportunitiesFromQuery(suggestionIds.join(','))
   const size = Number.isInteger(basketLegs) && basketLegs > 0 && basketLegs <= 64 ? { basket: String(basketLegs) } : {}
@@ -1259,7 +1260,7 @@ const leaveGuard = useLeaveBuilder({
         <div :class="paper ? 'rounded-lg border-2 border-dashed border-warn p-2' : 'contents'" data-testid="legs-frame" :data-paper-mode="paper ? 'true' : 'false'">
         <p v-if="paper" class="mb-2 text-xs font-semibold text-warn" data-testid="paper-mode-label">{{ PAPER_MODE_LABEL }}</p>
         <LegList
-          :opening="opening" :done="paperCompleted" :locked="exitBlocked" :lock-reason="exitGate.reason.value"
+          :opening="opening" :done="paperCompleted" :held-legs="paper && pendingOrders?.length ? paper.net : []" :failed="!!openError" :locked="exitBlocked" :lock-reason="exitGate.reason.value"
           :multiplier-max="served.integer(MULTIPLIER_MAX_KEY)" :legs="legs" :pending-steps="pendingSteps" :paper-fills="paperFills" :staged-exit-ids="paper ? stagedExitIds(paper.net, legs) : []" :quote-at-by-id="quoteAtById" :oldest-quote-at="data?.oldest_quote_at ?? null" :shape-name="shapeName" :has-reply="hasReply" :controls="controls" :updating="updating" :error-parts="editError" :error-index="editErrorIndex" :ltp-by-id="legListPrices.ltpById" :price-text-by-id="legListPrices.priceTextById"
           :undo-offered="undoHeld !== null" :undo-text="undoHeld?.text" :leg-unit="legUnit" :strategy-name="openStrategy?.name ?? null"
           @edit="editLeg" @edit-leg="openInPicker" @include-all="includeAll" @remove="removeLeg" @add-leg="focusPicker" @pick-chain="pickFromChain" @clear-all="clearAll" @undo-clear="undoClear"
