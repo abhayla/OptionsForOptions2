@@ -126,8 +126,11 @@ async def test_an_adjustment_from_a_suggestion_names_its_rule_and_every_bad_link
     assert last["why_text"] == EXPECTED_T03 == await _inbox_condition(sid, t03.id) and last["why_lines"] == []
     assert (rows[0]["step"], rows[0]["why_text"], rows[0]["rule_id"], rows[0]["rule_ids"]) == ("entry", OWN, None, [])
 
-    # one basket answers a record once: linking it again is refused
-    await _refused(app_db_url, sid, [t03.id], CONFLICT)
+    # one basket answers a record once: naming it again never blocks the placement (a record's state never refuses an
+    # order) and leaves its first link as it was
+    status, out = await _place(app_db_url, sid, [t03.id])
+    assert status == CREATED, out
+    assert (await _record(app_db_url, sid, "T-03")).placed_order_ids == (new_id,)
     # a basket with no link: "Your own change"; the linked row keeps its rule
     status, out = await _place(app_db_url, sid, None)
     assert status == CREATED, out

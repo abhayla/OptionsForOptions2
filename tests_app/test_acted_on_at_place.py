@@ -8,7 +8,8 @@ answer moves it to acted_on, in the order's own transaction.
 from __future__ import annotations
 
 import test_adjustment_check as check_test
-from test_adjustment_history_why import CONFLICT, CREATED, NOT_FOUND, OK, _book, _place, _record
+from ofo_app import actionable_alerts, playbook_store
+from test_adjustment_history_why import CREATED, NOT_FOUND, OK, _book, _place, _record
 from test_adjustment_check import _seeded
 from test_adjustment_opportunities import _call, _check, _clean, chk, open_flags
 
@@ -60,6 +61,18 @@ async def test_only_an_accepted_paper_order_stamps_acted_on(app_db_url, monkeypa
     assert (await _shown(sid, t01.id))[0] == "acted_on"
     assert (await _shown(sid, t03.id))[0] == "open"  # a record the basket did not name is untouched
 
-    # a second basket cannot answer the same record again
+    # a second basket naming it again is accepted and leaves its first link: a record's state never refuses an order
     status, _ = await _place(app_db_url, sid, [t01.id])
-    assert status == CONFLICT
+    assert status == CREATED
+    assert (await _record(app_db_url, sid, "T-01")).placed_order_ids == (new_id,)
+
+    # a basket with one open and one lapsed record: placed, the open one acted on, the lapsed one unchanged
+    t09 = await _record(app_db_url, sid, "T-09")
+    async with app_db_url.begin() as conn:
+        await actionable_alerts.close_by_system(conn, "owner", sid, playbook_store.LAPSE_STRATEGY_CLOSED, ids=[t03.id])
+    status, out = await _place(app_db_url, sid, [t09.id, t03.id], reduce=True)
+    assert status == CREATED, out
+    last = (await _book(app_db_url, sid))[-1].id
+    t09, t03 = await _record(app_db_url, sid, "T-09"), await _record(app_db_url, sid, "T-03")
+    assert (t09.outcome, t09.placed_order_ids) == ("acted_on", (last,))
+    assert (t03.outcome, t03.placed_order_ids) == ("lapsed", None)

@@ -897,8 +897,10 @@ async def link_orders(conn: Any, user_ref: str, strategy_id: int, suggestion_id:
     """REQ-163 AC-1: the record ``suggestion_id`` names the paper orders ``order_ids`` its basket placed, and an open
     record becomes acted on with them (same transaction: a refused basket rolls the stamp back).
 
-    Fail closed, nothing written: a missing record, another user's, or one of another strategy -> SUGGESTION_NOT_FOUND;
-    a record already final (dismissed, lapsed), or one that already names a basket -> SUGGESTION_NOT_OPEN. The caller rolls back the orders.
+    A record's STATE never refuses or rolls back a placement (an exit must not be blocked by an alert that lapsed or was
+    dismissed): a dismissed / lapsed / closed record, or one that already names a basket, is left as it is and the
+    placement proceeds. Fail closed, nothing written, only for a record that is not the user's here: a missing record,
+    another user's, or one of another strategy -> SUGGESTION_NOT_FOUND. The caller rolls back the orders.
     """
     if type(suggestion_id) is not int or not order_ids or any(type(i) is not int for i in order_ids):
         raise strategy_store.StrategyStoreError(SUGGESTION_NOT_FOUND, f"suggestion {suggestion_id!r}")
@@ -907,17 +909,15 @@ async def link_orders(conn: Any, user_ref: str, strategy_id: int, suggestion_id:
     # (the caller's one transaction), never when the basket is only staged. A record of this strategy still open moves
     # to acted_on now; one already acted on (stamped by the older staging path) just gets linked.
     seen = (await conn.execute(_SUGGESTION_OF_STRATEGY, args)).first()
-    if seen is not None and seen[0] == "open":
-        await act_on(conn, user_ref, suggestion_id)
-    row = (await conn.execute(_LINK_ORDERS, {**args, "order_ids": json.dumps(order_ids),
-                                                 "basket_legs": json.dumps(basket_legs)})).one_or_none()
-    if row is not None:
-        return
-    found = (await conn.execute(_SUGGESTION_OF_STRATEGY, args)).first()
-    if found is None:
+    if seen is None:
         raise strategy_store.StrategyStoreError(SUGGESTION_NOT_FOUND, f"suggestion {suggestion_id}")
-    raise strategy_store.StrategyStoreError(SUGGESTION_NOT_OPEN,
-                                            f"suggestion {suggestion_id} is {found[0]} or already names a basket")
+    if seen[0] == "open":
+        await act_on(conn, user_ref, suggestion_id)
+    elif seen[0] != "acted_on":  # dismissed / lapsed: final, left as it is (the migration 0031 trigger would refuse a move)
+        return
+    # an acted_on record that already names a basket matches no row: left as it is, the placement proceeds
+    await conn.execute(_LINK_ORDERS, {**args, "order_ids": json.dumps(order_ids),
+                                      "basket_legs": json.dumps(basket_legs)})
 
 
 async def placed_links(conn: Any, user_ref: str, strategy_id: int) -> dict[int, list[Suggestion]]:
