@@ -1,0 +1,190 @@
+From df611c251d1b71c0a48247a75fd815bbd8adeff7 Mon Sep 17 00:00:00 2001
+From: Claude <noreply@anthropic.com>
+Date: Fri, 27 Nov 2026 07:52:49 +0000
+Subject: [PATCH] Lane M item 4: a trade with no plan is still asked about a
+ closed side (ADR-330 (2)(b), (33))
+
+PC trade B-P2 (27 Nov): call side closed, no plan, no side_closed row. owner_lister drops a no-plan trade
+(ADR-330 (11): nothing of a plan watched) and the side-closed check ran only over that list; the no-plan
+lapse (not_monitored) also closed every open row, side_closed included. Now owner_lister hands no-plan trades
+to the side-closed check (Listed.side_only, never monitored), and the not_monitored lapse leaves side_closed
+rows open (not plan records), so the question is raised once per closure and stays until answered.
+
+Co-Authored-By: Claude Opus 5.5 <noreply@anthropic.com>
+Claude-Session: https://claude.ai/code/session_01QaT8YKLVg4pMA7wLmU5x8o
+---
+ backend/ofo_app/background.py       | 37 ++++++++++++++++++++-------
+ tests_app/test_background_cycle.py  | 39 +++++++++++++++++++++++++++++
+ tests_app/test_side_closed_alert.py | 15 +++++++++++
+ 3 files changed, 82 insertions(+), 9 deletions(-)
+
+diff --git a/backend/ofo_app/background.py b/backend/ofo_app/background.py
+index e7f299e..b8205fd 100644
+--- a/backend/ofo_app/background.py
++++ b/backend/ofo_app/background.py
+@@ -681,13 +681,25 @@ class GateBatch:
+     queued_at: datetime.datetime | None = None  # the worker clock at the step (the oldest one's age is logged)
+ 
+ 
++@dataclasses.dataclass(frozen=True)
++class SideWatch:
++    """Lane M item 4 (ADR-330 (2)(b), (11), (33)): a tracked trade with no plan. Nothing of a plan is watched for it,
++    but a closed side is still asked about; this is all the side-closed check reads."""
++    user_ref: str
++    strategy_id: int
++    tracked: Any
++
++
+ class Listed(list):
+     """The lister's answer (#636 r6 review): the strategies listed, and ``unread`` = the ids whose read RAISED (the
+-    database down, a bad row). An unread strategy did not leave the list: its queued gate events are kept."""
++    database down, a bad row). An unread strategy did not leave the list: its queued gate events are kept.
++    ``side_only``: the tracked trades with no plan, for the side-closed check only (never monitored)."""
+ 
+-    def __init__(self, items: Iterable[Watched] = (), unread: Iterable[int] = ()) -> None:
++    def __init__(self, items: Iterable[Watched] = (), unread: Iterable[int] = (),
++                 side_only: Iterable[SideWatch] = ()) -> None:
+         super().__init__(items)
+         self.unread = frozenset(unread)
++        self.side_only = tuple(side_only)
+ 
+ 
+ #: ADR-237 (3) promises an intraday record within 10 s of its close: a queued event older than this is logged once
+@@ -1000,7 +1012,8 @@ class Worker:
+         old = {w.strategy_id: w for w in self.monitors}
+         today = self._clock().astimezone(IST).date()
+         await self._lapse_expired_all(monitors, today)
+-        await self._raise_side_closed_all(monitors)
++        # ADR-330 (2)(b), (33): every tracked condor is asked about a closed side, a no-plan trade too (Lane M item 4)
++        await self._raise_side_closed_all([*monitors, *getattr(monitors, "side_only", ())])
+         for w in monitors:
+             if _position_changed(old.get(w.strategy_id), w):
+                 # ADR-330 (3): an adjustment basket closes no open alert (only the user's answer, the trade closing or
+@@ -1037,7 +1050,7 @@ class Worker:
+                               w.strategy_id)
+                 _keep_recent(self.errors, (w.strategy_id, type(exc).__name__))
+ 
+-    async def _raise_side_closed_all(self, monitors: list[Watched]) -> None:
++    async def _raise_side_closed_all(self, monitors: list[Any]) -> None:
+         """ADR-330 (2): each listed strategy that lost one side of its entry condor gets its one side_closed alert; a
+         failure is contained per strategy and retried at the next re-list. A gate store without the method (a test
+         double) raises nothing."""
+@@ -1886,11 +1899,16 @@ async def _lapse_exited(db: Any, user_ref: str, sid: int, reason: str | None = N
+     strategy: a failing write (a record no longer open, the database refusing) is rolled back, counted and logged
+     once per strategy, and never drops the other strategies
+     from the list or skips their gate read (the whole lister failing kept the old list; at start-up 0 monitored)."""
+-    from ofo_app import actionable_alerts, playbook_store  # noqa: PLC0415 - database layer at run time only
++    from ofo_app import actionable_alerts, playbook_store, side_closed  # noqa: PLC0415 - database layer at run time
+     try:
+-        if await playbook_store.open_suggestions(db, user_ref, sid):
++        open_ = await playbook_store.open_suggestions(db, user_ref, sid)
++        if reason == playbook_store.LAPSE_NOT_MONITORED:
++            # Lane M item 4: a no-plan trade's side_closed question is not a plan record (ADR-330 (2)(b), (11)): it
++            # stays open until answered; closing it here would raise it again at every rebuild
++            open_ = [r for r in open_ if not r.rule_id.startswith(side_closed.RULE_PREFIX)]
++        if open_:
+             await actionable_alerts.close_by_system(db, user_ref, sid, reason or playbook_store.LAPSE_STRATEGY_CLOSED,
+-                                                    **when)
++                                                    ids=[r.id for r in open_], **when)
+             await db.commit()
+     except Exception:  # contained per strategy; retried at the next re-list
+         await db.rollback()
+@@ -1923,7 +1941,7 @@ async def owner_lister(provider: Any, gate: Any = None,
+     )
+     from ofo_app.db import get_sessionmaker  # noqa: PLC0415
+     from ofo_app.live_market import OWNER_REF  # noqa: PLC0415
+-    out, unread = Listed(), set()
++    out, unread, side_only = Listed(), set(), []
+     # one session at a time (#636 r4 connection budget): ``read_tracked`` opens its own session, so the list's session
+     # is closed before it and the playbook lookup gets a fresh one after it (never two connections held at once)
+     async with held(gate, GATE_REBUILD), get_sessionmaker()() as db:
+@@ -1967,11 +1985,12 @@ async def owner_lister(provider: Any, gate: Any = None,
+         if resolved.body is None:  # ADR-330 (11): no plan = nothing watched; a DEFINITE answer (a failed read raised)
+             async with held(gate, GATE_REBUILD), get_sessionmaker()() as db:  # its open alerts close: not_monitored
+                 await _lapse_exited(db, OWNER_REF, s.id, "not_monitored")
++            side_only.append(SideWatch(OWNER_REF, s.id, tracked))  # ADR-330 (2)(b): a closed side is still asked about
+             continue
+         out.append(Watched(OWNER_REF, s.id, tracked, resolved.body, resolved.is_system, OWNER_REF,
+                            resolved.strategy_layer, facts, resolved=resolved, charge_rates=rates,
+                            regime=await regimes.read(tracked.position.underlying), basket_facts=baskets))
+-    return Listed(out, unread)
++    return Listed(out, unread, side_only)
+ 
+ 
+ async def _baskets_in(db: Any, sid: int) -> dict:
+diff --git a/tests_app/test_background_cycle.py b/tests_app/test_background_cycle.py
+index f3cd42b..35e6910 100644
+--- a/tests_app/test_background_cycle.py
++++ b/tests_app/test_background_cycle.py
+@@ -717,6 +717,45 @@ async def test_owner_lister_watches_nothing_for_a_strategy_with_no_plan_and_open
+     assert closed == [("owner", FIRST_ID, "not_monitored")]  # its open alerts close (a definite answer, P1b)
+ 
+ 
++async def test_m4_a_no_plan_trade_is_still_handed_to_the_side_closed_check(scn, monkeypatch):
++    """Lane M item 4, 27 Nov (PC trade B-P2: call side closed, no plan, NO side_closed row at 11:42 or 13:03). ADR-330
++    (11) withholds only adjustment suggestions and target / stop alerts from a no-plan trade; (2)(b) and (33) ask about
++    a closed side every time. The lister still watches nothing for it, but hands its tracked position to the
++    side-closed check (``Listed.side_only``)."""
++    _patch_store(monkeypatch, scn, [FIRST_ID])
++
++    async def resolve(_db, _owner, _sid, _stype):
++        return adjustment_check.Resolved("none", None, None, None, False, saved_before_adr247=False)
++    monkeypatch.setattr(adjustment_check, "resolve", resolve)
++
++    async def lapse_exited(*_a, **_k):
++        return None
++    monkeypatch.setattr(background, "_lapse_exited", lapse_exited)
++    out = await background.owner_lister(Prov(scn))
++    assert out == []
++    assert [w.strategy_id for w in out.side_only] == [FIRST_ID]
++    assert out.side_only[0].tracked is not None
++
++
++async def test_m4_the_rebuild_runs_the_side_closed_check_for_the_no_plan_trades_too(scn):
++    prov, now = Prov(scn), [scn.clock_at]
++    asked: list[int] = []
++    planned = _watched(scn, 1)
++    spare = background.SideWatch("owner", 999, planned[0].tracked)
++
++    class Gate(FakeGate):
++        async def raise_side_closed(self, w, _at):
++            asked.append(w.strategy_id)
++
++    async def lister():
++        return background.Listed(planned, (), side_only=(spare,))
++    w = background.Worker(provider_for=lambda _o: prov, lister=lister, clock=lambda: now[0], settings=_settings(),
++                          preferences=_prefs, recorder=Calls(), gate_store=Gate())
++    await w.rebuild()
++    assert sorted(asked) == sorted([planned[0].strategy_id, 999])
++    assert [m.strategy_id for m in w.monitors] == [planned[0].strategy_id]  # still nothing else watched for it
++
++
+ async def test_owner_lister_skips_a_strategy_whose_instrument_list_raises(scn, monkeypatch):
+     _patch_store(monkeypatch, scn, [FIRST_ID])
+     prov = Prov(scn)
+diff --git a/tests_app/test_side_closed_alert.py b/tests_app/test_side_closed_alert.py
+index 9f565d2..aa332d0 100644
+--- a/tests_app/test_side_closed_alert.py
++++ b/tests_app/test_side_closed_alert.py
+@@ -202,3 +202,18 @@ async def test_ask_again_each_time_the_side_closes_again(db, answer):
+     # an OPEN row for the side stops a duplicate
+     assert await side_closed.raise_if_closed(db, user, sid, CALL_EXITED, at=LATER) is None
+     assert [r.id for r in await aa.unanswered(db, user)] == [again]
++
++
++async def test_m4_the_no_plan_lapse_leaves_the_side_closed_question_open_and_raises_it_once(db):
++    """Lane M item 4 (PC trade B-P2, no plan, call side closed, no row): a no-plan trade's open records close every
++    rebuild as not_monitored (ADR-330 (11)); its side_closed question is not a plan record and stays open, so the next
++    rebuild does not raise it a second time ("ask again" is per closure episode, ADR-330 (33))."""
++    from sqlalchemy.ext.asyncio import AsyncSession  # noqa: PLC0415
++
++    user, sid = await _setup(db)
++    first = await side_closed.raise_if_closed(db, user, sid, CALL_EXITED, at=AT)
++    session = AsyncSession(bind=db, join_transaction_mode="create_savepoint", expire_on_commit=False)
++    await background._lapse_exited(session, user, sid, "not_monitored", at=LATER)  # the lister's no-plan path
++    await session.close()
++    assert [(r.id, r.outcome) for r in await aa.unanswered(db, user)] == [(first, "open")]
++    assert await side_closed.raise_if_closed(db, user, sid, CALL_EXITED, at=LATER) is None  # one row, not two
+-- 
+2.43.0
+

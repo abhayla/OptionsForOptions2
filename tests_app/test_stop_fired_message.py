@@ -25,7 +25,7 @@ from test_strategy_store import _user, _with_draft
 D = Decimal
 AT = datetime.datetime(2026, 11, 25, 5, 0, tzinfo=datetime.UTC)
 SIDES, PRICES = ("SELL", "BUY", "SELL", "BUY"), ("80", "20", "130", "34")
-SHORT_CALL, LONG_CALL = 0, 1
+SHORT_CALL, LONG_CALL, LONG_PUT = 0, 1, 3
 LINE = "If this stop fires, max loss becomes Rs 12,025.00 (now Rs 2,860.00)."  # filled at 141.00 (stop 140.70)
 GAP_LINE = "If this stop fires, max loss becomes Rs 14,560.00 (now Rs 2,860.00)."  # filled at 180.00
 
@@ -111,6 +111,16 @@ async def test_a_long_wing_stop_gets_the_engines_own_answer_no_fixed_maximum(db)
     _, stored, _, fires = await _fire_leg(db, LONG_CALL, "5.00", "5.50")
     [(_, text)] = await _alerts(db, stored.id)
     assert fires == 1 and "If this stop fires, there is no fixed maximum loss (now Rs 2,860.00)." in text
+
+
+async def test_m1_a_fired_long_put_stop_names_the_bare_put_as_the_screens_do(db):
+    """Lane M 27 Nov (B-N1 #194): the fired message's line comes from the same function as the Stops panel: the engine
+    figure at the fill (-22400 x 65 + 10,140.00 + 5.50 x 65 = -14,45,502.50) and the leg in the screens' form."""
+    _, stored, _, fires = await _fire_leg(db, LONG_PUT, "5.00", "5.50")
+    [(_, text)] = await _alerts(db, stored.id)
+    assert fires == 1 and "2026-" not in text
+    assert ("If this stop fires, max loss becomes Rs 14,45,502.50 (now Rs 2,860.00). "
+            "Sold option with less protection: NIFTY 13 Oct 22400 PE.") in text
 
 
 async def test_an_index_exit_gets_a_line_only_when_the_exit_check_says_yes(db):
