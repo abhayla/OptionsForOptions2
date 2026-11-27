@@ -5014,6 +5014,15 @@
             "title": "Quantity",
             "type": "integer"
           },
+          "replaced_note": {
+            "anyOf": [
+              {},
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Replaced Note"
+          },
           "replaced_typed": {
             "title": "Replaced Typed",
             "type": "boolean"

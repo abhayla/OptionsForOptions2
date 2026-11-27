@@ -154,6 +154,7 @@ export function applyEditReply(prev, reply) {
       price_reason: r.price_reason ?? null,
       hedge: r.hedge === true,
       replaced_typed: r.replaced_typed === true, // REQ-078 AC-8: a typed price this reply replaced (the screen says so)
+      replaced_note: typeof r.replaced_note === 'string' && r.replaced_note !== '' ? r.replaced_note : null, // item 10: the server's sentence, printed as sent
       block: r.block ?? null,
       instrument_type: r.instrument,
       strike: r.strike,
@@ -195,8 +196,6 @@ export function shiftText(total) {
   return total > 0 ? `+${total}` : `${total}`
 }
 
-/** REQ-078 AC-8: the sentence for a leg whose typed price this reply replaced; strike and type as the server sent them. */
-export const replacedPriceNote = (number, leg) => `Your price for leg ${number} was replaced by the captured price of ${leg.strike} ${leg.instrument_type}.`
 
 /** REQ-076 AC-8/AC-9: the shape name exactly as the server sent it; 'Custom Strategy' when it matched none. */
 export function shapeLabel(reply) {

@@ -21,7 +21,7 @@ import { NOT_CONNECTED_LABEL, REPRICE_PROMPT } from '@/lib/legPicker'
 import {
   CUSTOM_STRATEGY, LEFT_OUT_LABEL, LEGS_CLEARED, LEG_CARD_PADDING_PX, LEG_ROW_COLUMNS, MULTIPLIER_MIN, multiplierChoices,
   EXPIRY_BLOCKED_BY_EXIT, EXPIRY_FUTURES_LEG, NO_CONTROLS, NO_LEGS_HINT_PAGE, NO_LEGS_HINT_TAB, NO_LEGS_YET, EXITING_LEGS_LABEL, emptyListKind, PLANNED_ENTRY_LABEL, YOUR_PRICE_LABEL,
-  anyUnticked, canStep, controlsForSelection, movedMarker, priceReasonText, removeAllPrompt, replacedPriceNote, showsControls,
+  anyUnticked, canStep, controlsForSelection, movedMarker, priceReasonText, removeAllPrompt, showsControls,
 } from '@/lib/legEdit'
 import { plainName } from '@/lib/saveDraft'
 import { fetchHeldFeatureOn } from '@/lib/heldFeatures'
@@ -115,7 +115,7 @@ const sameContractAs = (leg, i) => {
   return j === -1 ? null : j
 }
 const duplicateLegText = (leg, other) => `Leg ${leg} is the same contract as leg ${other}. The legs have not been combined; edit the strategy to keep one or combine them yourself.`
-const replacedNotes = computed(() => props.legs.flatMap((l, i) => (l.replaced_typed === true ? [replacedPriceNote(i + 1, l)] : [])))
+const replacedNotes = computed(() => props.legs.flatMap((l) => (l.replaced_typed === true && l.replaced_note ? [l.replaced_note] : [])))
 const needsReprice = (l) => l.planned_entry == null && l.reason_code === 'needs_reprice'
 // D-18: every leg price states its own quote time (the reply's per-leg time); the summary line prints the reply's oldest_quote_at
 // (the server picks it), and says "time not given" when the server has none: no date arithmetic here

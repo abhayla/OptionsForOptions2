@@ -4990,5 +4990,45 @@
   "explanation:plan_watch_leg_below_now": {
     "sha256": "b5d5dfa9616ea80df567d4c6993577325d2656e5368958bfce50b16418245868",
     "reviewed": "pending owner read"
+  },
+  "explanation:leg_edit_replaced_by_expiry": {
+    "sha256": "938a664197a48c9f8a4522b50dc0cdac2f41d98f59b4af7fb24ba87d799e8eb8",
+    "reviewed": "pending owner read"
+  },
+  "explanation:leg_edit_replaced_by_shift": {
+    "sha256": "9366f2b6def17f1e1569fff3244e1e6fef6fb4d14cc6e09d2dadd1430a455a04",
+    "reviewed": "pending owner read"
+  },
+  "explanation:leg_edit_replaced_by_width": {
+    "sha256": "d914dd2f2b276108f8aa15c8982e89102278680f1f94867d4782a2a8e81a21f1",
+    "reviewed": "pending owner read"
+  },
+  "explanation:leg_edit_replaced_by_hedge": {
+    "sha256": "988145e31e35493b37ee3ff952ccf2cad4178325978cb2ee250170c381459013",
+    "reviewed": "pending owner read"
+  },
+  "explanation:leg_edit_replaced_by_step": {
+    "sha256": "20a819494de11071c16cb5fef237a7b938bc87e563a73c17e361a6da4f3e08af",
+    "reviewed": "pending owner read"
+  },
+  "explanation:leg_edit_removed_by_expiry": {
+    "sha256": "b4341d7b86d28fc2c2ec64827bef94ab8d046bb812ab4f409cd3213a6b957e1f",
+    "reviewed": "pending owner read"
+  },
+  "explanation:leg_edit_removed_by_shift": {
+    "sha256": "17e4460394503498700c92d82da49429a193c84c94a1319c20eb8c965ca8e101",
+    "reviewed": "pending owner read"
+  },
+  "explanation:leg_edit_removed_by_width": {
+    "sha256": "1a5e4d0c6fb25eb8f6764cc228667de76c8a495db61a9dd68470430a0bd2490a",
+    "reviewed": "pending owner read"
+  },
+  "explanation:leg_edit_removed_by_hedge": {
+    "sha256": "53da02b2eddfeadbe0c3638acd5c9075c565fdf5000323b6d61b1e45b6bf532c",
+    "reviewed": "pending owner read"
+  },
+  "explanation:leg_edit_removed_by_step": {
+    "sha256": "e9dd6bfb4bd20d276e6d492648700e9a3a55c1af32fe60d9798e452e60e8caba",
+    "reviewed": "pending owner read"
   }
 }

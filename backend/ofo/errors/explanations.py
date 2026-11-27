@@ -1285,6 +1285,12 @@ def approach_about_id(approach_id: str) -> str:
     return "adjust_approach_about_" + approach_id.lower().replace("-", "_")
 
 
+#: the control that moved a leg onto another contract, in the words of the reason (item 10)
+_LEG_MOVE_REASONS: Mapping[str, str] = MappingProxyType({
+    "expiry": "you changed the expiry", "shift": "Shift moved the leg to another contract",
+    "width": "Width moved the leg to another contract", "hedge": "Hedge moved the leg to another contract",
+    "step": "you moved the strike"})
+
 _EXPLANATIONS: tuple[ExplanationTemplate, ...] = (
     ExplanationTemplate("why_triggered", "what_triggered", "Your rule was triggered: {rule_text} ({kind} rule {rule_id}).",
                         {"rule_text": Quoted, "kind": Recorded, "rule_id": Recorded}),
@@ -2569,6 +2575,16 @@ _EXPLANATIONS: tuple[ExplanationTemplate, ...] = (
     ExplanationTemplate("real_pnl_stale", "rule",
                         "Zerodha was last read more than {seconds} seconds ago, so no figure is shown until it is "
                         "read again.", {"seconds": Count}),
+    # Lane O 27 Nov, item 10 (UX-16, UX-24; pending owner read): a typed price a move replaced says the captured price
+    # and the reason; one pair per control that moves a leg
+    *(ExplanationTemplate(f"leg_edit_replaced_by_{key}", "values_seen",
+                          "Your price for leg {number} was replaced by the captured price {price}, because "
+                          + reason + ".", {"number": Count, "price": IndexLevel})
+      for key, reason in _LEG_MOVE_REASONS.items()),
+    *(ExplanationTemplate(f"leg_edit_removed_by_{key}", "values_seen",
+                          "Your price for leg {number} was removed, because " + reason
+                          + " and the new contract has no live price right now.", {"number": Count})
+      for key, reason in _LEG_MOVE_REASONS.items()),
 )
 
 EXPLANATIONS: Mapping[str, ExplanationTemplate] = MappingProxyType({t.id: t for t in _EXPLANATIONS})
