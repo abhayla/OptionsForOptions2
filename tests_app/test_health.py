@@ -8,7 +8,8 @@ from httpx import ASGITransport, AsyncClient
 async def test_health_returns_200_with_database_reachable(client: AsyncClient) -> None:
     response = await client.get("/health")
     assert response.status_code == 200
-    assert response.json() == {"status": "healthy", "database": "connected"}
+    assert response.json() == {"status": "healthy", "database": "connected", "instrument_list": "none",
+                               "instrument_list_day": None}  # ADR-330 (61): no list loaded in a fresh database
 
 
 async def test_unhandled_error_returns_generic_body_without_detail() -> None:

@@ -346,6 +346,37 @@ Still listed for tonight, not on this branch:
 Not done this morning: the loop split is not small, and Lane U edits the same file.
 Repo-scan note: `tests_app/test_kite_broker_reader.py::test_attack2_user_profile_outside_the_door_is_refused_by_the_egress_gate`
 fails in this sandbox on the base 206a9f0 too (HTTP 400 from the sandbox proxy), not caused by this branch.
+## 27 Nov 08:30 IST: every builder opened empty (side branch lanej/builder-open-0827; NOT on integration/nb-1126)
+
+Found by the PC (PR #722 comment 7208996102). RCA: the API's catalogue refresh scheduler counted the 08:07 IST
+start-up load as its last run and waited one hour, so the first reload was due at 09:07, not 08:35; at 08:30 (the
+contract-list publish time, F-56) the loaded list stopped being today's, the picker reads went empty as REQ-053 AC-3
+says, and a run that did nothing (and a loaded run) logged nothing, so it was silent.
+Class (reads that go empty while the list is not today's): catalogue expiries and contracts (routes/catalogue.py),
+leg names and chain rows (routes/leg_picker.py), the chain push (chain_push.py), futures history
+(strategy_price_history.py), ready-made strategies (ready_made.py); the builder could not map a paper book's legs
+and showed "This strategy's paper position could not be read". Fail-closed by design and unchanged: leg edits, the
+add-time eligibility check, the execution data gate.
+Fix (built, spec as written): a refresh run that started before the 08:35 window is always followed by one at 08:35;
+a refused, failed or timed-out refresh logs one line with its reason; a loaded one logs an info line. Proof:
+tests_app/test_catalogue_list_carries_over.py, 5 tests failing on 206a9f06's scheduler and passing now (08:07 start,
+08:30 empty, 08:35 today's list; a refused refresh logs its line). Finding:
+knowledge/findings/start-up-list-expires-at-publish-time.json. Owner question LJ-3 (keep yesterday's list in use
+until today's loads, said in the log and on the health reply): recommended, NOT built (it changes REQ-053 AC-3).
+Workaround on the PC until this ships: start or restart the API after 08:35 IST.
+Tier A review (Opus, 27 Nov): FIX; shipped with these findings after the two-round limit (the 08:07 case of this
+morning IS fixed; these are what is still open, for the coordinator's re-merge decision):
+- MAJOR: the 08:35 window is the constant WINDOW_OPEN in backend/ofo_app/catalogue_refresh.py (:36, :63, :111), not
+  derived from facts.contract_list_publish_time (REQ-167 AC-4); with the setting at 08:45 the list is dark
+  08:45-09:34. With the default 08:30 the window is right.
+- MAJOR: a failed or refused 08:35 run stamps _last_started (:84, :112), so the next try is 09:35 (dark 08:30-09:34
+  after one network blip). The finding file's "guarded" wording overstates this.
+- MINOR: the "catalogue refresh loaded" info line does not reach the API log (no logging configuration in main.py; the
+  worker configures its own, background.py:2115); the refused/failed lines (warning) do.
+- MINOR: the scheduler runs on the PC's clock while the database stamps the load on the VPS clock; a PC clock more
+  than 5 minutes ahead would count the 08:35 load as before 08:30.
+To file as deferred issues: the two MAJORs and the info-log MINOR, each with the file:line above; done when the
+window follows the setting, a failed run is retried within minutes, and the loaded line is in the API log.
 
 ## Status for the coordinator (this session cannot send messages: the session-message service refuses it as untrusted)
 

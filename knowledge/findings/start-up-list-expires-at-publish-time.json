@@ -1,0 +1,30 @@
+{
+  "id": "start-up-list-expires-at-publish-time",
+  "scope": "project",
+  "class": "Any state loaded once and judged against a clock-driven freshness line (the instrument list against the 08:30 IST publish time) goes dark when the line passes while the process runs, if the thing that refills it keys off 'time since my last run' and the last run was the start-up load made before the line: the start-up run counts as fresh, the first scheduled run is a full interval later, and every read gated on 'is it current' answers empty in between.",
+  "mechanism": "2026-11-27 on the owner's PC: the API started 08:07 IST and loaded the list (Kite publishes about 08:30, F-56); at 08:30 list_is_current turned false so GET /api/catalogue/NIFTY/expiries answered [] (HTTP 200) and no builder could map paper legs ('paper position could not be read'); catalogue_refresh.RefreshScheduler.due() waited one hour from the 08:07 start (first reload 09:07, not 08:35), and a successful run logged nothing, so there was no trace. A restart at 08:55 fixed it.",
+  "first_seen": {
+    "date": "2026-11-27",
+    "where": "owner's PC, strategy 185, PR #722 comment 7208996102 (branch lanej/builder-open-0827)",
+    "evidence": "coordinator 09:00 IST: expiries [] after 08:30, hourly refresh from 08:35 did nothing and logged nothing, restart at 08:55 fixed it"
+  },
+  "fix": "Structural, two places: (1) RefreshScheduler.due(): a run that started before today's window opened (08:35) is always followed by one at the opening; (2) catalogue_picker.usable_list is the one gate of every picker read: any loaded list is used (none loaded = nothing, fail closed), an earlier session's list stays in use until today's loads and is SAID (one log line per list day and day, ExpiriesOut.list_day / list_current). Add-time eligibility (eligibility_from_zerodha) and the execution data gate (routes/execute._health) still refuse a list that is not current. A refresh that ends refused, failed or timed out logs one line; a loaded one logs one info line.",
+  "detection": {
+    "status": "guarded",
+    "checks": [
+      "tests_app/test_catalogue_list_carries_over.py"
+    ],
+    "note": "Open: the builder page still blames the paper position when the leg mapping fails for a list that is not loaded at all (fresh install); the 'instrument list not loaded' wording awaits the owner's read pin."
+  },
+  "spec_ref": [
+    "spec/requirements/REQ-053.md",
+    "spec/findings.md"
+  ],
+  "occurrences": [
+    {
+      "date": "2026-11-27",
+      "where": "owner's PC, strategy 185 (PR #722 comment 7208996102)",
+      "evidence": "expiries [] from 08:30 to the 08:55 restart; no log line"
+    }
+  ]
+}

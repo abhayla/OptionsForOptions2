@@ -40,3 +40,26 @@ Options:
 3. Leave 0041 as it is (every edit is a new acceptance).
 
 Built: option 1 if its review passes by 07:00 IST 27 Nov; otherwise migration 0058 stays off the branch.
+
+## LJ-3 From 08:30 IST until the 08:35 refresh, the picker has no instrument list: keep yesterday's in use?
+
+Spec basis: REQ-053 AC-3 (the add-time check reads what Zerodha data allows now; a list loaded before the session's
+publish time is unconfirmed and the picker offers nothing from it, `catalogue_picker.loaded_before`); F-56 (Kite
+publishes the list about 08:30; the refresh's first scheduled load is 08:35); ADR-016..019 (no silent substitution, a
+mismatch blocks execution).
+
+Real case, 27 Nov on the owner's PC: the API started 08:07 and loaded the list; at 08:30 the list counted as
+unconfirmed, expiries answered [] and every builder showed "This strategy's paper position could not be read, so it is
+not shown. Try again." for 25 minutes (08:30-08:55; a restart fixed it). The refresh that should have run at 08:35 ran
+at 09:07 (the start-up load counted as the last run); that is fixed.
+
+Options:
+1. (Recommended) Keep yesterday's list in use for the picker until today's has loaded, said in the log (one line) and
+   on the health reply (a field naming the list's day and whether today's is loaded). Needs the owner's reply-inventory
+   notes for the new fields; add-time eligibility and the execution gate stay fail-closed. Changes REQ-053 AC-3.
+2. As built: empty from 08:30 until the 08:35 refresh loads today's list; a refused or failed refresh leaves it empty
+   and logs one line with the reason. Spec as written.
+3. Option 2 or 1, and also the page says "instrument list not loaded" instead of the paper-position sentence when the
+   leg mapping fails for that reason (wording needs the owner's read pin).
+
+Built: option 2 (spec as written); the scheduler fix and the log lines are in; option 1 or 3 waits for the answer.
