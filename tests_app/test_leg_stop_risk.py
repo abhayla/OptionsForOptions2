@@ -157,7 +157,6 @@ async def test_a_level_that_is_not_a_multiple_of_five_paise_is_refused_like_the_
         assert reply.json()["code"] == "STRATEGY_VALIDATION_440", reply.text
 
 
-
 async def test_m1_a_long_put_stop_keeps_the_engine_figure_and_names_the_bare_put_as_the_screens_do(db):
     """Lane M, 27 Nov (B-N1 #194: "... Sold option with less protection: NIFTY 25750 PE 2028-12-01"). A stop on the
     LONG put at 5.00 leaves the short 22400 PE bare: the worst case is the index at 0, -22400 x 65 + 10,465.00 =

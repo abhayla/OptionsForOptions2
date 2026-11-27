@@ -73,6 +73,13 @@ Spec basis: ADR-330 (6) "If this stop fires, max loss becomes Rs X (now Rs Y)". 
 3. Other `describe_contract` uses that reach a reply's `contract_text` (routes/paper.py ~604, 637, 878, 1787, 2024):
    check each is reformatted by the screen before it is shown.
 4. The wording proposal above (owner read).
+5. Tier A review F1 (MINOR, class open): `display_contract` has no year rule, while the frontend's `expiryText`
+   (displayFormat.js, REQ-148 AC-2) prints the year when the expiry is not in `shown_date`'s year. So for a 2028 row
+   the Stops label reads "NIFTY 1 Dec 2028 25750 PE" and this line "NIFTY 1 Dec 25750 PE"; two contracts a year apart
+   name alike. Fix: the server form takes the same year rule (one helper, used by this line, the fired-stop body and the
+   alert titles). Until then the year is visible only in the leg label, so item 1 (the data) comes first.
+6. Tier A review (outside this diff): in a two-expiry PE book, a stop on one long put made `exit_risk` report BOTH
+   short puts exposed (the engine's cover-by-later-expiry rule). Check it is intended.
 
 ## Re-test on the PC (paper only)
 
@@ -82,6 +89,14 @@ Spec basis: ADR-330 (6) "If this stop fires, max loss becomes Rs X (now Rs Y)". 
    Dec 25750 PE." (figure unchanged; no ISO date, no year).
 3. Run the SQL in deferred item 1 and send the rows.
 
+## Tier A review (Opus, fresh context, read-only) of `git diff 206a9f0 HEAD`
+
+PASS, no critical or major finding. F1 (no year rule on the server name form) and F2 (exit confirm still ISO) are
+deferred items 5 and 2; F3 (engine test pins Decimals; the rendered 7-digit Indian grouping is pinned by the two
+tests_app m1 tests) accepted; F4 (an extra blank line) fixed. Hand-checked: 90 + 100 - 60 - 56.65 = 73.35 x 65 =
+4,767.75; -1,732.25 now; 11,433.50 - 1,673,750 = -16,62,316.50 after. Callers of `names_and_terms`: the leg-stop route
+and `paper_monitor._max_loss_line` only; stored lines written before the change still read back.
+
 ## Push
 
-(filled at push)
+Pre-push gate: `scripts/orchestrator/prepush.py` on the pushed head (result in the commit after the push, or below).
