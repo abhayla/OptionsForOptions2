@@ -23,8 +23,8 @@ export const asOfClause = (asOf) => {
 /** REQ-109 AC-5's paused text, with the time of the last price when it is known. */
 export const pausedText = (asOf) => `${PAUSED_TEXT}${asOfClause(asOf)}`
 
-// A reply is complete when the page holds a finished answer for the current legs; a reply held while loading or after an error is partial.
-const COMPLETE_STATES = ['computed', 'stale', 'from-entries']
+// A reply is complete unless the page is still loading it or the read failed: a reply held then is partial (it may be the previous legs').
+const PARTIAL_STATES = ['loading', 'error']
 /**
  * ONE price state of a page (A4/A5/B1, 27 Nov 2026): {kind: live | last_close | stale | unavailable, at, text}.
  * `reply`: the builder's outcome reply (market_closed, last_price_at, closed_prices_text); `answer`: the index answer the page holds;
@@ -33,7 +33,7 @@ const COMPLETE_STATES = ['computed', 'stale', 'from-entries']
  * (a partial one, held while loading, may carry a leg first priced after the close); with no reply at all it is the index answer's.
  */
 export function priceNow({ reply = null, answer = null, pageState = 'loading', reconnecting = false } = {}) {
-  const complete = !!reply && COMPLETE_STATES.includes(pageState)
+  const complete = !!reply && !PARTIAL_STATES.includes(pageState)
   const closed = reply?.market_closed === true || answer?.market_closed === true
   if (closed) {
     const raw = complete ? (reply.market_closed === true ? reply.last_price_at : answer?.last_price_at) : (reply ? null : answer?.last_price_at)

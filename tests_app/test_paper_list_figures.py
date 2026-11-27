@@ -256,16 +256,3 @@ async def test_an_exited_book_has_no_as_of(db):  # noqa: F811
     _single, listed = await _both(app, stored.id)
     assert listed["state"] == "EXITED" and listed["as_of"] is None
 
-
-async def test_b1_a_paused_book_with_no_quote_time_carries_its_last_captured_price_time(db, monkeypatch):  # noqa: F811
-    """B1 (27 Nov 2026): the feed gives no quote time (paused_as_of None): the book still says when its last captured price
-    was (its newest order's placed_at), so Home never reads "Paper P&L paused" with no time. Class: every PAUSED book."""
-    app, stored, _provider, clock, last, _fixture = await _seed_fixture(db)
-    clock.now = last + datetime.timedelta(minutes=10)
-    monkeypatch.setattr(paper_routes.paper, "paused_as_of", lambda _prices: None)
-    single, listed = await _both(app, stored.id)
-    async with _client(app) as c:
-        totals = (await c.get("/paper/strategies")).json()["totals"]
-    assert listed["state"] == single["state"] == "PAUSED"
-    assert listed["as_of"] is not None and listed["as_of"] == single["as_of"]
-    assert totals["totals_as_of"] is not None

@@ -378,14 +378,14 @@ function openPaperDialog(id) {
   paperOpen.value = true
 }
 
-async function confirmPaper(orders, held = null) {
+async function confirmPaper(orders, held = null, notLiveTicked = false) {
   if (paperBusy.value) return
   paperBusy.value = true
   paperError.value = ''
   paperState.value = PAPER_STATE.READY
   try {
-    // ADR-330 (28): Confirm is enabled only after the line is ticked, so a confirm while the line is shown IS the tick
-    await addToPaper(api, paperTarget.value, orders, [], null, held, null, !props.pricesLive)
+    // ADR-330 (28): the flag is the dialog's own tick state (line shown AND ticked), not the page's price state
+    await addToPaper(api, paperTarget.value, orders, [], null, held, null, notLiveTicked === true)
   } catch (e) {
     const outcome = paperPostOutcome(e)
     if (outcome === PAPER_STATE.REFUSED) paperError.value = (e?.parts ?? NEUTRAL_PARTS).what_happened || NEUTRAL_PARTS.what_happened // 4xx: nothing stored

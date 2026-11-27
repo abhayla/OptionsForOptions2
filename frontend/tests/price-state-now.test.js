@@ -4,6 +4,7 @@ import { beforeEach, describe, it, expect, vi } from 'vitest'
 import { flushPromises, mount } from '@vue/test-utils'
 import { createMemoryHistory, createRouter } from 'vue-router'
 import SaveDraftBar from '@/components/strategy/SaveDraftBar.vue'
+import PaperConfirmDialog from '@/components/strategy/PaperConfirmDialog.vue'
 import { priceNow, usePriceFreshness, pausedText } from '@/lib/priceState'
 import { withAsOf } from '@/lib/paperList'
 import { confirmPaperName } from './helpers/paperName'
@@ -138,6 +139,38 @@ describe('Add to Paper in every state (the page passes priceNow into the bar)', 
     const w = await addToPaper({ pricesLive: true })
     expect(w.find('[data-testid="paper-not-live"]').exists()).toBe(false)
     expect(w.get('[data-testid="paper-confirm-button"]').attributes('disabled')).toBeUndefined()
+    w.unmount()
+  })
+})
+
+describe('the not-live flag is the dialog\'s own tick state', () => {
+  const ORDER = [{ key: 'x', contract_id: 5, side: 'BUY', text: 'NIFTY 3 Nov 22800 CE', lots: 2, lot_size: 65, price: '10.05', kind: 'open' }]
+  it('line shown and ticked: Confirm emits ticked = true', async () => {
+    const w = mount(PaperConfirmDialog, { props: { open: true, orders: ORDER, notLiveLine: 'Prices are not live; the entry is the last captured price.' } })
+    await w.get('[data-testid="paper-not-live-ack"]').setValue(true)
+    await w.get('[data-testid="paper-confirm-button"]').trigger('click')
+    expect(w.emitted('confirm')[0][2]).toBe(true)
+    w.unmount()
+  })
+  it('line not shown: Confirm emits ticked = false', async () => {
+    const w = mount(PaperConfirmDialog, { props: { open: true, orders: ORDER } })
+    await w.get('[data-testid="paper-confirm-button"]').trigger('click')
+    expect(w.emitted('confirm')[0][2]).toBe(false)
+    w.unmount()
+  })
+  it('line shown, not ticked: Confirm is disabled and emits nothing', async () => {
+    const w = mount(PaperConfirmDialog, { props: { open: true, orders: ORDER, notLiveLine: 'Prices are not live; the entry is the last captured price.' } })
+    await w.get('[data-testid="paper-confirm-button"]').trigger('click')
+    expect(w.emitted('confirm')).toBeUndefined()
+    w.unmount()
+  })
+  it('the bar sends the flag from the emitted tick, not from its own prop', async () => {
+    answers['POST /paper/strategies/7/orders'] = { strategy_id: 7, orders: [] }
+    const w = await addToPaper({ pricesLive: false, priceAsOf: CLOSE })
+    await w.getComponent(PaperConfirmDialog).vm.$emit('confirm', [{ contract_id: 101, side: 'SELL', quantity: 65, price: '112.40', kind: 'open' }], null, false)
+    await flushPromises()
+    const post = calls.find((c) => c.method === 'POST' && c.url === '/paper/strategies/7/orders')
+    expect('prices_not_live_confirmed' in post.body).toBe(false)
     w.unmount()
   })
 })

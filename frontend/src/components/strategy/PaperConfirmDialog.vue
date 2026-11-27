@@ -193,7 +193,9 @@ const canConfirm = computed(() => {
 
 function confirm() {
   if (!canConfirm.value) return
-  if (heldActive.value) emit('confirm', rows.value.map(orderOf), heldBlock(heldAt.value, heldBroker.value))
-  else emit('confirm', rows.value.map(orderOf))
+  // third argument: the not-live line was shown AND ticked (ADR-330 (28)); false otherwise
+  const ticked = !!props.notLiveLine && notLiveAck.value === true
+  if (heldActive.value) emit('confirm', rows.value.map(orderOf), heldBlock(heldAt.value, heldBroker.value), ticked)
+  else emit('confirm', rows.value.map(orderOf), null, ticked)
 }
 </script>

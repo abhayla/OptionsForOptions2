@@ -701,8 +701,6 @@ def _figures(orders: Sequence[paper_store.StoredOrder], found: dict[int, tracked
     elif paused:
         state, pause = "PAUSED", reason or paper.PRICES_NOT_LIVE
         as_of = paper.paused_as_of(prices.values())  # the engine's own rule (ofo.tracking.paper), not a second way
-        if as_of is None and orders:  # B1: no quote time known (no snapshot): the last captured price is the book's newest order's
-            as_of = max(o.order.placed_at for o in orders)
     else:
         state, pause = "LIVE", None
     # ADR-311: a paused book names the contracts with no price (every total stays paused); expired = retired contract
