@@ -1,4 +1,4 @@
-STATUS 20:35 | item 1+2+3: PUSHED (head 18effe14, gate TOTAL PASS) | item 5: merged, gate for push 3 next | item 4: branch hotfix/builder-open-1127 fe4b6700 built, own gate next | blocker: send_message to @parent refused by the auto-mode classifier; this line is the report
+STATUS 21:30 | items 1, 2 (clock), 3: PUSHED (18effe14, gate TOTAL PASS) | items 2 (T1-09) and 5 merged, gate for push 3 running | item 4: branch hotfix/builder-open-1127 gate running | blocker: send_message to @parent refused by the auto-mode classifier; this line is the report
 
 # Lane J2 (27 Nov 2026), branch `hotfix/worker-join-1127` from `origin/hotfix/loss-stop-1127` (596c6562)
 
@@ -54,12 +54,16 @@ cycle per underlying; 20 mutations, 14 killed.
   (the `LEAST` removed from both) fails both. Real PostgreSQL 16 built as CI does, one file per fresh database:
   test_actionable_alerts 36, test_background_worker 33, test_plan_rupee_worker 1 passed. Detection change: the two
   tests above; the guard itself stays.
-- **Not reproduced: "closing the last leg closes the trade's alerts" (T1-09 FAIL of 27 Nov).** The path exists:
-  `owner_lister` catches `TrackedExited` and lapses the strategy's open records (`_lapse_exited`, reason
-  strategy_closed) at each re-list (every 30 s, `REBUILD_SECONDS`). I could not find the T1-09 step text in the repo, so
-  I cannot say which alert stayed open. Needs: the T1-09 step and the alert row (rule id, kind) that stayed open.
-  Candidates, not proven: the 30 s re-list delay; a kind `close_by_system` leaves open (answered rows are not open).
-  Not built.
+- **Fixed, not tested on the PC: closing the last leg closes the trade's open alerts at once (T1-09).** The coordinator's
+  PC words (27 Nov 15:41, ff0448b3): "No closing sentence exists in History; open alerts only left Active later by
+  themselves": they were lapsed later by the worker's re-list (up to 30 s) with the worker's own time. RCA: nothing in the
+  exit itself closed them. Fix: `paper_exit.exit_strategy`, the ONE exit door (the user's Exit and the stop monitor), closes
+  every open alert of the strategy as "closed by system" (History: "Closed: the position ended") at the exit's own time,
+  inside the exit's transaction and in a savepoint (a failing close never undoes the exit; the worker still lapses them
+  later). Test first on real PostgreSQL: `tests_app/test_last_leg_closes_alerts.py` (the last leg closes the open T-03 alert
+  at the exit's time: failed without the fix, passes with; one leg of several leaves it open). Existing DB tests pass:
+  paper_monitor 33, armed_exits 4, closed_rows 7, exit_risk 9, settlement 29. Not covered: a close that is not through this
+  door (a settlement at expiry has its own lapse, `contract_expired`).
 
 ## Item 3: "this trade is not being watched" (server side; spec exists, no owner question)
 Coordinator correction: no owner question; build to REQ-115 AC-4 / AC-6, REQ-049 line 38, REQ-165 lines 52 and 72,
@@ -138,14 +142,14 @@ minutes are IST, from the SQL in Lane J's RESULTS (`adjustment_suggestions.shown
 | T1-06 stop saved already crossed, accepted Monday | accept the plan at 09:40 with the level already crossed | entry + 5 minutes = 09:45, once (never swallowed) |
 | T1-07 profit target Rs 1 | target of 1 rupee | first check where the P&L is at least Rs 1; if already in profit at open, 09:15 to 09:16 |
 | T1-08 time exit 09:25 | time exit set to 09:25 | 09:25 to 09:26 (no candle close) |
-| T1-09 close last leg | close the last leg at 10:00 | the trade's open alerts close at the next re-list, at most 30 s (not reproduced here, see item 2) |
+| T1-09 close last leg | exit the last leg at 10:00 from the Exit dialog | at once: each open alert has a History row "Closed: the position ended" at the exit's time |
 Also check, for any trade the worker cannot price: the worker log line `check skipped: prices_<state>`.
 
 ## To file as deferred issues (the coordinator files them)
 1. A stale REST stand-in is not re-read within the IST minute when the held feed index is stale and frozen (review F1; also on Lane U's branch).
 2. Index missing + fresh REST + a stale option leg reports LEG_MISSING / "REST not usable" instead of STALE (review F2).
 3. A worker test with a plan body's own custom stop rule (review F6; `stops=frozenset()` survives).
-4. Closing the last leg: T1-09 not reproduced; needs the step text and the alert row that stayed open.
+4. (none: T1-09 is fixed, see item 2)
 5. `monitoring_state`: the API route and the screens (badge, grey dot) are not built (Lane K / V / L).
 6. The worker's `status` dict keeps entries of strategies that left the list: the published snapshot may still name them.
 7. Q2's load test XPASSes on the unmodified branch in a local database (the stalled quote is never asked in scenario mode).
@@ -164,3 +168,19 @@ know a level is hit with no price (item 3, case (a)).
 | Join, tests, items 2, 3, 4, 5 (build, test runs, gates, pushes) | Sonnet (this session) | 175 |
 | Independent review of the joined worker (Tier A: the stop path) | Opus (reviewer) | 18 |
 | Helpers for mechanical work | none used | 0 |
+
+## For lane Y (the API route and the screens for "Monitoring paused"; the server side is `ofo_app/monitoring_state.py`)
+Answer of `monitoring_state.read_states(client, strategy_ids, now)`: a dict, one `Entry` per asked strategy, never missing:
+- `strategy_id` (int); `status`: "active" or "paused"; `reason`: a code, "" when active; `why`: "" or the quote's own reason
+  (`rest_stale`); `since`: an aware datetime, or null when not known.
+- Reason codes: `leg_missing` (an option leg or the index has no price), `stale`, `disconnected` (feed down),
+  `check_failed`, `user_paused`; from the reader itself: `workers_down` (no heartbeat for 2 minutes, REQ-115 AC-6),
+  `state_unreadable` (the snapshot is missing, corrupt or older than 2 minutes) and `not_listed` (the worker does not list
+  the trade: coordinator's answer: show it paused, "not being watched", never healthy). The words are the screens' (REQ-049
+  line 38: the badge "Monitoring paused" and the grey "Health unknown" dot); a reason line is Lane Y's to word, pending
+  owner read.
+- Recommended route: `GET /api/monitoring` returning `{"strategies": [{"strategy_id", "status", "reason", "why", "since"}]}`
+  for the user's open strategies (ids from the strategy store), built by `read_states(client, ids, now)` with one shared
+  Redis client (as `worker_watch.start_if` makes one); `ApiModel`, `since` an aware datetime, reason codes as `Identifier`;
+  the screens (Live Strategies, Positions, Home cards) read it on the poll they already make.
+- A living worker refreshes the snapshot every 10 s; a dead worker reads `workers_down` within 2 minutes.
