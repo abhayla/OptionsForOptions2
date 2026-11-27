@@ -559,7 +559,8 @@ async def _market(tracked: Any, market_reader: MarketReader, ctx: MarketContext 
 
 async def _bounded_market(tracked: Any, market_reader: MarketReader, ctx: MarketContext | None) -> Any:
     """``_market`` for a save under ``PLAN_SAVE_PRICE_BUDGET_S``; over it the save is refused and nothing is stored. The
-    read itself is unchanged: the expiry kind, the stage and today still come from the market (ADR-330 (1), (5), (7))."""
+    read itself is unchanged: the expiry kind, the stage and today still come from the market (ADR-330 (1), (5),
+    (7))."""
     try:
         return await asyncio.wait_for(_market(tracked, market_reader, ctx), PLAN_SAVE_PRICE_BUDGET_S)
     except TimeoutError:
