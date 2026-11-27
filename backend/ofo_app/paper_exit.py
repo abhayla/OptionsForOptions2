@@ -137,5 +137,20 @@ async def exit_strategy(conn: Any, *, user_ref: str, strategy_id: int, kind: str
     orders = [NewOrder(int(c.key), c.side, c.quantity, prices[c.key], kind, _per(placed_at, c.key),
                        _per(reason, c.key), trigger_id) for c in todo]  # 6: in the order of the closes
     book = await write(orders)
+    if not any(p.net_quantity for p in net_positions([o.order.as_paper() for o in book], {}).positions):
+        await _close_alerts(conn, user_ref, strategy_id, max(_per(placed_at, c.key) for c in todo))  # last leg gone
     return Exited(tuple(book), tuple(Written(c.key, c.side, c.quantity, prices[c.key], _per(placed_at, c.key))
                                      for c in todo))
+
+
+async def _close_alerts(conn: Any, user_ref: str, strategy_id: int, at: datetime.datetime) -> None:
+    """ADR-330 (3), REQ-112 AC-2 (T1-09): the last leg is gone, so the trade's open alerts close NOW, in the exit's own
+    transaction, as "closed by system" at the exit's time; the worker's later lapse finds nothing left open. Inside a
+    savepoint: a failing close never undoes the exit (the worker's re-list still lapses them)."""
+    from ofo_app import actionable_alerts, playbook_store  # noqa: PLC0415 - database layer, late (no import cycle)
+    try:
+        async with conn.begin_nested():
+            await actionable_alerts.close_by_system(conn, user_ref, strategy_id, playbook_store.LAPSE_STRATEGY_CLOSED,
+                                                    at=at)
+    except Exception:  # the exit stands; the worker lapses them at its next re-list
+        log.exception("paper exit: closing the alerts of strategy %s failed; the worker lapses them", strategy_id)
