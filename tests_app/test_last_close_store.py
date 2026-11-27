@@ -149,6 +149,17 @@ def test_a_float_or_sub_paisa_or_out_of_range_price_is_refused(price):
         lcs.check_row((OPTION_ID, TUE, price, at(TUE, 15, 29, 59), "feed_book"))
 
 
+@pytest.mark.parametrize("price_at", [at(MON, 15, 29, 59), at(TUE, 15, 30, 1), at(TUE, 20, 0), at(WED, 9, 20)])
+def test_m6_a_time_off_the_trade_date_or_after_the_close_is_refused(price_at):
+    with pytest.raises(ValueError, match="trade date"):
+        lcs.check_row((OPTION_ID, TUE, Decimal("99.75"), price_at, "feed_book"))
+
+
+@pytest.mark.parametrize("price_at", [at(TUE, 9, 0), at(TUE, 15, 29, 59), at(TUE, 15, 30, 0)])
+def test_m6_a_time_on_the_trade_date_up_to_the_close_is_taken(price_at):
+    lcs.check_row((OPTION_ID, TUE, Decimal("99.75"), price_at, "feed_book"))
+
+
 def test_the_store_refuses_before_any_connection_and_writes_nothing():
     store = lcs.PostgresLastCloseStore("postgresql+asyncpg://nobody@127.0.0.1:1/none")
     try:

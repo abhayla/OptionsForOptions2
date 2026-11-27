@@ -98,3 +98,21 @@ def test_in_session_is_unchanged():
 def test_no_quotes_invents_no_time():
     assert closed_label(CLOSED, [], None) == closed_label(CLOSED, [None], None)
     assert closed_label(CLOSED, [], None).last_price_at is None
+
+
+def _on(day: int, hh: int, mm: int, ss: int) -> datetime.datetime:
+    return datetime.datetime(2026, 11, day, hh, mm, ss, tzinfo=IST)
+
+
+def test_m3_legs_frozen_on_different_days_group_by_day_the_latest_leads_the_older_is_dated():
+    """Lane N review M3: MON's 99.75 never sits under TUE's time. Mon 30 Nov and Tue 1 Dec 2026 are trading days."""
+    state = MarketState(closed=True, last_price_at=datetime.datetime(2026, 12, 1, 20, 0, tzinfo=IST))
+    tue = datetime.datetime(2026, 12, 1, 15, 29, 59, tzinfo=IST)
+    mon = _on(30, 15, 29, 59)
+    out = closed_label(state, [_q(mon), _q(tue)], _q(tue, index=True))
+    assert str(out.text) == "Market closed. Prices are from 15:29:59; 1 leg as of 30 Nov, 15:29:59."
+    assert out.last_price_at == tue
+    two = closed_label(state, [_q(mon), _q(_on(27, 15, 29, 0)), _q(tue)], _q(tue, index=True))
+    assert str(two.text) == "Market closed. Prices are from 15:29:59; 2 legs as of 27 Nov, 15:29:00."
+    same = closed_label(state, [_q(tue), _q(tue)], _q(tue, index=True))
+    assert (same.text, same.last_price_at) == (None, tue)  # one day: unchanged

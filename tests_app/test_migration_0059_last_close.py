@@ -63,6 +63,20 @@ async def test_a_sub_paisa_negative_or_huge_price_is_refused_by_the_check(app_en
             await trans.rollback()
 
 
+@pytest.mark.parametrize("price_at", ["2026-11-30 15:29:59+05:30", "2026-12-01 15:30:01+05:30", "2026-12-01 20:00:00+05:30"])
+async def test_m6_a_time_off_the_trade_date_or_after_the_close_is_refused_by_the_check(app_engine, price_at):
+    async with app_engine.connect() as conn:
+        trans = await conn.begin()
+        try:
+            with pytest.raises(DBAPIError) as err:
+                await conn.execute(text("INSERT INTO public.last_close (instrument_id, trade_date, price, price_at, "
+                                        "source) VALUES ('T59:X', :d, 1.00, CAST(:t AS timestamptz), 'feed_book')"),
+                                   {"d": TUE, "t": price_at})
+            assert getattr(err.value.orig, "sqlstate", None) == CHECK_VIOLATION
+        finally:
+            await trans.rollback()
+
+
 async def test_the_app_role_cannot_delete_or_truncate(app_engine):
     for sql in ("DELETE FROM public.last_close", "TRUNCATE public.last_close"):
         async with app_engine.connect() as conn:

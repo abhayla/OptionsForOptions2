@@ -37,7 +37,7 @@ from ofo.market_calendar import is_market_open, last_close
 from ofo.marketdata.quote import Instrument, NormalizedQuote, SourceMetadata
 from ofo.money import PAISE
 from ofo.rules.inputs import DataHealth
-from ofo.timeutil import IST
+from ofo.timeutil import IST, SESSION_CLOSE
 from sqlalchemy import text
 from sqlalchemy.exc import InterfaceError, OperationalError
 from sqlalchemy.ext.asyncio import AsyncEngine, create_async_engine
@@ -75,6 +75,9 @@ def check_row(row: CloseRow) -> None:
         raise ValueError(f"trade_date must be a date, got {trade_date!r}")
     if not isinstance(price_at, datetime.datetime) or price_at.tzinfo is None:
         raise ValueError(f"price_at must be a timezone-aware datetime, got {price_at!r}")
+    local = price_at.astimezone(IST)
+    if local.date() != trade_date or local.time() > SESSION_CLOSE:
+        raise ValueError(f"price_at {price_at} is not on the trade date {trade_date} at or before the close")
     if isinstance(price, bool) or not isinstance(price, Decimal):
         raise ValueError(f"price must be a Decimal, got {type(price).__name__}: money is never a float (ADR-008)")
     try:
