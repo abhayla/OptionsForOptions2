@@ -101,8 +101,6 @@ async def test_the_same_load_with_every_third_quote_stalled_8_seconds_still_answ
                 ALL_ROUTES - {"adjustment-check"})
 
 
-@pytest.mark.xfail(strict=True, reason="adjustment-check awaits its REST quote with no budget (plan-watch has one, "
-                                       "REQ-119 AC-4); no named fix branch bounds it: to file as a deferred issue")
 async def test_the_adjustment_check_under_the_same_stalled_quote_answers_inside_6_seconds(
         app_db_url, monkeypatch):  # noqa: F811
     await _load(app_db_url, monkeypatch, _sometimes_stalled(3, STALL_S), STALLED_BOUND_S,
