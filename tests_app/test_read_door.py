@@ -257,3 +257,68 @@ async def test_one_sweeper_timer_for_many_reads_and_it_releases_the_expired_toke
     finally:
         loop.call_later = real
     assert read_door.read_lease().held_ids == frozenset() and p.since == {}
+
+
+async def test_a_token_a_read_is_polling_on_is_not_evicted_by_another_reads_cap(monkeypatch):
+    """Opus round 2: read A polls on X (tick due 0.3 s); read B leases 500 other ids past the cap. X is pinned by A:
+    it is not unsubscribed and A gets its quote (a live market is never answered "not live")."""
+    monkeypatch.setattr(read_door, "MAX_HELD_TOKENS", 500)
+    clock = Clock()
+    p = FakeProvider(clock, {"X": DELAY})
+    feed = _feed(p)
+    task_a = asyncio.ensure_future(_read(feed, p, clock, ["X"], wait_s=1.0))
+    for _ in range(3):
+        await asyncio.sleep(0)  # A is inside its poll loop
+    assert not task_a.done() and read_door.read_lease().in_use("X") == 1
+    others = [f"O:{n}" for n in range(500)]
+    await read_door.read_quotes(feed, others, p.book, lambda _s: True, lambda: True, 0.0, 0.01,
+                                sleep=clock.sleep, now=clock.now)
+    assert "X" not in p.unsubscribed and "X" in read_door.read_lease().held_ids
+    got = await task_a
+    assert "X" in got and read_door.read_lease().in_use("X") == 0
+    read_door.read_lease().release()
+
+
+async def test_cancelling_a_read_releases_its_pin_and_the_token_can_then_be_evicted(monkeypatch):
+    monkeypatch.setattr(read_door, "MAX_HELD_TOKENS", 3)
+    clock = Clock()
+    p = FakeProvider(clock, {"X": 100.0})  # X never ticks: A polls until cancelled
+    feed = _feed(p)
+    task_a = asyncio.ensure_future(_read(feed, p, clock, ["X"], wait_s=50.0))
+    for _ in range(3):
+        await asyncio.sleep(0)
+    assert read_door.read_lease().in_use("X") == 1
+    task_a.cancel()
+    with pytest.raises(asyncio.CancelledError):
+        await task_a
+    assert read_door.read_lease().in_use("X") == 0
+    await read_door.read_quotes(feed, ["A", "B", "C"], p.book, lambda _s: True, lambda: True, 0.0, 0.01,
+                                sleep=clock.sleep, now=clock.now)
+    assert "X" not in read_door.read_lease().held_ids and "X" in p.unsubscribed
+    read_door.read_lease().release()
+
+
+async def test_expired_tokens_are_evicted_before_unexpired_ones(monkeypatch):
+    monkeypatch.setattr(read_door, "MAX_HELD_TOKENS", 3)
+    p = FakeProvider(Clock())
+    feed = _feed(p)
+    lease = read_door.ReadLease()
+    lease.hold(feed, ["a"], seconds=100, now=0.0)  # oldest-renewed, not expired
+    lease.hold(feed, ["b"], seconds=1, now=0.0)  # expired at t=5
+    lease.hold(feed, ["c"], seconds=100, now=0.0)
+    lease.hold(feed, ["d"], seconds=100, now=5.0)  # over the cap: b (expired) goes, not the older a
+    assert lease.held_ids == frozenset({"a", "c", "d"})
+
+
+async def test_everything_pinned_goes_over_the_cap_rather_than_evicting_a_pinned_token(monkeypatch, caplog):
+    monkeypatch.setattr(read_door, "MAX_HELD_TOKENS", 2)
+    p = FakeProvider(Clock())
+    feed = _feed(p)
+    lease = read_door.ReadLease()
+    with caplog.at_level("WARNING"):
+        lease.hold(feed, ["a", "b", "c"], seconds=100, now=0.0, pin=True)  # one 3-id call over a cap of 2
+    assert lease.held_ids == frozenset({"a", "b", "c"}) and p.unsubscribed == []
+    assert any("cap" in r.message for r in caplog.records)
+    lease.unpin(["a", "b", "c"])
+    lease.hold(feed, ["d"], seconds=100, now=1.0)
+    assert len(lease.held_ids) == 2 and "d" in lease.held_ids  # noqa: PLR2004
