@@ -63,9 +63,6 @@ def timed[T](step: str, fn: Callable[..., Awaitable[T]]) -> Callable[..., Awaita
     return wrapper
 
 
-_t0: ContextVar[float | None] = ContextVar("ofo_step_timing_stmt", default=None)
-
-
 def install_db_events(engine: Any) -> None:
     """Register the cursor-event timers once on a SQLAlchemy sync engine (idempotent)."""
     from sqlalchemy import event  # noqa: PLC0415 - keeps this module light for non-DB importers
@@ -76,12 +73,17 @@ def install_db_events(engine: Any) -> None:
 
     def before(conn: Any, *_event_args: Any) -> None:
         if _current.get() is not None:
-            conn.info.setdefault("ofo_t0", []).append(time.perf_counter())
+            conn.info["ofo_t0"] = time.perf_counter()  # one slot: a statement that raised never leaves a stale start
 
     def after(conn: Any, *_event_args: Any) -> None:
-        stack = conn.info.get("ofo_t0")
-        if stack:
-            add("db", (time.perf_counter() - stack.pop()) * 1000.0)
+        t0 = conn.info.pop("ofo_t0", None)
+        if t0 is not None:
+            add("db", (time.perf_counter() - t0) * 1000.0)
+
+    def failed(context: Any) -> None:  # a statement that raised: after_cursor_execute never fires
+        if context.connection is not None:
+            context.connection.info.pop("ofo_t0", None)
 
     event.listen(engine, "before_cursor_execute", before)
     event.listen(engine, "after_cursor_execute", after)
+    event.listen(engine, "handle_error", failed)
