@@ -1346,16 +1346,18 @@ async def _server_exit_prices(ctx: MarketContext | None, feed: LiveFeed | None, 
 
 
 async def entry_facts(ctx: MarketContext | None, underlying: str, orders: Sequence[Any],
-                      state: Mapping[int, tracked_contracts.TrackedContract]) -> EntryFacts | None:
+                      state: Mapping[int, tracked_contracts.TrackedContract],
+                      confirmed: bool = False) -> EntryFacts | None:
     """ADR-243 + ADR-270 (1): the entry facts this fill would store if it is the strategy's first
     (``paper_store.place`` decides), through the one first-fill reader ``adjustment_readers.entry_facts_now``: the
     index's live spot now, each side's sold strike among the opening orders and the entry ATM IV. Answer states: not
     connected, no quote, or a quote that is not a positive price -> None (nothing stored; "Entry distance" then refuses
-    this strategy's rolls by name, never a guessed spot); no IV readable -> the facts with no IV."""
+    this strategy's rolls by name, never a guessed spot); no IV readable -> the facts with no IV. ``confirmed``: the
+    trader's "prices are not live" tick (ADR-330 (28), (39)): only then may a STALE index value start the facts."""
     from ofo_app.adjustment_readers import entry_facts_now  # noqa: PLC0415 - the readers import the route layer
     sold = [state[o.contract_id].stored.listed.contract for o in orders  # type: ignore[union-attr] - resolved above
             if o.side == "SELL" and o.kind != "exit"]
-    return await entry_facts_now(ctx, underlying, sold)
+    return await entry_facts_now(ctx, underlying, sold, confirmed=confirmed)
 
 
 async def _record_held(db: Any, strategy_id: int, held: HeldIn | None) -> None:
@@ -1444,7 +1446,8 @@ async def place_paper_orders(strategy_id: int, body: PaperOrdersIn,  # noqa: PLR
     # only a strategy with no paper order yet can be at its first fill (a book never shrinks): a later fill reads no IV
     first = not await paper_store.tracked_ids(db, [strategy_id])
     _check_held(body.held, first, body.orders, state, placed_at)
-    entry = await entry_facts(ctx, stored.saved.definition.underlying, body.orders, state) if first else None
+    entry = (await entry_facts(ctx, stored.saved.definition.underlying, body.orders, state,
+                               confirmed=body.prices_not_live_confirmed) if first else None)
     try:
         book = await paper_limit.place_checked(
             db, user_ref, strategy_id, [

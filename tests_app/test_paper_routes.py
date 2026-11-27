@@ -241,7 +241,8 @@ async def test_a_bad_price_is_422_with_the_reason_and_nothing_is_stored(db, pric
         reply = await c.post(f"/paper/strategies/{stored.id}/orders", json={"orders": [
             _order(c0, "BUY", 65, "10.00"), _order(c0, "BUY", 65, price)]})
     assert reply.status_code == HTTPStatus.UNPROCESSABLE_ENTITY, reply.text
-    assert "a multiple of 0.05" in reply.text
+    # Lane K: a price of 0 or below is named by its own sentence (577) before the tick rule is read
+    assert ("must be above 0" if Decimal(price) <= 0 else "a multiple of 0.05") in reply.text
     assert await _count(db, stored.id) == 0
 
 
