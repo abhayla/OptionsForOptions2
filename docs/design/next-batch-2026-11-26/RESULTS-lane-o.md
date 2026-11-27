@@ -1,4 +1,4 @@
-STATUS 18:00 | items 2,3,5,6,7: Fixed, not tested; item 1: moved to Lane R2 as a patch; item 4: parked; 2028 date: not reproducible | gate A running | blocker: none (send_message to @parent refused: session not trusted, this line is the report)
+STATUS 19:30 | queue A pushed (68ebb119, gate TOTAL PASS); queue B: items 8, 10, 12 Fixed/tested, not on PC; 9 and 11 moved to Lane L; Queue C removed | push B after its gate | blocker: none (send_message refused: session untrusted)
 
 # Lane O results (branch fix/alert-screens-1127, cut from bcbff80)
 
@@ -59,6 +59,35 @@ None met in the files I changed.
 - For lane K: `routes/paper.py::names_and_terms` date style (see above).
 - For lane L: item 9 (UX-05, UX-06) My Strategies after Undo: show a loading line instead of "No saved strategy matches" while the row returns, and grey "Show strategies" until it works; item 11 (UX-32) dropped (Lane L).
 
+## Queue B
+
+| # | Item | State |
+|---|------|-------|
+| 8 | UX-02 label the Stop price box and direction word | Fixed, not tested on PC. frontend/tests/paper-stops.test.js (UX-02) |
+| 9 | UX-05, UX-06 My Strategies loading line | Moved to "For lane L" (their file) |
+| 10 | UX-16, UX-24 Change expiry messages | Fixed (reason and captured price, server sentence); "keep a typed price" NOT done, see below. tests_app/test_leg_edit_route.py::test_ux16_ux24..., frontend/tests/leg-edit.test.js |
+| 11 | UX-32 cards old after change elsewhere | Dropped (Lane L) |
+| 12 | UX-27, UX-26 clicks | Click tests pass: "test-tool click, no defect" for the menu (6 sections, every item, frontend/tests/nav-every-item-ux26.test.js). "Pick from Option Chain": the click works (leg-picker test) but it only switches the columns back to LTP; with LTP already shown it does nothing visible, because the footer link exists only on the Strikes tab. That looks like "did not open". Owner decision: what should it open? Nothing changed. |
+
+Queue C: removed from this lane by the coordinator.
+
+### Screen steps, queue B (market CLOSED is fine)
+8. Positions or builder, a saved trade, Stops panel, "Stop on a leg": each row now reads "Stop when the price goes [Above/Below]" and "Stop price [box]" (visible words, not only a hint).
+10. Builder with a leg whose price you TYPED, then press Shift, Width, Hedge, a strike step or change the expiry so that leg moves. Expected under the leg list: "Your price for leg 1 was replaced by the captured price 12.30, because Shift moved the leg to another contract." (Hedge / Width likewise; expiry: "because you changed the expiry"; a strike step: "because you moved the strike"). If the new contract has no live price: "Your price for leg 1 was removed, because Shift moved the leg to another contract and the new contract has no live price right now." The captured price is printed, never the strike.
+12. Click each top-menu item: each opens its page (test shows they do). In the picker, "Pick from Option Chain" with OI or Greeks shown switches back to LTP.
+
+### pending owner read, queue B (new text)
+- "Stop when the price goes", "Stop price" (Stops panel labels).
+- "Your price for leg N was replaced by the captured price P, because <you changed the expiry | Shift/Width/Hedge moved the leg to another contract | you moved the strike>."
+- "Your price for leg N was removed, because <reason> and the new contract has no live price right now."
+- OLD: "Your price for leg N was replaced by the captured price of <strike> <CE|PE>." (printed the strike where the price belongs).
+
+### Item 10, not done: "keep a typed price"
+REQ-078 AC-8 says a typed price is replaced when its leg moves to another contract; keeping it would price the new contract at the old contract's price. Not changed: owner decision needed (keep the typed price, or replace with the said reason, as now).
+
+### Edited outside the plain list, for awareness
+`LegList.vue` (prints the server sentence instead of building one), `legEdit.js`, `routes/leg_edit.py` (new field `replaced_note`), `docs/api/openapi.json` and `tests_app/reply_inventory.py` (regenerated, one reviewer note written), fixture `frontend/tests/fixtures/leg-edit-controls.json` (one hand-added `replaced_note` on the recorded replaced leg).
+
 ## To file as deferred issues
 - History `/alerts/answered`: per-trade expiry read may exceed 10 s with many trades (measure).
 - Item 4: source of the "Now" value in the opportunities list (needs Lane J).
@@ -68,4 +97,6 @@ None met in the files I changed.
 | task | model | minutes |
 |------|-------|---------|
 | Items 1-3, 5-7 build and tests | Sonnet (this session) | ~75 |
-| Pure text items 5, 8 | built inline, no helper started (tiny change inside a test-first change) | n/a |
+| Pure text items 5, 8 | built inline by Sonnet, no Haiku helper started (each sat inside a test-first change) | n/a |
+| Queue B items 8, 10, 12 | Sonnet (this session) | ~60 |
+| Gate runs A (4 runs) | Sonnet (this session), commands only | ~95 |
