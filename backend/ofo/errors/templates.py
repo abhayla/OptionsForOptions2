@@ -1661,8 +1661,8 @@ _PLAYBOOK_TEMPLATES: tuple[MessageTemplate, ...] = (
           _ADJ_REFUSED, _ADJ_BLOCKED, _ADJ_PICK_OTHER, {"expiry": Date}),
     # ADR-238 (6): take profit only when the whole trade is in profit
     _gate("adjust_take_profit_not_in_profit", _UI, 189,
-          "The whole trade is not in profit with every open leg closed at its planned price, so this approach is "
-          "not built.",
+          "This approach is not built because the whole trade would not be in profit with every open leg closed at "
+          "its planned price.",
           _ADJ_REFUSED, _ADJ_BLOCKED, _ADJ_PICK_OTHER, {}),
     _gate("adjust_take_profit_booked_unknown", _UI, 190,
           "The profit or loss booked so far is not known, so whether the whole trade is in profit cannot be worked "
