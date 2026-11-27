@@ -193,13 +193,15 @@ describe('Tier A review round 2: the staged exit is dropped, the user\'s own edi
     expect(S(w).legs.length).toBe(before - 2)
   })
 
-  it('F1 A1b (D-48 round 2): lots raised on a leg (an add waiting), then a per-leg Exit: blocked, still 1 pending, no dialog', async () => {
+  it('F1 A1b (ADR-330 (49), was D-48 round 2): lots raised on a leg (an add waiting), then a per-leg Exit on ANOTHER leg: allowed, the dialog holds that leg\'s exit only, the add stays staged (2 pending)', async () => {
     const w = await builder()
     lots9(w)
     await flushPromises()
     await exitLeg(w, 2)
-    expect(S(w).pendingOrders.length).toBe(1)
-    expect(t(w, 'paper-confirm').exists()).toBe(false)
+    expect(S(w).pendingOrders.length).toBe(2)
+    expect(t(w, 'paper-confirm').exists()).toBe(true)
+    expect(S(w).paperRows.map((r) => [r.kind, r.contract_id])).toEqual([['exit', S(w).paper.net[2].contract_id]])
+    expect(orderPosts()).toHaveLength(0)
   })
 
   it('F1 A2: a leg removed, then a per-leg Exit, then the read fails, then it changes elsewhere: the removal stays (1 pending)', async () => {
@@ -296,8 +298,12 @@ describe('Tier A review round 3: the Exit snapshot ends with the dialog; a block
     S(w).setLegs(S(w).legs.map((l, i) => (i === 0 ? { ...l, lots: 9 } : l)))
     await flushPromises()
     expect(S(w).pendingOrders.length).toBe(2)
-    await exitLeg(w, 3) // refused with an add waiting (D-48): no dialog opens, so a failed read has none to keep (hotfix 27 Nov T2-08)
-    await failRead()
+    await exitLeg(w, 3) // ADR-330 (49): leg 0 has the change, leg 3 is untouched: its Exit opens a dialog of its own exit only
+    expect(S(w).pendingOrders.length).toBe(3)
+    expect(S(w).paperRows).toHaveLength(1)
+    await failRead() // hotfix 27 Nov T2-08: the dialog stays open with its sentence
+    expect(t(w, 'paper-confirm').exists()).toBe(true)
+    await setMark(w, true) // the trade changes elsewhere: only the leg-3 exit is dropped
     expect(t(w, 'paper-confirm').exists()).toBe(false)
     expect(S(w).pendingOrders.length).toBe(2)
     expect(S(w).legs[0].lots).toBe(9)

@@ -35,7 +35,7 @@ import LoadFailed from '@/components/common/LoadFailed.vue'
 import { PAPER_REREAD_FAILED_TEXT } from '@/lib/sharedStateText'
 import {
   DISCARD_LABEL, PAPER_BOOK_UNREADABLE, PAPER_MODE_LABEL, PAPER_PENDING_UNREADABLE, PAPER_REREAD_DELAYS_MS, REVIEW_AND_ADD_LABEL, confirmRowsFor, paperOrdersFor, pendingText, readPaperBook,
-  legsAfterExit, paperFillKey, paperLeftOf, paperChargesOf, stagedChangeIds, stagedExitIds,
+  legsAfterExit, exitOnlyOrders, paperFillKey, paperLeftOf, paperChargesOf, stagedChangeIds, stagedExitIds,
 } from '@/lib/paperDrafts'
 import { withAsOf } from '@/lib/paperList'
 import PaperBookPanel from '@/components/strategy/PaperBookPanel.vue'
@@ -483,14 +483,15 @@ const exitOrigin = ref(false) // the pending edits came from Exit all or a per-l
 // P10: the strategy the Plan watch reads: the saved id, or in Drafts Mode (savedId stays null there) the paper book's own integer id
 const planWatchId = computed(() => (Number.isInteger(savedId.value) ? savedId.value : Number.isInteger(paper.value?.book?.strategy_id) ? paper.value.book.strategy_id : null))
 const paperTotal = computed(() => (paper.value ? paperPnlBlock(paper.value.book, paperBookFailed.value) : null))
-function reviewPending(fromExit = false) { // the "Review and add" button passes its click event: only `true` marks an Exit
-  if (!paper.value || paperStale.value || !pendingOrders.value?.length) return
+function reviewPending(fromExit = false, only = null) { // the "Review and add" button passes its click event: only `true` marks an Exit; `only`: ADR-330 (49), a leg's own exit rows
+  const shown = only ?? pendingOrders.value
+  if (!paper.value || paperStale.value || !shown?.length) return
   if (fromExit === true) exitOrigin.value = true // never reset here: "Review and add" of Exit edits is still an Exit
   if (exitBlocked.value) return // post nothing; the panel's reason line says why
   paperError.value = ''
   exitRec.clear(EXIT_KEY)
   paperState.value = PAPER_STATE.READY
-  paperRows.value = confirmRowsFor(pendingOrders.value, paper.value.book, contractName, livePriceById.value)
+  paperRows.value = confirmRowsFor(shown, paper.value.book, contractName, livePriceById.value)
   paperDialog.value = true
 }
 watch(pendingOrders, (o) => { if (!o?.length) exitOrigin.value = false }) // posted, discarded or edited back: no Exit edits are left
@@ -508,10 +509,11 @@ function exitAllPaper() {
 function exitPaper(contractId, lots) {
   if (!paper.value || paperStale.value || exitBlocked.value) return
   const next = legsAfterExit(paper.value.net, legs.value, contractId, lots)
-  if (!next) return
+  const only = exitOnlyOrders(paper.value.net, contractId, lots) // ADR-330 (49): this leg's exit alone; other legs' staged changes stay staged
+  if (!next || !only?.length) return
   markExit()
   setLegs(next)
-  reviewPending(true)
+  reviewPending(true, only)
 }
 // N-04 / N-05: the ONE way the PAGE closes an Exit dialog without a Confirm (the trade changed elsewhere; a failed read no longer closes it:
 // hotfix 27 Nov T2-08, ADR-016..019). It drops the staged exits too (the legs the user had before the Exit click come back, their other edits with
@@ -598,6 +600,9 @@ async function confirmPending(orders) {
   // STORED (201). From here nothing may offer these orders again: a failure below is only a failed refresh.
   exitRec.settle(EXIT_KEY, attempt, 'placed', wasExit ? exitEndText('done', names, { orders: reply?.orders, sent: orders.length }) : '') // the server answered: placed replaces a page-side guess
   paperStale.value = true
+  // ADR-330 (49): a per-leg Exit posted its own rows only; the other legs' changes still staged are put back over the re-read net
+  keepStaged = wasExit && pendingOrders.value && pendingOrders.value.length > orders.length ? copyLegs(legs.value) : null
+  if (keepStaged) { exitOrigin.value = false; legsBeforeExit = null } // what is left is no Exit edit
   try {
     await dropActed({ withApproach: true }) // one basket answers the records once
   } catch { /* the ids may stay in the URL: the stored orders are never offered again (paperStale) */ }
@@ -617,10 +622,12 @@ const barRef = ref(null)
 let rereadId = null
 let rereadFirstFail = null
 let rereadRun = null // the one run whose answer still counts; another strategy opening ends it
+let keepStaged = null // ADR-330 (49): the legs (other legs' staged changes) to put back after the re-read that follows a per-leg Exit
 let leaving = false
 onBeforeUnmount(() => { leaving = true })
 const sleep = (ms) => new Promise((resolve) => setTimeout(resolve, ms))
 function cancelReread() {
+  keepStaged = null
   rereadRun = null
   rereadId = null
   rereadFailed.value = false
@@ -643,6 +650,7 @@ async function rereadAfterPlace(id, onFirstFail) {
     if (read?.kind === 'paper') {
       try {
         enterDrafts(id, read)
+        if (keepStaged) { setLegs(keepStaged); keepStaged = null }
         openError.value = null
         paperDialog.value = false
         paperState.value = PAPER_STATE.READY
