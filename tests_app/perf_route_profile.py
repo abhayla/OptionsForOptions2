@@ -102,7 +102,7 @@ async def test_profile(app_db_url, monkeypatch):  # noqa: F811, PLR0915, C901
         api_key = "k"
         reads = KiteReads(api_key="k", access_token="t", transport=empty_book)  # noqa: S106
         margin = None
-    app.dependency_overrides[exec_route.get_kite_session] = lambda: _S()
+    app.dependency_overrides[exec_route.get_kite_session] = _S
     margin_source = app.dependency_overrides[outcome.get_margin_source]()
 
     statements: list[str] = []

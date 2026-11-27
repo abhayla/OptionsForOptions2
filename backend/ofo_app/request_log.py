@@ -72,7 +72,8 @@ class RequestLog:
             path = getattr(route, "path", None) or scope.get("path", "")
             elapsed_ms = (time.perf_counter() - t0) * 1000.0
             # the step text joins the format string (no % in it), so the args stay (method, path, status, ms)
-            log.info("request %s %s %d %.1fms" + _steps_text(elapsed_ms), scope.get("method", ""), path, status, elapsed_ms)
+            fmt = "request %s %s %d %.1fms" + _steps_text(elapsed_ms)
+            log.info(fmt, scope.get("method", ""), path, status, elapsed_ms)
 
         async def logging_send(message: Message) -> None:
             if message["type"] == "http.response.start":
