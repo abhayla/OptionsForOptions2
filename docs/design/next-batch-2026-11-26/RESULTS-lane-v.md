@@ -1,4 +1,4 @@
-STATUS 20:10 | 54: fixed, not tested | 55: fixed, not tested (Opus review done, fixes applied; UX-A03 and UX-A02 added) | 57: fixed, not tested | next push: after the final prepush gate (Lane U merged at f61f7935) | blocker: file-ownership question for coordinator (see below)
+STATUS 20:30 | 54, 55, 57: fixed, not tested, PUSHED at 30c7be90 (gate TOTAL PASS) | UX-A03, UX-A02 and the side-closed patch read: in that push | RESULTS-only second push after this | blocker: none
 
 # Lane V RESULTS (27 Nov 2026, IST): Plan door, three-line stop warning, closed trade page
 
@@ -66,6 +66,21 @@ Frontend (`sharedStateText.js`): button "Plan"; "Could not open the plan. Try ag
 - **UX-A03 (fired stop said "If this stop fires" in the future tense with the pre-fire figure).** Built the first option: a fired LEG stop's pop-up and History row carry NO max-loss line (`_max_loss_line` returns None for a leg stop; the message is the body only: "Stop-loss: ... exited at ..."). Tests first: `tests_app/test_stop_fired_message.py` (4 tests now assert "If this stop fires" and the figures are absent). An index exit keeps its own exit-check line, which is not in the future tense. **Wording proposal, NOT built, pending owner read:** "The sold <leg> is now without protection. Max loss now: Rs <amount> (worst case: <index> at zero)." (the second option: needs the figure computed AFTER the exit, from the book as it stands, not from `leg_stop_answer`.)
 - **UX-A02 (blank gap before the max-loss lines).** The Stops panel shows "Working out max loss for this stop..." from the moment a valid level is typed (during the 0.4 s wait and while the server works), then the answer replaces it; a "no", "cannot tell" or failed read removes it and prints nothing; an invalid level shows none. Tests: `frontend/tests/paper-stops-leg-risk-w2b.test.js` (3 new). Lane O labels the Stop price box; I did not touch the box.
 - Pending owner read, new today: "Working out max loss for this stop..." (frontend, `sharedStateText.js`).
+
+## Touched Lane K's file: `backend/ofo_app/routes/paper.py` (coordinator ruling: stays; the build lane merges K first, then this branch)
+Every hunk of mine (Lane U's hunks in the same file, the `live_push`/`read_door` imports and `_hold_until_ready` / `_snapshot`, are not mine and came in with the merge of `hotfix/index-quote-1127`):
+| Hunk (function / place) | What it does |
+|---|---|
+| imports: `book_pnl_at_zero` (from `ofo.engine.extremes`), `SQLAlchemyError`, `plan_ending` | the new names the hunks below use |
+| `PaperExtremes`: new field `plan_final_text: CatalogueText or None = None` | the closed trade's one plan line rides on the book reply (read by `PaperBookOut`; the list reply carries it too, always None there) |
+| `_book`: one call `figures["plan_final_text"] = await _plan_final(...)` | adds the line to the book reply |
+| new `_plan_final` | for a fully closed book (closed_text present) reads `plan_ending.plan_final_text` in a savepoint; a failed read logs and leaves the line out |
+| `ExitRiskOut`: new field `warning_lines: list of CatalogueText or None = None` | the three server-built lines of a leg stop that leaves a sold option bare (None for every other answer) |
+| new `leg_stop_lines` | builds the three lines from the engine's figures (sold put: "worst case: <index> at zero" only when the engine's P&L at zero equals the max loss; unlimited: "no upper limit"; absent: "could not be worked out") |
+| `_exit_warning`: new keyword parameters `terms`, `underlying`, `at_zero` and one early branch | uses `leg_stop_lines` when a leg stop leaves a sold option exposed; otherwise unchanged |
+| `paper_leg_stop_risk` route: one argument added to the `leg_stop_answer` call | passes the trade's own index name (NIFTY or SENSEX) |
+| `leg_stop_answer`: new parameter `underlying`; reads the engine's figures and `book_pnl_at_zero` | in the exposed case uses the engine's own max-loss figures as they are (unlimited and absent included); the non-exposed case is as before |
+No other function in the file was changed. The merge is expected to conflict only where Lane K edited the same regions (`_book`, `ExitRiskOut`, `leg_stop_answer`); send a real conflict back to this lane.
 
 ## Decisions I took (owner away, B2) and what the owner should confirm
 1. **Endings (57).** The book records three closing orders: exit, stop (Stops panel), settle. The plan's own stop, target and time exit raise alerts only (ADR-003), nothing links a close to one, so a close after a plan alert is recorded as "your exit". The line therefore names: your exit, your stop, expiry settlement, "not recorded", and "No plan was set". The brief's "plan stop / target / time exit" endings are NOT built: they would be a guess. Owner question: should the product link an exit to the plan alert that preceded it?
