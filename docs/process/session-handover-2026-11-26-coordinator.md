@@ -20,6 +20,8 @@ never written into this repo; the owner has them.
 - Every owner answer gets its decision row the same turn (ADR-330 so far). Plain English, IST, lead with the bad news,
   no repeated messages. One-module rule for every capability. Paper only; never call a broker order endpoint.
 - Do not hold work for his answers; do not leave an item without an owner lane; close a lane when it is done.
+- The full lane rules (briefs, models, context, reporting, test day) are in the project skill
+  `.claude/skills/lanes/SKILL.md`.
 - Lanes do not file GitHub issues: they list them under "To file as deferred issues" in their RESULTS; the coordinator
   files them in one morning batch together with their stage rows in `docs/process/coverage-stages.yaml`.
 - Screen tests happen only on the owner's PC in market hours; the highest cloud status is "Fixed, not tested".

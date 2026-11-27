@@ -48,6 +48,13 @@ says how to run them. Kit commands and kit-owned files: `.claude/kit/GUIDE.md`.
   say "check against the REQ/ADR text, not this brief; hands-on attacks first". Commit an issue's tracker row the turn
   it is filed. Run independent work in parallel; never wait idle on CI.
 
+## Lanes (parallel cloud sessions)
+Full rules: the project skill `.claude/skills/lanes/SKILL.md`. Models: the task picks the model, never the session's
+default; Haiku for mechanical work, Sonnet for building, test runs and browser walk-throughs, Opus only for a Tier A
+review or a live-database write with "Why Opus" stated, and a lane's results file lists which model did each task.
+Context: a finished lane gets a next task in the same session only when it is a related follow-up in the same code;
+an unrelated task goes to a fresh lane with a self-contained brief, and the finished lane reports SAFE TO CLOSE.
+
 ## Briefs and dispatch
 - Briefs use `docs/process/builder-brief.md` for the constant parts. Every builder/checker brief goes through
   `python scripts/orchestrator/dispatch.py <row> <measure.json> --kind build|fix|verify-r2 --out <brief>
