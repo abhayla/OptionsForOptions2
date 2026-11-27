@@ -34,7 +34,7 @@ import { ADD_TO_PAPER_LABEL, PAPER_PLACED_NOT_REFRESHED_TEXT, PAPER_STATE, addTo
 import PaperConfirmDialog from '@/components/strategy/PaperConfirmDialog.vue'
 import ExitButton from '@/components/strategy/ExitButton.vue'
 import LoadFailed from '@/components/common/LoadFailed.vue'
-import { PAPER_REREAD_FAILED_TEXT } from '@/lib/sharedStateText'
+import { ADD_UNKNOWN_TEXT, PAPER_REREAD_FAILED_TEXT } from '@/lib/sharedStateText'
 import {
   DISCARD_LABEL, PAPER_BOOK_UNREADABLE, PAPER_MODE_LABEL, PAPER_PENDING_UNREADABLE, PAPER_REREAD_DELAYS_MS, REVIEW_AND_ADD_LABEL, confirmRowsFor, paperOrdersFor, pendingText, readPaperBook,
   legsAfterExit, exitOnlyOrders, paperFillKey, paperLeftOf, paperChargesOf, stagedChangeIds, stagedExitIds,
@@ -509,10 +509,11 @@ function enterDrafts(id, read) {
   if (String(id) !== String(rereadId)) cancelReread() // another strategy opens: a re-read of the old one ends here
   paperContractsChanged.value = false // a good read of the book: a poll's earlier "contracts changed" mark is out of date
   paperStale.value = false
+  if (addUnknown && netKey(read.net) !== addUnknown.net) addUnknown = null // a read shows the book moved: the earlier add was stored, the unknown is decided
   paper.value = { id, book: read.book, net: read.net }
   openSaved(copyLegs(read.net), id, null, read.book.name ?? null)
 }
-const leaveDrafts = () => { stagedNote.value = ''; paper.value = null; paperStale.value = false; cancelReread(); clearStopOffer() }
+const leaveDrafts = () => { addUnknown = null; stagedNote.value = ''; paper.value = null; paperStale.value = false; cancelReread(); clearStopOffer() }
 // GC-ICFIX round 2 (F4): the page's ONE read of the paper book per refresh; its reply feeds the paper panel, the tracking box's total and
 // the P&L table TOTAL row (one moment, one text). An orders re-read (paperStale) is not overwritten by it.
 const { readFailed: paperReadFailed, contractsChanged: paperContractsChanged } = usePaperBookRead({
@@ -542,6 +543,7 @@ const exitGate = usePaperExit({ readFailed: paperReadFailed, held: () => paper.v
 const exitBlocked = exitGate.blocked
 // Lane U2 (ADR-017, ADR-016..019): set when an Exit's POST ended with an unknown outcome; { attempt, names, before, expected } until a good re-read of the book decides it
 const exitUnknown = ref(null)
+let addUnknown = null // Opus review F2 (ADR-016..019): { net } of the book when an ADD-only post got no answer; Review and add is refused until a read shows the book changed (or the book is left and reopened)
 const exitOrigin = ref(false) // the pending edits came from Exit all or a per-leg Exit; stays true until they are posted or discarded (ADR-328 (4))
 // P10: the strategy the Plan watch reads: the saved id, or in Drafts Mode (savedId stays null there) the paper book's own integer id
 const planWatchId = computed(() => (Number.isInteger(savedId.value) ? savedId.value : Number.isInteger(paper.value?.book?.strategy_id) ? paper.value.book.strategy_id : null))
@@ -552,6 +554,7 @@ function reviewPending(fromExit = false, only = null, info = null) { // the "Rev
   if (!paper.value || paperStale.value || !shown?.length) return
   if (fromExit === true) exitOrigin.value = true // never reset here: "Review and add" of Exit edits is still an Exit
   if (exitBlocked.value) return // post nothing; the panel's reason line says why
+  if (addUnknown && !shown.some((o) => o?.kind === 'exit')) { stagedNote.value = ADD_UNKNOWN_TEXT; return } // the last add may be stored: never offered again unread
   paperError.value = ''
   stagedNote.value = ''
   legOnly = only ? info : null // ADR-330 (49): the open dialog is one leg's own exit
@@ -685,7 +688,15 @@ async function confirmPending(orders, _held = null, notLiveTicked = false) {
   paperState.value = PAPER_STATE.READY
   let reply = null
   clearStopOffer()
-  const check = { id, stops: ((await readStops(id)) ?? []).filter((x) => x.kind === 'leg_stop' && x.state === 'armed'), net: paper.value.net.map((l) => l.contract_id) }
+  let stopsNow = []
+  try { stopsNow = (await readStops(id)) ?? [] } catch { stopsNow = [] }
+  if (!paper.value || !paperDialog.value || exitBlocked.value) { // Opus review F3: the book was left or the trade changed during that read: post nothing, free the dialog
+    exitRec.clear(EXIT_KEY)
+    paperBusy.value = false
+    if (paper.value && exitBlocked.value && paperContractsChanged.value) closeChanged()
+    return
+  }
+  const check = { id, stops: stopsNow.filter((x) => x.kind === 'leg_stop' && x.state === 'armed'), net: paper.value.net.map((l) => l.contract_id) }
   try {
     reply = own || waiting ? await postPaperOrders(api, id, orders) : await postPaperOrders(api, id, orders, actedSuggestionIds.value, preparedBasketLegs.value, null, preparedApproachId.value, notLiveTicked === true)
   } catch (e) {
@@ -694,6 +705,7 @@ async function confirmPending(orders, _held = null, notLiveTicked = false) {
       paperError.value = (e?.parts ?? NEUTRAL_PARTS).what_happened || NEUTRAL_PARTS.what_happened
     }
     if (outcome === PAPER_STATE.UNKNOWN) {
+      if (!orders.some((o) => o?.kind === 'exit')) addUnknown = { net: netKey(paper.value?.net) }
       exitRec.settle(EXIT_KEY, attempt, 'unknown')
       moveCheck = check // the re-reads decide, not this guess
       if (orders.some((o) => o?.kind === 'exit')) { // ADR-017: this exit may be stored; it is never sent again until a re-read decides it (any post that carries an exit row, wherever the click came from)

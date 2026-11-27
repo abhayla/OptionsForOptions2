@@ -1,4 +1,4 @@
-STATUS 03:20 | item 1 I-30 Fixed not tested (cloud: passed) | item 2 I-49 cause found, page half proven, fix is for the owner lane | item 3 I-50 Fixed not tested (cloud: passed) | item 4 I-68 no code change, one-press proven already holds | next push: this one | blocker: none
+STATUS 03:40 | UX-A03, UX-B25, UX-AF1, UX-C3: queued, not started | item 1 I-30 Fixed not tested (cloud: passed) | item 2 I-49 cause found, page half proven, fix is for the owner lane | item 3 I-50 Fixed not tested (cloud: passed) | item 4 I-68 no code change, one-press proven already holds | next push: this one | blocker: none
 
 # Lane FB round 2: Builder page (branch fix/r2-builder-1128, from integration/conflicts-1127 16c536f0)
 
@@ -10,6 +10,7 @@ Paper only. No broker order endpoint was called. Files edited: `StrategyBuilderP
 | 1 I-30 contract-list line | Passed in cloud (tests/contract-list-line-r2-fb.test.js, 5 tests). Browser: screens-fb/01-contract-list-line.png | red 2 of 5 before the fix, 5 of 5 after |
 | 2 I-49 slow first prices | Cause found. Page half proven by test (tests/builder-first-prices-r2-fb.test.js, 2 tests). The fix is in files this lane may not edit: see "For the owner lane" | passes: it records the order |
 | 3 I-50 one loading state per leg | Passed in cloud (tests/leg-working-r2-fb.test.js, 7 tests). Browser: screens-fb/02-leg-working.png | red 3 of 6 before the fix, 7 of 7 after |
+| 4b I-68 review F2 (page path) and F3 | Fixed, passed in cloud (tests/add-to-paper-r2-fb.test.js, 4 tests): F2 test was RED before the fix (2 posts, expected 1), green after; F3 test written with the fix, not run red | see Item 4b |
 | 4 I-68 Add to Paper one press | NO CODE CHANGE: the one-press, one-order rule already holds. Guard test added (tests/add-to-paper-r2-fb.test.js, 2 tests, green on the unchanged code; it could not be run red) | see "Item 4" |
 
 Highest status claimed: Fixed, not tested on the owner's PC (market closed, no live feed here).
@@ -37,18 +38,25 @@ Highest status claimed: Fixed, not tested on the owner's PC (market closed, no l
 - Real-order twin: the builder has no real-order "Add to Paper" twin; real orders are placed on the Execute page, which is not in this lane's files. Gap: the Execute page's single-press rule was not checked here.
 - Opus review of item 4: REVISE, see "Review" below (it found real double-order and greyed-Confirm causes; item 4 is therefore NOT closed).
 
+## Item 4b (Opus review F2 page path, F3), `StrategyBuilderPage.vue`
+- F2: an ADD-only post with no answer now sets a page lock (`addUnknown`); "Review and add" is refused with `ADD_UNKNOWN_TEXT` until a book read shows the net changed (the add was stored) or the book is left and reopened. Exits keep their own lock. Fail-closed.
+- F3: the stops read before the post is inside a try, and after it the page re-checks that the book and dialog are still open and not blocked; otherwise nothing is posted and `paperBusy` is freed.
+- Not fixed (other lanes' files, For the owner lane): F1, F2 save-bar path, F4.
+
 ## Decided for the owner
+0. I-68 F2: fail-closed lock after an unknown add (ADR-016..019); the user reopens the strategy to clear it.
 1. I-30: a failed re-read keeps the line already shown (ADR-330 (61)).
 2. I-68: no change. Both extra steps are decided: (19) the name step and (28) the tick. If the owner wants one press, that is a SPEC CHANGE to ADR-330 (19) (name asked after the trade, not before) and (28) (the tick folded into Confirm); not done while the owner sleeps.
 3. I-50: the loading words equal the opening card's (`Working out the outcome...`).
 
 ## pending owner read (new on-screen sentences)
+- `The last paper order got no answer and may be stored. It is not sent again until the Paper book has been read: open the strategy again to check.` (Review and add after an unknown add)
 - `Working out the outcome...` shown on each leg row (same words as the existing opening card).
 - The contract-list line is the server's template `contract_list_earlier` ("Contract list of <date>. Today's list loads at about <hh:mm>."), not new here. Example shown in the screenshot: "Contract list of 26 Nov. Today's list loads at about 08:35."
 
 ## For the owner lane
 1. I-49, `frontend/src/components/strategy/LegPicker.vue` (not this lane's file): `save()` (about line 555, `await capture(id, und)` before `emit('update:legs', ...)`) and `addChosen()` (about line 618, `await Promise.all(chosen.map(capture))` before `emit('update:legs', ...)`) hold the leg back until the planned-entry reply. Two ways to cut the first wait, both needing an owner or backend call: (a) start `capture()` when the B/S cell is picked (before Done) so the reply is already there at Done; (b) backend (Lane FD): make `POST /strategies/planned-entry` answer from the first tick without waiting for the subscribe round trip, and let the outcome take the live price when the leg has none. I did not pick one: (a) changes when a price is captured (the captured time shown to the user).
-2. I-68: if the owner decides one press: `SaveDraftBar.vue` `startPaper()` (name step) and `PaperConfirmDialog.vue` `canConfirm` (`props.notLiveLine && !notLiveAck`).
+2. I-68 review: F1 `PaperConfirmDialog.vue:124` should reset the tick when the OPENING changes, not when the line's "as of HH:MM" text changes; F2 save bar `SaveDraftBar.vue:355,372-380`: keep a per-strategy unknown lock that `canAddToPaper` checks and `openPaperDialog` does not reset; F4: keep `refusedAt` across reopen. If the owner decides one press: `SaveDraftBar.vue` `startPaper()` (name step) and `PaperConfirmDialog.vue` `canConfirm` (`props.notLiveLine && !notLiveAck`).
 
 ## To file as deferred issues
 - Contract-list line on Option Chain, Create Strategy and Execute pages.

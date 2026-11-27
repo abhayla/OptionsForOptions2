@@ -141,3 +141,6 @@ export const CHAIN_EXPIRIES_UNREADABLE_TEXT = 'The expiries could not be read, s
 // pending owner read (28 Nov 2026), I-50 (REQ-078, ADR-330 (58)): the ONE loading line of a leg while the outcome is worked out; the same words
 // for every leg and for the opening card. Replaced by the real figure (the leg's price time) when the reply arrives.
 export const LEG_WORKING_TEXT = 'Working out the outcome...'
+
+// pending owner read (28 Nov 2026), Opus review F2 (ADR-016..019): shown when "Review and add" is pressed after an add got no answer
+export const ADD_UNKNOWN_TEXT = 'The last paper order got no answer and may be stored. It is not sent again until the Paper book has been read: open the strategy again to check.'

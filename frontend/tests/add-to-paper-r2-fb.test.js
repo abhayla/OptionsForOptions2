@@ -104,3 +104,62 @@ describe('I-68: Add to Paper is one press, one order', () => {
     w.unmount()
   })
 })
+
+// Opus review F2 (page path): after an UNKNOWN answer (no reply / 5xx) an add-only "Review and add" must not be re-sent by Cancel and
+// Review again: the server stores a second basket (no idempotency key). ADR-016/017/019: an unresolved answer blocks sending.
+describe('I-68 review F2/F3: an unknown answer to an add blocks the next send; a route change during the stops read frees the dialog', () => {
+  const toDraftsWithPendingAdd = async () => {
+    answers['POST /paper/strategies/70/orders'] = () => Promise.resolve({ data: BOOK_70 })
+    answers['GET /paper/strategies/70/triggers'] = { triggers: [] }
+    const w = await mountPage()
+    await t(w, 'add-to-paper').trigger('click')
+    await flushPromises()
+    await confirmPaperName(w)
+    await tickNotLive(w)
+    await t(w, 'paper-confirm-button').trigger('click')
+    await flushPromises()
+    expect(t(w, 'paper-mode-label').exists()).toBe(true)
+    calls.length = 0
+    const s = w.vm.$.setupState
+    s.setLegs(s.legs.map((l, i) => (i === 0 ? { ...l, lots: l.lots + 1 } : l)))
+    await flushPromises()
+    return w
+  }
+  it('unknown answer -> Cancel -> Review and add again: Confirm is not offered, nothing is sent twice', async () => {
+    const w = await toDraftsWithPendingAdd()
+    answers['POST /paper/strategies/70/orders'] = () => Promise.reject(new Error('network')) // unknown outcome
+    await t(w, 'paper-review').trigger('click')
+    await flushPromises()
+    await tickNotLive(w)
+    await t(w, 'paper-confirm-button').trigger('click')
+    await flushPromises()
+    expect(posts()).toHaveLength(1)
+    await t(w, 'paper-cancel').trigger('click')
+    await flushPromises()
+    await t(w, 'paper-review').trigger('click')
+    await flushPromises()
+    await tickNotLive(w)
+    const btn = t(w, 'paper-confirm-button')
+    if (btn.exists()) await btn.trigger('click')
+    await flushPromises()
+    expect(posts()).toHaveLength(1)
+    w.unmount()
+  })
+  it('F3: the book is left while the stops are read before the post: nothing is posted and the busy flag is freed', async () => {
+    const w = await toDraftsWithPendingAdd()
+    let freeStops
+    answers['GET /paper/strategies/70/triggers'] = () => new Promise((res) => { freeStops = () => res({ data: { triggers: [] } }) })
+    await t(w, 'paper-review').trigger('click')
+    await flushPromises()
+    await tickNotLive(w)
+    await t(w, 'paper-confirm-button').trigger('click')
+    await flushPromises()
+    const s = w.vm.$.setupState
+    s.leaveDrafts()
+    freeStops()
+    await flushPromises()
+    expect(posts()).toHaveLength(0)
+    expect(s.paperBusy).toBe(false)
+    w.unmount()
+  })
+})
