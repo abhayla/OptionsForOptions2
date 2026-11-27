@@ -120,7 +120,8 @@ async def test_m1_a_long_put_stop_fired_says_the_put_is_uncovered_with_no_index_
     [(_, text)] = await _alerts(db, stored.id)
     assert fires == 1 and "14,45," not in text and "2026-" not in text
     assert ("If this stop fires, a sold option is left without a bought option of its type covering it, so its loss "
-            "grows as the index moves past its strike (now Rs 2,860.00). Sold option with less protection: NIFTY ") in text
+            "grows as the index moves past its strike (now Rs 2,860.00). "
+            "Sold option with less protection: NIFTY ") in text
 
 
 async def test_an_index_exit_gets_a_line_only_when_the_exit_check_says_yes(db):

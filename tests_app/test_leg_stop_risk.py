@@ -158,8 +158,8 @@ async def test_a_level_that_is_not_a_multiple_of_five_paise_is_refused_like_the_
 
 
 async def test_m1_a_stop_that_leaves_a_sold_put_uncovered_prints_no_index_to_zero_figure_and_no_iso_date(db):
-    """Lane M, 27 Nov (B-N1 #194 on screen: "max loss becomes Rs 16,62,316.50 (now Rs 1,732.25)" and an ISO date). A stop
-    on the LONG put at 5.00 leaves the short 22400 PE with no bought put: the engine's lowest point is the index at 0,
+    """Lane M, 27 Nov (B-N1 #194 on screen: "max loss becomes Rs 16,62,316.50 (now Rs 1,732.25)" and an ISO date).
+    A stop on the LONG put at 5.00 leaves the short 22400 PE bare: the lowest point is the index at 0,
     -22400 x 65 + 10,465.00 = -14,45,535.00, a figure no one can act on. The line says the loss is not capped by the
     trade's own legs instead (wording pending owner read), and names the leg as the screens do (REQ-151), never ISO."""
     app, stored, ids = await _book(db)
