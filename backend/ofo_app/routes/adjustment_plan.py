@@ -816,7 +816,9 @@ async def _write(strategy_id: int, data: PlanIn, edit: bool, db: Any, user_ref: 
             check_time_exit_day(body["guards"].get(TIME_KEY),
                                 None if market is None else market.now.astimezone(IST).date(),
                                 max((x.expiry for x in legs), default=None))
-        saved = await store.accept_plan(db, user_ref, strategy_id, source.id, body, _base_json(tracked))
+        # #753: POST (edit False) is the user accepting the playbook; a PUT sheet edit never stamps accepted_at
+        saved = await store.accept_plan(db, user_ref, strategy_id, source.id, body, _base_json(tracked),
+                                        accepts=not edit)
         # ADR-330 (1): the reply shows the base now STORED (the one the checks read), not the one read before the save
         stored = dataclasses.replace(tracked, stop_base=in_force_mod.stop_base_from_json(saved.stop_base))
         return await _sheet(db, user_ref, strategy_id, stype, saved, None, user_values,
