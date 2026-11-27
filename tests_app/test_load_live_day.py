@@ -19,7 +19,6 @@ import asyncio
 import itertools
 from decimal import Decimal
 
-import pytest
 from _scenario_catalogue import load_library
 from httpx import ASGITransport, AsyncClient
 from ofo.marketdata.spot_source import SourceReading, SourceState
@@ -92,17 +91,13 @@ async def test_ten_running_trades_two_browsers_polling_stay_inside_the_budget(ap
     await _load(app_db_url, monkeypatch, _ticking_quote(), ROUTE_BOUND_S)
 
 
-@pytest.mark.xfail(strict=True, reason="plan-watch waits out a stalled quote: with every 3rd quote stalled 8 s the "
-                                       "pages (plan-watch, book, positions) miss the bound; fixed by "
-                                       "origin/hotfix/plan-watch-load-1127 (the 4 s price budget)")
+# the strict xfail went when hotfix/plan-watch-load-1127 (the 4 s price budget) came in: it passed (XPASS), Lane M3
 async def test_the_same_load_with_every_third_quote_stalled_8_seconds_still_answers_inside_6_seconds(
         app_db_url, monkeypatch):  # noqa: F811
     await _load(app_db_url, monkeypatch, _sometimes_stalled(3, STALL_S), STALLED_BOUND_S,
                 ALL_ROUTES - {"adjustment-check"})
 
 
-@pytest.mark.xfail(strict=True, reason="adjustment-check awaits its REST quote with no budget (plan-watch has one, "
-                                       "REQ-119 AC-4); no named fix branch bounds it: to file as a deferred issue")
 async def test_the_adjustment_check_under_the_same_stalled_quote_answers_inside_6_seconds(
         app_db_url, monkeypatch):  # noqa: F811
     await _load(app_db_url, monkeypatch, _sometimes_stalled(3, STALL_S), STALLED_BOUND_S,

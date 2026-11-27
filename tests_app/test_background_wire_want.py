@@ -10,7 +10,7 @@ import logging
 import pytest
 from ofo.instruments.models import ZERODHA
 from ofo.settings import calc as settings_calc
-from ofo_app import background, chain_push, feed_bus, scenario_mode
+from ofo_app import background, chain_push, feed_bus, monitoring_state, scenario_mode
 from redis.exceptions import ConnectionError as RedisConnectionError
 
 from tests_app.test_background_cycle import DEFAULTS, Calls, FakeGate, Prov, _prefs, _settings, _watched
@@ -30,7 +30,7 @@ class FakeRedis:
     async def set(self, key, value, px=None):
         if self.down:
             raise RedisConnectionError("down")
-        if key != feed_bus.heartbeat_key():  # ADR-286: written every cycle; ``sets`` counts want writes only
+        if key not in (feed_bus.heartbeat_key(), monitoring_state.key()):  # own writes; ``sets`` counts wants only
             self.sets += 1
         self.data[key] = value
 
