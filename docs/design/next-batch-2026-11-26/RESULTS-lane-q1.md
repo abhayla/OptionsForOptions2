@@ -1,5 +1,38 @@
 # RESULTS: Lane Q1 (route time outside the price read), 27 Nov 2026
 
+**STATUS: SAFE TO CLOSE (17:25 IST).** Head = the commit that adds this block (on top of 093c09c, which passed the gate
+at 16:58). Left: the fixes below go to Lane H; the deferred list further down; the wording-memo trade-off (drop e1fd1fe
+if the literal "re-checked on every read" must stay).
+
+## Report for the coordinator: the five slowest steps (price read stubbed instant, local DB)
+"One user" = one request at a time. "Two users" = 10 concurrent requests (two testers x 5 Positions rows); 20 concurrent
+is shown where it matters. Medians / worst over 5 runs. Margin broker calls are stubbed at an ASSUMED 0.5 s each: the
+call count is measured, the 0.5 s is not.
+
+| # | route | step | median / worst | users | cause (one line) | recommended fix | expected gain | risk | money/stop/exit/price path? |
+|---|---|---|---|---|---|---|---|---|---|
+| 1 | plan-watch, adjustment-check | margin (cache cold, failed or legs changed) | 1002 / 1008 ms | one | funds read then basket read, SERIAL, under one 8 s bound; a failed read retries after 30 s, so a slow broker costs a request up to 8 s | margin off the request path: the worker keeps each strategy's margin with its "Checked at" time; the route shows the stored figure and never waits on the broker (needs a decision row: changes freshness) | 1 s cold, up to 8 s on a slow/failed broker, per affected request | the T-16 "% of margin" figure in the route can be up to one worker cycle old (the worker's own alerts unchanged) | YES: money and stop (T-16 % of margin) |
+| 2 | plan-watch | compute on the event loop | 460 / 605 ms (10 conc.), 778 / 1165 ms (20 conc.) | two | ~35-42 ms CPU per check, run one after another on the API's one event loop; the paper monitor shares that loop | one request for all Positions rows (design below) + checks precomputed by the worker or run in a process pool | N requests to 1 and one price read per underlying; worst time falls roughly with N | Lane J/R files (plan_watch.py, PlanWatch.vue, Positions page); per-row fail-closed must hold | YES: price (shared price snapshot) |
+| 3 | adjustment-check | compute: cheapest_offered | ~25 ms of ~35 ms per check; 414 / 542 ms (10 conc.) | one, two | prices ~17 approaches on every check although few rules use the cheapest figure | compute only when a shown rule needs it, or cache per (legs, chain quote times, plan) | ~60-70 % of check CPU; halves the concurrent times [Likely] | the "cheapest" figure is in the reply: a wrong key shows a stale cheapest | YES: money (approach pricing) |
+| 4 | plan-watch, adjustment-check | compute: implied-volatility solves | ~84 solves per check, ~30 ms cumulative in cProfile (inflated by async; treat as approximate) | one | read_market re-solves IV for an unchanged chain on every request | cache the solves within one request (exact), keyed on the quote and its time | ~10-20 ms per check [Guessing] | engine file; needs the options-math review | YES: price (IV, Greeks) |
+| 5 | plan-watch | db | 12-14 ms, 23 queries (17 distinct) | one | the same rows read twice in one request (owner + scenario marker, plan row, entry facts, catalogue) | apply the parked request memo (`q1-parked-request-memo.patch`) after its suites pass on a good DB | 4-7 queries; a few ms locally, more on a remote DB | memo in stores used by stop and plan paths; any write clears it, GET only | YES: stop (plan row feeds the stops) |
+
+Already shipped (no answer change): the wording-scan memo, 156 scans per check down to 16 cold and 0 warm. Plan-watch
+single 74.5 to 64.4 ms; 20 concurrent plan-watch 1006/1450 to 778/1165 ms. The step timing on every request log line
+(`db= price= margin= compute=`) shows on the PC which of 1 to 5 the real 6 s is.
+
+### Harness command for Lane H (before and after, on a throwaway database: the harness arms triggers)
+```
+env -u HTTPS_PROXY -u HTTP_PROXY -u https_proxy -u http_proxy -u ALL_PROXY -u all_proxy \
+  OFO_PERF=1 OFO_PERF_OUT=perf-single.txt OFO_PERF_CONC_OUT=perf-concurrent.txt \
+  python -m pytest -c pytest-app.ini tests_app/perf_route_profile.py -q -s
+```
+Add `OFO_PERF_PROFILE=1` for the cProfile blocks. It needs the tests_app database variables (TEST_DATABASE_URL etc., as
+`tests_app/conftest.py` reads them) pointing at a FRESH database migrated to head, one per run; reusing ofo_test
+fails ("would drop 750 of 750 live NIFTY contracts"). The guard tests: `tests_app/test_route_latency_budget.py` (query
+ceilings 23/19/18/11, single route ≤ 300 ms, concurrent guard; the cold-margin test is xfail(strict) until fix 1 or
+the margin gather is decided; remove the mark when it passes).
+
 send_message to the coordinator was refused (elevated_session_untrusted_device); status lines are kept here.
 
 ## Status lines
