@@ -187,3 +187,97 @@ async def test_closed_put_side_reads_put_and_unreadable_entry_judges_no_side(app
     monkeypatch.setattr(pw, "_closed", lambda _run: frozenset())  # an unreadable entry: nothing judged closed
     status, out = await _watch(sid)
     assert status == OK and not [x for x in out["lines"] if x["reason"] == NA_PUT], out
+
+
+async def test_no_database_connection_is_held_while_the_market_is_read(app_db_url, monkeypatch):  # noqa: F811
+    """The API pool is small (4): plan-watch gives its connection back before the (slow) price reads, as the adjustment
+    check does (D-36 c). The market read is wrapped: the pool must have nothing checked out while it runs."""
+    from ofo_app.adjustment_readers import read_market  # noqa: PLC0415
+    from ofo_app.main import create_app  # noqa: PLC0415
+    from ofo_app.routes.adjustment import get_market_reader  # noqa: PLC0415
+
+    sid = await _seeded(app_db_url, monkeypatch, "ADJ-01")
+    held: list[int] = []
+
+    async def slow_market(tracked, ctx):
+        held.append(app_db.get_engine().pool.checkedout())
+        return await read_market(tracked, ctx)
+    _reset_engine()
+    app = create_app()
+    app.dependency_overrides[get_market_reader] = lambda: slow_market
+    async with AsyncClient(transport=ASGITransport(app=app), base_url="http://t") as ac:
+        r = await ac.get(f"/api/strategies/{sid}/plan-watch")
+    await app_db.close_db()
+    assert r.status_code == OK, r.text
+    assert held == [0], held
+
+
+async def _watch_dep(strategy_id: int, dep, reader) -> tuple[int, dict]:
+    from ofo_app.main import create_app  # noqa: PLC0415 - the env must be set first
+    _reset_engine()
+    app = create_app()
+    app.dependency_overrides[dep] = lambda: reader
+    async with AsyncClient(transport=ASGITransport(app=app), base_url="http://t") as ac:
+        r = await ac.get(f"/api/strategies/{strategy_id}/plan-watch")
+    await app_db.close_db()
+    return r.status_code, r.json()
+
+
+async def test_a_hanging_market_read_is_cut_at_the_budget_and_answers_not_live(app_db_url, monkeypatch):  # noqa: F811
+    """REQ-119 AC-4: the price read never answers; the route still answers (its budget cuts the read), with the existing
+    "prices not live" shape: every line paused / not checked, no `now`, no distance (absent, never 0). The cut-off read
+    is cancelled (not left running) and held no database connection while it waited. No clock is measured: a read that
+    was not cut would hang this test."""
+    import asyncio  # noqa: PLC0415
+
+    from ofo_app.routes import plan_watch as pw  # noqa: PLC0415
+    from ofo_app.routes.adjustment import get_market_reader  # noqa: PLC0415
+
+    sid = await _seeded(app_db_url, monkeypatch, "ADJ-01")
+    await _arm(app_db_url, sid)
+    monkeypatch.setattr(pw, "PRICE_BUDGET_S", 0.05)
+    seen: dict[str, object] = {"held": None, "cancelled": False}
+
+    async def hangs(_tracked, _ctx):
+        seen["held"] = app_db.get_engine().pool.checkedout()
+        try:
+            await asyncio.Event().wait()
+        except asyncio.CancelledError:
+            seen["cancelled"] = True
+            raise
+    status, out = await _watch_dep(sid, get_market_reader, hangs)
+    assert status == OK, out
+    assert seen == {"held": 0, "cancelled": True}, seen
+    assert out["lines"] and all(x["state"] in ("paused", "not_computable", "not_applicable") for x in out["lines"])
+    assert all(x["now"] is None and x["distance_rs"] is None for x in out["lines"])
+    assert {x["state"] for x in out["lines"] if x["kind"] in ("index_exit", "leg_stop")} == {"paused"}
+    assert set(out) == {"strategy_id", "as_of", "as_of_text", "plan_state", "no_plan_text", "armed_heading", "paused",
+                        "lines"}  # the reply fields are the existing ones
+
+
+async def test_a_hanging_index_quote_is_cut_at_the_budget_and_cancelled(app_db_url, monkeypatch):  # noqa: F811
+    import asyncio  # noqa: PLC0415
+
+    from ofo_app.routes import plan_watch as pw  # noqa: PLC0415
+    from ofo_app.routes.adjustment import get_rest_spot_reader  # noqa: PLC0415
+
+    sid = await _seeded(app_db_url, monkeypatch, "ADJ-01")
+    monkeypatch.setattr(pw, "PRICE_BUDGET_S", 0.05)
+    seen = {"cancelled": False}
+
+    async def hangs(_underlying):
+        try:
+            await asyncio.Event().wait()
+        except asyncio.CancelledError:
+            seen["cancelled"] = True
+            raise
+    status, out = await _watch_dep(sid, get_rest_spot_reader, hangs)
+    assert status == OK, out
+    assert seen["cancelled"] is True and out["lines"], (seen, out)
+
+
+async def test_a_read_inside_the_budget_is_untouched(app_db_url, monkeypatch):  # noqa: F811
+    """The good answer: the budget changes nothing when the reads answer (live figures as before)."""
+    sid = await _seeded(app_db_url, monkeypatch, "ADJ-01")
+    status, out = await _watch(sid)
+    assert status == OK and any(x["now"] is not None for x in out["lines"]), out
