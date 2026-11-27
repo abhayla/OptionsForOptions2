@@ -1,9 +1,9 @@
-STATUS 18:10 | version 1 (early draft; coordinator corrections of 27 Nov applied) | covers heads: u 709eb835, r 8b45807a, j 303460ba, q2 5bdfdde0, w bcbff804, m 5a718413 (n, v, k, l, o, r2 not on origin at 17:50) | next version Sat 05:00 (full v1 for round 1)
+STATUS 19:40 | version 1b (early draft; coordinator corrections and facts of 27 Nov applied: decisions 59 to 61, reused PC session) | covers heads: u 709eb835, r 8b45807a, j 303460ba, q2 5bdfdde0, w bcbff804, m 5a718413 (n, v, k, l, o, r2 not on origin at 17:50) | next version Sat 05:00 (full v1 for round 1)
 
 # Test plan for the closed-market weekend, 28 and 29 Nov 2026 (rounds 1 to 4)
 
 Version 1 (early draft), Fri 27 Nov 2026 18:10 IST. Written by Lane X2 (documents only; no product code read or changed).
-For the owner's PC session. The market is closed until Mon 30 Nov 09:15. Three rounds, each started by the owner with a **fresh PC session**; the complete prompt for each is in section 10. The app on the PC has 9 running paper trades, no Kite
+For the owner's PC session. The market is closed until Mon 30 Nov 09:15. Three rounds, each started by the owner; the **PC session is reused** for all three (about 29 percent of its context was used on Fri evening), so section 10 gives one message per round to send to that session; the owner is present for the approvals (backup, migration 0059, restarts). The app on the PC has 9 running paper trades, no Kite
 login and no live feed. **Paper only: never place or send a broker order.** Monday's live plan is `docs/process/test-plan-2026-11-30.md`.
 
 Version log: v1 early draft Fri 18:10 (this file; covers what is pushed at 17:50). Full v1 due Sat 05:00 (before round 1), v2 before round 2 (Sat 20:00), v3 before round 3 (Sun 11:30). Each version names the heads it covers in the status line above.
@@ -63,7 +63,7 @@ Source: Lane J's "PC set-up" (RESULTS-lane-j.md) and the 26 Nov rehearsal; the l
    dump was about 1.8 MB with 47 entries). If the check fails, do not go on. [X2: the VPS disk is about 90 percent full; each round adds one
    dump of about 2 MB: delete the dump of the round before the last one.]
 2. **Stop** the API, the worker supervisor and the frontend.
-3. **Pull by tag.** `git fetch origin --tags`, then check out the round's tag (weekend-r1, weekend-r2, weekend-r3) in the checkout the app serves from. Write the head: `git rev-parse --short HEAD`.
+3. **Pull by tag.** [The link keep-alive the owner approved on Fri is applied and tested on the PC on Fri night; keep the link and connection-count step before every block anyway, and note any drop that still happens.] `git fetch origin --tags`, then check out the round's tag (weekend-r1, weekend-r2, weekend-r3) in the checkout the app serves from. Write the head: `git rev-parse --short HEAD`.
    Then, for each lane the round should carry, `git merge-base --is-ancestor <lane head> HEAD && echo yes`
    (heads in section 1). No output means that lane is not in the build: its checks are BASELINE for this round (rule 9).
 4. **Migrations.** Migration **0059** (named by the coordinator; not on origin at 17:50, so no old-code-safe proof was read): apply it only after its proof line (the old code's tests run against the migrated database, with counts) is written in the round's log; without it do not apply, and mark every check that needs it BLOCKED (name 0059). All four old ones (0054 to 0057) are already in the PC's database (the PC runs `integration/nb-1126`). **None of the six
@@ -148,7 +148,7 @@ C (reused 27 Nov checks, section 5), D (after-close checks and the 9-screen swee
 - **Expected:** every figure for one trade is the same to the paisa in all five places; each is labelled after charges with a time; the label reads "Total P&L" then the figure then "(after charges)" **once** (never "(after charges) (after charges)" nor a bare "(after charges)"); Home and Positions totals agree when they cover the same trades, and where they do not, the line under the total says why (27 Nov: the totals differed because different trade sets).
 - **Write down:** the five figures per trade, the three totals, the count lines.
 
-### W-07 Owner decisions 46 to 57, each walked once
+### W-07 Owner decisions 46 to 58, each walked once (59 and 60 are W-26 and W-27; 61 is Monday 08:30 to 08:40)
 - **Proves:** each of the owner's decisions 46 to 57 (the 27 Nov plan covered ADR-330 points (1) to (44)). **Type:** Functionality / Screen.
 - **v1 status: BLOCKED at the writing of v1.** The text of decisions 46 to 57 is not in `spec/decisions/ADR-330.md` on any pushed branch checked at 17:50 (the file ends at the 25 Nov points; no `(46)` to `(57)` was found in `spec`, `docs` or PR #722's comments). The coordinator is asked in the report to point to the file or message that holds them; v2 writes one row per decision in this shape: **decision number | the product rule in one line | the screen where it shows | steps | exact expected text | first carried**.
 - **Template for each row (so the PC can run it as soon as the text is known):** (1) find the screen the decision names; (2) do the one action it governs; (3) read back the exact sentence, figure or state; (4) compare to the decision's wording; (5) write the result. Each decision is walked once in the round that first carries it.
@@ -226,6 +226,17 @@ C (reused 27 Nov checks, section 5), D (after-close checks and the 9-screen swee
 - **Case B, feed process STOPPED** (stop it with the dialog open): expected **"<legs>: Prices are not live; try again when they update"** (your legs in place of <legs>) with Confirm **grey**; also **"Checking whether this exit leaves a sold option without protection..."** while the check runs, with Confirm grey until it answers; **"Tick a leg to exit."** with nothing ticked; **"An exit is already being sent for this strategy."** if pressed twice quickly.
 - **Case C, feed restarted:** the dialog (still open) goes back to Confirm blue.
 - Do each case on Positions and once in the builder. Write the times the feed was stopped and started. The completing exit (Confirm placing an order, order number, "Placing exit...") is MONDAY ONLY.
+
+### W-26 Owner decision ADR-330 (59): Exit all with a staged change
+- **Proves:** decision (59), made on Fri 27 Nov night. **Type:** Functionality / Screen. **First carried:** not named at v1 (R? : the lane that builds it; the version that sees it fills the head).
+- **Steps (market closed; nothing completes):** 1. Open a running paper trade in the builder and stage one change (for example remove one leg: it shows as a pending change). 2. Press **Exit all**. Read the dialog: it must say that a staged change exists. 3. Press **Cancel** and check the staged change is restored exactly as it was (same leg, same number of pending changes). 4. Press Exit all again and choose the option that discards the staged change; read the discard sentence. 5. Check Positions: nothing was placed.
+- **Expected:** the dialog sentence and the discard sentence are the ones written in decision (59); **they are not in any file read at v1**: write both word for word as observations and the next version copies the decision's text here. Cancel restores the staged change.
+
+### W-27 Owner decision ADR-330 (60): the Exit dialog with the market closed
+- **Proves:** decision (60). **Type:** Screen. **First carried:** R2 or R3 (Lane U2 builds it; not on origin at v1). Supersedes W-25 case A once built (W-25 case A records today's behaviour: Confirm on and a server refusal).
+- **Steps:** 1. Positions > Paper: tick one leg of a running trade, press Exit. 2. Read the dialog, the legs listed, and Confirm. 3. Do the same from the builder.
+- **Expected, word for word:** the dialog opens and shows the legs; the sentence **"The market is closed. Exits can be placed from 09:15 on <next trading day>."** (the real day in place of <next trading day>, for example "Monday 30 Nov"); **Confirm greyed**. No order appears.
+
 
 ## 5. Reused 27 Nov checks that can be proven with the market closed
 
@@ -761,7 +772,8 @@ R1 runs every check below once (BASELINE where the fix is not in the build). R2 
 | T1-20, T1-21 (weekend part), T3-10 (Lane U) | R1; the "as of" time on the tick text: R? (no lane named) | as above |
 | W-05 order limits | R1 for Lane W item 15; R? Lane K | each round that adds Lane K |
 | W-06 five P&L places | R? Lane L | R2, R3 |
-| W-07 owner decisions 46 to 57 | BLOCKED at v1 (text not found) | from the next version |
+| W-07 owner decisions 46 to 58 | BLOCKED at v1 (text not found) | from the next version |
+| W-26 decision (59), W-27 decision (60) | R? (Lane U2 builds (60): R2 or R3) | R3 |
 | AF-02, AF-03 to AF-06, AF-08, AX-05 (after-close facts, reproducible now) | R? Lane N (not pushed); baseline R1 | R2, R3 |
 | SW-0 to SW-9 (seed first, restart, walk 9 screens) | baseline R1; re-run after Lane N and Lane O | every round |
 | Section 5 reused checks (T1-14.. T4-04) | no fix needed: unrun steps only | R1, then only if FAIL or PARTIAL |
@@ -792,12 +804,12 @@ R1 runs every check below once (BASELINE where the fix is not in the build). R2 
 
 One line to the coordinator: `ROUND N done HH:MM | build tag | build head | PASS n FAIL n PARTIAL n BLOCKED n | new observations n | next round`. The PR #722 status comment follows rule 6 of section 0.
 
-## 10. The PC prompt for each round (the owner pastes it into a fresh PC session)
+## 10. The message for each round (the owner sends it to the reused PC session)
 
-Replace `N` and the bracketed items for the round. Lines marked **[OWNER APPROVAL]** are the only things the PC asks the owner to type "yes" for; everything else it does by itself.
+The PC session is the same one all weekend: it keeps what it learned in the round before, but it re-reads the plan file at the start of each round and never relies on memory for expected texts. The owner keeps it on a short leash: **[OWNER APPROVAL]** lines wait for the owner's typed "yes". Replace `N` and the bracketed items for the round. Lines marked **[OWNER APPROVAL]** are the only things the PC asks the owner to type "yes" for; everything else it does by itself.
 
 ```
-You are the owner's PC session for OptionsForOptions2, round N of the closed-market weekend test (tag weekend-rN).
+You are still the owner's PC session for OptionsForOptions2; this is round N of the closed-market weekend test (tag weekend-rN).
 Paper only: never place, send or confirm a broker order. The market is closed; there is no Kite login and no live feed.
 Read docs/process/test-plan-weekend-2026-11-28.md (section 0 rules, section 2 set-up, the checks of this round).
 1. Pull by tag: git fetch origin --tags; check out weekend-rN in the checkout the app serves from. Write git rev-parse --short HEAD.
