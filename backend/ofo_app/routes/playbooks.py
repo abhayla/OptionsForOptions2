@@ -464,13 +464,12 @@ def _not_checked(row: Any, body: dict[str, Any]) -> dict[str, Any]:
             "withheld": None, "results": [result_out(r, None) for r in results]}
 
 
-async def _read_bounded(item: tuple[Any, Any], seams: _Seams, listed: Any, gate: asyncio.Semaphore,
-                        data: TestIn) -> tuple[Any, _Read] | dict[str, Any] | None:
+async def _read_bounded(row: Any, seams: _Seams, listed: Any, gate: asyncio.Semaphore, data: TestIn,  # noqa: PLR0913
+                        *, tracked: Any = None) -> tuple[Any, _Read] | dict[str, Any] | None:
     """-> (row, read) when read in full and of the type; a not-checked entry when the type is known but the read timed
     out or failed; None when not of the type (or its type is not known)."""
-    row, tracked = item  # the strategy and its legs (read before the connection was released)
     read = _Read()
-    read.tracked = tracked
+    read.tracked = tracked  # the legs, read before the connection was released
     async with gate:
         started = time.monotonic()
         try:
@@ -514,8 +513,8 @@ async def _tested(db: Any, user_ref: str, data: TestIn, seams: _Seams) -> list[d
     await release_connection(db)  # D-36 (c): no connection is held across the market reads below
     listed = check.listed_of(seams.ctx)
     gate = asyncio.Semaphore(TEST_READ_CONCURRENCY)
-    answers = await asyncio.gather(*(_read_bounded(item, seams, listed, gate, data)
-                                     for item in zip(wanted, legs, strict=True)))
+    answers = await asyncio.gather(*(_read_bounded(r, seams, listed, gate, data, tracked=t)
+                                     for r, t in zip(wanted, legs, strict=True)))
     strategies = []
     for answer in answers:
         if answer is None:
