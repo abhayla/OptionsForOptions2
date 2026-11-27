@@ -1,4 +1,4 @@
-STATUS 00:35 | group 1 pushed (7948bdc5); group 2 + K2's final head 5ee104a5 merged locally, final gate running (the earlier gates failed on: ratchet, a reply-inventory key order, two strict xfails that now pass; all fixed) | merged: plan-read-2, worker-join, builder-open, worker-chain, exit-all a7ccf4a9, order-door-2 5ee104a5, page-handovers | unresolved: none | not merged: hotfix/worker-2-1127 (not on origin at 00:30) | next push: when the gate ends TOTAL PASS | blocker: none (send_message refused for me; this line is the report)
+STATUS 01:10 | pushed 8ca36525 (gate TOTAL PASS; groups 1 and 2 + K2 5ee104a5); now: clock pin for the two Friday-afternoon plan-watch tests, gate running | unresolved: none | not merged: hotfix/worker-2-1127 (not on origin at 01:05) | next push: after the gate | blocker: none (send_message refused for me; this line is the report)
 
 # Lane M3: conflicts and reds of the weekend build (27 Nov 2026)
 
@@ -57,7 +57,7 @@ Branch `integration/conflicts-1127` from `origin/integration/weekend-1127` (c9f9
 
 ## To file as deferred issues
 
-- `tests_app/test_plan_watch.py::test_a_hanging_market_read_is_cut_at_the_budget_and_answers_not_live` and `::test_a_quote_answering_after_the_market_was_cut_is_not_asked` fail on a Friday after 15:00 IST: the seeded plan's `day.beforeWeekend.1500.0` rule reads the real clock and shows `fired`. They fail identically on Lane R's branch alone (checked in a separate worktree). DB tests, so not in the local gate; CI would see it on a Friday afternoon. Pass the date in (rule: no clock in tests).
+- (done, coordinator's request 00:52) the two Friday-afternoon plan-watch tests are pinned to Wednesday 25 Nov 2026 11:00 IST (`_pin_server_clock`, patching `ofo_app.adjustment_readers.server_now`; no product code). Proof: pinned to Friday 27 Nov 15:30 IST both FAIL (`2 failed`), pinned mid-week 13 of 13 pass.
 - `tests/test_order_door_parity_live_day.py` still pins `(LOTS, "paper")` as an expected failure although Lane W's paper lots limit is in; the pattern for the paper cell may not match the new check. Not mine to change.
 - `fix/pnl-totals-1127` carries `chore/gate-speed-1127`; whoever merges that branch gets the process files.
 
