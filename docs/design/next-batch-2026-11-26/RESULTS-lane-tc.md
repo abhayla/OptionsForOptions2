@@ -11,7 +11,7 @@ Base: `origin/integration/weekend-1127` + `origin/integration/conflicts-1127` (m
 - Closes: `tests_browser/r2_1128/closes17.json` (17 synthetic rows: NIFTY 50 24187.35, SENSEX 79234.50, 15 NIFTY options, all `price_at 2026-11-27T15:29:58+05:30`, source `tc_synthetic_2026-11-28`). `python -m ofo_app.last_close_store seed <file> --check` then without `--check`: `written 17, unchanged 0, skipped 0` (run with the catalogue check ON).
 - Strategies: `seed_strategies.py` creates 5 drafts through the routes; the routes then REFUSE every paper order with MARKET_DATA_102 "The market is closed. Orders can be placed once it opens." (correct per the rule "a paper entry stays refused"), so the fills go in by `seed_orders.sql` (insert-only table, same columns the store writes). Seeded: #1 TC Condor Running 1 (4 legs, priced), #2 TC Strangle Open (priced), #3 TC Unpriced Trade (24350 CE/PE have no close row: unpriced), #4 TC Completed Trade (opened and exited: Completed), #5 Wide Iron Condor 20x (name of exactly 20 characters).
 - API: `tests_browser/r2_1128/serve_app.py` = the real `create_app` with `LIVE_MARKET=1`, but the market's socket is idle: it reports "connected" (as Kite's socket does on a weekend) and delivers no frame. No token is read and no Kite call is made. See "Decided for the owner" for why.
-- Browser: `npm ci && npm run build`, `vite preview` on 4173 proxying /api to 8000; Playwright with the preinstalled Chromium; `tests_browser/r2_1128/shot.mjs <name> <path> [--btn X] [--click Y]` writes a JPEG (1366x768) and prints the page text and console errors.
+- Browser: `npm ci && npm run build`, `vite preview` proxying /api to the API (ports and addresses are passed by environment variables: `BASE`, `TC_API_BASE`, `OFO_API_TARGET`); Playwright with the preinstalled Chromium; `tests_browser/r2_1128/shot.mjs <name> <path> [--btn X] [--click Y]` writes a JPEG (1366x768) and prints the page text and console errors.
 - API restart for item 2: **03:18:09 IST** (after the seed; closes are read from the table at start).
 
 ## Decided for the owner
@@ -81,3 +81,8 @@ D-1, D-2, D-3, D-4, D-5, D-6, D-7, D-8, D-10, D-11, D-12, D-13 (this file's word
 | task | model | minutes |
 |---|---|---|
 | set-up, seeds, the walk, write-up | Sonnet (this lane) | about 35 (03:07 to 03:42 IST), plus two stopped gate runs |
+
+## Process notes
+- No override was attempted (`PREPUSH_GATE_ALLOW` never set). The lanes skill was missing on the base branch; I read it from `origin/fix/ic-live-test-1123` at the start.
+- Gate history: run 1 (full jobs) red on one test, `tests/paper-leg-readers-guard.test.js` (15 s timeout under load; passes alone in 5.2 s); run 2 stopped by me because the coordinator's rules forbid ports in pushed files, which I then removed (ports and addresses now come from environment variables). Final run is `--jobs 2` with nothing else running.
+- All prices in the pushed files and screenshots are synthetic (`tc_synthetic_*`), none from a real feed.

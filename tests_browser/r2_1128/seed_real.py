@@ -4,6 +4,7 @@ the way the app stores a real fill (execution_plan_store, pattern of tests_app/t
     PYTHONPATH=backend:. DATABASE_URL=<owner url of ofo_tc> python tests_browser/r2_1128/seed_real.py
 """
 import asyncio
+import os
 import sys
 from decimal import Decimal
 
@@ -22,7 +23,7 @@ async def main() -> int:
     async with get_engine().connect() as conn:
         cid = (await conn.execute(text("select id from public.catalogue_contracts where exchange_token=:t and exchange_segment='NSE_FO'"), {"t": TOKEN})).scalar_one()
         await conn.rollback()
-        r = httpx.post("http://127.0.0.1:8000/strategies", json={"underlying": "NIFTY", "name": "TC Real Position",
+        r = httpx.post(os.environ["TC_API_BASE"] + "/strategies", json={"underlying": "NIFTY", "name": "TC Real Position",
                        "legs": [{"contract_id": cid, "action": "BUY", "quantity": 65}]}, timeout=30)
         sid = r.json()["id"]
         print("strategy", sid, r.status_code)

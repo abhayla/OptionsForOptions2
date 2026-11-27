@@ -1,4 +1,4 @@
-"""Lane TC set-up: paper strategies through the real HTTP routes of the app on port 8000 (the throwaway database only).
+"""Lane TC set-up: paper strategies through the real HTTP routes of the app (the throwaway database only).
 Prints one line per call so a refusal is visible. Entry prices are typed (paper)."""
 import json
 import subprocess
@@ -6,9 +6,11 @@ import sys
 
 import httpx
 
-BASE = "http://127.0.0.1:8000"
-PSQL = ["psql", "-h", "localhost", "-U", "postgres", "ofo_tc", "-Atc"]
-ENV = {"PGPASSWORD": "postgres_ci_dummy_pw", "PATH": "/usr/bin:/bin"}
+import os
+
+BASE = os.environ["TC_API_BASE"]
+PSQL = ["psql", "-Atc"]  # connection comes from the PG* environment variables
+ENV = {**os.environ}
 
 
 def cid(token: int) -> int:

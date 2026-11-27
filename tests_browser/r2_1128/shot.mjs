@@ -13,7 +13,7 @@ const btns = []
 const scrolls = []
 const measures = []
 let clipText = null
-let wait = 6000, full = false, base = process.env.BASE || 'http://127.0.0.1:4173'
+let wait = 6000, full = false, base = process.env.BASE
 for (let i = 2; i < a.length; i++) {
   if (/^\d+x\d+$/.test(a[i])) [w, h] = a[i].split('x').map(Number)
   else if (a[i] === '--click') clicks.push(a[++i])

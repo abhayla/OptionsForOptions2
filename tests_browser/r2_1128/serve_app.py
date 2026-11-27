@@ -91,7 +91,7 @@ def _fake_zerodha(app) -> None:
 
 
 if __name__ == "__main__":
-    port = int(sys.argv[1]) if len(sys.argv) > 1 else 8000
+    port = int(sys.argv[1])  # the port is an argument: nothing is written down here
     application = create_app()
     if os.environ.get("TC_REAL"):
         _fake_zerodha(application)
