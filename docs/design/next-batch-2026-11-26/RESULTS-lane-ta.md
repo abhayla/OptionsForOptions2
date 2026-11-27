@@ -1,4 +1,4 @@
-STATUS 04:10 | item: all 15 tested; Opus review of I-63 and I-103 and the gate are open | next push after the gate | blocker: none
+STATUS 04:40 | item: all 15 tested, Opus review applied (round 1); gate run open | next push after the gate | blocker: none
 
 # Lane TA: database tests for 15 backend items (28 Nov 2026)
 
@@ -10,14 +10,14 @@ two families cannot share one database: a note for the owner PC, not a defect).
 ## Items
 | Item | State | Evidence |
 |---|---|---|
-| I-02 | PASS | `tests_app/test_plan_rupee_worsen_recover_r2_1128.py` 1 passed (twice). Red proof: with the worse-reading rule switched off in memory the test fails (`value 400 != 650`). Worse updates the same open row, recovery keeps it open with "no longer true since", a loss past the line again clears the note, one row throughout. |
+| I-02 | PASS | `tests_app/test_plan_rupee_worsen_recover_r2_1128.py` 2 passed, driven by the REAL gate and the worker's own store. (1) Rupee stop (one rung): losses 400, 650, 900, 250, 420 give events Opened, Lapsed, TrueAgain only; the alert stays ONE open row at the value it fired at (400), recovery keeps it open with "no longer true since", past the line again clears the note, still in Active and the bell. A worse rupee loss does NOT update the alert (one stage = one rung; the Tier A review found my first version tested a hand-made `Escalated` the worker cannot produce). (2) A stop with stages (T-06, two rungs): worse emits `Escalated`, the same row is updated to 900 and marked escalated, recovery keeps it. Red proof for (2): with the worse-reading rule off in memory the row stays 400. |
 | I-03 | PASS | `tests_app/test_alert_continue_stop_r2_1128.py` 2 passed (percent stop and rupee stop): Continue clears the alert from Active, bell is exactly one lower, History has answer `continue`, `paper_orders` unchanged. |
 | I-39 | PASS (API half) | `tests_app/test_completed_header_count_r2_1128.py` 1 passed: 15 closed + 1 draft + 1 hidden closed -> `GET /strategies` returns exactly the 15 completed ids, once each. The header's number is not computed by the server (no count field in `StrategyListOut`); it is the frontend's. See "For the owner lane". |
 | I-44 | PASS | `tests_app/test_paper_totals_settled_unpriced_r2_1128.py` 5 passed: a settled trade adds booked only; an unpriced one makes unbooked and total absent with its reason; left out ones are counted. |
 | I-55 | PASS | `tests_app/test_side_closed_no_plan_r2_1128.py` 2 passed: a trade with no plan is not listed by the worker's lister, so no `side_closed` alert; control with plan is listed. |
 | I-58 | PASS | `tests_app/test_alert_reason_words_r2_1128.py` 12 passed: each of the six actionable kinds, with and without figures: Active text is never the trade name, names its rule kind in words, carries the figures when present, and History repeats the same words. (The fallback `_rule_in_words` in `routes/alerts.py` already exists; no defect.) |
-| I-59 | PASS | `tests_app/test_plan_time_exit_one_alert_r2_1128.py` 1 passed (worker as its own process, PATH-93, whole system rule list on, time exit 11:43): ONE new alert, kind `plan_time_exit`, rule `T-10b`, Active text "Time exit reached". The defect (two alerts, neither named) is not reproduced on this build. |
-| I-63 | PASS (side pinned); Opus review pending | `tests_app/test_stop_side_sold_leg_r2_1128.py` 9 passed. **Which side: for a SOLD leg the loss stop sits ABOVE the leg's price** (the SELL 22800 CE at 39.15 takes "above 135.00": armed `above`, fires at or above 135.00, never at 134.99; a level below the price, e.g. "below 135.00" with the price at 39.15, is refused "straight away ... use Exit"). So a stop reading "above 135.00" while the price is lower is the CORRECT side, not P0. Sentence for it: "If this stop fires, max loss becomes Rs 7,072.00 (now Rs 11,297.00)." (see Observation 1). `frontend/tests/two-stops-words.test.js` is Lane TB territory. |
+| I-59 | PASS | `tests_app/test_plan_time_exit_one_alert_r2_1128.py` 1 passed (worker as its own process, PATH-93, whole system rule list on, time exit 11:43): no time-exit alert before 11:43; at 11:43 ONE new row, kind `plan_time_exit`, rule `T-10b`; at every later frame to the last (frames 4 to 9) still exactly that one row by id; Active text "Time exit reached"; no order placed. The defect (two alerts, neither named) is not reproduced on this build. |
+| I-63 | PASS (side pinned); Opus review applied | `tests_app/test_stop_side_sold_leg_r2_1128.py` 15 passed. **Which side: for a SOLD leg the loss stop sits ABOVE the leg's price** (premium rises = loss; a sold CE or PE alike; a bought leg's stop sits below). Pinned: "above 135.00" arms, fires at or above the level (both boundaries inclusive), never at 134.99; stale and missing prices never fire even when they carry a number (red with the live guard removed); in market hours "below 135.00" with the price at 39.15 and "above" a level the price has already reached are refused "straight away" and place no order. With the MARKET CLOSED nothing is checked (ADR-327 (3)) and "below 135.00" saves. So "above 135.00" while the price is lower is the correct side, not P0. `frontend/tests/two-stops-words.test.js` is Lane TB territory. |
 | I-64 | PASS | `tests_app/test_plan_watch_draft_r2_1128.py` 3 passed: a just-saved draft is 200 `no_plan` with the catalogue sentence, no lines, never "not found"; the batch row is `ok`; another user's, a hidden and an unknown id stay 404. |
 | I-81 | PASS | `tests_app/test_adjustment_history_other_user_r2_1128.py` 2 passed: another user's strategy is 404, the body is identical to a missing id's, carries no figure, and the raw counts (orders, suggestions, strategies, revisions) are the same after the read; a hidden own strategy is 404. |
 | I-82 | PASS (order decided) | `tests_app/test_adjustment_opportunities_order_r2_1128.py` 1 passed, `tests/adjustment/test_popup_order_r2_1128.py` 6 passed. Decided: Active and the ideas list newest first by raise time; a lapsed idea leaves Active and keeps its raise-time place in the ideas list; History by end time, newest first (stop-out notes and lapsed rows). Pop-ups: a stop-out crossed at 3 minutes waits with a rule true at entry and both fall due at entry + 5. |
@@ -30,23 +30,30 @@ two families cannot share one database: a note for the owner PC, not a defect).
 `prepush.py` needed three things this clone lacked, all fixed locally and not in the repo: `origin/main` with full history (`git fetch --unshallow`), `frontend/node_modules` (`npm ci`), and more than the 30-minute background limit (its `app_tests` step is long). Result is in the last line of this section when the run ends.
 
 ## Observations (not defects of this lane's items)
-1. Leg stop, sold leg: the route also saves a level BELOW the price that is not yet crossed (SELL 22800 CE at 39.15, "below 35.00": saved, line "If this stop fires, max loss becomes Rs 572.00 (now Rs 11,297.00)"). That is a profit exit worded as a stop, with no word saying which side. Not the P0 of I-63 (the stop the user sets above the price is on the right side), but the owner lane should decide whether to word or refuse it. Pinned only as far as the code does today: above-price saves, already-crossed is refused.
+1. Leg stop, sold leg (needs an owner decision, no decision row exists; ADR-207 (5) does not restrict the direction): no code is side-aware. The route only refuses a level the price is already at or beyond, and only in market hours. (a) A level BELOW the price that is not yet crossed saves (SELL 22800 CE at 39.15, "below 35.00"), and `leg-stop-risk` (it takes no direction) says "If this stop fires, max loss becomes Rs 572.00 (now Rs 11,297.00)": a line that reads like protection, while the stop can only fire when the trade is winning and the Rs 11,297 loss stays open. (b) With the market closed, "below 135.00" saves and would fire at the next live tick (price about 39): the sold leg exits at the open. Both are pinned as today's behaviour. Decision for the owner: word the side, or refuse a stop on the profit side.
 2. I-105: a coarse transitive scan over all routes lists 19 functions with a `db` parameter that reach a market wait through a helper and have no `release_connection(db)` of their own (adjustment_check.adjustment_check, adjustment_history.closed_figures(_many), adjustment_plan._run/read_rules/save_rules/accept_plan/edit_plan, alert_style._reply/read/pin, execute.execute_strategy, execution_return.return_from_kite, paper.get_paper_strategy/add_paper_triggers/keep_paper_trigger, tracking._answer/get_tracking, playbooks.test_playbook). Many release inside a callee; the scan cannot tell. Not asserted. Lane R should check them by the runtime pool test.
 3. I-59 and I-58 pass on this build: the fixes they cover are in.
 
 ## Decided for the owner
 - Fresh database per test file (template copy, 0.4 s): the seeded tests commit the scenario library and the rolled-back tests need an empty catalogue, so the two families cannot share one database.
 - I-82 order: Active and the ideas list newest first by raise time; a lapsed idea keeps its raise-time place in the ideas list; History by end time. Taken from the code's sort rules.
-- I-63: the stop on a sold leg sits above the leg's price (a price rising to the level is the loss).
+- I-63: stated as a fact of the arithmetic, NOT a product decision: a sold leg loses when its premium rises, so its loss stop is above the price. Whether the app must enforce it is the owner's call (Observation 1).
 
 ## Defects found
-None. Every item's test passes on this build. I-02 and I-107 were shown red with the guard switched off in memory.
+None in product code. Every item's test passes on this build. Red proofs with the guard switched off in memory: I-02 (stages), I-63 (live guard), I-105 (release line), I-107 (price budget). The Tier A review found two defects in MY tests (I-02 pinned an event the worker cannot produce; I-59 stopped at the first frame): both fixed and re-run.
 
 ## For the owner lane
 - Completed header (I-39): the number is not computed by the server (`StrategyListOut` has no count); Lane TB should assert header count equals rows shown in the page.
 - `side_closed.raise_if_closed` has no plan check itself; the guard is the worker's lister (tested). A new caller needs its own guard.
 - `frontend/tests/two-stops-words.test.js` (I-63 words) is Lane TB territory.
 - Observation 1 and 2 above.
+
+## Not covered (Tier A review of 28 Nov, round 1; two rounds spent, parked here)
+- Plan edited while its rupee alert is open (the worker drops and restores the gate, `background.py` about 1194): one row, no re-fire, also when the threshold changes (1000 to 1200). Chain (b) and (k) save a plan only while no alert is open.
+- A time exit with no date of its own ("on expiry" form): the harness always writes a date, so that branch never runs in the worker; with an unknown expiry kind it fails closed to NotChecked even on expiry day.
+- Chain rows, forward and ATM IV are read from `legs[0].expiry`, the expiry kind from the nearest leg: only matters for mixed-expiry trades.
+- Chain (e) cannot tell "lapse processed and alert kept" from "lapse not yet processed" (the harness `alerts()` does not select `no_longer_true_since`); `test_worker_j3.py` replaces `state_from_market` wholesale, so worker plus the real R3 state with an unknown kind is not run together, and one assertion accepts any event naming the rule.
+- I-103 is therefore "the named tests pass on the joined build", not "every stop-worker path is pinned".
 
 ## Pending owner read (new sentences)
 None added by this lane (tests only).
@@ -59,4 +66,4 @@ None added by this lane (tests only).
 | task | model | minutes |
 |---|---|---|
 | items 1-15, runs | Sonnet | about 65 |
-| Opus review of I-63 and I-103 | Opus | pending |
+| Opus review of I-63 and I-103 | Opus | 10 |
