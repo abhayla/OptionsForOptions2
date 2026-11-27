@@ -1,4 +1,4 @@
-STATUS 03:40 | UX-A03, UX-B25, UX-AF1, UX-C3: queued, not started | item 1 I-30 Fixed not tested (cloud: passed) | item 2 I-49 cause found, page half proven, fix is for the owner lane | item 3 I-50 Fixed not tested (cloud: passed) | item 4 I-68 no code change, one-press proven already holds | next push: this one | blocker: none
+STATUS 04:40 | F1 fixed (sha in the last commit of fix/r2-builder-1128; gate pending) | UX-A03, UX-B25, UX-AF1, UX-C3: queued, not started | item 1 I-30 Fixed not tested (cloud: passed) | item 2 I-49 cause found, page half proven, fix is for the owner lane | item 3 I-50 Fixed not tested (cloud: passed) | item 4 I-68 no code change, one-press proven already holds | next push: this one | blocker: none
 
 # Lane FB round 2: Builder page (branch fix/r2-builder-1128, from integration/conflicts-1127 16c536f0)
 
@@ -43,6 +43,13 @@ Highest status claimed: Fixed, not tested on the owner's PC (market closed, no l
 - F3: the stops read before the post is inside a try, and after it the page re-checks that the book and dialog are still open and not blocked; otherwise nothing is posted and `paperBusy` is freed.
 - Not fixed (other lanes' files, For the owner lane): F1, F2 save-bar path, F4.
 
+## Item 0 (Lane Z review F1: unknown exit unlocked by a 5 s timer), `StrategyBuilderPage.vue`, `sharedStateText.js`
+- Before: `decideUnknownExit` said "not stored" and unlocked Exit when the book looked unchanged 5 s after the client gave up; the server can still commit later (no idempotency key), so a second partial Exit could commit too (2 of 4 lots twice = 4 lots).
+- Now: an UNCHANGED book decides "not stored" only on a read taken more than `UNKNOWN_EXIT_WINDOW_MS` = 120 s after the client gave up (worst case 30 s pool wait x 2 checkouts + 30 s row lock = 90 s, plus 30 s margin); a book that MOVED decides at once; meanwhile Exit stays locked with the existing plain line. The automatic re-read runs every 5 s until the window has passed.
+- Opus review of this change: REVISE, all page-side points fixed: F1 the lock now names its strategy and only a read of that strategy's book decides it (another strategy opened + its Orderbook link no longer unlocks; other strategies are not locked); F2 window 70 s -> 120 s (the reviewer showed 90 s worst case); F4 an older answer no longer ends the re-read loop for good.
+- Tests: tests/exit-unknown-window-r2-fb.test.js (5 tests; the 2-of-4-lots core, the window, F1 other-strategy, F4, window size): red on the old code, green now; tests/exit-unknown-resend-adr017.test.js timings moved from 5 s to the window (11 + 2 pass).
+- Still open (cannot be fixed on the page): see For the owner lane 3 to 6.
+
 ## Decided for the owner
 0. I-68 F2: fail-closed lock after an unknown add (ADR-016..019); the user reopens the strategy to clear it.
 1. I-30: a failed re-read keeps the line already shown (ADR-330 (61)).
@@ -58,7 +65,13 @@ Highest status claimed: Fixed, not tested on the owner's PC (market closed, no l
 1. I-49, `frontend/src/components/strategy/LegPicker.vue` (not this lane's file): `save()` (about line 555, `await capture(id, und)` before `emit('update:legs', ...)`) and `addChosen()` (about line 618, `await Promise.all(chosen.map(capture))` before `emit('update:legs', ...)`) hold the leg back until the planned-entry reply. Two ways to cut the first wait, both needing an owner or backend call: (a) start `capture()` when the B/S cell is picked (before Done) so the reply is already there at Done; (b) backend (Lane FD): make `POST /strategies/planned-entry` answer from the first tick without waiting for the subscribe round trip, and let the outcome take the live price when the leg has none. I did not pick one: (a) changes when a price is captured (the captured time shown to the user).
 2. I-68 review: F1 `PaperConfirmDialog.vue:124` should reset the tick when the OPENING changes, not when the line's "as of HH:MM" text changes; F2 save bar `SaveDraftBar.vue:355,372-380`: keep a per-strategy unknown lock that `canAddToPaper` checks and `openPaperDialog` does not reset; F4: keep `refusedAt` across reopen. If the owner decides one press: `SaveDraftBar.vue` `startPaper()` (name step) and `PaperConfirmDialog.vue` `canConfirm` (`props.notLiveLine && !notLiveAck`).
 
+3. UNKNOWN exits, the real fix is on the server (`routes/paper.py`, Lane FD): an idempotency key on `POST /paper/strategies/{id}/orders` (request field `client_request_id`, a UUID the page makes per Confirm and re-sends only as the SAME key; the server stores it with the orders and answers a repeat with the stored result) or a deadline the server checks before commit so the 120 s window becomes a real limit. The page's timer is a guess.
+4. The unknown lock lives only in the page: leaving the page, a reload, or the Positions page exit (`PaperStrategies.vue`, its own `exitRec`) drop it, so a second exit can be sent inside the window. Needs the lock stored server-side (a pending-order record) or the key above.
+5. `usePaperExit.js` `EXIT_CHECKING_TEXT` ends "...until the book has been read": no longer true inside the window; suggested words: "The first exit's outcome is not known yet; no second exit is sent until the server's answer is known." (Lane FA file; pending owner read).
+6. SaveDraftBar / the same unknown lock for ADDS exists on the page (ADD lock, item 4b) but not in the save-bar path.
+
 ## To file as deferred issues
+- Each automatic re-read of an unknown exit calls `enterDrafts` (`openSaved`): with the longer loop it pulls the page back to the locked strategy and resets an edited leg (reviewer runs A6, A7) while the lock lasts.
 - Contract-list line on Option Chain, Create Strategy and Execute pages.
 - Execute page: check the single-press rule of the real order path.
 

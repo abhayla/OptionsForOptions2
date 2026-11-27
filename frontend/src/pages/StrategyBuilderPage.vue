@@ -539,7 +539,7 @@ const { readFailed: paperBookFailed } = usePriceFreshness({
 // read exitGate.blocked, so they are disabled in exactly the same states; the reason line is the one the panel shows under Exit all.
 // Lane U hotfix 27 Nov (A-H #209): an open dialog's EXIT rows are judged on the latest good book too (exitLegsNotLive, the one rule), not only a failed read
 const dialogLegsNotLive = () => { const b = paper.value?.book; return paperDialog.value && !!b && exitLegsNotLive(b.state, b.positions?.map((p) => ({ id: p.contract_id, live: p.price_state === 'live' })), paperRows.value.filter((r) => r.kind === 'exit').map((r) => r.contract_id)) }
-const exitGate = usePaperExit({ readFailed: paperReadFailed, held: () => paper.value?.book ?? null, changed: paperContractsChanged, notLive: dialogLegsNotLive, unresolved: () => !!exitUnknown.value })
+const exitGate = usePaperExit({ readFailed: paperReadFailed, held: () => paper.value?.book ?? null, changed: paperContractsChanged, notLive: dialogLegsNotLive, unresolved: () => !!exitUnknown.value && String(exitUnknown.value.id) === String(paper.value?.book?.strategy_id ?? paper.value?.id) })
 const exitBlocked = exitGate.blocked
 // Lane U2 (ADR-017, ADR-016..019): set when an Exit's POST ended with an unknown outcome; { attempt, names, before, expected } until a good re-read of the book decides it
 const exitUnknown = ref(null)
@@ -710,7 +710,7 @@ async function confirmPending(orders, _held = null, notLiveTicked = false) {
       moveCheck = check // the re-reads decide, not this guess
       if (orders.some((o) => o?.kind === 'exit')) { // ADR-017: this exit may be stored; it is never sent again until a re-read decides it (any post that carries an exit row, wherever the click came from)
         const exp = own ? legsAfterExit(own.net, own.net, own.id, own.lots) : null
-        exitUnknown.value = { attempt, names, waiting, at: Date.now(), before: netKey(paper.value?.net), expected: exp ? netKey(exp) : null }
+        exitUnknown.value = { id, attempt, names, waiting, at: Date.now(), before: netKey(paper.value?.net), expected: exp ? netKey(exp) : null }
         if (waiting) { exitAllWaiting.value = null; stagedNote.value = KEPT_UNTIL_KNOWN_TEXT(waiting.names) }
         void recheckUnknownExit()
       }
@@ -804,9 +804,10 @@ let readSeq = 0 // reads of the book started by the unknown-exit door; an answer
 let appliedSeq = 0
 const REREAD_EVERY_MS = 5000 // how often the unknown exit's book is read again
 // Lane Z review F1: an UNCHANGED trade is not proof of "not stored" until the server's longest possible commit window (UNKNOWN_EXIT_WINDOW_MS) has passed; the lock stays, with its plain line, meanwhile
-function decideUnknownExit(newNet) {
+function decideUnknownExit(newNet, readId) {
   const u = exitUnknown.value
   if (!u) return true
+  if (String(u.id) !== String(readId)) return false // Opus review F1: only a read of THIS strategy's book decides its unknown exit
   const key = netKey(newNet)
   if (key === u.before && Date.now() - u.at < UNKNOWN_EXIT_WINDOW_MS) return false // the order may still commit: stays locked, never "not stored" yet
   exitUnknown.value = null
@@ -832,20 +833,24 @@ async function recheckUnknownExit() { // the automatic re-read; a failed or too-
   const u = exitUnknown.value
   if (!u || !paper.value) return
   const { id } = paper.value
-  const waits = [0, ...Array(Math.ceil((UNKNOWN_EXIT_WINDOW_MS + 10000) / REREAD_EVERY_MS)).fill(REREAD_EVERY_MS)] // reads until the window has passed, then one more
-  for (const wait of waits) {
-    if (wait) await sleep(wait)
+  for (let first = true; ; first = false) { // reads every REREAD_EVERY_MS until one taken after the commit window has decided (or the lock ended)
+    if (!first) await sleep(REREAD_EVERY_MS)
     if (leaving || exitUnknown.value !== u) return
     const seq = ++readSeq
     let read = null
     try { read = await readPaperBook(api, id) } catch { read = null }
-    if (leaving || exitUnknown.value !== u || seq < appliedSeq) return
+    if (leaving || exitUnknown.value !== u) return
+    if (Date.now() - u.at > UNKNOWN_EXIT_WINDOW_MS + 10000 && !(seq < appliedSeq)) { // the last read of this loop: taken past the window
+      if (read?.kind === 'paper') { const kept = keepStaged; enterDrafts(id, read); keepStaged = kept; appliedSeq = seq; decideUnknownExit(read.net, id) }
+      return
+    }
+    if (seq < appliedSeq) continue // a newer read (the Orderbook link's) was applied: this answer is dropped, the loop goes on (Opus review F4)
     if (read?.kind === 'paper') {
       const kept = keepStaged
       enterDrafts(id, read) // cancelReread ends keepStaged unless it is put back
       keepStaged = kept
       appliedSeq = seq
-      if (decideUnknownExit(read.net)) return
+      if (decideUnknownExit(read.net, id)) return
     }
   }
 }
@@ -863,7 +868,7 @@ async function openPaperOrderbook() {
     const kept = keepStaged // enterDrafts ends a re-read run that is not this strategy's (cancelReread) and would drop it
     enterDrafts(id, read)
     keepStaged = kept
-    if (exitUnknown.value) decideUnknownExit(read.net)
+    if (exitUnknown.value) decideUnknownExit(read.net, id)
     else restoreStaged(read.net, true)
     showOrdersTick.value += 1
     const check = moveCheck
