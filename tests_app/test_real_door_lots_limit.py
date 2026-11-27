@@ -74,3 +74,27 @@ def test_a_flip_long_to_short_past_the_limit_is_refused_and_a_cut_back_is_not():
 def test_the_real_door_runs_the_lots_check_in_its_review_before_the_gate():
     src = inspect.getsource(execute._execute)
     assert src.index("_refuse_lots_over_limit(") < src.index("_gate(req")
+
+
+async def test_two_wanted_entries_on_one_instrument_add_up_and_a_leading_zero_held_key_still_matches(monkeypatch):
+    async def reader(_db):
+        return {calc.MAX_LOTS: Decimal(100)}
+    monkeypatch.setattr(execute, "get_settings_reader", lambda: reader)
+    two = [LegToPrice(IID, Action.BUY, 60 * LOT, None), LegToPrice(IID, Action.BUY, 50 * LOT, None)]
+    with pytest.raises(StrategyRefused):
+        await execute._refuse_lots_over_limit(SimpleNamespace(db=None), two, {}, _catalogue(), "NIFTY")
+    exit_leg = [LegToPrice(IID, Action.SELL, 150 * LOT, None)]
+    await execute._refuse_lots_over_limit(SimpleNamespace(db=None), exit_leg, {"NSE_FO:044595": 150 * LOT},
+                                          _catalogue(), "NIFTY")
+
+
+async def test_a_lot_size_of_zero_is_a_refusal_not_a_crash(monkeypatch):
+    async def reader(_db):
+        return {calc.MAX_LOTS: Decimal(100)}
+    monkeypatch.setattr(execute, "get_settings_reader", lambda: reader)
+    ref = SimpleNamespace(broker_symbol="X", lot_size=0)
+    cat = SimpleNamespace(get=lambda _i: SimpleNamespace(ref=lambda _b: ref))
+    with pytest.raises(StrategyRefused) as e:
+        await execute._refuse_lots_over_limit(SimpleNamespace(db=None), [LegToPrice(IID, Action.BUY, 75, None)], {},
+                                              cat, "NIFTY")
+    assert e.value.args[0] == "strategy_contract_not_in_catalogue"

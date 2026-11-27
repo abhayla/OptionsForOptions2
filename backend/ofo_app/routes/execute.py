@@ -426,13 +426,19 @@ async def _refuse_lots_over_limit(req: _Request, wanted: list[ep.LegToPrice], he
     quantity) may not exceed ``limits.max_lots``, through ``order_lots.check_lots``, the one function the paper door
     calls too. Nothing is ordered here; a refusal leaves the plan unwritten."""
     top = calc.max_lots(await get_settings_reader()(req.db))
+    held_by_id: dict[InstrumentId, int] = {}
+    for text, net in held.items():  # the leg's id is parsed from the held key, so look up by the parsed id
+        held_by_id[_iid(text)] = held_by_id.get(_iid(text), 0) + net
+    orders: dict[InstrumentId, list[int]] = {}
+    for want in wanted:  # one leg per instrument: two wanted entries on it add up
+        orders.setdefault(want.instrument_id, []).append(want.quantity if want.action == Action.BUY else -want.quantity)
     legs = []
-    for want in wanted:
-        ref = catalogue.get(want.instrument_id).ref(ZERODHA)
-        units = want.quantity if want.action == Action.BUY else -want.quantity
-        key = f"{want.instrument_id.exchange_segment}:{want.instrument_id.exchange_token}"
-        name = display_contract(ep.contract_key(catalogue, want.instrument_id, underlying))
-        legs.append(LegLots(name, ref.lot_size, held.get(key, 0), [units]))
+    for instrument_id, signed in orders.items():
+        lot_size = catalogue.get(instrument_id).ref(ZERODHA).lot_size
+        if not isinstance(lot_size, int) or lot_size <= 0:  # fail closed: no lot size, no lots figure
+            raise _refuse("strategy_contract_not_in_catalogue")
+        name = display_contract(ep.contract_key(catalogue, instrument_id, underlying))
+        legs.append(LegLots(name, lot_size, held_by_id.get(instrument_id, 0), signed))
     check_lots(top, legs)
 
 
