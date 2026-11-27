@@ -1315,6 +1315,11 @@ _LEG_EDIT_TEMPLATES: tuple[MessageTemplate, ...] = (
           "A leg can hold at most {max_lots} lots; this leg has {lots}.",
           "The strategy was not checked and nothing changed.", "This strategy, until the leg is within the limit.",
           "Reduce the lots on this leg to {max_lots} or fewer.", {"lots": Count, "max_lots": Count}),
+    # Item 15 (T2-10, ADR-081 / ADR-092): a paper leg at or above the stored exchange freeze limit. Pending owner read.
+    _gate("paper_leg_over_order_limit", _UI, 573,
+          "Leg {number} asks for {lots} lots; the most one order can hold is {max_lots} lots.",
+          "Nothing was added to paper.", "This basket, until the leg is within the limit.",
+          "Reduce leg {number} to {max_lots} lots or fewer.", {"number": Count, "lots": Count, "max_lots": Count}),
 )
 
 # W-196 (REQ-155 AC-1, AC-8; ADR-214): the adjustment approach builder. A refusal leaves that one approach out and every

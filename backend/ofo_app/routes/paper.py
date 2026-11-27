@@ -114,6 +114,7 @@ from ofo_app.routes.outcome import (
     MarketContext,
     feed_scope,
     get_answer_clock,
+    get_calc_settings,
     get_market_context,
     load_charge_rates,
 )
@@ -1367,6 +1368,40 @@ async def _refuse_take_profit_at_loss(db: Any, user_ref: str, strategy_id: int, 
                                      check.basis_in_force(None, None, None))
 
 
+async def _refuse_legs_over_limit(db: Any, settings: Mapping[str, Decimal], orders: Sequence[PaperOrderIn],
+                                  state: Mapping[int, Any]) -> None:
+    """Item 15 (T2-10), the ONE size check of every paper order (Add to Paper, Add Selected, Increase quantity and
+    Change expiry all post here). Opening orders only: an exit closes what is open and never grows the book.
+    REQ-167 AC-5: no leg above the ``limits.max_lots`` setting in force (an unreadable setting raises: nothing placed).
+    ADR-081 / ADR-092: no leg at or above the contract's stored exchange freeze limit (``freeze_read``, the newest
+    file); the largest order is the largest whole-lot order below it. Answer states of the limit: stored -> checked;
+    none stored -> not a block, ADR-081 "the review warns"; contract not found -> refused before this check
+    (``paper_contract_not_tradable``); store read failed -> raises, nothing placed. The leg number is the position in
+    the basket, as the screen shows it."""
+    from ofo.instruments.freeze_limits import StoredFreeze, largest_allowed_units  # noqa: PLC0415
+    from ofo.instruments.models import InstrumentId  # noqa: PLC0415
+
+    from ofo_app import freeze_read  # noqa: PLC0415 - read side only; no order module in its closure
+    from ofo_app.routes.outcome import check_lots  # noqa: PLC0415
+    opening = [(i, o) for i, o in enumerate(orders, start=1) if o.kind != "exit"]
+    if not opening:
+        return
+    contract = {i: state[o.contract_id].stored.listed.contract for i, o in opening}
+    check_lots((-(-o.quantity // contract[i].lot_size) for i, o in opening), settings)
+    stored = await freeze_read.limits_in_force(db)
+    for i, o in opening:
+        c = contract[i]
+        found = stored.get(InstrumentId(c.exchange_segment, c.exchange_token))
+        if found is None:
+            continue
+        freeze = StoredFreeze(found.freeze_limit, c.lot_size, found.file_date)
+        if not o.quantity < freeze.limit:
+            top = largest_allowed_units(freeze) // freeze.lot
+            lots = -(-o.quantity // freeze.lot)
+            raise StrategyRefused("paper_leg_over_order_limit", message=render(
+                "paper_leg_over_order_limit", number=i, lots=lots, max_lots=top))
+
+
 @router.post("/paper/strategies/{strategy_id}/orders", status_code=201, response_model=PaperBookOut,
              dependencies=[Depends(guard_paper_order)])  # IC e2e 5: scenario mode = own scenario only
 async def place_paper_orders(strategy_id: int, body: PaperOrdersIn,  # noqa: PLR0913, C901 - FastAPI dependencies
@@ -1375,7 +1410,8 @@ async def place_paper_orders(strategy_id: int, body: PaperOrdersIn,  # noqa: PLR
                              feed: Annotated[LiveFeed | None, Depends(get_live_feed)],
                              now: Annotated[AnswerClock, Depends(get_answer_clock)],
                              rates: Annotated[ChargeRates | None, Depends(load_charge_rates)],
-                             tracked_reader: Annotated[TrackedReader, Depends(get_tracked_reader)]) -> PaperBookOut:
+                             tracked_reader: Annotated[TrackedReader, Depends(get_tracked_reader)],
+                             settings: Annotated[Mapping[str, Decimal], Depends(get_calc_settings)]) -> PaperBookOut:
     stored = await _load_strategy(db, user_ref, strategy_id)
     for order in body.orders:
         if order.kind != "exit":  # C10: an exit's price is the server's (below); a browser-sent one is ignored
@@ -1387,6 +1423,7 @@ async def place_paper_orders(strategy_id: int, body: PaperOrdersIn,  # noqa: PLR
     if any(state[o.contract_id].stored is None or (o.kind != "exit" and state[o.contract_id].state != "live")
            for o in body.orders):
         raise StrategyRefused("paper_contract_not_tradable")
+    await _refuse_legs_over_limit(db, settings, body.orders, state)  # item 15: lots limit, ADR-081 freeze limit
     _refuse_duplicate_legs(stored.saved.definition.underlying, body.orders, state)  # ADR-319 (3)
     if body.approach_id is not None:  # ADR-326 (1): the offer's own build path decides, before any price read
         await _refuse_take_profit_at_loss(db, user_ref, strategy_id, body.approach_id, ctx, rates, tracked_reader)

@@ -3567,6 +3567,10 @@
     "sha256": "b142fd6dad910c3a187b2c5d39a9759d8a366b0588d1f0b8ac42f02aa5755874",
     "reviewed": "owner read 2026-11-01 (GC-MU texts approved as recommended, in chat; not read line by line)"
   },
+  "paper_leg_over_order_limit": {
+    "sha256": "9ca4a3b7bbdb2c3e5d2dfe1b97538fd56fff1d18bc3fe795ab7052af6fa3c877",
+    "reviewed": "pending owner read"
+  },
   "leg_lots_above_limit": {
     "sha256": "398d9d44b9fcd43ad9e31d3963d3aa81f9ad1cf599f8179f05dcc320350cc8e7",
     "reviewed": "owner read 2026-11-02 (accepted after independent screen, not read line by line)"
