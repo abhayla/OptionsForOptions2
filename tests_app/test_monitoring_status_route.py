@@ -35,7 +35,7 @@ def test_core_no_worker_record_for_two_minutes_reads_paused_with_a_reason():
     """REQ-115 AC-6: a heartbeat 3 minutes old -> paused, reason workers_down, never active."""
     old = (NOW - datetime.timedelta(minutes=3)).isoformat()
     out = route.compose(_read(_Client({feed_bus.heartbeat_key(): old}), [7]), [7], NOW)
-    assert [(o.strategy_id, o.status, o.reason) for o in out] == [(7, "paused", "workers_down")]
+    assert [(o.strategy_id, o.watch_state, o.reason) for o in out] == [(7, "paused", "workers_down")]
     assert out[0].badge_text == "Monitoring paused"
     assert out[0].reason_text.startswith("Not being watched")
     assert out[0].health_text == "Health unknown"
@@ -44,7 +44,7 @@ def test_core_no_worker_record_for_two_minutes_reads_paused_with_a_reason():
 def test_no_heartbeat_at_all_and_unreadable_store_are_paused():
     for client in (_Client(), _Client(boom=True)):
         out = route.compose(_read(client, [1, 2]), [1, 2], NOW)
-        assert {o.status for o in out} == {"paused"} and len(out) == 2
+        assert {o.watch_state for o in out} == {"paused"} and len(out) == 2
 
 
 def test_fresh_worker_names_each_strategy_and_active_shows_no_badge():
@@ -52,22 +52,27 @@ def test_fresh_worker_names_each_strategy_and_active_shows_no_badge():
                                   ms.Entry(2, ms.PAUSED, "stale", "", NOW - datetime.timedelta(minutes=1))], NOW),
              feed_bus.heartbeat_key(): NOW.isoformat()}
     a, b = route.compose(_read(_Client(fresh), [1, 2]), [1, 2], NOW)
-    assert (a.status, a.badge_text, a.reason_text, a.health_text) == ("active", None, None, None)
+    assert (a.watch_state, a.badge_text, a.reason_text, a.health_text) == ("active", None, None, None)
     assert a.since_text == "Since 10:55"
-    assert b.status == "paused" and b.badge_text == "Monitoring paused" and b.reason == "stale"
+    assert b.watch_state == "paused" and b.badge_text == "Monitoring paused" and b.reason == "stale"
     assert "price" in b.reason_text and b.since_text == "Since 10:59"
 
 
 def test_a_strategy_the_worker_does_not_list_is_not_being_watched():
     fresh = {ms.key(): ms.encode([ms.Entry(1, ms.ACTIVE, "", "", NOW)], NOW), feed_bus.heartbeat_key(): NOW.isoformat()}
     (o,) = route.compose(_read(_Client(fresh), [9]), [9], NOW)
-    assert (o.status, o.reason) == ("paused", "not_listed") and o.reason_text.startswith("Not being watched")
+    assert (o.watch_state, o.reason) == ("paused", "not_listed") and o.reason_text.startswith("Not being watched")
 
 
 def test_unknown_status_or_reason_fails_closed_and_empty_is_empty():
     odd = {9: ms.Entry(9, "weird", "???", "", None)}
     (o,) = route.compose(odd, [9], NOW)
-    assert o.status == "paused" and o.badge_text == "Monitoring paused" and o.reason_text
+    assert o.watch_state == "paused" and o.badge_text == "Monitoring paused" and o.reason_text
     assert route.compose({}, [], NOW) == []
     (m,) = route.compose({}, [4], NOW)  # asked but no answer at all
-    assert m.status == "paused"
+    assert m.watch_state == "paused"
+
+
+def test_a_non_ascii_reason_code_never_fails_the_whole_reply():
+    (o,) = route.compose({3: ms.Entry(3, ms.PAUSED, "stale\u00e9", "", None)}, [3], NOW)
+    assert (o.watch_state, o.reason) == ("paused", "unknown")

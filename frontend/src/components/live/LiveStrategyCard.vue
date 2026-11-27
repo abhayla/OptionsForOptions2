@@ -171,7 +171,7 @@ const notConnected = computed(() => data.value?.state === 'NOT_CONNECTED')
 const fromEntries = computed(() => state.value === 'ready' && data.value?.state === 'FROM_ENTRIES')
 const paused = computed(() => state.value === 'unpriced' || (state.value === 'ready' && (notConnected.value || fromEntries.value || down.value)))
 // the worker's own answer says paused: its badge (with reason and since) replaces the card's local one
-const serverPaused = computed(() => isRunning(props.strategy) && props.monitoring != null && props.monitoring.status !== 'active')
+const serverPaused = computed(() => isRunning(props.strategy) && props.monitoring != null && props.monitoring.watch_state !== 'active')
 const showFigures = computed(() => state.value === 'ready' && data.value?.state === 'COMPUTED' && !paused.value)
 const refused = computed(() => state.value === 'ready' && data.value?.state === 'REFUSED')
 const spotAt = computed(() => (data.value?.spot_at ? istTime(data.value.spot_at) : '-'))

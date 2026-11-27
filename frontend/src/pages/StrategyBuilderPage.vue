@@ -1555,7 +1555,7 @@ const leaveGuard = useLeaveBuilder({
           <TrackingPanel :saved-id="savedId" :legs="data.legs ?? null" :shared="paper?.book ?? null" :shared-failed="paperBookFailed" />
         </div>
         <!-- ADR-330 (57): a fully closed trade has no Plan watch (its plan line is in the book panel). P10 (ADR-330 (13)): the Plan watch under the live P&L column, whatever the numbers state is (it is its own server read); it re-reads on the page's own book read (paper.book is replaced by each good read) -->
-        <MonitoringBadge v-if="planWatchId && !paperCompleted && paper?.book" :entry="monitoring.entryOf(planWatchId)" class="mt-4" />
+        <MonitoringBadge v-if="planWatchId && !paperCompleted" :entry="monitoring.entryOf(planWatchId)" class="mt-4" />
         <PlanWatch v-if="planWatchId && !paperCompleted" :strategy-id="planWatchId" :read-tick="paper?.book ?? null" :stale="paperBookFailed" class="mt-4" />
       </div>
     </div>

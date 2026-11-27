@@ -5,7 +5,7 @@ import { mount } from '@vue/test-utils'
 import MonitoringBadge from '@/components/common/MonitoringBadge.vue'
 import { entryFor, readMonitoring } from '@/lib/monitoringState'
 
-const paused = { strategy_id: 7, status: 'paused', reason: 'workers_down', badge_text: 'Monitoring paused', health_text: 'Health unknown',
+const paused = { strategy_id: 7, watch_state: 'paused', reason: 'workers_down', badge_text: 'Monitoring paused', health_text: 'Health unknown',
   reason_text: 'Not being watched: no worker has reported in the last 2 minutes.', since_text: 'Since 10:55' }
 const t = (w, id) => w.find(`[data-testid="${id}"]`)
 
@@ -14,24 +14,30 @@ describe('MonitoringBadge', () => {
     const w = mount(MonitoringBadge, { props: { entry: paused } })
     expect(t(w, 'monitoring-paused').text()).toBe('⏸ Monitoring paused')
     expect(t(w, 'monitoring-health-dot').text()).toBe('Health unknown')
-    expect(t(w, 'monitoring-reason').text()).toBe('Not being watched: no worker has reported in the last 2 minutes. Since 10:55.')
+    expect(t(w, 'monitoring-reason').text()).toBe('Not being watched: no worker has reported in the last 2 minutes.')
+    expect(t(w, 'monitoring-since').text()).toBe('Since 10:55')
   })
   it('shows nothing for an active trade and nothing before the first answer', () => {
-    expect(mount(MonitoringBadge, { props: { entry: { ...paused, status: 'active' } } }).find('[data-testid="monitoring-badge"]').exists()).toBe(false)
+    expect(mount(MonitoringBadge, { props: { entry: { ...paused, watch_state: 'active' } } }).find('[data-testid="monitoring-badge"]').exists()).toBe(false)
     expect(mount(MonitoringBadge, { props: { entry: null } }).find('[data-testid="monitoring-badge"]').exists()).toBe(false)
   })
 })
 
 describe('entryFor fails closed', () => {
   it('unknown status, an unnamed id and a failed read are all paused with Health unknown', () => {
-    const m = readMonitoring({ strategies: [{ ...paused, status: 'weird' }] })
-    expect(entryFor(m, 7).status).toBe('paused')
+    const m = readMonitoring({ strategies: [{ ...paused, watch_state: 'weird' }] })
+    expect(entryFor(m, 7).watch_state).toBe('paused')
     expect(entryFor(m, 8).health_text).toBe('Health unknown')
     expect(entryFor(null, 8, true).reason).toBe('unreadable')
     expect(readMonitoring({})).toBeNull()
     expect(readMonitoring({ strategies: [] }).size).toBe(0)
   })
+  it('a failed or old read overrides a cached active entry (never a stale "healthy")', () => {
+    const m = readMonitoring({ strategies: [{ ...paused, watch_state: 'active' }] })
+    expect(entryFor(m, 7, true).watch_state).toBe('paused')
+    expect(entryFor(m, 7, true).health_text).toBe('Health unknown')
+  })
   it('an active answer stays active', () => {
-    expect(entryFor(readMonitoring({ strategies: [{ ...paused, status: 'active' }] }), 7).status).toBe('active')
+    expect(entryFor(readMonitoring({ strategies: [{ ...paused, watch_state: 'active' }] }), 7).watch_state).toBe('active')
   })
 })

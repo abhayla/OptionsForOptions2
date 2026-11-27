@@ -13,6 +13,7 @@ from __future__ import annotations
 
 import datetime
 import logging
+import re
 from collections.abc import Mapping
 from typing import Annotated, Any, Literal
 
@@ -29,13 +30,14 @@ from ofo_app.routes.broker import current_user_ref
 
 log = logging.getLogger(__name__)
 router = APIRouter(route_class=ClosedRoute)
+_SAFE = re.compile(r"[A-Za-z0-9_]{1,64}")  # ASCII only: the Identifier type's own pattern
 _WHY = {ms.WORKERS_DOWN, ms.STATE_UNREADABLE, ms.NOT_LISTED, "stale", "disconnected", "leg_missing", "check_failed",
         "market_closed", "user_paused"}
 
 
 class MonitoringOut(ApiModel):
     strategy_id: int
-    status: Literal["active", "paused"]
+    watch_state: Literal["active", "paused"]
     reason: Identifier
     badge_text: CatalogueText | None
     health_text: CatalogueText | None
@@ -56,12 +58,12 @@ def compose(found: Mapping[int, ms.Entry], ids: list[int], now: datetime.datetim
         since = e.since.astimezone(IST) if e.since is not None else None
         since_text = None if since is None else render_explanation("monitoring_since", time=since.time().replace(second=0, microsecond=0))
         if e.status == ms.ACTIVE:
-            out.append(MonitoringOut(strategy_id=sid, status="active", reason="active", badge_text=None, health_text=None,
+            out.append(MonitoringOut(strategy_id=sid, watch_state="active", reason="active", badge_text=None, health_text=None,
                                      reason_text=None, since_at=since, since_text=since_text))
             continue
         code = e.reason if e.reason in _WHY else "unknown"
-        reason = e.reason if e.reason and len(e.reason) <= 64 and e.reason.replace("_", "").isalnum() else "unknown"  # noqa: PLR2004
-        out.append(MonitoringOut(strategy_id=sid, status="paused", reason=reason,
+        reason = e.reason if _SAFE.fullmatch(e.reason or "") else "unknown"
+        out.append(MonitoringOut(strategy_id=sid, watch_state="paused", reason=reason,
                                  badge_text=render_explanation("monitoring_badge"),
                                  health_text=render_explanation("monitoring_health_unknown"),
                                  reason_text=render_explanation(f"monitoring_why_{code}"),
