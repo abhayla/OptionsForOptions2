@@ -1,0 +1,86 @@
+{
+ "id": "PATH-92",
+ "base": "ADJ-02",
+ "title": "Q3: profit sweep by an IV drop: spot flat at 23100, ATM IV 0.10 then 0.06 from 11:42 (profit about Rs 2,100)",
+ "notes": "Lane Q3 (27 Nov 2026): scripted spot track for the worker-process chain tests; legs and entry as PATH-10",
+ "entry_atm_iv": "0.10",
+ "legs": [
+  {
+   "side": "BUY",
+   "type": "PE",
+   "strike": "22600",
+   "lots": 2
+  },
+  {
+   "side": "SELL",
+   "type": "PE",
+   "strike": "22800",
+   "lots": 2
+  },
+  {
+   "side": "SELL",
+   "type": "CE",
+   "strike": "23400",
+   "lots": 2
+  },
+  {
+   "side": "BUY",
+   "type": "CE",
+   "strike": "23600",
+   "lots": 2
+  }
+ ],
+ "frames": [
+  {
+   "clock": "2026-11-06T11:40:00",
+   "spot": "23100",
+   "atm_iv": "0.10"
+  },
+  {
+   "clock": "2026-11-06T11:41:00",
+   "spot": "23100",
+   "atm_iv": "0.10"
+  },
+  {
+   "clock": "2026-11-06T11:42:00",
+   "spot": "23100",
+   "atm_iv": "0.06"
+  },
+  {
+   "clock": "2026-11-06T11:43:00",
+   "spot": "23100",
+   "atm_iv": "0.06"
+  },
+  {
+   "clock": "2026-11-06T11:44:00",
+   "spot": "23100",
+   "atm_iv": "0.06"
+  },
+  {
+   "clock": "2026-11-06T11:45:00",
+   "spot": "23100",
+   "atm_iv": "0.06"
+  },
+  {
+   "clock": "2026-11-06T11:46:00",
+   "spot": "23100",
+   "atm_iv": "0.06"
+  },
+  {
+   "clock": "2026-11-06T11:47:00",
+   "spot": "23100",
+   "atm_iv": "0.06"
+  },
+  {
+   "clock": "2026-11-06T11:48:00",
+   "spot": "23100",
+   "atm_iv": "0.06"
+  },
+  {
+   "clock": "2026-11-06T11:49:00",
+   "spot": "23100",
+   "atm_iv": "0.06"
+  }
+ ],
+ "entry_clock": "2026-11-06T11:20:00+05:30"
+}
