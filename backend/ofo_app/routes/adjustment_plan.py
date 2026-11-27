@@ -21,6 +21,7 @@ playbook, and editing or deleting the playbook later never changes the plan.
 from __future__ import annotations
 
 import asyncio
+import contextlib
 import copy
 import dataclasses
 import datetime
@@ -45,12 +46,13 @@ from ofo.errors import render
 from ofo.errors.explanations import LABEL_TABLES, render_explanation
 from ofo.settings import layers
 from ofo.timeutil import IST
-from pydantic import BaseModel, ConfigDict
+from pydantic import BaseModel, ConfigDict, Field
 
 from ofo_app import adjustment_check as check
 from ofo_app import playbook_store as store
 from ofo_app import scenario_mode
 from ofo_app import settings_in_force as in_force_mod
+from ofo_app.adjustment_readers import CatalogueUnreadable
 from ofo_app.api_models import ApiModel, CatalogueText, Identifier, Money
 from ofo_app.catalogue_store import load_catalogue
 from ofo_app.db import get_db
@@ -250,6 +252,10 @@ class AdjustmentPlanOut(ApiModel):
     stops: StopsOut
     #: Hotfix plan-read-1127: why the stop is not shown (the expiry kind is not known); None when it is shown
     stop_kind_reason: CatalogueText | None = None
+    #: ADR-330 (9), (32), T2-19: only the reset reply fills these: the playbook conditions the plan had changed
+    #: (``put_back``) or switched off (``put_back_off``) just before the reset, as paths such as ``triggers.T-02``
+    put_back: list[Identifier] = Field(default_factory=list)
+    put_back_off: list[Identifier] = Field(default_factory=list)
 
 
 #: the sheet's boxes the refusal names by their label (27 Nov): the template ``plan_sheet_invalid_<box>`` says it
@@ -604,35 +610,18 @@ async def _type_of(db: Any, user_ref: str, strategy_id: int, tracked: Any,
     if plan is not None:
         return plan.strategy_type, plan
     return check.entry_type(tracked, check.listed_of(ctx)), None  # D-04
-class _CatalogueUnreadable(Exception):
-    """The stored catalogue could not be read (a database error): the expiry kind is then NOT KNOWN, with a reason."""
-
-
 async def _stored_kind(db: Any, tracked: Any) -> str | None:
-    """The strategy's expiry kind from the STORED catalogue (the day's instrument list the app keeps), by the one rule
-    ``adjustment_readers.expiry_kind_of`` (monthly = an expiry an index FUTURE of the underlying also has; a scenario's
-    own stated kind wins). Used when the market read gave no kind (no live session, market closed). None when the
-    rule cannot judge: no future of the underlying listed, or the leg expires after the last listed future (a far month
-    whose own future is not listed yet would read as weekly). A database error raises ``_CatalogueUnreadable``."""
+    """The strategy's expiry kind from the STORED catalogue by the one rule ``adjustment_readers.expiry_kind_of``
+    (via ``adjustment_readers.stored_kind``, the same call the live check's position read makes). None when the rule
+    cannot judge (no future of the underlying listed, or a far month whose own future is not listed). A database
+    error raises ``CatalogueUnreadable``."""
     from ofo_app import adjustment_readers as readers  # noqa: PLC0415 - it imports routes.adjustment
-    scn = scenario_mode.current()  # the scenario switch read_market uses
     legs = getattr(tracked.position, "legs", ())
     if not legs:
         return None
-    expiry, underlying = legs[0].expiry, tracked.position.underlying
-    try:
-        entries = [e for e in (await load_catalogue(db)).all_entries()
-                   if e.currently_listed and e.contract.name == underlying and e.contract.expiry is not None]
-    except Exception as exc:  # any failed read means "kind not known", with its own reason
-        log.warning("adjustment plan: catalogue not read for the expiry kind", exc_info=True)
-        await db.rollback()  # a database error aborts the transaction: the next read needs the session clean
-        raise _CatalogueUnreadable from exc
-    options = [e for e in entries if e.contract.is_option()]
-    futures = frozenset(e.contract.expiry for e in entries if e.contract.is_future())
-    stated = scn is not None and scn.data.get("expiry_kind") in ("weekly", "monthly")
-    if not stated and (not futures or (expiry not in futures and expiry > max(futures))):
-        return None
-    return readers.expiry_kind_of(expiry, options, futures, scn)
+    kind = await readers.stored_kind(db, tracked.position.underlying, min(x.expiry for x in legs),
+                                     scn=scenario_mode.current(), load=load_catalogue)
+    return kind or None
 
 
 class KindRead(NamedTuple):
@@ -650,7 +639,7 @@ async def _known_kind(db: Any, tracked: Any, market: Any) -> KindRead:
         return KindRead(str(kind), None)
     try:
         stored = await _stored_kind(db, tracked)
-    except _CatalogueUnreadable:
+    except CatalogueUnreadable:
         return KindRead(None, _KIND_CATALOGUE_UNREADABLE)
     return KindRead(stored, None) if stored is not None else KindRead(None, _KIND_NOT_KNOWN)
 
@@ -727,7 +716,8 @@ def _in_force_reply(found: in_force_mod.InForce) -> dict[str, Any]:
 async def _sheet(db: Any, user_ref: str, strategy_id: int, stype: str | None, plan: store.Plan | None,  # noqa: PLR0913
                  pick: int | None, user_values: Any = None,
                  money: in_force_mod.MoneyInputs | None = None, kind: str | None = None,
-                 bases: Bases | None = None, kind_reason: str | None = None) -> AdjustmentPlanOut:
+                 bases: Bases | None = None, kind_reason: str | None = None,
+                 put_back: dict[str, list[str]] | None = None) -> AdjustmentPlanOut:
     """``kind`` None = the expiry kind is NOT KNOWN (``kind_reason`` says why): the stop is then not shown."""
     reply: dict[str, Any] = {"strategy_id": strategy_id, "type": stype, "type_name": None, "generic": stype is None,
                              "generic_text": render(_GENERIC) if stype is None else None, "playbooks": [],
@@ -772,7 +762,9 @@ async def _sheet(db: Any, user_ref: str, strategy_id: int, stype: str | None, pl
               "prefill": {"playbook_id": source_id, **values},
               "stop_kind_reason": None if kind is not None or kind_reason is None or not await _any_blanked(
                   db, plan, shown_body) else render_explanation(kind_reason)}
-    return AdjustmentPlanOut.model_validate(reply)
+    put_back = put_back or {}
+    return AdjustmentPlanOut.model_validate(
+        reply | {"put_back": put_back.get("changed", []), "put_back_off": put_back.get("switched_off", [])})
 
 
 async def _run(db: Any, work: Any) -> Any:
@@ -1114,9 +1106,15 @@ async def reset_plan(  # noqa: PLR0913 - FastAPI dependencies, one per input
         raise StrategyRefused(_NOT_AVAILABLE, Failure.NOT_FOUND)
 
     async def work() -> AdjustmentPlanOut:
+        differed = {"changed": [], "switched_off": []}  # what the plan differed in, read before the copy goes back
+        if plan_before.playbook_id is not None:
+            with contextlib.suppress(store.PlaybookStoreError):  # a gone playbook: reset_plan refuses below
+                book = (await store.get(db, user_ref, plan_before.playbook_id)).body
+                differed = plan_diff.diff(plan_before.body, book)
         saved = await store.reset_plan(db, user_ref, strategy_id, _base_json(tracked))
         stored = dataclasses.replace(tracked, stop_base=in_force_mod.stop_base_from_json(saved.stop_base))
         return await _sheet(db, user_ref, strategy_id, stype, saved, None, user_values,
                             in_force_mod.money_inputs(stored, market, rates), row.kind,
-                            dataclasses.replace(bases, max_loss=_stored_loss(stored, bases)), row.reason)
+                            dataclasses.replace(bases, max_loss=_stored_loss(stored, bases)), row.reason,
+                            put_back=differed)
     return await _run(db, work)
