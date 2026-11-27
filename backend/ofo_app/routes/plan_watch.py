@@ -16,7 +16,8 @@ side is closed" (ADR-330 (2) (a); entry or open legs unreadable -> no side judge
 a rule fired
 -> "fired"; the price reads (market, REST index quote) not answered within ``PRICE_BUDGET_S`` are cancelled and read as
 "not connected" (no chain, no spot): the same "prices not live" answer. The price reads are bounded by that budget; the
-margin read after them has its own 8 s timeout, and the cut REST read's own token DB read is shielded: only the waiting request is cancelled, the shared read finishes;
+margin read after them has its own 8 s timeout, and the cut REST read is shielded (only the waiting request is
+cancelled, the shared read finishes);
 evaluation unreadable, trigger store unreadable -> the check's refusal, no lines (fail closed); strategy
 not found or another user's -> its 404. Writes nothing. Suggest-only (ADR-003): nothing here exits anything.
 """
@@ -293,7 +294,7 @@ def _budgeted(market_reader: MarketReader, rest_reader: RestSpotReader) -> tuple
     FAILED. Once the market read is cut (or no budget is left) the REST reader is not called at all: a STATED spot
     beside a not-connected market would break the approach figures. The price reads are bounded by the budget; the
     margin read after them has its own 8 s timeout. The market reader holds no DB session (``run_check`` released it
-    first, D-36 c); the cut REST read's own token DB read is shielded (REST_SPOT): only the waiting request is cancelled."""
+    first, D-36 c); the cut REST read is shielded (REST_SPOT): only the waiting request is cancelled."""
     from ofo_app.adjustment_readers import read_market  # noqa: PLC0415 - imports routes.adjustment
     loop = asyncio.get_running_loop()
     started: list[float] = []
