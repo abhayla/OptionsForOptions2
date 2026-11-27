@@ -80,10 +80,10 @@ describe('Active shows a time on each alert (D-29, ADR-330 (3))', () => {
     answers['GET /paper/alerts/records'] = () => Promise.resolve({ data: { records: [SETTLED, STOP] } })
     const w = await mountAt('/alerts/history') // GET /alerts/answered has no answer = it failed
     const html = w.html()
-    expect(w.get('[data-testid="history-answered-heading"]').text()).toBe('Answered alerts')
-    expect(w.get('[data-testid="history-records-heading"]').text()).toBe('Stops and expiry settlements')
+    expect(w.get('[data-testid="alerts-answered-heading"]').text()).toBe('Answered alerts')
+    expect(w.get('[data-testid="alerts-records-heading"]').text()).toBe('Stops and expiry settlements')
     expect(w.findAll('[data-testid="record-row"]')).toHaveLength(2)
-    const heading = html.indexOf('history-answered-heading'), error = html.indexOf('answered-error'), records = html.indexOf('history-records-heading')
+    const heading = html.indexOf('alerts-answered-heading'), error = html.indexOf('answered-error'), records = html.indexOf('alerts-records-heading')
     expect(heading).toBeGreaterThan(-1)
     expect(error).toBeGreaterThan(heading) // the error line belongs to the answered section ...
     expect(error).toBeLessThan(records) // ... and ends before the records section starts
