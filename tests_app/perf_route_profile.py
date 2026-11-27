@@ -175,3 +175,64 @@ async def test_profile(app_db_url, monkeypatch):  # noqa: F811, PLR0915, C901
         with open(os.environ["OFO_PERF_OUT"], "w", encoding="utf-8") as fh:  # noqa: ASYNC230
             fh.write(text_out + "\n")
     await app_db.close_db()
+
+
+async def test_concurrency(app_db_url, monkeypatch):  # noqa: F811, PLR0915
+    """Q1 phase 2 step 1: N concurrent plan-watch (one per strategy) + N concurrent adjustment-check through ONE app
+    instance (ASGITransport, asyncio.gather); instant price, warm margin. Median / max per request (the request log's
+    own total ms). Every strategy has its plan; the app's active scenario is the last one seeded (ADJ-01)."""
+    import asyncio  # noqa: PLC0415
+    ids = []
+    for _ in range(10):  # ten strategies of the ONE active scenario (another scenario's strategy is refused: USER_INPUT_193)
+        ids.append(await _seeded(app_db_url, monkeypatch, "ADJ-01"))
+    for sid in ids:
+        await _arm(app_db_url, sid)
+    from ofo_app.kite_reads import KiteReads  # noqa: PLC0415
+    from ofo_app.main import create_app  # noqa: PLC0415
+    from ofo_app.routes import execute as exec_route  # noqa: PLC0415
+    _reset_engine()
+    app = create_app()
+
+    def empty_book(method, url, headers, body):
+        import json as _j  # noqa: PLC0415
+        return 200, _j.dumps({"status": "success", "data": {"net": [], "day": []} if url.endswith("positions") else []})
+
+    class _S:
+        api_key = "k"
+        reads = KiteReads(api_key="k", access_token="t", transport=empty_book)  # noqa: S106
+        margin = None
+    app.dependency_overrides[exec_route.get_kite_session] = lambda: _S()
+    handler = _Lines()
+    logging.getLogger("ofo_app.request").addHandler(handler)
+    out = ["concurrency (instant price, warm margin; ms from the request log line, median/max per request)",
+           "n | route | sequential med | concurrent med/max | wall ms for the batch"]
+    async with AsyncClient(transport=ASGITransport(app=app), base_url="http://t") as ac:
+        async def one(path):
+            r = await ac.get(path)
+            if r.status_code != 200: print("NON200", path, r.status_code, r.text[:300])
+            return r.status_code
+
+        for kind in ("plan-watch", "adjustment-check"):
+            for sid in ids:  # warm: margin cache, imports
+                assert await one(f"/api/strategies/{sid}/{kind}") == 200  # noqa: PLR2004
+        for n in (10, 20):
+            for kind in ("plan-watch", "adjustment-check"):
+                paths = [f"/api/strategies/{ids[i % len(ids)]}/{kind}" for i in range(n)]
+                handler.lines.clear()
+                for p in paths[:5]:
+                    await one(p)
+                seq = [float(LINE.match(x).group(4)) for x in handler.lines]
+                handler.lines.clear()
+                t0 = time.perf_counter()
+                codes = await asyncio.gather(*[one(p) for p in paths])
+                wall = (time.perf_counter() - t0) * 1000.0
+                assert set(codes) == {200}, codes
+                conc = [float(LINE.match(x).group(4)) for x in handler.lines]
+                out.append(f"{n} | {kind} | {_med(seq):.1f} | {_med(conc):.1f}/{max(conc):.1f} | {wall:.0f}")
+    logging.getLogger("ofo_app.request").removeHandler(handler)
+    text_out = "\n".join(out)
+    print("\n" + text_out)
+    if os.environ.get("OFO_PERF_CONC_OUT"):
+        with open(os.environ["OFO_PERF_CONC_OUT"], "w", encoding="utf-8") as fh:  # noqa: ASYNC230
+            fh.write(text_out + "\n")
+    await app_db.close_db()
