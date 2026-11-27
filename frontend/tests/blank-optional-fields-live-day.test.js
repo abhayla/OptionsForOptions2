@@ -49,11 +49,10 @@ const GOOD_WATCH = {
 const WATCH_OPTIONAL = ['no_plan_text', 'armed_heading', 'as_of_text', 'lines.0.reason', 'lines.1.reason']
 
 describe('lib/planWatch.js: blank optional texts still read as a good answer', () => {
-  // "" and "   " are dropped as unreadable on origin/integration/nb-1126 (206a9f0): `it.fails` is the strict expected failure;
-  // origin/hotfix/plan-watch-load-1127 (9d39c82f) reads them, and then these tests fail: delete `.fails` (the signal).
+  // "" and "   " were dropped as unreadable before hotfix/plan-watch-load-1127 (9d39c82f); it reads them, so the strict
+  // expected-failure marks (`it.fails`) were deleted, as this comment said to (Lane M3, merge of plan-save).
   for (const v of blankVariants(GOOD_WATCH, WATCH_OPTIONAL)) {
-    const blankText = /= "( *)"$/.test(v.name)
-    ;(blankText ? it.fails : it)(v.name, () => {
+    it(v.name, () => {
       const view = parsePlanWatch(v.data, 7)
       expect(view, 'a good 200 with a blank optional text must not be taken for unreadable').not.toBeNull()
       expect(view.state).toBe('ok')
@@ -63,7 +62,7 @@ describe('lib/planWatch.js: blank optional texts still read as a good answer', (
       expect(view.armedLines[0].now).toBeNull()
     })
   }
-  it.fails('a blank text is never shown as a sentence (it reads as absent)', () => {
+  it('a blank text is never shown as a sentence (it reads as absent)', () => {
     const d = JSON.parse(JSON.stringify(GOOD_WATCH))
     d.as_of_text = '   '
     d.lines[0].reason = ''

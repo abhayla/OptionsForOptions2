@@ -9,6 +9,7 @@
 // Spec basis: REQ-049 AC-4, ADR-016..019 (submitted is not executed; an unknown outcome is never "done"), ADR-017.
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
 import { flushPromises, mount } from '@vue/test-utils'
+import { PLAN_NOT_CONFIRMED_TEXT } from '@/lib/sharedStateText'
 import api, { NEUTRAL_PARTS } from '@/services/api'
 import { addToPaper, PAPER_STATE, paperPostOutcome } from '@/lib/tracking'
 import { useDeleteFlow } from '@/lib/strategyActivity'
@@ -137,8 +138,13 @@ describe('Save plan: the sheet ends on exactly one result', () => {
         expect(error.exists()).toBe(false)
       } else {
         expect(saved).toBe(0) // nothing saved is never announced as saved
-        expect(error.exists()).toBe(true) // and one sentence says so
-        expect(error.text()).toContain(outcome === 'fourxx' ? SERVER_REFUSAL.what_happened : NEUTRAL_PARTS.what_happened)
+        if (outcome === 'fourxx') { // the server refused: its reason, the one sentence
+          expect(error.exists()).toBe(true)
+          expect(error.text()).toContain(SERVER_REFUSAL.what_happened)
+        } else { // Lane R (plan-save, 27 Nov): a 5xx or a timeout may have been stored, so "Nothing was changed" would be false
+          expect(error.exists()).toBe(false)
+          expect(t(w, 'plan-not-confirmed').text()).toBe(PLAN_NOT_CONFIRMED_TEXT) // and one sentence says so
+        }
       }
       w.unmount()
     })

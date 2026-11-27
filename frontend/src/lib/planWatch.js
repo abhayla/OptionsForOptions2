@@ -82,6 +82,7 @@ export function parsePlanWatch(data, id) {
   const asOfText = text('as_of_text')
   const planState = pick(PLAN_STATES, data.plan_state, 'planned')
   if (planState !== data.plan_state) console.warn('plan watch: plan_state unreadable')
+  if (planState === 'no_plan' && noPlanText === null) return null // ADR-330 (13): the no-plan sentence is the server's; without it the answer is refused (fail closed), not shown empty
   const pausedText = planState === 'paused' ? sentence(data.paused?.text) : null
   const planLines = lines.filter((l) => l.section === 'plan')
   const armedLines = lines.filter((l) => l.section === 'armed')
