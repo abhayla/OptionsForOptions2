@@ -170,6 +170,8 @@ class PaperMonitor:
         self._index_age_at: float | None = None  # monotonic time it was last read
         self._retry_at: dict[int, float] = {}  # trigger id -> monotonic time of its next polled attempt
         self._judged: dict[int, tuple[Decimal, datetime.datetime]] = {}  # trigger id -> the reading it last crossed on
+        self._blocked: set[int] = set()  # trigger ids crossed on a reading that did not run (reported not run)
+        self._carried: list[NormalizedQuote] = []  # ticks queued on a handle a reload replaced: judged, never lost
         self._exits_publisher: tuple[Any, monitoring_state.ExitsPublisher] | None = None
         self._dirty = True
         self._loaded_at: float | None = None
@@ -214,6 +216,10 @@ class PaperMonitor:
                     watch.setdefault(key, []).append(_Watch(a, key))
             self._watch = watch
             self._exits = [_Watch(a, self._key_of(feed, a, found)) for a in armed]  # index exits AND leg stops
+            live_ids = {w.armed.trigger.id for w in self._exits}
+            self._judged = {k: v for k, v in self._judged.items() if k in live_ids}
+            self._retry_at = {k: v for k, v in self._retry_at.items() if k in live_ids}
+            self._blocked &= live_ids
             self._resubscribe(feed, sorted(set(watch) | extra))
             # hotfix 27 Nov (DB pool 2 on the PC): the hold's two reads use THIS session, not a second checkout
             await self._reload_hold(feed, found, session)  # AFTER the stop watch: a failed hold never unwatches a stop
@@ -262,6 +268,7 @@ class PaperMonitor:
         if feed is not None and keys:
             self._handle = feed.fanout.subscribe(_no_listener, keys)  # new first: no vendor unsubscribe/resubscribe
         if old_feed is not None and old is not None:
+            self._carried.extend(old_feed.fanout.drain(old))  # ticks the old handle still holds are judged, not dropped
             old_feed.fanout.unsubscribe(old)
 
     @staticmethod
@@ -319,6 +326,9 @@ class PaperMonitor:
                 self._monotonic() - self._loaded_at >= self._reload_seconds:
             await self.reload()
         fired = 0
+        carried, self._carried = self._carried, []
+        for quote in carried:
+            fired += await self.on_quote(quote)
         if self._feed is not None and self._handle is not None:
             for quote in self._feed.fanout.drain(self._handle):
                 fired += await self.on_quote(quote)
@@ -358,11 +368,15 @@ class PaperMonitor:
                 continue  # this very reading was judged (a tick, or an earlier pass) and could not run: not yet again
             price = paper.Price(w.key or w.armed.underlying, paper.LIVE, reading.value, reading.at)
             if not stops.crossed(w.armed.trigger, price):
+                self._blocked.discard(tid)  # not crossed on this reading: nothing is waiting to run
                 continue
             self._judged[tid] = stamp
             self._retry_at[tid] = self._monotonic() + POLLED_RETRY_SECONDS
             if await self._fire_guarded(w, price, now):
                 fired += 1
+                self._blocked.discard(tid)
+            else:
+                self._blocked.add(tid)  # crossed and not run (no live leg price here, a failed write): reported
         return fired
 
     async def _index_reading(self, feed: LiveFeed, underlying: str, now: datetime.datetime) -> _Reading | None:
@@ -371,7 +385,8 @@ class PaperMonitor:
         one age rule: this feed's quote by its health, the worker's by ``index_quote_max_age`` from its own time."""
         own = None
         held = self._index_now(feed, underlying)
-        if held is not None and held.price is not None and held.at is not None:
+        if held is not None and held.price is not None and held.at is not None \
+                and held.at - now <= monitoring_state.FUTURE_SKEW:  # a quote stamped in the future is no reading
             own = _Reading(held.price, held.at, OWN_FEED)
         worker = None
         client = _bus_client()
@@ -379,7 +394,7 @@ class PaperMonitor:
             await self._read_index_age()
             found = None if self._index_age is None else await monitoring_state.read_index(
                 client, underlying, now, self._index_age)
-            if found is not None and found.value == found.value.quantize(paper.PAISE):
+            if found is not None and _is_paise(found.value):
                 worker = _Reading(found.value, found.at, found.source)
         if own is not None and (worker is None or worker.at <= own.at):
             return own
@@ -398,13 +413,13 @@ class PaperMonitor:
             except ValueError:
                 answer, quote = None, None
             if answer is not None and paper.is_live(answer) and answer.price is not None \
-                    and quote.timestamp is not None:
+                    and quote.timestamp is not None and quote.timestamp - now <= monitoring_state.FUTURE_SKEW:
                 own = _Reading(answer.price, quote.timestamp, OWN_FEED)
         worker = None
         client = _bus_client()
         if client is not None and key:
             found = await monitoring_state.read_leg(client, key, now)
-            if found is not None and found.value == found.value.quantize(paper.PAISE):
+            if found is not None and _is_paise(found.value):
                 worker = _Reading(found.value, found.at, found.source)
         if own is not None and (worker is None or worker.at <= own.at):
             return own
@@ -435,6 +450,9 @@ class PaperMonitor:
                     not_run.update({w.armed.trigger.strategy_id: _why_of(w) for w in group})
                 elif reading.source != OWN_FEED:  # this feed's own quote is judged tick by tick (``on_quote``), once
                     fired += await self._exits_with_reading(group, reading, now, polled=True)
+            for w in judged:  # crossed on a reading but not run: the trade is not being checked through to the exit
+                if w.armed.trigger.id in self._blocked:
+                    not_run.setdefault(w.armed.trigger.strategy_id, monitoring_state.EXIT_NOT_PRICED)
         await self._report_exits(judged, not_run, now)
         return fired
 
@@ -653,6 +671,14 @@ class PaperMonitor:
                 await sleep(poll)
         finally:
             self.close()
+
+
+def _is_paise(value: Decimal) -> bool:
+    """True when ``value`` is a price that can be stored exactly (a paisa or coarser); an absurd value is not."""
+    try:
+        return value == value.quantize(paper.PAISE)
+    except ArithmeticError:
+        return False
 
 
 def _why_of(w: _Watch) -> str:

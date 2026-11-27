@@ -55,7 +55,9 @@ INDEX_EXITS_NOT_RUN: Final = "index_exits_not_run"  # the ``why`` when the monit
 INDEX_STALE_REASON: Final = "stale"  # the existing code and sentence (``monitoring_why_stale``); no new on-screen text
 INDEX_READING_TTL_S: Final = 120
 LEG_NOT_LIVE: Final = "leg_not_live"  # the ``why`` of a trade whose leg-price exit has no live leg reading
-LEG_READING_MAX_AGE_S: Final = 20  # a leg reading is current while the worker keeps writing it (REFRESH_S x 2)
+LEG_READING_MAX_AGE_S: Final = 90  # current while the worker re-reads (its tick key turns over every IST minute)
+EXIT_NOT_PRICED: Final = "exit_not_priced"  # the why of a crossed exit that could not run (no live leg price)
+MAX_READING_VALUE: Final = Decimal(10) ** 9  # no index or option price is this large: such a value is no reading
 REFRESH_S: Final = 10  # an unchanged snapshot is rewritten this often (it must stay younger than SNAPSHOT_STALE_S)
 
 
@@ -251,18 +253,20 @@ def encode_reading(reading: IndexReading, published: datetime.datetime) -> str:
 
 
 def decode_reading(raw: Any, now: datetime.datetime, max_age: datetime.timedelta | None,
-                   published_max_s: float = INDEX_READING_TTL_S) -> IndexReading | None:
+                   published_max_s: float = INDEX_READING_TTL_S, *, expect: str | None = None) -> IndexReading | None:
     """The stored reading, or None: missing, not our shape, no time zone, a quote older than ``max_age`` (the one index
     age rule; None for an option leg, whose quote is current while the feed is, however long ago it last changed), a
-    quote from the future, or one published more than ``published_max_s`` ago (a worker that stopped writing)."""
+    quote from the future, one published more than ``published_max_s`` ago (a worker that stopped writing), a value that
+    is not a plausible price, or (``expect``) a reading of another instrument than the one asked for."""
     text = raw.decode("utf-8", "replace") if isinstance(raw, bytes) else raw
     try:
         body = json.loads(text) if isinstance(text, str) else None
         value = Decimal(body["value"]) if isinstance(body, dict) and isinstance(body.get("value"), str) else None
     except (ValueError, InvalidOperation, KeyError, TypeError):
         return None
-    if body is None or value is None or not value.is_finite() or value <= 0 \
-            or body.get("source") not in ("feed", "rest") or not isinstance(body.get("underlying"), str):
+    if body is None or value is None or not value.is_finite() or not 0 < value < MAX_READING_VALUE \
+            or body.get("source") not in ("feed", "rest") or not isinstance(body.get("underlying"), str) \
+            or (expect is not None and body["underlying"] != expect):
         return None
     at, published = _time(body.get("at")), _time(body.get("published"))
     if at is None or published is None:
@@ -301,7 +305,7 @@ async def read_index(client: Any, underlying: str, now: datetime.datetime,
     except Exception as exc:  # noqa: BLE001 - a store that cannot answer gives no reading
         log.warning("paper monitor: the index reading could not be read: %s", type(exc).__name__)
         return None
-    return None if raw is None else decode_reading(raw, now, max_age)
+    return None if raw is None else decode_reading(raw, now, max_age, expect=underlying)
 
 
 async def read_leg(client: Any, instrument_id: str, now: datetime.datetime) -> IndexReading | None:
@@ -314,7 +318,7 @@ async def read_leg(client: Any, instrument_id: str, now: datetime.datetime) -> I
     except Exception as exc:  # noqa: BLE001 - a store that cannot answer gives no reading
         log.warning("paper monitor: the leg reading could not be read: %s", type(exc).__name__)
         return None
-    return None if raw is None else decode_reading(raw, now, None, LEG_READING_MAX_AGE_S)
+    return None if raw is None else decode_reading(raw, now, None, LEG_READING_MAX_AGE_S, expect=instrument_id)
 
 
 def encode_exits(not_run: Mapping[int, str], at: datetime.datetime) -> str:

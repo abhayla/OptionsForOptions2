@@ -280,6 +280,7 @@ def feed_state(provider: Any, now: datetime.datetime) -> PriceState | None:
     return None if health is DataHealth.AVAILABLE else PriceState.DISCONNECTED
 
 
+MAX_PUBLISHED_READINGS = 2000  # the worker's published-reading memory is pruned beyond this
 REST_INDEX_FEED_ID = "rest-index-quote"  # the feed id of the REST stand-in quote (``rest_index_quote``)
 
 
@@ -1502,11 +1503,11 @@ class Worker:
         self.status[sid] = MonitoringStatus.ACTIVE
         self.paused_reason.pop(sid, None)
         self.paused_why.pop(sid, None)
-        await self._publish_index(w, read, now)  # Lane FE: the reading that made it watched is the exits' reading
         self._leg_ids[sid] = (w.tracked.position.legs,
                               (read.spot.instrument_id, *(read.legs[i].instrument_id for i in sorted(read.legs))))
         tick = self._tick_key(provider, w, now)  # read with the prices, before any await (a later tick is new)
         sig = read.signature(now)
+        await self._publish_index(w, read, now)  # Lane FE: the reading that made it watched is the exits' reading
         changed = self._plan_changed(w)
         if sig == self._signature.get(sid) and not changed:
             self._tick[sid] = tick
@@ -1573,6 +1574,9 @@ class Worker:
         kept = self._index_written.get(slot)
         if kept is not None and kept[0] == stamp and _seconds(now - kept[1]) < monitoring_state.REFRESH_S:
             return
+        if len(self._index_written) > MAX_PUBLISHED_READINGS:  # forget what has not been written for a while
+            keep_after = now - datetime.timedelta(seconds=monitoring_state.REFRESH_S * 6)
+            self._index_written = {k: v for k, v in self._index_written.items() if v[1] >= keep_after}
         if await monitoring_state.publish_index(
                 self._want_client, monitoring_state.IndexReading(key, quote.ltp, quote.timestamp, source), now,
                 leg=leg):
