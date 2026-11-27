@@ -105,8 +105,8 @@ class ReadLease:
         if self._timer_loop is loop or not self._held:
             return
         self._timer_loop = loop
-        delay = max(0.0, min(h.expires for h in self._held.values()) - loop.time())
-        loop.call_later(delay, self._sweep, loop)
+        next_end = min(h.expires for h in self._held.values())
+        loop.call_later(next_end - loop.time(), self._sweep, loop)  # a past end fires at once
 
     def _sweep(self, loop: Any) -> None:
         self._timer_loop = None
