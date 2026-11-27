@@ -95,6 +95,9 @@ showed no such STALE change today.
 | Leg stops are premium levels, so a stop cannot follow Change expiry (#774) | built fail-closed on fix/stop-follows-leg-1127 (a013f2ee, not pushed): removed with a review line | ADR-330 (42) | owner chooses a contract-independent stop kind or keeps removal |
 | A placed outcome decided by a re-read has no order number | /paper/strategies carries no order ids, so the builder's "(order n)" is missing for an outcome decided by a re-read | REQ-065, ADR-016..019 | the re-read path carries the order id, or the sentence says why none |
 | The worker re-stamps a REST stand-in index price as feed with now (state_from_market / feed_spot): the label says feed (pre-existing) | background.py state_from_market / feed_spot: the REST reading is shown as a feed quote stamped now | REQ-100 AC-18, ADR-330 (39) | the stand-in keeps its REST label and its own time |
+| A dead contract (contract_retired / contract_delisted / token_reassigned) is told "try again when they update" instead of the server's tracking_exit_contract_not_live sentence | usePaperExit.js:50, templates.py:1031 | ADR-328 (4), ADR-210 | the dialog shows the server's sentence for a dead contract |
+| The not-live sentence names live legs and add rows too, not only the not-live exit legs | StrategyBuilderPage.vue:541/548, PaperStrategies.vue:166 | ADR-322 (3) | the sentence names only the legs that are not live |
+| While one Positions dialog is blocked, every card's Exit button shows the not-live reason | PaperStrategies.vue:155/271 | ADR-328 (4) | only the card whose dialog is blocked shows it |
 
 ## Spot from either source (27 Nov afternoon)
 
@@ -146,6 +149,27 @@ no order id, because /paper/strategies carries none: still without a number (lis
    - plan-rule alert rows raised in those 10 minutes (must be > 0 when a rule triggers);
    - one Exit on Positions and one in the builder: exactly one final sentence each, with "(order n)".
 
+## Exit dialog on a good not-live read (27 Nov 15:42 report)
+
+Spec basis: ADR-322 (3), ADR-328 (4), ADR-330 exit rule, REQ-109 AC-5, ADR-016..019.
+
+- RCA: the gate blocked only on a FAILED read; a good read of a paused book left Confirm on with no sentence, on the builder
+  and on Positions.
+- Fix: one rule `exitLegsNotLive` in usePaperExit.js (6f8fd134, merged); both Exit dialogs block on a good not-live read.
+- Lease answer: the lease never serves a stale quote as live. 3 tests in tests_app/test_read_door.py, 17 passed. In bus mode
+  the API reads NOT_CONNECTED about 3-5.5 s after the feed process stops (feed_bus.py BusSocket `_read_status` :398-402;
+  tests_app/test_bus_socket.py:261, :228).
+- Class: 4 paths before -> 0 after.
+- Tests: 18 new vitests, red then green. Review minors (883ec3e7): a vitest calls PaperStrategies' `doExit` directly while a
+  ticked leg is not live on a good read and asserts no POST (mutation check: `exitGate.notLive.value` -> `stale.value` at
+  PaperStrategies.vue:470 made it fail, 1 failed | 18 passed; restored, 19 passed); the two flipped tests are retitled and use
+  a server-shaped fixture (`price_state` 'stale', book state PAUSED as routes/paper.py:699-701).
+- Review: Opus Tier A, SHIP.
+- Behaviour note, pending owner read: a leg with no live price now blocks Confirm. After hours a held close counts as live
+  (ADR-212), and the server refuses an after-hours exit anyway (may_act.py:18).
+- Re-test step for Monday: stop the FEED process with an Exit dialog open. Expect "<legs>: Prices are not live; try again when
+  they update" with Confirm grey; restart the feed and Confirm turns blue.
+
 ## Who did what (task | model), 26-27 Nov
 
 The lead session (Opus) split, routed, verified and reported. Exceptions, stated plainly: the lead itself ran the git merges and
@@ -169,3 +193,5 @@ rule those belong to Haiku (mechanical) and Sonnet (gates) and are routed so fro
 | Hotfix Tier A reviews: Job B, Job A, read door x2 | Opus (Why Opus: price / exit path) |
 | #774 stop on Change expiry (built fail-closed, branch fix/stop-follows-leg-1127) | Sonnet |
 | Merges, conflict resolutions, generated-file regeneration, gate runs (to 14:14) | Opus lead (should have been Haiku / Sonnet) |
+| Not-live Exit dialog fix | Sonnet |
+| Its Tier A review | Opus (Why Opus: exit path) |
