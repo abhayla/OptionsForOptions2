@@ -7,6 +7,73 @@ for these items by the owner on 26 Nov, see RESULTS-lane-p.md). Highest status c
 
 Spec basis: ADR-330 (1) to (27) and its one-module instruction; ADR-002; ADR-003; ADR-008; ADR-016 to ADR-019.
 
+## Hotfix status for the coordinator: `hotfix/loss-stop-1127` (27 Nov, T1-05 FAIL: the Rs 100 loss stop of A-D #200 raised no alert)
+
+**Head: the branch head on origin** (cut from 206a9f0; only this fix: `backend/ofo/adjustment/cap_scope.py`, ADR-267
+amendment 2, `tests/adjustment/test_plan_stop_cap.py` (new) and one changed example in
+`tests_app/test_background_worker.py`). Independent of `hotfix/plan-watch-1127` and of Lane U's and Lane R's branches.
+Highest status: Fixed, not tested.
+
+**RCA:** the strategy's daily alert cap held the stop. `cap_scope.py` (before the fix) exempted only the user's level
+watches and day rules. A-D #200 (weekly alert style, cap 4) had already raised T-03, T-14, T-01 and the T-10b time
+exit, so when the rupee loss stop crossed (rule id `plan.rupee_loss`, value 162.5 against 100, from about 11:00) the
+gate turned it into a held crossing with reason "daily limit" (`alert_gate.py:335`, table
+`adjustment_held_crossings`), never an alert row. The 09:55 % stop passed because that trade's cap was not used up.
+A rupee stop is recorded as `plan.rupee_loss`, not T-06 (T-06 is dropped while a rupee level is the stop), so "no
+T-06 row" was expected; the row to look for is a held `plan.rupee_loss`.
+Ruled out: a partial plan save (the plan's other rules fired), the "draft" body status and the stop stored as the
+string "100" (the test with #200's exact body evaluates both), the sign (loss met when P&L <= -level,
+`ofo/checks/pnl_amount.py:52`).
+
+**Fix (class):** the plan's own stops and exits (T-06, T-16, the 2x-credit stop, the rupee loss stop and rupee
+profit target, the T-10b time exit) are never held by the daily cap and do not count against it; `cap_exempt` is the
+one rule both the gate and the worker's restart count read. Decision: ADR-267 amendment 2 (same delegation and reason
+as ADR-267: the cap must never suppress the alert the user set). The % profit target T-07 stays capped.
+Failing test first: `test_200_rupee_stop_opens_after_t03_t14_t01_and_the_time_exit` (Held instead of Opened before
+the fix). Tier A review (Opus): SHIP (one path for hold and count; the exempt ids are exactly the ids the evaluator
+emits for a #200-shaped body; still one alert per crossing, no flood over 5 hours of flipping; 8 of 8 mutants killed;
+1140 domain tests passed).
+Open from the review, not on this branch (to file as deferred issues):
+- The rupee loss stop is judged only at the candle close; the % stops are judged on the first check past their line
+  (`stop_lines.py:114-115` `is_stop_rule` lacks `plan.rupee_loss`; `alert_gate.py:405`, REQ-170 AC-5). When the rupee
+  level is the plan's only stop its alert can wait up to one candle.
+- A stored plan body may give a rule its own id (`playbook_store.py:523-533`); a T-06 renamed `my-stop` is still capped.
+  No system playbook does this; it needs a body written through the API.
+- No database test stores plan-exit rows and checks the worker's restart count leaves them out
+  (`tests_app/test_alert_gate_storage.py:292-300`).
+- Owner question: exempt T-07 (the % target) when the plan's Target is saved (ADR-267 amendment 2).
+
+**The PC must:** pull; **restart the background worker supervisor and the API** (the gate runs in the worker);
+**no frontend rebuild; no migration.**
+**Confirm on the PC (read-only SQL):** `adjustment_held_crossings` for A-D #200 should hold a `plan.rupee_loss` row
+with reason daily limit, value about 162.5, threshold 100, held about 11:00 to 11:05 (the query below). If there is no such row the cap is not the cause: tell me, the hunt reopens.
+**Re-run:** T1-05 (a plan with a rupee stop on a strategy that already has its cap's worth of alerts that day).
+
+
+#200 SQL (read-only):
+
+```sql
+-- read-only: A-D #200's plan, its alert rows and its held crossings, 27 Nov 2026 (IST)
+BEGIN READ ONLY;
+SELECT id, name, status, created_at FROM public.strategies WHERE name ILIKE '%A-D #200%' ORDER BY id;
+SELECT p.strategy_id, p.playbook_id, p.accepted_at, p.body->>'status' AS body_status, p.body->'guards' AS guards,
+       p.stop_base, (SELECT jsonb_agg(r->>'id') FROM jsonb_array_elements(p.body->'rules') r) AS rule_ids
+FROM public.strategy_adjustment_plans p JOIN public.strategies s ON s.id = p.strategy_id
+WHERE s.name ILIKE '%A-D #200%';
+SELECT g.id, g.rule_id, g.trigger_id, g.kind, g.value, g.threshold, g.shown_at AT TIME ZONE 'Asia/Kolkata' AS shown_ist,
+       g.outcome, g.worse
+FROM public.adjustment_suggestions g JOIN public.strategies s ON s.id = g.strategy_id
+WHERE s.name ILIKE '%A-D #200%' ORDER BY g.shown_at;
+SELECT h.id, h.rule_id, h.trigger_id, h.value, h.threshold, h.reason, h.held_at AT TIME ZONE 'Asia/Kolkata' AS held_ist
+FROM public.adjustment_held_crossings h JOIN public.strategies s ON s.id = h.strategy_id
+WHERE s.name ILIKE '%A-D #200%' ORDER BY h.held_at;
+-- today's rows on that strategy the cap counted (expect 4 before 11:05 if the cap held the stop)
+SELECT count(*) FILTER (WHERE g.rule_id NOT LIKE 'watch.%' AND g.rule_id NOT LIKE 'day.%' AND g.rule_id NOT LIKE 'day:%')
+FROM public.adjustment_suggestions g JOIN public.strategies s ON s.id = g.strategy_id
+WHERE s.name ILIKE '%A-D #200%' AND (g.shown_at AT TIME ZONE 'Asia/Kolkata')::date = DATE '2026-11-27';
+ROLLBACK;
+```
+
 ## Status for the coordinator (this session cannot send messages: the session-message service refuses it as untrusted)
 
 **Full app (DB) suite on the final code head 1eb5097, run as CI runs it (GITHUB_ACTIONS=true, per-file database
