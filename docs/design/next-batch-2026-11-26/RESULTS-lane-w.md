@@ -6,7 +6,10 @@ Branch `fix/live-test-small-1127`, cut from `origin/integration/nb-1126` at 206a
 `elevated_session_untrusted_device`; the lines are kept here instead)
 - LANE W ALIVE (27 Nov, branch cut from 206a9f0)
 - 12:55 IST: item 14 (coordinator message 12:50, S-11: Customise triggers then Back drops the typed plan) taken.
-- Push 1: items 10, 11, 14, 8, 1, 2, 3, 4, 7, 9, 13 (head and gate result in the push line below).
+- 13:18 IST coordinator: item 14 dropped (PC re-ran T3-16 at 13:04: PASS; the 12:42 failure was the sheet taking 17 s
+  to load). Its commit is reverted; noted only as "plan sheet loads slowly" (deferred 9). Asked for a docs push now:
+  a docs-only push needs its own gate run (~35 min), the same as the full tree, so the first push carries every item.
+- Push 1: items 10, 11, 8, 1, 2, 3, 4, 7, 9, 13 (head and gate result in the push line below).
 
 ## Items
 
@@ -28,7 +31,7 @@ New wording is marked **pending owner read**; every such sentence is also pinned
 | 7 | DONE | The My Strategies rename form never focused its input, and Modal focused the dialog frame, not the field. | Modal focuses a `[data-autofocus]` field on open (Save, Save As, Update Strategy Name); the My Strategies row rename focuses via `nextTick`; Esc closes from open. | My Strategies, Rename on a row, type at once: the text goes in; Esc closes. Same with Builder, Save. |
 | 12 | NO CHANGE (wording is the owner's) | The spec gives an exact sentence for one take-profit refusal only, and the app already matches it. | Spec vs app: not_in_profit: ADR-238 (6) has only the fragment refused "not in profit" / app "The whole trade is not in profit with every open leg closed at its planned price, so this approach is not built."; not_in_profit_after_charges: ADR-326 (1) "Not in profit after charges: {after}" / app the same; booked_unknown, two_expiries, charges_unknown: no spec sentence. Aligning to ADR-238's bare words is a wording decision (about 20 fixtures pin the current sentence). | - |
 | 13 | DONE | The Contract cell and header of Net Positions had no `nowrap`. | `whitespace-nowrap` on both (PaperBookPanel.vue); the existing `overflow-x-auto` wrapper scrolls the table inside its box. A class check only: check by eye. | At 1366 px, a paper strategy with an open position, Net Positions: "NIFTY 1 Dec 25900 CE" on one line. |
-| 14 | DONE | After Add to Paper the builder is in Drafts Mode where `savedId` is null, so TrackingPanel/PlanEntry (the only thing that reopened the held sheet) were never drawn on return; Lane J's test mounted PlanEntry alone with an id. | SaveDraftBar (always drawn) reopens the held sheet on mount; the hold records whether the strategy already has a plan (Save stays a PUT for a running trade); `takePlan` no longer wipes another strategy's hold; Close and Cancel clear the hold; PlanEntry's own auto-open removed (no second sheet). | Add to Paper, type Stop (Rs) 400 and time exit 15:15, Customise triggers, browser Back: the sheet reopens with 400 and 15:15; Save keeps them; another strategy's sheet shows nothing held. |
+| 14 | DROPPED (coordinator 13:18) | Not a defect: the plan sheet took 17 s to load at 12:42; at 13:04 the typed 400 and 15:15 stayed (T3-16 PASS). | Commit 931562e reverted. | - |
 
 ## SPEC CHANGE pending the owner
 - REQ-112 AC-2 said "Acted on" meant "prepared a basket"; item 10 (coordinator brief: stamp only on a placed order)
@@ -56,3 +59,4 @@ New wording is marked **pending owner read**; every such sentence is also pinned
    issue); item 10 edited assertions there that have not run green here. Run on the PC.
 7. Item 13: the nowrap is checked by class only; needs a rendered-width check.
 8. Two new codes STRATEGY_VALIDATION_524/525 (item 4) may collide with another lane's numbers at merge.
+9. Plan sheet loads slowly (17 s at 12:42 on the PC, 27 Nov): the cause of the item 14 report.
