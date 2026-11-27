@@ -26,7 +26,7 @@ from ofo.adjustment.strategy_type import strike_gap_of, type_of
 from ofo.charges import ChargeRates
 from ofo.engine.legs import Action, Leg
 from ofo.errors import render
-from ofo.errors.explanations import render_explanation
+from ofo.errors.explanations import EarlierDay, render_explanation
 from ofo.errors.slots import INT_ABS_MAX
 from ofo.instruments.models import InstrumentId as ContractKey
 from ofo.instruments.models import ListedContract
@@ -286,15 +286,26 @@ def closed_label(state: MarketState, leg_quotes: Iterable[NormalizedQuote | None
         return ClosedLabel(label_time(state, all_times))
     later = [q.price_at for q in legs if not made_by_the_close(q)]
     frozen = [q.price_at for q in legs if made_by_the_close(q)]
-    if not later or not frozen:
+    if not later:
         return ClosedLabel(label_time(state, all_times))
-    if spot is not None and _aware(spot.price_at) and made_by_the_close(spot):
-        frozen.append(spot.price_at)
-    frozen_at, later_at = max(frozen), min(later)
-    if len(later) == 1:
-        text = render_explanation("closed_prices_mixed_one", frozen=frozen_at, later=later_at)
+    if frozen:
+        if spot is not None and _aware(spot.price_at) and made_by_the_close(spot):
+            frozen.append(spot.price_at)
+        frozen_at, later_group = max(frozen), later
+    else:  # every leg first priced after the close: the earliest time labels the group, only newer legs are "as of"
+        frozen_at = min(later)
+        later_group = [t for t in later if t > frozen_at]
+        if not later_group:
+            return ClosedLabel(label_time(state, all_times))
+    later_at = min(later_group)
+    seen = [*all_times, *([state.last_price_at] if _aware(state.last_price_at) else [])]
+    newest_day = max(t.astimezone(IST).date() for t in seen)
+    shown = {t: (EarlierDay(t) if t.astimezone(IST).date() < newest_day else t) for t in (frozen_at, later_at)}
+    if len(later_group) == 1:
+        text = render_explanation("closed_prices_mixed_one", frozen=shown[frozen_at], later=shown[later_at])
     else:
-        text = render_explanation("closed_prices_mixed_many", frozen=frozen_at, later=later_at, count=len(later))
+        text = render_explanation("closed_prices_mixed_many", frozen=shown[frozen_at], later=shown[later_at],
+                                  count=len(later_group))
     return ClosedLabel(frozen_at, text)
 
 
