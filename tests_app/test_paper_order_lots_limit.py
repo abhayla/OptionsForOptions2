@@ -200,24 +200,19 @@ async def test_an_exit_above_the_freeze_quantity_is_refused_like_an_open_order(d
     await _store_freeze(db, c[0], FREEZE)  # the newest file now shows 54 lots
     reply = await _post(app, stored, [_order(c[0], 90, kind="exit", side="SELL")])
     assert reply.status_code == UNPROCESSABLE, reply.text
-    assert "NIFTY 13 Oct 22800 CE asks for 90 lots; the most one order can hold is 54 lots." in reply.text
+    assert ("An exit of 90 lots on NIFTY 13 Oct 22800 CE is above the most one order can carry (54 lots)." in reply.text
+            and "Exit 54 lots or fewer now, then exit the rest in further orders." in reply.text)
 
 
-async def test_a_contract_with_no_stored_freeze_quantity_is_refused_by_name(db):
-    """Owner 27 Nov: no stored freeze quantity fails closed (ADR-081's 'review warns' is reported, not guessed)."""
+async def test_a_contract_with_no_stored_freeze_quantity_is_not_refused_for_freeze_but_the_lots_limit_holds(db):
+    """Coordinator ruling 27 Nov: ADR-081 stands. No stored freeze quantity (SENSEX has no BSE_FO source) -> no freeze
+    refusal; decisions (50) and (52) apply always."""
     app, stored, *_ = await _setup(db)
     c = stored.saved.contract_ids
-    reply = await _post(app, stored, [_order(c[0], 1)])
+    assert (await _post(app, stored, [_order(c[0], 100)])).status_code == HTTPStatus.CREATED
+    reply = await _post(app, stored, [_order(c[0], 1, kind="add")])
     assert reply.status_code == UNPROCESSABLE, reply.text
-    assert "The exchange freeze quantity for NIFTY 13 Oct 22800 CE is not known" in reply.text
-
-
-# ---- Lane Q2's cases (branch test/live-day-gaps-1127, gap 8), rewritten to ADR-330 (50)-(52): one file, one truth ----
-
-def test_the_one_lots_limit_is_100_lots_per_leg_by_default():
-    """(52): Q2's test pinned 10,000; the owner's default is 100."""
-    from ofo.settings import calc, defaults  # noqa: PLC0415
-    assert calc.max_lots(dict(defaults())) == DEFAULT_MAX_LOTS
+    assert "would hold 101 lots after this order; a leg can hold at most 100 lots (100 held, 1 added)." in reply.text
 
 
 async def test_5000_lots_sold_on_one_leg_is_refused_and_nothing_is_stored(db):
@@ -241,17 +236,11 @@ async def test_100_lots_sold_is_accepted_and_one_more_sold_is_refused(db):
     assert refused.status_code == UNPROCESSABLE and "would hold 101 lots" in refused.text
 
 
-async def test_an_exit_with_no_stored_freeze_quantity_is_not_trapped(db):
-    """Opus review 27 Nov: a reducing kind is never refused for a missing freeze file (SENSEX has none loaded)."""
-    from decimal import Decimal  # noqa: PLC0415
-
-    from ofo_app import paper_store  # noqa: PLC0415
+async def test_an_open_and_an_exit_with_no_stored_freeze_quantity_both_go_through(db):
+    """Opus review 27 Nov + ruling: a missing freeze file traps neither an open nor an exit."""
     app, stored, *_ = await _setup(db)
     c = stored.saved.contract_ids
-    at = datetime.datetime.now(datetime.UTC)
-    await paper_store.place(db, stored.user_ref, stored.id, [paper_store.NewOrder(
-        c[0], "BUY", 10 * LOT, Decimal("10.00"), "open", at)])  # a held leg; no freeze row is stored for it
-    assert (await _post(app, stored, [_order(c[1], 1)])).status_code == UNPROCESSABLE  # an OPEN still fails closed
+    assert (await _post(app, stored, [_order(c[0], 10)])).status_code == HTTPStatus.CREATED
     reply = await _post(app, stored, [_order(c[0], 10, kind="exit", side="SELL")])
     assert reply.status_code == HTTPStatus.CREATED, reply.text
 
@@ -289,4 +278,4 @@ async def test_a_paper_exit_of_30_lots_above_a_1800_unit_freeze_is_refused(db):
     await _store_freeze(db, c[0], 1800)
     reply = await _post(app, stored, [_order(c[0], 30, kind="exit", side="SELL")])
     assert reply.status_code == UNPROCESSABLE, reply.text
-    assert "asks for 30 lots; the most one order can hold is 27 lots." in reply.text
+    assert "An exit of 30 lots on NIFTY 13 Oct 22800 CE is above the most one order can carry (27 lots)." in reply.text

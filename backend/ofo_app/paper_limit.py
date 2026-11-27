@@ -119,10 +119,11 @@ async def check_order_size(db: Any, existing: Sequence[Any], new: Sequence[Any],
     """ADR-330 (50), (51), (52), ADR-081, ADR-092 (Lane K): the size check every paper order passes, at the one door
     (``place_checked``); ``existing`` are the stored rows before this batch (``.order`` rows), ``new`` the batch's
     ``NewOrder`` rows. PAPER AND REAL ARE THE SAME (ADR-330 (58)): a real-order path calls this same function.
-    Per order, every kind (an exit too, (51)): units must be below the contract's stored exchange freeze limit. No
-    stored limit -> ``paper_leg_freeze_unknown`` (fails closed: the order cannot be checked), except a reducing kind,
-    which a missing file never traps. A limit below one lot -> ``paper_leg_limit_below_one_lot``. Per leg: the lots
-    the leg will hold after EACH order of the batch (held + added, signed net of its contract, in stored order) may
+    Per order, every kind (an exit too, (51)): units must be below the contract's stored exchange freeze limit; an
+    exit over it says how many lots one exit may carry. No stored limit -> no freeze refusal (ADR-081, coordinator
+    ruling 27 Nov; the lots limit below still applies). A limit below one lot ->
+    ``paper_leg_limit_below_one_lot``. Per leg: the lots the leg will hold after EACH order of the batch (held +
+    added, signed net of its contract, in stored order) may
     not exceed ``limits.max_lots`` (default 100, (52)); an order that does not grow the leg's net (a cut back of a
     leg already over a lowered limit) passes. An unreadable setting or store raises: nothing placed."""
     from ofo.settings import calc  # noqa: PLC0415
@@ -147,11 +148,8 @@ def _check_freeze(stored: Any, found: Mapping[int, Any], new: Sequence[Any], nam
     for o in new:
         c = found[o.contract_id].stored.listed.contract  # a contract with no stored row was refused before the door
         limit = stored.get(InstrumentId(c.exchange_segment, c.exchange_token))
-        if limit is None and o.kind in paper_store.REDUCING_KINDS:
-            continue  # an exit, stop or settle of a leg is never trapped by a missing file (Opus review 27 Nov)
         if limit is None:
-            raise StrategyRefused("paper_leg_freeze_unknown", message=render(
-                "paper_leg_freeze_unknown", contract=name_of(o.contract_id)))
+            continue  # ADR-081: no stored freeze quantity (SENSEX has no BSE_FO source) is not a freeze refusal
         freeze = StoredFreeze(limit.freeze_limit, c.lot_size, limit.file_date)
         if o.quantity < freeze.limit:
             continue
@@ -159,9 +157,9 @@ def _check_freeze(stored: Any, found: Mapping[int, Any], new: Sequence[Any], nam
         if top_lots < 1:  # the limit is below one lot: no whole-lot order is allowed
             raise StrategyRefused("paper_leg_limit_below_one_lot", message=render(
                 "paper_leg_limit_below_one_lot", contract=name_of(o.contract_id), limit=freeze.limit, lot=freeze.lot))
-        raise StrategyRefused("paper_leg_over_order_limit", message=render(
-            "paper_leg_over_order_limit", contract=name_of(o.contract_id),
-            lots=-(-o.quantity // freeze.lot), max_lots=top_lots))
+        code = "paper_exit_over_order_limit" if o.kind in paper_store.REDUCING_KINDS else "paper_leg_over_order_limit"
+        raise StrategyRefused(code, message=render(
+            code, contract=name_of(o.contract_id), lots=-(-o.quantity // freeze.lot), max_lots=top_lots))
 
 
 def _check_leg_totals(top: int, found: Mapping[int, Any], existing: Sequence[Any], new: Sequence[Any],

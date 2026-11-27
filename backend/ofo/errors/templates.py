@@ -1329,11 +1329,13 @@ _LEG_EDIT_TEMPLATES: tuple[MessageTemplate, ...] = (
           "Reduce {contract} to {room} more lots or fewer.",
           {"contract": ContractName, "total": Count, "max_lots": Count, "held": Count, "added": Count,
            "room": Count}),
-    # Lane K (owner 27 Nov): no stored freeze quantity for the contract -> the order cannot be checked. Pending read.
-    _gate("paper_leg_freeze_unknown", _UI, 576,
-          "The exchange freeze quantity for {contract} is not known, so an order for it cannot be checked.",
-          "Nothing was placed.", "Orders for this contract, until the exchange's freeze file is loaded.",
-          "Try again after the next daily freeze file load.", {"contract": ContractName}),
+    # Lane K (decision 51, ADR-092; coordinator ruling 27 Nov): an exit above the freeze quantity tells what to do.
+    # Pending owner read.
+    _gate("paper_exit_over_order_limit", _UI, 576,
+          "An exit of {lots} lots on {contract} is above the most one order can carry ({max_lots} lots).",
+          "Nothing was exited.", "This exit, until it is within the limit.",
+          "Exit {max_lots} lots or fewer now, then exit the rest in further orders.",
+          {"contract": ContractName, "lots": Count, "max_lots": Count}),
     # Lane K item 4 (PC check T3-13, 27 Nov): an entry price of 0 or below, named by leg. Pending owner read.
     _gate("paper_entry_price_not_above_zero", _UI, 577,
           "The entry price for {contract} must be above 0.",
