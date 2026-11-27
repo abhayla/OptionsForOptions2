@@ -41,7 +41,7 @@ from ofo.marketdata.forward import ForwardQuality
 from ofo.marketdata.provider import MarketDataProvider
 from ofo.marketdata.quote import NormalizedQuote
 from ofo.marketdata.shared_compute import FeedScope, SharedCompute
-from ofo.marketdata.spot_source import resolve_spot
+from ofo.marketdata.spot_source import SOURCE_FEED, resolve_spot
 from ofo.money import shown_price
 from ofo.outcome import (
     OutcomeState,
@@ -150,6 +150,17 @@ def judge_spot(market: Any, rest: Any, ctx: MarketContext | None) -> Any:
     caller of ``resolve_spot`` in the routes (a repo-scan test holds it)."""
     judged = spot_judging_now(ctx)
     return resolve_spot(market.feed_at(judged), rest, market.last_close, now=judged, windows=feed_windows_of(ctx))
+
+
+async def rest_spot_if_needed(market: Any, rest_reader: Any, underlying: str, ctx: MarketContext | None) -> Any:
+    """THE one door to the REST index quote for a route (REQ-118; ADR-330 (39); finding
+    page-poll-calls-vendor-rest-before-tick-store): the tick store is judged FIRST with the feed's age rule
+    (``judge_spot``'s own feed -> last close order); the REST reader is awaited only when the feed cannot give the
+    spot (and that reader is itself the shared cached single-flight door, ``live_market.index_spot``). A fresh tick:
+    None, no REST call. A repo-scan test holds that no route awaits a REST reader outside this helper."""
+    if judge_spot(market, None, ctx).source == SOURCE_FEED:
+        return None
+    return await rest_reader(underlying)
 
 
 def get_answer_clock() -> AnswerClock:

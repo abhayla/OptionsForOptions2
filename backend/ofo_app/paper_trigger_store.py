@@ -40,6 +40,12 @@ def _armed() -> tuple[Any, dict]:
     return text(_ARMED_SQL.format(scope=clause)), params
 
 
+#: every contract with a non-zero net paper quantity in a live strategy of this process's scope, with the strategy's
+#: underlying: the legs the standing hold keeps on the feed (finding a-requests-release-parks-a-shared-subscription).
+_OPEN_LEGS_SQL = ("SELECT o.contract_id, s.underlying AS strategy_underlying FROM public.paper_orders AS o "
+                  "JOIN public.strategies AS s ON s.id = o.strategy_id WHERE s.deleted_at IS NULL AND {scope} "
+                  "GROUP BY o.strategy_id, o.contract_id, s.underlying "
+                  "HAVING SUM(CASE o.side WHEN 'BUY' THEN o.quantity ELSE -o.quantity END) <> 0")
 _ORDERS_OF = text("SELECT id, strategy_id, contract_id, side, quantity, price, kind, placed_at, created_at, reason, "
                   "trigger_id FROM public.paper_orders WHERE strategy_id = ANY(:ids) ORDER BY strategy_id, id")
 _CLAIM = text("UPDATE public.paper_triggers SET fired_at = clock_timestamp() "
@@ -129,6 +135,14 @@ async def list_for(conn: Any, strategy_id: int) -> list[TriggerRow]:
 async def armed(conn: Any) -> list[ArmedTrigger]:
     return [ArmedTrigger(_trigger(r), r.user_ref, r.name, r.strategy_underlying)
             for r in (await conn.execute(*_armed())).all()]
+
+
+async def open_legs(conn: Any) -> list[tuple[int, str]]:
+    """(contract_id, underlying) of every open paper leg of every live strategy, in ONE query whatever the count."""
+    from ofo_app.scenario_mode import scope_clause  # noqa: PLC0415 - the one isolation helper
+    clause, params = scope_clause("s")
+    rows = (await conn.execute(text(_OPEN_LEGS_SQL.format(scope=clause)), params)).all()
+    return [(int(r.contract_id), r.strategy_underlying) for r in rows]
 
 
 async def orders_of(conn: Any, strategy_ids: Sequence[int]) -> dict[int, list[paper_store.StoredOrder]]:

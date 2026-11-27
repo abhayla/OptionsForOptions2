@@ -604,3 +604,45 @@ async def test_adr_330_39_a_stale_index_tick_does_not_fire_an_armed_exit_and_a_f
     assert await monitor.step() == 1
     assert await _trigger_state(db, tid) == (True, False)
     assert len(await _stops(db, stored.id)) == OPEN_LEGS
+
+
+async def test_hf_a_a_failed_hold_read_keeps_the_armed_stops_watched_and_the_last_hold(db, monkeypatch):
+    market = Market()
+    stored, _, keys = await _strategy(db)
+    await _exit_below(db, stored.id)
+    monitor = _monitor(db, market)
+    await monitor.reload()
+    held = list(monitor._standing)
+    assert held and monitor.watched()
+    async def broken(_session):
+        raise RuntimeError("hold read failed")
+    monkeypatch.setattr(paper_monitor.triggers, "open_legs", broken)
+    await monitor.reload()  # must not raise: the stop watch is set first
+    assert monitor.watched() and monitor._standing == held
+    market.tick(INDEX, "22800.00")
+    market.tick(keys[0], "41.00")
+    market.tick(keys[1], "12.50")
+    assert await monitor.step() == 1  # the armed exit still fires
+
+
+async def test_hf_a_the_standing_hold_keeps_one_quote_and_its_old_handles_survive_a_failed_swap(
+        monkeypatch):
+    market = Market()
+    keys = ["NSE_FO:1", "NSE_FO:2", INDEX]
+    monitor = paper_monitor.PaperMonitor(None, lambda: market.feed, leg_prices=market.leg_prices,
+                                         read_settings=None, monotonic=lambda: 0.0)
+    monitor._hold_open_legs(market.feed, keys)
+    old = list(monitor._standing)
+    for i in range(5):
+        market.tick(keys[0], f"4{i}.00")
+    assert len(market.feed.fanout._subs[old[0]].queue) <= 1  # max_queue=1: never grows
+    real = market.feed.fanout.subscribe
+    def boom(listener, ids, **kw):
+        raise RuntimeError("provider down")
+    monkeypatch.setattr(market.feed.fanout, "subscribe", boom)
+    with pytest.raises(RuntimeError):
+        monitor._hold_open_legs(market.feed, keys)
+    assert monitor._standing == old and old[0] in market.feed.fanout._subs  # old hold kept, never released blind
+    monkeypatch.setattr(market.feed.fanout, "subscribe", real)
+    monitor._hold_open_legs(market.feed, keys)
+    assert monitor._standing != old and old[0] not in market.feed.fanout._subs  # released once the swap succeeded

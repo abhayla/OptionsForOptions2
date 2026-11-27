@@ -127,6 +127,8 @@ class PaperMonitor:
         self._monotonic = monotonic or asyncio.get_running_loop().time
         self._feed: LiveFeed | None = None
         self._handle: int | None = None
+        self._standing_feed: LiveFeed | None = None
+        self._standing: list[int] = []  # the standing hold's fan-out handles (open paper legs + their indexes)
         self._watch: dict[str, list[_Watch]] = {}
         self._dirty = True
         self._loaded_at: float | None = None
@@ -171,6 +173,18 @@ class PaperMonitor:
                 watch.setdefault(key, []).append(_Watch(a, key))
         self._watch = watch
         self._resubscribe(feed, sorted(set(watch) | extra))
+        await self._reload_hold(feed, found)  # AFTER the stop watch: a failed hold read never unwatches a stop
+
+    async def _reload_hold(self, feed: LiveFeed | None, found: Mapping[int, tracked_contracts.TrackedContract]) -> None:
+        """Read and apply the standing hold. A failure is logged and the LAST hold is kept (REQ-114, REQ-049)."""
+        try:
+            async with self._sessions() as session:
+                open_legs = await triggers.open_legs(session)
+                standing = {c.contract_id: c for c in await tracked_contracts.resolve(
+                    session, sorted({cid for cid, _u in open_legs} - set(found)))}
+            self._hold_open_legs(feed, self._standing_keys(feed, open_legs, {**standing, **found}))
+        except Exception:  # the stops are already watched; the hold is retried at the next reload
+            log.exception("paper monitor: the standing hold of open legs could not be refreshed; keeping the last hold")
 
     def _resubscribe(self, feed: LiveFeed | None, keys: list[str]) -> None:
         old_feed, old = self._feed, self._handle
@@ -180,8 +194,51 @@ class PaperMonitor:
         if old_feed is not None and old is not None:
             old_feed.fanout.unsubscribe(old)
 
+    @staticmethod
+    def _standing_keys(feed: LiveFeed | None, open_legs: Sequence[tuple[int, str]],
+                       contracts: Mapping[int, tracked_contracts.TrackedContract]) -> list[str]:
+        """The feed keys of every open paper leg and its index (the standing hold's set)."""
+        if feed is None:
+            return []
+        keys: set[str] = set()
+        for contract_id, underlying in open_legs:
+            found = contracts.get(contract_id)
+            if found is not None and found.feed_key is not None:
+                keys.add(found.feed_key)
+            index_key = feed.ctx.provider.index_id(underlying)  # type: ignore[attr-defined]
+            if index_key is not None:
+                keys.add(index_key)
+        return sorted(keys)
+
+    def _hold_open_legs(self, feed: LiveFeed | None, keys: list[str]) -> None:
+        """STANDING hold (REQ-133; REQ-118): every open paper leg and its index stay subscribed for as long as the
+        strategy is open, not only while a trigger is armed, so a request's own hold-and-read releases only ITS
+        reference and never parks the quote (the fan-out unsubscribes the vendor only when the last holder leaves).
+        New holds first, old after: no vendor unsubscribe/resubscribe. An id the feed cannot hold (an expired
+        contract has no token) is skipped on its own; it never drops the others."""
+        old_feed, old = self._standing_feed, self._standing
+        new: list[int] = []
+        try:
+            if feed is not None and keys:
+                try:
+                    new = [feed.fanout.subscribe(_no_listener, keys, max_queue=1)]  # never drained: keep one quote
+                except KeyError:
+                    for key in keys:
+                        with contextlib.suppress(KeyError):
+                            new.append(feed.fanout.subscribe(_no_listener, [key], max_queue=1))
+        except BaseException:
+            for handle in new:  # a half-made new set is released; the OLD hold stays as it was
+                feed.fanout.unsubscribe(handle)  # type: ignore[union-attr]
+            raise
+        self._standing_feed, self._standing = feed, new
+        if old_feed is not None:
+            for handle in old:
+                with contextlib.suppress(Exception):
+                    old_feed.fanout.unsubscribe(handle)
+
     def close(self) -> None:
         self._resubscribe(None, [])
+        self._hold_open_legs(None, [])
 
     async def step(self) -> int:
         """One pass: reload when due, then handle every queued quote in arrival order. Returns the fires recorded."""
