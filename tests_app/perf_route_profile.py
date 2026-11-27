@@ -177,14 +177,15 @@ async def test_profile(app_db_url, monkeypatch):  # noqa: F811, PLR0915, C901
     await app_db.close_db()
 
 
-async def test_concurrency(app_db_url, monkeypatch):  # noqa: F811, PLR0915
+async def test_concurrency(app_db_url, monkeypatch):  # noqa: F811, C901
     """Q1 phase 2 step 1: N concurrent plan-watch (one per strategy) + N concurrent adjustment-check through ONE app
     instance (ASGITransport, asyncio.gather); instant price, warm margin. Median / max per request (the request log's
     own total ms). Every strategy has its plan; the app's active scenario is the last one seeded (ADJ-01)."""
     import asyncio  # noqa: PLC0415
+    http_ok = 200
     ids = []
-    for _ in range(10):  # ten strategies of the ONE active scenario (another scenario's strategy is refused: USER_INPUT_193)
-        ids.append(await _seeded(app_db_url, monkeypatch, "ADJ-01"))
+    for _ in range(10):  # ten strategies of the ONE active scenario (another scenario's strategy is refused)
+        ids.append(await _seeded(app_db_url, monkeypatch, "ADJ-01"))  # noqa: PERF401 - awaits in order
     for sid in ids:
         await _arm(app_db_url, sid)
     from ofo_app.kite_reads import KiteReads  # noqa: PLC0415
@@ -201,7 +202,7 @@ async def test_concurrency(app_db_url, monkeypatch):  # noqa: F811, PLR0915
         api_key = "k"
         reads = KiteReads(api_key="k", access_token="t", transport=empty_book)  # noqa: S106
         margin = None
-    app.dependency_overrides[exec_route.get_kite_session] = lambda: _S()
+    app.dependency_overrides[exec_route.get_kite_session] = _S
     handler = _Lines()
     logging.getLogger("ofo_app.request").addHandler(handler)
     out = ["concurrency (instant price, warm margin; ms from the request log line, median/max per request)",
@@ -209,7 +210,8 @@ async def test_concurrency(app_db_url, monkeypatch):  # noqa: F811, PLR0915
     async with AsyncClient(transport=ASGITransport(app=app), base_url="http://t") as ac:
         async def one(path):
             r = await ac.get(path)
-            if r.status_code != 200: print("NON200", path, r.status_code, r.text[:300])
+            if r.status_code != http_ok:
+                print("NON200", path, r.status_code, r.text[:300])
             return r.status_code
 
         for kind in ("plan-watch", "adjustment-check"):

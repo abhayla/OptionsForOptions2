@@ -69,5 +69,5 @@ def test_a_refused_text_is_refused_every_time():
 
     for _ in range(3):
         with pytest.raises(ValueError, match="banned wording"):
-            model._checked(fields("You should buy this, it is the best trade"))  # noqa: SLF001
-        assert model._checked(fields("The lot size entered is not valid."))["code"] == "USER_INPUT_001"  # noqa: SLF001
+            model._checked(fields("You should buy this, it is the best trade"))
+        assert model._checked(fields("The lot size entered is not valid."))["code"] == "USER_INPUT_001"

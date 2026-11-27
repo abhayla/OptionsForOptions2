@@ -136,7 +136,7 @@ def _check_user_text(user_text: object, parts: list[str]) -> tuple[str, ...]:
 
 
 _PASSED_MAX = 4096
-_PASSED: dict[str, None] = {}  # exact platform texts the checker passed; a refusal is never stored (re-raised each time)
+_PASSED: dict[str, None] = {}  # exact texts the checker passed; a refusal is never stored (re-raised)
 
 
 def _scan(text: object, where: str) -> None:
