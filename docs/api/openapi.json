@@ -12382,6 +12382,90 @@
         "title": "PlanPlaybookOut",
         "type": "object"
       },
+      "PlanWatchBatchOut": {
+        "additionalProperties": false,
+        "properties": {
+          "as_of": {
+            "anyOf": [
+              {
+                "format": "date-time",
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "As Of"
+          },
+          "items": {
+            "items": {
+              "$ref": "#/components/schemas/PlanWatchItemOut"
+            },
+            "title": "Items",
+            "type": "array"
+          }
+        },
+        "required": [
+          "as_of",
+          "items"
+        ],
+        "title": "PlanWatchBatchOut",
+        "type": "object"
+      },
+      "PlanWatchItemOut": {
+        "additionalProperties": false,
+        "description": "One row: ``watch`` when ``state`` is \"ok\"; else ``refusal`` (the message the single route shows) and its HTTP\n``status`` (404 not found, 409 ..., 500).",
+        "properties": {
+          "refusal": {
+            "anyOf": [
+              {},
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Refusal"
+          },
+          "state": {
+            "enum": [
+              "ok",
+              "refused"
+            ],
+            "title": "State",
+            "type": "string"
+          },
+          "status": {
+            "anyOf": [
+              {
+                "type": "integer"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Status"
+          },
+          "strategy_id": {
+            "title": "Strategy Id",
+            "type": "integer"
+          },
+          "watch": {
+            "anyOf": [
+              {
+                "$ref": "#/components/schemas/PlanWatchOut"
+              },
+              {
+                "type": "null"
+              }
+            ]
+          }
+        },
+        "required": [
+          "strategy_id",
+          "state"
+        ],
+        "title": "PlanWatchItemOut",
+        "type": "object"
+      },
       "PlanWatchOut": {
         "additionalProperties": false,
         "properties": {
@@ -20553,6 +20637,46 @@
           }
         },
         "summary": "Monitoring State"
+      }
+    },
+    "/api/plan-watch": {
+      "get": {
+        "operationId": "plan_watch_batch_api_plan_watch_get",
+        "parameters": [
+          {
+            "in": "query",
+            "name": "strategy_ids",
+            "required": true,
+            "schema": {
+              "maxLength": 200,
+              "title": "Strategy Ids",
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/PlanWatchBatchOut"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "summary": "Plan Watch Batch"
       }
     },
     "/api/playbooks": {

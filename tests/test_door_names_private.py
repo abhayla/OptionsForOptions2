@@ -919,7 +919,8 @@ def app_assembly_uses(source: str) -> list[tuple[int, str]]:
 APP_ASSEMBLY_ALLOWED: dict[str, tuple[frozenset[str], str]] = {
     "ofo_app/main.py": (frozenset({"FastAPI", "router", "include_router", "dependency_overrides", "route_class",
                                    "ClosedRoute", "mount", "state", "routes"}),
-        "create_app: the one place that builds the FastAPI app, sets the route class, includes the routers and installs "
+        "create_app (the RequestLog middleware is installed by errors.install, not here): the one place that builds the "
+        "FastAPI app, sets the route class, includes the routers and installs "
         "the test override of the market context; its lifespan reads app.state.broker to start live market data "
         "(W-065); it reads app.routes (never writes) so scenario mode refuses to start with an unclassified mutating route"),
     "ofo_app/errors.py": (frozenset({"FastAPI", "app", "exempt", "add_middleware", "add_exception_handler", "_Boundary",

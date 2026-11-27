@@ -9,6 +9,7 @@ Deliberately no `from __future__ import annotations`: the hostile models are bui
 resolve their annotations from the real objects.
 """
 
+import asyncio
 import enum
 import json
 import pathlib
@@ -26,6 +27,7 @@ from ofo_app import api_models
 from ofo_app.api_models import CatalogueText, Identifier
 from ofo_app.basket_post import BasketPost
 from ofo_app.main import create_app
+from ofo_app.request_log import RequestLog
 from ofo_app.routes import broker
 from ofo_app.routes.outcome import MarginOut
 
@@ -516,6 +518,8 @@ APP_MODELS = (
     "ofo_app.routes.paper.UnpricedLegOut",
     "ofo_app.routes.plan_watch.PlanWatchOut",
     "ofo_app.routes.plan_watch.WatchLineOut",
+    "ofo_app.routes.plan_watch_batch.PlanWatchBatchOut",
+    "ofo_app.routes.plan_watch_batch.PlanWatchItemOut",
     "ofo_app.routes.planned_entry.PlannedEntriesOut",
     "ofo_app.routes.planned_entry.PlannedEntryOut",
     "ofo_app.routes.playbooks.DayPairOut",
@@ -1641,10 +1645,52 @@ def test_a_user_facing_refusal_with_no_failure_value_still_clears_its_cookie() -
 
 def test_the_app_middleware_list_is_exactly_the_boundary() -> None:
     """AC-2 (review MINOR-2): middleware added outside `_Boundary` would sit around the door and could rewrite what it
-    sent. Adding one is a deliberate change to this list, reviewed with the door."""
+    sent. Adding one is a deliberate change to this list, reviewed with the door.
+    27 Nov 2026 hotfix api-blocking-1127: RequestLog sits outside the door and only observes (it logs the status
+    and passes every message unchanged, test below)."""
     from ofo_app.errors import _Boundary
 
-    assert [m.cls for m in create_app().user_middleware] == [_Boundary]
+    assert [m.cls for m in create_app().user_middleware] == [RequestLog, _Boundary]
+
+
+def test_request_log_passes_every_message_unchanged() -> None:
+    """RequestLog only observes: each message the outer send receives is the very object the inner app sent, in order,
+    and a websocket scope reaches the inner app with the original receive and send objects."""
+    start = {"type": "http.response.start", "status": 201, "headers": [(b"content-type", b"text/plain")]}
+    body1 = {"type": "http.response.body", "body": b"one", "more_body": True}
+    body2 = {"type": "http.response.body", "body": b"two", "more_body": False}
+    sent_by_inner = [start, body1, body2]
+    seen_by_outer: list = []
+    inner_calls: list = []
+
+    async def inner(scope, receive, send):
+        inner_calls.append((scope, receive, send))
+        if scope["type"] != "http":
+            return
+        for message in sent_by_inner:
+            await send(message)
+
+    async def outer_send(message):
+        seen_by_outer.append(message)
+
+    async def receive():
+        return {"type": "http.request", "body": b"", "more_body": False}
+
+    http_scope = {"type": "http", "method": "POST", "path": "/x", "headers": []}
+    asyncio.run(RequestLog(inner)(http_scope, receive, outer_send))
+
+    assert len(seen_by_outer) == len(sent_by_inner)
+    for got, want in zip(seen_by_outer, sent_by_inner, strict=True):
+        assert got is want
+
+    async def ws_send(message):
+        pass
+
+    ws_scope = {"type": "websocket", "path": "/ws", "headers": []}
+    asyncio.run(RequestLog(inner)(ws_scope, receive, ws_send))
+    _, ws_receive, ws_inner_send = inner_calls[-1]
+    assert ws_receive is receive
+    assert ws_inner_send is ws_send
 
 
 # --- W-070 round 5 (issue #197): Location is re-minted, not tested against a list of banned characters ----------------

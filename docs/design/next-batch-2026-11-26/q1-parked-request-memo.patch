@@ -1,0 +1,593 @@
+From dcfd0791614767ba44c4ec12778497f3b378c7ee Mon Sep 17 00:00:00 2001
+From: Claude <noreply@anthropic.com>
+Date: Fri, 27 Nov 2026 09:50:48 +0000
+Subject: [PATCH 1/2] Q1 phase 2: one-request read memo (GET only, cleared by
+ any write), catalogue N+1 in the leg resolver batched; latency tests green
+ except the blocked margin gather (xfail)
+
+Co-Authored-By: Claude Opus 5.5 <noreply@anthropic.com>
+Claude-Session: https://claude.ai/code/session_01QaT8YGYtUXiyw9coYsBYrF
+---
+ backend/ofo_app/catalogue_store.py   |  15 +++-
+ backend/ofo_app/db.py                |   3 +-
+ backend/ofo_app/entry_facts_store.py |   7 +-
+ backend/ofo_app/playbook_store.py    |  22 +++--
+ backend/ofo_app/request_log.py       |   4 +-
+ backend/ofo_app/request_memo.py      | 105 ++++++++++++++++++++++
+ backend/ofo_app/scenario_guard.py    |   7 +-
+ backend/ofo_app/strategy_store.py    |  13 ++-
+ tests_app/test_request_memo.py       | 125 +++++++++++++++++++++++++++
+ 9 files changed, 284 insertions(+), 17 deletions(-)
+ create mode 100644 backend/ofo_app/request_memo.py
+ create mode 100644 tests_app/test_request_memo.py
+
+diff --git a/backend/ofo_app/catalogue_store.py b/backend/ofo_app/catalogue_store.py
+index 49a318e..6180e77 100644
+--- a/backend/ofo_app/catalogue_store.py
++++ b/backend/ofo_app/catalogue_store.py
+@@ -79,7 +79,7 @@ from ofo.instruments.catalogue import (
+ from ofo.instruments.models import ZERODHA, BrokerRef, Contract, InstrumentId, ListedContract
+ from ofo.instruments.parser import (
+     ParsedInstruments, parse_instruments_rows, zerodha_index_row, zerodha_segment)
+-from ofo_app import audit_store
++from ofo_app import audit_store, request_memo
+ from ofo.money import HUNDREDTH
+ from ofo.reconciliation.delisted import DelistedContract
+ 
+@@ -394,7 +394,10 @@ async def load_contracts(conn: Any, contract_ids: Iterable[int]) -> dict[int, St
+     ids.sort()
+     grouped: dict[int, list[Any]] = {}
+     if ids:
+-        for row in (await conn.execute(_SELECT_MANY, {"ids": ids})).all():
++        async def load() -> tuple[Any, ...]:  # the immutable ROWS are kept; every caller builds its own answer
++            return tuple((await conn.execute(_SELECT_MANY, {"ids": ids})).all())
++
++        for row in await request_memo.cached(("catalogue_many", tuple(ids)), load):
+             grouped.setdefault(int(row.id), []).append(row)
+     for cid in ids:
+         rows = grouped.get(cid)
+@@ -418,8 +421,12 @@ async def live_contract_ids(conn: Any, instrument_ids: Iterable[InstrumentId]) -
+     keys = sorted(set(instrument_ids), key=lambda i: (i.exchange_segment, i.exchange_token))
+     if not keys:
+         return {}
+-    rows = (await conn.execute(_LIVE_IDS, {"segments": [k.exchange_segment for k in keys],
+-                                           "tokens": [k.exchange_token for k in keys]})).all()
++    async def load() -> tuple[Any, ...]:
++        return tuple((await conn.execute(_LIVE_IDS, {"segments": [k.exchange_segment for k in keys],
++                                                     "tokens": [k.exchange_token for k in keys]})).all())
++
++    rows = await request_memo.cached(("catalogue_live_ids", tuple((k.exchange_segment, k.exchange_token) for k in keys)),
++                                     load)
+     out: dict[InstrumentId, int] = {}
+     for r in rows:
+         key = InstrumentId(r.exchange_segment, int(r.exchange_token))
+diff --git a/backend/ofo_app/db.py b/backend/ofo_app/db.py
+index f08dbb8..237a330 100644
+--- a/backend/ofo_app/db.py
++++ b/backend/ofo_app/db.py
+@@ -14,7 +14,7 @@ from sqlalchemy import text
+ from sqlalchemy.ext.asyncio import AsyncEngine, AsyncSession, async_sessionmaker, create_async_engine
+ from sqlalchemy.orm import DeclarativeBase
+ 
+-from ofo_app import step_timing
++from ofo_app import request_memo, step_timing
+ from ofo_app.config import get_settings
+ 
+ log = logging.getLogger(__name__)
+@@ -42,6 +42,7 @@ def get_engine() -> AsyncEngine:
+         connect_args={"server_settings": {"jit": "off"}},
+     )
+     step_timing.install_db_events(engine.sync_engine)  # per-request db ms / query count on the request log line
++    request_memo.install_db_events(engine.sync_engine)  # a write clears the GET request's read memo
+     return engine
+ 
+ 
+diff --git a/backend/ofo_app/entry_facts_store.py b/backend/ofo_app/entry_facts_store.py
+index d023b8c..a511aad 100644
+--- a/backend/ofo_app/entry_facts_store.py
++++ b/backend/ofo_app/entry_facts_store.py
+@@ -21,6 +21,8 @@ from typing import Any
+ from ofo.adjustment.approaches import EntryFacts
+ from sqlalchemy import text
+ 
++from ofo_app import request_memo
++
+ _INSERT = text(
+     "INSERT INTO public.strategy_entry_facts (strategy_id, entry_spot, call_distance, put_distance, entry_atm_iv) "
+     "VALUES (:strategy_id, :entry_spot, :call_distance, :put_distance, :entry_atm_iv) "
+@@ -74,8 +76,11 @@ def usable_iv(iv: object) -> Decimal | None:
+ 
+ async def read(conn: Any, strategy_id: int) -> EntryFacts | None:
+     """The stored facts, None when none are stored; ``EntryFactsUnreadable`` when they cannot be read."""
++    async def load() -> Any:
++        return (await conn.execute(_SELECT, {"id": strategy_id})).first()
++
+     try:
+-        row = (await conn.execute(_SELECT, {"id": strategy_id})).first()
++        row = await request_memo.cached(("entry_facts", strategy_id), load)  # one ask per GET request
+     except Exception as exc:  # noqa: BLE001 - any read failure is "unreadable", named by the caller
+         raise EntryFactsUnreadable(f"strategy {strategy_id}: {type(exc).__name__}") from None
+     if row is None:
+diff --git a/backend/ofo_app/playbook_store.py b/backend/ofo_app/playbook_store.py
+index dd2166d..8339a0c 100644
+--- a/backend/ofo_app/playbook_store.py
++++ b/backend/ofo_app/playbook_store.py
+@@ -47,7 +47,7 @@ from ofo.settings import layers
+ from sqlalchemy import text
+ from sqlalchemy.exc import IntegrityError
+ 
+-from ofo_app import strategy_store
++from ofo_app import request_memo, strategy_store
+ from ofo_app.sql_time import IST_SQL_ZONE
+ 
+ NAME_TAKEN = "playbook_name_taken"
+@@ -578,7 +578,10 @@ async def _current(conn: Any, pb: Playbook) -> Playbook:
+     no stored version is a broken database (0034 seeds all 12): fails closed, never the 0031 row's body."""
+     if not pb.is_system or pb.slug != f"{pb.strategy_type}-default":  # a further standard playbook: its own row
+         return pb
+-    row = (await conn.execute(_SYSTEM_CURRENT, {"type": pb.strategy_type})).one_or_none()
++    async def load() -> Any:  # the ROW is kept (immutable); the body is parsed afresh for every caller
++        return (await conn.execute(_SYSTEM_CURRENT, {"type": pb.strategy_type})).one_or_none()
++
++    row = await request_memo.cached(("system_current", pb.strategy_type), load)
+     if row is None:
+         raise RuntimeError(f"no stored version of the system playbook for {pb.strategy_type}")
+     return dataclasses.replace(pb, version=row[0], status=row[1], body=_load(row[2]), updated_at=row[3])
+@@ -775,16 +778,25 @@ _ADR247_SAVED_AT = text("SELECT min(saved_at) FROM public.system_playbook_versio
+ 
+ 
+ async def adr247_saved_at(conn: Any) -> datetime | None:
+-    return (await conn.execute(_ADR247_SAVED_AT, {"reason": ADR247_REASON})).scalar_one_or_none()
++    async def load() -> datetime | None:
++        return (await conn.execute(_ADR247_SAVED_AT, {"reason": ADR247_REASON})).scalar_one_or_none()
++
++    return await request_memo.cached(("adr247_saved_at", ADR247_REASON), load)
+ 
+ 
+ async def plan_for(conn: Any, user_ref: str, strategy_id: int) -> Plan | None:
+-    row = (await conn.execute(_SELECT_PLAN, {"strategy_id": strategy_id, "user_ref": user_ref})).one_or_none()
++    async def load() -> Any:  # the ROW is kept (immutable); every caller builds its own Plan from it
++        return (await conn.execute(_SELECT_PLAN, {"strategy_id": strategy_id, "user_ref": user_ref})).one_or_none()
++
++    row = await request_memo.cached(("plan_row", user_ref, strategy_id), load)
+     return None if row is None else _plan(row)
+ 
+ 
+ async def require_owned(conn: Any, user_ref: str, strategy_id: int) -> None:
+-    if (await conn.execute(_OWNS_STRATEGY, {"strategy_id": strategy_id, "user_ref": user_ref})).first() is None:
++    async def load() -> bool:
++        return (await conn.execute(_OWNS_STRATEGY, {"strategy_id": strategy_id, "user_ref": user_ref})).first() is not None
++
++    if not await request_memo.cached(("owned", user_ref, strategy_id), load):  # the same read as strategy_store.owns
+         raise strategy_store.StrategyStoreError(strategy_store.NOT_FOUND, f"strategy {strategy_id}")
+ 
+ 
+diff --git a/backend/ofo_app/request_log.py b/backend/ofo_app/request_log.py
+index e511793..2bcc6ad 100644
+--- a/backend/ofo_app/request_log.py
++++ b/backend/ofo_app/request_log.py
+@@ -14,7 +14,7 @@ import time
+ 
+ from starlette.types import ASGIApp, Message, Receive, Scope, Send
+ 
+-from ofo_app import step_timing
++from ofo_app import request_memo, step_timing
+ 
+ log = logging.getLogger("ofo_app.request")
+ 
+@@ -62,6 +62,7 @@ class RequestLog:
+         t0 = time.perf_counter()
+         logged = False
+         token = step_timing.start()
++        memo_token = request_memo.start(scope.get("method", ""))  # GET / HEAD only; dies with the request
+ 
+         def emit(status: int) -> None:
+             nonlocal logged
+@@ -85,4 +86,5 @@ class RequestLog:
+             emit(500)
+             raise
+         finally:
++            request_memo.stop(memo_token)
+             step_timing.stop(token)
+diff --git a/backend/ofo_app/request_memo.py b/backend/ofo_app/request_memo.py
+new file mode 100644
+index 0000000..a109500
+--- /dev/null
++++ b/backend/ofo_app/request_memo.py
+@@ -0,0 +1,105 @@
++"""One GET request's read-through memo (REQ-049 AC-4, Lane Q1): the same database read, asked twice inside ONE request,
++is asked once. NO product behaviour: the second ask gets exactly the first ask's rows.
++
++Safety, by construction:
++
++- scope: ``RequestLog`` starts a memo for a GET / HEAD request only; any other request, the background workers and
++  tests have none (every call then runs its loader). The memo dies with the request (``stop`` empties it), so nothing
++  is ever shared across requests.
++- never across a write: ``install_db_events`` clears the memo on any statement that is not a plain read, so a
++  read-after-write inside one request (the stop-base backfill, then its re-read) always goes to the database.
++- keyed by the EXACT read: the caller names it (what it reads and every argument, user included).
++- only immutable values are kept (rows, scalars, frozen objects); a failed read stores nothing and raises as before.
++"""
++from __future__ import annotations
++
++import asyncio
++import re
++from collections.abc import Awaitable, Callable, Hashable
++from contextvars import ContextVar, Token
++from typing import Any
++
++_current: ContextVar[dict[Hashable, Any] | None] = ContextVar("ofo_request_memo", default=None)
++
++_WRITE_WORDS = re.compile(r"\b(INSERT|UPDATE|DELETE|MERGE|TRUNCATE|LOCK|COPY|CALL)\b", re.IGNORECASE)
++_SIDE_EFFECTS = ("set_config", "nextval", "setval", "advisory")
++_PLAIN_READS = ("SELECT", "WITH", "SHOW", "EXPLAIN")
++
++
++def start(method: str) -> Token | None:
++    """A memo for this request when it only reads (GET / HEAD), else None."""
++    return _current.set({}) if method in ("GET", "HEAD") else None
++
++
++def stop(token: Token | None) -> None:
++    if token is None:
++        return
++    memo = _current.get()
++    if memo is not None:
++        memo.clear()
++    _current.reset(token)
++
++
++def clear() -> None:
++    memo = _current.get()
++    if memo is not None:
++        memo.clear()
++
++
++def is_plain_read(statement: str) -> bool:
++    text = statement.lstrip()
++    if not text.upper().startswith(_PLAIN_READS):
++        return False
++    if _WRITE_WORDS.search(text):
++        return False
++    low = text.lower()
++    return not any(word in low for word in _SIDE_EFFECTS)
++
++
++async def cached[T](key: Hashable, loader: Callable[[], Awaitable[T]]) -> T:
++    """``await loader()`` once per ``key`` inside a GET request; outside one, every call runs the loader.
++
++    A second asker that arrives while the first read is still running waits for it (one read, not two). If that first
++    read fails or is cancelled, the waiter runs its OWN loader, so a failure is never handed to a caller that did not
++    run the read (exactly the behaviour without a memo)."""
++    memo = _current.get()
++    if memo is None:
++        return await loader()
++    entry = memo.get(key)
++    if isinstance(entry, tuple):
++        return entry[0]
++    if entry is not None:  # a read in flight
++        try:
++            return await asyncio.shield(entry)
++        except asyncio.CancelledError:
++            if not entry.cancelled():
++                raise  # this waiter itself was cancelled
++        return await loader()
++    flight: asyncio.Future = asyncio.get_running_loop().create_future()
++    memo[key] = flight
++    try:
++        value = await loader()
++    except BaseException:
++        flight.cancel()
++        if memo.get(key) is flight:
++            del memo[key]
++        raise
++    flight.set_result(value)
++    if memo.get(key) is flight:  # a write in between cleared it: nothing is kept
++        memo[key] = (value,)
++    return value
++
++
++def install_db_events(engine: Any) -> None:
++    """Clear the memo on any statement that is not a plain read (idempotent; engine = a SQLAlchemy sync engine)."""
++    from sqlalchemy import event  # noqa: PLC0415
++
++    if getattr(engine, "_ofo_request_memo", False):
++        return
++    engine._ofo_request_memo = True
++
++    def before(_conn: Any, _cursor: Any, statement: str, *_rest: Any) -> None:
++        if not is_plain_read(statement):
++            clear()
++
++    event.listen(engine, "before_cursor_execute", before)
+diff --git a/backend/ofo_app/scenario_guard.py b/backend/ofo_app/scenario_guard.py
+index cbbf48a..cc153b8 100644
+--- a/backend/ofo_app/scenario_guard.py
++++ b/backend/ofo_app/scenario_guard.py
+@@ -24,7 +24,7 @@ from typing import Annotated, Any
+ from fastapi import Depends
+ from sqlalchemy import text
+ 
+-from ofo_app import scenario_mode
++from ofo_app import request_memo, scenario_mode
+ from ofo_app.db import get_db
+ from ofo_app.errors import Failure
+ from ofo_app.routes.broker import current_user_ref
+@@ -38,7 +38,10 @@ _ABSENT = object()
+ 
+ async def read_marker(db: Any, user_ref: str, strategy_id: int) -> object:
+     """The stored ``scenario_id`` (a str, or None for a live strategy), or ``_ABSENT`` when no such strategy."""
+-    row = (await db.execute(text(_MARKER), {"id": strategy_id, "user_ref": user_ref})).first()
++    async def load() -> Any:
++        return (await db.execute(text(_MARKER), {"id": strategy_id, "user_ref": user_ref})).first()
++
++    row = await request_memo.cached(("scenario_marker", user_ref, strategy_id), load)  # one ask per GET request
+     return _ABSENT if row is None else row[0]
+ 
+ 
+diff --git a/backend/ofo_app/strategy_store.py b/backend/ofo_app/strategy_store.py
+index d38b96c..272540a 100644
+--- a/backend/ofo_app/strategy_store.py
++++ b/backend/ofo_app/strategy_store.py
+@@ -33,7 +33,8 @@ from ofo.engine.legs import Instrument
+ from ofo.instruments.models import FUTURE_TYPE
+ from ofo.limits import INTEGER_MAX
+ from ofo.strategy import stored_form as sf
+-from ofo_app.catalogue_store import load_contract
++from ofo_app import request_memo
++from ofo_app.catalogue_store import CatalogueStoreError, load_contracts
+ 
+ NOT_FOUND = "not_found"
+ HISTORY_NOT_FOUND = "history_entry_not_found"
+@@ -225,8 +226,11 @@ async def catalogue_resolver(conn: Any, contract_ids: Iterable[int]) -> sf.Resol
+                      if isinstance(c, int) and not isinstance(c, bool) and 0 < c <= sf.MAX_CONTRACT_ID})
+     existing = {int(r[0]) for r in (await conn.execute(_EXISTING_IDS, {"ids": wanted})).all()} if wanted else set()
+     terms: dict[int, sf.CatalogueTerms] = {}
++    found = await load_contracts(conn, sorted(existing)) if existing else {}  # ONE read, not one per leg
+     for contract_id in sorted(existing):
+-        stored = await load_contract(conn, contract_id)
++        stored = found[contract_id]
++        if isinstance(stored, CatalogueStoreError):
++            raise stored  # the error load_contract raised for this id, first in id order as before
+         contract = stored.listed.contract
+         if contract.instrument_type not in {i.value for i in Instrument}:
+             continue  # an INDEX row is not a leg: the resolver does not hold it, so the save refuses it (REQ-001 AC-2)
+@@ -813,4 +817,7 @@ async def history(conn: Any, user_ref: str, strategy_id: int) -> list[sf.History
+ 
+ async def owns(conn: Any, user_ref: str, strategy_id: int) -> bool:
+     """True only for a visible (not soft-deleted) strategy of ``user_ref``; no error, no lock, no write."""
+-    return (await conn.execute(_OWNED, {"s": strategy_id, "u": user_ref})).first() is not None
++    async def load() -> bool:
++        return (await conn.execute(_OWNED, {"s": strategy_id, "u": user_ref})).first() is not None
++
++    return await request_memo.cached(("owned", user_ref, strategy_id), load)  # one ask per GET request
+diff --git a/tests_app/test_request_memo.py b/tests_app/test_request_memo.py
+new file mode 100644
+index 0000000..92e97d8
+--- /dev/null
++++ b/tests_app/test_request_memo.py
+@@ -0,0 +1,125 @@
++"""REQ-049 AC-4 (Lane Q1): the GET request's read memo asks the same read once, never across requests, never across a
++write, and never hands one caller another's failure. Pure: no database."""
++from __future__ import annotations
++
++import asyncio
++
++import pytest
++from ofo_app import request_memo
++
++
++def _counter():
++    calls = []
++
++    async def loader(value="v", *, boom=False, gate: asyncio.Event | None = None):
++        calls.append(value)
++        if gate is not None:
++            await gate.wait()
++        if boom:
++            raise RuntimeError("read failed")
++        return value
++    return calls, loader
++
++
++async def test_same_key_is_read_once_inside_a_get_request() -> None:
++    calls, loader = _counter()
++    token = request_memo.start("GET")
++    try:
++        assert await request_memo.cached(("k", 1), loader) == "v"
++        assert await request_memo.cached(("k", 1), loader) == "v"
++        assert await request_memo.cached(("k", 2), lambda: loader("w")) == "w"  # another argument: another read
++    finally:
++        request_memo.stop(token)
++    assert calls == ["v", "w"]
++
++
++async def test_no_memo_outside_a_get_request_and_none_across_requests() -> None:
++    calls, loader = _counter()
++    await request_memo.cached("k", loader)
++    await request_memo.cached("k", loader)
++    assert calls == ["v", "v"]  # no request: every call reads
++    post = request_memo.start("POST")
++    assert post is None  # a write method gets no memo
++    await request_memo.cached("k", loader)
++    await request_memo.cached("k", loader)
++    assert calls == ["v", "v", "v", "v"]
++    for _ in range(2):  # two GET requests: each reads once; nothing is shared
++        token = request_memo.start("GET")
++        await request_memo.cached("k", loader)
++        await request_memo.cached("k", loader)
++        request_memo.stop(token)
++    assert calls == ["v"] * 6
++
++
++async def test_a_write_clears_the_memo() -> None:
++    calls, loader = _counter()
++    token = request_memo.start("GET")
++    try:
++        await request_memo.cached("k", loader)
++        request_memo.clear()  # what the cursor hook does on any non-read statement
++        await request_memo.cached("k", loader)
++    finally:
++        request_memo.stop(token)
++    assert calls == ["v", "v"]
++
++
++@pytest.mark.parametrize(("statement", "plain"), [
++    ("SELECT 1", True),
++    ("  select c.updated_at, e.call_distance from t", True),
++    ("WITH x AS (SELECT 1) SELECT * FROM x", True),
++    ("INSERT INTO t VALUES (1)", False),
++    ("UPDATE t SET a = 1", False),
++    ("WITH x AS (DELETE FROM t RETURNING 1) SELECT * FROM x", False),
++    ("SELECT set_config('ofo.rule_adjustment_no', $1, true)", False),
++    ("SELECT id FROM t FOR UPDATE", False),
++    ("SAVEPOINT sa_savepoint_1", False),
++    ("RELEASE SAVEPOINT sa_savepoint_1", False),
++])
++def test_only_a_plain_read_keeps_the_memo(statement: str, plain: bool) -> None:
++    assert request_memo.is_plain_read(statement) is plain
++
++
++async def test_a_failed_read_is_not_stored_and_raises_as_before() -> None:
++    calls, loader = _counter()
++    token = request_memo.start("GET")
++    try:
++        with pytest.raises(RuntimeError):
++            await request_memo.cached("k", lambda: loader(boom=True))
++        assert await request_memo.cached("k", loader) == "v"  # asked again, not a stored failure
++    finally:
++        request_memo.stop(token)
++    assert calls == ["v", "v"]
++
++
++async def test_a_waiter_never_gets_the_first_callers_failure() -> None:
++    calls, loader = _counter()
++    gate = asyncio.Event()
++    token = request_memo.start("GET")
++    try:
++        first = asyncio.ensure_future(request_memo.cached("k", lambda: loader("a", boom=True, gate=gate)))
++        await asyncio.sleep(0)
++        second = asyncio.ensure_future(request_memo.cached("k", lambda: loader("b")))  # arrives while the first runs
++        await asyncio.sleep(0)
++        gate.set()
++        with pytest.raises(RuntimeError):
++            await first
++        assert await second == "b"  # ran its OWN read
++    finally:
++        request_memo.stop(token)
++    assert calls == ["a", "b"]
++
++
++async def test_a_waiter_shares_the_read_in_flight() -> None:
++    calls, loader = _counter()
++    gate = asyncio.Event()
++    token = request_memo.start("GET")
++    try:
++        first = asyncio.ensure_future(request_memo.cached("k", lambda: loader("a", gate=gate)))
++        await asyncio.sleep(0)
++        second = asyncio.ensure_future(request_memo.cached("k", lambda: loader("b")))
++        await asyncio.sleep(0)
++        gate.set()
++        assert (await first, await second) == ("a", "a")
++    finally:
++        request_memo.stop(token)
++    assert calls == ["a"]
+-- 
+2.43.0
+
+
+From 2c71e41eb76a9d318f9985769107c4174b5357ec Mon Sep 17 00:00:00 2001
+From: Claude <noreply@anthropic.com>
+Date: Fri, 27 Nov 2026 10:09:25 +0000
+Subject: [PATCH 2/2] Q1 phase 2: memo waiter sentinel (no .cancel() name for
+ the order-route scan), loose concurrent guard, lint ratchet
+
+Co-Authored-By: Claude Opus 5.5 <noreply@anthropic.com>
+Claude-Session: https://claude.ai/code/session_01QaT8YGYtUXiyw9coYsBYrF
+---
+ backend/ofo_app/catalogue_store.py |  4 ++--
+ backend/ofo_app/playbook_store.py  |  3 ++-
+ backend/ofo_app/request_log.py     |  3 ++-
+ backend/ofo_app/request_memo.py    | 11 ++++-------
+ 4 files changed, 10 insertions(+), 11 deletions(-)
+
+diff --git a/backend/ofo_app/catalogue_store.py b/backend/ofo_app/catalogue_store.py
+index 6180e77..23f7837 100644
+--- a/backend/ofo_app/catalogue_store.py
++++ b/backend/ofo_app/catalogue_store.py
+@@ -425,8 +425,8 @@ async def live_contract_ids(conn: Any, instrument_ids: Iterable[InstrumentId]) -
+         return tuple((await conn.execute(_LIVE_IDS, {"segments": [k.exchange_segment for k in keys],
+                                                      "tokens": [k.exchange_token for k in keys]})).all())
+ 
+-    rows = await request_memo.cached(("catalogue_live_ids", tuple((k.exchange_segment, k.exchange_token) for k in keys)),
+-                                     load)
++    identity = tuple((k.exchange_segment, k.exchange_token) for k in keys)
++    rows = await request_memo.cached(("catalogue_live_ids", identity), load)
+     out: dict[InstrumentId, int] = {}
+     for r in rows:
+         key = InstrumentId(r.exchange_segment, int(r.exchange_token))
+diff --git a/backend/ofo_app/playbook_store.py b/backend/ofo_app/playbook_store.py
+index 8339a0c..075d10b 100644
+--- a/backend/ofo_app/playbook_store.py
++++ b/backend/ofo_app/playbook_store.py
+@@ -794,7 +794,8 @@ async def plan_for(conn: Any, user_ref: str, strategy_id: int) -> Plan | None:
+ 
+ async def require_owned(conn: Any, user_ref: str, strategy_id: int) -> None:
+     async def load() -> bool:
+-        return (await conn.execute(_OWNS_STRATEGY, {"strategy_id": strategy_id, "user_ref": user_ref})).first() is not None
++        found = await conn.execute(_OWNS_STRATEGY, {"strategy_id": strategy_id, "user_ref": user_ref})
++        return found.first() is not None
+ 
+     if not await request_memo.cached(("owned", user_ref, strategy_id), load):  # the same read as strategy_store.owns
+         raise strategy_store.StrategyStoreError(strategy_store.NOT_FOUND, f"strategy {strategy_id}")
+diff --git a/backend/ofo_app/request_log.py b/backend/ofo_app/request_log.py
+index 2bcc6ad..912bb66 100644
+--- a/backend/ofo_app/request_log.py
++++ b/backend/ofo_app/request_log.py
+@@ -73,7 +73,8 @@ class RequestLog:
+             path = getattr(route, "path", None) or scope.get("path", "")
+             elapsed_ms = (time.perf_counter() - t0) * 1000.0
+             # the step text joins the format string (no % in it), so the args stay (method, path, status, ms)
+-            log.info("request %s %s %d %.1fms" + _steps_text(elapsed_ms), scope.get("method", ""), path, status, elapsed_ms)
++            log.info("request %s %s %d %.1fms" + _steps_text(elapsed_ms), scope.get("method", ""), path, status,
++                     elapsed_ms)
+ 
+         async def logging_send(message: Message) -> None:
+             if message["type"] == "http.response.start":
+diff --git a/backend/ofo_app/request_memo.py b/backend/ofo_app/request_memo.py
+index a109500..4dc74e2 100644
+--- a/backend/ofo_app/request_memo.py
++++ b/backend/ofo_app/request_memo.py
+@@ -23,6 +23,7 @@ _current: ContextVar[dict[Hashable, Any] | None] = ContextVar("ofo_request_memo"
+ 
+ _WRITE_WORDS = re.compile(r"\b(INSERT|UPDATE|DELETE|MERGE|TRUNCATE|LOCK|COPY|CALL)\b", re.IGNORECASE)
+ _SIDE_EFFECTS = ("set_config", "nextval", "setval", "advisory")
++_FAILED = object()  # what a waiter finds when the read it waited for failed: it then runs its own
+ _PLAIN_READS = ("SELECT", "WITH", "SHOW", "EXPLAIN")
+ 
+ 
+@@ -69,18 +70,14 @@ async def cached[T](key: Hashable, loader: Callable[[], Awaitable[T]]) -> T:
+     if isinstance(entry, tuple):
+         return entry[0]
+     if entry is not None:  # a read in flight
+-        try:
+-            return await asyncio.shield(entry)
+-        except asyncio.CancelledError:
+-            if not entry.cancelled():
+-                raise  # this waiter itself was cancelled
+-        return await loader()
++        got = await asyncio.shield(entry)  # a waiter that is itself cancelled just raises
++        return await loader() if got is _FAILED else got
+     flight: asyncio.Future = asyncio.get_running_loop().create_future()
+     memo[key] = flight
+     try:
+         value = await loader()
+     except BaseException:
+-        flight.cancel()
++        flight.set_result(_FAILED)
+         if memo.get(key) is flight:
+             del memo[key]
+         raise
+-- 
+2.43.0
+

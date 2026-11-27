@@ -50,6 +50,7 @@ from ofo.errors import CATALOGUE, ErrorClass, UserFacingError, render, user_mess
 from ofo_app.api_models import ApiModel, DoorRefused, Emitted, emit, emit_message
 from ofo_app.broker_config import validate_frontend_origin
 from ofo_app.redaction import install_redaction, keep_public_codes
+from ofo_app.request_log import RequestLog
 from ofo_app.secret_values import contains_secret
 from ofo_app.underlying import refusal_of
 
@@ -623,6 +624,36 @@ def _internal_response(exc: BaseException, request: Request) -> ClosedResponse:
     return _body(render("internal_system_request_failed", reference=reference), 500)
 
 
+def row_answer(exc: Exception, where: str) -> tuple[UserFacingError, int]:  # noqa: PLR0911 - one return per answer
+    """The message and HTTP status ``handle_error`` would answer for ``exc``, for a route that answers several rows in
+    one reply and must show each failed row what the single-row route shows (one bad row never fails the others).
+    The same three cases as ``handle_error``: a user-facing error, an HTTP error, anything else (busy store or the
+    internal message with a reference)."""
+    message = user_message_of(exc)
+    if message is not None:
+        log.info("user-facing error %s on %s", message.code, where)
+        failure = getattr(exc, "failure", None)
+        return message, failure.status if isinstance(failure, Failure) else STATUS_BY_CLASS[message.error_class]
+    if isinstance(exc, RequestValidationError):
+        return render("user_input_request_invalid"), 422
+    if isinstance(exc, StarletteHTTPException):
+        status = exc.status_code
+        if status == 401:  # noqa: PLR2004
+            return render("entitlement_access_sign_in_required"), 401
+        if status == 503:  # noqa: PLR2004
+            return render("internal_system_service_unavailable"), 503
+        if 400 <= status < 500:  # noqa: PLR2004
+            return render("user_input_request_not_available"), status
+        status = status if 500 <= status <= 599 else 500  # noqa: PLR2004
+        return render("internal_system_request_failed", reference=_reference()), status
+    if busy_database_error(exc):
+        log.warning("store busy (%s) on %s", type(exc).__name__, where)
+        return render("store_busy"), Failure.CONFLICT.status
+    reference = _reference()
+    log.error("unhandled error %s on %s", reference, where, exc_info=exc)
+    return render("internal_system_request_failed", reference=reference), 500
+
+
 #: The exception a request the API cannot read raises. Named here so a route or a socket can catch it without importing
 #: ``fastapi.exceptions``: only this door names the framework's error modules (W-024 r9, test_error_boundary_scan.py).
 RequestUnreadable = RequestValidationError
@@ -772,3 +803,4 @@ def install(app: FastAPI) -> None:
     docs = {("GET", url) for url in (app.docs_url, app.redoc_url, app.openapi_url,
                                       app.swagger_ui_oauth2_redirect_url if app.docs_url else None) if url}
     app.add_middleware(_Boundary, exempt=frozenset(docs))
+    app.add_middleware(RequestLog)  # outermost (added last): one INFO line per request (route template, status, ms)
