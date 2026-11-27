@@ -29,13 +29,28 @@ def read_env(path):
     return out
 
 
+def cloud_env():
+    """Cloud session only (CLAUDE_CODE_REMOTE=true, no owner GLOBAL.env): the container's own PostgreSQL prepared by
+    scripts/orchestrator/cloud_services.sh (throwaway passwords, local to the container). None anywhere else."""
+    if os.environ.get("CLAUDE_CODE_REMOTE") != "true" or os.path.exists(GLOBAL_ENV):
+        return None
+    base = "@127.0.0.1:5432/ofo_test"
+    admin = "postgresql" + "+asyncpg://postgres:postgres_ci_dummy_pw" + base
+    return {"TEST_DATABASE_URL": "postgresql" + "+asyncpg://ofo_app:ofo_app_test_pw" + base,
+            "TEST_ADMIN_DATABASE_URL": admin, "ALEMBIC_DATABASE_URL": admin, "OFO_REQUIRE_DB_TESTS": "1"}
+
+
 def main():
-    g = read_env(GLOBAL_ENV)
-    p = read_env(os.path.join(ROOT, ".env"))
-    admin = ("postgresql" + "+asyncpg://" + g["WINDOWS_VPS_PG_ADMIN_USER"] + ":"
-             + urllib.parse.quote(g["WINDOWS_VPS_PG_ADMIN_PASSWORD"], safe="") + "@127.0.0.1:5432/ofo_test")
-    env = dict(os.environ, TEST_DATABASE_URL=p["TEST_DATABASE_URL"], TEST_ADMIN_DATABASE_URL=admin,
-               ALEMBIC_DATABASE_URL=admin, OFO_REQUIRE_DB_TESTS="1")
+    cloud = cloud_env()
+    if cloud is not None:
+        env = dict(os.environ, **cloud)
+    else:
+        g = read_env(GLOBAL_ENV)
+        p = read_env(os.path.join(ROOT, ".env"))
+        admin = ("postgresql" + "+asyncpg://" + g["WINDOWS_VPS_PG_ADMIN_USER"] + ":"
+                 + urllib.parse.quote(g["WINDOWS_VPS_PG_ADMIN_PASSWORD"], safe="") + "@127.0.0.1:5432/ofo_test")
+        env = dict(os.environ, TEST_DATABASE_URL=p["TEST_DATABASE_URL"], TEST_ADMIN_DATABASE_URL=admin,
+                   ALEMBIC_DATABASE_URL=admin, OFO_REQUIRE_DB_TESTS="1")
     cwd = sys.argv[1]
     if cwd.startswith("agent:"):
         cwd = os.path.join(ROOT, "." + "claude", "worktrees", "agent-" + cwd[6:])
