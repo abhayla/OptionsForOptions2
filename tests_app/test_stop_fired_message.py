@@ -110,7 +110,9 @@ async def test_a_long_wing_stop_gets_the_engines_own_answer_no_fixed_maximum(db)
     leaves the short call bare, so the line says there is no fixed maximum loss."""
     _, stored, _, fires = await _fire_leg(db, LONG_CALL, "5.00", "5.50")
     [(_, text)] = await _alerts(db, stored.id)
-    assert fires == 1 and "If this stop fires, there is no fixed maximum loss (now Rs 2,860.00)." in text
+    assert fires == 1 and ("If this stop fires, the sold NIFTY 13 Oct 22800 CE is left without protection.\n"
+                           "Max loss now: Rs 2,860.00.\n"
+                           "Max loss then: no upper limit (worst case: NIFTY keeps rising).") in text
 
 
 async def test_m1_a_fired_long_put_stop_names_the_bare_put_as_the_screens_do(db):
@@ -119,8 +121,9 @@ async def test_m1_a_fired_long_put_stop_names_the_bare_put_as_the_screens_do(db)
     _, stored, _, fires = await _fire_leg(db, LONG_PUT, "5.00", "5.50")
     [(_, text)] = await _alerts(db, stored.id)
     assert fires == 1 and "2026-" not in text
-    assert ("If this stop fires, max loss becomes Rs 14,45,502.50 (now Rs 2,860.00). "
-            "Sold option with less protection: NIFTY 13 Oct 22400 PE.") in text
+    assert ("If this stop fires, the sold NIFTY 13 Oct 22400 PE is left without protection.\n"
+            "Max loss now: Rs 2,860.00.\n"
+            "Max loss then: Rs 14,45,502.50 (worst case: NIFTY at zero).") in text
 
 
 async def test_an_index_exit_gets_a_line_only_when_the_exit_check_says_yes(db):

@@ -75,6 +75,8 @@
            a contract bought back and opened again has a row here AND its open row above, whose Booked starts at 0 -->
       <ClosedRows :rows="closedRows" />
       <p v-if="book.closed_text" class="mt-2 text-xs font-semibold" data-testid="closed-result">{{ book.closed_text }}</p>
+      <!-- ADR-330 (57): the one read-only line of what the plan was and how the trade ended, built by the server and printed as sent -->
+      <p v-if="book.closed_text && book.plan_final_text" class="mt-1 text-xs text-ink-muted" data-testid="plan-final">{{ book.plan_final_text }}</p>
     </div>
 
     <!-- S-25: every cell has px-2 and Qty / Price are right-aligned tabular figures, so "65" and "101.20" never read as 65101.20 -->

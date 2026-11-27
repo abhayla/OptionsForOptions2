@@ -40,6 +40,31 @@ const save = (w, i = 5000) => w.get(`[data-testid="stop-save-${i}"]`)
 beforeEach(() => { calls.length = 0; answers = {}; vi.useFakeTimers() })
 afterEach(() => vi.useRealTimers())
 
+const THREE = ['If this stop fires, the sold NIFTY 1 Dec 25850 PE is left without protection.', 'Max loss now: Rs 7,800.00.',
+  'Max loss then: Rs 16,74,725.00 (worst case: NIFTY at zero).']
+
+describe('ADR-330 (55) three lines, each its own line, printed as the server sent them', () => {
+  it('prints each of the server\'s lines on its own line, in order, with no figure of its own', async () => {
+    answers['GET *'] = ok({ ...yes(THREE.join('\n')), warning_lines: THREE })
+    const w = await open()
+    await type(w, 5000, '5.00')
+    await wait()
+    const rows = w.findAll('[data-testid^="stop-risk-line-5000-"]')
+    expect(rows.map((r) => r.text())).toEqual(THREE)
+    expect(line(w).text()).toBe(THREE.join(''))
+  })
+  it('a lines list that is not three non-empty texts falls back to the one sentence, never half a list', async () => {
+    for (const bad of [[], ['only one'], ['a', '', 'c'], ['a', 1, 'c'], 'text']) {
+      answers['GET *'] = ok({ ...yes(), warning_lines: bad })
+      const w = await open()
+      await type(w, 5000, '5.00')
+      await wait()
+      expect(w.findAll('[data-testid^="stop-risk-line-5000-"]'), JSON.stringify(bad)).toHaveLength(0)
+      expect(line(w).text()).toBe(TEXT)
+    }
+  })
+})
+
 describe('W2-B leg-stop risk line', () => {
   it('yes: prints the server text exactly, asks once with the typed contract and level, Save stays enabled', async () => {
     answers['GET *'] = ok(yes())

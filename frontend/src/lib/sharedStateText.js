@@ -52,6 +52,9 @@ export const RUNNING_TAB_EMPTY_MESSAGE = 'A strategy with an order placed shows 
 // pending owner read (13 Nov 2026): the two sentences below are not yet owner-approved
 // ADR-295 (3), GC-ICFIX u112: a panel whose read failed or timed out says so and offers Retry; never an empty space.
 export const PLAN_LOAD_FAILED_TEXT = 'Could not load the plan. Nothing was changed.'
+// ADR-330 (54), pending owner read (27 Nov 2026): the Plan button on Positions and its failed-read line
+export const PLAN_BUTTON_LABEL = 'Plan'
+export const PLAN_OPEN_FAILED_TEXT = 'Could not open the plan. Try again.'
 // pending owner read (15 Nov 2026), GC-ICFIX issue 18: the practice orders were stored but the position could not be read back
 export const PAPER_REREAD_FAILED_TEXT = 'Your paper orders were placed, but the position could not be loaded. Nothing was lost.'
 export const PLAN_LOADING_TEXT = 'Loading the plan…'

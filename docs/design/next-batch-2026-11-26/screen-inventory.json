@@ -342,7 +342,7 @@
      "labelFrom": "text",
      "ariaLabel": "",
      "testid": "modal-root",
-     "source": "frontend/src/components/common/Modal.vue:52",
+     "source": "frontend/src/components/common/Modal.vue:54",
      "handlers": [
       "keydown"
      ],
@@ -356,7 +356,7 @@
      "labelFrom": "none",
      "ariaLabel": "",
      "testid": "modal-overlay",
-     "source": "frontend/src/components/common/Modal.vue:59",
+     "source": "frontend/src/components/common/Modal.vue:61",
      "handlers": [
       "click"
      ],
@@ -370,7 +370,7 @@
      "labelFrom": "text",
      "ariaLabel": "title",
      "testid": "modal",
-     "source": "frontend/src/components/common/Modal.vue:64",
+     "source": "frontend/src/components/common/Modal.vue:66",
      "component": "components/common/Modal.vue"
     },
     {
@@ -381,7 +381,7 @@
      "labelFrom": "aria-label",
      "ariaLabel": "Close",
      "testid": "modal-close",
-     "source": "frontend/src/components/common/Modal.vue:73",
+     "source": "frontend/src/components/common/Modal.vue:75",
      "handlers": [
       "click"
      ],
@@ -392,6 +392,223 @@
      "id": "SHARED-15",
      "kind": "dialog",
      "tag": "Modal",
+     "label": "{{PLAN_LOADING_TEXT}} {{sheet.text}} {{loadError}} {{sheet.typeName}} {{labels.playbook}} {{p.name}} {{PLAN_REFILLED_TEXT(refilledFrom)}} {{labels.target}} {{form.targetWords}} {{labels.target_rupees}} {{form.targetRupeeWords}} {{labels.stop}} {{form.stopWords}} {{labels.stop_rupees}} {{form.stopRupeeWords}} {{form.stopWarning}} {{labels.max_adjustments}} {{labels.time_exit}} {{labels.time_exit_on}} {{labels.customise}} {{labels.reset}} {{labels.reset_confirm}} {{labels.reset}} Cancel {{resetMarkers}} {{labels.close}} {{labels.save}} {{labels.use_as_is}}",
+     "labelFrom": "text",
+     "ariaLabel": "",
+     "testid": "",
+     "source": "frontend/src/components/strategy/AdjustPlanSheet.vue:8",
+     "component": "components/strategy/AdjustPlanSheet.vue"
+    },
+    {
+     "id": "SHARED-16",
+     "kind": "field",
+     "tag": "select",
+     "label": "{{p.name}}",
+     "labelFrom": "text",
+     "ariaLabel": "",
+     "testid": "plan-playbook",
+     "source": "frontend/src/components/strategy/AdjustPlanSheet.vue:19",
+     "component": "components/strategy/AdjustPlanSheet.vue"
+    },
+    {
+     "id": "SHARED-17",
+     "kind": "field",
+     "tag": "input",
+     "label": "{{labels.target}} {{form.targetWords}}",
+     "labelFrom": "attr",
+     "ariaLabel": "",
+     "testid": "plan-target",
+     "source": "frontend/src/components/strategy/AdjustPlanSheet.vue:26",
+     "component": "components/strategy/AdjustPlanSheet.vue"
+    },
+    {
+     "id": "SHARED-18",
+     "kind": "field",
+     "tag": "input",
+     "label": "{{labels.target_rupees}} {{form.targetRupeeWords}}",
+     "labelFrom": "attr",
+     "ariaLabel": "",
+     "testid": "plan-target-rupees",
+     "source": "frontend/src/components/strategy/AdjustPlanSheet.vue:30",
+     "component": "components/strategy/AdjustPlanSheet.vue"
+    },
+    {
+     "id": "SHARED-19",
+     "kind": "field",
+     "tag": "input",
+     "label": "{{labels.stop}} {{form.stopWords}}",
+     "labelFrom": "attr",
+     "ariaLabel": "",
+     "testid": "plan-stop",
+     "source": "frontend/src/components/strategy/AdjustPlanSheet.vue:34",
+     "component": "components/strategy/AdjustPlanSheet.vue"
+    },
+    {
+     "id": "SHARED-20",
+     "kind": "field",
+     "tag": "input",
+     "label": "{{labels.stop_rupees}} {{form.stopRupeeWords}} {{form.stopWarning}}",
+     "labelFrom": "attr",
+     "ariaLabel": "",
+     "testid": "plan-stop-rupees",
+     "source": "frontend/src/components/strategy/AdjustPlanSheet.vue:38",
+     "component": "components/strategy/AdjustPlanSheet.vue"
+    },
+    {
+     "id": "SHARED-21",
+     "kind": "field",
+     "tag": "input",
+     "label": "{{labels.max_adjustments}}",
+     "labelFrom": "attr",
+     "ariaLabel": "",
+     "testid": "plan-max",
+     "source": "frontend/src/components/strategy/AdjustPlanSheet.vue:43",
+     "component": "components/strategy/AdjustPlanSheet.vue"
+    },
+    {
+     "id": "SHARED-22",
+     "kind": "field",
+     "tag": "input",
+     "label": "{{labels.time_exit}}",
+     "labelFrom": "attr",
+     "ariaLabel": "",
+     "testid": "plan-time",
+     "source": "frontend/src/components/strategy/AdjustPlanSheet.vue:46",
+     "type": "time",
+     "component": "components/strategy/AdjustPlanSheet.vue"
+    },
+    {
+     "id": "SHARED-23",
+     "kind": "field",
+     "tag": "input",
+     "label": "{{labels.time_exit_on}}",
+     "labelFrom": "attr",
+     "ariaLabel": "",
+     "testid": "plan-time-on",
+     "source": "frontend/src/components/strategy/AdjustPlanSheet.vue:49",
+     "type": "date",
+     "component": "components/strategy/AdjustPlanSheet.vue"
+    },
+    {
+     "id": "SHARED-24",
+     "kind": "button",
+     "tag": "button",
+     "label": "{{labels.customise}}",
+     "labelFrom": "text",
+     "ariaLabel": "",
+     "testid": "plan-customise",
+     "source": "frontend/src/components/strategy/AdjustPlanSheet.vue:52",
+     "handlers": [
+      "click"
+     ],
+     "type": "button",
+     "component": "components/strategy/AdjustPlanSheet.vue"
+    },
+    {
+     "id": "SHARED-25",
+     "kind": "button",
+     "tag": "button",
+     "label": "{{labels.reset}}",
+     "labelFrom": "text",
+     "ariaLabel": "",
+     "testid": "plan-reset",
+     "source": "frontend/src/components/strategy/AdjustPlanSheet.vue:53",
+     "handlers": [
+      "click"
+     ],
+     "type": "button",
+     "component": "components/strategy/AdjustPlanSheet.vue"
+    },
+    {
+     "id": "SHARED-26",
+     "kind": "button",
+     "tag": "button",
+     "label": "{{labels.reset}}",
+     "labelFrom": "text",
+     "ariaLabel": "",
+     "testid": "plan-reset-yes",
+     "source": "frontend/src/components/strategy/AdjustPlanSheet.vue:57",
+     "handlers": [
+      "click"
+     ],
+     "type": "button",
+     "component": "components/strategy/AdjustPlanSheet.vue"
+    },
+    {
+     "id": "SHARED-27",
+     "kind": "button",
+     "tag": "button",
+     "label": "Cancel",
+     "labelFrom": "text",
+     "ariaLabel": "",
+     "testid": "plan-reset-no",
+     "source": "frontend/src/components/strategy/AdjustPlanSheet.vue:58",
+     "handlers": [
+      "click"
+     ],
+     "type": "button",
+     "component": "components/strategy/AdjustPlanSheet.vue"
+    },
+    {
+     "id": "SHARED-28",
+     "kind": "button",
+     "tag": "button",
+     "label": "{{labels.close}}",
+     "labelFrom": "text",
+     "ariaLabel": "",
+     "testid": "plan-close",
+     "source": "frontend/src/components/strategy/AdjustPlanSheet.vue:69",
+     "handlers": [
+      "click"
+     ],
+     "type": "button",
+     "component": "components/strategy/AdjustPlanSheet.vue"
+    },
+    {
+     "id": "SHARED-29",
+     "kind": "button",
+     "tag": "button",
+     "label": "{{labels.save}}",
+     "labelFrom": "text",
+     "ariaLabel": "",
+     "testid": "plan-save",
+     "source": "frontend/src/components/strategy/AdjustPlanSheet.vue:71",
+     "handlers": [
+      "click"
+     ],
+     "type": "button",
+     "component": "components/strategy/AdjustPlanSheet.vue"
+    },
+    {
+     "id": "SHARED-30",
+     "kind": "button",
+     "tag": "button",
+     "label": "{{labels.use_as_is}}",
+     "labelFrom": "text",
+     "ariaLabel": "",
+     "testid": "plan-use-as-is",
+     "source": "frontend/src/components/strategy/AdjustPlanSheet.vue:72",
+     "handlers": [
+      "click"
+     ],
+     "type": "button",
+     "component": "components/strategy/AdjustPlanSheet.vue"
+    },
+    {
+     "id": "SHARED-31",
+     "kind": "field",
+     "tag": "select",
+     "label": "{{c.label}}",
+     "labelFrom": "text",
+     "ariaLabel": "",
+     "testid": "alert-style-select",
+     "source": "frontend/src/components/strategy/AlertStylePicker.vue:10",
+     "component": "components/strategy/AlertStylePicker.vue"
+    },
+    {
+     "id": "SHARED-32",
+     "kind": "dialog",
+     "tag": "Modal",
      "label": "{{paperKindLabel(row.kind)}} {{row.text}} Lots Price {{row.price ? `about ${row.price}${quoteClock(row) ? ', as of ' + quoteClock(row) : ''}, ` : ''}}{{PAPER_EXIT_PRICED_BY_SERVER_TEXT}} Price {{row.price_note}} {{reasons[i]}} {{ARMED_UNCHECKED}} {{line}} {{HELD_LABEL}} Entry date and time Broker {{exitWarning}} {{PAPER_EXIT_UNCHECKED_TEXT}} {{PAPER_EXIT_CHECKING_TEXT}} {{notLiveLine}} {{PAPER_NOT_REAL_TEXT}} {{PAPER_PLACED_NOT_REFRESHED_TEXT}} {{PAPER_UNKNOWN_TEXT}} {{PAPER_OPEN_ORDERBOOK_LABEL}} {{error}} {{state === 'placed' ? 'Close' : 'Cancel'}} Confirm",
      "labelFrom": "text",
      "ariaLabel": "",
@@ -400,7 +617,7 @@
      "component": "components/strategy/PaperConfirmDialog.vue"
     },
     {
-     "id": "SHARED-16",
+     "id": "SHARED-33",
      "kind": "field",
      "tag": "input",
      "label": "`Lots for ${row.text}`",
@@ -412,7 +629,7 @@
      "component": "components/strategy/PaperConfirmDialog.vue"
     },
     {
-     "id": "SHARED-17",
+     "id": "SHARED-34",
      "kind": "field",
      "tag": "input",
      "label": "`Price for ${row.text}`",
@@ -424,7 +641,7 @@
      "component": "components/strategy/PaperConfirmDialog.vue"
     },
     {
-     "id": "SHARED-18",
+     "id": "SHARED-35",
      "kind": "field",
      "tag": "input",
      "label": "{{HELD_LABEL}}",
@@ -436,7 +653,7 @@
      "component": "components/strategy/PaperConfirmDialog.vue"
     },
     {
-     "id": "SHARED-19",
+     "id": "SHARED-36",
      "kind": "field",
      "tag": "input",
      "label": "Entry date and time",
@@ -448,7 +665,7 @@
      "component": "components/strategy/PaperConfirmDialog.vue"
     },
     {
-     "id": "SHARED-20",
+     "id": "SHARED-37",
      "kind": "field",
      "tag": "input",
      "label": "Broker",
@@ -460,7 +677,7 @@
      "component": "components/strategy/PaperConfirmDialog.vue"
     },
     {
-     "id": "SHARED-21",
+     "id": "SHARED-38",
      "kind": "field",
      "tag": "input",
      "label": "{{notLiveLine}}",
@@ -472,7 +689,7 @@
      "component": "components/strategy/PaperConfirmDialog.vue"
     },
     {
-     "id": "SHARED-22",
+     "id": "SHARED-39",
      "kind": "button",
      "tag": "button",
      "label": "{{PAPER_OPEN_ORDERBOOK_LABEL}}",
@@ -487,7 +704,7 @@
      "component": "components/strategy/PaperConfirmDialog.vue"
     },
     {
-     "id": "SHARED-23",
+     "id": "SHARED-40",
      "kind": "button",
      "tag": "button",
      "label": "{{state === 'placed' ? 'Close' : 'Cancel'}}",
@@ -502,7 +719,7 @@
      "component": "components/strategy/PaperConfirmDialog.vue"
     },
     {
-     "id": "SHARED-24",
+     "id": "SHARED-41",
      "kind": "button",
      "tag": "button",
      "label": "Confirm",
@@ -517,7 +734,7 @@
      "component": "components/strategy/PaperConfirmDialog.vue"
     },
     {
-     "id": "SHARED-25",
+     "id": "SHARED-42",
      "kind": "button",
      "tag": "button",
      "label": "(no label)",
@@ -529,7 +746,7 @@
      "component": "components/strategy/ExitButton.vue"
     },
     {
-     "id": "SHARED-26",
+     "id": "SHARED-43",
      "kind": "field",
      "tag": "input",
      "label": "{{SHOW_CLOSED_LABEL}}",
@@ -541,7 +758,7 @@
      "component": "components/strategy/PaperStrategies.vue"
     },
     {
-     "id": "SHARED-27",
+     "id": "SHARED-44",
      "kind": "link",
      "tag": "RouterLink",
      "label": "{{groupLabel(g)}} {{legsText(g)}} {{stale ? '-' : g.totalAfter.text ?? '-'}} {{g.totalAfter.label}} {{g.totalAfter.reason}} {{stale ? PAPER_PAUSED : g.stateText || NO_TOTAL}}",
@@ -553,7 +770,7 @@
      "component": "components/strategy/PaperStrategies.vue"
     },
     {
-     "id": "SHARED-28",
+     "id": "SHARED-45",
      "kind": "button",
      "tag": "button",
      "label": "Greeks",
@@ -568,7 +785,7 @@
      "component": "components/strategy/PaperStrategies.vue"
     },
     {
-     "id": "SHARED-29",
+     "id": "SHARED-46",
      "kind": "field",
      "tag": "input",
      "label": "`Select ${p.name}`",
@@ -580,7 +797,7 @@
      "component": "components/strategy/PaperStrategies.vue"
     },
     {
-     "id": "SHARED-30",
+     "id": "SHARED-47",
      "kind": "link",
      "tag": "RouterLink",
      "label": "Open in Builder",
@@ -592,7 +809,7 @@
      "component": "components/strategy/PaperStrategies.vue"
     },
     {
-     "id": "SHARED-31",
+     "id": "SHARED-48",
      "kind": "link",
      "tag": "RouterLink",
      "label": "Add orders",
@@ -604,14 +821,14 @@
      "component": "components/strategy/PaperStrategies.vue"
     },
     {
-     "id": "SHARED-32",
+     "id": "SHARED-49",
      "kind": "button",
      "tag": "button",
      "label": "Stops",
      "labelFrom": "text",
      "ariaLabel": "",
      "testid": "``stops-open-${g.id}``",
-     "source": "frontend/src/components/strategy/PaperStrategies.vue:154",
+     "source": "frontend/src/components/strategy/PaperStrategies.vue:156",
      "handlers": [
       "click"
      ],
@@ -619,52 +836,52 @@
      "component": "components/strategy/PaperStrategies.vue"
     },
     {
-     "id": "SHARED-33",
+     "id": "SHARED-50",
      "kind": "click",
      "tag": "ExitButton",
      "label": "Exit ({{tickedOpen(g).length}})",
      "labelFrom": "text",
      "ariaLabel": "",
      "testid": "``exit-selected-${g.id}``",
-     "source": "frontend/src/components/strategy/PaperStrategies.vue:155",
+     "source": "frontend/src/components/strategy/PaperStrategies.vue:157",
      "handlers": [
       "click"
      ],
      "component": "components/strategy/PaperStrategies.vue"
     },
     {
-     "id": "SHARED-34",
+     "id": "SHARED-51",
      "kind": "field",
      "tag": "input",
      "label": "Above",
      "labelFrom": "attr",
      "ariaLabel": "",
      "testid": "ce-above",
-     "source": "frontend/src/components/strategy/PaperStops.vue:227",
+     "source": "frontend/src/components/strategy/PaperStops.vue:232",
      "type": "text",
      "component": "components/strategy/PaperStops.vue"
     },
     {
-     "id": "SHARED-35",
+     "id": "SHARED-52",
      "kind": "field",
      "tag": "input",
      "label": "Below",
      "labelFrom": "attr",
      "ariaLabel": "",
      "testid": "ce-below",
-     "source": "frontend/src/components/strategy/PaperStops.vue:228",
+     "source": "frontend/src/components/strategy/PaperStops.vue:233",
      "type": "text",
      "component": "components/strategy/PaperStops.vue"
     },
     {
-     "id": "SHARED-36",
+     "id": "SHARED-53",
      "kind": "button",
      "tag": "button",
      "label": "{{busy ? 'Saving...' : 'Save'}}",
      "labelFrom": "text",
      "ariaLabel": "",
      "testid": "ce-save",
-     "source": "frontend/src/components/strategy/PaperStops.vue:229",
+     "source": "frontend/src/components/strategy/PaperStops.vue:234",
      "handlers": [
       "click"
      ],
@@ -672,37 +889,37 @@
      "component": "components/strategy/PaperStops.vue"
     },
     {
-     "id": "SHARED-37",
+     "id": "SHARED-54",
      "kind": "field",
      "tag": "select",
      "label": "Above Below",
      "labelFrom": "text",
      "ariaLabel": "`Stop direction for ${l.label}`",
      "testid": "``stop-direction-${l.index}``",
-     "source": "frontend/src/components/strategy/PaperStops.vue:238",
+     "source": "frontend/src/components/strategy/PaperStops.vue:243",
      "component": "components/strategy/PaperStops.vue"
     },
     {
-     "id": "SHARED-38",
+     "id": "SHARED-55",
      "kind": "field",
      "tag": "input",
      "label": "`Stop price for ${l.label}`",
      "labelFrom": "aria-label",
      "ariaLabel": "`Stop price for ${l.label}`",
      "testid": "``stop-level-${l.index}``",
-     "source": "frontend/src/components/strategy/PaperStops.vue:242",
+     "source": "frontend/src/components/strategy/PaperStops.vue:247",
      "type": "text",
      "component": "components/strategy/PaperStops.vue"
     },
     {
-     "id": "SHARED-39",
+     "id": "SHARED-56",
      "kind": "button",
      "tag": "button",
      "label": "{{busy ? 'Saving...' : 'Save'}}",
      "labelFrom": "text",
      "ariaLabel": "",
      "testid": "``stop-save-${l.index}``",
-     "source": "frontend/src/components/strategy/PaperStops.vue:243",
+     "source": "frontend/src/components/strategy/PaperStops.vue:248",
      "handlers": [
       "click"
      ],
@@ -710,14 +927,14 @@
      "component": "components/strategy/PaperStops.vue"
     },
     {
-     "id": "SHARED-40",
+     "id": "SHARED-57",
      "kind": "button",
      "tag": "button",
      "label": "Cancel",
      "labelFrom": "text",
      "ariaLabel": "",
      "testid": "``trigger-cancel-${t.id}``",
-     "source": "frontend/src/components/strategy/PaperStops.vue:268",
+     "source": "frontend/src/components/strategy/PaperStops.vue:273",
      "handlers": [
       "click"
      ],
@@ -725,14 +942,14 @@
      "component": "components/strategy/PaperStops.vue"
     },
     {
-     "id": "SHARED-41",
+     "id": "SHARED-58",
      "kind": "button",
      "tag": "button",
      "label": "Keep this level",
      "labelFrom": "text",
      "ariaLabel": "",
      "testid": "``trigger-keep-${t.id}``",
-     "source": "frontend/src/components/strategy/PaperStops.vue:271",
+     "source": "frontend/src/components/strategy/PaperStops.vue:276",
      "handlers": [
       "click"
      ],
@@ -740,7 +957,22 @@
      "component": "components/strategy/PaperStops.vue"
     },
     {
-     "id": "SHARED-42",
+     "id": "SHARED-59",
+     "kind": "button",
+     "tag": "button",
+     "label": "{{PLAN_BUTTON_LABEL}}",
+     "labelFrom": "text",
+     "ariaLabel": "",
+     "testid": "``plan-open-${tag}-${strategyId}``",
+     "source": "frontend/src/components/strategy/PlanDoor.vue:8",
+     "handlers": [
+      "click"
+     ],
+     "type": "button",
+     "component": "components/strategy/PlanDoor.vue"
+    },
+    {
+     "id": "SHARED-60",
      "kind": "dialog",
      "tag": "Modal",
      "label": "{{leave.question.value ? leaveQuestion(leave.question.value.count, leave.question.value.pending) : ''}} Stay Leave",
@@ -751,7 +983,7 @@
      "component": "components/strategy/LeaveBuilderDialog.vue"
     },
     {
-     "id": "SHARED-43",
+     "id": "SHARED-61",
      "kind": "button",
      "tag": "button",
      "label": "Stay",
@@ -766,7 +998,7 @@
      "component": "components/strategy/LeaveBuilderDialog.vue"
     },
     {
-     "id": "SHARED-44",
+     "id": "SHARED-62",
      "kind": "button",
      "tag": "button",
      "label": "Leave",
@@ -781,7 +1013,7 @@
      "component": "components/strategy/LeaveBuilderDialog.vue"
     },
     {
-     "id": "SHARED-45",
+     "id": "SHARED-63",
      "kind": "button",
      "tag": "button",
      "label": "Check with Zerodha",
@@ -1010,7 +1242,7 @@
      "labelFrom": "text",
      "ariaLabel": "",
      "testid": "action-create",
-     "source": "frontend/src/pages/HomeOverviewPage.vue:101",
+     "source": "frontend/src/pages/HomeOverviewPage.vue:102",
      "to": "/strategies/create-strategy",
      "component": "pages/HomeOverviewPage.vue"
     },
@@ -1022,7 +1254,7 @@
      "labelFrom": "text",
      "ariaLabel": "",
      "testid": "action-chain",
-     "source": "frontend/src/pages/HomeOverviewPage.vue:102",
+     "source": "frontend/src/pages/HomeOverviewPage.vue:103",
      "to": "/market/option-chain",
      "component": "pages/HomeOverviewPage.vue"
     },
@@ -1034,7 +1266,7 @@
      "labelFrom": "text",
      "ariaLabel": "",
      "testid": "action-learn",
-     "source": "frontend/src/pages/HomeOverviewPage.vue:103",
+     "source": "frontend/src/pages/HomeOverviewPage.vue:104",
      "to": "LEARN_PATH",
      "component": "pages/HomeOverviewPage.vue"
     },
@@ -1046,7 +1278,7 @@
      "labelFrom": "text",
      "ariaLabel": "",
      "testid": "action-know",
-     "source": "frontend/src/pages/HomeOverviewPage.vue:105",
+     "source": "frontend/src/pages/HomeOverviewPage.vue:106",
      "to": "/strategy/builder",
      "component": "pages/HomeOverviewPage.vue"
     },
@@ -1058,7 +1290,7 @@
      "labelFrom": "text",
      "ariaLabel": "",
      "testid": "action-my",
-     "source": "frontend/src/pages/HomeOverviewPage.vue:110",
+     "source": "frontend/src/pages/HomeOverviewPage.vue:111",
      "to": "/strategies/my-strategies",
      "component": "pages/HomeOverviewPage.vue"
     },
@@ -1070,7 +1302,7 @@
      "labelFrom": "text",
      "ariaLabel": "",
      "testid": "action-create",
-     "source": "frontend/src/pages/HomeOverviewPage.vue:111",
+     "source": "frontend/src/pages/HomeOverviewPage.vue:112",
      "to": "/strategies/create-strategy",
      "component": "pages/HomeOverviewPage.vue"
     },
@@ -1082,7 +1314,7 @@
      "labelFrom": "text",
      "ariaLabel": "",
      "testid": "``recent-open-${s.id}``",
-     "source": "frontend/src/pages/HomeOverviewPage.vue:123",
+     "source": "frontend/src/pages/HomeOverviewPage.vue:124",
      "to": "builderLinkOf(s.id)",
      "component": "pages/HomeOverviewPage.vue"
     }
@@ -1141,7 +1373,7 @@
      "labelFrom": "aria-label",
      "ariaLabel": "Search saved strategies by name",
      "testid": "strategy-search",
-     "source": "frontend/src/pages/MyStrategiesPage.vue:166",
+     "source": "frontend/src/pages/MyStrategiesPage.vue:168",
      "type": "search",
      "component": "pages/MyStrategiesPage.vue"
     },
@@ -1153,7 +1385,7 @@
      "labelFrom": "attr",
      "ariaLabel": "",
      "testid": "select-all",
-     "source": "frontend/src/pages/MyStrategiesPage.vue:183",
+     "source": "frontend/src/pages/MyStrategiesPage.vue:185",
      "type": "checkbox",
      "component": "pages/MyStrategiesPage.vue"
     },
@@ -1165,7 +1397,7 @@
      "labelFrom": "text",
      "ariaLabel": "",
      "testid": "delete-selected",
-     "source": "frontend/src/pages/MyStrategiesPage.vue:186",
+     "source": "frontend/src/pages/MyStrategiesPage.vue:188",
      "handlers": [
       "click"
      ],
@@ -1180,7 +1412,7 @@
      "labelFrom": "text",
      "ariaLabel": "",
      "testid": "bulk-confirm-box",
-     "source": "frontend/src/pages/MyStrategiesPage.vue:187",
+     "source": "frontend/src/pages/MyStrategiesPage.vue:189",
      "component": "pages/MyStrategiesPage.vue"
     },
     {
@@ -1191,7 +1423,7 @@
      "labelFrom": "text",
      "ariaLabel": "",
      "testid": "bulk-confirm",
-     "source": "frontend/src/pages/MyStrategiesPage.vue:189",
+     "source": "frontend/src/pages/MyStrategiesPage.vue:191",
      "handlers": [
       "click"
      ],
@@ -1206,7 +1438,7 @@
      "labelFrom": "text",
      "ariaLabel": "",
      "testid": "bulk-cancel",
-     "source": "frontend/src/pages/MyStrategiesPage.vue:190",
+     "source": "frontend/src/pages/MyStrategiesPage.vue:192",
      "handlers": [
       "click"
      ],
@@ -1221,7 +1453,7 @@
      "labelFrom": "aria-label",
      "ariaLabel": "`Select ${listLabel(s)}`",
      "testid": "``select-${s.id}``",
-     "source": "frontend/src/pages/MyStrategiesPage.vue:201",
+     "source": "frontend/src/pages/MyStrategiesPage.vue:203",
      "type": "checkbox",
      "component": "pages/MyStrategiesPage.vue"
     },
@@ -1233,7 +1465,7 @@
      "labelFrom": "text",
      "ariaLabel": "",
      "testid": "``open-builder-${s.id}``",
-     "source": "frontend/src/pages/MyStrategiesPage.vue:212",
+     "source": "frontend/src/pages/MyStrategiesPage.vue:214",
      "handlers": [
       "click"
      ],
@@ -1248,7 +1480,7 @@
      "labelFrom": "text",
      "ariaLabel": "",
      "testid": "``rename-${s.id}``",
-     "source": "frontend/src/pages/MyStrategiesPage.vue:213",
+     "source": "frontend/src/pages/MyStrategiesPage.vue:215",
      "handlers": [
       "click"
      ],
@@ -1263,7 +1495,7 @@
      "labelFrom": "text",
      "ariaLabel": "",
      "testid": "``open-execute-${s.id}``",
-     "source": "frontend/src/pages/MyStrategiesPage.vue:215",
+     "source": "frontend/src/pages/MyStrategiesPage.vue:217",
      "to": "`/strategy/${s.id}/execute`",
      "component": "pages/MyStrategiesPage.vue"
     },
@@ -1275,7 +1507,7 @@
      "labelFrom": "text",
      "ariaLabel": "",
      "testid": "rename-form",
-     "source": "frontend/src/pages/MyStrategiesPage.vue:226",
+     "source": "frontend/src/pages/MyStrategiesPage.vue:228",
      "handlers": [
       "keydown.esc.stop"
      ],
@@ -1289,7 +1521,7 @@
      "labelFrom": "aria-label",
      "ariaLabel": "New strategy name",
      "testid": "rename-input",
-     "source": "frontend/src/pages/MyStrategiesPage.vue:227",
+     "source": "frontend/src/pages/MyStrategiesPage.vue:229",
      "type": "text",
      "component": "pages/MyStrategiesPage.vue"
     },
@@ -1301,7 +1533,7 @@
      "labelFrom": "text",
      "ariaLabel": "",
      "testid": "rename-save",
-     "source": "frontend/src/pages/MyStrategiesPage.vue:229",
+     "source": "frontend/src/pages/MyStrategiesPage.vue:231",
      "type": "submit",
      "component": "pages/MyStrategiesPage.vue"
     },
@@ -1313,7 +1545,7 @@
      "labelFrom": "text",
      "ariaLabel": "",
      "testid": "rename-cancel",
-     "source": "frontend/src/pages/MyStrategiesPage.vue:230",
+     "source": "frontend/src/pages/MyStrategiesPage.vue:232",
      "handlers": [
       "click"
      ],
@@ -1328,7 +1560,7 @@
      "labelFrom": "text",
      "ariaLabel": "",
      "testid": "result-undo",
-     "source": "frontend/src/pages/MyStrategiesPage.vue:242",
+     "source": "frontend/src/pages/MyStrategiesPage.vue:244",
      "handlers": [
       "click"
      ],
@@ -1343,7 +1575,7 @@
      "labelFrom": "text",
      "ariaLabel": "",
      "testid": "result-dismiss",
-     "source": "frontend/src/pages/MyStrategiesPage.vue:243",
+     "source": "frontend/src/pages/MyStrategiesPage.vue:245",
      "handlers": [
       "click"
      ],
@@ -1358,7 +1590,7 @@
      "labelFrom": "text",
      "ariaLabel": "",
      "testid": "result-undo",
-     "source": "frontend/src/pages/MyStrategiesPage.vue:252",
+     "source": "frontend/src/pages/MyStrategiesPage.vue:254",
      "handlers": [
       "click"
      ],
@@ -1373,7 +1605,7 @@
      "labelFrom": "text",
      "ariaLabel": "",
      "testid": "result-dismiss",
-     "source": "frontend/src/pages/MyStrategiesPage.vue:253",
+     "source": "frontend/src/pages/MyStrategiesPage.vue:255",
      "handlers": [
       "click"
      ],
@@ -1577,7 +1809,7 @@
      "labelFrom": "text",
      "ariaLabel": "",
      "testid": "",
-     "source": "frontend/src/pages/StrategyBuilderPage.vue:1207",
+     "source": "frontend/src/pages/StrategyBuilderPage.vue:1210",
      "component": "pages/StrategyBuilderPage.vue"
     },
     {
@@ -1588,7 +1820,7 @@
      "labelFrom": "text",
      "ariaLabel": "",
      "testid": "draft-replace-yes",
-     "source": "frontend/src/pages/StrategyBuilderPage.vue:1210",
+     "source": "frontend/src/pages/StrategyBuilderPage.vue:1213",
      "handlers": [
       "click"
      ],
@@ -1603,7 +1835,7 @@
      "labelFrom": "text",
      "ariaLabel": "",
      "testid": "draft-replace-cancel",
-     "source": "frontend/src/pages/StrategyBuilderPage.vue:1211",
+     "source": "frontend/src/pages/StrategyBuilderPage.vue:1214",
      "handlers": [
       "click"
      ],
@@ -1618,7 +1850,7 @@
      "labelFrom": "text",
      "ariaLabel": "Underlying",
      "testid": "underlying-select",
-     "source": "frontend/src/pages/StrategyBuilderPage.vue:1233",
+     "source": "frontend/src/pages/StrategyBuilderPage.vue:1236",
      "component": "pages/StrategyBuilderPage.vue"
     },
     {
@@ -1629,7 +1861,7 @@
      "labelFrom": "text",
      "ariaLabel": "",
      "testid": "",
-     "source": "frontend/src/pages/StrategyBuilderPage.vue:1238",
+     "source": "frontend/src/pages/StrategyBuilderPage.vue:1241",
      "handlers": [
       "keydown.esc"
      ],
@@ -1643,7 +1875,7 @@
      "labelFrom": "text",
      "ariaLabel": "",
      "testid": "builder-settings",
-     "source": "frontend/src/pages/StrategyBuilderPage.vue:1239",
+     "source": "frontend/src/pages/StrategyBuilderPage.vue:1242",
      "handlers": [
       "click"
      ],
@@ -1658,7 +1890,7 @@
      "labelFrom": "text",
      "ariaLabel": "Builder settings",
      "testid": "settings-popover",
-     "source": "frontend/src/pages/StrategyBuilderPage.vue:1243",
+     "source": "frontend/src/pages/StrategyBuilderPage.vue:1246",
      "component": "pages/StrategyBuilderPage.vue"
     },
     {
@@ -1669,7 +1901,7 @@
      "labelFrom": "text",
      "ariaLabel": "",
      "testid": "lots-quantity-switch",
-     "source": "frontend/src/pages/StrategyBuilderPage.vue:1245",
+     "source": "frontend/src/pages/StrategyBuilderPage.vue:1248",
      "component": "pages/StrategyBuilderPage.vue"
     },
     {
@@ -1680,7 +1912,7 @@
      "labelFrom": "text",
      "ariaLabel": "",
      "testid": "open-error-my-strategies",
-     "source": "frontend/src/pages/StrategyBuilderPage.vue:1256",
+     "source": "frontend/src/pages/StrategyBuilderPage.vue:1259",
      "to": "/strategies/my-strategies",
      "component": "pages/StrategyBuilderPage.vue"
     },
@@ -1692,7 +1924,7 @@
      "labelFrom": "text",
      "ariaLabel": "",
      "testid": "paper-review",
-     "source": "frontend/src/pages/StrategyBuilderPage.vue:1275",
+     "source": "frontend/src/pages/StrategyBuilderPage.vue:1278",
      "handlers": [
       "click"
      ],
@@ -1706,7 +1938,7 @@
      "labelFrom": "text",
      "ariaLabel": "",
      "testid": "paper-discard",
-     "source": "frontend/src/pages/StrategyBuilderPage.vue:1276",
+     "source": "frontend/src/pages/StrategyBuilderPage.vue:1279",
      "handlers": [
       "click"
      ],
@@ -1721,7 +1953,7 @@
      "labelFrom": "text",
      "ariaLabel": "",
      "testid": "add-edit",
-     "source": "frontend/src/pages/StrategyBuilderPage.vue:1283",
+     "source": "frontend/src/pages/StrategyBuilderPage.vue:1286",
      "handlers": [
       "click"
      ],
@@ -1736,7 +1968,7 @@
      "labelFrom": "text",
      "ariaLabel": "",
      "testid": "menu-activity",
-     "source": "frontend/src/pages/StrategyBuilderPage.vue:1286",
+     "source": "frontend/src/pages/StrategyBuilderPage.vue:1289",
      "handlers": [
       "click"
      ],
@@ -1751,7 +1983,7 @@
      "labelFrom": "text",
      "ariaLabel": "",
      "testid": "menu-add-to-paper",
-     "source": "frontend/src/pages/StrategyBuilderPage.vue:1287",
+     "source": "frontend/src/pages/StrategyBuilderPage.vue:1290",
      "handlers": [
       "click"
      ],
@@ -1766,7 +1998,7 @@
      "labelFrom": "text",
      "ariaLabel": "",
      "testid": "",
-     "source": "frontend/src/pages/StrategyBuilderPage.vue:1301",
+     "source": "frontend/src/pages/StrategyBuilderPage.vue:1304",
      "component": "pages/StrategyBuilderPage.vue"
     },
     {
@@ -1777,7 +2009,7 @@
      "labelFrom": "text",
      "ariaLabel": "",
      "testid": "show-editor",
-     "source": "frontend/src/pages/StrategyBuilderPage.vue:1304",
+     "source": "frontend/src/pages/StrategyBuilderPage.vue:1307",
      "handlers": [
       "click"
      ],
@@ -1792,7 +2024,7 @@
      "labelFrom": "text",
      "ariaLabel": "",
      "testid": "show-strikes",
-     "source": "frontend/src/pages/StrategyBuilderPage.vue:1307",
+     "source": "frontend/src/pages/StrategyBuilderPage.vue:1310",
      "handlers": [
       "click"
      ],
@@ -1807,7 +2039,7 @@
      "labelFrom": "attr",
      "ariaLabel": "",
      "testid": "",
-     "source": "frontend/src/pages/StrategyBuilderPage.vue:1311",
+     "source": "frontend/src/pages/StrategyBuilderPage.vue:1314",
      "component": "pages/StrategyBuilderPage.vue"
     },
     {
@@ -2277,223 +2509,6 @@
     },
     {
      "id": "BUILD-53",
-     "kind": "dialog",
-     "tag": "Modal",
-     "label": "{{PLAN_LOADING_TEXT}} {{sheet.text}} {{loadError}} {{sheet.typeName}} {{labels.playbook}} {{p.name}} {{PLAN_REFILLED_TEXT(refilledFrom)}} {{labels.target}} {{form.targetWords}} {{labels.target_rupees}} {{form.targetRupeeWords}} {{labels.stop}} {{form.stopWords}} {{labels.stop_rupees}} {{form.stopRupeeWords}} {{form.stopWarning}} {{labels.max_adjustments}} {{labels.time_exit}} {{labels.time_exit_on}} {{labels.customise}} {{labels.reset}} {{labels.reset_confirm}} {{labels.reset}} Cancel {{resetMarkers}} {{labels.close}} {{labels.save}} {{labels.use_as_is}}",
-     "labelFrom": "text",
-     "ariaLabel": "",
-     "testid": "",
-     "source": "frontend/src/components/strategy/AdjustPlanSheet.vue:8",
-     "component": "components/strategy/AdjustPlanSheet.vue"
-    },
-    {
-     "id": "BUILD-54",
-     "kind": "field",
-     "tag": "select",
-     "label": "{{p.name}}",
-     "labelFrom": "text",
-     "ariaLabel": "",
-     "testid": "plan-playbook",
-     "source": "frontend/src/components/strategy/AdjustPlanSheet.vue:19",
-     "component": "components/strategy/AdjustPlanSheet.vue"
-    },
-    {
-     "id": "BUILD-55",
-     "kind": "field",
-     "tag": "input",
-     "label": "{{labels.target}} {{form.targetWords}}",
-     "labelFrom": "attr",
-     "ariaLabel": "",
-     "testid": "plan-target",
-     "source": "frontend/src/components/strategy/AdjustPlanSheet.vue:26",
-     "component": "components/strategy/AdjustPlanSheet.vue"
-    },
-    {
-     "id": "BUILD-56",
-     "kind": "field",
-     "tag": "input",
-     "label": "{{labels.target_rupees}} {{form.targetRupeeWords}}",
-     "labelFrom": "attr",
-     "ariaLabel": "",
-     "testid": "plan-target-rupees",
-     "source": "frontend/src/components/strategy/AdjustPlanSheet.vue:30",
-     "component": "components/strategy/AdjustPlanSheet.vue"
-    },
-    {
-     "id": "BUILD-57",
-     "kind": "field",
-     "tag": "input",
-     "label": "{{labels.stop}} {{form.stopWords}}",
-     "labelFrom": "attr",
-     "ariaLabel": "",
-     "testid": "plan-stop",
-     "source": "frontend/src/components/strategy/AdjustPlanSheet.vue:34",
-     "component": "components/strategy/AdjustPlanSheet.vue"
-    },
-    {
-     "id": "BUILD-58",
-     "kind": "field",
-     "tag": "input",
-     "label": "{{labels.stop_rupees}} {{form.stopRupeeWords}} {{form.stopWarning}}",
-     "labelFrom": "attr",
-     "ariaLabel": "",
-     "testid": "plan-stop-rupees",
-     "source": "frontend/src/components/strategy/AdjustPlanSheet.vue:38",
-     "component": "components/strategy/AdjustPlanSheet.vue"
-    },
-    {
-     "id": "BUILD-59",
-     "kind": "field",
-     "tag": "input",
-     "label": "{{labels.max_adjustments}}",
-     "labelFrom": "attr",
-     "ariaLabel": "",
-     "testid": "plan-max",
-     "source": "frontend/src/components/strategy/AdjustPlanSheet.vue:43",
-     "component": "components/strategy/AdjustPlanSheet.vue"
-    },
-    {
-     "id": "BUILD-60",
-     "kind": "field",
-     "tag": "input",
-     "label": "{{labels.time_exit}}",
-     "labelFrom": "attr",
-     "ariaLabel": "",
-     "testid": "plan-time",
-     "source": "frontend/src/components/strategy/AdjustPlanSheet.vue:46",
-     "type": "time",
-     "component": "components/strategy/AdjustPlanSheet.vue"
-    },
-    {
-     "id": "BUILD-61",
-     "kind": "field",
-     "tag": "input",
-     "label": "{{labels.time_exit_on}}",
-     "labelFrom": "attr",
-     "ariaLabel": "",
-     "testid": "plan-time-on",
-     "source": "frontend/src/components/strategy/AdjustPlanSheet.vue:49",
-     "type": "date",
-     "component": "components/strategy/AdjustPlanSheet.vue"
-    },
-    {
-     "id": "BUILD-62",
-     "kind": "button",
-     "tag": "button",
-     "label": "{{labels.customise}}",
-     "labelFrom": "text",
-     "ariaLabel": "",
-     "testid": "plan-customise",
-     "source": "frontend/src/components/strategy/AdjustPlanSheet.vue:52",
-     "handlers": [
-      "click"
-     ],
-     "type": "button",
-     "component": "components/strategy/AdjustPlanSheet.vue"
-    },
-    {
-     "id": "BUILD-63",
-     "kind": "button",
-     "tag": "button",
-     "label": "{{labels.reset}}",
-     "labelFrom": "text",
-     "ariaLabel": "",
-     "testid": "plan-reset",
-     "source": "frontend/src/components/strategy/AdjustPlanSheet.vue:53",
-     "handlers": [
-      "click"
-     ],
-     "type": "button",
-     "component": "components/strategy/AdjustPlanSheet.vue"
-    },
-    {
-     "id": "BUILD-64",
-     "kind": "button",
-     "tag": "button",
-     "label": "{{labels.reset}}",
-     "labelFrom": "text",
-     "ariaLabel": "",
-     "testid": "plan-reset-yes",
-     "source": "frontend/src/components/strategy/AdjustPlanSheet.vue:57",
-     "handlers": [
-      "click"
-     ],
-     "type": "button",
-     "component": "components/strategy/AdjustPlanSheet.vue"
-    },
-    {
-     "id": "BUILD-65",
-     "kind": "button",
-     "tag": "button",
-     "label": "Cancel",
-     "labelFrom": "text",
-     "ariaLabel": "",
-     "testid": "plan-reset-no",
-     "source": "frontend/src/components/strategy/AdjustPlanSheet.vue:58",
-     "handlers": [
-      "click"
-     ],
-     "type": "button",
-     "component": "components/strategy/AdjustPlanSheet.vue"
-    },
-    {
-     "id": "BUILD-66",
-     "kind": "button",
-     "tag": "button",
-     "label": "{{labels.close}}",
-     "labelFrom": "text",
-     "ariaLabel": "",
-     "testid": "plan-close",
-     "source": "frontend/src/components/strategy/AdjustPlanSheet.vue:69",
-     "handlers": [
-      "click"
-     ],
-     "type": "button",
-     "component": "components/strategy/AdjustPlanSheet.vue"
-    },
-    {
-     "id": "BUILD-67",
-     "kind": "button",
-     "tag": "button",
-     "label": "{{labels.save}}",
-     "labelFrom": "text",
-     "ariaLabel": "",
-     "testid": "plan-save",
-     "source": "frontend/src/components/strategy/AdjustPlanSheet.vue:71",
-     "handlers": [
-      "click"
-     ],
-     "type": "button",
-     "component": "components/strategy/AdjustPlanSheet.vue"
-    },
-    {
-     "id": "BUILD-68",
-     "kind": "button",
-     "tag": "button",
-     "label": "{{labels.use_as_is}}",
-     "labelFrom": "text",
-     "ariaLabel": "",
-     "testid": "plan-use-as-is",
-     "source": "frontend/src/components/strategy/AdjustPlanSheet.vue:72",
-     "handlers": [
-      "click"
-     ],
-     "type": "button",
-     "component": "components/strategy/AdjustPlanSheet.vue"
-    },
-    {
-     "id": "BUILD-69",
-     "kind": "field",
-     "tag": "select",
-     "label": "{{c.label}}",
-     "labelFrom": "text",
-     "ariaLabel": "",
-     "testid": "alert-style-select",
-     "source": "frontend/src/components/strategy/AlertStylePicker.vue:10",
-     "component": "components/strategy/AlertStylePicker.vue"
-    },
-    {
-     "id": "BUILD-70",
      "kind": "button",
      "tag": "button",
      "label": "{{NET_POSITIONS_LABEL}}",
@@ -2508,7 +2523,7 @@
      "component": "components/strategy/PaperBookPanel.vue"
     },
     {
-     "id": "BUILD-71",
+     "id": "BUILD-54",
      "kind": "button",
      "tag": "button",
      "label": "{{ORDERBOOK_LABEL}}",
@@ -2523,7 +2538,7 @@
      "component": "components/strategy/PaperBookPanel.vue"
     },
     {
-     "id": "BUILD-72",
+     "id": "BUILD-55",
      "kind": "click",
      "tag": "ExitButton",
      "label": "{{EXIT_ALL_LABEL}}",
@@ -2537,7 +2552,7 @@
      "component": "components/strategy/PaperBookPanel.vue"
     },
     {
-     "id": "BUILD-73",
+     "id": "BUILD-56",
      "kind": "field",
      "tag": "input",
      "label": "`Lots to exit for ${p.contract_text}`",
@@ -2549,7 +2564,7 @@
      "component": "components/strategy/PaperBookPanel.vue"
     },
     {
-     "id": "BUILD-74",
+     "id": "BUILD-57",
      "kind": "click",
      "tag": "ExitButton",
      "label": "{{EXIT_LABEL}}",
@@ -2563,7 +2578,7 @@
      "component": "components/strategy/PaperBookPanel.vue"
     },
     {
-     "id": "BUILD-75",
+     "id": "BUILD-58",
      "kind": "link",
      "tag": "router-link",
      "label": "See this strategy's adjustment history",
@@ -2575,7 +2590,7 @@
      "component": "components/strategy/AdjustCompare.vue"
     },
     {
-     "id": "BUILD-76",
+     "id": "BUILD-59",
      "kind": "field",
      "tag": "select",
      "label": "All {{allCount}} that apply Only the ones picked in the drawer",
@@ -2586,7 +2601,7 @@
      "component": "components/strategy/AdjustCompare.vue"
     },
     {
-     "id": "BUILD-77",
+     "id": "BUILD-60",
      "kind": "button",
      "tag": "button",
      "label": "Clear filters",
@@ -2601,7 +2616,7 @@
      "component": "components/strategy/AdjustCompare.vue"
     },
     {
-     "id": "BUILD-78",
+     "id": "BUILD-61",
      "kind": "button",
      "tag": "button",
      "label": "{{KIND_TITLES[k.id] ?? k.id}} ({{k.count}})",
@@ -2616,7 +2631,7 @@
      "component": "components/strategy/AdjustCompare.vue"
     },
     {
-     "id": "BUILD-79",
+     "id": "BUILD-62",
      "kind": "button",
      "tag": "button",
      "label": "{{SIDE_TITLES[k.id] ?? k.id}} ({{k.count}})",
@@ -2631,7 +2646,7 @@
      "component": "components/strategy/AdjustCompare.vue"
     },
     {
-     "id": "BUILD-80",
+     "id": "BUILD-63",
      "kind": "button",
      "tag": "button",
      "label": "{{k.label}} ({{k.count}})",
@@ -2646,7 +2661,7 @@
      "component": "components/strategy/AdjustCompare.vue"
     },
     {
-     "id": "BUILD-81",
+     "id": "BUILD-64",
      "kind": "field",
      "tag": "input",
      "label": "{{rangeLabel(reply, r)}} {{rangeEndText(r, facets.ranges[r.id].min)}} {{rangeEnd...",
@@ -2658,7 +2673,7 @@
      "component": "components/strategy/AdjustCompare.vue"
     },
     {
-     "id": "BUILD-82",
+     "id": "BUILD-65",
      "kind": "button",
      "tag": "button",
      "label": "{{showBreakdown ? BREAKDOWN_HIDE : BREAKDOWN_SHOW}}",
@@ -2673,7 +2688,7 @@
      "component": "components/strategy/AdjustCompare.vue"
     },
     {
-     "id": "BUILD-83",
+     "id": "BUILD-66",
      "kind": "field",
      "tag": "select",
      "label": "{{x.a.name ?? x.a.id}}",
@@ -2684,7 +2699,7 @@
      "component": "components/strategy/AdjustCompare.vue"
     },
     {
-     "id": "BUILD-84",
+     "id": "BUILD-67",
      "kind": "button",
      "tag": "button",
      "label": "Open in builder and prepare basket",
@@ -2699,7 +2714,7 @@
      "component": "components/strategy/AdjustCompare.vue"
     },
     {
-     "id": "BUILD-85",
+     "id": "BUILD-68",
      "kind": "field",
      "tag": "input",
      "label": "Pause until",
@@ -2711,7 +2726,7 @@
      "component": "components/strategy/AdjustControls.vue"
     },
     {
-     "id": "BUILD-86",
+     "id": "BUILD-69",
      "kind": "button",
      "tag": "button",
      "label": "Pause",
@@ -2726,7 +2741,7 @@
      "component": "components/strategy/AdjustControls.vue"
     },
     {
-     "id": "BUILD-87",
+     "id": "BUILD-70",
      "kind": "button",
      "tag": "button",
      "label": "Clear",
@@ -2741,7 +2756,7 @@
      "component": "components/strategy/AdjustControls.vue"
     },
     {
-     "id": "BUILD-88",
+     "id": "BUILD-71",
      "kind": "field",
      "tag": "input",
      "label": "`Level ${d}`",
@@ -2752,7 +2767,7 @@
      "component": "components/strategy/AdjustControls.vue"
     },
     {
-     "id": "BUILD-89",
+     "id": "BUILD-72",
      "kind": "button",
      "tag": "button",
      "label": "Watch",
@@ -2767,7 +2782,7 @@
      "component": "components/strategy/AdjustControls.vue"
     },
     {
-     "id": "BUILD-90",
+     "id": "BUILD-73",
      "kind": "button",
      "tag": "button",
      "label": "Clear",
@@ -2782,7 +2797,7 @@
      "component": "components/strategy/AdjustControls.vue"
     },
     {
-     "id": "BUILD-91",
+     "id": "BUILD-74",
      "kind": "button",
      "tag": "button",
      "label": "{{l.name}}",
@@ -2797,7 +2812,7 @@
      "component": "components/strategy/AdjustPayoffChart.vue"
     },
     {
-     "id": "BUILD-92",
+     "id": "BUILD-75",
      "kind": "disclosure",
      "tag": "summary",
      "label": "Details: bid and ask per leg",
@@ -2808,7 +2823,7 @@
      "component": "components/strategy/AdvancedDetails.vue"
     },
     {
-     "id": "BUILD-93",
+     "id": "BUILD-76",
      "kind": "field",
      "tag": "select",
      "label": "{{u}}",
@@ -2819,7 +2834,7 @@
      "component": "components/strategy/LegPicker.vue"
     },
     {
-     "id": "BUILD-94",
+     "id": "BUILD-77",
      "kind": "button",
      "tag": "button",
      "label": "{{tb[1]}}",
@@ -2834,7 +2849,7 @@
      "component": "components/strategy/LegPicker.vue"
     },
     {
-     "id": "BUILD-95",
+     "id": "BUILD-78",
      "kind": "key",
      "tag": "span",
      "label": "Settings Strikes each side {{w}} Size in Lots Quantity",
@@ -2848,7 +2863,7 @@
      "component": "components/strategy/LegPicker.vue"
     },
     {
-     "id": "BUILD-96",
+     "id": "BUILD-79",
      "kind": "button",
      "tag": "button",
      "label": "Settings",
@@ -2863,7 +2878,7 @@
      "component": "components/strategy/LegPicker.vue"
     },
     {
-     "id": "BUILD-97",
+     "id": "BUILD-80",
      "kind": "dialog",
      "tag": "span",
      "label": "Strikes each side {{w}} Size in Lots Quantity",
@@ -2874,7 +2889,7 @@
      "component": "components/strategy/LegPicker.vue"
     },
     {
-     "id": "BUILD-98",
+     "id": "BUILD-81",
      "kind": "field",
      "tag": "select",
      "label": "{{w}}",
@@ -2885,7 +2900,7 @@
      "component": "components/strategy/LegPicker.vue"
     },
     {
-     "id": "BUILD-99",
+     "id": "BUILD-82",
      "kind": "field",
      "tag": "select",
      "label": "Lots Quantity",
@@ -2896,7 +2911,7 @@
      "component": "components/strategy/LegPicker.vue"
     },
     {
-     "id": "BUILD-100",
+     "id": "BUILD-83",
      "kind": "dialog",
      "tag": "div",
      "label": "{{confirmText}} Cancel Proceed",
@@ -2907,7 +2922,7 @@
      "component": "components/strategy/LegPicker.vue"
     },
     {
-     "id": "BUILD-101",
+     "id": "BUILD-84",
      "kind": "button",
      "tag": "button",
      "label": "Cancel",
@@ -2922,7 +2937,7 @@
      "component": "components/strategy/LegPicker.vue"
     },
     {
-     "id": "BUILD-102",
+     "id": "BUILD-85",
      "kind": "button",
      "tag": "button",
      "label": "Proceed",
@@ -2937,7 +2952,7 @@
      "component": "components/strategy/LegPicker.vue"
     },
     {
-     "id": "BUILD-103",
+     "id": "BUILD-86",
      "kind": "field",
      "tag": "select",
      "label": "Expiry {{expiryShort(e)}}",
@@ -2948,7 +2963,7 @@
      "component": "components/strategy/LegPicker.vue"
     },
     {
-     "id": "BUILD-104",
+     "id": "BUILD-87",
      "kind": "button",
      "tag": "button",
      "label": "{{vw[1]}}",
@@ -2963,7 +2978,7 @@
      "component": "components/strategy/LegPicker.vue"
     },
     {
-     "id": "BUILD-105",
+     "id": "BUILD-88",
      "kind": "button",
      "tag": "button",
      "label": "{{sd[1]}}",
@@ -2978,7 +2993,7 @@
      "component": "components/strategy/LegPicker.vue"
     },
     {
-     "id": "BUILD-106",
+     "id": "BUILD-89",
      "kind": "field",
      "tag": "select",
      "label": "{{o.label}}",
@@ -2989,7 +3004,7 @@
      "component": "components/strategy/LegPicker.vue"
     },
     {
-     "id": "BUILD-107",
+     "id": "BUILD-90",
      "kind": "button",
      "tag": "button",
      "label": "Remove",
@@ -3004,7 +3019,7 @@
      "component": "components/strategy/LegPicker.vue"
     },
     {
-     "id": "BUILD-108",
+     "id": "BUILD-91",
      "kind": "button",
      "tag": "button",
      "label": "{{sd[1]}}",
@@ -3019,7 +3034,7 @@
      "component": "components/strategy/LegPicker.vue"
     },
     {
-     "id": "BUILD-109",
+     "id": "BUILD-92",
      "kind": "button",
      "tag": "button",
      "label": "{{d}} pt",
@@ -3034,7 +3049,7 @@
      "component": "components/strategy/LegPicker.vue"
     },
     {
-     "id": "BUILD-110",
+     "id": "BUILD-93",
      "kind": "field",
      "tag": "input",
      "label": "`Call ${strikeLabel(row.strike)}`",
@@ -3046,7 +3061,7 @@
      "component": "components/strategy/LegPicker.vue"
     },
     {
-     "id": "BUILD-111",
+     "id": "BUILD-94",
      "kind": "field",
      "tag": "input",
      "label": "`Straddle ${strikeLabel(row.strike)}`",
@@ -3058,7 +3073,7 @@
      "component": "components/strategy/LegPicker.vue"
     },
     {
-     "id": "BUILD-112",
+     "id": "BUILD-95",
      "kind": "field",
      "tag": "input",
      "label": "`Put ${strikeLabel(row.strike)}`",
@@ -3070,7 +3085,7 @@
      "component": "components/strategy/LegPicker.vue"
     },
     {
-     "id": "BUILD-113",
+     "id": "BUILD-96",
      "kind": "button",
      "tag": "button",
      "label": "B",
@@ -3085,7 +3100,7 @@
      "component": "components/strategy/LegPicker.vue"
     },
     {
-     "id": "BUILD-114",
+     "id": "BUILD-97",
      "kind": "button",
      "tag": "button",
      "label": "S",
@@ -3100,7 +3115,7 @@
      "component": "components/strategy/LegPicker.vue"
     },
     {
-     "id": "BUILD-115",
+     "id": "BUILD-98",
      "kind": "button",
      "tag": "button",
      "label": "i",
@@ -3112,7 +3127,7 @@
      "component": "components/strategy/LegPicker.vue"
     },
     {
-     "id": "BUILD-116",
+     "id": "BUILD-99",
      "kind": "form",
      "tag": "form",
      "label": "Type Choose {{t}} Strike Choose {{strikeLabel(s)}} Buy or sell BUY SELL Lots Save leg Cancel",
@@ -3123,7 +3138,7 @@
      "component": "components/strategy/LegPicker.vue"
     },
     {
-     "id": "BUILD-117",
+     "id": "BUILD-100",
      "kind": "field",
      "tag": "select",
      "label": "Choose {{t}}",
@@ -3134,7 +3149,7 @@
      "component": "components/strategy/LegPicker.vue"
     },
     {
-     "id": "BUILD-118",
+     "id": "BUILD-101",
      "kind": "field",
      "tag": "select",
      "label": "Choose {{strikeLabel(s)}}",
@@ -3145,7 +3160,7 @@
      "component": "components/strategy/LegPicker.vue"
     },
     {
-     "id": "BUILD-119",
+     "id": "BUILD-102",
      "kind": "field",
      "tag": "select",
      "label": "BUY SELL",
@@ -3156,7 +3171,7 @@
      "component": "components/strategy/LegPicker.vue"
     },
     {
-     "id": "BUILD-120",
+     "id": "BUILD-103",
      "kind": "field",
      "tag": "input",
      "label": "Lots",
@@ -3167,7 +3182,7 @@
      "component": "components/strategy/LegPicker.vue"
     },
     {
-     "id": "BUILD-121",
+     "id": "BUILD-104",
      "kind": "button",
      "tag": "button",
      "label": "Save leg",
@@ -3182,7 +3197,7 @@
      "component": "components/strategy/LegPicker.vue"
     },
     {
-     "id": "BUILD-122",
+     "id": "BUILD-105",
      "kind": "button",
      "tag": "button",
      "label": "Cancel",
@@ -3197,7 +3212,7 @@
      "component": "components/strategy/LegPicker.vue"
     },
     {
-     "id": "BUILD-123",
+     "id": "BUILD-106",
      "kind": "button",
      "tag": "button",
      "label": "Reprice",
@@ -3212,7 +3227,7 @@
      "component": "components/strategy/LegPicker.vue"
     },
     {
-     "id": "BUILD-124",
+     "id": "BUILD-107",
      "kind": "button",
      "tag": "button",
      "label": "Depth",
@@ -3227,7 +3242,7 @@
      "component": "components/strategy/LegPicker.vue"
     },
     {
-     "id": "BUILD-125",
+     "id": "BUILD-108",
      "kind": "button",
      "tag": "button",
      "label": "Edit",
@@ -3242,7 +3257,7 @@
      "component": "components/strategy/LegPicker.vue"
     },
     {
-     "id": "BUILD-126",
+     "id": "BUILD-109",
      "kind": "button",
      "tag": "button",
      "label": "Remove",
@@ -3257,7 +3272,7 @@
      "component": "components/strategy/LegPicker.vue"
     },
     {
-     "id": "BUILD-127",
+     "id": "BUILD-110",
      "kind": "button",
      "tag": "button",
      "label": "Pick from Option Chain",
@@ -3272,7 +3287,7 @@
      "component": "components/strategy/LegPicker.vue"
     },
     {
-     "id": "BUILD-128",
+     "id": "BUILD-111",
      "kind": "button",
      "tag": "button",
      "label": "Clear All",
@@ -3287,7 +3302,7 @@
      "component": "components/strategy/LegPicker.vue"
     },
     {
-     "id": "BUILD-129",
+     "id": "BUILD-112",
      "kind": "button",
      "tag": "button",
      "label": "Done",
@@ -3302,7 +3317,7 @@
      "component": "components/strategy/LegPicker.vue"
     },
     {
-     "id": "BUILD-130",
+     "id": "BUILD-113",
      "kind": "dialog",
      "tag": "Modal",
      "label": "{{door.pending.value ? (door.pending.value.kind === 'opposite' ? OPPOSITE_QUESTION(door.pending.value.name, door.pending.value.heldAction) : DUP_QUESTION(door.pending.value.name)) : ''}} {{OPPOSITE_NOTE}} Increase quantity {{door.pending.value?.kind === 'opposite' ? 'Keep both' : 'Keep separate'}} Cancel",
@@ -3313,7 +3328,7 @@
      "component": "components/strategy/DuplicateLegDialog.vue"
     },
     {
-     "id": "BUILD-131",
+     "id": "BUILD-114",
      "kind": "button",
      "tag": "button",
      "label": "Increase quantity",
@@ -3328,7 +3343,7 @@
      "component": "components/strategy/DuplicateLegDialog.vue"
     },
     {
-     "id": "BUILD-132",
+     "id": "BUILD-115",
      "kind": "button",
      "tag": "button",
      "label": "{{door.pending.value?.kind === 'opposite' ? 'Keep both' : 'Keep separate'}}",
@@ -3343,7 +3358,7 @@
      "component": "components/strategy/DuplicateLegDialog.vue"
     },
     {
-     "id": "BUILD-133",
+     "id": "BUILD-116",
      "kind": "button",
      "tag": "button",
      "label": "Cancel",
@@ -3358,7 +3373,7 @@
      "component": "components/strategy/DuplicateLegDialog.vue"
     },
     {
-     "id": "BUILD-134",
+     "id": "BUILD-117",
      "kind": "key",
      "tag": "script",
      "label": "keydown listener (script)",
@@ -3372,7 +3387,7 @@
      "component": "components/strategy/DepthPopup.vue"
     },
     {
-     "id": "BUILD-135",
+     "id": "BUILD-118",
      "kind": "dialog",
      "tag": "div",
      "label": "Market depth{{title ? `: ${title}` : ''}} Close Reading depth... Open{{shown(answer.day_open)}} High{{shown(answer.day_high)}} Low{{shown(answer.day_low)}} Prev close{{answer.prev_close}} BidsQtyOffersQty {{shown(l.bid?.price)}}{{shown(l.bid?.quantity)}} {{shown(l.ask?.price)}}{{shown(l.ask?.quantity)}} Last trade {{answer.last_trade_at ? istTime(answer.last_trade_at) : '-'}} · read {{istTime(answer.read_at)}} Day figures not shown: {{dayStatsReasonText(answer.day_stats_reason)}} {{DEPTH_NOT_AVAILABLE}} {{unavailableReason}} Last trade {{answer.last_trade_at ? istTime(answer.last_trade_at) : '-'}}",
@@ -3383,7 +3398,7 @@
      "component": "components/strategy/DepthPopup.vue"
     },
     {
-     "id": "BUILD-136",
+     "id": "BUILD-119",
      "kind": "button",
      "tag": "button",
      "label": "Close",
@@ -3398,7 +3413,7 @@
      "component": "components/strategy/DepthPopup.vue"
     },
     {
-     "id": "BUILD-137",
+     "id": "BUILD-120",
      "kind": "button",
      "tag": "button",
      "label": "{{g.title}}",
@@ -3413,7 +3428,7 @@
      "component": "components/strategy/ReadyMadePanel.vue"
     },
     {
-     "id": "BUILD-138",
+     "id": "BUILD-121",
      "kind": "field",
      "tag": "select",
      "label": "{{expiryWithDays(e, expiryDays[e], shownToday)}}",
@@ -3424,7 +3439,7 @@
      "component": "components/strategy/ReadyMadePanel.vue"
     },
     {
-     "id": "BUILD-139",
+     "id": "BUILD-122",
      "kind": "link",
      "tag": "RouterLink",
      "label": "{{LEARN_LINK_TEXT}}",
@@ -3436,7 +3451,7 @@
      "component": "components/strategy/ReadyMadePanel.vue"
     },
     {
-     "id": "BUILD-140",
+     "id": "BUILD-123",
      "kind": "button",
      "tag": "button",
      "label": "{{t.name}}",
@@ -3451,7 +3466,7 @@
      "component": "components/strategy/ReadyMadePanel.vue"
     },
     {
-     "id": "BUILD-141",
+     "id": "BUILD-124",
      "kind": "dialog",
      "tag": "div",
      "label": "{{replacePrompt(legs.length)}} Replace Cancel",
@@ -3462,7 +3477,7 @@
      "component": "components/strategy/ReadyMadePanel.vue"
     },
     {
-     "id": "BUILD-142",
+     "id": "BUILD-125",
      "kind": "button",
      "tag": "button",
      "label": "Replace",
@@ -3477,7 +3492,7 @@
      "component": "components/strategy/ReadyMadePanel.vue"
     },
     {
-     "id": "BUILD-143",
+     "id": "BUILD-126",
      "kind": "button",
      "tag": "button",
      "label": "Cancel",
@@ -3492,7 +3507,7 @@
      "component": "components/strategy/ReadyMadePanel.vue"
     },
     {
-     "id": "BUILD-144",
+     "id": "BUILD-127",
      "kind": "button",
      "tag": "button",
      "label": "Activity history",
@@ -3507,7 +3522,7 @@
      "component": "components/strategy/ActivityPanel.vue"
     },
     {
-     "id": "BUILD-145",
+     "id": "BUILD-128",
      "kind": "button",
      "tag": "button",
      "label": "Restore",
@@ -3522,7 +3537,7 @@
      "component": "components/strategy/ActivityPanel.vue"
     },
     {
-     "id": "BUILD-146",
+     "id": "BUILD-129",
      "kind": "key",
      "tag": "div",
      "label": "{{title}}",
@@ -3536,7 +3551,7 @@
      "component": "components/common/Drawer.vue"
     },
     {
-     "id": "BUILD-147",
+     "id": "BUILD-130",
      "kind": "click",
      "tag": "div",
      "label": "(no label)",
@@ -3550,7 +3565,7 @@
      "component": "components/common/Drawer.vue"
     },
     {
-     "id": "BUILD-148",
+     "id": "BUILD-131",
      "kind": "dialog",
      "tag": "div",
      "label": "{{title}}",
@@ -3564,7 +3579,7 @@
      "component": "components/common/Drawer.vue"
     },
     {
-     "id": "BUILD-149",
+     "id": "BUILD-132",
      "kind": "button",
      "tag": "button",
      "label": "Close",
@@ -3579,7 +3594,7 @@
      "component": "components/common/Drawer.vue"
     },
     {
-     "id": "BUILD-150",
+     "id": "BUILD-133",
      "kind": "button",
      "tag": "button",
      "label": "Close",
@@ -3594,14 +3609,14 @@
      "component": "components/common/Drawer.vue"
     },
     {
-     "id": "BUILD-151",
+     "id": "BUILD-134",
      "kind": "button",
      "tag": "button",
      "label": "Save",
      "labelFrom": "text",
      "ariaLabel": "",
      "testid": "save-draft",
-     "source": "frontend/src/components/strategy/SaveDraftBar.vue:435",
+     "source": "frontend/src/components/strategy/SaveDraftBar.vue:436",
      "handlers": [
       "click"
      ],
@@ -3609,14 +3624,14 @@
      "component": "components/strategy/SaveDraftBar.vue"
     },
     {
-     "id": "BUILD-152",
+     "id": "BUILD-135",
      "kind": "button",
      "tag": "button",
      "label": "{{ADD_TO_PAPER_LABEL}}",
      "labelFrom": "text",
      "ariaLabel": "",
      "testid": "add-to-paper",
-     "source": "frontend/src/components/strategy/SaveDraftBar.vue:438",
+     "source": "frontend/src/components/strategy/SaveDraftBar.vue:439",
      "handlers": [
       "click"
      ],
@@ -3624,28 +3639,28 @@
      "component": "components/strategy/SaveDraftBar.vue"
     },
     {
-     "id": "BUILD-153",
+     "id": "BUILD-136",
      "kind": "key",
      "tag": "span",
      "label": "Save Save As Rename",
      "labelFrom": "text",
      "ariaLabel": "",
      "testid": "",
-     "source": "frontend/src/components/strategy/SaveDraftBar.vue:441",
+     "source": "frontend/src/components/strategy/SaveDraftBar.vue:442",
      "handlers": [
       "keydown.esc"
      ],
      "component": "components/strategy/SaveDraftBar.vue"
     },
     {
-     "id": "BUILD-154",
+     "id": "BUILD-137",
      "kind": "button",
      "tag": "button",
      "label": "More actions",
      "labelFrom": "aria-label",
      "ariaLabel": "More actions",
      "testid": "more-menu",
-     "source": "frontend/src/components/strategy/SaveDraftBar.vue:442",
+     "source": "frontend/src/components/strategy/SaveDraftBar.vue:443",
      "handlers": [
       "click"
      ],
@@ -3653,14 +3668,14 @@
      "component": "components/strategy/SaveDraftBar.vue"
     },
     {
-     "id": "BUILD-155",
+     "id": "BUILD-138",
      "kind": "button",
      "tag": "button",
      "label": "Save",
      "labelFrom": "text",
      "ariaLabel": "",
      "testid": "menu-save",
-     "source": "frontend/src/components/strategy/SaveDraftBar.vue:446",
+     "source": "frontend/src/components/strategy/SaveDraftBar.vue:447",
      "handlers": [
       "click"
      ],
@@ -3668,14 +3683,14 @@
      "component": "components/strategy/SaveDraftBar.vue"
     },
     {
-     "id": "BUILD-156",
+     "id": "BUILD-139",
      "kind": "button",
      "tag": "button",
      "label": "Save As",
      "labelFrom": "text",
      "ariaLabel": "",
      "testid": "save-as",
-     "source": "frontend/src/components/strategy/SaveDraftBar.vue:449",
+     "source": "frontend/src/components/strategy/SaveDraftBar.vue:450",
      "handlers": [
       "click"
      ],
@@ -3683,14 +3698,14 @@
      "component": "components/strategy/SaveDraftBar.vue"
     },
     {
-     "id": "BUILD-157",
+     "id": "BUILD-140",
      "kind": "button",
      "tag": "button",
      "label": "Rename",
      "labelFrom": "text",
      "ariaLabel": "",
      "testid": "rename-open",
-     "source": "frontend/src/components/strategy/SaveDraftBar.vue:452",
+     "source": "frontend/src/components/strategy/SaveDraftBar.vue:453",
      "handlers": [
       "click"
      ],
@@ -3698,48 +3713,48 @@
      "component": "components/strategy/SaveDraftBar.vue"
     },
     {
-     "id": "BUILD-158",
+     "id": "BUILD-141",
      "kind": "dialog",
      "tag": "Modal",
      "label": "Strategy Name {{nameLimitText(nameText.length)}} Cancel Save",
      "labelFrom": "text",
      "ariaLabel": "",
      "testid": "name-modal",
-     "source": "frontend/src/components/strategy/SaveDraftBar.vue:466",
+     "source": "frontend/src/components/strategy/SaveDraftBar.vue:467",
      "component": "components/strategy/SaveDraftBar.vue"
     },
     {
-     "id": "BUILD-159",
+     "id": "BUILD-142",
      "kind": "form",
      "tag": "form",
      "label": "Strategy Name {{nameLimitText(nameText.length)}}",
      "labelFrom": "text",
      "ariaLabel": "",
      "testid": "name-form",
-     "source": "frontend/src/components/strategy/SaveDraftBar.vue:467",
+     "source": "frontend/src/components/strategy/SaveDraftBar.vue:468",
      "component": "components/strategy/SaveDraftBar.vue"
     },
     {
-     "id": "BUILD-160",
+     "id": "BUILD-143",
      "kind": "field",
      "tag": "input",
      "label": "(unlabelled text: v-model=nameText)",
      "labelFrom": "none",
      "ariaLabel": "",
      "testid": "name-input",
-     "source": "frontend/src/components/strategy/SaveDraftBar.vue:469",
+     "source": "frontend/src/components/strategy/SaveDraftBar.vue:470",
      "type": "text",
      "component": "components/strategy/SaveDraftBar.vue"
     },
     {
-     "id": "BUILD-161",
+     "id": "BUILD-144",
      "kind": "button",
      "tag": "button",
      "label": "Cancel",
      "labelFrom": "text",
      "ariaLabel": "",
      "testid": "name-cancel",
-     "source": "frontend/src/components/strategy/SaveDraftBar.vue:475",
+     "source": "frontend/src/components/strategy/SaveDraftBar.vue:476",
      "handlers": [
       "click"
      ],
@@ -3747,26 +3762,26 @@
      "component": "components/strategy/SaveDraftBar.vue"
     },
     {
-     "id": "BUILD-162",
+     "id": "BUILD-145",
      "kind": "button",
      "tag": "button",
      "label": "Save",
      "labelFrom": "text",
      "ariaLabel": "",
      "testid": "name-confirm",
-     "source": "frontend/src/components/strategy/SaveDraftBar.vue:476",
+     "source": "frontend/src/components/strategy/SaveDraftBar.vue:477",
      "type": "submit",
      "component": "components/strategy/SaveDraftBar.vue"
     },
     {
-     "id": "BUILD-163",
+     "id": "BUILD-146",
      "kind": "button",
      "tag": "button",
      "label": "Open in Builder",
      "labelFrom": "text",
      "ariaLabel": "",
      "testid": "paper-open-builder",
-     "source": "frontend/src/components/strategy/SaveDraftBar.vue:487",
+     "source": "frontend/src/components/strategy/SaveDraftBar.vue:488",
      "handlers": [
       "click"
      ],
@@ -3774,26 +3789,26 @@
      "component": "components/strategy/SaveDraftBar.vue"
     },
     {
-     "id": "BUILD-164",
+     "id": "BUILD-147",
      "kind": "link",
      "tag": "router-link",
      "label": "Open Paper positions",
      "labelFrom": "text",
      "ariaLabel": "",
      "testid": "paper-open-positions",
-     "source": "frontend/src/components/strategy/SaveDraftBar.vue:488",
+     "source": "frontend/src/components/strategy/SaveDraftBar.vue:489",
      "to": "/positions/current-positions?tab=paper",
      "component": "components/strategy/SaveDraftBar.vue"
     },
     {
-     "id": "BUILD-165",
+     "id": "BUILD-148",
      "kind": "button",
      "tag": "button",
      "label": "Undo",
      "labelFrom": "text",
      "ariaLabel": "",
      "testid": "save-undo",
-     "source": "frontend/src/components/strategy/SaveDraftBar.vue:492",
+     "source": "frontend/src/components/strategy/SaveDraftBar.vue:493",
      "handlers": [
       "click"
      ],
@@ -3801,26 +3816,26 @@
      "component": "components/strategy/SaveDraftBar.vue"
     },
     {
-     "id": "BUILD-166",
+     "id": "BUILD-149",
      "kind": "field",
      "tag": "input",
      "label": "Search name or underlying",
      "labelFrom": "aria-label",
      "ariaLabel": "Search name or underlying",
      "testid": "saved-search",
-     "source": "frontend/src/components/strategy/SaveDraftBar.vue:502",
+     "source": "frontend/src/components/strategy/SaveDraftBar.vue:503",
      "type": "search",
      "component": "components/strategy/SaveDraftBar.vue"
     },
     {
-     "id": "BUILD-167",
+     "id": "BUILD-150",
      "kind": "key",
      "tag": "li",
      "label": "{{strategyLabel(d, `Draft ${d.id}`)}} {{legsLine(d)}} {{strategyStatusWord(d)}}",
      "labelFrom": "text",
      "ariaLabel": "",
      "testid": "saved-draft-row",
-     "source": "frontend/src/components/strategy/SaveDraftBar.vue:509",
+     "source": "frontend/src/components/strategy/SaveDraftBar.vue:510",
      "handlers": [
       "keydown.enter.self",
       "click"
@@ -3828,26 +3843,26 @@
      "component": "components/strategy/SaveDraftBar.vue"
     },
     {
-     "id": "BUILD-168",
+     "id": "BUILD-151",
      "kind": "button",
      "tag": "button",
      "label": "{{strategyLabel(d, `Draft ${d.id}`)}} {{legsLine(d)}}",
      "labelFrom": "text",
      "ariaLabel": "",
      "testid": "``open-draft-${d.id}``",
-     "source": "frontend/src/components/strategy/SaveDraftBar.vue:513",
+     "source": "frontend/src/components/strategy/SaveDraftBar.vue:514",
      "type": "button",
      "component": "components/strategy/SaveDraftBar.vue"
     },
     {
-     "id": "BUILD-169",
+     "id": "BUILD-152",
      "kind": "key",
      "tag": "span",
      "label": "(no label)",
      "labelFrom": "none",
      "ariaLabel": "",
      "testid": "``actions-${d.id}``",
-     "source": "frontend/src/components/strategy/SaveDraftBar.vue:518",
+     "source": "frontend/src/components/strategy/SaveDraftBar.vue:519",
      "handlers": [
       "keydown.enter.stop",
       "click.stop"
@@ -3855,14 +3870,14 @@
      "component": "components/strategy/SaveDraftBar.vue"
     },
     {
-     "id": "BUILD-170",
+     "id": "BUILD-153",
      "kind": "button",
      "tag": "button",
      "label": "`Rename ${strategyLabel(d, `Draft ${d.id}`)}`",
      "labelFrom": "aria-label",
      "ariaLabel": "`Rename ${strategyLabel(d, `Draft ${d.id}`)}`",
      "testid": "``rename-draft-${d.id}``",
-     "source": "frontend/src/components/strategy/SaveDraftBar.vue:521",
+     "source": "frontend/src/components/strategy/SaveDraftBar.vue:522",
      "handlers": [
       "click"
      ],
@@ -3870,26 +3885,270 @@
      "component": "components/strategy/SaveDraftBar.vue"
     },
     {
-     "id": "BUILD-171",
+     "id": "BUILD-154",
      "kind": "link",
      "tag": "router-link",
      "label": "Show all in My Strategies",
      "labelFrom": "text",
      "ariaLabel": "",
      "testid": "saved-show-all",
-     "source": "frontend/src/components/strategy/SaveDraftBar.vue:527",
+     "source": "frontend/src/components/strategy/SaveDraftBar.vue:528",
      "to": "/strategies/my-strategies",
      "component": "components/strategy/SaveDraftBar.vue"
     },
     {
-     "id": "BUILD-172",
+     "id": "BUILD-155",
      "kind": "button",
      "tag": "button",
      "label": "Clear all",
      "labelFrom": "text",
      "ariaLabel": "",
      "testid": "clear-all-legs",
-     "source": "frontend/src/components/strategy/LegList.vue:189",
+     "source": "frontend/src/components/strategy/LegList.vue:192",
+     "handlers": [
+      "click"
+     ],
+     "type": "button",
+     "component": "components/strategy/LegList.vue"
+    },
+    {
+     "id": "BUILD-156",
+     "kind": "button",
+     "tag": "button",
+     "label": "Confirm",
+     "labelFrom": "text",
+     "ariaLabel": "",
+     "testid": "clear-confirm-yes",
+     "source": "frontend/src/components/strategy/LegList.vue:197",
+     "handlers": [
+      "click"
+     ],
+     "type": "button",
+     "component": "components/strategy/LegList.vue"
+    },
+    {
+     "id": "BUILD-157",
+     "kind": "button",
+     "tag": "button",
+     "label": "Cancel",
+     "labelFrom": "text",
+     "ariaLabel": "",
+     "testid": "clear-confirm-no",
+     "source": "frontend/src/components/strategy/LegList.vue:198",
+     "handlers": [
+      "click"
+     ],
+     "type": "button",
+     "component": "components/strategy/LegList.vue"
+    },
+    {
+     "id": "BUILD-158",
+     "kind": "button",
+     "tag": "button",
+     "label": "Undo",
+     "labelFrom": "text",
+     "ariaLabel": "",
+     "testid": "clear-undo",
+     "source": "frontend/src/components/strategy/LegList.vue:201",
+     "handlers": [
+      "click"
+     ],
+     "type": "button",
+     "component": "components/strategy/LegList.vue"
+    },
+    {
+     "id": "BUILD-159",
+     "kind": "button",
+     "tag": "button",
+     "label": "Add leg",
+     "labelFrom": "text",
+     "ariaLabel": "",
+     "testid": "no-legs-add",
+     "source": "frontend/src/components/strategy/LegList.vue:219",
+     "handlers": [
+      "click"
+     ],
+     "type": "button",
+     "component": "components/strategy/LegList.vue"
+    },
+    {
+     "id": "BUILD-160",
+     "kind": "button",
+     "tag": "button",
+     "label": "Pick from Option Chain",
+     "labelFrom": "text",
+     "ariaLabel": "",
+     "testid": "no-legs-chain",
+     "source": "frontend/src/components/strategy/LegList.vue:220",
+     "handlers": [
+      "click"
+     ],
+     "type": "button",
+     "component": "components/strategy/LegList.vue"
+    },
+    {
+     "id": "BUILD-161",
+     "kind": "field",
+     "tag": "input",
+     "label": "`${tickState === 'all' ? 'All' : tickState === 'some' ? 'Some' : 'None'} legs selected: ${selectedCount} of ${legs.length}. Tick or untick every leg`",
+     "labelFrom": "aria-label",
+     "ariaLabel": "`${tickState === 'all' ? 'All' : tickState === 'some' ? 'Some' : 'None'} legs selected: ${selectedCount} of ${legs.length}. Tick or untick every leg`",
+     "testid": "tick-all",
+     "source": "frontend/src/components/strategy/LegList.vue:227",
+     "type": "checkbox",
+     "component": "components/strategy/LegList.vue"
+    },
+    {
+     "id": "BUILD-162",
+     "kind": "button",
+     "tag": "button",
+     "label": "Reset Prices",
+     "labelFrom": "text",
+     "ariaLabel": "",
+     "testid": "reset-prices",
+     "source": "frontend/src/components/strategy/LegList.vue:235",
+     "handlers": [
+      "click"
+     ],
+     "type": "button",
+     "component": "components/strategy/LegList.vue"
+    },
+    {
+     "id": "BUILD-163",
+     "kind": "field",
+     "tag": "input",
+     "label": "`Include leg ${i + 1} in the numbers`",
+     "labelFrom": "aria-label",
+     "ariaLabel": "`Include leg ${i + 1} in the numbers`",
+     "testid": "leg-tick",
+     "source": "frontend/src/components/strategy/LegList.vue:253",
+     "type": "checkbox",
+     "component": "components/strategy/LegList.vue"
+    },
+    {
+     "id": "BUILD-164",
+     "kind": "field",
+     "tag": "select",
+     "label": "{{expiryWithDays(e.expiry, e.days)}}",
+     "labelFrom": "text",
+     "ariaLabel": "`Change expiry of leg ${i + 1}`",
+     "testid": "leg-expiry-select",
+     "source": "frontend/src/components/strategy/LegList.vue:258",
+     "component": "components/strategy/LegList.vue"
+    },
+    {
+     "id": "BUILD-165",
+     "kind": "button",
+     "tag": "button",
+     "label": "-",
+     "labelFrom": "text",
+     "ariaLabel": "Previous strike",
+     "testid": "strike-minus",
+     "source": "frontend/src/components/strategy/LegList.vue:268",
+     "handlers": [
+      "click"
+     ],
+     "type": "button",
+     "component": "components/strategy/LegList.vue"
+    },
+    {
+     "id": "BUILD-166",
+     "kind": "button",
+     "tag": "button",
+     "label": "{{strikeLabel(leg.strike)}}{{pendingSteps[`step:${i}`] > 0 ? '+' : ''}}{{pendingSteps[`step:${i}`]}}H",
+     "labelFrom": "text",
+     "ariaLabel": "`Edit ${legName(leg)}`",
+     "testid": "edit-leg",
+     "source": "frontend/src/components/strategy/LegList.vue:269",
+     "handlers": [
+      "click"
+     ],
+     "type": "button",
+     "component": "components/strategy/LegList.vue"
+    },
+    {
+     "id": "BUILD-167",
+     "kind": "button",
+     "tag": "button",
+     "label": "+",
+     "labelFrom": "text",
+     "ariaLabel": "Next strike",
+     "testid": "strike-plus",
+     "source": "frontend/src/components/strategy/LegList.vue:272",
+     "handlers": [
+      "click"
+     ],
+     "type": "button",
+     "component": "components/strategy/LegList.vue"
+    },
+    {
+     "id": "BUILD-168",
+     "kind": "button",
+     "tag": "button",
+     "label": "-",
+     "labelFrom": "text",
+     "ariaLabel": "`No strike for a futures leg. Edit ${legName(leg)}`",
+     "testid": "edit-leg",
+     "source": "frontend/src/components/strategy/LegList.vue:274",
+     "handlers": [
+      "click"
+     ],
+     "type": "button",
+     "component": "components/strategy/LegList.vue"
+    },
+    {
+     "id": "BUILD-169",
+     "kind": "key",
+     "tag": "span",
+     "label": "{{moved(leg)}} {{legQuoteAt(leg) ?? 'time n/a'}} {{PAPER_AVERAGE_LABEL}} {{capturedText(leg)}} Set price Reset",
+     "labelFrom": "text",
+     "ariaLabel": "",
+     "testid": "price-box",
+     "source": "frontend/src/components/strategy/LegList.vue:279",
+     "handlers": [
+      "keydown.esc"
+     ],
+     "component": "components/strategy/LegList.vue"
+    },
+    {
+     "id": "BUILD-170",
+     "kind": "field",
+     "tag": "input",
+     "label": "`Your price for leg ${i + 1}`",
+     "labelFrom": "aria-label",
+     "ariaLabel": "`Your price for leg ${i + 1}`",
+     "testid": "price-input",
+     "source": "frontend/src/components/strategy/LegList.vue:285",
+     "handlers": [
+      "keydown.enter"
+     ],
+     "type": "text",
+     "component": "components/strategy/LegList.vue"
+    },
+    {
+     "id": "BUILD-171",
+     "kind": "button",
+     "tag": "button",
+     "label": "`Price options for leg ${i + 1}`",
+     "labelFrom": "aria-label",
+     "ariaLabel": "`Price options for leg ${i + 1}`",
+     "testid": "price-menu",
+     "source": "frontend/src/components/strategy/LegList.vue:290",
+     "handlers": [
+      "click"
+     ],
+     "type": "button",
+     "component": "components/strategy/LegList.vue"
+    },
+    {
+     "id": "BUILD-172",
+     "kind": "button",
+     "tag": "button",
+     "label": "Set price",
+     "labelFrom": "text",
+     "ariaLabel": "",
+     "testid": "price-set",
+     "source": "frontend/src/components/strategy/LegList.vue:300",
      "handlers": [
       "click"
      ],
@@ -3900,11 +4159,11 @@
      "id": "BUILD-173",
      "kind": "button",
      "tag": "button",
-     "label": "Confirm",
+     "label": "Reset",
      "labelFrom": "text",
      "ariaLabel": "",
-     "testid": "clear-confirm-yes",
-     "source": "frontend/src/components/strategy/LegList.vue:194",
+     "testid": "reset-leg",
+     "source": "frontend/src/components/strategy/LegList.vue:301",
      "handlers": [
       "click"
      ],
@@ -3915,11 +4174,11 @@
      "id": "BUILD-174",
      "kind": "button",
      "tag": "button",
-     "label": "Cancel",
-     "labelFrom": "text",
-     "ariaLabel": "",
-     "testid": "clear-confirm-no",
-     "source": "frontend/src/components/strategy/LegList.vue:195",
+     "label": "`Market depth for ${legName(leg)}`",
+     "labelFrom": "aria-label",
+     "ariaLabel": "`Market depth for ${legName(leg)}`",
+     "testid": "depth-icon",
+     "source": "frontend/src/components/strategy/LegList.vue:305",
      "handlers": [
       "click"
      ],
@@ -3930,11 +4189,11 @@
      "id": "BUILD-175",
      "kind": "button",
      "tag": "button",
-     "label": "Undo",
-     "labelFrom": "text",
-     "ariaLabel": "",
-     "testid": "clear-undo",
-     "source": "frontend/src/components/strategy/LegList.vue:198",
+     "label": "`Remove ${legName(leg)}`",
+     "labelFrom": "aria-label",
+     "ariaLabel": "`Remove ${legName(leg)}`",
+     "testid": "remove-leg",
+     "source": "frontend/src/components/strategy/LegList.vue:308",
      "handlers": [
       "click"
      ],
@@ -3945,11 +4204,11 @@
      "id": "BUILD-176",
      "kind": "button",
      "tag": "button",
-     "label": "Add leg",
+     "label": "Reprice",
      "labelFrom": "text",
      "ariaLabel": "",
-     "testid": "no-legs-add",
-     "source": "frontend/src/components/strategy/LegList.vue:205",
+     "testid": "reprice-leg",
+     "source": "frontend/src/components/strategy/LegList.vue:329",
      "handlers": [
       "click"
      ],
@@ -3958,261 +4217,17 @@
     },
     {
      "id": "BUILD-177",
-     "kind": "button",
-     "tag": "button",
-     "label": "Pick from Option Chain",
-     "labelFrom": "text",
-     "ariaLabel": "",
-     "testid": "no-legs-chain",
-     "source": "frontend/src/components/strategy/LegList.vue:206",
-     "handlers": [
-      "click"
-     ],
-     "type": "button",
-     "component": "components/strategy/LegList.vue"
-    },
-    {
-     "id": "BUILD-178",
-     "kind": "field",
-     "tag": "input",
-     "label": "`${tickState === 'all' ? 'All' : tickState === 'some' ? 'Some' : 'None'} legs selected: ${selectedCount} of ${legs.length}. Tick or untick every leg`",
-     "labelFrom": "aria-label",
-     "ariaLabel": "`${tickState === 'all' ? 'All' : tickState === 'some' ? 'Some' : 'None'} legs selected: ${selectedCount} of ${legs.length}. Tick or untick every leg`",
-     "testid": "tick-all",
-     "source": "frontend/src/components/strategy/LegList.vue:213",
-     "type": "checkbox",
-     "component": "components/strategy/LegList.vue"
-    },
-    {
-     "id": "BUILD-179",
-     "kind": "button",
-     "tag": "button",
-     "label": "Reset Prices",
-     "labelFrom": "text",
-     "ariaLabel": "",
-     "testid": "reset-prices",
-     "source": "frontend/src/components/strategy/LegList.vue:221",
-     "handlers": [
-      "click"
-     ],
-     "type": "button",
-     "component": "components/strategy/LegList.vue"
-    },
-    {
-     "id": "BUILD-180",
-     "kind": "field",
-     "tag": "input",
-     "label": "`Include leg ${i + 1} in the numbers`",
-     "labelFrom": "aria-label",
-     "ariaLabel": "`Include leg ${i + 1} in the numbers`",
-     "testid": "leg-tick",
-     "source": "frontend/src/components/strategy/LegList.vue:239",
-     "type": "checkbox",
-     "component": "components/strategy/LegList.vue"
-    },
-    {
-     "id": "BUILD-181",
-     "kind": "field",
-     "tag": "select",
-     "label": "{{expiryWithDays(e.expiry, e.days)}}",
-     "labelFrom": "text",
-     "ariaLabel": "`Change expiry of leg ${i + 1}`",
-     "testid": "leg-expiry-select",
-     "source": "frontend/src/components/strategy/LegList.vue:244",
-     "component": "components/strategy/LegList.vue"
-    },
-    {
-     "id": "BUILD-182",
-     "kind": "button",
-     "tag": "button",
-     "label": "-",
-     "labelFrom": "text",
-     "ariaLabel": "Previous strike",
-     "testid": "strike-minus",
-     "source": "frontend/src/components/strategy/LegList.vue:254",
-     "handlers": [
-      "click"
-     ],
-     "type": "button",
-     "component": "components/strategy/LegList.vue"
-    },
-    {
-     "id": "BUILD-183",
-     "kind": "button",
-     "tag": "button",
-     "label": "{{strikeLabel(leg.strike)}}{{pendingSteps[`step:${i}`] > 0 ? '+' : ''}}{{pendingSteps[`step:${i}`]}}H",
-     "labelFrom": "text",
-     "ariaLabel": "`Edit ${legName(leg)}`",
-     "testid": "edit-leg",
-     "source": "frontend/src/components/strategy/LegList.vue:255",
-     "handlers": [
-      "click"
-     ],
-     "type": "button",
-     "component": "components/strategy/LegList.vue"
-    },
-    {
-     "id": "BUILD-184",
-     "kind": "button",
-     "tag": "button",
-     "label": "+",
-     "labelFrom": "text",
-     "ariaLabel": "Next strike",
-     "testid": "strike-plus",
-     "source": "frontend/src/components/strategy/LegList.vue:258",
-     "handlers": [
-      "click"
-     ],
-     "type": "button",
-     "component": "components/strategy/LegList.vue"
-    },
-    {
-     "id": "BUILD-185",
-     "kind": "button",
-     "tag": "button",
-     "label": "-",
-     "labelFrom": "text",
-     "ariaLabel": "`No strike for a futures leg. Edit ${legName(leg)}`",
-     "testid": "edit-leg",
-     "source": "frontend/src/components/strategy/LegList.vue:260",
-     "handlers": [
-      "click"
-     ],
-     "type": "button",
-     "component": "components/strategy/LegList.vue"
-    },
-    {
-     "id": "BUILD-186",
-     "kind": "key",
-     "tag": "span",
-     "label": "{{moved(leg)}} {{legQuoteAt(leg) ?? 'time n/a'}} {{PAPER_AVERAGE_LABEL}} {{capturedText(leg)}} Set price Reset",
-     "labelFrom": "text",
-     "ariaLabel": "",
-     "testid": "price-box",
-     "source": "frontend/src/components/strategy/LegList.vue:265",
-     "handlers": [
-      "keydown.esc"
-     ],
-     "component": "components/strategy/LegList.vue"
-    },
-    {
-     "id": "BUILD-187",
-     "kind": "field",
-     "tag": "input",
-     "label": "`Your price for leg ${i + 1}`",
-     "labelFrom": "aria-label",
-     "ariaLabel": "`Your price for leg ${i + 1}`",
-     "testid": "price-input",
-     "source": "frontend/src/components/strategy/LegList.vue:271",
-     "handlers": [
-      "keydown.enter"
-     ],
-     "type": "text",
-     "component": "components/strategy/LegList.vue"
-    },
-    {
-     "id": "BUILD-188",
-     "kind": "button",
-     "tag": "button",
-     "label": "`Price options for leg ${i + 1}`",
-     "labelFrom": "aria-label",
-     "ariaLabel": "`Price options for leg ${i + 1}`",
-     "testid": "price-menu",
-     "source": "frontend/src/components/strategy/LegList.vue:276",
-     "handlers": [
-      "click"
-     ],
-     "type": "button",
-     "component": "components/strategy/LegList.vue"
-    },
-    {
-     "id": "BUILD-189",
-     "kind": "button",
-     "tag": "button",
-     "label": "Set price",
-     "labelFrom": "text",
-     "ariaLabel": "",
-     "testid": "price-set",
-     "source": "frontend/src/components/strategy/LegList.vue:286",
-     "handlers": [
-      "click"
-     ],
-     "type": "button",
-     "component": "components/strategy/LegList.vue"
-    },
-    {
-     "id": "BUILD-190",
-     "kind": "button",
-     "tag": "button",
-     "label": "Reset",
-     "labelFrom": "text",
-     "ariaLabel": "",
-     "testid": "reset-leg",
-     "source": "frontend/src/components/strategy/LegList.vue:287",
-     "handlers": [
-      "click"
-     ],
-     "type": "button",
-     "component": "components/strategy/LegList.vue"
-    },
-    {
-     "id": "BUILD-191",
-     "kind": "button",
-     "tag": "button",
-     "label": "`Market depth for ${legName(leg)}`",
-     "labelFrom": "aria-label",
-     "ariaLabel": "`Market depth for ${legName(leg)}`",
-     "testid": "depth-icon",
-     "source": "frontend/src/components/strategy/LegList.vue:291",
-     "handlers": [
-      "click"
-     ],
-     "type": "button",
-     "component": "components/strategy/LegList.vue"
-    },
-    {
-     "id": "BUILD-192",
-     "kind": "button",
-     "tag": "button",
-     "label": "`Remove ${legName(leg)}`",
-     "labelFrom": "aria-label",
-     "ariaLabel": "`Remove ${legName(leg)}`",
-     "testid": "remove-leg",
-     "source": "frontend/src/components/strategy/LegList.vue:294",
-     "handlers": [
-      "click"
-     ],
-     "type": "button",
-     "component": "components/strategy/LegList.vue"
-    },
-    {
-     "id": "BUILD-193",
-     "kind": "button",
-     "tag": "button",
-     "label": "Reprice",
-     "labelFrom": "text",
-     "ariaLabel": "",
-     "testid": "reprice-leg",
-     "source": "frontend/src/components/strategy/LegList.vue:315",
-     "handlers": [
-      "click"
-     ],
-     "type": "button",
-     "component": "components/strategy/LegList.vue"
-    },
-    {
-     "id": "BUILD-194",
      "kind": "field",
      "tag": "select",
      "label": "{{n}}",
      "labelFrom": "text",
      "ariaLabel": "",
      "testid": "multiplier",
-     "source": "frontend/src/components/strategy/LegList.vue:328",
+     "source": "frontend/src/components/strategy/LegList.vue:342",
      "component": "components/strategy/LegList.vue"
     },
     {
-     "id": "BUILD-195",
+     "id": "BUILD-178",
      "kind": "button",
      "tag": "button",
      "label": "-",
@@ -4227,7 +4242,7 @@
      "component": "components/strategy/StrategyControls.vue"
     },
     {
-     "id": "BUILD-196",
+     "id": "BUILD-179",
      "kind": "button",
      "tag": "button",
      "label": "+",
@@ -4242,7 +4257,7 @@
      "component": "components/strategy/StrategyControls.vue"
     },
     {
-     "id": "BUILD-197",
+     "id": "BUILD-180",
      "kind": "field",
      "tag": "select",
      "label": "Change expiry {{expiryWithDays(e.expiry, e.days)}}",
@@ -4253,7 +4268,7 @@
      "component": "components/strategy/StrategyControls.vue"
     },
     {
-     "id": "BUILD-198",
+     "id": "BUILD-181",
      "kind": "button",
      "tag": "button",
      "label": "{{v.label}}",
@@ -4268,7 +4283,7 @@
      "component": "components/strategy/ScenarioControls.vue"
     },
     {
-     "id": "BUILD-199",
+     "id": "BUILD-182",
      "kind": "field",
      "tag": "input",
      "label": "(no label)",
@@ -4280,7 +4295,7 @@
      "component": "components/strategy/TargetBlock.vue"
     },
     {
-     "id": "BUILD-200",
+     "id": "BUILD-183",
      "kind": "field",
      "tag": "input",
      "label": "Target index level",
@@ -4292,7 +4307,7 @@
      "component": "components/strategy/TargetBlock.vue"
     },
     {
-     "id": "BUILD-201",
+     "id": "BUILD-184",
      "kind": "button",
      "tag": "button",
      "label": "Reset",
@@ -4307,7 +4322,7 @@
      "component": "components/strategy/TargetBlock.vue"
     },
     {
-     "id": "BUILD-202",
+     "id": "BUILD-185",
      "kind": "button",
      "tag": "button",
      "label": "&lt;",
@@ -4322,7 +4337,7 @@
      "component": "components/strategy/TargetBlock.vue"
     },
     {
-     "id": "BUILD-203",
+     "id": "BUILD-186",
      "kind": "field",
      "tag": "input",
      "label": "(no label)",
@@ -4334,7 +4349,7 @@
      "component": "components/strategy/TargetBlock.vue"
     },
     {
-     "id": "BUILD-204",
+     "id": "BUILD-187",
      "kind": "button",
      "tag": "button",
      "label": "&gt;",
@@ -4349,7 +4364,7 @@
      "component": "components/strategy/TargetBlock.vue"
     },
     {
-     "id": "BUILD-205",
+     "id": "BUILD-188",
      "kind": "button",
      "tag": "button",
      "label": "Reset",
@@ -5346,7 +5361,7 @@
      "labelFrom": "text",
      "ariaLabel": "",
      "testid": "``filter-${f.key}``",
-     "source": "frontend/src/pages/PositionsPage.vue:97",
+     "source": "frontend/src/pages/PositionsPage.vue:98",
      "handlers": [
       "click"
      ],
@@ -5361,7 +5376,7 @@
      "labelFrom": "text",
      "ariaLabel": "",
      "testid": "positions-outside-kite",
-     "source": "frontend/src/pages/PositionsPage.vue:107",
+     "source": "frontend/src/pages/PositionsPage.vue:108",
      "to": "KITE_POSITIONS_URL",
      "component": "pages/PositionsPage.vue"
     },
@@ -5373,7 +5388,7 @@
      "labelFrom": "text",
      "ariaLabel": "",
      "testid": "positions-blocked-link",
-     "source": "frontend/src/pages/PositionsPage.vue:114",
+     "source": "frontend/src/pages/PositionsPage.vue:115",
      "to": "`/strategy/${id}/execute`",
      "component": "pages/PositionsPage.vue"
     },
@@ -5385,7 +5400,7 @@
      "labelFrom": "text",
      "ariaLabel": "",
      "testid": "position-strategy-link",
-     "source": "frontend/src/pages/PositionsPage.vue:128",
+     "source": "frontend/src/pages/PositionsPage.vue:129",
      "to": "`/strategy/${g.strategy_id}/execute`",
      "component": "pages/PositionsPage.vue"
     }
@@ -6676,6 +6691,7 @@
    "components/strategy/HeldNote.vue",
    "components/strategy/PaperStrategies.vue",
    "components/strategy/PaperStops.vue",
+   "components/strategy/PlanDoor.vue",
    "components/strategy/AdjustCompare.vue",
    "components/strategy/AdjustControls.vue",
    "components/strategy/AdjustPayoffChart.vue",
@@ -6728,9 +6744,13 @@
    "components/strategy/PaperStrategies.vue",
    "components/strategy/PaperStops.vue",
    "components/strategy/PlanWatch.vue",
+   "components/strategy/PlanDoor.vue",
+   "components/strategy/AdjustPlanSheet.vue",
+   "components/common/Modal.vue",
+   "components/common/LoadFailed.vue",
+   "components/strategy/AlertStylePicker.vue",
    "components/strategy/PaperConfirmDialog.vue",
    "components/common/Chip.vue",
-   "components/common/Modal.vue",
    "components/strategy/HeldNote.vue",
    "components/strategy/ExitButton.vue"
   ],
@@ -6767,10 +6787,14 @@
    "components/strategy/PaperStrategies.vue",
    "components/strategy/PaperStops.vue",
    "components/strategy/PlanWatch.vue",
+   "components/strategy/PlanDoor.vue",
+   "components/strategy/AdjustPlanSheet.vue",
+   "components/common/Modal.vue",
+   "components/common/LoadFailed.vue",
+   "components/strategy/AlertStylePicker.vue",
    "components/common/AfterChargesTap.vue",
    "components/strategy/PaperConfirmDialog.vue",
    "components/common/Chip.vue",
-   "components/common/Modal.vue",
    "components/strategy/HeldNote.vue",
    "components/strategy/ExitButton.vue"
   ],

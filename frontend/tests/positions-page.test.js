@@ -60,7 +60,7 @@ describe('Positions pages', () => {
       expect(w.get('[data-testid=positions-outside]').text()).toBe('1 outside lot - view on Kite')
       expect(w.findAll('[data-testid=position-row]')).toHaveLength(1)
       expect(w.get('[data-testid=real-state]').text()).not.toMatch(/price|margin|₹|Rs|you should|best/i) // ADR-330 (10) replaces ADR-201 (2): the real section only; the page header now carries the two totals
-      expect(w.find('button:not([data-testid^=filter-])').exists()).toBe(false) // ADR-330 (10) replaces ADR-201 (2): the filter buttons are not actions
+      expect(w.find("button:not([data-testid^=filter-]):not([data-testid^=plan-open-])").exists()).toBe(false) // ADR-330 (10) replaces ADR-201 (2): the filter buttons are not actions; ADR-330 (54): the Plan button opens the plan sheet and orders nothing
     })
   }
 

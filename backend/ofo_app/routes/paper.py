@@ -79,6 +79,7 @@ from ofo.tracking.closing import open_legs_to_close
 from ofo.tracking.orderbook import ClosedLeg, NetPosition, PaperOrder, is_typed_price, net_positions
 from ofo.tracking.paper_alert import restore_alert_body, restore_order_reason, settle_history_body
 from pydantic import AwareDatetime, BaseModel, ConfigDict, Field, field_validator
+from sqlalchemy.exc import SQLAlchemyError
 
 from ofo_app import (
     alert_title,
@@ -90,6 +91,7 @@ from ofo_app import (
     paper_monitor,
     paper_store,
     paper_trigger_store,
+    plan_ending,
     playbook_store,
     tracked_contracts,
 )
@@ -343,6 +345,8 @@ class PaperExtremes(ApiModel):
     extremes_charges_text: CatalogueText | None = None
     # D-10 (ADR-306 (5)): a fully closed book: "Closed: result Rs X." beside (in place of) the two equal maxima
     closed_text: CatalogueText | None = None
+    # ADR-330 (57): a fully closed book also says what its plan was and how it ended (None while any leg is open)
+    plan_final_text: CatalogueText | None = None
     # ADR-306: Profit left / Loss left after = Max profit / Max loss after - Total after, not capped (ADR-302);
     # ``recover`` = minus Total after when negative. Absent when the book has no after total (see after_charges_reason).
     profit_left_after: Extreme = None
@@ -1004,11 +1008,26 @@ async def _book(db: Any, stored: Any, orders: Sequence[paper_store.StoredOrder],
     figures = (base | _summary(orders, found, prices, base, snapshot, underlying, exited_absent=False, rates=rates)
                | charges | _after(orders, found, prices, charges, underlying, rates))
     figures |= await settle_line_after_close(db, answered_at, figures)
+    figures["plan_final_text"] = await _plan_final(db, stored, orders, figures, _book_day(snapshot, answered_at))
     return PaperBookOut.model_validate(figures | {
         "strategy_id": stored.id, "name": sf.shown_name(stored.name), "underlying": underlying,
         "answered_at": answered_at, "orders": _order_rows(orders, found),
         "status_word": _paper_word(stored.status, figures["positions"]),
         "held": _held_out((await held_entry_store.read_many(db, [stored.id])).get(stored.id))})
+
+
+async def _plan_final(db: Any, stored: Any, orders: Sequence[paper_store.StoredOrder], figures: Mapping[str, Any],
+                      today: datetime.date) -> Any:
+    """ADR-330 (57): the plan's final line of a fully closed book, else None. A failed read leaves the line out (the
+    page then shows the closed sentence and the result alone, never a half line); the book reply never waits on it."""
+    if figures.get("closed_text") is None:
+        return None
+    try:
+        async with db.begin_nested():
+            return await plan_ending.plan_final_text(db, stored.user_ref, stored.id, orders, today)
+    except (SQLAlchemyError, ValueError):
+        _LOG.error("plan final line of strategy %s left out", stored.id, exc_info=True)
+        return None
 
 
 @router.get("/paper/strategies/{strategy_id}", response_model=PaperBookOut)
@@ -1476,6 +1495,9 @@ class ExitRiskOut(ApiModel):
     max_loss_before: Extreme
     max_loss_after: Extreme
     warning_text: CatalogueText | None
+    #: ADR-330 (55): a leg stop that leaves a sold option bare answers three lines, each its own fact, built here (the
+    #: page prints them as sent); ``warning_text`` is the same lines joined by newlines. None for every other answer.
+    warning_lines: list[CatalogueText] | None = None
 
 
 _UNPRICED = Decimal("0.05")  # placeholder order price only; the engine is told priced=False
@@ -1501,10 +1523,54 @@ def _stop_line(before: Decimal, after: Decimal | str) -> str:
     return render_explanation("paper_leg_stop_widens_loss", before=-before, after=-figure)
 
 
-def _exit_warning(risk: ExitRisk, names: Mapping[str, Any], leg_stop: bool = False) -> ExitRiskOut:
+def leg_stop_lines(risk: ExitRisk, names: Mapping[str, Any], terms: Mapping[str, Any],
+                   underlying: str) -> list[Any] | None:
+    """ADR-330 (55), ADR-008: the three lines for a stop that leaves a sold option bare, from the engine's figures
+    (Decimal, never computed in the page). None when no sold option is left bare (the one-line sentence applies).
+    The case the figure stands for: a bare sold put -> the index-at-zero figure; a bare sold call -> no upper limit,
+    said in words with no amount. A figure the engine did not give prints no number. ``underlying`` is the trade's own
+    index (NIFTY or SENSEX), never a literal."""
+    if not risk.exposed:
+        return None
+    legs = [names[i] for i in risk.exposed]
+    joined = legs[0]
+    for other in legs[1:]:
+        joined = render_explanation("paper_alert_legs", rest=joined, leg=other)
+    first = (render_explanation("paper_leg_stop_bare_one", leg=joined) if len(legs) == 1
+             else render_explanation("paper_leg_stop_bare_many", legs=joined))
+    before, after = risk.max_loss_before, risk.max_loss_after
+    if not isinstance(before, Decimal):  # absent (or unlimited, which the exit judge never gives "before"): no number
+        now = render_explanation("paper_leg_stop_now_unknown")
+    elif before >= 0:
+        now = render_explanation("paper_leg_stop_now_profit", amount=before)
+    else:
+        now = render_explanation("paper_leg_stop_now_loss", amount=-before)
+    bare_call = any(terms[i].instrument is Instrument.CE for i in risk.exposed)
+    if after is UNLIMITED or (bare_call and after is not None):
+        # a sold call left bare has no upper limit, said in words with no amount; so does any unlimited figure
+        then = render_explanation("paper_leg_stop_then_unlimited", index=underlying)
+    elif not isinstance(after, Decimal):
+        then = render_explanation("paper_leg_stop_then_unknown")
+    elif after >= 0:
+        then = render_explanation("paper_leg_stop_then_profit", amount=after)
+    else:
+        then = render_explanation("paper_leg_stop_then_zero", amount=-after, index=underlying)
+    return [first, now, then]
+
+
+def _exit_warning(risk: ExitRisk, names: Mapping[str, Any], leg_stop: bool = False,
+                  terms: Mapping[str, Any] | None = None, underlying: str = "") -> ExitRiskOut:
     """The yes answer says only what is known: the Max Loss figures (the catalogue's "No fixed maximum" when unlimited)
     when the engine gave them, and the sold legs left with less cover. Nothing known to say -> cannot_tell.
     ``leg_stop``: the figures are worded as the leg-stop line (ADR-330 (6)) instead of the exit confirmation's."""
+    if leg_stop and risk.exposed and terms is not None and underlying:  # ADR-330 (55): the three lines
+        three = leg_stop_lines(risk, names, terms, underlying)
+        if three is not None:
+            (before, _), (after, _) = _extreme(risk.max_loss_before), _extreme(risk.max_loss_after)
+            return ExitRiskOut(state="yes", max_loss_before=before, max_loss_after=after,
+                               warning_text=render_explanation("paper_leg_stop_three_lines", first=three[0],
+                                                               second=three[1], third=three[2]),
+                               warning_lines=three)
     (before, before_text), (after, after_text) = _extreme(risk.max_loss_before), _extreme(risk.max_loss_after)
     lines = []
     if before is not None and after is not None:
@@ -1588,7 +1654,7 @@ async def paper_leg_stop_risk(strategy_id: int, contract_id: Annotated[int, Quer
         raise StrategyRefused("paper_trigger_leg_not_open")
     names, terms = await names_and_terms(db, stored.saved.definition.underlying, booked)
     net = held[str(contract_id)]  # the open quantity (signed); a key, not reply text
-    return leg_stop_answer(booked, net, contract_id, level, names, terms, now())
+    return leg_stop_answer(booked, net, contract_id, level, names, terms, now(), stored.saved.definition.underlying)
 
 
 async def names_and_terms(db: Any, underlying: str, booked: Sequence[Any]) -> tuple[dict[str, Any], dict[str, Any]]:
@@ -1608,7 +1674,8 @@ async def names_and_terms(db: Any, underlying: str, booked: Sequence[Any]) -> tu
 
 
 def leg_stop_answer(booked: Sequence[Any], net: int, contract_id: int, level: Decimal,  # noqa: PLR0913
-                     names: Mapping[str, Any], terms: Mapping[str, Any], at: datetime.datetime) -> ExitRiskOut:
+                     names: Mapping[str, Any], terms: Mapping[str, Any], at: datetime.datetime,
+                     underlying: str) -> ExitRiskOut:
     """THE ADR-330 (6) answer for one leg stop (the route and the monitor's fired-stop message both call this, so the
     figure is computed one way): the one-leg exit of the whole open quantity ``net`` at ``level``."""
     # the close's side and quantity from the exit door's own rule (G2: no side flipped outside it); no order is built
@@ -1631,7 +1698,7 @@ def leg_stop_answer(booked: Sequence[Any], net: int, contract_id: int, level: De
         risk = ExitRisk("yes", loss0, loss1, risk.exposed)
     elif risk.state != "yes":
         return _exit_risk_answer(risk.state)
-    return _exit_warning(risk, names, leg_stop=True)
+    return _exit_warning(risk, names, leg_stop=True, terms=terms, underlying=underlying)
 
 
 def index_exit_answer(booked: Sequence[Any], exits: Mapping[int, Decimal], terms: Mapping[str, Any],
