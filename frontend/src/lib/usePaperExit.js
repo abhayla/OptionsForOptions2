@@ -14,6 +14,7 @@ import { CHANGED_ELSEWHERE_EXIT, NOT_LIVE_EXIT, usePriceFreshness } from '@/lib/
 export const EXIT_BUSY_TEXT = 'An exit is already being sent for this strategy.'
 export const EXIT_DONE_TEXT = 'Exit placed on paper' // pending owner read (hotfix 27 Nov): the one "done" line of an Exit
 export const EXIT_NOT_STORED_TEXT = 'The exit was not stored. You can try again.' // pending owner read (Lane U r1, REQ-109 AC-5): a good re-read after an unknown outcome shows the legs unchanged
+export const EXIT_CHECKING_TEXT = 'The first exit\'s outcome is being checked; no second exit is sent until the book has been read.' // pending owner read (Lane U2, ADR-017)
 export const EXIT_TICK_TEXT = 'Tick a leg to exit.'
 const PART_KEYS = ['what_happened', 'impact', 'what_is_blocked', 'next_action']
 export function exitEndText(reason, legNames = [], parts = null, neutral = 'Something went wrong. Please try again.') {
@@ -22,6 +23,7 @@ export function exitEndText(reason, legNames = [], parts = null, neutral = 'Some
   if (reason === 'not_live') sentence = NOT_LIVE_EXIT
   else if (reason === 'changed') sentence = CHANGED_ELSEWHERE_EXIT
   else if (reason === 'busy') sentence = EXIT_BUSY_TEXT
+  else if (reason === 'checking') sentence = EXIT_CHECKING_TEXT
   else if (reason === 'not_stored') sentence = EXIT_NOT_STORED_TEXT
   else if (reason === 'done') { // 201: the order numbers are the last N ids of the reply's orders (N = rows sent), shown only when the reply has them
     const n = Number.isInteger(parts?.sent) ? parts.sent : 0
@@ -52,10 +54,11 @@ export function exitLegsNotLive(state, positions, ids) {
 
 // `notLive`: the caller's `exitLegsNotLive(...)` of the dialog that is open (false when none): one more way to be blocked, with the same sentence.
 // Returned `notLive` = a failed read OR a leg of the open dialog not live: what a dialog reads for its Confirm and its sentence.
-export function usePaperExit({ readFailed, held, busy = false, pending = false, changed = false, notLive = false }) {
+export function usePaperExit({ readFailed, held, busy = false, pending = false, changed = false, notLive = false, unresolved = false }) {
   const { readOk, exitReason } = usePriceFreshness({ readFailed, held })
   const legsNotLive = computed(() => !!toValue(notLive))
-  const blocked = computed(() => !readOk.value || legsNotLive.value || !!toValue(changed) || !!toValue(busy) || !!toValue(pending))
-  const reason = computed(() => exitReason.value ?? (legsNotLive.value ? NOT_LIVE_EXIT : (toValue(changed) ? CHANGED_ELSEWHERE_EXIT : (toValue(busy) ? EXIT_BUSY_TEXT : null))))
+  const checking = computed(() => !!toValue(unresolved)) // ADR-017: an exit whose outcome is unknown: no second exit until a re-read of the book has decided it
+  const blocked = computed(() => checking.value || !readOk.value || legsNotLive.value || !!toValue(changed) || !!toValue(busy) || !!toValue(pending))
+  const reason = computed(() => (checking.value ? EXIT_CHECKING_TEXT : null) ?? exitReason.value ?? (legsNotLive.value ? NOT_LIVE_EXIT : (toValue(changed) ? CHANGED_ELSEWHERE_EXIT : (toValue(busy) ? EXIT_BUSY_TEXT : null))))
   return { blocked, reason, notLive: computed(() => !readOk.value || legsNotLive.value) }
 }
