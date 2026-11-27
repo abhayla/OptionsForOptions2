@@ -100,6 +100,8 @@ ROUTE_ORDER_EDGES: dict[str, dict[tuple[str, str], str]] = {
     # Lane P 26 Nov (ADR-330 (13)): the plan watch reads the check and the armed triggers (strategy_store import);
     # read only
     "ofo_app.routes.plan_watch": {**STRATEGY_STORE},
+    # Lane H 27 Nov: the batch route calls plan_watch.watch_of (same strategy_store reach); read only
+    "ofo_app.routes.plan_watch_batch": {**STRATEGY_STORE},
     # GC-ADJ2 2: the playbook routes call playbook_store, whose strategy_store import reaches the plan modules
     "ofo_app.routes.playbooks": {**STRATEGY_STORE},
     "ofo_app.routes.positions": {
@@ -121,7 +123,8 @@ ROUTE_ORDER_EDGES: dict[str, dict[tuple[str, str], str]] = {
 #: GC-ALERT1 4b: +2 alert_style (via adjustment_readers -> playbook_store)
 #: Phase 7 R2: +2 level_watch, +2 monitoring_pause (via their stores' strategy_store.owns)
 #: Lane P 26 Nov: +2 alerts, +2 plan_watch
-PINNED_EDGE_COUNT = 45
+#: Lane H 27 Nov: +2 plan_watch_batch
+PINNED_EDGE_COUNT = 47
 
 
 def route_modules(backend: pathlib.Path) -> list[str]:

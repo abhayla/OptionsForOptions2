@@ -516,6 +516,8 @@ APP_MODELS = (
     "ofo_app.routes.paper.UnpricedLegOut",
     "ofo_app.routes.plan_watch.PlanWatchOut",
     "ofo_app.routes.plan_watch.WatchLineOut",
+    "ofo_app.routes.plan_watch_batch.PlanWatchBatchOut",
+    "ofo_app.routes.plan_watch_batch.PlanWatchItemOut",
     "ofo_app.routes.planned_entry.PlannedEntriesOut",
     "ofo_app.routes.planned_entry.PlannedEntryOut",
     "ofo_app.routes.playbooks.DayPairOut",

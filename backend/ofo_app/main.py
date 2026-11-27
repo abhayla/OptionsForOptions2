@@ -62,6 +62,7 @@ from ofo_app.routes import (
     outcome,
     paper,
     plan_watch,
+    plan_watch_batch,
     planned_entry,
     playbooks,
     positions,
@@ -123,6 +124,7 @@ def _mount_routes(app: FastAPI, config: BrokerConfig) -> None:
     app.include_router(adjustment.router)  # W-196: adjustment approaches (REQ-155)
     app.include_router(adjustment_plan.router)  # GC-ADJ2 4: the strategy plan sheet (REQ-161)
     app.include_router(plan_watch.router)  # P10: the live Plan watch lines (ADR-330 (13))
+    app.include_router(plan_watch_batch.router)  # Lane H: the whole Positions list's Plan watch in one request
     app.include_router(adjustment_check.router)  # GC-ADJ2 1C: the playbook check (REQ-158 AC-5)
     app.include_router(adjustment_history.router)  # GC-ADJ2 6: history + totals (REQ-163)
     app.include_router(adjustment_opportunities.router)  # GC-ADJ2 5: the opportunities inbox (REQ-162, REQ-112)
