@@ -27,8 +27,10 @@ PLAN_EXIT_RULES: Final = frozenset({sl.TRIGGER_MAX_LOSS, sl.TRIGGER_MARGIN, sl.C
 
 
 def cap_exempt(rule_id: object, *, loss_stop: bool = False) -> bool:
-    """``loss_stop`` = the rule carries a loss-stop trigger under its own id (``stop_lines.is_loss_stop``; Lane J gap 3)."""
-    return loss_stop or (isinstance(rule_id, str) and (rule_id in PLAN_EXIT_RULES or rule_id.startswith(_EXEMPT_PREFIXES)))
+    """``loss_stop`` = the rule carries a loss-stop trigger under its own id (``stop_lines.is_loss_stop``, gap 3)."""
+    if loss_stop:
+        return True
+    return isinstance(rule_id, str) and (rule_id in PLAN_EXIT_RULES or rule_id.startswith(_EXEMPT_PREFIXES))
 
 
 def count_capped(rule_ids: Iterable[object], stops: frozenset[str] = frozenset()) -> int:

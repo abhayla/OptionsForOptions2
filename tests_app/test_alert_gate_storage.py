@@ -312,7 +312,8 @@ async def test_gate_rows_restored_count_does_not_count_a_stop_under_its_own_rule
     body = {"rules": [{"id": "R-LOSS", "any_of": ["T-03", "T-06"]}, {"id": "MYSTOP", "all_of": ["T-16"]},
                       {"id": "T-01", "any_of": ["T-01"]}]}
     assert (await pb.gate_rows(db, user, sid, today, sl.loss_stop_rule_ids(body))).opened_today == 1
-    assert (await pb.gate_rows(db, user, sid, today)).opened_today == 3  # no plan read: only the fixed set is exempt
+    # no plan read: only the fixed set is exempt
+    assert (await pb.gate_rows(db, user, sid, today)).opened_today == 3  # noqa: PLR2004
 
 
 async def test_gate_rows_another_users_or_a_missing_strategy_is_not_found(db):

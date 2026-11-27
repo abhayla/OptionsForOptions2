@@ -30,6 +30,8 @@ from test_playbook_eval import body_of, evaluate, load, state_of
 D = Decimal
 DAY = date(2026, 11, 27)
 LOSS_STOPS = sorted(sl.LOSS_STOP_RULES)
+CAPPED_OF_FOUR = 2  # T-03 and T-07 count; the two stop rules do not
+FULL_CAP = 99  # a count far past every preset's daily cap
 STYLES = {"weekly": ag.WEEKLY, "monthly": ag.MONTHLY, "intraday": ag.INTRADAY}
 
 
@@ -107,7 +109,8 @@ def _mixed_body() -> dict:
 
 def test_loss_stop_rule_ids_reads_the_triggers():
     ids = sl.loss_stop_rule_ids(_mixed_body())
-    assert {"R-LOSS", "MYSTOP"} <= ids and sl.LOSS_STOP_RULES <= ids
+    assert {"R-LOSS", "MYSTOP"} <= ids
+    assert ids >= sl.LOSS_STOP_RULES
     assert "T-07" not in ids and "T-10b" not in ids and "T-01" not in ids
     assert sl.loss_stop_rule_ids(None) == sl.LOSS_STOP_RULES  # an unreadable body: the fixed set, never fewer
 
@@ -117,7 +120,7 @@ def test_one_place_decides_the_stop_for_gate_and_store():
     assert sl.is_loss_stop("R-LOSS", stops) and sl.is_loss_stop("T-06", frozenset())
     assert cap_exempt("R-LOSS", loss_stop=True) and not cap_exempt("R-LOSS")
     # the store's restart count reads the same function: the mixed stop rule is not counted
-    assert count_capped(["R-LOSS", "MYSTOP", "T-03", "T-07"], stops) == 2
+    assert count_capped(["R-LOSS", "MYSTOP", "T-03", "T-07"], stops) == CAPPED_OF_FOUR
 
 
 def test_mixed_stop_rule_reading_carries_the_stop_flag():
@@ -131,12 +134,12 @@ def test_mixed_stop_rule_reading_carries_the_stop_flag():
 
 def test_mixed_stop_rule_opens_at_once_in_quiet_time_and_past_the_cap():
     spec = ag.RuleSpec("R-LOSS", "bool", (), loss_stop=True)
-    state = replace(ag.initial_state(), day=DAY, opened_today=99)
+    state = replace(ag.initial_state(), day=DAY, opened_today=FULL_CAP)
     _, events = ag.step(state, now=at("09:16:44"), preset=ag.WEEKLY, readings={"R-LOSS": (spec, True)})
     assert [e.at for e in _opened(events, "R-LOSS")] == [at("09:16:44")]
-    state = replace(ag.initial_state(), day=DAY, opened_today=99)
+    state = replace(ag.initial_state(), day=DAY, opened_today=FULL_CAP)
     new, events = ag.step(state, now=at("11:16:44"), preset=ag.WEEKLY, readings={"R-LOSS": (spec, True)})
-    assert _opened(events, "R-LOSS") and new.opened_today == 99  # not counted
+    assert _opened(events, "R-LOSS") and new.opened_today == FULL_CAP  # not counted
 
 
 # ---- gap 4: held at entry --------------------------------------------------------------------------------------------

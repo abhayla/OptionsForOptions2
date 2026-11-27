@@ -126,7 +126,7 @@ from typing import Any, Final
 
 from ofo.adjustment import alert_gate, alert_presets, gate_readings, level_watch, monitor_pause
 from ofo.adjustment import playbook_eval as pe
-from ofo.adjustment import stop_lines
+from ofo.adjustment import stop_lines as sl
 from ofo.adjustment.preferences import Preferences
 from ofo.adjustment.preferences import from_values as prefs_from_values
 from ofo.engine.black_scholes import Greeks, year_fraction
@@ -774,7 +774,7 @@ class DbGateStore:
         from ofo_app.db import get_sessionmaker  # noqa: PLC0415
         async with get_sessionmaker()() as db:
             rows = await playbook_store.gate_rows(db, w.user_ref, w.strategy_id, today,
-                                                  stop_lines.loss_stop_rule_ids(w.body))
+                                                  sl.loss_stop_rule_ids(w.body))
             held = await playbook_store.held_today(db, w.user_ref, w.strategy_id, today)
             pin = await strategy_alert_style_store.pin_of(db, w.user_ref, w.strategy_id)
             until = await strategy_pause_store.pause_of(db, w.user_ref, w.strategy_id)
@@ -1349,7 +1349,8 @@ class Worker:
         """True when a check ran (counted against the cycle's cap)."""
         now = self._clock()  # finding 1: THIS check's clock, never the cycle's start
         if self._user_paused(w.strategy_id, now):
-            return self._skipped(w.strategy_id, "user_paused")  # A-38: no read, no evaluation until the end (module docstring, step 6)
+            # A-38: no read, no evaluation until the end (module docstring, step 6)
+            return self._skipped(w.strategy_id, "user_paused")
         return await self._check_unpaused(w, speeds, now)
 
     def _skipped(self, sid: int, reason: str) -> bool:
@@ -1390,7 +1391,8 @@ class Worker:
         last = self._last_check.get(sid)
         every = speeds.get(self._interval_style(sid), Decimal(0))
         if last is not None and _seconds(now - last) < every:
-            return self._skipped(sid, "interval")  # changed, but too soon: the tick key stays old, so it is read again next cycle
+            # changed, but too soon: the tick key stays old, so it is read again next cycle
+            return self._skipped(sid, "interval")
         if self._values is None:
             return self._skipped(sid, "no_settings")  # no settings read yet: nothing is checked on a guessed setting
         prefs = self._prefs_of.get(w.user_ref)
@@ -1521,7 +1523,7 @@ class Worker:
         ctx = self._gate_ctx[sid] = GateContext(ev, state, w)
         # the check travels with each rule's sample: the event it confirms takes its words from it (#709 item 7)
         sampled = {rid: (dataclasses.replace(spec, sample=ctx), v)
-                   for rid, (spec, v) in gate_readings.readings(ev, stop_lines.loss_stop_rule_ids(w.body)).items()}
+                   for rid, (spec, v) in gate_readings.readings(ev, sl.loss_stop_rule_ids(w.body)).items()}
         await self._gate_step(w, now, preset, sampled)
         return True
 
