@@ -456,7 +456,7 @@ function ask(g, rows) {
 }
 
 // the dialog posts the rows as edited (lots x lot size, the typed price); a refusal stays in the dialog with the server's text
-async function doExit(orders) {
+async function doExit(orders, _held = null, notLiveTicked = false) {
   const c = confirm.value
   if (!c) return endExit('changed', [])
   if (busy.value) return endExit('busy', c.names)
@@ -466,7 +466,7 @@ async function doExit(orders) {
   dialogState.value = PAPER_STATE.READY
   let reply = null
   try {
-    reply = await addToPaper(api, c.id, orders) // no suggestion ids: the body is exactly { orders }
+    reply = await addToPaper(api, c.id, orders, [], null, null, null, notLiveTicked === true) // no suggestion ids: the body is exactly { orders }
   } catch (e) {
     const outcome = paperPostOutcome(e)
     dialogState.value = outcome

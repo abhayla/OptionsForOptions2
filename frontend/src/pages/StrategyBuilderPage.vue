@@ -538,7 +538,7 @@ function cancelPaperDialog() {
 // the dialog open, Confirm blocked, with "<legs>: Prices are not live..." in it (it enables again after a good read); the trade really
 // CHANGED elsewhere closes it (N-04: the legs as before the Exit click) and leaves the visible sentence in paperExitNote.
 // ADR-330 (28): Review and add of entry orders in Drafts Mode is Add to Paper too: not-live prices show the line to tick (an Exit keeps its own gate)
-const paperEntryNotLiveLine = computed(() => (paperDialog.value && !pricesLive.value && !exitOrigin.value && paperRows.value.length && paperRows.value.every((r) => r.kind !== 'exit') ? notLiveEntryLine(pricesNow.value.at) : ''))
+const paperEntryNotLiveLine = computed(() => (paperDialog.value && !pricesLive.value && pricesNow.value.kind !== 'last_close' && !exitOrigin.value && paperRows.value.length && paperRows.value.every((r) => r.kind !== 'exit') ? notLiveEntryLine(pricesNow.value.at) : ''))
 const paperLegNames = () => paperRows.value.map((r) => r.text).filter(Boolean)
 // Lane U hotfix (27 Nov, ADR-016..019; PC T1-22): the builder's Exit door is single-ended: ONE record (lib/exitRecord.js) of the latest
 // attempt holds its one final sentence; a page-side close (changed elsewhere) and the POST's own 201 both write through it, so a late
@@ -567,7 +567,7 @@ const paperLeft = computed(() => { // GC-ICFIX u124: after-charges forms, labell
 })
 // R-11: legs still carrying the entry and time the book loaded are paper fills ("Paper average", no time)
 const paperFills = computed(() => (paper.value ? paper.value.net.map(paperFillKey) : []))
-async function confirmPending(orders) {
+async function confirmPending(orders, _held = null, notLiveTicked = false) {
   if (paperBusy.value || !paper.value || !paperDialog.value) return // a Confirm for a dialog that is no longer open (the page closed it) posts nothing
   if (exitBlocked.value) { if (paperContractsChanged.value) closeChanged(); return } // post nothing (the watch may not have run yet); a failed read keeps the dialog and its sentence
   const { id } = paper.value
@@ -578,7 +578,7 @@ async function confirmPending(orders) {
   paperError.value = ''
   paperState.value = PAPER_STATE.READY
   try {
-    await postPaperOrders(api, id, orders, actedSuggestionIds.value, preparedBasketLegs.value, null, preparedApproachId.value)
+    await postPaperOrders(api, id, orders, actedSuggestionIds.value, preparedBasketLegs.value, null, preparedApproachId.value, notLiveTicked === true)
   } catch (e) {
     const outcome = paperPostOutcome(e)
     if (outcome === PAPER_STATE.REFUSED) { // 4xx: the server stored nothing (one transaction or none)
@@ -1301,7 +1301,7 @@ const leaveGuard = useLeaveBuilder({
         <PaperBookPanel v-if="paper" :book="paper.book" :net="paper.net" :changed-ids="stagedChangeIds(paper.net, legs)" :read-failed="paperBookFailed" :contracts-changed="paperContractsChanged" :show-orders="showOrdersTick" @exit="exitPaper" @exit-all="exitAllPaper" />
         </div>
         <PaperConfirmDialog :open="paperDialog" :orders="paperRows" :strategy-id="route.query.strategy" :busy="paperBusy" :blocked="exitBlocked" :error="paperError || paperNotLiveLine" :state="paperState" :not-live-line="paperEntryNotLiveLine" @confirm="confirmPending" @cancel="userCancelPaperDialog" @orderbook="openPaperOrderbook" />
-        <SaveDraftBar v-show="!(opening && !legs.length)" ref="barRef" :legs="legs" :rules-ref="String(route.query.rules_ref || '')" :current="openStrategy" :shown-name="shapeName ?? ''" :paper-mode="paper !== null" :live-price-by-id="livePriceById" :prices-live="pricesLive" :price-as-of="pricesNow.at ?? ''" class="max-[1099px]:contents" @open="openFromBar" @saved="onSaved" @paper-added="onPaperAdded" @renamed="onRenamed" @deleted="onDeleted">
+        <SaveDraftBar v-show="!(opening && !legs.length)" ref="barRef" :legs="legs" :rules-ref="String(route.query.rules_ref || '')" :current="openStrategy" :shown-name="shapeName ?? ''" :paper-mode="paper !== null" :live-price-by-id="livePriceById" :prices-live="pricesLive" :market-closed="pricesNow.kind === 'last_close'" :price-as-of="pricesNow.at ?? ''" class="max-[1099px]:contents" @open="openFromBar" @saved="onSaved" @paper-added="onPaperAdded" @renamed="onRenamed" @deleted="onDeleted">
           <template #add-edit>
             <button v-if="!paperCompleted" type="button" class="h-10 flex-1 basis-0 rounded-lg border border-line font-medium" aria-haspopup="dialog" :aria-expanded="pickerOpen ? 'true' : 'false'" data-testid="add-edit" :disabled="exitBlocked" :title="exitBlocked ? exitGate.reason.value : undefined" @click="pickerOpen = !pickerOpen">Add/Edit</button>
           </template>
