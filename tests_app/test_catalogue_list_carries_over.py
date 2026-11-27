@@ -1,7 +1,7 @@
 """Defect 2026-11-27 (PR #722): a process started before 08:30 IST had no instrument list from 08:30 until restarted.
 
 Spec basis: REQ-053 AC-3 (the picker offers nothing from a list of an earlier session, as written) + F-56 (the list is
-current from 08:30 IST; the refresh's first scheduled load is 08:35); ADR-016..019 (a refresh that does not load says so).
+current from 08:30 IST; the refresh's first scheduled load is 08:35); ADR-016..019 (no load, no silence).
 Class: the start-up load at 08:07 counted as the scheduler's last run, so the first reload was due at 09:07, not 08:35,
 and a refused or failed run was the only thing that logged. Fix: the first in-window run of a day is due at 08:35
 whatever ran earlier. The picker is NOT changed (owner question LJ-3).
