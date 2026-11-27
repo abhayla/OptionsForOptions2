@@ -8,8 +8,9 @@ AND the cool-down from the record has passed; one ladder level worse opens at on
 quiet time after the open turn a would-be record into a `Held` event, never a silent drop.
 
 Risk exits (stop-loss, conditional exits, REQ-041 / paper triggers) never pass through this gate (AC-5): it applies to
-adjustment suggestions only. The screen check and the background check share this one gate. A stop rule
-(``stop_lines.is_stop_rule``) is judged on the first check that sees it beyond its line, not at the candle close.
+adjustment suggestions only. The screen check and the background check share this one gate. A loss stop rule
+(``stop_lines.is_stop_rule``: every % line and the typed rupee stop, ``LOSS_STOP_RULES``) is judged on the first check
+that sees it beyond its line, not at the candle close.
 """
 from __future__ import annotations
 

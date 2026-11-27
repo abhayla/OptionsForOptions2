@@ -111,8 +111,18 @@ def rule_id(kind: str) -> str:
     return RULE_OF_LINE[kind]
 
 
+#: REQ-170 AC-5 ("a stop-loss ... acts on the live price at once"): EVERY loss stop a plan can hold, the ONE set the
+#: alert gate's fast path reads: the % of max loss (T-06), % of margin (T-16) and 2x-credit lines, and the typed rupee
+#: level (``plan.rupee_loss``, ADR-330 (5)(a): when typed it IS the plan's one loss stop). Case: paper trade A-E #202
+#: (2026-11-27, Stop Rs 50, loss Rs 85.75 at 12:13:44) opened no alert while the rupee stop waited for candle closes.
+#: The profit targets (T-07, ``plan.rupee_profit``) and the time exit (T-10b) are not loss stops: they keep the
+#: candle-close confirmation.
+LOSS_STOP_RULES: Final = frozenset({*RULE_OF_LINE.values(), RUPEE_LOSS_RULE})
+
+
 def is_stop_rule(rule_id_: object) -> bool:
-    return rule_id_ in RULE_OF_LINE.values()
+    """A loss stop rule (``LOSS_STOP_RULES``): judged on the first check past its line, never at the candle close."""
+    return isinstance(rule_id_, str) and rule_id_ in LOSS_STOP_RULES
 
 
 __all__ = [
@@ -121,6 +131,7 @@ __all__ = [
     "GUARDS_UNREADABLE",
     "KINDS",
     "LINE_OF_TRIGGER",
+    "LOSS_STOP_RULES",
     "MARGIN_NOT_READ",
     "MAX_LOSS_UNKNOWN",
     "MAX_LOSS_UNLIMITED",
