@@ -209,3 +209,32 @@ async def test_a_contract_with_no_stored_freeze_quantity_is_refused_by_name(db):
     reply = await _post(app, stored, [_order(c[0], 1)])
     assert reply.status_code == UNPROCESSABLE, reply.text
     assert "The exchange freeze quantity for NIFTY 13 Oct 22800 CE is not known" in reply.text
+
+
+# ---- Lane Q2's cases (branch test/live-day-gaps-1127, gap 8), rewritten to ADR-330 (50)-(52): one file, one truth ----
+
+def test_the_one_lots_limit_is_100_lots_per_leg_by_default():
+    """(52): Q2's test pinned 10,000; the owner's default is 100."""
+    from ofo.settings import calc, defaults  # noqa: PLC0415
+    assert calc.max_lots(dict(defaults())) == 100
+
+
+async def test_5000_lots_sold_on_one_leg_is_refused_and_nothing_is_stored(db):
+    """Q2's gap 8 (real case 27 Nov 14:28, a SELL of 5,000 lots accepted): refused now, the sentence names the leg."""
+    app, stored, *_ = await _setup(db)
+    c = stored.saved.contract_ids
+    await _store_freeze(db, c[0], BIG_FREEZE)
+    reply = await _post(app, stored, [_order(c[0], 5000, side="SELL")])
+    assert reply.status_code == UNPROCESSABLE, reply.text
+    assert "would hold 5000 lots after this order; a leg can hold at most 100 lots (0 held, 5000 added)." in reply.text
+    assert (await db.execute(text("SELECT count(*) FROM public.paper_orders WHERE strategy_id = :i"),
+                             {"i": stored.id})).scalar_one() == 0
+
+
+async def test_100_lots_sold_is_accepted_and_one_more_sold_is_refused(db):
+    app, stored, *_ = await _setup(db)
+    c = stored.saved.contract_ids
+    await _store_freeze(db, c[0], BIG_FREEZE)
+    assert (await _post(app, stored, [_order(c[0], 100, side="SELL")])).status_code == HTTPStatus.CREATED
+    refused = await _post(app, stored, [_order(c[0], 1, kind="add", side="SELL")])
+    assert refused.status_code == UNPROCESSABLE and "would hold 101 lots" in refused.text
