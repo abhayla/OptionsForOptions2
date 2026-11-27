@@ -20,6 +20,17 @@ Rs 50 on each candle's last check it never opened from 12:13:44 to 12:30:44; aft
 Rs 85.75 on every style, once. Fix: one set `stop_lines.LOSS_STOP_RULES` (the % stops plus the rupee loss stop) read by
 the gate and the evaluator. The rupee stop does reach the one alert module (kind `plan_rupee_loss`), and the loss is
 compared before charges, at or past the level.
+Tier A review (Opus) of 468561e4: SHIP (real evaluator readings: a loss of Rs 50.00 or more opens on the first check, Rs 49.99,
+zero or any profit does not; the rupee stop's event runs equal T-06's in 7 scenarios on all three styles: one open,
+no repeat, same lapse, re-arm and cooldown; opens with the daily cap used up; 1155 domain tests passed; 4 of 6 mutants
+killed by the new file, one more by the suite). Pushed with the full gate: `prepush.py --full` TOTAL PASS 2009.7 s on 57d9ff49.
+To file as deferred issues (from the review): the style's quiet time after the open (weekly to 09:30, monthly to
+09:45) holds every loss stop, T-06 and the rupee stop alike (`alert_gate.py:334`), against REQ-170 AC-5: an owner
+decision; no test pins the exact Rs 50.00 line in the new file (the wider suite does).
+Plan watch box rendering (T2-01/T2-02) is now Lane R's (coordinator 12:55): Lane J's unpushed finding for them, branch
+`lanej/pw-first-1127` 64ce1a50: the page gave up at the app-wide 10 s request timeout (`lib/planWatch.js` had no
+per-read timeout) while the route answered in 8 s plus browser queue time; that commit gives this read 20 s and shows
+"Reading the plan watch..." while a read is in flight.
 Not fully explained by code alone: if #202's loss stayed past Rs 50 from 12:13:44 to 12:18, the old code would still
 have opened at the 12:15 close. Please run on the PC (read-only) and send the result:
 
