@@ -138,7 +138,14 @@ from ofo.marketdata.feed_health import market_closed_for
 from ofo.marketdata.forward import parity_forward
 from ofo.marketdata.quote import is_live_price
 from ofo.marketdata.shared_compute import FeedScope, SharedCompute
-from ofo.marketdata.spot_source import SourceReading, feed_reading, resolve_spot
+from ofo.marketdata.spot_source import (
+    REASON_REST_STALE,
+    SourceReading,
+    SourceState,
+    feed_reading,
+    resolve_spot,
+    rest_problem,
+)
 from ofo.outcome.service import solved_iv, unit_greeks
 from ofo.rules.inputs import DataHealth
 from ofo.scenario.spot import spot_reading
@@ -163,6 +170,7 @@ RECENT_KEPT: Final = 1000
 WAKE_SECONDS: Final = Decimal(1)  # ADR-233 (6): the longest the worker sleeps between cycles
 #: Internal refresh cadence, NOT a business number (no figure, threshold or wording a user sees depends on it; it only
 #: bounds Kite basket-margin reads to one per strategy per 5 minutes, so it stays in code by decision GC-IC1 step 10).
+REST_SPOT_DEADLINE_S: Final = 2.0  # a hung Kite REST index read costs the cycle at most this once per underlying (F5)
 MARGIN_REFRESH_S: Final = Decimal(300)
 MARGIN_STALE_S: Final = 2 * MARGIN_REFRESH_S  # an entry older than this is not used (a refresh that kept failing)
 REBUILD_SECONDS: Final = 30 # the monitor set is re-read this often, so a newly tracked strategy joins (AC-3: 60 s)
@@ -190,6 +198,13 @@ class PriceRead:
     #: GC-IC1 5b: the index's day values (``latest_day_stats``) read with ``spot`` in the same read (the index is held
     #: by the worker's wanted set, as the screen reads it inside its hold); None = not read
     day: Any = None
+    #: why the read is not FRESH when the cause is the REST stand-in ("rest_stale", ADR-330 (39)); "" otherwise
+    why: str = ""
+    #: the held index quote's own problem ("index quote missing", "index quote stale"; "" = the index quote is fine):
+    #: the REST read is asked only when this is set (an option leg missing with the index fine asks nothing)
+    cause: str = ""
+    #: LEG_MISSING with the index spot itself usable (held or REST stand-in): the missing thing is an option leg
+    leg_missing: bool = False
 
     def signature(self, now: datetime.datetime) -> tuple:
         """What a check depends on: every leg's and the spot's price and time, and the IST minute (clock rules)."""
@@ -258,11 +273,47 @@ def feed_state(provider: Any, now: datetime.datetime) -> PriceState | None:
     return None if health is DataHealth.AVAILABLE else PriceState.DISCONNECTED
 
 
-def read_prices(provider: Any, watched: Watched, now: datetime.datetime,
-                known: tuple[tuple, frozenset] | None = None) -> PriceRead:
+def rest_index_quote(provider: Any, underlying: str, base: Any, rest: SourceReading,  # noqa: PLR0913
+                     now: datetime.datetime, windows: Any) -> Any:
+    """The index quote the worker's check reads when its own book has no usable tick of the index but the shared REST
+    read has one (one source is enough, ADR-330 (39)). ONE age rule (``spot_source.rest_problem``): a REST reading with
+    no time, no live price or from the future is not a quote (None); one older than ``index_quote_max_age`` is a quote
+    with health STALE (its price and time, never AVAILABLE by force), so the strategy pauses STALE. A held tick is
+    replaced only by a NEWER reading; an older (or equal) one leaves the held tick as it is (None). ``windows`` None
+    (no settings read): None."""
+    from ofo.marketdata.quote import NormalizedQuote, SourceMetadata  # noqa: PLC0415
+    if windows is None or rest.at is None:
+        return None
+    why = rest_problem(rest, now, windows, market_closed=False)  # the caller already read the market as open
+    if why is not None and why != REASON_REST_STALE:
+        return None  # no time / no live price / from the future / not stated: not a quote
+    held = base is not None and base.ltp is not None and base.timestamp is not None
+    if held and rest.at <= base.timestamp:
+        return None  # never an older reading over a held tick
+    health = DataHealth.AVAILABLE if why is None else DataHealth.STALE
+    meta = SourceMetadata("kite", "rest-index-quote")
+    if base is not None:
+        return dataclasses.replace(base, ltp=rest.value, timestamp=rest.at, health=health, source=meta)
+    index_id = getattr(provider, "index_id", lambda _u: None)(underlying) or f"REST_INDEX:{underlying}"
+    none = None
+    return NormalizedQuote(index_id, underlying, "NSE", "INDEX", none, none, none, rest.value, none, none, none, none,
+                           none, none, none, none, none, none, rest.at, meta, health)
+
+
+def _index_quote_problem(spot: Any) -> str | None:
+    """None when the held index quote is usable, else why not (the cause the log line names)."""
+    if spot is None or spot.ltp is None:
+        return "index quote missing"
+    return None if spot.health is DataHealth.AVAILABLE else f"index quote {spot.health.name.lower()}"
+
+
+def read_prices(provider: Any, watched: Watched, now: datetime.datetime,  # noqa: PLR0913
+                known: tuple[tuple, frozenset] | None = None, rest: SourceReading | None = None,
+                windows: Any = None) -> PriceRead:
     """The price read of one strategy, one answer state each (module docstring, step 2). ``known``: (the provider's
     listed options, the future expiries) of the underlying when the caller already holds them (the worker keeps them
-    per provider and underlying); None reads them from the provider."""
+    per provider and underlying); None reads them from the provider. ``rest``/``windows``: the shared REST index read
+    and the feed windows in force, used only when the held index quote is missing or not AVAILABLE."""
     state = feed_state(provider, now)
     if state is not None:
         return PriceRead(state)
@@ -270,12 +321,19 @@ def read_prices(provider: Any, watched: Watched, now: datetime.datetime,
     expiries = {x.expiry for x in position.legs}
     chains = {e: tuple(provider.option_chain_snapshot(position.underlying, e)) for e in expiries}
     spot = provider.underlying_quote(position.underlying)
+    why, cause = "", _index_quote_problem(spot) or ""
+    if rest is not None and cause:
+        stand_in = rest_index_quote(provider, position.underlying, spot, rest, now, windows)  # REST stands in
+        if stand_in is not None:
+            spot = stand_in
+            why = "" if stand_in.health is DataHealth.AVAILABLE else REASON_REST_STALE
     legs = {i: _leg_quote(chains[x.expiry], x) for i, x in enumerate(position.legs)}
     if spot is None or spot.ltp is None or any(q is None or q.ltp is None for q in legs.values()):
-        return PriceRead(PriceState.LEG_MISSING)
+        return PriceRead(PriceState.LEG_MISSING, cause=cause,
+                         leg_missing=spot is not None and spot.ltp is not None)
     needed = {"spot": spot, **{str(i): q for i, q in legs.items()}}
     if strategy_monitoring_status(needed) is MonitoringStatus.PAUSED:
-        return PriceRead(PriceState.STALE)
+        return PriceRead(PriceState.STALE, why=why, cause=cause)
     if known is None:
         known = catalogue_of(provider, position.underlying)
     return PriceRead(PriceState.FRESH, spot, legs, chains, *known, provider.latest_day_stats(spot.instrument_id, now))
@@ -585,6 +643,13 @@ class StoredLogin:
         found = self._found
         return None if found is None else margin_client(found.api_key, found.access_token)
 
+    async def open_reads(self) -> Any:
+        """The Kite read client of the stored login (read again just now), or None with no usable login."""
+        from ofo_app.live_market import reads_client  # noqa: PLC0415
+        await self.reload()
+        found = self._found
+        return None if found is None else reads_client(found.api_key, found.access_token)
+
     def reading(self, margin_of: MarginOf) -> MarginOf:
         """``margin_of`` preceded by one fresh read of the stored login (each strategy's read is at most every
         ``MARGIN_REFRESH_S``)."""
@@ -592,6 +657,18 @@ class StoredLogin:
             await self.reload()
             return await margin_of(w, market)
         return read
+
+
+def worker_rest_spot(login: StoredLogin) -> Callable[[str], Awaitable[SourceReading]]:
+    """The worker's REST index read: this process's ONE shared cached read (``live_market.index_spot_from``) on the
+    stored login. Rate: the worker asks only when its book has no usable index tick; the TTL (5 s) and single flight
+    hold it to at most one call per 5 s per index for ALL strategies (REQ-118)."""
+    async def read(underlying: str) -> SourceReading:
+        from ofo_app.adjustment_readers import index_name  # noqa: PLC0415
+        from ofo_app.live_market import index_spot_from  # noqa: PLC0415
+        name = index_name(underlying)
+        return SourceReading(SourceState.NOT_FOUND) if name is None else await index_spot_from(name, login.open_reads)
+    return read
 
 
 def stored_login(clock: Callable[[], datetime.datetime]) -> StoredLogin:
@@ -905,10 +982,18 @@ class Worker:
                  gate_store: Any = None, user_values: UserValuesRead | None = None,
                  margin_of: MarginOf | None = None,
                  before_cycle: Callable[[], Awaitable[None]] | None = None,
-                 daily_iv: DailyIvRecorder | None = None) -> None:
+                 daily_iv: DailyIvRecorder | None = None,
+                 rest_spot: Callable[[str], Awaitable[SourceReading]] | None = None) -> None:
         if max_per_cycle < 1:
             raise ValueError("max_per_cycle must be at least 1")
         self._provider_for, self._lister, self._clock = provider_for, lister, clock
+        #: the shared cached REST index read of THIS process (``live_market.index_spot`` via ``read_rest_spot``); None =
+        #: no REST door (scenario / tests): the index tick of the book is the only source, as before
+        self._rest_spot = rest_spot
+        self._rest_deadline = REST_SPOT_DEADLINE_S
+        self._rest_cycle: dict[str, SourceReading] = {}  # underlying -> this cycle's ONE REST answer (F4/F5)
+        self.paused_why: dict[int, str] = {}  # strategy -> the REST stand-in's reason that paused it ("rest_stale")
+        self._spot_logged: set[tuple[str, str]] = set()  # (IST minute, underlying) of the not-available lines written
         self._settings, self._preferences = settings, preferences
         self._values: Mapping[str, Decimal] | None = None  # the last good settings read (a failed read keeps it)
         self._recorder, self._max, self._sleep = recorder, max_per_cycle, sleep
@@ -1333,6 +1418,7 @@ class Worker:
         self._tick.pop(sid, None)
         kept = self._paused_at.get(sid)
         self._paused_at[sid] = now if kept is None else max(kept, now)
+        self.paused_why.pop(sid, None)  # a pause that names a reason sets it AFTER this call; any other pause has none
 
     def _interval_style(self, sid: int) -> str:
         """The style whose interval gates this check (ADR-235 (1)). #639 item 3: the pin the last rebuild read wins, so
@@ -1350,7 +1436,7 @@ class Worker:
             return False  # A-38: no read, no evaluation until the end (module docstring, step 6)
         return await self._check_unpaused(w, speeds, now)
 
-    async def _check_unpaused(self, w: Watched, speeds: Mapping[str, Decimal],  # noqa: PLR0911, C901
+    async def _check_unpaused(self, w: Watched, speeds: Mapping[str, Decimal],  # noqa: PLR0911, PLR0915, C901
                               now: datetime.datetime) -> bool:
         """One check at ``now`` of a strategy the user has not paused."""
         sid = w.strategy_id
@@ -1361,7 +1447,7 @@ class Worker:
             if tick is not None and tick == self._tick.get(sid):
                 self._read_states["NOT_TICKED"] = self._read_states.get("NOT_TICKED", 0) + 1
                 return False  # nothing it depends on ticked: no read, no check (item c)
-            read = read_prices(provider, w, now, self._known_of(provider, w.tracked.position.underlying))
+            read = await self._read_with_either_spot(provider, w, now)
         else:
             read = PriceRead(early)
         self._read_states[read.state.name] = self._read_states.get(read.state.name, 0) + 1  # the minute line's reads
@@ -1369,9 +1455,11 @@ class Worker:
             return False  # nothing is recomputed while the market is closed
         if read.state is not PriceState.FRESH:
             self._pause(sid, read.state, now)
+            self.paused_why[sid] = read.why
             return False
         self.status[sid] = MonitoringStatus.ACTIVE
         self.paused_reason.pop(sid, None)
+        self.paused_why.pop(sid, None)
         self._leg_ids[sid] = (w.tracked.position.legs,
                               (read.spot.instrument_id, *(read.legs[i].instrument_id for i in sorted(read.legs))))
         tick = self._tick_key(provider, w, now)  # read with the prices, before any await (a later tick is new)
@@ -1415,6 +1503,57 @@ class Worker:
         self._last_check[sid] = now
         _keep_recent(self.checks, (sid, now))
         return True
+
+    async def _read_with_either_spot(self, provider: Any, w: Watched, now: datetime.datetime) -> PriceRead:
+        """The price read; when THIS book's index quote is missing or not AVAILABLE, the shared REST read stands in for
+        it. An option leg missing with the index fine asks nothing (F3: never a Kite call for a leg)."""
+        underlying = w.tracked.position.underlying
+        known = self._known_of(provider, underlying)
+        read = read_prices(provider, w, now, known)
+        if read.state in (PriceState.LEG_MISSING, PriceState.STALE) and read.cause and self._rest_spot is not None:
+            return await self._with_rest_spot(provider, w, now, known, read, read.cause)
+        return read
+
+    async def _rest_once(self, underlying: str) -> SourceReading:
+        """This cycle's ONE REST index answer of ``underlying`` (never one per strategy: F4), bounded by its own short
+        deadline (F5: a hung call costs the cycle at most ``REST_SPOT_DEADLINE_S`` once; the shared flight goes on and
+        its answer is kept by the shared reading). Raised, timed out or cancelled-by-deadline: FAILED."""
+        kept = self._rest_cycle.get(underlying)
+        if kept is not None:
+            return kept
+        try:
+            rest = await asyncio.wait_for(self._rest_spot(underlying), timeout=self._rest_deadline)
+        except TimeoutError:
+            log.warning("background: the index REST read exceeded %s s", self._rest_deadline)
+            rest = SourceReading(SourceState.FAILED)
+        except Exception as exc:  # noqa: BLE001 - a REST failure is "no REST spot", never a failed cycle
+            log.warning("background: the index REST read raised %s", type(exc).__name__)
+            rest = SourceReading(SourceState.FAILED)
+        self._rest_cycle[underlying] = rest
+        return rest
+
+    async def _with_rest_spot(self, provider: Any, w: Watched, now: datetime.datetime,  # noqa: PLR0913
+                              known: Any, read: PriceRead, cause: str) -> PriceRead:
+        """The index quote of this process's book is missing or old (``cause``): one source is enough (ADR-330 (39)), so
+        the shared cached REST read stands in for it, if it passes the one age rule (a reading older than the index age
+        limit pauses the strategy STALE with reason ``rest_stale``; one with no time is not a spot). Only the index is
+        replaced - a missing leg stays missing. Not usable either way: the read as it was, and ONE log line per minute
+        and underlying naming the cause and the REST reason (never silently unchecked)."""
+        underlying = w.tracked.position.underlying
+        rest = await self._rest_once(underlying)
+        windows = None if self._values is None else settings_calc.feed_windows(self._values)
+        again = read_prices(provider, w, now, known, rest, windows)
+        if again.state is PriceState.FRESH:
+            return again
+        key = (now.astimezone(IST).strftime("%Y-%m-%d %H:%M"), underlying)
+        if key not in self._spot_logged:
+            self._spot_logged = {k for k in self._spot_logged if k[0] == key[0]} | {key}
+            if again.leg_missing:  # the index spot is usable (REST stood in): the missing thing is an option leg
+                log.warning("option leg quote missing (the index spot itself is usable)")
+            else:
+                rest_why = (again.why or "not usable") if rest.state is SourceState.STATED else rest.state.name.lower()
+                log.warning("index spot not available: %s; REST %s", cause, rest_why)
+        return again if again.why else read
 
     def _user_paused(self, sid: int, now: datetime.datetime) -> bool:
         """Step 6: the user's pause compared with THIS check's time; in force -> paused through ``_pause``."""
@@ -1773,6 +1912,7 @@ class Worker:
         if every is None:
             log.error("background: no background speed has been read yet; this cycle is skipped")
             return
+        self._rest_cycle = {}  # a new cycle asks the shared REST read again (its TTL/cooldown still bound the vendor)
         n = len(self.monitors)
         ran, slowest, visited = 0, Decimal(0), 0
         checked: set[int] = set()
@@ -2096,7 +2236,8 @@ async def _serve_live() -> int:  # pragma: no cover - the process wiring; each p
                     clock=clock, settings=cache.at, preferences=preferences, want_client=bus, db_gate=gate,
                     side_tasks=(cache.poll_loop,), user_values=user_values,
                     margin_of=worker_margin_of(login, margin_ctx, margin_source),
-                    daily_iv=record_daily_iv)  # ADR-277 (4): the live role only
+                    daily_iv=record_daily_iv,  # ADR-277 (4): the live role only
+                    rest_spot=worker_rest_spot(login))  # one source is enough: the shared REST read (ADR-330 (39))
     feed = asyncio.create_task(socket.run(), name="background-feed")
     try:
         await worker.run()

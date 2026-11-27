@@ -1829,6 +1829,7 @@ _EXPLANATIONS: tuple[ExplanationTemplate, ...] = (
     ExplanationTemplate("adjust_spot_why_no_time", "values_seen", "it carried no time"),
     ExplanationTemplate("adjust_spot_why_tick_in_future", "values_seen", "its time is in the future"),
     ExplanationTemplate("adjust_spot_why_stale", "values_seen", "its last price is too old"),
+    ExplanationTemplate("adjust_spot_why_rest_stale", "values_seen", "its last price is too old"),
     ExplanationTemplate("adjust_spot_why_not_finite", "values_seen", "its last price was not a number"),
     ExplanationTemplate("adjust_spot_why_not_found", "values_seen", "it does not know this contract"),
     ExplanationTemplate("adjust_spot_why_failed", "values_seen", "the read failed"),

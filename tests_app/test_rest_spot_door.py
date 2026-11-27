@@ -44,14 +44,14 @@ class _Reader:
 async def test_twelve_plan_watch_requests_with_a_fresh_tick_make_zero_rest_calls():
     reader = _Reader()
     for _ in range(12):
-        assert await outcome.rest_spot_if_needed(_market(_fresh_feed()), reader, "NIFTY", None) is None
+        assert (await outcome.index_spot_of(_market(_fresh_feed()), reader, "NIFTY", None)).source == "feed"
     assert reader.calls == 0
 
 
 @pytest.mark.anyio
 async def test_no_tick_asks_rest_only_then():
     reader = _Reader()
-    assert (await outcome.rest_spot_if_needed(_market(None), reader, "NIFTY", None)).state is SourceState.STATED
+    assert (await outcome.index_spot_of(_market(None), reader, "NIFTY", None)).source == "rest_quote"
     assert reader.calls == 1
 
 

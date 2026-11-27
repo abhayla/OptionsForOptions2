@@ -1,5 +1,5 @@
 """Lane U hotfix A repo scans (REQ-118; ADR-330 (39)): the worker never reaches the REST index door, and no route
-awaits a REST spot reader outside ``rest_spot_if_needed`` (which judges the tick store first)."""
+awaits a REST spot reader outside ``outcome.index_spot_of`` (which judges the tick store first)."""
 import ast
 from pathlib import Path
 
@@ -10,8 +10,10 @@ pytestmark = pytest.mark.repo_scan
 BACKEND = Path(__file__).resolve().parents[1] / "backend" / "ofo_app"
 
 
-def test_the_worker_and_the_monitor_never_reach_the_rest_index_door():
-    for name in ("background.py", "paper_monitor.py", "paper_exit.py", "tracking.py"):
+def test_the_monitor_never_reaches_the_rest_index_door_and_the_worker_only_through_the_shared_one():
+    """The worker asks REST only when its book has no usable index tick, through ``live_market.index_spot_from`` (the
+    same per-process ``REST_SPOT`` cache); never ``read_rest_spot`` / ``index_spot`` directly."""
+    for name in ("paper_monitor.py", "paper_exit.py", "tracking.py"):
         path = BACKEND / name
         if path.exists():
             text = path.read_text(encoding="utf-8")
@@ -20,7 +22,7 @@ def test_the_worker_and_the_monitor_never_reach_the_rest_index_door():
 
 def test_no_route_awaits_a_rest_spot_reader_before_the_tick_is_judged():
     """Every ``await <x>rest_reader(...)`` / ``read_rest_spot(...)`` / ``index_spot(...)`` in a route is the argument of
-    ``rest_spot_if_needed`` (the one door); ``outcome.py`` holds the one real await."""
+    ``index_spot_of`` (the one door); ``outcome.py`` holds the one real await."""
     found: list[str] = []
     for path in sorted((BACKEND / "routes").glob("*.py")):
         tree = ast.parse(path.read_text(encoding="utf-8"))

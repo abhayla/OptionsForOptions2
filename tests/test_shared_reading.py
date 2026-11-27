@@ -8,7 +8,7 @@ from decimal import Decimal
 from ofo.marketdata.shared_reading import SharedReading
 from ofo.marketdata.spot_source import SourceReading, SourceState
 
-TWO, THREE, FIVE = 2, 3, 5
+TWO = 2
 
 
 def _stated():
@@ -72,20 +72,29 @@ def test_a_failed_reading_is_kept_for_the_cooldown_and_nothing_is_sent_inside_it
     assert len(calls) == TWO
 
 
-def test_absent_is_not_kept_and_an_exception_is_not_kept():
-    shared, calls = SharedReading(clock=_Clock()), []
+def test_absent_and_an_exception_are_kept_for_the_failed_ttl_one_call_per_10_s():
+    """A8/A9: with no login every caller re-read the stored login (a DB read); now ABSENT and an exception of the fetch
+    are kept as long as a FAILED answer, then one more call."""
+    clock = _Clock()
+    shared, calls = SharedReading(clock=clock), []
     async def run():
         for _ in range(3):
             await shared.get("N", _fetcher(SourceReading(SourceState.ABSENT), calls))
     asyncio.run(run())
-    assert len(calls) == THREE
+    assert len(calls) == 1
+    clock.t += 10.1
+    asyncio.run(run())
+    assert len(calls) == TWO
+
+    boom_calls = []
 
     async def boom():
+        boom_calls.append(1)
         raise RuntimeError("x")
-    for _ in range(2):
-        with contextlib.suppress(RuntimeError):
-            asyncio.run(shared.get("N", boom))
-    assert shared.calls == FIVE
+    with contextlib.suppress(RuntimeError):
+        asyncio.run(shared.get("E", boom))
+    out = asyncio.run(shared.get("E", boom))  # inside the 10 s: no second call, a FAILED reading
+    assert len(boom_calls) == 1 and out.state is SourceState.FAILED
 
 
 def test_the_owner_cancelled_mid_flight_never_cancels_a_waiter_and_the_result_is_still_kept():

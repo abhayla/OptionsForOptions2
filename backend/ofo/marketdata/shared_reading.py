@@ -4,8 +4,10 @@ Class fixed: "a page poll calls the vendor REST before the tick store". The REST
 the tick store cannot give; every caller that needs it goes through one ``SharedReading`` per process, so twelve
 requests inside the TTL are ONE vendor call (single flight + a positive TTL), and a FAILED answer (a 429 cooldown, a
 timeout) is remembered for ``failed_ttl`` so nothing is sent inside the vendor's cooldown. A failure here is only
-"no REST spot": it never touches a leg's or the feed's health. ``ABSENT`` (no session) is not cached: asking costs
-nothing. ``clock`` is the seam (monotonic seconds); a test injects it and never sleeps.
+"no REST spot": it never touches a leg's or the feed's health. ``ABSENT`` (no session / expired token) and an
+exception of the fetch are kept as long as a FAILED one (``failed_ttl``, ONE place, ``_fly``): with no login every
+caller used to re-read the stored login (a DB read) on every call. ``clock`` is the seam (monotonic seconds); a test
+injects it and never sleeps.
 """
 from __future__ import annotations
 
@@ -17,7 +19,7 @@ from ofo.marketdata.spot_source import SourceReading, SourceState
 
 READ_TTL_SECONDS = 5.0  # a stated reading is reused this long (well under the 1 request/s quote bucket)
 FAILED_TTL_SECONDS = 10.0  # Kite's documented cooldown after a 429 (rate_limit.COOLDOWN_SECONDS)
-_NOT_CACHED = frozenset({SourceState.ABSENT})
+_LONG_KEPT = frozenset({SourceState.FAILED, SourceState.ABSENT})  # kept for ``failed_ttl``, not ``ttl``
 
 
 class SharedReading:
@@ -48,9 +50,11 @@ class SharedReading:
     async def _fly(self, key: str, fetch: Callable[[], Awaitable[SourceReading]]) -> SourceReading:
         try:
             reading = await fetch()
+        except Exception:
+            # shared with the waiters of this flight; later callers inside ``failed_ttl`` read FAILED, not a new call
+            self._kept[key] = (self._clock() + self._failed_ttl, SourceReading(SourceState.FAILED))
+            raise
         finally:
-            self._flying.pop(key, None)  # an exception is shared with the waiters and never kept
-        if reading.state not in _NOT_CACHED:
-            ttl = self._failed_ttl if reading.state is SourceState.FAILED else self._ttl
-            self._kept[key] = (self._clock() + ttl, reading)
+            self._flying.pop(key, None)
+        self._kept[key] = (self._clock() + (self._failed_ttl if reading.state in _LONG_KEPT else self._ttl), reading)
         return reading
