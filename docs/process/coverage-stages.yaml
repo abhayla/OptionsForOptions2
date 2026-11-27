@@ -772,6 +772,73 @@ issues:
   "#784": S6.7  # A change to docs/api/openapi.json runs no frontend step in the pre-push gate
   "#785": S6.7  # The Windows kill path of the pre-push gate is proven only by mocks
   "#786": S6.7  # npm ci reports 11 known package weaknesses (2 critical, 3 high) in frontend dependencies
+  "#787": S6.7  # A real trade has no stop, trigger, watcher worker, stop screen or fired-stop alert (stage to be confirmed: real orders)
+  "#788": S6.7  # The real order door never checks lots or freeze quantity (stage to be confirmed: real orders)
+  "#789": S6.7  # A confirmed save accepts an index quote flagged as faulty (crossed quote)
+  "#790": S6.7  # First-fill entry facts take a stale index value without the tick
+  "#791": S6.7  # Pushes during the seed wait carry the raw frame
+  "#792": S6.7  # Real exit lacks the safety gates and the confirm dialog that paper exit has (stage to be confirmed: real orders)
+  "#793": S6.7  # Alert Exit and Live card Exit and Stops links open the paper door for a real position
+  "#794": S6.7  # Paper entry checks have no real twin: take-profit, adjustment limit, price, hours (stage to be confirmed: real orders)
+  "#795": S6.7  # Real P&L, expiry settlement and what-if are separate paths from paper (two money models) (stage to be confirmed: real orders)
+  "#796": S6.7  # The fired-stop message's '(now Rs ...)' is the figure from before the fire
+  "#797": S6.7  # expiry_kind_of answers 'weekly' for a far-month leg whose own future is not listed
+  "#798": S6.7  # The position's expiry kind is always empty, so T-09 inputs always use the weekly row
+  "#799": S6.7  # Server sentences print contracts with an ISO date (2026-12-01, not 1 Dec)
+  "#800": S6.7  # Two contracts a year apart can read alike: server contract names carry no year
+  "#801": S6.7  # Exit-risk check may report both short puts exposed when only one long put has a stop
+  "#802": S6.7  # A fired index exit stores the value but not the time of the tick that decided it
+  "#803": S6.7  # Plan stop and time-exit reasons are unchecked against the 'own crossing tick' rule
+  "#804": S6.7  # A plan removed from a trade has no ended reason or sentence
+  "#805": S6.7  # Other causes of 'This strategy definition cannot be saved as sent' still say nothing
+  "#806": S6.7  # Adjustment ideas marked 'Acted on' by a cancelled basket stay so; opp ids stay in the URL
+  "#807": S6.7  # Margin read is two serial broker calls under an 8 s limit, retried after 30 s
+  "#808": S6.7  # Adjustment check does about 25 ms CPU on the event loop; IV solved 84 times per check
+  "#809": S6.7  # Order-door parity tests: decision level, worker stop chain, dialog mounts
+  "#810": S6.7  # The price relay the screen tester needs (one contract, 70 s index silence) is not built
+  "#811": S6.7  # A lock wait on Delete ends as a raw 500 (ERR-xxxx), not a refusal sentence
+  "#812": S6.7  # Positions row has no partial-exit control for a leg above its freeze quantity
+  "#813": S6.7  # Alerts History may pass the browser's 10 s limit with many trades
+  "#814": S6.7  # Home and Positions totals show no 'as of' time, so a same-minute gap is unexplained
+  "#815": S6.7  # Entry facts do not keep the index value's time and kind
+  "#816": S6.7  # A first frame after 15:30 on a weekend or before the open is labelled with old time
+  "#817": S6.7  # An older-day leg label can take a newer leg's group ('2 legs as of 30 Nov, 15:29:59')
+  "#818": S6.7  # Option Chain banner time comes from the index spot only
+  "#819": S6.7  # A paused leg whose last quote time was evicted shows no time
+  "#820": S6.7  # 'Checked at Time not available' still shows
+  "#821": S6.7  # Paper vs real audit, 25 display-risk rows and 4 wording-only rows not yet sorted (stage to be confirmed: real orders)
+  "#822": S6.7  # A closing exit is not linked to the plan alert that preceded it
+  "#823": S6.7  # Entry max profit is not stored with the plan; an ended trade says 'target not available'
+  "#824": S6.7  # Positions rows of ended trades do not print the plan's final line
+  "#825": S6.7  # One partly covered sold leg reads 'without protection'
+  "#826": S6.7  # Side question with no plan: patch not applied; no test for a plan removed later
+  "#827": S6.7  # Playbooks test route reopens a transaction on the request session during market waits
+  "#828": S6.7  # The plan sheet does not show the new stop_kind_reason sentence
+  "#829": S6.7  # A stale REST index stand-in is not re-read until the minute changes
+  "#830": S6.7  # A leg stop's 'NIFTY was at' can be later than the leg tick that fired it
+  "#831": S6.7  # Cloud container: 12 adjustment history and opportunity tests fail on a clock issue
+  "#832": S6.7  # The nowrap on the Contract column is checked by class only, not by rendered width
+  "#833": S6.7  # A test of the adjustment plan leaves an edited playbook in the shared test database
+  "#834": S6.7  # Plan-watch request queue has no own time limit and its load tests are weak
+  "#835": S6.7  # The parked per-request memo (q1-parked-request-memo.patch) needs a re-run on a good DB
+  "#836": S6.7  # db_run_fresh needs the owner's global environment file, so cloud lanes cannot run DB tests
+  "#837": S6.7  # No multi-user load test: v1 has one owner reference
+  "#838": S6.7  # Strategy screens, five small leftovers: duplicate exit parameter, stale note, N reads
+  "#839": S6.7  # ADR-081 amendment: no stored freeze limit now blocks an order (owner 27 Nov)
+  "#840": S6.7  # Stops panel gives no warning for a sold leg with a below stop or a bought leg above
+  "#841": S6.7  # Change of a leg: keep a typed price or replace it with the stated reason (REQ-078 AC-8)
+  "#842": S6.7  # Server could send the ended-row ids so the page ties the ended count by id
+  "#843": S6.7  # Totals change, four review leftovers: count tie, unreadable row, unread mismatch flag
+  "#844": S6.7  # The last-price branch of the confirmed save is unreachable
+  "#845": S6.7  # A seed answered after 09:15 is still applied to an empty book
+  "#846": S6.7  # Start-up after 15:30 could rebuild the 15:30 price from the Redis tick stream
+  "#847": S6.7  # The builder's confirmPending flag has no own mount test
+  "#848": S6.7  # ruff baseline: routes/paper.py carries many PLR0917 findings
+  "#849": S6.7  # read_levels loads the catalogue on every call when the market is not open
+  "#850": S6.7  # Missing index, fresh REST, stale option leg: reason reads LEG_MISSING, not STALE
+  "#851": S6.7  # No worker test with a plan body's own custom stop rule (stops=frozenset() survives)
+  "#852": S6.7  # Bulk delete lets a running strategy be ticked with a draft (note vs decision 8)
+  "#853": S6.7  # The phone-width drawer cannot be checked: the test tool cannot narrow the window
 
 # Work items whose status is not done.
 work_items:
