@@ -1,0 +1,27 @@
+Read `.claude/skills/lanes/SKILL.md`, section "Standing rules for every lane", first. They apply to you and are not repeated here.
+
+# Lane <X>: <the goal in one line>
+
+Who you are: Lane <X> (<builder | reviewer>, <Sonnet | Haiku | Opus>). <One sentence: what this lane delivers.>
+Budget: <N> min wall-clock, <M> tool calls
+Branch from: <commit or branch>
+Push to: <the lane's own branch> (no PR, not main, not the test branch)
+Spec basis: <ADR numbers and spec sections the task rests on; cite, do not copy>
+
+May edit:
+- <files this lane owns>
+Do not edit:
+- <file> (<lane that owns it>)
+A fix that needs one of those files: write it under "For the owner lane" in RESULTS, do not edit.
+
+Decision texts (build to these words):
+- (<n>) <the decision in plain words, with the exact on-screen sentences>
+
+Queue:
+1. <item>. Real cases: <real rows, names, numbers, dates; or "no real case in N days">.
+2. <item>. ...
+
+Reviews required: <none | one Opus review of <what>. Why Opus: <the money, stop, exit or price path>>
+Pushes: <one per item | one at the end>; gate result on each.
+Core: <the smallest piece that proves the idea>
+Proof: <the smallest run on real input, and the output to read back, before any other code>
