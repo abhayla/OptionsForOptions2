@@ -1,3 +1,23 @@
+# Lane Q2 (tests, live-day gaps), 27 Nov 2026 - branch `test/live-day-gaps-1127` from 206a9f0
+
+(The lane-Q2 results of 26 Nov, screens Wave 2, follow below this section unchanged.)
+
+## Status lines (send_message to "@parent" was REFUSED: elevated_session_untrusted_device; same lines written here)
+- LANE Q2 ALIVE (27 Nov, 14:50 IST start). Paper only; tests and test tools only; no file under backend/ofo, backend/ofo_app or frontend/src changed.
+- Push 1: gaps 4 and 3 (see table). Head and gate result are on the line below once pushed.
+
+## Gap table (so far)
+
+| Gap | Test file | Fails on 206a9f0? | Fix branch that makes it pass |
+|---|---|---|---|
+| 4 plan stop to alert, 5 guard kinds x 5 situations (28 cells) | tests/adjustment/test_plan_stop_to_alert_chain.py | yes, 6 cells (strict xfail): all 5 kinds after 4 other alerts (daily cap); rupee stop that crosses and dips before the candle close. The other 22 pass today | origin/hotfix/loss-stop-1127 (all 6 become XPASS = strict failure = delete the mark; checked in a worktree) |
+| 3 clock 08:07 -> 08:30 / 08:35 | tests_app/test_clock_boundary_0830.py | yes (strict xfail): first reload at 09:07, not 08:35 | origin/lanej/builder-open-0827 (checked: XPASS there) |
+| 3 list usable at 08:31 for a list loaded 08:07 | same file | yes (strict xfail) | none: REQ-053 AC-3 as written; owner question LJ-3 |
+| 3 clock across 15:30 | tests/marketdata/test_clock_boundary_1530.py | no (rule holds: ADR-330 (36)) | n/a, a guard |
+| 3 candle close / loss stop in the quiet time / 5-minute at-entry pop-up | tests/adjustment/test_clock_boundary_candle_and_quiet.py | no, guards | n/a |
+
+Note for the coordinator: the chain test is in-memory (evaluator -> readings -> gate -> stored row), not the database worker; a DB worker variant needs a database the cloud container does not have (tests_app DB tests skip here).
+
 # Lane Q2 results (screens, Wave 2), 26 Nov 2026
 
 Branch `feat/nb-screens-w2-1126`, cut from `origin/refactor/modular-doors` `db57d05`, then merged
