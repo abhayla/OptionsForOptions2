@@ -102,7 +102,7 @@ onMounted(async () => {
         <li v-for="h in alertHistory.items" :key="`h${h.id}`" class="px-4 py-3 hover:bg-surface-muted" data-testid="answered-row">
           <p class="font-medium" data-testid="answered-strategy">{{ plainName(h.strategy_name) ?? `Strategy ${h.strategy_id}` }}</p>
           <p class="mt-1 text-sm">{{ h.text }}</p>
-          <p class="text-xs text-ink-muted">{{ h.fired_line }}<template v-if="h.answer_label"> - {{ h.answer_label }} at {{ istHm(h.answered_at) }}</template><template v-else-if="h.closed_reason"> - closed: {{ h.closed_reason }}</template></p>
+          <p class="text-xs text-ink-muted">{{ h.fired_line }}<template v-if="h.closed_reason"> - {{ h.closed_reason }}</template><template v-else-if="h.answer_label"> - {{ h.answer_label }} at {{ istHm(h.answered_at) }}</template></p>
           <p v-if="h.worse_line" class="text-xs text-ink-muted" data-testid="answered-worse">{{ h.worse_line }}</p>
         </li>
       </ul>
