@@ -32,7 +32,7 @@ import logging
 import time
 from collections.abc import Awaitable, Callable, Mapping
 from decimal import Decimal
-from typing import Annotated, Literal
+from typing import Annotated, Any, Literal
 
 from fastapi import APIRouter, Depends
 from ofo.charges import ChargeRates
