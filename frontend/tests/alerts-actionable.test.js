@@ -25,7 +25,7 @@ import { toasts } from '@/composables/useToast'
 const row = (id, extra = {}) => ({
   id, strategy_id: 7, strategy_name: `"Trade ${id}"`, kind: 'plan_loss_stop', text: `Loss stop ${id} reached`,
   fired_at: '2026-11-25T05:32:20Z', fired_line: 'Fired at 11:02', no_longer_true_since: null, no_longer_true_line: null,
-  answers: [{ code: 'exit', label: 'Exit the position' }, { code: 'continue', label: 'Continue with the position' }], ...extra,
+  position_kind: 'paper', position_kind_text: null, answers: [{ code: 'exit', label: 'Exit the position' }, { code: 'continue', label: 'Continue with the position' }], ...extra,
 })
 const active = (n, extra) => ({ data: { count: n, alerts: Array.from({ length: n }, (_, i) => row(i + 1, extra)) } })
 
@@ -159,5 +159,25 @@ describe('History tab', () => {
     const t = ids(page, 'answered-row')[0].text()
     expect(t).toContain('Closed by system: the trade closed at 10:23')
     expect(t).not.toContain('the position ended')
+  })
+})
+
+describe('ADR-330 (64): an alert on a real or unreadable position never offers Exit', () => {
+  const LINE = 'Real position: exit and protect it in Kite. Stops and alerts here cover paper trades only.'
+  it('real: no Exit button, the server line; paper keeps Exit; an unreadable tag shows neither Exit nor a healthy look', async () => {
+    answers['GET /alerts/active'] = () => Promise.resolve({ data: { count: 3, alerts: [
+      row(1, { position_kind: 'real', position_kind_text: LINE, answers: [{ code: 'exit', label: 'Exit the position' }, { code: 'continue', label: 'Continue with the position' }] }),
+      row(2),
+      row(3, { position_kind: undefined, position_kind_text: undefined }),
+    ] } })
+    const page = await mountAt('/alerts/active', AlertsPage)
+    const [real, paper, unread] = ids(page, 'alert-row')
+    expect(real.find('[data-testid="alert-answer-exit"]').exists()).toBe(false)
+    expect(real.find('[data-testid="alert-answer-continue"]').exists()).toBe(true)
+    expect(real.get('[data-testid="alert-position-kind-line"]').text()).toBe(LINE)
+    expect(paper.find('[data-testid="alert-answer-exit"]').exists()).toBe(true)
+    expect(paper.find('[data-testid="alert-position-kind-line"]').exists()).toBe(false)
+    expect(unread.find('[data-testid="alert-answer-exit"]').exists()).toBe(false)
+    expect(unread.get('[data-testid="alert-position-kind-line"]').text()).toContain('Exit and Stops are not shown')
   })
 })

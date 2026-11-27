@@ -24,7 +24,7 @@ import { toasts } from '@/composables/useToast'
 const row = (id, extra = {}) => ({
   id, strategy_id: 7, strategy_name: `"Trade ${id}"`, kind: 'plan_loss_stop', text: `Loss stop ${id} reached`,
   fired_at: '2026-11-25T05:32:20Z', fired_line: 'Fired at 11:02', no_longer_true_since: null, no_longer_true_line: null,
-  escalated_at: null, worse_line: null, answers: [{ code: 'exit', label: 'Exit the position' }, { code: 'continue', label: 'Continue' }], ...extra,
+  escalated_at: null, worse_line: null, position_kind: 'paper', position_kind_text: null, answers: [{ code: 'exit', label: 'Exit the position' }, { code: 'continue', label: 'Continue' }], ...extra,
 })
 const active = (...rows) => () => Promise.resolve({ data: { count: rows.length, alerts: rows } })
 const opp = (...recs) => () => Promise.resolve({ data: { groups: [{ group: 'g', strategy_id: 7, strategy_name: 'T', records: recs }] } })

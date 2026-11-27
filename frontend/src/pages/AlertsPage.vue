@@ -4,6 +4,7 @@
      answer. The alert only informs and asks: it never exits by itself. History = the answered rows (GET /alerts/answered) plus D-22 /
      D-71 every fired stop and every expiry settlement (GET /paper/alerts/records). Notification settings stays an honest empty state. -->
 <script setup>
+import { KIND_UNREAD_LINE, isPaperKind } from '@/lib/positionKind'
 import PageHeader from '@/components/common/PageHeader.vue'
 import EmptyState from '@/components/states/EmptyState.vue'
 import { computed, nextTick, onMounted, ref } from 'vue'
@@ -42,6 +43,9 @@ const exitFor = ref(null)
 // naming the shape that remains (the row's own text); only its Confirm stores confirm_new_shape; Cancel stores nothing and the row stays asking.
 const confirming = ref(null) // the alert id whose confirmation sentence is showing
 const isSideClosed = (a) => a.kind === 'side_closed'
+// ADR-330 (64): "Exit the position" only for a PAPER position (the server already leaves it out; this re-checks, fail closed)
+const answersOf = (a) => (a.answers ?? []).filter((x) => x.code !== exitCode || isPaperKind(a))
+const kindLineOf = (a) => (isPaperKind(a) || a.position_kind === 'none' ? null : a.position_kind_text || KIND_UNREAD_LINE)
 
 async function answer(a, code) {
   if (busy.value) return
@@ -78,7 +82,7 @@ async function answer(a, code) {
     if (to) router.push(to)
     return
   }
-  if (code === exitCode) { exitFor.value = null; await nextTick(); exitFor.value = String(a.strategy_id) }
+  if (code === exitCode && isPaperKind(a)) { exitFor.value = null; await nextTick(); exitFor.value = String(a.strategy_id) }
 }
 
 onMounted(async () => {
@@ -128,8 +132,9 @@ onMounted(async () => {
         <p class="mt-1 text-sm" data-testid="alert-text">{{ a.text }}</p>
         <p class="text-xs text-ink-muted"><span data-testid="alert-fired">{{ a.fired_line }}</span><span v-if="a.no_longer_true_line" data-testid="alert-no-longer"> - {{ a.no_longer_true_line }}</span></p>
         <p v-if="a.worse_line" class="text-xs text-ink-muted" data-testid="alert-worse">{{ a.worse_line }}</p>
+        <p v-if="kindLineOf(a)" class="mt-1 text-xs text-ink-muted" data-testid="alert-position-kind-line">{{ kindLineOf(a) }}</p>
         <div class="mt-2 flex flex-wrap gap-2">
-          <button v-for="x in a.answers" :key="x.code" type="button" class="rounded border border-line px-2 py-1 text-sm" :disabled="busy" :data-testid="`alert-answer-${x.code}`" @click="answer(a, x.code)">{{ x.label }}</button>
+          <button v-for="x in answersOf(a)" :key="x.code" type="button" class="rounded border border-line px-2 py-1 text-sm" :disabled="busy" :data-testid="`alert-answer-${x.code}`" @click="answer(a, x.code)">{{ x.label }}</button>
         </div>
         <div v-if="confirming === a.id" class="mt-2 rounded border border-line p-2" data-testid="side-closed-confirm">
           <p class="text-sm">{{ a.text }}</p>

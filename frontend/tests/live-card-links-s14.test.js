@@ -26,7 +26,7 @@ const outcome = () => ({ state: 'COMPUTED', underlying: 'NIFTY', status_label: n
   spot_at: '2026-11-25T11:18:00+05:30', answered_at: '2026-11-25T11:18:01+05:30',
   summary: { max_profit_display: '+1,985', max_loss_display: '−4,515', breakevens_display: [] },
   legs: [{ instrument_id: 'NSE_FO:1001', symbol: 'N1', action: 'SELL', lots: 1, planned_entry_display: '88.50', ltp: '80.00', health: 'available' }] })
-const strat = (id, word) => ({ id, name: `S${id}`, underlying: 'NIFTY', status: 'draft', status_word: word, has_order: word === 'Running', created_at: '2026-11-25T09:00:00+05:30', updated_at: '2026-11-25T09:00:00+05:30' })
+const strat = (id, word) => ({ id, name: `S${id}`, underlying: 'NIFTY', status: 'draft', status_word: word, has_order: word === 'Running', position_kind: word === 'Running' ? 'paper' : 'none', created_at: '2026-11-25T09:00:00+05:30', updated_at: '2026-11-25T09:00:00+05:30' })
 
 async function mountCard(strategy, push = true) {
   const router = createRouter({ history: createMemoryHistory(), routes: [{ path: '/', component: { template: '<div/>' } }, { path: '/:p(.*)*', component: { template: '<div/>' } }] })

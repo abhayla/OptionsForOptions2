@@ -61,6 +61,7 @@ from ofo_app.routes import (
     level_watch,
     live,
     monitoring_pause,
+    monitoring_status,
     outcome,
     paper,
     plan_watch,
@@ -142,6 +143,7 @@ def _mount_routes(app: FastAPI, config: BrokerConfig) -> None:
     app.include_router(adjustment_preferences.router)  # REQ-168: per-user adjustment preferences
     app.include_router(alert_style.router)  # GC-ALERT1 (REQ-170 Q-AD-2): a strategy's alert-style pin
     app.include_router(monitoring_pause.router)  # GC-IC1 4a (A-38): pause adjustment checks
+    app.include_router(monitoring_status.router)  # Lane Y item 1: is each running trade being watched
     app.include_router(level_watch.router)  # GC-IC1 4c (A-37): watch an index level, alert through the gate
     app.include_router(leg_edit.router)  # W-148: one leg edit, answered by the engine
     app.include_router(leg_picker.router)  # W-147: the leg picker's strikes, futures and depth reads (REQ-080)
