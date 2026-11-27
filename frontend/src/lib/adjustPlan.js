@@ -117,9 +117,9 @@ export async function sendPlan(client, strategyId, body, edit) {
   return readPlan(data)
 }
 
-/** The save's end sentence: the server's own reason when it refused (a catalogue message came back), else, for a timeout or no answer,
- *  null (the caller shows PLAN_NOT_CONFIRMED_TEXT). A refusal is a catalogue message with a status; NEUTRAL_PARTS is not one. */
-export const isRefusal = (e) => !!e?.parts && e.parts !== NEUTRAL_PARTS && Number.isInteger(e.status)
+/** The save's end sentence: the server's own reason only for a 4xx refusal carrying a catalogue message; a 5xx, a timeout or no answer
+ *  is not a refusal (the caller shows PLAN_NOT_CONFIRMED_TEXT). NEUTRAL_PARTS is never one. */
+export const isRefusal = (e) => !!e?.parts && e.parts !== NEUTRAL_PARTS && Number.isInteger(e.status) && e.status >= 400 && e.status < 500
 
 /** ADR-330 (9), (32) "Reset to playbook": the server puts the playbook's conditions back (the typed levels stay) and answers the sheet. Throws the client error. */
 export async function resetPlan(client, strategyId) {

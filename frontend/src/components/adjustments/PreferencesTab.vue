@@ -18,6 +18,7 @@ import { istTime } from '@/lib/displayFormat'
 import ErrorMessage from '@/components/common/ErrorMessage.vue'
 import { ALERT_KEY, CHIPS, GROUPS, OPEN_BY_DEFAULT, groupOf, isYours, matches, sourceWord } from '@/lib/settingsGroups'
 import { fetchPlan, saveBody, sendPlan } from '@/lib/adjustPlan'
+import { saveStamp, savedSince } from '@/lib/planSaveClock'
 
 const prefs = ref([])
 const state = ref('loading') // loading | ready | unavailable
@@ -130,11 +131,17 @@ async function loadPlan() {
   }
   plan.state = 'loading'
   plan.form = null
+  const id = strategyIdOf(scope.value)
+  const stamp = saveStamp(id)
   try {
-    const sheet = await fetchPlan(api, strategyIdOf(scope.value))
+    const sheet = await fetchPlan(api, id)
+    // another strategy was picked while this read was out, or a save of this one was stored since it began (plan-save-1127): drop it
+    if (strategyIdOf(scope.value) !== id) return
+    if (savedSince(id, stamp)) { loadPlan(); return }
     plan.sheet = sheet
     plan.state = sheet.kind === 'invalid' ? 'unavailable' : sheet.kind === 'generic' ? 'generic' : sheet.plan ? 'plan' : 'none'
   } catch (e) {
+    if (strategyIdOf(scope.value) !== id) return
     plan.error = e
     plan.sheet = null
     plan.state = 'unavailable'

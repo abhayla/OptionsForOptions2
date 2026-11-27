@@ -21,6 +21,7 @@ import PlanEntry from '@/components/strategy/PlanEntry.vue'
 import PlanWatch from '@/components/strategy/PlanWatch.vue'
 import { PLAN_SAVE_TIMEOUT_MS } from '@/lib/adjustPlan'
 import { PLAN_NOT_CONFIRMED_TEXT } from '@/lib/sharedStateText'
+import { markSaved, saveStamp } from '@/lib/planSaveClock'
 
 const LABELS = {
   title: "When tracking starts: this strategy's plan", playbook: 'Playbook', target: 'Target', stop: 'Stop', stop_rupees: 'Stop (Rs)', max_adjustments: 'Max adjustments',
@@ -107,49 +108,102 @@ describe('the save outcome', () => {
   })
 })
 
-describe('a read that started before the save', () => {
-  it('the Plan block ends on the saved value when an earlier read answers after the save', async () => {
-    const early = deferred()
-    let n = 0
-    answers[`GET ${PATH}`] = () => (++n === 1 ? early.promise : Promise.resolve({ data: sheetAnswer('996.13') }))
-    answers[`PUT ${PATH}`] = sheetAnswer('100.00')
-    const entry = mount(PlanEntry, { attachTo: document.body, props: { strategyId: 70, check: null, checkStatus: 'loading' } })
-    mounted.push(entry)
-    await flushPromises() // the block's own read (#1) is out and unanswered
-    // the same strategy's sheet saves meanwhile
-    const w = mount(AdjustPlanSheet, { attachTo: document.body, props: { open: true, strategyId: 70, edit: true } })
-    mounted.push(w)
-    await flushPromises()
+describe('a save that ends without a 2xx or a 4xx refusal', () => {
+  it('a 500 (even with a catalogue message) shows Not confirmed, keeps the typed value and moves no clock', async () => {
+    answers[`GET ${PATH}`] = sheetAnswer('996.13')
+    const parts = { what_happened: 'The change was not completed.', impact: 'x', what_is_blocked: 'y', next_action: 'z' }
+    answers[`PUT ${PATH}`] = () => Promise.reject({ message: 'x', status: 500, parts })
+    const w = await sheet()
+    const before = saveStamp(70)
+    await t(w, 'plan-stop-rupees').setValue('100')
     await t(w, 'plan-save').trigger('click')
     await flushPromises()
-    entry.vm.$.setupState.read = w.emitted('saved')[0][0] // PlanEntry's @saved handler: read = next
+    expect(w.text()).toContain(PLAN_NOT_CONFIRMED_TEXT)
+    expect(w.text()).not.toContain('The change was not completed.')
+    expect(t(w, 'plan-stop-rupees').element.value).toBe('100')
+    expect(saveStamp(70)).toBe(before)
+    expect(calls.filter((c) => c.method === 'PUT')).toHaveLength(1)
+  })
+})
+
+describe('a read that started before the save', () => {
+  it('through the real @saved wiring: the block shows the saved plan and an earlier levels answer never refills the sheet', async () => {
+    const early = deferred()
+    answers[`GET ${PATH}`] = sheetAnswer('996.13')
+    answers[`GET ${PATH}/levels?stop_rupees=100&playbook_id=9`] = () => early.promise
+    answers[`PUT ${PATH}`] = { ...sheetAnswer('100.00'), plan: { ...planOf('100.00'), max_adjustments: 5 } }
+    const entry = mount(PlanEntry, { attachTo: document.body, props: { strategyId: 70, check: null, checkStatus: 'loading' } })
+    mounted.push(entry)
     await flushPromises()
-    early.resolve({ data: sheetAnswer('996.13') }) // the earlier read answers last, with the old value
+    expect(t(entry, 'plan-entry-guards').text()).toContain('3')
+    await t(entry, 'plan-entry-edit').trigger('click')
     await flushPromises()
-    expect(entry.vm.$.setupState.read.plan.stop).toBe('100.00')
+    await t(entry, 'plan-stop-rupees').setValue('100') // the levels read for the typed box is now out
+    expect(calls.some((c) => c.url === `${PATH}/levels?stop_rupees=100&playbook_id=9`)).toBe(true)
+    await t(entry, 'plan-save').trigger('click')
+    await flushPromises()
+    expect(t(entry, 'plan-entry-guards').text()).toContain('5') // PlanEntry's own @saved handler took the server's answer
+    early.resolve({ data: { stop: { percent: '9.99', rupees: '996.13', words: 'old words', rupee_words: 'old rupee words', warning: null }, target: null } })
+    await flushPromises()
+    expect(t(entry, 'plan-entry-guards').text()).toContain('5')
+    expect(entry.text()).not.toContain('old rupee words')
+    expect(entry.text()).not.toContain('996.13')
   })
 
-  it('a plan watch answer that began before the save is dropped and a fresh read is made', async () => {
+  it('an earlier levels answer that comes after the save does not refill the sheet boxes', async () => {
+    const early = deferred()
+    answers[`GET ${PATH}`] = sheetAnswer('996.13')
+    answers[`GET ${PATH}/levels?stop_rupees=100&playbook_id=9`] = () => early.promise
+    answers[`PUT ${PATH}`] = sheetAnswer('100.00')
+    const w = await sheet()
+    await t(w, 'plan-stop-rupees').setValue('100')
+    await t(w, 'plan-save').trigger('click')
+    await flushPromises()
+    early.resolve({ data: { stop: { percent: '9.99', rupees: '100', words: 'old words', rupee_words: null, warning: null }, target: null } })
+    await flushPromises()
+    expect(t(w, 'plan-stop').element.value).toBe('40') // not the older answer's 9.99
+    expect(w.text()).not.toContain('old words')
+  })
+
+  it('a plan watch answer that began before the save is never shown, and the fresh read is', async () => {
     vi.useFakeTimers()
     const early = deferred()
+    const fresh = deferred()
     let reads = 0
+    const pw = (label) => ({ strategy_id: 70, plan_state: 'planned', lines: [{ key: 'stop', kind: 'stop', section: 'plan', label, unit: 'pnl_rupees', state: 'watching', fires_at: '-100', now: null, distance_rs: null, distance_pct: null, reason: null }] })
     answers['GET /strategies/70/plan-watch'] = () => {
       reads += 1
-      return reads === 1 ? early.promise : Promise.resolve({ data: pw('fires 100') })
+      return reads === 1 ? early.promise : fresh.promise
     }
-    const pw = (label) => ({ strategy_id: 70, plan_state: 'planned', lines: [{ key: 'stop', kind: 'stop', section: 'plan', label, unit: 'pnl_rupees', state: 'watching', fires_at: '-100', now: null, distance_rs: null, distance_pct: null, reason: null }] })
     const box = mount(PlanWatch, { attachTo: document.body, props: { strategyId: 70 } })
     mounted.push(box)
     await flushPromises()
-    const { markSaved } = await import('@/lib/planSaveClock')
     markSaved(70) // the save was stored while read #1 is out
     await flushPromises()
     early.resolve({ data: pw('old 996.13') })
     await flushPromises()
     await vi.advanceTimersByTimeAsync(20)
     await flushPromises()
-    expect(box.text()).not.toContain('old 996.13')
+    expect(box.text()).not.toContain('old 996.13') // the intermediate render: the stale answer was never drawn
     expect(reads).toBe(2)
+    fresh.resolve({ data: pw('fires 100') })
+    await flushPromises()
     expect(box.text()).toContain('fires 100')
+    expect(box.text()).not.toContain('old 996.13')
+  })
+
+  it('a save of strategy 70 does not drop the answers of strategy 71', async () => {
+    const early = deferred()
+    let reads = 0
+    answers['GET /strategies/71/plan-watch'] = () => { reads += 1; return early.promise }
+    const box = mount(PlanWatch, { attachTo: document.body, props: { strategyId: 71 } })
+    mounted.push(box)
+    await flushPromises()
+    markSaved(70)
+    await flushPromises()
+    early.resolve({ data: { strategy_id: 71, plan_state: 'planned', lines: [{ key: 'stop', kind: 'stop', section: 'plan', label: 'own 71', unit: 'pnl_rupees', state: 'watching', fires_at: '-50', now: null, distance_rs: null, distance_pct: null, reason: null }] } })
+    await flushPromises()
+    expect(box.text()).toContain('own 71')
+    expect(reads).toBe(1)
   })
 })
