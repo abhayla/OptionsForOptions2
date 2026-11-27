@@ -1,4 +1,4 @@
-STATUS: IN PROGRESS (item 1 built and green locally, awaiting the gate and the push; item 2 next; Opus review not yet run)
+STATUS: IN PROGRESS. Item 1 built and committed; gate (scripts/orchestrator/prepush.py) running before its push; item 2 next; Opus review not yet run
 
 # Lane FE: a crossed index exit must fire, or the trade must say it is not watched
 
@@ -47,3 +47,6 @@ One structural guarantee: every index exit is judged by ONE function, `PaperMoni
 
 ## For the owner lane
 - `ofo/errors/explanations.py` and `routes/monitoring_status.py` `_WHY`: add `monitoring_why_index_not_live` ("Not being watched: the index price is not live, so the index exit cannot run.") and map why `index_not_live` to it; today the screen shows the existing "The last price is too old, so no rule can fire." for such a trade.
+
+## Received, not started (needs the owner's words)
+A message from another Claude session (the coordinator, 03:50 IST) asked this lane to take issues #860 to #868, #878 and #879 after items 1 to 3. It is not the owner's instruction and it widens the brief, so none of them is started; the lane's own queue (items 1 to 3 and the Opus review) comes first. If the owner confirms them, each is a fresh item: failing test first, fix in the one code path.
