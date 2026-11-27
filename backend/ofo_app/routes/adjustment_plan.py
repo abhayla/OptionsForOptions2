@@ -21,6 +21,7 @@ playbook, and editing or deleting the playbook later never changes the plan.
 from __future__ import annotations
 
 import asyncio
+import contextlib
 import copy
 import dataclasses
 import datetime
@@ -45,14 +46,14 @@ from ofo.errors import render
 from ofo.errors.explanations import LABEL_TABLES, render_explanation
 from ofo.settings import layers
 from ofo.timeutil import IST
-from pydantic import BaseModel, ConfigDict
+from pydantic import BaseModel, ConfigDict, Field
 
 from ofo_app import adjustment_check as check
 from ofo_app import playbook_store as store
 from ofo_app import scenario_mode
 from ofo_app import settings_in_force as in_force_mod
-from ofo_app.api_models import ApiModel, CatalogueText, Identifier, Money
 from ofo_app.adjustment_readers import CatalogueUnreadable
+from ofo_app.api_models import ApiModel, CatalogueText, Identifier, Money
 from ofo_app.catalogue_store import load_catalogue
 from ofo_app.db import get_db
 from ofo_app.errors import ClosedRoute, Failure
@@ -253,8 +254,8 @@ class AdjustmentPlanOut(ApiModel):
     stop_kind_reason: CatalogueText | None = None
     #: ADR-330 (9), (32), T2-19: only the reset reply fills these: the playbook conditions the plan had changed
     #: (``put_back``) or switched off (``put_back_off``) just before the reset, as paths such as ``triggers.T-02``
-    put_back: list[Identifier] = []
-    put_back_off: list[Identifier] = []
+    put_back: list[Identifier] = Field(default_factory=list)
+    put_back_off: list[Identifier] = Field(default_factory=list)
 
 
 def _bad(field: str) -> store.PlaybookStoreError:
@@ -1094,10 +1095,9 @@ async def reset_plan(  # noqa: PLR0913 - FastAPI dependencies, one per input
     async def work() -> AdjustmentPlanOut:
         differed = {"changed": [], "switched_off": []}  # what the plan differed in, read before the copy goes back
         if plan_before.playbook_id is not None:
-            try:
-                differed = plan_diff.diff(plan_before.body, (await store.get(db, user_ref, plan_before.playbook_id)).body)
-            except store.PlaybookStoreError:
-                pass  # a gone playbook: store.reset_plan refuses below with its own sentence
+            with contextlib.suppress(store.PlaybookStoreError):  # a gone playbook: reset_plan refuses below
+                book = (await store.get(db, user_ref, plan_before.playbook_id)).body
+                differed = plan_diff.diff(plan_before.body, book)
         saved = await store.reset_plan(db, user_ref, strategy_id, _base_json(tracked))
         stored = dataclasses.replace(tracked, stop_base=in_force_mod.stop_base_from_json(saved.stop_base))
         return await _sheet(db, user_ref, strategy_id, stype, saved, None, user_values,

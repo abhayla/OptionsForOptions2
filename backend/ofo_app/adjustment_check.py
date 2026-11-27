@@ -658,7 +658,7 @@ def _entry_state(clock: datetime.datetime, spot: Decimal, atm_iv: Decimal | None
                    for x in position.legs if x.side == Action.SELL.value)
     held = tuple(pe.HeldLeg(greeks[id(x)], x.side, x.lots) for x in position.legs)  # F-71: every leg, S-02 reads them
     return pe.StrategyState(stops=None, expiry_kind=state.expiry_kind,
-                            days_left=None if state.days_left is None else (expiry - clock.date()).days,  # R3: no kind, no days
+                            days_left=None if state.days_left is None else (expiry - clock.date()).days,
                             hhmm=clock.strftime("%H:%M"), spot=spot, shorts=shorts, held=held,
                             atm_iv=atm_iv, entry_atm_iv=atm_iv, prices_fresh=True,
                             adjustments_used=state.adjustments_used, s02_delta_per_lot=state.s02_delta_per_lot)

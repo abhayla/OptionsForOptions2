@@ -257,8 +257,8 @@ async def test_reset_to_playbook_goes_back_marks_what_differed_and_a_gone_playbo
     status, out = await _call("POST", _plan_path(sid) + "/reset")
     assert status == OK, out
     assert (out["plan"]["changed"], out["plan"]["switched_off"], out["plan"]["playbook_id"]) == ([], [], system)
-    assert out["put_back"] == ["triggers.T-06"] and out["put_back_off"] == []  # T2-19: the reply names what was put back
-    assert out["labels"]["reset_put_back"] and out["labels"]["reset_put_back_off"] and out["labels"]["reset_put_back_none"]
+    assert out["put_back"] == ["triggers.T-06"] and out["put_back_off"] == []  # T2-19: names what was put back
+    assert all(out["labels"][k] for k in ("reset_put_back", "reset_put_back_off", "reset_put_back_none"))
     status, again = await _call("POST", _plan_path(sid) + "/reset")  # nothing differs now: the lists are empty (stated)
     assert status == OK and again["put_back"] == [] and again["put_back_off"] == []
     status, plain = await _call("GET", _plan_path(sid))  # only a reset names what it put back

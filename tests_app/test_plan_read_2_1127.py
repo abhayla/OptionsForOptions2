@@ -132,7 +132,7 @@ def test_a_catalogue_read_that_fails_leaves_the_kind_empty(seams, monkeypatch):
     assert base._read(seams, base.ENTRY).position.expiry_kind == ""
 
 
-# ---- review findings (Opus, 27 Nov): the nearest leg decides, as the check counts its days ----------------------------
+# ---- review findings (Opus, 27 Nov): the nearest leg decides, as the check counts its days ----
 def test_the_kind_is_read_for_the_nearest_leg_not_the_first_one_ordered(monkeypatch):
     import asyncio  # noqa: PLC0415
 
@@ -156,7 +156,7 @@ def test_the_entry_state_has_no_day_count_when_the_kind_is_not_known(seams, monk
 
 
 # ---- item 4 (OBS-26): a save whose answer never reached the browser (timed out) was stored, and the next read must
-# return the stored plan COMPLETE (rules, settings, stops, exits) on the right row --------------------------------------
+# return the stored plan COMPLETE (rules, settings, stops, exits) on the right row ----
 async def test_a_saved_plan_whose_answer_was_lost_reads_back_complete_on_the_monthly_row(app_db_url, monkeypatch):
     import test_plan_read_1127 as read_test  # noqa: PLC0415
     from test_adjustment_plan import OK, _call, _plan_path  # noqa: PLC0415

@@ -11,8 +11,8 @@ import datetime
 import json
 from decimal import Decimal as D
 
-from ofo_app import playbook_store
 from ofo_app import adjustment_readers as readers
+from ofo_app import playbook_store
 from ofo_app.routes import adjustment_plan as route
 from test_adjustment_plan import (  # noqa: F401 - fixtures and helpers of the sibling file
     OK,
