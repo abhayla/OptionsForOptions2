@@ -434,7 +434,7 @@ async def _refuse_lots_over_limit(req: _Request, wanted: list[ep.LegToPrice], he
         orders.setdefault(want.instrument_id, []).append(want.quantity if want.action == Action.BUY else -want.quantity)
     legs = []
     for instrument_id, signed in orders.items():
-        lot_size = catalogue.get(instrument_id).ref(ZERODHA).lot_size
+        lot_size = catalogue.get(instrument_id).contract.lot_size
         if not isinstance(lot_size, int) or lot_size <= 0:  # fail closed: no lot size, no lots figure
             raise _refuse("strategy_contract_not_in_catalogue")
         name = display_contract(ep.contract_key(catalogue, instrument_id, underlying))

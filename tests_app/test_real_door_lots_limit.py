@@ -23,9 +23,9 @@ LOT = 75
 
 
 def _catalogue():
-    ref = SimpleNamespace(broker_symbol="NIFTY26DEC24200CE", lot_size=LOT)
-    contract = SimpleNamespace(instrument_type="CE", strike=Decimal("24200"), expiry=datetime.date(2026, 12, 1))
-    return SimpleNamespace(get=lambda _i: SimpleNamespace(ref=lambda _b: ref, contract=contract))
+    contract = SimpleNamespace(instrument_type="CE", strike=Decimal("24200"), expiry=datetime.date(2026, 12, 1),
+                               lot_size=LOT)
+    return SimpleNamespace(get=lambda _i: SimpleNamespace(contract=contract))
 
 
 async def _check(monkeypatch, action, lots, held_lots=0, top=100):
@@ -92,8 +92,7 @@ async def test_a_lot_size_of_zero_is_a_refusal_not_a_crash(monkeypatch):
     async def reader(_db):
         return {calc.MAX_LOTS: Decimal(100)}
     monkeypatch.setattr(execute, "get_settings_reader", lambda: reader)
-    ref = SimpleNamespace(broker_symbol="X", lot_size=0)
-    cat = SimpleNamespace(get=lambda _i: SimpleNamespace(ref=lambda _b: ref))
+    cat = SimpleNamespace(get=lambda _i: SimpleNamespace(contract=SimpleNamespace(lot_size=0)))
     with pytest.raises(StrategyRefused) as e:
         await execute._refuse_lots_over_limit(SimpleNamespace(db=None), [LegToPrice(IID, Action.BUY, 75, None)], {},
                                               cat, "NIFTY")
