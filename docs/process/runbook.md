@@ -155,6 +155,12 @@ Before any live Kite action (API orders need a static IP, ADR-100) plan entry AN
 validate a probe on a known-good state first. Kite API facts: the user-level `zerodha-expert` skill. Engine-math
 reviews: the project skill `options-math-review`.
 
+## Improving how we work
+Owner's rule (27 Nov 2026): find the fix for every problem and recommend it without being asked; the owner decides.
+- Log friction (a repeat, a long wait, a manual step done 3 times, a workaround): `docs/process/friction-log.md`.
+- Turn the log into ranked recommendations at session end or at a second occurrence: the `improve` skill, `.claude/skills/improve/SKILL.md`.
+- The rule that makes this a duty: `.claude/rules/project/improve-proactively.md` (extends kit `learning.md`).
+
 ## Reference
 - `docs/reference/chatgpt/`: the two chat transcripts (primary) and handoff files; reference only, never edited;
   `spec/` wins (ADR-031). Map: `spec/traceability/source-map.md`.
