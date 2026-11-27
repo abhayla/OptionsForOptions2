@@ -1,16 +1,16 @@
-STATUS 22:30 | version 1 (full; round 1 runnable) | covers heads: U f61f7935, U-774 6bd22cb6, R 8b45807a, R2 1d0f56e7, J 3e0b9780, J2 18effe14, N b6777ce7, K 8880aa24, L d94ca716, V fb66dfb1, O b07425fc, H 90c4fed5, Q2 bc0d00aa, W bcbff804, M 5a718413; not on origin: Z, Q3, U2 | next version when Lane Z or the coordinator sends the round 2 branch list
+STATUS 05:30 | version 2 (round 1 = commit 5fc6b102, integration/weekend-1127) | covers: the commit above (all 1127 lanes are ancestors; Lane U2, R3, Y, K2, Q3, builder-open in); round 2 lanes FA, FB, FD, FE not on origin, FC fix/r2-small-screens-1128 95218b76, TB test/r2-frontend-1128 bbd9c68e | next version when the coordinator sends the round 2 branch list
 
 # Test plan for the closed-market weekend, 28 and 29 Nov 2026 (rounds 1 to 4)
 
-Version 1 (full), Fri 27 Nov 2026 22:30 IST. Written by Lane X2 (documents only; no product code read or changed).
-For the owner's PC session. The market is closed until Mon 30 Nov 09:15. Three rounds, each started by the owner with a **fresh PC session**; the complete prompt for each is in section 10. The app on the PC has 9 running paper trades, no Kite
+Version 2, Sat 28 Nov 2026, early morning IST. Written by Lane X2 (documents only; no product code read or changed).
+For the owner's PC session. The market is closed until Mon 30 Nov 09:15. Three rounds, each started by the owner with a **fresh PC session**; the message for each is in section 13. The app on the PC has 9 running paper trades, no Kite
 login and no live feed. **Paper only: never place or send a broker order.** Monday's live plan is `docs/process/test-plan-2026-11-30.md`.
 
-Version log: v1b Fri 19:40 (early draft); v1 Fri 22:30 (full: all lane result files read, decisions (46) to (63), the PC's night notes). Next: round 2 and round 3 updates when the coordinator sends each round's branch list.
+Version log: v1b Fri 19:40; v1 Fri 22:30 (all lane result files read); **v2 Sat (this file): round 1 is the commit named in section 1, only checks that commit can pass, every check names its board items, the three open findings F1 to F3 are known and not a round 1 failure, two PC data pulls (section 8), round 2 checks (sections 7 and 9).** Next: the round 2 update when the coordinator sends the round 2 branch list.
 
 ## 0. Rules of the run (read first)
 
-1. **Write down the build head and the build tag (weekend-r1, weekend-r2, weekend-r3) for every result** (the short commit id the app was started from; section 2 says how to read it). Every PASS names its tag.
+1. **Write down the build commit for every result** (round 1: `5fc6b102`; there is no tag; section 2 step 8 says how to confirm it). Every PASS names the commit. **Every check names the board items it proves** (its "Board items" line).
 2. **Four states in every result** (column "State"): `Fixed, not tested` / `Passed in cloud` / `Passed on PC (market closed)` / `Approved (PC, live)`. This plan can only move a check to `Passed on PC (market closed)`; `Approved (PC, live)` is Monday's. **PASS only if every step was run and the expected text was seen.** Otherwise PARTIAL, and name the steps not run. A seen
    difference from the expected text is FAIL: write the exact text seen.
 3. **Never write NOT CHECKED for lack of time.** If a check could not be run, write what blocked it (for example "the branch was not in
@@ -29,81 +29,55 @@ Version log: v1b Fri 19:40 (early draft); v1 Fri 22:30 (full: all lane result fi
 10. **Each round re-runs the previous round's FAILs first**, then the checks that first carry a new fix. Before each block of checks: look at the server link (a dropped link is **"infra, re-run", never FAIL**) and count the database role's connections (limit 10, shared): `SELECT count(*) FROM pg_stat_activity WHERE usename = 'ofo_app';` [X2: role name taken from the allowlist check in section 2; confirm]. The two-user speed run (T2-16) only when fewer than 6 are in use.
 11. Types: **Functionality** = the app does the right thing; **Screen** = the right words, numbers, layout; **User experience** = easy
     to use and understand (usability notes go here).
-12. Record each result as one row in `docs/process/screen-checks-2026-11-28.md` (create it) with columns:
-    `| Check | Items proved | Build head | What I did on the screen | What the screen showed (exact text) | Screenshot file(s) | PASS / FAIL / PARTIAL (unrun steps) / BLOCKED (what) | State (one of the four) | Build tag | Time IST |`. Screenshots stay on the PC (never copy images into the repo).
+12. **Known F1, F2, F3** (section 7) seen in round 1 are written as observations tagged "known F1/F2/F3", not as a FAIL. They are not on the round 1 pass line.
+13. Record each result as one row in `docs/process/screen-checks-2026-11-28.md` (create it) with columns:
+    `| Check | Items proved | Build head | What I did on the screen | What the screen showed (exact text) | Screenshot file(s) | PASS / FAIL / PARTIAL (unrun steps) / BLOCKED (what) | State (one of the four) | Build commit | Time IST |`. Screenshots stay on the PC (never copy images into the repo).
 
-## 1. Rounds and what each carries
+## 1. Round 1 and what the build carries
 
-| Round | When (IST) | Build tag | Carries |
+**Round 1 build: commit `5fc6b1023234b9efb948db731d903ad957f341c1`** (short `5fc6b102`) on branch `integration/weekend-1127`. **There is no tag** (a tag push is refused for build lanes): every result names the commit. The branch tip has moved on (it now holds only Lane Z's documents); the PC takes the commit above, not the tip.
+
+| Round | When (IST) | Build | What it is for |
 |---|---|---|---|
-| 1 | Sat 28 Nov 08:00 to 12:00 | weekend-r1 | the heads in the table below, as joined by Lane Z (Lane Z's build and pull order are not on origin at the time of this version) |
-| 2 | Sat 28 Nov 21:00 to Sun 01:00 | weekend-r2 | adds what is pushed since (Lane U2, Q3 when they land); re-runs round 1's FAILs first |
-| 3 (final build) | Sun 29 Nov 12:00 to 16:00 | weekend-r3 | adds what is pushed since; this is the build Monday runs (the PC applies the frozen build Sunday evening) |
+| 1 | Sat 28 Nov 08:00 to 12:00, started by the owner | commit 5fc6b102 | the checks of section 4 and section 6 (market closed, paper only), the two data pulls (section 8) |
+| 2 | Sat 28 Nov 21:00 to Sun 01:00 | the round 2 build (not on origin yet) | round 1's FAILs again, the three known findings F1 to F3 (section 7), the fix lanes FA to FE (section 9) |
+| 3 (final build) | Sun 29 Nov 12:00 to 16:00 | the final build | round 2's FAILs again; this is the build Monday runs |
 
-**Heads this version covers** (all fetched Fri 27 Nov evening; the build that the PC gets is Lane Z's join of these, so write the head you really run and run the ancestor check of section 2 step 3):
+**What is in the build** (Lane Z's note; all are ancestors of the commit, checked with `git merge-base --is-ancestor`): Lane M3's join of the 27 Nov lanes (U index-quote `f61f7935`, J loss-stop `3e0b9780`, R plan-save `8b45807a`, R2 plan-read `1d0f56e7`, O alert-screens `b07425fc`, V plan-door, K order-limits `8880aa24`, L pnl-totals, N last-close with **migration 0059** (`1ff969f2`), W live-test-small `bcbff804`, M maxloss-line `5a718413`, H speed-fixes `90c4fed5`, stop-follows-leg `6bd22cb6`), plus Lane U2 exit-all (decisions (59), (60); code `a7ccf4a9`), Lane R3 plan-read-2 (`3260e094`), builder-open (`0faf4e71`, decision (61)), Lane Y page-handovers (`546d653f`: "Monitoring paused" badge, one Plan watch request, decision (64) real-position row), Lane K2 order-door-2 (code `5ee104a5`), worker-join final (`c1eb7a67`), Lane J3 worker-2 (`b1d8d3ee`) and Lane Q3's worker-chain tests (`0a0bdea2`). **Left out:** `hotfix/worker-2-1127` is in; `feat/0058-plan-acceptance-1127` (its migration is renumbered 0060 and is a round 2 item) is NOT in; Lane Y item 3 ("not-live notice once") is not built.
 
-| Lane | Branch | Head | Result file / what it brings to the weekend |
-|---|---|---|---|
-| U | `hotfix/index-quote-1127` | f61f7935 | RESULTS-lane-u-hotfix-1127.md: market-closed Exit steps, (49) |
-| U (#774) | `fix/stop-follows-leg-1127` | 6bd22cb6 | no RESULTS file, no PC steps: BASELINE only; review line for (48) |
-| R | `hotfix/plan-save-1127` | 8b45807a | plan save, Plan watch box |
-| R2 | `hotfix/plan-read-1127` | 1d0f56e7 | weekly/monthly stop read back in three places |
-| J | `hotfix/loss-stop-1127` | 3e0b9780 | plan-stop alerts; scenario-mode steps for the closed market |
-| J2 | `hotfix/worker-join-1127` | 18effe14 | join; no PC steps |
-| N | `fix/last-close-1127` | b6777ce7 | last-close table, **migration 0059**, nine-screen walk |
-| K | `fix/order-limits-1127` | 8880aa24 | lots limit, freeze, entry price 0 |
-| L | `fix/pnl-totals-1127` | d94ca716 | one P&L number, counts |
-| V | `feat/plan-door-1127` | fb66dfb1 | decisions (54), (55), (57) |
-| O | `fix/alert-screens-1127` | b07425fc | alert rows, History headings, Stops wording |
-| H | `perf/speed-fixes-1127` | 90c4fed5 (its RESULTS says 60cb1a47) | batch Plan watch request |
-| Q2 | `test/live-day-gaps-1127` | bc0d00aa | tests and the route-delay tool only |
-| W | `fix/live-test-small-1127` | bcbff804 | small items 1 to 4, 7 to 11, 13 |
-| M | `hotfix/maxloss-line-1127` | 5a718413 | max-loss line wording |
-| (kept out) | `feat/0058-plan-acceptance-1127` | not in the weekend build | migration 0058 is NOT applied |
+**Known and open in this build, NOT a round 1 failure** (Lane Z's independent Opus review of the stop and exit paths = REVISE; the coordinator's pull comment lists them as "known and open, to be fixed in round 2"): **F1** the builder can unlock Exit too early after an exit with an unknown outcome; **F2** an index exit may not fire when the index price feed is silent while the trade reads as watched; **F3** a cancelled stop of an old leg is not always told to the user when a leg is moved. Each has a round 2 check written now (section 7). If a round 1 check shows one of these, write it as "known F1/F2/F3", not as a new FAIL.
 
-**Not on origin at this version:** Lane Z (the build and its pull order), Lane Q3, Lane U2 (decision (60)). Re-check at each version.
-
-There is no night run and no Sunday early watch. **What cannot be tested with the market closed** (no PC checks are written for these; they are in `test-plan-2026-11-30.md`):
-any exit that completes (the server refuses exits when the market is closed: the order number in the exit sentence, "Placing exit...", a Confirm that did nothing, an exit from an alert); **Add to Paper size checks** (Lane K: "Add to Paper is refused by the existing market-closed gate before any size check, so the size sentences cannot be seen closed"); AF-01 prices frozen at 15:30 (seen only across 15:30); the instrument list across 08:35 (the refresh runs on weekdays only, window from 08:35); decisions (46), (47), (51), (61). **Plan-stop alerts** are Monday's (the worker computes nothing while the calendar says closed); the weekend proof is Lane Q2's cloud test, plus the scenario-mode try W-09 (not proven end to end by Lane J).
+**What cannot be tested with the market closed** (not on this plan; they are Monday and mostly optional, section "Monday" of `test-plan-2026-11-30.md`): any exit that completes (the server refuses exits when the market is closed); Add to Paper size checks (Lane K: the market-closed gate refuses first); AF-01 prices frozen at 15:30; the instrument list across 08:35 and decision (61)'s line; plan-stop alerts (the worker computes nothing while the calendar says closed; the weekend proof is Lane Q3's worker-chain test, 12 of 12 cases pass in the cloud, plus the scenario-mode try W-09).
 
 ## 2. Set-up for each round (prepared now; nothing is prepared at execution time)
 
-Do these in order at the start of every round, then write one line "round N set-up done at HH:MM, head <id>, tag weekend-rN". It is not a test: no PASS or FAIL.
-Sources: Lane N's and Lane J's RESULTS; the lines marked `[X2]` are this plan's own logistics. Anything marked **[OWNER APPROVAL]** waits for the owner's typed "yes".
+Do these in order, then write one line "round N set-up done at HH:MM, commit <short id>". It is not a test: no PASS or FAIL. Sources: Lane Z's pull order (RESULTS-lane-z.md, "THE PULL ORDER FOR THE PC"), Lane N's and Lane J's RESULTS; lines marked `[X2]` are this plan's own logistics. **[OWNER APPROVAL]** = waits for the owner's typed "yes" (the owner starts each round and gives each approval himself).
 
-1. **Back up the database first.** `ofo_dev` is on the VPS (127.0.0.1:5432 on the PC is an SSH tunnel; the PC has no `pg_dump`).
-   On the VPS over SSH: `pg_dump -Fc -d ofo_dev -f <backup folder>/ofo_dev-<date>-<hhmm>-round<N>.dump`; copy it to `%USERPROFILE%\ofo-backups`.
-   Verify: the file size is the same on both machines and `pg_restore --list <file>` shows TABLE DATA entries (number above 0; the 26 Nov
-   dump was about 1.8 MB with 47 entries). If the check fails, do not go on. [X2: the VPS disk is about 90 percent full; delete the dump of the round before the last one.]
-2. **Stop** the API, the worker supervisor and the frontend.
-3. **Pull by tag.** `git fetch origin --tags`, then check out the round's tag in the checkout the app serves from. Write `git rev-parse --short HEAD`.
-   Then, for each lane in section 1, `git merge-base --is-ancestor <lane head> HEAD && echo yes`. No output means that lane is not in the build:
-   its checks are BASELINE for this round (rule 9). [The link keep-alive the owner approved is applied and tested on the PC on Fri night; keep the link and connection-count step before every block anyway, and note any drop that still happens.]
-4. **Migration 0059_last_close (Lane N), round 1.** One head only: `0059_last_close` (down_revision `0057_history_delete_entries`); 0058 is kept out of the weekend build.
-   **Old-code-safe proof (Lane N's RESULTS, word for word):** "0059 adds one table (`last_close`) and grants on that table only (SELECT; INSERT; UPDATE of price, price_at, source; no DELETE or TRUNCATE). It changes no existing table, column, constraint, trigger, function or grant, and does not rebuild the grant allow-list function. No code before this push reads or writes `last_close`. So old code runs unchanged with the table present; new code on an un-migrated database logs one error per write or read and serves no stored close (fails closed: "not available"). Migrate-first and migrate-last are both safe. The PC applies it only with a verified backup."
-   **[OWNER APPROVAL]**, after step 1's backup is verified: `alembic upgrade head` as usual (command in step 4b). Expected: `alembic current` ends `0059_last_close (head)`. Never run `alembic downgrade`. No other migration is applied this weekend: none of the other lanes adds one (each RESULTS file says so, or states "no migration"); a migration without a written old-code-safe proof is not applied and its checks are BLOCKED (name it).
-   4b. Command (Lane J's, word for word; from the checkout root; never `db_run.py` for this, it targets `ofo_test`): `python -c "import os,subprocess,sys,urllib.parse; sys.path.insert(0,'scripts/orchestrator'); import db_run as d; g=d.read_env(d.GLOBAL_ENV); u='postgresql+asyncpg://'+g['WINDOWS_VPS_PG_ADMIN_USER']+':'+urllib.parse.quote(g['WINDOWS_VPS_PG_ADMIN_PASSWORD'],safe='')+'@127.0.0.1:5432/ofo_dev'; e=dict(os.environ,ALEMBIC_DATABASE_URL=u); [subprocess.run([sys.executable,'-m','alembic','-c','backend/ofo_app/alembic.ini']+a,env=e,check=True) for a in (['current'],['upgrade','head'],['current'])]"`
-   Read-only checks after it: `SELECT public.ofo_assert_app_role_allowlist('ofo_app', 'post');` returns without an error; `SELECT count(*) FROM strategy_history WHERE NOT public.ofo_strategy_change_items_valid(change_summary);` returns 0.
-   Rounds 2 and 3: `alembic current` must still end `0059_last_close (head)`; nothing to apply.
-5. **Round 1 only: the seed (Lane N step 0), before ANY restart** (tonight's snapshot, 17 rows expected: 15 open contracts + NIFTY 50 + SENSEX):
-   5a. The DB tests: `python scripts/orchestrator/db_run.py . python -m pytest -c pytest-app.ini tests_app/test_migration_0059_last_close.py tests_app/test_basket_facts_unheld_index.py tests_app/test_close_freeze_routes.py tests_app/test_closed_label_route.py` (one command, one file set; expected: all pass).
-   5b. Dry run: `set PYTHONPATH=backend` then `python -m ofo_app.last_close_store seed <snapshot folder>\close-2026-11-27.json --check` (the folder where the PC saved Friday night's snapshot). Read: the "database: host:port/dbname" line is the production database; "keys in the first row" and "mapping chosen" (price from the tick price, price_at from the tick's own time, never an export time); the "first row" shows a 27 Nov 15:30:00 +05:30 time. **Expected: "would write 17", "skipped 0".** If a field is reported twice, re-run with `--map price_at=<key>` (or `price=`). If a row is skipped, read its reason and write it.
-   5c. **[OWNER APPROVAL]** Real run: the same command without `--check`. Expected: "written 17", "unchanged 0", "skipped 0", then the restart line. A second run prints "written 0", "unchanged 17".
-6. **Frontend** (the lanes in section 1 changed `frontend/`): `npm ci` then `npm run build` in the checkout the app serves from (never in a worktree).
-7. **Restart** the API, the worker supervisor (`python scripts/orchestrator/supervise_worker.py`) and the frontend. Ctrl+F5 once in the browser. Do **not** log in to Kite (weekend). The PC needs a **feed process it can start and stop** for W-25: RESULTS gives no start command ("stop the FEED process", "Start the app as usual (FEED_MODE=bus as today)"): write the command you use in the log. With the feed process stopped, the API reads NOT_CONNECTED within about 3 to 5.5 s (Lane U).
-8. **Confirm the build head on screen or by the API.** The API health page answers `{"status":"healthy","database":"connected"}`. [X2: no screen field showing the commit id was found in the RESULTS files read; the head is `git rev-parse --short HEAD` of the checkout the app started from, and the restart time goes in the log. Lane N's health reply names "which list is in use" (decision (61)): write it.]
-9. **Sanity (2 minutes):** Positions > Paper lists the 9 running paper trades; Alerts > Active opens and its row count equals the bell number; no red error box on Home. If something is red, that is observation O-01 of the round.
+0. **Look at the database link first** (it reconnects by itself in about 10 s; look anyway). Count the database role's connections: `SELECT count(*) FROM pg_stat_activity WHERE usename = 'ofo_app';` (limit 10, shared). [X2: role name from the allowlist check in step 4; confirm.]
+1. **Back up the database first** (production `ofo_dev` on the VPS over SSH): `pg_dump -Fc -d ofo_dev -f <backup folder>/ofo_dev-<date>-<hhmm>-round<N>.dump`; copy to `%USERPROFILE%\\ofo-backups`; verify the size is equal on both machines and `pg_restore --list <file>` shows TABLE DATA entries above 0 (the 26 Nov dump was about 1.8 MB, 47 entries). If it fails, stop. [X2: the VPS disk is about 90 percent full: delete the dump of the round before last.]
+2. **Pull the commit** (Lane Z, step 2 read with the coordinator's "no tag"): the PC's local test branch `test/screen-2026-11-27` (head `bdb0d126`, not on origin, kept in a git bundle) **stays exactly as it is, never reset**. Then: `git fetch origin integration/weekend-1127`, `git checkout -b test/weekend-r1 5fc6b1023234b9efb948db731d903ad957f341c1` (a new local branch), and confirm `git rev-parse HEAD` equals that commit. For rounds 2 and 3 the coordinator sends the round's commit; use the same command with a new branch name (`test/weekend-r2`, `test/weekend-r3`). Stop the API, the worker supervisor and the frontend before the checkout.
+3. **Migration 0059_last_close** (round 1 only; rounds 2 and 3: `alembic current` must still end `0059_last_close (head)`), **[OWNER APPROVAL]**: one new table `last_close` and grants on that table only; no change to any existing table; old code runs unchanged with the table present; new code on an un-migrated database serves "not available"; migrate-first and migrate-last are both safe. **Old-code-safe proof (Lane N's RESULTS, word for word):** "0059 adds one table (`last_close`) and grants on that table only (SELECT; INSERT; UPDATE of price, price_at, source; no DELETE or TRUNCATE). It changes no existing table, column, constraint, trigger, function or grant, and does not rebuild the grant allow-list function. No code before this push reads or writes `last_close`. So old code runs unchanged with the table present; new code on an un-migrated database logs one error per write or read and serves no stored close (fails closed: "not available"). Migrate-first and migrate-last are both safe. The PC applies it only with a verified backup." Lane Z proved 0057 to 0059 to 0057 to 0059 on a scratch database. Command (Lane Z): `python scripts/orchestrator/db_run.py . python -m alembic -c backend/ofo_app/alembic.ini upgrade head`; `alembic heads` prints one head, `0059_last_close`. [X2: Lane J's older text says never to use `db_run.py` for the production migration because it targets `ofo_test`; the two instructions conflict. Use Lane J's own command below, which names `ofo_dev`, and read the head from it.] Lane J's command, word for word, from the checkout root: `python -c "import os,subprocess,sys,urllib.parse; sys.path.insert(0,'scripts/orchestrator'); import db_run as d; g=d.read_env(d.GLOBAL_ENV); u='postgresql+asyncpg://'+g['WINDOWS_VPS_PG_ADMIN_USER']+':'+urllib.parse.quote(g['WINDOWS_VPS_PG_ADMIN_PASSWORD'],safe='')+'@127.0.0.1:5432/ofo_dev'; e=dict(os.environ,ALEMBIC_DATABASE_URL=u); [subprocess.run([sys.executable,'-m','alembic','-c','backend/ofo_app/alembic.ini']+a,env=e,check=True) for a in (['current'],['upgrade','head'],['current'])]"` Expected: the last line ends `0059_last_close (head)`. Never run `alembic downgrade`. No other migration is applied this weekend (none of the other lanes adds one); a migration without a written old-code-safe proof is not applied and its checks are BLOCKED. Migration 0058/0060 (plan acceptance) is not in the build.
+4. **Read-only checks after the migration:** `SELECT public.ofo_assert_app_role_allowlist('ofo_app', 'post');` returns without an error; `SELECT count(*) FROM strategy_history WHERE NOT public.ofo_strategy_change_items_valid(change_summary);` returns 0.
+5. **Round 1 only: Lane N's one-time seed, BEFORE any restart** (17 rows expected: 15 open contracts + NIFTY 50 + SENSEX):
+   5a. DB tests: `python scripts/orchestrator/db_run.py . python -m pytest -c pytest-app.ini tests_app/test_migration_0059_last_close.py tests_app/test_basket_facts_unheld_index.py tests_app/test_close_freeze_routes.py tests_app/test_closed_label_route.py` (all pass).
+   5b. Dry run: `set PYTHONPATH=backend` then `python -m ofo_app.last_close_store seed <snapshot folder>\\close-2026-11-27.json --check` (the folder where the PC saved Friday night's snapshot). Expected: "would write 17", "skipped 0"; the "database:" line must be the production database; "keys in the first row" and "mapping chosen" show price from the tick price and price_at from the tick's own time; the first row shows a 27 Nov 15:30:00 +05:30 time. If a field is reported twice, re-run with `--map price_at=<key>` (or `price=`).
+   5c. **[OWNER APPROVAL]** Real run (the same command without `--check`): "written 17", "unchanged 0", "skipped 0"; a second run prints "written 0", "unchanged 17".
+6. **Frontend:** `npm ci` then `npm run build` in the checkout the app serves from (never in a worktree).
+7. **Restart order: API, then worker, then feed.** Ctrl+F5 once. No Kite login (weekend). The feed process is started and stopped by the PC for W-25: RESULTS gives no start command ("stop the FEED process"; "FEED_MODE=bus as today"): write the command you use in the log. With the feed stopped the API reads NOT_CONNECTED within about 3 to 5.5 s.
+8. **Confirm the build:** `git rev-parse HEAD` equals `5fc6b1023234b9efb948db731d903ad957f341c1`; the health page answers `{"status":"healthy","database":"connected"}`; the health reply names which contract list is in use (decision (61)): write it.
+9. **Sanity (2 minutes):** Positions > Paper lists the 9 running paper trades; Alerts > Active opens and its row count equals the bell number; no red error box on Home. If something is red, that is observation O-01.
 
 ## 3. How the checks are written
 
-Each check: **id**, what it proves (one line), **Type**, **27 Nov result** (where the check existed), **First carried** (the round whose build is the first to contain the fix; "no fix needed" where only unrun steps remain), exact steps, the exact expected text or figure, and what to write down.
+Each check: **id**, the **board items** it proves (UX-nn, OBS-nn, D-nn, N-nn, T-ids, ADR-330 points, issue numbers; the board itself is the coordinator's private status page, so the ids come from the repo's triage and ledger files), what it proves (one line), **Type**, **27 Nov result** (where the check existed), **First carried** (the round whose build is the first to contain the fix; "no fix needed" where only unrun steps remain), exact steps, the exact expected text or figure, and what to write down.
 Ids keep their 27 Nov names (T1-20, AF-02, ...). New ones are W-01 and up. A "MONDAY ONLY" mark means the check needs live prices and is in `test-plan-2026-11-30.md`; the table at the end of that file lists where each 27 Nov check went.
 
 ## 4. The checks
 
-Order of the round: **W-33 first** (seed done, restart, nine screens), then A (money, stops, plans, prices: W-01 to W-07, W-09, W-30 to W-32), then B (W-10 to W-29), then the reused 27 Nov checks (section 5), then the after-close checks and the sweep (section 6). Critical (money, stops, exits, prices) first inside each part.
+Order of the round: **W-33 first** (seed done, restart, nine screens), then A (money, stops, plans, prices: W-01 to W-07, W-09, W-30 to W-32, W-34, W-35), then B (W-10 to W-29), then the reused 27 Nov checks (section 5), then the after-close checks and the sweep (section 6). Critical (money, stops, exits, prices) first inside each part.
 
 ### W-33 The nine screens after a restart, with the last close stored (Lane N; decisions (56), (62), (63))
+- **Board items:** AF-02, AX-05, A3; ADR-330 (56), (62), (63); the "no price" half of the 27 Nov sweep
 - **Proves:** AF-02 and the "no price" half of the 27 Nov sweep (27 Nov: after the API restart every running trade read "no price" and Home read "Paper P&L paused - prices not live"); AX-05; A3; decision (56). **Type:** Screen / Functionality. **First carried:** R1 (Lane N `fix/last-close-1127` b6777ce7). **Run only after set-up step 5 (the seed wrote 17 rows).** Without the seed the result is BASELINE: write what you see.
 - **Lane N's walk, word for word. 1. Restart the API.** Within 30 s open each screen; expected on every one: the banner **"Market closed. Prices are from 27 Nov 2026, 15:30:00 IST."** and the 27 Nov 15:30 figures; no "no live quote", no "Time not available", no load or feed-stop time labelled as a price time.
   - Home: NIFTY and SENSEX at their 27 Nov closes; paper rows priced.
@@ -122,6 +96,7 @@ Order of the round: **W-33 first** (seed done, restart, nine screens), then A (m
 
 
 ### W-01 Plan save, change and reset, read back in three places
+- **Board items:** T1-13 follow-up; A-H #209 (Stop (Rs) 100 saved, block kept Rs 996.13); #201; UX-34 (plan block keeps the old stop); OBS-26; T2-19
 - **Proves:** Lane R hotfix (A-H #209: Stop (Rs) 100 saved but the plan block kept Rs 996.13; #201 "no server answer in 3 tries"); T1-13 follow-up; T2-19 (Reset to playbook).
 - **Type:** Functionality. **27 Nov result:** T1-13 PASS; T2-19 FAIL (changed and switched-off markers not shown). **First carried:** R1 (Lane R `hotfix/plan-save-1127` 8b45807a).
 - **The three places** (call them P1, P2, P3): P1 = the plan block on the trade's builder page; P2 = the Plan watch box and the Stops panel (Positions > Paper row, and builder `?strategy=<id>`); P3 = Settings > Adjustments > Show for this strategy > Change plan values.
@@ -138,19 +113,22 @@ Order of the round: **W-33 first** (seed done, restart, nine screens), then A (m
 - **Write down:** build head; the three places before and after, each step; exact refusal text; request count.
 
 ### W-02 Plan watch load: one request at a time, never "not available"
+- **Board items:** T2-01, T2-02 (FAIL); N-12; OBS-18 (answers 7 to 20 s); issue-list rows 8 and 22 (34 requests a minute)
 - **Proves:** Lane R plan-watch load hotfix (27 Nov n=204 requests in about 6 minutes; N-12 "answer takes 15-20 s"; T2-01/T2-02 FAIL).
-- **Type:** Functionality / Screen. **27 Nov result:** T2-01 FAIL, T2-02 FAIL (0 of 10 boxes filled within 60 s), AX-14 FAIL. **First carried:** R1 (Lane R 8b45807a; Lane R2 `hotfix/plan-read-1127` R? not pushed).
+- **Type:** Functionality / Screen. **27 Nov result:** T2-01 FAIL, T2-02 FAIL (0 of 10 boxes filled within 60 s), AX-14 FAIL. **First carried:** R1 (Lane R 8b45807a; Lane R2 `hotfix/plan-read-1127` 1d0f56e7, Lane R3 3260e094: both in the commit).
 - **Steps:** 1. Open Positions > Paper with 5 or more planned rows. Open DevTools > Network, filter `plan-watch`, leave it 3 minutes. 2. Count: requests pending at one moment (expected: at most 1) and in all (expected: about 9 or fewer). Rows keep their numbers and show "Updating the numbers..." and never "not available". 3. Switch to another browser tab for 2 minutes: no plan-watch requests; come back: exactly one starts. 4. Open the builder of a planned strategy: its box reads about every 15 s.
 - **Expected texts:** "Updating the numbers..." (never "not available" when the server answered); a box before its first rows reads "Loading the rule check..." and never "Updating the numbers..." first.
 - **Write down:** the two counts, time to first rows per box, any "not available".
 
 ### W-03 Plan watch box, weekend wording (market closed)
+- **Board items:** T2-01, T2-02, T2-04 ("Not applicable" line), AX-14, AX-13
 - **Proves:** Lane R box rendering and AX-14; T2-01, T2-02, T2-04 (the "Not applicable" line), AX-14.
 - **Type:** Screen. **27 Nov result:** FAIL ("not available right now", no trigger rows). **First carried:** R1 (Lane R).
 - **Steps:** 1. Builder of a strategy with a plan: first the box says **"Loading the rule check..."**; the answer then shows its rows with the as-of time. 2. Positions with plan rows: each compact box shows rows, not "not available", after its turn in the queue. 3. With no prices (weekend) the rows show **Paused** or **Not checked** with the server's text, never an empty box. 4. Stop the backend for one minute: the last rows stay, marked **"Could not refresh the rule check..."**, with the as-of time. 5. Open the console: a `plan watch: line N degraded ... field(s): ...` warning, if shown, names the field; write the line and the raw 200 body of `/api/strategies/<id>/plan-watch`. 6. Builder `?strategy=<id>` for A-H #209: Stops panel and plan rows show; **16 rows marked Not checked**. 7. T2-04 part: a trade whose one side is closed: the row, the two answers and the "Not applicable" line (27 Nov: the line could not show because Plan watch was unavailable).
 - **Write down:** every box's words, the console line, step 6's row count.
 
 ### W-04 Strategy 155: does the server hold the adjustment rows? (D-27, read-only)
+- **Board items:** D-27, T2-14
 - **Proves:** D-27 / T2-14 (27 Nov PARTIAL: raw JSON not saved, strategy 155 absent). **Type:** Functionality. **First carried:** no fix needed (read-only). Lane R's steps, word for word:
   1. Log in to the app in the PC's browser. Open the builder on trade 155 and open "Adjustment history". DevTools > Network, filter `adjustment-history`.
   2. The request is `GET /api/strategies/155/adjustment-history` (reads only). Or paste that URL in the address bar of the same logged-in browser.
@@ -160,6 +138,7 @@ Order of the round: **W-33 first** (seed done, restart, nine screens), then A (m
   If strategy 155 does not exist on the PC: PARTIAL and write that; repeat with any strategy that has an adjustment.
 
 ### W-05 Order limits: what can be seen with the market closed (Lane K)
+- **Board items:** T2-10 (FAIL); ADR-330 (50), (51), (52); Lane W item 15; triage C-item 1
 - **Proves:** T2-10 (27 Nov FAIL: Add to Paper accepted 5000 lots on one leg with no refusal); decisions (50), (51), (52); Lane W item 15; Lane K. **Type:** Functionality / Screen. **First carried:** R1 (Lane K `fix/order-limits-1127` 8880aa24).
 - **Why short:** Lane K's RESULTS: "Add to Paper is refused by the existing market-closed gate before any size check, so the size sentences cannot be seen closed." The size checks (101 lots; 60 then 50; an exit above the freeze) are **MONDAY ONLY** (Monday plan, T2-10). Do these two steps:
 - **Step 0 (Lane K, word for word): count the stored freeze quantities for the running indexes.** On the PC database: `SELECT exchange_segment, count(*), max(file_date) FROM public.exchange_freeze_limits GROUP BY 1;` Write the rows. If there are no rows for an index (SENSEX has none: no BSE_FO source), "exit above freeze" for that index is **not testable on the PC (BLOCKED: no stored freeze quantity), not FAIL**; the lots limit is testable on every index (Monday).
@@ -168,12 +147,14 @@ Order of the round: **W-33 first** (seed done, restart, nine screens), then A (m
 - **Expected sentences (for Monday; pending owner read):** "{contract} would hold {total} lots after this order; a leg can hold at most {max_lots} lots ({held} held, {added} added)."; "An exit of {lots} lots on {contract} is above the most one order can carry ({max_lots} lots)."; "The entry price for {contract} must be above 0."
 
 ### W-06 One P&L number in the places (Lane L), prices frozen
+- **Board items:** T1-15 (FAIL); D-06, D-07, D-40, D-41, D-56, D-68; ADR-330 (62); UX-32; AF-07 (also AF-05, T1-16)
 - **Proves:** D-06, D-07, D-41, D-56, D-68, D-40; T1-15 (27 Nov FAIL: Home total and Positions Paper total differ in the same minute; they cover different trade sets); decision (62); UX-32; AF-07 (Positions with Zerodha disconnected). **Type:** Screen. **First carried:** R1 (Lane L `fix/pnl-totals-1127` d94ca716).
 - **Steps (market CLOSED, frozen prices; Lane L, word for word):** 1. Open Home, note "Total P&L" (call it X). Open Positions, note "Paper P&L" with its "(after charges)" label: it must equal X to the paisa. 2. Open Live Strategies and My Strategies: the sum of the rows listed with a figure plus the settled ones equals X unless the line "N strategies left out" says otherwise. 3. Tick "Show closed positions": the number in "Includes N closed strategies" equals the number of closed rows listed; if not, the line is hidden (by design). 4. Completed Strategies: with a held-at-broker row, the label reads "Select all N-1 of the N shown" (27 Nov UX-AF2: "Select all 16 shown" while 17 were listed). 5. (UX-32) Open Home, change a trade in another tab, return to the Home tab: the Total P&L updates within a second without a reload. 6. (AF-07) Positions with Zerodha disconnected shows "-" and the connect sentence under Real P&L. Also, for one running trade X1 and one closed trade Y1, write the figure in the five places (Live card, My Strategies row, Positions, Home, builder) in the same minute.
 - **Expected texts:** "Select all {n} of the {m} shown" (for example "Select all 16 of the 17 shown"); "Includes N closed strategies"; "N strategies left out"; "Paper P&L paused - prices not live"; "Paper P&L" with "(after charges)" once, never twice. If it still differs while CLOSED: write both figures and the "Includes/left out" lines of each page. (Monday: reload Home then Positions within 10 seconds; one price tick of difference is allowed.)
 
-### W-07 Owner decisions (46) to (63): each walked once
-- **Proves:** each decision of `spec/decisions/ADR-330.md` points (46) to (63) (read at head 657cd12a of `fix/ic-live-test-1123`). **Type:** Functionality / Screen. Rows: **walk now** = this plan has the steps; **Monday** = needs a live market; **rule** = no walk of its own.
+### W-07 Owner decisions (46) to (64): each walked once
+- **Board items:** ADR-330 (46) to (64)
+- **Proves:** each decision of `spec/decisions/ADR-330.md` points (46) to (64) (read at head 657cd12a of `fix/ic-live-test-1123`; (64) from Lane Y's result file). **Type:** Functionality / Screen. Rows: **walk now** = this plan has the steps; **Monday** = needs a live market; **rule** = no walk of its own.
 
 | n | Decision in short (its own words) | Where | First carried | Walk |
 |---|---|---|---|---|
@@ -184,17 +165,18 @@ Order of the round: **W-33 first** (seed done, restart, nine screens), then A (m
 | 50 | The lots limit counts the total the leg will hold after the order: "This would make <leg> 16 lots; the limit is 10." (Lane K's wording: "{contract} would hold {total} lots after this order; a leg can hold at most {max_lots} lots ...") | Add to Paper, Increase quantity | Lane K | Monday (market-closed gate comes first) |
 | 51 | A paper exit above the freeze quantity is refused as a real order would be | Exit dialog | Lane K (exit refused) | Monday; no freeze row: not testable (W-05 step 0) |
 | 52 | A user with no limit set gets 100 lots per leg | Settings, Add to Paper | Lane K | Settings shows 100 now (W-05 step 1); refusal at 101 lots Monday |
-| 53 | An opportunity is "Acted on" only when a paper order from it is accepted; Cancel leaves it open | Compare approaches | Lane W bcbff804 | Walk now (W-10) |
+| 53 | An opportunity is "Acted on" only when a paper order from it is accepted; Cancel leaves it open | Compare approaches | Lane W bcbff804 (in the commit) | Walk now (W-10) |
 | 54 | Each running trade on Positions has a Plan button beside Exit and Stops, opening the builder's plan sheet | Positions | Lane V fb66dfb1 | Walk now (W-29) |
 | 55 | Three lines under a leg stop: "If this stop fires, the sold <leg> is left without protection." / "Max loss now: Rs <amount>." / "Max loss then: Rs <amount> (worst case: NIFTY at zero)." | Stops panel | Lane V | Walk now (W-29) |
 | 56 | One line at the top when prices are not live: "Prices are not live. Figures are as of <time> IST."; each trade keeps its last figures, greyed, with no repeated sentence | Positions, Live Strategies | Lane N b6777ce7 | Walk now (W-33, part of the nine-screen walk) |
 | 57 | A closed trade opens read-only: "This trade is closed. Its legs and result are shown below; it cannot be changed." and one line "Plan: stop Rs 300, target Rs 800. Closed by your exit at 11:23."; no Plan watch box | builder of trade 173 | Lane V (closed sentence also Lane W) | Walk now (W-29, W-16) |
 | 58 | Rule: a paper order differs from a real one only by its tag | every order screen | deferred issue | rule; seen through (49), (51), (59), (60) |
-| 59 | Exit all is not blocked with a staged change; dialog: "Exit all closes every open leg. The change waiting on <legs> is not sent and will be discarded."; after: "The change waiting on <legs> was discarded."; Cancel gives the change back | Positions, builder | not built (Lane U's RESULTS: "NOT built (fresh lane)") | Walk now once built (W-26); until then BLOCKED: not built |
-| 60 | Market closed: the Exit dialog opens, shows the legs, one line "The market is closed. Exits can be placed from 09:15 on <next trading day>.", Confirm greyed | Positions Exit | Lane U2 (not on origin) | Walk now once built (W-27) |
-| 61 | 08:30 to about 08:35 the builder keeps yesterday's list with "Contract list of <date>. Today's list loads at about 08:35." | builder | not named | Monday 08:30 to 08:40 |
+| 59 | Exit all is not blocked with a staged change; "Exit all closes every open leg. The change waiting on <legs> is not sent and will be discarded."; after: "The change waiting on <legs> was discarded."; Cancel gives the change back | Positions, builder | Lane U2 a7ccf4a9 (in the commit) | Cancel part now (W-26); the discard sentences Monday (optional) |
+| 60 | Market closed: the Exit dialog opens, shows the legs, "The market is closed. Exits can be placed from 09:15 on <next trading day>.", Confirm greyed | Positions Exit | Lane U2 a7ccf4a9 (in the commit) | Walk now (W-25 A to D) |
+| 61 | 08:30 to about 08:35 the builder keeps yesterday's list with "Contract list of <date>. Today's list loads at about 08:35." | builder | builder-open `0faf4e71` (in the commit; the page that shows the line is Lane V's, "not built" per Lane J2) | Monday 08:30 to 08:40 (optional) |
 | 62 | Home and Positions total show the booked result of closed trades: "Includes N closed strategies." and "9 strategies left out: their prices are not live." | Home, Positions | Lane L d94ca716 (Lane N for the closed-market state) | Walk now (W-06, W-33) |
 | 63 | While the market is closed a restart reads the stored close back; every screen shows it with its own date and time; none stored: "prices are not available" with the reason | every price screen | Lane N b6777ce7 | Walk now (W-33) |
+| 64 | A real position row and alert tag: "Real position: exit and protect it in Kite. Stops and alerts here cover paper trades only."; no Exit, no Stops (Lane Y item 1b) | Positions real card | Lane Y `546d653f` | Monday 09:45 (needs the real position; optional) |
 
 - **Write down for each walked row:** the check id above, the sentence seen word for word, PASS / FAIL / PARTIAL.
 
@@ -202,6 +184,7 @@ Order of the round: **W-33 first** (seed done, restart, nine screens), then A (m
 - N-07 to N-11 and decision (61): the refresh runs on weekdays only, from 08:35, so it cannot be seen on a weekend. **Monday 08:30 to 08:40** (Monday plan), with the fallback "if a builder says No legs yet at 08:40, restart the API and note it".
 
 ### W-09 Plan-stop alert in scenario mode (market closed): try it, Monday T1-05 is the real proof
+- **Board items:** T1-05 to T1-08; ADR-330 (47)
 - **Proves:** T1-05 to T1-08 chain (stop level crossed, one alert row in the plan's rule list). **Type:** Functionality. **First carried:** R1 (Lane J `hotfix/loss-stop-1127` 3e0b9780).
 - **Honest limits:** Lane J's RESULTS: "Not proven end to end here: I did not run this chain with a plan stop on a path scenario; whether a PATH fixture reaches a given rupee level mu[st be checked]." There is **no price-replay tool** (cancelled; Lane Q2). The scenario worker exists (`python -m ofo_app.background` with `OFO_SCENARIO`), and ticks only on PATH scenarios. If the try does not give an alert, the result is **PARTIAL: tool limit, Monday T1-05** (not FAIL).
 - **[OWNER APPROVAL] before step 1:** scenario mode changes `APP_ENV` for the API and the worker and seeds a trade into `ofo_dev` (the database with the 9 running paper trades; the seed script refuses any other database). Restart the normal app afterwards.
@@ -209,46 +192,58 @@ Order of the round: **W-33 first** (seed done, restart, nine screens), then A (m
 - **Expected:** one `adjustment_suggestions` row per crossed rule, and the alert in Alerts > Active (look in History too). The 5-minute period after entry delays an alert and never swallows it.
 
 ### W-10 Compare approaches: "Open in builder and prepare basket", Cancel and Confirm (Lane W item 10; T2-13)
+- **Board items:** T2-13 (FAIL); UX-22; issue-list rows 13 and 26; REQ-112 AC-2; ADR-330 (53)
 - **Type:** Functionality. **27 Nov:** T2-13 FAIL (an opportunity stayed "Acted on" after Cancel with no order placed). **First carried:** R1 (Lane W). Needs an alert with an opportunity row (Alerts has rows from 27 Nov; if none is open: BLOCKED, name it).
 - **Steps:** Alert > Compare approaches > "Open in builder and prepare basket" > Cancel. Look at the opportunity. Prepare again, Confirm.
 - **Expected:** after Cancel the opportunity still reads **"Open"**; after Confirm it reads **"Acted on - Paper - not sent to Zerodha"**.
 
 ### W-11 Full-exit approach stages the held legs (Lane W item 11)
+- **Board items:** UX-21 (staged exits show "No legs yet")
 - **Type:** Functionality. **First carried:** R1. **Steps:** Alert > Compare > the full-exit approach > "Open in builder and prepare basket" > Cancel on the confirm list.
 - **Expected:** the held legs show as exiting with **"N pending changes"**, never "No legs yet"; wording **"Exiting these legs (staged, not placed yet)"**.
 
 ### W-12 Home closed-strategies line (Lane W item 1)
+- **Board items:** T1-16 / ADR-330 (35), (62) family (no own id found)
 - **Type:** Screen. **First carried:** R1. **Steps:** Home with closed strategies; then Positions. **Expected:** the line under "Total P&L (after charges)" reads the same **"Includes N closed strategies."** as on Positions.
 
 ### W-13 "Closed by system" in Alerts History (Lane W item 2; T1-09-close)
+- **Board items:** T1-09-close; T1-09 (FAIL); ADR-330 (3); triage C-item 12
 - **Type:** Screen. **First carried:** R1. **Steps:** Alerts > History: an alert whose trade closed unanswered. **Expected:** **"Closed by system: the trade closed at 10:23"** (your trade's time in place of 10:23). Also check Alerts > Active holds none of them (27 Nov T1-09 FAIL was the same alerts staying Active after the last leg was exited during market hours; that exit step is MONDAY ONLY).
 
 ### W-14 Time-exit wording on the plan sheet (Lane W item 3; T1-10)
+- **Board items:** T1-10; UX-17
 - **Type:** Screen. **First carried:** R1. **Steps:** plan sheet: a time-exit date in the past, Save. Then clear and type values that are not valid in each of Time exit, Target, Stop, Target (Rs), Stop (Rs), Max adjustments. Then type different values in Target and Target (Rs), and in Stop and Stop (Rs). (The alert half "Time exit reached" needs the worker, which computes nothing while the market is closed: MONDAY ONLY, the 09:25 time-exit trade.)
 - **Expected:** **"Time exit date is in the past."**; **"Time exit date is not valid."**; **"Time exit is not valid."**; **"Target is not valid."** (same for Stop, Target (Rs), Stop (Rs), Max adjustments); **"Target and Target (Rs) show different values."**; **"Stop and Stop (Rs) show different values."**; Monday: the alert reads **"Time exit reached: the plan's time exit is HH:MM"**.
 
 ### W-15 Two legs on one contract: the Save-draft sentences (Lane W item 4)
+- **Board items:** issue-list row 2; OBS-03; D-60
 - **Type:** Screen. **First carried:** R1. **Steps:** builder: two legs on one strike and expiry; Save draft; once with the same side, once with opposite sides. Check the leg numbers in the sentence equal the numbers on screen.
 - **Expected (same side):** **"Legs 1 and 2 are the same contract and side (NIFTY 1 Dec 25900 CE, Sell)."** then **"Join them into one leg with more lots, or change one to a different contract."** **(opposite sides):** **"Legs 1 and 2 are the same contract (NIFTY 1 Dec 25900 CE), one Sell and one Buy."** then **"A strategy holds one leg per contract: remove one of them, or change one to a different contract."** (27 Nov N-03 saw a red box "This strategy definit..." for two identical legs: write the full text seen.)
 
 ### W-16 A completed trade opens read-only (Lane W item 8)
+- **Board items:** UX-11, UX-23; ADR-330 (14), (57)
 - **Type:** Screen. **First carried:** R1. **Steps:** My Strategies > a Completed trade > Open in Builder. Then a running trade, then a fresh builder. **Expected:** the completed trade shows on the right **"This trade is closed. Its legs and result are shown below; it cannot be changed."**; the running trade and the fresh builder keep their own text.
 
 ### W-17 Alerts Active on a slow connection (Lane W item 9)
+- **Board items:** UX-12, UX-33
 - **Type:** User experience. **First carried:** R1. **Steps:** DevTools > Network > Slow 3G; open Alerts > Active. **Expected:** "Loading..." first, then the rows (never an empty page between).
 
 ### W-18 Typing at once into Rename and Save (Lane W item 7; T3-09, N-02)
+- **Board items:** T3-09; N-02; issue-list row 5; OBS-02
 - **Type:** User experience. **First carried:** R1. **Steps:** My Strategies > Rename on a row, type immediately; press Esc. Builder > Save, type immediately. **Expected:** the text goes in; Esc closes (27 Nov N-02: Esc was ignored until the rename box was clicked: write if it still is).
 
 ### W-19 Net Positions name on one line at 1366 px (Lane W item 13)
+- **Board items:** UX-29
 - **Type:** Screen. **First carried:** R1. **Steps:** browser width 1366 px (DevTools device toolbar, Responsive, 1366); a paper strategy with an open position > Net Positions. **Expected:** "NIFTY 1 Dec 25900 CE" (your contract) on one line.
 
 ### W-20 Max-loss line when a stop is typed (Lane M; T1-03)
+- **Board items:** T1-03; N-01; OBS-01 (issue-list row 4); UX-07 (UX-03, UX-08 not fixed)
 - **Proves:** the ISO date "2028-12-01" in the max-loss line (27 Nov T1-03; N-01). **Type:** Screen. **First carried:** R1 (Lane M `hotfix/maxloss-line-1127` 5a718413; passed on the PC on 27 Nov at 14:20 for T1-03).
 - **Steps:** Positions > Paper > B-N1 (the trade used on 27 Nov; if it is gone, any paper trade with a sold NIFTY PE) > Stops. On NIFTY 1 Dec 25650 PE type the stop **"Above 102.55"**.
 - **Expected, exactly:** **"If this stop fires, max loss becomes Rs 16,62,316.50 (now Rs 1,732.25). Sold option with less protection: NIFTY 1 Dec 25750 PE."** (the figure is unchanged; no ISO date, no year). The "now" figure may need a price: if it differs only in "now", write it and mark PARTIAL; the rest must match. The "fired index exit quotes its own tick" half (T1-11) is MONDAY ONLY.
 
 ### W-21 Lane M read-only SQL (data only; send the rows)
+- **Board items:** D-2 data pull (2028 date); OBS-01
 - Run each on the VPS with `psql -d ofo_dev` over SSH (read only):
   - Item 1: `SELECT id, name, instrument_type, strike, expiry, exchange_token, first_seen_at, last_seen_at, currently_listed FROM public.catalogue_contracts WHERE id IN (SELECT DISTINCT contract_id FROM public.paper_orders WHERE strategy_id = 194);` (if an expiry reads 2028-12-01 the row is wrong at the source).
   - Item 3: `SELECT DISTINCT o.contract_id, c.expiry FROM public.paper_orders o JOIN public.catalogue_contracts c ON c.id = o.contract_id WHERE o.strategy_id = 194;` and `SELECT id, expiry FROM public.catalogue_contracts WHERE name = 'NIFTY' AND strike = 25750 AND instrument_type = 'PE';`; and from the browser the request URL of `GET /paper/strategies/194/leg-stop-risk` with its reply body.
@@ -256,12 +251,14 @@ Order of the round: **W-33 first** (seed done, restart, nine screens), then A (m
 - **Type:** Functionality (data). No pass rule: PASS = the rows were read and sent. If strategy 194 or 201 does not exist: PARTIAL, say so.
 
 ### W-22 Lane J read-only SQL for the stop alerts (data only; send the rows)
+- **Board items:** D-1 data pull (#207); T1-05 to T1-08
 - **#207:** `SELECT r.adjustment_no, r.rule_id, r.held_at_entry, r.seen_clear FROM public.adjustment_rule_state r JOIN public.strategies s ON s.id = r.strategy_id WHERE s.name ILIKE '%#207%' ORDER BY 1, 2;` (`held_at_entry = t` and `seen_clear = f` on `plan.rupee_loss` means the stop was held at entry).
 - **A-E #202:** `BEGIN READ ONLY; SELECT h.id, h.rule_id, h.trigger_id, h.stage, h.value, h.threshold, h.reason, h.held_at AT TIME ZONE 'Asia/Kolkata' AS held_ist FROM public.adjustment_held_crossings h JOIN public.strategies s ON s.id = h.strategy_id WHERE s.name = 'A-E #202' ORDER BY h.id; SELECT r.adjustment_no, r.rule_id, r.held_at_entry, r.seen_clear FROM public.adjustment_rule_state r JOIN public.strategies s ON s.id = r.strategy_id WHERE s.name = 'A-E #202' ORDER BY 1, 2; SELECT g.id, g.rule_id, g.trigger_id, g.value, g.threshold FROM public.adjustment_suggestions g JOIN public.strategies s ON s.id = g.strategy_id WHERE s.name = 'A-E #202' ORDER BY g.id; ROLLBACK;`
 - **A-D #200:** `adjustment_held_crossings` should hold a `plan.rupee_loss` row with reason daily limit, value about 162.5, threshold 100, held about 11:00 to 11:05 (use the A-E query with `s.name = 'A-D #200'`).
 - Worker log lines to look for at any time the worker runs: `background: strategy 209 check skipped: prices_<state>` (reasons `prices_STALE`, `prices_LEG_MISSING`, `not_ticked`, `no_gate_read`). Type: Functionality (data). PASS = rows read and sent.
 
 ### W-23 Route-delay tool (Lane Q2; makes the app slow on purpose, for T2-08-style and slow-answer checks)
+- **Board items:** T2-08 (tool check only)
 - **Proves:** that Lane Q2's only working tool runs. **Type:** Functionality. **First carried:** R1 (Lane Q2 5bdfdde0).
 - **Steps:** 1. Write a rules file (JSON) with times that carry the offset `+05:30` (a naive time is refused), for example:
   `{"delay_routes": [{"prefix": "/api/strategies/", "suffix": "/plan-watch", "seconds": 5, "from": "2026-11-28T10:00:00+05:30", "until": "2026-11-28T10:10:00+05:30"}]}`
@@ -271,29 +268,30 @@ Order of the round: **W-33 first** (seed done, restart, nine screens), then A (m
 ### W-24 Lane U: what is on this plan and what is Monday's
 - Lane U (`hotfix/index-quote-1127`) fixes live-price reads and the exit sentences. On this plan: T1-20 and T3-10 (section 5) and W-25 (Exit dialog with the market closed). **Monday only:** every step that needs ticking prices or a completing exit (T1-02, T1-22, T2-08 completing part, the 429 log lines, "not live" flips, Lane U's measurements for Monday's open).
 
-### W-25 The Exit dialog with the market closed: two cases
-- **Proves:** Lane U's Exit dialog with prices not live (27 Nov T2-08 FAIL: with prices not live the dialog showed no not-live sentence and Confirm stayed enabled; T1-02c: 422 and no message). **Type:** Functionality / Screen. **First carried:** R1 (Lane U `hotfix/index-quote-1127` 709eb835).
-- **Case A, feed process RUNNING:** a held close reads as live (ADR-212). Positions > Paper: tick one leg of a running trade, press Exit. Expected: the dialog opens, Confirm is **on** (blue), and pressing Confirm is answered by the server's **market-closed sentence**; no order appears in the Orderbook; the leg is unchanged. Write the sentence word for word. (Lane U's RESULTS does not quote it; Lane U's code, `gate_market_closed` in `backend/ofo/errors/templates.py`, reads: "The market is closed. Orders can be placed once it opens." with "No order can be placed while the market is closed." and "Return during market hours and execute again." A different sentence is an observation.)
-- **Case B, feed process STOPPED** (stop it with the dialog open): expected **"<legs>: Prices are not live; try again when they update"** (your legs in place of <legs>) with Confirm **grey**; also **"Checking whether this exit leaves a sold option without protection..."** while the check runs, with Confirm grey until it answers; **"Tick a leg to exit."** with nothing ticked; **"An exit is already being sent for this strategy."** if pressed twice quickly.
-- **Case C, feed restarted:** the dialog (still open) goes back to Confirm blue.
-- **Case D (decision (49), Lane U step 4):** stage a lots change on leg 2 of a trade with 3 or 4 legs. Expected: leg 2's Exit is grey with **"This leg has a change waiting; review or discard it first."**; legs 1, 3 and 4 have Exit enabled. Exit leg 1: the dialog lists only leg 1's exit (the server then refuses: market closed); leg 2's change is still staged after Cancel or the refusal. After a trade change: **"The change waiting on <legs> was not kept because the trade changed; stage it again."** (pending owner read).
-- Do each case on Positions and once in the builder. Write the times the feed was stopped and started. The completing exit (Confirm placing an order, order number, "Placing exit...") is MONDAY ONLY.
+### W-25 The Exit dialog with the market closed (Lane U2, decision (60); Lane U, decision (49))
+- **Board items:** T2-08 (FAIL), T1-02c, UX-01, UX-04, UX-09, UX-13, UX-20, UX-25, UX-31, UX-35, issue-list rows 10, 11, 21, 25, OBS-16, OBS-17, ADR-330 (49), (60). **Type:** Functionality / Screen. **In the build:** Lane U2 `a7ccf4a9`, Lane U `f61f7935`.
+- **Expected text (all, Lane U2, pending owner read):** **"The market is closed. Exits can be placed from 09:15 on Monday 30 Nov."** (the next trading day in place of "Monday 30 Nov"); Confirm grey; the legs the exit would close are listed.
+- **A. Feed running.** Builder, open a paper trade, tick one leg, Exit. Expected: the dialog opens with the leg, the line above, Confirm grey; Cancel; no order in the Orderbook. Repeat with Exit all (one row per open leg, same line).
+- **B. Feed stopped** (stop the feed process, API up). Same steps. Expected: the same line (**not** "Prices are not live"), Confirm grey.
+- **C.** Positions > Paper > tick a leg, Exit; and Exit all if offered there. Expected: the same line, with the feed running and stopped.
+- **D.** Stop the API for 10 s, then press Exit. Expected: **"The market status could not be read. Try again in a moment."** and Confirm grey; start the API and reopen: the market line.
+- **E. Decision (49), Lane U step 4:** stage a lots change on leg 2 of a trade with 3 or 4 legs. Expected: leg 2's Exit is grey with **"This leg has a change waiting; review or discard it first."**; legs 1, 3 and 4 have Exit enabled. Exit leg 1: the dialog lists only leg 1's exit (with the market closed the line above and Confirm grey); leg 2's change is still staged after Cancel. After a trade change: **"The change waiting on <legs> was not kept because the trade changed; stage it again."** (pending owner read).
+- **Not on this plan:** an exit that completes ("Exit placed on paper (order n).", "Placing exit...", the unknown-outcome lock): Monday, and F1 (section 7). Lane U2's known minor items: the market answer is fixed for one opening of the dialog (opened 15:29:55 keeps Confirm on after 15:30; opened 09:14:50 stays grey after 09:15 until reopened): not a round 1 check.
+- **Write down:** the time the feed was stopped and started, the sentence word for word on each screen.
 
+### W-26 Exit all with a staged change (decision (59), Lane U2): the closed-market part
+- **Board items:** ADR-330 (59). **Type:** Functionality / Screen. **In the build:** Lane U2 `a7ccf4a9`.
+- **What the market closed can show:** with the market closed the Exit all dialog shows the decision (60) line (W-25), and Confirm is grey, so the discard sentences cannot be seen. Do this part: builder, a paper trade of at least 2 legs, raise one leg's lots (do not Review). Press **Exit all**. Expected: the dialog lists every open leg and the market-closed line; **Cancel: the raised lots are back exactly as they were, no exit staged**; Positions shows nothing placed.
+- **Monday (optional, market open):** the dialog says "Exit all closes every open leg. The change waiting on <leg> is not sent and will be discarded."; after Confirm "The change waiting on <leg> was discarded."; the Orderbook shows only the exits (Lane U2 item 3, 7 tests pass in the cloud).
 
-### W-26 Owner decision ADR-330 (59): Exit all with a staged change
-- **Proves:** decision (59). **Type:** Functionality / Screen. **First carried:** not built at v1 (Lane U's RESULTS: "NOT built (fresh lane)").
-- **Steps (market closed; nothing completes):** 1. Open a running paper trade with 2 or more legs in the builder and stage one change (for example Change expiry on one leg: it shows as a pending change). 2. Press **Exit all**. Read the dialog. 3. Press **Cancel** and check the staged change is back exactly as it was. 4. Press Exit all again and read the discard sentence. 5. Check Positions: nothing was placed.
-- **Expected:** Decision (59) text: dialog **"Exit all closes every open leg. The change waiting on <legs> is not sent and will be discarded."**; after the exit **"The change waiting on <legs> was discarded."**; Cancel gives the staged change back unchanged. Until a head carries it the result is BLOCKED: not built (name the head). With the market closed the Confirm part is refused (decision (60)), so only the dialog and Cancel can be walked.
-
-### W-27 Owner decision ADR-330 (60): the Exit dialog with the market closed
-- **Proves:** decision (60). **Type:** Screen. **First carried:** R2 or R3 (Lane U2; not on origin at this version). Supersedes W-25 case A once built (case A records today's behaviour: Confirm on and a server refusal).
-- **Steps:** 1. Positions > Paper: tick one leg of a running trade, press Exit. 2. Read the dialog, the legs listed, and Confirm. 3. Do the same from the builder.
-- **Expected, word for word:** the dialog opens and shows the legs; the sentence **"The market is closed. Exits can be placed from 09:15 on <next trading day>."** (the real day in place of <next trading day>, for example "Monday 30 Nov"); **Confirm greyed**. No order appears. The sentence and the day come from the server's one market-state answer; it holds whether the feed process runs or not, and for paper and real alike.
+### W-27 (merged into W-25)
+- Decision (60) is walked by W-25 A to D. This id is kept so that the 27 Nov mapping does not move.
 
 ### W-28 Alert and Stops screens (Lane O), market closed is fine
+- **Board items:** T2-19 items 1, 2, 3, 5 to 8, 10, 12; UX-02, UX-16, UX-24, UX-26, UX-27
 - **Proves:** T2-19 item 1 (needs Lane R2's patch applied first), items 2, 3, 5 to 8, 10, 12; UX-02, UX-16, UX-24, UX-26, UX-27. **Type:** Screen. **First carried:** R1 (Lane O `fix/alert-screens-1127` b07425fc). Lane O's RESULTS "market CLOSED is fine" except the two live parts named below.
 - **Steps and expected (Lane O, word for word):**
-  1. (after Lane R2 applies Lane O's patch `lane-o-item1-for-lane-r2.patch`; if it is not applied, BLOCKED: patch not applied) T2-19: open a trade with a plan, Customise triggers, switch off T-05 and change another condition, save. Open the plan sheet, press "Reset to playbook", confirm. Expected under the button: **"Put back to the playbook's values: triggers.T-02"** and **"Switched on again: triggers.T-05"**. If nothing differed: **"Nothing differed from the playbook, so nothing was put back."** The typed levels stay.
+  1. (Lane O's patch is merged by Lane R3 plan-read-2, which is in the commit; if the sentences below are missing, write the commit and mark FAIL) T2-19: open a trade with a plan, Customise triggers, switch off T-05 and change another condition, save. Open the plan sheet, press "Reset to playbook", confirm. Expected under the button: **"Put back to the playbook's values: triggers.T-02"** and **"Switched on again: triggers.T-05"**. If nothing differed: **"Nothing differed from the playbook, so nothing was put back."** The typed levels stay.
   2. Alerts > Active, a plan stop / target / time-exit alert whose row used to show only the trade name. Expected a reason line, for example **"Plan loss stop: 15.5750 (rule 15.4000)"**; with no figures **"Plan profit target"**. The title still reads "<name> (#id, expiry)".
   3. Alerts > History: headings **"Answered alerts"** and **"Stops and expiry settlements"**. If one read fails, its error line sits under its own heading, not above the other list. If answered is empty but records exist: **"No answered alerts yet."**
   5 and 6. Builder or Positions, a saved trade with an armed leg stop: Plan watch, "Armed in the Stops panel". Expected **"Leg stop on NIFTY 3 Nov 23450 CE: fires when the price rises above 90.00; price now 40.15"** (date as "3 Nov", never 2026-11-03). Market closed: no "price now" part (the "price now" part is the live one: Monday).
@@ -303,27 +301,38 @@ Order of the round: **W-33 first** (seed done, restart, nine screens), then A (m
   12. Click each top-menu item: each opens its page. In the picker, "Pick from Option Chain" with OI or Greeks shown switches back to LTP.
 
 ### W-29 Plan door, Stops lines and a closed trade (Lane V, decisions (54), (55), (57))
+- **Board items:** ADR-330 (54), (55), (57); UX-A02, UX-A03; UX-10, UX-03, UX-08, UX-11, UX-23
 - **Proves:** decisions (54), (55), (57); UX-A02, UX-A03. **Type:** Screen / Functionality. **First carried:** R1 (Lane V `feat/plan-door-1127` fb66dfb1). Lane V states none of these needs a feed.
 - **(54) Positions page, filter All:** 1. Open Positions with one running paper trade and one running real trade (if no real position is open: write that and use paper only). 2. Each shows a **"Plan"** button (paper: beside Stops and Exit; real: right end of the group header). 3. Press Plan on the paper trade: the plan sheet opens (title, playbook, target, stop). Press Close. 4. Open the same trade in the builder, press its "Edit plan": the SAME sheet. 5. Press Plan on a trade with no plan: the sheet opens to set the first plan. 6. A fully closed trade shows no Plan button. (27 Nov: the plan sheet took 15 to 60 s to load: write the seconds.) Failure text: "Could not open the plan. Try again."
 - **(55) Builder, running one-lot NIFTY iron condor:** 1. Stops panel, type a stop level on the bought 25650 PE leg. 2. After the pause, three lines appear, each on its own line: **"If this stop fires, the sold ... is left without protection."** / **"Max loss now: Rs ..."** / **"Max loss then: Rs ... (worst case: NIFTY at zero)."** 3. Type a stop level on the bought call leg: line 3 reads **"no upper limit (worst case: NIFTY keeps rising)"** and shows no amount. 4. Type a stop on the sold short call: the old one sentence appears. 5. Same on a SENSEX trade: the lines say SENSEX. While waiting: **"Working out max loss for this stop..."** shows from the moment a valid level is typed, then the answer replaces it; an invalid level shows none. Lane V's engine figures for the 27 Nov condor: Max loss now -7,800; Max loss then -1,674,725; exposed leg the sold 25850 PE (your trade may differ: write the figures; the three lines are the check).
 - **(57) Closed trade:** 1. Open the builder on settled trade 173. 2. It shows **"This trade is closed. Its legs and result are shown below; it cannot be changed."**, the closed legs, the result, and one line **"Plan: stop Rs ..., target Rs .... Closed by expiry settlement at 15:30."** (or "your exit at HH:MM"). 3. No Plan watch box, no Add/Edit button, no "Add a leg to start one" (27 Nov T1-18 FAIL text).
 - **UX-A03:** a fired leg stop's pop-up and History row carry NO max-loss line; the message is "Stop-loss: ... exited at ..." (seen only when a stop has fired: if none exists, write that).
 
-### W-30 Stop percent read back in three places, weekly and monthly (Lane R2)
-- **Proves:** the stop box showing 50 on a monthly trade (27 Nov: "before the fix the reopened sheet said 50"); the weekly/monthly kind read. **Type:** Functionality. **First carried:** R1 (Lane R2 `hotfix/plan-read-1127` 1d0f56e7; backend restart only). Lane R2's RESULTS "PC steps with the market CLOSED", word for word:
-- **Set up once:** Settings > Adjustments > the Iron Condor playbook > make a copy named "R2 test" with T-06 weekly 50 / 50 / 40 and monthly 30 / 30 / 20 (the system playbook has equal rows, which would hide the difference), make it your active Iron Condor playbook. Have one running MONTHLY trade and one running WEEKLY trade, both Iron Condors, with the plan accepted from "R2 test". [X2: Lane R2 says "have"; if the PC has no such pair, that is BLOCKED: no monthly Iron Condor trade, and the version after says how to make one.] **Expected values (stop box on the plan sheet, first stage): monthly trade 30, weekly trade 50.**
-- **Steps:** 1. Positions > the monthly trade > Adjustment plan: stop shows 30. Open the builder for it and Plan watch: same 30 (read, no save). 2. Weekly trade, same three places: 50. 3. Monthly trade: change only the Target to 60, Save. Expect the saved plan to still show stop 30 on the answer; close and reopen the sheet, Positions, builder and Plan watch: still 30. 4. Weekly trade: same Target-only save: stop stays 50 everywhere. 5. Monthly trade: type stop 45 > Save: expect 45 everywhere (a typed stop is written to both rows). Press Reset to playbook: expect 30 on the answer and after reopening. 6. Weekly trade: type 45, Save: 45; Reset: 50. 7. If the contract list is not loaded: percent stop Save is refused with **"The stop could not be saved: whether this trade expires weekly or monthly could not be read."** and the stop box is blank with no number; a rupee stop Save works; if you see a stop number instead, write the commit. 8. Playbooks > Test on a type with several trades: the page answers as before.
-- Report any step where the stop number differs between Positions, builder and Plan watch for the same trade. (Lane R2's patch merge for T2-19 is NOT done by Lane R2: W-28 step 1 depends on it.)
+### W-30 Stop percent read back in three places, weekly and monthly; Reset to playbook (Lane R3 plan-read-2, Lane R2)
+- **Board items:** T1-13 follow-up, UX-34 (plan block keeps the old stop), T2-19 (Reset to playbook), triage C-item 7, Lane R2 monthly stop box showing 50 (27 Nov). **Type:** Functionality. **In the build:** Lane R3 `3260e094`, Lane R2 `1d0f56e7`. Lane R3's RESULTS "PC steps with the market CLOSED", word for word.
+- **Set up once:** Settings > Adjustments > the Iron Condor playbook > make a copy named "R2 test" with T-06 weekly 50 / 50 / 40 and monthly 30 / 30 / 20 (the system playbook has equal rows, which would hide the difference), make it your active Iron Condor playbook. Have one running MONTHLY trade and one running WEEKLY trade (both Iron Condors, plan accepted from "R2 test"). The contract list must be loaded (a market day fetched at least once). [X2: if the PC has no such pair, that is BLOCKED: no monthly Iron Condor trade.] Expected stop box values (first stage): monthly trade 30, weekly trade 50.
+- **Steps:** 1. Monthly trade: type stop 45 > Save > read on Positions, the builder and Plan watch: 45 everywhere. Weekly trade: the same, 45. 2. Monthly trade: change only the Target > Save: stop stays 30 on the answer, and 30 after closing and reopening, on Positions, builder and Plan watch. Weekly trade: stays 50. 3. Which row the live check used: open Plan watch for each trade, read the stop line: the monthly trade's stop line is the 30 % of its stored max loss (not 50 %); the weekly trade's the 50 %. In the worker log look for the line "adjustment check:" of the strategy. 4. Press "Reset to playbook" on each trade, confirm: the sheet shows **"Put back to the playbook's values: ..."** and **"Switched on again: ..."** (or **"Nothing differed from the playbook, so nothing was put back."**). Change T-02 first and switch T-05 off so you have something to see. The typed target, stop and time exit stay. 5. A trade whose expiry is 30 Mar 2027 (if you have one): the sheet shows no stop number and says why; a rupee stop saves. 6. Save a plan and, in the same moment, switch the PC network off or kill the backend request after the click (timeout); then reload: the plan is there complete. 7. If the contract list is not loaded: percent stop Save is refused with **"The stop could not be saved: whether this trade expires weekly or monthly could not be read."**; a rupee stop saves.
+- Report any step where the stop number differs between Positions, builder and Plan watch for the same trade.
 
-### W-31 Plan watch: one batch request per cycle (Lane H)
-- **Proves:** T2-01/T2-02 cause (n=204 requests in about 6 minutes). **Type:** Functionality. **First carried:** R1 (Lane H `perf/speed-fixes-1127` 90c4fed5; its RESULTS status line says 60cb1a47: write the head).
-- **Step (Lane H, copied exactly):** open Positions with at least 5 rows that have a plan, with the browser's network tab filtered on `plan-watch`: expect ONE `GET /api/plan-watch?strategy_ids=...` per cycle and no `/strategies/{id}/plan-watch` for those rows (before: one per row). Also `grep -c "request GET /api/plan-watch" <api log>` after one minute: 1 (not N).
-- **Caveat (Lane H's RESULTS):** the Positions page change that calls the batch (`readPlanWatchBatch(rowIds)` once per 60 s cycle) "was NOT built by this lane": if the network tab still shows one request per row, the result is **BLOCKED: Positions page change not in the build** (name the head), not FAIL. The two-tester timing is Monday (T2-16).
+### W-31 Plan watch: one batch request per cycle (Lane Y item 2, Lane H)
+- **Board items:** T2-01 / T2-02 cause (n=204 requests in about 6 minutes); issue-list rows 8 and 22 (34 requests a minute); OBS-18. **Type:** Functionality. **In the build:** Lane Y `546d653f` (the Positions page change Lane H did not build) and Lane H `90c4fed5`.
+- **Step (Lane Y, "PC step (market closed)"):** Positions with at least 5 open rows (with a plan): browser network tab filtered on `plan-watch`: ONE `/api/plan-watch?strategy_ids=...` per cycle, and none of `/api/strategies/<id>/plan-watch`. Also `grep -c "request GET /api/plan-watch" <api log>` after one minute: 1 (not N).
+- If you still see one request per row: FAIL (the page change should be in the build), write the commit.
 
 ### W-32 Change expiry on a leg with a stop: the review line (decision (48), #774)
+- **Board items:** ADR-330 (48); issue #774; UX-16, UX-24; finding F3 (the after-move half)
 - **Proves:** decision (48). **Type:** Screen. **First carried:** R1 (`fix/stop-follows-leg-1127` 6bd22cb6; no RESULTS file, no PC steps: steps written from its design note and commit text).
 - **Steps:** 1. Open a running paper trade that has a leg stop. 2. Change expiry on that leg. 3. Read the review step **before** confirming. 4. Do NOT confirm (confirming a move needs prices; with the market closed the server refuses): press Cancel.
 - **Expected:** **"The stop on <leg> will be removed; set a new one after the move."** (the leg named as the screens name it, e.g. "NIFTY 13 Oct 22800 CE"). After a move (Monday): the app offers "Set a stop on <new leg>" (pending owner read); no offer on a refused move, an unknown answer or a leg without a stop.
+
+### W-34 "Monitoring paused" badge when the worker stops (Lane Y item 1)
+- **Board items:** REQ-165 AC-6 / issue #868 family; UX-10. **Type:** Functionality / Screen. **In the build:** Lane Y `546d653f`.
+- **Steps (Lane Y, "Owner test (market CLOSED, Saturday)"):** stop the worker process, wait 2 minutes, reload Live Strategies, Positions, and the builder of a running trade. Expected: each shows **"⏸ Monitoring paused"**, **"Health unknown"**, **"Not being watched: no worker has reported in the last 2 minutes."** Start the worker: within 30 s the badge goes. Restart the worker supervisor again at the end.
+
+### W-35 Add to Paper with "prices are not live" ticked: the entry facts survive (Lane K2, order-door-2)
+- **Board items:** the "entry spot was not stored" family (ADR-330 (28)); Lane K2 item 1. **Type:** Functionality. **In the build:** Lane K2 code `5ee104a5` (its RESULTS' PC steps are on the branch tip `f3e75bc7`, not in the build copy).
+- **Steps (Lane K2, "market CLOSED, Saturday 08:00", word for word):** 1. Stop the feed process; open the app; the closed banner shows. 2. Open a fresh strategy in the builder, tick "prices are not live", type an entry price on each leg, press Add to Paper. 3. Read the strategy's entry facts: the Adjust page "Entry distance" line for that strategy (it names the entry spot and the call/put distance). **Expected: it shows the spot and distances, not "the entry spot was not stored".** Same step without the tick: the save is refused with its sentence and nothing is stored. (With the market closed Add to Paper may be refused by the market-closed sentence before this: write the sentence; then the result is PARTIAL: Monday.)
+- The real order door (a leg above 100 lots refused) is Monday.
 
 ## 5. Reused 27 Nov checks that can be proven with the market closed
 
@@ -333,7 +342,7 @@ Only the steps not run on 27 Nov are listed for a PARTIAL. Expected text that th
 - **Proves:** with no price feed the paused sentence carries its "as of" time, the tick box says when the entry price was captured, and the what-if says it is not shown.
 - **Type:** User experience
 - **27 Nov result:** FAIL: "Paused sentence lacks the 'as of' time on Home and the tick box; Confirm refused when prices are not live." Home read "Paper P&L paused - prices not live" with no "as of <date>, <time> IST"; tick text "Prices are not live; the entry is the last captured price." has no "as of HH:MM"; D-37 NOT CHECKED; D-18 not run.
-- **Fix carried first:** R1 (Lane U hotfix/index-quote-1127 head 709eb835; the 'as of' time on tick text: no fix lane named, R?)
+- **Fix carried first:** R1 (Lane U hotfix/index-quote-1127 head f61f7935, in the commit; the 'as of' time on tick text: no fix lane named)
 - **Needs:** market closed OK (weekend: there is no price feed at all, so there is nothing to stop; write that down)
 - **Steps:**
   1. NEW-T02: On a weekend there is no feed. Open Home and read the Paper P&L line.
@@ -350,7 +359,7 @@ Only the steps not run on 27 Nov are listed for a PARTIAL. Expected text that th
 - **Proves:** with the API down Exit is grey with a reason line, every list shows "-" and then comes back; nothing staged is wrongly kept.
 - **Type:** Functionality
 - **27 Nov result:** PARTIAL: "API stopped 15:16 to ~15:20:30. Grey button and reason line pass ('Prices are not live; try again when they update'); builder opened empty; s1 not checked (reload cleared tick), s3 and round 3 not checked (need API stop inside a dialog; only one 3-minute stop window)."
-- **Fix carried first:** R1 (Lane U hotfix/index-quote-1127 head 709eb835; the 'as of' time on tick text: no fix lane named, R?)
+- **Fix carried first:** R1 (Lane U hotfix/index-quote-1127 head f61f7935, in the commit; the 'as of' time on tick text: no fix lane named)
 - **Needs:** market closed OK for the grey-button and outage-list steps; MONDAY ONLY: steps 3 and 5 (Exit dialog open while the API stops), because after hours the server refuses exits, so no dialog confirms.
 - **Steps:**
   1. Positions > Paper: tick one leg of a running trade; "Exit (1)" is blue (s1; the 27 Nov reload cleared the tick, so do not reload).
@@ -500,7 +509,7 @@ Only the steps not run on 27 Nov are listed for a PARTIAL. Expected text that th
 - **Proves:** with the API down every list shows its failure message with Retry and comes back.
 - **Type:** Functionality
 - **27 Nov result:** PARTIAL: "API stopped: My Strategies 'Could not load your strategies. Nothing was changed.' with Retry (correct); builder 'The page could not get an answer from the server.' but no 'P&L Table' tab." Not run: other lists, reload during outage, Retry press, Current positions / Adjustment opportunities, D-N07 part.
-- **Fix carried first:** R1 (Lane U hotfix/index-quote-1127 head 709eb835; the 'as of' time on tick text: no fix lane named, R?)
+- **Fix carried first:** R1 (Lane U hotfix/index-quote-1127 head f61f7935, in the commit; the 'as of' time on tick text: no fix lane named)
 - **Needs:** market closed OK (the API is stopped on purpose)
 - **Steps:**
   1. Stop the API while the frontend still serves.
@@ -612,7 +621,7 @@ Where a source has no exact text, the line says "expected text not in the source
 - **Proves:** what banner time a mixed trade shows (ADR-330 (36) mixed case). Data, not PASS or FAIL.
 - **Type:** Screen
 - **27 Nov result:** DATA: "The new 25700 PE leg read 'Close, 27 Nov 2026, 15:30:00 IST', so no mixed-time case could be reproduced."
-- **Fix carried first:** R? Lane N fix/last-close-1127 (not on origin at 17:50 IST 27 Nov; re-check each version)
+- **Fix carried first:** R1 (Lane N fix/last-close-1127, in the commit; replaced by W-33)
 - **Steps:**
   1. After AF-02's restart is NOT needed; do this before it if possible. Take a builder that held its legs through the close.
   2. Add a new strike (one leg of the other kind, priced for the first time after the close).
@@ -624,7 +633,7 @@ Where a source has no exact text, the line says "expected text not in the source
 - **Proves:** ADR-330 (35); AC-R06 (FAILED on 26 Nov); N-46.
 - **Type:** Screen
 - **27 Nov result:** DATA: "Home read 'Market closed. Prices are from 27 Nov 2026, 15:30:00 IST.'; no unpriced trade existed, so the excluded-trade case could not be shown." (Later sweep, after the restart: Home Total P&L "—" with "Paper P&L paused - prices not live".)
-- **Fix carried first:** R? Lane N fix/last-close-1127 (not on origin at 17:50 IST 27 Nov; re-check each version)
+- **Fix carried first:** R1 (Lane N fix/last-close-1127, in the commit; replaced by W-33)
 - **Steps:**
   1. With one settled or unpriced trade present (after a restart all 9 trades may be unpriced, which is also worth writing down), open Home.
   2. Read "Total P&L" and the count line.
@@ -658,7 +667,7 @@ Where a source has no exact text, the line says "expected text not in the source
 - **Proves:** the Plan watch box shows trigger rows with a state word and the server's reason (Step 3 stand-alone checks).
 - **Type:** Screen
 - **27 Nov result:** FAIL: "Plan watch box never shows trigger rows or state words; ends 'not available right now'." (T2-01 FAIL: builder box never shows rows within 60 s and ends "not available"; T2-02 FAIL: Positions 0 of 10 boxes filled within 60 s.)
-- **Fix carried first:** R1 (Lane R hotfix/plan-save-1127 head 8b45807a; Lane R2 hotfix/plan-read-1127 not on origin)
+- **Fix carried first:** R1 (Lane R hotfix/plan-save-1127 head 8b45807a; Lane R2 hotfix/plan-read-1127 1d0f56e7 and Lane R3: in the commit)
 - **Steps:**
   1. Open the "Plan watch" box in the builder (beside the live P&L) of a strategy that has a plan, and on each open Positions paper row.
   2. Wait up to 60 s (the PC saw answers take 15-20 s). Read each trigger row's state word.
@@ -799,117 +808,209 @@ Where a source has no exact text, the line says "expected text not in the source
 - **Fix carried first:** none named in the mapping given.
 - MONDAY/TUESDAY ONLY: it needs a live index feed that goes silent for 60 s during market hours; on the weekend there is no tick to go silent. No steps written.
 
-## 7. Which round runs what (grid)
+## 7. Known open findings F1 to F3: not a round 1 failure; one round 2 check each, ready now
 
-R1 runs every check below once (BASELINE where the fix is not in the build). R2 and R3 re-run the previous round's FAIL and PARTIAL checks FIRST, then the checks that first carry a new fix.
+Source: Lane Z's independent Opus review of the joined stop and exit paths (RESULTS-lane-z.md; verdict REVISE). In round 1 write what you see as an observation tagged "known F1/F2/F3". These checks run in round 2 (and again in round 3) once the fix lanes' build carries them. **Market closed limits what can be proven:** an exit that completes needs the market open, so each check says what the weekend can show and what is Monday's.
+
+### R2-F1 After an exit with an unknown outcome, no second exit is sent (finding F1; fix lane FB, with FD's request key)
+- **Board items:** F1; ADR-017; ADR-330 (59) item 1 (Lane U2). **Type:** Functionality. **First carried:** R2 (Lane FB; not on origin at v2).
+- **What the finding says (Lane Z, word for word):** "StrategyBuilderPage.vue `decideUnknownExit`, `EARLY_MS = 5000`: after an UNKNOWN exit outcome the page says "not stored" and unlocks Exit if the trade looks unchanged 5 s after the client gave up; the server can still commit later (client timeout 10 s, statement timeout 30 s, pool wait up to 30 s, no idempotency key): a second per-leg partial Exit commits too (2 of 4 lots twice = 4 lots). Full-leg and Exit all are protected by EXIT_EXCEEDS_OPEN. Against ADR-017."
+- **Expected after the fix (Lane U2 text, pending owner read):** "The first exit's outcome is being checked; no second exit is sent until the book has been read."; the Confirm stays grey past 5 s; "The change waiting on <legs> was not sent; it is kept until the exit's outcome is known."
+- **Weekend steps:** with the market closed an exit is refused, so the unknown-outcome path cannot be run. Write what the round 2 RESULTS file of Lane FB gives as "PC steps, market CLOSED"; if it gives none: **BLOCKED: needs a completing exit (Monday, optional, Lane U2 item 1 step 2: stop the API right after pressing Confirm for a one-leg Exit; Confirm stays grey past 5 s; start the API and press "Open Orderbook" after 5 s; never two exit orders for one click).**
+
+### R2-F2 An index exit fires when the index price feed is silent (finding F2; fix lane FE)
+- **Board items:** F2; the 23 Nov case (NIFTY tick stops 15:15:18); AX-01. **Type:** Functionality. **First carried:** R2 (Lane FE; not on origin at v2).
+- **What the finding says:** "background.py `_read_with_either_spot` vs paper_monitor.py `on_quote`: the REST index stand-in makes the worker read FRESH and publish "watched" while the feed's index tick is silent; the paper monitor's index exits fire only on feed ticks and have no REST fallback: a crossed index exit never fires, no "exit not run" line, monitoring says watched."
+- **Weekend steps:** a silent feed can be shown without a market: stop the feed process, arm an index exit on a paper trade (Positions > Paper > Stops > Conditional exit), and read the Stops panel and Plan watch. **Expected after the fix:** the trade is NOT shown as "watched" for that index exit while the index tick is silent (the Stops panel says the exit is not being checked, with a reason). The firing itself (a crossing) is Monday. Lane FE's RESULTS "PC steps" replace this text when it exists.
+
+### R2-F3 The moved-leg stop: the user is told (finding F3; fix lanes FD and FA)
+- **Board items:** F3; ADR-330 (48); issue #774. **Type:** Screen / Functionality. **First carried:** R2 (FD for the 201 reply, FA for the dialog).
+- **What the finding says:** "routes/paper.py:1458-1460 with PaperConfirmDialog.vue:186-198: the stop cancel when a leg is moved is correct (same transaction, only closed contracts, never an open leg's stop) but the user is told through two failable reads; the 201 reply names no cancelled stop: on a slow or failed read the new leg has no stop, no offer and no line."
+- **Weekend steps:** the review line is W-32 (**"The stop on <leg> will be removed; set a new one after the move."**). The move itself needs a completing order (Monday). **After the fix:** the 201 reply names the cancelled stop, so the line appears even when the two reads fail (Lane FD's RESULTS gives the exact text; write it when it exists).
+
+## 8. Two data pulls for the PC (words and counts only)
+
+The coordinator's pull comment (28 Nov 04:20 IST): "the saved rows for the 27 Nov 13:28 stop case (issue #876) and for the 2028 date seen on a 1 Dec 2026 contract, as words and counts only." **What to copy:** words, ids, counts, rule ids, kinds, outcomes, times (hh:mm:ss), column names, row counts, skip-reason words. **What NEVER to copy:** any price value (including the `price` column of `paper_orders` and any Rs amount), any address (host name, URL host), any login or user name, any port, any key or token. When unsure, copy less and say what you left out. All steps are read only; they place nothing.
+
+### D-1 The 27 Nov 13:28 stop case: strategy A-G #207 (issue #876)
+- **Question it answers:** which hold kept #207 from raising an alert (T1-06 FAIL on 27 Nov: "A-G's loss reached 10 % against a 5 % rule for 14 minutes with no alert row"; Lane Q3 could not reproduce case (h)). Issue #876 asks for "the saved plan body and style of that case".
+- **Known already (do not pull):** plan accepted 13:13:33; rupee stop 80 plus T-06 weekly [50, 5, 40]; 0 suggestion rows seen; the loss was Rs 250.47 at 13:35.
+- **Items (Lane J3's RESULTS, "For the PC"; the documents give table and column names, no SQL, for 1 to 4):**
+  1. The plan body of strategy 207 as stored (the playbook plan row: `body`, and its accepted-at time) and the strategy's alert style pin (`strategy_alert_style`): copy the structure in words (which stage values were typed; weekly or monthly), no amounts.
+  2. `public.paper_orders` of strategy 207: `created_at`, `side`, `quantity` of the first basket (the entry time that starts the 5-minute period, ADR-330 (47)); whether the trade is paper or real (the strategy's `mode`). **Do not copy `price`.**
+  3. `public.adjustment_suggestions` of strategy 207 for 27 Nov: `rule_id`, `kind`, `shown_at`, `outcome`, `answer`, including dismissed ones (a dismissed or answered earlier row of the same rule silences it, ADR-236). Copy counts and words.
+  4. The gate rows of strategy 207 (the table `playbook_store.load_gate_rows` reads: the last record per rule and today's count) and the worker log lines `strategy 207 check skipped: <reason>` between 13:14 and 13:36 (reasons: interval, not_ticked, unchanged, prices_*, no_preset, no_gate_read): copy the reason words and counts.
+  5. Lane J's one verbatim query (tells hold (a) from (b)): `SELECT r.adjustment_no, r.rule_id, r.held_at_entry, r.seen_clear FROM public.adjustment_rule_state r JOIN public.strategies s ON s.id = r.strategy_id WHERE s.name ILIKE '%#207%' ORDER BY 1, 2;`
+- **Where it goes:** a comment on issue #876 by the owner or the coordinator (the PC does not post it); words and counts only. If strategy 207 or a table is not there: write that.
+
+### D-2 The year 2028 shown for a 1 Dec 2026 contract (B-N1 #194, Lane M)
+- **Question it answers:** is the stored expiry of the sold NIFTY 25750 PE really 2028-12-01 (wrong at the source) or did the "2028" come from the warning's own wording. Already known from PR #722: the five contracts of #194 read 2026-12-01 or 2026-12-08 at the source; 781 of 14,474 catalogue rows are more than 400 days ahead; "2028" appears only in builder and chain expiry drop-downs ("27 Jun 2028", "26 Dec 2028"). The name is "NOT EXPLAINED YET" (RESULTS-lane-m.md). The 27 Nov stop warning "... Sold option with less protection: NIFTY 25750 PE 2028-12-01." (UX-B01) was fixed by Lane M and passed on the PC on 27 Nov (T1-03).
+- **Steps (RESULTS-lane-m.md, SQL verbatim):**
+  1. `SELECT DISTINCT o.contract_id, c.expiry FROM public.paper_orders o JOIN public.catalogue_contracts c ON c.id = o.contract_id WHERE o.strategy_id = 194;`
+  2. `SELECT id, expiry FROM public.catalogue_contracts WHERE name = 'NIFTY' AND strike = 25750 AND instrument_type = 'PE';` then say whether any of those ids appears in (1) or in `paper_triggers` of strategy 194.
+  3. `SELECT id, name, instrument_type, strike, expiry, exchange_token, first_seen_at, last_seen_at, currently_listed FROM public.catalogue_contracts WHERE id IN (SELECT DISTINCT contract_id FROM public.paper_orders WHERE strategy_id = 194);` Copy ids, expiry dates and the yes/no "a 2028 id appears". **Do not copy `exchange_token`** if it identifies a broker session; it is a contract id, so copy it only if the owner agrees.
+  4. From the browser, the path (not the host or port) and the `contract_id` and `level` words of `GET /paper/strategies/194/leg-stop-risk` and the status code. No price value.
+  5. If an expiry reads 2028-12-01 the next question is the row's revision history and the loader run that wrote it: the documents give no SQL for it; **do not invent one**; write "2028 found in row <id>" and stop.
+  6. Screen re-test (paper only): Positions > Paper > B-N1 > Stops, on NIFTY 1 Dec 25650 PE type a stop "Above 102.55". Expected exactly: **"If this stop fires, max loss becomes Rs 16,62,316.50 (now Rs 1,732.25). Sold option with less protection: NIFTY 1 Dec 25750 PE."** (this is W-20; the figures are the check's own text, do not copy them anywhere else).
+
+## 9. Round 2 (Saturday 21:00): checks for the fix lanes now in progress
+
+The fix lanes of round 2 are in progress; only Lane FC and the test lane TB have pushed (`fix/r2-small-screens-1128` `95218b76`, `test/r2-frontend-1128` `bbd9c68e`). **Every check below names the lane's RESULTS file as its source of exact steps and texts; the next version of this plan copies them when the coordinator sends the round 2 branch list.** Until then each check carries what is already known (finding text, issue text, expected texts of the lanes in the build) and "NOT WRITTEN YET" where nothing exists.
+
+### R2-FA Exit dialog and Stops panel (Lane FA; NOT WRITTEN YET)
+- **Board items:** TB defect D2 (item I-98), F3 (dialog half), UX-01, UX-04, UX-09, UX-13, UX-20, UX-25, UX-31, UX-35, Lane U2's deferred minor items. **Type:** Screen. **Known text to check:** (D2, `PaperStops.vue:279`) a stop on a leg that is not among the open legs must read **"1 Dec"** style (the one date rule), never the ISO form "NIFTY 22300 PE 2026-12-01". **Weekend steps:** Positions > Paper > Stops of a trade with a stop on a closed leg: read the line; the exit-dialog lines of W-25 again; Lane U2's minor items (market answer fixed for one opening; the lock stays on when every re-read fails, with no "Check again" control) as observations.
+
+### R2-FB Builder page and F1 (Lane FB; NOT WRITTEN YET)
+- **Board items:** F1 (R2-F1), UX-B04 (Create Strategy "Loading..." words), UX-A05 (Plan button on Live cards), UX-A06, UX-A12 (settled trade wording), UX-A09, UX-SW6 ("Rule not checked..." line printed 17 times), UX-B13 ("Checked at Time not available"). **Type:** Screen / User experience. **Weekend steps:** write from Lane FB's RESULTS; today: open the builder of a settled trade (173, 205): W-29 expected text; open #209's plan panel: the "Rule not checked: No adjustment opportunity checked: prices stale or missing." line must not repeat 17 times.
+
+### R2-FC Small screens and wording (Lane FC; branch pushed, `95218b76`, "SAFE TO CLOSE")
+- **Board items:** I-122, I-69 (UX-05, UX-06), I-70, I-24, F7, I-61, I-62, the far-month badge; TB defect D1 (item I-40 family). **Type:** Screen. **Source:** RESULTS-lane-fc.md, "PC steps", word for word:
+  1. `python scripts/orchestrator/db_run.py . python -m pytest -c pytest-app.ini tests_app/test_d36_adjustment_counts.py` (the new take-profit sentence in `approaches.json`).
+  2. Positions > Adjustment opportunities: every open record says **"Now: not read yet"** until Lane FD adds the fields (or **"Now <value> as of <time> IST"** once it has).
+  3. Open a plan sheet of a trade whose expiry kind is not known: the stop box shows the server's reason (`plan-stop-kind-reason`).
+  4. Alerts > History while its reads are pending (TB D1, `AlertsPage.vue:124`): it must show a loading line, **not** "No stops or expiry settlements yet." until both reads have answered.
+  5. Expected texts (all pending owner read): "This approach is not built because the whole trade would not be in profit with every open leg closed at its planned price."; "Exits of a real-mode trade cannot be read here yet."; "Delete 14 strategies? 3 of them are running."
+  6. Live or later (Lane FD hand-offs): a real-mode trade's Plan card shows the exits line only after Lane FD's `exitsMode` pass; a far-month trade shows "Monitoring paused" with its reason only after Lane FD's field (the suggested server reason: "Every exit rule is not checked because whether this trade expires weekly or monthly is not known.").
+
+### R2-FD Backend totals, plan acceptance (migration renumbered 0060), connection holds, F3 reply, order request key (Lane FD; NOT WRITTEN YET)
+- **Board items:** F3 (R2-F3), the idempotency key (R2-F1), plan acceptance #0058 to 0060, REQ-165 AC-6 (#868), the `now_value`/`now_as_of` fields, issue #879. **Type:** Functionality. **Migration 0060 (plan acceptance) rule:** apply only with a written old-code-safe proof in Lane FD's RESULTS (the old code's tests run against the migrated database, with counts); without it, it is NOT applied and its checks are BLOCKED (name 0060). The "connection holds" text is in no file read at v2.
+
+### R2-FE Index exit with a silent feed (F2) and the worker issues #860 to #868, #878, #879 (Lane FE; NOT WRITTEN YET)
+- **Board items:** F2 (R2-F2) and the issues below. **Source:** each issue's own text (all open, label deferred, created 27 Nov 21:44 UTC); Lane FE's RESULTS gives the PC steps.
+
+| Issue | Meaning | What a market-closed PC check can look at |
+|---|---|---|
+| #860 | A time exit typed as plain HH:MM (no date) reads "not checked" even on expiry day (`playbook_eval.py` 621-622; fails closed) | Plan sheet with a plain "15:20" time exit and an unknown expiry kind: it says not checked (known gap); the dated form runs |
+| #861 | The worker's reason for an unknown-kind percent stop is generic | Plan sheet / monitoring state of a trade with a percent stop and an unknown expiry kind: read the reason text |
+| #862 | A stop typed and crossed within one minute is first checked with the old plan (up to 10 s) | not checkable with the market closed |
+| #863 | The worker prices a trade's market from the first-listed leg's expiry, not the nearest leg's | A paper trade with two legs of different expiries, the farther listed first: see which expiry's market the monitoring entry uses |
+| #864 | `_tracked_on` reads the whole live catalogue per strategy on every re-read | performance only; worker log timing with several paper strategies open |
+| #865 | The unknown-kind timing style (intraday) is fixed by no test | a test gap; no screen |
+| #866 | The T-06 not-checked reason for an unknown expiry kind says days left are missing | Plan sheet of such a trade: the reason must say the expiry kind is unknown, not that days left are missing |
+| #867 | `Worker._checked_body` never removes an entry | delete or settle a paper strategy, then look for a leftover entry in the monitoring state list |
+| #868 | The paused state of a trade lives only in the worker's memory (REQ-165 AC-6 not built; related #819) | the badge of W-34; restart the worker and see whether the badge is lost |
+| #876 | Plan-save case of 27 Nov 13:28 not reproduced (Q3 case (h)) | the data pull D-1 (section 8) |
+| #878 | A strategy dropped from the worker's list can stay ACTIVE in its stored state (J2 finding 3) | close a paper strategy, then read its stored monitoring state / Stops panel: it must not show "watched" |
+| #879 | Clock skew widens the 2-minute window of the plan check | not visible on a screen (title only read) |
+
+### R2-UX The PC's 41 usability notes (text in the PC's comment of 03:11 IST 28 Nov on PR #722)
+Each note is covered by a check (the PC writes whether the note is still there); board ids are from the triage (UX-nn).
+
+| PC note | Check or board item |
+|---|---|
+| UX-B01, UX-A18 (ISO date "2028-12-01" / "2026-12-01" in the stops and exit warning) | W-20 (Lane M), R2-FA (D2, UX-07, UX-03, UX-08) |
+| UX-B02, UX-A01, UX-B05, UX-A04, UX-B10, UX-A11, UX-A32, UX-A13, UX-A24 (Exit dialog and prices flapping) | W-25 (board UX-01, UX-04, UX-09, UX-13, UX-20, UX-25, UX-31, UX-35); the completing parts Monday |
+| UX-A02, UX-A03 (Stops lines, fired-stop toast) | W-29 |
+| UX-A05, UX-A06, UX-A12, UX-A33 (plan sheet only on the builder; settled-trade wording) | W-29 (decisions (54), (57)), R2-FB (UX-10, UX-11, UX-23) |
+| UX-A07, UX-A29, UX-A31 (Alerts empty text while loading; rows with only the strategy name) | W-28, W-17 (UX-12, UX-33), R2-FC step 4 (TB D1) |
+| UX-B08, UX-B13, UX-B23 (typed-price replaced sentence names a strike) | W-28 step 10 (UX-16, UX-24); R2-FB (UX-B13) |
+| UX-A08, UX-A10 (refusal text names "time_exit" and "playbook"; plan sheet 15 to 60 s) | W-14 (UX-17), W-29 |
+| UX-B11, UX-B12 (basket and "Acted on") | W-10 (UX-22), W-11 (UX-21) |
+| UX-B07, UX-B09, UX-C3, UX-SW6 (builder statuses at once; Rule not checked printed 17 times) | W-03, R2-FB |
+| UX-A30 (Plan block keeps the old stop) | W-01 (UX-34) |
+| UX-A09, UX-AF1, UX-AF02 (paused text, banner time, two times in one panel) | W-33 |
+| UX-AF2 (Select all 16 shown while 17 listed) | W-06 |
+| UX-B03, UX-B06 (Undo "No saved strategy matches"; a running trade selectable for delete) | T2-09 (section 5), R2-FC item I-70 |
+| UX-B25 (locked builder keeps old numbers) | T2-08 two-tab lock (Monday, optional) |
+| UX-B04, UX-A19 (Create Strategy waiting words; menu clicked twice) | R2-FB (UX-B04); UX-A19 no check: usability note, write whether it still happens |
+
+## 10. Which round runs what (grid)
+
+R1 runs every check of sections 4 to 6 once, on commit 5fc6b102. R2 and R3 re-run the previous round's FAIL and PARTIAL checks FIRST, then the checks that first carry a new fix (sections 7 and 9).
 
 | Checks | First carried | Re-run in |
 |---|---|---|
-| W-33 (nine screens after the seed), AF-03 to AF-07, SW-0 to SW-9 | R1 (Lane N b6777ce7); sweep also after Lane O | every round |
-| W-01, W-02, W-03, W-31 (Lanes R, H) | R1 | every round while FAIL or PARTIAL |
-| W-30 (Lane R2) | R1 | as above |
-| W-04, W-21, W-22 (read-only data) | R1 | only if the data was not read |
-| W-05 (Lane K, two market-closed steps), W-06 (Lane L) | R1 | R2, R3 while FAIL or PARTIAL |
-| W-07 owner decisions (46) to (63) | per its table | each row once; re-walk a row only if FAIL |
+| W-33 (nine screens after the seed), AF-03 to AF-07, SW-0 to SW-9 | R1 (Lane N in the commit) | every round |
+| W-01, W-02, W-03, W-30, W-31, W-34 (plans, Plan watch, monitoring badge) | R1 | while FAIL or PARTIAL |
+| W-04, W-21, W-22 and the data pulls D-1, D-2 (read-only data) | R1 | only if the data was not read |
+| W-05, W-06, W-35 (Lane K, K2, L, N: what a closed market shows) | R1 | while FAIL or PARTIAL |
+| W-07 owner decisions (46) to (64) | per its table | each row once; re-walk only a FAIL |
 | W-09 scenario-mode try (Lane J) | R1, **[OWNER APPROVAL]** | R2 only if PARTIAL for a reason that was fixed |
-| W-10 to W-19 (Lane W), W-20, W-23 | R1 | as above |
-| W-25 (Lane U, cases A to D), W-32 (#774) | R1 | as above |
-| W-26 (decision (59), not built), W-27 (decision (60), Lane U2) | R? (when a head carries them) | R3 |
-| W-28 (Lane O), W-29 (Lane V) | R1 | as above |
-| Section 5 reused checks (T1-14 to T4-04) | no fix needed: unrun steps only | R1, then only if FAIL or PARTIAL |
-| AF-07 (Real total while Zerodha is disconnected) | **Round 1 (Saturday)**, run last in that round | R2, R3 only if FAIL |
-| MONDAY ONLY: instrument list across 08:35 (W-08), decision (61), completing exits, Add to Paper size checks, T1-05 to T1-09 (real proof), T1-22, T2-08 completing part, AF-01 freeze at 15:30, T1-23, AX-01 | Monday plan | - |
+| W-10 to W-20, W-23, W-28, W-29, W-32 | R1 | while FAIL or PARTIAL |
+| W-25 (exit dialog market closed, (49), (60)), W-26 | R1 (Lane U2 in the commit) | while FAIL or PARTIAL |
+| Section 5 reused checks (T1-14 to T4-04) | no fix needed: unrun steps only | R1, then only FAIL or PARTIAL |
+| AF-07 (Real total while Zerodha is disconnected) | R1, last of the round | R2, R3 only if FAIL |
+| R2-F1, R2-F2, R2-F3 (section 7) | R2 (Lanes FB, FE, FD, FA) | R3 |
+| R2-FA to R2-FE, R2-UX (section 9) | R2 | R3 |
+| MONDAY (mostly optional): completing exits, Add to Paper size checks, decision (61) line, the instrument list at 08:35, T1-05 to T1-09 real proof, AF-01 across 15:30 | Monday plan | - |
 
-## 8. The 27 Nov results that can be re-proven now, and where
+## 11. The 27 Nov results that can be re-proven now, and where
 
-The PC's final list of 27 Nov 17:44 (head ff0448b3): PASS 33, FAIL 19, PARTIAL 23, NOT_CHECKED 11, DATA 5, of 91 checks, plus 41 usability notes. FAIL: T1-05, T1-06, T1-09, T1-15, T1-20, T1-22, T2-01, T2-02, T2-04, T2-08, T2-10, T2-13, T2-19, T3-13, AF-01, AF-02, AF-08, AX-05, AX-14.
+The PC's final list of 27 Nov 17:44 (head ff0448b3): PASS 33, FAIL 19, PARTIAL 23, NOT_CHECKED 11, DATA 5, of 91 checks, plus 41 usability notes. FAIL: T1-05, T1-06, T1-09, T1-15, T1-20, T1-22, T2-01, T2-02, T2-04, T2-08, T2-10, T2-13, T2-19, T3-13, AF-01, AF-02, AF-08, AX-05, AX-14. No new FAIL or PARTIAL id appeared in the PC's comments of the night (03:11 and 04:20 IST).
 
 | 27 Nov FAIL (condition) | Covered by |
 |---|---|
 | T1-20 (feed stopped: "as of" missing) | T1-20 (section 5) |
-| T2-08 (prices not live in the Exit dialog) | W-25 cases A to C; the completing exit and two-tab lock: Monday |
+| T2-08 (prices not live in the Exit dialog) | W-25 A to D; the completing exit and two-tab lock: Monday |
 | T1-22 (exit sentence without order number) | Monday: no exit completes with the market closed |
 | AF-02 (API restart after the close: held 15:30 closes lost) | W-33 (after the seed), SW-0 |
-| AF-08 (market closed: Add to Paper without tick box) | W-33 (Lane N: no tick box; market-closed sentence) and W-05 step 2 |
+| AF-08 (market closed: Add to Paper without tick box) | W-33 (Lane N: no tick box; market-closed sentence), W-35 |
 | AX-05 (no banner on Live Strategies after close) | W-33 |
 | AF-01 extra (leg-picker prices change after the close) | W-33 (leg picker line); the freeze across 15:30: Monday |
 | T1-15 (totals differ) | W-06 |
 | T2-01, T2-02, T2-04, AX-14 (Plan watch "not available") | W-02, W-03, W-31 |
 | T2-10 (5000 lots accepted) | W-05 (Settings 100, market-closed sentence); size sentences Monday |
 | T2-13 ("Acted on" after Cancel) | W-10, decision (53) |
-| T2-19 (Reset markers) | W-28 step 1 (needs Lane R2's patch), W-01 step 4 |
+| T2-19 (Reset markers) | W-28 step 1 (Lane R3 is in the commit), W-30 step 4, W-01 step 4 |
 | T1-09 (alerts stay Active after last leg exited) | W-13 (history part); exit part Monday |
-| T1-05 to T1-08 (plan-stop alert) | W-09 (scenario-mode try); Monday T1-05 is the real proof |
+| T1-05 to T1-08 (plan-stop alert) | W-09 (scenario-mode try); Lane Q3's worker-chain test (cloud); Monday T1-05 is the real proof |
 | T3-13 (wording: D-52, D-54, D-58) | T3-13 (section 5) |
-| N-07 to N-11 (instrument list before 08:30) | Monday 08:30 to 08:40 (W-08) |
+| N-07 to N-11 (instrument list before 08:30) | Monday (decision (61) and the 08:35 refresh) |
 
-## 9. Report at the end of each round
+## 12. Report at the end of each round
 
-One line to the coordinator: `ROUND N done HH:MM | build tag | build head | PASS n FAIL n PARTIAL n BLOCKED n | new observations n | next round`. The PR #722 status comment follows rule 6 of section 0.
+One line to the coordinator: `ROUND N done HH:MM | commit | PASS n FAIL n PARTIAL n BLOCKED n | known F1/F2/F3 seen n | new observations n | next round`. The PR #722 status comment follows rule 6 of section 0.
 
-## 10. The message for each round (the owner sends it to the reused PC session)
+## 13. The message for each round (the owner sends it to the reused PC session)
 
-The PC session is the same one all weekend: it keeps what it learned in the round before, but it re-reads this plan file at the start of each round and never relies on memory for expected texts. Lines marked **[OWNER APPROVAL]** wait for the owner's typed "yes". Replace `N` and the bracketed items for the round.
+The PC session is the same one all weekend: it keeps what it learned in the round before, but it re-reads this plan file at the start of each round and never relies on memory for expected texts. Lines marked **[OWNER APPROVAL]** wait for the owner's typed "yes". The owner starts each round (Saturday 08:00, Saturday 21:00, Sunday 12:00). Replace `N` and the bracketed items for the round.
 
 ```
-You are still the owner's PC session for OptionsForOptions2; this is round N of the closed-market weekend test (tag weekend-rN).
+You are still the owner's PC session for OptionsForOptions2; this is round N of the closed-market weekend test.
 Paper only: never place, send or confirm a broker order. The market is closed; there is no Kite login and no live feed.
-Read docs/process/test-plan-weekend-2026-11-28.md: section 0 (rules), section 2 (set-up), section 4 to 6 (the checks), section 10.
-1. Pull by tag: git fetch origin --tags; check out weekend-rN in the checkout the app serves from. Write git rev-parse --short HEAD and, for
-   each lane head in section 1, the merge-base --is-ancestor result.
+Nothing starts until the owner starts the round and gives each approval himself.
+Read docs/process/test-plan-weekend-2026-11-28.md on branch docs/test-plan-weekend-1127: section 0 (rules), section 2 (set-up),
+the checks of this round, section 13.
+1. Look at the database link and count the ofo_app connections (limit 10, shared). Keep your old local test branch test/screen-2026-11-27
+   (head bdb0d126) exactly as it is; never reset it.
 2. Back up ofo_dev on the VPS over SSH (pg_dump -Fc), copy to %USERPROFILE%\ofo-backups, check the size is equal on both machines and
    pg_restore --list shows TABLE DATA entries above 0. If the check fails, stop and report.
-3. Migration 0059_last_close (round 1 only; rounds 2 and 3: alembic current must end 0059_last_close (head)): [OWNER APPROVAL] then
-   run the section 2 step 4b command. Never run alembic downgrade. Restore from the backup only with [OWNER APPROVAL].
-4. Round 1 only, before any restart: section 2 step 5: the DB tests (5a), the seed dry run with --check (5b: expect "would write 17",
+3. Pull the commit: git fetch origin integration/weekend-1127; git checkout -b test/weekend-rN [round 1: 5fc6b1023234b9efb948db731d903ad957f341c1;
+   rounds 2 and 3: the commit the coordinator sends]; git rev-parse HEAD must equal it. There is no tag.
+4. Migration 0059_last_close (round 1 only; rounds 2 and 3: alembic current must end 0059_last_close (head)): [OWNER APPROVAL] then run the
+   section 2 step 3 command. Never run alembic downgrade. Restore from the backup only with [OWNER APPROVAL]. A migration without a written
+   old-code-safe proof (for example 0060, plan acceptance) is not applied; its checks are BLOCKED.
+5. Round 1 only, before any restart: section 2 step 5: the DB tests (5a), the seed dry run with --check (5b: expect "would write 17",
    "skipped 0"), then [OWNER APPROVAL] the real seed (5c: expect "written 17"). Write the lines printed.
-5. npm ci and npm run build in the serving checkout; restart the API, the worker supervisor and the frontend; Ctrl+F5; health page healthy.
-6. Section 2 step 9 (sanity). Then run the checks in the order of section 4: W-33 first, then the rest. FIRST re-run every FAIL and PARTIAL of
-   the previous round. Before each block: check the server link (a dropped link = "infra, re-run", not FAIL) and count the ofo_app connections
-   (limit 10; two-user speed run only when fewer than 6 are in use). W-09 only with [OWNER APPROVAL].
-7. Every result: build head, build tag, state (Fixed, not tested / Passed in cloud / Passed on PC (market closed) / Approved (PC, live)),
-   PASS only if every step ran and the expected text was seen; otherwise PARTIAL naming the unrun steps, or BLOCKED naming what blocked it.
-   Never NOT CHECKED for lack of time. Look in Alerts Active AND History. New problems are observations (screen, exact text, time);
-   awkward things are usability notes (UX-nn).
-8. Post a status comment on PR #722 every 60 minutes in the fixed short format (section 0 rule 6).
-9. AF-07 last [round 1 only].
-10. Stop at [round 1: Sat 12:00; round 2: Sun 01:00; round 3: Sun 16:00] or when the list is done. Final message: the one-line round report
-    (section 9) and the list of FAILs for the next round. Fix nothing; change no code; open no PR.
+6. npm ci and npm run build in the serving checkout; restart the API, then the worker, then the feed; Ctrl+F5; health page healthy.
+7. Section 2 steps 8 and 9 (confirm the commit, sanity). Then run the checks of section 4 in order (W-33 first), then section 5 and 6.
+   [Rounds 2 and 3: FIRST re-run every FAIL and PARTIAL of the previous round; then sections 7 and 9.] Before each block: look at the link
+   (a dropped link = "infra, re-run", not FAIL) and count the ofo_app connections (the two-user speed run only when fewer than 6 are in use).
+   W-09 only with [OWNER APPROVAL]. Round 1 also: the two data pulls of section 8 (read only; words and counts only; never a price value,
+   address, login, port or key).
+8. Every result: the commit, state (Fixed, not tested / Passed in cloud / Passed on PC (market closed) / Approved (PC, live)), PASS only if every
+   step ran and the expected text was seen; otherwise PARTIAL naming the unrun steps, or BLOCKED naming what blocked it. Never NOT CHECKED for
+   lack of time. Look in Alerts Active AND History. F1, F2, F3 seen = "known F1/F2/F3", not a FAIL. New problems are observations (screen,
+   exact text, time); awkward things are usability notes (UX-nn).
+9. Post a status comment on PR #722 every 60 minutes in the fixed short format (section 0 rule 6).
+10. AF-07 last [round 1].
+11. Stop at [round 1: Sat 12:00; round 2: Sun 01:00; round 3: Sun 16:00] or when the list is done. Final message: the one-line round report
+    (section 12) and the list of FAILs for the next round. Fix nothing; change no code; open no PR.
 ```
 
-## 11. Intake from the PC's night of 27 Nov (PR #722)
+## 14. Intake: AX-01 to AX-14 of 27 Nov (the PC's night list)
 
-**AX-01 to AX-14** (titles and verdicts as the PC posted them at 19:04 IST). AX-08 to AX-12 are features that are **not built, not in this weekend, no check** (AX-09 #433, AX-10 #751, AX-11 and AX-12 #750; AX-08 spec only).
+AX-08 to AX-12 are features that are **not built, not in this weekend, no check** (AX-09 #433, AX-10 #751, AX-11 and AX-12 #750; AX-08 spec only). The 41 usability notes are in section 9 (R2-UX).
 
 | 27 Nov id | Status | Weekend | Monday |
 |---|---|---|---|
-| AX-01 index quote older than 60 s is not live | NOT CHECKED | no (needs the relay, not built) | only if the relay exists, else BLOCKED: relay not built |
+| AX-01 index quote older than 60 s is not live | NOT CHECKED | no (needs the relay, not built); R2-F2 shows the silent-feed state | only if the relay exists, else BLOCKED: relay not built |
 | AX-02 payoff hover stays through live refreshes | PASS (mouse) | keyboard variant, builder payoff chart, market closed OK: write what you see | - |
 | AX-03 no plan, no adjustment limit | PASS | - | - |
-| AX-04 bid and ask recorded | DATA | - | Monday: needs live quotes |
+| AX-04 bid and ask recorded | DATA | - | optional: last traded price below the bid on the Option Chain |
 | AX-05 prices frozen label on Live Strategies | FAIL | W-33 | - |
 | AX-06 Delete has no extra read | DATA (about 2 s) | repeat three tries, write the seconds | - |
 | AX-07 Pick from Option Chain in the picker | PASS | - | - |
 | AX-08 to AX-12 | not built | none | none |
 | AX-13 profit-target amount on the Stops panel | PARTIAL | W-03 (Plan watch loaded) then the Stops panel | - |
 | AX-14 Plan watch rows | FAIL | W-03, W-31, section 6 AX-14 | - |
-
-**The 41 usability notes** (UX-nn, exact text in the PC's `docs/process/screen-checks-2026-11-27.md`, section "Usability notes (27 Nov)"; the PC's results branch was not pushed at 19:25). Each note goes to the check where the tester will see it again; the tester writes whether it is still there.
-
-| Check | Notes |
-|---|---|
-| W-20 (ISO date in the stops warning) | UX-B01, UX-A18 |
-| W-25 (Exit dialog; completing part Monday) | UX-B02, UX-A01, UX-B05, UX-A04, UX-B10, UX-A11, UX-A32, UX-A13, UX-A24 |
-| W-29 (plan door, Stops lines, closed trade) | UX-A02, UX-A03, UX-A05, UX-A06, UX-A12, UX-A33 |
-| W-28 (alert rows, typed-price sentence) | UX-A07, UX-A29, UX-A31, UX-B08, UX-B13, UX-B23 |
-| W-14 and W-29 (plan sheet wording and load time) | UX-A08, UX-A10 |
-| W-10 and W-11 (compare, basket) | UX-B11, UX-B12 |
-| W-03 (Plan watch box states) | UX-B07, UX-B09, UX-C3, UX-SW6 |
-| W-01 (plan save read back) | UX-A30 |
-| W-33 (nine screens) | UX-A09, UX-AF1, UX-AF02 |
-| W-06 (totals) | UX-AF2 |
-| T2-09 (bulk delete, Undo; section 5) | UX-B03, UX-B06 |
-| T2-08 (two-tab lock; Monday) | UX-B25 |
-| no check (usability only; re-observe and write) | UX-B04 (Create Strategy "Show strategies" and 10 to 20 s Loading), UX-A19 (Strategies menu clicked twice) |
-
-The 16 open "N-" notes of the PC's final list (N-10, N-11, N-B01, N-A01 and so on) are kept in the observations of 27 Nov above in the Monday plan, section 7 (the instrument list and pre-open data).
