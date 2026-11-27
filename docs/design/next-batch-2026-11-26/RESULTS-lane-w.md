@@ -34,6 +34,9 @@ New wording is marked **pending owner read**; every such sentence is also pinned
 | 14 | DROPPED (coordinator 13:18) | Not a defect: the plan sheet took 17 s to load at 12:42; at 13:04 the typed 400 and 15:15 stayed (T3-16 PASS). | Commit 931562e reverted. | - |
 
 ## SPEC CHANGE pending the owner
+- Gate fixes added, **pending owner read**: two slot types `ContractName`, `SideWord` (gate_slots.py, pinned in
+  tests_app/test_identifier_and_slots.py) for item 4; two sentences "Target and Target (Rs) show different values."
+  and "Stop and Stop (Rs) show different values." (templates 710/711) for a plan sheet whose two boxes disagree.
 - REQ-112 AC-2 said "Acted on" meant "prepared a basket"; item 10 (coordinator brief: stamp only on a placed order)
   contradicts it. The AC text now says a paper order must be placed. Owner to confirm.
 
@@ -59,6 +62,9 @@ New wording is marked **pending owner read**; every such sentence is also pinned
    issue); item 10 edited assertions there that have not run green here. Run on the PC.
 7. Item 13: the nowrap is checked by class only; needs a rendered-width check.
 8. Two new codes STRATEGY_VALIDATION_524/525 (item 4) may collide with another lane's numbers at merge.
+10. tests_app order dependence: `test_adjustment_plan.py::test_core_use_as_is...` leaves an edited active playbook in
+   the shared test DB; with file order reversed it fails itself (prefill returned playbook 3, not "Core own" 14).
+   Item 10's test no longer depends on it (plans from the system playbook).
 9. Plan sheet loads slowly (17 s at 12:42 on the PC, 27 Nov): the cause of the item 14 report.
 
 ## Task | model that did it
@@ -76,4 +82,5 @@ New wording is marked **pending owner read**; every such sentence is also pinned
 | Pre-push fixes: duplicate-leg test move, selector pin, ruff findings | Sonnet builder |
 | Ruff E501/I001 rewrap after the item 10 merge | Haiku builder |
 | Gate app_tests fixes (slot pin, plan rupee-level refusal tests) | Sonnet builder |
+| DB-order fix of the item 10 test, target-refusal test | Sonnet builder |
 | Splitting, routing, cherry-picks, conflict resolution of template_pins.json, revert of item 14, verification runs, RESULTS | main session (Opus) |
