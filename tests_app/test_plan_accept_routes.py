@@ -7,30 +7,21 @@ keeps its own stops: nothing under a live position changes without the user choo
 the playbook is a new acceptance); ADR-330 (32) (Reset to playbook).
 
 Real case: strategy 82's shape (iron condor accepted before the ADR-247 version, margin stop "4" and T-16 on). The page
-switches an EXISTING plan's playbook with PUT (``PlanEntry.vue`` ``:edit="!!read.plan"``), so the request the sheet sends
+switches an EXISTING plan's playbook with PUT (PlanEntry.vue edit), so the request the sheet sends
 for a selector pick carries ``accept: true``; a level edit never does. Same harness as test_adjustment_plan.py: scenario
 ADJ-02, committed rows, the plan row backdated by the table owner with the guard off.
 """
-# ruff: noqa: F811  (the imported ``app_db_url`` fixture is used as a test argument)
+
 from __future__ import annotations
 
 import datetime
 import functools
 import json
 import os
+import pathlib
+from http import HTTPStatus
 
 import pytest
-from test_adjustment_plan import (  # noqa: F401 - app_db_url is a fixture
-    OK,
-    USER,
-    _call,
-    _plan_path,
-    _plan_row,
-    _seeded,
-    _system_ic,
-    app_db_url,
-)
-
 from ofo_app import adjustment_check as check
 from ofo_app import db as app_db
 from ofo_app import playbook_store as pbs
@@ -38,8 +29,31 @@ from ofo_app import settings_in_force as sif
 from sqlalchemy import text
 from sqlalchemy.ext.asyncio import create_async_engine
 from sqlalchemy.pool import NullPool
+from test_adjustment_plan import (
+    OK,
+    USER,
+    _call,
+    _plan_path,
+    _plan_row,
+    _reset_engine,
+    _seeded,
+    _system_ic,
+)
 
 DAY = datetime.timedelta(days=1)
+
+
+@pytest.fixture
+async def app_db_url(app_engine, monkeypatch):
+    """The route harness of test_adjustment_plan.py: the app's DATABASE_URL is the test application engine."""
+    monkeypatch.setenv("DATABASE_URL", app_engine.url.render_as_string(hide_password=False))
+    monkeypatch.setenv("APP_ENV", "test")
+    _reset_engine()
+    yield app_engine
+    await app_db.close_db()
+    _reset_engine()
+
+
 _AT = text("SELECT accepted_at, playbook_id FROM public.strategy_adjustment_plans WHERE strategy_id = :s")
 MARGIN = "stop_line_pct_of_margin"
 
@@ -67,17 +81,21 @@ async def _old_plan(app_engine, admin_engine, sid: int, *, margin: bool = False,
         body["triggers"]["T-16"]["on"] = True
     async with admin_engine.begin() as conn:
         await conn.execute(text("ALTER TABLE public.strategy_adjustment_plans DISABLE TRIGGER USER"))
-        await conn.execute(text("UPDATE public.strategy_adjustment_plans SET accepted_at = :t, "
-                                "body = CAST(:b AS JSONB), playbook_id = CASE WHEN :n THEN NULL ELSE playbook_id END "
-                                "WHERE strategy_id = :s"),
-                           {"t": then, "b": json.dumps(body), "n": null_playbook, "s": sid})
+        await conn.execute(
+            text(
+                "UPDATE public.strategy_adjustment_plans SET accepted_at = :t, "
+                "body = CAST(:b AS JSONB), playbook_id = CASE WHEN :n THEN NULL ELSE playbook_id END "
+                "WHERE strategy_id = :s"
+            ),
+            {"t": then, "b": json.dumps(body), "n": null_playbook, "s": sid},
+        )
         await conn.execute(text("ALTER TABLE public.strategy_adjustment_plans ENABLE TRIGGER USER"))
-    at, playbook, before, credit = await _state(app_engine, sid)
+    at, _, before, credit = await _state(app_engine, sid)
     assert (at, before, credit) == (then, True, False)
     return system, then
 
 
-async def test_core_the_first_save_stamps(app_db_url, admin_engine, monkeypatch):  # noqa: F811
+async def test_core_the_first_save_stamps(app_db_url, admin_engine, monkeypatch):
     sid = await _seeded(app_db_url, monkeypatch, "ADJ-02")
     async with admin_engine.begin() as conn:
         await conn.execute(text("DELETE FROM public.strategy_adjustment_plans WHERE strategy_id = :s"), {"s": sid})
@@ -90,7 +108,7 @@ async def test_core_the_first_save_stamps(app_db_url, admin_engine, monkeypatch)
     assert at >= cutoff and playbook == system.id and before is False and credit is True
 
 
-async def test_post_accept_of_the_same_playbook_and_of_another_one_each_stamp(app_db_url, admin_engine, monkeypatch):  # noqa: F811
+async def test_post_accept_of_the_same_playbook_and_of_another_one_each_stamp(app_db_url, admin_engine, monkeypatch):
     sid = await _seeded(app_db_url, monkeypatch, "ADJ-02")
     system, then = await _old_plan(app_db_url, admin_engine, sid)
     status, out = await _call("POST", _plan_path(sid), json={"playbook_id": system.id})  # the same one again
@@ -106,8 +124,9 @@ async def test_post_accept_of_the_same_playbook_and_of_another_one_each_stamp(ap
     assert other_at > then and playbook == own.id and before is False and credit is True
 
 
-async def test_the_sheets_playbook_pick_on_an_existing_plan_is_a_put_with_accept_and_stamps(  # noqa: F811
-        app_db_url, admin_engine, monkeypatch):
+async def test_the_sheets_playbook_pick_on_an_existing_plan_is_a_put_with_accept_and_stamps(
+    app_db_url, admin_engine, monkeypatch
+):
     """The real request: PlanEntry opens the sheet with edit=true, so a pick of another playbook then Save is PUT with
     ``accept`` (strategy 82's shape: the switch kept accepted_at, credit line False, before this fix)."""
     sid = await _seeded(app_db_url, monkeypatch, "ADJ-02")
@@ -118,11 +137,11 @@ async def test_the_sheets_playbook_pick_on_an_existing_plan_is_a_put_with_accept
     assert status == OK, out
     at, playbook, before, credit = await _state(app_db_url, sid)
     assert at > then and playbook == own.id and before is False and credit is True
-    body = json.loads((await _plan_row(app_db_url, sid)).body)  # the chosen playbook's own conditions, not the old plan's
+    body = json.loads((await _plan_row(app_db_url, sid)).body)  # the chosen playbook's conditions
     assert MARGIN not in body["guards"] or body["guards"][MARGIN] != "4"
 
 
-async def test_use_as_is_on_the_same_playbook_from_the_sheet_stamps(app_db_url, admin_engine, monkeypatch):  # noqa: F811
+async def test_use_as_is_on_the_same_playbook_from_the_sheet_stamps(app_db_url, admin_engine, monkeypatch):
     sid = await _seeded(app_db_url, monkeypatch, "ADJ-02")
     system, then = await _old_plan(app_db_url, admin_engine, sid)
     status, out = await _call("PUT", _plan_path(sid), json={"playbook_id": system.id, "accept": True})
@@ -131,8 +150,9 @@ async def test_use_as_is_on_the_same_playbook_from_the_sheet_stamps(app_db_url, 
     assert at > then and before is False and credit is True
 
 
-async def test_a_put_without_accept_never_stamps_also_when_it_names_another_playbook(  # noqa: F811
-        app_db_url, admin_engine, monkeypatch):
+async def test_a_put_without_accept_never_stamps_also_when_it_names_another_playbook(
+    app_db_url, admin_engine, monkeypatch
+):
     sid = await _seeded(app_db_url, monkeypatch, "ADJ-02")
     system, then = await _old_plan(app_db_url, admin_engine, sid)
     async with app_db_url.begin() as conn:
@@ -143,7 +163,7 @@ async def test_a_put_without_accept_never_stamps_also_when_it_names_another_play
     assert (at, playbook, before, credit) == (then, own.id, True, False)
 
 
-async def test_a_put_level_edit_keeps_accepted_at_and_the_old_stops(app_db_url, admin_engine, monkeypatch):  # noqa: F811
+async def test_a_put_level_edit_keeps_accepted_at_and_the_old_stops(app_db_url, admin_engine, monkeypatch):
     sid = await _seeded(app_db_url, monkeypatch, "ADJ-02")
     system, then = await _old_plan(app_db_url, admin_engine, sid, margin=True)
     status, out = await _call("PUT", _plan_path(sid), json={"playbook_id": system.id, "target": "35", "stop": "40"})
@@ -154,8 +174,9 @@ async def test_a_put_level_edit_keeps_accepted_at_and_the_old_stops(app_db_url, 
     assert body["guards"][MARGIN] == "4" and body["triggers"]["T-16"]["on"] is True  # its own stops stay
 
 
-async def test_a_put_on_a_null_playbook_plan_with_the_prefill_keeps_accepted_at_and_its_own_stops(  # noqa: F811
-        app_db_url, admin_engine, monkeypatch):
+async def test_a_put_on_a_null_playbook_plan_with_the_prefill_keeps_accepted_at_and_its_own_stops(
+    app_db_url, admin_engine, monkeypatch
+):
     """LJ-2 option 1 and R1/R2-MAJOR-2: the sheet's prefill points the plan at the active playbook; that is no choice.
     It does not stamp, the plan still reads as saved before ADR-247 (no credit line), and keeps its margin stop "4" and
     T-16 (before: the edit replaced the whole body with the playbook's)."""
@@ -171,8 +192,9 @@ async def test_a_put_on_a_null_playbook_plan_with_the_prefill_keeps_accepted_at_
     assert body["guards"]["profit_target_pct_of_max_profit"] == "35"  # the edit did save
 
 
-async def test_a_null_playbook_plan_where_the_user_picks_a_playbook_stamps_and_takes_its_body(  # noqa: F811
-        app_db_url, admin_engine, monkeypatch):
+async def test_a_null_playbook_plan_where_the_user_picks_a_playbook_stamps_and_takes_its_body(
+    app_db_url, admin_engine, monkeypatch
+):
     sid = await _seeded(app_db_url, monkeypatch, "ADJ-02")
     system, then = await _old_plan(app_db_url, admin_engine, sid, margin=True, null_playbook=True)
     status, out = await _call("PUT", _plan_path(sid), json={"playbook_id": system.id, "accept": True})
@@ -182,8 +204,9 @@ async def test_a_null_playbook_plan_where_the_user_picks_a_playbook_stamps_and_t
     assert json.loads((await _plan_row(app_db_url, sid)).body)["guards"].get(MARGIN) != "4"
 
 
-async def test_reset_to_playbook_stamps_and_the_strategy_82_shape_gains_the_credit_line(  # noqa: F811
-        app_db_url, admin_engine, monkeypatch):
+async def test_reset_to_playbook_stamps_and_the_strategy_82_shape_gains_the_credit_line(
+    app_db_url, admin_engine, monkeypatch
+):
     sid = await _seeded(app_db_url, monkeypatch, "ADJ-02")
     system, then = await _old_plan(app_db_url, admin_engine, sid, margin=True)
     status, out = await _call("POST", _plan_path(sid) + "/reset")
@@ -192,41 +215,49 @@ async def test_reset_to_playbook_stamps_and_the_strategy_82_shape_gains_the_cred
     assert at > then and playbook == system.id and before is False and credit is True
 
 
-async def test_the_levels_preview_reads_the_same_body_the_save_will_with_the_pick(  # noqa: F811
-        app_db_url, admin_engine, monkeypatch):
+async def test_the_levels_preview_reads_the_same_body_the_save_will_with_the_pick(
+    app_db_url, admin_engine, monkeypatch
+):
     sid = await _seeded(app_db_url, monkeypatch, "ADJ-02")
     system, _ = await _old_plan(app_db_url, admin_engine, sid, margin=True, null_playbook=True)
     status, kept = await _call("GET", _plan_path(sid) + "/levels", params={"stop": "40", "playbook_id": system.id})
     assert status == OK, kept
-    status, picked = await _call("GET", _plan_path(sid) + "/levels",
-                                 params={"stop": "40", "playbook_id": system.id, "accept": "true"})
+    status, picked = await _call(
+        "GET", _plan_path(sid) + "/levels", params={"stop": "40", "playbook_id": system.id, "accept": "true"}
+    )
     assert status == OK, picked
     status, saved = await _call("PUT", _plan_path(sid), json={"playbook_id": system.id, "stop": "40"})
     assert status == OK and kept["stop"]["words"] == saved["plan"]["stop_words"], (kept, saved)
 
 
 @pytest.mark.parametrize("method", ["POST", "PUT"], ids=["accepts_true", "accepts_false"])
-async def test_a_lock_timeout_on_the_plan_row_answers_the_busy_refusal_not_a_25P02(  # noqa: F811
-        app_db_url, admin_engine, monkeypatch, method):
+async def test_a_lock_timeout_on_the_plan_row_answers_the_busy_refusal_not_a_25P02(
+    app_db_url, admin_engine, monkeypatch, method
+):
     """R2-MINOR-3: the error path keeps the ORIGINAL error (55P03 -> the busy answer) with accepts True and False."""
     sid = await _seeded(app_db_url, monkeypatch, "ADJ-02")
     system, then = await _old_plan(app_db_url, admin_engine, sid)
-    timed = create_async_engine(os.environ["TEST_DATABASE_URL"], poolclass=NullPool,
-                                connect_args={"server_settings": {"jit": "off", "lock_timeout": "300"}})
+    timed = create_async_engine(
+        os.environ["TEST_DATABASE_URL"],
+        poolclass=NullPool,
+        connect_args={"server_settings": {"jit": "off", "lock_timeout": "300"}},
+    )
 
     monkeypatch.setattr(app_db, "get_engine", functools.lru_cache(lambda: timed))  # keeps cache_clear / cache_info
     try:
         async with admin_engine.connect() as holder:
             trans = await holder.begin()
-            await holder.execute(text("SELECT strategy_id FROM public.strategy_adjustment_plans "
-                                      "WHERE strategy_id = :s FOR UPDATE"), {"s": sid})
+            await holder.execute(
+                text("SELECT strategy_id FROM public.strategy_adjustment_plans WHERE strategy_id = :s FOR UPDATE"),
+                {"s": sid},
+            )
             try:
                 status, out = await _call(method, _plan_path(sid), json={"playbook_id": system.id})
             finally:
                 await trans.rollback()
     finally:
         await timed.dispose()
-    assert status == 409 and out["code"] == "STRATEGY_VALIDATION_522", (status, out)
+    assert status == HTTPStatus.CONFLICT and out["code"] == "STRATEGY_VALIDATION_522", (status, out)
     assert "ERR-" not in json.dumps(out)
     monkeypatch.undo()
     at, *_ = await _state(app_db_url, sid)
@@ -234,7 +265,5 @@ async def test_a_lock_timeout_on_the_plan_row_answers_the_busy_refusal_not_a_25P
 
 
 def test_the_request_field_is_documented_in_the_openapi_file():
-    import pathlib  # noqa: PLC0415
-
     spec = json.loads((pathlib.Path(__file__).resolve().parents[1] / "docs/api/openapi.json").read_text("utf-8"))
     assert "accept" in spec["components"]["schemas"]["PlanIn"]["properties"]

@@ -18,7 +18,7 @@ store sets the signal (``SELECT set_config('ofo.plan_acceptance', 'on', true)``)
 acceptance and sets it ``'off'`` right after a successful write (no SQL after a failure: the setting is
 transaction-local, so the aborted transaction drops it and the original error is the one the caller sees): (a) the first
 save, (b) the user accepting a playbook (POST /adjustment-plan, any playbook id, the same one included: it takes the
-newest version, ADR-252 addendum; and PUT /adjustment-plan carrying ``accept: true``, which the plan sheet sends when the
+newest version, ADR-252 addendum; and PUT /adjustment-plan carrying ``accept: true``, which the sheet sends when the
 user picked a playbook in its selector or pressed "Use playbook as is", because the page edits an EXISTING plan with
 PUT), (c) Reset to playbook. A plan-sheet edit (PUT without ``accept``) never sets it, so it never stamps, also when it
 re-points a plan whose playbook was deleted (playbook_id NULL) at the active playbook (the sheet's prefill is no
