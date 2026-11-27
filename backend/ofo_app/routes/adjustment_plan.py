@@ -27,7 +27,7 @@ import datetime
 import logging
 import re
 from decimal import Decimal, InvalidOperation
-from typing import Annotated, Any
+from typing import Annotated, Any, NamedTuple
 
 from fastapi import APIRouter, Depends, Query
 from ofo import market_calendar
@@ -80,6 +80,9 @@ router = APIRouter(route_class=ClosedRoute)
 _NOT_AVAILABLE = "user_input_request_not_available"
 _GENERIC = "adjust_plan_no_playbook"
 _PRICES_NOT_READ = "plan_save_prices_not_read"
+_PERCENT_STOP_NOT_READ = "plan_save_percent_stop_not_read"  # Hotfix plan-read-1127: its own sentence
+_KIND_NOT_KNOWN = "plan_stop_kind_not_known"
+_KIND_CATALOGUE_UNREADABLE = "plan_stop_kind_catalogue_unreadable"
 #: Hotfix plan-save-1127: the longest a plan SAVE or RESET waits for its price read (``_bounded_market``). Same 4 s as
 #: the plan watch route's PRICE_BUDGET_S (routes/plan_watch.py), the code's one price budget; it leaves the page's own
 #: 30 s save timeout ample room. Over it the save is REFUSED (nothing stored), never left hanging.
@@ -245,6 +248,8 @@ class AdjustmentPlanOut(ApiModel):
     triggers: list[TriggerInForceOut]
     triggers_reason: Identifier | None
     stops: StopsOut
+    #: Hotfix plan-read-1127: why the stop is not shown (the expiry kind is not known); None when it is shown
+    stop_kind_reason: CatalogueText | None = None
 
 
 def _bad(field: str) -> store.PlaybookStoreError:
@@ -469,7 +474,9 @@ def _set_stop(out: dict, raw: str, kind: str | None = None, *, strict: bool = Fa
     ``strict`` (a SAVE): the "same as shown" test reads the strategy's own T-06 row, so an unknown kind refuses
     (``plan_save_prices_not_read``, nothing written) instead of comparing against the weekly row."""
     if strict and kind is None:
-        raise StrategyRefused(_PRICES_NOT_READ)
+        if not _rows_alike(out):  # both T-06 rows say the same first-stage stop: the kind cannot change the answer
+            raise StrategyRefused(_PERCENT_STOP_NOT_READ)
+        kind = "weekly"
     try:
         in_force_mod.set_max_loss_stop(out, _percent(raw, "stop"), kind)
     except ValueError:
@@ -584,17 +591,16 @@ async def _type_of(db: Any, user_ref: str, strategy_id: int, tracked: Any,
     if plan is not None:
         return plan.strategy_type, plan
     return check.entry_type(tracked, check.listed_of(ctx)), None  # D-04
-def _kind_of(tracked: Any, money: in_force_mod.MoneyInputs | None) -> str:
-    """The strategy's own expiry kind (the live check's read): the market's, else the position's, else weekly."""
-    at = None if money is None else money.at
-    return (None if at is None else at.expiry_kind) or getattr(tracked.position, "expiry_kind", None) or "weekly"
+class _CatalogueUnreadable(Exception):
+    """The stored catalogue could not be read (a database error): the expiry kind is then NOT KNOWN, with a reason."""
 
 
 async def _stored_kind(db: Any, tracked: Any) -> str | None:
     """The strategy's expiry kind from the STORED catalogue (the day's instrument list the app keeps), by the one rule
     ``adjustment_readers.expiry_kind_of`` (monthly = an expiry an index FUTURE of the underlying also has; a scenario's
     own stated kind wins). Used when the market read gave no kind (no live session, market closed). None when the
-    catalogue holds no future of the underlying (the rule cannot judge) or cannot be read: never a guess."""
+    rule cannot judge: no future of the underlying listed, or the leg expires after the last listed future (a far month
+    whose own future is not listed yet would read as weekly). A database error raises ``_CatalogueUnreadable``."""
     from ofo_app import adjustment_readers as readers  # noqa: PLC0415 - it imports routes.adjustment
     scn = scenario_mode.current()  # the scenario switch read_market uses
     legs = getattr(tracked.position, "legs", ())
@@ -604,23 +610,55 @@ async def _stored_kind(db: Any, tracked: Any) -> str | None:
     try:
         entries = [e for e in (await load_catalogue(db)).all_entries()
                    if e.currently_listed and e.contract.name == underlying and e.contract.expiry is not None]
-    except Exception:  # noqa: BLE001 - an unreadable catalogue means "kind not known", logged
+    except Exception as exc:  # noqa: BLE001 - any failed read means "kind not known", with its own reason
         log.warning("adjustment plan: catalogue not read for the expiry kind", exc_info=True)
-        return None
+        raise _CatalogueUnreadable from exc
     options = [e for e in entries if e.contract.is_option()]
     futures = frozenset(e.contract.expiry for e in entries if e.contract.is_future())
-    if not futures and not (scn is not None and scn.data.get("expiry_kind") in ("weekly", "monthly")):
+    stated = scn is not None and scn.data.get("expiry_kind") in ("weekly", "monthly")
+    if not stated and (not futures or (expiry not in futures and expiry > max(futures))):
         return None
     return readers.expiry_kind_of(expiry, options, futures, scn)
 
 
-async def _known_kind(db: Any, tracked: Any, market: Any) -> str | None:
-    """The expiry kind a SAVE may write by: the market's, else the stored catalogue's, else None (unknown). The
-    position's own kind is always "" (adjustment_readers builds it so), so it is never a source."""
+class KindRead(NamedTuple):
+    """The row a plan is read or written by: ``kind`` "weekly" / "monthly", or None with the catalogue ``reason``."""
+    kind: str | None
+    reason: str | None
+
+
+async def _known_kind(db: Any, tracked: Any, market: Any) -> KindRead:
+    """THE one rule for which T-06 row a plan READ or WRITE uses (Hotfix plan-read-1127): the market's kind, else the
+    stored catalogue's, else NOT KNOWN with a reason. The position's own kind is always "" (adjustment_readers builds
+    it so), so it is never a source. No read and no write decides the row any other way."""
     kind = getattr(market, "expiry_kind", None)
     if kind in ("weekly", "monthly"):
-        return str(kind)
-    return await _stored_kind(db, tracked)
+        return KindRead(str(kind), None)
+    try:
+        stored = await _stored_kind(db, tracked)
+    except _CatalogueUnreadable:
+        return KindRead(None, _KIND_CATALOGUE_UNREADABLE)
+    return KindRead(stored, None) if stored is not None else KindRead(None, _KIND_NOT_KNOWN)
+
+
+def _rows_alike(body: dict, saved_before: bool = False) -> bool:
+    """True when the weekly and the monthly T-06 rows give the same first-stage stop and the same stop sentence, so an
+    unknown kind cannot change what is shown or compared."""
+    return (in_force_mod.sheet_stop(body, "weekly") == in_force_mod.sheet_stop(body, "monthly")
+            and _stop_words(body, saved_before, "weekly") == _stop_words(body, saved_before, "monthly"))
+
+
+_STOP_SHOWN = ("stop", "stop_rupees", "stop_per_lot", "stop_rupee_words", "stop_warning")
+
+
+def _kind_free(values: dict[str, Any], body: dict, kind: str | None, saved_before: bool) -> dict[str, Any]:
+    """The values of a sheet when the expiry kind is NOT KNOWN: the stop figures that follow the T-06 row (and the stop
+    sentence, whose lines do) are None, never the weekly row's; a rupee stop's own figures stay (its level is the
+    source). Unchanged when the kind is known or both rows say the same."""
+    if kind is not None or _rows_alike(body, saved_before):
+        return values
+    shown = () if values.get("stop_source") == SOURCE_RUPEES else _STOP_SHOWN
+    return {**values, "stop_words": None, **{k: None for k in shown if k in values}}
 
 
 async def _plan_out(db: Any, user_ref: str, plan: store.Plan, kind: str | None = None,
@@ -635,9 +673,10 @@ async def _plan_out(db: Any, user_ref: str, plan: store.Plan, kind: str | None =
         except store.PlaybookStoreError:
             name = None
     saved_before = await check.plan_saved_before_adr247(db, plan)
+    figures = with_rupee_figures(_values(plan.body, saved_before, kind), plan.body, bases or Bases(),
+                                 kind=kind, saved_before=saved_before)
     return {"playbook_id": plan.playbook_id, "playbook_name": name, "accepted_at": plan.accepted_at, **shown,
-            **with_rupee_figures(_values(plan.body, saved_before, kind), plan.body, bases or Bases(),
-                                 kind=kind, saved_before=saved_before)}
+            **_kind_free(figures, plan.body, kind, saved_before)}
 
 
 def _in_force_reply(found: in_force_mod.InForce) -> dict[str, Any]:
@@ -662,10 +701,11 @@ def _in_force_reply(found: in_force_mod.InForce) -> dict[str, Any]:
                   "reason": found.stops.reason}}
 
 
-async def _sheet(db: Any, user_ref: str, strategy_id: int, stype: str | None, plan: store.Plan | None,  # noqa: PLR0913
+async def _sheet(db: Any, user_ref: str, strategy_id: int, stype: str | None, plan: store.Plan | None,  # noqa: PLR0913, PLR0917
                  pick: int | None, user_values: Any = None,
                  money: in_force_mod.MoneyInputs | None = None, kind: str | None = None,
-                 bases: Bases | None = None) -> AdjustmentPlanOut:
+                 bases: Bases | None = None, kind_reason: str | None = None) -> AdjustmentPlanOut:
+    """``kind`` None = the expiry kind is NOT KNOWN (``kind_reason`` says why): the stop is then not shown."""
     reply: dict[str, Any] = {"strategy_id": strategy_id, "type": stype, "type_name": None, "generic": stype is None,
                              "generic_text": render(_GENERIC) if stype is None else None, "playbooks": [],
                              "plan": None, "prefill": None, "labels": _labels()}
@@ -691,18 +731,24 @@ async def _sheet(db: Any, user_ref: str, strategy_id: int, stype: str | None, pl
         chosen = found
     if plan is not None and pick is None:
         saved_before = await check.plan_saved_before_adr247(db, plan)
-        values = with_rupee_figures(_values(plan.body, saved_before, kind), plan.body, bases or Bases(), kind=kind,
-                                    saved_before=saved_before)
+        values = _kind_free(with_rupee_figures(_values(plan.body, saved_before, kind), plan.body, bases or Bases(),
+                                               kind=kind, saved_before=saved_before),
+                            plan.body, kind, saved_before)
+        shown_body = plan.body
         source_id = plan.playbook_id if plan.playbook_id is not None else active.id
     else:
-        values = with_rupee_figures(_values(chosen.body, False, kind), chosen.body, bases or Bases(), kind=kind)
+        values = _kind_free(with_rupee_figures(_values(chosen.body, False, kind), chosen.body, bases or Bases(),
+                                               kind=kind), chosen.body, kind, False)
+        shown_body = chosen.body
         source_id = chosen.id  # a playbook, not a saved plan
         if (_t07_of(chosen.body) or {}).get("on") is False:  # ADR-305: the profit rule is off -> the box opens empty
             values |= {"target": None, "target_words": None}
     reply |= {"type_name": render_explanation("adjust_check_type_name", name=SHOWN_NAMES[stype]),
               "playbooks": [_playbook_row(p, active.id) for p in listed],
               "plan": None if plan is None else await _plan_out(db, user_ref, plan, kind, bases),
-              "prefill": {"playbook_id": source_id, **values}}
+              "prefill": {"playbook_id": source_id, **values},
+              "stop_kind_reason": None if kind is not None or kind_reason is None or _rows_alike(shown_body)
+              else render_explanation(kind_reason)}
     return AdjustmentPlanOut.model_validate(reply)
 
 
@@ -797,10 +843,11 @@ async def read_levels(  # noqa: PLR0913 - FastAPI dependencies, one per input
                 body = plan.body
             elif stype is not None:
                 body = (await store.active_for(db, user_ref, stype)).body
-            kind = _kind_of(tracked, in_force_mod.money_inputs(tracked, market, rates))
+            kind = (await _known_kind(db, tracked, market)).kind  # the ONE row rule; None: no stop words
             saved_before = plan is not None and await check.plan_saved_before_adr247(db, plan)
-            shown = preview_stop_figures(body, saved_before, kind, bases,
-                                         PlanIn(playbook_id=0, stop=stop or None, stop_rupees=stop_rupees or None))
+            shown = None if kind is None and (body is None or not _rows_alike(body, saved_before)) else \
+                preview_stop_figures(body, saved_before, kind, bases,
+                                     PlanIn(playbook_id=0, stop=stop or None, stop_rupees=stop_rupees or None))
             # no body to read the lines from: no words, never the partial sentence
             reply["stop"]["words"] = None if shown is None else shown["stop_words"]
             reply["stop"]["warning"] = None if shown is None else shown["stop_warning"]
@@ -826,10 +873,11 @@ async def read_plan(  # noqa: PLR0913 - FastAPI dependencies, one per input
     stype, plan = await _type_of(db, user_ref, strategy_id, tracked, ctx)
     money = in_force_mod.money_inputs(tracked, market, rates)
     bases = bases_of(tracked, market, rates)
+    row = await _known_kind(db, tracked, market)
 
     async def work() -> AdjustmentPlanOut:
         return await _sheet(db, user_ref, strategy_id, stype, plan, playbook_id, user_values, money,
-                            _kind_of(tracked, money), bases)
+                            row.kind, bases, row.reason)
     return await _run(db, work)
 
 
@@ -858,10 +906,9 @@ async def _write(strategy_id: int, data: PlanIn, edit: bool, db: Any, user_ref: 
     await release_connection(db)  # D-38: the market read waits on the broker; a held connection starves other pages
     market = await _bounded_market(tracked, market_reader, ctx)
     stype, plan = await _type_of(db, user_ref, strategy_id, tracked, ctx)
-    money = in_force_mod.money_inputs(tracked, market, rates)
     bases = bases_of(tracked, market, rates)
-    known_kind = await _known_kind(db, tracked, market)  # None: not known, a percent stop is then refused
-    shown_kind = known_kind or _kind_of(tracked, money)
+    row = await _known_kind(db, tracked, market)  # kind None: not known, a percent stop is then refused
+    known_kind = row.kind
     if stype is None:
         raise StrategyRefused(_GENERIC, Failure.CONFLICT)
     if edit and plan is None:
@@ -879,8 +926,8 @@ async def _write(strategy_id: int, data: PlanIn, edit: bool, db: Any, user_ref: 
         # ADR-330 (1): the reply shows the base now STORED (the one the checks read), not the one read before the save
         stored = dataclasses.replace(tracked, stop_base=in_force_mod.stop_base_from_json(saved.stop_base))
         return await _sheet(db, user_ref, strategy_id, stype, saved, None, user_values,
-                            in_force_mod.money_inputs(stored, market, rates), shown_kind,
-                            dataclasses.replace(bases, max_loss=_stored_loss(stored, bases)))
+                            in_force_mod.money_inputs(stored, market, rates), known_kind,
+                            dataclasses.replace(bases, max_loss=_stored_loss(stored, bases)), row.reason)
     return await _run(db, work)
 
 
@@ -1035,8 +1082,8 @@ async def reset_plan(  # noqa: PLR0913 - FastAPI dependencies, one per input
     await release_connection(db)  # D-38: the market read waits on the broker; a held connection starves other pages
     market = await _bounded_market(tracked, market_reader, ctx)
     stype, plan_before = await _type_of(db, user_ref, strategy_id, tracked, ctx)
-    money = in_force_mod.money_inputs(tracked, market, rates)
     bases = bases_of(tracked, market, rates)
+    row = await _known_kind(db, tracked, market)
     if stype is None:
         raise StrategyRefused(_GENERIC, Failure.CONFLICT)
     if plan_before is None:  # no plan: the plan route's own "not available" (as editing with no plan answers)
@@ -1046,6 +1093,6 @@ async def reset_plan(  # noqa: PLR0913 - FastAPI dependencies, one per input
         saved = await store.reset_plan(db, user_ref, strategy_id, _base_json(tracked))
         stored = dataclasses.replace(tracked, stop_base=in_force_mod.stop_base_from_json(saved.stop_base))
         return await _sheet(db, user_ref, strategy_id, stype, saved, None, user_values,
-                            in_force_mod.money_inputs(stored, market, rates), _kind_of(tracked, money),
-                            dataclasses.replace(bases, max_loss=_stored_loss(stored, bases)))
+                            in_force_mod.money_inputs(stored, market, rates), row.kind,
+                            dataclasses.replace(bases, max_loss=_stored_loss(stored, bases)), row.reason)
     return await _run(db, work)

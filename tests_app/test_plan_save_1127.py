@@ -158,7 +158,8 @@ async def test_a_percent_stop_with_no_session_and_no_stored_kind_is_refused_and_
     for method in ("POST", "PUT"):
         status, out = await _call(method, _plan_path(sid), json={"playbook_id": own.id, "stop": "50"})
         assert status == UNPROCESSABLE, out
-        assert "price" in out["what_happened"].lower()
+        assert out["what_happened"] == ("The stop could not be saved: whether this trade expires weekly or monthly "
+                                        "could not be read.")  # the percent case's own sentence
         assert before == await _plan_row(app_db_url, sid)
 
 
@@ -227,7 +228,10 @@ async def test_the_stored_kind_is_the_one_rule_over_the_stored_catalogue(monkeyp
         monkeypatch.setattr(route, "load_catalogue", load)
     stored([_Entry(leg_day, True), _Entry(leg_day, False), _Entry(other, False)])
     assert await route._stored_kind(None, tracked) == "monthly"
-    stored([_Entry(other, True), _Entry(leg_day, False)])
+    later = datetime.date(2027, 1, 26)
+    stored([_Entry(other, True), _Entry(later, True), _Entry(leg_day, False)])  # a future on both sides: weekly
     assert await route._stored_kind(None, tracked) == "weekly"
+    stored([_Entry(other, True), _Entry(leg_day, False)])  # far month: its own future is not listed -> cannot judge
+    assert await route._stored_kind(None, tracked) is None
     stored([_Entry(leg_day, False), _Entry(other, False)])
     assert await route._stored_kind(None, tracked) is None
