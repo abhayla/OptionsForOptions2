@@ -49,13 +49,11 @@ def test_a_crossing_opens_at_the_candle_close_not_before_and_once(style):
 
 
 @pytest.mark.parametrize("style", STYLES)
-def test_a_loss_stop_crossed_before_the_quiet_time_opens_when_it_ends(style):
+def test_a_loss_stop_crossed_before_the_quiet_time_opens_at_once(style):
+    """ADR-330 (47) (replaces the ADR-236 hold of this guard): a plan's loss stop alerts at once, no quiet time."""
     preset = STYLES[style]
-    state, ev = ag.step(ag.initial_state(), now=at("09:16:00"), preset=preset, readings=_read("T-06", "11"))
-    assert [type(e) for e in ev] == [ag.Held]  # held by the style's quiet time, never dropped
-    first_after = datetime.combine(DAY, preset.quiet_until, tzinfo=ag.IST) + timedelta(seconds=1)
-    state, ev = ag.step(state, now=first_after, preset=preset, readings=_read("T-06", "11"))
-    assert [(type(e), e.at) for e in ev] == [(ag.Opened, first_after)]
+    _state, ev = ag.step(ag.initial_state(), now=at("09:16:00"), preset=preset, readings=_read("T-06", "11"))
+    assert [(type(e), e.at) for e in ev] == [(ag.Opened, at("09:16:00"))]
 
 
 ENTRY = at("10:00:00")

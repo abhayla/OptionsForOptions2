@@ -107,7 +107,7 @@ class Worker:
         crossed = now >= self.start and not dipped
         ev = evaluate(self.body, self.kind.state(now, crossed), self.memory, None)
         self.memory = ev.memory
-        readings = {k: v for k, v in gate_readings.readings(ev).items() if k == self.kind.rule_id}
+        readings = {k: v for k, v in gate_readings.readings(ev, stops=sl.plan_exit_rule_ids(self.body)).items() if k == self.kind.rule_id}
         if self.others_from is not None:  # four automatic rules that are true from ``others_from`` on
             on = now >= self.others_from
             for r in OTHERS:
@@ -151,13 +151,9 @@ SITUATIONS = {
 }
 #: the dip situation applies to the loss stops only (a target or the time exit is judged at the candle close)
 LOSS_KINDS = ("percent_loss", "rupee_loss", "credit_2x")
-#: today's failures on 206a9f0, proved by running this file there (see RESULTS-lane-q2.md). Reason names the fix branch.
-_CAP = "held by the daily cap (#200); fixed on origin/hotfix/loss-stop-1127 (c040e73e, ADR-267 amendment 2)"
-_DIP = "rupee stop waits for the candle close (#202); fixed on origin/hotfix/loss-stop-1127 (468561e4)"
-XFAIL: dict[tuple[str, str], str] = {
-    **{(k.name, "crossed_after_4_other_alerts"): _CAP for k in KINDS},
-    ("rupee_loss", "crosses_and_dips_before_candle_close"): _DIP,
-}
+#: the strict xfails of 206a9f0 (daily cap #200, dip before candle close #202) all pass since the join with
+#: hotfix/loss-stop-1127: marks removed (Lane J2, 27 Nov).
+XFAIL: dict[tuple[str, str], str] = {}
 
 
 def _cells():
@@ -179,5 +175,5 @@ def test_plan_guard_gives_exactly_one_alert_row(kind, situation):
     rows = worker.alert_rows()
     assert len(rows) == 1, (kind.name, situation, [(type(e).__name__, e.rule_id, e.at.time()) for e in worker.events
                                                     if e.rule_id == kind.rule_id])
-    if situation == "crossed_in_quiet_period":  # held until the quiet time ends, never dropped (ADR-236)
-        assert rows[0].at.time() > PRESET.quiet_until
+    if situation == "crossed_in_quiet_period":  # ADR-330 (47): a plan's own exit alerts at once, quiet time or not
+        assert rows[0].at.time() < PRESET.quiet_until
