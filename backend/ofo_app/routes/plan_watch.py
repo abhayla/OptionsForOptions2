@@ -262,17 +262,12 @@ def _leg_marks(run: CheckRun) -> dict[tuple[str, Decimal], Decimal | None]:
     return {(x.type, x.strike): check.mark_of(rows.get(x.tradingsymbol)) for x in run.tracked.position.legs}
 
 
-@router.get("/api/strategies/{strategy_id}/plan-watch", response_model=PlanWatchOut)
-async def plan_watch(  # noqa: PLR0913 - FastAPI dependencies, one per input
-        strategy_id: int, *,
-        db: Annotated[Any, Depends(get_db)], user_ref: Annotated[str, Depends(current_user_ref)],
-        tracked_reader: Annotated[TrackedReader, Depends(get_tracked_reader)],
-        market_reader: Annotated[MarketReader, Depends(get_market_reader)],
-        rest_reader: Annotated[RestSpotReader, Depends(get_rest_spot_reader)],
-        margin_of: Annotated[ApproachMargin, Depends(get_approach_margin)],
-        ctx: Annotated[MarketContext | None, Depends(get_market_context)],
-        rates: Annotated[ChargeRates | None, Depends(load_charge_rates)],
-        prefs: UserPreferences, user_values: UserValuesIn) -> PlanWatchOut:
+async def watch_of(  # noqa: PLR0913 - the route's inputs, passed on
+        strategy_id: int, *, db: Any, user_ref: str, tracked_reader: TrackedReader, market_reader: MarketReader,
+        rest_reader: RestSpotReader, margin_of: ApproachMargin, ctx: MarketContext | None,
+        rates: ChargeRates | None, prefs: Any, user_values: Any) -> PlanWatchOut:
+    """ONE strategy's Plan watch: the single route's whole answer, also what the batch route answers per row (same code,
+    so the same lines, wording and refusals; ADR-008)."""
     from ofo_app.scenario_guard import check_screen_isolation  # noqa: PLC0415 - imports routes.broker
     await check_screen_isolation(db, user_ref, strategy_id)
     run = await run_check(strategy_id, db=db, user_ref=user_ref, tracked_reader=tracked_reader,
@@ -290,3 +285,19 @@ async def plan_watch(  # noqa: PLR0913 - FastAPI dependencies, one per input
         "no_plan_text": None if plan else render_explanation("plan_sheet_no_plan"),
         "armed_heading": render_explanation("plan_watch_armed_heading") if armed else None,
         "paused": pause, "lines": plan_lines + armed})
+
+
+@router.get("/api/strategies/{strategy_id}/plan-watch", response_model=PlanWatchOut)
+async def plan_watch(  # noqa: PLR0913 - FastAPI dependencies, one per input
+        strategy_id: int, *,
+        db: Annotated[Any, Depends(get_db)], user_ref: Annotated[str, Depends(current_user_ref)],
+        tracked_reader: Annotated[TrackedReader, Depends(get_tracked_reader)],
+        market_reader: Annotated[MarketReader, Depends(get_market_reader)],
+        rest_reader: Annotated[RestSpotReader, Depends(get_rest_spot_reader)],
+        margin_of: Annotated[ApproachMargin, Depends(get_approach_margin)],
+        ctx: Annotated[MarketContext | None, Depends(get_market_context)],
+        rates: Annotated[ChargeRates | None, Depends(load_charge_rates)],
+        prefs: UserPreferences, user_values: UserValuesIn) -> PlanWatchOut:
+    return await watch_of(strategy_id, db=db, user_ref=user_ref, tracked_reader=tracked_reader,
+                          market_reader=market_reader, rest_reader=rest_reader, margin_of=margin_of, ctx=ctx,
+                          rates=rates, prefs=prefs, user_values=user_values)

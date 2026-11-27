@@ -49,7 +49,7 @@ from ofo_app import adjustment_check as check
 from ofo_app import entry_facts_store, paper_store, scenario_mode, strategy_store
 from ofo_app import playbook_store as store
 from ofo_app.api_models import ApiModel, CatalogueText, Identifier
-from ofo_app.db import get_db
+from ofo_app.db import get_db, release_connection
 from ofo_app.errors import ClosedRoute, Failure
 from ofo_app.playbook_body_out import PlaybookBody
 from ofo_app.routes.adjustment import (
@@ -436,13 +436,7 @@ class _Read:
 
 
 async def _read_one(row: Any, seams: _Seams, listed: Any, read: _Read) -> None:
-    from ofo_app.adjustment_readers import TrackedUnreadable  # noqa: PLC0415 - it imports routes.adjustment
-    try:
-        read.tracked = await seams.tracked_reader(row.id, seams.rates)
-    except TrackedUnreadable:  # legs not readable: its type is not known, so it is not "of that type"
-        read.tracked = None
-        return
-    if read.tracked is None:
+    if read.tracked is None:  # the legs were read first (``_tracked_first``); none readable: not "of that type"
         return
     market = await seams.market_reader(read.tracked, seams.ctx)
     read.market = market
@@ -459,11 +453,25 @@ def _not_checked(row: Any, body: dict[str, Any]) -> dict[str, Any]:
             "withheld": None, "results": [result_out(r, None) for r in results]}
 
 
-async def _read_bounded(row: Any, seams: _Seams, listed: Any, gate: asyncio.Semaphore, data: TestIn,
-                        ) -> tuple[Any, _Read] | dict[str, Any] | None:
+async def _tracked_first(seams: _Seams, row: Any) -> Any:
+    """The strategy's tracked legs (a database read on the request's session), or None when they are not readable:
+    its type is not known, so it is not "of that type". Read before any broker wait so the connection can go back."""
+    from ofo_app.adjustment_readers import TrackedUnreadable  # noqa: PLC0415 - it imports routes.adjustment
+    try:
+        return await seams.tracked_reader(row.id, seams.rates)
+    except TrackedUnreadable:
+        return None
+    except Exception as exc:  # noqa: BLE001 - as the bounded read: one strategy's failed read is never a 500
+        log.debug("playbook test: strategy %s legs %s", row.id, type(exc).__name__)
+        return None
+
+
+async def _read_bounded(row: Any, seams: _Seams, listed: Any, gate: asyncio.Semaphore, data: TestIn,  # noqa: PLR0913, PLR0917
+                        tracked: Any) -> tuple[Any, _Read] | dict[str, Any] | None:
     """-> (row, read) when read in full and of the type; a not-checked entry when the type is known but the read timed
     out or failed; None when not of the type (or its type is not known)."""
     read = _Read()
+    read.tracked = tracked
     async with gate:
         started = time.monotonic()
         try:
@@ -503,9 +511,12 @@ async def _tested(db: Any, user_ref: str, data: TestIn, seams: _Seams) -> list[d
     rows = await strategy_store.list_strategies(db, user_ref)
     tracked_ids = await paper_store.tracked_ids(db, [r.id for r in rows])
     listed = check.listed_of(seams.ctx)
+    wanted = [r for r in rows if r.id in tracked_ids]
+    legs = [await _tracked_first(seams, r) for r in wanted]  # the only database reads of the outside part, one by one
+    await release_connection(db)  # D-36 (c): the reads below wait on the broker; give the pooled connection back first
     gate = asyncio.Semaphore(TEST_READ_CONCURRENCY)
-    answers = await asyncio.gather(*(_read_bounded(r, seams, listed, gate, data)
-                                     for r in rows if r.id in tracked_ids))
+    answers = await asyncio.gather(*(_read_bounded(r, seams, listed, gate, data, t)
+                                     for r, t in zip(wanted, legs, strict=True)))
     strategies = []
     for answer in answers:
         if answer is None:

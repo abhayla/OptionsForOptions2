@@ -29,8 +29,8 @@ from test_plan_watch import _arm
 
 BROKER_ROUND_TRIP = 0.3  # seconds per Zerodha call (funds, basket), a stub
 COLD_MARGIN_MAX_MS = 450.0  # one round trip plus slack; two serial calls are ~600
-SINGLE_MAX_MS = 300.0
-CONCURRENT_BUDGET_MS = 4000.0  # 10 concurrent plan-watch; measured 795 to 2994 ms by machine load (a loose guard)
+SINGLE_MAX_MS = 200.0  # Lane H: measured 60 to 100 ms warm on a 4-core box (was 300)
+CONCURRENT_BUDGET_MS = 2500.0  # 10 concurrent plan-watch; Lane H: measured 600 to 840 ms (was 4000)
 LINE = re.compile(r"request (\w+) (\S+) (\d+) ([\d.]+)ms(?: db=([\d.]+)ms/(\d+)q)?(?: price=([\d.]+)ms)?"
                   r"(?: margin=([\d.]+)ms)?")
 CEILINGS = {  # route -> most statements one request may run: today's counts, an N+1 regression guard
@@ -149,3 +149,12 @@ async def test_ten_concurrent_plan_watch_budget(rig: _Rig) -> None:
     times = [float(LINE.match(x).group(4)) for x in rig.handler.lines]
     assert len(times) == len(rig.ids)
     assert max(times) <= CONCURRENT_BUDGET_MS, f"10 concurrent plan-watch: max {max(times):.0f} ms"
+
+
+async def test_batch_plan_watch_query_ceiling(rig: _Rig) -> None:
+    """Lane H: a batch of one row costs what the single route costs (no extra statements per request)."""
+    sid = rig.ids[0]
+    await _warm(rig, sid)
+    await rig.get(f"/api/plan-watch?strategy_ids={sid}")
+    _total, _margin, statements = await rig.get(f"/api/plan-watch?strategy_ids={sid}")
+    assert statements <= CEILINGS["plan-watch"], f"batch of one row: {statements} statements"

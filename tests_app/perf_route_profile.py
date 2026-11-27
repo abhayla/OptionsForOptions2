@@ -217,6 +217,45 @@ async def test_concurrency(app_db_url, monkeypatch):  # noqa: F811, C901
         for kind in ("plan-watch", "adjustment-check"):
             for sid in ids:  # warm: margin cache, imports
                 assert await one(f"/api/strategies/{sid}/{kind}") == 200  # noqa: PLR2004
+        # Lane H: how long the event loop is held at a stretch while 20 checks run (a stop or alert waits this long)
+        lag: list[float] = []
+        last_tick = [time.perf_counter()]
+        stop_tick = False
+
+        async def ticker() -> None:
+            last = time.perf_counter()
+            while not stop_tick:
+                await asyncio.sleep(0.001)
+                now = time.perf_counter()
+                last_tick[0] = now
+                lag.append((now - last) * 1000.0)
+                last = now
+        if os.environ.get("OFO_PERF_SLOW"):  # a watchdog thread names where the loop thread is while it is held > 8 ms
+            import collections as _c  # noqa: PLC0415
+            import sys as _sys  # noqa: PLC0415
+            import threading as _t  # noqa: PLC0415
+            loop_tid = _t.get_ident()
+            seen = _c.Counter()
+            def watch():
+                while not stop_tick:
+                    time.sleep(0.002)
+                    if lag and time.perf_counter() - last_tick[0] > 0.008:
+                        f = _sys._current_frames().get(loop_tid)
+                        stack = []
+                        while f is not None and len(stack) < 40:
+                            stack.append(f"{f.f_code.co_filename.split('OptionsForOptions2/')[-1]}:{f.f_code.co_name}")
+                            f = f.f_back
+                        own = [x for x in stack if "backend/" in x]
+                        seen[" < ".join(own[:3])] += 1
+            _t.Thread(target=watch, daemon=True).start()
+        tick = asyncio.ensure_future(ticker())
+        await asyncio.gather(*[one(f"/api/strategies/{ids[0]}/plan-watch") for _ in range(20)])
+        stop_tick = True
+        await tick
+        if os.environ.get("OFO_PERF_SLOW"):
+            out += [f"  held {n}x: {k}" for k, n in seen.most_common(12)]
+        out.append(f"loop held at a stretch during 20 concurrent plan-watch: max {max(lag):.1f} ms, p99 "
+                   f"{sorted(lag)[int(len(lag) * 0.99)]:.1f} ms ({len(lag)} ticks)")
         for n in (10, 20):
             for kind in ("plan-watch", "adjustment-check"):
                 paths = [f"/api/strategies/{ids[i % len(ids)]}/{kind}" for i in range(n)]
@@ -231,6 +270,19 @@ async def test_concurrency(app_db_url, monkeypatch):  # noqa: F811, C901
                 assert set(codes) == {200}, codes
                 conc = [float(LINE.match(x).group(4)) for x in handler.lines]
                 out.append(f"{n} | {kind} | {_med(seq):.1f} | {_med(conc):.1f}/{max(conc):.1f} | {wall:.0f}")
+        # Lane H: the same n rows as ONE batch request (the seed gives one strategy per scenario, so the id repeats; the
+        # route's own dedupe is bypassed here, the work per row is the single route's)
+        from ofo_app.routes import plan_watch_batch as pwb  # noqa: PLC0415
+        real_ids_of = pwb._ids_of
+        out.append("n | route | one batch request: total ms (request log) / wall ms")
+        for n in (10, 20):
+            monkeypatch.setattr(pwb, "_ids_of", lambda _raw, n=n: [ids[0]] * n)
+            handler.lines.clear()
+            t0 = time.perf_counter()
+            assert await one("/api/plan-watch?strategy_ids=1") == 200  # noqa: PLR2004
+            wall = (time.perf_counter() - t0) * 1000.0
+            out.append(f"{n} | plan-watch batch | {float(LINE.match(handler.lines[-1]).group(4)):.1f} / {wall:.0f}")
+        monkeypatch.setattr(pwb, "_ids_of", real_ids_of)
     logging.getLogger("ofo_app.request").removeHandler(handler)
     text_out = "\n".join(out)
     print("\n" + text_out)
