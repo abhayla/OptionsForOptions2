@@ -7,6 +7,25 @@ for these items by the owner on 26 Nov, see RESULTS-lane-p.md). Highest status c
 
 Spec basis: ADR-330 (1) to (27) and its one-module instruction; ADR-002; ADR-003; ADR-008; ADR-016 to ADR-019.
 
+## 27 Nov 08:30 IST: every builder opened empty (side branch lanej/builder-open-0827; NOT on integration/nb-1126)
+
+Found by the PC (PR #722 comment 7208996102). RCA: the API's catalogue refresh scheduler counted the 08:07 IST
+start-up load as its last run and waited one hour, so the first reload was due at 09:07, not 08:35; at 08:30 (the
+contract-list publish time, F-56) the loaded list stopped being today's, the picker reads went empty as REQ-053 AC-3
+says, and a run that did nothing (and a loaded run) logged nothing, so it was silent.
+Class (reads that go empty while the list is not today's): catalogue expiries and contracts (routes/catalogue.py),
+leg names and chain rows (routes/leg_picker.py), the chain push (chain_push.py), futures history
+(strategy_price_history.py), ready-made strategies (ready_made.py); the builder could not map a paper book's legs
+and showed "This strategy's paper position could not be read". Fail-closed by design and unchanged: leg edits, the
+add-time eligibility check, the execution data gate.
+Fix (built, spec as written): a refresh run that started before the 08:35 window is always followed by one at 08:35;
+a refused, failed or timed-out refresh logs one line with its reason; a loaded one logs an info line. Proof:
+tests_app/test_catalogue_list_carries_over.py, 5 tests failing on 206a9f06's scheduler and passing now (08:07 start,
+08:30 empty, 08:35 today's list; a refused refresh logs its line). Finding:
+knowledge/findings/start-up-list-expires-at-publish-time.json. Owner question LJ-3 (keep yesterday's list in use
+until today's loads, said in the log and on the health reply): recommended, NOT built (it changes REQ-053 AC-3).
+Workaround on the PC until this ships: start or restart the API after 08:35 IST.
+
 ## Status for the coordinator (this session cannot send messages: the session-message service refuses it as untrusted)
 
 **Full app (DB) suite on the final code head 1eb5097, run as CI runs it (GITHUB_ACTIONS=true, per-file database
