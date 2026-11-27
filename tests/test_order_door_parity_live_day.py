@@ -60,7 +60,9 @@ CHECKS = {
     DUPLICATE: (r"duplicate_leg_failure|duplicate_leg import", r"paper_duplicate_leg|duplicate_leg import"),
 }
 # which cells fail today (so they are strict xfails); the duplicate-leg check is shared through ofo.engine.duplicate_leg
-TODAY = {(LOTS, "real"), (LOTS, "paper"), (FREEZE, "paper"), (NOT_LIVE, "paper")}
+# (FREEZE, "paper") left this set when fix/order-limits-1127 (Lane K) put the freeze check on the paper door: its strict xfail
+# then passed (XPASS), which is the signal to delete the mark (Lane M3, 27 Nov)
+TODAY = {(LOTS, "real"), (LOTS, "paper"), (NOT_LIVE, "paper")}
 
 
 def _cells():
