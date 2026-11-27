@@ -110,6 +110,7 @@ def _contract_text(found: tracked_contracts.TrackedContract) -> ExplanationText:
 
 
 class PaperMonitor:
+    _held_count: int | None = None  # last logged count (class default: tests skip __init__)
     def __init__(self, sessions: Sessions, feed: Callable[[], LiveFeed | None], *,  # noqa: PLR0913 - seams
                  read_settings: SettingsReader,
                  leg_prices: LegPrices = provider_prices,
@@ -155,33 +156,35 @@ class PaperMonitor:
                          | {c for a in armed if a.trigger.kind == "conditional_exit"
                             for c in open_ids[a.trigger.strategy_id]})
             found = {c.contract_id: c for c in await tracked_contracts.resolve(session, ids)}
-        watch: dict[str, list[_Watch]] = {}
-        extra: set[str] = set()
-        for a in armed:
-            t = a.trigger
-            if feed is None:
-                break
-            index_key = feed.ctx.provider.index_id(a.underlying)  # type: ignore[attr-defined]
-            if t.kind == "conditional_exit":
-                key = index_key
-                extra.update(k for k in (found[c].feed_key for c in open_ids[t.strategy_id]) if k is not None)
-            else:
-                key = found[t.contract_id].feed_key  # type: ignore[index]
-            if index_key is not None:
-                extra.add(index_key)  # S-20: every armed trigger holds its index, so a fire's record carries its value
-            if key is not None:
-                watch.setdefault(key, []).append(_Watch(a, key))
-        self._watch = watch
-        self._resubscribe(feed, sorted(set(watch) | extra))
-        await self._reload_hold(feed, found)  # AFTER the stop watch: a failed hold read never unwatches a stop
+            watch: dict[str, list[_Watch]] = {}
+            extra: set[str] = set()
+            for a in armed:
+                t = a.trigger
+                if feed is None:
+                    break
+                index_key = feed.ctx.provider.index_id(a.underlying)  # type: ignore[attr-defined]
+                if t.kind == "conditional_exit":
+                    key = index_key
+                    extra.update(k for k in (found[c].feed_key for c in open_ids[t.strategy_id]) if k is not None)
+                else:
+                    key = found[t.contract_id].feed_key  # type: ignore[index]
+                if index_key is not None:
+                    extra.add(index_key)  # S-20: an armed trigger holds its index: a fire's record carries its value
+                if key is not None:
+                    watch.setdefault(key, []).append(_Watch(a, key))
+            self._watch = watch
+            self._resubscribe(feed, sorted(set(watch) | extra))
+            # hotfix 27 Nov (DB pool 2 on the PC): the hold's two reads use THIS session, not a second checkout
+            await self._reload_hold(feed, found, session)  # AFTER the stop watch: a failed hold never unwatches a stop
 
-    async def _reload_hold(self, feed: LiveFeed | None, found: Mapping[int, tracked_contracts.TrackedContract]) -> None:
-        """Read and apply the standing hold. A failure is logged and the LAST hold is kept (REQ-114, REQ-049)."""
+    async def _reload_hold(self, feed: LiveFeed | None, found: Mapping[int, tracked_contracts.TrackedContract],
+                           session: Any) -> None:
+        """Read (on the reload's own session) and apply the standing hold. A failure is logged and the LAST hold is kept
+        (REQ-114, REQ-049)."""
         try:
-            async with self._sessions() as session:
-                open_legs = await triggers.open_legs(session)
-                standing = {c.contract_id: c for c in await tracked_contracts.resolve(
-                    session, sorted({cid for cid, _u in open_legs} - set(found)))}
+            open_legs = await triggers.open_legs(session)
+            standing = {c.contract_id: c for c in await tracked_contracts.resolve(
+                session, sorted({cid for cid, _u in open_legs} - set(found)))}
             self._hold_open_legs(feed, self._standing_keys(feed, open_legs, {**standing, **found}))
         except Exception:  # the stops are already watched; the hold is retried at the next reload
             log.exception("paper monitor: the standing hold of open legs could not be refreshed; keeping the last hold")
@@ -231,6 +234,9 @@ class PaperMonitor:
                 feed.fanout.unsubscribe(handle)  # type: ignore[union-attr]
             raise
         self._standing_feed, self._standing = feed, new
+        if len(keys) != self._held_count:  # hotfix 27 Nov: one line per change, not per reload
+            self._held_count = len(keys)
+            log.info("paper monitor holds %d feed keys (open legs + indexes)", len(keys))
         if old_feed is not None:
             for handle in old:
                 with contextlib.suppress(Exception):

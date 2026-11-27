@@ -646,3 +646,34 @@ async def test_hf_a_the_standing_hold_keeps_one_quote_and_its_old_handles_surviv
     monkeypatch.setattr(market.feed.fanout, "subscribe", real)
     monitor._hold_open_legs(market.feed, keys)
     assert monitor._standing != old and old[0] not in market.feed.fanout._subs  # released once the swap succeeded
+
+
+async def test_hf_u2_a_reload_uses_one_connection_checkout_and_logs_the_held_count_once_per_change(db, caplog):
+    """Hotfix 27 Nov (DB pool 2 on the PC): the hold's reads run on the reload's own session (ONE checkout per reload);
+    the held-key count is logged once per change, not once per reload."""
+    import logging  # noqa: PLC0415
+    once, reloads = 1, 3
+    market = Market()
+    await _strategy(db)
+    monitor = _monitor(db, market)
+    checkouts = 0
+    real = monitor._sessions
+    def counting():
+        nonlocal checkouts
+        checkouts += 1
+        return real()
+    monitor._sessions = counting
+    with caplog.at_level(logging.INFO, logger=paper_monitor.log.name):
+        await monitor.reload()
+        assert checkouts == 1  # armed + orders + contracts + the hold's open_legs: one session
+        await monitor.reload()
+        await monitor.reload()
+        lines = [r.getMessage() for r in caplog.records if "paper monitor holds" in r.getMessage()]
+        assert len(lines) == once
+        assert lines[0].endswith("feed keys (open legs + indexes)")
+        monitor._hold_open_legs(market.feed, ["NSE_FO:1"])  # the set changed: one more line
+        monitor._hold_open_legs(market.feed, ["NSE_FO:1"])
+        lines = [r.getMessage() for r in caplog.records if "paper monitor holds" in r.getMessage()]
+        assert len(lines) == once + 1
+        assert lines[1] == "paper monitor holds 1 feed keys (open legs + indexes)"
+    assert checkouts == reloads
