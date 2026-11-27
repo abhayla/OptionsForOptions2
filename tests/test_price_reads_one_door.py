@@ -92,6 +92,9 @@ EXEMPT: dict[Key, tuple[str, str]] = {
     **_entries("awaiting_phase_8", "first-fill entry facts are a decision read outside read_market (deferred issue: "
                                    "plan section 6 row 13 (entry_facts_now decision read))",
                "adjustment_readers.py", {"entry_facts_now": "underlying_quote"}),
+    **_entries("own_process", "ADR-330 (28): a confirmed not-live entry needs the last held index value at any age, "
+                              "which read_market does not return (it reads live only)",
+               "adjustment_readers.py", {"_index_value_not_live": "underlying_quote"}),
 }
 
 
