@@ -32,21 +32,28 @@ object per price. A price is a string or a JSON number read from its own digits 
      "price_at": "2026-11-27T18:05:00+05:30", "source": "owner_snapshot_2026-11-27"}
 
 Key names are matched case-insensitively from a small set (``FIELD_ALIASES``: id = instrument_id / contract_id / id /
-instrument_token / token / tradingsymbol / symbol; price = price / last_price / ltp / last / close; time = price_at /
+instrument_token / token / tradingsymbol / symbol; price = price / last_price / ltp / last (NOT close: Kite's ohlc
+close is the previous day's); two names for one field in the first row are refused: choose with
+``--map field=key``; time = price_at /
 time / at / exchange_time / exchange_timestamp / timestamp / last_trade_time; ``source``; optional name / underlying,
 expiry / expiry_date). The command prints the keys of the first row, the mapping chosen and the first row, and stops
 naming the field when a required one cannot be mapped. The instrument id may be the book's own id
-"<segment>:<exchange token>" ("NSE_FO:44614", "NSE_INDEX:256265"), Kite's instrument token (number or string,
-"11421186"), the trading symbol ("NIFTY2612225500CE", "NIFTY 50") or "NFO:<symbol>" / "NSE:<symbol>"; all are
-resolved through the catalogue to the book's id (``--no-catalogue`` accepts only the book's own form unchecked).
+"<segment>:<exchange token>" ("NSE_FO:44614", the indexes "NSE_INDEX:1001" = NIFTY 50 and "BSE_INDEX:1" = SENSEX),
+Kite's instrument token or an exchange token (number or string, "11421186"), the trading symbol ("NIFTY2612225500CE",
+"NIFTY 50") or "NFO:/BFO:/NSE:/BSE:<symbol>" (the prefix must fit the contract's segment); all are resolved through
+the catalogue to the book's id. A number that fits two contracts is refused as ambiguous: use the book id.
+(``--no-catalogue`` accepts only the book's own form, unchecked.)
 Times with no zone are refused unless ``--assume-ist``. ``name`` and ``expiry`` (null for an index) are
 optional and, when given, must match the catalogue contract; ``price_at`` is the time the price carries (ISO 8601 with a
 zone) and the trade date is its IST date; ``source`` says where it came from. A row is refused (counted with its
 reason, never written) for: a JSON-number or non-numeric price, a sub-paisa price, a missing or zone-less time, a
 missing source or id, an id the catalogue does not list, a name or expiry that disagrees, a duplicate in the file, and
 source "feed_book" after 15:30:00 (only the feed writer's rows stop at the close). A row equal to a stored one is
-"unchanged"; a different stored close for that day is kept, never overwritten; so a second run writes 0. ``--check``
-prints the same counts and writes nothing. Exit 0 with the counts (refused rows included); 2 when the file cannot be
+"unchanged"; a different stored close for that day is kept, never overwritten (INSERT ... ON CONFLICT DO NOTHING); so a
+second run writes 0. A price must be above zero; a time must be an ISO date-time with an offset on a trading day at or
+after 09:15 (otherwise the screens would label it with another day's close). The command prints the target database
+(host:port/name, never the user or password) first and a restart reminder last. ``--check`` prints the same and writes
+nothing. Exit 0 with the counts (refused rows included); 2 when the file cannot be
 read or the database cannot be reached. A seeded price made after the close is served as the first frame after the
 close: its own time, frozen, the label reads "1 leg as of <that time>", never 15:30:00 (``QuoteBook.seed_close``).
 """
@@ -54,10 +61,12 @@ from __future__ import annotations
 
 import argparse
 import asyncio
+import codecs
 import contextlib
 import datetime
 import json
 import logging
+import re
 import threading
 import time
 from collections.abc import Callable, Iterable
@@ -65,14 +74,15 @@ from dataclasses import dataclass, field
 from decimal import Decimal, InvalidOperation
 
 from ofo.instruments.models import INDEX_ROWS
-from ofo.market_calendar import is_market_open, last_close
+from ofo.market_calendar import is_market_open, is_trading_day, last_close
 from ofo.marketdata.feed_health import expect_seed as _expect_seed
 from ofo.marketdata.quote import Instrument, NormalizedQuote, SourceMetadata
 from ofo.money import PAISE
 from ofo.rules.inputs import DataHealth
-from ofo.timeutil import IST, SESSION_CLOSE
+from ofo.timeutil import IST, SESSION_CLOSE, SESSION_OPEN
 from sqlalchemy import text
-from sqlalchemy.exc import InterfaceError, OperationalError
+from sqlalchemy.engine import make_url
+from sqlalchemy.exc import InterfaceError, OperationalError, SQLAlchemyError
 from sqlalchemy.ext.asyncio import AsyncEngine, create_async_engine
 
 log = logging.getLogger(__name__)
@@ -121,7 +131,7 @@ def check_row(row: CloseRow) -> None:
     if isinstance(price, bool) or not isinstance(price, Decimal):
         raise ValueError(f"price must be a Decimal, got {type(price).__name__}: money is never a float (ADR-008)")
     try:
-        exact = price.is_finite() and price == price.quantize(PAISE) and 0 <= price <= _MAX_PRICE
+        exact = price.is_finite() and price == price.quantize(PAISE) and 0 < price <= _MAX_PRICE
     except InvalidOperation:
         exact = False
     if not exact:
@@ -136,6 +146,15 @@ _UPSERT = text("""
         AS t(instrument_id, trade_date, price, price_at, source)
     ON CONFLICT (instrument_id, trade_date) DO UPDATE SET
         price = EXCLUDED.price, price_at = EXCLUDED.price_at, source = EXCLUDED.source
+""")
+_INSERT_NEW = text("""
+    INSERT INTO public.last_close (instrument_id, trade_date, price, price_at, source)
+    SELECT t.instrument_id, t.trade_date, t.price, t.price_at, t.source
+    FROM unnest(CAST(:instrument_id AS text[]), CAST(:trade_date AS date[]), CAST(:price AS numeric[]),
+                CAST(:price_at AS timestamptz[]), CAST(:source AS text[]))
+        AS t(instrument_id, trade_date, price, price_at, source)
+    ON CONFLICT (instrument_id, trade_date) DO NOTHING
+    RETURNING instrument_id
 """)
 _LATEST = """
     SELECT DISTINCT ON (instrument_id) instrument_id, price, price_at, trade_date
@@ -178,6 +197,28 @@ class PostgresLastCloseStore:
             except _UNREACHABLE:
                 self._down_until = time.monotonic() + self._down_backoff_s
                 raise
+
+    def target(self) -> str:
+        """host:port/database of the connection, for the operator to read: never the user or the password."""
+        url = make_url(self._url)
+        return f"{url.host}:{url.port or 5432}/{url.database}"
+
+    def insert_new(self, rows: Iterable[CloseRow]) -> int:
+        """INSERT ... ON CONFLICT DO NOTHING (the seed command): a key already stored is left exactly as it is. Returns
+        how many rows were inserted. Every row is checked first: one bad row writes nothing."""
+        rows = list(rows)
+        for row in rows:
+            check_row(row)
+        if not rows:
+            return 0
+        columns = {"instrument_id": [r[0] for r in rows], "trade_date": [r[1] for r in rows],
+                   "price": [r[2] for r in rows], "price_at": [r[3] for r in rows], "source": [r[4] for r in rows]}
+
+        async def write() -> int:
+            async with self._engine_().begin() as conn:
+                return len((await conn.execute(_INSERT_NEW, columns)).all())
+
+        return self._run(write())
 
     def write_closes(self, rows: Iterable[CloseRow]) -> int:
         """Upsert one row per (instrument, trade date). Every row is checked first: one bad row writes nothing."""
@@ -452,26 +493,56 @@ class _Refused(ValueError):
     """One row of the snapshot is refused; the message is its reason."""
 
 
-#: the key names accepted per field (case-insensitive), first match in this order; the mapping chosen is printed
+#: the key names accepted per field (case-insensitive). A field with TWO of its names in the first row is refused (the
+#: owner picks with --map). "close" is not a price name: in Kite's ohlc it is the PREVIOUS day's close.
 FIELD_ALIASES = {
     "instrument_id": ("instrument_id", "contract_id", "id", "instrument_token", "token", "tradingsymbol", "symbol"),
     "name": ("name", "underlying"),
     "expiry": ("expiry", "expiry_date"),
-    "price": ("price", "last_price", "ltp", "last", "close"),
+    "price": ("price", "last_price", "ltp", "last"),
     "price_at": ("price_at", "time", "at", "exchange_time", "exchange_timestamp", "timestamp", "last_trade_time"),
     "source": ("source",),
 }
 REQUIRED_FIELDS = ("instrument_id", "price", "price_at", "source")
-_EXCHANGE_PREFIX = {"NSE_FO": "NFO", "BSE_FO": "BFO", "NSE_INDEX": "NSE", "BSE_INDEX": "BSE"}
+#: an exchange prefix may only name a contract of its own segment
+_PREFIX_SEGMENTS = {"NFO": {"NSE_FO"}, "BFO": {"BSE_FO"}, "NSE": {"NSE_INDEX"}, "BSE": {"BSE_INDEX"}}
+_DATE_ONLY = re.compile(r"\d{4}-\d{2}-\d{2}")
 
 
-def map_fields(first: object) -> dict[str, str | None]:
+def parse_maps(items: Iterable[str]) -> dict[str, str]:
+    """``--map field=key`` pairs as {field: key}; a malformed pair or an unknown field is refused."""
+    out: dict[str, str] = {}
+    for item in items:
+        field_name, sep, key = item.partition("=")
+        if not sep or not key:
+            raise SeedFileError(f"--map must be field=key, got {item!r}")
+        if field_name not in FIELD_ALIASES:
+            raise SeedFileError(f"--map: unknown field {field_name} (fields: {', '.join(FIELD_ALIASES)})")
+        out[field_name] = key
+    return out
+
+
+def map_fields(first: object, overrides: dict[str, str] | None = None) -> dict[str, str | None]:
     """{field: the key of the FIRST row that carries it}. A required field with no matching key stops the load with a
-    message naming it and the keys found: no partial guess."""
+    message naming it and the keys found; so does a field with more than one matching key (no silent first-wins:
+    ``--map field=key`` chooses). No partial guess."""
     if not isinstance(first, dict):
         raise SeedFileError("the first row is not an object, so no field names can be mapped")
     lowered = {str(k).lower(): k for k in first}
-    mapping = {f: next((lowered[a] for a in names if a in lowered), None) for f, names in FIELD_ALIASES.items()}
+    overrides = overrides or {}
+    mapping: dict[str, str | None] = {}
+    for field_name, names in FIELD_ALIASES.items():
+        if field_name in overrides:
+            if overrides[field_name] not in first:
+                raise SeedFileError(f"--map {field_name}={overrides[field_name]}: the first row has no key "
+                                    f"{overrides[field_name]} (keys: {sorted(first)})")
+            mapping[field_name] = overrides[field_name]
+            continue
+        present = [lowered[a] for a in names if a in lowered]
+        if len(present) > 1:
+            raise SeedFileError(f"more than one key could be the {field_name}: {', '.join(present)}; "
+                                f"choose one with --map {field_name}=<key>")
+        mapping[field_name] = present[0] if present else None
     for field_name in REQUIRED_FIELDS:
         if mapping[field_name] is None:
             raise SeedFileError(f"cannot map the field {field_name}: keys in the first row are {sorted(first)}; "
@@ -481,15 +552,14 @@ def map_fields(first: object) -> dict[str, str | None]:
 
 def build_aliases(entries) -> tuple[dict, dict]:
     """(known, aliases) of the listed Zerodha contracts: known = {book id "NSE_FO:44614": (name, expiry)}; aliases =
-    {other form of the id: book id, or None when two contracts share it}: Kite's instrument token ("11421186"), the
-    trading symbol ("NIFTY2612225500CE") and "NFO:<symbol>" / "NSE:<symbol>"."""
+    {"token:<Kite instrument token>", "xtoken:<exchange token>", "sym:<TRADING SYMBOL>": (book ids that carry it)}."""
     from ofo.instruments.models import ZERODHA  # noqa: PLC0415
 
     known: dict = {}
-    aliases: dict = {}
+    aliases: dict[str, tuple[str, ...]] = {}
 
     def add(form: str, iid: str) -> None:
-        aliases[form] = iid if aliases.get(form, iid) == iid else None
+        aliases[form] = (*aliases.get(form, ()), iid)
 
     for e in entries:
         if not (e.currently_listed and e.has_ref(ZERODHA)):
@@ -498,45 +568,64 @@ def build_aliases(entries) -> tuple[dict, dict]:
         iid = f"{c.exchange_segment}:{c.exchange_token}"
         known[iid] = (c.name, c.expiry)
         ref = e.broker_refs[ZERODHA]
-        add(str(ref.broker_token), iid)
-        add(ref.broker_symbol.upper(), iid)
-        prefix = _EXCHANGE_PREFIX.get(c.exchange_segment, c.exchange_segment.split("_")[0])
-        add(f"{prefix}:{ref.broker_symbol}".upper(), iid)
+        add(f"token:{ref.broker_token}", iid)
+        add(f"xtoken:{c.exchange_token}", iid)
+        add(f"sym:{ref.broker_symbol.upper()}", iid)
     return known, aliases
 
 
 def _resolve_id(raw: object, known: dict | None, aliases: dict | None) -> str:
-    """The book's instrument id for the file's contract id: the book id itself ("NSE_FO:44614"), Kite's instrument
-    token (number or string), the trading symbol, or "EXCHANGE:symbol". Unknown or ambiguous: refused."""
+    """The book's instrument id for the file's contract id: the book id itself ("NSE_FO:44614", "NSE_INDEX:1001"), a
+    Kite instrument token or an exchange token (number or string), the trading symbol, or "NFO:/BFO:/NSE:/BSE:symbol"
+    (the prefix must match the contract's segment). Unknown or ambiguous: refused, never guessed."""
     if isinstance(raw, bool) or not isinstance(raw, (str, int)) or not str(raw).strip():
         raise _Refused("missing instrument id")
     form = str(raw).strip()
-    if known is None:
+    if known is None or form in known:
         return form
-    if form in known:
-        return form
-    for candidate in (form, form.upper(), form.upper().split(":", 1)[-1]):
-        if candidate in (aliases or {}):
-            found = aliases[candidate]
-            if found is None:
-                raise _Refused(f"instrument id {form} is ambiguous in the catalogue")
-            return found
-    raise _Refused("unknown instrument id (not in the catalogue)")
+    prefix, tail = None, form
+    head, _, rest = form.partition(":")
+    if rest and head.upper() in _PREFIX_SEGMENTS:
+        prefix, tail = head.upper(), rest.strip()
+    table = aliases or {}
+    if tail.isdigit():
+        ids = {*table.get(f"token:{tail}", ()), *table.get(f"xtoken:{tail}", ())}
+    else:
+        ids = set(table.get(f"sym:{tail.upper()}", ()))
+    if prefix is not None:
+        matching = {i for i in ids if i.split(":")[0] in _PREFIX_SEGMENTS[prefix]}
+        if ids and not matching:
+            raise _Refused(f"exchange prefix {prefix} does not match the contract's segment")
+        ids = matching
+    if len(ids) > 1:
+        raise _Refused(f"instrument id {form} is ambiguous (matches {sorted(ids)}): use the book id, "
+                       "such as NSE_FO:44614")
+    if not ids:
+        raise _Refused("unknown instrument id (not in the catalogue)")
+    return next(iter(ids))
 
 
 def _catalogue_check(row: dict, iid: str, known: dict | None) -> None:
     if known is None:
         return
     name, expiry = known[iid]
-    if row.get("name") is not None and str(row["name"]).strip().upper() != str(name).strip().upper():
+    accepted = {str(name).strip().upper()}
+    segment, _, token = iid.partition(":")
+    if token.isdigit() and (segment, int(token)) in INDEX_ROWS:  # an index is "NIFTY 50" or its underlying "NIFTY"
+        accepted |= {n.upper() for n in INDEX_ROWS[(segment, int(token))]}
+    if row.get("name") is not None and str(row["name"]).strip().upper() not in accepted:
         raise _Refused(f"name does not match the catalogue ({name})")
     if row.get("expiry") is not None and str(row["expiry"])[:10] != (None if expiry is None else expiry.isoformat()):
         raise _Refused(f"expiry does not match the catalogue ({expiry})")
 
 
 def _time_of(raw: object, assume_ist: bool = False) -> datetime.datetime:
-    if not isinstance(raw, str) or not raw.strip():
+    if raw is None or (isinstance(raw, str) and not raw.strip()):
         raise _Refused("missing time")
+    if not isinstance(raw, str):
+        raise _Refused("time must be an ISO date-time with offset (e.g. 2026-11-27T15:30:00+05:30)")
+    if _DATE_ONLY.fullmatch(raw.strip()):
+        raise _Refused("time must include a time of day (a date alone is not a price time)")
     try:
         at = datetime.datetime.fromisoformat(raw)
     except ValueError as exc:
@@ -545,7 +634,12 @@ def _time_of(raw: object, assume_ist: bool = False) -> datetime.datetime:
         if not assume_ist:
             raise _Refused("time has no zone (use --assume-ist if the file's naive times are IST)")
         at = at.replace(tzinfo=IST)
-    return at.astimezone(IST)
+    at = at.astimezone(IST)
+    if not is_trading_day(at.date()):
+        raise _Refused(f"{at.date()} is not a trading day: the screens would label this price with another day's close")
+    if at.time() < SESSION_OPEN:
+        raise _Refused("time is before the open: the screens would label this price with the previous day's close")
+    return at
 
 
 def _price_of(raw: object) -> Decimal:
@@ -581,7 +675,8 @@ def _refusal(row: object, known: dict | None, aliases: dict | None = None, mappi
 
 
 def run_seed(text_json: str, store, known: dict | None, *, check: bool = False, aliases: dict | None = None,  # noqa: PLR0913
-             assume_ist: bool = False, out: Callable[[str], object] | None = None) -> SeedResult:
+             assume_ist: bool = False, out: Callable[[str], object] | None = None,
+             overrides: dict[str, str] | None = None) -> SeedResult:
     """Load a snapshot (see the module docstring) into ``last_close`` through ``store``. Refused rows are counted with
     their reason; a row equal to a stored one is "unchanged"; a DIFFERENT stored close for that day is kept (never
     overwritten); the rest is written. ``check`` reports the same counts and writes nothing. ``known`` is the
@@ -593,7 +688,7 @@ def run_seed(text_json: str, store, known: dict | None, *, check: bool = False, 
     rows = data if isinstance(data, list) else (data.get("rows") if isinstance(data, dict) else None)
     if not isinstance(rows, list) or not rows:
         raise SeedFileError('the file must be {"rows": [ ... ]} (or a list of rows) with at least one row')
-    mapping = map_fields(rows[0])  # stops here, naming the field, before anything is written
+    mapping = map_fields(rows[0], overrides)  # stops here, naming the field, before anything is written
     if out is not None:
         out(f"keys in the first row: {sorted(rows[0])}")
         out("mapping chosen: " + ", ".join(f"{f}<-{k}" for f, k in mapping.items() if k is not None)
@@ -622,7 +717,9 @@ def run_seed(text_json: str, store, known: dict | None, *, check: bool = False, 
             res.unchanged += 1
         else:
             res.skipped.append((n, row[0], f"a different close is already stored for {row[1]} (kept, not overwritten)"))
-    res.written = len(fresh) if check or not fresh else store.write_closes(fresh)
+    inserted = len(fresh) if check or not fresh else store.insert_new(fresh)  # ON CONFLICT DO NOTHING
+    res.written = inserted
+    res.unchanged += len(fresh) - inserted  # lost a race: a row is there now, kept
     res.skipped.sort()
     return res
 
@@ -640,18 +737,42 @@ def format_result(res: SeedResult, name: str) -> str:
 EXIT_FAILED = 2  # the file cannot be read or the database cannot be reached
 
 
-def seed_command(path: str, store, known: dict | None, *, check: bool, out: Callable[[str], object] = print,  # noqa: PLR0913
-                 aliases: dict | None = None, assume_ist: bool = False) -> int:
-    """The command's body: 0 with the counts (a refused row is a count, not a failure); 2 when the file cannot be read
-    or the database cannot be reached."""
+def _decode(raw: bytes) -> str:
+    """The file's text: UTF-8 (a byte-order mark is fine) or UTF-16 with its mark (PowerShell's ``>``)."""
     try:
-        with open(path, encoding="utf-8-sig") as f:  # utf-8-sig: PowerShell writes a byte-order mark
-            text_json = f.read()
-        res = run_seed(text_json, store, known, check=check, aliases=aliases, assume_ist=assume_ist, out=out)
-    except (OSError, SeedFileError, StoreUnavailable, TimeoutError, InterfaceError, OperationalError) as exc:
-        out(f"last_close seed {path}: failed, nothing more written: {type(exc).__name__}: {exc}")
+        if raw.startswith((codecs.BOM_UTF16_LE, codecs.BOM_UTF16_BE)):
+            return raw.decode("utf-16")
+        return raw.decode("utf-8-sig")
+    except UnicodeDecodeError as exc:
+        raise SeedFileError("the file cannot be read as text: save the file as UTF-8") from exc
+
+
+def _one_line(exc: BaseException) -> str:
+    text_ = str(getattr(exc, "orig", None) or exc).strip()
+    return f"{type(exc).__name__}: {text_.splitlines()[0] if text_ else ''}".rstrip(": ")
+
+
+RESTART_LINE = "Restart the API to load these closes (a running API reads the table once per close)."
+
+
+def seed_command(path: str, store, known: dict | None, *, check: bool, out: Callable[[str], object] = print,  # noqa: PLR0913
+                 aliases: dict | None = None, assume_ist: bool = False, overrides: dict[str, str] | None = None) -> int:
+    """The command's body: the target database first, then the counts, then the restart reminder. 0 with the counts (a
+    refused row is a count, not a failure); 2, with one line and no traceback, when the file cannot be read, a field
+    cannot be mapped, or the database refuses or cannot be reached."""
+    target = getattr(store, "target", None)
+    if target is not None:
+        out(f"database: {target()}")
+    try:
+        with open(path, "rb") as f:
+            text_json = _decode(f.read())
+        res = run_seed(text_json, store, known, check=check, aliases=aliases, assume_ist=assume_ist, out=out,
+                       overrides=overrides)
+    except (OSError, SeedFileError, StoreUnavailable, TimeoutError, SQLAlchemyError) as exc:
+        out(f"last_close seed {path}: failed, nothing more written: {_one_line(exc)}")
         return EXIT_FAILED
     out(format_result(res, path))
+    out(RESTART_LINE)
     return 0
 
 
@@ -673,16 +794,24 @@ def main(argv: list[str] | None = None) -> int:
     seed.add_argument("file")
     seed.add_argument("--check", action="store_true", help="print the same counts and write nothing")
     seed.add_argument("--assume-ist", action="store_true", help="read times with no zone as IST (refused by default)")
+    seed.add_argument("--map", action="append", default=[], metavar="FIELD=KEY",
+                      help="choose the file's key for a field when two names fit (repeatable)")
     seed.add_argument("--no-catalogue", action="store_true", help="do not compare instrument ids with the catalogue")
     args = parser.parse_args(argv)
     from ofo_app.config import get_settings  # noqa: PLC0415
 
+    try:
+        overrides = parse_maps(args.map)
+    except SeedFileError as exc:
+        print(f"last_close seed: {exc}")
+        return EXIT_FAILED
     store = PostgresLastCloseStore(get_settings().DATABASE_URL)
     try:
         known, aliases = (None, None) if args.no_catalogue else asyncio.run(_known_contracts())
-        return seed_command(args.file, store, known, check=args.check, aliases=aliases, assume_ist=args.assume_ist)
-    except (OSError, TimeoutError, InterfaceError, OperationalError) as exc:
-        print(f"last_close seed: the database could not be reached: {type(exc).__name__}")
+        return seed_command(args.file, store, known, check=args.check, aliases=aliases, assume_ist=args.assume_ist,
+                            overrides=overrides)
+    except (OSError, TimeoutError, SQLAlchemyError) as exc:
+        print(f"last_close seed: the database could not be read: {_one_line(exc)}")
         return EXIT_FAILED
     finally:
         store.close()

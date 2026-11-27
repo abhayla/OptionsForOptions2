@@ -49,7 +49,7 @@ async def test_core_the_app_role_upserts_and_reads_the_newest_close_per_instrume
             await trans.rollback()
 
 
-@pytest.mark.parametrize("price", ["99.755", "-1.00", "1000000000000.00", "NaN"])
+@pytest.mark.parametrize("price", ["99.755", "-1.00", "0", "0.00", "1000000000000.00", "NaN"])
 async def test_a_sub_paisa_negative_or_huge_price_is_refused_by_the_check(app_engine, price):
     async with app_engine.connect() as conn:
         trans = await conn.begin()

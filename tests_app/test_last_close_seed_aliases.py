@@ -88,7 +88,7 @@ def test_an_index_resolves_by_its_name_and_exchange_symbol():
 def test_an_unknown_or_ambiguous_token_is_refused_not_guessed():
     _, res, _ = seed([{"instrument_id": "99999999", "price": "1.00", "price_at": CLOSE_AT, "source": "s"}])
     assert res.written == 0 and "unknown instrument id" in res.skipped[0][2]
-    amb = {**ALIASES, "DUP": None}
+    amb = {**ALIASES, "sym:DUP": ("NSE_FO:1", "BSE_FO:2")}
     res = lcs.run_seed(json.dumps([{"instrument_id": "dup", "price": "1.00", "price_at": CLOSE_AT, "source": "s"}]),
                        SeedStore(), KNOWN, aliases=amb)
     assert "ambiguous" in res.skipped[0][2]

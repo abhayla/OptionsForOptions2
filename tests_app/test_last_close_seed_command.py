@@ -48,6 +48,13 @@ class SeedStore(FakeStore):
         self.rows.update({(r[0], r[1]): (r[2], r[3], r[4]) for r in rows})
         return n
 
+    def insert_new(self, rows):
+        """INSERT ... ON CONFLICT DO NOTHING: a key already stored is left alone; returns how many were inserted."""
+        fresh = [r for r in rows if (r[0], r[1]) not in self.rows]
+        if fresh:
+            self.write_closes(fresh)
+        return len(fresh)
+
 
 def snap(**over) -> dict:
     row = {"instrument_id": OPTION_ID, "name": "NIFTY", "expiry": "2026-12-01", "price": "99.75",

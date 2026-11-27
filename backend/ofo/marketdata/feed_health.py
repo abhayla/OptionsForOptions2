@@ -472,8 +472,9 @@ class QuoteBook:
             self._entries[iid] = BookEntry(quote, quote.timestamp, close_quote=quote)
             self._seeded.add(iid)
             return True
-        if e.close_quote is not None and e.close_quote.timestamp >= quote.timestamp:
-            return False
+        held = e.close_quote
+        if held is not None and held.timestamp.astimezone(quote.timestamp.tzinfo).date() == quote.timestamp.date():
+            return False  # the book holds a frame of that day (ADR-016: the broker's own word beats a stored one)
         self._entries[iid] = dataclasses.replace(e, close_quote=quote, close_depth=None, close_day_stats=None)
         return True
 

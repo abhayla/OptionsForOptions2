@@ -9,7 +9,7 @@ Copy from: 0009 (the whole-paisa and range CHECKs, the application-role grants) 
 
 Changes (owner-run, one transaction; ADDITIVE: ONE new table, no existing table, column, row or function changed):
 - public.last_close: (instrument_id as the catalogue holds it, trade_date = the IST date of the session) is the key;
-  price NUMERIC with CHECKs: a whole number of paise (round(x, 2) = x) and 0 <= x < 10^12, so a finer price is
+  price NUMERIC with CHECKs: a whole number of paise (round(x, 2) = x) and 0 < x < 10^12, so a zero or a finer price is
   REFUSED, never rounded (a NUMERIC(14,2) column would round it silently); price_at = when the price was made
   (the time the price carries: on trade_date in IST, CHECKed like 0009's; the feed writer's rows, source
   'feed_book', are at or before 15:30:00, a one-time snapshot row keeps its own later time);
@@ -19,6 +19,9 @@ Changes (owner-run, one transaction; ADDITIVE: ONE new table, no existing table,
 - The allow-list function is NOT changed: this table is a cache of what the feed book held at the close, and the
   chain text is left exactly as 0057 leaves it (no merge conflict with a branch that also extends it).
 - downgrade: drops the table (a held close is re-made by the next session's close; nothing else refers to it).
+
+The CHECKs are final as first applied: 0059 was never pushed or applied anywhere before them, so they were
+edited in place (price > 0, price_at on trade_date, the feed writer's rows up to 15:30:00).
 
 Old-code compatibility: additive. Code before this migration never reads or writes the table, and no existing
 table, column, constraint, trigger or grant is touched, so it keeps working with the table present.
@@ -73,7 +76,7 @@ def upgrade() -> None:
             source        TEXT        NOT NULL CHECK (source <> ''),
             PRIMARY KEY (instrument_id, trade_date),
             CONSTRAINT last_close_whole_paise CHECK (price = round(price, 2)),
-            CONSTRAINT last_close_price_range CHECK (price BETWEEN 0 AND 999999999999),
+            CONSTRAINT last_close_price_range CHECK (price > 0 AND price <= 999999999999),
             CONSTRAINT last_close_price_at_day CHECK (
                 trade_date = (price_at AT TIME ZONE 'Asia/Kolkata')::date
                 AND (source <> 'feed_book' OR (price_at AT TIME ZONE 'Asia/Kolkata')::time <= TIME '15:30:00'))
