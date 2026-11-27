@@ -37,7 +37,7 @@ Branch `integration/conflicts-1127` from `origin/integration/weekend-1127` (c9f9
 | Budget test `test_a_hanging_index_quote_is_cut_at_the_budget_and_cancelled` and `tests_app/test_playbook_test_pool.py` (Lane H) | Both assumed the REST quote is always asked; since Lane U's `index_spot_of` it is asked only when the feed has no usable index tick (ADR-330 (39)) | Test setup: the market reader returns the real read with the feed tick removed (`feed=ABSENT, feed_quote=None`), so the quote is reached. Both bite: they fail if the budget or the connection release is removed. |
 | Pool count `tests/test_pool_release_before_market_wait.py` (11 == 10) | Lane Z red | green after the merges (the plan-save side already pinned 11) |
 | Home total `home-figures-d56.test.js` | Lane L's later commit 36aa14a1 already moved the test to Lane W's `home-pnl-closed` id and the sentence "Includes 8 closed strategies." (the server's `closed_text`) | nothing more to do; 18 of 18 green. Item 4 needed no code. |
-| Error codes 524/525 used twice (`tests/errors/test_template_codes_unique.py`) | Lane W's `strategy_duplicate_leg_*` and Lane R/R2's `plan_save_prices_not_read`, `plan_save_percent_stop_not_read` | plan-save ones are now 526/527 (the last used was 525); no other file names the numbers |
+| Error codes 524/525 used twice (`tests/errors/test_template_codes_unique.py`) | Lane W's `strategy_duplicate_leg_*` and Lane R/R2's `plan_save_prices_not_read`, `plan_save_percent_stop_not_read` | plan-save ones are now 526/527 (the last used was 525); docs RESULTS-lane-r.md and -r2.md named the old numbers: updated; no code, frontend, test or spec file names them |
 | `tests/test_order_door_parity_live_day.py` paper-freeze strict xfail now XPASS | Lane K's order limits put the freeze check on the paper door | removed `(FREEZE, "paper")` from `TODAY`, as the mark's own message says |
 | `blank-optional-fields-live-day.test.js` (15 tests) | strict `it.fails` marks that pass now that Lane J reads blank texts | marks deleted as the file's comment says; one real difference: Lane Q2's "a no_plan answer with a blank sentence is refused" now fails against Lane J's reader. Fixed in `frontend/src/lib/planWatch.js`: `no_plan` with no sentence returns null (fail closed, ADR-330 (13)); other blank texts stay "absent" |
 | `action-ends-with-result-live-day.test.js` Save plan, 5xx and timeout | Lane R (reviewed): a 5xx or a timeout may have been stored, so the sheet says "Not confirmed: reload to see whether it was saved." (`plan-not-confirmed`), not "Nothing was changed" | test follows Lane R's sentence; the 4xx case is unchanged (the server's reason in `plan-error`) |
@@ -66,9 +66,21 @@ Branch `integration/conflicts-1127` from `origin/integration/weekend-1127` (c9f9
 | Task | Model | Minutes |
 |---|---|---|
 | Merges, conflict resolution, test fixes | Sonnet (main session) | about 95 |
-| Review of S1, W1-W2, W6, L2-L3, S5, planWatch.js, error codes | Opus (reviewer agent) | in progress |
+| Review of S1, W1-W2, W6, L2-L3, S5, planWatch.js, error codes | Opus (reviewer agent) | 11 |
 | Full gate on the final tree (worktree, background) | no model | in progress |
+
+## Opus review (verdict REVISE, then fixed)
+
+- F1 ruff ratchet (F811 duplicate import in playbooks.py, PLR0912 in place_paper_orders, E501 in a test), F2 pool-test pin (GUARDED_COUNT 11, stale ALLOW entry): fixed (cancel loop moved to `_cancel_leaving_stops`). F3 stale error-code numbers in two RESULTS files, F6 wrong `_budgeted` docstring (the REST read is shielded): fixed.
+- Items 1, 2, 3, 4, 5, 6: behaviour SHIP. Item 2 divergence: Lane J's choice is right. A scratch-copy mutation asking REST after a market cut gave HTTP 500 (`KeyError: ''` at `approaches.py:475 roll_distance`, a stated spot with an empty chain), so Lane U's "needed change" must not be applied.
+- Not covered by the reviewer: frontend vitest (I ran the full suite: green), `postPaperOrders` signature, rollback after a refusal raised after the cancel loop (proven by reading only).
+
+## To file as deferred issues (from the review)
+
+- A stated spot with an empty chain raises KeyError in `ofo/adjustment/approaches.py:475` (reachable if any path gives a spot beside a not-connected market).
+- `playbooks.py _tracked_first` (Lane H) turns any Exception into "not of the type" with only a debug log; a database error aborts the shared session and later strategies drop silently too (playbook test preview only).
+- `plan_watch_batch.py`: the 4 s budget is per row, not per request; a 20-row batch with a hanging market can pass the browser's 20 s timeout.
 
 ## Verification
 
-Filled in when the gate and the review finish (below).
+Gate result below.
