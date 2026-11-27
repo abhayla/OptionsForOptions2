@@ -5,7 +5,8 @@ A pure state machine, one state per strategy. Each `step` is one check: it takes
 to 09:15 IST, and judges each rule only on a candle close (the last value seen in the candle). Edge, not level: a rule
 opens one record when a close is beyond its line; it re-arms only after a close clears the line by the re-arm band
 AND the cool-down from the record has passed; one ladder level worse opens at once (escalation). A daily cap and a
-quiet time after the open turn a would-be record into a `Held` event, never a silent drop.
+quiet time after the open turn a would-be record into a `Held` event, never a silent drop; a plan loss stop is held by
+neither, and a pause in its candle does not keep it from the next live check (Lane J 2026-11-27, gaps 1-3).
 
 Risk exits (stop-loss, conditional exits, REQ-041 / paper triggers) never pass through this gate (AC-5): it applies to
 adjustment suggestions only. The screen check and the background check share this one gate. A loss stop rule
@@ -57,6 +58,14 @@ class RuleSpec:
     #: #709 item 7: what the check that took THIS sample knew (the worker's ``GateContext``); the gate never reads it,
     #: it only carries it onto the event the sample confirms, so a record's words never come from a later check
     sample: object = field(default=None, compare=False)
+    #: Lane J gap 3: the rule carries a loss-stop trigger under its own id (``stop_lines.is_loss_stop`` through
+    #: ``gate_readings.readings``): it gets the stop fast path and the quiet-time and cap exemptions as a stop line does
+    loss_stop: bool = field(default=False, compare=False)
+
+
+def _is_stop(rule_id: str, spec: RuleSpec) -> bool:
+    """REQ-170 AC-5: a plan loss stop, by its id (``LOSS_STOP_RULES``) or by its triggers (``RuleSpec.loss_stop``)."""
+    return spec.loss_stop or is_stop_rule(rule_id)
 
 
 def _more_severe(cmp: Cmp, a: Decimal, b: Decimal) -> bool:
@@ -331,9 +340,10 @@ def _decide(  # noqa: PLR0913 - one close's inputs
         return state.with_rule(rule_id, rule), []
     threshold = spec.ladder[level] if spec.ladder else None
     reason = None
-    if t.time() <= preset.quiet_until:
+    stop = _is_stop(rule_id, spec)
+    if t.time() <= preset.quiet_until and not stop:  # Lane J gap 1: a loss stop opens at once, quiet time or not
         reason = HELD_QUIET_TIME
-    elif state.opened_today >= preset.daily_cap and not cap_exempt(rule_id):
+    elif state.opened_today >= preset.daily_cap and not cap_exempt(rule_id, loss_stop=stop):
         reason = HELD_DAILY_LIMIT
     if reason is not None:
         if hold is not None and hold.reason == reason and level <= hold.level:
@@ -343,7 +353,7 @@ def _decide(  # noqa: PLR0913 - one close's inputs
                                                     spec.shown_threshold, threshold, spec.sample)]
     rule = replace(rule, record=_Record(level, threshold, t, ladder=_ladder_key(spec)), cleared=False, hold=None)
     state = state.with_rule(rule_id, rule)
-    if not cap_exempt(rule_id):  # ADR-267: a watch / day rule is not counted against the cap
+    if not cap_exempt(rule_id, loss_stop=stop):  # ADR-267: a watch / day rule is not counted against the cap
         state = replace(state, opened_today=state.opened_today + 1)
     limit = spec.ladder[0] if spec.ladder else spec.shown_threshold
     return state, [Opened(rule_id, t, level, threshold, value, worse, spec.shown_value,
@@ -394,16 +404,24 @@ def step(
         state, evs = _close(state, rule_id, state.rule(rule_id).pending, preset)
         events.extend(evs)
     end = _candle_end(now, preset.candle)
-    if state.paused_at is not None and state.paused_at >= end - preset.candle:
-        return state, events  # this candle saw a pause: no sample, so it has no close (pause())
+    # this candle saw a pause: no sample, so it has no close (pause()). Lane J gap 2 (REQ-170 AC-5): a loss stop is
+    # still judged on THIS check, which is live (the worker steps with readings only after a fresh read; a stale or
+    # missing price pauses and gives none, ADR-016): a pause never keeps a stop past its line silent
+    paused = state.paused_at is not None and state.paused_at >= end - preset.candle
     for rule_id in sorted(readings):
         spec, value = readings[rule_id]
         if value is None:
             continue
+        stop_now = _is_stop(rule_id, spec) and _level(spec, value) >= 0
+        if paused:
+            if stop_now:
+                state, evs = _close(state, rule_id, _Pending(now, value, spec), preset)
+                events.extend(evs)
+            continue
         rule = state.rule(rule_id)
         pending = _Pending(end, value, spec)
         state = state.with_rule(rule_id, replace(rule, pending=pending))
-        if is_stop_rule(rule_id) and _level(spec, value) >= 0:
+        if stop_now:
             # REQ-170 AC-5: a stop beyond its line is judged now; its sample stays for the candle close
             state, evs = _close(state, rule_id, _Pending(now, value, spec), preset)
             events.extend(evs)

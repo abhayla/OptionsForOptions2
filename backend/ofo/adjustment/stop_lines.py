@@ -12,6 +12,7 @@ rules without spelling the ids itself.
 from __future__ import annotations
 
 import dataclasses
+from collections.abc import Mapping
 from decimal import Decimal
 from typing import Final
 
@@ -125,6 +126,28 @@ def is_stop_rule(rule_id_: object) -> bool:
     return isinstance(rule_id_, str) and rule_id_ in LOSS_STOP_RULES
 
 
+def loss_stop_rule_ids(body: object) -> frozenset[str]:
+    """Lane J 2026-11-27 (gap 3): EVERY rule id that carries a loss stop in this plan, by trigger, not by id: the fixed
+    set ``LOSS_STOP_RULES`` plus each body rule whose members name a loss-stop trigger (T-06, T-16), whatever its own
+    id (a mixed any/all rule, or ``{"id": "MYSTOP", "any_of": ["T-16"]}``; ``playbook_store._check_rules`` allows any
+    id). The ONE place the alert gate (via ``gate_readings``), the cap count on a worker start
+    (``cap_scope.count_capped``) and the F-71 entry hold (``playbook_eval.never_held``) read. An unreadable body ->
+    the fixed set (never fewer). Pure."""
+    rules = body.get("rules") if isinstance(body, Mapping) else None
+    out = set(LOSS_STOP_RULES)
+    for rule in rules if isinstance(rules, list) else ():
+        members = (rule.get("any_of") or rule.get("all_of")) if isinstance(rule, Mapping) else None
+        if isinstance(members, list) and isinstance(rule.get("id"), str) and STOP_TRIGGERS & set(
+                m for m in members if isinstance(m, str)):
+            out.add(rule["id"])
+    return frozenset(out)
+
+
+def is_loss_stop(rule_id_: object, stops: frozenset[str] = frozenset()) -> bool:
+    """A loss stop: in the fixed set, or in ``stops`` (``loss_stop_rule_ids`` of the plan). Pure."""
+    return is_stop_rule(rule_id_) or (isinstance(rule_id_, str) and rule_id_ in stops)
+
+
 __all__ = [
     "CREDIT_RULE",
     "CREDIT_UNKNOWN",
@@ -156,7 +179,9 @@ __all__ = [
     "TRIGGER_TIME_EXIT",
     "StopInForce",
     "StopsInForce",
+    "is_loss_stop",
     "is_stop_rule",
+    "loss_stop_rule_ids",
     "not_checked_code",
     "rule_id",
     "rupee_loss_is_the_stop",

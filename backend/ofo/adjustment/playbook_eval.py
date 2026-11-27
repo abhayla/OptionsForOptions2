@@ -657,8 +657,9 @@ def never_held(body: Mapping) -> frozenset[str]:
     (ADR-283 (2): T-10b, or a playbook trigger whose unit is "time"): once its time has passed it warns."""
     trigs = body.get("triggers") or {}
     timed = TIME_TRIGGERS | {t for t, v in trigs.items() if isinstance(v, Mapping) and v.get("unit") == "time"}
-    return COUNTER_RULES | {r["id"] for r in body.get("rules", [])
-                            if timed & set(r.get("any_of") or r.get("all_of") or ())}
+    # Lane J gap 4 (REQ-170 AC-5): a loss stop already true at the starting point is not "already true": it alerts
+    return COUNTER_RULES | sl.loss_stop_rule_ids(body) | {r["id"] for r in body.get("rules", [])
+                                                           if timed & set(r.get("any_of") or r.get("all_of") or ())}
 
 
 def _t18(c: _Ctx) -> Hit:

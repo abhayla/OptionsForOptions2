@@ -126,6 +126,7 @@ from typing import Any, Final
 
 from ofo.adjustment import alert_gate, alert_presets, gate_readings, level_watch, monitor_pause
 from ofo.adjustment import playbook_eval as pe
+from ofo.adjustment import stop_lines
 from ofo.adjustment.preferences import Preferences
 from ofo.adjustment.preferences import from_values as prefs_from_values
 from ofo.engine.black_scholes import Greeks, year_fraction
@@ -772,7 +773,8 @@ class DbGateStore:
         )
         from ofo_app.db import get_sessionmaker  # noqa: PLC0415
         async with get_sessionmaker()() as db:
-            rows = await playbook_store.gate_rows(db, w.user_ref, w.strategy_id, today)
+            rows = await playbook_store.gate_rows(db, w.user_ref, w.strategy_id, today,
+                                                  stop_lines.loss_stop_rule_ids(w.body))
             held = await playbook_store.held_today(db, w.user_ref, w.strategy_id, today)
             pin = await strategy_alert_style_store.pin_of(db, w.user_ref, w.strategy_id)
             until = await strategy_pause_store.pause_of(db, w.user_ref, w.strategy_id)
@@ -1347,8 +1349,14 @@ class Worker:
         """True when a check ran (counted against the cycle's cap)."""
         now = self._clock()  # finding 1: THIS check's clock, never the cycle's start
         if self._user_paused(w.strategy_id, now):
-            return False  # A-38: no read, no evaluation until the end (module docstring, step 6)
+            return self._skipped(w.strategy_id, "user_paused")  # A-38: no read, no evaluation until the end (module docstring, step 6)
         return await self._check_unpaused(w, speeds, now)
+
+    def _skipped(self, sid: int, reason: str) -> bool:
+        """Lane J 2026-11-27 (#207: 19 minutes, no row, no skipped line): ONE log line per strategy per cycle when its
+        check is skipped, with the reason; False (no check ran)."""
+        log.info("background: strategy %s check skipped: %s", sid, reason)
+        return False
 
     async def _check_unpaused(self, w: Watched, speeds: Mapping[str, Decimal],  # noqa: PLR0911, C901
                               now: datetime.datetime) -> bool:
@@ -1360,16 +1368,16 @@ class Worker:
             tick = self._tick_key(provider, w, now)
             if tick is not None and tick == self._tick.get(sid):
                 self._read_states["NOT_TICKED"] = self._read_states.get("NOT_TICKED", 0) + 1
-                return False  # nothing it depends on ticked: no read, no check (item c)
+                return self._skipped(sid, "not_ticked")  # nothing it depends on ticked: no read, no check (item c)
             read = read_prices(provider, w, now, self._known_of(provider, w.tracked.position.underlying))
         else:
             read = PriceRead(early)
         self._read_states[read.state.name] = self._read_states.get(read.state.name, 0) + 1  # the minute line's reads
         if read.state is PriceState.MARKET_CLOSED:
-            return False  # nothing is recomputed while the market is closed
+            return self._skipped(sid, "market_closed")  # nothing is recomputed while the market is closed
         if read.state is not PriceState.FRESH:
             self._pause(sid, read.state, now)
-            return False
+            return self._skipped(sid, f"prices_{read.state.name.lower()}")
         self.status[sid] = MonitoringStatus.ACTIVE
         self.paused_reason.pop(sid, None)
         self._leg_ids[sid] = (w.tracked.position.legs,
@@ -1378,22 +1386,22 @@ class Worker:
         sig = read.signature(now)
         if sig == self._signature.get(sid):
             self._tick[sid] = tick
-            return False
+            return self._skipped(sid, "unchanged")
         last = self._last_check.get(sid)
         every = speeds.get(self._interval_style(sid), Decimal(0))
         if last is not None and _seconds(now - last) < every:
-            return False  # changed, but too soon: the tick key stays old, so it is read again next cycle
+            return self._skipped(sid, "interval")  # changed, but too soon: the tick key stays old, so it is read again next cycle
         if self._values is None:
-            return False  # no settings read yet: nothing is checked on a guessed setting
+            return self._skipped(sid, "no_settings")  # no settings read yet: nothing is checked on a guessed setting
         prefs = self._prefs_of.get(w.user_ref)
         if prefs is None:  # no preferences read for this user yet: paused, never checked on a guess
             self._pause(sid, PriceState.CHECK_FAILED, now)
-            return False
+            return self._skipped(sid, "no_preferences")
         load = self._gate_load.get(sid)
         user_values = self._values if self._user_values_read is None else self._user_values.get(w.user_ref)
         if load is None or user_values is None:  # no gate read / no alert values: paused, never a default preset
             self._pause(sid, PriceState.CHECK_FAILED, now)
-            return False
+            return self._skipped(sid, "no_gate_read" if load is None else "no_alert_values")
         market = market_inputs(w, read, FeedScope(self.cache, w.feed_owner), now, self._values)
         self._queue_daily_iv(daily_iv_of(w, read, market, now))
         # ADR-245: the carry gap in force (plan, else the user's own, else the admin default) is resolved inside
@@ -1409,7 +1417,7 @@ class Worker:
         if self._observe is not None:
             self._observe(w, state)
         if not await self._evaluate_and_gate(w, now, state, prefs, (load.pin, user_values)):
-            return False
+            return self._skipped(sid, "no_preset")
         self._signature[sid] = sig
         self._tick[sid] = tick
         self._last_check[sid] = now
@@ -1513,7 +1521,7 @@ class Worker:
         ctx = self._gate_ctx[sid] = GateContext(ev, state, w)
         # the check travels with each rule's sample: the event it confirms takes its words from it (#709 item 7)
         sampled = {rid: (dataclasses.replace(spec, sample=ctx), v)
-                   for rid, (spec, v) in gate_readings.readings(ev).items()}
+                   for rid, (spec, v) in gate_readings.readings(ev, stop_lines.loss_stop_rule_ids(w.body)).items()}
         await self._gate_step(w, now, preset, sampled)
         return True
 

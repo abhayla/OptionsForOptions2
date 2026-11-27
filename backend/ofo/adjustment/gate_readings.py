@@ -16,10 +16,12 @@ engine-input-chosen-per-caller: the worker and every test call this, none builds
 """
 from __future__ import annotations
 
+import dataclasses
 from collections.abc import Mapping
 from decimal import Decimal
 
 from ofo.adjustment import alert_gate as gate
+from ofo.adjustment import stop_lines as sl
 from ofo.adjustment.playbook_eval import AlreadyTrue, Evaluation, NotChecked, RuleValue
 
 Reading = tuple[gate.RuleSpec, gate.Value | None]
@@ -45,8 +47,10 @@ def reading(v: RuleValue) -> Reading:
     return spec, v.value
 
 
-def readings(evaluation: Evaluation) -> Mapping[str, Reading]:
-    """Every rule of the evaluation -> (RuleSpec, value | None)."""
+def readings(evaluation: Evaluation, stops: frozenset[str] = frozenset()) -> Mapping[str, Reading]:
+    """Every rule of the evaluation -> (RuleSpec, value | None). ``stops`` = ``stop_lines.loss_stop_rule_ids`` of the
+    plan (Lane J gap 3): each rule it names carries ``RuleSpec.loss_stop``, so the gate gives it the stop fast path and
+    the quiet-time and cap exemptions whatever its id."""
     out: dict[str, Reading] = {}
     for r in evaluation.results:
         if isinstance(r, (NotChecked, AlreadyTrue)):
@@ -55,4 +59,5 @@ def readings(evaluation: Evaluation) -> Mapping[str, Reading]:
         out.setdefault(rule_id, (gate.RuleSpec(rule_id, "bool", ()), None))
     for v in evaluation.values:
         out[v.rule_id] = reading(v)
-    return out
+    return {rid: (dataclasses.replace(spec, loss_stop=True), value) if sl.is_loss_stop(rid, stops) else (spec, value)
+            for rid, (spec, value) in out.items()}

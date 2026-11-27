@@ -300,6 +300,21 @@ async def test_gate_rows_restored_count_does_not_count_watch_and_day_records(db)
     assert ag.restore(got, today, {}).opened_today == 1
 
 
+async def test_gate_rows_restored_count_does_not_count_a_stop_under_its_own_rule_id(db):
+    """Lane J gap 3 (2026-11-27): a plan rule carrying T-06 / T-16 under its own id is a loss stop, so the restart count
+    skips it exactly as the gate does (``stop_lines.loss_stop_rule_ids``, the one function both read)."""
+    from ofo.adjustment import stop_lines as sl  # noqa: PLC0415
+
+    user, sid = await _strategy(db)
+    today = (await db.execute(text("SELECT (clock_timestamp() AT TIME ZONE 'Asia/Kolkata')::date"))).scalar_one()
+    for rule in ("R-LOSS", "MYSTOP", "T-01"):
+        await _open(db, user, sid, rule)
+    body = {"rules": [{"id": "R-LOSS", "any_of": ["T-03", "T-06"]}, {"id": "MYSTOP", "all_of": ["T-16"]},
+                      {"id": "T-01", "any_of": ["T-01"]}]}
+    assert (await pb.gate_rows(db, user, sid, today, sl.loss_stop_rule_ids(body))).opened_today == 1
+    assert (await pb.gate_rows(db, user, sid, today)).opened_today == 3  # no plan read: only the fixed set is exempt
+
+
 async def test_gate_rows_another_users_or_a_missing_strategy_is_not_found(db):
     user, sid = await _strategy(db)
     today = datetime.date(2026, 11, 2)
