@@ -1,4 +1,4 @@
-STATUS 19:10 | items 2,3, UX-32: Fixed, not tested; item 1 not reproducible by code; item 4 owner question; AF-07 already covered | pushed b303411 (gate TOTAL PASS); UX-32 pushed d94ca71 (gate TOTAL PASS) | item 4 build waits for Lane K's push (~01:00) | blocker: routes/paper.py owned by K (send_message to @parent refused: untrusted device, so this top line is the report)
+STATUS 21:00 | item 4 (62), UX-05, UX-06 built; AF-07 covered; earlier items pushed d94ca71 | final gate and push next | blocker: none
 
 # Lane L: P&L totals and list counts (27 Nov 2026)
 
@@ -61,12 +61,18 @@ Run 1: TOTAL FAIL only because this container had no origin/main (ci_checks merg
 
 Run 3 on d94ca71: TOTAL PASS, pushed (UX-32 and RESULTS).
 
-## Item 4 build, BLOCKED on Lane K (owner decision ADR-330 (62), relayed by the coordinator 27 Nov evening)
-Rule: no running trade can be priced but closed/settled trades have a booked result -> the total shows that booked result, with "Includes N closed strategies." and the (35) count line; blank with its reason only when there is neither a priceable trade nor a booked result; a settling trade stays left out and counted.
-Exact change for `backend/ofo_app/routes/paper.py` (Lane K owns it until its push, about 01:00; origin/fix/order-limits-1127 did not exist at 19:05 IST): in `_priced`, replace the last line
-`return [k for k, _ in priced] if any(s["open_count"] for _, s in priced) else list(keys)`
-by
-`return [k for k, _ in priced] if priced else list(keys)`
-(priced = rows whose unbooked figure is present: running priced rows and fully exited/settled rows). The route then leaves out the unpriced rows and counts them (`len(live) - len(kept)`), the booked sum is `_totals` over the kept rows (one engine, Decimal), and `closed_text` is unchanged. Blank-with-reason remains when `priced` is empty. Then `test_item4_*` becomes: [SETTLED, SETTLING] -> total 40, left_out_count 1, closed_count 1; [SETTLING] only -> total None with prices_not_live. Next steps once K has pushed: merge origin/fix/order-limits-1127, tests first, build, one Opus review, gate, one push.
+## Item 4 built (ADR-330 (62), owner 27 Nov evening): Fixed, not tested
+- `routes/paper.py::_priced(..., booked_alone=True)` for the HEADER total (Home, Positions): when no running trade can be priced but closed/settled trades have a booked result, the total is that result, with the closed line and the (35) count line; blank with its reason only when nothing at all can be priced. A settling or expired-open trade stays left out and counted. Decimal, one engine; the page only prints. (Lane K's push was merged first: origin/fix/order-limits-1127.)
+- Tests first (failed, then passed): `tests_app/test_paper_totals_lines.py` (`test_item4_*`, 4 cases) and, on a throw-away PostgreSQL 16 here, 5 existing DB tests in `tests_app/test_paper_totals.py` that pinned the old blanking rule, now pinned to (62) (names changed; 22 pass). Also pass on it: test_paper_totals_closed, test_paper_closed_rows, test_d68_today_total.
+- Opus review 2 (Why Opus: money figure): REVISE, one MAJOR: the Today total (D-68) shares `_priced` and has no left-out line on screen, so (62) would have shown a figure with no line. Fixed: Today keeps its old rule (`booked_alone` False; test `test_item4_the_today_total_keeps_its_own_rule...`). Minor F2 (two assertions dropped, two names stating the opposite) fixed. Not covered by the reviewer: a settling trade priced after 15:30 under ADR-330 (36) (unchanged by this diff).
+- Owner question for later: should Today follow (62) too? It needs a left-out line in the Today block (page change for Lane V, `readToday` ignores `left_out_text`).
+- For Lane K: after merging origin/fix/order-limits-1127, `tests_app/test_paper_routes.py::test_a_bad_price_is_422_with_the_reason_and_nothing_is_stored[0]` and `[-5.00]` fail (they expect "a multiple of 0.05"; K's zero-price refusal says "Type a price above 0 ..."). Not my change; K to update the test.
+- Environment: `test_adjustment_history_why.py::...` fails with or without my change (pre-existing, StopIteration).
 
-SAFE TO CLOSE is NOT yet written: item 4 build is pending.
+## UX-05 and UX-06 (Lane O's handover), Fixed, not tested
+- UX-05 `MyStrategiesPage.vue`: while the list is being re-read (after Undo), "Loading your strategies..." replaces "No saved strategy matches ..." and "No strategy ...". Test `my-strategies-bulk.test.js` (UX-05).
+- UX-06 `CreateStrategyPage.vue` (the button is there, not in MyStrategiesPage; no other lane's list names it): "Show strategies" is grey with a reason under it. Test `create-strategy.test.js` (UX-06).
+- Pending owner read (new sentences): "Loading your strategies..."; "Choose an expiry first."; "Waiting for the contracts to load."; "Waiting for the index price."; plus "Select all {n} of the {m} shown" from before.
+- Screen steps (market CLOSED fine): My Strategies, delete a saved strategy, search a part of another name, press Undo: until the list answers the line reads "Loading your strategies...", then the row is back (no "No saved strategy matches"). Create Strategy > guided > pick "I know the strategy": "Show strategies" is grey with "Choose an expiry first."; pick an expiry: it turns normal and the line goes. Item 4 (market CLOSED, after 15:30 with a settled trade and only unpriced running ones): Home "Total P&L" shows the booked sum, Positions "Paper P&L" the same, with "Includes N closed strategies." and "N strategies left out: their prices are not live."
+
+SAFE TO CLOSE once the final push below is confirmed.

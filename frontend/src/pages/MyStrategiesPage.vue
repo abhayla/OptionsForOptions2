@@ -73,8 +73,13 @@ const LIST_LIMIT_MS = 15000
 const LIST_LOAD_FAILED_TEXT = 'Could not load your strategies. Nothing was changed.'
 const loadFailed = ref(false)
 let readNo = 0
+// UX-05 (Lane L): true while a re-read of the list is in flight (after an Undo the row is on its way back): the list then says
+// so instead of "No saved strategy matches ..." or "No strategy ..." (new sentence, pending owner read)
+const refreshing = ref(false)
+const LOADING_LIST_TEXT = 'Loading your strategies...'
 async function loadList() {
   const mine = ++readNo
+  refreshing.value = true
   let timer = null
   const limit = new Promise((_, reject) => { timer = setTimeout(() => reject(new Error('timed out')), LIST_LIMIT_MS) })
   try {
@@ -88,6 +93,7 @@ async function loadList() {
     if (!loaded.value) loadFailed.value = true // a failed re-read after a good first read keeps the list on screen
   } finally {
     clearTimeout(timer)
+    if (mine === readNo) refreshing.value = false
   }
 }
 function retryList() {
@@ -175,6 +181,7 @@ async function confirmRename(row) {
     <div v-else-if="!loaded" class="space-y-2" role="status" aria-label="Loading your strategies" data-testid="list-skeleton">
       <div v-for="n in 4" :key="n" class="h-9 animate-pulse rounded bg-line"></div>
     </div>
+    <p v-else-if="refreshing && !shown.length" class="text-sm text-ink-muted" role="status" data-testid="list-refreshing">{{ LOADING_LIST_TEXT }}</p>
     <EmptyState
       v-else-if="!shown.length" data-testid="list-empty"
       :message="completedOnly ? 'No strategy is completed yet.' : 'You have no saved strategies yet. Save a draft from the Strategy Builder and it will appear here.'"
@@ -192,7 +199,8 @@ async function confirmRename(row) {
           <button type="button" class="link" data-testid="bulk-cancel" @click="deleteFlow.cancelBulk()">Cancel</button>
         </span>
       </div>
-      <p v-if="!visible.length" class="text-sm text-ink-muted" data-testid="search-no-match">{{ noMatchText(query) }}</p>
+      <p v-if="!visible.length && refreshing" class="text-sm text-ink-muted" role="status" data-testid="list-refreshing">{{ LOADING_LIST_TEXT }}</p>
+      <p v-else-if="!visible.length" class="text-sm text-ink-muted" data-testid="search-no-match">{{ noMatchText(query) }}</p>
       <div v-else class="overflow-hidden rounded-lg border border-line bg-surface">
       <div class="hidden gap-x-2 border-b border-line bg-surface-muted px-4 py-1.5 text-[11px] leading-4 font-medium text-ink-muted" :class="COLS" aria-hidden="true">
         <span v-for="(h, i) in HEADS" :key="i" :class="{ 'text-right': i === HEADS.length - 1 }">{{ h }}</span>

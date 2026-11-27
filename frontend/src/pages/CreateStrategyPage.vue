@@ -99,6 +99,14 @@ onMounted(() => {
     .then((list) => { if (Array.isArray(list)) templates.value = list })
 })
 
+// UX-06 (Lane L): while Show strategies cannot work yet the button is grey AND says why (texts pending owner read)
+const showWhy = computed(() => {
+  if (!expiry.value) return 'Choose an expiry first.'
+  if (!contracts.value.length) return 'Waiting for the contracts to load.'
+  if (current.value === null && !readErrors.value.indices) return 'Waiting for the index price.'
+  return null
+})
+
 function choosePath(key) {
   if (key === 'advanced') { router.push('/strategy/builder'); return } // REQ-024 AC-5: an empty Builder, same engine
   path.value = 'guided'
@@ -269,7 +277,8 @@ v-for="v in MARKET_VIEWS" :key="v.key" type="button" class="min-h-[44px] w-full 
         </template>
         <button
 type="button" class="btn btn-primary min-h-[44px] w-full sm:w-auto" data-testid="show-strategies"
-                :disabled="!expiry || !contracts.length || (current === null && !readErrors.indices)" @click="showStrategies">Show strategies</button>
+                :disabled="!!showWhy" @click="showStrategies">Show strategies</button>
+        <p v-if="showWhy" class="mt-1 text-xs text-ink-muted" role="status" data-testid="show-strategies-why">{{ showWhy }}</p>
       </div>
 
       <div v-else class="mt-4" data-testid="step-results">

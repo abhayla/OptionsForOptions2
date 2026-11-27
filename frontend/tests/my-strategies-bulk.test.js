@@ -445,3 +445,26 @@ describe('Select all count is computed from the rows shown', () => {
     expect(w.get('[data-testid="select-all-label"]').text()).toContain('Select all 3 shown')
   })
 })
+
+// UX-05 (Lane L, 27 Nov): after Undo the row is coming back from a fresh read; until that read answers the list says it is loading,
+// never "No saved strategy matches <text>".
+describe('UX-05 loading line while the list is re-read', () => {
+  it('a search with no match while a re-read is in flight shows the loading line; after the answer, the rows', async () => {
+    let release
+    const first = [mk(1, { name: '"Alpha"' }), mk(2, { name: '"Beta"' })]
+    listAnswer = () => Promise.resolve({ data: { strategies: first } })
+    const w = await open()
+    await w.get('[data-testid="strategy-search"]').setValue('gamma')
+    expect(w.find('[data-testid="search-no-match"]').exists()).toBe(true) // settled list, truly no match: the sentence stands
+    // a re-read starts (what Undo does) and has not answered yet
+    listAnswer = () => new Promise((resolve) => { release = () => resolve({ data: { strategies: [...first, mk(3, { name: '"Gamma"' })] } }) })
+    w.vm.$.setupState.loadList()
+    await flushPromises()
+    expect(w.find('[data-testid="search-no-match"]').exists()).toBe(false)
+    expect(w.get('[data-testid="list-refreshing"]').text()).toBe('Loading your strategies...')
+    release()
+    await flushPromises()
+    expect(w.find('[data-testid="list-refreshing"]').exists()).toBe(false)
+    expect(rowIds(w)).toEqual(['3'])
+  })
+})

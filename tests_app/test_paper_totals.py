@@ -195,12 +195,15 @@ async def test_one_expired_contract_leaves_its_strategy_out_of_every_figure_and_
     assert (totals["left_out_count"], totals["left_out_text"]) == (1, "1 strategy left out: its contract has expired.")
 
 
-async def test_stale_prices_make_the_totals_absent_with_prices_not_live(db):
+async def test_stale_prices_leave_the_running_trades_out_and_the_closed_booked_result_stands(db):
     app, _provider, clock, last, _sid = await _seed_three(db)
     clock.now = last + datetime.timedelta(minutes=10)
     totals = (await _list(app))["totals"]
-    assert (totals["booked"], totals["unbooked"], totals["total"], totals["totals_reason"], totals["decay_reason"]) == (
-        "731.25", None, None, "prices_not_live", "prices_not_live")
+    # ADR-330 (62): no running trade can be priced, the closed one (50) has its booked result: the total is that result
+    assert (totals["booked"], totals["unbooked"], totals["total"], totals["totals_reason"]) == (
+        "2236.00", "0.00", "2236.00", None)
+    assert (totals["decay"], totals["decay_reason"]) == ("0.00", None)  # the closed book decays nothing
+    assert (totals["left_out_count"], totals["left_out_text"]) == (2, "2 strategies left out: their prices are not live.")
 
 
 async def test_no_iv_drops_only_the_decay_with_its_reason(db):
@@ -366,12 +369,12 @@ async def test_no_expired_strategy_means_no_left_out_line(db):
     assert (totals["left_out_count"], totals["left_out_text"]) == (0, None)
 
 
-async def test_a_price_that_is_not_live_still_blanks_the_totals_with_its_reason(db):
+async def test_a_price_that_is_not_live_leaves_the_running_trades_out_and_the_booked_result_stands(db):
     app, _provider, clock, last, _seeded = await _seed_three(db)
-    clock.now = last + datetime.timedelta(minutes=10)  # every price stale: not an expiry, so nothing is left out
+    clock.now = last + datetime.timedelta(minutes=10)  # every price stale: ADR-330 (62), the two running ones are counted
     totals = (await _list(app))["totals"]
-    assert (totals["unbooked"], totals["total"], totals["totals_reason"]) == (None, None, "prices_not_live")
-    assert (totals["left_out_count"], totals["left_out_text"]) == (0, None)
+    assert (totals["unbooked"], totals["total"], totals["totals_reason"]) == ("0.00", "2236.00", None)
+    assert (totals["left_out_count"], totals["left_out_text"]) == (2, "2 strategies left out: their prices are not live.")
 
 
 async def test_a_book_on_expired_contracts_answers_200_with_the_plain_reason_the_card_shows(db):
@@ -411,7 +414,8 @@ async def test_a1_not_connected_with_an_expired_contract_still_leaves_that_strat
     assert rows[seeded["48"]]["expired_open"] is False
     totals = body["totals"]
     assert totals["totals_reason"] != "contract_retired" and totals["decay_reason"] != "contract_retired"
-    assert (totals["left_out_count"], totals["left_out_text"]) == (1, "1 strategy left out: its contract has expired.")
+    # 46 has expired and the broker is not connected, so 48 cannot be priced either (ADR-330 (62): counted, not blanking)
+    assert (totals["left_out_count"], totals["left_out_text"]) == (2, "2 strategies left out: their contracts have expired or their prices are not live.")
     async with _client(app) as c:
         single = (await c.get(f"/paper/strategies/{seeded['46']}")).json()
     assert single["expired_open"] is True  # the per-strategy reply says it too (the card keys on this)
@@ -434,15 +438,16 @@ async def test_a2_one_expired_leg_among_live_ones_leaves_the_whole_strategy_out(
     assert body["totals"]["left_out_count"] == 1
 
 
-async def test_a4_an_expired_strategy_and_stale_prices_the_stale_reason_wins_and_the_count_stays(db):
-    """Mixed: 46 has expired and every price is stale. The strategies that can be priced are stale, so the figures say
-    prices_not_live (never contract_retired), and the left-out line still counts the expired one."""
+async def test_a4_an_expired_strategy_and_stale_prices_are_both_counted_and_the_booked_result_stands(db):
+    """Mixed: 46 has expired and every price is stale. ADR-330 (62): the closed 50 keeps its booked result and the
+    left-out line counts the expired one and the stale one (never contract_retired as the total's reason)."""
     app, _provider, clock, last, sid = await _seed_three(db)
     await db.execute(text(_RETIRE), {"id": sid["contracts"][2]})
     clock.now = last + datetime.timedelta(minutes=10)
     totals = (await _list(app))["totals"]
-    assert (totals["unbooked"], totals["total"], totals["totals_reason"]) == (None, None, "prices_not_live")
-    assert (totals["left_out_count"], totals["left_out_text"]) == (1, "1 strategy left out: its contract has expired.")
+    # ADR-330 (62): the closed 50 keeps its booked result; 46 (expired) and 48 (stale) are left out and counted
+    assert (totals["unbooked"], totals["total"], totals["totals_reason"]) == ("0.00", "2236.00", None)
+    assert (totals["left_out_count"], totals["left_out_text"]) == (2, "2 strategies left out: their contracts have expired or their prices are not live.")
 
 
 # --- AC-R06 / N-46 (26 Nov 2026, ADR-324 (1) to (3)): one strategy that cannot be priced never pauses the total ------
@@ -469,12 +474,13 @@ async def test_ac_r06_one_paused_strategy_is_left_out_and_the_total_is_over_the_
     assert rows[sid["48"]]["unbooked"] is None  # its own row stays paused with its reason
 
 
-async def test_ac_r06_every_strategy_paused_keeps_the_blank_total_with_its_reason(db):
+async def test_ac_r06_every_running_strategy_paused_shows_the_booked_result_of_the_closed_one(db):
     app, _provider, clock, last, _sid = await _seed_three(db)
     clock.now = last + datetime.timedelta(minutes=10)
     totals = (await _list(app))["totals"]
-    assert (totals["total"], totals["total_after"], totals["totals_reason"]) == (None, None, "prices_not_live")
-    assert (totals["left_out_count"], totals["left_out_text"]) == (0, None)
+    assert (totals["total"], totals["totals_reason"]) == ("2236.00", None)  # ADR-330 (62): 50's booked result
+    assert totals["total_after"] is None  # rates unavailable in this seed: no after-charges figure
+    assert (totals["left_out_count"], totals["left_out_text"]) == (2, "2 strategies left out: their prices are not live.")
 
 
 def test_ac_r06_the_count_line_names_expired_unpriced_or_both():
