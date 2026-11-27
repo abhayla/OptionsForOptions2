@@ -25,6 +25,7 @@ import pytest
 pytestmark = pytest.mark.real_preferences  # the true database read, not the conftest defaults
 
 LOSS_STOP = {"loss_stop_rupees": "1000"}
+RELOAD_SECONDS = 20  # the worker process rebuilds its monitors from the database about every 10 s
 
 
 @pytest.fixture
@@ -82,7 +83,8 @@ async def test_b_a_loss_stop_already_crossed_when_the_plan_is_saved_raises_its_a
     await c.go_to(2)
     assert await c.plan_alerts() == []
     await c.type_plan(guards=LOSS_STOP)
-    await c.go_to(3, settle=12)  # the next minute's prices: the worker reloads the plan and checks
+    await asyncio.sleep(RELOAD_SECONDS)  # the worker reloads the saved plan (its rebuild) BEFORE the next prices
+    await c.go_to(3)  # the next minute's prices: the first check with the saved plan
     rows = await c.alert_at_once("plan_rupee_loss", next_frame=4)
     only(rows, "plan.rupee_loss", "plan_rupee_loss", "1000")
     await nothing_else(c, {"plan_rupee_loss"})
@@ -173,21 +175,26 @@ async def test_g_a_time_exit_raises_its_alert_at_its_time(chain_for, monkeypatch
     await nothing_else(c, {"plan_time_exit"})
 
 
-async def test_h_a_10_percent_loss_against_a_5_percent_rule_held_14_minutes_alerts(chain_for, monkeypatch):
-    """(h) The PC's T1-06 of 27 Nov 13:28: rule "Loss reaches 5 % of max loss", loss about 10 % (about Rs 2,400 of the condor's Rs 23,550 max loss)
-    from 11:41 (PATH-94). The alert is there at the first check and is one row after 14 minutes."""
+async def test_h_a_5_percent_loss_stop_saved_while_the_loss_is_10_percent_alerts_and_is_held_14_minutes(
+        chain_for, monkeypatch):
+    """(h) The PC's T1-06 of 27 Nov 13:28 (a stop already crossed when the plan is accepted): rule "Loss reaches 5 % of
+    max loss" typed and saved while the loss is about 10 % (about Rs 2,400 of the condor's Rs 23,550 max loss), PATH-94
+    from 11:41. The alert is there at the first check after the save and is still one row 14 minutes later."""
     c = await chain_for("PATH-94")
     await c.seed(monkeypatch, plan=False)
-    await c.type_plan(guards={}, t06_percent="5", keep=("T-06",))
+    await c.type_plan(guards={})  # a plan with no stop
     c.start_worker()
     await c.go_to(0)
+    await c.go_to(1)  # 11:41: the loss is already about 10 %
     assert await c.plan_alerts() == []
-    await c.go_to(1)
-    rows = [r for r in await c.alert_at_once("plan_loss_stop", next_frame=2) if r["rule_id"] == "T-06"]
+    await c.type_plan(guards={}, t06_percent="5", keep=("T-06",))
+    await asyncio.sleep(RELOAD_SECONDS)
+    await c.go_to(2)
+    rows = [r for r in await c.alert_at_once("plan_loss_stop", next_frame=3) if r["rule_id"] == "T-06"]
     assert len(rows) == 1, rows
     assert rows[0]["threshold"] == Decimal("5"), rows
     await c.go_to(8)
-    await c.go_to(15)  # 14 minutes later
+    await c.go_to(15)  # 14 minutes after the loss began
     rows = [r for r in await c.alerts("plan_loss_stop") if r["rule_id"] == "T-06"]
     assert len(rows) == 1 and rows[0]["outcome"] == "open", rows
     assert [r["kind"] for r in await c.plan_alerts()] == ["plan_loss_stop"], ("one plan alert only", await c.plan_alerts())
