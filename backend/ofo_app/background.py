@@ -1556,17 +1556,27 @@ class Worker:
         trade is called watched only on a reading the exits can use. Written when it changed, and at least every
         ``monitoring_state.REFRESH_S``; never raises (a failed write is logged; the monitor then finds no reading)."""
         spot = read.spot
-        if self._want_client is None or spot is None or spot.ltp is None or spot.timestamp is None:
+        if self._want_client is None or spot is None:
             return
         underlying = w.tracked.position.underlying
         source = "rest" if getattr(spot.source, "feed_id", "") == REST_INDEX_FEED_ID else "feed"
-        stamp = (spot.ltp, spot.timestamp, source)
-        kept = self._index_written.get(underlying)
+        await self._publish_one(underlying, spot, source, now, leg=False)
+        for quote in read.legs.values():  # item 2: the option legs' prices this read used, for the leg-price exits
+            await self._publish_one(quote.instrument_id, quote, "feed", now, leg=True)
+
+    async def _publish_one(self, key: str, quote: Any, source: str, now: datetime.datetime, *, leg: bool) -> None:
+        """One reading, written when it changed and at least every ``monitoring_state.REFRESH_S``."""
+        if quote.ltp is None or quote.timestamp is None:
+            return
+        stamp = (quote.ltp, quote.timestamp, source)
+        slot = f"{'leg' if leg else 'index'}:{key}"
+        kept = self._index_written.get(slot)
         if kept is not None and kept[0] == stamp and _seconds(now - kept[1]) < monitoring_state.REFRESH_S:
             return
         if await monitoring_state.publish_index(
-                self._want_client, monitoring_state.IndexReading(underlying, spot.ltp, spot.timestamp, source), now):
-            self._index_written[underlying] = (stamp, now)
+                self._want_client, monitoring_state.IndexReading(key, quote.ltp, quote.timestamp, source), now,
+                leg=leg):
+            self._index_written[slot] = (stamp, now)
 
     async def _read_with_either_spot(self, provider: Any, w: Watched, now: datetime.datetime) -> PriceRead:
         """The price read; when THIS book's index quote is missing or not AVAILABLE, the shared REST read stands in for
