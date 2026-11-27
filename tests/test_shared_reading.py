@@ -86,3 +86,24 @@ def test_absent_is_not_kept_and_an_exception_is_not_kept():
         with contextlib.suppress(RuntimeError):
             asyncio.run(shared.get("N", boom))
     assert shared.calls == FIVE
+
+
+def test_the_owner_cancelled_mid_flight_never_cancels_a_waiter_and_the_result_is_still_kept():
+    """Opus R1 finding 1: the fetch runs in its own task; a caller's cancel drops only its own wait."""
+    shared, calls = SharedReading(clock=_Clock()), []
+    async def run():
+        gate = asyncio.Event()
+        owner = asyncio.create_task(shared.get("N", _fetcher(_stated(), calls, gate)))
+        await asyncio.sleep(0)
+        waiter = asyncio.create_task(shared.get("N", _fetcher(_stated(), calls, gate)))
+        await asyncio.sleep(0)
+        owner.cancel()
+        with contextlib.suppress(asyncio.CancelledError):
+            await owner
+        assert owner.cancelled()
+        gate.set()
+        got = await waiter
+        await asyncio.sleep(0)
+        return got, shared.peek("N")
+    got, kept = asyncio.run(run())
+    assert got.state is SourceState.STATED and kept is not None and len(calls) == 1

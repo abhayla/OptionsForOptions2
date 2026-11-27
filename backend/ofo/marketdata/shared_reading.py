@@ -37,24 +37,20 @@ class SharedReading:
         if kept is not None:
             return kept
         flying = self._flying.get(key)
-        if flying is not None:
-            return await asyncio.shield(flying)
-        future: asyncio.Future[SourceReading] = asyncio.get_running_loop().create_future()
-        self._flying[key] = future
-        self.calls += 1
+        if flying is None:
+            self.calls += 1
+            flying = self._flying[key] = asyncio.ensure_future(self._fly(key, fetch))
+            flying.add_done_callback(lambda f: f.cancelled() or f.exception())  # retrieved: no warning if all left
+        # The fetch is its OWN task: a caller whose request is cancelled (a shorter deadline) drops only its own wait,
+        # never the flight the other waiters share; the result is still kept for the next caller.
+        return await asyncio.shield(flying)
+
+    async def _fly(self, key: str, fetch: Callable[[], Awaitable[SourceReading]]) -> SourceReading:
         try:
             reading = await fetch()
-        except BaseException as exc:  # waiters get the same failure; nothing is kept
-            if isinstance(exc, asyncio.CancelledError):
-                future.cancel()
-            else:
-                future.set_exception(exc)
-                future.exception()  # retrieved: no "never retrieved" warning when nobody waited
-            raise
         finally:
-            self._flying.pop(key, None)
+            self._flying.pop(key, None)  # an exception is shared with the waiters and never kept
         if reading.state not in _NOT_CACHED:
             ttl = self._failed_ttl if reading.state is SourceState.FAILED else self._ttl
             self._kept[key] = (self._clock() + ttl, reading)
-        future.set_result(reading)
         return reading
