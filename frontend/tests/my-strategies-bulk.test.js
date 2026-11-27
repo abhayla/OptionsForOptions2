@@ -422,3 +422,26 @@ describe('C-04 the result line carries Undo after the pop-up is gone', () => {
     expect(rowIds(w)).toEqual(['2'])
   })
 })
+
+// Lane L item 2 (27 Nov, real case: "Select all 16 shown" sat over 17 completed rows): the count in the Select all label and
+// the rows under it come from ONE list (`visible`); a row that cannot be ticked is named, never silently dropped from "shown".
+describe('Select all count is computed from the rows shown', () => {
+  const completed = (id, extra = {}) => mk(id, { status_word: 'Completed', status: 'closed', ...extra })
+  it('17 completed rows, one not deletable: the label names both numbers and every number equals a row count', async () => {
+    const rows = Array.from({ length: 17 }, (_, i) => completed(i + 1, i === 4 ? { can_delete: false } : {}))
+    listAnswer = () => Promise.resolve({ data: { strategies: rows } })
+    const w = await open({ title: 'Completed Strategies', parent: 'Strategies', completedOnly: true })
+    const shownRows = rowIds(w).length
+    const label = w.get('[data-testid="select-all-label"]').text()
+    expect(shownRows).toBe(17)
+    expect(label).toContain(`Select all 16 of the ${shownRows} shown`)
+    await w.get('[data-testid="select-all"]').setValue(true)
+    expect(w.get('[data-testid="delete-selected"]').text()).toBe('Delete selected (16)')
+  })
+  it('every row can be ticked: the label is the plain one and its number is the row count', async () => {
+    listAnswer = () => Promise.resolve({ data: { strategies: [completed(1), completed(2), completed(3)] } })
+    const w = await open({ title: 'Completed Strategies', parent: 'Strategies', completedOnly: true })
+    expect(rowIds(w).length).toBe(3)
+    expect(w.get('[data-testid="select-all-label"]').text()).toContain('Select all 3 shown')
+  })
+})

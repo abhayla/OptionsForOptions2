@@ -4,7 +4,7 @@
 // Every state of a figure is named: value, paused (prices not live: a dash and the paused sentence), failed (the read failed or
 // did not read), none (this trade has no paper book: nothing is shown), loading (no answer yet: nothing is shown, and a read
 // always ends, the client has a timeout, so this state never lasts).
-import { computed, onMounted, ref } from 'vue'
+import { computed, onBeforeUnmount, onMounted, ref } from 'vue'
 import api from '@/services/api'
 import { PAPER_NO_FIGURE, PAPER_PAUSED, readPaperList } from '@/lib/paperList'
 import { usePriceFreshness } from '@/lib/priceState'
@@ -44,7 +44,16 @@ export function usePaperPnl() {
     },
     onError: () => { failed.value = true; loaded.value = true },
   })
-  onMounted(refresh)
+  // UX-32 (Lane L): a figure read before the page was hidden, or before a trade was changed in another tab, is old when the user
+  // comes back: read again the moment the page is shown or focused (the timer alone is slowed in a background tab).
+  const onBack = () => { if (typeof document === 'undefined' || document.visibilityState !== 'hidden') refresh() }
+  onMounted(() => {
+    refresh()
+    if (typeof window !== 'undefined') { window.addEventListener('focus', onBack); document.addEventListener('visibilitychange', onBack) }
+  })
+  onBeforeUnmount(() => {
+    if (typeof window !== 'undefined') { window.removeEventListener('focus', onBack); document.removeEventListener('visibilitychange', onBack) }
+  })
   const { readOk } = usePriceFreshness({ readFailed: failed, held: list })
   const stale = computed(() => !readOk.value)
   /** The cell of one strategy: {kind: loading | none | value | paused | failed, text, label, note}. */

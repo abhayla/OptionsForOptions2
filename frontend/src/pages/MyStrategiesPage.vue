@@ -32,7 +32,7 @@ import { CLOSED_HEADER, CLOSED_PREFIX, CLOSED_UNAVAILABLE_TEXT } from '@/lib/sha
 import { useOrderPath } from '@/lib/orderPath'
 import PnlLine from '@/components/live/PnlLine.vue'
 import { usePaperPnl } from '@/lib/paperPnl'
-import { bulkConfirmText, canDelete, useDeleteFlow } from '@/lib/strategyActivity'
+import { bulkConfirmText, canDelete, selectAllText, useDeleteFlow } from '@/lib/strategyActivity'
 import { CLEAR_UNDO_SECONDS_KEY } from '@/lib/legEdit'
 import { useSettingsValues } from '@/stores/settingsValues'
 
@@ -182,7 +182,7 @@ async function confirmRename(row) {
       <div v-if="visible.length" class="mb-2 flex flex-wrap items-center gap-3 text-[13px]" data-testid="bulk-bar">
         <label class="inline-flex items-center gap-2" data-testid="select-all-label">
           <input type="checkbox" :checked="allTicked" :disabled="!selectable.length || deleteFlow.busy" data-testid="select-all" @change="toggleAll($event.target.checked)" />
-          <span>Select all {{ selectable.length }} shown</span>
+          <span>{{ selectAllText(selectable.length, visible.length) }}</span>
         </label>
         <button type="button" class="btn btn-sm" :disabled="!chosen.length || deleteFlow.busy" data-testid="delete-selected" @click="askBulk">Delete selected ({{ chosen.length }})</button>
         <span v-if="deleteFlow.bulkConfirming" class="flex flex-wrap items-center gap-2" role="alertdialog" data-testid="bulk-confirm-box">

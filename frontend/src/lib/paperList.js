@@ -186,7 +186,18 @@ function readToday(t) {
 export function readPaperList(data) {
   if (!data || !Array.isArray(data.strategies)) return null
   noteShownDate(data) // ADR-330 (19): before any group label is written
-  return { groups: data.strategies.map(readPaperStrategy), totals: readTotals(data.totals), today: readToday(data.today) }
+  const groups = data.strategies.map(readPaperStrategy)
+  return { groups, totals: tieClosedLine(readTotals(data.totals), data.totals, groups), today: readToday(data.today) }
+}
+
+/** Lane L item 2 (ADR-330 (15)): "Includes N closed strategies" must be the count of the closed rows of the SAME reply. The server
+ *  sends `closed_count` beside its sentence; when it differs from the closed rows this reply lists (an integer count, no money), the
+ *  sentence is not shown (fail closed) and the difference is named in `closedMismatch` for the page. A reply with an unreadable
+ *  row, or without a count, cannot be tied: the server's sentence stands as sent. */
+function tieClosedLine(totals, raw, groups) {
+  if (!totals || !isCount(raw?.closed_count) || !groups.every((g) => g.readable)) return totals
+  const rows = groups.filter((g) => !isOpenGroup(g)).length
+  return rows === raw.closed_count ? totals : { ...totals, closedNote: null, closedMismatch: { server: raw.closed_count, rows } }
 }
 
 /** A group is open when the server counts an open position in it (never a fully exited one). */

@@ -25,6 +25,11 @@ export const canDelete = (row) => row?.can_delete === true && row?.held_at_broke
 /** ADR-330 (8): the one confirmation of a bulk delete ("Delete 14 strategies? 3 of them are running."). */
 export const bulkConfirmText = (count, running) =>
   `Delete ${count} ${count === 1 ? "strategy" : "strategies"}?${running > 0 ? ` ${running} of them ${running === 1 ? "is" : "are"} running.` : ""}`;
+/** Lane L item 2: the Select all label. Both numbers are counts of the one list under it (`shown` = every row listed,
+ *  `selectable` = those among them that can be ticked); when some rows cannot be ticked the label says so, so "shown" never
+ *  names fewer rows than the list holds. New sentence, pending owner read. */
+export const selectAllText = (selectable, shown) =>
+  selectable === shown ? `Select all ${selectable} shown` : `Select all ${selectable} of the ${shown} shown`;
 /** The server's catalogue sentence: an object {what_happened, ...} (a bare string is accepted too). Never composed here. */
 export const sentenceOf = (t) => (typeof t === "string" ? t : typeof t?.what_happened === "string" ? t.what_happened : "");
 export const BULK_UNREADABLE_TEXT = "The strategy could not be read, so it was not deleted.";
