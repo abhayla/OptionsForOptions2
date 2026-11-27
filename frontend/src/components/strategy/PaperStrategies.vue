@@ -163,7 +163,7 @@
       </template>
     </template>
     <!-- GC-TP step 4b round 2 (REQ-109 AC-4; Sensibull 166-173): every exit goes through the shared confirm list, in lots -->
-    <PaperConfirmDialog :open="!!confirm" :orders="confirm ? confirm.orders : []" :strategy-id="confirm ? confirm.id : ''" :busy="busy" :blocked="stale" :error="dialogError || (confirm && stale ? exitEndText('not_live', confirm.names) : '')" :state="dialogState" :locked="!!(confirm && isUnknown(confirm.id))" @confirm="doExit" @cancel="cancelExit" @orderbook="openOrderbook" />
+    <PaperConfirmDialog :open="!!confirm" :orders="confirm ? confirm.orders : []" :strategy-id="confirm ? confirm.id : ''" :busy="busy" :blocked="exitGate.notLive.value" :error="dialogError || (confirm && exitGate.notLive.value ? exitEndText('not_live', confirm.names) : '')" :state="dialogState" :locked="!!(confirm && isUnknown(confirm.id))" @confirm="doExit" @cancel="cancelExit" @orderbook="openOrderbook" />
   </section>
 </template>
 
@@ -183,7 +183,7 @@ import HeldNote from '@/components/strategy/HeldNote.vue'
 import { ALL_CLOSED_TEXT, DECAY_LEFT_TODAY_HEADING, GREEK_COLUMNS, PAPER_NO_FIGURE, PAPER_PAUSED, SHOW_CLOSED_LABEL, exitRowsFor, isOpenGroup, readPaperList, visibleGroups } from '@/lib/paperList'
 import { usePriceFreshness } from '@/lib/priceState'
 import { createExitRecords } from '@/lib/exitRecord'
-import { EXIT_TICK_TEXT, exitEndText, usePaperExit } from '@/lib/usePaperExit'
+import { EXIT_TICK_TEXT, exitEndText, exitLegsNotLive, usePaperExit } from '@/lib/usePaperExit'
 import ExitButton from '@/components/strategy/ExitButton.vue'
 import { usePaperRefresh } from '@/lib/usePaperRefresh'
 import { EXITED_NOW_LABEL, HELD_TO_EXPIRY_LABEL } from '@/lib/paperDrafts'
@@ -261,7 +261,14 @@ const errorParts = ref(null)
 const { readOk } = usePriceFreshness({ readFailed: errorParts, held: items })
 const stale = computed(() => !readOk.value)
 // Phase 4 (F2): the Exit gate of the page, the same one as the builder's book panel (no contracts-changed mark on this list)
-const exitGate = usePaperExit({ readFailed: errorParts, held: items, busy: () => busy.value, changed: false })
+// Lane U hotfix 27 Nov (A-H #209): the open dialog's own legs are judged on the LATEST GOOD read too (exitLegsNotLive, the one rule), not only a failed read
+const dialogLegsNotLive = () => {
+  const c = confirm.value
+  if (!c) return false
+  const g = (items.value ?? []).find((x) => String(x.id) === String(c.id))
+  return exitLegsNotLive(g?.state, g?.positions?.map((p) => ({ id: p.contractId, live: p.live })), c.orders.map((o) => o.contract_id))
+}
+const exitGate = usePaperExit({ readFailed: errorParts, held: items, busy: () => busy.value, changed: false, notLive: dialogLegsNotLive })
 const loading = ref(true)
 const summary = computed(() => ({
   totalAfter: totals.value ? totals.value.totalAfter : null,
@@ -460,7 +467,7 @@ async function doExit(orders) {
   const c = confirm.value
   if (!c) return endExit('changed', [])
   if (busy.value) return endExit('busy', c.names)
-  if (stale.value) return endExit('not_live', c.names) // prices paused: no POST; the dialog says which leg and why
+  if (exitGate.notLive.value) return endExit('not_live', c.names) // prices paused (a failed read, or a leg of this dialog not live on the last good read): no POST; the dialog says which leg and why
   const attempt = exitRec.begin(c.id, c.names, c.units) // ONE record per attempt: every answer below goes through it
   busy.value = true
   dialogState.value = PAPER_STATE.READY

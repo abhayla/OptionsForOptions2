@@ -41,7 +41,7 @@ import { withAsOf } from '@/lib/paperList'
 import PaperBookPanel from '@/components/strategy/PaperBookPanel.vue'
 import { paperLegsOf, paperPnlBlock, usePaperBookRead } from '@/lib/usePaperBookRead'
 import { usePriceFreshness } from '@/lib/priceState'
-import { exitEndText, usePaperExit } from '@/lib/usePaperExit'
+import { exitEndText, exitLegsNotLive, usePaperExit } from '@/lib/usePaperExit'
 import { createExitRecords } from '@/lib/exitRecord'
 import PaperStrategies from '@/components/strategy/PaperStrategies.vue'
 import AdjustCompare from '@/components/strategy/AdjustCompare.vue'
@@ -475,7 +475,9 @@ const { readFailed: paperBookFailed } = usePriceFreshness({
 })
 // N-04 / N-05: the ONE blocked rule (the book panel's own usePaperExit, same inputs): per-leg Exit, Exit all and "Review and add" all
 // read exitGate.blocked, so they are disabled in exactly the same states; the reason line is the one the panel shows under Exit all.
-const exitGate = usePaperExit({ readFailed: paperReadFailed, held: () => paper.value?.book ?? null, changed: paperContractsChanged })
+// Lane U hotfix 27 Nov (A-H #209): an open dialog's EXIT rows are judged on the latest good book too (exitLegsNotLive, the one rule), not only a failed read
+const dialogLegsNotLive = () => { const b = paper.value?.book; return paperDialog.value && !!b && exitLegsNotLive(b.state, b.positions?.map((p) => ({ id: p.contract_id, live: p.price_state === 'live' })), paperRows.value.filter((r) => r.kind === 'exit').map((r) => r.contract_id)) }
+const exitGate = usePaperExit({ readFailed: paperReadFailed, held: () => paper.value?.book ?? null, changed: paperContractsChanged, notLive: dialogLegsNotLive })
 const exitBlocked = exitGate.blocked
 const exitOrigin = ref(false) // the pending edits came from Exit all or a per-leg Exit; stays true until they are posted or discarded (ADR-328 (4))
 // P10: the strategy the Plan watch reads: the saved id, or in Drafts Mode (savedId stays null there) the paper book's own integer id

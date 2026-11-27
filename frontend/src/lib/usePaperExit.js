@@ -35,9 +35,27 @@ export function exitEndText(reason, legNames = [], parts = null, neutral = 'Some
   return names ? `${names}: ${sentence}` : sentence
 }
 
-export function usePaperExit({ readFailed, held, busy = false, pending = false, changed = false }) {
+/**
+ * Lane U hotfix 27 Nov 2026 (A-H #209: feed stopped, API up; ADR-016..019, ADR-328 (4), REQ-109 AC-5 / ADR-322 (3)): the ONE judgement of "may
+ * these ticked legs exit at the prices the LATEST GOOD read shows?", read by the builder's dialog and the Positions dialog alike. `state` is the
+ * book's / strategy's own state; `positions` is [{ id, live }] (live: the leg's price_state is exactly 'live'); `ids` the ticked legs. True (not
+ * live, Confirm off) when: the state is not one the server names (missing or unknown reads as not live), or NOT_CONNECTED, or any ticked leg is not
+ * listed or not exactly live. A PAUSED book is judged per ticked leg (ADR-322 (3)): the legs that have a live price may exit. No ticked leg: nothing
+ * to judge (an entry-only dialog has ADR-330 (28)'s own line). A failed read is not judged here (readFailed / priceState owns it).
+ */
+export function exitLegsNotLive(state, positions, ids) {
+  if (!Array.isArray(ids) || !ids.length) return false
+  if (state !== 'LIVE' && state !== 'PAUSED' && state !== 'EXITED') return true
+  if (!Array.isArray(positions)) return true
+  return ids.some((id) => positions.find((p) => p?.id === id)?.live !== true)
+}
+
+// `notLive`: the caller's `exitLegsNotLive(...)` of the dialog that is open (false when none): one more way to be blocked, with the same sentence.
+// Returned `notLive` = a failed read OR a leg of the open dialog not live: what a dialog reads for its Confirm and its sentence.
+export function usePaperExit({ readFailed, held, busy = false, pending = false, changed = false, notLive = false }) {
   const { readOk, exitReason } = usePriceFreshness({ readFailed, held })
-  const blocked = computed(() => !readOk.value || !!toValue(changed) || !!toValue(busy) || !!toValue(pending))
-  const reason = computed(() => exitReason.value ?? (toValue(changed) ? CHANGED_ELSEWHERE_EXIT : (toValue(busy) ? EXIT_BUSY_TEXT : null)))
-  return { blocked, reason }
+  const legsNotLive = computed(() => !!toValue(notLive))
+  const blocked = computed(() => !readOk.value || legsNotLive.value || !!toValue(changed) || !!toValue(busy) || !!toValue(pending))
+  const reason = computed(() => exitReason.value ?? (legsNotLive.value ? NOT_LIVE_EXIT : (toValue(changed) ? CHANGED_ELSEWHERE_EXIT : (toValue(busy) ? EXIT_BUSY_TEXT : null))))
+  return { blocked, reason, notLive: computed(() => !readOk.value || legsNotLive.value) }
 }

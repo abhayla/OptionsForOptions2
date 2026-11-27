@@ -149,7 +149,10 @@ describe('Drafts Mode edits are pending paper orders until Confirm', () => {
     await flushPromises()
     expect(w.find('[data-testid="paper-price"]').exists()).toBe(false)
     expect(t(w, 'paper-exit-price').text()).toContain('the server sets the exit price when you confirm')
-    expect(t(w, 'paper-confirm-button').attributes('disabled')).toBeUndefined()
+    // Lane U hotfix 27 Nov (A-H #209, ADR-322 (3), ADR-016..019): a leg with no live price is refused. After hours the server's display price is
+    // 'live' whenever a close is held (ADR-212, paper.display_price), so a leg that is not live here has no price at all: Confirm is off with the sentence.
+    expect(t(w, 'paper-confirm-button').attributes('disabled')).toBeDefined()
+    expect(t(w, 'paper-error').text()).toContain('Prices are not live; try again when they update')
   })
 })
 

@@ -10,11 +10,15 @@ from __future__ import annotations
 
 import asyncio
 import datetime
+from decimal import Decimal as D
 from types import SimpleNamespace
 
 import pytest
+from ofo.engine.legs import Instrument
 from ofo.marketdata.fanout import FanOut
-from ofo.marketdata.feed_health import FeedState, FeedWindows
+from ofo.marketdata.feed_health import FeedState, FeedWindows, QuoteBook
+from ofo.marketdata.quote import NormalizedQuote, SourceMetadata
+from ofo.rules.inputs import DataHealth
 from ofo_app import read_door
 from ofo_app.live_push import LiveFeed
 from ofo_app.routes import leg_picker
@@ -322,3 +326,83 @@ async def test_everything_pinned_goes_over_the_cap_rather_than_evicting_a_pinned
     lease.unpin(["a", "b", "c"])
     lease.hold(feed, ["d"], seconds=100, now=1.0)
     assert len(lease.held_ids) == 2 and "d" in lease.held_ids  # noqa: PLR2004
+
+
+# ---- Lane U (27 Nov 15:06-15:12 IST, feed process stopped, API up): the standing lease never serves a stale price as live ----
+
+def _quotes(wall):
+    """A real FeedState + QuoteBook (the production liveness rule) behind the door: ``read`` is what market_read builds."""
+    src = SourceMetadata(provider="kite", feed_id="x")
+    feed_state = FeedState(windows=FeedWindows(stale=datetime.timedelta(seconds=3), reconnect=datetime.timedelta(seconds=30),
+                                               index_quote_max_age=datetime.timedelta(seconds=60)),
+                           market_open=lambda _t: True)
+    feed_state.on_connected(wall["t"])
+    book = QuoteBook(feed_state)
+
+    def option(i, ts):
+        return NormalizedQuote(i, "NIFTY", "NFO", "NFO-OPT", Instrument.CE, datetime.date(2026, 12, 1), D("24000"), D("100"),
+                               D("99"), D("101"), 10, 10, None, None, None, None, None, None, ts, src, DataHealth.AVAILABLE)
+
+    def index(ts):
+        return NormalizedQuote("IDX", "NIFTY", "NSE", "INDICES", None, None, None, D("24000"), None, None, None, None, None,
+                               None, None, None, None, None, ts, src, DataHealth.AVAILABLE)
+    return feed_state, book, option, index
+
+
+async def _door_read(feed, book, ids, wall, clock):
+    read = lambda: {i: book.get(i, wall["t"]) for i in ids}  # noqa: E731
+    live = lambda s: all(q is not None and q.health.name == "AVAILABLE" for q in s.values())  # noqa: E731
+    return await read_door.read_quotes(feed, ids, read, live, lambda: True, 0.05, 0.01, sleep=clock.sleep, now=clock.now)
+
+
+async def test_a_feed_silent_for_60s_reads_every_leg_not_live_even_while_the_lease_holds_the_token():
+    """Finding of 27 Nov 15:06: feed process stopped, API up. One tick, then nothing for 60 s (fake wall clock): every leg
+    is NOT live through the door, while the 30 s ReadLease still holds the tokens (a lease keeps a subscription, never a price)."""
+    wall = {"t": datetime.datetime(2026, 11, 27, 9, 36, tzinfo=datetime.UTC)}
+    feed_state, book, option, _index = _quotes(wall)
+    clock = Clock()
+    p = FakeProvider(clock)
+    feed = _feed(p)
+    ids = ["NFO:1", "NFO:2", "NFO:3", "NFO:4"]
+    for i in ids:
+        book.update(option(i, wall["t"]))
+    feed_state.on_data(wall["t"])  # the one tick
+    first = await _door_read(feed, book, ids, wall, clock)
+    assert all(q.health.name == "AVAILABLE" for q in first.values())  # control: live right after the tick
+    wall["t"] += datetime.timedelta(seconds=60)  # nothing since: heartbeats and data both silent
+    snap = await _door_read(feed, book, ids, wall, clock)
+    assert read_door.read_lease().held_ids >= frozenset(ids)  # the lease still holds the tokens
+    assert {i: q.health.name for i, q in snap.items()} == dict.fromkeys(ids, "STALE")  # none is live
+
+
+async def test_a_disconnected_feed_reads_every_leg_not_live_even_while_leased():
+    wall = {"t": datetime.datetime(2026, 11, 27, 9, 36, tzinfo=datetime.UTC)}
+    feed_state, book, option, _index = _quotes(wall)
+    clock = Clock()
+    feed = _feed(FakeProvider(clock))
+    ids = ["NFO:1", "NFO:2"]
+    for i in ids:
+        book.update(option(i, wall["t"]))
+    feed_state.on_data(wall["t"])
+    await _door_read(feed, book, ids, wall, clock)
+    feed_state.on_disconnected(wall["t"])
+    wall["t"] += datetime.timedelta(seconds=60)  # past the 30 s reconnect window
+    snap = await _door_read(feed, book, ids, wall, clock)
+    assert read_door.read_lease().held_ids >= frozenset(ids)
+    assert all(q.health.name in {"STALE", "UNAVAILABLE"} for q in snap.values())
+
+
+async def test_an_index_quote_older_than_60s_on_its_own_time_is_not_live_while_leased_and_the_feed_runs():
+    """ADR-330 (39): option frames keep the feed live; the index sat silent 61 s: the index is not live, the option is."""
+    wall = {"t": datetime.datetime(2026, 11, 27, 9, 36, tzinfo=datetime.UTC)}
+    feed_state, book, option, index = _quotes(wall)
+    clock = Clock()
+    feed = _feed(FakeProvider(clock))
+    ids = ["IDX", "NFO:1"]
+    book.update(index(wall["t"]))
+    wall["t"] += datetime.timedelta(seconds=61)
+    book.update(option("NFO:1", wall["t"]))
+    feed_state.on_data(wall["t"])
+    snap = await _door_read(feed, book, ids, wall, clock)
+    assert read_door.read_lease().held_ids >= frozenset(ids)
+    assert snap["IDX"].health.name == "STALE" and snap["NFO:1"].health.name == "AVAILABLE"

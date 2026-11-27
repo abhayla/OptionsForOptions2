@@ -253,7 +253,9 @@ describe('Paper tab from GET /paper/strategies (the real reply)', () => {
     await flushPromises()
     expect(w.find('[data-testid="paper-price"]').exists()).toBe(false)
     expect(t(w, 'paper-exit-price').text()).toContain('the server sets the exit price when you confirm')
-    expect(t(w, 'paper-confirm-button').element.disabled).toBe(false)
+    // Lane U hotfix 27 Nov (A-H #209, ADR-322 (3), ADR-016..019): the leg has no live price (after hours the server's display price is 'live' when a close is held, ADR-212): Confirm is off with the sentence
+    expect(t(w, 'paper-confirm-button').element.disabled).toBe(true)
+    expect(w.text() + document.body.textContent).toContain('Prices are not live; try again when they update')
   })
 
   it('D-40: the header shows the server\'s left-out line as sent, and no line when none was left out', async () => {

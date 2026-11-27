@@ -56,6 +56,7 @@ function readPosition(p, underlying) {
     qtyText: whole ? `${held / p.lot_size} ${held === p.lot_size ? 'lot' : 'lots'}` : `${held} units`,
     qtyNote: whole ? '' : NOT_WHOLE_LOTS_TEXT,
     averageText: text(p.average_text),
+    live: p.price_state === 'live', // Lane U hotfix 27 Nov: the leg's live flag, exactly as the server sent it (usePaperExit.exitLegsNotLive; missing reads as not live)
     ltpText: p.price_state === 'live' ? text(p.ltp_text) : null,
     priceAt: p.price_state === 'live' && typeof p.price_at === 'string' ? p.price_at : null, // D-09: when that quote was made
     ltpReason: p.price_state === 'live' ? null : text(p.price_state_text), // ADR-210: the server's sentence for a retired / delisted contract
