@@ -17,7 +17,7 @@ Three parts, one module:
   close (the book's own ``_figure`` rule; this module changes no rule) and writes it. It writes only if this process
   was already running at the close: a process that started later holds no frame it saw at the close, so the table has
   NO row for that day and the screens say prices are not available (never a made-up or older-day figure as today's).
-- ``seed_book``: only while the market is closed, hands each stored close to ``QuoteBook.seed_close``, which serves it
+- ``seed_once``: only while the market is closed, hands each stored close to ``QuoteBook.seed_close``, which serves it
   with its OWN date-time (an earlier day's row is labelled with its own date) and never overrides a frame the book
   already holds. While the market is open the table is never read; the first live tick wins.
 """
@@ -34,6 +34,7 @@ from decimal import Decimal, InvalidOperation
 
 from ofo.instruments.models import INDEX_ROWS
 from ofo.market_calendar import is_market_open, last_close
+from ofo.marketdata.feed_health import expect_seed as _expect_seed
 from ofo.marketdata.quote import Instrument, NormalizedQuote, SourceMetadata
 from ofo.money import PAISE
 from ofo.rules.inputs import DataHealth
@@ -64,6 +65,11 @@ Latest = dict[str, tuple[Decimal, datetime.datetime, datetime.date]]
 
 class StoreUnavailable(RuntimeError):
     """The database was unreachable a moment ago: the call fails at once instead of waiting for a connect timeout."""
+
+
+def expect_seed(expected: bool) -> None:
+    """The lifespan's switch (M1): a store is configured, so a new book waits for its first seed attempt."""
+    _expect_seed(expected)
 
 
 def check_row(row: CloseRow) -> None:
@@ -211,34 +217,44 @@ def closes_of(book, close: datetime.datetime, now: datetime.datetime) -> tuple[l
 
 
 class CloseWriter:
-    """One write per trading day at the close plus ``GRACE``. ``book_of()`` returns the feed book or None."""
+    """One write per trading day at the close plus ``GRACE``. ``book_of()`` returns the CURRENT feed book or None.
+    Book work (reading the book) runs on the event loop; only the database call goes to a worker thread (m7).
+    The book must have been attached before the close (m8): a book first seen after it, as after a re-login, holds
+    no frame this process saw at the close, so nothing is written for that day."""
 
-    def __init__(self, store, book_of: Callable[[], object | None], *, started_at: datetime.datetime) -> None:
+    def __init__(self, store, book_of: Callable[[], object | None]) -> None:
         self._store = store
         self._book_of = book_of
-        self._started_at = started_at
+        self._book: object | None = None
+        self._seen_at: datetime.datetime | None = None  # when the CURRENT book was first seen by this writer
         self._done: datetime.date | None = None
         self.counters = {"written": 0, "skipped_rows": 0, "errors": 0}
 
-    def step(self, now: datetime.datetime) -> int | None:
-        """One check. Rows written (>= 0) or None when nothing was due. Blocking (the store call): run in a thread."""
+    def _observe(self, now: datetime.datetime) -> object | None:
+        book = self._book_of()
+        if book is not self._book:
+            self._book, self._seen_at = book, (None if book is None else now)
+        return book
+
+    async def step(self, now: datetime.datetime) -> int | None:
+        """One check. Rows written (>= 0) or None when nothing was due. Called every few seconds, so the book is seen
+        within one step of its attach (a book attached in the 5 s before the close may be seen just after it: no row,
+        the safe side)."""
+        book = self._observe(now)
         close = last_close(now)
         if close is None or now < close + GRACE or now > close + WINDOW or is_market_open(now):
             return None
         day = close.astimezone(IST).date()
-        if self._done == day:
+        if self._done == day or book is None:
             return None
-        if self._started_at > close:  # this process was not running at the close: no row for the day, nothing made up
+        if self._seen_at is None or self._seen_at > close:  # no book here saw the close: no row, nothing made up
             self._done = day
-            log.info("last close %s: the process started after the close, nothing written", day)
+            log.info("last close %s: the current book was attached after the close, nothing written", day)
             return None
-        book = self._book_of()
-        if book is None:
-            return None
-        rows, skipped = closes_of(book, close, now)
+        rows, skipped = closes_of(book, close, now)  # on the event loop
         self.counters["skipped_rows"] += skipped
         try:
-            n = self._store.write_closes(rows)
+            n = await asyncio.to_thread(self._store.write_closes, rows)  # the only part off the loop
         except Exception as exc:  # noqa: BLE001 - a dead database is a logged error and a retry, never a feed fault
             self.counters["errors"] += 1
             log.error("last close write for %s failed: %s", day, type(exc).__name__)
@@ -267,13 +283,14 @@ def quote_of(lc, price: Decimal, price_at: datetime.datetime) -> NormalizedQuote
                            strike=None if c.instrument_type == "FUT" else c.strike, **common)
 
 
-def seed_book(provider, store, now: datetime.datetime) -> int | None:
-    """Hand every stored close to the provider's book. NOTHING is read while the market is open (the first live tick
-    wins); None = not asked. Blocking: run in a thread. Returns how many entries the book took."""
+def seed_wanted(provider, now: datetime.datetime) -> bool:
+    """Only a book that exists and a market that is closed (nothing is read while it is open)."""
     book = getattr(provider, "book", None)
-    if book is None or is_market_open(now) or book.feed.market_closed(now) is not True:
-        return None
-    latest = store.read_latest(None)
+    return book is not None and not is_market_open(now) and book.feed.market_closed(now) is True
+
+
+def apply_latest(provider, latest: Latest, now: datetime.datetime) -> int:
+    """Hand the stored closes to the provider's book (on the event loop). Returns how many entries the book took."""
     by_id = {f"{lc.contract.exchange_segment}:{lc.contract.exchange_token}": lc for lc in provider.instrument_master()}
     taken = 0
     for iid, (price, price_at, _day) in latest.items():
@@ -284,34 +301,54 @@ def seed_book(provider, store, now: datetime.datetime) -> int | None:
             quote = quote_of(lc, price, price_at)
         except ValueError:
             continue
-        if quote is not None and book.seed_close(quote, now):
+        if quote is not None and provider.book.seed_close(quote, now):
             taken += 1
+    return taken
+
+
+async def seed_once(provider, store, now: datetime.datetime) -> int | None:
+    """One seed attempt for THIS book (m7: only ``read_latest`` runs in a worker thread). None = not asked (market open
+    or no book): nothing is read. Otherwise the attempt always ENDS the book's wait (``seed_attempted``), whether the
+    database answered, had nothing, or failed: a screen is never held back by a dead database (M1)."""
+    if not seed_wanted(provider, now):
+        return None
+    book = provider.book
+    taken = 0
+    try:
+        latest = await asyncio.to_thread(store.read_latest, None)
+        taken = apply_latest(provider, latest, now)
+    except Exception as exc:  # noqa: BLE001 - a dead database or a bad row: logged, the A2 rule then serves
+        log.error("last close seed failed: %s", type(exc).__name__)
+    finally:
+        book.seed_attempted()
     return taken
 
 
 # ---- the one background task --------------------------------------------------------------------------------------
 async def run_forever(market, store, *, sleep=asyncio.sleep) -> None:
-    """The lifespan's one task: every ``STEP_SECONDS`` seed the book (market closed, once per closed spell) and write
-    the close (once per trading day). Every failure is logged and the loop goes on; it never touches the feed."""
-    writer: CloseWriter | None = None
-    seeded_spell: datetime.datetime | None = None
-
-    def book_of():
+    """The lifespan's one task: every ``STEP_SECONDS`` seed each book once per closed spell (M2: keyed on the book
+    instance AND the spell, so a re-login in the same spell seeds the new book) and write the close once per trading
+    day. Every failure is logged and the loop goes on; it never touches the feed."""
+    def current_book():
         return None if market.feed is None else getattr(market.feed.ctx.provider, "book", None)
+
+    writer = CloseWriter(store, current_book)
+    seeded: tuple[object, datetime.datetime] | None = None  # (book, spell) last seeded
 
     while True:
         try:
             if market.feed is not None:
                 now = market.feed.ctx.clock()
-                if writer is None:
-                    writer = CloseWriter(store, book_of, started_at=now)
+                provider = market.feed.ctx.provider
                 spell = last_close(now)
-                if spell is not None and spell != seeded_spell and not is_market_open(now):
-                    taken = await asyncio.to_thread(seed_book, market.feed.ctx.provider, store, now)
+                book = getattr(provider, "book", None)
+                if spell is not None and book is not None and (seeded is None or seeded[0] is not book
+                                                               or seeded[1] != spell):
+                    taken = await seed_once(provider, store, now)
                     if taken is not None:
-                        seeded_spell = spell
+                        seeded = (book, spell)
                         log.info("last close: %d stored closes seeded into the book", taken)
-                await asyncio.to_thread(writer.step, now)
+                await writer.step(now)
         except asyncio.CancelledError:
             raise
         except Exception as exc:  # noqa: BLE001 - the loop outlives a dead database or a bad row

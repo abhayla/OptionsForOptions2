@@ -292,7 +292,7 @@ def closed_label(state: MarketState, leg_quotes: Iterable[NormalizedQuote | None
     older = [q.price_at for q in legs if made_by_the_close(q) and newest and q.price_at.astimezone(IST).date() < newest]
     if not frozen and later:  # no leg made by the close on the newest day: older frozen legs are the frozen group
         frozen, older = [q.price_at for q in legs if made_by_the_close(q)], []
-    if not later and not older or not frozen and not later:
+    if (not later and not older) or (not frozen and not later):
         return ClosedLabel(label_time(state, all_times))
     if frozen:
         if spot is not None and _aware(spot.price_at) and made_by_the_close(spot) \

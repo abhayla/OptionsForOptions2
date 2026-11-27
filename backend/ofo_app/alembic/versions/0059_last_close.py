@@ -11,7 +11,8 @@ Changes (owner-run, one transaction; ADDITIVE: ONE new table, no existing table,
 - public.last_close: (instrument_id as the catalogue holds it, trade_date = the IST date of the session) is the key;
   price NUMERIC with CHECKs: a whole number of paise (round(x, 2) = x) and 0 <= x < 10^12, so a finer price is
   REFUSED, never rounded (a NUMERIC(14,2) column would round it silently); price_at = when the price was made
-  (the exchange time of the frame: on trade_date, in IST, at or before 15:30:00, CHECKed like 0009's trade_date); source TEXT (what wrote it, e.g. 'feed_book').
+  (the exchange time of the frame: on trade_date, in IST, at or before 15:30:00, CHECKed like 0009's trade_date);
+  source TEXT (what wrote it, e.g. 'feed_book').
 - Grants to the application role: SELECT; INSERT on every column; UPDATE on price, price_at, source only (the
   close is written with an upsert). No DELETE, no TRUNCATE.
 - The allow-list function is NOT changed: this table is a cache of what the feed book held at the close, and the

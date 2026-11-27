@@ -90,6 +90,7 @@ async def _lifespan(app: FastAPI) -> AsyncIterator[None]:
     await verify_pool_budget()  # GC-6: a pool above the role's connection limit refuses to start
     market = None
     if live_market.live_requested():  # W-065: off unless LIVE_MARKET is set
+        last_close_store.expect_seed(True)  # Lane N M1: a book waits for its first stored-close read
         market = live_market.LiveMarket()
         live_market.set_current(market)
         try:
@@ -105,6 +106,7 @@ async def _lifespan(app: FastAPI) -> AsyncIterator[None]:
     close_task = last_close_store.start(market)  # Lane N A1: writes the close, seeds the book while closed; live only
     yield
     await last_close_store.stop(close_task)
+    last_close_store.expect_seed(False)
     await worker_watch.stop(watch)
     await real_settlement.stop(real_task)
     await paper_settlement.stop(settlement)  # a strategy's settle in flight is cancelled and rolls back

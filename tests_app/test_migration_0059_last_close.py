@@ -63,7 +63,8 @@ async def test_a_sub_paisa_negative_or_huge_price_is_refused_by_the_check(app_en
             await trans.rollback()
 
 
-@pytest.mark.parametrize("price_at", ["2026-11-30 15:29:59+05:30", "2026-12-01 15:30:01+05:30", "2026-12-01 20:00:00+05:30"])
+@pytest.mark.parametrize("price_at", ["2026-11-30 15:29:59+05:30", "2026-12-01 15:30:01+05:30",
+                                      "2026-12-01 20:00:00+05:30"])
 async def test_m6_a_time_off_the_trade_date_or_after_the_close_is_refused_by_the_check(app_engine, price_at):
     async with app_engine.connect() as conn:
         trans = await conn.begin()

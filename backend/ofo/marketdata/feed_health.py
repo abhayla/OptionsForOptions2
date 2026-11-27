@@ -302,6 +302,19 @@ class BookEntry:
     served: Frame | None = None
 
 
+#: Lane N review M1: how long a book waits for its first seed attempt before the A2 rule serves (never stuck)
+SEED_WAIT = datetime.timedelta(seconds=30)
+_SEED_EXPECTED = False
+
+
+def expect_seed(expected: bool) -> None:
+    """Called ONCE by the app lifespan, before the live market starts, when a stored-close store is configured
+    (``ofo_app.last_close_store``): every ``QuoteBook`` made afterwards is "awaiting seed" until its first seed attempt
+    ends (``QuoteBook.seed_attempted``). Off by default: a book with no store behaves exactly as before."""
+    global _SEED_EXPECTED  # noqa: PLW0603
+    _SEED_EXPECTED = bool(expected)
+
+
 def made_by_the_close(quote: NormalizedQuote) -> bool:
     """ADR-330 (36): the ONE cut-off. True when the quote's time is at or before the close of its trading day: inside
     the session or exactly at the close. A frame after the close, before the open, or on a holiday or weekend is not
@@ -338,6 +351,14 @@ def _figure(e: BookEntry, close: datetime.datetime) -> Frame:
     return Frame(e.quote, e.depth, e.day_stats, close)
 
 
+def _held_by(e: BookEntry, close: datetime.datetime) -> bool:
+    """True when ``_figure`` would answer from steps (0)-(2): the figure already served for this spell, or a frame
+    made by this close on this day. Steps (3) and (4) are what a waiting book must not freeze."""
+    if e.served is not None and e.served.spell == close:
+        return True
+    return _on(e.quote.timestamp, close) or (e.close_quote is not None and _on(e.close_quote.timestamp, close))
+
+
 def _next_entry(previous: BookEntry | None, quote: NormalizedQuote, depth: Depth | None,
                 day_stats: DayStats | None) -> BookEntry:
     """The entry once ``quote`` arrives: the latest frame, the newest made-by-the-close frame, the first frame after
@@ -367,6 +388,10 @@ class QuoteBook:
         self._parked: dict[str, BookEntry] = {}
         # ids whose entry was made ONLY by ``seed_close`` (no live tick yet): never read while the market is open
         self._seeded: set[str] = set()
+        # Lane N review M1: a book made while a store is configured does not freeze a post-close frame (step 3/4 of
+        # ``_figure``) until its first seed attempt ended, whatever its result
+        self._awaiting_seed = _SEED_EXPECTED
+        self._awaiting_from: datetime.datetime | None = None
 
     def remove(self, instrument_id: str) -> None:
         """Drop the quote (no stale price outlives its subscription, REQ-049 AC-4) but keep its TIME only (ADR-077:
@@ -446,6 +471,22 @@ class QuoteBook:
         self._entries[iid] = dataclasses.replace(e, close_quote=quote, close_depth=None, close_day_stats=None)
         return True
 
+    def seed_attempted(self) -> None:
+        """This book's first seed attempt ended (stored closes taken, none stored, or the database failed): from here
+        ``_figure`` serves as before (the A2 rule), whatever the attempt found."""
+        self._awaiting_seed = False
+
+    def awaiting_seed(self, now: datetime.datetime) -> bool:
+        """True while a closed-market read must wait for the first seed attempt (bounded by ``SEED_WAIT`` from the
+        first closed read, so a task that never runs cannot hold a screen back for ever)."""
+        if not self._awaiting_seed:
+            return False
+        if self._awaiting_from is None:
+            self._awaiting_from = now
+        elif now - self._awaiting_from > SEED_WAIT:
+            self._awaiting_seed = False
+        return self._awaiting_seed
+
     def __len__(self) -> int:
         return len(self._entries)
 
@@ -457,12 +498,17 @@ class QuoteBook:
         e = self._entries.get(instrument_id)
         if not e or (instrument_id in self._seeded and not self.feed.market_closed(now)):
             return None
-        served = self._frame(instrument_id, e, now).quote
+        frame = self._frame(instrument_id, e, now)
+        if frame is None:  # the last close is still being read (``awaiting_seed``)
+            return None
+        served = frame.quote
         return with_feed_health(served, self.feed.quote_health(served, now))
 
-    def _frame(self, instrument_id: str, e: BookEntry, now: datetime.datetime) -> Frame:
+    def _frame(self, instrument_id: str, e: BookEntry, now: datetime.datetime) -> Frame | None:
         """ADR-330 (36), the one place a read picks the frame: in market hours the latest; while closed ``_figure``,
-        stored as ``served`` the first time so what was shown never moves until the next open."""
+        stored as ``served`` the first time so what was shown never moves until the next open. None (nothing stored,
+        nothing frozen) while the book awaits its first seed attempt and the contract has no frame made by this
+        close."""
         if not self.feed.market_closed(now):
             return Frame(e.quote, e.depth, e.day_stats)
         close = last_close(now)
@@ -470,6 +516,8 @@ class QuoteBook:
             if e.close_quote is None:
                 return Frame(e.quote, e.depth, e.day_stats)
             return Frame(e.close_quote, e.close_depth, e.close_day_stats)
+        if self.awaiting_seed(now) and not _held_by(e, close):
+            return None
         frame = _figure(e, close)
         if e.served is None or e.served.spell != close:
             self._entries[instrument_id] = dataclasses.replace(e, served=dataclasses.replace(frame, spell=close))
@@ -500,6 +548,8 @@ class QuoteBook:
             return None
         # the SAME frame ``get`` serves (``_frame``): a depth price never comes from a later frame than the quote's
         frame = self._frame(instrument_id, e, now)
+        if frame is None:
+            return None
         if not planning_price_usable(with_feed_health(frame.quote, self.feed.health(now)), market_closed=True):
             return None
         return frame.depth, frame.day_stats
@@ -520,6 +570,6 @@ class QuoteBook:
 
     def quotes(self, now: datetime.datetime) -> list[NormalizedQuote]:
         closed = self.feed.market_closed(now)
-        served = [self._frame(iid, e, now).quote for iid, e in list(self._entries.items())
+        frames = [self._frame(iid, e, now) for iid, e in list(self._entries.items())
                   if closed or iid not in self._seeded]
-        return [with_feed_health(q, self.feed.quote_health(q, now)) for q in served]
+        return [with_feed_health(f.quote, self.feed.quote_health(f.quote, now)) for f in frames if f is not None]
