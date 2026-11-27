@@ -1,7 +1,7 @@
 """The ONE price door for a decision that needs a live price now (ADR-327; D-01, S-20 of 25 Nov 2026).
 
 Spec basis: ADR-327 (a paper trigger is judged on a live price it ASKED the feed for, waiting up to 3 s); ADR-015 (a
-stale price is never live); ADR-119 (the market calendar); ``live_push.hold_and_read`` is "THE one hold-and-read of a
+stale price is never live); ADR-119 (the market calendar); ``read_door.read_quotes`` is "THE one read door of a
 request read" and this door is built on it, not beside it.
 
 Why: in bus mode the API process's provider books a tick only for a token something in THIS process holds
@@ -28,7 +28,8 @@ from ofo.outcome import read_snapshot
 from ofo.tracking import paper
 
 from ofo_app import may_act
-from ofo_app.live_push import POLL_SECONDS, LiveFeed, hold_and_read
+from ofo_app.live_push import POLL_SECONDS, LiveFeed
+from ofo_app.read_door import read_quotes
 from ofo_app.routes.outcome import MarketContext, feed_scope
 
 log = logging.getLogger(__name__)
@@ -94,8 +95,8 @@ async def read_market(ctx: MarketContext, feed: LiveFeed | None, underlying: str
 
     Market closed (ADR-119): every answer is ``market_closed`` and nothing is read. Otherwise one read; when a price is
     not live yet and there is a fan-out, ONE hold of the legs and the index until every price is live, the provider
-    disconnects or ``wait.seconds`` pass (``hold_and_read``). No fan-out (no feed): the read as it is, nothing held. A
-    read that raises raises: the caller refuses by name (ADR-327), never reads "no price" as "fine"."""
+    disconnects or ``wait.seconds`` pass (``read_door.read_quotes``). No fan-out (no feed): the read as it is, nothing
+    held. A read that raises raises: the caller refuses by name (ADR-327), never reads "no price" as "fine"."""
     keys = list(dict.fromkeys(leg_keys))
     provider = ctx.provider
     if not may_act.market_open(ctx, ctx.clock()):
@@ -106,10 +107,10 @@ async def read_market(ctx: MarketContext, feed: LiveFeed | None, underlying: str
         return _read(ctx, underlying, keys, need_index)
 
     answer = read()
-    if feed is None or answer.ready:
+    if feed is None:
         return answer
     index_id = getattr(provider, "index_id", lambda _u: None)(underlying) if need_index else None
-    held = await hold_and_read(feed.fanout, [*keys, *([index_id] if index_id else [])], read,
+    held = await read_quotes(feed, [*keys, *([index_id] if index_id else [])], read,
                                lambda a: a.ready, lambda: provider.status().connected, wait.seconds, POLL_SECONDS,
                                sleep=wait.sleep, now=wait.now)
     if held is None:  # the fan-out has no token for an id: nothing was held, the read stands

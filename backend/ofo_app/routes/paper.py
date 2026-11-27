@@ -97,7 +97,7 @@ from ofo_app import strategy_store as store
 from ofo_app.api_models import ApiModel, CatalogueText, Money
 from ofo_app.db import get_db
 from ofo_app.errors import ClosedRoute, Failure, refuse_request
-from ofo_app.live_push import POLL_SECONDS, LiveFeed, hold_and_read
+from ofo_app.live_push import POLL_SECONDS, LiveFeed
 from ofo_app.paper_reasons import (
     breakevens_reason_text,
     extremes_reason_text,
@@ -106,6 +106,7 @@ from ofo_app.paper_reasons import (
     reason_text,
     unpriced_text,
 )
+from ofo_app.read_door import read_quotes
 from ofo_app.routes.adjustment import TrackedReader, get_tracked_reader
 from ofo_app.routes.broker import current_user_ref
 from ofo_app.routes.catalogue import get_shown_date
@@ -544,8 +545,8 @@ async def _hold_until_ready(feed: LiveFeed, ctx: MarketContext, underlying: str,
     index_id = getattr(provider, "index_id", lambda _u: None)(underlying)
     wanted = [*ids, *([index_id] if index_id else []),
               *forward_strike_ids(provider.instrument_master(), underlying, ids, live_spot)]
-    held = await hold_and_read(
-        feed.fanout, wanted,
+    held = await read_quotes(
+        feed, wanted,
         lambda: read_snapshot(provider, underlying, ids, ctx.clock(), ctx.rate, feed_scope(ctx),
                               quality=ctx.forward_quality),
         lambda snap: _read_ready(snap, ids), lambda: provider.status().connected, FORWARD_WAIT_S, POLL_SECONDS)
@@ -557,7 +558,7 @@ async def _snapshot(ctx: MarketContext, feed: LiveFeed | None, underlying: str, 
     no IV inputs) holds what it needs in one hold until it is, or the wait passes (GC-LIVE F-1, F-3)."""
     snapshot = read_snapshot(ctx.provider, underlying, ids, ctx.clock(), ctx.rate, feed_scope(ctx),
                              quality=ctx.forward_quality)
-    if feed is not None and ids and not _read_ready(snapshot, ids):
+    if feed is not None and ids:
         snapshot = await _hold_until_ready(feed, ctx, underlying, ids, snapshot)
     return snapshot
 

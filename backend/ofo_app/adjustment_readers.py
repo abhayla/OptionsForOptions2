@@ -58,8 +58,8 @@ from ofo_app import (
 )
 from ofo_app.db import get_sessionmaker
 from ofo_app.errors import Failure
-from ofo_app.live_push import hold_and_read
 from ofo_app.outcome_oi import oi_of
+from ofo_app.read_door import read_quotes
 from ofo_app.routes.adjustment import MarketInputs, Tracked
 from ofo_app.routes.broker import current_user_ref
 from ofo_app.routes.outcome import feed_windows_of, market_state, server_now, spot_judging_now
@@ -469,7 +469,7 @@ async def held_read(provider: Any, underlying: str, expiry: datetime.date, leg_i
                     later: datetime.date | None = None) -> FrozenRead:
     """The frozen read of one expiry plus the contracts in ``leg_ids`` (the position's legs, the near-the-money window,
     the roll range, a second pass's landing strikes). The feed's book lists only contracts somebody holds (F-92), so
-    the ones missing are held on the shared fan-out (``live_push.hold_and_read``, the paper book's own helper) until
+    the ones missing are held on the shared fan-out (``read_door.read_quotes``, the one read door) until
     they are quoted or ``LEG_WAIT_S`` passes, and the read is taken INSIDE the hold. Answer states per contract:
     quoted at once (no hold) / quoted after the wait / never quoted (absent: unpriced, never 0) / no token (KeyError:
     nothing held, the first read stands) / no feed (the first read stands) / provider disconnected (the read so far).
@@ -487,13 +487,17 @@ async def held_read(provider: Any, underlying: str, expiry: datetime.date, leg_i
     index_wait = index_id is not None and first.index is None
     if index_wait:
         missing.append(index_id)  # type: ignore[arg-type]
-    if not missing or feed is None:
+    if feed is None:
+        return first
+    if not missing:  # everything quoted: the door only keeps the standing hold (no wait), the first read stands
+        await read_quotes(feed, list(dict.fromkeys(leg_ids)), lambda: first, lambda _s: True,
+                          lambda: provider.status().connected, 0.0, LEG_POLL_S)
         return first
 
     def done(snap: FrozenRead) -> bool:
         return all(i in snap.quotes or i in snap.later for i in missing if i != index_id) and (
             not index_wait or snap.index is not None)
-    held = await hold_and_read(feed.fanout, missing, read, done, lambda: provider.status().connected, LEG_WAIT_S,
+    held = await read_quotes(feed, missing, read, done, lambda: provider.status().connected, LEG_WAIT_S,
                                LEG_POLL_S)
     return first if held is None else held
 
@@ -896,7 +900,7 @@ async def entry_facts_now(ctx: Any, underlying: str, sold: Iterable[Any]) -> Ent
 async def _index_spot_held(ctx: Any, feed: Any, underlying: str) -> Decimal:
     """The index's live spot for the fill's starting point (ADR-283 (1)). The API process holds only what a page
     socket subscribed, so an index nobody holds is held on the shared fan-out until its first quote or ``LEG_WAIT_S``
-    passes (``hold_and_read``, the paper book's own hold). Answer states: held / quoted within the wait -> the spot; no
+    passes (``read_door.read_quotes``). Answer states: held / quoted within the wait -> the spot; no
     context / not connected / never quoted / not a positive price -> ``StrategyRefused`` (nothing stored)."""
     from ofo_app.chain_push import index_id_of  # noqa: PLC0415 - chain_push imports the app layer
     from ofo_app.strategy_refused import StrategyRefused  # noqa: PLC0415 - write path only
@@ -910,7 +914,7 @@ async def _index_spot_held(ctx: Any, feed: Any, underlying: str) -> Decimal:
             return provider.underlying_quote(underlying)
         quote = read()
         if quote is None and feed is not None and index_id is not None:
-            held = await hold_and_read(feed.fanout, [index_id], read, lambda q: q is not None,
+            held = await read_quotes(feed, [index_id], read, lambda q: q is not None,
                                        lambda: provider.status().connected, LEG_WAIT_S, LEG_POLL_S)
             quote = quote if held is None else held
         spot = None if quote is None else quote.ltp

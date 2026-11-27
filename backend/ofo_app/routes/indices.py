@@ -19,8 +19,6 @@ reads carry no user value.
 """
 from __future__ import annotations
 
-import asyncio
-import contextlib
 import time
 from collections.abc import Callable
 from typing import Annotated
@@ -29,7 +27,8 @@ from fastapi import APIRouter, Depends, Query
 
 from ofo_app.errors import ClosedRoute, ClosedSocket, ClosedWebSocketRoute
 from ofo_app.index_push import IndexPush, IndicesOut, index_ids, indices_answer
-from ofo_app.live_push import POLL_SECONDS, LiveFeed, no_listener
+from ofo_app.live_push import POLL_SECONDS, LiveFeed
+from ofo_app.read_door import read_quotes
 from ofo_app.routes import live, outcome
 from ofo_app.routes.outcome import (
     AnswerClock,
@@ -90,23 +89,15 @@ async def indices_first_paint(ctx: MarketContext | None,  # noqa: PLR0913 - one 
     ids = [i for i in index_ids(ctx).values() if i is not None]
     if not ids:
         return indices_read(ctx, streaming, fallback=fallback, now=now)
-    try:
-        handle = feed.fanout.subscribe(no_listener, ids, max_queue=1)
-    except KeyError:
+    held = await read_quotes(feed, ids, lambda: None, lambda _s: _both_priced(ctx, ids),
+                             lambda: ctx.provider.status().connected, wait, POLL_SECONDS)
+    if held is None:  # no token for any id: nothing was held, the unheld answer stands
         return indices_read(ctx, streaming, fallback=fallback, now=now)
-    try:
-        loop = asyncio.get_running_loop()
-        deadline = loop.time() + wait
-        while not _both_priced(ctx, ids) and ctx.provider.status().connected and loop.time() < deadline:  # noqa: ASYNC110
-            await asyncio.sleep(POLL_SECONDS)
-        if not ctx.provider.status().connected:  # the hold is a subscriber, so not indices_read: not live, plainly
-            return indices_answer(ctx, live=False, now=now)
-        if fallback:  # ADR-213: never LIVE for a page whose own socket is down, but the values the hold read
-            return indices_answer(ctx, live=False, now=now, fill=True)
-        return indices_answer(ctx, live=True, now=now)  # inside the hold: this read is itself a holder
-    finally:
-        with contextlib.suppress(Exception):
-            feed.fanout.unsubscribe(handle)
+    if not ctx.provider.status().connected:  # the hold is a subscriber, so not indices_read: not live, plainly
+        return indices_answer(ctx, live=False, now=now)
+    if fallback:  # ADR-213: never LIVE for a page whose own socket is down, but the values the hold read
+        return indices_answer(ctx, live=False, now=now, fill=True)
+    return indices_answer(ctx, live=True, now=now)  # inside the hold: this read is itself a holder
 
 
 @router.get(REST_PATH, response_model=IndicesOut)
