@@ -11,7 +11,8 @@ Changes (owner-run, one transaction; ADDITIVE: ONE new table, no existing table,
 - public.last_close: (instrument_id as the catalogue holds it, trade_date = the IST date of the session) is the key;
   price NUMERIC with CHECKs: a whole number of paise (round(x, 2) = x) and 0 <= x < 10^12, so a finer price is
   REFUSED, never rounded (a NUMERIC(14,2) column would round it silently); price_at = when the price was made
-  (the exchange time of the frame: on trade_date, in IST, at or before 15:30:00, CHECKed like 0009's trade_date);
+  (the time the price carries: on trade_date in IST, CHECKed like 0009's; the feed writer's rows, source
+  'feed_book', are at or before 15:30:00, a one-time snapshot row keeps its own later time);
   source TEXT (what wrote it, e.g. 'feed_book').
 - Grants to the application role: SELECT; INSERT on every column; UPDATE on price, price_at, source only (the
   close is written with an upsert). No DELETE, no TRUNCATE.
@@ -75,7 +76,7 @@ def upgrade() -> None:
             CONSTRAINT last_close_price_range CHECK (price BETWEEN 0 AND 999999999999),
             CONSTRAINT last_close_price_at_day CHECK (
                 trade_date = (price_at AT TIME ZONE 'Asia/Kolkata')::date
-                AND (price_at AT TIME ZONE 'Asia/Kolkata')::time <= TIME '15:30:00')
+                AND (source <> 'feed_book' OR (price_at AT TIME ZONE 'Asia/Kolkata')::time <= TIME '15:30:00'))
         )
         """
     )

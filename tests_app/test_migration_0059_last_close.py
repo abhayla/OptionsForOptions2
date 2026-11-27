@@ -78,6 +78,24 @@ async def test_m6_a_time_off_the_trade_date_or_after_the_close_is_refused_by_the
             await trans.rollback()
 
 
+async def test_a_snapshot_row_keeps_its_own_later_time_only_the_feed_writer_stops_at_the_close(app_engine):
+    insert = text("INSERT INTO public.last_close (instrument_id, trade_date, price, price_at, source) "
+                  "VALUES ('T59:S', :d, 1.00, CAST(:t AS timestamptz), :s)")
+    async with app_engine.connect() as conn:
+        trans = await conn.begin()
+        try:
+            await conn.execute(insert, {"d": datetime.date(2026, 11, 27), "t": "2026-11-27 18:05:00+05:30",
+                                        "s": "owner_snapshot_2026-11-27"})  # accepted: not the feed writer's row
+            for day, at_, source in ((datetime.date(2026, 11, 27), "2026-11-27 18:05:00+05:30", "feed_book"),
+                                     (datetime.date(2026, 11, 27), "2026-11-28 00:05:00+05:30", "owner_snapshot")):
+                with pytest.raises(DBAPIError) as err:
+                    async with conn.begin_nested():
+                        await conn.execute(insert.bindparams(d=day, t=at_, s=source))
+                assert getattr(err.value.orig, "sqlstate", None) == CHECK_VIOLATION
+        finally:
+            await trans.rollback()
+
+
 async def test_the_app_role_cannot_delete_or_truncate(app_engine):
     for sql in ("DELETE FROM public.last_close", "TRUNCATE public.last_close"):
         async with app_engine.connect() as conn:

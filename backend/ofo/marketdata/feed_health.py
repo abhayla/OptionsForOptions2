@@ -451,17 +451,23 @@ class QuoteBook:
         self._entries[instrument_id] = _next_entry(self._entries.get(instrument_id) or parked, quote, depth, day_stats)
 
     def seed_close(self, quote: NormalizedQuote, now: datetime.datetime) -> bool:
-        """The ONE entry point for a close stored by an earlier run (``ofo_app.last_close_store``, Lane N A1): holds
-        ``quote`` as the contract's made-by-the-close frame so ``_figure`` step (2)/(4) serves it with its OWN time.
-        Only
-        while the market is closed at ``now`` and only a frame ``made_by_the_close``; a parked contract is left alone.
-        Never overrides what the book already holds: a held close frame at least as new stays; a live entry keeps its
-        latest frame (only its close frame is filled in). An entry made here alone is hidden from ``get`` / ``quotes``
-        while the market is open and dropped from ``_seeded`` by the first live tick. True when the book changed."""
+        """The ONE entry point for a figure stored by an earlier run (``ofo_app.last_close_store``, Lane N A1): the
+        quote is held in the slot ``_next_entry`` would have put it in, so ``_figure`` (the one rule) serves it with its
+        OWN time. A frame ``made_by_the_close`` is the contract's close frame (steps 2/4); a frame stamped after the
+        close (a one-time snapshot read later) is the first frame after its close (step 3, ``after``): its own time,
+        frozen, never relabelled as the close. Only while the market is closed at ``now``; a parked contract is left
+        alone. Never overrides what the book already holds: a close frame at least as new stays, a live entry keeps its
+        latest frame and its own first frame after that close. An entry made here alone is hidden from ``get`` /
+        ``quotes`` while the market is open and dropped from ``_seeded`` by the first live tick. True when changed."""
         iid = quote.instrument_id
-        if not self.feed.market_closed(now) or not made_by_the_close(quote) or iid in self._parked:
+        if not self.feed.market_closed(now) or iid in self._parked:
             return False
         e = self._entries.get(iid)
+        return self._seed_held(e, quote) if made_by_the_close(quote) else self._seed_after(e, quote)
+
+    def _seed_held(self, e: BookEntry | None, quote: NormalizedQuote) -> bool:
+        """``seed_close`` for a frame made by the close: the contract's close frame (``_figure`` steps 2 and 4)."""
+        iid = quote.instrument_id
         if e is None:
             self._entries[iid] = BookEntry(quote, quote.timestamp, close_quote=quote)
             self._seeded.add(iid)
@@ -469,6 +475,19 @@ class QuoteBook:
         if e.close_quote is not None and e.close_quote.timestamp >= quote.timestamp:
             return False
         self._entries[iid] = dataclasses.replace(e, close_quote=quote, close_depth=None, close_day_stats=None)
+        return True
+
+    def _seed_after(self, e: BookEntry | None, quote: NormalizedQuote) -> bool:
+        """``seed_close`` for a frame stamped after its close: the first frame after that close (``_figure`` step 3)."""
+        spell = last_close(quote.timestamp)
+        if spell is None or (e is not None and e.after is not None and e.after.spell == spell):
+            return False
+        frame = Frame(quote, None, None, spell)
+        if e is None:
+            self._entries[quote.instrument_id] = BookEntry(quote, quote.timestamp, after=frame)
+            self._seeded.add(quote.instrument_id)
+        else:
+            self._entries[quote.instrument_id] = dataclasses.replace(e, after=frame)
         return True
 
     def seed_attempted(self) -> None:

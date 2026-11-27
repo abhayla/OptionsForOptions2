@@ -20,16 +20,39 @@ Three parts, one module:
 - ``seed_once``: only while the market is closed, hands each stored close to ``QuoteBook.seed_close``, which serves it
   with its OWN date-time (an earlier day's row is labelled with its own date) and never overrides a frame the book
   already holds. While the market is open the table is never read; the first live tick wins.
+
+One-time snapshot load (coordinator ruling 27 Nov 2026: the weekend build's restart left the table empty)::
+
+    PYTHONPATH=backend python -m ofo_app.last_close_store seed /outside/the/repo/closes.json [--check] [--no-catalogue]
+
+The file is JSON, ``{"rows": [ ... ]}``, one object per price (money is a STRING, never a JSON number)::
+
+    {"instrument_id": "NSE_FO:44614", "name": "NIFTY", "expiry": "2026-12-01", "price": "99.75",
+     "price_at": "2026-11-27T18:05:00+05:30", "source": "owner_snapshot_2026-11-27"}
+
+``instrument_id`` is the catalogue's "<segment>:<exchange token>"; ``name`` and ``expiry`` (null for an index) are
+optional and, when given, must match the catalogue contract; ``price_at`` is the time the price carries (ISO 8601 with a
+zone) and the trade date is its IST date; ``source`` says where it came from. A row is refused (counted with its
+reason, never written) for: a JSON-number or non-numeric price, a sub-paisa price, a missing or zone-less time, a
+missing source or id, an id the catalogue does not list, a name or expiry that disagrees, a duplicate in the file, and
+source "feed_book" after 15:30:00 (only the feed writer's rows stop at the close). A row equal to a stored one is
+"unchanged"; a different stored close for that day is kept, never overwritten; so a second run writes 0. ``--check``
+prints the same counts and writes nothing. Exit 0 with the counts (refused rows included); 2 when the file cannot be
+read or the database cannot be reached. A seeded price made after the close is served as the first frame after the
+close: its own time, frozen, the label reads "1 leg as of <that time>", never 15:30:00 (``QuoteBook.seed_close``).
 """
 from __future__ import annotations
 
+import argparse
 import asyncio
 import contextlib
 import datetime
+import json
 import logging
 import threading
 import time
 from collections.abc import Callable, Iterable
+from dataclasses import dataclass, field
 from decimal import Decimal, InvalidOperation
 
 from ofo.instruments.models import INDEX_ROWS
@@ -82,8 +105,10 @@ def check_row(row: CloseRow) -> None:
     if not isinstance(price_at, datetime.datetime) or price_at.tzinfo is None:
         raise ValueError(f"price_at must be a timezone-aware datetime, got {price_at!r}")
     local = price_at.astimezone(IST)
-    if local.date() != trade_date or local.time() > SESSION_CLOSE:
-        raise ValueError(f"price_at {price_at} is not on the trade date {trade_date} at or before the close")
+    if local.date() != trade_date:
+        raise ValueError(f"price_at {price_at} is not on the trade date {trade_date}")
+    if source == SOURCE_FEED_BOOK and local.time() > SESSION_CLOSE:  # a snapshot row keeps its own later time
+        raise ValueError(f"price_at {price_at} is after the close on trade date {trade_date} (feed rows stop at 15:30)")
     if isinstance(price, bool) or not isinstance(price, Decimal):
         raise ValueError(f"price must be a Decimal, got {type(price).__name__}: money is never a float (ADR-008)")
     try:
@@ -161,6 +186,24 @@ class PostgresLastCloseStore:
 
         self._run(write())
         return len(rows)
+
+    def read_rows(self, keys: Iterable[tuple[str, datetime.date]]) -> dict[tuple[str, datetime.date], tuple]:
+        """The stored (price, price_at, source) of each (instrument, trade date) key that has a row."""
+        keys = list(keys)
+        ids = sorted({k[0] for k in keys})
+        if not ids:
+            return {}
+        wanted = set(keys)
+
+        async def read() -> dict:
+            sql = ("SELECT instrument_id, trade_date, price, price_at, source FROM public.last_close "
+                   "WHERE instrument_id = ANY(CAST(:ids AS text[]))")
+            async with self._engine_().connect() as conn:
+                result = await conn.execute(text(sql), {"ids": ids})
+                return {(r[0], r[1]): (r[2], r[3].astimezone(IST), r[4]) for r in result.all()
+                        if (r[0], r[1]) in wanted}
+
+        return self._run(read())
 
     def read_latest(self, instrument_ids: Iterable[str] | None = None) -> Latest:
         """The newest trade date's close per instrument; ``None`` = every instrument held."""
@@ -377,3 +420,184 @@ async def stop(task: asyncio.Task[None] | None) -> None:
     store = getattr(task, "_ofo_store", None)
     if store is not None:
         await asyncio.to_thread(store.close)
+
+
+# ---- the one-time seed command ------------------------------------------------------------------------------------
+@dataclass
+class SeedResult:
+    """What one run of the seed command did: ``skipped`` is (1-based row number, instrument id, reason)."""
+
+    read: int = 0
+    written: int = 0
+    unchanged: int = 0
+    skipped: list[tuple[int, str, str]] = field(default_factory=list)
+    checked: bool = False
+    catalogue_checked: bool = True
+
+
+class SeedFileError(ValueError):
+    """The file cannot be read as a snapshot (not JSON, no ``rows`` list): nothing is written."""
+
+
+class _Refused(ValueError):
+    """One row of the snapshot is refused; the message is its reason."""
+
+
+def _catalogue_check(row: dict, iid: str, known: dict | None) -> None:
+    if known is None:
+        return
+    if iid not in known:
+        raise _Refused("unknown instrument id (not in the catalogue)")
+    name, expiry = known[iid]
+    if row.get("name") is not None and str(row["name"]).strip().upper() != str(name).strip().upper():
+        raise _Refused(f"name does not match the catalogue ({name})")
+    if row.get("expiry") is not None and str(row["expiry"]) != (None if expiry is None else expiry.isoformat()):
+        raise _Refused(f"expiry does not match the catalogue ({expiry})")
+
+
+def _time_of(raw: object) -> datetime.datetime:
+    if not isinstance(raw, str) or not raw.strip():
+        raise _Refused("missing time")
+    try:
+        at = datetime.datetime.fromisoformat(raw)
+    except ValueError as exc:
+        raise _Refused("time is not ISO 8601") from exc
+    if at.tzinfo is None:
+        raise _Refused("time has no zone")
+    return at.astimezone(IST)
+
+
+def _price_of(raw: object) -> Decimal:
+    if not isinstance(raw, str):
+        raise _Refused('price must be a string like "99.75" (money is never a JSON number)')
+    try:
+        return Decimal(raw)
+    except InvalidOperation as exc:
+        raise _Refused("price is not a number") from exc
+
+
+def _refusal(row: object, known: dict | None) -> tuple[CloseRow | None, str, str]:
+    """(row, instrument id for the report, reason): the CloseRow, or None with the reason it is refused."""
+    iid = ""
+    try:
+        if not isinstance(row, dict):
+            raise _Refused("row is not an object")
+        raw_id = row.get("instrument_id")
+        if not isinstance(raw_id, str) or not raw_id.strip():
+            raise _Refused("missing instrument id")
+        iid = raw_id
+        _catalogue_check(row, iid, known)
+        source = row.get("source")
+        if not isinstance(source, str) or not source.strip():
+            raise _Refused("missing source")
+        price_at = _time_of(row.get("price_at"))
+        out = (iid, price_at.date(), _price_of(row.get("price")), price_at, source)
+        check_row(out)  # whole paisa, in range, on the trade date, a feed row up to 15:30 only
+    except ValueError as exc:
+        return None, iid, str(exc)
+    return out, iid, ""
+
+
+def run_seed(text_json: str, store, known: dict | None, *, check: bool = False) -> SeedResult:
+    """Load a snapshot (see the module docstring) into ``last_close`` through ``store``. Refused rows are counted with
+    their reason; a row equal to a stored one is "unchanged"; a DIFFERENT stored close for that day is kept (never
+    overwritten); the rest is written. ``check`` reports the same counts and writes nothing. ``known`` is the
+    catalogue's {instrument id: (name, expiry)}; None = not checked (reported)."""
+    try:
+        data = json.loads(text_json)
+    except ValueError as exc:
+        raise SeedFileError("the file is not JSON") from exc
+    rows = data.get("rows") if isinstance(data, dict) else None
+    if not isinstance(rows, list):
+        raise SeedFileError('the file must be {"rows": [ ... ]}')
+    res = SeedResult(read=len(rows), checked=check, catalogue_checked=known is not None)
+    good: list[tuple[int, CloseRow]] = []
+    seen: dict[tuple[str, datetime.date], int] = {}
+    for n, raw in enumerate(rows, 1):
+        row, iid, reason = _refusal(raw, known)
+        if row is None:
+            res.skipped.append((n, iid, reason))
+        elif (row[0], row[1]) in seen:
+            res.skipped.append((n, iid, f"duplicate of row {seen[(row[0], row[1])]} (same instrument and day)"))
+        else:
+            seen[(row[0], row[1])] = n
+            good.append((n, row))
+    stored = store.read_rows([(r[0], r[1]) for _, r in good])
+    fresh: list[CloseRow] = []
+    for n, row in good:
+        have = stored.get((row[0], row[1]))
+        if have is None:
+            fresh.append(row)
+        elif have == (row[2], row[3], row[4]):
+            res.unchanged += 1
+        else:
+            res.skipped.append((n, row[0], f"a different close is already stored for {row[1]} (kept, not overwritten)"))
+    res.written = len(fresh) if check or not fresh else store.write_closes(fresh)
+    res.skipped.sort()
+    return res
+
+
+def format_result(res: SeedResult, name: str) -> str:
+    lines = [f"last_close seed {name}: {res.read} rows read"]
+    lines.append(f"would write {res.written} (--check: nothing written)" if res.checked else f"written {res.written}")
+    lines += [f"unchanged {res.unchanged}", f"skipped {len(res.skipped)}"]
+    lines += [f"  row {n} {iid}: {reason}" for n, iid, reason in res.skipped]
+    if not res.catalogue_checked:
+        lines.append("catalogue not checked: instrument ids were not compared with the catalogue")
+    return "\n".join(lines)
+
+
+EXIT_FAILED = 2  # the file cannot be read or the database cannot be reached
+
+
+def seed_command(path: str, store, known: dict | None, *, check: bool, out: Callable[[str], object] = print) -> int:
+    """The command's body: 0 with the counts (a refused row is a count, not a failure); 2 when the file cannot be read
+    or the database cannot be reached."""
+    try:
+        with open(path, encoding="utf-8") as f:
+            text_json = f.read()
+        res = run_seed(text_json, store, known, check=check)
+    except (OSError, SeedFileError, StoreUnavailable, TimeoutError, InterfaceError, OperationalError) as exc:
+        out(f"last_close seed {path}: failed, nothing more written: {type(exc).__name__}: {exc}")
+        return EXIT_FAILED
+    out(format_result(res, path))
+    return 0
+
+
+async def _known_contracts() -> dict:
+    """{instrument id: (name, expiry)} of every listed Zerodha contract, read through the app engine."""
+    from ofo.instruments.models import ZERODHA  # noqa: PLC0415
+
+    from ofo_app import catalogue_store  # noqa: PLC0415
+    from ofo_app.db import get_engine  # noqa: PLC0415
+
+    async with get_engine().connect() as conn:
+        catalogue = await catalogue_store.load_catalogue(conn)
+    return {f"{e.contract.exchange_segment}:{e.contract.exchange_token}": (e.contract.name, e.contract.expiry)
+            for e in catalogue.all_entries() if e.currently_listed and e.has_ref(ZERODHA)}
+
+
+def main(argv: list[str] | None = None) -> int:
+    parser = argparse.ArgumentParser(prog="python -m ofo_app.last_close_store",
+                                     description="One-time load of a snapshot of last closes into last_close.")
+    sub = parser.add_subparsers(dest="command", required=True)
+    seed = sub.add_parser("seed", help="load a snapshot JSON file (see the module docstring for its shape)")
+    seed.add_argument("file")
+    seed.add_argument("--check", action="store_true", help="print the same counts and write nothing")
+    seed.add_argument("--no-catalogue", action="store_true", help="do not compare instrument ids with the catalogue")
+    args = parser.parse_args(argv)
+    from ofo_app.config import get_settings  # noqa: PLC0415
+
+    store = PostgresLastCloseStore(get_settings().DATABASE_URL)
+    try:
+        known = None if args.no_catalogue else asyncio.run(_known_contracts())
+        return seed_command(args.file, store, known, check=args.check)
+    except (OSError, TimeoutError, InterfaceError, OperationalError) as exc:
+        print(f"last_close seed: the database could not be reached: {type(exc).__name__}")
+        return EXIT_FAILED
+    finally:
+        store.close()
+
+
+if __name__ == "__main__":
+    raise SystemExit(main())

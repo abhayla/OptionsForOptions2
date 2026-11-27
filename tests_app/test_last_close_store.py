@@ -237,12 +237,13 @@ def test_while_open_the_seeded_figure_is_hidden_and_the_first_live_tick_wins():
     assert provider.book.get(OPTION_ID, open_now).ltp == Decimal("101.00")
 
 
-def test_a_row_with_no_catalogue_contract_or_a_bad_time_is_skipped():
+def test_a_row_with_no_catalogue_contract_is_skipped_and_one_stamped_after_the_close_keeps_its_own_time():
     provider = provider_with()
     latest = {"NSE_FO:1": (Decimal("1.00"), at(MON, 15, 29), MON),
-              OPTION_ID: (Decimal("5.00"), at(MON, 16, 5), MON)}  # after the close: not a close
-    assert seed(provider, FakeStore(latest), at(TUE, 16)) == 0
-    assert provider.book.get(OPTION_ID, at(TUE, 16)) is None
+              OPTION_ID: (Decimal("5.00"), at(MON, 16, 5), MON)}  # a snapshot price read after the close
+    assert seed(provider, FakeStore(latest), at(TUE, 16)) == 1
+    q = provider.book.get(OPTION_ID, at(TUE, 16))
+    assert (q.ltp, q.timestamp) == (Decimal("5.00"), at(MON, 16, 5))  # its own time, never relabelled as 15:30:00
 
 
 def test_the_index_is_seeded_too():
