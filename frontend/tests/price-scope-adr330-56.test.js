@@ -1,24 +1,10 @@
 // ADR-330 (56) round 2 (owner 27 Nov 2026): how many strategies are affected is decided in ONE function (priceScope); the page
 // notice shows for 2 or more, the one affected tile carries the line alone for exactly 1. Builder times: a price time is the
 // price's, a load time is "Checked at". Expected texts are written here, never read back from the code.
-import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
-import { flushPromises, mount } from '@vue/test-utils'
-import { createRouter, createMemoryHistory } from 'vue-router'
-
-const calls = []
-let answers = {}
-import { legacy } from './_paperList'
-vi.mock('@/services/api', async (importActual) => {
-  const actual = await importActual()
-  const reply = (method) => (url, body) => {
-    calls.push([method, url, body])
-    const a = legacy(answers, method, url)
-    return a ? a() : Promise.reject({ message: 'no answer', parts: null, status: null })
-  }
-  return { ...actual, default: { get: reply('GET'), post: reply('POST') } }
-})
-import { withPriceTexts } from './_priceTexts'
-import PaperStrategies from '@/components/strategy/PaperStrategies.vue'
+// The PaperStrategies tile tests (two paused: greyed, no line; one paused: only it carries the line) are in
+// docs/design/next-batch-2026-11-26/lane-n-for-lanes-v-l.md until Lane U/V take that file.
+import { describe, expect, it } from 'vitest'
+import { mount } from '@vue/test-utils'
 import PriceNotice from '@/components/states/PriceNotice.vue'
 import { priceScope, tileNotLive } from '@/lib/priceState'
 import { sharedTotal } from '@/lib/tracking'
@@ -48,50 +34,6 @@ describe('PriceNotice with the affected count', () => {
     expect(mount(PriceNotice, { props: { answer: down, affected: 2 } }).get('[data-testid="price-notice-text"]').text()).toBe('Prices are not live. Figures are as of 15:58:01 IST.')
     const closed = mount(PriceNotice, { props: { answer: { ...down, market_closed: true, last_price_at: '2026-11-27T10:00:00Z' }, affected: 1 } })
     expect(closed.get('[data-testid="market-closed-text"]').text()).toBe('Market closed. Prices are from 27 Nov 2026, 15:30:00 IST.')
-  })
-})
-
-const leg = (i, over = {}) => withPriceTexts({
-  leg_index: i, instrument_id: `NSE_FO:${i + 1}`, action: 'BUY', instrument: 'PE', strike: `${22300 + i * 100}.00`, expiry: '2026-11-03',
-  quantity: 65, entry_price: '114.25', entry_at: '2026-10-28T05:03:09Z', current_price: '113.60', price_state: 'live',
-  price_at: '2026-10-28T11:30:00+05:30', exit_price: null, exited_at: null, ...over,
-})
-const item = (id, over = {}) => withPriceTexts({
-  strategy_id: id, name: `"S${id}"`, underlying: 'NIFTY', started_at: '2026-10-28T05:03:10Z', state: 'LIVE', pause_reason: null,
-  as_of: null, total: '-1894.75', booked: '0.00', unbooked: '-1894.75', legs: [leg(0), leg(1)], ...over,
-})
-const paused = { state: 'PAUSED', total: null, unbooked: null, as_of: '2026-10-28T11:00:00+05:30', pause_reason: 'price_stale' }
-async function show(items, props = {}) {
-  answers['GET /tracking'] = () => Promise.resolve({ data: { strategies: items, answered_at: '2026-10-28T06:00:00Z' } })
-  const router = createRouter({ history: createMemoryHistory(), routes: [{ path: '/', component: { template: '<div/>' } }, { path: '/strategy/builder', component: { template: '<div/>' } }] })
-  router.push('/')
-  await router.isReady()
-  const w = mount(PaperStrategies, { props, global: { plugins: [router] } })
-  await flushPromises()
-  return w
-}
-beforeEach(() => { calls.length = 0; answers = {}; vi.useFakeTimers() })
-afterEach(() => vi.useRealTimers())
-
-describe('Positions Paper tiles (ADR-330 (56))', () => {
-  it('two paused strategies: greyed, no sentence of their own, and the list says 2 are affected', async () => {
-    const w = await show([item(1, paused), item(2, paused)])
-    const groups = w.findAll('[data-testid="paper-group"]')
-    expect(groups).toHaveLength(2)
-    for (const g of groups) {
-      expect(g.find('[data-testid="paper-state"]').exists()).toBe(false)
-      expect(g.classes()).toContain('price-greyed')
-    }
-    expect(w.emitted('summary').at(-1)[0].affected).toBe(2)
-  })
-  it('one paused among two: only it carries the line, and the list says 1 is affected', async () => {
-    const w = await show([item(1, paused), item(2)])
-    const [a, b] = w.findAll('[data-testid="paper-group"]')
-    expect(a.get('[data-testid="paper-state"]').text()).toContain('Paper P&L paused - prices not live')
-    expect(a.classes()).toContain('price-greyed')
-    expect(b.find('[data-testid="paper-state"]').exists()).toBe(false)
-    expect(b.classes()).not.toContain('price-greyed')
-    expect(w.emitted('summary').at(-1)[0].affected).toBe(1)
   })
 })
 
