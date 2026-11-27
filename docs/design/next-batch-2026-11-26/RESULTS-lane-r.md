@@ -393,3 +393,26 @@ Spec basis: ADR-330 (1) (the stop base is stored with the plan and read by the c
 1. Open the plan of a running trade, type Stop (Rs) 100, press Save. The block shows the stop from the answer and stays on it after the next Plan watch read.
 2. With prices slow (over 4 s), press Save: within about 5 s it is refused with "Prices could not be read in time to check this plan." and the old plan is unchanged.
 3. Stop the backend, press Save: the sheet stays open with the typed value and the single sentence "Not confirmed: reload to see whether it was saved."; the Network tab shows one request.
+
+## Who did what, 27 Nov (owner rule: the task picks the model)
+
+| Task | Model that did it |
+|---|---|
+| LR-Q19 (a) D-15 plan line: build, round-2 fixes | Sonnet (builder) |
+| D-15 plan line: Tier A review | Opus (reviewer; money line) |
+| API slowness: root-cause read of the code | Opus (Explore; hard debugging on the live API) |
+| Request duration log line: build, round 2 | Sonnet (builder) |
+| Request log: move the registration into errors.install | Haiku (mechanical) |
+| Request log: middleware-list pin in test_response_door | Haiku (mechanical) |
+| Over-long comment rewrap (E501 ratchet) | Haiku (mechanical) |
+| Pool fix (release before market waits), pool-4 measurement, scan | Sonnet (builder) |
+| Pool fix: Tier A review | Opus (reviewer; order and exit paths commit mid-request) |
+| Plan-watch page-wide queue | Sonnet (builder) |
+| Plan-watch queue: review | Sonnet (reviewer, Tier B) |
+| Plan watch box rendering (20 s timeout, blank-text hider) | Sonnet (builder) |
+| Plan save / Plan block (rounds 1 and 2) | Sonnet (builder) |
+| Plan save: Tier A reviews | Opus (reviewer; the user's stop) |
+| Step timing and route profiling (started, stopped at 14:14 on the coordinator's word; moved to a fresh lane) | Sonnet (builders, stopped) |
+| Splitting, routing, verifying, reporting; reading diffs and re-running key tests to verify | Opus (main session) |
+| Prepush gate runs and git merge/push steps before 14:14 | Opus (main session) - against the rule: gate runs belong to a Sonnet helper; from 14:14 they go to one |
+| Two RESULTS notes (api-blocking deferred list, plan-watch-load deferred list) and this table | Opus (main session) - report writing |
