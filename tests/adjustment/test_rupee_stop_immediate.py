@@ -25,6 +25,7 @@ D = Decimal
 DAY = date(2026, 11, 27)
 #: every loss stop of a plan: the % of max loss, % of margin and 2x-credit lines and the typed rupee level
 LOSS_STOPS = (sl.TRIGGER_MAX_LOSS, sl.TRIGGER_MARGIN, sl.CREDIT_RULE, sl.RUPEE_LOSS_RULE)
+CANDLE_MINUTES, LAST_MINUTE = 5, 4  # the weekly candle; its last minute check (12:14:44, 12:19:44, ...)
 STYLES = {"intraday": ag.INTRADAY, "weekly": ag.WEEKLY, "monthly": ag.MONTHLY}
 
 
@@ -66,12 +67,12 @@ def _loss_dips(t: datetime) -> Decimal:
     every 5 checks."""
     if t < at("12:13:44"):
         return D("46.60")
-    return D("47.10") if t.minute % 5 == 4 else D("85.75")
+    return D("47.10") if t.minute % CANDLE_MINUTES == LAST_MINUTE else D("85.75")
 
 
 def test_rupee_loss_is_a_stop_rule():
     assert sl.is_stop_rule(sl.RUPEE_LOSS_RULE)
-    assert sl.LOSS_STOP_RULES == frozenset(LOSS_STOPS)  # the one set; targets and the time exit are not in it
+    assert frozenset(LOSS_STOPS) == sl.LOSS_STOP_RULES  # the one set; targets and the time exit are not in it
     assert not any(sl.is_stop_rule(r) for r in (sl.RUPEE_PROFIT_RULE, "T-07", sl.TRIGGER_TIME_EXIT, None, 6))
 
 
