@@ -65,7 +65,8 @@ async def test_a_fired_leg_stop_is_one_informational_history_row_with_the_max_lo
     monitor, stored, _ids, fires = await _fire_leg(db, SHORT_CALL, "140.70", "141.00")
     assert fires == 1 and monitor.fires == 1
     [(title, text)] = await _alerts(db, stored.id)
-    assert LINE in text and text.startswith("Stop-loss: ")
+    assert "If this stop fires" not in text and "max loss" not in text.lower()  # UX-A03: not a future case
+    assert text.startswith("Stop-loss: ")
     assert f"(#{stored.id}" in title
     assert await _paper_alert_rows(db, stored.id) == 0  # not written twice, not in the old table
     assert len(await _stops(db, stored.id)) == 1
@@ -81,8 +82,8 @@ async def test_a_gapped_fill_prices_the_line_at_the_fill_the_route_gives_for_tha
     the Stops panel's route gives for a level of 180.00, never the 140.70 figure."""
     _, stored, _, fires = await _fire_leg(db, SHORT_CALL, "140.70", "180.00")
     [(_, text)] = await _alerts(db, stored.id)
-    assert fires == 1 and GAP_LINE in text and "exited at 180.00" in text
-    assert "12,005.50" not in text
+    assert fires == 1 and "exited at 180.00" in text
+    assert GAP_LINE not in text and "12,005.50" not in text and "If this stop fires" not in text
 
 
 async def test_a_failing_line_computation_never_stops_the_exit_or_the_record(db, monkeypatch):
@@ -110,7 +111,7 @@ async def test_a_long_wing_stop_gets_the_engines_own_answer_no_fixed_maximum(db)
     leaves the short call bare, so the line says there is no fixed maximum loss."""
     _, stored, _, fires = await _fire_leg(db, LONG_CALL, "5.00", "5.50")
     [(_, text)] = await _alerts(db, stored.id)
-    assert fires == 1 and "If this stop fires, there is no fixed maximum loss (now Rs 2,860.00)." in text
+    assert fires == 1 and "If this stop fires" not in text and "maximum loss" not in text
 
 
 async def test_m1_a_fired_long_put_stop_names_the_bare_put_as_the_screens_do(db):
@@ -119,8 +120,7 @@ async def test_m1_a_fired_long_put_stop_names_the_bare_put_as_the_screens_do(db)
     _, stored, _, fires = await _fire_leg(db, LONG_PUT, "5.00", "5.50")
     [(_, text)] = await _alerts(db, stored.id)
     assert fires == 1 and "2026-" not in text
-    assert ("If this stop fires, max loss becomes Rs 14,45,502.50 (now Rs 2,860.00). "
-            "Sold option with less protection: NIFTY 13 Oct 22400 PE.") in text
+    assert "If this stop fires" not in text and "14,45,502.50" not in text and "less protection" not in text
 
 
 async def test_an_index_exit_gets_a_line_only_when_the_exit_check_says_yes(db):

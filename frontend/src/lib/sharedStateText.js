@@ -55,6 +55,8 @@ export const PLAN_LOAD_FAILED_TEXT = 'Could not load the plan. Nothing was chang
 // ADR-330 (54), pending owner read (27 Nov 2026): the Plan button on Positions and its failed-read line
 export const PLAN_BUTTON_LABEL = 'Plan'
 export const PLAN_OPEN_FAILED_TEXT = 'Could not open the plan. Try again.'
+// UX-A02, pending owner read (27 Nov 2026): shown in the Stops panel while a stop's max loss is being worked out
+export const PAPER_STOP_RISK_LOADING_TEXT = 'Working out max loss for this stop...'
 // pending owner read (15 Nov 2026), GC-ICFIX issue 18: the practice orders were stored but the position could not be read back
 export const PAPER_REREAD_FAILED_TEXT = 'Your paper orders were placed, but the position could not be loaded. Nothing was lost.'
 export const PLAN_LOADING_TEXT = 'Loading the plan…'

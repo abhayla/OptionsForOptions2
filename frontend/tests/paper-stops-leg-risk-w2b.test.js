@@ -43,6 +43,44 @@ afterEach(() => vi.useRealTimers())
 const THREE = ['If this stop fires, the sold NIFTY 1 Dec 25850 PE is left without protection.', 'Max loss now: Rs 7,800.00.',
   'Max loss then: Rs 16,74,725.00 (worst case: NIFTY at zero).']
 
+const LOADING = 'Working out max loss for this stop...'
+const loading = (w, i = 5000) => w.find(`[data-testid="stop-risk-loading-${i}"]`)
+
+describe('UX-A02: a loading line while the stop\'s max loss is being worked out, never an empty gap', () => {
+  it('shows the loading line from the moment a valid level is typed until the answer arrives, then the answer replaces it', async () => {
+    let release
+    answers['GET *'] = () => new Promise((res) => { release = () => res({ data: yes() }) })
+    const w = await open()
+    expect(loading(w).exists()).toBe(false) // nothing typed: nothing to work out
+    await type(w, 5000, '130.00')
+    expect(loading(w).text()).toBe(LOADING) // while the debounce waits
+    await wait()
+    expect(riskCalls()).toHaveLength(1)
+    expect(loading(w).text()).toBe(LOADING) // while the server works
+    release()
+    await flushPromises()
+    expect(loading(w).exists()).toBe(false)
+    expect(line(w).text()).toBe(TEXT)
+  })
+  it('an answer of no, cannot_tell or a failed read removes the loading line and prints nothing', async () => {
+    for (const reply of [() => Promise.resolve({ data: { state: 'no', warning_text: null } }), () => Promise.reject(new Error('x'))]) {
+      calls.length = 0
+      answers['GET *'] = reply
+      const w = await open()
+      await type(w, 5000, '130.00')
+      await wait()
+      expect(loading(w).exists()).toBe(false)
+      expect(line(w).exists()).toBe(false)
+    }
+  })
+  it('an invalid level shows no loading line', async () => {
+    answers['GET *'] = ok(yes())
+    const w = await open()
+    await type(w, 5000, '130.03')
+    expect(loading(w).exists()).toBe(false)
+  })
+})
+
 describe('ADR-330 (55) three lines, each its own line, printed as the server sent them', () => {
   it('prints each of the server\'s lines on its own line, in order, with no figure of its own', async () => {
     answers['GET *'] = ok({ ...yes(THREE.join('\n')), warning_lines: THREE })

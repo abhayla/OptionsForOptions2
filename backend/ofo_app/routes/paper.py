@@ -1682,7 +1682,7 @@ async def names_and_terms(db: Any, underlying: str, booked: Sequence[Any]) -> tu
 
 def leg_stop_answer(booked: Sequence[Any], net: int, contract_id: int, level: Decimal,  # noqa: PLR0913
                      names: Mapping[str, Any], terms: Mapping[str, Any], at: datetime.datetime,
-                     underlying: str, *, lines: bool = True) -> ExitRiskOut:
+                     underlying: str) -> ExitRiskOut:
     """THE ADR-330 (6) answer for one leg stop (the route and the monitor's fired-stop message both call this, so the
     figure is computed one way): the one-leg exit of the whole open quantity ``net`` at ``level``."""
     # the close's side and quantity from the exit door's own rule (G2: no side flipped outside it); no order is built
@@ -1704,7 +1704,7 @@ def leg_stop_answer(booked: Sequence[Any], net: int, contract_id: int, level: De
         at_zero = book_pnl_at_zero(after_view, terms)
     except (ValueError, KeyError):
         loss0 = loss1 = None
-    if lines and risk.state == "yes" and risk.exposed:
+    if risk.state == "yes" and risk.exposed:
         # ADR-330 (55): a bare sold option gets three lines from the engine's own figures as they are: an unlimited
         # or absent figure is said as such, never replaced by the exit judge's hidden ones
         risk = ExitRisk("yes", loss0, loss1, risk.exposed)
@@ -1712,7 +1712,7 @@ def leg_stop_answer(booked: Sequence[Any], net: int, contract_id: int, level: De
         risk = ExitRisk("yes", loss0, loss1, risk.exposed)
     elif risk.state != "yes":
         return _exit_risk_answer(risk.state)
-    return _exit_warning(risk, names, leg_stop=True, terms=terms if lines else None, underlying=underlying,
+    return _exit_warning(risk, names, leg_stop=True, terms=terms, underlying=underlying,
                          at_zero=at_zero)
 
 
