@@ -135,6 +135,7 @@ PR241_SELECTION = {
     "tests_app/test_plan_watch.py",  # Lane P 26 Nov: test_plan_watch.py added (P10)
     "tests_app/test_plan_sheet_refusal_labels.py",  # Lane W 27 Nov: imports the plan route and ofo.errors, changed here
     "tests_app/test_strategy_duplicate_leg_refusal.py",  # Lane W 27 Nov: imports refused_answer (routes/strategies.py)
+    "tests_app/test_real_door_lots_limit.py",  # Lane K2 27 Nov: added (imports routes/execute.py, changed here)
     "tests_app/test_picker_closed_freeze.py",  # Lane N 27 Nov: added (picker routes)
     "tests_app/test_history_delete_entries.py",  # ADR-330 (31): imports the strategy routes / store the diff changes
     "tests_app/test_entry_not_live_confirmed.py",  # ADR-330 (28): imports ofo_app.strategy_refused (changed)
