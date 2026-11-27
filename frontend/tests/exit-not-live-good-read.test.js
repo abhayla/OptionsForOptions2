@@ -228,6 +228,15 @@ describe('Positions: the Exit dialog on a GOOD list read whose legs are not live
     expect(dlg(w).props('error')).toContain(NOT_LIVE)
   })
 
+  it('doExit called directly (not via the button) while a ticked leg is not live on a GOOD read: no POST, the not-live sentence stays', async () => {
+    const w = await positions(LIST_DOWN)
+    expect(dlg(w).props('open')).toBe(true)
+    await w.vm.$.setupState.doExit(dlg(w).props('orders'))
+    await flushPromises()
+    expect(calls.filter((c) => c.method === 'POST')).toHaveLength(0)
+    expect(dlg(w).props('error')).toContain(NOT_LIVE)
+  })
+
   it('failed read keeps the existing behaviour: no dialog is opened from old prices', async () => {
     calls.length = 0
     answers = { 'GET /tracking': () => Promise.reject({ message: 'x', parts: null, status: 500 }) }

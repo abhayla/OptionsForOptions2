@@ -240,9 +240,10 @@ describe('Paper tab from GET /paper/strategies (the real reply)', () => {
     expect(has(w, 'paper-confirm')).toBe(true)
   })
 
-  it('an open contract without an ltp shows a dash; its exit row has no price box: the server sets the price (last close after hours)', async () => {
+  it('an open contract without an ltp shows a dash; its exit row has no price box, and Confirm is blocked with the not-live sentence', async () => {
     const d = clone()
     Object.assign(d.strategies[2].positions[0], { ltp: null, ltp_text: null, price_state: 'stale' })
+    d.strategies[2].state = 'PAUSED' // routes/paper.py:699-701: every open leg unpriced -> the book is PAUSED
     answers['GET /paper/strategies'] = ok(d)
     const w = await show()
     const row = all(w, 'paper-group')[1].findAll('[data-testid="paper-leg"]')[0]

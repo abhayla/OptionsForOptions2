@@ -141,8 +141,8 @@ describe('Drafts Mode edits are pending paper orders until Confirm', () => {
     expect(legCount(w)).toBe(3)
     expect(t(w, 'paper-pending-count').text()).toBe('0 pending changes')
   })
-  it('after hours (no live LTP): the exit row has no price box, says the server sets the price (last close, ADR-212) and Confirm is allowed', async () => {
-    answers[PAPER] = { ...BOOK, positions: BOOK.positions.map((p) => ({ ...p, price_state: 'closed', ltp: null, ltp_text: null })) }
+  it('after hours (no live LTP): the exit row has no price box, says the server sets the price (last close, ADR-212) and Confirm is blocked with the not-live sentence', async () => {
+    answers[PAPER] = { ...BOOK, state: 'PAUSED', positions: BOOK.positions.map((p) => ({ ...p, price_state: 'stale', ltp: null, ltp_text: null })) } // routes/paper.py:699-701: every open leg unpriced -> the book is PAUSED
     const w = await openBuilder()
     await removeLeg(w, '22700.00')
     await t(w, 'paper-review').trigger('click')
