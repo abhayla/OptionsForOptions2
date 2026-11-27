@@ -170,6 +170,14 @@ describe('Confirm list title by content, each row\'s kind beside B/S', () => {
 })
 
 describe('Net Positions | Orderbook switch on the REAL reply', () => {
+  it('Net Positions: the Contract cell and header never wrap, and the table scrolls sideways inside its own container', async () => {
+    const w = await openBuilder()
+    const cells = all(w, 'net-contract')
+    expect(cells.length).toBeGreaterThan(0)
+    for (const c of cells) expect(c.classes()).toContain('whitespace-nowrap')
+    expect(t(w, 'net-table').find('thead th.text-left').classes()).toContain('whitespace-nowrap')
+    expect(t(w, 'net-table').element.parentElement.classList.contains('overflow-x-auto')).toBe(true)
+  })
   it('Net Positions: per open contract Lots, Avg, LTP, Booked, Unbooked, P&L as sent; closed contracts below with booked P&L', async () => {
     const w = await openBuilder()
     expect(t(w, 'paper-book-switch').exists()).toBe(true)

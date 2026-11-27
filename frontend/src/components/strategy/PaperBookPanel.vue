@@ -49,11 +49,11 @@
         <thead class="text-ink-muted">
           <!-- GC-ICFIX round 2 (F2): the server sends no after-charges form per contract: Booked / Unbooked / P&L are before charges, said once -->
           <tr><th colspan="4"></th><th colspan="3" class="text-center font-normal" data-testid="net-basis">(before charges)</th><th></th></tr>
-          <tr><th class="text-left font-normal">Contract</th><th class="text-center font-normal">Lots</th><th class="text-right font-normal">Avg</th><th class="text-right font-normal">LTP</th><th class="text-right font-normal">Booked</th><th class="text-right font-normal">Unbooked</th><th class="text-right font-normal">P&amp;L</th><th></th></tr>
+          <tr><th class="whitespace-nowrap text-left font-normal">Contract</th><th class="text-center font-normal">Lots</th><th class="text-right font-normal">Avg</th><th class="text-right font-normal">LTP</th><th class="text-right font-normal">Booked</th><th class="text-right font-normal">Unbooked</th><th class="text-right font-normal">P&amp;L</th><th></th></tr>
         </thead>
         <tbody>
           <tr v-for="p in open" :key="p.contract_id" class="border-t border-line" data-testid="net-row" :data-contract-id="p.contract_id">
-            <td class="py-1 pr-2" data-testid="net-contract">{{ p.contract_text }}</td>
+            <td class="whitespace-nowrap py-1 pr-2" data-testid="net-contract">{{ p.contract_text }}</td>
             <td class="num text-center" data-testid="net-lots">{{ lotsOf(p) }}</td>
             <td class="num text-right" data-testid="net-avg">{{ readFailed ? PAPER_NO_FIGURE : (p.average_text ?? '-') }}</td>
             <td class="num text-right"><span data-testid="net-ltp">{{ readFailed ? PAPER_NO_FIGURE : (p.ltp_text ?? '-') }}</span><span v-if="p.ltp_text && !readFailed" class="block text-[11px] text-ink-muted" data-testid="net-ltp-at">{{ istClock(p.price_at ?? null) ?? 'time n/a' }}</span></td>
