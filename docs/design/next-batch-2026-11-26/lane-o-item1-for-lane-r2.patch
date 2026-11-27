@@ -1,0 +1,203 @@
+From 05f774bfea9bc28d3865e0a43afefb2043e7f433 Mon Sep 17 00:00:00 2001
+From: Claude <noreply@anthropic.com>
+Date: Fri, 27 Nov 2026 11:53:37 +0000
+Subject: [PATCH] Item 1 (T2-19): Reset to playbook names what it put back
+
+---
+ backend/ofo/errors/explanations.py             |  3 +++
+ backend/ofo_app/routes/adjustment_plan.py      | 18 +++++++++++++++---
+ .../components/strategy/AdjustPlanSheet.vue    | 12 ++++++++----
+ frontend/src/lib/adjustPlan.js                 |  3 +++
+ frontend/tests/plan-reset-p8.test.js           | 12 +++++++-----
+ tests_app/test_adjustment_plan.py              |  6 ++++++
+ 6 files changed, 42 insertions(+), 12 deletions(-)
+
+diff --git a/backend/ofo/errors/explanations.py b/backend/ofo/errors/explanations.py
+index 8f3167d3..352e960c 100644
+--- a/backend/ofo/errors/explanations.py
++++ b/backend/ofo/errors/explanations.py
+@@ -1100,6 +1100,9 @@ PLAN_SHEET_LABEL_TEXT: Mapping[str, str] = MappingProxyType({
+     "reset_confirm": ("Reset to playbook puts back this playbook's conditions only. The levels you typed on the sheet "
+                       "(profit target, rupee target, rupee stop, time exit, the adjustment limit) and the plan's "
+                       "settings stay as you set them. Reset the conditions?"),
++    "reset_put_back": "Put back to the playbook's values:",  # T2-19 (pending owner read)
++    "reset_put_back_off": "Switched on again:",
++    "reset_put_back_none": "Nothing differed from the playbook, so nothing was put back.",
+     "plan_entry": "Plan", "edit": "Edit plan", "no_plan": NO_PLAN_TEXT, "set_plan": "Set plan",
+     "hour": "Hour", "minute": "Minute",
+ })
+diff --git a/backend/ofo_app/routes/adjustment_plan.py b/backend/ofo_app/routes/adjustment_plan.py
+index 25060291..d375ed83 100644
+--- a/backend/ofo_app/routes/adjustment_plan.py
++++ b/backend/ofo_app/routes/adjustment_plan.py
+@@ -237,6 +237,10 @@ class AdjustmentPlanOut(ApiModel):
+     triggers: list[TriggerInForceOut]
+     triggers_reason: Identifier | None
+     stops: StopsOut
++    #: ADR-330 (9), (32), T2-19: only the reset reply fills these: the playbook conditions the plan had changed
++    #: (``put_back``) or switched off (``put_back_off``) just before the reset, as paths such as ``triggers.T-02``
++    put_back: list[Identifier] = []
++    put_back_off: list[Identifier] = []
+ 
+ 
+ #: the sheet's boxes the refusal names by their label (27 Nov): the template ``plan_sheet_invalid_<box>`` says it
+@@ -621,7 +625,7 @@ def _in_force_reply(found: in_force_mod.InForce) -> dict[str, Any]:
+ async def _sheet(db: Any, user_ref: str, strategy_id: int, stype: str | None, plan: store.Plan | None,  # noqa: PLR0913
+                  pick: int | None, user_values: Any = None,
+                  money: in_force_mod.MoneyInputs | None = None, kind: str | None = None,
+-                 bases: Bases | None = None) -> AdjustmentPlanOut:
++                 bases: Bases | None = None, put_back: dict[str, list[str]] | None = None) -> AdjustmentPlanOut:
+     reply: dict[str, Any] = {"strategy_id": strategy_id, "type": stype, "type_name": None, "generic": stype is None,
+                              "generic_text": render(_GENERIC) if stype is None else None, "playbooks": [],
+                              "plan": None, "prefill": None, "labels": _labels()}
+@@ -659,7 +663,9 @@ async def _sheet(db: Any, user_ref: str, strategy_id: int, stype: str | None, pl
+               "playbooks": [_playbook_row(p, active.id) for p in listed],
+               "plan": None if plan is None else await _plan_out(db, user_ref, plan, kind, bases),
+               "prefill": {"playbook_id": source_id, **values}}
+-    return AdjustmentPlanOut.model_validate(reply)
++    put_back = put_back or {}
++    return AdjustmentPlanOut.model_validate(
++        reply | {"put_back": put_back.get("changed", []), "put_back_off": put_back.get("switched_off", [])})
+ 
+ 
+ async def _run(db: Any, work: Any) -> Any:
+@@ -997,9 +1003,15 @@ async def reset_plan(  # noqa: PLR0913 - FastAPI dependencies, one per input
+         raise StrategyRefused(_NOT_AVAILABLE, Failure.NOT_FOUND)
+ 
+     async def work() -> AdjustmentPlanOut:
++        differed = {"changed": [], "switched_off": []}  # what the plan differed in, read before the copy goes back
++        if plan_before.playbook_id is not None:
++            try:
++                differed = plan_diff.diff(plan_before.body, (await store.get(db, user_ref, plan_before.playbook_id)).body)
++            except store.PlaybookStoreError:
++                pass  # a gone playbook: store.reset_plan refuses below with its own sentence
+         saved = await store.reset_plan(db, user_ref, strategy_id, _base_json(tracked))
+         stored = dataclasses.replace(tracked, stop_base=in_force_mod.stop_base_from_json(saved.stop_base))
+         return await _sheet(db, user_ref, strategy_id, stype, saved, None, user_values,
+                             in_force_mod.money_inputs(stored, market, rates), _kind_of(tracked, money),
+-                            dataclasses.replace(bases, max_loss=_stored_loss(stored, bases)))
++                            dataclasses.replace(bases, max_loss=_stored_loss(stored, bases)), put_back=differed)
+     return await _run(db, work)
+diff --git a/frontend/src/components/strategy/AdjustPlanSheet.vue b/frontend/src/components/strategy/AdjustPlanSheet.vue
+index e1872dc3..66979812 100644
+--- a/frontend/src/components/strategy/AdjustPlanSheet.vue
++++ b/frontend/src/components/strategy/AdjustPlanSheet.vue
+@@ -58,7 +58,11 @@
+             <button type="button" class="rounded border border-line px-2 py-1 text-sm" :disabled="busy" data-testid="plan-reset-no" @click="resetAsking = false">Cancel</button>
+           </div>
+         </div>
+-        <p v-if="resetMarkers" class="mt-2 text-xs text-ink-muted" data-testid="plan-reset-markers">{{ resetMarkers }}</p>
++        <div v-if="resetDone" class="mt-2 text-xs text-ink-muted" data-testid="plan-reset-markers">
++          <p v-if="!resetDone.changed.length && !resetDone.off.length">{{ labels.reset_put_back_none }}</p>
++          <p v-if="resetDone.changed.length">{{ labels.reset_put_back }} {{ resetDone.changed.join(', ') }}</p>
++          <p v-if="resetDone.off.length">{{ labels.reset_put_back_off }} {{ resetDone.off.join(', ') }}</p>
++        </div>
+       </template>
+       <AlertStylePicker v-if="open && sheet" :strategy-id="strategyId" />
+     </div>
+@@ -109,7 +113,7 @@ const errorParts = ref(null)
+ const labels = computed(() => sheet.value?.labels ?? {})
+ // P8 (ADR-330 (9), (32)): Reset to playbook shows only for a saved plan whose playbook is still listed, with the server's own words for it
+ const resetAsking = ref(false)
+-const resetMarkers = ref('') // the server's changed / switched_off markers of the reply, as sent
++const resetDone = ref(null) // T2-19: what the reset put back (the server's put_back / put_back_off of the reply, as sent)
+ const canReset = computed(() => {
+   const s = sheet.value
+   const id = s?.plan?.playbookId
+@@ -125,7 +129,7 @@ async function reset() {
+     if (read.kind !== 'sheet') { errorParts.value = NEUTRAL_PARTS; return }
+     sheet.value = read
+     form.value = { ...read.prefill }
+-    resetMarkers.value = [...(read.plan?.changed ?? []), ...(read.plan?.switchedOff ?? [])].join(', ')
++    resetDone.value = { changed: read.putBack, off: read.putBackOff }
+     resetAsking.value = false
+     emit('saved', read)
+   } catch (e) {
+@@ -142,7 +146,7 @@ async function load(pickId = null, pickName = '') {
+   loadError.value = ''
+   refilledFrom.value = ''
+   resetAsking.value = false
+-  resetMarkers.value = ''
++  resetDone.value = null
+   errorParts.value = null
+   loading.value = true
+   try {
+diff --git a/frontend/src/lib/adjustPlan.js b/frontend/src/lib/adjustPlan.js
+index fde5740f..4c57fc6d 100644
+--- a/frontend/src/lib/adjustPlan.js
++++ b/frontend/src/lib/adjustPlan.js
+@@ -50,6 +50,9 @@ export function readPlan(body) {
+       maxAdjustments: count(body.plan.max_adjustments), timeExit: clockText(body.plan.time_exit), timeExitOn: text(body.plan.time_exit_on),
+     } : null,
+     prefill: formOf(body.prefill),
++    // T2-19: only a reset reply fills these (what the plan had changed / switched off just before it), as the server sent them
++    putBack: Array.isArray(body.put_back) ? body.put_back.filter((x) => typeof x === 'string') : [],
++    putBackOff: Array.isArray(body.put_back_off) ? body.put_back_off.filter((x) => typeof x === 'string') : [],
+   }
+ }
+ 
+diff --git a/frontend/tests/plan-reset-p8.test.js b/frontend/tests/plan-reset-p8.test.js
+index 5afde83d..935159dd 100644
+--- a/frontend/tests/plan-reset-p8.test.js
++++ b/frontend/tests/plan-reset-p8.test.js
+@@ -24,6 +24,8 @@ const LABELS = {
+   title: "When tracking starts: this strategy's plan", playbook: 'Playbook', target: 'Target', stop: 'Stop', max_adjustments: 'Max adjustments',
+   time_exit: 'Time exit', time_exit_on: 'Time exit date (blank = expiry day)', customise: 'Customise triggers', use_as_is: 'Use playbook as is',
+   save: 'Save plan', close: 'Close', reset: 'Reset to playbook', reset_confirm: CONFIRM,
++  reset_put_back: "Put back to the playbook's values:", reset_put_back_off: 'Switched on again:',
++  reset_put_back_none: 'Nothing differed from the playbook, so nothing was put back.',
+ }
+ const PLAYBOOKS = [{ id: 9, name: '"Mine"', type: 'ic', type_name: 'Iron condor', is_system: false, draft: false, active: true }]
+ const PLAN = (over = {}) => ({ playbook_id: 9, playbook_name: '"Mine"', target: '60', stop: '40', max_adjustments: 3, time_exit: null,
+@@ -58,18 +60,18 @@ describe('P8 Reset to playbook on the plan sheet', () => {
+   })
+   it('Confirm posts the reset once, shows the reply (levels as the server sent them) and the changed marker', async () => {
+     answers[`GET ${PATH}`] = sheetAnswer()
+-    answers[`POST ${RESET}`] = sheetAnswer({ plan: PLAN({ changed: ['triggers.T-02'], switched_off: ['triggers.T-05'] }) })
++    answers[`POST ${RESET}`] = sheetAnswer({ plan: PLAN({ changed: [], switched_off: [] }), put_back: ['triggers.T-02'], put_back_off: ['triggers.T-05'] })
+     const w = await sheet()
+     await t(w, 'plan-reset').trigger('click')
+     await t(w, 'plan-reset-yes').trigger('click')
+     await flushPromises()
+     expect(posts()).toEqual([{ method: 'POST', url: RESET, body: undefined }])
+-    expect(t(w, 'plan-reset-markers').text()).toContain('triggers.T-02')
+-    expect(t(w, 'plan-reset-markers').text()).toContain('triggers.T-05')
++    expect(t(w, 'plan-reset-markers').text()).toContain("Put back to the playbook's values: triggers.T-02")
++    expect(t(w, 'plan-reset-markers').text()).toContain('Switched on again: triggers.T-05')
+     expect(t(w, 'plan-target').element.value).toBe('60') // the typed levels are the server's, kept
+     expect(t(w, 'plan-reset-confirm').exists()).toBe(false)
+   })
+-  it('a reset that leaves nothing changed shows no marker line', async () => {
++  it('a reset that put nothing back says so (stated, not blank)', async () => {
+     answers[`GET ${PATH}`] = sheetAnswer()
+     answers[`POST ${RESET}`] = sheetAnswer({ plan: PLAN({ changed: [], switched_off: [] }) })
+     const w = await sheet()
+@@ -77,7 +79,7 @@ describe('P8 Reset to playbook on the plan sheet', () => {
+     await t(w, 'plan-reset-yes').trigger('click')
+     await flushPromises()
+     expect(posts()).toHaveLength(1)
+-    expect(t(w, 'plan-reset-markers').exists()).toBe(false)
++    expect(t(w, 'plan-reset-markers').text()).toBe('Nothing differed from the playbook, so nothing was put back.')
+   })
+   it('Cancel posts nothing and closes the question', async () => {
+     answers[`GET ${PATH}`] = sheetAnswer()
+diff --git a/tests_app/test_adjustment_plan.py b/tests_app/test_adjustment_plan.py
+index 0401433f..622b9f36 100644
+--- a/tests_app/test_adjustment_plan.py
++++ b/tests_app/test_adjustment_plan.py
+@@ -258,6 +258,12 @@ async def test_reset_to_playbook_goes_back_marks_what_differed_and_a_gone_playbo
+     status, out = await _call("POST", _plan_path(sid) + "/reset")
+     assert status == OK, out
+     assert (out["plan"]["changed"], out["plan"]["switched_off"], out["plan"]["playbook_id"]) == ([], [], system)
++    assert out["put_back"] == ["triggers.T-06"] and out["put_back_off"] == []  # T2-19: the reply names what was put back
++    assert out["labels"]["reset_put_back"] and out["labels"]["reset_put_back_off"] and out["labels"]["reset_put_back_none"]
++    status, again = await _call("POST", _plan_path(sid) + "/reset")  # nothing differs now: the lists are empty (stated)
++    assert status == OK and again["put_back"] == [] and again["put_back_off"] == []
++    status, plain = await _call("GET", _plan_path(sid))  # only a reset names what it put back
++    assert status == OK and plain["put_back"] == [] and plain["put_back_off"] == []
+     stored, book = json.loads((await _plan_row(app_db_url, sid)).body), (await _system_ic(app_db_url)).body
+     assert stored["triggers"] == book["triggers"]  # every condition is the playbook's again
+     assert stored["guards"]["profit_target_pct_of_max_profit"] == "60"  # the sheet's level is kept (LP-5 (a))
+-- 
+2.43.0
+
