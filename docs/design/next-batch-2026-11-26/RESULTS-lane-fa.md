@@ -1,4 +1,4 @@
-STATUS 04:36 | I-17 Passed in cloud, I-18 Passed in cloud, I-29 Passed in cloud (Save-disabled claim did not reproduce), D2 Passed in cloud, #872 Passed in cloud, #874 Passed in cloud (regression tests) | UX-A01 blocked (not my file), UX-A02 blocked (needs a cost value the parent list must pass), F3 not started (waits for FD field), #870 not started, #873 not started | next push after the gate on the commit that holds this line | blocker: none
+STATUS 05:10 | I-17 Passed in cloud, I-18 Passed in cloud, I-29 Passed in cloud (Save-disabled claim did not reproduce), D2 Passed in cloud, #872 Passed in cloud, #874 Passed in cloud (regression tests) | UX-A01 blocked (not my file), UX-A02 blocked (needs a cost value the parent list must pass), F3 not started (waits for FD field), #870 not started, #873 not started | pushed 5884a9bb3 (gate TOTAL PASS, jobs 2); this line is the report | review done, REVISE fixed | blocker: none
 
 # Lane FA (round 2): Exit dialog and stops panel
 Branch fix/r2-exit-stops-1128 from origin/integration/conflicts-1127 (16c536f). Paper only. Spec basis: ADR-330 (58), (60), REQ-049, ADR-212, ADR-017.
@@ -88,4 +88,6 @@ Live:
 3. Exit with live prices: "Price as of HH:MM:SS IST, N seconds ago."; press Confirm: "Placing exit..." then "Exit placed on paper (order N)." in view.
 4. Stop the server before Confirm: the unknown line shows in view; Confirm stays locked until the re-read.
 
-SAFE TO CLOSE: yes, nothing runs; nothing is pushed to main or the test branch.
+Browser check: NOT RUN in the cloud (the brief asks for one Chromium check against `vite preview` with a screenshot under screens-fa/; the real pages need a server and recorded data, and no honest walk-through was possible here). screens-fa/ is empty. Do it on the PC: steps 1 to 4 above.
+
+SAFE TO CLOSE (head 5884a9bb3 plus this RESULTS commit; left: browser check and screenshots, UX-A01, UX-A02, F3, #870, #873, review nits F5-F7)
