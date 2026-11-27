@@ -179,6 +179,14 @@ async function priceCard(template, legs, byId) {
   return card
 }
 
+// UX-B04 (R2 FC2): step 4 says what it is reading (texts pending owner read). The counts are the page's own; "up to 20 seconds"
+// is the longest wait the PC walk of 28 Nov saw, stated as a limit, not as a promise.
+const WAIT_NOTE = 'This can take up to 20 seconds.'
+const READING_LIST = `Reading the strategy list. ${WAIT_NOTE}`
+const readingEntries = (n) => `Reading the planned entry prices of ${n} ${n === 1 ? 'contract' : 'contracts'}. ${WAIT_NOTE}`
+const pricing = (done, n) => `Pricing ${n} ${n === 1 ? 'strategy' : 'strategies'}: ${done} of ${n} done. ${WAIT_NOTE}`
+const progress = ref('')
+
 async function showStrategies() {
   // #745: the index level failed to read: the click asks again; while it is still failed the box names it (no silent no-op)
   if (current.value === null) { current.value = levelOf(await readIndices()) }
@@ -187,10 +195,16 @@ async function showStrategies() {
   step.value = 4
   busy.value = true
   showAll.value = false
+  progress.value = READING_LIST
   await templatesLoad
   const fitting = matched.value.list.map((t) => [t, expandTemplate(t, contracts.value, current.value)]).filter(([, legs]) => legs)
+  const wanted = new Set(fitting.flatMap(([, legs]) => legs.map((l) => l.instrument_id))).size
+  progress.value = readingEntries(wanted)
   const byId = await readEntries(fitting)
-  cards.value = await Promise.all(fitting.map(([t, legs]) => priceCard(t, legs, byId)))
+  let done = 0
+  progress.value = pricing(0, fitting.length)
+  cards.value = await Promise.all(fitting.map(([t, legs]) => priceCard(t, legs, byId).then((c) => { progress.value = pricing(++done, fitting.length); return c })))
+  progress.value = ''
   busy.value = false
 }
 
@@ -293,7 +307,10 @@ type="button" class="btn btn-primary min-h-[44px] w-full sm:w-auto" data-testid=
         <h2 class="text-base font-semibold" data-testid="results-heading">{{ heading }}</h2>
         <p v-if="notSure" class="text-xs text-ink-muted" data-testid="range-note">{{ RANGE_NOTE }}</p>
         <p v-if="matched?.fallback" class="mt-1 text-sm" data-testid="no-fit">{{ NO_FIT }}</p>
-        <p v-if="busy" class="mt-2 text-sm" data-testid="results-loading">Loading…</p>
+        <template v-if="busy">
+          <p class="mt-2 text-sm" data-testid="results-loading">Loading…</p>
+          <p v-if="progress" class="text-xs text-ink-muted" data-testid="results-progress" role="status">{{ progress }}</p>
+        </template>
         <p v-else-if="!cards.length" class="mt-2 text-sm" data-testid="none-listed">{{ NONE_LISTED }}</p>
         <ul class="mt-3 grid gap-3 sm:grid-cols-2">
           <li

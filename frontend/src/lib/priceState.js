@@ -23,6 +23,15 @@ export const asOfClause = (asOf) => {
 /** REQ-109 AC-5's paused text, with the time of the last price when it is known. */
 export const pausedText = (asOf) => `${PAUSED_TEXT}${asOfClause(asOf)}`
 
+/** D-11 (R2 FC2): of several lines that each say the book is paused, print one (the longest, which carries the "as of" time). */
+export const pausedOnce = (lines) => {
+  const kept = (lines ?? []).filter((l) => typeof l === 'string' && l !== '')
+  const paused = kept.filter((l) => l.includes(PAUSED_TEXT))
+  if (paused.length < 2) return kept
+  const best = [...paused].sort((a, b) => b.length - a.length)[0]
+  return kept.filter((l) => !l.includes(PAUSED_TEXT) || l === best).filter((l, i, a) => a.indexOf(l) === i)
+}
+
 /** ADR-330 (56): the ONE not-live notice of a screen, "Prices are not live. Figures are as of <HH:MM:SS> IST." The time is the last
  *  captured price's; with none readable the clause is left out, never a load time or a made-up one. */
 export const notLiveNotice = (asOf) => {
@@ -41,6 +50,15 @@ export function priceScope(rows, isAffected, idOf = (r) => r.id) {
   const ids = new Set((Array.isArray(rows) ? rows : []).filter((r) => isAffected(r)).map(idOf))
   const count = ids.size
   return { count, scope: count === 0 ? 'none' : count === 1 ? 'one' : 'many', ids }
+}
+/** Does the page's PriceNotice (components/states/PriceNotice.vue) show anything for this index answer and affected count? The same rule
+ *  as that component (closed banner always; not-live line only when 2+ strategies are affected or the count is unknown), so a list
+ *  can stay quiet exactly when the notice speaks. */
+export function priceNoticeUp(answer, affected = null) {
+  const now = priceNow({ answer, pageState: 'loading' })
+  if (now.kind === 'last_close') return true
+  const down = now.kind === 'stale' || (!!answer && answer.state !== 'LIVE')
+  return down && !(affected !== null && affected < 2)
 }
 /** What one tile shows under a scope: greyed when it is affected, the sentence only when it is the one affected tile. */
 export const tileNotLive = (scope, id) => {

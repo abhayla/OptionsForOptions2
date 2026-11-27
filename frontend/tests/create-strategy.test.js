@@ -463,3 +463,21 @@ describe('ADR-212: the level before the open is the last close', () => {
     expect(w.find('[data-testid="market-closed-banner"]').exists()).toBe(false)
   })
 })
+
+// Lane FC2 (R2, 28 Nov) UX-B04: step 4 "Loading..." lasted 10 to 20 s with no words. It now says what is being read and that it
+// can take up to 20 seconds; the counts are the page's own (contracts asked, strategies priced), no invented figure.
+describe('UX-B04 step 4 says what it is reading', () => {
+  it('while the template list is pending: names the strategy list and the 20 s; gone once the cards are in', async () => {
+    let settle
+    templatesReply = new Promise((resolve, reject) => { settle = { resolve, reject } })
+    const { w } = await mountPage()
+    await toResults(w, 'know', null)
+    const p = w.get('[data-testid="results-progress"]').text()
+    expect(p).toContain('Reading the strategy list')
+    expect(p).toContain('up to 20 seconds')
+    settle.resolve({ data: TEMPLATES })
+    await flushPromises()
+    expect(w.find('[data-testid="results-progress"]').exists()).toBe(false)
+    expect(w.find('[data-testid="results-loading"]').exists()).toBe(false)
+  })
+})

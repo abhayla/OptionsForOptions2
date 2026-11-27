@@ -91,7 +91,7 @@
         <span v-if="oi.read_at_display" data-testid="payoff-oi-read-at">{{ oi.read_at_display }}</span>
         <span v-if="oi.expiry_note" data-testid="payoff-oi-expiry-note">{{ oi.expiry_note }}</span>
       </template>
-      <span v-else data-testid="payoff-oi-unavailable">{{ oi.unavailable_reason ? `${OI_NONE}: ${oi.unavailable_reason}` : OI_NONE }}</span>
+      <span v-else data-testid="payoff-oi-unavailable">{{ oiNoneText(oi.unavailable_reason) }}</span>
     </div>
   </figure>
 </template>
@@ -138,6 +138,12 @@ const CURVE_LABELS = { at_expiry: 'At expiry', estimated_now: 'Estimated now' }
 const VIEWS = ['at_expiry', 'estimated_now']
 const HOVER_ORDER = ['estimated_now', 'at_expiry'] // AC-2's example: the estimate first, then at expiry
 const OI_NONE = 'OI not available for this expiry' // REQ-083 AC-6
+// D-6 (R2 FC2): the sentence once, the reason after it; a reason that already starts with the sentence is not prefixed again.
+const oiNoneText = (reason) => {
+  const r = typeof reason === 'string' ? reason.trim() : ''
+  if (!r) return OI_NONE
+  return r.toLowerCase().startsWith(OI_NONE.toLowerCase()) ? r : `${OI_NONE}: ${r}`
+}
 
 // The curves to draw: the reply's `curves` (each only when available with points), else its one payoff line.
 const shown = computed(() => {

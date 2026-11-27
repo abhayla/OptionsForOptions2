@@ -121,7 +121,8 @@ onMounted(async () => {
           <p class="mt-1 text-sm" data-testid="record-body">{{ alertBody({ title: r.title, body: r.body }) }}</p>
         </li>
       </ul>
-      <EmptyState v-if="!alertHistory.items.length && !alertHistory.parts && !paperRecords.records.length && !paperRecords.parts" :message="line" icon="bell" data-testid="alerts-empty" />
+      <p v-if="!alertHistory.loaded || !paperRecords.loaded" class="text-sm text-ink-muted" data-testid="alerts-loading">Loading...</p>
+      <EmptyState v-else-if="!alertHistory.items.length && !alertHistory.parts && !paperRecords.records.length && !paperRecords.parts" :message="line" icon="bell" data-testid="alerts-empty" />
     </template>
     <template v-else-if="isActive && activeAlerts.parts">
       <ErrorMessage :parts="activeAlerts.parts" compact prefix="alerts-error" />
