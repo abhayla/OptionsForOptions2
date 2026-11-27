@@ -26,7 +26,7 @@ function timeText(row) {
     <!-- REQ-114 AC-7 / ADR-177: the one market-closed banner; the times then read "Last updated", never live "as of" -->
     <PriceNotice class="mb-4" :answer="answer" />
     <p v-if="reconnecting" class="mb-4 text-sm font-medium" data-testid="live-reconnecting">{{ reconnectingText }}</p>
-    <p v-if="notLive() && !marketClosed()" class="mb-4 font-medium" data-testid="index-state">
+    <p v-if="notLive() && !marketClosed() && !answer" class="mb-4 font-medium" data-testid="index-state">
       {{ NOT_LIVE_LABEL }}
     </p>
     <div class="grid gap-4 md:grid-cols-2">

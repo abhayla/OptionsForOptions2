@@ -13,12 +13,14 @@ const props = defineProps({
   reply: { type: Object, default: null }, // the page's outcome reply, when it has one
   pageState: { type: String, default: 'computed' },
   reconnecting: { type: Boolean, default: false },
+  // how many strategies on the screen are affected (priceScope): exactly 1 -> no page notice, that tile carries the line (the closed banner always shows)
+  affected: { type: Number, default: null },
 })
 const now = computed(() => priceNow({ reply: props.reply, answer: props.answer, pageState: props.reply ? props.pageState : 'loading', reconnecting: props.reconnecting }))
 const notLive = computed(() => {
   if (now.value.kind === 'last_close') return null
   const down = now.value.kind === 'stale' || (!!props.answer && props.answer.state !== 'LIVE')
-  if (!down) return null
+  if (!down || (props.affected !== null && props.affected < 2)) return null
   return { text: notLiveNotice(now.value.at ?? props.answer?.last_price_at ?? null) }
 })
 </script>

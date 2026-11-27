@@ -10,6 +10,7 @@ import LiveStrategyCard from '@/components/live/LiveStrategyCard.vue'
 import PriceNotice from '@/components/states/PriceNotice.vue'
 import { LIVE_NOTHING_RUNNING_TEXT, STATUS_DRAFT, STATUS_RUNNING } from '@/lib/sharedStateText'
 import { isCompleted, isRunning } from '@/lib/strategyStatus'
+import { priceScope, tileNotLive } from '@/lib/priceState'
 import { usePaperPnl } from '@/lib/paperPnl'
 import { noteShownDate } from '@/lib/displayFormat'
 import { readAnswer } from '@/composables/useIndexLive'
@@ -34,6 +35,11 @@ async function readMarket() {
 }
 
 // ADR-330 (56): while the page's one notice is up, a card shows no read time of its own (a load time beside the notice's price time)
+// ADR-330 (56): the cards report whether they have a contract with no price; priceScope (the one rule) says how many are affected
+const affectedIds = ref(new Set())
+const onAffected = (id, on) => { const next = new Set(affectedIds.value); if (on) next.add(id); else next.delete(id); affectedIds.value = next }
+const scope = computed(() => priceScope(shown.value, (s) => affectedIds.value.has(s.id)))
+const tileOf = (s) => tileNotLive(scope.value, s.id)
 const noticeUp = computed(() => closedAt.value !== null || (!!marketAnswer.value && marketAnswer.value.state !== 'LIVE'))
 const stamp = (s) => Date.parse(s.updated_at) || 0 // sort key only
 // ADR-259 / ADR-299: a completed trade is not followed here (it is listed on Completed Strategies); the rest is Running or Draft
@@ -74,7 +80,7 @@ onMounted(async () => {
   <section data-testid="live-strategies" :data-state="state">
     <PageHeader parent="Strategies" title="Live Strategies" note="Your saved strategies followed on live market data. This is for monitoring, not a recommendation." note-testid="live-note" />
     <!-- User test 2026-10-30: one market-closed banner per screen (ADR-177), not one per card -->
-    <PriceNotice class="mb-4" :answer="marketAnswer" />
+    <PriceNotice class="mb-4" :answer="marketAnswer" :affected="scope.count || null" />
     <p v-if="state === 'loading'" class="text-sm text-ink-muted" data-testid="live-list-loading">Loading your strategies...</p>
     <ErrorMessage v-else-if="state === 'error'" :parts="errorParts" data-testid="state-error" />
     <p v-else-if="!followed.length" class="rounded-lg border border-line bg-surface px-4 py-8 text-center text-sm text-ink-muted" data-testid="live-empty">
@@ -86,13 +92,13 @@ onMounted(async () => {
       <section v-if="executed.length" class="mt-4" data-testid="live-group-executed">
         <h2 class="text-sm font-semibold text-ink-muted">{{ STATUS_RUNNING }}</h2>
         <div class="mt-2 grid grid-cols-1 gap-4 lg:grid-cols-2">
-          <LiveStrategyCard v-for="s in executed" :key="s.id" :strategy="s" :pnl="pnl.cellFor(s.id)" :quiet="noticeUp" :start="startIndex(s) <= current" @settled="release(startIndex(s))" />
+          <LiveStrategyCard v-for="s in executed" :key="s.id" :strategy="s" :pnl="pnl.cellFor(s.id)" :quiet="noticeUp" :greyed="tileOf(s).greyed" :show-line="tileOf(s).line" :start="startIndex(s) <= current" @affected="onAffected" @settled="release(startIndex(s))" />
         </div>
       </section>
       <section v-if="drafts.length" class="mt-4" data-testid="live-group-drafts">
         <h2 class="text-sm font-semibold text-ink-muted">{{ STATUS_DRAFT }}</h2>
         <div class="mt-2 grid grid-cols-1 gap-4 lg:grid-cols-2">
-          <LiveStrategyCard v-for="s in drafts" :key="s.id" :strategy="s" :pnl="pnl.cellFor(s.id)" :quiet="noticeUp" :start="startIndex(s) <= current" @settled="release(startIndex(s))" />
+          <LiveStrategyCard v-for="s in drafts" :key="s.id" :strategy="s" :pnl="pnl.cellFor(s.id)" :quiet="noticeUp" :greyed="tileOf(s).greyed" :show-line="tileOf(s).line" :start="startIndex(s) <= current" @affected="onAffected" @settled="release(startIndex(s))" />
         </div>
       </section>
     </template>

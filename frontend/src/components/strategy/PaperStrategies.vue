@@ -44,7 +44,7 @@
       <!-- GC-UI 6b D-C14 (ADR-201 (2); S-118): the builder's Paper tab is a compact list - name, positions count, the server's paper total
            (a dash and the reason when there is none), a link to Positions > Paper for that strategy. The full cards stay on Positions. -->
       <ul v-if="compact" class="mt-2" data-testid="paper-compact">
-        <li v-for="g in shown" :key="g.id" class="border-b border-line py-2" data-testid="paper-compact-row" :data-strategy="g.id">
+        <li v-for="g in shown" :key="g.id" class="border-b border-line py-2" :class="tile(g).greyed ? PRICE_GREYED_CLASS : ''" data-testid="paper-compact-row" :data-strategy="g.id">
           <p v-if="!g.readable" data-testid="paper-unreadable">{{ g.text }}</p>
           <RouterLink v-else :to="{ path: '/positions/current-positions', query: { tab: 'paper', strategy: String(g.id) } }" class="flex items-center gap-2" :data-testid="`paper-compact-link-${g.id}`">
             <span class="flex-1" :class="NAME_FLOOR_CLASS">
@@ -55,13 +55,13 @@
               <span class="block font-semibold" :class="toneOf(g.totalAfter.text)" data-testid="paper-total">{{ stale ? '-' : g.totalAfter.text ?? '-' }}</span>
               <span v-if="!stale && g.totalAfter.label" class="block text-xs text-ink-muted" data-testid="paper-total-label">{{ g.totalAfter.label }}</span>
               <span v-if="!stale && g.totalAfter.reason" class="block text-xs text-ink-muted" data-testid="paper-total-reason">{{ g.totalAfter.reason }}</span>
-              <span v-if="stale || g.totalAfter.text === null" class="block text-xs text-ink-muted" data-testid="paper-compact-reason">{{ stale ? PAPER_PAUSED : g.stateText || NO_TOTAL }}</span>
+              <span v-if="stale || g.totalAfter.text === null" class="block text-xs text-ink-muted" data-testid="paper-compact-reason">{{ stale ? PAPER_PAUSED : (tile(g).line ? g.stateText : '') || (g.stateText ? '' : NO_TOTAL) }}</span>
             </span>
           </RouterLink>
         </li>
       </ul>
       <template v-else>
-        <div v-for="g in shown" :key="g.id" :ref="(el) => (cards[g.id] = el)" class="mt-3 rounded-lg border border-line p-3" data-testid="paper-group" :data-strategy="g.id">
+        <div v-for="g in shown" :key="g.id" :ref="(el) => (cards[g.id] = el)" class="mt-3 rounded-lg border border-line p-3" :class="tile(g).greyed ? PRICE_GREYED_CLASS : ''" data-testid="paper-group" :data-strategy="g.id">
           <p v-if="!g.readable" data-testid="paper-unreadable">{{ g.text }}</p>
           <template v-else>
             <div class="flex flex-wrap items-start justify-between gap-3">
@@ -111,7 +111,7 @@
               <p v-if="g.greeks && g.greeks.basis" class="mt-1 text-xs text-ink-muted" data-testid="paper-greeks-basis">{{ g.greeks.basis }}</p>
             </div>
             <p v-if="g.closedText" class="mt-1 font-semibold" data-testid="paper-closed-result">{{ g.closedText }}</p>
-            <p v-if="g.stateText" class="mt-1" data-testid="paper-state">{{ g.stateText }}</p>
+            <p v-if="g.stateText && (tile(g).line || g.state === 'EXITED')" class="mt-1" data-testid="paper-state">{{ g.stateText }}</p>
             <!-- ADR-311: the open legs with no price, named by the server; the totals above stay paused -->
             <p v-if="g.afterCloseText" class="mt-1 text-xs text-ink-muted" data-testid="paper-after-close">{{ g.afterCloseText }}</p>
             <p v-if="g.unpricedText" class="mt-1 text-xs text-ink-muted" data-testid="paper-unpriced">{{ g.unpricedText }}</p>
@@ -181,7 +181,7 @@ import AfterChargesTap from '@/components/common/AfterChargesTap.vue'
 import PaperConfirmDialog from '@/components/strategy/PaperConfirmDialog.vue'
 import HeldNote from '@/components/strategy/HeldNote.vue'
 import { ALL_CLOSED_TEXT, DECAY_LEFT_TODAY_HEADING, GREEK_COLUMNS, PAPER_NO_FIGURE, PAPER_PAUSED, SHOW_CLOSED_LABEL, exitRowsFor, isOpenGroup, readPaperList, visibleGroups } from '@/lib/paperList'
-import { usePriceFreshness } from '@/lib/priceState'
+import { PRICE_GREYED_CLASS, priceScope, tileNotLive, usePriceFreshness } from '@/lib/priceState'
 import { createExitRecords } from '@/lib/exitRecord'
 import { EXIT_TICK_TEXT, exitEndText, usePaperExit } from '@/lib/usePaperExit'
 import ExitButton from '@/components/strategy/ExitButton.vue'
@@ -263,7 +263,11 @@ const stale = computed(() => !readOk.value)
 // Phase 4 (F2): the Exit gate of the page, the same one as the builder's book panel (no contracts-changed mark on this list)
 const exitGate = usePaperExit({ readFailed: errorParts, held: items, busy: () => busy.value, changed: false })
 const loading = ref(true)
+// ADR-330 (56): ONE rule (priceScope) says how many strategies have no price; many -> the page notice + greyed tiles, one -> only that tile's line
+const scope = computed(() => priceScope((shown.value ?? []).filter((g) => g.readable), (g) => g.state === 'PAUSED' || g.state === 'NOT_CONNECTED' || (g.positions ?? []).some((p) => p.open && p.noPrice)))
+const tile = (g) => tileNotLive(scope.value, g.id)
 const summary = computed(() => ({
+  affected: scope.value.count,
   totalAfter: totals.value ? totals.value.totalAfter : null,
   closedNote: totals.value ? totals.value.closedNote : null,
   stale: stale.value || (!loading.value && !!errorParts.value), // a failed FIRST read (no list held) is paused too, with the same reason as the list (ADR-330 (10))

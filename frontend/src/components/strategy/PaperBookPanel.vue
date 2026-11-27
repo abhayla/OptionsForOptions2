@@ -25,7 +25,7 @@
     <p v-if="asOfLine" class="mt-2 text-xs text-ink-muted" data-testid="book-as-of">{{ asOfLine }}</p>
     <!-- u126 (REQ-109 AC-5): the read time of the answer these figures come from (the reply's answered_at, never the browser clock) -->
     <p v-if="contractsChanged" class="mt-2 text-xs text-red-700" data-testid="book-contracts-changed">{{ CONTRACTS_CHANGED_TEXT }}</p>
-    <p v-if="readAt" class="mt-2 text-xs text-ink-muted" data-testid="book-read-at">As of {{ readAt }} IST</p>
+    <p v-if="readAt" class="mt-2 text-xs text-ink-muted" data-testid="book-read-at">{{ readAtLabel }} {{ readAt }} IST</p>
     <dl class="mt-2 flex gap-6 text-xs" data-testid="book-strip">
       <!-- GC-ICFIX u123 (ADR-263): the headline total is the server's after-charges text, labelled; else the before text, labelled, with the reason -->
       <div>
@@ -131,7 +131,10 @@ const asOfLine = computed(() => {
 // Phase 4 (F2): the Exit gate of this panel (a failed read: no exit from old prices; the contracts changed: no exit from an old net)
 const exitGate = usePaperExit({ readFailed: () => props.readFailed, held: () => props.book, changed: () => props.contractsChanged })
 
-const readAt = computed(() => istClock(props.book.answered_at ?? null))
+// ADR-330 (56): the PRICE's time (last_price_at) reads "As of"; the time of the read is only ever "Checked at" (same rule as tracking.js sharedTotal)
+const priceReadAt = computed(() => istClock(props.book.last_price_at ?? null))
+const readAt = computed(() => priceReadAt.value ?? istClock(props.book.answered_at ?? null))
+const readAtLabel = computed(() => (priceReadAt.value ? 'As of' : 'Checked at'))
 
 const pausedSentence = () => { const s = props.book.pause_reason_text; return typeof s === 'string' && s.trim() !== '' ? withAsOf(s.trim(), props.book.as_of) : null }
 const total = computed(() => afterFigure(props.book, props.book.total_text ?? null, pausedSentence()))

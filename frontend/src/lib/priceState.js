@@ -30,6 +30,24 @@ export const notLiveNotice = (asOf) => {
   return clock ? `Prices are not live. Figures are as of ${clock} IST.` : 'Prices are not live.'
 }
 
+/** ADR-330 (56): the ONE class every list of strategies puts on a tile whose figures are last-known (greyed; style.css). */
+export const PRICE_GREYED_CLASS = `price-greyed`
+/**
+ * ADR-330 (56): the ONE "how many strategies are affected?" rule of every list. `isAffected(row)`: this row's contract has no price /
+ * its book is paused. scope: none (nothing to say) | one (no page notice; only that tile carries the line) | many (the page notice,
+ * tiles greyed with no sentence of their own). `idOf` names a row for `tileNotLive`.
+ */
+export function priceScope(rows, isAffected, idOf = (r) => r.id) {
+  const ids = new Set((Array.isArray(rows) ? rows : []).filter((r) => isAffected(r)).map(idOf))
+  const count = ids.size
+  return { count, scope: count === 0 ? 'none' : count === 1 ? 'one' : 'many', ids }
+}
+/** What one tile shows under a scope: greyed when it is affected, the sentence only when it is the one affected tile. */
+export const tileNotLive = (scope, id) => {
+  const affected = !!scope?.ids?.has(id)
+  return { greyed: affected, line: affected && scope.scope === 'one' }
+}
+
 // A reply is complete unless the page is still loading it or the read failed: a reply held then is partial (it may be the previous legs').
 const PARTIAL_STATES = ['loading', 'error']
 /**

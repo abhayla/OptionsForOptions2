@@ -116,7 +116,7 @@ describe('the Underlying/index view page', () => {
     expect(panel(w, 'NIFTY').get('[data-testid="index-value"]').text()).toBe('25146.00')
     expect(panel(w, 'SENSEX').get('[data-testid="index-value"]').text()).toBe('82012.75')
     expect(panel(w, 'SENSEX').get('[data-testid="index-at"]').text()).toBe('as of 19 Oct 2026, 09:20:01 IST')
-    expect(w.find('[data-testid="index-state"]').exists()).toBe(false)
+    expect(w.find('[data-testid="price-notice"]').exists()).toBe(false)
     expect(panel(w, 'NIFTY').find('[data-testid="index-health"]').exists()).toBe(false) // available: no word
     expect(w.get('[data-testid="index-link-chain"]').attributes('href')).toBe('/market/option-chain')
     expect(w.get('[data-testid="index-link-live"]').attributes('href')).toBe('/strategies/live-strategies')
@@ -148,7 +148,7 @@ describe('the Underlying/index view page', () => {
     ws.serverClose()
     await flushPromises()
     expect(apiCalls.at(-1)).toEqual({ url: INDEX_REST_PATH, params: { fallback: true } })
-    expect(w.get('[data-testid="index-state"]').text()).toBe('Index values unavailable.')
+    expect(w.get('[data-testid="price-notice"]').text()).toMatch(/^Prices are not live\./)
     expect(panel(w, 'NIFTY').get('[data-testid="index-value"]').text()).toBe('Not available')
     expect(panel(w, 'NIFTY').get('[data-testid="index-at"]').text()).toBe('Last updated 19 Oct 2026, 09:20:00 IST')
     expect(w.text()).not.toContain('25145.50')
@@ -169,7 +169,7 @@ describe('the Underlying/index view page', () => {
       expect(panel(w, u).get('[data-testid="index-value"]').text()).toBe('Not available')
       expect(panel(w, u).get('[data-testid="index-at"]').text()).toBe('Last updated 19 Oct 2026, 09:20:00 IST')
     }
-    expect(w.get('[data-testid="index-state"]').text()).toBe('Index values unavailable.')
+    expect(w.get('[data-testid="price-notice"]').text()).toMatch(/^Prices are not live\./)
   })
 
   it('AC-2: a drop, then the fallback answers NOT_CONNECTED -> no number', async () => {
@@ -195,7 +195,7 @@ describe('the Underlying/index view page', () => {
     await flushPromises()
     expect(w.text()).not.toContain('25150.00')
     expect(panel(w, 'NIFTY').get('[data-testid="index-value"]').text()).toBe('Not available')
-    expect(w.get('[data-testid="index-state"]').text()).toBe('Index values unavailable.')
+    expect(w.get('[data-testid="price-notice"]').text()).toMatch(/^Prices are not live\./)
   })
 
   it('AC-2: after a drop a NEW live push shows the number again', async () => {
@@ -212,7 +212,7 @@ describe('the Underlying/index view page', () => {
     await flushPromises()
     expect(panel(w, 'NIFTY').get('[data-testid="index-value"]').text()).toBe('25151.00')
     expect(panel(w, 'SENSEX').get('[data-testid="index-value"]').text()).toBe('82011.00')
-    expect(w.find('[data-testid="index-state"]').exists()).toBe(false)
+    expect(w.find('[data-testid="price-notice"]').exists()).toBe(false)
   })
 
   it('AC-2: a null value in a LIVE answer is never rendered as a number', async () => {
@@ -229,7 +229,7 @@ describe('the Underlying/index view page', () => {
     const w = await mountPage()
     expect(panel(w, 'NIFTY').get('[data-testid="index-value"]').text()).toBe('25145.50')
     expect(panel(w, 'SENSEX').get('[data-testid="index-value"]').text()).toBe('Not available')
-    expect(w.get('[data-testid="index-state"]').text()).toBe('Index values unavailable.')
+    expect(w.get('[data-testid="price-notice"]').text()).toMatch(/^Prices are not live\./)
   })
 })
 
