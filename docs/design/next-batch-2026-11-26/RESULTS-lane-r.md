@@ -424,3 +424,29 @@ Server change confirmed right: only `_bounded_market` (4 s, refusal 422 `plan_sa
 - **MAJOR (read, not run): the trade's rules editor.** `frontend/src/pages/AdjustmentsPage.vue:223` `failSave` treats any error with `parts` as a refusal, so a 500 with a catalogue body shows "The action you asked for was not completed." even if the row was stored. Done when it uses `isRefusal`.
 - **Older than this change, same class as round 1's BLOCKER:** a price read that fails at once returns `None`, and `_kind_of` (`backend/ofo_app/routes/adjustment_plan.py:583`) then falls back to the position's expiry kind, which is always "" -> "weekly". A percent stop saved while the price read fails outright on a MONTHLY strategy with a user playbook whose weekly and monthly T-06 rows differ is written to the weekly row. Done when a save with no market read refuses (like the 4 s bound) or reads the expiry kind from the contracts, with the monthly test of `tests_app/test_plan_save_1127.py` run with the market reader returning None.
 - MINOR: `AdjustPlanSheet.vue:231` a 200 that `readPlan` cannot read shows "Something went wrong. Please try again." after the save was counted; `PlanEntry.vue:99-101` clears `loading` while the fresh read after a dropped stale one is still out; removing the sheet's load guard (`AdjustPlanSheet.vue:155`) leaves all 10 tests green.
+
+### Plan-save-1127, round 3 (branch `lane-r-psave3`): the no-market save, one save-result helper
+
+Spec basis: ADR-330 (1), (5); REQ-161 AC-2/AC-3; ADR-016 to ADR-019; ADR-008.
+
+**RCA (one sentence).** When the price read failed at once `_market` returned None, `_kind_of` fell back to the position's `expiry_kind` (always "" per `adjustment_readers.py:161/171`) and then to "weekly", so `with_overrides` -> `set_max_loss_stop` wrote a percent stop into the WEEKLY T-06 row of a MONTHLY strategy.
+
+**Fix.** `_bounded_market` (`routes/adjustment_plan.py`, the one door of a plan write) refuses a None market with `plan_save_prices_not_read` (422, nothing written), like the 4 s bound. No default kind is ever written.
+
+**Class list (every place that derives the expiry kind or another market input):**
+
+| Place | Verdict |
+|---|---|
+| `adjustment_plan.py` `_write` (POST/PUT plan) | fixed (goes through `_bounded_market`) |
+| `adjustment_plan.py` `reset_plan` | fixed (same door) |
+| `adjustment_plan.py` `save_rules` (PUT rules) | not affected: writes the submitted body; no kind or market input (`_base_json(tracked)` is from the tracked position only) |
+| `adjustment_plan.py` `read_plan` (GET), `read_levels` (GET) | reads, unchanged: with no market the sheet shows the stop amounts as `stop_max_loss_unknown` and the kind falls back to weekly for the words only; nothing is stored |
+| `adjustment.py:295,501` | not a writer (approach read; `as_of_market` is a pure copy) |
+| `adjustment_check.py:299,396,405` | not a writer (the check; its fallback is read-only) |
+| `playbooks.py` (POST/PATCH/PUT/activate) | not affected: stores the user's body as typed, no market input |
+| `settings_in_force.py:282` `money_inputs` | pure function called by the readers above; not a writer |
+| `routes/alert_style.py:98`, `background.py:397,1505` | reads / alert code (Lane J), not touched |
+
+**Red and green.** Red: the two new tests (`test_a_save_with_no_market_read_is_refused_and_writes_no_row`, `test_a_reset_with_no_market_read_is_refused_and_writes_no_row`) failed against `1f3c1b44` (`assert 200 == 422` on both: the save and the reset were accepted with no market). Green: `tests_app/test_plan_save_1127.py` 6 passed. Frontend: `lib/planSaveResult.js` maps a save to saved / refused / not confirmed; used by AdjustPlanSheet (save and reset), Settings PreferencesTab "Change plan values" and AdjustmentsPage trade rules (`failSave` removed). Red against the old screens: 5 failed (Preferences timeout and 500, page 500, sheet unreadable 200, PlanEntry loading); green after: all pass. The sheet's load guard (`AdjustPlanSheet.vue:155`) now has a test that fails (the sheet shows `OLD-VALUE`) when the guard line is removed.
+
+**PC re-test (owner).** (1) With the price feed off, open a MONTHLY strategy's plan, type a percent stop, Save: expect the price-read refusal and the stored plan unchanged; same for Reset to playbook. (2) Feed on: save a percent stop on the monthly strategy; its monthly T-06 row changes and the weekly one does not. (3) Settings > Adjustments > Show for one strategy > Change plan values, unplug the network and Save: expect "Not confirmed: reload to see whether it was saved.", the typed values still in the boxes, and no "Try again".

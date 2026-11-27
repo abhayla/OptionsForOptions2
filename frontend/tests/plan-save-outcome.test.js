@@ -249,11 +249,13 @@ describe('the sheet: the three sentences and the guards', () => {
   it('the load guard: a read that began before a save never puts the old plan back in the sheet', async () => {
     const slow = deferred()
     let reads = 0
-    answers[`GET ${PATH}`] = () => { reads += 1; return reads === 1 ? Promise.resolve({ data: sheetAnswer('996.13') }) : slow.promise }
+    answers[`GET ${PATH}`] = () => { reads += 1; return Promise.resolve({ data: sheetAnswer('996.13') }) }
+    answers[`GET ${PATH}?playbook_id=9`] = () => { reads += 1; return slow.promise }
     const w = await sheet()
-    const picked = w.find('select')
+    const picked = t(w, 'plan-playbook')
     expect(picked.exists()).toBe(true)
     await picked.setValue('9') // a pick: a second read of the sheet is now out
+    expect(reads).toBe(2)
     markSaved(70) // a save of this strategy was stored while it is out
     slow.resolve({ data: { ...sheetAnswer('OLD-VALUE'), prefill: { ...sheetAnswer('OLD-VALUE').prefill, stop: 'OLD-VALUE', stop_rupees: 'OLD-VALUE' } } })
     await flushPromises()
