@@ -61,6 +61,7 @@ from ofo_app.routes.adjustment import (
     get_market_reader,
     get_rest_spot_reader,
     get_tracked_reader,
+    release_connection,
 )
 from ofo_app.routes.adjustment_check import CheckResultOut, CheckStageOut, current_margin, result_out
 from ofo_app.routes.adjustment_preferences import UserPreferences, UserValuesIn
@@ -514,8 +515,8 @@ async def _tested(db: Any, user_ref: str, data: TestIn, seams: _Seams) -> list[d
 
     rows = await strategy_store.list_strategies(db, user_ref)
     tracked_ids = await paper_store.tracked_ids(db, [r.id for r in rows])
-    listed = check.listed_of(seams.ctx)
     wanted = [r for r in rows if r.id in tracked_ids]
+    listed = check.listed_of(seams.ctx)
     legs = [await _tracked_first(seams, r) for r in wanted]  # the only database reads of the outside part, one by one
     await release_connection(db)  # D-36 (c): the reads below wait on the broker; give the pooled connection back first
     gate = asyncio.Semaphore(TEST_READ_CONCURRENCY)

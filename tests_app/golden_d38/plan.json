@@ -277,6 +277,7 @@
    "value": "1"
   }
  ],
+ "stop_kind_reason": null,
  "stops": {
   "first": "max_loss_pct",
   "lines": [

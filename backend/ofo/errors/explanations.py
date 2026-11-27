@@ -1761,6 +1761,11 @@ _EXPLANATIONS: tuple[ExplanationTemplate, ...] = (
                         {"a": Explained, "b": Explained, "c": Explained}),
     ExplanationTemplate("plan_stop_words_first", "values_seen", "{words}, whichever comes first",
                         {"words": Explained}),
+    # Hotfix plan-read-1127 (pending owner read): the plan sheet's stop is not shown when the expiry kind is not known
+    ExplanationTemplate("plan_stop_kind_not_known", "values_seen",
+                        "Stop not shown: whether this trade expires weekly or monthly is not known right now"),
+    ExplanationTemplate("plan_stop_kind_catalogue_unreadable", "values_seen",
+                        "Stop not shown: the contract list could not be read, so the expiry type is not known"),
     # ADR-330 (19)(b) (pending owner read): the trade's number and nearest expiry beside its (quoted) name in alert lists
     ExplanationTemplate("alert_strategy_label", "values_seen", "{name} (#{number}, {day} {month})",
                         {"name": Explained, "number": Recorded, "day": Recorded, "month": Recorded}),

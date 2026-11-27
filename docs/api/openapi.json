@@ -1981,6 +1981,15 @@
             "title": "Settings",
             "type": "array"
           },
+          "stop_kind_reason": {
+            "anyOf": [
+              {},
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Stop Kind Reason"
+          },
           "stops": {
             "$ref": "#/components/schemas/StopsOut"
           },
