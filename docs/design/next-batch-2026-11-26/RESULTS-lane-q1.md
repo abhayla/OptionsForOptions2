@@ -6,6 +6,10 @@ send_message to the coordinator was refused (elevated_session_untrusted_device);
 - 14:48 IST LANE Q1 ALIVE: branch perf/route-profile-1127 cut from origin/hotfix/api-blocking-1127 (8fe1997).
 - 15:20 IST: push 1 prepared (step timing + before table); gate on 094f7ed running; pushed with push 2 if not before.
 - 16:05 IST: push 2 prepared at the head of this file's commit: wording-scan memo, latency guards, concurrency harness; parked request memo patch. Gate before push.
+- 16:22 IST: head 094f7ed | gate TOTAL PASS (2184 s) | re-test: request log lines show db= price= margin= compute= on plan-watch / adjustment-check.
+- 16:58 IST: head 093c09c | gate TOTAL PASS (2126 s) | re-test: PC measuring steps below (Monday open); answers unchanged.
+- SAFE TO CLOSE after this docs commit is pushed (head: this commit). Left: the "To file as deferred issues" list; the
+  decisions in "Proposals needing a decision"; the wording-memo trade-off (drop e1fd1fe if the literal re-check must stay).
 
 Spec basis: REQ-049 AC-4; REQ-170 AC-5; ADR-008. No product behaviour change: same answers, faster.
 
