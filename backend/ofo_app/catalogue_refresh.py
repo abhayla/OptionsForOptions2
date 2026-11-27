@@ -92,7 +92,9 @@ class RefreshScheduler:
             else:
                 outcome = LOADED if code == 0 else REFUSED
             if outcome != LOADED:
-                log.error("catalogue refresh %s", outcome)
+                log.error("catalogue refresh %s: the previous list stays in use", outcome)
+            else:
+                log.info("catalogue refresh loaded")
             return outcome
 
     def due(self) -> bool:
@@ -101,7 +103,13 @@ class RefreshScheduler:
         if self._last_started is None:
             return True
         now = self._now()
-        return in_window(now) and now - self._last_started >= self._interval
+        if not in_window(now):
+            return False
+        # The first run of a day's window is due at its opening whatever ran earlier: a start-up load at 08:07 holds
+        # yesterday's list (Kite publishes about 08:30, F-56) and must not push the first reload to 09:07.
+        local = now.astimezone(IST)
+        opened = datetime.datetime.combine(local.date(), WINDOW_OPEN, tzinfo=IST)
+        return self._last_started < opened or now - self._last_started >= self._interval
 
     async def step(self) -> str | None:
         """One scheduling decision; the outcome of a run, or None when nothing was due."""
