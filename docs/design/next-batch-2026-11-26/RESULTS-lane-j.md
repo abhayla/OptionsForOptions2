@@ -9,6 +9,38 @@ Spec basis: ADR-330 (1) to (27) and its one-module instruction; ADR-002; ADR-003
 
 ## Hotfix status for the coordinator: `hotfix/loss-stop-1127` (27 Nov, T1-05 FAIL: the Rs 100 loss stop of A-D #200 raised no alert)
 
+**Latest (12:50 IST, the coordinator's 12:22 case A-E #202, Stop Rs 50, 0 alert rows): second cause found and fixed
+(468561e4, a32d8101); fixed, not tested.** RCA: `stop_lines.py:114` `is_stop_rule` covered only T-06, T-16 and the
+2x-credit stop, so at `alert_gate.py:405` the plan's rupee loss stop (`plan.rupee_loss`, the plan's one loss stop when a
+rupee level is typed, ADR-330 (5)(a)) skipped the stop fast path: it waited for the alert style's candle close and had to
+be past its line on the last check of that candle (breaks REQ-170 AC-5, "risk exits are not delayed"). A-A2's Rs 1 stop
+raised its row exactly at the 10:00 close. Test with #202's exact plan and prices (`tests/adjustment/test_rupee_stop_immediate.py`,
+15 tests): before the fix the alert opened only at the candle close (12:15:00 weekly), and with the loss dipping under
+Rs 50 on each candle's last check it never opened from 12:13:44 to 12:30:44; after the fix it opens at 12:13:44 at
+Rs 85.75 on every style, once. Fix: one set `stop_lines.LOSS_STOP_RULES` (the % stops plus the rupee loss stop) read by
+the gate and the evaluator. The rupee stop does reach the one alert module (kind `plan_rupee_loss`), and the loss is
+compared before charges, at or past the level.
+Not fully explained by code alone: if #202's loss stayed past Rs 50 from 12:13:44 to 12:18, the old code would still
+have opened at the 12:15 close. Please run on the PC (read-only) and send the result:
+
+```sql
+BEGIN READ ONLY;
+SELECT h.id, h.rule_id, h.trigger_id, h.stage, h.value, h.threshold, h.reason, h.held_at AT TIME ZONE 'Asia/Kolkata' AS held_ist
+FROM public.adjustment_held_crossings h JOIN public.strategies s ON s.id = h.strategy_id WHERE s.name = 'A-E #202' ORDER BY h.id;
+SELECT r.adjustment_no, r.rule_id, r.held_at_entry, r.seen_clear
+FROM public.adjustment_rule_state r JOIN public.strategies s ON s.id = r.strategy_id WHERE s.name = 'A-E #202' ORDER BY 1, 2;
+SELECT g.id, g.rule_id, g.trigger_id, g.value, g.threshold
+FROM public.adjustment_suggestions g JOIN public.strategies s ON s.id = g.strategy_id WHERE s.name = 'A-E #202' ORDER BY g.id;
+ROLLBACK;
+```
+and the worker log for #202 between 12:10 and 12:20 ("writing the alert events of strategy", "has no alert preset",
+pause or CHECK_FAILED lines), and #202's pinned alert style.
+Class (REQ-170 AC-5), each plan guard and stop/exit rule: T-06, T-16, the 2x-credit stop and now the rupee loss stop act
+on the first check past their line; the rupee profit target, T-07 and the T-10b time exit stay at the candle close
+(owner question: does "conditional exit" in AC-5 include a profit target or a time exit?). Gaps listed, not changed
+(each changes behaviour beyond this item): a stop during the style's quiet time is held; a candle that saw a pause takes
+no sample, so a stop in it is dropped; T-06 inside a mixed (any/all) rule is judged at the candle close.
+
 **Head: the branch head on origin** (cut from 206a9f0; only this fix: `backend/ofo/adjustment/cap_scope.py`, ADR-267
 amendment 2, `tests/adjustment/test_plan_stop_cap.py` (new) and one changed example in
 `tests_app/test_background_worker.py`). Independent of `hotfix/plan-watch-1127` and of Lane U's and Lane R's branches.
