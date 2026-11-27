@@ -51,6 +51,7 @@ from ofo_app.routes import (
     chain,
     execute,
     execution_return,
+    exit_market,
     features,
     health,
     indices,
@@ -116,6 +117,7 @@ async def _lifespan(app: FastAPI) -> AsyncIterator[None]:
 def _mount_routes(app: FastAPI, config: BrokerConfig) -> None:
     """Every router and door socket, in the one order the app has always mounted them (one include per route)."""
     app.include_router(health.router)
+    app.include_router(exit_market.router)  # ADR-330 (60): the Exit dialog's market-closed answer
     app.include_router(outcome.router)
     errors.add_socket_route(app, live.socket_route())  # W-065: the strategy live push, a door socket
     errors.add_socket_route(app, chain.socket_route())  # W-116: the read-only Option Chain push, a door socket

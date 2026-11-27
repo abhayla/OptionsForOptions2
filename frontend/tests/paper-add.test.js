@@ -17,6 +17,7 @@ vi.mock('@/services/api', async (importActual) => {
   const respond = (method, url, body) => {
     calls.push({ method, url, body })
     const a = answers[`${method} ${url}`]
+    if (a === undefined && method === 'GET' && url === '/market/exit-state') return Promise.resolve({ data: { closed: false, sentence: null, next_open_at: null } }) // ADR-330 (60)
     if (a === undefined) return Promise.reject(new Error(`unmocked ${method} ${url}`))
     return typeof a === 'function' ? a(body) : Promise.resolve({ data: a })
   }
@@ -232,6 +233,7 @@ describe('Add to Paper: unsaved strategy, toast, old path', () => {
     const w = mount(PaperConfirmDialog, { props: { open: true, orders: [{ key: 'x', contract_id: 5, side: 'BUY', text: 'NIFTY 3 Nov 22800 CE', lots: 2, lot_size: 65, price: '', kind: 'exit' }] } })
     expect(w.find('[data-testid="paper-price"]').exists()).toBe(false)
     expect(t(w, 'paper-exit-price').text()).toContain('the server sets the exit price when you confirm')
+    await flushPromises() // ADR-330 (60): Confirm waits for the market answer
     await t(w, 'paper-confirm-button').trigger('click')
     expect(w.emitted('confirm')[0][0]).toEqual([{ contract_id: 5, side: 'BUY', quantity: 130, price: '0', kind: 'exit' }])
     w.unmount()

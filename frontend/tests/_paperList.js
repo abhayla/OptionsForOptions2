@@ -34,6 +34,7 @@ export function toPaperList(old) {
 /** The answer for a call: GET /paper/strategies falls back to a recorded GET /tracking reply, converted. */
 export function legacy(answers, method, url) {
   const direct = answers[`${method} ${url}`]
+  if (!direct && method === 'GET' && url === '/market/exit-state') return async () => ({ data: { closed: false, sentence: null, next_open_at: null } }) // ADR-330 (60): the Exit dialog's market answer: open unless a test says otherwise
   if (direct || method !== 'GET' || url !== '/paper/strategies') return direct
   const old = answers['GET /tracking']
   if (!old) return undefined

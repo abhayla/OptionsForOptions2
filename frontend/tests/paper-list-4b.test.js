@@ -15,7 +15,7 @@ vi.mock('@/services/api', async (importActual) => {
   const actual = await importActual()
   const reply = (method) => (url, body) => {
     calls.push([method, url, body])
-    const a = answers[`${method} ${url}`]
+    const a = answers[`${method} ${url}`] ?? (method === 'GET' && url === '/market/exit-state' ? async () => ({ data: { closed: false, sentence: null, next_open_at: null } }) : undefined) // ADR-330 (60)
     return a ? a() : Promise.reject({ message: 'no answer', parts: null, status: null })
   }
   return { ...actual, default: { get: reply('GET'), post: reply('POST'), delete: reply('DELETE') } }
