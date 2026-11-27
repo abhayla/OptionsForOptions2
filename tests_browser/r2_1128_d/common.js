@@ -2,8 +2,8 @@
 const path = require('path')
 const { chromium } = require('playwright')
 const OUT = path.resolve(__dirname, '../../docs/design/next-batch-2026-11-26/screens-td')
-const MAIN = process.env.TD_MAIN || 'http://127.0.0.1:4173'
-const DEAD = process.env.TD_DEAD || 'http://127.0.0.1:4174'
+const MAIN = process.env.TD_MAIN  // origin of the preview serving the built frontend (set by the runner)
+const DEAD = process.env.TD_DEAD  // origin of the preview whose /api points at a closed port
 async function launch(size = { width: 1366, height: 768 }) {
   const browser = await chromium.launch()
   const ctx = await browser.newContext({ viewport: size })
