@@ -87,3 +87,19 @@ describe('the closed-strategies line is tied to the rows of the same reply', () 
     expect(readPaperList(d).totals.closedNote).toBe('Includes 1 closed strategy.')
   })
 })
+
+describe('UX-32: a figure read earlier is read again when the page comes back', () => {
+  it('Home re-reads /paper/strategies on window focus, so a trade changed elsewhere shows its new total', async () => {
+    paperAnswer = MIXED()
+    const router = createRouter({ history: createMemoryHistory(), routes: [{ path: '/home/overview', component: HomeOverviewPage }, { path: '/:rest(.*)', component: { template: '<div />' } }] })
+    router.push('/home/overview'); await router.isReady()
+    const w = mount(HomeOverviewPage, { global: { plugins: [router] } })
+    await flushPromises()
+    expect(w.get('[data-testid="home-pnl-figure"]').text()).toContain('+22.00')
+    paperAnswer = reply([row(1)], { total_after_text: '+31.00' }) // changed in another tab meanwhile
+    window.dispatchEvent(new Event('focus'))
+    await flushPromises()
+    expect(w.get('[data-testid="home-pnl-figure"]').text()).toContain('+31.00')
+    w.unmount()
+  })
+})

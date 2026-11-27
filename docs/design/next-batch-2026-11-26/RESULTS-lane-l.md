@@ -1,4 +1,4 @@
-STATUS 17:25 | items 1-4: Fixed, not tested (2 and 3 built; 1 not reproducible by code, 4 is an owner question) | next push 18:15 (after gate) | blocker: none (send_message to @parent refused: untrusted device, so this top line is the report)
+STATUS 18:40 | items 2,3, UX-32: Fixed, not tested; item 1 not reproducible by code; item 4 owner question; AF-07 already covered | pushed b303411 (gate TOTAL PASS); UX-32 commit next push ~19:30 | blocker: none (send_message to @parent refused: untrusted device, so this top line is the report)
 
 # Lane L: P&L totals and list counts (27 Nov 2026)
 
@@ -48,5 +48,15 @@ None new. (The Today total, D-68, excludes scenario strategies: existing, not mi
 | read code, table, build items 2 and 3, tests | Sonnet (this session) | ~70 |
 | independent review of totals change (money figures) | Opus (reviewer), Why Opus: money figures | ~15 |
 
-## Status of gate
-See the last line of this file after the push.
+## Added by the coordinator (after the first push)
+- UX-32 (cards keep old numbers): `usePaperPnl` (Home, Live, My Strategies) now re-reads /paper/strategies when the window is focused or the tab becomes visible, not only on the timer. Test: `paper-totals-one-set.test.js` (UX-32). Screen step: open Home, change a trade in another tab, return to the Home tab: the Total P&L updates within a second without a reload. Fixed, not tested.
+- AF-07 (Real total while Zerodha is disconnected): already pinned by `frontend/tests/positions-one-list.test.js` (refused read: "-" plus the server's reason, no earlier figure; the page reads /positions once, keeps nothing). PC check this weekend: Positions with Zerodha disconnected shows "-" and the connect sentence under Real P&L.
+- File owners: I did not edit routes/paper.py or PaperStrategies.vue. Page change needed for Lane V (optional): show `closedMismatch` (set in readPaperList) as a short reason under the Paper total when the closed line is hidden.
+
+## Opus review (Why Opus: money figures)
+PASS, four minor findings, none fixed (see To file): the tie compares the count, not the sentence; an unreadable row or malformed count lets the server line stand; no page reads `closedMismatch`; the pure test copies the route's closed predicate instead of calling it.
+
+## Gate
+Run 1: TOTAL FAIL only because this container had no origin/main (ci_checks merge-base, app_tests git diff). Run 2 on b303411 (after `git fetch origin main`): TOTAL PASS (marker written), pushed.
+
+SAFE TO CLOSE after the UX-32 push below is confirmed.
