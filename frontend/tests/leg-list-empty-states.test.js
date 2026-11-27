@@ -6,7 +6,7 @@ import { flushPromises, mount } from '@vue/test-utils'
 import { createMemoryHistory, createRouter } from 'vue-router'
 import LegList from '@/components/strategy/LegList.vue'
 import StrategyBuilderPage from '@/pages/StrategyBuilderPage.vue'
-import { NO_LEGS_YET, emptyListKind } from '@/lib/legEdit'
+import { NO_LEGS_YET, CLOSED_TRADE_TEXT, emptyListKind } from '@/lib/legEdit'
 import BOOK from '../../tests/fixtures/paper/strategy-63-roll.json'
 
 const calls = []
@@ -93,5 +93,35 @@ describe('the page: Compare -> prepare a full exit', () => {
     const f = await open({ strategy: '63' })
     expect(t(f, 'open-error').exists()).toBe(true)
     expect(t(f, 'no-legs-text').exists()).toBe(false)
+  })
+})
+describe('item 8: a closed (Completed / settled) trade never invites a new leg', () => {
+  const CLOSED_BOOK = { ...BOOK, state: 'completed', closed: [{ id: 'c1' }], positions: BOOK.positions.map((p) => ({ ...p, net_quantity: 0 })) }
+  const open = async (book, query) => {
+    answers = { 'GET /catalogue/NIFTY/contracts?expiry=2026-11-03': { underlying: 'NIFTY', contracts: [] }, 'GET /paper/strategies/63': book, 'GET /strategies': { strategies: [] }, 'POST /strategies/outcome': never, 'POST /strategies/leg-edit': never }
+    const router = createRouter({ history: createMemoryHistory(), routes: [{ path: '/strategy/builder', component: StrategyBuilderPage }] })
+    await router.push({ path: '/strategy/builder', query })
+    await router.isReady()
+    const w = mount(StrategyBuilderPage, { global: { plugins: [router], stubs: { PayoffChart: true, AdjustCompare: true } } })
+    await flushPromises()
+    return w
+  }
+  it('emptyListKind: done:true gives the closed kind; held and rows still win; loading and failed come first', () => {
+    expect(emptyListKind({ legs: [], held: [], done: true })).toBe('closed')
+    expect(emptyListKind({ legs: [], held: [], loading: true, done: true })).toBe('loading')
+    expect(emptyListKind({ legs: [{}], done: true })).toBe('rows')
+  })
+  it('closed trade: the right side says it is closed, not "Add a leg to start one"', async () => {
+    const w = await open(CLOSED_BOOK, { strategy: '63' })
+    expect(w.text()).not.toContain('No draft strategy is open')
+    expect(w.text()).not.toContain('Add a leg to start one')
+    expect(t(w, 'state-closed').text()).toBe(CLOSED_TRADE_TEXT)
+  })
+  it('a running trade does not show the closed text; a fresh builder keeps "No draft strategy is open"', async () => {
+    const run = await open(BOOK, { strategy: '63' })
+    expect(t(run, 'state-closed').exists()).toBe(false)
+    const fresh = await open(BOOK, {})
+    expect(t(fresh, 'state-closed').exists()).toBe(false)
+    expect(t(fresh, 'state-no-draft').text()).toBe('No draft strategy is open. Add a leg to start one.')
   })
 })

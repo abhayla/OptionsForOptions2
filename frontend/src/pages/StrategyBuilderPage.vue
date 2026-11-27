@@ -68,7 +68,7 @@ import { replacePrompt } from '@/lib/readyMade'
 import SaveDraftBar from '@/components/strategy/SaveDraftBar.vue'
 import LegList from '@/components/strategy/LegList.vue'
 import { paperLegListPrices } from '@/lib/chartCard'
-import { applyEditReply, buildEditRequest, controlsFrom, moveKey, MAX_STEPS, MOVE_CONTROLS, RELATIVE_CONTROLS, executeRefusal, CLEAR_UNDO_SECONDS_KEY, LEG_REMOVED, MULTIPLIER_MAX_KEY, EXECUTE_WAITS_FOR_LATEST, NO_CONTROLS } from '@/lib/legEdit'
+import { applyEditReply, buildEditRequest, controlsFrom, moveKey, MAX_STEPS, MOVE_CONTROLS, RELATIVE_CONTROLS, executeRefusal, CLEAR_UNDO_SECONDS_KEY, LEG_REMOVED, MULTIPLIER_MAX_KEY, EXECUTE_WAITS_FOR_LATEST, NO_CONTROLS, CLOSED_TRADE_TEXT, emptyListKind } from '@/lib/legEdit'
 import { createNewestWins, isSuperseded } from '@/lib/newestWins'
 import { NOT_CONNECTED_LABEL, buildDraft } from '@/lib/legPicker'
 import { matchesLegs } from '@/lib/liveMatch'
@@ -433,6 +433,8 @@ const STRATEGY_ID = /^[1-9]\d{0,17}$/
 const paper = ref(null) // { id, book, net } while in Drafts Mode, else null
 // N-48: every leg of the paper book is closed (it has closed lifecycles, none open): Completed, nothing to add to (ADR-002)
 const paperCompleted = computed(() => { const b = paper.value?.book; return !!b && Array.isArray(b.closed) && b.closed.length > 0 && Array.isArray(b.positions) && b.positions.every((p) => p.net_quantity === 0) })
+// item 8: the ONE shared answer (legEdit.emptyListKind) also decides the right-hand empty text: a closed trade says so
+const rightKind = computed(() => emptyListKind({ legs: legs.value, held: [], loading: opening.value, done: paperCompleted.value, failed: !!openError.value }))
 const pendingOrders = computed(() => (paper.value ? paperOrdersFor(paper.value.net, legs.value) : []))
 const paperRows = ref([])
 const paperDialog = ref(false)
@@ -1330,6 +1332,7 @@ const leaveGuard = useLeaveBuilder({
           Working out the outcome...<span v-if="slow" data-testid="state-slow"> This is taking longer than usual.</span>
         </p>
 
+        <p v-else-if="state === 'no-draft' && rightKind === 'closed'" class="mt-4 text-ink-muted" data-testid="state-closed">{{ CLOSED_TRADE_TEXT }}</p>
         <p v-else-if="state === 'no-draft'" class="mt-4 text-ink-muted" data-testid="state-no-draft">No draft strategy is open. Add a leg to start one.</p>
 
 

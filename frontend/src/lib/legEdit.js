@@ -24,16 +24,18 @@ export const NO_LEGS_YET = 'No legs yet'
 // item 11 (live 2026-11-27 10:26), pending owner read: the label over held legs whose exits are staged
 export const EXITING_LEGS_LABEL = 'Exiting these legs (staged, not placed yet)'
 /** The ONE answer for an empty-looking leg card: 'rows' (legs exist), 'exiting' (no legs left, but held legs have staged exits),
- *  'loading' (a strategy is being opened), 'done' (the paper trade is Completed), 'failed' (a read failed: the page's error line
+ *  'loading' (a strategy is being opened), 'closed' (the paper trade is Completed or settled: every leg closed), 'failed' (a read failed: the page's error line
  *  speaks), else 'empty' (a truly empty draft: "No legs yet"). */
 export function emptyListKind({ legs, held = [], loading = false, done = false, failed = false }) {
   if (Array.isArray(legs) && legs.length) return 'rows'
   if (Array.isArray(held) && held.length) return 'exiting'
   if (loading) return 'loading'
-  if (done) return 'done'
+  if (done) return 'closed'
   if (failed) return 'failed'
   return 'empty'
 }
+// item 8 (live 2026-11-27 09:58), pending owner read: the page's right-hand sentence for the 'closed' kind (ADR-330 (14), ADR-299 (1))
+export const CLOSED_TRADE_TEXT = 'This trade is closed. Its legs and result are shown below; it cannot be changed.'
 // pending owner read (25 Nov 2026), D-52: the empty list's hint names the place that is on the screen: the Ready-made tab
 // when the server lists that held feature (REQ-079), else the Create Strategy page, where the shapes also are
 export const NO_LEGS_HINT_TAB = 'Pick strikes, or start from a ready-made shape in the Ready-made tab.'
