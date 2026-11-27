@@ -18,11 +18,11 @@ log = logging.getLogger("ofo_app.request")
 
 class RequestLog:
     def __init__(self, app: ASGIApp) -> None:
-        self.app = app
+        self.inner = app
 
     async def __call__(self, scope: Scope, receive: Receive, send: Send) -> None:
         if scope["type"] != "http":
-            await self.app(scope, receive, send)
+            await self.inner(scope, receive, send)
             return
         t0 = time.perf_counter()
         logged = False
@@ -43,7 +43,7 @@ class RequestLog:
             await send(message)
 
         try:
-            await self.app(scope, receive, logging_send)
+            await self.inner(scope, receive, logging_send)
         except Exception:
             emit(500)
             raise

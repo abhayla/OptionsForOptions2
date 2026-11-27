@@ -917,9 +917,9 @@ def app_assembly_uses(source: str) -> list[tuple[int, str]]:
 #: listed. `ofo_app/routes/` gets nothing except `broker.py`'s mount helper and its `request.app.state.broker` read, and never
 #: a middleware, routing-table or handler token (test below).
 APP_ASSEMBLY_ALLOWED: dict[str, tuple[frozenset[str], str]] = {
-    "ofo_app/main.py": (frozenset({"FastAPI", "router", "include_router", "dependency_overrides", "route_class",
+    "ofo_app/main.py": (frozenset({"FastAPI", "router", "include_router", "add_middleware", "dependency_overrides", "route_class",
                                    "ClosedRoute", "mount", "state", "routes"}),
-        "create_app: the one place that builds the FastAPI app, sets the route class, includes the routers and installs "
+        "create_app (also adds the RequestLog middleware, W-lane-r request timing): the one place that builds the FastAPI app, sets the route class, includes the routers and installs "
         "the test override of the market context; its lifespan reads app.state.broker to start live market data "
         "(W-065); it reads app.routes (never writes) so scenario mode refuses to start with an unclassified mutating route"),
     "ofo_app/errors.py": (frozenset({"FastAPI", "app", "exempt", "add_middleware", "add_exception_handler", "_Boundary",
