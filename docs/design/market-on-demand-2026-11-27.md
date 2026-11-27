@@ -1,4 +1,4 @@
-STATUS 21:55 | section 1: written, pushing now | rest: not started | next push by Sat 28 Nov 12:00 (sections 2-8)
+STATUS 22:10 | section 1: written with the PC measurements, gate running | rest: drafted, Opus review running | next push by Sat 28 Nov 12:00
 
 # Market on demand: replay a recorded market day (design, Lane D2, 27 Nov 2026)
 
@@ -63,8 +63,21 @@ per minute), the same rate as the 8 Oct samples. A recorder window of 09:00 to 1
 entries a day** (the exchange sends about one frame every quarter second whatever the instrument count; more
 instruments make each frame bigger, not more frequent).
 
-Bytes per entry is the one number I cannot measure from the repo, because it depends on how many instruments the PC
-had subscribed on the day. Range for a day of 92,000 entries:
+**Measured on the PC (coordinator, 27 Nov 21:14, file read there, not by me):** 20,000 entries, 14:34:58 to 15:58:00,
+about 241 per minute, 116.4 MB as JSON lines = **5,820 bytes per entry** (frame bytes saved as base64; 18,459 of the
+20,000 entries carry binary `d`, the other 1,541 do not carry one I could classify: events or one-byte heartbeats, [Guessing]).
+Only **17 instruments** were subscribed (15 open contracts plus NIFTY 50 and SENSEX). Base64 adds one third, so the raw
+frame is roughly 4.2 KB, [Likely], and a full 375-minute day is about **90,000 entries, roughly 380 MB raw and 115 to 160
+MB gzipped** (gzip ratio 2.4x to 3.3x measured on the repo's two samples). The coordinator's own figure for base64 JSON
+lines is 525 MB a day. The recorder below stores raw bytes, so it is the smaller number. This replaces the guesses in
+the table that follows for a day like 27 Nov; with more instruments the day grows in proportion (table).
+
+Note for the 27 Nov file: the morning is gone (the cap overwrote it), the catalogue keeps no list versions, and so the
+instrument rows must be saved WITH each recording (done by the `instruments.csv` step in 1.5).
+
+The table below shows what the size would be for other subscription sizes. Bytes per entry depends on how many instruments the PC
+had subscribed on the day; I could not measure it from the repo.
+Range for a day of 92,000 entries:
 
 | Instruments subscribed | Bytes per frame (about 186 per tick) | Raw per day | Gzip per day |
 |---|---|---|---|
@@ -73,7 +86,7 @@ had subscribed on the day. Range for a day of 92,000 entries:
 | about 1,000 (full chain, two indices; the opening burst rate) | 31,000 | up to 2.9 GB | up to 1.2 GB |
 
 The 1,000 row is an upper bound (the 10 s sample is the busiest moment of the day, and many ticks repeat). **The
-coordinator's saved stream settles it:** divide the file size by 20,000. At the worst case a year of trading days
+measured 17-instrument figure is the one to plan on.** At the worst case a year of trading days
 (about 250) is under 300 GB gzipped, which fits an ordinary disk; at the likely case it is tens of GB.
 
 ### 1.4 Where it is stored
@@ -172,6 +185,15 @@ while True:
     except (redis.RedisError, OSError) as e:      # Redis down: wait and carry on from the saved id; never exit during the day
         print("redis problem, retrying:", type(e).__name__); time.sleep(2)
 ```
+
+Gaps and doubling (asked by the coordinator): the script reads with `XREAD` from the last saved entry id (`last_id`, written after every batch
+is on disk). A Redis stream id is unique and increasing, so a restart resumes exactly after the last saved entry: no loss while the gap is
+under the cap (about 83 minutes at 241 per minute; about 20 minutes if 1,000 instruments were subscribed), no doubling ever. If the gap is longer
+the first entry read has an id far past `last_id`; the `side.jsonl` line and the entry `t` stamps show the hole. I tested the resume (second run added 0 entries).
+
+What the entry fields mean (from `feed_bus.py:3-4, 116-120`): `u` user, `k` kind, `t` the feed's receive time in epoch microseconds,
+`d` the raw Kite WebSocket message. The decoder is `ofo.marketdata.kite_frames.parse_frame` (called from `KiteProvider.on_frame`; `KiteProvider` is
+fed the same bytes by the live socket and by `replay_mode._fed_provider`), so a replay that feeds `d` to a stand-in Kite socket reaches the real parser at the same point.
 
 Why a plain file reader and not a change to the app: the app already publishes the full raw record to Redis for its own
 use (ADR-012: the feed process holds the vendor connection; browsers and the rest never do), so a second reader on that
