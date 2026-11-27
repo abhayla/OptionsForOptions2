@@ -468,7 +468,7 @@ async def _tracked_first(seams: _Seams, row: Any) -> Any:
 
 
 async def _read_bounded(row: Any, seams: _Seams, listed: Any, gate: asyncio.Semaphore, data: TestIn,  # noqa: PLR0913, PLR0917
-                        tracked: Any) -> tuple[Any, _Read] | dict[str, Any] | None:
+                        tracked: Any = None) -> tuple[Any, _Read] | dict[str, Any] | None:
     """-> (row, read) when read in full and of the type; a not-checked entry when the type is known but the read timed
     out or failed; None when not of the type (or its type is not known)."""
     read = _Read()
