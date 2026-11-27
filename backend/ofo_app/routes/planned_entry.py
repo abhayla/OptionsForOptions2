@@ -14,8 +14,6 @@ The browser computes nothing: the price is a string from a Decimal, rounded half
 
 from __future__ import annotations
 
-import asyncio
-import contextlib
 import dataclasses
 import datetime
 from typing import Annotated, Any, Literal
@@ -29,7 +27,8 @@ from pydantic import BaseModel, ConfigDict, Field, StringConstraints
 from ofo_app import live_market
 from ofo_app.api_models import ApiModel, Identifier, Money
 from ofo_app.errors import ClosedRoute
-from ofo_app.live_push import POLL_SECONDS, LiveFeed, no_listener
+from ofo_app.live_push import POLL_SECONDS, LiveFeed
+from ofo_app.read_door import NO_TOKEN, read_quotes
 from ofo_app.routes.outcome import (
     AnswerClock,
     MarketContext,
@@ -118,27 +117,15 @@ def _closed_label(entry: PlannedEntry | None, quote: NormalizedQuote | None, clo
 
 async def hold_until_priced(feed: LiveFeed, ctx: MarketContext, underlying: str, ids: list[str],
                              unpriced: list[str]):
-    """Gate 4a D-2 (ADR-075, ADR-020): hold the contracts that have no live price on the shared fan-out until each has
-    its first AVAILABLE quote or PLANNED_ENTRY_WAIT_S passes, and ALWAYS release exactly that hold (timeout, error,
-    client disconnect). Subscribe and release run on the event loop, like the live push's. A contract that already has
-    a live price is never acquired, so another holder's hold is never touched by this one."""
-    try:
-        handle = feed.fanout.subscribe(no_listener, unpriced, max_queue=1)
-    except KeyError:  # a contract the provider has no token for: nothing was subscribed, the unpriced answer stands
-        return _read(ctx, underlying, ids)
-    try:
-        loop = asyncio.get_running_loop()
-        deadline = loop.time() + PLANNED_ENTRY_WAIT_S
-        while True:
-            await asyncio.sleep(POLL_SECONDS)
-            result = _read(ctx, underlying, ids)
-            if all(result[2].get(i) is not None for i in unpriced):
-                return result
-            if not ctx.provider.status().connected or loop.time() >= deadline:
-                return result
-    finally:
-        with contextlib.suppress(Exception):
-            feed.fanout.unsubscribe(handle)
+    """Gate 4a D-2 (ADR-075, ADR-020): the contracts that have no live price are held on the shared fan-out until each
+    has its first AVAILABLE quote or PLANNED_ENTRY_WAIT_S passes. Through the one read door (``read_door.read_quotes``):
+    a contract already held is not subscribed again, a priced book answers at once, the hold is the door's standing
+    lease (released by its own timer, never by this read). A contract the provider has no token for: the unpriced
+    answer stands."""
+    held = await read_quotes(feed, unpriced, lambda: _read(ctx, underlying, ids),
+                             lambda result: all(result[2].get(i) is not None for i in unpriced),
+                             lambda: ctx.provider.status().connected, PLANNED_ENTRY_WAIT_S, POLL_SECONDS)
+    return _read(ctx, underlying, ids) if held is NO_TOKEN else held
 
 
 @router.post("/api/strategies/planned-entry", response_model=PlannedEntriesOut)

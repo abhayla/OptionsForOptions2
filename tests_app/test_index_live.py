@@ -19,6 +19,7 @@ from ofo.errors import render
 from ofo.marketdata.fanout import FanOut
 from ofo.marketdata.quote import NormalizedQuote, SourceMetadata
 from ofo.rules.inputs import DataHealth
+from ofo_app import read_door
 from ofo_app.errors import socket_body
 from ofo_app.index_push import IndexPush, IndicesOut
 from ofo_app.live_push import ChannelClosed, LiveFeed
@@ -372,11 +373,14 @@ async def first_paint(feed, wall, *, fallback=False, wait=0.3):
 
 async def test_cold_plain_read_holds_the_index_ids_and_answers_live_with_both_values():
     """#612 core: no socket holds the indices, quotes only arrive once subscribed: the plain read is LIVE with both
-    values, and the hold is released after the answer."""
+    values, and the hold is released when the read door's lease ends."""
     provider, feed, wall = cold_rig()
     answer = await first_paint(feed, wall)
     assert answer.state == "LIVE"
     assert [r.value for r in answer.indices] == [Decimal("25145.50"), Decimal("82010.25")]
+    # hotfix 27 Nov: a read holds on a standing lease (read door)
+    assert feed.fanout.subscriber_count(NIFTY_ID) == 1 and provider.vendor_subscribed == {NIFTY_ID, SENSEX_ID}
+    read_door.read_lease().release()
     assert feed.fanout.subscriber_count(NIFTY_ID) == 0 and provider.vendor_subscribed == set()
 
 
@@ -387,6 +391,9 @@ async def test_cold_plain_read_with_one_index_priced_by_the_deadline_is_live_wit
     assert answer.state == "LIVE"
     assert [(r.underlying, r.value, r.health) for r in answer.indices] == [
         ("NIFTY", Decimal("25145.50"), "available"), ("SENSEX", None, "unavailable")]
+    # hotfix 27 Nov: a read holds on a standing lease (read door)
+    assert provider.vendor_subscribed == {NIFTY_ID, SENSEX_ID}
+    read_door.read_lease().release()
     assert provider.vendor_subscribed == set()
 
 
@@ -430,6 +437,9 @@ async def test_cold_fallback_read_holds_the_ids_and_answers_not_connected_with_b
     answer = await first_paint(feed, wall, fallback=True)
     assert answer.state == "NOT_CONNECTED"
     assert [r.value for r in answer.indices] == [Decimal("25145.50"), Decimal("82010.25")]
+    # hotfix 27 Nov: a read holds on a standing lease (read door)
+    assert feed.fanout.subscriber_count(NIFTY_ID) == 1 and provider.vendor_subscribed == {NIFTY_ID, SENSEX_ID}
+    read_door.read_lease().release()
     assert feed.fanout.subscriber_count(NIFTY_ID) == 0 and provider.vendor_subscribed == set()
 
 
@@ -438,6 +448,9 @@ async def test_cold_fallback_read_with_one_index_priced_by_the_deadline_fills_th
     answer = await first_paint(feed, wall, fallback=True, wait=0.1)
     assert answer.state == "NOT_CONNECTED"
     assert [(r.underlying, r.value) for r in answer.indices] == [("NIFTY", Decimal("25145.50")), ("SENSEX", None)]
+    # hotfix 27 Nov: a read holds on a standing lease (read door)
+    assert provider.vendor_subscribed == {NIFTY_ID, SENSEX_ID}
+    read_door.read_lease().release()
     assert provider.vendor_subscribed == set()
 
 
@@ -467,6 +480,9 @@ async def test_fallback_read_while_another_socket_streams_is_never_live_and_has_
     _provider, feed, wall = cold_rig()
     other = feed.fanout.subscribe(lambda _q: None, [NIFTY_ID, SENSEX_ID])  # another socket streams both ids
     answer = await first_paint(feed, wall, fallback=True)
+    # hotfix 27 Nov: a read holds on a standing lease (read door)
+    assert feed.fanout.subscriber_count(NIFTY_ID) == 2  # noqa: PLR2004 - the other socket and the door's lease
+    read_door.read_lease().release()
     assert feed.fanout.subscriber_count(NIFTY_ID) == ONE  # only the other holder remains
     feed.fanout.unsubscribe(other)
     assert answer.state == "NOT_CONNECTED"
