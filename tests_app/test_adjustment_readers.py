@@ -23,7 +23,7 @@ from ofo.engine.adjust_history import HistoryOrder
 from ofo.marketdata.spot_source import SourceState
 from ofo.settings import defaults
 from ofo_app import adjustment_readers as readers
-from ofo_app import scenario_mode
+from ofo_app import read_door, scenario_mode
 from ofo_app.routes import adjustment as route
 from ofo_app.routes import outcome
 from test_adjustment_approaches_route import load, tracked_of
@@ -172,6 +172,11 @@ class _FakeFanout:
         self.subscribed: list[list[str]] = []
         self.released = 0
 
+    @property
+    def held(self) -> list[str]:
+        """Every id subscribed (the door subscribes one token at a time: one handle per token)."""
+        return [i for call in self.subscribed for i in call]
+
     def subscribe(self, _listener, ids, **_kw):
         if self.unknown:
             raise KeyError(ids)
@@ -184,6 +189,11 @@ class _FakeFanout:
         """As the live book: a released contract is parked (``QuoteBook.park``), its quote gone from the snapshot."""
         self.released += 1
         self.provider.held -= set(self.subscribed[handle - 1])
+
+
+def _lease_ends() -> None:
+    """The door's standing lease ends (what its sweeper does LEASE_SECONDS after the last read of a token)."""
+    read_door.read_lease().release()
 
 
 def _hedge_case(monkeypatch, **fan):
@@ -209,7 +219,9 @@ def test_f92_unheld_hedge_leg_is_held_and_priced_then_released(monkeypatch):
     sc, hedge, iid, feed, ctx = _hedge_case(monkeypatch)
     m = asyncio.run(readers.read_market(tracked_of(sc), ctx))
     assert _row(m, hedge["tradingsymbol"]).ltp is not None and m.instrument_ids[hedge["tradingsymbol"]] == iid
-    assert feed.subscribed == [[iid]] and feed.released == 1  # only the missing leg, released exactly once
+    assert feed.subscribed == [[iid]] and feed.released == 0  # only the missing leg, held on the standing lease
+    _lease_ends()  # hotfix 27 Nov: a read holds on a standing lease (read door)
+    assert feed.released == 1  # released exactly once, when the lease ends
 
 
 def test_f92_leg_that_never_ticks_stays_unpriced_never_zero(monkeypatch):
@@ -217,6 +229,7 @@ def test_f92_leg_that_never_ticks_stays_unpriced_never_zero(monkeypatch):
     sc, hedge, _iid, feed, ctx = _hedge_case(monkeypatch, gives_quote=False)
     m = asyncio.run(readers.read_market(tracked_of(sc), ctx))
     assert _row(m, hedge["tradingsymbol"]).ltp is None and _row(m, hedge["tradingsymbol"]).bid is None
+    _lease_ends()  # hotfix 27 Nov: a read holds on a standing lease (read door)
     assert feed.released == 1
 
 
@@ -237,7 +250,9 @@ def test_f92_legs_already_held_take_no_hold(monkeypatch):
     sc, _hedge, iid, feed, ctx = _hedge_case(monkeypatch)
     ctx.provider.held.add(iid)
     asyncio.run(readers.read_market(tracked_of(sc), ctx))
-    assert feed.subscribed == [] and feed.released == 0
+    # hotfix 27 Nov: a read holds on a standing lease (read door): the held leg is leased (the fan-out counts the
+    # holder), the vendor is not asked again for a token nobody dropped
+    assert feed.held.count(iid) == 1 and feed.released == 0
 
 
 # ---- GC-IC1: the screen check holds the near-the-money window (Greeks and ATM IV with no chain screen open) ----
@@ -268,7 +283,10 @@ def test_gcic1_check_holds_the_window_so_legs_have_greeks_and_the_vol_is_stated(
     m = asyncio.run(readers.read_market(tracked_of(sc), ctx))
     legs = {x.tradingsymbol for x in tracked_of(sc).position.legs}
     assert len(legs) == FOUR_LEGS and legs <= set(m.leg_greeks) and m.vol is not None and m.forward is not None
-    assert feed.released == 1 and feed.subscribed and set(feed.subscribed[0]) - leg_ids  # window ids asked, one release
+    # hotfix 27 Nov: a read holds on a standing lease (read door)
+    assert feed.released == 0 and feed.held and set(feed.held) - leg_ids  # window ids asked, held on the lease
+    _lease_ends()
+    assert feed.released == len(feed.held)  # one release per held token, when the lease ends
 
 
 def test_gcic1_read_market_asks_held_read_for_the_window_ids(monkeypatch):
@@ -299,8 +317,11 @@ def test_gcic1_no_spot_means_no_window_legs_only_no_crash(monkeypatch):
     shorts = sorted(x.strike for x in legs if x.side == "SELL")
     strike_of = {f"{lc.contract.exchange_segment}:{lc.contract.exchange_token}": lc.contract.strike
                  for lc in ctx.provider.instrument_master()}
-    held = feed.subscribed[0]
-    assert m.vol is None and len(feed.subscribed) == 1 and feed.released == 1 and "NSE_INDEX:1001" in held
+    held = feed.held
+    # hotfix 27 Nov: a read holds on a standing lease (read door)
+    assert m.vol is None and feed.released == 0 and "NSE_INDEX:1001" in held
+    _lease_ends()
+    assert feed.released == len(held)
     assert all(not shorts[0] <= strike_of[i] <= shorts[1] for i in held if i != "NSE_INDEX:1001")
 
 
@@ -315,7 +336,8 @@ def test_gcic1_window_released_when_the_provider_raises(monkeypatch):
     ctx.provider.option_chain_snapshot = boom
     with pytest.raises(RuntimeError):
         asyncio.run(readers.read_market(tracked_of(sc), ctx))
-    assert feed.released == 1
+    _lease_ends()  # hotfix 27 Nov: a read holds on a standing lease (read door): released when the lease ends
+    assert feed.released == len(feed.held)
 
 
 def test_gcic1_window_ids_skip_strikes_without_a_contract_and_unlisted_expiry():
@@ -348,8 +370,8 @@ def test_gcic1_no_index_quote_on_the_feed_the_window_is_centred_on_the_rest_spot
     monkeypatch.setattr(readers, "read_rest_spot", rest)
     m = asyncio.run(readers.read_market(tracked_of(sc), ctx))
     legs = {x.tradingsymbol for x in tracked_of(sc).position.legs}
-    assert asked == ["NIFTY"] and feed.subscribed and set(feed.subscribed[0]) - leg_ids
-    assert index_id in feed.subscribed[0]
+    assert asked == ["NIFTY"] and feed.held and set(feed.held) - leg_ids
+    assert index_id in feed.held
     assert legs <= set(m.leg_greeks) and m.vol is not None
 
 
@@ -384,7 +406,8 @@ def test_gcic1_r3_no_provider_read_after_the_release(monkeypatch):
     p.option_chain_snapshot, p.underlying_quote = guarded(snap), guarded(under)
     m = asyncio.run(readers.read_market(tracked_of(sc), ctx))
     legs = {x.tradingsymbol for x in tracked_of(sc).position.legs}
-    assert feed.released == 1 and legs <= set(m.leg_greeks) and m.vol is not None and m.forward is not None
+    # hotfix 27 Nov: a read holds on a standing lease (read door)
+    assert feed.released == 0 and legs <= set(m.leg_greeks) and m.vol is not None and m.forward is not None
     assert m.feed.state is SourceState.STATED
 
 
@@ -424,8 +447,10 @@ def test_gcic1_r3_real_quote_book_parks_the_index_and_the_check_still_has_greeks
     monkeypatch.setattr(readers, "read_rest_spot", rest)
     m = asyncio.run(readers.read_market(tracked_of(sc), ctx))
     legs = {x.tradingsymbol for x in tracked_of(sc).position.legs}
-    assert book.get(index_id, now) is None and index_id in book.parked_ids()  # released and parked
+    assert book.get(index_id, now) is not None and index_id not in book.parked_ids()  # hotfix 27 Nov: leased
     assert legs <= set(m.leg_greeks) and m.vol is not None and m.feed.value == spot.ltp
+    _lease_ends()  # the lease ends: released and parked (a read after it answers None)
+    assert book.get(index_id, now) is None and index_id in book.parked_ids()
 
 
 def test_gcic1_r3_roll_range_is_held_with_the_window(monkeypatch):
@@ -435,7 +460,7 @@ def test_gcic1_r3_roll_range_is_held_with_the_window(monkeypatch):
     position = tracked_of(sc).position
     spot = ctx.provider.underlying_quote("NIFTY").ltp
     points = readers._roll_points()["NIFTY"]
-    held = set(feed.subscribed[0])
+    held = set(feed.held)
     master = ctx.provider.instrument_master()
     by = {(lc.contract.instrument_type, lc.contract.strike):
           f"{lc.contract.exchange_segment}:{lc.contract.exchange_token}"
@@ -451,7 +476,8 @@ def test_gcic1_r3_roll_range_is_held_with_the_window(monkeypatch):
         need = {i for (t, k), i in by.items() if t == short.type and lo <= k <= hi} - legs
         assert need and need <= held, short
         checked += len(need)
-    assert checked > 0 and len(feed.subscribed) == 1 and feed.released == 1
+    # hotfix 27 Nov: a read holds on a standing lease (read door)
+    assert checked > 0 and len(feed.held) == len(held) and feed.released == 0
 
 
 def test_gcic1_r3_second_pass_holds_once_and_releases(monkeypatch):
@@ -459,16 +485,19 @@ def test_gcic1_r3_second_pass_holds_once_and_releases(monkeypatch):
     None (no hold) with nothing to hold or no feed."""
     sc, _leg_ids, feed, ctx = _book_of_legs_only(monkeypatch)
     asyncio.run(readers.read_market(tracked_of(sc), ctx))
-    first = set(feed.subscribed[0])
+    first = set(feed.held)
     far = next(i for i in sorted(ctx.provider.hidden) if i not in first)
     feed.subscribed.clear()
     feed.released = 0
     m = asyncio.run(readers.read_market_more(tracked_of(sc), ctx, [far]))
-    assert m is not None and len(feed.subscribed) == 1 and far in feed.subscribed[0] and feed.released == 1
+    # hotfix 27 Nov: a read holds on a standing lease (read door): the first pass's tokens are not subscribed again
+    assert m is not None and set(feed.held) & first == set() and far in feed.held and feed.released == 0
+    _lease_ends()
+    assert feed.released == len(feed.held) + len(first)
     assert asyncio.run(readers.read_market_more(tracked_of(sc), ctx, [])) is None
     monkeypatch.setattr(readers.live_market, "current_feed", lambda: None)
     assert asyncio.run(readers.read_market_more(tracked_of(sc), ctx, [far])) is None
-    assert len(feed.subscribed) == 1
+    assert feed.held.count(far) == 1
 
 
 def test_gcic1_r3_second_pass_hold_released_on_an_exception(monkeypatch):
@@ -484,7 +513,8 @@ def test_gcic1_r3_second_pass_hold_released_on_an_exception(monkeypatch):
     far = sorted(ctx.provider.hidden)[0]
     with pytest.raises(RuntimeError):
         asyncio.run(readers.read_market_more(tracked_of(sc), ctx, [far]))
-    assert feed.released == 1
+    _lease_ends()  # hotfix 27 Nov: a read holds on a standing lease (read door): released when the lease ends
+    assert feed.released == len(feed.held)
 
 
 def test_gcic1_s3_next_expiry_read_inside_the_one_hold_with_its_own_greeks(monkeypatch):
@@ -508,7 +538,7 @@ def test_gcic1_s3_next_expiry_read_inside_the_one_hold_with_its_own_greeks(monke
     m = asyncio.run(readers.read_market(tracked_of(sc), ctx))
     later = {(r.type, r.strike): r for r in m.chain if r.expiry == nxt}
     assert later[("CE", D("23800"))].delta is not None and later[("CE", D("24000"))].ltp is not None
-    assert len(feed.subscribed) == 1 and feed.released == 1  # one hold, one release
+    assert len(feed.held) == len(set(feed.held)) and feed.released == 0  # hotfix 27 Nov: one lease, no release yet
     current = {(r.type, r.strike): r for r in m.chain if r.expiry != nxt}
     assert later[("CE", D("23800"))].delta != current[("CE", D("23800"))].delta  # that expiry's own model
     position = tracked_of(sc).position
@@ -558,8 +588,11 @@ def test_gcic1_r5_delta_reach_prices_a_far_roll_after_exactly_one_second_pass(mo
     assert built[0].refusal is not None and "has no price" in built[0].refusal
     rows = {(r.expiry, r.type, r.strike): r for r in final.chain}
     landing = final.instrument_ids[rows[(expiry, "CE", WING_LANDING)].tradingsymbol]
-    assert landing in extra and landing in feed.subscribed[1]  # the wing landing was in the ONE second hold
-    assert len(feed.subscribed) == 2 and feed.released == 2  # noqa: PLR2004 - the first hold and exactly one more
+    assert landing in extra and landing in feed.held  # the wing landing was in the ONE second hold
+    # hotfix 27 Nov: a read holds on a standing lease (read door): every token is subscribed once, across both passes
+    assert len(feed.held) == len(set(feed.held)) and feed.released == 0
+    _lease_ends()
+    assert feed.released == len(feed.held)
     got = after[approach]
     assert got.refusal is None, got.refusal
     assert {(t.action, t.strike) for t in got.trades if t.expiry == expiry} >= {("SELL", D("23900")),

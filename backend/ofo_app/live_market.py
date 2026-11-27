@@ -33,6 +33,7 @@ from ofo.marketdata.fanout import FanOut
 from ofo.marketdata.feed_health import FEED_IDLE, FEED_WAITING, market_closed_for
 from ofo.marketdata.kite_provider import IST, KiteProvider
 from ofo.marketdata.quote_stamp import quote_time
+from ofo.marketdata.shared_reading import SharedReading
 from ofo.marketdata.spot_source import SourceReading, SourceState
 from redis.exceptions import RedisError
 
@@ -489,7 +490,44 @@ def _index_reading(reads: KiteReads, name: str) -> SourceReading:
     return SourceReading(SourceState.STATED, Decimal(price), quote_time(quote))
 
 
+#: THE one REST-index door's memory (REQ-118; ADR-330 (39); finding page-poll-calls-vendor-rest-before-tick-store):
+#: one per process, so every caller shares one cached, single-flight read and a failed one is not retried inside
+#: the vendor's cooldown.
+REST_SPOT = SharedReading()
+
+
 async def index_spot(name: str, scenario_answer: tuple[int, str] | None = None) -> SourceReading:
+    """The index spot from Kite's REST quote, ONE shared cached read (``REST_SPOT``: TTL, single flight, a failure
+    kept for the cooldown) so a page poll never sends a call per request. Scenario mode (``scenario_answer``) is a
+    test client with no vendor: it passes uncached."""
+    if scenario_answer is not None:
+        return await _index_spot_uncached(name, scenario_answer)
+    return await REST_SPOT.get(name, lambda: _index_spot_uncached(name, None))
+
+
+def reads_client(api_key: str, access_token: str) -> KiteReads:
+    """A Kite read client with each call bounded (the worker's REST index read; the token only goes into the client)."""
+    return KiteReads(api_key=api_key, access_token=access_token,
+                     transport=functools.partial(urllib_transport, timeout=CALL_TIMEOUT_SECONDS))
+
+
+async def index_spot_from(name: str, open_reads: Callable[[], Awaitable[KiteReads | None]]) -> SourceReading:
+    """The same ONE shared cached REST index read (``REST_SPOT``, this process's own) for a process that holds no live
+    Kite market (the background worker): ``open_reads`` builds the Kite read client from the stored login when a call is
+    really needed (never on a cache hit). None -> ABSENT (not asked; the answer is kept 10 s like any other)."""
+    async def fetch() -> SourceReading:
+        reads = await open_reads()
+        if reads is None:
+            return SourceReading(SourceState.ABSENT)
+        try:
+            return await asyncio.wait_for(asyncio.to_thread(_index_reading, reads, name),
+                                          timeout=CALL_TIMEOUT_SECONDS + 5)
+        except TimeoutError:
+            return SourceReading(SourceState.FAILED)
+    return await REST_SPOT.get(name, fetch)
+
+
+async def _index_spot_uncached(name: str, scenario_answer: tuple[int, str] | None) -> SourceReading:
     """REQ-155 AC-5 (F-76): the index spot from Kite's REST quote (``KiteReads.fetch_index_quote``, the door's ``%20``
     path) with the owner's session; no session -> ABSENT (not asked). ``scenario_answer`` (scenario mode only): the
     scenario's (HTTP status, reply text) served to the SAME client as its transport, so it passes the same door."""

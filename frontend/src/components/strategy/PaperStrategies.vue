@@ -10,7 +10,7 @@
   <section class="rounded-lg border-2 border-dashed border-accent text-sm" :class="compact ? 'p-2' : 'p-3'" data-testid="paper-strategies">
     <p class="mb-2 rounded bg-accent-soft px-2 py-1 text-xs font-semibold text-accent" data-testid="paper-mode-header">Paper mode</p>
     <p class="rounded bg-amber-50 px-2 py-1 font-medium" data-testid="paper-banner">{{ BANNER }}</p>
-    <p v-if="exitNote" class="mt-2 text-xs text-ink-muted" data-testid="paper-exit-link-note">{{ exitNote }}</p>
+    <p v-for="l in noteLines" :key="l.key" class="mt-2 text-xs text-ink-muted" data-testid="paper-exit-link-note">{{ l.text }}</p>
     <p v-if="loading" class="mt-2" data-testid="paper-loading">Reading your paper strategies.</p>
     <!-- D-05 r3: a failed refresh is a banner above the last loaded list, whose figures are paused (full-page error only when nothing ever loaded), so an open Stops panel and what was typed in it stay -->
     <ErrorMessage v-if="!loading && errorParts" class="mt-2" :parts="errorParts" compact prefix="paper-error" />
@@ -152,7 +152,7 @@
                 <RouterLink :to="builderLink(g)" class="rounded border border-line px-2 py-1 text-center text-accent" data-testid="paper-open-builder">Open in Builder</RouterLink>
                 <RouterLink v-if="g.statusWord !== 'Completed'" :to="builderLink(g)" class="rounded border border-line px-2 py-1 text-center text-accent" data-testid="paper-add-orders">Add orders</RouterLink>
                 <button v-if="g.openCount" type="button" class="rounded border border-line px-2 py-1" :aria-expanded="!!stopsOpen[g.id]" :data-testid="`stops-open-${g.id}`" @click="stopsOpen = { ...stopsOpen, [g.id]: !stopsOpen[g.id] }">Stops</button>
-                <ExitButton v-if="g.openCount" :blocked="exitGate.blocked.value" :reason="exitGate.reason.value" :extra-disabled="!tickedOpen(g).length" class="rounded border border-line px-2 py-1" :data-testid="`exit-selected-${g.id}`" @click="ask(g, tickedOpen(g))">Exit ({{ tickedOpen(g).length }})</ExitButton>
+                <ExitButton v-if="g.openCount" :blocked="exitGate.blocked.value" :reason="exitGate.reason.value ?? (tickedOpen(g).length ? null : EXIT_TICK_TEXT)" :extra-disabled="!tickedOpen(g).length" class="rounded border border-line px-2 py-1" :data-testid="`exit-selected-${g.id}`" @click="ask(g, tickedOpen(g))">Exit ({{ tickedOpen(g).length }})</ExitButton>
               </div>
             </div>
             <!-- P10 (ADR-330 (13)): the Plan watch of an open strategy; it re-reads on this list's own good-read token -->
@@ -163,7 +163,7 @@
       </template>
     </template>
     <!-- GC-TP step 4b round 2 (REQ-109 AC-4; Sensibull 166-173): every exit goes through the shared confirm list, in lots -->
-    <PaperConfirmDialog :open="!!confirm" :orders="confirm ? confirm.orders : []" :strategy-id="confirm ? confirm.id : ''" :busy="busy" :error="dialogError" :state="dialogState" @confirm="doExit" @cancel="cancelExit" @orderbook="openOrderbook" />
+    <PaperConfirmDialog :open="!!confirm" :orders="confirm ? confirm.orders : []" :strategy-id="confirm ? confirm.id : ''" :busy="busy" :blocked="exitGate.notLive.value" :error="dialogError || (confirm && exitGate.notLive.value ? exitEndText('not_live', confirm.names) : '')" :state="dialogState" :locked="!!(confirm && isUnknown(confirm.id))" @confirm="doExit" @cancel="cancelExit" @orderbook="openOrderbook" />
   </section>
 </template>
 
@@ -182,7 +182,8 @@ import PaperConfirmDialog from '@/components/strategy/PaperConfirmDialog.vue'
 import HeldNote from '@/components/strategy/HeldNote.vue'
 import { ALL_CLOSED_TEXT, DECAY_LEFT_TODAY_HEADING, GREEK_COLUMNS, PAPER_NO_FIGURE, PAPER_PAUSED, SHOW_CLOSED_LABEL, exitRowsFor, isOpenGroup, readPaperList, visibleGroups } from '@/lib/paperList'
 import { usePriceFreshness } from '@/lib/priceState'
-import { usePaperExit } from '@/lib/usePaperExit'
+import { createExitRecords } from '@/lib/exitRecord'
+import { EXIT_TICK_TEXT, exitEndText, exitLegsNotLive, usePaperExit } from '@/lib/usePaperExit'
 import ExitButton from '@/components/strategy/ExitButton.vue'
 import { usePaperRefresh } from '@/lib/usePaperRefresh'
 import { EXITED_NOW_LABEL, HELD_TO_EXPIRY_LABEL } from '@/lib/paperDrafts'
@@ -260,7 +261,14 @@ const errorParts = ref(null)
 const { readOk } = usePriceFreshness({ readFailed: errorParts, held: items })
 const stale = computed(() => !readOk.value)
 // Phase 4 (F2): the Exit gate of the page, the same one as the builder's book panel (no contracts-changed mark on this list)
-const exitGate = usePaperExit({ readFailed: errorParts, held: items, busy: () => busy.value, changed: false })
+// Lane U hotfix 27 Nov (A-H #209): the open dialog's own legs are judged on the LATEST GOOD read too (exitLegsNotLive, the one rule), not only a failed read
+const dialogLegsNotLive = () => {
+  const c = confirm.value
+  if (!c) return false
+  const g = (items.value ?? []).find((x) => String(x.id) === String(c.id))
+  return exitLegsNotLive(g?.state, g?.positions?.map((p) => ({ id: p.contractId, live: p.live })), c.orders.map((o) => o.contract_id))
+}
+const exitGate = usePaperExit({ readFailed: errorParts, held: items, busy: () => busy.value, changed: false, notLive: dialogLegsNotLive })
 const loading = ref(true)
 const summary = computed(() => ({
   totalAfter: totals.value ? totals.value.totalAfter : null,
@@ -286,8 +294,19 @@ const canExit = (p) => p.open && p.lots !== null // a quantity that is not whole
 const tickedOpen = (g) => g.positions.filter((p) => canExit(p) && isTicked(g.id, p.contractId))
 
 const confirm = ref(null)
+// Lane U hotfix (27 Nov, ADR-016..019; PC T1-22): the ONE record of every strategy's latest exit attempt (lib/exitRecord.js). Every writer of a
+// final sentence goes through it; the dialog shows the record's refusal / "not stored" sentence while open, the note lines show the rest.
+const exitRec = createExitRecords()
+const isUnknown = (id) => exitRec.cur(id)?.state === 'unknown'
+const inDialog = (r) => !!confirm.value && String(confirm.value.id) === r.key && (r.state === 'refused' || r.state === 'not_stored')
+const noteLines = computed(() => exitRec.lines(inDialog))
+// Lane U r1 (ADR-016/017/019): the ONE rule of an unknown outcome. `unresolved[strategyId]` = { names, units, seq } is set when a POST
+// ends unknown (503 / no answer / 408 / 429 / superseded). While it stands: Confirm of that strategy is off (never on a timer), a re-opened
+// Exit shows the unknown sentence, and only a good re-read that STARTED after the reply decides it (stored -> done note; legs unchanged
+// -> "not stored", Confirm may be on; anything else -> the usual changed-elsewhere end). `readSeq` counts reads as they start.
+let readSeq = 0
 const busy = ref(false)
-const dialogError = ref('') // the server's refusal text, shown inside the confirm list
+const dialogError = computed(() => { const r = confirm.value ? exitRec.cur(confirm.value.id) : null; return r && (r.state === 'refused' || r.state === 'not_stored') ? r.text : '' }) // the record's sentence, shown inside the confirm list
 const dialogState = ref(PAPER_STATE.READY) // fix/paper-dialog-safe: the dialog's answer state (tracking.js PAPER_STATE)
 const router = useRouter()
 
@@ -296,15 +315,15 @@ function show({ data, token }) {
   const exitId = takeExitParam() ?? takeExitFor()
   const read = readPaperList(data)
   if (read === null) {
-    closeByPage() // like fail(): no open exit from old prices
-    errorParts.value = NEUTRAL_PARTS // an unreadable answer keeps the last loaded list, like a failed read
+    errorParts.value = NEUTRAL_PARTS // the open dialog stays, blocked with the not-live line (hotfix 27 Nov) // an unreadable answer keeps the last loaded list, like a failed read
   } else {
     items.value = read.groups
     totals.value = read.totals
     today.value = read.today
     errorParts.value = null
+    if (dialogState.value === PAPER_STATE.REFUSED) dialogState.value = PAPER_STATE.READY // a good read unlocks a refused, unchanged Confirm; the server's text stays
     goodReadToken.value = token // the token travels with the answer from the read that made it
-    settle(items.value)
+    settle(items.value, token?.seq ?? 0)
     openExitFromLink(exitId)
     if (!hadExit && !props.exitOnlyFor) openStopsFromLink()
   }
@@ -315,7 +334,6 @@ function show({ data, token }) {
 // so a later timer read or a back-navigation never opens the dialog without a new click. It acts only when `strategy` is absent or
 // equal, and only on a group the list itself draws as open (isOpenGroup, the list's own rule). It never throws into show().
 const EXIT_NOTE = 'This strategy has no open paper legs to exit.'
-const exitNote = ref('')
 function takeExitFor() { const id = exitForPending; exitForPending = null; return id === null ? null : String(id) }
 function takeExitParam() {
   if (props.compact || !router) return null
@@ -345,30 +363,29 @@ const scrollTo = ref(null) // the strategy id whose card is scrolled to once it 
 watch(scrollTo, (id) => { if (id !== null) { cards[id]?.scrollIntoView?.({ block: 'start' }); scrollTo.value = null } }, { flush: 'post' })
 function openExitFromLink(id) {
   if (id === null) return // no new request: an earlier note stays until the user leaves
-  exitNote.value = ''
+  exitRec.clear(id)
   if (confirm.value || busy.value) return
   try {
     const g = (items.value ?? []).find((x) => isOpenGroup(x) && String(x.id) === id)
     const rows = g ? g.positions.filter(canExit) : []
-    if (!rows.length) exitNote.value = EXIT_NOTE
-    else if (exitGate.blocked.value) exitNote.value = exitGate.reason.value ?? EXIT_NOTE
+    if (!rows.length) exitRec.note(id, EXIT_NOTE)
+    else if (exitGate.blocked.value) exitRec.note(id, exitGate.reason.value ?? EXIT_NOTE)
     else ask(g, rows)
   } catch {
-    exitNote.value = EXIT_NOTE
+    exitRec.note(id, EXIT_NOTE)
   }
 }
 // D-05 r2: a failed read keeps the last loaded list (and any open Stops panel) under an error banner marked as last loaded
 function fail(e) {
   takeExitFor()
   takeExitParam() // one-shot: a failed first read consumes the parameter and opens nothing
-  closeByPage()
   errorParts.value = e?.parts ?? NEUTRAL_PARTS
   loading.value = false
 }
 
 const { refresh, refreshNow } = usePaperRefresh({
   key: () => 'list',
-  read: async () => { const token = {}; return { data: (await api.get('/paper/strategies')).data, token } },
+  read: async () => { const token = { seq: ++readSeq }; return { data: (await api.get('/paper/strategies')).data, token } },
   onData: show,
   onError: fail,
 })
@@ -377,58 +394,99 @@ onMounted(refresh)
 function onStopsChanged() { try { refreshNow() } catch { /* the list says its own read failed */ } }
 
 // a read that changes the open contracts of the group being exited ends the exit's open question
-function settle(now) {
+function settle(now, seq = 0) {
+  decideUnresolved(now, seq)
   const c = confirm.value
   if (c) {
+    if (busy.value || isUnknown(c.id)) return // a difference is the pending exit's own doing: wait for the reply, then decide (Lane U r1)
     const g = now.find((x) => x.id === c.id)
     const stillOpen = g && g.readable && c.units.every((u) => g.positions.some((p) => p.contractId === u.id && p.units === u.units))
-    if (!stillOpen) closeByPage()
+    if (!stillOpen) endExit('changed', c.names)
+  }
+}
+// a good read that started after the unknown reply decides it: stored (every exited leg reduced), unchanged, or something else.
+// A "not stored" is only the page's guess: a later good read showing the legs reduced replaces it with placed (the server is the authority).
+function decideUnresolved(now, seq) {
+  for (const r of Object.values(exitRec.recs)) {
+    if ((r.state !== 'unknown' && r.state !== 'not_stored') || seq <= r.readSeq) continue // started before the reply: it may predate the exit
+    const id = r.key
+    const g = now.find((x) => String(x.id) === id)
+    if (!g || !g.readable) { if (r.state === 'unknown') exitRec.drop(id); continue } // the usual changed-elsewhere end follows
+    const at = (cid) => g.positions.find((p) => p.contractId === cid)?.units ?? 0
+    const unchanged = r.units.every((x) => at(x.id) === x.units)
+    const stored = r.units.every((x) => at(x.id) !== x.units && (x.units > 0 ? at(x.id) >= 0 && at(x.id) < x.units : at(x.id) <= 0 && at(x.id) > x.units)) // units only, never money: held count moved toward zero, same side
+    const open = !!confirm.value && String(confirm.value.id) === id
+    if (stored) {
+      exitRec.settle(id, r.id, 'placed', exitEndText('done', r.names, {}, NEUTRAL_ERROR))
+      if (open) { ticks.value = { ...ticks.value, [id]: [] }; cancelExit() }
+    } else if (r.state === 'unknown' && unchanged) {
+      exitRec.settle(id, r.id, 'not_stored', exitEndText('not_stored', r.names, null, NEUTRAL_ERROR), { readSeq: seq })
+      if (open) dialogState.value = PAPER_STATE.READY
+    } else if (r.state === 'unknown') exitRec.drop(id)
   }
 }
 watch(confirm, (now, was) => { if (was && !now && props.exitOnlyFor) emit('exit-closed') })
-// N-04 / ADR-330 (17): the ONE way the PAGE closes an Exit dialog by itself (failed or unreadable read, the legs changed elsewhere, a
-// Confirm while paused): it drops the strategy's ticks too, so no staged exit outlives it and comes back enabled when prices return.
-// The user's own Cancel (cancelExit) keeps the ticks (owner u513).
+// Hotfix 27 Nov (ADR-016..019, ADR-328 (4), owner T1-02): endExit is the ONE door of an Exit that ends without an order or with a
+// refusal; it always leaves a sentence naming the leg(s). 'changed': the legs really changed (or the group cannot be read): the dialog
+// closes, the ticks go (N-04, ADR-330 (17): nothing staged outlives it, and it never comes back by itself) and the note says why.
+// 'not_live': a failed read does NOT close an open dialog: it stays, Confirm is blocked, the line is in the dialog (computed from `stale`).
+// 'refused': the server's four parts in the dialog. 'busy': a note. With no dialog open every reason is the note.
+function endExit(reason, legNames, parts = null, key = confirm.value?.id ?? '*') {
+  if (reason === 'unknown') { exitRec.put(key, 'unknown', '', { names: legNames, readSeq }); return } // its sentence is the dialog's (PAPER_UNKNOWN_TEXT)
+  const text = exitEndText(reason, legNames, parts, NEUTRAL_ERROR)
+  if (reason === 'changed') { closeByPage(); exitRec.put(key, 'changed', text, { names: legNames }); return }
+  if (reason === 'done') { exitRec.put(key, 'placed', text); return }
+  if (confirm.value && reason === 'refused') { exitRec.put(key, 'refused', text); return }
+  if (confirm.value && reason === 'not_live') return // shown in the dialog while stale
+  exitRec.note(key, text)
+}
 function closeByPage() {
   const c = confirm.value
   if (c) ticks.value = { ...ticks.value, [c.id]: [] }
   cancelExit()
 }
 function cancelExit() {
+  if (confirm.value) { const r = exitRec.cur(confirm.value.id); if (r && (r.state === 'refused' || r.state === 'not_stored')) exitRec.drop(confirm.value.id) } // Cancel clears the dialog's own sentence
   confirm.value = null
-  dialogError.value = ''
   dialogState.value = PAPER_STATE.READY
 }
 
 function ask(g, rows) {
   const orders = exitRowsFor(rows)
-  if (busy.value || stale.value || orders === null || !orders.length) return
-  dialogError.value = ''
-  dialogState.value = PAPER_STATE.READY
-  confirm.value = { id: g.id, orders, units: rows.map((p) => ({ id: p.contractId, units: p.units })) }
+  const names = rows.map((p) => p.name)
+  if (busy.value) return endExit('busy', names, null, g.id)
+  if (stale.value) return endExit('not_live', names, null, g.id)
+  if (orders === null || !orders.length) return endExit('changed', names, null, g.id)
+  exitRec.clear(g.id)
+  dialogState.value = isUnknown(g.id) ? PAPER_STATE.UNKNOWN : PAPER_STATE.READY // an unresolved unknown outcome shows its sentence again, Confirm off
+  confirm.value = { id: g.id, orders, names, units: rows.map((p) => ({ id: p.contractId, units: p.units })) }
 }
 
 // the dialog posts the rows as edited (lots x lot size, the typed price); a refusal stays in the dialog with the server's text
 async function doExit(orders) {
   const c = confirm.value
-  if (!c || busy.value) return
-  if (stale.value) return closeByPage() // prices paused: no POST; the list's exit reason line says why
+  if (!c) return endExit('changed', [])
+  if (busy.value) return endExit('busy', c.names)
+  if (exitGate.notLive.value) return endExit('not_live', c.names) // prices paused (a failed read, or a leg of this dialog not live on the last good read): no POST; the dialog says which leg and why
+  const attempt = exitRec.begin(c.id, c.names, c.units) // ONE record per attempt: every answer below goes through it
   busy.value = true
-  dialogError.value = ''
   dialogState.value = PAPER_STATE.READY
+  let reply = null
   try {
-    await addToPaper(api, c.id, orders) // no suggestion ids: the body is exactly { orders }
+    reply = await addToPaper(api, c.id, orders) // no suggestion ids: the body is exactly { orders }
   } catch (e) {
     const outcome = paperPostOutcome(e)
-    if (outcome === PAPER_STATE.REFUSED) dialogError.value = e?.parts?.what_happened || NEUTRAL_ERROR // 4xx: nothing stored
-    dialogState.value = outcome === 'superseded' ? PAPER_STATE.READY : outcome
+    dialogState.value = outcome
+    if (outcome === PAPER_STATE.UNKNOWN) exitRec.settle(c.id, attempt, 'unknown', '', { readSeq })
+    if (outcome === PAPER_STATE.REFUSED) exitRec.settle(c.id, attempt, 'refused', exitEndText('refused', c.names, e?.parts, NEUTRAL_ERROR)) // 400/409/422: nothing stored; all four parts + the legs
     busy.value = false
     return
   }
-  // STORED (201): the dialog closes and is never re-offered for these rows; a failed list refresh is the list's own message
-  confirm.value = null
+  // STORED (201): the server answered, so the order exists: placed replaces whatever the page guessed meanwhile (unknown / not stored / changed)
+  if (confirm.value && String(confirm.value.id) === String(c.id)) confirm.value = null
   ticks.value = { ...ticks.value, [c.id]: [] }
   busy.value = false
+  exitRec.settle(c.id, attempt, 'placed', exitEndText('done', c.names, { orders: reply?.orders, sent: orders.length }, NEUTRAL_ERROR))
   try { refreshNow() } catch { /* the list says its own read failed */ }
 }
 // the unknown-outcome link: the strategy's builder shows its book (Orderbook) read from the server

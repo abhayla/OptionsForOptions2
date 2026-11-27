@@ -52,14 +52,13 @@ export const PAPER_PLANNED_PRICE_NOTE = 'planned price, no live quote'
 export const PAPER_UNKNOWN_HOLD_MS = 5000
 /** The dialog states after Confirm: '' (ready), 'refused', 'unknown', 'placed'. */
 export const PAPER_STATE = Object.freeze({ READY: '', REFUSED: 'refused', UNKNOWN: 'unknown', PLACED: 'placed' })
-/** Classify a FAILED paper-order POST (the mapped client error). 'superseded' = the page cancelled it itself (silent);
- *  'refused' = the server answered 4xx, so it stored nothing (one transaction or none); 'unknown' = no answer (timeout,
- *  dropped connection) or a 5xx (a gateway timeout can follow a commit): the order may be stored, so it is never re-offered
- *  as if it were not. */
+/** Classify a FAILED paper-order POST (the mapped client error). Hotfix 27 Nov (ADR-016..019): 'refused' = the server itself
+ *  answered 4xx (not the proxy's 408/429), so it stored nothing (one transaction or none); EVERYTHING else is 'unknown': no answer (timeout, dropped
+ *  connection), a 5xx (a gateway timeout can follow a commit), a proxy 408/429, and a POST the page cancelled (superseded): the order
+ *  may be stored, so Confirm is never re-armed as if it were not (a second order, ADR-017). */
 export function paperPostOutcome(e) {
-  if (e?.superseded) return 'superseded'
   const status = Number.isInteger(e?.status) ? e.status : null
-  if (status !== null && status >= 400 && status < 500) return PAPER_STATE.REFUSED
+  if (status !== null && status >= 400 && status < 500 && status !== 408 && status !== 429) return PAPER_STATE.REFUSED // 408/429 are the proxy's: not proof that nothing was stored
   return PAPER_STATE.UNKNOWN
 }
 /** An entry (`open`) row's starting price: the live price the page holds for the leg (the LTP the table shows), else the

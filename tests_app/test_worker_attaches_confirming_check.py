@@ -41,7 +41,7 @@ async def test_the_worker_attaches_the_confirming_check_to_the_event_it_queues(m
     monkeypatch.setattr(w, "_evaluate_and_write", evaluate)
     monkeypatch.setattr(background.alert_presets, "style_for", lambda *a: "intraday")
     monkeypatch.setattr(background.alert_presets, "preset_for", lambda *a: alert_gate.INTRADAY)
-    monkeypatch.setattr(background.gate_readings, "readings", lambda ev: {"T-02": (spec, next(holds))})
+    monkeypatch.setattr(background.gate_readings, "readings", lambda ev, *, stops: {"T-02": (spec, next(holds))})
     monkeypatch.setattr(background.check, "record_words", lambda body, rid, rv: ("T-02", "ge", body["label"], "u"))
     monkeypatch.setattr(check_route, "cheapest", lambda state: None)
     monkeypatch.setattr(check_route, "t19_record", lambda trigger, cheap: {})

@@ -98,6 +98,7 @@ const props = defineProps({
   // fix/paper-dialog-safe: '' ready | 'refused' (4xx, shown in `error`) | 'unknown' (no answer / 5xx) | 'placed' (stored, refresh failed)
   state: { type: String, default: '' },
   holdMs: { type: Number, default: PAPER_UNKNOWN_HOLD_MS },
+  locked: { type: Boolean, default: false }, // Lane U r1 (ADR-016/017/019): an unknown outcome is unresolved: Confirm stays off until the page's re-read decides (never a timer)
   firstBasket: { type: Boolean, default: false }, // GC-TRACK1 k10: offer "Held at my broker" (the strategy's first basket only)
   strategyId: { type: [Number, String], default: '' }, // GC-ICFIX Issue 10: with it, exit rows ask the server whether the exit widens the maximum loss
   notLiveLine: { type: String, default: '' }, // ADR-330 (28): set while the page's prices are not live; Confirm waits for the tick
@@ -186,7 +187,7 @@ watch(() => props.state, (s) => {
 }, { immediate: true })
 onBeforeUnmount(() => clearTimeout(holdTimer))
 const canConfirm = computed(() => {
-  if (props.busy || props.blocked || (props.notLiveLine && !notLiveAck.value) || !ready.value || props.state === 'placed' || held.value) return false
+  if (props.busy || props.blocked || exitState.value === 'checking' || (props.notLiveLine && !notLiveAck.value) || !ready.value || props.state === 'placed' || held.value || props.locked) return false
   return props.state !== 'refused' || refusedAt.value === null || snapshot() !== refusedAt.value
 })
 

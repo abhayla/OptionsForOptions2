@@ -41,7 +41,7 @@ from ofo.marketdata.forward import ForwardQuality
 from ofo.marketdata.provider import MarketDataProvider
 from ofo.marketdata.quote import NormalizedQuote
 from ofo.marketdata.shared_compute import FeedScope, SharedCompute
-from ofo.marketdata.spot_source import resolve_spot
+from ofo.marketdata.spot_source import SOURCE_FEED, SOURCE_REST, SourceReading, SourceState, resolve_spot
 from ofo.money import shown_price
 from ofo.outcome import (
     OutcomeState,
@@ -150,6 +150,32 @@ def judge_spot(market: Any, rest: Any, ctx: MarketContext | None) -> Any:
     caller of ``resolve_spot`` in the routes (a repo-scan test holds it)."""
     judged = spot_judging_now(ctx)
     return resolve_spot(market.feed_at(judged), rest, market.last_close, now=judged, windows=feed_windows_of(ctx))
+
+
+async def index_spot_of(market: Any, rest_reader: Any, underlying: str, ctx: MarketContext | None) -> Any:
+    """THE one door to an index spot, for every process (REQ-118; ADR-330 (39); findings
+    page-poll-calls-vendor-rest-before-tick-store and spot-not-available-while-one-source-had-it): the spot is
+    answered whenever EITHER source has one. (1) the feed tick, judged by the feed's age rule at one instant: usable
+    -> that answer IS the answer (never re-judged later, so no gap between "the feed can give it" and the real
+    resolve, and no REST call). (2) else ONE shared cached REST read (``live_market.index_spot``: TTL, single flight,
+    a failure kept for the cooldown; per process, so the worker's own cache is its own) - never skipped on a
+    prediction; a reader that raises is a failed REST. (3) judged again at a new instant (feed, REST, last close).
+    "Not available" only when all fail, with ONE log line naming the feed and REST reasons."""
+    judged = spot_judging_now(ctx)
+    first = resolve_spot(market.feed_at(judged), None, None, now=judged, windows=feed_windows_of(ctx))
+    if first.available:
+        return first
+    try:
+        rest = await rest_reader(underlying)
+    except Exception as exc:  # noqa: BLE001 - a REST failure is "no REST spot", never a failed request
+        log.warning("index spot REST read raised %s", type(exc).__name__)
+        rest = SourceReading(SourceState.FAILED)
+    answer = judge_spot(market, rest, ctx)
+    if not answer.available:
+        why = dict(answer.reasons)
+        log.warning("index spot not available: feed %s; REST %s", why.get(SOURCE_FEED, "not read"),
+                    why.get(SOURCE_REST, "not read"))
+    return answer
 
 
 def get_answer_clock() -> AnswerClock:

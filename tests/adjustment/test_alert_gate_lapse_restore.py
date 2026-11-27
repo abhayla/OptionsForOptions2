@@ -15,7 +15,7 @@ from ofo.adjustment import alert_gate as ag
 from test_alert_gate import DAY, FIXTURE, PRESETS, at, opened, run
 
 D = Decimal
-T07 = ag.RuleSpec("T-07", "ge", (D("80"),))
+T07 = ag.RuleSpec("T-14", "ge", (D("80"),))
 T03 = ag.RuleSpec("T-03", "ge", (D("0.30"), D("0.35"), D("0.40")))
 
 
@@ -39,7 +39,7 @@ def test_lapse_only_when_the_close_clears_the_band_not_at_the_first_close_under_
                (at("10:44"), D("70"))]
     _, events = steps(ag.initial_state(), ag.INTRADAY, samples, T07)
     assert [e.at for e in opened(events)] == [at("10:41")]
-    assert lapsed(events) == [ag.Lapsed("T-07", at("10:44"), D("72"))]  # the 10:43 candle's close, seen at 10:44
+    assert lapsed(events) == [ag.Lapsed("T-14", at("10:44"), D("72"))]  # the 10:43 candle's close, seen at 10:44
 
 
 def test_lapse_is_emitted_once_per_record():
@@ -51,7 +51,7 @@ def test_lapse_is_emitted_once_per_record():
 
 def test_a_dismissed_record_does_not_lapse():
     state, _ = steps(ag.initial_state(), ag.INTRADAY, [(at("10:40"), D("81")), (at("10:41"), D("81"))], T07)
-    state = ag.dismiss(state, "T-07")
+    state = ag.dismiss(state, "T-14")
     _, events = steps(state, ag.INTRADAY, [(at("10:42"), D("60")), (at("10:43"), D("60"))], T07)
     assert lapsed(events) == []
 
@@ -88,8 +88,8 @@ def _rows(*rows: ag.GateRow, today: int = 0) -> ag.GateRows:
 
 
 def test_restore_then_same_level_stays_quiet():
-    row = ag.GateRow("T-07", at("10:41"), D("80"), dismissed=False, open=True)
-    state = ag.restore(_rows(row, today=1), DAY, {"T-07": T07})
+    row = ag.GateRow("T-14", at("10:41"), D("80"), dismissed=False, open=True)
+    state = ag.restore(_rows(row, today=1), DAY, {"T-14": T07})
     _, events = steps(state, ag.INTRADAY, [(at("11:00"), D("85")), (at("11:30"), D("85")), (at("11:31"), D("85"))],
                       T07)
     assert opened(events) == []  # not cleared after a restart: quiet
@@ -120,8 +120,8 @@ def test_restore_cap_resets_on_a_new_day():
 
 
 def test_restored_final_record_never_lapses_but_clears():
-    row = ag.GateRow("T-07", at("10:41"), D("80"), dismissed=False, open=False)  # already lapsed in the store
-    state = ag.restore(_rows(row), DAY, {"T-07": T07})
+    row = ag.GateRow("T-14", at("10:41"), D("80"), dismissed=False, open=False)  # already lapsed in the store
+    state = ag.restore(_rows(row), DAY, {"T-14": T07})
     samples = [(at("11:00"), D("60")), (at("11:01"), D("60")), (at("11:10"), D("81")), (at("11:11"), D("81"))]
     _, events = steps(state, ag.INTRADAY, samples, T07)
     assert lapsed(events) == []
@@ -140,9 +140,9 @@ def test_restore_stored_threshold_less_severe_than_the_current_line_is_below_lev
 def test_restore_refuses_a_negative_count_and_a_naive_time():
     with pytest.raises(ValueError, match="negative"):
         ag.restore(_rows(today=-1), DAY, {})
-    naive = ag.GateRow("T-07", at("10:41").replace(tzinfo=None), D("80"), dismissed=False, open=True)
+    naive = ag.GateRow("T-14", at("10:41").replace(tzinfo=None), D("80"), dismissed=False, open=True)
     with pytest.raises(ValueError, match="timezone"):
-        ag.restore(_rows(naive), DAY, {"T-07": T07})
+        ag.restore(_rows(naive), DAY, {"T-14": T07})
 
 
 # ---- review #2 of 0036: restore with the yes/no placeholder keeps the stored threshold, levels it lazily ----------

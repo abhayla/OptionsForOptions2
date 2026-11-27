@@ -64,7 +64,7 @@ def _fire_on_next_step(monkeypatch):
     """``alert_gate.step`` answers the real state plus the queued events, one queued list per call (strategy order)."""
     queued: list[list] = []
 
-    def step(state, *, now, preset, readings):
+    def step(state, *, now, preset, readings, entry_hold_until=None):
         del now, preset, readings
         return state, (queued.pop(0) if queued else [])
     monkeypatch.setattr(background.alert_gate, "step", step)

@@ -236,13 +236,14 @@ describe('Paper tab from GET /paper/strategies (the real reply)', () => {
     await t(w, 'exit-selected-1').trigger('click')
     await t(w, 'paper-confirm-button').trigger('click')
     await flushPromises()
-    expect(t(w, 'paper-error').text()).toBe('Exit is larger than the open quantity')
+    expect(t(w, 'paper-error').text()).toBe('NIFTY 13 Oct 23000 CE: Exit is larger than the open quantity') // hotfix 27 Nov (REQ-065): the leg is named
     expect(has(w, 'paper-confirm')).toBe(true)
   })
 
-  it('an open contract without an ltp shows a dash; its exit row has no price box: the server sets the price (last close after hours)', async () => {
+  it('an open contract without an ltp shows a dash; its exit row has no price box, and Confirm is blocked with the not-live sentence', async () => {
     const d = clone()
     Object.assign(d.strategies[2].positions[0], { ltp: null, ltp_text: null, price_state: 'stale' })
+    d.strategies[2].state = 'PAUSED' // routes/paper.py:699-701: every open leg unpriced -> the book is PAUSED
     answers['GET /paper/strategies'] = ok(d)
     const w = await show()
     const row = all(w, 'paper-group')[1].findAll('[data-testid="paper-leg"]')[0]
@@ -253,7 +254,9 @@ describe('Paper tab from GET /paper/strategies (the real reply)', () => {
     await flushPromises()
     expect(w.find('[data-testid="paper-price"]').exists()).toBe(false)
     expect(t(w, 'paper-exit-price').text()).toContain('the server sets the exit price when you confirm')
-    expect(t(w, 'paper-confirm-button').element.disabled).toBe(false)
+    // Lane U hotfix 27 Nov (A-H #209, ADR-322 (3), ADR-016..019): the leg has no live price (after hours the server's display price is 'live' when a close is held, ADR-212): Confirm is off with the sentence
+    expect(t(w, 'paper-confirm-button').element.disabled).toBe(true)
+    expect(w.text() + document.body.textContent).toContain('Prices are not live; try again when they update')
   })
 
   it('D-40: the header shows the server\'s left-out line as sent, and no line when none was left out', async () => {

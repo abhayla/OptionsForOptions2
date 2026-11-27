@@ -56,7 +56,7 @@ from ofo_app.routes.broker import current_user_ref
 from ofo_app.routes.outcome import (
     MarketContext,
     get_market_context,
-    judge_spot,
+    index_spot_of,
     load_charge_rates,
 )
 from ofo_app.strategy_refused import StrategyRefused
@@ -494,7 +494,7 @@ async def run_check(  # noqa: PLR0913 - the route's inputs, passed on
         raise StrategyRefused(_NOT_AVAILABLE, Failure.NOT_FOUND)
     await release_connection(db)  # D-36 (c): market and REST reads wait on the broker
     market = await market_reader(tracked, ctx)
-    spot = judge_spot(market, await rest_reader(tracked.position.underlying), ctx)
+    spot = await index_spot_of(market, rest_reader, tracked.position.underlying, ctx)
     listed = check.listed_of(ctx)
     stype = check.entry_type(tracked, listed)  # D-04
     resolved = await check.resolve(db, user_ref, strategy_id, stype)

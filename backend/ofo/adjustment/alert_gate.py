@@ -5,11 +5,14 @@ A pure state machine, one state per strategy. Each `step` is one check: it takes
 to 09:15 IST, and judges each rule only on a candle close (the last value seen in the candle). Edge, not level: a rule
 opens one record when a close is beyond its line; it re-arms only after a close clears the line by the re-arm band
 AND the cool-down from the record has passed; one ladder level worse opens at once (escalation). A daily cap and a
-quiet time after the open turn a would-be record into a `Held` event, never a silent drop.
+quiet time after the open turn a would-be record into a `Held` event, never a silent drop; a plan loss stop is held by
+neither, and a pause in its candle does not keep it from the next live check (Lane J 2026-11-27, gaps 1-3).
 
 Risk exits (stop-loss, conditional exits, REQ-041 / paper triggers) never pass through this gate (AC-5): it applies to
-adjustment suggestions only. The screen check and the background check share this one gate. A stop rule
-(``stop_lines.is_stop_rule``) is judged on the first check that sees it beyond its line, not at the candle close.
+adjustment suggestions only. The screen check and the background check share this one gate. A plan exit
+(``stop_lines.PLAN_EXIT_RULES``, ADR-330 (47): the loss stops, both profit targets and the time exit) is judged on the
+first check that sees it beyond its line or time, not at the candle close; one already past its level at entry waits
+for the 5 minutes after entry (``entry_period_end``) and is then raised if still past it, never swallowed.
 """
 from __future__ import annotations
 
@@ -23,7 +26,8 @@ from ofo.adjustment import level_watch
 from ofo.adjustment.cap_scope import cap_exempt
 from ofo.adjustment.gate_rows import GateRow, GateRows, Preset  # noqa: F401 - re-exported for callers
 from ofo.adjustment.held_reasons import HELD_DAILY_LIMIT, HELD_QUIET_TIME, HELD_TEXT_IDS  # noqa: F401 - re-exported
-from ofo.adjustment.stop_lines import is_stop_rule
+from ofo.adjustment.popup_quiet import QUIET_PERIOD
+from ofo.adjustment.stop_lines import is_plan_exit_rule
 from ofo.timeutil import IST
 from ofo.timeutil import SESSION_OPEN as MARKET_OPEN
 
@@ -56,6 +60,24 @@ class RuleSpec:
     #: #709 item 7: what the check that took THIS sample knew (the worker's ``GateContext``); the gate never reads it,
     #: it only carries it onto the event the sample confirms, so a record's words never come from a later check
     sample: object = field(default=None, compare=False)
+    #: ADR-330 (47): the rule is one of the plan's own exits under its own id (``stop_lines.is_plan_exit`` through
+    #: ``gate_readings.readings``): it gets the stop fast path and the quiet-time and cap exemptions as a stop line does
+    plan_exit: bool = field(default=False, compare=False)
+
+
+def _is_plan_exit(rule_id: str, spec: RuleSpec) -> bool:
+    """ADR-330 (47): one of the plan's own exits, by its id (``PLAN_EXIT_RULES``) or by its triggers
+    (``RuleSpec.plan_exit``): judged on the first check past its level or time; no quiet time or cap."""
+    return spec.plan_exit or is_plan_exit_rule(rule_id)
+
+
+def entry_period_end(entered_at: datetime | None) -> datetime | None:
+    """ADR-330 (47): the end of the 5-minute period after entry (``popup_quiet.QUIET_PERIOD``): a plan exit
+    already past its level at entry waits until then and is raised if still past it. None when the entry time is not
+    known or has no time zone: no period, so an exit is never held on a guess. Pure."""
+    if not isinstance(entered_at, datetime) or entered_at.tzinfo is None:
+        return None
+    return entered_at + QUIET_PERIOD
 
 
 def _more_severe(cmp: Cmp, a: Decimal, b: Decimal) -> bool:
@@ -181,6 +203,8 @@ class _Rule:
     record: _Record | None = None
     cleared: bool = False
     hold: _Hold | None = None
+    #: a plan exit was read on the safe side since this gate began: its crossing is not "at entry" (ADR-330 (47))
+    clear_seen: bool = False
 
 
 @dataclass(frozen=True)
@@ -301,23 +325,31 @@ def _leveled(rule: _Rule, spec: RuleSpec) -> _Rule:
     return rule
 
 
-def _close(state: GateState, rule_id: str, pend: _Pending, preset: Preset) -> tuple[GateState, list[Event]]:
+def _close(state: GateState, rule_id: str, pend: _Pending, preset: Preset,
+           hold_until: datetime | None = None) -> tuple[GateState, list[Event]]:
     t, value, spec = pend.end, pend.value, pend.spec
     if state.day != t.date():
         state = replace(state, day=t.date(), opened_today=0)
     level = _level(spec, value)
     rule, lapsed = _refresh(rule_id, _leveled(replace(state.rule(rule_id), pending=None), spec), pend, level, preset)
     state = state.with_rule(rule_id, rule)
-    state, events = _decide(state, rule_id, rule, pend, level, preset)
+    state, events = _decide(state, rule_id, rule, pend, level, preset, hold_until)
     return state, lapsed + events
+
+
+def _in_entry_hold(rule_id: str, rule: _Rule, spec: RuleSpec, t: datetime, hold_until: datetime | None) -> bool:
+    """ADR-330 (47): a plan exit past its level at entry (never read on the safe side since) raises nothing inside the
+    5 minutes after entry. Nothing is recorded or dropped, so the first check after them judges it as any other."""
+    return hold_until is not None and t < hold_until and not rule.clear_seen and _is_plan_exit(rule_id, spec)
 
 
 def _decide(  # noqa: PLR0913 - one close's inputs
     state: GateState, rule_id: str, rule: _Rule, pend: _Pending, level: int, preset: Preset,
+    hold_until: datetime | None = None,
 ) -> tuple[GateState, list[Event]]:
     t, value, spec = pend.end, pend.value, pend.spec
     rec, hold = rule.record, rule.hold
-    if level < 0:
+    if level < 0 or _in_entry_hold(rule_id, rule, spec, t, hold_until):
         return state.with_rule(rule_id, rule), []
     if rec is not None and not (rec.dismissed or rec.final):
         return _on_open_record(state, rule_id, rule, rec, pend, level)
@@ -330,9 +362,10 @@ def _decide(  # noqa: PLR0913 - one close's inputs
         return state.with_rule(rule_id, rule), []
     threshold = spec.ladder[level] if spec.ladder else None
     reason = None
-    if t.time() <= preset.quiet_until:
+    stop = _is_plan_exit(rule_id, spec)
+    if t.time() <= preset.quiet_until and not stop:  # ADR-330 (47): a plan exit opens at once, quiet time or not
         reason = HELD_QUIET_TIME
-    elif state.opened_today >= preset.daily_cap and not cap_exempt(rule_id):
+    elif state.opened_today >= preset.daily_cap and not cap_exempt(rule_id, plan_exit=stop):
         reason = HELD_DAILY_LIMIT
     if reason is not None:
         if hold is not None and hold.reason == reason and level <= hold.level:
@@ -342,7 +375,7 @@ def _decide(  # noqa: PLR0913 - one close's inputs
                                                     spec.shown_threshold, threshold, spec.sample)]
     rule = replace(rule, record=_Record(level, threshold, t, ladder=_ladder_key(spec)), cleared=False, hold=None)
     state = state.with_rule(rule_id, rule)
-    if not cap_exempt(rule_id):  # ADR-267: a watch / day rule is not counted against the cap
+    if not cap_exempt(rule_id, plan_exit=stop):  # ADR-267: a watch / day rule is not counted against the cap
         state = replace(state, opened_today=state.opened_today + 1)
     limit = spec.ladder[0] if spec.ladder else spec.shown_threshold
     return state, [Opened(rule_id, t, level, threshold, value, worse, spec.shown_value,
@@ -376,11 +409,14 @@ def step(
     now: datetime,
     preset: Preset,
     readings: Mapping[str, tuple[RuleSpec, Value | None]],
+    entry_hold_until: datetime | None = None,
 ) -> tuple[GateState, list[Event]]:
     """One check at `now`: process every candle close that is due, then record this check's samples.
 
     A rule missing from `readings` gives no sample; a value of None (not readable) gives no sample either, so a
-    candle with only None has no close. An empty `readings` still processes due closes.
+    candle with only None has no close. An empty `readings` still processes due closes. `entry_hold_until`
+    (``entry_period_end``, ADR-330 (47)): until then a plan exit already past its level when this gate first saw it is
+    not raised; it is raised at the first check after, if still past its level.
     """
     now = _ist(now)
     events: list[Event] = []
@@ -390,21 +426,33 @@ def step(
         if rule.pending is not None and now >= rule.pending.end
     )
     for _, rule_id in due:
-        state, evs = _close(state, rule_id, state.rule(rule_id).pending, preset)
+        state, evs = _close(state, rule_id, state.rule(rule_id).pending, preset, entry_hold_until)
         events.extend(evs)
     end = _candle_end(now, preset.candle)
-    if state.paused_at is not None and state.paused_at >= end - preset.candle:
-        return state, events  # this candle saw a pause: no sample, so it has no close (pause())
+    # this candle saw a pause: no sample, so it has no close (pause()). Lane J gap 2 (REQ-170 AC-5): a loss stop is
+    # still judged on THIS check, which is live (the worker steps with readings only after a fresh read; a stale or
+    # missing price pauses and gives none, ADR-016): a pause never keeps a stop past its line silent
+    paused = state.paused_at is not None and state.paused_at >= end - preset.candle
     for rule_id in sorted(readings):
         spec, value = readings[rule_id]
         if value is None:
             continue
+        exit_ = _is_plan_exit(rule_id, spec)
+        crossed = _level(spec, value) >= 0
+        if exit_ and not crossed and not state.rule(rule_id).clear_seen:
+            state = state.with_rule(rule_id, replace(state.rule(rule_id), clear_seen=True))
+        stop_now = exit_ and crossed
+        if paused:
+            if stop_now:
+                state, evs = _close(state, rule_id, _Pending(now, value, spec), preset, entry_hold_until)
+                events.extend(evs)
+            continue
         rule = state.rule(rule_id)
         pending = _Pending(end, value, spec)
         state = state.with_rule(rule_id, replace(rule, pending=pending))
-        if is_stop_rule(rule_id) and _level(spec, value) >= 0:
+        if stop_now:
             # REQ-170 AC-5: a stop beyond its line is judged now; its sample stays for the candle close
-            state, evs = _close(state, rule_id, _Pending(now, value, spec), preset)
+            state, evs = _close(state, rule_id, _Pending(now, value, spec), preset, entry_hold_until)
             events.extend(evs)
             state = state.with_rule(rule_id, replace(state.rule(rule_id), pending=pending))
     return state, events

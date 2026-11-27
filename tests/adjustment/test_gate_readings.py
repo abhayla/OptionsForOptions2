@@ -31,7 +31,7 @@ def _adj02():
 def test_core_adj02_every_checked_rule_has_a_value_and_its_ladder():
     _, _, ev = _adj02()
     assert ev.stage_name == "Middle"
-    got = gate_readings.readings(ev)
+    got = gate_readings.readings(ev, stops=frozenset())
     t03_spec, t03 = got["T-03"]
     assert t03_spec == gate.RuleSpec("T-03", "ge", (D("0.35"), D("0.40")))  # Middle 0.35, then Last day 0.40
     assert t03 >= D("0.35")
@@ -53,7 +53,7 @@ def test_core_adj02_every_checked_rule_has_a_value_and_its_ladder():
 
 def test_core_adj02_readings_drive_the_gate_to_open_on_the_close():
     _, _, ev = _adj02()
-    got = gate_readings.readings(ev)
+    got = gate_readings.readings(ev, stops=frozenset())
     t0 = datetime.datetime(2026, 11, 6, 11, 40, tzinfo=IST)
     state, events = gate.step(gate.initial_state(), now=t0, preset=gate.WEEKLY, readings=got)
     assert events == []  # no close yet: the 11:40-11:45 candle is open
@@ -68,21 +68,21 @@ def test_early_stage_ladder_is_the_three_weekly_thresholds():
     body, state, _ = _adj02()
     ev = evaluate(body, replace(state, days_left=5), None, None)
     assert ev.stage_name == "Early"
-    spec, _ = gate_readings.readings(ev)["T-03"]
+    spec, _ = gate_readings.readings(ev, stops=frozenset())["T-03"]
     assert spec.ladder == (D("0.30"), D("0.35"), D("0.40"))
 
 
 def test_last_stage_has_no_later_threshold():
     body, state, _ = _adj02()
     ev = evaluate(body, replace(state, days_left=1), None, None)
-    spec, _ = gate_readings.readings(ev)["T-03"]
+    spec, _ = gate_readings.readings(ev, stops=frozenset())["T-03"]
     assert spec.ladder == (D("0.40"),)
 
 
 def test_withheld_check_reads_every_rule_none():
     body, state, _ = _adj02()
     ev = evaluate(body, replace(state, prices_fresh=False), None, None)
-    got = gate_readings.readings(ev)
+    got = gate_readings.readings(ev, stops=frozenset())
     assert got and all(v is None for _, v in got.values())
     assert ev.values == ()
 
@@ -90,7 +90,7 @@ def test_withheld_check_reads_every_rule_none():
 def test_already_true_at_entry_reads_none_until_seen_clear():
     body, state, _ = _adj02()
     ev = evaluate(body, state, None, state)  # entry = now: every firing rule held at entry (F-71)
-    got = gate_readings.readings(ev)
+    got = gate_readings.readings(ev, stops=frozenset())
     assert got["T-03"][1] is None
 
 
@@ -100,13 +100,13 @@ def _ev(*values: RuleValue) -> Evaluation:
 
 def test_compound_rule_is_a_yes_no_reading():
     ev = _ev(RuleValue("R1", "T-01", D("0.4"), D("0.5"), "le", True, 2, (D("0.3"),)))
-    assert gate_readings.readings(ev)["R1"] == (gate.RuleSpec("R1", "bool", ()), True)
+    assert gate_readings.readings(ev, stops=frozenset())["R1"] == (gate.RuleSpec("R1", "bool", ()), True)
 
 
 def test_lt_and_clock_rules_are_yes_no_readings():
     ev = _ev(RuleValue("T-02", "T-02", D("-5"), D("0"), "lt", True, 1),
              RuleValue("T-10b", "T-10b", "14:00", "14:30", "ge", False, 1))
-    got = gate_readings.readings(ev)
+    got = gate_readings.readings(ev, stops=frozenset())
     assert got["T-02"] == (gate.RuleSpec("T-02", "bool", ()), True)
     assert got["T-10b"] == (gate.RuleSpec("T-10b", "bool", ()), False)
 
@@ -114,13 +114,13 @@ def test_lt_and_clock_rules_are_yes_no_readings():
 def test_unknown_cmp_is_refused_not_guessed():
     ev = _ev(RuleValue("X", "T-99", D("1"), D("1"), "eq", True, 1))  # type: ignore[arg-type]
     with pytest.raises(ValueError, match="cmp"):
-        gate_readings.readings(ev)
+        gate_readings.readings(ev, stops=frozenset())
 
 
 def test_value_disagreeing_with_the_flag_is_refused():
     ev = _ev(RuleValue("T-03", "T-03", D("0.30"), D("0.35"), "ge", True, 1))  # says fired, value below the line
     with pytest.raises(ValueError, match="disagrees"):
-        gate_readings.readings(ev)
+        gate_readings.readings(ev, stops=frozenset())
 
 
 def test_ladder_for_an_unknown_cmp_is_refused():

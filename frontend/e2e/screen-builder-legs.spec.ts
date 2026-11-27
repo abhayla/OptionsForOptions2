@@ -1115,15 +1115,21 @@ test.describe('Builder running paper trade: edits, Review and add, Exit (REQ-109
     await expect(page.getByTestId('net-ltp').first()).toHaveText('—')
   })
 
-  test('PP-22 N-04 when the page closes the Exit list itself (book becomes unreadable) the staged exit does not remain', async ({ page }) => {
-    // Spec basis: owner N-04 (after the dialog closed by itself the builder still held the exit as an unsaved change)
+  test('PP-22 N-04 the page closes the Exit list only when the trade changed elsewhere (with a sentence); an unreadable book keeps it open, Confirm disabled (hotfix 27 Nov T2-08, ADR-016..019)', async ({ page }) => {
+    // Spec basis: owner N-04, T2-08 (after the dialog closed by itself the builder still held the exit as an unsaved change; closing with nothing said)
     const S = await stub(page); await openPaper(page)
     await page.getByTestId('paper-exit-all').click()
     await expect(page.getByTestId('paper-confirm')).toBeVisible()
     S.setBook({ abort: true })
-    await expect(page.getByTestId('paper-confirm')).toHaveCount(0, { timeout: 20000 })
+    await expect(page.getByTestId('paper-error')).toContainText('Prices are not live; try again when they update', { timeout: 20000 })
+    await expect(page.getByTestId('paper-confirm')).toBeVisible()
+    await expect(page.getByTestId('paper-confirm-button')).toBeDisabled()
     await shot(page, 'N-04')
-    await expect(rows(page)).toHaveCount(4, { timeout: 2000 })
+    const changed = paperBook()
+    changed.positions = changed.positions.map((p: any) => (p.contract_id === 5572 ? { ...p, net_quantity: 0 } : p))
+    S.setBook({ json: changed })
+    await expect(page.getByTestId('paper-confirm')).toHaveCount(0, { timeout: 20000 })
+    await expect(page.getByTestId('paper-exit-note')).toContainText('This trade changed elsewhere. Reload to see the current legs.')
     await expect(page.getByTestId('paper-pending-count')).toHaveText('0 pending changes')
   })
 
