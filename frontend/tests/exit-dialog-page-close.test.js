@@ -367,6 +367,7 @@ describe('Tier A review round 3: the Exit snapshot ends with the dialog; a block
     await flushPromises()
     await t(w, 'paper-confirm-button').trigger('click')
     await flushPromises()
+    answers['GET /paper/strategies/86'] = () => new Promise(() => {}) // U2 (ADR-017): the automatic re-read does not answer
     fail({ status: 503, message: 'x', parts: null })
     await flushPromises()
     await setMark(w, true)

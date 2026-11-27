@@ -109,6 +109,8 @@ describe('CORE: a stored paper order is never offered again (the live case, buil
     const w = await exitDialog()
     vi.useFakeTimers()
     answers[`POST ${ORDERS_URL}`] = () => Promise.reject(TIMEOUT)
+    const bookAnswer = answers[`GET ${BOOK_URL}`]
+    answers[`GET ${BOOK_URL}`] = () => new Promise(() => {}) // U2 (ADR-017): the automatic re-read does not answer: the outcome stays unknown
     await click(w)
     expect(posts()).toHaveLength(1)
     expect(t(w, 'paper-unknown').text()).toContain(PAPER_UNKNOWN_TEXT)
@@ -121,8 +123,9 @@ describe('CORE: a stored paper order is never offered again (the live case, buil
     expect(confirmBtn(w).attributes('disabled')).toBeDefined()
     vi.advanceTimersByTime(1)
     await flushPromises()
-    expect(confirmBtn(w).attributes('disabled')).toBeUndefined()
+    expect(confirmBtn(w).attributes('disabled')).toBeDefined() // U2 (ADR-017): no timer unlocks an unresolved outcome; only a re-read decides
     vi.useRealTimers()
+    answers[`GET ${BOOK_URL}`] = bookAnswer
     const reads = calls.filter((c) => c.method === 'GET' && c.url === BOOK_URL).length
     await t(w, 'paper-open-orderbook').trigger('click')
     await flushPromises()
