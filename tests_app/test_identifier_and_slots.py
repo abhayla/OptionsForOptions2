@@ -52,6 +52,8 @@ PINNED_SLOT_TYPES = frozenset({
         # Lane N A2 (ADR-330 (36), reviewed by the coordinator 27 Nov): ClockHms, or an EarlierDay
         # printed "8 Oct, 15:29:59"; validates through ClockHms, no user text
         "ClockHmsOrDated",
+        # ADR-330 (60): DayLabel formats one datetime.date as "Monday 30 Nov" (exact type check; no user text)
+        "DayLabel",
         "UnderlyingName", "InstrumentRef", "LegRef", "LegRefs", "HealthWord", "ExpiryDate", "DayMonth", "CellText", "OiCount", "WholePoints", "SignedPercent", "WholeRupees",  # noqa: E501 - long line kept whole
         "SignedPaisa", "SignedRupeesPaisa", "SignedWholeRupees",
         # GC-TP step 7a / 6a (reviewed 2026-10-29 session 2: both validate through Rupees / HourMinute, format only)

@@ -941,6 +941,18 @@ class ClockSeconds(SlotType):
         return Clock.format(value)
 
 
+class DayLabel(SlotType):
+    """A calendar day as "Monday 30 Nov" (ADR-330 (60): the market-closed Exit line): exactly `datetime.date`."""
+
+    @staticmethod
+    def validate(value: object) -> None:
+        _require_exact(value, datetime.date, "DayLabel")
+
+    @staticmethod
+    def format(value: datetime.date) -> str:
+        return value.strftime("%A %d %b").replace(" 0", " ", 1)
+
+
 class ClockHms(SlotType):
     """A timezone-aware time as the 24-hour IST clock time with seconds, "14:12:05" (D-17, ADR-322 point 2)."""
 
@@ -1556,6 +1568,11 @@ _EXPLANATIONS: tuple[ExplanationTemplate, ...] = (
     # GC-TP R-18 (ADR-209): the line naming the booked P&L a paper strategy's target figures include
     # ADR-330 (36) (LR-Q18, owner 26 Nov 2026): a trade after the close with legs frozen at the close AND legs first priced
     # later; the later legs carry the time they have. Singular and plural; the one function is closed_label (outcome.py).
+    # ADR-330 (60) (owner 27 Nov 2026 evening; pending owner read): the Exit dialog's one line while the market is closed.
+    ExplanationTemplate("exit_market_closed", "values_seen",
+                        "The market is closed. Exits can be placed from 09:15 on {day}.", {"day": DayLabel}),
+    ExplanationTemplate("exit_market_closed_no_day", "values_seen",
+                        "The market is closed. Exits can be placed when it opens."),
     ExplanationTemplate("closed_prices_mixed_one", "values_seen",
                         "Market closed. Prices are from {frozen}; 1 leg as of {later}.",
                         {"frozen": ClockHmsOrDated, "later": ClockHmsOrDated}),

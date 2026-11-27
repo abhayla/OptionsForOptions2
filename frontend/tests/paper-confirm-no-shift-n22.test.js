@@ -11,7 +11,7 @@ import PaperConfirmDialog from '@/components/strategy/PaperConfirmDialog.vue'
 let pending = null
 vi.mock('@/services/api', async (importActual) => {
   const actual = await importActual()
-  return { ...actual, default: { get: (url) => (url.endsWith('/armed-exits') ? Promise.resolve({ data: { lines: [] } }) : pending) } }
+  return { ...actual, default: { get: (url) => (url === '/market/exit-state' ? Promise.resolve({ data: { closed: false, sentence: null, next_open_at: null } }) : url.endsWith('/armed-exits') ? Promise.resolve({ data: { lines: [] } }) : pending) } }
 })
 const t = (w, id) => w.find(`[data-testid="${id}"]`)
 const EXIT = { key: 'a', contract_id: 4, side: 'SELL', text: 'NIFTY 23 Nov 25400 CE', lots: 1, lot_size: 65, price: '', kind: 'exit' }

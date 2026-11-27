@@ -5194,5 +5194,13 @@
   "explanation:leg_edit_removed_by_step": {
     "sha256": "e9dd6bfb4bd20d276e6d492648700e9a3a55c1af32fe60d9798e452e60e8caba",
     "reviewed": "pending owner read"
+  },
+  "explanation:exit_market_closed": {
+    "sha256": "bce67f0c2776cb461102f03709b1a8224e3d4a5c204da2bc883f51aeb069fce1",
+    "reviewed": "pending owner read"
+  },
+  "explanation:exit_market_closed_no_day": {
+    "sha256": "7364959a3721b56ffc466bdc67cad939b7a2d1ef200837e63122abcfc502719d",
+    "reviewed": "pending owner read"
   }
 }

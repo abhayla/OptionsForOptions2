@@ -55,6 +55,7 @@
     <label v-if="notLiveLine" class="mt-3 flex items-start gap-2 text-sm font-medium text-warn" data-testid="paper-not-live">
       <input v-model="notLiveAck" type="checkbox" class="mt-1" data-testid="paper-not-live-ack" />{{ notLiveLine }}
     </label>
+    <p v-if="note" class="mt-3 text-sm font-medium text-warn" role="status" data-testid="paper-discard-note">{{ note }}</p>
     <p class="mt-3 text-xs text-ink-muted" data-testid="paper-not-real">{{ PAPER_NOT_REAL_TEXT }}</p>
     <!-- fix/paper-dialog-safe (ADR-017): a stored order is never offered again; an answer of unknown outcome sends the user to the
          Orderbook first and keeps Confirm locked for PAPER_UNKNOWN_HOLD_MS; a refusal (4xx: nothing stored) unlocks after an edit -->
@@ -63,6 +64,7 @@
     <template #status>
       <div class="min-h-10" data-testid="paper-status-slot">
       <p v-if="state === 'placed'" class="text-sm font-medium" role="status" data-testid="paper-placed">{{ PAPER_PLACED_NOT_REFRESHED_TEXT }}</p>
+      <p v-else-if="marketLine" class="text-sm text-red-700" role="alert" data-testid="paper-market-closed">{{ marketLine }}</p>
       <p v-else-if="state === 'unknown'" class="text-sm text-red-700" role="alert" data-testid="paper-unknown">
         {{ PAPER_UNKNOWN_TEXT }}
         <button type="button" class="ml-1 font-semibold text-accent underline" data-testid="paper-open-orderbook" @click="emit('orderbook')">{{ PAPER_OPEN_ORDERBOOK_LABEL }}</button>
@@ -101,6 +103,7 @@ const props = defineProps({
   locked: { type: Boolean, default: false }, // Lane U r1 (ADR-016/017/019): an unknown outcome is unresolved: Confirm stays off until the page's re-read decides (never a timer)
   firstBasket: { type: Boolean, default: false }, // GC-TRACK1 k10: offer "Held at my broker" (the strategy's first basket only)
   strategyId: { type: [Number, String], default: '' }, // GC-ICFIX Issue 10: with it, exit rows ask the server whether the exit widens the maximum loss
+  note: { type: String, default: '' }, // ADR-330 (59): the page's one line about a staged change an Exit all will discard (pending owner read)
   notLiveLine: { type: String, default: '' }, // ADR-330 (28): set while the page's prices are not live; Confirm waits for the tick
   kind: { type: String, default: 'paper' }, // ADR-330 (10): 'paper' | 'real'; names what an exit confirmation exits, via paperDrafts.exitConfirmTitle
 })
@@ -131,6 +134,27 @@ const orderOf = (r) => ({ contract_id: r.contract_id, side: r.side, quantity: un
 
 // GC-ICFIX Issue 10 (ADR-256): the screen compares nothing; it shows the server's line when `widens` is true. Fail closed: a read that fails or answers
 // something unusable shows "could not check" (exitState 'unchecked'); while it runs, 'checking'; no exit row: '' (nothing).
+// ADR-330 (60) (owner 27 Nov evening; the same dialog for the builder, Positions and Exit all; pending owner read): an Exit dialog asks the
+// server's ONE market-state answer when it opens. Closed: the server's sentence is shown and Confirm is off (it wins over the not-live line).
+// The answer cannot be read: Confirm stays off with MARKET_UNREADABLE_TEXT (fail closed; the server still refuses a closed-market exit, ADR-212).
+const MARKET_UNREADABLE_TEXT = 'The market status could not be read. Try again in a moment.'
+const marketState = ref('') // '' (no exit row) | 'checking' | 'open' | 'closed' | 'unreadable'
+const marketSentence = ref('')
+let marketSeq = 0
+const marketLine = computed(() => (marketState.value === 'closed' ? marketSentence.value : marketState.value === 'unreadable' ? MARKET_UNREADABLE_TEXT : ''))
+async function askMarket() {
+  const seq = ++marketSeq
+  if (!props.open || !rows.value.some((r) => r.kind === 'exit')) { marketState.value = ''; marketSentence.value = ''; return }
+  marketState.value = 'checking'
+  marketSentence.value = ''
+  try {
+    const { data } = await api.get('/market/exit-state')
+    if (seq !== marketSeq) return
+    if (data?.closed === false) marketState.value = 'open'
+    else if (data?.closed === true && typeof data.sentence === 'string' && data.sentence) { marketState.value = 'closed'; marketSentence.value = data.sentence }
+    else marketState.value = 'unreadable' // ambiguous or without its sentence: never a guess
+  } catch { if (seq === marketSeq) marketState.value = 'unreadable' }
+}
 const exitWarning = ref('')
 const exitState = ref('')
 let askSeq = 0
@@ -150,6 +174,7 @@ async function askExitRisk() {
   } catch { state = 'unchecked' }
   if (seq === askSeq) { exitState.value = state; exitWarning.value = line }
 }
+watch(() => [props.open, props.orders], askMarket, { immediate: true }) // once per opening / new list, not per typed edit
 watch(() => [props.open, props.orders, props.strategyId, rows.value.map((r) => `${r.lots}/${r.price}`).join()], askExitRisk, { immediate: true })
 
 // D-03 part B: the lines naming each armed index exit against the legs after these orders (the server words them). A read that
@@ -187,7 +212,7 @@ watch(() => props.state, (s) => {
 }, { immediate: true })
 onBeforeUnmount(() => clearTimeout(holdTimer))
 const canConfirm = computed(() => {
-  if (props.busy || props.blocked || exitState.value === 'checking' || (props.notLiveLine && !notLiveAck.value) || !ready.value || props.state === 'placed' || held.value || props.locked) return false
+  if (props.busy || props.blocked || marketState.value === 'checking' || marketState.value === 'closed' || marketState.value === 'unreadable' || exitState.value === 'checking' || (props.notLiveLine && !notLiveAck.value) || !ready.value || props.state === 'placed' || held.value || props.locked) return false
   return props.state !== 'refused' || refusedAt.value === null || snapshot() !== refusedAt.value
 })
 

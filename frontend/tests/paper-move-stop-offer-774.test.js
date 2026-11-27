@@ -55,6 +55,7 @@ beforeEach(() => {
     [`GET ${TRIG}`]: () => Promise.resolve({ data: { triggers: stopsNow } }),
     [`POST ${TRIG}`]: () => Promise.resolve({ data: { triggers: stopsNow, already_set: false, already_armed: [] } }),
     [`GET ${ARMED}`]: { lines: [SENTENCE] },
+    'GET /market/exit-state': { closed: false }, // ADR-330 (60): an Exit dialog asks the market state when it opens (Lane U2)
     'GET /catalogue/NIFTY/contracts?expiry=2026-11-03': { underlying: 'NIFTY', contracts: CONTRACTS },
     'POST /strategies/outcome': () => new Promise(() => {}),
     'POST /strategies/leg-edit': () => new Promise(() => {}),
