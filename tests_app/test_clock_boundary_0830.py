@@ -38,8 +38,8 @@ class Clock:
         return self.at
 
 
-# The strict expected-fail mark (fixed by builder-open, ea4f5188) is removed in the build that merges
-# hotfix/builder-open-1127 (Lane Z, 28 Nov): the test now passes.
+@pytest.mark.xfail(strict=True, reason="start-up run counts as the last run, first reload at 09:07; "
+                                       "fixed by origin/lanej/builder-open-0827 (ea4f5188)")
 async def test_started_0807_reloads_at_0835_whatever_ran_at_start_up():
     clock, calls = Clock(at(8, 7)), []
 
