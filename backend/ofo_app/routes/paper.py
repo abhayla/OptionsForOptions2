@@ -180,6 +180,9 @@ class PaperOrdersIn(BaseModel):
     #: ADR-326 (1) (D-25): the approach this basket was prepared as; a Take profit (A-24, A-25) is refused at an
     #: after-charges loss by the build path that offers it (offered and accepted agree). Other ids: nothing checked
     approach_id: Literal["A-24", "A-25"] | None = None
+    #: ADR-330 (28): the user ticked the "prices are not live" line; only then may the save start its rules from the
+    #: last index value the app holds. Absent / false: a save without a live index price is refused.
+    prices_not_live_confirmed: bool = False
 
 
 class PaperNetOut(ApiModel):
@@ -1415,7 +1418,8 @@ async def place_paper_orders(strategy_id: int, body: PaperOrdersIn,  # noqa: PLR
         from ofo_app.adjustment_readers import record_basket_facts  # noqa: PLC0415 - the readers import the routes
         await record_basket_facts(db, ctx, feed, strategy_id, (
             stored.saved.definition.underlying, book, placed_at,
-            {o.contract_id: exit_prices.get(i, o.price) for i, o in enumerate(body.orders)}))
+            {o.contract_id: exit_prices.get(i, o.price) for i, o in enumerate(body.orders)}),
+            body.prices_not_live_confirmed)
         if body.held is not None and len(book) != len(body.orders):  # the store's own first-fill view, under its lock
             raise StrategyRefused("held_entry_not_a_first_open_basket")  # rolled back below: nothing stored
         await _record_held(db, strategy_id, body.held)  # ADR-292: the held row and its first basket: one transaction
