@@ -913,7 +913,7 @@
      "what_it_changes": "The furthest a SENSEX expected-range pick list runs from the current level, in points."
     },
     {
-     "default": "10000",
+     "default": "100",
      "earlier_values": [],
      "effective_from": null,
      "group": "Limits",
@@ -925,7 +925,7 @@
      "set_by": null,
      "type": "integer",
      "unit": "count",
-     "value": "10000",
+     "value": "100",
      "what_it_changes": "The most lots one leg of a strategy may hold; a larger leg is refused and the screen's lot box stops there."
     },
     {
