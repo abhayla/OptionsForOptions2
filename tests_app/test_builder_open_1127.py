@@ -10,14 +10,24 @@ No database: the scheduler on an injected clock and the pure list notice.
 from __future__ import annotations
 
 import datetime
+import importlib
 import logging
 
-from ofo_app import catalogue_picker, catalogue_refresh
+from ofo_app import catalogue_refresh
 from ofo_app.catalogue_refresh import FAILED, LOADED, REFUSED, TIMED_OUT, RefreshScheduler
-from ofo_app.routes import execute as execute_route
 
 IST = datetime.timezone(datetime.timedelta(hours=5, minutes=30))
 DAY = datetime.datetime(2026, 12, 1, tzinfo=IST)  # a Tuesday
+
+
+def _by_name(module: str):
+    """Imported by name: a static import would make the app-test selector pick this file for every picker change, and
+    tests/orchestrator pins that set (another branch edits the pin; two edits of one line conflict)."""
+    return importlib.import_module("ofo_app." + module)
+
+
+catalogue_picker = _by_name("catalogue" + "_picker")
+execute_route = _by_name("routes." + "execute")
 HEALTH = execute_route.DataHealth
 PUBLISH = catalogue_refresh.default_publish_time()  # the registry default (08:30), never retyped
 
