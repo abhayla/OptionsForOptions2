@@ -356,7 +356,8 @@ async def test_saving_the_box_with_an_empty_target_stores_no_target_and_t07_is_n
     assert adjustment_check.with_plan_target(body)["triggers"]["T-07"]["on"] is False  # the check does not act on it
     for bad in ("0", "-5", "101", "abc"):  # an unusable number is still refused, naming the field
         status, refused = await _call("PUT", _plan_path(sid), json={"playbook_id": system.id, "target": bad})
-        assert status == UNPROCESSABLE and "target" in json.dumps(refused), refused
+        # 27 Nov: the refusal names the box by its sheet label, as the sibling test pins (an emptied box is accepted)
+        assert (status, refused["what_happened"]) == (UNPROCESSABLE, "Target is not valid."), (bad, refused)
 
 
 # --- ADR-330 (5) / LP-2: the levels preview says the same stop sentence the saved plan says (P4b) ---------------------

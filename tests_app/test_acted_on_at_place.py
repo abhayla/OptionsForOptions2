@@ -12,10 +12,30 @@ import asyncio
 import test_adjustment_check as check_test
 from ofo_app import actionable_alerts, playbook_store, strategy_store
 from test_adjustment_check import _seeded
-from test_adjustment_history_why import CREATED, OK, _book, _place, _record
+from test_adjustment_history_why import CREATED, OK, _book, _place, _records
 from test_adjustment_opportunities import _call, _check, _clean, chk, open_flags
 
 app_db_url = check_test.app_db_url
+
+
+async def _seeded_on_the_system_plan(engine, monkeypatch) -> int:
+    """ADJ-02 with the plan a copy of the SYSTEM iron condor playbook, whatever an earlier test left active for the
+    user (test_adjustment_plan makes an edited "Core own" playbook the user's active one in the shared database, and
+    ``_seeded`` copies the active one: its T-01 then no longer fires and this test found no T-01 record)."""
+    sid = await _seeded(engine, monkeypatch, "ADJ-02")
+    async with engine.begin() as conn:
+        system = (await playbook_store.list_for_type(conn, "owner", "ic"))[0]  # the system playbook comes first
+        assert system.is_system, system.name
+        await playbook_store.accept_plan(conn, "owner", sid, system.id)
+    return sid
+
+
+async def _record(engine, sid: int, rule: str):
+    """This strategy's record of the rule; a clear failure (not StopIteration) when the check never opened it."""
+    records = await _records(engine, sid)
+    found = next((r for r in records if r.rule_id == rule), None)
+    assert found is not None, f"no {rule} record on strategy {sid}; it has {sorted(r.rule_id for r in records)}"
+    return found
 
 
 async def _open_all(engine, sid: int) -> None:
@@ -33,12 +53,13 @@ async def _open_all(engine, sid: int) -> None:
 async def _shown(sid: int, rec_id: int) -> tuple[str, str]:
     status, inbox = await _call("GET", "/api/adjustment-opportunities")
     assert status == OK
-    r = next(r for g in inbox["groups"] if g["strategy_id"] == sid for r in g["records"] if r["id"] == rec_id)
+    r = next((r for g in inbox["groups"] if g["strategy_id"] == sid for r in g["records"] if r["id"] == rec_id), None)
+    assert r is not None, f"record {rec_id} of strategy {sid} is not in the inbox"
     return r["outcome"], r["outcome_text"]
 
 
 async def test_only_an_accepted_paper_order_stamps_acted_on(app_db_url, monkeypatch):
-    sid = await _clean(app_db_url, await _seeded(app_db_url, monkeypatch, "ADJ-02"))
+    sid = await _clean(app_db_url, await _seeded_on_the_system_plan(app_db_url, monkeypatch))
     await _open_all(app_db_url, sid)
     t01 = await _record(app_db_url, sid, "T-01")
     t03 = await _record(app_db_url, sid, "T-03")
@@ -80,7 +101,7 @@ async def _link(engine, sid: int, rec_id: int) -> None:
 
 
 async def test_a_record_that_stops_being_open_or_does_not_exist_never_refuses(app_db_url, monkeypatch):
-    sid = await _clean(app_db_url, await _seeded(app_db_url, monkeypatch, "ADJ-02"))
+    sid = await _clean(app_db_url, await _seeded_on_the_system_plan(app_db_url, monkeypatch))
     await _open_all(app_db_url, sid)
     t01, t03 = await _record(app_db_url, sid, "T-01"), await _record(app_db_url, sid, "T-03")
     # unknown id, and another strategy's id: skipped, nothing raised, nothing written
