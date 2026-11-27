@@ -936,7 +936,10 @@ async def _index_spot_held(ctx: Any, feed: Any, underlying: str, confirmed: bool
             held = await read_quotes(feed, [index_id], read, lambda q: q is not None,
                                        lambda: provider.status().connected, LEG_WAIT_S, LEG_POLL_S)
             quote = quote if held is NO_TOKEN else held
-        spot = None if quote is None else quote.ltp
+        # ADR-330 (39): the quote's own health carries the one index age rule (``FeedState.quote_health``); a value
+        # that rule calls not live is not a live spot, whatever the feed as a whole says: it needs the user's tick
+        live = quote is not None and quote.health is DataHealth.AVAILABLE
+        spot = quote.ltp if live else None
     if (not isinstance(spot, Decimal) or spot <= 0) and confirmed:
         held_value = _index_value_not_live(ctx, underlying)
         spot = None if held_value is None else held_value[0]

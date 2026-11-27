@@ -8,6 +8,7 @@ from decimal import Decimal as D
 from types import SimpleNamespace
 
 import pytest
+from ofo.rules.inputs import DataHealth
 from ofo.marketdata.spot_source import SourceReading, SourceState
 from ofo_app import adjustment_readers as readers
 from ofo_app.routes import paper
@@ -24,8 +25,8 @@ def _ctx(*, connected, quote, closed=False):
     return SimpleNamespace(provider=provider, clock=lambda: NOW, closed=closed)
 
 
-def _quote(ltp):
-    return SimpleNamespace(ltp=ltp, price_at=QUOTE_AT, timestamp=QUOTE_AT)
+def _quote(ltp, health=DataHealth.AVAILABLE):
+    return SimpleNamespace(ltp=ltp, price_at=QUOTE_AT, timestamp=QUOTE_AT, health=health)
 
 
 @pytest.fixture(autouse=True)
@@ -91,3 +92,13 @@ def test_the_order_request_carries_the_flag_default_false_and_the_typed_price_is
     on = paper.PaperOrdersIn.model_validate({"orders": [order], "prices_not_live_confirmed": True})
     assert on.prices_not_live_confirmed is True
     assert on.orders[0].price == D("39.15")
+
+
+async def test_connected_but_too_old_index_quote_needs_the_tick_adr330_39():
+    ctx = _ctx(connected=True, quote=_quote(D("24087.30"), DataHealth.STALE))
+    with pytest.raises(StrategyRefused) as e:
+        await _spot(ctx, False)
+    assert e.value.args[0] == "paper_index_price_unavailable"
+    got = await _spot(ctx, True)
+    assert got == D("24087.30")
+    assert isinstance(got, D)
