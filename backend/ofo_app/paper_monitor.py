@@ -127,6 +127,8 @@ class PaperMonitor:
         self._monotonic = monotonic or asyncio.get_running_loop().time
         self._feed: LiveFeed | None = None
         self._handle: int | None = None
+        self._standing_feed: LiveFeed | None = None
+        self._standing: list[int] = []  # the standing hold's fan-out handles (open paper legs + their indexes)
         self._watch: dict[str, list[_Watch]] = {}
         self._dirty = True
         self._loaded_at: float | None = None
@@ -153,6 +155,9 @@ class PaperMonitor:
                          | {c for a in armed if a.trigger.kind == "conditional_exit"
                             for c in open_ids[a.trigger.strategy_id]})
             found = {c.contract_id: c for c in await tracked_contracts.resolve(session, ids)}
+            open_legs = await triggers.open_legs(session)
+            standing = {c.contract_id: c for c in await tracked_contracts.resolve(
+                session, sorted({cid for cid, _u in open_legs} - set(found)))}
         watch: dict[str, list[_Watch]] = {}
         extra: set[str] = set()
         for a in armed:
@@ -171,6 +176,7 @@ class PaperMonitor:
                 watch.setdefault(key, []).append(_Watch(a, key))
         self._watch = watch
         self._resubscribe(feed, sorted(set(watch) | extra))
+        self._hold_open_legs(feed, self._standing_keys(feed, open_legs, {**standing, **found}))
 
     def _resubscribe(self, feed: LiveFeed | None, keys: list[str]) -> None:
         old_feed, old = self._feed, self._handle
@@ -180,8 +186,44 @@ class PaperMonitor:
         if old_feed is not None and old is not None:
             old_feed.fanout.unsubscribe(old)
 
+    @staticmethod
+    def _standing_keys(feed: LiveFeed | None, open_legs: Sequence[tuple[int, str]],
+                       contracts: Mapping[int, tracked_contracts.TrackedContract]) -> list[str]:
+        """The feed keys of every open paper leg and its index (the standing hold's set)."""
+        if feed is None:
+            return []
+        keys: set[str] = set()
+        for contract_id, underlying in open_legs:
+            found = contracts.get(contract_id)
+            if found is not None and found.feed_key is not None:
+                keys.add(found.feed_key)
+            index_key = feed.ctx.provider.index_id(underlying)  # type: ignore[attr-defined]
+            if index_key is not None:
+                keys.add(index_key)
+        return sorted(keys)
+
+    def _hold_open_legs(self, feed: LiveFeed | None, keys: list[str]) -> None:
+        """STANDING hold (REQ-133; REQ-118): every open paper leg and its index stay subscribed for as long as the
+        strategy is open, not only while a trigger is armed, so a request's own hold-and-read releases only ITS
+        reference and never parks the quote (the fan-out unsubscribes the vendor only when the last holder leaves).
+        New holds first, old after: no vendor unsubscribe/resubscribe. An id the feed cannot hold (an expired
+        contract has no token) is skipped on its own; it never drops the others."""
+        old_feed, old = self._standing_feed, self._standing
+        self._standing_feed, self._standing = feed, []
+        if feed is not None and keys:
+            try:
+                self._standing = [feed.fanout.subscribe(_no_listener, keys)]
+            except KeyError:
+                for key in keys:
+                    with contextlib.suppress(KeyError):
+                        self._standing.append(feed.fanout.subscribe(_no_listener, [key]))
+        if old_feed is not None:
+            for handle in old:
+                old_feed.fanout.unsubscribe(handle)
+
     def close(self) -> None:
         self._resubscribe(None, [])
+        self._hold_open_legs(None, [])
 
     async def step(self) -> int:
         """One pass: reload when due, then handle every queued quote in arrival order. Returns the fires recorded."""
