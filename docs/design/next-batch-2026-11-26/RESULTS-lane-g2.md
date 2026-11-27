@@ -1,4 +1,4 @@
-STATUS 18:56 | part 1: done, ADOPT (recipe: refusal proven, fix-pass run in progress) | part 2: not started | next push ~19:20 | blocker: none
+STATUS 19:22 | part 1: done, ADOPT (refusal proven; fix-pass = identical tree passed 1089.8 s) | part 2: not started | next push ~19:45 | blocker: none
 
 # Lane G2: gate speed, part 1 (27 Nov 2026)
 
@@ -74,8 +74,12 @@ clean tree. Findings to carry (none blocks adoption):
    `FAIL domain_tests 643.0s` (log shows `test_g2_deliberate_break`), then
    `TOTAL FAIL 1059.0s (steps sum 2686.7s, jobs 4) marker not written (failed: domain_tests)`, rc=1. No marker file for d9b7b9bd:
    the push hook refuses that commit. REFUSED, as the current gate would.
-4. Fix: `git rm tests/test_money.py`, commit. Gate re-run on the fixed commit: started 18:55, result in the next push of this file
-   (it is the same tree as the merge commit 0a3cb379 that passed in 1089.8 s above).
+4. Fix: `git rm tests/test_money.py`, commit (cb9e5467; same tree as merge commit 0a3cb379, which passed in 1089.8 s above).
+   The fix-run was started together with the gate run for this RESULTS commit, two gates at once on 4 cores: BOTH went red on
+   `frontend_unit` (`Test timed out in 15000ms`, 666 s and 672 s; TOTAL FAIL 1535.7 s and 1530.2 s, no marker). My mistake (a
+   known limit of the doc: one gate per host at a time), but also a finding: a load-sensitive 15 s vitest timeout turns a
+   busy host into a red gate, and today a red gate restarts from zero. Part 2 item 1 (resume) removes the cost. The
+   fix-pass proof on the throwaway is therefore the 1089.8 s PASS on the identical tree plus the next run; it is re-run alone later.
 
 ## Tasks, models, minutes
 
