@@ -1,0 +1,28 @@
+{
+  "id": "pool-held-across-market-wait",
+  "scope": "project",
+  "class": "A request handler keeps its session's pooled DB connection checked out while it awaits the live feed (hold_and_read, up to FORWARD_WAIT_S) or a broker/REST read; with a small pool (DB_POOL_SIZE 4 on the PC, no overflow) as many stalled requests as the pool is big starve /health and every other DB route until the 30 s pool timeout.",
+  "mechanism": "routes/paper.py _book and list_paper_strategies awaited _snapshot (-> _hold_until_ready, 3 s) with the session open; tracking.py and the exit/trigger routes did the same. release_connection (D-36 (c), D-38) existed only in adjustment*.py, route by route.",
+  "first_seen": {
+    "date": "2026-11-27",
+    "where": "PC live day, 2 testers: /api/health 2.5 s, GET /api/paper/strategies/192 2.4 s",
+    "evidence": "tests_app/test_pool_not_held_across_market_wait.py before the fix: pool 4, 2 paper reads + 2 paper lists stalled 3 s: pool.checkedout()=4, /health 2.86 s; one read alone holds 1"
+  },
+  "size": {
+    "before": "9 route functions released before a wait (all adjustment*.py); 8 more waited holding the connection (paper._book, list_paper_strategies, place_paper_orders, paper_exit_risk, check_trigger_levels, tracking._answer_core, exit_tracking, list_tracking) plus adjustment_history",
+    "after": "10 functions guarded and pinned by the scan; 1 open (adjustment_history, Lane J); execution_return._return holds on purpose (row lock) and now reads Zerodha in a thread"
+  },
+  "fix": "release_connection moved to ofo_app/db.py (shared) and called before each wait in the paper and tracking routes; execution_return._read_zerodha runs under asyncio.to_thread (it was 3 sync urllib reads on the event loop).",
+  "detection": {
+    "status": "guarded",
+    "checks": [
+      "tests/test_pool_release_before_market_wait.py (repo_scan: AST of routes/*.py, async functions with a db parameter awaiting a market-wait name must await release_connection(db) first or be allowlisted; pinned count)",
+      "tests_app/test_pool_not_held_across_market_wait.py (runtime: real create_app, pool 4, checkedout and /health during a 3 s stall)"
+    ],
+    "note": "Blind spots: a function that takes req (req.db) instead of db is not seen (execute.py, execution_return.py); adjustment_readers.record_basket_facts holds the index during the paper save's write transaction (bounded by LEG_WAIT_S, cannot release mid-write)."
+  },
+  "spec_ref": [
+    "spec/decisions/ADR-048.md"
+  ],
+  "occurrences": []
+}
