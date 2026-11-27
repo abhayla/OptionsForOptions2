@@ -48,7 +48,7 @@ def _run(preset: ag.Preset, loss_at) -> list:
     while t <= at("12:30:44"):
         ev = evaluate(body, replace(base, pnl=-loss_at(t)), memory, None)
         memory = ev.memory
-        readings = {k: v for k, v in gate_readings.readings(ev).items() if k == sl.RUPEE_LOSS_RULE}
+        readings = {k: v for k, v in gate_readings.readings(ev, stops=frozenset()).items() if k == sl.RUPEE_LOSS_RULE}
         gate, out = ag.step(gate, now=t, preset=preset, readings=readings)
         events += out
         t += timedelta(minutes=1)

@@ -1021,7 +1021,7 @@ async def record_held(conn: Any, user_ref: str, strategy_id: int, rule_id: str, 
 
 
 async def gate_rows(conn: Any, user_ref: str, strategy_id: int, today: date,
-                    stops: frozenset[str] = frozenset()) -> GateRows:
+                    *, stops: frozenset[str]) -> GateRows:
     """ADR-237 (5): what ``alert_gate.restore`` needs - the last record per rule (time, threshold, dismissed, still
     open) and today's (IST) record count. No record -> empty, 0. Another user's or a missing strategy -> not found;
     a store error raises (never an empty default)."""
@@ -1034,7 +1034,7 @@ async def gate_rows(conn: Any, user_ref: str, strategy_id: int, today: date,
                  for r in last)
     # ADR-267: watch / day records and plan loss stops are not counted; ``stops`` = ``stop_lines.loss_stop_rule_ids``
     # of the plan, the same function the gate's readings read (Lane J gap 3)
-    return GateRows(rows, count_capped(today_ids, stops))
+    return GateRows(rows, count_capped(today_ids, stops=stops))
 
 
 _HELD_TODAY = text(

@@ -33,7 +33,7 @@ def cap_exempt(rule_id: object, *, loss_stop: bool = False) -> bool:
     return isinstance(rule_id, str) and (rule_id in PLAN_EXIT_RULES or rule_id.startswith(_EXEMPT_PREFIXES))
 
 
-def count_capped(rule_ids: Iterable[object], stops: frozenset[str] = frozenset()) -> int:
+def count_capped(rule_ids: Iterable[object], *, stops: frozenset[str]) -> int:
     """How many of these stored rule ids count toward the daily cap. ``stops`` = ``stop_lines.loss_stop_rule_ids`` of
     the plan, the same function the gate's readings read."""
     return sum(1 for r in rule_ids if not cap_exempt(r, loss_stop=sl.is_loss_stop(r, stops)))

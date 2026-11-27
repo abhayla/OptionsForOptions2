@@ -43,7 +43,7 @@ def _state(today: datetime.date = FRI, hhmm: str | None = "15:00", holidays=None
 
 
 def _reading(ev: pe.Evaluation, rid: str):
-    got = gate_readings.readings(ev).get(rid)
+    got = gate_readings.readings(ev, stops=frozenset()).get(rid)
     return None if got is None else got[1]
 
 
@@ -78,7 +78,7 @@ def test_core_friday_1500_reads_true_through_the_gate():
     ev = pe.evaluate(_ic(), _state(), gap_until=GAP)
     flags = _result(ev, WEEKEND)
     assert len(flags) == 1 and isinstance(flags[0], pe.Flag), flags
-    spec, reading = gate_readings.readings(ev)[WEEKEND]
+    spec, reading = gate_readings.readings(ev, stops=frozenset())[WEEKEND]
     assert spec.cmp == "bool" and spec.ladder == () and reading is True
     assert _reading(ev, HOLIDAY) is None and _result(ev, HOLIDAY) == []
 
@@ -144,7 +144,7 @@ def test_carry_figures_ride_on_the_rule_value():
 def test_attack4_the_gate_opens_once_and_holds_across_five_checks():
     body = _ic()
     ev = pe.evaluate(body, _state(), gap_until=GAP)
-    readings = gate_readings.readings(ev)
+    readings = gate_readings.readings(ev, stops=frozenset())
     assert readings[WEEKEND][1] is True
     opened = sum(1 for rid, (_s, r) in readings.items() if rid == WEEKEND and r is True)
     assert opened == 1

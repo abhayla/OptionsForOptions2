@@ -47,7 +47,7 @@ def reading(v: RuleValue) -> Reading:
     return spec, v.value
 
 
-def readings(evaluation: Evaluation, stops: frozenset[str] = frozenset()) -> Mapping[str, Reading]:
+def readings(evaluation: Evaluation, *, stops: frozenset[str]) -> Mapping[str, Reading]:
     """Every rule of the evaluation -> (RuleSpec, value | None). ``stops`` = ``stop_lines.loss_stop_rule_ids`` of the
     plan (Lane J gap 3): each rule it names carries ``RuleSpec.loss_stop``, so the gate gives it the stop fast path and
     the quiet-time and cap exemptions whatever its id."""

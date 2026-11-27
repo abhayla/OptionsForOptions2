@@ -53,7 +53,7 @@ One cycle (``Worker.cycle``), each step with its answer state:
    after the write succeeded. A queued write of a strategy removed or re-planned at a rebuild is dropped (#636 r5);
    the writer is watched (a dead writer is logged and restarted) and drained on stop.
 5. The alert gate (REQ-170, ADR-237 (6): the ONE writer of suggestion records). Each check feeds
-   ``gate_readings.readings(evaluation)`` into ``alert_gate.step`` with the strategy's preset (``alert_presets.
+   ``gate_readings.readings`` into ``alert_gate.step`` with the strategy's preset (``alert_presets.
    preset_for`` of ``style_for(expiry kind, days left, pin)``); every cycle (the ~1 s wake) also steps every gated
    strategy that was not checked with EMPTY readings, so candle closes are processed with no price change
    (ADR-237 (2)). Only the gate's events touch the database (``GateStore.apply``, one transaction per step's
@@ -774,7 +774,7 @@ class DbGateStore:
         from ofo_app.db import get_sessionmaker  # noqa: PLC0415
         async with get_sessionmaker()() as db:
             rows = await playbook_store.gate_rows(db, w.user_ref, w.strategy_id, today,
-                                                  sl.loss_stop_rule_ids(w.body))
+                                                  stops=sl.loss_stop_rule_ids(w.body))
             held = await playbook_store.held_today(db, w.user_ref, w.strategy_id, today)
             pin = await strategy_alert_style_store.pin_of(db, w.user_ref, w.strategy_id)
             until = await strategy_pause_store.pause_of(db, w.user_ref, w.strategy_id)
@@ -981,6 +981,7 @@ class Worker:
         self._preset: dict[int, alert_gate.Preset] = {}  # strategy -> the preset of its last check
         # strategy -> its latest pause not yet given to its gate (applied at the next gate step, ``_gate_step``)
         self._paused_at: dict[int, datetime.datetime] = {}
+        self._last_skip: dict[int, str] = {}  # strategy -> reason of its last LOGGED skip (log on change only)
         self._style: dict[int, str] = {}  # strategy -> the trading style of its last check (its check interval)
         self.user_paused_until: dict[int, datetime.datetime] = {}  # strategy -> the end of its user pause in force
         self.margins = MarginCache(margin_of)  # T-16's margin, refreshed on its own task (module docstring, step 3)
@@ -1351,13 +1352,23 @@ class Worker:
         if self._user_paused(w.strategy_id, now):
             # A-38: no read, no evaluation until the end (module docstring, step 6)
             return self._skipped(w.strategy_id, "user_paused")
-        return await self._check_unpaused(w, speeds, now)
+        ran = await self._check_unpaused(w, speeds, now)
+        if ran:
+            self._checked(w.strategy_id)
+        return ran
 
     def _skipped(self, sid: int, reason: str) -> bool:
         """Lane J 2026-11-27 (#207: 19 minutes, no row, no skipped line): ONE log line per strategy per cycle when its
-        check is skipped, with the reason; False (no check ran)."""
-        log.info("background: strategy %s check skipped: %s", sid, reason)
+        check is skipped, with the reason; False (no check ran). Round 2: the worker wakes every second, so the line is
+        logged only when the strategy's reason CHANGES (``_checked`` resets it, so the next skip logs again)."""
+        if self._last_skip.get(sid) != reason:
+            self._last_skip[sid] = reason
+            log.info("background: strategy %s check skipped: %s", sid, reason)
         return False
+
+    def _checked(self, sid: int) -> None:
+        """A check ran for ``sid``: forget its last skip reason, so the next skip is logged."""
+        self._last_skip.pop(sid, None)
 
     async def _check_unpaused(self, w: Watched, speeds: Mapping[str, Decimal],  # noqa: PLR0911, C901
                               now: datetime.datetime) -> bool:
@@ -1523,7 +1534,7 @@ class Worker:
         ctx = self._gate_ctx[sid] = GateContext(ev, state, w)
         # the check travels with each rule's sample: the event it confirms takes its words from it (#709 item 7)
         sampled = {rid: (dataclasses.replace(spec, sample=ctx), v)
-                   for rid, (spec, v) in gate_readings.readings(ev, sl.loss_stop_rule_ids(w.body)).items()}
+                   for rid, (spec, v) in gate_readings.readings(ev, stops=sl.loss_stop_rule_ids(w.body)).items()}
         await self._gate_step(w, now, preset, sampled)
         return True
 

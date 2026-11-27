@@ -138,7 +138,7 @@ def loss_stop_rule_ids(body: object) -> frozenset[str]:
     for rule in rules if isinstance(rules, list) else ():
         members = (rule.get("any_of") or rule.get("all_of")) if isinstance(rule, Mapping) else None
         named = {m for m in members if isinstance(m, str)} if isinstance(members, list) else set()
-        if isinstance(rule.get("id"), str) and STOP_TRIGGERS & named:
+        if isinstance(rule, Mapping) and isinstance(rule.get("id"), str) and STOP_TRIGGERS & named:
             out.add(rule["id"])
     return frozenset(out)
 

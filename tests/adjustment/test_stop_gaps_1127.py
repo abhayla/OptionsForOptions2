@@ -120,13 +120,13 @@ def test_one_place_decides_the_stop_for_gate_and_store():
     assert sl.is_loss_stop("R-LOSS", stops) and sl.is_loss_stop("T-06", frozenset())
     assert cap_exempt("R-LOSS", loss_stop=True) and not cap_exempt("R-LOSS")
     # the store's restart count reads the same function: the mixed stop rule is not counted
-    assert count_capped(["R-LOSS", "MYSTOP", "T-03", "T-07"], stops) == CAPPED_OF_FOUR
+    assert count_capped(["R-LOSS", "MYSTOP", "T-03", "T-07"], stops=stops) == CAPPED_OF_FOUR
 
 
 def test_mixed_stop_rule_reading_carries_the_stop_flag():
     body, base = _mixed_body(), state_of(load("ADJ-01"))
     ev = evaluate(body, replace(base, pnl=D("-20000")), {}, None)
-    readings = gate_readings.readings(ev, sl.loss_stop_rule_ids(body))
+    readings = gate_readings.readings(ev, stops=sl.loss_stop_rule_ids(body))
     spec, value = readings["R-LOSS"]
     assert spec.loss_stop and value is True
     assert not readings["T-07"][0].loss_stop
@@ -165,7 +165,7 @@ def test_207_stop_true_at_entry_still_alerts():
     ev = evaluate(body, replace(base, pnl=D("-199")), {}, entry)
     kinds = {r.rule_id: type(r).__name__ for r in ev.results}
     assert kinds[sl.RUPEE_LOSS_RULE] == "Flag"
-    assert gate_readings.readings(ev)[sl.RUPEE_LOSS_RULE][1] == D("199")
+    assert gate_readings.readings(ev, stops=frozenset())[sl.RUPEE_LOSS_RULE][1] == D("199")
 
 
 def test_207_minute_checks_with_a_pause_every_candle_open_the_rupee_stop_at_once():
@@ -181,7 +181,7 @@ def test_207_minute_checks_with_a_pause_every_candle_open_the_rupee_stop_at_once
         ev = evaluate(body, replace(base, pnl=D("-199")), memory, None)
         memory = ev.memory
         gate, out = ag.step(gate, now=t, preset=ag.WEEKLY,
-                            readings=gate_readings.readings(ev, sl.loss_stop_rule_ids(body)))
+                            readings=gate_readings.readings(ev, stops=sl.loss_stop_rule_ids(body)))
         events += out
         t += timedelta(minutes=1)
     assert [e.at for e in _opened(events, sl.RUPEE_LOSS_RULE)] == [at("13:13:44")]
@@ -192,7 +192,7 @@ def test_207_first_check_in_a_paused_candle_opens_the_stop():
     ev = evaluate(body, replace(base, pnl=D("-199")), {}, None)
     gate = ag.pause(ag.initial_state(), at("13:13:40"))
     _, events = ag.step(gate, now=at("13:13:44"), preset=ag.WEEKLY,
-                        readings=gate_readings.readings(ev, sl.loss_stop_rule_ids(body)))
+                        readings=gate_readings.readings(ev, stops=sl.loss_stop_rule_ids(body)))
     assert [e.at for e in _opened(events, sl.RUPEE_LOSS_RULE)] == [at("13:13:44")]
 
 
@@ -222,7 +222,12 @@ def test_207_restart_at_13_33_30_opens_the_stop_at_the_first_live_check():
     body, base = _body_207(), state_of(load("ADJ-01"))
     memory = {rid: dict(HELD_MEMORY) for rid in (sl.RUPEE_LOSS_RULE, sl.TRIGGER_MAX_LOSS, "T-07", "T-03")}
     ev = evaluate(body, replace(base, pnl=D("-199")), memory, None)
-    readings = gate_readings.readings(ev, sl.loss_stop_rule_ids(body))
+    readings = gate_readings.readings(ev, stops=sl.loss_stop_rule_ids(body))
     gate = ag.restore(ag.GateRows((), 0), DAY, {rid: spec for rid, (spec, _v) in readings.items()})
     _, events = ag.step(gate, now=at("13:33:44"), preset=ag.WEEKLY, readings=readings)
     assert [e.at for e in _opened(events, sl.RUPEE_LOSS_RULE)] == [at("13:33:44")]
+
+
+@pytest.mark.parametrize("body", [{"rules": ["x"]}, {"rules": [None, 5]}, {"rules": "x"}, [], None])
+def test_unreadable_rule_in_the_body_gives_the_fixed_set(body):
+    assert sl.loss_stop_rule_ids(body) == frozenset(sl.LOSS_STOP_RULES)

@@ -979,7 +979,7 @@ async def test_f2_a_rule_flipping_every_3_minutes_for_an_hour_is_one_row_and_a_r
         counts = dict((await conn.execute(text(
             "SELECT rule_id, count(*) FROM public.adjustment_suggestions WHERE strategy_id = :s "
             "AND rule_id IN ('T-01', 'T-07') GROUP BY rule_id"), {"s": w.strategy_id})).all())
-        rebuilt = await playbook_store.gate_rows(conn, w.user_ref, w.strategy_id, day)
+        rebuilt = await playbook_store.gate_rows(conn, w.user_ref, w.strategy_id, day, stops=frozenset())
     assert counts == {"T-01": 1, "T-07": 1}
     assert state.opened_today == len(counts) == rebuilt.opened_today  # live gate and restart agree
 
