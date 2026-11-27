@@ -11,7 +11,6 @@
     <p v-if="view === null" class="text-xs text-ink-muted" data-testid="plan-watch-loading">Reading the plan watch...</p>
     <p v-else-if="view.state !== 'ok'" class="text-xs text-ink-muted" data-testid="plan-watch-message">{{ view.text }}</p>
     <template v-else>
-      <p v-if="marked" class="text-xs text-ink-muted" data-testid="plan-watch-marked" :data-mark="notCurrent ? 'not_current' : 'updating'">{{ markedLine }}</p>
       <p v-if="view.planState === 'no_plan'" class="text-ink-muted" data-testid="plan-watch-no-plan">{{ view.noPlanText }}</p>
       <p v-if="view.pausedText" class="text-ink-muted" data-testid="plan-watch-paused">{{ view.pausedText }}</p>
       <p v-if="view.empty && view.planState === 'planned'" class="text-ink-muted" data-testid="plan-watch-empty">{{ EMPTY_TEXT }}</p>
@@ -41,7 +40,11 @@
           </tbody>
         </table>
       </template>
-      <p v-if="!compact && !marked && view.asOfText" class="mt-1 text-xs text-ink-muted" data-testid="plan-watch-as-of">{{ view.asOfText }}</p>
+      <!-- ONE slot under the rows: the as-of line, or in its place the "updating / not current" mark (no layout shift per read) -->
+      <p v-if="marked || (!compact && view.asOfText)" class="mt-1 text-xs text-ink-muted" data-testid="plan-watch-as-of">
+        <span v-if="marked" data-testid="plan-watch-marked" :data-mark="notCurrent ? 'not_current' : 'updating'">{{ markedLine }}</span>
+        <template v-else>{{ view.asOfText }}</template>
+      </p>
     </template>
   </section>
 </template>

@@ -15,7 +15,8 @@ needs a side the entry strategy had and no longer has open -> "not_applicable" w
 side is closed" (ADR-330 (2) (a); entry or open legs unreadable -> no side judged closed, the rule keeps its state);
 a rule fired
 -> "fired"; the price reads (market, REST index quote) not answered within ``PRICE_BUDGET_S`` are cancelled and read as
-"not connected" (no chain, no spot): the same "prices not live" answer, never a wait past the client's 10 s timeout;
+"not connected" (no chain, no spot): the same "prices not live" answer. The price reads are bounded by that budget; the
+margin read after them has its own 8 s timeout, and the cut REST read's own token DB read is cancelled with it;
 evaluation unreadable, trigger store unreadable -> the check's refusal, no lines (fail closed); strategy
 not found or another user's -> its 404. Writes nothing. Suggest-only (ADR-003): nothing here exits anything.
 """
@@ -275,11 +276,14 @@ def _budgeted(market_reader: MarketReader, rest_reader: RestSpotReader) -> tuple
     """The two price readers under ONE shared deadline (``PRICE_BUDGET_S`` from the first read). A read that has not
     answered by then is cancelled (``asyncio.timeout`` cancels the inner task and waits for it to finish) and
     replaced by the not-live answer: the market as when not connected (no chain, no feed spot), the REST quote as
-    FAILED. Neither reader holds the DB session (``run_check`` released it before them, D-36 c), so the cancel
-    touches no connection."""
+    FAILED. Once the market read is cut (or no budget is left) the REST reader is not called at all: a STATED spot
+    beside a not-connected market would break the approach figures. The price reads are bounded by the budget; the
+    margin read after them has its own 8 s timeout. The market reader holds no DB session (``run_check`` released it
+    first, D-36 c); the cut REST read's own token DB read is cancelled with it."""
     from ofo_app.adjustment_readers import read_market  # noqa: PLC0415 - imports routes.adjustment
     loop = asyncio.get_running_loop()
     started: list[float] = []
+    market_cut: list[bool] = []
 
     def left() -> float:
         if not started:
@@ -291,10 +295,14 @@ def _budgeted(market_reader: MarketReader, rest_reader: RestSpotReader) -> tuple
             async with asyncio.timeout(max(left(), 0)):
                 return await market_reader(tracked, ctx)
         except TimeoutError:
+            market_cut.append(True)
             log.warning("plan watch: market read over %.1f s, answered as not live", PRICE_BUDGET_S)
             return await read_market(tracked, None)
 
     async def rest(underlying: str) -> SourceReading:
+        if market_cut or left() <= 0:  # the market is the not-connected one: a STATED spot beside it would raise
+            log.warning("plan watch: no budget left for the index quote, answered as not live")
+            return SourceReading(SourceState.FAILED)
         try:
             async with asyncio.timeout(max(left(), 0)):
                 return await rest_reader(underlying)

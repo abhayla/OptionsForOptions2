@@ -5,6 +5,7 @@ prices not live -> state paused, no ``now``; strategy not found -> 404; evaluati
 """
 from __future__ import annotations
 
+import asyncio
 from decimal import Decimal
 
 from httpx import ASGITransport, AsyncClient
@@ -218,7 +219,8 @@ async def _watch_dep(strategy_id: int, dep, reader) -> tuple[int, dict]:
     app = create_app()
     app.dependency_overrides[dep] = lambda: reader
     async with AsyncClient(transport=ASGITransport(app=app), base_url="http://t") as ac:
-        r = await ac.get(f"/api/strategies/{strategy_id}/plan-watch")
+        # a regression (the budget removed) raises TimeoutError here instead of hanging the run
+        r = await asyncio.wait_for(ac.get(f"/api/strategies/{strategy_id}/plan-watch"), 5)
     await app_db.close_db()
     return r.status_code, r.json()
 
@@ -228,8 +230,6 @@ async def test_a_hanging_market_read_is_cut_at_the_budget_and_answers_not_live(a
     "prices not live" shape: every line paused / not checked, no `now`, no distance (absent, never 0). The cut-off read
     is cancelled (not left running) and held no database connection while it waited. No clock is measured: a read that
     was not cut would hang this test."""
-    import asyncio  # noqa: PLC0415
-
     from ofo_app.routes import plan_watch as pw  # noqa: PLC0415
     from ofo_app.routes.adjustment import get_market_reader  # noqa: PLC0415
 
@@ -256,8 +256,6 @@ async def test_a_hanging_market_read_is_cut_at_the_budget_and_answers_not_live(a
 
 
 async def test_a_hanging_index_quote_is_cut_at_the_budget_and_cancelled(app_db_url, monkeypatch):  # noqa: F811
-    import asyncio  # noqa: PLC0415
-
     from ofo_app.routes import plan_watch as pw  # noqa: PLC0415
     from ofo_app.routes.adjustment import get_rest_spot_reader  # noqa: PLC0415
 
@@ -273,7 +271,48 @@ async def test_a_hanging_index_quote_is_cut_at_the_budget_and_cancelled(app_db_u
             raise
     status, out = await _watch_dep(sid, get_rest_spot_reader, hangs)
     assert status == OK, out
-    assert seen["cancelled"] is True and out["lines"], (seen, out)
+    assert seen["cancelled"] is True, seen
+    # REST FAILED, the market answered: the feed's own figures carry the plan lines (nothing paused, nothing armed
+    # here), and the three rules the check could not judge read "not_computable" with no `now` and no distance
+    plan = [x for x in out["lines"] if x["kind"] in ("target", "stop", "credit_stop", "rule")]
+    assert [x["kind"] for x in plan] == ["target", "stop", "credit_stop"] + ["rule"] * 12, plan
+    assert all(x["state"] in ("watching", "fired") for x in plan[:12]), plan  # not "paused": the feed spot is live
+    assert [x["state"] for x in plan[12:]] == ["not_computable"] * 3, plan
+    assert all(x["now"] is None and x["distance_rs"] is None for x in plan[12:])
+    assert all(x["now"] is not None for x in plan[:12])
+
+
+async def test_a_quote_answering_after_the_market_was_cut_is_not_asked(app_db_url, monkeypatch):  # noqa: F811
+    """The market read is cut (not connected, ctx still live); a REST reader that would answer a STATED spot at once
+    must not be called: the quote reads FAILED, so the answer is the plain "prices not live" one (never a 500)."""
+    from ofo.marketdata.spot_source import SourceReading, SourceState  # noqa: PLC0415
+    from ofo_app.main import create_app  # noqa: PLC0415
+    from ofo_app.routes import plan_watch as pw  # noqa: PLC0415
+    from ofo_app.routes.adjustment import get_market_reader, get_rest_spot_reader  # noqa: PLC0415
+
+    sid = await _seeded(app_db_url, monkeypatch, "ADJ-01")
+    await _arm(app_db_url, sid)
+    monkeypatch.setattr(pw, "PRICE_BUDGET_S", 0.05)
+    called: list[str] = []
+
+    async def hangs(_tracked, _ctx):
+        await asyncio.Event().wait()
+
+    async def instant(underlying):
+        called.append(underlying)
+        return SourceReading(SourceState.STATED, Decimal("23050"))
+    _reset_engine()
+    app = create_app()
+    app.dependency_overrides[get_market_reader] = lambda: hangs
+    app.dependency_overrides[get_rest_spot_reader] = lambda: instant
+    async with AsyncClient(transport=ASGITransport(app=app), base_url="http://t") as ac:
+        r = await asyncio.wait_for(ac.get(f"/api/strategies/{sid}/plan-watch"), 5)
+    await app_db.close_db()
+    out = r.json()
+    assert r.status_code == OK, out
+    assert called == [], called
+    assert out["lines"] and all(x["state"] in ("paused", "not_computable", "not_applicable") for x in out["lines"])
+    assert all(x["now"] is None and x["distance_rs"] is None for x in out["lines"])
 
 
 async def test_a_read_inside_the_budget_is_untouched(app_db_url, monkeypatch):  # noqa: F811

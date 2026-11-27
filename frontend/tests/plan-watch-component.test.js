@@ -134,6 +134,8 @@ describe('PlanWatch.vue', () => {
     await later(0)
     expect(t(w, 'plan-watch').attributes('data-currency')).toBe('updating')
     expect(t(w, 'plan-watch-marked').text()).toBe('Updating the numbers... As of 10:40:00 AM IST')
+    expect(t(w, 'plan-watch-as-of').exists()).toBe(true) // the same slot as the as-of line: the mark does not add a row
+    expect(t(w, 'plan-watch-as-of').element.contains(t(w, 'plan-watch-marked').element)).toBe(true)
     expect(t(w, 'pw-now').text()).toBe('₹350.00')
     expect(t(w, 'plan-watch-loading').exists()).toBe(false)
     release()
