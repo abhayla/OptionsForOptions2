@@ -1308,7 +1308,8 @@ async def test_d55_change_is_null_without_a_previous_close(stats):
     assert ce["change"] is None
 
 
-# --- Lane N (ADR-330 (36)): the chain's "Last trade" line after the close comes from the SAME frozen frame as its price --
+# --- Lane N (ADR-330 (36)): the chain's "Last trade" line after the close
+# comes from the SAME frozen frame as its price --
 
 class _BookProvider(FakeProvider):
     """The fake provider's surface answered by the REAL ``QuoteBook`` (and its ``FeedState``), at the caller's clock."""
