@@ -157,9 +157,10 @@ async def test_invalid_values_a_wrong_type_and_put_without_a_plan_write_nothing(
     cases = [({"target": "abc"}, "target"), ({"target": "0"}, "target"), ({"stop": "101"}, "stop"),
              ({"max_adjustments": "11"}, "max_adjustments"), ({"max_adjustments": "-1"}, "max_adjustments"),
              ({"time_exit": "24:00"}, "time_exit"), ({"time_exit": "9:60"}, "time_exit")]
-    for extra, field in cases:
+    label = {"target": "Target", "stop": "Stop", "max_adjustments": "Max adjustments", "time_exit": "Time exit"}
+    for extra, field in cases:  # 27 Nov: the box is named as the sheet prints it
         status, out = await _call("POST", _plan_path(sid), json={"playbook_id": system.id, **extra})
-        assert (status, out["what_happened"]) == (UNPROCESSABLE, f"The playbook value {field} is not valid."), extra
+        assert (status, out["what_happened"]) == (UNPROCESSABLE, f"{label[field]} is not valid."), extra
     status, out = await _call("POST", _plan_path(sid), json={"playbook_id": other})  # a playbook of another type
     assert (status, out["what_happened"]) == (UNPROCESSABLE, "The playbook value playbook_id is not valid.")
     status, _ = await _call("POST", _plan_path(sid), json={"playbook_id": system.id, "max_adjustments": 3})
@@ -355,7 +356,8 @@ async def test_saving_the_box_with_an_empty_target_stores_no_target_and_t07_is_n
     assert adjustment_check.with_plan_target(body)["triggers"]["T-07"]["on"] is False  # the check does not act on it
     for bad in ("0", "-5", "101", "abc"):  # an unusable number is still refused, naming the field
         status, refused = await _call("PUT", _plan_path(sid), json={"playbook_id": system.id, "target": bad})
-        assert status == UNPROCESSABLE and "target" in json.dumps(refused), refused
+        # 27 Nov: the refusal names the box by its sheet label, as the sibling test pins (an emptied box is accepted)
+        assert (status, refused["what_happened"]) == (UNPROCESSABLE, "Target is not valid."), (bad, refused)
 
 
 # --- ADR-330 (5) / LP-2: the levels preview says the same stop sentence the saved plan says (P4b) ---------------------

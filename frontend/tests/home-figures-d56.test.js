@@ -138,6 +138,21 @@ describe('D-56 Home: total P&L (the Positions total)', () => {
     const w = await mountHome()
     expect(w.find('[data-testid="home-pnl-left-out"]').exists()).toBe(false)
   })
+  it('ADR-330 (15) 27 Nov: Home prints the SAME closed-strategies line as Positions (the reply\'s closed_text), under the total', async () => {
+    const LINE = 'Includes 8 closed strategies.'
+    paperAnswer = paper(totals({ closed_count: 8, closed_text: LINE }))
+    const w = await mountHome()
+    expect(w.get('[data-testid="home-pnl-closed"]').text()).toBe(LINE)
+    expect(readPaperList(paperAnswer).totals.closedNote).toBe(LINE) // the Positions read of the same reply says the same
+  })
+  it('ADR-330 (15): no closed line when the reply has none; both lines when a strategy is also left out', async () => {
+    let w = await mountHome()
+    expect(w.find('[data-testid="home-pnl-closed"]').exists()).toBe(false)
+    paperAnswer = paper(totals({ closed_text: 'Includes 1 closed strategy.', left_out_text: '1 strategy left out: its contract has expired.' }))
+    w = await mountHome()
+    expect(w.get('[data-testid="home-pnl-closed"]').text()).toBe('Includes 1 closed strategy.')
+    expect(w.get('[data-testid="home-pnl-left-out"]').text()).toBe('1 strategy left out: its contract has expired.')
+  })
   it('read failed: says it is not available, no number', async () => {
     paperAnswer = new Error('down')
     const w = await mountHome()

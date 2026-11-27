@@ -71,7 +71,8 @@ export function usePaperPnl() {
     if (list.value === null) return pnlFigure(null)
     if (list.value.totals === null) return pnlFigure(null)
     // AC-R06 / N-46 (ADR-324): the server's count line (strategies left out of the total) rides with the figure, as sent
-    return { ...pnlFigure(list.value.totals.totalAfter, stale.value), leftOut: list.value.totals.leftOut ?? null }
+    return { ...pnlFigure(list.value.totals.totalAfter, stale.value), leftOut: list.value.totals.leftOut ?? null,
+      closedNote: list.value.totals.closedNote ?? null } // ADR-330 (15) 27 Nov: the same closed_text line Positions prints
   })
   return { cellFor, totalCell, loaded }
 }

@@ -2,7 +2,7 @@
 """GC-SET lots (REQ-167 AC-5, "Limits"): the most lots one leg may hold is the ``limits.max_lots`` setting, checked by the
 ONE shared check (``check_lots``) every lots-accepting route passes, read at each request with no restart.
 
-Spec basis: REQ-167 AC-5 Limits (lot caps); ADR-222 (9). Default 10000 (the number the schema used to type).
+Spec basis: REQ-167 AC-5 Limits (lot caps); ADR-222 (9). Default 100 (the number the schema used to type).
 Same pattern as ``test_settings_calc_wiring.py``: one app, asked repeatedly; the row is inserted in the SAME
 rolled-back transaction between the asks, so nothing is committed.
 """
@@ -24,7 +24,7 @@ def _with_lots(body: dict, lots: int) -> dict:
 
 
 async def test_core_the_max_lots_setting_is_the_outcome_routes_lot_cap(app_engine: AsyncEngine, replayed, monkeypatch):
-    """Core: no row -> the default 10000 accepts a 10000-lot leg and refuses 10001 (422, reason). A 500 row effective
+    """Core: no row -> the default 100 accepts a 100-lot leg and refuses 101 (422, reason). A 500 row effective
     now -> the next ask on the SAME app refuses 600 lots with the reason (422) and still accepts 500."""
     from ofo_app import settings_store
 
@@ -36,14 +36,14 @@ async def test_core_the_max_lots_setting_is_the_outcome_routes_lot_cap(app_engin
         app = _app(session)
         body = _body(replayed)
         async with AsyncClient(transport=ASGITransport(app=app), base_url="http://test") as ac:
-            top = await ac.post("/api/strategies/outcome", json=_with_lots(body, 10000))
-            over = await ac.post("/api/strategies/outcome", json=_with_lots(body, 10001))
+            top = await ac.post("/api/strategies/outcome", json=_with_lots(body, 100))
+            over = await ac.post("/api/strategies/outcome", json=_with_lots(body, 101))
             await settings_store.add_setting(session, KEY, "500", set_by="admin-test", correlation_id="gcset-lots-1")
             refused = await ac.post("/api/strategies/outcome", json=_with_lots(body, 600))
             allowed = await ac.post("/api/strategies/outcome", json=_with_lots(body, 500))
         assert top.status_code == HTTPStatus.OK, top.text
         assert over.status_code == HTTPStatus.UNPROCESSABLE_ENTITY, over.text
-        assert "at most 10000 lots" in over.text
+        assert "at most 100 lots" in over.text
         assert refused.status_code == HTTPStatus.UNPROCESSABLE_ENTITY, refused.text
         assert "at most 500 lots; this leg has 600" in refused.text
         assert allowed.status_code == HTTPStatus.OK, allowed.text

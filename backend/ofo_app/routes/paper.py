@@ -115,6 +115,7 @@ from ofo_app.routes.outcome import (
     MarketContext,
     feed_scope,
     get_answer_clock,
+    get_calc_settings,
     get_market_context,
     load_charge_rates,
 )
@@ -1379,13 +1380,18 @@ async def place_paper_orders(strategy_id: int, body: PaperOrdersIn,  # noqa: PLR
                              feed: Annotated[LiveFeed | None, Depends(get_live_feed)],
                              now: Annotated[AnswerClock, Depends(get_answer_clock)],
                              rates: Annotated[ChargeRates | None, Depends(load_charge_rates)],
-                             tracked_reader: Annotated[TrackedReader, Depends(get_tracked_reader)]) -> PaperBookOut:
+                             tracked_reader: Annotated[TrackedReader, Depends(get_tracked_reader)],
+                             settings: Annotated[Mapping[str, Decimal], Depends(get_calc_settings)]) -> PaperBookOut:
     stored = await _load_strategy(db, user_ref, strategy_id)
     for order in body.orders:
-        if order.kind != "exit":  # C10: an exit's price is the server's (below); a browser-sent one is ignored
+        if order.kind != "exit" and order.price > 0:  # C10: exit prices are the server's; 0 or less: below
             _check_price(order.price)
     contracts = await tracked_contracts.resolve(db, sorted({o.contract_id for o in body.orders}))
     state = {c.contract_id: c for c in contracts}
+    for order in body.orders:  # Lane K item 4 (T3-13): a price of 0 or below is refused naming the leg
+        if order.kind != "exit" and order.price <= 0 and state[order.contract_id].stored is not None:
+            raise StrategyRefused("paper_entry_price_not_above_zero", message=render(
+                "paper_entry_price_not_above_zero", contract=display_contract(_identity(state[order.contract_id]))))
     # a contract unknown to the catalogue never reaches the store; a new position needs a live contract (an exit of one
     # that expired is allowed: it only closes what is open)
     if any(state[o.contract_id].stored is None or (o.kind != "exit" and state[o.contract_id].state != "live")
@@ -1407,7 +1413,8 @@ async def place_paper_orders(strategy_id: int, body: PaperOrdersIn,  # noqa: PLR
             db, user_ref, strategy_id, [
                 paper_store.NewOrder(o.contract_id, o.side, o.quantity, exit_prices.get(i, o.price), o.kind, placed_at)
                 for i, o in enumerate(body.orders)],
-            entry=entry, ctx=ctx, at=placed_at, reader=tracked_reader, rates=rates)  # ADR-243: entry only if first fill
+            entry=entry, ctx=ctx, at=placed_at, reader=tracked_reader, rates=rates,
+            settings=settings)  # ADR-243: entry only if first fill; the size check is the door's (Lane K)
         new_ids = [o.id for o in book][-len(body.orders):]  # place inserts in order under the strategy's row lock
         for suggestion_id in dict.fromkeys(body.suggestion_ids):  # REQ-163 AC-1: same transaction, or nothing
             await playbook_store.link_orders(db, user_ref, strategy_id, suggestion_id, new_ids,

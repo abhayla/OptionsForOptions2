@@ -468,7 +468,7 @@ v-if="current" type="button" role="menuitem" data-testid="rename-open"
       <form id="strategy-name-form" class="text-sm" data-testid="name-form" :data-mode="asking" @submit.prevent="confirmName">
         <label class="block font-medium" for="strategy-name">Strategy Name</label>
         <input
-id="strategy-name" ref="nameInput" v-model="nameText" data-testid="name-input" type="text" class="mt-1 h-10 w-full rounded border border-line px-2"
+id="strategy-name" ref="nameInput" v-model="nameText" data-testid="name-input" data-autofocus type="text" class="mt-1 h-10 w-full rounded border border-line px-2"
                :maxlength="STRATEGY_NAME_MAX" autocomplete="off" />
         <p class="mt-1 text-xs" :class="nameText.length > STRATEGY_NAME_MAX ? 'text-warn' : 'text-ink-muted'" data-testid="name-limit">{{ nameLimitText(nameText.length) }}</p>
       </form>

@@ -63,6 +63,7 @@ PR241_SELECTION = {
     "tests_app/test_strategy_closed_shape.py", "tests_app/test_strategy_followups.py",
     "tests_app/test_strategy_delete_app.py",
     "tests_app/test_strategy_planned_entry.py", "tests_app/test_strategy_store.py",
+    "tests_app/test_paper_order_lots_limit.py",  # Lane K: imports StrategyRefused (the door's refusal class)
     "tests_app/test_exit_adopted_313b.py",  # imports StrategyRefused from ofo_app.routes.strategies
     "tests_app/test_background_cycle.py",  # imports ofo.errors.explanations (changed here)
     "tests_app/test_wording_scan_once.py",  # Q1 r2: GET adjustment-check, scans ofo.errors.explanations
@@ -130,6 +131,8 @@ PR241_SELECTION = {
     "tests_app/test_strategy_bulk_delete.py",  # Q1 bulk delete: calls the /api/strategies/... routes
     "tests_app/test_store_busy.py",  # S-02 (Lane R): imports ofo.errors (render) and the error door, changed here
     "tests_app/test_plan_watch.py",  # Lane P 26 Nov: test_plan_watch.py added (P10)
+    "tests_app/test_plan_sheet_refusal_labels.py",  # Lane W 27 Nov: imports the plan route and ofo.errors, changed here
+    "tests_app/test_strategy_duplicate_leg_refusal.py",  # Lane W 27 Nov: imports refused_answer (routes/strategies.py)
     "tests_app/test_history_delete_entries.py",  # ADR-330 (31): imports the strategy routes / store the diff changes
 }
 

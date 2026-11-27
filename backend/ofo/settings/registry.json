@@ -515,7 +515,7 @@
       "max": "50",
       "default": "15",
       "what_it_changes": "The most strikes either side of the at-the-money strike the option chain shows and the server accepts.",
-      "source": "REQ-167 AC-5; was ofo_app/chain_push.py MAX_STRIKES_EACH_SIDE"
+      "source": "REQ-167 AC-5; ADR-330 (52) default 100 per leg, (50) counted as the total the leg holds; was ofo_app/chain_push.py MAX_STRIKES_EACH_SIDE"
     },
     {
       "key": "limits.history_max_days",
@@ -645,7 +645,7 @@
       "type": "integer",
       "min": "1",
       "max": "100000",
-      "default": "10000",
+      "default": "100",
       "what_it_changes": "The most lots one leg of a strategy may hold; a larger leg is refused and the screen's lot box stops there.",
       "source": "REQ-167 AC-5; was ofo_app/routes/outcome.py LegIn.lots le=10000 and chainSelection.js MAX_LOTS"
     },

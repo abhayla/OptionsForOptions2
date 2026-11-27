@@ -2,7 +2,8 @@
 
 Both user save paths (``routes.paper.place_paper_orders`` and ``routes.tracking.exit_tracking``) call
 ``place_checked``, which refuses every fill outside market hours (ADR-212), stores through ``paper_store.place`` and
-then checks the limit, so neither path can skip a check. The offered approaches were already filtered by the limit
+then checks the order size (``check_order_size``) and the adjustment limit, so neither path can skip a check.
+ The offered approaches were already filtered by the limit
 (``ofo.adjustment.offered``); this refuses a batch a user builds by hand beyond it. Counting is the history page's
 (``adjustment_readers.history_count``: every batch after the entry is one adjustment, a partial exit included, the
 entry batch never). A batch that closes the whole strategy is always allowed, before any history or plan is read;
@@ -16,7 +17,8 @@ playbook for the shape (nothing sets a maximum) -> no limit; a read error or a m
 from __future__ import annotations
 
 import logging
-from collections.abc import Sequence
+from collections.abc import Mapping, Sequence
+from decimal import Decimal
 from types import SimpleNamespace
 from typing import Any
 
@@ -108,8 +110,78 @@ def _limit_of(guards: Any) -> int | None:
     return limit
 
 
+def _signed(order: Any) -> int:
+    return order.quantity if order.side == "BUY" else -order.quantity
+
+
+async def check_order_size(db: Any, existing: Sequence[Any], new: Sequence[Any],
+                           settings: Mapping[str, Decimal]) -> None:
+    """ADR-330 (50), (51), (52), ADR-081, ADR-092 (Lane K): the size check every paper order passes, at the one door
+    (``place_checked``); ``existing`` are the stored rows before this batch (``.order`` rows), ``new`` the batch's
+    ``NewOrder`` rows. PAPER AND REAL ARE THE SAME (ADR-330 (58)): a real-order path calls this same function.
+    Per order, every kind (an exit too, (51)): units must be below the contract's stored exchange freeze limit; an
+    exit over it says how many lots one exit may carry. No stored limit -> no freeze refusal (ADR-081, coordinator
+    ruling 27 Nov; the lots limit below still applies). A limit below one lot ->
+    ``paper_leg_limit_below_one_lot``. Per leg: the lots the leg will hold after EACH order of the batch (held +
+    added, signed net of its contract, in stored order) may
+    not exceed ``limits.max_lots`` (default 100, (52)); an order that does not grow the leg's net (a cut back of a
+    leg already over a lowered limit) passes. An unreadable setting or store raises: nothing placed."""
+    from ofo.settings import calc  # noqa: PLC0415
+    from ofo.strategy.definition import display_contract  # noqa: PLC0415
+
+    from ofo_app import freeze_read  # noqa: PLC0415 - read side only; no order module in its closure
+    from ofo_app.routes.paper import identity_of  # noqa: PLC0415 - it imports the route layer
+    if not new:
+        return
+    found = {c.contract_id: c for c in await tracked_contracts.resolve(db, sorted({o.contract_id for o in new}))}
+
+    def name_of(contract_id: int) -> str:
+        return display_contract(identity_of(found[contract_id]))
+    _check_freeze(await freeze_read.limits_in_force(db), found, new, name_of)
+    _check_leg_totals(calc.max_lots(settings), found, existing, new, name_of)
+
+
+def _check_freeze(stored: Any, found: Mapping[int, Any], new: Sequence[Any], name_of: Any) -> None:
+    """Per order, every kind: the freeze quantity (see ``check_order_size``)."""
+    from ofo.instruments.freeze_limits import StoredFreeze, largest_allowed_units  # noqa: PLC0415
+    from ofo.instruments.models import InstrumentId  # noqa: PLC0415
+    for o in new:
+        c = found[o.contract_id].stored.listed.contract  # a contract with no stored row was refused before the door
+        limit = stored.get(InstrumentId(c.exchange_segment, c.exchange_token))
+        if limit is None:
+            continue  # ADR-081: no stored freeze quantity (SENSEX has no BSE_FO source) is not a freeze refusal
+        freeze = StoredFreeze(limit.freeze_limit, c.lot_size, limit.file_date)
+        if o.quantity < freeze.limit:
+            continue
+        top_lots = largest_allowed_units(freeze) // freeze.lot
+        if top_lots < 1:  # the limit is below one lot: no whole-lot order is allowed
+            raise StrategyRefused("paper_leg_limit_below_one_lot", message=render(
+                "paper_leg_limit_below_one_lot", contract=name_of(o.contract_id), limit=freeze.limit, lot=freeze.lot))
+        code = "paper_exit_over_order_limit" if o.kind in paper_store.REDUCING_KINDS else "paper_leg_over_order_limit"
+        raise StrategyRefused(code, message=render(
+            code, contract=name_of(o.contract_id), lots=-(-o.quantity // freeze.lot), max_lots=top_lots))
+
+
+def _check_leg_totals(top: int, found: Mapping[int, Any], existing: Sequence[Any], new: Sequence[Any],
+                      name_of: Any) -> None:
+    """Per leg: the total it holds after EACH order, in stored order (ADR-330 (50))."""
+    for cid, leg in found.items():
+        lot = leg.stored.listed.contract.lot_size
+        held = sum(_signed(r.order) for r in existing if r.order.contract_id == cid)
+        held_lots = -(-abs(held) // lot)
+        running = held
+        for o in (o for o in new if o.contract_id == cid):
+            before, running = running, running + _signed(o)
+            total = -(-abs(running) // lot)
+            if total > top and abs(running) > abs(before):  # grows the leg (a flip long to short counts)
+                raise StrategyRefused("paper_leg_total_over_limit", message=render(
+                    "paper_leg_total_over_limit", contract=name_of(cid), total=total, max_lots=top,
+                    held=held_lots, added=max(total - held_lots, 0), room=max(top - held_lots, 0)))
+
+
 async def place_checked(db: Any, user_ref: str, strategy_id: int, orders: Sequence[Any], *,  # noqa: PLR0913
-                        entry: Any, ctx: Any, at: Any, reader: Any, rates: Any) -> tuple[Any, ...]:
+                        entry: Any, ctx: Any, at: Any, reader: Any, rates: Any,
+                        settings: Mapping[str, Decimal]) -> tuple[Any, ...]:
     """The ONE write both user save paths use (ADR-212, ADR-255): every fill outside market hours at ``at`` is refused
     (``gate_market_closed``; no market context fails closed by the calendar), then ``paper_store.place``, then the
     adjustment limit on the stored book. The caller commits, or rolls back on any raise. Returns the whole book."""
@@ -118,6 +190,8 @@ async def place_checked(db: Any, user_ref: str, strategy_id: int, orders: Sequen
     may_act.refuse_unless_allowed(ctx, "place", at)  # ADR-212
     reader = await _read_before(reader, strategy_id, rates)
     book = await paper_store.place(db, user_ref, strategy_id, orders, entry=entry)
+    # ADR-330 (50)-(52): the size of every order and the total of every leg, on the stored book
+    await check_order_size(db, book[:-len(orders)], [o.order for o in book[-len(orders):]], settings)
     await check_adjustment_limit(db, user_ref, strategy_id, book[:-len(orders)], [o.order for o in book[-len(orders):]],
                                  reader, rates, check.listed_of(ctx))
     return book

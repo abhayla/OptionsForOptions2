@@ -400,7 +400,8 @@ _LINK_ORDERS = text(
     "RETURNING g.id")
 _SUGGESTION_OF_STRATEGY = text(
     "SELECT g.outcome FROM public.adjustment_suggestions g JOIN public.strategies s ON s.id = g.strategy_id "
-    "WHERE g.id = :id AND g.strategy_id = :strategy_id AND s.user_ref = :user_ref")
+    "WHERE g.id = :id AND g.strategy_id = :strategy_id AND s.user_ref = :user_ref FOR UPDATE OF g")
+# ^ locked: a Dismiss or the worker's lapse cannot land between this read and the placement's stamp (one transaction)
 #: D-29: ``{scope}`` = ``scenario_mode.scope_clause("s")``: the inbox readers see this process's own strategies only.
 _INBOX_SQL = (f"SELECT {', '.join('g.' + c for c in _SG_COLUMNS.split(', '))}, s.name, "  # noqa: S608 constant
               "EXISTS (SELECT 1 FROM public.paper_orders o WHERE o.strategy_id = s.id) "
@@ -894,23 +895,34 @@ async def act_on(conn: Any, user_ref: str, suggestion_id: int) -> Suggestion:
 
 async def link_orders(conn: Any, user_ref: str, strategy_id: int, suggestion_id: int,  # noqa: PLR0913
                       order_ids: list[int], basket_legs: int | None = None) -> None:
-    """REQ-163 AC-1: the acted-on record ``suggestion_id`` names the paper orders ``order_ids`` its basket placed.
+    """REQ-163 AC-1: the record ``suggestion_id`` names the paper orders ``order_ids`` its basket placed, and an open
+    record becomes acted on with them (same transaction: a refused basket rolls the stamp back).
 
-    Fail closed, nothing written: a missing record, another user's, or one of another strategy -> SUGGESTION_NOT_FOUND;
-    a record not acted on, or one that already names a basket -> SUGGESTION_NOT_OPEN. The caller rolls back the orders.
+    Nothing about a record ever refuses or rolls back a placement (an exit must not be blocked by an alert that lapsed
+    or was dismissed, or by a stale or hand-edited id): a dismissed / lapsed / closed record, one that already names a
+    basket, and a missing / another user's / other-strategy id are SKIPPED (nothing written for them) and the placement
+    proceeds. The state is read under a row lock, so it cannot change before the stamp in the same transaction.
     """
     if type(suggestion_id) is not int or not order_ids or any(type(i) is not int for i in order_ids):
-        raise strategy_store.StrategyStoreError(SUGGESTION_NOT_FOUND, f"suggestion {suggestion_id!r}")
-    args = {"id": suggestion_id, "user_ref": user_ref, "strategy_id": strategy_id}
-    row = (await conn.execute(_LINK_ORDERS, {**args, "order_ids": json.dumps(order_ids),
-                                                 "basket_legs": json.dumps(basket_legs)})).one_or_none()
-    if row is not None:
         return
-    found = (await conn.execute(_SUGGESTION_OF_STRATEGY, args)).first()
-    if found is None:
-        raise strategy_store.StrategyStoreError(SUGGESTION_NOT_FOUND, f"suggestion {suggestion_id}")
-    raise strategy_store.StrategyStoreError(SUGGESTION_NOT_OPEN,
-                                            f"suggestion {suggestion_id} is {found[0]} or already names a basket")
+    args = {"id": suggestion_id, "user_ref": user_ref, "strategy_id": strategy_id}
+    # live test 27 Nov 2026 item 10 (REQ-112 AC-2): "Acted on" is stamped HERE, when the basket's paper order is placed
+    # (the caller's one transaction), never when the basket is only staged. A record of this strategy still open moves
+    # to acted_on now; one already acted on (stamped by the older staging path) just gets linked.
+    seen = (await conn.execute(_SUGGESTION_OF_STRATEGY, args)).first()
+    if seen is None:
+        return
+    if seen[0] == "open":
+        try:
+            await act_on(conn, user_ref, suggestion_id)
+        except strategy_store.StrategyStoreError:  # no longer open after all: left as it is, never a refusal
+            return
+    # dismissed / lapsed: final, left as it is (the migration 0031 trigger would refuse a move)
+    elif seen[0] != "acted_on":
+        return
+    # an acted_on record that already names a basket matches no row: left as it is, the placement proceeds
+    await conn.execute(_LINK_ORDERS, {**args, "order_ids": json.dumps(order_ids),
+                                      "basket_legs": json.dumps(basket_legs)})
 
 
 async def placed_links(conn: Any, user_ref: str, strategy_id: int) -> dict[int, list[Suggestion]]:
