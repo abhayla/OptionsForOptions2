@@ -30,6 +30,8 @@ from pathlib import Path
 
 import pytest
 
+pytestmark = pytest.mark.repo_scan
+
 ROOT = Path(__file__).resolve().parent.parent
 APP, DOM = ROOT / "backend" / "ofo_app", ROOT / "backend" / "ofo"
 REAL = [APP / "routes" / "execute.py", APP / "execute_plan.py", *sorted((DOM / "execution").glob("*.py"))]
