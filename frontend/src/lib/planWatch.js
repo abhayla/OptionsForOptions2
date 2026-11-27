@@ -6,6 +6,12 @@
 //   unavailable (the reply does not parse) | superseded (a newer request of the same kind replaced this one).
 import api, { NEUTRAL_PARTS } from '@/services/api'
 
+/** Least gap between two reads of one Plan watch box. The host ticks every TRACKING_REFRESH_MS (5 s, lib/tracking.js); each read
+ *  makes the server run the whole rule check and read prices, and 5 s reads piled up behind a slow price read (27 Nov 2026: 20 s
+ *  answers). Trigger distances change slowly; 15 s keeps them fresh enough at a third of the load. The first read (mount, a new
+ *  strategy) is immediate. */
+export const PLAN_WATCH_MIN_READ_GAP_MS = 15000
+
 export const PLAN_WATCH_UNAVAILABLE = 'The plan watch is not available right now.'
 export const PLAN_WATCH_NOT_FOUND = 'This strategy was not found, so there is nothing to watch.'
 
