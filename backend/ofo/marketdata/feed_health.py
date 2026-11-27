@@ -365,11 +365,14 @@ class QuoteBook:
         self._ended_times: dict[str, datetime.datetime] = {}  # times only, never a price
         # released but the vendor not yet told: unreadable, restored if taken again before the send (gate 4a D-1)
         self._parked: dict[str, BookEntry] = {}
+        # ids whose entry was made ONLY by ``seed_close`` (no live tick yet): never read while the market is open
+        self._seeded: set[str] = set()
 
     def remove(self, instrument_id: str) -> None:
         """Drop the quote (no stale price outlives its subscription, REQ-049 AC-4) but keep its TIME only (ADR-077:
         "The platform keeps each contract's last price TIME (never the price) after its subscription ends")."""
         self._parked.pop(instrument_id, None)
+        self._seeded.discard(instrument_id)
         self._end(instrument_id, self._entries.pop(instrument_id, None))
 
     def park(self, instrument_id: str) -> None:
@@ -377,6 +380,7 @@ class QuoteBook:
         vendor subscription was never actually dropped: a quiet contract would otherwise read 'no price' until it
         next changes."""
         entry = self._entries.pop(instrument_id, None)
+        self._seeded.discard(instrument_id)
         if entry is not None:
             self._parked[instrument_id] = entry
         self._end(instrument_id, entry)
@@ -417,8 +421,30 @@ class QuoteBook:
 
     def update(self, quote: NormalizedQuote, depth: Depth | None = None, day_stats: DayStats | None = None) -> None:
         parked = self._parked.pop(quote.instrument_id, None)
+        self._seeded.discard(quote.instrument_id)  # the first live tick wins: the entry is live from here
         self._ended_times.pop(instrument_id := quote.instrument_id, None)  # held again: the quote itself speaks
         self._entries[instrument_id] = _next_entry(self._entries.get(instrument_id) or parked, quote, depth, day_stats)
+
+    def seed_close(self, quote: NormalizedQuote, now: datetime.datetime) -> bool:
+        """The ONE entry point for a close stored by an earlier run (``ofo_app.last_close_store``, Lane N A1): holds
+        ``quote`` as the contract's made-by-the-close frame so ``_figure`` step (2)/(4) serves it with its OWN time.
+        Only
+        while the market is closed at ``now`` and only a frame ``made_by_the_close``; a parked contract is left alone.
+        Never overrides what the book already holds: a held close frame at least as new stays; a live entry keeps its
+        latest frame (only its close frame is filled in). An entry made here alone is hidden from ``get`` / ``quotes``
+        while the market is open and dropped from ``_seeded`` by the first live tick. True when the book changed."""
+        iid = quote.instrument_id
+        if not self.feed.market_closed(now) or not made_by_the_close(quote) or iid in self._parked:
+            return False
+        e = self._entries.get(iid)
+        if e is None:
+            self._entries[iid] = BookEntry(quote, quote.timestamp, close_quote=quote)
+            self._seeded.add(iid)
+            return True
+        if e.close_quote is not None and e.close_quote.timestamp >= quote.timestamp:
+            return False
+        self._entries[iid] = dataclasses.replace(e, close_quote=quote, close_depth=None, close_day_stats=None)
+        return True
 
     def __len__(self) -> int:
         return len(self._entries)
@@ -429,7 +455,7 @@ class QuoteBook:
 
     def get(self, instrument_id: str, now: datetime.datetime) -> NormalizedQuote | None:
         e = self._entries.get(instrument_id)
-        if not e:
+        if not e or (instrument_id in self._seeded and not self.feed.market_closed(now)):
             return None
         served = self._frame(instrument_id, e, now).quote
         return with_feed_health(served, self.feed.quote_health(served, now))
@@ -493,5 +519,7 @@ class QuoteBook:
         return DayStatsAnswer(e.day_stats)
 
     def quotes(self, now: datetime.datetime) -> list[NormalizedQuote]:
-        served = [self._frame(iid, e, now).quote for iid, e in list(self._entries.items())]
+        closed = self.feed.market_closed(now)
+        served = [self._frame(iid, e, now).quote for iid, e in list(self._entries.items())
+                  if closed or iid not in self._seeded]
         return [with_feed_health(q, self.feed.quote_health(q, now)) for q in served]

@@ -23,6 +23,7 @@ from ofo_app import (
     execute_replay_switch,
     feed_mode,
     held_switches,
+    last_close_store,
     live_market,
     paper_monitor,
     paper_settlement,
@@ -101,7 +102,9 @@ async def _lifespan(app: FastAPI) -> AsyncIterator[None]:
     settlement = paper_settlement.start() if market is not None else None  # GC-TP 5b: expiry settlement, live only
     real_task = real_settlement.start_if(market)  # GC-ICGUIDE g22 (C6): live only
     watch = worker_watch.start_if(market)  # ADR-286: live + bus only; tells the owner when the worker stops
+    close_task = last_close_store.start(market)  # Lane N A1: writes the close, seeds the book while closed; live only
     yield
+    await last_close_store.stop(close_task)
     await worker_watch.stop(watch)
     await real_settlement.stop(real_task)
     await paper_settlement.stop(settlement)  # a strategy's settle in flight is cancelled and rolls back
