@@ -140,6 +140,8 @@ PR241_SELECTION = {
     "tests_app/test_history_delete_entries.py",  # ADR-330 (31): imports the strategy routes / store the diff changes
     "tests_app/test_entry_not_live_confirmed.py",  # ADR-330 (28): imports ofo_app.strategy_refused (changed)
     "tests_app/test_paper_armed_exits.py",  # #774 (ADR-330 (48)): names ofo.errors.explanations
+    "tests_app/test_completed_header_count_r2_1128.py",  # Lane TA 28 Nov: added (I-39), the /strategies list
+    "tests_app/test_plan_watch_draft_r2_1128.py",  # Lane TA 28 Nov: added (I-64), imports ofo_app.strategy_store
 }
 
 
