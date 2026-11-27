@@ -42,6 +42,7 @@ import PaperBookPanel from '@/components/strategy/PaperBookPanel.vue'
 import { paperLegsOf, paperPnlBlock, usePaperBookRead } from '@/lib/usePaperBookRead'
 import { usePriceFreshness } from '@/lib/priceState'
 import { exitEndText, usePaperExit } from '@/lib/usePaperExit'
+import { createExitRecords } from '@/lib/exitRecord'
 import PaperStrategies from '@/components/strategy/PaperStrategies.vue'
 import AdjustCompare from '@/components/strategy/AdjustCompare.vue'
 import { opportunitiesFromQuery, picksFromQuery } from '@/lib/adjustDrawer'
@@ -485,7 +486,7 @@ function reviewPending(fromExit = false) { // the "Review and add" button passes
   if (fromExit === true) exitOrigin.value = true // never reset here: "Review and add" of Exit edits is still an Exit
   if (exitBlocked.value) return // post nothing; the panel's reason line says why
   paperError.value = ''
-  paperExitNote.value = ''
+  exitRec.clear(EXIT_KEY)
   paperState.value = PAPER_STATE.READY
   paperRows.value = confirmRowsFor(pendingOrders.value, paper.value.book, contractName, livePriceById.value)
   paperDialog.value = true
@@ -536,10 +537,15 @@ function cancelPaperDialog() {
 // the dialog open, Confirm blocked, with "<legs>: Prices are not live..." in it (it enables again after a good read); the trade really
 // CHANGED elsewhere closes it (N-04: the legs as before the Exit click) and leaves the visible sentence in paperExitNote.
 const paperLegNames = () => paperRows.value.map((r) => r.text).filter(Boolean)
-const paperExitNote = ref('') // the sentence a page-side close leaves (hotfix 27 Nov T2-08)
+// Lane U hotfix (27 Nov, ADR-016..019; PC T1-22): the builder's Exit door is single-ended: ONE record (lib/exitRecord.js) of the latest
+// attempt holds its one final sentence; a page-side close (changed elsewhere) and the POST's own 201 both write through it, so a late
+// 201 replaces the "changed elsewhere" line with "Exit placed on paper" and never adds a second line.
+const EXIT_KEY = 'builder'
+const exitRec = createExitRecords()
+const paperExitNote = computed(() => exitRec.cur(EXIT_KEY)?.text ?? '') // the sentence of the record (hotfix 27 Nov T2-08)
 const paperNotLiveLine = computed(() => (paperDialog.value && exitBlocked.value && !paperContractsChanged.value ? exitEndText('not_live', paperLegNames()) : ''))
 function closeChanged() {
-  paperExitNote.value = exitEndText('changed', paperLegNames())
+  exitRec.put(EXIT_KEY, 'changed', exitEndText('changed', paperLegNames()))
   cancelPaperDialog()
 }
 watch([exitBlocked, paperContractsChanged, paperBusy], ([blocked]) => { // also when a POST answers: a block that arrived meanwhile is acted on now
@@ -562,6 +568,9 @@ async function confirmPending(orders) {
   if (paperBusy.value || !paper.value || !paperDialog.value) return // a Confirm for a dialog that is no longer open (the page closed it) posts nothing
   if (exitBlocked.value) { if (paperContractsChanged.value) closeChanged(); return } // post nothing (the watch may not have run yet); a failed read keeps the dialog and its sentence
   const { id } = paper.value
+  const names = paperLegNames()
+  const wasExit = exitOrigin.value
+  const attempt = exitRec.begin(EXIT_KEY, names)
   paperBusy.value = true
   paperError.value = ''
   paperState.value = PAPER_STATE.READY
@@ -572,6 +581,8 @@ async function confirmPending(orders) {
     if (outcome === PAPER_STATE.REFUSED) { // 4xx: the server stored nothing (one transaction or none)
       paperError.value = (e?.parts ?? NEUTRAL_PARTS).what_happened || NEUTRAL_PARTS.what_happened
     }
+    if (outcome === PAPER_STATE.UNKNOWN) exitRec.settle(EXIT_KEY, attempt, 'unknown')
+    else if (outcome === PAPER_STATE.REFUSED) exitRec.settle(EXIT_KEY, attempt, 'refused')
     paperState.value = outcome // hotfix 27 Nov: a superseded POST is UNKNOWN (paperPostOutcome), never READY
     // REQ-163: a refused record is dropped, so the next request differs from the refused one; Confirm is ready again (text kept)
     if (outcome === PAPER_STATE.REFUSED && actedSuggestionIds.value.length && ACTED_REFUSED.has(e?.status)) {
@@ -582,6 +593,7 @@ async function confirmPending(orders) {
     return
   }
   // STORED (201). From here nothing may offer these orders again: a failure below is only a failed refresh.
+  exitRec.settle(EXIT_KEY, attempt, 'placed', wasExit ? exitEndText('done', names) : '') // the server answered: placed replaces a page-side guess
   paperStale.value = true
   try {
     await dropActed({ withApproach: true }) // one basket answers the records once

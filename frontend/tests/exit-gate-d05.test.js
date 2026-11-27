@@ -315,6 +315,40 @@ describe('ADR-328 (4): an Exit is never built from an old net', () => {
   })
 })
 
+describe('Lane U hotfix: the builder\'s Exit door is single-ended (ADR-016..019, ADR-328 (4); PC T1-22)', () => {
+  const kinds = (w) => { // the exit sentences of the page: the note and the dialog (the gate's own reason lines are not an attempt's sentence)
+    const txt = [...all(w, 'paper-exit-note'), ...all(w, 'paper-confirm')].map((x) => x.text()).join(' | ')
+    return { placed: (txt.match(/Exit placed on paper/g) || []).length, other: (txt.match(/changed elsewhere|could not confirm|not stored|no order was placed/gi) || []).length }
+  }
+  it('(5) the dialog is closed as changed elsewhere while the POST is in flight, then the POST\'s 201: one placed line, no changed-elsewhere line', async () => {
+    const w = await builder()
+    await t(w, 'paper-exit-all').trigger('click')
+    await flushPromises()
+    const s = w.vm.$.setupState
+    const rows = s.paperRows
+    let done
+    answers['POST /paper/strategies/86/orders'] = () => new Promise((r) => { done = () => r({ data: BOOK }) })
+    const p = s.confirmPending(rows)
+    await flushPromises()
+    s.closeChanged()
+    await flushPromises()
+    expect(s.paperExitNote).toContain(CHANGED) // the record says changed (the dialog itself cannot close while a POST is in flight)
+    done()
+    await p
+    await flushPromises()
+    expect(kinds(w)).toEqual({ placed: 1, other: 0 })
+    expect(all(w, 'paper-exit-note')).toHaveLength(1)
+  })
+  it('a closed-as-changed note with no POST stays the one line', async () => {
+    const w = await builder()
+    await t(w, 'paper-exit-all').trigger('click')
+    await flushPromises()
+    await setMark(w, true)
+    expect(kinds(w)).toEqual({ placed: 0, other: 1 })
+    expect(all(w, 'paper-exit-note')).toHaveLength(1)
+  })
+})
+
 describe('Positions: Exit (n) posts through addToPaper', () => {
   const leg = (i, over = {}) => withPriceTexts({
     leg_index: i, instrument_id: `NSE_FO:${i + 1}`, action: i % 2 ? 'SELL' : 'BUY', instrument: i < 2 ? 'PE' : 'CE',

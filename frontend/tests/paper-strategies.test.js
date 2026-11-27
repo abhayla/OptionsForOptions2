@@ -585,6 +585,94 @@ describe('PaperStrategies: the answer of Confirm always lands, and Confirm waits
   })
 })
 
+describe('PaperStrategies: ONE exit attempt shows ONE final sentence (Lane U hotfix, ADR-016..019, ADR-328 (4), REQ-065; PC T1-22)', () => {
+  const posts = () => calls.filter((c) => c[0] === 'POST')
+  // the whole rendered tree: how many sentences of each kind (placed vs every contradicting kind)
+  const kinds = (w) => {
+    const txt = w.text()
+    return { placed: (txt.match(/Exit placed on paper/g) || []).length, other: (txt.match(/was not stored|could not confirm|changed elsewhere|no order was placed/gi) || []).length }
+  }
+  const out0 = list(item({ legs: [leg(0, { exit_price: '120.00', exited_at: '2026-10-28T09:00:00Z', price_state: 'exited', current_price: null }), leg(1), leg(2), leg(3)] }))
+  const names = ['x']
+  it('(1) the page ends the attempt as unknown, then the slow 201 arrives: exactly one line, "<leg>: Exit placed on paper (order n)."; no not-placed / could-not-confirm text anywhere', async () => {
+    answers['GET /tracking'] = ok(REAL_REPLY)
+    let done
+    answers['POST /paper/strategies/48/orders'] = () => new Promise((r) => { done = () => r({ data: { strategy_id: 48, orders: [{ id: 885 }] } }) })
+    const w = await show()
+    await exitLeg(w, 0)
+    await t(w, 'paper-confirm-button').trigger('click')
+    w.vm.$.setupState.endExit('unknown', names)
+    await flushPromises()
+    done()
+    await flushPromises()
+    expect(kinds(w)).toEqual({ placed: 1, other: 0 })
+    expect(w.text()).toContain('22300')
+    expect(w.text()).toContain('(order 885).')
+    expect(has(w, 'paper-confirm')).toBe(false)
+    expect(w.findAll('[data-testid="paper-exit-link-note"]')).toHaveLength(1)
+  })
+  it('(2) a re-read that shows the leg reduced finishes AFTER the POST\'s 201: still exactly one placed line', async () => {
+    let finish
+    let n = 0
+    answers['GET /tracking'] = () => (n++ === 0 ? Promise.resolve({ data: REAL_REPLY }) : new Promise((r) => { finish = () => r({ data: out0 }) }))
+    let done
+    answers['POST /paper/strategies/48/orders'] = () => new Promise((r) => { done = () => r({ data: { strategy_id: 48, orders: [{ id: 885 }] } }) })
+    const w = await show()
+    await exitLeg(w, 0)
+    await t(w, 'paper-confirm-button').trigger('click')
+    await vi.advanceTimersByTimeAsync(TRACKING_REFRESH_MS) // a re-read starts while the POST is in flight
+    done()
+    await flushPromises()
+    finish()
+    await flushPromises()
+    expect(kinds(w)).toEqual({ placed: 1, other: 0 })
+    expect(w.findAll('[data-testid="paper-exit-link-note"]')).toHaveLength(1)
+  })
+  it('(3) a re-read says "not stored", then the order is shown stored: placed REPLACES it (the server is the authority), one line', async () => {
+    let reply = REAL_REPLY
+    answers['GET /tracking'] = () => Promise.resolve({ data: reply })
+    answers['POST /paper/strategies/48/orders'] = () => Promise.reject({ status: 503, parts: null })
+    const w = await show()
+    await exitLeg(w, 0)
+    await t(w, 'paper-confirm-button').trigger('click')
+    await flushPromises()
+    await vi.advanceTimersByTimeAsync(TRACKING_REFRESH_MS) // unchanged: not stored
+    expect(kinds(w)).toEqual({ placed: 0, other: 1 })
+    reply = out0
+    await vi.advanceTimersByTimeAsync(TRACKING_REFRESH_MS)
+    expect(kinds(w)).toEqual({ placed: 1, other: 0 })
+    expect(has(w, 'paper-confirm')).toBe(false)
+    expect(posts()).toHaveLength(1)
+  })
+  it('(4) the page closes the attempt as changed elsewhere, then the POST\'s 201: one placed line, no changed-elsewhere line', async () => {
+    answers['GET /tracking'] = ok(REAL_REPLY)
+    let done
+    answers['POST /paper/strategies/48/orders'] = () => new Promise((r) => { done = () => r({ data: { strategy_id: 48, orders: [{ id: 885 }] } }) })
+    const w = await show()
+    await exitLeg(w, 0)
+    await t(w, 'paper-confirm-button').trigger('click')
+    w.vm.$.setupState.endExit('changed', names)
+    await flushPromises()
+    expect(kinds(w)).toEqual({ placed: 0, other: 1 })
+    done()
+    await flushPromises()
+    expect(kinds(w)).toEqual({ placed: 1, other: 0 })
+    expect(w.findAll('[data-testid="paper-exit-link-note"]')).toHaveLength(1)
+  })
+  it('a placed attempt is never replaced by a late contradicting answer (a later "changed" or "unknown" for the same attempt is ignored)', async () => {
+    answers['GET /tracking'] = ok(REAL_REPLY)
+    answers['POST /paper/strategies/48/orders'] = ok({ strategy_id: 48, orders: [{ id: 885 }] })
+    const w = await show()
+    await exitLeg(w, 0)
+    await t(w, 'paper-confirm-button').trigger('click')
+    await flushPromises()
+    w.vm.$.setupState.endExit('changed', names)
+    w.vm.$.setupState.endExit('unknown', names)
+    await flushPromises()
+    expect(kinds(w)).toEqual({ placed: 1, other: 0 })
+  })
+})
+
 describe('lib/tracking readers', () => {
   it('readTracking reads EXITED with booked and unbooked', () => {
     const v = readTracking({ state: 'EXITED', paper_pnl: '55.00', paper_pnl_text: '+55.00', booked: '55.00', booked_text: '+55.00', unbooked: '0.00', unbooked_text: '0.00', legs: [], detections: [] })
