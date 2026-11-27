@@ -52,6 +52,7 @@ from ofo_app import playbook_store as store
 from ofo_app import scenario_mode
 from ofo_app import settings_in_force as in_force_mod
 from ofo_app.api_models import ApiModel, CatalogueText, Identifier, Money
+from ofo_app.adjustment_readers import CatalogueUnreadable
 from ofo_app.catalogue_store import load_catalogue
 from ofo_app.db import get_db
 from ofo_app.errors import ClosedRoute, Failure
@@ -595,35 +596,18 @@ async def _type_of(db: Any, user_ref: str, strategy_id: int, tracked: Any,
     if plan is not None:
         return plan.strategy_type, plan
     return check.entry_type(tracked, check.listed_of(ctx)), None  # D-04
-class _CatalogueUnreadable(Exception):
-    """The stored catalogue could not be read (a database error): the expiry kind is then NOT KNOWN, with a reason."""
-
-
 async def _stored_kind(db: Any, tracked: Any) -> str | None:
-    """The strategy's expiry kind from the STORED catalogue (the day's instrument list the app keeps), by the one rule
-    ``adjustment_readers.expiry_kind_of`` (monthly = an expiry an index FUTURE of the underlying also has; a scenario's
-    own stated kind wins). Used when the market read gave no kind (no live session, market closed). None when the
-    rule cannot judge: no future of the underlying listed, or the leg expires after the last listed future (a far month
-    whose own future is not listed yet would read as weekly). A database error raises ``_CatalogueUnreadable``."""
+    """The strategy's expiry kind from the STORED catalogue by the one rule ``adjustment_readers.expiry_kind_of``
+    (via ``adjustment_readers.stored_kind``, the same call the live check's position read makes). None when the rule
+    cannot judge (no future of the underlying listed, or a far month whose own future is not listed). A database
+    error raises ``CatalogueUnreadable``."""
     from ofo_app import adjustment_readers as readers  # noqa: PLC0415 - it imports routes.adjustment
-    scn = scenario_mode.current()  # the scenario switch read_market uses
     legs = getattr(tracked.position, "legs", ())
     if not legs:
         return None
-    expiry, underlying = legs[0].expiry, tracked.position.underlying
-    try:
-        entries = [e for e in (await load_catalogue(db)).all_entries()
-                   if e.currently_listed and e.contract.name == underlying and e.contract.expiry is not None]
-    except Exception as exc:  # any failed read means "kind not known", with its own reason
-        log.warning("adjustment plan: catalogue not read for the expiry kind", exc_info=True)
-        await db.rollback()  # a database error aborts the transaction: the next read needs the session clean
-        raise _CatalogueUnreadable from exc
-    options = [e for e in entries if e.contract.is_option()]
-    futures = frozenset(e.contract.expiry for e in entries if e.contract.is_future())
-    stated = scn is not None and scn.data.get("expiry_kind") in ("weekly", "monthly")
-    if not stated and (not futures or (expiry not in futures and expiry > max(futures))):
-        return None
-    return readers.expiry_kind_of(expiry, options, futures, scn)
+    kind = await readers.stored_kind(db, tracked.position.underlying, min(x.expiry for x in legs),
+                                     scn=scenario_mode.current(), load=load_catalogue)
+    return kind or None
 
 
 class KindRead(NamedTuple):
@@ -641,7 +625,7 @@ async def _known_kind(db: Any, tracked: Any, market: Any) -> KindRead:
         return KindRead(str(kind), None)
     try:
         stored = await _stored_kind(db, tracked)
-    except _CatalogueUnreadable:
+    except CatalogueUnreadable:
         return KindRead(None, _KIND_CATALOGUE_UNREADABLE)
     return KindRead(stored, None) if stored is not None else KindRead(None, _KIND_NOT_KNOWN)
 

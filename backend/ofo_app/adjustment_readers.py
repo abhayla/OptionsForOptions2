@@ -56,6 +56,7 @@ from ofo_app import (
     tracked_book,
     tracked_contracts,
 )
+from ofo_app.catalogue_store import load_catalogue
 from ofo_app.db import get_sessionmaker
 from ofo_app.errors import Failure
 from ofo_app.live_push import hold_and_read
@@ -156,9 +157,10 @@ async def _tracked_on(db: Any, strategy_id: int, rates: ChargeRates | None) -> T
     if not legs or underlying is None or lot is None:
         raise TrackedExited("no open option leg", closed_at=closed_at_of(orders))
     fresh = entry_stop_base(orders, found, _ENTRY_SOURCE)  # ADR-330 (1): from the entry orders only
-    base = await stop_base_in_force(db, strategy_id, fresh)
+    kind = await _stored_kind_or_empty(db, underlying, legs)  # R3: "" = not known; read BEFORE the backfill write
+    base = await stop_base_in_force(db, strategy_id, fresh)  # (a failed catalogue read rolls the session back)
     if real:  # paid charges and adjustments used before the app saw it: not readable yet ("not checked", ADR-276 (4))
-        return Tracked(Position(underlying, lot, "", datetime.date.min, tuple(legs)), book.booked, None,
+        return Tracked(Position(underlying, lot, kind, datetime.date.min, tuple(legs)), book.booked, None,
                        adjustments_used=None, entered_at=entered_at(orders), real_book=True, stop_base=base,
                        entry_stop_base=fresh)
     paid, paid_exact = paid_of(orders, found, underlying, rates) if rates is not None else (None, None)
@@ -168,9 +170,18 @@ async def _tracked_on(db: Any, strategy_id: int, rates: ChargeRates | None) -> T
     # None when the history cannot be read (the compare's "-" with that reason, never 0)
     used = history_count(orders, lambda cid: found[cid].stored is not None
                          and found[cid].stored.listed.contract.instrument_type in _OPTION_TYPES)
-    return Tracked(Position(underlying, lot, "", datetime.date.min, tuple(legs)), booked, paid,
+    return Tracked(Position(underlying, lot, kind, datetime.date.min, tuple(legs)), booked, paid,
                    adjustments_used=used, entered_at=entered_at(orders), paid_exact=paid_exact,
                    entry_position=entry_position_of(orders, found), stop_base=base, entry_stop_base=fresh)
+
+
+async def _stored_kind_or_empty(db: Any, underlying: str, legs: Any) -> str:
+    """The position's expiry kind from the stored catalogue (``stored_kind``), "" when it cannot be known or read
+    (the live check then checks no stop: never the weekly row by default)."""
+    try:
+        return await stored_kind(db, underlying, min(x.expiry for x in legs))  # the check's own day: the nearest leg
+    except CatalogueUnreadable:
+        return ""
 
 
 async def nearest_expiry(db: Any, strategy_id: int) -> datetime.date | None:
@@ -708,7 +719,7 @@ async def read_market(tracked: Tracked, ctx: Any, *, extra_ids: Iterable[str] = 
     provider = ctx.provider
     listed = listed_options(provider, underlying)
     scn = _scenario()
-    expiry_kind = _expiry_kind(provider, underlying, expiry, listed, scn)
+    expiry_kind = _expiry_kind(provider, underlying, min(x.expiry for x in position.legs), listed, scn)  # R3: the nearest leg, as the check counts days
     live = live_market.current_feed()  # F-92: the position's own legs are held for the read, like the paper book's
     first_index = provider.underlying_quote(underlying)  # only to centre the window; never used after the hold
     window_spot = await _window_spot(ctx, underlying, first_index, now)
@@ -830,16 +841,40 @@ def _expiry_kind(provider: Any, underlying: str, expiry: datetime.date, listed: 
 
 
 def expiry_kind_of(expiry: datetime.date, listed: Iterable[Any], futures: frozenset[datetime.date], scn: Any) -> str:
-    """THE one expiry-kind rule (the screen's ``read_market`` and the background's ``market_inputs`` both call it).
-    Monthly = the expiry a FUTURE of the underlying also expires on (index futures are monthly only); with no
-    future listed, the last listed option expiry of its month. Scenario mode: the scenario's own stated kind."""
+    """THE one expiry-kind rule (the screen's ``read_market``, the background's ``market_inputs``, the plan sheet and
+    ``stored_kind`` all call it). Monthly = the expiry a FUTURE of the underlying also expires on (index futures are
+    monthly only); weekly = an expiry inside the listed futures that none of them sits on. "" = NOT KNOWN, never a
+    default: no future listed, or the expiry lies after the last listed future (a far month whose own future is not
+    listed yet). Scenario mode: the scenario's own stated kind. ``listed`` is kept for the callers' signature."""
     if scn is not None and scn.data.get("expiry_kind") in ("weekly", "monthly"):
         return str(scn.data["expiry_kind"])
-    if futures:
-        return "monthly" if expiry in futures else "weekly"
-    same_month = sorted({lc.contract.expiry for lc in listed
-                         if (lc.contract.expiry.year, lc.contract.expiry.month) == (expiry.year, expiry.month)})
-    return "monthly" if same_month and expiry == same_month[-1] else "weekly"
+    if not futures:
+        return ""
+    if expiry in futures:
+        return "monthly"
+    return "" if expiry > max(futures) else "weekly"
+
+
+class CatalogueUnreadable(Exception):
+    """The stored catalogue could not be read (a database error): the expiry kind is then NOT KNOWN, with a reason."""
+
+
+async def stored_kind(db: Any, underlying: str, expiry: datetime.date, *, scn: Any = None,
+                      load: Callable[..., Any] | None = None) -> str:
+    """The expiry kind of ``expiry`` from the STORED catalogue (the day's instrument list the app keeps), by the one
+    rule ``expiry_kind_of``; "" = not known. A database error rolls the session back (it aborts the transaction, the
+    next read needs it clean) and raises ``CatalogueUnreadable``."""
+    scn = _scenario() if scn is None else scn
+    try:
+        entries = [e for e in (await (load or load_catalogue)(db)).all_entries()
+                   if e.currently_listed and e.contract.name == underlying and e.contract.expiry is not None]
+    except Exception as exc:  # any failed read means "kind not known", with its own reason
+        log.warning("expiry kind: catalogue not read", exc_info=True)
+        if db is not None:
+            await db.rollback()
+        raise CatalogueUnreadable from exc
+    futures = frozenset(e.contract.expiry for e in entries if e.contract.is_future())
+    return expiry_kind_of(expiry, [e for e in entries if e.contract.is_option()], futures, scn)
 
 
 async def atm_iv_now(ctx: Any, underlying: str, expiry: datetime.date, spot: Decimal) -> Decimal | None:

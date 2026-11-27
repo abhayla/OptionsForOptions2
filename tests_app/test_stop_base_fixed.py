@@ -151,7 +151,7 @@ def _state_after(tracked, pnl: str) -> pe.StrategyState:
     rows = tuple(ChainRow(D(k), "PE", EXPIRY, f"NIFTYPE{k}", D(ltp), D(ltp) - D("0.05"), D(ltp) + D("0.05"),
                           D("0.3"), True, True, "stated", False, None, DataHealth.AVAILABLE)
                  for k, ltp in (("23600", "75"), ("23500", "45")))
-    market = MarketInputs(rows, {}, None, None, None, None, None, NOW)
+    market = MarketInputs(rows, {}, None, None, None, None, None, NOW, expiry_kind="weekly")  # R3: the kind is stated
     resolved = check.Resolved("plan", plan_body(), 9, None, False, saved_before_adr247=False)
     state = check.state_of(tracked, market, SpotAnswer(D("23800"), "feed", NOW), None, t19.RATES, True, plan_body(),
                            config=t19.PREFS.approach, user_values=None, strategy_layer=None, entry_facts=None,

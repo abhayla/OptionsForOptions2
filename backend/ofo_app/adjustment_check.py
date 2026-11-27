@@ -296,8 +296,10 @@ def exit_inputs_of(guards: Mapping | None, position: Position, now: datetime.dat
         return ExitInputs(None, None, hhmm)
     expiry = min(x.expiry for x in position.legs)
     tighten = _tighten(body, ist.date(), expiry, hhmm) if isinstance(body, Mapping) else None
+    # R3: no kind known = no day count, so no stage and no T-09 (not checked); never the weekly row by default
     state = pe.StrategyState(stops=None, expiry_kind=position.expiry_kind or "weekly",  # type: ignore[arg-type]
-                             days_left=(expiry - ist.date()).days, hhmm=hhmm, tighten_percent=tighten)
+                             days_left=(expiry - ist.date()).days if position.expiry_kind else None, hhmm=hhmm,
+                             tighten_percent=tighten)
     return pe.exit_inputs(body, guards, state)
 
 
@@ -309,7 +311,9 @@ def cheapest_offered(body: Mapping | None, tracked: Tracked, market: MarketInput
     None prices it here. ``roll_basis`` (ADR-243, REQUIRED): the strategy's basis in force (``basis_in_force``), the
     same the Compare builds on."""
     offered = offered_now(body, tracked.adjustments_used)  # S-11: only exit and reduce at the limit
-    if spot is None:  # nothing can be built without spot: none priceable (T-19 is withheld for no spot anyway)
+    if spot is None or not (market.expiry_kind or tracked.position.expiry_kind):
+        # nothing can be built without spot, or without the expiry kind (the target delta is read by kind): none
+        # priceable (T-19 is withheld for no spot anyway)
         return cheapest_approach(offered, {}, market.chain)
     columns: dict[str, Column] = {}
     tracked = as_of_market(tracked, market)  # as the approaches route builds (market day, listed expiry kind)
@@ -393,17 +397,17 @@ def state_of(tracked: Tracked, market: MarketInputs, spot: SpotAnswer, margin: M
     stated_margin, margin_unreadable = margin_in(margin)
     last = market.last_close
     day = market.day_open
-    kind = market.expiry_kind or position.expiry_kind or "weekly"
+    kind = market.expiry_kind or position.expiry_kind  # "" = not known: no stage, no stop lines (R3, fail closed)
     stops = None
     stop_base = getattr(tracked, "stop_base", None)  # ADR-330 (1): fixed at entry, None = not checked
-    if resolved is not None:
+    if resolved is not None and kind:
         from ofo_app import settings_in_force as sif  # noqa: PLC0415 - it imports this module
         stops = sif.stops_of(resolved, sif.MoneyInputs(None if stop_base is None else stop_base.max_loss,
                                                        None if stop_base is None else stop_base.credit, stated_margin),
                              sif.StageAt(kind, (expiry - now.date()).days))
     return with_gamma(with_carry(pe.StrategyState(stops=stops,
-        expiry_kind=market.expiry_kind or position.expiry_kind or "weekly",  # type: ignore[arg-type]
-        days_left=(expiry - now.date()).days, hhmm=hhmm, spot=value, shorts=shorts, pnl=pnl,
+        expiry_kind=kind or "weekly",  # type: ignore[arg-type]  # a placeholder: with no kind days_left is None
+        days_left=(expiry - now.date()).days if kind else None, hhmm=hhmm, spot=value, shorts=shorts, pnl=pnl,
         pnl_after=pnl_after, pnl_after_reason=pnl_after_reason,
         max_loss=None if gross is None else _limit_value(gross.max_loss),
         stop_max_loss=None if stop_base is None else _limit_value(stop_base.max_loss),
@@ -653,7 +657,8 @@ def _entry_state(clock: datetime.datetime, spot: Decimal, atm_iv: Decimal | None
                                x.type)
                    for x in position.legs if x.side == Action.SELL.value)
     held = tuple(pe.HeldLeg(greeks[id(x)], x.side, x.lots) for x in position.legs)  # F-71: every leg, S-02 reads them
-    return pe.StrategyState(stops=None, expiry_kind=state.expiry_kind, days_left=(expiry - clock.date()).days,
+    return pe.StrategyState(stops=None, expiry_kind=state.expiry_kind,
+                            days_left=None if state.days_left is None else (expiry - clock.date()).days,  # R3: no kind, no days
                             hhmm=clock.strftime("%H:%M"), spot=spot, shorts=shorts, held=held,
                             atm_iv=atm_iv, entry_atm_iv=atm_iv, prices_fresh=True,
                             adjustments_used=state.adjustments_used, s02_delta_per_lot=state.s02_delta_per_lot)

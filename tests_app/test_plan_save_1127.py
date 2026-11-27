@@ -12,6 +12,7 @@ import json
 from decimal import Decimal as D
 
 from ofo_app import playbook_store
+from ofo_app import adjustment_readers as readers
 from ofo_app.routes import adjustment_plan as route
 from test_adjustment_plan import (  # noqa: F401 - fixtures and helpers of the sibling file
     OK,
@@ -125,13 +126,12 @@ class _Scn:
 def _no_session(monkeypatch, scenario_kind):
     """The market read of a save with no Kite session: the real reader with no context. ``scenario_kind`` None: no
     stored source of the kind (no scenario, the catalogue holds no future); else the scenario states it."""
-    from ofo_app import adjustment_readers as readers  # noqa: PLC0415
-
     async def real(tracked, market_reader, ctx):
         return await readers.read_market(tracked, None)
     monkeypatch.setattr(route, "_market", real)
     shim = type("S", (), {"current": staticmethod(lambda: None if scenario_kind is None else _Scn(scenario_kind))})
     monkeypatch.setattr(route, "scenario_mode", shim)
+    monkeypatch.setattr(readers, "scenario_mode", shim)  # R3: the position's own kind is read by the same rule
 
 
 ROWS_AFTER_50 = {"weekly": [D("50"), D("50"), D("40")], "monthly": [D("50"), D("50"), D("20")]}
