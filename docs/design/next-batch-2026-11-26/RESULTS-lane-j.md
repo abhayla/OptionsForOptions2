@@ -7,6 +7,64 @@ for these items by the owner on 26 Nov, see RESULTS-lane-p.md). Highest status c
 
 Spec basis: ADR-330 (1) to (27) and its one-module instruction; ADR-002; ADR-003; ADR-008; ADR-016 to ADR-019.
 
+## SAFE TO CLOSE (Lane J, 27 Nov about 14:50 IST)
+
+**Head: the head of `hotfix/loss-stop-1127` on origin** (this commit). Code: 206a9f0 + the daily-cap exemption
+(c040e73e) + the rupee stop fast path (468561e4) + the stop-gaps class fix (dabcc8ce, 415e98f4, 3d16435e). Fixed, not
+tested. **The PC: pull; restart the worker supervisor and the API; no frontend rebuild; no migration.** Re-run T1-05
+(rupee and %), T1-06 (#207 shape: a stop already crossed when the plan is accepted), T1-07, T1-08, and a stop crossed
+before 09:30 on a weekly trade.
+
+**#207, third cause (your 13:58 message): fixed, with the class.** A plan's loss stop (T-06, T-16, the 2x-credit stop,
+the rupee stop, and any rule whose triggers include T-06 or T-16, whatever its id) is now never held by: the quiet time
+after the open; a price pause inside a candle (it skipped the stop fast path for the rest of that candle,
+`alert_gate.py:396`, leaving no row and no log); or the at-entry rule memory (`adjustment_rule_state.held_at_entry`: a
+stored row made the stop answer "already true" on every check after every restart, `playbook_eval.py:1203`; stored rows
+are now ignored for stops). The time exit T-10b was already never held at entry. A worker restart no longer swallows a
+live crossing (test `test_207_restart_at_13_33_30_opens_the_stop_at_the_first_live_check`: opens at 13:33:44). The worker
+logs `background: strategy <id> check skipped: <reason>` when a strategy's skip reason changes. A stop is never judged on
+a stale price (the gate gets readings only after a fresh read). Decision: ADR-267 amendment 3 (your 13:38 ruling).
+Tests: 1197 domain tests passed; the new tests fail on e231a5c5 (25 of 29); Tier A review (Opus): the gate change is
+correct, 6 of 7 mutants killed; its one MAJOR (skip-log volume: one INFO line per second) fixed in round 2 (3d16435e).
+Not proven from the code: which of the three held #207 on the PC (no code path found that writes `held_at_entry = t`
+for the rupee stop, so the paused candle is the likelier one); the new skip-log line will show it.
+
+**Left for a fresh lane tonight:**
+- 0058 plan acceptance: `feat/0058-plan-acceptance-1127` f963ab6 (pushed, final review SHIP, not merged).
+- The 08:30 instrument list: `lanej/builder-open-0827` 4812a3f (pushed; two review MAJORs open: the 08:35 window
+  hard-coded, a failed run waits an hour; do not pull today).
+- The Plan watch box (Lane R now) and route speed (after Lane U's door); Lane J's unpushed box fix 64ce1a50 on
+  `lanej/pw-first-1127`.
+- `routes/playbooks.py` test_playbook holds a connection across market reads (listed 10:16).
+- To file as deferred issues: a mixed any_of rule with T-06/T-16 and an adjustment trigger has one record, so once it is
+  open or dismissed on its adjustment member a later stop crossing inside it raises nothing (review finding,
+  pre-existing); the worker's stops wiring has no worker-level test (review); no test pins the exact Rs 50.00 line in the
+  rupee fast-path file; the rupee profit target, T-07 and T-10b still wait for the candle close (owner question: does
+  REQ-170 AC-5's "conditional exit" include them?); exempt T-07 when the plan's Target is saved (owner question).
+- Two reviewer scratch folders in this session's scratchpad (`mut`, `chk`) that a safety hook would not let me delete;
+  the owner's to clear.
+
+**Today's work by model (27 Nov, Lane J; owner rule 14:14: the task picks the model).** Departures marked.
+
+| Task | Model that did it |
+|---|---|
+| Main session: split, route, verify, report, RESULTS text, git commits/pushes | Opus (this session) |
+| Plan watch slowness, first build (6dc76aa5, later dropped for Lane U) | Sonnet |
+| Plan watch page + route budget build, round 1 and round 2 | Sonnet |
+| Plan watch Tier A reviews (two) | Opus (Tier A) |
+| Repo scans / openapi checks helper | Sonnet (stopped early) |
+| adjustment-history connection release build | Sonnet |
+| Plan watch box first-read RCA + fix (64ce1a50) | Opus: DEPARTURE (building; routed as "hard debugging"; should have been Sonnet) |
+| Plan watch route profiling (stopped, out of scope) | Opus: DEPARTURE (same) |
+| #200 loss stop RCA + daily-cap fix | Opus: DEPARTURE (building/RCA; should have been Sonnet) |
+| #200 cap fix Tier A review | Opus (Tier A) |
+| #202 rupee stop fast path RCA + fix | Opus: DEPARTURE (same) |
+| #202 fix Tier A review | Opus (Tier A) |
+| Merged-tree alert path check (#207) | Opus: DEPARTURE (investigation; should have been Sonnet) |
+| Stop gaps class fix + #207 restart tests | Opus: DEPARTURE (same) |
+| Stop gaps Tier A review | Opus (Tier A) |
+| Pre-push gates (prepush.py --full), eight runs | Opus main session ran them as background commands: DEPARTURE (gate runs go to a Sonnet helper) |
+
 ## Hotfix status for the coordinator: `hotfix/loss-stop-1127` (27 Nov, T1-05 FAIL: the Rs 100 loss stop of A-D #200 raised no alert)
 
 **Latest (13:55 IST), your 13:33/13:42 questions on A-G #207: answer so far; the fix for the remaining gaps is being built on
