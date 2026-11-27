@@ -2042,17 +2042,6 @@ _EXPLANATIONS: tuple[ExplanationTemplate, ...] = (
     ExplanationTemplate("paper_leg_stop_still_profit", "values_seen",
                         "If this stop fires, the book shows a profit of at least Rs {after} (now at least Rs {before}).",
                         {"before": IndexLevel, "after": IndexLevel}),
-    # Lane M 27 Nov (pending owner read): the stop leaves a sold option with no bought option of its type covering it.
-    # The engine's lowest point is then the index at 0 (a put) - a figure no one acts on - so the line says what is
-    # true instead of printing it; the next sentence names the sold option(s)
-    ExplanationTemplate("paper_leg_stop_uncovered", "values_seen",
-                        "If this stop fires, a sold option is left without a bought option of its type covering it, so "
-                        "its loss grows as the index moves past its strike (now Rs {before}).",
-                        {"before": IndexLevel}),
-    ExplanationTemplate("paper_leg_stop_uncovered_from_profit", "values_seen",
-                        "If this stop fires, a sold option is left without a bought option of its type covering it, so "
-                        "its loss grows as the index moves past its strike (now a profit: at least Rs {before}).",
-                        {"before": IndexLevel}),
     ExplanationTemplate("paper_exit_less_protected", "values_seen",
                         "Sold option with less protection: {legs}.", {"legs": Explained}),
     ExplanationTemplate("paper_exit_warning_join", "values_seen", "{first} {second}",

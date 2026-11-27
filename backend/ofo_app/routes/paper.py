@@ -1445,15 +1445,9 @@ def _exit_risk_answer(state: Literal["yes", "no", "cannot_tell"]) -> ExitRiskOut
     return ExitRiskOut(state=state, max_loss_before=None, max_loss_after=None, warning_text=None)
 
 
-def _stop_line(before: Decimal, after: Decimal | str, uncovered: bool = False) -> str:
+def _stop_line(before: Decimal, after: Decimal | str) -> str:
     """ADR-330 (6): "If this stop fires, max loss becomes Rs X (now Rs Y)." A figure is negative for a loss; a figure
-    that is >= 0 is a profit and has its own sentence (never abs). Unlimited after: no fixed maximum.
-    ``uncovered`` (Lane M, 27 Nov): the stop leaves a sold option with no bought option of its type covering it. The
-    engine's figure is then the payoff at index 0 (a sold put: strike x quantity, Rs 16,62,316.50 on B-N1), true but
-    not a "max loss" anyone acts on: the line says the loss is not capped instead and prints no "becomes" figure."""
-    if uncovered and after != "unlimited":
-        return (render_explanation("paper_leg_stop_uncovered_from_profit", before=before) if before >= 0
-                else render_explanation("paper_leg_stop_uncovered", before=-before))
+    that is >= 0 is a profit and has its own sentence (never abs). Unlimited after: no fixed maximum."""
     if after == "unlimited":
         return (render_explanation("paper_leg_stop_unlimited_from_profit", before=before) if before >= 0
                 else render_explanation("paper_leg_stop_unlimited_loss", before=-before))
@@ -1474,7 +1468,7 @@ def _exit_warning(risk: ExitRisk, names: Mapping[str, Any], leg_stop: bool = Fal
     (before, before_text), (after, after_text) = _extreme(risk.max_loss_before), _extreme(risk.max_loss_after)
     lines = []
     if before is not None and after is not None:
-        lines.append(_stop_line(before, after, bool(risk.exposed)) if leg_stop else render_explanation(
+        lines.append(_stop_line(before, after) if leg_stop else render_explanation(
             "paper_exit_widens_loss", before=before_text, after=after_text))
     if risk.exposed:
         legs_text = names[risk.exposed[0]]

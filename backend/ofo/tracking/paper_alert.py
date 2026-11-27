@@ -24,7 +24,6 @@ ALERT_BODY_TEMPLATES = ("paper_alert_body_one", "paper_alert_body_one_named", "p
 STOP_LINE_TEMPLATES = (
     "paper_leg_stop_widens_loss", "paper_leg_stop_unlimited_loss", "paper_leg_stop_from_profit",
     "paper_leg_stop_unlimited_from_profit", "paper_leg_stop_to_profit", "paper_leg_stop_still_profit",
-    "paper_leg_stop_uncovered", "paper_leg_stop_uncovered_from_profit",
     "paper_exit_widens_loss", "paper_exit_less_protected", "paper_exit_warning_join")
 
 

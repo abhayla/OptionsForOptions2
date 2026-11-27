@@ -113,15 +113,14 @@ async def test_a_long_wing_stop_gets_the_engines_own_answer_no_fixed_maximum(db)
     assert fires == 1 and "If this stop fires, there is no fixed maximum loss (now Rs 2,860.00)." in text
 
 
-async def test_m1_a_long_put_stop_fired_says_the_put_is_uncovered_with_no_index_to_zero_figure(db):
-    """Lane M 27 Nov (B-N1 #194): the fired message carries the same sentence as the Stops panel (one function), never
-    the index-at-0 figure (-22400 x 65 + 10,497.50 = Rs 14,45,502.50) and never an ISO date."""
+async def test_m1_a_fired_long_put_stop_names_the_bare_put_as_the_screens_do(db):
+    """Lane M 27 Nov (B-N1 #194): the fired message's line comes from the same function as the Stops panel: the engine
+    figure at the fill (-22400 x 65 + 10,140.00 + 5.50 x 65 = -14,45,502.50) and the leg in the screens' form."""
     _, stored, _, fires = await _fire_leg(db, LONG_PUT, "5.00", "5.50")
     [(_, text)] = await _alerts(db, stored.id)
-    assert fires == 1 and "14,45," not in text and "2026-" not in text
-    assert ("If this stop fires, a sold option is left without a bought option of its type covering it, so its loss "
-            "grows as the index moves past its strike (now Rs 2,860.00). "
-            "Sold option with less protection: NIFTY ") in text
+    assert fires == 1 and "2026-" not in text
+    assert ("If this stop fires, max loss becomes Rs 14,45,502.50 (now Rs 2,860.00). "
+            "Sold option with less protection: NIFTY 13 Oct 22400 PE.") in text
 
 
 async def test_an_index_exit_gets_a_line_only_when_the_exit_check_says_yes(db):
