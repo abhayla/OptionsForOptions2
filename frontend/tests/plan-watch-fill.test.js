@@ -188,6 +188,9 @@ describe('no supersede path between boxes of one strategy', () => {
 // rupee stop line (plan.rupee_loss: "Stop: loss of Rs 80.00", fires_at -80.00, now -390.00, fired) and, for A-H #209, the stop text, a null
 // fires_at and the reason "USER_INPUT_151". FILLED from PlanWatchOut / WatchLineOut (not stated): every other key and label, the rule keys,
 // the as_of / as_of_text, the figures of the other lines, distance_rs / distance_pct, no_plan_text / armed_heading / paused (null).
+// the stop line of A-H #209 exactly as the PC's raw body served it (PR #722 comment 7214826976)
+const OBJ_151 = { error_class: 'USER_INPUT', code: 'USER_INPUT_151', what_happened: 'No adjustment opportunity checked: spot not available.', impact: 'No rule of this playbook is checked until the data is back.', what_is_blocked: 'Every rule of this playbook.', next_action: 'Wait for the spot price to come back.' }
+const SERVED_209_STOP = { key: 'plan.rupee_loss', kind: 'stop', section: 'plan', label: 'Stop: not being checked: No adjustment opportunity checked: spot not available.', unit: 'pnl_rupees', fires_at: null, now: null, distance_rs: null, distance_pct: null, state: 'not_computable', reason: OBJ_151 }
 const real = (id, lines) => ({ strategy_id: id, as_of: '2026-11-27T09:02:00Z', as_of_text: 'As of 02:32:00 PM IST', plan_state: 'planned', no_plan_text: null, armed_heading: null, paused: null, lines })
 const L = (key, kind, unit, state, over = {}) => line({ key, kind, section: 'plan', label: `Line ${key}`, unit, state, fires_at: '10.00', now: '5.00', distance_rs: '5.00', distance_pct: '50.00', reason: null, ...over })
 const NONE = { fires_at: null, now: null, distance_rs: null, distance_pct: null }
@@ -198,16 +201,16 @@ const A_G_207 = () => real(207, [
   ...['R-01', 'R-02', 'R-03'].map((k) => L(k, 'rule', 'rule_unit', 'watching')),
   L('R-06', 'rule', 'percent', 'watching', { distance_rs: null }), L('R-07', 'rule', 'percent', 'watching', { distance_rs: null }),
   L('R-08', 'rule', 'rule_unit', 'fired'), L('R-09', 'rule', 'rule_unit', 'fired'),
-  L('R-10', 'rule', 'rule_unit', 'not_applicable', { ...NONE, reason: 'Not applicable: the call side is closed' }),
-  L('R-11', 'rule', 'rule_unit', 'not_applicable', { ...NONE, reason: 'Not applicable: the put side is closed' }),
-  L('R-12', 'rule', 'rule_unit', 'not_computable', { ...NONE, reason: 'USER_INPUT_151' }),
-  L('R-13', 'rule', 'rule_unit', 'not_computable', { ...NONE, reason: 'USER_INPUT_151' }),
+  L('R-10', 'rule', 'rule_unit', 'not_applicable', { ...NONE, reason: null }),
+  L('R-11', 'rule', 'rule_unit', 'not_applicable', { ...NONE, reason: null }),
+  L('R-12', 'rule', 'rule_unit', 'not_computable', { ...NONE, reason: OBJ_151 }),
+  L('R-13', 'rule', 'rule_unit', 'not_computable', { ...NONE, reason: OBJ_151 }),
 ])
 const A_H_209 = () => real(209, [
-  L('T-07', 'target', 'pnl_rupees', 'not_computable', { label: 'Profit target: not being checked', ...NONE, reason: 'USER_INPUT_151' }),
-  L('T-06', 'stop', 'pnl_rupees', 'not_computable', { label: 'Stop: not being checked: No adjustment opportunity checked: spot not available.', ...NONE, reason: 'USER_INPUT_151' }),
-  L('T-09', 'credit_stop', 'pnl_rupees', 'not_computable', { label: 'Credit stop: not being checked', ...NONE, reason: 'USER_INPUT_151' }),
-  ...Array.from({ length: 13 }, (_, i) => L(`R-${i + 1}`, 'rule', 'rule_unit', 'not_computable', { label: `Rule ${i + 1}: not being checked`, ...NONE, reason: 'USER_INPUT_151' })),
+  L('T-07', 'target', 'pnl_rupees', 'not_computable', { label: 'Profit target: not being checked', ...NONE, reason: OBJ_151 }),
+  SERVED_209_STOP,
+  L('T-09', 'credit_stop', 'pnl_rupees', 'not_computable', { label: 'Credit stop: not being checked', ...NONE, reason: OBJ_151 }),
+  ...Array.from({ length: 13 }, (_, i) => L(`R-${i + 1}`, 'rule', 'rule_unit', 'not_computable', { label: `Rule ${i + 1}: not being checked`, ...NONE, reason: OBJ_151 })),
 ])
 
 describe('(e) the two real PC bodies', () => {
@@ -216,20 +219,29 @@ describe('(e) the two real PC bodies', () => {
     const w = box(207, { compact: false })
     await flushPromises()
     expect(rows(w)).toHaveLength(14)
-    expect(w.text()).not.toContain('not available')
+    expect(A_G_207().lines.some((l) => l.reason === null) && A_G_207().lines.some((l) => l.reason && typeof l.reason === 'object')).toBe(true)
+    expect(w.text()).not.toContain(PLAN_WATCH_UNAVAILABLE)
     expect(rows(w).filter((r) => r.attributes('data-state') === 'fired')).toHaveLength(3)
     const stop = w.find('[data-key="plan.rupee_loss"]')
     expect(stop.find('[data-testid="pw-label"]').text()).toBe('Stop: loss of \u20b980.00')
     expect(stop.find('[data-testid="pw-state"]').text()).toBe('Fired')
   })
-  it('A-H #209: 16 rows, every one Not checked with its server text, never "not available"', async () => {
+  it('A-H #209: 16 rows, every one Not checked with the server text and next step, never "not available"', async () => {
     reply = () => Promise.resolve({ data: A_H_209() })
     const w = box(209, { compact: false })
     await flushPromises()
     expect(rows(w)).toHaveLength(16)
     expect(rows(w).every((r) => r.find('[data-testid="pw-state"]').text().startsWith('Not checked'))).toBe(true)
-    expect(w.find('[data-key="T-06"] [data-testid="pw-label"]').text()).toBe('Stop: not being checked: No adjustment opportunity checked: spot not available.')
-    expect(w.text()).not.toContain('not available.\u200b')
+    const stop = w.find('[data-key="plan.rupee_loss"]')
+    expect(stop.find('[data-testid="pw-label"]').text()).toBe(SERVED_209_STOP.label)
+    // the label already carries what_happened: it is not repeated, only the next step goes under it
+    expect(stop.find('[data-testid="pw-reason"]').exists()).toBe(false)
+    expect(stop.find('[data-testid="pw-next"]').text()).toBe('Wait for the spot price to come back.')
+    // a rule line whose label does not carry it shows both texts, as sent
+    const rule = w.find('[data-key="R-1"]')
+    expect(rule.find('[data-testid="pw-reason"]').text()).toBe(OBJ_151.what_happened)
+    expect(rule.find('[data-testid="pw-next"]').text()).toBe(OBJ_151.next_action)
+    expect(w.text()).not.toContain(PLAN_WATCH_UNAVAILABLE)
     expect(w.find('[data-testid="plan-watch-message"]').exists()).toBe(false)
   })
 })

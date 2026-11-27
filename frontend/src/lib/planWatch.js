@@ -5,6 +5,7 @@
 //   ok (planState planned | no_plan | paused; lines may be empty) | not_found (404) | failed (request failed) |
 //   unavailable (the reply does not parse) | superseded (a newer request of the same kind replaced this one).
 import api, { NEUTRAL_PARTS } from '@/services/api'
+import { serverNextAction, serverSentence } from '@/lib/serverText'
 
 /** Least gap between two reads of one Plan watch box. The host ticks every TRACKING_REFRESH_MS (5 s, lib/tracking.js); each read
  *  makes the server run the whole rule check and read prices, and 5 s reads piled up behind a slow price read (27 Nov 2026: 20 s
@@ -28,13 +29,11 @@ const KINDS = ['target', 'stop', 'credit_stop', 'rule', 'index_exit', 'leg_stop'
 const UNITS = ['pnl_rupees', 'index_points', 'option_price', 'percent', 'rule_unit']
 
 const isText = (v) => typeof v === 'string' && v.trim() !== ''
-// The server's CatalogueText is EITHER a sentence (an ExplanationText, written as a string) OR a UserFacingError, written as an object
-// (api_models._serialize -> UserFacingError.as_dict(): error_class, code, what_happened, impact, ...). The not-checked rules carry their
-// reason as the second kind (adjustment_check.py `render(r.code)`), so a text is a string or an object with a `what_happened` sentence
-// (Lane R, 27 Nov 2026, AX-14: a reason object used to reject the whole reply as unavailable).
-const sentence = (v) => (isText(v) ? v : v && typeof v === 'object' && isText(v.what_happened) ? v.what_happened : null)
+// A CatalogueText is a sentence, null or an error object (lib/serverText): the not-checked rules carry their reason as the object
+// (Lane R, 27 Nov 2026, AX-14, proven by the PC's raw body: every #209 reason was an object, and the old reader rejected the whole reply).
+const sentence = (v) => serverSentence(v) ?? null
 // An optional text that is null, absent, empty or blank is NONE; a value that is neither a sentence nor null is present-but-wrong (false).
-const textOrNull = (v) => (v === null || v === undefined ? null : sentence(v) ?? (typeof v === 'string' ? null : false))
+const textOrNull = (v) => { const t = serverSentence(v); return t === undefined ? false : t }
 // The server writes a figure as plain decimal text (Money: format(v, "f")). A leading "+" is read as no sign; anything else is wrong (false).
 const figure = (v) => (v === null || v === undefined ? null : typeof v === 'string' && /^[+-]?\d+(\.\d+)?$/.test(v.trim()) ? v.trim().replace(/^\+/, '') : false)
 
@@ -64,11 +63,11 @@ function readLine(x, i) {
   if (!LINE_STATES.includes(o.state)) bad.push('state')
   const line = {
     key: key ?? `line-${i}`, kind: pick(KINDS, o.kind, 'rule'), section: pick(SECTIONS, o.section, 'plan'), label: label ?? key ?? 'Trigger',
-    unit: pick(UNITS, o.unit, 'rule_unit'), state: pick(LINE_STATES, o.state, 'not_computable'), ...f,
+    unit: pick(UNITS, o.unit, 'rule_unit'), state: pick(LINE_STATES, o.state, 'not_computable'), ...f, reasonNext: serverNextAction(o.reason),
   }
   if (bad.length === 0) return line
   console.warn(`plan watch: line ${i} degraded to not checked; unreadable field(s): ${[...new Set(bad)].join(', ')}`)
-  return { ...line, state: 'not_computable', firesAt: null, now: null, distanceRs: null, distancePct: null, reason: null }
+  return { ...line, state: 'not_computable', firesAt: null, now: null, distanceRs: null, distancePct: null, reason: null, reasonNext: null }
 }
 
 /** The view of a reply in the server's shape, or null when its top level is unusable (not an object, no `lines` array) or it answers

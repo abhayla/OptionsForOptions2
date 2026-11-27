@@ -419,7 +419,7 @@ Spec basis: ADR-330 (1) (the stop base is stored with the plan and read by the c
 
 ## Plan watch box never fills (AX-14, 27 Nov)
 
-Spec basis: ADR-330 (13), REQ-119 AC-3/AC-4. Raw PC body: the coordinator relayed the counts of two real 200 bodies (A-G #207, 14 lines; A-H #209, 16 lines, all not_computable). The raw JSON is still to come; fields not stated were filled from `PlanWatchOut` / `WatchLineOut` (listed in `frontend/tests/plan-watch-fill.test.js`, section (e)).
+Spec basis: ADR-330 (13), REQ-119 AC-3/AC-4. Real PC bodies: A-G #207 (14 lines) and A-H #209 (16 lines, all not_computable); #209's stop line is pinned exactly as served. Fields not stated by the PC were filled from `PlanWatchOut` / `WatchLineOut` (listed in `frontend/tests/plan-watch-fill.test.js`, section (e)).
 
 ### Step 1: what the server can send that the old `parsePlanWatch` rejected (old = `frontend/src/lib/planWatch.js` at 248f817a)
 
@@ -432,12 +432,11 @@ Spec basis: ADR-330 (13), REQ-119 AC-3/AC-4. Raw PC body: the coordinator relaye
 | `no_plan` with null text, `paused` without text (`plan_watch.py:105,107`) | null (`:59,:63`) | whole reply rejected |
 | `as_of` datetime, extra keys, absent `reason` | not read / ignored / ok | fine |
 
-The two PC bodies as relayed (kinds credit_stop / rule, units pnl_rupees / percent / rule_unit, states fired / not_applicable / not_computable, null fires_at, string reason "USER_INPUT_151", `paused` null) are ACCEPTED by the old reader: run on the old code, both returned state ok with all lines. So those shapes are not what rejected the PC reply.
+### Root cause: proven by the PC's raw body (PR #722 comment 7214826976)
 
-### Root cause (most likely, not proven)
+`lines[].reason` is an OBJECT (keys code, error_class, external_text, impact, next_action, what_happened, what_is_blocked) on every #209 line, and on #207 it is null on some lines and an object on others in the same reply. `label` and `as_of_text` are strings; `no_plan_text` and `armed_heading` are null. The old `readLine` / `textOrNull` (planWatch.js:33, :44) refuse a non-string reason, so ONE object reason rejected the WHOLE 200 reply as "unavailable". Proof run: the 248f817a parser given #209 (16 lines, the stop line pinned exactly as served) and #207 (14 lines, mixed null and object reasons) returned `unavailable` with 0 lines for both; the fixed parser renders 16 and 14 rows. The earlier note that the relayed bodies were accepted was wrong only because the relay showed the reason as the string "USER_INPUT_151" (its `code`), not the object.
 
-1. The sequence on the PC (stuck on "Updating the numbers", then "unavailable") is produced by the box itself once ANY first read returns a non-ok view: `PlanWatch.vue` showed "Updating the numbers..." whenever `view.state !== 'ok' && updating`, so every retry after a failed first read said "Updating" over nothing, then fell back to the not-available text. "failed" (timeout, network) and "unavailable" (parse) share one sentence, so the screen cannot tell them apart. The test (a) with the old code reproduced exactly `loading -> updating -> message`.
-2. What made the first read non-ok is NOT proven. Candidates: (i) the PC head may lack the 20 s per-request timeout (its first reads took 6-11 s against the 10 s shared client timeout); ff0448b3 is not in this checkout, so I could not check; (ii) a line field in the raw body that the old parser refuses, most likely an object-valued `reason` or `label` (server source above), which the relayed bodies do not show.
+After a first read ends "unavailable", the box showed "Updating the numbers..." on every retry and then the same not-available sentence again: that is the AX-14 symptom.
 
 ### Fix (frontend only)
 
@@ -458,3 +457,19 @@ The two PC bodies as relayed (kinds credit_stop / rule, units pnl_rupees / perce
 1. Load the new build, open Positions with plan rows, and watch one box: it must read "Loading the rule check..." then the rows. It must never read "Updating the numbers..." before its first rows.
 2. Open the browser console: a `plan watch: line N degraded ... field(s): ...` warning names the field if the server sent something unreadable. Send that line, and the raw 200 body of `/api/strategies/<id>/plan-watch` from the network tab.
 3. Open the builder with `?strategy=<id>`: the Stops panel and the plan rows must show; A-H #209 must show 16 rows marked Not checked.
+
+### Round 2: one reader for server catalogue text
+
+`frontend/src/lib/serverText.js`: a text is a string (itself), null (none) or the error object (its `what_happened`; `next_action` is available). A not-checked line shows the server's `what_happened` and `next_action`, placed and never composed. The #209 stop label already carries `what_happened` ("Stop: not being checked: <what_happened>"), so for such a line only `next_action` is shown under it (a rule line whose label does not carry it shows both).
+
+| Reader | Where | Action |
+|---|---|---|
+| plan-watch reader (reason, label, as_of_text, no_plan_text, armed_heading, paused.text) | `lib/planWatch.js` | changed, uses the helper |
+| adjustment-check reader `said` (used by TrackingPanel.vue:158, :67 and `ruleNotCheckedText`, sharedStateText.js:83) | `lib/playbookEditor.js:124` | changed, uses the helper |
+| adjustment-history totals `reasonOf` | `components/strategy/AdjustSteps.vue:80` | changed, uses the helper |
+| `tracking.js:132` / `paperDrafts.js:212` string-only `serverText` (paper book `*_text`, plain sentences) | lib | checked, left: paper book fields, and `tracking.js:159-160` already reads the object |
+| `LiveStrategyCard.vue:179` | component | checked, left: already object-aware |
+| `adjustCompare.js:93`, `legEdit.js:170`, `strategyActivity.js:29` | lib | checked, left: already read `what_happened` |
+| `TrackingPanel.vue:75` (`a.wording?.what_happened`), `:52` (`f.wording`) | component | checked, left: `wording` is always `render()` (object) / a flag sentence |
+| `TargetBlock.vue:87` `at_refused_reason` | component | checked, left: an outcome field, not plan / check / levels |
+| `adjustPlan.js:12` `parts()` (object-only for `generic_text`) | lib | not touched (another builder); reads `what_happened` of an object only, a string `generic_text` would read as '' |
