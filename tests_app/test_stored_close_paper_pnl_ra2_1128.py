@@ -10,11 +10,14 @@ are 45.15 / 14.95 / 70.75 / 30.80 -> +195.00 before charges (the same sum as AC-
 from __future__ import annotations
 
 import datetime
+import sys
 from decimal import Decimal
+from pathlib import Path
+
+sys.path.insert(0, str(Path(__file__).resolve().parents[1] / "tests"))
 
 from marketdata._kite_fixture import Clock, listed
 from ofo.marketdata.kite_provider import IST, KiteProvider
-from ofo.tracking.orderbook import PaperOrder  # noqa: F401 - keeps the import graph the route tests use
 from ofo_app import last_close_store as lcs
 from ofo_app import paper_store
 from ofo_app.routes.outcome import MarketContext, get_market_context, load_charge_rates

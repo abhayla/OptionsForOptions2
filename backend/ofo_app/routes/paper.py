@@ -600,15 +600,14 @@ async def _snapshot(ctx: MarketContext, feed: LiveFeed | None, underlying: str, 
     return snapshot
 
 
-def _stored_close_snapshot(ctx: MarketContext | None, underlying: str, ids: list[str]):
+async def _stored_close_snapshot(ctx: MarketContext | None, underlying: str, ids: list[str]):
     """Lane RA2 item 1 (D-TG-1; ADR-330 (60), ADR-212): with NO broker session the book may still hold the stored last
-    close (``last_close_store`` seeds it while the market is closed). One plain read of the book, no wait and no feed
-    hold: used only when the snapshot says the market is closed (an open market never serves a stored figure), else
-    None. Display only: stops, exits and fills read ``leg_price`` and never see this."""
+    close (``last_close_store`` seeds it while the market is closed). One plain read through the same ``_snapshot`` (no
+    feed, so no hold and no wait): used only when the snapshot says the market is closed (an open market never serves
+    a stored figure), else None. Display only: stops, exits and fills read ``leg_price`` and never see this."""
     if ctx is None or not ids:
         return None
-    snapshot = read_snapshot(ctx.provider, underlying, ids, ctx.clock(), ctx.rate, feed_scope(ctx),
-                             quality=ctx.forward_quality)
+    snapshot = await _snapshot(ctx, None, underlying, ids)
     return snapshot if snapshot.market_closed else None
 
 
@@ -1087,7 +1086,7 @@ async def _book(db: Any, stored: Any, orders: Sequence[paper_store.StoredOrder],
         await release_connection(db)  # D-36 (c): the feed hold below waits up to FORWARD_WAIT_S
         snapshot = await _snapshot(ctx, feed, underlying, keys)  # type: ignore[arg-type]
     elif keys:
-        snapshot = _stored_close_snapshot(ctx, underlying, keys)  # RA2 item 1: no session, the stored close
+        snapshot = await _stored_close_snapshot(ctx, underlying, keys)  # RA2 item 1: no session, the stored close
     prices = _prices(open_ids, found, snapshot)
     served = _served(connected, snapshot, prices)
     base = _figures(orders, found, prices, served, _book_day(snapshot, answered_at),
@@ -1161,7 +1160,7 @@ async def list_paper_strategies(db: Annotated[Any, Depends(get_db)],  # noqa: PL
             snapshots[underlying] = await _snapshot(ctx, feed, underlying, wanted)  # type: ignore[arg-type]
     elif keys:
         for underlying, wanted in keys.items():
-            if (stored := _stored_close_snapshot(ctx, underlying, wanted)) is not None:  # RA2 item 1
+            if (stored := await _stored_close_snapshot(ctx, underlying, wanted)) is not None:  # RA2 item 1
                 snapshots[underlying] = stored
     held_rows = await held_entry_store.read_many(db, [b.strategy_id for b in books])
     out, decays = [], []
