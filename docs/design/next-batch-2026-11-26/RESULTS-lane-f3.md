@@ -1,4 +1,4 @@
-STATUS 18:55 | items 1-4: Fixed, not tested in a browser (cloud tests green); batch 1 push in progress | items 5-9 not started | next push batch 2 by 01:30 IST Sun | blocker: none (send_message to the coordinator refused: elevated_session_untrusted_device; this line is the report)
+STATUS 20:30 | items 1-4 pushed (batch 1), gate TOTAL PASS 1192.6s with build a1d70422 merged; items 5-8 built in wt-next, batch 2 next | next push batch 2 by 01:30 IST Sun | blocker: none (send_message to the coordinator refused: elevated_session_untrusted_device; this line is the report) | FJ2 handoff branch f23 duplicates items 3 and 5: merge when it appears
 
 # RESULTS Lane F3 (frontend tail), branch fix/r3-frontend-f3-1128, base origin/integration/weekend-r3-1129 + FJ2 68a46dd62 + RA2 (fix/r3-leftovers-2-1128)
 
