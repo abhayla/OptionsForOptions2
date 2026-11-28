@@ -1,4 +1,4 @@
-STATUS 00:40 IST 29 Nov | CI-2 spec fixes + W-25 D tests + Positions not-connected fix: built, merged with wave 1 (8425feea), full check running, ONE push by 01:30 | still failing browser specs: 0 (8 screen specs 1652 passed / 0 failed / 20 flaky-on-retry / 2 skipped; real-API files 14 passed / 2 skipped) | blocker: none
+STATUS 00:55 IST 29 Nov | PUSHED: CI-2 spec fixes (all 8 screen specs + positions/index-view specs), W-25 D tests, Positions not-connected fix; gate TOTAL PASS 1185.9s on cac25b2fb (wave 1 8425feea merged) | browser specs still failing: 0 by my single run (1652 passed / 0 failed / 20 flaky-on-retry / 2 skipped; real-API files 14 passed / 2 skipped); CI's run on the build decides | Not done: none of my queue | SAFE TO CLOSE
 
 # RESULTS Lane F3 (frontend tail), branch fix/r3-frontend-f3-1128, base origin/integration/weekend-r3-1129 + FJ2 68a46dd62 + RA2 (fix/r3-leftovers-2-1128)
 
