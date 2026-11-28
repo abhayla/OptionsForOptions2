@@ -129,3 +129,68 @@ def test_a_fired_leg_stop_has_past_tense_sentences() -> None:
     seen = datetime.datetime(2026, 11, 27, 12, 58, tzinfo=IST)
     assert r("stop_fired_at", line=loss, time=seen) == f"{loss}; seen by the check at 12:58 IST"
     assert "If this stop fires" not in loss
+
+
+# FD4 item 5: the same line for ENTRIES. The wording lives in the catalogue (Lane FC3's explanations.py, which FD4
+# may not edit): the two templates are in RESULTS-lane-fd4.md "For the owner lane". Until they land the field is null.
+ENTRIES_DAY = "Orders can be placed from 09:15 on Monday 30 Nov."
+ENTRIES_NO_DAY = "Orders can be placed when it opens."
+
+
+def _entries_template_landed() -> bool:
+    from ofo.errors.explanations import render_explanation  # noqa: PLC0415
+    try:
+        render_explanation("exit_market_closed_entries", day=datetime.date(2026, 11, 30))
+    except ValueError as exc:
+        assert "unknown explanation template id" in str(exc)
+        return False
+    return True
+
+
+@pytest.mark.asyncio
+async def test_route_carries_entries_sentence_beside_sentence_for_the_same_day() -> None:
+    app = create_app()
+    app.dependency_overrides[get_answer_clock] = lambda: (lambda: FRIDAY_1602)
+    app.dependency_overrides[get_market_context] = lambda: None
+    async with AsyncClient(transport=ASGITransport(app=app), base_url="http://test") as ac:
+        body = (await ac.get("/api/market/exit-state")).json()
+    assert "entries_sentence" in body
+    assert body["sentence"] == "The market is closed. Exits can be placed from 09:15 on Monday 30 Nov."  # as before
+    assert body["entries_sentence"] == (ENTRIES_DAY if _entries_template_landed() else None)  # never a guess
+
+
+@pytest.mark.asyncio
+async def test_entries_sentence_is_null_while_the_market_is_open() -> None:
+    app = create_app()
+    app.dependency_overrides[get_answer_clock] = lambda: (lambda: WEDNESDAY_1000)
+    app.dependency_overrides[get_market_context] = lambda: None
+    async with AsyncClient(transport=ASGITransport(app=app), base_url="http://test") as ac:
+        body = (await ac.get("/api/market/exit-state")).json()
+    assert (body["closed"], body["sentence"], body["entries_sentence"]) == (False, None, None)
+
+
+def test_entries_sentence_has_no_day_past_the_calendar_and_never_builds_text_here(monkeypatch) -> None:
+    from ofo_app import exit_market  # noqa: PLC0415
+
+    asked: list[tuple] = []
+
+    def fake(template_id, **slots):
+        asked.append((template_id, slots))
+        return template_id
+    monkeypatch.setattr(exit_market, "render_explanation", fake)
+    assert exit_market.entries_sentence(None) == "exit_market_closed_entries_no_day"
+    opens = datetime.datetime(2026, 11, 30, 9, 15, tzinfo=IST)
+    assert exit_market.entries_sentence(opens) == "exit_market_closed_entries"
+    assert asked == [("exit_market_closed_entries_no_day", {}),
+                     ("exit_market_closed_entries", {"day": datetime.date(2026, 11, 30)})]  # the catalogue builds it
+
+    def unknown(template_id, **_slots):
+        raise ValueError(f"unknown explanation template id {template_id!r}")
+    monkeypatch.setattr(exit_market, "render_explanation", unknown)
+    assert exit_market.entries_sentence(opens) is None  # template not landed: null, never a guess
+
+    def broken(template_id, **_slots):
+        raise ValueError("explanation needs slots ['day'], got []")
+    monkeypatch.setattr(exit_market, "render_explanation", broken)
+    with pytest.raises(ValueError, match="needs slots"):
+        exit_market.entries_sentence(opens)  # a real fault is never hidden as "not landed"

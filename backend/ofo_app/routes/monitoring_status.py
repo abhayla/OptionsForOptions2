@@ -32,7 +32,7 @@ router = APIRouter(route_class=ClosedRoute)
 _SAFE = re.compile(r"[A-Za-z0-9_]{1,64}")  # ASCII only: the Identifier type's own pattern
 _WHY = {ms.WORKERS_DOWN, ms.STATE_UNREADABLE, ms.NOT_LISTED, "expiry_kind_unknown", "stale", "disconnected",
         "leg_missing", "check_failed", "index_not_live", "leg_not_live", "exit_not_priced",
-        "index_exits_not_run",
+        "index_exits_not_run", "exits_not_checked_yet",
         "market_closed", "user_paused"}
 
 
