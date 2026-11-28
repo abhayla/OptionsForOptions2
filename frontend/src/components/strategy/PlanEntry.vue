@@ -27,6 +27,11 @@
           </template>
         </template>
         <!-- GC-ICFIX u141: the check's own read time (the server's text; an older server sends none -> nothing shown) -->
+        <!-- I-197: the plan's own stop and target (percent and rupees, the server's figures) or the reason none is set; shown for a level
+             the check's lines do not carry (market closed, check failed, no row for it); a level the check printed is not printed twice -->
+        <template v-if="read.plan && checkStatus !== 'loading'">
+          <p v-for="lv in planLevels" :key="lv.id" :data-testid="`plan-entry-${lv.id}`">{{ lv.text }}</p>
+        </template>
         <p v-if="limits && check.as_of_text" class="text-xs text-ink-muted" data-testid="plan-entry-limits-as-of">{{ check.as_of_text }}</p>
         <p v-if="limits && checkStale" class="text-xs text-red-700" data-testid="plan-entry-limits-stale">{{ checkStaleLine(checkRefusal) }}</p>
         <p v-if="read.plan" data-testid="plan-entry-guards">
@@ -86,6 +91,32 @@ const limits = computed(() => {
   const rows = c.limits.map((l) => ({ id: l.rule_id, text: KNOWN_STATES.includes(l.state) && typeof l.text === 'string' ? l.text : null,
     muted: l.state === 'already_true' })) // ADR-296: an already-true line is grey, never red
   return { paused: null, rows }
+})
+
+// I-197: what the check's lines already print (a row with a sentence); T-07 is the target row, any other row is the stop
+const printed = computed(() => {
+  const rows = Array.isArray(props.check?.limits) && props.checkStatus === 'ok' && !props.check?.paused ? props.check.limits : []
+  const has = (l) => KNOWN_STATES.includes(l.state) && typeof l.text === 'string' && l.text !== ''
+  return { target: rows.some((l) => has(l) && l.trigger_id === 'T-07'), stop: rows.some((l) => has(l) && l.trigger_id !== 'T-07') }
+})
+const NO_STOP_TEXT = 'No stop is set for this trade.' // pending owner read
+const NO_TARGET_TEXT = 'No target is set for this trade.' // pending owner read
+function levelText(label, rupeeLabel, percent, rupees, none) {
+  const pct = (percent ?? '').trim()
+  const rs = (rupees ?? '').trim()
+  if (pct && rs) return `${label}: ${pct} % (Rs ${rs})`
+  if (pct) return `${label}: ${pct} %`
+  if (rs) return `${rupeeLabel}: Rs ${rs}`
+  return none
+}
+const planLevels = computed(() => {
+  const plan = read.value?.plan
+  const labels = read.value?.labels ?? {}
+  if (!plan) return []
+  const out = []
+  if (!printed.value.stop) out.push({ id: 'stop', text: levelText(labels.stop || 'Stop', labels.stop_rupees || 'Stop (Rs)', plan.stop, plan.stopRupees, NO_STOP_TEXT) })
+  if (!printed.value.target) out.push({ id: 'target', text: levelText(labels.target || 'Target', labels.target_rupees || 'Target (Rs)', plan.target, plan.targetRupees, NO_TARGET_TEXT) })
+  return out
 })
 
 const heldPlanFor = (id) => { try { return !!getActivePinia() && useBuilderHold().hasPlan(id) } catch { return false } }

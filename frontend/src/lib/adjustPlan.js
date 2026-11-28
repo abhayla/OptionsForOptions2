@@ -50,6 +50,7 @@ export function readPlan(body) {
       playbookName: text(body.plan.playbook_name),
       target: decimal(body.plan.target), stop: decimal(body.plan.stop),
       targetWords: text(body.plan.target_words), stopWords: text(body.plan.stop_words),
+      targetRupees: decimal(body.plan.target_rupees), stopRupees: decimal(body.plan.stop_rupees), // I-197: the plan's own levels in rupees, the server's strings
       changed: Array.isArray(body.plan.changed) ? body.plan.changed.filter((x) => typeof x === 'string') : [], // ADR-330 (9): the server's markers
       switchedOff: Array.isArray(body.plan.switched_off) ? body.plan.switched_off.filter((x) => typeof x === 'string') : [],
       maxAdjustments: count(body.plan.max_adjustments), timeExit: clockText(body.plan.time_exit), timeExitOn: text(body.plan.time_exit_on),
