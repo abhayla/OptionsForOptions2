@@ -1,0 +1,11 @@
+const { chromium } = require('playwright'); const OUT = '/tmp/claude-0/sp2'; const M = 'http://127.0.0.1:4173'
+const sleep = (ms) => new Promise((r) => setTimeout(r, ms))
+;(async () => { const browser = await chromium.launch(); const page = await (await browser.newContext({ viewport: { width: 1366, height: 900 } })).newPage()
+  const dlg = async () => (await page.getByRole('dialog').first().innerText().catch(() => '<none>')).replace(/\s+/g, ' ')
+  await page.goto(M + '/strategy/builder?strategy=1'); await sleep(8000); await page.getByRole('button', { name: 'Edit plan' }).click(); await sleep(2500)
+  const inputs = page.getByRole('dialog').first().locator('input:not([type=time]):not([type=date])')
+  console.log('labels:', JSON.stringify(await inputs.evaluateAll(x => x.map(e => e.getAttribute('aria-label') || e.id || e.name))))
+  await inputs.nth(2).fill('9'); await inputs.nth(2).blur(); await sleep(1000); let d = await dlg(); console.log('after typing Stop 9 and blur: sentences:', JSON.stringify((d.match(/[^.]*(different|differ|Rs|rupee)[^.]*\./gi) || []).slice(0, 5)))
+  console.log('values now:', JSON.stringify(await inputs.evaluateAll(x => x.map(e => e.value))))
+  await inputs.nth(3).fill('500'); await inputs.nth(3).blur(); await sleep(1500); d = await dlg(); console.log('after Rs 500 and blur: different-values sentence:', JSON.stringify(d.match(/[^.]*show different values[^.]*\./)), '| values', JSON.stringify(await inputs.evaluateAll(x => x.map(e => e.value)))); await page.screenshot({ path: `${OUT}/d3-sheet.jpg`, type: 'jpeg', quality: 55 })
+  await browser.close() })()
