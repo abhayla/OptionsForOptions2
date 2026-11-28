@@ -189,6 +189,13 @@ def watch(repo: str, state: dict, now: datetime, silent_min: int = 90, instr_min
                             rec["flags"].append("STATUS CLOCK AHEAD (ignored)")
         info[name] = {"commit": c, "text_ok": rec["status"] is not None}
         if st == "working":
+            missing = [k for k in ("results_file", "owns") if not lane.get(k)]
+            if not lane.get("first_push_due") and not lane.get("next_push_due"):
+                missing.append("first_push_due or next_push_due")
+            if missing:
+                rep.act("STATE INCOMPLETE", name, f"{name}: state file lacks {', '.join(missing)}; "
+                        "checks for this lane are off until it is filled")
+                rec["flags"].append("STATE INCOMPLETE")
             due = parse_time(lane.get("next_push_due")) or parse_time(lane.get("first_push_due"))
             if parse_time(lane.get("next_push_due")):
                 met = c is not None and c[1] >= due

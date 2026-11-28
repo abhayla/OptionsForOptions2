@@ -26,7 +26,7 @@ that the coordinator placed at the lane and not at the build.
 | 10 | Quote facts from the source file | issue 876 passed as 14 triggers; the PC said 13; three lanes built the wrong shape | NOT ENFORCED YET | `check_brief` rule: a line with a count or an issue number in the Queue must carry a `Source:` path |
 | 11 | CI and the age of main | main 11 days old, about 1,700 commits behind; 15 minutes wasted per push | NOT ENFORCED YET | `lane_watch` prints `git rev-list --count <build>..origin/main` and the age of main's head; a flag over 100 commits or 3 days |
 | 12 | One line to the owner per new lane | lanes multiplied while the proven count stood still | NOT ENFORCED YET | lane field `why_new` in the state file; `lane_watch` flags a working lane without it |
-| 13 | One draft pull request for the build; CI after every wave; a freeze needs a green CI run | the plan nearly dropped CI and pull requests | `lane_watch` WAVE PAST DUE needs `ci` green; a freeze is a commitment (COMMITMENT PAST DUE); test `test_lane_watch_wave_one_at_2245_*` | a flag when a wave's `commit` is not the build head (CI ran on an old commit) |
+| 13 (partial) | One draft pull request for the build; CI after every wave; a freeze needs a green CI run | the plan nearly dropped CI and pull requests | `lane_watch` WAVE PAST DUE needs `ci` green; a freeze is a commitment (COMMITMENT PAST DUE); test `test_lane_watch_wave_one_at_2245_*` | a flag when a wave's `commit` is not the build head (CI ran on an old commit) |
 | 14 | Message delivery only at turn end | instructions queued 17:37 to 19:44 reached RA2 as one batch at 21:42 | `lane_watch` INSTRUCTION NOT ACKNOWLEDGED (30 minutes); test `test_lane_watch_instruction_not_acknowledged_ra2_deaf_four_hours` | none |
 | 15 | Migration numbering collisions | RA2, B2 and R1 each numbered a migration 0063 on parent 0062 | `lane_watch` MIGRATION COLLISION (same number, same down_revision); test `test_lane_watch_migration_three_lanes_0063`; exit code 1 | the coordinator hands out migration numbers in the brief (a `Migration number:` line checked by `check_brief`) so a collision never starts |
 | 16 | Cloud speed proofs need the link delay | (inferred) a speed proof in the cloud passed where the PC link to the database was slow | NOT ENFORCED YET | `check_brief` rule: a brief that names a speed or latency proof must carry a `Link delay:` line (ms to the database) |
@@ -38,7 +38,7 @@ that the coordinator placed at the lane and not at the build.
 
 ## Debt count
 
-- Rows with a check that fires on the real case: **10** (3, 4, 5, 7, 8a, 13, 14, 15, 19, 21).
+- Rows with a check that fires on the real case: **10** (3, 4, 5, 7, 8a, 13, 14, 15, 19, 21; row 13 is partial: a wave commit that is not the build head is not flagged yet).
 - Rows with no check (debt): **12** (1, 2, 6, 8b, 9, 10, 11, 12, 16, 17, 18, 20).
 - 22 rows in all. Next to build, cheapest first: row 11 (one `git rev-list` count), row 12 (one state field), row 10 and
   16 (two `check_brief` rules, to be added by the owner lane because `check_brief.py` is not edited here).

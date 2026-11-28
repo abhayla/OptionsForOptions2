@@ -9,9 +9,9 @@ Branch `feat/coordinator-core-1128`, cut from `origin/fix/ic-live-test-1123` (a0
 | # | Item | State |
 |---|------|-------|
 | 1 | `state.example.json` and schema (docstring of `lane_watch.py`) | built |
-| 2 | `lane_watch.py` and tests | built, 25 tests green |
+| 2 | `lane_watch.py` and tests | built, 26 tests green |
 | 3 | `LESSONS-TO-CHECKS.md` | built: 22 rows, 10 enforced, 12 debt |
-| 4 | design document | not started (push 2) |
+| 4 | design document | built, 163 lines, Sonnet review folded in |
 | 5 | last message to coordinator | not started |
 
 ## Core proof (migration collision)
@@ -63,13 +63,23 @@ None.
 
 ## New test files
 
-- `tests/orchestrator/test_lane_watch_flags.py` (25 tests, one per flag, each named after its 28 Nov case; plus
+- `tests/orchestrator/test_lane_watch_flags.py` (26 tests, one per flag, each named after its 28 Nov case; plus
   `test_lane_watch_makes_no_network_write_and_changes_no_file`)
 
 ## For the owner lane
 
 - Message to `@parent` is refused (`elevated_session_untrusted_device`). Fix: owner approves device trust for this session.
 - `check_brief.py` proposals (rules for `Source:`, `Link delay:`, `Migration number:`) go into the design document.
+
+## Review of the design (Sonnet helper, own context): 10 findings, folded in
+
+Added to the action table: FETCH FAILED, STATUS CLOCK AHEAD, STATE INCOMPLETE, wider FINDING. Exit codes written
+exactly (1 includes an unreadable state file, 2 = bad `--now`). First-cycle field-by-field rule for the state file, and
+a `list_sessions` comparison. New flag STATE INCOMPLETE in the watch, with a test. "Runs on its own" reworded: the
+watch is automatic, the actions are the coordinator's. Merges, reverts and checks go to the build lane (the coordinator
+runs no tests). `send_later` named as the wake-up (no recurring timer). Push rule written: set `next_push_due` before
+the next watch run. Lessons 16, 17, 18, 20 are not to be copied into SKILL.md until the real case is supplied. Row 13
+recounted as partial. Not done from the review: a count of the debt rows by the watch, a `faults_open` state field.
 
 ## Not done
 

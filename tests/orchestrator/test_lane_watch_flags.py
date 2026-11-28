@@ -371,3 +371,10 @@ def test_lane_watch_makes_no_network_write_and_changes_no_file(repo, capsys):
 def test_lane_watch_refuses_a_git_write_command():
     with pytest.raises(RuntimeError):
         lane_watch.git(".", "push", "origin", "main")
+
+
+def test_lane_watch_state_incomplete_lane_without_owns_or_push_time(repo, capsys):
+    """Review finding: a lane missing owns, results_file or push times silently turns its checks off."""
+    bad = lane("Q", owns=[], results_file="", first_push_due=None, next_push_due=None)
+    _, out = repo.run(state([bad]), capsys=capsys)
+    assert "STATE INCOMPLETE: Q: state file lacks results_file, owns, first_push_due or next_push_due" in out
