@@ -45,6 +45,7 @@ _INSERT = text(
     "trigger_id) VALUES (:strategy_id, :contract_id, :side, :quantity, :price, :kind, :placed_at, :reason, "
     ":trigger_id)")
 _SERVER_KINDS = frozenset({"stop", "settle"})  # written by the monitor and the settlement, never a user order
+#                              (``place`` still refuses a ``stop`` unless the position reads paper: RA G1)
 _CLOSE = text("UPDATE public.strategies SET status = 'closed' WHERE id = :id AND status = 'draft'")
 _STATUS = text("SELECT status FROM public.strategies WHERE id = :id")
 # ADR-317 (4): armed triggers of a strategy that no longer act: every one when no leg is open, else the leg stops on a
@@ -117,6 +118,27 @@ async def reconcile_triggers(conn: Any, strategy_id: int, book: Sequence[PaperOr
     return [int(r.id) for r in (await conn.execute(_STALE_IDS if dry_run else _STALE_CANCEL, params)).all()]
 
 
+async def _refuse_off_paper(conn: Any, strategy_id: int, paper: Sequence[Any]) -> None:
+    """The one door every paper order passes (ADR-330 (64), (58)).
+
+    FD5 N1: a real position (a basket sent and no paper order) or one whose kind cannot be read takes no paper order of
+    any kind (it would turn the kind from real to paper); a held entry refuses only an exit
+    (``strategy_store.paper_order_refused``). An empty book (kind none) and a paper book pass.
+
+    RA G1 (ADR-292 (4)): a ``stop`` is the monitor's, never a user order, and it is never stored on a real, held or
+    unreadable position (the monitor's own checks are the first guard, this is the door). The other server kind,
+    ``settle``, passes: ADR-292 settles a held condor at expiry through the paper settlement (a contract that expired is
+    a fact, not an action on the real position). An empty book has nothing to stop: the reducing rule answers it."""
+    from ofo_app import position_kind, strategy_store  # noqa: PLC0415 - it reaches the order modules
+    if any(o.kind not in _SERVER_KINDS for o in paper) and await strategy_store.paper_order_refused(
+            conn, strategy_id, [o.kind for o in paper]):
+        raise StrategyRefused("real_position_exit_refused", Failure.CONFLICT)
+    if any(o.kind == "stop" for o in paper):
+        kind = (await strategy_store.kinds_of(conn, [strategy_id])).get(strategy_id, position_kind.UNKNOWN)
+        if kind not in (position_kind.PAPER, position_kind.NONE):
+            raise StrategyRefused("real_position_exit_refused", Failure.CONFLICT)
+
+
 async def place(conn: Any, user_ref: str, strategy_id: int, orders: Sequence[NewOrder], *,
                 entry: EntryFacts | None = None) -> tuple[StoredOrder, ...]:
     """Stores ``orders`` as given on an empty book, buys first otherwise (D-02; module docstring) and returns the
@@ -130,14 +152,7 @@ async def place(conn: Any, user_ref: str, strategy_id: int, orders: Sequence[New
         if any(o.kind not in REDUCING_KINDS for o in paper) and (
                 await conn.execute(_STATUS, {"id": strategy_id})).scalar_one() == "closed":
             raise StrategyRefused("paper_strategy_closed", Failure.CONFLICT)  # a closed strategy never reopens
-        if any(o.kind not in _SERVER_KINDS for o in paper):
-            # FD5 N1 (ADR-330 (64), (58)): the one door every paper order passes. A real position (a basket sent and no
-            # paper order) or one whose kind cannot be read takes no paper order of any kind (it would turn the kind
-            # from real to paper); a held entry refuses only an exit (``strategy_store.paper_order_refused``).
-            # An empty book (kind none) and a paper book pass; the server's stop and settle kinds are not user orders.
-            from ofo_app import strategy_store  # noqa: PLC0415 - it reaches the order modules
-            if await strategy_store.paper_order_refused(conn, strategy_id, [o.kind for o in paper]):
-                raise StrategyRefused("real_position_exit_refused", Failure.CONFLICT)
+        await _refuse_off_paper(conn, strategy_id, paper)
         book = [o.order.as_paper() for o in await load(conn, strategy_id)]
         first_fill = not book
         if not first_fill:  # D-02: against an open position no short is ever without its protection between two fills
