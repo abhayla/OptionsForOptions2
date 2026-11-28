@@ -1,3 +1,4 @@
+// Spec basis: ADR-330 point (73) (owner 28 Nov: real and paper same screens; a real action is only stored, nothing sent to Zerodha); ADR-016 to ADR-019; ADR-281.
 // Lane R2 CORE (owner 28 Nov 2026: "paper and real trades are same now"): a REAL row on Live Strategies shows the same Exit and Stops links
 // as paper, and under it the one line "Not sent to Zerodha. Place it in Kite."; the dialog says the exit is only stored; the P&L and the
 // shown quantity never change because of a stored action. Mocked contract: position_kind real, stored_not_sent true, record {action, stored_at, price}.

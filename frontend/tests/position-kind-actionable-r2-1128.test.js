@@ -1,3 +1,4 @@
+// Spec basis: ADR-330 point (73) (owner 28 Nov: real and paper same screens; a real action is only stored, nothing sent to Zerodha); ADR-016 to ADR-019; ADR-281.
 // Lane R2 (owner 28 Nov: "paper and real trades are same now"): the one gate and the sentences of lib/positionKind.js.
 import { describe, expect, it } from 'vitest'
 import { NOT_SENT_LINE, REAL_ROW_TEXT, isActionableKind, isRealKind, recordLineOf, rowLineOf } from '@/lib/positionKind'

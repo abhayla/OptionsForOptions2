@@ -1,3 +1,4 @@
+// Spec basis: ADR-330 point (73) (owner 28 Nov: real and paper same screens; a real action is only stored, nothing sent to Zerodha); ADR-016 to ADR-019; ADR-281.
 // Lane R2: the confirm dialog of a REAL position says before the press that the action is only stored, never "placing" or "placed";
 // the paper dialog is unchanged. No sentence of the real set claims an order exists.
 import { describe, expect, it } from 'vitest'

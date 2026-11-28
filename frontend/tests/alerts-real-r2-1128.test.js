@@ -1,3 +1,4 @@
+// Spec basis: ADR-330 point (73) (owner 28 Nov: real and paper same screens; a real action is only stored, nothing sent to Zerodha); ADR-016 to ADR-019; ADR-281.
 // Lane R2: Alerts for a REAL position offer the same Exit answer as paper and carry the stored-not-sent line; unknown stays locked.
 import { beforeEach, describe, expect, it, vi } from 'vitest'
 import { flushPromises, mount } from '@vue/test-utils'

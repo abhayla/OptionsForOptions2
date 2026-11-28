@@ -1,3 +1,4 @@
+// Spec basis: ADR-330 point (73) (owner 28 Nov: real and paper same screens; a real action is only stored, nothing sent to Zerodha); ADR-016 to ADR-019; ADR-281.
 // Lane R2 item 5 (owner 28 Nov): a stored action on a REAL position is ONE line ("... Not sent to Zerodha. Place it in Kite.") under its row on
 // every page that shows the row, and NEVER changes the quantity or the P&L shown (broker is the authority, ADR-016..019; no "if filled" P&L).
 // One test per page: Positions, Paper list (a real group), My Strategies, Home. (Live Strategies: real-same-screens-core-r2-1128; Alerts: alerts-real-r2-1128.)

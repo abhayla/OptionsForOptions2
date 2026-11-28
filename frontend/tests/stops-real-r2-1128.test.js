@@ -1,3 +1,4 @@
+// Spec basis: ADR-330 point (73) (owner 28 Nov: real and paper same screens; a real action is only stored, nothing sent to Zerodha); ADR-016 to ADR-019; ADR-281.
 // Lane R2: a REAL position's stops and exits are listed and controlled like paper (full Cancel and Keep), each says "Not sent to Zerodha.
 // Place it in Kite."; the "real unreadable" and "not applicable: real" branches are gone; a position whose kind is unknown stays locked.
 import { describe, expect, it, vi } from 'vitest'
