@@ -97,3 +97,19 @@ async def test_a_lot_size_of_zero_is_a_refusal_not_a_crash(monkeypatch):
         await execute._refuse_lots_over_limit(SimpleNamespace(db=None), [LegToPrice(IID, Action.BUY, 75, None)], {},
                                               cat, "NIFTY")
     assert e.value.args[0] == "strategy_contract_not_in_catalogue"
+
+
+async def test_855_the_lots_refusal_is_a_409_like_every_other_refusal_of_the_real_door(monkeypatch):
+    from ofo_app.errors import Failure  # noqa: PLC0415
+    with pytest.raises(StrategyRefused) as e:
+        await _check(monkeypatch, Action.SELL, 101)
+    assert e.value.failure is Failure.CONFLICT  # the door's other refusals (``execute._refuse``) are CONFLICT too
+    assert e.value.args[0] == "paper_leg_total_over_limit"  # same words as the paper door's refusal
+    assert "101 lots" in e.value.message.what_happened
+
+
+def test_855_the_paper_door_keeps_its_own_code():
+    from ofo_app.errors import Failure  # noqa: PLC0415
+    with pytest.raises(StrategyRefused) as e:
+        order_lots.check_lots(100, [LegLots("NIFTY 1 Dec 24200 CE", LOT, 0, [101 * LOT])])
+    assert e.value.failure is None and Failure.CONFLICT is not None  # 422 by the error door's default, unchanged

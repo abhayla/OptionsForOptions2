@@ -61,6 +61,10 @@ def _world(monkeypatch, *, first: bool):
     async def place_checked(*_a, **_k):
         raise _Stop
 
+    async def no_stops(*_a):
+        return []
+
+    monkeypatch.setattr(paper, "_armed_leg_stops", no_stops)  # FD2: the stops read is not what this file measures
     monkeypatch.setattr(paper, "_load_strategy", load)
     monkeypatch.setattr(paper.tracked_contracts, "resolve", resolve)
     monkeypatch.setattr(paper, "_server_exit_prices", exit_prices)
@@ -72,14 +76,14 @@ def _world(monkeypatch, *, first: bool):
     monkeypatch.setattr(paper.paper_limit, "place_checked", place_checked)
     order = SimpleNamespace(kind="open", price=Decimal("1.00"), contract_id=1, side="SELL", quantity=1)
     body = SimpleNamespace(orders=[order], approach_id=None, held=None, prices_not_live_confirmed=False,
-                           suggestion_ids=[], basket_legs=None)
+                           suggestion_ids=[], basket_legs=None, client_request_id=None)
     return db, seen, body
 
 
 async def _call(db, body):
     now = datetime.datetime(2026, 11, 27, 10, 0, tzinfo=datetime.UTC)
     with pytest.raises(_Stop):
-        await paper.place_paper_orders(1, body, db, "u", None, None, lambda: now, None, None, {})
+        await paper.place_paper_orders(1, body, db, "u", None, None, lambda: now, None, None, {}, None)
 
 
 async def test_the_first_fill_gives_the_connection_back_before_the_entry_facts_wait(monkeypatch):

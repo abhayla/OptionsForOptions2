@@ -4,7 +4,7 @@ Two rules over ``backend/ofo_app`` (tests excluded):
 
 1. ``NewOrder(...)`` is called only in a home of ``HOMES``: ``paper_exit.py`` ``exit_strategy`` (the exit door),
    ``paper_store.py`` / ``paper_book.py`` (the book's own rows), ``tracked_book.py`` (the real book view),
-   ``paper_trigger_store.py`` (rows read back), ``routes/paper.py`` ``place_paper_orders`` (the browser's basket).
+   ``paper_trigger_store.py`` (rows read back), ``routes/paper.py`` ``_place_orders`` (the browser's basket).
 2. In the four paper modules (``paper_exit.py``, ``paper_monitor.py``, ``routes/paper.py``, ``routes/tracking.py``) no
    ``"BUY"``/``"SELL"`` conditional expression and no ``_opposite`` call outside the door (``paper_exit.py``), except an
    entry of ``EXEMPT`` (file, function, name) with a category and a reason. "shrink only": a stale entry fails.
@@ -43,7 +43,7 @@ HOMES: dict[str, frozenset[str] | None] = {
     "ofo_app/paper_book.py": None,
     "ofo_app/tracked_book.py": None,
     "ofo_app/paper_trigger_store.py": None,
-    "ofo_app/routes/paper.py": frozenset({"place_paper_orders"}),
+    "ofo_app/routes/paper.py": frozenset({"_place_orders"}),  # FD2: place_paper_orders hands its basket to this
 }
 SIDE_FLIP = "BUY/SELL IfExp"
 WATCHED = ("NewOrder", "_opposite")

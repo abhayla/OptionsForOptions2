@@ -494,6 +494,7 @@ APP_MODELS = (
     "ofo_app.routes.paper.AlertOut",
     "ofo_app.routes.paper.AlertsOut",
     "ofo_app.routes.paper.ArmedExitsOut",
+    "ofo_app.routes.paper.CancelledStopOut",
     "ofo_app.routes.paper.ExitRiskOut",
     "ofo_app.routes.paper.GreekFigures",
     "ofo_app.routes.paper.HeldEntryOut",

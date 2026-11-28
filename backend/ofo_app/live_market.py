@@ -146,6 +146,7 @@ class LiveMarket:
         if token is None:
             self.state = NOT_CONNECTED
             log.warning("live market data: no active Kite session; connect through the login first")
+            await self.attach_closed_view()  # ADR-330 (63): the stored close is served with no session too
             return
         await self._launch(broker_config, token)
         del token
@@ -160,18 +161,39 @@ class LiveMarket:
         async with engine.connect() as conn:
             return await access_token_for(conn, OWNER_REF, TokenCipher(broker_config.token_key))
 
-    async def _launch(self, broker_config, token: str) -> None:
+    @staticmethod
+    def _clock() -> datetime.datetime:
+        return datetime.datetime.now(IST)
+
+    async def _catalogue_provider(self) -> KiteProvider:
+        """The provider (and its quote book) over the stored catalogue: the one place it is built."""
         from ofo_app import catalogue_store
         from ofo_app.db import get_engine
-        from ofo_app.kite_ws import KiteSocket
 
         async with get_engine().connect() as conn:
             catalogue = await catalogue_store.load_catalogue(conn)
+        return KiteProvider(listed_for_kite(catalogue.all_entries()), clock=self._clock)
 
-        def clock() -> datetime.datetime:
-            return datetime.datetime.now(IST)
+    async def attach_closed_view(self) -> None:
+        """Lane FD2 item 3 D-1 (ADR-330 (63), ADR-212): with no Kite session there is still a book, so the stored last
+        close (``last_close_store``) is read into it while the market is closed and every screen shows it with its own
+        date and time. A feed with NO socket: the provider stays disconnected, the state stays not connected, nothing
+        is subscribed at Zerodha. A session that is running is never replaced; a failure is logged by class name and
+        leaves no feed (the screens then say prices are not available)."""
+        if self.feed is not None or self._closed:
+            return
+        try:
+            provider = await self._catalogue_provider()
+            self.feed = LiveFeed(MarketContext(provider, self._clock, settings.defaults()[settings.RISK_FREE_RATE],
+                                               OWNER_REF), FanOut(provider))
+        except Exception as exc:  # noqa: BLE001 - a dead database: no book, the screens say "not available"
+            log.error("closed-market view did not start: %s", type(exc).__name__)
 
-        provider = KiteProvider(listed_for_kite(catalogue.all_entries()), clock=clock)
+    async def _launch(self, broker_config, token: str) -> None:
+        from ofo_app.kite_ws import KiteSocket
+
+        clock = self._clock
+        provider = await self._catalogue_provider()
         if feed_mode.feed_mode() == feed_mode.BUS:  # REQ-113: the market-data process holds the socket, not this one
             socket = BusSocket(provider, user_ref=OWNER_REF, clock=clock, redis_url=feed_mode.redis_url(),
                                on_reconnect=self._read_positions_once)
@@ -286,6 +308,7 @@ class LiveMarket:
             if token is None or (skip_if is not None and token_fingerprint(token) == skip_if):
                 if token is None and not self.running():
                     self.state = NOT_CONNECTED
+                    await self.attach_closed_view()  # no session: the stored close still serves
                 return
             await self._halt()
             halted = True
@@ -399,6 +422,7 @@ async def stop_current() -> None:
     await market.stop()
     market.feed, market._socket, market._fingerprint = None, None, None
     market.state = NOT_CONNECTED
+    await market.attach_closed_view()  # a disconnect keeps the stored close on the screens (ADR-330 (63))
     await market.tell_feed(feed_bus.CONTROL_DISCONNECT)  # bus mode: the feed process stops its Kite socket too
 
 

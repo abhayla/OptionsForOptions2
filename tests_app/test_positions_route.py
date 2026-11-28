@@ -402,7 +402,7 @@ async def test_adr110_two_strategies_on_one_contract_one_pending_blocks_both(app
     # What the page reads: the EXACT key sets as literals. frontend/e2e/positions.spec.ts and
     # frontend/tests/positions-page.test.js mock exactly these keys.
     assert set(body) == {"read_at", "real_pnl", "pnl_text", "strategies", "has_outside", "outside_lots", "blocked",
-                         "blocked_strategy_ids"}
+                         "blocked_strategy_ids", "broker_connected"}
     assert set(body["real_pnl"]) == {"value", "pnl_text", "state", "reason", "source", "read_at", "caption",
                                      "excludes_note"}
     assert set(body["strategies"][1]) == {"strategy_id", "blocked", "contracts"}
@@ -513,13 +513,19 @@ async def test_ac3_a_never_ours_row_is_logged_and_not_counted(app_engine, admin_
 
 
 @pytest.mark.usefixtures("app_engine")
-async def test_ac3_no_session_is_the_catalogue_message_not_an_empty_list(app_engine, admin_engine, monkeypatch):
-    """AC-3 (answer state NO SESSION): 409 with the catalogue's gate_broker_not_connected text; no strategies key."""
+async def test_ac3_no_session_is_a_calm_not_connected_answer_never_an_empty_list_or_a_red_refusal(
+        app_engine, admin_engine, monkeypatch):
+    """AC-3 (answer state NO SESSION), changed by Lane FD2 item 3 D-2 (the PC walk of 28 Nov: a red 409 on every
+    Positions load with no session): 200, the Real part says "not connected" with the catalogue's own gate sentence,
+    no figure, no strategy group, ``broker_connected`` false; no Zerodha call is made."""
     from ofo.errors import render  # noqa: PLC0415
 
     resp, transport, _ = await _run((app_engine, admin_engine), monkeypatch, _reply(RECORDED), session=False)
-    assert resp.status_code == HTTPStatus.CONFLICT, resp.text
-    assert "strategies" not in resp.json()
+    assert resp.status_code == HTTPStatus.OK, resp.text
+    body = resp.json()
+    assert body["broker_connected"] is False and body["strategies"] == [] and body["blocked"] is False
+    real = body["real_pnl"]
+    assert (real["state"], real["value"], real["pnl_text"]) == ("not_connected", None, None)
     assert render("gate_broker_not_connected").what_happened in resp.text
     assert transport.calls == []
 
@@ -558,7 +564,8 @@ def test_ac3_answer_key_set_is_closed_and_names_no_money_figure():
     """AC-3 attack 4: the declared answer keys are exactly these, and none names a price, P&L, margin or Greek; a
     key added to a model fails here."""
     assert set(PositionsOut.model_fields) == {"read_at", "real_pnl", "pnl_text", "strategies", "has_outside",
-                                              "outside_lots", "blocked", "blocked_strategy_ids"}
+                                              "outside_lots", "blocked", "blocked_strategy_ids",
+                                              "broker_connected"}
     assert set(StrategyPositionsOut.model_fields) == {"strategy_id", "blocked", "contracts"}
     assert set(StrategyContractOut.model_fields) == {"tradingsymbol", "zerodha_units", "units", "pending",
                                                      "pending_plans", *PNL_KEYS}
@@ -761,9 +768,14 @@ async def test_lane_s_a_read_at_90_seconds_is_still_fresh(app_engine, admin_engi
 
 
 @pytest.mark.usefixtures("app_engine")
-async def test_lane_s_refusals_stay_the_catalogue_409(app_engine, admin_engine, monkeypatch):
+async def test_lane_s_no_session_carries_no_figure_and_the_unreadable_reads_stay_the_catalogue_409(
+        app_engine, admin_engine, monkeypatch):
+    """FD2 D-2: no session is the calm not-connected answer with no figure; a failed read is still the 409."""
     resp, _, _ = await _run((app_engine, admin_engine), monkeypatch, _reply(POSITIONS_ENTRY), session=False)
-    assert resp.status_code == HTTPStatus.CONFLICT and "real_pnl" not in resp.json()
+    assert resp.status_code == HTTPStatus.OK and resp.json()["real_pnl"]["value"] is None
+    assert resp.json()["real_pnl"]["state"] == "not_connected"
+    failed, _, _ = await _run((app_engine, admin_engine), monkeypatch, None, status=403)
+    assert failed.status_code == HTTPStatus.CONFLICT and "real_pnl" not in failed.json()
 
 
 # -- Round 1 review fixes: ONE sole-holder predicate (ADR-330 (24)): no figure when the contract's P&L is not this
