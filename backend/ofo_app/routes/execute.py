@@ -92,6 +92,7 @@ from ofo_app.kite_margin import BasketOrder, KiteMargin
 from ofo_app.kite_reads import KiteReadError, KiteReads, unconfirmed_template
 from ofo_app.kite_replies import ContractIndex, KiteReplyError, PositionsRead, log_ignored, positions_from_reply
 from ofo_app.order_lots import LegLots, check_lots
+from ofo_app.order_outcome import guard_real_outcome
 from ofo_app.order_path_switch import require_order_path
 from ofo_app.return_book import read_book
 from ofo_app.routes.broker import current_user_ref
@@ -112,7 +113,8 @@ async def _stamp_request(request: Request) -> None:
 
 
 router = APIRouter(route_class=ClosedRoute,
-                   dependencies=[Depends(_stamp_request), Depends(require_order_path)])  # W-121: the gate is next
+                   dependencies=[Depends(_stamp_request), Depends(require_order_path),
+                                 Depends(guard_real_outcome)])  # W-121: the gate is next; B2: then the outcome block
 _LOG = logging.getLogger(__name__)
 
 ENTRY, EXIT = "ENTRY", "EXIT"

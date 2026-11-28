@@ -107,6 +107,7 @@ from ofo_app.api_models import ApiModel, CatalogueText, Money
 from ofo_app.db import get_db, release_connection
 from ofo_app.errors import ClosedRoute, Failure, refuse_request
 from ofo_app.live_push import POLL_SECONDS, LiveFeed
+from ofo_app.order_outcome import guard_paper_outcome  # B2: the unknown-outcome block, every paper order route
 from ofo_app.paper_reasons import (
     breakevens_reason_text,
     extremes_reason_text,
@@ -1488,7 +1489,8 @@ async def _refuse_real_position(db: Any, strategy_id: int) -> str:
 
 
 @router.post("/paper/strategies/{strategy_id}/orders", status_code=201, response_model=PaperBookOut,
-             dependencies=[Depends(_stamp_request), Depends(guard_paper_order)])  # IC e2e 5
+             dependencies=[Depends(_stamp_request), Depends(guard_paper_order),
+                           Depends(guard_paper_outcome)])  # IC e2e 5
 async def place_paper_orders(strategy_id: int, body: PaperOrdersIn,  # noqa: PLR0913 - FastAPI dependencies
                              db: Annotated[Any, Depends(get_db)], user_ref: Annotated[str, Depends(current_user_ref)],
                              ctx: Annotated[MarketContext | None, Depends(get_market_context)],
@@ -2194,7 +2196,8 @@ async def _validated_triggers(db: Any, strategy_id: int, body: TriggerIn,
 
 
 @router.post("/paper/strategies/{strategy_id}/triggers", status_code=201, response_model=TriggersOut,
-             dependencies=[Depends(guard_paper_order)])  # IC e2e 5: scenario mode = own scenario only
+             dependencies=[Depends(guard_paper_order),  # IC e2e 5: scenario mode = own scenario only
+                           Depends(guard_paper_outcome)])
 async def add_paper_triggers(strategy_id: int, body: TriggerIn, db: Annotated[Any, Depends(get_db)],  # noqa: PLR0913
                              user_ref: Annotated[str, Depends(current_user_ref)],
                              ctx: Annotated[MarketContext | None, Depends(get_market_context)],
@@ -2228,7 +2231,8 @@ async def add_paper_triggers(strategy_id: int, body: TriggerIn, db: Annotated[An
 
 
 @router.delete("/paper/strategies/{strategy_id}/triggers/{trigger_id}", response_model=TriggersOut,
-             dependencies=[Depends(guard_paper_order)])  # IC e2e 5: scenario mode = own scenario only
+             dependencies=[Depends(guard_paper_order),  # IC e2e 5: scenario mode = own scenario only
+                           Depends(guard_paper_outcome)])
 async def cancel_paper_trigger(strategy_id: int, trigger_id: int, db: Annotated[Any, Depends(get_db)],
                                user_ref: Annotated[str, Depends(current_user_ref)]) -> TriggersOut:
     await _load_strategy(db, user_ref, strategy_id)
@@ -2252,7 +2256,7 @@ async def cancel_paper_trigger(strategy_id: int, trigger_id: int, db: Annotated[
 
 
 @router.post("/paper/strategies/{strategy_id}/triggers/{trigger_id}/keep", response_model=TriggersOut,
-             dependencies=[Depends(guard_paper_order)])
+             dependencies=[Depends(guard_paper_order), Depends(guard_paper_outcome)])
 async def keep_paper_trigger(strategy_id: int, trigger_id: int, db: Annotated[Any, Depends(get_db)],  # noqa: PLR0913
                              user_ref: Annotated[str, Depends(current_user_ref)],
                              ctx: Annotated[MarketContext | None, Depends(get_market_context)],
