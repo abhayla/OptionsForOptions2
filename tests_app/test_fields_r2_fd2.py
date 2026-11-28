@@ -216,3 +216,13 @@ async def test_877_keeping_an_exit_of_a_real_position_is_refused_too(db, notifie
         reply = await c.post(f"/paper/strategies/{stored.id}/triggers/{tid}/keep")
     assert reply.status_code == HTTPStatus.CONFLICT, reply.text[:200]
     assert [(r.trigger.id, r.cancelled_at is None) for r in await triggers.list_for(db, stored.id)] == [(tid, True)]
+
+
+def test_lane_fes_four_why_codes_are_served_with_a_plain_sentence_never_blank():
+    from ofo_app import monitoring_state as ms  # noqa: PLC0415
+    from ofo_app.routes.monitoring_status import compose  # noqa: PLC0415
+    for code in ("index_not_live", "leg_not_live", "exit_not_priced", "index_exits_not_run"):
+        (out,) = compose({5: ms.Entry(5, ms.PAUSED, code, "", AT)}, [5], AT)
+        assert out.reason == code and out.watch_state == "paused"
+        assert str(out.badge_text) == "Monitoring paused"
+        assert str(out.reason_text).strip()  # the catalogue's sentence, or the generic one

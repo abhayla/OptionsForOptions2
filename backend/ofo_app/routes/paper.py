@@ -1447,13 +1447,18 @@ async def _refuse_take_profit_at_loss(db: Any, user_ref: str, strategy_id: int, 
                                      check.basis_in_force(None, None, None))
 
 
+#: ADR-330 (64), the stated exception to (58): the position kinds that offer no paper exit and no paper stop (the one
+#: rule, ``position_kind.kind_of``, names them)
+_NO_PAPER_ACTION_KINDS = frozenset({"real"})
+
+
 async def _refuse_real_position(db: Any, strategy_id: int) -> None:
     """#877 (ADR-330 (64), (58)): a real position (a held entry, or an order and no paper order) has no stop and no exit
     in the app: an exit or stop request for it reaches this paper route only by a wrong link, and would run a PAPER
     action the trader could take for a real exit. Refused by name (nothing is stored); every other kind goes on, an
     unreadable one too (the paper store then answers by its own rules)."""
-    from ofo_app import position_kind  # noqa: PLC0415 - the one rule, beside its sentence
-    if (await store.kinds_of(db, [strategy_id])).get(strategy_id) == position_kind.REAL:
+    kind = (await store.kinds_of(db, [strategy_id])).get(strategy_id)
+    if kind in _NO_PAPER_ACTION_KINDS:
         raise StrategyRefused("real_position_exit_refused", Failure.CONFLICT)
 
 
