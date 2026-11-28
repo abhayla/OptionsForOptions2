@@ -1,4 +1,4 @@
-STATUS (28 Nov 2026, IST): Lane T, branch test/r3-tests-t-1128, built on origin/integration/weekend-r3-1129 e2da71f50. I-184 and I-126 closed; I-204 proven on the fix branch (build re-run waits for Lane Z3 wave 0); I-168 waits for Lane B3's I-48; I-170 and I-176 in progress. Not pushed yet. Coordinator messages are refused (session not trusted for cross-session send); see "Not done".
+STATUS (28 Nov, IST): push 1 at 928eba42c (TOTAL PASS 1656.1s). CI-1 DONE: tests/test_alert_kinds.py reads the 0054 literals by ast (clean venv red 1 failed, green 13 passed; same-class search: no other file). I-184, I-126 closed; I-204 proven on fix branch, build re-run waits for wave 0; I-168 waits for B3 I-48; I-170/I-176: per-file tests_app run 452 of 511 files, no failure so far. Messages to the coordinator are refused (device trust); read this line.
 
 # RESULTS: Lane T (test-only gaps and tooling)
 
