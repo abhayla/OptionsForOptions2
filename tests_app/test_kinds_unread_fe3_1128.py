@@ -14,6 +14,8 @@ from test_monitoring_state import _Client, _fresh
 from test_paper_monitor import INDEX, Market, _exit_below, _monitor, _stops, _strategy, _trigger_state, db  # noqa: F401
 
 CROSSED = "22800.00"  # below the exit level 22,850.00
+LEGS = 2  # the condor of ``_strategy`` has two legs: an index exit writes one stop order each
+SECOND_TRY = 2
 
 
 async def _raises(_conn, _ids):
@@ -50,7 +52,7 @@ async def test_core_a_failed_kinds_read_keeps_the_last_watch_and_the_exit_still_
     fired = await monitor.step()
     print("FIRED", fired, "FAILURES", monitor.read_failures)
     assert fired == 1 and await _trigger_state(db, tid) == (True, False), "the kept exit still fires"
-    assert len(await _stops(db, stored.id)) == 2
+    assert len(await _stops(db, stored.id)) == LEGS
     monkeypatch.setattr(strategy_store, "kinds_of", real)
 
 
@@ -118,4 +120,4 @@ async def test_the_retry_is_due_after_five_seconds_not_sixty(db, monkeypatch):  
     assert len(calls) == 1
     clock[0] = 6.0
     await monitor.step()
-    assert len(calls) == 2
+    assert len(calls) == SECOND_TRY

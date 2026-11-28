@@ -10,18 +10,19 @@ field of a Redis hash by one atomic command.
 from __future__ import annotations
 
 import asyncio
+import contextlib
 import datetime
 import json
 import os
 
 import pytest
-
 from ofo_app import monitoring_state
 from ofo_app.monitoring_state import ACTIVE, PAUSED, Entry, ExitsPublisher, Publisher
 from test_monitoring_state import _fresh
 
 NOW = datetime.datetime(2026, 11, 27, 11, 0, tzinfo=datetime.timezone(datetime.timedelta(hours=5, minutes=30)))
 SEC = datetime.timedelta(seconds=1)
+MONITORS = 2
 
 
 @pytest.fixture
@@ -72,12 +73,10 @@ async def _two_monitors(rds):
 
     async def barrier():
         arrived.append(1)
-        if len(arrived) >= 2:
+        if len(arrived) >= MONITORS:
             release.set()
-        try:
+        with contextlib.suppress(TimeoutError):  # the new code never reads with ``get`` here: nobody waits
             await asyncio.wait_for(release.wait(), 1.0)
-        except TimeoutError:
-            pass  # the new code never reads with ``get`` here: nobody waits for the other
     a = ExitsPublisher(_Crossing(rds, barrier), "monitor-a")
     b = ExitsPublisher(_Crossing(rds, barrier, slow=True), "monitor-b")
     # monitor A: trade 1's index exit has no live index (not run); monitor B judges trade 2

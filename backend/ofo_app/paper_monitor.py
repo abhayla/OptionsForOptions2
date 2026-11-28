@@ -53,16 +53,7 @@ from ofo_app.routes.outcome import SettingsReader, feed_scope, with_rate_in_forc
 log = logging.getLogger(__name__)
 # ADR-330 (3)(b): a fired stop is raised through ofo_app.actionable_alerts.inform, never a table write of its own
 
-#: Lane FE3 item 6: the wordings of the line of a leg stop that HAS fired (past tense, the figure at the fill), for
-#: reading a stored line back (``actionable_alerts.inform`` ``restore``); the list in ``paper_alert`` is not this lane's.
-FIRED_LINE_TEMPLATES: Final = ("paper_leg_stop_fired", "paper_leg_stop_fired_unlimited", "paper_leg_stop_fired_unknown")
 RELOAD_SECONDS: Final = 60.0
-#: Lane FE3 item 2: a reload that could not read the book (armed triggers, position kinds, orders) is tried again this
-#: soon, and the last known watch list is kept for at most ``BOOK_UNREAD_MAX_S`` of failure (the same two minutes as the
-#: heartbeat rule, ``monitoring_state.SNAPSHOT_STALE_S``): past it no exit is judged and every trade is reported
-#: "not watched: could not read the book".
-READ_RETRY_SECONDS: Final = 5.0
-BOOK_UNREAD_MAX_S: Final = float(monitoring_state.SNAPSHOT_STALE_S)
 POLL_SECONDS: Final = 0.5
 FIRE_TIMEOUT_SECONDS: Final = 10.0
 
@@ -94,6 +85,18 @@ OWN_FEED: Final = "own"
 EXIT_NOT_RUN_KIND: Final = "stop_fired"
 #: How long a stop's fire waits for an index value the held feed does not show yet (``market_read``'s own hold)
 INDEX_WAIT_SECONDS: Final = 1.0
+
+
+#: Lane FE3 item 6: the wordings of the line of a leg stop that HAS fired (past tense, the figure at the fill), for
+#: reading a stored line back (``actionable_alerts.inform`` ``restore``); the list in ``paper_alert`` is not
+#: this lane's.
+FIRED_LINE_TEMPLATES: Final = ("paper_leg_stop_fired", "paper_leg_stop_fired_unlimited", "paper_leg_stop_fired_unknown")
+#: Lane FE3 item 2: a reload that could not read the book (armed triggers, position kinds, orders) is tried again this
+#: soon, and the last known watch list is kept for at most ``BOOK_UNREAD_MAX_S`` of failure (the same two minutes as the
+#: heartbeat rule, ``monitoring_state.SNAPSHOT_STALE_S``): past it no exit is judged and every trade is reported
+#: "not watched: could not read the book".
+READ_RETRY_SECONDS: Final = 5.0
+BOOK_UNREAD_MAX_S: Final = float(monitoring_state.SNAPSHOT_STALE_S)
 
 
 def exit_not_run_rule(trigger_id: int) -> str:
@@ -532,11 +535,15 @@ class PaperMonitor:
                 elif reading.source != OWN_FEED:  # this feed's own quote is judged tick by tick (``on_quote``), once
                     fired += await self._exits_with_reading(group, reading, now, polled=True)
             self._report_not_applicable(not_run)
-            for w in judged:  # crossed on a reading but not run: the trade is not being checked through to the exit
-                if w.armed.trigger.id in self._blocked:
-                    not_run.setdefault(w.armed.trigger.strategy_id, monitoring_state.EXIT_NOT_PRICED)
+            self._report_blocked(judged, not_run)
         await self._report_exits(judged, not_run, now)
         return fired
+
+    def _report_blocked(self, judged: Sequence[_Watch], not_run: dict[int, str]) -> None:
+        """Crossed on a reading but not run: the trade is not being checked through to the exit."""
+        for w in judged:
+            if w.armed.trigger.id in self._blocked:
+                not_run.setdefault(w.armed.trigger.strategy_id, monitoring_state.EXIT_NOT_PRICED)
 
     def _report_not_applicable(self, not_run: dict[int, str]) -> None:
         """Review F2: a strategy whose armed exit is not judged here (a real position, or a kind that could not be read)
@@ -676,8 +683,8 @@ class PaperMonitor:
                              open_net: Mapping[int, int], prices: Mapping[int, Any], now: datetime.datetime,
                              texts: Mapping[int, ExplanationText] | None = None) -> ExplanationText | None:
         """UX-A03 (27 Nov), Lane FE3 item 6 (PC note 27 Nov 09:43): a stop that has ALREADY FIRED never carries the
-        preview's "If this stop fires, max loss becomes ... (now ...)": that is a future case and its "now" figure is the
-        one from before the fire. It says what happened, in the past tense, with the figure at the fill:
+        preview's "If this stop fires, max loss becomes ... (now ...)": that is a future case and its "now" figure is
+        the one from before the fire. It says what happened, in the past tense, with the figure at the fill:
 
         - a LEG stop: "Stop fired: <leg> reached <level>; max loss at that point Rs <figure>" (or "there was no fixed
           maximum loss at that point"; "the maximum loss at that point was not worked out" when the engine answered yes

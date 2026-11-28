@@ -1,7 +1,7 @@
-"""Lane FE3 (28 Nov 2026), coordinator addition (issue 876, the PC's T1-06 of 27 Nov): a paper trade sat about 10 percent
-in loss against a 5 percent rule for 14 minutes and no alert came. The PC's stored rows: strategy 207, plan saved and
-approved at 13:13:33, 27 triggers with 14 on, NO alert style pin, 0 suggestion rows and 0 gate rows for 22 minutes, 0
-"check skipped" lines, the worker checking 2 to 3 times a minute.
+"""Lane FE3 (28 Nov 2026), coordinator addition (issue 876, the PC's T1-06 of 27 Nov): a paper trade sat about 10
+percent in loss against a 5 percent rule for 14 minutes and no alert came. The PC's stored rows: strategy 207, plan
+saved and approved at 13:13:33, 27 triggers with 14 on, NO alert style pin, 0 suggestion rows and 0 gate rows for
+22 minutes, 0 "check skipped" lines, the worker checking 2 to 3 times a minute.
 
 This is that shape with the worker as a SEPARATE OS process on a real PostgreSQL database (the chain of
 ``test_plan_stop_worker_chain``): the plan (the whole system rule list, "Loss reaches 5 % of max loss") is accepted

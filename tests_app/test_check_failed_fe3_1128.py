@@ -14,7 +14,6 @@ import os
 import uuid
 
 import pytest
-
 from ofo_app import background, monitoring_state
 from test_background_cycle import DEFAULTS, FIRST_ID, Calls, Prov, _settings, _watched, _worker, scn  # noqa: F401
 from test_monitoring_state import _fresh
@@ -95,7 +94,7 @@ async def test_a_check_that_ran_and_passed_clears_the_failure(scn, redis_client)
 
 
 async def test_a_second_failed_write_pauses_again(scn, redis_client):  # noqa: F811
-    prov, now, calls = Prov(scn), [scn.clock_at], Calls()
+    prov, now = Prov(scn), [scn.clock_at]
 
     async def always_fails(_w, _s, _p=None):
         raise RuntimeError("db down")

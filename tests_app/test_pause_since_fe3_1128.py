@@ -12,7 +12,7 @@ import datetime
 
 from ofo.rules.inputs import DataHealth
 from ofo_app import monitoring_state
-from ofo_app.monitoring_state import ACTIVE, PAUSED, Entry, Publisher
+from ofo_app.monitoring_state import PAUSED, Publisher
 from test_background_cycle import FIRST_ID, Calls, Prov, _watched, _worker, scn  # noqa: F401 - fixture by name
 from test_monitoring_state import SID, T0, _Client, _fresh
 from test_pause_restart_fe2_1128 import _Reason, _Status
