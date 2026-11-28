@@ -81,6 +81,24 @@ class Entry:
     since: datetime.datetime | None
 
 
+#: the ``why`` codes that name their own sentence (``monitoring_why_<code>``); any other ``why`` (the worker's own free
+#: text, e.g. a REST detail) is a detail, never a sentence key
+SENTENCE_WHYS: Final = frozenset({INDEX_NOT_LIVE, LEG_NOT_LIVE, EXIT_NOT_PRICED, INDEX_EXITS_NOT_RUN,
+                                  EXITS_NOT_CHECKED_YET, BOOK_NOT_READ, EXIT_NOT_APPLICABLE})
+#: every ``reason`` a pause can carry (the worker's ``PriceState`` pauses and the reader's own)
+SENTENCE_REASONS: Final = frozenset({WORKERS_DOWN, STATE_UNREADABLE, NOT_LISTED, "stale", "disconnected", "leg_missing",
+                                     "check_failed", "market_closed", "expiry_kind_unknown", "user_paused"})
+
+
+def sentence_code(entry: Entry) -> str:
+    """The one place that picks which catalogue sentence (``monitoring_why_<code>``) a paused entry reads (review N2).
+    The monitor's specific ``why`` wins over the generic reason it rides on (``stale`` + ``index_not_live``); else the
+    worker's reason; anything else is ``unknown`` (a plain fallback, never blank, never another reason's)"""
+    if entry.why in SENTENCE_WHYS:
+        return entry.why
+    return entry.reason if entry.reason in SENTENCE_REASONS else "unknown"
+
+
 def _current(at: datetime.datetime, now: datetime.datetime) -> bool:
     """FE2 #879: a stamp is current when it is at most ``SNAPSHOT_STALE_S`` old and at most ``CLOCK_SKEW_S`` ahead of
     the reader's clock. One-sided: a writer whose clock runs 100 s ahead must not stretch the two-minute window to 220 s

@@ -518,8 +518,8 @@ class PaperMonitor:
     async def _index_pass(self) -> int:
         """Every pass: judge every armed exit (index exits and leg stops) on its reading through the one judge
         (``_exits_with_reading``), and report to ``monitoring_state`` which trades' exits were NOT evaluated.
-        Market closed: nothing is expected to be evaluated (a trigger set after hours arms at 09:15); the report is
-        empty."""
+        Market closed: nothing is expected to be evaluated (a trigger set after hours arms at 09:15); the report
+        names only the strategies whose stops do not apply here (a real position, a kind not read)."""
         feed = self._feed
         now = feed.ctx.clock() if feed is not None else datetime.datetime.now(datetime.UTC)
         not_run: dict[int, str] = {}
@@ -545,19 +545,17 @@ class PaperMonitor:
                     not_run.update({w.armed.trigger.strategy_id: _why_of(w) for w in group})
                 elif reading.source != OWN_FEED:  # this feed's own quote is judged tick by tick (``on_quote``), once
                     fired += await self._exits_with_reading(group, reading, now, polled=True)
-            self._report_not_applicable(not_run)
             self._report_blocked(judged, not_run)
+        self._report_not_applicable(not_run)  # FE4 (N3): the one place, whatever the branch (open, closed, no feed)
         await self._report_exits(judged, not_run, now)
         return fired
 
     def _not_judged(self) -> dict[int, str]:
-        """Every exit of the list is reported not run: no feed, or the book unread for longer than allowed (review F4: a
-        real position's old stop is named in this report as well, never left to the worker's "watched")."""
+        """Every exit of the list is reported not run: no feed, or the book unread for longer than allowed (the real
+        positions' old stops are added by ``_index_pass``, never left to the worker's "watched")."""
         unread = self.book_unread_too_long()
-        not_run = {w.armed.trigger.strategy_id: monitoring_state.BOOK_NOT_READ if unread else _why_of(w)
-                   for w in self._exits}
-        self._report_not_applicable(not_run)
-        return not_run
+        return {w.armed.trigger.strategy_id: monitoring_state.BOOK_NOT_READ if unread else _why_of(w)
+                for w in self._exits}
 
     def _report_blocked(self, judged: Sequence[_Watch], not_run: dict[int, str]) -> None:
         """Crossed on a reading but not run: the trade is not being checked through to the exit."""
