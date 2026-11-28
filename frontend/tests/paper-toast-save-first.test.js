@@ -8,6 +8,7 @@ import StrategyBuilderPage from '@/pages/StrategyBuilderPage.vue'
 import { netLegsFromBook } from '@/lib/paperDrafts'
 import { PAPER_ADDED_TEXT } from '@/lib/tracking'
 import REAL from './fixtures/paper-book-63.json'
+import { confirmPaperName, tickNotLive } from './helpers/paperName'
 
 const calls = []
 let answers = {}
@@ -16,6 +17,7 @@ vi.mock('@/services/api', async (importActual) => {
   const respond = (method, url, body) => {
     calls.push({ method, url, body })
     const a = answers[`${method} ${url}`]
+    if (a === undefined && method === 'GET' && url === '/market/exit-state') return Promise.resolve({ data: { closed: false, sentence: null, next_open_at: null } }) // ADR-330 (60) on Add to Paper (FA2 item A)
     if (a === undefined) return Promise.reject(new Error(`unmocked ${method} ${url}`))
     return typeof a === 'function' ? a(body) : Promise.resolve({ data: a })
   }
@@ -54,9 +56,11 @@ describe('R-6: the "Added to Paper" toast after the save-first path', () => {
     await flushPromises()
     await t(w, 'add-to-paper').trigger('click')
     await flushPromises()
+    await confirmPaperName(w)
     expect(router.currentRoute.value.query.strategy).toBe('70') // saved first, the URL names it
     expect(calls.filter((c) => c.method === 'POST' && c.url === '/strategies')).toHaveLength(1)
     vi.useFakeTimers()
+    await tickNotLive(w)
     await t(w, 'paper-confirm-button').trigger('click')
     await flushPromises()
     expect(calls.filter((c) => c.url === '/paper/strategies/70/orders')).toHaveLength(1)

@@ -36,6 +36,13 @@ _INSERT_BASKET = text(
     "INSERT INTO public.strategy_basket_facts (strategy_id, basket_no, clock, spot, atm_iv, legs) "
     "VALUES (:strategy_id, :basket_no, :clock, :spot, :atm_iv, CAST(:legs AS JSONB)) "
     "ON CONFLICT (strategy_id, basket_no) DO NOTHING")
+#: RA2 item 6, migration 0063: the same insert with the time of the quote the spot came from. The six-column insert
+#: above is the fallback on a database not migrated yet (the basket's facts must be stored either way: they are the
+#: rule starting point).
+_INSERT_BASKET_SPOT_AT = text(
+    "INSERT INTO public.strategy_basket_facts (strategy_id, basket_no, clock, spot, atm_iv, legs, spot_at) "
+    "VALUES (:strategy_id, :basket_no, :clock, :spot, :atm_iv, CAST(:legs AS JSONB), :spot_at) "
+    "ON CONFLICT (strategy_id, basket_no) DO NOTHING")
 _SELECT_BASKETS = text("SELECT basket_no, clock, spot, atm_iv, legs FROM public.strategy_basket_facts "
                        "WHERE strategy_id = :id")
 
@@ -52,6 +59,9 @@ class BasketFacts:
     spot: Decimal
     atm_iv: Decimal | None
     prices: dict[LegKey, Decimal | None]
+    #: FR 3.4: the time of the quote ``spot`` came from (not the order clock): differs from ``clock`` when the user
+    #: confirmed a not-live index value. Stored in ``spot_at`` since migration 0063 (NULL when none was carried)
+    spot_at: datetime.datetime | None = None
 
 
 class EntryFactsUnreadable(Exception):
@@ -92,11 +102,18 @@ async def record_basket(conn: Any, strategy_id: int, basket_no: int, facts: Bask
     is logged and never fails the fill); a row already stored for this basket number is kept (never rewritten)."""
     legs = [{"type": t, "strike": str(k), "expiry": e.isoformat(), "side": sd, "price": None if p is None else str(p)}
             for (t, k, e, sd), p in facts.prices.items()]
+    params = {"strategy_id": strategy_id, "basket_no": basket_no, "clock": facts.clock, "spot": facts.spot,
+              "atm_iv": usable_iv(facts.atm_iv), "legs": json.dumps(legs)}
     try:
         async with conn.begin_nested():
-            await conn.execute(_INSERT_BASKET, {"strategy_id": strategy_id, "basket_no": basket_no,
-                                                "clock": facts.clock, "spot": facts.spot,
-                                                "atm_iv": usable_iv(facts.atm_iv), "legs": json.dumps(legs)})
+            await conn.execute(_INSERT_BASKET_SPOT_AT, params | {"spot_at": facts.spot_at})
+        return
+    except Exception as exc:  # noqa: BLE001 - a database before migration 0063 has no spot_at: store the rest
+        log.warning("basket facts with the spot time not stored (strategy %s, basket %s): %s; storing without it",
+                    strategy_id, basket_no, type(exc).__name__)
+    try:
+        async with conn.begin_nested():
+            await conn.execute(_INSERT_BASKET, params)
     except Exception as exc:  # noqa: BLE001 - no stored facts = nothing held (warns), never a refused fill
         log.warning("basket facts not stored (strategy %s, basket %s): %s", strategy_id, basket_no,
                     type(exc).__name__)

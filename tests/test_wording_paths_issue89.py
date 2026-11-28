@@ -59,7 +59,7 @@ def test_safety_flag_keeps_allowed_text() -> None:
 
 def test_disconnect_text_passes_the_shared_checker_and_keeps_owner_sentence() -> None:
     assert disconnect_message(WHEN) == (
-        "Live market data disconnected. Last updated: 10:42:17 AM. Live strategy monitoring is paused."
+        "Live market data disconnected. Last updated: 10:42:17 IST. Live strategy monitoring is paused."
     )
     err = disconnect_error(WHEN)
     for part in (err.what_happened, err.impact, err.what_is_blocked, err.next_action):

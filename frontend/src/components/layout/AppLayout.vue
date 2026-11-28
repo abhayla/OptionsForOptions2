@@ -9,6 +9,7 @@ import AppHeader from './AppHeader.vue'
 import ScenarioBanner from './ScenarioBanner.vue'
 import CalendarBanner from './CalendarBanner.vue'
 import ToastHost from './ToastHost.vue'
+import LayoutPriceNotice from './LayoutPriceNotice.vue'
 
 const route = useRoute()
 const fullWidth = computed(() => Boolean(route.meta?.fullWidth))
@@ -18,14 +19,18 @@ const fullWidth = computed(() => Boolean(route.meta?.fullWidth))
   <div class="min-h-screen bg-bg text-ink" data-testid="app-layout">
     <ScenarioBanner />
     <CalendarBanner />
-    <AppHeader />
-    <ToastHost />
+    <!-- D-67: the pop-ups live in the sticky block with the header (the block grows to hold them) -->
+    <div class="sticky top-0 z-30 bg-surface" data-testid="app-header-block">
+      <AppHeader />
+      <ToastHost />
+    </div>
     <main
       class="px-4 py-6"
       :class="fullWidth ? 'w-full' : 'mx-auto max-w-[1200px]'"
       :data-width="fullWidth ? 'full' : 'column'"
       data-testid="app-content"
     >
+      <LayoutPriceNotice />
       <slot />
     </main>
   </div>

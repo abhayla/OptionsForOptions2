@@ -56,14 +56,14 @@ async def test_item1_an_exit_on_a_contract_whose_token_now_quotes_another_contra
 
 
 # 2. the adjustment limit on the tracking exit
-async def test_item2_a_partial_tracking_exit_beyond_the_plans_maximum_is_refused(db):
+async def test_item2_a_partial_tracking_exit_beyond_the_plans_maximum_is_stored(db):
+    """ADR-318 (5): at the maximum a basket that only closes legs is accepted (it used to be refused)."""
     app, stored, _ids = await _book(db, max_adjustments=2)
     before = await _count(db, stored.id)
     async with _client(app) as c:
         reply = await c.post(f"/strategies/{stored.id}/tracking/exit", json={"legs": [2]})
-    assert reply.status_code == HTTPStatus.UNPROCESSABLE_ENTITY, reply.text
-    assert "at most 2 adjustments" in reply.text
-    assert await _count(db, stored.id) == before
+    assert reply.status_code == HTTPStatus.OK, reply.text
+    assert await _count(db, stored.id) == before + 1
 
 
 async def test_item2_a_tracking_exit_of_every_open_leg_stays_allowed(db):

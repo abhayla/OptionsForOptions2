@@ -40,7 +40,7 @@ import { hintLines } from './helpers/figureHint'
 import rec from './fixtures/leg-edit-controls.json'
 import LegPicker from '@/components/strategy/LegPicker.vue'
 import { buildSaveBody } from '@/lib/saveDraft'
-import { NO_CONTROLS, NO_REASON_FALLBACK, WIDTH_REASON_FALLBACK, controlsFrom, replacedPriceNote, shiftText, showsControls } from '@/lib/legEdit'
+import { NO_CONTROLS, NO_REASON_FALLBACK, WIDTH_REASON_FALLBACK, controlsFrom, shiftText, showsControls } from '@/lib/legEdit'
 import { LEG_CARD_PADDING_PX, LEG_ROW_COLUMNS, LEFT_COLUMN_MIN_PX, UNTICKED_CONTROL_REASON, YOUR_PRICE_LABEL } from '@/lib/legEdit'
 import { REPRICE_PROMPT } from '@/lib/legPicker'
 
@@ -725,7 +725,7 @@ describe('REQ-135 AC-2: the leg row shows the server\'s days to expiry', () => {
 // POST /api/strategies/leg-edit on the golden NIFTY condor and a bull call spread, row 30f step 1). The legs of a page reply
 // take the page's own instrument ids (the outcome fixture), the strikes and flags the recording.
 const fromRec = (r) => ({ ...r, outcome: null,
-  legs: real.legs.map((l, i) => replyLeg(l, { strike: r.legs[i].strike, replaced_typed: r.legs[i].replaced_typed, hedge: r.legs[i].hedge })) })
+  legs: real.legs.map((l, i) => replyLeg(l, { strike: r.legs[i].strike, replaced_typed: r.legs[i].replaced_typed, replaced_note: r.legs[i].replaced_note, hedge: r.legs[i].hedge })) })
 const READ_C = { ...READ, controls: rec.read.controls, control_reasons: rec.read.control_reasons, shift_total: null } // the load read, with the recorded controls
 const SHIFTED = fromRec(rec.shift_plus1)
 const SHIFTED_TWICE = { ...SHIFTED, shift_total: 100 }
@@ -850,11 +850,10 @@ describe('W-158 attack 3: the Shift total is the server\'s, shown as text, and e
 
 describe('W-158 attack 4: a typed price lost on a move is said so', () => {
   it('the sentence names the leg number and the new contract as sent; none for an untouched leg; one literal', async () => {
-    expect(replacedPriceNote(2, { strike: '23050', instrument_type: 'CE' })).toBe('Your price for leg 2 was replaced by the captured price of 23050 CE.')
     const w = await openPage(READ_C)
     answers['POST /strategies/leg-edit'] = fromRec(rec.shift_typed_leg0)
     await clickAndWait(w, 'shift-plus')
-    expect(all(w, 'replaced-note').map((e) => e.text())).toEqual([`Your price for leg 1 was replaced by the captured price of ${rec.shift_typed_leg0.legs[0].strike} ${real.legs[0].instrument}.`])
+    expect(all(w, 'replaced-note').map((e) => e.text())).toEqual(['Your price for leg 1 was replaced by the captured price 10.00, because Shift moved the leg to another contract.']) // the server's sentence, as sent
     answers['POST /strategies/leg-edit'] = SHIFTED
     await clickAndWait(w, 'shift-plus')
     expect(all(w, 'replaced-note')).toHaveLength(0) // the next reply replaced nothing

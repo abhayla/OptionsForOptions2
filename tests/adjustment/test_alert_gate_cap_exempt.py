@@ -60,11 +60,11 @@ def test_empty_or_non_string_id_is_capped(rule_id):
 
 def test_count_capped_skips_only_exempt_ids_and_fails_closed():
     ids = ["watch.level.above", "day.after.1500.exit", "day:x", "T-01", "sit.S-03", "", None, 5]
-    assert count_capped(ids) == 5  # noqa: PLR2004 - T-01, sit.S-03, "", None, 5
+    assert count_capped(ids, stops=frozenset()) == 5  # noqa: PLR2004 - T-01, sit.S-03, "", None, 5
 
 
 def _restored_cross(stored, rule_id):
-    state = ag.restore(ag.GateRows((), count_capped(stored)), DAY, {})
+    state = ag.restore(ag.GateRows((), count_capped(stored, stops=frozenset())), DAY, {})
     ev = []
     for hhmm, v in (("10:40:30", D("1")), ("10:41:30", D("11")), ("10:42:30", D("11"))):
         state, ev = ag.step(state, now=at(hhmm), preset=PRESET, readings={rule_id: (_spec(rule_id), v)})

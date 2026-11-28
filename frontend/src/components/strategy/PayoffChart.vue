@@ -91,13 +91,13 @@
         <span v-if="oi.read_at_display" data-testid="payoff-oi-read-at">{{ oi.read_at_display }}</span>
         <span v-if="oi.expiry_note" data-testid="payoff-oi-expiry-note">{{ oi.expiry_note }}</span>
       </template>
-      <span v-else data-testid="payoff-oi-unavailable">{{ oi.unavailable_reason ? `${OI_NONE}: ${oi.unavailable_reason}` : OI_NONE }}</span>
+      <span v-else data-testid="payoff-oi-unavailable">{{ oiNoneText(oi.unavailable_reason) }}</span>
     </div>
   </figure>
 </template>
 
 <script setup>
-import { computed, nextTick, ref, watch, onMounted, onUnmounted } from 'vue'
+import { computed, nextTick, ref, watch, onBeforeUnmount, onMounted, onUnmounted } from 'vue'
 import Chart from 'chart.js/auto'
 import { hatchPattern, pointSigns, segmentColour } from '@/lib/payoffRegions'
 import { groupMoney, strikeLabel } from '@/lib/displayFormat'
@@ -138,6 +138,12 @@ const CURVE_LABELS = { at_expiry: 'At expiry', estimated_now: 'Estimated now' }
 const VIEWS = ['at_expiry', 'estimated_now']
 const HOVER_ORDER = ['estimated_now', 'at_expiry'] // AC-2's example: the estimate first, then at expiry
 const OI_NONE = 'OI not available for this expiry' // REQ-083 AC-6
+// D-6 (R2 FC2): the sentence once, the reason after it; a reason that already starts with the sentence is not prefixed again.
+const oiNoneText = (reason) => {
+  const r = typeof reason === 'string' ? reason.trim() : ''
+  if (!r) return OI_NONE
+  return r.toLowerCase().startsWith(OI_NONE.toLowerCase()) ? r : `${OI_NONE}: ${r}`
+}
 
 // The curves to draw: the reply's `curves` (each only when available with points), else its one payoff line.
 const shown = computed(() => {
@@ -209,7 +215,16 @@ const marks = {
   },
 }
 
+// Lane FK (28 Nov 2026): a redraw queued before the chart was removed, or before the page's DOM was torn down (a test
+// leaves components mounted), must do no work: no DOM read, no new chart.
+let gone = false
+const domGone = () => gone || typeof document === 'undefined' || !document?.documentElement
 const createChart = () => {
+  if (domGone()) {
+    if (chartInstance) chartInstance.destroy()
+    chartInstance = null
+    return
+  }
   // G-065 round 2 (REQ-148 AC-6): the previous reply's chart goes FIRST, so a reply with no curve never leaves the
   // old line on screen
   if (chartInstance) chartInstance.destroy()
@@ -404,11 +419,21 @@ const onKey = (e) => {
   show(Math.max(0, Math.min(points0.value.length - 1, from + (e.key === 'ArrowRight' ? 1 : -1))))
 }
 
-// A new reply (or none: NOT_CONNECTED) drops the hover, so no number from an older answer stays on screen.
-watch(points0, hide)
+// ADR-330 (38): a new reply keeps the reading (mouse or arrow key) where it was, keyed by INDEX LEVEL, not by point object
+// or array identity: the figures re-read from the new reply at that level, and a level no longer sent = the nearest level
+// (selection only, never interpolation: ADR-008). No points (NOT_CONNECTED) drops it: no number from an older answer stays.
+watch(points0, (now, before) => {
+  if (index.value === null || !now.length) return hide()
+  const level = before?.[index.value]?.level
+  // the held level goes in as the reply's own text; nearestBy compares it as an index level (selection only)
+  index.value = level === undefined ? null : nearestBy(now, level, (p) => p.level)
+})
 watch(() => [points0.value, props.spot, props.breakevens, props.sd, props.oi, props.targetCurve], createChart, { deep: true })
 onMounted(createChart)
+onBeforeUnmount(() => { gone = true }) // sync with the unmount; isUnmounted / onUnmounted come later in the post queue
 onUnmounted(() => {
+  gone = true
   if (chartInstance) chartInstance.destroy()
+  chartInstance = null
 })
 </script>

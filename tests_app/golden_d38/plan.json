@@ -1,0 +1,773 @@
+{
+ "generic": false,
+ "generic_text": null,
+ "labels": {
+  "close": "Close",
+  "customise": "Customise triggers",
+  "edit": "Edit plan",
+  "hour": "Hour",
+  "max_adjustments": "Max adjustments",
+  "minute": "Minute",
+  "no_plan": "No plan: nothing is watched for this strategy",
+  "plan_entry": "Plan",
+  "playbook": "Playbook",
+  "reset": "Reset to playbook",
+  "reset_confirm": "Reset to playbook puts back this playbook's conditions only. The levels you typed on the sheet (profit target, rupee target, rupee stop, time exit, the adjustment limit) and the plan's settings stay as you set them. Reset the conditions?",
+  "reset_put_back": "Put back to the playbook's values:",
+  "reset_put_back_none": "Nothing differed from the playbook, so nothing was put back.",
+  "reset_put_back_off": "Switched on again:",
+  "save": "Save plan",
+  "set_plan": "Set plan",
+  "stop": "Stop",
+  "stop_rupees": "Stop (Rs)",
+  "target": "Target",
+  "target_rupees": "Target (Rs)",
+  "time_exit": "Time exit",
+  "time_exit_on": "Time exit date (blank = expiry day)",
+  "title": "When tracking starts: this strategy's plan",
+  "use_as_is": "Use playbook as is"
+ },
+ "plan": {
+  "accepted_at": "<the clock of the run>",
+  "changed": [],
+  "max_adjustments": 2,
+  "playbook_id": 3,
+  "playbook_name": "\"Iron condor: system default\"",
+  "stop": "50",
+  "stop_per_lot": "5068.38",
+  "stop_rupee_words": "Rs 10136.75 for the whole trade (Rs 5068.38 per lot), before charges",
+  "stop_rupees": "10136.75",
+  "stop_source": "percent",
+  "stop_warning": null,
+  "stop_words": "50 % of max loss or 2x the credit received, whichever comes first",
+  "switched_off": [],
+  "target": "50",
+  "target_per_lot": "1431.63",
+  "target_rupee_words": "Rs 2863.25 for the whole trade (Rs 1431.63 per lot), before charges",
+  "target_rupees": "2863.25",
+  "target_source": "percent",
+  "target_words": "50 % of max profit",
+  "time_exit": {
+   "hour": 14,
+   "minute": 30
+  },
+  "time_exit_on": null
+ },
+ "playbooks": [
+  {
+   "active": true,
+   "draft": false,
+   "id": 3,
+   "is_system": true,
+   "name": "\"Iron condor: system default\"",
+   "type": "ic",
+   "type_name": "Iron condor"
+  }
+ ],
+ "prefill": {
+  "max_adjustments": 2,
+  "playbook_id": 3,
+  "stop": "50",
+  "stop_per_lot": "5068.38",
+  "stop_rupee_words": "Rs 10136.75 for the whole trade (Rs 5068.38 per lot), before charges",
+  "stop_rupees": "10136.75",
+  "stop_source": "percent",
+  "stop_warning": null,
+  "stop_words": "50 % of max loss or 2x the credit received, whichever comes first",
+  "target": "50",
+  "target_per_lot": "1431.63",
+  "target_rupee_words": "Rs 2863.25 for the whole trade (Rs 1431.63 per lot), before charges",
+  "target_rupees": "2863.25",
+  "target_source": "percent",
+  "target_words": "50 % of max profit",
+  "time_exit": {
+   "hour": 14,
+   "minute": 30
+  },
+  "time_exit_on": null
+ },
+ "put_back": [],
+ "put_back_off": [],
+ "settings": [
+  {
+   "key": "adjustments.short_delta_weekly",
+   "reason": null,
+   "source": "default",
+   "value": "0.30"
+  },
+  {
+   "key": "adjustments.short_delta_monthly",
+   "reason": null,
+   "source": "default",
+   "value": "0.25"
+  },
+  {
+   "key": "adjustments.roll_points_nifty",
+   "reason": null,
+   "source": "default",
+   "value": "200"
+  },
+  {
+   "key": "adjustments.roll_points_sensex",
+   "reason": null,
+   "source": "default",
+   "value": "500"
+  },
+  {
+   "key": "adjustments.roll_basis",
+   "reason": null,
+   "source": "default",
+   "value": "1"
+  },
+  {
+   "key": "adjustments.iron_fly_min_days",
+   "reason": null,
+   "source": "default",
+   "value": "3"
+  },
+  {
+   "key": "adjustments.reduce_divisor",
+   "reason": null,
+   "source": "default",
+   "value": "2"
+  },
+  {
+   "key": "adjustments.partial_close_percent",
+   "reason": null,
+   "source": "default",
+   "value": "50"
+  },
+  {
+   "key": "adjustments.untested_decay_percent",
+   "reason": null,
+   "source": "default",
+   "value": "80"
+  },
+  {
+   "key": "adjustments.shift_strikes",
+   "reason": null,
+   "source": "default",
+   "value": "1"
+  },
+  {
+   "key": "adjustments.near_level_percent",
+   "reason": null,
+   "source": "default",
+   "value": "0.5"
+  },
+  {
+   "key": "adjustments.gap_at_open_until",
+   "reason": null,
+   "source": "default",
+   "value": "930"
+  },
+  {
+   "key": "adjustments.compare_range_percent",
+   "reason": null,
+   "source": "default",
+   "value": "6"
+  },
+  {
+   "key": "adjustments.compare_steps",
+   "reason": null,
+   "source": "default",
+   "value": "48"
+  },
+  {
+   "key": "adjustments.compare_move_small",
+   "reason": null,
+   "source": "default",
+   "value": "1"
+  },
+  {
+   "key": "adjustments.compare_move_large",
+   "reason": null,
+   "source": "default",
+   "value": "2"
+  },
+  {
+   "key": "alerts.intraday.confirm_candle_minutes",
+   "reason": null,
+   "source": "default",
+   "value": "1"
+  },
+  {
+   "key": "alerts.intraday.cooldown_minutes",
+   "reason": null,
+   "source": "default",
+   "value": "5"
+  },
+  {
+   "key": "alerts.intraday.quiet_until",
+   "reason": null,
+   "source": "default",
+   "value": "920"
+  },
+  {
+   "key": "alerts.intraday.daily_cap",
+   "reason": null,
+   "source": "default",
+   "value": "6"
+  },
+  {
+   "key": "alerts.weekly.confirm_candle_minutes",
+   "reason": null,
+   "source": "default",
+   "value": "5"
+  },
+  {
+   "key": "alerts.weekly.cooldown_minutes",
+   "reason": null,
+   "source": "default",
+   "value": "30"
+  },
+  {
+   "key": "alerts.weekly.quiet_until",
+   "reason": null,
+   "source": "default",
+   "value": "930"
+  },
+  {
+   "key": "alerts.weekly.daily_cap",
+   "reason": null,
+   "source": "default",
+   "value": "4"
+  },
+  {
+   "key": "alerts.monthly.confirm_candle_minutes",
+   "reason": null,
+   "source": "default",
+   "value": "15"
+  },
+  {
+   "key": "alerts.monthly.cooldown_minutes",
+   "reason": null,
+   "source": "default",
+   "value": "120"
+  },
+  {
+   "key": "alerts.monthly.quiet_until",
+   "reason": null,
+   "source": "default",
+   "value": "945"
+  },
+  {
+   "key": "alerts.monthly.daily_cap",
+   "reason": null,
+   "source": "default",
+   "value": "2"
+  },
+  {
+   "key": "other.carry_gap_percent",
+   "reason": null,
+   "source": "default",
+   "value": "2"
+  },
+  {
+   "key": "orders.default_lots",
+   "reason": null,
+   "source": "default",
+   "value": "1"
+  },
+  {
+   "key": "orders.start_price",
+   "reason": null,
+   "source": "default",
+   "value": "1"
+  },
+  {
+   "key": "orders.validity",
+   "reason": null,
+   "source": "default",
+   "value": "1"
+  }
+ ],
+ "stop_kind_reason": null,
+ "stops": {
+  "first": "max_loss_pct",
+  "lines": [
+   {
+    "active": true,
+    "amount": "10136.75",
+    "figure": "50",
+    "kind": "max_loss_pct",
+    "later": [
+     "40"
+    ],
+    "reason": null,
+    "source": "strategy"
+   },
+   {
+    "active": true,
+    "amount": "11453.00",
+    "figure": "2",
+    "kind": "credit_multiple",
+    "later": [],
+    "reason": null,
+    "source": "default"
+   },
+   {
+    "active": false,
+    "amount": null,
+    "figure": null,
+    "kind": "margin_pct",
+    "later": [],
+    "reason": null,
+    "source": "strategy"
+   }
+  ],
+  "reason": null
+ },
+ "strategy_id": 1,
+ "triggers": [
+  {
+   "id": "T-01",
+   "label": "Spot within this % of a short strike",
+   "monthly": [
+    "1.5",
+    "1.0",
+    "0.5"
+   ],
+   "on": true,
+   "reason": null,
+   "source": "strategy",
+   "unit": "pct",
+   "weekly": [
+    "0.75",
+    "0.5",
+    "0.3"
+   ]
+  },
+  {
+   "id": "T-02",
+   "label": "Spot crosses a breakeven",
+   "monthly": null,
+   "on": true,
+   "reason": null,
+   "source": "strategy",
+   "unit": null,
+   "weekly": null
+  },
+  {
+   "id": "T-03",
+   "label": "Tested short's delta reaches",
+   "monthly": [
+    "0.25",
+    "0.30",
+    "0.35"
+   ],
+   "on": true,
+   "reason": null,
+   "source": "strategy",
+   "unit": "delta",
+   "weekly": [
+    "0.30",
+    "0.35",
+    "0.40"
+   ]
+  },
+  {
+   "id": "T-04",
+   "label": "Net delta beyond +/- this per lot",
+   "monthly": [
+    "0.15",
+    "0.15",
+    "0.20"
+   ],
+   "on": false,
+   "reason": null,
+   "source": "strategy",
+   "unit": "delta_per_lot",
+   "weekly": [
+    "0.15",
+    "0.15",
+    "0.20"
+   ]
+  },
+  {
+   "id": "T-05",
+   "label": "One side's value is this many x the other side's",
+   "monthly": [
+    "3",
+    "3",
+    "4"
+   ],
+   "on": false,
+   "reason": null,
+   "source": "strategy",
+   "unit": "x",
+   "weekly": [
+    "3",
+    "3",
+    "4"
+   ]
+  },
+  {
+   "id": "T-06",
+   "label": "Loss reaches this % of max loss",
+   "monthly": [
+    "50",
+    "50",
+    "40"
+   ],
+   "on": true,
+   "reason": null,
+   "source": "strategy",
+   "unit": "pct",
+   "weekly": [
+    "50",
+    "50",
+    "40"
+   ]
+  },
+  {
+   "id": "T-07",
+   "label": "Profit reaches this % of max profit",
+   "monthly": [
+    "50",
+    "50",
+    "50"
+   ],
+   "on": true,
+   "reason": null,
+   "source": "strategy",
+   "unit": "pct",
+   "weekly": [
+    "50",
+    "50",
+    "50"
+   ]
+  },
+  {
+   "id": "T-08",
+   "label": "A leg's premium reaches this many x its entry (leg stop)",
+   "monthly": [
+    "2",
+    "2",
+    "2.5"
+   ],
+   "on": false,
+   "reason": null,
+   "source": "strategy",
+   "unit": "x",
+   "weekly": [
+    "2",
+    "2",
+    "2.5"
+   ]
+  },
+  {
+   "id": "T-09",
+   "label": "A short leg's premium falls to Rs or below (close for pennies)",
+   "monthly": [
+    "3",
+    "3",
+    "2"
+   ],
+   "on": true,
+   "reason": null,
+   "source": "strategy",
+   "unit": "rs",
+   "weekly": [
+    "3",
+    "3",
+    "2"
+   ]
+  },
+  {
+   "id": "T-11",
+   "label": "Options' IV changed this many points since entry",
+   "monthly": [
+    "3",
+    "3",
+    "4"
+   ],
+   "on": true,
+   "reason": null,
+   "source": "strategy",
+   "unit": "pts",
+   "weekly": [
+    "3",
+    "3",
+    "4"
+   ]
+  },
+  {
+   "id": "T-12",
+   "label": "Spot has moved this many expected moves (SD) since entry",
+   "monthly": [
+    "1",
+    "1",
+    "1"
+   ],
+   "on": false,
+   "reason": null,
+   "source": "strategy",
+   "unit": "sd",
+   "weekly": [
+    "1",
+    "1",
+    "1"
+   ]
+  },
+  {
+   "id": "T-13",
+   "label": "Gap at the open of at least this %",
+   "monthly": [
+    "1",
+    "1",
+    "0.75"
+   ],
+   "on": true,
+   "reason": null,
+   "source": "strategy",
+   "unit": "pct",
+   "weekly": [
+    "0.75",
+    "0.75",
+    "0.5"
+   ]
+  },
+  {
+   "id": "T-14",
+   "label": "Loss from a 1% move (gamma) at least this % of margin",
+   "monthly": [
+    "4",
+    "3",
+    "2"
+   ],
+   "on": true,
+   "reason": null,
+   "source": "strategy",
+   "unit": "pct",
+   "weekly": [
+    "3",
+    "3",
+    "2"
+   ]
+  },
+  {
+   "id": "T-15",
+   "label": "Margin used reaches this % of available",
+   "monthly": [
+    "80",
+    "80",
+    "80"
+   ],
+   "on": false,
+   "reason": null,
+   "source": "strategy",
+   "unit": "pct",
+   "weekly": [
+    "80",
+    "80",
+    "80"
+   ]
+  },
+  {
+   "id": "T-16",
+   "label": "Loss reaches this % of the margin blocked",
+   "monthly": [
+    "4",
+    "4",
+    "3"
+   ],
+   "on": false,
+   "reason": null,
+   "source": "strategy",
+   "unit": "pct",
+   "weekly": [
+    "4",
+    "4",
+    "3"
+   ]
+  },
+  {
+   "id": "T-18",
+   "label": "Adjustments used reach the plan's maximum",
+   "monthly": null,
+   "on": true,
+   "reason": null,
+   "source": "strategy",
+   "unit": null,
+   "weekly": null
+  },
+  {
+   "id": "T-19",
+   "label": "Premium still left to earn is this many x the adjustment's cost or below",
+   "monthly": [
+    "1",
+    "1",
+    "1"
+   ],
+   "on": true,
+   "reason": null,
+   "source": "strategy",
+   "unit": "x",
+   "weekly": [
+    "1",
+    "1",
+    "1"
+   ]
+  },
+  {
+   "id": "T-20",
+   "label": "Spot crosses a level you set (support / resistance)",
+   "monthly": null,
+   "on": false,
+   "reason": null,
+   "source": "strategy",
+   "unit": "pts",
+   "weekly": null
+  },
+  {
+   "id": "T-21",
+   "label": "Prices stale or missing (no suggestion is made)",
+   "monthly": null,
+   "on": true,
+   "reason": null,
+   "source": "strategy",
+   "unit": null,
+   "weekly": null
+  },
+  {
+   "id": "T-01b",
+   "label": "Spot within this many points of a short strike",
+   "monthly": [
+    "350",
+    "240",
+    "120"
+   ],
+   "on": false,
+   "reason": null,
+   "source": "strategy",
+   "unit": "pts",
+   "weekly": [
+    "180",
+    "120",
+    "70"
+   ]
+  },
+  {
+   "id": "T-06b",
+   "label": "Loss reaches this many x the credit received",
+   "monthly": [
+    "1.5",
+    "1",
+    "0.75"
+   ],
+   "on": false,
+   "reason": null,
+   "source": "strategy",
+   "unit": "x",
+   "weekly": [
+    "1",
+    "1",
+    "0.75"
+   ]
+  },
+  {
+   "id": "T-10b",
+   "label": "Clock time reached (checked in this stage)",
+   "monthly": null,
+   "on": true,
+   "reason": "settings_trigger_unreadable",
+   "source": null,
+   "unit": "time",
+   "weekly": null
+  },
+  {
+   "id": "T-11b",
+   "label": "India VIX up this % today",
+   "monthly": [
+    "10",
+    "10",
+    "10"
+   ],
+   "on": false,
+   "reason": null,
+   "source": "strategy",
+   "unit": "pct",
+   "weekly": [
+    "10",
+    "10",
+    "10"
+   ]
+  },
+  {
+   "id": "T-11c",
+   "label": "IV percentile reaches",
+   "monthly": [
+    "80",
+    "80",
+    "80"
+   ],
+   "on": false,
+   "reason": null,
+   "source": "strategy",
+   "unit": "pct",
+   "weekly": [
+    "80",
+    "80",
+    "80"
+   ]
+  },
+  {
+   "id": "T-14t",
+   "label": "Theta per day falls to this % of premium left or below",
+   "monthly": [
+    "3",
+    "3",
+    "3"
+   ],
+   "on": false,
+   "reason": null,
+   "source": "strategy",
+   "unit": "pct",
+   "weekly": [
+    "5",
+    "5",
+    "5"
+   ]
+  },
+  {
+   "id": "T-14v",
+   "label": "Loss from +1 IV point (vega) at least this % of max profit",
+   "monthly": [
+    "15",
+    "15",
+    "10"
+   ],
+   "on": false,
+   "reason": null,
+   "source": "strategy",
+   "unit": "pct",
+   "weekly": [
+    "10",
+    "10",
+    "10"
+   ]
+  },
+  {
+   "id": "T-20b",
+   "label": "Market trending vs range-bound",
+   "monthly": [
+    "25",
+    "25",
+    "25"
+   ],
+   "on": false,
+   "reason": null,
+   "source": "strategy",
+   "unit": null,
+   "weekly": [
+    "25",
+    "25",
+    "25"
+   ]
+  }
+ ],
+ "triggers_reason": null,
+ "type": "ic",
+ "type_name": "Iron condor"
+}

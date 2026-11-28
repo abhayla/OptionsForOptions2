@@ -299,17 +299,13 @@ describe('GC-ADJ1 step 3: picks from the drawer and the hand-off', () => {
     expect(c.post).toHaveBeenCalledTimes(1)
   })
 
-  it('REQ-163 AC-1: the basket carries only the records actually marked acted on (a refused one is left out)', async () => {
+  it('live test 27 Nov item 10: staging the basket marks nothing acted on; the ids travel with it for the placed order', async () => {
     const { w, c } = await show(adj02, { opportunities: ['41', '42'] })
-    c.post.mockImplementation(async (url) => {
-      if (url === '/adjustment-opportunities/42/acted-on') throw Object.assign(new Error('x'), { parts: { what_happened: 'not open' } })
-      return { data: adj02 }
-    })
     await t(w, 'adjust-pick').setValue('A-01')
     await t(w, 'adjust-open').trigger('click')
     await flushPromises()
-    expect(c.post).toHaveBeenCalledWith('/adjustment-opportunities/41/acted-on')
-    expect(w.emitted('prepare')[0][0].suggestionIds).toEqual(['41'])
+    expect(c.post.mock.calls.map(([u]) => u).filter((u) => u.includes('adjustment-opportunities'))).toEqual([])
+    expect(w.emitted('prepare')[0][0].suggestionIds).toEqual(['41', '42'])
   })
 })
 
@@ -354,5 +350,13 @@ describe('GC-IC1 4b: the controls sit on the compare page and take the reply\'s 
     expect(c.get).toHaveBeenCalledWith('/strategies/72/monitoring-pause')
     const old = await show(clone(adj02))
     expect(t(old.w, 'delta-card').exists()).toBe(false)
+  })
+})
+
+describe('GC-ICLIVE D-32 (ADR-242): the watch box says in its own label that it only alerts and does not exit', () => {
+  it('C8 163: the heading names the alert-only effect, beside the Watch buttons, so it cannot be read as a Conditional exit', async () => {
+    const { w } = await show(clone(adj02))
+    const card = t(w, 'watch-card')
+    expect(card.get('h3').text()).toBe('Watch an index level: it only alerts and does not exit')
   })
 })

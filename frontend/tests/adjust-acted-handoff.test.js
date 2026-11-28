@@ -15,6 +15,7 @@ vi.mock('@/services/api', async (importActual) => {
   const respond = (method, url, body) => {
     calls.push({ method, url, body })
     const a = answers[`${method} ${url}`]
+    if (a === undefined && method === 'GET' && url === '/market/exit-state') return Promise.resolve({ data: { closed: false, sentence: null, next_open_at: null } }) // ADR-330 (60)
     if (a === undefined) return Promise.reject(new Error(`unmocked ${method} ${url}`))
     return typeof a === 'function' ? a(body) : Promise.resolve({ data: a })
   }
@@ -108,7 +109,7 @@ describe('a refused record is dropped, with the server sentence', () => {
       const { w, router } = await openBuilder({ strategy: '63', acted: '41' })
       answers[ORDERS] = refusal(status, NOT_OPEN)
       await confirmOneExit(w)
-      expect(t(w, 'paper-error').text()).toBe(NOT_OPEN)
+      expect(t(w, 'paper-error').text()).toBe(`${NOT_OPEN} x`) // Lane FJ r3 (F6): every part of the reply (the refusal here carries 'impact: x')
       expect(router.currentRoute.value.query).toEqual({ strategy: '63' })
       answers[ORDERS] = { ok: true }
       await t(w, 'paper-confirm-button').trigger('click')
@@ -123,5 +124,35 @@ describe('a refused record is dropped, with the server sentence', () => {
     answers[ORDERS] = refusal(422, 'The price is not valid.')
     await confirmOneExit(w)
     expect(router.currentRoute.value.query).toEqual({ strategy: '63', acted: '41' })
+  })
+})
+
+describe('D-25 (ADR-326 (1)): a Take profit basket carries its approach id to the paper place POST', () => {
+  it('prepare writes approach=A-24 into the URL; a confirm sends approach_id once, then drops it', async () => {
+    const { w, router } = await openBuilder({ strategy: '63', adjust: '63', pick: 'A-24', opp: '41' })
+    w.vm.$.setupState.prepareApproach({ legs: w.vm.$.setupState.legs, suggestionIds: ['41'], basketLegs: 4, approachId: 'A-24' })
+    await flushPromises()
+    expect(router.currentRoute.value.query).toEqual({ strategy: '63', acted: '41', basket: '4', approach: 'A-24' })
+    answers[ORDERS] = { ok: true }
+    await confirmOneExit(w)
+    expect(posts()[0].body.approach_id).toBe('A-24')
+    expect(router.currentRoute.value.query).toEqual({ strategy: '63' })
+  })
+  it('a Take profit with no acted record still sends it, and a refused one keeps it in the URL', async () => {
+    const { w, router } = await openBuilder({ strategy: '63', approach: 'A-25' })
+    answers[ORDERS] = refusal(409, 'Not in profit after charges: -₹223')
+    await confirmOneExit(w)
+    expect(t(w, 'paper-error').text()).toBe('Not in profit after charges: -₹223 x') // Lane FJ r3 (F6): every part
+    expect(posts()[0].body.approach_id).toBe('A-25')
+    expect(router.currentRoute.value.query).toEqual({ strategy: '63', approach: 'A-25' }) // kept: a retry is asked again
+  })
+  it('an ordinary basket, or a junk approach value, sends no approach_id', async () => {
+    for (const approach of [undefined, 'A-31', 'x', 'A-24,A-25']) {
+      calls.length = 0
+      const { w } = await openBuilder(approach === undefined ? { strategy: '63' } : { strategy: '63', approach })
+      answers[ORDERS] = { ok: true }
+      await confirmOneExit(w)
+      expect(posts()[0].body).not.toHaveProperty('approach_id')
+    }
   })
 })

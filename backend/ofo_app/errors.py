@@ -41,6 +41,7 @@ from fastapi import FastAPI, Request, WebSocket, WebSocketDisconnect
 from fastapi.exceptions import RequestValidationError
 from fastapi.responses import RedirectResponse
 from fastapi.routing import APIRoute, APIWebSocketRoute
+from sqlalchemy.exc import DBAPIError
 from starlette.exceptions import HTTPException as StarletteHTTPException
 from starlette.responses import Response
 from starlette.types import ASGIApp, Message, Receive, Scope, Send
@@ -49,6 +50,7 @@ from ofo.errors import CATALOGUE, ErrorClass, UserFacingError, render, user_mess
 from ofo_app.api_models import ApiModel, DoorRefused, Emitted, emit, emit_message
 from ofo_app.broker_config import validate_frontend_origin
 from ofo_app.redaction import install_redaction, keep_public_codes
+from ofo_app.request_log import RequestLog
 from ofo_app.secret_values import contains_secret
 from ofo_app.underlying import refusal_of
 
@@ -89,6 +91,7 @@ class Failure(Enum):
     UPSTREAM_BUSY = (503, "60")  # the upstream answered "too many requests"
     UPSTREAM_BAD_GATEWAY = (502, None)  # the upstream could not be reached, or answered junk
     NOT_FOUND = (404, None)  # W-061: a strategy or history entry that is not there (or is another user's)
+    UNPROCESSABLE = (422, None)  # ADR-330 (3): understood, but the value is refused (nothing written)
     CONFLICT = (409, None)  # W-061: the change is based on a stale revision, or the saved form no longer reads
 
     def __init__(self, status: int, retry_after: str | None) -> None:
@@ -613,9 +616,42 @@ def _reference() -> str:
 
 
 def _internal_response(exc: BaseException, request: Request) -> ClosedResponse:
+    if busy_database_error(exc):  # S-02: the one door every unhandled error passes (see BUSY_SQLSTATES)
+        log.warning("store busy (%s) on %s %s", type(exc).__name__, request.method, request.url.path)
+        return _body(render("store_busy"), Failure.CONFLICT.status)
     reference = _reference()
     log.error("unhandled error %s on %s %s", reference, request.method, request.url.path, exc_info=exc)
     return _body(render("internal_system_request_failed", reference=reference), 500)
+
+
+def row_answer(exc: Exception, where: str) -> tuple[UserFacingError, int]:  # noqa: PLR0911 - one return per answer
+    """The message and HTTP status ``handle_error`` would answer for ``exc``, for a route that answers several rows in
+    one reply and must show each failed row what the single-row route shows (one bad row never fails the others).
+    The same three cases as ``handle_error``: a user-facing error, an HTTP error, anything else (busy store or the
+    internal message with a reference)."""
+    message = user_message_of(exc)
+    if message is not None:
+        log.info("user-facing error %s on %s", message.code, where)
+        failure = getattr(exc, "failure", None)
+        return message, failure.status if isinstance(failure, Failure) else STATUS_BY_CLASS[message.error_class]
+    if isinstance(exc, RequestValidationError):
+        return render("user_input_request_invalid"), 422
+    if isinstance(exc, StarletteHTTPException):
+        status = exc.status_code
+        if status == 401:  # noqa: PLR2004
+            return render("entitlement_access_sign_in_required"), 401
+        if status == 503:  # noqa: PLR2004
+            return render("internal_system_service_unavailable"), 503
+        if 400 <= status < 500:  # noqa: PLR2004
+            return render("user_input_request_not_available"), status
+        status = status if 500 <= status <= 599 else 500  # noqa: PLR2004
+        return render("internal_system_request_failed", reference=_reference()), status
+    if busy_database_error(exc):
+        log.warning("store busy (%s) on %s", type(exc).__name__, where)
+        return render("store_busy"), Failure.CONFLICT.status
+    reference = _reference()
+    log.error("unhandled error %s on %s", reference, where, exc_info=exc)
+    return render("internal_system_request_failed", reference=reference), 500
 
 
 #: The exception a request the API cannot read raises. Named here so a route or a socket can catch it without importing
@@ -656,6 +692,26 @@ def _allowed_methods(exc: StarletteHTTPException) -> tuple[str, ...] | None:
     given = next((v for k, v in (exc.headers or {}).items() if k.lower() == "allow"), "")
     tokens = tuple(t for t in (p.strip() for p in given.split(",")) if t in _METHODS) if type(given) is str else ()
     return tokens or None
+
+
+#: PostgreSQL's three "someone else holds what this write needs" answers: lock_not_available (lock_timeout),
+#: query_canceled (statement_timeout, also what a lock wait ends as under it) and deadlock_detected. S-02 (owner screen
+#: check 25 Nov 2026, ERR-6960F002 on a strategy delete): each is "busy, nothing was changed", never an ERR-xxxx 500.
+BUSY_SQLSTATES = frozenset({"55P03", "57014", "40P01"})
+
+
+def busy_database_error(exc: BaseException | None) -> bool:
+    """True when ``exc`` is, or was raised from, a SQLAlchemy DBAPIError whose sqlstate is one of BUSY_SQLSTATES. Any
+    other database error is not busy (it stays the internal answer). The write itself is rolled back by the request's
+    session (``_run`` and ``get_db`` close it), so the refusal never hides a half-written change."""
+    seen: set[int] = set()
+    while exc is not None and id(exc) not in seen:
+        seen.add(id(exc))
+        if isinstance(exc, DBAPIError):
+            orig = exc.orig
+            return (getattr(orig, "sqlstate", None) or getattr(orig, "pgcode", None)) in BUSY_SQLSTATES
+        exc = exc.__cause__ or exc.__context__
+    return False
 
 
 async def handle_error(request: Request, exc: Exception) -> ClosedResponse:
@@ -747,3 +803,4 @@ def install(app: FastAPI) -> None:
     docs = {("GET", url) for url in (app.docs_url, app.redoc_url, app.openapi_url,
                                       app.swagger_ui_oauth2_redirect_url if app.docs_url else None) if url}
     app.add_middleware(_Boundary, exempt=frozenset(docs))
+    app.add_middleware(RequestLog)  # outermost (added last): one INFO line per request (route template, status, ms)

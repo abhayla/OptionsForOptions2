@@ -1,7 +1,7 @@
 // GC-ICFIX Issue 10 (ADR-256, REQ-109 AC-4): the shared exit confirm list shows ONE factual warning line when the server says
 // the exit leaves a sold leg less protected (trade 139: the bought 25400 CE closed alone), and still lets the user confirm. The screen
 // compares nothing: it shows the server's `warning_text` when `state` is 'yes' ('cannot_tell' = could not check). It fails CLOSED: when the check cannot be read, the
-// list says the app could not check (never a silent "safe"); while the read is in flight it says it is checking. Confirm is never locked.
+// list says the app could not check (never a silent "safe"); while the read is in flight it says it is checking. Confirm is locked while the check runs (hotfix 27 Nov 2026); a finished check, a risk line or a could-not-check line never locks it.
 import { beforeEach, describe, expect, it, vi } from 'vitest'
 import { flushPromises, mount } from '@vue/test-utils'
 import PaperConfirmDialog from '@/components/strategy/PaperConfirmDialog.vue'
@@ -14,6 +14,8 @@ const queue = []
 vi.mock('@/services/api', async (importActual) => {
   const actual = await importActual()
   return { ...actual, default: { get: (url, cfg) => {
+    if (url === '/market/exit-state') return Promise.resolve({ data: { closed: false, sentence: null, next_open_at: null } }) // ADR-330 (60)
+    if (url.endsWith('/armed-exits')) return Promise.resolve({ data: { lines: [] } }) // D-03 part B: its own test file
     calls.push({ url, orders: JSON.parse(cfg.params.orders) })
     if (queue.length) return queue.shift()
     if (pending) return pending
@@ -70,18 +72,19 @@ describe('exit confirm list warning (ADR-256)', () => {
     }
   })
 
-  it('read slow: shows checking, never a false safe state, Confirm enabled; then the answer replaces it', async () => {
+  it('read slow: shows checking, never a false safe state, Confirm disabled while it runs (hotfix 27 Nov); then the answer replaces it and Confirm is enabled (a risk line does not lock it)', async () => {
     let release
     pending = new Promise((resolve) => { release = resolve })
     const w = open()
     await flushPromises()
     expect(t(w, 'paper-exit-checking').text()).toBe(PAPER_EXIT_CHECKING_TEXT)
     notChecked(w)
-    expect(t(w, 'paper-confirm-button').attributes('disabled')).toBeUndefined()
+    expect(t(w, 'paper-confirm-button').attributes('disabled')).toBeDefined()
     release({ data: { state: 'yes', warning_text: WARNING } })
     await flushPromises()
     expect(t(w, 'paper-exit-checking').exists()).toBe(false)
     expect(t(w, 'paper-exit-warning').text()).toBe(WARNING)
+    expect(t(w, 'paper-confirm-button').attributes('disabled')).toBeUndefined()
     w.unmount()
   })
 

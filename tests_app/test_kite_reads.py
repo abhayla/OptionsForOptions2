@@ -513,6 +513,7 @@ def test_india_vix_and_previous_close_are_read_exactly_once_per_period() -> None
     ({"last_price": None, "ohlc": None}, (None, None)),
     ({"last_price": True, "ohlc": {"close": "12"}}, (None, None)),                   # never a bool or a string
     (None, (None, None)),                                                            # the name not in the reply
+    ({"last_price": Decimal("NaN"), "ohlc": {"close": Decimal("Infinity")}}, (None, None)),  # no number, no VIX
 ])
 def test_vix_values_in_every_answer_state(quote, want) -> None:
     from ofo_app.kite_period_reads import vix_values  # noqa: PLC0415

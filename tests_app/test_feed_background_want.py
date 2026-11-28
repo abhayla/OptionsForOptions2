@@ -21,7 +21,7 @@ class FakeRedis:
         self.px: dict[str, int] = {}
         self.down = False
 
-    async def set(self, key, value, px=None):
+    async def set(self, key, value, px=None, ex=None):
         self.data[key] = value
         self.px[key] = px
 

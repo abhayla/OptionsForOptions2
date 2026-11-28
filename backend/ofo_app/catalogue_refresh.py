@@ -6,7 +6,8 @@ daily-load-misses-intraday-additions ("a once-a-day catalogue load misses strike
 
 One in-process asyncio task started by the app lifespan when ``CATALOGUE_REFRESH`` is on (explicitly "1", or by default
 when ``LIVE_MARKET`` is on). It loads once at start-up (any day, any hour: a restarted app must not wait for the next
-window), then every ``REFRESH_INTERVAL`` between 08:35 and 15:45 IST on weekdays. The refresh timetable is
+window), then every ``REFRESH_INTERVAL`` between the publish time + 5 minutes (08:35)
+and 15:45 IST on weekdays. The refresh timetable is
 its own weekday window and does not read the ADR-119 market calendar (``ofo.market_calendar``), so a weekday holiday
 runs the load too; Zerodha's list is the same that day and the load is harmless.
 
@@ -27,15 +28,21 @@ import os
 from collections.abc import Awaitable, Callable
 from typing import Any, Final
 
+from ofo import settings
+from ofo.settings import calc as settings_calc
 from ofo.timeutil import IST
 
 log = logging.getLogger(__name__)
 
 ENV_NAME: Final = "CATALOGUE_REFRESH"
 _TRUE: Final = frozenset({"1", "true", "yes", "on"})
-WINDOW_OPEN: Final = datetime.time(8, 35)
+#: ADR-330 (61): the window opens ``LOAD_GRACE`` after the contract list's publish time (setting
+#: ``facts.contract_list_publish_time``, never retyped here); until it has loaded, yesterday's list is in use.
+LOAD_GRACE: Final = datetime.timedelta(minutes=5)
 WINDOW_CLOSE: Final = datetime.time(15, 45)
 REFRESH_INTERVAL: Final = datetime.timedelta(minutes=60)
+#: a run that did not load (failed, refused, timed out) is tried again in minutes, not after a whole interval
+RETRY_INTERVAL: Final = datetime.timedelta(minutes=3)
 RUN_TIMEOUT_SECONDS: Final = 120.0
 POLL_SECONDS: Final = 30.0
 _SATURDAY: Final = 5  # datetime.weekday(): Monday is 0
@@ -57,20 +64,39 @@ def refresh_requested(environ: Any = None) -> bool:
     return env.get("LIVE_MARKET", "").strip().lower() in _TRUE
 
 
-def in_window(now: datetime.datetime) -> bool:
-    """A weekday between 08:35 and 15:45 IST (no holiday calendar exists yet)."""
+def default_publish_time() -> datetime.time:
+    """The registry default of ``facts.contract_list_publish_time`` (read from the registry, never retyped)."""
+    return settings_calc.contract_list_publish_time(settings.defaults())
+
+
+def window_open(publish: datetime.time) -> datetime.time:
+    """When the day's refresh window opens: the publish time plus ``LOAD_GRACE`` (08:30 + 5 min = 08:35)."""
+    opened = datetime.datetime.combine(datetime.date(2000, 1, 3), publish) + LOAD_GRACE
+    return opened.time()
+
+
+def in_window(now: datetime.datetime, publish: datetime.time | None = None) -> bool:
+    """A weekday between the window's opening (publish time + grace) and 15:45 IST (no holiday calendar exists yet)."""
     local = now.astimezone(IST)
-    return local.weekday() < _SATURDAY and WINDOW_OPEN <= local.time() <= WINDOW_CLOSE
+    opens = window_open(default_publish_time() if publish is None else publish)
+    return local.weekday() < _SATURDAY and opens <= local.time() <= WINDOW_CLOSE
 
 
 class RefreshScheduler:
     """Decides when to load and runs one load at a time. ``load_once`` returns 0 on a load, non-zero on a refusal, and
     raises on a download or database failure; ``now`` is a clock returning an aware datetime."""
 
-    def __init__(self, load_once: Callable[[], Awaitable[int]], *, now: Callable[[], datetime.datetime],
-                 timeout: float = RUN_TIMEOUT_SECONDS, interval: datetime.timedelta = REFRESH_INTERVAL) -> None:
+    def __init__(self, load_once: Callable[[], Awaitable[int]], *,  # noqa: PLR0913 - seams
+                 now: Callable[[], datetime.datetime],
+                 timeout: float = RUN_TIMEOUT_SECONDS, interval: datetime.timedelta = REFRESH_INTERVAL,
+                 retry: datetime.timedelta = RETRY_INTERVAL,
+                 publish_time: Callable[[], Awaitable[datetime.time]] | None = None) -> None:
         self._load_once = load_once
         self._now = now
+        self._retry = retry
+        self._publish_time = publish_time
+        self._publish = default_publish_time()  # the last setting read; a read that fails keeps it (and is logged)
+        self._last_outcome: str | None = None
         self._timeout = timeout
         self._interval = interval
         self._lock = asyncio.Lock()
@@ -82,29 +108,53 @@ class RefreshScheduler:
             return BUSY
         async with self._lock:
             self._last_started = self._now()
-            try:
-                code = await asyncio.wait_for(self._load_once(), self._timeout)
-            except TimeoutError:
-                outcome = TIMED_OUT
-            except Exception as exc:  # noqa: BLE001 - network, database; the previous list stays; type only
-                log.error("catalogue refresh failed: %s", type(exc).__name__)
-                return FAILED
-            else:
-                outcome = LOADED if code == 0 else REFUSED
-            if outcome != LOADED:
-                log.error("catalogue refresh %s", outcome)
+            self._last_outcome = outcome = await self._run()
             return outcome
 
+    async def _run(self) -> str:
+        try:
+            code = await asyncio.wait_for(self._load_once(), self._timeout)
+        except TimeoutError:
+            outcome = TIMED_OUT
+        except Exception as exc:  # noqa: BLE001 - network, database; the previous list stays; type only
+            log.error("catalogue refresh failed: %s: the previous list stays in use", type(exc).__name__)
+            return FAILED
+        else:
+            outcome = LOADED if code == 0 else REFUSED
+        if outcome != LOADED:
+            log.error("catalogue refresh %s: the previous list stays in use", outcome)
+        else:
+            log.info("catalogue refresh loaded")
+        return outcome
+
+    async def _read_publish_time(self) -> None:
+        """The publish-time setting in force (``facts.contract_list_publish_time``); a read that fails keeps the last
+        value and is logged (a code only), so the window never moves on a guess."""
+        if self._publish_time is None:
+            return
+        try:
+            self._publish = await self._publish_time()
+        except Exception as exc:  # noqa: BLE001 - the last value stays; type only
+            log.error("catalogue refresh: the publish time could not be read: %s", type(exc).__name__)
+
     def due(self) -> bool:
-        """Start-up (never run) is always due; afterwards a run is due only inside the window, one interval after the
-        previous run STARTED (a failed run therefore retries on schedule, not in a loop)."""
+        """Start-up (never run) is always due; afterwards a run is due only inside the window. The first run of a
+        day's window is due at its opening whatever ran earlier (a start-up load at 08:07 holds yesterday's list and
+        must not push the first reload to 09:07); a run that did not load is tried again after ``retry`` (minutes),
+        one that loaded after one interval, each counted from the previous run's START."""
         if self._last_started is None:
             return True
         now = self._now()
-        return in_window(now) and now - self._last_started >= self._interval
+        if not in_window(now, self._publish):
+            return False
+        local = now.astimezone(IST)
+        opened = datetime.datetime.combine(local.date(), window_open(self._publish), tzinfo=IST)
+        wait = self._interval if self._last_outcome == LOADED else self._retry
+        return self._last_started < opened or now - self._last_started >= wait
 
     async def step(self) -> str | None:
         """One scheduling decision; the outcome of a run, or None when nothing was due."""
+        await self._read_publish_time()
         return await self.attempt() if self.due() else None
 
     async def run_forever(self, sleep: Callable[[float], Awaitable[Any]] = asyncio.sleep,
@@ -121,7 +171,13 @@ def start() -> asyncio.Task[None]:
     async def load() -> int:
         return await catalogue_load.load_once(_Silent())
 
-    scheduler = RefreshScheduler(load, now=lambda: datetime.datetime.now(datetime.UTC))
+    async def publish_time() -> datetime.time:
+        from ofo_app import catalogue_picker  # noqa: PLC0415 - late: the picker imports the database module
+        from ofo_app.db import get_sessionmaker  # noqa: PLC0415
+        async with get_sessionmaker()() as conn:
+            return await catalogue_picker.publish_time(conn)
+
+    scheduler = RefreshScheduler(load, now=lambda: datetime.datetime.now(datetime.UTC), publish_time=publish_time)
     return asyncio.create_task(scheduler.run_forever(), name="catalogue-refresh")
 
 

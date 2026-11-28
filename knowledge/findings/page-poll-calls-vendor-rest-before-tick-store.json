@@ -1,0 +1,26 @@
+{
+  "id": "page-poll-calls-vendor-rest-before-tick-store",
+  "scope": "project",
+  "class": "Any request path that awaits a vendor REST read (Kite /quote) before the tick store is judged turns every page poll into a vendor call; the per-key quota (1 quote/s, 10 s cooldown after a 429) is then spent by the polls, and a request that releases its own hold on the feed parks a quote another reader still needs.",
+  "mechanism": "run_check (plan-watch, every 5 s), adjustment.py, playbooks.py awaited adjustment_readers.read_rest_spot -> live_market.index_spot before judge_spot consulted the tick store; _window_spot asked REST again when the index was not on the socket; there was no cache, so 12-24 index REST calls per minute per open builder produced 429s (kite_read_busy). Open legs were held on the socket only for one request (hold_and_read always releases), so each poll resubscribed and waited for a fresh tick (25-50 s on a quiet option).",
+  "first_seen": {
+    "date": "2026-11-27",
+    "where": "live day, hotfix/index-quote-1127 @ 206a9f06",
+    "evidence": "owner: one Kite socket up since 08:15; 56 'kite read HTTP status 429' + 'REST index quote failed: kite_read_busy' by 09:45 (~2/min); leg quotes stale every 25-50 s while NIFTY ticked on the strip; Exit greyed 'Prices are not live'."
+  },
+  "fix": "ONE index-spot door: routes.outcome.rest_spot_if_needed judges the tick store first (no REST call with a fresh tick); live_market.index_spot reads REST through one per-process SharedReading (TTL 5 s, single flight, a failure kept 10 s so nothing is sent inside the cooldown). PaperMonitor.reload holds every open paper leg and its index for as long as the strategy is open (fan-out is refcounted: a request's release no longer unsubscribes the vendor).",
+  "detection": {
+    "status": "guarded",
+    "checks": [
+      "tests_app/test_rest_spot_door.py::test_no_route_awaits_a_rest_spot_reader_before_the_tick_is_judged",
+      "tests_app/test_rest_spot_door.py::test_twelve_plan_watch_requests_with_a_fresh_tick_make_zero_rest_calls",
+      "tests_app/test_rest_spot_door.py::test_a_requests_release_never_parks_a_leg_the_monitor_holds",
+      "tests/test_shared_reading.py::test_a_failed_reading_is_kept_for_the_cooldown_and_nothing_is_sent_inside_it"
+    ],
+    "note": "Residual: the limiter and SharedReading are per process (API, worker, feed); the VIX read (30 s) shares the quote bucket. The 25-50 s leg-stale cause is code-derived, not measured: confirm with the duration log after deploy."
+  },
+  "spec_ref": [
+    "spec/requirements/REQ-118.md",
+    "spec/decisions/ADR-330.md"
+  ]
+}

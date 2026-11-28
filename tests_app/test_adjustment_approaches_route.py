@@ -282,7 +282,7 @@ def test_attack4_one_approach_margin_raises_others_keep_theirs():
 @pytest.mark.parametrize("sid", ["ADJ-20c", "ADJ-20d", "ADJ-20e"])
 def test_ac8_refusal_or_warning_while_others_still_show(sid):
     sc = load(sid)
-    body = post(client_for(sc)).json()
+    body = post(client_for(sc, rates=RATES)).json()
     hand = sc["expected"]["approach_legs"]
     shown = [a for a in body["approaches"] if a["refusal"] is None]
     assert len(shown) >= 2  # noqa: PLR2004 - the other approaches still show
@@ -575,7 +575,7 @@ def test_624_1_read_guards_answer_states(monkeypatch):
         monkeypatch.setattr(readers, "current_user_ref", lambda: "u")
         monkeypatch.setattr(adjustment_check, "resolve", resolve)
         monkeypatch.setattr(adjustment_check, "strategy_type", lambda *_a: "x")
-        return await readers.read_guards(72, tracked.position, market.forward, None)
+        return await readers.read_guards(72, tracked, market.forward, None)
     assert asyncio.run(run(raises=True)) is readers.GUARDS_UNREADABLE
     assert asyncio.run(run({"guards": LIMITS})) == LIMITS
     assert asyncio.run(run({"guards": {}})) == {}
@@ -741,7 +741,7 @@ def test_d4_at_the_limit_the_reply_states_it_and_lists_each_withheld_approach_wi
     assert [n["id"] for n in reply["not_offered"]] == held
     assert not offered_ids & set(held)
     for n in reply["not_offered"]:
-        assert n["reason_id"] == "adjustment_limit_reached" and n["reason"] == "Adjustment limit reached"
+        assert n["reason_id"] == "adjustment_limit_reached" and n["reason"] == "plan maximum of 2 reached"
         assert n["name"]
 
 

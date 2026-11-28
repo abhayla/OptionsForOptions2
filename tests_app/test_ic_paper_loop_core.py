@@ -18,7 +18,7 @@ from _scenario_catalogue import load_library
 from httpx import ASGITransport, AsyncClient
 from ofo.adjustment.preferences import from_values
 from ofo.settings import defaults as registry_defaults
-from ofo_app import background, scenario_mode, strategy_alert_style_store
+from ofo_app import background, playbook_store, scenario_mode, strategy_alert_style_store
 from ofo_app import db as app_db
 from ofo_app.config import get_settings
 from sqlalchemy import text
@@ -106,12 +106,21 @@ async def _net(sid: int) -> dict[int, int]:
     return {int(c): int(n) for c, n in rows}
 
 
+async def give_plan(sid: int) -> None:
+    """ADR-330 (11): only a strategy's own plan is watched, so the seeded condor gets a plan copied from the system
+    iron condor playbook (the plan sheet's "Use playbook as is"). Call after ``_reset_engine``."""
+    async with _engine().begin() as conn:
+        system = await playbook_store.active_for(conn, "owner", "ic")
+        await playbook_store.accept_plan(conn, "owner", sid, system.id)
+
+
 async def _core(app_engine) -> None:  # noqa: PLR0915 - one readable walk of the proof
     scn = scenario_mode.load(PATH_ID)
     await load_library(app_engine)  # the whole library's list, once per database
     await app_engine.dispose()  # from here on ONE engine (the app's) holds every connection
     sid = await seed_mod.seed(PATH_ID)  # paper entry at frame 0 (the base position's entry fills)
     _reset_engine()
+    await give_plan(sid)
     assert await _rows("SELECT scenario_id FROM public.strategies WHERE id = :s", s=sid) == [(PATH_ID,)]
     entry_orders = (await _rows("SELECT count(*) FROM public.paper_orders WHERE strategy_id = :s", s=sid))[0][0]
     async with _engine().connect() as conn:
@@ -185,7 +194,11 @@ async def _core(app_engine) -> None:  # noqa: PLR0915 - one readable walk of the
         assert placed.status_code == CREATED, placed.text
         new = (await _rows("SELECT id, price FROM public.paper_orders WHERE strategy_id = :s ORDER BY id",
                            s=sid))[before:]
-        assert [format(p, "f") for _i, p in new] == [o["price"] for o in orders]  # fill = frame 6 mid (REQ-109 AC-1)
+        # fill = frame 6 mid (REQ-109 AC-1). The batch is against an open position, so it is RECORDED buys first,
+        # buy-backs of shorts before other buys (D-02; REQ-159 AC-6 "short buy-backs before long sales"); the
+        # request order above is not the stored order. Stable among equals.
+        recorded = sorted(orders, key=lambda o: (o["side"] != "BUY", o["kind"] != "exit"))
+        assert [format(p, "f") for _i, p in new] == [o["price"] for o in recorded]
         timeline = (await _rows("SELECT timeline FROM public.adjustment_suggestions WHERE id = :r", r=record[0]))[0][0]
         placed_events = [e for e in timeline if e.get("event") == "orders_placed"]
         assert [sorted(e["order_ids"]) for e in placed_events] == [sorted(i for i, _p in new)]  # linked

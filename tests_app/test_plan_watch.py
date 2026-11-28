@@ -1,0 +1,431 @@
+"""P10 (ADR-330 (13), (11)): GET /api/strategies/{id}/plan-watch, the live "Plan watch" lines: one per trigger with
+fires at / now / distance / state, from the one engine's evaluation (the adjustment check) and the trigger store.
+Answer states: plan -> lines; no plan -> the NO_PLAN_TEXT sentence, no plan lines, armed triggers still listed;
+prices not live -> state paused, no ``now``; strategy not found -> 404; evaluation unreadable -> refusal, no lines.
+"""
+from __future__ import annotations
+
+import asyncio
+import datetime
+import re
+from decimal import Decimal
+
+from httpx import ASGITransport, AsyncClient
+from ofo.errors.explanations import NO_PLAN_TEXT
+from ofo_app import db as app_db
+from ofo_app import paper_store, paper_trigger_store, price_budget
+from test_adjustment_check import (
+    _reset_engine,
+    _seeded,
+    app_db_url,  # noqa: F401 - the fixture of the check tests
+)
+
+OK, NOT_FOUND = 200, 404
+KEYS = {"key", "kind", "label", "unit", "fires_at", "now", "distance_rs", "distance_pct", "state", "reason"}
+STATES = {"watching", "fired", "not_applicable", "not_computable", "paused"}
+NA_CALL = "Not applicable: the call side is closed"
+NA_PUT = "Not applicable: the put side is closed"
+
+
+async def _arm(app_engine, sid: int) -> None:
+    """One armed index exit (above) and a leg stop on each of two open short legs."""
+    async with app_engine.begin() as conn:
+        orders = await paper_store.load(conn, sid)
+        shorts = sorted({o.order.contract_id for o in orders if o.order.side == "SELL"})[:2]
+        await paper_trigger_store.add(conn, sid, paper_trigger_store.NewTrigger(
+            "conditional_exit", "above", Decimal("23400"), underlying="NIFTY"))
+        for cid in shorts:
+            await paper_trigger_store.add(conn, sid, paper_trigger_store.NewTrigger(
+                "leg_stop", "above", Decimal("90"), contract_id=cid))
+
+
+async def _watch(strategy_id: int) -> tuple[int, dict]:
+    from ofo_app.main import create_app  # noqa: PLC0415 - the env must be set first
+    _reset_engine()
+    app = create_app()
+    async with AsyncClient(transport=ASGITransport(app=app), base_url="http://t") as ac:
+        r = await ac.get(f"/api/strategies/{strategy_id}/plan-watch")
+    await app_db.close_db()
+    return r.status_code, r.json()
+
+
+async def test_planned_condor_lines(app_db_url, monkeypatch):  # noqa: F811
+    sid = await _seeded(app_db_url, monkeypatch, "ADJ-01")
+    await _arm(app_db_url, sid)
+    status, out = await _watch(sid)
+    assert status == OK, out
+    assert out["plan_state"] == "planned" and out["no_plan_text"] is None
+    lines = out["lines"]
+    assert all(set(x) >= KEYS and x["state"] in STATES for x in lines), lines
+    kinds = [x["kind"] for x in lines]
+    assert kinds.count("leg_stop") == 2 and kinds.count("index_exit") == 1  # noqa: PLR2004
+    by_key = {x["key"]: x for x in lines}
+    assert {"T-07", "T-06", "stop.credit_x"} <= set(by_key), sorted(by_key)  # target, loss stop, 2x-credit stop
+    assert by_key["T-07"]["kind"] == "target" and by_key["T-06"]["kind"] == "stop"
+    index = next(x for x in lines if x["kind"] == "index_exit")
+    assert (index["fires_at"], index["state"]) == ("23400.00", "watching")
+    assert index["now"] == "23050.00" and index["distance_rs"] == "350.00"  # the scenario's spot, 23400 - 23050
+    assert out["armed_heading"] is not None
+    for leg in (x for x in lines if x["kind"] == "leg_stop"):  # items 5, 6 (27 Nov): date style, level, side, price
+        assert leg["label"].endswith(f": fires when the price rises above 90.00; price now {leg['now']}"), leg["label"]
+        assert not re.search(r"\d{4}-\d{2}-\d{2}", leg["label"])
+        assert re.search(r"on NIFTY \d{1,2} [A-Z][a-z]{2} \d+ (CE|PE):", leg["label"])
+
+
+async def test_no_plan_sentence_and_armed_triggers_still_listed(app_db_url, monkeypatch):  # noqa: F811
+    sid = await _seeded(app_db_url, monkeypatch, "ADJ-43", plan=False)
+    await _arm(app_db_url, sid)
+    status, out = await _watch(sid)
+    assert status == OK, out
+    assert out["plan_state"] == "no_plan" and out["no_plan_text"] == NO_PLAN_TEXT
+    assert [x["kind"] for x in out["lines"] if x["kind"] in ("target", "stop", "credit_stop", "rule")] == []
+    assert sorted(x["kind"] for x in out["lines"]) == ["index_exit", "leg_stop", "leg_stop"]
+
+
+async def test_unknown_strategy_is_404(app_db_url, monkeypatch):  # noqa: F811
+    await _seeded(app_db_url, monkeypatch, "ADJ-01")
+    status, _out = await _watch(987654)
+    assert status == NOT_FOUND
+
+
+async def test_prices_not_live_every_line_is_paused_with_no_now(app_db_url, monkeypatch):  # noqa: F811
+    from ofo_app import adjustment_check as check  # noqa: PLC0415
+
+    sid = await _seeded(app_db_url, monkeypatch, "ADJ-01")
+    await _arm(app_db_url, sid)
+    monkeypatch.setattr(check, "prices_fresh", lambda _ctx: False)
+    status, out = await _watch(sid)
+    assert status == OK, out
+    assert out["lines"] and all(x["state"] in ("paused", "not_computable", "not_applicable") for x in out["lines"])
+    assert all(x["now"] is None and x["distance_rs"] is None for x in out["lines"])  # absent, never 0
+    assert {x["state"] for x in out["lines"] if x["kind"] in ("index_exit", "leg_stop")} == {"paused"}
+    for leg in (x for x in out["lines"] if x["kind"] == "leg_stop"):  # no price: the level and side, no "price now"
+        assert leg["label"].endswith(": fires when the price rises above 90.00"), leg["label"]
+    target = next(x for x in out["lines"] if x["kind"] == "target")
+    assert target["state"] in ("paused", "not_computable")  # the check itself reads a stale price as not checked
+
+
+async def test_records_store_unreadable_is_a_refusal_with_no_lines(app_db_url, monkeypatch):  # noqa: F811
+    from ofo_app import playbook_store  # noqa: PLC0415
+    from sqlalchemy.exc import OperationalError  # noqa: PLC0415
+
+    sid = await _seeded(app_db_url, monkeypatch, "ADJ-01")
+
+    async def broken(*_a, **_k):
+        raise OperationalError("SELECT", {}, Exception("connection lost"))
+    monkeypatch.setattr(playbook_store, "open_suggestions", broken)
+    status, out = await _watch(sid)
+    assert status == 503 and "lines" not in out, out  # noqa: PLR2004 - Failure.UPSTREAM_BUSY
+
+
+async def _exit_side(app_engine, sid: int, kind: str) -> None:
+    """Exit every open leg of one side ("CE" / "PE") with a reducing order at a later time (as the book does it)."""
+    import datetime  # noqa: PLC0415
+
+    from ofo_app import tracked_contracts  # noqa: PLC0415
+    from ofo_app.paper_book import NewOrder  # noqa: PLC0415
+    from ofo_app.routes.paper import identity_of  # noqa: PLC0415
+
+    async with app_engine.begin() as conn:
+        orders = await paper_store.load(conn, sid)
+        ids = sorted({o.order.contract_id for o in orders})
+        found = {c.contract_id: c for c in await tracked_contracts.resolve(conn, ids)}
+        net: dict[int, int] = {}
+        for o in orders:
+            net[o.order.contract_id] = net.get(o.order.contract_id, 0) + (
+                o.order.quantity if o.order.side == "BUY" else -o.order.quantity)
+        later = max(o.order.placed_at for o in orders) + datetime.timedelta(minutes=30)
+        closing = [NewOrder(cid, "SELL" if q > 0 else "BUY", abs(q), Decimal("10"), "exit", later)
+                   for cid, q in net.items() if q and identity_of(found[cid])[1].value == kind]
+        assert len(closing) == 2, closing  # noqa: PLR2004 - a condor side has two legs
+        await paper_store.place(conn, "owner", sid, closing)
+
+
+async def _with_side_rule(app_engine, sid: int) -> None:
+    """The system iron condor plan has no rule that needs a side (T-05, one side's value x the other's, is off and in
+    no rule), so the strategy gets its own plan: the system rules plus a rule on T-05, switched on."""
+    import copy  # noqa: PLC0415
+
+    from ofo_app import playbook_store  # noqa: PLC0415
+
+    async with app_engine.begin() as conn:
+        system = await playbook_store.active_for(conn, "owner", "ic")
+        mine = await playbook_store.duplicate(conn, "owner", system.id, f"Side rule {sid}")
+        body = copy.deepcopy(mine.body)
+        body["triggers"]["T-05"]["on"] = True
+        body["rules"].append({"any_of": ["T-05"], "id": "T-05"})
+        saved = await playbook_store.save_in_place(conn, "owner", mine.id, body, mine.version)
+        await playbook_store.accept_plan(conn, "owner", sid, saved.id)
+
+
+async def test_closed_call_side_rules_read_not_applicable_and_put_side_keeps_working(app_db_url, monkeypatch):  # noqa: F811
+    """ADR-330 (2)(a), P10: the call side fully exited -> each rule that needs the call side reads "Not applicable: the
+    call side is closed" (state not_applicable, the existing state / reason fields); the rules that still fit keep
+    their own state."""
+    sid = await _seeded(app_db_url, monkeypatch, "ADJ-01")
+    await _with_side_rule(app_db_url, sid)
+    status, before = await _watch(sid)
+    assert status == OK, before
+    assert not [x for x in before["lines"] if x["reason"] == NA_CALL]  # nothing closed yet
+    assert next(x for x in before["lines"] if x["key"] == "T-05")["state"] in ("watching", "fired")
+    await _exit_side(app_db_url, sid, "CE")
+    status, out = await _watch(sid)
+    assert status == OK, out
+    shown = {x["key"]: x for x in out["lines"] if x["section"] == "plan"}
+    na = {k: x for k, x in shown.items() if x["state"] == "not_applicable"}
+    assert set(na) == {"T-05"}, shown  # the one rule that needs both sides; every other rule still fits
+    for x in na.values():
+        assert x["reason"] == NA_CALL, x
+        assert x["now"] is None and x["fires_at"] is None and x["distance_rs"] is None and x["distance_pct"] is None
+    kept = [x for x in shown.values() if x["state"] != "not_applicable"]
+    assert {"T-07", "T-06"} <= {x["key"] for x in kept}  # target and loss stop are not side rules
+    assert {x["state"] for x in kept if x["key"] in ("T-07", "T-06")} <= {"watching", "fired"}  # they keep working
+    assert {x["state"] for x in kept} <= {"watching", "fired", "not_computable"}, kept  # each its own state
+    assert all(x["reason"] != NA_CALL for x in kept)
+
+
+async def test_closed_put_side_reads_put_and_unreadable_entry_judges_no_side(app_db_url, monkeypatch):  # noqa: F811
+    sid = await _seeded(app_db_url, monkeypatch, "ADJ-02")  # its own strategy: the call test closed ADJ-01's call side
+    await _with_side_rule(app_db_url, sid)
+    await _exit_side(app_db_url, sid, "PE")
+    status, out = await _watch(sid)
+    assert status == OK, out
+    reasons = {x["reason"] for x in out["lines"] if x["state"] == "not_applicable" and x["section"] == "plan"}
+    assert reasons == {NA_PUT}, reasons
+    from ofo_app.routes import plan_watch as pw  # noqa: PLC0415
+    monkeypatch.setattr(pw, "_closed", lambda _run: frozenset())  # an unreadable entry: nothing judged closed
+    status, out = await _watch(sid)
+    assert status == OK and not [x for x in out["lines"] if x["reason"] == NA_PUT], out
+
+
+async def test_no_database_connection_is_held_while_the_market_is_read(app_db_url, monkeypatch):  # noqa: F811
+    """The API pool is small (4): plan-watch gives its connection back before the (slow) price reads, as the adjustment
+    check does (D-36 c). The market read is wrapped: the pool must have nothing checked out while it runs."""
+    from ofo_app.adjustment_readers import read_market  # noqa: PLC0415
+    from ofo_app.main import create_app  # noqa: PLC0415
+    from ofo_app.routes.adjustment import get_market_reader  # noqa: PLC0415
+
+    sid = await _seeded(app_db_url, monkeypatch, "ADJ-01")
+    held: list[int] = []
+
+    async def slow_market(tracked, ctx):
+        held.append(app_db.get_engine().pool.checkedout())
+        return await read_market(tracked, ctx)
+    _reset_engine()
+    app = create_app()
+    app.dependency_overrides[get_market_reader] = lambda: slow_market
+    async with AsyncClient(transport=ASGITransport(app=app), base_url="http://t") as ac:
+        r = await ac.get(f"/api/strategies/{sid}/plan-watch")
+    await app_db.close_db()
+    assert r.status_code == OK, r.text
+    assert held == [0], held
+
+
+async def _watch_dep(strategy_id: int, dep, reader) -> tuple[int, dict]:
+    from ofo_app.main import create_app  # noqa: PLC0415 - the env must be set first
+    _reset_engine()
+    app = create_app()
+    app.dependency_overrides[dep] = lambda: reader
+    async with AsyncClient(transport=ASGITransport(app=app), base_url="http://t") as ac:
+        # a regression (the budget removed) raises TimeoutError here instead of hanging the run
+        r = await asyncio.wait_for(ac.get(f"/api/strategies/{strategy_id}/plan-watch"), 5)
+    await app_db.close_db()
+    return r.status_code, r.json()
+
+
+# The two cut-market tests below judge the plan against the server's own clock (``read_market(tracked, None)`` stamps
+# ``server_now()``). The seeded plan has a "before the weekend, from 15:00" rule that fires on a Friday after 15:00 IST,
+# so unpinned they failed every Friday afternoon (27 Nov 2026, 22:30 IST). They are pinned to a mid-week market time.
+CLOCK_PIN = datetime.datetime(2026, 11, 25, 5, 30, tzinfo=datetime.UTC)  # Wednesday 25 Nov 2026, 11:00 IST
+
+
+def _pin_server_clock(monkeypatch, at=CLOCK_PIN) -> None:
+    monkeypatch.setattr("ofo_app.adjustment_readers.server_now", lambda: at)
+
+
+async def test_a_hanging_market_read_is_cut_at_the_budget_and_answers_not_live(app_db_url, monkeypatch):  # noqa: F811
+    """REQ-119 AC-4: the price read never answers; the route still answers (its budget cuts the read), with the existing
+    "prices not live" shape: every line paused / not checked, no `now`, no distance (absent, never 0). The cut-off read
+    is cancelled (not left running) and held no database connection while it waited. No clock is measured: a read that
+    was not cut would hang this test."""
+    from ofo_app.routes.adjustment import get_market_reader  # noqa: PLC0415
+
+    sid = await _seeded(app_db_url, monkeypatch, "ADJ-01")
+    _pin_server_clock(monkeypatch)
+    await _arm(app_db_url, sid)
+    monkeypatch.setattr(price_budget, "PRICE_BUDGET_S", 0.05)  # Lane J2: the one budget (watch_of wraps the readers)
+    seen: dict[str, object] = {"held": None, "cancelled": False}
+
+    async def hangs(_tracked, _ctx):
+        seen["held"] = app_db.get_engine().pool.checkedout()
+        try:
+            await asyncio.Event().wait()
+        except asyncio.CancelledError:
+            seen["cancelled"] = True
+            raise
+    status, out = await _watch_dep(sid, get_market_reader, hangs)
+    assert status == OK, out
+    assert seen == {"held": 0, "cancelled": True}, seen
+    assert out["lines"] and all(x["state"] in ("paused", "not_computable", "not_applicable") for x in out["lines"])
+    assert all(x["now"] is None and x["distance_rs"] is None for x in out["lines"])
+    assert {x["state"] for x in out["lines"] if x["kind"] in ("index_exit", "leg_stop")} == {"paused"}
+    assert set(out) == {"strategy_id", "as_of", "as_of_text", "plan_state", "no_plan_text", "armed_heading", "paused",
+                        "lines"}  # the reply fields are the existing ones
+
+
+async def test_a_hanging_index_quote_is_cut_at_the_budget_and_cancelled(app_db_url, monkeypatch):  # noqa: F811
+    """The quote is asked only when the feed holds no usable index tick (ADR-330 (39); REQ-118: the door judges the tick
+    first), so this market has none. The quote never answers: the budget cuts and cancels it, the route answers
+    (no hang) with the quote FAILED: no line states a live figure (absent, never 0)."""
+    import dataclasses  # noqa: PLC0415
+
+    from ofo.marketdata.spot_source import SourceReading, SourceState  # noqa: PLC0415
+    from ofo_app.adjustment_readers import read_market  # noqa: PLC0415
+    from ofo_app.main import create_app  # noqa: PLC0415
+    from ofo_app.routes.adjustment import get_market_reader, get_rest_spot_reader  # noqa: PLC0415
+
+    sid = await _seeded(app_db_url, monkeypatch, "ADJ-01")
+    monkeypatch.setattr(price_budget, "PRICE_BUDGET_S", 0.05)  # Lane J2: the one budget (watch_of wraps the readers)
+    seen = {"cancelled": False}
+
+    async def no_tick(tracked, ctx):  # the real read, with the feed's index tick taken away
+        market = await read_market(tracked, ctx)
+        return dataclasses.replace(market, feed=SourceReading(SourceState.ABSENT), feed_quote=None)
+
+    async def hangs(_underlying):
+        try:
+            await asyncio.Event().wait()
+        except asyncio.CancelledError:
+            seen["cancelled"] = True
+            raise
+    _reset_engine()
+    app = create_app()
+    app.dependency_overrides[get_market_reader] = lambda: no_tick
+    app.dependency_overrides[get_rest_spot_reader] = lambda: hangs
+    async with AsyncClient(transport=ASGITransport(app=app), base_url="http://t") as ac:
+        r = await asyncio.wait_for(ac.get(f"/api/strategies/{sid}/plan-watch"), 5)
+    await app_db.close_db()
+    out = r.json()
+    assert r.status_code == OK, out
+    assert seen["cancelled"] is True, seen
+    assert out["lines"] and all(x["now"] is None and x["distance_rs"] is None for x in out["lines"]), out["lines"]
+
+async def test_a_quote_answering_after_the_market_was_cut_is_not_asked(app_db_url, monkeypatch):  # noqa: F811
+    """The market read is cut (not connected, ctx still live); a REST reader that would answer a STATED spot at once
+    must not be called: the quote reads FAILED, so the answer is the plain "prices not live" one (never a 500)."""
+    from ofo.marketdata.spot_source import SourceReading, SourceState  # noqa: PLC0415
+    from ofo_app.main import create_app  # noqa: PLC0415
+    from ofo_app.routes.adjustment import get_market_reader, get_rest_spot_reader  # noqa: PLC0415
+
+    sid = await _seeded(app_db_url, monkeypatch, "ADJ-01")
+    _pin_server_clock(monkeypatch)
+    await _arm(app_db_url, sid)
+    monkeypatch.setattr(price_budget, "PRICE_BUDGET_S", 0.05)  # Lane J2: the one budget (watch_of wraps the readers)
+    called: list[str] = []
+
+    async def hangs(_tracked, _ctx):
+        await asyncio.Event().wait()
+
+    async def instant(underlying):
+        called.append(underlying)
+        return SourceReading(SourceState.STATED, Decimal("23050"))
+    _reset_engine()
+    app = create_app()
+    app.dependency_overrides[get_market_reader] = lambda: hangs
+    app.dependency_overrides[get_rest_spot_reader] = lambda: instant
+    async with AsyncClient(transport=ASGITransport(app=app), base_url="http://t") as ac:
+        r = await asyncio.wait_for(ac.get(f"/api/strategies/{sid}/plan-watch"), 5)
+    await app_db.close_db()
+    out = r.json()
+    assert r.status_code == OK, out
+    assert called == [], called
+    assert out["lines"] and all(x["state"] in ("paused", "not_computable", "not_applicable") for x in out["lines"])
+    assert all(x["now"] is None and x["distance_rs"] is None for x in out["lines"])
+
+
+async def test_a_read_inside_the_budget_is_untouched(app_db_url, monkeypatch):  # noqa: F811
+    """The good answer: the budget changes nothing when the reads answer (live figures as before)."""
+    sid = await _seeded(app_db_url, monkeypatch, "ADJ-01")
+    status, out = await _watch(sid)
+    assert status == OK and any(x["now"] is not None for x in out["lines"]), out
+
+
+async def test_a_just_saved_draft_reads_as_no_plan_never_not_found(app_db_url, monkeypatch):  # noqa: F811
+    """Issue-list row 3 (27 Nov): a draft saved in the builder shows "This strategy was not found" in Plan watch."""
+    from ofo.strategy import stored_form as sf  # noqa: PLC0415
+    from ofo_app import strategy_store  # noqa: PLC0415
+
+    sid = await _seeded(app_db_url, monkeypatch, "ADJ-01")
+    async with app_db_url.begin() as conn:
+        order = next(o for o in await paper_store.load(conn, sid) if o.order.side == "SELL")
+        saved = await strategy_store.build_definition(conn, "NIFTY", [sf.LegChoice(
+            contract_id=order.order.contract_id, action=sf.Action.SELL, quantity=order.order.quantity)], rules_ref="t3")
+        draft = await strategy_store.save_draft(conn, "owner", saved)
+    status, out = await _watch(draft.id)
+    assert status == OK, out
+    assert out["plan_state"] == "no_plan" and out["lines"] == []
+    assert (await _watch(draft.id + 100000))[0] == NOT_FOUND  # a strategy that does not exist stays "not found"
+
+
+REAL_LINE = "Real position: exit and protect it in Kite. Stops and alerts here cover paper trades only."
+UNKNOWN_LINE = ("Cannot tell whether this is a real or a paper position, so Exit and Stops are not shown. "
+                "Check it in Kite.")
+
+
+def _armed_only(out: dict) -> list[dict]:
+    return [x for x in out["lines"] if x["kind"] in ("index_exit", "leg_stop")]
+
+
+async def test_r6_a_held_real_position_reads_its_armed_lines_not_applicable_with_no_price(app_db_url, monkeypatch):  # noqa: F811
+    """R6 (ADR-330 (64)): the armed rows stay stored, but a held (real) position never shows them as live: each reads
+    ``not_applicable`` with the position-kind sentence, no price and no distance."""
+    from ofo.marketdata.kite_provider import IST  # noqa: PLC0415
+    from ofo_app import held_entry_store  # noqa: PLC0415
+
+    sid = await _seeded(app_db_url, monkeypatch, "ADJ-01")
+    await _arm(app_db_url, sid)
+    async with app_db_url.begin() as conn:
+        await held_entry_store.record(conn, sid, datetime.datetime(2026, 11, 27, 10, 0, tzinfo=IST), "Zerodha")
+    status, out = await _watch(sid)
+    assert status == OK, out
+    armed = _armed_only(out)
+    assert {x["kind"] for x in armed} == {"index_exit", "leg_stop"}
+    for x in armed:
+        assert (x["state"], x["now"], x["distance_rs"], x["distance_pct"], x["reason"]) == (
+            "not_applicable", None, None, None, REAL_LINE), x
+
+
+async def test_r6_an_unknown_kind_reads_its_armed_lines_not_applicable_with_the_unknown_sentence(app_db_url,  # noqa: F811
+                                                                                                monkeypatch):
+    from ofo_app import strategy_store  # noqa: PLC0415
+
+    sid = await _seeded(app_db_url, monkeypatch, "ADJ-01")
+    await _arm(app_db_url, sid)
+
+    async def unknown(_conn, ids):
+        return dict.fromkeys(ids, "unknown")
+    monkeypatch.setattr(strategy_store, "kinds_of", unknown)
+    status, out = await _watch(sid)
+    assert status == OK, out
+    armed = _armed_only(out)
+    assert len(armed) >= 3  # noqa: PLR2004 - the three armed here (a shared test database keeps earlier rows)
+    for x in armed:
+        assert (x["state"], x["now"], x["distance_rs"], x["distance_pct"], x["reason"]) == (
+            "not_applicable", None, None, None, UNKNOWN_LINE), x
+
+
+async def test_f4_a_failing_kind_read_is_the_not_available_refusal_and_stores_nothing(app_db_url, monkeypatch):  # noqa: F811
+    """F4: ``kinds_of`` raises ``SQLAlchemyError`` -> 503 with the catalogue sentence, never a plain 500, no lines."""
+    from ofo.errors import render  # noqa: PLC0415
+    from ofo_app import strategy_store  # noqa: PLC0415
+    from sqlalchemy.exc import OperationalError  # noqa: PLC0415
+
+    sid = await _seeded(app_db_url, monkeypatch, "ADJ-01")
+    await _arm(app_db_url, sid)
+
+    async def broken(*_a, **_k):
+        raise OperationalError("SELECT", {}, Exception("connection lost"))
+    monkeypatch.setattr(strategy_store, "kinds_of", broken)
+    status, out = await _watch(sid)
+    assert status == 503 and "lines" not in out, out  # noqa: PLR2004 - Failure.UPSTREAM_BUSY
+    assert out["what_happened"] == render("user_input_request_not_available").what_happened

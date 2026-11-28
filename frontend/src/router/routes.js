@@ -1,7 +1,7 @@
 // Route table split out of index.js (W-055) so the responsive check can read it in Node without a browser history.
 // Structure adapted from abhayla/algochanakya@bf9faf7:frontend/src/router/index.js (ADR-047): lazy routes, meta flags,
 // catch-all. The route table itself is new: the seven sections (REQ-009), /settings/* and /health-status.
-import { SECTIONS, ACCOUNT_ITEMS, ACCOUNT_LABEL, FULL_WIDTH_ROUTES, LANDING_PATH, firstBuiltPath } from './nav.js'
+import { SECTIONS, ACCOUNT_ITEMS, ACCOUNT_MENU_ITEMS, ACCOUNT_LABEL, FULL_WIDTH_ROUTES, LANDING_PATH, firstBuiltPath } from './nav.js'
 import { requireOrderPath } from '../lib/orderPath.js'
 
 const Placeholder = () => import('../pages/PlaceholderPage.vue')
@@ -30,6 +30,8 @@ const REAL_PAGES = {
   'strategies-completed-strategies': () => import('../pages/MyStrategiesPage.vue'), // W-109 (completedOnly)
 }
 // W-111: which view each Positions page shows (route meta.view).
+// ADR-330 (56): routes whose page mounts no price notice of its own: the layout mounts the one notice above them (AppLayout > LayoutPriceNotice)
+const PRICE_NOTICE_ROUTES = new Set(['strategies/my-strategies'])
 const POSITION_VIEWS = { 'positions/current-positions': 'current', 'positions/strategy-linked-positions': 'linked' }
 
 // Account pages with a real page, keyed by slug. GC-6 BILLING-SHELL (ADR-146): three text-only billing pages.
@@ -55,7 +57,7 @@ const sectionRoutes = SECTIONS.flatMap((s) => [
     path: `/${s.key}/${slug}`,
     name: `${s.key}-${slug}`,
     component: REAL_PAGES[`${s.key}-${slug}`] ?? Placeholder,
-    meta: { title: label, section: s.key, parent: s.label, ...(POSITION_VIEWS[`${s.key}/${slug}`] ? { view: POSITION_VIEWS[`${s.key}/${slug}`] } : {}), ...(slug === 'completed-strategies' ? { completedOnly: true } : {}) },
+    meta: { title: label, section: s.key, parent: s.label, ...(POSITION_VIEWS[`${s.key}/${slug}`] ? { view: POSITION_VIEWS[`${s.key}/${slug}`] } : {}), ...(slug === 'completed-strategies' ? { completedOnly: true } : {}), ...(PRICE_NOTICE_ROUTES.has(`${s.key}/${slug}`) ? { priceNotice: true } : {}) },
   })),
 ])
 
@@ -63,7 +65,8 @@ const settingsRoutes = [
   {
     path: '/settings',
     name: 'settings',
-    redirect: firstBuiltPath('settings'),
+    // O-A-08: /settings lands on the page the Settings menu link opens (app-settings), not the first account item
+    redirect: ACCOUNT_MENU_ITEMS.some(([slug]) => slug === 'app-settings') ? '/settings/app-settings' : firstBuiltPath('settings'),
     meta: {
       title: ACCOUNT_LABEL,
       section: 'settings',

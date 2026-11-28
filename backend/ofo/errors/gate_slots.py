@@ -297,7 +297,7 @@ class Symbol(SlotType):
 
 
 class Clock(SlotType):
-    """A timezone-aware time shown as the IST clock time with seconds, "10:42:17 AM" (ADR-015's own example)."""
+    """A timezone-aware time shown as the 24-hour IST clock time with seconds, "10:42:17 IST" (ADR-326 (4))."""
 
     @staticmethod
     def validate(value: object) -> None:
@@ -305,16 +305,42 @@ class Clock(SlotType):
 
     @staticmethod
     def format(value: datetime) -> str:
-        ist = value.astimezone(_IST)
-        hour = ist.hour % 12 or 12
-        half = "AM" if ist.hour < 12 else "PM"
-        return f"{hour:02d}:{ist.minute:02d}:{ist.second:02d} {half}"
+        return f"{value.astimezone(_IST).strftime('%H:%M:%S')} IST"
 
 
 # --- Round 9 part 4: Strategy Guard rows and exchange contract symbols ------------------------------------------------
 
 _CONTRACT_PATTERN = re.compile(r"[A-Z][A-Z0-9&-]{0,39}")
 RISK_METRICS = ("max profit", "max loss", "breakevens", "net premium", "margin", "position")
+
+
+_CONTRACT_NAME_PATTERN = re.compile(r"[A-Z][A-Z0-9&-]{0,39} [0-9]{1,2} [A-Z][a-z]{2}( [0-9]+(\.[0-9]+)? (CE|PE)| FUT)")
+
+
+class ContractName(SlotType):
+    """A contract as the screens print it (ofo.strategy.definition.display_contract): "NIFTY 1 Dec 25900 CE"."""
+
+    @staticmethod
+    def validate(value: object) -> None:
+        if not isinstance(value, str) or not _CONTRACT_NAME_PATTERN.fullmatch(value):
+            raise ValueError(f"ContractName slot must be a printed contract, got {value!r:.40}")
+
+    @staticmethod
+    def format(value: str) -> str:
+        return str.__str__(value)
+
+
+class SideWord(SlotType):
+    """A leg's side as a word: Buy or Sell."""
+
+    @staticmethod
+    def validate(value: object) -> None:
+        if type(value) is not str or value not in ("Buy", "Sell"):
+            raise ValueError(f"SideWord slot must be Buy or Sell, got {value!r:.20}")
+
+    @staticmethod
+    def format(value: str) -> str:
+        return value
 
 
 class ContractSymbol(SlotType):

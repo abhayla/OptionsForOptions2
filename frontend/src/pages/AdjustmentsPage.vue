@@ -1,7 +1,7 @@
 <!-- GC-ADJ2 step 3 (REQ-160 AC-1..AC-4, REQ-158 AC-3/AC-4, REQ-159): Strategies > Adjustments, the playbook editor.
      Pick a strategy type and a playbook (system first, then the user's own); the playbook opens with every value filled
-     in. Seven steps edit the working copy; the plain-words summary beside it is rebuilt from that copy; Test sends the
-     UNSAVED copy to POST /api/playbooks/test. Every refusal is the server's sentence, shown verbatim. The browser
+     in. Seven steps edit the working copy; the plain-words summary beside it is rebuilt from that copy; the Test step only says
+     testing on past expiries is outside V1 (D-54). Delete asks "Delete this playbook?" first. Every refusal is the server's sentence, shown verbatim. The browser
      computes no figure: values, thresholds and stage days are the body's or the answer's own (ADR-008). System or own,
      Draft and active come from the server's answer (is_system, draft, active), never inferred here. -->
 <template>
@@ -35,7 +35,8 @@
       </span>
     </header>
 
-    <p v-if="refusal" class="mt-3 rounded-lg border border-error bg-error-soft px-3 py-2 text-sm text-error" role="alert" data-testid="pb-refusal">{{ refusal }}</p>
+    <LoadFailed v-if="loadFailed && !refusal" class="mt-3" :text="LIST_FAILED_TEXT" prefix="pb-load" @retry="start" />
+    <p v-if="refusal" class="mt-3 rounded-lg border border-error bg-error-soft px-3 py-2 text-sm text-error" role="alert" data-testid="pb-refusal">{{ refusal }}<button v-if="loadFailed" type="button" class="ml-2 rounded border border-line bg-surface px-2 py-1 text-xs font-medium text-ink" data-testid="pb-load-retry" @click="start">Retry</button></p>
     <p v-if="notice" class="mt-3 rounded-lg border border-line bg-surface-muted px-3 py-2 text-sm" data-testid="pb-notice">{{ notice }}</p>
 
     <div v-if="current && work && tradeId" class="mt-3 flex flex-wrap items-end gap-2">
@@ -45,7 +46,12 @@
     <div v-else-if="current && work" class="mt-3 flex flex-wrap items-end gap-2">
       <button v-if="!current.active" type="button" class="btn" data-testid="pb-activate" @click="activate">Make active</button>
       <button v-if="!current.is_system" type="button" class="btn" data-testid="pb-save" :disabled="!dirty" @click="saveInPlace">Save changes</button>
-      <button v-if="!current.is_system" type="button" class="btn" data-testid="pb-delete" @click="remove">Delete</button>
+      <button v-if="!current.is_system && !confirmingDelete" type="button" class="btn" data-testid="pb-delete" @click="confirmingDelete = true">Delete</button>
+      <span v-if="!current.is_system && confirmingDelete" class="inline-flex items-center gap-2" role="group" data-testid="pb-delete-confirm">
+        <span class="text-sm font-medium">{{ PLAYBOOK_DELETE_CONFIRM_TEXT }}</span>
+        <button type="button" class="btn" data-testid="pb-delete-yes" @click="remove">Delete</button>
+        <button type="button" class="btn" data-testid="pb-delete-cancel" @click="confirmingDelete = false">Cancel</button>
+      </span>
       <label class="flex flex-col gap-1 text-xs font-medium text-ink-muted">New playbook name <input v-model="newName" class="field w-64" data-testid="pb-new-name" maxlength="80"></label>
       <button type="button" class="btn btn-primary" data-testid="pb-save-as" :disabled="!newName" @click="saveAsNew">Save as new playbook</button>
       <span v-if="current.is_system && dirty" class="text-sm text-warn" data-testid="pb-system-hint">You changed a system playbook. Save it as a new playbook to keep the changes.</span>
@@ -147,25 +153,7 @@
 
         <template v-else>
           <h2 class="h2">Test on my strategies</h2>
-          <p class="mb-3 text-sm text-ink-muted" data-testid="pb-past-note">{{ pastNote || labels.pastNote }}</p>
-          <button type="button" class="btn btn-primary" data-testid="pb-run-test" :disabled="testing" @click="runTest">Test {{ dirty ? 'unsaved changes' : 'this playbook' }}</button>
-          <p v-if="testRefusal" class="mt-3 rounded-lg border border-error bg-error-soft px-3 py-2 text-sm text-error" role="alert" data-testid="pb-test-refusal">{{ testRefusal }}</p>
-          <p v-if="answer && answer.none_text" class="mt-3 text-sm" data-testid="pb-test-none">{{ said(answer.none_text) }}</p>
-          <div v-for="s in answer?.strategies ?? []" :key="s.strategy_id" class="tw mt-4" :data-testid="`pb-test-${s.strategy_id}`">
-            <h3 class="h3">{{ said(s.name) }}<span v-if="s.stage?.name"> - {{ s.stage.name }}</span></h3>
-            <p v-if="s.withheld" class="text-sm text-warn">{{ said(s.withheld) }}</p>
-            <table class="tbl">
-              <thead><tr><th>Result</th><th>Trigger</th><th>Value read</th><th>Rule</th><th>Reason</th></tr></thead>
-              <tbody>
-                <tr v-for="row in (s.results ?? []).map((r) => testRow(r, work))" :key="row.key" :data-testid="`pb-test-row-${row.key}`">
-                  <td>{{ row.kindText }}</td><td>{{ row.label }}</td>
-                  <td>{{ row.value ?? '' }}{{ row.value != null && row.unit ? ' ' + row.unit : '' }}</td>
-                  <td>{{ row.threshold ?? '' }}{{ row.threshold != null && row.unit ? ' ' + row.unit : '' }}</td>
-                  <td>{{ row.reason }}</td>
-                </tr>
-              </tbody>
-            </table>
-          </div>
+          <p class="mb-3 text-sm text-ink-muted" data-testid="pb-past-note">{{ labels.pastNote || PLAYBOOK_TEST_OUT_OF_V1_TEXT }}</p>
         </template>
       </div>
 
@@ -183,14 +171,19 @@
 
 <script setup>
 import { computed, onMounted, ref } from 'vue'
+import LoadFailed from '@/components/common/LoadFailed.vue'
+import { LIST_FAILED_TEXT } from '@/lib/listFailed'
 import { useRoute } from 'vue-router'
 import api from '@/services/api'
 import PageHeader from '@/components/common/PageHeader.vue'
 import Tabs from '@/components/common/Tabs.vue'
 import PreferencesTab from '@/components/adjustments/PreferencesTab.vue'
 import SystemPlaybookAdmin from '@/components/adjustments/SystemPlaybookAdmin.vue'
+import { PLAYBOOK_DELETE_CONFIRM_TEXT, PLAYBOOK_TEST_OUT_OF_V1_TEXT } from '@/lib/sharedStateText'
+import { PLAN_SAVE_TIMEOUT_MS } from '@/lib/adjustPlan'
+import { planSaveResult } from '@/lib/planSaveResult'
 import { STEPS, EXPIRY_KINDS, addStage, clone, dayRuleNotChecked, isDirty, labelMaps, refusalText, removeStage, ruleMembers, said, stagesOf, summaryLines,
-  testRow, valuesOf } from '@/lib/playbookEditor'
+  valuesOf } from '@/lib/playbookEditor'
 
 const route = useRoute()
 const tradeQuery = route?.query?.trade
@@ -211,17 +204,10 @@ const work = ref(null) // the working copy the steps edit
 const step = ref('basics')
 const kind = ref('weekly')
 const newName = ref('')
+const confirmingDelete = ref(false) // D-54: the Delete question is open
 const refusal = ref(null)
 const notice = ref(null)
-const answer = ref(null)
-const testRefusal = ref(null)
-const testing = ref(false)
-// GC-ADJ2 finding 22: the server bounds each strategy's reads at 8 s, 4 at a time (measured 18.4 s for ~25 saved
-// strategies on ofo_dev), longer than the client's 10 s default; as StrategyPriceChart's history read does
-const PLAYBOOK_TEST_TIMEOUT_MS = 60000
-const pastNote = ref(null)
 let readSeq = 0 // newest read wins: an answer for an earlier pick is dropped (state read after await)
-let testSeq = 0
 
 const guidanceLabel = (id) => { const k = kinds.value.find((x) => x.id === id); return k?.kind === 'guidance' ? k.label : null }
 const dirty = computed(() => isDirty(work.value, saved.value))
@@ -236,6 +222,15 @@ const approaches = computed(() => {
 })
 const allApproaches = computed(() => [...approaches.value.applicable, ...approaches.value.off_in_playbook].sort())
 const fail = (err) => { refusal.value = refusalText(err) ?? err?.message ?? null }
+// D-TD-2 (R2 FC2, board I-86): a failed LOAD (types, list, labels) says the one shared sentence with a Retry when the server sent no text of
+// its own; with the server's text its line stays and Retry sits beside it. A refused SAVE or DELETE is not a load and keeps its line.
+const loadFailed = ref(false)
+const failLoad = (err) => {
+  loadFailed.value = true
+  fail(err)
+  if (refusalText(err) == null) refusal.value = null
+}
+// plan-save-1127: this trade's rules save with no catalogue answer (timeout, dropped connection) ends on the one sentence; it is never re-sent here
 
 // the select's own value first, then the read: the handler never reads a value v-model has not written yet
 function pickType(key) { typeKey.value = key; loadList() }
@@ -259,7 +254,7 @@ async function loadTypes() {
     types.value = res.data.types
     if (!typeKey.value && types.value.length) typeKey.value = types.value[0].key
     await loadList()
-  } catch (err) { fail(err) }
+  } catch (err) { failLoad(err) }
 }
 
 async function loadList(keepId = null) {
@@ -273,7 +268,7 @@ async function loadList(keepId = null) {
     pickedId.value = keepId ?? playbooks.value.find((p) => p.active)?.id ?? playbooks.value[0]?.id ?? null
     if (pickedId.value != null) await openPicked()
     else { current.value = null; work.value = null; saved.value = null }
-  } catch (err) { fail(err) }
+  } catch (err) { failLoad(err) }
 }
 
 function show(pb) {
@@ -282,8 +277,7 @@ function show(pb) {
   kinds.value = sk ?? []
   saved.value = clone(body)
   work.value = clone(body)
-  answer.value = null
-  testRefusal.value = null
+  confirmingDelete.value = false // another playbook opened: the Delete question is for the one before
 }
 
 /** The admin saved, restored or approved a system playbook version: its body is now the one shown (REQ-169), and the
@@ -319,29 +313,18 @@ const activate = () => act(() => api.post(`/playbooks/${current.value.id}/activa
 const saveInPlace = () => act(() => api.put(`/playbooks/${current.value.id}`, { body: work.value, version: current.value.version }), async (pb) => { show(pb); await loadList(pb.id) })
 const saveAsNew = () => act(() => api.post('/playbooks', { type: typeKey.value, name: newName.value, body: work.value }), async (pb) => { newName.value = ''; show(pb); await loadList(pb.id) })
 // issue 7: from a trade, the rules are the trade's own plan copy; the only write is this one, to that trade's plan
-const saveTrade = () => act(() => api.put(tradeRules(), { body: work.value }), (pb) => show(pb))
-const remove = () => act(() => api.delete(`/playbooks/${current.value.id}`), async (out) => { await loadList(); notice.value = out.message ? said(out.message) : null })
-
-async function runTest() {
-  const seq = ++testSeq
-  testing.value = true
-  testRefusal.value = null
-  answer.value = null
-  try {
-    const res = await api.post('/playbooks/test', { type: typeKey.value, body: work.value }, { timeout: PLAYBOOK_TEST_TIMEOUT_MS })
-    if (seq !== testSeq) return
-    answer.value = res.data
-    pastNote.value = said(res.data.past_note)
-  } catch (err) {
-    if (seq !== testSeq) return
-    testRefusal.value = refusalText(err) ?? err?.message ?? null
-  } finally {
-    if (seq === testSeq) testing.value = false
-  }
+const saveTrade = async () => {
+  refusal.value = null
+  notice.value = null
+  // plan-save-1127: the shared mapping: the server's rules, the server's reason, or "Not confirmed" (never re-sent)
+  const out = await planSaveResult(async () => (await api.put(tradeRules(), { body: work.value }, { timeout: PLAN_SAVE_TIMEOUT_MS })).data, { markId: tradeId, readable: (pb) => !!pb && typeof pb === 'object' && !!pb.body && typeof pb.body === 'object' })
+  if (out.kind === 'saved') show(out.value)
+  else refusal.value = out.text
 }
+const remove = () => { confirmingDelete.value = false; return act(() => api.delete(`/playbooks/${current.value.id}`), async (out) => { await loadList(); notice.value = out.message ? said(out.message) : null }) }
 
 async function loadLabels() {
-  try { labels.value = labelMaps((await api.get('/playbooks/labels')).data) } catch (err) { fail(err) }
+  try { labels.value = labelMaps((await api.get('/playbooks/labels')).data) } catch (err) { failLoad(err) }
 }
 
 /** ?playbook=<id> (the plan sheet's Customise triggers link): open that playbook, on its own type's list. */
@@ -370,7 +353,9 @@ async function openTrade() {
   }
 }
 
-onMounted(async () => {
+async function start() {
+  loadFailed.value = false
+  refusal.value = null
   await loadLabels()
   if (tradeId) { await openTrade(); return }
   const linked = route?.query?.playbook
@@ -378,7 +363,8 @@ onMounted(async () => {
     try { types.value = (await api.get('/playbooks/types')).data.types } catch (err) { fail(err); return }
     await openFromLink(linked)
   } else await loadTypes()
-})
+}
+onMounted(start)
 </script>
 
 <style scoped>

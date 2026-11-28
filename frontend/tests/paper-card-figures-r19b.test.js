@@ -23,7 +23,7 @@ vi.mock('@/services/api', async (importActual) => {
 import PaperStrategies from '@/components/strategy/PaperStrategies.vue'
 import { PAPER_NO_FIGURE } from '@/lib/paperList'
 import { UNREADABLE_TEXT } from '@/lib/tracking'
-import { resetPaperAlerts } from '@/lib/paperAlerts'
+import { resetActiveAlerts } from '@/lib/paperAlerts'
 
 const ok = (data) => () => Promise.resolve({ data })
 const clone = (x) => JSON.parse(JSON.stringify(x))
@@ -41,7 +41,7 @@ const card = (w, id) => w.get(`[data-testid="paper-group"][data-strategy="${id}"
 const q = (c, id) => c.get(`[data-testid="${id}"]`)
 const open = (reply) => reply.strategies.find((s) => s.state !== 'EXITED')
 
-beforeEach(() => { answers = {}; resetPaperAlerts(); vi.useFakeTimers() })
+beforeEach(() => { answers = {}; resetActiveAlerts(); vi.useFakeTimers() })
 afterEach(() => vi.useRealTimers())
 
 describe('the card figures (the real reply)', () => {
@@ -84,6 +84,15 @@ describe('the card figures (the real reply)', () => {
       expect(q(c, `paper-${id}-reason`).text()).toBe(sent) // as sent: the browser writes no sentence
     }
     expect(c.text()).not.toMatch(CODE)
+  })
+
+  it('prices not live: the server sentence that Max Profit is before charges stays beside it (D-14 round 2)', async () => {
+    const BEFORE = 'Maximum profit and maximum loss are before charges and taxes: the charges could not be priced.'
+    const reply = clone(PAUSED)
+    open(reply).extremes_charges_text = BEFORE
+    answers['GET /paper/strategies'] = ok(reply)
+    const w = await show()
+    expect(q(card(w, open(reply).strategy_id), 'paper-max-profit-basis').text()).toBe(BEFORE)
   })
 
   it('prices not live: Max Profit and Breakeven stay (they need no price); Greeks are a dash with the paused sentence', async () => {

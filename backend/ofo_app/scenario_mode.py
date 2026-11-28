@@ -89,6 +89,7 @@ PAPER_ORDER_ROUTES: frozenset[tuple[str, str]] = frozenset({
     ("POST", "/paper/strategies/{strategy_id}/orders"),
     ("POST", "/paper/strategies/{strategy_id}/triggers"),
     ("DELETE", "/paper/strategies/{strategy_id}/triggers/{trigger_id}"),
+    ("POST", "/paper/strategies/{strategy_id}/triggers/{trigger_id}/keep"),  # D-03 Keep this level: re-arms a trigger
     ("POST", "/strategies/{strategy_id}/tracking/exit"),  # places paper exit orders (paper_store.place)
 })
 #: Every order route, real or paper (derived; read by the start-up classification).
@@ -107,11 +108,13 @@ NON_ORDER_ROUTES: frozenset[tuple[str, str]] = frozenset({
     # GC-ADJ2 5: a suggestion's outcome (REQ-112) is a record, no order
     ("POST", "/api/adjustment-opportunities/{suggestion_id}/dismiss"),
     ("POST", "/api/adjustment-opportunities/{suggestion_id}/acted-on"),
+    ("POST", "/api/alerts/{alert_id}/answer"),  # ADR-330 (3): an answer is a record, no order
     ("POST", "/api/strategies/leg-edit"),  # engine answer for one edited leg
     ("POST", "/api/strategies/outcome"),  # engine answer (a read)
     ("POST", "/api/strategies/{strategy_id}/adjustment-approaches"),  # REQ-155 engine answer, suggest-only (a read)
     ("POST", "/api/strategies/{strategy_id}/adjustment-plan"),  # GC-ADJ2 4: accept a plan (data, no order)
     ("PUT", "/api/strategies/{strategy_id}/adjustment-plan"),  # GC-ADJ2 4: edit the plan (data, no order)
+    ("POST", "/api/strategies/{strategy_id}/adjustment-plan/reset"),  # P8: plan back to its playbook (data)
     ("PUT", "/api/strategies/{strategy_id}/adjustment-plan/rules"),  # issue 7: this trade's own rules (data, no order)
     ("PUT", "/api/strategies/{strategy_id}/alert-style"),  # GC-ALERT1 4: pin a strategy's alert style (data, no order)
     ("PUT", "/api/strategies/{strategy_id}/monitoring-pause"),  # GC-IC1 4a A-38: pause adjustment checks (data)
@@ -125,6 +128,7 @@ NON_ORDER_ROUTES: frozenset[tuple[str, str]] = frozenset({
     ("POST", "/strategies"),
     ("PATCH", "/strategies/{strategy_id}/name"),
     ("DELETE", "/strategies/{strategy_id}"),
+    ("POST", "/strategies/bulk-delete"),  # ADR-330 (8): the single delete per id (app data, no order)
     ("POST", "/strategies/{strategy_id}/undelete"),
     ("PUT", "/strategies/{strategy_id}"),
     ("POST", "/strategies/{strategy_id}/restore/{seq}"),
@@ -841,6 +845,11 @@ def _calls(dependant: Any) -> set[Any]:
 #: The guards by module + name: this module never imports the order path (the order-closure scan), only names it.
 _REQUIRE_ORDER_PATH = ("ofo_app.order_path_switch", "require_order_path")
 _GUARD_PAPER_ORDER = ("ofo_app.scenario_guard", "guard_paper_order")
+#: Lane B2: the unknown-outcome block (``ofo_app.order_outcome``): every order route but the Return door (it records an
+#: outcome) carries it, so a second order cannot follow an order whose result is not known, whatever its key or body.
+_GUARD_PAPER_OUTCOME = ("ofo_app.order_outcome", "guard_paper_outcome")
+_GUARD_REAL_OUTCOME = ("ofo_app.order_outcome", "guard_real_outcome")
+_RETURN_DOOR = ("POST", "/strategies/{strategy_id}/execution/return")
 
 
 def _name(fn: Any) -> tuple[str, str]:
@@ -859,11 +868,12 @@ def misguarded_order_routes(routes: list[Any]) -> list[tuple[str, str]]:
             names = {_name(c) for c in _calls(getattr(r, "dependant", None))}
             if key in REAL_ORDER_ROUTES:
                 seen.add(key)
-                if not names & {_name(refuse_orders), _REQUIRE_ORDER_PATH}:
+                if not names & {_name(refuse_orders), _REQUIRE_ORDER_PATH} or (
+                        key != _RETURN_DOOR and _GUARD_REAL_OUTCOME not in names):
                     out.append(key)
             elif key in PAPER_ORDER_ROUTES:
                 seen.add(key)
-                if _GUARD_PAPER_ORDER not in names:
+                if _GUARD_PAPER_ORDER not in names or _GUARD_PAPER_OUTCOME not in names:
                     out.append(key)
     out.extend(sorted(ORDER_ROUTES - seen))
     return out

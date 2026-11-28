@@ -33,6 +33,7 @@ from ofo.marketdata.fanout import FanOut
 from ofo.marketdata.feed_health import FEED_IDLE, FEED_WAITING, market_closed_for
 from ofo.marketdata.kite_provider import IST, KiteProvider
 from ofo.marketdata.quote_stamp import quote_time
+from ofo.marketdata.shared_reading import SharedReading
 from ofo.marketdata.spot_source import SourceReading, SourceState
 from redis.exceptions import RedisError
 
@@ -145,6 +146,7 @@ class LiveMarket:
         if token is None:
             self.state = NOT_CONNECTED
             log.warning("live market data: no active Kite session; connect through the login first")
+            await self.attach_closed_view()  # ADR-330 (63): the stored close is served with no session too
             return
         await self._launch(broker_config, token)
         del token
@@ -159,18 +161,39 @@ class LiveMarket:
         async with engine.connect() as conn:
             return await access_token_for(conn, OWNER_REF, TokenCipher(broker_config.token_key))
 
-    async def _launch(self, broker_config, token: str) -> None:
+    @staticmethod
+    def _clock() -> datetime.datetime:
+        return datetime.datetime.now(IST)
+
+    async def _catalogue_provider(self) -> KiteProvider:
+        """The provider (and its quote book) over the stored catalogue: the one place it is built."""
         from ofo_app import catalogue_store
         from ofo_app.db import get_engine
-        from ofo_app.kite_ws import KiteSocket
 
         async with get_engine().connect() as conn:
             catalogue = await catalogue_store.load_catalogue(conn)
+        return KiteProvider(listed_for_kite(catalogue.all_entries()), clock=self._clock)
 
-        def clock() -> datetime.datetime:
-            return datetime.datetime.now(IST)
+    async def attach_closed_view(self) -> None:
+        """Lane FD2 item 3 D-1 (ADR-330 (63), ADR-212): with no Kite session there is still a book, so the stored last
+        close (``last_close_store``) is read into it while the market is closed and every screen shows it with its own
+        date and time. A feed with NO socket: the provider stays disconnected, the state stays not connected, nothing
+        is subscribed at Zerodha. A session that is running is never replaced; a failure is logged by class name and
+        leaves no feed (the screens then say prices are not available)."""
+        if self.feed is not None or self._closed:
+            return
+        try:
+            provider = await self._catalogue_provider()
+            self.feed = LiveFeed(MarketContext(provider, self._clock, settings.defaults()[settings.RISK_FREE_RATE],
+                                               OWNER_REF), FanOut(provider))
+        except Exception as exc:  # noqa: BLE001 - a dead database: no book, the screens say "not available"
+            log.error("closed-market view did not start: %s", type(exc).__name__)
 
-        provider = KiteProvider(listed_for_kite(catalogue.all_entries()), clock=clock)
+    async def _launch(self, broker_config, token: str) -> None:
+        from ofo_app.kite_ws import KiteSocket
+
+        clock = self._clock
+        provider = await self._catalogue_provider()
         if feed_mode.feed_mode() == feed_mode.BUS:  # REQ-113: the market-data process holds the socket, not this one
             socket = BusSocket(provider, user_ref=OWNER_REF, clock=clock, redis_url=feed_mode.redis_url(),
                                on_reconnect=self._read_positions_once)
@@ -285,6 +308,7 @@ class LiveMarket:
             if token is None or (skip_if is not None and token_fingerprint(token) == skip_if):
                 if token is None and not self.running():
                     self.state = NOT_CONNECTED
+                    await self.attach_closed_view()  # no session: the stored close still serves
                 return
             await self._halt()
             halted = True
@@ -398,6 +422,7 @@ async def stop_current() -> None:
     await market.stop()
     market.feed, market._socket, market._fingerprint = None, None, None
     market.state = NOT_CONNECTED
+    await market.attach_closed_view()  # a disconnect keeps the stored close on the screens (ADR-330 (63))
     await market.tell_feed(feed_bus.CONTROL_DISCONNECT)  # bus mode: the feed process stops its Kite socket too
 
 
@@ -489,7 +514,44 @@ def _index_reading(reads: KiteReads, name: str) -> SourceReading:
     return SourceReading(SourceState.STATED, Decimal(price), quote_time(quote))
 
 
+#: THE one REST-index door's memory (REQ-118; ADR-330 (39); finding page-poll-calls-vendor-rest-before-tick-store):
+#: one per process, so every caller shares one cached, single-flight read and a failed one is not retried inside
+#: the vendor's cooldown.
+REST_SPOT = SharedReading()
+
+
 async def index_spot(name: str, scenario_answer: tuple[int, str] | None = None) -> SourceReading:
+    """The index spot from Kite's REST quote, ONE shared cached read (``REST_SPOT``: TTL, single flight, a failure
+    kept for the cooldown) so a page poll never sends a call per request. Scenario mode (``scenario_answer``) is a
+    test client with no vendor: it passes uncached."""
+    if scenario_answer is not None:
+        return await _index_spot_uncached(name, scenario_answer)
+    return await REST_SPOT.get(name, lambda: _index_spot_uncached(name, None))
+
+
+def reads_client(api_key: str, access_token: str) -> KiteReads:
+    """A Kite read client with each call bounded (the worker's REST index read; the token only goes into the client)."""
+    return KiteReads(api_key=api_key, access_token=access_token,
+                     transport=functools.partial(urllib_transport, timeout=CALL_TIMEOUT_SECONDS))
+
+
+async def index_spot_from(name: str, open_reads: Callable[[], Awaitable[KiteReads | None]]) -> SourceReading:
+    """The same ONE shared cached REST index read (``REST_SPOT``, this process's own) for a process that holds no live
+    Kite market (the background worker): ``open_reads`` builds the Kite read client from the stored login when a call is
+    really needed (never on a cache hit). None -> ABSENT (not asked; the answer is kept 10 s like any other)."""
+    async def fetch() -> SourceReading:
+        reads = await open_reads()
+        if reads is None:
+            return SourceReading(SourceState.ABSENT)
+        try:
+            return await asyncio.wait_for(asyncio.to_thread(_index_reading, reads, name),
+                                          timeout=CALL_TIMEOUT_SECONDS + 5)
+        except TimeoutError:
+            return SourceReading(SourceState.FAILED)
+    return await REST_SPOT.get(name, fetch)
+
+
+async def _index_spot_uncached(name: str, scenario_answer: tuple[int, str] | None) -> SourceReading:
     """REQ-155 AC-5 (F-76): the index spot from Kite's REST quote (``KiteReads.fetch_index_quote``, the door's ``%20``
     path) with the owner's session; no session -> ABSENT (not asked). ``scenario_answer`` (scenario mode only): the
     scenario's (HTTP status, reply text) served to the SAME client as its transport, so it passes the same door."""

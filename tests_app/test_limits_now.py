@@ -10,6 +10,7 @@ type, stage, tightening, finite/unlimited max loss, and rule memory.
 from __future__ import annotations
 
 import copy
+import dataclasses
 import datetime
 import json
 import pathlib
@@ -48,7 +49,7 @@ def run(body, *, kind="weekly", stage=0, days=None, hhmm="11:00", pnl="100", max
     money_loss = ENGINE_UNLIMITED if max_loss == pe.UNLIMITED else max_loss
     stops = sif.stops_of(resolved, sif.MoneyInputs(money_loss, credit, None), sif.StageAt(kind, days))
     state = pe.StrategyState(expiry_kind=kind, days_left=days, hhmm=hhmm, spot=None if spot is None else D(spot),
-                             pnl=None if pnl is None else D(pnl), max_profit=max_profit, max_loss=max_loss,
+                             pnl=None if pnl is None else D(pnl), max_profit=max_profit, max_loss=max_loss, stop_max_loss=max_loss,
                              prices_fresh=fresh, tighten_percent=tighten, stops=stops, adjustments_used=used)
     return state, pe.evaluate(resolved.body, state, memory, None, gap_until="09:30")
 
@@ -141,11 +142,13 @@ def test_data_missing_rows_are_not_checked_with_the_evaluators_reason(edit):
         assert got.state == "not_checked" and got.reason == nc.code
 
 
-def test_already_true_after_an_adjustment():
+def test_a_plan_exit_is_never_already_true_whatever_the_stored_memory_says():
+    """ADR-330 (47): the % profit target is a plan exit: a stored held-at-entry memory never swallows it (it was the
+    one limits row that could read "already true"; the 5-minute period after entry delays it in the gate instead)."""
     memory = {"T-07": {"held_at_entry": True, "seen_clear": False}}
     _, ev = run(IC, pnl="2000", memory=memory)  # 72.6 % of max profit
-    assert isinstance(result(ev, "T-07"), pe.AlreadyTrue)
-    assert row(ev, "T-07").state == "already_true" and row(ev, "T-07").threshold == D(50)
+    assert isinstance(result(ev, "T-07"), pe.Flag)
+    assert row(ev, "T-07").state == "checked" and row(ev, "T-07").threshold == D(50)
 
 
 def test_a_flag_is_checked():
@@ -253,9 +256,9 @@ def test_text_a_not_checked_row_that_still_carries_numbers_prints_none_of_them()
 
 
 def test_text_already_true_keeps_the_limit_and_says_so_in_the_adr296_words():
-    memory = {"T-07": {"held_at_entry": True, "seen_clear": False}}
-    _, ev = run(IC, pnl="2000", memory=memory)
-    text = texts(ev)["T-07"]
+    _, ev = run(IC, pnl="2000")
+    already = dataclasses.replace(row(ev, "T-07"), state="already_true", after=0)  # no plan exit reads it now (ADR-330 (47))
+    text = str(route.limits_out((already,))[0]["text"])
     assert text.startswith("Target: profit of 50 % of max profit, before charges") and text.endswith(
         "Already true: alerts after it clears and crosses again")
 
@@ -270,28 +273,30 @@ def test_text_an_unknown_state_or_a_checked_row_with_nothing_to_compare_has_no_t
 def test_u141_the_reply_carries_the_checks_own_time_in_both_forms_and_refuses_a_reply_without_it():
 
 
-    assert AS_OF_TEXT == "As of 01:05:00 PM IST"
+    assert AS_OF_TEXT == "As of 13:05:00 IST"
     body = {"strategy_id": 1, "strategy_type": None, "type_name": None, "playbook": {"source": "none", "id": None, "status": None, "draft": False},
             "stage": {"name": None, "index": None}, "withheld": None, "results": []}
     with pytest.raises(ValueError):
         route.AdjustmentCheckOut.model_validate(body)
     out = route.AdjustmentCheckOut.model_validate({**body, "as_of": NOW, "as_of_text": AS_OF_TEXT})
-    assert out.as_of == NOW and out.as_of_text == "As of 01:05:00 PM IST"
+    assert out.as_of == NOW and out.as_of_text == "As of 13:05:00 IST"
 
 
 def test_u143_an_already_true_row_carries_its_adjustment_number_and_the_decision_is_unchanged():
     memory = {"T-07": {"held_at_entry": True, "seen_clear": False}}
     _, ev = run(IC, pnl="2000", memory=memory, used=2)
-    assert isinstance(result(ev, "T-07"), pe.AlreadyTrue) and result(ev, "T-07").after == 2
-    assert row(ev, "T-07").state == "already_true" and row(ev, "T-07").after == 2
+    assert isinstance(result(ev, "T-07"), pe.Flag) and row(ev, "T-07").state == "checked"  # ADR-330 (47): never held
+    ev = dataclasses.replace(ev, limits=tuple(dataclasses.replace(x, state="already_true", after=2) if x.rule_id == "T-07"
+                                               else x for x in ev.limits))  # the row's wording, built directly
     out = route.limits_out(ev.limits)
     t07 = next(x for x in out if x["rule_id"] == "T-07")
     assert t07["after"] == 2
     assert t07["text"] == ("Target: profit of 50 % of max profit, before charges; 80 % nearer expiry. Already true after adjustment 2: "
                            "alerts after it clears and crosses again")
-    _, entry = run(IC, pnl="2000", memory=memory, used=0)  # N not known (the entry): the generic sentence stays
+    _, entry = run(IC, pnl="2000", used=0)  # N not known (the entry): the generic sentence stays
+    entry = dataclasses.replace(entry, limits=tuple(dataclasses.replace(x, state="already_true", after=0)
+                                                    if x.rule_id == "T-07" else x for x in entry.limits))
     assert next(x for x in route.limits_out(entry.limits) if x["rule_id"] == "T-07")["after"] is None
-    assert row(entry, "T-07").after == 0
 
 
 def test_u142_a_fired_stop_states_the_loss_and_the_stop_line_in_rupees_and_percent_and_when_it_fired():
@@ -300,8 +305,9 @@ def test_u142_a_fired_stop_states_the_loss_and_the_stop_line_in_rupees_and_perce
     at = {flag.rule_id: datetime.datetime(2026, 11, 13, 7, 28, tzinfo=datetime.UTC)}
     text = route.stop_text(flag, ev.limits, state.pnl, at)
     assert text == ("Stop reached: loss now \u20b912,000.00 (50.2154 % of max loss); stop line \u20b911,948.52 (50 % of max loss); "
-                    "reached at 12:58 IST")
-    assert route.stop_text(flag, ev.limits, state.pnl, {}) == text.removesuffix("; reached at 12:58 IST")  # no record yet: no time invented
+                    "seen by the check at 12:58 IST")
+    no_record = route.stop_text(flag, ev.limits, state.pnl, {})
+    assert no_record == text.removesuffix("; seen by the check at 12:58 IST")  # no record yet: no time invented
     assert route.stop_text(flag, ev.limits, None, at) is None  # a figure missing: no sentence
     target = next(r for r in run(IC, pnl="2000")[1].results if isinstance(r, pe.Flag))
     assert route.stop_text(target, run(IC, pnl="2000")[1].limits, D("2000"), at) is None  # a target flag is not a stop
@@ -327,3 +333,37 @@ def test_u145_an_emptied_target_has_its_own_sentence_and_reason_code_the_playboo
     assert other["reason_code"] is None and other["text"].startswith("Target: not being checked:")
     stop = next(x for x in route.limits_out(ev.limits, True) if x["rule_id"] != "T-07" and x["state"] != "not_checked")
     assert stop["reason_code"] is None
+
+
+# --- P4 review F2: a rupee level is a limit row of its own, and the percent row it replaces is not shown -------------------
+def with_rupees(body, **guards):
+    out = copy.deepcopy(body)
+    out["guards"].update(guards)
+    return out
+
+
+def test_f2_a_rupee_stop_and_target_have_a_limits_row_each_and_no_not_checked_row():
+    body = with_rupees(IC, **{sl.RUPEE_LOSS_KEY: "400", sl.RUPEE_PROFIT_KEY: "600", KEY: ""})
+    _, ev = run(body, plan=True)
+    loss, profit = row(ev, sl.RUPEE_LOSS_RULE), row(ev, sl.RUPEE_PROFIT_RULE)
+    assert (loss.threshold, loss.state) == (D(400), "checked") and (profit.threshold, profit.state) == (D(600), "checked")
+    assert {x.trigger_id for x in ev.limits}.isdisjoint({"T-06", "T-07"})  # the rupee levels replace both percent rows
+    strip = route.limits_out(ev.limits, True)
+    assert not any("not being checked" in (x["text"] or "") or "no target is set" in (x["text"] or "") for x in strip)
+    by_rule = {x["rule_id"]: x for x in strip}
+    assert by_rule[sl.RUPEE_LOSS_RULE]["threshold"] == D(400) and "400" in by_rule[sl.RUPEE_LOSS_RULE]["text"]
+    assert by_rule[sl.RUPEE_PROFIT_RULE]["threshold"] == D(600) and "600" in by_rule[sl.RUPEE_PROFIT_RULE]["text"]
+    assert "whichever comes first" in by_rule[sl.CREDIT_RULE]["text"]  # the 2x-credit line races the rupee stop
+
+
+def test_f2_a_rupee_stop_with_no_pnl_is_a_not_checked_row_with_its_reason_never_a_number():
+    body = with_rupees(IC, **{sl.RUPEE_LOSS_KEY: "400"})
+    _, ev = run(body, plan=True, pnl=None)
+    assert row(ev, sl.RUPEE_LOSS_RULE).state == "not_checked" and row(ev, sl.RUPEE_LOSS_RULE).reason
+
+
+def test_f2_the_route_says_the_target_is_set_when_a_rupee_target_is_readable():
+    guards = {KEY: "", sl.RUPEE_PROFIT_KEY: "600"}
+    assert route.target_is_unset("plan", guards) is False
+    assert route.target_is_unset("plan", {KEY: ""}) is True
+    assert route.target_is_unset("plan", {KEY: "", sl.RUPEE_PROFIT_KEY: "bad"}) is True

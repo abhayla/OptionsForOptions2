@@ -104,15 +104,20 @@
           <thead>
             <tr>
               <th scope="col" class="p-2 text-left text-xs">Criterion</th>
-              <th v-for="x in kept" :key="x.a.id" scope="col" class="min-w-[140px] p-2 text-left" :data-testid="`adjust-col-${x.a.id}`">
+              <th v-for="x in kept" :key="x.a.id" scope="col" class="min-w-[140px] p-2 text-right" :data-testid="`adjust-col-${x.a.id}`">
                 <div class="font-semibold">{{ x.a.name ?? x.a.id }}</div>
                 <div v-if="x.unavailable.length" class="text-xs font-normal text-ink-muted" :data-testid="`adjust-unavailable-${x.a.id}`">{{ UNAVAILABLE_FOR_FILTER }}</div>
+                <div v-if="x.a.take_profit" class="text-xs font-normal text-ink-muted" :data-testid="`adjust-take-profit-${x.a.id}`">{{ x.a.take_profit.text }}</div>
               </th>
             </tr>
           </thead>
           <tbody>
             <template v-for="g in groups" :key="g.id">
-              <tr class="bg-surface-muted"><th :colspan="kept.length + 1" scope="colgroup" class="p-2 text-left text-xs font-semibold" :data-testid="`adjust-group-${g.id}`">{{ GROUP_TITLES[g.id] ?? g.id }}</th></tr>
+              <!-- D-45: the column names repeat under every group title, so a row far down the table is still labelled -->
+              <tr class="bg-surface-muted">
+                <th scope="colgroup" class="p-2 text-left text-xs font-semibold" :data-testid="`adjust-group-${g.id}`">{{ GROUP_TITLES[g.id] ?? g.id }}</th>
+                <th v-for="x in kept" :key="x.a.id" scope="col" class="p-2 text-right text-xs font-normal text-ink-muted" :data-testid="`adjust-group-colname-${g.id}-${x.a.id}`">{{ x.a.name ?? x.a.id }}</th>
+              </tr>
               <template v-for="c in g.rows" :key="c.id">
               <tr :data-testid="`adjust-row-${c.id}`">
                 <th scope="row" class="p-2 text-left font-normal">
@@ -123,12 +128,12 @@
                     :aria-expanded="showBreakdown ? 'true' : 'false'" aria-controls="adjust-cost-breakdown" data-testid="adjust-cost-toggle" @click="showBreakdown = !showBreakdown"
                   >{{ showBreakdown ? BREAKDOWN_HIDE : BREAKDOWN_SHOW }}</button>
                 </th>
-                <td v-for="x in kept" :key="x.a.id" class="p-2 align-top" :class="isLeader(c, x.a.id) ? 'bg-profit-soft' : ''" :data-leader="isLeader(c, x.a.id) ? 'true' : 'false'" :data-testid="`adjust-cell-${c.id}-${x.a.id}`">
+                <td v-for="x in kept" :key="x.a.id" class="p-2 text-right align-top tabular-nums" :class="isLeader(c, x.a.id) ? 'bg-profit-soft' : ''" :data-leader="isLeader(c, x.a.id) ? 'true' : 'false'" :data-testid="`adjust-cell-${c.id}-${x.a.id}`">
                   <template v-if="cellOf(c, x.a.id)?.text != null && cellOf(c, x.a.id)?.unavailable_reason == null">
-                    <div>{{ cellOf(c, x.a.id).text }}</div>
+                    <div class="font-medium" data-testid="adjust-cell-value">{{ cellOf(c, x.a.id).text }}</div>
                     <div v-if="cellOf(c, x.a.id).at_index_zero" class="text-xs text-ink-muted" data-testid="adjust-cell-at-zero">{{ MAX_PROFIT_AT_ZERO_LABEL }}</div>
                     <div v-if="stale && c.group === 'money_now' && prices.as_of_note" class="text-xs text-ink-muted" data-testid="adjust-cell-asof">{{ prices.as_of_note }}</div>
-                    <div v-if="isLeader(c, x.a.id)" class="text-xs text-ink-muted" data-testid="adjust-leader-label">{{ c.leader_label }}</div>
+                    <div v-if="isLeader(c, x.a.id)" class="mt-0.5 inline-block rounded border border-line px-1 text-xs text-ink-muted" data-testid="adjust-leader-label">{{ c.leader_label }}</div>
                     <!-- REQ-159 AC-6: the server's judgement of the cost % against the playbook's warning level (numbers only) -->
                     <div v-if="cellOf(c, x.a.id).warning" class="text-xs text-warn" data-testid="adjust-cell-warning">{{ cellOf(c, x.a.id).warning }}</div>
                     <div v-else-if="cellOf(c, x.a.id).warning_off" class="text-xs text-ink-muted" data-testid="adjust-cell-warning-off">{{ cellOf(c, x.a.id).warning_off }}</div>
@@ -149,13 +154,21 @@
               </tr>
               </template>
             </template>
-            <tr class="bg-surface-muted"><th :colspan="kept.length + 1" scope="colgroup" class="p-2 text-left text-xs font-semibold" data-testid="adjust-group-summary">Summary</th></tr>
+            <tr class="bg-surface-muted">
+              <th scope="colgroup" class="p-2 text-left text-xs font-semibold" data-testid="adjust-group-summary">Summary</th>
+              <th v-for="x in kept" :key="x.a.id" scope="col" class="p-2 text-right text-xs font-normal text-ink-muted" :data-testid="`adjust-group-colname-summary-${x.a.id}`">{{ x.a.name ?? x.a.id }}</th>
+            </tr>
             <tr data-testid="adjust-row-leads">
               <th scope="row" class="p-2 text-left font-normal"><div>Leads on</div><div class="text-xs text-ink-muted">count of the lines above</div></th>
-              <td v-for="x in kept" :key="x.a.id" class="p-2" :data-testid="`adjust-leads-${x.a.id}`">{{ leadsText(x.a.id) }}</td>
+              <td v-for="x in kept" :key="x.a.id" class="p-2 text-right tabular-nums" :data-testid="`adjust-leads-${x.a.id}`">{{ leadsText(x.a.id) }}</td>
             </tr>
           </tbody>
         </table>
+      </div>
+
+      <!-- D-21 (ADR-320 (3)): what each approach changes, before against after; the server's block, no verdict -->
+      <div v-if="whatChanges.length" class="grid min-w-0 grid-cols-1 gap-3 min-[1100px]:grid-cols-2" data-testid="adjust-what-changes">
+        <AdjustWhatChanges v-for="x in whatChanges" :id="x.a.id" :key="x.a.id" :name="x.a.name ?? x.a.id" :block="x.block" />
       </div>
 
       <div v-if="refused.length || notOffered.length" class="rounded-lg border border-line bg-surface p-3" data-testid="adjust-refused">
@@ -173,7 +186,6 @@
           </select>
         </label>
         <button type="button" class="h-9 rounded-lg bg-accent px-3 font-medium text-white disabled:opacity-50" :disabled="!pick || stale" :title="stale ? prices.prepare_blocked_reason : null" data-testid="adjust-open" @click="openInBuilder">Open in builder and prepare basket</button>
-        <ErrorMessage v-if="actedRefusal" :parts="actedRefusal" compact prefix="adjust-acted" data-testid="adjust-acted-refusal" />
         <span v-if="stale" class="text-sm text-ink-muted" data-testid="adjust-prepare-wait">{{ prices.prepare_blocked_reason }}</span>
         <span v-if="!pickable.length" class="text-sm text-ink-muted" data-testid="adjust-pick-empty">{{ NONE_TO_PREPARE }}</span>
         <ErrorMessage v-if="prepareError" :parts="prepareError" compact prefix="adjust-prepare-error" data-testid="adjust-prepare-error" />
@@ -188,6 +200,7 @@ import api, { NEUTRAL_PARTS } from '@/services/api'
 import ErrorMessage from '@/components/common/ErrorMessage.vue'
 import AdjustControls from '@/components/strategy/AdjustControls.vue'
 import AdjustPayoffChart from '@/components/strategy/AdjustPayoffChart.vue'
+import AdjustWhatChanges from '@/components/strategy/AdjustWhatChanges.vue'
 import { istTime } from '@/lib/displayFormat'
 import { plainName } from '@/lib/saveDraft'
 import { readTracking } from '@/lib/tracking'
@@ -305,6 +318,8 @@ const groups = computed(() => {
   }
   return order
 })
+// D-21: one block per approach in the table, in the table's order; an approach without a block (refused, or an older reply) draws none
+const whatChanges = computed(() => kept.value.map((x) => ({ a: x.a, block: reply.value?.what_changes?.[x.a.id] })).filter((x) => x.block))
 const cellOf = (c, id) => c.values?.[id]
 const isLeader = (c, id) => (c.leaders ?? []).includes(id) && cellOf(c, id)?.unavailable_reason == null && cellOf(c, id)?.text != null
 const prices = computed(() => reply.value?.prices ?? null)
@@ -343,25 +358,11 @@ function setLimit(r, v) {
 }
 const clearFilters = () => { filters.value = EMPTY_FILTERS() }
 
-// GC-ADJ2 step 5 (REQ-112 AC-2): preparing a basket from the compare is "Acted on" for each record it answers, each
-// its own outcome (REQ-112 AC-4). A record already final answers its refusal; that never stops the basket (the outcome
-// is a record, not the order path), and the refusal text is shown under the button.
-const actedRefusal = ref(null)
-// REQ-163 AC-1: the ids actually marked acted on travel with the basket, so its paper orders name them (the history's
-// Why); a refused record is left out, never sent (the server would refuse the whole basket for it).
-async function markActedOn() {
-  actedRefusal.value = null
-  const acted = []
-  for (const id of props.opportunities) {
-    try {
-      await props.client.post(`/adjustment-opportunities/${id}/acted-on`)
-      acted.push(id) // ids stay strings (opportunitiesFromQuery); the server's model reads them as whole numbers
-    } catch (e) {
-      actedRefusal.value = e?.parts ?? NEUTRAL_PARTS
-    }
-  }
-  return acted
-}
+// Live test 27 Nov 2026 item 10 (REQ-112 AC-2): preparing a basket is NOT "Acted on". Nothing is marked here; the ids of
+// the records the basket answers travel with it (REQ-163 AC-1) and the server marks each one "Acted on" only when a paper
+// order of that basket is accepted. A basket staged and then cancelled leaves them "Open". Ids stay strings
+// (opportunitiesFromQuery); the server's model reads them as whole numbers.
+const answeredIds = () => [...props.opportunities]
 
 const LOCAL_FAILURE = { ...NEUTRAL_PARTS, what_happened: NOT_A_BASKET } // a failure that never called the server says so
 async function openInBuilder() {
@@ -376,8 +377,7 @@ async function openInBuilder() {
     const at = reply.value.spot?.at ?? null
     const legs = exit ? exitLegsFromApproach(underlying.value, a, contracts, at) : legsFromApproach(underlying.value, a, contracts, at)
     if (!legs) { prepareError.value = LOCAL_FAILURE; return }
-    const acted = await markActedOn()
-    emit('prepare', { legs, underlying: underlying.value, suggestionIds: acted, basketLegs: (a.trades ?? []).length, exit })
+    emit('prepare', { legs, underlying: underlying.value, suggestionIds: answeredIds(), basketLegs: (a.trades ?? []).length, exit, approachId: a.id })
   } catch (e) {
     prepareError.value = e?.parts ?? NEUTRAL_PARTS
   }

@@ -17,6 +17,15 @@
             "command": "f=\"$CLAUDE_PROJECT_DIR/.claude/hooks/status_page_due.py\"; [ -f \"$f\" ] || exit 0; python \"$f\" --session-start"
           }
         ]
+      },
+      {
+        "hooks": [
+          {
+            "type": "command",
+            "timeout": 240,
+            "command": "[ \"$CLAUDE_CODE_REMOTE\" = true ] && bash \"$CLAUDE_PROJECT_DIR/scripts/orchestrator/cloud_services.sh\" || true"
+          }
+        ]
       }
     ],
     "Stop": [
@@ -42,6 +51,15 @@
             "type": "command",
             "timeout": 90,
             "command": "f=\"$CLAUDE_PROJECT_DIR/.claude/hooks/status_page_due.py\"; [ -f \"$f\" ] || exit 0; python \"$f\""
+          }
+        ]
+      },
+      {
+        "hooks": [
+          {
+            "type": "command",
+            "timeout": 5,
+            "command": "f=\"$CLAUDE_PROJECT_DIR/scripts/hooks/friction_log_due.py\"; [ -f \"$f\" ] || exit 0; python \"$f\""
           }
         ]
       }

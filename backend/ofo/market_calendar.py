@@ -137,6 +137,19 @@ def is_market_open(now: datetime.datetime, holidays: Holidays | None = None) -> 
     return market_status(now, holidays) is MarketStatus.OPEN
 
 
+def is_trading_day(day: datetime.date, holidays: Holidays | None = None) -> bool:
+    """True when the exchange is open at midday of ``day`` (the calendar's own answer, no history reader)."""
+    return is_market_open(datetime.datetime.combine(day, datetime.time(12, 0), IST), holidays)
+
+
+def after_close_before_settlement(now: datetime.datetime, settle_from: datetime.time,
+                                  holidays: Holidays | None = None) -> bool:
+    """GC-ICLIVE D-64: the ONE answer to "the market has closed today and the expiring legs have not settled yet": a
+    trading day, at or after the 15:30 close and before ``settle_from`` (the paper settlement time in force, 15:45)."""
+    local = _local(now)
+    return market_status(now, holidays) is MarketStatus.CLOSED_HOURS and SESSION_CLOSE <= local.time() < settle_from
+
+
 def next_open(now: datetime.datetime, holidays: Holidays | None = None) -> datetime.datetime | None:
     """The next 09:15 IST after ``now`` on a trading day; None when the search reaches a year with no data (the answer
     would be a guess)."""
@@ -177,5 +190,16 @@ def price_time(at: datetime.datetime, holidays: Holidays | None = None) -> datet
     return last_close(at, holidays)
 
 
-__all__ = ["DATA_FILE", "CalendarError", "MarketStatus", "calendar_end_warning", "is_market_open", "last_close",
-           "last_covered_date", "market_status", "next_open", "price_time"]
+__all__ = [
+    "DATA_FILE",
+    "CalendarError",
+    "MarketStatus",
+    "after_close_before_settlement",
+    "calendar_end_warning",
+    "is_market_open",
+    "last_close",
+    "last_covered_date",
+    "market_status",
+    "next_open",
+    "price_time",
+]

@@ -22,6 +22,7 @@ import pytest
 from ofo.engine.legs import Instrument
 from ofo.errors import render
 from ofo.marketdata.fanout import FanOut
+from ofo.marketdata.provider import DayStats, DayStatsAnswer
 from ofo.marketdata.quote import NormalizedQuote, SourceMetadata
 from ofo.rules.inputs import DataHealth
 from ofo.settings import calc as _settings_calc
@@ -102,6 +103,7 @@ class FakeProvider:
         self.subscribe_calls: list[list[str]] = []
         self.unsubscribe_calls: list[list[str]] = []
         self.unknown: set[str] = set()
+        self.day_stats: dict[str, DayStatsAnswer] = {}  # D-19: the day values per contract (absent = NOT_HELD)
         self._listener = None
 
     def live_quote_stream(self, listener) -> None:
@@ -125,6 +127,9 @@ class FakeProvider:
 
     def option_chain_snapshot(self, underlying: str, expiry: datetime.date) -> list[NormalizedQuote]:
         return [q for q in self.quotes.values() if q.underlying == underlying and q.expiry == expiry]
+
+    def latest_day_stats(self, instrument_id: str, now=None) -> DayStatsAnswer:
+        return self.day_stats.get(instrument_id, DayStatsAnswer.unavailable("NOT_HELD"))
 
     def tick(self, q: NormalizedQuote) -> None:
         self.quotes[q.instrument_id] = q
@@ -240,12 +245,13 @@ async def test_ac1_core_two_pushes_for_a_five_strike_chain_with_changing_ltps_an
     atm_row = second["rows"][2]
     assert atm_row["ce"] == {"instrument_id": cid("25150", "CE"), "ltp": "131.00", "bid": None, "ask": None,
                              "change": None, "oi": 1000, "oi_change": None, "volume": 500, "health": "stale",
-                             "at": T0.isoformat(), "permitted": False, "unavailable_reason": "unknown",
-                             "iv": None, "delta": None, "gamma": None, "theta": None, "vega": None}
+                             "at": T0.isoformat(), "last_trade_at": None, "permitted": False,
+                             "unavailable_reason": "unknown", "iv": None, "delta": None, "gamma": None, "theta": None,
+                             "vega": None, "decay_left_today": None}
     assert second["rows"][2]["pe"]["health"] == "available"
 
 
-async def test_ac2_default_columns_present_and_change_null_without_a_previous_close():
+async def test_ac2_default_columns_present_and_change_null_without_a_previous_close():  # no day stats in this rig
     """AC-2/AC-3/AC-4: each cell carries exactly LTP, bid/ask, Change, OI (+ change), Volume, the engine's IV and
     Greeks (row 33) plus id, health, time; the feed has no previous close, so change is null on every cell."""
     provider, _feed, channel, _mono, push = make_rig()
@@ -255,9 +261,10 @@ async def test_ac2_default_columns_present_and_change_null_without_a_previous_cl
     await close(channel, task)
     cells = [row[s] for row in channel.sent[0]["rows"] for s in ("ce", "pe")]
     assert {frozenset(c) for c in cells} == {frozenset({"instrument_id", "ltp", "bid", "ask", "change", "oi",
-                                                        "oi_change", "volume", "health", "at", "permitted",
+                                                        "oi_change", "volume", "health", "at", "last_trade_at",
+                                                        "permitted",
                                                         "unavailable_reason", "iv", "delta", "gamma", "theta",
-                                                        "vega"})}
+                                                        "vega", "decay_left_today"})}
     assert [c["change"] for c in cells] == [None] * 10
     assert set(channel.sent[0]) == {"state", "underlying", "expiry", "spot", "spot_at", "spot_health", "atm_strike",
                                     "rows_missing", "rows", "answered_at", "market_closed", "last_price_at",
@@ -340,17 +347,20 @@ async def test_ac2_each_cell_carries_its_quotes_own_health(health):
     assert {row[s]["health"] for row in channel.sent[0]["rows"] for s in ("ce", "pe")} == {health.value}
 
 
-async def test_ac2_a_held_contract_without_a_quote_reads_unavailable():
-    """REQ-049 AC-2: a subscribed contract with no quote yet is shown unavailable with no number."""
+async def test_ac2_a_held_contract_without_a_quote_is_waiting_not_unavailable():
+    """#748 / REQ-133 AC-3: a subscribed, known contract with no first tick yet is WAITING (health None, no number, no
+    claim that no price exists); an unknown contract stays "unavailable" (test_..._unknown_contract below)."""
     provider, _feed, channel, _mono, push = make_rig()
     provider.tick(index_quote("25162.30"))
     task = await start(push, channel)
     await close(channel, task)
     assert channel.sent[0]["rows"][0]["ce"] == {"instrument_id": cid("25050", "CE"), "ltp": None, "bid": None,
                                                 "ask": None, "change": None, "oi": None, "oi_change": None,
-                                                "volume": None, "health": "unavailable", "at": None,
+                                                "volume": None, "health": None, "at": None,
+                                                "last_trade_at": None,
                                                     "permitted": False, "unavailable_reason": "unknown",
-                                                "iv": None, "delta": None, "gamma": None, "theta": None, "vega": None}
+                                                "iv": None, "delta": None, "gamma": None, "theta": None, "vega": None,
+                                                "decay_left_today": None}
 
 
 @pytest.mark.parametrize("bad", [0, 16, -1, "x", "5", True, 2.0, None])
@@ -929,7 +939,7 @@ async def test_ac9_each_row_carries_its_moneyness_from_the_server_atm():
 
 @pytest.mark.parametrize(("extra", "strikes"), [
     ({}, ["25050.00", "25100.00", "25150.00", "25200.00", "25250.00"]),
-    ({"min_oi": 2000}, ["25200.00"]),
+    ({"min_oi": 2000}, []),  # D-55: the 25200 call has OI 5000 but its put (shown too) has 1000: the row goes
     ({"min_volume": 501}, []),
     ({"min_ltp": "203.00"}, ["25200.00", "25250.00"]),
     ({"bid_and_ask": True}, ["25100.00"]),
@@ -958,6 +968,7 @@ def test_ac9_rest_read_applies_the_same_filters_and_refuses_bad_ones():
     provider.tick(index_quote("25162.30"))
     tick_window(provider)
     provider.tick(option_quote(cid("25200", "CE"), "103.50", oi=5000))
+    provider.tick(option_quote(cid("25200", "PE"), "203.25", oi=5000))  # D-55: both shown sides must pass Min OI
     client = _app_client(MarketContext(provider, Clock(T0), Decimal("0.065")), Reader())
     query = {"underlying": "NIFTY", "expiry": EXPIRY.isoformat(), "strikes_each_side": 2}
     ok = client.get("/api/market/chain", params={**query, "min_oi": "2000"})
@@ -1130,3 +1141,233 @@ def test_no_literal_fifteen_is_left_in_the_chain_modules():
     for path in (root / "chain_push.py", root / "routes" / "chain.py"):
         code = re.sub(r"#.*|\"\"\"[\s\S]*?\"\"\"", "", path.read_text(encoding="utf-8"))
         assert not re.search(r"(?<![\w.])15(?![\w.])", code), path.name
+
+
+def _stats(last_trade_ts):
+    return DayStatsAnswer(DayStats(Decimal("60"), Decimal("70"), Decimal("55"), Decimal("58"), last_trade_ts))
+
+
+def _one_cell_push(ce_stats=None, ce_quote=True):
+    """One CE cell of NIFTY 25150 (ltp 63.10, bid 63.90, ask 64.10), pushed once; returns the pushed ce dict."""
+    provider, _feed, channel, _mono, push = make_rig()
+    provider.tick(index_quote("25162.30"))
+    tick_window(provider)
+    ce_id = cid("25150", "CE")
+    if ce_quote:
+        provider.tick(option_quote(ce_id, "63.10", bid="63.90", ask="64.10"))
+    if ce_stats is not None:
+        provider.day_stats[ce_id] = ce_stats
+    return provider, channel, push, ce_id
+
+
+async def _pushed_ce(ce_stats=None, ce_quote=True):
+    _provider, channel, push, _ce_id = _one_cell_push(ce_stats, ce_quote)
+    task = await start(push, channel)
+    await close(channel, task)
+    row = next(r for r in channel.sent[0]["rows"] if r["strike"] == "25150.00")
+    return row["ce"]
+
+
+async def test_d19_core_a_cell_carries_the_time_of_its_last_trade_seven_seconds_before_the_packet():
+    """D-19 core: ltp 63.10 sits below bid 63.90 (the last trade was before the book moved); the cell says WHEN the
+    last price was made: the packet time T0 (09:20:00) minus 7 s = 09:19:53 IST, from the feed's day stats."""
+    trade = int((T0 - datetime.timedelta(seconds=7)).timestamp())
+    ce = await _pushed_ce(_stats(trade))
+    assert (ce["ltp"], ce["bid"], ce["ask"]) == ("63.10", "63.90", "64.10")
+    assert ce["last_trade_at"] == "2026-10-19T09:19:53+05:30"
+
+
+@pytest.mark.parametrize("stats", [None, DayStatsAnswer.unavailable("PACKET_WITHOUT_DAY_FIELDS"), _stats(None)])
+async def test_d19_no_day_stats_or_no_trade_time_means_null_never_a_made_up_time(stats):
+    """Absent day stats, a packet without day fields, and last_trade_ts None all give null: the screen shows nothing."""
+    ce = await _pushed_ce(stats)
+    assert ce["ltp"] == "63.10"
+    assert ce["last_trade_at"] is None
+
+
+async def test_d19_a_missing_quote_has_no_last_trade_time_even_when_stats_are_held():
+    """The unavailable cell (no quote) carries no number and no time."""
+    provider, channel, push, ce_id = _one_cell_push(None, ce_quote=False)
+    provider.quotes.pop(ce_id, None)
+    provider.day_stats[ce_id] = _stats(int(T0.timestamp()))
+    task = await start(push, channel)
+    await close(channel, task)
+    ce = next(r for r in channel.sent[0]["rows"] if r["strike"] == "25150.00")["ce"]
+    assert ce["ltp"] is None and ce["last_trade_at"] is None
+
+
+async def test_d19_ltp_bid_ask_of_one_cell_come_from_the_same_quote():
+    """The no-mix claim: the pushed ltp, bid, ask and time are one quote's own values, so an ltp outside its bid/ask is
+    a market fact (last trade before the book moved), not a code mix."""
+    provider, channel, push, ce_id = _one_cell_push(_stats(int(T0.timestamp()) - 7))
+    q = provider.quotes[ce_id]
+    task = await start(push, channel)
+    await close(channel, task)
+    ce = next(r for r in channel.sent[0]["rows"] if r["strike"] == "25150.00")["ce"]
+    assert (Decimal(ce["ltp"]), Decimal(ce["bid"]), Decimal(ce["ask"])) == (q.ltp, q.bid, q.ask)
+    assert ce["at"] == q.timestamp.isoformat()
+
+
+async def test_d19_a_previous_session_last_trade_is_served_unchanged_with_its_own_date():
+    """D-19 round 2: an illiquid contract's last trade of the previous Friday (16 Oct 15:29:58 IST) is served exactly,
+    date included, so the screen can show the date; the server never rewrites it to today."""
+    trade = int(datetime.datetime(2026, 10, 16, 15, 29, 58, tzinfo=IST).timestamp())
+    ce = await _pushed_ce(_stats(trade))
+    assert ce["last_trade_at"] == "2026-10-16T15:29:58+05:30"
+    assert ce["at"] == T0.isoformat()
+
+
+# --- D-12 (ADR-320 (1)): on the chain's own expiry day each priced cell carries its per-unit Decay left today ---------
+
+def _rig_at(at: datetime.datetime):
+    provider = FakeProvider()
+    wall = Clock(at)
+    feed = LiveFeed(MarketContext(provider, wall, Decimal("0.065")), FanOut(provider))
+    channel, mono = FakeChannel(), Clock(1000.0)
+    push = ChainPush(channel, feed, monotonic=mono, now=wall, reader=Reader(), poll=0.005,
+                     read_settings=settings_with())
+    return provider, channel, push
+
+
+async def _cells_at(at: datetime.datetime) -> dict:
+    provider, channel, push = _rig_at(at)
+    provider.tick(index_quote("25162.30", at=at))
+    tick_window(provider, at=at)
+    task = await start(push, channel)
+    await close(channel, task)
+    return channel.sent[-1]["rows"][2]  # the 25150 strike (ATM): CE 102.50, PE 202.25
+
+
+async def test_d12_expiry_day_cells_carry_decay_left_today_other_days_none():
+    """12:30 IST on the 27 Oct expiry: the 25150 CE (102.50, intrinsic 12.30 at spot 25,162.30) has about 90.20 of time
+    value, all of it lost by the close: decay left today is negative, at most the price, about minus its time value.
+    On 19 Oct (T0) the same cell has no decay left today and keeps its theta."""
+    today = await _cells_at(datetime.datetime(2026, 10, 27, 12, 30, tzinfo=IST))
+    ce = today["ce"]
+    assert ce["theta"] is not None and ce["decay_left_today"] is not None
+    left = Decimal(str(ce["decay_left_today"]))
+    assert Decimal("-102.50") <= left < 0
+    assert abs(left + (Decimal("102.50") - Decimal("12.30"))) <= Decimal("1.00")  # the model's value now = the price
+    other = await _cells_at(T0)
+    assert other["ce"]["decay_left_today"] is None and other["ce"]["theta"] is not None
+
+
+# ---- D-55 (ADR-320 point 6): Min OI needs every shown side to pass; Change from the feed's previous close ----------
+
+def _side(oi, ltp="100.00"):
+    return chain_push.ChainCellOut(instrument_id="NSE_FO:1001", ltp=Decimal(ltp), bid=None, ask=None, change=None,
+                                   oi=oi, oi_change=None, volume=10, health="available", at=T0, last_trade_at=None,
+                                   permitted=True,
+                                   unavailable_reason=None, **chain_push._NO_GREEKS)
+
+
+def _row(ce, pe):
+    return chain_push.ChainRowOut(strike=Decimal("25200.00"), moneyness="ATM", ce=ce, pe=pe)
+
+
+@pytest.mark.parametrize(("ce_oi", "pe_oi", "kept"), [
+    (5000, 5000, True),   # both sides shown, both pass
+    (5000, 1000, False),  # the put side is shown and fails: the row goes (was kept when either passed)
+    (1000, 5000, False),  # the call side is shown and fails
+    (None, 5000, False),  # a shown side with no OI value never meets a minimum
+])
+def test_d55_min_oi_both_sides_shown_each_must_pass(ce_oi, pe_oi, kept):
+    req = ChainRequest(underlying="NIFTY", expiry=EXPIRY, strikes_each_side=2, min_oi=2000)
+    assert chain_push.row_passes(_row(_side(ce_oi), _side(pe_oi)), req) is kept
+
+
+@pytest.mark.parametrize(("oi", "kept"), [(5000, True), (1000, False)])
+def test_d55_min_oi_call_side_only_shown(oi, kept):
+    req = ChainRequest(underlying="NIFTY", expiry=EXPIRY, strikes_each_side=2, min_oi=2000)
+    assert chain_push.row_passes(_row(_side(oi), None), req) is kept
+
+
+@pytest.mark.parametrize(("oi", "kept"), [(5000, True), (1000, False)])
+def test_d55_min_oi_put_side_only_shown(oi, kept):
+    req = ChainRequest(underlying="NIFTY", expiry=EXPIRY, strikes_each_side=2, min_oi=2000)
+    assert chain_push.row_passes(_row(None, _side(oi)), req) is kept
+
+
+def test_d55_volume_and_premium_filters_are_unchanged_either_side():
+    req = ChainRequest(underlying="NIFTY", expiry=EXPIRY, strikes_each_side=2, min_volume=5, min_ltp=Decimal("50"))
+    assert chain_push.row_passes(_row(_side(1, "100.00"), _side(1, "10.00")), req) is True
+
+
+async def test_d55_change_is_ltp_less_the_feed_previous_close():
+    """D-55: ltp 63.10 with the feed's previous close 58 (_stats) gives Change 5.10 as the server's exact decimal."""
+    ce = await _pushed_ce(_stats(int(T0.timestamp())))
+    assert (ce["ltp"], ce["change"]) == ("63.10", "5.10")
+
+
+@pytest.mark.parametrize("stats", [None, DayStatsAnswer.unavailable("PACKET_WITHOUT_DAY_FIELDS"),
+                                   DayStatsAnswer(DayStats(Decimal("60"), Decimal("70"), Decimal("55"), None, 1))])
+async def test_d55_change_is_null_without_a_previous_close(stats):
+    """No day stats, a packet without day fields, or no previous close: null (not available on screen), never 0."""
+    ce = await _pushed_ce(stats)
+    assert ce["ltp"] == "63.10"
+    assert ce["change"] is None
+
+
+# --- Lane N (ADR-330 (36)): the chain's "Last trade" line after the close
+# comes from the SAME frozen frame as its price --
+
+class _BookProvider(FakeProvider):
+    """The fake provider's surface answered by the REAL ``QuoteBook`` (and its ``FeedState``), at the caller's clock."""
+
+    def __init__(self, clock) -> None:
+        from ofo.marketdata.feed_health import FeedState, FeedWindows, QuoteBook  # noqa: PLC0415
+        super().__init__()
+        self.clock = clock
+        self.feed = FeedState(windows=FeedWindows(datetime.timedelta(seconds=30), datetime.timedelta(seconds=60),
+                                                  datetime.timedelta(seconds=30)))
+        self.feed.on_connected(clock())
+        self.book = QuoteBook(self.feed)
+
+    def feed_frame(self, q, stats=None, at=None) -> None:
+        self.feed.on_data(at or q.timestamp)
+        self.book.update(q, None, stats)
+
+    def underlying_quote(self, underlying):
+        return self.book.get(NIFTY_ID, self.clock()) if underlying == "NIFTY" else None
+
+    def option_chain_snapshot(self, underlying, expiry):
+        now = self.clock()
+        return [q for i in list(self.book._entries) if (q := self.book.get(i, now)) is not None
+                and q.underlying == underlying and q.expiry == expiry]
+
+    def latest_day_stats(self, instrument_id, now=None):
+        return self.book.latest_day_stats(instrument_id, now or self.clock())
+
+    def depth_after_close(self, instrument_id, now=None):
+        return self.book.depth_after_close(instrument_id, now or self.clock())
+
+
+async def test_lane_n_chain_row_keeps_the_by_the_close_price_and_last_trade_after_a_later_frame():
+    """Closed market (Mon 19 Oct 2026): a contract's frame by the close (last trade 15:29:58 @99.75, frame 15:29:59) is
+    shown; a later frame (last trade 15:39:59 @100.10, frame 15:39:59) never moves the row's ltp or its last trade."""
+    at_close = datetime.datetime(2026, 10, 19, 15, 29, 59, tzinfo=IST)
+    later = datetime.datetime(2026, 10, 19, 15, 39, 59, tzinfo=IST)
+    wall = Clock(later + datetime.timedelta(seconds=1))
+    provider = _BookProvider(wall)
+    feed = LiveFeed(MarketContext(provider, wall, Decimal("0.065")), FanOut(provider))
+    ce_id = cid("25150", "CE")
+
+    def stats(t):
+        return DayStats(Decimal("60"), Decimal("120"), Decimal("55"), Decimal("58"), int(t.timestamp()))
+    provider.feed_frame(index_quote("25162.30", at=at_close))
+    provider.feed_frame(option_quote(ce_id, "99.75", at=at_close), stats(at_close - datetime.timedelta(seconds=1)))
+
+    async def one_push():
+        channel = FakeChannel()
+        push = ChainPush(channel, feed, monotonic=Clock(1000.0), now=wall, reader=Reader(), poll=0.005,
+                         read_settings=settings_with())
+        task = await start(push, channel)
+        await close(channel, task)
+        return next(r for r in channel.sent[0]["rows"] if r["strike"] == "25150.00")["ce"]
+
+    before = await one_push()
+    assert (before["ltp"], before["last_trade_at"]) == ("99.75", "2026-10-19T15:29:58+05:30")
+    provider.feed_frame(index_quote("25170.00", at=later))
+    provider.feed_frame(option_quote(ce_id, "100.10", at=later), stats(later))
+    after = await one_push()
+    assert (after["ltp"], after["last_trade_at"]) == ("99.75", "2026-10-19T15:29:58+05:30")

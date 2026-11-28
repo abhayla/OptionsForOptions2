@@ -225,6 +225,42 @@ describe('REQ-112 AC-2: Dismiss refusals and the compare\'s acted-on', () => {
     expect(w.emitted('dismissed')).toBeUndefined()
   })
 
+  it('D-36: a failed approaches read says so with the server\'s words and Retry asks again (no automatic retry)', async () => {
+    answers['POST /strategies/72/adjustment-approaches'] = Object.assign(new Error('x'), {
+      status: 503, parts: { what_happened: 'Zerodha is busy. Try again in a moment.' } })
+    keep(mount(AdjustDrawer, { attachTo: document.body, props: { open: true, strategyId: 72, client: api } }))
+    await flushPromises()
+    const posts = () => calls.filter(([m, u]) => m === 'POST' && u.endsWith('/adjustment-approaches')).length
+    expect(posts()).toBe(1)
+    expect(document.body.querySelector('[data-testid="drawer-error"]').textContent).toContain('Zerodha is busy. Try again in a moment.')
+    answers['POST /strategies/72/adjustment-approaches'] = adj02current
+    document.body.querySelector('[data-testid="drawer-retry"]').click()
+    await flushPromises()
+    expect(posts()).toBe(2)
+    expect(document.body.querySelector('[data-testid="drawer-error"]')).toBeNull()
+  })
+
+  it('D-36 round 2: a double click on Retry sends one POST, and only the newest reply is shown', async () => {
+    const sent = []
+    const client = { get: () => Promise.resolve({ data: { dismiss_reasons: [] } }), post: (url) => {
+      return new Promise((resolve, reject) => { sent.push({ url, resolve, reject }) })
+    } }
+    keep(mount(AdjustDrawer, { attachTo: document.body, props: { open: true, strategyId: 72, client } }))
+    await flushPromises()
+    expect(sent.length).toBe(1)
+    sent[0].reject(Object.assign(new Error('x'), { status: 503, parts: { what_happened: 'Zerodha is busy. Try again in a moment.' } }))
+    await flushPromises()
+    const retry = document.body.querySelector('[data-testid="drawer-retry"]')
+    retry.click()
+    retry.click() // a second click before the first reply: ignored while one is in flight
+    await flushPromises()
+    expect(sent.length).toBe(2)
+    sent[1].resolve({ data: adj02current })
+    await flushPromises()
+    expect(document.body.querySelector('[data-testid="drawer-error"]')).toBeNull()
+    expect(document.body.querySelector('[data-testid="drawer-loading"]')).toBeNull()
+  })
+
   it('the drawer shows no Dismiss without an open record (a platform detection has none)', async () => {
     answers['POST /strategies/72/adjustment-approaches'] = adj02current
     keep(mount(AdjustDrawer, { attachTo: document.body, props: { open: true, strategyId: 72, client: api } }))
@@ -232,7 +268,7 @@ describe('REQ-112 AC-2: Dismiss refusals and the compare\'s acted-on', () => {
     expect(document.body.querySelector('[data-testid="drawer-dismiss"]')).toBeNull()
   })
 
-  it('the prepare button posts acted-on for each record before handing the legs on; no other POST', async () => {
+  it('the prepare button posts no acted-on (only a placed paper order stamps it) and hands the ids on with the legs', async () => {
     const contracts = adj02approaches.approaches.flatMap((a) => a.after_legs.map((l, i) => ({
       contract_id: 100 + i, symbol: l.tradingsymbol, expiry: l.expiry, instrument_type: l.type, strike: l.strike, lot_size: 65, exchange_segment: 'NFO', exchange_token: 900 + i })))
     const order = []
@@ -249,7 +285,8 @@ describe('REQ-112 AC-2: Dismiss refusals and the compare\'s acted-on', () => {
     await t(w, 'adjust-pick').setValue('A-01')
     await t(w, 'adjust-open').trigger('click')
     await flushPromises()
-    expect(order.filter((u) => u.includes('adjustment-opportunities'))).toEqual(['/adjustment-opportunities/11/acted-on', '/adjustment-opportunities/12/acted-on'])
+    expect(order.filter((u) => u.includes('adjustment-opportunities'))).toEqual([]) // staging marks nothing (item 10)
+    expect(w.emitted('prepare')[0][0].suggestionIds).toEqual(['11', '12']) // they travel with the basket to its paper order
     expect(w.emitted('prepare')).toHaveLength(1)
   })
 })

@@ -177,22 +177,33 @@ async def test_same_first_order_time_falls_back_to_the_newest_id(db):
 
 # --- answer states ----------------------------------------------------------------------------------------------------
 
-async def test_one_open_contract_not_live_drops_unbooked_total_and_decay_but_keeps_booked(db):
+async def test_one_expired_contract_leaves_its_strategy_out_of_every_figure_and_says_so(db):
+    """D-40 (ADR-324): strategy 48 holds the retired contract, so it is left out; 50 and 46 can be priced and every
+    header figure (booked too, so Total = Booked + Unbooked) is the sum over those two."""
     app, _provider, _clock, _last, sid = await _seed_three(db)
     await db.execute(text(_RETIRE), {"id": sid["contracts"][1]})  # held only by strategy 48 (SELL 65)
-    totals = (await _list(app))["totals"]
-    assert (totals["booked"], totals["unbooked"], totals["total"], totals["totals_reason"]) == (
-        "731.25", None, None, "contract_retired")
-    assert (totals["unbooked_text"], totals["total_text"], totals["decay"], totals["decay_reason"]) == (
-        None, None, None, "contract_retired")
+    body = await _list(app)
+    totals = body["totals"]
+    rows = {s["strategy_id"]: s for s in body["strategies"]}
+    assert rows[sid["48"]]["unbooked"] is None
+    booked = D(rows[sid["50"]]["booked"]) + D(rows[sid["46"]]["booked"])
+    unbooked = D(rows[sid["50"]]["unbooked"]) + D(rows[sid["46"]]["unbooked"])
+    assert (totals["booked"], totals["unbooked"], totals["total"]) == (
+        str(booked), str(unbooked), str(booked + unbooked))
+    assert totals["booked"] == "2236.00"  # 731.25 over all three, minus 48's booked -1,504.75
+    assert (totals["totals_reason"], totals["decay_reason"], totals["decay"] is None) == (None, None, False)
+    assert (totals["left_out_count"], totals["left_out_text"]) == (1, "1 strategy left out: its contract has expired.")
 
 
-async def test_stale_prices_make_the_totals_absent_with_prices_not_live(db):
+async def test_stale_prices_leave_the_running_trades_out_and_the_closed_booked_result_stands(db):
     app, _provider, clock, last, _sid = await _seed_three(db)
     clock.now = last + datetime.timedelta(minutes=10)
     totals = (await _list(app))["totals"]
-    assert (totals["booked"], totals["unbooked"], totals["total"], totals["totals_reason"], totals["decay_reason"]) == (
-        "731.25", None, None, "prices_not_live", "prices_not_live")
+    # ADR-330 (62): no running trade can be priced, the closed one (50) has its booked result: the total is that result
+    assert (totals["booked"], totals["unbooked"], totals["total"], totals["totals_reason"]) == (
+        "2236.00", "0.00", "2236.00", None)
+    assert (totals["decay"], totals["decay_reason"]) == ("0.00", None)  # the closed book decays nothing
+    assert (totals["left_out_count"], totals["left_out_text"]) == (2, _UNP2)
 
 
 async def test_no_iv_drops_only_the_decay_with_its_reason(db):
@@ -218,6 +229,9 @@ async def test_a_fully_exited_strategy_counts_in_booked_and_decays_nothing(db):
                               "totals_reason_text": None, "decay_reason_text": None,
                               "charges_reason_text": str(reason_text("rates_unavailable")),
                               "totals_as_of": None,  # GC-LIVE L3a: no paused book, no pause time
+                              "left_out_count": 0, "left_out_text": None,  # D-40: nothing expired
+                              # P11: the one fully exited strategy is a closed one
+                              "closed_count": 1, "closed_text": render_explanation("paper_totals_closed_one"),
                               # ADR-301 to ADR-311: the after-charges figures wait for the same missing rates
                               "total_after": None, "total_after_text": None, "booked_after": None,
                               "booked_after_text": None, "unbooked_after": None, "unbooked_after_text": None,
@@ -240,6 +254,8 @@ async def test_no_paper_strategies_answers_an_empty_list_and_zero_totals(db):
                               "charges_text": str(render_explanation("paper_charges", amount=D("0"))),
                               "charges_reason": None, "totals_reason_text": None, "decay_reason_text": None,
                               "charges_reason_text": None, "totals_as_of": None,
+                              "left_out_count": 0, "left_out_text": None,
+                              "closed_count": 0, "closed_text": None,  # P11
                               # ADR-301 to ADR-311: nothing traded, so every after-charges figure is zero
                               "total_after": "0.00", "total_after_text": zero, "booked_after": "0.00",
                               "booked_after_text": zero, "unbooked_after": "0.00", "unbooked_after_text": zero,
@@ -268,7 +284,11 @@ async def test_each_alert_row_names_its_strategy(db):
     async with _client(app) as c:
         alerts = (await c.get("/paper/alerts")).json()["alerts"]
         book = (await c.get(f"/paper/strategies/{stored.id}")).json()
-    assert [(a["strategy_id"], a["strategy_name"]) for a in alerts] == [(stored.id, book["name"])]
+    # the alert row names its strategy with the ONE ADR-330 (19)(b) label (alert_title.labels, Lane P's rule: the
+    # nearest open-leg expiry, read as the V1 owner); this strategy is a test user's, so the expiry is not readable
+    # and only the number prints (never a guessed date)
+    assert [(a["strategy_id"], a["strategy_name"]) for a in alerts] == [
+        (stored.id, f'{book["name"]} (#{stored.id})')]
     assert alerts[0]["strategy_name"]
 
 
@@ -316,3 +336,222 @@ async def test_no_rates_makes_every_charges_figure_absent_with_its_reason_never_
     async with _client(app) as c:
         book = (await c.get(f"/paper/strategies/{sid['46']}")).json()
     assert (book["charges"], book["charges_reason"]) == (None, "rates_unavailable")
+
+
+# --- D-40 (23 Nov live test, ADR-324): expired strategies are left out of the header; a plain reason, not an error ---
+# Real case: PATH-60 / PATH-61 hold open legs on expired contracts. Here one open contract is retired: 46 is the expired
+# strategy; 48 (hand figures -1,504.75 / +10,361.00 / +8,856.25) and 50 are the strategies that can be priced.
+
+async def test_expired_strategy_is_left_out_of_every_header_figure_and_the_line_says_how_many(db):
+    app, _provider, _clock, _last, seeded = await _seed_three(db)
+    await db.execute(text(_RETIRE), {"id": seeded["contracts"][2]})  # 46's BUY leg: its contract has expired
+    body = await _list(app)
+    rows = {s["strategy_id"]: s for s in body["strategies"]}
+    expired = rows[seeded["46"]]
+    assert expired["unbooked"] is None and [u["expired"] for u in expired["unpriced_legs"]] == [True]
+    kept = [rows[seeded["48"]], rows[seeded["50"]]]
+    assert (D(kept[0]["booked"]), D(kept[0]["unbooked"]), D(kept[0]["total"])) == (
+        D("-1504.75"), D("10361.00"), D("8856.25"))
+    totals = body["totals"]
+    booked = sum((D(s["booked"]) for s in kept), D(0))
+    unbooked = sum((D(s["unbooked"]) for s in kept), D(0))
+    assert (D(totals["booked"]), D(totals["unbooked"]), D(totals["total"])) == (booked, unbooked, booked + unbooked)
+    assert totals["totals_reason"] is None and totals["totals_reason_text"] is None
+    assert totals["decay"] is not None and totals["decay_reason"] is None
+    assert totals["left_out_count"] == 1
+    assert totals["left_out_text"] == render_explanation("paper_totals_left_out_one")
+    assert totals["left_out_text"] == "1 strategy left out: its contract has expired."
+
+
+async def test_no_expired_strategy_means_no_left_out_line(db):
+    app, *_ = await _seed_three(db)
+    totals = (await _list(app))["totals"]
+    assert (totals["left_out_count"], totals["left_out_text"]) == (0, None)
+
+
+async def test_a_price_that_is_not_live_leaves_the_running_trades_out_and_the_booked_result_stands(db):
+    app, _provider, clock, last, _seeded = await _seed_three(db)
+    clock.now = last + datetime.timedelta(minutes=10)  # every price stale: (62), the two running ones are counted
+    totals = (await _list(app))["totals"]
+    assert (totals["unbooked"], totals["total"], totals["totals_reason"]) == ("0.00", "2236.00", None)
+    assert (totals["left_out_count"], totals["left_out_text"]) == (2, _UNP2)
+
+
+async def test_a_book_on_expired_contracts_answers_200_with_the_plain_reason_the_card_shows(db):
+    """The route is not the 500: it answers with the reason (the card's failure was in the browser, which read the
+    catalogue for the book's expiry, found nothing and threw "unreadable paper book": see live-strategies.test.js)."""
+    app, _provider, _clock, _last, seeded = await _seed_three(db)
+    for cid in seeded["contracts"]:  # every contract of the books has expired and been retired
+        await db.execute(text(_RETIRE), {"id": cid})
+    async with _client(app) as c:
+        single = await c.get(f"/paper/strategies/{seeded['46']}")
+        listed = await c.get("/paper/strategies")
+    assert single.status_code == HTTPStatus.OK, single.text
+    body = single.json()
+    assert (body["state"], body["pause_reason"], body["total"]) == ("PAUSED", "contract_retired", None)
+    assert body["pause_reason_text"] == reason_text("contract_retired")
+    assert body["unpriced_text"] and body["unpriced_text"].startswith("Expired contracts have no price: ")
+    assert listed.status_code == HTTPStatus.OK, listed.text
+    totals = listed.json()["totals"]
+    open_books = 2  # 46 and 48 hold open legs (50 is fully exited)
+    assert totals["left_out_count"] == open_books
+    assert totals["left_out_text"] == render_explanation("paper_totals_left_out_many", count=open_books)
+
+
+# --- D-40 round 2 (A1, A2, A4): the expiry decision does not depend on the connection or on the other legs -----------
+
+async def test_a1_not_connected_with_an_expired_contract_still_leaves_that_strategy_out(db):
+    """The broker is not connected (no market context) and strategy 46's contract has expired: the header names the
+    strategy as left out; it does not blank with the contract_retired reason and a left-out count of 0."""
+    from ofo_app.routes.outcome import get_market_context  # noqa: PLC0415
+
+    app, _provider, _clock, _last, seeded = await _seed_three(db)
+    await db.execute(text(_RETIRE), {"id": seeded["contracts"][2]})  # 46's BUY leg
+    app.dependency_overrides[get_market_context] = lambda: None
+    body = await _list(app)
+    rows = {s["strategy_id"]: s for s in body["strategies"]}
+    assert rows[seeded["46"]]["state"] == "NOT_CONNECTED" and rows[seeded["46"]]["expired_open"] is True
+    assert rows[seeded["48"]]["expired_open"] is False
+    totals = body["totals"]
+    assert totals["totals_reason"] != "contract_retired" and totals["decay_reason"] != "contract_retired"
+    # 46 has expired and the broker is not connected, so 48 cannot be priced either (counted, not blanking)
+    assert (totals["left_out_count"], totals["left_out_text"]) == (2, _MIX2)
+    async with _client(app) as c:
+        single = (await c.get(f"/paper/strategies/{seeded['46']}")).json()
+    assert single["expired_open"] is True  # the per-strategy reply says it too (the card keys on this)
+    assert [u["expired"] for u in single["unpriced_legs"]] == [True]  # and names the expired leg, connected or not
+    assert single["unpriced_text"].startswith("Expired contracts have no price: ")
+
+
+async def test_a2_one_expired_leg_among_live_ones_leaves_the_whole_strategy_out(db):
+    """Strategy 48 holds three open legs; one contract has expired, the other two are priced. 48 is left out whole:
+    none of its booked or priced figures reach the header."""
+    app, _provider, _clock, _last, sid = await _seed_three(db)
+    await db.execute(text(_RETIRE), {"id": sid["contracts"][1]})  # held only by 48
+    body = await _list(app)
+    rows = {s["strategy_id"]: s for s in body["strategies"]}
+    priced = [p for p in rows[sid["48"]]["positions"] if p["ltp"] is not None]
+    assert priced, "48 must still have live-priced legs for this case"
+    assert rows[sid["48"]]["expired_open"] is True
+    kept_booked = D(rows[sid["50"]]["booked"]) + D(rows[sid["46"]]["booked"])
+    assert D(body["totals"]["booked"]) == kept_booked
+    assert body["totals"]["left_out_count"] == 1
+
+
+async def test_a4_an_expired_strategy_and_stale_prices_are_both_counted_and_the_booked_result_stands(db):
+    """Mixed: 46 has expired and every price is stale. ADR-330 (62): the closed 50 keeps its booked result and the
+    left-out line counts the expired one and the stale one (never contract_retired as the total's reason)."""
+    app, _provider, clock, last, sid = await _seed_three(db)
+    await db.execute(text(_RETIRE), {"id": sid["contracts"][2]})
+    clock.now = last + datetime.timedelta(minutes=10)
+    totals = (await _list(app))["totals"]
+    # ADR-330 (62): the closed 50 keeps its booked result; 46 (expired) and 48 (stale) are left out and counted
+    assert (totals["unbooked"], totals["total"], totals["totals_reason"]) == ("0.00", "2236.00", None)
+    assert (totals["left_out_count"], totals["left_out_text"]) == (2, _MIX2)
+
+
+# --- AC-R06 / N-46 (26 Nov 2026, ADR-324 (1) to (3)): one strategy that cannot be priced never pauses the total ------
+# Owner case: six running strategies, five priced at the last close, #173 (a SENSEX trade expiring that day) paused:
+# Home and the Positions header showed "-" and "Paper P&L paused". Here: 48 holds a delisted contract (paused, not
+# expired); 50 and 46 are priced. The header is the sum over 50 and 46, with a count line.
+_DELIST = "UPDATE public.catalogue_contracts SET delisted = TRUE, currently_listed = FALSE WHERE id = :id"
+_PAUSED_ONE = "1 strategy left out: its price is not live."
+_UNP2 = "2 strategies left out: their prices are not live."
+_MIX2 = "2 strategies left out: their contracts have expired or their prices are not live."
+
+
+async def test_ac_r06_one_paused_strategy_is_left_out_and_the_total_is_over_the_priced_ones(db):
+    app, _provider, _clock, _last, sid = await _seed_three(db)
+    await db.execute(text(_DELIST), {"id": sid["contracts"][1]})  # held only by 48
+    body = await _list(app)
+    rows = {s["strategy_id"]: s for s in body["strategies"]}
+    assert rows[sid["48"]]["state"] == "PAUSED" and rows[sid["48"]]["expired_open"] is False
+    kept = [rows[sid["50"]], rows[sid["46"]]]
+    booked = sum((D(s["booked"]) for s in kept), D(0))
+    unbooked = sum((D(s["unbooked"]) for s in kept), D(0))
+    totals = body["totals"]
+    assert (D(totals["booked"]), D(totals["unbooked"]), D(totals["total"])) == (booked, unbooked, booked + unbooked)
+    assert (totals["totals_reason"], totals["totals_reason_text"]) == (None, None)
+    assert (totals["left_out_count"], totals["left_out_text"]) == (1, _PAUSED_ONE)
+    assert rows[sid["48"]]["unbooked"] is None  # its own row stays paused with its reason
+
+
+async def test_ac_r06_every_running_strategy_paused_shows_the_booked_result_of_the_closed_one(db):
+    app, _provider, clock, last, _sid = await _seed_three(db)
+    clock.now = last + datetime.timedelta(minutes=10)
+    totals = (await _list(app))["totals"]
+    assert (totals["total"], totals["totals_reason"]) == ("2236.00", None)  # ADR-330 (62): 50's booked result
+    assert totals["total_after"] is None  # rates unavailable in this seed: no after-charges figure
+    assert (totals["left_out_count"], totals["left_out_text"]) == (2, _UNP2)
+
+
+def test_ac_r06_the_count_line_names_expired_unpriced_or_both():
+    from ofo_app.routes.paper import _left_out_text  # noqa: PLC0415
+
+    assert _left_out_text(0, 0) is None
+    assert _left_out_text(1, 0) == "1 strategy left out: its contract has expired."
+    assert _left_out_text(0, 3) == "3 strategies left out: their prices are not live."
+    assert _left_out_text(1, 1) == "2 strategies left out: their contracts have expired or their prices are not live."
+
+
+# --- D-36: a finished book (no open leg) costs the list no pricing, decay or live-figure work ------------------------
+
+_FINISHED = 6
+# 6 -> 8 (Lane U 7397330f, ADR-330 (19), REQ-134 AC-4): the list reply carries `shown_date`, read by the one shown-date
+# source of the expiries reply (catalogue.get_shown_date: database date + database clock, scenario clock in scenario
+# mode), which costs SAVEPOINT + SELECT clock_timestamp() = 2 statements. Still fixed whatever the count of strategies.
+_STATEMENTS = 10  # the list's fixed database work: 8 reads + the release before the feed hold (savepoint pair here)
+_WORK = ("_prices", "_figures", "_summary", "_decay", "_charges", "_after")
+
+
+async def _seed_finished_and_one_open(db):
+    app, stored, provider, _clock, last = await _setup(db)
+    s48, s50 = _fixture(48), _fixture(50)
+    for n in range(_FINISHED):
+        await _strategy(db, stored, [(0, s50["legs"][0])], AT + datetime.timedelta(minutes=n + 1), new=n > 0)
+    await _strategy(db, stored, list(enumerate(s48["legs"])), AT, new=True)
+    for iid, leg in zip(IDS, s48["legs"], strict=True):
+        provider.on_frame(_frame(provider, iid, leg["current_price"] or "100"), last)
+    app.dependency_overrides[load_charge_rates] = lambda: RATES
+    return app
+
+
+async def test_d36_the_list_does_fixed_database_work_and_finished_books_cost_only_cheap_arithmetic(db, monkeypatch):
+    from ofo_app.routes import paper as route  # noqa: PLC0415
+    from sqlalchemy import event  # noqa: PLC0415
+    app = await _seed_finished_and_one_open(db)
+    seen = {name: {"finished": 0, "open": 0} for name in _WORK}
+
+    def counted(name):
+        original = getattr(route, name)
+
+        def wrapper(*args, **kwargs):
+            first = args[0]
+            if name == "_prices":
+                held = first  # the open contract ids
+            elif name == "_decay":
+                held = [p for p in first["positions"] if p["net_quantity"] != 0]
+            else:
+                held = route._open_ids(first)
+            seen[name]["open" if held else "finished"] += 1
+            return original(*args, **kwargs)
+        return wrapper
+    for name in _WORK:
+        monkeypatch.setattr(route, name, counted(name))
+    statements: list[str] = []
+    sync = db.sync_connection
+
+    def record(_conn, _cursor, statement, *_rest):
+        statements.append(statement)
+    event.listen(sync, "before_cursor_execute", record)
+    try:
+        body = await _list(app)
+    finally:
+        event.remove(sync, "before_cursor_execute", record)
+    # D-36 count (measured 2026-11-25, 6 finished + 1 open): the per-book helpers run once per finished book, pure
+    # arithmetic of about 0.3 ms each (6 books: 2 ms in all); the database work is a fixed 8 statements (10 with the
+    # Lane R release_connection) whatever the count of strategies and no broker is called. Finished books cost nothing
+    # measurable, so nothing is skipped.
+    assert {name: seen[name]["finished"] for name in _WORK} == dict.fromkeys(_WORK, _FINISHED)
+    assert len(statements) == _STATEMENTS
+    assert len(body["strategies"]) == _FINISHED + 1

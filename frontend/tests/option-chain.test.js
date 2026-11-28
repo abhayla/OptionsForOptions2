@@ -14,7 +14,7 @@ vi.mock('@/services/api', async (importActual) => {
 import { createPinia, setActivePinia } from 'pinia'
 import OptionChainPage from '@/pages/OptionChainPage.vue'
 import { useSettingsValues } from '@/stores/settingsValues'
-import { NOT_LIVE_LABEL, daysLeft } from '@/composables/useChainLive'
+import { NOT_LIVE_LABEL } from '@/composables/useChainLive'
 import { healthSentence } from '@/lib/dataHealthText'
 
 class FakeSocket {
@@ -63,8 +63,10 @@ function script({ chain } = {}) {
 // SETTLE_ROUNDS times (a test whose settings read fails on purpose stops after them, never hangs). 2026-11-01: rows 33
 // and attack 6 failed once under the full parallel gate run (sent 15 instead of 5; no request) and passed in 7 reruns.
 const SETTLE_ROUNDS = 10
+const mounted = [] // every page this file mounts: unmounted in afterEach so no reconnect timer outlives its test
 async function mountPage() {
   const w = mount(OptionChainPage)
+  mounted.push(w)
   await flushPromises()
   const settings = useSettingsValues()
   for (let round = 0; round < SETTLE_ROUNDS && settings.values === null; round += 1) await flushPromises()
@@ -80,7 +82,12 @@ beforeEach(() => {
   reads.length = 0
   vi.stubGlobal('WebSocket', FakeSocket)
 })
-afterEach(() => vi.unstubAllGlobals())
+afterEach(() => {
+  // A test that closes its socket without unmounting leaves a reconnect timer (1 s+); under load it fired in a LATER test,
+  // opened a stale FakeSocket that became sock(), and the later test read that page's request (row 33: sent 15, not 5).
+  for (const w of mounted.splice(0)) { try { w.unmount() } catch { /* already unmounted by the test */ } }
+  vi.unstubAllGlobals()
+})
 
 describe('Option Chain screen', () => {
   it('AC-1: lays out Calls | Strike | Puts, ascending, for the chosen underlying and expiry', async () => {
@@ -94,12 +101,12 @@ describe('Option Chain screen', () => {
     expect(heads).toEqual(['Calls', 'Strike', 'Puts'])
     const bodyRow = w.findAll('[data-testid="chain-row"]').at(1)
     const tds = bodyRow.findAll('td:not([data-testid^="sel-"])').map((t) => t.text())
-    expect(tds).toEqual(['120.50', '-', '1000', '50', '12.34', '24500', '95.25', '-', '1000', '50', '12.34'])
+    expect(tds).toEqual(['120.50', 'not available', '1000', '50', '12.34', '24500', '95.25', 'not available', '1000', '50', '12.34'])
     expect(cellsOf(w, 'strike')).toEqual(['24450', '24500', '24550'])
     expect(w.find('[data-testid="underlying-select"]').element.value).toBe('NIFTY')
   })
 
-  it('AC-2 (row 33): default columns per side are LTP, Change, OI, Volume and IV for every user; Change is "-"', async () => {
+  it('AC-2 (row 33): default columns per side are LTP, Change, OI, Volume and IV for every user; Change says "not available" while the feed has none (D-55)', async () => {
     script({ chain: () => Promise.resolve({ data: notConnected() }) })
     const w = await mountPage()
     sock().serverOpen()
@@ -109,8 +116,8 @@ describe('Option Chain screen', () => {
     expect(cols).toEqual(['LTP', 'Change', 'OI', 'Volume', 'IV', 'Strike', 'LTP', 'Change', 'OI', 'Volume', 'IV'])
     expect(cols.join(' ')).not.toMatch(/Delta|Bid|Ask/)
     expect(cellsOf(w, 'ce-iv')).toEqual(['12.34', '12.34', '12.34'])
-    expect(cellsOf(w, 'ce-change')).toEqual(['-', '-', '-'])
-    expect(cellsOf(w, 'pe-change')).toEqual(['-', '-', '-'])
+    expect(cellsOf(w, 'ce-change')).toEqual(['not available', 'not available', 'not available'])
+    expect(cellsOf(w, 'pe-change')).toEqual(['not available', 'not available', 'not available'])
   })
 
   it('AC-8: the server ATM row is marked, spot with time is shown, the expiry selector is present', async () => {
@@ -122,7 +129,8 @@ describe('Option Chain screen', () => {
     expect(w.findAll('[data-testid="chain-row"]').map((r) => r.attributes('data-atm'))).toEqual(['false', 'true', 'false'])
     expect(w.find('[data-testid="spot"]').text()).toBe('24510.00')
     expect(w.find('[data-testid="spot-time"]').text()).toMatch(/^as of /)
-    expect(w.find('[data-testid="expiry-select"]').findAll('option').map((o) => o.text())).toEqual(['2026-10-20', EXPIRY])
+    // U-Q3 (a): the chain names contracts as the builder does (REQ-148 AC-2)
+    expect(w.find('[data-testid="expiry-select"]').findAll('option').map((o) => o.text())).toEqual(['20 Oct 2026', '27 Oct 2026'])
     // the mark follows the server: a push with another atm_strike moves it, whatever the spot says
     sock().serverPush({ ...answer(), expiry: '2026-10-20', atm_strike: '24550.00' })
     await flushPromises()
@@ -133,9 +141,41 @@ describe('Option Chain screen', () => {
     expect(w.findAll('[data-testid="chain-row"]').map((r) => r.attributes('data-atm'))).toEqual(['false', 'false', 'false'])
   })
 
-  it('AC-8: days left comes from the expiry date alone', () => {
-    expect(daysLeft('2026-10-27', new Date(2026, 9, 19, 23, 30))).toBe(8)
-    expect(daysLeft('2026-10-19', new Date(2026, 9, 19, 0, 5))).toBe(0)
+  it('AC-8 / REQ-135 AC-2 (T-Q7): "N days left" is the SERVER\'s count; a frozen browser clock on another day changes nothing', async () => {
+    vi.useFakeTimers({ toFake: ['Date'] })
+    vi.setSystemTime(new Date(2026, 9, 19, 23, 30)) // the browser says 19 Oct: its own count to 27 Oct would be 8
+    try {
+      restAnswer = (url, params) => (url.startsWith('/catalogue/')
+        ? Promise.resolve({ data: { expiries: [EXPIRY], today: '2026-10-24', expiry_days: [{ expiry: EXPIRY, days: 3 }] } })
+        : url === '/settings' ? Promise.resolve(settingsAnswer()) : Promise.reject(new Error('down')))
+      const w = await mountPage()
+      expect(w.get('[data-testid="days-left"]').text()).toBe('3 days left')
+      // the server's count absent: no number at all, never one from the browser clock
+      restAnswer = (url) => (url.startsWith('/catalogue/') ? Promise.resolve({ data: { expiries: [EXPIRY] } }) : url === '/settings' ? Promise.resolve(settingsAnswer()) : Promise.reject(new Error('down')))
+      const w2 = await mountPage()
+      expect(w2.find('[data-testid="days-left"]').exists()).toBe(false)
+    } finally {
+      vi.useRealTimers()
+    }
+  })
+
+  it('REQ-029 AC-11 (T-Q10): the page\'s own sentences come from the wording catalogue unchanged, and the page carries none of them as text', async () => {
+    const cat = await import('@/lib/sharedStateText')
+    expect(cat.CHAIN_WAITING_TEXT).toBe('Waiting for live data.')
+    expect(cat.CHAIN_NO_STRIKES_MATCH_TEXT).toBe('No strikes match the filters.')
+    expect(cat.CHAIN_EXPIRIES_UNREADABLE_TEXT).toBe('The expiries could not be read, so no chain is shown.')
+    expect(Object.values(cat.CHAIN_ROWS_MISSING_TEXTS)).toEqual([
+      'The underlying price is missing, so no strikes can be chosen yet.', 'This expiry is not in the catalogue.',
+      'The catalogue lists no options for this expiry.', 'The catalogue could not be read.'])
+    const src = readFileSync(resolve(__dirname, '../src/pages/OptionChainPage.vue'), 'utf8')
+    for (const t of [cat.CHAIN_WAITING_TEXT, cat.CHAIN_NO_STRIKES_MATCH_TEXT, cat.CHAIN_EXPIRIES_UNREADABLE_TEXT, cat.CHAIN_SPOT_MISSING_ROWS_KEPT_TEXT, ...Object.values(cat.CHAIN_ROWS_MISSING_TEXTS)]) expect(src).not.toContain(t)
+    // and the page shows them from there
+    script({ chain: () => Promise.resolve({ data: notConnected() }) })
+    const w = await mountPage()
+    sock().serverOpen()
+    sock().serverPush(answer('120.50', { rows: [], rows_missing: 'EXPIRY_UNKNOWN', expiry: '2026-10-20' }))
+    await flushPromises()
+    expect(w.get('[data-testid="rows-missing"]').text()).toBe('This expiry is not in the catalogue.')
   })
 
   it('AC-6: no order, execute, buy/sell button or link anywhere on the screen', async () => {
@@ -145,7 +185,7 @@ describe('Option Chain screen', () => {
     sock().serverPush({ ...answer(), expiry: '2026-10-20' })
     await flushPromises()
     // REQ-030 AC-2: the only buttons are the per-cell Buy / Sell choices of a leg for import (ADR-002: never an order)
-    expect([...new Set(w.findAll('button').map((b) => b.text()))].sort()).toEqual(['Buy', 'Clear filters', 'Refresh', 'Sell']) // row 33: Clear filters only resets the display filters
+    expect([...new Set(w.findAll('button').map((b) => b.text()))].sort()).toEqual(['Add Selected (0)', 'Buy', 'Clear filters', 'Refresh', 'Sell']) // T-Q8: the greyed Add Selected (0) always shows; row 33: Clear filters only resets the display filters
     expect(w.findAll('a')).toHaveLength(0)
     expect(w.text()).not.toMatch(/\b(order|execute|place)\b/i)
     const src = readFileSync(resolve(__dirname, '../src/pages/OptionChainPage.vue'), 'utf8')
@@ -247,6 +287,46 @@ describe('Option Chain screen', () => {
     } finally {
       vi.useRealTimers()
     }
+  })
+
+  it('D-19: a cell with a last trade time shows it under its LTP; a cell without shows nothing extra', async () => {
+    script({ chain: () => Promise.resolve({ data: notConnected() }) })
+    const w = await mountPage()
+    sock().serverOpen()
+    const a = answer('63.10')
+    a.rows[1].ce = { ...a.rows[1].ce, bid: '63.90', ask: '64.10', last_trade_at: '2026-10-19T09:19:53+05:30' }
+    a.rows[1].pe = { ...a.rows[1].pe, last_trade_at: null }
+    sock().serverPush({ ...a, expiry: '2026-10-20' })
+    await flushPromises()
+    expect(w.findAll('[data-testid="ce-last-trade"]').map((x) => x.text())).toEqual(['Last trade 09:19:53 IST'])
+    expect(w.find('[data-testid="pe-last-trade"]').exists()).toBe(false)
+  })
+
+  it('D-19 round 2: a last trade from an earlier day shows its date; one from the cell\'s own day shows the time only', async () => {
+    script({ chain: () => Promise.resolve({ data: notConnected() }) })
+    const w = await mountPage()
+    sock().serverOpen()
+    const a = answer('63.10') // every cell's `at` is 19 Oct 2026
+    a.rows[1].ce = { ...a.rows[1].ce, last_trade_at: '2026-10-16T15:29:58+05:30' }
+    a.rows[1].pe = { ...a.rows[1].pe, last_trade_at: '2026-10-19T09:19:53+05:30' }
+    sock().serverPush({ ...a, expiry: '2026-10-20' })
+    await flushPromises()
+    expect(w.get('[data-testid="ce-last-trade"]').text()).toBe('Last trade 16 Oct 2026, 15:29:58 IST')
+    expect(w.get('[data-testid="pe-last-trade"]').text()).toBe('Last trade 09:19:53 IST')
+  })
+
+  it('#748: a held contract with no first price (cell health null) says it waits for the first live price, never "Unavailable"; an unknown one still says unavailable', async () => {
+    script({ chain: () => Promise.resolve({ data: notConnected() }) })
+    const w = await mountPage()
+    sock().serverOpen()
+    const a = answer()
+    a.rows[0].ce = { ...a.rows[0].ce, ltp: null, health: null, at: null }
+    a.rows[0].pe = { ...a.rows[0].pe, ltp: null, health: 'unavailable', at: null }
+    sock().serverPush({ ...a, expiry: '2026-10-20' })
+    await flushPromises()
+    expect(w.get('[data-testid="ce-health"]').text()).toBe('Waiting for the first live price')
+    expect(w.get('[data-testid="ce-health"]').text()).not.toMatch(/Unavailable/)
+    expect(w.get('[data-testid="pe-health"]').text()).toBe(healthSentence('unavailable'))
   })
 
   it('shows the reason when the server sends no rows, the cell health word, and the unreadable catalogue', async () => {
@@ -357,6 +437,7 @@ describe('Option Chain screen', () => {
     sock().serverOpen()
     await w.find('[data-testid="filter-strike-range"]').setValue('5')
     await flushPromises()
+    await new Promise((r) => setTimeout(r, 350)) // D-55 round 2: a change is sent after a short pause
     expect(JSON.parse(sock().sent.at(-1))).toEqual({ underlying: 'NIFTY', expiry: '2026-10-20', strikes_each_side: 5 })
   })
 
@@ -372,10 +453,12 @@ describe('Option Chain screen', () => {
     await w.find('[data-testid="filter-moneyness"]').setValue('OTM')
     expect(cellsOf(w, 'strike')).toEqual(['24550'])
     expect(cellsOf(w, 'ce-ltp')).toEqual(['90.00'])
-    expect(w.find('[data-testid="selected-leg-name"]').text()).toContain('24450.00')
+    // U-Q3 (a): the chain names contracts as the builder does (REQ-148 AC-2)
+    expect(w.find('[data-testid="selected-leg-name"]').text()).toContain('24450')
     const sentBefore = sock().sent.length
     await w.find('[data-testid="filter-min-ltp"]').setValue('1000')
     await flushPromises()
+    await new Promise((r) => setTimeout(r, 350)) // D-55 round 2: a change is sent after a short pause
     expect(sock().sent.length).toBe(sentBefore + 1)
     expect(JSON.parse(sock().sent.at(-1))).toEqual({ underlying: 'NIFTY', expiry: '2026-10-20', strikes_each_side: 15, min_ltp: '1000' })
     sock().serverPush({ ...answer(), expiry: '2026-10-20', rows: [] })
@@ -385,6 +468,7 @@ describe('Option Chain screen', () => {
     expect(w.findAll('[data-testid="selected-leg"]')).toHaveLength(1)
     await w.find('[data-testid="filter-reset"]').trigger('click')
     await flushPromises()
+    await new Promise((r) => setTimeout(r, 350)) // D-55 round 2
     expect(JSON.parse(sock().sent.at(-1))).toEqual({ underlying: 'NIFTY', expiry: '2026-10-20', strikes_each_side: 15 })
     sock().serverPush({ ...answer(), expiry: '2026-10-20' })
     await flushPromises()
@@ -505,5 +589,47 @@ describe('Option Chain limits come from GET /api/settings (REQ-167 AC-5)', () =>
       const code = readFileSync(resolve(__dirname, f), 'utf8').replace(/\/\/.*$/gm, '')
       expect(code).not.toMatch(/\b15\b|\b8000\b/)
     }
+  })
+})
+
+// Lane FC2 (R2, 28 Nov) ADR-330 (61): the contract-list line the server sends on the expiries answer (`list_notice`) is shown on the chain too.
+describe('ADR-330 (61): the contract-list line on the Option Chain', () => {
+  const LINE = "Contract list of 27 Nov 2026. Today's list loads at about 08:35."
+  const withNotice = (value) => {
+    restAnswer = (url) => {
+      if (url === '/settings') return Promise.resolve(settingsAnswer())
+      if (url.startsWith('/catalogue/')) return Promise.resolve({ data: { underlying: 'NIFTY', expiries: [EXPIRY], ...(value === undefined ? {} : { list_notice: value }) } })
+      return Promise.reject(new Error('down'))
+    }
+  }
+  it('shows the server line as sent while yesterday\'s list is in use', async () => {
+    withNotice(LINE)
+    const w = await mountPage()
+    expect(w.get('[data-testid="contract-list-notice"]').text()).toBe(LINE)
+  })
+  it.each([[null], [undefined], [''], [42]])('shows nothing when the field is %s', async (v) => {
+    withNotice(v)
+    const w = await mountPage()
+    expect(w.find('[data-testid="contract-list-notice"]').exists()).toBe(false)
+  })
+})
+
+// Lane FC2 (R2, 28 Nov) D-TD-2 / I-86: a failed expiries read has a Retry that asks again (the chain's own sentence stays).
+describe('D-TD-2: the Option Chain after a failed expiries read', () => {
+  it('shows its sentence and a Retry; Retry asks again and the expiry list comes back', async () => {
+    let down = true
+    restAnswer = (url) => {
+      if (url === '/settings') return Promise.resolve(settingsAnswer())
+      if (url.startsWith('/catalogue/')) return down ? Promise.reject(new Error('down')) : Promise.resolve({ data: { underlying: 'NIFTY', expiries: [EXPIRY] } })
+      return Promise.reject(new Error('down'))
+    }
+    const w = await mountPage()
+    expect(w.get('[data-testid="catalogue-unreadable"]').text()).toBe('The expiries could not be read, so no chain is shown.')
+    const before = reads.filter((r) => r.url.startsWith('/catalogue/')).length
+    down = false
+    await w.get('[data-testid="catalogue-retry"]').trigger('click')
+    await flushPromises()
+    expect(reads.filter((r) => r.url.startsWith('/catalogue/')).length).toBe(before + 1)
+    expect(w.find('[data-testid="catalogue-unreadable"]').exists()).toBe(false)
   })
 })

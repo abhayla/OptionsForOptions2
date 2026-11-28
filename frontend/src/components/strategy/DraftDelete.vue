@@ -3,10 +3,10 @@
      false). The flow (confirm, Undo, errors) is one object made by useDeleteFlow in lib/strategyActivity.js. -->
 <script setup>
 import Icon from "@/components/common/Icon.vue";
+import DraftDeleteConfirm from "@/components/strategy/DraftDeleteConfirm.vue";
 import { computed } from "vue";
 import { strategyLabel } from "@/lib/saveDraft";
 import {
-  confirmText,
   canDelete,
   refusedText,
 } from "@/lib/strategyActivity";
@@ -16,6 +16,8 @@ const props = defineProps({
   flow: { type: Object, required: true },
   // GC-UI 6b D-C12: the Builder's Saved rows show a bin icon (named "Delete") instead of the text link
   icon: { type: Boolean, default: false },
+  // S-04: the list page shows the confirm as its own line below the row, so the Delete button stays where it is
+  confirmBelow: { type: Boolean, default: false },
 });
 // the row is named so a screen reader hears WHICH strategy the bin acts on
 const rowName = computed(() => strategyLabel(props.row, `Draft ${props.row.id}`));
@@ -45,7 +47,7 @@ const rowName = computed(() => strategyLabel(props.row, `Draft ${props.row.id}`)
   </span>
   <span v-else-if="!canDelete(row)" class="text-ink-muted" data-testid="delete-refused">{{ refusedText(row) }}</span>
   <button
-    v-else-if="flow.confirming !== row.id"
+    v-else-if="confirmBelow || flow.confirming !== row.id"
     type="button"
     :class="icon ? 'underline' : 'link'"
     :disabled="flow.busy"
@@ -57,28 +59,5 @@ const rowName = computed(() => strategyLabel(props.row, `Draft ${props.row.id}`)
     <Icon v-if="icon" name="trash" :size="16" />
     <template v-else>Delete</template>
   </button>
-  <span
-    v-else
-    class="flex flex-wrap items-center gap-2"
-    data-testid="delete-confirm-box"
-  >
-    <span>{{ confirmText(row) }}</span>
-    <button
-      type="button"
-      class="link"
-      :disabled="flow.busy"
-      data-testid="delete-confirm"
-      @click="flow.confirm(row.id)"
-    >
-      Delete
-    </button>
-    <button
-      type="button"
-      class="link"
-      data-testid="delete-cancel"
-      @click="flow.cancel()"
-    >
-      Cancel
-    </button>
-  </span>
+  <DraftDeleteConfirm v-else :row="row" :flow="flow" />
 </template>

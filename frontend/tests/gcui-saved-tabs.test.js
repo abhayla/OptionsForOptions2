@@ -26,7 +26,7 @@ const LEG = {
   planned_entry: '101.25', captured_at: '2026-10-14T15:25:00+05:30',
 }
 const summary = (id, over = {}) => ({
-  id, underlying: 'NIFTY', status: 'draft', created_at: '2026-10-27T04:00:00Z', updated_at: `2026-10-27T04:0${id}:00Z`, name: `"Plan ${id}"`,
+  id, underlying: 'NIFTY', status: 'draft', status_word: 'Draft', created_at: '2026-10-27T04:00:00Z', updated_at: `2026-10-27T04:0${id}:00Z`, name: `"Plan ${id}"`,
   leg_count: 4, first_leg: { instrument: 'PE', strike: '22500.00', expiry: '2026-10-27' }, tracked: false, can_delete: true, ...over,
 })
 async function bar(strategies, props = {}) {
@@ -78,7 +78,7 @@ describe('D-C11 Saved Strategies rows', () => {
     expect(rows[1].text()).not.toContain(' and ')
   })
   it('ADR-259 + ADR-299: a closed trade leaves the Saved tab; each row shows its status word; an unknown status is still listed', async () => {
-    const w = await bar([summary(1), summary(2, { has_order: true }), summary(3, { status: 'closed', has_order: true }), summary(4, { status: 'weird' })])
+    const w = await bar([summary(1), summary(2, { has_order: true, status_word: 'Running' }), summary(3, { status: 'closed', has_order: true, status_word: 'Completed' }), summary(4, { status: 'weird', status_word: 'Unknown' })])
     const rows = w.findAll('[data-testid="saved-draft-row"]')
     expect(rows.map((r) => r.get('[data-testid="saved-draft-name"]').text())).toEqual(['Plan 4', 'Plan 2', 'Plan 1'])
     expect(rows.map((r) => r.get('[data-testid="saved-draft-status"]').text())).toEqual(['Status not available', 'Running', 'Draft'])
@@ -145,7 +145,7 @@ describe('D-C16 Save modal', () => {
     await t(w, 'save-draft').trigger('click')
     expect(t(w, 'modal-title').text()).toBe('Save New Strategy')
     expect(w.get('label[for="strategy-name"]').text()).toBe('Strategy Name')
-    expect(t(w, 'name-count').text()).toBe('12/20 characters')
+    expect(t(w, 'name-limit').text()).toBe('A name can be up to 20 characters.')
     expect(t(w, 'name-input').attributes('maxlength')).toBe('20')
     expect(t(w, 'name-cancel').text()).toBe('Cancel')
     expect(t(w, 'name-confirm').classes()).toContain('bg-accent')

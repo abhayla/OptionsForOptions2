@@ -114,6 +114,15 @@ export function useChainAnswer({ url = chainLiveUrl(), WebSocketImpl } = {}) {
     } else failed.value = true
   }
 
+  /** D-55 round 2: only the filters or the strike range changed (same underlying and expiry): the socket gets the new request
+   *  and the rows on screen stay until its answer arrives; the REST first paint is not read again (it would blank the table). */
+  function refilter(req) {
+    epoch += 1
+    request.value = req
+    pushed = false
+    live.follow(req)
+  }
+
   /** The choice is changing (underlying or expiry not settled): stop following, drop the shown answer and the request, and
    *  ignore every read and push for the old choice, before anything else is loaded. */
   function clear() {
@@ -136,11 +145,5 @@ export function useChainAnswer({ url = chainLiveUrl(), WebSocketImpl } = {}) {
   // A REST first paint that says LIVE while the socket is still connecting is a wait, not a not-connected state.
   const waitingForSocket = () => answer.value?.state === 'LIVE' && status.value === 'connecting'
   const notLive = () => !isLive() && !waitingForSocket() && (answer.value !== null || failed.value)
-  return { answer, status, reconnecting: useReconnecting(status), reconnectingText: lastPrice.text, request, follow, clear, stop, refresh, shown, isLive, notLive }
-}
-
-/** Whole days from `today` to the expiry date (date parts only; a label, never a price). */
-export function daysLeft(expiry, today = new Date()) {
-  const day = (iso) => Date.parse(`${iso}T00:00:00Z`) // both at UTC midnight: the difference is whole days
-  return (day(expiry) - day(today.toLocaleDateString('en-CA'))) / 86400000
+  return { answer, status, reconnecting: useReconnecting(status), reconnectingText: lastPrice.text, request, follow, refilter, clear, stop, refresh, shown, isLive, notLive }
 }

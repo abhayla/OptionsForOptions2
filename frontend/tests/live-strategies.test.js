@@ -10,15 +10,28 @@ let listAnswer
 let postAnswer
 let failDetailFor = new Set()
 let notLiveFor = new Set() // issue #500: drafts whose leg's stored contract is no longer live
+let indicesAnswer = null // ADR-177/212: the page's own market read (GET /market/indices); null = the read fails
 let partlyPricedFor = new Set() // REQ-077 AC-9: drafts with one priced leg and one leg that has no planned entry
 vi.mock('@/services/api', async (importActual) => {
   const actual = await importActual()
   const get = (url) => {
-    if (url === '/strategies') return typeof listAnswer === 'function' ? listAnswer() : Promise.resolve({ data: listAnswer })
+    if (url === '/strategies') return typeof listAnswer === 'function' ? listAnswer() : Promise.resolve({ data: withWords(listAnswer) })
     // ADR-299 / issue 16: the book of a running trade (only the contract held now, one leg already closed)
     const book = /^\/paper\/strategies\/(\d+)$/.exec(url)
     if (book) {
       paperGets.push(Number(book[1]))
+      if (expiredBook.has(Number(book[1]))) { // D-40: every open leg is on an expired contract the catalogue no longer lists
+        return Promise.resolve({ data: { strategy_id: Number(book[1]), underlying: 'NIFTY', answered_at: '2026-10-19T10:00:00+05:30', orders: [{ id: 1 }],
+          positions: [{ contract_id: 777, net_quantity: -65, average: '88.50', expiry: '2026-10-13', price_at: null }],
+          pause_reason: 'contract_retired', pause_reason_text: EXPIRED_REASON, expired_open: true,
+          unpriced_legs: [{ leg_index: 0, contract_text: 'NIFTY 13 Oct 22800 CE', expired: true }], unpriced_text: expiredNoLine ? null : EXPIRED_LINE } })
+      }
+      if (unreadableBook.has(Number(book[1]))) { // D-40 r2: a not-live leg that is NOT expired, and a catalogue without it: a genuine unreadable book
+        return Promise.resolve({ data: { strategy_id: Number(book[1]), underlying: 'NIFTY', answered_at: '2026-10-19T10:00:00+05:30', orders: [{ id: 1 }],
+          positions: [{ contract_id: 777, net_quantity: -65, average: '88.50', expiry: '2026-10-13', price_at: null }],
+          pause_reason: 'token_reassigned', pause_reason_text: 'This contract is not live.', expired_open: false,
+          unpriced_legs: [{ leg_index: 0, contract_text: 'NIFTY 13 Oct 22800 CE', expired: false }], unpriced_text: 'No price for: NIFTY 13 Oct 22800 CE.' } })
+      }
       if (realOnly.has(Number(book[1]))) return Promise.reject({ status: 404, parts: { what_happened: 'No paper book', impact: 'i', what_is_blocked: 'b', next_action: 'n' } }) // a real trade has no practice book
       return Promise.resolve({ data: { strategy_id: Number(book[1]), underlying: 'NIFTY', answered_at: '2026-10-19T10:00:00+05:30',
         orders: [{ id: 1 }, { id: 2 }], positions: [{ contract_id: 5, net_quantity: -65, average: '88.50', expiry: '2026-10-13', price_at: '2026-10-19T10:00:00+05:30' },
@@ -40,6 +53,7 @@ vi.mock('@/services/api', async (importActual) => {
       return Promise.resolve({ data: { contracts: [...Array(40).keys()].map((i) => ({ contract_id: i + 1, exchange_segment: 'NSE_FO', exchange_token: 1001 + i,
         instrument_type: 'CE', expiry: '2026-10-13', strike: '22800.00', lot_size: 65, symbol: `NIFTY${i + 1}` })) } })
     }
+    if (url === '/market/indices') return indicesAnswer ? Promise.resolve({ data: indicesAnswer }) : Promise.reject(new Error('indices failed'))
     return Promise.reject(new Error(`unmocked get ${url}`))
   }
   const post = (url, body) => {
@@ -48,6 +62,7 @@ vi.mock('@/services/api', async (importActual) => {
   }
   return { ...actual, default: { get, post } }
 })
+import { withWords } from './_statusWord'
 import LiveStrategiesPage from '@/pages/LiveStrategiesPage.vue'
 import { LEG_NOT_LIVE_LABEL, NOT_CONNECTED_LABEL } from '@/lib/legPicker'
 
@@ -72,7 +87,7 @@ const leg = (over = {}) => ({ instrument_id: 'NSE_FO:1001', symbol: 'NIFTY1', ac
 const computed = (over = {}) => ({ state: 'COMPUTED', underlying: 'NIFTY', status_label: null, reason: null, output_label: null,
   spot_level: '25123.45', spot_at: '2026-10-19T10:15:00+05:30', answered_at: '2026-10-19T10:15:01+05:30',
   summary: { max_profit: '0.00', max_loss: '13000.00', max_profit_unlimited: false, max_loss_unlimited: false }, legs: [leg()], ...over })
-const SERVER_LABEL = 'Server wrote this not-live sentence 10:15:00 AM'
+const SERVER_LABEL = 'Server wrote this not-live sentence 10:15:00 IST'
 const notConnected = () => ({ state: 'NOT_CONNECTED', status_label: SERVER_LABEL, reason: null, answered_at: '2026-10-19T10:16:00+05:30', legs: [], spot_level: null, spot_at: null })
 const FROM_YOUR_PRICES = 'From your prices — no live data'
 // The FROM_ENTRIES answer as the server sends it after a drop (tests_app/test_strategy_live_push.py `_assert_from_entries_after_drop`).
@@ -108,6 +123,11 @@ async function answerNext(body) {
 const detailGets = []
 const paperGets = []
 const realOnly = new Set()
+const expiredBook = new Set()
+const unreadableBook = new Set()
+let expiredNoLine = false
+const EXPIRED_REASON = 'This contract has expired and is no longer traded.'
+const EXPIRED_LINE = 'Expired contracts have no price: NIFTY 13 Oct 22800 CE.'
 
 beforeEach(() => {
   FakeSocket.all = []
@@ -115,11 +135,15 @@ beforeEach(() => {
   detailGets.length = 0
   paperGets.length = 0
   realOnly.clear()
+  expiredBook.clear()
+  unreadableBook.clear()
+  expiredNoLine = false
   vi.useRealTimers()
   vi.spyOn(Math, 'random').mockReturnValue(0) // no reconnect spread here: it has its own tests (reconnect-forever.test.js)
   failDetailFor = new Set()
   notLiveFor = new Set()
   partlyPricedFor = new Set()
+  indicesAnswer = null
   listAnswer = { strategies: [row(1), row(2)] }
   postAnswer = notConnected()
   global.WebSocket = FakeSocket
@@ -127,6 +151,28 @@ beforeEach(() => {
 afterEach(() => {
   while (mountedPages.length) mountedPages.pop().unmount()
   vi.restoreAllMocks()
+})
+
+const closedIndices = (over = {}) => ({ state: 'NOT_CONNECTED', indices: [], answered_at: '2026-11-27T08:30:00+05:30', market_closed: true, last_price_at: '2026-11-26T15:30:00+05:30', ...over })
+
+describe('A3 (ADR-177, ADR-212): the one market-closed banner comes from the page-level market read, not from a card', () => {
+  it('before the open, every card unpriced (none ever says market_closed): the banner still shows, with the close time', async () => {
+    indicesAnswer = closedIndices()
+    const w = await mountPage()
+    expect(w.findAll('[data-testid="market-closed-text"]')).toHaveLength(1)
+    expect(w.get('[data-testid="market-closed-text"]').text()).toBe('Market closed. Prices are from 26 Nov 2026, 15:30:00 IST.')
+  })
+
+  it('market open: no banner, even when the market read answers', async () => {
+    indicesAnswer = closedIndices({ state: 'LIVE', market_closed: false })
+    const w = await mountPage()
+    expect(w.find('[data-testid="market-closed-banner"]').exists()).toBe(false)
+  })
+
+  it('the market read fails: no banner (never a made-up time)', async () => {
+    const w = await mountPage()
+    expect(w.find('[data-testid="market-closed-banner"]').exists()).toBe(false)
+  })
 })
 
 describe('U20: after hours and Sensibull 090 layout', () => {
@@ -137,6 +183,7 @@ describe('U20: after hours and Sensibull 090 layout', () => {
       max_profit_unlimited: false, max_loss_unlimited: false }, legs: [closedLeg()], ...over })
 
   it('closed market: price-time banner, no fetch time, no stale noise, contract name, server money strings', async () => {
+    indicesAnswer = closedIndices({ last_price_at: '2026-10-29T15:30:00+05:30' })
     const w = await mountPage()
     openAll()
     FakeSocket.all[0].serverPush(closedAnswer())
@@ -540,7 +587,7 @@ describe('REQ-134 reader sweep: the card title is the strategy name (quoted user
     listAnswer = { strategies: [{ ...row(1), name: '"<b>NIFTY</b> Oct condor"' }, row(2)] }
     const w = await mountPage()
     const titles = w.findAll('[data-testid="live-strategy-title"]').map((x) => x.text())
-    expect(titles).toContain('<b>NIFTY</b> Oct condor, NIFTY')
+    expect(titles).toContain('<b>NIFTY</b> Oct condor (#1), NIFTY') // ADR-330 (19): number added; this row has no first leg, so no expiry
     expect(titles).toContain('Draft 2, NIFTY')
     expect(w.find('[data-testid="live-strategy-title"] b').exists()).toBe(false)
   })
@@ -585,6 +632,39 @@ describe('issue 16: status words and closed trades on Live Strategies', () => {
     expect(c.get('[data-testid="live-legs-as-saved"]').text()).toBe('Legs as saved')
     expect(JSON.parse(FakeSocket.all[0].sent[0]).legs).toHaveLength(1)
   })
+  it('D-40: a running trade whose open legs are all on expired contracts shows the server\'s plain reason, not an error', async () => {
+    expiredBook.add(9)
+    listAnswer = { strategies: [{ ...row(9), has_order: true }] }
+    const w = await mountPage()
+    openAll()
+    await flushPromises()
+    const c = w.get('[data-strategy-id="9"]')
+    expect(c.attributes('data-state')).toBe('unpriced')
+    expect(c.text()).toContain(EXPIRED_LINE)
+    expect(c.text()).not.toContain('Something went wrong')
+    expect(FakeSocket.all.every((s) => s.sent.length === 0)).toBe(true) // nothing is priced: no outcome follow
+  })
+  it('D-40 r2: a book with a not-live leg that has NOT expired and an unreadable catalogue still shows the error', async () => {
+    unreadableBook.add(9)
+    listAnswer = { strategies: [{ ...row(9), has_order: true }] }
+    const w = await mountPage()
+    openAll()
+    await flushPromises()
+    const c = w.get('[data-strategy-id="9"]')
+    expect(c.attributes('data-state')).toBe('error')
+    expect(c.text()).not.toContain('No price for')
+  })
+  it('D-40 r2: an expired trade shows only the expiry sentence, never the book\'s pause reason', async () => {
+    expiredBook.add(9)
+    expiredNoLine = true // the server sent no expiry sentence: nothing else is borrowed in its place
+    listAnswer = { strategies: [{ ...row(9), has_order: true }] }
+    const w = await mountPage()
+    openAll()
+    await flushPromises()
+    const c = w.get('[data-strategy-id="9"]')
+    expect(c.attributes('data-state')).toBe('unpriced')
+    expect(c.text()).not.toContain(EXPIRED_REASON)
+  })
   it('a partly closed running trade follows the legs it holds NOW (the book), not the legs it was saved with', async () => {
     listAnswer = { strategies: [{ ...row(7), has_order: true }] }
     const w = await mountPage()
@@ -611,5 +691,34 @@ describe('GC-MU A3: the adjustment opportunities mark', () => {
     const three = byId(3).find('[data-testid="live-opportunity-mark"]')
     expect(three.text()).toBe('3 adjustment opportunities')
     expect(three.attributes('href')).toBe('/positions/adjustment-opportunities?strategy=3')
+  })
+})
+
+// ADR-330 (56) round 2: ONE notice at the top; tiles greyed with no sentence of their own; exactly one affected: only it carries the line
+describe('ADR-330 (56): price notice and cards', () => {
+  const down = { state: 'NOT_CONNECTED', market_closed: false, last_price_at: '2026-10-19T04:28:01Z', indices: [] }
+  it('two strategies with no price and the feed down: one page notice, greyed cards, no per-card sentence', async () => {
+    notLiveFor = new Set([1, 2])
+    indicesAnswer = down
+    listAnswer = { strategies: [row(1), row(2)] }
+    const w = await mountPage()
+    expect(w.findAll('[data-testid="price-notice"]')).toHaveLength(1)
+    expect(w.get('[data-testid="price-notice-text"]').text()).toBe('Prices are not live. Figures are as of 09:58:01 IST.')
+    for (const c of cards(w)) {
+      expect(c.find('[data-testid="live-status-label"]').exists()).toBe(false)
+      expect(c.classes()).toContain('price-greyed')
+    }
+  })
+  it('exactly one strategy with no price: no page notice, only that card carries the line', async () => {
+    notLiveFor = new Set([1])
+    indicesAnswer = down
+    listAnswer = { strategies: [row(1), row(2)] }
+    const w = await mountPage()
+    expect(w.find('[data-testid="price-notice"]').exists()).toBe(false)
+    const c1 = w.get('[data-strategy-id="1"]')
+    const c2 = w.get('[data-strategy-id="2"]')
+    expect(c1.get('[data-testid="live-status-label"]').text()).toBe(LEG_NOT_LIVE_LABEL)
+    expect(c1.classes()).toContain('price-greyed')
+    expect(c2.classes()).not.toContain('price-greyed')
   })
 })

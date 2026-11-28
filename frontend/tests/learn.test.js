@@ -13,7 +13,9 @@ vi.mock('@/services/api', async (importActual) => {
     if (url === '/strategy-templates') {
       return templatesAnswer instanceof Error ? Promise.reject(templatesAnswer) : Promise.resolve({ data: templatesAnswer })
     }
-    if (url === '/paper/alerts') return Promise.resolve({ data: { alerts: [], unread: 0 } }) // GC-TP 7b: the Alerts page and the bell read this
+    if (url === '/alerts/active') return Promise.resolve({ data: { count: 0, alerts: [] } }) // ADR-330 (4): the Alerts page and the bell read this
+    if (url === '/alerts/answered') return Promise.resolve({ data: { items: [] } }) // ADR-330 (3): answered alerts, the History tab
+    if (url === '/paper/alerts/records') return Promise.resolve({ data: { records: [] } }) // D-22/D-71: the History tab's own read
     return Promise.resolve({ data: indicesAnswer })
   } } }
 })
@@ -227,9 +229,9 @@ describe('Learn tabs, content home, strategy page (GC-6 LEARN)', () => {
 })
 
 describe('Alerts', () => {
-  it('AC-1: Active and History show the empty line; Notification settings the channels line; nothing else', async () => {
+  it('AC-1: Active and History show their empty lines; Notification settings the channels line; nothing else', async () => {
     const noAlerts = 'No alerts yet. Alerts start when strategy monitoring rules are added.'
-    for (const [path, line] of [['/alerts/active', noAlerts], ['/alerts/history', noAlerts],
+    for (const [path, line] of [['/alerts/active', noAlerts], ['/alerts/history', 'No stops or expiry settlements yet.'],
       ['/alerts/notification-settings', 'No notification channels are set up yet.']]) {
       const w = await open(path)
       expect(w.get('[data-testid="alerts-empty"]').text()).toBe(line)

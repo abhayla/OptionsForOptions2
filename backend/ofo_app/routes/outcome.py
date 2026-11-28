@@ -26,16 +26,23 @@ from ofo.adjustment.strategy_type import strike_gap_of, type_of
 from ofo.charges import ChargeRates
 from ofo.engine.legs import Action, Leg
 from ofo.errors import render
+from ofo.errors.explanations import EarlierDay, render_explanation
 from ofo.errors.slots import INT_ABS_MAX
 from ofo.instruments.models import InstrumentId as ContractKey
 from ofo.instruments.models import ListedContract
 from ofo.limits import INTEGER_MAX
-from ofo.marketdata.feed_health import FeedWindows, awaiting_first_price_for, market_closed_for
+from ofo.marketdata.feed_health import (
+    FeedWindows,
+    awaiting_first_price_for,
+    made_by_the_close,
+    market_closed_for,
+)
 from ofo.marketdata.forward import ForwardQuality
 from ofo.marketdata.provider import MarketDataProvider
 from ofo.marketdata.quote import NormalizedQuote
 from ofo.marketdata.shared_compute import FeedScope, SharedCompute
-from ofo.marketdata.spot_source import resolve_spot
+from ofo.marketdata.spot_source import SOURCE_FEED, SOURCE_REST, SourceReading, SourceState, resolve_spot
+from ofo.money import shown_price
 from ofo.outcome import (
     OutcomeState,
     PlannedLeg,
@@ -46,11 +53,12 @@ from ofo.outcome import (
     not_live,
     read_snapshot,
 )
+from ofo.outcome import money as money_module
 from ofo.outcome.money import with_funds
 from ofo.outcome.price_text import price_text
 from ofo.outcome.serialize import outcome_to_dict
 from ofo.outcome.service import Margin, Outcome, waiting_first_price
-from ofo.outcome.target import TargetAsk
+from ofo.outcome.target import TargetAsk, with_booked_curves
 from ofo.scenario.config import ScenarioConfig, ScenarioSettings
 from ofo.scenario.levels import RangeOverride, resolve_range
 from ofo.scenario.views import View
@@ -142,6 +150,32 @@ def judge_spot(market: Any, rest: Any, ctx: MarketContext | None) -> Any:
     caller of ``resolve_spot`` in the routes (a repo-scan test holds it)."""
     judged = spot_judging_now(ctx)
     return resolve_spot(market.feed_at(judged), rest, market.last_close, now=judged, windows=feed_windows_of(ctx))
+
+
+async def index_spot_of(market: Any, rest_reader: Any, underlying: str, ctx: MarketContext | None) -> Any:
+    """THE one door to an index spot, for every process (REQ-118; ADR-330 (39); findings
+    page-poll-calls-vendor-rest-before-tick-store and spot-not-available-while-one-source-had-it): the spot is
+    answered whenever EITHER source has one. (1) the feed tick, judged by the feed's age rule at one instant: usable
+    -> that answer IS the answer (never re-judged later, so no gap between "the feed can give it" and the real
+    resolve, and no REST call). (2) else ONE shared cached REST read (``live_market.index_spot``: TTL, single flight,
+    a failure kept for the cooldown; per process, so the worker's own cache is its own) - never skipped on a
+    prediction; a reader that raises is a failed REST. (3) judged again at a new instant (feed, REST, last close).
+    "Not available" only when all fail, with ONE log line naming the feed and REST reasons."""
+    judged = spot_judging_now(ctx)
+    first = resolve_spot(market.feed_at(judged), None, None, now=judged, windows=feed_windows_of(ctx))
+    if first.available:
+        return first
+    try:
+        rest = await rest_reader(underlying)
+    except Exception as exc:  # noqa: BLE001 - a REST failure is "no REST spot", never a failed request
+        log.warning("index spot REST read raised %s", type(exc).__name__)
+        rest = SourceReading(SourceState.FAILED)
+    answer = judge_spot(market, rest, ctx)
+    if not answer.available:
+        why = dict(answer.reasons)
+        log.warning("index spot not available: feed %s; REST %s", why.get(SOURCE_FEED, "not read"),
+                    why.get(SOURCE_REST, "not read"))
+    return answer
 
 
 def get_answer_clock() -> AnswerClock:
@@ -237,6 +271,64 @@ def label_time(state: MarketState, quote_times: Iterable[datetime.datetime | Non
         return state.last_price_at
     times = [t for t in quote_times if isinstance(t, datetime.datetime) and t.utcoffset() is not None]
     return max(times) if times else None
+
+
+@dataclass(frozen=True)
+class ClosedLabel:
+    """The market-closed banner of one answer: ``last_price_at`` (the time the banner prints) and ``text`` (the
+    catalogue sentence when the trade is mixed, else None: the browser then prints its own one-time sentence)."""
+
+    last_price_at: datetime.datetime | None
+    text: Any = None
+
+
+def _aware(t: object) -> bool:
+    return isinstance(t, datetime.datetime) and t.utcoffset() is not None
+
+
+def closed_label(state: MarketState, leg_quotes: Iterable[NormalizedQuote | None],
+                 spot: NormalizedQuote | None = None) -> ClosedLabel:
+    """ADR-330 (36) (LR-Q18): the ONE banner function of every after-close answer that covers several legs (the
+    builder's outcome reply and the leg picker). After the close, legs frozen at the close (made by it) and legs first
+    priced after it carry different times. Only when BOTH kinds are present the banner reads "Prices are from <frozen
+    time>; 1 leg as of <time>" (plural for 2 or more). The frozen time is the latest own time of the frozen legs and the
+    index spot (the spot is a frozen-kind quote and is never counted as a leg); the later time is the EARLIEST of the
+    later legs: every later leg's price is at least as new as it, so no figure sits under a time newer than its own.
+    In market hours, or with only one kind, ``last_price_at`` is :func:`label_time` and no text is built (unchanged)."""
+    legs = [q for q in leg_quotes if q is not None and _aware(q.price_at)]
+    all_times = [*(q.price_at for q in legs), *([spot.price_at] if spot is not None else [])]
+    if not state.closed:
+        return ClosedLabel(label_time(state, all_times))
+    later = [q.price_at for q in legs if not made_by_the_close(q)]
+    # Lane N review M3: legs made by the close on an OLDER trading day than the newest priced day are a group of their
+    # own: the latest day leads, the older legs read "as of <their own dated time>" (never under the newer day's time)
+    newest = max((t.astimezone(IST).date() for t in all_times), default=None)
+    frozen = [q.price_at for q in legs if made_by_the_close(q) and q.price_at.astimezone(IST).date() == newest]
+    older = [q.price_at for q in legs if made_by_the_close(q) and newest and q.price_at.astimezone(IST).date() < newest]
+    if not frozen and later:  # no leg made by the close on the newest day: older frozen legs are the frozen group
+        frozen, older = [q.price_at for q in legs if made_by_the_close(q)], []
+    if (not later and not older) or (not frozen and not later):
+        return ClosedLabel(label_time(state, all_times))
+    if frozen:
+        if spot is not None and _aware(spot.price_at) and made_by_the_close(spot) \
+                and spot.price_at.astimezone(IST).date() == newest:
+            frozen.append(spot.price_at)
+        frozen_at, later_group = max(frozen), [*later, *older]
+    else:  # every leg first priced after the close: the earliest time labels the group, only newer legs are "as of"
+        frozen_at = min(later)
+        later_group = [*(t for t in later if t > frozen_at), *older]
+        if not later_group:
+            return ClosedLabel(label_time(state, all_times))
+    later_at = min(later_group)
+    seen = [*all_times, *([state.last_price_at] if _aware(state.last_price_at) else [])]
+    newest_day = max(t.astimezone(IST).date() for t in seen)
+    shown = {t: (EarlierDay(t) if t.astimezone(IST).date() < newest_day else t) for t in (frozen_at, later_at)}
+    if len(later_group) == 1:
+        text = render_explanation("closed_prices_mixed_one", frozen=shown[frozen_at], later=shown[later_at])
+    else:
+        text = render_explanation("closed_prices_mixed_many", frozen=shown[frozen_at], later=shown[later_at],
+                                  count=len(later_group))
+    return ClosedLabel(frozen_at, text)
 
 
 def feed_scope(ctx: MarketContext) -> FeedScope | None:
@@ -371,6 +463,13 @@ class Booked:
 
     amount: Decimal | None = None
     unreadable: bool = False
+    #: D-15: the paper book's open positions (instrument id -> (signed net quantity, average)); None with no paper id or an
+    #: unreadable book. ``paper``: the request names a paper strategy at all.
+    fills: Mapping[str, tuple[int, Decimal]] | None = None
+    paper: bool = False
+    #: D-15: the plan the SERVER stored for that paper strategy: instrument id -> (action, units, plan entry price); None
+    #: when none is stored or it cannot be read. Never a client-sent figure.
+    plan: Mapping[str, tuple[str, int, Decimal]] | None = None
 
 
 BookedReader = Callable[[int], Awaitable[Decimal | None]]  # strategy id -> booked P&L; None: the book could not be read
@@ -398,12 +497,91 @@ def get_booked_reader() -> BookedReader:
     return read_booked
 
 
-async def get_booked(req: OutcomeRequest, reader: Annotated[BookedReader, Depends(get_booked_reader)]) -> Booked:
-    """ADR-209: nothing for a plan or the switch off; else the paper strategy's booked P&L or "could not be read"."""
-    if req.paper_strategy_id is None or not req.include_booked:
+FillsReader = Callable[[int], Awaitable[Mapping[str, tuple[int, Decimal]] | None]]
+
+
+async def read_fills(strategy_id: int) -> Mapping[str, tuple[int, Decimal]] | None:
+    """D-15: the paper book's OPEN positions by exchange identity ("NSE_FO:44624") with signed net quantity and average,
+    from the same owner-checked read as the booked P&L. None: not this user's, no orders, or a read that fails."""
+    from ofo.engine.orderbook import net_positions as engine_net
+
+    from ofo_app import catalogue_store, paper_book
+    from ofo_app.db import get_sessionmaker
+    from ofo_app.routes.broker import current_user_ref
+    try:
+        async with get_sessionmaker()() as db:
+            orders = await paper_book.load_owned(db, current_user_ref(), strategy_id)
+            if not orders:
+                return None
+            view = engine_net([o.order.as_paper() for o in orders], {})
+            open_ = [p for p in view.positions if p.net_quantity != 0]
+            conn = await db.connection()
+            found = await catalogue_store.load_contracts(conn, [int(p.instrument_id) for p in open_])
+            out: dict[str, tuple[int, Decimal]] = {}
+            for p in open_:
+                c = found.get(int(p.instrument_id))
+                if c is None or isinstance(c, Exception) or p.average is None:
+                    return None
+                key = c.listed.contract
+                out[f"{key.exchange_segment}:{key.exchange_token}"] = (p.net_quantity, p.average)
+            return out
+    except Exception:  # noqa: BLE001 - any read failure is the one answer "could not be read"
+        return None
+
+
+def get_fills_reader() -> FillsReader:
+    return read_fills
+
+
+PlanReader = Callable[[int], Awaitable[Mapping[str, tuple[str, int, Decimal]] | None]]
+
+
+async def read_plan(strategy_id: int) -> Mapping[str, tuple[str, int, Decimal]] | None:
+    """D-15: the plan this paper strategy was saved with, by exchange identity: (action, units, plan entry price) per
+    leg, from the owner-checked read of the stored definition. None: not this user's, nothing stored, a leg without a
+    price, or a read that fails (no plan line is made up)."""
+    from ofo_app import catalogue_store, paper_book
+    from ofo_app.db import get_sessionmaker
+    from ofo_app.routes.broker import current_user_ref
+    try:
+        async with get_sessionmaker()() as db:
+            legs = await paper_book.load_plan_owned(db, current_user_ref(), strategy_id)
+            if not legs or any("planned_entry" not in leg for leg in legs):
+                return None
+            conn = await db.connection()
+            found = await catalogue_store.load_contracts(conn, [int(leg["contract_id"]) for leg in legs])
+            out: dict[str, tuple[str, int, Decimal]] = {}
+            for leg in legs:
+                c = found.get(int(leg["contract_id"]))
+                if c is None or isinstance(c, Exception):
+                    return None
+                key = c.listed.contract
+                ident = f"{key.exchange_segment}:{key.exchange_token}"
+                if ident in out:  # one contract on two legs has no single plan price
+                    return None
+                out[ident] = (str(leg["action"]), int(leg["quantity"]), Decimal(str(leg["planned_entry"])))
+            return out
+    except Exception:  # noqa: BLE001 - any read failure is the one answer "no plan shown"
+        return None
+
+
+def get_plan_reader() -> PlanReader:
+    return read_plan
+
+
+async def get_booked(req: OutcomeRequest, reader: Annotated[BookedReader, Depends(get_booked_reader)],
+                     fills_reader: Annotated[FillsReader, Depends(get_fills_reader)] = read_fills,
+                     plan_reader: Annotated[PlanReader, Depends(get_plan_reader)] = read_plan) -> Booked:
+    """ADR-209: nothing for a plan or the switch off; else the paper strategy's booked P&L or "could not be read".
+    D-15: with a paper strategy id it also carries the book's open positions, whatever the switch (the basis label)."""
+    if req.paper_strategy_id is None:
         return Booked()
+    fills = await (fills_reader if callable(fills_reader) else read_fills)(req.paper_strategy_id)
+    plan = await (plan_reader if callable(plan_reader) else read_plan)(req.paper_strategy_id)
+    if not req.include_booked:
+        return Booked(fills=fills, paper=True, plan=plan)
     amount = await reader(req.paper_strategy_id)
-    return Booked(None, True) if amount is None else Booked(amount)
+    return Booked(None, True, fills, True, plan) if amount is None else Booked(amount, False, fills, True, plan)
 
 
 class OutcomeRequest(BaseModel):
@@ -760,6 +938,10 @@ class SummaryOut(ApiModel):
     value_reason: CatalogueText | None = None
     net_premium: NetPremiumOut | None = None
     funds_share: FundsShareOut | None = None
+    # GC-ICLIVE-B D-15/D-17: the prices the Get / time value use, and a paper trade's plan credit as one line
+    price_basis_text: CatalogueText | None = None
+    time_value_basis_text: CatalogueText | None = None  # D-17 (ADR-322 point 2): "at live prices, as of HH:MM:SS"
+    plan_line: CatalogueText | None = None
 
 
 class MarginOut(ApiModel):
@@ -808,6 +990,7 @@ class LegQuoteOut(ApiModel):
     bid_display: CatalogueText | None = None  # GC-UI D-PX: two-decimal text
     ask_display: CatalogueText | None = None
     health: HealthCode | None
+    quote_at: datetime.datetime | None = None  # GC-ICLIVE-B D-18: when THIS leg's quote was made (its own time)
 
 
 class OiRowOut(ApiModel):
@@ -860,6 +1043,7 @@ class TargetGreeksOut(ApiModel):
     unavailable_text: CatalogueText | None  # REQ-084 AC-2: "No Greeks at expiry: the options have no time left."
     basis_text: CatalogueText  # u507: "Per position, 65 units" ("Per position": legs differ)
     total_display: dict[Identifier, CatalogueText] | None = None  # u507: total as text: 2 places, gamma 4
+    decay_left_today_text: CatalogueText | None = None  # D-12: expiry day "Decay left today: Rs X"
     dividend_yields: dict[Identifier, Money] = {}  # expiry date -> the q the engine priced it with (checker input, not shown)
 
 
@@ -930,6 +1114,9 @@ class OutcomeResponse(ApiModel):
     market_closed: bool
     #: when the feed's last price frame arrived (None: none yet); the market-closed and reconnecting texts show it
     last_price_at: datetime.datetime | None
+    #: ADR-330 (36) (LR-Q18): after the close, a trade with legs frozen at the close AND legs first priced later: the
+    #: banner's whole sentence (the browser prints it as sent); None otherwise (the one-time banner is unchanged)
+    closed_prices_text: CatalogueText | None = None
     spot_level: Money | None
     spot_at: datetime.datetime | None
     legs: list[LegOut]
@@ -940,6 +1127,9 @@ class OutcomeResponse(ApiModel):
     summary: SummaryOut | None
     #: present whenever a snapshot was read and the answer is live (absent, not empty, when not connected or not live)
     leg_quotes: list[LegQuoteOut] | None = None
+    #: D-18: the oldest of the leg quotes' own times, picked here so the screen does no date arithmetic; None when any leg
+    #: quote has no time (the screen says "time not given") or there are no leg quotes
+    oldest_quote_at: datetime.datetime | None = None
     #: GC-LIVE: the dividend yield q each option expiry was priced with (expiry date -> q); a read-only echo for the checker
     dividend_yields: dict[Identifier, Money] | None = None
     #: FROM_ENTRIES only (REQ-077 AC-9): where the level grid is centred when there is no live index price, and why
@@ -949,8 +1139,13 @@ class OutcomeResponse(ApiModel):
     curves: CurvesOut | None = None
     payoff_table: PayoffTableOut | None = None  # REQ-137 AC-1: absent unless payoff_step or both_views
     standard_deviation: StandardDeviationOut | None = None  # REQ-083 AC-4 / REQ-137 AC-3: absent unless sd_bands
+    #: D-11 (ADR-209): present only when the Add Booked P&L switch is ON for a paper strategy with booked P&L: the curves
+    #: (payoff line, At Expiry, Estimated Now) include it, and this is the sentence saying so ("includes +Rs 962.00 booked")
+    curve_includes_booked_text: CatalogueText | None = None
     open_interest: OpenInterestOut | None = None  # REQ-083 AC-5 / AC-6: absent unless open_interest
     target: TargetOut | None = None  # REQ-084 AC-1/AC-4: limits alone unless target_level or target_at
+    #: D-37: present only when this reply's prices are not live: the sentence beside a "-" Target / Date readout
+    target_not_live_text: CatalogueText | None = None
     #: REQ-119 AC-1 / REQ-133 AC-2: the request's (or the socket follow message's) ``seq``, unchanged; absent when none
     seq: int | None = None
     #: ADR-300: present only for a computed answer with a sold option leg. ``breaks`` / ``within`` / ``cannot_tell``;
@@ -980,6 +1175,33 @@ def entry_guide_fields(out: Outcome, ctx: MarketContext | None) -> dict:
     return {"entry_guide_state": found.state, "entry_guide_line": found.line}
 
 
+def _oldest_quote_at(rows: list[dict]) -> datetime.datetime | None:
+    """D-18: the oldest leg quote time; None when a leg quote has no time (no other leg's time stands in for it)."""
+    times = [r["quote_at"] for r in rows]
+    return None if not times or any(t is None for t in times) else min(times)
+
+
+def _time_value_as_of(rows: list[dict], spot: NormalizedQuote | None) -> datetime.datetime | None:
+    """D-17: the time value is the leg prices minus intrinsic AT THE SPOT, so its time is the oldest of the leg quote
+    times and the spot's price time; None when any of them is missing (no other time stands in for it)."""
+    times = [*(r["quote_at"] for r in rows), None if spot is None else spot.price_at]
+    return None if not rows or any(t is None for t in times) else min(times)
+
+
+def _with_time_value_basis(summary: dict | None, as_of: datetime.datetime | None, closed: bool = False) -> dict | None:
+    """D-17 (ADR-322 point 2): the sentence names the time the figure's prices are from (no clock is read here). On a
+    closed market the figure is on last-close prices, so it says that, not "live". No time value, no sentence."""
+    if summary is None or summary.get("time_value") is None:
+        return summary
+    if closed:
+        text = (render_explanation("money_time_value_closed", time=as_of) if as_of is not None
+                else render_explanation("money_time_value_closed_untimed"))
+    else:
+        text = (render_explanation("money_time_value_live", time=as_of) if as_of is not None
+                else render_explanation("money_time_value_live_untimed"))
+    return {**summary, "time_value_basis_text": text}
+
+
 def _leg_quotes(snapshot, definition: StrategyDefinition, symbols: dict[str, str | None]) -> list[dict]:
     rows = []
     for leg in definition.legs:
@@ -991,7 +1213,8 @@ def _leg_quotes(snapshot, definition: StrategyDefinition, symbols: dict[str, str
                      "ask": None if q is None or q.ask is None else f"{q.ask:f}",
                      "bid_display": None if q is None else price_text(q.bid),
                      "ask_display": None if q is None else price_text(q.ask),
-                     "health": None if q is None else q.health.value})
+                     "health": None if q is None else q.health.value,
+                     "quote_at": None if q is None else q.price_at})
     return rows
 
 
@@ -1074,6 +1297,37 @@ def checked_choice(req: OutcomeRequest, settings: Mapping[str, Decimal]) -> tupl
         refuse_request(("body",), "value_error")  # the ValueError's text is never shown (the 422 shows no msg)
 
 
+def _is_fill(leg: Any, fills: Mapping[str, tuple[int, Decimal]]) -> bool:
+    """D-15: a leg is a paper fill only when the paper book holds that contract OPEN on the same side, for the same
+    quantity, at exactly this entry price (the book's average as the paper reply SHOWS it, rounded half up to the paisa). The client's say-so is never read."""
+    held = fills.get(leg.instrument_id)
+    if held is None or leg.quantity is None or leg.planned_entry is None:
+        return False
+    net, average = held
+    side_ok = (net > 0) == (leg.action is Action.BUY)
+    return side_ok and abs(net) == leg.quantity and shown_price(average) == leg.planned_entry
+
+
+def _with_price_basis(out: Outcome, booked: Booked | None) -> Outcome:
+    """GC-ICLIVE-B D-15: the summary names the prices its Get uses, DERIVED from the paper book (no client claim): plan
+    prices with no paper strategy; paper fill prices when every leg matches the book's open position; else which legs
+    are not fills. The plan's own credit line is WITHDRAWN (D-15
+    parked): after a planned leg is fully exited it priced only the held subset and printed a made-up credit, so
+    ``plan_line`` is never served until it checks that every plan leg is still held."""
+    if out.summary is None:
+        return out
+    held = out.legs
+    text = money_module.basis_text(money_module.PLAN)
+    if booked is not None and booked.paper:
+        if booked.fills is None:
+            text = money_module.basis_text(money_module.UNREAD)
+        else:
+            fills = sum(1 for x in held if _is_fill(x, booked.fills))
+            text = money_module.basis_text(money_module.PAPER_FILLS, fills=fills, total=len(held))
+    summary = dataclasses.replace(out.summary, price_basis_text=text, plan_line=None)
+    return dataclasses.replace(out, summary=summary)
+
+
 def outcome_response(req: OutcomeRequest, ctx: MarketContext | None,  # noqa: PLR0913 - one shared computation; rates is the sixth input
                      streaming: Callable[[str], bool] | None = None, *, now: AnswerClock = server_now,
                      stored: Mapping[str, ListedContract] | None = None,
@@ -1115,14 +1369,22 @@ def outcome_response(req: OutcomeRequest, ctx: MarketContext | None,  # noqa: PL
             out = build_outcome(definition, snapshot, snapshot.valuation, view=View(req.view), rates=rates,
                                 config=config, override=override, shared=shared, both_views=req.both_views,
                                 payoff_step=req.table_step(), sd_bands=req.sd_bands, target=ask, settings=settings)
+    curve_booked = None  # D-11 (ADR-209): the Add Booked switch ON also moves the drawn curves
+    if booked is not None and booked.amount not in (None, 0) and out.state in (OutcomeState.COMPUTED, OutcomeState.FROM_ENTRIES):
+        out, curve_booked = with_booked_curves(out, booked.amount), booked.amount
     if ctx is not None and margin is not None:  # ADR-099: read by the caller (async, off the loop); no context = login
         out = dataclasses.replace(out, margin=margin, summary=with_funds(out.summary, margin))  # REQ-081 AC-9, AC-10
+    out = _with_price_basis(out, booked)  # GC-ICLIVE-B D-15
     body = outcome_to_dict(out, today=answered_at.astimezone(IST).date())  # REQ-135 AC-2
     body["answered_at"] = answered_at
+    if curve_booked is not None:
+        body["curve_includes_booked_text"] = render_explanation("target_includes_booked", amount=curve_booked)
     body.update(entry_guide_fields(out, ctx))  # ADR-300
     state = market_state(ctx, answered_at)
     body["market_closed"] = state.closed
-    body["last_price_at"] = label_time(state, (q.price_at for q in used_quotes if q is not None))
+    label = closed_label(state, used_quotes[1:], used_quotes[0] if used_quotes else None)  # [spot, *legs]
+    body["last_price_at"] = label.last_price_at
+    body["closed_prices_text"] = label.text
     for column in (body.get("table") or {}).get("columns", ()):
         column["markers"] = [MARKER_CODES[m] for m in column["markers"]]
     if req.open_interest:  # REQ-083 AC-5 / AC-6: the bars, or the one reason (never a 0 in a missing place)
@@ -1133,6 +1395,9 @@ def outcome_response(req: OutcomeRequest, ctx: MarketContext | None,  # noqa: PL
             streams=None if ctx is None else (lambda ids: inputs_streaming(ctx, streaming, ids)))
     if out.state is OutcomeState.COMPUTED:  # only a live computed answer: never a held, refused or not-live one
         body["leg_quotes"] = _leg_quotes(snapshot, definition, {l["instrument_id"]: l["symbol"] for l in body["legs"]})
+        body["oldest_quote_at"] = _oldest_quote_at(body["leg_quotes"])
+        body["summary"] = _with_time_value_basis(
+            body.get("summary"), _time_value_as_of(body["leg_quotes"], snapshot.spot), state.closed)
     # REQ-119 AC-1 / REQ-133 AC-2: the REST route and the live push pass the seq they were sent; none -> no key
     return echo_seq(OutcomeResponse.model_validate(body), seq)
 

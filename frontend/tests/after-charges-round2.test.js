@@ -100,7 +100,7 @@ describe('a card with no figure at all shows no basis label', () => {
 
 describe('Completed row fails closed', () => {
   it('a reply with BOTH an after figure and a reason does not show the net as sound', async () => {
-    const closed = { id: 141, underlying: 'NIFTY', status: 'closed', created_at: '2026-10-18T04:00:00Z', updated_at: '2026-10-18T04:00:00Z', final_pnl_text: '-32.50', charges_paid: '403.45', ...AFTER, after_charges_reason: 'rates_unavailable', after_charges_reason_text: RATES }
+    const closed = { id: 141, underlying: 'NIFTY', status: 'closed', status_word: 'Completed', created_at: '2026-10-18T04:00:00Z', updated_at: '2026-10-18T04:00:00Z', final_pnl_text: '-32.50', charges_paid: '403.45', ...AFTER, after_charges_reason: 'rates_unavailable', after_charges_reason_text: RATES }
     listReply = () => Promise.resolve({ data: { strategies: [closed] } })
     const router = createRouter({ history: createMemoryHistory(), routes: [{ path: '/s', component: MyStrategiesPage, meta: { title: 'Completed Strategies', parent: 'Strategies', completedOnly: true } }, { path: '/strategy/builder', component: { template: '<div/>' } }] })
     await router.push('/s')

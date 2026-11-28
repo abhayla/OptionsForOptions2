@@ -50,14 +50,14 @@ def _capture(monkeypatch) -> list:
 def _position_and_listing(sid: str = "ADJ-50"):
     sc = rt.load(sid)
     scn = scenario_mode.load(sid)
-    return rt.tracked_of(sc).position, D(sc["market"]["spot"]), scn.provider.instrument_master()
+    return rt.tracked_of(sc), D(sc["market"]["spot"]), scn.provider.instrument_master()
 
 
 @pytest.mark.asyncio
 async def test_read_guards_resolves_the_type_of_the_strategy_from_the_listing(monkeypatch):
     seen = _capture(monkeypatch)
-    position, spot, listed = _position_and_listing()
-    guards = await readers.read_guards(72, position, spot, listed)
+    tracked, spot, listed = _position_and_listing()
+    guards = await readers.read_guards(72, tracked, spot, listed)
     assert seen == ["ic"] and guards == {"hide_oi_below": 1}  # ADJ-50 is the "ic" type
 
 
@@ -65,8 +65,8 @@ async def test_read_guards_resolves_the_type_of_the_strategy_from_the_listing(mo
 async def test_without_the_listing_the_type_is_unknown_the_old_behaviour(monkeypatch):
     """Discrimination: this is what the route got before (listed=None): type None, so no active playbook."""
     seen = _capture(monkeypatch)
-    position, spot, _ = _position_and_listing()
-    await readers.read_guards(72, position, spot, None)
+    tracked, spot, _ = _position_and_listing()
+    await readers.read_guards(72, tracked, spot, None)
     assert seen == [None]
 
 
@@ -91,3 +91,18 @@ def test_the_route_hands_the_guards_reader_the_market_context_listing():
 def test_listed_of_is_none_without_a_context():
     assert check.listed_of(None) is None
 
+
+
+def test_the_route_hands_the_guards_reader_the_tracked_strategy_and_no_spot():
+    """D-04 review MAJOR: offered == accepted. The reader gets the whole tracked strategy (so it classifies through
+    ``check.entry_type``, with its current-shape fallback) and spot None, exactly as paper_limit does."""
+    sc = rt.load("ADJ-50")
+    got: list = []
+
+    async def guards(_sid, tracked, spot, _listed):
+        got.append((tracked, spot))
+
+    client = rt.client_for(sc)
+    client.app.dependency_overrides[route.get_guards_reader] = lambda: guards
+    rt.post(client)
+    assert got and hasattr(got[0][0], "entry_position") and got[0][1] is None

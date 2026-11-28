@@ -18,6 +18,7 @@ vi.mock('@/services/api', async (importActual) => {
     calls.push({ method, url, body })
     if (method === 'GET') getConfigs.push({ url, config })
     const a = answers[`${method} ${url}`]
+    if (a === undefined && method === 'GET' && url === '/market/exit-state') return Promise.resolve({ data: { closed: false, sentence: null, next_open_at: null } }) // ADR-330 (60) on Add to Paper (FA2 item A)
     if (a === undefined) return Promise.reject({ message: 'no answer', parts: null, status: 404 })
     return typeof a === 'function' ? a(body) : Promise.resolve({ data: a })
   }
@@ -25,11 +26,12 @@ vi.mock('@/services/api', async (importActual) => {
 })
 import AdjustPlanSheet from '@/components/strategy/AdjustPlanSheet.vue'
 import PlanEntry from '@/components/strategy/PlanEntry.vue'
+import { confirmPaperName, tickNotLive } from './helpers/paperName'
 
 const LABELS = {
   title: "When tracking starts: this strategy's plan", playbook: 'Playbook', target: 'Target', stop: 'Stop', max_adjustments: 'Max adjustments',
-  time_exit: 'Time exit', customise: 'Customise triggers', use_as_is: 'Use playbook as is', save: 'Save plan', close: 'Close',
-  plan_entry: 'Plan', edit: 'Edit plan', no_plan: 'No plan saved yet: default rules apply', set_plan: 'Set plan', hour: 'Hour', minute: 'Minute',
+  time_exit: 'Time exit', time_exit_on: 'Time exit date (blank = expiry day)', customise: 'Customise triggers', use_as_is: 'Use playbook as is', save: 'Save plan', close: 'Close',
+  plan_entry: 'Plan', edit: 'Edit plan', no_plan: 'No plan: nothing is watched for this strategy', set_plan: 'Set plan', hour: 'Hour', minute: 'Minute',
 }
 const PLAYBOOKS = [
   { id: 1, name: 'Iron condor (system)', type: 'ic', type_name: 'Iron condor', is_system: true, draft: false, active: false },
@@ -94,7 +96,7 @@ describe('REQ-161 AC-2: one click accepts; another playbook refills every field'
     const w = await sheet()
     await t(w, 'plan-use-as-is').trigger('click')
     await flushPromises()
-    expect(calls.filter((c) => c.method !== 'GET')).toEqual([{ method: 'POST', url: PATH, body: { playbook_id: 9 } }])
+    expect(calls.filter((c) => c.method !== 'GET')).toEqual([{ method: 'POST', url: PATH, body: { playbook_id: 9, accept: true } }])
     expect(w.emitted('close')).toHaveLength(1)
     expect(w.emitted('saved')[0][0].plan.target).toBe('60')
   })
@@ -109,6 +111,29 @@ describe('REQ-161 AC-2: one click accepts; another playbook refills every field'
     expect(inputs(w)).toEqual({ playbook: '1', target: '70', stop: '30', max: '4', time: '09:05' })
   })
 
+  it('ADR-330 (7): the label reads "Time exit", the date box is blank (= expiry day) and Save sends {at, on}', async () => {
+    answers[`GET ${PATH}`] = sheetAnswer()
+    answers[`POST ${PATH}`] = sheetAnswer({ plan: PLAN })
+    const w = await sheet()
+    expect(w.text()).toContain('Time exit')
+    expect(w.text()).not.toContain('on expiry day)')
+    expect(t(w, 'plan-time-on').element.value).toBe('')
+    await t(w, 'plan-time').setValue('15:15')
+    await t(w, 'plan-save').trigger('click')
+    await flushPromises()
+    expect(calls.find((c) => c.method === 'POST').body.time_exit).toEqual({ at: '15:15', on: '' })
+    await t(w, 'plan-time-on').setValue('2026-11-25')
+    await t(w, 'plan-save').trigger('click')
+    await flushPromises()
+    expect(calls.filter((c) => c.method === 'POST').pop().body.time_exit).toEqual({ at: '15:15', on: '2026-11-25' })
+  })
+
+  it('a plan with a dated time exit shows its date in the box', async () => {
+    answers[`GET ${PATH}`] = sheetAnswer({ plan: PLAN, prefill: { ...PREFILL_9, time_exit: { hour: 15, minute: 15 }, time_exit_on: '2026-11-25' } })
+    const w = await sheet({ edit: true })
+    expect([t(w, 'plan-time').element.value, t(w, 'plan-time-on').element.value]).toEqual(['15:15', '2026-11-25'])
+  })
+
   it('Save sends the typed fields as the server shapes them; a plan already held is edited with PUT', async () => {
     answers[`GET ${PATH}`] = sheetAnswer({ plan: PLAN, prefill: { playbook_id: 9, target: '60', stop: '40', max_adjustments: 3, time_exit: PLAN.time_exit } })
     answers[`PUT ${PATH}`] = sheetAnswer({ plan: { ...PLAN, stop: '35' } })
@@ -117,8 +142,32 @@ describe('REQ-161 AC-2: one click accepts; another playbook refills every field'
     await t(w, 'plan-save').trigger('click')
     await flushPromises()
     expect(calls.filter((c) => c.method !== 'GET')).toEqual([{ method: 'PUT', url: PATH,
-      body: { playbook_id: 9, target: '60', stop: '35', max_adjustments: '3', time_exit: '14:45' } }])
+      body: { playbook_id: 9, target: '60', stop: '35', max_adjustments: '3' } }])
     expect(w.emitted('saved')).toHaveLength(1)
+  })
+
+  it('an unrelated edit does not re-send a saved time exit whose date has passed', async () => {
+    answers[`GET ${PATH}`] = sheetAnswer({ plan: PLAN, prefill: { ...PREFILL_9, time_exit: { hour: 15, minute: 15 }, time_exit_on: '2026-11-20' } })
+    answers[`PUT ${PATH}`] = sheetAnswer({ plan: PLAN })
+    const w = await sheet({ edit: true })
+    await t(w, 'plan-target').setValue('55')
+    await t(w, 'plan-save').trigger('click')
+    await flushPromises()
+    expect('time_exit' in calls.find((c) => c.method === 'PUT').body).toBe(false)
+    await t(w, 'plan-time').setValue('15:20')
+    await t(w, 'plan-save').trigger('click')
+    await flushPromises()
+    expect(calls.filter((c) => c.method === 'PUT').pop().body.time_exit).toEqual({ at: '15:20', on: '2026-11-20' })
+  })
+
+  it('a date typed without a time is sent with the empty time so the server names the field', async () => {
+    answers[`GET ${PATH}`] = sheetAnswer()
+    answers[`POST ${PATH}`] = sheetAnswer({ plan: PLAN })
+    const w = await sheet()
+    await t(w, 'plan-time-on').setValue('2026-11-25')
+    await t(w, 'plan-save').trigger('click')
+    await flushPromises()
+    expect(calls.find((c) => c.method === 'POST').body.time_exit).toEqual({ at: '', on: '2026-11-25' })
   })
 
   it('a refusal shows the server message naming the field, keeps the sheet open and the typed values', async () => {
@@ -186,12 +235,13 @@ describe('REQ-161 AC-3: the Plan entry on the tracking panel', () => {
     answers[`GET ${PATH}`] = sheetAnswer()
     answers[`POST ${PATH}`] = sheetAnswer({ plan: PLAN })
     const w = await entry()
-    expect(t(w, 'plan-entry-none').text()).toBe('No plan saved yet: default rules apply')
+    expect(t(w, 'plan-entry-none').text()).toBe('No plan: nothing is watched for this strategy')
+    expect(t(w, 'plan-entry-none').text()).not.toContain('default rules apply') // ADR-330 (11): never the old line
     await t(w, 'plan-entry-edit').trigger('click')
     await flushPromises()
     await t(w, 'plan-use-as-is').trigger('click')
     await flushPromises()
-    expect(calls.filter((c) => c.method === 'POST')).toEqual([{ method: 'POST', url: PATH, body: { playbook_id: 9 } }])
+    expect(calls.filter((c) => c.method === 'POST')).toEqual([{ method: 'POST', url: PATH, body: { playbook_id: 9, accept: true } }])
     expect(t(w, 'plan-entry-playbook').text()).toBe('Playbook: "Mine"')
   })
 
@@ -272,7 +322,7 @@ describe('ADR-295: the plan card and the plan box never show nothing', () => {
   it('card: no plan -> the ADR-295 card with the default target and stop and a Set plan button; nothing is saved', async () => {
     answers[`GET ${PATH}`] = sheetAnswer()
     const w = await entry()
-    expect(t(w, 'plan-entry-none').text()).toBe('No plan saved yet: default rules apply')
+    expect(t(w, 'plan-entry-none').text()).toBe('No plan: nothing is watched for this strategy')
     expect(t(w, 'plan-entry-defaults').exists()).toBe(false) // the limit lines come from the rule check, not the plan read
     expect(t(w, 'plan-entry-edit').text()).toBe('Set plan')
     expect(t(w, 'plan-entry-error').exists()).toBe(false)
@@ -333,12 +383,14 @@ describe('REQ-161 AC-1: the sheet opens after the paper orders are placed, never
     await flushPromises()
     await t(w, 'add-to-paper').trigger('click')
     await flushPromises()
+    await confirmPaperName(w)
     return w
   }
 
   it('placed: the plan sheet opens for that strategy, pre-filled', async () => {
     const w = await builder()
     answers['POST /paper/strategies/70/orders'] = BOOK_70
+    await tickNotLive(w)
     await t(w, 'paper-confirm-button').trigger('click')
     await flushPromises()
     expect(calls.filter((c) => c.url === PATH)).toHaveLength(1)
@@ -349,6 +401,7 @@ describe('REQ-161 AC-1: the sheet opens after the paper orders are placed, never
   it('a failed placement never opens the sheet and never reads a plan', async () => {
     const w = await builder()
     answers['POST /paper/strategies/70/orders'] = () => Promise.reject({ message: 'x', status: 409, parts: null })
+    await tickNotLive(w)
     await t(w, 'paper-confirm-button').trigger('click')
     await flushPromises()
     expect(calls.filter((c) => c.url === PATH)).toHaveLength(0)

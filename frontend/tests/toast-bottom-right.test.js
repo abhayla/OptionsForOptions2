@@ -15,7 +15,6 @@ import AppLayout from '@/components/layout/AppLayout.vue'
 import { toasts, useToast } from '@/composables/useToast'
 
 const src = (p) => readFileSync(join(__dirname, '..', 'src', p), 'utf8')
-const zOf = (text) => Number(/\bz-(\d+)\b/.exec(text)?.[1])
 
 afterEach(() => {
   toasts.splice(0)
@@ -39,33 +38,53 @@ const aboveContent = (w) => {
   return out
 }
 
-describe('u506: the pop-up area is bottom-right, under every modal, and moves nothing', () => {
-  it('the host is bottom-anchored (no top-* class), at the right, capped width, stacking upward', async () => {
+describe('D-67 (was u506): the pop-up area is in the page flow under the header, so it covers no page button', () => {
+  // D-67 (owner decision, binding): an adjustment toast never covers a page button. The earlier u506 contract (a fixed overlay at the
+  // bottom right) still covered buttons there (C10 166, C11 167, each toast covered buttons). The new contract: the host is an
+  // ordinary block IN the page flow between the header and the page content, so it can overlay nothing; the page content is
+  // laid out below it. The z order against modals therefore no longer matters (an in-flow block is under every layer).
+  // Round 2: the host sits INSIDE the sticky header block, so a toast raised while the trader is scrolled down is still on screen.
+  it('the host is a descendant of the sticky header block, directly after the header, not fixed and not in the page content', async () => {
     useToast().showToast('First one', 'info')
     const w = await layout()
-    const cls = w.get('[data-testid="toast-host"]').classes()
-    expect(cls.filter((c) => /^(top|inset-y|inset)-/.test(c))).toEqual([]) // nothing anchors it to the top
-    expect(cls).toContain('fixed')
-    expect(cls.some((c) => /^bottom-\d+$/.test(c))).toBe(true)
-    expect(cls).toContain('right-4')
-    expect(cls).toContain('w-80')
-    expect(cls).toContain('flex-col-reverse') // newest first in the DOM = nearest the corner, older ones stack upward
-    expect(cls.some((c) => /^(h-|min-h-)/.test(c))).toBe(false) // nothing reserved
+    const host = w.get('[data-testid="toast-host"]')
+    expect(host.classes().filter((c) => /^(fixed|absolute)$/.test(c))).toEqual([])
+    const block = host.element.closest('[data-testid="app-header-block"]')
+    expect(block).not.toBeNull()
+    expect(block.classList.contains('sticky')).toBe(true)
+    expect(block.classList.contains('fixed')).toBe(false)
+    const header = w.get('[data-testid="app-header"]').element
+    expect(block.contains(header)).toBe(true)
+    expect(header.compareDocumentPosition(host.element) & Node.DOCUMENT_POSITION_FOLLOWING).toBeTruthy()
+    expect(w.get('[data-testid="app-content"]').element.contains(host.element)).toBe(false)
     w.unmount()
   })
 
-  it('its z-index is lower than the modal, the common drawer and the adjust drawer (a pop-up never covers a Confirm)', async () => {
-    useToast().showToast('First one', 'info')
+  it('the aria-live region is always rendered, empty with no pop-up, so the first announcement is read', async () => {
     const w = await layout()
-    const host = zOf(w.get('[data-testid="toast-host"]').attributes('class'))
-    const modal = zOf(/class="fixed inset-0 z-\d+[^"]*"/.exec(src('components/common/Modal.vue'))[0])
-    const drawer = zOf(/class="fixed inset-x-0 top-14 bottom-0 z-\d+"/.exec(src('components/common/Drawer.vue'))[0])
-    const adjust = zOf(/<div v-if="open" class="fixed inset-0 z-\d+"/.exec(src('components/strategy/AdjustDrawer.vue'))[0])
-    expect([modal, drawer, adjust].every(Number.isInteger)).toBe(true)
-    expect(host).toBeLessThan(modal)
-    expect(host).toBeLessThan(drawer)
-    expect(host).toBeLessThan(adjust)
+    const live = w.get('[data-testid="toast-host"]')
+    expect(live.attributes('aria-live')).toBe('polite')
+    expect(live.text()).toBe('')
+    useToast().showToast('Late one', 'info')
+    await flushPromises()
+    expect(w.get('[data-testid="toast-host"]').attributes('aria-live')).toBe('polite')
+    expect(w.get('[data-testid="toast-host"]').text()).toContain('Late one')
     w.unmount()
+  })
+
+  it('with no pop-up the host draws nothing and takes no room; with 5 it lists them newest first, each with Dismiss', async () => {
+    const w0 = await layout()
+    expect(w0.findAll('[data-testid="toast"]')).toHaveLength(0)
+    expect(w0.get('[data-testid="toast-host"]').text()).toBe('')
+    w0.unmount()
+    const { showToast } = useToast()
+    for (const m of ['One', 'Two', 'Three', 'Four', 'Five']) showToast(m, 'info')
+    const w5 = await layout()
+    const texts = w5.findAll('[data-testid="toast"]').map((x) => x.text())
+    expect(texts).toHaveLength(5)
+    expect(texts[0]).toContain('Five')
+    expect(w5.findAll('[data-testid="toast-dismiss"]')).toHaveLength(5)
+    w5.unmount()
   })
 
   it('with 0, 1 and 3 pop-ups the page content sits in the same place: nothing above it changes', async () => {

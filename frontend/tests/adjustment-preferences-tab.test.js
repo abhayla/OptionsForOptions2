@@ -193,3 +193,85 @@ describe('Alert values per trading style (REQ-170 AC-6)', () => {
     for (const t of tables) expect(t.classes()).toContain('w-full')
   })
 })
+
+// plan-save-1127: "Change plan values" ends on exactly one of: the server's value, the server's reason, Not confirmed.
+describe('Change plan values (plan-save-1127)', () => {
+  const NOT_CONFIRMED = 'Not confirmed: reload to see whether it was saved.'
+  const PATH = '/strategies/70/adjustment-plan'
+  const sheetAnswer = (stop) => ({ strategy_id: 70, type: 'ic', type_name: 'Iron condor', generic: false, generic_text: null,
+    playbooks: [{ id: 9, name: 'Mine', type: 'ic', type_name: 'Iron condor', is_system: false, draft: false, active: true }],
+    plan: { playbook_id: 9, playbook_name: 'Mine', target: '60', stop, max_adjustments: 3, time_exit: { hour: 14, minute: 45 } },
+    prefill: { playbook_id: 9, target: '60', stop, max_adjustments: 3, time_exit: { hour: 14, minute: 45 } },
+    labels: { title: 't' } })
+  async function openPlan() {
+    answers[GET] = LIST()
+    answers['GET /strategies'] = { strategies: [{ id: 70, name: 'IC' }] }
+    answers[`GET ${PATH}`] = sheetAnswer('40')
+    const w = await open()
+    await w.get('[data-testid=settings-scope]').setValue('70')
+    await flushPromises()
+    await w.get('[data-testid=plan-edit]').trigger('click')
+    return w
+  }
+  const save = async (w) => { await w.get('[data-testid=plan-form]').trigger('submit'); await flushPromises() }
+  const puts = () => calls.filter((c) => c[0] === 'PUT')
+
+  it('a timeout or dropped connection: Not confirmed, one request, the typed value stays, no Try again', async () => {
+    const w = await openPlan()
+    answers[`PUT ${PATH}`] = Object.assign(new Error('timeout'), { code: 'ECONNABORTED' })
+    await w.get('[data-testid=plan-form] input').setValue('55')
+    await save(w)
+    expect(w.get('[data-testid=plan-refusal]').text()).toBe(NOT_CONFIRMED)
+    expect(puts()).toHaveLength(1)
+    expect(w.get('[data-testid=plan-form] input').element.value).toBe('55')
+    expect(w.find('[data-testid=plan-refusal]').text()).not.toContain('Try again')
+  })
+
+  it('a 500 with a catalogue body: Not confirmed', async () => {
+    const w = await openPlan()
+    answers[`PUT ${PATH}`] = { status: 500, parts: { what_happened: 'The change was not completed.', impact: 'i', what_is_blocked: 'b', next_action: 'n' } }
+    await save(w)
+    expect(w.get('[data-testid=plan-refusal]').text()).toBe(NOT_CONFIRMED)
+    expect(puts()).toHaveLength(1)
+  })
+
+  it('a 422 shows the server reason', async () => {
+    const w = await openPlan()
+    answers[`PUT ${PATH}`] = { status: 422, parts: { what_happened: 'Prices could not be read in time.', impact: 'i', what_is_blocked: 'b', next_action: 'n' } }
+    await save(w)
+    expect(w.get('[data-testid=plan-refusal]').text()).toBe('Prices could not be read in time.')
+  })
+
+  it('a 200 shows the server value', async () => {
+    const w = await openPlan()
+    answers[`PUT ${PATH}`] = sheetAnswer('77')
+    await save(w)
+    expect(w.find('[data-testid=plan-refusal]').exists()).toBe(false)
+    expect(w.find('[data-testid=plan-form]').exists()).toBe(false)
+    expect(w.get('[data-testid=plan-stop]').text()).toContain('77')
+  })
+})
+
+// Lane FC2 (R2, 28 Nov) D-TD-2 remainder / I-86: the Adjustments page, after a failed first load, says the shared sentence and has a Retry
+// that loads again (no server message = the shared line; with the server's own text its line stays and Retry sits beside it).
+describe('D-TD-2: the Adjustments page after a failed load', () => {
+  const page = async () => {
+    const w = mount(AdjustmentsPage, { global: { provide: { [routeLocationKey]: { query: {} } } } })
+    await flushPromises()
+    return w
+  }
+  it('no message from the server: the shared sentence and Retry; Retry loads the page', async () => {
+    answers['GET /playbooks/labels'] = {}
+    answers['GET /playbooks/types'] = new Error('Network Error') // an Error with no server text
+    const w = await page()
+    expect(w.get('[data-testid="pb-load-error"]').text()).toBe('Could not load this list. Nothing was changed.')
+    expect(w.find('[data-testid="pb-refusal"]').exists()).toBe(false) // never the raw "Network Error"
+    const before = calls.filter((c) => c[1] === '/playbooks/types').length
+    answers['GET /playbooks/types'] = { types: [{ key: 'iron_condor', label: 'Iron condor' }] }
+    answers['GET /playbooks'] = { playbooks: [] }
+    await w.get('[data-testid="pb-load-retry"]').trigger('click')
+    await flushPromises()
+    expect(calls.filter((c) => c[1] === '/playbooks/types').length).toBe(before + 1)
+    expect(w.find('[data-testid="pb-load-error"]').exists()).toBe(false)
+  })
+})

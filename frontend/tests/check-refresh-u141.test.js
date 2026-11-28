@@ -30,15 +30,15 @@ import { CHECK_STALE_TEXT } from '@/lib/sharedStateText'
 
 let TRACK = { strategy_id: 7, state: 'LIVE', paper_pnl: '195.00', paper_pnl_text: '+195.00', as_of: null, legs: [], detections: [] }
 const LABELS = { plan_entry: 'Plan', playbook: 'Playbook', target: 'Target', stop: 'Stop', max_adjustments: 'Max adjustments', time_exit: 'Time exit',
-  edit: 'Edit plan', no_plan: 'No plan saved yet: default rules apply', set_plan: 'Set plan' }
+  edit: 'Edit plan', no_plan: 'No plan: nothing is watched for this strategy', set_plan: 'Set plan' }
 const PLAN = { strategy_id: 7, type: 'ic', type_name: 'Iron condor', generic: false, generic_text: null, labels: LABELS, plan: null,
   playbooks: [{ id: 9, name: 'Mine', type: 'ic', type_name: 'Iron condor', is_system: false, draft: false, active: true }], prefill: { playbook_id: 9 } }
 
-const AS_OF_1 = 'As of 01:05:00 PM IST'
-const AS_OF_2 = 'As of 01:05:05 PM IST'
+const AS_OF_1 = 'As of 13:05:00 IST'
+const AS_OF_2 = 'As of 13:05:05 IST'
 const flag = (pct, over = {}) => ({ kind: 'flag', rule_id: 'R-stop', trigger_id: 'T-06', cmp: 'ge', value: pct, threshold: '50.0000', reason: null,
   wording: 'Your rule was triggered', condition: `Loss as % of max loss: ${pct} % (rule 5 %)`, suggestion_id: 11, note: null,
-  stop_text: `Stop reached: loss now ₹1,234.00 (${pct} % of max loss); stop line ₹2,980.00 (5 % of max loss); reached at 12:58 IST`, ...over })
+  stop_text: `Stop reached: loss now ₹1,234.00 (${pct} % of max loss); stop line ₹2,980.00 (5 % of max loss); seen by the check at 12:58 IST`, ...over })
 const row = (rule_id, text, state = 'checked', over = {}) => ({ rule_id, trigger_id: rule_id, threshold: '40.0000', amount: null, later: [],
   tightened_by: null, state, reason: null, text, after: null, reason_code: null, ...over })
 const check = (over = {}) => ({ strategy_id: 7, as_of: '2026-11-13T07:35:00Z', as_of_text: AS_OF_1, strategy_type: 'ic', type_name: 'Iron condor',
@@ -73,7 +73,7 @@ describe('the stop warning follows the live check (Issue 5)', () => {
     checks = [check({ results: [flag('7.46')] })]
     const w = await panel()
     expect(t(w, 'playbook-flag-stop').text()).toBe(
-      'Stop reached: loss now ₹1,234.00 (7.46 % of max loss); stop line ₹2,980.00 (5 % of max loss); reached at 12:58 IST')
+      'Stop reached: loss now ₹1,234.00 (7.46 % of max loss); stop line ₹2,980.00 (5 % of max loss); seen by the check at 12:58 IST')
   })
 
   it('a flag without the server\'s stop sentence (an older server or a non-stop rule) prints no stop line, never one built here', async () => {

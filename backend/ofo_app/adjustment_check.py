@@ -29,9 +29,8 @@ ambiguous -> None, so the evaluator answers NotChecked with its catalogue reason
 - prices_fresh (T-21): the market context's provider health: available -> True, stale -> False, anything else or no
   context -> None (``withheld_fresh_unknown``).
 
-Playbook (REQ-158 AC-5): the strategy's own plan; else the user's active playbook of the type (``active_for`` falls
-back to the type's system playbook); type None (Custom or an unmapped template) -> no playbook, no results, and the
-tracking route keeps the platform 0.5% detection.
+Playbook (ADR-330 (11)): the strategy's own plan only; no plan -> source "none" (nothing watched); type None (Custom
+or an unmapped template) -> no playbook, no results, and the tracking route keeps the platform 0.5% detection.
 
 F-71 entry state: in scenario mode the scenario's ``position.entry`` (its clock, spot and ATM IV; the shorts' strikes;
 every other entry input None). Otherwise, when the strategy's rule memory is empty (tracking just started), the first
@@ -61,12 +60,13 @@ from ofo.adjustment.approaches import (
 from ofo.adjustment.compare import Cheapest, Column, MarginRead, cheapest_approach
 from ofo.adjustment.offered import offered_now
 from ofo.adjustment.strategy_type import strike_gap_of, type_of
+from ofo.checks.time_of_day import time_exit_parts
 from ofo.engine import adjust_money
 from ofo.engine.extremes import ContractTerms
 from ofo.engine.extremes_charges import NOT_PRICED, RATES_UNAVAILABLE, book_after_charges, open_exit_charges
 from ofo.engine.legs import Action, Instrument, Leg
 from ofo.engine.metrics import UNLIMITED
-from ofo.engine.model import delta_at_intrinsic
+from ofo.engine.model import INTRINSIC_TICK, delta_at_intrinsic
 from ofo.errors.explanations import (
     DAY_RULE_GENERIC_TEXT,
     LEVEL_WATCH_LABEL_TEXT,
@@ -166,6 +166,19 @@ def strategy_type(position: Position, spot: Decimal | None, listed: list | None)
     return found
 
 
+def entry_type(tracked: Tracked, listed: list | None) -> str | None:
+    """D-04 (ADR-318 (4)): the playbook type of a strategy with no plan = the shape it had AT ENTRY (the first batch of
+    paper orders, ``Tracked.entry_position``), so an adjustment that changes the shape keeps its rules and maximum.
+    No entry shape readable (a real book, no order time), or one that cannot be classified (its contracts are no longer
+    listed, so no strike gap) -> the current shape. The one door every playbook lookup by shape goes through. It takes
+    NO spot (the server limit reads the shape against the middle of its strikes): a caller cannot classify against
+    another reference than the limit."""
+    # the entry is the first basket of orders (ADR-255): a trade built in two separate confirms is typed by its
+    # first only
+    entry = tracked.entry_position
+    return (entry and strategy_type(entry, None, listed)) or strategy_type(tracked.position, None, listed)
+
+
 async def plan_saved_before_adr247(conn: Any, plan: Any) -> bool:
     """ADR-250: a plan accepted before the iron condor system version 2 (migration 0040) was saved (the plan's
     ``accepted_at`` survives every re-save). Version 2 absent -> True: keep its own stops."""
@@ -207,11 +220,19 @@ async def resolve(conn: Any, user_ref: str, strategy_id: int, stype: str | None)
     if plan is not None:
         return Resolved("plan", with_plan_target(plan.body), plan.playbook_id, None, False,
                         saved_before_adr247=await plan_saved_before_adr247(conn, plan))
-    if stype is None:
-        return Resolved("none", None, None, None, False, saved_before_adr247=False)
-    pb = await playbook_store.active_for(conn, user_ref, stype)
-    return Resolved("system" if pb.is_system else "active", pb.body, pb.id, pb.status if pb.is_system else None,
-                    pb.is_system, saved_before_adr247=False)
+    # ADR-330 (11): a playbook is only a source to copy from when a plan is made; no plan -> nothing is watched.
+    # (A plan row with an unreadable body raised in ``plan_for`` above: refused, never "none".)
+    return Resolved("none", None, None, None, False, saved_before_adr247=False)
+
+
+def max_profit_of(tracked: Any, market: Any, rates: Any) -> Decimal | None:
+    """ADR-330 (5): the whole-trade max profit before charges (the Before's gross figure, as the live check reads it),
+    the base a rupee target is shown against. Unlimited, not priced or unreadable -> None, never a guess."""
+    before = price_after(tracked.position.legs, tracked.position, tracked.booked, tracked.paid_charges, (), rates,
+                         market, tracked.paid_exact)
+    gross = None if before.after is None else before.after.gross
+    value = None if gross is None else gross.max_profit
+    return value if isinstance(value, Decimal) and value.is_finite() else None
 
 
 def _limit_value(v: Any) -> Decimal | str:
@@ -236,7 +257,6 @@ def prices_fresh(ctx: Any) -> bool | None:
 
 
 #: ADR-268 (1): an option price within one tick of its intrinsic value has no time value left (NSE/BSE option tick)
-INTRINSIC_TICK: Final = Decimal("0.05")
 
 
 def _abs_delta(market: MarketInputs, leg: Any, ltp: Decimal | None, spot: Decimal | None) -> Decimal | None:
@@ -277,8 +297,10 @@ def exit_inputs_of(guards: Mapping | None, position: Position, now: datetime.dat
         return ExitInputs(None, None, hhmm)
     expiry = min(x.expiry for x in position.legs)
     tighten = _tighten(body, ist.date(), expiry, hhmm) if isinstance(body, Mapping) else None
+    # R3: no kind known = no day count, so no stage and no T-09 (not checked); never the weekly row by default
     state = pe.StrategyState(stops=None, expiry_kind=position.expiry_kind or "weekly",  # type: ignore[arg-type]
-                             days_left=(expiry - ist.date()).days, hhmm=hhmm, tighten_percent=tighten)
+                             days_left=(expiry - ist.date()).days if position.expiry_kind else None, hhmm=hhmm,
+                             tighten_percent=tighten)
     return pe.exit_inputs(body, guards, state)
 
 
@@ -290,7 +312,9 @@ def cheapest_offered(body: Mapping | None, tracked: Tracked, market: MarketInput
     None prices it here. ``roll_basis`` (ADR-243, REQUIRED): the strategy's basis in force (``basis_in_force``), the
     same the Compare builds on."""
     offered = offered_now(body, tracked.adjustments_used)  # S-11: only exit and reduce at the limit
-    if spot is None:  # nothing can be built without spot: none priceable (T-19 is withheld for no spot anyway)
+    if spot is None or not (market.expiry_kind or tracked.position.expiry_kind):
+        # nothing can be built without spot, or without the expiry kind (the target delta is read by kind): none
+        # priceable (T-19 is withheld for no spot anyway)
         return cheapest_approach(offered, {}, market.chain)
     columns: dict[str, Column] = {}
     tracked = as_of_market(tracked, market)  # as the approaches route builds (market day, listed expiry kind)
@@ -374,20 +398,20 @@ def state_of(tracked: Tracked, market: MarketInputs, spot: SpotAnswer, margin: M
     stated_margin, margin_unreadable = margin_in(margin)
     last = market.last_close
     day = market.day_open
-    kind = market.expiry_kind or position.expiry_kind or "weekly"
+    kind = market.expiry_kind or position.expiry_kind  # "" = not known: no stage, no stop lines (R3, fail closed)
     stops = None
-    if resolved is not None:
+    stop_base = getattr(tracked, "stop_base", None)  # ADR-330 (1): fixed at entry, None = not checked
+    if resolved is not None:  # FR 3.6: also for an unknown kind (""): a kind-free stop (2x credit) is still checked
         from ofo_app import settings_in_force as sif  # noqa: PLC0415 - it imports this module
-        credit = None if booked is None else adjust_money.net_credit_so_far(
-            booked, ((x.side, x.entry, qty[x.tradingsymbol]) for x in position.legs))
-        stops = sif.stops_of(resolved, sif.MoneyInputs(None if gross is None else gross.max_loss, credit,
-                                                       stated_margin),
-                             sif.StageAt(kind, (expiry - now.date()).days))
+        stops = sif.stops_of(resolved, sif.MoneyInputs(None if stop_base is None else stop_base.max_loss,
+                                                       None if stop_base is None else stop_base.credit, stated_margin),
+                             sif.StageAt(kind, (expiry - now.date()).days))  # kind "": no stage row
     return with_gamma(with_carry(pe.StrategyState(stops=stops,
-        expiry_kind=market.expiry_kind or position.expiry_kind or "weekly",  # type: ignore[arg-type]
-        days_left=(expiry - now.date()).days, hhmm=hhmm, spot=value, shorts=shorts, pnl=pnl,
+        expiry_kind=kind or "weekly",  # type: ignore[arg-type]  # a placeholder: with no kind days_left is None
+        days_left=(expiry - now.date()).days if kind else None, hhmm=hhmm, spot=value, shorts=shorts, pnl=pnl,
         pnl_after=pnl_after, pnl_after_reason=pnl_after_reason,
         max_loss=None if gross is None else _limit_value(gross.max_loss),
+        stop_max_loss=None if stop_base is None else _limit_value(stop_base.max_loss),
         max_profit=None if gross is None else _limit_value(gross.max_profit),
         margin=stated_margin, margin_unreadable=margin_unreadable, premium_left=left, adjustment_cost=cheap.cost,
         adjustment_approach=cheap.approach,
@@ -634,7 +658,8 @@ def _entry_state(clock: datetime.datetime, spot: Decimal, atm_iv: Decimal | None
                                x.type)
                    for x in position.legs if x.side == Action.SELL.value)
     held = tuple(pe.HeldLeg(greeks[id(x)], x.side, x.lots) for x in position.legs)  # F-71: every leg, S-02 reads them
-    return pe.StrategyState(stops=None, expiry_kind=state.expiry_kind, days_left=(expiry - clock.date()).days,
+    return pe.StrategyState(stops=None, expiry_kind=state.expiry_kind,
+                            days_left=None if state.days_left is None else (expiry - clock.date()).days,
                             hhmm=clock.strftime("%H:%M"), spot=spot, shorts=shorts, held=held,
                             atm_iv=atm_iv, entry_atm_iv=atm_iv, prices_fresh=True,
                             adjustments_used=state.adjustments_used, s02_delta_per_lot=state.s02_delta_per_lot)
@@ -764,6 +789,11 @@ def record_words(body: Mapping | None, rule_id: str, rv: Any) -> tuple[str | Non
     return None, None, None, None
 
 
+#: the label of a T-10b hit whose time is the PLAN's time exit (ADR-330 (7)); a playbook stage clock rule keeps its own
+PLAN_TIME_EXIT_LABEL: Final = "Time exit reached"
+TIME_EXIT_TRIGGER: Final = pe.sl.TRIGGER_TIME_EXIT
+
+
 def trigger_words(body: Mapping | None, trigger_id: str | None) -> tuple[str | None, str | None]:
     """(label, unit) of a trigger as the evaluated body holds them; (None, None) for a body or trigger without them.
     A day rule (GC-IC1 1a, ``day.<when>.<HHMM>.<n>``): its action's catalogue words and "%" (its value is a distance
@@ -785,6 +815,8 @@ def trigger_words(body: Mapping | None, trigger_id: str | None) -> tuple[str | N
     if not isinstance(trig, Mapping):
         return None, None
     label, unit = trig.get("label"), trig.get("unit")
+    if trigger_id == TIME_EXIT_TRIGGER and time_exit_parts((body.get("guards") or {}).get("time_exit")) is not None:
+        label = PLAN_TIME_EXIT_LABEL  # ADR-330 (7): the time is the plan's own time exit, so the line says so
     return (label if isinstance(label, str) else None), (unit if isinstance(unit, str) else None)
 
 
@@ -893,14 +925,22 @@ def _target_line(trigger_id: str, threshold: str, target: TargetFigures | None) 
 
 
 def condition_line(trigger_id: str, label: str | None, unit: str | None, value: str, threshold: str,  # noqa: PLR0913
-                   beyond: tuple[str, Decimal, Decimal] | None = None, target: TargetFigures | None = None) -> Any:
+                   beyond: tuple[str, Decimal, Decimal] | None = None, target: TargetFigures | None = None,
+                   side: str | None = None) -> Any:
     """The condition in words. ADR-294 (2): T-07 with ``target`` figures -> the target sentence (profit before charges,
     the target, the after-charges result); anything else, or a figure the slots refuse -> the percent line."""
     try:
         sentence = _target_line(trigger_id, threshold, target)
     except (TypeError, ValueError, ArithmeticError):  # a refused figure: the percent line (fail visible)
         sentence = None
-    return sentence if sentence is not None else _percent_line(trigger_id, label, unit, value, threshold, beyond)
+    line = sentence if sentence is not None else _percent_line(trigger_id, label, unit, value, threshold, beyond)
+    if trigger_id != "T-01" or beyond is not None or side not in ("CE", "PE"):  # D-58: a plain T-01 line, known side
+        return line
+    try:
+        said = "adjust_condition_side_put" if side == "PE" else "adjust_condition_side_call"
+        return render_explanation(said, line=line)
+    except (TypeError, ValueError):  # a line the slot refuses: the plain line (fail visible)
+        return line
 
 
 def _percent_line(trigger_id: str, label: str | None, unit: str | None, value: str, threshold: str,  # noqa: PLR0913
@@ -909,6 +949,8 @@ def _percent_line(trigger_id: str, label: str | None, unit: str | None, value: s
     and unit. A label the slot refuses or a body without one -> the trigger id (fail visible); a unit that is empty
     or not a plain unit -> the line without it."""
     def line(lab: str, un: str | None) -> Any:
+        if trigger_id == TIME_EXIT_TRIGGER and lab == PLAN_TIME_EXIT_LABEL:  # the plan's time exit says so
+            return render_explanation("adjust_condition_line_plan_time_exit", threshold=threshold)
         if un == CLOCK_UNIT:  # a clock trigger: HH:MM value and threshold, no unit word
             return render_explanation("adjust_condition_line_time", label=lab, value=value, threshold=threshold)
         if un:

@@ -34,18 +34,15 @@ CASES: dict[str, list[tuple[str, str, int]]] = {
 EXTRA_FRAMES = {"PATH-12": [4, 5, 6, 7], "PATH-13": [6]}
 # #661 item 3 (retry round 3), proven without a DB in tests/adjustment/test_ic_retry_661_662.py: PATH-13's frame 4
 # count is frame 3's close (3 pts = the stage line, level 0); frame 4's close (4 pts = the later-stage rung, ladder
-# 3 -> 4) is ONE designed escalation (alert_gate.py:267-268, worse "last"), seen at frame 5; the value is flat from
-# frame 4, so nothing more opens (frame 6 still 2). case -> the count expected at k+1 and after (default 1).
-NEXT_COUNT = {"T-11": 2}
+# 3 -> 4) is ONE designed escalation, seen at frame 5. Was (old): it opened a 2nd record (count 2). ADR-330 (3), REQ-170
+# AC-3: an unanswered record is escalated in place (one open alert per rule), so the count stays 1 from frame 4 on.
 GUIDANCE = ("sit.S-03", "sit.S-04", "sit.S-05", "sit.S-08", "sit.S-09")
 KNOWN = {  # case -> measured blocker (a throwaway DB run; the layer is proven with file:line)
     # S-12 left KNOWN in the Stage D core-proof fix: adjustment_readers.entered_at now reads the orders' placed_at
     # (the seed's scenario entry clock), not the row's created_at (the real date of the seeding)
     # retry r4: r4-run1.log B1-RATES None (the conftest's cached "no rate set") is fixed - the walk seeds the stated
     # rates (_paths_helpers.set_env -> t19_support.seed_rates) and r4-run2.log prices (cost 57.44 at Fri 15:00)
-    "T-06-2x-credit": "held by alerts.intraday.daily_cap 6: S-02 now opens a 6th record (F-71 round 3, correct); the "
-                      "cap's scope is batch 2 (issues 57/59, ADR-267). The paper stop itself is not gated (REQ-170 "
-                      "AC-5, test_risk_exit_not_gated)",
+    # "T-06-2x-credit" left KNOWN with ADR-330 (47): T-07 is a plan exit now, (S-02 no longer fills the cap)
     "T-19": "PATH FIXTURE, parked (r4-run2.log): on the Mon 9 Nov expiry-day frames 4-8 every IC leg is ltp 0.05 / "
             "bid 0.00 / ask 0.10, so compare.approach_cost finds no live book (adjust_cmp_no_bid_ask) for any traded "
             "contract and cheapest_approach answers adjust_trigger_no_approach_priced, while premium_left is 0.00; "
@@ -104,7 +101,7 @@ async def test_every_on_rule_raises_exactly_one_record_at_its_crossing_frame(app
         failed, rotten = [], []
         for case, rule, k in CASES[path_id]:
             try:
-                check(seen, rule, k, after=NEXT_COUNT.get(case))
+                check(seen, rule, k)
             except AssertionError as e:
                 if case not in KNOWN:
                     failed.append((case, e))

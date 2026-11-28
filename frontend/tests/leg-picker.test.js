@@ -27,6 +27,7 @@ import { settingsData } from './helpers/servedLots'
 
 // the page passes the served lot caps down (REQ-167 AC-5); a picker mounted alone gets them as props
 const mount = (C, o = {}) => mountRaw(C, C === LegPicker ? { ...o, props: { maxLots: 10000, lotChoiceCount: 10, ...o.props } } : o)
+import { DRAFT_HOLDS_TEXT } from '@/lib/legDoor'
 import { NOT_CONNECTED_LABEL, REPRICE_PROMPT, lotsValid, lotChoices, instrumentId, buildDraft, oiCompact } from '@/lib/legPicker'
 
 const AT = '2026-10-08T09:20:09+05:30'
@@ -398,7 +399,7 @@ describe('legs added quickly in sequence are all kept', () => {
       expect(w.findAll('[data-testid="leg-row"]')).toHaveLength(i + 1)
     }
     // the race is real: a shape read went out after the 2nd, 3rd and 4th adds, and an outcome after every add
-    expect(calls.filter((c) => c.url === '/strategies/leg-edit').map((c) => c.body.legs.length)).toEqual([2, 3, 4])
+    expect(calls.filter((c) => c.url === '/strategies/leg-edit').map((c) => c.body.legs.length)).toEqual([2, 3, 4]) // Lane FJ r3 (FB2 deferred): the shape is read once per added leg, when its entry is in (not also when it shows with no entry)
     expect(calls.filter((c) => c.url === '/strategies/outcome').length).toBeGreaterThanOrEqual(4)
     while (held.length) held.pop()() // the stale replies land newest first, the oldest last
     await flushPromises()
@@ -472,7 +473,7 @@ describe('the Builder page', () => {
       both_views: true, // GC-UI b1: the chart asks both curves, the SD bands and the OI bars (REQ-083)
       sd_bands: true,
       open_interest: true,
-      seq: 2, // REQ-119: rises with every call; the mount's empty-draft call (no request) took 1
+      seq: 3, // REQ-119: rises with every call; the mount's empty-draft call (no request) took 1, the leg shown before its entry (no request) took 2 (Lane FB2)
     })
     expect(t(w, 'strategy-builder').attributes('data-state')).toBe('not-connected')
     expect(t(w, 'status-label').text()).toBe(NOT_CONNECTED_LABEL)
@@ -1048,7 +1049,7 @@ describe('REQ-080 strikes tab (W-147)', () => {
     await t(w, 'picker-done').trigger('click')
     await flushPromises()
     expect(w.props('legs').map((l) => [l.instrument_id, l.action])).toEqual([['NSE_FO:44000', 'BUY'], ['NSE_FO:44002', 'SELL'], ['NSE_FO:44005', 'BUY']])
-    expect(w.emitted('update:legs')).toHaveLength(1)
+    expect(w.emitted('update:legs')).toHaveLength(2) // Lane FB2: the three legs at once, then their entries
     expect(t(w, 'picker-count').text()).toBe('0 legs selected')
   })
 
@@ -1418,6 +1419,20 @@ describe('W-195 strike drawer (UI-200..UI-207)', () => {
     await ce.find('[data-testid="cell-buy"]').trigger('click')
     expect(qty().style.display).toBe('')
     expect(ce.find('[data-testid="cell-buy"]').classes()).toContain('bg-buy')
+  })
+
+  it('UX-27: a real click on "Pick from Option Chain" works: it brings the LTP columns back; with LTP already shown nothing visibly changes', async () => {
+    const w = mountPicker()
+    await flushPromises()
+    await openStrikes(w)
+    const checked = () => t(w, 'picker-view').findAll('[role="radio"]').filter((b) => b.attributes('aria-checked') === 'true').map((b) => b.text())
+    expect(checked()).toEqual(['LTP'])
+    await t(w, 'picker-view-oi').trigger('click')
+    expect(checked()).toEqual(['OI'])
+    await t(w, 'picker-pick-chain').trigger('click')
+    expect(checked()).toEqual(['LTP']) // the click is handled
+    await t(w, 'picker-pick-chain').trigger('click')
+    expect(checked()).toEqual(['LTP']) // already on LTP: the link has nothing to open, so nothing moves (owner decision pending)
   })
 
   it('UI-206 core: B on a strike then Done adds that leg with its planned entry and emits done (the Builder closes the drawer)', async () => {
@@ -1944,5 +1959,48 @@ describe('GC-UI 6c Straddles / Strangles tabs and the type-change confirm (D-C08
     await t(w, 'tab-straddles').trigger('click')
     await flushPromises()
     expect(t(w, 'strikes-error').text()).toBe('The strikes could not be read right now.')
+  })
+})
+
+// D-47 (ic-live-test 2026-11-23, K-1): the picker said "0 legs selected" while the draft held 4, and B / S showed only on hover.
+describe('D-47 strike picker clarity', () => {
+  beforeEach(() => {
+    answers['GET /catalogue/NIFTY/contracts?expiry=2026-10-13'] = catalogue13
+    answers[STRIKES_URL()] = strikesAnswer()
+  })
+  const draftLeg = (i, type, strike, action) => ({
+    id: `d${i}`, instrument_id: `NSE_FO:${900 + i}`, underlying: 'NIFTY', expiry: '2026-10-13', instrument_type: type, strike, action, lots: 1,
+    planned_entry: '100.00', captured_at: AT, contract_id: 900 + i, exchange_segment: 'NSE_FO', exchange_token: 900 + i,
+  })
+  const four = [draftLeg(1, 'CE', '22800.00', 'SELL'), draftLeg(2, 'CE', '23000.00', 'BUY'), draftLeg(3, 'PE', '22400.00', 'SELL'), draftLeg(4, 'PE', '22200.00', 'BUY')]
+
+  it('with 4 legs already in the draft and none picked, the count line keeps "0 legs selected" and says the draft holds 4', async () => {
+    const w = mountPicker(four)
+    await flushPromises()
+    await openStrikes(w)
+    expect(t(w, 'picker-count').text()).toBe('0 legs selected')
+    expect(t(w, 'picker-draft-count').text()).toBe(DRAFT_HOLDS_TEXT(4))
+    expect(DRAFT_HOLDS_TEXT(4)).toContain('4')
+    expect(DRAFT_HOLDS_TEXT(4)).toContain('draft')
+  })
+
+  it('an empty draft says nothing extra; one leg uses the singular', async () => {
+    const w = mountPicker()
+    await flushPromises()
+    await openStrikes(w)
+    expect(t(w, 'picker-draft-count').exists()).toBe(false)
+    const w1 = mountPicker([four[0]])
+    await flushPromises()
+    await openStrikes(w1)
+    expect(t(w1, 'picker-draft-count').text()).toBe(DRAFT_HOLDS_TEXT(1))
+  })
+
+  it('B and S buttons are drawn on every strike cell before any click, not only on hover', async () => {
+    const w = mountPicker()
+    await flushPromises()
+    await openStrikes(w)
+    const btns = w.findAll('[data-testid="cell-buy"], [data-testid="cell-sell"]')
+    expect(btns.length).toBeGreaterThan(0)
+    for (const b of btns) expect(b.classes().join(' ')).not.toContain('opacity-0')
   })
 })

@@ -30,10 +30,12 @@ const canvas = ref(null)
 let chart = null
 const shown = computed(() => props.lines.filter((l) => !props.hidden.includes(l.id)))
 
+// Lane FK: no chart work after removal or after the page's DOM is gone
+let gone = false
 function draw() {
   chart?.destroy()
   chart = null
-  if (!canvas.value) return
+  if (gone || typeof document === 'undefined' || !canvas.value) return
   chart = new Chart(canvas.value, {
     type: 'line',
     data: {
@@ -51,5 +53,9 @@ function draw() {
 }
 onMounted(draw)
 watch(() => [props.lines, props.hidden], draw, { deep: true })
-onBeforeUnmount(() => chart?.destroy())
+onBeforeUnmount(() => {
+  gone = true
+  chart?.destroy()
+  chart = null
+})
 </script>

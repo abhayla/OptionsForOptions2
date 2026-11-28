@@ -51,7 +51,10 @@ def test_no_contract_is_stale_after_61_s_while_the_feed_is_live():
     now = _heartbeats(provider, clock, end, 61)
     quotes = provider.book.quotes(now)
     assert len(quotes) == 982
-    assert {q.health for q in quotes} == {DataHealth.AVAILABLE}
+    # ADR-330 (39): an INDEX quote older than the age setting is the one exception
+    # (tests/marketdata/test_index_quote_age.py);
+    # every option contract stays available however quiet
+    assert {q.health for q in quotes if q.instrument_type is not None} == {DataHealth.AVAILABLE}
     # the contract's own age is information only
     assert now - provider.book.last_changed_at("NSE_FO:44614") > 60 * SEC
 

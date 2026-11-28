@@ -9,6 +9,7 @@ Deliberately no `from __future__ import annotations`: the hostile models are bui
 resolve their annotations from the real objects.
 """
 
+import asyncio
 import enum
 import json
 import pathlib
@@ -26,6 +27,7 @@ from ofo_app import api_models
 from ofo_app.api_models import CatalogueText, Identifier
 from ofo_app.basket_post import BasketPost
 from ofo_app.main import create_app
+from ofo_app.request_log import RequestLog
 from ofo_app.routes import broker
 from ofo_app.routes.outcome import MarginOut
 
@@ -153,6 +155,12 @@ class _FakeDb:
 
     async def rollback(self) -> None: ...
 
+    async def execute(self, statement, params=None):
+        """The D-28 order read (strategy_store.has_order): a real DB with no orders answers one row, False."""
+        from types import SimpleNamespace  # noqa: PLC0415
+
+        return SimpleNamespace(scalar=lambda: False)
+
 
 def test_golden_a_strategies_route_answers_the_exact_bytes_with_exclude_unset(monkeypatch: pytest.MonkeyPatch) -> None:
     """AC-2: GET /strategies/{id} (exclude_unset, nested models, datetimes with and without microseconds, Optional)
@@ -184,6 +192,10 @@ def test_golden_a_strategies_route_answers_the_exact_bytes_with_exclude_unset(mo
         return tuple(SimpleNamespace(contract_id=i, state="live", feed_id=InstrumentId("NSE_FO", 44624)) for i in ids)
 
     monkeypatch.setattr(strategies.tracked_contracts, "resolve", resolve)
+    async def kind_of(db, strategy_id):  # RA2 item 4: the position kind (a paper trade: no sentence)
+        return "paper"
+
+    monkeypatch.setattr(strategies, "_kind_of", kind_of)
     app = create_app()
 
     async def fake_db():
@@ -194,11 +206,13 @@ def test_golden_a_strategies_route_answers_the_exact_bytes_with_exclude_unset(mo
     assert response.status_code == 200
     # REQ-038 AC-3 (row 16): versions is always written; an unversioned strategy answers an empty list.
     assert response.content == (
-        b'{"id":3,"name":"\\"NIFTY Oct condor\\"","status":"draft","revision":2,"created_at":"2026-10-12T09:15:00Z",'
+        b'{"id":3,"name":"\\"NIFTY Oct condor\\"","status":"draft","status_word":"Draft","revision":2,'
+        b'"created_at":"2026-10-12T09:15:00Z",'
         b'"updated_at":"2026-10-12T09:15:00.250000Z","definition":{"schema_version":1,"underlying":"NIFTY","legs":'
         b'[{"contract_id":5,"action":"BUY","contract_state":"live","exchange_segment":"NSE_FO","exchange_token":44624,'
         b'"instrument":"NIFTY2610625000CE","strike":"25000","expiry":"2026-10-27",'
-        b'"quantity":75}],"rules_ref":null,"risk_limits":{"max_loss":"5000"},"preferences":{}},"versions":[]}')
+        b'"quantity":75}],"rules_ref":null,"risk_limits":{"max_loss":"5000"},"preferences":{}},"versions":[],'
+        b'"position_kind":"paper","position_kind_text":null}')
 
 
 def test_golden_a_strategy_with_one_stored_version_answers_its_definition(monkeypatch: pytest.MonkeyPatch) -> None:
@@ -237,6 +251,10 @@ def test_golden_a_strategy_with_one_stored_version_answers_its_definition(monkey
     monkeypatch.setattr(strategies.store, "version_saved", version_saved)
     monkeypatch.setattr(strategies.sf, "to_document", lambda saved: copy.deepcopy(document))
     monkeypatch.setattr(strategies.tracked_contracts, "resolve", resolve)
+    async def kind_of(db, strategy_id):  # RA2 item 4: the position kind (a paper trade: no sentence)
+        return "paper"
+
+    monkeypatch.setattr(strategies, "_kind_of", kind_of)
     app = create_app()
 
     async def fake_db():
@@ -250,11 +268,12 @@ def test_golden_a_strategy_with_one_stored_version_answers_its_definition(monkey
                   b'"instrument":"NIFTY2610625000CE","strike":"25000","expiry":"2026-10-27","quantity":75}],'
                   b'"rules_ref":null,"risk_limits":{},"preferences":{}}')
     assert response.content == (
-        b'{"id":3,"name":"\\"NIFTY Oct condor\\"","status":"draft","revision":2,"created_at":"2026-10-12T09:15:00Z",'
+        b'{"id":3,"name":"\\"NIFTY Oct condor\\"","status":"draft","status_word":"Draft","revision":2,'
+        b'"created_at":"2026-10-12T09:15:00Z",'
         b'"updated_at":"2026-10-12T09:15:00Z","definition":' + definition + b',"versions":[{"number":1,'
         b'"state":"active","based_on":null,"created_at":"2026-10-12T09:15:00Z","confirmed_at":"2026-10-12T09:15:00Z",'
         b'"reconciled_at":"2026-10-12T09:15:00Z","outcome":null,"reconciliation_required":true,"definition":'
-        + definition + b'}]}')
+        + definition + b'}],"position_kind":"paper","position_kind_text":null}')
 
 
 # --- every app ApiModel is swept: it emits, and its bytes equal the old serializer's (temporary parity) ----------------
@@ -356,8 +375,11 @@ APP_MODELS = (
     "ofo_app.api_models.AdjustPricesOut",
     "ofo_app.api_models.AdjustSpotOut",
     "ofo_app.api_models.AdjustSpotReasonOut",
+    "ofo_app.api_models.AdjustTakeProfitOut",
     "ofo_app.api_models.AdjustTimingOut",
     "ofo_app.api_models.AdjustTradeOut",
+    "ofo_app.api_models.AdjustWhatChangesOut",
+    "ofo_app.api_models.AdjustWhatChangesRowOut",
     "ofo_app.api_models.AdjustWholeOut",
     "ofo_app.chain_push.ChainCellOut",
     "ofo_app.chain_push.ChainOut",
@@ -381,8 +403,11 @@ APP_MODELS = (
     "ofo_app.routes.adjustment_opportunities.OpportunityOut",
     "ofo_app.routes.adjustment_opportunities.ReasonOut",
     "ofo_app.routes.adjustment_opportunities.SuggestionOut",
+    "ofo_app.routes.adjustment_opportunities.TotalsOut",
     "ofo_app.routes.adjustment_plan.AdjustmentPlanOut",
     "ofo_app.routes.adjustment_plan.ClockOut",
+    "ofo_app.routes.adjustment_plan.LevelOut",
+    "ofo_app.routes.adjustment_plan.LevelsOut",
     "ofo_app.routes.adjustment_plan.PlanOut",
     "ofo_app.routes.adjustment_plan.PlanPlaybookOut",
     "ofo_app.routes.adjustment_plan.PrefillOut",
@@ -397,6 +422,12 @@ APP_MODELS = (
     "ofo_app.routes.alert_style.AlertStyleOut",
     "ofo_app.routes.alert_style.ChoiceOut",
     "ofo_app.routes.alert_style.RefusedOut",
+    "ofo_app.routes.alerts.ActiveAlert",
+    "ofo_app.routes.alerts.ActiveOut",
+    "ofo_app.routes.alerts.AnswerChoice",
+    "ofo_app.routes.alerts.AnsweredOut",
+    "ofo_app.routes.alerts.HistoryItem",
+    "ofo_app.routes.alerts.HistoryOut",
     "ofo_app.routes.broker.BrokerRedirectOut",
     "ofo_app.routes.broker.RefusalOut",
     "ofo_app.routes.broker_capabilities.CapabilitiesOut",
@@ -414,6 +445,7 @@ APP_MODELS = (
     "ofo_app.routes.execution_return.ReturnExternalOut",
     "ofo_app.routes.execution_return.ReturnOut",
     "ofo_app.routes.execution_return.ReturnPlanOut",
+    "ofo_app.routes.exit_market.ExitMarketOut",
     "ofo_app.routes.features.FeaturesOut",
     "ofo_app.routes.health.HealthOut",
     "ofo_app.routes.leg_edit.ControlReasonsOut",
@@ -432,6 +464,8 @@ APP_MODELS = (
     "ofo_app.routes.level_watch.WatchOut",
     "ofo_app.routes.monitoring_pause.PauseOut",
     "ofo_app.routes.monitoring_pause.RefusedOut",
+    "ofo_app.routes.monitoring_status.MonitoringListOut",
+    "ofo_app.routes.monitoring_status.MonitoringOut",
     "ofo_app.routes.outcome.CellOut",
     "ofo_app.routes.outcome.ChargesBreakdownOut",
     "ofo_app.routes.outcome.ColumnOut",
@@ -468,11 +502,16 @@ APP_MODELS = (
     "ofo_app.routes.outcome.TargetPnlOut",
     "ofo_app.routes.paper.AlertOut",
     "ofo_app.routes.paper.AlertsOut",
+    "ofo_app.routes.paper.ArmedExitsOut",
+    "ofo_app.routes.paper.CancelledStopOut",
     "ofo_app.routes.paper.ExitRiskOut",
     "ofo_app.routes.paper.GreekFigures",
     "ofo_app.routes.paper.HeldEntryOut",
+    "ofo_app.routes.paper.HistoryOut",
+    "ofo_app.routes.paper.HistoryRecordOut",
     "ofo_app.routes.paper.PaperBookOut",
     "ofo_app.routes.paper.PaperBreakevens",
+    "ofo_app.routes.paper.PaperClosedOut",
     "ofo_app.routes.paper.PaperExtremes",
     "ofo_app.routes.paper.PaperFigures",
     "ofo_app.routes.paper.PaperGreeksBlock",
@@ -482,11 +521,16 @@ APP_MODELS = (
     "ofo_app.routes.paper.PaperNetOut",
     "ofo_app.routes.paper.PaperOrderOut",
     "ofo_app.routes.paper.PaperStrategyOut",
+    "ofo_app.routes.paper.PaperTodayOut",
     "ofo_app.routes.paper.PaperTotalsOut",
     "ofo_app.routes.paper.TriggerOut",
     "ofo_app.routes.paper.TriggersOut",
     "ofo_app.routes.paper.UnpricedFields",
     "ofo_app.routes.paper.UnpricedLegOut",
+    "ofo_app.routes.plan_watch.PlanWatchOut",
+    "ofo_app.routes.plan_watch.WatchLineOut",
+    "ofo_app.routes.plan_watch_batch.PlanWatchBatchOut",
+    "ofo_app.routes.plan_watch_batch.PlanWatchItemOut",
     "ofo_app.routes.planned_entry.PlannedEntriesOut",
     "ofo_app.routes.planned_entry.PlannedEntryOut",
     "ofo_app.routes.playbooks.DayPairOut",
@@ -502,6 +546,7 @@ APP_MODELS = (
     "ofo_app.routes.playbooks.TypeOut",
     "ofo_app.routes.playbooks.TypesOut",
     "ofo_app.routes.positions.PositionsOut",
+    "ofo_app.routes.positions.RealPnlOut",
     "ofo_app.routes.positions.StrategyContractOut",
     "ofo_app.routes.positions.StrategyPositionsOut",
     "ofo_app.routes.ready_made.LoadTemplateIn",
@@ -515,6 +560,8 @@ APP_MODELS = (
     "ofo_app.routes.settings.RefusedOut",
     "ofo_app.routes.settings.SettingOut",
     "ofo_app.routes.settings.SettingsOut",
+    "ofo_app.routes.strategies.BulkDeleteOut",
+    "ofo_app.routes.strategies.BulkKeptOut",
     "ofo_app.routes.strategies.DefinitionOut",
     "ofo_app.routes.strategies.DeletedOut",
     "ofo_app.routes.strategies.EntryOut",
@@ -1609,10 +1656,52 @@ def test_a_user_facing_refusal_with_no_failure_value_still_clears_its_cookie() -
 
 def test_the_app_middleware_list_is_exactly_the_boundary() -> None:
     """AC-2 (review MINOR-2): middleware added outside `_Boundary` would sit around the door and could rewrite what it
-    sent. Adding one is a deliberate change to this list, reviewed with the door."""
+    sent. Adding one is a deliberate change to this list, reviewed with the door.
+    27 Nov 2026 hotfix api-blocking-1127: RequestLog sits outside the door and only observes (it logs the status
+    and passes every message unchanged, test below)."""
     from ofo_app.errors import _Boundary
 
-    assert [m.cls for m in create_app().user_middleware] == [_Boundary]
+    assert [m.cls for m in create_app().user_middleware] == [RequestLog, _Boundary]
+
+
+def test_request_log_passes_every_message_unchanged() -> None:
+    """RequestLog only observes: each message the outer send receives is the very object the inner app sent, in order,
+    and a websocket scope reaches the inner app with the original receive and send objects."""
+    start = {"type": "http.response.start", "status": 201, "headers": [(b"content-type", b"text/plain")]}
+    body1 = {"type": "http.response.body", "body": b"one", "more_body": True}
+    body2 = {"type": "http.response.body", "body": b"two", "more_body": False}
+    sent_by_inner = [start, body1, body2]
+    seen_by_outer: list = []
+    inner_calls: list = []
+
+    async def inner(scope, receive, send):
+        inner_calls.append((scope, receive, send))
+        if scope["type"] != "http":
+            return
+        for message in sent_by_inner:
+            await send(message)
+
+    async def outer_send(message):
+        seen_by_outer.append(message)
+
+    async def receive():
+        return {"type": "http.request", "body": b"", "more_body": False}
+
+    http_scope = {"type": "http", "method": "POST", "path": "/x", "headers": []}
+    asyncio.run(RequestLog(inner)(http_scope, receive, outer_send))
+
+    assert len(seen_by_outer) == len(sent_by_inner)
+    for got, want in zip(seen_by_outer, sent_by_inner, strict=True):
+        assert got is want
+
+    async def ws_send(message):
+        pass
+
+    ws_scope = {"type": "websocket", "path": "/ws", "headers": []}
+    asyncio.run(RequestLog(inner)(ws_scope, receive, ws_send))
+    _, ws_receive, ws_inner_send = inner_calls[-1]
+    assert ws_receive is receive
+    assert ws_inner_send is ws_send
 
 
 # --- W-070 round 5 (issue #197): Location is re-minted, not tested against a list of banned characters ----------------

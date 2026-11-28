@@ -1,5 +1,6 @@
-// GC-TP step 7b (REQ-109 AC-8; ADR-207 (5)): the header bell's unread count and the Alerts page list come from GET /paper/alerts,
-// text as the server sent it; opening the page marks them read with ONE POST /paper/alerts/read.
+// GC-TP step 7b (REQ-109 AC-8; ADR-207 (5)), changed by ADR-330 (4): the header bell and the Alerts > Active list come from
+// GET /alerts/active, text as the server sent it; opening the page writes nothing (no POST /paper/alerts/read).
+// The bell is "unanswered actionable alerts", not "unread paper stops".
 import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest'
 import { mount, flushPromises } from '@vue/test-utils'
 import { createRouter, createMemoryHistory } from 'vue-router'
@@ -18,12 +19,12 @@ vi.mock('@/services/api', async (importActual) => {
 
 import AppHeader from '@/components/layout/AppHeader.vue'
 import AlertsPage from '@/pages/AlertsPage.vue'
-import { resetPaperAlerts } from '@/lib/paperAlerts'
+import { resetActiveAlerts } from '@/lib/paperAlerts'
 import { TRACKING_REFRESH_MS } from '@/lib/tracking'
 
-const alert = (id, over = {}) => ({ id, strategy_id: 48, trigger_id: id + 10, created_at: '2026-10-29T05:00:00Z',
-  title: `Stop fired ${id}`, body: `Strategy 48 exited all legs, index crossed above 24500.00 (${id})`, read: false, ...over })
-const TWO = { alerts: [alert(2, { created_at: '2026-10-29T06:30:15Z' }), alert(1)], unread: 2 }
+const alert = (id, over = {}) => ({ id, strategy_id: 48, strategy_name: null, kind: 'plan_loss_stop', text: `Loss stop reached (${id})`,
+  fired_at: '2026-10-29T05:00:00Z', fired_line: 'Fired at 10:30', no_longer_true_since: null, no_longer_true_since_hm: null, answers: [{ code: 'continue', label: 'Continue with the position' }], ...over })
+const TWO = { count: 2, alerts: [alert(2, { fired_line: 'Fired at 12:00' }), alert(1)] }
 const ok = (data) => () => Promise.resolve({ data })
 const fail = (parts, status = 500) => () => Promise.reject({ message: 'x', status, parts })
 const t = (w, id) => w.get(`[data-testid="${id}"]`)
@@ -52,84 +53,94 @@ async function page(path = '/alerts/active') {
   return w
 }
 
-beforeEach(() => { calls.length = 0; answers = {}; resetPaperAlerts(); vi.useFakeTimers() })
+beforeEach(() => { calls.length = 0; answers = {}; resetActiveAlerts(); vi.useFakeTimers() })
 afterEach(() => vi.useRealTimers())
 
 describe('header bell', () => {
-  it('shows the unread count from GET /paper/alerts', async () => {
-    answers['GET /paper/alerts'] = ok(TWO)
+  it('shows the count from GET /alerts/active', async () => {
+    answers['GET /alerts/active'] = ok(TWO)
     const w = await header()
     expect(t(w, 'alerts-bell-count').text()).toBe('2')
   })
   it('is hidden at 0, and when the read fails or is unreadable', async () => {
-    answers['GET /paper/alerts'] = ok({ alerts: [], unread: 0 })
+    answers['GET /alerts/active'] = ok({ alerts: [], count: 0 })
     expect(has(await header(), 'alerts-bell-count')).toBe(false)
-    resetPaperAlerts()
-    answers['GET /paper/alerts'] = fail(null)
+    resetActiveAlerts()
+    answers['GET /alerts/active'] = fail(null)
     expect(has(await header(), 'alerts-bell-count')).toBe(false)
-    resetPaperAlerts()
-    answers['GET /paper/alerts'] = ok({ nope: 1 })
+    resetActiveAlerts()
+    answers['GET /alerts/active'] = ok({ nope: 1 })
     expect(has(await header(), 'alerts-bell-count')).toBe(false)
   })
   it('re-reads on the existing paper refresh tick and drops a stale count when the read then fails', async () => {
-    answers['GET /paper/alerts'] = ok(TWO)
+    answers['GET /alerts/active'] = ok(TWO)
     const w = await header()
-    answers['GET /paper/alerts'] = ok({ alerts: [], unread: 3 })
+    answers['GET /alerts/active'] = ok({ alerts: [], count: 3 })
     await vi.advanceTimersByTimeAsync(TRACKING_REFRESH_MS)
     expect(t(w, 'alerts-bell-count').text()).toBe('3')
-    answers['GET /paper/alerts'] = fail(null)
+    answers['GET /alerts/active'] = fail(null)
     await vi.advanceTimersByTimeAsync(TRACKING_REFRESH_MS)
     expect(has(w, 'alerts-bell-count')).toBe(false)
+  })
+  it('never reads /paper/alerts (an unread paper stop is not counted)', async () => {
+    answers['GET /alerts/active'] = ok({ alerts: [], count: 0 })
+    answers['GET /paper/alerts'] = ok({ alerts: [], unread: 5 })
+    await header()
+    expect(count('GET', '/paper/alerts')).toBe(0)
   })
 })
 
 describe('Alerts page', () => {
-  it('shows the title once: an older body that opens with it loses that repeat', async () => {
-    const one = { ...TWO.alerts[0], title: 'Paper strategy — X', body: 'Paper strategy — X: Stop-loss on the index: NIFTY crossed below 22,845.00; exited 1 legs' }
-    answers['GET /paper/alerts'] = ok({ alerts: [one], unread: 0 })
-    const w = await page()
-    expect(t(w, 'alert-title').text()).toBe('Paper strategy — X')
-    expect(t(w, 'alert-body').text()).toBe('Stop-loss on the index: NIFTY crossed below 22,845.00; exited 1 legs')
-  })
-  it('lists both rows newest first as sent, time in IST, and calls POST /paper/alerts/read once', async () => {
-    answers['GET /paper/alerts'] = ok(TWO)
-    answers['POST /paper/alerts/read'] = ok({ alerts: TWO.alerts.map((a) => ({ ...a, read: true })), unread: 0 })
+  it('lists both rows in the server order as sent, with Fired at HH:MM, and posts nothing', async () => {
+    answers['GET /alerts/active'] = ok(TWO)
     const w = await page()
     const rows = w.findAll('[data-testid="alert-row"]')
     expect(rows).toHaveLength(2)
-    expect(rows[0].get('[data-testid="alert-time"]').text()).toBe('29 Oct 2026, 12:00:15 IST')
+    expect(rows[0].get('[data-testid="alert-fired"]').text()).toBe('Fired at 12:00')
     expect(rows[0].get('[data-testid="alert-strategy"]').text()).toBe('Strategy 48')
-    expect(rows[0].get('[data-testid="alert-title"]').text()).toBe('Stop fired 2')
-    expect(rows[0].get('[data-testid="alert-body"]').text()).toBe('Strategy 48 exited all legs, index crossed above 24500.00 (2)')
-    expect(rows[1].get('[data-testid="alert-title"]').text()).toBe('Stop fired 1')
+    expect(rows[0].get('[data-testid="alert-text"]').text()).toBe('Loss stop reached (2)')
+    expect(rows[1].get('[data-testid="alert-text"]').text()).toBe('Loss stop reached (1)')
     expect(has(w, 'alerts-empty')).toBe(false)
-    expect(count('POST', '/paper/alerts/read')).toBe(1)
     await vi.advanceTimersByTimeAsync(TRACKING_REFRESH_MS * 2)
-    expect(count('POST', '/paper/alerts/read')).toBe(1)
+    expect(calls.filter((c) => c[0] === 'POST')).toEqual([])
   })
-  it('empty: keeps the existing empty line and does not call read', async () => {
-    answers['GET /paper/alerts'] = ok({ alerts: [], unread: 0 })
+  it('empty: keeps the existing empty line and writes nothing', async () => {
+    answers['GET /alerts/active'] = ok({ alerts: [], count: 0 })
     const w = await page()
     expect(t(w, 'alerts-empty').text()).toBe('No alerts yet. Alerts start when strategy monitoring rules are added.')
-    expect(count('POST', '/paper/alerts/read')).toBe(0)
+    expect(calls.filter((c) => c[0] === 'POST')).toEqual([])
   })
-  it('a refused read shows the server reason and no rows; a failed mark-read keeps the rows', async () => {
-    answers['GET /paper/alerts'] = fail({ what_happened: 'Alerts are paused.', impact: 'i', what_is_blocked: 'b', next_action: 'n' }, 409)
+  it('while the first read is in flight it shows Loading, never the empty line; a failed read never shows the empty line', async () => {
+    let release
+    answers['GET /alerts/active'] = () => new Promise((res) => { release = () => res({ data: { alerts: [], count: 0 } }) })
+    const w = mount(AlertsPage, { global: { plugins: [await router('/alerts/active')] } })
+    await flushPromises()
+    expect(t(w, 'alerts-loading').text()).toBe('Loading...')
+    expect(has(w, 'alerts-empty')).toBe(false)
+    release()
+    await flushPromises()
+    expect(has(w, 'alerts-loading')).toBe(false)
+    expect(t(w, 'alerts-empty').text()).toContain('No alerts yet.')
+    resetActiveAlerts()
+    answers['GET /alerts/active'] = fail(null)
+    const w2 = await page()
+    expect(has(w2, 'alerts-empty')).toBe(false)
+    expect(has(w2, 'alerts-loading')).toBe(false)
+  })
+  it('a refused read shows the server reason and no rows', async () => {
+    answers['GET /alerts/active'] = fail({ what_happened: 'Alerts are paused.', impact: 'i', what_is_blocked: 'b', next_action: 'n' }, 409)
     const w = await page()
     expect(w.text()).toContain('Alerts are paused.')
     expect(has(w, 'alert-row')).toBe(false)
-    resetPaperAlerts()
-    answers['GET /paper/alerts'] = ok(TWO)
-    answers['POST /paper/alerts/read'] = fail(null)
-    const w2 = await page()
-    expect(w2.findAll('[data-testid="alert-row"]')).toHaveLength(2)
   })
-  it('History and Notification settings stay the honest empty lines and read nothing', async () => {
-    answers['GET /paper/alerts'] = ok(TWO)
+  it('History (its own reads) and Notification settings (still the honest empty line) never read the Active list', async () => {
+    answers['GET /alerts/active'] = ok(TWO)
+    answers['GET /alerts/answered'] = ok({ items: [] })
+    answers['GET /paper/alerts/records'] = ok({ records: [] })
     const h = await page('/alerts/history')
-    expect(h.text()).toContain('No alerts yet.')
+    expect(h.text()).toContain('No stops or expiry settlements yet.')
     const n = await page('/alerts/notification-settings')
     expect(n.text()).toContain('No notification channels are set up yet.')
-    expect(count('GET', '/paper/alerts')).toBe(0)
+    expect(count('GET', '/alerts/active')).toBe(0)
   })
 })

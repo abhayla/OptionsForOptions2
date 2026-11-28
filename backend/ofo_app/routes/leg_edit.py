@@ -32,7 +32,7 @@ import logging
 import time
 from collections.abc import Awaitable, Callable, Mapping
 from decimal import Decimal
-from typing import Annotated, Literal
+from typing import Annotated, Any, Literal
 
 from fastapi import APIRouter, Depends
 from ofo.charges import ChargeRates
@@ -300,12 +300,14 @@ class EditLegIn(LegIn):
 class EditIn(BaseModel):
     model_config = ConfigDict(extra="forbid")
     control: Literal["step", "multiplier", "include", "price", "reset_prices", "reset_leg", "read",
-                     "shift", "width", "hedge"]
+                     "shift", "width", "hedge", "expiry"]
     direction: Literal[1, -1] | None = None  # strict by _strict_direction: True and 1.0 are not 1
     index: StrictInt | None = Field(default=None, ge=0, lt=20)
     multiplier: StrictInt | None = Field(default=None, ge=edit.MULTIPLIER_MIN, le=edit.MULTIPLIER_MAX)  # '3', 2.5: 422
     included: StrictBool | None = None
     price: str | None = Field(default=None, max_length=64)  # the user's text: edit.set_typed_price is the one judge
+    # D-48 (REQ-078 AC-11): the absolute target expiry of the "expiry" control; index absent = every leg
+    expiry: datetime.date | None = None
     # 2026-11-06 (REQ-076 AC-1, REQ-119): N quick clicks of one relative control (step / shift / width / hedge)
     # arrive as ONE request with steps=N; the server moves N listed strikes one at a time, so every click lands.
     # Absent = 1.
@@ -324,9 +326,10 @@ class EditIn(BaseModel):
         """Each control needs its own fields and nothing is guessed: a missing one is a plain 422, not a refusal."""
         needs = {"step": ("index", "direction"), "include": ("index", "included"), "price": ("index", "price"),
                  "multiplier": ("multiplier",), "reset_prices": (), "reset_leg": ("index",), "read": (),
-                 "shift": ("direction",), "width": ("direction",), "hedge": ("direction",)}[self.control]
+                 "shift": ("direction",), "width": ("direction",), "hedge": ("direction",),
+                 "expiry": ("expiry",)}[self.control]
         given = {"index": self.index, "direction": self.direction, "included": self.included, "price": self.price,
-                 "multiplier": self.multiplier}
+                 "multiplier": self.multiplier, "expiry": self.expiry}
         missing = [name for name in needs if given[name] is None]
         if missing:
             raise ValueError(f"{self.control} needs {missing}")
@@ -372,6 +375,7 @@ class EditLegOut(ApiModel):
     close_at: datetime.datetime | None = None  # ADR-197: the quote's own time of an entry captured after hours
     price_source: Literal["captured", "typed", "none"]
     replaced_typed: bool  # AC-8: the leg had a typed price and moved, so the captured price replaced it
+    replaced_note: CatalogueText | None = None  # item 10: the server's sentence for that, with the price and the reason
     included: bool
     hedge: bool  # the leg carries the Hedge mark (REQ-076 AC-8)
     price_reason: Reason | None  # why the leg is unpriced after this edit (the planned-entry route's codes); else None
@@ -538,7 +542,7 @@ Gate = tuple[dict[str, str | None], frozenset[int], Decimal | None]
 
 
 def _apply_move(cat: Catalogue, req: LegEditIn, legs: list[EditLeg], today: datetime.date, gate: Gate | None):
-    """REQ-078: shift / width / hedge by one strike step, refused with the reason when its control is off."""
+    """REQ-078: shift / width / hedge by one strike step (and D-48 expiry), refused with the reason when it is off."""
     e = req.edit
     if gate is None:  # unreachable: the route always passes it for a move
         raise RuntimeError(f"leg edit '{e.control}' reached apply_edit without its control check")
@@ -550,9 +554,20 @@ def _apply_move(cat: Catalogue, req: LegEditIn, legs: list[EditLeg], today: date
         moved = edit.shift(listing, req.underlying, legs, direction)
     elif e.control == "width":
         moved = edit.width(listing, req.underlying, legs, direction, spot)
+    elif e.control == "expiry":  # D-48 (REQ-078 AC-11, AC-12): one leg or all legs onto one listed expiry
+        moved = edit.change_expiry(listing, req.underlying, legs, e.index, e.expiry)
     else:
         moved = edit.hedge(listing, req.underlying, legs, hedged, direction)
     return moved.legs, moved.moved
+
+
+def _replaced_note(control: str, index: int, leg: Any, unpriced: bool) -> Any:
+    """Item 10 (UX-16, UX-24): the sentence for a typed price a move replaced: the captured price and the reason, or
+    that the price was removed because the new contract has no live price. Server-built; the page prints it."""
+    key = control if control in ("expiry", "shift", "width", "hedge") else "step"
+    if unpriced:
+        return render_explanation(f"leg_edit_removed_by_{key}", number=index + 1)
+    return render_explanation(f"leg_edit_replaced_by_{key}", number=index + 1, price=leg.leg.entry_price)
 
 
 def apply_steps(cat: Catalogue, req: LegEditIn, legs: list[EditLeg], today: datetime.date, gate: Gate | None = None):
@@ -571,7 +586,7 @@ def apply_edit(cat: Catalogue, req: LegEditIn, legs: list[EditLeg], today: datet
     hedge) needs ``gate`` (:func:`_controls`, the Hedge marks and the live index level for Width's last-step case,
     None: no price, ADR-186 (5); all computed by the server from the legs as sent)."""
     e, name = req.edit, req.underlying
-    if e.control in MOVES:
+    if e.control in (*MOVES, "expiry"):
         return _apply_move(cat, req, legs, today, gate)
     if e.control == "include":
         return edit.include_leg(legs, _need_index(e, legs), bool(e.included)), frozenset()
@@ -588,6 +603,8 @@ def apply_edit(cat: Catalogue, req: LegEditIn, legs: list[EditLeg], today: datet
 def _move_gate(cat: Catalogue, req: LegEditIn, ctx: MarketContext | None, legs: list[EditLeg],
                list_current: bool) -> Gate | None:
     """AC-2/AC-10: for a move, the server decides from the legs as sent whether the control applies; else None."""
+    if req.edit.control == "expiry":
+        return {"expiry": None if list_current else "leg_edit_list_not_loaded_today"}, frozenset(), None
     if req.edit.control not in MOVES:
         return None
     template, hedged = shape_and_marks(cat, ctx, req.underlying, legs)
@@ -611,7 +628,7 @@ def _next_shift_total(req: LegEditIn, cat: Catalogue, today: datetime.date, legs
     if control == "shift":
         step = int(edit.shift_step(edit.Listing(cat, today), req.underlying, legs))
         return (req.shift_total or 0) + (req.edit.direction or 1) * step * (req.edit.steps or 1)
-    return None if control in ("step", "width", "hedge") else req.shift_total
+    return None if control in ("step", "width", "hedge", "expiry") else req.shift_total
 
 
 def _recaptured(e: EditIn, legs: list[EditLeg]) -> frozenset[int]:
@@ -662,7 +679,7 @@ async def leg_edit(req: LegEditIn,  # noqa: PLR0913 - FastAPI dependencies, one 
                                                        for i in range(len(new_legs))])
     ids = [f"{e.contract.exchange_segment}:{e.contract.exchange_token}" for e in entries_of]
     stored_ids = await phases.wait("contract_ids_db", contract_ids(ids))
-    if req.edit.control in MOVES:
+    if req.edit.control in (*MOVES, "expiry"):
         stored_of = {i: stored_ids[ids[i]] for i in moved if ids[i] in stored_ids}
         await phases.wait("eligibility_db", _check_landing(tradable, req.underlying, new_legs, moved, stored_of))
     shift_total = _next_shift_total(req, cat, today, legs)
@@ -706,6 +723,8 @@ async def leg_edit(req: LegEditIn,  # noqa: PLR0913 - FastAPI dependencies, one 
         "close_at": None if i in unpriced or x.typed else closes[i],
         "price_source": "none" if i in unpriced else ("typed" if x.typed else "captured"),
         "replaced_typed": legs[i].typed and i in moved,
+        "replaced_note": (_replaced_note(req.edit.control, i, x, i in unpriced)
+                          if legs[i].typed and i in moved else None),
         "included": x.included, "hedge": i in hedged, "price_reason": reasons.get(i) if i in unpriced else None,
         "block": blocks.get(i)} for i, x in enumerate(new_legs)]
     outcome = None

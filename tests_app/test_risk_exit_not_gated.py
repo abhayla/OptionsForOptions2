@@ -92,8 +92,9 @@ async def test_a_gated_adjustment_rule_never_delays_the_conditional_exit(db):  #
     assert [s[1:3] for s in await _stops(db, stored.id)] == [("BUY", 65), ("SELL", 65)]
     assert await _trigger_state(db, tid) == (True, False)
     assert len(await _alerts(db, stored.id)) == 1
-    assert [(r.id, r.outcome) for r in await playbook_store.open_suggestions(db, user, stored.id)] == [
-        (rec.id, "open")]  # the exit neither waited for nor touched the adjustment record
+    # the exit did not wait for the record (it fired on the first tick past the level, above); the trade being
+    # closed, the system lapses its open record ``strategy_closed`` (paper_exit, ADR-237 (6)).
+    assert [(r.id, r.outcome) for r in await playbook_store.suggestions(db, user, stored.id)] == [(rec.id, "lapsed")]
 
 
 

@@ -8,6 +8,8 @@
      (Settings popover, UI-103). -->
 <script setup>
 import { computed, nextTick, ref } from 'vue'
+import { sameContract } from '@/lib/legDoor'
+import { istClock } from '@/lib/displayFormat'
 import ErrorMessage from '@/components/common/ErrorMessage.vue'
 import Tooltip from '@/components/common/Tooltip.vue'
 import Icon from '@/components/common/Icon.vue'
@@ -18,13 +20,24 @@ import { capturedCaption, contractName, expiryWithDays, istTime, strikeLabel } f
 import { NOT_CONNECTED_LABEL, REPRICE_PROMPT } from '@/lib/legPicker'
 import {
   CUSTOM_STRATEGY, LEFT_OUT_LABEL, LEGS_CLEARED, LEG_CARD_PADDING_PX, LEG_ROW_COLUMNS, MULTIPLIER_MIN, multiplierChoices,
-  NO_CONTROLS, NO_LEGS_YET, PLANNED_ENTRY_LABEL, YOUR_PRICE_LABEL,
-  anyUnticked, canStep, controlsForSelection, movedMarker, priceReasonText, removeAllPrompt, replacedPriceNote, showsControls,
+  EXPIRY_BLOCKED_BY_EXIT, EXPIRY_FUTURES_LEG, NO_CONTROLS, NO_LEGS_HINT_PAGE, NO_LEGS_HINT_TAB, NO_LEGS_YET, EXITING_LEGS_LABEL, emptyListKind, PLANNED_ENTRY_LABEL, YOUR_PRICE_LABEL,
+  anyUnticked, canStep, controlsForSelection, movedMarker, priceReasonText, removeAllPrompt, showsControls,
 } from '@/lib/legEdit'
 import { plainName } from '@/lib/saveDraft'
+import { fetchHeldFeatureOn } from '@/lib/heldFeatures'
+import { LEG_WORKING_TEXT } from '@/lib/sharedStateText'
+import { NAME_FLOOR_CLASS } from '@/lib/nameFloor'
 import { PAPER_AVERAGE_LABEL, paperFillKey } from '@/lib/paperDrafts'
+import { EXPIRY_LIST_UNREADABLE, NO_OTHER_EXPIRY, useExpiryChoices } from '@/composables/useExpiryChoices'
 
 const props = defineProps({
+  // N-35 (ADR-328 (4)): the page's ONE blocked rule (the Exit buttons' own): every control that edits the legs is disabled, with `lockReason` as its title
+  locked: { type: Boolean, default: false },
+  lockReason: { type: String, default: null },
+  done: { type: Boolean, default: false }, // N-48: the paper trade is Completed (every leg closed): no empty-legs block, no add-leg controls (the panel's closed rows say the result)
+  heldLegs: { type: Array, default: () => [] }, // item 11: the held legs whose exits are staged while the list itself is empty (a full Exit)
+  failed: { type: Boolean, default: false }, // item 11: a read failed; the page's error line speaks, the card does not say "No legs yet"
+  opening: { type: Boolean, default: false }, // N-13: a strategy is being opened; the empty-legs block is not shown until its read answers
   legs: { type: Array, required: true },
   // 2026-11-06: clicks of a strike step not yet confirmed by the server, per move key ({ 'step:2': 4 }); shown on the row at
   // once as "+4" (a count of listed strikes to move, never a strike the browser computed: REQ-076 AC-1)
@@ -33,16 +46,22 @@ const props = defineProps({
   shapeName: { type: String, default: null }, // the server's name; null = no reply yet (nothing is invented here)
   hasReply: { type: Boolean, default: false }, // a reply named the shape (a null name then means Custom Strategy)
   updating: { type: Boolean, default: false },
+  oneLine: { type: Boolean, default: false }, // UX-C3: the page and each leg already say the outcome is being worked out (no old numbers to mark): no third "Updating the numbers..." line
+  working: { type: Boolean, default: false }, // I-50: the outcome is being worked out: each priced leg says so (LEG_WORKING_TEXT) instead of its capture time or typed-price line
   errorParts: { type: Object, default: null },
   errorIndex: { type: Number, default: null }, // the leg whose typed price was refused: its error shows under that row (REQ-077 AC-2)
   priceTextById: { type: Object, default: () => ({}) }, // GC-UI D-PX: the outcome's own two-decimal price texts by instrument id: { ltp_display, planned_entry_display }
   ltpById: { type: Object, default: () => ({}) }, // the outcome's own per-leg LTP strings by instrument id (REQ-077 AC-6)
   controls: { type: Object, default: () => NO_CONTROLS }, // REQ-078 AC-2: controlsFrom(the newest reply)
+  undoText: { type: String, default: LEGS_CLEARED }, // 'All legs removed.' or 'Leg removed.'
   undoOffered: { type: Boolean, default: false }, // REQ-135 AC-1: the page holds the cleared legs for 10 seconds
   legUnit: { type: String, default: 'lots' }, // REQ-076 AC-5: 'lots' | 'quantity', chosen in the page's Settings popover
   strategyName: { type: String, default: null }, // the open saved strategy's name, else the card reads "New Strategy"
   // GC-TP step 3b2 (R-11): paperFillKey of each leg the Drafts Mode net position loaded; such a leg reads "Paper average" (no time)
   paperFills: { type: Array, default: () => [] },
+  oldestQuoteAt: { type: String, default: null }, // the reply's oldest_quote_at: picked by the server, null when any leg quote has no time (D-18)
+  quoteAtById: { type: Object, default: () => ({}) }, // the outcome reply's leg_quotes[].quote_at by instrument id: each leg's OWN quote time (D-18)
+  stagedExitIds: { type: Array, default: () => [] }, // D-48: contract ids of the legs that have an Exit waiting (Drafts Mode): their Change expiry is off
 })
 // GC-UI 3a D-A07: 'include-all' asks the page to run the existing per-leg include edit for every leg that differs
 const emit = defineEmits(['edit', 'add-leg', 'pick-chain', 'remove', 'edit-leg', 'clear-all', 'undo-clear', 'include-all'])
@@ -73,13 +92,45 @@ const someLeftOut = computed(() => anyUnticked(props.legs))
 // ADR-195: no shape name while any leg is left out; otherwise the server's name (Custom Strategy when it named none)
 const shown = computed(() => (someLeftOut.value || !props.hasReply ? null : props.shapeName ?? CUSTOM_STRATEGY))
 const shownControls = computed(() => controlsForSelection(props.controls, props.legs))
+// D-48 (REQ-078 AC-11, AC-13): the listed expiries (the leg picker's own reader) for the per-leg chip and the all-legs select
+const expiryChoices = useExpiryChoices(() => props.legs[0]?.underlying ?? null)
+const hasStagedExit = (leg) => props.stagedExitIds.includes(leg?.contract_id)
+const anyStagedExit = computed(() => props.legs.some(hasStagedExit))
+// the all-legs select is refused by the server for a futures leg (AC-12): it looks blocked before the click, with the server's sentence
+const allLegsExpiryOff = computed(() => (anyStagedExit.value ? EXPIRY_BLOCKED_BY_EXIT : props.legs.some((l) => !canStep(l)) ? EXPIRY_FUTURES_LEG : null))
+function expiryOff(leg) { // the reason this leg's Change expiry is off, or null
+  if (props.locked) return props.lockReason
+  if (hasStagedExit(leg)) return EXPIRY_BLOCKED_BY_EXIT
+  if (expiryChoices.state.value === 'failed') return EXPIRY_LIST_UNREADABLE
+  if (expiryChoices.state.value === 'read' && !expiryChoices.list.value.some((e) => e.expiry !== leg.expiry)) return NO_OTHER_EXPIRY
+  return expiryChoices.state.value === 'loading' ? 'The expiry list is loading.' : null
+}
+function pickExpiry(i, value) {
+  if (value && value !== props.legs[i]?.expiry) emit('edit', { control: 'expiry', index: i, expiry: value }) // same expiry: no request
+}
 const tickState = computed(() => (selectedCount.value === props.legs.length ? 'all' : selectedCount.value === 0 ? 'none' : 'some'))
 const legName = (l) => contractName(l)
-const replacedNotes = computed(() => props.legs.flatMap((l, i) => (l.replaced_typed === true ? [replacedPriceNote(i + 1, l)] : [])))
+const kind = computed(() => emptyListKind({ legs: props.legs, held: props.heldLegs, loading: props.opening, done: props.done, failed: props.failed }))
+/** D-60 (REQ-059 gate): two rows on one contract and action are never merged silently. The words are the gate's own
+ *  (gate_duplicate_leg in backend/ofo/errors/templates.py), shown on both rows. Index of the other row, or null. */
+const sameContractAs = (leg, i) => {
+  const j = props.legs.findIndex((o, k) => k !== i && sameContract(o, leg))
+  return j === -1 ? null : j
+}
+const duplicateLegText = (leg, other) => `Leg ${leg} is the same contract as leg ${other}. The legs have not been combined; edit the strategy to keep one or combine them yourself.`
+const replacedNotes = computed(() => props.legs.flatMap((l) => (l.replaced_typed === true && l.replaced_note ? [l.replaced_note] : [])))
 const needsReprice = (l) => l.planned_entry == null && l.reason_code === 'needs_reprice'
+// D-18: every leg price states its own quote time (the reply's per-leg time); the summary line prints the reply's oldest_quote_at
+// (the server picks it), and says "time not given" when the server has none: no date arithmetic here
+const hasLegPrice = computed(() => Object.keys(props.ltpById ?? {}).length > 0)
+const legQuoteAt = (l) => istClock(props.quoteAtById?.[l.instrument_id] ?? null)
+const legPricesAsOf = computed(() => (istClock(props.oldestQuoteAt) ? `Oldest leg price as of ${istClock(props.oldestQuoteAt)} IST` : 'Leg prices: time not given'))
 const moved = (l) => movedMarker(l, props.ltpById[l.instrument_id], props.priceTextById[l.instrument_id])
 // GC-UI 3a D-A15 (ADR-202 (2)): one icon by the price heading while any leg's price has moved
 const anyMoved = computed(() => props.legs.some((l) => !!moved(l)))
+// D-52: null until the features read has finished (the hint shows nothing, so it never flips); then true only when listed
+const readyMadeTab = ref(null)
+fetchHeldFeatureOn('platform_strikes').then((on) => { readyMadeTab.value = on })
 // D-A06: the card title is the same plain name the action row used (no literal quote marks)
 const cardName = computed(() => plainName(props.strategyName) || 'New Strategy')
 // D-A14: the price box shows the planned entry as its value until the user types; only typed text is ever sent
@@ -92,6 +143,10 @@ const isHedge = (l) => l.hedge === true && !someLeftOut.value
 const strikeTitle = (l) => (isHedge(l) ? 'Hedge. Edit this leg' : 'Edit this leg')
 // Revision 1 (REQ-077 AC-1, AC-6, AC-7): a second line only when something must stay visible
 // a leg without both a planned entry and its capture time keeps the not-connected label (REQ-077 AC-5)
+// I-50: a leg left out, refused by the reply (block) or whose typed price was refused (errorIndex) is not "working": it says its own thing
+const isWorking = (l, i) => props.working && l.included !== false && !l.block && !(props.errorParts && props.errorIndex === i)
+// Lane FB2 (I-49): a leg shown before its planned-entry reply says LEG_WORKING_TEXT (its own loading state), not "not connected"
+const capturing = (l) => l.capturing === true && l.planned_entry == null
 const unpriced = (l) => !(l.planned_entry != null && l.captured_at != null)
 // R-11: a paper fill (the book's average, still as loaded) is not a price the user typed; a typed price keeps its label and time
 const isPaperFill = (l) => props.paperFills.includes(paperFillKey(l))
@@ -135,11 +190,13 @@ function setMultiplier(index) {
 </script>
 
 <template>
-  <div class="rounded-t-lg border border-b-0 border-line bg-surface text-sm" data-testid="leg-edit-list" :data-updating="updating ? 'true' : 'false'">
+  <!-- N-34 (F-46): a strategy being opened has no legs yet; the card is the loading line, never an empty "New Strategy" shell -->
+  <div v-if="opening && !legs.length" class="rounded-t-lg border border-b-0 border-line bg-surface py-6 text-center text-sm" :style="cardPadding" data-testid="opening-card">{{ LEG_WORKING_TEXT }}</div>
+  <div v-else class="rounded-t-lg border border-b-0 border-line bg-surface text-sm" data-testid="leg-edit-list" :data-updating="updating ? 'true' : 'false'">
     <div class="flex h-12 items-center justify-between border-b border-line" :style="cardPadding" data-testid="strategy-card-header">
-      <p role="heading" aria-level="2" class="truncate text-base font-semibold" data-testid="strategy-card-name">{{ cardName }}</p>
+      <p role="heading" aria-level="2" class="truncate text-base font-semibold" :class="NAME_FLOOR_CLASS" :title="cardName" data-testid="strategy-card-name">{{ cardName }}</p>
       <span v-if="legs.length" class="flex items-center gap-2">
-        <button type="button" class="text-accent" data-testid="clear-all-legs" @click="confirmingClear = true">Clear all</button>
+        <button type="button" class="text-accent disabled:cursor-not-allowed disabled:opacity-50" data-testid="clear-all-legs" :disabled="locked" :title="locked ? lockReason : undefined" @click="confirmingClear = true">Clear all</button>
       </span>
     </div>
     <p v-if="confirmingClear" class="flex items-center gap-1 border-b border-line py-2" :style="cardPadding" data-testid="clear-confirm">
@@ -148,19 +205,30 @@ function setMultiplier(index) {
       <button type="button" class="ml-1 rounded border border-line px-2" data-testid="clear-confirm-no" @click="confirmingClear = false">Cancel</button>
     </p>
     <p v-if="undoOffered" class="py-2" :style="cardPadding" data-testid="clear-undo-bar">
-      {{ LEGS_CLEARED }} <button type="button" class="text-accent underline" data-testid="clear-undo" @click="emit('undo-clear')">Undo</button>
+      {{ undoText ?? LEGS_CLEARED }} <button type="button" class="text-accent underline" data-testid="clear-undo" @click="emit('undo-clear')">Undo</button>
     </p>
 
-    <div v-if="!legs.length" class="py-6 text-center" :style="cardPadding" data-testid="no-legs">
+    <div v-if="kind === 'exiting'" class="py-3" :style="cardPadding" data-testid="exiting-legs">
+      <p class="font-medium" data-testid="exiting-label">{{ EXITING_LEGS_LABEL }}</p>
+      <ul class="mt-1">
+        <li v-for="(l, i) in heldLegs" :key="l.id ?? i" class="flex items-center gap-2 py-1" data-testid="exiting-leg">
+          <span :class="l.action === 'BUY' ? 'tag tag-buy' : 'tag tag-sell'" :title="l.action">{{ l.action === 'BUY' ? 'B' : 'S' }}</span>
+          <span class="min-w-0 flex-1 truncate">{{ legName(l) }}</span>
+          <span class="num">{{ l.lots }} lot</span>
+        </li>
+      </ul>
+    </div>
+
+    <div v-else-if="kind === 'empty'" class="py-6 text-center" :style="cardPadding" data-testid="no-legs">
       <p class="font-medium" data-testid="no-legs-text">{{ NO_LEGS_YET }}</p>
-      <p class="mt-1 text-xs text-ink-muted">Pick strikes, or start from a ready-made shape below.</p>
+      <p class="mt-1 text-xs text-ink-muted" data-testid="no-legs-hint">{{ readyMadeTab === null ? '' : readyMadeTab ? NO_LEGS_HINT_TAB : NO_LEGS_HINT_PAGE }}</p>
       <div class="mt-3 flex justify-center gap-2">
-        <button type="button" class="rounded bg-accent px-3 py-1 text-white" data-testid="no-legs-add" @click="emit('add-leg')">Add leg</button>
-        <button type="button" class="rounded border border-line px-3 py-1" data-testid="no-legs-chain" @click="emit('pick-chain')">Pick from Option Chain</button>
+        <button type="button" class="rounded bg-accent px-3 py-1 text-white" data-testid="no-legs-add" :disabled="locked" :title="locked ? lockReason : undefined" @click="emit('add-leg')">Add leg</button>
+        <button type="button" class="rounded border border-line px-3 py-1" data-testid="no-legs-chain" :disabled="locked" :title="locked ? lockReason : undefined" @click="emit('pick-chain')">Pick from Option Chain</button>
       </div>
     </div>
 
-    <template v-else>
+    <template v-else-if="legs.length">
       <div class="flex h-8 items-center justify-between" :style="cardPadding">
         <p class="flex min-w-0 items-center gap-2 text-ink-muted" data-testid="leg-edit-header">
           <input
@@ -169,9 +237,9 @@ function setMultiplier(index) {
             @change="emit('include-all', $event.target.checked)"
           />
           <span class="truncate">{{ selectedCount }} selected<span v-if="shown" data-testid="shape-name"> - {{ shown }}</span></span>
-          <span v-if="updating" class="ml-1" data-testid="numbers-updating">Updating the numbers...</span>
+          <span v-if="updating && !oneLine" class="ml-1" data-testid="numbers-updating">Updating the numbers...</span>
         </p>
-        <button type="button" class="flex items-center gap-1 text-accent" data-testid="reset-prices" @click="resetPrices">
+        <button type="button" class="flex items-center gap-1 text-accent" data-testid="reset-prices" :disabled="locked" :title="locked ? lockReason : undefined" @click="resetPrices">
           <Icon name="refresh" :size="14" />Reset Prices
         </button>
       </div>
@@ -179,7 +247,7 @@ function setMultiplier(index) {
       <p v-for="n in replacedNotes" :key="n" class="text-ink-muted" :style="cardPadding" data-testid="replaced-note">{{ n }}</p>
 
       <div class="leg-grid grid items-center whitespace-nowrap text-xs text-ink-muted max-[639px]:hidden" :style="{ ...cardPadding, ...gridStyle }" aria-hidden="true" data-testid="leg-table-head">
-        <span></span><span class="px-1 text-center">B/S</span><span class="pl-2 pr-1">Expiry</span><span class="px-1 text-center">Strike</span><span class="px-1 text-center">Type</span><span class="px-1 text-center">Lots</span><span class="flex items-center justify-end gap-1 pl-1" data-testid="price-head">{{ PLANNED_ENTRY_LABEL }}<span class="relative inline-flex" :class="anyMoved ? 'text-warn' : ''" :title="anyMoved ? 'Price has moved' : 'Your planned entry price'" data-testid="price-help" data-icon="question"><Icon name="help" :size="12" /><span v-if="anyMoved" class="absolute -right-0.5 -top-0.5 h-1.5 w-1.5 rounded-full bg-warn" data-testid="price-moved-head"></span></span></span><span></span><span></span>
+        <span></span><span class="px-1 text-center">B/S</span><span class="pl-2 pr-1">Expiry</span><span class="px-1 text-center">Strike</span><span class="px-1 text-center">Type</span><span class="px-1 text-center" data-testid="leg-unit-head">{{ legUnit === 'quantity' ? 'Quantity' : 'Lots' }}</span><span class="flex items-center justify-end gap-1 pl-1" data-testid="price-head">{{ PLANNED_ENTRY_LABEL }}<span class="relative inline-flex" :class="anyMoved ? 'text-warn' : ''" :title="anyMoved ? 'Price has moved' : 'Your planned entry price'" data-testid="price-help" data-icon="question"><Icon name="help" :size="12" /><span v-if="anyMoved" class="absolute -right-0.5 -top-0.5 h-1.5 w-1.5 rounded-full bg-warn" data-testid="price-moved-head"></span></span></span><span></span><span></span>
       </div>
       <ul data-testid="leg-table">
         <li
@@ -191,29 +259,40 @@ function setMultiplier(index) {
           <div class="leg-grid leg-phone grid h-9 flex-nowrap items-center whitespace-nowrap max-[639px]:h-auto max-[639px]:gap-y-1" :style="gridStyle" data-testid="leg-row-line">
             <input type="checkbox" :checked="leg.included !== false" :aria-label="`Include leg ${i + 1} in the numbers`" data-testid="leg-tick" @change="emit('edit', { control: 'include', index: i, included: $event.target.checked })" />
             <span :class="leg.action === 'BUY' ? 'tag tag-buy' : 'tag tag-sell'" class="w-6 justify-self-center text-center" :title="leg.action">{{ leg.action === 'BUY' ? 'B' : 'S' }}<span class="sr-only">{{ leg.action }}</span></span>
-            <span class="flex h-8 items-center overflow-hidden rounded border border-line px-1 text-xs" :title="expiryWithDays(leg.expiry, leg.days_to_expiry)" data-testid="leg-expiry">{{ expiryWithDays(leg.expiry, leg.days_to_expiry) }}</span>
+            <span class="relative flex h-8 min-w-0 items-stretch" data-testid="leg-expiry-chip">
+              <span class="flex min-w-0 flex-1 items-center overflow-hidden rounded border border-line px-1 text-xs" :title="expiryWithDays(leg.expiry, leg.days_to_expiry)" data-testid="leg-expiry">{{ expiryWithDays(leg.expiry, leg.days_to_expiry) }}</span>
+              <!-- D-48: a transparent native select over the chip (the OS picker on a phone); option legs only (a futures leg has no strike to keep) -->
+              <select
+                v-if="canStep(leg)" class="absolute inset-0 h-full w-full cursor-pointer opacity-0 disabled:cursor-not-allowed" :value="leg.expiry" :disabled="expiryOff(leg) !== null"
+                :title="expiryOff(leg) ?? 'Change expiry'" :aria-label="`Change expiry of leg ${i + 1}`" data-testid="leg-expiry-select" @change="pickExpiry(i, $event.target.value)"
+              >
+                <option v-for="e in expiryChoices.list.value" :key="e.expiry" :value="e.expiry">{{ expiryWithDays(e.expiry, e.days) }}</option>
+              </select>
+              <span v-if="canStep(leg) && expiryOff(leg) !== null && hasStagedExit(leg)" class="sr-only" data-testid="leg-expiry-reason">{{ expiryOff(leg) }}</span>
+            </span>
             <span class="flex h-8 items-stretch overflow-hidden rounded border border-line" data-testid="strike-stepper">
               <template v-if="canStep(leg)">
-                <button type="button" class="h-8 w-8 shrink-0 border-r border-line" aria-label="Previous strike" data-testid="strike-minus" @click="emit('edit', { control: 'step', index: i, direction: -1 })">-</button>
-                <button type="button" class="num relative min-w-0 flex-1 text-center" :title="strikeTitle(leg)" :aria-label="`Edit ${legName(leg)}`" data-testid="edit-leg" @click="emit('edit-leg', i)">
+                <button type="button" class="h-8 w-8 shrink-0 border-r border-line" aria-label="Previous strike" data-testid="strike-minus" :disabled="locked" :title="locked ? lockReason : undefined" @click="emit('edit', { control: 'step', index: i, direction: -1 })">-</button>
+                <button type="button" class="num relative min-w-0 flex-1 text-center" :title="strikeTitle(leg)" :aria-label="`Edit ${legName(leg)}`" data-testid="edit-leg" :disabled="locked" @click="emit('edit-leg', i)">
                   <span data-testid="leg-strike">{{ strikeLabel(leg.strike) }}</span><span v-if="pendingSteps[`step:${i}`]" class="ml-0.5 text-[10px] text-accent" :title="`Moving ${Math.abs(pendingSteps[`step:${i}`])} listed strikes, waiting for the server`" data-testid="leg-pending-steps">{{ pendingSteps[`step:${i}`] > 0 ? '+' : '' }}{{ pendingSteps[`step:${i}`] }}</span><span v-if="isHedge(leg)" class="absolute left-0.5 top-0 rounded-sm bg-accent px-0.5 text-[9px] font-semibold leading-3 text-white" title="Hedge" aria-label="Hedge" data-testid="hedge-mark">H</span>
                 </button>
-                <button type="button" class="h-8 w-8 shrink-0 border-l border-line" aria-label="Next strike" data-testid="strike-plus" @click="emit('edit', { control: 'step', index: i, direction: 1 })">+</button>
+                <button type="button" class="h-8 w-8 shrink-0 border-l border-line" aria-label="Next strike" data-testid="strike-plus" :disabled="locked" :title="locked ? lockReason : undefined" @click="emit('edit', { control: 'step', index: i, direction: 1 })">+</button>
               </template>
-              <button v-else type="button" class="flex-1 text-center text-ink-muted" title="No strike for a futures leg. Edit this leg" :aria-label="`No strike for a futures leg. Edit ${legName(leg)}`" data-testid="edit-leg" @click="emit('edit-leg', i)">-</button>
+              <button v-else type="button" class="flex-1 text-center text-ink-muted" title="No strike for a futures leg. Edit this leg" :aria-label="`No strike for a futures leg. Edit ${legName(leg)}`" data-testid="edit-leg" :disabled="locked" @click="emit('edit-leg', i)">-</button>
             </span>
             <span :class="`tag tag-${(leg.instrument_type ?? '').toLowerCase()}`" class="justify-self-center" data-testid="leg-type">{{ leg.instrument_type }}</span>
             <span v-if="legUnit === 'quantity'" class="flex h-8 items-center justify-center rounded border border-line px-1" data-testid="leg-quantity">{{ leg.quantity ?? '' }}</span>
             <span v-else class="flex h-8 items-center justify-center rounded border border-line px-1" data-testid="leg-lots">{{ leg.lots }} lot</span>
             <span :ref="(el) => (menuRoots[i] = el)" class="leg-line2-price relative flex h-8 items-center justify-end rounded border" :class="leg.typed === true ? 'border-accent' : 'border-line'" data-testid="price-box" @keydown.esc="closeMenu">
               <span v-if="moved(leg)" class="absolute -right-1 -top-1 z-10 leading-none" data-testid="price-moved-dot">
-                <Tooltip :text="moved(leg)" label="Price has moved"><template #trigger><span class="block h-2 w-2 rounded-full bg-warn" aria-hidden="true"></span></template></Tooltip>
+                <Tooltip :text="`${moved(leg)}${legQuoteAt(leg) ? `, quoted ${legQuoteAt(leg)} IST` : ''}`" label="Price has moved"><template #trigger><span class="block h-2 w-2 rounded-full bg-warn" aria-hidden="true"></span></template></Tooltip>
               </span>
               <span v-if="moved(leg)" class="sr-only" data-testid="price-moved">{{ moved(leg) }}</span>
+              <span v-if="ltpById[leg.instrument_id] != null" class="sr-only" data-testid="leg-quote-at">{{ legQuoteAt(leg) ?? 'time n/a' }}</span>
               <input
                 :value="priceText(leg, i)" type="text" inputmode="decimal" class="num h-full w-[8ch] min-w-0 flex-1 bg-transparent px-1 text-right text-ink"
                 :title="isPaperFill(leg) ? PAPER_AVERAGE_LABEL : leg.planned_entry != null && leg.captured_at != null ? `${entryLabel(leg)}, ${capturedText(leg)}` : undefined"
-                :aria-label="`Your price for leg ${i + 1}`" data-testid="price-input" @input="onPriceInput(i, $event.target.value)" @keydown.enter="setPrice(i)"
+                :aria-label="`Your price for leg ${i + 1}`" data-testid="price-input" :disabled="locked" @input="onPriceInput(i, $event.target.value)" @keydown.enter="setPrice(i)"
               />
               <button
                 :ref="(el) => (menuButtons[i] = el)" type="button" class="px-0.5" aria-haspopup="menu" :aria-expanded="menuFor === i ? 'true' : 'false'" :aria-label="`Price options for leg ${i + 1}`"
@@ -233,27 +312,31 @@ function setMultiplier(index) {
               <button type="button" data-testid="depth-icon" :aria-label="`Market depth for ${legName(leg)}`" title="Market depth" @click="depthFor = depthFor === i ? null : i"><Icon name="depth" :size="14" /></button>
               <DepthPopup v-if="depthFor === i" class="absolute right-0 top-full z-20" :instrument-id="leg.instrument_id" :title="legName(leg)" @close="depthFor = null" />
             </span>
-            <button type="button" class="leg-line2" data-testid="remove-leg" :aria-label="`Remove ${legName(leg)}`" title="Remove" @click="emit('remove', i)"><Icon name="trash" :size="14" /></button>
+            <button type="button" class="leg-line2" data-testid="remove-leg" :disabled="locked" :aria-label="`Remove ${legName(leg)}`" :title="locked ? lockReason : 'Remove'" @click="emit('remove', i)"><Icon name="trash" :size="14" /></button>
           </div>
           <!-- GC-ICFIX P3 u505: the line's height (h-4 = one text-xs line) is reserved whether or not it shows, so a re-capture never moves the rows below -->
           <div v-if="!unpriced(leg) && leg.typed !== true" class="h-4" data-testid="leg-caption-slot">
-            <div v-if="showsCaption(leg)" class="leg-grid grid text-xs text-ink-muted" :style="gridStyle" data-testid="leg-caption-line">
+            <p v-if="isWorking(leg, i)" class="text-right text-xs text-ink-muted max-[639px]:text-left" data-testid="leg-working">{{ LEG_WORKING_TEXT }}</p>
+            <div v-else-if="showsCaption(leg)" class="leg-grid grid text-xs text-ink-muted" :style="gridStyle" data-testid="leg-caption-line">
               <span class="whitespace-nowrap text-right [grid-column:1/8] max-[639px]:[grid-column:1/-1] max-[639px]:text-left" data-testid="leg-caption" :title="capturedText(leg)">{{ caption(leg) }}</span>
             </div>
           </div>
           <span class="sr-only" data-testid="leg-name">{{ legName(leg) }}</span>
+          <p v-if="sameContractAs(leg, i) !== null" class="pl-6 text-xs text-warn" data-testid="duplicate-leg-warning">{{ duplicateLegText(i + 1, sameContractAs(leg, i) + 1) }}</p>
           <span v-if="leg.planned_entry != null" class="sr-only" data-testid="leg-entry">{{ entryLabel(leg) }} {{ leg.planned_entry_display ?? priceTextById[leg.instrument_id]?.planned_entry_display ?? '—' }}</span>
           <div v-if="needsSecondLine(leg, i)" class="pl-6 text-xs text-ink-muted" data-testid="leg-second-line">
             <span v-if="leg.included === false" class="mr-2" data-testid="left-out-label">{{ LEFT_OUT_LABEL }}</span>
             <span v-if="isPaperFill(leg)" class="mr-2" data-testid="leg-paper-average">{{ PAPER_AVERAGE_LABEL }}</span>
+            <span v-else-if="leg.typed === true && isWorking(leg, i)" class="mr-2" data-testid="leg-working">{{ LEG_WORKING_TEXT }}</span>
             <span v-else-if="leg.typed === true && leg.planned_entry != null" class="mr-2" data-testid="leg-typed-line">{{ YOUR_PRICE_LABEL }}, {{ capturedText(leg) }}</span>
-            <template v-if="unpriced(leg)">
+            <span v-if="capturing(leg)" class="mr-2" data-testid="leg-working">{{ LEG_WORKING_TEXT }}</span>
+            <template v-else-if="unpriced(leg)">
               <span class="mr-2" data-testid="leg-unpriced">{{ NOT_CONNECTED_LABEL }}</span>
               <span v-if="leg.planned_entry == null && priceReasonText(leg.price_reason)" class="mr-2" data-testid="leg-price-reason">{{ priceReasonText(leg.price_reason) }}</span>
             </template>
             <template v-if="needsReprice(leg)">
               <span data-testid="leg-reprice-prompt">{{ REPRICE_PROMPT }}</span>
-              <button type="button" data-testid="reprice-leg" class="ml-1 text-accent underline" @click="emit('edit-leg', i)">Reprice</button>
+              <button type="button" data-testid="reprice-leg" class="ml-1 text-accent underline" :disabled="locked" @click="emit('edit-leg', i)">Reprice</button>
             </template>
             <span v-if="leg.block" class="mr-2" data-testid="leg-block">{{ leg.block }}</span>
             <ErrorMessage v-if="errorParts && errorIndex === i" :parts="errorParts" compact prefix="price-error" data-testid="price-error" />
@@ -262,15 +345,18 @@ function setMultiplier(index) {
       </ul>
 
       <div v-if="showsControls(legs)" class="border-t border-line py-2" :style="cardPadding">
-        <StrategyControls :controls="shownControls" @edit="(e) => emit('edit', e)" />
+        <StrategyControls :controls="shownControls" :locked="locked" :lock-reason="lockReason" :expiries="expiryChoices.list.value" :expiry-state="expiryChoices.state.value" :expiry-off-reason="allLegsExpiryOff" :leg-expiries="legs.map((l) => l.expiry)" @edit="(e) => emit('edit', e)" />
       </div>
       <div class="flex min-h-10 items-center justify-between gap-3 max-[639px]:flex-wrap border-t border-line py-2" :style="cardPadding" data-testid="money-row">
         <label class="flex items-center gap-2" :title="`Strategy multiplier (${MULTIPLIER_MIN} to ${multiplierMax ?? '...'})`">Multiplier
-          <select v-model="multiplier" class="rounded border border-line px-1" data-testid="multiplier" @change="setMultiplier($event.target.selectedIndex)">
+          <select v-model="multiplier" class="rounded border border-line px-1" data-testid="multiplier" :disabled="locked" :title="locked ? lockReason : undefined" @change="setMultiplier($event.target.selectedIndex)">
             <option v-for="n in multiplierList" :key="n" :value="n">{{ n }}</option>
           </select>
         </label>
-        <div class="min-w-0 max-[639px]:w-full"><slot name="money" /></div>
+        <div class="min-w-0 max-[639px]:w-full">
+          <p v-if="hasLegPrice" class="text-xs text-ink-muted" data-testid="leg-prices-as-of">{{ legPricesAsOf }}</p>
+          <slot name="money" />
+        </div>
       </div>
     </template>
   </div>

@@ -17,6 +17,8 @@ from ofo.adjustment import playbook_eval as pe
 from ofo.strategy.settings_value import IDENTIFIER_PATTERN
 from ofo.timeutil import IST
 
+NO_STOPS: frozenset[str] = frozenset()  # no plan read: the fixed loss-stop set only
+
 ROOT = pathlib.Path(__file__).resolve().parents[2]
 SEED = ROOT / "backend" / "ofo" / "adjustment" / "system_playbooks.json"
 GAP = "09:30"
@@ -46,7 +48,7 @@ def _value(ev: pe.Evaluation):
 
 
 def _reading(ev: pe.Evaluation):
-    got = gate_readings.readings(ev).get(RID)
+    got = gate_readings.readings(ev, stops=NO_STOPS).get(RID)
     return None if got is None else got[1]
 
 
@@ -62,7 +64,7 @@ def test_core_at_1430_on_expiry_day_a_short_within_03_pct_flags_and_names_a28_an
     v = _value(ev)
     assert v.fired is True and v.yes_no is True and v.approaches == ("A-28", "A-27")
     assert v.threshold == D("0.3") and v.cmp == "le"
-    spec, reading = gate_readings.readings(ev)[RID]
+    spec, reading = gate_readings.readings(ev, stops=NO_STOPS)[RID]
     assert spec.cmp == "bool" and spec.ladder == () and reading is True
 
 
@@ -173,7 +175,7 @@ def test_malformed_rule_is_not_checked_with_a_reason_never_true(change):
     ev = pe.evaluate(body, _state(), gap_until=GAP)
     rid = pe.day_rule_id(body["day_rules"][5])  # a malformed time is part of the id
     assert [r.code for r in ev.results if r.rule_id == rid] == [pe.DAY_RULE_INCOMPLETE]
-    assert gate_readings.readings(ev).get(rid, (None, None))[1] is None  # NotChecked reads None, never True
+    assert gate_readings.readings(ev, stops=NO_STOPS).get(rid, (None, None))[1] is None  # NotChecked: None
     assert pe.reason_text(pe.DAY_RULE_INCOMPLETE)
 
 
@@ -192,7 +194,8 @@ def test_tighten_rule_unchanged_and_not_reported_as_a_day_rule():
 
 def _step(gs, at: datetime.datetime, ev: pe.Evaluation | None):
     preset = alert_gate.INTRADAY
-    return alert_gate.step(gs, now=at, preset=preset, readings={} if ev is None else gate_readings.readings(ev))
+    read = {} if ev is None else gate_readings.readings(ev, stops=NO_STOPS)
+    return alert_gate.step(gs, now=at, preset=preset, readings=read)
 
 
 def test_attack3_the_gate_opens_one_record_per_episode_across_checks():
@@ -221,7 +224,7 @@ def test_generator_case_matches_its_engine_free_expected_block(case, hhmm):
     want = sc["expected"]["day_close"]
     state = dataclasses.replace(state_of(sc), hhmm=hhmm)
     ev = pe.evaluate(body_of(sc), state, gap_until=GAP)
-    got = gate_readings.readings(ev).get(want["rule_id"])
+    got = gate_readings.readings(ev, stops=NO_STOPS).get(want["rule_id"])
     if hhmm < want["at"]:
         assert got is None  # before its time: no reading at all
         return

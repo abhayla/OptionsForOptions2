@@ -48,7 +48,7 @@ class _Store:
     async def load(self, _w, _today):
         return background.GateLoad(background.alert_gate.GateRows((), 0))
 
-    async def lapse_changed(self, _w):
+    async def lapse_expired(self, _w, _today):
         return False
 
     async def apply(self, w, events):
@@ -64,7 +64,7 @@ def _fire_on_next_step(monkeypatch):
     """``alert_gate.step`` answers the real state plus the queued events, one queued list per call (strategy order)."""
     queued: list[list] = []
 
-    def step(state, *, now, preset, readings):
+    def step(state, *, now, preset, readings, entry_hold_until=None):
         del now, preset, readings
         return state, (queued.pop(0) if queued else [])
     monkeypatch.setattr(background.alert_gate, "step", step)
@@ -379,7 +379,7 @@ class _IdStore:
     async def load(self, _w, _today):
         return background.GateLoad(background.alert_gate.GateRows((), 0))
 
-    async def lapse_changed(self, _w):
+    async def lapse_expired(self, _w, _today):
         return False
 
     async def apply(self, w, events):

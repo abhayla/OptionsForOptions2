@@ -11,7 +11,7 @@ vi.mock('@/services/api', () => ({ default: { get: (u) => { calls.push(u); retur
 import PlanEntry from '@/components/strategy/PlanEntry.vue'
 
 const LABELS = { plan_entry: 'Plan', playbook: 'Playbook', target: 'Target', stop: 'Stop', max_adjustments: 'Max adjustments', time_exit: 'Time exit',
-  edit: 'Edit plan', no_plan: 'No plan saved yet: default rules apply', set_plan: 'Set plan' }
+  edit: 'Edit plan', no_plan: 'No plan: nothing is watched for this strategy', set_plan: 'Set plan' }
 const PLAN = { playbook_id: 9, playbook_name: '"Mine"', target: '50', stop: '50', stop_words: '50 % of max loss or 2x the credit received, whichever comes first',
   max_adjustments: 3, time_exit: { hour: 14, minute: 45 } }
 const reply = (plan) => ({ strategy_id: 70, type: 'ic', type_name: 'Iron condor', generic: false, generic_text: null, labels: LABELS, plan,
@@ -40,9 +40,9 @@ async function card(props = {}, plan = null) {
 const lines = (w) => w.findAll('[data-testid^="plan-entry-limit-"]').map((x) => x.text())
 
 describe('the no-plan card: the rule check\'s own limit lines, nothing derived in the browser', () => {
-  it('iron condor early stage: the server sentences in order, "No plan saved yet", Set plan', async () => {
+  it('iron condor early stage: the server sentences in order, "No plan: nothing is watched", Set plan', async () => {
     const w = await card({ check: check(IC_ROWS), checkStatus: 'ok' })
-    expect(t(w, 'plan-entry-none').text()).toBe('No plan saved yet: default rules apply')
+    expect(t(w, 'plan-entry-none').text()).toBe('No plan: nothing is watched for this strategy')
     expect(lines(w)).toEqual([T07, T06, CREDIT])
     expect(t(w, 'plan-entry-edit').text()).toBe('Set plan')
   })

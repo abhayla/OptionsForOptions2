@@ -40,6 +40,12 @@ def _armed() -> tuple[Any, dict]:
     return text(_ARMED_SQL.format(scope=clause)), params
 
 
+#: every contract with a non-zero net paper quantity in a live strategy of this process's scope, with the strategy's
+#: underlying: the legs the standing hold keeps on the feed (finding a-requests-release-parks-a-shared-subscription).
+_OPEN_LEGS_SQL = ("SELECT o.contract_id, s.underlying AS strategy_underlying FROM public.paper_orders AS o "
+                  "JOIN public.strategies AS s ON s.id = o.strategy_id WHERE s.deleted_at IS NULL AND {scope} "
+                  "GROUP BY o.strategy_id, o.contract_id, s.underlying "
+                  "HAVING SUM(CASE o.side WHEN 'BUY' THEN o.quantity ELSE -o.quantity END) <> 0")
 _ORDERS_OF = text("SELECT id, strategy_id, contract_id, side, quantity, price, kind, placed_at, created_at, reason, "
                   "trigger_id FROM public.paper_orders WHERE strategy_id = ANY(:ids) ORDER BY strategy_id, id")
 _CLAIM = text("UPDATE public.paper_triggers SET fired_at = clock_timestamp() "
@@ -49,13 +55,22 @@ _CANCEL = text("UPDATE public.paper_triggers SET cancelled_at = clock_timestamp(
                "AND fired_at IS NULL AND cancelled_at IS NULL RETURNING id")
 _ALERT = text("INSERT INTO public.paper_alerts (strategy_id, trigger_id, title, body) "
               "VALUES (:sid, :tid, :title, :body) RETURNING id")
-_ALERTS = text("SELECT a.id, a.strategy_id, a.trigger_id, a.created_at, a.title, a.body, a.read_at, s.name "
+#: D-29: the alert readers and the mark-read write see this process's own strategies only (``{scope}`` =
+#: ``scenario_mode.scope_clause("s")``): a live process never lists, counts or marks a scenario strategy's alert, and a
+#: scenario process only its own scenario's.
+_ALERTS_SQL = ("SELECT a.id, a.strategy_id, a.trigger_id, a.created_at, a.title, a.body, a.read_at, s.name "
                "FROM public.paper_alerts AS a JOIN public.strategies AS s ON s.id = a.strategy_id "
-               "WHERE s.user_ref = :user_ref AND s.deleted_at IS NULL ORDER BY a.id DESC LIMIT :limit")
-_UNREAD = text("SELECT count(*) FROM public.paper_alerts AS a JOIN public.strategies AS s ON s.id = a.strategy_id "
-               "WHERE s.user_ref = :user_ref AND s.deleted_at IS NULL AND a.read_at IS NULL")
-_READ_ALL = text("UPDATE public.paper_alerts AS a SET read_at = clock_timestamp() FROM public.strategies AS s "
-                 "WHERE s.id = a.strategy_id AND s.user_ref = :user_ref AND a.read_at IS NULL")
+               "WHERE s.user_ref = :user_ref AND s.deleted_at IS NULL AND {scope} ORDER BY a.id DESC LIMIT :limit")
+_UNREAD_SQL = ("SELECT count(*) FROM public.paper_alerts AS a JOIN public.strategies AS s ON s.id = a.strategy_id "
+               "WHERE s.user_ref = :user_ref AND s.deleted_at IS NULL AND a.read_at IS NULL AND {scope}")
+_READ_ALL_SQL = ("UPDATE public.paper_alerts AS a SET read_at = clock_timestamp() FROM public.strategies AS s "
+                 "WHERE s.id = a.strategy_id AND s.user_ref = :user_ref AND a.read_at IS NULL AND {scope}")
+
+
+def _scoped(sql: str) -> tuple[Any, dict]:
+    from ofo_app.scenario_mode import scope_clause  # noqa: PLC0415 - the one isolation helper
+    clause, params = scope_clause("s")
+    return text(sql.format(scope=clause)), params
 
 
 @dataclass(frozen=True)
@@ -122,6 +137,14 @@ async def armed(conn: Any) -> list[ArmedTrigger]:
             for r in (await conn.execute(*_armed())).all()]
 
 
+async def open_legs(conn: Any) -> list[tuple[int, str]]:
+    """(contract_id, underlying) of every open paper leg of every live strategy, in ONE query whatever the count."""
+    from ofo_app.scenario_mode import scope_clause  # noqa: PLC0415 - the one isolation helper
+    clause, params = scope_clause("s")
+    rows = (await conn.execute(text(_OPEN_LEGS_SQL.format(scope=clause)), params)).all()
+    return [(int(r.contract_id), r.strategy_underlying) for r in rows]
+
+
 async def orders_of(conn: Any, strategy_ids: Sequence[int]) -> dict[int, list[paper_store.StoredOrder]]:
     out: dict[int, list[paper_store.StoredOrder]] = {sid: [] for sid in strategy_ids}
     if not strategy_ids:
@@ -144,12 +167,15 @@ async def add_alert(conn: Any, strategy_id: int, trigger_id: int, title: str, bo
 
 async def alerts(conn: Any, user_ref: str, limit: int = 100) -> tuple[list[AlertRow], int]:
     """The user's newest alerts first (at most ``limit``) and the user's unread count."""
+    listing, scope = _scoped(_ALERTS_SQL)
+    counting, _ = _scoped(_UNREAD_SQL)
     rows = [AlertRow(int(r.id), int(r.strategy_id), int(r.trigger_id), r.created_at, r.title, r.body, r.read_at,
                      r.name)
-            for r in (await conn.execute(_ALERTS, {"user_ref": user_ref, "limit": limit})).all()]
-    unread = int((await conn.execute(_UNREAD, {"user_ref": user_ref})).scalar_one())
+            for r in (await conn.execute(listing, {"user_ref": user_ref, "limit": limit, **scope})).all()]
+    unread = int((await conn.execute(counting, {"user_ref": user_ref, **scope})).scalar_one())
     return rows, unread
 
 
 async def mark_all_read(conn: Any, user_ref: str) -> int:
-    return (await conn.execute(_READ_ALL, {"user_ref": user_ref})).rowcount
+    marking, scope = _scoped(_READ_ALL_SQL)
+    return (await conn.execute(marking, {"user_ref": user_ref, **scope})).rowcount

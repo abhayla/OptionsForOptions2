@@ -91,7 +91,8 @@ async def test_adj13_history_rows_and_totals_equal_the_domain_and_the_generator(
     assert Decimal(t["booked"]) == sum(Decimal(r["booked"]) for r in rows) == Decimal(POS["booked_pnl"])
     assert Decimal(t["credit"]) == sum(Decimal(r["cash"]) for r in rows) == Decimal(POS["credit_received"])
     assert t["adjustments_used"] == POS["adjustments_used"] == 1
-    assert t["adjustments_max"] == IC_MAX and t["max_reason"] is None  # the system iron condor playbook's guard
+    # ADR-330 (11): the seeded strategy has no plan of its own, so no maximum (was: the system iron condor playbook's)
+    assert t["adjustments_max"] is None and t["max_reason"] == "no_plan_max"
     if t["open_pnl"] is not None:  # scenario prices live: the generator's figures to the paisa
         assert Decimal(t["pnl"]) == Decimal(DOC["expected"]["pnl_now"])
         assert Decimal(t["premium_left"]) == Decimal(DOC["expected"]["premium_left"])
@@ -123,3 +124,21 @@ async def test_no_market_means_open_figures_null_with_a_reason_and_booked_shown(
     assert t["open_pnl"] is None and t["pnl"] is None and t["premium_left"] is None
     assert t["prices_reason"] == "prices_not_live" and t["prices_reason_text"]
     assert Decimal(t["booked"]) == Decimal("962.00")
+
+
+async def test_no_database_connection_is_held_while_the_market_snapshot_runs(app_db_url, monkeypatch):
+    """The API pool is small (4): the history route gives its connection back before the feed hold of the market
+    snapshot (D-36 c, as plan-watch does). The snapshot is wrapped: the pool must have nothing checked out."""
+    from ofo_app.routes import paper  # noqa: PLC0415
+    sid = await _seeded(app_db_url, monkeypatch, "ADJ-13")
+    held: list[int] = []
+    real = paper.market_snapshot
+
+    async def watched(*args, **kwargs):
+        held.append(app_db.get_engine().pool.checkedout())
+        return await real(*args, **kwargs)
+    monkeypatch.setattr(paper, "market_snapshot", watched)
+    monkeypatch.setattr(paper, "connected", lambda _ctx: True)
+    status, body = await _history(sid)
+    assert status == OK, body
+    assert held == [0], held

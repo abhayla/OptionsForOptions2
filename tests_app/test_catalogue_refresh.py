@@ -127,7 +127,7 @@ async def test_two_runs_never_overlap():
 
 
 @fail_fast
-async def test_a_failing_run_logs_its_code_only_and_retries_on_schedule(caplog):
+async def test_a_failing_run_logs_its_code_only_and_retries_in_minutes(caplog):
     clock, calls = Clock(MONDAY), []
 
     async def load() -> int:
@@ -138,10 +138,10 @@ async def test_a_failing_run_logs_its_code_only_and_retries_on_schedule(caplog):
     with caplog.at_level(logging.ERROR):
         assert await sch.step() == FAILED
     assert "ConnectionError" in caplog.text and "secret" not in caplog.text and "kite.trade" not in caplog.text
-    clock.at += timedelta(minutes=30)
+    clock.at += timedelta(minutes=1)
     assert await sch.step() is None  # not a retry loop
-    clock.at += timedelta(minutes=30)
-    assert await sch.step() == FAILED and len(calls) == TWO_RUNS  # on schedule
+    clock.at += timedelta(minutes=2)
+    assert await sch.step() == FAILED and len(calls) == TWO_RUNS  # ADR-330 (61): a failed run retries in minutes
 
 
 @fail_fast

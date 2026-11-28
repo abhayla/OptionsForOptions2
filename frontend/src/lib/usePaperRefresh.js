@@ -1,6 +1,7 @@
 // GC-BP F-1, one home: the re-read loop of every paper-tracking view (TrackingPanel and the Paper strategies list).
 // One read at a time (a tick while a read is in flight does nothing); an answer for a key no longer shown is dropped; a
-// failed read goes to onError, whose caller shows NO figure (an old figure is never left on screen as if current); the
+// failed read goes to onError, whose caller pauses every price-derived figure and refuses any order from the old prices (the old
+// list's structure may stay; an old figure is never left on screen as if current); the
 // timer is cleared on unmount. refreshNow() is the explicit re-read after an action: it queues one more read if one is in
 // flight, so the answer shown is never older than the action.
 import { onBeforeUnmount } from 'vue'

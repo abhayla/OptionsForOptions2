@@ -87,7 +87,7 @@ async def test_nobody_holds_the_index_the_save_holds_it_and_stores_the_spot(db, 
     assert orders == 4  # noqa: PLR2004
     assert [r.spot for r in rows] == [quote.ltp]
     assert [INDEX_ID] in feed.fanout.held
-    assert feed.fanout.released == len(feed.fanout.held)  # every hold released
+    # Lane N's read door keeps a standing lease the sweeper releases (read_door.read_quotes): no release per request
 
 
 async def test_index_never_quoted_within_the_wait_refuses_and_stores_nothing(db, monkeypatch):

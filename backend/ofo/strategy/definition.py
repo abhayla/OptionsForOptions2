@@ -306,7 +306,8 @@ _LEG_KEYS = frozenset({"action", "instrument", "strike", "expiry", "quantity"})
 _ITEM_KEYS = {"underlying": {"kind", "old", "new"}, "leg_removed": {"kind", "leg"}, "leg_added": {"kind", "leg"},
               "quantity": {"kind", "leg", "before"}, "field": {"kind", "map", "name", "old", "new"},
               "legs_reordered": {"kind"}, "replaced_unreadable": {"kind"}, "restored": {"kind", "seq"},
-              "entries_repriced": {"kind"}, "renamed": {"kind", "from", "to"}}
+              "entries_repriced": {"kind"}, "renamed": {"kind", "from", "to"},
+              "deleted": {"kind"}, "undeleted": {"kind"}}  # ADR-330 (31)
 #: A field change item: ``map`` -> the closed list of ``name`` (ADR-064); ``old``/``new`` are None (absent) or ADR-069's
 #: value type (a plain-digit number for a risk limit, an identifier otherwise). One item per changed name; never repr.
 _FIELD_NAMES = {"rules_ref": frozenset({"rules_ref"}), "risk_limits": RISK_LIMIT_NAMES, "preferences": PREFERENCE_NAMES}
@@ -425,6 +426,10 @@ def _render_items(items: object) -> tuple:
             elif kind == "renamed":  # REQ-134 AC-3: the user's own two names, quoted in their labelled slots (ADR-003)
                 out.append(render_explanation("change_renamed", old=_stored_name(item["from"]),
                                               new=_stored_name(item["to"])))
+            elif kind == "deleted":  # ADR-330 (31): the strategy was deleted (shown "Deleted")
+                out.append(render_explanation("change_deleted"))
+            elif kind == "undeleted":  # ADR-330 (31): the delete was undone (shown "Restored")
+                out.append(render_explanation("change_undeleted"))
             else:
                 out.append(render_explanation("change_replaced_unreadable"))
     except DefinitionError:

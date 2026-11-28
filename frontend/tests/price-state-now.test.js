@@ -1,0 +1,217 @@
+// Lane N A4/A5/B1 (27 Nov 2026): ONE price-state source (priceState.priceNow / usePriceFreshness.now) and ONE as-of wording.
+// ADR-330 (28): Add to Paper on a not-live price shows the tick box and the line; ADR-212 / ADR-330 (36): the close time.
+import { beforeEach, describe, it, expect, vi } from 'vitest'
+import { flushPromises, mount } from '@vue/test-utils'
+import { createMemoryHistory, createRouter } from 'vue-router'
+import SaveDraftBar from '@/components/strategy/SaveDraftBar.vue'
+import PaperConfirmDialog from '@/components/strategy/PaperConfirmDialog.vue'
+import { priceNow, usePriceFreshness, pausedText } from '@/lib/priceState'
+import { withAsOf } from '@/lib/paperList'
+import { confirmPaperName } from './helpers/paperName'
+
+const calls = []
+let answers = {}
+vi.mock('@/services/api', async (importActual) => {
+  const actual = await importActual()
+  const respond = (method, url, body) => {
+    calls.push({ method, url, body })
+    const a = answers[`${method} ${url}`]
+    if (a === undefined && method === 'GET' && url === '/market/exit-state') return Promise.resolve({ data: { closed: false, sentence: null, next_open_at: null } }) // ADR-330 (60) on Add to Paper (FA2 item A)
+    if (a === undefined) return Promise.reject(new Error(`unmocked ${method} ${url}`))
+    return typeof a === 'function' ? a(body) : Promise.resolve({ data: a })
+  }
+  return { ...actual, default: { get: (u) => respond('GET', u), post: (u, b) => respond('POST', u, b), put: (u, b) => respond('PUT', u, b), patch: (u, b) => respond('PATCH', u, b) } }
+})
+
+const CLOSE = '2026-11-27T15:30:00+05:30'
+const LATE = '2026-11-27T15:35:41+05:30'
+const FEED = '2026-11-27T11:02:10+05:30'
+const open = (extra = {}) => ({ market_closed: false, last_price_at: FEED, closed_prices_text: null, ...extra })
+const closed = (extra = {}) => ({ market_closed: true, last_price_at: CLOSE, closed_prices_text: null, ...extra })
+
+describe('priceNow: one state for every not-live case', () => {
+  it('live: open market, computed, feed not reconnecting', () => {
+    expect(priceNow({ reply: open(), pageState: 'computed' }).kind).toBe('live')
+  })
+  it('after close: last_close with the reply time', () => {
+    const n = priceNow({ reply: closed(), pageState: 'computed' })
+    expect(n).toMatchObject({ kind: 'last_close', at: CLOSE })
+    expect(n.text).toContain('15:30:00')
+  })
+  it('after close with the reply missing market_closed: the index answer decides (the A4 gap)', () => {
+    const n = priceNow({ reply: open(), answer: { market_closed: true, last_price_at: CLOSE }, pageState: 'computed' })
+    expect(n.kind).toBe('last_close')
+    expect(n.at).toBe(CLOSE)
+  })
+  it('pre-open (calendar closed, no price time yet): last_close with no time clause', () => {
+    const n = priceNow({ reply: closed({ last_price_at: null }), pageState: 'computed' })
+    expect(n.kind).toBe('last_close')
+    expect(n.at).toBeNull()
+    expect(n.text).not.toContain('Time not available')
+  })
+  it('feed down in hours: stale with the feed time', () => {
+    const n = priceNow({ reply: open(), pageState: 'computed', reconnecting: true })
+    expect(n).toMatchObject({ kind: 'stale', at: FEED })
+    expect(n.text).toBe(pausedText(FEED))
+    expect(priceNow({ reply: open(), pageState: 'stale' }).kind).toBe('stale')
+  })
+  it('time missing: stale says so without a time clause, never "Time not available"', () => {
+    const n = priceNow({ reply: open({ last_price_at: null }), pageState: 'stale' })
+    expect(n.kind).toBe('stale')
+    expect(n.at).toBeNull()
+    expect(n.text).toBe('Paper P&L paused - prices not live')
+  })
+  it('partial reply while loading: closed, but the wrong 15:35:41 is never the banner time', () => {
+    const n = priceNow({ reply: closed({ last_price_at: LATE }), pageState: 'loading' })
+    expect(n.kind).toBe('last_close')
+    expect(n.at).toBeNull()
+  })
+  it('not connected / no reply: unavailable', () => {
+    expect(priceNow({ reply: null, pageState: 'not-connected' }).kind).toBe('unavailable')
+    expect(priceNow({ reply: null, pageState: 'loading' }).kind).toBe('unavailable')
+  })
+  it('the composable exposes the same answer as `now` and live follows it', () => {
+    const f = usePriceFreshness({ reply: () => closed(), pageState: () => 'computed' })
+    expect(f.now.value.kind).toBe('last_close')
+    expect(f.live.value).toBe(false)
+  })
+})
+
+describe('one as-of wording: no "Time not available" inside a sentence', () => {
+  it('pausedText without a readable time states the reason only', () => {
+    expect(pausedText(null)).toBe('Paper P&L paused - prices not live')
+    expect(pausedText('garbage')).toBe('Paper P&L paused - prices not live')
+    expect(pausedText(CLOSE)).toBe('Paper P&L paused - prices not live, as of 27 Nov 2026, 15:30:00 IST')
+  })
+  it('withAsOf keeps the sentence as sent without a time', () => {
+    expect(withAsOf('Paper P&L paused - prices not live', null)).toBe('Paper P&L paused - prices not live')
+  })
+})
+
+const CURRENT = { id: 7, revision: 3, name: '"Condor"' }
+const leg = (id, at) => ({ id, underlying: 'NIFTY', instrument_id: `NSE_FO:${id}`, contract_id: 100 + id, lot_size: 65, action: 'SELL', lots: 1, expiry: '2026-12-03', strike: '22800.00', instrument_type: 'CE', planned_entry: '112.40', captured_at: at })
+async function addToPaper(props) {
+  const router = createRouter({ history: createMemoryHistory(), routes: [{ path: '/', component: { template: '<div/>' } }, { path: '/positions/current-positions', component: { template: '<div/>' } }] })
+  router.push('/')
+  await router.isReady()
+  const w = mount(SaveDraftBar, { props: { legs: [leg(1, null)], current: CURRENT, ...props }, global: { plugins: [router] }, attachTo: document.body })
+  await flushPromises()
+  await w.get('[data-testid="add-to-paper"]').trigger('click')
+  await flushPromises()
+  await confirmPaperName(w)
+  return w
+}
+beforeEach(() => { calls.length = 0; answers = { 'GET /strategies': { strategies: [] } } })
+
+describe('Add to Paper in every state (the page passes priceNow into the bar)', () => {
+  const states = [
+    ['after close', { pricesLive: false, priceAsOf: CLOSE }, 'as of 15:30.'],
+    ['pre-open, time unknown', { pricesLive: false, priceAsOf: '' }, 'captured price.'],
+    ['feed down in hours', { pricesLive: false, priceAsOf: FEED }, 'as of 11:02.'],
+  ]
+  for (const [name, props, tail] of states) {
+    it(`${name}: tick box shown, Confirm waits for it, line ends "${tail}"`, async () => {
+      const w = await addToPaper(props)
+      expect(w.get('[data-testid="paper-not-live"]').text().endsWith(tail)).toBe(true)
+      expect(w.get('[data-testid="paper-confirm-button"]').attributes('disabled')).toBeDefined()
+      w.unmount()
+    })
+  }
+  it('the request carries prices_not_live_confirmed only when the line was shown and ticked', async () => {
+    answers['POST /paper/strategies/7/orders'] = { strategy_id: 7, orders: [] }
+    const w = await addToPaper({ pricesLive: false, priceAsOf: CLOSE })
+    await w.get('[data-testid="paper-not-live-ack"]').setValue(true)
+    await w.get('[data-testid="paper-confirm-button"]').trigger('click')
+    await flushPromises()
+    const post = calls.find((c) => c.method === 'POST' && c.url === '/paper/strategies/7/orders')
+    expect(post.body.prices_not_live_confirmed).toBe(true)
+    w.unmount()
+  })
+  it('live: the request has no prices_not_live_confirmed', async () => {
+    answers['POST /paper/strategies/7/orders'] = { strategy_id: 7, orders: [] }
+    const w = await addToPaper({ pricesLive: true })
+    await w.get('[data-testid="paper-confirm-button"]').trigger('click')
+    await flushPromises()
+    const post = calls.find((c) => c.method === 'POST' && c.url === '/paper/strategies/7/orders')
+    expect('prices_not_live_confirmed' in post.body).toBe(false)
+    w.unmount()
+  })
+  it('live: no tick box, Confirm is active', async () => {
+    const w = await addToPaper({ pricesLive: true })
+    expect(w.find('[data-testid="paper-not-live"]').exists()).toBe(false)
+    expect(w.get('[data-testid="paper-confirm-button"]').attributes('disabled')).toBeUndefined()
+    w.unmount()
+  })
+})
+
+describe('the not-live flag is the dialog\'s own tick state', () => {
+  const ORDER = [{ key: 'x', contract_id: 5, side: 'BUY', text: 'NIFTY 3 Nov 22800 CE', lots: 2, lot_size: 65, price: '10.05', kind: 'open' }]
+  it('line shown and ticked: Confirm emits ticked = true', async () => {
+    const w = mount(PaperConfirmDialog, { props: { open: true, orders: ORDER, notLiveLine: 'Prices are not live; the entry is the last captured price.' } })
+    await w.get('[data-testid="paper-not-live-ack"]').setValue(true)
+    await w.get('[data-testid="paper-confirm-button"]').trigger('click')
+    expect(w.emitted('confirm')[0][2]).toBe(true)
+    w.unmount()
+  })
+  it('line not shown: Confirm emits ticked = false', async () => {
+    const w = mount(PaperConfirmDialog, { props: { open: true, orders: ORDER } })
+    await flushPromises() // ADR-330 (60) on Add to Paper (FA2 item A): Confirm waits for the market answer
+    await w.get('[data-testid="paper-confirm-button"]').trigger('click')
+    expect(w.emitted('confirm')[0][2]).toBe(false)
+    w.unmount()
+  })
+  it('line shown, not ticked: Confirm is disabled and emits nothing', async () => {
+    const w = mount(PaperConfirmDialog, { props: { open: true, orders: ORDER, notLiveLine: 'Prices are not live; the entry is the last captured price.' } })
+    await w.get('[data-testid="paper-confirm-button"]').trigger('click')
+    expect(w.emitted('confirm')).toBeUndefined()
+    w.unmount()
+  })
+  it('the bar sends the flag from the emitted tick, not from its own prop', async () => {
+    answers['POST /paper/strategies/7/orders'] = { strategy_id: 7, orders: [] }
+    const w = await addToPaper({ pricesLive: false, priceAsOf: CLOSE })
+    await w.getComponent(PaperConfirmDialog).vm.$emit('confirm', [{ contract_id: 101, side: 'SELL', quantity: 65, price: '112.40', kind: 'open' }], null, false)
+    await flushPromises()
+    const post = calls.find((c) => c.method === 'POST' && c.url === '/paper/strategies/7/orders')
+    expect('prices_not_live_confirmed' in post.body).toBe(false)
+    w.unmount()
+  })
+})
+
+describe('F-32 and the closed market (ADR-017, ADR-212)', () => {
+  const REFUSE = () => Promise.reject({ status: 409, error_code: 'STRATEGY_VALIDATION_511', parts: { what_happened: 'The live index price is not available, so these orders cannot be saved with their starting point.' } })
+  const orderPosts = () => calls.filter((c) => c.method === 'POST' && c.url === '/paper/strategies/7/orders')
+  it('the page thinks prices are live, the server refuses on the index age: the line and tick appear, Confirm waits, the second request carries the flag; no automatic resend', async () => {
+    let n = 0
+    answers['POST /paper/strategies/7/orders'] = () => (++n === 1 ? REFUSE() : Promise.resolve({ data: { strategy_id: 7, orders: [] } }))
+    const w = await addToPaper({ pricesLive: true })
+    await w.get('[data-testid="paper-confirm-button"]').trigger('click')
+    await flushPromises()
+    expect(orderPosts()).toHaveLength(1)
+    expect('prices_not_live_confirmed' in orderPosts()[0].body).toBe(false)
+    expect(w.find('[data-testid="paper-not-live"]').exists()).toBe(true)
+    expect(w.get('[data-testid="paper-confirm-button"]').attributes('disabled')).toBeDefined()
+    await w.get('[data-testid="paper-not-live-ack"]').setValue(true)
+    expect(w.get('[data-testid="paper-confirm-button"]').attributes('disabled')).toBeUndefined()
+    expect(orderPosts()).toHaveLength(1) // nothing was resent by itself
+    await w.get('[data-testid="paper-confirm-button"]').trigger('click')
+    await flushPromises()
+    expect(orderPosts()).toHaveLength(2)
+    expect(orderPosts()[1].body.prices_not_live_confirmed).toBe(true)
+    w.unmount()
+  })
+  for (const [name, at] of [['after the close', CLOSE], ['pre-open', ''], ['a holiday', '2026-11-26T15:30:00+05:30']]) {
+    it(`${name}: no tick box is offered; Confirm posts once and the server's own gate_market_closed sentence shows`, async () => {
+      answers['POST /paper/strategies/7/orders'] = () => Promise.reject({ status: 409, error_code: 'MARKET_DATA_102', parts: { what_happened: 'The market is closed. Orders can be placed once it opens.' } })
+      const w = await addToPaper({ pricesLive: false, marketClosed: true, priceAsOf: at })
+      expect(w.find('[data-testid="paper-not-live"]').exists()).toBe(false)
+      await w.get('[data-testid="paper-confirm-button"]').trigger('click')
+      await flushPromises()
+      expect(orderPosts()).toHaveLength(1)
+      expect('prices_not_live_confirmed' in orderPosts()[0].body).toBe(false)
+      expect(w.text()).toContain('The market is closed. Orders can be placed once it opens.')
+      expect(w.find('[data-testid="paper-not-live"]').exists()).toBe(false)
+      expect(w.get('[data-testid="paper-confirm-button"]').attributes('disabled')).toBeDefined()
+      w.unmount()
+    })
+  }
+})

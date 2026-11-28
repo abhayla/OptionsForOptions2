@@ -22,6 +22,7 @@ vi.mock('@/services/api', async (importActual) => {
   const respond = (method, url, body) => {
     calls.push({ method, url, body })
     const a = answers[`${method} ${url}`]
+    if (a === undefined && method === 'GET' && url === '/market/exit-state') return Promise.resolve({ data: { closed: false, sentence: null, next_open_at: null } }) // ADR-330 (60)
     if (a === undefined) return Promise.reject(new Error(`unmocked ${method} ${url}`))
     return typeof a === 'function' ? a(body) : Promise.resolve({ data: a })
   }
@@ -57,7 +58,7 @@ afterEach(() => {
   document.body.innerHTML = ''
 })
 
-// the builder opened on paper strategy 86 (Drafts Mode), then Exit all -> the "Exit paper positions" dialog
+// the builder opened on paper strategy 86 (Drafts Mode), then Exit all -> the "Exit Paper positions" dialog
 async function exitDialog() {
   const router = createRouter({ history: createMemoryHistory(), routes: [{ path: '/strategy/builder', component: StrategyBuilderPage }, { path: '/positions/current-positions', component: { template: '<p />' } }] })
   await router.push('/strategy/builder?strategy=86')
@@ -109,6 +110,8 @@ describe('CORE: a stored paper order is never offered again (the live case, buil
     const w = await exitDialog()
     vi.useFakeTimers()
     answers[`POST ${ORDERS_URL}`] = () => Promise.reject(TIMEOUT)
+    const bookAnswer = answers[`GET ${BOOK_URL}`]
+    answers[`GET ${BOOK_URL}`] = () => new Promise(() => {}) // U2 (ADR-017): the automatic re-read does not answer: the outcome stays unknown
     await click(w)
     expect(posts()).toHaveLength(1)
     expect(t(w, 'paper-unknown').text()).toContain(PAPER_UNKNOWN_TEXT)
@@ -121,8 +124,9 @@ describe('CORE: a stored paper order is never offered again (the live case, buil
     expect(confirmBtn(w).attributes('disabled')).toBeDefined()
     vi.advanceTimersByTime(1)
     await flushPromises()
-    expect(confirmBtn(w).attributes('disabled')).toBeUndefined()
+    expect(confirmBtn(w).attributes('disabled')).toBeDefined() // U2 (ADR-017): no timer unlocks an unresolved outcome; only a re-read decides
     vi.useRealTimers()
+    answers[`GET ${BOOK_URL}`] = bookAnswer
     const reads = calls.filter((c) => c.method === 'GET' && c.url === BOOK_URL).length
     await t(w, 'paper-open-orderbook').trigger('click')
     await flushPromises()
@@ -135,7 +139,7 @@ describe('CORE: a stored paper order is never offered again (the live case, buil
     const w = await exitDialog()
     answers[`POST ${ORDERS_URL}`] = () => Promise.reject(REFUSED)
     await click(w)
-    expect(t(w, 'paper-error').text()).toBe('Enter a price in steps of 0.05.')
+    expect(t(w, 'paper-error').text()).toBe('Enter a price in steps of 0.05. i b n') // Lane FJ r3 (F6): every part of the refusal, as sent
     expect(confirmBtn(w).attributes('disabled')).toBeDefined()
     await click(w)
     expect(posts()).toHaveLength(1)
@@ -143,20 +147,19 @@ describe('CORE: a stored paper order is never offered again (the live case, buil
     expect(confirmBtn(w).attributes('disabled')).toBeUndefined()
   })
 
-  it('superseded (the page cancelled it) -> silent: no message, Confirm stays available', async () => {
+  it('superseded (hotfix 27 Nov, ADR-016..019): outcome unknown, never READY: the unknown line and Orderbook link show, Confirm is locked', async () => {
     const w = await exitDialog()
     answers[`POST ${ORDERS_URL}`] = () => Promise.reject({ superseded: true })
     await click(w)
-    expect(t(w, 'paper-error').exists()).toBe(false)
-    expect(t(w, 'paper-unknown').exists()).toBe(false)
+    expect(t(w, 'paper-unknown').exists()).toBe(true)
     expect(t(w, 'paper-placed').exists()).toBe(false)
-    expect(confirmBtn(w).attributes('disabled')).toBeUndefined()
+    expect(confirmBtn(w).attributes('disabled')).toBeDefined()
   })
 })
 
 describe('paperPostOutcome: every answer state', () => {
   it.each([
-    [{ superseded: true }, 'superseded'], [REFUSED, 'refused'], [{ status: 409 }, 'refused'], [TIMEOUT, 'unknown'],
+    [{ superseded: true }, 'unknown'], [{ status: 429 }, 'unknown'], [{ status: 408 }, 'unknown'], [REFUSED, 'refused'], [{ status: 409 }, 'refused'], [{ status: 400 }, 'refused'], [{ status: 404 }, 'refused'], [TIMEOUT, 'unknown'],
     [{ status: null }, 'unknown'], [{ status: 504 }, 'unknown'], [{ status: 500 }, 'unknown'], [new Error('network'), 'unknown'], [undefined, 'unknown'],
   ])('%j -> %s', (e, want) => expect(paperPostOutcome(e)).toBe(want))
 })
@@ -193,7 +196,7 @@ describe('item 2: entry rows start at the live price the page holds, else the pl
     const prices = [...document.body.querySelectorAll('[data-testid="paper-price"]')].map((i) => i.value)
     expect(prices).toEqual(['129.05', '98.40'])
     const notes = [...document.body.querySelectorAll('[data-testid="paper-price-note"]')].map((n) => n.textContent)
-    expect(notes).toEqual([PAPER_PLANNED_PRICE_NOTE])
+    expect(notes).toEqual(['plan 126.00', PAPER_PLANNED_PRICE_NOTE]) // D-15 (c): live 129.05 against plan 126.00 says so
     expect(legs[0].planned_entry).toBe('126.00') // the planned-entry field itself is unchanged
     w.unmount()
   })
@@ -201,7 +204,7 @@ describe('item 2: entry rows start at the live price the page holds, else the pl
     const orders = [{ kind: 'add', contract_id: 1, side: 'SELL', lots: 1, lot_size: 65, leg: leg(1, '126.00') },
       { kind: 'add', contract_id: 2, side: 'SELL', lots: 1, lot_size: 65, leg: leg(2, '98.40') }]
     const rows = confirmRowsFor(orders, { positions: [] }, () => 'x', { 'NSE_FO:1': '129.05' })
-    expect(rows.map((r) => [r.price, r.price_note])).toEqual([['129.05', ''], ['98.40', PAPER_PLANNED_PRICE_NOTE]])
+    expect(rows.map((r) => [r.price, r.price_note])).toEqual([['129.05', 'plan 126.00'], ['98.40', PAPER_PLANNED_PRICE_NOTE]])
   })
 })
 
@@ -224,10 +227,11 @@ describe('GC-ICFIX Issue 6: result lines sit in the pinned status area, not the 
     if (id === 'paper-unknown') expect(w.find('[data-testid="paper-open-orderbook"]').exists()).toBe(true)
     w.unmount()
   })
-  it('no outcome: no status area at all (frame unchanged)', async () => {
+  it('no outcome: the status slot is reserved but empty (N-22: it is always rendered so a result line never moves the buttons)', async () => {
     const w = open({})
     await flushPromises()
-    expect(w.find('[data-testid="modal-status"]').exists()).toBe(false)
+    expect(w.get('[data-testid="paper-status-slot"]').text()).toBe('')
+    for (const id of ['paper-placed', 'paper-unknown', 'paper-error']) expect(w.find(`[data-testid="${id}"]`).exists()).toBe(false)
     w.unmount()
   })
 })

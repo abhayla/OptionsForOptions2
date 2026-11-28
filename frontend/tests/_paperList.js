@@ -12,7 +12,7 @@ function position(l, i, underlying) {
     instrument: l.instrument, strike: l.strike, expiry: l.expiry, net_quantity: q, lot_size: l.quantity % 65 === 0 ? 65 : l.quantity,
     average: q ? l.entry_price : null, average_text: q ? (l.entry_price_display ?? null) : null,
     ltp: live ? l.current_price : null, ltp_text: live ? (l.current_price_display ?? null) : null,
-    price_state: q ? l.price_state : null, price_at: null,
+    price_state: q ? l.price_state : null, price_at: q ? l.price_at ?? null : null,
     booked: '0.00', booked_text: '0.00', unbooked: '0.00', unbooked_text: '0.00', total: '0.00', total_text: '0.00',
   }
 }
@@ -34,6 +34,7 @@ export function toPaperList(old) {
 /** The answer for a call: GET /paper/strategies falls back to a recorded GET /tracking reply, converted. */
 export function legacy(answers, method, url) {
   const direct = answers[`${method} ${url}`]
+  if (!direct && method === 'GET' && url === '/market/exit-state') return async () => ({ data: { closed: false, sentence: null, next_open_at: null } }) // ADR-330 (60): the Exit dialog's market answer: open unless a test says otherwise
   if (direct || method !== 'GET' || url !== '/paper/strategies') return direct
   const old = answers['GET /tracking']
   if (!old) return undefined

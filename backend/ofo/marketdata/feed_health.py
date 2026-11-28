@@ -8,7 +8,9 @@ more than 0.51 s while a median 59 of 1,091 contracts had no tick for over 60 s,
 Rule here: while a feed is connected and a data frame or heartbeat arrived within ``FEED_STALE`` every contract on it
 is available; beyond that every contract of that feed is stale; disconnected longer than the reconnect window, never
 connected, or session ended: unavailable. A contract's own last change time is kept (``QuoteBook``) as information
-and is never a health input. Provider-agnostic: any provider with a live connection can use ``FeedState``.
+and is never a health input, except the ONE index rule of ADR-330 (39) (``FeedState.quote_health``): in market hours an
+index quote older than ``index_quote_max_age`` is STALE even on a live feed. Provider-agnostic: any provider with a
+live connection can use ``FeedState``.
 
 Outside market hours (ADR-119 calendar, REQ-114 AC-7) the feed is never live, whatever frames arrive: ``health`` is
 STALE and ``phase`` is ``FEED_MARKET_CLOSED`` (a session ended or a capped socket still say so). The calendar is read
@@ -19,12 +21,13 @@ from __future__ import annotations
 
 import dataclasses
 import datetime
+import logging
 from collections.abc import Callable
 from dataclasses import dataclass
 from decimal import Decimal
 
 from ofo.engine.executable_price import Depth
-from ofo.market_calendar import is_market_open
+from ofo.market_calendar import is_market_open, last_close, price_time
 from ofo.marketdata.provider import (
     FEED_NOT_HEALTHY,
     NOT_HELD,
@@ -35,6 +38,7 @@ from ofo.marketdata.provider import (
 from ofo.marketdata.quote import NormalizedQuote
 from ofo.rules.inputs import DataHealth
 
+log = logging.getLogger(__name__)
 
 
 @dataclass(frozen=True)
@@ -47,6 +51,9 @@ class FeedWindows:
 
     stale: datetime.timedelta
     reconnect: datetime.timedelta
+    #: ADR-330 (39): in market hours an INDEX quote older than this is not live, whatever the feed as a whole says
+    #: (``detection.index_quote_max_age_seconds``; written only in ``registry.json``).
+    index_quote_max_age: datetime.timedelta
 
 
 #: most instruments whose last quote TIME is kept after unsubscribe (oldest removal evicted first). A time is a few
@@ -84,6 +91,9 @@ class FeedState:
         self._disconnected_at: datetime.datetime | None = None
         self._awaiting_data = False  # connected again but no data frame yet: old quotes are not current
         self._connected_at: datetime.datetime | None = None  # when the current connection opened (REQ-133 AC-3)
+        self._last_logged_health: DataHealth | None = None  # diagnostic: last health written to the log
+        #: diagnostic (no route): how many times the feed-wide health changed, per reason category
+        self.health_changes: dict[str, int] = {}
 
     def apply_windows(self, windows: FeedWindows) -> None:
         """The windows in force NOW (REQ-167 AC-4): every judgement below reads ``self.windows`` when it runs, so a
@@ -169,19 +179,67 @@ class FeedState:
             return False
         return now - self._connected_at <= self.feed_stale
 
-    def health(self, now: datetime.datetime) -> DataHealth:
+    def _not_connected(self, now: datetime.datetime) -> tuple[DataHealth, str, float]:
+        if self._disconnected_at is None:
+            return DataHealth.UNAVAILABLE, "never_connected", 0.0
+        gone = now - self._disconnected_at
+        health = DataHealth.STALE if gone <= self.reconnect_window else DataHealth.UNAVAILABLE
+        return health, "disconnected", gone.total_seconds()
+
+    def _health_and_reason(self, now: datetime.datetime) -> tuple[DataHealth, str, float]:
+        """(health, reason category, seconds that belong to it) in ONE place; ``health`` returns the first and logs
+        changes. Categories are single words/keys; their log text sits in ``_log_change`` (log text is not a
+        user-facing producer)."""
         if self.session_ended:
-            return DataHealth.UNAVAILABLE
+            return DataHealth.UNAVAILABLE, "session_ended", 0.0
         if self.market_closed(now):
-            return DataHealth.STALE  # REQ-114 AC-7 / ADR-015: a closed market's last price is never shown as live
+            # REQ-114 AC-7 / ADR-015: a closed market's last price is never shown as live
+            return DataHealth.STALE, "market_closed", 0.0
         if not self.connected:
-            if self._disconnected_at is None:
-                return DataHealth.UNAVAILABLE  # never connected
-            return (DataHealth.STALE if now - self._disconnected_at <= self.reconnect_window
-                    else DataHealth.UNAVAILABLE)
-        if self._awaiting_data or self._last_activity is None or now - self._last_activity > self.feed_stale:
+            return self._not_connected(now)
+        if self._awaiting_data:
+            return DataHealth.STALE, "awaiting_data", 0.0
+        if self._last_activity is None or now - self._last_activity > self.feed_stale:
+            quiet = 0.0 if self._last_activity is None else (now - self._last_activity).total_seconds()
+            return DataHealth.STALE, "no_feed_activity", quiet
+        return DataHealth.AVAILABLE, "live", 0.0
+
+    def _log_change(self, old: str, new: str, category: str, seconds: float) -> None:
+        if category == "session_ended":
+            log.info("feed health %s -> %s: session ended", old, new)
+        elif category == "market_closed":
+            log.info("feed health %s -> %s: market closed", old, new)
+        elif category == "never_connected":
+            log.info("feed health %s -> %s: never connected", old, new)
+        elif category == "disconnected":
+            log.info("feed health %s -> %s: disconnected %.1f s ago", old, new, seconds)
+        elif category == "awaiting_data":
+            log.info("feed health %s -> %s: awaiting data after (re)connect", old, new)
+        elif category == "no_feed_activity":
+            log.info("feed health %s -> %s: no feed activity for %.1f s (limit %.1f s)", old, new, seconds,
+                     self.feed_stale.total_seconds())
+        else:
+            log.info("feed health %s -> %s: live", old, new)
+
+    def health(self, now: datetime.datetime) -> DataHealth:
+        health, category, seconds = self._health_and_reason(now)
+        if health is not self._last_logged_health:
+            old = "none" if self._last_logged_health is None else self._last_logged_health.name
+            self._log_change(old, health.name, category, seconds)
+            self._last_logged_health = health
+            self.health_changes[category] = self.health_changes.get(category, 0) + 1
+        return health
+
+    def quote_health(self, quote: NormalizedQuote, now: datetime.datetime) -> DataHealth:
+        """ADR-330 (39), the ONE per-quote age rule: the feed's health, except that in market hours an index quote
+        (``instrument_type`` None) whose own time is older than ``index_quote_max_age`` is STALE even while the feed
+        as a whole is live (F-32: option frames keep arriving while the index sat silent). Options keep the feed's
+        word (a quiet contract is not stale). Closed market: the feed already says STALE; ADR-330 (36) applies."""
+        health = self.health(now)
+        if (health is DataHealth.AVAILABLE and quote.instrument_type is None
+                and now - quote.timestamp > self.windows.index_quote_max_age):
             return DataHealth.STALE
-        return DataHealth.AVAILABLE
+        return health
 
 
 def market_closed_for(source: object, now: datetime.datetime) -> bool:
@@ -214,6 +272,17 @@ def with_feed_health(quote: NormalizedQuote, feed: DataHealth) -> NormalizedQuot
 
 
 @dataclass(frozen=True)
+class Frame:
+    """One packet's quote, depth and day values (the three always travel together), and ``spell``: the calendar close
+    (``last_close``) of the closed spell it is the figure for; None when it is not tied to one."""
+
+    quote: NormalizedQuote
+    depth: Depth | None = None
+    day_stats: DayStats | None = None
+    spell: datetime.datetime | None = None
+
+
+@dataclass(frozen=True)
 class BookEntry:
     quote: NormalizedQuote
     last_changed_at: datetime.datetime  # information only; never a health input
@@ -221,6 +290,91 @@ class BookEntry:
     # packet carried no depth (quote / ltp mode) - never an empty Depth, which would read as "no liquidity"
     depth: Depth | None = None
     day_stats: DayStats | None = None  # the day values of the SAME packet; None when it carried none
+    #: ADR-330 (36): the NEWEST quote made by the close (in session or exactly at the close) with its depth and day
+    #: values; a frame stamped earlier that arrives late never replaces it.
+    close_quote: NormalizedQuote | None = None
+    close_depth: Depth | None = None
+    close_day_stats: DayStats | None = None
+    #: the FIRST frame received after a close (its ``spell`` = that close), kept while the contract has no frame made by
+    #: the close (a restart after 15:30, a strike first opened after hours); a later frame never replaces it.
+    after: Frame | None = None
+    #: the figure SERVED while the market is closed, with its spell: once shown it never moves until the next open.
+    served: Frame | None = None
+
+
+#: Lane N review M1: how long a book waits for its first seed attempt before the A2 rule serves (never stuck)
+SEED_WAIT = datetime.timedelta(seconds=30)
+_SEED_EXPECTED = False
+
+
+def expect_seed(expected: bool) -> None:
+    """Called ONCE by the app lifespan, before the live market starts, when a stored-close store is configured
+    (``ofo_app.last_close_store``): every ``QuoteBook`` made afterwards is "awaiting seed" until its first seed attempt
+    ends (``QuoteBook.seed_attempted``). Off by default: a book with no store behaves exactly as before."""
+    global _SEED_EXPECTED  # noqa: PLW0603
+    _SEED_EXPECTED = bool(expected)
+
+
+def made_by_the_close(quote: NormalizedQuote) -> bool:
+    """ADR-330 (36): the ONE cut-off. True when the quote's time is at or before the close of its trading day: inside
+    the session or exactly at the close. A frame after the close, before the open, or on a holiday or weekend is not
+    (``price_time`` puts it at an earlier close). A date the calendar cannot answer cannot be cut: True, as before."""
+    made = price_time(quote.timestamp)
+    return made is None or made >= quote.timestamp
+
+
+def _on(t: datetime.datetime, close: datetime.datetime) -> bool:
+    """True when ``t`` is on the calendar day of ``close`` (IST) and at or before it: a frame of that trading day made
+    by its close, including one received before the open."""
+    return t <= close and t.astimezone(close.tzinfo).date() == close.date()
+
+
+def _figure(e: BookEntry, close: datetime.datetime) -> Frame:
+    """THE ONE RULE (Lane N A2, ADR-330 (36), ADR-212): the figure of a closed spell ending at ``close``, used by every
+    read (price, depth, day values). In order: (0) the figure already served for this spell; (1) the latest frame if it
+    was made by this close on this day (a pre-open frame of the day counts); (2) the newest frame made by this day's
+    close; (3) the first frame received after this close; (4) none of those: the figure of the contract's own last
+    close (an earlier session's, kept with its own date-time). The caller stores the answer as ``served``, so (4) is
+    frozen at its first read and a later frame never replaces it."""
+    if e.served is not None and e.served.spell == close:
+        return e.served
+    held = e.close_quote is not None and _on(e.close_quote.timestamp, close)
+    if _on(e.quote.timestamp, close) and not (held and e.quote.timestamp < e.close_quote.timestamp):  # type: ignore[union-attr]
+        return Frame(e.quote, e.depth, e.day_stats, close)  # a late older-stamped frame never beats the newer close
+    if held:
+        return Frame(e.close_quote, e.close_depth, e.close_day_stats, close)
+    if e.after is not None and e.after.spell == close:
+        return e.after
+    own = last_close(e.quote.timestamp)
+    if own is not None and own < close:
+        return _figure(e, own)
+    return Frame(e.quote, e.depth, e.day_stats, close)
+
+
+def _held_by(e: BookEntry, close: datetime.datetime) -> bool:
+    """True when ``_figure`` would answer from steps (0)-(2): the figure already served for this spell, or a frame
+    made by this close on this day. Steps (3) and (4) are what a waiting book must not freeze."""
+    if e.served is not None and e.served.spell == close:
+        return True
+    return _on(e.quote.timestamp, close) or (e.close_quote is not None and _on(e.close_quote.timestamp, close))
+
+
+def _next_entry(previous: BookEntry | None, quote: NormalizedQuote, depth: Depth | None,
+                day_stats: DayStats | None) -> BookEntry:
+    """The entry once ``quote`` arrives: the latest frame, the newest made-by-the-close frame, the first frame after
+    each close, and whatever was already served (kept)."""
+    close_q, close_d, close_s = (None, None, None) if previous is None else (
+        previous.close_quote, previous.close_depth, previous.close_day_stats)
+    after = None if previous is None else previous.after
+    if made_by_the_close(quote):
+        if close_q is None or quote.timestamp >= close_q.timestamp:
+            close_q, close_d, close_s = quote, depth, day_stats
+    else:
+        spell = last_close(quote.timestamp)
+        if after is None or after.spell != spell:
+            after = Frame(quote, depth, day_stats, spell)
+    return BookEntry(quote, quote.timestamp, depth, day_stats, close_q, close_d, close_s, after,
+                     None if previous is None else previous.served)
 
 
 class QuoteBook:
@@ -232,11 +386,18 @@ class QuoteBook:
         self._ended_times: dict[str, datetime.datetime] = {}  # times only, never a price
         # released but the vendor not yet told: unreadable, restored if taken again before the send (gate 4a D-1)
         self._parked: dict[str, BookEntry] = {}
+        # ids whose entry was made ONLY by ``seed_close`` (no live tick yet): never read while the market is open
+        self._seeded: set[str] = set()
+        # Lane N review M1: a book made while a store is configured does not freeze a post-close frame (step 3/4 of
+        # ``_figure``) until its first seed attempt ended, whatever its result
+        self._awaiting_seed = _SEED_EXPECTED
+        self._awaiting_from: datetime.datetime | None = None
 
     def remove(self, instrument_id: str) -> None:
         """Drop the quote (no stale price outlives its subscription, REQ-049 AC-4) but keep its TIME only (ADR-077:
         "The platform keeps each contract's last price TIME (never the price) after its subscription ends")."""
         self._parked.pop(instrument_id, None)
+        self._seeded.discard(instrument_id)
         self._end(instrument_id, self._entries.pop(instrument_id, None))
 
     def park(self, instrument_id: str) -> None:
@@ -244,6 +405,7 @@ class QuoteBook:
         vendor subscription was never actually dropped: a quiet contract would otherwise read 'no price' until it
         next changes."""
         entry = self._entries.pop(instrument_id, None)
+        self._seeded.discard(instrument_id)
         if entry is not None:
             self._parked[instrument_id] = entry
         self._end(instrument_id, entry)
@@ -279,13 +441,71 @@ class QuoteBook:
         False when the instrument is not parked."""
         if quote.instrument_id not in self._parked:
             return False
-        self._parked[quote.instrument_id] = BookEntry(quote, quote.timestamp, depth, day_stats)
+        self._parked[quote.instrument_id] = _next_entry(self._parked[quote.instrument_id], quote, depth, day_stats)
         return True
 
     def update(self, quote: NormalizedQuote, depth: Depth | None = None, day_stats: DayStats | None = None) -> None:
-        self._parked.pop(quote.instrument_id, None)
+        parked = self._parked.pop(quote.instrument_id, None)
+        self._seeded.discard(quote.instrument_id)  # the first live tick wins: the entry is live from here
         self._ended_times.pop(instrument_id := quote.instrument_id, None)  # held again: the quote itself speaks
-        self._entries[instrument_id] = BookEntry(quote, quote.timestamp, depth, day_stats)
+        self._entries[instrument_id] = _next_entry(self._entries.get(instrument_id) or parked, quote, depth, day_stats)
+
+    def seed_close(self, quote: NormalizedQuote, now: datetime.datetime) -> bool:
+        """The ONE entry point for a figure stored by an earlier run (``ofo_app.last_close_store``, Lane N A1): the
+        quote is held in the slot ``_next_entry`` would have put it in, so ``_figure`` (the one rule) serves it with its
+        OWN time. A frame ``made_by_the_close`` is the contract's close frame (steps 2/4); a frame stamped after the
+        close (a one-time snapshot read later) is the first frame after its close (step 3, ``after``): its own time,
+        frozen, never relabelled as the close. Only while the market is closed at ``now``; a parked contract is left
+        alone. Never overrides what the book already holds: a close frame at least as new stays, a live entry keeps its
+        latest frame and its own first frame after that close. An entry made here alone is hidden from ``get`` /
+        ``quotes`` while the market is open and dropped from ``_seeded`` by the first live tick. True when changed."""
+        iid = quote.instrument_id
+        if not self.feed.market_closed(now) or iid in self._parked:
+            return False
+        e = self._entries.get(iid)
+        return self._seed_held(e, quote) if made_by_the_close(quote) else self._seed_after(e, quote)
+
+    def _seed_held(self, e: BookEntry | None, quote: NormalizedQuote) -> bool:
+        """``seed_close`` for a frame made by the close: the contract's close frame (``_figure`` steps 2 and 4)."""
+        iid = quote.instrument_id
+        if e is None:
+            self._entries[iid] = BookEntry(quote, quote.timestamp, close_quote=quote)
+            self._seeded.add(iid)
+            return True
+        held = e.close_quote
+        if held is not None and held.timestamp.astimezone(quote.timestamp.tzinfo).date() == quote.timestamp.date():
+            return False  # the book holds a frame of that day (ADR-016: the broker's own word beats a stored one)
+        self._entries[iid] = dataclasses.replace(e, close_quote=quote, close_depth=None, close_day_stats=None)
+        return True
+
+    def _seed_after(self, e: BookEntry | None, quote: NormalizedQuote) -> bool:
+        """``seed_close`` for a frame stamped after its close: the first frame after that close (``_figure`` step 3)."""
+        spell = last_close(quote.timestamp)
+        if spell is None or (e is not None and e.after is not None and e.after.spell == spell):
+            return False
+        frame = Frame(quote, None, None, spell)
+        if e is None:
+            self._entries[quote.instrument_id] = BookEntry(quote, quote.timestamp, after=frame)
+            self._seeded.add(quote.instrument_id)
+        else:
+            self._entries[quote.instrument_id] = dataclasses.replace(e, after=frame)
+        return True
+
+    def seed_attempted(self) -> None:
+        """This book's first seed attempt ended (stored closes taken, none stored, or the database failed): from here
+        ``_figure`` serves as before (the A2 rule), whatever the attempt found."""
+        self._awaiting_seed = False
+
+    def awaiting_seed(self, now: datetime.datetime) -> bool:
+        """True while a closed-market read must wait for the first seed attempt (bounded by ``SEED_WAIT`` from the
+        first closed read, so a task that never runs cannot hold a screen back for ever)."""
+        if not self._awaiting_seed:
+            return False
+        if self._awaiting_from is None:
+            self._awaiting_from = now
+        elif now - self._awaiting_from > SEED_WAIT:
+            self._awaiting_seed = False
+        return self._awaiting_seed
 
     def __len__(self) -> int:
         return len(self._entries)
@@ -296,45 +516,80 @@ class QuoteBook:
 
     def get(self, instrument_id: str, now: datetime.datetime) -> NormalizedQuote | None:
         e = self._entries.get(instrument_id)
-        return with_feed_health(e.quote, self.feed.health(now)) if e else None
+        if not e or (instrument_id in self._seeded and not self.feed.market_closed(now)):
+            return None
+        frame = self._frame(instrument_id, e, now)
+        if frame is None:  # the last close is still being read (``awaiting_seed``)
+            return None
+        served = frame.quote
+        return with_feed_health(served, self.feed.quote_health(served, now))
+
+    def _frame(self, instrument_id: str, e: BookEntry, now: datetime.datetime) -> Frame | None:
+        """ADR-330 (36), the one place a read picks the frame: in market hours the latest; while closed ``_figure``,
+        stored as ``served`` the first time so what was shown never moves until the next open. None (nothing stored,
+        nothing frozen) while the book awaits its first seed attempt and the contract has no frame made by this
+        close."""
+        if not self.feed.market_closed(now):
+            return Frame(e.quote, e.depth, e.day_stats)
+        close = last_close(now)
+        if close is None:  # the calendar cannot answer: the newest frame made by the close, else the latest (as before)
+            if e.close_quote is None:
+                return Frame(e.quote, e.depth, e.day_stats)
+            return Frame(e.close_quote, e.close_depth, e.close_day_stats)
+        if self.awaiting_seed(now) and not _held_by(e, close):
+            return None
+        frame = _figure(e, close)
+        if e.served is None or e.served.spell != close:
+            self._entries[instrument_id] = dataclasses.replace(e, served=dataclasses.replace(frame, spell=close))
+        return frame
 
     def latest_depth(self, instrument_id: str, now: datetime.datetime) -> Depth | None:
         """The 5-level depth of the instrument's latest packet, or None: not held (never seen, removed or parked), the
         latest packet was not a full frame, or the quote is not AVAILABLE (feed stale / disconnected / ended, or the
-        quote itself invalid or delayed). Staleness is the feed's (``FeedState``), the one limit the quote already
-        uses; a contract's own age is never a limit (a quiet contract keeps its depth, F-32)."""
+        quote itself invalid or delayed). Health is ``FeedState.quote_health``: the feed's word, so an option's own
+        age is not a limit (a quiet contract keeps its depth, F-32); an index quote older than the index age limit is
+        not AVAILABLE (ADR-330 (39)). Lane N A2: an ORDER input, so it reads the latest frame and only while the
+        market is open; closed, the health is STALE and it is None (never a price from a frame the screen hides)."""
         e = self._entries.get(instrument_id)
         if e is None or e.depth is None:
             return None
-        quote = with_feed_health(e.quote, self.feed.health(now))
+        quote = with_feed_health(e.quote, self.feed.quote_health(e.quote, now))
         return e.depth if quote.health is DataHealth.AVAILABLE else None
 
     def depth_after_close(self, instrument_id: str,
                           now: datetime.datetime) -> tuple[Depth | None, DayStats | None] | None:
-        """READ-ONLY display (REQ-080 AC-7, ADR-200 (1)): outside market hours, the last full frame's depth and day
-        values held for a sound quote (``quote.planning_price_usable``), or None (market open, not held, or the quote
+        """READ-ONLY display (REQ-080 AC-7, ADR-200 (1)): outside market hours, the depth and day values of the frame
+        ``get`` serves (the at-close or first-after-close frame, ADR-330 (36)), held for a sound quote
+        (``quote.planning_price_usable``), or None (market open, not held, or the quote
         not sound). NEVER an order input: the Execute price reads ``latest_depth``, which stays AVAILABLE-only."""
         from ofo.marketdata.quote import planning_price_usable  # noqa: PLC0415 - one rule, read where it is used
         e = self._entries.get(instrument_id)
         if e is None or not self.feed.market_closed(now):
             return None
-        if not planning_price_usable(with_feed_health(e.quote, self.feed.health(now)), market_closed=True):
+        # the SAME frame ``get`` serves (``_frame``): a depth price never comes from a later frame than the quote's
+        frame = self._frame(instrument_id, e, now)
+        if frame is None:
             return None
-        return e.depth, e.day_stats
+        if not planning_price_usable(with_feed_health(frame.quote, self.feed.health(now)), market_closed=True):
+            return None
+        return frame.depth, frame.day_stats
 
     def latest_day_stats(self, instrument_id: str, now: datetime.datetime) -> DayStatsAnswer:
         """The day values of the instrument's latest packet, or the reason there are none: not held (never seen,
         removed or parked), the quote is not AVAILABLE (the feed's health, as for depth), or the latest packet was an
-        ltp packet (or a zero index packet) that carries no day fields."""
+        ltp packet (or a zero index packet) that carries no day fields. Lane N A2: closed market -> FEED_NOT_HEALTHY
+        (STALE), so no day value of a later frame shows; the closed-market display reads ``depth_after_close``."""
         e = self._entries.get(instrument_id)
         if e is None:
             return DayStatsAnswer.unavailable(NOT_HELD)
-        if with_feed_health(e.quote, self.feed.health(now)).health is not DataHealth.AVAILABLE:
+        if with_feed_health(e.quote, self.feed.quote_health(e.quote, now)).health is not DataHealth.AVAILABLE:
             return DayStatsAnswer.unavailable(FEED_NOT_HEALTHY)
         if e.day_stats is None:
             return DayStatsAnswer.unavailable(PACKET_WITHOUT_DAY_FIELDS)
         return DayStatsAnswer(e.day_stats)
 
     def quotes(self, now: datetime.datetime) -> list[NormalizedQuote]:
-        health = self.feed.health(now)
-        return [with_feed_health(e.quote, health) for e in self._entries.values()]
+        closed = self.feed.market_closed(now)
+        frames = [self._frame(iid, e, now) for iid, e in list(self._entries.items())
+                  if closed or iid not in self._seeded]
+        return [with_feed_health(f.quote, self.feed.quote_health(f.quote, now)) for f in frames if f is not None]

@@ -135,6 +135,24 @@ def _check_user_text(user_text: object, parts: list[str]) -> tuple[str, ...]:
     return user_text
 
 
+_PASSED_MAX = 4096
+_PASSED: dict[str, None] = {}  # exact texts the checker passed; a refusal is never stored (re-raised)
+
+
+def _scan(text: object, where: str) -> None:
+    """`ofo.wording.check_platform_text`, once per distinct exact text (REQ-049 AC-4: one check re-read the same few
+    messages ~150 times, ~25 ms of the event loop). The checker is pure in the text and the builder runs
+    `verify_checker()` before every build and read, so a swapped checker still fails closed first (ADR-056 (1)). Only
+    a PASS of an exact `str` is remembered: a refused text, a non-str and a blank all go to the checker every time."""
+    if type(text) is str and text in _PASSED:
+        return
+    _wording.check_platform_text(text, where)
+    if type(text) is str:
+        if len(_PASSED) >= _PASSED_MAX:
+            _PASSED.clear()
+        _PASSED[text] = None
+
+
 def _checked(fields: Mapping[str, Any]) -> Mapping[str, Any]:
     """Every check a message must pass, run by the builder on every build AND by `_fields_of` on
     every read (Q230: "The checks run inside the one function that builds a message, so no
@@ -163,11 +181,11 @@ def _checked(fields: Mapping[str, Any]) -> Mapping[str, Any]:
     seen: dict[str, str] = {}
     for name in _PART_NAMES:  # exact str first, before any user-text masking reads it
         if type(fields[name]) is not str:
-            _wording.check_platform_text(fields[name], f"UserFacingError.{name}")
+            _scan(fields[name], f"UserFacingError.{name}")
     user_text = _check_user_text(fields.get(_USER_TEXT_FIELD, ()), [fields[n] for n in _PART_NAMES])
     for name in _PART_NAMES:
         text = _masked(fields[name], user_text)
-        _wording.check_platform_text(text, f"UserFacingError.{name}")
+        _scan(text, f"UserFacingError.{name}")
         key = _wording.normalise_for_duplicate_check(text)
         if key in seen:
             raise ValueError(f"UserFacingError.{name} is a duplicate of {seen[key]}: {text!r}")

@@ -55,7 +55,7 @@ beforeEach(() => {
 // a row as its three cells: the Leg cell is the B/S chip then the instrument text
 const legRows = (w) => w.findAll('[data-testid="tracking-leg"]').map((r) => {
   const [leg, entry, ltp] = r.findAll('td')
-  return [`${leg.get('[data-testid="chip"]').text()} ${leg.get('[data-testid="instrument-text"]').text()}`, entry.text(), ltp.text()]
+  return [`${leg.get('[data-testid="chip"]').text()} ${leg.get('[data-testid="instrument-text"]').text()}`, entry.text(), ltp.get('[data-testid="tracking-leg-ltp"]').text()]
 })
 
 async function panel() {
@@ -288,5 +288,13 @@ describe('live #603 item 1: one minus character on the panel (REQ-152 AC-4, ADR-
   })
   it('a total without the server text is unreadable (fail closed), the browser forms no sign', () => {
     expect(readTracking(body({ paper_pnl: '-19.50', paper_pnl_text: null })).kind).toBe('invalid')
+  })
+})
+
+describe('D-41 (modular doors, Phase 3): the contract id of a leg', () => {
+  it('readTracking carries contractId from the reply\'s contract_id; key stays the feed identity; an older reply without it has none', () => {
+    const r = readTracking(body({ legs: [{ ...legs[0], contract_id: 5001 }, legs[1]] }))
+    expect(r.legs.map((l) => l.contractId)).toEqual([5001, undefined])
+    expect(r.legs.map((l) => l.key)).toEqual(['NSE_FO:44624', 'NSE_FO:44604'])
   })
 })

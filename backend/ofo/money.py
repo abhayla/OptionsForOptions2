@@ -20,6 +20,12 @@ def to_paise(value: Decimal) -> Decimal:
     return value.quantize(PAISE)
 
 
+def shown_price(value: Decimal) -> Decimal:
+    """A price as the paper reply SHOWS it: rounded HALF-UP to the paisa. The one rounding of the paper book's average
+    entry and exit, so a screen's price and the server's comparison of it can never disagree (GC-ICLIVE-B D-15)."""
+    return value.quantize(PAISE, rounding=ROUND_HALF_UP)
+
+
 def zerodha_paise(value: Decimal | int) -> Decimal:
     """One Kite money figure rounded HALF-UP to the paisa (ADR-099, ADR-101), where the figure is parsed.
 

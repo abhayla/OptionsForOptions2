@@ -90,7 +90,7 @@ async def test_ac1_an_empty_name_is_refused_with_the_catalogue_message_and_store
                 before = len((await ac.get("/strategies")).json()["strategies"])
                 refused = await _post(ac, ids, name)
                 assert (refused.status_code, refused.json()["code"]) == (422, EMPTY_NAME_CODE), refused.text
-                assert refused.json()["what_happened"] == "The strategy has no name."
+                assert refused.json()["what_happened"] == "Give the strategy a name."
                 assert len((await ac.get("/strategies")).json()["strategies"]) == before
         finally:
             await trans.rollback()
@@ -290,6 +290,23 @@ async def test_ac3_a_stale_revision_is_refused_409_and_writes_nothing(app_engine
             await trans.rollback()
 
 
+async def test_d65_a_rename_without_a_revision_is_refused_422_and_writes_nothing(app_engine):
+    """GC-ICLIVE D-65: the route still requires the revision (a null one is the 24 Nov refusal "values missing or not in
+    the expected form"); the browser's one rename call reads it first, the server enforces it on every path."""
+    async with app_engine.connect() as conn:
+        trans = await conn.begin()
+        try:
+            _, stored = await _with_draft(conn, user := _user())
+            before = await _snapshot(conn, stored.id)
+            async with _client(_app(_ConnMaker(conn), user)) as ac:
+                for sent in ({"name": "Late", "expected_revision": None}, {"name": "Late"}):
+                    refused = await ac.patch(f"/strategies/{stored.id}/name", json=sent)
+                    assert refused.status_code == HTTPStatus.UNPROCESSABLE_ENTITY, refused.text
+            assert await _snapshot(conn, stored.id) == before
+        finally:
+            await trans.rollback()
+
+
 @pytest.mark.parametrize("name,code", [("", EMPTY_NAME_CODE), ("   ", EMPTY_NAME_CODE),
                                        ("x" * 21, INVALID_NAME_CODE), ("x" * 41, INVALID_NAME_CODE)])
 async def test_ac3_a_rename_follows_the_same_name_rules(app_engine, name, code):
@@ -352,8 +369,10 @@ async def test_ac6_another_user_cannot_list_read_or_rename_a_strategy_and_the_an
                 rename = await ac.patch(f"/strategies/{mine.id}/name", json={"name": "Stolen", "expected_revision": 1})
                 missing = await ac.patch(f"/strategies/{MISSING_ID}/name",
                                          json={"name": "Stolen", "expected_revision": 1})
-            assert listed.json() == {"strategies": []} and "Private" not in listed.text
-            assert (read.status_code, read.json()["code"]) == (404, NOT_FOUND_CODE)
+            # the list reply also carries the server's shown_date (U-Q8, REQ-148 AC-2); no strategy of another user
+            assert listed.json()["strategies"] == [] and "Private" not in listed.text
+            # opening by id answers strategy_not_found (ADR-330 (37), REQ-134 AC-5)
+            assert (read.status_code, read.json()["code"]) == (404, "STRATEGY_VALIDATION_523")
             assert (rename.status_code, rename.json()) == (missing.status_code, missing.json()) == (404, missing.json())
             assert "Private" not in rename.text + read.text
             assert await _snapshot(conn, mine.id) == before
@@ -379,7 +398,9 @@ async def test_ac4_the_list_carries_underlying_first_leg_leg_count_and_the_track
                 listed = await ac.get("/strategies")
             by_id = {s["id"]: s for s in listed.json()["strategies"]}
             row = by_id[tracked.id]
-            assert row["underlying"] == "NIFTY" and row["leg_count"] == LEG_COUNT
+            assert row["underlying"] == "NIFTY"
+            assert row["leg_count"] == 1  # D-42: the one leg with a paper order, not the saved definition's LEG_COUNT
+            assert by_id[untracked.id]["leg_count"] == LEG_COUNT  # no paper order: the saved legs stand
             assert row["first_leg"] == {"instrument": "CE", "strike": "22800.00", "expiry": "2026-10-13"}
             assert datetime.datetime.fromisoformat(row["updated_at"]) == tracked.updated_at
             assert (row["tracked"], by_id[untracked.id]["tracked"]) == (True, False)

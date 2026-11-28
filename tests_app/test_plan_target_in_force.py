@@ -96,10 +96,11 @@ async def test_empty_and_absent_target_keep_their_meaning(monkeypatch):
     assert (await resolved(monkeypatch, old)).body["triggers"]["T-07"] == BODY["triggers"]["T-07"]
 
 
-async def test_no_plan_follows_the_playbook(monkeypatch):
-    body = (await resolved(monkeypatch, None)).body
-    assert body["triggers"]["T-07"]["weekly"] == ["50", "50", "80"]
-    assert t07(body, "48.75") is None
+async def test_no_plan_is_watched_by_nothing(monkeypatch):
+    """Was (old): no plan followed the playbook (T-07 50 / 50 / 80). ADR-330 (11): a playbook is only a source to copy
+    from when a plan is made; a strategy with no plan has no body to evaluate, so no T-07 flag."""
+    got = await resolved(monkeypatch, None)
+    assert (got.source, got.body, got.playbook_id) == ("none", None, None)
 
 
 @pytest.mark.parametrize("raw", ["abc", "0", "-5", "101", None, 7])

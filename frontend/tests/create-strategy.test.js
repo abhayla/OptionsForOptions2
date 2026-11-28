@@ -9,6 +9,9 @@ import { expandTemplate, expiryLabels, matchTemplates, rangeLists, readingFromRa
 const posts = []
 let plannedPrice = '120.50'
 let level = '22812.40' // the fake index level
+let indicesExtra = {} // ADR-212: the market-closed fields of the fake /market/indices answer
+let indicesFail = false
+let listNotice = null // ADR-330 (61): the expiries answer's list_notice
 let contractsNow = null // null = CONTRACTS
 let templatesReply = null // null = answer at once; else a promise the test settles (a slow templates route)
 const leg = (action, instrument, strike_steps) => ({ action, instrument, strike_steps, expiry_slot: 'near', quantity_multiplier: 1 })
@@ -39,9 +42,12 @@ vi.mock('@/services/api', async (importActual) => {
     get: (url) => {
       if (url === '/settings') return settingsReply ?? Promise.resolve({ data: { groups: [{ name: 'Limits', settings: Object.entries(SERVED).map(([key, value]) => ({ key, value })) }], charges: null } })
       if (url === '/strategy-templates') return templatesReply ?? Promise.resolve({ data: TEMPLATES })
-      if (url === '/catalogue/NIFTY/expiries') return Promise.resolve({ data: { underlying: 'NIFTY', today: '2026-10-10', expiries: ['2026-10-13', '2026-10-20', '2026-10-27'] } })
+      if (url === '/catalogue/NIFTY/expiries') return Promise.resolve({ data: { underlying: 'NIFTY', today: '2026-10-10', expiries: ['2026-10-13', '2026-10-20', '2026-10-27'], list_notice: listNotice } })
       if (url.startsWith('/catalogue/NIFTY/contracts')) return Promise.resolve({ data: { underlying: 'NIFTY', contracts: contractsNow ?? CONTRACTS } })
-      if (url === '/market/indices') return Promise.resolve({ data: { state: 'LIVE', indices: [{ underlying: 'NIFTY', value: level }] } })
+      if (url === '/market/indices') {
+        if (indicesFail) return Promise.reject({ parts: { what_happened: 'Index read failed', impact: 'i', what_is_blocked: 'b', next_action: 'n' } })
+        return Promise.resolve({ data: { state: 'LIVE', indices: [{ underlying: 'NIFTY', value: level }], ...indicesExtra } })
+      }
       return Promise.reject(new Error(url))
     },
     post: (url, body) => {
@@ -76,7 +82,7 @@ async function toResults(w, objective, view) {
   await flushPromises()
 }
 
-beforeEach(() => { posts.length = 0; plannedPrice = '120.50'; level = '22812.40'; contractsNow = null; templatesReply = null; settingsReply = null; entryGuideReply = {} })
+beforeEach(() => { listNotice = null; indicesExtra = {}; indicesFail = false; posts.length = 0; plannedPrice = '120.50'; level = '22812.40'; contractsNow = null; templatesReply = null; settingsReply = null; entryGuideReply = {} })
 
 // ADR-300 (GC-ICFIX P2): the card prints the server's entry-guide line when the condor breaks the guide, and the server's
 // "could not check" line when it cannot tell; nothing when within. The page compares nothing; Save-path buttons stay on.
@@ -394,5 +400,103 @@ describe('guided helpers', () => {
   it('REQ-028: a template leg that is not a listed contract drops the template, never a substitute strike', () => {
     expect(expandTemplate(TEMPLATES.templates[0], CONTRACTS.filter((c) => c.exchange_token !== 6), '22812.40')).toBeNull()
     expect(expandTemplate({ legs: [{ ...leg('BUY', 'CE', 0), expiry_slot: 'far' }] }, CONTRACTS, '22812.40')).toBeNull()
+  })
+})
+
+// UX-06 (Lane L, 27 Nov): Show strategies is grey with a short reason until it can work (no expiry chosen yet), and plain after.
+describe('UX-06 Show strategies says why it is grey', () => {
+  it('no expiry: disabled with the reason; after the expiry is picked: enabled, no reason', async () => {
+    const { w } = await mountPage()
+    await w.find('[data-testid="path-guided"]').trigger('click')
+    await pick(w, 'objective', 'know')
+    const btn = () => w.find('[data-testid="show-strategies"]')
+    expect(btn().attributes('disabled')).toBeDefined()
+    expect(w.find('[data-testid="show-strategies-why"]').text()).toBe('Choose an expiry first.')
+    await w.find('[data-testid="pick-expiry"]').setValue('2026-10-13')
+    await flushPromises()
+    expect(btn().attributes('disabled')).toBeUndefined()
+    expect(w.find('[data-testid="show-strategies-why"]').exists()).toBe(false)
+  })
+})
+
+// ADR-212 (27 Nov): before the open the index answer carries the last close; Create Strategy uses it, labelled by the one
+// market-closed banner with its time, and says "Not available" only when no close is held either.
+describe('ADR-212: the level before the open is the last close', () => {
+  const CLOSED = { state: 'NOT_CONNECTED', market_closed: true, last_price_at: '2026-11-26T15:30:00+05:30' }
+  const toStep3 = async (w) => {
+    await w.find('[data-testid="path-guided"]').trigger('click')
+    await pick(w, 'objective', 'earn-premium')
+    await pick(w, 'market-view', 'neutral')
+    await flushPromises()
+  }
+
+  it('pre-open with a held close: no "Not available", the banner names the close time, Show strategies works', async () => {
+    indicesExtra = CLOSED
+    const { w } = await mountPage()
+    await toStep3(w)
+    expect(w.find('[data-testid="no-level"]').exists()).toBe(false)
+    expect(w.get('[data-testid="market-closed-text"]').text()).toBe('Market closed. Prices are from 26 Nov 2026, 15:30:00 IST.')
+    await w.find('[data-testid="pick-expiry"]').setValue('2026-10-13')
+    await flushPromises()
+    expect(w.get('[data-testid="show-strategies"]').attributes('disabled')).toBeUndefined()
+  })
+
+  it('live level: no banner, no "Not available"', async () => {
+    const { w } = await mountPage()
+    await toStep3(w)
+    expect(w.find('[data-testid="no-level"]').exists()).toBe(false)
+    expect(w.find('[data-testid="market-closed-banner"]').exists()).toBe(false)
+  })
+
+  it('no close held: "Not available" with its reason stays, the banner too', async () => {
+    indicesExtra = CLOSED
+    level = null
+    const { w } = await mountPage()
+    await toStep3(w)
+    expect(w.get('[data-testid="no-level"]').text()).toBe('Not available: The current level of this index is not available, so strategies cannot be set up yet.')
+  })
+
+  it('request failed: the error shows and no banner is made up', async () => {
+    indicesFail = true
+    const { w } = await mountPage()
+    await toStep3(w)
+    expect(w.find('[data-testid="create-error"]').exists()).toBe(true)
+    expect(w.find('[data-testid="market-closed-banner"]').exists()).toBe(false)
+  })
+})
+
+// Lane FC2 (R2, 28 Nov) UX-B04: step 4 "Loading..." lasted 10 to 20 s with no words. It now says what is being read and that it
+// can take up to 20 seconds; the counts are the page's own (contracts asked, strategies priced), no invented figure.
+describe('UX-B04 step 4 says what it is reading', () => {
+  it('while the template list is pending: names the strategy list and the 20 s; gone once the cards are in', async () => {
+    let settle
+    templatesReply = new Promise((resolve, reject) => { settle = { resolve, reject } })
+    const { w } = await mountPage()
+    await toResults(w, 'know', null)
+    const p = w.get('[data-testid="results-progress"]').text()
+    expect(p).toContain('Reading the strategy list')
+    expect(p).toContain('up to 20 seconds')
+    settle.resolve({ data: TEMPLATES })
+    await flushPromises()
+    expect(w.find('[data-testid="results-progress"]').exists()).toBe(false)
+    expect(w.find('[data-testid="results-loading"]').exists()).toBe(false)
+  })
+})
+
+// Lane FC2 (R2, 28 Nov) ADR-330 (61): the contract-list line is on step 3 too, from the same server field.
+describe('ADR-330 (61): the contract-list line on Create Strategy', () => {
+  const LINE = "Contract list of 27 Nov 2026. Today's list loads at about 08:35."
+  const toStep3 = async (w) => { await w.find('[data-testid="path-guided"]').trigger('click'); await pick(w, 'objective', 'earn-premium'); await pick(w, 'market-view', 'neutral') }
+  it('step 3 shows the server line as sent', async () => {
+    listNotice = LINE
+    const { w } = await mountPage()
+    await toStep3(w)
+    expect(w.get('[data-testid="contract-list-notice"]').text()).toBe(LINE)
+  })
+  it.each([[null], [''], [7]])('step 3 shows nothing when the field is %s', async (v) => {
+    listNotice = v
+    const { w } = await mountPage()
+    await toStep3(w)
+    expect(w.find('[data-testid="contract-list-notice"]').exists()).toBe(false)
   })
 })

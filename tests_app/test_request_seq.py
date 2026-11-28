@@ -200,7 +200,7 @@ async def _execute_db_free(monkeypatch, seq):
     monkeypatch.setattr(route, "_execute", built)
     body = route.ExecuteIn(action="ENTRY", revision=3, **({} if seq is None else {"seq": seq}))
     now = datetime.datetime(2026, 10, 8, 10, 0, tzinfo=datetime.UTC)
-    out = await route.execute_strategy(7, body, object(), None, lambda: now, _FakeDb(), "u", None)
+    out = await route.execute_strategy(7, body, object(), None, lambda: now, _FakeDb(), "u", None, None)
     return out, built_out
 
 

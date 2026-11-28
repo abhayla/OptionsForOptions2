@@ -60,7 +60,7 @@ def _body() -> dict:
 
 
 def _readings(state: pe.StrategyState):
-    return gate_readings.readings(pe.evaluate(_body(), state, gap_until="09:30"))
+    return gate_readings.readings(pe.evaluate(_body(), state, gap_until="09:30"), stops=frozenset())
 
 
 def test_a_watch_reaches_the_gate_as_a_yes_no_reading():

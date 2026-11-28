@@ -22,10 +22,11 @@ Transaction control (commit) stays with the caller.
 
 from __future__ import annotations
 
+
 import dataclasses
 from dataclasses import dataclass
 from datetime import datetime
-from typing import Any, Iterable, Mapping, Optional, Sequence
+from typing import Any, Iterable, Literal, Mapping, Optional, Sequence
 
 from sqlalchemy import text
 
@@ -47,6 +48,7 @@ VERSION_NOT_FOUND = "version_not_found"
 RECONCILIATION_REQUIRED = "reconciliation_required"
 #: W-156 (REQ-070 AC-6, ADR-118): a strategy that sent a basket (any plan row or version row) is never deleted.
 DELETE_AFTER_BASKET = "delete_after_basket"
+DELETE_HELD_AT_BROKER = "delete_held_at_broker"  # ADR-292: the refusal is the held entry alone, not a sent basket
 
 
 class StrategyStoreError(ValueError):
@@ -83,6 +85,8 @@ class StrategySummary:
     scenario_id: str | None = None  # IC e2e decision 3: the scenario marker (None = a real strategy)
     has_paper_order: bool = False  # ADR-271: picks the refusal wording ("paper orders were placed")
     has_order: bool = False  # ADR-299: any placed order, practice or real (the status word's one input)
+    held_at_broker: bool = False  # ADR-292 / ADR-330 (8): a held entry exists; Delete shows the held sentence
+    revision: int = 0  # N-30: saved revision (0 = not read)
 
 
 @dataclass(frozen=True)
@@ -124,10 +128,78 @@ _DELETABLE_SQL = ("(NOT EXISTS (SELECT 1 FROM public.execution_plans p WHERE p.s
                   # ADR-292: a condor held at the broker is a REAL position stored as practice orders: never deletable
                   "AND NOT EXISTS (SELECT 1 FROM public.strategy_held_entries h WHERE h.strategy_id = s.id))")
 _DELETABLE = text(f"SELECT {_DELETABLE_SQL} AS can_delete FROM public.strategies AS s WHERE s.id = :id")  # noqa: S608
+#: ADR-292: ONE rule for "held at the broker" (a held entry exists), read by the list flag and by the delete reason.
+_HELD_SQL = "EXISTS (SELECT 1 FROM public.strategy_held_entries hh WHERE hh.strategy_id = s.id)"
+_HELD = text(f"SELECT {_HELD_SQL} AS held FROM public.strategies AS s WHERE s.id = :id")  # noqa: S608
 _HAS_PAPER_SQL = "EXISTS (SELECT 1 FROM public.paper_orders o WHERE o.strategy_id = s.id)"
 #: ADR-299 / ADR-298: "an order was placed", practice OR real, in ONE place: a paper order, or an execution plan
 #: (a basket was sent to the broker). The one status word on every screen reads this (Draft = no order yet).
 _HAS_ORDER_SQL = (f"({_HAS_PAPER_SQL} OR EXISTS (SELECT 1 FROM public.execution_plans xp WHERE xp.strategy_id = s.id))")
+_HAS_ORDER = text(f"SELECT {_HAS_ORDER_SQL} AS has_order FROM public.strategies AS s WHERE s.id = :id")  # noqa: S608
+
+StatusWord = Literal["Draft", "Running", "Completed", "Unknown"]
+
+
+def status_word(status: str | None, has_order: bool) -> StatusWord:
+    """ADR-299 (owner 2026-11-13, D6) / GC-ICLIVE D-28: THE one function that names a strategy's state, read by every
+    route that carries a strategy (strategies, paper book, paper list). The stored status is draft or closed (alembic
+    0049, ADR-259); "Draft" is no order yet, "Running" an order with the row still open, "Completed" every leg closed. A
+    status this function does not know is "Unknown", never guessed as Draft."""
+    if status == "closed":
+        return "Completed"
+    if status == "draft":
+        return "Running" if has_order else "Draft"
+    return "Unknown"
+
+
+_KINDS = text(
+    f"SELECT s.id AS id, {_HAS_ORDER_SQL} AS has_order, {_HAS_PAPER_SQL} AS has_paper_order, {_HELD_SQL} AS held "  # noqa: S608
+    "FROM public.strategies AS s WHERE s.id = ANY(:ids)")
+
+
+async def kinds_of(conn: Any, strategy_ids: list[int]) -> dict[int, str]:
+    """ADR-330 (64): strategy id -> position kind (position_kind.kind_of) for the asked ids, one read. An id not found
+    is "unknown" (never guessed as paper). A read that fails PROPAGATES (``SQLAlchemyError``): the old catch-all
+    answered "unknown" for every id, and the aborted transaction then failed the next statement and hid the cause (the class of
+    #858). The caller refuses or answers 5xx with the catalogue sentence; it never reads "no kinds" as an answer."""
+    from ofo_app import position_kind  # noqa: PLC0415 - one rule, defined beside the sentence
+    ids = sorted(set(strategy_ids))
+    if not ids:
+        return {}
+    out = dict.fromkeys(ids, position_kind.UNKNOWN)
+    for r in (await conn.execute(_KINDS, {"ids": ids})).all():
+        out[int(r.id)] = position_kind.kind_of(r.has_order, r.has_paper_order, r.held)
+    return out
+
+
+async def paper_order_refused(conn: Any, strategy_id: int, order_kinds: Iterable[str]) -> bool:
+    """FD5 N1 (ADR-330 (64), (58)): True when a USER paper order of these kinds must be refused for this strategy. An
+    unreadable kind (or a strategy not found) always refuses (fail closed); a REAL position that is not held at a
+    broker (a basket was sent and no paper order exists) takes no paper order of any kind, because the order would
+    turn its kind from real to paper; a held entry (ADR-292 (4): the user records each broker change with the paper
+    forms) refuses only an exit (ADR-330 (64): no exit here), and its kind stays real whatever is recorded. A read
+    that fails answers the not-available refusal (nothing stored)."""
+    from sqlalchemy.exc import SQLAlchemyError  # noqa: PLC0415 - only this answer needs it
+
+    try:
+        kind = (await kinds_of(conn, [strategy_id])).get(strategy_id, "unknown")
+    except SQLAlchemyError:  # FD5 D (F4): a failed kind read is a refusal with a catalogue sentence, never a bare 500
+        from ofo_app.errors import Failure  # noqa: PLC0415
+        from ofo_app.strategy_refused import StrategyRefused  # noqa: PLC0415
+        raise StrategyRefused("user_input_request_not_available", Failure.UPSTREAM_BUSY) from None
+    if kind == "unknown":
+        return True
+    if kind != "real":
+        return False
+    held = bool((await conn.execute(_HELD, {"id": strategy_id})).scalar())
+    return not held or "exit" in set(order_kinds)
+
+
+async def has_order(conn: Any, strategy_id: int) -> bool:
+    """ADR-299: whether ANY order (practice or real) exists for the strategy: the same fragment the list selects."""
+    return bool((await conn.execute(_HAS_ORDER, {"id": strategy_id})).scalar())
+
+
 _CAN_DELETE = text(f"SELECT {_CAN_DELETE_SQL} AS can_delete FROM public.strategies AS s WHERE s.id = :id")  # noqa: S608
 _SELECT_HIDDEN = text(f"SELECT {_COLUMNS} FROM public.strategies WHERE id = :id AND user_ref = :user_ref "  # noqa: S608
                       "AND deleted_at IS NOT NULL FOR UPDATE")
@@ -142,14 +214,17 @@ _SELECT_FOR_UPDATE = text(
 #: The list reads the ACTIVE definition like ``load`` does (the active version's after the first execution, else the
 #: row's), only for the signed-in user's rows (REQ-134 AC-6).
 _LIST = text(
-    "SELECT s.id, s.underlying, s.status, s.created_at, s.updated_at, s.name, s.scenario_id, "
+    "SELECT s.id, s.underlying, s.status, s.created_at, s.updated_at, s.name, s.scenario_id, s.revision, "
     f"{_DELETABLE_SQL} AS can_delete, {_HAS_PAPER_SQL} AS has_paper_order, "
-    f"{_HAS_ORDER_SQL} AS has_order, "
+    f"{_HAS_ORDER_SQL} AS has_order, {_HELD_SQL} AS held_at_broker, "
     "d.definition -> 'legs' AS legs "
     "FROM public.strategies AS s "
     "CROSS JOIN LATERAL (SELECT coalesce((SELECT v.definition FROM public.strategy_versions AS v "
     "WHERE v.strategy_id = s.id AND v.state = 'active'), s.definition) AS definition) AS d "
     "WHERE s.user_ref = :user_ref AND s.deleted_at IS NULL ORDER BY s.id")
+#: The ONE ownership read (modular-doors Phase 7 R2): the strategy exists, is this user's and is not hidden. Another
+#: user's, a hidden and a missing strategy answer alike (False), so the caller keeps its own error.
+_OWNED = text("SELECT 1 FROM public.strategies WHERE id = :s AND user_ref = :u AND deleted_at IS NULL")
 _RENAME = text("UPDATE public.strategies SET name = :name WHERE id = :id RETURNING id, name, revision, updated_at")
 _INSERT_HISTORY = text(
     "INSERT INTO public.strategy_history (strategy_id, change_summary, definition, definition_schema_version) "
@@ -317,6 +392,15 @@ async def _deletable(conn: Any, strategy_id: int) -> bool:
         return False
 
 
+async def _held(conn: Any, strategy_id: int) -> bool:
+    """True when a held entry exists (ADR-292: the more specific reason). Unreadable -> False (orders sentence)."""
+    try:
+        async with conn.begin_nested():
+            return (await conn.execute(_HELD, {"id": strategy_id})).scalar_one() is True
+    except Exception:  # noqa: BLE001 - an unreadable answer keeps the orders sentence
+        return False
+
+
 async def delete_draft(conn: Any, user_ref: str, strategy_id: int, *, expected_revision: int) -> None:
     """REQ-070 AC-6 / ADR-118: hides a strategy that never sent a basket; the row and its history stay. The decision is
     read inside the strategy's row lock, so a plan creation (which takes the same lock) serializes with it. An
@@ -325,7 +409,10 @@ async def delete_draft(conn: Any, user_ref: str, strategy_id: int, *, expected_r
         row = await _locked(conn, user_ref, strategy_id)
         _check_revision(row, expected_revision)
         if not await _deletable(conn, row.id):
+            if await _held(conn, row.id):
+                raise StrategyStoreError(DELETE_HELD_AT_BROKER, f"strategy {strategy_id} is held at the broker")
             raise StrategyStoreError(DELETE_AFTER_BASKET, f"strategy {strategy_id} sent a basket or may have")
+        await _write_history(conn, row.id, sf.delete_summary(), row.definition_text)  # ADR-330 (31): same savepoint
         await conn.execute(_SET_DELETED, {"id": row.id})
 
 
@@ -338,6 +425,7 @@ async def undelete_draft(conn: Any, user_ref: str, strategy_id: int, *, expected
         if row is None:
             raise StrategyStoreError(NOT_FOUND, f"strategy {strategy_id}")
         _check_revision(row, expected_revision)
+        await _write_history(conn, row.id, sf.undelete_summary(), row.definition_text)  # ADR-330 (31): same savepoint
         await conn.execute(_CLEAR_DELETED, {"id": row.id})
     return await load(conn, user_ref, row.id)
 
@@ -401,12 +489,16 @@ async def update(conn: Any, user_ref: str, strategy_id: int, saved: sf.SavedDefi
     return _stored(written, saved)
 
 
+#: Items that are not a change of the configuration (REQ-134 AC-3, ADR-330 (31)): the entry holds the definition that
+#: was already current, so it is shown but never offered for Restore.
+_NOT_A_CONFIGURATION = frozenset({"renamed", "deleted", "undeleted"})
+
+
 def _is_rename_only(change_summary: str) -> bool:
-    """A history entry whose items are all ``renamed`` is shown but is not a restore target (it holds the definition
-    that was already current when the name changed)."""
+    """A history entry whose items are all ``renamed`` (or a delete / Undo) is shown but is not a restore target."""
     items = sf.parse_json(change_summary)
     return isinstance(items, list) and bool(items) and all(
-        isinstance(i, dict) and i.get("kind") == "renamed" for i in items)
+        isinstance(i, dict) and i.get("kind") in _NOT_A_CONFIGURATION for i in items)
 
 
 def is_restore_target(change_summary: str, sent_nothing: object) -> bool:
@@ -742,7 +834,8 @@ async def list_strategies(conn: Any, user_ref: str) -> list[StrategySummary]:
     rows = (await conn.execute(_LIST, {"user_ref": user_ref})).all()
     return [StrategySummary(int(r.id), r.underlying, r.status, r.created_at, r.updated_at, r.name,
                             len(r.legs), _first_leg(r.legs), r.can_delete is True, r.scenario_id,
-                            r.has_paper_order is True, r.has_order is True) for r in rows]
+                            r.has_paper_order is True, r.has_order is True, r.held_at_broker is True,
+                            int(r.revision)) for r in rows]
 
 
 def _first_leg(legs: Sequence[Mapping[str, Any]]) -> FirstLeg:
@@ -760,3 +853,8 @@ async def history(conn: Any, user_ref: str, strategy_id: int) -> list[sf.History
         out.append(sf.HistoryEntry(int(r.seq), r.at, r.change_summary, await _read(conn, r.definition_text),
                                    restorable=is_restore_target(r.change_summary, sent_nothing)))
     return out
+
+
+async def owns(conn: Any, user_ref: str, strategy_id: int) -> bool:
+    """True only for a visible (not soft-deleted) strategy of ``user_ref``; no error, no lock, no write."""
+    return (await conn.execute(_OWNED, {"s": strategy_id, "u": user_ref})).first() is not None

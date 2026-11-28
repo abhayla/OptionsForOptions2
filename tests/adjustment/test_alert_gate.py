@@ -1,4 +1,4 @@
-"""GC-ALERT1 step 1: the pure alert gate (REQ-170 AC-1..AC-5, ADR-236), proven first on the real 2026-11-02 T-07
+"""GC-ALERT1 step 1: the pure alert gate (REQ-170 AC-1..AC-5, ADR-236), proven first on the real 2026-11-02 T-14
 paths of strategies 66 and 67 (live system: 30 and 23 records)."""
 from __future__ import annotations
 
@@ -26,6 +26,20 @@ def at(hhmm: str, day: date = DAY) -> datetime:
 
 def opened(events):
     return [e for e in events if isinstance(e, ag.Opened)]
+
+
+def escalated(events):
+    return [e for e in events if isinstance(e, ag.Escalated)]
+
+
+def feed_answering(first, rest, spec=None, **kw):
+    """ADR-330 (3): an unanswered record never re-opens; a re-arm needs the record ANSWERED first. `first` is fed, the
+    rule's record is answered, then `rest`; returns (state, events of both)."""
+    spec = spec or T07
+    state, ev = feed(first, spec=spec, **kw)
+    state = ag.answered(state, spec.rule_id)
+    state, ev2 = feed(rest, spec=spec, state=state, **{k: v for k, v in kw.items() if k != "state"})
+    return state, ev + ev2
 
 
 def held(events):
@@ -63,7 +77,7 @@ def test_replay_without_gate_crosses_many_times(case):
 
 
 D = Decimal
-T07 = ag.RuleSpec("T-07", "ge", (D("80"), D("90")))
+T07 = ag.RuleSpec("T-14", "ge", (D("80"), D("90")))
 
 
 def feed(samples, spec=T07, preset=ag.INTRADAY, state=None, day=DAY):
@@ -94,8 +108,7 @@ def test_wobble_inside_candle_ending_below_gives_no_record():
 
 # 3. Re-arm: band AND cool-down
 def test_rearm_needs_band_and_cooldown():
-    samples = [("10:40:30", D("81")), ("10:41:30", D("71")), *minutes("10:42", 5, D("81"))]
-    state, ev = feed(samples)
+    state, ev = feed_answering([("10:40:30", D("81")), ("10:41:30", D("71"))], minutes("10:42", 5, D("81")))
     state, ev2 = flush(state, "10:47:05")
     got = opened(ev + ev2)
     assert [(e.at.time(), e.level, e.worse) for e in got] == [(time(10, 41), 0, None), (time(10, 46), 0, None)]
@@ -110,7 +123,7 @@ def test_clear_by_less_than_band_never_reopens():
 def _opened_then_dismissed():
     state, ev = feed([("10:40:30", D("81")), ("10:41:05", D("81"))])
     assert len(opened(ev)) == 1
-    return ag.dismiss(state, "T-07")
+    return ag.dismiss(state, "T-14")
 
 
 def test_dismiss_then_same_level_stays_quiet():
@@ -136,7 +149,7 @@ def test_dismiss_then_next_level_over_cap_is_held_not_dropped():
     preset = replace(ag.INTRADAY, daily_cap=1)
     state, ev = feed([("10:40:30", D("81")), ("10:41:05", D("81"))], preset=preset)
     assert len(opened(ev)) == 1
-    state = ag.dismiss(state, "T-07")
+    state = ag.dismiss(state, "T-14")
     _, ev = feed([("10:41:30", D("91")), *minutes("10:42", 5, D("91"))], preset=preset, state=state)
     assert [(type(e), e.reason, e.level) for e in ev] == [(ag.Held, ag.HELD_DAILY_LIMIT, 1)]
 
@@ -144,15 +157,15 @@ def test_dismiss_then_next_level_over_cap_is_held_not_dropped():
 def test_dismiss_the_worse_one_then_same_worse_level_stays_quiet():
     state, ev = feed([("10:41:30", D("91")), ("10:42:05", D("91"))], state=_opened_then_dismissed())
     assert len(opened(ev)) == 1
-    _, ev = feed(minutes("10:42", 30, D("92")), state=ag.dismiss(state, "T-07"))
+    _, ev = feed(minutes("10:42", 30, D("92")), state=ag.dismiss(state, "T-14"))
     assert ev == []
 
 
 # 5. Escalation without dismiss
 def test_escalation_without_dismiss_is_worse_than_last_and_ignores_cooldown():
     _, ev = feed([("10:40:30", D("81")), ("10:41:30", D("90")), ("10:42:05", D("90"))])
-    got = [(e.level, e.worse, e.at.time()) for e in opened(ev)]
-    assert got == [(0, None, time(10, 41)), (1, "last", time(10, 42))]
+    assert [(e.level, e.worse, e.at.time()) for e in opened(ev)] == [(0, None, time(10, 41))]
+    assert [(e.level, e.worse, e.at.time()) for e in escalated(ev)] == [(1, "last", time(10, 42))]  # the open alert
 
 
 def test_jump_two_levels_at_once_gives_one_record_at_the_higher_level():
@@ -197,7 +210,7 @@ def test_candle_with_only_none_has_no_close():
     state, ev = feed([("10:40:10", None), ("10:40:40", None)])
     state, ev2 = flush(state, "10:41:05")
     assert ev + ev2 == []
-    assert state.rule("T-07").pending is None
+    assert state.rule("T-14").pending is None
 
 
 def test_none_never_clears():
@@ -209,18 +222,19 @@ def test_none_never_clears():
 # 9. le and bool rules
 def test_le_rule_t01_symmetric():
     spec = ag.RuleSpec("T-01", "le", ag.ladder_for("le", D("0.75"), [D("0.5"), D("0.3")]))
-    samples = [("10:40:30", D("0.74")), ("10:41:30", D("0.80")), ("10:42:30", D("0.74")),
-               ("10:43:30", D("0.83")), *minutes("10:44", 3, D("0.70")), ("10:47:30", D("0.45")),
-               ("10:48:05", None)]
-    _, ev = feed(samples, spec=spec)
+    first = [("10:40:30", D("0.74")), ("10:41:30", D("0.80"))]
+    rest = [("10:42:30", D("0.74")), ("10:43:30", D("0.83")), *minutes("10:44", 3, D("0.70")),
+            ("10:47:30", D("0.45")), ("10:48:05", None)]
+    _, ev = feed_answering(first, rest, spec=spec)
     assert [(e.at.time(), e.level, e.worse) for e in opened(ev)] == [
-        (time(10, 41), 0, None), (time(10, 46), 0, None), (time(10, 48), 1, "last")]
+        (time(10, 41), 0, None), (time(10, 46), 0, None)]
+    assert [(e.at.time(), e.level, e.worse) for e in escalated(ev)] == [(time(10, 48), 1, "last")]
 
 
 def test_bool_rule_t02_symmetric():
     spec = ag.RuleSpec("T-02", "bool", ())
-    samples = [("10:40:30", True), ("10:41:30", True), ("10:42:30", False), *minutes("10:43", 4, True)]
-    _, ev = feed(samples, spec=spec)
+    first = [("10:40:30", True), ("10:41:30", True)]
+    _, ev = feed_answering(first, [("10:42:30", False), *minutes("10:43", 4, True)], spec=spec)
     assert [(e.at.time(), e.level, e.threshold, e.value) for e in opened(ev)] == [
         (time(10, 41), 0, None, True), (time(10, 46), 0, None, True)]
 
@@ -278,7 +292,7 @@ def test_gate_module_makes_no_io():
 def test_pause_drops_the_pending_candle_so_its_close_opens_nothing():
     state, ev = feed([("10:00:20", D("82"))])
     state = ag.pause(state, at("10:00:25"))
-    assert state.rule("T-07").pending is None
+    assert state.rule("T-14").pending is None
     state, ev2 = flush(state, "10:01:00")
     assert ev + ev2 == []
 
@@ -287,12 +301,12 @@ def test_a_sample_after_the_pause_in_the_same_candle_gives_no_close():
     state, _ = feed([("10:00:20", D("82"))])
     state = ag.pause(state, at("10:00:25"))
     state, ev = feed([("10:00:40", D("85"))], state=state)  # the feed came back inside the paused candle
-    assert state.rule("T-07").pending is None
+    assert state.rule("T-14").pending is None
     state, ev2 = flush(state, "10:01:05")
     assert ev + ev2 == []
     state, ev3 = feed([("10:01:30", D("85"))], state=state)  # the next candle was fully watched: it opens
     state, ev4 = flush(state, "10:02:00")
-    assert [(e.rule_id, e.at) for e in opened(ev3 + ev4)] == [("T-07", at("10:02:00"))]
+    assert [(e.rule_id, e.at) for e in opened(ev3 + ev4)] == [("T-14", at("10:02:00"))]
 
 
 def test_a_pause_never_lapses_an_open_record():
@@ -302,14 +316,14 @@ def test_a_pause_never_lapses_an_open_record():
     state, _ = feed([("10:01:10", D("60"))], state=state)  # would clear by the band at the 10:02 close
     state = ag.pause(state, at("10:01:20"))
     state, ev3 = flush(state, "10:02:00")
-    assert ev3 == [] and state.rule("T-07").record.final is False
+    assert ev3 == [] and state.rule("T-14").record.final is False
 
 
 def test_a_pause_keeps_the_close_of_a_candle_that_ended_before_it():
     state, _ = feed([("10:00:30", D("82"))])
     state = ag.pause(state, at("10:01:02"))  # the 10:00 candle ended at 10:01:00, fully watched; not yet closed
     state, ev = flush(state, "10:01:03")
-    assert [(e.rule_id, e.at) for e in opened(ev)] == [("T-07", at("10:01:00"))]
+    assert [(e.rule_id, e.at) for e in opened(ev)] == [("T-14", at("10:01:00"))]
 
 
 def test_pause_keeps_the_latest_instant_and_needs_an_aware_time():
@@ -327,11 +341,11 @@ def _capped_at_one(day: date):
 
 def test_the_cap_resets_at_ist_midnight():
     preset, state = _capped_at_one(DAY)
-    state, ev = ag.step(state, now=at("23:58:30"), preset=preset, readings={"T-07": (T07, D("81"))})
+    state, ev = ag.step(state, now=at("23:58:30"), preset=preset, readings={"T-14": (T07, D("81"))})
     state, ev2 = ag.step(state, now=at("23:59:05"), preset=preset, readings={})
     assert [e.reason for e in held(ev + ev2)] == ["daily_limit"] and opened(ev + ev2) == []
     nxt = DAY + timedelta(days=1)
-    state, ev = ag.step(state, now=at("00:00:30", nxt), preset=preset, readings={"T-07": (T07, D("81"))})
+    state, ev = ag.step(state, now=at("00:00:30", nxt), preset=preset, readings={"T-14": (T07, D("81"))})
     state, ev2 = ag.step(state, now=at("00:01:05", nxt), preset=preset, readings={})
     assert [(e.at, e.level) for e in opened(ev + ev2)] == [(at("00:01", nxt), 0)]
     assert (state.day, state.opened_today) == (nxt, 1)
@@ -339,8 +353,8 @@ def test_the_cap_resets_at_ist_midnight():
 
 def test_the_cap_does_not_reset_at_utc_midnight():
     preset, state = _capped_at_one(DAY)
-    state, ev = ag.step(state, now=at("05:28:30"), preset=preset, readings={"T-07": (T07, D("81"))})
-    state, ev2 = ag.step(state, now=at("05:30:30"), preset=preset, readings={"T-07": (T07, D("81"))})
+    state, ev = ag.step(state, now=at("05:28:30"), preset=preset, readings={"T-14": (T07, D("81"))})
+    state, ev2 = ag.step(state, now=at("05:30:30"), preset=preset, readings={"T-14": (T07, D("81"))})
     state, ev3 = ag.step(state, now=at("05:31:05"), preset=preset, readings={})
     assert opened(ev + ev2 + ev3) == [] and [e.reason for e in held(ev + ev2 + ev3)] == ["daily_limit"]
     assert (state.day, state.opened_today) == (DAY, 1)
@@ -349,9 +363,9 @@ def test_the_cap_does_not_reset_at_utc_midnight():
 # #639 item 2: a dismiss matches the stored record, never the rule
 def test_a_dismiss_of_another_record_leaves_the_gate_record_alone():
     state, _ = feed([("10:40:30", D("81")), ("10:41:05", D("81"))])
-    state = ag.with_record_id(state, "T-07", 42)
-    assert ag.is_dismissed(ag.dismiss(state, "T-07", 41), "T-07") is False  # an older record's dismiss
-    assert ag.is_dismissed(ag.dismiss(state, "T-07", 42), "T-07") is True
+    state = ag.with_record_id(state, "T-14", 42)
+    assert ag.is_dismissed(ag.dismiss(state, "T-14", 41), "T-14") is False  # an older record's dismiss
+    assert ag.is_dismissed(ag.dismiss(state, "T-14", 42), "T-14") is True
 
 
 # ADR-237 (8): a STAGE change (same playbook body, a new ladder) re-levels the open record like a playbook change
@@ -365,7 +379,7 @@ def test_a_stage_change_re_levels_the_open_record_and_a_close_beyond_the_new_lin
     state, ev = feed([("10:40:30", D("0.45")), ("10:41:05", D("0.45"))], spec=T01_WEEKLY)
     assert [(e.level, e.threshold) for e in opened(ev)] == [(0, D("0.5"))]
     state, ev = feed([("10:41:30", D("0.256")), ("10:42:05", D("0.256"))], spec=T01_EXPIRY_DAY, state=state)
-    assert [(e.level, e.threshold, e.worse) for e in opened(ev)] == [(0, D("0.3"), "last")]
+    assert [(e.level, e.threshold, e.worse) for e in escalated(ev)] == [(0, D("0.3"), "last")]  # same open alert
 
 
 def test_the_same_ladder_keeps_the_record_level_quiet():

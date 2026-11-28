@@ -9,8 +9,10 @@ state) changed since the last push, it sends :func:`indices_answer` - the same f
 push goes at once. When the connection ends, on every exit path, its subscription is released (``finally``).
 
 Health is the quote's OWN health as the provider gives it (the same rule as option prices, REQ-072 AC-2), read at every
-poll, so a feed that goes stale while no tick arrives still changes the row. No new staleness rule is added here:
-per-instrument staleness is a known open gap (finding staleness-by-last-change-age). The client sends nothing this
+poll, so a feed that goes stale while no tick arrives still changes the row. No staleness rule is added here:
+the one index age rule (an index quote older than ``detection.index_quote_max_age_seconds`` in market hours is not
+live, ADR-330 (39)) lives in ``FeedState.quote_health`` and arrives as the quote's own health (finding
+staleness-by-last-change-age). The client sends nothing this
 socket needs: any client message is answered with one catalogue message (``user_input_request_invalid``) and changes
 nothing. The REST read's ``fallback`` answer is not live whoever else holds the indices (finding
 liveness-from-shared-subscribers): no number is ever sent as live from a page whose own socket is down.
@@ -25,7 +27,7 @@ from typing import Any, Literal
 
 from ofo.errors import render
 from ofo.instruments.catalogue import SUPPORTED_UNDERLYINGS
-from ofo.market_calendar import MarketStatus, calendar_end_warning, market_status
+from ofo.market_calendar import MarketStatus, calendar_end_warning, market_status, next_open
 from ofo.marketdata.quote import is_live_price
 from ofo.money import PAISE  # money leaves the API as a 2-decimal string
 from ofo.timeutil import IST
@@ -61,13 +63,18 @@ class IndicesOut(ApiModel):
     calendar_missing_year: int | None
     #: ADR-285 (1): the calendar's last covered date, from 30 days before it on; None while it is further away
     calendar_ends_on: datetime.date | None
+    #: ADR-330 (60): the next session open (09:15 IST, ADR-119 calendar) while ``market_closed``, the one sentence's
+    #: "next trading day" ("Exits can be placed from 09:15 on <day>"). None in market hours (nothing to wait for) and
+    #: None when the calendar does not cover the next open (no calendar for that year: no date is guessed).
+    next_open_at: datetime.datetime | None = None
 
 
-def _calendar_fields(answered_at: datetime.datetime) -> dict[str, Any]:
+def _calendar_fields(answered_at: datetime.datetime, closed: bool) -> dict[str, Any]:
     local = answered_at.astimezone(IST)
     missing = market_status(answered_at) is MarketStatus.NO_CALENDAR
     return {"calendar_missing_year": local.year if missing else None,
-            "calendar_ends_on": calendar_end_warning(local.date())}
+            "calendar_ends_on": calendar_end_warning(local.date()),
+            "next_open_at": next_open(answered_at) if closed else None}
 
 
 def index_ids(ctx: MarketContext) -> dict[str, str | None]:
@@ -109,7 +116,7 @@ def indices_answer(ctx: MarketContext | None, *, live: bool,
         answered_at = now()
         state = market_state(None, answered_at)
         return IndicesOut(state="NOT_CONNECTED", indices=rows, answered_at=answered_at, market_closed=state.closed,
-                          last_price_at=state.last_price_at, **_calendar_fields(answered_at))
+                          last_price_at=state.last_price_at, **_calendar_fields(answered_at, state.closed))
     answered_at = ctx.clock()
     state = market_state(ctx, answered_at)
     # ADR-015 / REQ-114 AC-7: the ONE place the index answer decides "live" - held by the page's socket AND the market
@@ -120,12 +127,13 @@ def indices_answer(ctx: MarketContext | None, *, live: bool,
     # ADR-200 (4): closed, the banner's time is the index quotes' own last-price time, never a reconnect frame's
     return IndicesOut(state="LIVE" if shown_live else "NOT_CONNECTED", indices=rows, answered_at=answered_at,
                       market_closed=state.closed, last_price_at=label_time(state, (r.at for r in rows)),
-                      **_calendar_fields(answered_at))
+                      **_calendar_fields(answered_at, state.closed))
 
 
 def _shown_state(body: IndicesOut) -> tuple:
     """What the page shows: the state and each row (never ``answered_at``, which moves on every read)."""
     return (body.state, body.market_closed, body.last_price_at, body.calendar_missing_year, body.calendar_ends_on,
+            body.next_open_at,
             tuple((r.underlying, r.instrument_id, r.value, r.at, r.health) for r in body.indices))
 
 

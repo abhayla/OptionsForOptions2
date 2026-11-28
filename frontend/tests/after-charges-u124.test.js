@@ -22,7 +22,7 @@ vi.mock('@/services/api', async (importActual) => {
 import SummaryCards from '@/components/strategy/SummaryCards.vue'
 import PaperStrategies from '@/components/strategy/PaperStrategies.vue'
 import { paperLeftOf, RECOVER_LINE_PREFIX, RECOVER_LINE_SUFFIX } from '@/lib/paperDrafts'
-import { resetPaperAlerts } from '@/lib/paperAlerts'
+import { resetActiveAlerts } from '@/lib/paperAlerts'
 
 const ok = (data) => () => Promise.resolve({ data })
 const t = (w, id) => w.get(`[data-testid="${id}"]`)
@@ -32,7 +32,7 @@ const NOT_PRICED = 'Charges are not included: a leg has no price to charge on.'
 const PAUSED = 'Paper P&L paused - prices not live'
 const NO_AFTER = (reason, text) => ({ total_after: null, total_after_text: null, booked_after_text: null, unbooked_after_text: null, profit_left_after_text: null, loss_left_after_text: null, recover_text: null, after_charges_reason: reason, after_charges_reason_text: text })
 
-beforeEach(() => { answers = {}; resetPaperAlerts(); vi.useFakeTimers() })
+beforeEach(() => { answers = {}; resetActiveAlerts(); vi.useFakeTimers() })
 afterEach(() => vi.useRealTimers())
 
 const LOSING = { profit_left_text: '+14,00.00', loss_left_text: '-5,00.00', profit_left_after_text: '+9,751.47', loss_left_after_text: '-1,111.11', recover_text: '+3,314.09', total_after_text: '-3,314.09', max_profit_text: '+6,437.38', max_loss_text: '-1,000.00', after_charges_reason: null }

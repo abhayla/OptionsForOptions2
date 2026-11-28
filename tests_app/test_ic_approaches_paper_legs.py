@@ -46,6 +46,7 @@ async def _setup(app_engine, monkeypatch, path: str) -> int:
     await app_engine.dispose()  # from here on ONE engine (the app's) holds every connection
     sid = await core.seed_mod.seed(path)
     core._reset_engine()
+    await core.give_plan(sid)  # ADR-330 (11): A-27 (buy-back price) and A-35 (exit time) read the strategy's own plan
     return sid
 
 
@@ -125,6 +126,9 @@ async def _cleanup() -> None:
 
 @pytest.mark.parametrize("approach", APPROACHES)
 async def test_the_stored_paper_legs_equal_the_built_after_legs(approach, app_engine, monkeypatch):
+    if approach in ("A-24", "A-25"):  # ADR-326 (1): Take profit needs charges: seed rates
+        import t19_support  # noqa: PLC0415
+        t19_support.seed_rates(monkeypatch)
     try:
         done, want, stored, sid = await _run(app_engine, monkeypatch, approach)
         assert stored == want, (approach, stored, want)

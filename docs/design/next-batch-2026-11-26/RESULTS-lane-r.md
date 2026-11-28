@@ -1,0 +1,537 @@
+# Lane R results: the owner's screen checks of 26 Nov 2026
+
+Branch `fix/screen-findings-1126`, cut from `origin/feat/nb-screens-w2-1126` at `a9bd41a`. No PR. Paper only. Evidence:
+`docs/process/screen-checks-2026-11-26.md` (verbatim copy of PR #722 comment 7184365037). Highest status claimed: **Fixed,
+not tested** (the owner tests on his PC). Standing-direction step 4 item 10 (defects in what is built).
+
+Spec basis: ADR-328 (2) to (4), ADR-329 (1) to (3), ADR-330 (8) and (19) to (23), ADR-327 (2), ADR-002, ADR-003, ADR-008.
+
+How it was checked: every fix has a failing test first that follows the owner's steps on the real pages, real router and
+recorded paper books (vitest); S-02 has a real PostgreSQL test (a second connection holds the row lock). No browser
+walk-through was possible in the cloud: the app needs the broker feed and the owner's database. Exit and money changes
+(N-04/N-05, N-07) had an independent Opus review; both came back FIX FIRST, and round 2 fixed every finding listed below.
+
+## Per finding
+
+| Finding | Status | Root cause (one sentence) | Class before / after | Tests red, then green |
+|---|---|---|---|---|
+| Row 12, Drafts Mode across the chain trip | Fixed, not tested | The builder dropped the chain-trip hold whenever the URL carried `?strategy=`, and Back from the chain returns to the `?strategy=<id>` entry, so the book was read again over the held edit. | Chain-to-builder returns whose URL names the held strategy: 3 of 3 tested paths lost the edit (paper, saved, changed book); 0 after. | `chain-trip-adr329.test.js` R12a-c: 3 failed on the old page; pass after. |
+| Row 11, replace question on a draft link | Answered (LR-Q1, option 1) | A pasted link is a full page load and unsaved legs live in page memory only, so no code can ask. | Spec and check text corrected (ADR-329 (3), ADR-328 (2), modular-doors RESULTS.md row 11); no code. | n/a; `draft-link.test.js` stays the in-app test. |
+| N-04, staged exit stays after the page closes the Exit dialog | Fixed, not tested | The page closed the dialog but left the exit staged in the legs. | Page-side closes that left staged exits: 2; 0 after (one `cancelPaperDialog`, restoring the legs as they were before the Exit click). The user's own Cancel keeps the chosen exits as edits, as u513 (owner test note #85) decided; the gate caught round 1 dropping them (`exit-preview-not-pending.test.js`). | `exit-dialog-page-close.test.js`: 6 failed, then 13 pass; review round 2: 6 more failed, then pass. |
+| N-05, "Review and add" looks usable while blocked | Fixed, not tested | Review and add read the blocked rule only for edits that came from an Exit, and an open dialog's Confirm ignored it. | Buttons that commit paper orders reading one blocked rule: 2 of 3; 3 of 3 after; a blocked Confirm posts nothing for any paper dialog. | same files; A3: 1 POST before, 0 after. |
+| N-07, third price reader (P&L Table) | Fixed, not tested (part; rest #744) | The P&L Table printed the outcome reply's LTP and P&L and the plan's entry, while the legs table and the Paper P&L panel read the book. | Builder views of a paper leg's price/P&L: 3 of 6 on the book before (legs table, Paper P&L, and none other); after, the P&L Table too (joined by contract, side and lots; a failed read shows "-" in rows and TOTAL). Left: Full table, leg-list "now" price, Paper P&L rows after a failed read (#744). | `pnl-table-one-source-n07.test.js`: 5 failed, then round 2: 7 of 12 failed, then pass; guard `paper-leg-readers-guard.test.js` red on 3 mutations. |
+| N-01, refusal line vanishes | Fixed, not tested | A watcher in `PaperStops.vue` cleared every "Not saved" line when the list's next good poll arrived. | Clear paths not driven by a user edit or a new Save: 1; 0 after. "First Save showed nothing" not reproduced. | `paper-stops.test.js`: 2 failed, then pass. |
+| N-14, every paper trade has the same name | Fixed, not tested (ADR-330 (19) a and the lists half of b; alert titles are Lane P's) | Add to Paper saved an unsaved strategy under the shape name and never asked; the lists showed the bare name. | Lists showing a bare name: My Strategies, Live cards, Home recent, Positions > Paper (2 spots); 0 after, one label maker `strategyListLabel` in `lib/saveDraft.js`. A list reply carries only the first leg's expiry, so a calendar spread shows that date on My Strategies, Live and Home. | `add-to-paper-name-adr330.test.js`, `strategy-list-label-adr330.test.js`: 10 failed without the fix, then 16 files / 228 tests pass. `e2e/my-strategies.spec.ts` updated, not run (needs the servers). |
+| R-06 / N-18, doubled label on Home | Fixed, not tested | `HomeOverviewPage.vue` spread "(after charges)" over the figure's name, then appended it again. | Places that can print the suffix twice: 1; 0 after. | `home-figures-d56.test.js`: red "(after charges) (after charges)", then pass. |
+| N-10, wrong refusal parts for the other-index add | Fixed, not tested | `addFromChain` built its refusals from the server-failure parts. | 2 refusal sites; 0 after (both use `INVALID_LINK_PARTS`). | F1 test: red on "Try again in a moment", then pass. |
+| N-13, "No draft strategy is open" while a trade opens | Fixed, not tested | `load()` set the empty-builder state before the `?strategy=` book read answered. | Open paths showing the empty builder before their read: 4; 0 after. | 3 of 5 new tests failed, then pass. |
+| N-11, leave question for a staged removal | Fixed, not tested (ADR-330 (22)) | The question counted pending changes but called them unsaved legs. | 1 question; it now says "pending changes" for a running trade on the builder and the chain page. | `leave-builder-adr329.test.js`: red, then pass. |
+| N-12, Stops link does not reach the trade | Fixed, not tested (ADR-330 (21)) | The Positions page ignored `?strategy=` unless an exit was asked. | 1 link; it now opens that trade's Stops panel and scrolls to it; the list is not filtered. | `paper-exit-link-s14.test.js`: red, then pass. |
+| N-08, chain ticks stay after Add Selected | Fixed, not tested (ADR-330 (20)) | Add Selected pushed the draft link and never cleared the selection. | 1 store; the builder clears the ticks only after it has added them (Cancel on a clash, the other-index refusal or an error keeps them). REQ-030 AC-10 amended. | N08a, N08d failed without the fix (lead's run), then 57 pass. |
+| N-15, Orderbook quantity in units | Fixed, not tested (ADR-330 (23), #747) | The order rows carried units only, no lots or lot size, and the browser must not divide by a guessed lot size. | 1 table; the server now sends `lots` per order row (catalogue lot size, same source as the closed rows; a quantity that is not whole lots sends null and shows "-"); the column reads "Lots". Caveat: an NSE lot-size revision re-divides old orders with the new lot. | `tests_app/test_paper_order_lots.py` (real DB): 3 failed (KeyError 'lots'), then 3 passed; vitest 28 pass. |
+| S-02, a lock wait on delete ends as a raw 500 | Fixed, not tested (wording approved by the owner, ADR-330 (26)) | The error door had no case for a busy database (sqlstate 55P03, 57014, 40P01), so it answered the generic internal error. | Write routes that end as ERR-xxxx on a busy database: 49 in 21 route files; 0 after. Left: `order_book_store.py:152` answers BAD_HOLDING (#746). | `tests_app/test_store_busy.py` (real DB): 6 failed, then 10 passed. |
+| N-02 | Deferred #745 | A timed-out parallel read leaves the box after the other read succeeds. | - | - |
+| N-03, N-06, N-09, N-16, N-17, N-19 | Not a defect | N-03 legal hold (REQ-079); N-06 by design (D-C50); N-09 and N-17 test-tool artefacts; N-16 name vs engine shape (REQ-076 AC-8/9); N-19 by design (REQ-080 AC-9). | - | - |
+
+Detection changes: row 12, the R12 tests close the hole C6 left (it never returned to a `?strategy=` entry); N-07, the
+guard `paper-leg-readers-guard.test.js` (wiring and registry, REMAINING rows pinned by file:line); N-04/N-05, one cancel
+path and one blocked rule (structural); S-02, the one error door; N-01, one clear rule in the component. Findings:
+`knowledge/findings/leg-price-read-by-several-panels-on-one-screen.json`, `knowledge/findings/lock-wait-ends-as-raw-500.json`.
+
+Process notes: (1) helper worktrees made with isolation were not cut from this branch every time (each brief opened
+with a base check and re-cut); (2) the `verifier_inflight_gate` hook refuses every write in every worktree while ANY
+review agent runs, so a review blocked three builders for about 15 minutes: run reviews when no builder needs to write.
+
+## Re-test: row 12 (push 1)
+
+1. Open a running paper trade in the builder (Live Strategies > click its name). Click the bin on one leg: "1 pending change".
+2. Top menu Market > Option Chain. Press the browser Back arrow.
+3. Expected: still "1 pending change", the removed leg still gone. Click Discard.
+4. Again: bin on one leg, Market > Option Chain; in a second tab exit one leg of that trade on Positions; first tab Back.
+5. Expected: "The strategy changed while you were away. Your unsaved edits were not restored." and "0 pending changes".
+
+## Re-test: N-01 (push 1)
+
+1. Positions > Paper > Stops on a running trade > Conditional exit.
+2. Type an Above level the index is already beyond; Save.
+3. Expected: "Not saved: the live price is already at or beyond this level ..." in red.
+4. Wait a full minute without touching anything. Expected: the line is still there.
+5. Change the level by one point. Expected: the line goes.
+
+## Re-test: R-06 (push 1)
+
+1. Open Home.
+2. Expected: the total reads "Total P&L", the figure, and "(after charges)" once.
+3. Reload the page and watch the total.
+4. Expected: the label never shows "(after charges) (after charges)" or a bare "(after charges)" without its name.
+5. (Not part of this fix: the gap against My Strategies is not proven wrong; check it after 15:30 when prices stop.)
+
+## Re-test: N-04 / N-05 (push 2)
+
+1. Builder on a running paper trade: change the lots of one leg ("1 pending change"), then click the per-leg Exit of another leg; leave the dialog open and stop the API (as in row 4).
+2. Expected: the dialog closes by itself, "1 pending change" (your lot change only), the other leg not staged for exit. (Your own Cancel keeps the exit as an edit, by the earlier u513 rule.)
+3. Click Exit all (dialog open, do not confirm); in a second tab exit one leg of that trade. Back in the first tab.
+4. Expected: the dialog closes by itself, "This trade changed elsewhere. Reload to see the current legs.", no "No legs yet" and no staged exits; "Review and add", "Exit all" and every "Exit" are greyed out.
+5. Reload: the current legs, every button enabled.
+
+## Re-test: N-07 (push 2)
+
+1. Open the builder of a running 2-lot paper trade; open the "P&L Table" tab.
+2. Expected: each leg's LTP and P&L equal the legs table at the top left at the same moment; the column reads "Entry price".
+3. Exit 1 lot of one leg (Confirm). Expected: that row shows the same P&L as the legs table (booked plus open).
+4. Stop the API for a few seconds (as in row 4). Expected: the P&L Table rows and its Total show "-", like the legs table.
+5. Still different (deferred #744): the "Full table" switch on that tab, and the Paper P&L panel after a failed read.
+
+## Re-test: N-10, N-13 (push 2)
+
+1. Open `/strategy/builder?strategy=<a running trade>` fresh. Expected: a loading line, never "No draft strategy is open" or "No legs yet", then the legs.
+2. Same by Live Strategies > the trade's name, and by Back from the Option Chain.
+3. Build 3 NIFTY legs; Option Chain > SENSEX; tick one; Add Selected.
+4. Expected: "These contracts are on SENSEX; the legs in the builder are on NIFTY. Nothing was added." with "What to do next: Check the values you entered and try again." (no "Try again in a moment").
+5. The 3 NIFTY legs are unchanged.
+
+## Re-test: N-11, N-12 (push 2)
+
+1. Builder on a running paper trade: bin on one leg; click Settings (top menu). Expected: "Leave the builder? The 1 pending change will be lost." Stay.
+2. A new unsaved strategy with 3 legs: Settings. Expected: "Leave the builder? The 3 unsaved legs will be lost." Stay.
+3. Live Strategies > "Stops" on a running trade that is not first in the list.
+4. Expected: Positions opens on the Paper tab, the page scrolls to that trade, its Stops panel is open.
+5. The other trades are still listed.
+
+## Re-test: S-02 (push 2)
+
+1. Not clickable on purpose: the case needs a second database session holding a lock on the strategy row.
+2. What changed for the user: a delete or other write that waits on a busy database now says "This strategy is busy with
+   another action, so nothing was changed." and "Wait a moment, then try again." instead of ERR-xxxx.
+3. Wording approved by the owner as written, 26 Nov 2026 (ADR-330 (26)).
+4. Normal deletes: My Strategies > Delete on a draft still deletes as before.
+5. Nothing to check after 15:30.
+
+## Re-test: N-08 (push 2)
+
+1. Build 3 legs in the builder; Market > Option Chain; tick two contracts with Buy; Add Selected.
+2. Expected: the builder shows 5 legs.
+3. Market > Option Chain again. Expected: "Selected Legs" is empty.
+4. Tick a contract you already hold with the same action; Add Selected; Cancel in the question; go back to the chain.
+5. Expected: that tick is still there.
+
+## Re-test: N-14 (push 3)
+
+1. Strategies > Create Strategy > Guided > Short Iron Condor > Open in Strategy Builder > Add to Paper.
+2. Expected: a "Name this paper trade" box prefilled "Short Iron Condor". Type "IC wk1" and Save; then Confirm the paper trade.
+3. Expected: My Strategies, Live Strategies and Positions > Paper show "IC wk1 (#<its number>, 1 Dec)".
+4. Again Add to Paper on another unsaved shape, then Cancel in the name box. Expected: nothing is added.
+5. Not changed here: alert titles still read "Paper strategy - <name>" (the alerts lane adds the number and expiry).
+
+## Part C (second batch, owner comment 7185059890)
+
+| Finding | Status | Root cause (one sentence) | Class before / after | Tests red, then green |
+|---|---|---|---|---|
+| C-04 / N-26 / N-30, bulk delete Undo lasts 2-3 s | Fixed, not tested | The delete flow kept its Undo only in a timed state that cleared after the served wait; the bulk result line never had an Undo and a single delete had no result line. | Undos offered only in a timed pop-up: 6; 4 after (single and bulk delete fixed; Save Undo, Clear all Undo, the chain's one-leg Undo and the generic toast remain, deferred). N-30's ~3 s before the result shows is not addressed. | `my-strategies-bulk.test.js`: 5 failed, then 23 pass. |
+| N-25 (b), "1 of them are running" | Fixed, not tested | `bulkConfirmText` used "are" for any count. | 1 sentence; REQ-070 updated. | same file. |
+| C-12b, stale index number in the Stops panel | Fixed, not tested | With the feed down the server keeps the answer LIVE but marks each row's health stale; the one index reader looked at the answer state only. | `useIndexAnswer` screens that drop a stale value: 1 of 3; the Stops panel now reads the row health through the shared reader. The Home strip and Index page keep the number with a "stale" word, unchanged (by design today). | `stops-index-stale.test.js`: 4 failed, then 61 pass. |
+| N-22, Cancel moves in the Exit dialog | Fixed, not tested (pixels not seen: jsdom has no layout) | The risk-check line and the status lines were shown with v-if and no reserved height, so the centred dialog shrank. | Moving spots in the paper confirm dialog: 2; 0 after (always-rendered slots). Listed, not fixed: AdjustPlanSheet.vue:44, LegList.vue:167/200/283, SaveDraftBar.vue:491, BrokerSettingsPage.vue:160. Finding `controls-move-while-user-acts-v-if-lines.json`. | `paper-confirm-no-shift-n22.test.js`: 2 failed, then 154 pass. |
+| C-05 (NOT CHECKED) | How to check | The PC database has no strategy held at the broker. | - | Check after the first real order (ADR-289): My Strategies > tick a strategy held at Zerodha with others > Delete selected: it is kept and named with the server's reason. |
+| C-12a (NOT CHECKED) | How to check | The Positions page has no index strip. | - | Open Home in a second tab; compare the Stops panel's "as of" time and value with the strip at the same second (or the Option Chain spot). |
+
+### Part C triage of the observations (N-20 to N-30, C-01b, S-09)
+
+| Id | Class | Reason / action |
+|---|---|---|
+| C-01b | not a defect | A placed paper book follows ADR-263 (2) ("a paper book's breakevens carry the same charges as its Max Profit / Max Loss and booked P&L, with a line saying so"; server text `routes/paper.py:772`, `errors/explanations.py:1905,1912`); ADR-330 (17) is about the plan summary only. Two bases on two screens: if the owner wants one, that is a new question (LR-Q9). |
+| N-20 | not a defect | Home "Total P&L —" right after the API restart is the first-read / paused state (`paperPnl.js:25-30, 62-66`), not a wrong figure. |
+| N-21 | fixed, not tested | The Stops panel re-read only its own list after Save; the legs come from the parent's 5 s timer (`PaperStops.vue:58-75`, `PaperStrategies.vue:362`). The server refuses an exit of a fired leg, so a display lag only. |
+| N-22 | fixed | above. |
+| N-23 | not a defect | The "taking longer than usual" notice is designed (`StrategyBuilderPage.vue:277, 1275`); the delay is the outcome call's round trip (a speed item, not measured). |
+| N-24 | not a defect (fixed by N-14) | The builder's compact paper list already uses `strategyListLabel` since the N-14 commit, after the tested a9bd41a8. Re-test on this branch. |
+| N-25 (a) | not a defect | The after-charges line belongs on every plan summary, saved or not (ADR-330 (17), ADR-263). |
+| N-25 (b) | fixed | with C-04. |
+| N-26, N-30 | fixed (N-26) / open (N-30) | with C-04; the ~3 s before the result shows is not addressed. |
+| N-27 | fixed, not tested (the Exit column may still need a scroll in the narrow panel) | `PaperBookPanel.vue:59` price and time inline; Exit cell cut off. |
+| N-28 | cell split fixed, not tested; product question LR-Q8 | The exit average is served (`routes/paper.py:617-624`), not computed in the browser (ADR-008 holds); the cell split ships with N-27; how to label an average of several exits is the owner's. |
+| N-29 | placeholders fixed, not tested; hyphen not a defect | Placeholder bars `bg-surface-muted` on white (`MyStrategiesPage.vue:173-174`); the hyphen is a test-tool artefact (plain v-model, saved name right). |
+| S-09 | defect, deferred #748 | A newly subscribed contract shows the "unavailable" health word instead of the REQ-133 AC-3 waiting state. |
+
+## Re-test: C-04 (Part C push)
+
+1. My Strategies: save two throw-away drafts (e.g. "UNDOTEST-1", "UNDOTEST-2"); search UNDOTEST; tick both; Delete selected; Delete.
+2. Expected: the line "2 deleted." stays with "Undo" and "Dismiss" beside it; wait 30 seconds: still there.
+3. Click Undo. Expected: both rows come back and the line goes.
+4. Delete one draft by its own Delete: the line "1 deleted." (or the server's summary) with Undo stays too; Dismiss removes it.
+5. Tick a running paper trade with one draft and press Delete selected: the question reads "... 1 of them is running."; Cancel.
+
+## Re-test: C-12b and N-22 (Part C push)
+
+1. Positions > Paper > Stops on a running trade: the line "NIFTY now ... as of ..." shows.
+2. Stop the price feed (as in Part C). Within a few seconds the line reads "Index values unavailable." with no number.
+3. Start the feed again: the number comes back without a reload.
+4. Live Strategies > Exit on a running trade: watch the Cancel button while "Checking whether this exit leaves a sold option without protection..." finishes.
+5. Expected: Cancel does not move; one click on it closes the dialog.
+
+## Re-test: N-21, N-27, N-28, N-29 (Part C push)
+
+1. Positions > Paper > Stops on a running trade: set a leg stop just beyond the leg's price so it fires. Expected: the leg row leaves the card within a second or two of "fired" (not ~9 s).
+2. Builder of a running paper trade > Net Positions: each LTP shows its time on its own small line under the price.
+3. Closed rows: the exit price stands alone on the right, the stop-loss sentence on its own line under it.
+4. My Strategies: reload; the grey loading bars are clearly visible for the moment before the list shows.
+5. Nothing else on these screens changed wording.
+
+## After LANE R DONE (7bf64eb): review round, N-28, #744
+
+| Finding | Status | Root cause (one sentence) | Class before / after | Tests red, then green |
+|---|---|---|---|---|
+| Exit path, independent Opus review of N-04/N-05 round 2 and the u513 correction | Fixed, not tested (MAJOR 1 and MINOR 2) | MAJOR 1: the u513 correction left the Exit snapshot alive after the user's Cancel, so a later page-side close restored the old legs and silently wiped edits made after the Cancel; MINOR 2: a block that arrived during a POST left the dialog open with Confirm enabled (nothing posted). | Page closes that can wipe later user edits: 1 path (two Exit clicks with a Cancel between); 0 after (the user's Cancel ends the snapshot). Confirm while blocked: enabled in 2 states; disabled after (a `blocked` prop on the paper confirm dialog). | `exit-dialog-page-close.test.js` A1, A2, A3, A8: 4 failed on the pushed code (lead's run), then 18 pass; full suite 2,981 pass. |
+| N-28 = ADR-330 (27), closed exit averaged over several exits | Fixed, not tested | The closed row printed the average with no count. | The server builds the text once (catalogue template `closed_exit_average`, "{value} (avg of {count})"; reply field `exit_fills`); every screen that prints it gets it. | `tests_app/test_paper_closed_rows.py`: red KeyError 'exit_fills', then 7 passed (real DB). |
+| #744, the remaining N-07 readers | Fixed, not tested | The Full table printed the reply row, the leg list's "now" price came from the reply, and the Paper P&L rows ignored a failed book read. | Builder views of a paper leg's price / P&L on the book: 2 of 5 before, 5 of 6 after (left: Advanced Details bid/ask, not a price or P&L). One join (`chartCard.paperBookLeg`: contract, side, lots); guard mutation-tested on 7 breaks. | `full-table-one-source-744.test.js`: 6 failed, then 7 pass. `one-source-d41.test.js` test 8 now expects the dash on a failed read. |
+| S-02 wording | Approved (ADR-330 (26)) | - | The ADR-NB-1 placeholder is now ADR-330 (26) everywhere; the pin is marked owner-read. | `tests/errors`: 710 passed. |
+
+## Re-test: exit path round 3
+
+1. Builder on a running paper trade: per-leg Exit on one leg; Cancel (the exit stays as "1 pending change", as before).
+2. Change the lots of another leg ("2 pending changes"); then per-leg Exit on a third leg; leave the dialog open and stop the API.
+3. Expected: the dialog closes by itself and "2 pending changes" remain (your kept exit and your lot change); only the third leg's exit is gone.
+4. Start the API; press Exit all, Confirm, and stop the API while "Placing..." shows (or open a second tab and exit a leg there at the same moment).
+5. Expected: once the answer arrives the dialog closes or its Confirm is greyed; nothing is sent twice.
+
+## Re-test: N-28 and #744
+
+1. Builder of paper trade 172 > Net Positions > closed rows: 25850 CE reads "174.73 (avg of 2)"; a leg closed by one exit shows the bare price.
+2. Open the "P&L Table" tab and switch on "Full table": each leg's LTP and P&L equal the legs table at the same moment; P&L % shows "-".
+3. A leg whose price moved shows "Price has moved ... now <the legs table's LTP>".
+4. Stop the API for a few seconds: the legs table, the P&L Table, the Full table and the Paper P&L panel rows all show "-"; restore: all come back.
+5. Orderbook: each fill of 25850 CE is still its own row (153.00 and 196.45).
+
+## Part D (re-test of 7bf64eb, owner comment 7187957060)
+
+Result on the PC: 15 PASS with this morning's failure gone, 3 PASS with a remainder (D-N07, D-N13, D-S02), 1 FAIL (D-N11).
+
+| Finding | Status | Root cause (one sentence) | Class before / after | Tests red, then green |
+|---|---|---|---|---|
+| D-N11, "1 unsaved leg" for a staged removal on a running trade | Hardened, NOT reproduced | The old test drove a hand-built harness and snapshot, so the page's own snapshot never ran (detection gap, now closed); on the real path (real routes, real page, real book fixture, real bin click, real Settings route) the wording was already right, so the owner's case is not explained. | "Pending" now reads the page's Drafts Mode state itself, not a field of the book reply (`paper.book.strategy_id`, which a refreshed book could in principle lack). | New `leave-builder-real-path-adr329.test.js`: N11a green before and after; N11c (book without strategy_id) red, then green. If the PC still shows "unsaved leg": note the deployed commit and copy the `GET /api/paper/strategies/<id>` reply. |
+| N-37, restored legs read "Your price, typed" | Fixed, not tested | A paper-fill leg is recognised by contract, planned entry and capture time; the restore re-reads the book, its fills carry newer times, so no held leg matched and every leg showed as typed. | Restored legs shown as typed: 3 of 3; 0 after (the hold carries the fill keys and the restore takes the fresh fill's entry and time). | N37: 3 typed lines, then 0. |
+| N-35, stale builder still offers the bins | Fixed, not tested | Only the Exit buttons read the blocked rule; the leg list and the controls had no lock. | Leg-edit controls enabled while the trade changed elsewhere: 24 (4-leg fixture); 0 after, through one `locked` prop with the existing reload line as the reason. Choice: the same lock holds while the book read fails (the Exit rule); it lifts when the read recovers. | `leg-lock-n35.test.js`: red, then 3 pass. |
+| D-N13 / N-34, empty "New Strategy" frame while opening | Fixed, not tested | The opening flag hid only "No legs yet"; the card title and the action bar still showed. | Shell parts shown while opening: 4; 0 after (one loading card with the existing "Working out the outcome..." text). | `opening-shell-n34.test.js`: red, then 3 pass. |
+| D-N07 remainder, API down shows an error block on the P&L Table tab | Question LR-Q10 | Without an outcome reply the page shows its error block for the whole numbers area; the P&L Table's rows come from that reply. The dash rule works when the outcome answers and only the book read fails (tested). | - | - |
+| D-S02, the busy wording cannot be clicked | As designed | The wording needs another session holding the strategy's row lock until the statement times out; two tabs deleting at once queue in milliseconds and get a refusal or "not found", never the busy line. The owner can see it only through `tests_app/test_store_busy.py` (one file, `scripts/orchestrator/db_run.py`). | - | - |
+| N-36, Back replays a cancelled clash question | Fixed, not tested | A cancelled add was not recorded on the hold, so Back replayed the same draft link. | 1 path; each Add Selected is now its own history entry and the handled mark is the draft text plus that entry: Back asks nothing, a new Add Selected still asks. | N36 in `chain-trip-adr329.test.js`: red, then pass. |
+| N-39, "2 deleted" stays ~3 s after Undo | Fixed, not tested | The line was cleared only after the restore calls finished. | 1 line; cleared at once, put back only if a restore fails. | `my-strategies-bulk.test.js`: red, then pass. |
+| N-31, N-33, N-41, N-42 | Not a defect | N-31: the index had no tick yet after the API restart (self-clears); N-33: Exit on a Live card opens Positions by design (D-N22); N-41: drafts 182/183 were most likely restored by a late Undo on the result line (a deleted row cannot be listed: every read filters deleted rows); N-42: the plan sheet at Add to Paper is REQ-161 AC-1 (Lane P's area). | - | - |
+| N-32 | Not a defect | During a pending partial exit the P&L Table row shows "-" and "Planned entry" because the row's lots differ from the book's (the one join, #744). The ~10 s Confirm lock is the exit's round trip. | - | - |
+| N-38, N-40, delete history | Questions LR-Q11, LR-Q12, LR-Q13 | - | - | - |
+| N-43 | Deferred #749 | The stop-loss sentence wraps in the narrow Exit column. | - | - |
+
+## Re-test: Part D fixes
+
+1. D-N11: open a running paper trade by My Strategies > Open in Builder; bin one leg; You > Settings. Expected "Leave the builder? The 1 pending change will be lost." Stay. If it still says "unsaved leg", note the commit the PC runs and save the `GET /api/paper/strategies/<id>` reply from the browser's network tab.
+2. N-37: same trade, bin one leg, Market > Option Chain, Back. Expected: "1 pending change" and no leg reads "Your price, typed ...".
+3. N-35: open the trade in two tabs; in tab 2 exit one leg; in tab 1: the bins, strike +/-, lots, Clear all, Add/Edit and Shift/Width/Hedge are greyed, with "This trade changed elsewhere. Reload to see the current legs."; reload: all enabled.
+4. D-N13: open `/strategy/builder?strategy=<a running trade>` fresh. Expected: one loading card, never an empty "New Strategy" with Save / Add to Paper, then the trade.
+5. N-36 / N-39: chain clash > Cancel > Back: no question again; My Strategies bulk delete > Undo: the "2 deleted" line goes at once.
+
+## After the close (owner comment 7189204004, run 15:31 to 15:50 IST on 7bf64eb)
+
+Result on the PC: 3 PASS (AC-01 market-closed Save, AC-03 the three P&L places equal at the last close, AC-SETTLE SENSEX
+trade 173 settled with the right sum), 1 FAIL (AC-R06), 1 NOT CHECKED (AC-R10).
+
+| Finding | Status | Root cause (one sentence) | Class before / after | Tests red, then green |
+|---|---|---|---|---|
+| AC-R06 / N-46, Home and Positions totals pause when one trade cannot be priced | Fixed, not tested; owner-approved ADR-330 (35) | The server summed every non-expired strategy and blanked the whole total on any other missing price, exactly as ADR-324 (1) says ("Any other reason a price is missing ... keeps today's behaviour: the figure is blank with its reason"); #173, expiring that day and awaiting settlement, had no live price. | Totals over several paper strategies that blank on one unpriced member: 3 (Positions header, Today total, Home Total P&L); 0 after: the server sums the strategies that can be priced and a count line names how many were left out and why. All unpriced: blank with the reason, as before. | `tests_app/test_paper_totals.py` -k ac_r06: 2 failed, then 22 passed; `test_d68_today_total.py` 10 passed (one test that pinned the whole-pause rule rewritten); frontend `home-figures-d56`, `paper-list-4b`: 45 passed. |
+| N-47, settled trade's Positions card has no settlement sentence | Fixed, not tested | The list reply already carried the server's settlement sentence; the card's reader dropped it. | 1 screen; the card prints the same server sentence as the builder. A leg that expired worthless still shows the server's exit text (e.g. 0.00) - that is the settlement price. | `paper-list-4b.test.js`: 1 failed without the fix (lead's run), then 29 pass; app test `test_paper_triggers_routes.py` -k settlement: 2 passed. |
+| N-48, settled trade's builder shows "No legs yet" and Add leg | Fixed, not tested | The empty-legs block did not know the trade was finished. | 1 screen; a trade whose book has closed rows and no open position shows no empty-legs block and no Add leg / Add/Edit. | `builder-completed-n48.test.js`: red, then pass. |
+| N-44, "No price for:" above a priced table after the close | Fixed, not tested | The Paper P&L panel took the unpriced line from the tracking reply (live prices only) when the book had none. | One reader: the line comes from the book read only. | `one-source-d41.test.js`: 1 failed with the old line, then 18 pass. |
+| N-45, prices keep moving after the close under "Prices are from 15:30:00" | Deferred #752, question LR-Q14 | The label time is clamped to the close; the figure is the feed's latest quote. | - | - |
+| N-45 / ADR-330 (36), prices keep moving after the close under "Prices are from 15:30:00" (round 2: LR-Q17) | Fixed, not tested: (a) frozen at the close, (b) own time; (c) deferred; #752 stays open | Round 1 froze the figure at the last quote made by the close, but a contract first priced after the close (API restart after 15:30, strike first subscribed after hours) was still clamped by `NormalizedQuote.price_at` to "15:30:00" while showing a later price. | Places that clamp a post-close price time: 1 (`quote.py price_at`); 0 after: a trading-day post-close quote carries its own time (before the open, holiday and weekend stay at the previous close, F-19). | `tests/marketdata/test_close_freeze.py` (path a 99.75, path b 100.10 at 15:33:48, in-hours guard and reopen, fresh pre-open) and `tests_app/test_close_freeze_routes.py` (path b, one leg of each kind). |
+| ADR-330 (39), D-69: an index frozen while option frames kept arriving read live (owner 26 Nov ~21:00 IST) | Fixed, not tested (review SHIP); D-69 root cause unconfirmed: the change detects a frozen index, it does not explain it | Feed health was judged on the whole feed, so an index with no tick for minutes read live while option frames arrived (F-32). | Places that judge an index quote's own age: 0 before; 1 after (`FeedState.quote_health`, read by `QuoteBook`; 60 s, `detection.index_quote_max_age_seconds`, market hours; options keep the feed word). | `tests/marketdata/test_index_quote_age.py`, `tests_app/test_paper_trigger_unheld_index.py` (two ADR-330 (39) tests), `tests_app/test_paper_monitor.py` (a stale index tick does not fire an armed exit; a fresh crossing tick does). |
+| AC-R10, Compare's "Open in builder and prepare basket" greyed after the close | NOT CHECKED (by design after the close: "Wait for fresh prices") | - | - | Re-test at the open, below. |
+
+## Re-test: after-close items (next market day)
+
+1. AC-R10 (at the open, after 09:15): Alerts > "Compare approaches" on a paper trade's alert > "Open in builder and prepare basket" is enabled once prices are live; click it: the builder opens on that trade with the chosen approach's legs staged.
+2. N-47 (after the close on an expiry day, or on SENSEX trade 173 now): Positions > Paper > Show closed positions > the settled card's closed legs read "Paper - settled at expiry: SENSEX closed at 84,328.59", the same as the builder.
+3. N-48: open the builder of trade 173: no "No legs yet", no Add leg; the closed legs and "Closed: result" show.
+4. N-44 (after the close): builder of a running paper trade > Paper P&L panel: no "No price for: ..." line when every leg shows a price.
+5. AC-R06 (after the close, with one settled trade): Home's "Total P&L" shows a figure over the trades that can be priced, with the count line, and equals the sum of those rows on My Strategies.
+
+## Owner answers of 26 Nov ~16:00 IST (ADR-330 (28) to (31))
+
+| Item | Status | What changed | Tests red, then green |
+|---|---|---|---|
+| ADR-330 (28), Add to Paper while prices are not live (was N-40 / LR-Q12) | Fixed, not tested | When the page's one price rule (priceState) says prices are not live, the confirm list shows a tick box labelled "Prices are not live; the entry is the last captured price, as of HH:MM." and Confirm stays disabled until it is ticked; a typed entry price keeps the line. Choices: the time is the OLDEST capture time of the ticked legs (no leg reads fresher than it is); with no readable capture time the ", as of ..." part is dropped; after the close and while the builder has no priced answer, prices count as not live, so the tick box shows then too. REQ-109 AC-1 carries the sentence. | `paper-add-not-live.test.js`: 3 failed, then pass; full frontend suite 3,004 pass. |
+| ADR-330 (29), P&L Table with the API down (was D-N07 remainder / LR-Q10) | Closed as designed | The error block stays: with the outcome unreadable there are no rows to dash. No build. | - |
+| ADR-330 (30), the builder's "Settings" button (was N-38 / LR-Q11) | Fixed, not tested | The button reads "View" (label only; its popover's screen-reader name "Builder settings" is unchanged). REQ-138 AC-1 carries the label. | `gcui-legs.test.js`: red "expected 'Settings' to be 'View'", then 28 pass. |
+| ADR-330 (31), Deleted / Restored in the history (was LR-Q13) | Handed to Lane J | See below. | - |
+
+### Handed to Lane J: ADR-330 (31)
+
+It needs a migration (Lane R adds none). Evidence: `strategy_history.change_summary` (JSONB) items are checked on every
+insert by the plpgsql validator `ofo_strategy_change_items_valid` (`backend/ofo_app/alembic/versions/0008_strategy_store.py`
+~327-346: kinds underlying, leg_removed, leg_added, quantity, field, legs_reordered, replaced_unreadable, restored;
+`ELSE ok := FALSE`, SQLSTATE 23514); its body is md5-pinned in the allowlist function; migrations 0011 (entries_repriced,
+the `_NEW_SIMPLE_KINDS` pattern) and 0025 (renamed) widened it the same way. No existing kind fits: `restored` means
+"restored to version N" and requires `seq` (`backend/ofo_app/strategy_store.py` ~488). Needed: kinds `deleted` and
+`undeleted` with exactly `{kind}`, the md5 re-pinned, the kinds mirrored in `backend/ofo/strategy/definition.py` ~308 and in
+the summary text / catalogue labels of `stored_form.py`; then `delete_draft` / `undelete_draft` (`strategy_store.py`
+~359-383, both inside `begin_nested`, so a failing history write rolls the delete back) write one entry each (bulk: one per
+strategy). `strategy_history.at` is stamped by the database, so the times need nothing.
+
+## Re-test: ADR-330 (28) and (30)
+
+1. With live prices: Add to Paper on a new shape: no tick box; Confirm works as before.
+2. After the close (or with the feed stopped): Add to Paper: a tick box "Prices are not live; the entry is the last captured price, as of HH:MM."; Confirm stays grey until ticked.
+3. Type your own entry price for one leg: the tick box still shows; tick, Confirm: the typed price is the entry.
+4. Builder: the button beside the search reads "View" and opens the same "Show legs as" choice.
+5. Nothing else in the confirm list changed wording.
+
+## To file as deferred issues (ADR-330 (36), round 2; not filed)
+
+1. **ADR-330 (36) (c): start-up read of each contract's 15:30 close.**
+   Evidence: `backend/ofo/marketdata/quote.py` `price_at`; steps: start the API after 15:30 with a held contract and open the trade: the figure is the first frame received (e.g. 100.10 as of 15:33:48), not the 15:30 close. The broker adapter's day read exists (`backend/ofo_app/paper_settlement.py:274` `owner_close_of` reads a Kite DAY candle; `price_history_source.day_close_reader`).
+   Spec basis: ADR-330 (36) (c), LR-Q17 ("exact close later"), ADR-200 (2), ADR-015.
+   Done when: a process started after the close shows the 15:30 close for a held contract, labelled "Prices are from 15:30:00".
+2. **The depth popup after the close shows the latest frame, not the frozen close.**
+   Evidence: `backend/ofo/marketdata/feed_health.py` `depth_after_close` (~346-349) reads `e.quote`/`e.depth`, and `backend/ofo_app/chain_push.py` `_last_trade_at` (~401) beside it; review run: figure 99.75, popup bid 100.05 / ask 100.15. Steps: after the close, with a frame after 15:30, open the depth popup of a held contract.
+   Spec basis: ADR-330 (36), ADR-200 (1) and (2), REQ-080 AC-7.
+   Done when: depth after the close (bid, ask, day stats) comes from the served quote, the same frame as the figure.
+3. **The REST index spot after hours is the post-close value.**
+   Evidence: `backend/ofo_app/live_market.py:477` `_index_reading` / `index_spot` (via `spot_source`) returns Kite's current REST `last_price`, while the chain and index header show the frozen tick. Settlement is unaffected. Steps: after the close compare the REST spot with the index header.
+   Spec basis: ADR-330 (36), ADR-200 (2), ADR-119.
+   Done when: the after-hours spot goes through the same cut-off (`made_by_the_close`).
+
+### More to file as deferred issues (Opus re-check of ADR-330 (36) round 2, 26 Nov evening; not filed)
+
+- **A frame with no exchange time is labelled with its arrival time after the close.** Evidence: `backend/ofo/marketdata/quote.py:197` returns the quote's own time, which is the arrival time when Kite sends no exchange time (`backend/ofo_app/kite_provider.py:184`); review run: a fresh process, a frame with no exchange time arriving 21:05:12 is labelled 21:05:12. Spec basis: F-19 (a stamp that is not a price time is never shown as one), ADR-200 (2). Done when a post-close frame without an exchange time is labelled as the previous close (or shown unpriced) and a test pins it.
+- **The broker-status reply still clamps a path-(b) price to 15:30:00.** Evidence: `backend/ofo_app/broker_status.py:144` uses `price_time`; no frontend file renders `live_market_closed` today (API only). Spec basis: ADR-330 (36) (b). Done when it reads the same own-time rule as `NormalizedQuote.price_at`.
+- **Index age is measured from the exchange stamp against the server clock with no lower bound (ADR-330 (39)).** Evidence: `backend/ofo/marketdata/kite_provider.py:181`: a stamp 10 min ahead of the server clock reads available; `paper_monitor.on_quote` and `paper.price_of` accept a future stamp while `spot_source` refuses it as `tick_in_future`. Spec basis: ADR-330 (39), ADR-327 (2). Done when one rule refuses a future stamp everywhere.
+
+## Re-test: ADR-330 (34), (35), (36) (next market day and evening)
+
+1. (34) Builder: add two legs (unsaved): under the bar "Unsaved legs are not kept if you reload or close this page. Save to keep them."; Save: the line goes. A running paper trade with one pending change shows it too.
+2. (35) After the close with one settled or unpriced trade: Home's Total P&L is the sum of the priced trades with the count line (as AC-R06), now owner-approved.
+3. (36a) After 15:30 with the API running since before the close: a running paper trade's prices stay at their last pre-close values while "Prices are from 15:30:00" shows; they do not change over 10 minutes.
+4. (36b) Restart the API after 15:30, open the same trade: each leg shows a price labelled with its own time ("as of 15:4x:xx"), never "Prices are from 15:30:00".
+5. Mixed (one leg of each kind, e.g. add a new strike after the close to a builder that held its legs through the close): note the banner time; it follows the open question LR-Q18.
+
+## D-15 re-check (round 1, branch lane-r-dd)
+
+| Finding | Status | What the screen shows today | Verdict |
+|---|---|---|---|
+| D-15, paper trade summary names no price basis; "Plan: Get Rs X" line withdrawn | Question LR-Q19 (basis label done to spec; plan line not rebuilt) | The server (`routes/outcome.py` `_with_price_basis`) sets `summary.price_basis_text` from the paper book, shown under the Get by `MoneySummary.vue` (`data-testid="money-basis"`). (a) unplaced plan / no paper strategy: "At plan prices". (b) fully filled paper trade: "At paper fill prices". (c) partly filled: "At paper fill prices for 3 of 4 legs; the rest at their entered prices", or "At their entered prices: none of 4 legs is a paper fill". (d) one leg exited: only the legs still held are counted, so 3 held legs that match the book read "At paper fill prices" (the exited leg is not named). Book unreadable: "At their entered prices (the paper book could not be read)". `plan_line` is always null; no "Plan: Get Rs X" line appears. | Done to spec for the basis label (ADR-321 (8), ADR-322 (2)); plan line: spec says "only when every leg is a fill" but is silent on an exited leg and on the wording, so not built: LR-Q19 |
+
+Proof, run this turn: `python -m pytest -q -p no:cacheprovider -c pytest-app.ini tests_app/test_outcome_price_basis_d15.py` = 13 passed (a: `test_no_paper_strategy_says_plan_prices`; b: `test_every_leg_a_fill_says_paper_fill_prices_and_serves_no_plan_line`; c: `test_an_edited_leg_at_a_live_price_is_not_called_a_paper_fill`, `test_no_leg_matching_the_book_says_so`; d: `test_an_exited_plan_leg_never_prices_the_held_subset_as_the_plan_credit` pins only `plan_line is None`; it does not pin the basis text of the held subset, which I read from the code). `npx vitest run tests/price-basis-d15-d17-d18.test.js` = 7 passed.
+
+## For the PC session: D-27 (no cause proven; read-only, one step)
+
+Core of the step: find out whether the server has the adjustment rows for strategy 155 or the screen loses them.
+
+1. Log in to the app in the browser on the PC. Open the builder on trade 155 (C1 155) and open the "Adjustment history" section (it reads on every opening). Open devtools, Network tab, filter "adjustment-history".
+2. The request is `GET /api/strategies/155/adjustment-history` (no body; route `backend/ofo_app/routes/adjustment_history.py`, reads the stored paper orders owned by the logged-in user). Or paste that URL in the address bar of the same logged-in browser. Read only: it places nothing.
+3. Copy the full JSON reply and save it as `d27-155-adjustment-history.json` (also copy the status code). Do not edit it.
+4. Record: (a) `rows.length`; (b) for each row its `step` (entry / adjustment / settle / stop), `number`, `at`, `is_exit` and `orders[].kind` / `side` / `quantity`; (c) `totals.adjustments_used` and `totals.adjustments_max`; (d) at the same moment, what the builder's Adjustment history section shows: the "no step recorded" line (`steps-none`), the error line, or N rows, and their order.
+5. Decide: rows present in the JSON but the section empty or short = a screen defect (`frontend/src/components/strategy/AdjustSteps.vue`, with the page's gate `paper && savedId && !showNumbers && state === 'no-draft' && !opening` at `StrategyBuilderPage.vue:1351`; note whether the section was shown at all). A 404 or `rows: []` = the server has no rows for 155: then also open `GET /api/paper/strategies/155` (the paper book) and save it as `d27-155-paper-book.json`; record `orders[]` (count, kind, time of each) and `status_word`. Orders there but no history rows = a server defect in `ofo.engine.adjust_history` (batch rule: one `placed_at` per batch); no orders there either = the adjustments were never stored (a placement defect). Rows equal and screen equal but the owner expected a second adjustment = the second change was never placed (check the Orderbook for 155).
+
+## Hotfix api-blocking-1127 (27 Nov, branch hotfix/api-blocking-1127 from 206a9f06)
+
+| Item | Status | Root cause (one sentence) | Class before / after | Tests red, then green |
+|---|---|---|---|---|
+| API slow on every route with 2 testers (health 2.5 s, paper read 2.4 s) | Fixed, not tested on the PC | Paper and tracking reads kept their pooled DB connection checked out while waiting up to 3 s (FORWARD_WAIT_S) on the live feed, so with DB_POOL_SIZE=4 a few page polls held every connection and /health queued. | 8 request paths held a connection across a feed/broker wait (paper.py 5, tracking.py 3); 0 after (release_connection, now in db.py, before the wait). Plan-watch already released (measured: 0 held). Thread executor ruled out (20 stalled to_thread reads: health 0.16 s). execution_return keeps its row lock; its 3 sync Kite reads moved to asyncio.to_thread. | `tests_app/test_pool_not_held_across_market_wait.py` (pool 4, overflow 0, real create_app): before 4 of 4 held, health 2.86 s; after 0 held, health 0.00 s. Detection: `tests/test_pool_release_before_market_wait.py` (AST scan, 10 guarded functions pinned). Opus Tier A: PASS (each release commits a read-only transaction; every lock comes after it). |
+| No request durations in the API log | Fixed, not tested on the PC | uvicorn's access log has no durations and the API process configures no logging, so INFO lines were dropped. | 1 line per request: `request GET /health 200 12.3ms` on stderr with the time, route template only (no ids, no query). | `tests_app/test_request_log.py`, `test_request_log_stderr.py` (subprocess, no logging config): red `assert 0 == 2`, then 5 pass. |
+
+### To file as deferred issues (hotfix api-blocking-1127; not filed)
+
+- **place_paper_orders still waits on the market holding a connection** (Opus Tier A, MINOR): `paper.py:1400` `tracked_ids` re-checks out, then the first-fill IV read (`entry_facts` -> `atm_iv_now`) waits; under the strategy row lock `record_basket_facts` (`paper.py:1414`) waits up to three times (`_index_spot_held` up to LEG_WAIT_S, `_snapshot`, `atm_iv_now`); `_refuse_take_profit_at_loss` (`paper.py:1394`, via `adjustment.py:799-801`) waits before the release. Not a regression. The reads inside the lock cannot be released (a commit would make a partial write durable); they must move before the lock. Done when an Add to Paper with a stalled feed holds no connection during the wait (pool test).
+- **The pool scan's blind spots** (MINOR): it checks only that the first release comes before the first wait (a DB read between them passed, mutant B); it never checks for a write or lock before a release; it cannot see `req.db` functions or helpers outside WAIT_NAMES. Done when the scan flags a DB statement between the release and the wait and a release after a write.
+- **Runtime proof only for the paper GET routes** (MINOR): tracking, exit and write routes rely on the scan. Done when the pool test covers `list_tracking` and `exit_tracking`.
+- **Lane J's area, not edited:** `adjustment_history.py:244` holds across `market_snapshot`; `playbooks.py` `test_playbook` holds across market reads (`_tested`); `adjustment.py:809` keeps its own `release_connection` copy (swap for the `db.py` re-export).
+- **execution_return double click:** the row lock and its connection are now held across the thread wait, so a second return for the same strategy holds a second connection while it waits on FOR UPDATE (2 of 4). Accepted; named by the review.
+
+## Re-test: hotfix api-blocking-1127 (on the PC, market hours, two testers)
+
+1. Two testers each open a running paper trade and the Positions page; time /health in a third tab while prices load: under 0.5 s (was 2.5 s).
+2. The API's stderr shows one line per request, e.g. `... request GET /paper/strategies/{strategy_id} 200 2412.0ms`; no strategy ids or query strings in it.
+3. Add to Paper and Exit on a paper trade work as before (same confirm list, same result).
+## Plan-watch load hotfix (27 Nov 2026, branch lane-r-pwl on 6067ca3a; frontend only)
+
+Spec basis: ADR-330 (11) and (13) (the live Plan watch box), REQ-119 AC-3/AC-4 (no stacking, "Updating the numbers..."); the pacing is a load decision by the coordinator on 27 Nov.
+
+- Root cause: every Positions row with a plan mounted its own Plan watch box, each polling on its own, so Lane J's 15 s gap held per box but not across the page (PC log: n=204 in about 6 minutes, 34 a minute from two tabs, 5,821 ms average, 10,671 ms max).
+- Class: pollers per page. Before: N boxes x 1 request in flight each, and N reads per 15 s window (10 rows = up to 10 in flight, 40 a minute). After: 1 in flight page-wide; compact reads start at least 20 s apart (option (a), at most 3 a minute per page, 6 for two tabs), each row also waits 60 s from its own last answer, only while on screen and the tab is visible; the builder box keeps 15 s and goes first. Cost: with 10 rows each row refreshes about every 200 s (it keeps its rows and shows "Updating the numbers..." meanwhile).
+- Red (before the change, `npx vitest run tests/plan-watch-load.test.js`): 5 of 5 failed. Hidden tab: 10 fetches, expected 0. Scrolled-out box 3 fetched ([1,2,3,4,5]). Unmounted queued box 3 fetched ([1,2,3]). Full box did not go ahead ([1,2], expected [1,99]). 10 boxes: all 10 start at once (10 in flight).
+- Green (after): plan-watch-load 5 of 5 pass (max in flight 1, 9 reads in 179 s). The 3 existing plan-watch test files pass unchanged except a queue reset in the component test's beforeEach.
+- PC re-test, 3 steps: (1) Open Positions with 5 or more planned rows, devtools Network filtered on "plan-watch", leave it 3 minutes: no more than one request pending at any moment and about 9 or fewer in all; rows keep their numbers and show "Updating the numbers..." and never "not available". (2) Switch to another browser tab for 2 minutes: no plan-watch requests; switch back: one starts. (3) Open the builder on a planned strategy: its box still reads about every 15 s.
+
+### To file as deferred issues (hotfix plan-watch-load-1127, review 27 Nov; not filed)
+
+- **The queue has no watchdog of its own** (MINOR): `frontend/src/lib/planWatchQueue.js:41-57` frees its slot on a rejection or a throw, but a fetch that never settles is bounded only by axios `timeout: 10000` (`services/api.js`). Plan-watch's own max on the PC was 10,671 ms, so a slow read times out and shows "not available" (as before this change). Done when the queue has its own bound and a test with a hung fetch.
+- **The load test's IntersectionObserver mock calls back synchronously** (MINOR): `frontend/tests/plan-watch-load.test.js:40-45` queues a duplicate first read for box 1; a browser calls back later. The 10-box `maxInflight` check passes even without the in-flight guard (5 s latency is under the 20 s gap); only the full-box test catches it. Done when the mock is async and a compact-only case with latency above 20 s pins concurrency 1.
+- **No test for a rejecting or hung fetch** (MINOR).
+- **First read can wait ~180 s with 10 rows** (MINOR, by design of the 20 s page gap): a box waiting on its first read shows "Reading the plan watch..." that long; a failed box shows "Updating the numbers..." on each retry.
+
+## Hotfix plan-watch box rendering (27 Nov)
+
+Spec basis: ADR-330 (13), the live Plan watch box; REQ-119 AC-3 (no stacking, newest wins) and AC-4 (a slow or failed read after a good one keeps the last rows with the as-of time).
+
+**Root cause (one sentence).** The plan-watch GET inherited the shared client's 10 s timeout while the route answers a full 200 in 6 to 11 s (its bounds are about 12 s), so good answers were thrown away and the box said "not available"; separately, `textOrNull` in `frontend/src/lib/planWatch.js` (line 33 before the fix) read an empty-string optional text (a row's `reason`, or `as_of_text`) as "present but wrong", so `parsePlanWatch` rejected the WHOLE reply as "unavailable" and a good 200 showed no rows.
+
+**Class, before and after.**
+- Before: any good 200 slower than 10 s, or any 200 with one blank optional text, became a box with no rows. After: the request has its own `PLAN_WATCH_REQUEST_TIMEOUT_MS = 20000` (per request; the shared client stays 10000), and an empty or blank optional text means "none". A non-string is still rejected (ADR-008: no guessing).
+- The route's real "prices not live" shape (plan_state planned, rows paused or not computable, `now` and distances null, `fires_at` kept) already rendered per row as sent once it was under the timeout; the proven hider of rows was the blank-text rejection above.
+- A first read now says "Loading the rule check..." (new wording, pending owner read; no catalogue or label match existed). Later reads keep "Updating the numbers...". A failure after a good read keeps the rows and the as-of time (pinned by tests); "not available" only when there was never a good answer.
+
+**Numbers.** `frontend/tests/plan-watch-render.test.js`: 16 cases (8 each for the full and the compact box). Red before the fix: 16 of 16 failed on the first run (real defects: timeout 10000 not 20000, 15 s answer dropped, blank-reason reply dropped, old loading wording; plus harness faults I then fixed). Green after: 16 of 16; all `plan-watch-*.test.js`: 55 of 55.
+
+**3-step PC re-test.**
+1. Open the builder of a strategy with a plan. While the first read runs the box says "Loading the rule check..."; a 6 to 11 s answer then shows its rows with the as-of time.
+2. Open Positions with plan rows: each compact box shows rows, not "not available", after its turn in the queue.
+3. Outside market hours (prices not live) the rows show Paused or Not checked with the server's text, never an empty box. Stop the backend for a minute: the last rows stay, marked "Could not refresh the rule check...", with the as-of time.
+
+## Hotfix plan-save-1127
+
+Spec basis: ADR-330 (1) (the stop base is stored with the plan and read by the checks), (5) (a rupee level and a percent must agree against a base; "a base that cannot judge refuses"), (7) (a dated time exit is judged against today and the legs); REQ-161 AC-2/AC-3 (accept and edit the plan); ADR-016 to ADR-019 (no auto retry, submitted is not executed); ADR-008 (every figure is the server's).
+
+**Real case.** 27 Nov 13:50 trade A-H #209: stop (Rs) 100 typed and saved; the DB holds `loss_stop_rupees "100"` (accepted 13:50:50, PUT 200 in 5,199.6 ms), yet the Plan block kept Rs 996.13. 11:08-11:16 trade #201: "no server answer in 3 tries", then "saved despite the error". Adjustment-plan requests averaged 6,537 ms (max 10,214) against the shared 10 s axios timeout.
+
+**Root cause (one sentence).** The page let a read that started BEFORE the save (plan GET, levels GET, plan-watch GET, each 3-20 s) answer AFTER it and put the old value back; and the save, slow only because of its price read (`_market` in `_write`), ran under the shared 10 s limit and ended on a false "nothing was changed".
+
+**RCA with file:line (code at 9d39c82f).**
+- (i) What takes 6-10 s: ONLY the price read. Measured with the market stubbed instant (round 1 diagnostic): `_own_strategy` 0.018 s, `_type_of` 0.001, `_picked` 0.003, `accept_plan` 0.007, `_sheet` (the answer rebuild, DB reads only) 0.020, whole request about 0.8 s with app start. `_sheet` has no margin or run_check call. The slow step is `_market(...)` in `_write` and `reset_plan` (the read_quotes door, Lane U's area).
+- (ii) Client abort: no `BaseHTTPMiddleware` or disconnect check in backend/ofo_app (grep), so the handler runs to its end. `accept_plan` (playbook_store.py ~710) is ONE upsert under `lock_strategy`, committed once by `_run` after `work()`: all or nothing, no half-save.
+- (iii) Page on timeout: `AdjustPlanSheet.send` showed the neutral four-part message ("Nothing was changed"), false for a stored save; Save could be pressed again: a second write of the same body (harmless to the data, wrong sentence). The words "got no server answer in 3 tries" and "saved despite the error" are not in this tree (grep), so nothing was reused.
+
+**What changed (round 2, the smallest safe server change).**
+- Server: ONE change in `backend/ofo_app/routes/adjustment_plan.py`. The price read before the write in `_write` and in `reset_plan` goes through `_bounded_market`: `asyncio.wait_for(_market(...), PLAN_SAVE_PRICE_BUDGET_S = 4.0)` (the plan watch route's own `PRICE_BUDGET_S`, the code's one price budget). Past it the save is refused with the new catalogue row `plan_save_prices_not_read` (SV_526, wording pending owner read; no existing row fit) and nothing is stored. The order is exactly the old one: read the market, write, build the answer; `_run` still commits after `work()` (unchanged, so the transaction is as before). The rules PUT reads no market (`_rules_scope` has no `_market` call): left as is. The stored body is the old code's, because the market still supplies the expiry kind, stage and today.
+- Client: saves (POST, PUT, reset, trade-rules PUT) carry `PLAN_SAVE_TIMEOUT_MS = 30000` per request, never re-sent. Only a 4xx with a catalogue reason is a refusal (shown as the server's reason); a 5xx, a timeout or no answer shows "Not confirmed: reload to see whether it was saved." (new wording, pending owner read) and keeps the typed value. `lib/planSaveClock.js` keeps a per-strategy save count; the sheet load, levels, PlanEntry, PlanWatch and PreferencesTab `loadPlan` take the stamp when they start and drop an answer when a save of the same strategy happened since (PreferencesTab also drops an answer for a strategy no longer picked). PlanWatch then makes a fresh read that starts after the save. Plan watch lines are computed by the server (ADR-008), so they are re-read, not taken from the save's answer.
+
+**Review findings (Opus Tier A, REVISE) and what was done.**
+- BLOCKER, a percent stop on a monthly strategy stored in the weekly row (no-price path, `_kind_of` fell back to `position.expiry_kind`, always ""): the no-price path is removed. Test `test_a_percent_stop_on_a_monthly_strategy_is_stored_in_the_monthly_row` (user playbook, T-06 weekly [50,50,40], monthly [30,30,20], market stubbed monthly, stop "50": monthly becomes [50,50,20], weekly stays [50,50,40]) and the rupee-stop twin (both rows unchanged, `loss_stop_rupees "100"` stored).
+- MAJOR, the 0.5 s answer cap could cancel mid-query and leave the session needing a rollback (500 with the row stored): the cap, the fallback answer and commit-before-answer are removed. The answer is rebuilt as before (about 0.02 s).
+- MAJOR, a 5xx was treated as a refusal by `isRefusal`: now only 4xx with a catalogue message; test: a 500 shows Not confirmed, keeps the typed value, moves no clock (`saveStamp` unchanged), one PUT.
+- Test gaps: `loadPlan` guard added (a); a save on strategy 70 does not drop strategy 71's answers (b); the PlanWatch drop test asserts the stale answer is never drawn (the render between the stale answer and the fresh one) (c); the race test now drives the real `@saved` wiring of PlanEntry and a second test checks a stale levels answer does not refill the sheet (d). Mutation check: removing the sheet guard fails the levels test; removing the PlanWatch guard fails the PlanWatch and 70/71 tests.
+
+**Class, before and after.** Before: any plan read slower than a save could overwrite it, and a save over 10 s or a 5xx ended on a false "nothing was changed". After: a read older than the last save of its strategy is dropped everywhere the page reads the plan; a save has its own 30 s, a 4 s price bound with a refusal, and one honest sentence. Not covered: PreferencesTab `savePlan` still words its own failure with its older sentence.
+
+**3-step PC re-test (trade like #209).**
+1. Open the plan of a running trade, type Stop (Rs) 100, press Save. The block shows the stop from the answer and stays on it after the next Plan watch read.
+2. With prices slow (over 4 s), press Save: within about 5 s it is refused with "Prices could not be read in time to check this plan." and the old plan is unchanged.
+3. Stop the backend, press Save: the sheet stays open with the typed value and the single sentence "Not confirmed: reload to see whether it was saved."; the Network tab shows one request.
+
+## Who did what, 27 Nov (owner rule: the task picks the model)
+
+| Task | Model that did it |
+|---|---|
+| LR-Q19 (a) D-15 plan line: build, round-2 fixes | Sonnet (builder) |
+| D-15 plan line: Tier A review | Opus (reviewer; money line) |
+| API slowness: root-cause read of the code | Opus (Explore; hard debugging on the live API) |
+| Request duration log line: build, round 2 | Sonnet (builder) |
+| Request log: move the registration into errors.install | Haiku (mechanical) |
+| Request log: middleware-list pin in test_response_door | Haiku (mechanical) |
+| Over-long comment rewrap (E501 ratchet) | Haiku (mechanical) |
+| Pool fix (release before market waits), pool-4 measurement, scan | Sonnet (builder) |
+| Pool fix: Tier A review | Opus (reviewer; order and exit paths commit mid-request) |
+| Plan-watch page-wide queue | Sonnet (builder) |
+| Plan-watch queue: review | Sonnet (reviewer, Tier B) |
+| Plan watch box rendering (20 s timeout, blank-text hider) | Sonnet (builder) |
+| Plan save / Plan block (rounds 1 and 2) | Sonnet (builder) |
+| Plan save: Tier A reviews | Opus (reviewer; the user's stop) |
+| Step timing and route profiling (started, stopped at 14:14 on the coordinator's word; moved to a fresh lane) | Sonnet (builders, stopped) |
+| Splitting, routing, verifying, reporting; reading diffs and re-running key tests to verify | Opus (main session) |
+| Prepush gate runs and git merge/push steps before 14:14 | Opus (main session) - against the rule: gate runs belong to a Sonnet helper; from 14:14 they go to one |
+| Two RESULTS notes (api-blocking deferred list, plan-watch-load deferred list) and this table | Opus (main session) - report writing |
+
+### Plan-save-1127: Opus Tier A re-review of round 2 (REVISE; shipped with these listed, B1: two rounds used)
+
+Server change confirmed right: only `_bounded_market` (4 s, refusal 422 `plan_save_prices_not_read`, raised before anything is written); the builder's Plan block, levels line and Plan watch box end on the saved value. Left, to file as deferred issues (not filed):
+- **MAJOR: Settings > "Change plan values" says "not saved" when the save may be stored.** `frontend/src/components/adjustments/PreferencesTab.vue:190`: a dropped connection or a client timeout shows "The plan change was not saved. Try again." (and a 5xx shows its `what_happened`), never "Not confirmed: reload to see whether it was saved."; "Try again" invites a second send. Older than this change. Done when it uses the same `isRefusal` / not-confirmed rule as the plan sheet, with a test.
+- **MAJOR (read, not run): the trade's rules editor.** `frontend/src/pages/AdjustmentsPage.vue:223` `failSave` treats any error with `parts` as a refusal, so a 500 with a catalogue body shows "The action you asked for was not completed." even if the row was stored. Done when it uses `isRefusal`.
+- **Older than this change, same class as round 1's BLOCKER:** a price read that fails at once returns `None`, and `_kind_of` (`backend/ofo_app/routes/adjustment_plan.py:583`) then falls back to the position's expiry kind, which is always "" -> "weekly". A percent stop saved while the price read fails outright on a MONTHLY strategy with a user playbook whose weekly and monthly T-06 rows differ is written to the weekly row. Done when a save with no market read refuses (like the 4 s bound) or reads the expiry kind from the contracts, with the monthly test of `tests_app/test_plan_save_1127.py` run with the market reader returning None.
+- MINOR: `AdjustPlanSheet.vue:231` a 200 that `readPlan` cannot read shows "Something went wrong. Please try again." after the save was counted; `PlanEntry.vue:99-101` clears `loading` while the fresh read after a dropped stale one is still out; removing the sheet's load guard (`AdjustPlanSheet.vue:155`) leaves all 10 tests green.
+
+### Plan-save-1127, round 3 (branch `lane-r-psave3`): the no-market save, one save-result helper
+
+Spec basis: ADR-330 (1), (5); REQ-161 AC-2/AC-3; ADR-016 to ADR-019; ADR-008.
+
+**RCA (one sentence).** When the price read failed at once `_market` returned None, `_kind_of` fell back to the position's `expiry_kind` (always "" per `adjustment_readers.py:161/171`) and then to "weekly", so `with_overrides` -> `set_max_loss_stop` wrote a percent stop into the WEEKLY T-06 row of a MONTHLY strategy.
+
+**Fix.** `_bounded_market` (`routes/adjustment_plan.py`, the one door of a plan write) refuses a None market with `plan_save_prices_not_read` (422, nothing written), like the 4 s bound. No default kind is ever written.
+
+**Class list (every place that derives the expiry kind or another market input):**
+
+| Place | Verdict |
+|---|---|
+| `adjustment_plan.py` `_write` (POST/PUT plan) | fixed (goes through `_bounded_market`) |
+| `adjustment_plan.py` `reset_plan` | fixed (same door) |
+| `adjustment_plan.py` `save_rules` (PUT rules) | not affected: writes the submitted body; no kind or market input (`_base_json(tracked)` is from the tracked position only) |
+| `adjustment_plan.py` `read_plan` (GET), `read_levels` (GET) | reads, unchanged: with no market the sheet shows the stop amounts as `stop_max_loss_unknown` and the kind falls back to weekly for the words only; nothing is stored |
+| `adjustment.py:295,501` | not a writer (approach read; `as_of_market` is a pure copy) |
+| `adjustment_check.py:299,396,405` | not a writer (the check; its fallback is read-only) |
+| `playbooks.py` (POST/PATCH/PUT/activate) | not affected: stores the user's body as typed, no market input |
+| `settings_in_force.py:282` `money_inputs` | pure function called by the readers above; not a writer |
+| `routes/alert_style.py:98`, `background.py:397,1505` | reads / alert code (Lane J), not touched |
+
+**Red and green.** Red: the two new tests (`test_a_save_with_no_market_read_is_refused_and_writes_no_row`, `test_a_reset_with_no_market_read_is_refused_and_writes_no_row`) failed against `1f3c1b44` (`assert 200 == 422` on both: the save and the reset were accepted with no market). Green: `tests_app/test_plan_save_1127.py` 6 passed. Frontend: `lib/planSaveResult.js` maps a save to saved / refused / not confirmed; used by AdjustPlanSheet (save and reset), Settings PreferencesTab "Change plan values" and AdjustmentsPage trade rules (`failSave` removed). Red against the old screens: 5 failed (Preferences timeout and 500, page 500, sheet unreadable 200, PlanEntry loading); green after: all pass. The sheet's load guard (`AdjustPlanSheet.vue:155`) now has a test that fails (the sheet shows `OLD-VALUE`) when the guard line is removed.
+
+**PC re-test (owner).** (1) With the price feed off, open a MONTHLY strategy's plan, type a percent stop, Save: expect the price-read refusal and the stored plan unchanged; same for Reset to playbook. (2) Feed on: save a percent stop on the monthly strategy; its monthly T-06 row changes and the weekly one does not. (3) Settings > Adjustments > Show for one strategy > Change plan values, unplug the network and Save: expect "Not confirmed: reload to see whether it was saved.", the typed values still in the boxes, and no "Try again".
+
+**Round 2 of round 3 (Tier A BLOCKER: the no-session path).** With no Kite session (`get_market_context` gives none) the real `read_market(tracked, None)` answers a MarketInputs with `expiry_kind=None`, not None, so the blanket "market is None" refusal let the save through; `_kind_of` then fell to "" -> "weekly" and a typed 50 equal to the weekly row was judged "no change": 200, nothing written. Fix at the use point:
+- `_known_kind` (`adjustment_plan.py`): the market's kind, else `_stored_kind` (the stored catalogue's instrument list, `catalogue_store.load_catalogue`, by the ONE rule `adjustment_readers.expiry_kind_of`: monthly = an index future of the underlying also expires on the leg's day; a scenario's own stated kind wins), else None. No calendar guess: a catalogue with no future of the underlying cannot judge, so it answers None.
+- A save that types a percent stop (`with_overrides(..., strict_kind=True)` -> `_set_stop`) with the kind unknown is refused: `plan_save_prices_not_read`, 422, nothing written. `_bounded_market` keeps only the 4 s refusal. Reset, a target-only save, a rupee-stop save and a playbook-only save work with no session as before (none reads a kind row).
+- Reads (GET plan, levels) unchanged: no kind -> the weekly row is shown.
+- Tests (real `read_market(tracked, None)`, fresh DB): percent stop with no stored kind -> 422 and the row unchanged; with a stated monthly kind -> stored in the monthly row; rupee stop, target-only, reset -> 200; `_stored_kind` over a stored catalogue (future on the leg's day -> monthly, on another day -> weekly, none -> None).
+- `tests/errors/template_pins.json`: the pin for `plan_save_prices_not_read` added, `reviewed: "pending owner read"`.
+- Frontend: AdjustmentsPage trade rules treat an unreadable 200 as Not confirmed (no `show(null)`); `sendPlan`/`resetPlan` move the save count only for a readable answer; `readPlan` reads generic text as a plain string, a catalogue object or null (a local copy of the shared rule: `lib/serverText.js` is on another branch).
+
+## Plan watch box never fills (AX-14, 27 Nov)
+
+Spec basis: ADR-330 (13), REQ-119 AC-3/AC-4. Real PC bodies: A-G #207 (14 lines) and A-H #209 (16 lines, all not_computable); #209's stop line is pinned exactly as served. Fields not stated by the PC were filled from `PlanWatchOut` / `WatchLineOut` (listed in `frontend/tests/plan-watch-fill.test.js`, section (e)).
+
+### Step 1: what the server can send that the old `parsePlanWatch` rejected (old = `frontend/src/lib/planWatch.js` at 248f817a)
+
+| Server side (backend/ofo_app) | Old reader | Effect |
+|---|---|---|
+| `reason` / `label` / `as_of_text` / `no_plan_text` / `armed_heading` are `CatalogueText`; a `UserFacingError` is written as an OBJECT (`api_models.py:37-45` `_serialize` -> `ofo/errors/model.py:89` `as_dict`); a not-checked rule's reason is `render(r.code)` (`routes/adjustment_check.py:203`, `:262`; `routes/plan_watch.py:173,195`) | `textOrNull` returns false for a non-string (`planWatch.js:33`), `isText(label)` fails (`:44`), `asOfText === false` (`:58`) -> whole reply null | whole reply "unavailable" |
+| `plan_state` Literal (`plan_watch.py:104`) | unknown value -> null (`:51`) | whole reply rejected |
+| `kind` / `unit` / `state` Literals (`plan_watch.py:77-79`) | `readLine` returns null (`:44`), `lines.includes(null)` (`:54`) | whole reply rejected on any new value |
+| figures: `Money` = `format(v, "f")`, so no exponent, no grouping; sign "-" only | regex `^-?\d+(\.\d+)?$` (`:34`); "+" rejected | whole reply rejected |
+| `no_plan` with null text, `paused` without text (`plan_watch.py:105,107`) | null (`:59,:63`) | whole reply rejected |
+| `as_of` datetime, extra keys, absent `reason` | not read / ignored / ok | fine |
+
+### Root cause: proven by the PC's raw body (PR #722 comment 7214826976)
+
+`lines[].reason` is an OBJECT (keys code, error_class, external_text, impact, next_action, what_happened, what_is_blocked) on every #209 line, and on #207 it is null on some lines and an object on others in the same reply. `label` and `as_of_text` are strings; `no_plan_text` and `armed_heading` are null. The old `readLine` / `textOrNull` (planWatch.js:33, :44) refuse a non-string reason, so ONE object reason rejected the WHOLE 200 reply as "unavailable". Proof run: the 248f817a parser given #209 (16 lines, the stop line pinned exactly as served) and #207 (14 lines, mixed null and object reasons) returned `unavailable` with 0 lines for both; the fixed parser renders 16 and 14 rows. The earlier note that the relayed bodies were accepted was wrong only because the relay showed the reason as the string "USER_INPUT_151" (its `code`), not the object.
+
+After a first read ends "unavailable", the box showed "Updating the numbers..." on every retry and then the same not-available sentence again: that is the AX-14 symptom.
+
+### Fix (frontend only)
+
+- `parsePlanWatch`: a text is a string or an object with `what_happened`; a "+" sign is read; one bad line becomes "Not checked" (state not_computable, no figures, no reason) with ONE `console.warn` naming the fields only; unknown plan_state reads as planned; the reply is rejected only when it is not an object, has no `lines` array, or answers another strategy.
+- `PlanWatch.vue`: "Updating the numbers..." only over good rows; with no good answer a read in progress says "Loading the rule check...".
+- Supersede: no path. `newestWins` KINDS are outcome, leg-edit, execute only; plan-watch GETs are never aborted; the queue coalesces per box key (separate keys for full box, compact box, remount), so two boxes of one strategy are read one after the other and both render (tested).
+
+### Numbers
+
+| Run | Result |
+|---|---|
+| `plan-watch-fill.test.js` before the fix | 14 failed, 4 passed (of 18; (e) added after) |
+| `plan-watch-*.test.js` + `plan-save-outcome.test.js` after | 7 files, 86 passed |
+| old `plan-watch-reader` "malformed" test | rewritten: top level unusable -> unavailable; one bad line -> kept, Not checked |
+
+### PC re-test (3 steps)
+
+1. Load the new build, open Positions with plan rows, and watch one box: it must read "Loading the rule check..." then the rows. It must never read "Updating the numbers..." before its first rows.
+2. Open the browser console: a `plan watch: line N degraded ... field(s): ...` warning names the field if the server sent something unreadable. Send that line, and the raw 200 body of `/api/strategies/<id>/plan-watch` from the network tab.
+3. Open the builder with `?strategy=<id>`: the Stops panel and the plan rows must show; A-H #209 must show 16 rows marked Not checked.
+
+### Round 2: one reader for server catalogue text
+
+`frontend/src/lib/serverText.js`: a text is a string (itself), null (none) or the error object (its `what_happened`; `next_action` is available). A not-checked line shows the server's `what_happened` and `next_action`, placed and never composed. The #209 stop label already carries `what_happened` ("Stop: not being checked: <what_happened>"), so for such a line only `next_action` is shown under it (a rule line whose label does not carry it shows both).
+
+| Reader | Where | Action |
+|---|---|---|
+| plan-watch reader (reason, label, as_of_text, no_plan_text, armed_heading, paused.text) | `lib/planWatch.js` | changed, uses the helper |
+| adjustment-check reader `said` (used by TrackingPanel.vue:158, :67 and `ruleNotCheckedText`, sharedStateText.js:83) | `lib/playbookEditor.js:124` | changed, uses the helper |
+| adjustment-history totals `reasonOf` | `components/strategy/AdjustSteps.vue:80` | changed, uses the helper |
+| `tracking.js:132` / `paperDrafts.js:212` string-only `serverText` (paper book `*_text`, plain sentences) | lib | checked, left: paper book fields, and `tracking.js:159-160` already reads the object |
+| `LiveStrategyCard.vue:179` | component | checked, left: already object-aware |
+| `adjustCompare.js:93`, `legEdit.js:170`, `strategyActivity.js:29` | lib | checked, left: already read `what_happened` |
+| `TrackingPanel.vue:75` (`a.wording?.what_happened`), `:52` (`f.wording`) | component | checked, left: `wording` is always `render()` (object) / a flag sentence |
+| `TargetBlock.vue:87` `at_refused_reason` | component | checked, left: an outcome field, not plan / check / levels |
+| `adjustPlan.js:12` `parts()` (object-only for `generic_text`) | lib | not touched (another builder); reads `what_happened` of an object only, a string `generic_text` would read as '' |

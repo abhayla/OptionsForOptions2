@@ -35,19 +35,19 @@ def _frames(path, k: int):
 
 
 def _walk(path, frames, rule_id: str, adjust=None):
-    """Steps the gate over ``frames`` (CYCLES checks per frame); -> {frame: [Opened events of rule_id]}."""
+    """Steps the gate over ``frames`` (CYCLES checks per frame); -> {frame: [Opened or Escalated events of rule_id]}."""
     st, out = gate.initial_state(), {}
     for k in frames:
         (body, s), clock = _frames(path, k)
         if adjust is not None:
             s = adjust(k, s)
         ev = pe.evaluate(body, s, {}, None, gap_until=p50.GAP_UNTIL)
-        reading = gr.readings(ev)[rule_id]
+        reading = gr.readings(ev, stops=frozenset())[rule_id]
         got = []
         for sec in range(CYCLES):
             st, events = gate.step(st, now=clock + datetime.timedelta(seconds=sec), preset=gate.INTRADAY,
                                    readings={rule_id: reading})
-            got += [e for e in events if isinstance(e, gate.Opened)]
+            got += [e for e in events if isinstance(e, (gate.Opened, gate.Escalated))]
         out[k] = got
     return out
 
@@ -57,7 +57,7 @@ def test_t18_reads_the_count_against_the_plan_maximum_as_a_ge_rule(used, fired):
     (body, s), _clock = _frames(p50.PATH, p50.F_QUIET)
     assert body["guards"]["max_adjustments"] == MAX_ADJUSTMENTS and body["triggers"]["T-18"]["on"] is True
     ev = pe.evaluate(body, replace(s, adjustments_used=used), {}, None, gap_until=p50.GAP_UNTIL)
-    spec, value = gr.readings(ev)["T-18"]
+    spec, value = gr.readings(ev, stops=frozenset())["T-18"]
     assert (spec.cmp, spec.ladder, value) == ("ge", (D(MAX_ADJUSTMENTS),), D(used))
     assert (gate.level_of(spec, value) >= 0) is fired
 
@@ -65,7 +65,7 @@ def test_t18_reads_the_count_against_the_plan_maximum_as_a_ge_rule(used, fired):
 def test_t18_count_not_readable_gives_no_reading_never_a_record():
     (body, s), _clock = _frames(p50.PATH, p50.F_QUIET)
     ev = pe.evaluate(body, replace(s, adjustments_used=None), {}, None, gap_until=p50.GAP_UNTIL)
-    assert gr.readings(ev)["T-18"][1] is None
+    assert gr.readings(ev, stops=frozenset())["T-18"][1] is None
 
 
 def test_t18_opens_exactly_one_record_when_the_count_reaches_the_maximum():

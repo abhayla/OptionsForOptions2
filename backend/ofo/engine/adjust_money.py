@@ -12,6 +12,7 @@ Every input is exact Decimal; quantities are units (lots x lot size).
 - ``premium_left``: short legs' current price x quantity minus long legs' (the premium still left to earn).
 - ``cost_pct_of_premium_left`` and ``max_profit_change``: ADR-230 (3), the compare's two cost-side rows.
 - ``sum_amounts``: a sum of exact amounts (the charge components of the cost breakdown).
+- ``index_distance``: D-21 (ADR-320 (3)): a breakeven's signed distance from the index, in points.
 """
 from __future__ import annotations
 
@@ -50,6 +51,12 @@ def pct_of(amount: Decimal, pct: Decimal) -> Decimal:
 def cost_with_spread(charges: Decimal, quotes: Iterable[tuple[Decimal, Decimal, int]]) -> Decimal:
     """``charges`` plus (ask - bid) / 2 x quantity for each (bid, ask, quantity) traded."""
     return charges + sum(((ask - bid) / 2 * quantity for bid, ask, quantity in quotes), Decimal(0))
+
+
+def index_distance(index: Decimal, level: Decimal) -> Decimal:
+    """D-21: ``level`` minus ``index`` in points, exact: negative = the level lies below the index, positive = above,
+    0 = at the index. The browser never works this out (the money scan forbids front-end arithmetic)."""
+    return level - index
 
 
 def margin_change(after: Decimal, before: Decimal) -> Decimal:
@@ -107,6 +114,12 @@ def sum_amounts(amounts: Iterable[Decimal]) -> Decimal:
     return sum(amounts, Decimal(0))
 
 
+def after_charges(pnl: Decimal, total_charges: Decimal) -> Decimal:
+    """D-25 (ADR-294 (4)): a whole-trade P&L before charges less every charge line once
+    (the engine's ``total_charges``)."""
+    return pnl - total_charges
+
+
 def in_profit(pnl: Decimal) -> bool:
     """ADR-238 (6): a whole-trade P&L is in profit only above zero (zero and a loss are not)."""
     return pnl > 0
@@ -125,7 +138,20 @@ def stop_at_pct(max_loss: Decimal, pct: Decimal) -> Decimal:
     return pct_of(max_loss, pct).quantize(PAISE, rounding=ROUND_HALF_UP)
 
 
+def level_as_pct(rupees: Decimal, base: Decimal) -> Decimal:
+    """ADR-330 (5): a rupee level as a percent of its base (max profit for a target, max loss for a stop), to two
+    decimals, half up: the inverse of ``stop_at_pct``. ``base`` must be positive (the caller checks)."""
+    return (rupees / base * 100).quantize(HUNDREDTH, rounding=ROUND_HALF_UP)
+
+
 def stop_at_multiple(credit: Decimal, multiple: Decimal) -> Decimal:
     """ADR-247: the loss at which a "``multiple`` x the credit received" stop fires, to the paisa (half up). Example
     (strategy 82): credit 8,918 at 2 -> 17,836."""
     return (credit * multiple).quantize(PAISE, rounding=ROUND_HALF_UP)
+
+
+def distance_to_level(level: Decimal, now: Decimal, rising: bool) -> Decimal:
+    """ADR-330 (5): how far ``now`` still is from a watched ``level``, in the same unit; negative once it is past.
+    ``rising`` = the line is reached from below (a target, an upside trigger): level - now; else now - level.
+    Example: target 5,000 with P&L 3,200 -> 1,800; stop -4,000 with P&L -1,000 -> 3,000."""
+    return level - now if rising else now - level

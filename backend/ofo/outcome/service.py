@@ -56,6 +56,7 @@ from ofo.engine.model import (
 )
 from ofo.errors.explanations import ExplanationText, join_explanations, render_explanation
 from ofo.instruments.models import ZERODHA
+from ofo.market_calendar import after_close_before_settlement
 from ofo.marketdata.forward import ForwardUnavailable, spot_fallback_forward
 from ofo.marketdata.quote import NormalizedQuote, is_live_price, planning_price_usable
 from ofo.marketdata.shared_compute import FeedScope, call_shared
@@ -71,6 +72,7 @@ from ofo.scenario.levels import (
     LevelColumn,
     LevelSet,
     RangeOverride,
+    booked_level_set,
     build_level_set,
     first_multiple_at_or_above,
     graph_level_set,
@@ -78,6 +80,7 @@ from ofo.scenario.levels import (
 from ofo.scenario.spot import spot_reading
 from ofo.scenario.views import DEFAULT_VIEW, LABELS, ScenarioValues, View, on_levels, scenario_values
 from ofo.settings import calc
+from ofo.strategy.definition import display_contract
 from ofo.table import ColumnSpec, Table, build_table, visible_columns
 from ofo.timeutil import IST
 
@@ -190,6 +193,10 @@ class Summary:
     value_label: ExplanationText | None = None
     value_reason: ExplanationText | None = None
     funds_share: money.FundsShare | None = None
+    # GC-ICLIVE-B D-15/D-17: which prices the Get, the time value and the intrinsic value use ("At plan prices" / "At
+    # paper fill prices"), and for a paper trade the plan's own credit as one line. Set by the route from the request.
+    price_basis_text: ExplanationText | None = None
+    plan_line: ExplanationText | None = None
 
 
 @dataclass(frozen=True)
@@ -397,7 +404,7 @@ def not_live(definition: StrategyDefinition, snapshot: MarketSnapshot) -> Outcom
     the REST fallback while the socket is down; ADR-068 (2) "labelled as not live"). No number is shown as live
     (REQ-049 AC-4): the state carries REQ-049 AC-5's message with the newest input time held, per leg too. Each leg
     names its contract (ADR-086), from the same snapshot lookup the computed answer uses."""
-    label = _not_live_label(snapshot)
+    label = _feed_message(snapshot, shown_live=False) or NOT_CONNECTED_LABEL  # D-39: the one decision
     legs = _unpriced_legs(definition, snapshot, label)
     return Outcome(OutcomeState.NOT_CONNECTED, definition.underlying, label, None, legs, MARGIN)
 
@@ -419,9 +426,40 @@ def _quote_label(q: NormalizedQuote) -> ExplanationText | None:
     return data_label(SpotReading(Decimal(1), q.timestamp, q.health))
 
 
-def _feed_message(snapshot: MarketSnapshot) -> ExplanationText | None:
+def _problem_leg(snapshot: MarketSnapshot, instrument_id: str, why: ExplanationText,
+                 settings: Mapping[str, Decimal]) -> ExplanationText:
+    """D-64: the ONE place a refusal names an unusable leg: as the trader knows it ("NIFTY 13 Oct 22600 CE"), never
+    by the raw instrument id. An expired leg on its expiry day after the close, before the settlement time, says when
+    it settles."""
+    lm = snapshot.legs.get(instrument_id)
+    listed = None if lm is None else lm.contract
+    if listed is None:
+        return render_explanation("outcome_problem_leg_unknown", why=why)
+    c = listed.contract
+    clock = snapshot.clock
+    expired = why == render_explanation("outcome_why_expired")
+    if clock is not None and c.expiry == clock.astimezone(IST).date() and expired:
+        settle_from = calc.paper_settle_from(settings)
+        if after_close_before_settlement(clock, settle_from):
+            return render_explanation("market_closed_settles", time=settle_from)
+    if c.expiry is None:
+        return render_explanation("outcome_problem_leg_unknown", why=why)
+    name = display_contract((c.name, Instrument(c.instrument_type), None if c.instrument_type == Instrument.FUT.value
+                             else c.strike, c.expiry))
+    return render_explanation("outcome_problem_leg_named", leg=name, why=why)
+
+
+def _feed_message(snapshot: MarketSnapshot, *, shown_live: bool = True) -> ExplanationText | None:
     """REQ-049 AC-5's message when the feed is not live; the last update is the newest input time we hold."""
-    if snapshot.status.health is DataHealth.AVAILABLE:
+    if shown_live and snapshot.status.health is DataHealth.AVAILABLE:
+        return None
+    # D-39 (``shown_live``: the reply shows live prices; the not-live and from-entries replies show none, so they always
+    # carry the message): one source for "live": the message follows the freshness of the prices this reply shows.
+    # A feed status that
+    # reads disconnected while the spot and every leg price held are available is a read made at another instant.
+    # A leg with no quote has no price: it counts as not live.
+    held = [snapshot.spot, *(lm.quote for lm in snapshot.legs.values())]
+    if shown_live and all(q is not None and q.health is DataHealth.AVAILABLE for q in held):
         return None
     return _not_live_label(snapshot)
 
@@ -761,7 +799,8 @@ def from_entries(definition: StrategyDefinition, snapshot: MarketSnapshot | None
         forwards = {leg.expiry: spot_fallback_forward(leg.expiry, centre, valuation, valuation, rate)
                     for leg in inputs}
         model = model_inputs(StrategyInput(definition.underlying, reading, valuation, rate, tuple(inputs)), forwards)
-        level_set = _no_current(build_level_set(model, config, override=override))
+        open_set = _no_current(build_level_set(model, config, override=override))
+        level_set = booked_level_set(open_set, model, target and target.booked)  # D-11: booked-in 0-P&L
     except (MultiExpiryError, ForwardUnavailable):
         return None
     breakdown = _charges_breakdown(model, definition.underlying, rates)
@@ -789,7 +828,7 @@ def from_entries(definition: StrategyDefinition, snapshot: MarketSnapshot | None
     table = dataclasses.replace(build_table(model, level_set=level_set, scenario=shown), spot_level=None, spot_at=None,
                                 output_label=FROM_ENTRIES_LABEL)
     points = _graph_points(graph) if shown.available else ()
-    dropped = None if snapshot is None else _not_live_label(snapshot)
+    dropped = None if snapshot is None else _feed_message(snapshot, shown_live=False)
     if dropped is NOT_CONNECTED_LABEL:  # no quote was ever held: nothing dropped, no last update to name
         dropped = None
     return Outcome(
@@ -797,7 +836,7 @@ def from_entries(definition: StrategyDefinition, snapshot: MarketSnapshot | None
         reason=None, legs=tuple(legs), margin=MARGIN, valuation=valuation, output_label=FROM_ENTRIES_LABEL,
         spot_level=None, spot_at=None, level_set=level_set, scenario=shown, table=table,
         visible_columns=visible_columns(table), payoff_points=points,
-        summary=_summary(_metrics_of(model.strategy), level_set, model, charges, charges is None),
+        summary=_summary(_metrics_of(model.strategy), open_set, model, charges, charges is None),
         charges_breakdown=breakdown, centre_label=render_explanation("outcome_from_entries_centre", level=centre),
         curves=curves, other_view=other, payoff_table=table_p,
         standard_deviation=standard_deviation(None, None) if sd_bands else None,
@@ -852,14 +891,14 @@ def build_outcome(definition: StrategyDefinition, snapshot: MarketSnapshot | Non
         lm = snapshot.legs.get(p.instrument_id)
         if p.planned_entry is None:  # an unpriced leg (ADR-085) is never computed
             why = render_explanation("draft_leg_needs_reprice")
-            problems.append(render_explanation("outcome_problem_leg", leg=p.instrument_id, why=why))
+            problems.append(_problem_leg(snapshot, p.instrument_id, why, settings))
             legs.append(OutcomeLeg(p.instrument_id, None, p.action, None, None, None, p.lots, None, None,
                                    None, p.captured_at, None, None, None, why))
             continue
         if lm is None or lm.contract is None or lm.problem is not None:
             why = (lm.problem if lm is not None and lm.problem is not None
                    else render_explanation("outcome_why_not_in_snapshot"))
-            problems.append(render_explanation("outcome_problem_leg", leg=p.instrument_id, why=why))
+            problems.append(_problem_leg(snapshot, p.instrument_id, why, settings))
             legs.append(OutcomeLeg(p.instrument_id, None, p.action, None, None, None, p.lots, None, None,
                                    p.planned_entry, p.captured_at, None, None, None, why))
             continue
@@ -895,8 +934,8 @@ def build_outcome(definition: StrategyDefinition, snapshot: MarketSnapshot | Non
             inputs.append(LegInput(definition.underlying, symbol or p.instrument_id, p.action, kind, strike,
                                    c.expiry, quantity, p.planned_entry, ltp, iv))
         except ValueError:  # the cause goes to no user (W-066): a closed reason
-            problems.append(render_explanation("outcome_problem_leg", leg=p.instrument_id,
-                                               why=render_explanation("outcome_why_leg_input")))
+            problems.append(_problem_leg(snapshot, p.instrument_id, render_explanation("outcome_why_leg_input"),
+                                               settings))
     for expiry, why in snapshot.forward_errors.items():
         if any(leg.expiry == expiry for leg in inputs):
             problems.append(render_explanation("outcome_forward_error", expiry=expiry, why=why))
@@ -925,7 +964,8 @@ def build_outcome(definition: StrategyDefinition, snapshot: MarketSnapshot | Non
     config = config or ScenarioSettings.from_values(settings).for_index(definition.underlying)
     solved = {x.instrument_id: x.iv for x in legs if x.iv is not None}
     move = _expected_move(inputs, snapshot, valuation, shared, solved)
-    level_set = build_level_set(model, config, expected_move=move, override=override)
+    open_set = build_level_set(model, config, expected_move=move, override=override)
+    level_set = booked_level_set(open_set, model, target and target.booked)  # D-11: booked-in 0-P&L
     breakdown = _charges_breakdown(model, definition.underlying, rates)
     charges = None if breakdown is None else breakdown.total
     # the ONE computation (AC-8)
@@ -957,7 +997,7 @@ def build_outcome(definition: StrategyDefinition, snapshot: MarketSnapshot | Non
         spot_at=model.spot_at,
         level_set=level_set, scenario=values, table=table, visible_columns=visible_columns(table),
         payoff_points=points,
-        summary=_summary(_metrics_of(model.strategy), level_set, model, charges, charges is None,
+        summary=_summary(_metrics_of(model.strategy), open_set, model, charges, charges is None,
                          spot=model.spot_level),
         charges_breakdown=breakdown, curves=curves, other_view=other, payoff_table=table_p,
         standard_deviation=sd, dividend_yields=yields_of(model), sold_deltas=_sold_deltas(model, leg_greeks),

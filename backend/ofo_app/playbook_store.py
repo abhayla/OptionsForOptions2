@@ -29,10 +29,19 @@ from datetime import date, datetime
 from decimal import Decimal
 from typing import Any
 
+from ofo.adjustment import level_watch, plan_diff
+from ofo.adjustment import stop_lines as sl
 from ofo.adjustment.cap_scope import count_capped
 from ofo.adjustment.gate_rows import GateRow, GateRows
-from ofo.adjustment.playbook_eval import validate_body
+from ofo.adjustment.playbook_eval import (
+    LEGACY_SITUATION_RULE_PREFIX,
+    SITUATION_RULE_PREFIX,
+    is_day_rule_id,
+    validate_body,
+)
 from ofo.adjustment.playbook_types import BODY_SCHEMA, NAME_MAX, SHOWN_NAMES
+from ofo.alerts import CONTINUE as ANSWER_CONTINUE  # ADR-330 (3): Dismiss and Act on both leave the position as is
+from ofo.checks import pnl_amount as rupee
 from ofo.errors.explanations import render_explanation
 from ofo.settings import layers
 from sqlalchemy import text
@@ -61,8 +70,10 @@ LAPSE_SUPERSEDED_BY_WORSE = "superseded_by_worse"
 LAPSE_NOT_MONITORED = "not_monitored"
 #: #685 item 3: a basket was booked, so the record was raised for a position the strategy no longer holds.
 LAPSE_POSITION_CHANGED = "position_changed"
+#: D-30: every contract of the strategy expired (its last expiry is before today, IST).
+LAPSE_CONTRACT_EXPIRED = "contract_expired"
 LAPSE_REASONS = (LAPSE_CONDITION_STOPPED, LAPSE_STRATEGY_CLOSED, LAPSE_SUPERSEDED_BY_WORSE, LAPSE_NOT_MONITORED,
-                 LAPSE_POSITION_CHANGED)
+                 LAPSE_POSITION_CHANGED, LAPSE_CONTRACT_EXPIRED)
 WORSE_MARKS = (None, "last", "dismissed")  # = migration 0036 WORSE plus none (a test asserts it)
 HELD_REASONS = ("daily_limit", "quiet_time")  # = alert_gate.HELD_DAILY_LIMIT / HELD_QUIET_TIME
 SOURCE_SYSTEM = "system"  # "Adjustment opportunity detected" (a system playbook's flag)
@@ -92,6 +103,7 @@ class Playbook:
     version: int
     created_at: datetime
     updated_at: datetime
+    slug: str | None = None  # a standard playbook's stable name ("<type>-default" is the first of each type)
 
 
 @dataclass(frozen=True)
@@ -108,6 +120,8 @@ class Plan:
     strategy_type: str
     body: dict
     accepted_at: datetime
+    #: ADR-330 (1): the stored stop base (``settings_in_force.StopBase.to_json``); None = none stored yet
+    stop_base: dict | None = None
 
 
 @dataclass(frozen=True)
@@ -237,6 +251,23 @@ class Suggestion:
         return "completed" if len(set(placed)) == legs else "partly_completed"
 
     @property
+    def closed_at(self) -> datetime | None:
+        """D-26: when the record left "open" (the last timeline entry with an ``outcome``: the close's own ``at``); None
+        while open or when the stored time is missing or unreadable (never a guess)."""
+        if self.outcome == "open":
+            return None
+        # the entry the close wrote carries "outcome"; later appends (condition_cleared, orders_placed) do not
+        closing = [e for e in self.timeline if isinstance(e, dict) and "outcome" in e]
+        if not closing:
+            return None
+        raw = closing[-1].get("at")
+        try:
+            found = datetime.fromisoformat(raw) if isinstance(raw, str) else None
+        except ValueError:
+            return None
+        return found if found is not None and found.tzinfo is not None else None
+
+    @property
     def lapse_reason(self) -> str | None:
         """condition_stopped / strategy_closed / superseded_by_worse on a lapsed record (its last timeline entry)."""
         return self.timeline[-1].get("reason") if self.outcome == "lapsed" and self.timeline else None
@@ -251,14 +282,16 @@ class InboxRow:
     paper: bool  # the strategy has paper orders: an acted-on basket is not sent to Zerodha (ADR-135)
 
 
-_PB_COLUMNS = "id, user_ref, strategy_type, name, is_system, status, body::text, version, created_at, updated_at"
+_PB_COLUMNS = "id, user_ref, strategy_type, name, is_system, status, body::text, version, created_at, updated_at, slug"
+_DEFAULT_FIRST = "(slug IS NOT DISTINCT FROM strategy_type || '-default') DESC"
 _VISIBLE = "(user_ref IS NULL OR user_ref = :user_ref)"
 _SELECT_ONE = text(f"SELECT {_PB_COLUMNS} FROM public.adjustment_playbooks "  # noqa: S608 constant columns
                    f"WHERE id = :id AND {_VISIBLE}")
 _SELECT_TYPE = text(f"SELECT {_PB_COLUMNS} FROM public.adjustment_playbooks "  # noqa: S608 constant columns
-                    f"WHERE strategy_type = :type AND {_VISIBLE} ORDER BY is_system DESC, lower(name), id")
+                    f"WHERE strategy_type = :type AND {_VISIBLE} "
+                    f"ORDER BY is_system DESC, {_DEFAULT_FIRST}, lower(name), id")
 _SELECT_SYSTEM = text(f"SELECT {_PB_COLUMNS} FROM public.adjustment_playbooks "  # noqa: S608 constant columns
-                      "WHERE strategy_type = :type AND is_system")
+                      f"WHERE strategy_type = :type AND is_system ORDER BY {_DEFAULT_FIRST}, id LIMIT 1")
 _SELECT_ACTIVE = text(f"SELECT {', '.join('p.' + c for c in _PB_COLUMNS.split(', '))} "  # noqa: S608 constant columns
                       "FROM public.adjustment_playbook_active a JOIN public.adjustment_playbooks p "
                       "ON p.id = a.playbook_id WHERE a.user_ref = :user_ref AND a.strategy_type = :type")
@@ -282,15 +315,19 @@ _DELETE = text("DELETE FROM public.adjustment_playbooks WHERE id = :id AND user_
 _MAKE_ACTIVE = text("INSERT INTO public.adjustment_playbook_active (user_ref, strategy_type, playbook_id) "
                     "VALUES (:user_ref, :type, :id) ON CONFLICT (user_ref, strategy_type) "
                     "DO UPDATE SET playbook_id = EXCLUDED.playbook_id")
-_PLAN_COLUMNS = "strategy_id, playbook_id, strategy_type, body::text, accepted_at"
-_UPSERT_PLAN = text("INSERT INTO public.strategy_adjustment_plans (strategy_id, playbook_id, strategy_type, body) "  # noqa: S608
-                    "VALUES (:strategy_id, :playbook_id, :type, CAST(:body AS JSONB)) ON CONFLICT (strategy_id) "
-                    "DO UPDATE SET playbook_id = EXCLUDED.playbook_id, body = EXCLUDED.body "
+_PLAN_COLUMNS = "strategy_id, playbook_id, strategy_type, body::text, accepted_at, stop_base::text"
+_UPSERT_PLAN = text("INSERT INTO public.strategy_adjustment_plans "  # noqa: S608
+                    "(strategy_id, playbook_id, strategy_type, body, stop_base) "
+                    "VALUES (:strategy_id, :playbook_id, :type, CAST(:body AS JSONB), CAST(:stop_base AS JSONB)) "
+                    "ON CONFLICT (strategy_id) "
+                    "DO UPDATE SET playbook_id = EXCLUDED.playbook_id, body = EXCLUDED.body, "
+                    "stop_base = COALESCE(EXCLUDED.stop_base, public.strategy_adjustment_plans.stop_base) "
                     f"RETURNING {_PLAN_COLUMNS}")
 _SELECT_PLAN = text(f"SELECT {', '.join('p.' + c for c in _PLAN_COLUMNS.split(', '))} "  # noqa: S608 constant columns
                     "FROM public.strategy_adjustment_plans p JOIN public.strategies s ON s.id = p.strategy_id "
-                    "WHERE p.strategy_id = :strategy_id AND s.user_ref = :user_ref")
-_OWNS_STRATEGY = text("SELECT 1 FROM public.strategies WHERE id = :strategy_id AND user_ref = :user_ref")
+                    "WHERE p.strategy_id = :strategy_id AND s.user_ref = :user_ref AND s.deleted_at IS NULL")
+_OWNS_STRATEGY = text("SELECT 1 FROM public.strategies WHERE id = :strategy_id AND user_ref = :user_ref "
+                      "AND deleted_at IS NULL")
 _SELECT_STATE = text("SELECT adjustment_no, rule_id, held_at_entry, seen_clear FROM public.adjustment_rule_state "
                      "WHERE strategy_id = :strategy_id ORDER BY adjustment_no, rule_id")
 #: ADR-258 (migration 0045): the row's starting point comes from the column DEFAULT, read from this transaction-local
@@ -306,9 +343,13 @@ _OPEN_FOR_RULE = text(f"SELECT {_SG_COLUMNS} FROM public.adjustment_suggestions 
                       "WHERE strategy_id = :strategy_id AND rule_id = :rule_id AND outcome = 'open'")
 _INSERT_SUGGESTION = text(
     "INSERT INTO public.adjustment_suggestions (strategy_id, rule_id, trigger_id, stage, value, threshold, worse, "  # noqa: S608
-    "timeline) VALUES (:strategy_id, :rule_id, :trigger_id, :stage, :value, :threshold, CAST(:worse AS TEXT), "
+    "kind, shown_at, timeline) VALUES (:strategy_id, :rule_id, :trigger_id, :stage, :value, :threshold, "
+    "CAST(:worse AS TEXT), CAST(:kind AS TEXT), "
+    "CASE WHEN CAST(:shown_at AS TIMESTAMPTZ) IS NULL THEN now() "
+    "ELSE LEAST(CAST(:shown_at AS TIMESTAMPTZ), clock_timestamp()) END, "  # J2: never after the database clock
     "jsonb_build_array(jsonb_build_object('at', clock_timestamp(), 'outcome', 'open', "
-    "'group', CAST(:group AS TEXT), 'source', CAST(:source AS TEXT), 'cmp', CAST(:cmp AS TEXT), "
+    "'fired_value', CAST(CAST(:value AS NUMERIC) AS TEXT), 'group', CAST(:group AS TEXT), "
+    "'source', CAST(:source AS TEXT), 'cmp', CAST(:cmp AS TEXT), "
     "'label', CAST(:label AS TEXT), 'unit', CAST(:unit AS TEXT), 'approach', CAST(:approach AS TEXT), "
     "'approach_cost', CAST(:approach_cost AS TEXT), 'unpriced', CAST(:unpriced AS INTEGER), "
     "'carry', CAST(:carry AS JSONB), 'beyond', CAST(:beyond AS JSONB), 'limit', CAST(:limit AS TEXT), "
@@ -316,7 +357,10 @@ _INSERT_SUGGESTION = text(
     f"RETURNING {_SG_COLUMNS}")
 _CLOSE_SUGGESTION = text(
     "UPDATE public.adjustment_suggestions AS g SET outcome = CAST(:outcome AS TEXT), "  # noqa: S608
-    "dismiss_reason = CAST(:reason AS TEXT), timeline = g.timeline || jsonb_build_array(jsonb_build_object("
+    "dismiss_reason = CAST(:reason AS TEXT), answer = CAST(:answer AS TEXT), "
+    "answered_at = CASE WHEN CAST(:answer AS TEXT) IS NULL THEN NULL "
+    "ELSE COALESCE(CAST(:answered_at AS TIMESTAMPTZ), clock_timestamp()) END, "
+    "timeline = g.timeline || jsonb_build_array(jsonb_build_object("
     "'at', clock_timestamp(), 'outcome', CAST(:outcome AS TEXT), 'suggestion_id', g.id, "
     "'reason', CAST(:note AS TEXT))) "
     "FROM public.strategies s WHERE g.id = :id AND s.id = g.strategy_id "
@@ -358,14 +402,24 @@ _LINK_ORDERS = text(
     "RETURNING g.id")
 _SUGGESTION_OF_STRATEGY = text(
     "SELECT g.outcome FROM public.adjustment_suggestions g JOIN public.strategies s ON s.id = g.strategy_id "
-    "WHERE g.id = :id AND g.strategy_id = :strategy_id AND s.user_ref = :user_ref")
-_INBOX = text(f"SELECT {', '.join('g.' + c for c in _SG_COLUMNS.split(', '))}, s.name, "  # noqa: S608 constant
+    "WHERE g.id = :id AND g.strategy_id = :strategy_id AND s.user_ref = :user_ref FOR UPDATE OF g")
+# ^ locked: a Dismiss or the worker's lapse cannot land between this read and the placement's stamp (one transaction)
+#: D-29: ``{scope}`` = ``scenario_mode.scope_clause("s")``: the inbox readers see this process's own strategies only.
+_INBOX_SQL = (f"SELECT {', '.join('g.' + c for c in _SG_COLUMNS.split(', '))}, s.name, "  # noqa: S608 constant
               "EXISTS (SELECT 1 FROM public.paper_orders o WHERE o.strategy_id = s.id) "
               "FROM public.adjustment_suggestions g JOIN public.strategies s ON s.id = g.strategy_id "
-              "WHERE s.user_ref = :user_ref AND s.deleted_at IS NULL ORDER BY g.shown_at DESC, g.id DESC")
+              "WHERE s.user_ref = :user_ref AND s.deleted_at IS NULL AND g.answer IS DISTINCT FROM 'noted' AND {scope} "
+              "ORDER BY g.shown_at DESC, g.id DESC")
+
+
+def scoped(sql: str) -> tuple[Any, dict]:
+    from ofo_app.scenario_mode import scope_clause  # noqa: PLC0415 - the one isolation helper
+    clause, params = scope_clause("s")
+    return text(sql.format(scope=clause)), params
 _LIST_SUGGESTIONS = text(f"SELECT {', '.join('g.' + c for c in _SG_COLUMNS.split(', '))} "  # noqa: S608 constant
                          "FROM public.adjustment_suggestions g JOIN public.strategies s ON s.id = g.strategy_id "
-                         "WHERE g.strategy_id = :strategy_id AND s.user_ref = :user_ref ORDER BY g.id")
+                         "WHERE g.strategy_id = :strategy_id AND s.user_ref = :user_ref "
+                         "AND g.answer IS DISTINCT FROM 'noted' ORDER BY g.id")
 
 
 # ---------------------------------------------------------------------------------------------------------------
@@ -408,6 +462,7 @@ def check_body(body: object, strategy_type: str) -> dict:
         if key in body and not isinstance(body[key], kind):
             raise _bad(key)
     _check_day_rule_times(body.get("day_rules"))
+    _check_rupee_guards(body.get("guards"))
     from ofo_app.settings_in_force import check_stop_values  # noqa: PLC0415 - it imports this module's callers
     if (bad := check_stop_values(body)) is not None:  # a stop value out of range is refused on save (ADR-252)
         raise _bad(bad)
@@ -421,6 +476,20 @@ def check_body(body: object, strategy_type: str) -> dict:
     except ValueError:
         raise _bad("body") from None
     return body
+
+
+def _check_rupee_guards(guards: object) -> None:
+    """ADR-330 (5): a plan's rupee level is "" (none) or a positive finite decimal text, nothing else (fail closed)."""
+    for key in (sl.RUPEE_PROFIT_KEY, sl.RUPEE_LOSS_KEY):
+        raw = guards.get(key) if isinstance(guards, dict) else None
+        if raw is None:
+            continue
+        try:
+            if not isinstance(raw, str):
+                raise ValueError(key)
+            rupee.level_of(raw)
+        except ValueError:
+            raise _bad(f"guards.{key}") from None
 
 
 def _check_day_rule_times(day_rules: object) -> None:
@@ -453,6 +522,9 @@ def _check_triggers(triggers: object, counts: dict[str, int]) -> dict:
     return triggers
 
 
+_RESERVED_RULE_PREFIXES = (level_watch.RULE_PREFIX, SITUATION_RULE_PREFIX, LEGACY_SITUATION_RULE_PREFIX)
+
+
 def _check_rules(rules: object, triggers: dict) -> None:
     if not isinstance(rules, list):
         raise _bad("rules")
@@ -462,6 +534,8 @@ def _check_rules(rules: object, triggers: dict) -> None:
                 or ("any_of" in rule) == ("all_of" in rule) or not isinstance(members, list) or not members
                 or any(m not in triggers for m in members)):
             raise _bad(f"rules.{i}")
+        if is_day_rule_id(rule["id"]) or rule["id"].startswith(_RESERVED_RULE_PREFIXES):
+            raise _bad(f"rules.{i}.id")  # a user rule never takes an id the engine's own rules use
 
 
 def _dump(body: dict) -> str:
@@ -499,13 +573,13 @@ def _name(name: object) -> str:
 
 def _playbook(row: Any) -> Playbook:
     return Playbook(id=row[0], user_ref=row[1], strategy_type=row[2], name=row[3], is_system=row[4], status=row[5],
-                    body=_load(row[6]), version=row[7], created_at=row[8], updated_at=row[9])
+                    body=_load(row[6]), version=row[7], created_at=row[8], updated_at=row[9], slug=row[10])
 
 
 async def _current(conn: Any, pb: Playbook) -> Playbook:
     """A system playbook as its current version (REQ-169); a user's own playbook unchanged. A system playbook with
     no stored version is a broken database (0034 seeds all 12): fails closed, never the 0031 row's body."""
-    if not pb.is_system:
+    if not pb.is_system or pb.slug != f"{pb.strategy_type}-default":  # a further standard playbook: its own row
         return pb
     row = (await conn.execute(_SYSTEM_CURRENT, {"type": pb.strategy_type})).one_or_none()
     if row is None:
@@ -632,13 +706,27 @@ async def active_for(conn: Any, user_ref: str, strategy_type: str) -> Playbook:
 
 
 def _plan(row: Any) -> Plan:
-    return Plan(strategy_id=row[0], playbook_id=row[1], strategy_type=row[2], body=_load(row[3]), accepted_at=row[4])
+    return Plan(strategy_id=row[0], playbook_id=row[1], strategy_type=row[2], body=_load(row[3]), accepted_at=row[4],
+                stop_base=None if row[5] is None else _load(row[5]))
 
 
-async def accept_plan(conn: Any, user_ref: str, strategy_id: int, playbook_id: int,
-                      body: object | None = None) -> Plan:
+#: #753 (migration 0060): the plan guard stamps ``accepted_at`` on an UPDATE only while this transaction-local setting
+#: is 'on'. Set right before the write of an explicit acceptance (accept a playbook, Reset), cleared right after.
+PLAN_ACCEPTANCE_SETTING = "ofo.plan_acceptance"
+_SET_ACCEPTANCE = text(f"SELECT set_config('{PLAN_ACCEPTANCE_SETTING}', :v, true)")
+
+
+async def accept_plan(conn: Any, user_ref: str, strategy_id: int, playbook_id: int,  # noqa: PLR0913 - the stop base is stored with the plan
+                      body: object | None = None, stop_base: dict | None = None, *, accepts: bool = False) -> Plan:
     """REQ-161 AC-2/AC-3: the plan is a copy of the chosen playbook's body (or the customised sheet's body, same
-    type); accepting again replaces the strategy's own plan."""
+    type); accepting again replaces the strategy's own plan. ADR-330 (1): ``stop_base`` (worked out from the entry
+    orders by the caller) is stored with it and REPLACES the old one, so a plan edit recomputes it; None = nothing
+    worked
+    out now: a stored base is KEPT (never overwritten by NULL), and none stored stays none (the first check works it
+    out once).
+    #753 / ADR-250: ``accepts`` is True only for an explicit acceptance (the user accepting a playbook, Reset to
+    playbook): then ``accepted_at`` is stamped. False (a plan-sheet edit, the default) never moves it, whatever the
+    body or the playbook pointer do; the first save always stamps (column default)."""
     await strategy_store.lock_strategy(conn, user_ref, strategy_id)  # not_found for a missing / another user's
     source = await get(conn, user_ref, playbook_id)
     current = await plan_for(conn, user_ref, strategy_id)
@@ -646,9 +734,51 @@ async def accept_plan(conn: Any, user_ref: str, strategy_id: int, playbook_id: i
         raise PlaybookStoreError(BODY_INVALID, f"plan of strategy {strategy_id} is {current.strategy_type}, "
                                  f"playbook {source.id} is {source.strategy_type}", field="strategy_type")
     copy = check_body(source.body if body is None else body, source.strategy_type)
+    extra = plan_diff.added(copy, source.body)
+    if extra and current is not None and current.playbook_id in (source.id, None):  # ADR-250/247: what the plan already
+        # held (also a plan whose playbook was deleted, REQ-158 AC-5: it is re-pointed at the active one)
+        extra = sorted(set(extra) - set(plan_diff.added(current.body, source.body)))  # stays; only NEW ones are refused
+    if extra:  # ADR-330 (9): a plan cannot add a condition its playbook lacks; the section is named, never the key
+        raise _bad(extra[0].split(".", 1)[0])
+    if accepts:
+        await conn.execute(_SET_ACCEPTANCE, {"v": "on"})
+    # No SQL after a failure (a `finally` would run in the aborted transaction and hide the real error with 25P02): the
+    # setting is transaction-local, so a failed write rolls it back with the transaction.
     row = (await conn.execute(_UPSERT_PLAN, {"strategy_id": strategy_id, "playbook_id": source.id,
-                                             "type": source.strategy_type, "body": _dump(copy)})).one()
+                                             "type": source.strategy_type, "body": _dump(copy),
+                                             "stop_base": None if stop_base is None else _dump(stop_base)})).one()
+    if accepts:
+        await conn.execute(_SET_ACCEPTANCE, {"v": "off"})
     return _plan(row)
+
+
+async def reset_plan(conn: Any, user_ref: str, strategy_id: int, stop_base: dict | None = None) -> Plan:
+    """ADR-330 (9) "Reset to playbook": every condition of the plan goes back to its playbook's (the server does the
+    copy); the sheet levels and the plan settings, which are values of the trade, are kept (LP-5 (a)).
+    Refused, plan unchanged: no plan (not found); a plan saved before playbooks were pointed at (playbook_id NULL)
+    or whose playbook was deleted (not found, the playbook's own sentence)."""
+    await strategy_store.lock_strategy(conn, user_ref, strategy_id)  # first: the plan is read under the lock
+    current = await plan_for(conn, user_ref, strategy_id)
+    if current is None or current.playbook_id is None:
+        raise _not_found(None if current is None else "of this plan")
+    source = await get(conn, user_ref, current.playbook_id)  # not found when the playbook is gone
+    return await accept_plan(conn, user_ref, strategy_id, source.id, plan_diff.reset(current.body, source.body),
+                             stop_base, accepts=True)  # ADR-330 (9): Reset to playbook is an acceptance (#753)
+
+
+_BACKFILL_STOP_BASE = text("UPDATE public.strategy_adjustment_plans SET stop_base = CAST(:value AS JSONB) "
+                           "WHERE strategy_id = :strategy_id AND stop_base IS NULL")
+
+
+async def backfill_stop_base(conn: Any, strategy_id: int, value: dict) -> bool:
+    """ADR-330 (1), a plan saved before the stop base existed: store ``value`` ONCE, only where nothing is stored (the
+    first writer wins; True = this call stored it). Written on the CALLER's connection (a request uses ONE connection,
+    #682; the worker never holds two) inside a savepoint, so a failed write cannot poison the caller's transaction.
+    It is kept when the caller commits; a caller that does not commit loses only the write, and the next read works
+    out the same figure again from the (never changing) entry orders."""
+    async with conn.begin_nested():
+        done = (await conn.execute(_BACKFILL_STOP_BASE, {"strategy_id": strategy_id, "value": _dump(value)})).rowcount
+    return done == 1
 
 
 #: ADR-250: when migration 0040 saved the iron condor ADR-247 version (margin stop and T-16 off). The row is found by
@@ -671,14 +801,14 @@ async def plan_for(conn: Any, user_ref: str, strategy_id: int) -> Plan | None:
     return None if row is None else _plan(row)
 
 
-async def _owned(conn: Any, user_ref: str, strategy_id: int) -> None:
+async def require_owned(conn: Any, user_ref: str, strategy_id: int) -> None:
     if (await conn.execute(_OWNS_STRATEGY, {"strategy_id": strategy_id, "user_ref": user_ref})).first() is None:
         raise strategy_store.StrategyStoreError(strategy_store.NOT_FOUND, f"strategy {strategy_id}")
 
 
 async def rule_states(conn: Any, user_ref: str, strategy_id: int) -> dict[int, dict[str, tuple[bool, bool]]]:
     """starting point (adjustments made, ADR-258) -> rule id -> (held_at_entry, seen_clear). No row -> {}."""
-    await _owned(conn, user_ref, strategy_id)
+    await require_owned(conn, user_ref, strategy_id)
     out: dict[int, dict[str, tuple[bool, bool]]] = {}
     for r in (await conn.execute(_SELECT_STATE, {"strategy_id": strategy_id})).all():
         out.setdefault(int(r[0]), {})[r[1]] = (r[2], r[3])
@@ -700,7 +830,7 @@ async def put_rule_state(conn: Any, user_ref: str, strategy_id: int, rule_id: st
     ``adjustment_no`` = the adjustments made before this memory started (ADR-258; 0 = the entry)."""
     if isinstance(adjustment_no, bool) or not isinstance(adjustment_no, int) or adjustment_no < 0:
         raise ValueError(f"adjustment_no must be an int >= 0, got {adjustment_no!r}")
-    await _owned(conn, user_ref, strategy_id)
+    await require_owned(conn, user_ref, strategy_id)
     await conn.execute(_SET_MARKER, {"n": str(adjustment_no)})
     await conn.execute(_PUT_STATE, {"strategy_id": strategy_id, "rule_id": rule_id, "held": held_at_entry,
                                     "seen": seen_clear})
@@ -721,20 +851,24 @@ async def open_suggestion(conn: Any, user_ref: str, strategy_id: int, rule_id: s
                           worse: str | None = None, carry: Mapping[str, str | None] | None = None,
                           beyond: tuple[str, Decimal, Decimal] | None = None,
                           limit: Decimal | None = None, adjustments: int | None = None,
-                          target: Mapping[str, str | None] | None = None) -> Suggestion:
+                          target: Mapping[str, str | None] | None = None,
+                          kind: str = "adjustment_rule", shown_at: datetime | None = None) -> Suggestion:
     """REQ-112 AC-1: one open record per (strategy, rule); a rule still open returns its existing record.
     ``limit``: the limit in force at the stage (``Suggestion.limit``), beside the gate's rung ``threshold``.
-    ``adjustments``: the strategy's adjustment count now (``Suggestion.adjustments``, ``lapse_changed``).
+    ``adjustments``: the strategy's adjustment count now (``Suggestion.adjustments``).
     ``carry``: a carry check's content (GC-IC1 1b; money as strings, None = not known with its reason code).
-    ``worse``: None / 'last' / 'dismissed' (REQ-170 AC-3, ADR-237 (5)), written once at insert."""
+    ``worse``: None / 'last' / 'dismissed' (REQ-170 AC-3, ADR-237 (5)), written once at insert.
+    ``kind`` (ADR-330, ``ofo.alerts``) and ``shown_at`` (the event time, "Fired at"; None = now): written once.
+    Only ``actionable_alerts.raise_actionable`` passes them (it is the one writer)."""
     if worse not in WORSE_MARKS:
         raise ValueError(f"unknown worse marker {worse!r}")
-    await _owned(conn, user_ref, strategy_id)
+    await require_owned(conn, user_ref, strategy_id)
     params = {"strategy_id": strategy_id, "rule_id": rule_id}
     existing = (await conn.execute(_OPEN_FOR_RULE, params)).one_or_none()
     if existing is not None:
         return _suggestion(existing)
     row = (await conn.execute(_INSERT_SUGGESTION, {**params, "trigger_id": trigger_id, "stage": stage,
+                                                   "kind": kind, "shown_at": shown_at,
                                                    "value": value, "threshold": threshold, "group": group,
                                                    "source": source, "cmp": cmp, "label": label,
                                                    "unit": unit, "approach": approach, "unpriced": unpriced,
@@ -750,14 +884,16 @@ async def open_suggestion(conn: Any, user_ref: str, strategy_id: int, rule_id: s
     return _suggestion(row)
 
 
-async def _close(conn: Any, user_ref: str, suggestion_id: int, outcome: str, reason: str | None,  # noqa: PLR0913
-                 note: str | None = None) -> Suggestion:
+async def close_suggestion(conn: Any, user_ref: str, suggestion_id: int, outcome: str, reason: str | None,  # noqa: PLR0913
+                 note: str | None = None, answer: str | None = None,
+                 answered_at: datetime | None = None) -> Suggestion:
     if outcome not in SUGGESTION_FINAL:
         raise ValueError(f"unknown suggestion outcome {outcome!r}")
     if type(suggestion_id) is not int:
         raise strategy_store.StrategyStoreError(SUGGESTION_NOT_FOUND, f"suggestion {suggestion_id}")
     row = (await conn.execute(_CLOSE_SUGGESTION, {"id": suggestion_id, "user_ref": user_ref, "outcome": outcome,
-                                                  "reason": reason, "note": note})).one_or_none()
+                                                  "reason": reason, "note": note, "answer": answer,
+                                                  "answered_at": answered_at})).one_or_none()
     if row is None:  # the outcome is never written twice: missing / another user's, or already final
         found = (await conn.execute(_SUGGESTION_OUTCOME, {"id": suggestion_id, "user_ref": user_ref})).first()
         if found is None:
@@ -767,32 +903,43 @@ async def _close(conn: Any, user_ref: str, suggestion_id: int, outcome: str, rea
 
 
 async def dismiss(conn: Any, user_ref: str, suggestion_id: int, reason: str | None = None) -> Suggestion:
-    return await _close(conn, user_ref, suggestion_id, "dismissed", reason)
+    return await close_suggestion(conn, user_ref, suggestion_id, "dismissed", reason, answer=ANSWER_CONTINUE)
 
 
 async def act_on(conn: Any, user_ref: str, suggestion_id: int) -> Suggestion:
-    return await _close(conn, user_ref, suggestion_id, "acted_on", None)
+    return await close_suggestion(conn, user_ref, suggestion_id, "acted_on", None, answer=ANSWER_CONTINUE)
 
 
 async def link_orders(conn: Any, user_ref: str, strategy_id: int, suggestion_id: int,  # noqa: PLR0913
                       order_ids: list[int], basket_legs: int | None = None) -> None:
-    """REQ-163 AC-1: the acted-on record ``suggestion_id`` names the paper orders ``order_ids`` its basket placed.
+    """REQ-163 AC-1: the record ``suggestion_id`` names the paper orders ``order_ids`` its basket placed, and an open
+    record becomes acted on with them (same transaction: a refused basket rolls the stamp back).
 
-    Fail closed, nothing written: a missing record, another user's, or one of another strategy -> SUGGESTION_NOT_FOUND;
-    a record not acted on, or one that already names a basket -> SUGGESTION_NOT_OPEN. The caller rolls back the orders.
+    Nothing about a record ever refuses or rolls back a placement (an exit must not be blocked by an alert that lapsed
+    or was dismissed, or by a stale or hand-edited id): a dismissed / lapsed / closed record, one that already names a
+    basket, and a missing / another user's / other-strategy id are SKIPPED (nothing written for them) and the placement
+    proceeds. The state is read under a row lock, so it cannot change before the stamp in the same transaction.
     """
     if type(suggestion_id) is not int or not order_ids or any(type(i) is not int for i in order_ids):
-        raise strategy_store.StrategyStoreError(SUGGESTION_NOT_FOUND, f"suggestion {suggestion_id!r}")
-    args = {"id": suggestion_id, "user_ref": user_ref, "strategy_id": strategy_id}
-    row = (await conn.execute(_LINK_ORDERS, {**args, "order_ids": json.dumps(order_ids),
-                                                 "basket_legs": json.dumps(basket_legs)})).one_or_none()
-    if row is not None:
         return
-    found = (await conn.execute(_SUGGESTION_OF_STRATEGY, args)).first()
-    if found is None:
-        raise strategy_store.StrategyStoreError(SUGGESTION_NOT_FOUND, f"suggestion {suggestion_id}")
-    raise strategy_store.StrategyStoreError(SUGGESTION_NOT_OPEN,
-                                            f"suggestion {suggestion_id} is {found[0]} or already names a basket")
+    args = {"id": suggestion_id, "user_ref": user_ref, "strategy_id": strategy_id}
+    # live test 27 Nov 2026 item 10 (REQ-112 AC-2): "Acted on" is stamped HERE, when the basket's paper order is placed
+    # (the caller's one transaction), never when the basket is only staged. A record of this strategy still open moves
+    # to acted_on now; one already acted on (stamped by the older staging path) just gets linked.
+    seen = (await conn.execute(_SUGGESTION_OF_STRATEGY, args)).first()
+    if seen is None:
+        return
+    if seen[0] == "open":
+        try:
+            await act_on(conn, user_ref, suggestion_id)
+        except strategy_store.StrategyStoreError:  # no longer open after all: left as it is, never a refusal
+            return
+    # dismissed / lapsed: final, left as it is (the migration 0031 trigger would refuse a move)
+    elif seen[0] != "acted_on":
+        return
+    # an acted_on record that already names a basket matches no row: left as it is, the placement proceeds
+    await conn.execute(_LINK_ORDERS, {**args, "order_ids": json.dumps(order_ids),
+                                      "basket_legs": json.dumps(basket_legs)})
 
 
 async def placed_links(conn: Any, user_ref: str, strategy_id: int) -> dict[int, list[Suggestion]]:
@@ -805,10 +952,13 @@ async def placed_links(conn: Any, user_ref: str, strategy_id: int) -> dict[int, 
     return out
 
 
-async def lapse(conn: Any, user_ref: str, suggestion_id: int, reason: str = LAPSE_CONDITION_STOPPED) -> Suggestion:
+async def lapse(conn: Any, user_ref: str, suggestion_id: int, reason: str, *,  # noqa: PLR0913
+                answer: str | None = None, answered_at: datetime | None = None) -> Suggestion:
+    """Closes a record as lapsed. A record of an ADR-330 kind is closed only through
+    ``actionable_alerts.close_by_system`` (it passes ``answer`` closed_by_system; the table guard refuses the rest)."""
     if reason not in LAPSE_REASONS:
         raise ValueError(f"unknown lapse reason {reason!r}")
-    return await _close(conn, user_ref, suggestion_id, "lapsed", None, reason)
+    return await close_suggestion(conn, user_ref, suggestion_id, "lapsed", None, reason, answer, answered_at)
 
 
 async def open_suggestions(conn: Any, user_ref: str, strategy_id: int) -> list[Suggestion]:
@@ -828,28 +978,10 @@ async def open_strategy_ids(conn: Any, user_ref: str) -> list[int]:
     return [int(r[0]) for r in (await conn.execute(_OPEN_STRATEGY_IDS, {"user_ref": user_ref})).all()]
 
 
-async def lapse_all(conn: Any, user_ref: str, strategy_id: int, reason: str) -> list[Suggestion]:
-    """Every open record of the strategy lapses (REQ-112 AC-2: the strategy closed)."""
-    return [await lapse(conn, user_ref, s.id, reason) for s in await open_suggestions(conn, user_ref, strategy_id)]
-
-
-def changed_position(open_records: Iterable[Suggestion], current: int | None) -> list[Suggestion]:
-    """#685 item 3: the open records opened at a different adjustment count than ``current``. Nothing when the count
-    now is unreadable or the record stored none: never a guess."""
-    if not isinstance(current, int) or isinstance(current, bool):
-        return []
-    return [s for s in open_records if s.adjustments is not None and s.adjustments != current]
-
-
-async def lapse_changed(conn: Any, user_ref: str, strategy_id: int, current: int | None) -> list[Suggestion]:
-    """The strategy's open records of an earlier position lapse as position_changed (``changed_position``)."""
-    stale = changed_position(await open_suggestions(conn, user_ref, strategy_id), current)
-    return [await lapse(conn, user_ref, s.id, LAPSE_POSITION_CHANGED) for s in stale]
-
-
 async def inbox(conn: Any, user_ref: str) -> list[InboxRow]:
     """REQ-162 AC-1: every record of the user's strategies, newest first."""
-    rows = (await conn.execute(_INBOX, {"user_ref": user_ref})).all()
+    query, scope = scoped(_INBOX_SQL)
+    rows = (await conn.execute(query, {"user_ref": user_ref, **scope})).all()
     return [InboxRow(_suggestion(r), r[11], r[12] is True) for r in rows]
 
 
@@ -877,12 +1009,14 @@ _INSERT_HELD = text(
     "RETURNING id, strategy_id, rule_id, trigger_id, stage, value, threshold, reason, held_at")
 #: the last record per rule (by id) and the count of records shown on `today` in IST (the cap counts every record)
 _GATE_LAST = text(
-    "SELECT DISTINCT ON (g.rule_id) g.rule_id, g.shown_at, g.threshold, g.outcome, g.id "
+    "SELECT DISTINCT ON (g.rule_id) g.rule_id, g.shown_at, g.threshold, g.outcome, g.id, "
+    "g.no_longer_true_since IS NOT NULL "
     "FROM public.adjustment_suggestions g JOIN public.strategies s ON s.id = g.strategy_id "
-    "WHERE g.strategy_id = :strategy_id AND s.user_ref = :user_ref ORDER BY g.rule_id, g.id DESC")
+    "WHERE g.strategy_id = :strategy_id AND s.user_ref = :user_ref AND g.answer IS DISTINCT FROM 'noted' "
+    "ORDER BY g.rule_id, g.id DESC")
 _GATE_TODAY = text(
     "SELECT g.rule_id FROM public.adjustment_suggestions g JOIN public.strategies s ON s.id = g.strategy_id "  # noqa: S608 constant zone fragment
-    "WHERE g.strategy_id = :strategy_id AND s.user_ref = :user_ref "
+    "WHERE g.strategy_id = :strategy_id AND s.user_ref = :user_ref AND g.answer IS DISTINCT FROM 'noted' "
     f"AND (g.shown_at {IST_SQL_ZONE})::date = :today")
 
 
@@ -908,24 +1042,28 @@ async def record_held(conn: Any, user_ref: str, strategy_id: int, rule_id: str, 
         raise ValueError(f"unknown held reason {reason!r}")
     if isinstance(value, bool):
         raise ValueError("a yes/no rule's held value is stored as None, not a bool")
-    await _owned(conn, user_ref, strategy_id)
+    await require_owned(conn, user_ref, strategy_id)
     row = (await conn.execute(_INSERT_HELD, {"strategy_id": strategy_id, "rule_id": rule_id, "trigger_id": trigger_id,
                                              "stage": stage, "value": value, "threshold": threshold,
                                              "reason": reason})).one()
     return HeldCrossing(*row)
 
 
-async def gate_rows(conn: Any, user_ref: str, strategy_id: int, today: date) -> GateRows:
+async def gate_rows(conn: Any, user_ref: str, strategy_id: int, today: date,
+                    *, stops: frozenset[str]) -> GateRows:
     """ADR-237 (5): what ``alert_gate.restore`` needs - the last record per rule (time, threshold, dismissed, still
     open) and today's (IST) record count. No record -> empty, 0. Another user's or a missing strategy -> not found;
     a store error raises (never an empty default)."""
-    await _owned(conn, user_ref, strategy_id)
+    await require_owned(conn, user_ref, strategy_id)
     params = {"strategy_id": strategy_id, "user_ref": user_ref}
     last = (await conn.execute(_GATE_LAST, params)).all()
     today_ids = (await conn.execute(_GATE_TODAY, {**params, "today": today})).scalars().all()
-    rows = tuple(GateRow(r[0], r[1], r[2], dismissed=r[3] == "dismissed", open=r[3] == "open", id=r[4])
+    rows = tuple(GateRow(r[0], r[1], r[2], dismissed=r[3] == "dismissed", open=r[3] == "open", id=r[4],
+                         stopped=bool(r[5]))
                  for r in last)
-    return GateRows(rows, count_capped(today_ids))  # ADR-267: watch / day records are not counted
+    # ADR-267: watch / day records and plan loss stops are not counted; ``stops`` = ``stop_lines.plan_exit_rule_ids``
+    # of the plan, the same function the gate's readings read (Lane J gap 3)
+    return GateRows(rows, count_capped(today_ids, stops=stops))
 
 
 _HELD_TODAY = text(
@@ -942,10 +1080,10 @@ class HeldToday:
     held_at: datetime
 
 
-_HELD_INBOX = text(
+_HELD_INBOX_SQL = (
     "SELECT h.id, h.strategy_id, h.rule_id, h.trigger_id, h.reason, h.held_at, s.name "
     "FROM public.adjustment_held_crossings h JOIN public.strategies s ON s.id = h.strategy_id "
-    "WHERE s.user_ref = :user_ref AND s.deleted_at IS NULL ORDER BY h.held_at DESC, h.id DESC")
+    "WHERE s.user_ref = :user_ref AND s.deleted_at IS NULL AND {scope} ORDER BY h.held_at DESC, h.id DESC")
 
 
 @dataclass(frozen=True)
@@ -959,15 +1097,39 @@ class HeldInboxRow:
     strategy_name: str
 
 
+_POPUP_ENTRY = text("SELECT o.strategy_id, MIN(o.placed_at) FROM public.paper_orders o "
+                    "JOIN public.strategies s ON s.id = o.strategy_id "
+                    "WHERE o.strategy_id = ANY(:ids) AND s.user_ref = :user_ref GROUP BY o.strategy_id")
+_POPUP_CLEAR = text("SELECT DISTINCT ON (r.strategy_id, r.rule_id) r.strategy_id, r.rule_id, r.seen_clear "
+                    "FROM public.adjustment_rule_state r JOIN public.strategies s ON s.id = r.strategy_id "
+                    "WHERE r.strategy_id = ANY(:ids) AND s.user_ref = :user_ref "
+                    "ORDER BY r.strategy_id, r.rule_id, r.adjustment_no DESC")
+PopupClear = dict[tuple[int, str], bool]  # (strategy id, rule id) -> seen_clear
+
+
+async def popup_facts(conn: Any, user_ref: str, strategy_ids: Iterable[int]) -> tuple[dict[int, datetime], PopupClear]:
+    """D-67 (ADR-326 (5), ``ofo.adjustment.popup_quiet``): what decides a record's pop-up: strategy id -> its first
+    order's time (as ``adjustment_readers.entered_at``), and the rule memory at the newest starting point. A strategy
+    with no stored order or a rule with no memory row is simply absent (pop-up at once)."""
+    ids = sorted(set(strategy_ids))
+    if not ids:
+        return {}, {}
+    args = {"ids": ids, "user_ref": user_ref}
+    entry = {int(r[0]): r[1] for r in (await conn.execute(_POPUP_ENTRY, args)).all() if r[1] is not None}
+    clear = {(int(r[0]), r[1]): bool(r[2]) for r in (await conn.execute(_POPUP_CLEAR, args)).all()}
+    return entry, clear
+
+
 async def held_inbox(conn: Any, user_ref: str) -> list[HeldInboxRow]:
     """REQ-170 AC-4: every crossing the gate held on the user's strategies, newest first (the timeline's reader)."""
-    rows = (await conn.execute(_HELD_INBOX, {"user_ref": user_ref})).all()
+    query, scope = scoped(_HELD_INBOX_SQL)
+    rows = (await conn.execute(query, {"user_ref": user_ref, **scope})).all()
     return [HeldInboxRow(*r) for r in rows]
 
 
 async def held_today(conn: Any, user_ref: str, strategy_id: int, today: date) -> tuple[HeldToday, ...]:
     """GC-ALERT1 wire-b item 5: the crossings held on ``today`` (IST), oldest first, so a restarted worker restores
     the held episode instead of writing a second Held row. Read only; a store error raises."""
-    await _owned(conn, user_ref, strategy_id)
+    await require_owned(conn, user_ref, strategy_id)
     rows = (await conn.execute(_HELD_TODAY, {"strategy_id": strategy_id, "user_ref": user_ref, "today": today})).all()
     return tuple(HeldToday(r[0], r[1], r[2], r[3]) for r in rows)

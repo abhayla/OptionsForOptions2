@@ -25,8 +25,10 @@ Definitions (technical calls of the GC-ADJ1 contract, "Found during the run" row
 - Spot moves: whole-trade at-expiry P&L after charges at spot x (1 + p), p = -2, -1, +1, +2 %, the level rounded
   half-even to the paisa (finding interpolated-level-finer-than-paise-refused: a derived level never carries more
   than 2 decimals into the engine).
-- Breakevens: leader = the widest profit range: two or more breakevens -> upper minus lower; one -> its distance from
-  spot; none -> 0 when the trade loses at every level, unlimited when it profits at every level.
+- Breakevens: leader = the widest profit range: two or more breakevens -> upper minus lower; one -> a range open on one
+  side ("Profit below / above X", decided from the engine's loss regions), ranked above every finite width and below
+  profit at every level; one touching point (loss at both ends) -> its distance from spot; none -> 0 when the trade
+  loses at every level, unlimited when it profits at every level.
 - Premium still left to earn: over the After's open legs, short legs' current price x quantity minus long legs'
   (current price = the planned-price rule of ADR-068 (1)); a leg without a price -> "-".
 - POP: the whole-trade After's POP; held switch OFF or unavailable -> "-" with the reason (the route's POP words).
@@ -93,6 +95,9 @@ ROWS: tuple[tuple[str, str, str], ...] = (
 )
 #: The move rows' percents, the curve range and its steps are the user's preferences (REQ-168 AC-1), ``Context.view``.
 INFINITE = Decimal("Infinity")  # the rank of an unlimited figure in a "highest" row
+#: D-21 round 3: the rank of a profit range open on ONE side (a single breakeven): above every finite width, below
+#: "profit at every level" (INFINITE), so the two never tie for the widest range
+OPEN_SIDE_RANK = Decimal("1E+999")
 
 #: POP's named reasons -> the catalogue's words (shared with the route, one home)
 POP_TEXT: Mapping[Why, str] = {Why.NO_VOLATILITY: "adjust_pop_no_volatility", Why.NO_FORWARD: "adjust_pop_no_forward",
@@ -145,6 +150,9 @@ class Context:
     #: warning, and ``warn_cost_off`` (when set) is the reason the cost % cells carry
     warn_cost_pct: Decimal | None = None
     warn_cost_off: ExplanationText | None = None
+    #: D-12 (ADR-320 (1)): on expiry day, trading symbol -> the engine's per-unit Decay left today (unsigned,
+    #: ``unit_decay_left_today``); the Theta row then shows the position's Decay left today. None: another day
+    leg_decay_left: Mapping[str, Decimal] | None = None
 
 
 @dataclass(frozen=True)
@@ -306,6 +314,11 @@ def _pnl_at(legs: Sequence[PositionLeg], lot: int, whole: WholeTradeAfter, level
     return whole_pnl_at(_strategy(legs, lot) if legs else None, whole, level)
 
 
+#: public names for the sibling module that words the "What changes" block (D-21): the SAME cells and the SAME engine
+#: P&L read, never a second copy (a module may not import another module's private name)
+pnl_at = _pnl_at
+
+
 def joined_token(items: Sequence[str], sep: str = "/") -> str:
     """#654 / #623 class: a list shown in a one-token ``Recorded`` slot (at most ``_TOKEN_MAX`` characters): as many
     items as fit, then ``+Nmore`` for the rest, so a long list never raises."""
@@ -419,10 +432,25 @@ class _Rows:
             if f.loss_regions:
                 return Cell(render_explanation("adjust_cmp_no_breakeven_loss"), Decimal(0), None, Decimal(0))
             return Cell(render_explanation("adjust_cmp_no_breakeven_profit"), None, None, INFINITE)
+        if len(levels) == 1:  # D-21 round 2: one breakeven = a range open on one side, unbounded, never a narrow one
+            side = self._open_side(f.loss_regions)
+            if side is not None:
+                return Cell(render_explanation(side, level=levels[0]), None, None, OPEN_SIDE_RANK)
         width = levels[-1] - levels[0] if len(levels) > 1 else abs(levels[0] - self.ctx.spot)
         text = render_explanation("adjust_cmp_breakevens", levels=joined_token([format(x, "f") for x in levels]),
                                   width=width)
         return Cell(text, width, None, width)
+
+    @staticmethod
+    def _open_side(regions: Sequence[tuple[Decimal | None, Decimal | None]]) -> str | None:
+        """The template of the side a single breakeven's profit runs to, from the engine's loss regions (ADR-089): the
+        first region open below -> profit above; the last open above -> profit below; loss at both ends (one touching
+        point) or no region -> None, and the old width stands."""
+        low_open = bool(regions) and regions[0][0] is None
+        high_open = bool(regions) and regions[-1][1] is None
+        if low_open == high_open:
+            return None
+        return "adjust_cmp_breakeven_above" if low_open else "adjust_cmp_breakeven_below"
 
     def max_profit(self) -> Cell:
         reason = self._no_single("summary_make_mixed_expiry") or self._after_reason()
@@ -471,15 +499,36 @@ class _Rows:
         for name, v in total.items():
             shown = v.quantize(GREEK_STEP, rounding=ROUND_HALF_EVEN)
             out[name] = _number(shown, shown if name == "theta" else abs(shown))
+        if self.ctx.leg_decay_left is not None:  # D-12: expiry day: the theta place is the rupees left until the close
+            out["theta"] = self._decay_left()
         return out
+
+    def _decay_left(self) -> Cell:
+        """D-12 (ADR-320 (1)): the engine's per-unit Decay left today x lots x lot size x sign, summed over the legs
+        after; a leg without the figure: a dash, never a partial sum."""
+        left = Decimal(0)
+        for x in self.b.after:
+            unit = self.ctx.leg_decay_left.get(x.tradingsymbol)  # type: ignore[union-attr]
+            if unit is None:
+                return _dash(render_explanation("adjust_cmp_no_greeks", leg=x.tradingsymbol))
+            left += unit * x.lots * self.lot * (1 if x.side == "BUY" else -1)
+        shown = left.quantize(PAISE, rounding=ROUND_HALF_EVEN)
+        return Cell(render_explanation("decay_left_today_text", amount=shown), shown, None, shown)
 
     def adjustments(self) -> Cell:
         if self.ctx.adjustments_used is None:
             return _dash(render_explanation("adjust_cmp_adjustments_unknown"))
-        used = self.ctx.adjustments_used + (1 if self.b.trades else 0)
+        stored = self.ctx.adjustments_used
+        if self.b.trades and not self.b.after:  # ADR-318 (3) / ADR-255: closing every open leg is not an adjustment
+            return Cell(render_explanation("adjust_cmp_adjustments_exit"), Decimal(stored), None, Decimal(stored))
         mx = self.ctx.adjustments_max  # F-93: the accepted plan's maximum, shown as "used of max"
-        text = (render_explanation("adjust_cmp_adjustments", used=used) if mx is None
-                else render_explanation("adjust_cmp_adjustments_of", used=used, max=mx))
+        used = stored + (1 if self.b.trades else 0)  # ADR-318 (2): the true count, never capped for display
+        if mx is None:
+            text = render_explanation("adjust_cmp_adjustments", used=used)
+        elif used > mx and self.b.trades:
+            text = render_explanation("adjust_cmp_adjustments_over", used=used, max=mx)
+        else:
+            text = render_explanation("adjust_cmp_adjustments_of", used=used, max=mx)
         return Cell(text, Decimal(used), None, Decimal(used))
 
     def liquidity(self) -> Cell:
@@ -559,6 +608,9 @@ class _Rows:
         return Cell(render_explanation("adjust_cmp_fresh", profit=shown(top), loss=shown(loss)), rank, None, rank)  # type: ignore[arg-type]
 
 
+Rows = _Rows  # D-21: see ``pnl_at`` above
+
+
 def _single(legs: Sequence[PositionLeg]) -> bool:
     return len({x.expiry for x in legs}) == 1
 
@@ -609,7 +661,9 @@ def compare(columns: Sequence[Column], ctx: Context, before: WholeTradeAfter | N
         for name in ("delta", "gamma", "theta", "vega"):
             cells[name][a] = g if isinstance(g, Cell) else g[name]
         cells["adjustments"][a], cells["liquidity"][a], cells["fresh"][a] = r.adjustments(), r.liquidity(), r.fresh()
-    criteria = tuple(Criterion(row, group, render_explanation(f"adjust_cmp_row_{row}"),
+    criteria = tuple(Criterion(row, group, render_explanation("table_column_decay_left_today")
+                               if row == "theta" and ctx.leg_decay_left is not None  # D-12: the row is renamed
+                               else render_explanation(f"adjust_cmp_row_{row}"),
                                render_explanation(f"adjust_cmp_lead_{row}"), leaders(cells[row], direction),
                                cells[row]) for row, group, direction in ROWS)
     m = sum(1 for c in criteria if c.leaders)
@@ -640,6 +694,6 @@ def _curves(columns: Sequence[Column], ctx: Context, before: WholeTradeAfter | N
     return out, tuple(estimated)
 
 
-__all__ = ["NO_APPROACH_OFFERED", "NO_APPROACH_PRICED", "POP_TEXT", "Cell", "Cheapest", "Column", "Comparison",
-           "Context", "CostAnswer", "Criterion", "MarginRead", "approach_cost", "cheapest_approach", "column_order",
-           "compare", "leaders", "offered_approaches"]
+__all__ = ["NO_APPROACH_OFFERED", "NO_APPROACH_PRICED", "OPEN_SIDE_RANK", "POP_TEXT", "Cell", "Cheapest", "Column",
+           "Comparison", "Context", "CostAnswer", "Criterion", "MarginRead", "Rows", "approach_cost",
+           "cheapest_approach", "column_order", "compare", "leaders", "offered_approaches", "pnl_at"]

@@ -466,6 +466,14 @@ class AdjustWholeOut(ApiModel):
     after_reason: CatalogueText | None
 
 
+class AdjustTakeProfitOut(ApiModel):
+    """D-25 (ADR-294 (4)): Take profit's basis, both figures named: the whole trade before charges (the figure the
+    profit test used) and after charges, beside it."""
+    before_charges: Money
+    after_charges: Money | None  # None: the charges could not be priced (the text says so)
+    text: CatalogueText
+
+
 class AdjustApproachOut(ApiModel):
     id: Identifier
     name: CatalogueText | None = None
@@ -486,6 +494,7 @@ class AdjustApproachOut(ApiModel):
     after_reason: CatalogueText | None = None
     margin: AdjustMarginOut | None = None
     liquidity_flags: list[CatalogueText] = []  # ADR-230 (1): the flags of its new strikes (same limits as the Compare)
+    take_profit: AdjustTakeProfitOut | None = None  # D-25: A-24 / A-25 only, when offered
 
 
 class AdjustTimingOut(ApiModel):
@@ -523,6 +532,29 @@ class AdjustCriterionOut(ApiModel):
     leader_label: CatalogueText
     leaders: list[Identifier]  # every tied leader; empty = no approach can lead this row
     values: dict[Identifier, AdjustCellOut]  # approach id -> cell, "No change" first then catalogue order
+
+
+class AdjustWhatChangesRowOut(ApiModel):
+    """D-21 (ADR-320 (3)): one measure of the "What changes" block, the position as it stands against the position
+    after the approach. ``direction`` up / down / same, or not_available with ``unavailable_reason`` (never a filled
+    default)."""
+
+    id: Literal["profit_range", "breakeven_distance", "pop", "max_profit", "max_loss", "credit", "margin", "net_delta"]
+    label: CatalogueText
+    before_text: CatalogueText
+    after_text: CatalogueText
+    direction: Literal["up", "down", "same", "not_available"]
+    direction_text: CatalogueText
+    unavailable_reason: CatalogueText | None = None
+
+
+class AdjustWhatChangesOut(ApiModel):
+    """D-21: the eight measures in a fixed order and, only where a number moves against the action's name, one plain
+    reason line (no verdict word anywhere)."""
+
+    title: CatalogueText
+    rows: list[AdjustWhatChangesRowOut]
+    reason_line: CatalogueText | None = None
 
 
 class AdjustLeadsOut(ApiModel):
@@ -623,6 +655,8 @@ class AdjustApproachesOut(ApiModel):
     not_offered: list[AdjustNotOfferedOut] = []  # ADR-297: withheld at the limit (not in `approaches`)
     criteria: list[AdjustCriterionOut] = []  # REQ-156 AC-2/AC-3; refused approaches take no part
     leads: dict[Identifier, AdjustLeadsOut] = {}  # REQ-156 AC-4 "Leads on N of M"
+    #: D-21 (ADR-320 (3)): approach id -> its "What changes" block; refused approaches take none (they state a refusal)
+    what_changes: dict[Identifier, AdjustWhatChangesOut] = {}
     curves: dict[Identifier, list[list[Money]]] = {}  # "before" / approach id -> [[level, P&L after charges], ...]
     #: C12 (REQ-148): the curves valued at the nearer expiry close (legs on two expiries) -> their estimate label
     curves_estimated: dict[Identifier, CatalogueText] = {}

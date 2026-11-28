@@ -84,6 +84,7 @@ from decimal import ROUND_HALF_UP, Decimal
 from typing import Final, cast
 
 from ofo.adjustment import liquidity
+from ofo.checks.time_of_day import time_exit_due
 from ofo.engine import adjust_money
 from ofo.engine.legs import Action, Instrument, Leg
 from ofo.engine.model import live_book
@@ -198,6 +199,8 @@ class ExitInputs:
     t09: tuple[Decimal, str] | None = None
     time_exit: str | None = None
     hhmm: str | None = None
+    #: ADR-330 (7): the plan time exit's own day (ISO date); None = expiry day (a blank date, or an old plain "HH:MM")
+    time_exit_on: datetime.date | None = None
 
 
 @dataclass(frozen=True)
@@ -287,6 +290,9 @@ class ApproachLegs:
     #: (expiry, type, strike) of every contract this build needed and found no price / no delta for (the caller's ONE
     #: second pass holds them, GC-IC1 round 3); empty when none
     unpriced: tuple[tuple[datetime.date, str, Decimal], ...] = ()
+    #: D-25 (ADR-294 (4)): A-24 / A-25 only: the whole trade's P&L BEFORE charges at the planned exit prices, the figure
+    #: the "in profit" test compared (the engine's ``pnl_now``); None for every other approach
+    whole_before_charges: Decimal | None = None
 
 
 class _Refused(Exception):
@@ -461,16 +467,20 @@ class _Builder:
             return self.entry_distance(leg, found)
         if found.code != ROLL_TARGET_DELTA:
             raise _refusal("adjust_roll_basis_unreadable", leg=self.ref(leg))
+        if not self.chain:  # #857: a spot beside an empty chain (a market not connected): no price to roll to, stated
+            raise _refusal("adjust_no_price", leg=self.ref(leg))
         rows = sorted((r for r in self.chain if r.type == leg.type and r.expiry == leg.expiry
                        and (r.strike > leg.strike if up else r.strike < leg.strike)
                        and (outward or self.otm(r))),  # rolling IN stops short of spot (live 2026-11-06)
                       key=lambda r: abs(r.strike - leg.strike))  # the walk away from the short
         with_delta = [(r, r.delta) for r in rows if r.delta is not None]
-        target = self.cfg.target_short_delta[self.p.expiry_kind]
         if not with_delta:
             points = self.cfg.roll_points_without_delta[self.p.underlying]
             self.basis = ("points", points)
             return points if up else -points
+        target = self.cfg.target_short_delta.get(self.p.expiry_kind)  # #857: unknown kind: a refusal, no KeyError
+        if target is None:
+            raise _refusal("adjust_roll_basis_unreadable", leg=self.ref(leg))
         self.basis = ("delta", target)
         fit = [r for r, delta in with_delta if abs(delta) <= target and self.otm(r)]  # |delta| (puts < 0); never ITM
         if not fit:
@@ -586,14 +596,15 @@ def _close_all(b: _Builder, legs: Sequence[PositionLeg]) -> tuple[list[Trade], l
     return [t for t, _ in pairs], [c for _, c in pairs], []
 
 
-def _take_profit_guard(b: _Builder, legs: Sequence[PositionLeg]) -> None:
+def _take_profit_guard(b: _Builder, legs: Sequence[PositionLeg]) -> Decimal:
     """ADR-238 (6): A-24 / A-25 only when the whole trade is in profit at the planned exit prices (the engine sums
-    and compares, ADR-008); booked unknown -> refused."""
+    and compares, ADR-008); booked unknown -> refused. Returns the figure it compared (before charges, ADR-294 (4))."""
     if b.p.booked is None:
         raise _refusal("adjust_take_profit_booked_unknown")
     pnl = adjust_money.pnl_now(b.p.booked, [(x.side, x.entry, b.price_of(x), x.lots * b.p.lot) for x in legs])
     if not adjust_money.in_profit(pnl):
         raise _refusal("adjust_take_profit_not_in_profit")
+    return pnl
 
 
 def _partial(b: _Builder, legs: Sequence[PositionLeg], percent: int) -> tuple[list[Trade], list[ClosedLeg],
@@ -656,8 +667,12 @@ def _time_exit_due(position: Position, exits: ExitInputs) -> None:
     """A-35 (ADR-238 (5)): built on expiry day from the playbook's time exit; otherwise refused naming the time."""
     if exits.time_exit is None:
         raise _refusal("adjust_time_exit_not_set")
-    expiry_day = bool(position.legs) and is_expiry_day(position.today, min(x.expiry for x in position.legs))
-    if not expiry_day or exits.hhmm is None or exits.hhmm < exits.time_exit:
+    if exits.time_exit_on is not None:  # ADR-330 (7): the plan's own day
+        due = time_exit_due(position.today, exits.hhmm, exits.time_exit_on, exits.time_exit)
+    else:
+        due = bool(position.legs) and is_expiry_day(position.today, min(x.expiry for x in position.legs)) \
+            and time_exit_due(position.today, exits.hhmm, position.today, exits.time_exit)
+    if not due:
         raise _refusal("adjust_time_exit_not_yet", time=exits.time_exit)
 
 
@@ -686,6 +701,7 @@ def build_approach(position: Position, chain: Sequence[ChainRow], spot: Decimal,
     trades: list[Trade] = []
     closed: list[ClosedLeg] = []
     after = legs
+    whole: Decimal | None = None
     try:
         if approach_id == "A-36":
             pass
@@ -694,9 +710,9 @@ def build_approach(position: Position, chain: Sequence[ChainRow], spot: Decimal,
                 _time_exit_due(position, exits)
             trades, closed, after = _close_all(b, legs)
             if approach_id == "A-24":
-                _take_profit_guard(b, legs)
+                whole = _take_profit_guard(b, legs)
         elif approach_id == "A-25":
-            _take_profit_guard(b, legs)
+            whole = _take_profit_guard(b, legs)
             trades, closed, after = _partial(b, legs, config.partial_close_percent)
         elif approach_id == "A-27":
             trades, closed, after = _cheap_shorts(b, legs, exits.t09)
@@ -766,7 +782,7 @@ def build_approach(position: Position, chain: Sequence[ChainRow], spot: Decimal,
     if refusal is not None:
         return replace(base, refusal=refusal, refusal_message=refusal_message)
     return replace(base, trades=_ordered(trades), after=tuple(after), closed=tuple(closed), warnings=tuple(b.warnings),
-                   warning_messages=tuple(b.warning_messages))
+                   warning_messages=tuple(b.warning_messages), whole_before_charges=whole)
 
 
 def applicable_approaches(position: Position, chain: Sequence[ChainRow], spot: Decimal, config: Config,  # noqa: PLR0913

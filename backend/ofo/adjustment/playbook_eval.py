@@ -34,6 +34,10 @@ from ofo.adjustment import level_watch
 from ofo.adjustment import stop_lines as sl
 from ofo.adjustment.approaches import KINDS, ExitInputs, is_expiry_day
 from ofo.adjustment.offered import offered_now
+from ofo.checks import pnl_amount as rupee
+from ofo.checks.outcome import Met
+from ofo.checks.pnl_percent import pnl_percent
+from ofo.checks.time_of_day import ON_EXPIRY, resolve_on, time_exit_due, time_exit_parts
 from ofo.engine import adjust_money
 from ofo.engine import adjust_ratios as ratios
 from ofo.engine.black_scholes import Greeks
@@ -147,7 +151,11 @@ class StrategyState:
     #: a reason code = not available. No rule reads it: it is words for the target alert.
     pnl_after: Decimal | None = None
     pnl_after_reason: str | None = None
-    max_loss: Decimal | str | None = None  # Decimal, UNLIMITED or None
+    max_loss: Decimal | str | None = None  # Decimal, UNLIMITED or None: the LIVE legs' (ADR-266 "loss above max loss")
+    #: ADR-330 (1): the max loss of the trade AS ENTERED (the stored stop base), the one the "% of max loss" stop (T-06)
+    #: is compared against and its due-day tighten amount is worked out from. None = no base = T-06 not checked; it
+    #: never falls back to the live ``max_loss``.
+    stop_max_loss: Decimal | str | None = None
     max_profit: Decimal | str | None = None
     margin: Decimal | None = None  # None = the broker did not state it
     #: B2: True when the margin reply could not be read (``margin_block`` state "failed", or a figure that is not a
@@ -213,6 +221,8 @@ class Hit:
     fired: bool
     #: ADR-268 (2): (short kind, strike, points spot is past it) when spot is at/beyond a short; the line names it
     beyond: tuple[str, Decimal, Decimal] | None = None
+    #: D-58: T-01 only, "CE" / "PE": the side whose short is nearest spot (the tested side); None = not known
+    side: str | None = None
 
 
 @dataclass(frozen=True)
@@ -499,9 +509,7 @@ def _tightened(c: _Ctx, tid: str, lim: Decimal, cmp: str) -> Decimal:
 def _exact(tid: str, num: Decimal, den: Decimal, lim: Decimal, cmp: Cmp) -> Hit:
     """value = num / den (den > 0) against ``lim``, exact and inclusive (the one comparison every trigger and day
     rule uses)."""
-    with localcontext(_EXACT):
-        scaled = lim * den
-        fired = num <= scaled if cmp == "le" else num >= scaled
+    fired = isinstance(pnl_percent(num, den, lim, cmp), Met)  # the stand-alone check; a bad figure never fires
     with localcontext(_SHOW):
         value = num / den
     return Hit(tid, value, lim, cmp, fired)
@@ -526,6 +534,15 @@ def short_gap_pct(spot: Decimal, shorts: tuple[ShortLeg, ...]) -> tuple[Decimal,
     return near * _HUNDRED, spot
 
 
+def nearest_short_side(spot: Decimal, shorts: tuple[ShortLeg, ...]) -> str | None:
+    """D-58: the tested side, "CE" or "PE": the kind of the short nearest spot (a tie is the call side, as
+    ``approaches.tested_side``). None when no short states its kind, or the nearest one does not."""
+    if not shorts:
+        return None
+    near = min(shorts, key=lambda x: (abs(x.strike - spot), x.kind != "CE"))
+    return near.kind if near.kind in ("CE", "PE") else None
+
+
 def short_breached(spot: Decimal, shorts: tuple[ShortLeg, ...]) -> ShortLeg | None:
     """ADR-268 (2): the short spot is AT or BEYOND (in the money): a CE with spot >= strike, a PE with spot <= strike.
     The deepest one when several; None when none (or no short states its kind)."""
@@ -535,13 +552,14 @@ def short_breached(spot: Decimal, shorts: tuple[ShortLeg, ...]) -> ShortLeg | No
 
 def _t01(c: _Ctx) -> Hit:
     spot = _need(c.state.spot, "spot")
-    hit = _compare(c, "T-01", *short_gap_pct(spot, _shorts(c.state)))
+    hit = dataclasses.replace(_compare(c, "T-01", *short_gap_pct(spot, _shorts(c.state))),
+                              side=nearest_short_side(spot, c.state.shorts))
     b = short_breached(spot, c.state.shorts)
     if b is None:
         return hit
     beyond = (str(b.kind), b.strike, abs(spot - b.strike))
     if not hit.fired:  # ADR-268 (2): at or beyond the strike flags, whatever the % gap (no distance left: value 0)
-        return Hit("T-01", Decimal(0), hit.threshold, hit.cmp, True, beyond)
+        return Hit("T-01", Decimal(0), hit.threshold, hit.cmp, True, beyond, hit.side)
     return dataclasses.replace(hit, beyond=beyond)
 
 
@@ -596,11 +614,26 @@ def _t09(c: _Ctx) -> Hit:
     return _compare(c, "T-09", short_premium(_shorts(c.state)))
 
 
+def _any_stage_value(trigger: Mapping) -> bool:
+    """True when the trigger holds a value in at least one stage of either expiry kind."""
+    return any(x not in ("", None) for kind in ("weekly", "monthly") for x in (trigger.get(kind) or ()))
+
+
 def _t10b(c: _Ctx) -> Hit:
     hhmm = _need(c.state.hhmm, "clock")
-    lim = _limit(c, "T-10b")
     today, expiry = _need(c.state.today, "today"), _need(c.state.expiry, "expiry")
-    if not is_expiry_day(today, expiry):  # ADR-310: the time exit acts on expiry day only; before it, waiting
+    parts = time_exit_parts(c.body.get("guards", {}).get("time_exit"))
+    if parts is not None:  # ADR-330 (7): the plan's own time always; its date only picks the day (blank = expiry)
+        if parts[1] == ON_EXPIRY:
+            if c.state.days_left is not None:  # #860: the plan's own time is the limit; an unknown kind (no days left)
+                _limit(c, "T-10b")  # must not hold it back. A stage with no T-10b value does not apply the rule
+            elif not _any_stage_value(c.body["triggers"]["T-10b"]):  # FR F3 nit: an unknown kind still answers
+                raise _Missing(f"{P}no_expiry_values")  # "not checked" when the trigger holds no value in ANY stage
+            if not is_expiry_day(today, expiry):  # ADR-310 (2)
+                raise _Missing(f"{P}waits_expiry_day", day=expiry)
+        return Hit("T-10b", hhmm, parts[0], "ge", time_exit_due(today, hhmm, resolve_on(parts[1], expiry), parts[0]))
+    lim = _limit(c, "T-10b")  # no time exit in the plan: the playbook's stage value
+    if not is_expiry_day(today, expiry):  # ADR-310 (2): a time exit with no date of its own acts on expiry day only
         raise _Missing(f"{P}waits_expiry_day", day=expiry)
     return Hit("T-10b", hhmm, lim, "ge", hhmm >= lim)
 
@@ -624,16 +657,18 @@ def _t13(c: _Ctx) -> Hit:
 #: Rules that count the strategy's own adjustments (the playbook row has cmp ""): the baseline restarts at each
 #: adjustment (ADR-258), so the check that reaches the count is itself the baseline and "already true" would hide it.
 COUNTER_RULES = frozenset({"T-18"})
-TIME_TRIGGERS = frozenset({"T-10b"})  # ADR-283 (2): a clock-time rule is never "already true"
+TIME_TRIGGERS = frozenset({sl.TRIGGER_TIME_EXIT})  # ADR-283 (2): a clock-time rule is never "already true"
 
 
 def never_held(body: Mapping) -> frozenset[str]:
-    """Rule ids never held at a starting point: the counter rules (#662) and every rule with a clock-time trigger
+    """Rule ids never held at a starting point: the counter rules (#662), every plan exit (ADR-330 (47)) and every rule
+    with a clock-time trigger
     (ADR-283 (2): T-10b, or a playbook trigger whose unit is "time"): once its time has passed it warns."""
     trigs = body.get("triggers") or {}
     timed = TIME_TRIGGERS | {t for t, v in trigs.items() if isinstance(v, Mapping) and v.get("unit") == "time"}
-    return COUNTER_RULES | {r["id"] for r in body.get("rules", [])
-                            if timed & set(r.get("any_of") or r.get("all_of") or ())}
+    # Lane J gap 4 (REQ-170 AC-5): a loss stop already true at the starting point is not "already true": it alerts
+    return COUNTER_RULES | sl.plan_exit_rule_ids(body) | {r["id"] for r in body.get("rules", [])
+                                                           if timed & set(r.get("any_of") or r.get("all_of") or ())}
 
 
 def _t18(c: _Ctx) -> Hit:
@@ -950,7 +985,7 @@ def _later(c: _Ctx, tid: str) -> tuple[Decimal | str, ...]:
     if tid in sl.STOP_TRIGGERS:  # the line in force carries its later figures (a flat line: none)
         line = _line(c.state, tid)
         return () if line is None or line.figure is None else tuple(_tightened(c, tid, x, "ge") for x in line.later)
-    if c.stage is None or sl.is_stop_rule(tid):  # the 2x-credit line is one amount, not a per-stage value
+    if c.stage is None or sl.is_stop_rule(tid) or tid in sl.RUPEE_RULES:  # one amount each, not per stage
         return ()
     out = []
     for i in range(c.stage + 1, len(c.body["stages"][c.state.expiry_kind])):
@@ -971,6 +1006,9 @@ def _value_of(c: _Ctx, rule: Mapping | None, o: _Outcome) -> RuleValue | None:
 
 
 def _outcomes(body: Mapping, state: StrategyState, gap_until: str) -> tuple[_Ctx, str | None, list[_Outcome]]:
+    replaced = sl.rupee_loss_is_the_stop(body)
+    if replaced:  # ADR-330 (5)(a): the plan's one loss stop is the rupee level; T-06 is not a second stop
+        body = _without_t06(body)
     c = dataclasses.replace(_context(body, state), gap_until=gap_until)
     why = _withheld(state)
     out = []
@@ -986,12 +1024,62 @@ def _outcomes(body: Mapping, state: StrategyState, gap_until: str) -> tuple[_Ctx
         else:
             out.append(_rule(c, rule))
     named = {m for rule in body.get("rules", []) for m in (rule.get("any_of") or rule["all_of"])}
-    for tid in sorted(sl.STOP_TRIGGERS - named):  # an active line no body rule names is still checked (ADR-252)
+    skipped = {sl.TRIGGER_MAX_LOSS} if replaced else set()  # the rupee stop is the plan's one stop
+    for tid in sorted(sl.STOP_TRIGGERS - named - skipped):  # an active line no rule names is still checked (ADR-252)
         line = _line(state, tid)
         if line is not None and line.active:
             out.append(_stop_rule(c, {"id": tid, "any_of": [tid]}, why))
     out.extend(_credit_outcome(state, why))
+    out.extend(_rupee_outcomes(body, state, why))
     return c, why, out
+
+
+def _without_t06(body: Mapping) -> dict:
+    """The rupee loss IS the plan's one loss stop (``plan.rupee_loss`` carries its alert), so a rule made of T-06 alone
+    is dropped (it would alert twice). T-06 inside a mixed rule is NOT dropped: ``_stop_answer`` answers it from the
+    rupee level, so an all_of rule still needs the loss and an any_of rule still fires on it (review F6)."""
+    return {**body, "rules": [r for r in body.get("rules", [])
+                              if set(r.get("any_of") or r.get("all_of") or ()) != {sl.TRIGGER_MAX_LOSS}]}
+
+
+def _rupee_loss_answer(c: _Ctx) -> Hit | _Missing:
+    """T-06 when the rupee level is the stop (ADR-330 (5)(a)): the same ``pnl_amount`` check, as a Hit named T-06."""
+    guards = c.body.get("guards")
+    level = rupee.level_of(guards.get(sl.RUPEE_LOSS_KEY) if isinstance(guards, Mapping) else None)
+    answer = rupee.pnl_amount(level, c.state.pnl, rupee.LOSS)  # type: ignore[arg-type]
+    if isinstance(answer, rupee.NotComputable):
+        return _Missing(f"{P}missing_pnl")
+    return Hit(sl.TRIGGER_MAX_LOSS, -c.state.pnl, level, "ge", isinstance(answer, rupee.Met))  # type: ignore[operator,arg-type]
+
+
+def _rupee_outcomes(body: Mapping, state: StrategyState, why: str | None) -> list[_Outcome]:
+    """ADR-330 (5): the plan's rupee loss stop / profit target, whole trade before charges (Q3), through ``pnl_amount``.
+    No level typed (absent or blank) -> no rule; a level that cannot be read -> not checked (fail closed); no P&L ->
+    not checked, never "not met". A met level is a Flag like every other rule: it alerts, nothing exits."""
+    guards = body.get("guards")
+    guards = guards if isinstance(guards, Mapping) else {}
+    out: list[_Outcome] = []
+    for rid, key, side in ((sl.RUPEE_LOSS_RULE, sl.RUPEE_LOSS_KEY, rupee.LOSS),
+                           (sl.RUPEE_PROFIT_RULE, sl.RUPEE_PROFIT_KEY, rupee.PROFIT)):
+        raw = guards.get(key)
+        try:
+            level = rupee.level_of(raw if isinstance(raw, str) else (None if raw is None else str(type(raw))))
+        except ValueError:
+            out.append(_Outcome(rid, rid, reason=sl.NOT_CHECKED_OTHER))
+            continue
+        if level is None:
+            continue
+        if why is not None:
+            out.append(_Outcome(rid, rid, reason=why))
+            continue
+        answer = rupee.pnl_amount(level, state.pnl, side)
+        if isinstance(answer, rupee.NotComputable):
+            out.append(_Outcome(rid, rid, reason=f"{P}missing_pnl"))
+            continue
+        met = isinstance(answer, rupee.Met)
+        shown = state.pnl if side == rupee.PROFIT else -state.pnl  # type: ignore[operator]
+        out.append(_Outcome(rid, rid, (Hit(rid, shown, level, "ge", met),), fired=met))
+    return out
 
 
 def _line(state: StrategyState, tid: str) -> sl.StopInForce | None:
@@ -1011,9 +1099,12 @@ def _stop_hit(c: _Ctx, tid: str, line: sl.StopInForce) -> Hit:
             raise _Missing(f"{P}margin_not_positive") from None
     else:
         pnl = _need(c.state.pnl, "pnl")
-        num, den = ratios.loss_pct_of_max_loss(pnl, _finite(c.state.max_loss, "max_loss"))
-        if num > den * 100:  # ADR-266: a marked loss above max loss is not real: never flagged
-            raise _Missing(f"{P}inconsistent_prices")
+        num, den = ratios.loss_pct_of_max_loss(pnl, _finite(c.state.stop_max_loss, "max_loss"))  # the entry's (ADR-330)
+        live = _need(c.state.max_loss, "max_loss")  # ADR-266: the LIVE legs; a loss above their max loss is not real
+        if live not in (UNLIMITED, 0):  # unlimited live loss: no bound to exceed
+            live_num, live_den = ratios.loss_pct_of_max_loss(pnl, live)
+            if live_num > live_den * 100:
+                raise _Missing(f"{P}inconsistent_prices")
     return _exact(tid, num, den, _stop_threshold(c, tid, line), "ge")
 
 
@@ -1024,12 +1115,16 @@ def _stop_threshold(c: _Ctx, tid: str, line: sl.StopInForce) -> Decimal:
 
 
 def _stop_answer(c: _Ctx, tid: str) -> Hit | _Missing:  # noqa: PLR0911 - one answer per reason a stop is not checked
+    if tid == sl.TRIGGER_MAX_LOSS and sl.rupee_loss_is_the_stop(c.body):
+        return _rupee_loss_answer(c)
     t = c.body.get("triggers", {}).get(tid) or {}
     if t.get("greyed"):
         return _Missing(f"{P}greyed")
     if t.get("data", "ok") != "ok":
         return _Missing(f"{P}data_unavailable")
     if c.state.stops is None:
+        if c.state.days_left is None:  # #861: no days left = the expiry kind is not known (state_of): name THAT fact
+            return _Missing(sl.not_checked_code(sl.EXPIRY_KIND_UNKNOWN))
         return _Missing(sl.STOPS_NOT_SUPPLIED)
     line = _line(c.state, tid)
     if line is None or not line.active:
@@ -1164,7 +1259,13 @@ def limits_now(body: Mapping, state: StrategyState, results: tuple[Result, ...] 
     why = _withheld(state)
     held = {r.rule_id: r.after for r in results if isinstance(r, AlreadyTrue)}
     out: list[LimitNow] = []
+    guards = body.get("guards")
+    guards = guards if isinstance(guards, Mapping) else {}
+    rupee_rows = {o.rule_id: o for o in _rupee_outcomes(body, state, why)}
+    replaced = {sl.TRIGGER_MAX_LOSS: sl.RUPEE_LOSS_RULE, "T-07": sl.RUPEE_PROFIT_RULE}
     for tid in ("T-07", sl.TRIGGER_MAX_LOSS):
+        if _rupee_level_of(guards, replaced[tid]) is not None:  # the rupee level replaces the percent row (review F2)
+            continue
         t = body.get("triggers", {}).get(tid)
         line = _line(state, tid) if tid in sl.STOP_TRIGGERS else None
         if t is None and line is None:
@@ -1176,8 +1277,8 @@ def limits_now(body: Mapping, state: StrategyState, results: tuple[Result, ...] 
             usable = line is not None and line.active and line.figure is not None
             threshold = hit.threshold if hit else (_stop_threshold(c, tid, line) if usable else None)  # type: ignore[arg-type]
             amount = line.amount if usable else None  # type: ignore[union-attr]
-            if amount is not None and _tighten_of(c, tid) is not None and isinstance(state.max_loss, Decimal):
-                amount = adjust_money.stop_at_pct(state.max_loss, threshold)  # type: ignore[arg-type]
+            if amount is not None and _tighten_of(c, tid) is not None and isinstance(state.stop_max_loss, Decimal):
+                amount = adjust_money.stop_at_pct(state.stop_max_loss, threshold)  # type: ignore[arg-type]
         else:
             threshold = hit.threshold if hit else None
             if hit is None and t.get("on") and not t.get("greyed"):  # type: ignore[union-attr]
@@ -1191,6 +1292,7 @@ def limits_now(body: Mapping, state: StrategyState, results: tuple[Result, ...] 
         tight = None if threshold is None else _tighten_of(c, tid)
         out.append(_limit_row(_rule_of(body, tid), tid, why, held, ans.code if isinstance(ans, _Missing) else None,
                               (threshold, amount, later, tight), ans.slots if isinstance(ans, _Missing) else ()))
+    out.extend(_rupee_limit_rows(guards, rupee_rows, held))
     credit = _credit_outcome(state, why)
     for o in credit:
         line = _credit_line_of(state)
@@ -1200,6 +1302,26 @@ def limits_now(body: Mapping, state: StrategyState, results: tuple[Result, ...] 
                                hit.threshold if hit and isinstance(hit.threshold, Decimal) else
                                (line.amount if line is not None else None), (), None), o.slots))
     return tuple(out)
+
+
+def _rupee_limit_rows(guards: Mapping, rows: Mapping[str, _Outcome], held: Mapping[str, int]) -> list[LimitNow]:
+    """A readable rupee level is a limit row of its own: threshold = amount = the level (review F2)."""
+    out = []
+    for rid in (sl.RUPEE_PROFIT_RULE, sl.RUPEE_LOSS_RULE):
+        level, o = _rupee_level_of(guards, rid), rows.get(rid)
+        if level is not None and o is not None:
+            out.append(_limit_row(rid, rid, None, held, o.reason, (level, level, (), None), o.slots))
+    return out
+
+
+def _rupee_level_of(guards: Mapping, rid: str) -> Decimal | None:
+    """The readable rupee level of rupee rule ``rid`` (None: none typed, or one that cannot be read)."""
+    key = sl.RUPEE_LOSS_KEY if rid == sl.RUPEE_LOSS_RULE else sl.RUPEE_PROFIT_KEY
+    raw = guards.get(key)
+    try:
+        return rupee.level_of(raw) if isinstance(raw, str) else None
+    except ValueError:
+        return None
 
 
 def _credit_line_of(state: StrategyState) -> sl.StopInForce | None:
@@ -1387,8 +1509,11 @@ def exit_inputs(body: Mapping | None, guards: Mapping | None, state: StrategySta
             t09 = _t09_now(_context(body, state))
         except (KeyError, TypeError, IndexError):  # a body without this expiry kind's stages: no limit, never a guess
             t09 = None
-    at = guards.get("time_exit") if isinstance(guards, Mapping) else None
-    return ExitInputs(t09, at if isinstance(at, str) and _HHMM.fullmatch(at) else None, state.hhmm)
+    parts = time_exit_parts(guards.get("time_exit") if isinstance(guards, Mapping) else None)
+    if parts is None:
+        return ExitInputs(t09, None, state.hhmm)
+    on = None if parts[1] == ON_EXPIRY else resolve_on(parts[1], None)
+    return ExitInputs(t09, parts[0], state.hhmm, on)
 
 
 def _add_day_rules(body: Mapping, state: StrategyState, why: str | None, stage_name: str | None,  # noqa: PLR0913

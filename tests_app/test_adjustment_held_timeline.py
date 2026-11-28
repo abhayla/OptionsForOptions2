@@ -22,7 +22,7 @@ from test_alert_gate_storage import _strategy, admin, db  # noqa: F401 - fixture
 D = Decimal
 OK = 200
 DAY = datetime.date(2026, 11, 4)
-SPEC = ag.RuleSpec("T-07", "ge", (D("80"),))
+SPEC = ag.RuleSpec("T-14", "ge", (D("80"),))
 SPEC_B = ag.RuleSpec("T-08", "ge", (D("80"),))
 
 
@@ -55,7 +55,7 @@ async def test_daily_limit_hold_is_on_the_timeline(db):  # noqa: F811
     user, sid = await _strategy(db)
     preset = replace(ag.INTRADAY, daily_cap=1)
     state = ag.initial_state()
-    readings = {"T-07": (SPEC, D("85")), "T-08": (SPEC_B, D("85"))}
+    readings = {"T-14": (SPEC, D("85")), "T-08": (SPEC_B, D("85"))}
     state, _ = ag.step(state, now=_at(10, 0), preset=preset, readings=readings)
     state, events = ag.step(state, now=_at(10, 1), preset=preset, readings={})
     held = _held_events(events)
@@ -75,7 +75,7 @@ async def test_daily_limit_hold_is_on_the_timeline(db):  # noqa: F811
 
 async def test_quiet_time_hold_is_on_the_timeline(db):  # noqa: F811
     user, sid = await _strategy(db)
-    state, _ = ag.step(ag.initial_state(), now=_at(9, 16), preset=ag.INTRADAY, readings={"T-07": (SPEC, D("85"))})
+    state, _ = ag.step(ag.initial_state(), now=_at(9, 16), preset=ag.INTRADAY, readings={"T-14": (SPEC, D("85"))})
     state, events = ag.step(state, now=_at(9, 17), preset=ag.INTRADAY, readings={})
     assert [e.reason for e in _held_events(events)] == ["quiet_time"]
     await _store(db, user, sid, events)
@@ -85,7 +85,7 @@ async def test_quiet_time_hold_is_on_the_timeline(db):  # noqa: F811
 
 async def test_held_of_another_user_is_not_shown(db):  # noqa: F811
     user, sid = await _strategy(db)
-    await pb.record_held(db, user, sid, "T-07", trigger_id="T-07", stage=None, value=D("85"), threshold=D("80"),
+    await pb.record_held(db, user, sid, "T-14", trigger_id="T-14", stage=None, value=D("85"), threshold=D("80"),
                          reason="daily_limit")
     assert (await _inbox(db, "someone-else"))["held"] == []
     assert len((await _inbox(db, user))["held"]) == 1

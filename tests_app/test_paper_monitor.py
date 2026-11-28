@@ -12,15 +12,22 @@ read_snapshot + paper.leg_price, the routes' rule). Every test rolls back.
 """
 from __future__ import annotations
 
+import dataclasses
 import datetime
+import types
 from decimal import Decimal
 
 import pytest
 from ofo import settings
+from ofo.errors.explanations import render_explanation
 from ofo.marketdata.fanout import FanOut
+from ofo.marketdata.feed_health import FeedState
 from ofo.rules.inputs import DataHealth
+from ofo.settings import calc
+from ofo.settings import defaults as default_settings
 from ofo.tracking import paper, stops
-from ofo_app import paper_monitor, paper_store, settings_store, tracked_contracts
+from ofo_app import actionable_alerts as aa
+from ofo_app import alert_title, market_read, paper_monitor, paper_store, settings_store, tracked_contracts
 from ofo_app import paper_trigger_store as triggers
 from ofo_app.live_push import LiveFeed
 from ofo_app.routes.outcome import MarketContext
@@ -35,6 +42,7 @@ OPEN_AT = datetime.datetime(2026, 10, 29, 4, 30, tzinfo=datetime.UTC)  # Thursda
 AFTER_CLOSE = datetime.datetime(2026, 10, 29, 10, 31, tzinfo=datetime.UTC)  # 16:01 IST
 LEVEL = D("22850.00")
 OPEN_LEGS = 2  # the test strategy's open contracts
+TWO_MESSAGES = 2  # #732: two exits on one day, or one exit on two days
 
 
 @pytest.fixture
@@ -103,8 +111,21 @@ async def _trigger_state(db, tid: int) -> tuple[bool, bool]:
 
 
 async def _alerts(db, sid: int) -> list[tuple]:
-    rows = await db.execute(text("SELECT title, body FROM public.paper_alerts WHERE strategy_id = :s"), {"s": sid})
-    return [tuple(r) for r in rows]
+    """W2-A: a fired stop is ONE informational History row (kind stop_fired) of the one alert module, no longer a
+    paper_alerts row: (the row's title = the strategy label, the message text)."""
+    user = (await db.execute(text("SELECT user_ref FROM public.strategies WHERE id = :s"), {"s": sid})).scalar_one()
+    out = []
+    for a in await aa.history(db, user):
+        if a.strategy_id == sid and a.kind == "stop_fired":
+            template_id, values = a.note
+            title = (await alert_title.labels(db, [(sid, a.strategy_name)]))[sid]
+            out.append((str(title), str(render_explanation(template_id, **values))))
+    return out
+
+
+async def _paper_alert_rows(db, sid: int) -> int:
+    return (await db.execute(text("SELECT count(*) FROM public.paper_alerts WHERE strategy_id = :s"),
+                             {"s": sid})).scalar_one()
 
 
 async def test_core_a_crossing_tick_fires_once_through_the_fan_out_and_never_again_after_a_restart(db):
@@ -121,12 +142,14 @@ async def test_core_a_crossing_tick_fires_once_through_the_fan_out_and_never_aga
         assert await monitor.step() == 0
     market.tick(INDEX, "22849.95")
     assert await monitor.step() == 1
-    reason = "Stop-loss on the index: NIFTY crossed below 22,850.00"
+    # D-22: the stop's record carries the index value at that moment (the tick that crossed)
+    reason = "Stop-loss on the index: NIFTY crossed below 22,850.00; NIFTY was at 22,849.95 at that moment"
     assert await _stops(db, stored.id) == [(ids[0], "BUY", 65, D("41.00"), reason, tid),
                                            (ids[1], "SELL", 65, D("12.50"), reason, tid)]
     assert await _trigger_state(db, tid) == (True, False)
     [(title, body)] = await _alerts(db, stored.id)
-    assert title.startswith("Paper strategy — ")
+    assert f"(#{stored.id}" in title  # W2-A pin changed: the ADR-330 (19)(b) label, not "Paper strategy — "
+    assert await _paper_alert_rows(db, stored.id) == 0  # W2-A: written once, through the one module
     assert body.startswith("Stop-loss on the index: ")
     assert "Paper strategy — " not in body  # the title shows once, as the alert title
     assert reason in body
@@ -193,14 +216,99 @@ async def test_a_leg_without_a_live_price_holds_the_fire_and_the_trigger_stays_a
     assert await monitor.step() == 1
 
 
-@pytest.mark.parametrize(("at", "holidays"), [
-    (AFTER_CLOSE, None), (OPEN_AT, {2026: frozenset({datetime.date(2026, 10, 29)})}),
-    (datetime.datetime(2026, 10, 31, 4, 30, tzinfo=datetime.UTC), None)], ids=["after-hours", "holiday", "weekend"])
-async def test_nothing_fires_while_the_market_is_closed(db, at, holidays):
-    market = Market(at)
+async def _not_run(db, sid: int) -> list[str]:
+    """The "exit could not run" messages of the strategy (History, kind stop_fired, template exit_not_run_no_price)."""
+    user = (await db.execute(text("SELECT user_ref FROM public.strategies WHERE id = :s"), {"s": sid})).scalar_one()
+    return [str(render_explanation(a.note[0], **a.note[1])) for a in await aa.history(db, user)
+            if a.strategy_id == sid and a.note is not None and a.note[0] == "exit_not_run_no_price"]
+
+
+async def _blocked_tick(market, monitor, keys, index: str = "22800.00") -> int:
+    """The exit's level is crossed, leg 1 has no live price."""
+    market.tick(keys[0], "41.00")
+    market.tick(INDEX, index)
+    return await monitor.step()
+
+
+async def test_732_a_blocked_exit_tells_the_trader_once_a_day_and_stays_set(db):
+    """#732 (ADR-330 (44)): a crossed exit that cannot run for want of a live price: ONE informational message per exit
+    per India day, never on the bell, no order, the exit stays armed. Next day: one again. A restart: not repeated."""
+    market = Market()
     stored, _, keys = await _strategy(db)
     tid = await _exit_below(db, stored.id)
-    monitor = _monitor(db, market, holidays=holidays)
+    user = (await db.execute(text("SELECT user_ref FROM public.strategies WHERE id = :s"),
+                             {"s": stored.id})).scalar_one()
+    monitor = _monitor(db, market)
+    await monitor.step()
+    assert await _blocked_tick(market, monitor, keys) == 0
+    [said] = await _not_run(db, stored.id)
+    assert said.startswith("Your exit at 22,850.00 could not run: NIFTY ")
+    assert said.endswith(" has no live price. It is still set.")
+    assert await aa.unanswered_count(db, user) == 0  # informational: never on the bell
+    assert await _stops(db, stored.id) == [] and await _trigger_state(db, tid) == (False, False)
+    assert await _blocked_tick(market, monitor, keys, "22795.00") == 0  # a second blocked tick, the same day
+    assert len(await _not_run(db, stored.id)) == 1
+    restarted = _monitor(db, market)  # a restart forgets what it said: the stored rows answer
+    await restarted.step()
+    assert await _blocked_tick(market, restarted, keys, "22790.00") == 0
+    assert len(await _not_run(db, stored.id)) == 1
+    market.at += datetime.timedelta(days=1)  # Friday 30 Oct, the next India day
+    assert await _blocked_tick(market, monitor, keys, "22780.00") == 0
+    assert len(await _not_run(db, stored.id)) == TWO_MESSAGES
+    market.tick(keys[1], "12.50")  # prices are back: the exit runs at the next check
+    market.tick(INDEX, "22775.00")
+    assert await monitor.step() == 1 and len(await _stops(db, stored.id)) == OPEN_LEGS
+
+
+async def test_732_two_exits_each_get_their_own_message_and_a_live_fire_sends_none(db):
+    market = Market()
+    stored, _, keys = await _strategy(db)
+    await _exit_below(db, stored.id)
+    await _exit_below(db, stored.id, D("22900.00"))
+    monitor = _monitor(db, market)
+    await monitor.step()
+    assert await _blocked_tick(market, monitor, keys) == 0
+    assert len(await _not_run(db, stored.id)) == TWO_MESSAGES
+    other = await _strategy(db)  # all prices live: fires as before and says nothing
+    await _exit_below(db, other[0].id)
+    live = _monitor(db, market)
+    await live.step()
+    market.tick(other[2][1], "12.50")
+    market.tick(other[2][0], "41.00")
+    market.tick(INDEX, "22700.00")
+    assert await live.step() >= 1
+    assert await _not_run(db, other[0].id) == []
+
+
+async def test_732_a_message_store_that_fails_does_not_break_the_exit(db, monkeypatch, caplog):
+    market = Market()
+    stored, _, keys = await _strategy(db)
+    tid = await _exit_below(db, stored.id)
+
+    async def broken(*_a, **_k):
+        raise RuntimeError("alert store down")
+
+    monkeypatch.setattr(aa, "inform_once_per_day", broken)
+    monitor = _monitor(db, market)
+    await monitor.step()
+    assert await _blocked_tick(market, monitor, keys) == 0
+    assert await _trigger_state(db, tid) == (False, False) and monitor.failures == 0
+    assert any("not written" in r.getMessage() for r in caplog.records)
+    market.tick(keys[1], "12.50")
+    market.tick(INDEX, "22700.00")
+    assert await monitor.step() == 1  # the exit still runs when prices are back
+
+
+@pytest.mark.parametrize(("at", "feed_closed"), [
+    (AFTER_CLOSE, None), (OPEN_AT, True),  # #740: the feed says closed while the calendar says open (a holiday)
+    (datetime.datetime(2026, 10, 31, 4, 30, tzinfo=datetime.UTC), None)], ids=["after-hours", "feed-closed", "weekend"])
+async def test_nothing_fires_while_the_market_is_closed(db, at, feed_closed):
+    market = Market(at)
+    if feed_closed:  # a provider with a feed state: the ONE market rule (may_act.market_open) reads its answer
+        market.provider.feed = types.SimpleNamespace(market_closed=lambda _at: True)
+    stored, _, keys = await _strategy(db)
+    tid = await _exit_below(db, stored.id)
+    monitor = _monitor(db, market)
     await monitor.step()
     market.tick(keys[0], "41.00")
     market.tick(keys[1], "12.50")
@@ -217,11 +325,150 @@ async def test_a_leg_stop_exits_only_its_contract_for_its_whole_open_quantity_at
     await monitor.step()
     market.tick(keys[0], "119.95")
     assert await monitor.step() == 0
+    market.tick(INDEX, "22849.95")  # D-22: a leg stop's record also carries the index at that moment
     market.tick(keys[0], "120.40")
     assert await monitor.step() == 1
     [(cid, side, qty, price, reason, trigger)] = await _stops(db, stored.id)
     assert (cid, side, qty, price, trigger) == (ids[0], "BUY", 130, D("120.40"), tid)
-    assert reason.startswith("Stop-loss: ") and reason.endswith("crossed above 120.00")
+    assert reason.startswith("Stop-loss: ")
+    assert reason.endswith("crossed above 120.00; NIFTY was at 22,849.95 at that moment")
+    [(_, body)] = await _alerts(db, stored.id)
+    assert reason in body
+
+
+async def test_a_leg_stop_with_no_live_index_value_says_so_and_still_fires(db):
+    """D-22: no index price is ever invented; the record says the value was not available."""
+    market = Market()
+    stored, ids, keys = await _strategy(db)
+    await triggers.add(db, stored.id, triggers.NewTrigger("leg_stop", "above", D("120.00"), contract_id=ids[0]))
+    monitor = _monitor(db, market)
+    await monitor.step()
+    market.tick(keys[0], "120.40")
+    assert await monitor.step() == 1
+    [(*_, reason, _)] = await _stops(db, stored.id)
+    assert reason.endswith("crossed above 120.00; the index value at that moment was not available")
+
+
+class DropsUnheld(FakeProvider):
+    """The bus-mode API provider: a tick for a token nobody holds never reaches the book (kite_provider.on_frame)."""
+
+    def tick(self, q) -> None:
+        if q.instrument_id in self.vendor_subscribed:
+            super().tick(q)
+
+
+async def test_s20_a_leg_stop_alone_holds_the_index_and_its_alert_carries_the_index_value(db):
+    """S-20 (D-01 root cause 2): the watch held the index only for a conditional exit, so with only a leg stop armed the
+    index tick was dropped and the alert said "the index value at that moment was not available"."""
+    market = Market()
+    market.provider = DropsUnheld({"NIFTY": INDEX})
+    market.feed = LiveFeed(MarketContext(market.provider, lambda: market.at, D("0.065"), None), FanOut(market.provider))
+    stored, ids, keys = await _strategy(db)
+    await triggers.add(db, stored.id, triggers.NewTrigger("leg_stop", "above", D("120.00"), contract_id=ids[0]))
+    monitor = _monitor(db, market)
+    await monitor.step()
+    assert market.provider.vendor_subscribed >= {INDEX, keys[0]}  # the index is held for a leg stop too
+    market.tick(INDEX, "22849.95")
+    market.tick(keys[0], "120.40")
+    assert await monitor.step() == 1
+    [(*_, reason, _)] = await _stops(db, stored.id)
+    assert reason.endswith("crossed above 120.00; NIFTY was at 22,849.95 at that moment")
+    [(_, body)] = await _alerts(db, stored.id)
+    assert "not available" not in body
+
+
+async def test_734_a_leg_stop_in_the_first_second_reads_the_index_through_the_market_reader(db, monkeypatch):
+    """#734: the held index tick is not there when the leg stop fires; the one market reader (``read_market``, which has
+    its own tests) answers it, asked for the index only, with the monitor's hold time."""
+    market = Market()
+    stored, ids, keys = await _strategy(db)
+    await triggers.add(db, stored.id, triggers.NewTrigger("leg_stop", "above", D("120.00"), contract_id=ids[0]))
+    asked: list[tuple] = []
+
+    async def reader(_ctx, _feed, *args, wait):
+        underlying, leg_keys, need_index, purpose = args
+        asked.append((underlying, list(leg_keys), need_index, purpose, wait.seconds))
+        return market_read.MarketRead(False, market_read.MarketPrice(INDEX, paper.LIVE, D("22849.95")))
+
+    monkeypatch.setattr(market_read, "read_market", reader)
+    monitor = _monitor(db, market)
+    await monitor.step()
+    market.tick(keys[0], "120.40")  # no index tick yet
+    assert await monitor.step() == 1
+    [(*_, reason, _)] = await _stops(db, stored.id)
+    assert reason.endswith("crossed above 120.00; NIFTY was at 22,849.95 at that moment")
+    assert asked == [("NIFTY", [], True, "stop_fire", paper_monitor.INDEX_WAIT_SECONDS)]
+
+
+async def test_734_a_reader_with_no_live_index_leaves_the_not_available_text(db, monkeypatch):
+    market = Market()
+    stored, ids, keys = await _strategy(db)
+    await triggers.add(db, stored.id, triggers.NewTrigger("leg_stop", "above", D("120.00"), contract_id=ids[0]))
+
+    async def reader(*_a, **_k):
+        return market_read.MarketRead(False, market_read.MarketPrice(INDEX, "stale", None))
+
+    monkeypatch.setattr(market_read, "read_market", reader)
+    monitor = _monitor(db, market)
+    await monitor.step()
+    market.tick(keys[0], "120.40")
+    assert await monitor.step() == 1
+    [(*_, reason, _)] = await _stops(db, stored.id)
+    assert reason.endswith("crossed above 120.00; the index value at that moment was not available")
+
+
+async def test_734_a_conditional_exit_carries_its_own_crossing_tick_as_the_index_value(db):
+    market = Market()
+    stored, _, keys = await _strategy(db)
+    await _exit_below(db, stored.id)
+    monitor = _monitor(db, market)
+    await monitor.step()
+    market.tick(keys[0], "41.00")
+    market.tick(keys[1], "12.50")
+    market.provider.underlying_quote = lambda _u: None  # the held index reading is not there
+    market.tick(INDEX, "22800.00")
+    assert await monitor.step() == 1
+    reasons = {row[4] for row in await _stops(db, stored.id)}
+    assert len(reasons) == 1 and reasons.pop().endswith("NIFTY was at 22,800.00 at that moment")
+
+
+async def test_m2_a_conditional_exit_quotes_the_tick_it_fired_on_not_a_different_held_reading(db):
+    """Lane M item 2, 27 Nov (PC trade #196, 10:49:49: "NIFTY crossed above 25,800.00; NIFTY was at 25,796.75", a value
+    on the wrong side of the level). The exit fires on the crossing index tick (on_quote); the reason quoted the
+    provider's HELD reading instead. Here the held reading is 22,850.20 (not crossed) while the tick
+    22,849.95 fires the exit below 22,850.00: the reason must quote 22,849.95, the value the decision was made on."""
+    market = Market()
+    stored, _, keys = await _strategy(db)
+    await _exit_below(db, stored.id)
+    monitor = _monitor(db, market)
+    await monitor.step()
+    market.tick(keys[0], "41.00")
+    market.tick(keys[1], "12.50")
+    held = quote(INDEX, "NIFTY", "22850.20", market.at)
+    market.provider.underlying_quote = lambda _u: held  # a held index reading that differs from the firing tick
+    market.tick(INDEX, "22849.95")
+    assert await monitor.step() == 1
+    reasons = {row[4] for row in await _stops(db, stored.id)}
+    assert reasons == {"Stop-loss on the index: NIFTY crossed below 22,850.00; NIFTY was at 22,849.95 at that moment"}
+    [(_, body)] = await _alerts(db, stored.id)
+    assert "22,849.95" in body and "22,850.20" not in body
+
+
+async def test_m2_a_later_tick_back_across_the_level_is_not_quoted_for_the_one_that_fired(db):
+    """The #196 shape without a stand-in: the crossing tick 22,849.95 waits in the fan-out queue while a later tick
+    22,850.20 (back above the level) becomes the provider's held reading; the reason quotes the crossing tick."""
+    market = Market()
+    stored, _, keys = await _strategy(db)
+    await _exit_below(db, stored.id)
+    monitor = _monitor(db, market)
+    await monitor.step()
+    market.tick(keys[0], "41.00")
+    market.tick(keys[1], "12.50")
+    market.tick(INDEX, "22849.95")
+    market.tick(INDEX, "22850.20")
+    assert await monitor.step() == 1
+    reasons = {row[4] for row in await _stops(db, stored.id)}
+    assert reasons == {"Stop-loss on the index: NIFTY crossed below 22,850.00; NIFTY was at 22,849.95 at that moment"}
 
 
 async def test_a_fully_exited_strategy_cancels_its_triggers_and_places_nothing(db):
@@ -274,16 +521,16 @@ async def test_a_failed_write_rolls_back_whole_and_the_next_crossing_tick_fires(
     await monitor.step()
     market.tick(keys[0], "41.00")
     market.tick(keys[1], "12.50")
-    real_alert = triggers.add_alert
+    real_alert = aa.inform
 
     async def broken(*_a, **_k):
         raise ConnectionError("database went away")
 
-    monkeypatch.setattr(triggers, "add_alert", broken)  # fails AFTER the claim and the stop orders
+    monkeypatch.setattr(aa, "inform", broken)  # fails AFTER the claim and the stop orders
     market.tick(INDEX, "22800.00")
     assert await monitor.step() == 0 and monitor.failures == 1
     assert await _trigger_state(db, tid) == (False, False) and await _stops(db, stored.id) == []
-    monkeypatch.setattr(triggers, "add_alert", real_alert)
+    monkeypatch.setattr(aa, "inform", real_alert)
     market.tick(INDEX, "22790.00")
     assert await monitor.step() == 1 and len(await _stops(db, stored.id)) == OPEN_LEGS
 
@@ -333,3 +580,139 @@ async def test_a_settings_store_that_cannot_answer_holds_the_fire_and_the_next_t
     market.tick(INDEX, "22849.90")
     assert await monitor.step() == 1
     assert await _trigger_state(db, tid) == (True, False)
+
+
+async def test_the_stop_out_alert_lists_the_legs_in_the_recorded_buys_first_order(db):
+    """D-02: a long on the LOWER contract id and a short on the higher one; the stop-out basket is stored buys first
+    (the short is bought back before the long is sold), and the alert names the legs in that same order."""
+    market = Market()
+    user = _user()
+    _, stored = await _with_draft(db, user)
+    ids = stored.saved.contract_ids[:2]
+    await paper_store.place(db, user, stored.id, [
+        paper_store.NewOrder(ids[0], "BUY", 65, D("12.95"), "open", OPEN_AT),
+        paper_store.NewOrder(ids[1], "SELL", 65, D("39.15"), "open", OPEN_AT)])
+    found = {c.contract_id: c for c in await tracked_contracts.resolve(db, ids)}
+    await _exit_below(db, stored.id)
+    monitor = _monitor(db, market)
+    assert await monitor.step() == 0
+    market.tick(found[ids[0]].feed_key, "12.50")
+    market.tick(found[ids[1]].feed_key, "41.00")
+    market.tick(INDEX, "22849.95")
+    assert await monitor.step() == 1
+    stops = await _stops(db, stored.id)
+    assert [(c, side) for c, side, *_ in stops] == [(ids[1], "BUY"), (ids[0], "SELL")]  # buys first, not by contract id
+    [(_, body)] = await _alerts(db, stored.id)
+    texts = [str(paper_monitor._contract_text(found[c])) for c, *_ in stops]
+    assert body.index(texts[0]) < body.index(texts[1])
+
+
+class _AgeRuleProvider(FakeProvider):
+    """The fake provider, but every quote's health is the ONE real rule (``FeedState.quote_health``, ADR-330 (39)) on a
+    feed that is connected and live (a frame arrived at the clock's time)."""
+
+    def __init__(self, ids, market: Market) -> None:
+        super().__init__(ids)
+        self.market = market
+        self.state = FeedState(windows=calc.feed_windows(dict(default_settings())), market_open=lambda _t: True)
+        self.state.on_connected(market.at)
+
+    def tick(self, q) -> None:
+        self.state.on_data(self.market.at)  # option frames keep arriving: the whole feed is live
+        health = self.state.quote_health(q, self.market.at)
+        super().tick(dataclasses.replace(q, health=health))
+
+
+async def test_adr_330_39_a_stale_index_tick_does_not_fire_an_armed_exit_and_a_fresh_crossing_tick_fires(db):
+    market = Market()
+    market.provider = _AgeRuleProvider({"NIFTY": INDEX}, market)
+    market.feed = LiveFeed(MarketContext(market.provider, lambda: market.at, D("0.065"), None),
+                           FanOut(market.provider))
+    stored, _, keys = await _strategy(db)
+    tid = await _exit_below(db, stored.id)
+    monitor = _monitor(db, market)
+    await monitor.step()
+    market.tick(keys[0], "41.00")
+    market.tick(keys[1], "12.50")
+    old = market.at - datetime.timedelta(seconds=61)  # older than detection.index_quote_max_age_seconds (60 s)
+    market.provider.tick(quote(INDEX, "NIFTY", "22800.00", old))  # below the level, but 61 s old
+    assert market.provider.quotes[INDEX].health is DataHealth.STALE
+    assert await monitor.step() == 0
+    assert await _trigger_state(db, tid) == (False, False) and await _stops(db, stored.id) == []
+    market.tick(INDEX, "22800.00")  # the same level, stamped now: a fresh crossing tick
+    assert await monitor.step() == 1
+    assert await _trigger_state(db, tid) == (True, False)
+    assert len(await _stops(db, stored.id)) == OPEN_LEGS
+
+
+async def test_hf_a_a_failed_hold_read_keeps_the_armed_stops_watched_and_the_last_hold(db, monkeypatch):
+    market = Market()
+    stored, _, keys = await _strategy(db)
+    await _exit_below(db, stored.id)
+    monitor = _monitor(db, market)
+    await monitor.reload()
+    held = list(monitor._standing)
+    assert held and monitor.watched()
+    async def broken(_session):
+        raise RuntimeError("hold read failed")
+    monkeypatch.setattr(paper_monitor.triggers, "open_legs", broken)
+    await monitor.reload()  # must not raise: the stop watch is set first
+    assert monitor.watched() and monitor._standing == held
+    market.tick(INDEX, "22800.00")
+    market.tick(keys[0], "41.00")
+    market.tick(keys[1], "12.50")
+    assert await monitor.step() == 1  # the armed exit still fires
+
+
+async def test_hf_a_the_standing_hold_keeps_one_quote_and_its_old_handles_survive_a_failed_swap(
+        monkeypatch):
+    market = Market()
+    keys = ["NSE_FO:1", "NSE_FO:2", INDEX]
+    monitor = paper_monitor.PaperMonitor(None, lambda: market.feed, leg_prices=market.leg_prices,
+                                         read_settings=None, monotonic=lambda: 0.0)
+    monitor._hold_open_legs(market.feed, keys)
+    old = list(monitor._standing)
+    for i in range(5):
+        market.tick(keys[0], f"4{i}.00")
+    assert len(market.feed.fanout._subs[old[0]].queue) <= 1  # max_queue=1: never grows
+    real = market.feed.fanout.subscribe
+    def boom(listener, ids, **kw):
+        raise RuntimeError("provider down")
+    monkeypatch.setattr(market.feed.fanout, "subscribe", boom)
+    with pytest.raises(RuntimeError):
+        monitor._hold_open_legs(market.feed, keys)
+    assert monitor._standing == old and old[0] in market.feed.fanout._subs  # old hold kept, never released blind
+    monkeypatch.setattr(market.feed.fanout, "subscribe", real)
+    monitor._hold_open_legs(market.feed, keys)
+    assert monitor._standing != old and old[0] not in market.feed.fanout._subs  # released once the swap succeeded
+
+
+async def test_hf_u2_a_reload_uses_one_connection_checkout_and_logs_the_held_count_once_per_change(db, caplog):
+    """Hotfix 27 Nov (DB pool 2 on the PC): the hold's reads run on the reload's own session (ONE checkout per reload);
+    the held-key count is logged once per change, not once per reload."""
+    import logging  # noqa: PLC0415
+    once, reloads = 1, 3
+    market = Market()
+    await _strategy(db)
+    monitor = _monitor(db, market)
+    checkouts = 0
+    real = monitor._sessions
+    def counting():
+        nonlocal checkouts
+        checkouts += 1
+        return real()
+    monitor._sessions = counting
+    with caplog.at_level(logging.INFO, logger=paper_monitor.log.name):
+        await monitor.reload()
+        assert checkouts == 1  # armed + orders + contracts + the hold's open_legs: one session
+        await monitor.reload()
+        await monitor.reload()
+        lines = [r.getMessage() for r in caplog.records if "paper monitor holds" in r.getMessage()]
+        assert len(lines) == once
+        assert lines[0].endswith("feed keys (open legs + indexes)")
+        monitor._hold_open_legs(market.feed, ["NSE_FO:1"])  # the set changed: one more line
+        monitor._hold_open_legs(market.feed, ["NSE_FO:1"])
+        lines = [r.getMessage() for r in caplog.records if "paper monitor holds" in r.getMessage()]
+        assert len(lines) == once + 1
+        assert lines[1] == "paper monitor holds 1 feed keys (open legs + indexes)"
+    assert checkouts == reloads

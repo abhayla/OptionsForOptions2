@@ -48,6 +48,9 @@ async def _seeded(app_engine, monkeypatch, sid_name: str) -> tuple[int, scenario
     scn = scenario_mode.load(sid_name)
     await load_library(app_engine)  # the whole library's list, once per database
     sid = await seed_mod.seed(sid_name)
+    async with app_engine.begin() as conn:  # ADR-330 (11): only the strategy's own plan is watched
+        system = await playbook_store.active_for(conn, "owner", "ic")
+        await playbook_store.accept_plan(conn, "owner", sid, system.id)
     async with app_engine.connect() as conn:  # 1-minute candles (REQ-170 Q-AD-2), as the worker tests pin
         await strategy_alert_style_store.set_pin(conn, "owner", sid, "intraday")
         await conn.commit()

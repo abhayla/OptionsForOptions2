@@ -46,11 +46,13 @@ def _client(sc: dict, *, ivs: bool = True, rate: bool = True):
 
 
 def _charges(sc: dict) -> D:
-    """paid (0 here) + this adjustment's orders + the After legs' exit orders, as the outcome prices them."""
+    """paid (0 here) + this adjustment's orders + the After legs' exit orders, as the outcome prices them: each exit at
+    the leg's live chain LTP (the cost to close now, D-14), a leg the chain does not quote at its entry."""
     legs = sc["expected"]["approach_legs"]["A-04"]
+    now = {r.tradingsymbol: r.ltp for r in market_of(sc).chain if r.ltp is not None}
     trades = [ChargeOrder("NSE_FO", t["action"], t["quantity"], D(t["price"])) for t in legs["trades"]]
-    exits = [ChargeOrder("NSE_FO", "SELL" if x["side"] == "BUY" else "BUY", x["quantity"], D(x["entry"]))
-             for x in legs["after"]]
+    exits = [ChargeOrder("NSE_FO", "SELL" if x["side"] == "BUY" else "BUY", x["quantity"],
+                         now.get(x["tradingsymbol"], D(x["entry"]))) for x in legs["after"]]
     return sum((to_paise_up(charges_for_orders(o, RATES).total) for o in (trades, exits)), D(0))
 
 

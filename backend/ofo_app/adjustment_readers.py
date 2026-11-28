@@ -38,10 +38,11 @@ from ofo.engine import adjust_history as ah
 from ofo.engine.black_scholes import Greeks, year_fraction
 from ofo.engine.chain_values import chain_model
 from ofo.engine.legs import Instrument
+from ofo.engine.model import close_if_expiry_day
 from ofo.instruments.models import INDEX_ROWS, is_lot_aligned
 from ofo.marketdata.day_open import index_day_open
 from ofo.marketdata.forward import ForwardUnavailable, parity_forward
-from ofo.marketdata.quote import planning_price_usable
+from ofo.marketdata.quote import is_live_price, planning_price_usable, priced
 from ofo.marketdata.spot_source import SourceReading, SourceState, feed_is_live, feed_reading, resolve_spot
 from ofo.rules.inputs import DataHealth
 from ofo.timeutil import IST, SESSION_CLOSE
@@ -55,10 +56,11 @@ from ofo_app import (
     tracked_book,
     tracked_contracts,
 )
+from ofo_app.catalogue_store import StoredContract, load_catalogue, load_contracts
 from ofo_app.db import get_sessionmaker
 from ofo_app.errors import Failure
-from ofo_app.live_push import hold_and_read
 from ofo_app.outcome_oi import oi_of
+from ofo_app.read_door import NO_TOKEN, read_quotes
 from ofo_app.routes.adjustment import MarketInputs, Tracked
 from ofo_app.routes.broker import current_user_ref
 from ofo_app.routes.outcome import feed_windows_of, market_state, server_now, spot_judging_now
@@ -113,7 +115,12 @@ class TrackedUnreadable(Exception):
 
 
 class TrackedExited(TrackedUnreadable):
-    """Every leg of the strategy is exited (no open leg): the strategy closed (GC-ADJ2 step 5, REQ-112 AC-2 lapse)."""
+    """Every leg of the strategy is exited (no open leg): the strategy closed (GC-ADJ2 step 5, REQ-112 AC-2 lapse).
+    ``closed_at``: the trade's own close time (its last exit, settle or stop order), None when no order states one."""
+
+    def __init__(self, *args: object, closed_at: datetime.datetime | None = None) -> None:
+        super().__init__(*args)
+        self.closed_at = closed_at
 
 
 def index_name(underlying: str) -> str | None:
@@ -126,16 +133,21 @@ def index_name(underlying: str) -> str | None:
 
 # ---- strategy ---------------------------------------------------------------------------------------------------
 
-async def read_tracked(strategy_id: int, rates: ChargeRates | None, db: Any = None) -> Tracked | None:
+async def read_tracked(strategy_id: int, rates: ChargeRates | None, db: Any = None,
+                       kinds: Mapping[tuple[str, datetime.date], str] | None = None) -> Tracked | None:
     """``db``: the request's own session (a request uses ONE connection, #682); None for the worker, which has no
-    request and reads on a session of its own."""
+    request and reads on a session of its own. ``kinds`` (#864): the worker's record of the expiry kind it read for
+    (underlying, nearest expiry); a recorded kind spares the catalogue read, an absent or empty one reads it."""
     if db is not None:
-        return await _tracked_on(db, strategy_id, rates)
+        return await _tracked_on(db, strategy_id, rates, kinds)
     async with get_sessionmaker()() as own:
-        return await _tracked_on(own, strategy_id, rates)
+        found = await _tracked_on(own, strategy_id, rates, kinds)
+        await own.commit()  # the worker's own session: keeps a stop base stored once (ADR-330), nothing else is written
+        return found
 
 
-async def _tracked_on(db: Any, strategy_id: int, rates: ChargeRates | None) -> Tracked | None:
+async def _tracked_on(db: Any, strategy_id: int, rates: ChargeRates | None,
+                      kinds: Mapping[tuple[str, datetime.date], str] | None = None) -> Tracked | None:
     paper = await paper_book.load_owned(db, current_user_ref(), strategy_id)  # owner check in the query
     real = not paper  # ADR-276: no paper order -> the real Zerodha book (fills + adopted holdings), same netter
     orders: Any = paper or await _real_rows(db, strategy_id)
@@ -144,6 +156,137 @@ async def _tracked_on(db: Any, strategy_id: int, rates: ChargeRates | None) -> T
     found = {c.contract_id: c for c in await tracked_contracts.resolve(db, sorted({o.order.contract_id
                                                                                    for o in orders}))}
     book = net_positions([o.order.as_paper() for o in orders], {})
+    underlying, lot, legs = _legs_of(book, found)
+    if not legs or underlying is None or lot is None:
+        raise TrackedExited("no open option leg", closed_at=closed_at_of(orders))
+    fresh = entry_stop_base(orders, found, _ENTRY_SOURCE)  # ADR-330 (1): from the entry orders only
+    kind = await _stored_kind_or_empty(db, underlying, legs, kinds)  # R3: "" = not known; read BEFORE the backfill
+    base = await stop_base_in_force(db, strategy_id, fresh)  # (a failed catalogue read rolls the session back)
+    if real:  # paid charges and adjustments used before the app saw it: not readable yet ("not checked", ADR-276 (4))
+        return Tracked(Position(underlying, lot, kind, datetime.date.min, tuple(legs)), book.booked, None,
+                       adjustments_used=None, entered_at=entered_at(orders), real_book=True, stop_base=base,
+                       entry_stop_base=fresh)
+    paid, paid_exact = paid_of(orders, found, underlying, rates) if rates is not None else (None, None)
+    booked = book.booked  # the same paper orders ``read_booked`` would read again on a second session
+    # expiry kind and today are set by the route from the market reader (the calendar and clock live there)
+    # adjustments_used: the engine's adjustment history over the stored orders (the count the history page shows);
+    # None when the history cannot be read (the compare's "-" with that reason, never 0)
+    used = history_count(orders, lambda cid: found[cid].stored is not None
+                         and found[cid].stored.listed.contract.instrument_type in _OPTION_TYPES)
+    return Tracked(Position(underlying, lot, kind, datetime.date.min, tuple(legs)), booked, paid,
+                   adjustments_used=used, entered_at=entered_at(orders), paid_exact=paid_exact,
+                   entry_position=entry_position_of(orders, found), stop_base=base, entry_stop_base=fresh)
+
+
+async def _stored_kind_or_empty(db: Any, underlying: str, legs: Any,
+                                kinds: Mapping[tuple[str, datetime.date], str] | None = None) -> str:
+    """The position's expiry kind from the worker's record when it has one for the nearest leg (``kinds``, #864: the
+    worker records only a non-empty kind), else from the stored catalogue (``stored_kind``), "" when it cannot be
+    known or read (the live check then checks no stop: never the weekly row by default)."""
+    nearest = min(x.expiry for x in legs)  # the check's own day: the nearest leg
+    if kinds is not None and (kind := kinds.get((underlying, nearest))):
+        return kind
+    try:
+        return await stored_kind(db, underlying, nearest)
+    except CatalogueUnreadable:
+        return ""
+
+
+async def nearest_expiry(db: Any, strategy_id: int) -> datetime.date | None:
+    """ADR-330 (19)(b): the nearest expiry among the strategy's OPEN contracts, from a light read (orders, contracts,
+    the netted book): no stop-base backfill, no write. None: not this user's, nothing traded, or no open leg."""
+    paper = await paper_book.load_owned(db, current_user_ref(), strategy_id)
+    orders: Any = paper or await _real_rows(db, strategy_id)
+    if not orders:
+        return None
+    found = {c.contract_id: c for c in await tracked_contracts.resolve(db, sorted({o.order.contract_id
+                                                                                   for o in orders}))}
+    book = net_positions([o.order.as_paper() for o in orders], {})
+    expiries = [found[int(p.instrument_id)].stored.listed.contract.expiry for p in book.positions
+                if p.net_quantity != 0 and found.get(int(p.instrument_id)) is not None
+                and found[int(p.instrument_id)].stored is not None]
+    return min(expiries, default=None)
+
+
+async def nearest_expiries(db: Any, strategy_ids: Iterable[int]) -> dict[int, datetime.date | None]:
+    """``nearest_expiry`` for many strategies in TWO statements whatever the count (W-13: the alert lists labelled each
+    trade with 3 to 4 statements of its own): one paper-orders read (owner check in the query), one contract read.
+    Same answer per strategy as ``nearest_expiry`` for a PAPER book (the nearest expiry among the open legs; a flat book
+    or a contract that does not read -> None). A strategy that is not in the result has no paper order (a real book, not
+    this user's, nothing traded): the caller asks ``nearest_expiry`` for it, one at a time."""
+    ids = sorted(set(strategy_ids))
+    papers = await paper_book.load_owned_many(db, current_user_ref(), ids)
+    stored = await load_contracts(db, {o.order.contract_id for rows in papers.values() for o in rows})
+    out: dict[int, datetime.date | None] = {}
+    for sid, orders in papers.items():
+        if not orders:
+            continue
+        book = net_positions([o.order.as_paper() for o in orders], {})
+        expiries = []
+        for p in book.positions:
+            found = stored.get(int(p.instrument_id))
+            if p.net_quantity != 0 and isinstance(found, StoredContract):
+                expiries.append(found.listed.contract.expiry)
+        out[sid] = min(expiries, default=None)
+    return out
+
+
+_ENTRY_SOURCE = "entry"  # = settings_in_force.BASE_ENTRY (imported lazily: that module imports the check)
+
+
+def entry_stop_base(orders: Any, found: Mapping[int, Any], source: str) -> Any:
+    """ADR-330 (1): the stop base worked out from the strategy's ENTRY orders only (kinds in
+    the first batch, ``entry_batch``: ONE definition of "the trade as entered", shared with D-04's entry position),
+    netted and priced by the engine (``compute_stop_base``). No entry order (empty, or none states a time), a book
+    that is not whole-lot options, several expiries or an engine refusal -> None (not worked out): the stop lines
+    then say "not checked", never a number from the live legs."""
+    from ofo_app import settings_in_force as sif  # noqa: PLC0415 - it imports the check module
+
+    entry = entry_batch(orders)
+    if not entry:
+        return None
+    try:
+        book = net_positions([o.order.as_paper() for o in entry], {})
+        _, lot, legs = _legs_of(book, found)
+    except (TrackedUnreadable, ValueError, KeyError, AttributeError, TypeError):
+        log.warning("stop base: the entry orders cannot be read", exc_info=True)
+        return None
+    if lot is None or not legs:
+        return None
+    return sif.compute_stop_base(legs, lot, book.booked, datetime.datetime.now(datetime.UTC), source)
+
+
+async def stop_base_in_force(db: Any, strategy_id: int, fresh: Any) -> Any:
+    """The stop base the checks read. Answer states: STORED on the plan row (stated) -> that one, never recomputed;
+    stored but not readable (failed) -> None, left as it is; plan with no base (absent, a plan saved before ADR-330)
+    -> ``fresh`` stored ONCE with source "backfill" (a lost race reads the winner's); no plan -> ``fresh`` as it is
+    (nothing to store it on); nothing worked out (empty, ambiguous) -> None."""
+    from dataclasses import replace  # noqa: PLC0415
+
+    from ofo_app import playbook_store  # noqa: PLC0415 - one import site with the check's own
+    from ofo_app import settings_in_force as sif  # noqa: PLC0415
+
+    plan = await playbook_store.plan_for(db, current_user_ref(), strategy_id)
+    if plan is None:
+        return fresh
+    stored = getattr(plan, "stop_base", None)
+    if stored is not None:
+        return sif.stop_base_from_json(stored)
+    if fresh is None:
+        return None
+    filled = replace(fresh, source=sif.BASE_BACKFILL)
+    try:
+        if await playbook_store.backfill_stop_base(db, strategy_id, filled.to_json()):
+            return filled
+        again = await playbook_store.plan_for(db, current_user_ref(), strategy_id)
+        return sif.stop_base_from_json(getattr(again, "stop_base", None)) if again is not None else filled
+    except Exception:  # noqa: BLE001 - a failed write must not stop the check; the figure is still the entry's
+        log.warning("stop base: the backfill could not be stored (strategy %s)", strategy_id, exc_info=True)
+        return filled
+
+
+def _legs_of(book: Any, found: Mapping[int, Any]) -> tuple[str | None, int | None, list[PositionLeg]]:
+    """(underlying, lot, open option legs) of a netted book; a leg that is not a whole-lot option is refused by name."""
     legs: list[PositionLeg] = []
     underlying = lot = None
     for p in book.positions:
@@ -160,20 +303,34 @@ async def _tracked_on(db: Any, strategy_id: int, rates: ChargeRates | None) -> T
         underlying, lot = c.name, c.lot_size
         legs.append(PositionLeg("BUY" if p.net_quantity > 0 else "SELL", c.instrument_type, c.strike, c.expiry,
                                 abs(p.net_quantity) // c.lot_size, p.average, lc.broker_refs[0].broker_symbol))
-    if not legs or underlying is None or lot is None:
-        raise TrackedExited("no open option leg")
-    if real:  # paid charges and adjustments used before the app saw it: not readable yet ("not checked", ADR-276 (4))
-        return Tracked(Position(underlying, lot, "", datetime.date.min, tuple(legs)), book.booked, None,
-                       adjustments_used=None, entered_at=entered_at(orders), real_book=True)
-    paid, paid_exact = paid_of(orders, found, underlying, rates) if rates is not None else (None, None)
-    booked = book.booked  # the same paper orders ``read_booked`` would read again on a second session
-    # expiry kind and today are set by the route from the market reader (the calendar and clock live there)
-    # adjustments_used: the engine's adjustment history over the stored orders (the count the history page shows);
-    # None when the history cannot be read (the compare's "-" with that reason, never 0)
-    used = history_count(orders, lambda cid: found[cid].stored is not None
-                         and found[cid].stored.listed.contract.instrument_type in _OPTION_TYPES)
-    return Tracked(Position(underlying, lot, "", datetime.date.min, tuple(legs)), booked, paid,
-                   adjustments_used=used, entered_at=entered_at(orders), paid_exact=paid_exact)
+    return underlying, lot, legs
+
+
+def entry_batch(orders: Any) -> list[Any]:
+    """The ONE definition of "the trade as entered" (D-04's entry position and ADR-330 (1)'s stop base): every order
+    with the first order's ``placed_at``. A later basket, whatever its kind, and every adjustment is NOT part of it
+    (plan question Q4 (a): an adjustment does not move the stop base; reversing that is a change here, in this one
+    function, and it moves D-04's entry position with it). No order states a time -> [] (never a guess)."""
+    times = [getattr(o.order, "placed_at", None) for o in orders]
+    if not times or not all(isinstance(t, datetime.datetime) for t in times):
+        return []
+    first = min(times)
+    return [o for o in orders if o.order.placed_at == first]
+
+
+def entry_position_of(orders: Any, found: Mapping[int, Any]) -> Position | None:
+    """D-04: the position the first batch of orders opened (every order with the first order's ``placed_at``), read as
+    ``_tracked_on`` reads the book. None when no order states a time, the first batch is not whole-lot options, or it
+    nets to nothing: the caller then keeps the current shape (never a guess)."""
+    batch = entry_batch(orders)
+    if not batch:
+        return None
+    try:
+        underlying, lot, legs = _legs_of(net_positions([o.order.as_paper() for o in batch], {}), found)
+    except TrackedUnreadable:
+        return None
+    return None if not legs or underlying is None or lot is None else Position(underlying, lot, "", datetime.date.min,
+                                                                                 tuple(legs))
 
 
 def paid_of(orders: Any, found: Mapping[int, Any], underlying: str,
@@ -215,6 +372,18 @@ def entered_at(orders: Any) -> datetime.datetime | None:
     return min(times) if times else None
 
 
+_CLOSING_KINDS = ("exit", "settle", "stop")
+
+
+def closed_at_of(orders: Any) -> datetime.datetime | None:
+    """The trade's close time (owner Q2b: "the trade closed at HH:MM"): the ``placed_at`` of its last exit, settle
+    or stop order, on the app's clock; None when no such order states one (never a guess, never the worker's notice
+    time)."""
+    times = [p for p in (getattr(o.order, "placed_at", None) for o in orders if o.order.kind in _CLOSING_KINDS)
+             if isinstance(p, datetime.datetime)]
+    return max(times) if times else None
+
+
 def history_count(orders: Any, is_option: Any) -> int | None:
     """``adjustment_history(...).totals.adjustments_used`` over the stored paper orders (REQ-156 AC-2; the one
     counter the history page uses). No adjustment yet -> 0; the history cannot be read (a contract with no stored row,
@@ -241,7 +410,7 @@ class _GuardsUnreadable:
 GUARDS_UNREADABLE = _GuardsUnreadable()
 
 
-async def read_guards(strategy_id: int, position: Position, spot: Decimal | None,
+async def read_guards(strategy_id: int, tracked: Tracked, spot: Decimal | None,
                       listed: list | None, db: Any = None) -> dict[str, Any] | None | _GuardsUnreadable:
     """The ``guards`` of the strategy playbook (its own plan, else the active playbook of its type; ADR-230 (1)).
     Answer states: a mapping (limits; empty = none set), None (the shape matches no playbook), ``GUARDS_UNREADABLE``
@@ -249,18 +418,17 @@ async def read_guards(strategy_id: int, position: Position, spot: Decimal | None
     ``db``: the request's own session (a request uses ONE connection, #682); None for a caller with no request."""
     try:
         if db is not None:
-            return await _guards_on(db, strategy_id, position, spot, listed)
+            return await _guards_on(db, strategy_id, tracked, listed)
         async with get_sessionmaker()() as own:
-            return await _guards_on(own, strategy_id, position, spot, listed)
+            return await _guards_on(own, strategy_id, tracked, listed)
     except Exception as exc:  # noqa: BLE001 - any failure of the read is "unreadable", never a silent skip
         log.warning("adjustment guards: strategy %s playbook unreadable (%s)", strategy_id, type(exc).__name__)
         return GUARDS_UNREADABLE
 
 
-async def _guards_on(db: Any, strategy_id: int, position: Position, spot: Decimal | None,
-                     listed: list | None) -> dict[str, Any] | None:
+async def _guards_on(db: Any, strategy_id: int, tracked: Tracked, listed: list | None) -> dict[str, Any] | None:
     from ofo_app import adjustment_check  # noqa: PLC0415 - it imports the route module's dataclasses
-    stype = adjustment_check.strategy_type(position, spot, listed)
+    stype = adjustment_check.entry_type(tracked, listed)  # D-04: the one door the server's limit uses
     resolved = await adjustment_check.resolve(db, current_user_ref(), strategy_id, stype)
     return adjustment_check.guards_of_body(resolved.body)
 
@@ -343,7 +511,7 @@ async def held_read(provider: Any, underlying: str, expiry: datetime.date, leg_i
                     later: datetime.date | None = None) -> FrozenRead:
     """The frozen read of one expiry plus the contracts in ``leg_ids`` (the position's legs, the near-the-money window,
     the roll range, a second pass's landing strikes). The feed's book lists only contracts somebody holds (F-92), so
-    the ones missing are held on the shared fan-out (``live_push.hold_and_read``, the paper book's own helper) until
+    the ones missing are held on the shared fan-out (``read_door.read_quotes``, the one read door) until
     they are quoted or ``LEG_WAIT_S`` passes, and the read is taken INSIDE the hold. Answer states per contract:
     quoted at once (no hold) / quoted after the wait / never quoted (absent: unpriced, never 0) / no token (KeyError:
     nothing held, the first read stands) / no feed (the first read stands) / provider disconnected (the read so far).
@@ -361,15 +529,19 @@ async def held_read(provider: Any, underlying: str, expiry: datetime.date, leg_i
     index_wait = index_id is not None and first.index is None
     if index_wait:
         missing.append(index_id)  # type: ignore[arg-type]
-    if not missing or feed is None:
+    if feed is None:
+        return first
+    if not missing:  # everything quoted: the door only keeps the standing hold (no wait), the first read stands
+        await read_quotes(feed, list(dict.fromkeys(leg_ids)), lambda: first, lambda _s: True,
+                          lambda: provider.status().connected, 0.0, LEG_POLL_S)
         return first
 
     def done(snap: FrozenRead) -> bool:
         return all(i in snap.quotes or i in snap.later for i in missing if i != index_id) and (
             not index_wait or snap.index is not None)
-    held = await hold_and_read(feed.fanout, missing, read, done, lambda: provider.status().connected, LEG_WAIT_S,
+    held = await read_quotes(feed, missing, read, done, lambda: provider.status().connected, LEG_WAIT_S,
                                LEG_POLL_S)
-    return first if held is None else held
+    return first if held is NO_TOKEN else held
 
 
 def window_ids(listed: Iterable[Any], underlying: str, expiry: datetime.date, spot: Decimal | None,
@@ -578,11 +750,11 @@ async def read_market(tracked: Tracked, ctx: Any, *, extra_ids: Iterable[str] = 
                             SourceReading(SourceState.ABSENT), now, prices_stale=True)
     now = ctx.clock()
     position = tracked.position
-    underlying, expiry = position.underlying, position.legs[0].expiry
+    underlying, expiry = position.underlying, min(x.expiry for x in position.legs)  # the worker's primary_expiry (#863)
     provider = ctx.provider
     listed = listed_options(provider, underlying)
     scn = _scenario()
-    expiry_kind = _expiry_kind(provider, underlying, expiry, listed, scn)
+    expiry_kind = _expiry_kind(provider, underlying, expiry, listed, scn)  # the nearest leg's
     live = live_market.current_feed()  # F-92: the position's own legs are held for the read, like the paper book's
     first_index = provider.underlying_quote(underlying)  # only to centre the window; never used after the hold
     window_spot = await _window_spot(ctx, underlying, first_index, now)
@@ -610,7 +782,7 @@ async def read_market(tracked: Tracked, ctx: Any, *, extra_ids: Iterable[str] = 
         reach[expiry] = rm
     if later is not None:  # that expiry's OWN chain model (its forward, its time), from the same frozen read
         later_model = chain_model(list(frozen.later.values()), spot_q, later, now, ctx.rate, ctx.forward_quality,
-                                  market_closed=closed)
+                                  market_closed=closed, decay_until=_today_close(expiry, now))
         if (rm := reach_model(frozen.later, spot_q, later, now, ctx, later_model.greeks)) is not None:
             reach[later] = rm
 
@@ -642,7 +814,27 @@ async def read_market(tracked: Tracked, ctx: Any, *, extra_ids: Iterable[str] = 
                         index_day_open(frozen.day, now), reach, ctx.carry_gap_pct, ctx.s02_delta_per_lot,
                         ctx.s12_percent, spot_q, feed_is_live(provider, now),
                         *leg_prices_state(ctx, quotes, ids, position),
-                        regime=await regime_inputs.read_regime(position.underlying))  # ADR-280: margin, VIX, ADX
+                        regime=await regime_inputs.read_regime(position.underlying),  # ADR-280: margin, VIX, ADX
+                        leg_decay_left=None if _today_close(expiry, now) is None else _decay_left(
+                            ids, model.greeks, later_symbols if later is not None else {},
+                            later_model.greeks if later is not None else {}))
+
+
+def _today_close(expiry: datetime.date, now: datetime.datetime) -> datetime.datetime | None:
+    """D-12 (ADR-320 (1)): the position's nearest expiry is today and its close is ahead -> today's close, else None."""
+    return close_if_expiry_day(expiry, now)  # the engine's one expiry-day check (expiry_day_close calls it too)
+
+
+def _decay_left(ids: Mapping[str, str], greeks: Mapping[str, Any], later_ids: Mapping[str, str],
+                later_greeks: Mapping[str, Any]) -> dict[str, Decimal]:
+    """D-12: trading symbol -> the chain model's per-unit Decay left today, for every contract that has one."""
+    out = {}
+    for symbols, model in ((ids, greeks), (later_ids, later_greeks)):
+        for sym, iid in symbols.items():
+            g = model.get(iid)
+            if g is not None and g.decay_left_today is not None:
+                out[sym] = g.decay_left_today
+    return out
 
 
 async def read_market_more(tracked: Tracked, ctx: Any, extra_ids: Iterable[str]) -> MarketInputs | None:
@@ -684,16 +876,48 @@ def _expiry_kind(provider: Any, underlying: str, expiry: datetime.date, listed: 
 
 
 def expiry_kind_of(expiry: datetime.date, listed: Iterable[Any], futures: frozenset[datetime.date], scn: Any) -> str:
-    """THE one expiry-kind rule (the screen's ``read_market`` and the background's ``market_inputs`` both call it).
-    Monthly = the expiry a FUTURE of the underlying also expires on (index futures are monthly only); with no
-    future listed, the last listed option expiry of its month. Scenario mode: the scenario's own stated kind."""
+    """THE one expiry-kind rule (the screen's ``read_market``, the background's ``market_inputs``, the plan sheet and
+    ``stored_kind`` all call it). Monthly = the expiry a FUTURE of the underlying also expires on (index futures are
+    monthly only); weekly = an expiry inside the listed futures that none of them sits on. "" = NOT KNOWN, never a
+    default: no future listed, or the expiry lies after the last listed future (a far month whose own future is not
+    listed yet). Scenario mode: the scenario's own stated kind. ``listed`` is kept for the callers' signature."""
     if scn is not None and scn.data.get("expiry_kind") in ("weekly", "monthly"):
         return str(scn.data["expiry_kind"])
-    if futures:
-        return "monthly" if expiry in futures else "weekly"
-    same_month = sorted({lc.contract.expiry for lc in listed
-                         if (lc.contract.expiry.year, lc.contract.expiry.month) == (expiry.year, expiry.month)})
-    return "monthly" if same_month and expiry == same_month[-1] else "weekly"
+    if not futures:
+        return ""
+    if expiry in futures:
+        return "monthly"
+    return "" if expiry > max(futures) else "weekly"
+
+
+class CatalogueUnreadable(Exception):
+    """The stored catalogue could not be read (a database error): the expiry kind is then NOT KNOWN, with a reason."""
+
+
+async def stored_kind(db: Any, underlying: str, expiry: datetime.date, *, scn: Any = None,
+                      load: Callable[..., Any] | None = None) -> str:
+    """The expiry kind of ``expiry`` from the STORED catalogue (the day's instrument list the app keeps), by the one
+    rule ``expiry_kind_of``; "" = not known. The read runs in a SAVEPOINT: a database error rolls back only that
+    savepoint (the transaction stays usable for the next read) and raises ``CatalogueUnreadable``. It never calls
+    ``db.rollback()``: that would drop the CALLER's order-key claim and strategy row lock, and the orders would then
+    commit with no key row."""
+    scn = _scenario() if scn is None else scn
+
+    async def listed() -> list[Any]:
+        catalogue = await (load(db) if load is not None else load_catalogue(db, underlying))  # FD5 item 4: one name
+        return [e for e in catalogue.all_entries()
+                if e.currently_listed and e.contract.name == underlying and e.contract.expiry is not None]
+    try:
+        if db is None:
+            entries = await listed()
+        else:
+            async with db.begin_nested():
+                entries = await listed()
+    except Exception as exc:  # any failed read means "kind not known", with its own reason
+        log.warning("expiry kind: catalogue not read", exc_info=True)
+        raise CatalogueUnreadable from exc
+    futures = frozenset(e.contract.expiry for e in entries if e.contract.is_future())
+    return expiry_kind_of(expiry, [e for e in entries if e.contract.is_option()], futures, scn)
 
 
 async def atm_iv_now(ctx: Any, underlying: str, expiry: datetime.date, spot: Decimal) -> Decimal | None:
@@ -721,17 +945,26 @@ async def atm_iv_now(ctx: Any, underlying: str, expiry: datetime.date, spot: Dec
     return _atm_vol(list(rows), ids, model.greeks, forward)
 
 
-async def entry_facts_now(ctx: Any, underlying: str, sold: Iterable[Any]) -> EntryFacts | None:
+async def entry_facts_now(ctx: Any, underlying: str, sold: Iterable[Any], confirmed: bool = False,
+                          feed: Any = None) -> EntryFacts | None:
     """ADR-243 + ADR-270 (1): the entry facts a FIRST fill stores (paper and real alike), from the SOLD legs' listed
     contracts ``sold`` (``.instrument_type``, ``.strike``, ``.expiry``): the index's live spot now, each side's short
     distance (``entry_facts_of``) and the entry ATM IV of the nearest sold option expiry (``atm_iv_now``). Answer
-    states: not connected / no quote / a quote that is not a positive price -> None (nothing stored, never a guessed
+    states: no context / no quote / a quote that is not a positive price -> None (nothing stored, never a guessed
     spot); the IV not readable (no forward, unpriced chain, a read that fails) -> the facts with ``entry_atm_iv``
-    None."""
-    if ctx is None or not ctx.provider.status().connected:
+    None. ADR-330 (39): the spot is the index's LIVE price (``priced``: AVAILABLE and above 0), the one rule a leg's
+    price follows; a not-live value (old, or the feed not connected; never a flagged quote) is stored only when the
+    user confirmed the not-live line (``confirmed``, ``_index_value_not_live``: its own flag rule), never
+    silently (K2 F1: a ticked first fill with the feed down stores the held value, as ``record_basket_facts``
+    does). ``feed``: when given, an index nobody holds yet is held on the shared fan-out until its first quote
+    (``_index_quote_held``); None = the caller's book as it is."""
+    if ctx is None:
         return None
-    quote = ctx.provider.underlying_quote(underlying)
-    ltp = None if quote is None else quote.ltp
+    quote = await _index_quote_held(ctx, feed, underlying) if ctx.provider.status().connected else None
+    ltp = quote.ltp if quote is not None and priced(quote) else None
+    if ltp is None and confirmed:
+        held = _index_value_not_live(ctx, underlying)
+        ltp = None if held is None else held[0]
     if not isinstance(ltp, Decimal) or ltp <= 0:
         return None
     sold = list(sold)
@@ -747,36 +980,100 @@ async def entry_facts_now(ctx: Any, underlying: str, sold: Iterable[Any]) -> Ent
     return dataclasses.replace(facts, entry_atm_iv=iv)
 
 
-async def _index_spot_held(ctx: Any, feed: Any, underlying: str) -> Decimal:
+def index_hold_refusal(quote: Any) -> str | None:
+    """Why ``quote`` may not be HELD as the index value of a not-live save (ADR-330 (28), (39)); None = it may. An old
+    quote (STALE / DELAYED) keeps its value and its time and may be held on the user's confirmation; a quote the feed
+    flagged (``validation_errors``, health UNHEALTHY, e.g. ``crossed_quote``) or with no price above 0 may not
+    (ADR-200 (4): no valid price stays unpriced with its reason)."""
+    if quote is None:
+        return "no_quote"
+    if quote.validation_errors:
+        return quote.validation_errors[0]
+    if quote.health is DataHealth.UNHEALTHY:
+        return "unhealthy"
+    return None if is_live_price(quote.ltp) else "no_price"
+
+
+def _index_value_not_live(ctx: Any, underlying: str) -> tuple[Decimal, datetime.datetime | None] | None:
+    """ADR-330 (28): the last index value the app holds with ITS time, for a save the user confirmed as "prices are not
+    live": the feed book's last quote (any age), else, with the market closed, the last close. None: no positive value
+    at all (the refusal stays)."""
+    if ctx is None:
+        return None
+    quote = ctx.provider.underlying_quote(underlying)
+    reason = index_hold_refusal(quote)
+    if reason is None and isinstance(quote.ltp, Decimal):
+        return quote.ltp, quote.price_at
+    if reason != "no_quote":
+        log.warning("index value not held on confirmation: %s", reason)
+        return None  # a flagged quote is not rescued by an older close
+    now = ctx.clock()
+    if market_state(ctx, now).closed:
+        close = read_last_close(quote, True, _scenario(), now)
+        if close.state is SourceState.STATED and isinstance(close.value, Decimal) and close.value > 0:
+            return close.value, close.at
+    return None
+
+
+def _index_not_held_reason(ctx: Any, quote: Any) -> str:
+    """The reason the index value is refused, for the refusal's ``.reason`` (the user's text is the template)."""
+    if ctx is None or not ctx.provider.status().connected:
+        return "not_connected"
+    return index_hold_refusal(quote) or "not_live_not_confirmed"
+
+
+async def _index_quote_held(ctx: Any, feed: Any, underlying: str) -> Any:
+    """The index quote now. The API process holds only what a page socket subscribed, so an index nobody holds is held
+    on the shared fan-out until its first quote or ``LEG_WAIT_S`` passes (``read_door.read_quotes``); ``feed`` None =
+    no hold (the book as it is). The caller has checked the feed is connected."""
+    from ofo_app.chain_push import index_id_of  # noqa: PLC0415 - chain_push imports the app layer
+
+    provider = ctx.provider
+    index_id = index_id_of(ctx, underlying)
+
+    def read() -> Any:
+        return provider.underlying_quote(underlying)
+    quote = read()
+    if quote is None and feed is not None and index_id is not None:
+        held = await read_quotes(feed, [index_id], read, lambda q: q is not None,
+                                 lambda: provider.status().connected, LEG_WAIT_S, LEG_POLL_S)
+        quote = quote if held is NO_TOKEN else held
+    return quote
+
+
+async def _index_spot_held(ctx: Any, feed: Any, underlying: str,
+                           confirmed: bool = False) -> tuple[Decimal, datetime.datetime | None]:
     """The index's live spot for the fill's starting point (ADR-283 (1)). The API process holds only what a page
     socket subscribed, so an index nobody holds is held on the shared fan-out until its first quote or ``LEG_WAIT_S``
-    passes (``hold_and_read``, the paper book's own hold). Answer states: held / quoted within the wait -> the spot; no
-    context / not connected / never quoted / not a positive price -> ``StrategyRefused`` (nothing stored)."""
-    from ofo_app.chain_push import index_id_of  # noqa: PLC0415 - chain_push imports the app layer
+    passes (``read_door.read_quotes``). Answer states: held / quoted within the wait -> the spot; no
+    context / not connected / never quoted / not a positive price -> ``StrategyRefused`` (nothing stored), unless the
+    user confirmed the not-live line (``confirmed``, ADR-330 (28)): then the last held value
+    (``_index_value_not_live``). Returns ``(spot, at)``: the value and the time of the quote it came from (FR 3.4;
+    None when the quote states none)."""
     from ofo_app.strategy_refused import StrategyRefused  # noqa: PLC0415 - write path only
 
-    spot = None
+    spot = quote = at = None
     if ctx is not None and ctx.provider.status().connected:
-        provider = ctx.provider
-        index_id = index_id_of(ctx, underlying)
-
-        def read() -> Any:
-            return provider.underlying_quote(underlying)
-        quote = read()
-        if quote is None and feed is not None and index_id is not None:
-            held = await hold_and_read(feed.fanout, [index_id], read, lambda q: q is not None,
-                                       lambda: provider.status().connected, LEG_WAIT_S, LEG_POLL_S)
-            quote = quote if held is None else held
-        spot = None if quote is None else quote.ltp
+        quote = await _index_quote_held(ctx, feed, underlying)
+        # ADR-330 (39): the quote's own health carries the one index age rule (``FeedState.quote_health``); a value
+        # that rule calls not live is not a live spot, whatever the feed as a whole says: it needs the user's tick
+        live = quote is not None and quote.health is DataHealth.AVAILABLE
+        spot, at = (quote.ltp, quote.price_at) if live else (None, None)
+    if (not isinstance(spot, Decimal) or spot <= 0) and confirmed:
+        held_value = _index_value_not_live(ctx, underlying)
+        spot, at = (None, None) if held_value is None else held_value
     if not isinstance(spot, Decimal) or spot <= 0:
-        raise StrategyRefused("paper_index_price_unavailable", Failure.CONFLICT)
-    return spot
+        refused = StrategyRefused("paper_index_price_unavailable", Failure.CONFLICT)
+        refused.reason = _index_not_held_reason(ctx, quote)  # type: ignore[attr-defined]
+        raise refused
+    return spot, at
 
 
 async def record_basket_facts(db: Any, ctx: Any, feed: Any, strategy_id: int,
-                              basket: tuple[str, Any, Any, Mapping[int, Decimal]]) -> None:
+                              basket: tuple[str, Any, Any, Mapping[int, Decimal], bool]) -> None:
     """ADR-283 (1): stores the market state at this basket's fill, in the fill's transaction. ``basket`` = (underlying,
-    every order of the book after the fill, the order clock, contract id -> this basket's fill price). Basket number =
+    every order of the book after the fill, the order clock, contract id -> this basket's fill price, whether the user
+    confirmed the "prices are not live" line, ADR-330 (28)). Basket number =
     the adjustments made so far after it (ADR-255, ``history_count``; 0 = the entry). Answer states: not connected / no
     positive spot (after the index is held, ``_index_spot_held``) -> REFUSED, nothing stored; the count unreadable ->
     nothing stored (the checks keep the newest starting point); no open leg (the basket closed the strategy) ->
@@ -787,7 +1084,7 @@ async def record_basket_facts(db: Any, ctx: Any, feed: Any, strategy_id: int,
     from ofo_app import entry_facts_store  # noqa: PLC0415 - write path only
     from ofo_app.routes.tracking import _snapshot  # noqa: PLC0415 - the paper screen's own market read
 
-    underlying, book, clock, filled = basket
+    underlying, book, clock, filled, prices_not_live_confirmed = basket
     found = {c.contract_id: c for c in await tracked_contracts.resolve(db, sorted({o.order.contract_id
                                                                                  for o in book}))}
 
@@ -800,7 +1097,8 @@ async def record_basket_facts(db: Any, ctx: Any, feed: Any, strategy_id: int,
                                                                            {}).positions if p.net_quantity != 0]
     if used is None or not open_ or not all(is_option(cid) for cid, _ in open_):
         return
-    spot = await _index_spot_held(ctx, feed, underlying)  # after the no-facts returns: an exit needs no spot
+    # after the no-facts returns: an exit needs no spot
+    spot, spot_at = await _index_spot_held(ctx, feed, underlying, prices_not_live_confirmed)
     kept = [cid for cid, _ in open_ if cid not in filled and found[cid].identity is not None]
     prices: dict[int, Decimal | None] = dict(filled)
     if kept:
@@ -820,7 +1118,7 @@ async def record_basket_facts(db: Any, ctx: Any, feed: Any, strategy_id: int,
         log.warning("basket ATM IV unreadable (%s)", type(exc).__name__)
         iv = None
     await entry_facts_store.record_basket(db, strategy_id, used,
-                                          entry_facts_store.BasketFacts(clock, spot, iv, legs))
+                                          entry_facts_store.BasketFacts(clock, spot, iv, legs, spot_at))
 
 
 def _atm_vol(rows: list[ChainRow], ids: dict[str, str], greeks: Any, level: Decimal | None) -> Decimal | None:

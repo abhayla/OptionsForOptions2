@@ -98,6 +98,20 @@ def book_extremes(view: BookView, terms: Mapping[str, ContractTerms],
     return BookExtremes(profit_left, loss_left, max_profit, max_loss, None)
 
 
+def book_pnl_at_zero(view: BookView, terms: Mapping[str, ContractTerms]) -> Decimal | None:
+    """ADR-330 (55): the book's P&L at expiry with the index at 0 (the booked cash plus every open contract's payoff
+    at level 0, the same definition as Max Loss); None when it cannot be said (nothing open, two expiries, a leg the
+    engine will not value). The warning prints "worst case: <index> at zero" only when this equals the Max Loss."""
+    open_ = [p for p in view.positions if p.net_quantity != 0]
+    if not open_ or len({terms[p.instrument_id].expiry for p in open_}) > 1:
+        return None
+    try:
+        strategy = _strategy(open_, terms, {p.instrument_id: Decimal(0) for p in open_})
+        return view.cash + strategy.expiry_pnl_at(Decimal(0))
+    except (ValueError, KeyError, MultiExpiryError):
+        return None
+
+
 ExitState = Literal["yes", "no", "cannot_tell"]
 
 
@@ -188,10 +202,16 @@ class BookBreakevens:
     reason: ExtremesReason | None
 
 
-def book_breakevens(view: BookView, terms: Mapping[str, ContractTerms]) -> BookBreakevens:
+def book_breakevens(view: BookView, terms: Mapping[str, ContractTerms],
+                    charges: Decimal = Decimal(0)) -> BookBreakevens:
     """The levels where the book's at-expiry P&L is 0: booked + the open contracts' payoff at their exact average (the
-    same definition as Max Profit / Max Loss above: ``view.cash`` + the open contracts' value at expiry). Needs no live
-    price. Open contracts on more than one expiry: absent, ``multi_expiry`` (no exact breakevens, as Drafts Mode)."""
+    same definition as Max Profit / Max Loss above: ``view.cash`` + the open contracts' value at expiry). Needs no
+    live price of its own (the charges, when given, come from the caller). D-16 (ADR-263): ``charges`` (the
+    round-trip charges Max Profit / Max Loss carry, from ``extremes_charges.open_round_trip_charges``) is a flat
+    amount taken off the P&L, so the levels are the ones after charges; 0 is the old answer. The adjustment pages
+    reach the same levels through ``whole_trade_after`` (the same
+    ``breakevens_with_shift`` kernel, shift = booked - every charge line). Open contracts on more than one expiry:
+    absent, ``multi_expiry`` (no exact breakevens, as Drafts Mode)."""
     open_ = [p for p in view.positions if p.net_quantity != 0]
     if not open_:
         return BookBreakevens(None, None)
@@ -199,6 +219,6 @@ def book_breakevens(view: BookView, terms: Mapping[str, ContractTerms]) -> BookB
         return BookBreakevens(None, MULTI_EXPIRY)
     try:
         strategy = _strategy(open_, terms, {p.instrument_id: Decimal(0) for p in open_})
-        return BookBreakevens(breakevens_with_shift(strategy, view.cash), None)
+        return BookBreakevens(breakevens_with_shift(strategy, view.cash - charges), None)
     except MultiExpiryError:
         return BookBreakevens(None, MULTI_EXPIRY)

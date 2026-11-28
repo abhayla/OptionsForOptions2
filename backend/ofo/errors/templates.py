@@ -22,6 +22,7 @@ from ofo.errors.classes import ErrorClass
 from ofo.errors.gate_slots import (
     Clock,
     ClockTime,
+    ContractName,
     ContractSymbol,
     DataHealthState,
     DataInputName,
@@ -37,6 +38,7 @@ from ofo.errors.gate_slots import (
     RiskRows,
     Rupees,
     ShapeFamilies,
+    SideWord,
     Strikes,
     Symbol,
     UnitsByContract,
@@ -45,7 +47,17 @@ from ofo.errors.gate_slots import (
     WorstCase,
 )
 from ofo.errors.model import UserFacingError, _build, _claim_render_token
-from ofo.errors.slots import Code, Count, ExternalText, Instrument, Int, Money, SlotType, Time, Underlying
+from ofo.errors.slots import (
+    Code,
+    Count,
+    Instrument,
+    Int,
+    Money,
+    PnLMoney,
+    SlotType,
+    Time,
+    Underlying,
+)
 from ofo.instruments.catalogue import SUPPORTED_UNDERLYINGS
 
 _PART_NAMES: tuple[str, ...] = ("what_happened", "impact", "what_is_blocked", "next_action")
@@ -883,6 +895,18 @@ _STRATEGY_DRAFT_TEMPLATES: tuple[MessageTemplate, ...] = (
     _gate("strategy_definition_invalid", _SV, 408,
           "This strategy definition cannot be saved as sent.",
           "The draft was not saved or changed.", "Saving this strategy.", "Check the legs, risk limits and preferences and try again."),
+    # 27 Nov 2026 live screen test, item 4 (wording pending owner read): the cause of "cannot be saved as sent"
+    # when two legs are one contract; the legs are named as numbered on screen and the contract as the screens print it.
+    _gate("strategy_duplicate_leg_same_side", _SV, 524,
+          "Legs {first} and {second} are the same contract and side ({contract}, {side}).",
+          "The draft was not saved or changed.", "Saving this strategy.",
+          "Join them into one leg with more lots, or change one of them.",
+          {"first": Count, "second": Count, "contract": ContractName, "side": SideWord}),
+    _gate("strategy_duplicate_leg_opposite_sides", _SV, 525,
+          "Legs {first} and {second} are the same contract ({contract}), one {side} and one {other}.",
+          "The draft was not saved or changed.", "Saving this strategy.",
+          "A strategy holds one leg per contract: remove one of them, or change one to a different contract.",
+          {"first": Count, "second": Count, "contract": ContractName, "side": SideWord, "other": SideWord}),
     _gate("strategy_revision_conflict", _SV, 409,
           "This strategy was changed by another action after you opened it.",
           "The draft was not saved or changed.", "Applying your change to the newer version.", "Reload the strategy and make the change again."),
@@ -938,7 +962,7 @@ _STRATEGY_DRAFT_TEMPLATES: tuple[MessageTemplate, ...] = (
           "Review the current plan, then prepare the orders again."),
     # W-157 (REQ-134 AC-1): the name a user gives a saved strategy.
     _gate("strategy_name_empty", _SV, 430,
-          "The strategy has no name.",
+          "Give the strategy a name.",
           "The strategy was not saved or renamed.", "Saving or renaming this strategy.",
           "Type a name of 1 to 20 characters, then save again."),
     _gate("strategy_name_invalid", _SV, 431,
@@ -950,6 +974,72 @@ _STRATEGY_DRAFT_TEMPLATES: tuple[MessageTemplate, ...] = (
           "Orders were already sent for this strategy, so it cannot be deleted.",
           "The strategy and its history were not changed.", "Deleting this strategy.",
           "Its history stays readable."),
+    # ADR-292 / ADR-330 (8) S-03: a strategy held at the user's broker is refused with its own sentence.
+    _gate("strategy_delete_held_at_broker", _SV, 512,
+          "This strategy is marked as held at your broker, so it cannot be deleted.",
+          "The strategy and its history were not changed.", "Deleting this strategy.",
+          "Its history stays readable."),
+    # ADR-330 (8): one item of a bulk delete hit an unexpected error; the others were still deleted.
+    _gate("strategy_bulk_delete_item_failed", _SV, 513,
+          "This strategy could not be deleted because of an unexpected error, so it was left as it is.",
+          "The strategy and its history were not changed.", "Deleting this strategy.",
+          "Try deleting it again on its own."),
+    _gate("strategy_bulk_delete_too_many", _SV, 514,
+          "You can delete at most 200 strategies at once.",
+          "No strategy was deleted.", "This bulk delete.",
+          "Select fewer strategies and delete again."),
+    # ADR-330 (8): the one line a bulk delete answers with; the kept sentence is the single delete's own.
+    _gate("strategy_bulk_summary_none_kept", _SV, 515,
+          "{deleted} deleted",
+          "Every selected strategy was deleted; Undo brings them back.", "Nothing.",
+          "Nothing more to do.", {"deleted": Count}),
+    _gate("strategy_bulk_summary_each", _SV, 516,
+          "{deleted} deleted, {kept} kept: see each row",
+          "The kept strategies were not changed.", "Deleting the kept strategies.",
+          "Read the reason on each kept row.", {"deleted": Count, "kept": Count}),
+    _gate("strategy_bulk_summary_held_at_broker", _SV, 517,
+          "{deleted} deleted, {kept} kept: This strategy is marked as held at your broker, so it cannot be deleted.",
+          "The kept strategies were not changed.", "Deleting the kept strategies.",
+          "Read the reason on each kept row.", {"deleted": Count, "kept": Count}),
+    _gate("strategy_bulk_summary_orders_sent", _SV, 518,
+          "{deleted} deleted, {kept} kept: Orders were already sent for this strategy, so it cannot be deleted.",
+          "The kept strategies were not changed.", "Deleting the kept strategies.",
+          "Read the reason on each kept row.", {"deleted": Count, "kept": Count}),
+    _gate("strategy_bulk_summary_not_found", _SV, 519,
+          "{deleted} deleted, {kept} kept: The page or action you asked for is not available here.",
+          "The kept strategies were not changed.", "Deleting the kept strategies.",
+          "Read the reason on each kept row.", {"deleted": Count, "kept": Count}),
+    _gate("strategy_bulk_summary_changed", _SV, 520,
+          "{deleted} deleted, {kept} kept: This strategy was changed by another action after you opened it.",
+          "The kept strategies were not changed.", "Deleting the kept strategies.",
+          "Read the reason on each kept row.", {"deleted": Count, "kept": Count}),
+    _gate("strategy_bulk_summary_failed", _SV, 521,
+          "{deleted} deleted, {kept} kept: "
+          "This strategy could not be deleted because of an unexpected error, so it was left as it is.",
+          "The kept strategies were not changed.", "Deleting the kept strategies.",
+          "Read the reason on each kept row.", {"deleted": Count, "kept": Count}),
+    # ADR-330 (8) busy store (S-02; new wording approved by the owner as written, ADR-330 (26), 26 Nov 2026).
+    _gate("store_busy", _SV, 522,
+          "This strategy is busy with another action, so nothing was changed.",
+          "The strategy and its history were not changed.", "This action on this strategy.",
+          "Wait a moment, then try again."),
+    # NEW-T66 finish (ADR-330 (37), owner 26 Nov 2026): opening ?strategy=<id> for a strategy that does not exist.
+    _gate("strategy_not_found", _SV, 523,
+          "This strategy was not found. It may have been deleted.",
+          "Nothing was opened or changed.", "Opening this strategy.",
+          "Open My Strategies to choose another one."),
+    # Hotfix plan-save-1127 (ADR-330 (5)): a plan save that needs a price (a rupee Target beside a percent,
+    # a dated time exit) and did not get one in time. New wording, pending owner read (27 Nov 2026).
+    _gate("plan_save_prices_not_read", _SV, 526,
+          "Prices could not be read in time to check this plan.",
+          "The plan was not saved; the plan you had is unchanged.", "Saving this plan.",
+          "Try again when prices update, or save without the rupee Target or time-exit date."),
+    # Hotfix plan-read-1127 (ADR-330 (5)): a PERCENT stop save whose expiry kind (weekly or monthly) is not known, so
+    # the stop row to write is not known. New wording, pending owner read (27 Nov 2026).
+    _gate("plan_save_percent_stop_not_read", _SV, 527,
+          "The stop could not be saved: whether this trade expires weekly or monthly could not be read.",
+          "The plan was not saved; the plan you had is unchanged.", "Saving a percent stop.",
+          "Try again when prices update, or save the stop as a rupee amount."),
     # GC-BP step 5 (REQ-109 AC-4, AC-5): paper exit of tracked legs.
     _gate("tracking_exit_prices_not_live", _SV, 433,
           "Prices are not live; try again when they update.",
@@ -986,13 +1076,65 @@ _STRATEGY_DRAFT_TEMPLATES: tuple[MessageTemplate, ...] = (
           "belongs to another contract).",
           "No order was stored; a paper order is never placed on a contract that is not live.",
           "Placing these paper orders.", "Choose a contract that is still live, then place the orders again."),
+    # Lane FD2 (ADR-017; #869, #871): the order request key. All pending owner read.
+    _gate("request_key_other_strategy", _SV, 580,
+          "This request key was already used for another strategy.",
+          "No order was stored; one request key belongs to one set of orders on one strategy.",
+          "Placing these paper orders.", "Press Confirm again to place the orders with a new request key."),
+    _gate("request_key_different_body", _SV, 581,
+          "This request key was already used for a different order set.",
+          "No order was stored; a repeat of a request must carry the same orders as the first.",
+          "Placing these paper orders.",
+          "Read the strategy's orders, then press Confirm again if you still want them."),
+    _gate("request_key_in_progress", _SV, 582,
+          "The first request with this key is still being placed.",
+          "No order was stored by this repeat; the first request decides what is stored.",
+          "Placing these paper orders again.", "Wait a moment and read the strategy's orders before you try again."),
+    _gate("request_key_store_unavailable", _SV, 583,
+          "The app could not check whether these orders were already placed.",
+          "No order was stored; with the check down, a second copy of the same order could be stored.",
+          "Placing these paper orders.", "Read the strategy's orders to see what was stored, then try again."),
+    _gate("request_key_already_prepared", _SV, 585,
+          "A basket was already prepared for this press.",
+          "No new basket was prepared, so the same orders cannot be sent to Zerodha twice from one press.",
+          "Preparing this basket again.", "Open this strategy's plan to see the basket that was prepared."),
+    # Lane RA N5 (review of round 2): the server's own commit deadline (the page gives up at 10 s); it is NOT the busy
+    # store. New wording, pending the owner's read.
+    _gate("order_request_too_slow", _SV, 586,
+          "This took too long, so no order was stored.",
+          "Nothing was stored and the strategy was not changed; pressing again places the orders once.",
+          "Placing these paper orders.", "Press Place again."),
+    # Lane RA2 item 9 (FE3's Return-door sentence), new wording, pending the owner's read: the Return found that the
+    # strategy's recorded plans changed while the user was at Kite (another press or tab). Nothing was recorded.
+    _gate("execution_return_changed", _SV, 589,
+          "Something changed on this strategy while you were away at Kite, so nothing was recorded.",
+          "Nothing was recorded and nothing was sent; Zerodha was not asked to change anything.",
+          "Recording the result of your Kite orders.", "Press Return again."),
+    # Lane B2 (ADR-016 to ADR-019, ADR-330 (58)): while an earlier order request of the strategy has no known result,
+    # every further order request is refused whatever its key or body (``ofo_app.order_outcome``). New wording,
+    # pending the owner's read.
+    _gate("order_outcome_unknown", _SV, 590,
+          "An earlier order for this strategy has no known result yet.",
+          "No order was stored by this request; another order now could double the position.",
+          "Placing these orders.", "Read the strategy's orders, then try again in a couple of minutes."),
+    # Lane FD2 #877 (ADR-330 (64)): a real position is exited and protected in Kite, not on the paper routes.
+    _gate("real_position_exit_refused", _SV, 584,
+          "Real position: exit and protect it in Kite.",
+          "Stops and alerts here cover paper trades only.",
+          "Exiting or protecting a real position here.", "Use Kite to exit or protect this position."),
+    # Lane RA F4: the same refusal for an open and an add (own code, the sentence is the exit one's, word for word).
+    *(_gate(code, _SV, number, "Real position: exit and protect it in Kite.",
+            "Stops and alerts here cover paper trades only.",
+            "Exiting or protecting a real position here.", "Use Kite to exit or protect this position.")
+      for code, number in (("real_position_open_refused", 587), ("real_position_add_refused", 588))),
     # GC-ICGUIDE g10 (audit C9; ADR-255): the plan's most adjustments, enforced when the orders are saved.
     _gate("paper_adjustment_limit", _SV, 505,
-          "This plan allows at most {limit} adjustments, and these orders would make adjustment {number}.",
+          "These orders open or add to a leg, and there is no room left: plan maximum of {limit} reached.",
           "No order was stored; a partial exit counts as an adjustment, the entry does not.",
           "Placing these paper orders.",
-          "Exit the whole strategy, or raise the plan's most adjustments, then place the orders again.",
-          {"limit": Count, "number": Count}),
+          "Close or reduce legs instead, exit the whole strategy, or raise the plan's most adjustments, then place "
+          "the orders again.",
+          {"limit": Count}),
     _gate("paper_adjustment_limit_unread", _SV, 506,
           "The plan's most adjustments could not be read, so these orders cannot be checked against it.",
           "No order was stored; an adjustment is never saved without checking the plan's limit.",
@@ -1038,6 +1180,23 @@ _STRATEGY_DRAFT_TEMPLATES: tuple[MessageTemplate, ...] = (
           "This strategy has nothing open, so there is nothing for a stop to exit.",
           "No stop was set.",
           "Setting this paper stop.", "Place a paper order to open a position first, then set the stop."),
+    _gate("paper_trigger_already_crossed", _SV, 444,
+          "the live price is already at or beyond this level, so this exit would close the trade straight away. "
+          "To close now, use Exit.",
+          "No stop was set; nothing was exited.",
+          "Setting this paper stop.",
+          "Choose a level the price has not reached yet, or use Exit to close the trade now."),
+    _gate("paper_trigger_leg_already_crossed", _SV, 445,
+          "the live price is already at or beyond this level, so this stop would close the leg straight away. "
+          "To close now, use Exit.",
+          "No stop was set; nothing was exited.",
+          "Setting this paper stop.",
+          "Choose a level the price has not reached yet, or use Exit to close the leg now."),
+    _gate("paper_trigger_price_unreadable", _SV, 446,  # ADR-327 (2): market open, the live price cannot be read
+          "the live price could not be read, so this level cannot be checked. Try again in a moment.",
+          "No stop was set; nothing was exited.",
+          "Setting this paper stop.",
+          "Press Save again once the live prices are showing."),
     _gate("paper_trigger_already_fired", _SV, 443,
           "This stop has already fired (or was already cancelled) and cannot be cancelled.",
           "Nothing was changed; a fired stop has already exited its legs.",
@@ -1203,11 +1362,52 @@ _LEG_EDIT_TEMPLATES: tuple[MessageTemplate, ...] = (
     _gate("leg_edit_width_hedge_one_expiry", _UI, 25, "Width and Hedge need one expiry.",
           "The move was refused and no leg changed.", "This move.",
           "Use Shift, or put every leg on one expiry.", {}),
+    # D-48 (REQ-078 AC-11, AC-12): change the expiry of legs in the builder; a refusal changes nothing. Pending read.
+    # (a leg already on a passed expiry is refused by the request check, leg_edit_strike_not_listed, before any edit)
+    _gate("leg_edit_expiry_not_listed", _UI, 570,
+          "No {strikes} {kind} is listed for {expiry}, so leg {number} cannot move there.",
+          "The change was refused and no leg changed.", "This expiry change.",
+          "Pick another expiry, or remove the leg and add it again at a listed strike.",
+          {"strikes": Strikes, "kind": Instrument, "expiry": Date, "number": Count}),
+    _gate("leg_edit_expiry_futures", _UI, 571, "Expiry change applies to option legs.",
+          "The change was refused and no leg changed.", "This expiry change.",
+          "Remove the futures leg and add it again on the expiry you want.", {}),
     # GC-SET lots (REQ-167 AC-5): a leg above the limits.max_lots setting in force. Pending owner read.
     _gate("leg_lots_above_limit", _UI, 175,
           "A leg can hold at most {max_lots} lots; this leg has {lots}.",
           "The strategy was not checked and nothing changed.", "This strategy, until the leg is within the limit.",
           "Reduce the lots on this leg to {max_lots} or fewer.", {"lots": Count, "max_lots": Count}),
+    # Item 15 (T2-10, ADR-081 / ADR-092): a paper leg at or above the stored exchange freeze limit. Pending owner read.
+    _gate("paper_leg_over_order_limit", _UI, 573,
+          "{contract} asks for {lots} lots; the most one order can hold is {max_lots} lots.",
+          "Nothing was added to paper.", "This basket, until the leg is within the limit.",
+          "Reduce {contract} to {max_lots} lots or fewer.",
+          {"contract": ContractName, "lots": Count, "max_lots": Count}),
+    # Lane K (ADR-330 (50), (52); owner 27 Nov): the leg's TOTAL after the order, not the single order. Pending read.
+    _gate("paper_leg_total_over_limit", _UI, 575,
+          "{contract} would hold {total} lots after this order; a leg can hold at most {max_lots} lots "
+          "({held} held, {added} added).",
+          "Nothing was added to paper.", "This basket, until the leg is within the limit.",
+          "Reduce {contract} to {room} more lots or fewer.",
+          {"contract": ContractName, "total": Count, "max_lots": Count, "held": Count, "added": Count,
+           "room": Count}),
+    # Lane K (decision 51, ADR-092; coordinator ruling 27 Nov): an exit above the freeze quantity tells what to do.
+    # Pending owner read.
+    _gate("paper_exit_over_order_limit", _UI, 576,
+          "An exit of {lots} lots on {contract} is above the most one order can carry ({max_lots} lots).",
+          "Nothing was exited.", "This exit, until it is within the limit.",
+          "Exit {max_lots} lots or fewer now, then exit the rest in further orders.",
+          {"contract": ContractName, "lots": Count, "max_lots": Count}),
+    # Lane K item 4 (PC check T3-13, 27 Nov): an entry price of 0 or below, named by leg. Pending owner read.
+    _gate("paper_entry_price_not_above_zero", _UI, 577,
+          "The entry price for {contract} must be above 0.",
+          "Nothing was added to paper.", "This basket, until the price is above 0.",
+          "Type a price above 0 for {contract}, then add it to paper again.", {"contract": ContractName}),
+    _gate("paper_leg_limit_below_one_lot", _UI, 574,
+          "The exchange limit for {contract} is smaller than one lot ({limit} units, lot {lot}), "
+          "so it cannot be ordered.",
+          "Nothing was added to paper.", "This basket, until the contract is removed.",
+          "Remove {contract} from the basket.", {"contract": ContractName, "limit": Count, "lot": Count}),
 )
 
 # W-196 (REQ-155 AC-1, AC-8; ADR-214): the adjustment approach builder. A refusal leaves that one approach out and every
@@ -1317,6 +1517,9 @@ _TRIGGER_TEMPLATES: tuple[MessageTemplate, ...] = (
     _trig("t14_pending", 143, "The loss-from-a-1%-move rule is not checked yet in this version."),
     _trig("switched_off", 144, "This trigger is switched off in this playbook.", None, _TRIG_NEXT_OFF),
     _trig("greyed", 145, "This trigger does not apply to this strategy type.", None, _TRIG_NEXT_NOT_FOR_THIS),
+    # 28 Nov 2026, pending owner read: the percent stop on a trade whose expiry kind is not known
+    _trig("expiry_kind_unknown", 712, "Not checked: this trade's expiry type (weekly or monthly) is not known, so the "
+          "percent stop has no value."),
     _trig("data_unavailable", 146, "The data this trigger needs is not available."),
     _trig("unknown", 147, "Unknown trigger: it is not checked.", None, _TRIG_NEXT_NOT_FOR_THIS),
     _trig("not_evaluated", 148, "This trigger is not checked in this version.", None, _TRIG_NEXT_NOT_FOR_THIS),
@@ -1426,6 +1629,21 @@ _PLAYBOOK_TEMPLATES: tuple[MessageTemplate, ...] = (
           "Nothing was changed.", "Opening or changing this playbook.", "Pick a playbook from your list."),
     _gate("playbook_body_invalid", _UI, 157, "The playbook value {field} is not valid.",
           _PB_NOT_SAVED, _PB_BLOCKED, "Correct that value, then save again.", {"field": PlaybookField}),
+    # 27 Nov 10:28 (pending owner read): a plan-sheet box is named as the sheet prints it, never by its code word. The
+    # words are PLAN_SHEET_LABEL_TEXT's (a test holds them equal); the route picks the template by the box.
+    *(_gate(f"plan_sheet_invalid_{key}", _UI, number, f"{label} is not valid.", _PB_NOT_SAVED, "Saving this plan.",
+            "Correct that value, then save again.")
+      for key, number, label in (("target", 702, "Target"), ("stop", 703, "Stop"),
+                                 ("target_rupees", 704, "Target (Rs)"),
+                                 ("stop_rupees", 705, "Stop (Rs)"), ("max_adjustments", 706, "Max adjustments"),
+                                 ("time_exit", 707, "Time exit"), ("time_exit_on", 708, "Time exit date"))),
+    # both of a level's boxes typed with different values: the sentence names both (27 Nov, wording pending owner read)
+    *(_gate(f"plan_sheet_levels_differ_{key}", _UI, number, f"{label} and {label} (Rs) show different values.",
+            _PB_NOT_SAVED, "Saving this plan.",
+            "Clear one of the two boxes, or make them the same level, then save again.")
+      for key, number, label in (("target", 710, "Target"), ("stop", 711, "Stop"))),
+    _gate("plan_sheet_invalid_time_exit_on_past", _UI, 709, "Time exit date is in the past.", _PB_NOT_SAVED,
+          "Saving this plan.", "Pick today or a later trading day, then save again."),
     # GC-ADJ2 step 2 (REQ-159 AC-1): the stages of one expiry kind leave a gap or overlap; the days and stage names
     _gate("playbook_stage_overlap", _UI, 158, "Days {from_day} to {to_day} are in both {first} and {second} "
           "({expiry} expiries).", _PB_NOT_SAVED, _PB_BLOCKED, "Change the days so each day is in one stage only.",
@@ -1441,6 +1659,10 @@ _PLAYBOOK_TEMPLATES: tuple[MessageTemplate, ...] = (
     # GC-ADJ2 step 5 (REQ-112 AC-2/AC-4): a suggestion's outcome is written once; nothing is written on a refusal
     _gate("suggestion_not_found", _UI, 170, "This adjustment opportunity was not found.",
           "Nothing was changed.", "Recording what you did with it.", "Open Adjustment opportunities again."),
+    # ADR-330 (3): an answer that is empty or not one of the alert's own answers is refused; nothing is written
+    _gate("alert_answer_refused", _UI, 701, "That answer is not one this alert can take.",
+          "Nothing was changed; the alert stays in the Active list.", "Recording that answer.",
+          "Choose one of the answers shown with the alert."),
     _gate("suggestion_not_open", _UI, 171, "This adjustment opportunity already has its outcome.",
           "Nothing was changed; its outcome stays as it was.", "Recording another outcome for it.",
           "Open Adjustment opportunities to see its outcome."),
@@ -1475,9 +1697,10 @@ _PLAYBOOK_TEMPLATES: tuple[MessageTemplate, ...] = (
           "No short leg is priced within the buy-back limit of {limit} your playbook sets for this stage.",
           _ADJ_REFUSED, _ADJ_BLOCKED, _ADJ_PICK_OTHER, {"limit": Money}),
     _gate("adjust_time_exit_not_set", _UI, 184,
-          "Your playbook sets no time exit, so this approach is not built.",
+          "This approach is not built because your playbook sets no exit time.",
           _ADJ_REFUSED, _ADJ_BLOCKED, _ADJ_PICK_OTHER, {}),
-    _gate("adjust_time_exit_not_yet", _UI, 185, "The time exit is offered on expiry day from {time}.",
+    _gate("adjust_time_exit_not_yet", _UI, 185,
+          "This approach opens on the expiry day, from {time}; it is not offered before then.",
           _ADJ_REFUSED, _ADJ_BLOCKED, _ADJ_PICK_OTHER, {"time": ClockTime}),
     # ADR-239 (GC-IC1 step 3): the roll approaches A-02 and A-04
     _gate("adjust_roll_short_past_wing", _UI, 186,
@@ -1492,12 +1715,23 @@ _PLAYBOOK_TEMPLATES: tuple[MessageTemplate, ...] = (
           _ADJ_REFUSED, _ADJ_BLOCKED, _ADJ_PICK_OTHER, {"expiry": Date}),
     # ADR-238 (6): take profit only when the whole trade is in profit
     _gate("adjust_take_profit_not_in_profit", _UI, 189,
-          "The whole trade is not in profit with every open leg closed at its planned price, so this approach is "
-          "not built.",
+          "This approach is not built because the whole trade would not be in profit with every open leg closed at "
+          "its planned price.",
           _ADJ_REFUSED, _ADJ_BLOCKED, _ADJ_PICK_OTHER, {}),
     _gate("adjust_take_profit_booked_unknown", _UI, 190,
           "The profit or loss booked so far is not known, so whether the whole trade is in profit cannot be worked "
           "out and this approach is not built.",
+          _ADJ_REFUSED, _ADJ_BLOCKED, _ADJ_PICK_OTHER, {}),
+    # ADR-326 (1) (D-25): take profit is also refused when the whole trade is a loss AFTER charges
+    _gate("adjust_take_profit_not_in_profit_after_charges", _UI, 198,
+          "Not in profit after charges: {after}", _ADJ_REFUSED, _ADJ_BLOCKED, _ADJ_PICK_OTHER, {"after": PnLMoney}),
+    _gate("adjust_take_profit_two_expiries", _UI, 200,
+          "The result after charges cannot be worked out for a trade that would be left with two expiries, so whether "
+          "it is in profit after charges is not known and this approach is not built.",
+          _ADJ_REFUSED, _ADJ_BLOCKED, _ADJ_PICK_OTHER, {}),
+    _gate("adjust_take_profit_charges_unknown", _UI, 199,
+          "The charges of closing the whole trade cannot be worked out, so whether it is in profit after charges is "
+          "not known and this approach is not built.",
           _ADJ_REFUSED, _ADJ_BLOCKED, _ADJ_PICK_OTHER, {}),
 )
 

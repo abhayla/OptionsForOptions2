@@ -31,7 +31,7 @@ def test_stop_beyond_its_line_is_raised_mid_candle(preset, rule_id):
 
 
 @pytest.mark.parametrize("preset", STYLES)
-@pytest.mark.parametrize("rule_id", ["T-03", "T-07", "T-99"])
+@pytest.mark.parametrize("rule_id", ["T-03", "T-99"])
 def test_other_rule_and_unknown_kind_keep_the_candle_wait(preset, rule_id):
     state, ev = ag.step(ag.initial_state(), now=at("10:40:30"), preset=preset, readings=_read(rule_id, "11"))
     assert ev == []
@@ -52,7 +52,7 @@ def test_a_worse_level_of_a_raised_stop_escalates_at_once():
     spec = ag.RuleSpec("T-06", "ge", (D("10"), D("20")))
     state, ev = ag.step(ag.initial_state(), now=at("10:40:30"), preset=ag.WEEKLY, readings={"T-06": (spec, D("11"))})
     state, worse = ag.step(state, now=at("10:40:40"), preset=ag.WEEKLY, readings={"T-06": (spec, D("21"))})
-    assert [(type(e), e.level, e.worse) for e in ev + worse] == [(ag.Opened, 0, None), (ag.Opened, 1, "last")]
+    assert [(type(e), e.level, e.worse) for e in ev + worse] == [(ag.Opened, 0, None), (ag.Escalated, 1, "last")]
 
 
 def test_a_stop_below_its_line_still_waits_and_opens_nothing():

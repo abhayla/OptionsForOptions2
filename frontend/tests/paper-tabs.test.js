@@ -1,6 +1,5 @@
-// GC-BP step 6 (ADR-201 (2)): where the shared Paper list is shown. Positions page: tabs "Positions" | "Paper"; the Paper
-// tab loads by itself and is never held up by the Zerodha read; Paper figures never appear in the Positions tab.
-// Builder: the Tracked tab holds the same list (read only while that tab is shown).
+// ADR-330 (10) replaces ADR-201 (2): the Positions page is ONE list with an All / Real / Paper filter (was: tabs "Positions" | "Paper"); the paper
+// list loads by itself and is never held up by the Zerodha read.
 import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest'
 import { mount, flushPromises } from '@vue/test-utils'
 import { createRouter, createMemoryHistory } from 'vue-router'
@@ -56,100 +55,116 @@ async function page(url, view = 'current') {
 beforeEach(() => { calls.length = 0; answers = {}; vi.useFakeTimers() })
 afterEach(() => vi.useRealTimers())
 
-describe('Positions page tabs', () => {
+// ADR-330 (10) replaces ADR-201 (2): the Positions / Paper tabs are now the filter buttons All / Real / Paper over one list.
+describe('Positions page filter (was: tabs)', () => {
   for (const view of ['current', 'linked']) {
-    it(`${view} view: a tablist Positions | Paper, Positions selected, today's content and no Paper read`, async () => {
+    it(`${view} view: filter buttons All | Real | Paper, All pressed by default, today's real content shown`, async () => {
       answers['GET /positions'] = () => Promise.resolve({ data: POSITIONS })
       answers['GET /features'] = () => Promise.resolve({ data: { order_path: 'on' } })
       const w = await page('/p', view)
-      expect(w.get('[role=tablist]').exists()).toBe(true)
-      expect(t(w, 'tab-positions').attributes('aria-selected')).toBe('true')
-      expect(t(w, 'tab-paper').attributes('aria-selected')).toBe('false')
-      expect(t(w, 'tab-paper').attributes('role')).toBe('tab')
+      expect(t(w, 'filter-all').attributes('aria-pressed')).toBe('true')
+      expect(t(w, 'filter-real').attributes('aria-pressed')).toBe('false')
+      expect(t(w, 'filter-paper').attributes('aria-pressed')).toBe('false')
       expect(has(w, 'positions-empty')).toBe(true)
       expect(calls.some((c) => c[1] === '/tracking')).toBe(false)
     })
   }
-  it('R1-5: each tab\'s aria-controls names a real tabpanel, labelled by that tab (selected tab: Positions, then Paper)', async () => {
+  it('R1-5 (ADR-330 (10)): the filter buttons are a labelled group of real buttons, each pressed state exposed by aria-pressed', async () => {
     answers['GET /positions'] = () => Promise.resolve({ data: POSITIONS })
     answers['GET /tracking'] = () => Promise.resolve({ data: TRACKING })
     const w = await page('/p?tab=positions')
-    for (const key of ['positions', 'paper']) {
-      if (key === 'paper') { await t(w, 'tab-paper').trigger('click'); await flushPromises() }
-      const panel = w.get(`#${t(w, `tab-${key}`).attributes('aria-controls')}`)
-      expect(panel.attributes('role')).toBe('tabpanel')
-      expect(panel.attributes('aria-labelledby')).toBe(t(w, `tab-${key}`).attributes('id'))
-    }
+    expect(t(w, 'positions-filter').attributes('role')).toBe('group')
+    expect(t(w, 'positions-filter').attributes('aria-label')).toBeTruthy()
+    for (const key of ['all', 'real', 'paper']) expect(t(w, `filter-${key}`).element.tagName).toBe('BUTTON')
+    await t(w, 'filter-paper').trigger('click')
+    expect(t(w, 'filter-paper').attributes('aria-pressed')).toBe('true')
+    expect(t(w, 'filter-real').attributes('aria-pressed')).toBe('false')
   })
-  it('?tab=paper opens the Paper tab, and a failed Zerodha read does not block it', async () => {
+  it('?tab=paper opens the Paper filter, and a failed Zerodha read does not block it', async () => {
     answers['GET /positions'] = () => Promise.reject({ status: 503, parts: { what_happened: 'Zerodha down' } })
     answers['GET /tracking'] = () => Promise.resolve({ data: TRACKING })
     const w = await page('/p?tab=paper')
-    expect(t(w, 'tab-paper').attributes('aria-selected')).toBe('true')
+    expect(t(w, 'filter-paper').attributes('aria-pressed')).toBe('true')
     expect(t(w, 'paper-total').text()).toBe('+71.50')
-    expect(w.text()).not.toContain('Zerodha down')
+    expect(has(w, 'real-state')).toBe(false) // the Paper filter removes the real section, so its error is not shown
+    // ADR-330 (24): the refusal shows only in the totals' real reason, with the Real total as a dash
+    expect(t(w, 'totals-real-reason').text()).toContain('Zerodha down')
+    expect(t(w, 'totals-real').text()).toBe('—')
+    const outsideTotals = w.text().replace(t(w, 'positions-totals').text(), '')
+    expect(outsideTotals).not.toContain('Zerodha down')
   })
-  it('the Paper tab is not held up by a Zerodha read that never answers', async () => {
+  it('the paper list is not held up by a Zerodha read that never answers', async () => {
     answers['GET /positions'] = () => new Promise(() => {})
     answers['GET /tracking'] = () => Promise.resolve({ data: TRACKING })
     const w = await page('/p?tab=paper')
     expect(has(w, 'positions-loading')).toBe(false)
-    expect(t(w, 'paper-group-name').text()).toBe('GCBP P3 IC')
+    expect(t(w, 'paper-group-name').text()).toBe('GCBP P3 IC (#48, 3 Nov)') // ADR-330 (19)
   })
-  it('the Positions tab still shows its own error when the Zerodha read fails', async () => {
+  it('the real section still shows its own error when the Zerodha read fails', async () => {
     answers['GET /positions'] = () => Promise.reject({ status: 503, parts: { what_happened: 'Zerodha down' } })
     const w = await page('/p')
     expect(t(w, 'positions-error-what').text()).toBe('Zerodha down')
   })
 })
 
-// GC-ICFIX defect E (F-69): which tab the page opens on, per answer state of the real-positions read.
-describe('Positions page opening tab by the state of the Zerodha read', () => {
-  const selected = (w) => (t(w, 'tab-paper').attributes('aria-selected') === 'true' ? 'paper' : 'positions')
+// GC-ICFIX defect E (F-69) -> ADR-330 (10): the page no longer moves itself to Paper; default All shows both, so each answer state
+// of the real-positions read is the real section's own data-state, with the paper list present in every one.
+describe('Positions page by the state of the Zerodha read', () => {
   const refused = () => Promise.reject({ status: 409, parts: { what_happened: 'Connect your Zerodha account to continue.', impact: 'i', what_is_blocked: 'b', next_action: 'n' } })
   const status = (state) => () => Promise.resolve({ data: { account_connection: { state } } })
   const withPaper = () => { answers['GET /tracking'] = () => Promise.resolve({ data: TRACKING }) }
-  it('connected with real positions and an open paper strategy: stays on Positions', async () => {
+  const pressed = (w) => ['all', 'real', 'paper'].filter((k) => t(w, `filter-${k}`).attributes('aria-pressed') === 'true')
+  it('connected with real positions and an open paper strategy: All, real state connected, paper row shown', async () => {
     answers['GET /positions'] = () => Promise.resolve({ data: { ...POSITIONS, has_outside: true, outside_lots: 2 } })
     withPaper()
-    expect(selected(await page('/p'))).toBe('positions')
+    const w = await page('/p')
+    expect(pressed(w)).toEqual(['all'])
+    expect(t(w, 'real-state').attributes('data-state')).toBe('connected')
+    expect(has(w, 'paper-group')).toBe(true)
   })
-  it('connected with no real position and an open paper strategy: opens on Paper', async () => {
+  it('connected with no real position and an open paper strategy: stays on All (no jump to Paper), state empty, paper row shown', async () => {
     answers['GET /positions'] = () => Promise.resolve({ data: POSITIONS })
     withPaper()
-    expect(selected(await page('/p'))).toBe('paper')
+    const w = await page('/p')
+    expect(pressed(w)).toEqual(['all'])
+    expect(t(w, 'real-state').attributes('data-state')).toBe('empty')
+    expect(has(w, 'paper-group')).toBe(true)
   })
-  it('NOT connected (the read is refused) and an open paper strategy: opens on Paper', async () => {
+  it('NOT connected (the read is refused) and an open paper strategy: state not_connected, paper row shown', async () => {
     answers['GET /positions'] = refused
     answers['GET /broker/status'] = status('disconnected')
     withPaper()
-    expect(selected(await page('/p'))).toBe('paper')
+    const w = await page('/p')
+    expect(pressed(w)).toEqual(['all'])
+    expect(t(w, 'real-state').attributes('data-state')).toBe('not_connected')
+    expect(has(w, 'paper-group')).toBe(true)
   })
-  it('not connected and no open paper strategy: stays on Positions and shows the refusal', async () => {
+  it('not connected and no open paper strategy: shows the refusal', async () => {
     answers['GET /positions'] = refused
     answers['GET /broker/status'] = status('disconnected')
     const w = await page('/p')
-    expect(selected(w)).toBe('positions')
-    expect(t(w, 'positions-error-what').text()).toContain('Connect your Zerodha account')
+    expect(pressed(w)).toEqual(['all'])
+    expect(t(w, 'positions-error-error').text()).toContain('Connect your Zerodha account')
   })
-  it('the read failed for another reason (server error, broker connected): stays on Positions and shows the error', async () => {
+  it('the read failed for another reason (server error, broker connected): state read_failed and the error', async () => {
     answers['GET /positions'] = () => Promise.reject({ status: 500, parts: { what_happened: 'Server error', impact: 'i', what_is_blocked: 'b', next_action: 'n' } })
     answers['GET /broker/status'] = status('connected')
     withPaper()
     const w = await page('/p')
-    expect(selected(w)).toBe('positions')
+    expect(t(w, 'real-state').attributes('data-state')).toBe('read_failed')
     expect(t(w, 'positions-error-what').text()).toBe('Server error')
   })
-  it('the read failed and the connection state cannot be read either: stays on Positions (fail closed)', async () => {
+  it('the read failed and the connection state cannot be read either: read_failed (fail closed)', async () => {
     answers['GET /positions'] = () => Promise.reject({ status: 500, parts: null })
     withPaper()
-    expect(selected(await page('/p'))).toBe('positions')
+    const w = await page('/p')
+    expect(t(w, 'real-state').attributes('data-state')).toBe('read_failed')
   })
-  it('?tab=positions in the URL always wins, even when not connected with an open paper strategy', async () => {
+  it('?tab=positions in the URL always wins: the Real filter, even when not connected with an open paper strategy', async () => {
     answers['GET /positions'] = refused
     answers['GET /broker/status'] = status('disconnected')
     withPaper()
-    expect(selected(await page('/p?tab=positions'))).toBe('positions')
+    expect(pressed(await page('/p?tab=positions'))).toEqual(['real'])
   })
 })
 

@@ -16,7 +16,7 @@ vi.mock('@/services/api', async (importActual) => {
   return {
     ...actual,
     default: {
-      get: (url) => (url === '/features' ? features() : answer(url)),
+      get: (url) => (url === '/features' ? features() : Promise.resolve(answer(url)).then((r) => ({ ...r, data: withWords(r.data) }))),
       patch: (url, body) => {
         sent.push({ url, body })
         return patchAnswer(url, body)
@@ -32,11 +32,12 @@ vi.mock('@/services/api', async (importActual) => {
     },
   }
 })
+import { withWords } from './_statusWord'
 import MyStrategiesPage from '@/pages/MyStrategiesPage.vue'
 
 const Stub = { template: '<i />' }
 let router
-async function open(meta = { title: 'My Strategies', parent: 'Strategies' }) {
+async function open(meta = { title: 'My Strategies', parent: 'Strategies' }, attachTo = undefined) {
   router = createRouter({
     history: createMemoryHistory(),
     routes: [
@@ -47,7 +48,7 @@ async function open(meta = { title: 'My Strategies', parent: 'Strategies' }) {
   })
   await router.push('/s')
   await router.isReady()
-  const w = mount(MyStrategiesPage, { global: { plugins: [router] } })
+  const w = mount(MyStrategiesPage, { attachTo, global: { plugins: [router] } })
   await flushPromises()
   return w
 }
@@ -92,7 +93,7 @@ describe('My Strategies page', () => {
   it('shows the neutral message when the list fails', async () => {
     answer = () => Promise.reject(new Error('down'))
     const w = await open()
-    expect(w.find('[data-testid="list-error"]').exists()).toBe(true)
+    expect(w.find('[data-testid="list-load-error"]').exists()).toBe(true)
     expect(w.find('[data-testid="strategy-list"]').exists()).toBe(false)
   })
 
@@ -144,11 +145,12 @@ describe('ADR-183: a name stored with more than 20 characters opens in full and 
     await w.get('[data-testid="rename-7"]').trigger('click')
     expect(w.get('[data-testid="rename-input"]').element.value).toBe(longName)
     expect(w.get('[data-testid="rename-input"]').attributes('maxlength')).toBe('20')
-    expect(w.get('[data-testid="rename-count"]').text()).toBe('26/20')
-    expect(w.get('[data-testid="rename-count"]').classes()).toContain('text-warn')
+    expect(w.get('[data-testid="rename-limit"]').text()).toBe('This name is longer than 20 characters: shorten it to save.')
+    expect(w.get('[data-testid="rename-limit"]').classes()).toContain('text-warn')
     await w.get('[data-testid="rename-input"]').setValue('y'.repeat(20))
-    expect(w.get('[data-testid="rename-count"]').text()).toBe('20/20')
-    expect(w.get('[data-testid="rename-count"]').classes()).toContain('text-ink-muted')
+    expect(w.get('[data-testid="rename-limit"]').text()).toBe('That is the 20-character limit: nothing more can be typed.')
+    expect(w.get('[data-testid="rename-limit"]').classes()).toContain('text-ink-muted')
+    expect(w.find('[data-testid="rename-count"]').exists()).toBe(false)
   })
 })
 
@@ -157,7 +159,7 @@ describe('REQ-134 AC-4: each row shows its name, underlying, first leg and "and 
     list(named(7, 'NIFTY Oct condor'))
     const w = await open()
     const r = w.get('[data-testid="strategy-row"]')
-    expect(r.get('[data-testid="row-name"]').text()).toBe('NIFTY Oct condor')
+    expect(r.get('[data-testid="row-name"]').text()).toBe('NIFTY Oct condor (#7, 13 Oct)') // ADR-330 (19)
     expect(r.get('[data-testid="row-underlying"]').text()).toBe('NIFTY')
     expect(r.get('[data-testid="row-legs"]').text()).toBe('NIFTY 13 Oct 22800 CE and 3 more')
     expect(r.get('[data-testid="row-saved"]').text()).toContain('last saved')
@@ -198,17 +200,17 @@ describe('REQ-134 AC-4 (attack 3): the search box filters by name as typed, case
     list(named(1, 'NIFTY Oct CONDOR'), named(2, 'Straddle'))
     const w = await open()
     await w.get('[data-testid="strategy-search"]').setValue('condor')
-    expect(names(w)).toEqual(['NIFTY Oct CONDOR'])
+    expect(names(w)).toEqual(['NIFTY Oct CONDOR (#1, 13 Oct)'])
     await w.get('[data-testid="strategy-search"]').setValue('zzz')
     expect(w.get('[data-testid="search-no-match"]').text()).toBe('No saved strategy matches zzz')
     expect(w.find('[data-testid="strategy-list"]').exists()).toBe(false)
     await w.get('[data-testid="strategy-search"]').setValue('')
-    expect(names(w)).toEqual(['NIFTY Oct CONDOR', 'Straddle'])
+    expect(names(w)).toEqual(['NIFTY Oct CONDOR (#1, 13 Oct)', 'Straddle (#2, 13 Oct)'])
   })
   it('a name or a typed text with markup is shown as text, never as HTML', async () => {
     list(named(1, '<b>Bold</b> condor'))
     const w = await open()
-    expect(names(w)).toEqual(['<b>Bold</b> condor'])
+    expect(names(w)).toEqual(['<b>Bold</b> condor (#1, 13 Oct)'])
     expect(w.get('[data-testid="row-name"]').find('b').exists()).toBe(false)
     await w.get('[data-testid="strategy-search"]').setValue('<i>x</i>')
     expect(w.get('[data-testid="search-no-match"]').text()).toBe('No saved strategy matches <i>x</i>')
@@ -228,6 +230,17 @@ describe('REQ-134 AC-3 (attack 5): rename in the list changes only the name', ()
   beforeEach(() => {
     sent.length = 0
   })
+  it('opening the Rename box focuses its field, and Esc closes it without a click first', async () => {
+    serve()
+    const w = await open(undefined, document.body)
+    await w.get('[data-testid="rename-7"]').trigger('click')
+    await flushPromises()
+    const input = w.get('[data-testid="rename-input"]')
+    expect(document.activeElement).toBe(input.element)
+    await input.trigger('keydown', { key: 'Escape' })
+    expect(w.find('[data-testid="rename-form"]').exists()).toBe(false)
+    w.unmount()
+  })
   it('the name field is prefilled without quotes; Save reads the revision and PATCHes name + revision; only the name in the row changes', async () => {
     serve()
     patchAnswer = () => Promise.resolve({ data: { id: 7, name: quoted('Condor wider'), revision: 3, updated_at: '2026-10-13T05:10:00Z' } })
@@ -240,7 +253,7 @@ describe('REQ-134 AC-3 (attack 5): rename in the list changes only the name', ()
     await w.get('[data-testid="rename-form"]').trigger('submit')
     await flushPromises()
     expect(sent).toEqual([{ url: '/strategies/7/name', body: { name: 'Condor wider', expected_revision: 3 } }])
-    expect(names(w)).toEqual(['Condor wider'])
+    expect(names(w)).toEqual(['Condor wider (#7, 13 Oct)'])
     expect(w.find('[data-testid="rename-form"]').exists()).toBe(false)
     const r = w.get('[data-testid="strategy-row"]')
     expect(r.text().replace('Condor wider', '')).toBe(before) // status, legs line, last saved, tracked: untouched
@@ -249,15 +262,15 @@ describe('REQ-134 AC-3 (attack 5): rename in the list changes only the name', ()
   })
   it('an empty name is refused by the API; its message is shown and the row keeps its old name', async () => {
     serve()
-    const EMPTY = { what_happened: 'The strategy has no name.', impact: 'The strategy was not saved or renamed.', what_is_blocked: 'Saving or renaming this strategy.', next_action: 'Type a name of 1 to 20 characters, then save again.' }
+    const EMPTY = { what_happened: 'Give the strategy a name.', impact: 'The strategy was not saved or renamed.', what_is_blocked: 'Saving or renaming this strategy.', next_action: 'Type a name of 1 to 20 characters, then save again.' }
     patchAnswer = () => Promise.reject({ status: 422, parts: EMPTY })
     const w = await open()
     await w.get('[data-testid="rename-7"]').trigger('click')
     await w.get('[data-testid="rename-input"]').setValue('')
     await w.get('[data-testid="rename-form"]').trigger('submit')
     await flushPromises()
-    expect(w.get('[data-testid="rename-error-what"]').text()).toBe('The strategy has no name.')
-    expect(names(w)).toEqual(['NIFTY Oct condor'])
+    expect(w.get('[data-testid="rename-error-what"]').text()).toBe('Give the strategy a name.')
+    expect(names(w)).toEqual(['NIFTY Oct condor (#7, 13 Oct)'])
   })
   it('a read without a revision sends no PATCH (fail closed) and shows the neutral message', async () => {
     serve({ revision: undefined })
@@ -267,7 +280,7 @@ describe('REQ-134 AC-3 (attack 5): rename in the list changes only the name', ()
     await flushPromises()
     expect(sent).toEqual([])
     expect(w.find('[data-testid="rename-error"]').exists()).toBe(true)
-    expect(names(w)).toEqual(['NIFTY Oct condor'])
+    expect(names(w)).toEqual(['NIFTY Oct condor (#7, 13 Oct)'])
   })
   it('Cancel closes the field and sends nothing', async () => {
     serve()

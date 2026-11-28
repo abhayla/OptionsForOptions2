@@ -209,9 +209,12 @@ def kite_session_expiry(values: Mapping[str, Decimal]) -> datetime.time:
 
 FEED_STALE_SECONDS = "detection.feed_stale_seconds"
 FEED_RECONNECT_SECONDS = "detection.feed_reconnect_window_seconds"
+INDEX_QUOTE_MAX_AGE_SECONDS = "detection.index_quote_max_age_seconds"
 
 
 def feed_windows(values: Mapping[str, Decimal]) -> FeedWindows:
     """The two feed-health windows in force as the one parameter object feed health requires (REQ-167 AC-5)."""
     return FeedWindows(stale=datetime.timedelta(seconds=float(value_of(values, FEED_STALE_SECONDS))),
-                       reconnect=datetime.timedelta(seconds=float(value_of(values, FEED_RECONNECT_SECONDS))))
+                       reconnect=datetime.timedelta(seconds=float(value_of(values, FEED_RECONNECT_SECONDS))),
+                       index_quote_max_age=datetime.timedelta(
+                           seconds=float(value_of(values, INDEX_QUOTE_MAX_AGE_SECONDS))))

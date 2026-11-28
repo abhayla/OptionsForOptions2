@@ -194,6 +194,22 @@ def test_flat_row_is_no_position_not_an_error():
     assert read.net == {} and read.lines == ()
 
 
+def test_lane_s_money_fields_kept_exact_per_contract_and_flat_rows_counted():
+    """Lane S: the six P&L fields of the real open row are kept as exact Decimals per contract; the real flat row is
+    counted (closed today), never a money entry; a malformed money field is None, never a refused read."""
+    (row,) = _recorded("positions-122104")["net"]
+    read = positions_from_reply({"net": [row]}, _index())
+    (kept,) = read.money[CONTRACT]
+    assert kept == {"pnl": Decimal(0), "buy_value": Decimal("331.5"), "sell_value": Decimal(0), "quantity": Decimal(65),
+                    "last_price": Decimal("5.1"), "multiplier": Decimal(1)}
+    assert read.flat_platform == 0
+    flat = positions_from_reply(_recorded("positions-151006"), _index())
+    assert flat.money == {} and flat.flat_platform == 1
+    bad = positions_from_reply({"net": [{**row, "pnl": "abc", "buy_value": True}]}, _index())
+    assert bad.net == {CONTRACT: 65}  # (last_price keeps its existing strict parse: a bad one still refuses the read)
+    assert bad.money[CONTRACT][0]["pnl"] is None and bad.money[CONTRACT][0]["buy_value"] is None
+
+
 def test_symbol_not_in_slice_is_refused():
     (row,) = _recorded("positions-122104")["net"]
     with pytest.raises(KiteReplyError, match="matches 0"):

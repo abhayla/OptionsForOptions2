@@ -53,7 +53,7 @@ One cycle (``Worker.cycle``), each step with its answer state:
    after the write succeeded. A queued write of a strategy removed or re-planned at a rebuild is dropped (#636 r5);
    the writer is watched (a dead writer is logged and restarted) and drained on stop.
 5. The alert gate (REQ-170, ADR-237 (6): the ONE writer of suggestion records). Each check feeds
-   ``gate_readings.readings(evaluation)`` into ``alert_gate.step`` with the strategy's preset (``alert_presets.
+   ``gate_readings.readings`` into ``alert_gate.step`` with the strategy's preset (``alert_presets.
    preset_for`` of ``style_for(expiry kind, days left, pin)``); every cycle (the ~1 s wake) also steps every gated
    strategy that was not checked with EMPTY readings, so candle closes are processed with no price change
    (ADR-237 (2)). Only the gate's events touch the database (``GateStore.apply``, one transaction per step's
@@ -119,13 +119,14 @@ import enum
 import functools
 import logging
 import sys
-from collections.abc import Awaitable, Callable, Coroutine, Iterable, Mapping
+from collections.abc import Awaitable, Callable, Coroutine, Iterable, Mapping, Sequence
 from dataclasses import dataclass, field
 from decimal import Decimal
 from typing import Any, Final
 
-from ofo.adjustment import alert_gate, alert_presets, gate_readings, monitor_pause
+from ofo.adjustment import alert_gate, alert_presets, gate_readings, level_watch, monitor_pause
 from ofo.adjustment import playbook_eval as pe
+from ofo.adjustment import stop_lines as sl
 from ofo.adjustment.preferences import Preferences
 from ofo.adjustment.preferences import from_values as prefs_from_values
 from ofo.engine.black_scholes import Greeks, year_fraction
@@ -138,7 +139,14 @@ from ofo.marketdata.feed_health import market_closed_for
 from ofo.marketdata.forward import parity_forward
 from ofo.marketdata.quote import is_live_price
 from ofo.marketdata.shared_compute import FeedScope, SharedCompute
-from ofo.marketdata.spot_source import SourceReading, feed_reading, resolve_spot
+from ofo.marketdata.spot_source import (
+    REASON_REST_STALE,
+    SourceReading,
+    SourceState,
+    feed_reading,
+    resolve_spot,
+    rest_problem,
+)
 from ofo.outcome.service import solved_iv, unit_greeks
 from ofo.rules.inputs import DataHealth
 from ofo.scenario.spot import spot_reading
@@ -147,15 +155,20 @@ from ofo.settings import calc as settings_calc
 from ofo.timeutil import IST
 
 from ofo_app import adjustment_check as check
-from ofo_app import calc_speeds, feed_bus, roles, settings_cache
+from ofo_app import calc_speeds, feed_bus, monitoring_state, roles, settings_cache
 from ofo_app.db_gate import GATE_POLL, GATE_REBUILD, GATE_WRITER, DbGate, held
 from ofo_app.regime_inputs import RegimePerList
 from ofo_app.routes.adjustment import MarketInputs
 
 log = logging.getLogger("ofo_app.background")
+#: the worker log words of a loss rule that is past its line while nothing is alerted (Lane RA2 item 2)
+SILENT_LOSS_RULE: Final = "loss rule true, nothing alerted"
 
 __all__ = ["GATE_POLL", "GATE_REBUILD", "GATE_WRITER", "DbGate"]  # the role's one gate (``db_gate``)
 
+#: J3 item 1: the alert gate's timing style for a trade whose expiry kind is not known (never a stage row: see
+#: ``_evaluate_and_gate``); the fastest style, so a stop that needs no kind is never held longer than any other.
+UNKNOWN_KIND_TIMING_STYLE: Final = "intraday"
 DEFAULT_MAX_PER_CYCLE: Final = 200  # strategies checked in one cycle; the rest roll to the next (B4 (a))
 #: the recent checks and errors kept in memory for tests and status (a long-running process must not grow without end:
 #: 1,000 strategies checked each second would add ~21.6 million entries in one market day)
@@ -163,9 +176,13 @@ RECENT_KEPT: Final = 1000
 WAKE_SECONDS: Final = Decimal(1)  # ADR-233 (6): the longest the worker sleeps between cycles
 #: Internal refresh cadence, NOT a business number (no figure, threshold or wording a user sees depends on it; it only
 #: bounds Kite basket-margin reads to one per strategy per 5 minutes, so it stays in code by decision GC-IC1 step 10).
+REST_SPOT_DEADLINE_S: Final = 2.0  # a hung Kite REST index read costs the cycle at most this once per underlying (F5)
 MARGIN_REFRESH_S: Final = Decimal(300)
 MARGIN_STALE_S: Final = 2 * MARGIN_REFRESH_S  # an entry older than this is not used (a refresh that kept failing)
-REBUILD_SECONDS: Final = 30 # the monitor set is re-read this often, so a newly tracked strategy joins (AC-3: 60 s)
+# the monitor set (and with it a plan the trader just saved) is re-read this often: a newly tracked strategy joins
+# (AC-3: 60 s) and a saved stop is watched within this (J3 item 3: it was 30 s, so a stop saved already crossed waited
+# up to ~33 s with the old plan; ADR-330 (47))
+REBUILD_SECONDS: Final = 10
 _MICROS: Final = 1_000_000
 
 
@@ -176,6 +193,7 @@ class PriceState(enum.Enum):
     LEG_MISSING = "leg_missing"
     MARKET_CLOSED = "market_closed"
     CHECK_FAILED = "check_failed"
+    EXPIRY_KIND_UNKNOWN = "expiry_kind_unknown"  # FE2: kind not known and no exit rule can be checked (REQ-115)
     USER_PAUSED = "user_paused"  # A-38: the user paused adjustment checks until a time (module docstring, step 6)
 
 
@@ -190,6 +208,13 @@ class PriceRead:
     #: GC-IC1 5b: the index's day values (``latest_day_stats``) read with ``spot`` in the same read (the index is held
     #: by the worker's wanted set, as the screen reads it inside its hold); None = not read
     day: Any = None
+    #: why the read is not FRESH when the cause is the REST stand-in ("rest_stale", ADR-330 (39)); "" otherwise
+    why: str = ""
+    #: the held index quote's own problem ("index quote missing", "index quote stale"; "" = the index quote is fine):
+    #: the REST read is asked only when this is set (an option leg missing with the index fine asks nothing)
+    cause: str = ""
+    #: LEG_MISSING with the index spot itself usable (held or REST stand-in): the missing thing is an option leg
+    leg_missing: bool = False
 
     def signature(self, now: datetime.datetime) -> tuple:
         """What a check depends on: every leg's and the spot's price and time, and the IST minute (clock rules)."""
@@ -258,11 +283,51 @@ def feed_state(provider: Any, now: datetime.datetime) -> PriceState | None:
     return None if health is DataHealth.AVAILABLE else PriceState.DISCONNECTED
 
 
-def read_prices(provider: Any, watched: Watched, now: datetime.datetime,
-                known: tuple[tuple, frozenset] | None = None) -> PriceRead:
+MAX_PUBLISHED_READINGS = 2000  # the worker's published-reading memory is pruned beyond this
+REST_INDEX_FEED_ID = "rest-index-quote"  # the feed id of the REST stand-in quote (``rest_index_quote``)
+
+
+def rest_index_quote(provider: Any, underlying: str, base: Any, rest: SourceReading,  # noqa: PLR0913
+                     now: datetime.datetime, windows: Any) -> Any:
+    """The index quote the worker's check reads when its own book has no usable tick of the index but the shared REST
+    read has one (one source is enough, ADR-330 (39)). ONE age rule (``spot_source.rest_problem``): a REST reading with
+    no time, no live price or from the future is not a quote (None); one older than ``index_quote_max_age`` is a quote
+    with health STALE (its price and time, never AVAILABLE by force), so the strategy pauses STALE. A held tick is
+    replaced only by a NEWER reading; an older (or equal) one leaves the held tick as it is (None). ``windows`` None
+    (no settings read): None."""
+    from ofo.marketdata.quote import NormalizedQuote, SourceMetadata  # noqa: PLC0415
+    if windows is None or rest.at is None:
+        return None
+    why = rest_problem(rest, now, windows, market_closed=False)  # the caller already read the market as open
+    if why is not None and why != REASON_REST_STALE:
+        return None  # no time / no live price / from the future / not stated: not a quote
+    held = base is not None and base.ltp is not None and base.timestamp is not None
+    if held and rest.at <= base.timestamp:
+        return None  # never an older reading over a held tick
+    health = DataHealth.AVAILABLE if why is None else DataHealth.STALE
+    meta = SourceMetadata("kite", REST_INDEX_FEED_ID)
+    if base is not None:
+        return dataclasses.replace(base, ltp=rest.value, timestamp=rest.at, health=health, source=meta)
+    index_id = getattr(provider, "index_id", lambda _u: None)(underlying) or f"REST_INDEX:{underlying}"
+    none = None
+    return NormalizedQuote(index_id, underlying, "NSE", "INDEX", none, none, none, rest.value, none, none, none, none,
+                           none, none, none, none, none, none, rest.at, meta, health)
+
+
+def _index_quote_problem(spot: Any) -> str | None:
+    """None when the held index quote is usable, else why not (the cause the log line names)."""
+    if spot is None or spot.ltp is None:
+        return "index quote missing"
+    return None if spot.health is DataHealth.AVAILABLE else f"index quote {spot.health.name.lower()}"
+
+
+def read_prices(provider: Any, watched: Watched, now: datetime.datetime,  # noqa: PLR0913
+                known: tuple[tuple, frozenset] | None = None, rest: SourceReading | None = None,
+                windows: Any = None) -> PriceRead:
     """The price read of one strategy, one answer state each (module docstring, step 2). ``known``: (the provider's
     listed options, the future expiries) of the underlying when the caller already holds them (the worker keeps them
-    per provider and underlying); None reads them from the provider."""
+    per provider and underlying); None reads them from the provider. ``rest``/``windows``: the shared REST index read
+    and the feed windows in force, used only when the held index quote is missing or not AVAILABLE."""
     state = feed_state(provider, now)
     if state is not None:
         return PriceRead(state)
@@ -270,12 +335,19 @@ def read_prices(provider: Any, watched: Watched, now: datetime.datetime,
     expiries = {x.expiry for x in position.legs}
     chains = {e: tuple(provider.option_chain_snapshot(position.underlying, e)) for e in expiries}
     spot = provider.underlying_quote(position.underlying)
+    why, cause = "", _index_quote_problem(spot) or ""
+    if rest is not None and cause:
+        stand_in = rest_index_quote(provider, position.underlying, spot, rest, now, windows)  # REST stands in
+        if stand_in is not None:
+            spot = stand_in
+            why = "" if stand_in.health is DataHealth.AVAILABLE else REASON_REST_STALE
     legs = {i: _leg_quote(chains[x.expiry], x) for i, x in enumerate(position.legs)}
     if spot is None or spot.ltp is None or any(q is None or q.ltp is None for q in legs.values()):
-        return PriceRead(PriceState.LEG_MISSING)
+        return PriceRead(PriceState.LEG_MISSING, cause=cause,
+                         leg_missing=spot is not None and spot.ltp is not None)
     needed = {"spot": spot, **{str(i): q for i, q in legs.items()}}
     if strategy_monitoring_status(needed) is MonitoringStatus.PAUSED:
-        return PriceRead(PriceState.STALE)
+        return PriceRead(PriceState.STALE, why=why, cause=cause)
     if known is None:
         known = catalogue_of(provider, position.underlying)
     return PriceRead(PriceState.FRESH, spot, legs, chains, *known, provider.latest_day_stats(spot.instrument_id, now))
@@ -287,8 +359,15 @@ def catalogue_of(provider: Any, underlying: str) -> tuple[tuple, frozenset]:
     return tuple(listed_options(provider, underlying)), future_expiries(provider, underlying)
 
 
+def primary_expiry(position: Any) -> datetime.date:
+    """The ONE expiry a trade's chain, forward, ATM IV and expiry kind are read for: its NEAREST leg (FE2 item 2, issue
+    #863; the kind was always read for the nearest leg, the chain for the first listed one: a calendar trade listed far
+    leg first priced its market from the far chain)."""
+    return min(x.expiry for x in position.legs)
+
+
 def _snapshot_instant(read: PriceRead, expiry: datetime.date) -> datetime.datetime:
-    return max([read.spot.timestamp, *(q.timestamp for q in read.chains[expiry])])
+    return max([read.spot.timestamp, *(q.timestamp for q in read.chains.get(expiry, ()))])
 
 
 def _option_greeks(em: Any, kind: Instrument, strike: Decimal, iv: Decimal) -> Greeks | None:
@@ -324,7 +403,9 @@ def feed_spot(read: PriceRead, now: datetime.datetime) -> SourceReading:
     """The feed spot of a FRESH read stamped ``now`` (finding staleness-by-last-change-age).
 
     ``read_prices`` already judged freshness by the provider's connection-aware health; the quote's own timestamp is
-    its LAST CHANGE, and Kite sends a packet only on a change, so a quiet but live index is current. Stamping its last
+    its LAST CHANGE, and Kite sends a packet only on a change, so a quiet contract on a live feed is current; the
+    exception is an index quote older than ``detection.index_quote_max_age_seconds`` in market hours, which the
+    provider's health already reports as not AVAILABLE (ADR-330 (39)), so it is not FRESH here. Stamping its last
     change instead made ``resolve_spot``'s feed-age window (3 s) answer "no spot" for every check more than 3 s after
     the last tick, the evaluation was withheld, and a rule whose value cleared its band was never read (round 2 RCA:
     the 23000 frame arrived inside the 10 s check interval and was 9 s old at the next check). A timestamp in the
@@ -339,7 +420,7 @@ def feed_spot(read: PriceRead, now: datetime.datetime) -> SourceReading:
 def market_inputs(watched: Watched, read: PriceRead, shared: FeedScope, now: datetime.datetime,
                   values: Mapping[str, Decimal]) -> MarketInputs:
     """The screen's ``MarketInputs`` (``adjustment_readers.read_market``) from a fresh price read, every per-option
-    figure from the shared cache instead of a whole-chain model: the first leg's expiry, the legs' rows, the same ATM
+    figure from the shared cache instead of a whole-chain model: the nearest leg's expiry, the legs' rows, the same ATM
     IV rule (the IV of the call nearest the forward that the model prices), the same last close. Valued at the
     snapshot instant (the price's own time), so a figure is shared per price update; the screen values at its clock,
     so the two agree exactly when the clock reads the price's time (named in the module docstring).
@@ -351,8 +432,8 @@ def market_inputs(watched: Watched, read: PriceRead, shared: FeedScope, now: dat
         read_last_close,
     )
     position = watched.tracked.position
-    expiry = position.legs[0].expiry
-    chain = tuple(sorted(read.chains[expiry], key=lambda q: q.instrument_id))
+    expiry = primary_expiry(position)
+    chain = tuple(sorted(read.chains.get(expiry, ()), key=lambda q: q.instrument_id))
     instant = _snapshot_instant(read, expiry)
     em = fwd = None
     rate, quality = value_of(values, RISK_FREE_RATE), settings_calc.forward_quality(values)  # the settings in force
@@ -366,7 +447,7 @@ def market_inputs(watched: Watched, read: PriceRead, shared: FeedScope, now: dat
 
     def shared_greeks(_iid: str, q: Any) -> Greeks | None:  # the shared per-option figures (REQ-166 AC-2)
         return None if em is None or q is None else _figures(shared, at, q, em)[1]
-    # the screen's own row builder over every listed contract of the expiry (the screen reads the first leg's expiry)
+    # the screen's own row builder over every listed contract of the expiry (the screen: see RESULTS-lane-fe2)
     rows, ids, leg_greeks = chain_rows(read.listed, expiry, {q.instrument_id: q for q in chain}, shared_greeks,
                                        scenario_mode.current())
     vol = None
@@ -392,7 +473,8 @@ def market_inputs(watched: Watched, read: PriceRead, shared: FeedScope, now: dat
             if sym in own and iid in by_id and (iv := _figures(shared, at, by_id[iid], em)[0]) is not None:
                 leg_ivs[sym] = iv
     return MarketInputs(tuple(rows), ids, None if fwd is None else fwd.forward, years, vol, feed, last, now,
-                        expiry_kind_of(expiry, read.listed, read.futures, scenario_mode.current()), leg_greeks,
+                        expiry_kind_of(expiry, read.listed, read.futures,
+                                       scenario_mode.current()), leg_greeks,
                         fwd, leg_ivs, index_day_open(read.day, now),
                         carry_gap_pct=values.get(settings_calc.CARRY_GAP_PERCENT),  # absent -> no figures, named reason
                         s02_delta_per_lot=values.get(settings_calc.SITUATION_NET_DELTA_PER_LOT),  # absent: not checked
@@ -536,6 +618,19 @@ def screen_margin_reader(margin_of: Any) -> MarginOf:
     return read
 
 
+def worker_margin_of(login: StoredLogin, ctx: Any, source: Any) -> MarginOf:
+    """The worker's T-16 margin seam. D-36 round 2: every read gets its OWN ``ApproachMargin`` (``get_approach_margin``
+    makes the unit of work's one ``RequestFunds``), so no failed or stale funds read of that holder is reused by the
+    next read. The OutcomeMargin plan cache (ADR-099) still returns a successful read's figures for an unchanged
+    basket; a fresh read per refresh is not forced here (follow-up in the Part D report)."""
+    from ofo_app.routes.adjustment import get_approach_margin  # noqa: PLC0415
+    from ofo_app.routes.adjustment_check import current_margin  # noqa: PLC0415 - the route module, at run time
+
+    async def read(w: Watched, market: MarketInputs) -> Mapping | None:
+        return await current_margin(get_approach_margin(ctx, source), w.tracked, market)
+    return login.reading(read)
+
+
 class StoredLogin:
     """The day's stored broker login as this process's margin read needs it (#627). The process holds no live Kite
     session (``live_market.current_session`` is None here), so the stored one is read again at the start of each margin
@@ -570,6 +665,13 @@ class StoredLogin:
         found = self._found
         return None if found is None else margin_client(found.api_key, found.access_token)
 
+    async def open_reads(self) -> Any:
+        """The Kite read client of the stored login (read again just now), or None with no usable login."""
+        from ofo_app.live_market import reads_client  # noqa: PLC0415
+        await self.reload()
+        found = self._found
+        return None if found is None else reads_client(found.api_key, found.access_token)
+
     def reading(self, margin_of: MarginOf) -> MarginOf:
         """``margin_of`` preceded by one fresh read of the stored login (each strategy's read is at most every
         ``MARGIN_REFRESH_S``)."""
@@ -577,6 +679,18 @@ class StoredLogin:
             await self.reload()
             return await margin_of(w, market)
         return read
+
+
+def worker_rest_spot(login: StoredLogin) -> Callable[[str], Awaitable[SourceReading]]:
+    """The worker's REST index read: this process's ONE shared cached read (``live_market.index_spot_from``) on the
+    stored login. Rate: the worker asks only when its book has no usable index tick; the TTL (5 s) and single flight
+    hold it to at most one call per 5 s per index for ALL strategies (REQ-118)."""
+    async def read(underlying: str) -> SourceReading:
+        from ofo_app.adjustment_readers import index_name  # noqa: PLC0415
+        from ofo_app.live_market import index_spot_from  # noqa: PLC0415
+        name = index_name(underlying)
+        return SourceReading(SourceState.NOT_FOUND) if name is None else await index_spot_from(name, login.open_reads)
+    return read
 
 
 def stored_login(clock: Callable[[], datetime.datetime]) -> StoredLogin:
@@ -676,6 +790,8 @@ class Listed(list):
 
 
 #: ADR-237 (3) promises an intraday record within 10 s of its close: a queued event older than this is logged once
+#: RA (issue 876): the loss rules and guards whose silent outcome the worker names in its log (rule id or trigger id)
+_LOSS_RULES: Final = frozenset({sl.TRIGGER_MAX_LOSS, sl.RUPEE_LOSS_RULE, sl.CREDIT_RULE})
 GATE_EVENT_AGE_WARN_S: Final = 10
 #: while one strategy's event writes keep failing, a count line (no traceback) every this many failures
 GATE_FAIL_COUNT_EVERY: Final = 10
@@ -697,13 +813,6 @@ def gate_group(strategy_id: int, at: datetime.datetime) -> str:
     return f"{strategy_id}-{at.astimezone(IST):%Y%m%dT%H%M%S%f}"
 
 
-async def _lapse_open_of(db: Any, w: Watched, rule_id: str, reason: str) -> None:
-    from ofo_app import playbook_store  # noqa: PLC0415 - database layer at run time
-    for rec in await playbook_store.open_suggestions(db, w.user_ref, w.strategy_id):
-        if rec.rule_id == rule_id:
-            await playbook_store.lapse(db, w.user_ref, rec.id, reason)
-
-
 @dataclass(frozen=True)
 class RecordFields:
     """Every snapshot field of a stored record, from ONE check (the event's own sample); all None without one."""
@@ -719,7 +828,7 @@ class RecordFields:
     extra: Mapping = dataclasses.field(default_factory=dict)  # approach / cost / unpriced, carry, target
 
 
-def record_fields(e: alert_gate.Opened | alert_gate.Held) -> RecordFields:
+def record_fields(e: alert_gate.Opened | alert_gate.Escalated | alert_gate.Held) -> RecordFields:
     """#709 item 7: the record's words and figures from ``e.sample`` alone, the check whose sample confirmed it. A
     sample that is not a ``GateContext`` (an event built with none) gives NO fields, never a guess from a later check:
     a record with no condition words is visible, a record with another check's figures is wrong and looks right."""
@@ -747,6 +856,11 @@ def record_fields(e: alert_gate.Opened | alert_gate.Held) -> RecordFields:
                         {**t19, **target_record(trigger or "", ctx.state)})
 
 
+def _trigger_of_kind(rule_id: str, trigger: str | None) -> str:
+    """What ``kind_of`` reads: a watched level is known by its rule id; every other record by its trigger."""
+    return rule_id if rule_id.startswith(level_watch.RULE_PREFIX) else trigger or rule_id
+
+
 class DbGateStore:
     """The real gate store: ``playbook_store`` and the pin store, one session per call."""
 
@@ -759,7 +873,8 @@ class DbGateStore:
         )
         from ofo_app.db import get_sessionmaker  # noqa: PLC0415
         async with get_sessionmaker()() as db:
-            rows = await playbook_store.gate_rows(db, w.user_ref, w.strategy_id, today)
+            rows = await playbook_store.gate_rows(db, w.user_ref, w.strategy_id, today,
+                                                  stops=sl.plan_exit_rule_ids(w.body))
             held = await playbook_store.held_today(db, w.user_ref, w.strategy_id, today)
             pin = await strategy_alert_style_store.pin_of(db, w.user_ref, w.strategy_id)
             until = await strategy_pause_store.pause_of(db, w.user_ref, w.strategy_id)
@@ -768,17 +883,28 @@ class DbGateStore:
         return GateLoad(rows, held, pin.style, until, watches, memory)
 
     async def apply(self, w: Watched, events: Iterable[alert_gate.Event]) -> dict[str, int]:
-        """The gate's events in ONE transaction; rule id -> id of each record opened. An escalation while the
-        previous record of the rule is still open lapses that one first (REQ-112: one open record per rule). Every
-        field of a record's snapshot comes from the event's own sample (``record_fields``)."""
-        from ofo_app import playbook_store  # noqa: PLC0415 - database layer at run time
+        """The gate's events in ONE transaction, every write through ``actionable_alerts`` (ADR-330: the one module);
+        rule id -> id of each alert raised. A closed candle that clears the line (Lapsed) only notes "no longer true
+        since" on the open alert: it stays in Active until the user answers (ADR-330 (3)). A worse close
+        (``Escalated``) updates the same open row and marks it escalated (one open alert per rule, REQ-112); the first
+        close past the line again (``TrueAgain``) clears the note at once and opens no second row.
+        Every field of a record's snapshot is from the event's own sample (``record_fields``)."""
+        from ofo.alerts import kind_of  # noqa: PLC0415
+
+        from ofo_app import actionable_alerts, playbook_store  # noqa: PLC0415 - database layer at run time
         from ofo_app.db import get_sessionmaker  # noqa: PLC0415
         source = playbook_store.SOURCE_SYSTEM if w.is_system else playbook_store.SOURCE_OWN
         opened: dict[str, int] = {}
         async with get_sessionmaker()() as db:
             for e in events:
-                if isinstance(e, alert_gate.Lapsed):
-                    await _lapse_open_of(db, w, e.rule_id, playbook_store.LAPSE_CONDITION_STOPPED)
+                if isinstance(e, alert_gate.Lapsed) and e.rule_id.startswith(level_watch.RULE_PREFIX):
+                    # ADR-242 (3): the level cleared at a close: that episode's watch record closes (lapsed)
+                    await actionable_alerts.close_level_watch(db, w.user_ref, w.strategy_id, e.rule_id, at=e.at)
+                    continue
+                if isinstance(e, (alert_gate.Lapsed, alert_gate.TrueAgain)):  # "no longer true" / "true again"
+                    await actionable_alerts.note_rule_condition(
+                        db, w.user_ref, w.strategy_id, e.rule_id, still_true=isinstance(e, alert_gate.TrueAgain),
+                        at=e.at)
                     continue
                 f = record_fields(e)
                 # GC-ICFIX: the event's own numbers (the confirming sample's), never the latest check's
@@ -787,32 +913,43 @@ class DbGateStore:
                 if threshold is None:  # 0 is a real threshold (T-02), so no `or`
                     threshold = _quantized(e.shown_threshold)
                 if isinstance(e, alert_gate.Held):
-                    await playbook_store.record_held(db, w.user_ref, w.strategy_id, e.rule_id, trigger_id=f.trigger,
-                                                     stage=f.stage_name, value=value, threshold=threshold,
-                                                     reason=e.reason)
+                    await actionable_alerts.record_held(db, w.user_ref, w.strategy_id, e.rule_id,
+                                                        trigger_id=f.trigger, stage=f.stage_name, value=value,
+                                                        threshold=threshold, reason=e.reason)
                     continue
-                if e.worse is not None:
-                    await _lapse_open_of(db, w, e.rule_id, playbook_store.LAPSE_SUPERSEDED_BY_WORSE)  # finding 5
-                rec = await playbook_store.open_suggestion(
-                    db, w.user_ref, w.strategy_id, e.rule_id, trigger_id=f.trigger, stage=f.stage, value=value,
-                    threshold=threshold, group=gate_group(w.strategy_id, e.at), source=source,
-                    cmp=f.cmp, label=f.label, unit=f.unit, worse=e.worse, beyond=f.beyond,
+                rec = await actionable_alerts.raise_actionable(
+                    db, w.user_ref, w.strategy_id, e.rule_id, kind_of(_trigger_of_kind(e.rule_id, f.trigger)),
+                    at=e.at, value=value,
+                    threshold=threshold, trigger_id=f.trigger, stage=f.stage, group=gate_group(w.strategy_id, e.at),
+                    source=source, cmp=f.cmp, label=f.label, unit=f.unit, worse=e.worse, beyond=f.beyond,
                     limit=_quantized(e.limit),
                     adjustments=_count_of(w.tracked) if f.adjustments is None else f.adjustments, **f.extra)
                 opened[e.rule_id] = rec.id
             await db.commit()
         return opened
 
-    async def lapse_changed(self, w: Watched) -> bool:
-        """#685 item 3: the open records raised at another adjustment count than the strategy holds now lapse as
-        position_changed (``playbook_store.lapse_changed``); True when any did. A failure raises (the rebuild keeps
-        its last list and tries again), unlike the contained lapse of an exited strategy."""
-        from ofo_app import playbook_store  # noqa: PLC0415 - database layer at run time
+    async def lapse_expired(self, w: Watched, today: datetime.date) -> bool:
+        """D-30: the open records of a strategy whose last expiry is before ``today`` lapse as contract_expired
+        (``playbook_store.lapse_expired``); True when any did. A failure raises (the rebuild contains it per
+        strategy)."""
+        from ofo_app import actionable_alerts  # noqa: PLC0415 - database layer at run time
         from ofo_app.db import get_sessionmaker  # noqa: PLC0415
+        legs = w.tracked.position.legs
+        expiry = max((x.expiry for x in legs), default=None)
         async with get_sessionmaker()() as db:
-            lapsed = await playbook_store.lapse_changed(db, w.user_ref, w.strategy_id, _count_of(w.tracked))
+            lapsed = await actionable_alerts.close_expired(db, w.user_ref, w.strategy_id, expiry, today)
             await db.commit()
         return bool(lapsed)
+
+    async def raise_side_closed(self, w: Watched, at: datetime.datetime) -> int | None:
+        """ADR-330 (2): when one side of the entry condor is closed, ONE side_closed alert through the one alert module
+        (``side_closed.raise_if_closed``); the id, or None when nothing is closed or it was raised before."""
+        from ofo_app import side_closed  # noqa: PLC0415 - database layer at run time
+        from ofo_app.db import get_sessionmaker  # noqa: PLC0415
+        async with get_sessionmaker()() as db:  # no source: the notice is not an adjustment flag
+            found = await side_closed.raise_if_closed(db, w.user_ref, w.strategy_id, w.tracked, at=at, source=None)
+            await db.commit()
+        return found
 
 
 Lister = Callable[[], Awaitable[list[Watched]]]
@@ -842,7 +979,7 @@ def daily_iv_of(w: Watched, read: PriceRead, market: MarketInputs,
         return None
     day = now.astimezone(IST).date()
     position = w.tracked.position
-    expiry = position.legs[0].expiry
+    expiry = primary_expiry(position)
     listed = [lc.contract.expiry for lc in read.listed
               if lc.contract.expiry is not None and lc.contract.expiry >= day]
     if not listed or expiry != min(listed):
@@ -870,10 +1007,21 @@ class Worker:
                  gate_store: Any = None, user_values: UserValuesRead | None = None,
                  margin_of: MarginOf | None = None,
                  before_cycle: Callable[[], Awaitable[None]] | None = None,
-                 daily_iv: DailyIvRecorder | None = None) -> None:
+                 daily_iv: DailyIvRecorder | None = None,
+                 rest_spot: Callable[[str], Awaitable[SourceReading]] | None = None,
+                 kinds: dict[tuple[str, datetime.date], Any] | None = None) -> None:
         if max_per_cycle < 1:
             raise ValueError("max_per_cycle must be at least 1")
         self._provider_for, self._lister, self._clock = provider_for, lister, clock
+        #: the shared cached REST index read of THIS process (``live_market.index_spot`` via ``read_rest_spot``); None =
+        #: no REST door (scenario / tests): the index tick of the book is the only source, as before
+        self._rest_spot = rest_spot
+        self._rest_deadline = REST_SPOT_DEADLINE_S
+        #: slot -> (the reading a FRESH check used, when it was noted): written with the monitoring snapshot (Lane FE)
+        self._readings: dict[str, tuple[monitoring_state.IndexReading, datetime.datetime]] = {}
+        self._rest_cycle: dict[str, SourceReading] = {}  # underlying -> this cycle's ONE REST answer (F4/F5)
+        self.paused_why: dict[int, str] = {}  # strategy -> the REST stand-in's reason that paused it ("rest_stale")
+        self._spot_logged: set[tuple[str, str]] = set()  # (IST minute, underlying) of the not-available lines written
         self._settings, self._preferences = settings, preferences
         self._values: Mapping[str, Decimal] | None = None  # the last good settings read (a failed read keeps it)
         self._recorder, self._max, self._sleep = recorder, max_per_cycle, sleep
@@ -882,16 +1030,29 @@ class Worker:
         self.monitors: list[Watched] = []
         self.status: dict[int, MonitoringStatus] = {}
         self.paused_reason: dict[int, PriceState] = {}
+        # Lane FE3 (Opus review F1): a check that is OWED. A trade whose last check failed (``CHECK_FAILED``) or found
+        # no exit that can run (``EXPIRY_KIND_UNKNOWN``) is paused until a check has passed; the fact lives HERE, not in
+        # ``paused_reason``, which any later pause (stale, disconnected) overwrites
+        self._owed: dict[int, PriceState] = {}
+        self._no_token: set[int] = set()  # strategies whose leg has no feed token (``_write_wants``): a fact
         self.checks: list[tuple[int, datetime.datetime]] = []  # (strategy id, when) of every check run
         self.errors: list[tuple[int, str]] = []
         self._signature: dict[int, tuple] = {}
         self._last_check: dict[int, datetime.datetime] = {}
+        self._checked_body: dict[int, Any] = {}  # J3: the plan body each strategy's last check ran with
+        #: FE2 (FD2 hand-over): strategy -> rule id -> value of each rule its last check evaluated (``rule_readings``)
+        self._rule_values: dict[int, dict[str, Decimal]] = {}
+        self._rule_values_sent: tuple[Any, datetime.datetime | None] = ((), None)
+        #: FE2 item 7 (#864): the expiry kind of each (underlying, nearest expiry) the checks use; the lister gives it
+        #: the reader (``reader_kinds_kwargs``) so the catalogue is not read per strategy on every re-read
+        self.kinds: dict[tuple[str, datetime.date], Any] = {} if kinds is None else kinds
         self._cursor = 0
         self._rebuilt_at: datetime.datetime | None = None
         self._stop = False
         self._speed: Mapping[str, Decimal] | None = None  # the last good speeds per style (a failed read keeps it)
         self._steps: tuple[Decimal, ...] | None = None  # the last good safety-valve steps
         self._want_client = want_client  # a Redis client (the feed bus); None = no wanted-set write
+        self._monitoring = monitoring_state.Publisher(want_client)  # which trades are not watched, why, since when
         self._listed: dict[tuple[int, str], tuple] = {}  # (id(provider), underlying) -> (provider, known listings)
         self._token_maps: dict[int, tuple] = {}  # id(provider) -> (provider, option tokens, id -> token)
         self._wants_written: dict[str, tuple[list[int], datetime.datetime]] = {}  # owner -> (tokens, when)
@@ -913,6 +1074,7 @@ class Worker:
         self._written: dict[int, tuple] = {}  # strategy -> ``_write_key`` of its last write
         self._grids: dict[tuple, tuple] = {}  # (id(provider), underlying, expiry) -> (provider, strike grid)
         self._outcomes: dict[str, int] = {}  # evaluation outcome (withheld / not checked reason) -> count this minute
+        self._loss_seen: dict[tuple[int, str], str] = {}  # RA 876: (strategy, loss rule) -> its last silent outcome
         #: the ONE database gate of the role: rebuild, writer and settings poll hold it, so the role opens at
         #: most one connection at a time (ADR-048 limit 5 = API 2 + background 1 + feed 1); the cycle path never
         #: names it (#636 r6, ``tests_app/test_background_db_gate.py``); served writer, poll, rebuild (``db_gate``)
@@ -944,6 +1106,7 @@ class Worker:
         self._preset: dict[int, alert_gate.Preset] = {}  # strategy -> the preset of its last check
         # strategy -> its latest pause not yet given to its gate (applied at the next gate step, ``_gate_step``)
         self._paused_at: dict[int, datetime.datetime] = {}
+        self._last_skip: dict[int, str] = {}  # strategy -> reason of its last LOGGED skip (log on change only)
         self._style: dict[int, str] = {}  # strategy -> the trading style of its last check (its check interval)
         self.user_paused_until: dict[int, datetime.datetime] = {}  # strategy -> the end of its user pause in force
         self.margins = MarginCache(margin_of)  # T-16's margin, refreshed on its own task (module docstring, step 3)
@@ -962,15 +1125,21 @@ class Worker:
             if w.strategy_id in before and before[w.strategy_id] != w.body:
                 self._signature.pop(w.strategy_id, None)
                 self._tick.pop(w.strategy_id, None)
+                self._last_check.pop(w.strategy_id, None)  # J3: the style's interval (30 s weekly, 120 s monthly)
+                # must not hold the first check with the NEW plan: a stop saved already crossed alerts at once (47)
         old = {w.strategy_id: w for w in self.monitors}
+        today = self._clock().astimezone(IST).date()
+        for past in [k for k in self.kinds if k[1] < today]:  # FE2 item 7: no record of an expiry that has gone by
+            del self.kinds[past]
+        await self._lapse_expired_all(monitors, today)
+        await self._raise_side_closed_all(monitors)
         for w in monitors:
-            if _count_of(w.tracked) is None:  # an unreadable count lapses nothing (and resets nothing)
-                continue
-            async with held(self.db_gate, GATE_REBUILD):  # a raise keeps the last list: re-found next re-read
-                lapsed = await self._gate_store.lapse_changed(w)
-            if lapsed or _position_changed(old.get(w.strategy_id), w):
-                # the old position's records and queued events are gone; the gate restores from the store next check
+            if _position_changed(old.get(w.strategy_id), w):
+                # ADR-330 (3): an adjustment basket closes no open alert (only the user's answer, the trade closing or
+                # its expiry does); the gate memory and queued events of the old position are dropped and the gate
+                # restores from the store (open records included) at the next check
                 self._gate.pop(w.strategy_id, None)
+                self._forget_silence(w.strategy_id)
                 self._gate_events.pop(w.strategy_id, None)
         self._drop_stale_writes(monitors)
         for user in dict.fromkeys(w.user_ref for w in monitors):  # once per user, never per check (finding 3)
@@ -987,7 +1156,38 @@ class Worker:
         # paused silently and its candle lost); a NEW strategy whose gate read failed waits for the next rebuild
         self.monitors = [w for w in monitors if w.strategy_id in old or w.strategy_id in self._gate_load]
         self._rebuilt_at = self._clock()
+        # RA2 item 3 (F8): the list was read (a failed read raised above): a kept pause start of a strategy that is not
+        # in it (deleted while the worker was down) is dropped; strategies whose own read failed did not leave the list
+        self._monitoring.forget_unlisted({w.strategy_id for w in monitors} | set(getattr(monitors, "unread", ())))
         log.info("background: %s strategies monitored", len(self.monitors))
+
+    async def _lapse_expired_all(self, monitors: list[Watched], today: datetime.date) -> None:
+        """D-30: records of expired contracts lapse (the one writer, ADR-237 (6)); a failure is contained per strategy,
+        logged and retried at the next re-list (as ``_lapse_exited``), so the others and the rebuild go on."""
+        for w in monitors:
+            try:
+                async with held(self.db_gate, GATE_REBUILD):
+                    await self._gate_store.lapse_expired(w, today)
+            except Exception as exc:
+                log.exception("background: lapsing the expired records of strategy %s failed; the others go on",
+                              w.strategy_id)
+                _keep_recent(self.errors, (w.strategy_id, type(exc).__name__))
+
+    async def _raise_side_closed_all(self, monitors: list[Watched]) -> None:
+        """ADR-330 (2): each listed strategy that lost one side of its entry condor gets its one side_closed alert; a
+        failure is contained per strategy and retried at the next re-list. A gate store without the method (a test
+        double) raises nothing."""
+        raiser = getattr(self._gate_store, "raise_side_closed", None)
+        if raiser is None:
+            return
+        for w in monitors:
+            try:
+                async with held(self.db_gate, GATE_REBUILD):
+                    await raiser(w, self._clock())
+            except Exception as exc:
+                log.exception("background: the side-closed check of strategy %s failed; the others go on",
+                              w.strategy_id)
+                _keep_recent(self.errors, (w.strategy_id, type(exc).__name__))
 
     def _drop_stale_writes(self, monitors: list[Watched]) -> None:
         """#636 r5 finding 2: a queued write whose strategy left the list (exited, deleted, no playbook) or whose plan
@@ -1001,6 +1201,14 @@ class Worker:
             log.info("background: the queued write of strategy %s was dropped (%s)", sid,
                      "no longer listed" if sid not in body else "plan changed")
         unread = getattr(monitors, "unread", frozenset())  # a failed read is not a strategy leaving (r6 review)
+        for sid in [k for k in self._checked_body if k not in body and k not in unread]:  # FE2 #867: no entry for ever
+            del self._checked_body[sid]
+        for sid in [k for k in self._rule_values if k not in body and k not in unread]:
+            del self._rule_values[sid]
+        for sid in [k for k in self.status if k not in body and k not in unread]:
+            # FE2 #878: a strategy that left the list is not watched: no ACTIVE entry stays published for it
+            for kept in (self.status, self.paused_reason, self.paused_why, self.user_paused_until, self._owed):
+                kept.pop(sid, None)
         for sid in [k for k in self._gate_events if k not in body and k not in unread]:  # a plan change keeps them
             gone = self._gate_events.pop(sid)
             self.gate_events_dropped += len(gone)
@@ -1030,12 +1238,15 @@ class Worker:
             self._gate_load[sid] = load
             if sid in self._gate and self._gate_body.get(sid) != w.body:
                 self._gate.pop(sid, None)  # plan change: restored at the next check against the new ladder
+                self._forget_silence(sid)
             state = self._gate.get(sid)
             if state is None:
                 continue
             for row in load.rows.last:
                 if row.dismissed and alert_gate.is_dismissed(state, row.rule_id) is False and row.id is not None:
                     state = alert_gate.dismiss(state, row.rule_id, row.id)  # by record, never by rule (#639 item 2)
+                if not row.open and row.id is not None:  # answered (exit) or closed: it re-arms as before
+                    state = alert_gate.answered(state, row.rule_id, row.id)
             self._gate[sid] = state
 
     async def _rebuild_loop(self) -> None:
@@ -1138,8 +1349,9 @@ class Worker:
             return set()
 
     def _window_tokens_of(self, w: Watched) -> set[int]:
-        """The calls and puts of the SCREEN's strike window of the strategy's first leg expiry (the expiry the
-        forward and ATM IV are read from, ``adjustment_readers.read_market``): ``chain_push.strike_window`` around
+        """The calls and puts of the strike window of the strategy's nearest leg expiry (``primary_expiry``, the expiry
+        the forward and ATM IV are read from; the SCREEN's ``read_market`` reads the first leg's until the owner lane
+        makes it the same, RESULTS-lane-fe2): ``chain_push.strike_window`` around
         ``chain_push.atm_strike`` of the live spot, ``limits.chain_strikes_each_side`` (the chain screen's default)
         each side (finding 2). Empty when not known: no settings read yet, no live spot, the expiry not listed."""
         from ofo_app.chain_push import window_strikes  # noqa: PLC0415 - the ONE window rule, shared with the screen
@@ -1148,7 +1360,7 @@ class Worker:
         provider = self._provider_for(w.feed_owner)
         options, _by_id = self._tokens_of(provider)
         position = w.tracked.position
-        expiry = position.legs[0].expiry
+        expiry = primary_expiry(position)
         spot = provider.underlying_quote(position.underlying)
         grid = self._grid_of(provider, options, position.underlying, expiry)
         each = settings_calc.chain_strikes_each_side(self._values)
@@ -1216,9 +1428,11 @@ class Worker:
                 _keep_recent(self.errors, (w.strategy_id, type(exc).__name__))
                 tokens = None
             if tokens is None:
+                self._no_token.add(w.strategy_id)
                 self._pause(w.strategy_id, PriceState.LEG_MISSING, now)
                 wanted.setdefault(w.feed_owner, set())
                 continue
+            self._no_token.discard(w.strategy_id)
             wanted.setdefault(w.feed_owner, set()).update(tokens)
             windows.setdefault(w.feed_owner, set()).update(self._window_tokens(w))
         self._merge_windows(wanted, windows)
@@ -1263,10 +1477,13 @@ class Worker:
         watched, so the gate gets ``alert_gate.pause`` at its next step and that candle has no close."""
         self.status[sid] = MonitoringStatus.PAUSED
         self.paused_reason[sid] = reason
+        if reason is PriceState.CHECK_FAILED:
+            self._owed[sid] = reason  # FE3 F1: only a check that has run and passed ends it
         self._signature.pop(sid, None)  # the first check after the gap reads the fresh snapshot
         self._tick.pop(sid, None)
         kept = self._paused_at.get(sid)
         self._paused_at[sid] = now if kept is None else max(kept, now)
+        self.paused_why.pop(sid, None)  # a pause that names a reason sets it AFTER this call; any other pause has none
 
     def _interval_style(self, sid: int) -> str:
         """The style whose interval gates this check (ADR-235 (1)). #639 item 3: the pin the last rebuild read wins, so
@@ -1281,10 +1498,74 @@ class Worker:
         """True when a check ran (counted against the cycle's cap)."""
         now = self._clock()  # finding 1: THIS check's clock, never the cycle's start
         if self._user_paused(w.strategy_id, now):
-            return False  # A-38: no read, no evaluation until the end (module docstring, step 6)
-        return await self._check_unpaused(w, speeds, now)
+            # A-38: no read, no evaluation until the end (module docstring, step 6)
+            return self._skipped(w.strategy_id, "user_paused")
+        ran = await self._check_unpaused(w, speeds, now)
+        if ran:
+            self._checked(w.strategy_id)
+        return ran
 
-    async def _check_unpaused(self, w: Watched, speeds: Mapping[str, Decimal],  # noqa: PLR0911, C901
+    def _skipped(self, sid: int, reason: str) -> bool:
+        """Lane J 2026-11-27 (#207: 19 minutes, no row, no skipped line): ONE log line per strategy per cycle when its
+        check is skipped, with the reason; False (no check ran). Round 2: the worker wakes every second, so the line is
+        logged only when the strategy's reason CHANGES (``_checked`` resets it, so the next skip logs again)."""
+        if self._last_skip.get(sid) != reason:
+            self._last_skip[sid] = reason
+            log.info("background: strategy %s check skipped: %s", sid, reason)
+        return False
+
+    def _checked(self, sid: int) -> None:
+        """A check ran for ``sid``: forget its last skip reason, so the next skip is logged."""
+        self._last_skip.pop(sid, None)
+
+    def _fresh_read(self, sid: int) -> None:
+        """A fresh price read makes a trade watched again, except a trade that OWES a check (``_owed``): one whose last
+        check FAILED (its write raised, or no preferences / gate read / alert values / preset / a raising check) or one
+        paused for its unknown expiry kind. Only a check that has run to its end clears it (``_check_passed``,
+        ``_note_rules``); a stale or disconnected cycle in between does not make it forget (Opus review F1)."""
+        owed = self._owed.get(sid)
+        if owed is not None:
+            self.status[sid] = MonitoringStatus.PAUSED
+            self.paused_reason[sid] = owed
+            if owed is not PriceState.CHECK_FAILED:
+                self.paused_why.pop(sid, None)
+            return
+        self.status[sid] = MonitoringStatus.ACTIVE
+        self.paused_reason.pop(sid, None)
+        self.paused_why.pop(sid, None)
+
+    def _market_closed(self, sid: int) -> None:
+        """W-34 (the PC's round 1: with the market closed all nine running trades read "the worker does not list this
+        trade"): the worker lists the trade and runs, so its status is recorded with the true reason ``market_closed``
+        ("The market is closed."), never left out of the snapshot (a trade missing from it reads ``not_listed``, the
+        reader's word for a trade the worker really does not list). A trade that owes a check, or whose leg has no
+        token, keeps that reason. Not
+        ``_pause``: nothing was lost, so no candle gap and no forgotten signature; the first check after the open reads
+        the fresh price as usual (``_fresh_read`` makes the trade watched again)."""
+        owed = self._owed.get(sid)
+        no_token = sid in self._no_token and self.paused_reason.get(sid) is PriceState.LEG_MISSING
+        keep = PriceState.LEG_MISSING if no_token else None
+        self.status[sid] = MonitoringStatus.PAUSED
+        # a debt, or a leg with no token (a fact about the trade, set by the want writer; a one-off missing quote is
+        # not: review F2), outranks the hour
+        self.paused_reason[sid] = owed or keep or PriceState.MARKET_CLOSED
+        self.paused_why.pop(sid, None)
+
+    def _record_kind(self, w: Watched, market: MarketInputs) -> None:
+        """FE2 item 7: the kind this check uses (``state_of``'s rule) is kept for the lister; a kind that is not known
+        ("") is never recorded (the reader then reads the catalogue)."""
+        known = market.expiry_kind or w.tracked.position.expiry_kind
+        if known:
+            self.kinds[(w.tracked.position.underlying, primary_expiry(w.tracked.position))] = known
+
+    def _plan_changed(self, w: Watched) -> bool:
+        """J3 item 3: the plan in the list is not the one this strategy's last check ran with (saved since). Such a
+        strategy's first check with the new plan is never held by the tick, signature or style interval holds, whatever
+        a check with the old plan left behind meanwhile (the re-read awaits the database before it publishes)."""
+        kept = self._checked_body.get(w.strategy_id, _GONE)
+        return kept is not _GONE and kept != w.body
+
+    async def _check_unpaused(self, w: Watched, speeds: Mapping[str, Decimal],  # noqa: PLR0911, PLR0915, C901
                               now: datetime.datetime) -> bool:
         """One check at ``now`` of a strategy the user has not paused."""
         sid = w.strategy_id
@@ -1292,43 +1573,48 @@ class Worker:
         early = feed_state(provider, now)
         if early is None:
             tick = self._tick_key(provider, w, now)
-            if tick is not None and tick == self._tick.get(sid):
+            if tick is not None and tick == self._tick.get(sid) and not self._plan_changed(w):
                 self._read_states["NOT_TICKED"] = self._read_states.get("NOT_TICKED", 0) + 1
-                return False  # nothing it depends on ticked: no read, no check (item c)
-            read = read_prices(provider, w, now, self._known_of(provider, w.tracked.position.underlying))
+                return self._skipped(sid, "not_ticked")  # nothing it depends on ticked: no read, no check (item c)
+            read = await self._read_with_either_spot(provider, w, now)  # feed index first, Zerodha's quote second
         else:
             read = PriceRead(early)
         self._read_states[read.state.name] = self._read_states.get(read.state.name, 0) + 1  # the minute line's reads
         if read.state is PriceState.MARKET_CLOSED:
-            return False  # nothing is recomputed while the market is closed
+            self._market_closed(sid)
+            return self._skipped(sid, "market_closed")  # nothing is recomputed while the market is closed
         if read.state is not PriceState.FRESH:
             self._pause(sid, read.state, now)
-            return False
-        self.status[sid] = MonitoringStatus.ACTIVE
-        self.paused_reason.pop(sid, None)
+            self.paused_why[sid] = read.why  # the REST stand-in's reason (set after _pause, which clears it)
+            return self._skipped(sid, f"prices_{read.state.name.lower()}")  # never silent: one line with the reason
+        self._fresh_read(sid)
         self._leg_ids[sid] = (w.tracked.position.legs,
                               (read.spot.instrument_id, *(read.legs[i].instrument_id for i in sorted(read.legs))))
         tick = self._tick_key(provider, w, now)  # read with the prices, before any await (a later tick is new)
         sig = read.signature(now)
-        if sig == self._signature.get(sid):
+        self._note_index(w, read, now)  # Lane FE: the reading that made it watched is the exits' reading
+        changed = self._plan_changed(w)
+        if sig == self._signature.get(sid) and not changed:
             self._tick[sid] = tick
-            return False
+            return self._skipped(sid, "unchanged")
         last = self._last_check.get(sid)
         every = speeds.get(self._interval_style(sid), Decimal(0))
-        if last is not None and _seconds(now - last) < every:
-            return False  # changed, but too soon: the tick key stays old, so it is read again next cycle
+        if last is not None and _seconds(now - last) < every and not changed:
+            # changed, but too soon: the tick key stays old, so it is read again next cycle
+            return self._skipped(sid, "interval")
         if self._values is None:
-            return False  # no settings read yet: nothing is checked on a guessed setting
+            return self._skipped(sid, "no_settings")  # no settings read yet: nothing is checked on a guessed setting
         prefs = self._prefs_of.get(w.user_ref)
         if prefs is None:  # no preferences read for this user yet: paused, never checked on a guess
             self._pause(sid, PriceState.CHECK_FAILED, now)
-            return False
+            return self._skipped(sid, "no_preferences")
         load = self._gate_load.get(sid)
         user_values = self._values if self._user_values_read is None else self._user_values.get(w.user_ref)
         if load is None or user_values is None:  # no gate read / no alert values: paused, never a default preset
             self._pause(sid, PriceState.CHECK_FAILED, now)
-            return False
+            return self._skipped(sid, "no_gate_read" if load is None else "no_alert_values")
         market = market_inputs(w, read, FeedScope(self.cache, w.feed_owner), now, self._values)
+        self._record_kind(w, market)
         self._queue_daily_iv(daily_iv_of(w, read, market, now))
         # ADR-245: the carry gap in force (plan, else the user's own, else the admin default) is resolved inside
         # state_of; with no user read path there is no user layer (None), never the admin values posing as the user's
@@ -1343,12 +1629,97 @@ class Worker:
         if self._observe is not None:
             self._observe(w, state)
         if not await self._evaluate_and_gate(w, now, state, prefs, (load.pin, user_values)):
-            return False
+            return self._skipped(sid, "no_preset")
         self._signature[sid] = sig
         self._tick[sid] = tick
         self._last_check[sid] = now
+        self._checked_body[sid] = w.body
         _keep_recent(self.checks, (sid, now))
+        self._check_passed(sid)
         return True
+
+    def _check_passed(self, sid: int) -> None:
+        """Lane FE3 item 1: a check ran through to its end: a ``CHECK_FAILED`` pause ends here and nowhere else. A write
+        that fails after this point pauses the trade again (``_write_one``). An unknown-kind pause set by this very
+        check (``_note_rules``) stays."""
+        if self._owed.get(sid) is PriceState.CHECK_FAILED:
+            del self._owed[sid]
+            if self.paused_reason.get(sid) in (None, PriceState.CHECK_FAILED):
+                self.status[sid] = MonitoringStatus.ACTIVE
+                self.paused_reason.pop(sid, None)
+                self.paused_why.pop(sid, None)
+
+    def _note_index(self, w: Watched, read: PriceRead, now: datetime.datetime) -> None:
+        """Lane FE (review F2): the index value this FRESH read used (the feed tick or the REST stand-in, with the time
+        of that quote) and each leg's price are noted for the monitoring snapshot, which carries them in the SAME write
+        as "watched" (``monitoring_state.Publisher``); the paper monitor judges its exits on them, so a trade is called
+        watched only on readings the exits can use. No await here: nothing can tick between the read and its note."""
+        spot = read.spot
+        if self._want_client is None or spot is None:
+            return
+        source = "rest" if getattr(spot.source, "feed_id", "") == REST_INDEX_FEED_ID else "feed"
+        underlying = w.tracked.position.underlying
+        self._note(f"index:{underlying}", underlying, spot, source, now)
+        for quote in read.legs.values():  # item 2: the option legs' prices, for the leg-price exits
+            self._note(f"leg:{quote.instrument_id}", quote.instrument_id, quote, "feed", now)
+
+    def _note(self, slot: str, key: str, quote: Any, source: str, now: datetime.datetime) -> None:
+        if quote.ltp is not None and quote.timestamp is not None:
+            self._readings[slot] = (monitoring_state.IndexReading(key, quote.ltp, quote.timestamp, source), now)
+        if len(self._readings) > MAX_PUBLISHED_READINGS:  # forget what was not re-read for a while
+            keep_after = now - datetime.timedelta(seconds=monitoring_state.INDEX_READING_TTL_S)
+            self._readings = {k: v for k, v in self._readings.items() if v[1] >= keep_after}
+
+    async def _read_with_either_spot(self, provider: Any, w: Watched, now: datetime.datetime) -> PriceRead:
+        """The price read; when THIS book's index quote is missing or not AVAILABLE, the shared REST read stands in for
+        it. An option leg missing with the index fine asks nothing (F3: never a Kite call for a leg)."""
+        underlying = w.tracked.position.underlying
+        known = self._known_of(provider, underlying)
+        read = read_prices(provider, w, now, known)
+        if read.state in (PriceState.LEG_MISSING, PriceState.STALE) and read.cause and self._rest_spot is not None:
+            return await self._with_rest_spot(provider, w, now, known, read, read.cause)
+        return read
+
+    async def _rest_once(self, underlying: str) -> SourceReading:
+        """This cycle's ONE REST index answer of ``underlying`` (never one per strategy: F4), bounded by its own short
+        deadline (F5: a hung call costs the cycle at most ``REST_SPOT_DEADLINE_S`` once; the shared flight goes on and
+        its answer is kept by the shared reading). Raised, timed out or cancelled-by-deadline: FAILED."""
+        kept = self._rest_cycle.get(underlying)
+        if kept is not None:
+            return kept
+        try:
+            rest = await asyncio.wait_for(self._rest_spot(underlying), timeout=self._rest_deadline)
+        except TimeoutError:
+            log.warning("background: the index REST read exceeded %s s", self._rest_deadline)
+            rest = SourceReading(SourceState.FAILED)
+        except Exception as exc:  # noqa: BLE001 - a REST failure is "no REST spot", never a failed cycle
+            log.warning("background: the index REST read raised %s", type(exc).__name__)
+            rest = SourceReading(SourceState.FAILED)
+        self._rest_cycle[underlying] = rest
+        return rest
+
+    async def _with_rest_spot(self, provider: Any, w: Watched, now: datetime.datetime,  # noqa: PLR0913
+                              known: Any, read: PriceRead, cause: str) -> PriceRead:
+        """The index quote of this process's book is missing or old (``cause``): one source is enough (ADR-330 (39)), so
+        the shared cached REST read stands in for it, if it passes the one age rule (a reading older than the index age
+        limit pauses the strategy STALE with reason ``rest_stale``; one with no time is not a spot). Only the index is
+        replaced - a missing leg stays missing. Not usable either way: the read as it was, and ONE log line per minute
+        and underlying naming the cause and the REST reason (never silently unchecked)."""
+        underlying = w.tracked.position.underlying
+        rest = await self._rest_once(underlying)
+        windows = None if self._values is None else settings_calc.feed_windows(self._values)
+        again = read_prices(provider, w, now, known, rest, windows)
+        if again.state is PriceState.FRESH:
+            return again
+        key = (now.astimezone(IST).strftime("%Y-%m-%d %H:%M"), underlying)
+        if key not in self._spot_logged:
+            self._spot_logged = {k for k in self._spot_logged if k[0] == key[0]} | {key}
+            if again.leg_missing:  # the index spot is usable (REST stood in): the missing thing is an option leg
+                log.warning("option leg quote missing (the index spot itself is usable)")
+            else:
+                rest_why = (again.why or "not usable") if rest.state is SourceState.STATED else rest.state.name.lower()
+                log.warning("index spot not available: %s; REST %s", cause, rest_why)
+        return again if again.why else read
 
     def _user_paused(self, sid: int, now: datetime.datetime) -> bool:
         """Step 6: the user's pause compared with THIS check's time; in force -> paused through ``_pause``."""
@@ -1382,7 +1753,7 @@ class Worker:
         base = check.entry_baseline(scn, state, w.tracked.position, w.entry_facts, marker,
                                     w.basket_facts.get(marker))
         ev = pe.evaluate(w.body, state, known, base, gap_until=prefs.gap_until)
-        self._count_outcomes(ev)
+        self._count_outcomes(ev, sid)
         if memory is not None and _write_key(ev) == self._written.get(sid):
             return ev  # nothing a write would change (rule memory, flagged ids, clear ids): no DB call
         self._written.pop(sid, None)  # fail closed: until this write succeeds the next check writes again
@@ -1409,6 +1780,7 @@ class Worker:
             self.writes_failed += 1
             self.status[sid] = MonitoringStatus.PAUSED  # its last check is not stored: never shown as active
             self.paused_reason[sid] = PriceState.CHECK_FAILED
+            self._owed[sid] = PriceState.CHECK_FAILED  # FE3 F1
             self._signature.pop(sid, None)
             self._tick.pop(sid, None)
             return
@@ -1436,7 +1808,15 @@ class Worker:
         sid = w.strategy_id
         pin, user_values = style_in
         try:
-            style = alert_presets.style_for(state.expiry_kind, state.days_left, pin)
+            try:
+                style = alert_presets.style_for(state.expiry_kind, state.days_left, pin)
+            except alert_presets.StyleRefused:
+                if state.days_left is not None or pin is not None:  # a refused pin is never replaced
+                    raise
+                # J3 item 1: the expiry kind is not known (a far-month leg, R3): the fact only the percent stop and
+                # the stage rows need. The gate's TIMING takes the fastest style; every rule that needs the kind is
+                # answered "not checked" by the evaluation itself, and the rupee stop and time exit still run.
+                style = UNKNOWN_KIND_TIMING_STYLE
             preset = alert_presets.preset_for(style, user_values, self._values or {})
         except (ValueError, KeyError) as exc:  # StyleRefused is a ValueError: paused, never a guessed preset
             log.warning("background: strategy %s has no alert preset: %s", sid, exc)
@@ -1447,9 +1827,50 @@ class Worker:
         ctx = self._gate_ctx[sid] = GateContext(ev, state, w)
         # the check travels with each rule's sample: the event it confirms takes its words from it (#709 item 7)
         sampled = {rid: (dataclasses.replace(spec, sample=ctx), v)
-                   for rid, (spec, v) in gate_readings.readings(ev).items()}
+                   for rid, (spec, v) in gate_readings.readings(ev, stops=sl.plan_exit_rule_ids(w.body)).items()}
+        self._note_rules(w, state, sampled)
         await self._gate_step(w, now, preset, sampled)
         return True
+
+    def _note_rules(self, w: Watched, state: pe.StrategyState,
+                    sampled: Mapping[str, Any]) -> None:
+        """FE2 (FD2 hand-over): keep this check's rule values for ``rule_readings``; and when the expiry kind is not
+        known and NO exit rule of the plan could be checked (every one answers "not checked"), the trade is published
+        paused with ``expiry_kind_unknown``: never shown as watched with no exit that can run (REQ-115 AC-4)."""
+        sid = w.strategy_id
+        self._rule_values[sid] = {rid: v for rid, (_spec, v) in sampled.items()
+                                  if isinstance(v, Decimal) and v.is_finite()}
+        checked = {rid for rid, (_spec, v) in sampled.items() if v is not None}
+        if state.days_left is None and not checked & sl.plan_exit_rule_ids(w.body):
+            self.status[sid] = MonitoringStatus.PAUSED
+            self.paused_reason[sid] = PriceState.EXPIRY_KIND_UNKNOWN
+            self._owed[sid] = PriceState.EXPIRY_KIND_UNKNOWN  # FE3 F1: kept until a check finds an exit that can run
+            self.paused_why.pop(sid, None)
+        elif self._owed.get(sid) is PriceState.EXPIRY_KIND_UNKNOWN:  # this check found an exit that can run
+            del self._owed[sid]
+            self.status[sid] = MonitoringStatus.ACTIVE
+            self.paused_reason.pop(sid, None)
+
+    async def _publish_rule_values(self) -> None:
+        """Once per cycle (FD2 item 4): every monitored strategy's rule values, when they changed or 10 s have passed
+        (the store expires them after an hour); never raises."""
+        if self._want_client is None:
+            return
+        from ofo_app import rule_readings  # noqa: PLC0415 - the bus is optional
+        now = self._clock()
+        monitored = {w.strategy_id for w in self.monitors}
+        values = {(sid, rid): v for sid, d in self._rule_values.items()  # a trade not watched has no current value
+                  if sid in monitored and self.status.get(sid) is MonitoringStatus.ACTIVE for rid, v in d.items()}
+        shown = tuple(sorted((k, str(v)) for k, v in values.items()))
+        last, sent_at = self._rule_values_sent
+        if shown == last and sent_at is not None and (now - sent_at).total_seconds() < monitoring_state.REFRESH_S:
+            return
+        try:
+            await rule_readings.publish(self._want_client, values, now)
+        except Exception as exc:  # noqa: BLE001 - never stops a cycle; the screens then show no reading
+            log.warning("background: publishing the rule values failed: %s", type(exc).__name__)
+            return
+        self._rule_values_sent = (shown, now)
 
     async def _gate_step(self, w: Watched, now: datetime.datetime, preset: alert_gate.Preset,
                          readings: Mapping[str, gate_readings.Reading]) -> None:
@@ -1466,12 +1887,52 @@ class Worker:
         if paused is not None:  # a pause since the last step: the candle it fell in has no close (finding 2)
             state = alert_gate.pause(state, paused)
             self._gate[sid] = state  # kept even when the step below fails to write
-        new, events = alert_gate.step(state, now=now, preset=preset, readings=readings)
+        hold = alert_gate.entry_period_end(getattr(w.tracked, "entered_at", None))  # ADR-330 (47)
+        new, events = alert_gate.step(state, now=now, preset=preset, readings=readings, entry_hold_until=hold)
         self._gate[sid] = new
         if events:  # #636 r6: queued in step order for the ONE writer; the check never waits for the database
             self._gate_events.setdefault(sid, collections.deque()).append(
                 GateBatch(w, tuple(events), now))
             self._write_wake.set()
+        try:  # the log line never affects an alert: after the events are queued, and never raises into the check
+            self._note_silent_loss_rules(w, new, events, readings, now, hold, preset.cooldown)
+        except Exception as exc:  # noqa: BLE001 - a log helper
+            log.warning("background: the silence note of strategy %s failed: %s", sid, type(exc).__name__)
+
+    _silence_told: dict[int, dict[str, str]] | None = None  # strategy -> rule -> the reason already logged
+
+    def _forget_silence(self, sid: int) -> None:
+        """The gate of ``sid`` was reset (position or plan changed): its next silence is told afresh."""
+        if self._silence_told is not None:
+            self._silence_told.pop(sid, None)
+
+    #: loss rules the silence log names besides the plan's own loss stops: T-14 (the repricing loss risk, ic-e2e-paper)
+    _SILENCE_EXTRA_RULES: Final = frozenset({"T-14"})
+
+    def _note_silent_loss_rules(self, w: Watched, state: alert_gate.GateState, events: Sequence[Any],  # noqa: PLR0913
+                                readings: Mapping[str, gate_readings.Reading], now: datetime.datetime,
+                                hold: datetime.datetime | None,
+                                cooldown: datetime.timedelta | None = None) -> None:
+        """Lane RA2 item 2 (issue 876: a loss past its line for 22 minutes and no alert, and the log said nothing
+        per strategy and rule): whenever a loss rule or guard is past its line at this check and this step raised
+        nothing for it, ONE line names the strategy, the rule and why (``alert_gate.silent_reason``). Said again only
+        when the reason changes; said afresh once the rule is back inside its line. No price and no figure of a feed
+        is in it."""
+        sid = w.strategy_id
+        if self._silence_told is None:  # lazy: some tests build the worker without __init__
+            self._silence_told = {}
+        told = self._silence_told.setdefault(sid, {})  # rule -> the reason already logged
+        loss = sl.loss_stop_rule_ids(w.body) | self._SILENCE_EXTRA_RULES
+        spoken = {e.rule_id for e in events if hasattr(e, "rule_id")}
+        for rule_id in sorted(loss & readings.keys()):
+            spec, value = readings[rule_id]
+            why = None if rule_id in spoken else alert_gate.silent_reason(
+                state, rule_id, spec, value, now=now, cooldown=cooldown, entry_hold_until=hold)
+            if why is None:
+                told.pop(rule_id, None)
+            elif told.get(rule_id) != why:
+                told[rule_id] = why
+                log.info("background: strategy %s %s: %s %s", sid, SILENT_LOSS_RULE, rule_id, why)
 
     async def _write_gate_batch(self, sid: int) -> bool:
         """The oldest queued gate step of ``sid`` in one transaction, holding the gate first in its order of service.
@@ -1642,14 +2103,30 @@ class Worker:
                 if self._pending.get(sid) is item:
                     del self._pending[sid]
 
-    def _count_outcomes(self, ev: pe.Evaluation) -> None:
-        """Item g: why rules gave no flag this minute (withheld / not checked with the reason code), and flags."""
+    def _count_outcomes(self, ev: pe.Evaluation, strategy_id: int) -> None:
+        """Item g: why rules gave no flag this minute (withheld / not checked with the reason code), and flags.
+
+        RA (issue 876): the counter above is summed over strategies, so a loss rule that was true and sent nothing left
+        no trace naming it. A loss rule or guard (``_LOSS_RULES``) that is evaluated and does NOT alert now writes one
+        INFO line with the strategy, the rule and the outcome code (never a price), when its outcome is new or
+        changed; a Flag writes none (its alert row is the record)."""
         names = [f"not_checked {r.code}" if isinstance(r, pe.NotChecked) else
                  "flag" if isinstance(r, pe.Flag) else "already_true" for r in ev.results]
         if ev.withheld is not None:
             names.append(f"withheld {ev.withheld}")
         for name in names:
             self._outcomes[name] = self._outcomes.get(name, 0) + 1
+        for r, name in zip(ev.results, names, strict=False):
+            rule = next((x for x in (r.rule_id, r.trigger_id) if x in _LOSS_RULES), None)
+            if rule is None:
+                continue
+            key = (strategy_id, rule)
+            if name == "flag":
+                self._loss_seen.pop(key, None)  # it alerted: a later silence is a new event
+            elif self._loss_seen.get(key) != name:
+                self._loss_seen[key] = name
+                log.info("background: loss rule evaluated, no alert: strategy=%s rule=%s outcome=%s", strategy_id, rule,
+                         name)
 
     def _log_opportunities(self, w: Watched, recorded: Any) -> None:
         """One INFO line the first time this process sees an open opportunity record of a rule (``record_check``
@@ -1707,6 +2184,7 @@ class Worker:
         if every is None:
             log.error("background: no background speed has been read yet; this cycle is skipped")
             return
+        self._rest_cycle = {}  # a new cycle asks the shared REST read again (its TTL/cooldown still bound the vendor)
         n = len(self.monitors)
         ran, slowest, visited = 0, Decimal(0), 0
         checked: set[int] = set()
@@ -1726,6 +2204,11 @@ class Worker:
             slowest = max(slowest, _seconds(self._clock() - started))
         self._cursor = (self._cursor + visited) % n if n else 0
         await self._close_pass(checked)
+        await self._publish_rule_values()
+        monitored = {w.strategy_id for w in self.monitors}  # FE2 review F2: what is not monitored is never published
+        await self._monitoring.publish({k: v for k, v in self.status.items() if k in monitored},
+                                       self.paused_reason, self.paused_why, self._clock(),
+                                       self._readings)  # never raises
         if self._steps is not None:
             self.valve.observe(self._clock(), slowest, n - visited, self._steps)
 
@@ -1733,6 +2216,7 @@ class Worker:
         self._stop = True
 
     async def run(self) -> None:
+        await self._monitoring.restore(self._clock())  # FE2 item 4: a restart leaves no old "watched" standing
         if not self._rebuild_tried:
             await self._rebuild_safely()
         rebuilder = asyncio.create_task(self._rebuild_loop(), name="background-rebuild")
@@ -1742,6 +2226,7 @@ class Worker:
         try:
             while not self._stop:
                 self._watch_writer()
+                await self._monitoring.retry_restore(self._clock())  # FE3 item 3 (F6); never raises
                 try:
                     await self.cycle()
                 except Exception as exc:  # one cycle's failure never ends the role (CancelledError is not one)
@@ -1800,7 +2285,7 @@ def _count_of(tracked: Any) -> int | None:
 
 def _position_changed(old: Watched | None, new: Watched) -> bool:
     """A basket was booked since ``old`` was read, seen in this process: it resets the strategy's gate memory even
-    when no record was open (the records themselves are judged by their stored count, ``DbGateStore.lapse_changed``)."""
+    when no record was open (open alerts stay: ADR-330 (3))."""
     a, b = _count_of(old and old.tracked), _count_of(new.tracked)
     return a is not None and b is not None and a != b
 
@@ -1814,15 +2299,17 @@ class _NothingTraded(Exception):
 LISTER_LAPSE_FAILURES: dict[int, int] = {}
 
 
-async def _lapse_exited(db: Any, user_ref: str, sid: int, reason: str | None = None) -> None:
+async def _lapse_exited(db: Any, user_ref: str, sid: int, reason: str | None = None, **when: Any) -> None:
     """Lapse an exited strategy's open records (``reason`` default strategy_closed; #652 not_monitored for a strategy
-    that dropped out of the list for good), contained to that strategy: a failing write (a record no longer open,
-    the database refusing) is rolled back, counted and logged once per strategy, and never drops the other strategies
+    that dropped out of the list for good; ``at``: the trade's own close time when known, M5), contained to that
+    strategy: a failing write (a record no longer open, the database refusing) is rolled back, counted and logged
+    once per strategy, and never drops the other strategies
     from the list or skips their gate read (the whole lister failing kept the old list; at start-up 0 monitored)."""
-    from ofo_app import playbook_store  # noqa: PLC0415 - database layer at run time only
+    from ofo_app import actionable_alerts, playbook_store  # noqa: PLC0415 - database layer at run time only
     try:
         if await playbook_store.open_suggestions(db, user_ref, sid):
-            await playbook_store.lapse_all(db, user_ref, sid, reason or playbook_store.LAPSE_STRATEGY_CLOSED)
+            await actionable_alerts.close_by_system(db, user_ref, sid, reason or playbook_store.LAPSE_STRATEGY_CLOSED,
+                                                    **when)
             await db.commit()
     except Exception:  # contained per strategy; retried at the next re-list
         await db.rollback()
@@ -1838,8 +2325,20 @@ def listable(marker: str | None, mode: str | None) -> bool:
     return scenario_mode.in_scope(marker, mode)
 
 
+#: FE2 item 7 (#864): True once ``adjustment_readers.read_tracked`` takes the keyword ``kinds`` (the owner lane's half:
+#: RESULTS-lane-fe2 "For the owner lane" 2). Until then the lister calls the reader exactly as before: a keyword the
+#: reader does not know would fail every strategy's read. (No reflection on the reader: the door-names guard forbids)
+READER_TAKES_KINDS: Final = True
+
+
+def reader_kinds_kwargs(kinds: Mapping | None, takes: bool = READER_TAKES_KINDS) -> dict[str, Any]:
+    """FE2 item 7 (#864): the worker's record of expiry kinds as the reader's keyword, only when the reader takes it."""
+    return {"kinds": kinds} if takes and kinds is not None else {}
+
+
 async def owner_lister(provider: Any, gate: Any = None,
-                       rates_of: Callable[[], Awaitable[Any]] | None = None) -> Listed:
+                       rates_of: Callable[[], Awaitable[Any]] | None = None,
+                       kinds: Mapping | None = None) -> Listed:
     """Every strategy of the V1 owner (ADR-051) that is tracked (open paper legs, or real Zerodha trades and adopted
     holdings when it has no paper order: ADR-276) and has a playbook; its type is read
     against the provider's instrument list and spot (as the screen's check). ``gate`` (the role's ``db_gate``) is held
@@ -1875,19 +2374,19 @@ async def owner_lister(provider: Any, gate: Any = None,
             continue  # IC e2e decision 4: a live worker never checks a scenario strategy, and the reverse
         try:
             async with held(gate, GATE_REBUILD):  # one strategy's reads per hold
-                tracked = await read_tracked(s.id, rates)
+                tracked = await read_tracked(s.id, rates, **reader_kinds_kwargs(kinds))
                 if tracked is None:  # nothing traded: a definite answer, not a failed read (those raise below)
                     raise _NothingTraded  # handled outside the hold (the lapse takes its own)
-                spot = provider.underlying_quote(tracked.position.underlying)
-                stype = check.strategy_type(tracked.position, None if spot is None else spot.ltp,
-                                            provider.instrument_master())
+                stype = check.entry_type(tracked, provider.instrument_master())  # D-04
                 async with get_sessionmaker()() as db:
                     resolved = await check.resolve(db, OWNER_REF, s.id, stype)
                     facts = await entry_facts_in(db, s.id) if resolved.body is not None else None
                     baskets = await _baskets_in(db, s.id) if resolved.body is not None else {}
         except (TrackedExited, _NothingTraded) as gone:  # all legs exited (REQ-112 AC-2; one writer, ADR-237 (6))
             async with held(gate, GATE_REBUILD), get_sessionmaker()() as db:  # one session at a time (#636 r4)
-                await _lapse_exited(db, OWNER_REF, s.id, getattr(gone, "lapse_reason", None))
+                closed_at = getattr(gone, "closed_at", None)  # the trade's own time, not when this worker noticed
+                await _lapse_exited(db, OWNER_REF, s.id, getattr(gone, "lapse_reason", None),
+                                    **({} if closed_at is None else {"at": closed_at}))
             continue
         except TrackedUnreadable:
             unread.add(s.id)
@@ -1896,10 +2395,13 @@ async def owner_lister(provider: Any, gate: Any = None,
             log.exception("background: listing strategy %s failed; it is skipped", s.id)
             unread.add(s.id)  # not read is not gone: its queued alert events stay (#636 r6 review)
             continue
-        if resolved.body is not None:
-            out.append(Watched(OWNER_REF, s.id, tracked, resolved.body, resolved.is_system, OWNER_REF,
-                               resolved.strategy_layer, facts, resolved=resolved, charge_rates=rates,
-                               regime=await regimes.read(tracked.position.underlying), basket_facts=baskets))
+        if resolved.body is None:  # ADR-330 (11): no plan = nothing watched; a DEFINITE answer (a failed read raised)
+            async with held(gate, GATE_REBUILD), get_sessionmaker()() as db:  # its open alerts close: not_monitored
+                await _lapse_exited(db, OWNER_REF, s.id, "not_monitored")
+            continue
+        out.append(Watched(OWNER_REF, s.id, tracked, resolved.body, resolved.is_system, OWNER_REF,
+                           resolved.strategy_layer, facts, resolved=resolved, charge_rates=rates,
+                           regime=await regimes.read(tracked.position.underlying), basket_facts=baskets))
     return Listed(out, unread)
 
 
@@ -1971,8 +2473,9 @@ async def _serve_scenario() -> int:  # pragma: no cover - the process wiring; ea
     if not await cache.refresh():
         log.error("background: the first settings load failed; no check runs until a poll loads them")
     log.info("background: scenario %s (test data, no Kite) for %s", scn.scenario_id, OWNER_REF)
-    lister = functools.partial(owner_lister, provider, gate=gate, rates_of=load_charge_rates)  # #661 item 1
-    worker = Worker(provider_for=lambda _owner: provider, lister=lister,
+    kinds: dict[tuple[str, datetime.date], Any] = {}  # the worker's record of expiry kinds, shared with its lister
+    lister = functools.partial(owner_lister, provider, gate=gate, rates_of=load_charge_rates, kinds=kinds)
+    worker = Worker(kinds=kinds, provider_for=lambda _owner: provider, lister=lister,
                     clock=scn.clock, settings=cache.at, preferences=preferences, db_gate=gate,
                     side_tasks=(cache.poll_loop,), user_values=user_values, before_cycle=before_cycle)
     await worker.run()
@@ -2012,7 +2515,6 @@ async def _serve_live() -> int:  # pragma: no cover - the process wiring; each p
     from ofo.settings import defaults  # noqa: PLC0415
 
     from ofo_app.outcome_margin import OutcomeMargin  # noqa: PLC0415
-    from ofo_app.routes.adjustment import get_approach_margin  # noqa: PLC0415
     from ofo_app.routes.outcome import MarketContext, load_charge_rates, server_now  # noqa: PLC0415
     login = stored_login(clock)
     margin_source = OutcomeMargin(login.session, login.open_client, clock=server_now)
@@ -2021,12 +2523,14 @@ async def _serve_live() -> int:  # pragma: no cover - the process wiring; each p
     cache = settings_cache.SettingsCache(lambda: get_engine().connect(), gate=gate)
     if not await cache.refresh():  # the first load; a failure leaves the worker refusing to check until a poll loads
         log.error("background: the first settings load failed; no check runs until a poll loads them")
-    lister = functools.partial(owner_lister, provider, gate=gate, rates_of=load_charge_rates)  # #661 item 1
-    worker = Worker(provider_for=lambda _owner: provider, lister=lister,
+    kinds: dict[tuple[str, datetime.date], Any] = {}  # the worker's record of expiry kinds, shared with its lister
+    lister = functools.partial(owner_lister, provider, gate=gate, rates_of=load_charge_rates, kinds=kinds)
+    worker = Worker(kinds=kinds, provider_for=lambda _owner: provider, lister=lister,
                     clock=clock, settings=cache.at, preferences=preferences, want_client=bus, db_gate=gate,
                     side_tasks=(cache.poll_loop,), user_values=user_values,
-                    margin_of=login.reading(screen_margin_reader(get_approach_margin(margin_ctx, margin_source))),
-                    daily_iv=record_daily_iv)  # ADR-277 (4): the live role only
+                    margin_of=worker_margin_of(login, margin_ctx, margin_source),
+                    daily_iv=record_daily_iv,  # ADR-277 (4): the live role only
+                    rest_spot=worker_rest_spot(login))  # one source is enough: the shared REST read (ADR-330 (39))
     feed = asyncio.create_task(socket.run(), name="background-feed")
     try:
         await worker.run()

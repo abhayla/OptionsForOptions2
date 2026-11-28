@@ -5,11 +5,14 @@ A pure state machine, one state per strategy. Each `step` is one check: it takes
 to 09:15 IST, and judges each rule only on a candle close (the last value seen in the candle). Edge, not level: a rule
 opens one record when a close is beyond its line; it re-arms only after a close clears the line by the re-arm band
 AND the cool-down from the record has passed; one ladder level worse opens at once (escalation). A daily cap and a
-quiet time after the open turn a would-be record into a `Held` event, never a silent drop.
+quiet time after the open turn a would-be record into a `Held` event, never a silent drop; a plan loss stop is held by
+neither, and a pause in its candle does not keep it from the next live check (Lane J 2026-11-27, gaps 1-3).
 
 Risk exits (stop-loss, conditional exits, REQ-041 / paper triggers) never pass through this gate (AC-5): it applies to
-adjustment suggestions only. The screen check and the background check share this one gate. A stop rule
-(``stop_lines.is_stop_rule``) is judged on the first check that sees it beyond its line, not at the candle close.
+adjustment suggestions only. The screen check and the background check share this one gate. A plan exit
+(``stop_lines.PLAN_EXIT_RULES``, ADR-330 (47): the loss stops, both profit targets and the time exit) is judged on the
+first check that sees it beyond its line or time, not at the candle close; one already past its level at entry waits
+for the 5 minutes after entry (``entry_period_end``) and is then raised if still past it, never swallowed.
 """
 from __future__ import annotations
 
@@ -19,10 +22,12 @@ from datetime import date, datetime, time, timedelta
 from decimal import Decimal
 from typing import Literal, Union
 
+from ofo.adjustment import level_watch
 from ofo.adjustment.cap_scope import cap_exempt
 from ofo.adjustment.gate_rows import GateRow, GateRows, Preset  # noqa: F401 - re-exported for callers
 from ofo.adjustment.held_reasons import HELD_DAILY_LIMIT, HELD_QUIET_TIME, HELD_TEXT_IDS  # noqa: F401 - re-exported
-from ofo.adjustment.stop_lines import is_stop_rule
+from ofo.adjustment.popup_quiet import QUIET_PERIOD
+from ofo.adjustment.stop_lines import is_plan_exit_rule
 from ofo.timeutil import IST
 from ofo.timeutil import SESSION_OPEN as MARKET_OPEN
 
@@ -55,6 +60,24 @@ class RuleSpec:
     #: #709 item 7: what the check that took THIS sample knew (the worker's ``GateContext``); the gate never reads it,
     #: it only carries it onto the event the sample confirms, so a record's words never come from a later check
     sample: object = field(default=None, compare=False)
+    #: ADR-330 (47): the rule is one of the plan's own exits under its own id (``stop_lines.is_plan_exit`` through
+    #: ``gate_readings.readings``): it gets the stop fast path and the quiet-time and cap exemptions as a stop line does
+    plan_exit: bool = field(default=False, compare=False)
+
+
+def _is_plan_exit(rule_id: str, spec: RuleSpec) -> bool:
+    """ADR-330 (47): one of the plan's own exits, by its id (``PLAN_EXIT_RULES``) or by its triggers
+    (``RuleSpec.plan_exit``): judged on the first check past its level or time; no quiet time or cap."""
+    return spec.plan_exit or is_plan_exit_rule(rule_id)
+
+
+def entry_period_end(entered_at: datetime | None) -> datetime | None:
+    """ADR-330 (47): the end of the 5-minute period after entry (``popup_quiet.QUIET_PERIOD``): a plan exit
+    already past its level at entry waits until then and is raised if still past it. None when the entry time is not
+    known or has no time zone: no period, so an exit is never held on a guess. Pure."""
+    if not isinstance(entered_at, datetime) or entered_at.tzinfo is None:
+        return None
+    return entered_at + QUIET_PERIOD
 
 
 def _more_severe(cmp: Cmp, a: Decimal, b: Decimal) -> bool:
@@ -106,14 +129,42 @@ class Held:
 
 @dataclass(frozen=True)
 class Lapsed:
-    """ADR-237 (4): an open record's episode ended (a close cleared its line by the re-arm band). Once per record."""
+    """ADR-330 (3): an open record's condition stopped (a close cleared its line by the re-arm band): "no longer true
+    since". The record stays open; once per stop (a ``TrueAgain`` re-arms the next one)."""
 
     rule_id: str
     at: datetime
     value: Value
 
 
-Event = Union[Opened, Held, Lapsed]  # noqa: UP007
+@dataclass(frozen=True)
+class TrueAgain:
+    """ADR-330 (3): the first close past the line again of a rule whose open record was marked "no longer true"; the
+    record stays the same one (no cool-down, cap or quiet time applies; nothing is opened or counted)."""
+
+    rule_id: str
+    at: datetime
+    value: Value
+
+
+@dataclass(frozen=True)
+class Escalated:
+    """ADR-330 (3), REQ-170 AC-3: a close one ladder level WORSE than the rule's still-unanswered record. It updates
+    that open alert (one open alert per rule); it opens no record and is not counted against the daily cap."""
+
+    rule_id: str
+    at: datetime
+    level: int
+    threshold: Decimal | None
+    value: Value
+    worse: Literal["last", "dismissed"] | None = "last"
+    shown_value: Decimal | None = None
+    shown_threshold: Decimal | None = None
+    limit: Decimal | None = None
+    sample: object = field(default=None, compare=False)
+
+
+Event = Union[Opened, Held, Lapsed, TrueAgain, Escalated]  # noqa: UP007
 
 
 @dataclass(frozen=True)
@@ -122,7 +173,8 @@ class _Record:
     threshold: Decimal | None
     at: datetime
     dismissed: bool = False
-    final: bool = False  # lapsed / acted on / dismissed: no Lapsed event any more
+    final: bool = False  # answered (acted on / dismissed) or closed by the system: no longer an open record
+    stopped: bool = False  # its "condition stopped" was emitted and no close past the line has come since
     unleveled: bool = False  # restored with a stored threshold but no real ladder yet: levelled at the first real close
     record_id: int | None = None  # the stored record's id (restored, or set after the open is written; #639 item 2)
     #: the (cmp, ladder) its level was taken against; a close with another ladder re-levels it (ADR-237 (8))
@@ -151,6 +203,8 @@ class _Rule:
     record: _Record | None = None
     cleared: bool = False
     hold: _Hold | None = None
+    #: a plan exit was read on the safe side since this gate began: its crossing is not "at entry" (ADR-330 (47))
+    clear_seen: bool = False
 
 
 @dataclass(frozen=True)
@@ -210,17 +264,27 @@ def _safe_by_band(spec: RuleSpec, value: Value, threshold: Decimal | None, prese
     return value <= threshold - band if spec.cmp == "ge" else value >= threshold + band
 
 
+def _line(spec: RuleSpec, threshold: Decimal | None) -> Decimal | None:
+    """The rule's LINE (ladder[0]) that "stopped" / "true again" are judged against (ADR-330 (3), ADR-237 (4)); the
+    record's own (escalated) step only feeds the worse figures. No real ladder: the stored threshold."""
+    return spec.ladder[0] if spec.cmp != "bool" and spec.ladder else threshold
+
+
 def _refresh(rule_id: str, rule: _Rule, pend: _Pending, level: int, preset: Preset) -> tuple[_Rule, list[Event]]:
     """Apply a close to the clear mark, the record's lapse and the held episode before deciding."""
     rec, hold = rule.record, rule.hold
     events: list[Event] = []
-    if rec is not None and not rule.cleared and _safe_by_band(pend.spec, pend.value, rec.threshold, preset):
+    line = _line(pend.spec, rec.threshold) if rec is not None else None
+    if rec is not None and not rule.cleared and _safe_by_band(pend.spec, pend.value, line, preset):
         rule = replace(rule, cleared=True)
-        if not (rec.dismissed or rec.final):
-            rule = replace(rule, record=replace(rec, final=True))
+        if not (rec.dismissed or rec.final or rec.stopped):
+            # ADR-242 (3): a watched level keeps one record per crossing episode: the clear closes it (final), so
+            # the rule re-arms; every other record stays open, marked "no longer true" (ADR-330 (3))
+            watched = rule_id.startswith(level_watch.RULE_PREFIX)
+            rule = replace(rule, record=replace(rec, final=True) if watched else replace(rec, stopped=True))
             events.append(Lapsed(rule_id, pend.end, pend.value))
     if hold is not None and (
-        _safe_by_band(pend.spec, pend.value, hold.threshold, preset)
+        _safe_by_band(pend.spec, pend.value, _line(pend.spec, hold.threshold), preset)  # the LINE's band (ADR-237 (4))
         or level > hold.level
         or (hold.reason == HELD_QUIET_TIME and pend.end.time() > preset.quiet_until)
     ):
@@ -261,24 +325,34 @@ def _leveled(rule: _Rule, spec: RuleSpec) -> _Rule:
     return rule
 
 
-def _close(state: GateState, rule_id: str, pend: _Pending, preset: Preset) -> tuple[GateState, list[Event]]:
+def _close(state: GateState, rule_id: str, pend: _Pending, preset: Preset,
+           hold_until: datetime | None = None) -> tuple[GateState, list[Event]]:
     t, value, spec = pend.end, pend.value, pend.spec
     if state.day != t.date():
         state = replace(state, day=t.date(), opened_today=0)
     level = _level(spec, value)
     rule, lapsed = _refresh(rule_id, _leveled(replace(state.rule(rule_id), pending=None), spec), pend, level, preset)
     state = state.with_rule(rule_id, rule)
-    state, events = _decide(state, rule_id, rule, pend, level, preset)
+    state, events = _decide(state, rule_id, rule, pend, level, preset, hold_until)
     return state, lapsed + events
+
+
+def _in_entry_hold(rule_id: str, rule: _Rule, spec: RuleSpec, t: datetime, hold_until: datetime | None) -> bool:
+    """ADR-330 (47): a plan exit past its level at entry (never read on the safe side since) raises nothing inside the
+    5 minutes after entry. Nothing is recorded or dropped, so the first check after them judges it as any other."""
+    return hold_until is not None and t < hold_until and not rule.clear_seen and _is_plan_exit(rule_id, spec)
 
 
 def _decide(  # noqa: PLR0913 - one close's inputs
     state: GateState, rule_id: str, rule: _Rule, pend: _Pending, level: int, preset: Preset,
+    hold_until: datetime | None = None,
 ) -> tuple[GateState, list[Event]]:
     t, value, spec = pend.end, pend.value, pend.spec
     rec, hold = rule.record, rule.hold
-    if level < 0:
+    if level < 0 or _in_entry_hold(rule_id, rule, spec, t, hold_until):
         return state.with_rule(rule_id, rule), []
+    if rec is not None and not (rec.dismissed or rec.final):
+        return _on_open_record(state, rule_id, rule, rec, pend, level)
     armed = rec is None or (rule.cleared and t >= rec.at + preset.cooldown)
     if armed:
         worse = None
@@ -288,9 +362,10 @@ def _decide(  # noqa: PLR0913 - one close's inputs
         return state.with_rule(rule_id, rule), []
     threshold = spec.ladder[level] if spec.ladder else None
     reason = None
-    if t.time() <= preset.quiet_until:
+    stop = _is_plan_exit(rule_id, spec)
+    if t.time() <= preset.quiet_until and not stop:  # ADR-330 (47): a plan exit opens at once, quiet time or not
         reason = HELD_QUIET_TIME
-    elif state.opened_today >= preset.daily_cap and not cap_exempt(rule_id):
+    elif state.opened_today >= preset.daily_cap and not cap_exempt(rule_id, plan_exit=stop):
         reason = HELD_DAILY_LIMIT
     if reason is not None:
         if hold is not None and hold.reason == reason and level <= hold.level:
@@ -300,11 +375,32 @@ def _decide(  # noqa: PLR0913 - one close's inputs
                                                     spec.shown_threshold, threshold, spec.sample)]
     rule = replace(rule, record=_Record(level, threshold, t, ladder=_ladder_key(spec)), cleared=False, hold=None)
     state = state.with_rule(rule_id, rule)
-    if not cap_exempt(rule_id):  # ADR-267: a watch / day rule is not counted against the cap
+    if not cap_exempt(rule_id, plan_exit=stop):  # ADR-267: a watch / day rule is not counted against the cap
         state = replace(state, opened_today=state.opened_today + 1)
     limit = spec.ladder[0] if spec.ladder else spec.shown_threshold
     return state, [Opened(rule_id, t, level, threshold, value, worse, spec.shown_value,
                                 spec.shown_threshold, limit, spec.sample)]
+
+
+def _on_open_record(  # noqa: PLR0913 - one close's inputs
+    state: GateState, rule_id: str, rule: _Rule, rec: _Record, pend: _Pending, level: int,
+) -> tuple[GateState, list[Event]]:
+    """ADR-330 (3): a close past the line while the rule's record is still unanswered. It never re-opens and never
+    counts: a record marked stopped says "true again" at once; one ladder level worse says "escalated"."""
+    t, value, spec = pend.end, pend.value, pend.spec
+    events: list[Event] = []
+    if rec.stopped:
+        rule = replace(rule, record=replace(rec, stopped=False), cleared=False)
+        rec = rule.record
+        events.append(TrueAgain(rule_id, t, value))
+    if level > rec.level:
+        threshold = spec.ladder[level] if spec.ladder else None
+        rule = replace(rule, record=replace(rec, level=level, threshold=threshold, stopped=False), cleared=False)
+        limit = spec.ladder[0] if spec.ladder else spec.shown_threshold
+        events = [e for e in events if not isinstance(e, TrueAgain)]  # the escalation says it too (same row update)
+        events.append(Escalated(rule_id, t, level, threshold, value, "last", spec.shown_value, spec.shown_threshold,
+                                limit, spec.sample))
+    return state.with_rule(rule_id, rule), events
 
 
 def step(
@@ -313,11 +409,14 @@ def step(
     now: datetime,
     preset: Preset,
     readings: Mapping[str, tuple[RuleSpec, Value | None]],
+    entry_hold_until: datetime | None = None,
 ) -> tuple[GateState, list[Event]]:
     """One check at `now`: process every candle close that is due, then record this check's samples.
 
     A rule missing from `readings` gives no sample; a value of None (not readable) gives no sample either, so a
-    candle with only None has no close. An empty `readings` still processes due closes.
+    candle with only None has no close. An empty `readings` still processes due closes. `entry_hold_until`
+    (``entry_period_end``, ADR-330 (47)): until then a plan exit already past its level when this gate first saw it is
+    not raised; it is raised at the first check after, if still past its level.
     """
     now = _ist(now)
     events: list[Event] = []
@@ -327,24 +426,65 @@ def step(
         if rule.pending is not None and now >= rule.pending.end
     )
     for _, rule_id in due:
-        state, evs = _close(state, rule_id, state.rule(rule_id).pending, preset)
+        state, evs = _close(state, rule_id, state.rule(rule_id).pending, preset, entry_hold_until)
         events.extend(evs)
     end = _candle_end(now, preset.candle)
-    if state.paused_at is not None and state.paused_at >= end - preset.candle:
-        return state, events  # this candle saw a pause: no sample, so it has no close (pause())
+    # this candle saw a pause: no sample, so it has no close (pause()). Lane J gap 2 (REQ-170 AC-5): a loss stop is
+    # still judged on THIS check, which is live (the worker steps with readings only after a fresh read; a stale or
+    # missing price pauses and gives none, ADR-016): a pause never keeps a stop past its line silent
+    paused = state.paused_at is not None and state.paused_at >= end - preset.candle
     for rule_id in sorted(readings):
         spec, value = readings[rule_id]
         if value is None:
             continue
+        exit_ = _is_plan_exit(rule_id, spec)
+        crossed = _level(spec, value) >= 0
+        if exit_ and not crossed and not state.rule(rule_id).clear_seen:
+            state = state.with_rule(rule_id, replace(state.rule(rule_id), clear_seen=True))
+        stop_now = exit_ and crossed
+        if paused:
+            if stop_now:
+                state, evs = _close(state, rule_id, _Pending(now, value, spec), preset, entry_hold_until)
+                events.extend(evs)
+            continue
         rule = state.rule(rule_id)
         pending = _Pending(end, value, spec)
         state = state.with_rule(rule_id, replace(rule, pending=pending))
-        if is_stop_rule(rule_id) and _level(spec, value) >= 0:
+        if stop_now:
             # REQ-170 AC-5: a stop beyond its line is judged now; its sample stays for the candle close
-            state, evs = _close(state, rule_id, _Pending(now, value, spec), preset)
+            state, evs = _close(state, rule_id, _Pending(now, value, spec), preset, entry_hold_until)
             events.extend(evs)
             state = state.with_rule(rule_id, replace(state.rule(rule_id), pending=pending))
     return state, events
+
+
+def silent_reason(state: GateState, rule_id: str, spec: RuleSpec, value: Value | None, *,  # noqa: PLR0911, PLR0913
+                  now: datetime, entry_hold_until: datetime | None = None,
+                  cooldown: timedelta | None = None) -> str | None:
+    """Lane RA2 item 2 (issue 876): why a rule whose value is past its line raised nothing at this check, as a closed
+    word for the worker's log (never shown to a user, never a price or a figure); None = the rule is not past its line
+    (or has no reading), so there is nothing to explain. Read AFTER ``step`` on its new state and only for a rule that
+    gave no event in that step: ``entry_hold`` (the 5 minutes after entry), ``alert_already_open`` (its record is
+    unanswered: one open alert per rule), ``not_rearmed`` (a record was answered and no close has cleared the line
+    since), ``alert_answered`` (a final record), ``cooldown`` (cleared, the cool-down given is running), ``held`` (an
+    event said so already), ``waiting_for_candle_close`` (a rule judged on a close), else ``no_event``."""
+    if value is None or _level(spec, value) < 0:
+        return None
+    rule = state.rule(rule_id)
+    if _in_entry_hold(rule_id, rule, spec, _ist(now), entry_hold_until):
+        return "entry_hold"
+    rec = rule.record
+    if rec is not None and not (rec.dismissed or rec.final):
+        return "alert_already_open"
+    if rec is not None and rec.final:
+        return "alert_answered"
+    if rec is not None and not rule.cleared:
+        return "not_rearmed"
+    if rec is not None and cooldown is not None and _ist(now) < rec.at + cooldown:
+        return "cooldown"
+    if rule.hold is not None:
+        return "held"
+    return "no_event" if _is_plan_exit(rule_id, spec) else "waiting_for_candle_close"
 
 
 def pause(state: GateState, at: datetime) -> GateState:
@@ -371,6 +511,15 @@ def dismiss(state: GateState, rule_id: str, record_id: int | None = None) -> Gat
     return state.with_rule(rule_id, replace(rule, record=replace(rule.record, dismissed=True)))
 
 
+def answered(state: GateState, rule_id: str, record_id: int | None = None) -> GateState:
+    """The rule's record was answered (acted on) or closed by the system: it is no longer an open record, so the rule
+    re-arms as before (cleared by the band + cool-down). ``record_id`` as ``dismiss``."""
+    rule = state.rule(rule_id)
+    if rule.record is None or (record_id is not None and rule.record.record_id != record_id):
+        return state
+    return state.with_rule(rule_id, replace(rule, record=replace(rule.record, final=True)))
+
+
 def _restored_level(spec: RuleSpec | None, threshold: Decimal | None) -> int:
     """The current ladder's level of a stored threshold: the most severe rung the stored one reaches; -1 when it is
     less severe than the current line (the stage moved on: a close beyond the current line is then worse)."""
@@ -394,8 +543,8 @@ def restore(rows: GateRows, today: date, specs: Mapping[str, RuleSpec]) -> GateS
         spec = specs.get(row.rule_id)
         rec = _Record(_restored_level(spec, row.threshold), row.threshold, _ist(row.at),
                       dismissed=row.dismissed, final=not row.open, unleveled=_unleveled(spec, row.threshold),
-                      record_id=row.id, ladder=_ladder_key(spec))
-        state = state.with_rule(row.rule_id, _Rule(record=rec))
+                      record_id=row.id, ladder=_ladder_key(spec), stopped=row.stopped and row.open)
+        state = state.with_rule(row.rule_id, _Rule(record=rec, cleared=rec.stopped))
     return state
 
 

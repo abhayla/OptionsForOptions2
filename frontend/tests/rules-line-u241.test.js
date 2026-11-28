@@ -25,7 +25,7 @@ const flag = (over = {}) => ({ kind: 'flag', rule_id: 'R-spot', trigger_id: 'T-0
   stop_text: null, fired_at: '2026-11-13T08:44:00Z', ...over })
 const notChecked = (over = {}) => ({ kind: 'not_checked', rule_id: 'R-iv', trigger_id: 'T-12', cmp: null, value: null, threshold: null,
   reason: 'No adjustment opportunity checked: prices stale or missing', wording: null, condition: null, stop_text: null, fired_at: null, ...over })
-const check = (results) => ({ strategy_id: 7, as_of: '2026-11-13T08:45:00Z', as_of_text: 'As of 02:15:00 PM IST', strategy_type: 'ic', type_name: 'Iron condor',
+const check = (results) => ({ strategy_id: 7, as_of: '2026-11-13T08:45:00Z', as_of_text: 'As of 14:15:00 IST', strategy_type: 'ic', type_name: 'Iron condor',
   playbook: { source: 'system', id: 1, status: null, draft: false }, stage: { name: null, index: null }, withheld: null, results, limits: [], paused: null })
 const earlier = (id, over = {}) => ({ id, rule_id: 'R-spot', trigger_id: 'T-01', condition: 'Spot distance from the short strike: 0.3482 % (rule 0.5000 %)',
   shown_at: '2026-11-13T08:20:00Z', outcome: 'lapsed', outcome_text: 'Lapsed: the rule is no longer true', ...over })
@@ -62,8 +62,8 @@ describe('the trade page rules line (issue 12)', () => {
   })
 
   it('fired once: a stop that already carries its own time (stop_text) shows that sentence and no second time', async () => {
-    const w = await panel([flag({ rule_id: 'R-stop', trigger_id: 'T-06', stop_text: 'Stop reached: loss now ₹1,234.00; reached at 12:58 IST' })])
-    expect(t(w, 'playbook-flag-stop').text()).toContain('reached at 12:58 IST')
+    const w = await panel([flag({ rule_id: 'R-stop', trigger_id: 'T-06', stop_text: 'Stop reached: loss now ₹1,234.00; seen by the check at 12:58 IST' })])
+    expect(t(w, 'playbook-flag-stop').text()).toContain('seen by the check at 12:58 IST')
     expect(t(w, 'playbook-flag-time').exists()).toBe(false)
   })
 

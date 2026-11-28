@@ -17,6 +17,7 @@ vi.mock('@/services/api', async (importActual) => {
   const respond = (method, url, body) => {
     calls.push({ method, url, body })
     const a = answers[`${method} ${url}`]
+    if (a === undefined && method === 'GET' && url === '/market/exit-state') return Promise.resolve({ data: { closed: false, sentence: null, next_open_at: null } }) // ADR-330 (60)
     if (a === undefined) return Promise.reject(new Error(`unmocked ${method} ${url}`))
     return typeof a === 'function' ? a(body) : Promise.resolve({ data: a })
   }
@@ -136,20 +137,23 @@ describe('Drafts Mode edits are pending paper orders until Confirm', () => {
     await flushPromises()
     const posts = calls.filter((c) => c.method === 'POST' && c.url === '/paper/strategies/63/orders')
     expect(posts).toHaveLength(1)
-    expect(posts[0].body).toEqual({ orders: [{ contract_id: 5576, side: 'BUY', quantity: 65, price: '0', kind: 'exit' }] }) // GC-ICGUIDE g21: the server prices an exit; the sent price is ignored
+    expect(posts[0].body).toEqual({ orders: [{ contract_id: 5576, side: 'BUY', quantity: 65, price: '0', kind: 'exit' }], client_request_id: expect.any(String) }) // GC-ICGUIDE g21: the server prices an exit; the sent price is ignored
     expect(got(PAPER)).toBe(2)
     expect(legCount(w)).toBe(3)
     expect(t(w, 'paper-pending-count').text()).toBe('0 pending changes')
   })
-  it('after hours (no live LTP): the exit row has no price box, says the server sets the price (last close, ADR-212) and Confirm is allowed', async () => {
-    answers[PAPER] = { ...BOOK, positions: BOOK.positions.map((p) => ({ ...p, price_state: 'closed', ltp: null, ltp_text: null })) }
+  it('after hours (no live LTP): the exit row has no price box, says the server sets the price (last close, ADR-212) and Confirm is blocked with the not-live sentence', async () => {
+    answers[PAPER] = { ...BOOK, state: 'PAUSED', positions: BOOK.positions.map((p) => ({ ...p, price_state: 'stale', ltp: null, ltp_text: null })) } // routes/paper.py:699-701: every open leg unpriced -> the book is PAUSED
     const w = await openBuilder()
     await removeLeg(w, '22700.00')
     await t(w, 'paper-review').trigger('click')
     await flushPromises()
     expect(w.find('[data-testid="paper-price"]').exists()).toBe(false)
     expect(t(w, 'paper-exit-price').text()).toContain('the server sets the exit price when you confirm')
-    expect(t(w, 'paper-confirm-button').attributes('disabled')).toBeUndefined()
+    // Lane U hotfix 27 Nov (A-H #209, ADR-322 (3), ADR-016..019): a leg with no live price is refused. After hours the server's display price is
+    // 'live' whenever a close is held (ADR-212, paper.display_price), so a leg that is not live here has no price at all: Confirm is off with the sentence.
+    expect(t(w, 'paper-confirm-button').attributes('disabled')).toBeDefined()
+    expect(t(w, 'paper-error').text()).toMatch(/^No price for NIFTY/) // Lane FJ r3 (TD O-3): the sentence names the contract
   })
 })
 
@@ -157,5 +161,16 @@ describe('Save / Save As / Add to Paper are not offered in Drafts Mode', () => {
   it('none of them is on the page while the net position is shown', async () => {
     const w = await openBuilder()
     for (const id of ['save-draft', 'add-to-paper', 'menu-save', 'save-as', 'menu-add-to-paper']) expect(t(w, id).exists(), id).toBe(false)
+  })
+})
+
+// ADR-330 (34), LR-Q16: the pending changes of a running trade are lost on a reload too, so the one reload line shows under the bar while any are pending.
+describe("ADR-330 (34): the reload line in Drafts Mode", () => {
+  it("0 pending changes: no line; 1 pending change: one line", async () => {
+    const w = await openBuilder()
+    expect(w.findAll('[data-testid="unsaved-reload-note"]')).toHaveLength(0)
+    await removeLeg(w, "22700.00")
+    expect(t(w, "paper-pending-count").text()).toBe("1 pending change")
+    expect(w.findAll('[data-testid="unsaved-reload-note"]')).toHaveLength(1)
   })
 })

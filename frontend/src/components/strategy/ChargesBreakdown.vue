@@ -10,7 +10,10 @@ import Modal from "@/components/common/Modal.vue";
 import { groupMoney } from "@/lib/displayFormat";
 
 defineProps({
-  breakdown: { type: Object, required: true }, // charges_breakdown as sent; the parent draws nothing when it is null
+  breakdown: { type: Object, default: null }, // charges_breakdown as sent (a plan); the parent draws nothing when both are null
+  // D-13/D-14 round 2 (ADR-306, ADR-263): in Drafts Mode the paper reply's own charges, as sent: { paid, toClose, total, sentence }.
+  // `total` is the reply's extremes_charges (what is inside Max Profit / Max Loss); null when those are before charges.
+  paper: { type: Object, default: null },
 });
 const open = ref(false);
 const ROWS = [
@@ -46,6 +49,22 @@ const ROWS = [
         class="min-w-0 break-words"
         data-testid="charges-panel"
       >
+        <template v-if="paper">
+          <p v-if="paper.total" class="text-lg font-semibold text-ink" data-testid="charges-total">Total Rs {{ groupMoney(paper.total) }}</p>
+          <dl class="mt-3 divide-y divide-line border-y border-line text-sm">
+            <div class="flex items-center justify-between gap-4 py-2" data-testid="charges-paper-paid">
+              <dt class="text-ink-muted">Charges paid</dt><dd class="tabular-nums">{{ paper.paid }}</dd>
+            </div>
+            <div v-if="paper.toClose" class="flex items-center justify-between gap-4 py-2" data-testid="charges-paper-close">
+              <dt class="text-ink-muted">Estimated cost to close</dt><dd class="tabular-nums">{{ paper.toClose }}</dd>
+            </div>
+          </dl>
+          <p v-if="paper.total" class="mt-3 text-xs text-ink-muted" data-testid="charges-paper-basis">
+            Charges paid and the estimated cost to close at the live price; Max Profit and Max Loss are after them.
+          </p>
+          <p v-if="paper.sentence" class="mt-1 text-xs text-ink-muted" data-testid="charges-paper-sentence">{{ paper.sentence }}</p>
+        </template>
+        <template v-else>
         <p
           class="text-lg font-semibold text-ink"
           data-testid="charges-total"
@@ -72,11 +91,12 @@ const ROWS = [
         <p class="mt-3 text-xs text-ink-muted">
           <span data-testid="charges-label">Charges and taxes ({{ breakdown.label }})</span>: entering and leaving every
           leg at its planned price. The payoff curves and the table are before
-          these charges.
+          these charges; Max Profit and Max Loss are after them.
         </p>
         <p class="text-xs text-ink-muted" data-testid="charges-rates-date">
           Rates read on {{ breakdown.rates_read_on }}
         </p>
+        </template>
       </section>
     </Modal>
   </div>

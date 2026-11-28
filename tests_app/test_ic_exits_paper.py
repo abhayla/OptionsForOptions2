@@ -44,6 +44,7 @@ async def setup(app_engine, monkeypatch, path: str = PATH) -> int:
     await app_engine.dispose()
     sid = await core.seed_mod.seed(path)
     core._reset_engine()
+    await core.give_plan(sid)
     return sid
 
 
@@ -103,6 +104,9 @@ async def booked(ac: AsyncClient, sid: int) -> D:
 
 async def run_exit(app_engine, monkeypatch, *, frame: int, rule: str, approach: str, all_legs: bool) -> tuple[D, D, int]:
     """One exit end to end; returns (history booked, sum of fills, legs the approach alone left open)."""
+    if approach in ("A-24", "A-25"):  # ADR-326 (1): Take profit needs charges (the conftest default is "no rate set")
+        import t19_support  # noqa: PLC0415
+        t19_support.seed_rates(monkeypatch)
     sid = await setup(app_engine, monkeypatch)
     try:
         await core._move(frame)

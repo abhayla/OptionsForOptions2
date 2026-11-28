@@ -2380,13 +2380,13 @@
    },
    "A-24": {
     "side": "both",
-    "refused": "The whole trade is not in profit with every open leg closed at its planned price, so this approach is not built.",
+    "refused": "This approach is not built because the whole trade would not be in profit with every open leg closed at its planned price.",
     "step_basis": null,
     "step_value": null
    },
    "A-25": {
     "side": "both",
-    "refused": "The whole trade is not in profit with every open leg closed at its planned price, so this approach is not built.",
+    "refused": "This approach is not built because the whole trade would not be in profit with every open leg closed at its planned price.",
     "step_basis": null,
     "step_value": null
    },
@@ -2404,7 +2404,7 @@
    },
    "A-35": {
     "side": "both",
-    "refused": "Your playbook sets no time exit, so this approach is not built.",
+    "refused": "This approach is not built because your playbook sets no exit time.",
     "step_basis": null,
     "step_value": null
    },

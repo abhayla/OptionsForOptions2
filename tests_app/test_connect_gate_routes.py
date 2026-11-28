@@ -39,7 +39,7 @@ async def test_execute_without_a_stored_session_asks_with_the_ac2_sentence(monke
     monkeypatch.setattr(execute_route.store, "load", _no_load)
     with pytest.raises(StrategyRefused) as err:
         await execute_route.execute_strategy(1, execute_route.ExecuteIn(action="ENTRY", revision=1), None, None,
-                                             lambda: NOW, _Db(), "owner", None)
+                                             lambda: NOW, _Db(), "owner", None, None)
     assert _what(err.value) == AC2_SENTENCE
 
 

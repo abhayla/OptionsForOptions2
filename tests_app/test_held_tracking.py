@@ -54,6 +54,9 @@ async def _seed_two(app_engine, monkeypatch) -> tuple[int, int, scenario_mode.Sc
         name = f"{bw.seed_mod.NAME_PREFIX}k{kind[0]}{run}"  # 20-character limit
         monkeypatch.setattr(bw.seed_mod, "strategy_name", lambda _s, n=name: n)
         ids.append(await bw.seed_mod.seed("ADJ-02"))
+        async with app_engine.begin() as conn:  # ADR-330 (11): only the strategy's own plan is watched
+            system = await pb.active_for(conn, "owner", "ic")
+            await pb.accept_plan(conn, "owner", ids[-1], system.id)
     paper, held = ids
     async with app_engine.connect() as conn:
         await held_entry_store.record(conn, held, PAST, None)
@@ -78,11 +81,20 @@ async def test_k12_the_settings_in_force_are_the_same_for_a_held_and_a_paper_con
 
     async def both():
         return [await adjustment_check.resolve(db, user, s.id, "ic") for s in (held, paper)]
-    a, b = await both()  # playbook defaults (ADR-264): the same system playbook
+    a, b = await both()  # ADR-330 (11): no plan of its own -> nothing is watched, for a held and a paper condor alike
+    assert (a.source, a.body, a.playbook_id) == (b.source, b.body, b.playbook_id) == ("none", None, None)
+    system = await pb.active_for(db, user, "ic")
+    for s in (held, paper):
+        await pb.accept_plan(db, user, s.id, system.id)  # the same plan sheet: "Use playbook as is"
+    a, b = await both()
     assert (a.source, a.body, a.playbook_id, a.is_system) == (b.source, b.body, b.playbook_id, b.is_system)
-    assert a.source == "system"
-    own = await pb.create(db, user, "ic", "My IC", _body(value="0.42"))  # the owner's override
+    assert a.source == "plan"
+    own = await pb.create(db, user, "ic", "My IC", _body(value="0.42"))  # the owner's playbook is only a source to copy
     await pb.make_active(db, user, own.id)
+    a, b = await both()
+    assert a.source == b.source == "plan" and a.playbook_id == b.playbook_id == system.id  # the plans did not change
+    await pb.accept_plan(db, user, held.id, own.id)
+    await pb.accept_plan(db, user, paper.id, own.id)
     a, b = await both()
     assert a.body == b.body and a.playbook_id == b.playbook_id == own.id and not a.is_system
     assert a.body["triggers"]["T-01"]["weekly"][0] == "0.42"
@@ -162,7 +174,8 @@ async def test_k13_no_open_strategy_no_check_and_exited_or_settled_leave_the_lis
     async with app_db_url.connect() as conn:
         rows = await paper_store.load(conn, held)
         exits = [paper_store.NewOrder(r.order.contract_id, "BUY" if r.order.side == "SELL" else "SELL",
-                                      r.order.quantity, D("1"), "exit", scn.clock_at) for r in rows]
+                                      r.order.quantity, D("1"), "settle", scn.clock_at) for r in rows]
+        # FD5 N1: a held (real) position takes no USER exit (ADR-330 (64)); the server's own close (settle) does
         await paper_store.place(conn, "owner", held, exits)
         await conn.commit()
     listed = await background.owner_lister(scn.provider)

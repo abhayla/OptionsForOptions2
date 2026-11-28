@@ -12,10 +12,12 @@ Asia/Kolkata (``database_today``), never the application's clock. Nothing here w
 from __future__ import annotations
 
 import datetime
+import logging
 from dataclasses import dataclass
 from decimal import Decimal
 from typing import Any
 
+from ofo.errors.explanations import ExplanationText, render_explanation
 from ofo.instruments.models import ZERODHA
 from ofo.settings import calc
 from ofo.timeutil import IST
@@ -24,6 +26,8 @@ from sqlalchemy import text
 from ofo_app.pinned_clock import pinned_today
 from ofo_app.settings_store import settings_in_force
 from ofo_app.sql_time import IST_SQL_ZONE
+
+log = logging.getLogger(__name__)
 
 CONTRACTS = "public.catalogue_contracts"
 BROKER_ROWS = "public.broker_instruments"
@@ -87,6 +91,58 @@ async def list_is_current(conn: Any, today: datetime.date) -> bool:
     return not loaded_before(loaded_at, await judging_instant(conn, today), await publish_time(conn))
 
 
+LOAD_GRACE = datetime.timedelta(minutes=5)  # ADR-330 (61): today's list loads "about" this long after the publish time
+
+
+def list_notice(list_day: datetime.date | None, current: bool, publish: datetime.time) -> ExplanationText | None:
+    """ADR-330 (61): the ONE line said while an earlier day's list is in use, from the catalogue (template
+    ``contract_list_earlier``, "pending owner read"): "Contract list of <date>. Today's list loads at about <hh:mm>."
+    (the publish time + 5 minutes). None when today's list is in use or none is loaded."""
+    if list_day is None or current:
+        return None
+    about = datetime.datetime.combine(list_day, publish, tzinfo=IST) + LOAD_GRACE
+    return render_explanation("contract_list_earlier", day=list_day, time=about)
+
+
+@dataclass(frozen=True)
+class ListStatus:
+    """What the picker knows about its list: the India date of the latest load (None = never loaded), whether that
+    load is at or after the current session's publish time (today's list), and the notice line while it is not."""
+    list_day: datetime.date | None
+    current: bool
+    notice: ExplanationText | None = None
+
+
+async def list_status(conn: Any, today: datetime.date) -> ListStatus:
+    loaded_at = (await conn.execute(LOADED_AT, {"broker": ZERODHA})).scalar_one()
+    if loaded_at is None:
+        return ListStatus(None, False)
+    now = await judging_instant(conn, today)
+    publish = await publish_time(conn)
+    day, current = loaded_at.astimezone(IST).date(), not loaded_before(loaded_at, now, publish)
+    return ListStatus(day, current, list_notice(day, current, publish))
+
+
+_noted: set[tuple[datetime.date, datetime.date]] = set()
+
+
+async def usable_list(conn: Any, today: datetime.date) -> bool:
+    """The ONE gate of every picker read (expiries, strikes, chain, leg names, the paper book's leg mapping): the latest
+    list is used when any list is loaded; with none (a fresh install) nothing is offered (fail closed). A list from an
+    earlier session stays in use until today's has loaded (the 08:30 publish time passes while the process runs, and
+    yesterday's contracts that have not expired are still the live ones), but it is SAID: one log line per list day and
+    day (ADR-016..019: no silent substitution) and ``ExpiriesOut.list_current``. The add-time eligibility check and the
+    execution gate keep refusing such a list (``list_is_current``, ``loaded_before``)."""
+    status = await list_status(conn, today)
+    if status.list_day is None:
+        return False
+    if not status.current and (status.list_day, today) not in _noted:
+        _noted.add((status.list_day, today))
+        log.warning("instrument list not loaded for %s: the list of %s stays in use until today's loads",
+                    today, status.list_day)
+    return True
+
+
 _PICKABLE = (
     f"FROM {CONTRACTS} AS c JOIN {BROKER_ROWS} AS b ON b.contract_id = c.id AND b.broker = :broker "
     f"WHERE c.name = :underlying AND NOT c.retired AND NOT c.delisted AND c.currently_listed "
@@ -124,9 +180,10 @@ async def database_today(conn: Any) -> datetime.date:
 
 
 async def pickable_expiries(conn: Any, underlying: str, today: datetime.date) -> list[datetime.date]:
-    """Expiry dates (ascending) that hold at least one pickable contract of ``underlying``; none from a list that was
-    not loaded in the current session (unconfirmed)."""
-    if not await list_is_current(conn, today):
+    """Expiry dates (ascending) that hold at least one pickable contract of ``underlying``; none when no list is
+    loaded at all; an
+    earlier session's list stays in use until today's loads (``usable_list``)."""
+    if not await usable_list(conn, today):
         return []
     rows = await conn.execute(_EXPIRIES, {"broker": ZERODHA, "underlying": underlying, "today": today})
     return [r.expiry for r in rows.all()]
@@ -135,9 +192,9 @@ async def pickable_expiries(conn: Any, underlying: str, today: datetime.date) ->
 async def pickable_contracts(conn: Any, underlying: str, today: datetime.date,
                              expiry: datetime.date | None = None) -> list[PickableContract]:
     """Pickable contracts of ``underlying`` ordered by expiry, strike, type; one expiry when ``expiry`` is given
-    (a past or unknown expiry gives an empty list); none from a list that was not loaded in the current session
-    (unconfirmed)."""
-    if not await list_is_current(conn, today):
+    (a past or unknown expiry gives an empty list); none when no list is loaded at all; an earlier
+    session's list stays in use until today's loads (``usable_list``)."""
+    if not await usable_list(conn, today):
         return []
     rows = await conn.execute(_CONTRACTS, {"broker": ZERODHA, "underlying": underlying, "today": today,
                                            "expiry": expiry})

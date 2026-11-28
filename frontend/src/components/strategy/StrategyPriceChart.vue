@@ -65,10 +65,12 @@ function drop() {
   if (chart) { chart.destroy(); chart = null }
 }
 
+// Lane FK: draw() runs after an await; once the card is removed or the DOM is gone it builds nothing
+let gone = false
 function draw() {
   drop()
   const r = reply.value
-  if (!r || reason.value || !canvas.value) return
+  if (gone || typeof document === 'undefined' || !r || reason.value || !canvas.value) return
   const ctx = canvas.value.getContext?.('2d') ?? null
   const { strategy, future } = seriesOf(r.points)
   const accent = token('--color-accent') || '#1d4ed8'
@@ -147,5 +149,8 @@ watch(() => [props.strategyId, props.version], () => {
 })
 watch(() => [props.strategyId, props.version, props.active, invert.value], load, { immediate: true })
 watch(reply, async () => { await nextTick(); draw() })
-onBeforeUnmount(drop)
+onBeforeUnmount(() => {
+  gone = true
+  drop()
+})
 </script>

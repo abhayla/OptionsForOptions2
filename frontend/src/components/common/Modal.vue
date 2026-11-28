@@ -27,7 +27,9 @@ watch(
     if (isOpen) {
       returnTo = document.activeElement;
       await nextTick();
-      dialog.value?.focus();
+      // a field marked data-autofocus takes focus (typing works at once); otherwise the frame does
+      const first = dialog.value?.querySelector('[data-autofocus]');
+      (first ?? dialog.value)?.focus();
     } else {
       const visible = returnTo && returnTo.isConnected && (returnTo.offsetParent !== null || returnTo.getClientRects().length > 0);
       const target = visible ? returnTo : props.fallbackFocus ? document.querySelector(props.fallbackFocus) : returnTo;
@@ -51,7 +53,7 @@ function onKey(e) {
   <Teleport to="body" :disabled="!teleportOn">
     <div
       v-if="open"
-      class="fixed inset-0 z-50 flex items-center justify-center p-4"
+      class="fixed inset-0 z-[60] flex items-center justify-center p-4"
       data-testid="modal-root"
       v-bind="$attrs"
       @keydown="onKey"

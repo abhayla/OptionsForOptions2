@@ -188,7 +188,7 @@ def test_ac5_a_saved_draft_on_a_contract_that_has_since_expired_still_loads_exac
     ([sf.LegChoice(105, Action.SELL, LOT)], _resolve(), sf.CONTRACT_NOT_IN_CATALOGUE),
     ([sf.LegChoice(101, Action.SELL, LOT)], _resolve(live=False), sf.CONTRACT_NOT_LIVE),
     ([sf.LegChoice(101, Action.SELL, 64)], _resolve(), sf.QUANTITY_NOT_LOT_MULTIPLE),
-    ([sf.LegChoice(101, Action.SELL, LOT), sf.LegChoice(101, Action.BUY, LOT)], _resolve(), sf.INVALID_DEFINITION),
+    ([sf.LegChoice(101, Action.SELL, LOT), sf.LegChoice(101, Action.BUY, LOT)], _resolve(), sf.DUPLICATE_LEG),
 ])
 def test_ac5_save_draft_takes_terms_only_from_live_catalogue_contracts(choices, resolve, code):
     with pytest.raises(sf.StoredFormError) as err:
@@ -345,7 +345,7 @@ def test_req134_ac1_a_name_with_a_visible_character_stays_accepted(typed, stored
 def test_req134_ac1_the_empty_message_is_the_catalogues_not_an_ad_hoc_string():
     from ofo.errors import render  # noqa: PLC0415
 
-    assert render("strategy_name_empty").what_happened == "The strategy has no name."
+    assert render("strategy_name_empty").what_happened == "Give the strategy a name."
 
 
 def test_req134_a_name_cannot_be_minted_outside_the_request_layer():

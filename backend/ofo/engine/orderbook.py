@@ -31,7 +31,7 @@ from __future__ import annotations
 
 import datetime
 from collections.abc import Mapping, Sequence
-from dataclasses import dataclass
+from dataclasses import dataclass, replace
 from decimal import Decimal
 from fractions import Fraction
 from typing import Literal
@@ -188,3 +188,112 @@ def net_positions(orders: Sequence[PaperOrder], live_prices: Mapping[str, Decima
     total = sum((p.total for p in positions if p.total is not None), Decimal(0))
     booked = _decimal(booked_f)
     return BookView(positions, booked, total - booked, total, cash)
+
+
+@dataclass(frozen=True)
+class ClosedLeg:
+    """One closed lifecycle of a contract (open -> flat): its own entry, exit and booked P&L (D-10, ADR-207 (2))."""
+    instrument_id: str
+    side: Side  # the side that opened it: SELL = a short that was bought back
+    quantity: int  # units opened (and closed)
+    average_entry: Decimal
+    average_exit: Decimal  # 0 for a settled out-of-the-money option
+    booked: Decimal
+    opened_at: datetime.datetime
+    closed_at: datetime.datetime
+    exit_fills: int = 1  # how many exit orders the average exit is over (N-28, ADR-330 (27))
+
+
+@dataclass(frozen=True)
+class LifecycleView:
+    """``net_positions`` split at every flat point. ``positions``: one row per contract, its LAST lifecycle (open, or
+    flat when closed), booked from that lifecycle only; ``closed``: every closed lifecycle, in the order they closed.
+    Booked over ``closed`` and the open ``positions`` equals ``booked``; each contract's lifecycles add up to the
+    contract's booked in ``net_positions`` exactly."""
+    positions: tuple[NetPosition, ...]
+    closed: tuple[ClosedLeg, ...]
+    booked: Decimal
+    unbooked: Decimal | None
+    total: Decimal | None
+    cash: Decimal
+
+
+class _Life(_Running):
+    __slots__ = ("entry_cost", "entry_qty", "exit_fills", "exit_proceeds", "exit_qty")
+
+    def __init__(self, first: PaperOrder) -> None:
+        super().__init__(first)
+        self.entry_qty = 0
+        self.entry_cost = Fraction(0)
+        self.exit_qty = 0
+        self.exit_fills = 0
+        self.exit_proceeds = Fraction(0)
+
+    def take(self, order: PaperOrder, quantity: int) -> int:
+        """Apply ``quantity`` units of ``order``; returns the units left over once the lifecycle is flat."""
+        price = Fraction(order.price)
+        signed = quantity if order.side == "BUY" else -quantity
+        if self.net == 0 or (self.net > 0) == (signed > 0):
+            self.net += signed
+            self.cost += price * quantity
+            self.entry_qty += quantity
+            self.entry_cost += price * quantity
+            rest = 0
+        else:
+            closing = min(quantity, abs(self.net))
+            average = self.cost / abs(self.net)
+            self.booked += (price - average) * closing if self.net > 0 else (average - price) * closing
+            self.cost -= average * closing
+            self.net += closing if self.net < 0 else -closing
+            self.exit_qty += closing
+            self.exit_fills += 1
+            self.exit_proceeds += price * closing
+            rest = quantity - closing
+        self.last = order
+        return rest
+
+    def closed_leg(self) -> ClosedLeg:
+        return ClosedLeg(self.first.instrument_id, self.first.side, self.entry_qty,
+                         _decimal(self.entry_cost / self.entry_qty), _decimal(self.exit_proceeds / self.exit_qty),
+                         _decimal(self.booked), self.first.placed_at, self.last.placed_at, max(self.exit_fills, 1))
+
+
+def lifecycles(orders: Sequence[PaperOrder], live_prices: Mapping[str, Decimal]) -> LifecycleView:
+    """``net_positions`` with each contract's history split into lifecycles (open -> flat), D-10. The totals are
+    ``net_positions``' own (this reads the same orders with the same arithmetic); only who carries which booked differs:
+    a closed lifecycle keeps its booked, entry and exit; a reopening of the contract starts at booked 0."""
+    if not orders:
+        raise ValueError("a paper order book needs at least one order")
+    current: dict[str, _Life] = {}
+    done: list[tuple[int, _Life]] = []  # (sequence, lifecycle), in the order they closed
+    prior: dict[str, list[_Life]] = {}
+    for n, order in enumerate(orders):
+        life = current.get(order.instrument_id) or current.setdefault(order.instrument_id, _Life(order))
+        rest = life.take(order, order.quantity)
+        while life.net == 0:  # flat: retire it; a reversal's rest opens the next lifecycle
+            done.append((n, life))
+            prior.setdefault(order.instrument_id, []).append(life)
+            del current[order.instrument_id]
+            if not rest:
+                break
+            life = current.setdefault(order.instrument_id, _Life(order))
+            rest = life.take(order, rest)
+    first_seen = list(dict.fromkeys(o.instrument_id for o in orders))
+    base = net_positions(orders, live_prices)  # the contract totals the lifecycles must add up to
+    totals = {p.instrument_id: p for p in base.positions}
+    positions: list[NetPosition] = []
+    fixed: dict[int, Decimal] = {}  # a CLOSED last lifecycle's booked, when the rounding remainder lands on it
+    for iid in first_seen:
+        last = current.get(iid) or prior[iid][-1]
+        row = last.position(live_prices.get(iid))
+        others = sum((_decimal(x.booked) for x in prior.get(iid, []) if x is not last), Decimal(0))
+        mine = totals[iid].booked - others  # the last lifecycle takes any rounding left in the contract's total
+        if mine != row.booked:
+            row = replace(row, booked=mine, unbooked=None if row.total is None else row.total - mine
+                          if row.net_quantity else Decimal(0), total=mine if row.net_quantity == 0 else row.total)
+        if mine != _decimal(last.booked) and last not in current.values():
+            fixed[id(last)] = mine
+        positions.append(row)
+    closed = tuple(replace(leg, booked=fixed[id(life)]) if id(life) in fixed else leg
+                   for leg, life in ((life.closed_leg(), life) for _, life in done))
+    return LifecycleView(tuple(positions), closed, base.booked, base.unbooked, base.total, base.cash)

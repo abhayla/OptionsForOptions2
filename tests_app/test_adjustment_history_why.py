@@ -54,15 +54,18 @@ async def _book(engine, sid: int) -> list:
         return list(await paper_book.load_owned(conn, "owner", sid))
 
 
-async def _add_one(engine, sid: int) -> dict:
-    """One 'add' order on the first open contract: same side, one lot, its own entry price (always a valid tick)."""
+async def _add_one(engine, sid: int, *, reduce: bool = False) -> dict:
+    """One 'add' order on the first open contract: same side, one lot, its own entry price (always a valid tick).
+    ``reduce``: one 'exit' order instead, the opposite side of the same leg (a reducing basket, ADR-318 (5))."""
     first = (await _book(engine, sid))[0].order
-    return {"contract_id": first.contract_id, "side": first.side, "quantity": first.quantity,
-            "price": str(first.price), "kind": "add"}
+    side = ({"BUY": "SELL", "SELL": "BUY"}[first.side]) if reduce else first.side
+    return {"contract_id": first.contract_id, "side": side, "quantity": first.quantity,
+            "price": str(first.price), "kind": "exit" if reduce else "add"}
 
 
-async def _place(engine, sid: int, suggestion_ids: list | None, user: str | None = None) -> tuple[int, dict]:
-    body: dict = {"orders": [await _add_one(engine, sid)]}
+async def _place(engine, sid: int, suggestion_ids: list | None, user: str | None = None, *,
+                 reduce: bool = False) -> tuple[int, dict]:
+    body: dict = {"orders": [await _add_one(engine, sid, reduce=reduce)]}
     if suggestion_ids is not None:
         body["suggestion_ids"] = suggestion_ids
     return await _call("POST", f"/paper/strategies/{sid}/orders", body, user=user, overrides=ORDERS_ON)
@@ -101,13 +104,12 @@ async def _refused(engine, sid: int, ids: list[int], expected: int, user: str | 
 
 
 async def test_an_adjustment_from_a_suggestion_names_its_rule_and_every_bad_link_is_refused(app_db_url, monkeypatch):
-    sid = await _clean(app_db_url, await _seeded(app_db_url, monkeypatch, "ADJ-02"))
+    sid = await _clean(app_db_url, await _seeded(app_db_url, monkeypatch, "ADJ-02"))  # with a plan (ADR-330 (11))
     await _opened(app_db_url, sid)
-    # refused before any link: a record still open (not acted on), another user's placement, a missing record
-    t01 = await _record(app_db_url, sid, "T-01")
-    await _refused(app_db_url, sid, [t01.id], CONFLICT)
+    # refused before any link: another user's placement, a missing record. (A record still open is no longer refused:
+    # the accepted paper order stamps it acted on, item 10 of the 27 Nov 2026 live test; see test_acted_on_at_place.py.)
     t03 = await _acted(app_db_url, sid, "T-03")
-    assert (await _refused(app_db_url, sid, [987654321], NOT_FOUND))["what_happened"] == NOT_FOUND_TEXT
+    # a missing record is skipped, never a refusal (test_acted_on_at_place.py)
     # another user: scenario_guard.guard_paper_order refuses first (IC e2e decisions 3-5: "no such strategy for this
     # user -> refused", 409 scenario_no_orders) before the endpoint's own 404 can run
     assert (await _refused(app_db_url, sid, [t03.id], CONFLICT, user="someone-else"))["code"] == "USER_INPUT_026"
@@ -124,20 +126,30 @@ async def test_an_adjustment_from_a_suggestion_names_its_rule_and_every_bad_link
     assert last["why_text"] == EXPECTED_T03 == await _inbox_condition(sid, t03.id) and last["why_lines"] == []
     assert (rows[0]["step"], rows[0]["why_text"], rows[0]["rule_id"], rows[0]["rule_ids"]) == ("entry", OWN, None, [])
 
-    # one basket answers a record once: linking it again is refused
-    await _refused(app_db_url, sid, [t03.id], CONFLICT)
+    # one basket answers a record once: naming it again never blocks the placement (a record's state never refuses an
+    # order) and leaves its first link as it was
+    status, out = await _place(app_db_url, sid, [t03.id])
+    assert status == CREATED, out
+    assert (await _record(app_db_url, sid, "T-03")).placed_order_ids == (new_id,)
     # a basket with no link: "Your own change"; the linked row keeps its rule
-    status, out = await _place(app_db_url, sid, None)
+    # FD3 item 6: this is already the THIRD basket after the entry, over the fixture plan's maximum of 2 (ADR-318
+    # (5)): only a reducing basket is accepted (an "add" is refused STRATEGY_VALIDATION_505), so it reduces (the test
+    # was out of step)
+    status, out = await _place(app_db_url, sid, None, reduce=True)
     assert status == CREATED, out
     rows = (await _history(sid))["rows"]
     assert (rows[-1]["why_text"], rows[-1]["rule_id"], rows[-1]["rule_ids"]) == (OWN, None, [])
-    assert rows[-2]["rule_id"] == "T-03" and rows[-2]["why_text"] == EXPECTED_T03
+    # the linked row keeps its rule: it is the first basket after the entry (the repeat naming it again linked nothing)
+    assert rows[1]["rule_id"] == "T-03" and rows[1]["why_text"] == EXPECTED_T03
 
     # review of c128d015 (MAJOR): ONE basket for TWO acted-on records names BOTH (count line + each condition, in rule
     # order whatever order the ids were sent in), never only the last record read
     t01 = await _acted(app_db_url, sid, "T-01")
     t09 = await _acted(app_db_url, sid, "T-09")
-    status, out = await _place(app_db_url, sid, [t09.id, t01.id])
+    # ADR-318 (5): this is the THIRD basket after the entry, over the fixture plan's maximum of 2, so the server accepts
+    # only a basket that reduces (kind exit); an "add" here is refused STRATEGY_VALIDATION_505. The test is about the
+    # why text, which a reducing basket carries the same way.
+    status, out = await _place(app_db_url, sid, [t09.id, t01.id], reduce=True)
     assert status == CREATED, out
     both_id = (await _book(app_db_url, sid))[-1].id
     for rule in ("T-01", "T-09"):
@@ -147,12 +159,12 @@ async def test_an_adjustment_from_a_suggestion_names_its_rule_and_every_bad_link
     assert rows[-1]["why_text"] == "2 adjustment conditions triggered"
     lines = [await _inbox_condition(sid, t01.id), await _inbox_condition(sid, t09.id)]
     assert rows[-1]["why_lines"] == lines and lines[0] != lines[1]
-    assert rows[-3]["rule_id"] == "T-03" and rows[-3]["why_text"] == EXPECTED_T03  # the one-record row is unchanged
+    assert rows[1]["rule_id"] == "T-03" and rows[1]["why_text"] == EXPECTED_T03  # the one-record row is unchanged
 
     # a record of ANOTHER strategy (same user) is not found for this one, and the refusal names no new basket
     other = await _seeded(app_db_url, monkeypatch, "ADJ-13")
     assert other != sid
-    assert (await _refused(app_db_url, other, [t09.id], NOT_FOUND))["what_happened"] == NOT_FOUND_TEXT
+    # another strategy's id never links (skipped)
     assert (await _record(app_db_url, sid, "T-09")).placed_order_ids == (both_id,)
 
 

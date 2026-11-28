@@ -55,7 +55,7 @@ async def test_core_delete_hides_and_keeps_history(app_engine):
             assert await store.list_strategies(conn, user) == []
             raw = (await conn.execute(RAW_ROW, {"id": stored.id})).one()
             assert raw.deleted_at is not None
-            assert len(await _history_rows(conn, stored.id)) == 1
+            assert len(await _history_rows(conn, stored.id)) == EDITS - 1 + 1  # edit + delete (ADR-330 (31))
             back = await store.undelete_draft(conn, user, stored.id, expected_revision=edited.revision)
             assert (back.id, back.revision, back.updated_at) == before
             assert [s.id for s in await store.list_strategies(conn, user)] == [stored.id]
@@ -155,7 +155,7 @@ async def test_delete_over_the_api_hides_from_every_reader_and_keeps_the_rows(ap
                     assert err.value.code == plans.NOT_FOUND
                 count = text("SELECT count(*) FROM public.execution_plans WHERE strategy_id = :id")
                 assert (await conn.execute(count, {"id": first.id})).scalar_one() == 0
-                assert len(await _history_rows(conn, first.id)) == EDITS
+                assert len(await _history_rows(conn, first.id)) == EDITS + 1  # + the delete entry (ADR-330 (31))
                 assert await store.list_strategies(conn, user) == []  # reconcile_attribution reads this list
                 back = await ac.post(f"/strategies/{first.id}/undelete", params={"expected_revision": revision})
                 assert (back.status_code, back.json()["id"]) == (200, first.id), back.text
@@ -430,6 +430,7 @@ async def test_a_strategy_with_only_paper_orders_is_deleted_and_undone(app_engin
 
 
 SENT_TEXT = "Orders were already sent for this strategy, so it cannot be deleted."
+HELD_TEXT = "This strategy is marked as held at your broker, so it cannot be deleted."
 
 
 async def test_a_strategy_with_practice_orders_and_a_plan_row_is_refused(app_engine):
@@ -446,7 +447,7 @@ async def test_a_strategy_with_practice_orders_and_a_plan_row_is_refused(app_eng
         assert (await tx.conn.execute(RAW_ROW, {"id": tx.strategy_id})).one().deleted_at is None
 
 
-async def test_a_condor_held_at_the_broker_is_refused_with_the_sent_orders_sentence(app_engine):
+async def test_a_condor_held_at_the_broker_is_refused_with_the_held_sentence(app_engine):
     """ADR-292: a held entry is a REAL position stored as practice orders; it is never deletable."""
     async with _Tx(app_engine) as tx:
         await _paper_order(tx.conn, tx.strategy_id)
@@ -457,7 +458,7 @@ async def test_a_condor_held_at_the_broker_is_refused_with_the_sent_orders_sente
             assert [s["can_delete"] for s in (await ac.get("/strategies")).json()["strategies"]] == [False]
             refused = await ac.delete(f"/strategies/{tx.strategy_id}", params={"expected_revision": revision})
             assert refused.status_code == HTTPStatus.CONFLICT
-            assert refused.json()["what_happened"] == SENT_TEXT
+            assert refused.json()["what_happened"] == HELD_TEXT
         assert (await tx.conn.execute(RAW_ROW, {"id": tx.strategy_id})).one().deleted_at is None
 
 

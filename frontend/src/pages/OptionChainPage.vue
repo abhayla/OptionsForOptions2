@@ -4,12 +4,12 @@
   persists across expiries (AC-10). The W-118 text follows; its "no selection" now holds only for REQ-029 itself.
   W-118: the Option Chain, display only. Calls | Strike | Puts for a chosen underlying and
   expiry, from the server's chain socket. Every value is shown as the server gave it (a string); the ATM row is the
-  server's `atm_strike`; Change shows "-" (the feed carries no previous close, F-47). No order placement, selection or
+  server's `atm_strike`; Change and OI Change are the feed's values or say "not available" (D-55). No order placement, selection or
   import here (REQ-029 AC-6; REQ-030 is a later item). Adapted for layout only from abhayla/algochanakya@bf9faf7
   frontend/src/views/OptionChainView.vue (legacy-reuse row 144: no local ATM fallback, strike logic in the backend).
   Row 33 (REQ-029 AC-2/AC-3/AC-9): IV is a default column and a Details toggle adds Bid, Ask, OI Change and the Greeks,
   the same for every user (ADR-168: no UX level); all are the server's engine strings (ADR-008). The filters (strike
-  range sent to the server; ITM/ATM/OTM, OI, volume, premium and bid-and-ask over the rows it sent) only hide rows:
+  range sent to the server, Min OI / volume / premium re-sent as typed (D-55); ITM/ATM/OTM, OI, volume, premium and bid-and-ask over the rows it sent) only hide rows:
   never a number, never the selection (lib/chainDisplay.js). -->
 <script setup>
 import PageHeader from '@/components/common/PageHeader.vue'
@@ -19,19 +19,17 @@ import { ACTIONS, contractOf, useChainSelection } from '@/stores/chainSelection'
 import { UNAVAILABLE_LABEL, isPermitted, reasonLine } from '@/lib/chainUnavailable'
 import { UNDERLYINGS } from '@/lib/underlyings'
 import api from '@/services/api'
-import { healthSentence, missingCode, missingReason, shownHealth } from '@/lib/dataHealthText'
-import { setShownDate, strikeLabel } from '@/lib/displayFormat'
+import { WAITING_FIRST_PRICE_TEXT, healthSentence, isWaitingCell, missingCode, missingReason, shownHealth } from '@/lib/dataHealthText'
+import { contractName as legName, daysByExpiry, expiryWithDays, istClock, istStamp, setShownDate, strikeLabel } from '@/lib/displayFormat'
 import MarketClosedBanner from '@/components/states/MarketClosedBanner.vue'
+import LeaveBuilderDialog from '@/components/strategy/LeaveBuilderDialog.vue'
+import { useLeaveBuilder } from '@/composables/useLeaveBuilder'
 import { useSettingsValues } from '@/stores/settingsValues'
+import { RETRY_LABEL } from '@/lib/sharedStateText'
+import { CHAIN_ADD_NO_ACTION, CHAIN_ADD_NOTHING_TICKED, CHAIN_EXPIRIES_UNREADABLE_TEXT, CHAIN_NO_STRIKES_MATCH_TEXT, CHAIN_ROWS_MISSING_TEXTS, CHAIN_SPOT_MISSING_ROWS_KEPT_TEXT, CHAIN_WAITING_TEXT } from '@/lib/sharedStateText'
 import { strikeRangesOf } from '@/lib/settingsValues'
-import { NOT_LIVE_LABEL, VALUE_UNAVAILABLE, chainRequest, daysLeft, useChainAnswer } from '@/composables/useChainLive'
-import { GREEKS_BASIS_LINES, GREEKS_MISSING_LINES, MONEYNESS, NO_FILTERS, anyServerFilter, fieldsFor, filterParams, filterRows, greeksStaleLabel } from '@/lib/chainDisplay'
-const ROWS_MISSING_LABELS = {
-  SPOT_MISSING: 'The underlying price is missing, so no strikes can be chosen yet.',
-  EXPIRY_UNKNOWN: 'This expiry is not in the catalogue.',
-  CATALOGUE_EMPTY: 'The catalogue lists no options for this expiry.',
-  CATALOGUE_UNREADABLE: 'The catalogue could not be read.',
-}
+import { NOT_LIVE_LABEL, VALUE_UNAVAILABLE, chainRequest, useChainAnswer } from '@/composables/useChainLive'
+import { CHAIN_NOT_AVAILABLE, FEED_VALUE_KEYS, GREEKS_BASIS_LINES, GREEKS_MISSING_LINES, MONEYNESS, NO_FILTERS, anyServerFilter, fieldsFor, filterParams, onExpiryDay, filterRows, greeksStaleLabel } from '@/lib/chainDisplay'
 
 const UNDO_SECONDS_KEY = 'other.undo_one_leg_seconds' // how long the short Undo (REQ-030 AC-15) stays offered (REQ-167 AC-7)
 const STRIKES_KEY = 'limits.chain_strikes_each_side'
@@ -42,10 +40,12 @@ const props = defineProps({ initialUnderlying: { type: String, default: 'NIFTY' 
 const underlying = ref(props.initialUnderlying)
 const expiries = ref([])
 const expiry = ref('')
+const expiryDays = ref({}) // the server's days left per expiry (REQ-135 AC-2); the browser counts nothing for the label
+const shownToday = ref(null)
 const catalogueFailed = ref(false)
 let expirySeq = 0 // the newest expiry read wins
 
-const { answer, status, reconnecting, reconnectingText, request, follow, clear, refresh, shown, notLive } = useChainAnswer()
+const { answer, status, reconnecting, reconnectingText, request, follow, refilter, clear, refresh, shown, notLive } = useChainAnswer()
 const details = ref(false) // REQ-029 AC-3: off = AC-2's default columns
 const limits = useSettingsValues()
 const maxEachSide = computed(() => limits.integer(STRIKES_KEY)) // null until GET /api/settings answers: the loading state
@@ -54,17 +54,22 @@ const strikeRanges = computed(() => (maxEachSide.value === null ? [] : strikeRan
 watch(maxEachSide, (max) => { if (max !== null && strikesEachSide.value === null) strikesEachSide.value = max }, { immediate: true })
 const ask = (exp) => follow(chainRequest(underlying.value, exp, strikesEachSide.value, maxEachSide.value, filterParams(filters.value)))
 const filters = ref({ ...NO_FILTERS })
-const SIDE_FIELDS = computed(() => fieldsFor(details.value))
+const SIDE_FIELDS = computed(() => onExpiryDay(fieldsFor(details.value), view.value)) // D-12: Theta's place on expiry day
 
+const listNotice = ref(null)
 async function loadExpiries() {
   const mine = ++expirySeq
   expiries.value = []
   expiry.value = ''
   catalogueFailed.value = false
+  listNotice.value = null
   try {
     const res = await api.get(`/catalogue/${underlying.value}/expiries`)
     if (mine !== expirySeq) return
     expiries.value = [...res.data.expiries].sort()
+    shownToday.value = res.data.today ?? null
+    listNotice.value = typeof res.data.list_notice === 'string' && res.data.list_notice.trim() ? res.data.list_notice.trim() : null // ADR-330 (61): the server's line, as sent
+    expiryDays.value = daysByExpiry(res.data.expiry_days)
     setShownDate(res.data.today)
     expiry.value = expiries.value[0] ?? ''
     if (!expiry.value) catalogueFailed.value = true
@@ -86,11 +91,24 @@ watch(expiry, (value) => {
 }, { flush: 'sync' })
 // The strike range and the numeric filters are request fields (the server applies them, ADR-008): a change re-asks.
 const serverKey = computed(() => JSON.stringify([strikesEachSide.value, filterParams(filters.value)]))
+// D-55 round 2: typing is sent once, FILTER_PAUSE_MS after the last key (a technical choice), and the rows stay on screen meanwhile
+const FILTER_PAUSE_MS = 300
+let filterTimer = null
 watch(serverKey, () => {
-  if (expiry.value && strikesEachSide.value !== null) ask(expiry.value)
+  clearTimeout(filterTimer)
+  if (request.value === null) { // nothing followed yet (the range just loaded): ask at once, no pause
+    if (expiry.value && strikesEachSide.value !== null) ask(expiry.value)
+    return
+  }
+  filterTimer = setTimeout(() => {
+    if (expiry.value && strikesEachSide.value !== null) refilter(chainRequest(underlying.value, expiry.value, strikesEachSide.value, maxEachSide.value, filterParams(filters.value)))
+  }, FILTER_PAUSE_MS)
 })
+onBeforeUnmount(() => clearTimeout(filterTimer))
 
 const router = useRouter()
+// ADR-329 (2): the builder's legs held for this trip are still the builder's; leaving the chain for any page but the builder asks first
+const leaveGuard = useLeaveBuilder({ role: 'chain' })
 const selection = useChainSelection()
 const legs = computed(() => selection.legsOf(underlying.value))
 const pending = computed(() => selection.pendingOf(underlying.value))
@@ -107,11 +125,16 @@ const isChosen = (cell, action) => entriesOf(cell).some((e) => e.action === acti
 const tick = (row, type) => selection.toggleContract(contractFor(row, type))
 const choose = (row, type, action) => selection.chooseAction(contractFor(row, type), action)
 const canAdd = computed(() => legs.value.length > 0 && pending.value.length === 0)
-const contractName = (e) => `${e.underlying} ${e.expiry} ${e.strike} ${e.type}`
+// ADR-328 (4), T-Q8: a blocked control looks blocked and says why. Nothing ticked: the button is there, dimmed, with its reason.
+// One reason, the first blocking cause in order: nothing ticked, then a ticked contract without Buy or Sell (U-Q12).
+const addReason = computed(() => (!picked.value.length ? CHAIN_ADD_NOTHING_TICKED : pending.value.length ? CHAIN_ADD_NO_ACTION : ''))
+// One module names a contract (lib/displayFormat.js), the builder's own name: 'NIFTY 1 Dec 25150 CE' (REQ-148 AC-2).
+const contractName = (e) => legName({ ...e, instrument_type: e.type })
 
+let entrySeq = 0
 function openBuilder() {
   askExpiries.value = false
-  router?.push({ name: BUILDER_ROUTE, query: { draft: JSON.stringify(selection.draftOf(underlying.value)) } })
+  router?.push({ name: BUILDER_ROUTE, query: { draft: JSON.stringify(selection.draftOf(underlying.value)) }, state: { addEntry: `${Date.now()}-${++entrySeq}` } }) // N-36: each Add Selected is its own history entry
 }
 function addSelected() {
   if (!canAdd.value) return
@@ -139,21 +162,28 @@ const cellsOf = (v) => (v ? v.rows.flatMap((r) => [r.ce, r.pe]).filter(Boolean) 
 const anyUnavailable = computed(() => cellsOf(view.value).some((c) => !isPermitted(c)))
 watch(view, (v) => selection.syncPermissions(cellsOf(v)), { immediate: true })
 // The spot dropped out of a window we hold: the option rows stay and this line says what is missing (never "no strikes match").
-const SPOT_MISSING_ROWS_KEPT = 'The underlying price is missing right now: option prices are shown, but the ATM strike, moneyness, IV and Greeks are not.'
 const rowsMissing = computed(() => {
   const code = view.value?.rows_missing
   if (!code) return ''
-  return code === 'SPOT_MISSING' && view.value.rows.length ? SPOT_MISSING_ROWS_KEPT : ROWS_MISSING_LABELS[code]
+  return code === 'SPOT_MISSING' && view.value.rows.length ? CHAIN_SPOT_MISSING_ROWS_KEPT_TEXT : CHAIN_ROWS_MISSING_TEXTS[code]
 })
-const days = computed(() => (expiry.value ? daysLeft(expiry.value) : null))
+// REQ-135 AC-2: the server counted the days (IST); a missing or unreadable count shows no number, never the browser's own count
+const days = computed(() => { const d = expiryDays.value[expiry.value]; return Number.isInteger(d) && d >= 0 ? d : null })
 const spotTime = computed(() => {
   const at = (view.value ?? null)?.spot_at ?? null
-  return at ? new Date(at).toLocaleTimeString() : ''
+  return at ? (istClock(at) ?? '') : '' // D-57: 24-hour India time from the one formatter
 })
 
 // RD-048: a missing value carries its short reason in place (tooltip + data-reason), per code in lib/dataHealthText.js.
 const text = (v) => (typeof v === 'string' || typeof v === 'number' ? String(v) : VALUE_UNAVAILABLE)
+// D-55: Change / OI Change missing from the feed say "not available"; a side with no contract keeps the dash
+const cellText = (cell, key) => (!cell ? VALUE_UNAVAILABLE : FEED_VALUE_KEYS.includes(key) && cell[key] == null ? CHAIN_NOT_AVAILABLE : text(cell[key]))
 const healthWord = (cell) => shownHealth(cell?.health, view.value?.market_closed)
+// the line under a price: the waiting text for a held cell with no first price, else the health sentence ('' when there is none to say)
+const healthLine = (cell) => (isWaitingCell(cell, view.value?.market_closed) ? WAITING_FIRST_PRICE_TEXT : healthWord(cell) ? healthSentence(healthWord(cell)) : '')
+// D-19: the time of the cell's last trade as the server gave it (HH:MM:SS, India time); nothing when the server sent none
+// a trade from another India day carries its date (istStamp); `at`, the cell's own quote time, names that day
+const lastTrade = (cell) => (cell?.last_trade_at ? istStamp(cell.last_trade_at, cell.at ?? undefined) : null)
 const socketStatus = computed(() => (view.value?.market_closed === true && status.value === 'live' ? '' : status.value))
 const isAtm = (row) => view.value?.atm_strike != null && row.strike === view.value.atm_strike
 const shownRows = computed(() => (view.value ? filterRows(view.value.rows, filters.value.moneyness) : []))
@@ -166,7 +196,9 @@ const resetFilters = () => (filters.value = { ...NO_FILTERS })
 
 <template>
   <section data-testid="option-chain-page">
+    <LeaveBuilderDialog :leave="leaveGuard" />
     <PageHeader parent="Market" title="Option Chain" />
+    <p v-if="listNotice" class="mb-2 text-sm text-ink-muted" role="status" data-testid="contract-list-notice">{{ listNotice }}</p>
 
     <!-- Owner 2026-10-30 (Sensibull 060): one bar for underlying, expiry, spot and feed state, then one row of filters,
          then the chain in a card with the strike column centred and shaded and numbers right-aligned. -->
@@ -180,7 +212,7 @@ const resetFilters = () => (filters.value = { ...NO_FILTERS })
       <label class="field-label">
         Expiry
         <select v-model="expiry" class="field ml-1" data-testid="expiry-select">
-          <option v-for="e in expiries" :key="e" :value="e">{{ e }}</option>
+          <option v-for="e in expiries" :key="e" :value="e">{{ expiryWithDays(e, expiryDays[e], shownToday) }}</option>
         </select>
       </label>
       <span v-if="days !== null" class="text-sm text-ink-muted" data-testid="days-left">{{ days }} days left</span>
@@ -206,9 +238,9 @@ const resetFilters = () => (filters.value = { ...NO_FILTERS })
           <option v-for="[code, label] in MONEYNESS" :key="code" :value="code">{{ label }}</option>
         </select>
       </label>
-      <label>Min OI <input v-model.lazy="filters.minOi" type="number" min="0" class="field ml-1 w-24" data-testid="filter-min-oi" /></label>
-      <label>Min volume <input v-model.lazy="filters.minVolume" type="number" min="0" class="field ml-1 w-24" data-testid="filter-min-volume" /></label>
-      <label>Min premium <input v-model.lazy="filters.minLtp" type="number" min="0" step="0.05" class="field ml-1 w-24" data-testid="filter-min-ltp" /></label>
+      <label>Min OI <input v-model="filters.minOi" type="number" min="0" class="field ml-1 w-24" data-testid="filter-min-oi" /></label>
+      <label>Min volume <input v-model="filters.minVolume" type="number" min="0" class="field ml-1 w-24" data-testid="filter-min-volume" /></label>
+      <label>Min premium <input v-model="filters.minLtp" type="number" min="0" step="0.05" class="field ml-1 w-24" data-testid="filter-min-ltp" /></label>
       <label><input v-model="filters.bidAndAsk" type="checkbox" data-testid="filter-bid-ask" /> Has bid and ask</label>
       <label><input v-model="details" type="checkbox" data-testid="details-toggle" /> Details</label>
       <button type="button" class="btn btn-sm" data-testid="filter-reset" @click="resetFilters">Clear filters</button>
@@ -217,9 +249,12 @@ const resetFilters = () => (filters.value = { ...NO_FILTERS })
     <MarketClosedBanner v-if="answer?.market_closed" class="mt-3" :prices-at="answer.last_price_at" />
     <p v-if="reconnecting" class="mt-3 text-sm font-medium" data-testid="live-reconnecting">{{ reconnectingText }}</p>
 
-    <p v-if="catalogueFailed" class="mt-3 text-sm" data-testid="catalogue-unreadable">The expiries could not be read, so no chain is shown.</p>
+    <div v-if="catalogueFailed" class="mt-3 flex flex-wrap items-center gap-2 text-sm">
+      <p data-testid="catalogue-unreadable">{{ CHAIN_EXPIRIES_UNREADABLE_TEXT }}</p>
+      <button type="button" class="rounded border border-line bg-surface px-2 py-1 text-xs font-medium text-ink" data-testid="catalogue-retry" @click="loadExpiries">{{ RETRY_LABEL }}</button>
+    </div>
     <p v-else-if="notLive()" class="mt-3 text-sm" data-testid="not-live">{{ NOT_LIVE_LABEL }}</p>
-    <p v-else-if="!view && request" class="mt-3 text-sm text-ink-muted" data-testid="chain-waiting">Waiting for live data.</p>
+    <p v-else-if="!view && request" class="mt-3 text-sm text-ink-muted" data-testid="chain-waiting">{{ CHAIN_WAITING_TEXT }}</p>
     <p v-if="rowsMissing" class="mt-3 text-sm" data-testid="rows-missing">{{ rowsMissing }}</p>
 
     <p v-if="anyUnavailable" class="mt-3 text-sm" data-testid="unavailable-notice">
@@ -229,7 +264,7 @@ const resetFilters = () => (filters.value = { ...NO_FILTERS })
       <button type="button" class="btn btn-sm" data-testid="chain-refresh" @click="refresh">Refresh</button>
     </p>
 
-    <p v-if="nothingMatches" class="mt-3 text-sm" data-testid="filtered-empty">No strikes match the filters.</p>
+    <p v-if="nothingMatches" class="mt-3 text-sm" data-testid="filtered-empty">{{ CHAIN_NO_STRIKES_MATCH_TEXT }}</p>
     <p v-if="greeksLine" class="mt-3 text-xs text-ink-muted" data-testid="greeks-line">{{ greeksLine }}</p>
     <p v-if="staleLine" class="mt-3 text-xs text-ink-muted" data-testid="greeks-stale-line">IV and Greeks: {{ staleLine }}.</p>
     <div v-if="view && view.rows.length" class="mt-3 max-h-[calc(100vh-240px)] overflow-auto rounded-lg border border-line bg-surface" data-testid="chain-card">
@@ -269,11 +304,11 @@ const resetFilters = () => (filters.value = { ...NO_FILTERS })
               </template>
             </td>
             <td v-for="[key] in SIDE_FIELDS" :key="'c' + key" class="ui-num px-2 py-1" :data-testid="'ce-' + key" :title="missingReason(row.ce, key) || greeksStaleLabel(view, key) || undefined" :data-reason="missingCode(row.ce, key)" :data-stale="greeksStaleLabel(view, key) || null">
-              {{ row.ce ? text(row.ce[key]) : VALUE_UNAVAILABLE }}<span v-if="key === 'ltp' && healthWord(row.ce)" class="ml-1 text-xs text-ink-muted" data-testid="ce-health">{{ healthSentence(healthWord(row.ce)) }}</span>
+              {{ cellText(row.ce, key) }}<span v-if="key === 'ltp' && healthLine(row.ce)" class="ml-1 text-xs text-ink-muted" data-testid="ce-health">{{ healthLine(row.ce) }}</span><span v-if="key === 'ltp' && lastTrade(row.ce)" class="block text-xs text-ink-muted" data-testid="ce-last-trade">Last trade {{ lastTrade(row.ce) }}</span>
             </td>
             <td class="num px-3 py-1 text-center font-medium" :class="isAtm(row) ? 'bg-accent-soft text-accent' : 'bg-surface-muted'" data-testid="strike">{{ strikeLabel(row.strike) }}</td>
             <td v-for="[key] in SIDE_FIELDS" :key="'p' + key" class="ui-num px-2 py-1" :data-testid="'pe-' + key" :title="missingReason(row.pe, key) || greeksStaleLabel(view, key) || undefined" :data-reason="missingCode(row.pe, key)" :data-stale="greeksStaleLabel(view, key) || null">
-              {{ row.pe ? text(row.pe[key]) : VALUE_UNAVAILABLE }}<span v-if="key === 'ltp' && healthWord(row.pe)" class="ml-1 text-xs text-ink-muted" data-testid="pe-health">{{ healthSentence(healthWord(row.pe)) }}</span>
+              {{ cellText(row.pe, key) }}<span v-if="key === 'ltp' && healthLine(row.pe)" class="ml-1 text-xs text-ink-muted" data-testid="pe-health">{{ healthLine(row.pe) }}</span><span v-if="key === 'ltp' && lastTrade(row.pe)" class="block text-xs text-ink-muted" data-testid="pe-last-trade">Last trade {{ lastTrade(row.pe) }}</span>
             </td>
             <td class="whitespace-nowrap px-1 py-1" data-testid="sel-pe">
               <template v-if="row.pe">
@@ -290,7 +325,8 @@ const resetFilters = () => (filters.value = { ...NO_FILTERS })
       </table>
     </div>
 
-    <div v-if="picked.length" ref="summary" class="sticky bottom-0 mt-3 rounded-lg border border-line bg-surface p-4" data-testid="selected-legs">
+    <div ref="summary" class="sticky bottom-0 mt-3 rounded-lg border border-line bg-surface p-4" :data-testid="picked.length ? 'selected-legs' : 'add-selected-bar'">
+      <template v-if="picked.length">
       <h2 class="text-sm font-semibold">Selected Legs</h2>
       <ul class="mt-1 text-sm">
         <li v-for="e in picked" :key="e.id" class="flex flex-wrap items-center gap-2" data-testid="selected-leg" :data-action="e.action ?? ''">
@@ -313,7 +349,9 @@ const resetFilters = () => (filters.value = { ...NO_FILTERS })
         <button type="button" class="mr-2 rounded border border-line px-2" data-testid="multi-expiry-continue" @click="openBuilder">Continue</button>
         <button type="button" class="rounded border border-line px-2" data-testid="multi-expiry-review" @click="reviewSelection">Review Selection</button>
       </div>
-      <button type="button" class="btn btn-primary mt-3" :disabled="!canAdd" data-testid="add-selected" @click="addSelected">Add Selected ({{ legs.length }})</button>
+      </template>
+      <button type="button" class="btn btn-primary mt-3" :disabled="!canAdd" :aria-describedby="addReason ? 'add-selected-reason' : undefined" data-testid="add-selected" @click="addSelected">Add Selected ({{ legs.length }})</button>
+      <p v-if="addReason" id="add-selected-reason" class="mt-1 text-sm text-ink-muted" data-testid="add-selected-reason">{{ addReason }}</p>
     </div>
   </section>
 </template>

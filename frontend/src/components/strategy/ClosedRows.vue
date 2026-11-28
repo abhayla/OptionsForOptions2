@@ -1,0 +1,39 @@
+<!-- D-10 / D-63 (ADR-207 (2)): the paper reply's closed lifecycles, one rendering for the Net Positions Closed section and the P&L
+     Table tab: contract, lots, entry, exit and each leg's own booked P&L (before charges), all as the reply sent them; no sum here.
+     `prefix` names the test ids (closed-row, closed-entry ...), so two places on one page do not share them. -->
+<template>
+  <div v-if="rows.length">
+    <p class="mt-2 text-xs text-ink-muted" :data-testid="`${prefix}-basis`">Closed: booked P&amp;L (before charges)</p>
+    <table class="num-table w-full text-xs text-ink-muted" :data-testid="`${prefix}-list`">
+      <thead><tr><th class="text-left font-normal">Contract</th><th class="text-center font-normal">Lots</th><th class="text-right font-normal">Entry</th><th class="text-right font-normal">Exit</th><th class="text-right font-normal">Booked</th><template v-if="extra"><th class="text-right font-normal">Unbooked</th><th class="text-right font-normal">P&amp;L</th></template></tr></thead>
+      <tbody>
+        <template v-for="c in rows" :key="c.opened_at + c.contract_id">
+          <tr class="border-t border-line" :data-testid="`${prefix}-row`">
+            <td class="py-1 pr-2" :data-testid="`${prefix}-contract`"><span class="mr-1 font-semibold">{{ c.side === 'BUY' ? 'B' : 'S' }}</span>{{ c.contract_text }}</td>
+            <td class="num text-center" :data-testid="`${prefix}-lots`">{{ c.lots ?? c.quantity }}</td>
+            <td class="num text-right" :data-testid="`${prefix}-entry`">{{ c.average_entry_text }}</td>
+            <td class="num text-right" :data-testid="`${prefix}-exit`"><span :data-testid="`${prefix}-exit-price`">{{ c.average_exit_text }}</span></td>
+            <td class="num text-right" :data-testid="`${prefix}-booked`">{{ c.booked_text }}</td>
+            <template v-if="extra">
+              <td class="num text-right" :data-testid="`${prefix}-unbooked`">{{ extrasOf(c).left ?? NO_FIGURE }}</td>
+              <td class="num text-right" :data-testid="`${prefix}-pnl`">{{ extrasOf(c).result ?? extrasOf(c).reason ?? NO_FIGURE }}</td>
+            </template>
+          </tr>
+          <!-- #749: the reason is the closed row's own full-width row (a narrow Exit cell wrapped it) -->
+          <tr v-if="c.reason_text" :data-testid="`${prefix}-reason-row`"><td :colspan="extra ? 7 : 5" class="pb-1 text-left text-[11px] font-normal text-ink-muted" :data-testid="`${prefix}-reason`">{{ c.reason_text }}</td></tr>
+        </template>
+      </tbody>
+    </table>
+  </div>
+</template>
+
+<script setup>
+import { computed } from 'vue'
+import { PAPER_NO_FIGURE as NO_FIGURE, closedExtras as extrasOf } from '@/lib/paperList'
+const props = defineProps({
+  rows: { type: Array, default: () => [] },
+  prefix: { type: String, default: 'closed' },
+})
+// I-91 (F3): the Unbooked and P&L cells exist only when the server sent a figure or its reason for a row; never an empty cell
+const extra = computed(() => props.rows.some((c) => { const e = extrasOf(c); return e.left !== null || e.result !== null || e.reason !== null }))
+</script>

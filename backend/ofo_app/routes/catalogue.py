@@ -14,14 +14,14 @@ from __future__ import annotations
 
 import datetime
 from collections.abc import Awaitable, Callable
-from typing import Any, Literal, Optional
+from typing import Annotated, Any, Literal, Optional
 
 from fastapi import APIRouter, Depends, Query
 from ofo.market_calendar import MarketStatus, market_status
 from ofo.timeutil import IST, SESSION_CLOSE, days_to_expiry
 
 from ofo_app import catalogue_picker as picker
-from ofo_app.api_models import ApiModel, Identifier, Money
+from ofo_app.api_models import ApiModel, CatalogueText, Identifier, Money
 from ofo_app.db import get_db
 from ofo_app.errors import ClosedRoute
 from ofo_app.underlying import Underlying, require_supported
@@ -40,6 +40,9 @@ class ExpiriesOut(ApiModel):
     expiry_days: list[ExpiryDaysOut]  # REQ-135 AC-2: the same expiries, 1:1 and in the same order, with days left
     today: datetime.date  # u510: the date the days-left are counted from (IST, scenario clock in scenario mode); a far expiry prints its year against it
     default_expiry: Optional[datetime.date] = None  # ADR-199 (4): the server's default; null when the list is empty
+    list_day: datetime.date | None = None  # India date of the latest instrument-list load; null = none loaded
+    list_notice: CatalogueText | None = None  # ADR-330 (61): the one line said while yesterday's list is in use
+    list_current: bool = False  # false: today's list is not loaded, list_day's list is in use (ADR-016..019)
 
 
 class ContractOut(ApiModel):
@@ -70,6 +73,16 @@ def get_shown_now() -> Callable[[Any, datetime.date], Awaitable[datetime.datetim
     return picker.judging_instant
 
 
+async def get_shown_date(
+        db: Annotated[Any, Depends(get_db)],
+        shown_now: Annotated[Callable[[Any, datetime.date], Awaitable[datetime.datetime]], Depends(get_shown_now)],
+) -> datetime.date:
+    """The ONE date a screen is shown against (the `today` of the expiries reply): the database date in India, the
+    scenario clock in scenario mode. List replies send it as `shown_date` so a label can leave the current year off
+    (ADR-330 (19))."""
+    return (await shown_now(db, await picker.database_today(db))).astimezone(IST).date()
+
+
 def _todays_expiry_spent(now: datetime.datetime) -> bool:
     """Whether an expiry dated today can no longer trade at ``now`` (IST). Answer states: OPEN -> no; closed hours ->
     only from the close (before the open it is still today's); weekend or holiday -> yes (nothing trades today); no
@@ -88,12 +101,14 @@ async def expiries(underlying: str, db: Any = Depends(get_db),
                    shown_now: Any = Depends(get_shown_now)) -> ExpiriesOut:
     require_supported(underlying)
     listed = await picker.pickable_expiries(db, underlying, today)  # list currency: the real database date
+    status = await picker.list_status(db, today)
     now = (await shown_now(db, today)).astimezone(IST)
     today = now.date()  # from here on only what is shown: days left and the default (scenario clock in scenario mode)
     closed = _todays_expiry_spent(now)  # ADR-199 (1)(4), market calendar (ADR-119)
     usable = [e for e in listed if not (closed and e <= today)]  # ADR-199 (2): it stays LISTED, just never the default
     return ExpiriesOut.model_validate({
         "underlying": underlying, "expiries": listed, "today": today, "default_expiry": usable[0] if usable else None,
+        "list_day": status.list_day, "list_current": status.current, "list_notice": status.notice,
         "expiry_days": [{"expiry": e, "days": days_to_expiry(e, today)} for e in listed]})  # REQ-135 AC-2
 
 

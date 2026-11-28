@@ -30,7 +30,7 @@ import { NEUTRAL_PARTS } from '@/services/api'
 
 const TRACK = { strategy_id: 7, state: 'LIVE', paper_pnl: '195.00', paper_pnl_text: '+195.00', as_of: null, legs: [], detections: [] }
 const LABELS = { plan_entry: 'Plan', playbook: 'Playbook', target: 'Target', stop: 'Stop', max_adjustments: 'Max adjustments', time_exit: 'Time exit',
-  edit: 'Edit plan', no_plan: 'No plan saved yet: default rules apply', set_plan: 'Set plan' }
+  edit: 'Edit plan', no_plan: 'No plan: nothing is watched for this strategy', set_plan: 'Set plan' }
 const PLAN = { strategy_id: 7, type: 'ic', type_name: 'Iron condor', generic: false, generic_text: null, labels: LABELS, plan: null,
   playbooks: [{ id: 9, name: 'Mine', type: 'ic', type_name: 'Iron condor', is_system: false, draft: false, active: true }], prefill: { playbook_id: 9 } }
 
@@ -40,7 +40,7 @@ const BODY = { error_class: 'USER_INPUT', code: 'USER_INPUT_149', what_happened:
 const refused = (data = BODY) => ({ reject: { response: { status: 409, data } } })
 const row = (rule_id, text, state = 'checked') => ({ rule_id, trigger_id: rule_id, threshold: null, amount: null, later: [], tightened_by: null, state, reason: null,
   text, after: null, reason_code: null })
-const check = (over = {}) => ({ strategy_id: 7, as_of: '2026-11-13T07:35:00Z', as_of_text: 'As of 01:05:00 PM IST', strategy_type: 'ic', type_name: 'Iron condor',
+const check = (over = {}) => ({ strategy_id: 7, as_of: '2026-11-13T07:35:00Z', as_of_text: 'As of 13:05:00 IST', strategy_type: 'ic', type_name: 'Iron condor',
   playbook: { source: 'system', id: 1, status: null, draft: false }, stage: { name: null, index: null }, withheld: null, results: [],
   limits: [row('T-07', 'Target: profit of 40 % of max profit, before charges')], paused: null, ...over })
 const NEVER = ['error_class', 'USER_INPUT_149', '{', '[object Object]', 'Something went wrong']

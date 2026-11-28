@@ -10,6 +10,8 @@ services/autopilot/condition_engine.py, read only, no code copied), rebuilt here
   is already beyond its level fires on the next live tick - the route refuses such a level only if the product asks).
 - Only a LIVE price fires (``paper.is_live``, the one predicate every paper decision uses): stale, missing and every
   contract reason never fire, whatever number the answer may carry.
+The comparison itself is the stand-alone checks' (ofo.checks.index_level / leg_price, ADR-330 (12)); this is the
+monitor's judgement: live price in, fire or not out. NotComputable never fires.
 Standard library only; no clock and no database here.
 """
 from __future__ import annotations
@@ -18,6 +20,9 @@ from dataclasses import dataclass
 from decimal import Decimal
 from typing import Literal
 
+from ofo.checks.index_level import index_level
+from ofo.checks.leg_price import leg_price
+from ofo.checks.outcome import Met
 from ofo.tracking import paper
 
 Direction = Literal["above", "below"]
@@ -50,8 +55,6 @@ class Trigger:
 
 def crossed(trigger: Trigger, price: paper.Price) -> bool:
     """True when ``price`` is live and at or beyond the trigger's level on its side."""
-    if not paper.is_live(price) or price.price is None:
-        return False
-    if trigger.direction == "above":
-        return price.price >= trigger.level
-    return price.price <= trigger.level
+    live = price.price if paper.is_live(price) else None  # a stale / missing price is not computable, never a number
+    check = index_level if trigger.kind == "conditional_exit" else leg_price
+    return isinstance(check(trigger.level, trigger.direction, live), Met)

@@ -1,6 +1,7 @@
 // GC-ADJ2 step 3 (REQ-160 AC-1, AC-2; REQ-159): the playbook editor's pure helpers. A body is the server's playbook body
 // (docs/design/playbook-body-v1.md); every value in it is the body's own string, shown as it is and never computed on
 // (ADR-008). Trigger labels and units come from the body (contract finding 10: the check answer leaves them out).
+import { serverSentenceOrEmpty } from '@/lib/serverText'
 
 /** The seven steps of REQ-160 AC-1, in order (names as in the mockup's step list). */
 export const STEPS = Object.freeze([
@@ -120,7 +121,7 @@ export function planLine(g, t) {
 }
 
 /** A catalogue answer shown as text: a plain string, or a four-part message's first part. */
-export const said = (v) => (v == null ? '' : typeof v === 'string' ? v : v.what_happened ?? '')
+export const said = (v) => serverSentenceOrEmpty(v) // a string, null or the error object (lib/serverText)
 
 /** The server's refusal sentence, verbatim; null when the failure carries no catalogue message. */
 export const refusalText = (err) => err?.parts?.what_happened ?? null

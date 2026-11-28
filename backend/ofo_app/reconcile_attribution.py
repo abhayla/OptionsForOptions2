@@ -239,6 +239,15 @@ def _check_plans(strategy_id: int, plans: object) -> None:
                                        "strategy's or plan's order")
 
 
+def tag_strategy_id(tag: object) -> int | None:
+    """The strategy number an order tag decodes to (new or legacy grammar), or None when it is not this app's tag:
+    the read side's one decoder, so a read route never imports the order module itself."""
+    try:
+        return parse_tag(tag).strategy_id
+    except ValueError:
+        return None
+
+
 def _whole(value: object, name: str, low: int) -> int:
     if type(value) is not int or value < low:
         raise AttributionError(f"order-book {name} must be an int >= {low}, got {value!r}")
@@ -486,4 +495,4 @@ async def attribute_and_compare(
 __all__ = ["PENDING_ABSENT", "PENDING_CLOSED_DRIFTED", "PENDING_DUPLICATE_TAG", "PENDING_NOT_FINAL",
            "PENDING_ROW_DIFFERS", "Account", "Attribution",
            "AttributionError", "OrderRow", "Pending", "Sources", "StoreReader", "attribute_and_compare",
-           "instrument_key", "rows_by_tag", "split_outside", "standalone_unseen"]
+           "instrument_key", "rows_by_tag", "split_outside", "standalone_unseen", "tag_strategy_id"]

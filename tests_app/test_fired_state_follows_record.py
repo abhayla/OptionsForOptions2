@@ -68,11 +68,16 @@ def test_b_record_cleared_by_the_gate_is_quiet(monkeypatch):
     assert results == [] and opened == {} and fired_at == {}
 
 
-def test_a_flag_with_its_record_is_unchanged(monkeypatch):
+def test_a_flag_with_its_record_is_shown_held_with_the_records_figures(monkeypatch):
+    # ADR-309 (1), D-31: a firing rule with an open record is ONE HeldFlag carrying the record's value and threshold
     flag = pe.Flag("T-01", "T-01", "Middle", D("0.3482"), D("0.3500"), "le")
     ev = _ev(live="0.3482", fired=True, results=(flag,), clear=False)
-    opened, _d, _f, results = _read(monkeypatch, [_rec()], ev)
-    assert list(results) == [flag] and opened == {"T-01": 7}
+    record = _rec()
+    opened, _d, _f, results = _read(monkeypatch, [record], ev)
+    [held] = results
+    assert isinstance(held, route.HeldFlag) and held.record == record
+    assert (held.rule_id, held.value, held.threshold) == ("T-01", D("0.3482"), D("0.3500"))
+    assert opened == {"T-01": 7}
     assert route.live_values(ev)["T-01"] == D("0.3482")
 
 
@@ -118,7 +123,7 @@ def test_r2_held_over_stop_sentence_uses_the_record_figures_only(monkeypatch):
     (held,) = results
     text = route.stop_text(held, _stop_limits(), D("-5000"), fired_at)  # the live loss is far inside the line
     assert "52" in text and "50" in text and "loss now" not in text and "5,000" not in text
-    assert text.endswith("IST") and "reached at" in text
+    assert text.endswith("IST") and "seen by the check at" in text
 
 
 def test_r2_held_over_credit_stop_sentence_uses_the_record_loss(monkeypatch):

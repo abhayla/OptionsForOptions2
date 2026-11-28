@@ -56,6 +56,9 @@ export const INDEX_NAMES = { NIFTY: 'NIFTY 50', SENSEX: 'SENSEX' }
 export const INDEX_KEYS = Object.keys(INDEX_NAMES)
 export const NOT_LIVE_LABEL = 'Index values unavailable.'
 export const VALUE_UNAVAILABLE = 'Not available'
+// Lane FA r2, I-29 (ADR-330 (56), (58); pending owner read): after the close the server saves a level unchecked and arms it at the next live tick (ADR-327 (3); Opus review F4), said once.
+export const CLOSED_REFERENCE_TEXT = 'The market is closed. A level you save is checked from the next market open; the last close is shown for reference.'
+export const lastCloseUnavailableText = (underlying) => `${underlying}: the last close is not available.`
 
 export async function readAnswer(fallback) {
   try {
@@ -125,7 +128,11 @@ export function useIndexAnswer({ url, WebSocketImpl } = {}) {
   // ADR-177: a closed market shows the banner once, never a per-index "stale" word or sentence
   const healthOf = (row) => shownHealth(row?.health, marketClosed())
   const notLive = () => (answer.value !== null && !isLive()) || failed.value
-  return { answer, status, reconnecting, reconnectingText, start, rowFor, shownValue, isLive, notLive, marketClosed, healthOf }
+  // C-12b: the socket stays open while the feed is down; the server then keeps the answer LIVE but marks the row's health
+  // (stale / unavailable / ...). A screen that prints a bare number reads this: live answer AND a row not marked unhealthy.
+  const rowLive = (row) => isLive() && !!row && (row.health == null || row.health === 'available')
+  const rowNotLive = (row) => notLive() || (isLive() && !rowLive(row))
+  return { answer, status, reconnecting, reconnectingText, start, rowFor, shownValue, isLive, notLive, rowLive, rowNotLive, marketClosed, healthOf }
 }
 
 /**

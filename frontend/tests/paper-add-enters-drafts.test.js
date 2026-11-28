@@ -6,7 +6,9 @@ import { createMemoryHistory, createRouter } from 'vue-router'
 import StrategyBuilderPage from '@/pages/StrategyBuilderPage.vue'
 import { PAPER_BOOK_UNREADABLE, PAPER_MODE_LABEL, netLegsFromBook } from '@/lib/paperDrafts'
 import { PAPER_ADDED_TEXT } from '@/lib/tracking'
+import { resetExitLocks } from '@/lib/unknownLocks'
 import REAL from './fixtures/paper-book-63.json'
+import { confirmPaperName } from './helpers/paperName'
 
 const calls = []
 let answers = {}
@@ -15,6 +17,7 @@ vi.mock('@/services/api', async (importActual) => {
   const respond = (method, url, body) => {
     calls.push({ method, url, body })
     const a = answers[`${method} ${url}`]
+    if (a === undefined && method === 'GET' && url === '/market/exit-state') return Promise.resolve({ data: { closed: false, sentence: null, next_open_at: null } }) // ADR-330 (60) on Add to Paper (FA2 item A)
     if (a === undefined) return Promise.reject(new Error(`unmocked ${method} ${url}`))
     return typeof a === 'function' ? a(body) : Promise.resolve({ data: a })
   }
@@ -29,6 +32,8 @@ const PLAN = () => netLegsFromBook(REAL, CONTRACTS).map((l, i) => ({ ...l, id: `
 const BOOK_70 = { ...REAL, strategy_id: 70, name: '"Iron"' }
 
 beforeEach(() => {
+  resetExitLocks() // Lane FB2: the add-unknown lock is kept per browser (lib/unknownLocks.js): each test starts without one
+  globalThis.sessionStorage?.clear()
   calls.length = 0
   answers = {
     'GET /strategies': { strategies: [] },
@@ -53,6 +58,11 @@ const mountPage = async () => {
   await flushPromises()
   return w
 }
+// ADR-330 (28): this page's outcome never answers, so its prices are not live and the confirm list asks for the tick first
+const confirmList = async (w) => {
+  await t(w, 'paper-not-live-ack').setValue(true)
+  await t(w, 'paper-confirm-button').trigger('click')
+}
 const posts = () => calls.filter((c) => c.method === 'POST' && c.url === '/paper/strategies/70/orders')
 
 describe('Add to Paper ends in Drafts Mode', () => {
@@ -60,7 +70,8 @@ describe('Add to Paper ends in Drafts Mode', () => {
     const w = await mountPage()
     await t(w, 'add-to-paper').trigger('click')
     await flushPromises()
-    await t(w, 'paper-confirm-button').trigger('click')
+    await confirmPaperName(w)
+    await confirmList(w)
     await flushPromises()
     expect(t(w, 'paper-mode-label').text()).toBe(PAPER_MODE_LABEL)
     expect(t(w, 'add-to-paper').exists()).toBe(false)
@@ -75,7 +86,8 @@ describe('Add to Paper ends in Drafts Mode', () => {
     await t(w, 'more-menu').trigger('click')
     await t(w, 'menu-add-to-paper').trigger('click')
     await flushPromises()
-    await t(w, 'paper-confirm-button').trigger('click')
+    await confirmPaperName(w)
+    await confirmList(w)
     await flushPromises()
     expect(t(w, 'paper-mode-label').exists()).toBe(true)
     expect(t(w, 'menu-add-to-paper').exists()).toBe(false)
@@ -87,7 +99,8 @@ describe('Add to Paper ends in Drafts Mode', () => {
     const w = await mountPage()
     await t(w, 'add-to-paper').trigger('click')
     await flushPromises()
-    await t(w, 'paper-confirm-button').trigger('click')
+    await confirmPaperName(w)
+    await confirmList(w)
     await flushPromises()
     expect(t(w, 'paper-mode-label').exists()).toBe(false)
     expect(w.text()).toContain('Refused for a test reason.')
@@ -100,18 +113,22 @@ describe('Add to Paper ends in Drafts Mode', () => {
     const w = await mountPage()
     await t(w, 'add-to-paper').trigger('click')
     await flushPromises()
-    await t(w, 'paper-confirm-button').trigger('click')
+    await confirmPaperName(w)
+    await confirmList(w)
     await flushPromises()
     expect(t(w, 'paper-mode-label').exists()).toBe(false)
-    expect(t(w, 'add-to-paper').attributes('disabled')).toBeUndefined()
+    // Lane FB2 (ADR-017): a post with no answer may be stored; Add to Paper stays locked until the book has been read
+    expect(t(w, 'add-to-paper').attributes('disabled')).toBeDefined()
+    expect(t(w, 'add-unknown-note').exists()).toBe(true)
   })
 
   it('re-read fails: the failure is shown and Add to Paper stays disabled (no silent plan with a live button)', async () => {
     const w = await mountPage()
     await t(w, 'add-to-paper').trigger('click')
     await flushPromises()
+    await confirmPaperName(w)
     answers['GET /paper/strategies/70'] = () => Promise.reject(new Error('network'))
-    await t(w, 'paper-confirm-button').trigger('click')
+    await confirmList(w)
     await flushPromises()
     expect(posts()).toHaveLength(1)
     expect(t(w, 'paper-mode-label').exists()).toBe(false)

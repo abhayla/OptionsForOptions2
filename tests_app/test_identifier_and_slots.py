@@ -46,6 +46,14 @@ PINNED_SLOT_TYPES = frozenset({
         "LegacyRecorded", "OpWords", "ActionWords", "MeasureWords", "DirectionWords", "FollowUpLabel", "InputLabel",
         # W-066 (outcome text from the catalogue)
         "Rupees", "Points", "ExceptLevels", "LevelRegions", "SignedAmount", "HourMinute", "ClockSeconds",
+        # D-17 (ADR-322 point 2, reviewed): ClockHms only formats one timezone-aware time as IST "HH:MM:SS"
+        # ("as of ..."): no user text, no number arithmetic
+        "ClockHms",
+        # Lane N A2 (ADR-330 (36), reviewed by the coordinator 27 Nov): ClockHms, or an EarlierDay
+        # printed "8 Oct, 15:29:59"; validates through ClockHms, no user text
+        "ClockHmsOrDated",
+        # ADR-330 (60): DayLabel formats one datetime.date as "Monday 30 Nov" (exact type check; no user text)
+        "DayLabel",
         "UnderlyingName", "InstrumentRef", "LegRef", "LegRefs", "HealthWord", "ExpiryDate", "DayMonth", "CellText", "OiCount", "WholePoints", "SignedPercent", "WholeRupees",  # noqa: E501 - long line kept whole
         "SignedPaisa", "SignedRupeesPaisa", "SignedWholeRupees",
         # GC-TP step 7a / 6a (reviewed 2026-10-29 session 2: both validate through Rupees / HourMinute, format only)
@@ -62,11 +70,18 @@ PINNED_SLOT_TYPES = frozenset({
         # approach ids the app builds (ADJUSTMENT_APPROACH_LABEL_TEXT); RegistryText only takes a group / label /
         # what-it-changes text the code-reviewed settings registry holds, re-checked against the wording rules;
         # SourceUrl is one http(s) token of URL characters (no space, so no sentence), at most 300 long.
-        "ApproachLabel", "RegistryText", "SourceUrl")),
+        "ApproachLabel", "RegistryText", "SourceUrl",
+        # ADR-330 (36), LR-Q18 (owner, 26 Nov 2026): exactly int, 2 or more; a count of legs, no user text
+        "LegCount")),
     *(f"ofo.errors.gate_slots.{n}" for n in (
         "LegRef", "LegContract", "Date", "Strikes", "Rupees", "WorstCase", "VersionStateName", "VersionStates",
         "DataInputName", "DataHealthState", "ExecutionStatusName", "Symbol", "Clock", "ContractSymbol", "RiskRows",
         "OrderRef", "UnitsByContract",
+        # 27 Nov 2026 live screen test item 4 (needs the owner's read, with the pending duplicate-leg wording):
+        # ContractName is one printed contract ("NIFTY 1 Dec 25900 CE", fullmatch, exact str); SideWord is exactly
+        # "Buy" or "Sell". Neither carries user text. LegContract was not reusable: it needs an engine LegValue, and the
+        # stored-form check only has the definition's printed fields.
+        "ContractName", "SideWord",
         # W-081 (margin gate): exact Decimal only, shown by the engine's rupee formatter (ADR-008)
         "DisplayRupees",
         # W-158 (row 30, REQ-078 AC-2): only family_plural labels the loaded catalogue holds; the row 30 Opus check's

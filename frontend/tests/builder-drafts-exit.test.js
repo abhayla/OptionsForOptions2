@@ -9,7 +9,9 @@ import { createMemoryHistory, createRouter } from 'vue-router'
 import StrategyBuilderPage from '@/pages/StrategyBuilderPage.vue'
 import PaperConfirmDialog from '@/components/strategy/PaperConfirmDialog.vue'
 import { PAPER_AVERAGE_LABEL } from '@/lib/paperDrafts'
-import REAL from './fixtures/paper-book-63.json'
+import REAL0 from './fixtures/paper-book-63.json'
+import { withClosed } from './_closedRows'
+const REAL = withClosed(REAL0)
 import OUTCOME from './fixtures/outcome-condor.json'
 
 const calls = []
@@ -108,13 +110,15 @@ describe('CORE: Drafts Mode summary from the REAL book reply', () => {
 })
 
 describe('CORE: Exit all and a partial exit go through paperOrdersFor and the one confirm list', () => {
-  it('Exit all: one exit per open contract, full open quantity, price = the contract ltp text; title "Exit paper positions"', async () => {
+  it('Exit all: one exit per open contract, full open quantity, price = the contract ltp text; title "Exit Paper positions"', async () => {
     const w = await openBuilder()
     await t(w, 'paper-exit-all').trigger('click')
     await flushPromises()
     expect(dialog(w).props('open')).toBe(true)
-    expect(rowsOf(w)).toEqual(OPEN.map((p) => ({ side: p.net_quantity > 0 ? 'SELL' : 'BUY', contract_id: p.contract_id, lots: 1, lot_size: 65, price: p.ltp_text, kind: 'exit' })))
-    expect(dialog(w).find('[data-testid="modal-title"]').text()).toBe('Exit paper positions')
+    // REQ-159 AC-6: short buy-backs (BUY) are listed before the long sales (SELL), contract order kept within each
+    const buyBacksFirst = [...OPEN.filter((p) => p.net_quantity < 0), ...OPEN.filter((p) => p.net_quantity > 0)]
+    expect(rowsOf(w)).toEqual(buyBacksFirst.map((p) => ({ side: p.net_quantity > 0 ? 'SELL' : 'BUY', contract_id: p.contract_id, lots: 1, lot_size: 65, price: p.ltp_text, kind: 'exit' })))
+    expect(dialog(w).find('[data-testid="modal-title"]').text()).toBe('Exit Paper positions')
     expect(all(w, 'paper-order-kind').map((k) => k.text())).toEqual(OPEN.map(() => 'Exit'))
     expect(w.vm.$.setupState.legs).toEqual([]) // the edit is the legs, so the pending count / Discard see it too
     expect(calls.filter((c) => c.method === 'POST' && c.url.startsWith('/paper/'))).toHaveLength(0)
@@ -155,7 +159,7 @@ describe('CORE: Exit all and a partial exit go through paperOrdersFor and the on
 
 describe('Confirm list title by content, each row\'s kind beside B/S', () => {
   const order = (kind) => ({ key: kind, contract_id: 1, side: 'BUY', text: 'NIFTY', lots: 1, lot_size: 65, price: '10.00', kind })
-  for (const [kinds, title, labels] of [[['add'], 'Add to Paper', ['Add']], [['open'], 'Add to Paper', ['Add']], [['exit'], 'Exit paper positions', ['Exit']], [['exit', 'add'], 'Review paper orders', ['Exit', 'Add']]]) {
+  for (const [kinds, title, labels] of [[['add'], 'Add to Paper', ['Add']], [['open'], 'Add to Paper', ['Add']], [['exit'], 'Exit Paper positions', ['Exit']], [['exit', 'add'], 'Review Paper orders', ['Exit', 'Add']]]) {
     it(`${kinds.join('+')} -> "${title}"`, () => {
       const w = mount(PaperConfirmDialog, { props: { open: true, orders: kinds.map(order) } })
       expect(t(w, 'modal-title').text()).toBe(title)
@@ -166,22 +170,31 @@ describe('Confirm list title by content, each row\'s kind beside B/S', () => {
 })
 
 describe('Net Positions | Orderbook switch on the REAL reply', () => {
+  it('Net Positions: the Contract cell and header never wrap, and the table scrolls sideways inside its own container', async () => {
+    const w = await openBuilder()
+    const cells = all(w, 'net-contract')
+    expect(cells.length).toBeGreaterThan(0)
+    for (const c of cells) expect(c.classes()).toContain('whitespace-nowrap')
+    expect(t(w, 'net-table').find('thead th.text-left').classes()).toContain('whitespace-nowrap')
+    expect(t(w, 'net-table').element.parentElement.classList.contains('overflow-x-auto')).toBe(true)
+  })
   it('Net Positions: per open contract Lots, Avg, LTP, Booked, Unbooked, P&L as sent; closed contracts below with booked P&L', async () => {
     const w = await openBuilder()
     expect(t(w, 'paper-book-switch').exists()).toBe(true)
     const rows = all(w, 'net-row').map((r) => ['net-contract', 'net-lots', 'net-avg', 'net-ltp', 'net-booked', 'net-unbooked', 'net-pnl'].map((id) => r.find(`[data-testid="${id}"]`).text()))
     expect(rows).toEqual(OPEN.map((p) => [p.contract_text, '1', p.average_text, p.ltp_text, p.booked_text, p.unbooked_text, p.total_text]))
-    const closed = REAL.positions.filter((p) => p.net_quantity === 0)
+    const closed = REAL.positions.filter((p) => p.net_quantity === 0) // D-10: each also a closed lifecycle row, B or S by the side that opened it
     expect(all(w, 'closed-row').map((r) => [r.find('[data-testid="closed-contract"]').text(), r.find('[data-testid="closed-booked"]').text()]))
-      .toEqual(closed.map((p) => [p.contract_text, p.booked_text]))
+      .toEqual(closed.map((p) => ['S' + p.contract_text, p.booked_text]))
   })
   it('Orderbook: the reply orders (time IST, B/S, contract, qty, price, kind), in the reply order (newest last)', async () => {
     const w = await openBuilder()
     await t(w, 'book-tab-orders').trigger('click')
     const rows = all(w, 'order-row')
     expect(rows).toHaveLength(8)
+    // ADR-330 (23): order-qty now prints the reply's lots (65 units of a 65 lot = 1), not the units
     expect(['order-time', 'order-side', 'order-contract', 'order-qty', 'order-price', 'order-kind'].map((id) => rows[7].find(`[data-testid="${id}"]`).text()))
-      .toEqual(['13:50:15', 'S', 'NIFTY 22650 PE 2026-11-03', '65', '63.25', 'Add'])
+      .toEqual(['13:50:15', 'S', 'NIFTY 22650 PE 2026-11-03', '1', '63.25', 'Add'])
     expect(rows[0].find('[data-testid="order-time"]').text()).toBe('10:24:02')
     expect(t(w, 'net-row').exists()).toBe(false)
   })

@@ -23,6 +23,7 @@ from ofo_app import (
     execute_replay_switch,
     feed_mode,
     held_switches,
+    last_close_store,
     live_market,
     paper_monitor,
     paper_settlement,
@@ -43,6 +44,7 @@ from ofo_app.routes import (
     adjustment_plan,
     adjustment_preferences,
     alert_style,
+    alerts,
     broker,
     broker_capabilities,
     broker_status,
@@ -50,6 +52,7 @@ from ofo_app.routes import (
     chain,
     execute,
     execution_return,
+    exit_market,
     features,
     health,
     indices,
@@ -58,8 +61,11 @@ from ofo_app.routes import (
     level_watch,
     live,
     monitoring_pause,
+    monitoring_status,
     outcome,
     paper,
+    plan_watch,
+    plan_watch_batch,
     planned_entry,
     playbooks,
     positions,
@@ -87,6 +93,7 @@ async def _lifespan(app: FastAPI) -> AsyncIterator[None]:
     await verify_pool_budget()  # GC-6: a pool above the role's connection limit refuses to start
     market = None
     if live_market.live_requested():  # W-065: off unless LIVE_MARKET is set
+        last_close_store.expect_seed(True)  # Lane N M1: a book waits for its first stored-close read
         market = live_market.LiveMarket()
         live_market.set_current(market)
         try:
@@ -99,7 +106,10 @@ async def _lifespan(app: FastAPI) -> AsyncIterator[None]:
     settlement = paper_settlement.start() if market is not None else None  # GC-TP 5b: expiry settlement, live only
     real_task = real_settlement.start_if(market)  # GC-ICGUIDE g22 (C6): live only
     watch = worker_watch.start_if(market)  # ADR-286: live + bus only; tells the owner when the worker stops
+    close_task = last_close_store.start(market)  # Lane N A1: writes the close, seeds the book while closed; live only
     yield
+    await last_close_store.stop(close_task)
+    last_close_store.expect_seed(False)
     await worker_watch.stop(watch)
     await real_settlement.stop(real_task)
     await paper_settlement.stop(settlement)  # a strategy's settle in flight is cancelled and rolls back
@@ -114,21 +124,26 @@ async def _lifespan(app: FastAPI) -> AsyncIterator[None]:
 def _mount_routes(app: FastAPI, config: BrokerConfig) -> None:
     """Every router and door socket, in the one order the app has always mounted them (one include per route)."""
     app.include_router(health.router)
+    app.include_router(exit_market.router)  # ADR-330 (60): the Exit dialog's market-closed answer
     app.include_router(outcome.router)
     errors.add_socket_route(app, live.socket_route())  # W-065: the strategy live push, a door socket
     errors.add_socket_route(app, chain.socket_route())  # W-116: the read-only Option Chain push, a door socket
     app.include_router(chain.router)  # W-116: the chain's first paint and socket-down fallback
     app.include_router(adjustment.router)  # W-196: adjustment approaches (REQ-155)
     app.include_router(adjustment_plan.router)  # GC-ADJ2 4: the strategy plan sheet (REQ-161)
+    app.include_router(plan_watch.router)  # P10: the live Plan watch lines (ADR-330 (13))
+    app.include_router(plan_watch_batch.router)  # Lane H: the whole Positions list's Plan watch in one request
     app.include_router(adjustment_check.router)  # GC-ADJ2 1C: the playbook check (REQ-158 AC-5)
     app.include_router(adjustment_history.router)  # GC-ADJ2 6: history + totals (REQ-163)
     app.include_router(adjustment_opportunities.router)  # GC-ADJ2 5: the opportunities inbox (REQ-162, REQ-112)
+    app.include_router(alerts.router)  # ADR-330 (3)(4): Active, answer, History of actionable alerts
     app.include_router(playbooks.router)  # GC-ADJ2 2: playbooks (REQ-158)
     app.include_router(settings.router)  # GC-SET 2: the admin Settings page (REQ-167)
     app.include_router(system_playbooks.router)  # REQ-169: the admin's system playbook versions
     app.include_router(adjustment_preferences.router)  # REQ-168: per-user adjustment preferences
     app.include_router(alert_style.router)  # GC-ALERT1 (REQ-170 Q-AD-2): a strategy's alert-style pin
     app.include_router(monitoring_pause.router)  # GC-IC1 4a (A-38): pause adjustment checks
+    app.include_router(monitoring_status.router)  # Lane Y item 1: is each running trade being watched
     app.include_router(level_watch.router)  # GC-IC1 4c (A-37): watch an index level, alert through the gate
     app.include_router(leg_edit.router)  # W-148: one leg edit, answered by the engine
     app.include_router(leg_picker.router)  # W-147: the leg picker's strikes, futures and depth reads (REQ-080)

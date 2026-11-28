@@ -19,6 +19,7 @@ from enum import Enum
 from fractions import Fraction
 
 from ofo.engine import UNLIMITED, Action, Instrument, Leg, Strategy, strategy_metrics
+from ofo.engine.duplicate_leg import ContractKey, contract_key, duplicate_leg_message
 from ofo.engine.product import Product
 from ofo.engine.metrics import _Unlimited, _upper_tail_slope
 from ofo.execution.price_check import circuit_block
@@ -185,11 +186,10 @@ def _kind(leg: Leg) -> ContractKind:
     return ContractKind.FUTURE if leg.instrument is Instrument.FUT else ContractKind.OPTION
 
 
-_Key = tuple[datetime.date, str, Decimal | None]
+_Key = ContractKey
 
 
-def _key(expiry: datetime.date | None, instrument_type: str, strike: Decimal | None) -> _Key:
-    return (expiry, instrument_type, None if instrument_type == Instrument.FUT.value else strike)
+_key = contract_key
 
 
 def _index(catalogue: Catalogue, underlying: str) -> dict[_Key, list[CatalogueEntry]]:
@@ -386,6 +386,12 @@ def _context_failures(ctx: ExecutionContext, pro_reason: ProReason | None, strat
     return out
 
 
+def duplicate_leg_failure(number: int, value: LegValue, other: int) -> CheckFailure:
+    """The one duplicate-leg failure and its sentence (gate_duplicate_leg) for the real-order gate; Add to Paper shares
+    the sentence through ofo.engine.duplicate_leg."""
+    return CheckFailure(CheckCode.DUPLICATE_LEG, duplicate_leg_message(number, value, other), leg_number=number)
+
+
 def _leg_failures(
     strategy: Strategy, ctx: ExecutionContext, catalogue: Catalogue, eligibility: ZerodhaEligibility
 ) -> list[CheckFailure]:
@@ -398,8 +404,7 @@ def _leg_failures(
         value = LegValue(number, leg, underlying)
         key = _key(leg.expiry, leg.instrument.value, leg.strike)
         if key in seen:
-            out.append(_fail(CheckCode.DUPLICATE_LEG, "gate_duplicate_leg", leg_number=number, leg=value,
-                             other=seen[key]))
+            out.append(duplicate_leg_failure(number, value, seen[key]))
         else:
             seen[key] = number
         try:

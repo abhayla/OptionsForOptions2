@@ -39,10 +39,17 @@ from ofo.errors.templates import MARGIN_SHORTFALL_NEXT_ACTION, ZERODHA_BUSY_TEXT
 EXPLANATION_FIELDS: tuple[str, ...] = ("what_triggered", "values_seen", "rule")
 
 
+_PASSED_MAX = 4096
+_PASSED: dict[str, None] = {}  # explanation texts that passed every check below (REQ-049 AC-4: one scan per text)
+
+
 def check_explanation_wording(text: str, where: str) -> None:
     """The platform's own words of an explanation: the old timeline phrase list AND the shared Q226/Q230 checker."""
     from ofo.strategy.wording import find_banned_phrases
 
+    if type(text) is str and text in _PASSED:
+        _wording.is_nfkc_clean_latin("a")  # a public entry: it verifies the checker, so a remembered pass fails closed (ADR-056 (1))
+        return
     if not any(ch.isalpha() for ch in text):
         return  # a template of slots and punctuation only ("{a}: {b}") holds no platform words to check
     found = find_banned_phrases(text)
@@ -50,6 +57,10 @@ def check_explanation_wording(text: str, where: str) -> None:
     if found:
         raise ValueError(f"the platform's own answer wording contains advice phrases {found}: {text!r}")
     _wording.check_platform_text(text, where)
+    if type(text) is str:  # only a PASS of an exact str is remembered; a refusal raised above and is never stored
+        if len(_PASSED) >= _PASSED_MAX:
+            _PASSED.clear()
+        _PASSED[text] = None
 
 
 # --- typed slots --------------------------------------------------------------------------------------------------
@@ -370,7 +381,7 @@ PLAYBOOK_GUARD_LABEL_TEXT: Mapping[str, str] = MappingProxyType({
     "stop_line_pct_of_margin": "Stop line (% of margin)",
     "stop_line_pct_of_max_loss": "Stop line (% of max loss)",
     "stop_line_rule": "Stop line rule",
-    "time_exit": "Time exit (on expiry day)",
+    "time_exit": "Time exit",
     "warn_cost_pct_of_premium_left": "Warn when an adjustment costs more than this % of the premium left",
 })
 #: GC-ADJ2 step 3 (REQ-160 AC-1): the plain-words summary's sentences. A doubled brace is a slot the editor fills from the body ({name} after rendering); the words are the catalogue's.
@@ -448,6 +459,12 @@ ADJUSTMENT_CRITERION_LABEL_TEXT: Mapping[str, str] = MappingProxyType({
     "fresh": "Would you open this fresh",
 })
 #: REQ-156 AC-3: each row's leader in plain words (decision-support words only, ADR-003: no ranking word)
+#: ADR-330 (3): what the user answers an actionable alert with, and how History names an answer (ofo.alerts)
+ALERT_ANSWER_LABEL_TEXT: Mapping[str, str] = MappingProxyType({
+    "exit": "Exit the position", "continue": "Continue with the position", "add_legs": "Add the legs again",
+    "confirm_new_shape": "Confirm the new shape", "closed_by_system": "Closed: the position ended",
+    "noted": "Information",
+})
 ADJUSTMENT_LEADER_LABEL_TEXT: Mapping[str, str] = MappingProxyType({
     "credit": "Most credit",
     "cost": "Lowest cost",
@@ -571,6 +588,20 @@ class Days(SlotType):
         _require_exact(value, int, "Days")
         if value < 0:  # type: ignore[operator]
             raise ValueError("Days slot requires a value >= 0")
+
+    @staticmethod
+    def format(value: int) -> str:
+        return str(value)
+
+
+class LegCount(SlotType):
+    """How many legs a label counts (ADR-330 (36), LR-Q18): exactly `int`, 2 or more (one leg has its own singular text)."""
+
+    @staticmethod
+    def validate(value: object) -> None:
+        _require_exact(value, int, "LegCount")
+        if value <= 1:  # type: ignore[operator]
+            raise ValueError("LegCount slot requires a value >= 2")
 
     @staticmethod
     def format(value: int) -> str:
@@ -786,7 +817,7 @@ class TargetValue(SlotType):
     def format(value: datetime.datetime | Decimal) -> str:
         if isinstance(value, datetime.datetime):
             ist = value.astimezone(datetime.timezone(datetime.timedelta(hours=5, minutes=30)))
-            return f"{ist.day} {ist.strftime('%b')}, {HourMinute.format(value)} IST"
+            return f"{ist.day} {_MONTH_NAMES[ist.month]}, {HourMinute.format(value)} IST"
         return IndexLevel.format(value)
 
 
@@ -897,7 +928,7 @@ class HourMinute(SlotType):
 
 
 class ClockSeconds(SlotType):
-    """A timezone-aware time as the IST clock time with seconds, "10:42:17 AM" (ADR-015's example)."""
+    """A timezone-aware time as the 24-hour IST clock time with seconds, "10:42:17 IST" (ADR-326 (4); one formatter: Clock)."""
 
     @staticmethod
     def validate(value: object) -> None:
@@ -908,6 +939,61 @@ class ClockSeconds(SlotType):
     def format(value: datetime.datetime) -> str:
         from ofo.errors.gate_slots import Clock
         return Clock.format(value)
+
+
+_DAY_NAMES = dict(enumerate(("Monday", "Tuesday", "Wednesday", "Thursday", "Friday", "Saturday", "Sunday")))
+_MONTH_NAMES = dict(zip(range(1, 13), ("Jan", "Feb", "Mar", "Apr", "May", "Jun", "Jul", "Aug", "Sep", "Oct", "Nov", "Dec"), strict=True))
+
+
+class DayLabel(SlotType):
+    """A calendar day as "Monday 30 Nov" (ADR-330 (60): the market-closed Exit line): exactly `datetime.date`."""
+
+    @staticmethod
+    def validate(value: object) -> None:
+        _require_exact(value, datetime.date, "DayLabel")
+
+    @staticmethod
+    def format(value: datetime.date) -> str:
+        # #875: English names from a table, never strftime (its day and month names follow the host locale)
+        return f"{_DAY_NAMES[value.weekday()]} {value.day} {_MONTH_NAMES[value.month]}"
+
+
+class ClockHms(SlotType):
+    """A timezone-aware time as the 24-hour IST clock time with seconds, "14:12:05" (D-17, ADR-322 point 2)."""
+
+    @staticmethod
+    def validate(value: object) -> None:
+        from ofo.errors.gate_slots import Clock
+        Clock.validate(value)
+
+    @staticmethod
+    def format(value: datetime.datetime) -> str:
+        return value.astimezone(datetime.timezone(datetime.timedelta(hours=5, minutes=30))).strftime("%H:%M:%S")
+
+
+@dataclass(frozen=True)
+class EarlierDay:
+    """A time from an earlier day than the answer's own: printed with its date ("8 Oct, 15:29:59"), so Thursday's price
+    is never read as today's (ADR-330 (36), review F1)."""
+
+    at: datetime.datetime
+
+
+class ClockHmsOrDated(SlotType):
+    """The ClockHms time, or an ``EarlierDay`` printed "8 Oct, 15:29:59" (no leading zero on the day, as ``DayMonth``)."""
+
+    @staticmethod
+    def validate(value: object) -> None:
+        if isinstance(value, EarlierDay):
+            value = value.at
+        ClockHms.validate(value)
+
+    @staticmethod
+    def format(value: object) -> str:
+        if isinstance(value, EarlierDay):
+            ist = value.at.astimezone(datetime.timezone(datetime.timedelta(hours=5, minutes=30)))
+            return f"{ist.day} {_MONTH_NAMES[ist.month]}, {ist.strftime('%H:%M:%S')}"
+        return ClockHms.format(value)  # type: ignore[arg-type]
 
 
 class UnderlyingName(SlotType):
@@ -1008,7 +1094,7 @@ class DayMonth(SlotType):
 
     @staticmethod
     def format(value: datetime.date) -> str:
-        return f"{value.day:02d} {value.strftime('%b')}"
+        return f"{value.day:02d} {_MONTH_NAMES[value.month]}"
 
 
 def _cell_enums() -> tuple[type, ...]:
@@ -1055,11 +1141,22 @@ PLAYBOOK_TYPE_LABEL_TEXT: Mapping[str, str] = MappingProxyType(
 
 #: GC-ADJ2 step 4 (REQ-161 AC-1, AC-2; mockup screen 4): the fixed words of the strategy plan sheet and the tracking
 #: panel's Plan entry, by key. Each is one reviewed template `plan_sheet_<key>`; the browser prints what the server sends.
+NO_PLAN_TEXT = "No plan: nothing is watched for this strategy"  # ADR-330 (11): replaces "default rules apply"
 PLAN_SHEET_LABEL_TEXT: Mapping[str, str] = MappingProxyType({
     "title": "When tracking starts: this strategy's plan", "playbook": "Playbook", "target": "Target",
-    "stop": "Stop", "max_adjustments": "Max adjustments", "time_exit": "Time exit (on expiry day)",
+    "stop": "Stop",
+    "target_rupees": "Target (Rs)", "stop_rupees": "Stop (Rs)",  # ADR-330 (5): the same level typed in rupees
+    "max_adjustments": "Max adjustments", "time_exit": "Time exit",
+    "time_exit_on": "Time exit date (blank = expiry day)",  # ADR-330 (7): any trading day, one date and one time
     "customise": "Customise triggers", "use_as_is": "Use playbook as is", "save": "Save plan", "close": "Close",
-    "plan_entry": "Plan", "edit": "Edit plan", "no_plan": "No plan saved yet: default rules apply", "set_plan": "Set plan",
+    "reset": "Reset to playbook",  # ADR-330 (9), (32), P8 (pending owner read)
+    "reset_confirm": ("Reset to playbook puts back this playbook's conditions only. The levels you typed on the sheet "
+                      "(profit target, rupee target, rupee stop, time exit, the adjustment limit) and the plan's "
+                      "settings stay as you set them. Reset the conditions?"),
+    "reset_put_back": "Put back to the playbook's values:",  # T2-19 (pending owner read)
+    "reset_put_back_off": "Switched on again:",
+    "reset_put_back_none": "Nothing differed from the playbook, so nothing was put back.",
+    "plan_entry": "Plan", "edit": "Edit plan", "no_plan": NO_PLAN_TEXT, "set_plan": "Set plan",
     "hour": "Hour", "minute": "Minute",
 })
 
@@ -1244,6 +1341,12 @@ def approach_about_id(approach_id: str) -> str:
     return "adjust_approach_about_" + approach_id.lower().replace("-", "_")
 
 
+#: the control that moved a leg onto another contract, in the words of the reason (item 10)
+_LEG_MOVE_REASONS: Mapping[str, str] = MappingProxyType({
+    "expiry": "you changed the expiry", "shift": "Shift moved the leg to another contract",
+    "width": "Width moved the leg to another contract", "hedge": "Hedge moved the leg to another contract",
+    "step": "you moved the strike"})
+
 _EXPLANATIONS: tuple[ExplanationTemplate, ...] = (
     ExplanationTemplate("why_triggered", "what_triggered", "Your rule was triggered: {rule_text} ({kind} rule {rule_id}).",
                         {"rule_text": Quoted, "kind": Recorded, "rule_id": Recorded}),
@@ -1427,6 +1530,9 @@ _EXPLANATIONS: tuple[ExplanationTemplate, ...] = (
     ExplanationTemplate("playbook_name_shown", "values_seen", "{name}", {"name": UserText}),
     ExplanationTemplate("change_renamed", "values_seen", "Renamed from {old} to {new}",
                         {"old": UserText, "new": UserText}),
+    # ADR-330 (31): a delete and its Undo are history entries (the times come from the entry, not from this text)
+    ExplanationTemplate("change_deleted", "values_seen", "Deleted"),
+    ExplanationTemplate("change_undeleted", "values_seen", "Restored"),
     ExplanationTemplate("rule_label_days_to_expiry_from", "rule", "{days} days to expiry or fewer, from {time} IST",
                         {"days": Days, "time": ClockHm}),
     # --- W-066 (issue #151, REQ-034 AC-7): every text of the outcome API, with typed slots --------------------------
@@ -1462,7 +1568,28 @@ _EXPLANATIONS: tuple[ExplanationTemplate, ...] = (
     ExplanationTemplate("target_days_to_expiry", "values_seen", "{days}D to expiry", {"days": Days}),
     ExplanationTemplate("target_move_no_spot", "values_seen",
                         "The move from spot is not available: there is no live index price."),
+    # D-37: beside a "-" Target / Date readout while the prices are not live (pending owner read)
+    ExplanationTemplate("target_not_live", "values_seen", "not shown while prices are not live"),
     # GC-TP R-18 (ADR-209): the line naming the booked P&L a paper strategy's target figures include
+    # ADR-330 (36) (LR-Q18, owner 26 Nov 2026): a trade after the close with legs frozen at the close AND legs first priced
+    # later; the later legs carry the time they have. Singular and plural; the one function is closed_label (outcome.py).
+    # ADR-330 (60) (owner 27 Nov 2026 evening; pending owner read): the Exit dialog's one line while the market is closed.
+    ExplanationTemplate("exit_market_closed", "values_seen",
+                        "The market is closed. Exits can be placed from 09:15 on {day}.", {"day": DayLabel}),
+    ExplanationTemplate("exit_market_closed_no_day", "values_seen",
+                        "The market is closed. Exits can be placed when it opens."),
+    # Lane FD4 hand-over (28 Nov 2026), pending owner read: the same line for ORDERS (the Add to Paper dialog; it must not
+    # say "Exits"); ``ofo_app/exit_market.entries_sentence`` renders them beside ``exit_market_closed``
+    ExplanationTemplate("exit_market_closed_entries", "values_seen",
+                        "The market is closed. Orders can be placed from 09:15 on {day}.", {"day": DayLabel}),
+    ExplanationTemplate("exit_market_closed_entries_no_day", "values_seen",
+                        "The market is closed. Orders can be placed when it opens."),
+    ExplanationTemplate("closed_prices_mixed_one", "values_seen",
+                        "Market closed. Prices are from {frozen}; 1 leg as of {later}.",
+                        {"frozen": ClockHmsOrDated, "later": ClockHmsOrDated}),
+    ExplanationTemplate("closed_prices_mixed_many", "values_seen",
+                        "Market closed. Prices are from {frozen}; {count} legs as of {later}.",
+                        {"frozen": ClockHmsOrDated, "later": ClockHmsOrDated, "count": LegCount}),
     ExplanationTemplate("target_includes_booked", "values_seen", "includes {amount} booked", {"amount": SignedRupeesPaisa}),
     ExplanationTemplate("target_booked_unreadable", "values_seen",
                         "Booked profit and loss could not be read, so these figures are for the open legs only."),
@@ -1574,6 +1701,7 @@ _EXPLANATIONS: tuple[ExplanationTemplate, ...] = (
     ExplanationTemplate("suggestion_lapsed_condition_stopped", "values_seen", "The condition stopped holding"),
     ExplanationTemplate("suggestion_lapsed_strategy_closed", "values_seen", "The strategy closed"),
     ExplanationTemplate("suggestion_lapsed_not_monitored", "values_seen", "The strategy is no longer monitored"),
+    ExplanationTemplate("suggestion_lapsed_contract_expired", "values_seen", "The contracts have expired"),
     ExplanationTemplate("suggestion_lapsed_position_changed", "values_seen", "The position changed"),
     ExplanationTemplate("suggestion_lapsed_superseded_by_worse", "values_seen", "A worse reading of the same rule replaced it"),
     ExplanationTemplate("suggestion_dismiss_expected_within_plan", "values_seen", "Expected and within my plan"),
@@ -1582,6 +1710,10 @@ _EXPLANATIONS: tuple[ExplanationTemplate, ...] = (
     ExplanationTemplate("suggestion_dismiss_other", "values_seen", "Other"),
     ExplanationTemplate("suggestion_group_count", "what_triggered", "{count} adjustment conditions triggered",
                         {"count": Count}),
+    # D-30: the counters count conditions (records), the list counts rows (groups): both units named side by side
+    ExplanationTemplate("suggestion_counts_units", "values_seen",
+                        "Counters count conditions, not rows. Conditions: {conditions}. Rows: {rows}. One row can hold "
+                        "several conditions.", {"conditions": Count, "rows": Count}),
     ExplanationTemplate("suggestion_inbox_empty", "values_seen", "No adjustment opportunities"),
     # GC-MU A3 (ADR-230 (2)): the Live Strategies card mark, singular for one
     ExplanationTemplate("suggestion_open_count_one", "values_seen", "1 adjustment opportunity"),
@@ -1625,6 +1757,16 @@ _EXPLANATIONS: tuple[ExplanationTemplate, ...] = (
     ExplanationTemplate("adjust_condition_line_t01_beyond_pe", "values_seen",
                         "{label}: spot is beyond the sold {strike} PE by {points} points",
                         {"label": PlaybookTriggerLabel, "strike": WholePoints, "points": Points}),
+    # ADR-330 (7), 27 Nov 10:28 (pending owner read): the alert of the PLAN's own time exit names it as such
+    ExplanationTemplate("adjust_condition_line_plan_time_exit", "values_seen",
+                        "Time exit reached: the plan's time exit is {threshold}", {"threshold": ClockTime}),
+    # D-58 (pending owner read): after an adjustment the T-01 line says which side is tested (its short is nearer spot)
+    ExplanationTemplate("adjust_condition_side_put", "values_seen", "{line} (put side tested)", {"line": Explained}),
+    ExplanationTemplate("adjust_condition_side_call", "values_seen", "{line} (call side tested)", {"line": Explained}),
+    # Lane O 27 Nov, item 2 (pending owner read): an alert row whose record has no worded condition shows the rule's kind
+    # and its figures, never the trade's name alone
+    ExplanationTemplate("alert_rule_fallback_valued", "values_seen", "{label}: {value} (rule {threshold})",
+                        {"label": PlaybookTriggerLabel, "value": PlaybookField, "threshold": PlaybookField}),
     # last resort (fail visible): the trigger id alone when no line can carry its value
     ExplanationTemplate("adjust_condition_line_id", "values_seen", "{label}", {"label": PlaybookTriggerLabel}),
     # ADR-221: the T-19 flag line names the cheapest approach the playbook offers and its Compare cost
@@ -1646,11 +1788,38 @@ _EXPLANATIONS: tuple[ExplanationTemplate, ...] = (
                         {"pct": PlaybookField, "margin": PlaybookField}),
     ExplanationTemplate("plan_stop_words_credit", "values_seen", "{multiple}x the credit received",
                         {"multiple": PlaybookField}),
+    # ADR-330 (5) / owner Q3: a rupee level is the whole trade, before charges, the per-lot figure beside it
+    ExplanationTemplate("plan_level_rupees", "values_seen",
+                        "Rs {rupees} for the whole trade (Rs {per_lot} per lot), before charges",
+                        {"rupees": Amount, "per_lot": Amount}),
+    ExplanationTemplate("plan_level_rupees_whole", "values_seen", "Rs {rupees} for the whole trade, before charges",
+                        {"rupees": Amount}),
+    ExplanationTemplate("plan_stop_words_rupees", "values_seen", "a loss of Rs {rupees} ({pct} % of max loss)",
+                        {"rupees": Amount, "pct": Amount}),
+    ExplanationTemplate("plan_stop_words_rupees_plain", "values_seen", "a loss of Rs {rupees}", {"rupees": Amount}),
     ExplanationTemplate("plan_stop_words_or", "values_seen", "{a} or {b}", {"a": Explained, "b": Explained}),
     ExplanationTemplate("plan_stop_words_or3", "values_seen", "{a}, {b} or {c}",
                         {"a": Explained, "b": Explained, "c": Explained}),
     ExplanationTemplate("plan_stop_words_first", "values_seen", "{words}, whichever comes first",
                         {"words": Explained}),
+    # Hotfix plan-read-1127 (pending owner read): the plan sheet's stop is not shown when the expiry kind is not known
+    ExplanationTemplate("plan_stop_kind_not_known", "values_seen",
+                        "Stop not shown: whether this trade expires weekly or monthly is not known right now"),
+    ExplanationTemplate("plan_stop_kind_catalogue_unreadable", "values_seen",
+                        "Stop not shown: the contract list could not be read, so the expiry type is not known"),
+    # ADR-330 (19)(b) (pending owner read): the trade's number and nearest expiry beside its (quoted) name in alert lists
+    ExplanationTemplate("alert_strategy_label", "values_seen", "{name} (#{number}, {day} {month})",
+                        {"name": Explained, "number": Recorded, "day": Recorded, "month": Recorded}),
+    ExplanationTemplate("alert_strategy_label_no_expiry", "values_seen", "{name} (#{number})",
+                        {"name": Explained, "number": Recorded}),
+    # ADR-330 (25) / LP-4 (pending owner read): a rupee stop above the stop base's max loss; informs, never blocks.
+    ExplanationTemplate("plan_stop_above_max_loss", "values_seen",
+                        "This stop (Rs {stop}) is above the trade's max loss (Rs {loss}), so it cannot be reached.",
+                        {"stop": WholeRupees, "loss": WholeRupees}),
+    # the same line when both figures print as the same whole rupees: each to the paisa, so they read differently.
+    ExplanationTemplate("plan_stop_above_max_loss_paise", "values_seen",
+                        "This stop ({stop}) is above the trade's max loss ({loss}), so it cannot be reached.",
+                        {"stop": Rupees, "loss": Rupees}),
     # GC-ICFIX u113 round 3 (ADR-304 (3), ADR-294, ADR-296): the one sentence each limit row of the rule check carries.
     # The percent and the rupee amount are the evaluator's own numbers; a rule that is not checked prints its reason and no number.
     ExplanationTemplate("limit_target", "values_seen", "Target: profit of {pct} % of max profit, before charges",
@@ -1662,6 +1831,11 @@ _EXPLANATIONS: tuple[ExplanationTemplate, ...] = (
                         {"multiple": Amount, "amount": Rupees}),
     ExplanationTemplate("limit_stop_credit_plain", "values_seen", "Stop: loss of {multiple} x credit",
                         {"multiple": Amount}),
+    # ADR-330 (5): a typed rupee level is a limit row of its own (whole trade, before charges, Q3)
+    ExplanationTemplate("limit_target_rupees", "values_seen", "Target: profit of {amount}, before charges",
+                        {"amount": Rupees}),
+    ExplanationTemplate("limit_stop_rupees", "values_seen", "Stop: loss of {amount}, before charges",
+                        {"amount": Rupees}),
     ExplanationTemplate("limit_later", "values_seen", "{line}; {pct} % nearer expiry", {"line": Explained, "pct": Amount}),
     ExplanationTemplate("limit_tightened", "values_seen", "{line}; tightened by {pct} % today",
                         {"line": Explained, "pct": Amount}),
@@ -1675,7 +1849,39 @@ _EXPLANATIONS: tuple[ExplanationTemplate, ...] = (
     ExplanationTemplate("limit_already_true_after", "values_seen",
                         "{line}. Already true after adjustment {n}: alerts after it clears and crosses again",
                         {"line": Explained, "n": Amount}),
-    ExplanationTemplate("check_as_of", "values_seen", "As of {time} IST", {"time": ClockSeconds}),
+    ExplanationTemplate("check_as_of", "values_seen", "As of {time} IST", {"time": ClockHms}),
+    ExplanationTemplate("contract_list_earlier", "values_seen",
+                        "Contract list of {day}. Today's list loads at about {time}.",
+                        {"day": DayMonth, "time": HourMinute}),
+    ExplanationTemplate("alert_fired_at", "what_triggered", "Fired at {time}", {"time": HourMinute}),
+    ExplanationTemplate("alert_no_longer_true_since", "values_seen", "no longer true since {time}",
+                        {"time": HourMinute}),
+    # ADR-330 (3), REQ-170 AC-3: the open alert says a later reading of the same rule is worse than the one it fired at
+    ExplanationTemplate("alert_worse_than_fired", "values_seen",
+                        "Worse than when it fired: {value} {unit} (fired at {fired} {unit})",
+                        {"value": PlaybookField, "unit": PlaybookUnit, "fired": PlaybookField}),
+    ExplanationTemplate("alert_worse_than_fired_plain", "values_seen",
+                        "Worse than when it fired: {value} (fired at {fired})",
+                        {"value": PlaybookField, "fired": PlaybookField}),
+    # ADR-330 (3), owner Q2b: an unanswered alert whose trade closed first stays in History with this line
+    ExplanationTemplate("alert_closed_trade_closed", "values_seen", "Closed by system: the trade closed at {time}",
+                        {"time": HourMinute}),
+    # ADR-330 (2) (b), (33), P7 page flow (pending owner read): the side_closed row's words and its confirmation
+    # one sentence per closed side; the shape is a strategy template's own name through the reviewed TemplateText slot
+    # (Lane J 26 Nov: two new slot types would need the pinned slot-type
+    # review of tests_app/test_identifier_and_slots.py); the route uses it only when the shape data names that shape
+    ExplanationTemplate("alert_side_closed_text_call", "values_seen",
+                        "The call side of this trade is closed. Add the legs again, or confirm the new shape: "
+                        "this strategy will change from its entry shape to {shape}.", {"shape": TemplateText}),
+    ExplanationTemplate("alert_side_closed_text_put", "values_seen",
+                        "The put side of this trade is closed. Add the legs again, or confirm the new shape: "
+                        "this strategy will change from its entry shape to {shape}.", {"shape": TemplateText}),
+    # ADR-330 (2) (a), P10 (pending owner read): a plan rule that needs a closed side, in the Plan watch's reason field;
+    # one sentence per side, no slot (as the side-closed alert sentence)
+    ExplanationTemplate("plan_watch_side_not_applicable_call", "values_seen", "Not applicable: the call side is closed"),
+    ExplanationTemplate("plan_watch_side_not_applicable_put", "values_seen", "Not applicable: the put side is closed"),
+    *(ExplanationTemplate(f"alert_answer_{key}", "values_seen", text)  # ADR-330 (3): each answer's label, as the page shows it
+      for key, text in ALERT_ANSWER_LABEL_TEXT.items()),
     ExplanationTemplate("stop_fired_loss", "values_seen",
                         "Stop reached: loss now {loss} ({loss_pct} % of max loss); stop line {stop} ({stop_pct} % of max loss)",
                         {"loss": Rupees, "loss_pct": Amount, "stop": Rupees, "stop_pct": Amount}),
@@ -1689,10 +1895,10 @@ _EXPLANATIONS: tuple[ExplanationTemplate, ...] = (
     ExplanationTemplate("stop_held_credit", "values_seen",
                         "Stop was reached earlier: loss then {loss}; stop line {stop}",
                         {"loss": Rupees, "stop": Rupees}),
-    ExplanationTemplate("stop_fired_at", "values_seen", "{line}; reached at {time} IST",
+    ExplanationTemplate("stop_fired_at", "values_seen", "{line}; seen by the check at {time} IST",
                         {"line": Explained, "time": HourMinute}),
     # issue 19: a stop read on a later day than the one it was reached on names that day (the server decides "today")
-    ExplanationTemplate("stop_fired_on", "values_seen", "{line}; reached on {date} at {time} IST",
+    ExplanationTemplate("stop_fired_on", "values_seen", "{line}; seen by the check on {date} at {time} IST",
                         {"line": Explained, "date": Date, "time": HourMinute}),
     ExplanationTemplate("adjust_spot_from_feed", "values_seen", "Spot from the live feed"),
     ExplanationTemplate("adjust_spot_from_rest_quote", "values_seen", "Spot from a one-time price request"),
@@ -1711,6 +1917,7 @@ _EXPLANATIONS: tuple[ExplanationTemplate, ...] = (
     ExplanationTemplate("adjust_spot_why_no_time", "values_seen", "it carried no time"),
     ExplanationTemplate("adjust_spot_why_tick_in_future", "values_seen", "its time is in the future"),
     ExplanationTemplate("adjust_spot_why_stale", "values_seen", "its last price is too old"),
+    ExplanationTemplate("adjust_spot_why_rest_stale", "values_seen", "its last price is too old"),
     ExplanationTemplate("adjust_spot_why_not_finite", "values_seen", "its last price was not a number"),
     ExplanationTemplate("adjust_spot_why_not_found", "values_seen", "it does not know this contract"),
     ExplanationTemplate("adjust_spot_why_failed", "values_seen", "the read failed"),
@@ -1743,6 +1950,10 @@ _EXPLANATIONS: tuple[ExplanationTemplate, ...] = (
     ExplanationTemplate("outcome_problem_leg", "values_seen", "Instrument {leg} cannot be used: {why}", {"leg": InstrumentRef, "why": Explained}),
     ExplanationTemplate("outcome_why_not_in_snapshot", "values_seen", "not in today's instrument list"),
     ExplanationTemplate("outcome_why_unknown_instrument", "values_seen", "unknown instrument"),
+    # D-64: an unusable leg named as the trader knows it ("NIFTY 13 Oct 22600 CE"), never by its raw instrument id
+    ExplanationTemplate("outcome_problem_leg_named", "values_seen", "{leg} cannot be used: {why}",
+                        {"leg": Explained, "why": Explained}),
+    ExplanationTemplate("outcome_problem_leg_unknown", "values_seen", "A leg cannot be used: {why}", {"why": Explained}),
     ExplanationTemplate("outcome_why_expired", "values_seen", "expired"),
     ExplanationTemplate("outcome_why_other_underlying", "values_seen",
                         "the contract is on {contract_on}, the strategy is on {underlying}",
@@ -1789,7 +2000,24 @@ _EXPLANATIONS: tuple[ExplanationTemplate, ...] = (
     ExplanationTemplate("money_price_missing", "values_seen", "a planned price is missing for at least one leg"),
     ExplanationTemplate("money_value_price_missing", "values_seen",
                         "a live price is missing for at least one leg or for the index"),
+    ExplanationTemplate("money_basis_plan", "values_seen", "At plan prices"),
+    ExplanationTemplate("money_basis_paper", "values_seen", "At paper fill prices"),
+    ExplanationTemplate("money_basis_mixed", "values_seen",
+                        "At paper fill prices for {fills} of {total} legs; the rest at their entered prices",
+                        {"fills": Count, "total": Count}),
+    ExplanationTemplate("money_basis_none", "values_seen",
+                        "At their entered prices: none of {total} legs is a paper fill", {"total": Count}),
+    ExplanationTemplate("money_basis_unread", "values_seen", "At their entered prices (the paper book could not be read)"),
+    ExplanationTemplate("money_plan_changed", "values_seen",
+                        "Plan credit not shown: the plan's lots differ from the paper position"),
+    ExplanationTemplate("money_plan_get", "values_seen", "Plan: Get {amount} at plan prices", {"amount": Rupees}),
+    ExplanationTemplate("money_plan_pay", "values_seen", "Plan: Pay {amount} at plan prices", {"amount": Rupees}),
     ExplanationTemplate("money_value_label", "values_seen", "value of the options, not P&L"),
+    ExplanationTemplate("money_time_value_live", "values_seen", "at live prices, as of {time}", {"time": ClockHms}),
+    ExplanationTemplate("money_time_value_live_untimed", "values_seen", "at live prices, time not given"),
+    ExplanationTemplate("money_time_value_closed", "values_seen", "at the last close prices, as of {time}",
+                        {"time": ClockHms}),
+    ExplanationTemplate("money_time_value_closed_untimed", "values_seen", "at the last close prices"),
     ExplanationTemplate("money_charges_label", "values_seen", "estimate"),
     ExplanationTemplate("money_reward_risk_zero_loss", "values_seen", "max loss is 0"),
     ExplanationTemplate("money_reward_risk_no_charges", "values_seen",
@@ -1822,6 +2050,12 @@ _EXPLANATIONS: tuple[ExplanationTemplate, ...] = (
                         "At every level at expiry."),
     ExplanationTemplate("scenario_view_label", "values_seen", "{view}", {"view": ScenarioViewLabel}),
     ExplanationTemplate("table_column_label", "values_seen", "{column}", {"column": ColumnLabel}),
+    # D-12 (ADR-320 (1)): on expiry day theta per day is replaced by the time value left until the close, in rupees
+    ExplanationTemplate("table_column_decay_left_today", "values_seen", "Decay left today (Rs)", {}),
+    ExplanationTemplate("decay_left_today_text", "values_seen", "Decay left today: {amount}", {"amount": Rupees}),
+    # D-08 (ADR-268 (1)): the basis of an estimate that valued an expiry-day leg at intrinsic (joined like a data label)
+    ExplanationTemplate("estimate_intrinsic_basis", "values_seen",
+                        "a leg with no time value left at the live price is valued at its intrinsic value", {}),
     ExplanationTemplate("scenario_header_plain", "values_seen", "{level}", {"level": Points}),
     ExplanationTemplate("scenario_header_current", "values_seen", "CURRENT {level}", {"level": Points}),
     ExplanationTemplate("scenario_header_zero_pnl", "values_seen", "0-P&L {level}", {"level": Points}),
@@ -1838,6 +2072,18 @@ _EXPLANATIONS: tuple[ExplanationTemplate, ...] = (
                         {"underlying": UnderlyingName, "direction": Recorded, "level": IndexLevel}),
     ExplanationTemplate("paper_stop_reason_leg", "what_triggered", "Stop-loss: {contract} crossed {direction} {level}",
                         {"contract": Explained, "direction": Recorded, "level": IndexLevel}),
+    # D-22 / D-71 (owner decision 2026-11-24; REQ-109 AC-7, AC-8): a stop's and a settlement's record names the index value
+    # at that moment, or says it was not available (never a guess)
+    ExplanationTemplate("paper_stop_reason_index_at", "values_seen", "{what}; {underlying} was at {level} at that moment",
+                        {"what": Explained, "underlying": UnderlyingName, "level": IndexLevel}),
+    ExplanationTemplate("paper_stop_reason_index_unknown", "values_seen",
+                        "{what}; the index value at that moment was not available", {"what": Explained}),
+    ExplanationTemplate("paper_settle_reason", "values_seen", "Paper - settled at expiry: {underlying} closed at {level}",
+                        {"underlying": UnderlyingName, "level": IndexLevel}),
+    ExplanationTemplate("paper_settle_reason_plain", "values_seen", "Paper - settled at expiry"),
+    ExplanationTemplate("paper_settle_history_body", "values_seen",
+                        "{what}; settled {prices}. A paper settlement only: no order was sent to Zerodha.",
+                        {"what": Explained, "prices": Explained}),
     # F-94 (ADR-082 (2)): the paper book's Max Profit / Max Loss say whether the round-trip charges are inside them
     ExplanationTemplate("paper_extremes_with_charges", "values_seen",
                         "Maximum profit and maximum loss include about {charges} of charges and taxes.",
@@ -1845,15 +2091,173 @@ _EXPLANATIONS: tuple[ExplanationTemplate, ...] = (
     ExplanationTemplate("paper_extremes_before_charges", "values_seen",
                         "Maximum profit and maximum loss are before charges and taxes: the charges could not be "
                         "priced."),
+    # D-16 (ADR-263): the paper book's breakevens say what is inside them (the booked P&L always; the charges Max Profit carries)
+    ExplanationTemplate("paper_breakevens_with_charges", "values_seen",
+                        "Breakevens include the booked P&L and about {charges} of charges and taxes.",
+                        {"charges": Rupees}),
+    ExplanationTemplate("paper_breakevens_before_charges", "values_seen",
+                        "Breakevens include the booked P&L and are before charges and taxes: the charges could not be "
+                        "priced."),
+    # D-10 (ADR-306 (5)): a fully closed trade shows its result, not two equal maxima
+    # (the result is the after-charges maximum when the charges are known, else the before-charges one: each says so)
+    ExplanationTemplate("paper_closed_result", "values_seen", "Closed: result {result} after charges.",
+                        {"result": Rupees}),
+    ExplanationTemplate("paper_closed_result_before", "values_seen", "Closed: result {result} before charges.",
+                        {"result": Rupees}),
+    # D-63: the net Greeks of a two-expiry trade add legs of different expiries
+    ExplanationTemplate("paper_greeks_across_expiries", "values_seen", "Greeks are summed across {count} expiries.",
+                        {"count": Count}),
     # ADR-256: the exit confirm list, when the legs left open can lose more than before (a sold option lost its bought one)
     ExplanationTemplate("paper_exit_widens_loss", "values_seen",
                         "After these orders, maximum loss: {before} before, {after} after.",
                         {"before": Explained, "after": Explained}),
+    # ADR-330 (6): the Stops panel line before a leg stop is saved (figures are the loss sizes, no sign)
+    # UX-A03 (28 Nov 2026), pending owner read: a leg stop that HAS fired, in the past tense;
+    # wrap with stop_fired_at / stop_fired_on for "seen by the check at <time> IST"
+    ExplanationTemplate("paper_leg_stop_fired", "values_seen",
+                        "Stop fired: {leg} reached {level}; max loss at that point Rs {figure}",
+                        {"leg": Explained, "level": IndexLevel, "figure": IndexLevel}),
+    ExplanationTemplate("paper_leg_stop_fired_unlimited", "values_seen",
+                        "Stop fired: {leg} reached {level}; there was no fixed maximum loss at that point",
+                        {"leg": Explained, "level": IndexLevel}),
+    ExplanationTemplate("paper_leg_stop_fired_unknown", "values_seen",
+                        "Stop fired: {leg} reached {level}; the maximum loss at that point was not worked out",
+                        {"leg": Explained, "level": IndexLevel}),
+    ExplanationTemplate("paper_leg_stop_widens_loss", "values_seen",
+                        "If this stop fires, max loss becomes Rs {after} (now Rs {before}).",
+                        {"before": IndexLevel, "after": IndexLevel}),
+    ExplanationTemplate("paper_leg_stop_unlimited_loss", "values_seen",
+                        "If this stop fires, there is no fixed maximum loss (now Rs {before}).",
+                        {"before": IndexLevel}),
+    # the same line when the book's "max loss" figure is a profit (positive): never printed as a loss
+    ExplanationTemplate("paper_leg_stop_from_profit", "values_seen",
+                        "If this stop fires, max loss becomes Rs {after} (now a profit: at least Rs {before}).",
+                        {"before": IndexLevel, "after": IndexLevel}),
+    ExplanationTemplate("paper_leg_stop_unlimited_from_profit", "values_seen",
+                        "If this stop fires, there is no fixed maximum loss (now a profit: at least Rs {before}).",
+                        {"before": IndexLevel}),
+    ExplanationTemplate("paper_leg_stop_to_profit", "values_seen",
+                        "If this stop fires, the book shows a profit of at least Rs {after} (now max loss Rs {before}).",
+                        {"before": IndexLevel, "after": IndexLevel}),
+    ExplanationTemplate("paper_leg_stop_still_profit", "values_seen",
+                        "If this stop fires, the book shows a profit of at least Rs {after} (now at least Rs {before}).",
+                        {"before": IndexLevel, "after": IndexLevel}),
+    # ADR-330 (55): a leg stop that leaves a sold option bare is three short lines, each fact on its own line
+    ExplanationTemplate("paper_leg_stop_bare_one", "values_seen",
+                        "If this stop fires, the sold {leg} is left without protection.", {"leg": Explained}),
+    ExplanationTemplate("paper_leg_stop_bare_many", "values_seen",
+                        "If this stop fires, these sold options are left with less protection: {legs}.",
+                        {"legs": Explained}),
+    ExplanationTemplate("paper_leg_stop_now_loss", "values_seen", "Max loss now: Rs {amount}.",
+                        {"amount": IndexLevel}),
+    ExplanationTemplate("paper_leg_stop_now_profit", "values_seen",
+                        "Max loss now: none (the book shows a profit of at least Rs {amount}).",
+                        {"amount": IndexLevel}),
+    ExplanationTemplate("paper_leg_stop_then_zero", "values_seen",
+                        "Max loss then: Rs {amount} (worst case: {index} at zero).",
+                        {"amount": IndexLevel, "index": UnderlyingName}),
+    ExplanationTemplate("paper_leg_stop_then_profit", "values_seen",
+                        "Max loss then: none (the book shows a profit of at least Rs {amount}).",
+                        {"amount": IndexLevel}),
+    ExplanationTemplate("paper_leg_stop_then_unlimited", "values_seen",
+                        "Max loss then: no upper limit (worst case: {index} keeps rising).", {"index": UnderlyingName}),
+    ExplanationTemplate("paper_leg_stop_three_lines", "values_seen", "{first}\n{second}\n{third}",
+                        {"first": Explained, "second": Explained, "third": Explained}),
+    ExplanationTemplate("paper_leg_stop_now_unlimited", "values_seen", "Max loss now: no upper limit.", {}),
+    ExplanationTemplate("paper_leg_stop_then_loss", "values_seen", "Max loss then: Rs {amount}.",
+                        {"amount": IndexLevel}),
+    ExplanationTemplate("paper_leg_stop_now_unknown", "values_seen", "Max loss now: could not be worked out.", {}),
+    ExplanationTemplate("paper_leg_stop_then_unknown", "values_seen", "Max loss then: could not be worked out.", {}),
+    # ADR-330 (57): the one read-only line of a closed trade: what the plan was and how the trade ended
+    ExplanationTemplate("plan_final_stop", "values_seen", "stop Rs {amount}", {"amount": WholeRupees}),
+    ExplanationTemplate("plan_final_stop_none", "values_seen", "no stop", {}),
+    ExplanationTemplate("plan_final_stop_unknown", "values_seen", "stop not available", {}),
+    ExplanationTemplate("plan_final_target", "values_seen", "target Rs {amount}", {"amount": WholeRupees}),
+    ExplanationTemplate("plan_final_target_none", "values_seen", "no target", {}),
+    ExplanationTemplate("plan_final_target_unknown", "values_seen", "target not available", {}),
+    ExplanationTemplate("plan_final_levels", "values_seen", "Plan: {stop}, {target}.",
+                        {"stop": Explained, "target": Explained}),
+    ExplanationTemplate("plan_final_no_plan", "values_seen", "No plan was set for this trade.", {}),
+    ExplanationTemplate("plan_final_how_exit", "values_seen", "your exit", {}),
+    ExplanationTemplate("plan_final_how_stop", "values_seen", "your stop", {}),
+    ExplanationTemplate("plan_final_how_settle", "values_seen", "expiry settlement", {}),
+    ExplanationTemplate("plan_final_end_at", "values_seen", "Closed by {how} at {time}.",
+                        {"how": Explained, "time": ClockHm}),
+    ExplanationTemplate("plan_final_end_on", "values_seen", "Closed by {how} on {day} at {time}.",
+                        {"how": Explained, "day": DayMonth, "time": ClockHm}),
+    ExplanationTemplate("plan_final_end_no_time", "values_seen", "Closed by {how}.", {"how": Explained}),
+    ExplanationTemplate("plan_final_end_unknown", "values_seen", "How this trade ended is not recorded.", {}),
+    ExplanationTemplate("plan_final_line", "values_seen", "{plan} {end}", {"plan": Explained, "end": Explained}),
     ExplanationTemplate("paper_exit_less_protected", "values_seen",
                         "Sold option with less protection: {legs}.", {"legs": Explained}),
+    # Lane RA2 item 9 (new wording, pending the owner's read): the same two lines for an index exit that HAS fired, in the
+    # past tense (the preview above says "After these orders"; a fired exit's record says what happened)
+    ExplanationTemplate("paper_exit_fired_loss", "values_seen",
+                        "After the exit, maximum loss was {before} before and {after} after.",
+                        {"before": Explained, "after": Explained}),
+    ExplanationTemplate("paper_exit_fired_less_protected", "values_seen",
+                        "A sold option was left with less protection: {legs}.", {"legs": Explained}),
     ExplanationTemplate("paper_exit_warning_join", "values_seen", "{first} {second}",
                         {"first": Explained, "second": Explained}),
     ExplanationTemplate("paper_trigger_level", "values_seen", "{level}", {"level": IndexLevel}),
+    # P10 (ADR-330 (13)): the labels of the Plan watch lines for the Stops-panel triggers, and the heading they sit under
+    ExplanationTemplate("plan_watch_index_above", "values_seen", "Index exit above {level}", {"level": IndexLevel}),
+    ExplanationTemplate("plan_watch_index_below", "values_seen", "Index exit below {level}", {"level": IndexLevel}),
+    # Lane O 27 Nov, items 5 and 6 (pending owner read): the stop line says the side (rises / falls), the level and,
+    # when a live price is known, the price now, so "price above 135.00" beside a price of 113.10 cannot be misread
+    ExplanationTemplate("plan_watch_leg_above", "values_seen",
+                        "Leg stop on {leg}: fires when the price rises above {level}",
+                        {"leg": Explained, "level": IndexLevel}),
+    ExplanationTemplate("plan_watch_leg_below", "values_seen",
+                        "Leg stop on {leg}: fires when the price falls below {level}",
+                        {"leg": Explained, "level": IndexLevel}),
+    ExplanationTemplate("plan_watch_leg_above_now", "values_seen",
+                        "Leg stop on {leg}: fires when the price rises above {level}; price now {now}",
+                        {"leg": Explained, "level": IndexLevel, "now": IndexLevel}),
+    ExplanationTemplate("plan_watch_leg_below_now", "values_seen",
+                        "Leg stop on {leg}: fires when the price falls below {level}; price now {now}",
+                        {"leg": Explained, "level": IndexLevel, "now": IndexLevel}),
+    ExplanationTemplate("plan_watch_armed_heading", "values_seen", "Armed in the Stops panel", {}),
+    # D-03 (ADR-317 (7)): an index exit set before an adjustment stays armed; the row names the new short strike
+    ExplanationTemplate("paper_exit_set_before_call", "values_seen",
+                        "Exit above {level} was set before this change; your new short call is {strike}. Check this level.",
+                        {"level": IndexLevel, "strike": Points}),
+    ExplanationTemplate("paper_exit_set_before_no_call", "values_seen",
+                        "Exit above {level} was set before this change; you no longer hold a short call. Check this level.",
+                        {"level": IndexLevel}),
+    ExplanationTemplate("paper_exit_set_before_put", "values_seen",
+                        "Exit below {level} was set before this change; your new short put is {strike}. Check this level.",
+                        {"level": IndexLevel, "strike": Points}),
+    ExplanationTemplate("paper_exit_set_before_no_put", "values_seen",
+                        "Exit below {level} was set before this change; you no longer hold a short put. Check this level.",
+                        {"level": IndexLevel}),
+    ExplanationTemplate("paper_exit_confirm_call", "values_seen",
+                        "Exit above {level} stays armed at its level; after this change your short call will be {strike}. Check this level.",
+                        {"level": Points, "strike": Points}),
+    ExplanationTemplate("paper_exit_confirm_no_call", "values_seen",
+                        "Exit above {level} stays armed at its level; after this change you will hold no short call. Check this level.",
+                        {"level": Points}),
+    ExplanationTemplate("paper_exit_confirm_put", "values_seen",
+                        "Exit below {level} stays armed at its level; after this change your short put will be {strike}. Check this level.",
+                        {"level": Points, "strike": Points}),
+    ExplanationTemplate("paper_exit_confirm_no_put", "values_seen",
+                        "Exit below {level} stays armed at its level; after this change you will hold no short put. Check this level.",
+                        {"level": Points}),
+    ExplanationTemplate("paper_leg_stop_removed_on_move", "values_seen",
+                        "The stop on {contract} will be removed; set a new one after the move.", {"contract": Explained}),
+    ExplanationTemplate("paper_exit_set_before_unchecked", "values_seen",
+                        "This exit could not be checked against your current legs. Check this level.", {}),
+    # ADR-330 (19)(b): the one label every alert title carries: the name with the trade's number and, when the trade has
+    # exactly one expiry, that expiry: Short Iron Condor (#172, 1 Dec)
+    ExplanationTemplate("alert_title_unnamed", "values_seen", "Strategy {id}", {"id": Recorded}),
+    # ADR-330 (3b), (6): the message of a fired Stops-panel exit (History only); the line is the ADR-330 (6) max-loss line
+    ExplanationTemplate("stop_fired_note", "what_triggered", "{body}", {"body": Explained}),
+    ExplanationTemplate("stop_fired_note_with_line", "what_triggered", "{body} {line}",
+                        {"body": Explained, "line": Explained}),
+    # ADR-330 (44): a paper exit that could not run because a contract has no live price; it stays set
+    ExplanationTemplate("exit_not_run_no_price", "what_triggered",
+                        "Your exit at {level} could not run: {contract} has no live price. It is still set.",
+                        {"level": IndexLevel, "contract": Explained}),
     ExplanationTemplate("paper_alert_title", "what_triggered", "Paper strategy — {name}", {"name": Explained}),
     ExplanationTemplate("paper_alert_leg", "values_seen", "{contract} at {price}",
                         {"contract": Explained, "price": Explained}),
@@ -1906,6 +2310,9 @@ _EXPLANATIONS: tuple[ExplanationTemplate, ...] = (
     ExplanationTemplate("cell_percent_signed", "values_seen", "{value}%", {"value": SignedAmount}),
     ExplanationTemplate("cell_number", "values_seen", "{value}", {"value": Amount}),
     ExplanationTemplate("cell_text", "values_seen", "{value}", {"value": CellText}),
+    # N-28 (ADR-330 (27), owner 2026-11-26): a closed leg's exit over several exit orders; count is a whole number
+    ExplanationTemplate("closed_exit_average", "values_seen", "{value} (avg of {count})",
+                        {"value": Amount, "count": Days}),
     ExplanationTemplate("cell_health", "values_seen", "{health}", {"health": HealthLabel}),
     # GC-UI step 5 (REQ-091 AC-2..AC-5, ADR-203, F-64): the Strategy Chart's source, future label, notes and reasons
     ExplanationTemplate("price_history_source", "values_seen", "Zerodha's historical 1-minute candles"),
@@ -1930,6 +2337,9 @@ _EXPLANATIONS: tuple[ExplanationTemplate, ...] = (
     ExplanationTemplate("price_history_quantity_not_whole_lots", "values_seen",
                         "{leg}: the saved quantity is not a whole number of lots at today's lot size.",
                         {"leg": LegRef}),
+    # D-51 (ADR-330 (43), REQ-091 AC-8): every leg of the strategy is closed, so there is nothing to chart
+    ExplanationTemplate("price_history_no_open_legs", "values_seen",
+                        "This strategy has no open legs, so there is no strategy chart."),
     # W-102: the Execute reply's cost when no charge rate set could be read (charges null, never a default)
     ExplanationTemplate("execute_cost_charges_not_included", "values_seen",
                         "Charges and taxes are not included: the charge rates could not be read."),
@@ -1942,6 +2352,9 @@ _EXPLANATIONS: tuple[ExplanationTemplate, ...] = (
                         "Charges not shown: an order's value could not be worked out."),
     ExplanationTemplate("paper_reason_model_refused", "values_seen",
                         "Decay not shown: the pricing model could not value a leg."),
+    ExplanationTemplate("current_legs_unreadable", "values_seen", "The current legs could not be read. The legs shown are as saved."),
+    ExplanationTemplate("market_closed_settles", "values_seen",
+                        "Market closed. Open legs that expire today settle at {time}.", {"time": ClockHm}),
     ExplanationTemplate("paper_reason_contract_retired", "values_seen",
                         "This contract has expired and is no longer traded."),
     ExplanationTemplate("paper_reason_contract_delisted", "values_seen", "The exchange has removed this contract."),
@@ -1961,6 +2374,27 @@ _EXPLANATIONS: tuple[ExplanationTemplate, ...] = (
     ExplanationTemplate("unpriced_legs", "values_seen", "No price for: {legs}.", {"legs": Explained}),
     ExplanationTemplate("unpriced_legs_expired", "values_seen", "Expired contracts have no price: {legs}.",
                         {"legs": Explained}),
+    # D-40 (ADR-324): the practice page's header totals leave out a strategy whose open contract has expired
+    # D-68 (ADR-320 point 6; pending owner read): the header's Today total when no real trade was opened or closed today
+    ExplanationTemplate("paper_today_none", "values_seen", "No trades opened or closed today."),
+    ExplanationTemplate("paper_totals_left_out_one", "values_seen", "1 strategy left out: its contract has expired."),
+    ExplanationTemplate("paper_totals_left_out_many", "values_seen",
+                        "{count} strategies left out: their contracts have expired.", {"count": Count}),
+    # P11 (ADR-330 (10), owner Q11): the Paper totals keep closed trades and say how many
+    ExplanationTemplate("paper_totals_closed_one", "values_seen",
+                        "Includes 1 closed strategy."),
+    ExplanationTemplate("paper_totals_closed_many", "values_seen",
+                        "Includes {count} closed strategies.",
+                        {"count": Count}),
+    # AC-R06 / N-46 (ADR-324 (1) to (3), wording new, pending owner read): a strategy with no live price is left out of the
+    # header figures and counted, as an expired one is; the line names the reason(s) of the strategies left out
+    ExplanationTemplate("paper_totals_left_out_unpriced_one", "values_seen",
+                        "1 strategy left out: its price is not live."),
+    ExplanationTemplate("paper_totals_left_out_unpriced_many", "values_seen",
+                        "{count} strategies left out: their prices are not live.", {"count": Count}),
+    ExplanationTemplate("paper_totals_left_out_mixed", "values_seen",
+                        "{count} strategies left out: their contracts have expired or their prices are not live.",
+                        {"count": Count}),
     ExplanationTemplate("paper_reason_multi_expiry", "values_seen",
                         "Profit left and Loss left are not worked out: the open contracts have different expiries."),
     ExplanationTemplate("paper_extremes_prices_not_live", "values_seen",
@@ -1973,12 +2407,21 @@ _EXPLANATIONS: tuple[ExplanationTemplate, ...] = (
     ExplanationTemplate("adjust_cmp_dash", "values_seen", "-"),
     ExplanationTemplate("adjust_cmp_breakevens", "values_seen", "{levels} (profit range {width} points)",
                         {"levels": Recorded, "width": Points}),
+    ExplanationTemplate("adjust_cmp_breakeven_below", "values_seen", "Profit below {level}, no lower end",
+                        {"level": IndexLevel}),
+    ExplanationTemplate("adjust_cmp_breakeven_above", "values_seen", "Profit above {level}, no upper end",
+                        {"level": IndexLevel}),
     ExplanationTemplate("adjust_cmp_no_breakeven_loss", "values_seen", "No breakeven: a loss at every level"),
     ExplanationTemplate("adjust_cmp_no_breakeven_profit", "values_seen", "No breakeven: a profit at every level"),
     ExplanationTemplate("adjust_cmp_adjustments", "values_seen", "{used} used; no plan maximum set",
                         {"used": Recorded}),
     ExplanationTemplate("adjust_cmp_adjustments_of", "values_seen", "{used} of {max}",
                         {"used": Recorded, "max": Recorded}),
+    # ADR-318 (2): a trading row at or over the plan maximum shows its true count and says so; (3): Exit all shows none
+    ExplanationTemplate("adjust_cmp_adjustments_over", "values_seen",
+                        "{used} of {max}; this would be adjustment {used}, over your plan maximum of {max}",
+                        {"used": Recorded, "max": Recorded}),
+    ExplanationTemplate("adjust_cmp_adjustments_exit", "values_seen", "Not an adjustment: closes every open leg"),
     ExplanationTemplate("adjust_cmp_fresh", "values_seen", "Max profit {profit}, max loss {loss}",
                         {"profit": Explained, "loss": Explained}),
     ExplanationTemplate("adjust_cmp_no_price", "values_seen", "Not available: {leg} has no current price.",
@@ -2004,6 +2447,50 @@ _EXPLANATIONS: tuple[ExplanationTemplate, ...] = (
     ExplanationTemplate("adjust_cmp_nothing_open", "values_seen", "Not available: no leg stays open."),
     # ADR-215: the Greeks-after rows of an approach that leaves no open leg (exit); shown, and it cannot lead them
     ExplanationTemplate("adjust_cmp_no_position_left", "values_seen", "No position left after exit"),
+    # D-21 (ADR-320 (3)): the "What changes" block, before against after, no verdict word. Labels of the eight measures
+    ExplanationTemplate("adjust_wc_title", "values_seen", "What changes"),
+    ExplanationTemplate("adjust_wc_row_profit_range", "values_seen", "Profit range"),
+    ExplanationTemplate("adjust_wc_row_breakeven_distance", "values_seen", "Distance from the index to each breakeven"),
+    ExplanationTemplate("adjust_wc_row_pop", "values_seen", "Probability of profit"),
+    ExplanationTemplate("adjust_wc_row_max_profit", "values_seen", "Max profit"),
+    ExplanationTemplate("adjust_wc_row_max_loss", "values_seen", "Max loss"),
+    ExplanationTemplate("adjust_wc_row_credit", "values_seen", "Credit or debit of this adjustment"),
+    ExplanationTemplate("adjust_wc_row_margin", "values_seen", "Margin"),
+    ExplanationTemplate("adjust_wc_row_net_delta", "values_seen", "Net delta"),
+    ExplanationTemplate("adjust_wc_dir_up", "values_seen", "up"),
+    ExplanationTemplate("adjust_wc_dir_down", "values_seen", "down"),
+    ExplanationTemplate("adjust_wc_dir_same", "values_seen", "unchanged"),
+    ExplanationTemplate("adjust_wc_dir_na", "values_seen", "not available"),
+    ExplanationTemplate("adjust_wc_not_available", "values_seen", "Not available"),
+    ExplanationTemplate("adjust_wc_credit", "values_seen", "Credit {amount}", {"amount": Rupees}),
+    ExplanationTemplate("adjust_wc_debit", "values_seen", "Debit {amount}", {"amount": Rupees}),
+    ExplanationTemplate("adjust_wc_no_trade", "values_seen", "No trade"),
+    ExplanationTemplate("adjust_wc_below", "values_seen", "{level} is {distance} points below the index",
+                        {"level": IndexLevel, "distance": Points}),
+    ExplanationTemplate("adjust_wc_above", "values_seen", "{level} is {distance} points above the index",
+                        {"level": IndexLevel, "distance": Points}),
+    ExplanationTemplate("adjust_wc_at", "values_seen", "{level} is at the index", {"level": IndexLevel}),
+    ExplanationTemplate("adjust_wc_join", "values_seen", "{first}; {second}", {"first": Explained, "second": Explained}),
+    ExplanationTemplate("adjust_wc_no_breakeven", "values_seen",
+                        "Not available: there is no breakeven, so there is no distance to measure."),
+    ExplanationTemplate("adjust_wc_unknown", "values_seen", "Not available: no figure was worked out for this approach."),
+    ExplanationTemplate("adjust_wc_reason_before", "values_seen", "Before: {reason}", {"reason": Explained}),
+    ExplanationTemplate("adjust_wc_reason_after", "values_seen", "After: {reason}", {"reason": Explained}),
+    ExplanationTemplate("adjust_wc_reason_both", "values_seen", "Before and after: {reason}", {"reason": Explained}),
+    # D-21 (ADR-320 (3)): the one plain reason line where a number moves against the action's name; facts, no verdict
+    ExplanationTemplate("adjust_wc_reason_side", "values_seen",
+                        "This removes credit from the {closed} side, so the {remaining} spread becomes the largest loss.",
+                        {"closed": Recorded, "remaining": Recorded}),
+    # D-61 (ADR-320 point 5; pending owner read): the buy-back of the untested short leaves a long option with no short
+    ExplanationTemplate("adjust_lone_long", "values_seen",
+                        "This trade now has a long {kind} with no short against it; its result now depends on direction.",
+                        {"kind": Recorded}),
+    ExplanationTemplate("adjust_wc_lines", "values_seen", "{first} {second}", {"first": Explained, "second": Explained}),
+    ExplanationTemplate("adjust_wc_reason_credit", "values_seen",
+                        "This removes credit that was held against the loss, so the maximum loss is higher than before."),
+    ExplanationTemplate("adjust_wc_reason_exit", "values_seen",
+                        "Closing now books today's prices as final, so the loss it locks in is higher than the "
+                        "maximum loss of the position held to expiry."),
     ExplanationTemplate("adjust_cmp_low_oi", "values_seen",
                         "{value}% (Zerodha may refuse fresh orders in {legs} if its open interest is too low; this app could not check that)",
                         {"value": Recorded, "legs": LegRefs}),
@@ -2015,7 +2502,7 @@ _EXPLANATIONS: tuple[ExplanationTemplate, ...] = (
     # ADR-297 (D4): at the plan's adjustment maximum the offer screen says so, and each withheld approach carries the reason
     ExplanationTemplate("adjust_limit_reached", "values_seen", "Adjustment limit reached ({used} of {max})",
                         {"used": Recorded, "max": Recorded}),
-    ExplanationTemplate("adjust_limit_reason", "values_seen", "Adjustment limit reached"),
+    ExplanationTemplate("adjust_limit_reason", "values_seen", "plan maximum of {max} reached", {"max": Recorded}),
     # ADR-272 / issues 79, 87, 77: how old the prices behind a Compare reply are (a stale reply names its age and is not ranked)
     ExplanationTemplate("adjust_prices_stale", "values_seen",
                         "Prices are {minutes} min old (last update {time} IST): figures below are not live.",
@@ -2023,7 +2510,11 @@ _EXPLANATIONS: tuple[ExplanationTemplate, ...] = (
     ExplanationTemplate("adjust_prices_unknown_age", "values_seen",
                         "Prices are not live (no recent update): figures below are not live."),
     ExplanationTemplate("adjust_prices_as_of", "values_seen", "as of {time}", {"time": HourMinute}),
-    ExplanationTemplate("adjust_prices_from", "values_seen", "prices from {time}", {"time": ClockSeconds}),
+    ExplanationTemplate("adjust_prices_from", "values_seen", "prices from {time}", {"time": ClockHms}),
+    # D-25 (ADR-294 (4)): Take profit's basis, both figures named
+    ExplanationTemplate("adjust_take_profit_basis", "values_seen",
+                        "Whole trade closed at the planned prices: {before} before charges (the figure the profit test "
+                        "used), {after} after charges.", {"before": Rupees, "after": Rupees}),
     ExplanationTemplate("adjust_prepare_wait_fresh", "values_seen", "Wait for fresh prices"),
     ExplanationTemplate("adjust_checks_paused_prices", "values_seen",
                         "Adjustment checks are paused: prices are not live (since {time}).", {"time": HourMinute}),
@@ -2143,6 +2634,38 @@ _EXPLANATIONS: tuple[ExplanationTemplate, ...] = (
     # GC-ALERT1 (REQ-170 Q-AD-2): the strategy's alert style, automatic or pinned by the user (pending owner read)
     # GC-IC1 4a (A-38): the user's pause of adjustment checks until a time (pending owner read)
     ExplanationTemplate("monitor_pause_label", "rule", "Pause adjustment checks"),
+    # Lane Y item 1: the monitoring badge and its reasons (REQ-115 AC-4/AC-6, REQ-049); pending owner read
+    # ADR-330 (64): what a real position's row offers while real order placing is on hold; pending owner read
+    ExplanationTemplate("position_kind_real", "rule", "Real position: exit and protect it in Kite. Stops and alerts here cover paper trades only."),
+    ExplanationTemplate("position_kind_unknown", "rule", "Cannot tell whether this is a real or a paper position, so Exit and Stops are not shown. Check it in Kite."),
+    ExplanationTemplate("monitoring_badge", "rule", "Monitoring paused"),
+    ExplanationTemplate("monitoring_health_unknown", "rule", "Health unknown"),
+    ExplanationTemplate("monitoring_since", "rule", "Since {time}", {"time": ClockHm}),
+    ExplanationTemplate("monitoring_why_no_bus", "rule",
+                        "Not being watched here: this server is not set up to share prices with its background worker, so it cannot tell."),
+    ExplanationTemplate("monitoring_why_workers_down", "rule", "Not being watched: no worker has reported in the last 2 minutes."),
+    ExplanationTemplate("monitoring_why_state_unreadable", "rule", "Not being watched: the worker's report cannot be read."),
+    ExplanationTemplate("monitoring_why_not_listed", "rule", "Not being watched: the worker does not list this trade."),
+    # FE hand-over (28 Nov 2026), pending owner read: one plain sentence for each new reason of the "not being watched" state
+    ExplanationTemplate("monitoring_why_index_not_live", "rule", "Not being watched: the index price is not live, so the index exit cannot run."),
+    ExplanationTemplate("monitoring_why_leg_not_live", "rule", "Not being watched: a leg's price is not live, so its stop cannot run."),
+    ExplanationTemplate("monitoring_why_exit_not_priced", "rule", "Not being watched: an exit has no price to compare with, so it cannot run."),
+    ExplanationTemplate("monitoring_why_index_exits_not_run", "rule", "Not being watched: the index exits are not running right now."),
+    # Lane FD2 hand-over (28 Nov 2026), pending owner read: the pause when no exit rule can be checked because the expiry kind is unknown
+    ExplanationTemplate("monitoring_why_expiry_kind_unknown", "rule",
+                        "Every exit rule is not checked because whether this trade expires weekly or monthly is not known."),
+    # Lane FE3 (28 Nov 2026), pending owner read: the remaining reasons of the "not being watched" state
+    ExplanationTemplate("monitoring_why_exits_not_checked_yet", "rule", "Not being watched: the exits have not been checked yet."),
+    ExplanationTemplate("monitoring_why_book_not_read", "rule", "Not being watched: the book could not be read, so the exits cannot run."),
+    ExplanationTemplate("monitoring_why_exit_not_applicable", "rule",
+                        "Not being watched: this is a real position, and stops here cover paper trades only."),
+    ExplanationTemplate("monitoring_why_stale", "rule", "The last price is too old, so no rule can fire."),
+    ExplanationTemplate("monitoring_why_disconnected", "rule", "The price feed is not connected, so no rule can fire."),
+    ExplanationTemplate("monitoring_why_leg_missing", "rule", "A leg of this trade has no price, so no rule can fire."),
+    ExplanationTemplate("monitoring_why_check_failed", "rule", "The check could not run, so no rule can fire."),
+    ExplanationTemplate("monitoring_why_market_closed", "rule", "The market is closed."),
+    ExplanationTemplate("monitoring_why_user_paused", "rule", "Adjustment checks are paused until the time you set."),
+    ExplanationTemplate("monitoring_why_unknown", "rule", "Not being watched: the reason is not known."),
     ExplanationTemplate("monitor_pause_none", "rule", "Adjustment checks are running. Stop-losses and exits always run."),
     ExplanationTemplate("monitor_pause_until", "rule", "Adjustment checks paused until {time}. Stop-losses and exits still run.", {"time": ClockHm}),
     ExplanationTemplate("monitor_pause_ended", "rule", "The pause ended at {time}. Adjustment checks are running again.", {"time": ClockHm}),
@@ -2201,6 +2724,41 @@ _EXPLANATIONS: tuple[ExplanationTemplate, ...] = (
                         "Version {version} of this system playbook is not stored.", {"version": Recorded}),
     ExplanationTemplate("system_playbook_refused_approved", "rule",
                         "This system playbook is already approved."),
+    # Lane S (REQ-044 AC-3; ADR-330 (10), (24)): the Real P&L figure
+    # and the reason it is not shown
+    ExplanationTemplate("real_pnl_caption", "values_seen", "Zerodha, as at {time} IST", {"time": Recorded}),
+    ExplanationTemplate("real_pnl_excludes", "rule",
+                        "Excludes contracts not in a strategy here and contracts closed today."),
+    ExplanationTemplate("real_pnl_total_empty", "rule", "No real positions are open in your strategies."),
+    ExplanationTemplate("real_pnl_total_partial", "rule",
+                        "{missing} of {total} contracts have no figure, so no total is shown.",
+                        {"missing": Count, "total": Count}),
+    ExplanationTemplate("real_pnl_not_available", "rule",
+                        "Zerodha's reply for {contract} lacks a figure needed to check its P&L; no figure is shown.",
+                        {"contract": Recorded}),
+    ExplanationTemplate("real_pnl_mismatch", "rule",
+                        "Zerodha's P&L for {contract} does not match its own trade values; no figure is shown.",
+                        {"contract": Recorded}),
+    ExplanationTemplate("real_pnl_shared", "rule",
+                        "This contract is shared (with another strategy or outside lots); Zerodha reports one P&L "
+                        "for the whole contract, so no split is shown."),
+    ExplanationTemplate("real_pnl_part_closed", "rule",
+                        "Part of {contract} was closed today on Zerodha and is reported apart, so no figure is shown "
+                        "for it.", {"contract": Recorded}),
+    ExplanationTemplate("real_pnl_pending", "rule", "This contract is not yet confirmed, so no P&L is shown."),
+    ExplanationTemplate("real_pnl_stale", "rule",
+                        "Zerodha was last read more than {seconds} seconds ago, so no figure is shown until it is "
+                        "read again.", {"seconds": Count}),
+    # Lane O 27 Nov, item 10 (UX-16, UX-24; pending owner read): a typed price a move replaced says the captured price
+    # and the reason; one pair per control that moves a leg
+    *(ExplanationTemplate(f"leg_edit_replaced_by_{key}", "values_seen",
+                          "Your price for leg {number} was replaced by the captured price {price}, because "
+                          + reason + ".", {"number": Count, "price": IndexLevel})
+      for key, reason in _LEG_MOVE_REASONS.items()),
+    *(ExplanationTemplate(f"leg_edit_removed_by_{key}", "values_seen",
+                          "Your price for leg {number} was removed, because " + reason
+                          + " and the new contract has no live price right now.", {"number": Count})
+      for key, reason in _LEG_MOVE_REASONS.items()),
 )
 
 EXPLANATIONS: Mapping[str, ExplanationTemplate] = MappingProxyType({t.id: t for t in _EXPLANATIONS})
@@ -2217,7 +2775,7 @@ LABEL_TABLES: Mapping[str, Mapping[str, str]] = MappingProxyType({
     "playbook_day_kind": PLAYBOOK_DAY_RULE_KIND_TEXT, "playbook_day_action": PLAYBOOK_DAY_RULE_ACTION_TEXT,
     "playbook_summary": PLAYBOOK_SUMMARY_TEXT, "plan_sheet": PLAN_SHEET_LABEL_TEXT,
     "playbook_guard": PLAYBOOK_GUARD_LABEL_TEXT, "level_watch": LEVEL_WATCH_LABEL_TEXT,
-    "stop": STOP_LABEL_TEXT,
+    "stop": STOP_LABEL_TEXT, "alert_answer": ALERT_ANSWER_LABEL_TEXT,
 })
 
 

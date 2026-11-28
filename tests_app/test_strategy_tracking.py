@@ -14,6 +14,7 @@ from decimal import Decimal
 from http import HTTPStatus
 
 import pytest
+from ofo_app import paper_store
 from sqlalchemy import text
 from sqlalchemy.ext.asyncio import AsyncSession, async_sessionmaker
 
@@ -328,3 +329,299 @@ async def test_req050_the_tracking_read_shares_the_forward_with_the_outcome_rout
                                                     "planned_entry": "10.00", "captured_at": ANSWERED} for i in IDS])
     outcome_route.outcome_response(req, MarketContext(provider, lambda: last, D("0.065"), "user-1"), settings=_d())
     assert set(calls.values()) == {1}  # the outcome route read the tracking route's forward
+
+
+# ---- GC-ICLIVE D-28 (ADR-299, owner 2026-11-13): ONE status word per strategy on every route ----
+# Real 23 Nov case: condors 155-157, 159-161 had open practice legs; /api/strategies and /strategies/{id} said status
+# "draft" while /paper/strategies said state "LIVE". "Draft" before any order, "Running" with open legs, "Completed"
+# once the row is closed (alembic 0049): the same word on the book, the list, the paper book and the paper list.
+
+async def _get_ok(app, path):
+    async with _client(app) as c:
+        reply = await c.get(path)
+    assert reply.status_code == HTTPStatus.OK, reply.text
+    return reply.json()
+
+
+async def _words(app, sid, *, paper: bool) -> dict[str, str | None]:
+    out = {"book": (await _get_ok(app, f"/strategies/{sid}")).get("status_word"),
+           "list": next(s for s in (await _get_ok(app, "/strategies"))["strategies"]
+                        if s["id"] == sid).get("status_word")}
+    if paper:
+        out["paper_book"] = (await _get_ok(app, f"/paper/strategies/{sid}")).get("status_word")
+        out["paper_list"] = next(s for s in (await _get_ok(app, "/paper/strategies"))["strategies"]
+                                 if s["strategy_id"] == sid).get("status_word")
+    return out
+
+
+async def test_one_status_word_on_every_route_through_the_strategy_life(db):
+    app, stored, *_ = await _setup(db)
+    assert await _words(app, stored.id, paper=False) == {"book": "Draft", "list": "Draft"}
+    async with _client(app) as c:
+        placed = await c.post(f"/paper/strategies/{stored.id}/orders", json=_paper_body(stored, ENTRY_PRICES))
+    assert placed.status_code == HTTPStatus.CREATED, placed.text
+    assert placed.json().get("status_word") == "Running"
+    running = {"book": "Running", "list": "Running", "paper_book": "Running", "paper_list": "Running"}
+    assert await _words(app, stored.id, paper=True) == running
+    await db.execute(text("UPDATE public.strategies SET status = 'closed' WHERE id = :i"), {"i": stored.id})
+    assert set((await _words(app, stored.id, paper=True)).values()) == {"Completed"}
+
+
+async def test_exited_paper_book_reads_completed_on_the_book_and_the_list(db):
+    """GC-ICLIVE D-28 round 2 (ADR-299 (1)): "Running" is at least one open leg. A book whose every leg was exited is
+    Completed on /paper/strategies/{id} and /paper/strategies, even before the strategy row is closed."""
+    app, stored, *_ = await _setup(db)
+    async with _client(app) as c:
+        placed = await c.post(f"/paper/strategies/{stored.id}/orders", json=_paper_body(stored, ENTRY_PRICES))
+        assert placed.status_code == HTTPStatus.CREATED, placed.text
+        assert placed.json()["status_word"] == "Running"
+        exits = [{"contract_id": cid, "kind": "exit", "price": "1.00", "quantity": leg.quantity,
+                  "side": "BUY" if leg.action.value == "SELL" else "SELL"}
+                 for cid, leg in zip(stored.saved.contract_ids, stored.saved.definition.legs, strict=True)]
+        out = await c.post(f"/paper/strategies/{stored.id}/orders", json={"orders": exits})
+        assert out.status_code == HTTPStatus.CREATED, out.text
+        assert out.json()["state"] == "EXITED"
+        assert out.json()["status_word"] == "Completed"
+        assert (await c.get(f"/paper/strategies/{stored.id}")).json()["status_word"] == "Completed"
+        books = (await c.get("/paper/strategies")).json()["strategies"]
+        listed = next(s for s in books if s["strategy_id"] == stored.id)
+        assert listed["status_word"] == "Completed"
+
+
+# ---- GC-ICLIVE D-42 (ADR-299): the My Strategies list names the CURRENT legs and the paper list's word ----
+
+CONDOR_LEGS = 4
+OPEN_AFTER_EXIT = 3
+
+
+async def _row42(app, sid):
+    return next(s for s in (await _get_ok(app, "/strategies"))["strategies"] if s["id"] == sid)
+
+
+async def _positions42(app, sid):
+    return (await _get_ok(app, f"/paper/strategies/{sid}"))["positions"]
+
+
+def _terms42(position):
+    return {"instrument": position["instrument"], "strike": str(position["strike"]), "expiry": str(position["expiry"])}
+
+
+def _row_terms4242(row):
+    leg = row["first_leg"]
+    return {"instrument": leg["instrument"], "strike": str(leg["strike"]), "expiry": str(leg["expiry"])}
+
+
+async def _exit_leg42(c, stored, index):
+    leg = stored.saved.definition.legs[index]
+    side = "BUY" if leg.action.value == "SELL" else "SELL"
+    done = await c.post(f"/paper/strategies/{stored.id}/orders", json={"orders": [
+        {"contract_id": stored.saved.contract_ids[index], "kind": "exit", "price": "1.00", "quantity": leg.quantity,
+         "side": side}]})
+    assert done.status_code == HTTPStatus.CREATED, done.text
+
+
+async def test_core_a_closed_leg_leaves_the_list_row_and_the_first_leg_is_an_open_one(db):
+    app, stored, *_ = await _setup(db)
+    async with _client(app) as c:
+        placed = await c.post(f"/paper/strategies/{stored.id}/orders", json=_paper_body(stored, ENTRY_PRICES))
+        assert placed.status_code == HTTPStatus.CREATED, placed.text
+    before = await _row42(app, stored.id)
+    assert before["leg_count"] == CONDOR_LEGS
+    first_open = next(p for p in await _positions42(app, stored.id) if p["net_quantity"] != 0)
+    assert _row_terms4242(before) == _terms42(first_open)
+    # exit the leg the row names as first: the list must now name another leg and count three
+    index = next(i for i, cid in enumerate(stored.saved.contract_ids) if cid == first_open["contract_id"])
+    async with _client(app) as c:
+        await _exit_leg42(c, stored, index)
+    after = await _row42(app, stored.id)
+    assert after["leg_count"] == OPEN_AFTER_EXIT
+    still_open = [p for p in await _positions42(app, stored.id) if p["net_quantity"] != 0]
+    assert len(still_open) == OPEN_AFTER_EXIT
+    assert _row_terms4242(after) == _terms42(still_open[0])
+    assert _row_terms4242(after) != _row_terms4242(before)  # the closed leg is not named any more
+    assert after["status_word"] == "Running"
+
+
+async def test_a_strategy_with_no_order_keeps_the_saved_legs(db):
+    app, stored, *_ = await _setup(db)
+    row = await _row42(app, stored.id)
+    first = stored.saved.definition.legs[0]
+    assert row["leg_count"] == len(stored.saved.definition.legs)
+    assert row["first_leg"]["instrument"] == first.instrument.value
+    assert row["status_word"] == "Draft"
+
+
+async def test_every_leg_exited_lists_the_strategy_completed_with_its_traded_legs(db):
+    app, stored, *_ = await _setup(db)
+    async with _client(app) as c:
+        placed = await c.post(f"/paper/strategies/{stored.id}/orders", json=_paper_body(stored, ENTRY_PRICES))
+        assert placed.status_code == HTTPStatus.CREATED, placed.text
+        for index in range(len(stored.saved.contract_ids)):
+            await _exit_leg42(c, stored, index)
+    row = await _row42(app, stored.id)  # the closed strategy is in the list
+    assert row["status"] == "closed"
+    assert row["status_word"] == "Completed"
+    assert row["leg_count"] == CONDOR_LEGS  # nothing is open: the legs it traded, not "0 legs"
+
+
+async def test_the_list_word_is_the_paper_list_word_after_every_leg_is_exited(db):
+    """Every leg exited (the paper list says Completed): the My Strategies list says the same word, so the Completed
+    page shows it. (Placing the last exit marks the row closed too: alembic 0049.)"""
+    app, stored, *_ = await _setup(db)
+    async with _client(app) as c:
+        placed = await c.post(f"/paper/strategies/{stored.id}/orders", json=_paper_body(stored, ENTRY_PRICES))
+        assert placed.status_code == HTTPStatus.CREATED, placed.text
+    later = ANSWERED + datetime.timedelta(minutes=5)
+    exits = [paper_store.NewOrder(cid, "BUY" if leg.action.value == "SELL" else "SELL", leg.quantity, D("1.00"),
+                                  "exit", later)
+             for cid, leg in zip(stored.saved.contract_ids, stored.saved.definition.legs, strict=True)]
+    await paper_store.place(db, stored.user_ref, stored.id, exits)
+    paper = next(s for s in (await _get_ok(app, "/paper/strategies"))["strategies"] if s["strategy_id"] == stored.id)
+    assert paper["status_word"] == "Completed"
+    assert (await _row42(app, stored.id))["status_word"] == paper["status_word"]
+
+
+# ---- GC-ICLIVE D-66: the Completed list carries the time the trade closed (last closing fill / settlement) ----
+
+async def _row66(app, sid):
+    async with _client(app) as c:
+        reply = await c.get("/strategies")
+    assert reply.status_code == HTTPStatus.OK, reply.text
+    return next(s for s in reply.json()["strategies"] if s["id"] == sid)
+
+
+def _exits66(stored, indexes, at, kind="exit"):
+    legs, ids = stored.saved.definition.legs, stored.saved.contract_ids
+    return [paper_store.NewOrder(ids[i], "BUY" if legs[i].action.value == "SELL" else "SELL", legs[i].quantity,
+                                 D("1.00"), kind, at) for i in indexes]
+
+
+async def _open66(app, stored):
+    async with _client(app) as c:
+        placed = await c.post(f"/paper/strategies/{stored.id}/orders", json=_paper_body(stored, ENTRY_PRICES))
+    assert placed.status_code == HTTPStatus.CREATED, placed.text
+
+
+async def test_core_completed_row_carries_the_time_of_the_last_closing_fill_not_the_last_save(db):
+    app, stored, *_ = await _setup(db)
+    await _open66(app, stored)
+    first_exit = ANSWERED + datetime.timedelta(hours=2)
+    last_exit = ANSWERED + datetime.timedelta(hours=3, minutes=24, seconds=7)
+    await paper_store.place(db, stored.user_ref, stored.id, _exits66(stored, [0, 1], first_exit))
+    await paper_store.place(db, stored.user_ref, stored.id, _exits66(stored, [2, 3], last_exit, "stop"))
+    row = await _row66(app, stored.id)
+    assert row["status_word"] == "Completed"
+    assert datetime.datetime.fromisoformat(row["closed_at"]) == last_exit
+    assert datetime.datetime.fromisoformat(row["closed_at"]) != datetime.datetime.fromisoformat(row["updated_at"])
+
+
+async def test_settlement_record_is_the_close_time(db):
+    app, stored, *_ = await _setup(db)
+    await _open66(app, stored)
+    settled = ANSWERED + datetime.timedelta(hours=11, minutes=45)  # 15:45 IST on the case's day
+    await paper_store.place(db, stored.user_ref, stored.id, _exits66(stored, [0, 1, 2, 3], settled, "settle"))
+    assert datetime.datetime.fromisoformat((await _row66(app, stored.id))["closed_at"]) == settled
+
+
+async def test_a_strategy_that_is_not_completed_has_no_close_time(db):
+    app, stored, *_ = await _setup(db)
+    assert (await _row66(app, stored.id)).get("closed_at") is None  # a draft
+    await _open66(app, stored)
+    one_hour = ANSWERED + datetime.timedelta(hours=1)
+    await paper_store.place(db, stored.user_ref, stored.id, _exits66(stored, [0], one_hour))
+    row = await _row66(app, stored.id)  # one leg exited, three open: Running, nothing closed yet
+    assert row["status_word"] == "Running" and row.get("closed_at") is None
+
+
+# ---- GC-ICLIVE D-64 (owner decision): after the 15:30 close the book says when expiring legs settle ----
+# Real case 24 Nov 2026 (C2 157 at 15:30, C9 164): a raw "cannot be used: expired" text and "prices not live".
+# The fixture strategy's legs expire 2026-10-13: the answer clock is moved around that day's close (IST = UTC + 5:30).
+
+SETTLES_LINE = "Market closed. Open legs that expire today settle at 15:45."
+
+
+def _clock_at(app, hour: int, minute: int, day: int = 13) -> None:
+    at = datetime.datetime(2026, 10, day, hour, minute, tzinfo=datetime.UTC) - datetime.timedelta(hours=5, minutes=30)
+    app.dependency_overrides[get_answer_clock] = lambda: lambda: at
+
+
+async def _book_after_close(app, stored, hour: int, minute: int, day: int = 13) -> dict:
+    async with _client(app) as c:
+        placed = await c.post(f"/paper/strategies/{stored.id}/orders", json=_paper_body(stored, ENTRY_PRICES))
+        assert placed.status_code == HTTPStatus.CREATED, placed.text
+    _clock_at(app, hour, minute, day)
+    return await _get_ok(app, f"/paper/strategies/{stored.id}")
+
+
+async def test_d64_before_the_close_there_is_no_line(db):
+    app, stored, *_ = await _setup(db)
+    assert (await _book_after_close(app, stored, 15, 0)).get("after_close_text") is None
+
+
+async def test_d64_between_close_and_settlement_the_line_replaces_the_raw_text(db):
+    app, stored, *_ = await _setup(db)
+    book = await _book_after_close(app, stored, 15, 35)
+    assert book["after_close_text"] == SETTLES_LINE
+    shown = " ".join(str(v) for k, v in book.items() if k.endswith("_text") and v)
+    assert "NSE_FO:" not in shown and "cannot be used" not in shown
+    assert all(p["contract_text"] and "NSE_FO" not in p["contract_text"] for p in book["positions"])
+
+
+async def test_d64_after_settlement_and_on_another_day_there_is_no_line(db):
+    app, stored, *_ = await _setup(db)
+    assert (await _book_after_close(app, stored, 15, 50)).get("after_close_text") is None  # settled at 15:45
+    _clock_at(app, 15, 35, day=8)  # a day when no open leg expires
+    assert (await _get_ok(app, f"/paper/strategies/{stored.id}")).get("after_close_text") is None
+
+
+async def test_d64_the_tracking_route_carries_the_same_line_and_no_raw_text(db):
+    app, stored, *_ = await _setup(db)
+    await _book_after_close(app, stored, 15, 35)
+    body = await _get_ok(app, f"/strategies/{stored.id}/tracking")
+    assert body["after_close_text"] == SETTLES_LINE
+    assert body["unpriced_text"] is None
+    _clock_at(app, 11, 0)
+    assert (await _get_ok(app, f"/strategies/{stored.id}/tracking")).get("after_close_text") is None
+
+
+async def test_d42_one_unreadable_book_degrades_only_its_own_row(db, monkeypatch):
+    """Review: a contract that no longer resolves must not make the whole My Strategies list a 500."""
+    from ofo_app import tracked_contracts  # noqa: PLC0415
+    app, good, *_ = await _setup(db)
+    _, bad = await _with_draft(db, good.user_ref)
+    ids = good.saved.contract_ids
+    legs = good.saved.definition.legs
+    async with _client(app) as c:
+        one = await c.post(f"/paper/strategies/{good.id}/orders", json={"orders": _paper_body(good)["orders"][:3]})
+        assert one.status_code == HTTPStatus.CREATED, one.text
+        other = await c.post(f"/paper/strategies/{bad.id}/orders", json={"orders": [
+            {"contract_id": ids[3], "side": legs[3].action.value, "quantity": legs[3].quantity,
+             "price": ENTRY_PRICES[3], "kind": "open"}]})
+        assert other.status_code == HTTPStatus.CREATED, other.text
+    real = tracked_contracts.resolve
+
+    async def without_last(conn, wanted):
+        return [r for r in await real(conn, wanted) if r.contract_id != ids[3]]
+
+    monkeypatch.setattr(tracked_contracts, "resolve", without_last)
+    rows = {s["id"]: s for s in (await _get_ok(app, "/strategies"))["strategies"]}
+    assert rows[good.id]["leg_count"] == OPEN_AFTER_EXIT and rows[good.id].get("current_legs_text") is None
+    assert rows[bad.id]["leg_count"] == len(legs)  # the saved legs stand
+    assert rows[bad.id]["current_legs_text"] == "The current legs could not be read. The legs shown are as saved."
+
+
+async def test_a_running_paper_trade_reads_running_on_every_route_when_no_broker_session_exists(db):
+    """O-P-03: with NO market context (no Zerodha session / feed) a strategy that has paper orders is Running on the
+    book, the list, the paper book and the paper list, never Draft; its prices are simply not live. The sentence
+    "Draft - Live data not connected" is the OUTCOME route's no-provider state (routes/outcome.py not_connected), not
+    a status word of these routes."""
+    app, stored, *_ = await _setup(db)  # placing needs a live start point: place first, then the session goes away
+    assert await _words(app, stored.id, paper=False) == {"book": "Draft", "list": "Draft"}
+    async with _client(app) as c:
+        placed = await c.post(f"/paper/strategies/{stored.id}/orders", json=_paper_body(stored, ENTRY_PRICES))
+    assert placed.status_code == HTTPStatus.CREATED, placed.text
+    app.dependency_overrides[get_market_context] = lambda: None  # no broker session, no feed
+    assert await _words(app, stored.id, paper=True) == {
+        "book": "Running", "list": "Running", "paper_book": "Running", "paper_list": "Running"}
+    book = await _get_ok(app, f"/paper/strategies/{stored.id}")
+    assert book["status_word"] == "Running" and book["state"] != "LIVE"  # running, prices not live

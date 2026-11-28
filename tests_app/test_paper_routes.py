@@ -241,7 +241,8 @@ async def test_a_bad_price_is_422_with_the_reason_and_nothing_is_stored(db, pric
         reply = await c.post(f"/paper/strategies/{stored.id}/orders", json={"orders": [
             _order(c0, "BUY", 65, "10.00"), _order(c0, "BUY", 65, price)]})
     assert reply.status_code == HTTPStatus.UNPROCESSABLE_ENTITY, reply.text
-    assert "a multiple of 0.05" in reply.text
+    # Lane K: a price of 0 or below is named by its own sentence (577) before the tick rule is read
+    assert ("must be above 0" if Decimal(price) <= 0 else "a multiple of 0.05") in reply.text
     assert await _count(db, stored.id) == 0
 
 
@@ -343,18 +344,18 @@ async def test_core_strategy_48_extremes_equal_the_hand_figures_with_their_texts
     app, stored, *_ = await _seed_fixture(db)
     async with _client(app) as c:
         body = (await c.get(f"/paper/strategies/{stored.id}")).json()
-    left = _hand_range(body, "ltp", D(0))
     # the original uses the exact average; every average of this book is a single order's price (exact to the paisa)
     original = _hand_range(body, "average", D(body["booked"]))
-    assert (D(body["profit_left"]), D(body["loss_left"])) == left
     assert (D(body["max_profit"]), D(body["max_loss"])) == original
     assert body["extremes_reason"] is None
-    assert D(body["max_profit"]) == D(body["total"]) + D(body["profit_left"])  # both definitions tie at the extremes
+    # D-13, ADR-306 (6): no charge rates -> no Profit left / Loss left (never the gross range beside other figures);
+    # the reason is the after-charges one
+    assert (body["profit_left"], body["loss_left"]) == (None, None)
+    assert body["after_charges_reason"] == "rates_unavailable"
     from ofo.errors.explanations import render_explanation  # noqa: PLC0415
 
-    for name in ("profit_left", "loss_left", "max_profit", "max_loss"):  # the same money template as booked_text
+    for name in ("max_profit", "max_loss"):  # the same money template as booked_text
         assert body[f"{name}_text"] == render_explanation("summary_paisa_signed", amount=D(body[name])), name
-    assert body["profit_left_text"] == "+14,26,792.25"  # Indian grouping, read from the run of 2026-10-29
 
 
 async def test_f94_max_profit_and_loss_include_the_charges_paid_and_the_cost_to_close_and_say_so(db):
@@ -372,12 +373,16 @@ async def test_f94_max_profit_and_loss_include_the_charges_paid_and_the_cost_to_
     assert charges == D("201.79")  # the three open legs' round trip (201.786262)
     # ADR-263: charges really PAID on every order + the estimate to close what is open. The one closed leg has two real
     # orders: SELL 65 @ 166.90 = 44.433828 and BUY 65 @ 190.05 = 29.164324 -> 73.598152; 201.786262 + 73.598152 =
-    # 275.384414, shown 275.39 (rounded up once). Old expectation: before - 201.79.
-    charges = D("275.39")
+    # 275.384414, shown 275.39 (rounded up once) while the exit was priced at the average (before D-14).
+    # D-14: the closing orders are priced at the LIVE price (the cost to close now, as Total after prices it), not the
+    # average: the charges inside the extremes = paid + cost to close, rounded up once (within a paisa of the two lines)
+    charges = D(body["extremes_charges"])
+    assert abs(charges - (D(body["charges_paid"]) + D(body["charges_to_close"]))) <= D("0.01")
     assert D(body["max_profit"]) == D(gross["max_profit"]) - charges
     assert D(body["max_loss"]) == D(gross["max_loss"]) - charges
-    assert (body["profit_left"], body["loss_left"]) == (gross["profit_left"], gross["loss_left"])
-    assert D(body["extremes_charges"]) == charges
+    # D-13: Profit left / Loss left are the after-charges figures (ADR-306), so they add up with Total after
+    assert (body["profit_left"], body["loss_left"]) == (body["profit_left_after"], body["loss_left_after"])
+    assert D(body["total_after"]) + D(body["profit_left"]) == D(body["max_profit"])
     assert "include about" in body["extremes_charges_text"] and "charges and taxes" in body["extremes_charges_text"]
     assert gross["extremes_charges"] is None and "before charges" in gross["extremes_charges_text"]
     assert {f: listed[f] for f in ("max_profit", "max_loss", "extremes_charges")} == {
@@ -614,10 +619,12 @@ async def test_open_book_split_adds_up_and_left_figures_are_after_all_charges(db
     for reply in (body, row):
         assert (D(reply["booked_after"]), D(reply["unbooked_after"]), D(reply["total_after"])) == (
             D("-36.09"), D("1274.05"), D("1237.96"))
-        assert D(reply["profit_left"]) == D("5200.00")  # the old field keeps its meaning (before charges)
-        assert D(reply["profit_left_after"]) == D("5199.42")
+        # D-14: Max profit after = 6,500 - ceil(36.082821 paid + 25.942257 to close at the live 80 = 62.025078) =
+        # 6,500 - 62.03 = 6,437.97; Profit left = 6,437.97 - 1,237.96 = 5,200.01. D-13: profit_left IS that figure.
+        assert D(reply["max_profit"]) == D("6437.97")
+        assert D(reply["profit_left"]) == D(reply["profit_left_after"]) == D("5200.01")
         assert reply["loss_left"] == reply["loss_left_after"] == "unlimited"
-        assert reply["recover"] is None and reply["profit_left_after_text"] == "+5,199.42"
+        assert reply["recover"] is None and reply["profit_left_after_text"] == "+5,200.01"
     assert (D(totals["booked_after"]), D(totals["unbooked_after"])) == (D("-36.09"), D("1274.05"))
 
 
@@ -630,12 +637,14 @@ async def test_partly_closed_book_split_adds_up_to_total_after(db):
 
 
 async def test_losing_book_profit_left_is_not_capped_and_recover_is_sent(db):
-    # SELL 65 @ 100, now 150: Total after = -3,250.00 - 36.09 - 28.00 = -3,314.09; Max profit after 6,437.38; ADR-306:
-    # Profit left after = 6,437.38 + 3,314.09 = 9,751.47; recover = 3,314.09 (the loss shown as Total P&L).
+    # SELL 65 @ 100, now 150: Total after = -3,250.00 - 36.09 - 28.00 = -3,314.09; Max profit after = 6,500 -
+    # ceil(36.082821 + 27.991732 to close at the live 150 = 64.074553) = 6,435.92 (D-14); ADR-306:
+    # Profit left after = 6,435.92 + 3,314.09 = 9,750.01; recover = 3,314.09 (the loss shown as Total P&L).
     body, row, _ = await _one_put(db, [("SELL", 65, "100.00", "open")], "150.00")
     for reply in (body, row):
-        assert D(reply["max_profit"]) == D("6437.38") and D(reply["total_after"]) == D("-3314.09")
-        assert (D(reply["profit_left_after"]), D(reply["recover"])) == (D("9751.47"), D("3314.09"))
+        assert D(reply["max_profit"]) == D("6435.92") and D(reply["total_after"]) == D("-3314.09")
+        assert (D(reply["profit_left_after"]), D(reply["recover"])) == (D("9750.01"), D("3314.09"))
+        assert reply["profit_left"] == reply["profit_left_after"]  # D-13
         assert D(reply["total_after"]) + D(reply["profit_left_after"]) == D(reply["max_profit"])
         assert reply["recover_text"] == "+3,314.09"
 
@@ -643,7 +652,7 @@ async def test_losing_book_profit_left_is_not_capped_and_recover_is_sent(db):
 async def test_unknown_rates_keep_the_before_figures_and_send_no_after_figure(db):
     body, row, totals = await _one_put(db, [("SELL", 65, "100.00", "open")], "80.00", rates=None)
     for reply in (body, row):
-        assert D(reply["profit_left"]) == D("5200.00") and D(reply["booked"]) == D("0")
+        assert reply["profit_left"] is None and D(reply["booked"]) == D("0")  # ADR-306 (6), D-13
         assert all(reply[k] is None for k in SPLIT_KEYS) and reply["after_charges_reason"] == "rates_unavailable"
     assert (totals["booked_after"], totals["unbooked_after"]) == (None, None)
 

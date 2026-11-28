@@ -616,8 +616,8 @@ def hand_approaches(u: str, lot: int, kind: str, today: datetime.date, spot: Dec
     def hand_take_profit():  # ADR-238 (6): the whole trade at the planned exit prices must be above zero
         whole = booked + sum(Fraction(sign(x["side"]) * x["lots"] * lot * (price(x) - x["entry"])) for x in legs)
         if whole <= 0:
-            raise HandRefused("The whole trade is not in profit with every open leg closed at its planned price, so "
-                              "this approach is not built.")
+            raise HandRefused("This approach is not built because the whole trade would not be in profit with every open leg "
+                              "closed at its planned price.")
 
     def close_every():
         pairs = [close(x, x["lots"]) for x in legs]
@@ -637,9 +637,10 @@ def hand_approaches(u: str, lot: int, kind: str, today: datetime.date, spot: Dec
                     hand_take_profit()
             elif aid == "A-35":  # ADR-238 (5): on expiry day from the playbook's time exit
                 if exits["time_exit"] is None:
-                    raise HandRefused("Your playbook sets no time exit, so this approach is not built.")
+                    raise HandRefused("This approach is not built because your playbook sets no exit time.")
                 if not (today == expiry and exits["hhmm"] is not None and exits["hhmm"] >= exits["time_exit"]):
-                    raise HandRefused(f"The time exit is offered on expiry day from {exits['time_exit']}.")
+                    raise HandRefused(f"This approach opens on the expiry day, from {exits['time_exit']}; "
+                                      "it is not offered before then.")
                 trades, after, closed = close_every()
             elif aid == "A-25":  # ADR-238 (2): X% of every leg's lots, whole lots only
                 hand_take_profit()
@@ -2015,6 +2016,9 @@ def path_position(base: dict, spec: dict) -> dict:
     if not spec.get("legs"):
         return position
     entry = position["entry"]
+    if spec.get("entry_clock"):  # Lane Q3: the trade's own entry time (a fresh trade, or one entered a minute ago)
+        entry = {**entry, "clock": spec["entry_clock"]}
+        position["entry"] = entry
     at = datetime.datetime.fromisoformat(entry["clock"])
     atm = D(spec["entry_atm_iv"])
     expiry = position["legs"][0]["expiry"]

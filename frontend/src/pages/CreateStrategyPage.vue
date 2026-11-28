@@ -8,8 +8,10 @@
 import { computed, onMounted, ref } from 'vue'
 import { useRoute, useRouter } from 'vue-router'
 import api, { NEUTRAL_PARTS } from '@/services/api'
+import { TIMED_OUT_PARTS } from '@/lib/sharedStateText'
 import ErrorMessage from '@/components/common/ErrorMessage.vue'
 import PageHeader from '@/components/common/PageHeader.vue'
+import MarketClosedBanner from '@/components/states/MarketClosedBanner.vue'
 import { UNDERLYINGS } from '@/lib/legPicker'
 import { setShownDate } from '@/lib/displayFormat'
 import { useSettingsValues } from '@/stores/settingsValues'
@@ -33,7 +35,8 @@ const objective = ref(null)
 const viewKey = ref(null)
 const underlying = ref(UNDERLYINGS[0])
 const templates = ref([])
-const current = ref(null) // the index level as the server sent it (string) or null
+const current = ref(null) // the index level as the server sent it (string) or null; before the open it is the last close (ADR-212)
+const closedAt = ref(null) // market closed: the time of that close (ISO), '' when the server named none; null: open or unread
 const expiries = ref([])
 const expiry = ref('')
 const contracts = ref([])
@@ -43,7 +46,10 @@ const upper = ref(null)
 const cards = ref([])
 const showAll = ref(false)
 const details = ref({})
-const errorParts = ref(null)
+// #745: one error slot per read (templates, expiries, indices, contracts, entries, outcome); a read that succeeds clears its own slot, so the box
+// shows only a read that is still failed (the first one, in this order).
+const readErrors = ref({})
+const errorParts = computed(() => Object.values(readErrors.value).find((v) => v) ?? null)
 const busy = ref(false)
 
 const isKnow = computed(() => objective.value === 'know')
@@ -72,8 +78,18 @@ const heading = computed(() => (notSure.value
   ? `Based on your expected range of ${lower.value}–${upper.value} by ${expiryLabel.value}, here are strategies you could consider`
   : 'Strategies you could consider'))
 
-async function read(fn) {
-  try { return await fn() } catch (e) { errorParts.value = e?.parts ?? NEUTRAL_PARTS; return null }
+async function read(key, fn) {
+  try {
+    const out = await fn()
+    readErrors.value = { ...readErrors.value, [key]: null }
+    return out
+  } catch (e) {
+    readErrors.value = { ...readErrors.value, [key]: e?.parts ?? (e?.code === 'ECONNABORTED' ? TIMED_OUT_PARTS : NEUTRAL_PARTS) }
+    return null
+  }
+}
+function clearReads(prefix) {
+  readErrors.value = Object.fromEntries(Object.entries(readErrors.value).filter(([k]) => !k.startsWith(prefix)))
 }
 
 // The template list loads once on mount; Show strategies awaits this same load, so a click before the list arrives
@@ -81,8 +97,16 @@ async function read(fn) {
 let templatesLoad = Promise.resolve()
 onMounted(() => {
   settingsValues.load() // the range pick-list step and caps (REQ-167 AC-5)
-  templatesLoad = read(async () => (await api.get('/strategy-templates')).data?.templates)
+  templatesLoad = read('templates', async () => (await api.get('/strategy-templates')).data?.templates)
     .then((list) => { if (Array.isArray(list)) templates.value = list })
+})
+
+// UX-06 (Lane L): while Show strategies cannot work yet the button is grey AND says why (texts pending owner read)
+const showWhy = computed(() => {
+  if (!expiry.value) return 'Choose an expiry first.'
+  if (!contracts.value.length) return 'Waiting for the contracts to load.'
+  if (current.value === null && !readErrors.value.indices) return 'Waiting for the index price.'
+  return null
 })
 
 function choosePath(key) {
@@ -103,36 +127,53 @@ function chooseView(key) {
   loadExpiries()
 }
 
+// ADR-212: the same answer also says whether the market is closed and when the held close was made (the one banner)
+const readIndices = () => read('indices', async () => {
+  const data = (await api.get('/market/indices')).data
+  closedAt.value = data?.market_closed === true ? (data.last_price_at ?? '') : null
+  return data?.indices
+})
+const levelOf = (idx) => (Array.isArray(idx) ? (idx.find((i) => i.underlying === underlying.value)?.value ?? null) : null)
+
+const listNotice = ref(null)
 async function loadExpiries() {
-  errorParts.value = null
   const [ex, idx] = await Promise.all([
-    read(async () => (await api.get(`/catalogue/${underlying.value}/expiries`)).data),
-    read(async () => (await api.get('/market/indices')).data?.indices),
+    read('expiries', async () => (await api.get(`/catalogue/${underlying.value}/expiries`)).data),
+    readIndices(),
   ])
   expiries.value = Array.isArray(ex?.expiries) ? ex.expiries : []
   shownToday.value = ex?.today ?? null
+  listNotice.value = typeof ex?.list_notice === 'string' && ex.list_notice.trim() ? ex.list_notice.trim() : null // ADR-330 (61): the server's line, as sent
   setShownDate(shownToday.value)
-  current.value = Array.isArray(idx) ? (idx.find((i) => i.underlying === underlying.value)?.value ?? null) : null
+  current.value = levelOf(idx)
   expiry.value = ''
   contracts.value = []
 }
 
 async function chooseExpiry() {
-  const list = await read(async () => (await api.get(`/catalogue/${underlying.value}/contracts?expiry=${expiry.value}`)).data?.contracts)
+  const list = await read('contracts', async () => (await api.get(`/catalogue/${underlying.value}/contracts?expiry=${expiry.value}`)).data?.contracts)
   contracts.value = Array.isArray(list) ? list : []
   lower.value = current.value // REQ-026 AC-3: both levels start at the current level
   upper.value = current.value
   readingChoice.value = null
 }
 
-async function priceCard(template, legs) {
+// D-38: the planned entries of every card are asked once, for the distinct contracts of all cards (the route takes at most
+// 20 a request), not once per card; each card is then priced by its own outcome request, all started together.
+const PLANNED_ENTRY_MAX = 20
+async function readEntries(fitting) {
+  const rest = [...new Set(fitting.flatMap(([, legs]) => legs.map((l) => l.instrument_id)))]
+  const chunks = []
+  while (rest.length) chunks.push(rest.splice(0, PLANNED_ENTRY_MAX))
+  const answers = await Promise.all(chunks.map((ids, i) => read(`entries-${i}`, async () => (await api.post('/strategies/planned-entry', { underlying: underlying.value, instrument_ids: ids })).data?.entries)))
+  return Object.fromEntries(answers.flatMap((entries) => (Array.isArray(entries) ? entries : [])).map((e) => [`${e.exchange_segment}:${e.exchange_token}`, e]))
+}
+
+async function priceCard(template, legs, byId) {
   const card = { id: template.id, name: template.name, level: template.level, views: template.views, legs, summary: null, margin: null, entryGuideLine: null, priced: false }
-  const entries = await read(async () => (await api.post('/strategies/planned-entry', { underlying: underlying.value, instrument_ids: legs.map((l) => l.instrument_id) })).data?.entries)
-  if (!Array.isArray(entries)) return card
-  const byId = Object.fromEntries(entries.map((e) => [`${e.exchange_segment}:${e.exchange_token}`, e]))
   if (legs.some((l) => !byId[l.instrument_id] || byId[l.instrument_id].planned_entry === null)) return card // never guessed
   card.legs = legs.map((l) => ({ ...l, planned_entry: byId[l.instrument_id].planned_entry, captured_at: byId[l.instrument_id].captured_at, close_at: byId[l.instrument_id].close_at ?? null }))
-  const out = await read(async () => (await api.post('/strategies/outcome', {
+  const out = await read(`outcome-${template.id}`, async () => (await api.post('/strategies/outcome', {
     underlying: underlying.value,
     legs: card.legs.map((l) => ({ instrument_id: l.instrument_id, action: l.action, lots: l.lots, planned_entry: l.planned_entry, captured_at: l.captured_at })),
   })).data)
@@ -140,14 +181,32 @@ async function priceCard(template, legs) {
   return card
 }
 
+// UX-B04 (R2 FC2): step 4 says what it is reading (texts pending owner read). The counts are the page's own; "up to 20 seconds"
+// is the longest wait the PC walk of 28 Nov saw, stated as a limit, not as a promise.
+const WAIT_NOTE = 'This can take up to 20 seconds.'
+const READING_LIST = `Reading the strategy list. ${WAIT_NOTE}`
+const readingEntries = (n) => `Reading the planned entry prices of ${n} ${n === 1 ? 'contract' : 'contracts'}. ${WAIT_NOTE}`
+const pricing = (done, n) => `Pricing ${n} ${n === 1 ? 'strategy' : 'strategies'}: ${done} of ${n} done. ${WAIT_NOTE}`
+const progress = ref('')
+
 async function showStrategies() {
+  // #745: the index level failed to read: the click asks again; while it is still failed the box names it (no silent no-op)
+  if (current.value === null) { current.value = levelOf(await readIndices()) }
   if (current.value === null) return
+  clearReads('entries'); clearReads('outcome')
   step.value = 4
   busy.value = true
   showAll.value = false
+  progress.value = READING_LIST
   await templatesLoad
   const fitting = matched.value.list.map((t) => [t, expandTemplate(t, contracts.value, current.value)]).filter(([, legs]) => legs)
-  cards.value = await Promise.all(fitting.map(([t, legs]) => priceCard(t, legs)))
+  const wanted = new Set(fitting.flatMap(([, legs]) => legs.map((l) => l.instrument_id))).size
+  progress.value = readingEntries(wanted)
+  const byId = await readEntries(fitting)
+  let done = 0
+  progress.value = pricing(0, fitting.length)
+  cards.value = await Promise.all(fitting.map(([t, legs]) => priceCard(t, legs, byId).then((c) => { progress.value = pricing(++done, fitting.length); return c })))
+  progress.value = ''
   busy.value = false
 }
 
@@ -207,6 +266,7 @@ v-for="v in MARKET_VIEWS" :key="v.key" type="button" class="min-h-[44px] w-full 
       </div>
 
       <div v-else-if="step === 3" class="mt-4 grid justify-items-start gap-4 rounded-lg border border-line bg-surface p-4" data-testid="step-expiry">
+        <p v-if="listNotice" class="text-sm text-ink-muted" role="status" data-testid="contract-list-notice">{{ listNotice }}</p>
         <label class="field-label grid gap-1">Index
           <select v-model="underlying" class="field min-h-[44px] w-64" data-testid="pick-underlying" @change="loadExpiries">
             <option v-for="u in UNDERLYINGS" :key="u" :value="u">{{ u }}</option>
@@ -218,6 +278,7 @@ v-for="v in MARKET_VIEWS" :key="v.key" type="button" class="min-h-[44px] w-full 
             <option v-for="e in expiryLabels(expiries, shownToday)" :key="e.value" :value="e.value">{{ e.label }}</option>
           </select>
         </label>
+        <MarketClosedBanner v-if="closedAt !== null" :prices-at="closedAt || null" />
         <p v-if="current === null" class="text-sm" data-testid="no-level"><span class="font-semibold text-danger">Not available:</span> {{ NO_LEVEL }}</p>
         <template v-if="notSure && lists">
           <label class="field-label grid gap-1">Expected lower level
@@ -241,14 +302,18 @@ v-for="v in MARKET_VIEWS" :key="v.key" type="button" class="min-h-[44px] w-full 
         </template>
         <button
 type="button" class="btn btn-primary min-h-[44px] w-full sm:w-auto" data-testid="show-strategies"
-                :disabled="!expiry || !contracts.length || current === null" @click="showStrategies">Show strategies</button>
+                :disabled="!!showWhy" @click="showStrategies">Show strategies</button>
+        <p v-if="showWhy" class="mt-1 text-xs text-ink-muted" role="status" data-testid="show-strategies-why">{{ showWhy }}</p>
       </div>
 
       <div v-else class="mt-4" data-testid="step-results">
         <h2 class="text-base font-semibold" data-testid="results-heading">{{ heading }}</h2>
         <p v-if="notSure" class="text-xs text-ink-muted" data-testid="range-note">{{ RANGE_NOTE }}</p>
         <p v-if="matched?.fallback" class="mt-1 text-sm" data-testid="no-fit">{{ NO_FIT }}</p>
-        <p v-if="busy" class="mt-2 text-sm" data-testid="results-loading">Loading…</p>
+        <template v-if="busy">
+          <p class="mt-2 text-sm" data-testid="results-loading">Loading…</p>
+          <p v-if="progress" class="text-xs text-ink-muted" data-testid="results-progress" role="status">{{ progress }}</p>
+        </template>
         <p v-else-if="!cards.length" class="mt-2 text-sm" data-testid="none-listed">{{ NONE_LISTED }}</p>
         <ul class="mt-3 grid gap-3 sm:grid-cols-2">
           <li

@@ -96,6 +96,13 @@
     font-variant-numeric: tabular-nums;
     white-space: nowrap;
   }
+  /* S-25: the one class for a table of right-aligned numbers (Qty, Price, LTP ...): every th and td has horizontal padding so two
+     adjacent figures never read as one ("65" + "101.20"). Alignment of a header is set on the th, like its cells. */
+  .num-table th,
+  .num-table td {
+    padding-left: 0.5rem;
+    padding-right: 0.5rem;
+  }
   .btn {
     display: inline-flex;
     align-items: center;
@@ -157,6 +164,10 @@
   }
   .link:hover {
     text-decoration: underline;
+  }
+  /* ADR-330 (56): a tile whose prices are not live keeps its last figures, greyed (the one class, priceState.js PRICE_GREYED_CLASS) */
+  .price-greyed {
+    opacity: 0.6;
   }
 }
 

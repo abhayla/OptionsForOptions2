@@ -16,11 +16,12 @@ import test_adjustment_check as check_test
 from httpx import ASGITransport, AsyncClient
 from ofo.adjustment.playbook_eval import RuleValue
 from ofo.errors.explanations import BUILT_APPROACH_NAMES
+from ofo_app import actionable_alerts, playbook_store
 from ofo_app import adjustment_check as chk
 from ofo_app import db as app_db
-from ofo_app import playbook_store
 from ofo_app.adjustment_readers import TrackedExited
 from ofo_app.routes.adjustment_opportunities import condition_text
+from sqlalchemy import text
 from test_adjustment_check import _reset_engine, _seeded, seed_mod
 from worker_records import lapse_through_worker, open_flags
 
@@ -33,8 +34,7 @@ OK, NOT_FOUND, CONFLICT, INVALID = 200, 404, 409, 422
 #: label 'Trending day'). This test predated 6a and still said 3 (test_adjustment_check filters sit.* out instead).
 ADJ02_FLAGS = 4
 S02_THRESHOLD = Decimal("0.1500")  # other.situation_net_delta_per_lot, default 0.15 (REQ-167 AC-4)
-SYSTEM_LABEL = "Adjustment opportunity detected"
-OWN_LABEL = "Your rule was triggered"
+OWN_LABEL = "Your rule was triggered"  # a plan-watched strategy (ADR-330 (11))
 
 
 async def _call(method: str, url: str, body: Any = None, *, user: str | None = None,
@@ -73,7 +73,7 @@ MARK: dict[int, int] = {}
 async def _clean(engine, sid: int) -> int:
     """Lapse what earlier tests left open on the strategy; later reads see only records above the mark."""
     async with engine.begin() as conn:
-        await playbook_store.lapse_all(conn, "owner", sid, playbook_store.LAPSE_STRATEGY_CLOSED)
+        await actionable_alerts.close_by_system(conn, "owner", sid, playbook_store.LAPSE_STRATEGY_CLOSED)
         for held in (await playbook_store.dismissed_holding(conn, "owner", sid)).values():  # ADR-217: forget dismissals
             await playbook_store.mark_cleared(conn, "owner", held.id)
         MARK[sid] = max((r.id for r in await playbook_store.suggestions(conn, "owner", sid)), default=0)
@@ -107,7 +107,7 @@ async def test_adj02_worker_opens_three_records_the_screen_check_names_them_and_
     assert sorted((r.rule_id, r.outcome) for r in recs) == [
         ("T-01", "open"), ("T-03", "open"), ("T-09", "open"), ("sit.S-02", "open")]
     assert len({r.group for r in recs}) == 1 and recs[0].group  # one check = one group (REQ-045 AC-8)
-    assert {r.source for r in recs} == {"system"}
+    assert {r.source for r in recs} == {"own"}  # a plan-watched record carries source own (ADR-330 (11))
     assert sorted((r.value, r.threshold) for r in recs if r.rule_id == "T-01") == [
         (Decimal("0.3416"), Decimal("0.5000"))]
     s02 = next(r for r in recs if r.rule_id == "sit.S-02")
@@ -121,7 +121,7 @@ async def test_adj02_worker_opens_three_records_the_screen_check_names_them_and_
     assert len(_mine(inbox, sid)) == 1
     g = _mine(inbox, sid)[0]
     assert (g["strategy_id"], g["strategy_name"], g["label"], g["summary"], g["has_open"]) == (
-        sid, f'"{seed_mod.strategy_name("ADJ-02")}"', SYSTEM_LABEL, "4 adjustment conditions triggered", True)
+        sid, f'"{seed_mod.strategy_name("ADJ-02")}"', OWN_LABEL, "4 adjustment conditions triggered", True)
     assert sorted((r["rule_id"], r["outcome_text"], r["can_act"]) for r in g["records"]) == [
         ("T-01", "Open", True), ("T-03", "Open", True), ("T-09", "Open", True), ("sit.S-02", "Open", True)]
     assert g["records"][0]["condition"] == "Spot within this % of a short strike: 0.3416 % (rule 0.5000 %)"
@@ -215,13 +215,16 @@ async def test_a_worker_lapse_reads_lapsed_and_a_screen_check_never_lapses(app_d
     assert {r.outcome for r in await _records(app_db_url, sid)} == {"open"}
     await lapse_through_worker(sid, "T-01")
     recs = {r.rule_id: r for r in await _records(app_db_url, sid)}
-    assert (recs["T-01"].outcome, recs["T-01"].lapse_reason) == ("lapsed", "condition_stopped")
+    # ADR-330 (3): the gate's "condition stopped" no longer lapses the record; it stays open and says since when
+    assert (recs["T-01"].outcome, recs["T-01"].lapse_reason) == ("open", None)
     assert (recs["T-03"].outcome, recs["T-09"].outcome) == ("open", "open")
-    row = next(r for g in _mine(await _inbox(), sid) for r in g["records"] if r["id"] == recs["T-01"].id)
-    assert (row["outcome_text"], row["detail"]) == ("Lapsed", "The condition stopped holding")
+    async with app_db_url.connect() as conn:
+        stopped = (await conn.execute(text("SELECT no_longer_true_since FROM public.adjustment_suggestions "
+                                           "WHERE id = :i"), {"i": recs["T-01"].id})).scalar_one()
+    assert stopped is not None
     answer = await _check(sid)  # T-01 still true on screen: a flag, no record opened, none named
     t01 = next(x for x in answer["results"] if x["rule_id"] == "T-01")
-    assert (t01["kind"], t01["suggestion_id"], t01["note"]) == ("flag", None, None)
+    assert (t01["kind"], t01["suggestion_id"], t01["note"]) == ("flag", recs["T-01"].id, None)  # still open: named
     assert len(await _records(app_db_url, sid)) == ADJ02_FLAGS
 
 
@@ -361,7 +364,8 @@ async def test_t19_list_line_names_the_same_approach_and_cost_as_the_check(app_d
     assert clock["reason"]["what_happened"] == "Waiting: this rule acts on expiry day only (03 Nov 2026)."
     assert clock["reason"]["impact"] == "It raises no alert before then."
     flag = next((x for x in first["results"] if x["kind"] == "flag" and x["trigger_id"] == "T-19"), None)
-    assert flag is not None, [(x["kind"], str(x["reason"])[:400]) for x in first["results"] if x["trigger_id"] == "T-19"]
+    t19 = [(x["kind"], str(x["reason"])[:400]) for x in first["results"] if x["trigger_id"] == "T-19"]
+    assert flag is not None, t19
     # Measured 2026-11-05 (t19_support.cheapest on ADJ-43, the same cheapest_offered): A-26 (named by the catalogue,
     # so a rename cannot break this line; built since GC-IC1 s2, c899dccb) costs 26.86 < A-28's, 2 offered
     # approaches unpriced; premium left 19.50 / 26.86 = 0.7260, the flag's value. The #629 wording (9ab9aabf)
@@ -470,3 +474,37 @@ def test_a_situation_or_watch_alert_keeps_its_name_when_the_latest_check_no_long
     valued = RuleValue("sit.S-02", "sit.S-02", Decimal("0.2"), Decimal("0.15"), "ge", True, yes_no=True)
     assert chk.record_words(body, "sit.S-02", valued) == ("sit.S-02", "ge", "Trending day", None)
     assert chk.record_words(body, "T-02", None) == (None, None, None, None)
+
+
+# ---- GC-ICLIVE-E D-58: a VALUED day-rule record (a hit with its distance) names the rule, never its raw id ----
+# Real case: C2, 24 Nov 2026: rule id "day.beforeHoliday.1500.0" printed as "day.beforeHoliday.1500.0: 0.8 (rule 1.5)".
+def _valued_day_record(rule_id: str, label: str | None):
+    return playbook_store.Suggestion(
+        1, 143, rule_id, rule_id, None, Decimal("0.8"), Decimal("1.5"), dt.datetime(2026, 11, 24, 9, 30, tzinfo=dt.UTC),
+        "open", None, [{"cmp": "le", "label": label, "group": "g"}])
+
+
+@pytest.mark.parametrize("label", [None, "day.beforeHoliday.1500.0"])
+def test_a_valued_day_rule_record_names_the_rule_not_its_id(label):
+    text = str(condition_text(_valued_day_record("day.beforeHoliday.1500.0", label)))
+    assert "day." not in text and "beforeHoliday" not in text, text
+    assert text.startswith("The day before a market holiday, 15:00: Run the carry check"), text
+    assert text.endswith(": 0.8 (rule 1.5)"), text
+
+
+# ---- D-58 (final round): one label function; no rule id reaches the screen as a label, in any rule family ----
+def _valued(rule_id: str, label: str | None):
+    return playbook_store.Suggestion(
+        1, 143, rule_id, rule_id, None, Decimal("0.8"), Decimal("1.5"), dt.datetime(2026, 11, 24, 9, 30, tzinfo=dt.UTC),
+        "open", None, [{"cmp": "le", "label": label, "group": "g"}])
+
+
+def test_a_valued_level_watch_record_names_the_watch_not_its_id():
+    text = str(condition_text(_valued("watch.level.above", "watch.level.above")))
+    assert "watch.level" not in text and text.startswith("Watched level reached (at or above)"), text
+
+
+@pytest.mark.parametrize("rule_id", ["sit.S-02", "zzz.unknown"])
+def test_a_valued_record_with_no_wording_for_its_id_shows_no_id(rule_id):
+    text = condition_text(_valued(rule_id, rule_id))
+    assert text is None or rule_id not in str(text), text

@@ -81,6 +81,31 @@ def _settings_defaults_by_default(monkeypatch):
     monkeypatch.setattr(outcome, "_settings_in_force_now", defaults)
 
 
+class _UnboundFreeze(dict):
+    """Every contract has a freeze limit far above any test order (Lane K, ADR-330 (50)-(52): the order door fails
+    closed on a contract with no stored limit, which most tests are not about)."""
+
+    def get(self, key, default=None):
+        from datetime import date  # noqa: PLC0415
+
+        from ofo_app.freeze_read import StoredLimit  # noqa: PLC0415
+        return StoredLimit(10**9, date(2026, 1, 1))
+
+
+@pytest.fixture(autouse=True)
+def _freeze_unbound_by_default(request, monkeypatch):
+    """The order door's freeze read (``freeze_read.limits_in_force``) answers "no order is near a limit" for tests
+    that are not about it. The tests of the limit itself carry ``pytest.mark.real_freeze`` and keep the true read."""
+    if request.node.get_closest_marker("real_freeze"):
+        return
+    from ofo_app import freeze_read  # noqa: PLC0415 - import order: env placeholders are set after this module's top
+
+    async def unbound(_db):
+        return _UnboundFreeze()
+
+    monkeypatch.setattr(freeze_read, "limits_in_force", unbound)
+
+
 @pytest.fixture(autouse=True)
 def _preferences_defaults_by_default(request, monkeypatch):
     """GC-SET step 8 (REQ-168 AC-2): the adjustment routes read the user's preferences once per request through
@@ -167,10 +192,14 @@ CLONES_MADE: list[str] = []  # in order; read by tests_app/test_db_per_file_guar
 
 
 def should_clone(template: str, env=None) -> bool:
-    """Clone only a throwaway made by db_run_fresh, or in CI; any other template (db_run on the shared ofo_test, which
-    also serves production) is used as given: no clones to collide on, leak, or fail on a busy template."""
+    """Clone only a throwaway made by db_run_fresh, or in CI, or when the runner says this database is its own
+    (``OFO_TEST_DB_PER_FILE=1``: a disposable database nobody else uses; Lane FD2 / Lane TE: some files commit rows
+    that no guard lets a test delete, so a second file run on the same database met them: "would drop 750 of 750 live
+    NIFTY contracts", an extra ``lapsed`` alert). Any other template (db_run on the shared ofo_test, which also serves
+    production) is used as given: no clones to collide on, leak, or fail on a busy template; run ONE file there."""
     env = os.environ if env is None else env
-    return _db_run_fresh.is_tool_name(template) or env.get("GITHUB_ACTIONS") == "true"
+    return (_db_run_fresh.is_tool_name(template) or env.get("GITHUB_ACTIONS") == "true"
+            or env.get("OFO_TEST_DB_PER_FILE") == "1")
 
 
 def _db_name(url: str) -> str:
@@ -211,7 +240,8 @@ def _forget_app_engines() -> None:
 
 
 def clone_for_file(admin_url: str, app_url: str) -> str:
-    """CREATE <template>_f<pid>_<n> TEMPLATE <template> plus the database-level grants CI gives the app role (a template does
+    """CREATE <template>_f<pid>_<n> TEMPLATE <template> plus the database-level grants CI gives the app role (a template
+    does
     not copy them; schema and table privileges are inside the database and are copied). Raises on any failure, after
     dropping a half-made clone: the caller's tests then ERROR, they never fall back to the shared database."""
     template = _db_name(admin_url)
@@ -334,3 +364,14 @@ def redis_url() -> Iterator[str]:
     closer = threading.Thread(target=server.server_close, daemon=True)
     closer.start()
     closer.join(timeout=3)
+
+
+@pytest.fixture(autouse=True)
+def _read_door_lease_ends_with_each_test():
+    """Hotfix 27 Nov: the read door's standing lease is process-wide; a test never inherits another test's holds."""
+    from ofo_app import read_door  # noqa: PLC0415
+    read_door._lease = None
+    yield
+    if read_door._lease is not None:
+        read_door._lease.release()
+    read_door._lease = None

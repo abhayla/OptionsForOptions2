@@ -5,8 +5,11 @@ import { beforeEach, describe, it, expect, vi } from 'vitest'
 import { flushPromises, mount } from '@vue/test-utils'
 import { createMemoryHistory, createRouter } from 'vue-router'
 import SaveDraftBar from '@/components/strategy/SaveDraftBar.vue'
+import { resetExitLocks } from '@/lib/unknownLocks'
 import PaperConfirmDialog from '@/components/strategy/PaperConfirmDialog.vue'
 import * as tracking from '@/lib/tracking'
+import { confirmPaperName } from './helpers/paperName'
+const { PAPER_PRICE_ZERO_REASON } = tracking
 
 const calls = []
 let answers = {}
@@ -15,6 +18,7 @@ vi.mock('@/services/api', async (importActual) => {
   const respond = (method, url, body) => {
     calls.push({ method, url, body })
     const a = answers[`${method} ${url}`]
+    if (a === undefined && method === 'GET' && url === '/market/exit-state') return Promise.resolve({ data: { closed: false, sentence: null, next_open_at: null } }) // ADR-330 (60)
     if (a === undefined) return Promise.reject(new Error(`unmocked ${method} ${url}`))
     return typeof a === 'function' ? a(body) : Promise.resolve({ data: a })
   }
@@ -48,9 +52,12 @@ async function bar(props = {}) {
 async function openList(w) {
   await t(w, 'add-to-paper').trigger('click')
   await flushPromises()
+  await confirmPaperName(w)
 }
 
 beforeEach(() => {
+  resetExitLocks() // Lane FB2: the add-unknown lock is kept per browser (lib/unknownLocks.js): each test starts without one
+  globalThis.sessionStorage?.clear()
   calls.length = 0
   answers = { 'GET /strategies': { strategies: [] }, 'POST /paper/strategies/7/orders': BOOK }
 })
@@ -72,7 +79,7 @@ describe('Add to Paper: the core', () => {
       { contract_id: 102, side: 'BUY', quantity: 65, price: '38.15', kind: 'open' },
       { contract_id: 103, side: 'SELL', quantity: 65, price: '95.00', kind: 'open' },
       { contract_id: 104, side: 'BUY', quantity: 65, price: '41.30', kind: 'open' },
-    ] })
+    ], client_request_id: expect.any(String) })
     expect(t(w, 'paper-toast-message').text()).toBe('Added to Paper')
     expect(t(w, 'paper-open-builder').text()).toBe('Open in Builder')
     expect(t(w, 'paper-open-positions').text()).toBe('Open Paper positions')
@@ -96,7 +103,7 @@ describe('Add to Paper: price and lots', () => {
     await openList(w)
     await all(w, 'paper-price')[1].setValue(bad)
     expect(t(w, 'paper-confirm-button').attributes('disabled')).toBeDefined()
-    expect(all(w, 'paper-reason')[0].text()).toBe('Enter a price in steps of 0.05')
+    expect(all(w, 'paper-reason')[0].text()).toBe(bad === '0' ? PAPER_PRICE_ZERO_REASON : 'Enter a price in steps of 0.05') // D-58
     await t(w, 'paper-confirm-button').trigger('click')
     expect(posts()).toHaveLength(0)
     w.unmount()
@@ -188,12 +195,12 @@ describe('Add to Paper: unsaved strategy, toast, old path', () => {
     w.unmount()
   })
   it('a failed save stops before any paper order and shows the save error', async () => {
-    answers['POST /strategies'] = () => Promise.reject({ status: 422, parts: { what_happened: 'The strategy has no name.' } })
+    answers['POST /strategies'] = () => Promise.reject({ status: 422, parts: { what_happened: 'Give the strategy a name.' } })
     const w = await bar({ current: null })
     await openList(w)
     expect(w.find('[data-testid="paper-confirm"]').exists()).toBe(false)
     expect(posts()).toHaveLength(0)
-    expect(t(w, 'save-error').text()).toContain('The strategy has no name.')
+    expect(t(w, 'save-error').text()).toContain('Give the strategy a name.')
     w.unmount()
   })
   it('"Open in Builder" reloads this strategy', async () => {
@@ -213,6 +220,7 @@ describe('Add to Paper: unsaved strategy, toast, old path', () => {
     await t(w, 'more-menu').trigger('click')
     await t(w, 'menu-add-to-paper').trigger('click')
     await flushPromises()
+    await confirmPaperName(w)
     expect(all(w, 'paper-order')).toHaveLength(4)
     expect(w.text()).not.toContain('Start tracking')
     expect('START_TRACKING_LABEL' in tracking).toBe(false)
@@ -220,6 +228,7 @@ describe('Add to Paper: unsaved strategy, toast, old path', () => {
   })
   it('the dialog takes a list of orders, not legs: a single entry order emits a single entry order', async () => {
     const w = mount(PaperConfirmDialog, { props: { open: true, orders: [{ key: 'x', contract_id: 5, side: 'BUY', text: 'NIFTY 3 Nov 22800 CE', lots: 2, lot_size: 65, price: '10.05', kind: 'open' }] } })
+    await flushPromises() // ADR-330 (60) on Add to Paper (FA2 item A): Confirm waits for the market answer
     await t(w, 'paper-confirm-button').trigger('click')
     expect(w.emitted('confirm')[0][0]).toEqual([{ contract_id: 5, side: 'BUY', quantity: 130, price: '10.05', kind: 'open' }])
     w.unmount()
@@ -228,12 +237,14 @@ describe('Add to Paper: unsaved strategy, toast, old path', () => {
     const w = mount(PaperConfirmDialog, { props: { open: true, orders: [{ key: 'x', contract_id: 5, side: 'BUY', text: 'NIFTY 3 Nov 22800 CE', lots: 2, lot_size: 65, price: '', kind: 'exit' }] } })
     expect(w.find('[data-testid="paper-price"]').exists()).toBe(false)
     expect(t(w, 'paper-exit-price').text()).toContain('the server sets the exit price when you confirm')
+    await flushPromises() // ADR-330 (60): Confirm waits for the market answer
     await t(w, 'paper-confirm-button').trigger('click')
     expect(w.emitted('confirm')[0][0]).toEqual([{ contract_id: 5, side: 'BUY', quantity: 130, price: '0', kind: 'exit' }])
     w.unmount()
   })
   it('GC-TPD R-30: a NUMERIC price (not text) does not throw on Confirm and is sent as text', async () => {
     const w = mount(PaperConfirmDialog, { props: { open: true, orders: [{ key: 'x', contract_id: 5, side: 'BUY', text: 'NIFTY 3 Nov 22800 CE', lots: 2, lot_size: 65, price: 101.05, kind: 'open' }] } })
+    await flushPromises() // ADR-330 (60) on Add to Paper (FA2 item A): Confirm waits for the market answer
     await t(w, 'paper-confirm-button').trigger('click')
     expect(w.emitted('confirm')[0][0]).toEqual([{ contract_id: 5, side: 'BUY', quantity: 130, price: '101.05', kind: 'open' }])
     w.unmount()
@@ -241,7 +252,7 @@ describe('Add to Paper: unsaved strategy, toast, old path', () => {
   it.each([0, -5, 101.03])('GC-TPD R-30: a numeric price %s is refused exactly as the text "%s" is (Confirm disabled, nothing emitted)', async (bad) => {
     const w = mount(PaperConfirmDialog, { props: { open: true, orders: [{ key: 'x', contract_id: 5, side: 'BUY', text: 'NIFTY 3 Nov 22800 CE', lots: 2, lot_size: 65, price: bad, kind: 'open' }] } })
     expect(t(w, 'paper-confirm-button').attributes('disabled')).toBeDefined()
-    expect(t(w, 'paper-reason').text()).toBe('Enter a price in steps of 0.05')
+    expect(t(w, 'paper-reason').text()).toBe(bad === 0 ? PAPER_PRICE_ZERO_REASON : 'Enter a price in steps of 0.05') // D-58
     await t(w, 'paper-confirm-button').trigger('click')
     expect(w.emitted('confirm')).toBeUndefined()
     w.unmount()

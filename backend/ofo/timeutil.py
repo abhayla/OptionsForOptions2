@@ -34,6 +34,16 @@ EXPIRY_DAY_SETTLE_FROM: Final = datetime.time(15, 39)
 HISTORY_FETCH_UNTIL: Final = datetime.time(15, 59)
 
 
+# The three end-of-day cut-offs (modular-doors Phase 7 R1, kept on purpose: three questions, three answers).
+# Documentation only; none is derived from another.
+#   15:30 valuation        - "is the contract expired / valued at close?": EXPIRY_CLOSE above (also SESSION_CLOSE);
+#                            used by outcome/snapshot.py and outcome/service.py.
+#   15:39 reconciliation   - "may a broker position on expiry day be taken as settled?": EXPIRY_DAY_SETTLE_FROM above;
+#                            used by reconciliation/settlement.py.
+#   15:45 paper settlement - "from when may the paper book be settled?": NOT a constant here; the setting
+#                            ``facts.paper_settle_from`` (REQ-109 AC-7, "A job runs at 15:45 IST each trading day"),
+#                            (ofo.settings.calc.paper_settle_from), read by paper_settlement.py and outcome/service.py.
+
 SATURDAY: Final = 5  # datetime.weekday(): Monday is 0, so 0..4 are the trading weekdays
 
 

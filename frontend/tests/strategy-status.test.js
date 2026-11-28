@@ -7,23 +7,21 @@ import { join } from 'node:path'
 import { strategyStatusWord, isCompleted, isRunning, isUnknownStatus } from '@/lib/strategyStatus'
 import { STATUS_UNKNOWN } from '@/lib/sharedStateText'
 
-describe('strategyStatusWord: the list row (status, has_order) decides', () => {
-  it('never placed -> Draft; placed (practice or real) with open legs, also partly closed -> Running; every leg closed -> Completed', () => {
-    expect(strategyStatusWord({ status: 'draft', has_order: false })).toBe('Draft')
-    expect(strategyStatusWord({ status: 'draft' })).toBe('Draft') // an older server sends no flag
-    expect(strategyStatusWord({ status: 'draft', has_order: true })).toBe('Running') // 140/141: open legs, was "draft"
-    expect(strategyStatusWord({ status: 'draft', has_order: true, has_paper_order: false })).toBe('Running') // a real trade has no practice order
-    expect(strategyStatusWord({ status: 'draft', has_order: true, tracked: true })).toBe('Running') // tracked is not a state
-    expect(strategyStatusWord({ status: 'closed', has_order: true })).toBe('Completed')
+describe('strategyStatusWord: the server word (strategy_store.status_word, ADR-299 (4)) is read, never derived', () => {
+  it('Draft / Running / Completed come from status_word, whatever status and has_order say', () => {
+    expect(strategyStatusWord({ status: 'draft', status_word: 'Draft' })).toBe('Draft')
+    expect(strategyStatusWord({ status: 'draft', has_order: true, status_word: 'Running' })).toBe('Running')
+    expect(strategyStatusWord({ status: 'closed', has_order: true, status_word: 'Completed' })).toBe('Completed')
+    expect(strategyStatusWord({ status: 'draft', has_order: false, status_word: 'Running' })).toBe('Running')
   })
-  it('isCompleted / isRunning are the same decision', () => {
-    expect(isCompleted({ status: 'closed' })).toBe(true)
-    expect(isRunning({ status: 'draft', has_order: true })).toBe(true)
-    expect(isRunning({ status: 'closed', has_order: true })).toBe(false)
-    expect(isCompleted({ status: 'draft', has_order: true })).toBe(false)
+  it('isCompleted / isRunning read the same word', () => {
+    expect(isCompleted({ status_word: 'Completed' })).toBe(true)
+    expect(isRunning({ status_word: 'Running' })).toBe(true)
+    expect(isRunning({ status_word: 'Completed' })).toBe(false)
+    expect(isCompleted({ status: 'closed' })).toBe(false) // no server word: not guessed
   })
-  it('an unknown or missing status is never called Draft: it reads the shared "not available" words and is not completed or running', () => {
-    for (const row of [{ status: 'some_future_status' }, { status: 'weird', has_order: true }, {}, null]) {
+  it('a missing, Unknown or other word is never called Draft: it reads the shared "not available" words', () => {
+    for (const row of [{ status: 'draft', has_order: true }, { status_word: 'Unknown' }, { status_word: 'weird' }, {}, null]) {
       expect(strategyStatusWord(row)).toBe(STATUS_UNKNOWN)
       expect(isUnknownStatus(row)).toBe(true)
       expect(isCompleted(row)).toBe(false)

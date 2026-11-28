@@ -1,6 +1,6 @@
 <!-- GC-ADJ2 step 4 (REQ-161 AC-3, REQ-158 AC-5): the "Plan" entry on a tracked strategy's panel: the accepted plan's playbook name
      and its guards as the server sent them, and an Edit action that reopens the plan sheet (PUT). GC-ICFIX u111-u114 (ADR-295, ADR-304 (3)):
-     a strategy with no plan says "No plan saved yet: default rules apply" and a "Set plan" button that opens the sheet to accept one (POST);
+     a strategy with no plan says "No plan: nothing is watched for this strategy" and a "Set plan" button that opens the sheet to accept one (POST);
      nothing is saved by showing this. The target and stop lines are the rule check's own `limits` rows (the panel's one read of the check,
      passed in): each row's `text` is the server's sentence and the browser derives nothing from the numbers. A rule that is not being checked
      says so with its reason and no number; a check that failed says could-not-load with Retry; while it is out the card says loading.
@@ -22,15 +22,21 @@
         <p v-else-if="!limits.rows.length" data-testid="plan-entry-limits-none">{{ LIMITS_NONE_TEXT }}</p>
         <template v-else>
           <template v-for="row in limits.rows" :key="row.id">
-            <p v-if="row.text" :class="row.muted ? 'text-ink-muted' : ''" :data-testid="`plan-entry-limit-${row.id}`">{{ row.text }}</p>
+            <template v-if="mergedIds.has(row.id)"></template><!-- its sentence is on the level's own line above (I-197 re-fix) -->
+            <p v-else-if="row.text" :class="row.muted ? 'text-ink-muted' : ''" :data-testid="`plan-entry-limit-${row.id}`">{{ row.text }}</p>
             <LoadFailed v-else :text="LIMITS_LOAD_FAILED_TEXT" :prefix="`plan-entry-limit-${row.id}`" @retry="$emit('retry-check')" />
           </template>
         </template>
         <!-- GC-ICFIX u141: the check's own read time (the server's text; an older server sends none -> nothing shown) -->
+        <!-- I-197: the plan's own stop and target (percent and rupees, the server's figures) or the reason none is set; shown for a level
+             the check's lines do not carry (market closed, check failed, no row for it); a level the check printed is not printed twice -->
+        <template v-if="read.plan && checkStatus !== 'loading'">
+          <p v-for="lv in planLevels" :key="lv.id" :data-testid="`plan-entry-${lv.id}`">{{ lv.text }}</p>
+        </template>
         <p v-if="limits && check.as_of_text" class="text-xs text-ink-muted" data-testid="plan-entry-limits-as-of">{{ check.as_of_text }}</p>
         <p v-if="limits && checkStale" class="text-xs text-red-700" data-testid="plan-entry-limits-stale">{{ checkStaleLine(checkRefusal) }}</p>
         <p v-if="read.plan" data-testid="plan-entry-guards">
-          {{ read.labels.max_adjustments }}: {{ read.plan.maxAdjustments }} / {{ read.labels.time_exit }}: {{ read.plan.timeExit }}
+          {{ read.labels.max_adjustments }}: {{ read.plan.maxAdjustments }} / {{ read.labels.time_exit }}: {{ read.plan.timeExit }}{{ read.plan.timeExitOn ? ` ${read.plan.timeExitOn}` : '' }}
         </p>
         <button type="button" class="mt-2 rounded border border-line bg-surface px-2 py-1 text-xs font-medium" data-testid="plan-entry-edit" @click="sheetOpen = true">
           {{ read.plan ? read.labels.edit : read.labels.set_plan }}
@@ -38,6 +44,11 @@
       </template>
       <AdjustPlanSheet :open="sheetOpen" :strategy-id="strategyId" :edit="!!read.plan" @close="sheetOpen = false" @saved="(next) => { read = next }" />
     </div>
+    <!-- GC-ICLIVE D-24: the armed (or fired) index conditional exits, the server's level text; a failed read says so, never "none set" -->
+    <p v-for="x in exitsView.rows" :key="x.id" class="mt-1" :data-testid="`plan-entry-exit-${x.id}`">{{ isNotApplicable(x) ? notApplicableTextOf(x) : exitLineText(x.direction, x.level_text, x.state) }}</p>
+    <p v-if="exitsView.kind === 'failed'" class="mt-1 text-xs text-red-700" data-testid="plan-entry-exits-failed">{{ EXITS_LOAD_FAILED_TEXT }}</p>
+    <!-- I-24 (Lane FC): a real-mode trade has no exits read yet: said plainly, never "none" -->
+    <p v-if="exitsView.kind === 'real_unreadable'" class="mt-1 text-xs text-ink-muted" data-testid="plan-entry-exits-real-unreadable">{{ EXITS_REAL_UNREADABLE_TEXT }}</p>
   </div>
 </template>
 
@@ -45,9 +56,13 @@
 import { computed, ref, watch } from 'vue'
 import AdjustPlanSheet from '@/components/strategy/AdjustPlanSheet.vue'
 import LoadFailed from '@/components/common/LoadFailed.vue'
+import { getActivePinia } from 'pinia'
+import { useBuilderHold } from '@/stores/builderHold'
 import api from '@/services/api'
 import { fetchPlan } from '@/lib/adjustPlan'
-import { checkStaleLine, LIMITS_LOADING_TEXT, LIMITS_LOAD_FAILED_TEXT, LIMITS_NONE_TEXT, PLAN_LOADING_TEXT, PLAN_LOAD_FAILED_TEXT } from '@/lib/sharedStateText'
+import { EXITS_REAL_UNREADABLE_TEXT, exitsViewOf, isNotApplicable, notApplicableTextOf } from '@/lib/paperTriggers'
+import { saveStamp, savedSince } from '@/lib/planSaveClock'
+import { checkStaleLine, EXITS_LOAD_FAILED_TEXT, exitLineText, LIMITS_LOADING_TEXT, LIMITS_LOAD_FAILED_TEXT, LIMITS_NONE_TEXT, PLAN_LOADING_TEXT, PLAN_LOAD_FAILED_TEXT } from '@/lib/sharedStateText'
 
 // the rule check's reply and the state of the panel's one read of it: 'loading' | 'ok' | 'failed'
 const props = defineProps({
@@ -56,8 +71,12 @@ const props = defineProps({
   checkStatus: { type: String, default: 'loading' },
   checkRefusal: { type: String, default: '' }, // the server's sentence when the last check read was refused
   checkStale: { type: Boolean, default: false }, // a background re-read failed: the lines are the last good ones
+  exits: { type: Array, default: () => [] }, // GC-ICLIVE D-24: the armed / fired index conditional exits (GET /paper/strategies/{id}/triggers)
+  exitsFailed: { type: Boolean, default: false }, // the exits read failed: said so, never "none set"
+  exitsMode: { type: String, default: 'paper' }, // I-24: 'real' = a real-mode trade (no exits route yet): one plain line instead of the exits
 })
 defineEmits(['retry-check'])
+const exitsView = computed(() => exitsViewOf(props.exitsMode, props.exits, props.exitsFailed))
 const read = ref(null)
 const loading = ref(false)
 const failed = ref(false)
@@ -71,26 +90,72 @@ const limits = computed(() => {
   // an empty list means "no rules" only where the server says there is no playbook; any other empty answer is not one we can read
   if (!c.limits.length && c.playbook?.source !== 'none') return null
   const rows = c.limits.map((l) => ({ id: l.rule_id, text: KNOWN_STATES.includes(l.state) && typeof l.text === 'string' ? l.text : null,
-    muted: l.state === 'already_true' })) // ADR-296: an already-true line is grey, never red
+    muted: l.state === 'already_true', // ADR-296: an already-true line is grey, never red
+    level: l.trigger_id === 'T-07' ? 'target' : 'stop', notChecked: l.state === 'not_checked', reason: typeof l.reason === 'string' ? l.reason.trim() : '' }))
   return { paused: null, rows }
 })
 
+// I-197: what the check's lines already print (a row with a sentence); T-07 is the target row, any other row is the stop
+const printed = computed(() => {
+  const rows = Array.isArray(props.check?.limits) && props.checkStatus === 'ok' && !props.check?.paused ? props.check.limits : []
+  // W-30: a row that says "not being checked" carries the reason, not the figure: the plan's stored figure is still printed beside it
+  const has = (l) => (l.state === 'checked' || l.state === 'already_true') && typeof l.text === 'string' && l.text !== ''
+  return { target: rows.some((l) => has(l) && l.trigger_id === 'T-07'), stop: rows.some((l) => has(l) && l.trigger_id !== 'T-07') }
+})
+// I-197 re-fix (walker W2): the stored figure is always shown and the reason it is not being checked follows it on the SAME line (the server's reason, as sent);
+// the row's own "Stop: not being checked: ..." sentence is then not printed a second time. A not-checked row with no reason keeps its sentence.
+const reasonOf = (level) => limits.value?.rows.find((r) => r.level === level && r.notChecked && r.text && r.reason)?.reason ?? ''
+const mergedIds = computed(() => new Set((limits.value?.rows ?? []).filter((r) => r.notChecked && r.reason && read.value?.plan && reasonOf(r.level) === r.reason).map((r) => r.id)))
+const NOT_CHECKED_LEAD = ', not being checked: ' // the server's own phrase for the same state (limit_stop_off)
+const NO_STOP_TEXT = 'No stop is set for this trade.' // pending owner read
+const NO_TARGET_TEXT = 'No target is set for this trade.' // pending owner read
+function levelText(label, rupeeLabel, percent, rupees, none) {
+  const pct = (percent ?? '').trim()
+  const rs = (rupees ?? '').trim()
+  if (pct && rs) return `${label}: ${pct} % (Rs ${rs})`
+  if (pct) return `${label}: ${pct} %`
+  if (rs) return `${rupeeLabel}: Rs ${rs}`
+  return none
+}
+const planLevels = computed(() => {
+  const plan = read.value?.plan
+  const labels = read.value?.labels ?? {}
+  if (!plan) return []
+  const out = []
+  const withReason = (level, text, set) => (set && reasonOf(level) ? `${text}${NOT_CHECKED_LEAD}${reasonOf(level)}` : text)
+  if (!printed.value.stop) out.push({ id: 'stop', text: withReason('stop', levelText(labels.stop || 'Stop', labels.stop_rupees || 'Stop (Rs)', plan.stop, plan.stopRupees, NO_STOP_TEXT), !!(plan.stop || plan.stopRupees)) })
+  if (!printed.value.target) out.push({ id: 'target', text: withReason('target', levelText(labels.target || 'Target', labels.target_rupees || 'Target (Rs)', plan.target, plan.targetRupees, NO_TARGET_TEXT), !!(plan.target || plan.targetRupees)) })
+  return out
+})
+
+const heldPlanFor = (id) => { try { return !!getActivePinia() && useBuilderHold().hasPlan(id) } catch { return false } }
+
+let readSeq = 0 // the newest read owns `loading`: a dropped stale read must not clear it while its fresh read is still out
 async function reload() {
   const id = props.strategyId
+  const mine = ++readSeq
   read.value = null
   failed.value = false
   loading.value = false
   if (!Number.isInteger(id)) return
   loading.value = true
+  const stamp = saveStamp(id)
   try {
     const next = await fetchPlan(api, id)
     if (id !== props.strategyId) return // another strategy opened meanwhile: drop this
+    if (savedSince(id, stamp)) { // began before a save of this strategy: never put the old plan back (plan-save-1127); read again if nothing is shown
+      if (read.value === null) reload()
+      return
+    }
     if (next.kind === 'invalid') failed.value = true // fail closed: nothing is drawn from a reply that cannot be read
-    else read.value = next
+    else {
+      read.value = next
+      if (heldPlanFor(id)) sheetOpen.value = true // S-11: back from Customise triggers: the sheet reopens, the held form is in it
+    }
   } catch {
     if (id === props.strategyId) failed.value = true // network, 5xx or the 30 s limit
   } finally {
-    if (id === props.strategyId) loading.value = false
+    if (id === props.strategyId && mine === readSeq) loading.value = false
   }
 }
 watch(() => props.strategyId, reload, { immediate: true })

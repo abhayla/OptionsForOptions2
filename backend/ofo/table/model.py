@@ -52,32 +52,40 @@ Breakeven summary columns (Q213) from the same level set. Every money/points cel
   is the section caption (:func:`scenario_caption`), not a per-column label.
 """
 from __future__ import annotations
-from ofo.errors.explanations import HEALTH_LABEL_TEXT, ExplanationText, render_explanation
-
-from dataclasses import dataclass, replace as _replace
-from decimal import ROUND_HALF_EVEN, ROUND_HALF_UP, Decimal, localcontext
-from enum import Enum
-from typing import Final, Sequence
 
 import datetime
+from dataclasses import dataclass
+from dataclasses import replace as _replace
+from decimal import ROUND_HALF_EVEN, ROUND_HALF_UP, Context, Decimal, localcontext
+from enum import Enum
+from typing import Final, Sequence
 
 from ofo.engine.black_scholes import GREEK_STEP, Greeks
 from ofo.engine.display import format_points, format_rupees
 from ofo.engine.inputs import LegInput
-from ofo.engine.model import ModelInputs, leg_decay_unrounded, leg_greeks_unrounded
-from ofo.market_calendar import next_open as _next_open
-from ofo.engine.money_summary import net_price_per_unit
 from ofo.engine.legs import Action, Instrument, live_pnl
 from ofo.engine.metrics import UNLIMITED, MultiExpiryError, strategy_metrics
+from ofo.engine.model import (
+    ModelInputs,
+    expiry_day_close,
+    leg_decay_left_today,
+    leg_decay_unrounded,
+    leg_greeks_unrounded,
+    no_time_value,
+)
+from ofo.engine.money_summary import net_price_per_unit
+from ofo.errors.explanations import HEALTH_LABEL_TEXT, ExplanationText, render_explanation
+from ofo.market_calendar import next_open as _next_open
+from ofo.money import HUNDREDTH as _PERCENT_STEP
 from ofo.scenario.levels import LevelSet
 from ofo.scenario.views import ScenarioValues
 from ofo.table.columns import (
+    DECAY_LEFT_TODAY_LABEL,
     HEADER_LABELS,
     LEADING_COLUMNS,
     TRAILING_COLUMNS,
     ColumnId,
 )
-from ofo.money import HUNDREDTH as _PERCENT_STEP
 
 _TOTAL_PERCENT_STEP = Decimal("0.1")
 TOTAL_ROW_ID = "TOTAL"
@@ -219,8 +227,13 @@ def _percent_cell(value: Decimal | None, reason: str | None = None) -> Cell:
 
 
 def _display_number(value: Decimal, places: int) -> ExplanationText:
-    """The text of a number at its display precision: ROUND_HALF_UP, plain notation, no "-0.00" (the Amount slot)."""
-    return render_explanation("cell_number", value=value.quantize(Decimal(1).scaleb(-places), rounding=ROUND_HALF_UP))
+    """The text of a number at its display precision: ROUND_HALF_UP, plain notation, no "-0.00" (the Amount slot); a
+    real value that would show as zero or one step keeps two significant digits (D-46)."""
+    shown = value.quantize(Decimal(1).scaleb(-places), rounding=ROUND_HALF_UP)
+    step = Decimal(1).scaleb(-places)
+    if shown != value and abs(shown) <= step:  # D-46: a real value shown as zero or one step keeps two digits
+        shown = Context(prec=2, rounding=ROUND_HALF_UP).create_decimal(value)  # two significant digits
+    return render_explanation("cell_number", value=shown)
 
 
 #: GC-TP R-19b: the paper card's Greek text is the table cell's own (delta, theta, vega 2 places; gamma 4)
@@ -288,6 +301,15 @@ def _leg_unit_decay(leg: LegInput, inputs: ModelInputs,
     if until is None:
         return None, _r("no_next_open")
     return leg_decay_unrounded(inputs, leg, until), None
+
+
+def _leg_unit_left_today(leg: LegInput, inputs: ModelInputs,
+                          _until: object = None) -> tuple[Decimal | None, ExplanationText | None]:
+    """D-12 (ADR-320 (1)): the leg's UNSIGNED, UNROUNDED per-unit "Decay left today" from the engine
+    (:func:`leg_decay_left_today`), or None with the no-IV reason."""
+    if leg.instrument is not Instrument.FUT and leg.iv is None and not no_time_value(inputs, leg):
+        return None, _r("no_iv")
+    return leg_decay_left_today(inputs, leg), None
 
 
 def _decay_cell(unit: Decimal | None, reason: ExplanationText | None, action: Action | None, quantity: int) -> Cell:
@@ -384,10 +406,13 @@ def _leg_row(index: int, leg: LegInput, inputs: ModelInputs, level_columns: Sequ
                                      None if vendor is None else vendor.gamma,
                                      None if signed_unit is None else signed_unit.gamma, greek_reason,
                                     places=4, unrounded=None if raw_position is None else raw_position.gamma),
-        ColumnId.THETA: _greek_cell(None if position is None else position.theta,
+        # D-12 (ADR-320 (1)): on expiry day the Theta cell is the leg's Decay left today (Rs), the column says so
+        ColumnId.THETA: (_decay_cell(*_leg_unit_left_today(leg, inputs), core.action, core.quantity)
+                         if expiry_day_close(inputs) is not None else
+                         _greek_cell(None if position is None else position.theta,
                                      None if vendor is None else vendor.theta,
                                      None if signed_unit is None else signed_unit.theta, greek_reason,
-                                    places=2, unrounded=None if raw_position is None else raw_position.theta),
+                                     places=2, unrounded=None if raw_position is None else raw_position.theta)),
         ColumnId.DECAY: _decay_cell(*_leg_unit_decay(leg, inputs, decay_until), core.action, core.quantity),
         ColumnId.VEGA: _greek_cell(None if position is None else position.vega,
                                     None if vendor is None else vendor.vega,
@@ -500,8 +525,10 @@ def _total_row(inputs: ModelInputs, level_set: LevelSet | None, scenario: Scenar
                                     unrounded=None if not every_leg_has_greeks else raw_totals["delta"]),
         ColumnId.GAMMA: _greek_cell(greek_values["gamma"], None, unit_totals["gamma"] if every_leg_has_greeks else None, greek_reason, places=4,  # noqa: E501 - long line kept whole
                                     unrounded=None if not every_leg_has_greeks else raw_totals["gamma"]),
-        ColumnId.THETA: _greek_cell(greek_values["theta"], None, unit_totals["theta"] if every_leg_has_greeks else None, greek_reason, places=2,  # noqa: E501 - long line kept whole
-                                    unrounded=None if not every_leg_has_greeks else raw_totals["theta"]),
+        ColumnId.THETA: (_total_decay_cell(legs, inputs, None, _leg_unit_left_today)  # D-12: expiry day
+                         if expiry_day_close(inputs) is not None else
+                         _greek_cell(greek_values["theta"], None, unit_totals["theta"] if every_leg_has_greeks else None, greek_reason, places=2,  # noqa: E501 - long line kept whole
+                                     unrounded=None if not every_leg_has_greeks else raw_totals["theta"])),
         ColumnId.VEGA: _greek_cell(greek_values["vega"], None, unit_totals["vega"] if every_leg_has_greeks else None, greek_reason, places=2,  # noqa: E501 - long line kept whole
                                     unrounded=None if not every_leg_has_greeks else raw_totals["vega"]),
         ColumnId.DECAY: _total_decay_cell(legs, inputs, decay_until),
@@ -536,15 +563,17 @@ def _lot_weights(legs: Sequence[LegInput]) -> list[int]:
     return [leg.quantity // divisor if divisor else 1 for leg in legs]
 
 
-def _total_decay_cell(legs: Sequence[LegInput], inputs: ModelInputs, until: datetime.datetime | None) -> Cell:
+def _total_decay_cell(legs: Sequence[LegInput], inputs: ModelInputs, until: datetime.datetime | None,
+                      unit_of=None) -> Cell:
     """TOTAL Decay: the sum of the legs' UNROUNDED position Decay, rounded once; absent when any leg's is absent
     (never a partial sum): "not every leg has an implied volatility", or no next open."""
     raw = Decimal(0)
     per_unit_total = Decimal(0)
     for leg, weight in zip(legs, _lot_weights(legs), strict=True):
-        unit, reason = _leg_unit_decay(leg, inputs, until)
+        unit, reason = (unit_of or _leg_unit_decay)(leg, inputs, until)
         if unit is None:
-            return _greek_cell(None, None, None, _r("not_all_iv") if until is not None else reason, places=2)
+            return _greek_cell(None, None, None, _r("not_all_iv") if until is not None or unit_of else reason,
+                               places=2)
         raw += _signed(unit, leg.action, leg.quantity)
         per_unit_total += weight * _signed(unit, leg.action, 1)
     return _greek_cell(_round_greek(raw), None, per_unit_total, None, places=2, unrounded=raw)
@@ -625,7 +654,9 @@ def build_table(  # noqa: PLR0913 - the strategy's inputs plus five optional cal
     level_columns: tuple[Decimal, ...] = level_set.levels if level_set is not None else ()
     statuses = list(leg_statuses) if leg_statuses is not None else [None] * len(inputs.legs)
 
-    columns = [ColumnSpec(cid, HEADER_LABELS[cid], _leading_kind(cid)) for cid in LEADING_COLUMNS]
+    expiry_day = expiry_day_close(inputs) is not None  # D-12 (ADR-320 (1)): Theta is replaced by Decay left today
+    columns = [ColumnSpec(cid, DECAY_LEFT_TODAY_LABEL if expiry_day and cid is ColumnId.THETA else HEADER_LABELS[cid],
+                          _leading_kind(cid)) for cid in LEADING_COLUMNS]
     marker_map = _markers_by_level(level_set)
     columns += [ColumnSpec(level, scenario_header(inputs.underlying, level, marker_map[level]),
                            CellKind.MONEY, is_scenario_level=True, markers=marker_map[level])

@@ -180,9 +180,10 @@ async def test_a_partly_exited_contract_shows_its_open_quantity_and_books_the_cl
     async with _client(_app_on(owner, user)) as c:
         row = next(s for s in (await c.get("/tracking")).json()["strategies"] if s["strategy_id"] == sid)
     leg = row["legs"][0]
-    # 25 closed: (21.70 - 114.25) x 25 = -2,313.75 booked; 40 open: (21.70 - 114.25) x 40 = -3,702.00 unbooked
+    # 25 closed: (21.70 - 114.25) x 25 = -2,313.75 booked; 40 open: (21.70 - 114.25) x 40 = -3,702.00 unbooked;
+    # the leg's figure is the contract's engine total (#725, ADR-328 (3)): -2,313.75 - 3,702.00 = -6,015.75
     assert (leg["quantity"], leg["price_state"], leg["entry_price"], leg["pnl"], leg["pnl_kind"]) == (
-        40, "live", "114.25", "-3702.00", "unbooked")
+        40, "live", "114.25", "-6015.75", "unbooked")
     assert (row["booked"], row["total"]) == ("-3818.50", "8856.25")
 
 
@@ -203,3 +204,25 @@ async def test_a_fractional_average_shows_to_the_paisa_and_figures_stay_exact(ow
     assert (leg["quantity"], leg["entry_price"], leg["entry_price_display"], leg["pnl"]) == (195, "100.02", "100.02",
                                                                                           "30962.75")
     assert (row["total"], row["unbooked"], row["booked"]) == ("30962.75", "30962.75", "0.00")
+
+
+async def test_an_open_leg_bought_again_after_a_closed_lifecycle_shows_the_contracts_engine_total(owner):
+    """#725 (ADR-328 (3)): bought 65 at 100.00, sold 65 at 120.00 (booked +1,300.00), bought 65 at 110.00 again, priced
+    at 258.80: the leg's figure is the engine's total for the contract (booked 1,300.00 + unbooked 9,672.00 =
+    10,972.00) on both tracking replies, the same as the strategy's total; an unpriced open leg stays None."""
+    user = _user()
+    _, stored = await _with_draft(owner, user)
+    contract = await _contract_of(owner, IDS[1])
+    for side, price, kind in (("BUY", "100.00", "open"), ("SELL", "120.00", "exit"), ("BUY", "110.00", "open")):
+        await owner.execute(text(
+            "INSERT INTO public.paper_orders (strategy_id, contract_id, side, quantity, price, kind, placed_at) "
+            "VALUES (:s, :c, :side, 65, :p, :kind, :at)"), {"s": stored.id, "c": contract, "side": side,
+                                                           "p": Decimal(price), "kind": kind, "at": ANSWERED})
+    async with _client(_app_on(owner, user, {})) as c:
+        listed = next(s for s in (await c.get("/tracking")).json()["strategies"] if s["strategy_id"] == stored.id)
+        one = (await c.get(f"/strategies/{stored.id}/tracking")).json()
+    for row in (listed, one):
+        leg = row["legs"][0]
+        assert (leg["quantity"], leg["pnl"], leg["pnl_kind"]) == (65, "10972.00", "unbooked")
+        assert (row["total"] if "total" in row else row["paper_pnl"], row["booked"], row["unbooked"]) == (
+            "10972.00", "1300.00", "9672.00")
