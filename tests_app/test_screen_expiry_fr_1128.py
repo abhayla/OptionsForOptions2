@@ -12,11 +12,19 @@ import datetime
 from ofo.marketdata.shared_compute import FeedScope
 from ofo_app import adjustment_readers, background
 from ofo_app.routes.outcome import MarketContext, ctx_in_force
-from test_background_cycle import DEFAULTS, RATE, Prov, _price_time, _watched, scn  # noqa: F401 - the module fixture
+from test_background_cycle import (  # noqa: F401 - the module fixtures
+    DEFAULTS,
+    RATE,
+    Prov,
+    _price_time,
+    _watched,
+    scenario_on,
+    scn,
+)
 from test_worker_expiry_fe2_1128 import FAR, NEAR, _EveryExpiry, _far_first
 
 
-async def test_core_screen_and_worker_read_one_expiry_for_a_far_first_calendar(scn, monkeypatch):  # noqa: F811
+async def test_core_screen_and_worker_read_one_expiry_for_a_far_first_calendar(scn, scenario_on, monkeypatch):  # noqa: F811
     asked: list[datetime.date] = []
     real_rows = adjustment_readers.chain_rows
 
