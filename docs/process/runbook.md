@@ -57,6 +57,8 @@ an unrelated task goes to a fresh lane with a self-contained brief, and the fini
 
 ### Coordinating many lanes (28 Nov)
 Rules and cases: `.claude/skills/lanes/SKILL.md`, section "Coordinator: finish line, batches and waves".
+Wind-down mode (no new lanes, no new tasks, found findings are not assigned): lesson 21 in the lanes skill.
+The coordinator runs the work and does not decide for the owner (what the product does, rule clashes, real orders, main, outside the repo): lesson 22.
 Numbers: a full check is a median 23.6 minutes at `--jobs 2`; about 30 percent fail once; 5 items per push cost 6.7
 check-minutes per item against 16.9 at 2 items. So: targeted tests and a local commit per item, two pushes per lane
 (money-path items first), and the build lane merges in waves with one combined check per wave, not one per branch.

@@ -1,12 +1,12 @@
-# Session handover, 28 Nov 2026 evening (coordinator)
+# Session handover, 28 Nov 2026 evening (coordinator), refreshed 23:45 IST
 
-- DONE: wave 0 on the build (a1d70422); batch 1 of every fix lane on origin by 22:05; PC round 2 done 22:50 on 829ff65f; draft pull request 881 for the build with CI per wave; independent review of the plan (22:39) accepted and the commitments restated; wave 1 merged locally (7ee93381); R1 stages 1 and 2+3 on origin.
-- PENDING: wave 1 push and its CI; wave 2 at 01:45; last code wave 05:30; MUST items proven on the build (central 06:00 to 07:00 Sunday, 3 to 6 may stay unproven); R1 renumber to 0065 and R2 walk by 04:30; the 75 failing browser specs; successors F1c and Z4; the Monday 09:15 checklist; the pull order naming each migration.
-- BLOCKED: the owner's answers (14 questions in section 6, first the browser spec question); device trust for lanes that cannot message.
-- PARKED: issue 876 (not reproduced after six attempts; the stop in that case is not proven); the merge into main (after Monday); the real-same-screens change unless the 04:30 conditions are met.
-- NEXT: heartbeat every 30 minutes; freeze = last commit with green CI on pull 881 by 10:00 Sunday; PC round 3 at 12:00; live market Monday 30 Nov 09:15.
+- DONE: wave 0 on the build (a1d70422); batch 1 of every fix lane on origin by 22:05; PC round 2 done 22:50 on 829ff65f; draft pull request 881 for the build, CI per wave; independent review of the plan (22:39) accepted; wave 1 merged locally (7ee93381); R1 stages 1 to 3 on origin; F1b closed at 1dc16d39f; the owner's wind-down order (23:37) is in the plan, the skill and the sweep job.
+- PENDING: wave 1 push and its CI; wave 2 at 01:45; last wave at 05:30 (only what lanes already hold); lanes finish the tasks they hold and close; the build lane's replacement Z4 (the only new lane, no new work); MUST items proven on the build; R1 renumber to 0065 and R2 walk; the Monday 09:15 checklist; the pull order naming each migration.
+- BLOCKED: the owner's answers (14 questions in section 6 of the plan); device trust for lanes that cannot message.
+- PARKED: every new finding since 23:35 is on the Work Board as found, not assigned (16 at 23:45); issue 876 (not reproduced after six attempts); the merge into main (after Monday); the real-same-screens change unless the 04:30 conditions are met; the coordinator's own tooling beyond the small core (Lane CC), until after Monday.
+- NEXT: lanes finish and close; build joins at 01:45 and 05:30; build fixed in place Sunday 10:00 on the last commit with green CI; PC round 3 at 12:00; live market Monday 30 Nov 09:15.
 
-The text below is the current master plan (copy of the git-ignored `docs/process/.run/MASTER-PLAN-2026-11-28.md`), so a new session can read it. Its top is the current truth; the log at the bottom is newest last.
+The text below is the current master plan (copy of the git-ignored `docs/process/.run/MASTER-PLAN-2026-11-28.md`), so a new session can read it. Its top is the current truth; the section "OWNER ORDER IN FORCE" overrides anything above it; the log at the bottom is newest last.
 
 ---
 
@@ -31,6 +31,13 @@ Update the top whenever the plan changes. Chat is never the only copy.
   - Now: 8 MUST proven on the build (21:33). Fixes for about 20 more MUST are in wave 1 (not yet proven on the build).
 - Every report to the owner starts with the burn-down: MUST open / proven since last report / net; then all items open / proven / added.
 
+## 1b. Owner decisions 28 Nov 23:15 IST
+- The coordination becomes a system with a feedback loop, not only a written plan.
+- Autonomy boundary chosen by the owner: "Run the work, not decide for me". The coordinator starts, replaces and closes lanes, assigns work, holds and merges into the build, updates the plan and adds lessons and checks, without asking.
+- The coordinator stops for the owner on: what the product does, a clash between two of his rules, real orders, merging into main, anything outside the repo.
+- Timing chosen: "Small core now, rest after Monday".
+- The coordinator's state file for lane_watch will live at docs/process/.run/coordinator-state.json once Lane CC's example is on origin.
+
 ## 2. How the work runs
 - Two pushes per lane. Batch 1 = MUST items (done, 22:05). Batch 2 and later fixes as each lane's next-work list says. One full pre-push check per push. Never a bypass, never a skipped test. Rules sent to every lane: WORKING-RULES-1128.md.
 - Waves, one combined check each, built by the build lane. Wave 0 done (a1d70422). Wave 1 merged locally 7ee93381, check running, push follows. Wave 2 at 01:45. The last wave at 05:30. Z4 takes over the build at wave 1's push.
@@ -39,7 +46,7 @@ Update the top whenever the plan changes. Chat is never the only copy.
 - The PC is used only for PC ONLY checks. A cloud speed check is not valid without a per-query link delay (the PC link costs about 134 ms per query; the cloud about 0.2 s for a whole plan watch against 16 to 19 s on the PC).
 - Messages reach a lane only when its current turn ends (RA2 was deaf for four hours; "delivered" means queued). An instruction counts only once the lane's next line acknowledges it. Every hold is placed at the build lane, never only at the lane.
 - Lane clocks are unreliable (F3 wrote 23:20 at 22:40). Use commit times and `TZ=Asia/Kolkata date`.
-- Heartbeat = `git ls-remote` of all heads every 30 minutes, plus lane messages. No hourly documentation pushes. W2, X2, F3, Z3, FJ2 and RA2 messages get through; the others need the owner's device trust.
+- Heartbeat = `git ls-remote` of all heads every 30 minutes, plus lane messages. No hourly documentation pushes. F2, F3, R1, R2, F1b, B1b, W2, X2 and Z3 can message the coordinator; B3, T and W3 have not yet been heard by message.
 - A new lane needs one line of justification to the owner (what it finishes that a running lane cannot).
 - Reviews (Opus) on money paths only, two rounds at most. When reviews keep finding holes, move the guarantee to one server code path.
 - A new finding goes on the list with its class and counts as "added".
@@ -54,7 +61,7 @@ Working lanes:
 | B1b | session_01QaT8YLAkp9eG2HKG2ZpPGw | fix/r3-backend-b1b-1128 | RA2's unowned items: stored stop reported failed, unreadable slot, adx error, unknown calendar must read NOT_CONNECTED, history screen, market-open clock; W-34; token-in-log hole fixed here | working, push due |
 | B2 | session_01QaT8YG7nc63xpT4Wha4YZf | fix/r3-backend-b2-1128 | other routes, stores, request key, unknown-outcome block, Execute door, migration 0064_order_attempts | working, batch 1 on origin (b2e8e29c3) |
 | B3 | session_01QaT8YHcJsYhiQ9MTSpCUp3 | fix/r3-backend-b3-1128 | plan-watch speed, outcome wording | working, batch 1 on origin (ecf8e8f99) |
-| F1b | session_01QaT8YKfQUB6LP9fmiWRxqd | fix/r3-frontend-f1b-1128 | successor of FJ2: Exit dialog, locks, builder page, two lock release paths, review findings, W-25 walk | working, about 60 percent of its context: one more push, then successor F1c |
+| F1b | session_01QaT8YKfQUB6LP9fmiWRxqd | fix/r3-frontend-f1b-1128 | successor of FJ2: Exit dialog, locks, builder page, two lock release paths, review findings, W-25 walk | working, pushed 83baad95c, about 60 percent of its context: one more push (review round 2), then closes; successor F1c starts at that final push |
 | F2 | session_01QaT8YHowsRYRpSxJJrcCLJ | fix/r3-frontend-f2-1128 | plan screens, Execute page | working, batch 1 on origin (4e8074a07) |
 | F3 | session_01QaT8YFYnFG8sqbkiPDAuBc | fix/r3-frontend-f3-1128 | Positions, Home, list pages; the 75 failing browser specs | working, as-of with date on origin (505542d80) |
 | T | session_01QaT8YGrRAPFNpXkAat7khm | test/r3-tests-t-1128 | test-only and tooling, CI jobs | working |
@@ -62,8 +69,9 @@ Working lanes:
 | W3 | session_01QaT8YH4kLB6y4RxFdVSfX8 | test/r3-plan-walk-3-1128 | plan walker, successor of TG2 | working, started 22:44 |
 | Z3 | session_01QaT8YGJntZzKU9jAqYfTot | integration/weekend-r3-1129 | build, waves | working, budget ends about 00:40; successor Z4 starts at wave 1's push, brief S/briefs/brief-Z4.md (S = the scratchpad folder) |
 | X2 | session_01QaT8YJFCQRTmhBxycpERGg | docs/test-plan-weekend-1127 | PC lists, owner-questions file | working |
-| R1 | session_01QaT8YGXMT6KVQFLLEe5sRx | feat/real-same-screens-be-1128 | real = paper backend; stages 1 and 2+3 on origin (09efab8df) | working, held, see section 4 |
-| R2 | session_01QaT8YKyMiG1dUJvqqhkykR | feat/real-same-screens-fe-1128 | real = paper frontend | working, held, see section 4 |
+| R1 | session_01QaT8YGXMT6KVQFLLEe5sRx | feat/real-same-screens-be-1128 | real = paper backend; stages 1, 2 and 3 on origin (09efab8df) | working, held, see section 4; renumbers its migration to 0065 after wave 1 |
+| R2 | session_01QaT8YKyMiG1dUJvqqhkykR | feat/real-same-screens-fe-1128 | real = paper frontend | working, held, pushed 39f91ce48; browser walk due 03:30 |
+| CC | session_01QaT8YJ1UALaXd7B3XcNpjZ | feat/coordinator-core-1128 | the coordinator's core: lane_watch.py (reads branches and a state file; flags overdue, silent, held, colliding migrations, file overlap, unacknowledged instructions), LESSONS-TO-CHECKS.md (a lesson is not learned until a check enforces it), design of the full system for after Monday; touches no product code, never merged into the build | working, new |
 | PC | session_01QaT8YGvTk8cS2G7qtuoCeb | none | PC ONLY checks; speaks only through PR 722 comments | working, round 2 done 22:50 on 829ff65f |
 Ids of the closed lanes are not recorded here; they need only archiving.
 
@@ -78,7 +86,8 @@ Ids of the closed lanes are not recorded here; they need only archiving.
 - B3: plan watch to a fixed small query count (10 or fewer for nine strategies) and a per-query delay rig in the cloud; fires_at for not-checked rows. The PC measures time per statement before any reader is rewritten. Due: for wave 2 (01:45).
 - B1b: push its batch now; W-34 badge delay after a worker restart (2.5 min on the PC); monitoring-state must not answer an empty list while the worker monitors rows (O-R2-01); backstop tests c and d for RA2's work. Money-path items by 01:30, the rest before the last wave at 05:30.
 - B2: batch 2 by 01:30; the 120-second close of an open attempt must never apply to the real door; a second-strategy test; adopt 0064 numbering; the execute-screen-e2e CI step.
-- F1b: one more push (lock release paths, review findings, W-25 walk, the unknown-result sentence), then successor F1c.
+- F1b: one more push (review round 2), then closes. F1c starts at that push with: SaveDraftBar.vue polling the execute:<id> locks (422 every 5 s), the staged exit that stays after Exit then Cancel on the builder, the builder book panel question, the unknown-result sentence.
+- CC: lane_watch.py with an example state file, LESSONS-TO-CHECKS.md, design of the full system. Small core now, the rest after Monday.
 - F3: the 75-spec table (within 60 minutes of the order, then fixes by 01:30); Positions as-of; check W-25 D belongs to the builder panel (F1b's file).
 - F2: batch 2 or spec fixes; keep I-197 and I-208.
 - T: flaky feed-control test; two test_exit_door tests (no_deadlock cases) that alter a table that no longer exists; the CI frontend job; the alembic import in domain-tests.
@@ -103,7 +112,7 @@ Ids of the closed lanes are not recorded here; they need only archiving.
 12. The doubled "market is closed" line.
 13. About 30 new sentences to read.
 14. May any browser spec stay red at the freeze? His rule is never skip a test; without his answer the freeze has no green CI.
-Also first line of the next report: device trust for the lanes that still cannot message (F1b, R1, R2, F2, F3, T, B3).
+Also first line of the next report: device trust for the lanes not yet heard by message (B3, T, W3).
 
 ## 7. For Monday
 - Issue 876 is NOT reproduced after six attempts. Parked with the worker log line (one line per cycle, with strategy id, price source and reason, when a leg cannot be priced). Cloud attempts stop: the cause needs the live feed.
@@ -113,6 +122,13 @@ Also first line of the next report: device trust for the lanes that still cannot
 
 ## 8. Pointers (same folder, S)
 final-plan-2026-11-28-2300.md (restated plan, ten accepted changes); improvement-plan-review-2238.md (the independent review with the arithmetic); WORKING-RULES-1128.md (rules sent to every lane); finish-line-2026-11-28.md (item lists); completion-plan-2026-11-28.md (item to lane table); design-real-same-screens-2026-11-28.md; briefs/ (lane briefs, brief-Z4.md); docs/process/owner-questions-2026-11-28.md (in the repo); bak/MASTER-PLAN-before-rewrite.md (the old top).
+
+## OWNER ORDER IN FORCE since 28 Nov 23:37 IST: WIND DOWN, NO NEW WORK
+- Start NO new lane. Assign NO new task to any lane. Each working lane finishes the tasks it already has (push, checks, merge into the build, CI, the proof already planned for those tasks), then closes.
+- A new finding from a walker, CI, the PC or a review is RECORDED on the Work Board as "found, not assigned" with its evidence. It is not sent to a lane.
+- The Work Board lists every task in every lane with its lane and status, and is republished whenever a task's status changes.
+- Aim: fewer lanes, so tasks and lanes can be tracked. Anything that contradicts this order elsewhere in this file is overridden by it (successors F1c, W-lanes, extra items for B2/B3/T, the 05:30 wave contents: only what lanes already hold).
+- Open point put to the owner: the build lane (Z3) runs out of budget about 00:40, before wave 2; its already-briefed successor Z4 is needed only to finish merges, CI, the freeze review and the pull steps for work lanes already hold.
 
 ## Log of changes (newest last)
 - 19:15 IST: wave 0 pushed by Z3 at 19:13: build head a1d70422 (RA 951aa698c, FJ 4aeb42652, FJ2 68a46dd62 merged clean; alembic head 0062; check 955 s with --jobs 4; database proofs 716 passed, 1 failed: test_exit_door_real_fd3.py test_n7, given to R1 which rewrites that file). W1, W2, R1, F2, F3 told the new head.
@@ -145,3 +161,8 @@ final-plan-2026-11-28-2300.md (restated plan, ten accepted changes); improvement
 - 23:02 IST: WAVE 1 merged locally by Z3 at 7ee93381, check running: RA2 dc1aeebd8 only, B2 b2e8e29c3, B3 ecf8e8f99, FJ2 d93fce449, F2 4e8074a07, F3 505542d80, T 5342dcb2c. Migration chain: 0062, 0063_basket_facts_spot_at, 0064_order_attempts (B2 renumbered), one head; up 81 s, down 59 s, up 59 s. Start Z4 at its push.
 - 23:02 IST: R1 CORRECTION: stages 1 and 2+3 are on origin (feat/real-same-screens-be-1128 09efab8df, checks passed, Opus-reviewed, one money finding fixed: stops left armed after a stored exit). The 02:00 gate is MET. New conditions to enter the LAST wave (05:30): R1 renumbered to 0065 on the build head and pushed; R2 browser walk PASS and pushed by 03:30; ONE independent Opus review of both branches (coordinator starts it when R1's renumbered head is on origin); all by 04:30. Else after Monday.
 - 23:02 IST: F3 can message. W-25 D is NOT Positions (5 tests) but the builder's PaperBookPanel (F1b's file): rule clash D-05 against ADR-330 (60): owner question, both texts to be quoted. PC parked owner question: alert answered before the Exit dialog, Cancel leaves it gone (ADR-330 (3)); recommendation: store the answer only when the exit is accepted. Two tests failing on the build head (test_exit_door.py no_deadlock cases alter a table that no longer exists): Lane T. F1b still silent: replace at 23:15.
+- 23:15 IST: OWNER DECISIONS: coordination becomes a system with a feedback loop. Autonomy: "Run the work, not decide for me" (coordinator starts, replaces, closes lanes, assigns, holds, merges into the build, updates the plan, adds lessons and checks; stops for product behaviour, a clash of two owner rules, real orders, merging into main, anything outside the repo). Timing: "Small core now, rest after Monday". New lane CC (session_01QaT8YJ1UALaXd7B3XcNpjZ, feat/coordinator-core-1128): lane_watch.py, LESSONS-TO-CHECKS.md, design of the full system; no product code, never merged into the build. F1b replied and pushed 83baad95c; successor F1c at its final push. R1 stages 1 to 3 on origin (09efab8df), renumbers to 0065 after wave 1. R2 pushed 39f91ce48, walk due 03:30. Coordinator state file for lane_watch: docs/process/.run/coordinator-state.json.
+- 23:23 IST: WAVE 1 BLOCKED then re-cut: the combined check failed with 3 failures, all Lane B3 against Lane RA2 wording: a duplicate template (both lanes wrote the Return-door sentence under code 589) and opposite choices on the "The market is closed." prefix in the entries sentences. Coordinator's decision: wave 1 is pushed WITHOUT B3 (the build lane does not delete another lane's tests and does not choose between two wordings); B3 drops its duplicate, uses RA2's key, pins the build's wording until the owner answers, and enters wave 2. NEW OWNER QUESTION: should the entries sentence start with "The market is closed." (RA2) or not repeat it (B3). LESSON for the skill: two lanes edited the same sentence catalogue on separate keys and still clashed: the catalogue needs ONE owner per wave. B1b pushed 686b24ccd (W2: history PASS, monitoring list PASS, stored-stop and calendar by database tests); B1b measured W-34: heartbeat was written only after the whole start-up read (fixed, test); start-up makes about 34 statements per trade (about 12 avoidable: to B2). F1b 83baad95c walked PASS on three points; F1b closes after review round 2 (60 percent context). Not heard by message: B3, T (link tests sent 23:21); Z3 answered. Lane CC started 23:10 (session_01QaT8YJ1UALaXd7B3XcNpjZ, feat/coordinator-core-1128). Owner decisions 23:15: autonomy "run the work, not decide for me"; "small core now, rest after Monday".
+- 23:37 IST: OWNER ORDER: no new lanes, no new tasks; lanes finish what they hold and close; new findings recorded on the board, not assigned; board lists every task per lane and is republished on each status change.
+- 23:41 IST: F1b CLOSED, SAFE TO CLOSE at 1dc16d39f (check passed): review round 2 found one money finding (the builder ADD path released a vanished lock with no marker: two posts under two keys) and fixed it test first. PARKED on the board, not assigned (owner's wind-down order): its minor findings F2 to F4, F6, F7; the second half of F-G; the save bar polling a lock every 5 s; the staged exit that stays after Exit then Cancel; the builder book panel question. Owner approved ONE new lane only: Z4, the build lane's replacement (brief-Z4.md amended with the wind-down order; starts at wave 1's push). Fix branch at 020792820 (lessons 14 to 20 and the 23:07 plan copy; its commit message carries a mistyped session link, left as is). Board rebuild with "Lanes and their tasks" in progress (helper).
+- 23:44 IST: WIND-DOWN ORDER put in place everywhere: (1) master plan top section; (2) the half-hourly sweep is a NEW in-session job ca440406 (minutes 17 and 47) with the wind-down rules in its text. FAULT FOUND: the earlier sweep job da9fc20d no longer existed (the session's worker was restarted earlier tonight and in-session jobs do not survive a restart): that is why no sweep ran from 19:47 on. After any restart: check the job list and re-create it. (3) the order sent to all 13 working lanes (B2, B3, B1b, F2, F3, T, W2, W3, X2, R1, R2, CC, Z3): delivered; in force for a lane only once it acknowledges. (4) Work Board version 73 published with the panel "Lanes and their tasks" (file lane-tasks.json, generated by scratchpad gen_lane_tasks.py: edit and rerun on every status change, then publish with lane-tasks.json in the files map): 14 lanes working, 118 tasks (113 open, 66 on money paths), 8 money-path items proven on the build, 16 entries under found, not assigned. (5) a helper is committing the order to the tracked handover, the lanes skill (lessons 21 wind-down mode, 22 autonomy boundary), the harvest file, friction log and runbook; push after its check. Notable parked finding from B2: the lanes' pre-push check may skip the database tests when the database address is unset (2,413 tests): CI's server job does run them.

@@ -130,3 +130,17 @@ Case: the 22:38 plan was reviewed against origin before the owner saw it. It fou
 four wrong rows (R1 had pushed stage 1; TG2 was closed, not handing over; RA2's head was a merge commit; two "check
 running" states were not on origin) and times that did not add up (08:00 wave, 10:00 green CI). The commitments were
 restated: MUST central 06:00 to 07:00 Sunday, last code wave 05:30, freeze = last commit with green CI.
+
+## 21. Wind-down mode
+Case: 28 Nov 23:35 IST, 16 lanes and 113 open tasks (66 on money paths) could no longer be tracked. The owner ordered: start no
+new lane (one exception: a replacement for the build lane, which takes no new work); assign no new task to any lane; each
+lane finishes the tasks it already holds (push, checks, merge into the build, CI, the proof already planned) and closes;
+every new finding (walker, CI, the owner's PC, a review, a lane) is recorded on the Work Board as "found, not assigned"
+with its evidence and is not sent to a lane; the board lists every task in every lane with its lane and status and is
+republished whenever a status changes. Aim: fewer lanes, so tasks and lanes can be tracked.
+
+## 22. The coordinator's autonomy boundary (owner, 28 Nov 23:15 IST)
+"Run the work, do not decide for me." The coordinator may, without asking: start, replace and close lanes; assign work;
+hold and merge into the build; update the plan; add lessons and checks. It stops for the owner on: what the product does;
+a clash between two of his rules; real orders; merging into main; anything outside the repo. Timing for the coordinator's
+own tooling (Lane CC): small core now, the rest after Monday.

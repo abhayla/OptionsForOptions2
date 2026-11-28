@@ -58,3 +58,13 @@ measured that day unless marked E (estimate). Proposed home: the kit's lanes or 
 19. **Read commit times, not the time of your last look,** before calling a lane silent; the lanes' own clocks drift.
 20. **After each plan an independent reviewer checks the facts against the remote and the arithmetic of the finish
     times** before the owner sees it. It found a wave-blocking collision and four wrong rows.
+
+21. **Wind-down mode.** When the number of parallel lanes outgrows what can be tracked, the owner may order: no new
+    lanes, no new tasks; each lane finishes what it holds and closes; new findings are recorded as "found, not assigned"
+    with their evidence and are not sent to a lane; the board lists every task per lane with its status and is
+    republished on each status change; the build lane's replacement is the only successor and takes no new work. Case:
+    16 lanes and 113 open tasks.
+22. **The coordinator's autonomy boundary: run the work, do not decide for the owner.** Without asking: start, replace
+    and close lanes, assign, hold, merge into the build, update the plan, add lessons and checks. Stop for the owner on:
+    what the product does, a clash between two of his rules, real orders, merging into the main branch, anything outside
+    the repository.

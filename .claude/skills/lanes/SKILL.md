@@ -163,7 +163,9 @@ Each point has its measured case in
 18. **Two proof columns: "walked on a lane branch" and "proven on the build";** a branch walk never counts as proven.
 19. **Read commit times, not the time of your last look,** before calling a lane silent; lane clocks drift.
 20. **After each plan an independent reviewer checks the facts against origin and the finish-time arithmetic** before the owner sees it.
-Detail and cases for 14 to 20: `coordination-lessons-2026-11-28.md`.
+21. **Wind-down mode.** When the lane count outgrows what can be tracked, the owner may order: no new lanes, no new tasks; lanes finish what they hold and close; new findings are recorded as found, not assigned; the board lists every task per lane and is republished on each status change; the build lane's replacement is the only successor, and it takes no new work. Real case: 28 Nov, 16 lanes, 113 open tasks.
+22. **The coordinator's autonomy boundary (owner, 28 Nov): run the work, do not decide for him.** Without asking: start, replace and close lanes, assign, hold, merge into the build, update the plan, add lessons and checks. Stops for him on: what the product does, a clash between two of his rules, real orders, merging into main, anything outside the repo.
+Detail and cases for 14 to 22: `coordination-lessons-2026-11-28.md`.
 
 ## Before every pre-push check
 1. Once per container: `git fetch --unshallow origin; git fetch origin main` (a cloud clone is shallow; two stages fail late without it).
