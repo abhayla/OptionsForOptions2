@@ -1,4 +1,4 @@
-STATUS 22:10 | extra item I-66 (coordinator 20:26 IST, Lane W2 D-W2-2) built: Home Running strategies re-read; third push after its gate | all other items pushed (3b3f97f63) | blocker: none (send_message to the coordinator refused: elevated_session_untrusted_device; this line is the report)
+STATUS 22:40 | MUST stored-close as-of (coordinator 21:05 IST, Opus review of RA2 88500c2a9): built, commit 45ff71c20; gate running, push next as its own push; the build lane merges RA2 only together with this commit | I-66 pushed 937e80bbe | blocker: none (send_message to the coordinator refused: elevated_session_untrusted_device; this line is the report)
 
 # RESULTS Lane F3 (frontend tail), branch fix/r3-frontend-f3-1128, base origin/integration/weekend-r3-1129 + FJ2 68a46dd62 + RA2 (fix/r3-leftovers-2-1128)
 
@@ -25,6 +25,19 @@ FJ2 built the same defects as my items 3 (D-TG-3), 5 (T2-17) and the Retry of it
 
 ## Extra item I-66 / D-W2-2 (coordinator message 20:26 IST; after batch 1, so pushed as a third, small push on the coordinator's ask)
 Finding: summary cards keep the previous numbers after the data is no longer current, with no "old" tag. Cards read in my pages: Positions Real (hidden after 90 s since the last good read, OLD_FIGURE_TEXT, item 1) and Positions Paper (paused sentence with its time when the refresh fails: already fail closed); Home P&L (paused, as-of); Home Unread (dash plus "Could not be read right now." on a failed read). The gap was Home "Running strategies": read once at mount and never again. Fix, test first (home-reread-f3-1128, 3 of 4 red on the base): re-read every 30 s and on focus; a failed re-read shows a dash and the existing note on that card only. No new wording, no browser clock. Files: HomeOverviewPage.vue only (mine). If W2 saw other cards (a layout price notice, the Live card), tell me the screen: their files are not mine.
+
+## MUST: a stored-close figure must never read as current (commit 45ff71c20)
+Case: no broker session, market closed: the server sends a book as state LIVE with `as_of` = the close's real time (RA2). Before: as-of printed on PAUSED / NOT_CONNECTED only; the per-leg time was a bare clock. Built, test first (stored-close-screens-f3-1128, 7 of 9 red on the base; the other two guard that a live book prints nothing), one named test per screen, all green (9/9):
+- paper list rows (paperList.js): row line "As of <date, time IST>" (`istTime`, always with the date; a LIVE book with no as_of prints nothing);
+- PaperBookPanel.vue: `book-as-of` for LIVE with as_of (`last_price_at` is never sent by the server, so it is not relied on);
+- Positions: `totals-paper-as-of` in the Paper P&L card (PositionsTotals.vue, fed by PaperStrategies' summary `storedAsOf`) and the row lines;
+- Home: `home-pnl-as-of` under Total P&L;
+- the list header totals (PaperStrategies, builder Paper tab): `totals-as-of`;
+- totals: the OLDEST stored-close time of the rows (time comparison only, no money), computed in paperList (`withStoredClose`) because the server's `totals_as_of` collects paused books only; the server may add its own later: then the page should prefer it (backend note below);
+- per-leg price time (PaperStrategies `paper-ltp-at`): `istStamp` (the clock on today's date, else the whole date).
+Touched outside my list, as-of lines only (the coordinator allowed it): PaperBookPanel.vue, PaperStrategies.vue (summary field, one totals line, one stamp call). Tested against a mocked `state: 'LIVE', as_of: <past date>`, not a real RA2 answer (RA2's branch moved to 88500c2a9 after my last merge; I did not merge it into this branch so its backend commits do not ride on this push).
+Wording pending owner read: "As of <date, time IST>" (same prefix everywhere).
+For RA2 / backend: `totals_as_of` could include stored-close books; the page computes the oldest itself until then.
 
 ## For the owner lane
 - Lane F1/FJ2, `PaperStrategies.vue` row `paper-closed-leg`: the cells `paper-closed-unbooked` and `paper-closed-pnl` are `pnlText(null)` (a dash). Print `c.unbooked` and `c.pnl` (new fields of readPaperList's closed row), else `c.pnlReason`, when present.
