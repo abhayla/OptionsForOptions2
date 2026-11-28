@@ -6,7 +6,8 @@ import pytest
 from ofo_app import position_kind as pk
 from ofo_app.routes import alerts as route
 
-REAL_LINE = "Real position: exit and protect it in Kite. Stops and alerts here cover paper trades only."
+REAL_LINE = ("Real position. Zerodha shows its quantity and P&L. Exits and stops you store here are not sent. "
+             "Place them in Kite.")  # ADR-330 (73), pending owner read
 
 
 @pytest.mark.parametrize(("order", "tag", "held", "kind"), [
@@ -25,9 +26,11 @@ def test_only_real_and_unknown_carry_a_line():
     assert pk.line_of("paper") is None and pk.line_of("none") is None
 
 
-def test_an_alert_on_a_real_or_unreadable_position_never_offers_exit():
+def test_an_alert_offers_exit_for_paper_and_real_never_for_none_or_unreadable():
+    """Lane R1 (ADR-330 (73)) rewrites (64): a REAL position's exit is stored (a record), so the alert offers it."""
     assert route.offered(("exit", "continue"), "paper") == ("exit", "continue")
-    assert route.offered(("exit", "continue"), "real") == ("continue",)
+    assert route.offered(("exit", "continue"), "real") == ("exit", "continue")
     assert route.offered(("exit", "continue"), "unknown") == ("continue",)
     assert route.offered(("exit", "continue"), "none") == ("continue",)
     assert route.offered(("add_legs", "confirm_new_shape"), "real") == ("add_legs", "confirm_new_shape")
+    assert route.offered(("add_legs", "confirm_new_shape"), "unknown") == ("add_legs", "confirm_new_shape")

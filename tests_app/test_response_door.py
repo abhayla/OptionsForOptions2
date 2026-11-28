@@ -377,6 +377,7 @@ APP_MODELS = (
     "ofo_app.chain_push.ChainRowOut",
     "ofo_app.index_push.IndexOut",
     "ofo_app.index_push.IndicesOut",
+    "ofo_app.real_action_store.RecordOut",
     "ofo_app.routes.adjustment_check.AdjustmentCheckOut",
     "ofo_app.routes.adjustment_check.CheckLimitOut",
     "ofo_app.routes.adjustment_check.CheckPauseOut",

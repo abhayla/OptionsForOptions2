@@ -29,6 +29,14 @@ class _Db:
         self.open = False
 
 
+async def _kind_paper(*_a):
+    return "paper"
+
+
+async def _not_records(*_a):
+    return False
+
+
 class _Stop(Exception):  # ends the route after the waits, so nothing else is needed
     pass
 
@@ -74,6 +82,8 @@ def _world(monkeypatch, *, first: bool):
     monkeypatch.setattr(paper, "_server_exit_prices", exit_prices)
     monkeypatch.setattr(paper.paper_store, "tracked_ids", tracked_ids)
     monkeypatch.setattr(paper, "entry_facts", entry_facts)
+    monkeypatch.setattr(paper, "_refuse_real_position", _kind_paper)  # Lane R1: the one kind read is not measured here
+    monkeypatch.setattr(paper, "_records_door", _not_records)
     monkeypatch.setattr(paper, "_refuse_duplicate_legs", lambda *_a: None)
     monkeypatch.setattr(paper, "_check_held", lambda *_a: None)
     monkeypatch.setattr(paper.may_act, "refuse_unless_allowed", lambda *_a: None)
