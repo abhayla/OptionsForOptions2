@@ -34,7 +34,7 @@ import { ADD_TO_PAPER_LABEL, PAPER_PLACED_NOT_REFRESHED_TEXT, PAPER_STATE, addTo
 import PaperConfirmDialog from '@/components/strategy/PaperConfirmDialog.vue'
 import ExitButton from '@/components/strategy/ExitButton.vue'
 import LoadFailed from '@/components/common/LoadFailed.vue'
-import { ADD_UNKNOWN_TEXT, PAPER_REREAD_FAILED_TEXT, UNKNOWN_EXIT_READ_AFTER_MS, closedBannerFor } from '@/lib/sharedStateText'
+import { ADD_UNKNOWN_TEXT, PAPER_REREAD_FAILED_TEXT, RETRY_LABEL, UNKNOWN_EXIT_READ_AFTER_MS, closedBannerFor } from '@/lib/sharedStateText'
 import {
   DISCARD_LABEL, PAPER_BOOK_UNMATCHED, PAPER_BOOK_UNREADABLE, PAPER_MODE_LABEL, PAPER_PENDING_UNREADABLE, PAPER_REREAD_DELAYS_MS, REVIEW_AND_ADD_LABEL, confirmRowsFor, paperOrdersFor, pendingText, readPaperBook,
   legsAfterExit, exitOnlyOrders, paperFillKey, paperLeftOf, paperChargesOf, stagedChangeIds, stagedExitIds,
@@ -1144,6 +1144,12 @@ async function readUrlStrategy() {
     openNotFound.value = e?.error_code === STRATEGY_NOT_FOUND_CODE ? openError.value : null
   }
 }
+// F1b I-86: Retry after a failed open reads the strategy of the URL again, through the same door a fresh load uses
+function retryOpen() {
+  openError.value = null
+  openNotFound.value = null
+  void openFromUrl()
+}
 // F-4: the page stays mounted when only the query changes (App.vue's router-view is unkeyed), so a new ?strategy= / ?draft= is
 // opened here through the same paths a fresh load uses. The ?strategy= the page itself writes after Save names the open strategy
 // already, so it is not read again. Unsaved edits are replaced, exactly as the Saved tab's Open does (openSaved, no prompt).
@@ -1718,6 +1724,8 @@ const leaveGuard = useLeaveBuilder({
 
         <LoadFailed v-if="rereadFailed" :text="PAPER_REREAD_FAILED_TEXT" prefix="paper-reread" @retry="retryReread" />
         <ErrorMessage v-if="openError" :parts="openError" compact prefix="open-error" data-testid="open-error" />
+        <!-- F1b I-86 (cloud walker): a strategy that could not be read has a Retry like the other pages; a not-found strategy has its own door below and no Retry -->
+        <button v-if="openError && openError !== openNotFound" type="button" class="mt-2 mr-2 inline-block rounded border border-line bg-surface px-2 py-1 text-sm font-medium text-ink" data-testid="open-error-retry" @click="retryOpen">{{ RETRY_LABEL }}</button>
         <RouterLink v-if="openError && openError === openNotFound" to="/strategies/my-strategies" class="mt-2 inline-block rounded border border-line px-2 py-1 text-sm" data-testid="open-error-my-strategies">Open My Strategies</RouterLink>
         <!-- Region B (UI-104..UI-108) -->
         <!-- GC-TP step 3b1 (Sensibull Drafts Mode 274-279): a paper strategy's legs are its net position, in a dashed frame -->
