@@ -11,6 +11,7 @@ Core: the real database, two monitors with their own feeds, ONE shared bus clien
 """
 from __future__ import annotations
 
+import contextlib
 import datetime
 import json
 from decimal import Decimal
@@ -117,3 +118,57 @@ async def test_a_store_that_cannot_answer_writes_nothing_blind():
     client.boom = True
     assert await pub.publish([1], {}, NOW) is False
     assert client.data == {}
+
+
+# ---- Opus review F1, F3, F5 ------------------------------------------------------------------------------------------
+
+def test_review_f1_a_monitor_that_stopped_writing_loses_its_claim_before_the_two_minutes_are_up():
+    """The API restarts at 10:00:00: the dead monitor's slot (written 09:59:59) says watching; the new monitor says it
+    cannot judge. 40 s later the trade must NOT read judged."""
+    dead = NOW - datetime.timedelta(seconds=1)
+    raw = _report(old=_slot(dead, watching=[100]),
+                  new=_slot(NOW + datetime.timedelta(seconds=2), not_run={100: "index_not_live"}))
+    later = NOW + datetime.timedelta(seconds=40)
+    assert monitoring_state.decode_exits(raw, later) == {100: "index_not_live"}
+
+
+def test_review_f1_a_claim_nobody_renews_reads_not_run_not_judged():
+    raw = _report(old=_slot(NOW, watching=[100]), live=_slot(NOW + datetime.timedelta(seconds=58), watching=[7]))
+    got = monitoring_state.decode_exits(raw, NOW + datetime.timedelta(seconds=60))
+    assert got == {100: monitoring_state.INDEX_EXITS_NOT_RUN}
+
+
+def test_review_f1_a_claim_renewed_every_ten_seconds_stays_a_claim():
+    raw = _report(a=_slot(NOW - datetime.timedelta(seconds=monitoring_state.WATCH_FRESH_S), watching=[100]))
+    assert monitoring_state.decode_exits(raw, NOW) == {}
+
+
+def test_review_f5_one_bad_slot_is_skipped_and_a_report_of_only_bad_slots_is_unreadable():
+    good = _slot(NOW, watching=[1])
+    assert monitoring_state.decode_exits(_report(a=good, bad={"at": "x"}), NOW) == {}
+    assert monitoring_state.decode_exits(_report(bad={"at": "x"}), NOW) is None
+    assert monitoring_state.decode_exits(_report(), NOW) is None
+
+
+async def test_review_f3_a_monitor_whose_first_load_failed_publishes_no_slot(db, monkeypatch):  # noqa: F811
+    from ofo_app import paper_trigger_store as triggers  # noqa: PLC0415
+    market = Market()
+    s1, _i, _k = await _strategy(db)
+    await _exit_above(db, s1.id)
+    market.tick(INDEX, BELOW)
+    client = _Client()
+    _bus(monkeypatch, client)
+    real = triggers.armed
+    calls = {"n": 0}
+
+    async def failing(session):
+        calls["n"] += 1
+        if calls["n"] == 1:
+            raise OSError("database down")
+        return await real(session)
+    monkeypatch.setattr(triggers, "armed", failing)
+    monitor = _monitor(db, market)
+    with contextlib.suppress(OSError):
+        await monitor.step()
+    await monitor.step()  # no reload yet (60 s): nothing is loaded, so no claim is made
+    assert monitoring_state.exits_key() not in client.data

@@ -50,7 +50,15 @@ async def test_a_strategy_whose_read_failed_keeps_its_status(scn):  # noqa: F811
     watched.clear()
     watched.unread = frozenset({FIRST_ID})  # a failed read is not a strategy leaving
     await w.rebuild()
-    assert FIRST_ID in w.status
+    assert FIRST_ID in w.status  # its facts are kept for the next good read
+    client_after = _Client()
+    w2 = _worker(prov, watched, now, calls, want_client=client_after)
+    w2.status.update(w.status)  # the same state, a worker that publishes
+    w2.monitors = []
+    now[0] += SEC
+    await w2.cycle()
+    got = (await monitoring_state.read_states(client_after, [FIRST_ID], now[0], heartbeat=_fresh))[FIRST_ID]
+    assert (got.status, got.reason) == (PAUSED, monitoring_state.NOT_LISTED), "not monitored: never published ACTIVE"
 
 
 def _snapshot_at(at, now):

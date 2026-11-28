@@ -1329,8 +1329,9 @@ class Worker:
             return set()
 
     def _window_tokens_of(self, w: Watched) -> set[int]:
-        """The calls and puts of the SCREEN's strike window of the strategy's nearest leg expiry (the expiry the
-        forward and ATM IV are read from, ``adjustment_readers.read_market``): ``chain_push.strike_window`` around
+        """The calls and puts of the strike window of the strategy's nearest leg expiry (``primary_expiry``, the expiry
+        the forward and ATM IV are read from; the SCREEN's ``read_market`` reads the first leg's until the owner lane
+        makes it the same, RESULTS-lane-fe2): ``chain_push.strike_window`` around
         ``chain_push.atm_strike`` of the live spot, ``limits.chain_strikes_each_side`` (the chain screen's default)
         each side (finding 2). Empty when not known: no settings read yet, no live spot, the expiry not listed."""
         from ofo_app.chain_push import window_strikes  # noqa: PLC0415 - the ONE window rule, shared with the screen
@@ -2038,7 +2039,9 @@ class Worker:
             slowest = max(slowest, _seconds(self._clock() - started))
         self._cursor = (self._cursor + visited) % n if n else 0
         await self._close_pass(checked)
-        await self._monitoring.publish(self.status, self.paused_reason, self.paused_why, self._clock(),
+        monitored = {w.strategy_id for w in self.monitors}  # FE2 review F2: what is not monitored is never published
+        await self._monitoring.publish({k: v for k, v in self.status.items() if k in monitored},
+                                       self.paused_reason, self.paused_why, self._clock(),
                                        self._readings)  # never raises
         if self._steps is not None:
             self.valve.observe(self._clock(), slowest, n - visited, self._steps)
@@ -2351,8 +2354,9 @@ async def _serve_live() -> int:  # pragma: no cover - the process wiring; each p
     cache = settings_cache.SettingsCache(lambda: get_engine().connect(), gate=gate)
     if not await cache.refresh():  # the first load; a failure leaves the worker refusing to check until a poll loads
         log.error("background: the first settings load failed; no check runs until a poll loads them")
-    lister = functools.partial(owner_lister, provider, gate=gate, rates_of=load_charge_rates)  # #661 item 1
-    worker = Worker(provider_for=lambda _owner: provider, lister=lister,
+    kinds: dict[tuple[str, datetime.date], Any] = {}  # the worker's record of expiry kinds, shared with its lister
+    lister = functools.partial(owner_lister, provider, gate=gate, rates_of=load_charge_rates, kinds=kinds)
+    worker = Worker(kinds=kinds, provider_for=lambda _owner: provider, lister=lister,
                     clock=clock, settings=cache.at, preferences=preferences, want_client=bus, db_gate=gate,
                     side_tasks=(cache.poll_loop,), user_values=user_values,
                     margin_of=worker_margin_of(login, margin_ctx, margin_source),

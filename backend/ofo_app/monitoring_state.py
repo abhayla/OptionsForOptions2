@@ -60,6 +60,7 @@ LEG_NOT_LIVE: Final = "leg_not_live"  # the ``why`` of a trade whose leg-price e
 LEG_READING_MAX_AGE_S: Final = 90  # current while the worker re-reads (its tick key turns over every IST minute)
 EXIT_NOT_PRICED: Final = "exit_not_priced"  # the why of a crossed exit that could not run (no live leg price)
 MAX_READING_VALUE: Final = Decimal(10) ** 9  # no index or option price is this large: such a value is no reading
+WATCH_FRESH_S: Final = 30  # a monitor's claim "I judge this exit" counts this long (it renews every ``REFRESH_S``)
 REFRESH_S: Final = 10  # an unchanged snapshot is rewritten this often (it must stay younger than SNAPSHOT_STALE_S)
 
 
@@ -386,7 +387,7 @@ def _slots(body: Any) -> dict[str, dict[str, Any]] | None:
     for owner, slot in owners.items():
         at = _time(slot.get("at")) if isinstance(slot, dict) else None
         if at is None or not isinstance(slot.get("not_run"), dict) or not isinstance(slot.get("watching"), list):
-            return None
+            continue  # one bad slot is skipped (it claims nothing); a report with no good slot is unreadable below
         out[str(owner)] = {"at": at, "not_run": slot["not_run"], "watching": slot["watching"]}
     return out
 
@@ -401,18 +402,22 @@ def decode_exits(raw: Any, now: datetime.datetime) -> dict[int, str] | None:
     try:
         body = json.loads(text) if isinstance(text, str) else None
         slots = _slots(body)
-        if slots is None:
+        if not slots:  # not our shape, or no readable slot at all: a report that claims nothing clears nothing
             return None
         fresh = {o: sl for o, sl in slots.items() if _current(sl["at"], now)}
         if not fresh:
             return dict.fromkeys({int(k) for sl in slots.values() for k in (*sl["not_run"], *sl["watching"])},
                                  INDEX_EXITS_NOT_RUN)
-        covered = {int(i) for sl in fresh.values() for i in sl["watching"]}
+        now_claims = {o: sl for o, sl in fresh.items() if (now - sl["at"]).total_seconds() <= WATCH_FRESH_S}
+        covered = {int(i) for sl in now_claims.values() for i in sl["watching"]}
         out: dict[int, str] = {}
-        for owner in sorted(fresh):
+        for owner in sorted(fresh):  # review F1: a claim nobody renewed lately is not a claim (a restart, a crash)
             for k, why in fresh[owner]["not_run"].items():
                 if int(k) not in covered:
                     out.setdefault(int(k), str(why))
+            for k in fresh[owner]["watching"]:
+                if int(k) not in covered:
+                    out.setdefault(int(k), INDEX_EXITS_NOT_RUN)
         return out
     except (ValueError, TypeError, AttributeError):
         return None
