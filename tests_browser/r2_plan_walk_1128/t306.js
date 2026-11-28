@@ -1,0 +1,21 @@
+// Lane TG T3-06 (phone drawer) and T2-19 (reset markers) on build fb09e03b0
+const { launch, shot, body, MAIN } = require('./common')
+;(async () => {
+  let { browser, page } = await launch({ width: 390, height: 844 })
+  await page.goto(MAIN + '/strategy/builder?strategy=1'); await page.waitForTimeout(8000)
+  await page.getByRole('button', { name: 'Add/Edit' }).first().click().catch(e => console.log('Add/Edit err')); await page.waitForTimeout(2500)
+  await shot(page, 't306-1-drawer')
+  const t = await body(page)
+  console.log('T3-06 width', await page.evaluate(() => innerWidth), '| Show Editor present:', /Show Editor/.test(t), '| horizontal scroll:', await page.evaluate(() => document.documentElement.scrollWidth > innerWidth + 1))
+  const se = page.getByRole('button', { name: /Show Editor/ }).first()
+  if (await se.count()) { const box = await se.boundingBox(); console.log('Show Editor box', JSON.stringify(box)); await se.click().catch(() => {}); await page.waitForTimeout(1500); console.log('after Show Editor, drawer still open:', /Show Editor/.test(await body(page))); await shot(page, 't306-2-after') }
+  await browser.close()
+  ;({ browser, page } = await launch())
+  await page.goto(MAIN + '/strategy/builder?strategy=1'); await page.waitForTimeout(7000)
+  await page.getByRole('button', { name: 'Edit plan' }).click(); await page.waitForTimeout(2000)
+  const dlg = page.getByRole('dialog').first()
+  await dlg.getByRole('button', { name: /Customise triggers/ }).click(); await page.waitForTimeout(2000)
+  console.log('T2-19 trigger controls:', (await dlg.locator('input,select,button').evaluateAll(x => x.map(e => (e.getAttribute('aria-label') || e.innerText || e.name || e.type).trim().slice(0, 40)).filter(Boolean))).join(' | ').slice(0, 900))
+  await shot(page, 't219-1-customise')
+  await browser.close()
+})()
