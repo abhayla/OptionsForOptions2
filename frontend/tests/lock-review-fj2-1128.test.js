@@ -61,3 +61,34 @@ describe('F-D: a stored `at` that is not a credible time never counts as long pa
     expect(UNKNOWN_EXIT_READ_AFTER_MS).toBeGreaterThan(0)
   })
 })
+
+describe('F-C: a wall clock stepped BACK while a read is out never releases the lock early', () => {
+  const BOOK_SAME = { key: '776:260', units: { 776: 260 }, hasOrders: true }
+  let mono
+  let wall
+  beforeEach(() => {
+    mono = 5000
+    wall = 1_800_000_000_000
+    vi.spyOn(performance, 'now').mockImplementation(() => mono)
+    vi.spyOn(Date, 'now').mockImplementation(() => wall)
+    L.resetExitLocks()
+  })
+  const advance = (ms) => { mono += ms; wall += ms }
+  const lockRec = () => ({ at: Date.now(), before: '776:260', units: [{ id: 776, units: 260 }], expected: '', names: ['x'], out: false })
+  it('lock 115 s old, read SENT then, the answer takes 20 s while the wall clock steps back 50 s: still inside the window: keep', () => {
+    L.saveExitLock(1, lockRec())
+    advance(115_000)
+    const sentAt = L.sentNow() // the read leaves now (115 s after the lock)
+    advance(20_000) // the answer comes 20 s later (135 s real) ...
+    wall -= 70_000 // ... and the wall clock was stepped back meanwhile
+    expect(L.decideLock(L.exitLockFor(1), BOOK_SAME, sentAt).verdict).toBe('keep')
+  })
+  it('the same read sent after the window (real 131 s) decides: not stored', () => {
+    L.saveExitLock(1, lockRec())
+    advance(131_000)
+    const sentAt = L.sentNow()
+    advance(2_000)
+    wall -= 90_000
+    expect(L.decideLock(L.exitLockFor(1), BOOK_SAME, sentAt).verdict).toBe('not_stored')
+  })
+})

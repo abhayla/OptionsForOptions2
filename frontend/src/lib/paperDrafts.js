@@ -4,6 +4,7 @@
 // the confirm list first. Quantities only (units = lots x lot size, a count): no price or money is formed here (ADR-008);
 // prices are the server's texts or what the user types in the dialog.
 import { entryPriceFor, afterFigure } from '@/lib/tracking'
+import { sentNow } from '@/lib/unknownLocks'
 
 /** The Drafts Mode frame's label (Sensibull 274-279; RD-121: paper trades said plainly as not real). */
 export const PAPER_MODE_LABEL = 'Paper mode - not real trades'
@@ -181,7 +182,7 @@ export function confirmRowsFor(orders, book, nameOf, livePriceById = {}) {
  *  it has none or the server answers 404 (not a paper strategy: the saved plan opens as before). Any other failure (network,
  *  5xx, an unreadable book) THROWS: the caller says so and never falls back to the plan silently. */
 export async function readPaperBook(client, id) {
-  const sentAt = Date.now() // Lane FJ item 1: when this read was SENT (the unknown-exit rule asks it, never the time its answer came)
+  const sentAt = sentNow() // Lane FJ item 1: when this read was SENT (the unknown-exit rule asks it, never the time its answer came)
   let book
   try {
     book = (await client.get(`/paper/strategies/${id}`)).data

@@ -45,7 +45,7 @@ import { paperLegsOf, paperPnlBlock, usePaperBookRead } from '@/lib/usePaperBook
 import { notLiveEntryLine, usePriceFreshness } from '@/lib/priceState'
 import { exitEndText, exitLegsNotLive, legsNoPrice, refusalText, usePaperExit } from '@/lib/usePaperExit'
 import { createExitRecords } from '@/lib/exitRecord'
-import { keySigOf, addBeforeOf, addLockFor, addsOf, adoptedAddLock, sameLock, adoptedExitLock, bookOfNet, decideLock, dropAddLock, dropExitLock, dropOrderKey, exitLockFor, exitUnitsOf, expectedKeyOf, onAddLocksChanged, onExitLocksChanged, orderKeyFor, saveAddLock, saveExitLock } from '@/lib/unknownLocks'
+import { keySigOf, addBeforeOf, addLockFor, addsOf, adoptedAddLock, sameLock, adoptedExitLock, bookOfNet, decideLock, dropAddLock, dropExitLock, dropOrderKey, exitLockFor, exitUnitsOf, expectedKeyOf, onAddLocksChanged, onExitLocksChanged, orderKeyFor, saveAddLock, saveExitLock, sentNow } from '@/lib/unknownLocks'
 import PaperStrategies from '@/components/strategy/PaperStrategies.vue'
 import PaperStops from '@/components/strategy/PaperStops.vue'
 import { STOP_OFFER_LABEL, legStopsGone, triggerListOf, triggersPath } from '@/lib/paperTriggers'
@@ -1008,7 +1008,7 @@ async function recheckUnknownExit() { // the automatic re-read; a failed or too-
     if (!first) await sleep(REREAD_EVERY_MS)
     if (leaving || exitUnknown.value !== u) return
     const seq = ++readSeq
-    const sentAt = Date.now()
+    const sentAt = sentNow()
     let read = null
     try { read = await readPaperBook(api, id) } catch { read = null }
     if (leaving || exitUnknown.value !== u) return

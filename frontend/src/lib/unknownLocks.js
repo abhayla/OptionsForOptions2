@@ -29,6 +29,14 @@ const garbageSeen = { [LOCK_KEY]: null, [ADD_KEY]: null, [KEYS_KEY]: null } // R
 const dirty = { [LOCK_KEY]: false, [ADD_KEY]: false, [KEYS_KEY]: false } // true once a write was refused: then what this page wrote is merged over what storage holds (never instead of it)
 
 const monoNow = () => { try { const n = globalThis.performance?.now?.(); return Number.isFinite(n) ? n : null } catch { return null } }
+const sentMono = new Map() // wall send time -> monotonic time of that send (sentNow); the newest 64
+/** FJ2 F-C (Opus review): the time a read is SENT, in wall ms as before, with the monotonic time of the send remembered for decideLock. Every read that decides a lock takes its `sentAt` here. */
+export function sentNow() {
+  const w = Date.now()
+  const m = monoNow()
+  if (m !== null) { sentMono.set(w, m); if (sentMono.size > 64) sentMono.delete(sentMono.keys().next().value) }
+  return w
+}
 const stamps = new Map() // `${store}|${id}|${at}` -> monotonic stamp of this page instance (never stored: it means nothing in another page)
 const stampKey = (name, id, at) => `${name}|${id}|${at ?? ''}`
 /** A stamp that makes the lock look `wallAgeMs` old now (the wall age is trusted ONCE, clamped to 0..window + 1 s, at first sight or write; never again). */
@@ -46,6 +54,7 @@ const stampFor = (wallAgeMs, at = null) => {
 function monoAgeAtSend(stamp, sentAt) {
   const m = monoNow()
   if (m === null || !Number.isFinite(stamp)) return null
+  if (sentMono.has(sentAt)) return sentMono.get(sentAt) - stamp // FJ2 F-C: the monotonic time at which THIS read left (taken by sentNow): a wall clock moved while the answer was out changes nothing
   const behind = Date.now() - sentAt
   return m - stamp - (behind > 0 ? behind : 0)
 }
