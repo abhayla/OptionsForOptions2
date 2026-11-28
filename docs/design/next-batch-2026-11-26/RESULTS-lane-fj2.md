@@ -1,4 +1,4 @@
-STATUS 20:20 | Lane F1 batch 1: head b0349e9b7+RESULTS, merged with integration/weekend-r3-1129, frontend 407 files / 4302 tests green; now ruff, repo_scan, prepush jobs 4, push | on origin: 68a46dd62 (items 1-2), 4297f7065 (F2/F3 hand-off branch) | blocker: none
+STATUS 21:20 | Lane F1 batch 1: prepush 6 (head ebe9570aa, jobs 4) still running; review round 2 done (R2-1 fixed in 1221b4628 in worktree ../wt-next); plan: merge it into the branch after prepush 6, ONE final check on the final head, push | on origin: 68a46dd62, hand-off 4297f7065 | blocker: none
 
 # RESULTS Lane F1 (was FJ2), branch fix/r3-frontend-2-1128, base origin/fix/r3-frontend-joins-1128 (ddd656805)
 
@@ -37,6 +37,12 @@ Open (one line each, not fixed here):
 - F7 same-key resend can meet 582 for up to 600 s (a wait, no double order); N4 a sign flip reads "changed" not "placed" (wording).
 
 LiveStrategyCard: the card itself is correct and pinned (Exit and Stops only when `position_kind === 'paper'`; tests position-kind-adr330-64, live-card-links-s14). With ADR-330 (64) withdrawn that pin must be reversed by the lane that builds "same Exit for real, nothing sent": it is not touched here.
+
+## Opus review round 2 (of the fixes, ebe9570aa): nothing that can cost money; wording finding fixed
+Verdict REVISE for one decision-support line, not money: no path sends a second order or releases a lock earlier than before the change (attacks: key text collisions, a 581 with no lock, every send-time source, `at` boundaries, mutations). Two rounds are used; what is open is listed.
+- R2-1 MAJOR (fixed, commit 1221b4628): my I-206 fix asked armed-exits with only the valid rows; the server judges every line on the legs after ALL rows, so the line could describe another basket (short-call roll: "you will hold no short call" while the basket leaves one), Confirm could go out with that line on screen, and for a single-leg move the server answers no line at all (the test passed only because its mock ignored the rows). Now: the question carries the WHOLE basket (an Add with no usable price carries the smallest tick '0.05': the read-only question reads contracts, sides and units, never a price; never shown or sent as an order), and a line is shown only for the basket it was asked for (signature of contract / side / lots / kind). Test leg-move-stop-line-fj2-1128 rewritten: the mock answers by basket and gives a false line to a partial one (red before, 2 of 3).
+- R2-4 fixed (comments said 581 is a refusal). R2-6 fixed (a missing send time keeps the lock; the fallbacks used the answer's time). R2-5 half done: save-bar 581 test added; builder tests (an add's key survives a price tick; 581 on the builder) are OPEN.
+- Open, one line each: R2-2 the sent-time map is keyed by wall milliseconds (two reads in one ms after a clock step-back share a time; same result as before, not earlier); fix = a token per read. R2-3 `at` of exactly 1e12 counts as real and a wall clock moved forward before a reload is trusted once (existing rule). R2-7 an add or move with an unknown outcome at deploy time gets a new key on resend (keys saved by the old build carry the price). From the reviewer's "not covered": SaveDraftBar.vue ~468/483 `paperTarget` vs `target`: if the target changes while a post is out the wrong strategy's key is dropped; deferred issue to file.
 
 ## For the owner lane
 - Backend (Lane B2): the durable per-strategy block; the request-key store is Redis (`backend/ofo_app/request_key.py`): a restart loses the pending claim. `request_key.begin` checks the body fingerprint BEFORE the pending check (a same-key resend with another body gets 581 although the first request is still being placed): the browser now treats 581 as unknown.
