@@ -922,11 +922,11 @@ async def entry_facts_now(ctx: Any, underlying: str, sold: Iterable[Any], confir
     states: no context / no quote / a quote that is not a positive price -> None (nothing stored, never a guessed
     spot); the IV not readable (no forward, unpriced chain, a read that fails) -> the facts with ``entry_atm_iv``
     None. ADR-330 (39): the spot is the index's LIVE price (``priced``: AVAILABLE and above 0), the one rule a leg's
-    price follows; a not-live value (old, or the feed not connected; never a flagged quote) is stored only when the user confirmed
-    the not-live line (``confirmed``, ``_index_value_not_live``: its own flag rule), never silently (K2 F1: a ticked
-    first fill with the feed down stores the held value, as ``record_basket_facts`` does). ``feed``: when given, an
-    index nobody holds yet is held on the shared fan-out until its first quote (``_index_quote_held``); None = the
-    caller's book as it is."""
+    price follows; a not-live value (old, or the feed not connected; never a flagged quote) is stored only when the
+    user confirmed the not-live line (``confirmed``, ``_index_value_not_live``: its own flag rule), never
+    silently (K2 F1: a ticked first fill with the feed down stores the held value, as ``record_basket_facts``
+    does). ``feed``: when given, an index nobody holds yet is held on the shared fan-out until its first quote
+    (``_index_quote_held``); None = the caller's book as it is."""
     if ctx is None:
         return None
     quote = await _index_quote_held(ctx, feed, underlying) if ctx.provider.status().connected else None
