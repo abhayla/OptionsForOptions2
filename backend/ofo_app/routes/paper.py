@@ -1544,6 +1544,9 @@ async def _place_orders(db: Any, strategy_id: int, stored: Any, body: PaperOrder
     await release_connection(db)  # I-47: tracked_ids above checked a connection out again; the entry IV read waits
     entry = (await entry_facts(ctx, stored.saved.definition.underlying, body.orders, state,
                                confirmed=body.prices_not_live_confirmed) if first else None)
+    # I-158: the armed set is read UNDER the strategy row lock (taken here, kept to the commit), so no other writer that
+    # takes the lock can cancel one between this read and the read-back that names the cancelled stops
+    await store.lock_strategy(db, user_ref, strategy_id)
     armed_before = await _armed_leg_stops(db, strategy_id)  # F3: the stops this request may cancel
     try:
         book = await paper_limit.place_checked(
