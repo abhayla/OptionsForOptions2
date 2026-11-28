@@ -666,7 +666,12 @@ async function doExit(orders, _held = null, _ticked = false, dialogKey = null) {
   } catch (e) {
     const outcome = paperPostOutcome(e)
     dialogState.value = outcome
-    if (outcome === PAPER_STATE.UNKNOWN) {
+    if (outcome === PAPER_STATE.UNKNOWN && c.kind === 'real') {
+      // a real exit's answer is always definite (201 + record = stored, a refusal = nothing stored); a lost reply is NEVER decided by the legs (they never move):
+      // the lock ends, the order key stays, so Confirm again re-sends the SAME key and the server answers the first result (R1)
+      dropExitLock(c.id, { key, at: lock.at })
+      exitRec.drop(c.id)
+    } else if (outcome === PAPER_STATE.UNKNOWN) {
       const gaveUp = Date.now()
       const gave = { ...lock, at: gaveUp, out: false, seen: book ? null : gaveUp } // `at` is now when the client gave up
       saveExitLock(c.id, gave)

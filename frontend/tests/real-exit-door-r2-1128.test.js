@@ -9,6 +9,7 @@ import { createPinia, setActivePinia } from 'pinia'
 let rows = []
 let savedLegs = []
 const posts = []
+let failNext = false
 vi.mock('@/lib/saveDraft', async (importActual) => {
   const actual = await importActual()
   return { ...actual, fetchSavedDraft: () => (savedLegs === null ? Promise.reject(new Error('unreadable')) : Promise.resolve({ legs: savedLegs, id: 48, revision: 1, name: null })) }
@@ -22,7 +23,7 @@ vi.mock('@/services/api', async (importActual) => {
       if (url === '/market/exit-state') return Promise.resolve({ data: { closed: false, sentence: null, next_open_at: null } })
       return Promise.reject({ status: 404, parts: null })
     },
-    post: (url, body) => { posts.push({ url, body }); return Promise.resolve({ data: { orders: [], stored_not_sent: true, position_kind: 'real', record: { action: 'exit', stored_at: '2026-11-28T10:32:00+05:30', price: '120.50', text: 'Exit stored 10:32 at 120.50. Not sent to Zerodha. Place it in Kite.' } } }) }, delete: () => Promise.reject({ status: 404 }) } }
+    post: (url, body) => { posts.push({ url, body }); if (failNext) { failNext = false; return Promise.reject({ message: 'network', status: null, parts: null }) } return Promise.resolve({ data: { orders: [], stored_not_sent: true, position_kind: 'real', record: { action: 'exit', stored_at: '2026-11-28T10:32:00+05:30', price: '120.50', text: 'Exit stored 10:32 at 120.50. Not sent to Zerodha. Place it in Kite.' } } }) }, delete: () => Promise.reject({ status: 404 }) } }
 })
 import PaperStrategies from '@/components/strategy/PaperStrategies.vue'
 import PaperConfirmDialog from '@/components/strategy/PaperConfirmDialog.vue'
@@ -103,5 +104,23 @@ describe('Stops panel of a real position (no paper group)', () => {
       expect(x.find('[data-testid="real-stops-panel"]').exists()).toBe(false)
       x.unmount()
     }
+  })
+})
+
+describe('F6: a lost reply on a real exit', () => {
+  it('is never decided by legs: Confirm stays on and the SECOND press re-sends the SAME client_request_id; no unknown lock', async () => {
+    failNext = true
+    const w = await open(LINK)
+    const d = w.findComponent(PaperConfirmDialog)
+    const body = () => d.props('orders').map((o) => ({ contract_id: o.contract_id, side: o.side, quantity: o.lots * o.lot_size, price: '0', kind: o.kind }))
+    d.vm.$emit('confirm', body(), null, false, 'key-1')
+    await flushPromises()
+    expect(d.props('state')).toBe('unknown')
+    expect(d.props('locked')).toBe(false)
+    d.vm.$emit('confirm', body(), null, false, 'key-2')
+    await flushPromises()
+    expect(posts).toHaveLength(2)
+    expect(posts[1].body.client_request_id).toBe(posts[0].body.client_request_id)
+    w.unmount()
   })
 })

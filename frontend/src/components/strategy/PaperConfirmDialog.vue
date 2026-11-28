@@ -59,7 +59,8 @@
     </label>
     <p v-if="note" class="mt-3 text-sm font-medium text-warn" role="status" data-testid="paper-discard-note">{{ note }}</p>
     <!-- Owner 28 Nov (ADR-330 (58)): a REAL position's dialog says before the press that the action is only stored; never "not a real trade" -->
-    <p v-if="isReal" class="mt-3 text-sm font-semibold text-warn" role="note" data-testid="real-not-sent">{{ realDialogText }}</p>
+    <p v-if="kindLocked" class="mt-3 text-sm font-semibold text-red-700" role="alert" data-testid="kind-locked">{{ KIND_UNREAD_LINE }}</p>
+    <p v-else-if="isReal" class="mt-3 text-sm font-semibold text-warn" role="note" data-testid="real-not-sent">{{ realDialogText }}</p>
     <p v-else class="mt-3 text-xs text-ink-muted" data-testid="paper-not-real">{{ PAPER_NOT_REAL_TEXT }}</p>
     <!-- fix/paper-dialog-safe (ADR-017): a stored order is never offered again; an answer of unknown outcome sends the user to the
          Orderbook first and keeps Confirm locked for PAPER_UNKNOWN_HOLD_MS; a refusal (4xx: nothing stored) unlocks after an edit -->
@@ -99,7 +100,7 @@ import {
   PAPER_UNKNOWN_TEXT, HELD_LABEL, STOP_REPLY_UNREADABLE_TEXT, cancelledStopLines, EXIT_UNKNOWN_WINDOW_MS, EXIT_UNKNOWN_AFTER_WINDOW_TEXT, heldBlock, paperLotsOk, paperPriceOk, paperPriceReason,
 } from '@/lib/tracking'
 import { paperDialogTitle, paperKindLabel } from '@/lib/paperDrafts'
-import { REAL_UNKNOWN_AFTER_WINDOW_TEXT, REAL_UNKNOWN_TEXT, REAL_ADD_DIALOG_TEXT, REAL_EXIT_DIALOG_TEXT, REAL_STORED_NOT_REFRESHED_TEXT, REAL_STORING_TEXT } from '@/lib/positionKind'
+import { KIND_UNREAD_LINE, REAL_UNKNOWN_AFTER_WINDOW_TEXT, REAL_UNKNOWN_TEXT, REAL_ADD_DIALOG_TEXT, REAL_EXIT_DIALOG_TEXT, REAL_STORED_NOT_REFRESHED_TEXT, REAL_STORING_TEXT } from '@/lib/positionKind'
 import api from '@/services/api'
 import { EXIT_PLACING_TEXT } from '@/lib/usePaperExit'
 import { isoMillis, istClock } from '@/lib/displayFormat'
@@ -152,7 +153,7 @@ const ageNowMs = computed(() => props.nowMs || clockReadingMs(serverClock.value,
 const ageLine = computed(() => priceAgeLine(rows.value, { nowMs: ageNowMs.value, notLive: !!props.notLiveLine }))
 
 // GC-TP step 3b2: the title says what the list holds (adds, exits or both)
-const title = computed(() => paperDialogTitle(props.orders, props.kind))
+const title = computed(() => (kindLocked.value ? 'Exit positions' : paperDialogTitle(props.orders, props.kind))) // an unreadable kind has no kind word (positionKindWord throws on purpose); the title stays neutral
 const isReal = computed(() => props.kind === 'real')
 const realDialogText = computed(() => (rows.value.some((r) => r.kind === 'exit') ? REAL_EXIT_DIALOG_TEXT : REAL_ADD_DIALOG_TEXT))
 const reasons = computed(() => rows.value.map((r) => (!paperLotsOk(r.lots) ? PAPER_LOTS_REASON : (r.kind !== 'exit' && !paperPriceOk(r.price)) ? paperPriceReason(r.price) : '')))
@@ -291,7 +292,9 @@ watch(() => [props.state, props.error], async ([s, e]) => {
   await nextTick()
   statusSlot.value?.scrollIntoView?.({ block: 'nearest' })
 })
+const kindLocked = computed(() => props.kind !== 'paper' && props.kind !== 'real') // fail closed: a kind nobody could read opens the dialog with Confirm off and the plain reason
 const canConfirm = computed(() => {
+  if (kindLocked.value) return false
   if (props.busy || props.blocked || marketState.value === 'checking' || marketState.value === 'closed' || marketState.value === 'unreadable' || exitState.value === 'checking' || (props.notLiveLine && !notLiveAck.value) || !ready.value || props.state === 'placed' || held.value || props.locked) return false
   return !(props.state === 'refused' && refusedSet.value.has(snapshot()))
 })

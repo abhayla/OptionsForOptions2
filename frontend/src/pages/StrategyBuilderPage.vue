@@ -396,7 +396,18 @@ const openStrategy = ref(heldBack?.openStrategy ?? null)
 const realTradeId = ref(null)
 const tradeMode = computed(() => (!paper.value && realTradeId.value !== null && realTradeId.value === savedId.value ? 'real' : 'paper'))
 // the dialog's kind: 'real' when the server's book says so (a held entry's book), else the trade mode; 'real' reads the stored-only wording
-const dialogKind = computed(() => (paper.value?.book?.position_kind === 'real' ? 'real' : tradeMode.value))
+// the book route carries no kind (R1's contract): the page asks the strategy list once per book it opens; no answer = 'unknown' = the dialog opens with Confirm off (fail closed)
+const bookKinds = ref({})
+async function readBookKind(id) {
+  try {
+    const row = ((await api.get('/strategies')).data?.strategies ?? []).find((r) => String(r.id) === String(id))
+    bookKinds.value = { ...bookKinds.value, [id]: row?.position_kind }
+  } catch { bookKinds.value = { ...bookKinds.value, [id]: undefined } }
+}
+const dialogKind = computed(() => {
+  const k = paper.value?.book?.position_kind ?? bookKinds.value[paper.value?.id]
+  return k === 'paper' || k === 'real' ? k : 'unknown'
+})
 const openError = ref(null) // the catalogue message when ?strategy= cannot be opened; the screen is kept
 const openNotFound = ref(null) // the openError that said "strategy not found" (the Open My Strategies button shows only while it is the one on screen)
 // REQ-134 AC-5: the URL names the strategy (?strategy=<id>) so a reload opens it again; a `draft` link is dropped from it.
@@ -517,6 +528,7 @@ function enterDrafts(id, read) {
   paperStale.value = false
   decideAddLock(id, read) // Group A R2 (e): the builder's add lock (stored in the browser) is decided by this read: orders moved the book = stored; unchanged only for a read sent past the window
   paper.value = { id, book: read.book, net: read.net }
+  readBookKind(id)
   openSaved(copyLegs(read.net), id, null, read.book.name ?? null)
   restoreExitLock(id, read)
 }

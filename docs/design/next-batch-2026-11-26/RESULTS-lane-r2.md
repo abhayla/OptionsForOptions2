@@ -1,4 +1,4 @@
-STATUS 20:45 | R2 items 1-5 + Opus review fixes F1-F5: Fixed, not tested in a browser (frontend unit tests green; full push check pending) | next: item 6 browser walk after Lane R1's stage 2 | blocker: the coordinator send_message was refused ("elevated_session_untrusted_device"), so this STATUS line is the report
+STATUS 00:30 | R2 items 1-5 + F1-F6 + R1 contract alignment: Fixed, not tested in a browser (frontend unit tests green; full push check pending) | item 6 browser walk: NOT YET (see Browser walk) | next: item 6 browser walk after Lane R1's stage 2 | blocker: the coordinator send_message was refused ("elevated_session_untrusted_device"), so this STATUS line is the report
 
 # Lane R2 results: real positions get the same screens (frontend), 28 Nov 2026
 
@@ -61,3 +61,15 @@ Core proof: real-same-screens-core-r2-1128 was RED on the build (Exit link missi
 | all of the above | Sonnet (main session, no helpers) | about 95 |
 
 SAFE TO CLOSE: not yet (item 6 open).
+
+## Round 2 (after Lane R1's backend, feat/real-same-screens-be-1128 @ 09efab8df)
+- Contract as written: the row line is `record.text` as the server sent it (fallback to the composed line only when absent); `stored_not_sent` is `true` or `null` (only exactly `true` counts). R1 keeps `position_kind` OFF `/paper/strategies` today: a paper-list group without the field takes its kind from `GET /strategies` (one read, only when needed); no answer = `unknown` = locked. When R1's lane adds the field to every row, the group's own field wins.
+- Real Exit and Stops doors (R1: a real position has no paper book): the Live card / Alerts Exit link opens the one Exit dialog from the position's SAVED legs (`realExitRowsFor`: opposite side, all lots, price set by the server; a not-live leg, a partial lot, a missing lot size or an unreadable plan = no dialog), posts to the one orders route; `?strategy=ID` draws a real Stops panel (kind real). Unknown, none, paper-without-legs, missing row: nothing opens, nothing posts.
+- F6 done: a lost reply on a real exit is never decided by legs; the lock ends, the order key stays, a second Confirm re-sends the SAME client_request_id (R1: the server answers the first result).
+- Builder dialog (coordinator point 3): the kind is the book's own field, else the strategy list's row, else `unknown`; `unknown` opens with Confirm off, the plain reason and a neutral title (`kind-locked`). Fixtures `paper-book-63.json` and `strategy-63-roll.json` now carry `position_kind: "paper"`; their diff is large because the JSON was re-indented (a restore was blocked by the discard guard; I did not work around it).
+- Allow-list entries added to `tests/broker_name_allowlist.py` (each line carries the owner's decided sentence "Not sent to Zerodha. Place it in Kite." or the real-position wording): positionKind.js (REAL_EXIT_DIALOG_TEXT, REAL_ADD_DIALOG_TEXT, REAL_EXIT_STORED_TEXT, REAL_STOPS_TEXT, REAL_ROW_TEXT, REAL_STORED_NOT_REFRESHED_TEXT, REAL_UNKNOWN_AFTER_WINDOW_TEXT); PaperStrategies.vue MIXED_BANNER; PaperStops.vue LABEL. Removed: the stale `Real (Zerodha order)` entry.
+- Positions page: R1's contract gives `/positions` groups no `record`, so the record line there shows only if R1 adds it; the line is built and tested.
+- New tests: real-exit-door-r2-1128, real-builder-kind-r2-1128, real-fail-closed-r2-1128.
+
+## Browser walk (item 6)
+Not run at this STATUS. A walk against R1's real backend needs the cloud DB, the API, a built frontend and a real-tagged seeded position; started next.
