@@ -1054,6 +1054,7 @@ class Worker:
         self._speed: Mapping[str, Decimal] | None = None  # the last good speeds per style (a failed read keeps it)
         self._steps: tuple[Decimal, ...] | None = None  # the last good safety-valve steps
         self._want_client = want_client  # a Redis client (the feed bus); None = no wanted-set write
+        self._first_report_pending = True  # W-34: until the first cycle ends, the snapshot is written after EACH check
         self._monitoring = monitoring_state.Publisher(want_client)  # which trades are not watched, why, since when
         self._listed: dict[tuple[int, str], tuple] = {}  # (id(provider), underlying) -> (provider, known listings)
         self._token_maps: dict[int, tuple] = {}  # id(provider) -> (provider, option tokens, id -> token)
@@ -2208,6 +2209,8 @@ class Worker:
                 ran += did
                 if did:
                     checked.add(w.strategy_id)
+                if self._first_report_pending:  # W-34: a badge returns when ITS check ends, not the cycle's
+                    await self._publish_status()
             except Exception as exc:  # REQ-115 AC-9: one strategy's failure never stops the others
                 log.exception("background: strategy %s check failed", w.strategy_id)
                 _keep_recent(self.errors, (w.strategy_id, type(exc).__name__))
@@ -2216,13 +2219,17 @@ class Worker:
         self._cursor = (self._cursor + visited) % n if n else 0
         await self._close_pass(checked)
         await self._publish_rule_values()
+        await self._publish_status()
+        self._first_report_pending = False
+        if self._steps is not None:
+            self.valve.observe(self._clock(), slowest, n - visited, self._steps)
+
+    async def _publish_status(self) -> None:
+        """The monitoring snapshot of this moment (never raises; unchanged = not rewritten, ``Publisher.publish``)."""
         monitored = {w.strategy_id for w in self.monitors}  # FE2 review F2: what is not monitored is never published
         await self._monitoring.publish({k: v for k, v in self.status.items() if k in monitored},
                                        self.paused_reason, self.paused_why, self._clock(),
-                                       self._readings,
-                                       self._market_open_now())  # never raises
-        if self._steps is not None:
-            self.valve.observe(self._clock(), slowest, n - visited, self._steps)
+                                       self._readings, self._market_open_now())
 
     def _market_open_now(self) -> bool | None:
         """Lane B1b item 6 (FE4 F7): the worker's ONE market answer of this cycle, carried by the snapshot (its ``at``

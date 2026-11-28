@@ -49,6 +49,41 @@ per-statement delay `OFO_TEST_QUERY_DELAY_MS=130` with `APP_ENV=test`; the worke
   made a worker that IS up read "no worker has reported in the last 2 minutes". It is now written at once and every 10 s while the list is read (`_beat_while_starting`, test with a list
   that takes "minutes").
 
+### The start-up statement list for Lane B2 (non-money, so it can act without measuring)
+Source: the statements of ONE trade at a worker start, in order (test-only echo: `OFO_TEST_QUERY_ECHO=1` with `APP_ENV=test`, worker = separate process, scenario PATH-96, plan with guards). Statement numbers are from that run; files are
+under backend/ofo_app/. Avoidable = the same read done again by a different caller in the same start-up.
+| # | Statement | File, function (by table or query name) | Avoidable |
+|---|---|---|---|
+| 1, 2 | `app_settings` count and rows | settings_cache.SettingsCache.refresh -> settings_store | no (once per process) |
+| 3 | the strategy list of the owner | strategy_store (the list read of `background.owner_lister`) | no |
+| 4 | `clock_timestamp()::date` (IST day) | the lister's own day read | could use the worker's clock |
+| 5 | `charge_rates` of the day | charge_rates_store (`load_charge_rates`, `rates_of` of the lister) | no |
+| 6 | paper orders | paper_book / paper_store load of the trade | no |
+| 7, 8, 10 (+ 9, 11 savepoint) | contract rows by id, the token list, the contract rows again | tracked_contracts.resolve called twice (7 and 10) with a catalogue token read (8) between | YES: 7 and 10 are the same ids (1 statement + 2 savepoint statements) |
+| 12, 16 | the plan row with `body::text` | playbook_store plan read, called twice (12 and 16); the body is the heaviest row of the start-up | YES: one read (1 heavy statement) |
+| 13, 14, 15 | `UPDATE strategy_adjustment_plans SET stop_base` inside a savepoint | playbook_store `_BACKFILL_STOP_BASE` (ADR-247 backfill) | YES: a WRITE at every restart; skip when `stop_base` is already set (3 statements) |
+| 17 | `min(saved_at)` of the system playbook versions | playbook_store `_ADR247_SAVED_AT` | cache per strategy type (1 per trade today) |
+| 18, 19 (again 45, 46) | entry facts and basket facts | entry_facts_store `_SELECT` and `read_baskets`, read in the list and again in the first check | YES: 2 statements |
+| 20, 21 | open gate rows with `strategies` join | playbook_store gate/record reads, called twice | YES: 1 statement |
+| 22, 23, 24 and 25, 26, 27 | `clock_timestamp()`, `app_settings`, `user_adjustment_preferences` | settings_store and user_preferences_store.values_for via the worker's `user_values` / `preferences`, twice | YES: 6 statements to 3 (the worker's `settings_cache` already holds the settings) |
+| 28, 31, 33, 36, 38, 40, 43, 47 | `SELECT 1 FROM strategies WHERE id AND user_ref AND deleted_at IS NULL` (ownership) | one inside each store function: playbook_store (gate reads, held crossings, rule state), strategy_pause_store, strategy_level_watch_store, strategy_alert_style_store | YES: 8 per trade; one check per trade-and-session is enough |
+| 29, 30 | last suggestion per rule, rule ids | playbook_store (`DISTINCT ON (g.rule_id)` and the suggestion outcome read) | merge into one read |
+| 32 | held crossings | playbook_store held-crossings read | no |
+| 34 | `clock_timestamp()` | any of the above | YES (1) |
+| 35, 37, 39 | alert style, monitor pause, level watch | strategy_alert_style_store.pin_of, strategy_pause_store, strategy_level_watch_store | one read for the three small tables |
+| 41, 44 | `adjustment_rule_state` rows | playbook_store `_SELECT_STATE`, called twice | YES: 1 statement |
+| 42 | `scenario_frames` | scenario only | no |
+The safe subset that leaves the ownership rule alone is about 12 of the 34: the contract read, the plan read, the backfill write, the facts, the gate rows, the settings and preferences, the rule state, the clock reads.
+Also seen, NOT a start-up cost, to check (Lane RA / B2): once the first cycle is over, the same three statements repeat on EVERY cycle for the same trade in a scenario whose clock does not move: ownership
+`SELECT 1`, `set_config('ofo.rule_adjustment_no')` and `INSERT INTO adjustment_rule_state ... ON CONFLICT` (statements 48 to 94 of that run: 15 repeats in about 7 s). If a live worker does the same each second the
+link pays 3 x 134 ms per trade per cycle; the INSERT should be written only when `held_at_entry` or `seen_clear` changed (`playbook_store._PUT_STATE`).
+
+### Per-trade first report (built, test first)
+`Worker.cycle` now writes the monitoring snapshot after EACH of the first cycle's checks (`_first_report_pending`, then once per cycle as before; `Publisher.publish` only writes on a change), so a trade's badge returns when ITS first check ends
+instead of at the end of the whole cycle: tests_app/test_first_badge_b1b_1128.py (nine trades: the first report names fewer than nine, every later report names all earlier ones, the last names all nine; red before). NOT changed: the
+whole strategy list is still read before the first check (about 34 statements per trade before the first check can start); streaming the list per trade is a larger change of `rebuild()` and `owner_lister` (the lapse and side-closed
+passes run over the whole list), left for the owner lane.
+
 ## Item 6 (cause, design, Opus review)
 Cause (FE4 F7): the worker (`background.feed_state` / `market_closed_for`) and the monitor (`may_act.market_open(feed.ctx, now)`) each asked the
 calendar with their own clock. Now the worker's snapshot carries `market_open` at its own instant `at` (`monitoring_state.encode`, `Publisher.publish`,
