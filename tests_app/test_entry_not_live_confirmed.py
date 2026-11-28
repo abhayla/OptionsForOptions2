@@ -37,7 +37,7 @@ def _env(monkeypatch):
 
 
 async def _spot(ctx, confirmed):
-    return await readers._index_spot_held(ctx, None, "NIFTY", confirmed)
+    return (await readers._index_spot_held(ctx, None, "NIFTY", confirmed))[0]
 
 
 async def test_fresh_tick_is_unchanged_with_or_without_the_flag():

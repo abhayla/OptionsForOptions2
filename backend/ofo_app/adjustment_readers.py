@@ -1010,30 +1010,32 @@ async def _index_quote_held(ctx: Any, feed: Any, underlying: str) -> Any:
     return quote
 
 
-async def _index_spot_held(ctx: Any, feed: Any, underlying: str, confirmed: bool = False) -> Decimal:
+async def _index_spot_held(ctx: Any, feed: Any, underlying: str,
+                           confirmed: bool = False) -> tuple[Decimal, datetime.datetime | None]:
     """The index's live spot for the fill's starting point (ADR-283 (1)). The API process holds only what a page
     socket subscribed, so an index nobody holds is held on the shared fan-out until its first quote or ``LEG_WAIT_S``
     passes (``read_door.read_quotes``). Answer states: held / quoted within the wait -> the spot; no
     context / not connected / never quoted / not a positive price -> ``StrategyRefused`` (nothing stored), unless the
     user confirmed the not-live line (``confirmed``, ADR-330 (28)): then the last held value
-    (``_index_value_not_live``)."""
+    (``_index_value_not_live``). Returns ``(spot, at)``: the value and the time of the quote it came from (FR 3.4;
+    None when the quote states none)."""
     from ofo_app.strategy_refused import StrategyRefused  # noqa: PLC0415 - write path only
 
-    spot = quote = None
+    spot = quote = at = None
     if ctx is not None and ctx.provider.status().connected:
         quote = await _index_quote_held(ctx, feed, underlying)
         # ADR-330 (39): the quote's own health carries the one index age rule (``FeedState.quote_health``); a value
         # that rule calls not live is not a live spot, whatever the feed as a whole says: it needs the user's tick
         live = quote is not None and quote.health is DataHealth.AVAILABLE
-        spot = quote.ltp if live else None
+        spot, at = (quote.ltp, quote.price_at) if live else (None, None)
     if (not isinstance(spot, Decimal) or spot <= 0) and confirmed:
         held_value = _index_value_not_live(ctx, underlying)
-        spot = None if held_value is None else held_value[0]
+        spot, at = (None, None) if held_value is None else held_value
     if not isinstance(spot, Decimal) or spot <= 0:
         refused = StrategyRefused("paper_index_price_unavailable", Failure.CONFLICT)
         refused.reason = _index_not_held_reason(ctx, quote)  # type: ignore[attr-defined]
         raise refused
-    return spot
+    return spot, at
 
 
 async def record_basket_facts(db: Any, ctx: Any, feed: Any, strategy_id: int,
@@ -1065,7 +1067,7 @@ async def record_basket_facts(db: Any, ctx: Any, feed: Any, strategy_id: int,
     if used is None or not open_ or not all(is_option(cid) for cid, _ in open_):
         return
     # after the no-facts returns: an exit needs no spot
-    spot = await _index_spot_held(ctx, feed, underlying, prices_not_live_confirmed)
+    spot, spot_at = await _index_spot_held(ctx, feed, underlying, prices_not_live_confirmed)
     kept = [cid for cid, _ in open_ if cid not in filled and found[cid].identity is not None]
     prices: dict[int, Decimal | None] = dict(filled)
     if kept:
@@ -1085,7 +1087,7 @@ async def record_basket_facts(db: Any, ctx: Any, feed: Any, strategy_id: int,
         log.warning("basket ATM IV unreadable (%s)", type(exc).__name__)
         iv = None
     await entry_facts_store.record_basket(db, strategy_id, used,
-                                          entry_facts_store.BasketFacts(clock, spot, iv, legs))
+                                          entry_facts_store.BasketFacts(clock, spot, iv, legs, spot_at))
 
 
 def _atm_vol(rows: list[ChainRow], ids: dict[str, str], greeks: Any, level: Decimal | None) -> Decimal | None:
