@@ -144,6 +144,10 @@ def _contract_text(found: tracked_contracts.TrackedContract) -> ExplanationText:
     return display_contract((c.name, Instrument(c.instrument_type), strike, c.expiry))  # type: ignore[return-value]
 
 
+#: kind of position -> the report's why for an armed exit this monitor does not judge (any other kind: not run)
+_NOT_APPLICABLE_WHY: dict[str, str] = {"real": monitoring_state.EXIT_NOT_APPLICABLE}
+
+
 class PaperMonitor:
     _held_count: int | None = None  # last logged count (class default: tests skip __init__)
     def __init__(self, sessions: Sessions, feed: Callable[[], LiveFeed | None], *,  # noqa: PLR0913 - seams
@@ -176,7 +180,7 @@ class PaperMonitor:
         self._exits_publisher: tuple[Any, monitoring_state.ExitsPublisher] | None = None
         self._dirty = True
         self._loaded_at: float | None = None
-        self._na_strategies: dict[int, str] = {}  # strategy -> kind whose armed exits are not judged here (review F2)
+        self._na_strategies: dict[int, str] = {}  # strategy -> why its armed exits are not judged here (review F2)
         self.not_applicable: dict[int, str] = {}  # trigger id -> the position kind that has no stops here (told once)
         self._ever_loaded = False  # review F3: no armed exit is known until a reload has succeeded; no claim is made
         self.fires = 0
@@ -243,7 +247,8 @@ class PaperMonitor:
                 keep.append(a)
                 self.not_applicable.pop(a.trigger.id, None)  # review F4: it reads paper again
                 continue
-            self._na_strategies[a.trigger.strategy_id] = kind
+            self._na_strategies[a.trigger.strategy_id] = _NOT_APPLICABLE_WHY.get(
+                kind, monitoring_state.INDEX_EXITS_NOT_RUN)
             if a.trigger.id not in self.not_applicable:
                 self.not_applicable[a.trigger.id] = kind
                 log.info("paper trigger %s of strategy %s not applicable: the position is %s (ADR-330 (64))",
@@ -494,9 +499,8 @@ class PaperMonitor:
     def _report_not_applicable(self, not_run: dict[int, str]) -> None:
         """Review F2: a strategy whose armed exit is not judged here (a real position, or a kind that could not be read)
         is named in the report, so the trade never reads "watched" because of silence."""
-        for sid, kind in self._na_strategies.items():
-            not_run.setdefault(sid, monitoring_state.EXIT_NOT_APPLICABLE if kind == "real"
-                               else monitoring_state.INDEX_EXITS_NOT_RUN)
+        for sid, why in self._na_strategies.items():
+            not_run.setdefault(sid, why)
 
     async def _report_exits(self, judged: Sequence[_Watch], not_run: Mapping[int, str],
                             now: datetime.datetime) -> None:
