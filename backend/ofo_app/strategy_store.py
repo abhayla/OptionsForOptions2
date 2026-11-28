@@ -172,6 +172,22 @@ async def kinds_of(conn: Any, strategy_ids: list[int]) -> dict[int, str]:
     return out
 
 
+async def paper_order_refused(conn: Any, strategy_id: int, order_kinds: Iterable[str]) -> bool:
+    """FD5 N1 (ADR-330 (64), (58)): True when a USER paper order of these kinds must be refused for this strategy. An
+    unreadable kind (or a strategy not found) always refuses (fail closed); a REAL position that is not held at a
+    broker (a basket was sent and no paper order exists) takes no paper order of any kind, because the order would
+    turn its kind from real to paper; a held entry (ADR-292 (4): the user records each broker change with the paper
+    forms) refuses only an exit (ADR-330 (64): no exit here), and its kind stays real whatever is recorded. A read
+    that fails PROPAGATES, like ``kinds_of``."""
+    kind = (await kinds_of(conn, [strategy_id])).get(strategy_id, "unknown")
+    if kind == "unknown":
+        return True
+    if kind != "real":
+        return False
+    held = bool((await conn.execute(_HELD, {"id": strategy_id})).scalar())
+    return not held or "exit" in set(order_kinds)
+
+
 async def has_order(conn: Any, strategy_id: int) -> bool:
     """ADR-299: whether ANY order (practice or real) exists for the strategy: the same fragment the list selects."""
     return bool((await conn.execute(_HAS_ORDER, {"id": strategy_id})).scalar())

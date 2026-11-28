@@ -174,7 +174,8 @@ async def test_k13_no_open_strategy_no_check_and_exited_or_settled_leave_the_lis
     async with app_db_url.connect() as conn:
         rows = await paper_store.load(conn, held)
         exits = [paper_store.NewOrder(r.order.contract_id, "BUY" if r.order.side == "SELL" else "SELL",
-                                      r.order.quantity, D("1"), "exit", scn.clock_at) for r in rows]
+                                      r.order.quantity, D("1"), "settle", scn.clock_at) for r in rows]
+        # FD5 N1: a held (real) position takes no USER exit (ADR-330 (64)); the server's own close (settle) does
         await paper_store.place(conn, "owner", held, exits)
         await conn.commit()
     listed = await background.owner_lister(scn.provider)
