@@ -574,7 +574,7 @@ function cancelExit() {
 }
 
 function ask(g, rows) {
-  // ADR-330 (60) shape for not-live too (owner order 28 Nov): Exit OPENS the dialog; a not-live read or a leg without a price shows its sentence there and Confirm is off. Only busy / unresolved / open dialog end here.
+  // ADR-330 (60): the Exit control always opens the dialog and the dialog decides (an unresolved unknown outcome, a not-live read or a leg without a price show their sentence there, Confirm off). ask() returns early only when the gate is blocked for busy / pending / checking (not for not-live); a busy post or unreadable rows end here with their note.
   if (exitGate.blocked.value && !exitGate.notLive.value) return
   adoptLock(g.id, readSeq + 1) // a lock of another tab or an earlier page instance comes back before anything is offered
   const orders = exitRowsFor(rows)
