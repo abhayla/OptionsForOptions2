@@ -83,7 +83,7 @@ const realTotals = computed(() => {
   // FJ2-3 + I-207: with no broker session the block below says it once (one sentence + Retry): the card keeps its dash and does not repeat it
   if (errorParts.value) return { text: null, reason: notConnected.value ? null : (looksRaw(errorParts.value.what_happened) ? null : errorParts.value.what_happened), caption: null, note: null }
   // I-113 (F3, TC walk AF-07 / D-13): a read that says no broker is connected never prints a figure, even if the reply still carries one
-  if (brokerOff.value) return { text: null, reason: null, caption: null, note: null } // the block below says why, once
+  if (brokerOff.value) return { text: null, reason: plain(result.value?.real_pnl?.reason), caption: null, note: null } // the server's own clean reason beside the dash; a JSON-looking one is dropped (the block says the plain sentence once)
   const r = result.value?.real_pnl
   if (result.value && !r) return { text: typeof result.value.pnl_text === 'string' ? result.value.pnl_text : null, legacy: true }
   if (!r) return null
