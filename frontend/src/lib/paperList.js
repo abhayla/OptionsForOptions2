@@ -4,7 +4,7 @@
 // re-grouped: no sum, no product, no difference is formed here. The only arithmetic is on units (an integer count) when an
 // exit order is built, and its price is the reply's own ltp string.
 import { plainName } from '@/lib/saveDraft'
-import { contractName, CONTRACT_UNAVAILABLE } from '@/lib/displayFormat'
+import { contractName, nameFromPool, CONTRACT_UNAVAILABLE } from '@/lib/displayFormat'
 import { UNREADABLE_TEXT, EXITED_TEXT, afterFigure } from '@/lib/tracking'
 import { istTime, noteShownDate } from '@/lib/displayFormat'
 import { LAST_CLOSE_LABEL } from '@/lib/paperDrafts'
@@ -134,8 +134,8 @@ export function readPaperStrategy(s, index = 0) {
     expiries: positions.map((p) => p.expiry).filter((e) => e !== null), // ADR-330 (19): the dates the group label may show
     underlying: s.underlying,
     state: s.state,
-    // owner 28 Nov, fail closed: only exactly 'paper' or 'real' is a kind; a missing, 'none' or odd tag reads 'unknown' (no Exit, no Stops, no PAPER tag)
-    positionKind: s.position_kind === 'paper' || s.position_kind === 'real' ? s.position_kind : 'unknown',
+    // owner 28 Nov, fail closed: only exactly 'paper' or 'real' is a kind; 'none' or an odd tag reads 'unknown' (no Exit, no Stops, no PAPER tag)
+    positionKind: s.position_kind === undefined ? null : s.position_kind === 'paper' || s.position_kind === 'real' ? s.position_kind : 'unknown', // null = the field is absent: the page fills it from GET /strategies (R1's contract keeps it off this list), else unknown
     positionKindText: text(s.position_kind_text),
     storedNotSent: s.stored_not_sent === true,
     record: s.record && typeof s.record === 'object' ? s.record : null,
@@ -224,5 +224,18 @@ export function exitRowsFor(positions) {
     lots: p.lots, lot_size: p.lotSize, price: p.ltpText ?? '', price_at: p.ltpText ? p.priceAt ?? null : null, kind: 'exit', price_note: p.ltpText ? '' : LAST_CLOSE_LABEL,
   }))
   // D-02 (REQ-159 AC-6): buy-backs of shorts before sales of longs, the order the server records; stable (ES2019)
+  return rows.sort((a, b) => (a.side === 'BUY' ? 0 : 1) - (b.side === 'BUY' ? 0 : 1))
+}
+
+/** A REAL position has no paper book, so its Exit rows come from its saved legs (GET /strategies/{id}, the plan "as last read"): the
+ *  opposite side, all lots, the server sets the price (R1: the exit is a stored record). Legs that are not live or not in whole lots
+ *  make the whole list null (fail closed: no exit is offered from a plan that cannot be read). Buy-backs first, like paperList. */
+export function realExitRowsFor(legs, underlying) {
+  if (!Array.isArray(legs) || !legs.length) return null
+  if (legs.some((l) => !l || l.not_live || !Number.isInteger(l.contract_id) || !Number.isInteger(l.lots) || l.lots <= 0 || !Number.isInteger(l.lot_size) || (l.action !== 'BUY' && l.action !== 'SELL'))) return null
+  const rows = legs.map((l, i) => ({
+    key: `exit-${l.contract_id}-${i}`, contract_id: l.contract_id, side: l.action === 'BUY' ? 'SELL' : 'BUY', text: nameFromPool(l, [], underlying),
+    lots: l.lots, lot_size: l.lot_size, price: '', price_at: null, kind: 'exit', price_note: '',
+  }))
   return rows.sort((a, b) => (a.side === 'BUY' ? 0 : 1) - (b.side === 'BUY' ? 0 : 1))
 }

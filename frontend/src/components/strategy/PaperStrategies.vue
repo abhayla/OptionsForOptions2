@@ -15,6 +15,10 @@
     <!-- D-05 r3: a failed refresh is a banner above the last loaded list, whose figures are paused (full-page error only when nothing ever loaded), so an open Stops panel and what was typed in it stay -->
     <ErrorMessage v-if="!loading && errorParts" class="mt-2" :parts="errorParts" compact prefix="paper-error" />
     <p v-if="pageLine" class="mt-2 text-sm text-ink-muted" role="status" data-testid="paper-paused-notice">{{ pageLine }}</p>
+    <div v-if="realStops && !exitOnlyFor" class="mt-3 rounded-lg border border-line p-3" data-testid="real-stops-panel" :data-strategy="realStops.id">
+      <p class="font-semibold" data-testid="real-stops-title"><span class="mr-1 rounded bg-surface-muted px-1 text-xs font-semibold" data-testid="paper-real-tag">REAL</span>Stops, strategy {{ realStops.id }}</p>
+      <PaperStops :kind="'real'" :strategy-id="realStops.id" :underlying="realStops.underlying" :legs="realStops.legs" :leg-names="realStops.legNames" :good-read-token="goodReadToken" />
+    </div>
     <p v-if="!exitOnlyFor && !loading && items && !items.length" class="mt-2" data-testid="paper-empty">{{ EMPTY }}</p>
     <template v-else-if="!exitOnlyFor && !loading && items">
       <!-- Sensibull 050-053: the totals sit above the rows. A figure the reply omits is a dash with the server's reason. -->
@@ -67,8 +71,8 @@
             <div class="flex flex-wrap items-start justify-between gap-3">
               <div>
                 <!-- ADR-330 (10): every paper group in the one Positions list is tagged PAPER -->
-                <span v-if="g.positionKind === 'real'" class="mr-1 rounded bg-surface-muted px-1 text-xs font-semibold" data-testid="paper-real-tag">REAL</span>
-                <span v-else-if="g.positionKind === 'paper'" class="mr-1 rounded bg-accent-soft px-1 text-xs font-semibold text-accent" data-testid="paper-tag">PAPER</span>
+                <span v-if="gk(g) === 'real'" class="mr-1 rounded bg-surface-muted px-1 text-xs font-semibold" data-testid="paper-real-tag">REAL</span>
+                <span v-else-if="gk(g) === 'paper'" class="mr-1 rounded bg-accent-soft px-1 text-xs font-semibold text-accent" data-testid="paper-tag">PAPER</span>
                 <h2 class="font-semibold" data-testid="paper-group-name">{{ groupLabel(g) }}</h2>
                 <span class="text-ink-muted" data-testid="paper-group-underlying">{{ g.underlying }}</span>{{ ' ' }}<span v-if="g.statusWord" class="text-xs text-ink-muted" data-testid="paper-status-word">{{ g.statusWord }}</span>
                 <p class="text-xs text-ink-muted" data-testid="paper-count">{{ g.openCount }} of {{ g.positionCount }} positions</p>
@@ -83,9 +87,9 @@
               </dl>
             </div>
             <!-- owner 28 Nov: a REAL group is the same card; its row line says the actions are only stored, and a stored action says it was not sent. It never changes a figure above. -->
-            <p v-if="g.positionKind === 'real'" class="mt-1 text-xs text-ink-muted" data-testid="paper-real-line">{{ g.positionKindText ?? REAL_ROW_TEXT }}</p>
-            <p v-else-if="g.positionKind === 'unknown'" class="mt-1 text-xs text-ink-muted" data-testid="paper-unknown-kind-line">{{ g.positionKindText ?? KIND_UNREAD_LINE }}</p>
-            <p v-if="g.positionKind === 'real' && groupRecordLine(g)" class="mt-1 text-sm font-semibold" role="status" data-testid="paper-record-line">{{ groupRecordLine(g) }}</p>
+            <p v-if="gk(g) === 'real'" class="mt-1 text-xs text-ink-muted" data-testid="paper-real-line">{{ g.positionKindText ?? REAL_ROW_TEXT }}</p>
+            <p v-else-if="gk(g) === 'unknown'" class="mt-1 text-xs text-ink-muted" data-testid="paper-unknown-kind-line">{{ g.positionKindText ?? KIND_UNREAD_LINE }}</p>
+            <p v-if="gk(g) === 'real' && groupRecordLine(g)" class="mt-1 text-sm font-semibold" role="status" data-testid="paper-record-line">{{ groupRecordLine(g) }}</p>
             <!-- GC-TP R-19b (Sensibull 090): Breakeven, Max Profit and Max Loss on the card, and a Greeks toggle (off) with per-leg and
                  net Greeks. All server texts; a figure the reply lacks is a dash with its reason, never 0. -->
             <dl class="mt-2 flex flex-wrap items-start gap-6" data-testid="paper-summary">
@@ -157,15 +161,15 @@
                 <RouterLink v-if="g.statusWord !== 'Completed'" :to="builderLink(g)" class="rounded border border-line px-2 py-1 text-center text-accent" data-testid="paper-add-orders">Add orders</RouterLink>
                 <!-- ADR-330 (54): the Plan button, beside Stops and Exit; the same plan sheet as the builder's Edit plan -->
                 <PlanDoor v-if="g.openCount" :strategy-id="g.id" tag="paper" />
-                <button v-if="g.openCount && isActionableKind({ position_kind: g.positionKind })" type="button" class="rounded border border-line px-2 py-1" :aria-expanded="!!stopsOpen[g.id]" :data-testid="`stops-open-${g.id}`" @click="stopsOpen = { ...stopsOpen, [g.id]: !stopsOpen[g.id] }">Stops</button>
-                <ExitButton v-if="g.openCount && isActionableKind({ position_kind: g.positionKind })" :blocked="exitGate.blocked.value && !exitGate.notLive.value" :reason="exitGate.reason.value ?? noPriceLine(g) ?? (tickedOpen(g).length ? null : EXIT_TICK_TEXT)" :extra-disabled="!tickedOpen(g).length" class="rounded border border-line px-2 py-1" :data-testid="`exit-selected-${g.id}`" @click="ask(g, tickedOpen(g))">Exit ({{ tickedOpen(g).length }})</ExitButton>
+                <button v-if="g.openCount && isActionableKind({ position_kind: gk(g) })" type="button" class="rounded border border-line px-2 py-1" :aria-expanded="!!stopsOpen[g.id]" :data-testid="`stops-open-${g.id}`" @click="stopsOpen = { ...stopsOpen, [g.id]: !stopsOpen[g.id] }">Stops</button>
+                <ExitButton v-if="g.openCount && isActionableKind({ position_kind: gk(g) })" :blocked="exitGate.blocked.value && !exitGate.notLive.value" :reason="exitGate.reason.value ?? noPriceLine(g) ?? (tickedOpen(g).length ? null : EXIT_TICK_TEXT)" :extra-disabled="!tickedOpen(g).length" class="rounded border border-line px-2 py-1" :data-testid="`exit-selected-${g.id}`" @click="ask(g, tickedOpen(g))">Exit ({{ tickedOpen(g).length }})</ExitButton>
                 <p v-if="exitGate.reason.value === NOT_LIVE_EXIT && lastGoodClock" class="text-xs text-ink-muted" data-testid="paper-exit-asof">Last prices: {{ lastGoodClock }} IST.</p>
               </div>
             </div>
             <!-- P10 (ADR-330 (13)): the Plan watch of an open strategy; it re-reads on this list's own good-read token -->
             <MonitoringBadge v-if="g.openCount" :entry="monitoring.entryOf(g.id)" class="mt-2" />
             <PlanWatch :strategy-id="g.id" :read-tick="goodReadToken" :stale="stale" :view="g.openCount ? planViews.get(String(g.id)) ?? null : undefined" :closed="!g.openCount" compact class="mt-2" />
-            <PaperStops v-if="stopsOpen[g.id] && isActionableKind({ position_kind: g.positionKind })" :kind="g.positionKind" :strategy-id="g.id" :underlying="g.underlying" :legs="stopLegs(g)" :leg-names="legNamesOf(g)" :good-read-token="goodReadToken" @changed="onStopsChanged" />
+            <PaperStops v-if="stopsOpen[g.id] && isActionableKind({ position_kind: gk(g) })" :kind="gk(g)" :strategy-id="g.id" :underlying="g.underlying" :legs="stopLegs(g)" :leg-names="legNamesOf(g)" :good-read-token="goodReadToken" @changed="onStopsChanged" />
           </template>
         </div>
       </template>
@@ -177,7 +181,7 @@
 
 <script setup>
 import { NAME_FLOOR_CLASS } from '@/lib/nameFloor'
-import { strategyListLabel } from '@/lib/saveDraft'
+import { fetchSavedDraft, strategyListLabel } from '@/lib/saveDraft'
 import { istClock } from '@/lib/displayFormat'
 import { QUOTE_TIME_UNAVAILABLE_TEXT } from '@/lib/sharedStateText'
 import { computed, onBeforeUnmount, onMounted, ref, shallowRef, watch } from 'vue'
@@ -194,7 +198,7 @@ import AfterChargesTap from '@/components/common/AfterChargesTap.vue'
 import PaperConfirmDialog from '@/components/strategy/PaperConfirmDialog.vue'
 import HeldNote from '@/components/strategy/HeldNote.vue'
 import { PRICE_GREYED_CLASS, pausedOnce, pausedText, priceScope } from '@/lib/priceState'
-import { ALL_CLOSED_TEXT, DECAY_LEFT_TODAY_HEADING, GREEK_COLUMNS, PAPER_NO_FIGURE, PAPER_NOT_CONNECTED, PAPER_PAUSED, SHOW_CLOSED_LABEL, exitRowsFor, isOpenGroup, readPaperList, visibleGroups } from '@/lib/paperList'
+import { ALL_CLOSED_TEXT, DECAY_LEFT_TODAY_HEADING, GREEK_COLUMNS, PAPER_NO_FIGURE, PAPER_NOT_CONNECTED, PAPER_PAUSED, SHOW_CLOSED_LABEL, exitRowsFor, isOpenGroup, realExitRowsFor, readPaperList, visibleGroups } from '@/lib/paperList'
 import { usePriceFreshness } from '@/lib/priceState'
 import { createExitRecords } from '@/lib/exitRecord'
 import { NOT_LIVE_EXIT } from '@/lib/priceState'
@@ -235,9 +239,19 @@ const NO_TOTAL = 'No paper total yet: prices are not live'
 const BANNER = 'Paper trades - not real money'
 const MIXED_BANNER = 'Paper trades are not real money. A real position here only stores your actions; nothing is sent to Zerodha.' // pending owner read
 const groupRecordLine = (g) => recordLineOf({ stored_not_sent: g.storedNotSent, record: g.record })
-const hasReal = computed(() => (items.value ?? []).some((g) => g.readable && g.positionKind === 'real'))
+// R1's contract keeps `position_kind` off GET /paper/strategies: a group without the field takes its kind from the strategy list (GET /strategies), else unknown (fail closed)
+const kindsById = ref(new Map())
+const kindWord = (k) => (k === 'paper' || k === 'real' ? k : 'unknown')
+const gk = (g) => (g?.positionKind != null ? g.positionKind : kindWord(kindsById.value.get(String(g?.id))?.position_kind))
+async function readKinds() {
+  try {
+    const rows = (await api.get('/strategies')).data?.strategies
+    kindsById.value = new Map(Array.isArray(rows) ? rows.map((r) => [String(r.id), r]) : [])
+  } catch { kindsById.value = new Map() } // unreadable: every group without its own field reads unknown
+}
+const hasReal = computed(() => (items.value ?? []).some((g) => g.readable && gk(g) === 'real'))
 // the kind is taken when the dialog opens (ask) and kept on `confirm`, so a later list read cannot re-word an exit in flight; no fallback to paper
-const kindOfId = (id) => (confirm.value && String(confirm.value.id) === String(id) ? confirm.value.kind : (items.value ?? []).find((g) => g.readable && String(g.id) === String(id))?.positionKind) ?? 'unknown'
+const kindOfId = (id) => (confirm.value && String(confirm.value.id) === String(id) ? confirm.value.kind : gk((items.value ?? []).find((g) => g.readable && String(g.id) === String(id)) ?? {})) ?? 'unknown'
 const confirmKind = computed(() => (confirm.value?.kind === 'real' ? 'real' : 'paper'))
 const EMPTY = 'No paper strategies yet. Build a strategy, then press Add to Paper.'
 const figures = [
@@ -310,6 +324,7 @@ const greyOf = (g) => (many.value && scope.value.ids.has(g.id) ? PRICE_GREYED_CL
 const dialogLegsNotLive = () => {
   const c = confirm.value
   if (!c) return false
+  if (c.kind === 'real') return false // a real position has no paper legs to price: the server stores the record and refuses a closed market (ADR-330 (60)) before it stores anything
   const g = (items.value ?? []).find((x) => String(x.id) === String(c.id))
   return exitLegsNotLive(g?.state, g?.positions?.map((p) => ({ id: p.contractId, live: p.live })), c.orders.map((o) => o.contract_id))
 }
@@ -423,8 +438,9 @@ function show({ data, token }) {
     lastGoodAt.value = typeof data?.answered_at === 'string' ? data.answered_at : null // UX-A01: the time of the prices the page still shows
     goodReadToken.value = token // the token travels with the answer from the read that made it
     settle(items.value, token?.seq ?? 0, token?.sentAt ?? Date.now())
-    openExitFromLink(exitId)
-    if (!hadExit && !props.exitOnlyFor) openStopsFromLink()
+    const act = () => { openExitFromLink(exitId); if (!hadExit && !props.exitOnlyFor) openStopsFromLink() }
+    if (read.groups.some((g) => g.readable && g.positionKind === null) || exitId !== null || router?.currentRoute.value.query.strategy !== undefined) readKinds().then(act, act) // the exit link of a real position names no paper group: its kind comes from the same read
+    else act()
   }
   loading.value = false
 }
@@ -453,7 +469,7 @@ function openStopsFromLink() {
   const q = router.currentRoute.value.query.strategy
   const id = q === undefined ? null : String(Array.isArray(q) ? q[0] : q)
   const g = id === null ? null : (items.value ?? []).find((x) => x.readable && x.openCount && String(x.id) === id) // Stops is drawn only for open legs
-  if (!g) return
+  if (!g) { if (id !== null) openRealStops(id); return } // a REAL position has no paper group: its Stops panel is drawn from its saved legs
   stopsOpen.value = { ...stopsOpen.value, [g.id]: true }
   scrollTo.value = g.id
 }
@@ -466,11 +482,38 @@ function openExitFromLink(id) {
   if (confirm.value || busy.value) return
   try {
     const g = (items.value ?? []).find((x) => isOpenGroup(x) && String(x.id) === id)
-    if (g && !isActionableKind({ position_kind: g.positionKind })) { exitRec.note(id, g.positionKindText ?? KIND_UNREAD_LINE); return } // fail closed: the link and the alert door obey the same gate as the buttons
+    if (!g) { openRealExit(id); return } // no open paper group: a REAL position has no paper book, its legs are its saved plan's (R1: the exit is stored as a record)
+    if (g && !isActionableKind({ position_kind: gk(g) })) { exitRec.note(id, g.positionKindText ?? KIND_UNREAD_LINE); return } // fail closed: the link and the alert door obey the same gate as the buttons
     const rows = g ? g.positions.filter(canExit) : []
     if (!rows.length) exitRec.note(id, EXIT_NOTE)
     else if (exitGate.blocked.value && !exitGate.notLive.value) exitRec.note(id, exitGate.reason.value ?? EXIT_NOTE)
     else ask(g, rows)
+  } catch {
+    exitRec.note(id, EXIT_NOTE)
+  }
+}
+const realStops = ref(null) // { id, underlying, legs, legNames } of the REAL position whose Stops panel is open (no paper group to hang it on)
+async function openRealStops(id) {
+  try {
+    const row = kindsById.value.get(String(id))
+    if (!row || row.position_kind !== 'real') return // paper with no open legs, unknown, none, missing: nothing is drawn (fail closed)
+    const legs = realExitRowsFor((await fetchSavedDraft(api, row.id)).legs, row.underlying)
+    if (legs === null) return
+    realStops.value = { id: row.id, underlying: row.underlying, legs: legs.map((o) => ({ index: o.contract_id, label: o.text, contractId: String(o.contract_id) })), legNames: Object.fromEntries(legs.map((o) => [o.contract_id, o.text])) }
+  } catch { realStops.value = null }
+}
+async function openRealExit(id) {
+  try {
+    const row = kindsById.value.get(String(id))
+    if (!row || row.position_kind !== 'real') { exitRec.note(id, EXIT_NOTE); return } // paper with no open legs, unknown, none, missing: nothing to offer (fail closed)
+    if (exitGate.blocked.value && !exitGate.notLive.value) { exitRec.note(id, exitGate.reason.value ?? EXIT_NOTE); return }
+    const saved = await fetchSavedDraft(api, row.id)
+    const orders = realExitRowsFor(saved.legs, row.underlying)
+    if (orders === null) { exitRec.note(id, EXIT_NOTE); return }
+    if (confirm.value || busy.value) return
+    exitRec.clear(id)
+    dialogState.value = isUnknown(row.id) ? PAPER_STATE.UNKNOWN : PAPER_STATE.READY
+    confirm.value = { id: row.id, kind: 'real', orders, names: orders.map((o) => o.text), units: [] }
   } catch {
     exitRec.note(id, EXIT_NOTE)
   }
@@ -596,7 +639,7 @@ function ask(g, rows) {
   if (orders === null || !orders.length) return endExit('changed', names, null, g.id)
   exitRec.clear(g.id)
   dialogState.value = isUnknown(g.id) ? PAPER_STATE.UNKNOWN : PAPER_STATE.READY // an unresolved unknown outcome shows its sentence again, Confirm off
-  confirm.value = { id: g.id, kind: g.positionKind, orders, names, units: rows.map((p) => ({ id: p.contractId, units: p.units })) }
+  confirm.value = { id: g.id, kind: gk(g), orders, names, units: rows.map((p) => ({ id: p.contractId, units: p.units })) }
 }
 
 // the dialog posts the rows as edited (lots x lot size, the typed price); a refusal stays in the dialog with the server's text

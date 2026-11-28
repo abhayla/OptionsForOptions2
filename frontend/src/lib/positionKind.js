@@ -35,6 +35,8 @@ const ACTION_WORD = { exit: 'Exit', stop: 'Stop', stop_fired: 'Stop reached', ad
 export function recordLineOf(row) {
   if (row?.stored_not_sent !== true) return null
   const r = row.record
+  // R1's contract: the record carries its own one catalogue line; show it as the server sent it
+  if (typeof r?.text === 'string' && r.text.trim() && r.text.includes(NOT_SENT_LINE)) return r.text.trim()
   const word = ACTION_WORD[r?.action]
   if (!word) return NOT_SENT_LINE
   const at = r.stored_at ? istClock(r.stored_at) : null
