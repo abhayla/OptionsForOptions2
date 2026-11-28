@@ -1,4 +1,4 @@
-STATUS 22:20 | stage 1 pushed (f9b2a0f, TOTAL PASS); stages 2 and 3 built, Opus review done (F1 fixed), full check running | next push 23:15 (stages 2 and 3 together) | blocker: none (my messages to the coordinator are refused: this session lacks the owner's device-trust approval; this line is the report)
+STATUS 00:25 | all held tasks done: stage 1 pushed (f9b2a0f), stages 2 and 3 pushed (09efab8df), wave 1 merged, migration renumbered 0065_position_tags, position_kind on every paper-list row, 590 block proof; final check running on this head | next push: this one, then closed | blocker: none
 
 # Lane R1: real positions get the same screens, backend (round 3)
 
@@ -37,7 +37,7 @@ paper orders that exist (none for a sent basket: every figure of the app's own i
 5. A held position's add and open (ADR-292 (4)) still go to `paper_orders` (Q3 interim); `paper_store.place` still refuses an exit on a held position (the order door sends the exit to a record before it gets there).
 
 ## Decided for the owner
-1. The tag is stored in a NEW insert-only table `strategy_position_tags` (strategy_id PK, tag paper|real), not a column on `strategies`: the strategies guard trigger is pinned in the app-role allow-list (a column would mean rewriting that pinned chain). Same meaning as the brief's `strategies.position_tag`: written once, never updated (guard OF063 refuses UPDATE and DELETE, even for the owner role). Migration `0063_position_tags` (next after 0062 on the build).
+1. The tag is stored in a NEW insert-only table `strategy_position_tags` (strategy_id PK, tag paper|real), not a column on `strategies`: the strategies guard trigger is pinned in the app-role allow-list (a column would mean rewriting that pinned chain). Same meaning as the brief's `strategies.position_tag`: written once, never updated (guard OF065 refuses UPDATE and DELETE, even for the owner role). Migration `0065_position_tags` (after the build's 0064_order_attempts; first written as 0063, renumbered after wave 1; up, down by one, up checked).
 2. No trigger writes the tag: the allow-list refuses an unexpected trigger on paper_orders, execution_plans and strategy_held_entries (found by running the migration). The code writes it once, first write wins: `paper_store.place` (under the strategy lock, at the first paper order -> paper) and `strategy_store.claim_tag` for a basket sent by Execute (stored on the first read of its kind -> real). Between an Execute and the first read the tag is absent; an order with no tag reads `unknown` only if the claim itself fails, otherwise the read stores `real` first.
 3. A held entry (ADR-292) stays real whatever is stored: its basket is stored first (tag paper, same transaction), the held row after it. `kind_of` reads: held -> real; else the stored tag. The stored row is untouched (guard test pins it).
 4. n7 (`test_exit_door_real_fd3`): the kind is read ONCE, BEFORE the commit (the door's check); that read decides and the answer after the commit reuses it. Pinned as `calls == 1` (was `>= 2`, the old FD5 expectation).
@@ -103,3 +103,5 @@ Opus review of stages 2 and 3 (reviewer subagent, read-only, no database): PASS 
 | task / model / minutes |
 |---|
 | lane build, tests, reruns / Sonnet / about 160 |
+
+SAFE TO CLOSE (head: the head of feat/real-same-screens-be-1128 that carries this line; check TOTAL PASS on it before the coordinator takes it). Done: the stored tag, the record store and its door (open, add, exit, stop), the worker's real branch, the catalogue sentences, the contract fields (order door, triggers, active alerts, strategy list, paper list), the migration 0065, the core proof and the guards. Not done: the items under "Found, not assigned" and "Not done" above, the answers to Q1 to Q4 (the owner's), the browser walk (Lane R2's).

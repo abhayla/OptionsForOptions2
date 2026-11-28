@@ -4047,7 +4047,7 @@ NOTES = {
     'PaperStrategyOut.name': 'catalogue text: only a render()/render_explanation() result (a catalogue sentence; its parameters are server-computed figures, never a stored credential)',
     'PaperStrategyOut.pause_reason_text': 'catalogue text: only a render()/render_explanation() result (a catalogue sentence; its parameters are server-computed figures, never a stored credential)',
     'PaperStrategyOut.plan_final_text': 'catalogue text: only a render()/render_explanation() result (a catalogue sentence; its parameters are server-computed figures, never a stored credential)',
-    'PaperStrategyOut.position_kind_text': 'UNREVIEWED',
+    'PaperStrategyOut.position_kind_text': 'REVIEWED Lane R1: kind sentence (ADR-330 (73)); None for paper',
     'PaperStrategyOut.profit_left_after_text': 'catalogue text: only a render()/render_explanation() result (a catalogue sentence; its parameters are server-computed figures, never a stored credential)',
     'PaperStrategyOut.profit_left_hold_text': 'catalogue text: only a render()/render_explanation() result (a catalogue sentence; its parameters are server-computed figures, never a stored credential)',
     'PaperStrategyOut.profit_left_text': 'catalogue text: only a render()/render_explanation() result (a catalogue sentence; its parameters are server-computed figures, never a stored credential)',
