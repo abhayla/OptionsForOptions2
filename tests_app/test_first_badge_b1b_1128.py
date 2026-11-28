@@ -1,10 +1,11 @@
 # ruff: noqa: F811
-"""Lane B1b (coordinator, PC check W-34): after a worker restart a trade's "watched" badge returns when ITS OWN first check
-ends, not at the end of the whole first cycle. Nine running trades, one worker: the snapshot is written after each of
-the first checks, so the first write already names the first trade, every later write names the earlier ones again
+"""Lane B1b (coordinator, PC check W-34): after a worker restart a trade's "watched" badge returns when ITS OWN first
+check ends, not at the end of the whole first cycle. Nine running trades, one worker: the snapshot is written after
+each of the first checks, so the first write already names the first trade, every later write names the earlier ones again
 (a trade never goes back to "not listed" while the worker is up and reading), and the last write names all nine."""
 from __future__ import annotations
 
+import itertools
 import json
 
 from ofo_app import monitoring_state
@@ -37,6 +38,6 @@ async def test_each_trades_badge_comes_back_when_its_own_first_check_ends(scn):
     named = [wr for wr in client.writes if wr]
     assert named[0] and len(named[0]) < NINE, "the first report already waited for every trade"
     assert named[-1] == ids, named[-1]
-    for earlier, later in zip(named, named[1:], strict=False):
+    for earlier, later in itertools.pairwise(named):
         assert earlier <= later, "a trade went back to not listed while the worker was up"
     assert len({frozenset(n) for n in named}) >= 3, "one write per cycle, not per check"  # noqa: PLR2004
