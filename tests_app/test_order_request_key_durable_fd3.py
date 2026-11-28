@@ -344,3 +344,71 @@ async def test_ra_n6_a_session_that_holds_nothing_takes_no_savepoint_and_a_faile
         await conn.begin()
         assert (await conn.execute(text("SELECT 1"))).scalar_one() == 1  # usable after the failed read
         await conn.rollback()
+
+
+# ---- Lane RA N8: the narrower INSERT grant and the bounded expiry (migration 0062) ---------------------------------
+
+OLD, YOUNG = 8, 6  # days old
+
+
+async def _plant(admin_engine, strategy, days_old: int) -> uuid.UUID:
+    key = uuid.uuid4()
+    async with admin_engine.begin() as conn:
+        await conn.execute(text(
+            "INSERT INTO public.order_request_keys (user_ref, request_key, strategy_id, body_sha256, door, state, "
+            "created_at) VALUES (:u, :k, :s, :h, 'paper', 'done', now() - make_interval(days => :d))"),
+            {"u": USER, "k": key, "s": strategy, "h": "0" * 64, "d": days_old})
+    return key
+
+
+async def test_ra_n8_the_application_role_inserts_the_six_columns_only_and_never_deletes(app_engine, strategy):
+    base = ("INSERT INTO public.order_request_keys (user_ref, request_key, strategy_id, body_sha256, door, state{x}) "
+            "VALUES (:u, :k, :s, :h, 'paper', 'pending'{v})")
+    args = {"u": USER, "k": uuid.uuid4(), "s": strategy, "h": "1" * 64}
+    async with app_engine.begin() as conn:
+        await conn.execute(text(base.format(x="", v="")), args)  # the six the code writes: allowed
+    for extra, value in (("result", "'{}'::jsonb"), ("created_at", "now()"), ("finished_at", "now()")):
+        async with app_engine.connect() as conn:
+            with pytest.raises(DBAPIError, match="permission denied"):
+                await conn.execute(text(base.format(x=f", {extra}", v=f", {value}")), {**args, "k": uuid.uuid4()})
+    async with app_engine.connect() as conn:
+        with pytest.raises(DBAPIError, match="permission denied"):
+            await conn.execute(text("DELETE FROM public.order_request_keys WHERE user_ref = :u"), {"u": USER})
+
+
+async def test_ra_n8_expiry_removes_only_rows_older_than_the_replay_window(app_engine, admin_engine, strategy):
+    assert request_key.REPLAY_WINDOW_DAYS == 7  # noqa: PLR2004 - the migration's own window
+    old, young = await _plant(admin_engine, strategy, OLD), await _plant(admin_engine, strategy, YOUNG)
+    async with admin_engine.connect() as conn:  # the function carries the same window as the code
+        body = (await conn.execute(text(
+            "SELECT pg_get_functiondef('public.expire_order_request_keys()'::regprocedure)"))).scalar_one()
+    assert f"INTERVAL '{request_key.REPLAY_WINDOW_DAYS} days'" in body
+    async with app_engine.begin() as conn:
+        assert await request_key.expire_old(conn) == 1
+    left = {r.request_key for r in await _rows_of_keys(admin_engine)}
+    assert young in left and old not in left
+
+
+async def _rows_of_keys(admin_engine) -> list:
+    async with admin_engine.connect() as conn:
+        return list((await conn.execute(text(
+            "SELECT request_key FROM public.order_request_keys WHERE user_ref = :u"), {"u": USER})).all())
+
+
+async def test_ra_n8_a_claim_runs_the_expiry_when_due_and_a_failed_expiry_never_fails_the_claim(
+        app_engine, admin_engine, strategy, monkeypatch):
+    old = await _plant(admin_engine, strategy, OLD)
+    monkeypatch.setattr(request_key, "_next_expiry_at", 0.0)
+    async with app_engine.begin() as conn:
+        await request_key.claim_in_transaction(conn, USER, uuid.uuid4(), strategy, BODY, "paper")
+    assert old not in {r.request_key for r in await _rows_of_keys(admin_engine)}
+    again = await _plant(admin_engine, strategy, OLD)
+    async with app_engine.begin() as conn:  # not due again within the hour: nothing more is removed
+        await request_key.claim_in_transaction(conn, USER, uuid.uuid4(), strategy, BODY, "paper")
+    assert again in {r.request_key for r in await _rows_of_keys(admin_engine)}
+    monkeypatch.setattr(request_key, "_next_expiry_at", 0.0)
+    monkeypatch.setattr(request_key, "_EXPIRE", text("SELECT 1 / 0"))  # the expiry itself fails
+    key = uuid.uuid4()
+    async with app_engine.begin() as conn:
+        await request_key.claim_in_transaction(conn, USER, key, strategy, BODY, "paper")
+    assert key in {r.request_key for r in await _rows_of_keys(admin_engine)}  # the claim committed all the same

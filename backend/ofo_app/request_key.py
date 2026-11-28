@@ -18,6 +18,8 @@ from __future__ import annotations
 
 import hashlib
 import json
+import logging
+import time
 import uuid
 from collections.abc import Callable, Mapping
 from typing import Any, Protocol
@@ -171,6 +173,16 @@ _DB_DONE = text("UPDATE public.order_request_keys SET state = 'done', result = C
                 "finished_at = clock_timestamp() WHERE user_ref = :u AND request_key = :k AND state = 'pending'")
 DOORS = ("paper", "real")
 
+#: RA N8 (migration 0062): a recorded key is kept this many days, then ``expire_old`` removes it. The database
+#: function ``public.expire_order_request_keys()`` carries the same number (a test pins both); the application role has
+#: no DELETE and cannot choose another window.
+REPLAY_WINDOW_DAYS = 7
+EXPIRE_EVERY_S = 3600.0  # the claim path runs the expiry at most once an hour per process
+_EXPIRE = text("SELECT public.expire_order_request_keys()")
+_monotonic = time.monotonic  # a test replaces it
+_next_expiry_at = 0.0
+_LOG = logging.getLogger(__name__)
+
 
 class Repeated(Exception):  # a signal, not a failure: the key was already used and committed
     """The key is already recorded by a request that committed: ``result`` is what that request stored."""
@@ -223,11 +235,35 @@ async def claim_in_transaction(db: Any, user_ref: str, key: uuid.UUID, strategy_
         raise _refused("request_key_store_unavailable", Failure.UPSTREAM_BUSY) from None
     if inserted is not None:
         txn_holds.mark(db)  # RA N6: a failing optional read on this session must not roll the claim away
+        await _expire_when_due(db)
         return
     row = await _read(db, user_ref, key)
     if row is None:  # the other request rolled back between our INSERT and this read: nothing is recorded, refuse
         raise _refused("request_key_store_unavailable", Failure.UPSTREAM_BUSY)
     raise Repeated(_judge(row, strategy_id, body))
+
+
+async def expire_old(db: Any) -> int:
+    """RA N8: remove the recorded keys older than ``REPLAY_WINDOW_DAYS`` (the database function does it; the
+    application role cannot delete). Returns how many rows went. Raises on a failed call: see ``_expire_when_due``."""
+    return int((await db.execute(_EXPIRE)).scalar_one())
+
+
+async def _expire_when_due(db: Any) -> None:
+    """The one place the expiry runs: after a claim, at most once an hour per process, inside its own savepoint so
+    a failure (an un-migrated database, a lock) is logged and never touches the claim or the orders' transaction."""
+    global _next_expiry_at  # noqa: PLW0603 - one timer per process
+    now = _monotonic()
+    if now < _next_expiry_at:
+        return
+    _next_expiry_at = now + EXPIRE_EVERY_S
+    try:
+        async with db.begin_nested():
+            removed = await expire_old(db)
+        if removed:
+            _LOG.info("order request keys: %s older than %s days removed", removed, REPLAY_WINDOW_DAYS)
+    except Exception:  # noqa: BLE001 - best effort: the claim stands
+        _LOG.warning("order request keys: the expiry failed", exc_info=True)
 
 
 async def finish_in_transaction(db: Any, user_ref: str, key: uuid.UUID, result: Mapping[str, Any]) -> None:
