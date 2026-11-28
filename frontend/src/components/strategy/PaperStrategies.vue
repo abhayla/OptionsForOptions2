@@ -68,7 +68,7 @@
               <div>
                 <!-- ADR-330 (10): every paper group in the one Positions list is tagged PAPER -->
                 <span v-if="g.positionKind === 'real'" class="mr-1 rounded bg-surface-muted px-1 text-xs font-semibold" data-testid="paper-real-tag">REAL</span>
-                <span v-else class="mr-1 rounded bg-accent-soft px-1 text-xs font-semibold text-accent" data-testid="paper-tag">PAPER</span>
+                <span v-else-if="g.positionKind === 'paper'" class="mr-1 rounded bg-accent-soft px-1 text-xs font-semibold text-accent" data-testid="paper-tag">PAPER</span>
                 <h2 class="font-semibold" data-testid="paper-group-name">{{ groupLabel(g) }}</h2>
                 <span class="text-ink-muted" data-testid="paper-group-underlying">{{ g.underlying }}</span>{{ ' ' }}<span v-if="g.statusWord" class="text-xs text-ink-muted" data-testid="paper-status-word">{{ g.statusWord }}</span>
                 <p class="text-xs text-ink-muted" data-testid="paper-count">{{ g.openCount }} of {{ g.positionCount }} positions</p>
@@ -236,8 +236,9 @@ const BANNER = 'Paper trades - not real money'
 const MIXED_BANNER = 'Paper trades are not real money. A real position here only stores your actions; nothing is sent to Zerodha.' // pending owner read
 const groupRecordLine = (g) => recordLineOf({ stored_not_sent: g.storedNotSent, record: g.record })
 const hasReal = computed(() => (items.value ?? []).some((g) => g.readable && g.positionKind === 'real'))
-const kindOfId = (id) => (items.value ?? []).find((g) => g.readable && String(g.id) === String(id))?.positionKind ?? 'paper'
-const confirmKind = computed(() => (confirm.value && kindOfId(confirm.value.id) === 'real' ? 'real' : 'paper'))
+// the kind is taken when the dialog opens (ask) and kept on `confirm`, so a later list read cannot re-word an exit in flight; no fallback to paper
+const kindOfId = (id) => (confirm.value && String(confirm.value.id) === String(id) ? confirm.value.kind : (items.value ?? []).find((g) => g.readable && String(g.id) === String(id))?.positionKind) ?? 'unknown'
+const confirmKind = computed(() => (confirm.value?.kind === 'real' ? 'real' : 'paper'))
 const EMPTY = 'No paper strategies yet. Build a strategy, then press Add to Paper.'
 const figures = [
   { field: 'total', label: 'Total P&L', testid: 'paper-total', reason: 'pauseReason', reasonId: 'paper-total-reason' },
@@ -465,6 +466,7 @@ function openExitFromLink(id) {
   if (confirm.value || busy.value) return
   try {
     const g = (items.value ?? []).find((x) => isOpenGroup(x) && String(x.id) === id)
+    if (g && !isActionableKind({ position_kind: g.positionKind })) { exitRec.note(id, g.positionKindText ?? KIND_UNREAD_LINE); return } // fail closed: the link and the alert door obey the same gate as the buttons
     const rows = g ? g.positions.filter(canExit) : []
     if (!rows.length) exitRec.note(id, EXIT_NOTE)
     else if (exitGate.blocked.value && !exitGate.notLive.value) exitRec.note(id, exitGate.reason.value ?? EXIT_NOTE)
@@ -594,7 +596,7 @@ function ask(g, rows) {
   if (orders === null || !orders.length) return endExit('changed', names, null, g.id)
   exitRec.clear(g.id)
   dialogState.value = isUnknown(g.id) ? PAPER_STATE.UNKNOWN : PAPER_STATE.READY // an unresolved unknown outcome shows its sentence again, Confirm off
-  confirm.value = { id: g.id, orders, names, units: rows.map((p) => ({ id: p.contractId, units: p.units })) }
+  confirm.value = { id: g.id, kind: g.positionKind, orders, names, units: rows.map((p) => ({ id: p.contractId, units: p.units })) }
 }
 
 // the dialog posts the rows as edited (lots x lot size, the typed price); a refusal stays in the dialog with the server's text
@@ -639,7 +641,7 @@ async function doExit(orders, _held = null, _ticked = false, dialogKey = null) {
   if (confirm.value && String(confirm.value.id) === String(c.id)) confirm.value = null
   ticks.value = { ...ticks.value, [c.id]: [] }
   busy.value = false
-  exitRec.settle(c.id, attempt, 'placed', exitEndText('done', c.names, { orders: reply?.orders, sent: orders.length, kind: kindOfId(c.id) }, NEUTRAL_ERROR))
+  exitRec.settle(c.id, attempt, 'placed', exitEndText('done', c.names, { orders: reply?.orders, sent: orders.length, kind: c.kind ?? 'unknown' }, NEUTRAL_ERROR))
   try { refreshNow() } catch { /* the list says its own read failed */ }
 }
 // the unknown-outcome link: the strategy's builder shows its book (Orderbook) read from the server

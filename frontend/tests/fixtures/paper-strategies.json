@@ -39,7 +39,8 @@
       "name": "\"New Strategy\"",
       "underlying": "NIFTY",
       "open_count": 0,
-      "position_count": 1
+      "position_count": 1,
+      "position_kind": "paper"
     },
     {
       "state": "LIVE",
@@ -143,7 +144,8 @@
       "name": "\"New Strategy\"",
       "underlying": "NIFTY",
       "open_count": 3,
-      "position_count": 4
+      "position_count": 4,
+      "position_kind": "paper"
     },
     {
       "state": "LIVE",
@@ -205,7 +207,8 @@
       "name": "\"New Strategy\"",
       "underlying": "NIFTY",
       "open_count": 2,
-      "position_count": 2
+      "position_count": 2,
+      "position_kind": "paper"
     }
   ],
   "totals": {

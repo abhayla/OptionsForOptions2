@@ -134,8 +134,8 @@ export function readPaperStrategy(s, index = 0) {
     expiries: positions.map((p) => p.expiry).filter((e) => e !== null), // ADR-330 (19): the dates the group label may show
     underlying: s.underlying,
     state: s.state,
-    // owner 28 Nov: the tag is the server's; only exactly 'real' or 'unknown' differs from paper (a missing tag on this list reads paper: it is the paper list)
-    positionKind: s.position_kind === 'real' ? 'real' : s.position_kind === 'unknown' ? 'unknown' : 'paper',
+    // owner 28 Nov, fail closed: only exactly 'paper' or 'real' is a kind; a missing, 'none' or odd tag reads 'unknown' (no Exit, no Stops, no PAPER tag)
+    positionKind: s.position_kind === 'paper' || s.position_kind === 'real' ? s.position_kind : 'unknown',
     positionKindText: text(s.position_kind_text),
     storedNotSent: s.stored_not_sent === true,
     record: s.record && typeof s.record === 'object' ? s.record : null,

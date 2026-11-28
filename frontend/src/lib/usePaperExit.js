@@ -28,6 +28,7 @@ export function exitEndText(reason, legNames = [], parts = null, neutral = 'Some
   else if (reason === 'busy') sentence = EXIT_BUSY_TEXT
   else if (reason === 'checking') sentence = EXIT_CHECKING_TEXT
   else if (reason === 'not_stored') sentence = EXIT_NOT_STORED_TEXT
+  else if (reason === 'done' && parts?.kind === 'unknown') sentence = 'The server answered the exit, but this position cannot be read as paper or real. Check the position before doing anything else.' // pending owner read: never "placed on paper" for a kind nobody could read
   else if (reason === 'done' && parts?.kind === 'real') sentence = REAL_EXIT_STORED_TEXT // owner 28 Nov: a real exit is only stored in the app; never "placed", no order number
   else if (reason === 'done') { // 201: the order numbers are the last N ids of the reply's orders (N = rows sent), shown only when the reply has them
     const n = Number.isInteger(parts?.sent) ? parts.sent : 0

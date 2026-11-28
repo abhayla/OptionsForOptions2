@@ -26,7 +26,7 @@ export function toPaperList(old) {
       if (!s || !Array.isArray(s.legs)) return s
       const positions = s.legs.map((l, i) => position(l, i, s.underlying))
       const { legs: _legs, ...rest } = s
-      return { ...rest, positions, open_count: positions.filter((p) => p.net_quantity !== 0).length, position_count: positions.length }
+      return { position_kind: 'paper', ...rest, positions, open_count: positions.filter((p) => p.net_quantity !== 0).length, position_count: positions.length }
     }),
   }
 }

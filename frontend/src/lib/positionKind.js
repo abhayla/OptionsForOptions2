@@ -14,6 +14,8 @@ export const isActionableKind = (row) => row?.position_kind === 'paper' || row?.
 export const NOT_SENT_LINE = 'Not sent to Zerodha. Place it in Kite.'
 export const REAL_EXIT_DIALOG_TEXT = 'This stores your exit in the app as a record and a reminder. It does not place an order and does not change your Zerodha position. Place it in Kite.'
 export const REAL_ADD_DIALOG_TEXT = 'This stores your add in the app as a record and a reminder. It does not place an order and does not change your Zerodha position. Place it in Kite.'
+export const REAL_UNKNOWN_TEXT = 'We could not confirm the record was stored. Check the position before trying again.' // no "order", no "Orderbook"
+export const REAL_UNKNOWN_AFTER_WINDOW_TEXT = 'The record is still not confirmed. Nothing was sent to Zerodha. Check the position before trying again.'
 export const REAL_STORING_TEXT = 'Storing in the app...' // while the post runs; never reads as done, never "placing"
 export const REAL_STORED_NOT_REFRESHED_TEXT = 'Stored in the app. Not sent to Zerodha. Place it in Kite. Loading the position again.'
 export const REAL_EXIT_STORED_TEXT = 'Exit stored. Not sent to Zerodha. Place it in Kite. This position stays open here until Zerodha shows it closed.'

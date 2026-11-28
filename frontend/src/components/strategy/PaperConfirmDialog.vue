@@ -71,8 +71,8 @@
       <p v-if="busy && state !== 'placed' && rows.some((r) => r.kind === 'exit')" class="text-sm text-ink-muted" role="status" data-testid="paper-placing">{{ isReal ? REAL_STORING_TEXT : EXIT_PLACING_TEXT }}</p>
       <p v-else-if="state === 'placed'" class="text-sm font-medium" role="status" data-testid="paper-placed">{{ isReal ? REAL_STORED_NOT_REFRESHED_TEXT : PAPER_PLACED_NOT_REFRESHED_TEXT }}</p>
       <p v-else-if="state === 'unknown' || lockWindowOver" class="text-sm text-red-700" role="alert" data-testid="paper-unknown" :data-window-over="lockWindowOver ? 'yes' : 'no'">
-        {{ lockWindowOver ? EXIT_UNKNOWN_AFTER_WINDOW_TEXT : PAPER_UNKNOWN_TEXT }}
-        <button type="button" class="ml-1 font-semibold text-accent underline" data-testid="paper-open-orderbook" @click="emit('orderbook')">{{ PAPER_OPEN_ORDERBOOK_LABEL }}</button>
+        {{ isReal ? (lockWindowOver ? REAL_UNKNOWN_AFTER_WINDOW_TEXT : REAL_UNKNOWN_TEXT) : (lockWindowOver ? EXIT_UNKNOWN_AFTER_WINDOW_TEXT : PAPER_UNKNOWN_TEXT) }}
+        <button v-if="!isReal" type="button" class="ml-1 font-semibold text-accent underline" data-testid="paper-open-orderbook" @click="emit('orderbook')">{{ PAPER_OPEN_ORDERBOOK_LABEL }}</button>
       </p>
       <p v-else-if="marketLine" class="text-sm text-red-700" role="alert" data-testid="paper-market-closed">{{ marketLine }}</p>
       <p v-else-if="error" class="text-sm text-red-700" role="alert" data-testid="paper-error">{{ error }}</p>
@@ -99,7 +99,7 @@ import {
   PAPER_UNKNOWN_TEXT, HELD_LABEL, STOP_REPLY_UNREADABLE_TEXT, cancelledStopLines, EXIT_UNKNOWN_WINDOW_MS, EXIT_UNKNOWN_AFTER_WINDOW_TEXT, heldBlock, paperLotsOk, paperPriceOk, paperPriceReason,
 } from '@/lib/tracking'
 import { paperDialogTitle, paperKindLabel } from '@/lib/paperDrafts'
-import { REAL_ADD_DIALOG_TEXT, REAL_EXIT_DIALOG_TEXT, REAL_STORED_NOT_REFRESHED_TEXT, REAL_STORING_TEXT } from '@/lib/positionKind'
+import { REAL_UNKNOWN_AFTER_WINDOW_TEXT, REAL_UNKNOWN_TEXT, REAL_ADD_DIALOG_TEXT, REAL_EXIT_DIALOG_TEXT, REAL_STORED_NOT_REFRESHED_TEXT, REAL_STORING_TEXT } from '@/lib/positionKind'
 import api from '@/services/api'
 import { EXIT_PLACING_TEXT } from '@/lib/usePaperExit'
 import { isoMillis, istClock } from '@/lib/displayFormat'

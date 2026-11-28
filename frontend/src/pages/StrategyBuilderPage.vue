@@ -395,6 +395,8 @@ const openStrategy = ref(heldBack?.openStrategy ?? null)
 // ADR-330 (58): the saved strategy whose orders are real (the server says Running and it has no paper book); only the page's own read of THIS strategy sets it
 const realTradeId = ref(null)
 const tradeMode = computed(() => (!paper.value && realTradeId.value !== null && realTradeId.value === savedId.value ? 'real' : 'paper'))
+// the dialog's kind: 'real' when the server's book says so (a held entry's book), else the trade mode; 'real' reads the stored-only wording
+const dialogKind = computed(() => (paper.value?.book?.position_kind === 'real' ? 'real' : tradeMode.value))
 const openError = ref(null) // the catalogue message when ?strategy= cannot be opened; the screen is kept
 const openNotFound = ref(null) // the openError that said "strategy not found" (the Open My Strategies button shows only while it is the one on screen)
 // REQ-134 AC-5: the URL names the strategy (?strategy=<id>) so a reload opens it again; a `draft` link is dropped from it.
@@ -887,7 +889,7 @@ async function confirmPending(orders, _held = null, notLiveTicked = false, dialo
   }
   if (sendsExit) dropExitLock(id, { key, at: outAt }) // the server answered: the lock of this request key ends (another tab's lock of another key stays)
   else dropAddLock(id, { key, at: outAt })
-  exitRec.settle(EXIT_KEY, attempt, 'placed', wasExit ? exitEndText('done', names, { orders: reply?.orders, sent: orders.length, kind: tradeMode.value }) : '') // the server answered: placed replaces a page-side guess
+  exitRec.settle(EXIT_KEY, attempt, 'placed', wasExit ? exitEndText('done', names, { orders: reply?.orders, sent: orders.length, kind: dialogKind.value }) : '') // the server answered: placed replaces a page-side guess
   paperStale.value = true
   exitAllWaiting.value = null // cleared at once (Opus review): a later throw or a new Exit all during the re-read must not meet a stale value
   if (own) { exitOrigin.value = false; legsBeforeExit = null } // ADR-330 (49): what is left is no Exit edit; the other legs' edits are put back by restoreStaged
@@ -1717,7 +1719,7 @@ const leaveGuard = useLeaveBuilder({
         </div>
         <PaperBookPanel v-if="paper" :book="paper.book" :net="paper.net" :changed-ids="stagedChangeIds(paper.net, legs)" :read-failed="paperBookFailed" :contracts-changed="paperContractsChanged" :exit-unresolved="!!exitUnknown" :show-orders="showOrdersTick" @exit="exitPaper" @exit-all="exitAllPaper" />
         </div>
-        <PaperConfirmDialog :open="paperDialog" :kind="tradeMode" :orders="paperRows" :strategy-id="route.query.strategy" :busy="paperBusy" :blocked="exitBlocked" :note="exitAllWaiting ? DISCARD_WARNING(exitAllWaiting.names) : ''" :locked="!!exitUnknown" :locked-at-ms="exitUnknown ? exitUnknown.at : 0" :cancelled-stops="cancelledStops" :stops-reply-unreadable="stopsReplyUnreadable" :error="paperError || paperNotLiveLine" :state="paperState" :not-live-line="paperEntryNotLiveLine" @confirm="confirmPending" @cancel="userCancelPaperDialog" @orderbook="openPaperOrderbook" />
+        <PaperConfirmDialog :open="paperDialog" :kind="dialogKind" :orders="paperRows" :strategy-id="route.query.strategy" :busy="paperBusy" :blocked="exitBlocked" :note="exitAllWaiting ? DISCARD_WARNING(exitAllWaiting.names) : ''" :locked="!!exitUnknown" :locked-at-ms="exitUnknown ? exitUnknown.at : 0" :cancelled-stops="cancelledStops" :stops-reply-unreadable="stopsReplyUnreadable" :error="paperError || paperNotLiveLine" :state="paperState" :not-live-line="paperEntryNotLiveLine" @confirm="confirmPending" @cancel="userCancelPaperDialog" @orderbook="openPaperOrderbook" />
         <SaveDraftBar v-show="!(opening && !legs.length)" ref="barRef" :legs="legs" :rules-ref="String(route.query.rules_ref || '')" :current="openStrategy" :shown-name="shapeName ?? ''" :paper-mode="paper !== null" :live-price-by-id="livePriceById" :prices-live="pricesLive" :market-closed="pricesNow.kind === 'last_close'" :price-as-of="pricesNow.at ?? ''" class="max-[1099px]:contents" @open="openFromBar" @saved="onSaved" @paper-added="onPaperAdded" @renamed="onRenamed" @deleted="onDeleted">
           <template #add-edit>
             <button v-if="!paperCompleted" type="button" class="h-10 flex-1 basis-0 rounded-lg border border-line font-medium" aria-haspopup="dialog" :aria-expanded="pickerOpen ? 'true' : 'false'" data-testid="add-edit" :disabled="exitBlocked" :title="exitBlocked ? exitGate.reason.value : undefined" @click="pickerOpen = !pickerOpen">Add/Edit</button>
