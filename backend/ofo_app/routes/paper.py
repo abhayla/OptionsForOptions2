@@ -1489,7 +1489,7 @@ async def _refuse_real_position(db: Any, strategy_id: int) -> str:
 
 @router.post("/paper/strategies/{strategy_id}/orders", status_code=201, response_model=PaperBookOut,
              dependencies=[Depends(_stamp_request), Depends(guard_paper_order)])  # IC e2e 5
-async def place_paper_orders(strategy_id: int, body: PaperOrdersIn, request: Request,  # noqa: PLR0913 - dependencies
+async def place_paper_orders(strategy_id: int, body: PaperOrdersIn,  # noqa: PLR0913 - FastAPI dependencies
                              db: Annotated[Any, Depends(get_db)], user_ref: Annotated[str, Depends(current_user_ref)],
                              ctx: Annotated[MarketContext | None, Depends(get_market_context)],
                              feed: Annotated[LiveFeed | None, Depends(get_live_feed)],
@@ -1497,11 +1497,13 @@ async def place_paper_orders(strategy_id: int, body: PaperOrdersIn, request: Req
                              rates: Annotated[ChargeRates | None, Depends(load_charge_rates)],
                              tracked_reader: Annotated[TrackedReader, Depends(get_tracked_reader)],
                              settings: Annotated[Mapping[str, Decimal], Depends(get_calc_settings)],
-                             keys: Annotated[request_key.KeyStore, Depends(request_key.get_key_store)]
+                             keys: Annotated[request_key.KeyStore, Depends(request_key.get_key_store)],
+                             request: Request = None  # type: ignore[assignment]  # a direct call has none
                              ) -> PaperBookOut:
     """The order door. With ``client_request_id`` the request is de-duplicated (ADR-017): the first request places; a
     repeat of the same key, strategy and orders answers the first result and stores nothing; see ``request_key``."""
-    entered = _monotonic()  # FD5 N5: the deadline counts from the request's entry (the page's 10 s clock started there)
+    entered = _monotonic()  # FD5 N5: the deadline counts from the request's entry, not after the key lookup
+    arrived = getattr(getattr(request, "state", None), "arrived_at", entered)  # RA F-1: before the dependencies
     stored = await _load_strategy(db, user_ref, strategy_id)
     if any(o.kind == "exit" for o in body.orders):
         await _refuse_real_position(db, strategy_id)  # #877: before any key is claimed
@@ -1519,7 +1521,7 @@ async def place_paper_orders(strategy_id: int, body: PaperOrdersIn, request: Req
                                cancelled=await _replayed_stops(
                                    db, stored, first.get("result", {}).get("cancelled_stops", [])))
     stage: dict[str, Any] = {"commit_started": False, "key": key, "sent": sent,
-                             "deadline": getattr(request.state, "arrived_at", entered) + COMMIT_DEADLINE_S}
+                             "deadline": arrived + COMMIT_DEADLINE_S}
     try:
         placed_at, cancelled = await _place_orders(db, strategy_id, stored, body, (
             user_ref, ctx, feed, now, rates, tracked_reader, settings), stage)
