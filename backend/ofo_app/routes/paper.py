@@ -1469,14 +1469,16 @@ async def _refuse_take_profit_at_loss(db: Any, user_ref: str, strategy_id: int, 
 _NO_PAPER_ACTION_KINDS = frozenset({"real", "unknown"})  # unknown: fail closed (ADR-016 to ADR-019)
 
 
-async def _refuse_real_position(db: Any, strategy_id: int) -> None:
+async def _refuse_real_position(db: Any, strategy_id: int) -> str:
     """#877 (ADR-330 (64), (58)): a real position (a held entry, or an order and no paper order) has no stop and no exit
     in the app: an exit or stop request for it reaches this paper route only by a wrong link, and would run a PAPER
     action the trader could take for a real exit. Refused by name (nothing is stored); every other kind goes on, an
-    unreadable one too (fail closed)."""
-    kind = (await store.kinds_of(db, [strategy_id])).get(strategy_id)
+    unreadable one too (fail closed). Returns the kind it read (RA N7: the trigger routes pass it on, so nothing reads
+    it again after their commit)."""
+    kind = (await store.kinds_of(db, [strategy_id])).get(strategy_id) or "unknown"
     if kind in _NO_PAPER_ACTION_KINDS:
         raise StrategyRefused("real_position_exit_refused", Failure.CONFLICT)
+    return kind
 
 
 @router.post("/paper/strategies/{strategy_id}/orders", status_code=201, response_model=PaperBookOut,
@@ -2062,12 +2064,15 @@ async def _adjustment_marks(db: Any, orders: Sequence[paper_store.StoredOrder],
 
 
 async def _triggers_out(db: Any, strategy_id: int, already_set: bool = False,
-                        already_armed: Sequence[Direction] = ()) -> TriggersOut:
+                        already_armed: Sequence[Direction] = (), *, kind: str | None = None) -> TriggersOut:
+    """``kind``: the position kind read BEFORE a commit (RA N7): a route that stored or cancelled a stop answers its
+    committed result and never fails on a read made after the commit. None = read it here (the list routes)."""
     rows = list(reversed(await paper_trigger_store.list_for(db, strategy_id)))
     ids = sorted({r.trigger.contract_id for r in rows if r.trigger.contract_id is not None})
     found = {c.contract_id: c for c in await tracked_contracts.resolve(db, ids)}
     marks = await _adjustment_marks(db, await paper_store.load(db, strategy_id), rows)
-    kind = (await store.kinds_of(db, [strategy_id])).get(strategy_id, "unknown") if rows else "paper"
+    if kind is None:
+        kind = (await store.kinds_of(db, [strategy_id])).get(strategy_id, "unknown") if rows else "paper"
     off = kind in _NO_PAPER_ACTION_KINDS  # R6: a real or unreadable position has no live paper stop
     return TriggersOut.model_validate({"already_set": already_set, "already_armed": list(already_armed), "triggers": [{
         "id": r.trigger.id, "strategy_id": r.trigger.strategy_id, "kind": r.trigger.kind,
@@ -2184,7 +2189,7 @@ async def add_paper_triggers(strategy_id: int, body: TriggerIn, db: Annotated[An
                              feed: Annotated[LiveFeed | None, Depends(get_live_feed)],
                              now: Annotated[AnswerClock, Depends(get_answer_clock)]) -> TriggersOut:
     stored = await _load_strategy(db, user_ref, strategy_id)
-    await _refuse_real_position(db, strategy_id)  # #877: a stop for a real position is set in Kite, not here
+    kind = await _refuse_real_position(db, strategy_id)  # #877: a stop for a real position is set in Kite, not here
     underlying = stored.saved.definition.underlying
     # ADR-327: the price read (up to 3 s) happens BEFORE the strategy row lock, so a slow feed never holds the lock the
     # monitor's fire waits behind; what the read decided is re-validated under the lock below (D-05: the open legs)
@@ -2207,7 +2212,7 @@ async def add_paper_triggers(strategy_id: int, body: TriggerIn, db: Annotated[An
         await db.rollback()
         raise
     paper_monitor.notify()
-    return await _triggers_out(db, strategy_id, already_set=not fresh, already_armed=duplicate)
+    return await _triggers_out(db, strategy_id, already_set=not fresh, already_armed=duplicate, kind=kind)
 
 
 @router.delete("/paper/strategies/{strategy_id}/triggers/{trigger_id}", response_model=TriggersOut,
@@ -2220,6 +2225,7 @@ async def cancel_paper_trigger(strategy_id: int, trigger_id: int, db: Annotated[
         raise StrategyRefused("user_input_request_not_available", Failure.NOT_FOUND)
     if rows[trigger_id].fired_at is not None:
         raise StrategyRefused("paper_trigger_already_fired", Failure.CONFLICT)
+    kind = (await store.kinds_of(db, [strategy_id])).get(strategy_id, "unknown")  # RA N7: before the commit
     try:
         await paper_trigger_store.cancel(db, strategy_id, trigger_id)  # already cancelled: nothing to change
         await db.commit()
@@ -2227,7 +2233,7 @@ async def cancel_paper_trigger(strategy_id: int, trigger_id: int, db: Annotated[
         await db.rollback()
         raise
     paper_monitor.notify()
-    return await _triggers_out(db, strategy_id)
+    return await _triggers_out(db, strategy_id, kind=kind)
 
 
 @router.post("/paper/strategies/{strategy_id}/triggers/{trigger_id}/keep", response_model=TriggersOut,
@@ -2244,7 +2250,7 @@ async def keep_paper_trigger(strategy_id: int, trigger_id: int, db: Annotated[An
     (``check_trigger_levels``) runs first, before the lock (the price read may wait up to 3 s): a level the live price
     has already reached is refused and the old exit stays as it is."""
     stored = await _load_strategy(db, user_ref, strategy_id)
-    await _refuse_real_position(db, strategy_id)  # #877 (review F2): keeping an exit stores a stop again
+    kind = await _refuse_real_position(db, strategy_id)  # #877 (review F2): keeping an exit stores a stop again
     current = {r.trigger.id: r for r in await paper_trigger_store.list_for(db, strategy_id)}.get(trigger_id)
     if current is not None and current.trigger.kind == "conditional_exit" and _state(current) == "armed":
         again = paper_trigger_store.NewTrigger("conditional_exit", current.trigger.direction, current.trigger.level,
@@ -2270,7 +2276,7 @@ async def keep_paper_trigger(strategy_id: int, trigger_id: int, db: Annotated[An
         await db.rollback()
         raise
     paper_monitor.notify()
-    return await _triggers_out(db, strategy_id)
+    return await _triggers_out(db, strategy_id, kind=kind)
 
 
 async def _alerts_out(db: Any, user_ref: str) -> AlertsOut:

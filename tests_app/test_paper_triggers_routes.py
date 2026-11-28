@@ -994,3 +994,68 @@ async def test_the_list_closed_legs_carry_the_settlement_sentence_and_exit_text(
     assert row["closed"], "the list reply carries the closed legs"
     assert [c["reason_text"] for c in row["closed"]] == [why, why]
     assert [c["average_exit_text"] for c in row["closed"]] == [c["average_exit_text"] for c in book]
+
+
+# ---- Lane RA N7: a read after the commit must never turn a stored stop into an error ---------------------------------
+
+def _kind_read_fails_after_the_commit(monkeypatch) -> dict:
+    """``paper_monitor.notify`` runs right after the commit: from then on the position-kind read fails."""
+    from ofo_app import strategy_store  # noqa: PLC0415
+    from sqlalchemy.exc import OperationalError  # noqa: PLC0415
+    state = {"committed": False, "reads_after": 0}
+    real = strategy_store.kinds_of
+
+    async def kinds(conn, ids):
+        if state["committed"]:
+            state["reads_after"] += 1
+            raise OperationalError("SELECT kinds", {}, OSError("connection lost"))
+        return await real(conn, ids)
+    monkeypatch.setattr(strategy_store, "kinds_of", kinds)
+    monkeypatch.setattr(paper_monitor, "notify", lambda: state.update(committed=True))
+    return state
+
+
+async def test_ra_n7_a_stop_stored_is_answered_stored_even_when_the_kind_read_after_the_commit_fails(db, monkeypatch):
+    """ADR-317 (3): the user who reads a 5xx presses again, and the second press is de-duplicated. The kind is read
+    BEFORE the commit now; nothing reads it after."""
+    state = _kind_read_fails_after_the_commit(monkeypatch)
+    app, stored, _ = await _open(db)
+    async with _client(app) as c:
+        added = await c.post(_url(stored), json={"kind": "conditional_exit", "below": "22000"})
+        assert added.status_code == HTTPStatus.CREATED, added.text[:300]
+        (row,) = added.json()["triggers"]
+        assert row["state"] == "armed"
+        assert state["committed"] and state["reads_after"] == 0
+        state["committed"] = False  # the cancel's own pre-commit read is allowed
+        cancelled = await c.delete(_url(stored, f"/{row['id']}"))
+        assert cancelled.status_code == HTTPStatus.OK, cancelled.text[:300]
+        assert cancelled.json()["triggers"][0]["state"] == "cancelled"
+    assert state["committed"] and state["reads_after"] == 0
+
+
+async def test_ra_n7_keep_this_level_answers_its_stored_result_when_the_kind_read_after_the_commit_fails(
+        db, monkeypatch):
+    app, stored, _ = await _open(db)
+    async with _client(app) as c:
+        first = await c.post(_url(stored), json={"kind": "conditional_exit", "below": "22000"})
+        assert first.status_code == HTTPStatus.CREATED
+    state = _kind_read_fails_after_the_commit(monkeypatch)
+    async with _client(app) as c:
+        kept = await c.post(_url(stored, f"/{first.json()['triggers'][0]['id']}/keep"))
+        assert kept.status_code == HTTPStatus.OK, kept.text[:300]
+    assert state["committed"] and state["reads_after"] == 0
+
+
+async def test_ra_n7_a_kind_read_that_fails_before_the_commit_stores_nothing_and_says_so(db, notified, monkeypatch):
+    """The honest failure: the read fails BEFORE anything is written, so the user is told it failed and it did."""
+    from ofo_app import strategy_store  # noqa: PLC0415
+    from sqlalchemy.exc import OperationalError  # noqa: PLC0415
+    app, stored, _ = await _open(db)
+
+    async def broken(_conn, _ids):
+        raise OperationalError("SELECT kinds", {}, OSError("connection lost"))
+    monkeypatch.setattr(strategy_store, "kinds_of", broken)
+    async with _client(app) as c:
+        reply = await c.post(_url(stored), json={"kind": "conditional_exit", "below": "22000"})
+    assert reply.status_code >= HTTPStatus.INTERNAL_SERVER_ERROR
+    assert await _stored(db, stored.id) == [] and notified == []
