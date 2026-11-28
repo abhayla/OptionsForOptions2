@@ -70,6 +70,9 @@ function readPosition(p, underlying) {
 }
 
 // D-10 (ADR-207 (2)): one CLOSED lifecycle of a contract as the server sent it: entry and exit average, its own booked. Texts as sent.
+/** I-91 (F3): the server's own Unbooked / P&L text of a closed row, or its reason, as sent ('' / blank = absent); never formed here (ADR-008). */
+export const closedExtras = (c) => ({ left: text(c?.unbooked_text), result: text(c?.pnl_text), reason: text(c?.pnl_reason_text) })
+
 function readClosed(c, underlying) {
   if (!c || !Number.isInteger(c.contract_id) || typeof c.contract_text !== 'string' || !Number.isInteger(c.quantity)) return null
   return {
@@ -83,7 +86,7 @@ function readClosed(c, underlying) {
     reasonText: text(c.reason_text), // N-47: the server's settlement / stop sentence, as the builder's closed rows print it
     booked: text(c.booked_text),
     // I-91 (F3): the server's own Unbooked / P&L of a closed leg and its reason, when it sends them; never formed here (ADR-008)
-    unbooked: text(c.unbooked_text), pnl: text(c.pnl_text), pnlReason: text(c.pnl_reason_text),
+    ...(({ left, result, reason }) => ({ unbooked: left, pnl: result, pnlReason: reason }))(closedExtras(c)),
   }
 }
 

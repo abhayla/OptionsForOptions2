@@ -9,6 +9,7 @@
      New file, copy from: none. -->
 <script setup>
 import ListLoadFailed from '@/components/common/ListLoadFailed.vue'
+import LoadFailed from '@/components/common/LoadFailed.vue'
 import { computed, onBeforeUnmount, onMounted, ref, watch } from 'vue'
 import { useRoute } from 'vue-router'
 import api, { NEUTRAL_PARTS, hasShape } from '@/services/api'
@@ -25,7 +26,6 @@ import { PAPER_NO_FIGURE as NO_FIGURE } from '@/lib/paperList'
 import { KITE_POSITIONS_URL } from '@/lib/execute'
 import { useOrderPath } from '@/lib/orderPath'
 import { brokerIsConnected } from '@/lib/brokerConnected'
-import { RETRY_LABEL } from '@/lib/sharedStateText'
 
 const route = useRoute()
 // ADR-330 (10) replaces ADR-201 (2): ONE list for real and paper trades, filtered All / Real / Paper (default All). The old
@@ -156,10 +156,7 @@ onBeforeUnmount(() => {
     </div>
     <div v-if="filter !== 'paper'" :data-state="realState" data-testid="real-state">
     <p v-if="loading" class="text-sm text-ink-muted" data-testid="positions-loading">Reading your positions from Zerodha.</p>
-    <div v-else-if="errorParts && notConnected" data-testid="positions-not-connected">
-      <p class="text-sm text-ink-muted" data-testid="positions-error-what">{{ refusedLine }}</p>
-      <button type="button" class="mt-2 rounded border border-line bg-surface px-2 py-1 text-xs font-medium text-ink" data-testid="positions-error-retry" @click="loadReal">{{ RETRY_LABEL }}</button>
-    </div>
+    <div v-else-if="errorParts && notConnected" data-testid="positions-not-connected"><LoadFailed :text="refusedLine" prefix="positions-error" @retry="loadReal" /></div>
     <ListLoadFailed v-else-if="errorParts" :parts="errorParts" compact prefix="positions-error" @retry="loadReal" />
     <p v-else-if="brokerOff" class="text-sm text-ink-muted" data-testid="positions-not-connected">{{ brokerOffLine }}</p>
     <div v-else-if="result" class="grid gap-4 text-sm">

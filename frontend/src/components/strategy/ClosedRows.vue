@@ -15,8 +15,8 @@
             <td class="num text-right" :data-testid="`${prefix}-exit`"><span :data-testid="`${prefix}-exit-price`">{{ c.average_exit_text }}</span></td>
             <td class="num text-right" :data-testid="`${prefix}-booked`">{{ c.booked_text }}</td>
             <template v-if="extra">
-              <td class="num text-right" :data-testid="`${prefix}-unbooked`">{{ c.unbooked_text ?? NO_FIGURE }}</td>
-              <td class="num text-right" :data-testid="`${prefix}-pnl`">{{ c.pnl_text ?? c.pnl_reason_text ?? NO_FIGURE }}</td>
+              <td class="num text-right" :data-testid="`${prefix}-unbooked`">{{ extrasOf(c).left ?? NO_FIGURE }}</td>
+              <td class="num text-right" :data-testid="`${prefix}-pnl`">{{ extrasOf(c).result ?? extrasOf(c).reason ?? NO_FIGURE }}</td>
             </template>
           </tr>
           <!-- #749: the reason is the closed row's own full-width row (a narrow Exit cell wrapped it) -->
@@ -29,11 +29,11 @@
 
 <script setup>
 import { computed } from 'vue'
-import { PAPER_NO_FIGURE as NO_FIGURE } from '@/lib/paperList'
+import { PAPER_NO_FIGURE as NO_FIGURE, closedExtras as extrasOf } from '@/lib/paperList'
 const props = defineProps({
   rows: { type: Array, default: () => [] },
   prefix: { type: String, default: 'closed' },
 })
 // I-91 (F3): the Unbooked and P&L cells exist only when the server sent a figure or its reason for a row; never an empty cell
-const extra = computed(() => props.rows.some((c) => c.unbooked_text || c.pnl_text || c.pnl_reason_text))
+const extra = computed(() => props.rows.some((c) => { const e = extrasOf(c); return e.left !== null || e.result !== null || e.reason !== null }))
 </script>
