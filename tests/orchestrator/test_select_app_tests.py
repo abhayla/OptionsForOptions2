@@ -79,6 +79,7 @@ PR241_SELECTION = {
     "tests_app/test_stop_fired_message.py",  # W2-A: a new file importing ofo_app.routes.paper
     "tests_app/test_handovers_fe3_1128.py",  # Lane FE3: imports ofo.errors.explanations (changed here)
     "tests_app/test_reasons_fe4_1128.py",  # Lane FE4: imports ofo_app.monitoring_state (changed here)
+    "tests_app/test_held_stop_ra_1128.py",  # Lane RA: imports ofo_app.paper_monitor (changed here)
     "tests_app/test_stored_contract_feed_keys.py",  # issue #500: GET /strategies/{id} and /history, StrategyRefused
     "tests_app/test_stored_chain_real.py",  # PR #580 (I-4): real catalogue_picker readers and routes
     "tests_app/test_strategy_tracking_imports.py",  # issue #500: its scan names ofo_app.catalogue_picker as a source
