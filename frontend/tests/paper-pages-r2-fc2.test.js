@@ -124,3 +124,91 @@ describe('priceNoticeUp follows PriceNotice', () => {
     expect(priceNoticeUp(null, 3)).toBe(false)
   })
 })
+
+// UX-A01 (R2 FC2, PC note): the user's ticks stay across a price pause; a greyed Exit says in words why: nothing ticked, or prices are not live.
+describe('UX-A01 ticks and the reason beside a greyed Exit', () => {
+  const reply = (paused) => {
+    const d = clone()
+    if (paused) {
+      const s = d.strategies.find((x) => x.strategy_id === 1)
+      Object.assign(s, { state: 'PAUSED', total_text: null, total: null, unbooked_text: null, unbooked: null, pause_reason: 'prices_not_live', pause_reason_text: PAUSED, as_of: '2026-11-27T09:57:00Z' })
+      for (const p of s.positions) Object.assign(p, { price_state: p.net_quantity ? 'stale' : null, ltp: null, ltp_text: null })
+    }
+    return d
+  }
+  const exitBtn = (w) => w.get('[data-testid="exit-selected-1"]')
+  const reason = (w) => w.get('[data-testid="paper-group"][data-strategy="1"]').find('[data-testid="paper-exit-reason"]')
+  it('nothing ticked: the button is off and says to tick a leg', async () => {
+    answers['GET /paper/strategies'] = () => Promise.resolve({ data: reply(false) })
+    const w = await show()
+    expect(exitBtn(w).attributes('disabled')).toBeDefined()
+    expect(reason(w).text()).toBe('Tick a leg to exit.')
+  })
+  it('a server pause (PAUSED book): the tick stays', async () => {
+    let paused = false
+    answers['GET /paper/strategies'] = () => Promise.resolve({ data: reply(paused) })
+    const w = await show()
+    await w.get('[data-testid="select-leg-1-776"]').setValue(true)
+    paused = true
+    await vi.advanceTimersByTimeAsync(5000)
+    await flushPromises()
+    expect(w.get('[data-testid="select-leg-1-776"]').element.checked).toBe(true)
+    expect(exitBtn(w).text()).toBe('Exit (1)')
+  })
+  it('a failed read after a good one: the tick stays; Exit is off for "prices are not live" and the words carry the time of the last good prices', async () => {
+    let fail = false
+    answers['GET /paper/strategies'] = () => (fail ? Promise.reject({ message: 'x', status: 500, parts: null }) : Promise.resolve({ data: { ...reply(false), answered_at: '2026-11-27T09:57:00Z' } }))
+    const w = await show()
+    await w.get('[data-testid="select-leg-1-776"]').setValue(true)
+    fail = true
+    await vi.advanceTimersByTimeAsync(5000)
+    await flushPromises()
+    expect(w.get('[data-testid="select-leg-1-776"]').element.checked).toBe(true)
+    expect(exitBtn(w).text()).toBe('Exit (1)')
+    expect(exitBtn(w).attributes('disabled')).toBeDefined()
+    expect(reason(w).text()).toContain('Prices are not live')
+    expect(reason(w).text()).not.toContain('Tick a leg')
+    const asOf = w.get('[data-testid="paper-group"][data-strategy="1"]').get('[data-testid="paper-exit-asof"]').text()
+    expect(asOf).toBe('Last prices: 15:27:00 IST.')
+  })
+})
+
+// O-1 / board I-157 (TD walk): the paused line carries the as-of date and time, through the one formatter (priceState.pausedText).
+describe('O-1 the paused line has its as-of time', () => {
+  it('a failed read after a good one: totals and the card say "... paused ..., as of 27 Nov 2026, 15:27:00 IST" (the last good prices)', async () => {
+    let fail = false
+    answers['GET /paper/strategies'] = () => (fail ? Promise.reject({ message: 'x', status: 500, parts: null }) : Promise.resolve({ data: { ...clone(), answered_at: '2026-11-27T09:57:00Z' } }))
+    const w = await show()
+    fail = true
+    await vi.advanceTimersByTimeAsync(5000)
+    await flushPromises()
+    expect(w.get('[data-testid="totals-reason"]').text()).toBe(`${PAUSED}, as of 27 Nov 2026, 15:27:00 IST`)
+    expect(w.get('[data-testid="paper-group"][data-strategy="1"]').get('[data-testid="paper-total-reason"]').text()).toBe(`${PAUSED}, as of 27 Nov 2026, 15:27:00 IST`)
+  })
+  it('no good read ever (nothing to date it by): the sentence alone, never a made-up time', async () => {
+    answers['GET /paper/strategies'] = () => Promise.reject({ message: 'x', status: 500, parts: null })
+    const w = await show()
+    expect(w.text()).not.toContain('as of')
+  })
+})
+
+// UX-A02 (R2 FC2; the Stop price box half is Lane FA2's PaperStops.vue): the list hands each open leg's current price text as `currentPriceText`.
+describe('UX-A02 current price text for the Stops form', () => {
+  it('passes { contractId: ltp text } for the live open legs only', async () => {
+    answers['GET /paper/strategies'] = () => Promise.resolve({ data: clone() })
+    const seen = []
+    const router = createRouter({ history: createMemoryHistory(), routes: [{ path: '/', component: PaperStrategies }, { path: '/strategy/builder', component: { template: '<div/>' } }] })
+    router.push('/')
+    await router.isReady()
+    const Stub = { name: 'PaperStops', props: ['strategyId', 'currentPriceText'], setup(p) { seen.push(p) }, template: '<div data-testid="stops-stub" />' }
+    const w = mount(PaperStrategies, { global: { plugins: [router], stubs: { PaperStops: Stub } } })
+    await flushPromises()
+    await w.get('[data-testid="stops-open-1"]').trigger('click')
+    await flushPromises()
+    const p = seen.at(-1)
+    const d = clone().strategies.find((x) => x.strategy_id === 1)
+    const want = Object.fromEntries(d.positions.filter((x) => x.net_quantity !== 0 && x.price_state === 'live').map((x) => [String(x.contract_id), x.ltp_text]))
+    expect(Object.keys(want).length).toBeGreaterThan(0)
+    expect(p.currentPriceText).toEqual(want)
+  })
+})

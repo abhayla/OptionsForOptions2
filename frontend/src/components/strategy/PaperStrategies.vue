@@ -93,7 +93,7 @@
               <button type="button" class="rounded border border-line px-2 py-1" :aria-pressed="!!greeksOpen[g.id]" :data-testid="`greeks-toggle-${g.id}`" @click="greeksOpen = { ...greeksOpen, [g.id]: !greeksOpen[g.id] }">Greeks</button>
             </dl>
             <div v-if="greeksOpen[g.id]" class="mt-2" :data-testid="`paper-greeks-${g.id}`">
-              <p v-if="stale || !g.greeks" class="text-xs text-ink-muted" data-testid="paper-greeks-reason">{{ PAPER_NO_FIGURE }} {{ stale ? PAPER_PAUSED : quiet(g.greeksReason) ? '' : g.greeksReason }}</p>
+              <p v-if="stale || !g.greeks" class="text-xs text-ink-muted" data-testid="paper-greeks-reason">{{ PAPER_NO_FIGURE }} {{ stale ? pausedNow : quiet(g.greeksReason) ? '' : g.greeksReason }}</p>
               <table v-else class="w-full text-left">
                 <thead><tr><th>Instrument</th><th v-for="c in GREEK_COLUMNS" :key="c.key">{{ c.key === 'theta' && g.decayLeftToday ? DECAY_LEFT_TODAY_HEADING : c.label }}</th></tr></thead>
                 <tbody>
@@ -154,12 +154,13 @@
                 <PlanDoor v-if="g.openCount" :strategy-id="g.id" tag="paper" />
                 <button v-if="g.openCount" type="button" class="rounded border border-line px-2 py-1" :aria-expanded="!!stopsOpen[g.id]" :data-testid="`stops-open-${g.id}`" @click="stopsOpen = { ...stopsOpen, [g.id]: !stopsOpen[g.id] }">Stops</button>
                 <ExitButton v-if="g.openCount" :blocked="exitGate.blocked.value" :reason="exitGate.reason.value ?? (tickedOpen(g).length ? null : EXIT_TICK_TEXT)" :extra-disabled="!tickedOpen(g).length" class="rounded border border-line px-2 py-1" :data-testid="`exit-selected-${g.id}`" @click="ask(g, tickedOpen(g))">Exit ({{ tickedOpen(g).length }})</ExitButton>
+                <p v-if="exitGate.reason.value === NOT_LIVE_EXIT && lastGoodClock" class="text-xs text-ink-muted" data-testid="paper-exit-asof">Last prices: {{ lastGoodClock }} IST.</p>
               </div>
             </div>
             <!-- P10 (ADR-330 (13)): the Plan watch of an open strategy; it re-reads on this list's own good-read token -->
             <MonitoringBadge v-if="g.openCount" :entry="monitoring.entryOf(g.id)" class="mt-2" />
             <PlanWatch v-if="g.openCount" :strategy-id="g.id" :read-tick="goodReadToken" :stale="stale" :view="planViews.get(String(g.id)) ?? null" compact class="mt-2" />
-            <PaperStops v-if="stopsOpen[g.id]" :strategy-id="g.id" :underlying="g.underlying" :legs="stopLegs(g)" :leg-names="legNamesOf(g)" :good-read-token="goodReadToken" @changed="onStopsChanged" />
+            <PaperStops v-if="stopsOpen[g.id]" :strategy-id="g.id" :underlying="g.underlying" :legs="stopLegs(g)" :leg-names="legNamesOf(g)" :current-price-text="currentPriceTextOf(g)" :good-read-token="goodReadToken" @changed="onStopsChanged" />
           </template>
         </div>
       </template>
@@ -187,10 +188,11 @@ import PlanDoor from '@/components/strategy/PlanDoor.vue'
 import AfterChargesTap from '@/components/common/AfterChargesTap.vue'
 import PaperConfirmDialog from '@/components/strategy/PaperConfirmDialog.vue'
 import HeldNote from '@/components/strategy/HeldNote.vue'
-import { PRICE_GREYED_CLASS, pausedOnce, priceScope } from '@/lib/priceState'
+import { PRICE_GREYED_CLASS, pausedOnce, pausedText, priceScope } from '@/lib/priceState'
 import { ALL_CLOSED_TEXT, DECAY_LEFT_TODAY_HEADING, GREEK_COLUMNS, PAPER_NO_FIGURE, PAPER_PAUSED, SHOW_CLOSED_LABEL, exitRowsFor, isOpenGroup, readPaperList, visibleGroups } from '@/lib/paperList'
 import { usePriceFreshness } from '@/lib/priceState'
 import { createExitRecords } from '@/lib/exitRecord'
+import { NOT_LIVE_EXIT } from '@/lib/priceState'
 import { EXIT_TICK_TEXT, exitEndText, exitLegsNotLive, usePaperExit } from '@/lib/usePaperExit'
 import ExitButton from '@/components/strategy/ExitButton.vue'
 import { usePaperRefresh } from '@/lib/usePaperRefresh'
@@ -208,7 +210,7 @@ import { signOf } from '@/lib/chartCard'
 const compactReasons = (g) => {
   const out = []
   if (!stale.value && g.totalAfter.reason) out.push({ id: 'paper-total-reason', text: g.totalAfter.reason })
-  if (stale.value || g.totalAfter.text === null) out.push({ id: 'paper-compact-reason', text: stale.value ? PAPER_PAUSED : g.stateText || NO_TOTAL })
+  if (stale.value || g.totalAfter.text === null) out.push({ id: 'paper-compact-reason', text: stale.value ? pausedNow.value : g.stateText || NO_TOTAL })
   const keep = pausedOnce(out.map((o) => o.text))
   return out.filter((o) => !quiet(o.text)).filter((o, i) => keep.includes(o.text) && out.findIndex((x) => x.text === o.text) === i)
 }
@@ -256,7 +258,7 @@ const totalFigures = [
 const TODAY_FIGURE = { id: 'today', field: 'total', label: 'Today' } // D-68
 const AFTER_OF = { total: 'totalAfter', booked: 'bookedAfter', unbooked: 'unbookedAfter' } // u124: Booked / Unbooked follow the same rule
 const shownFig = (src, f) => {
-  if (stale.value) return { label: f.label, text: null, reason: PAPER_PAUSED, breakdown: null }
+  if (stale.value) return { label: f.label, text: null, reason: pausedNow.value, breakdown: null }
   if (AFTER_OF[f.field]) {
     const a = src[AFTER_OF[f.field]]
     return { label: `${f.label} ${a.label}`.trim(), text: a.text, reason: quiet(a.reason) ? null : a.reason, breakdown: a.breakdown }
@@ -329,6 +331,9 @@ watch([() => planIds.value.join(','), goodReadToken], readPlanBatches, { immedia
 onBeforeUnmount(() => { while (batchKeys.length) cancelPlanWatchRead(batchKeys.pop()) })
 const stopsOpen = ref({})
 // R-10: a Stop row for each OPEN contract, keyed by the contract id the reply carries (a digit string sent as is)
+// UX-A02 (R2 FC2; Lane FA2 builds the Stop price box half): what each open leg costs NOW, as the server's own text, keyed by the contract id
+// string (the key `legs[].contractId` uses). A leg with no live price is absent from the map: the Stop box shows nothing for it, never a made-up figure.
+const currentPriceTextOf = (g) => Object.fromEntries(g.positions.filter((p) => p.open && p.ltpText !== null && p.live).map((p) => [String(p.contractId), p.ltpText]))
 const legNamesOf = (g) => Object.fromEntries(g.positions.map((p) => [p.contractId, p.name])) // D-44: the one leg label, for the form and the list
 const stopLegs = (g) => g.positions.filter((p) => p.open).map((p) => ({ index: p.contractId, label: legNamesOf(g)[p.contractId], contractId: String(p.contractId) }))
 
@@ -358,6 +363,10 @@ const dialogError = computed(() => { const r = confirm.value ? exitRec.cur(confi
 const dialogState = ref(PAPER_STATE.READY) // fix/paper-dialog-safe: the dialog's answer state (tracking.js PAPER_STATE)
 const router = useRouter()
 
+const lastGoodAt = ref(null)
+// O-1: the paused sentence of a failed read carries the time of the last good prices (the one formatter, priceState.pausedText); none known: the sentence alone
+const pausedNow = computed(() => pausedText(lastGoodAt.value))
+const lastGoodClock = computed(() => (lastGoodAt.value ? istClock(lastGoodAt.value) : null)) // never a load time: the answer's own
 function show({ data, token }) {
   const hadExit = !props.compact && router?.currentRoute.value.query.exit !== undefined
   const exitId = takeExitParam() ?? takeExitFor()
@@ -370,6 +379,7 @@ function show({ data, token }) {
     today.value = read.today
     errorParts.value = null
     if (dialogState.value === PAPER_STATE.REFUSED) dialogState.value = PAPER_STATE.READY // a good read unlocks a refused, unchanged Confirm; the server's text stays
+    lastGoodAt.value = typeof data?.answered_at === 'string' ? data.answered_at : null // UX-A01: the time of the prices the page still shows
     goodReadToken.value = token // the token travels with the answer from the read that made it
     settle(items.value, token?.seq ?? 0)
     openExitFromLink(exitId)

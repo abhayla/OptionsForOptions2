@@ -3,8 +3,8 @@
      read or computed here (ADR-008); there is no order or execute control (ADR-002). -->
 <script setup>
 import { computed, onBeforeUnmount, onMounted, ref, watch } from 'vue'
+import ListLoadFailed from '@/components/common/ListLoadFailed.vue'
 import api, { NEUTRAL_PARTS } from '@/services/api'
-import ErrorMessage from '@/components/common/ErrorMessage.vue'
 import PageHeader from '@/components/common/PageHeader.vue'
 import LiveStrategyCard from '@/components/live/LiveStrategyCard.vue'
 import PriceNotice from '@/components/states/PriceNotice.vue'
@@ -65,8 +65,8 @@ watch(current, (i) => {
 const capped = computed(() => followed.value.length > MAX_CARDS)
 
 onBeforeUnmount(() => { clearTimeout(timer); clearTimeout(marketTimer) })
-onMounted(async () => {
-  readMarket()
+async function loadList() {
+  state.value = 'loading'
   try {
     all.value = noteShownDate((await api.get('/strategies')).data).strategies
     state.value = 'ready'
@@ -75,7 +75,8 @@ onMounted(async () => {
     errorParts.value = e?.parts ?? NEUTRAL_PARTS
     state.value = 'error'
   }
-})
+}
+onMounted(() => { readMarket(); loadList() })
 </script>
 
 <template>
@@ -84,7 +85,7 @@ onMounted(async () => {
     <!-- User test 2026-10-30: one market-closed banner per screen (ADR-177), not one per card -->
     <PriceNotice class="mb-4" :answer="marketAnswer" :affected="scope.count || null" />
     <p v-if="state === 'loading'" class="text-sm text-ink-muted" data-testid="live-list-loading">Loading your strategies...</p>
-    <ErrorMessage v-else-if="state === 'error'" :parts="errorParts" data-testid="state-error" />
+    <ListLoadFailed v-else-if="state === 'error'" :parts="errorParts" prefix="live-list" data-testid="state-error" @retry="loadList" />
     <p v-else-if="!followed.length" class="rounded-lg border border-line bg-surface px-4 py-8 text-center text-sm text-ink-muted" data-testid="live-empty">
       <template v-if="all.length">{{ LIVE_NOTHING_RUNNING_TEXT }} Finished trades are on <router-link to="/strategies/completed-strategies" class="link">Completed Strategies</router-link>.</template>
       <template v-else>No saved strategies yet. Build one in the <router-link to="/strategy/builder" class="link">Strategy Builder</router-link>.</template>

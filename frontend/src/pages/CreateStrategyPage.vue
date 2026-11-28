@@ -135,6 +135,7 @@ const readIndices = () => read('indices', async () => {
 })
 const levelOf = (idx) => (Array.isArray(idx) ? (idx.find((i) => i.underlying === underlying.value)?.value ?? null) : null)
 
+const listNotice = ref(null)
 async function loadExpiries() {
   const [ex, idx] = await Promise.all([
     read('expiries', async () => (await api.get(`/catalogue/${underlying.value}/expiries`)).data),
@@ -142,6 +143,7 @@ async function loadExpiries() {
   ])
   expiries.value = Array.isArray(ex?.expiries) ? ex.expiries : []
   shownToday.value = ex?.today ?? null
+  listNotice.value = typeof ex?.list_notice === 'string' && ex.list_notice.trim() ? ex.list_notice.trim() : null // ADR-330 (61): the server's line, as sent
   setShownDate(shownToday.value)
   current.value = levelOf(idx)
   expiry.value = ''
@@ -264,6 +266,7 @@ v-for="v in MARKET_VIEWS" :key="v.key" type="button" class="min-h-[44px] w-full 
       </div>
 
       <div v-else-if="step === 3" class="mt-4 grid justify-items-start gap-4 rounded-lg border border-line bg-surface p-4" data-testid="step-expiry">
+        <p v-if="listNotice" class="text-sm text-ink-muted" role="status" data-testid="contract-list-notice">{{ listNotice }}</p>
         <label class="field-label grid gap-1">Index
           <select v-model="underlying" class="field min-h-[44px] w-64" data-testid="pick-underlying" @change="loadExpiries">
             <option v-for="u in UNDERLYINGS" :key="u" :value="u">{{ u }}</option>

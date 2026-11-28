@@ -63,7 +63,7 @@ describe('I-76 Alerts > Active while the read is pending', () => {
     await flushPromises()
     expect(w.find('[data-testid="alerts-empty"]').exists()).toBe(false)
     expect(w.find('[data-testid="alerts-loading"]').exists()).toBe(false)
-    expect(w.find('[data-testid="alerts-error-what"]').exists()).toBe(true)
+    expect(w.find('[data-testid="alerts-error-error"]').exists()).toBe(true)
   })
 })
 

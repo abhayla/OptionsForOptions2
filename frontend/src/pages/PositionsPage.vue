@@ -8,10 +8,10 @@
      to the strategy's Execute screen where Check is. Both Positions menu items show this same strategy-grouped page.
      New file, copy from: none. -->
 <script setup>
+import ListLoadFailed from '@/components/common/ListLoadFailed.vue'
 import { computed, onBeforeUnmount, onMounted, ref, watch } from 'vue'
 import { useRoute } from 'vue-router'
 import api, { NEUTRAL_PARTS, hasShape } from '@/services/api'
-import ErrorMessage from '@/components/common/ErrorMessage.vue'
 import PageHeader from '@/components/common/PageHeader.vue'
 import PriceNotice from '@/components/states/PriceNotice.vue'
 import { readAnswer } from '@/composables/useIndexLive'
@@ -144,7 +144,7 @@ onBeforeUnmount(() => {
     </div>
     <div v-if="filter !== 'paper'" :data-state="realState" data-testid="real-state">
     <p v-if="loading" class="text-sm text-ink-muted" data-testid="positions-loading">Reading your positions from Zerodha.</p>
-    <ErrorMessage v-else-if="errorParts" :parts="errorParts" compact prefix="positions-error" />
+    <ListLoadFailed v-else-if="errorParts" :parts="errorParts" compact prefix="positions-error" @retry="loadReal" />
     <div v-else-if="result" class="grid gap-4 text-sm">
       <div class="flex flex-wrap items-center justify-between gap-x-6 gap-y-2 rounded-lg border border-line bg-surface px-4 py-3">
         <p class="text-ink-muted">Read from Zerodha at <span class="num font-medium text-ink" data-testid="positions-read-at">{{ istTime(result.read_at) }}</span>.</p>

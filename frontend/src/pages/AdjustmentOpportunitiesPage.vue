@@ -6,7 +6,7 @@
   <section ref="root" class="p-4" data-testid="opportunities-page">
     <PageHeader parent="Positions" title="Adjustment opportunities" />
     <p v-if="state === 'loading'" class="mt-2 text-sm text-ink-muted" data-testid="opp-loading">Loading.</p>
-    <ErrorMessage v-else-if="state === 'error'" :parts="errorParts" prefix="opp-error" data-testid="opp-error" />
+    <ListLoadFailed v-else-if="state === 'error'" :parts="errorParts" prefix="opp-error" data-testid="opp-error" @retry="load" />
     <template v-else>
       <p v-if="reply.totals" class="mt-2 text-xs text-ink-muted" data-testid="opp-totals">{{ reply.totals.text }}</p>
       <ul class="mt-2 flex flex-wrap gap-2" data-testid="opp-counts">
@@ -88,6 +88,7 @@
 
 <script setup>
 import { computed, inject, nextTick, onMounted, reactive, ref } from 'vue'
+import ListLoadFailed from '@/components/common/ListLoadFailed.vue'
 import { RouterLink, routeLocationKey } from 'vue-router'
 import ErrorMessage from '@/components/common/ErrorMessage.vue'
 import PageHeader from '@/components/common/PageHeader.vue'
@@ -127,6 +128,7 @@ const picked = inject(routeLocationKey, null)?.query?.strategy ?? null
 const linkOf = (g) => compareAllUrl(g.strategy_id, g.records.filter((r) => r.can_act).map((r) => r.id))
 
 async function load() {
+  state.value = 'loading'
   try {
     reply.value = (await props.client.get('/adjustment-opportunities')).data
     pageAt.value = 0 // the list was replaced: start at its first page, never on a page that may not exist now

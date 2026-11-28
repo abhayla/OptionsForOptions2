@@ -1,95 +1,110 @@
-STATUS 05:30 | item 1: Passed in cloud (paper-alerts.r2-1128.test.js, 4) | item 2: D-6, D-7, D-8, D-11, D-13 Passed in cloud; D-4 Blocked (not my file) | item 3: UX-B04, UX-A09 Passed in cloud; UX-A12 no change in my files | next push: none, queue done | blocker: none
+STATUS 06:40 | queue 1 (items 1-3): Passed in cloud, pushed at 89edbfe | queue 2 (coordinator 05:25 and 06:15): UX-A01, UX-A05, (61) line, D-TD-2 (7 of 8 lists), O-1, UX-A02 pass-through: Passed in cloud; UX-A19: test red, fix is in AppHeader.vue (not mine); #870 page half: not changed, see below; UX-B06: closed as designed | next push: this one | blocker: none (coordinator's send_message to the parent was refused: untrusted device; this file is the report)
 
 # Lane FC2: pages (Alerts, Positions, strategy lists, chart)
 
 Branch `fix/r2-pages-1128` from `origin/fix/r2-small-screens-1128`. Paper only; no broker call anywhere; no money arithmetic added.
 
-## Status per item
+## Status per item (push 1, head 89edbfe, gate TOTAL PASS)
 
 | Item | State | Test (cloud) |
 |---|---|---|
 | 1 Alerts > History loading line | Passed in cloud | `paper-alerts.r2-1128.test.js` 4 passed, 0 `it.fails` left (the TB `it.fails` is a plain `it`; seen red before the fix) |
-| 1 Alerts > Active (UX-A07, UX-A29) | Passed in cloud, no code change needed | same file: the Active cases (8 s pending, empty, failed) were already green on this base; they stay as the proof |
+| 1 Alerts > Active (UX-A07, UX-A29) | Passed in cloud, no code change needed | same file: Active cases (8 s pending, empty, failed) were already green on this base |
 | D-6 OI line printed twice | Passed in cloud | `payoff-oi-r2-fc2.test.js` 4 passed |
 | D-7 `NIFTYRunning` | Passed in cloud | `paper-pages-r2-fc2.test.js` (D-7) |
 | D-8 empty cells in a closed row | Passed in cloud | `paper-pages-r2-fc2.test.js` (D-8) |
 | D-11 paused sentence twice, compact row | Passed in cloud | `paper-pages-r2-fc2.test.js` (D-11) |
 | D-13 Real part never re-read | Passed in cloud | `positions-real-reread-r2-fc2.test.js` 5 passed |
-| D-4 Add to Paper after the close | Blocked: the dialog is `PaperConfirmDialog.vue` (Lane FA2); `git grep "Add to Paper"` finds no other dialog | exact change below |
-| UX-B04 step 4 progress words | Passed in cloud | `create-strategy.test.js` -t UX-B04, 1 passed |
-| UX-A09 one notice for the page | Passed in cloud | `paper-pages-r2-fc2.test.js` (UX-A09 x5 + `priceNoticeUp`) 9 passed in the file |
-| UX-A12 settled trade | No change: its words ("No draft strategy is open...", Plan watch) are in Lane FB2 and FC3 files; nothing on Positions or the lists | none |
-| UX-AF2, UX-B03 | Not retested (time was spent on the items above; both are in the build per the brief) | none |
+| D-4 Add to Paper after the close | Blocked: the dialog is `PaperConfirmDialog.vue` (Lane FA2); no other dialog exists | exact change below |
+| UX-B04 step 4 progress words | Passed in cloud | `create-strategy.test.js` -t UX-B04 |
+| UX-A09 one notice for the page | Passed in cloud | `paper-pages-r2-fc2.test.js` (UX-A09, 5 cases + `priceNoticeUp`) |
+| UX-A12 settled trade | No change: its words are in Lane FB2 and FC3 files | none |
 
-Whole frontend suite on the final tree: 320 files, 3788 tests passed. ESLint on `src` and my tests: only one warning, in `TrackingPanel.vue` (Lane FC3's file, `LEG_PNL_MISSING` unused), none in mine.
+## Status per item (push 2: the coordinator's additions of 05:25 and 06:15 IST)
 
-Browser checks (preinstalled Chromium against `vite preview` of a fresh build, `/api` answered by test mocks), shots in `docs/design/next-batch-2026-11-26/screens-fc2/`:
-- `alerts-history-loading.png` (24 KB): at 1.5 s with both reads pending the History tab says "Loading..." and not "No stops or expiry settlements yet."
-- `positions-paused-one-notice.png` (268 KB): two paused strategies; the paused sentence appears once on the page (counted in the page text: 1; before the fix 2 in the browser, 8 in the unit mount), "NIFTYRunning" absent, the closed row shows "—" in Unbooked and P&L.
-- `create-strategy-step4-progress.png` (38 KB): step 4 with the template list pending reads "Loading... Reading the strategy list. This can take up to 20 seconds."
+| Item | State | Test (cloud) |
+|---|---|---|
+| (61) contract-list line on Option Chain and Create Strategy | Passed in cloud. The server's `list_notice` on `GET /catalogue/<u>/expiries` is shown as sent (Option Chain under the header; Create Strategy step 3); nothing when null, empty or not text | `option-chain.test.js` "ADR-330 (61)" 5 cases; `create-strategy.test.js` "ADR-330 (61)" 4 cases (each seen red first for the "shows the line" case) |
+| UX-A01 ticks and the words beside a greyed Exit | Passed in cloud. Ticks already survive a pause and a failed read (proven by test); the missing part was the time: a greyed Exit under "prices are not live" now has a second line "Last prices: HH:MM:SS IST." from the last good answer. "Nothing ticked" keeps "Tick a leg to exit." | `paper-pages-r2-fc2.test.js` UX-A01 (3 cases) |
+| UX-A19 (I-72) Create Strategy clicked twice leaves the menu open | Test written and RED on this base, kept as `it.fails` (TB's convention) because the fix is in `AppHeader.vue`, not in my list | `nav-same-page-r2-fc2.test.js`; body fails with "expected true to be false" at the menu after a same-page item click (checked by running the body as a plain `it`) |
+| UX-A05 Plan door on the Live card | Passed in cloud: a running trade (real or paper) shows the `Plan` button (the one `PlanDoor.vue`, same sheet as Positions); none on Draft, Completed or an errored card | `live-card-links-s14.test.js` UX-A05 (6 cases; the two "shows" cases red first) |
+| D-TD-2 (I-86) six list pages, no Retry, three wordings | Passed in cloud for Live Strategies, Alerts > Active, Alerts > History, Positions, Adjustment opportunities, Home (new `ListLoadFailed.vue`: with no server message ONE sentence and Retry; with a server message its four parts stay and Retry sits under them) and the Option Chain (Retry added; its own sentence stays). My Strategies and Completed Strategies already had Retry (`MyStrategiesPage`). NOT done: Adjustments (playbook editor page, see Not done) | `list-load-failed-r2-fc2.test.js` 14 passed (6 pages x {down, Retry recovers; server refusal keeps four parts and Retry} + 2 unit); `option-chain.test.js` "D-TD-2" 1 passed |
+| O-1 (I-157) paused line has no as-of | Passed in cloud for the failed-read path: the paused sentence now reads ", as of <date>, <time> IST" from the last good answer, through `pausedText` (the one formatter); no good read yet: the sentence alone. The server-paused path already printed it when the server sent `as_of` | `paper-pages-r2-fc2.test.js` O-1 (2 cases); `paper-strategies.test.js` D-05 r3 expectation updated to the dated sentence |
+| O-3, O-4, O-6 | Not in my files, see "For the owner lane" | none |
+| UX-A02 current price into PaperStops | Built on my side: `PaperStrategies.vue` passes `current-price-text` = `{ "<contractId>": "<ltp text>" }` for the live open legs | `paper-pages-r2-fc2.test.js` UX-A02 (1 case; PaperStops stubbed) |
+| #870 the page keeps re-reading after an exit of unknown outcome | Not changed. The Positions list already re-reads every 5 s with no gate (`usePaperRefresh`, no `enabled`), and the unknown outcome is decided only by a good re-read that started after the reply (Lane U); I did not add a test that drives the whole exit flow, so this is code-read, not proven here | none |
+| UX-B06 running trade ticked with a draft, "Delete selected (2)" | Closed by Lane FC's bulk-delete work on this base, as designed (ADR-330 (8)): a running trade can be ticked and the confirmation says how many are running ("Delete 3 strategies? 1 of them is running.") | `my-strategies-bulk.test.js` "confirmation names the count and how many are running; singular for 1; no running clause at 0" (1 passed, run again this push). If the PC meant a running trade must NOT be deletable in bulk, that is a spec change for the owner |
+
+Whole frontend suite on the final tree: 322 files, 3825 tests passed.
+
+Browser checks (Chromium against `vite preview` of a fresh build, `/api` answered by mocks), shots in `docs/design/next-batch-2026-11-26/screens-fc2/`: `alerts-history-loading.png`, `positions-paused-one-notice.png`, `create-strategy-step4-progress.png` (push 1). Push 2 screens (Live card Plan door, list Retry): not taken, see Not done.
 
 ## For the owner lane
 
 **D-4 (Lane FA2, `PaperConfirmDialog.vue`; Lane FB2 for any wiring in `SaveDraftBar.vue`).** The Exit dialog already asks the one market answer (`GET /market/exit-state`) and greys Confirm when it says closed. The Add to Paper dialog (first basket, add rows) never asks it, which is why it opens with an empty Price box and the route then refuses with MARKET_DATA_102.
-- `PaperConfirmDialog.vue`, `askMarket()` (about line 147): change
-  `if (!props.open || !rows.value.some((r) => r.kind === 'exit')) { ... return }`
-  to
-  `if (!props.open || !rows.value.length) { ... return }`
-  so every dialog with rows (adds and exits) asks once per opening. `canConfirm` (about line 215) already returns false for `closed`, `checking` and `unreadable`, and `marketLine` already prints the server's sentence ("The market is closed. Exits can be placed from 09:15 on <next trading day>." per (60)). For an entry the server sentence may say "Exits"; if the owner wants "Orders can be placed from 09:15 on ...", that is the server's one sentence (Lane FD2), not a second wording in the browser.
-- Same file, Price input: while `marketState` is `closed` or `unreadable`, an empty Price box must have the market line beside it (it does once the change above is made, because `marketLine` is printed in the footer); if a draft has no planned entry and the market is open, `PAPER_PRICE_REASON` ("Enter a price in steps of 0.05") stays as is.
-- Failing test to add there (Lane FA2): mount the dialog with one `kind: 'open'` row, `GET /market/exit-state` answering `{closed: true, sentence: 'The market is closed. ...'}`; expect `paper-market-closed` shows the sentence and `paper-confirm-button` is disabled; with `{closed: false}` it is enabled once the price is valid.
+- `askMarket()` (about line 147): change `if (!props.open || !rows.value.some((r) => r.kind === 'exit')) { ... return }` to `if (!props.open || !rows.value.length) { ... return }` so every dialog with rows asks once per opening. `canConfirm` already returns false for `closed`, `checking` and `unreadable`, and `marketLine` already prints the server's sentence. For an entry the sentence may say "Exits"; if the owner wants "Orders can be placed from 09:15 on ...", that is the server's one sentence (Lane FD2).
+- Test to add (FA2): one `kind: 'open'` row, `GET /market/exit-state` answering `{closed: true, sentence: ...}`; expect `paper-market-closed` shows the sentence and `paper-confirm-button` is disabled; with `{closed: false}` it is enabled once the price is valid.
 
-**`PriceNotice.vue` (shared, not mine):** my new `priceNoticeUp(answer, affected)` in `lib/priceState.js` repeats its show/hide rule so the Positions list can stay quiet exactly when the page notice speaks. When a lane owns `PriceNotice.vue`, it should call that helper instead of keeping its own copy, so the two cannot drift.
+**UX-A19 (`AppHeader.vue`, whoever owns the shell).** The menu closes only when `route.fullPath` changes (watch, about line 228). A click on the item of the page already shown navigates nowhere, so the menu stays open. One-line fix: on the `router-link` of the menu items (about line 405, `data-testid="nav-menu-item"`) add `@click="closeMenu()"`. Then change `it.fails` to `it` in `frontend/tests/nav-same-page-r2-fc2.test.js`.
 
-**`PositionsTotals.vue` (not in my edit list):** I did not touch it. The list now hands it a Paper total with no paused sentence when two or more strategies are paused (the page notice says it), so the total shows a dash with no reason line under it.
+**O-3 (FA2, `PaperConfirmDialog.vue`):** the "Prices are not live" sentence is printed although one contract only has no price; name the contract (the dialog already has the leg names it builds `exitEndText` from).
+**O-4 (FB2, builder tiles/table):** the table total does not move with the booked switch (it always includes booked); the OFF state prints whole rupees, ON prints paise. The spec does not say; owner to decide.
+**O-6 (FA2, `PaperStops.vue`):** the status after Save says `24000` while the list says `24,000.00`; use the one number format for both.
+**UX-A02 (FA2, `PaperStops.vue`):** declare the prop `currentPriceText` as `{ type: Object, default: () => ({}) }` (map of contract id string to the server's price text, same key as `legs[].contractId`); until it exists Vue puts it on the root as a plain attribute (harmless).
+**`PriceNotice.vue` (shared):** should call `priceNoticeUp` from `lib/priceState.js` instead of keeping its own copy of the rule (see push 1).
+**`PositionsTotals.vue` (not in my list):** untouched; the list hands it a Paper total with no paused sentence when two or more strategies are paused.
+**`strategies/adjustments` (Adjustments page):** no Retry yet, see Not done.
 
 ## Decided for the owner
 
-1. **D-4 decided as (60) says for the Exit dialog** (Spec basis: ADR-330 (60), (58) paper equals real): when the market is closed the Add to Paper dialog opens, shows the legs, shows the server's market-closed sentence (the one `GET /market/exit-state` answer, same source as the Exit dialog) and its Confirm is greyed; no empty Price box without a reason line. Not built here (file belongs to Lane FA2); the exact change is above.
-2. **D-8:** a closed leg row shows its booked figure, and "—" (the app's one dash) in Unbooked and P&L. It does not repeat the booked figure in P&L, so no figure appears twice. (Spec basis: ADR-330 (62) booked result; "an empty cell is never shown", brief.)
-3. **D-6:** the OI line prints the sentence once; if the server's reason already starts with it, the reason is printed as sent.
-4. **D-11:** where several lines under one compact row each say the book is paused, the one with the "as of" time is printed (`pausedOnce`, `lib/priceState.js`).
-5. **D-13:** the Real part is re-read every 30 s, at once on the browser's `offline` and `online` events, and a figure is hidden after 90 s (the server's `STALE_AFTER_SECONDS`) from the page's own receipt of it, so a hung read cannot keep an old number up. A refused read shows the not-connected message and a dash (the page already did this on first load). Timers and listeners are removed when the page is left; an answer that arrives later is dropped. (Spec basis: ADR-330 (24) real figures from Zerodha, ADR-016 Zerodha is the authority.)
-6. **UX-A09:** with two or more open paper strategies paused, the page says the paused sentence once (with its "as of" time, from the strategies' own sentence); tiles are greyed and carry no sentence; figures show a dash with no repeated reason. With exactly one paused strategy, that tile keeps its own line, as ADR-330 (56) says. When the page's own price notice is already showing, the list adds none. A failed refresh (a list held, figures paused) keeps its banner and today's rules; I did not change it.
+1. **D-4** as (60) says for the Exit dialog (Spec basis: ADR-330 (60), (58)): the Add to Paper dialog opens, shows the legs and the server's market-closed sentence, and its Confirm is greyed; no empty Price box without a reason line. Not built here (FA2's file); the exact change is above.
+2. **D-8:** a closed leg row shows its booked figure and "—" (the app's one dash) in Unbooked and P&L; the booked figure is not repeated in P&L.
+3. **D-6:** the OI line prints the sentence once; a server reason that already starts with it is printed as sent.
+4. **D-11:** where several lines under one compact row say the book is paused, the one with the "as of" time is printed (`pausedOnce`).
+5. **D-13:** Real part re-read every 30 s and on the browser's `offline` / `online` events; a figure older than 90 s (the server's `STALE_AFTER_SECONDS`) is hidden; a refused read shows the not-connected message and a dash; timers and listeners go when the page is left. (Spec basis: ADR-330 (24), ADR-016.)
+6. **UX-A09:** with two or more open paper strategies paused the page says the paused sentence once, with its "as of" time; tiles are greyed with no sentence; the headline Paper total carries no repeated reason. One paused strategy: its tile keeps its line (ADR-330 (56)). A failed refresh keeps its banner.
+7. **(61) line:** the Option Chain and Create Strategy show the server's `list_notice` exactly as sent, in the same place the field arrives (the expiries answer); nothing is printed when it is absent.
+8. **D-TD-2:** one failed-load rule for list pages: no message from the server means ONE sentence and a Retry; a message from the server keeps its four parts and gets a Retry below. The Option Chain keeps its own sentence ("The expiries could not be read, so no chain is shown.") because a test and the shared text file pin it, and gets a Retry. If the owner wants the chain on the shared sentence too, it is a one-line swap.
+9. **UX-A01:** a greyed Exit says which reason in words: "Tick a leg to exit." (nothing ticked) or the not-live sentence followed by "Last prices: HH:MM:SS IST." (the time of the last good answer, never the time of a failed read, ADR-330 (56)).
+10. **UX-A05:** the Live card's Plan door appears for every running trade, real or paper, with the same button and sheet as Positions; none on drafts, completed trades or a card that could not load.
+11. **O-1:** after a failed read the paused sentence carries the date and time of the last good prices; with no good read it carries none (never a made-up time).
 
 ## New wording for the owner to read
 
-- Create Strategy step 4, under "Loading…" (UX-B04), one line that changes with the stage; the counts are the page's own:
-  - "Reading the strategy list. This can take up to 20 seconds."
-  - "Reading the planned entry prices of N contracts. This can take up to 20 seconds." (1 contract: "1 contract")
-  - "Pricing N strategies: D of N done. This can take up to 20 seconds." (1: "1 strategy")
-  The "20 seconds" is the longest wait the PC walk of 28 Nov saw, stated as a limit.
-- Positions, hidden Real figure (D-13): "The real P&L figure is more than 90 seconds old and is hidden until the next read." (reworded: Positions code may not name the broker, tests/test_no_broker_name_in_feature_code.py)
-- Positions, the page-level paused notice (UX-A09) is the existing sentence, not new: "Paper P&L paused - prices not live, as of <time>".
-- D-6, D-7, D-8, D-11, History loading: no new sentence (existing words, once; "Loading..." already existed on Active).
+- Step 4 of Create Strategy, under "Loading…" (UX-B04): "Reading the strategy list. This can take up to 20 seconds." / "Reading the planned entry prices of N contracts. This can take up to 20 seconds." / "Pricing N strategies: D of N done. This can take up to 20 seconds." (1: "1 contract", "1 strategy"; "20 seconds" is the longest wait the PC walk saw, stated as a limit).
+- Positions, hidden Real figure (D-13): "The real P&L figure is more than 90 seconds old and is hidden until the next read." (reworded from a first draft that named the broker: Positions code may not name it, tests/test_no_broker_name_in_feature_code.py.)
+- Every list page, failed load with no server message (D-TD-2): "Could not load this list. Nothing was changed." with the button "Retry" (existing label). My Strategies keeps its older "Could not load your strategies. Nothing was changed."
+- Greyed Exit under a pause (UX-A01): "Last prices: 15:27:00 IST." (second line; the first line is the existing "Prices are not live; try again when they update").
+- Existing sentences, not new: the paused sentence with ", as of <date>, <time> IST" (O-1), "Contract list of <date>. Today's list loads at about 08:35." (the server's text, shown on two more pages), "Plan" (the button).
 
 ## Not done
 
-- D-4 build (Lane FA2's file; change written above).
-- UX-AF2, UX-B03: not retested.
-- D-13, "on socket loss": the Positions page opens no feed socket of its own, so I hooked the browser's `offline` and `online` events, not the index socket. If the owner wants the index socket's drop to trigger the re-read too, `PositionsPage.vue` can take `useIndexLive`'s `status` and call `loadReal()` on a change; not built because it opens a second websocket on that page.
-- UX-A12: no wording of mine to change.
-- Mutation proof: I saw red-then-green for items 1, D-6, D-7, D-8, D-11, D-13, UX-B04 and UX-A09 by running each test before its fix, and for the UX-A09 headline-total case by reverting the fix line; I did not mutate the 90 s boundary or the listener removal by hand.
+- D-4 build (FA2's file; change above). UX-A19 fix (AppHeader.vue; one line above). O-3, O-4, O-6, UX-A02's other half (FA2/FB2).
+- D-TD-2 on the Adjustments page (`AdjustmentsPage.vue`, the playbook editor): its list load has several readers (`loadTypes`, `loadList`, `loadLabels`) and an open editor; I did not want to put one Retry on all three without a design call. The page shows its message today with no Retry.
+- #870: not proven by a new test (see table). UX-AF2, UX-B03: not retested.
+- D-13 "on socket loss": the Positions page opens no feed socket, so the re-read is hooked to the browser's `offline` / `online` events; the index socket's drop is not a trigger.
+- Browser shots for the push-2 screens (Live card Plan door, list Retry): not taken; they are covered by component tests only.
+- Mutation proof: red-then-green seen for items 1, D-6, D-7, D-8, D-11, D-13, UX-B04, UX-A09, (61), UX-A05, UX-A01 (the as-of line), O-1 and the UX-A09 headline total. For D-TD-2 the tests were written after the code (the old pages had no Retry at all, so they could not have passed); not run red.
 
 ## To file as deferred issues
 
-- `PriceNotice.vue` should use `priceNoticeUp` (see "For the owner lane").
-- `TrackingPanel.vue:100` unused `LEG_PNL_MISSING` (a lint warning that fails `--max-warnings 0` on `src`; Lane FC3's file).
+- `PriceNotice.vue` should use `priceNoticeUp` (see For the owner lane).
+- `TrackingPanel.vue:100` unused `LEG_PNL_MISSING` (lint warning, Lane FC3's file) and `tests/option-chain.test.js:148` unused `params` (old line, not mine).
+- The container this lane ran in had no `ruff`, no `httpx` and a shallow git history, so the first two gate runs failed for environment reasons; I installed them (pip, `git fetch --unshallow`); nothing in the repo changed for that.
 
 ## PC steps
 
 Market closed (after 15:30 IST):
-1. Alerts > History: reload; while it reads you see "Loading..." and never "No stops or expiry settlements yet." before the answer.
-2. Positions: with the feed down and two or more open paper strategies, "Paper P&L paused - prices not live, as of ..." appears once at the top, not per strategy or per figure; "NIFTY" and "Running" have a gap; open "Show closed positions": a closed row has "—" in Unbooked and P&L.
-3. Create Strategy: reach step 4 and click Show strategies; below "Loading…" a line names what is being read and says it can take up to 20 seconds.
-4. Positions > Real: open the page with a session; end the session; within about 30 s the Real P&L becomes a dash with "Connect your Zerodha account to continue.", with no reload.
-5. Add to Paper after the close: not fixed by this lane (see D-4); expect the old behaviour until Lane FA2 applies the change.
+1. Alerts > History: reload; "Loading..." while it reads, never "No stops or expiry settlements yet." first.
+2. Positions with two or more open paper strategies and the feed down: the paused sentence appears once at the top with its date and time; "NIFTY" and "Running" have a gap; Show closed positions: a closed row has "—" in Unbooked and P&L.
+3. Create Strategy: step 4, click Show strategies: below "Loading…" a line names what is read and says up to 20 seconds. Step 3 shows the "Contract list of ..." line only while yesterday's list is in use (08:30 to about 08:35).
+4. Positions > Real: with a session, end the session; within about 30 s the Real P&L is a dash with the not-connected message, no reload.
+5. Live Strategies: a running trade's card has a Plan button; it opens the same plan sheet as the Positions row.
+6. Stop the API and open Live Strategies, Alerts (Active, History), Positions, Adjustment opportunities, Home, Option Chain: each says one failed-load sentence and has Retry; start the API, press Retry: the page loads.
+7. Positions: tick a leg, then make the read fail (stop the API): the tick stays; Exit (1) is off with the not-live sentence and "Last prices: <time> IST."
+8. Add to Paper after the close: not fixed here (D-4, FA2). Create Strategy clicked twice with the menu: not fixed here (UX-A19, AppHeader).
 
-Live (market open):
-1. Same as 2 and 4 above with the feed running: the page shows no paused sentence while prices are live; pause the feed and it appears once.
-2. Positions > Real: leave the page open for more than 90 s with Zerodha unreachable; the Real figure disappears with the sentence above, and returns after the next good read.
-3. Payoff chart on a draft whose expiry has no OI: one line, "OI not available for this expiry: <reason>".
-4. Leave Positions for another page and wait 2 minutes: the browser's network log shows no more `GET /api/positions` calls.
+Live (market open): the same, with the feed running: no paused sentence; pause the feed and it appears once; on Positions > Real leave the page open for more than 90 s with Zerodha unreachable: the figure disappears with the sentence above, and returns after the next good read; leave the page and wait 2 minutes: no more `GET /api/positions` in the network log.
 
 ## Time
 
@@ -97,4 +112,4 @@ Live (market open):
 |---|
 | All work: Sonnet, this session (no helpers used) |
 
-SAFE TO CLOSE (head: see the pushed branch; left: D-4 to Lane FA2, socket-loss hook, UX-AF2/UX-B03 retest)
+SAFE TO CLOSE (head: see the pushed branch; left: D-4, O-3, O-4, O-6, UX-A02 prop and UX-A19 fix to the owner lanes; Adjustments page Retry; #870 proof)

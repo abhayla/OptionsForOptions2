@@ -23,6 +23,7 @@ import { healthSentence } from '@/lib/dataHealthText'
 import { ENTRY_PRICE_LABEL } from '@/lib/chartCard'
 import { useStrategyLive } from '@/composables/useStrategyLive'
 import MonitoringBadge from '@/components/common/MonitoringBadge.vue'
+import PlanDoor from '@/components/strategy/PlanDoor.vue'
 import { KIND_UNREAD_LINE } from '@/lib/positionKind'
 
 // `start` false = waiting in the page's start queue (one card loads at a time); `settled` is emitted once, when this card
@@ -206,6 +207,8 @@ const openLink = computed(() => (state.value === 'error' ? null : builderLinkOf(
 const paperPosition = computed(() => props.strategy.position_kind === 'paper')
 const kindLine = computed(() => (isRunning(props.strategy) && !paperPosition.value && props.strategy.position_kind !== 'none' ? props.strategy.position_kind_text || KIND_UNREAD_LINE : null))
 const exitLink = computed(() => (state.value !== 'error' && isRunning(props.strategy) && paperPosition.value ? paperExitLinkOf(props.strategy.id) : null))
+// UX-A05 (ADR-330 (54), R2 FC2): a running trade, real or paper, has the Plan door here too (the one plan sheet, as on Positions)
+const planDoor = computed(() => state.value !== 'error' && isRunning(props.strategy) && Number.isInteger(props.strategy.id))
 const stopsLink = computed(() => (state.value !== 'error' && isRunning(props.strategy) && paperPosition.value ? paperStopsLinkOf(props.strategy.id) : null))
 const entryHead = computed(() => (isRunning(props.strategy) ? ENTRY_PRICE_LABEL : 'Planned entry'))
 const legName = (leg) => nameFromPool(leg, [], data.value?.underlying) // never the raw trading symbol (issue 297, REQ-151)
@@ -226,6 +229,7 @@ class="rounded border border-line bg-surface p-4" :class="greyed ? PRICE_GREYED_
       <RouterLink v-if="strategy.open_opportunities_text" :to="{ path: '/positions/adjustment-opportunities', query: { strategy: String(strategy.id) } }" class="text-sm text-accent underline" data-testid="live-opportunity-mark">{{ strategy.open_opportunities_text }}</RouterLink>
       <RouterLink v-if="stopsLink" :to="stopsLink" class="text-sm text-accent underline" data-testid="live-strategy-stops">Stops</RouterLink>
       <RouterLink v-if="exitLink" :to="exitLink" class="text-sm text-accent underline" data-testid="live-strategy-exit">Exit</RouterLink>
+      <PlanDoor v-if="planDoor" :strategy-id="strategy.id" :tag="paperPosition ? 'paper' : 'real'" />
       <span v-if="paused && !serverPaused" class="text-sm" data-testid="live-paused-badge">⏸ Monitoring paused</span>
       <!-- Lane Y item 1: the worker's own answer (REQ-115 AC-6), for a running trade whose card has no local pause of its own -->
       <MonitoringBadge v-if="isRunning(strategy)" :entry="monitoring" />
