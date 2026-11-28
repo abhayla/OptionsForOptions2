@@ -744,6 +744,131 @@ issues:
   "#753": S6.7  # deferred: the first edit of a plan saved before ADR-247 makes it read as saved after (accepted_at restamped by 0041)
   "#754": S6.7  # Egress gate test red when HTTPS_PROXY is set (test_attack2 gets proxy 400, not EgressRefused)
   "#755": S6.7  # Pre-push gate goes red on the ruff ratchet while a builder worktree sits under .claude/worktrees/
+  "#756": S6.7  # A fired stop never executes while the monitor clock is ahead of the database clock
+  "#757": S6.7  # The fired-stop line is judged on the book read before the strategy lock
+  "#758": S6.7  # Old and new fired stops sit in two History lists
+  "#759": S6.7  # An alert title is computed when read, not kept from when it fired
+  "#760": S6.7  # Header poll reads the whole alert history until the first stop fires
+  "#761": S6.7  # Exit from two alerts of one strategy can offer the same legs twice
+  "#762": S6.7  # A list refresh closes the Alerts page's exit dialog without a word
+  "#763": S6.7  # test_settings_reader_guard pins a source line number
+  "#764": S6.7  # A playbook comparison word other than le/ge reads "checked, not met"
+  "#765": S6.7  # The checks guard restricts only calls of crossed
+  "#766": S6.7  # The plan rule line "Not applicable: the <side> side is closed" is not shown
+  "#767": S6.7  # The inbox heading of a side_closed row reads "Adjustment opportunity detected"
+  "#768": S6.7  # Start-up read of each held contract's 15:30 close
+  "#769": S6.7  # The depth popup after the close shows the latest frame, not the frozen close
+  "#770": S6.7  # The REST index spot after hours is the post-close value
+  "#771": S6.7  # A frame with no exchange time is labelled with its arrival time after the close
+  "#772": S6.7  # The broker-status reply still clamps a path-(b) price to 15:30:00
+  "#773": S6.7  # Index age has no lower bound: a future exchange stamp reads as available
+  "#774": S6.7  # Stops do not follow a leg whose expiry or strike changes
+  "#775": S6.7  # A reply arriving after a row Exit can redraw the moved legs in a 1-leg trade
+  "#776": S6.7  # Tracking exit is stamped with the route's answer time, before the price read and the lock
+  "#777": S6.7  # Exit-not-run message: once-a-day mark set before the write, and a retired contract told "still set"
+  "#778": S6.7  # The up-to-1 s index read in a stop's fire runs inside an open database transaction
+  "#779": S6.7  # The exit-not-run alert row uses the stop_fired kind
+  "#780": S6.7  # Builder Paper P&L panel shows no closed-lifecycle row for a closed-and-reopened contract
+  "#781": S6.7  # Soft-deleted strategy still readable through 11 more playbook_store queries and two shared readers
+  "#782": S6.7  # main is red at preflight: 2 mypy call-arg mismatches in tests_app/test_stored_chain_real.py:144
+  "#783": S6.7  # alembic_migration_guard does not detect a second head
+  "#784": S6.7  # A change to docs/api/openapi.json runs no frontend step in the pre-push gate
+  "#785": S6.7  # The Windows kill path of the pre-push gate is proven only by mocks
+  "#786": S6.7  # npm ci reports 11 known package weaknesses (2 critical, 3 high) in frontend dependencies
+  "#787": S6.7  # A real trade has no stop, trigger, watcher worker, stop screen or fired-stop alert (stage to be confirmed: real orders)
+  "#788": S6.7  # The real order door never checks lots or freeze quantity (stage to be confirmed: real orders)
+  "#789": S6.7  # A confirmed save accepts an index quote flagged as faulty (crossed quote)
+  "#790": S6.7  # First-fill entry facts take a stale index value without the tick
+  "#791": S6.7  # Pushes during the seed wait carry the raw frame
+  "#792": S6.7  # Real exit lacks the safety gates and the confirm dialog that paper exit has (stage to be confirmed: real orders)
+  "#793": S6.7  # Alert Exit and Live card Exit and Stops links open the paper door for a real position
+  "#794": S6.7  # Paper entry checks have no real twin: take-profit, adjustment limit, price, hours (stage to be confirmed: real orders)
+  "#795": S6.7  # Real P&L, expiry settlement and what-if are separate paths from paper (two money models) (stage to be confirmed: real orders)
+  "#796": S6.7  # The fired-stop message's '(now Rs ...)' is the figure from before the fire
+  "#797": S6.7  # expiry_kind_of answers 'weekly' for a far-month leg whose own future is not listed
+  "#798": S6.7  # The position's expiry kind is always empty, so T-09 inputs always use the weekly row
+  "#799": S6.7  # Server sentences print contracts with an ISO date (2026-12-01, not 1 Dec)
+  "#800": S6.7  # Two contracts a year apart can read alike: server contract names carry no year
+  "#801": S6.7  # Exit-risk check may report both short puts exposed when only one long put has a stop
+  "#802": S6.7  # A fired index exit stores the value but not the time of the tick that decided it
+  "#803": S6.7  # Plan stop and time-exit reasons are unchecked against the 'own crossing tick' rule
+  "#804": S6.7  # A plan removed from a trade has no ended reason or sentence
+  "#805": S6.7  # Other causes of 'This strategy definition cannot be saved as sent' still say nothing
+  "#806": S6.7  # Adjustment ideas marked 'Acted on' by a cancelled basket stay so; opp ids stay in the URL
+  "#807": S6.7  # Margin read is two serial broker calls under an 8 s limit, retried after 30 s
+  "#808": S6.7  # Adjustment check does about 25 ms CPU on the event loop; IV solved 84 times per check
+  "#809": S6.7  # Order-door parity tests: decision level, worker stop chain, dialog mounts
+  "#810": S6.7  # The price relay the screen tester needs (one contract, 70 s index silence) is not built
+  "#811": S6.7  # A lock wait on Delete ends as a raw 500 (ERR-xxxx), not a refusal sentence
+  "#812": S6.7  # Positions row has no partial-exit control for a leg above its freeze quantity
+  "#813": S6.7  # Alerts History may pass the browser's 10 s limit with many trades
+  "#814": S6.7  # Home and Positions totals show no 'as of' time, so a same-minute gap is unexplained
+  "#815": S6.7  # Entry facts do not keep the index value's time and kind
+  "#816": S6.7  # A first frame after 15:30 on a weekend or before the open is labelled with old time
+  "#817": S6.7  # An older-day leg label can take a newer leg's group ('2 legs as of 30 Nov, 15:29:59')
+  "#818": S6.7  # Option Chain banner time comes from the index spot only
+  "#819": S6.7  # A paused leg whose last quote time was evicted shows no time
+  "#820": S6.7  # 'Checked at Time not available' still shows
+  "#821": S6.7  # Paper vs real audit, 25 display-risk rows and 4 wording-only rows not yet sorted (stage to be confirmed: real orders)
+  "#822": S6.7  # A closing exit is not linked to the plan alert that preceded it
+  "#823": S6.7  # Entry max profit is not stored with the plan; an ended trade says 'target not available'
+  "#824": S6.7  # Positions rows of ended trades do not print the plan's final line
+  "#825": S6.7  # One partly covered sold leg reads 'without protection'
+  "#826": S6.7  # Side question with no plan: patch not applied; no test for a plan removed later
+  "#827": S6.7  # Playbooks test route reopens a transaction on the request session during market waits
+  "#828": S6.7  # The plan sheet does not show the new stop_kind_reason sentence
+  "#829": S6.7  # A stale REST index stand-in is not re-read until the minute changes
+  "#830": S6.7  # A leg stop's 'NIFTY was at' can be later than the leg tick that fired it
+  "#831": S6.7  # Cloud container: 12 adjustment history and opportunity tests fail on a clock issue
+  "#832": S6.7  # The nowrap on the Contract column is checked by class only, not by rendered width
+  "#833": S6.7  # A test of the adjustment plan leaves an edited playbook in the shared test database
+  "#834": S6.7  # Plan-watch request queue has no own time limit and its load tests are weak
+  "#835": S6.7  # The parked per-request memo (q1-parked-request-memo.patch) needs a re-run on a good DB
+  "#836": S6.7  # db_run_fresh needs the owner's global environment file, so cloud lanes cannot run DB tests
+  "#837": S6.7  # No multi-user load test: v1 has one owner reference
+  "#838": S6.7  # Strategy screens, five small leftovers: duplicate exit parameter, stale note, N reads
+  "#839": S6.7  # ADR-081 amendment: no stored freeze limit now blocks an order (owner 27 Nov)
+  "#840": S6.7  # Stops panel gives no warning for a sold leg with a below stop or a bought leg above
+  "#841": S6.7  # Change of a leg: keep a typed price or replace it with the stated reason (REQ-078 AC-8)
+  "#842": S6.7  # Server could send the ended-row ids so the page ties the ended count by id
+  "#843": S6.7  # Totals change, four review leftovers: count tie, unreadable row, unread mismatch flag
+  "#844": S6.7  # The last-price branch of the confirmed save is unreachable
+  "#845": S6.7  # A seed answered after 09:15 is still applied to an empty book
+  "#846": S6.7  # Start-up after 15:30 could rebuild the 15:30 price from the Redis tick stream
+  "#847": S6.7  # The builder's confirmPending flag has no own mount test
+  "#848": S6.7  # ruff baseline: routes/paper.py carries many PLR0917 findings
+  "#849": S6.7  # read_levels loads the catalogue on every call when the market is not open
+  "#850": S6.7  # Missing index, fresh REST, stale option leg: reason reads LEG_MISSING, not STALE
+  "#851": S6.7  # No worker test with a plan body's own custom stop rule (stops=frozenset() survives)
+  "#852": S6.7  # Bulk delete lets a running strategy be ticked with a draft (note vs decision 8)
+  "#853": S6.7  # The phone-width drawer cannot be checked: the test tool cannot narrow the window
+  "#854": S6.7  # Paper entry with prices marked not live has no real-door twin; parity test stays expected-failure
+  "#855": S6.7  # The real order door answers the lots refusal with 422, its other refusals with 409
+  "#856": S6.7  # Branch fix/pnl-totals-1127 carries the process files of chore/gate-speed-1127
+  "#857": S6.7  # A stated spot with an empty option chain raises KeyError in the adjustment approaches
+  "#858": S6.7  # Playbook test preview: a database error in _tracked_first reads as not of the type
+  "#859": S6.7  # Plan-watch batch: the 4 s budget is per row, a 20-row batch can pass the browser's 20 s limit
+  "#860": S6.7  # A time exit typed as plain HH:MM (no date) reads not checked even on expiry day
+  "#861": S6.7  # The worker's reason for an unknown-kind percent stop is generic
+  "#862": S6.7  # A stop typed and crossed within one minute is first checked with the old plan
+  "#863": S6.7  # The worker prices a trade's market from the first-listed leg's expiry, not the nearest leg's
+  "#864": S6.7  # _tracked_on reads the whole live catalogue for each strategy on every re-read
+  "#865": S6.7  # The unknown-kind timing style (intraday) is fixed by no test
+  "#866": S6.7  # The T-06 not-checked reason for an unknown expiry kind says days left are missing
+  "#867": S6.7  # Worker._checked_body never removes an entry
+  "#868": S6.7  # The paused state of a trade lives only in the worker's memory (REQ-165 AC-6 not built)
+  "#869": S6.7  # The paper orders route has no idempotency key
+  "#870": S6.7  # The exit lock stays on when every re-read fails; only a reload recovers
+  "#871": S6.7  # A plain add with an unknown outcome can be sent twice from the builder dialog
+  "#872": S6.7  # The Exit dialog's market-open answer is fixed for one opening of the dialog
+  "#873": S6.7  # Exit dialog mutations not pinned by a test
+  "#874": S6.7  # Positions and Alerts Exit dialogs with the market closed are covered only by the shared component
+  "#875": S6.7  # DayLabel prints day names in the host's locale
+  "#876": S6.7  # Plan-save case of 27 Nov 13:28 not reproduced; the saved plan body and style are needed
+  "#877": S6.7  # The paper route does not refuse an exit or stop request on a real position
+  "#878": S6.7  # A strategy dropped from the worker's list can stay ACTIVE
+  "#879": S6.7  # Clock skew widens the 2-minute window of the plan check
+  "#880": S6.7  # The since_text of a plan alert has no date and resets when the worker restarts
 
 # Work items whose status is not done.
 work_items:

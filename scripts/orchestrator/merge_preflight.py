@@ -316,14 +316,23 @@ def layer_scans(repo: str, log: str, domain_scans: bool = True) -> tuple[int, st
     return (1 if failed else 0), note
 
 
-def run(repo: str, log_dir: str, domain_scans: bool = True) -> int:
-    # cheapest first: the build check takes milliseconds, the interface check ~20-120 s, collect ~20 s, scans minutes
+CODE_ONLY_LAYERS = ("interface", "collect")  # Python files only: mypy, collect
+
+
+def run(repo: str, log_dir: str, domain_scans: bool = True, code_unchanged: bool = False) -> int:
+    # cheapest first: build check milliseconds, interface check ~20-120 s, collect ~20 s, scans minutes.
+    # code_unchanged (prepush docs-since-pass lane, which has proved by the git diff that no file but records files
+    # changed since a full pass of this very code): the two layers that read Python files only are not repeated; the
+    # build check and every scan, which read the records files, still run.
     layers = (("build", lambda log: layer_build(repo, log)),
               ("interface", lambda log: layer_interface(repo, log)),
               ("collect", lambda log: layer_collect(repo, log)),
               ("scans", lambda log: layer_scans(repo, log, domain_scans)))
     for name, layer in layers:
         log = os.path.join(log_dir, f"preflight-{name}.log")
+        if code_unchanged and name in CODE_ONLY_LAYERS:
+            print(f"SKIP preflight-{name}: no code changed since the last full pass (proved by prepush)", flush=True)
+            continue
         t0 = time.monotonic()
         rc, note = layer(log)
         print(f"{'PASS' if rc == 0 else 'FAIL'} preflight-{name} {round(time.monotonic() - t0, 1)}s {note} {log}",
@@ -341,13 +350,16 @@ def main(argv: list[str] | None = None) -> int:
     ap.add_argument("--log-dir", default=None)
     ap.add_argument("--no-domain-scans", action="store_true",
                     help="skip the tests/ repo_scan subset (prepush runs all of tests/ right after)")
+    ap.add_argument("--code-unchanged-since-pass", action="store_true",
+                    help="skip the layers that read Python only (prepush proved no code changed since a full pass)")
     a = ap.parse_args(argv)
     if not os.path.isdir(a.repo):
         print("repo not found: " + a.repo)
         return 2
     log_dir = a.log_dir or tempfile.mkdtemp(prefix="preflight-")
     os.makedirs(log_dir, exist_ok=True)
-    return run(os.path.abspath(a.repo), log_dir, domain_scans=not a.no_domain_scans)
+    return run(os.path.abspath(a.repo), log_dir, domain_scans=not a.no_domain_scans,
+               code_unchanged=a.code_unchanged_since_pass)
 
 
 if __name__ == "__main__":

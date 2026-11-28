@@ -39,6 +39,18 @@
             "command": "f=\"$CLAUDE_PROJECT_DIR/scripts/hooks/agent_brief_gate.py\"; [ -f \"$f\" ] || exit 0; python \"$f\"" }
         ] }
     ],
+    "SessionStart": [
+      { "hooks": [
+          { "type": "command", "timeout": 240,
+            "command": "[ \"$CLAUDE_CODE_REMOTE\" = true ] && bash \"$CLAUDE_PROJECT_DIR/scripts/orchestrator/cloud_services.sh\" || true" }
+        ] }
+    ],
+    "Stop": [
+      { "hooks": [
+          { "type": "command", "timeout": 5,
+            "command": "f=\"$CLAUDE_PROJECT_DIR/scripts/hooks/friction_log_due.py\"; [ -f \"$f\" ] || exit 0; python \"$f\"" }
+        ] }
+    ],
     "PostToolUse": [
       { "matcher": "Write|Edit|MultiEdit",
         "hooks": [

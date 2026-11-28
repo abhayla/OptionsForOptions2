@@ -1,4 +1,4 @@
-STATUS 17:11 IST | HEAD: product tree 631f1a03e6b7ffcdcec2a4876c23133e3ad57a80 plus this RESULTS commit on integration/weekend-r3-1129 | PRE-PUSH: 829ff65f: no recorded line (Lane Z2's file has none); first recorded pass is on 631f1a03e6b7ffcdcec2a4876c23133e3ad57a80: TOTAL PASS 1418.2s (--jobs 2) | MERGED: FJ origin/fix/r3-frontend-joins-1128 at 1ad97343 (tests only on top of round 2; the Exit product code was already in 829ff65f) | NOT YET: FJ newer head ddd65680 (next), RA fix/r3-leftovers-1128 (not on origin; fallback fix/r3-backend-5-1128 at 20:00), fix/ic-live-test-1123 (coordinator item, after this push) | PROOFS: four Exit tests exit-market-closed-adr330-60 (7), exit-closed-entry-points-r2-fa + exit-market-closed-positions-r3-fj (5 together), exit-rule-all-doors-r3-fj (12): 24 passed, 4 files; DB proofs and frontend unit on batch heads: pending | REVIEW: pending | ROUND 3 READY FOR THE PC: no (first batch only)
+STATUS 17:50 IST | HEAD: this merge commit on integration/weekend-r3-1129 (first push 4d975129, TOTAL PASS 1374.3s on that commit; 631f1a03e6 TOTAL PASS 1418.2s; 829ff65f: no recorded line) | MERGED: FJ ddd65680503f6169708389c4a8ba0a55e1b4072f (carries 1ad97343; unknownLocks.js, PaperStrategies.vue + tests), fix/ic-live-test-1123 at c4f4f0bec01d0bfdae2c5b2e909dd92f5fd96c76 (process tooling, no product code; 6 document/script conflicts taken from the fix branch) | NOT YET: RA fix/r3-leftovers-1128 (not on origin), fallback fix/r3-backend-5-1128 at 20:00 | LINK TEST: send_message to @parent refused: "non-retryable (elevated_session_untrusted_device): the session you named needs proof of a trusted device, and the server would not vouch for this session. Nothing was sent or changed. Do not retry before the owner allows it." (confirm_repository_trust not called: it limits the session to trusted devices for good, nobody asked) | PROOFS: DB proofs, frontend unit on batch heads pending | REVIEW: pending | ROUND 3 READY FOR THE PC: no
 
 # Lane Z3 (round 3 build), 28 Nov 2026
 
@@ -22,3 +22,15 @@ None yet.
 
 ## To file as deferred issues
 None yet.
+
+## Batch 2 (FJ ddd65680 and fix/ic-live-test-1123 c4f4f0be)
+- FJ merge: clean. Product change: frontend/src/lib/unknownLocks.js, frontend/src/components/strategy/PaperStrategies.vue (+ tests).
+- fix/ic-live-test-1123 (coordinator's order): conflicts in six files, all documents or process scripts; taken from the fix branch (`--theirs`), none in backend/, frontend/src/ or alembic. No product file changed by this merge.
+  - docs/design/next-batch-2026-11-26/RESULTS-lane-g2.md (add/add)
+  - docs/process/coverage-register.md
+  - docs/process/gate-speed-2026-11-26.md (add/add)
+  - docs/process/runbook.md
+  - knowledge/findings/INDEX.md
+  - scripts/orchestrator/prepush.py (--jobs kept, file parses)
+  Auto-merged: coverage-stages.yaml, spec/decisions/ADR-330.md, tests/orchestrator/test_select_app_tests.py (to re-check in the gate).
+- Side effect for the review: the gate on this branch is now the fix branch's faster check, so TOTAL PASS lines after this commit are from the newer prepush.py.
