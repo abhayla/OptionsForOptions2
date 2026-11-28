@@ -121,6 +121,7 @@ def test_failed_candle_read_blanks_only_percentile_and_adx(error):
 
 
 def test_failure_is_logged_by_error_class_only(caplog):
+    regime_inputs._TOLD.clear()  # RA2: the same failure is logged once per process
     _read(reads=Reads(fail=True))
     assert "KiteReadError" in caplog.text and "kite_read_unavailable" not in caplog.text
 

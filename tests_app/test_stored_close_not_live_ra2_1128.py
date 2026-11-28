@@ -81,3 +81,31 @@ async def test_guard_3_the_exit_state_stays_closed_with_only_a_stored_close():
     assert reply.status_code == HTTPStatus.OK, reply.text
     sentence = reply.json()["sentence"]
     assert sentence.startswith("The market is closed. Exits can be placed from 09:15 on Monday 12 Oct"), sentence
+
+
+# 10:00 IST on a trading day (the monitor harness)
+OPEN_THURSDAY = datetime.datetime(2026, 10, 29, 4, 30, tzinfo=datetime.UTC)
+
+
+async def _crossed_exit_on_an_open_day(db, health: DataHealth):  # noqa: F811
+    market = Market(at=OPEN_THURSDAY)
+    stored, _ids, keys = await _strategy(db)
+    tid = await _exit_below(db, stored.id)
+    for key in keys:
+        market.tick(key, "45.15", health)
+    market.tick(INDEX, "22900.00", health)  # above the exit level 22,850.00
+    monitor = _monitor(db, market)
+    assert await monitor.step() == 0
+    market.tick(INDEX, "22800.00", health)  # crosses below it
+    fired = await monitor.step()
+    return fired, await _trigger_state(db, tid), await _stops(db, stored.id)
+
+
+async def test_guard_2b_on_an_open_day_a_stored_close_fires_nothing_but_a_live_price_does(db):  # noqa: F811
+    """Opus review F3: the closed-day test above stops at the calendar. This is the case that costs money: 10:00 on a
+    trading day with only a stored (stale) price in the book fires nothing; the SAME book with live prices fires (the
+    positive control, so the setup is known to be able to fire)."""
+    fired, state, stops = await _crossed_exit_on_an_open_day(db, DataHealth.STALE)
+    assert (fired, state, stops) == (0, (False, False), [])
+    fired, state, stops = await _crossed_exit_on_an_open_day(db, DataHealth.AVAILABLE)
+    assert fired == len(stops) == 2 and state == (True, False)  # noqa: PLR2004 - one stop order per open leg

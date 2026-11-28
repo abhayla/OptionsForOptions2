@@ -5370,5 +5370,9 @@
   "explanation:paper_exit_fired_less_protected": {
     "sha256": "da2aa92a23a0bbe56668ecef57b2bb0dc11c5e8c7fcc0135fb0e4c7f6f046a02",
     "reviewed": "pending owner read"
+  },
+  "paper_trigger_saved_list_unread": {
+    "sha256": "c9f44ff65d1cf179c17323d0926ca3fc5135c47cddc6e279e429062cbf9b46af",
+    "reviewed": "pending owner read"
   }
 }
