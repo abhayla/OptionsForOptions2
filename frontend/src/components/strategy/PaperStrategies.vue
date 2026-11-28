@@ -153,7 +153,7 @@
                 <!-- ADR-330 (54): the Plan button, beside Stops and Exit; the same plan sheet as the builder's Edit plan -->
                 <PlanDoor v-if="g.openCount" :strategy-id="g.id" tag="paper" />
                 <button v-if="g.openCount" type="button" class="rounded border border-line px-2 py-1" :aria-expanded="!!stopsOpen[g.id]" :data-testid="`stops-open-${g.id}`" @click="stopsOpen = { ...stopsOpen, [g.id]: !stopsOpen[g.id] }">Stops</button>
-                <ExitButton v-if="g.openCount" :blocked="exitGate.blocked.value || !!noPriceNames(g)" :reason="exitGate.reason.value ?? noPriceLine(g) ?? (tickedOpen(g).length ? null : EXIT_TICK_TEXT)" :extra-disabled="!tickedOpen(g).length" class="rounded border border-line px-2 py-1" :data-testid="`exit-selected-${g.id}`" @click="ask(g, tickedOpen(g))">Exit ({{ tickedOpen(g).length }})</ExitButton>
+                <ExitButton v-if="g.openCount" :blocked="exitGate.blocked.value && !exitGate.notLive.value" :reason="exitGate.reason.value ?? noPriceLine(g) ?? (tickedOpen(g).length ? null : EXIT_TICK_TEXT)" :extra-disabled="!tickedOpen(g).length" class="rounded border border-line px-2 py-1" :data-testid="`exit-selected-${g.id}`" @click="ask(g, tickedOpen(g))">Exit ({{ tickedOpen(g).length }})</ExitButton>
                 <p v-if="exitGate.reason.value === NOT_LIVE_EXIT && lastGoodClock" class="text-xs text-ink-muted" data-testid="paper-exit-asof">Last prices: {{ lastGoodClock }} IST.</p>
               </div>
             </div>
@@ -450,8 +450,7 @@ function openExitFromLink(id) {
     const g = (items.value ?? []).find((x) => isOpenGroup(x) && String(x.id) === id)
     const rows = g ? g.positions.filter(canExit) : []
     if (!rows.length) exitRec.note(id, EXIT_NOTE)
-    else if (exitGate.blocked.value) exitRec.note(id, exitGate.reason.value ?? EXIT_NOTE)
-    else if (noPriceIdsOf(g, rows.map((p) => p.contractId))) exitRec.note(id, exitEndText('no_price', namesOfIds(g, noPriceIdsOf(g, rows.map((p) => p.contractId))))) // O-A-12: the Exit button is greyed for these legs, so the link opens no dialog either
+    else if (exitGate.blocked.value && !exitGate.notLive.value) exitRec.note(id, exitGate.reason.value ?? EXIT_NOTE)
     else ask(g, rows)
   } catch {
     exitRec.note(id, EXIT_NOTE)
@@ -569,13 +568,12 @@ function cancelExit() {
 }
 
 function ask(g, rows) {
-  // O-A-12: the same rule as the greyed button, for any caller (a click that ignores `disabled`, a key, a link): a blocked Exit opens no dialog
-  if (exitGate.blocked.value || noPriceIdsOf(g, rows.map((p) => p.contractId))) return
+  // ADR-330 (60) shape for not-live too (owner order 28 Nov): Exit OPENS the dialog; a not-live read or a leg without a price shows its sentence there and Confirm is off. Only busy / unresolved / open dialog end here.
+  if (exitGate.blocked.value && !exitGate.notLive.value) return
   adoptLock(g.id, readSeq + 1) // a lock of another tab or an earlier page instance comes back before anything is offered
   const orders = exitRowsFor(rows)
   const names = rows.map((p) => p.name)
   if (busy.value) return endExit('busy', names, null, g.id)
-  if (stale.value) return endExit('not_live', names, null, g.id)
   if (orders === null || !orders.length) return endExit('changed', names, null, g.id)
   exitRec.clear(g.id)
   dialogState.value = isUnknown(g.id) ? PAPER_STATE.UNKNOWN : PAPER_STATE.READY // an unresolved unknown outcome shows its sentence again, Confirm off

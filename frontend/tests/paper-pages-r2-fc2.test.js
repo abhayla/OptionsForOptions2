@@ -14,6 +14,7 @@ vi.mock('@/services/api', async (importActual) => {
   return { ...actual, default: { get: reply('GET'), post: reply('POST'), delete: reply('DELETE') } }
 })
 import PaperStrategies from '@/components/strategy/PaperStrategies.vue'
+import PaperConfirmDialog from '@/components/strategy/PaperConfirmDialog.vue'
 import { resetActiveAlerts } from '@/lib/paperAlerts'
 
 const PAUSED = 'Paper P&L paused - prices not live'
@@ -165,11 +166,15 @@ describe('UX-A01 ticks and the reason beside a greyed Exit', () => {
     await flushPromises()
     expect(w.get('[data-testid="select-leg-1-776"]').element.checked).toBe(true)
     expect(exitBtn(w).text()).toBe('Exit (1)')
-    expect(exitBtn(w).attributes('disabled')).toBeDefined()
-    expect(reason(w).text()).toContain('Prices are not live')
-    expect(reason(w).text()).not.toContain('Tick a leg')
-    const asOf = w.get('[data-testid="paper-group"][data-strategy="1"]').get('[data-testid="paper-exit-asof"]').text()
-    expect(asOf).toBe('Last prices: 15:27:00 IST.')
+    // ADR-330: Exit stays enabled; the dialog opens with the not-live sentence and Confirm off
+    expect(exitBtn(w).attributes('disabled')).toBeUndefined()
+    await exitBtn(w).trigger('click')
+    await flushPromises()
+    const dlg = w.findComponent(PaperConfirmDialog)
+    expect(dlg.props('open')).toBe(true)
+    expect(dlg.props('blocked')).toBe(true)
+    expect(dlg.props('error')).toContain('Prices are not live')
+    expect(w.get('[data-testid="paper-confirm-button"]').attributes('disabled')).toBeDefined()
   })
 })
 
