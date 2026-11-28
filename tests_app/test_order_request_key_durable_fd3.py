@@ -158,3 +158,65 @@ async def test_a_repeat_after_a_redis_flush_still_finds_the_key(db, notified, ke
     assert (row.state, row.door) == ("done", "paper")
     other = await _post(app, stored, _body(orders[:1], key))
     assert other.status_code == HTTPStatus.CONFLICT and "different order set" in other.text
+
+
+async def test_a_repeat_names_the_stops_the_first_request_cancelled(db, notified, keys):
+    """FD3 item 2: the stored ``cancelled_stops`` come back on the repeat exactly as the first reply named them."""
+    from test_paper_orders_r2_fd2 import _stop  # noqa: PLC0415
+    from test_paper_routes import _new  # noqa: PLC0415
+    from test_paper_triggers_routes import _open  # noqa: PLC0415
+    app, stored, ids = await _open(db)  # short 22800 CE (ids[0]), long 23000 CE (ids[1]); ids[2] is flat
+    _use(app, keys)
+    await _stop(app, stored, ids[0])
+    key = uuid.uuid4()
+    body = _body([_new(ids[0], "BUY", 65, "30", "exit"), _new(ids[2], "SELL", 65, "82.75")], key)
+    first = await _post(app, stored, body)
+    assert first.status_code == HTTPStatus.CREATED, first.text
+    named = [{"leg": "NIFTY 13 Oct 22800 CE", "contract": ids[0], "level": "120.00"}]
+    assert first.json()["cancelled_stops"] == named
+    again = await _post(app, stored, body)
+    assert again.status_code == HTTPStatus.CREATED, again.text[:300]
+    assert again.json()["cancelled_stops"] == named
+    await keys._factory().flushdb()  # and from the table alone
+    third = await _post(app, stored, body)
+    assert third.status_code == HTTPStatus.CREATED, third.text[:300]
+    assert third.json()["cancelled_stops"] == named
+
+
+async def test_an_unknown_outcome_keeps_the_key_and_a_repeat_is_told_still_being_placed(db, notified, keys, monkeypatch):
+    """FD2 review F7 route test: a request whose commit outcome is unknown (the exception comes AFTER the commit began)
+    never frees the key; the repeat is told 582 and places nothing."""
+    from ofo_app.routes import paper as route  # noqa: PLC0415
+    app, stored, *_ = await _setup(db)
+    _use(app, keys)
+    _, orders = _prices(stored)
+    key = uuid.uuid4()
+    real = route._place_orders
+
+    async def crash_after_commit_began(db_, strategy_id, stored_, body, deps, stage):
+        stage["commit_started"] = True
+        raise RuntimeError("the connection dropped during the commit")
+
+    monkeypatch.setattr(route, "_place_orders", crash_after_commit_began)
+    first = await _post(app, stored, _body(orders, key))
+    assert first.status_code == HTTPStatus.INTERNAL_SERVER_ERROR, first.text[:200]
+    monkeypatch.setattr(route, "_place_orders", real)
+    again = await _post(app, stored, _body(orders, key))
+    assert again.status_code == HTTPStatus.CONFLICT and "still being placed" in again.text, again.text[:300]
+    assert await _count(db, stored) == 0  # nothing stored by either
+
+
+async def test_a_stop_the_monitor_fired_first_is_not_named_as_cancelled(db, notified, keys):
+    """FD2 review F7 route test: a leg stop that FIRED before this request closed its leg is not "cancelled by it"."""
+    from ofo_app import paper_trigger_store as triggers  # noqa: PLC0415
+    from test_paper_orders_r2_fd2 import _stop  # noqa: PLC0415
+    from test_paper_routes import _new  # noqa: PLC0415
+    from test_paper_triggers_routes import _open  # noqa: PLC0415
+    app, stored, ids = await _open(db)
+    _use(app, keys)
+    await _stop(app, stored, ids[0])
+    (armed,) = [r.trigger.id for r in await triggers.list_for(db, stored.id)]
+    assert await triggers.claim_fire(db, armed)  # the monitor fired it first
+    reply = await _post(app, stored, _body([_new(ids[0], "BUY", 65, "30", "exit")], uuid.uuid4()))
+    assert reply.status_code == HTTPStatus.CREATED, reply.text[:300]
+    assert reply.json()["cancelled_stops"] == []

@@ -23,6 +23,7 @@ The user comes from the session (``current_user_ref``), never from the request.
 from __future__ import annotations
 
 import datetime
+from types import SimpleNamespace
 import logging
 import uuid
 from collections.abc import Mapping, Sequence
@@ -1487,11 +1488,11 @@ async def place_paper_orders(strategy_id: int, body: PaperOrdersIn,  # noqa: PLR
         recorded = await request_key.lookup(db, user_ref, key, strategy_id, sent)
         if recorded is not None:  # a repeat of a request that committed: its result, nothing stored
             return await _book(db, stored, await paper_store.load(db, strategy_id), ctx, feed, now(), rates,
-                               cancelled=recorded.get("cancelled_stops", []))
+                               cancelled=await _replayed_stops(db, stored, recorded.get("cancelled_stops", [])))
         first = await request_key.begin(keys, user_ref, key, strategy_id, sent)
         if first is not None:  # a repeat: the first result, nothing stored
             return await _book(db, stored, await paper_store.load(db, strategy_id), ctx, feed, now(), rates,
-                               cancelled=first.get("result", {}).get("cancelled_stops", []))
+                               cancelled=await _replayed_stops(db, stored, first.get("result", {}).get("cancelled_stops", [])))
     stage: dict[str, Any] = {"commit_started": False, "key": key, "sent": sent}
     try:
         placed_at, cancelled = await _place_orders(db, strategy_id, stored, body, (
@@ -1501,7 +1502,7 @@ async def place_paper_orders(strategy_id: int, body: PaperOrdersIn,  # noqa: PLR
         await request_key.finish(keys, user_ref, key,
                                  request_key.done(strategy_id, sent, {"cancelled_stops": repeat.result.get("cancelled_stops", [])}))
         return await _book(db, stored, await paper_store.load(db, strategy_id), ctx, feed, now(), rates,
-                           cancelled=repeat.result.get("cancelled_stops", []))
+                           cancelled=await _replayed_stops(db, stored, repeat.result.get("cancelled_stops", [])))
     except BaseException:
         if key is not None and not stage["commit_started"]:  # refused with nothing stored: the key is free again
             await request_key.free(keys, user_ref, key)
@@ -1511,6 +1512,14 @@ async def place_paper_orders(strategy_id: int, body: PaperOrdersIn,  # noqa: PLR
                                  request_key.done(strategy_id, sent, {"cancelled_stops": cancelled}))
     return await _book(db, stored, await paper_store.load(db, strategy_id), ctx, feed, placed_at, rates,
                        cancelled=cancelled)
+
+
+async def _replayed_stops(db: Any, stored: Any, kept: Sequence[Mapping[str, Any]]) -> list[dict]:
+    """FD3 item 2: the stops the FIRST request cancelled, as its record kept them (contract id and level; the leg's
+    words came back from JSON as a plain string, which a typed text slot refuses). The words are made again from the
+    contract by the one resolver (``_stops_out``), so a repeat answers what the first reply said."""
+    return await _stops_out(db, stored, {}, [SimpleNamespace(contract_id=int(k["contract"]), level=Decimal(k["level"]))
+                                             for k in kept])
 
 
 async def _stops_out(db: Any, stored: Any, state: Mapping[int, Any], cancelled: Sequence[Any]) -> list[dict]:
