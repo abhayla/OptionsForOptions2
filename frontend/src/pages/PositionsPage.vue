@@ -68,16 +68,19 @@ const realState = computed(() => {
 // fd2: no Zerodha session is a 200 with broker_connected:false (real_pnl.state "not_connected" and its reason); only exactly false counts, so an old reply is unchanged
 const brokerOff = computed(() => result.value?.broker_connected === false)
 const NOT_CONNECTED_LINE = 'No broker is connected, so no real positions are shown.' // new wording, pending owner read (28 Nov 2026): used only when the server sent no reason
-const brokerOffLine = computed(() => { const r = result.value?.real_pnl?.reason; return typeof r === 'string' && r.trim() !== '' ? r : NOT_CONNECTED_LINE })
+// FJ2-3 (TG D-TG-3): a server string that is a JSON object or list (a stringified 409 body in a reason / caption field) is never printed: it is dropped, and the plain sentence below stands in.
+const plain = (t) => (typeof t === 'string' && t.trim() !== '' && !/^[\s]*[{[]/.test(t) ? t : null)
+const brokerOffLine = computed(() => plain(result.value?.real_pnl?.reason) ?? NOT_CONNECTED_LINE)
 // ADR-330 (10), (24): the Real P&L total is the server's real_pnl, every string printed as sent (no arithmetic here). A refused read
 // shows its own message as the reason; only a reply with no real_pnl key keeps the legacy "not shown yet" line.
 const realTotals = computed(() => {
   if (figureOld.value && !errorParts.value) return { text: null, reason: OLD_FIGURE_TEXT, caption: null, note: null }
-  if (errorParts.value) return { text: null, reason: errorParts.value.what_happened ?? null, caption: null, note: null }
+  // FJ2-3: with no broker session the section below says it once (the server's refusal message): the card keeps its dash and does not repeat it
+  if (errorParts.value) return { text: null, reason: notConnected.value ? null : plain(errorParts.value.what_happened), caption: null, note: null }
   const r = result.value?.real_pnl
   if (result.value && !r) return { text: typeof result.value.pnl_text === 'string' ? result.value.pnl_text : null, legacy: true }
   if (!r) return null
-  return { text: r.state === 'stated' ? r.pnl_text : null, reason: r.reason, caption: r.caption, note: r.excludes_note }
+  return { text: r.state === 'stated' ? r.pnl_text : null, reason: plain(r.reason), caption: plain(r.caption), note: plain(r.excludes_note) }
 })
 // ADR-330 (56): the page's one price notice reads the index answer (market closed: the banner with the close time; feed down: the not-live line)
 const marketAnswer = ref(null)

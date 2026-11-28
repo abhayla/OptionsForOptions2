@@ -15,6 +15,11 @@
       <template v-else>
         <p v-if="read.plan" data-testid="plan-entry-playbook">{{ read.labels.playbook }}: {{ read.plan.playbookName }}</p>
         <p v-else data-testid="plan-entry-none">{{ read.labels.no_plan }}</p>
+        <!-- FJ2-9 (O-R-09 / W-01): the plan's own target and stop with their units (the server's words; else its figure with %), or that none is set -->
+        <template v-if="read.plan && !limitRowsUp">
+          <p data-testid="plan-entry-target">{{ read.labels.target }}: {{ levelText(read.plan.targetWords, read.plan.target) }}</p>
+          <p data-testid="plan-entry-stop">{{ read.labels.stop }}: {{ levelText(read.plan.stopWords, read.plan.stop) }}</p>
+        </template>
         <p v-if="checkStatus === 'loading'" data-testid="plan-entry-limits-loading">{{ LIMITS_LOADING_TEXT }}</p>
         <p v-else-if="!limits && checkRefusal" data-testid="plan-entry-limits-refused">{{ checkRefusal }}</p>
         <LoadFailed v-else-if="!limits" :text="LIMITS_LOAD_FAILED_TEXT" prefix="plan-entry-limits" @retry="$emit('retry-check')" />
@@ -70,6 +75,11 @@ const props = defineProps({
   exitsMode: { type: String, default: 'paper' }, // I-24: 'real' = a real-mode trade (no exits route yet): one plain line instead of the exits
 })
 defineEmits(['retry-check'])
+const LEVEL_NOT_SET_TEXT = 'not set' // new wording, pending owner read
+// the server's own words for a level ("25.00 % of max loss"); else its figure with the percent unit; neither: not set (never a blank or a 0)
+const levelText = (words, figure) => (words ? words : figure ? `${figure} %` : LEVEL_NOT_SET_TEXT)
+// the rule check's own limit rows already carry the target and stop (GC-ICFIX u111-u114, pinned): the plan's own lines show only when those rows are not showing (paused, loading, refused, failed or none)
+const limitRowsUp = computed(() => !!limits.value && !limits.value.paused && limits.value.rows.length > 0)
 const exitsView = computed(() => exitsViewOf(props.exitsMode, props.exits, props.exitsFailed))
 const read = ref(null)
 const loading = ref(false)
