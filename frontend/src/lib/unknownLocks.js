@@ -21,6 +21,7 @@ const ADD_KEY = 'ofo.addUnknown'
 const KEYS_KEY = 'ofo.orderKeys'
 const memory = { [LOCK_KEY]: {}, [ADD_KEY]: {}, [KEYS_KEY]: {} }
 const UNREADABLE = Symbol('unreadable') // content is there but is not an object of entries: a lock for every strategy, decided by nobody
+const garbageSeen = { [LOCK_KEY]: null, [ADD_KEY]: null, [KEYS_KEY]: null } // R5 N3: when this page first saw a store that cannot be read (it counts the window from there; never written over the content)
 const dirty = { [LOCK_KEY]: false, [ADD_KEY]: false, [KEYS_KEY]: false } // true once a write was refused: then what this page wrote is merged over what storage holds (never instead of it)
 
 /** What storage holds: an object of entries, UNREADABLE (content that is not one), or undefined (storage itself cannot be read: only the in-page copy exists). */
@@ -135,7 +136,7 @@ export function decideLock(lock, book, sentAt) {
   if (!legs) { // no legs to judge by (the book could not be read at post time, or no exited leg was held): only a read sent past the window decides, by the whole book
     if (!past) return KEEP
     const base = lock.kind === 'add' ? lock.before.slice(1) : lock.before
-    return base === '?' || book.key === base ? { verdict: 'not_stored' } : KEEP // an unchanged book is not stored; a moved one cannot be judged without the legs: fail closed
+    return base === '?' || book.key === base ? { verdict: 'not_stored' } : { verdict: 'changed' } // an unchanged book is not stored; R5 N3: a moved one cannot be judged without the legs, but a good read sent past the window still ends the lock as 'changed' (never for ever)
   }
   const at = (id) => book.units[id] ?? 0
   if (!legs.some((x) => at(x.id) !== x.from)) return past ? { verdict: 'not_stored' } : KEEP // no moved leg of this post: an unrelated move proves nothing
@@ -158,7 +159,15 @@ export function addsOf(orders, book) {
   return out.length ? out : null
 }
 /** True when two normalised locks are the SAME lock (same request key and give-up / post time): another tab's newer lock is a different one. */
-export const sameLock = (a, b) => !!a && !!b && (a.key ?? null) === (b.key ?? null) && (b.at === undefined || (a.at ?? null) === (b.at ?? null)) // `at` left out of `b`: a definite answer of a request key ends the lock of that key, whenever it was written
+export function sameLock(a, b) {
+  if (!a || !b) return false
+  const ak = a.key ?? null
+  if (ak !== (b.key ?? null)) return false
+  if (b.at === undefined) return ak !== null // `at` left out of `b`: a definite answer of a request key ends the lock of that key, whenever it was written; R5 N5: never on a null key (nothing names the lock then)
+  const sa = a.at ?? null
+  const sb = b.at ?? null
+  return sa === sb || (sa === null && sb !== null) // R5 N2: a stored lock with no readable `at` was given one by the reader that adopted it: the same lock
+}
 
 /** The `before` of the builder's add lock: '#' + the whole-book key it was posted against ('#?' when that book cannot be read: then only a read past the window decides, "not stored", the key kept). */
 export const addBeforeOf = (book) => (book ? `#${book.key}` : '#?')
@@ -178,7 +187,12 @@ const asLock = (raw, kind) => {
 function makeLocks(name, kind) {
   const forId = (id) => {
     const all = readAll(name)
-    if (all === UNREADABLE) return asLock(null, kind) // content that cannot be read is a lock for every strategy
+    if (all === UNREADABLE) { // content that cannot be read is a lock for every strategy; R5 N3: its first sight is kept in memory, so a good read sent past the window can decide it
+      const now = Date.now()
+      if (garbageSeen[name] === null || garbageSeen[name] > now) garbageSeen[name] = now
+      return { ...asLock(null, kind), seen: garbageSeen[name] }
+    }
+    garbageSeen[name] = null
     if (!Object.prototype.hasOwnProperty.call(all, String(id))) return null
     const l = asLock(all[String(id)], kind)
     const now = Date.now()
@@ -221,7 +235,10 @@ function makeLocks(name, kind) {
     /** Drops the lock of `id`; with `only` (the lock a reader decided) it drops that lock alone: a newer lock of another tab (other key or `at`) stays. Returns false when a different lock stayed. */
     drop(id, only = null) {
       const all = readAll(name)
-      if (all === UNREADABLE) return true // nothing this module may call its own
+      if (all === UNREADABLE) { // R5 N3: content that cannot be read is reset only for the lock a reader DECIDED (a good read sent past the window after its first sight)
+        if (only && only.malformed === true && Number.isFinite(only.seen) && sameLock(asLock(null, kind), only)) { writeAll(name, {}); garbageSeen[name] = null }
+        return true
+      }
       if (!(String(id) in all)) return true
       if (only && !sameLock(asLock(all[String(id)], kind), only)) return false
       const next = { ...all }
@@ -295,7 +312,7 @@ export const newRequestKey = () => {
 }
 /** Tests: forget every lock and key (memory and storage). */
 export function resetExitLocks() {
-  for (const k of Object.keys(dirty)) dirty[k] = false
+  for (const k of Object.keys(dirty)) { dirty[k] = false; garbageSeen[k] = null }
   writeAll(LOCK_KEY, {})
   writeAll(ADD_KEY, {})
   writeAll(KEYS_KEY, {})

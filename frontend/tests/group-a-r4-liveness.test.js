@@ -14,12 +14,12 @@ describe('R4 F5 a lock that cannot be read ends by a good read past the window',
     expect(l.seen - Date.now()).toBeLessThanOrEqual(0)
     expect(L.decideLock(l, { key: BEFORE, units: { 753: 65, 776: 260, 784: -65 } }, Date.now() + WINDOW + 1000).verdict).toBe('changed')
   })
-  it('an exit lock with no units and an unchanged good read past the window is not stored; a moved book stays kept; inside the window it is kept', () => {
+  it('an exit lock with no units and an unchanged good read past the window is not stored; a moved book is changed past the window; inside the window it is kept', () => {
     const lock = { kind: 'exit', malformed: false, at: 1000, before: BEFORE, expected: null, units: null, out: false }
     const same = { key: BEFORE, units: { 753: 65, 776: 260, 784: -65 } }
     expect(L.decideLock(lock, same, 1000 + 10 * WINDOW).verdict).toBe('not_stored')
     expect(L.decideLock(lock, same, 2000).verdict).toBe('keep')
-    expect(L.decideLock(lock, { key: '753:65', units: { 753: 65 } }, 1000 + 10 * WINDOW).verdict).toBe('keep') // a moved book cannot be judged without the legs: fail closed
+    expect(L.decideLock(lock, { key: '753:65', units: { 753: 65 } }, 1000 + 10 * WINDOW).verdict).toBe('changed') // R5 N3: a moved book cannot be judged without the legs, but a good read sent past the window still ends it (liveness)
   })
   it('a malformed ADD lock is decided by a good read sent more than 130 s after its first sight', async () => {
     localStorage.setItem('ofo.addUnknown', JSON.stringify({ 1: { names: [] } }))

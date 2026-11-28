@@ -596,13 +596,13 @@ async function doExit(orders, _held = null, _ticked = false, dialogKey = null) {
       exitRec.settle(c.id, attempt, 'unknown', '', { readSeq, at: gaveUp, lock: exitLockFor(c.id) ?? gave })
     }
     if (outcome === PAPER_STATE.REFUSED) { // a definite answer (a 4xx, 580 / 581 / 583 too): nothing stored, the lock and the key end; the next attempt is a new action
-      dropExitLock(c.id, { key }); dropOrderKey(c.id, 'exit')
+      dropExitLock(c.id, { key, at: lock.at }); dropOrderKey(c.id, 'exit')
       exitRec.settle(c.id, attempt, 'refused', exitEndText('refused', c.names, e?.parts, NEUTRAL_ERROR)) // all four parts + the legs
     }
     busy.value = false
     return
   }
-  dropExitLock(c.id, { key }); dropOrderKey(c.id, 'exit') // stored (a repeat of the same key answered 201 too): the action is over
+  dropExitLock(c.id, { key, at: lock.at }); dropOrderKey(c.id, 'exit') // stored (a repeat of the same key answered 201 too): the action is over
   // STORED (201): the server answered, so the order exists: placed replaces whatever the page guessed meanwhile (unknown / not stored / changed)
   if (confirm.value && String(confirm.value.id) === String(c.id)) confirm.value = null
   ticks.value = { ...ticks.value, [c.id]: [] }

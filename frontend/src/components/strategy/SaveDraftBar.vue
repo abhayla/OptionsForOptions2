@@ -378,9 +378,10 @@ async function checkAddUnknown() {
   try {
     for (const id of addLockIds()) {
       if (inflightAdds.has(String(id))) continue // its post is still out: only its answer ends it
+      const stored0 = addLockFor(id)
+      if (stored0 && typeof stored0.before === 'string' && stored0.before.startsWith('#')) continue // R5 N1: the builder's add lock (before '#<book>') is decided ONLY by the builder's own read (it holds the add in memory and rebases its legs); the bar never ends it
       const mine = adoptedAddLock(id, Date.now()) // a lock written before a post whose tab closed: the 130 s rule counts from this first sight
       if (!mine) continue // a malformed lock is read too: a good read sent more than 130 s after its first sight decides it (decideLock)
-      const builderLock = typeof mine.before === 'string' && mine.before.startsWith('#') // Group A R2 (e): the builder's add lock (before '#<book>') is decided here as well (the ADDED legs moved); the builder's own read decides it too
       const sentAt = Date.now() // the window is judged by when the read was SENT, not when its answer came (Opus review F3)
       let read
       try { read = await readPaperBook(api, id) } catch { continue } // a failed read decides nothing (the one door: paperDrafts.readPaperBook)
@@ -391,7 +392,7 @@ async function checkAddUnknown() {
         if (!dropAddLock(id, now)) continue // another tab's newer lock stays
         dropOrderKey(id, 'add')
         addTick.value++
-        if (!builderLock && String(props.current?.id) === String(id)) { paperRecorded.value = true; emit('paper-added', props.current.id) }
+        if (String(props.current?.id) === String(id)) { paperRecorded.value = true; emit('paper-added', props.current.id) }
       } else if (d.verdict === 'not_stored') { dropAddLock(id, now); addTick.value++ } // no orders in a read sent past the window: not stored (the key stays for a resend)
       else if (d.verdict === 'changed') { if (dropAddLock(id, now)) dropOrderKey(id, 'add'); addTick.value++ } // a malformed lock, or the added legs moved some other way, decided by a read sent past the window
     }
@@ -451,7 +452,8 @@ async function confirmPaper(orders, held = null, notLiveTicked = false, dialogKe
   paperState.value = PAPER_STATE.READY
   const sig = JSON.stringify(orders)
   const key = orderKeyFor(target, sig, dialogKey, 'add') // Lane FJ item 1d: the dialog's key; the same orders still open after an unknown outcome send the key already held
-  saveAddLock(target, { at: Date.now(), out: true, before: '', key, sig }) // F3: written BEFORE the post goes out; a definite answer removes it (`out`: at = when it went out)
+  const outAt = Date.now() // R5 N5: this write's own identity: a definite answer drops this lock, never another tab's
+  saveAddLock(target, { at: outAt, out: true, before: '', key, sig }) // F3: written BEFORE the post goes out; a definite answer removes it (`out`: at = when it went out)
   inflightAdds.add(String(target))
   addTick.value++
   try {
@@ -465,7 +467,7 @@ async function confirmPaper(orders, held = null, notLiveTicked = false, dialogKe
     paperState.value = outcome
     if (outcome === PAPER_STATE.REFUSED) dropOrderKey(paperTarget.value, 'add') // a definite refusal (580 / 581 / 583 too): nothing stored, the key is free
     if (outcome === PAPER_STATE.UNKNOWN) { saveAddLock(target, { at: Date.now(), out: false, before: '', key, sig }); startUnknownTimer() } // `at` is now when the client gave up
-    else dropAddLock(target, { key }) // a definite refusal: nothing stored, the lock ends with the answer
+    else dropAddLock(target, { key, at: outAt }) // a definite refusal: nothing stored, the lock ends with the answer
     addTick.value++
     if (outcome === PAPER_STATE.REFUSED) {
       const edited = orders.some((o, i) => { const p = paperOrders.value[i]; return !p || String(o.quantity) !== String(p.lots * p.lot_size) || String(o.price).trim() !== String(p.price ?? '').trim() })
@@ -476,7 +478,7 @@ async function confirmPaper(orders, held = null, notLiveTicked = false, dialogKe
   }
   refusedLists.clear()
   inflightAdds.delete(String(target))
-  dropAddLock(target, { key })
+  dropAddLock(target, { key, at: outAt })
   addTick.value++
   dropOrderKey(paperTarget.value, 'add') // stored: the action is over
   // STORED (201): from here this plan never records again (paperRecorded); a failure below is not "not placed"

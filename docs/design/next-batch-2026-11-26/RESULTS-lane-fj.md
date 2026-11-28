@@ -1,4 +1,4 @@
-STATUS 10:35 | items 2-6, a-c, TF built and gated (fea45e1 pushed, TF follows); item 1 PARTIAL: round 2 re-review REVISE, 4 findings parked (see Parked), GROUP A NOT READY; item 7 browser walk, d, e not run | next push 11:15 | blocker: none
+STATUS 12:30 | items 1-6, a-c, TF, R1-R4 built; 287c2dfa5 pushed (gated); round 5 (N1-N3, N5) on top, gate running; five Opus reviews run, the fifth found N1 which round 5 closes (not re-reviewed); item 7 browser walk, d, e, not_applicable stops (group B): not run | next push 13:15 | blocker: none
 
 # RESULTS Lane FJ (frontend joins), branch fix/r3-frontend-joins-1128
 
@@ -18,7 +18,7 @@ Base: origin/integration/weekend-r2-1128 plus merges of fix/r2-builder-2, r2-exi
 | c FB2 minors (refusals, 511 tick, Save As, shape read) | Fixed | 4/7 and [2,2,3,3,4,4] vs [2,3,4] | green |
 
 Opus review (items 1-2, commit 10cc777): REVISE, F1/F2 critical (builder and Positions locks read each other as "placed" or "moved"), F3 add lock written after the POST, F4-F7 minors. Round 2 fixed F1-F6 at class level: one writer and one decision (`decideLock`) in lib/unknownLocks.js. F7 not built (server key stays pending up to 600 s, so a same-key resend can meet 582 for up to 10 minutes: no double order, possible wait).
-Second Opus read of round 2 (commit fea45e1): REVISE. See Parked.
+Five Opus reads, see Lock rounds and reviews.
 
 ## For the owner lane
 - `StrategyOut` (`GET /strategies/{id}`) carries no `position_kind`; with it the builder could tell a real trade directly. Today: status_word "Running" + no paper book for that id.
@@ -50,14 +50,18 @@ Second Opus read of round 2 (commit fea45e1): REVISE. See Parked.
 3. TD O-4: should the table total follow the "Add booked P&L" switch (tiles move with it, the table total does not; OFF shows whole rupees, ON paise)?
 4. Execute page (real basket): does it need the same lock after an unknown outcome, and what should a repeat press do there? Not built.
 
-## Parked (item 1 stays PARTIAL; rule B1: two rounds spent, so parked with evidence, not a third round)
-Opus re-review of fea45e1 found a path where a second exit goes out with a NEW key while the first can still commit (the 27 Nov case, 2 of 4 lots twice). To file as deferred issues; the attack tests (a1, b1, c1, e1) are in the lane's scratchpad and are to be moved into frontend/tests/ with the fixes:
-1. CRITICAL `decideLock` verdict `changed` (unknownLocks.js ~102-110) ends the lock and drops the key inside the 130 s window when ANY other leg moved (a stop on another leg, expiry, another device). Callers: PaperStrategies.vue ~497, StrategyBuilderPage.vue ~895-896. Runs: Positions 503 on leg 776, read shows leg 784 at 0 and 776 unchanged => lock null, second POST new key; builder 2 of 4 lots the same. Recommended (fail-closed, not built): "moved" means an EXITED leg moved; an unrelated move counts as unchanged; the key is dropped only on stored or refused; `changed` never ends the lock before a read sent more than 130 s after the give-up.
-2. CRITICAL another tab decides while the first POST is still out: `adopted()` (~143-148) turns `out:true` into `out:false, at: now`; PaperStrategies.vue ~515 sets `readSeq: seq - 1` so the adopting read counts as "after the reply" though no reply exists; `out` is checked only on the unchanged branch (~113). Mutation: removing `lock.out === true ||` leaves all 23 round-2 tests green.
-3. MAJOR the builder checks the lock before `await readStops` (~743) and not after (~757 checks only exitBlocked); ~769 overwrites another tab's lock, ~808 drops it on 201. Run: builder Confirm with the triggers read held, Positions exit posts meanwhile, builder then posts too. Fix: re-check `exitLockFor` in the same synchronous step as `saveExitLock`, as Positions does (~574-583).
-4. MAJOR one refused storage write (`storageWorks = false`, unknownLocks.js ~19, 24, 37) makes every later read ignore storage, so another tab's lock is invisible (fail open). Fix: read storage whenever possible and merge with memory.
-5. MINOR a malformed entry without `before` locks forever (liveness); an `at` in the future holds until the clock passes it; the builder's add lock is memory-only (not held across reload or a second tab, same class as F3); round-2 tests do not catch mutations M4 and M6.
-F7 (server keeps the key pending up to 600 s, a same-key resend can meet 582) also stays.
+## Lock rounds and reviews (item 1 / GROUP A: R1 R2 R3 R4)
+Five Opus reviews of the lock and key code; each closed what the last found, each found one more in the add/exit lock interplay.
+| Review of | Verdict | Open then |
+|---|---|---|
+| 10cc777 | REVISE | F1/F2 builder and Positions locks read each other as placed/moved; F3 add lock after the POST |
+| fea45e1 | REVISE | changed verdict ended the lock in the window; foreign out lock decided; builder checks lock before the stops read; storage fail-open |
+| 4c6bc6b | REVISE | add lock ended by unrelated leg move; add lock skipped by a post with an exit row; deciding tab dropped another tab's lock; one key slot |
+| 287c2dfa5 | REVISE | N1 (MAJOR, added by round 4): the save bar timer decided the builder add lock, then a second add with a new key could go out (E1, E2); N2 null-at lock never dropped; N3 unreadable legs lock for ever; N5 null-key drop |
+| round 5 (on top of 287c2dfa5) | not re-reviewed | N1, N2, N3, N5 closed with tests (group-a-r5-*); N4 left (sign flip or partial fill reads "changed" not "stored") |
+Closed, with a test file per finding: R1 no resend inside the window (group-a-r1, group-a-r4-*), R2 lock survives reload and a second tab (group-a-r2, group-a-r4-lock-owner), R3 one key per action incl. Execute page (group-a-r3, group-a-r4-key-slots), R4 cancelled stops read (group-a-r4). Attack tests of the reviews are folded into those files.
+Still open (minor, no double order): F7 the server keeps a key pending up to 600 s so a same-key resend can meet 582 for up to 10 minutes; N4; an unparseable whole store blocks every strategy for 130 s after first sight.
+The coordinator's build lane runs one more independent review on the merged build.
 
 ## TF defect (from test lane TF): builder `?strategy=1` says the paper position "could not be read" with no failed request
 Cause: `readPaperBook` threw "unreadable" when the book and the catalogue both answered but the catalogue held none of the book's contracts (D-TD-3 scenario day in the past). Fixed: that state has its own sentence and still blocks the page (fail closed); a failed or malformed read still says "could not be read". Test builder-open-unmatched-r3-fj (3 tests). Not changed: three sites that pass null to `unreadableParts` (book names a different strategy id than the URL; a re-read that is not a paper book) still say "could not be read"; they need their own wording, owner to decide.
@@ -81,4 +85,4 @@ Live: repeat with a real unknown reply; check "Prices as of" / "Checked at" on t
 | Opus review items 1-2 | Opus | 11 |
 | round 2 fixes | Sonnet | 15 |
 
-NOT SAFE TO CLOSE: item 1 parked remainder, item 7 not run.
+NOT SAFE TO CLOSE: item 7, d, e and group B items not run.

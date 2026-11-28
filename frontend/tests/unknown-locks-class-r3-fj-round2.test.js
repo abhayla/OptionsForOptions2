@@ -326,7 +326,7 @@ describe('F5: malformed stored data fails closed and never throws', () => {
       expect(() => { lk = L.exitLockFor(1); L.exitLockIds() }, name).not.toThrow()
       expect(lk, name).not.toBeNull()
       // a book that moved: only a lock whose units and book key are readable can say stored (a bad `at` is needed for an UNCHANGED book only)
-      expect(L.decideLock(lk, L.bookOfPositions([{ contractId: 776, units: 130 }]), Date.now() + 1e7).verdict, name).toBe(name === 'at not a number' ? 'stored' : 'keep')
+      expect(L.decideLock(lk, L.bookOfPositions([{ contractId: 776, units: 130 }]), Date.now() + 1e7).verdict, name).toBe(name === 'at not a number' ? 'stored' : name.startsWith('units') || ['an array', 'a number', 'broken json'].includes(name) ? 'changed' : 'keep') // an unparseable whole store counts from its first sight (R5 N3); R5 N3: a lock with a valid `before` and no readable legs ends as 'changed' for a moved book read past the window
       if (name === 'at not a number') expect(L.decideLock(lk, { key: GOOD_BEFORE, units: { 776: 260 } }, Date.now() + 1e7).verdict, name).toBe('keep') // unchanged needs `at`
     }
     globalThis.localStorage.setItem('ofo.exitUnknown', '{}')
