@@ -62,8 +62,8 @@
         </div>
         <div v-if="resetDone" class="mt-2 text-xs text-ink-muted" data-testid="plan-reset-markers">
           <p v-if="!resetDone.changed.length && !resetDone.off.length">{{ labels.reset_put_back_none }}</p>
-          <p v-if="resetDone.changed.length">{{ labels.reset_put_back }} {{ resetDone.changed.join(', ') }}</p>
-          <p v-if="resetDone.off.length">{{ labels.reset_put_back_off }} {{ resetDone.off.join(', ') }}</p>
+          <p v-if="resetDone.changed.length">{{ labels.reset_put_back }} {{ markerNames(resetDone.changed, resetDone.names).join(', ') }}</p>
+          <p v-if="resetDone.off.length">{{ labels.reset_put_back_off }} {{ markerNames(resetDone.off, resetDone.names).join(', ') }}</p>
         </div>
       </template>
       <AlertStylePicker v-if="open && sheet" :strategy-id="strategyId" />
@@ -94,7 +94,7 @@ import { useBuilderHold } from '@/stores/builderHold'
 import api from '@/services/api'
 import { PLAN_LOADING_TEXT, PLAN_LOAD_FAILED_TEXT, PLAN_NOT_CONFIRMED_TEXT, PLAN_PICK_TIMED_OUT_TEXT, PLAN_REFILLED_TEXT, PLAN_TIMED_OUT_TEXT } from '@/lib/sharedStateText'
 import { planSaveResult } from '@/lib/planSaveResult'
-import { asIsBody, customiseUrl, fetchLevels, fetchPlan, formOf, resetPlan, saveBody, sendPlan } from '@/lib/adjustPlan'
+import { asIsBody, customiseUrl, fetchLevels, fetchTriggerLabels, markerNames, fetchPlan, formOf, resetPlan, saveBody, sendPlan } from '@/lib/adjustPlan'
 import { saveStamp, savedSince } from '@/lib/planSaveClock'
 
 const props = defineProps({
@@ -127,6 +127,7 @@ const canReset = computed(() => {
 })
 async function reset() {
   if (busy.value) return
+  const id = props.strategyId
   busy.value = true
   errorParts.value = null
   notConfirmed.value = false
@@ -139,7 +140,11 @@ async function reset() {
     sheet.value = read
     picked.value = false // the sheet now shows the saved plan again; an untouched Save is no new choice
     form.value = { ...read.prefill }
-    resetDone.value = { changed: read.putBack, off: read.putBackOff }
+    resetDone.value = { changed: read.putBack, off: read.putBackOff, names: {} }
+    if (read.putBack.length || read.putBackOff.length) { // D-TG2-1: name the triggers in words (never the raw key)
+      const names = await fetchTriggerLabels(api, props.strategyId)
+      if (id === props.strategyId && resetDone.value) resetDone.value = { ...resetDone.value, names }
+    }
     resetAsking.value = false
     emit('saved', read)
   } finally {
@@ -201,17 +206,28 @@ async function typed(field) {
   const f = form.value
   if (isTarget) f.targetLast = rupees ? 'rupees' : 'percent'
   else f.stopLast = rupees ? 'rupees' : 'percent'
+  // I-208: which boxes of the pair hold what the user typed (a box the server filled in is not one); Save sends both when both are
+  const flagKey = isTarget ? 'targetTyped' : 'stopTyped'
+  f[flagKey] = { ...f[flagKey] } // own copy: the prefill's object is shared with the server reading
+  const mine = f[flagKey]
+  const side = rupees ? 'rupees' : 'percent'
+  const otherSide = rupees ? 'percent' : 'rupees'
+  mine[side] = true
   const own = isTarget ? (rupees ? f.targetRupees : f.target) : (rupees ? f.stopRupees : f.stop)
   const other = isTarget ? (rupees ? 'target' : 'targetRupees') : (rupees ? 'stop' : 'stopRupees')
   const words = isTarget ? ['targetWords', 'targetRupeeWords'] : ['stopWords', 'stopRupeeWords', 'stopWarning']
   const level = isTarget ? 'target' : 'stop'
   const run = ++levelsRun[level]
   const stamp = saveStamp(props.strategyId)
-  if (own.trim() === '') { f[other] = ''; words.forEach((k) => { f[k] = '' }); return } // nothing typed: nothing to show
+  if (own.trim() === '') { f[other] = ''; mine[side] = false; mine[otherSide] = false; words.forEach((k) => { f[k] = '' }); return } // nothing typed: nothing to show
   try {
     const got = (await fetchLevels(api, props.strategyId, { [field]: own }, f.playbookId, picked.value))[level]
     if (run !== levelsRun[level] || form.value !== f || savedSince(props.strategyId, stamp)) return
-    if (!got) return
+    if (!got) { // the server could not work out the other box
+      if (!mine[otherSide]) { f[other] = ''; f[words[rupees ? 0 : 1]] = '' } // a figure the SERVER filled earlier is stale beside the new one (D-TG-4): gone
+      return // a box the USER typed stays as typed (both are sent; the server names a clash)
+    }
+    mine.percent = false; mine.rupees = false // the pair now agrees by the server's figures: neither box is an unreconciled typed value
     f[other] = rupees ? got.percent : got.rupees
     f[words[0]] = got.words
     f[words[1]] = got.rupeeWords
@@ -219,6 +235,7 @@ async function typed(field) {
   } catch {
     if (run !== levelsRun[level]) return
     f[other] = '' // a level the server will not read shows no figure (fail closed); Save names the field
+    mine[otherSide] = false
     words.forEach((k) => { f[k] = '' })
   }
 }

@@ -66,8 +66,8 @@ describe('P8 Reset to playbook on the plan sheet', () => {
     await t(w, 'plan-reset-yes').trigger('click')
     await flushPromises()
     expect(posts()).toEqual([{ method: 'POST', url: RESET, body: undefined }])
-    expect(t(w, 'plan-reset-markers').text()).toContain("Put back to the playbook's values: triggers.T-02")
-    expect(t(w, 'plan-reset-markers').text()).toContain('Switched on again: triggers.T-05')
+    expect(t(w, 'plan-reset-markers').text()).toContain("Put back to the playbook's values: a condition of the playbook") // F2 D-TG2-1: never the raw key; no rules answer here
+    expect(t(w, 'plan-reset-markers').text()).toContain('Switched on again: a condition of the playbook')
     expect(t(w, 'plan-target').element.value).toBe('60') // the typed levels are the server's, kept
     expect(t(w, 'plan-reset-confirm').exists()).toBe(false)
   })

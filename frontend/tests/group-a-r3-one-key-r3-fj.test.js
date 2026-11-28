@@ -93,7 +93,7 @@ describe('R3: builder', () => {
 
 describe('R3: Execute page (the real basket page; mocked answers only; it calls the same endpoint as before)', () => {
   const EXEC = '/strategies/1/execute'
-  const REPLY = { plan_number: 1, tags: ['T'], basket: { url: 'https://example.invalid/basket', api_key: 'k', data: '[]' }, orders: [{ exchange: 'NFO', tradingsymbol: 'X', transaction_type: 'BUY', order_type: 'LIMIT', product: 'NRML', variety: 'regular', quantity: 65, price: '3.35', readonly: true, tag: 'T' }], cost: null }
+  const REPLY = { plan_number: 1, tags: ['T'], basket: { url: 'https://kite.zerodha.com/connect/basket', api_key: 'k', data: '[]' }, orders: [{ exchange: 'NFO', tradingsymbol: 'X', transaction_type: 'BUY', order_type: 'LIMIT', product: 'NRML', variety: 'regular', quantity: 65, price: '3.35', readonly: true, tag: 'T' }], cost: null }
   const DEF = { underlying: 'NIFTY', legs: [{ contract_id: 7, contract_state: 'live', exchange_segment: 'NSE_FO', exchange_token: 12080386, action: 'BUY', instrument: 'CE', strike: '23650', expiry: '2026-10-19', quantity: 65, planned_entry: '3.35', captured_at: '2026-10-16T15:07:00+05:30' }] }
   const CONTRACT = { contract_id: 7, exchange_segment: 'NSE_FO', exchange_token: 12080386, instrument_type: 'CE', expiry: '2026-10-19', strike: '23650.00', lot_size: 65, symbol: 'NIFTY26O1923650CE' }
   const LIVE_PUSH = { state: 'COMPUTED', legs: [{ instrument_id: 'NSE_FO:12080386', action: 'BUY', lots: 1, planned_entry: '3.35', label: null }] }
@@ -121,6 +121,10 @@ describe('R3: Execute page (the real basket page; mocked answers only; it calls 
     const k1 = execPosts()[0].body.client_request_id
     expect(typeof k1).toBe('string')
     await press(w, 'prepare-exit')
+    expect(execPosts(), 'F2 I-182: a press right after an unknown answer sends nothing (the Execute lock)').toHaveLength(1)
+    globalThis.localStorage.removeItem('ofo.addUnknown'); window.dispatchEvent(new StorageEvent('storage', { key: 'ofo.addUnknown' })) // the lock ended (a good read past the window, tested in execute-lock-f2-1128); the request key stays
+    live.last.onPush(LIVE_PUSH); await flushPromises()
+    await press(w, 'prepare-exit')
     expect(execPosts()).toHaveLength(2)
     expect(execPosts()[1].body.client_request_id, 'a repeat of the same action got a new key').toBe(k1)
     expect(execPosts()[1].url).toBe(EXEC)
@@ -138,6 +142,10 @@ describe('R3: Execute page (the real basket page; mocked answers only; it calls 
   it('a different action (entry after an unknown exit) is a new action: its own key', async () => {
     const w = await mountExecute(() => Promise.reject({ status: 503, message: 'x', parts: null }))
     await press(w, 'prepare-exit')
+    live.last.onPush(LIVE_PUSH); await flushPromises()
+    await press(w, 'prepare-entry')
+    expect(execPosts(), 'F2 I-182: the other button is locked too: the page has one lock').toHaveLength(1)
+    globalThis.localStorage.removeItem('ofo.addUnknown'); window.dispatchEvent(new StorageEvent('storage', { key: 'ofo.addUnknown' })) // the lock ended; the key of the other action is its own
     live.last.onPush(LIVE_PUSH); await flushPromises()
     await press(w, 'prepare-entry')
     expect(execPosts()).toHaveLength(2)
