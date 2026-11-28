@@ -62,8 +62,8 @@
         </div>
         <div v-if="resetDone" class="mt-2 text-xs text-ink-muted" data-testid="plan-reset-markers">
           <p v-if="!resetDone.changed.length && !resetDone.off.length">{{ labels.reset_put_back_none }}</p>
-          <p v-if="resetDone.changed.length">{{ labels.reset_put_back }} {{ resetDone.changed.join(', ') }}</p>
-          <p v-if="resetDone.off.length">{{ labels.reset_put_back_off }} {{ resetDone.off.join(', ') }}</p>
+          <p v-if="resetDone.changed.length">{{ labels.reset_put_back }} {{ markerNames(resetDone.changed, resetDone.names).join(', ') }}</p>
+          <p v-if="resetDone.off.length">{{ labels.reset_put_back_off }} {{ markerNames(resetDone.off, resetDone.names).join(', ') }}</p>
         </div>
       </template>
       <AlertStylePicker v-if="open && sheet" :strategy-id="strategyId" />
@@ -94,7 +94,7 @@ import { useBuilderHold } from '@/stores/builderHold'
 import api from '@/services/api'
 import { PLAN_LOADING_TEXT, PLAN_LOAD_FAILED_TEXT, PLAN_NOT_CONFIRMED_TEXT, PLAN_PICK_TIMED_OUT_TEXT, PLAN_REFILLED_TEXT, PLAN_TIMED_OUT_TEXT } from '@/lib/sharedStateText'
 import { planSaveResult } from '@/lib/planSaveResult'
-import { asIsBody, customiseUrl, fetchLevels, fetchPlan, formOf, resetPlan, saveBody, sendPlan } from '@/lib/adjustPlan'
+import { asIsBody, customiseUrl, fetchLevels, fetchTriggerLabels, markerNames, fetchPlan, formOf, resetPlan, saveBody, sendPlan } from '@/lib/adjustPlan'
 import { saveStamp, savedSince } from '@/lib/planSaveClock'
 
 const props = defineProps({
@@ -127,6 +127,7 @@ const canReset = computed(() => {
 })
 async function reset() {
   if (busy.value) return
+  const id = props.strategyId
   busy.value = true
   errorParts.value = null
   notConfirmed.value = false
@@ -139,7 +140,11 @@ async function reset() {
     sheet.value = read
     picked.value = false // the sheet now shows the saved plan again; an untouched Save is no new choice
     form.value = { ...read.prefill }
-    resetDone.value = { changed: read.putBack, off: read.putBackOff }
+    resetDone.value = { changed: read.putBack, off: read.putBackOff, names: {} }
+    if (read.putBack.length || read.putBackOff.length) { // D-TG2-1: name the triggers in words (never the raw key)
+      const names = await fetchTriggerLabels(api, props.strategyId)
+      if (id === props.strategyId && resetDone.value) resetDone.value = { ...resetDone.value, names }
+    }
     resetAsking.value = false
     emit('saved', read)
   } finally {

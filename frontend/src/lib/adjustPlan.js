@@ -142,6 +142,30 @@ export async function sendPlan(client, strategyId, body, edit) {
 
 export { isRefusal } from '@/lib/planSaveResult' // the one rule lives in planSaveResult.js
 
+/** D-TG2-1: a reset marker key ("triggers.T-01") is never shown. Its name is the trigger's label in the trade's own rules; a key with no
+ *  readable label (unknown, empty, or the rules could not be read) reads this plain fallback (pending owner read). */
+export const MARKER_FALLBACK_TEXT = 'a condition of the playbook'
+/** `labels`: trigger id -> label from GET .../adjustment-plan/rules. One name per marker, the fallback at most once. */
+export function markerNames(keys, labels) {
+  const out = []
+  for (const k of Array.isArray(keys) ? keys : []) {
+    const m = /^triggers\.([A-Za-z0-9-]+)$/.exec(String(k))
+    const label = m && typeof labels?.[m[1]] === 'string' ? labels[m[1]].trim() : ''
+    const name = label || MARKER_FALLBACK_TEXT
+    if (!out.includes(name)) out.push(name)
+  }
+  return out
+}
+/** The trade's own trigger labels (id -> label) for the reset markers; {} when the read fails (every marker then reads the fallback). */
+export async function fetchTriggerLabels(client, strategyId) {
+  try {
+    const { data } = await client.get(`${planPath(strategyId)}/rules`)
+    return Object.fromEntries(Object.entries(data?.body?.triggers ?? {}).map(([id, t]) => [id, typeof t?.label === 'string' ? t.label : '']))
+  } catch {
+    return {}
+  }
+}
+
 /** ADR-330 (9), (32) "Reset to playbook": the server puts the playbook's conditions back (the typed levels stay) and answers the sheet. Throws the client error. */
 export async function resetPlan(client, strategyId) {
   const { data } = await client.post(`${planPath(strategyId)}/reset`, undefined, SAVE_CONFIG)
