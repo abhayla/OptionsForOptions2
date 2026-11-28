@@ -343,11 +343,21 @@ LINES: dict[str, tuple[str, ...]] = {
         "export const ACCOUNT_UNREADABLE = 'Your Zerodha account details could not be read.'",
     ),
     'frontend/src/components/strategy/PaperStops.vue': (
-        "const LABEL = 'Paper - exits are recorded in the app, not sent to Zerodha'",
+        "const LABEL = computed(() => (props.kind === 'real' ? REAL_STOPS_TEXT : 'Paper - exits are recorded in the app, not sent to Zerodha'))",
     ),
-    'frontend/src/lib/paperDrafts.js': (
-        # ADR-330 (10): the exit-title word for a real exit, user-facing wording in the one title door (no real exit is rendered, ADR-281)
-        "const KIND_WORDS = { paper: 'Paper', real: 'Real (Zerodha order)' }",
+    'frontend/src/components/strategy/PaperStrategies.vue': (
+        # owner 28 Nov: the banner of a paper list that holds a real group says nothing is sent to Zerodha (user wording, no branch on the broker)
+        "const MIXED_BANNER = 'Paper trades are not real money. A real position here only stores your actions; nothing is sent to Zerodha.' // pending owner read",
+    ),
+    'frontend/src/lib/positionKind.js': (
+        # owner 28 Nov: the one set of sentences saying a real action is only stored and "Not sent to Zerodha. Place it in Kite." (user wording, no branch on the broker)
+        "export const NOT_SENT_LINE = 'Not sent to Zerodha. Place it in Kite.'",
+        "export const REAL_EXIT_DIALOG_TEXT = 'This stores your exit in the app as a record and a reminder. It does not place an order and does not change your Zerodha position. Place it in Kite.'",
+        "export const REAL_ADD_DIALOG_TEXT = 'This stores your add in the app as a record and a reminder. It does not place an order and does not change your Zerodha position. Place it in Kite.'",
+        "export const REAL_STORED_NOT_REFRESHED_TEXT = 'Stored in the app. Not sent to Zerodha. Place it in Kite. Loading the position again.'",
+        "export const REAL_EXIT_STORED_TEXT = 'Exit stored. Not sent to Zerodha. Place it in Kite. This position stays open here until Zerodha shows it closed.'",
+        "export const REAL_STOPS_TEXT = 'Stop stored for this real position. When it is reached you get an alert. Nothing is sent to Zerodha. Place the exit in Kite.'",
+        "export const REAL_ROW_TEXT = 'Real position. Zerodha shows its quantity and P&L. Exits and stops you store here are not sent. Place them in Kite.'",
     ),
     'frontend/src/lib/strategyActivity.js': (
         'export const HELD_REFUSED_TEXT = "This strategy is marked as held at your broker, so it cannot be deleted.";',
