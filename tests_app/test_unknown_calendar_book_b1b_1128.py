@@ -3,7 +3,7 @@ market counts as closed (``feed_health.FeedState.market_closed``: "a date it can
 blocked, but the paper book then read a stored close as LIVE during real market hours. Real case: Friday 9 Oct 2026,
 11:00 IST, no session, a stored close of 9 Oct 15:29:58 in the book, the calendar patched to answer ``NO_CALENDAR``
 (the data file holds no holiday table for the year). An unknown calendar answer reads NOT_CONNECTED with no figure.
-Backstop: a book with no session that reads LIVE always carries a non-null ``as_of``."""
+(The backstop test, a no-session LIVE book always has a non-null as_of, is Lane RA2's.)"""
 from __future__ import annotations
 
 import datetime
@@ -11,8 +11,6 @@ from decimal import Decimal
 
 from ofo import market_calendar
 from ofo.marketdata.kite_provider import IST
-from ofo.tracking import paper
-from ofo_app.routes import paper as paper_routes
 from ofo_app.routes.outcome import MarketContext, get_market_context
 from test_paper_routes import _client, db  # noqa: F401 - db is the rollback fixture
 from test_stored_close_paper_pnl_ra2_1128 import SATURDAY, _no_session_book
@@ -46,12 +44,3 @@ async def test_the_same_book_with_a_calendar_that_answers_closed_still_reads_liv
     async with _client(app) as c:
         body = (await c.get(f"/paper/strategies/{stored.id}")).json()
     assert (body["state"], body["as_of"] is not None) == ("LIVE", True)
-
-
-def test_backstop_a_no_session_book_whose_prices_carry_no_time_is_not_served():
-    live_without_time = {1: paper.Price("1", paper.LIVE, D("45.15"), None)}
-    close = datetime.datetime(2026, 10, 9, 15, 29, 58, tzinfo=IST)
-    live_with_time = {1: paper.Price("1", paper.LIVE, D("45.15"), close)}
-    assert paper_routes._served(False, object(), live_without_time) is False
-    assert paper_routes._served(False, object(), live_with_time) is True
-    assert paper_routes._served(True, None, {}) is True  # a connected session is unchanged
