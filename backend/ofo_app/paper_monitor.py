@@ -545,8 +545,8 @@ class PaperMonitor:
                     not_run.update({w.armed.trigger.strategy_id: _why_of(w) for w in group})
                 elif reading.source != OWN_FEED:  # this feed's own quote is judged tick by tick (``on_quote``), once
                     fired += await self._exits_with_reading(group, reading, now, polled=True)
-            self._report_not_applicable(not_run)
             self._report_blocked(judged, not_run)
+        self._report_not_applicable(not_run)  # FE4 (N3): the one place, whatever the branch (open, closed, no feed)
         await self._report_exits(judged, not_run, now)
         return fired
 
