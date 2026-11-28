@@ -236,3 +236,21 @@ async def test_an_alert_with_no_worded_condition_shows_its_rule_not_the_trade_na
                                           threshold=None, trigger_id="T-07", stage=None)
     row = next(a for a in (await _call("GET", "/api/alerts/active"))[1]["alerts"] if a["id"] == other.id)
     assert row["text"] == "Plan profit target"
+
+
+def test_ra_w28_a_loss_stop_typed_in_rupees_reads_plan_loss_stop_like_one_typed_in_percent():
+    """Lane RA item 3 (W-28, ADR-330 (5)(a)): the Active reason line of a loss stop typed in rupees read "Plan rupee
+    stop: ..."; the PC's test plan says "Plan loss stop". A loss stop typed in rupees (plan_rupee_loss) and one typed in
+    percent (plan_loss_stop) read the SAME word; the figures differ, the word does not. Same for the target pair stays
+    as it was (not asked). No database: the words are built from the record alone."""
+    from types import SimpleNamespace  # noqa: PLC0415
+
+    from ofo_app.routes import alerts as alerts_route  # noqa: PLC0415
+
+    def words(kind: str) -> str:
+        record = SimpleNamespace(kind=kind, value=D("15.5750"), threshold=D("15.4000"), trigger_id="T-06")
+        return str(alerts_route._rule_in_words(record))
+
+    assert words("plan_rupee_loss") == "Plan loss stop: 15.5750 (rule 15.4000)"
+    assert words("plan_rupee_loss") == words("plan_loss_stop")
+    assert alerts_route._KIND_WORDS["plan_rupee_profit"] == "Plan rupee target"  # not asked: unchanged

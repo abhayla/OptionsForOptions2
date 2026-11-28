@@ -125,7 +125,7 @@ def _words(a: aa.Alert, by_id: dict[int, store.Suggestion]) -> Any:
 
 #: the rule's kind in words, for a record the inbox cannot word (item 2: never the trade's name as the reason)
 _KIND_WORDS = {"plan_loss_stop": "Plan loss stop", "plan_profit_target": "Plan profit target",
-               "plan_rupee_loss": "Plan rupee stop", "plan_rupee_profit": "Plan rupee target",
+               "plan_rupee_loss": "Plan loss stop", "plan_rupee_profit": "Plan rupee target",
                "plan_time_exit": "Plan time exit"}
 _TRIGGER_ID = re.compile(r"T-\d{2}[a-z]?")
 
