@@ -1,6 +1,6 @@
-// ADR-330 (64) (owner 27 Nov evening): while real order placing is on hold a REAL position's row shows its P&L and ONE line, no
-// Exit and no Stops; an alert never offers "Exit the position" for it; a row whose tag cannot be read shows neither control and
-// says why (fail closed); a paper row is unchanged. Stated exception to ADR-330 (58).
+// Rewritten by Lane R2 (owner 28 Nov: "paper and real trades are same now"; withdraws ADR-330 (64)). A REAL position's row shows the same
+// Exit and Stops as paper and ONE line (the server's, else the proposal); its stored actions are never sent. A row whose tag cannot be
+// read (unknown, missing) shows neither control and says why (fail closed, the unknown lock stays); a paper row is unchanged.
 import { describe, expect, it, vi } from 'vitest'
 import { flushPromises, mount } from '@vue/test-utils'
 import { createMemoryHistory, createRouter } from 'vue-router'
@@ -20,9 +20,9 @@ vi.mock('@/lib/saveDraft', async (importActual) => {
     { underlying: 'NIFTY', instrument_id: 'NSE_FO:1001', action: 'SELL', lots: 1, planned_entry: '100.00', captured_at: '2026-11-25T09:20:00+05:30' }]) }
 })
 import LiveStrategyCard from '@/components/live/LiveStrategyCard.vue'
-import { isPaperKind } from '@/lib/positionKind'
+import { isActionableKind } from '@/lib/positionKind'
 
-const REAL_LINE = 'Real position: exit and protect it in Kite. Stops and alerts here cover paper trades only.'
+const REAL_LINE = 'Real position. Zerodha shows its quantity and P&L. Exits and stops you store here are not sent. Place them in Kite.'
 const UNKNOWN_LINE = 'Cannot tell whether this is a real or a paper position, so Exit and Stops are not shown. Check it in Kite.'
 const strat = (over = {}) => ({ id: 5, name: 'S5', underlying: 'NIFTY', status: 'draft', status_word: 'Running', has_order: true, created_at: '2026-11-25T09:00:00+05:30', updated_at: '2026-11-25T09:00:00+05:30', revision: 1, leg_count: 1, first_leg: { instrument: 'N1', strike: '25500', expiry: '2026-12-01' }, ...over })
 const outcome = () => ({ state: 'COMPUTED', underlying: 'NIFTY', status_label: null, reason: null, output_label: null, spot_level: '25575.00',
@@ -42,11 +42,11 @@ const mountCard = async (s) => {
 const t = (w, id) => w.find(`[data-testid="${id}"]`)
 
 describe('Live card by position kind', () => {
-  it('real: the server line, no Exit, no Stops', async () => {
+  it('real: the server line, Exit and Stops like paper', async () => {
     const w = await mountCard(strat({ position_kind: 'real', position_kind_text: REAL_LINE }))
     expect(t(w, 'live-position-kind-line').text()).toBe(REAL_LINE)
-    expect(t(w, 'live-strategy-exit').exists()).toBe(false)
-    expect(t(w, 'live-strategy-stops').exists()).toBe(false)
+    expect(t(w, 'live-strategy-exit').exists()).toBe(true)
+    expect(t(w, 'live-strategy-stops').exists()).toBe(true)
   })
   it('paper: Exit and Stops, no line', async () => {
     const w = await mountCard(strat({ position_kind: 'paper', position_kind_text: null }))
@@ -64,10 +64,11 @@ describe('Live card by position kind', () => {
   })
 })
 
-describe('only exactly "paper" offers Exit', () => {
-  it('real, none, unknown, missing and odd words do not', () => {
-    expect(isPaperKind({ position_kind: 'paper' })).toBe(true)
-    for (const k of ['real', 'none', 'unknown', 'Paper', '', undefined, null]) expect(isPaperKind({ position_kind: k })).toBe(false)
-    expect(isPaperKind(null)).toBe(false)
+describe('only exactly "paper" or "real" offers Exit', () => {
+  it('none, unknown, missing and odd words do not', () => {
+    expect(isActionableKind({ position_kind: 'paper' })).toBe(true)
+    expect(isActionableKind({ position_kind: 'real' })).toBe(true)
+    for (const k of ['none', 'unknown', 'Paper', 'Real', '', undefined, null]) expect(isActionableKind({ position_kind: k })).toBe(false)
+    expect(isActionableKind(null)).toBe(false)
   })
 })

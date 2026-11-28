@@ -88,7 +88,8 @@
     </div>
     <!-- GC-ADJ2 step 6 (REQ-163): the entry, every adjustment and the whole-trade totals; read when opened -->
     <AdjustSteps :strategy-id="savedId" />
-    <PlanEntry v-if="status === 'tracked'" :strategy-id="savedId" :exits-mode="tradeMode === 'real' ? 'real' : 'paper'" :check="check" :check-status="checkStatus" :check-stale="checkStale" :check-refusal="checkRefusal" :exits="exits" :exits-failed="exitsFailed" @retry-check="retryCheck" />
+ <p v-if="tradeMode === 'real' && status === 'tracked'" class="mb-1 text-xs text-ink-muted" data-testid="tracking-real-line">{{ REAL_ROW_TEXT }}</p>
+    <PlanEntry v-if="status === 'tracked'" :strategy-id="savedId" :check="check" :check-status="checkStatus" :check-stale="checkStale" :check-refusal="checkRefusal" :exits="exits" :exits-failed="exitsFailed" @retry-check="retryCheck" />
     <AdjustDrawer
       :open="drawerOpen" :strategy-id="savedId" :lines="drawerLines" :detected="!!view?.detections?.length || flags.length > 0" :card-rows="cardRows(raw)"
       :suggestion-ids="flagIds"
@@ -115,6 +116,7 @@ import { istClock, istStamp } from '@/lib/displayFormat'
 import { openRecords, settledRecords } from '@/lib/paperAlerts'
 import { said } from '@/lib/playbookEditor'
 import { usePaperRefresh } from '@/lib/usePaperRefresh'
+import { REAL_ROW_TEXT } from '@/lib/positionKind'
 import { armedIndexExits, realTriggersPath, triggerListOf, triggersPath } from '@/lib/paperTriggers'
 
 const props = defineProps({

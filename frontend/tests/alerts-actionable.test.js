@@ -162,9 +162,9 @@ describe('History tab', () => {
   })
 })
 
-describe('ADR-330 (64): an alert on a real or unreadable position never offers Exit', () => {
-  const LINE = 'Real position: exit and protect it in Kite. Stops and alerts here cover paper trades only.'
-  it('real: no Exit button, the server line; paper keeps Exit; an unreadable tag shows neither Exit nor a healthy look', async () => {
+describe('Owner 28 Nov (withdraws ADR-330 (64)): an alert on a real position offers Exit like paper; an unreadable tag offers none', () => {
+  const LINE = 'Real position. Zerodha shows its quantity and P&L. Exits and stops you store here are not sent. Place them in Kite.'
+  it('real: Exit button, the server line and the not-sent note; paper keeps Exit; an unreadable tag shows neither Exit nor a healthy look', async () => {
     answers['GET /alerts/active'] = () => Promise.resolve({ data: { count: 3, alerts: [
       row(1, { position_kind: 'real', position_kind_text: LINE, answers: [{ code: 'exit', label: 'Exit the position' }, { code: 'continue', label: 'Continue with the position' }] }),
       row(2),
@@ -172,9 +172,10 @@ describe('ADR-330 (64): an alert on a real or unreadable position never offers E
     ] } })
     const page = await mountAt('/alerts/active', AlertsPage)
     const [real, paper, unread] = ids(page, 'alert-row')
-    expect(real.find('[data-testid="alert-answer-exit"]').exists()).toBe(false)
+    expect(real.find('[data-testid="alert-answer-exit"]').exists()).toBe(true)
     expect(real.find('[data-testid="alert-answer-continue"]').exists()).toBe(true)
     expect(real.get('[data-testid="alert-position-kind-line"]').text()).toBe(LINE)
+    expect(real.get('[data-testid="alert-not-sent-line"]').text()).toBe('Not sent to Zerodha. Place it in Kite.')
     expect(paper.find('[data-testid="alert-answer-exit"]').exists()).toBe(true)
     expect(paper.find('[data-testid="alert-position-kind-line"]').exists()).toBe(false)
     expect(unread.find('[data-testid="alert-answer-exit"]').exists()).toBe(false)

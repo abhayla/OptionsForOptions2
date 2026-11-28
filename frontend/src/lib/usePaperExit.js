@@ -5,6 +5,7 @@
 // `blocked` disables the button; `reason` is the one sentence to show beside it (the not-live reason comes first), else null.
 // Flags and sentences only: nothing is added or compared as money here (ADR-008).
 import { computed, toValue } from 'vue'
+import { REAL_EXIT_STORED_TEXT } from '@/lib/positionKind'
 import { CHANGED_ELSEWHERE_EXIT, NOT_LIVE_EXIT, usePriceFreshness } from '@/lib/priceState'
 
 // Hotfix 27 Nov 2026 (ADR-016..019, ADR-328 (4), REQ-065): the ONE door of an Exit that ends without an order or with a refusal.
@@ -27,6 +28,7 @@ export function exitEndText(reason, legNames = [], parts = null, neutral = 'Some
   else if (reason === 'busy') sentence = EXIT_BUSY_TEXT
   else if (reason === 'checking') sentence = EXIT_CHECKING_TEXT
   else if (reason === 'not_stored') sentence = EXIT_NOT_STORED_TEXT
+  else if (reason === 'done' && parts?.kind === 'real') sentence = REAL_EXIT_STORED_TEXT // owner 28 Nov: a real exit is only stored in the app; never "placed", no order number
   else if (reason === 'done') { // 201: the order numbers are the last N ids of the reply's orders (N = rows sent), shown only when the reply has them
     const n = Number.isInteger(parts?.sent) ? parts.sent : 0
     const ids = Array.isArray(parts?.orders) && n > 0 ? parts.orders.slice(-n).map((o) => o?.id).filter((x) => Number.isInteger(x)) : []

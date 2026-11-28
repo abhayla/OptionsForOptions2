@@ -13,6 +13,7 @@ import PageHeader from '@/components/common/PageHeader.vue'
 import { istTime, noteShownDate } from '@/lib/displayFormat'
 import { plainName, strategyListLabel } from '@/lib/saveDraft'
 import { isRunning, strategyStatusWord } from '@/lib/strategyStatus'
+import { recordLineOf } from '@/lib/positionKind'
 import { FIGURE_READ_FAILED_TEXT, HOME_PNL_LABEL, HOME_RUNNING_LABEL, HOME_UNREAD_LABEL, usePaperPnl } from '@/lib/paperPnl'
 import { activeAlerts, bellCount, dropActive, readActive, takeActive } from '@/lib/paperAlerts'
 import { PAPER_NO_FIGURE } from '@/lib/paperList'
@@ -124,6 +125,7 @@ onMounted(() => { readActive().then(takeActive, dropActive); loadHome() })
             <span class="min-w-0 truncate text-ink-muted">{{ s.underlying }}, {{ strategyStatusWord(s) }}, last saved {{ istTime(s.updated_at) }}</span>
             <router-link v-if="builderLinkOf(s.id)" :to="builderLinkOf(s.id)" class="text-accent hover:underline" :data-testid="`recent-open-${s.id}`">Open in Strategy Builder</router-link>
             <span v-else aria-hidden="true"></span><!-- S-18: no usable id, no link; the grid cell stays -->
+            <p v-if="s.position_kind === 'real' && recordLineOf(s)" class="col-span-full text-xs font-semibold" data-testid="recent-record-line">{{ recordLineOf(s) }}</p>
           </li>
         </ul>
       </Card>

@@ -9,24 +9,21 @@ export const realTriggersPath = (strategyId) => `/real/strategies/${strategyId}/
 // The triggers array of a reply's data, or null when the reply has none (a reply without the array is a failure).
 export const triggerListOf = (data) => (Array.isArray(data?.triggers) ? data.triggers : null)
 
-// ADR-330 (64): a real position never gets a paper stop; an old armed paper stop on one comes back with state "not_applicable".
-// It is not live: no armed badge, no count, no Cancel or Keep, and its row reads exactly this sentence (pending owner read).
-// Any other state, an unknown or an absent one included, keeps its old behaviour.
-export const NOT_APPLICABLE_REAL_TEXT = 'Not applicable: real position.'
+// Owner 28 Nov (withdraws ADR-330 (64)): a real position gets stops like a paper one (stored in the app; nothing is sent to Zerodha).
+// The state "not_applicable" is now only for a position whose kind cannot be read (unknown, fail closed): not live, no armed badge, no count,
+// no Cancel or Keep, and its row reads the server's `not_applicable_text`, else this sentence (pending owner read). Any other state keeps its behaviour.
+export const NOT_APPLICABLE_TEXT = 'Not applicable: this position cannot be read as paper or real.'
 export const isNotApplicable = (x) => x?.state === 'not_applicable'
-/** FJ2-2: the row's own sentence is the server's `not_applicable_text`; the constant is only the fallback (absent, empty or not text). */
-export const notApplicableTextOf = (x) => (typeof x?.not_applicable_text === 'string' && x.not_applicable_text.trim() !== '' ? x.not_applicable_text.trim() : NOT_APPLICABLE_REAL_TEXT)
+/** The row's own sentence is the server's `not_applicable_text`; the constant is only the fallback (absent, empty or not text). */
+export const notApplicableTextOf = (x) => (typeof x?.not_applicable_text === 'string' && x.not_applicable_text.trim() !== '' ? x.not_applicable_text.trim() : NOT_APPLICABLE_TEXT)
 
 // The Conditional exits still on the screen: armed and fired ones; cancelled ones and per-leg stops are dropped.
 export const armedIndexExits = (list) => list.filter((x) => x.kind === 'conditional_exit' && x.state !== 'cancelled')
 
-// I-24 (Lane FC): a real-mode trade's exits are read from the real route (FC3, 28 Nov); when that read FAILS they are neither
-// shown nor called "none": the card says this sentence (pending owner read; ADR-330 (58): paper and real read alike, this is the gap).
-export const EXITS_REAL_UNREADABLE_TEXT = 'Exits of a real-mode trade cannot be read here yet.'
-
-// What the Plan card prints about exits: { kind: 'rows' | 'none' | 'failed' | 'real_unreadable', rows }. Any mode but 'real' is read as paper.
-export function exitsViewOf(mode, exits, failed) {
-  if (failed) return mode === 'real' ? { kind: 'real_unreadable', rows: [] } : { kind: 'failed', rows: [] } // the sentence is for a failed real read only
+// What the Plan card prints about exits: { kind: 'rows' | 'none' | 'failed', rows }. A real trade reads like a paper one (owner 28 Nov): a failed read is
+// said so, never "none". Real and paper exits come from their routes (triggersPath / realTriggersPath) with the same reply shape.
+export function exitsViewOf(exits, failed) {
+  if (failed) return { kind: 'failed', rows: [] }
   const rows = Array.isArray(exits) ? exits : []
   return { kind: rows.length ? 'rows' : 'none', rows }
 }

@@ -39,10 +39,8 @@
       <AdjustPlanSheet :open="sheetOpen" :strategy-id="strategyId" :edit="!!read.plan" @close="sheetOpen = false" @saved="(next) => { read = next }" />
     </div>
     <!-- GC-ICLIVE D-24: the armed (or fired) index conditional exits, the server's level text; a failed read says so, never "none set" -->
-    <p v-for="x in exitsView.rows" :key="x.id" class="mt-1" :data-testid="`plan-entry-exit-${x.id}`">{{ isNotApplicable(x) ? notApplicableTextOf(x) : exitLineText(x.direction, x.level_text, x.state) }}</p>
+    <p v-for="x in exitsView.rows" :key="x.id" class="mt-1" :data-testid="`plan-entry-exit-${x.id}`">{{ isNotApplicable(x) ? notApplicableTextOf(x) : exitLineText(x.direction, x.level_text, x.state) }}<template v-if="x.stored_not_sent === true"> <span class="font-semibold" data-testid="plan-entry-exit-not-sent">{{ recordLineOf(x) }}</span></template></p>
     <p v-if="exitsView.kind === 'failed'" class="mt-1 text-xs text-red-700" data-testid="plan-entry-exits-failed">{{ EXITS_LOAD_FAILED_TEXT }}</p>
-    <!-- I-24 (Lane FC): a real-mode trade has no exits read yet: said plainly, never "none" -->
-    <p v-if="exitsView.kind === 'real_unreadable'" class="mt-1 text-xs text-ink-muted" data-testid="plan-entry-exits-real-unreadable">{{ EXITS_REAL_UNREADABLE_TEXT }}</p>
   </div>
 </template>
 
@@ -54,7 +52,8 @@ import { getActivePinia } from 'pinia'
 import { useBuilderHold } from '@/stores/builderHold'
 import api from '@/services/api'
 import { fetchPlan } from '@/lib/adjustPlan'
-import { EXITS_REAL_UNREADABLE_TEXT, exitsViewOf, isNotApplicable, notApplicableTextOf } from '@/lib/paperTriggers'
+import { recordLineOf } from '@/lib/positionKind'
+import { exitsViewOf, isNotApplicable, notApplicableTextOf } from '@/lib/paperTriggers'
 import { saveStamp, savedSince } from '@/lib/planSaveClock'
 import { checkStaleLine, EXITS_LOAD_FAILED_TEXT, exitLineText, LIMITS_LOADING_TEXT, LIMITS_LOAD_FAILED_TEXT, LIMITS_NONE_TEXT, PLAN_LOADING_TEXT, PLAN_LOAD_FAILED_TEXT } from '@/lib/sharedStateText'
 
@@ -67,10 +66,9 @@ const props = defineProps({
   checkStale: { type: Boolean, default: false }, // a background re-read failed: the lines are the last good ones
   exits: { type: Array, default: () => [] }, // GC-ICLIVE D-24: the armed / fired index conditional exits (GET /paper/strategies/{id}/triggers)
   exitsFailed: { type: Boolean, default: false }, // the exits read failed: said so, never "none set"
-  exitsMode: { type: String, default: 'paper' }, // I-24: 'real' = a real-mode trade (no exits route yet): one plain line instead of the exits
 })
 defineEmits(['retry-check'])
-const exitsView = computed(() => exitsViewOf(props.exitsMode, props.exits, props.exitsFailed))
+const exitsView = computed(() => exitsViewOf(props.exits, props.exitsFailed))
 const read = ref(null)
 const loading = ref(false)
 const failed = ref(false)

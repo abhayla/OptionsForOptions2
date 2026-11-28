@@ -11,7 +11,7 @@ vi.mock('@/services/api', async (importActual) => {
 })
 import PaperStops from '@/components/strategy/PaperStops.vue'
 import PlanEntry from '@/components/strategy/PlanEntry.vue'
-import { NOT_APPLICABLE_REAL_TEXT, armedIndexExits, notApplicableTextOf } from '@/lib/paperTriggers'
+import { NOT_APPLICABLE_TEXT, armedIndexExits, notApplicableTextOf } from '@/lib/paperTriggers'
 
 const OTHER = 'Not applicable: this trade is real, so no paper stop applies.'
 const trig = (over = {}) => ({ id: 7, strategy_id: 48, kind: 'leg_stop', direction: 'below', level: '100.00', level_text: '100.00', contract_id: 'C1',
@@ -20,22 +20,22 @@ const trig = (over = {}) => ({ id: 7, strategy_id: 48, kind: 'leg_stop', directi
 describe('FJ2-2 the server\'s not_applicable_text', () => {
   it('helper: server text, else the constant (absent, empty, blank, not a string)', () => {
     expect(notApplicableTextOf({ not_applicable_text: OTHER })).toBe(OTHER)
-    for (const v of [undefined, null, '', '   ', 5, {}]) expect(notApplicableTextOf({ not_applicable_text: v })).toBe(NOT_APPLICABLE_REAL_TEXT)
-    expect(notApplicableTextOf(null)).toBe(NOT_APPLICABLE_REAL_TEXT)
+    for (const v of [undefined, null, '', '   ', 5, {}]) expect(notApplicableTextOf({ not_applicable_text: v })).toBe(NOT_APPLICABLE_TEXT)
+    expect(notApplicableTextOf(null)).toBe(NOT_APPLICABLE_TEXT)
   })
   it('PaperStops row prints the server text; a row without one prints the constant', async () => {
     list = [trig({ not_applicable_text: OTHER }), trig({ id: 8 })]
     const w = mount(PaperStops, { props: { strategyId: 48, underlying: 'NIFTY', legs: [] } })
     await flushPromises()
     expect(w.get('[data-trigger-id="7"]').text()).toBe(OTHER)
-    expect(w.get('[data-trigger-id="8"]').text()).toBe(NOT_APPLICABLE_REAL_TEXT)
+    expect(w.get('[data-trigger-id="8"]').text()).toBe(NOT_APPLICABLE_TEXT)
     w.unmount()
   })
   it('PlanEntry exit line prints the server text; a row without one prints the constant', () => {
     const exits = armedIndexExits([trig({ id: 5, kind: 'conditional_exit', not_applicable_text: OTHER }), trig({ id: 6, kind: 'conditional_exit' })])
     const w = mount(PlanEntry, { props: { strategyId: 48, exits, check: null } })
     expect(w.get('[data-testid="plan-entry-exit-5"]').text()).toBe(OTHER)
-    expect(w.get('[data-testid="plan-entry-exit-6"]').text()).toBe(NOT_APPLICABLE_REAL_TEXT)
+    expect(w.get('[data-testid="plan-entry-exit-6"]').text()).toBe(NOT_APPLICABLE_TEXT)
     w.unmount()
   })
 })

@@ -1,4 +1,4 @@
-// I-24 (Lane FC, 28 Nov): the exits line of the Plan card is read from ONE paper route (GET /paper/strategies/{id}/triggers). A real-mode trade has no
+// Rewritten by Lane R2 (owner 28 Nov: real and paper read alike; the real-only "cannot be read" sentence is gone). Was I-24 (Lane FC, 28 Nov): the exits line of the Plan card is read from ONE paper route (GET /paper/strategies/{id}/triggers). A real-mode trade has no
 // such route, so its exits can neither be shown nor said to be "none": the card says so in one plain line. Spec basis: ADR-330 (58), REQ-109 AC-8.
 // Cases: paper trade (rows), real trade (the one line, no rows, no failure line), read failed (failure line, never "none"), empty (nothing).
 import { describe, expect, it, vi } from 'vitest'
@@ -13,7 +13,7 @@ vi.mock('@/services/api', async (importActual) => {
   return { ...actual, default: { get: () => Promise.resolve({ data: PLAN }), post: () => Promise.resolve({ data: PLAN }), put: () => Promise.resolve({ data: PLAN }) } }
 })
 import PlanEntry from '@/components/strategy/PlanEntry.vue'
-import { EXITS_REAL_UNREADABLE_TEXT, exitsViewOf } from '@/lib/paperTriggers'
+import { exitsViewOf } from '@/lib/paperTriggers'
 
 const X = { id: 31, direction: 'above', level_text: '25,720', state: 'armed' }
 async function card(props) {
@@ -23,18 +23,13 @@ async function card(props) {
 }
 const has = (w, id) => w.find(`[data-testid="${id}"]`).exists()
 
-describe('exitsViewOf: one rule for the exits line', () => {
-  it('paper: rows, failed, none; real: unreadable whatever else is passed; an unknown mode is read as paper', () => {
-    expect(exitsViewOf('paper', [X], false)).toEqual({ kind: 'rows', rows: [X] })
-    expect(exitsViewOf('paper', [], false)).toEqual({ kind: 'none', rows: [] })
-    expect(exitsViewOf('paper', [], true)).toEqual({ kind: 'failed', rows: [] })
-    // FC3 (28 Nov): the real route exists (GET /real/strategies/{id}/triggers): a real trade reads like a paper one; the sentence stays for a FAILED read only
-    expect(exitsViewOf('real', [X], false)).toEqual({ kind: 'rows', rows: [X] })
-    expect(exitsViewOf('real', [], false)).toEqual({ kind: 'none', rows: [] })
-    expect(exitsViewOf('real', [], true)).toEqual({ kind: 'real_unreadable', rows: [] })
-    expect(exitsViewOf(undefined, [X], false).kind).toBe('rows')
+describe('exitsViewOf: one rule for the exits line, real and paper alike', () => {
+  it('rows, none, failed; a failed read is said so and never "none"', () => {
+    expect(exitsViewOf([X], false)).toEqual({ kind: 'rows', rows: [X] })
+    expect(exitsViewOf([], false)).toEqual({ kind: 'none', rows: [] })
+    expect(exitsViewOf([], true)).toEqual({ kind: 'failed', rows: [] })
+    expect(exitsViewOf(undefined, false)).toEqual({ kind: 'none', rows: [] })
   })
-  it('the sentence', () => expect(EXITS_REAL_UNREADABLE_TEXT).toBe('Exits of a real-mode trade cannot be read here yet.'))
 })
 
 describe('PlanEntry exits line by mode', () => {
@@ -53,10 +48,10 @@ describe('PlanEntry exits line by mode', () => {
     expect(w.get('[data-testid="plan-entry-exit-31"]').text()).toContain('25,720')
     expect(has(w, 'plan-entry-exits-real-unreadable')).toBe(false)
   })
-  it('real trade, read failed: the one plain line; never a row, never "could not read", never silence', async () => {
+  it('real trade, read failed: the same failure line as paper; never a row, never "none", no real-only sentence', async () => {
     const w = await card({ exits: [], exitsFailed: true, exitsMode: 'real' })
-    expect(w.get('[data-testid="plan-entry-exits-real-unreadable"]').text()).toBe('Exits of a real-mode trade cannot be read here yet.')
-    expect(has(w, 'plan-entry-exits-failed')).toBe(false)
+    expect(has(w, 'plan-entry-exits-failed')).toBe(true)
+    expect(has(w, 'plan-entry-exits-real-unreadable')).toBe(false)
     expect(w.findAll('[data-testid^="plan-entry-exit-"]').filter((e) => /^plan-entry-exit-\d+$/.test(e.attributes('data-testid')))).toHaveLength(0)
   })
   it('read failed (paper): the failure line, no exit rows, no real-mode line', async () => {

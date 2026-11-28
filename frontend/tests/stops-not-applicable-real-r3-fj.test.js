@@ -11,15 +11,16 @@ vi.mock('@/services/api', async (importActual) => {
 })
 import PaperStops from '@/components/strategy/PaperStops.vue'
 import PlanEntry from '@/components/strategy/PlanEntry.vue'
-import { NOT_APPLICABLE_REAL_TEXT, armedIndexExits, legStopsGone } from '@/lib/paperTriggers'
+import { NOT_APPLICABLE_TEXT, armedIndexExits, legStopsGone } from '@/lib/paperTriggers'
 
-const SENTENCE = 'Not applicable: real position.'
+// owner 28 Nov (withdraws ADR-330 (64)): not_applicable is now only for a position whose kind is unknown; the fallback sentence no longer says "real"
+const SENTENCE = 'Not applicable: this position cannot be read as paper or real.'
 const trig = (over = {}) => ({ id: 7, strategy_id: 48, kind: 'leg_stop', direction: 'below', level: '100.00', level_text: '100.00', contract_id: 'C1',
   contract_text: 'NIFTY 24500 CE', underlying: 'NIFTY', state: 'armed', created_at: '2026-11-20T05:00:00Z', fired_at: null, cancelled_at: null,
   set_before_adjustment: true, adjustment_note: 'n', ...over })
 
-describe('not_applicable stop on a real position (ADR-330 (64))', () => {
-  it('the sentence is the one the coordinator named', () => { expect(NOT_APPLICABLE_REAL_TEXT).toBe(SENTENCE) })
+describe('not_applicable stop on a position of unknown kind (was ADR-330 (64); owner 28 Nov)', () => {
+  it('the fallback sentence is the neutral one', () => { expect(NOT_APPLICABLE_TEXT).toBe(SENTENCE) })
 
   it('PaperStops: the row reads the sentence only, no state badge, no Cancel, no Keep', async () => {
     list = [trig({ state: 'not_applicable' })]

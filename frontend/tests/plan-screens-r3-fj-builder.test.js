@@ -65,10 +65,12 @@ describe('ADR-330 (58): a real trade reads its exits from the real route', () =>
     expect(calls.some((c) => c.url === '/real/strategies/90/triggers')).toBe(true)
     expect(calls.some((c) => c.url === '/paper/strategies/90/triggers')).toBe(false)
   })
-  it('the "cannot be read here yet" line stays only when the real read fails', async () => {
+  it('owner 28 Nov: a failed real read says the same failure line as a paper one (no real-only "cannot be read" sentence), and the real row line shows', async () => {
     realTrade('Running', { 'GET /real/strategies/90/triggers': () => Promise.reject({ status: 500, parts: null }) })
     const w = await open(90)
-    expect(t(w, 'plan-entry-exits-real-unreadable').text()).toBe('Exits of a real-mode trade cannot be read here yet.')
+    expect(t(w, 'plan-entry-exits-real-unreadable').exists()).toBe(false)
+    expect(t(w, 'plan-entry-exits-failed').exists()).toBe(true)
+    expect(t(w, 'tracking-real-line').exists()).toBe(true)
   })
   it('a plain draft (status Draft) stays paper mode and reads the paper route', async () => {
     realTrade('Draft')

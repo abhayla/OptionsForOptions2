@@ -10,6 +10,7 @@ import { levelShown, paperPriceOk, paperPriceReason } from '@/lib/tracking'
 import { expiryText, istClock } from '@/lib/displayFormat'
 import { PAPER_STOP_RISK_LOADING_TEXT } from '@/lib/sharedStateText'
 import { CLOSED_REFERENCE_TEXT, NOT_LIVE_LABEL, lastCloseUnavailableText, useIndexAnswer } from '@/composables/useIndexLive'
+import { NOT_SENT_LINE, REAL_STOPS_TEXT, recordLineOf } from '@/lib/positionKind'
 import { isNotApplicable, notApplicableTextOf, triggerListOf, triggersPath } from '@/lib/paperTriggers'
 
 const props = defineProps({
@@ -24,13 +25,15 @@ const props = defineProps({
   goodReadToken: { type: Object, default: null },
   // #774 (ADR-330 (48)): the offer after a move shows the one leg-stop control only (same route, same Save), not the conditional exit or the list
   legStopOnly: { type: Boolean, default: false },
+  // owner 28 Nov: 'real' = a real position's stops: stored in the app and alerted, never sent to Zerodha (the label and each row say so)
+  kind: { type: String, default: 'paper' },
 })
 
 // N-21: after a good Save or Cancel, or when a re-read shows a fired stop, the parent list reads at once (its legs and book
 // move with a stop); the panel has no timer of its own
 const emit = defineEmits(['changed'])
 
-const LABEL = 'Paper - exits are recorded in the app, not sent to Zerodha'
+const LABEL = computed(() => (props.kind === 'real' ? REAL_STOPS_TEXT : 'Paper - exits are recorded in the app, not sent to Zerodha'))
 const AT_LEAST_ONE = 'Enter at least one level'
 const LIST_STALE = 'Could not refresh this list. It shows the last read.'
 const path = triggersPath(props.strategyId)
@@ -273,7 +276,7 @@ async function keep(t) {
     <!-- S-26: one reserved status slot, so a line appearing or going does not move the boxes the user is typing in -->
     <div class="mt-2 min-h-5" data-testid="stops-status-slot">
       <p v-if="error" class="text-red-700" role="alert" data-testid="stops-error">{{ error }}</p>
-      <p v-else-if="saved" class="text-xs text-ink-muted" role="status" data-testid="stops-saved">{{ saved }}</p>
+      <p v-else-if="saved" class="text-xs text-ink-muted" role="status" data-testid="stops-saved">{{ saved }}<template v-if="kind === 'real'"> {{ NOT_SENT_LINE }}</template></p>
     </div>
 
     </div>
@@ -292,6 +295,7 @@ async function keep(t) {
           <span class="font-medium" data-testid="trigger-direction">{{ t.direction === 'above' ? 'Above' : t.direction === 'below' ? 'Below' : '' }}</span>
           <span data-testid="trigger-level">{{ t.level_text }}</span>
           <span class="rounded bg-surface-muted px-1" data-testid="trigger-state">{{ t.state }}</span>
+          <span v-if="t.stored_not_sent === true" class="w-full text-xs font-semibold" data-testid="trigger-not-sent">{{ recordLineOf(t) }}</span>
           <button v-if="t.state === 'armed'" type="button" class="rounded border border-line px-2 py-0.5" :disabled="busy" :data-testid="`trigger-cancel-${t.id}`" @click="cancel(t)">Cancel</button>
           <template v-if="t.state === 'armed' && t.set_before_adjustment">
             <span class="rounded bg-surface-muted px-1 text-xs font-medium" data-testid="trigger-adjusted">set before the last adjustment</span>

@@ -9,7 +9,7 @@
 <template>
   <section class="rounded-lg border-2 border-dashed border-accent text-sm" :class="compact ? 'p-2' : 'p-3'" data-testid="paper-strategies">
     <p class="mb-2 rounded bg-accent-soft px-2 py-1 text-xs font-semibold text-accent" data-testid="paper-mode-header">Paper mode</p>
-    <p class="rounded bg-amber-50 px-2 py-1 font-medium" data-testid="paper-banner">{{ BANNER }}</p>
+    <p class="rounded bg-amber-50 px-2 py-1 font-medium" data-testid="paper-banner">{{ hasReal ? MIXED_BANNER : BANNER }}</p>
     <p v-for="l in noteLines" :key="l.key" class="mt-2 text-xs text-ink-muted" data-testid="paper-exit-link-note">{{ l.text }}</p>
     <p v-if="loading" class="mt-2" data-testid="paper-loading">Reading your paper strategies.</p>
     <!-- D-05 r3: a failed refresh is a banner above the last loaded list, whose figures are paused (full-page error only when nothing ever loaded), so an open Stops panel and what was typed in it stay -->
@@ -67,7 +67,8 @@
             <div class="flex flex-wrap items-start justify-between gap-3">
               <div>
                 <!-- ADR-330 (10): every paper group in the one Positions list is tagged PAPER -->
-                <span class="mr-1 rounded bg-accent-soft px-1 text-xs font-semibold text-accent" data-testid="paper-tag">PAPER</span>
+                <span v-if="g.positionKind === 'real'" class="mr-1 rounded bg-surface-muted px-1 text-xs font-semibold" data-testid="paper-real-tag">REAL</span>
+                <span v-else class="mr-1 rounded bg-accent-soft px-1 text-xs font-semibold text-accent" data-testid="paper-tag">PAPER</span>
                 <h2 class="font-semibold" data-testid="paper-group-name">{{ groupLabel(g) }}</h2>
                 <span class="text-ink-muted" data-testid="paper-group-underlying">{{ g.underlying }}</span>{{ ' ' }}<span v-if="g.statusWord" class="text-xs text-ink-muted" data-testid="paper-status-word">{{ g.statusWord }}</span>
                 <p class="text-xs text-ink-muted" data-testid="paper-count">{{ g.openCount }} of {{ g.positionCount }} positions</p>
@@ -81,6 +82,10 @@
                 </div>
               </dl>
             </div>
+            <!-- owner 28 Nov: a REAL group is the same card; its row line says the actions are only stored, and a stored action says it was not sent. It never changes a figure above. -->
+            <p v-if="g.positionKind === 'real'" class="mt-1 text-xs text-ink-muted" data-testid="paper-real-line">{{ g.positionKindText ?? REAL_ROW_TEXT }}</p>
+            <p v-else-if="g.positionKind === 'unknown'" class="mt-1 text-xs text-ink-muted" data-testid="paper-unknown-kind-line">{{ g.positionKindText ?? KIND_UNREAD_LINE }}</p>
+            <p v-if="g.positionKind === 'real' && recordLineOf(g)" class="mt-1 text-sm font-semibold" role="status" data-testid="paper-record-line">{{ recordLineOf(g) }}</p>
             <!-- GC-TP R-19b (Sensibull 090): Breakeven, Max Profit and Max Loss on the card, and a Greeks toggle (off) with per-leg and
                  net Greeks. All server texts; a figure the reply lacks is a dash with its reason, never 0. -->
             <dl class="mt-2 flex flex-wrap items-start gap-6" data-testid="paper-summary">
@@ -152,21 +157,21 @@
                 <RouterLink v-if="g.statusWord !== 'Completed'" :to="builderLink(g)" class="rounded border border-line px-2 py-1 text-center text-accent" data-testid="paper-add-orders">Add orders</RouterLink>
                 <!-- ADR-330 (54): the Plan button, beside Stops and Exit; the same plan sheet as the builder's Edit plan -->
                 <PlanDoor v-if="g.openCount" :strategy-id="g.id" tag="paper" />
-                <button v-if="g.openCount" type="button" class="rounded border border-line px-2 py-1" :aria-expanded="!!stopsOpen[g.id]" :data-testid="`stops-open-${g.id}`" @click="stopsOpen = { ...stopsOpen, [g.id]: !stopsOpen[g.id] }">Stops</button>
-                <ExitButton v-if="g.openCount" :blocked="exitGate.blocked.value && !exitGate.notLive.value" :reason="exitGate.reason.value ?? noPriceLine(g) ?? (tickedOpen(g).length ? null : EXIT_TICK_TEXT)" :extra-disabled="!tickedOpen(g).length" class="rounded border border-line px-2 py-1" :data-testid="`exit-selected-${g.id}`" @click="ask(g, tickedOpen(g))">Exit ({{ tickedOpen(g).length }})</ExitButton>
+                <button v-if="g.openCount && isActionableKind({ position_kind: g.positionKind })" type="button" class="rounded border border-line px-2 py-1" :aria-expanded="!!stopsOpen[g.id]" :data-testid="`stops-open-${g.id}`" @click="stopsOpen = { ...stopsOpen, [g.id]: !stopsOpen[g.id] }">Stops</button>
+                <ExitButton v-if="g.openCount && isActionableKind({ position_kind: g.positionKind })" :blocked="exitGate.blocked.value && !exitGate.notLive.value" :reason="exitGate.reason.value ?? noPriceLine(g) ?? (tickedOpen(g).length ? null : EXIT_TICK_TEXT)" :extra-disabled="!tickedOpen(g).length" class="rounded border border-line px-2 py-1" :data-testid="`exit-selected-${g.id}`" @click="ask(g, tickedOpen(g))">Exit ({{ tickedOpen(g).length }})</ExitButton>
                 <p v-if="exitGate.reason.value === NOT_LIVE_EXIT && lastGoodClock" class="text-xs text-ink-muted" data-testid="paper-exit-asof">Last prices: {{ lastGoodClock }} IST.</p>
               </div>
             </div>
             <!-- P10 (ADR-330 (13)): the Plan watch of an open strategy; it re-reads on this list's own good-read token -->
             <MonitoringBadge v-if="g.openCount" :entry="monitoring.entryOf(g.id)" class="mt-2" />
             <PlanWatch :strategy-id="g.id" :read-tick="goodReadToken" :stale="stale" :view="g.openCount ? planViews.get(String(g.id)) ?? null : undefined" :closed="!g.openCount" compact class="mt-2" />
-            <PaperStops v-if="stopsOpen[g.id]" :strategy-id="g.id" :underlying="g.underlying" :legs="stopLegs(g)" :leg-names="legNamesOf(g)" :good-read-token="goodReadToken" @changed="onStopsChanged" />
+            <PaperStops v-if="stopsOpen[g.id] && isActionableKind({ position_kind: g.positionKind })" :kind="g.positionKind" :strategy-id="g.id" :underlying="g.underlying" :legs="stopLegs(g)" :leg-names="legNamesOf(g)" :good-read-token="goodReadToken" @changed="onStopsChanged" />
           </template>
         </div>
       </template>
     </template>
     <!-- GC-TP step 4b round 2 (REQ-109 AC-4; Sensibull 166-173): every exit goes through the shared confirm list, in lots -->
-    <PaperConfirmDialog :open="!!confirm" :orders="confirm ? confirm.orders : []" :strategy-id="confirm ? confirm.id : ''" :busy="busy" :blocked="exitGate.notLive.value" :error="dialogError || (confirm && exitGate.notLive.value ? dialogNotLiveText() : '')" :state="dialogState" :locked="!!(confirm && isUnknown(confirm.id))" :locked-at-ms="confirm && isUnknown(confirm.id) ? (exitRec.cur(confirm.id)?.at ?? 0) : 0" @confirm="doExit" @cancel="cancelExit" @orderbook="openOrderbook" />
+    <PaperConfirmDialog :open="!!confirm" :kind="confirmKind" :orders="confirm ? confirm.orders : []" :strategy-id="confirm ? confirm.id : ''" :busy="busy" :blocked="exitGate.notLive.value" :error="dialogError || (confirm && exitGate.notLive.value ? dialogNotLiveText() : '')" :state="dialogState" :locked="!!(confirm && isUnknown(confirm.id))" :locked-at-ms="confirm && isUnknown(confirm.id) ? (exitRec.cur(confirm.id)?.at ?? 0) : 0" @confirm="doExit" @cancel="cancelExit" @orderbook="openOrderbook" />
   </section>
 </template>
 
@@ -197,6 +202,7 @@ import { EXIT_TICK_TEXT, exitEndText, exitLegsNotLive, legsNoPrice, usePaperExit
 import ExitButton from '@/components/strategy/ExitButton.vue'
 import { usePaperRefresh } from '@/lib/usePaperRefresh'
 import { EXITED_NOW_LABEL, HELD_TO_EXPIRY_LABEL } from '@/lib/paperDrafts'
+import { KIND_UNREAD_LINE, REAL_ROW_TEXT, isActionableKind, recordLineOf } from '@/lib/positionKind'
 import { PAPER_STATE, addToPaper, paperPostOutcome } from '@/lib/tracking'
 import { sameLock, adoptedExitLock, bookOfPositions, decideLock, dropExitLock, dropOrderKey, exitLockFor, exitLockIds, exitUnitsOf, expectedKeyOf, onExitLocksChanged, orderKeyFor, saveExitLock } from '@/lib/unknownLocks'
 import { useRouter } from 'vue-router'
@@ -227,6 +233,10 @@ const legsText = (g) => {
 }
 const NO_TOTAL = 'No paper total yet: prices are not live'
 const BANNER = 'Paper trades - not real money'
+const MIXED_BANNER = 'Paper trades are not real money. A real position here only stores your actions; nothing is sent to Zerodha.' // pending owner read
+const hasReal = computed(() => (items.value ?? []).some((g) => g.readable && g.positionKind === 'real'))
+const kindOfId = (id) => (items.value ?? []).find((g) => g.readable && String(g.id) === String(id))?.positionKind ?? 'paper'
+const confirmKind = computed(() => (confirm.value && kindOfId(confirm.value.id) === 'real' ? 'real' : 'paper'))
 const EMPTY = 'No paper strategies yet. Build a strategy, then press Add to Paper.'
 const figures = [
   { field: 'total', label: 'Total P&L', testid: 'paper-total', reason: 'pauseReason', reasonId: 'paper-total-reason' },
@@ -508,7 +518,7 @@ function decideUnresolved(now, seq, sentAt = Date.now()) {
     const open = !!confirm.value && String(confirm.value.id) === id
     if (d.verdict === 'stored') {
       dropExitLock(id, r.lock); dropOrderKey(id, 'exit') // the server's book decided it: the action is over, its key with it
-      exitRec.settle(id, r.id, 'placed', exitEndText('done', r.names, {}, NEUTRAL_ERROR))
+      exitRec.settle(id, r.id, 'placed', exitEndText('done', r.names, { kind: kindOfId(id) }, NEUTRAL_ERROR))
       if (open) { ticks.value = { ...ticks.value, [id]: [] }; cancelExit() }
     } else if (r.state === 'unknown' && d.verdict === 'not_stored') {
       // Lane FJ item 1: unchanged proves "not stored" only for a read SENT more than UNKNOWN_EXIT_READ_AFTER_MS after the client gave up (the first request can still commit);
@@ -628,7 +638,7 @@ async function doExit(orders, _held = null, _ticked = false, dialogKey = null) {
   if (confirm.value && String(confirm.value.id) === String(c.id)) confirm.value = null
   ticks.value = { ...ticks.value, [c.id]: [] }
   busy.value = false
-  exitRec.settle(c.id, attempt, 'placed', exitEndText('done', c.names, { orders: reply?.orders, sent: orders.length }, NEUTRAL_ERROR))
+  exitRec.settle(c.id, attempt, 'placed', exitEndText('done', c.names, { orders: reply?.orders, sent: orders.length, kind: kindOfId(c.id) }, NEUTRAL_ERROR))
   try { refreshNow() } catch { /* the list says its own read failed */ }
 }
 // the unknown-outcome link: the strategy's builder shows its book (Orderbook) read from the server

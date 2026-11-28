@@ -31,6 +31,7 @@ import { isCompleted, isRunning, strategyStatusWord } from '@/lib/strategyStatus
 import { CLOSED_HEADER, CLOSED_PREFIX, CLOSED_UNAVAILABLE_TEXT } from '@/lib/sharedStateText'
 import { useOrderPath } from '@/lib/orderPath'
 import PnlLine from '@/components/live/PnlLine.vue'
+import { recordLineOf } from '@/lib/positionKind'
 import { usePaperPnl } from '@/lib/paperPnl'
 import { bulkConfirmText, canDelete, selectAllText, useDeleteFlow } from '@/lib/strategyActivity'
 import { CLEAR_UNDO_SECONDS_KEY } from '@/lib/legEdit'
@@ -225,6 +226,8 @@ async function confirmRename(row) {
           <router-link v-if="orderPathOn" :to="`/strategy/${s.id}/execute`" class="link" :data-testid="`open-execute-${s.id}`">Execute Strategy</router-link>
           </span>
           <PnlLine v-if="isRunning(s)" class="col-span-full w-full" :cell="pnl.cellFor(s.id)" testid="row-pnl" />
+          <!-- owner 28 Nov: a stored action on a REAL position is one line under the row; the P&L above is still Zerodha's figure and never moves for it -->
+          <p v-if="isRunning(s) && s.position_kind === 'real' && recordLineOf(s)" class="col-span-full w-full text-sm font-semibold" role="status" data-testid="row-record-line">{{ recordLineOf(s) }}</p>
           <p v-if="isCompleted(s)" class="col-span-full w-full text-ink-muted" data-testid="row-completed">
             <span data-testid="row-final-pnl">Final P&amp;L {{ s.final_pnl_text ?? s.completed_reason_text }}</span>
             <!-- GC-ICFIX u125 (ADR-259, ADR-263): charges paid and the net after charges, the server's fields as sent; absent -> "not available: <its reason>", never 0 -->

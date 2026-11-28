@@ -5,7 +5,7 @@
      D-71 every fired stop and every expiry settlement (GET /paper/alerts/records). Notification settings stays an honest empty state. -->
 <script setup>
 import ListLoadFailed from '@/components/common/ListLoadFailed.vue'
-import { KIND_UNREAD_LINE, isPaperKind } from '@/lib/positionKind'
+import { KIND_UNREAD_LINE, NOT_SENT_LINE, isActionableKind, isRealKind, recordLineOf, rowLineOf } from '@/lib/positionKind'
 import PageHeader from '@/components/common/PageHeader.vue'
 import EmptyState from '@/components/states/EmptyState.vue'
 import { computed, nextTick, onMounted, ref } from 'vue'
@@ -45,9 +45,13 @@ const exitFor = ref(null)
 // naming the shape that remains (the row's own text); only its Confirm stores confirm_new_shape; Cancel stores nothing and the row stays asking.
 const confirming = ref(null) // the alert id whose confirmation sentence is showing
 const isSideClosed = (a) => a.kind === 'side_closed'
-// ADR-330 (64): "Exit the position" only for a PAPER position (the server already leaves it out; this re-checks, fail closed)
-const answersOf = (a) => (a.answers ?? []).filter((x) => x.code !== exitCode || isPaperKind(a))
-const kindLineOf = (a) => (isPaperKind(a) || a.position_kind === 'none' ? null : a.position_kind_text || KIND_UNREAD_LINE)
+// Owner 28 Nov (withdraws ADR-330 (64)): "Exit the position" for a paper OR a real position (a real one only stores a record, nothing is
+// sent to Zerodha); the server leaves it out for unknown / none, and this re-checks (fail closed)
+const answersOf = (a) => (a.answers ?? []).filter((x) => x.code !== exitCode || isActionableKind(a))
+const kindLineOf = (a) => (isRealKind(a) ? rowLineOf(a) : isActionableKind(a) || a.position_kind === 'none' ? null : a.position_kind_text || KIND_UNREAD_LINE)
+// a real alert says it is not sent: before the answer (the Exit button's own note) and after it (the stored record's line)
+const recordLineOfAlert = (a) => (isRealKind(a) ? recordLineOf(a) : null)
+const notSentNote = (a) => (isRealKind(a) && (a.answers ?? []).some((x) => x.code === exitCode) ? NOT_SENT_LINE : null)
 
 async function answer(a, code) {
   if (busy.value) return
@@ -84,7 +88,7 @@ async function answer(a, code) {
     if (to) router.push(to)
     return
   }
-  if (code === exitCode && isPaperKind(a)) { exitFor.value = null; await nextTick(); exitFor.value = String(a.strategy_id) }
+  if (code === exitCode && isActionableKind(a)) { exitFor.value = null; await nextTick(); exitFor.value = String(a.strategy_id) }
 }
 
 async function loadTab() {
@@ -114,6 +118,7 @@ onMounted(loadTab)
           <p class="mt-1 text-sm">{{ h.text }}</p>
           <p class="text-xs text-ink-muted">{{ h.fired_line }}<template v-if="h.closed_reason"> - {{ h.closed_reason }}</template><template v-else-if="h.answer_label"> - {{ h.answer_label }} at {{ istHm(h.answered_at) }}</template></p>
           <p v-if="h.worse_line" class="text-xs text-ink-muted" data-testid="answered-worse">{{ h.worse_line }}</p>
+          <p v-if="recordLineOf(h)" class="text-sm font-semibold" data-testid="answered-not-sent">{{ recordLineOf(h) }}</p>
         </li>
       </ul>
       <h2 class="mb-2 text-sm font-semibold text-ink-muted" data-testid="alerts-records-heading">Stops and expiry settlements</h2>
@@ -123,6 +128,7 @@ onMounted(loadTab)
           <p class="font-medium" data-testid="record-title">{{ r.title }}</p>
           <p class="text-xs text-ink-muted"><span data-testid="record-time">{{ istTime(r.at) }}</span> - <span data-testid="record-strategy">{{ plainName(r.strategy_name) ?? `Strategy ${r.strategy_id}` }}</span></p>
           <p class="mt-1 text-sm" data-testid="record-body">{{ alertBody({ title: r.title, body: r.body }) }}</p>
+          <p v-if="recordLineOf(r)" class="mt-1 text-sm font-semibold" data-testid="record-not-sent">{{ recordLineOf(r) }}</p>
         </li>
       </ul>
       <p v-if="!alertHistory.loaded || !paperRecords.loaded" class="text-sm text-ink-muted" data-testid="alerts-loading">Loading...<span v-if="stillLoading" class="block" data-testid="alerts-still-loading">{{ STILL_LOADING_TEXT }}</span></p>
@@ -138,6 +144,8 @@ onMounted(loadTab)
         <p class="text-xs text-ink-muted"><span data-testid="alert-fired">{{ a.fired_line }}</span><span v-if="a.no_longer_true_line" data-testid="alert-no-longer"> - {{ a.no_longer_true_line }}</span></p>
         <p v-if="a.worse_line" class="text-xs text-ink-muted" data-testid="alert-worse">{{ a.worse_line }}</p>
         <p v-if="kindLineOf(a)" class="mt-1 text-xs text-ink-muted" data-testid="alert-position-kind-line">{{ kindLineOf(a) }}</p>
+        <p v-if="recordLineOfAlert(a)" class="mt-1 text-sm font-semibold" role="status" data-testid="alert-record-line">{{ recordLineOfAlert(a) }}</p>
+        <p v-else-if="notSentNote(a)" class="mt-1 text-sm font-semibold" data-testid="alert-not-sent-line">{{ notSentNote(a) }}</p>
         <div class="mt-2 flex flex-wrap gap-2">
           <button v-for="x in answersOf(a)" :key="x.code" type="button" class="rounded border border-line px-2 py-1 text-sm" :disabled="busy" :data-testid="`alert-answer-${x.code}`" @click="answer(a, x.code)">{{ x.label }}</button>
         </div>

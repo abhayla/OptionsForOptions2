@@ -85,10 +85,11 @@ describe('item 2: a real trade never calls the paper exits route and never says 
     const w = await panel([], { tradeMode: 'real' })
     expect(t(w, 'plan-entry-exits-real-unreadable').exists()).toBe(false)
   })
-  it('tradeMode real, the read fails: the sentence "cannot be read here yet", never "none"', async () => {
+  it('tradeMode real, the read fails: the same failure line as paper (owner 28 Nov), never "none"', async () => {
     REAL = Object.assign(new Error('x'), { status: 500, parts: null })
     const w = await panel([], { tradeMode: 'real' })
-    expect(t(w, 'plan-entry-exits-real-unreadable').text()).toBe('Exits of a real-mode trade cannot be read here yet.')
+    expect(t(w, 'plan-entry-exits-real-unreadable').exists()).toBe(false)
+    expect(t(w, 'plan-entry-exits-failed').exists()).toBe(true)
   })
   it('paper (the default): the paper route is read, no real-mode line', async () => {
     const w = await panel([])

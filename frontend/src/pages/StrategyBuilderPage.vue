@@ -887,7 +887,7 @@ async function confirmPending(orders, _held = null, notLiveTicked = false, dialo
   }
   if (sendsExit) dropExitLock(id, { key, at: outAt }) // the server answered: the lock of this request key ends (another tab's lock of another key stays)
   else dropAddLock(id, { key, at: outAt })
-  exitRec.settle(EXIT_KEY, attempt, 'placed', wasExit ? exitEndText('done', names, { orders: reply?.orders, sent: orders.length }) : '') // the server answered: placed replaces a page-side guess
+  exitRec.settle(EXIT_KEY, attempt, 'placed', wasExit ? exitEndText('done', names, { orders: reply?.orders, sent: orders.length, kind: tradeMode.value }) : '') // the server answered: placed replaces a page-side guess
   paperStale.value = true
   exitAllWaiting.value = null // cleared at once (Opus review): a later throw or a new Exit all during the re-read must not meet a stale value
   if (own) { exitOrigin.value = false; legsBeforeExit = null } // ADR-330 (49): what is left is no Exit edit; the other legs' edits are put back by restoreStaged
@@ -1717,7 +1717,7 @@ const leaveGuard = useLeaveBuilder({
         </div>
         <PaperBookPanel v-if="paper" :book="paper.book" :net="paper.net" :changed-ids="stagedChangeIds(paper.net, legs)" :read-failed="paperBookFailed" :contracts-changed="paperContractsChanged" :exit-unresolved="!!exitUnknown" :show-orders="showOrdersTick" @exit="exitPaper" @exit-all="exitAllPaper" />
         </div>
-        <PaperConfirmDialog :open="paperDialog" :orders="paperRows" :strategy-id="route.query.strategy" :busy="paperBusy" :blocked="exitBlocked" :note="exitAllWaiting ? DISCARD_WARNING(exitAllWaiting.names) : ''" :locked="!!exitUnknown" :locked-at-ms="exitUnknown ? exitUnknown.at : 0" :cancelled-stops="cancelledStops" :stops-reply-unreadable="stopsReplyUnreadable" :error="paperError || paperNotLiveLine" :state="paperState" :not-live-line="paperEntryNotLiveLine" @confirm="confirmPending" @cancel="userCancelPaperDialog" @orderbook="openPaperOrderbook" />
+        <PaperConfirmDialog :open="paperDialog" :kind="tradeMode" :orders="paperRows" :strategy-id="route.query.strategy" :busy="paperBusy" :blocked="exitBlocked" :note="exitAllWaiting ? DISCARD_WARNING(exitAllWaiting.names) : ''" :locked="!!exitUnknown" :locked-at-ms="exitUnknown ? exitUnknown.at : 0" :cancelled-stops="cancelledStops" :stops-reply-unreadable="stopsReplyUnreadable" :error="paperError || paperNotLiveLine" :state="paperState" :not-live-line="paperEntryNotLiveLine" @confirm="confirmPending" @cancel="userCancelPaperDialog" @orderbook="openPaperOrderbook" />
         <SaveDraftBar v-show="!(opening && !legs.length)" ref="barRef" :legs="legs" :rules-ref="String(route.query.rules_ref || '')" :current="openStrategy" :shown-name="shapeName ?? ''" :paper-mode="paper !== null" :live-price-by-id="livePriceById" :prices-live="pricesLive" :market-closed="pricesNow.kind === 'last_close'" :price-as-of="pricesNow.at ?? ''" class="max-[1099px]:contents" @open="openFromBar" @saved="onSaved" @paper-added="onPaperAdded" @renamed="onRenamed" @deleted="onDeleted">
           <template #add-edit>
             <button v-if="!paperCompleted" type="button" class="h-10 flex-1 basis-0 rounded-lg border border-line font-medium" aria-haspopup="dialog" :aria-expanded="pickerOpen ? 'true' : 'false'" data-testid="add-edit" :disabled="exitBlocked" :title="exitBlocked ? exitGate.reason.value : undefined" @click="pickerOpen = !pickerOpen">Add/Edit</button>

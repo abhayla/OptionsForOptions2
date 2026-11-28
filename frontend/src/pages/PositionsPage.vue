@@ -25,6 +25,7 @@ import { PAPER_NO_FIGURE as NO_FIGURE } from '@/lib/paperList'
 import { KITE_POSITIONS_URL } from '@/lib/execute'
 import { useOrderPath } from '@/lib/orderPath'
 import { brokerIsConnected } from '@/lib/brokerConnected'
+import { recordLineOf } from '@/lib/positionKind'
 
 const route = useRoute()
 // ADR-330 (10) replaces ADR-201 (2): ONE list for real and paper trades, filtered All / Real / Paper (default All). The old
@@ -182,6 +183,8 @@ onBeforeUnmount(() => {
           <!-- ADR-330 (54): the Plan button of a running real trade; the same plan sheet as the paper rows and the builder -->
           <PlanDoor v-if="g.contracts.length" :strategy-id="g.strategy_id" tag="real" class="ml-auto" />
         </h2>
+        <!-- owner 28 Nov: an Exit or Stop stored for this real strategy is one line here; the P&L below stays Zerodha's figure and the units never change for it -->
+        <p v-if="recordLineOf(g)" class="border-b border-line px-4 py-2 text-sm font-semibold" role="status" data-testid="position-record-line">{{ recordLineOf(g) }}</p>
         <p v-if="!g.contracts.length" class="px-4 py-3 text-ink-muted" data-testid="position-group-empty">{{ NO_ROW }}</p>
         <div v-else class="overflow-x-auto">
         <table class="ui-table">
