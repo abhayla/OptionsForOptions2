@@ -165,7 +165,7 @@ async def test_n1_the_store_itself_refuses_an_open_on_a_real_position_and_the_ki
     new = paper_store.NewOrder(ids[0], "SELL", 65, Decimal("39.15"), "open", _ADD_AT)
     with pytest.raises(StrategyRefused) as err:
         await paper_store.place(db, stored.user_ref, stored.id, [new])
-    assert str(err.value) == "real_position_exit_refused"
+    assert str(err.value) == "real_position_open_refused"
     assert await _count(db, stored.id) == 0
     assert await _kind(db, stored) == "real"  # never flipped to paper
 

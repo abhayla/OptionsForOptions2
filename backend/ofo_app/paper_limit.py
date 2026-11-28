@@ -186,9 +186,9 @@ async def refuse_real_position(db: Any, strategy_id: int, orders: Sequence[Any])
     here and never refused. A kind read that fails raises (never read as paper)."""
     if all(o.kind in SERVER_KINDS for o in orders):
         return
-    from ofo_app import strategy_store  # noqa: PLC0415
+    from ofo_app import position_kind, strategy_store  # noqa: PLC0415
     if await strategy_store.paper_order_refused(db, strategy_id, [o.kind for o in orders]):
-        raise StrategyRefused("real_position_exit_refused", Failure.CONFLICT)
+        raise StrategyRefused(position_kind.refusal_code(o.kind for o in orders), Failure.CONFLICT)
 
 
 refuse_real_exit = refuse_real_position  # the I-158 name (tracking exit, tests)

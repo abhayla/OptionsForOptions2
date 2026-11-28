@@ -132,11 +132,11 @@ async def _refuse_off_paper(conn: Any, strategy_id: int, paper: Sequence[Any]) -
     from ofo_app import position_kind, strategy_store  # noqa: PLC0415 - it reaches the order modules
     if any(o.kind not in _SERVER_KINDS for o in paper) and await strategy_store.paper_order_refused(
             conn, strategy_id, [o.kind for o in paper]):
-        raise StrategyRefused("real_position_exit_refused", Failure.CONFLICT)
+        raise StrategyRefused(position_kind.refusal_code(o.kind for o in paper), Failure.CONFLICT)
     if any(o.kind == "stop" for o in paper):
         kind = (await strategy_store.kinds_of(conn, [strategy_id])).get(strategy_id, position_kind.UNKNOWN)
         if kind not in (position_kind.PAPER, position_kind.NONE):
-            raise StrategyRefused("real_position_exit_refused", Failure.CONFLICT)
+            raise StrategyRefused(position_kind.EXIT_REFUSED, Failure.CONFLICT)
 
 
 async def place(conn: Any, user_ref: str, strategy_id: int, orders: Sequence[NewOrder], *,

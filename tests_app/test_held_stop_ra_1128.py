@@ -95,3 +95,24 @@ async def test_ra_g1_a_settle_is_stored_on_a_held_position_because_the_contract_
     await held_entry_store.record(db, stored.id, OPEN_AT, None)
     book = await paper_store.place(db, stored.user_ref, stored.id, [_close_leg(ids[1], "SELL", "settle")])
     assert [o.order.kind for o in book].count("settle") == 1
+
+
+# ---- Coordinator item 8 (Lane FD5 review F4): open, add and exit each have their own refusal code --------------------
+
+@pytest.mark.parametrize(("kind", "code"), [("open", "real_position_open_refused"),
+                                            ("add", "real_position_add_refused"),
+                                            ("exit", "real_position_exit_refused")])
+async def test_ra_f4_each_user_order_kind_has_its_own_refusal_code_and_all_read_the_same_sentence(
+        db, monkeypatch, kind, code):  # noqa: F811
+    from ofo.errors import CATALOGUE  # noqa: PLC0415
+    stored, ids, _keys = await _strategy(db)
+
+    async def unreadable(_conn, wanted):
+        return dict.fromkeys(wanted, "unknown")  # refuses every user order kind (ADR-330 (64): fail closed)
+    monkeypatch.setattr(strategy_store, "kinds_of", unreadable)
+    with pytest.raises(StrategyRefused) as refused:
+        await paper_store.place(db, stored.user_ref, stored.id, [_close_leg(ids[0], "BUY", kind)])
+    assert str(refused.value) == code
+    parts = ("what_happened", "impact", "what_is_blocked", "next_action")
+    same = tuple(getattr(CATALOGUE["real_position_exit_refused"], p) for p in parts)
+    assert tuple(getattr(CATALOGUE[code], p) for p in parts) == same, "the sentence stays the same for all three"

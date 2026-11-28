@@ -1477,7 +1477,7 @@ async def _refuse_real_position(db: Any, strategy_id: int) -> str:
     it again after their commit)."""
     kind = (await store.kinds_of(db, [strategy_id])).get(strategy_id) or "unknown"
     if kind in _NO_PAPER_ACTION_KINDS:
-        raise StrategyRefused("real_position_exit_refused", Failure.CONFLICT)
+        raise StrategyRefused(position_kind.EXIT_REFUSED, Failure.CONFLICT)
     return kind
 
 
