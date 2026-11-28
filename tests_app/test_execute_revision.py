@@ -218,7 +218,8 @@ async def test_db_free_discrimination_the_current_revision_goes_on_to_the_broker
     resp, broker, plan_calls, db = await _db_free(monkeypatch, 3)
     assert broker.calls == ["reads.fetch_orders"]
     assert resp.json().get("what_happened") != PLAN_CHANGED
-    assert (plan_calls, db.commits) == ([], 0)
+    # one commit: the pooled connection is given back BEFORE the Zerodha read (FD3 item 4); nothing is written
+    assert (plan_calls, db.commits) == ([], 1)
 
 
 @pytest.mark.parametrize("body", [

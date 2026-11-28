@@ -78,6 +78,19 @@ async def _entered(reader: Stalled, count: int) -> None:
 async def test_plan_watch_and_check_do_not_hold_the_pool_while_a_read_stalls(
         app_db_url, monkeypatch, route, dep):  # noqa: F811
     sid = await _seeded(app_db_url, monkeypatch, "ADJ-01")
+    if dep is get_rest_spot_reader:
+        # FD3 item 6: the scenario's frame is a USABLE feed tick at the scenario's own clock, and a usable feed answers
+        # the spot with no REST call (``index_spot_of`` (1), ADR-330 (39)), so the REST reader was never reached and the
+        # test proved nothing (test out of step, not a defect). The feed here has NO usable tick on the first pass:
+        # the REST reader is then read, which is the stall this test measures.
+        from ofo_app.routes import outcome  # noqa: PLC0415
+        real_resolve = outcome.resolve_spot
+
+        def feed_has_no_tick_first(feed, rest, last_close, **kwargs):
+            if rest is None and last_close is None:  # index_spot_of's first pass: the feed alone
+                feed = SourceReading(SourceState.ABSENT)
+            return real_resolve(feed, rest, last_close, **kwargs)
+        monkeypatch.setattr(outcome, "resolve_spot", feed_has_no_tick_first)
     reader, app = Stalled(), _app()
     app.dependency_overrides[dep] = lambda: reader
     async with AsyncClient(transport=ASGITransport(app=app), base_url="http://t") as ac:
@@ -94,8 +107,6 @@ async def test_plan_watch_and_check_do_not_hold_the_pool_while_a_read_stalls(
     assert (health.status_code, listing.status_code) == (OK, OK), (health.text, listing.text)
 
 
-@pytest.mark.xfail(strict=True, reason="a paper read holds its pooled connection while it waits for the feed; fixed by "
-                                       "origin/hotfix/api-blocking-1127 (8c97a39b)")
 @pytest.mark.parametrize("path", ["/paper/strategies/{sid}", "/paper/strategies"])
 async def test_other_routes_answer_while_paper_reads_wait_on_a_stalled_price(app_db_url, monkeypatch, path):  # noqa: F811
     """The 27 Nov hold: a paper read waits for the feed's ready price (``_hold_until_ready``). The wait is one stalled
@@ -129,8 +140,6 @@ def _says_not_live(out: dict) -> list:
     return [x for x in out["lines"] if x["state"] in BAD_STATES] + ([out["paused"]] if out.get("paused") else [])
 
 
-@pytest.mark.xfail(strict=True, reason="plan-watch waits out the whole stalled quote; the price budget is "
-                                       "origin/hotfix/plan-watch-load-1127 (b16715d1, also hotfix/plan-watch-1127)")
 async def test_a_5_second_stalled_quote_does_not_make_live_ticks_not_live(app_db_url, monkeypatch):  # noqa: F811
     sid = await _seeded(app_db_url, monkeypatch, "ADJ-01")
     app = _app()

@@ -83,7 +83,7 @@ from ofo_app.basket_post import BasketPost
 from ofo_app.catalogue_picker import loaded_before, publish_time
 from ofo_app.catalogue_store import load_catalogue
 from ofo_app.checked_basket import checked_basket, is_checked_basket
-from ofo_app.db import get_db
+from ofo_app.db import get_db, release_connection
 from ofo_app.errors import ClosedRoute, Failure
 from ofo_app.execution_return import drifted
 from ofo_app.freeze_store import review_freeze_limits
@@ -294,6 +294,8 @@ class _Request:
     now: datetime.datetime
     clock: Callable[[], datetime.datetime]
     rates: ChargeRates | None
+    key: uuid.UUID | None = None  # FD3 item 2: the order request key, claimed in the plan's own transaction
+    sent: Mapping[str, Any] | None = None
 
 
 @router.post("/strategies/{strategy_id}/execute", response_model=ExecuteOut, response_model_exclude_unset=True)
@@ -316,15 +318,20 @@ async def execute_strategy(  # noqa: PLR0913, C901 - FastAPI dependencies
         if session is None:
             raise _refuse("gate_broker_not_connected")
         if key is not None:  # ADR-017: a repeat of this press is refused by name and prepares nothing
+            if await request_key.lookup(db, user_ref, key, strategy_id, sent) is not None:  # FD3: the durable record
+                raise _refuse("request_key_already_prepared")
             first = await request_key.begin(keys, user_ref, key, strategy_id, sent)
             if first is not None:  # never the same sealed Kite form twice: the repeat is refused by name
                 raise _refuse("request_key_already_prepared")
             claimed = True
-        out = await _execute(_Request(db, user_ref, strategy_id, body.action, session, quotes, clock(), clock, rates),
-                             stored)
+        out = await _execute(_Request(db, user_ref, strategy_id, body.action, session, quotes, clock(), clock, rates,
+                                      key, sent), stored)
         out = echo_seq(out, body.seq)  # REQ-119 AC-1: before the commit, so a failed echo rolls the plan back
         committing = True  # from here an exception leaves the outcome unknown: the key stays claimed until it expires
         await db.commit()
+    except request_key.Repeated:  # FD3: another press with this key committed first (the durable claim)
+        await db.rollback()
+        raise _refuse("request_key_already_prepared") from None
     except store.StrategyStoreError as exc:
         await db.rollback()
         if claimed and not committing and key is not None:
@@ -343,11 +350,20 @@ async def execute_strategy(  # noqa: PLR0913, C901 - FastAPI dependencies
     return out
 
 
+async def _off_loop(req: _Request, fn: Callable[..., Any], *args: Any, **kwargs: Any) -> Any:
+    """FD3 item 4: every Zerodha wait of this door gives the pooled connection (and any row lock) back FIRST, then waits
+    off the event loop. The door's own writes come last (claim, ``record_plan``), and ``record_plan`` takes the strategy
+    lock again and re-checks what was read (an open plan, a number not above the highest, a tag taken), so releasing
+    never weakens the guard against a double order: a second press that raced past a released lock is refused there."""
+    await release_connection(req.db)
+    return await asyncio.to_thread(fn, *args, **kwargs)
+
+
 async def _reserve_number(req: _Request) -> tuple[int, list[object]]:
     """Zerodha's book first (floor + still-open refusal), then the store's number under the strategy lock. Returns the
     number and the order rows it read (W-107: the drift check reuses them, no second read)."""
     try:
-        book = await asyncio.to_thread(req.session.reads.fetch_orders)
+        book = await _off_loop(req, req.session.reads.fetch_orders)
         floor, still_open = ep.book_floor(book, req.strategy_id)
     except (KiteReadError, ValueError) as exc:
         raise _refuse(unconfirmed_template(exc)) from None
@@ -431,12 +447,17 @@ async def _execute(req: _Request, stored: Any) -> ExecuteOut:
     await _refuse_lots_over_limit(req, wanted, units, catalogue, underlying)  # ADR-330 (58): the paper door's function
     await _gate(req, priced, context, catalogue, underlying)
     basket = await _basket(req, priced, catalogue, plan_number)
+    if req.key is not None and req.sent is not None:  # FD3 item 2: the durable claim, in THIS transaction
+        await store.lock_strategy(req.db, req.user_ref, req.strategy_id)  # the paper door's order: lock, then claim
+        await request_key.claim_in_transaction(req.db, req.user_ref, req.key, req.strategy_id, req.sent, "real")
     try:
         plan = await plans.record_plan(req.db, req.user_ref, req.strategy_id, plan_number, req.action,
                                        _plan_orders(basket), strategy_version=store.built_from(stored))
     except plans.PlanStoreError:
         raise _refuse("gate_dependencies_unsatisfied") from None
     await order_audit.record_prepared(req.db, plan, actor=req.user_ref)  # same transaction: rolls back with the plan
+    if req.key is not None:
+        await request_key.finish_in_transaction(req.db, req.user_ref, req.key, {"plan_number": plan_number})
     return _answer(plan_number, basket, req.session.api_key, cost_out(basket.orders, req.rates, figures),
                    priced.planned_prices)
 
@@ -477,7 +498,7 @@ async def _banded(req: _Request, wanted: list[ep.LegToPrice], catalogue: Any) ->
         names[want.instrument_id] = (f"{zerodha_exchange(entry.id.exchange_segment)}:"
                                      f"{entry.ref(ZERODHA).broker_symbol}")
     try:
-        bands = await asyncio.to_thread(req.session.reads.fetch_circuit_bands, list(names.values()))
+        bands = await _off_loop(req, req.session.reads.fetch_circuit_bands, list(names.values()))
     except KiteReadError:
         bands = {}
 
@@ -508,7 +529,7 @@ async def _basket(req: _Request, priced: ep.PricedPlan, catalogue: Any, plan_num
     if frozen.blocks:
         raise _refuse_with(frozen.blocks[0].message)
     try:
-        basket = await asyncio.to_thread(checked_basket, priced.plan, catalogue, plan_number,
+        basket = await _off_loop(req, checked_basket, priced.plan, catalogue, plan_number,
                                          margin_client=req.session.margin,
                                          freeze_check=lambda p: freeze_check(
                                              p, limits, today=today, stale_after_days=stale_days))
@@ -571,7 +592,7 @@ async def _positions(req: _Request, catalogue: Any) -> PositionsRead | None:
     """Zerodha's positions reply, read once per request; unreadable -> None (reconciliation unknown, products
     unread: both block)."""
     try:
-        reply = await asyncio.to_thread(req.session.reads.fetch_positions)
+        reply = await _off_loop(req, req.session.reads.fetch_positions)
         read = positions_from_reply(reply, ContractIndex.from_catalogue(catalogue))
     except (KiteReadError, KiteReplyError, ValueError):
         return None
@@ -606,8 +627,8 @@ async def _zerodha_margin(req: _Request, priced: ep.PricedPlan,
                           catalogue: Any) -> tuple[Decimal | None, Decimal | None]:
     orders = _margin_orders(priced, catalogue)
     try:
-        available = await asyncio.to_thread(KiteMargin.fetch_available_funds, req.session.margin)
-        basket = await asyncio.to_thread(KiteMargin.fetch_basket_margin, req.session.margin, orders)
+        available = await _off_loop(req, KiteMargin.fetch_available_funds, req.session.margin)
+        basket = await _off_loop(req, KiteMargin.fetch_basket_margin, req.session.margin, orders)
     except Exception:  # noqa: BLE001 - any failure to read Zerodha's figures is "not confirmed" (None blocks)
         return None, None
     return available, basket.required_total

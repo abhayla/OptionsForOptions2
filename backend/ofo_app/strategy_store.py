@@ -22,7 +22,6 @@ Transaction control (commit) stays with the caller.
 
 from __future__ import annotations
 
-import logging
 
 import dataclasses
 from dataclasses import dataclass
@@ -159,18 +158,17 @@ _KINDS = text(
 
 
 async def kinds_of(conn: Any, strategy_ids: list[int]) -> dict[int, str]:
-    """ADR-330 (64): strategy id -> position kind (position_kind.kind_of) for the asked ids, one read. An id not found,
-    or a read that fails, is "unknown" (never guessed as paper)."""
+    """ADR-330 (64): strategy id -> position kind (position_kind.kind_of) for the asked ids, one read. An id not found
+    is "unknown" (never guessed as paper). A read that fails PROPAGATES (``SQLAlchemyError``): the old catch-all
+    answered "unknown" for every id, and the aborted transaction then failed the next statement and hid the cause (the class of
+    #858). The caller refuses or answers 5xx with the catalogue sentence; it never reads "no kinds" as an answer."""
     from ofo_app import position_kind  # noqa: PLC0415 - one rule, defined beside the sentence
     ids = sorted(set(strategy_ids))
     if not ids:
         return {}
     out = dict.fromkeys(ids, position_kind.UNKNOWN)
-    try:
-        for r in (await conn.execute(_KINDS, {"ids": ids})).all():
-            out[int(r.id)] = position_kind.kind_of(r.has_order, r.has_paper_order, r.held)
-    except Exception:  # noqa: BLE001 - fail closed: every asked id stays unknown
-        logging.getLogger(__name__).warning("position kinds could not be read", exc_info=True)
+    for r in (await conn.execute(_KINDS, {"ids": ids})).all():
+        out[int(r.id)] = position_kind.kind_of(r.has_order, r.has_paper_order, r.held)
     return out
 
 

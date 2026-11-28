@@ -232,10 +232,13 @@ async def _is_own(db: Any, user_ref: str, strategy_id: int) -> bool:
 
 
 async def _armed_lines(db: Any, strategy_id: int, run: CheckRun, live: bool) -> list[dict]:
+    from ofo_app import position_kind, strategy_store  # noqa: PLC0415 - late: strategy_store reaches the order modules
     try:
         rows = [r for r in reversed(await paper_trigger_store.list_for(db, strategy_id)) if r.cancelled_at is None]
         ids = sorted({r.trigger.contract_id for r in rows if r.trigger.contract_id is not None})
         found = {c.contract_id: c for c in await tracked_contracts.resolve(db, ids)}
+        kinds = await strategy_store.kinds_of(db, [strategy_id]) if rows else {}
+        kind = kinds.get(strategy_id, position_kind.UNKNOWN)
     except SQLAlchemyError as exc:
         log.warning("plan watch: triggers of strategy %s unreadable: %s", strategy_id, type(exc).__name__)
         raise StrategyRefused(_NOT_AVAILABLE, Failure.UPSTREAM_BUSY) from None
@@ -270,6 +273,11 @@ async def _armed_lines(db: Any, strategy_id: int, run: CheckRun, live: bool) -> 
         distance = adjust_money.distance_to_level(t.level, price, up)
         lines.append(_line(key, kind_out, "armed", label, unit, "fired" if r.fired_at is not None else "watching",
                            fires=t.level, now=price, distance=distance, pct=_pct(distance, price)))
+    if kind in (position_kind.REAL, position_kind.UNKNOWN):
+        # ADR-330 (64) / R6: a real (or unreadable) position has no paper stop; an old armed row stays stored, never
+        # shown as a live line: "not applicable", with the position-kind sentence, no price and no distance
+        lines = [{**ln, "state": "not_applicable", "now": None, "distance_rs": None, "distance_pct": None,
+                  "reason": position_kind.line_of(kind)} for ln in lines]
     return lines
 
 

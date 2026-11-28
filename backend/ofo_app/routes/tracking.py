@@ -21,6 +21,7 @@ from __future__ import annotations  # noqa: I001 - the import-door test pins the
 
 import dataclasses
 import datetime
+from types import SimpleNamespace
 from collections.abc import Callable, Coroutine, Hashable, Mapping, Sequence
 from dataclasses import dataclass
 from decimal import Decimal
@@ -548,6 +549,7 @@ async def exit_tracking(strategy_id: int, body: TrackingExitIn,  # noqa: PLR0913
     bk = await _load_book(db, strategy_id)
     if bk is None:
         raise StrategyRefused("user_input_request_not_available", Failure.NOT_FOUND)
+    await paper_limit.refuse_real_exit(db, strategy_id, [SimpleNamespace(kind="exit")])  # I-158 (64): before any read
     answered = now()
     may_act.refuse_unless_allowed(ctx, "exit", answered)  # ADR-212: no fill outside market hours, before any price read
     if len(set(body.legs)) != len(body.legs) or any(i >= len(bk.legs) for i in body.legs):

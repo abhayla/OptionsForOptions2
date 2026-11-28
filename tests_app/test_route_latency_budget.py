@@ -33,10 +33,16 @@ SINGLE_MAX_MS = 200.0  # Lane H: measured 60 to 100 ms warm on a 4-core box (was
 CONCURRENT_BUDGET_MS = 2500.0  # 10 concurrent plan-watch; Lane H: measured 600 to 840 ms (was 4000)
 LINE = re.compile(r"request (\w+) (\S+) (\d+) ([\d.]+)ms(?: db=([\d.]+)ms/(\d+)q)?(?: price=([\d.]+)ms)?"
                   r"(?: margin=([\d.]+)ms)?")
+# FD3 item 6: each of the three adjustment routes runs ONE statement more than when the ceilings were set (23 / 19 /
+# 18): the position's expiry kind is read from the stored catalogue by the one rule
+# (adjustment_readers._stored_kind_or_empty -> stored_kind -> load_catalogue; commit b00d304, Lane N items 1, 2, 4).
+# MEASURED: with that read stubbed out the counts are exactly 23 / 19 / 18 again, so it is the only added statement. It
+# is needed for correctness (ADR-330 (19)(b): the kind decides which stop rows apply; an unknown kind fails closed), so
+# the ceilings rise by one, not the guard's meaning: a second added statement still fails.
 CEILINGS = {  # route -> most statements one request may run: today's counts, an N+1 regression guard
-    "plan-watch": 23,
-    "adjustment-check": 19,
-    "adjustment-plan": 18,
+    "plan-watch": 24,
+    "adjustment-check": 20,
+    "adjustment-plan": 19,
     "paper/strategies/{id}": 11,
 }
 

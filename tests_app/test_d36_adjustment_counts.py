@@ -112,10 +112,20 @@ async def _run(method: str, strategy_id: int, counts: Counts, body: dict | None 
     return r.status_code, r.json()
 
 
+def _no_ids(value):
+    """FD3 item 6: the strategy's id is whatever the database's sequence gave (1 on a fresh database, 123 on a used
+    one); the golden files carry 1, so the id is normalised, nothing else."""
+    if isinstance(value, dict):
+        return {k: (1 if k == "strategy_id" and isinstance(v, int) else _no_ids(v)) for k, v in value.items()}
+    if isinstance(value, list):
+        return [_no_ids(v) for v in value]
+    return value
+
+
 def _clean(reply: dict) -> dict:
     reply = dict(reply)
     reply.pop("timing", None)  # a wall-clock field of the dev reply; the only one
-    return json.loads(json.dumps(reply, sort_keys=True))
+    return _no_ids(json.loads(json.dumps(reply, sort_keys=True)))
 
 
 def _golden(name: str, reply: dict) -> None:

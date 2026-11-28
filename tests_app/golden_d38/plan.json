@@ -13,6 +13,9 @@
   "playbook": "Playbook",
   "reset": "Reset to playbook",
   "reset_confirm": "Reset to playbook puts back this playbook's conditions only. The levels you typed on the sheet (profit target, rupee target, rupee stop, time exit, the adjustment limit) and the plan's settings stay as you set them. Reset the conditions?",
+  "reset_put_back": "Put back to the playbook's values:",
+  "reset_put_back_none": "Nothing differed from the playbook, so nothing was put back.",
+  "reset_put_back_off": "Switched on again:",
   "save": "Save plan",
   "set_plan": "Set plan",
   "stop": "Stop",
@@ -83,6 +86,8 @@
   },
   "time_exit_on": null
  },
+ "put_back": [],
+ "put_back_off": [],
  "settings": [
   {
    "key": "adjustments.short_delta_weekly",

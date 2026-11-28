@@ -150,3 +150,13 @@ async def test_an_exit_when_nothing_is_open_is_cannot_tell_never_no(db):
     reply = await _ask(app, stored.id, _exit_of(ids, legs, [0]))
     assert reply.status_code == HTTPStatus.OK, reply.text
     assert reply.json()["state"] == "cannot_tell"
+
+
+async def test_ux_a18_the_warning_names_the_sold_leg_in_the_apps_date_style_never_iso(db):
+    """PC note UX-A18 (coordinator 09:38): the sold option the exit leaves bare is named "13 Oct 22800 CE", never with
+    an ISO date ("2026-10-13"); the text is built here from the app's one contract formatter."""
+    import re  # noqa: PLC0415
+    app, stored, ids, legs = await _condor(db)
+    body = (await _ask(app, stored.id, _exit_of(ids, legs, [_bought_call(legs)]))).json()
+    assert not re.search(r"\d{4}-\d{2}-\d{2}", body["warning_text"]), body["warning_text"]
+    assert re.search(r"\d{1,2} [A-Z][a-z]{2} \d+ [CP]E", body["warning_text"]), body["warning_text"]
