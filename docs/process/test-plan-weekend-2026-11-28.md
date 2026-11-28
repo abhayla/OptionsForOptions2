@@ -1,14 +1,206 @@
-STATUS 16:00 | version 5 for round 2 (PC round 1 close folded in; the final round 2 commit is NOT yet sent: expected about 16:30 IST, version 5b names it) | covers: PC comment "PC RESTART AND ROUND 1 CLOSE 13:58 IST" (PASS 15, FAIL 8, PARTIAL 41, BLOCKED 11 of 75; seven set-up lessons); integration/weekend-r2-1128 seen at 1cf456998 | next version when the coordinator sends the round 2 commit
+STATUS 16:30 | version 6: PC ONLY 10 checks (6 to run now), sample 10, cloud 81 | CLOUD FIRST (owner, 28 Nov): the PC runs the set-up, the PC ONLY checks and a 10-check cross-check sample, about 254 minutes; everything else is proven in the cloud (Lane TG test/r2-plan-walk-1128 at d67b9f21, item 1 only, plus Lanes TA to TF tests) | the final round 2 commit is NOT yet sent (expected about 16:30 IST): version 6b names it | covers: version 5 content, unchanged
 
 # Test plan for the closed-market weekend, 28 and 29 Nov 2026 (rounds 1 to 3)
 
-Version 5, Sat 28 Nov 2026, afternoon IST (for round 2, Sat 21:00). Written by Lane X2 (documents only; no product code read or changed).
+Version 6, Sat 28 Nov 2026, afternoon IST (for round 2, Sat 21:00): cloud first. Written by Lane X2 (documents only; no product code read or changed).
 For the owner's PC session. The market is closed until Mon 30 Nov 09:15. Three rounds, each started by the owner; the **PC session is reused** for all three; the message for each is in section 13. The app on the PC has 9 running paper trades, no Kite
 login and no live feed. **Paper only: never place or send a broker order.** Monday's live plan is `docs/process/test-plan-2026-11-30.md`.
 
-Version log: v1b Fri 19:40; v1 Fri 22:30 (all lane result files read); **v2 Sat early morning: round 1 is the commit named in section 1, only checks that commit can pass, every check names its board items, the three open findings F1 to F3 are known and not a round 1 failure, two PC data pulls (section 8), round 2 checks (sections 7 and 9).** Next: the round 2 update when the coordinator sends the round 2 branch list. **v3 and v3b (this file; v3b adds Lane FE, Lane FA's new status and the builder walk): a one-page "What to read before 08:00" for the owner; SW-2, SW-6, T1-20 and the sweep corrected against Lane TC's walk of the round 1 commit; the five checks TC could not walk are PC checks in round 1 (TC-1 to TC-5); the round 2 section is built from the fix lanes' result files (one check per fix).** **v4 (this file): the 16 plan and set-up faults of round 1 corrected (the page "Plan version 4" below), the round 2 set-up with the screen-server restart and the route check, W-26, W-32, W-34, W-04 rewritten, one line on every row for FAIL or PARTIAL, the round 2 section rebuilt from the lanes' result files.** **v5 (this file): the PC's seven set-up lessons of the round 1 close folded into section 2 (new block "Lessons of the round 1 close"), every query corrected to select by strategy id and to the real alert tables, memory and speed rules added (rules 15 and 16), migrations 0060 then 0061 applied in one step, the round 1 results expected to be fixed listed on the page "Plan version 4 for round 2".**
+Version log: v1b Fri 19:40; v1 Fri 22:30 (all lane result files read); **v2 Sat early morning: round 1 is the commit named in section 1, only checks that commit can pass, every check names its board items, the three open findings F1 to F3 are known and not a round 1 failure, two PC data pulls (section 8), round 2 checks (sections 7 and 9).** Next: the round 2 update when the coordinator sends the round 2 branch list. **v3 and v3b (this file; v3b adds Lane FE, Lane FA's new status and the builder walk): a one-page "What to read before 08:00" for the owner; SW-2, SW-6, T1-20 and the sweep corrected against Lane TC's walk of the round 1 commit; the five checks TC could not walk are PC checks in round 1 (TC-1 to TC-5); the round 2 section is built from the fix lanes' result files (one check per fix).** **v4 (this file): the 16 plan and set-up faults of round 1 corrected (the page "Plan version 4" below), the round 2 set-up with the screen-server restart and the route check, W-26, W-32, W-34, W-04 rewritten, one line on every row for FAIL or PARTIAL, the round 2 section rebuilt from the lanes' result files.** **v5 (this file): the PC's seven set-up lessons of the round 1 close folded into section 2 (new block "Lessons of the round 1 close"), every query corrected to select by strategy id and to the real alert tables, memory and speed rules added (rules 15 and 16), migrations 0060 then 0061 applied in one step, the round 1 results expected to be fixed listed on the page "Plan version 4 for round 2".** **v6 (this file): the page "Version 6: CLOUD FIRST" at the top: every check is CLOUD or PC ONLY with a one-phrase reason and its proof; the PC runs the set-up, the PC ONLY checks and a sample of ten (about 254 minutes); rule 17.**
 
-## Plan version 4 for round 2: what changed since round 1 (read this first)
+## Version 6: CLOUD FIRST: what the PC runs in round 2, and what is proven in the cloud
+
+**The owner's question (28 Nov): "if the plan can be walked in a browser in the cloud, why use the PC?"** So every check of this plan is now in one of two lists, with the reason in one phrase:
+- **CLOUD** = logic, wording, dialogs, counts, states, refusals, closed-market behaviour: provable with seeded or scenario data in a cloud browser or by a test. Lane TG walks these (`test/r2-plan-walk-1128`, pushed 15:19 IST: it had walked item 1 only); Lanes TA to TF proved many by test; each row names the lane and the proof.
+- **PC ONLY** = needs one of: (1) the real database change on his data (0060, 0061); (2) his real rows (the nine running trades, the stored closes, strategies 209, 201, 207, 194, trade 173, his own seed); (3) the real link speed to his database; (4) his machine's memory; (5) a broker session; (6) the live feed.
+
+**The PC's round 2 list (Saturday 21:00) = the set-up (57 min) + the PC ONLY checks (6 to run now: W-04, W-21, TC-5, D-1, D-2, R2-FD; W-22 and T1-18 PASSED in round 1 and are not re-run; AF-09 and AX-01 are Monday) + the cross-check sample of 10 cloud-proven checks chosen from round 1's failures (W-34, W-13, W-17, W-02, W-33, W-25, W-32, SW-6 with W-35, W-07 row (64) the real position row, T3-09 one alert answered). Everything else is NOT run on the PC** (rule 17 of section 0): it stays in this file as the CLOUD list, with its lane and proof.
+
+**Expected PC time for the shorter list: about 254 minutes (4.2 hours)**: set-up 57 + PC ONLY 79 + sample 98 + buffer 20 (234 minutes without the buffer; each sample check that fails adds about 10 minutes for the re-run and the write-up).
+
+**STATUS line of this version: "version 6: PC ONLY 10 checks (6 to run now), sample 10, cloud 81".**
+
+### What Lane TG's walk (cloud, item 1) already says the PC should expect
+- **W-34:** PASS for trades that have a plan; **trades with no plan still read "Not being watched: the worker does not list this trade." with "No plan: nothing is watched for this strategy" beside it** (the round 1 sentence). If the PC's nine trades have no plan, round 1's reading was this, not a worker fault: **the PC writes, for each of its nine trades, whether it has a plan.**
+- **W-32: FAIL in the cloud (D-TG-2):** the Review dialog does not show the stop sentence ("The stop on <leg> will be removed; set a new one after the move.") although the server returns it when asked by hand. So W-32 in the sample is not a re-run of a pass: write "known D-TG-2" if it reads the same.
+- **W-33:** with no Zerodha session the closes show on every screen (D-1 fixed) but the paper P&L stays "paused" (D-TG-1); the PC has no session, so expect paused P&L (known D-TG-1), not a seed fault. The API needs `FEED_MODE=bus` and `REDIS_URL` in its environment (set-up item S7 below).
+- **W-02, W-13, W-17:** TG saw no error block with a 9 to 12 s delay in the cloud, but "Still loading..." does not show for the plan watch. **The real 6 s / 24 s link is proven nowhere in the cloud: the PC's sample re-run is the only evidence of it.** (These three are listed CLOUD because the coordinator named them in the sample; the cloud proves the logic only.)
+- **W-26 case B:** OWNER DECISION PENDING (recorded, not judged). Eleven CLOUD checks have no named cloud proof yet (W-10, W-14, W-15 same-side variant, W-23 tool alone, W-30, W-31, T2-19, T2-21 (409), T3-06, T3-17, TC-2 SENSEX/far expiry): Lane TG items 2 to 4 are not started; they stay CLOUD (TG pending) and are NOT moved to the PC.
+
+Two honest notes before the tables:
+1. **W-02, W-13, W-17 (and in part W-03, W-31, AX-14, SW-8) are the "page gives up before the server answers" class.** Rule (3) would make the real link timing PC ONLY. They are listed CLOUD because the coordinator named them in the sample: the cloud can prove the logic (a delayed route, W-23's tool, plus the query-cost tests), but NO cloud result for the real 6 s / 24 s link is recorded. The sample re-runs them on the PC for exactly that reason. If the sample passes with a real number written beside the server's own time, the class is closed.
+2. **W-33 and W-34 are proven in the cloud on synthetic closes and a harness worker** (Lane TC: 15:29:58 seed, idle socket, no Zerodha call; Lane TG: same closes, no session, worker as its own process). The PC's own seed of the real snapshot is rule (2). They are in the sample.
+3. **Lane TG's findings change what the sample must look for** (quoted from RESULTS-lane-tg.md): (a) W-34 "PASS for planned trades (#1, #2)"; trades with no plan still read "Not being watched: the worker does not list this trade." with "No plan: nothing is watched for this strategy" beside it, "the exact sentence round 1 called a defect. If the PC's 9 trades were unplanned, round 1's reading was this, not a worker fault": the PC must write whether each of the 9 has a plan. (b) W-33 PARTIAL "banner and closes show on all (D-1 fixed); every running row's paper P&L is still 'paused' (D-TG-1)" with no session; the PC has no session, so expect the same. (c) W-32 FAIL (D-TG-2): the Review dialog does not show "The stop on <leg> will be removed; set a new one after the move." although the server returns it when asked by hand; a cloud FAIL means W-32 on the PC is expected to fail until a fix, not a cross-check of a pass. (d) Set-up: the API needs `FEED_MODE=bus` and `REDIS_URL`, else every trade reads "no worker has reported" (add to S7).
+
+---
+
+### (a) PC ONLY
+
+| id | title (short) | why (one phrase) | est. PC min |
+|---|---|---|---|
+| W-04 | Adjustment history rows, strategies 209 and 201 | (2) his real rows 209 and 201: does the server hold the rows | 8 |
+| W-21 | Lane M read-only SQL (2028 date, contracts) | (2) his real rows: SQL on his database (`paper_orders`, `catalogue_contracts`) | 8 |
+| W-22 | Lane J read-only SQL, stop alerts of #207 | (2) his real rows: `paper_alerts`, `strategy_alert_style` by strategy id (PASS in round 1) | 0 (PASS in round 1: not re-run) |
+| TC-5 | A settled strategy (trade 173) | (2) his real settled SENSEX trade 173; TC could not seed a settlement | 8 |
+| T1-18 | Settlement rows of trade 173 and the stored settlement text | (2) his real row 173 (PASS in round 1) | 0 (PASS in round 1: not re-run) |
+| D-1 | Data pull: 27 Nov stop case, strategy 207 (#876) | (2) his real rows of strategy 207, plan body, orders, suggestions, worker log | 20 |
+| D-2 | Data pull: year 2028 on a 1 Dec contract, B-N1 #194 | (2) his real rows of strategy 194 and the catalogue (14,474 rows) | 15 |
+| R2-FD | Backend: totals, request key, reads, durable key | (1) migration 0061 on his database, (2) his seed read (`GET /api/market/indices` 27 Nov close), (3) role connection count (limit 10, shared) | 20 |
+| AF-09 | Items that need an expiry day (D-64, D-59, D-12) | (6) live feed and an expiry day: Monday or Tuesday, not in the weekend run | 0 (Monday) |
+| AX-01 | Index tick silent for 60 seconds | (6) live feed: Monday (the silent-feed logic itself is R2-F2, CLOUD) | 0 (Monday) |
+
+n = 10 PC ONLY (8 in the weekend run, 2 Monday-only with 0 weekend minutes). PC ONLY subtotal: **79 min** (W-22 and T1-18 are PC ONLY by the rule but PASSED in round 1, so they are not re-run: 12 minutes less than first counted).
+
+### (b) Cross-check sample (CLOUD-proven checks to re-run on the PC), m = 10
+
+| id | why chosen | min |
+|---|---|---|
+| W-34 | Round 1 FAIL: every running trade read "Not being watched: the worker does not list this trade." with the worker running; cloud proof is a test worker, the PC has the real worker and 9 real trades. Read half + stop/start half | 15 |
+| W-13 | Round 1 FAIL: "Closed by system" on Alerts > History; the page gave up before the 6.5 s answer. One tester, write the API log time beside the page | 8 |
+| W-17 | Round 1 FAIL: Alerts Active slowed 5 s showed the server-error block after about 6 s (needs W-23's delay tool + API restart) | 12 |
+| W-02 | Round 1 FAIL: plan watch for 9 trades, "not available" for 3 min, 24 s batch read; one tester, 3-minute watch, count requests, write the log's ms | 12 |
+| W-33 | The stored close on the after-close screens: round 1 saw no close on any of nine screens (known D-1); cloud proof used synthetic closes; the PC has its own 17-row seed. Restart, nine screens | 15 |
+| W-25 | Exit with the market closed per ADR-330 (60): dialogs A to E, parts B and D (feed stopped, API stopped) never run in round 1 | 12 |
+| W-32 | A moved leg with a stop: the leg's own expiry chip (round 1 used the wrong control): "The stop on <leg> will be removed; set a new one after the move." | 8 |
+| SW-6 (with W-35) | Add to Paper after the close: Confirm pressed once, expect "The market is closed. Orders can be placed once it opens.", order rows before = after (round 1: 965 / 965) | 6 |
+| W-07 row (64) (also W-29 (54) step 2) | A real position row: "Real position: exit and protect it in Kite. Stops and alerts here cover paper trades only."; no Exit, no Stops; real Plan button. Round 1: not walked | 5 |
+| T3-09 | One alert answered: a dismissed opportunity read "You dismissed this" and its reason as two words; round 1 row had no reason chosen (the PC has the real dismissed row of 27 Nov 13:32) | 5 |
+
+Sample subtotal: **98 min**. Every sample id is also in table (c) (marked S).
+
+### (c) CLOUD (k = 81; S = in the sample)
+
+Proof column: "TC" = Lane TC walk of 5fc6b102 (RESULTS-lane-tc.md, synthetic closes); "TD" = Lane TD walk (RESULTS-lane-td.md); "TG" = Lane TG walk, not pushed at 10:12; test names are the files the lanes name. "no cloud proof recorded; TG pending" = nothing in the evidence proves it yet.
+
+| id | title | why (one phrase) | lane and proof |
+|---|---|---|---|
+| W-33 S | Nine screens after a restart, last close stored | seeded closes: a seeded browser proves banner and figures | TC I-26 PASS SW-1,3,4,5,6,7,9, PARTIAL SW-2, SW-8; tests_app/test_closed_label_route.py, test_close_freeze_routes.py; FD2 D-1/D-2 (5 and 59 tests); frontend/tests/market-closed-screens.test.js; PC round 1 was known D-1 ; **TG: "PARTIAL: the banner and closes show on all (D-1 fixed); every running row's paper P&L is still 'paused' (D-TG-1)"; Home "4 strategies left out"; Positions Real prints the raw 409 JSON twice (D-TG-3)** |
+| W-01 | Plan save, change, Reset, read back in three places | logic/wording: Reset keeps typed levels by design (plan fault in round 1); a seeded draft proves it | FC3 plan acceptance (38 tests, 0060 guard on a fresh DB); no browser walk recorded; TG pending ; **TG: "PASS" (Reset keeps typed levels; reads "Nothing differed from the playbook, so nothing was put back.")** |
+| W-02 S | Plan watch load, one request at a time | logic proved with a delayed route and query-count tests; the real 24 s link is NOT proven in cloud (see note 1) | tests_app/test_route_latency_budget.py, test_slow_price_source_live_day.py, test_plan_read_cost_fd4.py (FD4); W-23 delay in a cloud browser: TG pending ; **TG: "PARTIAL: no error block, but 'Still loading...' never shown for plan watch" (server 218 ms / 183 ms; rows at 10 s and 14 s with 9 s and 12 s delays); plan fault 6** |
+| W-03 | Plan watch box, weekend wording | wording: the box texts are seeded-state texts | TC SW-4 ("Not being watched: no worker has reported in the last 2 minutes."); FC3 PlanWatch; PC round 1 builder part PASS; link half = W-02 ; **TG: "PARTIAL" (same row as W-02)** |
+| W-05 | Order limits with the market closed | wording/logic: refusal sentences and the 100-lot limit are seeded | TE I-37 (101 refused at 100); TC D-4 (MARKET_DATA_102 refusal); frontend/tests/add-to-paper-r2-fb.test.js; step 0 freeze SQL is optional |
+| W-06 | One P&L number in the places | counts/logic on seeded closed and unpriced trades | TC AF-04/AF-05 shapes hold (rows add to the Home total); FD B1 booked result; PC round 1 matched on Home and Positions |
+| W-07 | Owner decisions (46) to (64): each walked once | wording/logic per row; (56) and (63) need a close, seeded | PC round 1 walked (52),(54),(55),(60),(62) as expected; TC texts; row (64) is in the sample |
+| W-09 | Plan-stop alert in scenario mode | scenario data by design; PC round 1 said "cloud only" | Lane Q3 worker-chain test (test/worker-chain-1127, 10 passed on PostgreSQL), FE: 214 DB tests incl. the Q3 chain, test_worker_j3 |
+| W-10 | Compare approaches: Cancel and Confirm | state logic ("Open" then "Acted on"); the opportunity row is seedable | no cloud proof recorded; TG pending (TB I-74 covers staged legs only) |
+| W-11 | Full-exit approach stages the held legs | state logic on a seeded opportunity | TB I-74 PASS (4; held staged legs come back); TG pending |
+| W-12 | Home closed-strategies line | wording; PC round 1 PASS | TC Home "Includes 1 closed strategy."; PC round 1 PASS |
+| W-13 S | "Closed by system" in Alerts History | logic proved with a delayed route; the real 6.5 s link is NOT proven in cloud (note 1) | TB I-60 (frontend/tests/paper-alerts.r2-1128.test.js: failed half keeps its heading, other half keeps rows); FC2 History loading line; TG pending ; **TG: "PARTIAL: no error block, 'Still loading' seen only at 22 s" (12 s delay, server 15 ms)** |
+| W-14 | Time-exit wording on the plan sheet | wording; Target boxes are linked (plan fault) | no cloud proof recorded; TG pending |
+| W-15 | Two legs on one contract: Save-draft sentences | wording (order is by leg number: plan fault) | PC round 1 saw the sentence; same-side variant: TG pending |
+| W-16 | A completed trade opens read-only | wording/state; PC round 1 PASS | PC round 1 PASS; FC3 (settled trade shows no "Checked at Time not available") |
+| W-17 S | Alerts Active on a slow connection | logic proved with the delay tool; the real link is NOT proven in cloud (note 1) | FC2 / TD I-86 (frontend/tests d38-timeouts-pages, 3 passed); W-23 tool; TG pending ; **TG: "PARTIAL" (same row as W-13)** |
+| W-18 | Typing at once into Rename and Save | wording/logic; PC round 1 PASS | TD I-78 PASS; vitest rename-paper-d65 (6 passed) |
+| W-19 | Net Positions name on one line at 1366 px | layout: a cloud browser sets 1366 (the PC's browser could not) | TC I-75 PASS at 1366x768, `NIFTY 24000 PE 2026-12-08` on one line in all 4 rows |
+| W-20 | Max-loss line when a stop is typed | wording on a seeded trade (#209 shows it) | TF tests_app/test_leg_stop_lines_tf_1128.py (9; three lines, each at most 80 characters); TA I-63 (15); PC round 1 O-R-07 saw the sentence |
+| W-23 | Route-delay tool | a tool: a seeded browser shows the delay and that other routes are unchanged | PC round 1 measured 7.6 s with the delay, health 0.5 s; cloud use inside W-17: TG pending |
+| W-24 | What is on this plan and what is Monday's | reading the plan; PC round 1 PASS | PC round 1 PASS |
+| W-25 S | Exit dialog with the market closed (ADR-330 (60), (49)) | wording/refusal/closed-market behaviour; stopping the feed or API is process control the cloud has too | TC SW-3 Exit dialog ("The market is closed. Exits can be placed from 09:15 on Monday 30 Nov.", Confirm disabled); TD I-20; frontend/tests/exit-closed-entry-points-r2-fa.test.js, exit-market-reask-r2-fa2.test.js; tests_app/test_exit_market_adr330_60.py; PC round 1 parts A, B, C seen |
+| W-26 | Exit all with a staged change | state logic on a seeded two-leg trade; case B is an owner decision | PC round 1 re-run (raise lots: 4 legs listed, grey Confirm, nothing staged after Cancel); FA2 paper-unchecked-confirm-r2-fa2; TG pending ; **TG: case A "PASS, one plan fault (no per-leg lots control)"; case B "OWNER DECISION PENDING (recorded, not judged)"** |
+| W-28 | Alert and Stops screens | wording/state; items needing a close are seedable | TC SW-8 and SW-9 match; frontend/tests/paper-alerts.r2-1128.test.js; PC round 1 saw reason lines |
+| W-29 | Plan door, Stops lines, closed trade | seeded fixtures (real row, SENSEX trade, bought call were absent on the PC); settled half (57) is covered by PC ONLY TC-5 and T1-18 | TC SW-3/SW-6/SW-9; FA stops-index-closed-r2-fa.test.js; PC round 1 saw Plan buttons and stop lines; real-row step in the sample (W-07 (64)) |
+| W-30 | Stop percent weekly and monthly; Reset | seeded monthly Iron Condor and "R2 test" playbook (cannot be made on the PC with the market closed) | Lane R3 `3260e094` and R2 `1d0f56e7` are in the commit; no cloud walk recorded; TG pending |
+| W-31 | Plan watch: one batch request per cycle | request count in a cloud browser | PC round 1 saw one batch URL per cycle (PASS part); completion = W-02; TG pending |
+| W-32 S | Change expiry of ONE leg (leg's own chip) | wording/logic: the 201 reply names the cancelled stop | FD2 `cancelled_stops` (4 tests); FA2 frontend/tests/paper-cancelled-stops-r2-fa2.test.js (5); FB2 page half; PC round 1 void (wrong control) ; **TG: "FAIL (D-TG-2)": the Review dialog lacks the stop sentence; no `armed-exits` or `exit-risk` request from the page** |
+| W-34 S | "Monitoring paused" badge and the worker's reason | worker logic with a test worker; the real worker and 9 real trades are in the sample | FE2 tests_app/test_monitor_reports_fe2_1128.py, test_pause_restart_fe2_1128.py, test_worker_expiry_fe2_1128.py; FE test_index_exit_watch_fe_1128.py; TC SW-4 text; PC round 1 worker-stop half seen ; **TG: "PASS for planned trades (#1, #2)" and "PASS" for worker stopped then started (badge within 30 s); unplanned trades keep the round 1 sentence; set-up needs FEED_MODE=bus** |
+| W-35 S | Add to Paper, "prices are not live" ticked | wording/logic: after the close there is no tick box; the tick half needs an open market (Monday) | FA2 frontend/tests/paper-entry-closed-r2-fa2.test.js (3), paper-not-live-tick-r2-fa2.test.js (2); FR entry_facts; TC D-4; PC round 1 saw the closed sentence |
+| TC-1 | Charges tap on Positions > Paper | wording; PC round 1 PASS | PC round 1 PASS; TC saw the totals strip |
+| TC-2 | SENSEX and far expiry on the Option Chain | seeded SENSEX contracts and closes; round 1 was known D-1 | TC SW-7 (chain with closes, "IV and Greeks: estimated from spot..."); FD2 D-1; the SENSEX/far-expiry step: TG pending |
+| TC-3 | Notification settings, "side closed" alert | wording; PC round 1 PASS | PC round 1 PASS |
+| TC-4 | Stop warning text on the Stops panel | wording; PC round 1 PASS | PC round 1 PASS; TF I-51; TA I-63 |
+| T1-20 | Feed stopped: figures pause, Add to Paper | wording/state; the feed stop is process control | TC (no tick box, paused wording); TD I-20; FA2 paper-not-live-tick-r2-fa2; FC2 O-1 (paused line carries its time) |
+| T1-21 | API stopped for seconds: Exit grey, dialog closes | wording/state | TD I-20 PASS (i20_outage.js: grey Exit, reason line, dialog, empty builder) |
+| T1-14 | Builder money figures | logic/figures on a seeded trade; Monday for live | TD I-41 PARTIAL (table total, D-11 tiles, D-14 PASS; re-buy BLOCKED: needs a closed contract seeded) |
+| T1-16 | Paper total line and the left-out line | counts: seed exactly one unpriced trade (the PC has 9, so it cannot run there) | TC Home "1 strategy left out: its price is not live." and "Includes 1 closed strategy." |
+| T2-06 | Builder Greeks tab | seeded trade with a priced index | TD I-79 PASS (Greeks tab); PC round 1 was known D-1 |
+| T2-09 | Bulk delete, result line, Undo | counts/logic; PC round 1 PASS | tests_app/test_bulk_delete_undo_tf_1128.py (6); TB I-80 (29 s / 30 s hold) |
+| T2-17 | Lists: status word, figures of a closed row | counts across screens on seeded closed trades | TC SW-5 (closed row, Net after charges); PC round 1 figures equal on two screens (plan fault: address) |
+| T2-19 | Reset to playbook markers | logic on a seeded draft with a plan from a playbook | FC3 plan acceptance (38 tests); TG pending |
+| T2-21 | Strategy Chart on a running paper trade | state/refusal (no open legs, switch off = 409) on seeded trades | FK frontend/tests/payoff-chart-teardown.test.js (6); chart 409: TG pending |
+| T3-01 | Leave question and reload line | wording; strikes need the instrument list (seedable) | FB I-30 (contract-list line, 5 tests); FC2 ADR-330 (61); PC round 1 saw the line vanish after Save |
+| T3-06 | Phone-width drawer | layout: a cloud browser sets the width (PC could not) | no cloud proof recorded; TG pending |
+| T3-09 S | Rename Esc; dismissed outcome in two words | wording on a seeded dismissed row; the PC's real dismissed row is the sample | TD I-78 PASS; vitest rename-paper-d65 (6) |
+| T3-10 | API stopped: every list shows its failure and Retry | wording/state | TD I-86 PARTIAL (message on 10, Retry on 2: D-TD-2); FC2 ListLoadFailed.vue; d38-timeouts-pages (3) |
+| T3-12 | One date style, 24-hour clock | wording | TC walk (one date style); PC round 1 saw it |
+| T3-13 | Wording, labels, "View" button | wording; round 1 lacked a user playbook (seedable) | TD I-88 (View, D-52, D-58 zero-price PASS; D-54 Delete BLOCKED: no playbook) |
+| T3-15 | Delete and Undo leave history entries | counts | TF test_bulk_delete_undo_tf_1128.py (6); PC round 1 bulk case passes |
+| T3-17 | Lane D screen re-tests | wording/counts on seeded closed legs | FC2 contract-list line; no cloud proof recorded for the no-stop-closed trade; TG pending |
+| T4-01 | Number tables, columns separate | layout | TC I-91 (Orderbook, Live card, closed Net Positions PASS; Positions closed row FAIL D-8, fixed in FC2) |
+| T4-03 | Strategy name width | layout with 20+ character names (seedable) | TC I-92 PASS (20-character name not cut at 1280x800) |
+| T4-04 | Stops form and list side by side | layout on a seeded trade (saving a stop must not touch his running trades) | TD I-93 PASS |
+| AF-03 | Mixed trade's banner time (data, not PASS/FAIL) | seeded mixed trade | TC data point: one 15:58:00 row makes the banner read 15:58:00 ; **TG: "no mixed-time case (all legs priced by one close)"** |
+| AF-04 | Home Total P&L with one settled or unpriced trade | arithmetic on seeded rows | TC AF-04 shape holds (+3,027.52 + 1,381.23 - 7,600.51 = -3,191.76; closed +457.93; total -2,733.83) ; **TG: "PARTIAL": Home +457.93 = the closed trade only, four running excluded (D-TG-1)** |
+| AF-05 | Home against the My Strategies rows | arithmetic, frozen prices; PC round 1 PASS | PC round 1 PASS; TC ; **TG: "same" (trivial sum, D-TG-1)** |
+| AF-06 | No "No price for:" line above a priced table | wording | TC (holds); PC round 1 known D-1 |
+| AX-14 | Plan watch rows, market closed | wording: state word plus server reason | FC3 PlanWatch; PC round 1 saw "Not checked" / "Wait for fresh prices."; link half = W-02 |
+| SW-0 | Restart first, rule, must-not-show list | restart plus console errors on a seeded app | PC round 1 PASS (no console errors); TC D-2 (red 409 with no session; fixed in FD2, 59 tests) |
+| SW-1 | Home | wording/figures | TC matches ; **TG: "PARTIAL" (D-TG-1: closes show, P&L paused)** |
+| SW-2 | Positions, Real part | no session: no invented figure (the weekend case) | TC (no session: dash plus connect sentence; plan line out of date); PC round 1 PASS ; **TG: "PARTIAL" (raw JSON of the 409, D-TG-3)** |
+| SW-3 | Positions, Paper part | seeded closes, banner | TC matches (totals strip, Exit dialog) ; **TG: "PARTIAL" (D-TG-1)** |
+| SW-4 | Live Strategies | one banner, honest paused state | TC I-116 PASS (one banner 15:29:58) ; **TG: "PARTIAL" (D-TG-1)** |
+| SW-5 | My Strategies and Completed | dash with reason, never 0 | TC matches (no Completed tab on My Strategies: plan fault) ; **TG: "PARTIAL" (D-TG-1; Completed is its own page)** |
+| SW-6 S | Builder of a running paper trade | seeded; entry labelled; refusal | TC; PC round 1 PASS (Confirm once: 409, 965 orders before and after) ; **TG: "PASS (Confirm is greyed)"; no tick box** |
+| SW-7 | Option Chain | closed banner, last prices | TC (chain with closes); TC-2 covers the rest ; **TG: "PARTIAL" (only 15 closes seeded; strikes read "not available")** |
+| SW-8 | Alerts (Active, History, Records) | wording/empty lines; the PC error was the link | TC matches; TB I-60; FC2 History loading line; link half = W-13 ; **TG: "PARTIAL" (slow-answer part as W-13); plan fault 2: Records is the History block, not a page** |
+| SW-9 | Stops panel | wording; PC round 1 step not read | TC (NIFTY last ... as of 15:29:58); FA I-29 (frontend/tests/stops-index-closed-r2-fa.test.js) ; **TG: "PARTIAL" (Stops panel line "NIFTY last 24187.35 as of 15:29:58" seen); plan fault 7** |
+| AF-07 | Zerodha disconnected: Real total says so | screen logic with a fake broker reply (no real session needed) | TC I-113 PASS after reload, FAIL on an open page (D-13, fixed in FC2) |
+| R2-F1 | After an unknown exit, no second exit | logic by tests; real completion is Monday | FB2 frontend/tests/save-bar-add-lock-r2-fb2.test.js (11); FA2 exit-lock-window-r2-fa2.test.js; FD2 request key (paper 10, real 2); FJ parked critical item (R1) |
+| R2-F2 | Index exit with a silent feed | scenario data: DB tests with a silent tick | FE tests_app/test_index_exit_watch_fe_1128.py, test_leg_exit_watch_fe_1128.py, test_review_fixes_fe_1128.py (214 DB passed) |
+| R2-F3 | Moved-leg stop: the user is told | wording/logic | as W-32 (FD2 cancelled_stops; FA2 paper-cancelled-stops-r2-fa2) |
+| R2-FA | Exit dialog and Stops panel (FA, FA2) | wording/logic | FA/FA2 vitest: exit-dialog-age-r2-fa, exit-dialog-placing-r2-fa, stops-index-closed-r2-fa, stop-row-date-r2-fa, exit-market-recheck-r2-fa, exit-closed-entry-points-r2-fa, paper-* r2-fa2 files (full vitest 3831 of 3831); not in the build (FJ brings it) |
+| R2-FB | Builder page, finding F1 (FB, FB2) | wording/logic | frontend/tests/contract-list-line-r2-fb, save-bar-add-lock-r2-fb2, leg-show-at-once-r2-fb2, builder-ux-r2-fb2, add-to-paper-r2-fb |
+| R2-FC | Small screens, pages, plan screens (FC, FC2, FC3) | wording/counts | tests_app/test_d36_adjustment_counts.py; FC/FC2/FC3 vitest; FC2 not in the build |
+| R2-FE | Worker exits and monitoring sentences (FE, FE2, FE3) | scenario worker logic | FE2 tests_app/test_monitor_reports_fe2_1128, test_worker_expiry_fe2_1128, test_worker_saved_plan_fe2_1128, test_pause_restart_fe2_1128, test_unknown_kind_style_fe2_1128, test_checked_body_fe2_1128, test_kind_cache_fe2_1128, test_dropped_and_skew_fe2_1128; tests/adjustment/test_stop_lines_fe2_1128.py |
+| R2-FJ | Frontend joins: locks, one key on every page | state logic; two tabs in a cloud browser | FJ vitest (unknown locks); parked critical `decideLock` item; not in the build |
+| R2-FK | Chart teardown | no PC steps; a test proves it | FK frontend/tests/payoff-chart-teardown.test.js (6, red on base then green), charges-dialog-drafts-d13-d14 x20 |
+| R2-FR | Readers: nearest expiry, unknown kind, heartbeat | scenario data, DB tests | tests_app/test_screen_expiry_fr_1128, test_reader_kinds_fr_1128, test_index_one_rule, test_worker_heartbeat, test_settings_in_force |
+| R2-TT | Tests TA, TF, TE, TB, TW: what they proved | no PC steps | TA 15 PASS, TF items 1 to 3 PASS, TE 42 PASS, TB 10 items, TW (TD) 11 items |
+
+Not checks (no row): W-08 ("not on this plan"), W-27 (merged into W-25), the "Open at the end of round 2 build" table.
+
+### (d) Set-up items (round 2; the PC's own work, in order)
+
+| item | what | est. min |
+|---|---|---|
+| S0 | Look at the database link; count `ofo_app` connections (limit 10) | 2 |
+| S1 | Back up the production database (pg_dump over SSH), copy, compare sizes, `pg_restore --list`; VPS disk about 90 percent full | 10 |
+| S2 | Stop API, worker supervisor, frontend; fetch and check out the round 2 commit; `git rev-parse HEAD` (R2-1) | 4 |
+| S3 | Migrations **0060 then 0061 in one step** after the owner's typed "yes" and the verified backup; `alembic current/heads`; the two migration test files through `db_run_fresh.py` (R2-2) | 14 |
+| S4 | Read-only checks after the migration: allow-list assert returns, `strategy_history` invalid count 0 | 3 |
+| S5 | Seed: none new; `select count(*) from last_close` reads 17 (R2-4, R2-5) | 1 |
+| S6 | Frontend: `npm ci` and `npm run build` if `frontend/` changed (R2-0) | 6 |
+| S7 | Restart order API, worker, feed, then the screen server (vite); API environment carries `FEED_MODE=bus` and `REDIS_URL` (Lane TG set-up note 5); free memory above 3 GB (rule 15); Redis up (R2-3) | 9 |
+| S8 | Route check through the vite address: `/api/real/strategies/209/triggers`, `/api/plan-watch?strategy_ids=209`, `/api/monitoring-state`, `/api/market/exit-state` all 200 (R2-0b) | 4 |
+| S9 | Confirm the build: commit, health reply `healthy / connected`, contract list named (step 8) | 2 |
+| S10 | Sanity: nine running paper trades on Positions > Paper, Alerts count equals the bell, no red box on Home (step 9) | 2 |
+| | **Set-up subtotal** | **57** |
+
+(Round 1's own set-up took from the 09:51 tunnel fault to the 10:20 comment, about 30 min, with the seed; round 2 has no seed but adds 0060/0061 and the route check.)
+
+### (e) Totals
+
+| quantity | value |
+|---|---|
+| checks classified (sections 4 to 9, headings) | 91 |
+| **n** PC ONLY | **10** (8 weekend, 2 Monday-only at 0 min) |
+| **m** cross-check sample (all inside the CLOUD list, re-run on the PC) | **10** |
+| **k** CLOUD | **81** (includes the 10 sample checks; n + k = 91) |
+| Lane TG verdicts available | 22 rows of table (c) (item 1 only; items 2 to 4 not started): PASS 3 (W-01, SW-6, W-34 planned), FAIL 1 (W-32), PARTIAL 17, OWNER DECISION PENDING 1 (W-26 case B). Lane TG pushed 09:49Z, not pushed at 10:12 container time, seen at 10:17 |
+| CLOUD checks with no named cloud proof yet | 11: W-10, W-14, W-15 (same-side variant), W-23 (tool alone), W-30, W-31, T2-19, T2-21 (409), T3-06, T3-17, TC-2 (SENSEX/far-expiry step); plus the real-link timing of W-02, W-13, W-17 (not provable in cloud) |
+
+Expected PC time:
+
+| block | min |
+|---|---|
+| Set-up | 57 |
+| PC ONLY | 79 |
+| Sample | 98 |
+| Buffer: free-memory check before each block, tabs closed, results written (rules 14 to 16) | 20 |
+| **Total** | **254 min = about 4.2 hours** |
+
+Without the buffer: 234 min (3.9 h). If the sample fails any check, add its re-run (about 10 min each) and the "sentence seen, expected, known or new" write-up.
+
+## Plan version 4 for round 2: what changed since round 1
 
 Round 1 (PC, commit `5fc6b102`, 28 Nov, PR #722) closed at 13:58 IST with **PASS 15, FAIL 8, PARTIAL 41, BLOCKED 11 of 75 checks** (the 12:20 detail, 55 checks so far, had 11 PASS, 7 FAIL, 26 PARTIAL, 11 BLOCKED; SW-6 moved from FAIL to PASS at 13:58: draft #220, feed stopped, "Held at my broker" unticked, Confirm pressed once: the dialog showed "The market is closed. Orders can be placed once it opens.", the request `POST /paper/strategies/220/orders` answered 409, paper order rows 965 before and after).. The coordinator's reading: **16 of the 33 FAIL or PARTIAL rows were faults of the plan or the set-up, not of the product.** This version fixes the plan; the rows are in section 1A. The ten changes the coordinator asked for:
 
@@ -143,6 +335,7 @@ LQ-2 (Live card "Entry price"), LR-Q18 (which time the builder banner shows for 
 14. **On every FAIL or PARTIAL write three things (round 2 rule):** **the sentence seen** (exact), **the sentence expected** (exact, from the check), and **known or new** (known = named in this plan as a known defect or finding, for example D-1, F1 to F3; new = anything else). The PC needed a second request for this on 28 Nov.
 15. **Memory rule (PC round 1, 13:37: free memory fell to 1.7 GB and the API, worker and feed had to be stopped):** one browser window, one helper at a time, tabs closed after each check; **check free memory before each block of checks and stop below 3 GB** (write the figure). Chrome is opened again for round 2 and kept to one window.
 16. **Speed checks (Plan watch, Alerts, anything timed) are never run with a second tester working** at the same time; write the server's own answer time beside what the page showed.
+17. **Cloud first (owner, 28 Nov; version 6): the PC runs only its own list**: the set-up, the PC ONLY checks and the cross-check sample of the page "Version 6: CLOUD FIRST". **Every other check is NOT run on the PC**; it is proven in the cloud (Lane TG's walk and the lanes' tests) and stays in this file as the cloud list. If a PC check on the list fails and its cloud proof said PASS, write it as new and send it back: the cloud proof was wrong.
     `| Check | Items proved | Build head | What I did on the screen | What the screen showed (exact text) | Screenshot file(s) | PASS / FAIL / PARTIAL (unrun steps) / BLOCKED (what) | State (one of the four) | Build commit | Time IST |`. Screenshots stay on the PC (never copy images into the repo).
 
 ## 1. Round 1 and what the build carries
@@ -1338,6 +1531,7 @@ The PC session is the same one all weekend: it keeps what it learned in the roun
 You are still the owner's PC session for OptionsForOptions2; this is round N of the closed-market weekend test.
 Paper only: never place, send or confirm a broker order. The market is closed; there is no Kite login and no live feed.
 Nothing starts until the owner starts the round and gives each approval himself.
+CLOUD FIRST (version 6): run ONLY the PC list of the page "Version 6: CLOUD FIRST" (the set-up, the PC ONLY checks, the cross-check sample); do NOT run any other check on the PC: they are proven in the cloud. The steps below apply to the checks on that list.
 Read docs/process/test-plan-weekend-2026-11-28.md on branch docs/test-plan-weekend-1127: section 0 (rules), section 2 (set-up),
 the checks of this round, section 13.
 1. Look at the database link and count the ofo_app connections (limit 10, shared). Keep your old local test branch test/screen-2026-11-27
