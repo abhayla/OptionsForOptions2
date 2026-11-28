@@ -6,7 +6,7 @@
 import { plainName } from '@/lib/saveDraft'
 import { contractName, CONTRACT_UNAVAILABLE } from '@/lib/displayFormat'
 import { UNREADABLE_TEXT, EXITED_TEXT, afterFigure } from '@/lib/tracking'
-import { istTime, noteShownDate } from '@/lib/displayFormat'
+import { isoMillis, istTime, noteShownDate } from '@/lib/displayFormat'
 import { LAST_CLOSE_LABEL } from '@/lib/paperDrafts'
 import { PAUSED_TEXT as PAPER_PAUSED, NOT_CONNECTED_TEXT as PAPER_NOT_CONNECTED, listIsStale } from '@/lib/priceState'
 
@@ -133,7 +133,8 @@ export function readPaperStrategy(s, index = 0) {
   if (s.state === 'PAUSED') stateText = withAsOf(PAPER_PAUSED, s.as_of)
   else if (s.state === 'NOT_CONNECTED') stateText = PAPER_NOT_CONNECTED
   else if (s.state === 'EXITED') stateText = EXITED_TEXT
-  else if (s.state === 'LIVE' && typeof s.as_of === 'string' && istTime(s.as_of).endsWith('IST')) stateText = `${STORED_CLOSE_PREFIX} ${istTime(s.as_of)}`
+  const storedAsOf = s.state === 'LIVE' && typeof s.as_of === 'string' && istTime(s.as_of).endsWith('IST') ? s.as_of : null // a stored close: the time of its prices, with its date
+  if (storedAsOf !== null) stateText = `${STORED_CLOSE_PREFIX} ${istTime(storedAsOf)}`
   const pauseReason = s.state === 'PAUSED' || s.state === 'NOT_CONNECTED' ? withAsOf(text(s.pause_reason_text), s.as_of) : text(s.pause_reason_text)
   return {
     readable: true,
@@ -144,6 +145,7 @@ export function readPaperStrategy(s, index = 0) {
     state: s.state,
     statusWord: WORDS.includes(s.status_word) ? s.status_word : null, // ADR-299 (4): the server's word, never derived here
     stateText,
+    storedAsOf,
     openCount: s.open_count,
     positionCount: s.position_count,
     total: text(s.total_text),
@@ -195,7 +197,20 @@ export function readPaperList(data) {
   if (!data || !Array.isArray(data.strategies)) return null
   noteShownDate(data) // ADR-330 (19): before any group label is written
   const groups = data.strategies.map(readPaperStrategy)
-  return { groups, totals: tieClosedLine(readTotals(data.totals), data.totals, groups), today: readToday(data.today) }
+  return { groups, totals: withStoredClose(tieClosedLine(readTotals(data.totals), data.totals, groups), groups), today: readToday(data.today) }
+}
+
+/** Stored close (Lane RA2 / F3 MUST): the total of books priced from a stored close says so, with the OLDEST of their times and its date
+ *  (a time comparison only; no money). null when no row is a stored close. Wording pending owner read. */
+function withStoredClose(totals, groups) {
+  if (!totals) return totals
+  let best = null
+  let bestMs = Infinity
+  for (const g of groups) {
+    const ms = g.readable && g.storedAsOf ? isoMillis(g.storedAsOf) : null
+    if (ms !== null && ms < bestMs) { best = g.storedAsOf; bestMs = ms }
+  }
+  return { ...totals, storedAsOf: best === null ? null : `${STORED_CLOSE_PREFIX} ${istTime(best)}` }
 }
 
 /** Lane L item 2 (ADR-330 (15)): "Includes N closed strategies" must be the count of the closed rows of the SAME reply. The server

@@ -107,7 +107,7 @@ import { bookNotLive, pausedText } from '@/lib/priceState'
 import { usePaperExit } from '@/lib/usePaperExit'
 import ExitButton from '@/components/strategy/ExitButton.vue'
 import AfterChargesTap from '@/components/common/AfterChargesTap.vue'
-import { PAPER_NO_FIGURE, withAsOf } from '@/lib/paperList'
+import { PAPER_NO_FIGURE, STORED_CLOSE_PREFIX, withAsOf } from '@/lib/paperList'
 import ClosedRows from '@/components/strategy/ClosedRows.vue'
 import HeldNote from '@/components/strategy/HeldNote.vue'
 import { EXIT_ALL_LABEL, EXIT_BLOCKED_BY_CHANGE, EXIT_LABEL, NET_POSITIONS_LABEL, ORDERBOOK_LABEL, exitLotsFrom, exitLotsOk, openLots, paperKindLabel } from '@/lib/paperDrafts'
@@ -129,7 +129,10 @@ const emit = defineEmits(['exit', 'exit-all'])
 // the paused sentence (REQ-109 AC-5) from the book's as_of; a failed read says the same with the last good answer's time
 const asOfLine = computed(() => {
   if (props.readFailed) return pausedText(props.book.answered_at ?? null)
-  return bookNotLive(props.book) ? pausedText(props.book.as_of ?? null) : null
+  if (bookNotLive(props.book)) return pausedText(props.book.as_of ?? null)
+  // F3 MUST (RA2 stored close): a LIVE book with an as_of is priced from the stored close: its time, with its date, beside the P&L
+  const at = props.book.as_of
+  return props.book.state === 'LIVE' && typeof at === 'string' && istTime(at) !== TIME_UNAVAILABLE ? `${STORED_CLOSE_PREFIX} ${istTime(at)}` : null
 })
 
 // Phase 4 (F2): the Exit gate of this panel (a failed read: no exit from old prices; the contracts changed: no exit from an old net)

@@ -40,6 +40,7 @@
       <!-- ADR-330 (15): the server's line under the Paper total ("Includes N closed strategies"), printed as sent, only when served -->
       <p v-if="totals && !compact && !headlineAbove && totals.closedNote" class="mt-1 text-xs text-ink-muted" data-testid="totals-closed-note">{{ totals.closedNote }}</p>
       <p v-if="totals && !compact && totals.leftOut" class="mt-1 text-xs text-ink-muted" data-testid="totals-left-out">{{ totals.leftOut }}</p>
+      <p v-if="totals && !compact && !headlineAbove && totals.storedAsOf && !stale" class="mt-1 text-xs text-ink-muted" data-testid="totals-as-of">{{ totals.storedAsOf }}</p>
       <label class="mt-2 flex items-center gap-2"><input v-model="showClosed" type="checkbox" data-testid="show-closed" /> {{ SHOW_CLOSED_LABEL }}</label>
       <p v-if="!shown.length" class="mt-2" data-testid="paper-all-closed">{{ ALL_CLOSED_TEXT }}</p>
       <!-- GC-UI 6b D-C14 (ADR-201 (2); S-118): the builder's Paper tab is a compact list - name, positions count, the server's paper total
@@ -127,7 +128,7 @@
                     <td data-testid="paper-instrument"><span v-if="p.side" class="mr-1 rounded bg-surface-muted px-1 font-semibold">{{ p.side }}</span> <span>{{ p.name }}</span></td>
                     <td data-testid="paper-qty">{{ p.qtyText }}<span v-if="p.qtyNote" class="block text-xs text-ink-muted" data-testid="paper-qty-note">{{ p.qtyNote }}</span></td>
                     <td data-testid="paper-avg">{{ pnlText(p.averageText) }}</td>
-                    <td data-testid="paper-ltp">{{ pnlText(p.ltpText) }}<span v-if="p.ltpText !== null" class="block text-xs text-ink-muted" data-testid="paper-ltp-at">{{ istClock(p.priceAt) ?? QUOTE_TIME_UNAVAILABLE_TEXT }}</span><span v-if="!stale && p.ltpReason && p.ltpText === null && !quiet(p.ltpReason)" class="block text-xs text-ink-muted" data-testid="paper-ltp-reason">{{ p.ltpReason }}</span></td>
+                    <td data-testid="paper-ltp">{{ pnlText(p.ltpText) }}<span v-if="p.ltpText !== null" class="block text-xs text-ink-muted" data-testid="paper-ltp-at">{{ istStamp(p.priceAt) ?? QUOTE_TIME_UNAVAILABLE_TEXT }}</span><span v-if="!stale && p.ltpReason && p.ltpText === null && !quiet(p.ltpReason)" class="block text-xs text-ink-muted" data-testid="paper-ltp-reason">{{ p.ltpReason }}</span></td>
                     <td data-testid="paper-leg-booked">{{ pnlText(p.booked) }}</td>
                     <td data-testid="paper-leg-unbooked" :class="toneOf(p.unbooked)">{{ stale ? pnlText(null) : p.noPrice ?? pnlText(p.unbooked) }}</td>
                     <td data-testid="paper-leg-pnl" :class="toneOf(p.total)">{{ pnlText(p.total) }}</td>
@@ -173,7 +174,7 @@
 <script setup>
 import { NAME_FLOOR_CLASS } from '@/lib/nameFloor'
 import { strategyListLabel } from '@/lib/saveDraft'
-import { istClock } from '@/lib/displayFormat'
+import { istClock, istStamp } from '@/lib/displayFormat'
 import { QUOTE_TIME_UNAVAILABLE_TEXT } from '@/lib/sharedStateText'
 import { computed, onBeforeUnmount, onMounted, ref, shallowRef, watch } from 'vue'
 import api, { NEUTRAL_ERROR, NEUTRAL_PARTS } from '@/services/api'
@@ -319,6 +320,7 @@ const pausedNow = computed(() => pausedText(lastGoodAt.value))
 const summary = computed(() => ({
   totalAfter: totals.value ? (quiet(totals.value.totalAfter.reason) ? { ...totals.value.totalAfter, reason: null } : totals.value.totalAfter) : null, // UX-A09: the page notice says it once
   closedNote: totals.value ? totals.value.closedNote : null,
+  storedAsOf: totals.value ? totals.value.storedAsOf ?? null : null, // F3 MUST: the oldest stored-close time, with its date, for the totals strip
   stale: stale.value || (!loading.value && !!errorParts.value), // a failed FIRST read (no list held) is paused too, with the same reason as the list (ADR-330 (10))
   pausedLine: pausedNow.value, // FJ2-1: the paused sentence with the time of the last good prices, for the totals strip
   loaded: !loading.value && items.value !== null,

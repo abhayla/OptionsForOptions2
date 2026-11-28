@@ -59,7 +59,7 @@ const unreadCell = computed(() => {
 const pnlCell = computed(() => {
   const c = pnl.totalCell.value
   if (c.kind === 'loading') return { text: PAPER_NO_FIGURE, note: null }
-  return { text: c.text, suffix: c.label, note: c.note, leftOut: c.leftOut ?? null, closedNote: c.closedNote ?? null } // c.label is the charges suffix, never the figure's name
+  return { text: c.text, suffix: c.label, note: c.note, leftOut: c.leftOut ?? null, closedNote: c.closedNote ?? null, storedAsOf: c.storedAsOf ?? null } // c.label is the charges suffix, never the figure's name
 })
 const figures = computed(() => [
   { id: 'running', label: HOME_RUNNING_LABEL, ...runningCell.value },
@@ -113,6 +113,7 @@ onBeforeUnmount(() => { clearInterval(rereadTimer); window.removeEventListener('
         <dd class="text-lg font-semibold tabular-nums" :data-testid="`home-${f.id}-figure`">{{ f.text }}</dd>
         <p v-if="f.note" class="text-xs text-ink-muted" :data-testid="`home-${f.id}-note`">{{ f.note }}</p>
         <p v-if="f.closedNote" class="text-xs text-ink-muted" :data-testid="`home-${f.id}-closed`">{{ f.closedNote }}</p>
+        <p v-if="f.storedAsOf" class="text-xs text-ink-muted" :data-testid="`home-${f.id}-as-of`">{{ f.storedAsOf }}</p>
         <p v-if="f.leftOut" class="text-xs text-ink-muted" :data-testid="`home-${f.id}-left-out`">{{ f.leftOut }}</p>
       </div>
     </dl>
