@@ -145,3 +145,10 @@ Both are decision-support wording, pending owner read (pins marked so).
 The stored close's time on `outcome_running_not_live`; the W1 screenshot of I-202; the orders and traded-contracts batching (needs adjustment_readers.py).
 
 SAFE TO CLOSE (head: the commit this file is pushed in; left: the three items above, M1/M3, the PC re-time of the Plan sheet)
+
+## Friction (for the coordinator to copy into docs/process/friction-log.md, which is not in this lane's files)
+| what cost time | cost | proposed fix |
+|---|---|---|
+| A fresh cloud session had no Python or frontend dependencies: DB tests failed on `import httpx`, the first `prepush.py` stopped at "frontend/node_modules is missing", and the test database had no migrations | about 15 min, the 1 h check's first start wasted | the environment setup script runs `pip install -r requirements-app.txt -r requirements-dev.txt`, `npm ci` in frontend/ and the alembic upgrade through `db_run.py` |
+| `send_message` to the coordinator refused 3 times (elevated_session_untrusted_device); the coordinator reached the lane but the lane could not answer | no report channel except the STATUS line | the owner decides on the trust card, or the brief says "STATUS line is the report" up front |
+| `git checkout <file>` blocked by the discard guard for a file holding only my own probe | 2 retries | none needed; the guard is right, remove a probe with an edit |
