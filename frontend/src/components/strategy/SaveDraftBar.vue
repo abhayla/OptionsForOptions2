@@ -380,6 +380,7 @@ async function checkAddUnknown() {
       if (inflightAdds.has(String(id))) continue // its post is still out: only its answer ends it
       const mine = adoptedAddLock(id, Date.now()) // a lock written before a post whose tab closed: the 130 s rule counts from this first sight
       if (!mine || mine.malformed) continue
+      if (typeof mine.before === 'string' && mine.before.startsWith('#')) continue // Group A R2 (e): the builder's add lock (before '#<book>') is decided by the builder's own read of the book, which also refreshes what it shows
       const sentAt = Date.now() // the window is judged by when the read was SENT, not when its answer came (Opus review F3)
       let read
       try { read = await readPaperBook(api, id) } catch { continue } // a failed read decides nothing (the one door: paperDrafts.readPaperBook)

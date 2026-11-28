@@ -298,6 +298,7 @@ describe('Round 2 F4: the staged change is never lost silently', () => {
     answers['POST /paper/strategies/86/orders'] = () => Promise.reject({ status: 503, message: 'x', parts: null })
     answers['GET /paper/strategies/86'] = () => new Promise(() => {}) // U2 (ADR-017): the automatic re-read does not answer, so the outcome stays unknown
     await exit1(w, OPEN_IDS[0])
+    await vi.advanceTimersByTimeAsync(135000) // Group A R1 (a): `changed` (the book moved some other way than the exit's own) ends the lock only for a read sent past the commit window
     answers['GET /paper/strategies/86'] = withNet(afterExitOf(OPEN_IDS[0]), { 5587: 0 })
     await S(w).openPaperOrderbook()
     await flushPromises()

@@ -45,7 +45,7 @@ import { paperLegsOf, paperPnlBlock, usePaperBookRead } from '@/lib/usePaperBook
 import { notLiveEntryLine, usePriceFreshness } from '@/lib/priceState'
 import { exitEndText, exitLegsNotLive, legsNoPrice, refusalText, usePaperExit } from '@/lib/usePaperExit'
 import { createExitRecords } from '@/lib/exitRecord'
-import { adoptedExitLock, bookOfNet, decideLock, dropExitLock, dropOrderKey, exitLockFor, exitUnitsOf, expectedKeyOf, onExitLocksChanged, orderKeyFor, saveExitLock } from '@/lib/unknownLocks'
+import { addBeforeOf, addLockFor, adoptedExitLock, bookOfNet, decideLock, dropAddLock, dropExitLock, dropOrderKey, exitLockFor, exitUnitsOf, expectedKeyOf, onExitLocksChanged, orderKeyFor, saveAddLock, saveExitLock } from '@/lib/unknownLocks'
 import PaperStrategies from '@/components/strategy/PaperStrategies.vue'
 import PaperStops from '@/components/strategy/PaperStops.vue'
 import { STOP_OFFER_LABEL, legStopsGone, triggerListOf, triggersPath } from '@/lib/paperTriggers'
@@ -513,7 +513,7 @@ function enterDrafts(id, read) {
   if (String(id) !== String(rereadId)) cancelReread() // another strategy opens: a re-read of the old one ends here
   paperContractsChanged.value = false // a good read of the book: a poll's earlier "contracts changed" mark is out of date
   paperStale.value = false
-  if (addUnknown && netKey(read.net) !== addUnknown.net) { addUnknown = null; dropOrderKey(id) } // a read shows the book moved: the earlier add was stored, the unknown is decided
+  decideAddLock(id, read) // Group A R2 (e): the builder's add lock (stored in the browser) is decided by this read: orders moved the book = stored; unchanged only for a read sent past the window
   paper.value = { id, book: read.book, net: read.net }
   openSaved(copyLegs(read.net), id, null, read.book.name ?? null)
   restoreExitLock(id, read)
@@ -551,7 +551,7 @@ function adoptForeignLock() {
 let offLocks = null
 onMounted(() => { offLocks = onExitLocksChanged(adoptForeignLock) })
 onBeforeUnmount(() => { offLocks?.() })
-const leaveDrafts = () => { addUnknown = null; stagedNote.value = ''; paper.value = null; paperStale.value = false; cancelReread(); clearStopOffer() }
+const leaveDrafts = () => { stagedNote.value = ''; paper.value = null; paperStale.value = false; cancelReread(); clearStopOffer() }
 // GC-ICFIX round 2 (F4): the page's ONE read of the paper book per refresh; its reply feeds the paper panel, the tracking box's total and
 // the P&L table TOTAL row (one moment, one text). An orders re-read (paperStale) is not overwritten by it.
 const { readFailed: paperReadFailed, contractsChanged: paperContractsChanged } = usePaperBookRead({
@@ -581,7 +581,17 @@ const exitGate = usePaperExit({ readFailed: paperReadFailed, held: () => paper.v
 const exitBlocked = exitGate.blocked
 // Lane U2 (ADR-017, ADR-016..019): set when an Exit's POST ended with an unknown outcome; { attempt, names, before, expected } until a good re-read of the book decides it
 const exitUnknown = ref(null)
-let addUnknown = null // Opus review F2 (ADR-016..019): { net } of the book when an ADD-only post got no answer; Review and add is refused until a read shows the book changed (or the book is left and reopened)
+// Group A R2 (e): an ADD-only post that got no answer is a lock of the ADD store (lib/unknownLocks.js, the save bar's store; `before` = '#' + the book key): it holds across a reload and a second tab, and
+// ends only by a read of this book (enterDrafts): stored = the book moved; not stored = unchanged in a read sent past the window (the key stays for a resend).
+function decideAddLock(id, read) {
+  const lock = addLockFor(id)
+  if (!lock) return
+  const b = bookOfNet(read?.net)
+  const d = decideLock(lock, b ? { key: b.key, units: b.units, hasOrders: true } : { key: '?unreadable', units: null, hasOrders: true }, Number.isFinite(read?.sentAt) ? read.sentAt : Date.now())
+  if (d.verdict === 'stored') { dropAddLock(id); dropOrderKey(id) } // the book moved: the earlier add was stored
+  else if (d.verdict === 'not_stored') dropAddLock(id) // not stored (a read sent past the window): the key stays for a resend
+  else if (d.verdict === 'changed') { dropAddLock(id); dropOrderKey(id) }
+}
 const exitOrigin = ref(false) // the pending edits came from Exit all or a per-leg Exit; stays true until they are posted or discarded (ADR-328 (4))
 // P10: the strategy the Plan watch reads: the saved id, or in Drafts Mode (savedId stays null there) the paper book's own integer id
 const planWatchId = computed(() => (Number.isInteger(savedId.value) ? savedId.value : Number.isInteger(paper.value?.book?.strategy_id) ? paper.value.book.strategy_id : null))
@@ -592,7 +602,7 @@ function reviewPending(fromExit = false, only = null, info = null) { // the "Rev
   if (!paper.value || paperStale.value || !shown?.length) return
   if (fromExit === true) exitOrigin.value = true // never reset here: "Review and add" of Exit edits is still an Exit
   if (exitBlocked.value) return // post nothing; the panel's reason line says why
-  if (addUnknown && !shown.some((o) => o?.kind === 'exit')) { stagedNote.value = ADD_UNKNOWN_TEXT; return } // the last add may be stored: never offered again unread
+  if (paper.value && addLockFor(paper.value.id) && !shown.some((o) => o?.kind === 'exit')) { stagedNote.value = ADD_UNKNOWN_TEXT; return } // the last add may be stored: never offered again unread
   paperError.value = ''
   stagedNote.value = ''
   legOnly = only ? info : null // ADR-330 (49): the open dialog is one leg's own exit
@@ -740,7 +750,7 @@ async function confirmPending(orders, _held = null, notLiveTicked = false, dialo
   if (paperBusy.value || !paper.value || !paperDialog.value) return // a Confirm for a dialog that is no longer open (the page closed it) posts nothing
   if (exitBlocked.value) { if (paperContractsChanged.value) closeChanged(); return } // post nothing (the watch may not have run yet); a failed read keeps the dialog and its sentence
   const { id } = paper.value
-  if (exitLockFor(id)) return // F1 second path (Opus review F2): a lock of an earlier page instance for THIS strategy: post nothing until a read of its book decides it
+  if (exitLockFor(id) || (!orders.some((o) => o?.kind === 'exit') && addLockFor(id))) return // F1 second path (Opus review F2): a lock of an earlier page instance (or another tab) for THIS strategy: post nothing until a read of its book decides it
   const names = paperLegNames()
   const wasExit = exitOrigin.value
   const waiting = exitAllWaiting.value // ADR-330 (59): an Exit all that discards a staged change posts the exits alone, like a per-leg Exit
@@ -760,24 +770,34 @@ async function confirmPending(orders, _held = null, notLiveTicked = false, dialo
     if (paper.value && exitBlocked.value && paperContractsChanged.value) closeChanged()
     return
   }
+  // Group A R2 (c): the lock is checked AGAIN in the same synchronous step that writes this page's own (below, no await between): a Positions exit (or another tab) that posted during the stops read blocks this one
+  if (exitLockFor(id) || (!orders.some((o) => o?.kind === 'exit') && addLockFor(id))) {
+    exitRec.clear(EXIT_KEY)
+    paperBusy.value = false
+    adoptForeignLock() // the lock of the other post shows here as this book's unknown outcome; nothing is sent
+    paperState.value = PAPER_STATE.UNKNOWN
+    return
+  }
   const check = { id, stops: stopsNow.filter((x) => x.kind === 'leg_stop' && x.state === 'armed'), net: paper.value.net.map((l) => l.contract_id) }
   const sendsExit = orders.some((o) => o?.kind === 'exit')
   // F1 second path (Opus review F1): the lock is written BEFORE the post, so a page left or reloaded while the post is still out is covered; a definite answer removes it
   const key = orderKeyFor(id, JSON.stringify(orders), dialogKey) // Lane FJ item 1d: the dialog's key; the same orders still open after an unknown outcome send the key already held
   const book = bookOfNet(paper.value.net) // the WHOLE book the orders go against: the one key every page reads (lib/unknownLocks.js), the exited legs' units, the book they should leave
-  const lockBase = { before: book?.key ?? null, units: sendsExit ? exitUnitsOf(orders, book) : null, expected: expectedKeyOf(orders, book), names, key, sig: JSON.stringify(orders), waiting: waiting ? { legs: waiting.legs, names: waiting.names } : null }
+  const lockBase = { before: book?.key ?? null, units: sendsExit ? exitUnitsOf(orders, book) : null, expected: expectedKeyOf(orders, book), names, key, sig: JSON.stringify(orders), waiting: waiting ? { legs: waiting.legs, names: waiting.names } : null, move: sendsExit && orders.some((o) => o?.kind !== 'exit') }
   if (sendsExit) saveExitLock(id, { at: Date.now(), out: true, ...lockBase }) // `out`: at = when the post went out; the give-up time replaces it below
+  else saveAddLock(id, { at: Date.now(), out: true, before: addBeforeOf(book), key, sig: lockBase.sig }) // Group A R2 (e): an add is locked in the browser too, written BEFORE the post
   try {
     reply = own || waiting ? await postPaperOrders(api, id, orders, [], null, null, null, false, key) : await postPaperOrders(api, id, orders, actedSuggestionIds.value, preparedBasketLegs.value, null, preparedApproachId.value, notLiveTicked === true, key)
   } catch (e) {
     const outcome = paperPostOutcome(e)
     if (outcome === PAPER_STATE.REFUSED) dropOrderKey(id) // the server itself refused (580 / 581 / 583 too): nothing stored, the key is free
     if (sendsExit && outcome === PAPER_STATE.REFUSED) dropExitLock(id)
+    if (!sendsExit && outcome === PAPER_STATE.REFUSED) dropAddLock(id)
     if (outcome === PAPER_STATE.REFUSED) { // 4xx: the server stored nothing (one transaction or none)
       paperError.value = refusalText(e?.parts, NEUTRAL_PARTS.what_happened) // F6: every part of the reply
     }
     if (outcome === PAPER_STATE.UNKNOWN) {
-      if (!orders.some((o) => o?.kind === 'exit')) addUnknown = { net: netKey(paper.value?.net) }
+      if (!sendsExit) saveAddLock(id, { at: Date.now(), out: false, before: addBeforeOf(book), key, sig: lockBase.sig }) // `at` is now when the client gave up
       exitRec.settle(EXIT_KEY, attempt, 'unknown')
       moveCheck = check // the re-reads decide, not this guess
       if (orders.some((o) => o?.kind === 'exit')) { // ADR-017: this exit may be stored; it is never sent again until a re-read decides it (any post that carries an exit row, wherever the click came from)
@@ -806,6 +826,7 @@ async function confirmPending(orders, _held = null, notLiveTicked = false, dialo
     cancelledStops.value = Array.isArray(reply?.cancelled_stops) ? reply.cancelled_stops : null
   }
   if (sendsExit) dropExitLock(id) // the server answered: the lock written before the post ends
+  else dropAddLock(id)
   exitRec.settle(EXIT_KEY, attempt, 'placed', wasExit ? exitEndText('done', names, { orders: reply?.orders, sent: orders.length }) : '') // the server answered: placed replaces a page-side guess
   paperStale.value = true
   exitAllWaiting.value = null // cleared at once (Opus review): a later throw or a new Exit all during the re-read must not meet a stale value
@@ -899,7 +920,10 @@ function decideUnknownExit(newNet, readId, sentAt = Date.now()) {
     exitRec.put(EXIT_KEY, 'not_stored', exitEndText('not_stored', u.names))
   } else { // stored (or the trade changed): the book decides
     restoreStaged(newNet)
-    if (d.verdict === 'stored') exitRec.settle(EXIT_KEY, u.attempt, 'placed', exitEndText('done', u.names, { orders: null, sent: 0 }))
+    if (d.verdict === 'stored') {
+      exitRec.settle(EXIT_KEY, u.attempt, 'placed', exitEndText('done', u.names, { orders: null, sent: 0 }))
+      if (u.lock?.move) stopsReplyUnreadable.value = true // Group A R4: a move stored behind an unknown answer: its reply was never read, so what happened to the stop is not known (the stop-offer block says so)
+    }
     else exitRec.put(EXIT_KEY, 'changed', exitEndText('changed', u.names))
   }
   if (u.waiting) { // ADR-330 (59): the staged change comes back only if the exits were not stored; otherwise it is discarded and the screen says so

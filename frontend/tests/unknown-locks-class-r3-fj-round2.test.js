@@ -119,9 +119,12 @@ describe('the ONE book key and the ONE decision (lib/unknownLocks.js)', () => {
   it('stored: the exited leg moved toward zero on the same side (2 of 4 lots too); changed: anything else; expected is checked', () => {
     expect(L.decideLock(lock(), after(130), 2000).verdict).toBe('stored')
     expect(L.decideLock(lock(), after(0), 2000).verdict).toBe('stored')
-    expect(L.decideLock(lock(), after(325), 2000).verdict).toBe('changed') // grew: not an exit
+    // Group A R1 (a): `changed` never ends a lock inside the window (the first request can still commit): keep until a read SENT more than 130 s after the give-up
+    expect(L.decideLock(lock(), after(325), 2000).verdict).toBe('keep') // grew: not an exit
+    expect(L.decideLock(lock(), after(325), 1000 + WINDOW + 1).verdict).toBe('changed')
     expect(L.decideLock(lock({ expected: after(130).key }), after(130), 2000).verdict).toBe('stored')
-    expect(L.decideLock(lock({ expected: after(65).key }), after(130), 2000).verdict).toBe('changed')
+    expect(L.decideLock(lock({ expected: after(65).key }), after(130), 2000).verdict).toBe('keep')
+    expect(L.decideLock(lock({ expected: after(65).key }), after(130), 1000 + WINDOW + 1).verdict).toBe('changed')
   })
   it('unchanged: not stored only for a read sent MORE than 130 s after the client gave up', () => {
     const same = L.bookOfNet(netRows)
@@ -242,13 +245,20 @@ describe('F3: the add lock is written BEFORE the post', () => {
     expect(L.addLockFor(172)).toBeNull()
     expect(t(w, 'add-to-paper').attributes('disabled')).toBeUndefined()
   })
-  it('a tab closed while its post was out leaves a pre-post time: the 130 s rule counts from the first sight, not from that time', async () => {
+  it('a tab closed while its post was out: the 130 s rule counts from the time the post went out (Group A R1 (b): its `at`, never from first sight)', async () => {
+    answers['GET /paper/strategies/172'] = book404
+    L.saveAddLock(172, { at: Date.now(), before: '', out: true, key: 'k1', sig: '[]' })
+    const w = await bar()
+    await adv(20000)
+    expect(t(w, 'add-to-paper').attributes('disabled')).toBeDefined() // the post went out 20 s ago: it may still commit
+    await adv(WINDOW + 20000)
+    expect(t(w, 'add-to-paper').attributes('disabled')).toBeUndefined()
+  })
+  it('a post that went out an hour ago: the first good read sent past the window decides it', async () => {
     answers['GET /paper/strategies/172'] = book404
     L.saveAddLock(172, { at: Date.now() - 3600000, before: '', out: true, key: 'k1', sig: '[]' })
     const w = await bar()
     await adv(20000)
-    expect(t(w, 'add-to-paper').attributes('disabled')).toBeDefined() // an hour old at, but the client gave up at most just now
-    await adv(WINDOW + 20000)
     expect(t(w, 'add-to-paper').attributes('disabled')).toBeUndefined()
   })
 })
@@ -267,8 +277,14 @@ describe('F4: a lock adopted from another tab takes the newer `at`; a closed tab
     await adv(80000)
     expect(L.exitLockFor(1)).toBeNull()
   })
-  it('Positions: a lock whose post was out when its tab closed (an hour ago): kept until a read sent 130 s after first sight', async () => {
+  it('Positions: a lock whose post went out an hour ago: a good read sent past the window decides it (Group A R1 (b): from its `at`)', async () => {
     L.saveExitLock(1, { at: Date.now() - 3600000, out: true, before: L.bookOfPositions(S1.positions.map((p) => ({ contractId: p.contract_id, units: p.net_quantity }))).key, units: [{ id: 776, units: 260 }], names: ['x'], key: 'k', sig: '[]' })
+    await showPositions()
+    await adv(20000)
+    expect(L.exitLockFor(1)).toBeNull()
+  })
+  it('Positions: a lock whose post went out just now: kept until a read sent 130 s after it', async () => {
+    L.saveExitLock(1, { at: Date.now(), out: true, before: L.bookOfPositions(S1.positions.map((p) => ({ contractId: p.contract_id, units: p.net_quantity }))).key, units: [{ id: 776, units: 260 }], names: ['x'], key: 'k', sig: '[]' })
     await showPositions()
     await adv(20000)
     expect(L.exitLockFor(1)).not.toBeNull()
@@ -311,7 +327,7 @@ describe('F5: malformed stored data fails closed and never throws', () => {
       expect(lk, name).not.toBeNull()
       // a book that moved: only a lock whose units and book key are readable can say stored (a bad `at` is needed for an UNCHANGED book only)
       expect(L.decideLock(lk, L.bookOfPositions([{ contractId: 776, units: 130 }]), Date.now() + 1e7).verdict, name).toBe(name === 'at not a number' ? 'stored' : 'keep')
-      if (name === 'at not a number') expect(L.decideLock(lk, { key: GOOD_BEFORE, units: {} }, Date.now() + 1e7).verdict, name).toBe('keep') // unchanged needs `at`
+      if (name === 'at not a number') expect(L.decideLock(lk, { key: GOOD_BEFORE, units: { 776: 260 } }, Date.now() + 1e7).verdict, name).toBe('keep') // unchanged needs `at`
     }
     globalThis.localStorage.setItem('ofo.exitUnknown', '{}')
     expect(L.exitLockFor(1)).toBeNull() // nothing stored: no lock

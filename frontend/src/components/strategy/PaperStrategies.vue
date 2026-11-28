@@ -512,7 +512,7 @@ function adoptLock(id, seq, now) {
   const g = (now ?? items.value ?? []).find((x) => String(x.id) === String(id))
   const names = lock.names.length ? lock.names : g?.positions?.filter((p) => p.open).map((p) => p.name) ?? []
   const attempt = exitRec.begin(id, names, lock.units ?? [])
-  exitRec.settle(id, attempt, 'unknown', '', { readSeq: seq > 1 ? seq - 1 : 0, at: lock.at ?? Date.now(), lock })
+  exitRec.settle(id, attempt, 'unknown', '', { readSeq: seq, at: lock.at ?? Date.now(), lock }) // Group A R1 (b): the adopting read is NOT "after the reply" (no reply exists for an adopted lock): only a later read decides
   return true
 }
 function adoptLocks(now, seq) { for (const id of new Set([...exitLockIds(), ...(now ?? []).map((g) => String(g.id))])) adoptLock(id, seq, now) } // every listed strategy too: an unreadable store locks them all
