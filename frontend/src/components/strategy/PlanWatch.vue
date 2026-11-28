@@ -10,6 +10,7 @@
     <h3 class="font-semibold" data-testid="plan-watch-title">Plan watch</h3>
     <!-- "Updating the numbers..." only ever sits over good rows (the mark under the table); with no good answer on screen a read in progress is "Loading" -->
     <p v-if="closed" class="text-xs text-ink-muted" data-testid="plan-watch-closed">{{ CLOSED_TEXT }}</p>
+    <template v-else-if="outcomeLoading && (view === null || (view.state !== 'ok' && updating))"></template><!-- Lane FB: nothing says "loading" while the builder's own outcome is still loading -->
     <p v-else-if="view === null || (view.state !== 'ok' && updating)" class="text-xs text-ink-muted" data-testid="plan-watch-loading">{{ LOADING_TEXT }}</p>
     <p v-else-if="view.state !== 'ok'" class="text-xs text-ink-muted" data-testid="plan-watch-message">{{ stale && (view.state === 'failed' || view.state === 'unavailable') ? PRICES_NOT_LIVE_TEXT : view.text }}</p>
     <template v-else>
@@ -70,6 +71,7 @@ const props = defineProps({
   compact: { type: Boolean, default: false },
   // Lane Y item 2 (Lane H's batch route): when the host passes `view` (null while its one batch read is out) this box reads nothing itself
   view: { type: Object, default: undefined },
+  outcomeLoading: { type: Boolean, default: false }, // the host's own outcome is still loading: no "Loading the rule check..." line yet
   closed: { type: Boolean, default: false }, // UX-A06: a settled or closed trade: a calm fact, nothing is read
 })
 const NO_FIGURE = PAPER_NO_FIGURE

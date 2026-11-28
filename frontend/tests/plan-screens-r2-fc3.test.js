@@ -126,6 +126,17 @@ describe('UX-A06 / UX-A09: Plan watch on a closed trade and with the feed paused
   })
 })
 
+describe('Lane FB: no loading line while the builder outcome is loading', () => {
+  it('outcomeLoading hides the first-read loading line; without it the line stays', async () => {
+    const a = mount(PlanWatch, { props: { strategyId: 7, view: null, outcomeLoading: true } })
+    const b = mount(PlanWatch, { props: { strategyId: 7, view: null } })
+    mounted.push(a, b)
+    await flushPromises()
+    expect(t(a, 'plan-watch-loading').exists()).toBe(false)
+    expect(t(b, 'plan-watch-loading').text()).toBe('Loading the rule check...')
+  })
+})
+
 describe('issue #880: the monitoring badge names the day when it is not today', () => {
   const entry = (since_at) => ({ strategy_id: 7, watch_state: 'paused', reason: 'workers_down', badge_text: 'Monitoring paused', health_text: 'Health unknown',
     reason_text: 'Not being watched: no worker has reported in the last 2 minutes.', since_text: 'Since 10:12', since_at })

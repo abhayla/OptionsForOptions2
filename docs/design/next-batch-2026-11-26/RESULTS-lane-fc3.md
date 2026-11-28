@@ -27,6 +27,13 @@ Branch fix/r2-plan-screens-1128 from origin/fix/r2-small-screens-1128. Paper onl
 - #880: MonitoringBadge prints the date after the server's since text when `since_at` is readable and not today in India. 3 tests.
 - #875: `DayLabel` uses an English table. Test sets `time.strftime` to answer in German (no other locale is installed here); red before, green after.
 
+## Coordinator additions (05:25 and 06:15 IST)
+- FB hand-over: PlanWatch has a prop `outcomeLoading`; true hides "Loading the rule check..." (1 test). The builder page (FB2) must pass `:outcome-loading="<its outcome is loading>"` to PlanWatch.
+- FE hand-over: four plain sentences added in explanations.py: `monitoring_why_index_not_live`, `monitoring_why_leg_not_live`, `monitoring_why_exit_not_priced`, `monitoring_why_index_exits_not_run`; pins added to tests/errors/template_pins.json (also re-pinned stop_fired_at and stop_fired_on), 711 tests in tests/errors pass.
+- Item 7 (D-5): PaperBookPanel.vue (line 137-140) already follows ADR-330 (56): the price time reads "As of", and only when the book has no price time does it print the server's answer time as "Checked at". So the "Checked at 03:22:40" is the server answer time (it moves on every read), printed because the book had no `last_price_at` while the banner showed the close time 15:29:58 from another source. Not changed: the fix is for the book read to carry the close time as `last_price_at` (server) or for the panel to take the banner's time; I could not see the banner's source in my files.
+- F5 (move wording after an unknown outcome) and UX-A18 (the date in the Exit dialog): the F5 sentences live in usePaperExit.js / StrategyBuilderPage.vue / PaperStrategies.vue (FB2, FC2 files); not done. UX-A18: I found no sold-option date built in explanations.py; waiting for FD2's note.
+- tests_app/test_d36_adjustment_counts.py: golden_d36 does not carry the stop sentences (grep). It needs the project's PostgreSQL (limited role, migrated); this container has none running, so it was not run: PC step: `python scripts/orchestrator/db_run.py . python -m pytest -c pytest-app.ini tests_app/test_d36_adjustment_counts.py`.
+
 ## Item 6
 Waiting on FD2. One test already pins the `expiry_kind_unknown` entry through the badge (passes with no code change). The opportunity page's "Now ... as of ..." names were not checked against the served names.
 
@@ -47,12 +54,14 @@ Not a file of mine. The "Checked at 03:22:40 IST" beside the banner is printed b
 
 ## New wording for the owner to read
 - "N rules not checked: <reason>" (N is 2 or more); a group with no reason text says "no reason was given".
+- The four "Not being watched: ..." sentences listed in the coordinator additions.
 - "This trade is closed; nothing is watched."
 - "The plan watch is paused while the feed has no live prices. It resumes with them."
 - "Since 10:12, 20 Nov 2026" (date added to the server's since text when not today).
 - "{line}; seen by the check at {time} IST" and "{line}; seen by the check on {date} at {time} IST".
 
 ## Not done
+- F5, UX-A18, d36 run (see coordinator additions).
 - Browser checks and screenshots under docs/design/next-batch-2026-11-26/screens-fc3/ (no harness for the isolated components in this run).
 - Item 2 real-mode read, item 6 opportunity-row names: waiting on FD2.
 - UX-A05 Plan door.

@@ -2620,6 +2620,11 @@ _EXPLANATIONS: tuple[ExplanationTemplate, ...] = (
     ExplanationTemplate("monitoring_why_workers_down", "rule", "Not being watched: no worker has reported in the last 2 minutes."),
     ExplanationTemplate("monitoring_why_state_unreadable", "rule", "Not being watched: the worker's report cannot be read."),
     ExplanationTemplate("monitoring_why_not_listed", "rule", "Not being watched: the worker does not list this trade."),
+    # FE hand-over (28 Nov 2026), pending owner read: one plain sentence for each new reason of the "not being watched" state
+    ExplanationTemplate("monitoring_why_index_not_live", "rule", "Not being watched: the index price is not live, so the index exit cannot run."),
+    ExplanationTemplate("monitoring_why_leg_not_live", "rule", "Not being watched: a leg's price is not live, so its stop cannot run."),
+    ExplanationTemplate("monitoring_why_exit_not_priced", "rule", "Not being watched: an exit has no price to compare with, so it cannot run."),
+    ExplanationTemplate("monitoring_why_index_exits_not_run", "rule", "Not being watched: the index exits are not running right now."),
     ExplanationTemplate("monitoring_why_stale", "rule", "The last price is too old, so no rule can fire."),
     ExplanationTemplate("monitoring_why_disconnected", "rule", "The price feed is not connected, so no rule can fire."),
     ExplanationTemplate("monitoring_why_leg_missing", "rule", "A leg of this trade has no price, so no rule can fire."),
