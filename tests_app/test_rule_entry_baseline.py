@@ -258,7 +258,7 @@ async def test_g04b_the_worker_path_gives_the_screen_answer(monkeypatch):
     monkeypatch.setattr(scenario_mode, "current", lambda: scn)
     worker = types.SimpleNamespace(_gate_load={}, _memory={}, _written={}, _pending={},
                                    _write_wake=types.SimpleNamespace(set=lambda: None),
-                                   _count_outcomes=lambda _ev: None)
+                                   _count_outcomes=lambda _ev, _sid: None)
     watched = types.SimpleNamespace(strategy_id=1, body=body, entry_facts=OWN_FACTS, basket_facts={},
                                     tracked=types.SimpleNamespace(position=position))
     ev = await bg.Worker._evaluate_and_write(worker, watched, now, types.SimpleNamespace(gap_until="09:30"))

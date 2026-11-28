@@ -187,7 +187,8 @@ def heartbeat_key() -> str:
 
 
 async def write_heartbeat(client: Any, at: datetime.datetime) -> None:
-    await client.set(heartbeat_key(), at.isoformat())
+    # RA: a store-side expiry (the stale window) closes the case of a dead writer whose clock ran ahead (Opus F1, #879)
+    await client.set(heartbeat_key(), at.isoformat(), ex=HEARTBEAT_STALE_S)
 
 
 def judge_heartbeat(raw: Any, now: datetime.datetime) -> str:
@@ -207,6 +208,34 @@ def judge_heartbeat(raw: Any, now: datetime.datetime) -> str:
     if age < -HEARTBEAT_SKEW_S:  # a time ahead of now is a wrong clock or a simulated one, not a live worker
         return UNREADABLE
     return STALE if age > HEARTBEAT_STALE_S else FRESH
+
+
+class HeartbeatReader:
+    """FD5 3.5 (Opus review F1, #879): a reader that notes, by ITS OWN clock, when the stamp last CHANGED. A worker
+    whose clock runs ahead of the reader's (within HEARTBEAT_SKEW_S) and then dies would read fresh until the real
+    time passes its last stamp plus HEARTBEAT_STALE_S; a stamp unchanged for more than HEARTBEAT_STALE_S on the
+    reader's clock is stale whatever time it states. The first reading has nothing to compare and falls back to the
+    stamp's own age (``judge_heartbeat``)."""
+
+    def __init__(self) -> None:
+        self._text: str | None = None
+        self._changed_at: datetime.datetime | None = None
+
+    def judge(self, raw: Any, now: datetime.datetime) -> str:
+        state = judge_heartbeat(raw, now)
+        text = _text(raw)
+        if text != self._text or self._changed_at is None:
+            self._text, self._changed_at = text, now
+        elif state == FRESH and (now - self._changed_at).total_seconds() > HEARTBEAT_STALE_S:
+            return STALE
+        return state
+
+    async def read(self, client: Any, now: datetime.datetime) -> str:
+        try:
+            return self.judge(await client.get(heartbeat_key()), now)
+        except Exception as exc:  # noqa: BLE001 - a store that cannot answer is "cannot read", never "fine"
+            log.warning("worker heartbeat could not be read: %s", type(exc).__name__)
+            return UNREADABLE
 
 
 async def read_heartbeat_state(client: Any, now: datetime.datetime) -> str:

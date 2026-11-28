@@ -150,7 +150,8 @@ def start_if(market: object | None) -> asyncio.Task[None] | None:
 
     notifier.warn_if_guard_mismatch()
     client = feed_bus.new_client(feed_mode.redis_url())
-    watch = WorkerWatch(read_state=lambda now: feed_bus.read_heartbeat_state(client, now), notify=notifier.notify,
+    reader = feed_bus.HeartbeatReader()  # FD5 3.5: notes when the stamp last changed, by this clock
+    watch = WorkerWatch(read_state=lambda now: reader.read(client, now), notify=notifier.notify,
                         clock=lambda: datetime.datetime.now(IST), market_open=live_market.market_open_at)
     return asyncio.get_running_loop().create_task(_serve(watch, client), name="worker-watch")
 

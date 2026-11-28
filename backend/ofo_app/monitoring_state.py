@@ -48,6 +48,7 @@ ACTIVE: Final = "active"
 PAUSED: Final = "paused"
 #: reasons that are not a price state of the worker (the worker's own are ``PriceState`` names, lower case)
 WORKERS_DOWN: Final = "workers_down"
+NO_BUS: Final = "no_bus"  # RA: the API runs without the bus (FEED_MODE unset or inprocess): no worker is knowable
 STATE_UNREADABLE: Final = "state_unreadable"
 NOT_LISTED: Final = "not_listed"
 CLOCK_SKEW_S: Final = feed_bus.HEARTBEAT_SKEW_S  # how far ahead of the reader's clock a stamp may still be current
@@ -79,6 +80,25 @@ class Entry:
     reason: str
     why: str
     since: datetime.datetime | None
+
+
+#: the ``why`` codes that name their own sentence (``monitoring_why_<code>``); any other ``why`` (the worker's own free
+#: text, e.g. a REST detail) is a detail, never a sentence key
+SENTENCE_WHYS: Final = frozenset({INDEX_NOT_LIVE, LEG_NOT_LIVE, EXIT_NOT_PRICED, INDEX_EXITS_NOT_RUN,
+                                  EXITS_NOT_CHECKED_YET, BOOK_NOT_READ, EXIT_NOT_APPLICABLE})
+#: every ``reason`` a pause can carry (the worker's ``PriceState`` pauses and the reader's own)
+SENTENCE_REASONS: Final = frozenset({WORKERS_DOWN, NO_BUS, STATE_UNREADABLE, NOT_LISTED, "stale", "disconnected",
+                                     "leg_missing", "check_failed", "market_closed", "expiry_kind_unknown",
+                                     "user_paused"})
+
+
+def sentence_code(entry: Entry) -> str:
+    """The one place that picks which catalogue sentence (``monitoring_why_<code>``) a paused entry reads (review N2).
+    The monitor's specific ``why`` wins over the generic reason it rides on (``stale`` + ``index_not_live``); else the
+    worker's reason; anything else is ``unknown`` (a plain fallback, never blank, never another reason's)"""
+    if entry.why in SENTENCE_WHYS:
+        return entry.why
+    return entry.reason if entry.reason in SENTENCE_REASONS else "unknown"
 
 
 def _current(at: datetime.datetime, now: datetime.datetime) -> bool:

@@ -69,10 +69,10 @@ async def test_a_paper_strategy_still_fires_and_is_not_reported_not_applicable(d
 async def test_a_position_whose_kind_cannot_be_read_is_not_stopped_either(db, monkeypatch):  # noqa: F811
     async def unreadable(_conn, ids):
         return dict.fromkeys(ids, "unknown")  # ADR-330 (64): a fact that could not be read: neither Exit nor Stops
-    monkeypatch.setattr(strategy_store, "kinds_of", unreadable)
     market = Market()
-    stored, _ids, keys = await _strategy(db)
+    stored, _ids, keys = await _strategy(db)  # built first: the order door (N1) refuses once the kind is unreadable
     tid = await _exit_below(db, stored.id)
+    monkeypatch.setattr(strategy_store, "kinds_of", unreadable)  # only now does the monitor's read fail
     market.tick(keys[0], "41.00")
     market.tick(keys[1], "12.50")
     market.tick(INDEX, CROSSED)
@@ -88,10 +88,10 @@ async def test_review_f2_a_trade_whose_stop_is_not_judged_here_never_reads_watch
 
     async def unreadable(_conn, ids):
         return dict.fromkeys(ids, "unknown")  # one failed read of the kinds: nothing is judged, and it must be said
-    monkeypatch.setattr(strategy_store, "kinds_of", unreadable)
     market = Market()
-    stored, _ids, keys = await _strategy(db)
+    stored, _ids, keys = await _strategy(db)  # built first: the order door (N1) refuses once the kind is unreadable
     await _exit_below(db, stored.id)
+    monkeypatch.setattr(strategy_store, "kinds_of", unreadable)
     market.tick(keys[0], "41.00")
     market.tick(keys[1], "12.50")
     market.tick(INDEX, CROSSED)
@@ -112,10 +112,10 @@ async def test_review_f4_a_trigger_that_reads_paper_again_is_no_longer_not_appli
 
     async def kinds(_conn, ids):
         return dict.fromkeys(ids, state["kind"])
-    monkeypatch.setattr(strategy_store, "kinds_of", kinds)
     market = Market()
-    stored, _ids, _keys = await _strategy(db)
+    stored, _ids, _keys = await _strategy(db)  # built first: the order door (N1) refuses once the kind is unreadable
     tid = await _exit_below(db, stored.id)
+    monkeypatch.setattr(strategy_store, "kinds_of", kinds)
     monitor = _monitor(db, market)
     await monitor.step()
     assert monitor.not_applicable == {tid: "unknown"}
