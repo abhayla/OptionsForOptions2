@@ -960,14 +960,6 @@ _STRATEGY_DRAFT_TEMPLATES: tuple[MessageTemplate, ...] = (
           "No order was prepared and nothing was stored; orders are only prepared from the plan you reviewed.",
           "Preparing orders from an older version of this strategy.",
           "Review the current plan, then prepare the orders again."),
-    # Lane B3 (28 Nov 2026), pending owner read: the Return door (the user comes back from Zerodha) found the plan or
-    # the holdings changed while the user was away. Unlike ``execute_plan_changed`` a plan DOES exist here, so it must
-    # not say "no order was prepared" (Lane FD5 review F1); it says only what is true: nothing was recorded.
-    _gate("execute_return_changed", _SV, 589,
-          "Something changed while you were at Zerodha, so nothing was recorded from this return.",
-          "Your orders at Zerodha are unchanged; the platform has not stored them as placed.",
-          "Recording this return.",
-          "Open the strategy, check the plan against your Zerodha orders, then press Return again."),
     # W-157 (REQ-134 AC-1): the name a user gives a saved strategy.
     _gate("strategy_name_empty", _SV, 430,
           "Give the strategy a name.",
@@ -1112,6 +1104,19 @@ _STRATEGY_DRAFT_TEMPLATES: tuple[MessageTemplate, ...] = (
           "This took too long, so no order was stored.",
           "Nothing was stored and the strategy was not changed; pressing again places the orders once.",
           "Placing these paper orders.", "Press Place again."),
+    # Lane RA2 item 9 (FE3's Return-door sentence), new wording, pending the owner's read: the Return found that the
+    # strategy's recorded plans changed while the user was at Kite (another press or tab). Nothing was recorded.
+    _gate("execution_return_changed", _SV, 589,
+          "Something changed on this strategy while you were away at Kite, so nothing was recorded.",
+          "Nothing was recorded and nothing was sent; Zerodha was not asked to change anything.",
+          "Recording the result of your Kite orders.", "Press Return again."),
+    # Lane B2 (ADR-016 to ADR-019, ADR-330 (58)): while an earlier order request of the strategy has no known result,
+    # every further order request is refused whatever its key or body (``ofo_app.order_outcome``). New wording,
+    # pending the owner's read.
+    _gate("order_outcome_unknown", _SV, 590,
+          "An earlier order for this strategy has no known result yet.",
+          "No order was stored by this request; another order now could double the position.",
+          "Placing these orders.", "Read the strategy's orders, then try again in a couple of minutes."),
     # Lane FD2 #877 (ADR-330 (64)): a real position is exited and protected in Kite, not on the paper routes.
     _gate("real_position_exit_refused", _SV, 584,
           "Real position: exit and protect it in Kite.",

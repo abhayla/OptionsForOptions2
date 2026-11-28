@@ -133,8 +133,8 @@ def test_a_fired_leg_stop_has_past_tense_sentences() -> None:
 
 # FD4 item 5: the same line for ENTRIES. The wording lives in the catalogue (Lane FC3's explanations.py, which FD4
 # may not edit): the two templates are in RESULTS-lane-fd4.md "For the owner lane". Until they land the field is null.
-ENTRIES_DAY = "Orders can be placed from 09:15 on Monday 30 Nov."
-ENTRIES_NO_DAY = "Orders can be placed when it opens."
+ENTRIES_DAY = "The market is closed. Orders can be placed from 09:15 on Monday 30 Nov."
+ENTRIES_NO_DAY = "The market is closed. Orders can be placed when it opens."
 
 
 def _entries_template_landed() -> bool:

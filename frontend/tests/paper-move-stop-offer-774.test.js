@@ -8,6 +8,7 @@ import { flushPromises, mount } from '@vue/test-utils'
 import { createMemoryHistory, createRouter } from 'vue-router'
 import StrategyBuilderPage from '@/pages/StrategyBuilderPage.vue'
 import { STOP_OFFER_LABEL } from '@/lib/paperTriggers'
+import { STOP_MAY_BE_GONE_TEXT } from '@/lib/stopMoveText'
 import REAL from './fixtures/paper-book-63.json'
 
 const calls = []
@@ -139,7 +140,11 @@ describe('ADR-330 (48): the stop goes with the move, the app offers a new one on
     const w = await reviewDialog()
     await confirm(w)
     expect(t(w, 'paper-unknown').exists()).toBe(true)
-    expect(t(w, 'stop-offer').exists()).toBe(false)
+    // FJ2 item 11 (F5, text A; coordinator 28 Nov): narrowed from "no stop-offer block at all" to "no claim of cancellation, no offer before the re-read":
+    // the block may carry the hedged sentence (the stop MAY have been cancelled), never "removed"/"cancelled" as a fact and never an offer button
+    expect(t(w, 'stop-offer-cancelled').exists()).toBe(false)
+    expect(w.findAll('[data-testid="stop-offer-open"]')).toHaveLength(0)
+    expect(t(w, 'stop-may-be-gone').text()).toBe(STOP_MAY_BE_GONE_TEXT)
     expect(t(w, 'paper-placed').exists()).toBe(false) // no "placed" claim either
     const before = stopsReads()
     // the book re-read and the stops re-read both say the move was stored and the stop is gone
@@ -157,6 +162,28 @@ describe('ADR-330 (48): the stop goes with the move, the app offers a new one on
     await confirm(w)
     await t(w, 'paper-open-orderbook').trigger('click')
     await flushPromises()
+    expect(w.findAll('[data-testid="stop-offer-open"]')).toHaveLength(0)
+    expect(t(w, 'stop-may-be-gone').exists()).toBe(false) // FJ2 item 11: the first decided re-read (the stop is armed) clears the hedged sentence
     expect(t(w, 'stop-offer').exists()).toBe(false)
+  })
+  it('FJ2 item 11 (F5): unknown answer and no armed stop was read before the post: no sentence about a stop', async () => {
+    stopsNow = []
+    answers[`GET ${ARMED}`] = { lines: [] }
+    answers[`POST ${ORDERS_URL}`] = () => Promise.reject(TIMEOUT)
+    const w = await reviewDialog()
+    await confirm(w)
+    expect(t(w, 'paper-unknown').exists()).toBe(true)
+    expect(t(w, 'stop-may-be-gone').exists()).toBe(false)
+  })
+  it('FJ2 item 11 (F5): unknown answer, the re-read shows the stop gone: the hedged sentence is replaced by the offer', async () => {
+    answers[`POST ${ORDERS_URL}`] = () => Promise.reject(TIMEOUT)
+    const w = await reviewDialog()
+    await confirm(w)
+    stopsNow = [stop({ state: 'cancelled', cancelled_at: '2026-11-27T05:30:00Z' })]
+    bookNow = MOVED
+    await t(w, 'paper-open-orderbook').trigger('click')
+    await flushPromises()
+    expect(t(w, 'stop-may-be-gone').exists()).toBe(false)
+    expect(w.findAll('[data-testid="stop-offer-open"]').map((b) => b.text())).toEqual(['Set a stop on NIFTY 3 Nov 22700 PE'])
   })
 })
