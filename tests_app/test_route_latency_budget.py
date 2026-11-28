@@ -43,10 +43,14 @@ LINE = re.compile(r"request (\w+) (\S+) (\d+) ([\d.]+)ms(?: db=([\d.]+)ms/(\d+)q
 # FD3 round 2 / R6, ADR-330 (64): a real or unreadable position has no paper stop). MEASURED: with
 # ``_stored_kind_or_empty`` stubbed out the batch of one row counts 24 (was 23), so the kind read is the only
 # statement added; it runs only when the strategy has armed rows. Needed for correctness, so the ceiling rises by one.
+# FD5: every route that reads the expiry kind from the stored catalogue runs TWO more statements (22 / 21 / 27): the
+# read runs in a SAVEPOINT (``stored_kind``: ``begin_nested`` = SAVEPOINT + RELEASE) so a failed catalogue read can no
+# longer ``rollback()`` the caller's order-key claim and strategy lock (review F1 / N6). MEASURED: the paper book route
+# (no kind read) stays at 11. A deliberate price of correctness, not a second read: one more statement still fails.
 CEILINGS = {  # route -> most statements one request may run: today's counts, an N+1 regression guard
-    "plan-watch": 25,
-    "adjustment-check": 20,
-    "adjustment-plan": 19,
+    "plan-watch": 27,
+    "adjustment-check": 22,
+    "adjustment-plan": 21,
     "paper/strategies/{id}": 11,
 }
 
