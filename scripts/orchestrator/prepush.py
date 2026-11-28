@@ -35,6 +35,9 @@ app_tests also runs the tests_app files that READ a docs-folder path (select_doc
 FAIL). The lane SKIPS NOTHING (SKIPPABLE is empty, so the structural marker check rejects any skipped step): on a
 docs-only change today's selectors already run no code-only stage (domain tests narrow to the records tests, the code
 app selection is empty, no frontend step), so the lane removes nothing and only adds the docs-reading app tests.
+Docs-since-pass lane (DEFAULT ON since 2026-11-28, owner: documentation only; --no-since-pass or
+PREPUSH_SINCE_PASS=0 turns it off): see strict_docs_path and since_pass_lane; any file in the diff since the last
+full-pass marker that is not markdown in a records folder = the full lane.
 ruff_ratchet and alembic_guard cost under a second and a red one (e.g. another local ruff version) must refuse.
 KeyboardInterrupt kills every running child's process tree (serial and parallel; the parallel main thread sets the
 stop event first), then propagates: no marker.
@@ -152,6 +155,16 @@ def load_change_scope(repo: str):
 CLASSIFIER = "tools/change_scope.py"
 
 
+def strict_docs_path(path_is_docs):
+    """The documentation-only path's own, narrower test (owner 28 Nov 2026: documentation only): a path counts only
+    when change_scope.path_is_docs says records file AND it is a markdown file inside a records FOLDER (docs/, spec/,
+    views/, knowledge/, work/, ...). A root file, a .json/.yaml/.csv/.html/.svg/.png file, anything under .claude/,
+    backend/, frontend/, tests*/, scripts/, tools/, .github/ or alembic is never documentation here."""
+    def strict(path: str) -> bool:
+        return bool(path_is_docs(path)) and path.endswith(".md") and path.count("/") >= 1
+    return strict
+
+
 def docs_only_entries(path_is_docs, entries) -> int | None:
     """Number of entries when every one is an added / modified / deleted records file (mode 100644, one path), else
     None. entries: (status letter, [paths], (old mode, new mode)) as change_scope.parse_raw_z gives them."""
@@ -167,7 +180,7 @@ def docs_only_entries(path_is_docs, entries) -> int | None:
     return len(entries)
 
 
-def docs_only_change(repo: str, sha: str | None = None, base: str = "origin/main") -> int | None:
+def docs_only_change(repo: str, sha: str | None = None, base: str = "origin/main", strict: bool = False) -> int | None:
     """Count of changed files when the whole change since the merge base is records files, else None (fail closed:
     no merge base, git error, empty diff, tools/change_scope.py not importable or changed, anything unexpected).
     The diff is merge-base..sha, sha being the start sha of the run (HEAD only when none is given)."""
@@ -182,7 +195,8 @@ def docs_only_change(repo: str, sha: str | None = None, base: str = "origin/main
                               capture_output=True, text=True, encoding="utf-8", errors="replace", check=False)
         if proc.returncode != 0:
             return None
-        return docs_only_entries(scope.path_is_docs, scope.parse_raw_z(proc.stdout) or [])
+        test = strict_docs_path(scope.path_is_docs) if strict else scope.path_is_docs
+        return docs_only_entries(test, scope.parse_raw_z(proc.stdout) or [])
     except Exception:  # noqa: BLE001 - any doubt is the full lane
         return None
 
@@ -280,6 +294,11 @@ def last_full_pass(repo: str, sha: str, limit: int = 5000) -> str | None:
     return None
 
 
+def strict_docs_only_change(repo: str, sha: str | None = None, base: str = "origin/main") -> int | None:
+    """docs_only_change with the strict list (markdown inside a records folder only)."""
+    return docs_only_change(repo, sha, base, strict=True)
+
+
 def since_pass_lane(repo: str, full: bool, sha: str | None, find_base=None, docs_only=None) -> tuple[str, int] | None:
     """(full-pass sha, changed-file count) when EVERY path changed between the last full-pass commit of this branch
     and the start sha is a records file (same strict rules as the docs-only lane: added/modified/deleted, plain mode,
@@ -294,7 +313,7 @@ def since_pass_lane(repo: str, full: bool, sha: str | None, find_base=None, docs
         base = (find_base or last_full_pass)(repo, sha)
         if base is None or base == sha:
             return None
-        count = (docs_only or docs_only_change)(repo, sha, base)
+        count = (docs_only or strict_docs_only_change)(repo, sha, base)  # the strict list, never G2's wider one
     except Exception:  # noqa: BLE001 - any doubt is the full lane
         return None
     return None if count is None else (base, count)
@@ -947,15 +966,25 @@ def resolve_jobs(option=None, environ=None) -> int:
     return jobs
 
 
+def since_pass_default(environ=None) -> bool:
+    """On unless PREPUSH_SINCE_PASS=0. It only ever shortens a push that changes documentation files and nothing else;
+    a push that changes code takes the full lane whatever this says (since_pass_lane)."""
+    env = os.environ if environ is None else environ
+    return env.get("PREPUSH_SINCE_PASS") != "0"
+
+
 def main(argv=None) -> int:
     ap = argparse.ArgumentParser()
     ap.add_argument("--full", action="store_true", help="run all of tests/ as the domain tests, and every vitest file")
     ap.add_argument("--repo", default=ROOT, help="the checkout to check (default: this one)")
     ap.add_argument("--jobs", default=None, metavar="N",
                     help="long steps side by side (default: PREPUSH_JOBS, else the CPU count; 1 = serial reference)")
-    ap.add_argument("--since-pass", action="store_true", default=os.environ.get("PREPUSH_SINCE_PASS") == "1",
-                    help="OPT-IN: when only records files changed since this branch's last full-pass marker, run the "
-                         "docs-since-pass lane (cheaper) instead of the full lane (default off until re-reviewed)")
+    ap.add_argument("--since-pass", dest="since_pass", action="store_true", default=since_pass_default(),
+                    help="DEFAULT ON (owner 2026-11-28, documentation only): when every file changed since this "
+                         "branch's last full-pass marker is a markdown file in a records folder, run the "
+                         "docs-since-pass lane; any other change, no marker or a failed run = the full lane")
+    ap.add_argument("--no-since-pass", dest="since_pass", action="store_false",
+                    help="always the full lane (also PREPUSH_SINCE_PASS=0)")
     ap.add_argument("--no-resume", action="store_true",
                     help="run every long step even if it already passed on this exact tree (pass records are ignored)")
     a = ap.parse_args(argv)

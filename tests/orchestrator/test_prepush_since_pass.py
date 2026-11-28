@@ -298,3 +298,81 @@ def test_a_non_dict_pass_record_or_marker_is_ignored_not_a_crash(tmp_path):
     os.makedirs(store.root)
     Path(store._path("app_tests")).write_text("[]", encoding="utf-8")
     assert store.hit("app_tests") is None
+
+
+# ---- documentation-only path on by default, strict list (owner 28 Nov 2026) ----
+
+def test_a_results_file_under_docs_design_takes_the_short_path(tmp_path, capsys):
+    repo, a = full_pass_on_code(tmp_path)
+    commit_file(repo, "docs/design/next-batch/RESULTS-lane-x.md", "results")
+    assert go(repo, tmp_path, Runner(), "r", select_since_domain=lambda r, b: ["tests/test_rec.py"]) == 0
+    assert f"LANE docs-since-pass (1 files since {a[:8]})" in capsys.readouterr().out
+    assert marker(repo)["mode"]["anchor"] == a
+
+
+def test_one_code_file_among_documentation_files_takes_the_full_path(tmp_path, capsys):
+    repo, _ = full_pass_on_code(tmp_path)
+    (repo / "docs").mkdir(exist_ok=True)
+    (repo / "docs" / "a.md").write_text("a", encoding="utf-8")
+    (repo / "backend" / "b.py").write_text("b = 1\n", encoding="utf-8")
+    git(repo, "add", "docs/a.md", "backend/b.py")
+    git(repo, "commit", "-q", "-m", "mixed")
+    assert prepush.since_pass_lane(str(repo), False, sha_of(repo)) is None
+    assert go(repo, tmp_path, Runner(), "m") == 0
+    assert "docs-since-pass" not in capsys.readouterr().out and marker(repo)["mode"]["lane"] == "full"
+
+
+@pytest.mark.parametrize("rel", [".claude/rules/project/x.md", ".claude/skills/lanes/SKILL.md", "tests/README.md",
+                                 "tests/test_x.py", "tests_app/README.md", "spec/schema.json", "spec/x.yaml",
+                                 "docs/data.json", "docs/x.yaml", "docs/x.csv", "docs/x.html", "docs/x.png",
+                                 "README.md", "CLAUDE.md", "backend/README.md", "frontend/README.md",
+                                 "scripts/README.md", "tools/README.md", ".github/README.md", "alembic/README.md",
+                                 "views/x.json"])
+def test_a_claude_tests_code_data_or_root_file_among_docs_takes_the_full_path(tmp_path, rel):
+    repo, _ = full_pass_on_code(tmp_path)
+    commit_file(repo, "docs/design/RESULTS-x.md", "results")
+    commit_file(repo, rel, "z")
+    assert prepush.since_pass_lane(str(repo), False, sha_of(repo)) is None
+
+
+@pytest.mark.parametrize("rel", ["docs/design/RESULTS-x.md", "spec/decisions/ADR-11.md", "spec/open-questions.md",
+                                 "views/spec-digest.md", "knowledge/findings/f.md", "work/W-1.md"])
+def test_the_strict_list_accepts_markdown_inside_a_records_folder(tmp_path, rel):
+    repo, a = full_pass_on_code(tmp_path)
+    commit_file(repo, rel, "text")
+    assert prepush.since_pass_lane(str(repo), False, sha_of(repo)) == (a, 1)
+
+
+def test_no_previous_passing_marker_takes_the_full_path(tmp_path, capsys):
+    repo = docs_repo(tmp_path)
+    commit_file(repo, "docs/design/RESULTS-y.md", "results")
+    assert prepush.since_pass_lane(str(repo), False, sha_of(repo)) is None
+    assert go(repo, tmp_path, Runner(), "n") == 0
+    mode = marker(repo)["mode"]  # no anchor: the older docs-only-vs-main lane (it skips nothing), never since-pass
+    assert "anchor" not in mode and not mode["lane"].startswith("docs-since-pass")
+    assert "LANE docs-since-pass" not in capsys.readouterr().out
+
+
+def test_a_docs_only_push_after_a_failed_full_run_takes_the_full_path(tmp_path, capsys):
+    repo, _ = full_pass_on_code(tmp_path)
+    commit_file(repo, "backend/broken.py", "b = 1\n")
+    assert go(repo, tmp_path, Runner(fail={"domain_tests"}), "f") == 1  # red: no marker for this commit
+    assert not Path(prepush.marker_path(str(repo), sha_of(repo))).exists()
+    commit_file(repo, "docs/design/RESULTS-z.md", "results")
+    assert prepush.since_pass_lane(str(repo), False, sha_of(repo)) is None  # the failed commit's code is in the diff
+    assert go(repo, tmp_path, Runner(), "g") == 0
+    assert "docs-since-pass" not in capsys.readouterr().out and marker(repo)["mode"]["lane"] == "full"
+
+
+def test_the_documentation_path_is_the_default_and_can_be_turned_off(monkeypatch):
+    seen = []
+    monkeypatch.setattr(prepush, "run_all", lambda repo, full=False, **kw: seen.append(kw["since_pass"]) or 0)
+    monkeypatch.setattr(prepush, "frontend_changes", lambda repo: [])
+    import tools_present  # noqa: PLC0415
+    monkeypatch.setattr(tools_present, "check", lambda *a, **k: [])
+    monkeypatch.delenv("PREPUSH_SINCE_PASS", raising=False)
+    assert prepush.since_pass_default({}) is True and prepush.since_pass_default({"PREPUSH_SINCE_PASS": "0"}) is False
+    assert prepush.main([]) == 0 and prepush.main(["--no-since-pass"]) == 0
+    monkeypatch.setenv("PREPUSH_SINCE_PASS", "0")
+    assert prepush.main([]) == 0
+    assert seen == [True, False, False]

@@ -97,7 +97,27 @@ scripts/orchestrator/prepush.py`; the owner's PC sets none (the gate prints a NO
 `change_scope.py` itself or any doubt = full lane), the report and the marker say `docs-only (<n> files)`. The lane
 skips nothing: on a docs-only change today's selectors already run no code-only stage (domain tests narrow to the
 records tests, the code app selection is empty, no frontend step), so it removes nothing and only adds the `tests_app`
-files that read a docs-folder path. Ctrl-C kills every running child's process tree and writes no marker. It writes the marker that `git push` and
+files that read a docs-folder path.
+
+**Documentation-only path, ON by default (owner approved 28 Nov 2026, 09:55 IST: "turn on the faster path for
+documentation-only pushes"; this and nothing more).** No flag: `python scripts/orchestrator/prepush.py` takes it by itself
+when EVERY file changed since this branch's last passing FULL-run marker (not since `main`) is a markdown file inside a
+records folder (`docs/`, `spec/` incl. decision rows, `views/`, `knowledge/`, `work/`, `evidence/`, `releases/`, `plans/`,
+`owner-questions/`; added, modified or deleted; plain files; `strict_docs_path` in `prepush.py`, narrower than
+`tools/change_scope.py`). The report says `docs-since-pass (<n> files since <sha>)` and the marker names its `anchor`.
+It runs: ruff ratchet, coverage, alembic guard, ci_checks, the preflight WITHOUT its two Python-only layers (mypy
+interface, collect; every scan, the spec checks and the build check stay), the domain tests the kit selects against the
+anchor plus every `tests/` file that reads a docs path, the `tests_app` files that read a docs path, and the frontend steps
+as the full lane plans them. It skips: the other domain and app tests and those two preflight layers (measured 490 s
+against 1052 to 1138 s for a full push). It NEVER applies to: any other file (code, tests*/, scripts/, tools/, `.claude/`,
+`.github/`, alembic, frontend, backend, a root file such as `CLAUDE.md`, any `.json`/`.yaml`/`.csv`/`.html`/image file even
+under `docs/` or `spec/`), `--full`, a dirty tree, a change to `change_scope.py`, a branch with no earlier full-run marker
+(a fresh container) or a code commit in between that never passed (a failed run leaves no marker, and its code is in the
+diff): all of these take the full run. Switch it off with `--no-since-pass` or `PREPUSH_SINCE_PASS=0`. "Changed since the
+last pass" for CODE stays OFF (not built, not approved before Monday 30 Nov). Residual risk: a test that reads a records file
+by a route the reader scan cannot see (environment-variable path, computed glob, repo-wide `rglob`) is not selected on this
+path, so a documentation edit that breaks it shows only in CI. The repo_scan tests and every generated-view check still run.
+Ctrl-C kills every running child's process tree and writes no marker. It writes the marker that `git push` and
 `land.py` require for that exact HEAD only when every step passed, the tree was clean from start to end, HEAD did not
 move and no untracked file sits under backend/, tests*/, scripts/ or frontend/src/, and every planned step has a
 passing result (an amend needs a new run; the marker records `mode`: jobs and lane). A push
