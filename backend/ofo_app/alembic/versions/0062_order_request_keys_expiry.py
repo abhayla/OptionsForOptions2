@@ -12,6 +12,7 @@ Changes (owner-run, one transaction; the table and its rows are not touched):
   strategy_id, body_sha256, door, state.
 - public.expire_order_request_keys(): a SECURITY DEFINER function (search_path pinned) that deletes the rows older than
   the replay window, 7 days (``request_key.REPLAY_WINDOW_DAYS``; the Redis fast path keeps a key 10 minutes, the
+  rows another transaction holds are skipped, never waited for: Opus review F-4; the
   unknown-outcome window is 2 minutes, a Confirm repeated a week later is a new decision). It takes no argument, so the
   application role cannot widen the window, and the role gets EXECUTE on it only: still NO DELETE on the table, so a
   fresh key (the guard against a double order) can never be removed by the application role.
@@ -73,7 +74,9 @@ def upgrade() -> None:
         DECLARE
             removed bigint;
         BEGIN
-            DELETE FROM public.order_request_keys WHERE created_at < clock_timestamp() - INTERVAL '7 days';
+            DELETE FROM public.order_request_keys WHERE ctid IN (
+                SELECT ctid FROM public.order_request_keys
+                WHERE created_at < clock_timestamp() - INTERVAL '7 days' FOR UPDATE SKIP LOCKED);
             GET DIAGNOSTICS removed = ROW_COUNT;
             RETURN removed;
         END
