@@ -5282,5 +5282,9 @@
   "explanation:monitoring_why_expiry_kind_unknown": {
     "sha256": "cda9274fc44cf2fd39bcc908f860d91fde1f00d39e0a8531517e12971f90b9db",
     "reviewed": "pending owner read"
+  },
+  "adjust_trigger_expiry_kind_unknown": {
+    "sha256": "a62c13a4711c1bee319b976f1ee6d66b32c806a9edf21dede813e892af0c65b2",
+    "reviewed": "pending owner read"
   }
 }

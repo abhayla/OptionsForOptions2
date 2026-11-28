@@ -103,3 +103,11 @@ def test_expiry_kind_unknown_pause_has_its_catalogue_sentence() -> None:
     """FD2 hand-over: the Monitoring paused reason for an unknown expiry kind is one catalogue sentence."""
     assert EXPLANATIONS["monitoring_why_expiry_kind_unknown"].text == (
         "Every exit rule is not checked because whether this trade expires weekly or monthly is not known.")
+
+
+def test_expiry_kind_unknown_trigger_reason_text() -> None:
+    """Coordinator 28 Nov: the trigger reason for an unknown expiry type says what is not known."""
+    from ofo.errors import CATALOGUE  # noqa: PLC0415
+
+    assert CATALOGUE["adjust_trigger_expiry_kind_unknown"].what_happened == (
+        "Not checked: this trade's expiry type (weekly or monthly) is not known, so the percent stop has no value.")

@@ -1466,6 +1466,9 @@ _TRIGGER_TEMPLATES: tuple[MessageTemplate, ...] = (
     _trig("t14_pending", 143, "The loss-from-a-1%-move rule is not checked yet in this version."),
     _trig("switched_off", 144, "This trigger is switched off in this playbook.", None, _TRIG_NEXT_OFF),
     _trig("greyed", 145, "This trigger does not apply to this strategy type.", None, _TRIG_NEXT_NOT_FOR_THIS),
+    # 28 Nov 2026, pending owner read: the percent stop on a trade whose expiry kind is not known
+    _trig("expiry_kind_unknown", 712, "Not checked: this trade's expiry type (weekly or monthly) is not known, so the "
+          "percent stop has no value."),
     _trig("data_unavailable", 146, "The data this trigger needs is not available."),
     _trig("unknown", 147, "Unknown trigger: it is not checked.", None, _TRIG_NEXT_NOT_FOR_THIS),
     _trig("not_evaluated", 148, "This trigger is not checked in this version.", None, _TRIG_NEXT_NOT_FOR_THIS),

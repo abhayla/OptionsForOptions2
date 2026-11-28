@@ -1,4 +1,4 @@
-STATUS 08:10 | 1-5, 7, coordinator adds (outcomeLoading, four monitoring_why_*, three more strftime months): Passed in cloud, pushed c7f8e4235 gate TOTAL PASS | 2 real read: Passed in cloud (plan-entry-exits-mode + plan-screens-r2-fc3; reads GET /real/strategies/{id}/triggers; sentence only for a failed read) | expiry_kind_unknown sentence in the catalogue: Passed in cloud | these two: committed, gate running, next push after it | 6 now_value/now_as_of: still to check | not done: F5, UX-A18, UX-A05, d36 (no PostgreSQL), screenshots | blocker: none
+STATUS 09:00 | all queue items except the host-file ones: Passed in cloud; pushed 400394cbc (gate TOTAL PASS): real exits read from GET /real/strategies/{id}/triggers, monitoring_why_expiry_kind_unknown; committed, gate running: trigger reason adjust_trigger_expiry_kind_unknown (templates.py, code 712) | 6: the opportunity page already reads now_value / now_as_of, the names FD2 serves | not done: F5, UX-A18, UX-A05 (page lane FJ), d36 (no PostgreSQL here), screenshots | blocker: none
 
 # Lane FC3 results
 
@@ -59,6 +59,7 @@ Not a file of mine. The "Checked at 03:22:40 IST" beside the banner is printed b
 ## New wording for the owner to read
 - "N rules not checked: <reason>" (N is 2 or more); a group with no reason text says "no reason was given".
 - The four "Not being watched: ..." sentences listed in the coordinator additions.
+- "Not checked: this trade's expiry type (weekly or monthly) is not known, so the percent stop has no value." (trigger reason, templates.py)
 - "Every exit rule is not checked because whether this trade expires weekly or monthly is not known."
 - "This trade is closed; nothing is watched."
 - "The plan watch is paused while the feed has no live prices. It resumes with them."
