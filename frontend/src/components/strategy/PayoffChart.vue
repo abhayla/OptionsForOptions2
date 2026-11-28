@@ -97,7 +97,7 @@
 </template>
 
 <script setup>
-import { computed, nextTick, ref, watch, onMounted, onUnmounted } from 'vue'
+import { computed, getCurrentInstance, nextTick, ref, watch, onBeforeUnmount, onMounted, onUnmounted } from 'vue'
 import Chart from 'chart.js/auto'
 import { hatchPattern, pointSigns, segmentColour } from '@/lib/payoffRegions'
 import { groupMoney, strikeLabel } from '@/lib/displayFormat'
@@ -215,7 +215,11 @@ const marks = {
   },
 }
 
+// No chart work once this component is gone: a mounted hook queued behind an unmount, or a watcher, can still call in.
+const vm = getCurrentInstance()
+let gone = false
 const createChart = () => {
+  if (gone || vm?.isUnmounted || typeof document === 'undefined') return
   // G-065 round 2 (REQ-148 AC-6): the previous reply's chart goes FIRST, so a reply with no curve never leaves the
   // old line on screen
   if (chartInstance) chartInstance.destroy()
@@ -421,7 +425,10 @@ watch(points0, (now, before) => {
 })
 watch(() => [points0.value, props.spot, props.breakevens, props.sd, props.oi, props.targetCurve], createChart, { deep: true })
 onMounted(createChart)
+onBeforeUnmount(() => { gone = true }) // sync with the unmount; isUnmounted / onUnmounted come later in the post queue
 onUnmounted(() => {
+  gone = true
   if (chartInstance) chartInstance.destroy()
+  chartInstance = null
 })
 </script>
