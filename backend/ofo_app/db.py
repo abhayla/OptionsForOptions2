@@ -42,7 +42,38 @@ def get_engine() -> AsyncEngine:
         connect_args={"server_settings": {"jit": "off"}},
     )
     step_timing.install_db_events(engine.sync_engine)  # per-request db ms / query count on the request log line
+    _install_query_counter(engine.sync_engine)
     return engine
+
+
+#: Lane B1b (W-34): statements this process has sent, so a start-up line can say how many a slow link paid for
+QUERIES_SENT = [0]
+
+
+def _install_query_counter(engine: object) -> None:
+    """Counts every statement; with ``OFO_TEST_QUERY_DELAY_MS`` set AND ``APP_ENV=test`` also waits that long before
+    each one (a test-only stand-in for a slow link: the PC measured about 134 ms per query). Never active outside a
+    test."""
+    import os  # noqa: PLC0415
+    import time  # noqa: PLC0415
+
+    from sqlalchemy import event  # noqa: PLC0415
+
+    from ofo_app.config import app_env  # noqa: PLC0415
+    try:
+        delay = float(os.environ.get("OFO_TEST_QUERY_DELAY_MS", "0")) / 1000.0 if app_env() == "test" else 0.0
+    except ValueError:
+        delay = 0.0
+
+    echo = app_env() == "test" and os.environ.get("OFO_TEST_QUERY_ECHO") == "1"
+
+    def before(_conn: object, _cursor: object, statement: str, *_args: object) -> None:
+        QUERIES_SENT[0] += 1
+        if echo:  # test only: the statements a start-up pays for, one line each (first 90 characters)
+            log.info("statement #%d: %s", QUERIES_SENT[0], " ".join(statement.split())[:90])
+        if delay > 0:
+            time.sleep(delay)
+    event.listen(engine, "before_cursor_execute", before)
 
 
 @lru_cache

@@ -32,6 +32,23 @@ container is not pushed; the tests are small):
 - F2 hole: YES. `_attempt` logged a foreign `ValueError` with its text whenever the text STARTED with one of our openings (`needs `, ...): a transport error "needs the header token key:SECRET" reached the log (test red on 1f8e0018c). FIXED structurally: only an `_OwnReason` (our maths, raised by `_own_after` around `regime` and `_bars`) is logged with its text; everything else by class only. RA2's own tests changed to raise `_OwnReason` where they expect the text; the foreign-ValueError test stays plain.
 - Backstops: (c) a no-session LIVE book's `as_of` equals the close's time is asserted in test_stored_close_paper_pnl_ra2_1128 (core); (d) no session at 09:15:00 IST: NOT_CONNECTED, no figure (test_review_closes_b1b_1128).
 
+## W-34 restart delay (PC, build 829ff65f, real link 134 ms per query: badges back 2.5 min after a worker restart)
+Measured, not guessed (tests_app/test_restart_report_b1b_1128.py; worker = separate OS process, real PostgreSQL, scenario PATH-96, one trade, test-only
+per-statement delay `OFO_TEST_QUERY_DELAY_MS=130` with `APP_ENV=test`; the worker now logs two `start-up:` lines at every start):
+- The restart writes an empty snapshot (FE2 item 4: every trade reads "not listed" until its first check), and the first real snapshot is written only at the END of the
+  first cycle, which starts only after the WHOLE strategy list was read (`run()`: `restore`, `_rebuild_safely`, then `cycle()`).
+- The list read costs 39 statements for ONE trade (5.5 s at 130 ms): about 34 per trade, 4.6 s per trade on that link, so about 40 s for nine trades; the first cycle then
+  adds about 1 s per trade on a closed market. On the PC the real statements are heavier (playbook bodies, `p.body::text`) and a live market adds REST and regime reads, which
+  is how 2.5 minutes is reached; I could not reproduce the exact 151 s without the live reads, and say so.
+- Per trade the start-up repeats reads: the strategy ownership check `SELECT 1 FROM strategies` 8 times, the plan row and the system playbook twice, the entry facts and basket facts
+  twice, the gate rows twice, `clock_timestamp()` 3 times, settings and preferences twice. Cutting these to one each is about 12 statements per trade (about 1.6 s per trade, 14 s for nine).
+  Those calls sit in the stores and the plan-watch readers (Lane B3's `adjustment_readers.py`, Lane B2's stores): I did not touch them. Recommendation (entrepreneur's view: a restart
+  is the moment the user looks hardest, so the first report must not wait for the slowest trade): publish a trade's "watched" as soon as ITS first check ends instead of at the
+  end of the whole first cycle, and read the list per trade as a stream; plus the per-request de-duplication RA2 measured (RESULTS-lane-ra2, item 7).
+- FIXED here: the heartbeat was written only at the start of the first cycle, AFTER the whole list read; a list read longer than the readers' two minutes (a slow link, many trades)
+  made a worker that IS up read "no worker has reported in the last 2 minutes". It is now written at once and every 10 s while the list is read (`_beat_while_starting`, test with a list
+  that takes "minutes").
+
 ## Item 6 (cause, design, Opus review)
 Cause (FE4 F7): the worker (`background.feed_state` / `market_closed_for`) and the monitor (`may_act.market_open(feed.ctx, now)`) each asked the
 calendar with their own clock. Now the worker's snapshot carries `market_open` at its own instant `at` (`monitoring_state.encode`, `Publisher.publish`,

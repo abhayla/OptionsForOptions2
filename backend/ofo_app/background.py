@@ -119,6 +119,7 @@ import enum
 import functools
 import logging
 import sys
+import time
 from collections.abc import Awaitable, Callable, Coroutine, Iterable, Mapping, Sequence
 from dataclasses import dataclass, field
 from decimal import Decimal
@@ -283,6 +284,7 @@ def feed_state(provider: Any, now: datetime.datetime) -> PriceState | None:
     return None if health is DataHealth.AVAILABLE else PriceState.DISCONNECTED
 
 
+START_BEAT_S = 10.0  # the heartbeat while a restart reads the strategy list (the readers wait two minutes)
 MAX_PUBLISHED_READINGS = 2000  # the worker's published-reading memory is pruned beyond this
 REST_INDEX_FEED_ID = "rest-index-quote"  # the feed id of the REST stand-in quote (``rest_index_quote``)
 
@@ -1404,6 +1406,15 @@ class Worker:
                           feed_bus.MAX_WANTED_TOKENS)
                 _keep_recent(self.errors, (0, "WindowTooLarge"))
 
+    async def _beat_while_starting(self) -> None:
+        """Lane B1b (W-34): a restart's first list read can take minutes on a slow link (about 34 statements per trade
+        at 134 ms each), and the heartbeat was written only at the start of the first cycle AFTER it, so the readers'
+        two minutes could run out on a worker that IS up ("no worker has reported"). Beat now and every
+        ``START_BEAT_S`` until the list is read; the cycle's own beat takes over."""
+        while True:
+            await self._beat(self._clock())
+            await asyncio.sleep(START_BEAT_S)
+
     async def _beat(self, now: datetime.datetime) -> None:
         """ADR-286 / REQ-115 AC-6: the cycle time, for the API's once-a-minute watcher; never raises."""
         if self._want_client is None:
@@ -2231,8 +2242,15 @@ class Worker:
 
     async def run(self) -> None:
         await self._monitoring.restore(self._clock())  # FE2 item 4: a restart leaves no old "watched" standing
-        if not self._rebuild_tried:
-            await self._rebuild_safely()
+        began, queries = time.monotonic(), _queries_sent()
+        starting = asyncio.create_task(self._beat_while_starting(), name="background-start-beat")
+        try:
+            if not self._rebuild_tried:
+                await self._rebuild_safely()
+        finally:
+            starting.cancel()
+        log.info("background: start-up: the strategy list was read in %.1f s (%d statements)",
+                 time.monotonic() - began, _queries_sent() - queries)
         rebuilder = asyncio.create_task(self._rebuild_loop(), name="background-rebuild")
         self._watch_writer()
         others = [asyncio.create_task(t(), name=f"background-side-{i}") for i, t in enumerate(self._side_tasks)]
@@ -2246,6 +2264,10 @@ class Worker:
                 except Exception as exc:  # one cycle's failure never ends the role (CancelledError is not one)
                     log.exception("background: a cycle failed; the next cycle runs")
                     _keep_recent(self.errors, (0, type(exc).__name__))
+                if began is not None:  # once: how long a restart took until the first report could be written
+                    log.info("background: start-up: the first cycle ended %.1f s after the start (%d statements)",
+                             time.monotonic() - began, _queries_sent() - queries)
+                    began = None
                 # ADR-233 (6): wake about once a second whatever the setting; ``_check_one`` keeps each strategy to
                 # one check per setting interval. No good speed yet -> 1 s.
                 speeds = self._speed_safely()
@@ -2279,6 +2301,11 @@ class Worker:
                 log.exception("background: a margin refresh pass failed")
                 _keep_recent(self.errors, (0, type(exc).__name__))
             await self._rebuild_sleep(float(WAKE_SECONDS))  # float-ok: asyncio.sleep takes seconds as float
+
+
+def _queries_sent() -> int:
+    from ofo_app import db  # noqa: PLC0415 - late: a test worker has no engine
+    return db.QUERIES_SENT[0]
 
 
 def _keep_recent(kept: list, item: object) -> None:
