@@ -50,7 +50,7 @@ PAUSED: Final = "paused"
 WORKERS_DOWN: Final = "workers_down"
 STATE_UNREADABLE: Final = "state_unreadable"
 NOT_LISTED: Final = "not_listed"
-CLOCK_SKEW_S: Final = 5  # how far ahead of the reader's clock a worker's or monitor's stamp may be and still be current
+CLOCK_SKEW_S: Final = feed_bus.HEARTBEAT_SKEW_S  # how far ahead of the reader's clock a stamp may still be current
 SNAPSHOT_STALE_S: Final = feed_bus.HEARTBEAT_STALE_S  # the same two minutes as the heartbeat (AC-6)
 INDEX_NOT_LIVE: Final = "index_not_live"  # the ``why`` of a trade whose index exit has no live index reading
 EXITS_NOT_CHECKED_YET: Final = "exits_not_checked_yet"  # the ``why`` when no monitor has written any report
@@ -203,6 +203,7 @@ class Publisher:
         self._kept: dict[int, Entry] = {}  # FE3 item 4: restored paused entries no check has answered for yet
         self._restored_at: datetime.datetime | None = None
         self.restore_pending = False  # FE3 item 3 (F6): the restart's empty snapshot was not written; tried again
+        self._read_pending = False  # ... or the old snapshot could not be read
         self._written: str | None = None
         self._written_at: datetime.datetime | None = None
 
@@ -216,9 +217,11 @@ class Publisher:
             return False
         try:
             raw = await self._client.get(key())
-        except Exception as exc:  # noqa: BLE001 - nothing to keep; the first cycle writes as before
+        except Exception as exc:  # noqa: BLE001 - nothing known to keep yet; tried again (review F6)
             log.warning("background: reading the old monitoring state failed: %s", type(exc).__name__)
+            self.restore_pending, self._read_pending = True, True
             return False
+        self._read_pending = False
         self._previous = _entries_of(raw, now)
         self._kept, self._restored_at = dict(self._previous), now
         return await self._write_restart_snapshot(now)
@@ -229,11 +232,13 @@ class Publisher:
         Nothing is read again: the kept starts are the ones the restart read. Never raises."""
         if not self.restore_pending or self._client is None:
             return False
+        if self._read_pending:  # the old snapshot could not be READ at the start: read it (and write) again
+            return await self.restore(now)
         return await self._write_restart_snapshot(now)
 
     async def _write_restart_snapshot(self, now: datetime.datetime) -> bool:
         try:
-            await self._client.set(key(), encode([], now, kept=self._kept.values()))
+            await self._client.set(key(), encode([], now, kept=self._kept.values()), ex=SNAPSHOT_STALE_S)
         except Exception as exc:  # noqa: BLE001 - the old snapshot then ages out by itself (``SNAPSHOT_STALE_S``)
             log.warning("background: writing the restart monitoring state failed: %s", type(exc).__name__)
             self.restore_pending = True
@@ -259,7 +264,7 @@ class Publisher:
         if fingerprint == self._written and not due:
             return False
         try:
-            await self._client.set(key(), encode(entries, now, readings, kept.values()))
+            await self._client.set(key(), encode(entries, now, readings, kept.values()), ex=SNAPSHOT_STALE_S)
         except Exception as exc:  # noqa: BLE001 - never stops a cycle; the reader then sees an old snapshot
             log.warning("background: writing the monitoring state failed: %s", type(exc).__name__)
             return False

@@ -5307,6 +5307,14 @@
     "sha256": "cda9274fc44cf2fd39bcc908f860d91fde1f00d39e0a8531517e12971f90b9db",
     "reviewed": "pending owner read"
   },
+  "explanation:exit_market_closed_entries": {
+    "sha256": "cb620c093430045d56b59bd892087ba1be84a557fa3174f80145285a43a53fd0",
+    "reviewed": "pending owner read"
+  },
+  "explanation:exit_market_closed_entries_no_day": {
+    "sha256": "44290e5aca386b2808968e867e4c7294571c620ff7cfdcc5e238baa63533e58a",
+    "reviewed": "pending owner read"
+  },
   "explanation:monitoring_why_exits_not_checked_yet": {
     "sha256": "0ebed6caa0f3f5e8f5ff02edc39f59d8a7d9a9d4784ebe3e734848703338d117",
     "reviewed": "pending owner read"

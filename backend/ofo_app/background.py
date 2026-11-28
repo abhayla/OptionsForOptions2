@@ -1026,6 +1026,10 @@ class Worker:
         self.monitors: list[Watched] = []
         self.status: dict[int, MonitoringStatus] = {}
         self.paused_reason: dict[int, PriceState] = {}
+        # Lane FE3 (Opus review F1): a check that is OWED. A trade whose last check failed (``CHECK_FAILED``) or found
+        # no exit that can run (``EXPIRY_KIND_UNKNOWN``) is paused until a check has passed; the fact lives HERE, not in
+        # ``paused_reason``, which any later pause (stale, disconnected) overwrites
+        self._owed: dict[int, PriceState] = {}
         self.checks: list[tuple[int, datetime.datetime]] = []  # (strategy id, when) of every check run
         self.errors: list[tuple[int, str]] = []
         self._signature: dict[int, tuple] = {}
@@ -1193,7 +1197,7 @@ class Worker:
             del self._rule_values[sid]
         for sid in [k for k in self.status if k not in body and k not in unread]:
             # FE2 #878: a strategy that left the list is not watched: no ACTIVE entry stays published for it
-            for kept in (self.status, self.paused_reason, self.paused_why, self.user_paused_until):
+            for kept in (self.status, self.paused_reason, self.paused_why, self.user_paused_until, self._owed):
                 kept.pop(sid, None)
         for sid in [k for k in self._gate_events if k not in body and k not in unread]:  # a plan change keeps them
             gone = self._gate_events.pop(sid)
@@ -1460,6 +1464,8 @@ class Worker:
         watched, so the gate gets ``alert_gate.pause`` at its next step and that candle has no close."""
         self.status[sid] = MonitoringStatus.PAUSED
         self.paused_reason[sid] = reason
+        if reason is PriceState.CHECK_FAILED:
+            self._owed[sid] = reason  # FE3 F1: only a check that has run and passed ends it
         self._signature.pop(sid, None)  # the first check after the gap reads the fresh snapshot
         self._tick.pop(sid, None)
         kept = self._paused_at.get(sid)
@@ -1500,11 +1506,16 @@ class Worker:
         self._last_skip.pop(sid, None)
 
     def _fresh_read(self, sid: int) -> None:
-        """A fresh price read makes a trade watched again, except one paused for its unknown expiry kind (only a check
-        that finds an exit that can run clears that pause: second review F1) or one whose last check FAILED (its write
-        raised, or no preferences / gate read / alert values / preset: only a check that has run and passed clears it,
-        ``_check_passed``; Lane FE3 item 1)."""
-        if self.paused_reason.get(sid) in (PriceState.EXPIRY_KIND_UNKNOWN, PriceState.CHECK_FAILED):
+        """A fresh price read makes a trade watched again, except a trade that OWES a check (``_owed``): one whose last
+        check FAILED (its write raised, or no preferences / gate read / alert values / preset / a raising check) or one
+        paused for its unknown expiry kind. Only a check that has run to its end clears it (``_check_passed``,
+        ``_note_rules``); a stale or disconnected cycle in between does not make it forget (Opus review F1)."""
+        owed = self._owed.get(sid)
+        if owed is not None:
+            self.status[sid] = MonitoringStatus.PAUSED
+            self.paused_reason[sid] = owed
+            if owed is not PriceState.CHECK_FAILED:
+                self.paused_why.pop(sid, None)
             return
         self.status[sid] = MonitoringStatus.ACTIVE
         self.paused_reason.pop(sid, None)
@@ -1598,11 +1609,14 @@ class Worker:
 
     def _check_passed(self, sid: int) -> None:
         """Lane FE3 item 1: a check ran through to its end: a ``CHECK_FAILED`` pause ends here and nowhere else. A write
-        that fails after this point pauses the trade again (``_write_one``)."""
-        if self.paused_reason.get(sid) is PriceState.CHECK_FAILED:
-            self.status[sid] = MonitoringStatus.ACTIVE
-            self.paused_reason.pop(sid, None)
-            self.paused_why.pop(sid, None)
+        that fails after this point pauses the trade again (``_write_one``). An unknown-kind pause set by this very
+        check (``_note_rules``) stays."""
+        if self._owed.get(sid) is PriceState.CHECK_FAILED:
+            del self._owed[sid]
+            if self.paused_reason.get(sid) in (None, PriceState.CHECK_FAILED):
+                self.status[sid] = MonitoringStatus.ACTIVE
+                self.paused_reason.pop(sid, None)
+                self.paused_why.pop(sid, None)
 
     def _note_index(self, w: Watched, read: PriceRead, now: datetime.datetime) -> None:
         """Lane FE (review F2): the index value this FRESH read used (the feed tick or the REST stand-in, with the time
@@ -1735,6 +1749,7 @@ class Worker:
             self.writes_failed += 1
             self.status[sid] = MonitoringStatus.PAUSED  # its last check is not stored: never shown as active
             self.paused_reason[sid] = PriceState.CHECK_FAILED
+            self._owed[sid] = PriceState.CHECK_FAILED  # FE3 F1
             self._signature.pop(sid, None)
             self._tick.pop(sid, None)
             return
@@ -1798,8 +1813,10 @@ class Worker:
         if state.days_left is None and not checked & sl.plan_exit_rule_ids(w.body):
             self.status[sid] = MonitoringStatus.PAUSED
             self.paused_reason[sid] = PriceState.EXPIRY_KIND_UNKNOWN
+            self._owed[sid] = PriceState.EXPIRY_KIND_UNKNOWN  # FE3 F1: kept until a check finds an exit that can run
             self.paused_why.pop(sid, None)
-        elif self.paused_reason.get(sid) is PriceState.EXPIRY_KIND_UNKNOWN:  # this check found an exit that can run
+        elif self._owed.get(sid) is PriceState.EXPIRY_KIND_UNKNOWN:  # this check found an exit that can run
+            del self._owed[sid]
             self.status[sid] = MonitoringStatus.ACTIVE
             self.paused_reason.pop(sid, None)
 

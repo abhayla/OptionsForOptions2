@@ -160,6 +160,10 @@ def _contract_text(found: tracked_contracts.TrackedContract) -> ExplanationText:
 _NOT_APPLICABLE_WHY: dict[str, str] = {"real": monitoring_state.EXIT_NOT_APPLICABLE}
 
 
+class BookUnreadError(RuntimeError):
+    """A read of the book (armed triggers, position kinds, orders) answered nothing usable: the last watch is kept."""
+
+
 class PaperMonitor:
     _held_count: int | None = None  # last logged count (class default: tests skip __init__)
     def __init__(self, sessions: Sessions, feed: Callable[[], LiveFeed | None], *,  # noqa: PLR0913 - seams
@@ -178,6 +182,7 @@ class PaperMonitor:
         self._reload_seconds = reload_seconds
         self._monotonic = monotonic or asyncio.get_running_loop().time
         self._feed: LiveFeed | None = None
+        self._feed_asked: LiveFeed | None = None  # the feed the last reload (even a failed one) was made for
         self._handle: int | None = None
         self._standing_feed: LiveFeed | None = None
         self._standing: list[int] = []  # the standing hold's fan-out handles (open paper legs + their indexes)
@@ -221,6 +226,7 @@ class PaperMonitor:
         ``BOOK_UNREAD_MAX_S`` changes what the trades read (``book_unread_too_long``)."""
         self._dirty = False
         self._loaded_at = self._monotonic()
+        self._feed_asked = self._feed_source()  # review F2: a failed first load must not look like a new feed
         try:
             await self._reload()
         except asyncio.CancelledError:
@@ -230,7 +236,9 @@ class PaperMonitor:
             if self.book_unread_since is None:
                 self.book_unread_since = self._monotonic()
                 log.warning("paper monitor: the book could not be read; the last watch is kept", exc_info=True)
-            self._loaded_at = self._monotonic() - self._reload_seconds + min(self._reload_seconds, READ_RETRY_SECONDS)
+            due_after = (self._reload_seconds if self._ever_loaded
+                         else min(self._reload_seconds, FIRST_LOAD_RETRY_SECONDS))
+            self._loaded_at = self._monotonic() - due_after + min(due_after, READ_RETRY_SECONDS)  # review F2
             raise
         self.book_unread_since = None
 
@@ -277,6 +285,11 @@ class PaperMonitor:
         evaluated or fired: it is left as it is and told once as not applicable. One read for every armed strategy."""
         from ofo_app import position_kind, strategy_store  # noqa: PLC0415 - late: the one kind rule and its reader
         kinds = await strategy_store.kinds_of(session, sorted({a.trigger.strategy_id for a in armed}))
+        if armed and self._ever_loaded and all(k == position_kind.UNKNOWN for k in kinds.values()):
+            # Lane FE3 (review F3): ``kinds_of`` answers "unknown" for every id when its read FAILS (it swallows the
+            # error until Lane FD4 makes it raise); every kind unknown after a list was known is that failure, not a new
+            # fact: the last list is kept (and the age rule applies), never replaced by an empty one
+            raise BookUnreadError("the position kinds of every armed strategy could not be read")
         keep: list[triggers.ArmedTrigger] = []
         self._na_strategies = {}
         for a in armed:
@@ -393,7 +406,7 @@ class PaperMonitor:
 
     async def step(self) -> int:
         """One pass: reload when due, then handle every queued quote in arrival order. Returns the fires recorded."""
-        if self._dirty or self._feed_source() is not self._feed or self._loaded_at is None or \
+        if self._dirty or self._feed_source() is not self._feed_asked or self._loaded_at is None or \
                 self._monotonic() - self._loaded_at >= (self._reload_seconds if self._ever_loaded
                                                         else min(self._reload_seconds, FIRST_LOAD_RETRY_SECONDS)):
             try:
@@ -512,10 +525,8 @@ class PaperMonitor:
         not_run: dict[int, str] = {}
         judged: list[_Watch] = []
         fired = 0
-        if self.book_unread_too_long():  # FE3 item 2: nothing is judged on a list that cannot be confirmed
-            not_run = {w.armed.trigger.strategy_id: monitoring_state.BOOK_NOT_READ for w in self._exits}
-        elif feed is None:
-            not_run = {w.armed.trigger.strategy_id: _why_of(w) for w in self._exits}
+        if self.book_unread_too_long() or feed is None:  # FE3 item 2: no list that cannot be confirmed is judged
+            not_run = self._not_judged()
         elif may_act.market_open(feed.ctx, now):
             judged = list(self._exits)
             client = _bus_client()
@@ -538,6 +549,15 @@ class PaperMonitor:
             self._report_blocked(judged, not_run)
         await self._report_exits(judged, not_run, now)
         return fired
+
+    def _not_judged(self) -> dict[int, str]:
+        """Every exit of the list is reported not run: no feed, or the book unread for longer than allowed (review F4: a
+        real position's old stop is named in this report as well, never left to the worker's "watched")."""
+        unread = self.book_unread_too_long()
+        not_run = {w.armed.trigger.strategy_id: monitoring_state.BOOK_NOT_READ if unread else _why_of(w)
+                   for w in self._exits}
+        self._report_not_applicable(not_run)
+        return not_run
 
     def _report_blocked(self, judged: Sequence[_Watch], not_run: dict[int, str]) -> None:
         """Crossed on a reading but not run: the trade is not being checked through to the exit."""
@@ -581,7 +601,8 @@ class PaperMonitor:
         self._dirty = True
         return w.armed.trigger.id in fired
 
-    async def _fire(self, w: _Watch, price: paper.Price, now: datetime.datetime) -> dict[str, set[int]] | None:
+    async def _fire(self, w: _Watch, price: paper.Price,  # noqa: PLR0911 - one answer per way a fire can end
+                    now: datetime.datetime) -> dict[str, set[int]] | None:
         """One transaction (module docstring). None = keep armed; else the ids now fired or cancelled."""
         a, t = w.armed, w.armed.trigger
         feed = self._feed
@@ -591,6 +612,8 @@ class PaperMonitor:
         # and the next crossing tick retries, never priced on a held or default rate)
         feed = LiveFeed(await with_rate_in_force(feed.ctx, self._read_settings), feed.fanout)
         async with self._sessions() as session, session.begin():
+            if not await self._still_paper(session, t.strategy_id):
+                return None  # review F5: the kind is read again in the fire; not paper (or unreadable) = left armed
             book = await paper_store.load(session, t.strategy_id)
             open_net = {int(p.instrument_id): p.net_quantity
                         for p in net_positions([o.order.as_paper() for o in book], {}).positions if p.net_quantity}
@@ -629,6 +652,16 @@ class PaperMonitor:
                 restore={"body": ALERT_BODY_TEMPLATES, "line": STOP_LINE_TEMPLATES + FIRED_LINE_TEMPLATES})
         self.fires += 1
         return {"fired": {t.id}, "cancelled": set()}
+
+    @staticmethod
+    async def _still_paper(session: Any, strategy_id: int) -> bool:
+        """ADR-330 (64), review F5: whether the strategy is a paper position NOW (one read inside the fire's own
+        transaction, before anything is claimed). A real or unreadable kind: no stop is written."""
+        from ofo_app import position_kind, strategy_store  # noqa: PLC0415 - late: the one kind rule and its reader
+        try:
+            return (await strategy_store.kinds_of(session, [strategy_id])).get(strategy_id) == position_kind.PAPER
+        except Exception:  # noqa: BLE001 - fail closed
+            return False
 
     async def _tell_exit_not_run(self, session: Any, a: triggers.ArmedTrigger, blocked: _NoPrice,
                                 found: Mapping[int, tracked_contracts.TrackedContract],
@@ -705,14 +738,14 @@ class PaperMonitor:
                 else:
                     answer = paper_routes.index_exit_answer(book, {c: prices[c] for c in sorted(open_net)}, terms,
                                                             names, now)
+            if answer.state != "yes":
+                return None
+            if t.kind != "leg_stop":
+                return answer.warning_text
+            return _fired_leg_line(t, (texts or {}).get(t.contract_id), answer)  # review F9: inside the guard
         except Exception as exc:  # noqa: BLE001 - the message is written without the line, never not at all
             log.error("max-loss line of fired trigger %s left out: %s", t.id, type(exc).__name__)
             return None
-        if answer.state != "yes":
-            return None
-        if t.kind != "leg_stop":
-            return answer.warning_text
-        return _fired_leg_line(t, (texts or {}).get(t.contract_id), answer)
 
     @staticmethod
     async def _not_written(session: Any, t: stops.Trigger, done: Any) -> dict[str, set[int]] | None:

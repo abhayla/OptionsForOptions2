@@ -22,6 +22,19 @@ async def _raises(_conn, _ids):
     raise RuntimeError("the database could not answer")
 
 
+def fail_next_read(monkeypatch, how=_raises):
+    """The next ``kinds_of`` call (the reload's) fails with ``how``; every later one is the real read (a transient
+    failure: the database is up again when the fire re-reads the kind)."""
+    real, left = strategy_store.kinds_of, [1]
+
+    async def once(conn, ids):
+        if left[0]:
+            left[0] = 0
+            return await how(conn, ids)
+        return await real(conn, ids)
+    monkeypatch.setattr(strategy_store, "kinds_of", once)
+
+
 async def _loaded(db, monkeypatch):  # noqa: F811
     market = Market()
     stored, _ids, keys = await _strategy(db)
@@ -41,8 +54,7 @@ async def _loaded(db, monkeypatch):  # noqa: F811
 
 async def test_core_a_failed_kinds_read_keeps_the_last_watch_and_the_exit_still_fires(db, monkeypatch):  # noqa: F811
     market, stored, tid, monitor, _client, clock = await _loaded(db, monkeypatch)
-    real = strategy_store.kinds_of
-    monkeypatch.setattr(strategy_store, "kinds_of", _raises)
+    fail_next_read(monkeypatch)
     monitor.notify()
     clock[0] = 10.0
     assert await monitor.step() == 0  # the reload fails here; the index is still above the level
@@ -53,7 +65,6 @@ async def test_core_a_failed_kinds_read_keeps_the_last_watch_and_the_exit_still_
     print("FIRED", fired, "FAILURES", monitor.read_failures)
     assert fired == 1 and await _trigger_state(db, tid) == (True, False), "the kept exit still fires"
     assert len(await _stops(db, stored.id)) == LEGS
-    monkeypatch.setattr(strategy_store, "kinds_of", real)
 
 
 async def test_a_failure_inside_the_allowed_age_reads_watched_not_unread(db, monkeypatch):  # noqa: F811
