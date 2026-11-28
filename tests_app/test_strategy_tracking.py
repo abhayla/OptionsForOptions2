@@ -608,3 +608,20 @@ async def test_d42_one_unreadable_book_degrades_only_its_own_row(db, monkeypatch
     assert rows[good.id]["leg_count"] == OPEN_AFTER_EXIT and rows[good.id].get("current_legs_text") is None
     assert rows[bad.id]["leg_count"] == len(legs)  # the saved legs stand
     assert rows[bad.id]["current_legs_text"] == "The current legs could not be read. The legs shown are as saved."
+
+
+async def test_a_running_paper_trade_reads_running_on_every_route_when_no_broker_session_exists(db):
+    """O-P-03: with NO market context (no Zerodha session / feed) a strategy that has paper orders is Running on the
+    book, the list, the paper book and the paper list, never Draft; its prices are simply not live. The sentence
+    "Draft - Live data not connected" is the OUTCOME route's no-provider state (routes/outcome.py not_connected), not
+    a status word of these routes."""
+    app, stored, *_ = await _setup(db)  # placing needs a live start point: place first, then the session goes away
+    assert await _words(app, stored.id, paper=False) == {"book": "Draft", "list": "Draft"}
+    async with _client(app) as c:
+        placed = await c.post(f"/paper/strategies/{stored.id}/orders", json=_paper_body(stored, ENTRY_PRICES))
+    assert placed.status_code == HTTPStatus.CREATED, placed.text
+    app.dependency_overrides[get_market_context] = lambda: None  # no broker session, no feed
+    assert await _words(app, stored.id, paper=True) == {
+        "book": "Running", "list": "Running", "paper_book": "Running", "paper_list": "Running"}
+    book = await _get_ok(app, f"/paper/strategies/{stored.id}")
+    assert book["status_word"] == "Running" and book["state"] != "LIVE"  # running, prices not live

@@ -66,11 +66,29 @@ async def world(app_db_url, monkeypatch):  # noqa: F811
     return app, sid, calls
 
 
-async def _during_stall(app, paths: list[str]) -> tuple[int, float, list[int]]:
-    """Fire every path together, wait 0.3 s, read the pool, time /health, then let the stalled ones finish."""
+REACH_LIMIT_S = 20.0  # most a request may take to REACH its stalled reader (its database phase)
+
+
+async def _until_reached(reached, what: str) -> None:
+    """RCA (Lane RA 28 Nov): a fixed sleep measured the pool and /health while the requests were still in their own
+    database phase (about 25 queries, 150-335 ms here, longer on a slow or cold machine), where held connections are
+    short and expected; the 0.5 s bound then failed by machine speed, not by a hold across the wait. The measurement
+    starts only once every stalled reader has been reached (the state the test is about); the bound stays 0.5 s."""
+    deadline = time.monotonic() + REACH_LIMIT_S
+    while not reached():
+        assert time.monotonic() < deadline, f"{what}: the stalled reader was not reached in {REACH_LIMIT_S:.0f} s"
+        await asyncio.sleep(0.01)
+
+
+async def _during_stall(app, paths: list[str], reached=None) -> tuple[int, float, list[int]]:
+    """Fire every path together, wait until ``reached()`` (default: 0.3 s), read the pool, time /health, then let the
+    stalled ones finish."""
     async with AsyncClient(transport=ASGITransport(app=app), base_url="http://t") as ac:
         tasks = [asyncio.create_task(ac.get(p)) for p in paths]
-        await asyncio.sleep(0.3)
+        if reached is None:
+            await asyncio.sleep(0.3)
+        else:
+            await _until_reached(reached, "pool test")
         out = app_db.get_engine().pool.checkedout()
         began = time.monotonic()
         health = await asyncio.wait_for(ac.get("/health"), HEALTH_LIMIT_S)  # slower than the limit: TimeoutError
@@ -83,7 +101,7 @@ async def _during_stall(app, paths: list[str]) -> tuple[int, float, list[int]]:
 async def test_paper_reads_do_not_hold_the_pool_while_the_feed_wait_stalls(world):
     app, sid, calls = world
     paths = [f"/paper/strategies/{sid}"] * 2 + ["/paper/strategies"] * 2
-    out, took, statuses = await _during_stall(app, paths)
+    out, took, statuses = await _during_stall(app, paths, lambda: len(calls) >= len(paths))
     print(f"POOLMEASURE paper mix: checkedout={out} health={took:.2f}s statuses={statuses}")
     assert calls, "the hold path was not taken: the test proves nothing"
     assert statuses == [200] * len(paths)
@@ -93,7 +111,7 @@ async def test_paper_reads_do_not_hold_the_pool_while_the_feed_wait_stalls(world
 @pytest.mark.parametrize("path", ["/paper/strategies/{sid}", "/paper/strategies"])
 async def test_one_paper_read_holds_no_connection_while_it_waits(world, path):
     app, sid, calls = world
-    out, took, statuses = await _during_stall(app, [path.format(sid=sid)])
+    out, took, statuses = await _during_stall(app, [path.format(sid=sid)], lambda: bool(calls))
     print(f"POOLMEASURE {path}: checkedout={out} health={took:.2f}s")
     assert calls and statuses == [200]
     assert out == 0
@@ -115,7 +133,7 @@ async def test_plan_watch_connections_held_while_the_rest_reader_stalls(world):
     from ofo_app.routes.adjustment import get_rest_spot_reader  # noqa: PLC0415
     app.dependency_overrides[get_rest_spot_reader] = lambda: slow
     paths = [f"/api/strategies/{sid}/plan-watch"] * POOL
-    out, took, statuses = await _during_stall(app, paths)
+    out, took, statuses = await _during_stall(app, paths, lambda: len(reads) >= POOL)
     print(f"POOLMEASURE plan-watch x{POOL}: checkedout={out} health={took:.2f}s statuses={statuses} reads={len(reads)}")
     assert statuses == [200] * POOL
     assert len(reads) == POOL, "the REST reader was not reached: the measurement proves nothing"
@@ -132,7 +150,10 @@ async def test_thread_executor_stalled_by_broker_reads_does_not_slow_health_or_t
     from ofo.marketdata.spot_source import SourceReading, SourceState  # noqa: PLC0415 - NOT_FOUND: no reading
     from ofo_app.routes.adjustment import get_rest_spot_reader  # noqa: PLC0415
 
+    entered: list[str] = []
+
     async def threaded(_name):
+        entered.append(_name)
         await asyncio.to_thread(_time.sleep, 4)
         return SourceReading(SourceState.NOT_FOUND)
 
@@ -140,7 +161,9 @@ async def test_thread_executor_stalled_by_broker_reads_does_not_slow_health_or_t
     many = 20
     async with AsyncClient(transport=ASGITransport(app=app), base_url="http://t") as ac:
         tasks = [asyncio.create_task(ac.get(f"/api/strategies/{sid}/plan-watch")) for _ in range(many)]
-        await asyncio.sleep(0.5)
+        # every request has reached its threaded read (its connection is given back before it, D-36 (c)); the 4 s
+        # threads keep the default executor busy, which is the state asked about
+        await _until_reached(lambda: len(entered) >= many, "executor test")
         began = time.monotonic()
         health = await asyncio.wait_for(ac.get("/health"), HEALTH_LIMIT_S)
         h_took = time.monotonic() - began

@@ -518,8 +518,8 @@ class PaperMonitor:
     async def _index_pass(self) -> int:
         """Every pass: judge every armed exit (index exits and leg stops) on its reading through the one judge
         (``_exits_with_reading``), and report to ``monitoring_state`` which trades' exits were NOT evaluated.
-        Market closed: nothing is expected to be evaluated (a trigger set after hours arms at 09:15); the report is
-        empty."""
+        Market closed: nothing is expected to be evaluated (a trigger set after hours arms at 09:15); the report
+        names only the strategies whose stops do not apply here (a real position, a kind not read)."""
         feed = self._feed
         now = feed.ctx.clock() if feed is not None else datetime.datetime.now(datetime.UTC)
         not_run: dict[int, str] = {}
@@ -545,19 +545,17 @@ class PaperMonitor:
                     not_run.update({w.armed.trigger.strategy_id: _why_of(w) for w in group})
                 elif reading.source != OWN_FEED:  # this feed's own quote is judged tick by tick (``on_quote``), once
                     fired += await self._exits_with_reading(group, reading, now, polled=True)
-            self._report_not_applicable(not_run)
             self._report_blocked(judged, not_run)
+        self._report_not_applicable(not_run)  # FE4 (N3): the one place, whatever the branch (open, closed, no feed)
         await self._report_exits(judged, not_run, now)
         return fired
 
     def _not_judged(self) -> dict[int, str]:
-        """Every exit of the list is reported not run: no feed, or the book unread for longer than allowed (review F4: a
-        real position's old stop is named in this report as well, never left to the worker's "watched")."""
+        """Every exit of the list is reported not run: no feed, or the book unread for longer than allowed (the real
+        positions' old stops are added by ``_index_pass``, never left to the worker's "watched")."""
         unread = self.book_unread_too_long()
-        not_run = {w.armed.trigger.strategy_id: monitoring_state.BOOK_NOT_READ if unread else _why_of(w)
-                   for w in self._exits}
-        self._report_not_applicable(not_run)
-        return not_run
+        return {w.armed.trigger.strategy_id: monitoring_state.BOOK_NOT_READ if unread else _why_of(w)
+                for w in self._exits}
 
     def _report_blocked(self, judged: Sequence[_Watch], not_run: dict[int, str]) -> None:
         """Crossed on a reading but not run: the trade is not being checked through to the exit."""
@@ -613,6 +611,7 @@ class PaperMonitor:
         feed = LiveFeed(await with_rate_in_force(feed.ctx, self._read_settings), feed.fanout)
         async with self._sessions() as session, session.begin():
             if not await self._still_paper(session, t.strategy_id):
+                self._skipped_not_paper(a)  # RA (Z2 T1): left armed, and said: never a silent skip
                 return None  # review F5: the kind is read again in the fire; not paper (or unreadable) = left armed
             book = await paper_store.load(session, t.strategy_id)
             open_net = {int(p.instrument_id): p.net_quantity
@@ -652,6 +651,17 @@ class PaperMonitor:
                 restore={"body": ALERT_BODY_TEMPLATES, "line": STOP_LINE_TEMPLATES + FIRED_LINE_TEMPLATES})
         self.fires += 1
         return {"fired": {t.id}, "cancelled": set()}
+
+    def _skipped_not_paper(self, a: triggers.ArmedTrigger) -> None:
+        """RA (Z2 review T1): the fire's own kind read said "not paper" (or could not answer) for a crossed stop. It
+        stays armed; it is logged ONCE, listed as not applicable and its trade is named in the next report (the badge
+        says why), instead of the trade reading watched while its stop is skipped."""
+        sid, tid = a.trigger.strategy_id, a.trigger.id
+        self._na_strategies[sid] = _NOT_APPLICABLE_WHY.get("unknown", monitoring_state.INDEX_EXITS_NOT_RUN)
+        if tid not in self.not_applicable:
+            self.not_applicable[tid] = "unknown"
+            log.warning("paper trigger %s of strategy %s not fired: its position kind did not read paper at the "
+                        "crossing (left armed, ADR-330 (64))", tid, sid)
 
     @staticmethod
     async def _still_paper(session: Any, strategy_id: int) -> bool:
