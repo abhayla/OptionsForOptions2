@@ -102,3 +102,15 @@ Live: repeat with a real unknown reply; check "Prices as of" / "Checked at" on t
 | round 2 fixes | Sonnet | 15 |
 
 SAFE TO CLOSE (head 99db7820f, left: item 7 browser walk, d, W-15, F5, Opus review of the group B stop/exit items, round 5 re-review)
+
+## Not done: coordinator's second PC list (arrived after the budget ended; a fresh lane starts on head 99db7820f)
+1. T1-20 Home: the paused line lacks its as-of part ("Paper P&L paused ... as of <date>, <time> IST" as on Positions).
+2. T3-10: Positions and Adjustment opportunities show no Retry after a failed load: the one failed-load rule must cover these two pages (my slow-read rule covers the time limit only, not Retry on these pages).
+3. T3-09: a dismissed alert row shows no reason word.
+4. T2-17: My Strategies lists no Completed rows: check the spec (Completed under My Strategies or only /strategies/completed-strategies); if by design, say so with the spec line and make the empty state say where they are.
+5. O-R-09 / W-01: the Plan block of a running trade prints no stop or target figure: show them with units, or the reason none is set.
+6. O-C-05 (Checked at): DONE in 99db7820f (checked-at.test.js, 8 tests).
+7. O-P-01: one blocked exit shows two different reasons: one reason, the server's.
+8. W-25: the Exit all text is cut off inside the dialog at 1366 by 768.
+9. O-A-12 CONFLICT: the coordinator's later message says "pick the second" (Exit not greyed, the dialog opens and says why Confirm is off, ADR-330 (60) shape, both pages agree). What 99db7820f does is the first (a greyed Exit and the exit= link open nothing; the link writes a note). Reconcile with the owner or follow the coordinator's later text; the tests are exit-greyed-no-dialog-r3-fj and exit-not-live-good-read.
+Items 1-5, 7, 8 are not started; nothing of them is on the branch.
