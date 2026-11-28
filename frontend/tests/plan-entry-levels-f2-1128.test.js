@@ -64,3 +64,21 @@ describe('the plan block prints the stop and the target', () => {
     expect(txt(none, 'plan-entry-target').exists()).toBe(false)
   })
 })
+
+describe('W-30 (TG2, weekly trade #1, market closed): "Stop: not being checked" keeps the stop\'s stored figure beside the reason', () => {
+  const REASON = 'No adjustment opportunity checked: prices stale or missing.'
+  const check = (rows) => ({ limits: rows, playbook: { source: 'plan' } })
+  const row = (trigger, over = {}) => ({ rule_id: trigger, trigger_id: trigger, state: 'not_checked', text: `${trigger === 'T-07' ? 'Target' : 'Stop'}: not being checked: ${REASON}`, ...over })
+  it('stop 45 % saved (Rs 731.25): the server\'s reason line AND the stored figure', async () => {
+    const w = await card({ check: check([row('T-06'), row('T-07')]) }, { ...PLAN, stop: '45', stop_rupees: '731.25' })
+    expect(txt(w, 'plan-entry-limit-T-06').text()).toBe(`Stop: not being checked: ${REASON}`)
+    expect(txt(w, 'plan-entry-stop').text()).toBe('Stop: 45 % (Rs 731.25)')
+    expect(txt(w, 'plan-entry-limit-T-07').text()).toBe(`Target: not being checked: ${REASON}`)
+    expect(txt(w, 'plan-entry-target').text()).toBe('Target: 50 % (Rs 1950.00)')
+  })
+  it('a checked stop row already carries its figure: no second line (unchanged)', async () => {
+    const w = await card({ check: check([row('T-06', { state: 'checked', text: 'Stop: loss of 45 % of max loss (Rs 731.25)' })]) }, { ...PLAN, stop: '45', stop_rupees: '731.25' })
+    expect(txt(w, 'plan-entry-stop').exists()).toBe(false)
+  })
+})
+

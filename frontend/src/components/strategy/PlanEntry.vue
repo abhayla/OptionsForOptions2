@@ -96,7 +96,8 @@ const limits = computed(() => {
 // I-197: what the check's lines already print (a row with a sentence); T-07 is the target row, any other row is the stop
 const printed = computed(() => {
   const rows = Array.isArray(props.check?.limits) && props.checkStatus === 'ok' && !props.check?.paused ? props.check.limits : []
-  const has = (l) => KNOWN_STATES.includes(l.state) && typeof l.text === 'string' && l.text !== ''
+  // W-30: a row that says "not being checked" carries the reason, not the figure: the plan's stored figure is still printed beside it
+  const has = (l) => (l.state === 'checked' || l.state === 'already_true') && typeof l.text === 'string' && l.text !== ''
   return { target: rows.some((l) => has(l) && l.trigger_id === 'T-07'), stop: rows.some((l) => has(l) && l.trigger_id !== 'T-07') }
 })
 const NO_STOP_TEXT = 'No stop is set for this trade.' // pending owner read
