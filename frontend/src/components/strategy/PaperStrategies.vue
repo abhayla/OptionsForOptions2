@@ -166,7 +166,7 @@
       </template>
     </template>
     <!-- GC-TP step 4b round 2 (REQ-109 AC-4; Sensibull 166-173): every exit goes through the shared confirm list, in lots -->
-    <PaperConfirmDialog :open="!!confirm" :orders="confirm ? confirm.orders : []" :strategy-id="confirm ? confirm.id : ''" :busy="busy" :blocked="exitGate.notLive.value" :error="dialogError || (confirm && exitGate.notLive.value ? exitEndText('not_live', confirm.names) : '')" :state="dialogState" :locked="!!(confirm && isUnknown(confirm.id))" @confirm="doExit" @cancel="cancelExit" @orderbook="openOrderbook" />
+    <PaperConfirmDialog :open="!!confirm" :orders="confirm ? confirm.orders : []" :strategy-id="confirm ? confirm.id : ''" :busy="busy" :blocked="exitGate.notLive.value" :error="dialogError || (confirm && exitGate.notLive.value ? exitEndText('not_live', confirm.names) : '')" :state="dialogState" :locked="!!(confirm && isUnknown(confirm.id))" :locked-at-ms="confirm && isUnknown(confirm.id) ? (exitRec.cur(confirm.id)?.at ?? 0) : 0" @confirm="doExit" @cancel="cancelExit" @orderbook="openOrderbook" />
   </section>
 </template>
 
@@ -198,7 +198,8 @@ import ExitButton from '@/components/strategy/ExitButton.vue'
 import { usePaperRefresh } from '@/lib/usePaperRefresh'
 import { EXITED_NOW_LABEL, HELD_TO_EXPIRY_LABEL } from '@/lib/paperDrafts'
 import { PAPER_STATE, addToPaper, paperPostOutcome } from '@/lib/tracking'
-import { useRequestKeys, withRequestKey } from '@/lib/requestKey'
+import { dropExitLock, dropOrderKey, exitLockFor, exitLockIds, onExitLocksChanged, orderKeyFor, saveExitLock } from '@/lib/unknownLocks'
+import { UNKNOWN_EXIT_READ_AFTER_MS } from '@/lib/sharedStateText'
 import { useRouter } from 'vue-router'
 import { signOf } from '@/lib/chartCard'
 
@@ -382,7 +383,7 @@ function show({ data, token }) {
     if (dialogState.value === PAPER_STATE.REFUSED) dialogState.value = PAPER_STATE.READY // a good read unlocks a refused, unchanged Confirm; the server's text stays
     lastGoodAt.value = typeof data?.answered_at === 'string' ? data.answered_at : null // UX-A01: the time of the prices the page still shows
     goodReadToken.value = token // the token travels with the answer from the read that made it
-    settle(items.value, token?.seq ?? 0)
+    settle(items.value, token?.seq ?? 0, token?.sentAt ?? Date.now())
     openExitFromLink(exitId)
     if (!hadExit && !props.exitOnlyFor) openStopsFromLink()
   }
@@ -444,7 +445,7 @@ function fail(e) {
 
 const { refresh, refreshNow } = usePaperRefresh({
   key: () => 'list',
-  read: async () => { const token = { seq: ++readSeq }; return { data: (await api.get('/paper/strategies')).data, token } },
+  read: async () => { const token = { seq: ++readSeq, sentAt: Date.now() }; return { data: (await api.get('/paper/strategies')).data, token } },
   onData: show,
   onError: fail,
 })
@@ -453,8 +454,9 @@ onMounted(refresh)
 function onStopsChanged() { try { refreshNow() } catch { /* the list says its own read failed */ } }
 
 // a read that changes the open contracts of the group being exited ends the exit's open question
-function settle(now, seq = 0) {
-  decideUnresolved(now, seq)
+function settle(now, seq = 0, sentAt = Date.now()) {
+  adoptLocks(now, seq)
+  decideUnresolved(now, seq, sentAt)
   const c = confirm.value
   if (c) {
     if (busy.value || isUnknown(c.id)) return // a difference is the pending exit's own doing: wait for the reply, then decide (Lane U r1)
@@ -465,25 +467,53 @@ function settle(now, seq = 0) {
 }
 // a good read that started after the unknown reply decides it: stored (every exited leg reduced), unchanged, or something else.
 // A "not stored" is only the page's guess: a later good read showing the legs reduced replaces it with placed (the server is the authority).
-function decideUnresolved(now, seq) {
+function decideUnresolved(now, seq, sentAt = Date.now()) {
   for (const r of Object.values(exitRec.recs)) {
     if ((r.state !== 'unknown' && r.state !== 'not_stored') || seq <= r.readSeq) continue // started before the reply: it may predate the exit
     const id = r.key
     const g = now.find((x) => String(x.id) === id)
-    if (!g || !g.readable) { if (r.state === 'unknown') exitRec.drop(id); continue } // the usual changed-elsewhere end follows
+    if (!g || !g.readable) { if (r.state === 'unknown') exitRec.drop(id); continue } // the usual changed-elsewhere end follows (the stored lock stays: only a good read of its book ends it)
     const at = (cid) => g.positions.find((p) => p.contractId === cid)?.units ?? 0
     const unchanged = r.units.every((x) => at(x.id) === x.units)
     const stored = r.units.every((x) => at(x.id) !== x.units && (x.units > 0 ? at(x.id) >= 0 && at(x.id) < x.units : at(x.id) <= 0 && at(x.id) > x.units)) // units only, never money: held count moved toward zero, same side
     const open = !!confirm.value && String(confirm.value.id) === id
     if (stored) {
+      dropExitLock(id); dropOrderKey(id) // the server's book decided it: the action is over, its key with it
       exitRec.settle(id, r.id, 'placed', exitEndText('done', r.names, {}, NEUTRAL_ERROR))
       if (open) { ticks.value = { ...ticks.value, [id]: [] }; cancelExit() }
     } else if (r.state === 'unknown' && unchanged) {
+      // Lane FJ item 1: unchanged proves "not stored" only for a read SENT more than UNKNOWN_EXIT_READ_AFTER_MS after the client gave up (the first request can still commit);
+      // never a timer: until such a read answers, the lock stays and so does its key. The key is kept for the resend (a late commit then answers it as placed).
+      if (sentAt - (r.at ?? 0) <= UNKNOWN_EXIT_READ_AFTER_MS) continue
+      dropExitLock(id)
       exitRec.settle(id, r.id, 'not_stored', exitEndText('not_stored', r.names, null, NEUTRAL_ERROR), { readSeq: seq })
       if (open) dialogState.value = PAPER_STATE.READY
-    } else if (r.state === 'unknown') exitRec.drop(id)
+    } else if (r.state === 'unknown') { dropExitLock(id); dropOrderKey(id); exitRec.drop(id) } // the book changed in some other way: the changed-elsewhere end follows
   }
 }
+// Lane FJ item 1 (c): the lock of this BROWSER (lib/unknownLocks.js, localStorage): a list opened (or reloaded, or a second tab) while an exit of unknown outcome is undecided
+// gets the lock back as an unknown record; this very read, which started after the reply, may decide it. A lock the page holds already is left as it is.
+function adoptLock(id, seq, now) {
+  const lock = exitLockFor(id)
+  if (!lock) return false
+  const cur = exitRec.cur(id)
+  if (cur && (cur.state === 'pending' || cur.state === 'unknown')) return true
+  const g = (now ?? items.value ?? []).find((x) => String(x.id) === String(id))
+  const units = Array.isArray(lock.units) ? lock.units : []
+  const attempt = exitRec.begin(id, lock.names ?? g?.positions?.filter((p) => p.open).map((p) => p.name) ?? [], units)
+  exitRec.settle(id, attempt, 'unknown', '', { readSeq: seq > 1 ? seq - 1 : 0, at: lock.at })
+  return true
+}
+function adoptLocks(now, seq) { for (const id of exitLockIds()) adoptLock(id, seq, now) }
+let offLocks = null
+onMounted(() => {
+  offLocks = onExitLocksChanged(() => { // another tab of this browser wrote a lock: it holds here too, an open dialog of that strategy turns to the unknown sentence at once
+    if (!items.value) return
+    adoptLocks(items.value, readSeq + 1)
+    if (confirm.value && isUnknown(confirm.value.id)) dialogState.value = PAPER_STATE.UNKNOWN
+  })
+})
+onBeforeUnmount(() => { offLocks?.() })
 watch(confirm, (now, was) => { if (was && !now && props.exitOnlyFor) emit('exit-closed') })
 // Hotfix 27 Nov (ADR-016..019, ADR-328 (4), owner T1-02): endExit is the ONE door of an Exit that ends without an order or with a
 // refusal; it always leaves a sentence naming the leg(s). 'changed': the legs really changed (or the group cannot be read): the dialog
@@ -511,7 +541,7 @@ function cancelExit() {
 }
 
 function ask(g, rows) {
-  const prevState = exitRec.cur(g.id)?.state // the previous attempt's record, read before ask clears it (the order key rule in doExit)
+  adoptLock(g.id, readSeq + 1) // a lock of another tab or an earlier page instance comes back before anything is offered
   const orders = exitRowsFor(rows)
   const names = rows.map((p) => p.name)
   if (busy.value) return endExit('busy', names, null, g.id)
@@ -519,34 +549,45 @@ function ask(g, rows) {
   if (orders === null || !orders.length) return endExit('changed', names, null, g.id)
   exitRec.clear(g.id)
   dialogState.value = isUnknown(g.id) ? PAPER_STATE.UNKNOWN : PAPER_STATE.READY // an unresolved unknown outcome shows its sentence again, Confirm off
-  confirm.value = { id: g.id, prevState, orders, names, units: rows.map((p) => ({ id: p.contractId, units: p.units })) }
+  confirm.value = { id: g.id, orders, names, units: rows.map((p) => ({ id: p.contractId, units: p.units })) }
 }
 
 // the dialog posts the rows as edited (lots x lot size, the typed price); a refusal stays in the dialog with the server's text
-const requestKeys = useRequestKeys() // order path: one key per exit action, the same key on a resend of it (lib/requestKey.js)
-async function doExit(orders) {
+// Lane FJ item 1: ONE key rule (lib/unknownLocks.js orderKeyFor): the key is the dialog's, made at this Confirm press; the same orders of the same strategy while their
+// record is open (unknown, or "not stored") send the key already held; a lock of an undecided exit (this tab, another tab, an earlier instance) sends nothing.
+const unitsKey = (units) => units.map((u) => `${u.id}:${u.units}`).join(',')
+async function doExit(orders, _held = null, _ticked = false, dialogKey = null) {
   const c = confirm.value
   if (!c) return endExit('changed', [])
   if (busy.value) return endExit('busy', c.names)
   if (exitGate.notLive.value) return endExit('not_live', c.names) // prices paused (a failed read, or a leg of this dialog not live on the last good read): no POST; the dialog says which leg and why
-  const prevState = c.prevState
+  if (adoptLock(c.id, readSeq + 1)) { dialogState.value = PAPER_STATE.UNKNOWN; return } // fail closed: an exit of unknown outcome is undecided: nothing is sent until a good re-read decides it
+  const sig = JSON.stringify(orders)
+  const key = orderKeyFor(c.id, sig, dialogKey)
   const attempt = exitRec.begin(c.id, c.names, c.units) // ONE record per attempt: every answer below goes through it
   busy.value = true
   dialogState.value = PAPER_STATE.READY
+  const lock = { at: Date.now(), before: unitsKey(c.units), names: c.names, units: c.units, key, sig }
+  saveExitLock(c.id, lock) // written BEFORE the post goes out: a list left, reloaded or opened in a second tab meanwhile is covered too; a definite answer removes it
   let reply = null
   try {
-    reply = await addToPaper(withRequestKey(api, requestKeys.keyFor(c.id, JSON.stringify(orders), prevState === undefined || prevState === 'unknown' || prevState === 'not_stored')), c.id, orders) // no suggestion ids: the body is { orders, client_request_id }
+    reply = await addToPaper(api, c.id, orders, [], null, null, null, false, key) // no suggestion ids: the body is { orders, client_request_id }
   } catch (e) {
     const outcome = paperPostOutcome(e)
     dialogState.value = outcome
-    if (outcome === PAPER_STATE.UNKNOWN) requestKeys.markUnknown(c.id) // the resend of these orders keeps the key
-    if (outcome === PAPER_STATE.UNKNOWN) exitRec.settle(c.id, attempt, 'unknown', '', { readSeq })
-    if (outcome === PAPER_STATE.REFUSED) requestKeys.done(c.id) // a definite answer: nothing stored, the next attempt is a new action
-    if (outcome === PAPER_STATE.REFUSED) exitRec.settle(c.id, attempt, 'refused', exitEndText('refused', c.names, e?.parts, NEUTRAL_ERROR)) // 400/409/422: nothing stored; all four parts + the legs
+    if (outcome === PAPER_STATE.UNKNOWN) {
+      const gaveUp = Date.now()
+      saveExitLock(c.id, { ...lock, at: gaveUp }) // `at` is now when the client gave up
+      exitRec.settle(c.id, attempt, 'unknown', '', { readSeq, at: gaveUp })
+    }
+    if (outcome === PAPER_STATE.REFUSED) { // a definite answer (a 4xx, 580 / 581 / 583 too): nothing stored, the lock and the key end; the next attempt is a new action
+      dropExitLock(c.id); dropOrderKey(c.id)
+      exitRec.settle(c.id, attempt, 'refused', exitEndText('refused', c.names, e?.parts, NEUTRAL_ERROR)) // all four parts + the legs
+    }
     busy.value = false
     return
   }
-  requestKeys.done(c.id) // stored: the action is over
+  dropExitLock(c.id); dropOrderKey(c.id) // stored (a repeat of the same key answered 201 too): the action is over
   // STORED (201): the server answered, so the order exists: placed replaces whatever the page guessed meanwhile (unknown / not stored / changed)
   if (confirm.value && String(confirm.value.id) === String(c.id)) confirm.value = null
   ticks.value = { ...ticks.value, [c.id]: [] }

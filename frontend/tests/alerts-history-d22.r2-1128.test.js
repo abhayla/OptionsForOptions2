@@ -21,7 +21,9 @@ import { resetOpenRecords, resetActiveAlerts } from '@/lib/paperAlerts'
 const STOP = { kind: 'stop', strategy_id: 160, strategy_name: '"Condor C3"', at: '2026-11-23T05:51:58Z', title: 'Paper strategy — Condor C3',
   body: 'Stop-loss on the index: NIFTY crossed above 25,720.00; NIFTY was at 25,721.40 at that moment. A paper exit only: no order was sent to Zerodha.' }
 const ANSWERED = { id: 9, strategy_id: 160, strategy_name: '"Condor C3"', text: 'Your stop was close to the index.', fired_line: 'Fired at 11:21', answer_label: 'Keep', answered_at: '2026-11-23T05:55:00Z' }
-const SENTENCE = 'The page could not get an answer from the server.'
+// R3 join: FC2 (I-86) made the failed-load sentence of every list page ONE shared line with a Retry button (lib/listFailed.js);
+// the I-60 intent (the whole sentence, under the half that failed, the other half's rows kept) stands, in FC2's words.
+const SENTENCE = 'Could not load this list. Nothing was changed.'
 
 async function mountAt(path) {
   const r = createRouter({ history: createMemoryHistory(), routes: [{ path: '/:p(.*)*', component: { template: '<div/>' } }] })
@@ -39,8 +41,8 @@ describe('I-60 Alerts > History partial failure message', () => {
     // no answer for /paper/alerts/records: a dropped connection
     const w = await mountAt('/alerts/history')
     expect(w.findAll('[data-testid="answered-row"]')).toHaveLength(1)
-    expect(w.get('[data-testid="records-error-what"]').text()).toBe(SENTENCE)
-    expect(w.find('[data-testid="answered-error-what"]').exists()).toBe(false)
+    expect(w.get('[data-testid="records-error-error"]').text()).toBe(SENTENCE)
+    expect(w.find('[data-testid="answered-error-error"]').exists()).toBe(false)
     expect(w.find('[data-testid="alerts-empty"]').exists()).toBe(false)
     expect(w.find('[data-testid="record-row"]').exists()).toBe(false)
   })
@@ -49,15 +51,15 @@ describe('I-60 Alerts > History partial failure message', () => {
     answers['GET /paper/alerts/records'] = () => Promise.resolve({ data: { records: [STOP] } })
     const w = await mountAt('/alerts/history')
     expect(w.findAll('[data-testid="record-row"]')).toHaveLength(1)
-    expect(w.get('[data-testid="answered-error-what"]').text()).toBe(SENTENCE)
-    expect(w.find('[data-testid="records-error-what"]').exists()).toBe(false)
+    expect(w.get('[data-testid="answered-error-error"]').text()).toBe(SENTENCE)
+    expect(w.find('[data-testid="records-error-error"]').exists()).toBe(false)
     expect(w.find('[data-testid="alerts-empty"]').exists()).toBe(false)
   })
 
   it('I-60: both reads fail: each half shows its own full sentence, no "No stops yet" line', async () => {
     const w = await mountAt('/alerts/history')
-    expect(w.get('[data-testid="answered-error-what"]').text()).toBe(SENTENCE)
-    expect(w.get('[data-testid="records-error-what"]').text()).toBe(SENTENCE)
+    expect(w.get('[data-testid="answered-error-error"]').text()).toBe(SENTENCE)
+    expect(w.get('[data-testid="records-error-error"]').text()).toBe(SENTENCE)
     expect(w.find('[data-testid="alerts-empty"]').exists()).toBe(false)
   })
 })

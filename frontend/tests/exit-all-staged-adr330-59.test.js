@@ -141,7 +141,7 @@ describe('ADR-330 (59): Exit all with a staged change', () => {
     expect(orderPosts()).toHaveLength(1)
     expect(t(w, 'staged-not-kept').text()).toMatch(/^The change waiting on .+ was not sent; it is kept until the exit's outcome is known\.$/)
     answers['GET /paper/strategies/86'] = BOOK
-    await vi.advanceTimersByTimeAsync(121000) // the user comes back later; not-stored needs a read after the server's commit window (Lane Z review F1)
+    await vi.advanceTimersByTimeAsync(131000) // the user comes back later; not-stored needs a read SENT after the server's commit window + margin (Lane Z review F1; Lane FJ: 130 s)
     await S(w).openPaperOrderbook()
     await flushPromises()
     expect(S(w).exitBlocked).toBe(false)

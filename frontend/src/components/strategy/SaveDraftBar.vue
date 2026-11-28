@@ -8,15 +8,24 @@
      not retyped); the draft on screen is never cleared by a failure. A name is shown as text, never as HTML. No number is computed. -->
 <script>
 // Opus review F5: the add-unknown lock outlives this component (leaving the page and coming back remounts the bar): a store for this tab,
-// kept in sessionStorage so a reload keeps it too. A read of the strategy's Paper book alone ends it (checkAddUnknown).
+// kept in localStorage (Lane FJ item 1c: this BROWSER, so a second tab holds it too; the `storage` event brings it in) so a reload keeps it too.
+// A read of the strategy's Paper book alone ends it (checkAddUnknown).
 import { reactive } from 'vue'
 const LOCK_KEY = 'ofo.addUnknown'
 function loadLocks() {
-  try { return JSON.parse(globalThis.sessionStorage?.getItem(LOCK_KEY) ?? '{}') || {} } catch { return {} }
+  try { return JSON.parse(globalThis.localStorage?.getItem(LOCK_KEY) ?? '{}') || {} } catch { return {} }
 }
 export const addUnknownStore = reactive(loadLocks())
 export function saveAddUnknown() {
-  try { globalThis.sessionStorage?.setItem(LOCK_KEY, JSON.stringify(addUnknownStore)) } catch { /* private mode: the lock still holds in memory */ }
+  try { globalThis.localStorage?.setItem(LOCK_KEY, JSON.stringify(addUnknownStore)) } catch { /* private mode: the lock still holds in memory */ }
+}
+if (typeof globalThis.addEventListener === 'function') {
+  globalThis.addEventListener('storage', (e) => { // another tab wrote or ended a lock: this tab's store follows it
+    if (e?.key !== LOCK_KEY && e?.key !== null) return
+    const now = loadLocks()
+    for (const k of Object.keys(addUnknownStore)) if (!(k in now)) delete addUnknownStore[k]
+    Object.assign(addUnknownStore, now)
+  })
 }
 </script>
 <script setup>
@@ -36,13 +45,14 @@ import AdjustPlanSheet from '@/components/strategy/AdjustPlanSheet.vue'
 import { contractName, istTime } from '@/lib/displayFormat'
 import { readPaperBook } from '@/lib/paperDrafts'
 import { notLiveEntryLine, oldestCapture } from '@/lib/priceState'
-import { ADD_TO_PAPER_LABEL, PAPER_ADDED_TEXT, PAPER_STATE, addToPaper, entryPriceFor, newRequestId, paperPostOutcome } from '@/lib/tracking'
+import { ADD_TO_PAPER_LABEL, PAPER_ADDED_TEXT, PAPER_STATE, addToPaper, entryPriceFor, paperPostOutcome } from '@/lib/tracking'
+import { dropOrderKey, orderKeyFor } from '@/lib/unknownLocks'
 import { useRouter } from 'vue-router'
 import { CLEAR_UNDO_SECONDS_KEY } from '@/lib/legEdit'
 import { useSettingsValues } from '@/stores/settingsValues'
 import { newestEntry, newestSeq, restoreEntry, useDeleteFlow } from '@/lib/strategyActivity'
 import { isCompleted, strategyStatusWord } from '@/lib/strategyStatus'
-import { ADD_UNKNOWN_TEXT, RUNNING_TAB_EMPTY_MESSAGE, RUNNING_TAB_EMPTY_TITLE, UNKNOWN_EXIT_WINDOW_MS } from '@/lib/sharedStateText'
+import { ADD_UNKNOWN_TEXT, RUNNING_TAB_EMPTY_MESSAGE, RUNNING_TAB_EMPTY_TITLE, UNKNOWN_EXIT_READ_AFTER_MS } from '@/lib/sharedStateText'
 import {
   STRATEGY_NAME_DEFAULT, STRATEGY_NAME_MAX, buildSaveBody, nameLimitText, noMatchText, buildUpdateBody, canSaveLegs, fetchSavedDraft, legsLine, plainName, renameStrategy, saveAsName, strategyLabel,
 } from '@/lib/saveDraft'
@@ -384,8 +394,9 @@ async function checkAddUnknown() {
       if (addUnknown[id] !== u) continue // the lock was replaced while the read was out: this answer is not about it
       if (read?.kind === 'paper' || read?.kind === 'unpriced') { // orders in the book: stored, this plan never records again
         dropAddUnknown(id)
+        dropOrderKey(id)
         if (String(props.current?.id) === id) { paperRecorded.value = true; emit('paper-added', u.id) }
-      } else if (read?.kind === 'plan' && sentAt - u.at > UNKNOWN_EXIT_WINDOW_MS + 10000) dropAddUnknown(id) // no orders in a read sent past the window (+10 s margin): not stored
+      } else if (read?.kind === 'plan' && sentAt - u.at > UNKNOWN_EXIT_READ_AFTER_MS) dropAddUnknown(id) // no orders in a read sent past the window (+10 s margin): not stored
     }
   } finally { checking = false }
   if (Object.keys(addUnknown).length === 0) { clearInterval(unknownTimer); unknownTimer = null }
@@ -442,7 +453,7 @@ const INDEX_AGE_REFUSAL = 'STRATEGY_VALIDATION_511'
 const serverNotLive = ref(false)
 const notLiveLine = computed(() => (!props.marketClosed && (!props.pricesLive || serverNotLive.value)
   ? notLiveEntryLine(oldestCapture(tickedLegs.value) ?? (props.priceAsOf || null)) : ''))
-async function confirmPaper(orders, held = null, notLiveTicked = false) {
+async function confirmPaper(orders, held = null, notLiveTicked = false, dialogKey = null) {
   if (paperBusy.value) return
   if (addUnknown[paperTarget.value]) return // Opus review F1: an add of unknown outcome is not sent again, whichever button asks
   paperBusy.value = true
@@ -450,12 +461,13 @@ async function confirmPaper(orders, held = null, notLiveTicked = false) {
   paperState.value = PAPER_STATE.READY
   try {
     // ADR-330 (28): the flag is the dialog's own tick state (line shown AND ticked), not the page's price state
-    await addToPaper(api, paperTarget.value, orders, [], null, held, null, notLiveTicked === true, newRequestId())
+    await addToPaper(api, paperTarget.value, orders, [], null, held, null, notLiveTicked === true, orderKeyFor(paperTarget.value, JSON.stringify(orders), dialogKey)) // Lane FJ item 1d: the dialog's key; the same orders still open after an unknown outcome send the key already held
   } catch (e) {
     const outcome = paperPostOutcome(e)
     if (outcome === PAPER_STATE.REFUSED) paperError.value = (e?.parts ?? NEUTRAL_PARTS).what_happened || NEUTRAL_PARTS.what_happened // 4xx: nothing stored
     if (outcome === PAPER_STATE.REFUSED && e?.error_code === INDEX_AGE_REFUSAL) serverNotLive.value = true // F-32: the dialog now asks for the tick; the user sends again (one action, one request)
     paperState.value = outcome
+    if (outcome === PAPER_STATE.REFUSED) dropOrderKey(paperTarget.value) // a definite refusal (580 / 581 / 583 too): nothing stored, the key is free
     if (outcome === PAPER_STATE.UNKNOWN) lockAddUnknown(paperTarget.value)
     if (outcome === PAPER_STATE.REFUSED) {
       const edited = orders.some((o, i) => { const p = paperOrders.value[i]; return !p || String(o.quantity) !== String(p.lots * p.lot_size) || String(o.price).trim() !== String(p.price ?? '').trim() })
@@ -465,6 +477,7 @@ async function confirmPaper(orders, held = null, notLiveTicked = false) {
     return
   }
   refusedFor = null
+  dropOrderKey(paperTarget.value) // stored: the action is over
   // STORED (201): from here this plan never records again (paperRecorded); a failure below is not "not placed"
   paperRecorded.value = true
   try {

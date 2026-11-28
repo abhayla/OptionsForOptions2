@@ -77,12 +77,18 @@ export function cancelledStopLines(list) {
 export const PAPER_UNKNOWN_HOLD_MS = 5000
 /** The dialog states after Confirm: '' (ready), 'refused', 'unknown', 'placed'. */
 export const PAPER_STATE = Object.freeze({ READY: '', REFUSED: 'refused', UNKNOWN: 'unknown', PLACED: 'placed' })
+export const KEY_IN_PROGRESS_CODE = 'STRATEGY_VALIDATION_582'
+export const KEY_UNCHECKED_CODE = 'STRATEGY_VALIDATION_583'
 /** Classify a FAILED paper-order POST (the mapped client error). Hotfix 27 Nov (ADR-016..019): 'refused' = the server itself
  *  answered 4xx (not the proxy's 408/429), so it stored nothing (one transaction or none); EVERYTHING else is 'unknown': no answer (timeout, dropped
  *  connection), a 5xx (a gateway timeout can follow a commit), a proxy 408/429, and a POST the page cancelled (superseded): the order
  *  may be stored, so Confirm is never re-armed as if it were not (a second order, ADR-017). */
 export function paperPostOutcome(e) {
   const status = Number.isInteger(e?.status) ? e.status : null
+  // Lane FJ item 1e (the server's answers of fd2): 582 = the first request with this key is still being placed: NOT a refusal (keep the lock and the key, read the book);
+  // 583 = the app could not check whether these orders were already placed: refused, nothing stored (read the book before another try); 580 / 581 are plain 409s: refused.
+  if (e?.error_code === KEY_IN_PROGRESS_CODE) return PAPER_STATE.UNKNOWN
+  if (e?.error_code === KEY_UNCHECKED_CODE) return PAPER_STATE.REFUSED
   if (status !== null && status >= 400 && status < 500 && status !== 408 && status !== 429) return PAPER_STATE.REFUSED // 408/429 are the proxy's: not proof that nothing was stored
   return PAPER_STATE.UNKNOWN
 }
@@ -94,19 +100,6 @@ export function entryPriceFor(leg, livePriceById = {}) {
   // GC-ICLIVE-B D-15 (c): a live price that is not the plan's says so ("plan 36.45"): no re-quote is hidden
   if (typeof live === 'string' && live.trim() !== '') return { price: live.trim(), price_note: planned && planned !== live.trim() ? `plan ${planned}` : '' }
   return { price: planned, price_note: planned ? PAPER_PLANNED_PRICE_NOTE : '' }
-}
-
-/** One request key per Confirm (Lane FB2, ADR-017; the server answers a repeat of the same key with the first result and places nothing).
- *  The page never re-sends on its own: a new Confirm makes a new key, so the same key is re-sent only for the same Confirm. */
-export function newRequestId() {
-  const c = globalThis.crypto
-  if (c && typeof c.randomUUID === 'function') return c.randomUUID()
-  if (!c || typeof c.getRandomValues !== 'function') return null // no key can be made: none is sent (the page's lock still holds)
-  const b = c.getRandomValues(new Uint8Array(16))
-  b[6] = (b[6] & 0x0f) | 0x40
-  b[8] = (b[8] & 0x3f) | 0x80
-  const h = [...b].map((x) => x.toString(16).padStart(2, '0')).join('')
-  return `${h.slice(0, 8)}-${h.slice(8, 12)}-${h.slice(12, 16)}-${h.slice(16, 20)}-${h.slice(20)}`
 }
 
 /** POST the confirmed orders in ONE request (the server stores them in one transaction or none). Throws the client error. */

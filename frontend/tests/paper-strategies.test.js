@@ -19,6 +19,7 @@ vi.mock('@/services/api', async (importActual) => {
 })
 
 import { withPriceTexts } from './_priceTexts'
+import { UNKNOWN_EXIT_READ_AFTER_MS } from '@/lib/sharedStateText'
 import PaperStrategies from '@/components/strategy/PaperStrategies.vue'
 import PaperConfirmDialog from '@/components/strategy/PaperConfirmDialog.vue'
 import { readTrackingItem, readTracking, TRACKING_REFRESH_MS, NOT_CONNECTED_TEXT, PAPER_UNKNOWN_HOLD_MS } from '@/lib/tracking'
@@ -468,7 +469,9 @@ describe('PaperStrategies: an UNKNOWN outcome keeps that strategy\'s exit unreso
     await t(w, 'paper-confirm-button').trigger('click')
     await flushPromises()
     expect(confirmOff(w)).toBe(true)
-    await vi.advanceTimersByTimeAsync(TRACKING_REFRESH_MS)
+    await vi.advanceTimersByTimeAsync(TRACKING_REFRESH_MS) // Lane FJ item 1: a read inside the commit window shows the legs unchanged and decides nothing
+    expect(confirmOff(w)).toBe(true)
+    await vi.advanceTimersByTimeAsync(UNKNOWN_EXIT_READ_AFTER_MS + TRACKING_REFRESH_MS) // the first read SENT more than 130 s after the client gave up decides: not stored
     expect(has(w, 'paper-unknown')).toBe(false)
     expect(t(w, 'paper-error').text()).toContain(NOT_STORED)
     expect(confirmOff(w)).toBe(false)

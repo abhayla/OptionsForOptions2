@@ -2,11 +2,13 @@
 // the same key places nothing). One key per user action; the SAME key on a resend of that action (an exit whose outcome was unknown and is
 // sent again with the same orders); a new key for any other action (the order was stored, the server refused it, or the orders changed).
 // Spec basis: ADR-016..019 (no blind second order), ADR-330 (49).
+// Lane FJ (R3, item 1d): moved to the ONE key rule: the key is the dialog's (a UUID made at each Confirm press); lib/unknownLocks.js orderKeyFor keeps it for the same orders
+// while their record is open. The older FC2 helpers (newRequestKey, withRequestKey, useRequestKeys) are gone.
 import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest'
 import { mount, flushPromises } from '@vue/test-utils'
 import { createRouter, createMemoryHistory } from 'vue-router'
 import REAL from './fixtures/paper-strategies.json'
-import { newRequestKey, resetRequestKeys, useRequestKeys, withRequestKey } from '@/lib/requestKey'
+import { dropOrderKey, orderKeyFor, resetExitLocks } from '@/lib/unknownLocks'
 
 const calls = []
 let answers = {}
@@ -50,21 +52,8 @@ async function exitLeg(w) {
 const REFUSED = () => Promise.reject({ message: 'x', status: 422, parts: { what_happened: 'Enter a price in steps of 0.05.', impact: 'i', what_is_blocked: 'b', next_action: 'n' } })
 const UNKNOWN = () => Promise.reject({ message: 'x', status: 503, parts: null })
 
-beforeEach(() => { resetRequestKeys(); calls.length = 0; resetActiveAlerts(); vi.useFakeTimers(); answers = { 'GET /paper/strategies': () => Promise.resolve({ data: clone() }) } })
+beforeEach(() => { resetExitLocks(); calls.length = 0; resetActiveAlerts(); vi.useFakeTimers(); answers = { 'GET /paper/strategies': () => Promise.resolve({ data: clone() }) } })
 afterEach(() => { mounted.splice(0).forEach((w) => { try { w.unmount() } catch { /* gone */ } }); vi.useRealTimers(); document.body.innerHTML = '' })
-
-describe('requestKey', () => {
-  it('keys differ per call; withRequestKey adds the key to a POST body and leaves other calls alone', async () => {
-    expect(newRequestKey()).not.toBe(newRequestKey())
-    expect(typeof newRequestKey()).toBe('string')
-    const seen = []
-    const client = { get: (u) => Promise.resolve(u), post: (u, b, c) => { seen.push([u, b, c]); return Promise.resolve({ data: 1 }) } }
-    const k = withRequestKey(client, 'abc')
-    await k.post('/x', { orders: [] }, { timeout: 5 })
-    expect(seen[0]).toEqual(['/x', { orders: [], client_request_id: 'abc' }, { timeout: 5 }])
-    expect(await k.get('/y')).toBe('/y')
-  })
-})
 
 describe('the exit request carries client_request_id', () => {
   it('one exit: the body has the key and the orders as before', async () => {
@@ -96,7 +85,7 @@ describe('the exit request carries client_request_id', () => {
     const w = await show()
     await exitLeg(w)
     expect(posts()).toHaveLength(1)
-    await vi.advanceTimersByTimeAsync(6000) // the list re-reads (5 s); the legs are unchanged: the exit was not stored, Confirm may be on again
+    await vi.advanceTimersByTimeAsync(140000) // the list re-reads every 5 s; the first read SENT more than 130 s after the client gave up shows the legs unchanged: not stored, Confirm may be on again
     await flushPromises()
     await exitLeg(w)
     expect(posts()).toHaveLength(2)
@@ -105,22 +94,18 @@ describe('the exit request carries client_request_id', () => {
   })
 })
 
-describe('key rules (Opus review F1, F2, F5)', () => {
-  it('the same orders get the same key only after an UNKNOWN outcome and only while the record allows it', () => {
-    const k = useRequestKeys()
-    const a = k.keyFor(1, 'A')
-    expect(k.keyFor(1, 'A')).not.toBe(a) // a key is lent only after markUnknown
-    const b = k.keyFor(1, 'B')
-    k.markUnknown(1)
-    expect(k.keyFor(1, 'B')).toBe(b) // unknown, same orders: reuse
-    expect(k.keyFor(1, 'B', false)).not.toBe(b) // the record says the exit was settled (placed / changed): new action
-    const c = k.keyFor(1, 'C')
-    k.markUnknown(1)
-    expect(k.keyFor(1, 'D')).not.toBe(c) // other orders: new key
+describe('key rules (Opus review F1, F2, F5), on the one rule', () => {
+  it('the same orders get the held key while their record is open; other orders, or a decided action, get the dialog\'s new key', () => {
+    const a = orderKeyFor(1, 'A', 'k1')
+    expect(a).toBe('k1')
+    expect(orderKeyFor(1, 'A', 'k2')).toBe('k1') // record still open (no definite answer yet): the same key
+    expect(orderKeyFor(1, 'B', 'k3')).toBe('k3') // other orders: a new action, the dialog's key
+    dropOrderKey(1) // a definite answer (stored or refused)
+    expect(orderKeyFor(1, 'B', 'k4')).toBe('k4')
   })
-  it('F2: the key survives the screen being mounted again (module-level store)', () => {
-    const first = useRequestKeys(); const k1 = first.keyFor(7, 'A'); first.markUnknown(7)
-    expect(useRequestKeys().keyFor(7, 'A')).toBe(k1)
+  it('F2: the key survives the screen being mounted again (it is kept in the browser, not in the page)', () => {
+    expect(orderKeyFor(7, 'A', 'k1')).toBe('k1')
+    expect(orderKeyFor(7, 'A', 'k9')).toBe('k1')
   })
   it('F1: an unknown outcome that a re-read settled as placed does not lend its key to the next, identical exit', async () => {
     let n = 0

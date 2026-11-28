@@ -35,7 +35,7 @@ const orderPosts = () => calls.filter((c) => c.method === 'POST' && c.url === '/
 const S = (w) => w.vm.$.setupState
 const mounted = []
 
-beforeEach(() => { vi.useFakeTimers() })
+beforeEach(() => { vi.useFakeTimers(); globalThis.localStorage?.clear() }) // Lane FJ: the lock is kept in the browser (localStorage), not the tab
 afterEach(() => { vi.useRealTimers(); while (mounted.length) mounted.pop().unmount(); document.body.innerHTML = '' })
 
 async function unknownExit() {
@@ -164,6 +164,6 @@ describe('Opus review F1: the lock is written BEFORE the post, so a page left wh
     await vi.advanceTimersByTimeAsync(6000)
     await flushPromises()
     expect(S(first).exitBlocked).toBe(false)
-    expect(globalThis.sessionStorage.getItem('ofo.exitUnknown') ?? '{}').not.toContain('"86"')
+    expect(globalThis.localStorage.getItem('ofo.exitUnknown') ?? '{}').not.toContain('"86"')
   })
 })

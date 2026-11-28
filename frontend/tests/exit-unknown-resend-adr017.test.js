@@ -6,7 +6,7 @@ import { createMemoryHistory, createRouter } from 'vue-router'
 import StrategyBuilderPage from '@/pages/StrategyBuilderPage.vue'
 import REAL from './fixtures/paper-book-63.json'
 import { legacy } from './_paperList'
-import { UNKNOWN_EXIT_WINDOW_MS } from '@/lib/sharedStateText'
+import { UNKNOWN_EXIT_READ_AFTER_MS as UNKNOWN_EXIT_WINDOW_MS } from '@/lib/sharedStateText' // Lane FJ: a read SENT more than 130 s after the client gave up decides unchanged
 
 const calls = []
 let answers = {}

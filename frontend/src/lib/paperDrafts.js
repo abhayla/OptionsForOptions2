@@ -172,15 +172,16 @@ export function confirmRowsFor(orders, book, nameOf, livePriceById = {}) {
  *  it has none or the server answers 404 (not a paper strategy: the saved plan opens as before). Any other failure (network,
  *  5xx, an unreadable book) THROWS: the caller says so and never falls back to the plan silently. */
 export async function readPaperBook(client, id) {
+  const sentAt = Date.now() // Lane FJ item 1: when this read was SENT (the unknown-exit rule asks it, never the time its answer came)
   let book
   try {
     book = (await client.get(`/paper/strategies/${id}`)).data
   } catch (e) {
-    if (e?.status === 404) return { kind: 'plan' }
+    if (e?.status === 404) return { kind: 'plan', sentAt }
     throw e
   }
   if (!book || typeof book !== 'object' || !Array.isArray(book.orders)) throw new Error('unreadable paper book')
-  if (!isPaperBook(book)) return { kind: 'plan' }
+  if (!isPaperBook(book)) return { kind: 'plan', sentAt }
   const contracts = []
   const expiries = [...new Set(book.positions.filter((p) => p?.net_quantity !== 0).map((p) => p?.expiry))]
   for (const expiry of expiries) {
@@ -189,9 +190,9 @@ export async function readPaperBook(client, id) {
   const net = netLegsFromBook(book, contracts)
   // D-40: an open leg on an expired contract is not in the catalogue; the server says so (expired_open) and why nothing is priced.
   // Any other unreadable book (catalogue, net mismatch, a leg that is not live but not expired) still throws below.
-  if (!net && book.expired_open === true) return { kind: 'unpriced', book }
+  if (!net && book.expired_open === true) return { kind: 'unpriced', book, sentAt }
   if (!net) throw new Error('unreadable paper book')
-  return { kind: 'paper', book, net }
+  return { kind: 'paper', book, net, sentAt }
 }
 
 /** GC-ICFIX issue 18: waits (ms) before each read of the book after practice orders were stored: now, then two spaced retries.
