@@ -37,7 +37,8 @@ for (const path of ['/positions/current-positions', '/positions/strategy-linked-
     await expect(page.getByTestId('positions-outside')).toHaveText('1 outside lot - view on Kite')
     await expect(page.getByTestId('positions-outside-kite')).toHaveAttribute('href', KITE_POSITIONS_URL)
     await expect(page.getByTestId('positions-page')).not.toContainText(/price|margin|₹/i) // Lane S: Zerodha's own P&L is shown now
-    await expect(page.getByTestId('positions-page').getByRole('button')).toHaveCount(0)
+    // ADR-330 (10): the All / Real / Paper filter and ADR-330 (54): the Plan button of a running trade and the figure that opens its charges breakdown (AfterChargesTap) are the only buttons; none places an order
+    await expect(page.getByTestId('positions-page').getByRole('button').filter({ hasNotText: /^(All|Real|Paper|Plan|[-+−\d.,]+)/ })).toHaveCount(0)
   })
 }
 
