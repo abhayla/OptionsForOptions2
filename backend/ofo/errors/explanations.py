@@ -941,8 +941,8 @@ class ClockSeconds(SlotType):
         return Clock.format(value)
 
 
-_DAY_NAMES = ("Monday", "Tuesday", "Wednesday", "Thursday", "Friday", "Saturday", "Sunday")
-_MONTH_NAMES = ("Jan", "Feb", "Mar", "Apr", "May", "Jun", "Jul", "Aug", "Sep", "Oct", "Nov", "Dec")
+_DAY_NAMES = dict(enumerate(("Monday", "Tuesday", "Wednesday", "Thursday", "Friday", "Saturday", "Sunday")))
+_MONTH_NAMES = dict(zip(range(1, 13), ("Jan", "Feb", "Mar", "Apr", "May", "Jun", "Jul", "Aug", "Sep", "Oct", "Nov", "Dec"), strict=True))
 
 
 class DayLabel(SlotType):
@@ -955,7 +955,7 @@ class DayLabel(SlotType):
     @staticmethod
     def format(value: datetime.date) -> str:
         # #875: English names from a table, never strftime (its day and month names follow the host locale)
-        return f"{_DAY_NAMES[value.weekday()]} {value.day} {_MONTH_NAMES[value.month - 1]}"
+        return f"{_DAY_NAMES[value.weekday()]} {value.day} {_MONTH_NAMES[value.month]}"
 
 
 class ClockHms(SlotType):

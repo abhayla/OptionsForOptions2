@@ -5,6 +5,7 @@ answer, fail closed)."""
 from __future__ import annotations
 
 import datetime
+import time
 from decimal import Decimal
 from http import HTTPStatus
 
@@ -74,9 +75,7 @@ async def test_route_answers_the_sentence() -> None:
 
 
 def test_day_label_does_not_follow_the_host_locale(monkeypatch: pytest.MonkeyPatch) -> None:
-    """#875: strftime names days and months in the host locale. Every strftime now answers in German; the sentence is the same English one."""
-    import time
-
+    """#875: strftime follows the host locale; with every strftime answering in German the sentence stays English."""
     def _german(fmt: str, *args: object) -> str:
         return fmt.replace("%A", "Montag").replace("%b", "Nov.").replace("%d", "30")
 

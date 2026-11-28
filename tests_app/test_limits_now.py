@@ -306,7 +306,8 @@ def test_u142_a_fired_stop_states_the_loss_and_the_stop_line_in_rupees_and_perce
     text = route.stop_text(flag, ev.limits, state.pnl, at)
     assert text == ("Stop reached: loss now \u20b912,000.00 (50.2154 % of max loss); stop line \u20b911,948.52 (50 % of max loss); "
                     "seen by the check at 12:58 IST")
-    assert route.stop_text(flag, ev.limits, state.pnl, {}) == text.removesuffix("; seen by the check at 12:58 IST")  # no record yet: no time invented
+    no_record = route.stop_text(flag, ev.limits, state.pnl, {})
+    assert no_record == text.removesuffix("; seen by the check at 12:58 IST")  # no record yet: no time invented
     assert route.stop_text(flag, ev.limits, None, at) is None  # a figure missing: no sentence
     target = next(r for r in run(IC, pnl="2000")[1].results if isinstance(r, pe.Flag))
     assert route.stop_text(target, run(IC, pnl="2000")[1].limits, D("2000"), at) is None  # a target flag is not a stop
