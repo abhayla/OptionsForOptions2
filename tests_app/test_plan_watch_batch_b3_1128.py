@@ -76,15 +76,22 @@ async def _batch_and_singles(ids: list[int], single_for: list[int] | None = None
     return r.json(), singles, statements
 
 
-#: Statements a batch of nine running rows may run. MEASURED on this test's rows: 219 before the batch reads (24 a
-#: row), 162 after (the duplicate screen-isolation read gone, trigger contracts and position kinds read once for all
-#: rows, the expiry kind read once), 136 after the orders and traded contracts are read once too (``Prefetched`` in
-#: ``read_tracked``). What is left is per row: the plan, the facts and the records (``run_check``, not this lane's).
-#: Lowered with each fix, never raised.
-BATCH9_CEILING = 136
+#: Queries one plan-watch batch answer may run, WHATEVER the number of rows. MEASURED: 219 for nine rows (24 a row)
+#: before any batch read; 162 with shared trigger, contract and kind reads; 136 with orders and traded contracts
+#: read once;
+#: 12 with every table of the check path read for all rows in ONE statement and the per-row statements answered from
+#: memory (``plan_watch_prefetch``): 3 request settings, 1 combined read, orders 1, contracts 2, kinds 1, the expiry
+#: kind of the first row 3 (savepoint, catalogue, release), the ADR-247 time 1. Lowered with each fix, never raised.
+BATCH_QUERY_CEILING = 12
+#: The owner's PC, real database link, 28 Nov (PC round 2, W-02): the API log said 11.8 s of database time over 88
+#: queries, so a query costs about 134 ms of link. A test proves cost by COUNTING work
+#: (tests/test_no_wall_clock_asserts.py): the
+#: link is modelled as this constant per query, no sleep and no clock.
+LINK_S_PER_QUERY = Decimal("0.134")
+PAGE_BUDGET_S = Decimal(2)  # the plan's target for one answer of nine strategies
 
 
-async def test_nine_rows_statement_ceiling_and_each_row_its_own(app_db_url, monkeypatch):  # noqa: F811
+async def test_nine_rows_each_row_its_own_and_a_fixed_number_of_queries(app_db_url, monkeypatch):  # noqa: F811
     ids = await seed_rows(app_db_url, monkeypatch)
     body, singles, statements = await _batch_and_singles(ids)
     assert [i["strategy_id"] for i in body["items"]] == ids
@@ -93,7 +100,8 @@ async def test_nine_rows_statement_ceiling_and_each_row_its_own(app_db_url, monk
         assert item["watch"] == singles[item["strategy_id"]], f"row {k}: the batch differs from its single route"
         index_exit = next(x for x in item["watch"]["lines"] if x["kind"] == "index_exit")
         assert index_exit["fires_at"] == f"{BASE_LEVEL + 10 * k}.00", f"row {k} shows another row's level"
-    assert statements <= BATCH9_CEILING, f"batch of {ROWS}: {statements} statements, ceiling {BATCH9_CEILING}"
+    assert statements <= BATCH_QUERY_CEILING, f"batch of {ROWS}: {statements} queries, ceiling {BATCH_QUERY_CEILING}"
+    assert statements * LINK_S_PER_QUERY < PAGE_BUDGET_S, f"{statements} queries on the real link: too slow"
 
 
 async def test_a_failed_shared_read_fails_no_row_and_a_failed_row_is_its_own_refusal(
@@ -220,3 +228,39 @@ async def test_read_tracked_gives_the_same_book_with_and_without_the_batch_reads
             assert _same(await read_tracked(sid, None, db=conn, prefetched=partial)) == _same(
                 await read_tracked(sid, None, db=conn))
         assert await read_tracked(987654, None, db=conn, prefetched=shared) is None  # not found stays not found
+
+
+
+
+async def test_the_query_count_does_not_grow_with_the_number_of_rows(app_db_url, monkeypatch):  # noqa: F811
+    """The defect class of PC round 2 W-02: a per-row read costs a link round trip per row. Three rows and nine rows run
+    the SAME number of queries (red before: 24 a row, 219 for nine)."""
+    ids = await seed_rows(app_db_url, monkeypatch)
+    _b, _s, three = await _batch_and_singles(ids[:3], single_for=[])
+    _b, _s, nine = await _batch_and_singles(ids, single_for=[])
+    assert three == nine, f"3 rows: {three} queries, 9 rows: {nine}"
+
+
+def test_every_statement_copy_equals_the_stores_own():
+    """``plan_watch_prefetch.ORIGINAL`` matches a per-row statement by its text; a store that rewords one must fail
+    here, so the saving is never silently lost (and never applied to a different statement)."""
+    from ofo_app import (  # noqa: PLC0415
+        entry_facts_store,
+        paper_trigger_store,
+        playbook_store,
+        scenario_guard,
+        strategy_pause_store,
+    )
+    from ofo_app import plan_watch_prefetch as pf  # noqa: PLC0415
+    from sqlalchemy import text  # noqa: PLC0415
+    stores = {
+        "marker": text(scenario_guard._MARKER), "owns": playbook_store._OWNS_STRATEGY,
+        "pause": strategy_pause_store._LATEST, "facts": entry_facts_store._SELECT,
+        "baskets": entry_facts_store._SELECT_BASKETS, "rule_state": playbook_store._SELECT_STATE,
+        "plan": playbook_store._SELECT_PLAN, "open": playbook_store._OPEN_OF_STRATEGY,
+        "dismissed": playbook_store._LATEST_DISMISSED, "triggers": paper_trigger_store._FOR,
+        "adr247": playbook_store._ADR247_SAVED_AT,
+    }
+    assert set(stores) == set(pf.ORIGINAL)
+    for name, statement in stores.items():
+        assert pf.norm(statement) == pf.ORIGINAL[name], name

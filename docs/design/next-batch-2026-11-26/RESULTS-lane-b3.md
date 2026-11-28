@@ -1,4 +1,4 @@
-STATUS 21:50 | PUSH 4 pending check: rig now seeds ten DISTINCT strategies (was one id ten times); in-row duplicates (8 of 27) are in files not mine: call sites under 'For the owner lane' | O-P-03 FRONTEND FIELD: `paper_strategy_id` on the outcome request body (the builder sends it via bookedFields; any other surface that shows the heading must send it) | blocker: send_message to @parent refused; this line is the report
+STATUS 00:10 | PUSH 5 pending check: PC W-02 FIX, fixed round trips: one batch answer of nine rows 219 -> 136 (earlier cuts) -> 12 QUERIES, the same 12 for 3 rows (the count no longer grows with rows); at the PC's 134 ms a query that is 12 x 0.134 = 1.6 s of database time, was 88 queries / 11.8 s | page asked 11 times: see 'PC round 2 W-02' | O-P-03 FRONTEND FIELD: `paper_strategy_id` on the outcome request | blocker: send_message to @parent refused; this line is the report
 
 # Lane B3 results (28 Nov 2026)
 
@@ -56,6 +56,35 @@ M2 `release_connection` and the rollback in `prefetch` sit outside the per-row t
 for the whole batch (fail closed, no figure shown); M3 the prefetch counts against the 15 s budget but is not under
 `wait_for`; M4 no DB test yet for a REAL position with armed triggers in a batch, another user's strategy with armed
 triggers (must stay 404), or a memo hit against the single route on a real-book row.
+
+## PC round 2 W-02 (the owner's real database connection): the cost is round trips, not statements
+Measured by the owner on build 829ff65f: 16.4 to 19.3 s per batch answer, 88 queries, 11.8 s of database time (about 134 ms
+a query over his connection); in three minutes no planned box showed its rule rows. The cloud had measured 218 ms because
+its database is next door, so the statement counts 219 -> 136 were the wrong goal. Built (test first):
+- `backend/ofo_app/plan_watch_prefetch.py` (new): the batch reads EVERY table of the check path once for all its rows, in
+  ONE statement (`= ANY(:ids)`, each table as an array of rows with native types); then, for the length of the request, the
+  session's `execute` answers the check path's per-row statements (recognised by exact text, with the row's id and user
+  taken from its parameters) from memory: marker, ownership, pause, entry facts, basket facts, rule memory, plan, open and
+  dismissed records, triggers, the ADR-247 time. The per-row code is NOT changed: the same rows go through the same
+  converters. Anything unrecognised, any id or user the batch did not read, any write goes to the database as before. A
+  reworded store statement stops matching (slower, never different) and `test_every_statement_copy_equals_the_stores_own`
+  fails. The ownership statement is learned from `strategy_store.owns` at run time (its SQL has one home).
+- Same answer: `test_nine_rows_each_row_its_own_and_a_fixed_number_of_queries` compares every row of the batch with its
+  single route and checks each row's own armed level; the read_tracked equality test is unchanged.
+- Count, MEASURED on nine strategies: 219 queries before, 12 now. `test_the_query_count_does_not_grow_with_the_number_of_rows`
+  runs 3 rows and 9 rows and requires the same count. The 12: 3 request settings, 1 combined read, orders 1, contracts 2,
+  kinds 1, the expiry kind of the first row 3 (savepoint, catalogue, release), the ADR-247 time 1.
+- The owner's connection, modelled (the repo forbids wall-clock asserts, tests/test_no_wall_clock_asserts.py; a test proves
+  cost by counting): 134 ms per query x 12 = 1.6 s, asserted under the plan's 2 s (`LINK_S_PER_QUERY`, `PAGE_BUDGET_S`).
+  Before: 88 queries x 134 ms = 11.8 s by the owner's measure.
+- Why 11 page requests and not 9 [Likely, not run in a browser]: `frontend/src/components/strategy/PaperStrategies.vue`
+  (`watch([planIds, goodReadToken], readPlanBatches)`, about lines 335 to 370) cancels the batch in flight and asks again
+  every time a good positions read changes `goodReadToken`; with each answer taking 16 to 19 s, the batch was cancelled by
+  the next refresh before it finished (so no rule rows, "Updating the numbers..."), plus up to 3 "not read" re-asks a row.
+  The page does not ask twice per row. With an answer of about 1.6 s of database time the race is gone; a frontend lane could
+  still let an in-flight batch for the same ids finish instead of cancelling it (`readPlanBatches`, `lib/planWatchQueue.js`).
+- Still per answer, not this lane's files: the 3 settings reads of the request dependencies and the savepoint trio of the
+  first row's expiry kind could go too (12 -> 6): see "For the owner lane".
 
 ## Item 3 (I-202, O-P-03): running trade, not a draft
 Real case (plan row I-202): "A running paper trade shows the Draft Live data not connected heading above the monitoring
@@ -117,6 +146,10 @@ stop line; another user's strategy is refused exactly as the single route refuse
 start) and M3 (prefetch outside the 15 s `wait_for`) stay open, display only, listed here for the next pass.
 
 ## For the owner lane
+- 12 -> 6 queries per answer: `app_settings`, the user's adjustment preferences and `clock_timestamp()` are read once per
+  request by the dependencies (settings loaders, market context); one shared read or a short process cache saves 3. The
+  expiry-kind catalogue read (savepoint, select, release) of the first row could use a process cache keyed by (underlying,
+  expiry) and saves 3 more.
 - In-row duplicate reads of the plan-watch/adjustment-check path (RA2's 8 of 27, mapped to call sites this session; none is
   in a file this lane may edit; each is "pass the value already read", output unchanged, statement count pinned by
   `test_query_ceiling` and `BATCH9_CEILING`):

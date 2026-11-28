@@ -27,7 +27,7 @@ from __future__ import annotations
 import dataclasses
 import datetime
 import logging
-from collections.abc import Mapping
+from collections.abc import Callable, Mapping
 from decimal import ROUND_HALF_UP, Decimal
 from typing import Annotated, Any, Literal
 
@@ -92,19 +92,31 @@ class BatchReads:
     expiry_kinds: dict[tuple[str, datetime.date], str] = dataclasses.field(default_factory=dict)
     #: the rows' paper orders and the answers of every contract they and the triggers name (``read_tracked``'s input)
     tracked: Prefetched = dataclasses.field(default_factory=Prefetched)
+    #: puts the request's session back as it was (``plan_watch_prefetch.install`` made it answer the check path's
+    #: per-row statements from the batch's set-based reads for the request); a no-op when nothing was installed
+    restore: Callable[[], None] = lambda: None
 
 
 async def prefetch(db: Any, strategy_ids: list[int], user_ref: str) -> BatchReads:
-    """The batch's shared reads: ONE read of every row's paper orders (the caller's own only: the owner filter is in the
-    query), each row's triggers, then ONE contract resolve (the orders' and the triggers' contracts) and ONE kind read.
-    A failed read leaves the rows to read for themselves (their own refusal); the session is rolled back first."""
+    """The batch's shared reads, a FIXED number of queries whatever the number of rows (PC round 2 W-02: one round trip
+    costs about 134 ms, 136 statements for nine rows took 18 s): one query per table for all ids
+    (``plan_watch_prefetch.read_all``), the rows' paper orders, ONE contract resolve (orders and triggers) and ONE
+    kind read. A failed read leaves the rows to read for themselves, as the single route does; the session is rolled
+    back first when the failure was a database error."""
     from ofo_app import strategy_store  # noqa: PLC0415 - late: strategy_store reaches the order modules
     reads = BatchReads()
+    restore: Callable[[], None] = reads.restore
     try:
+        # in the try: a changed statement stops the prefetch, not the batch
+        from ofo_app import (  # noqa: PLC0415
+            plan_watch_prefetch,
+        )
+        restore = plan_watch_prefetch.install(db, await plan_watch_prefetch.read_all(db, strategy_ids, user_ref))
         orders = await paper_book.load_owned_many(db, user_ref, strategy_ids)
         triggers = {}
-        for sid in strategy_ids:
-            triggers[sid] = [r for r in reversed(await paper_trigger_store.list_for(db, sid)) if r.cancelled_at is None]
+        for sid in strategy_ids:  # answered from memory by the installed ``execute``: no query
+            rows = await paper_trigger_store.list_for(db, sid)
+            triggers[sid] = [r for r in reversed(rows) if r.cancelled_at is None]
         ids = sorted({r.trigger.contract_id for rows in triggers.values() for r in rows
                       if r.trigger.contract_id is not None}
                      | {o.order.contract_id for rows in orders.values() for o in rows})
@@ -113,6 +125,7 @@ async def prefetch(db: Any, strategy_ids: list[int], user_ref: str) -> BatchRead
         kinds = await strategy_store.kinds_of(db, with_rows) if with_rows else {}
     except Exception as exc:  # noqa: BLE001 - the prefetch is only a saving: any failure, each row reads for itself
         log.warning("plan watch batch: shared reads failed, each row reads for itself: %s", type(exc).__name__)
+        restore()
         rollback = getattr(db, "rollback", None)
         if rollback is not None and isinstance(exc, SQLAlchemyError):  # a failed statement leaves the session unusable
             try:
@@ -122,6 +135,7 @@ async def prefetch(db: Any, strategy_ids: list[int], user_ref: str) -> BatchRead
         return reads
     reads.triggers, reads.contracts, reads.kinds = triggers, found, kinds
     reads.tracked = Prefetched(orders, found)
+    reads.restore = restore
     return reads
 
 

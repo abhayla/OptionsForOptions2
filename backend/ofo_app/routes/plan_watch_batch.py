@@ -102,32 +102,35 @@ async def plan_watch_batch(  # noqa: PLR0913 - FastAPI dependencies, one per inp
     ids = _ids_of(strategy_ids)
     reads = await prefetch(db, ids, user_ref)  # I-48: the shared reads, once (a failure: each row reads its own)
     try:
-        await release_connection(db)  # D-36 (c): shared reads done, rows wait on prices
-    except Exception:  # noqa: BLE001 - a broken connection: each row then refuses on its own, the batch still answers
-        log.warning("plan watch batch: the connection could not be released after the shared reads")
-    tracked_reader = _with_shared_reads(tracked_reader, reads)
-    for sid in ids:
-        left = deadline - time.monotonic()
-        if left <= 0:  # the budget is spent: this row is not read (never guessed, never waited for)
-            items.append({"strategy_id": sid, "state": "not_read"})
-            continue
         try:
-            watch = await asyncio.wait_for(
-                watch_of(sid, db=db, user_ref=user_ref, tracked_reader=tracked_reader, market_reader=market_reader,
-                         rest_reader=rest_reader, margin_of=margin_of, ctx=ctx, rates=rates, prefs=prefs,
-                         user_values=user_values, reads=reads), left)
-            items.append({"strategy_id": sid, "state": "ok", "watch": watch})
-        except asyncio.CancelledError:
-            raise
-        except Exception as exc:  # noqa: BLE001 - one row's failure is that row's refusal, never the whole reply
-            if isinstance(exc, TimeoutError) and time.monotonic() >= deadline:  # cut by the one budget
+            await release_connection(db)  # D-36 (c): shared reads done, rows wait on prices
+        except Exception:  # noqa: BLE001 - a broken connection: each row then refuses on its own, the batch still answers
+            log.warning("plan watch batch: the connection could not be released after the shared reads")
+        tracked_reader = _with_shared_reads(tracked_reader, reads)
+        for sid in ids:
+            left = deadline - time.monotonic()
+            if left <= 0:  # the budget is spent: this row is not read (never guessed, never waited for)
                 items.append({"strategy_id": sid, "state": "not_read"})
-            else:
-                message, status = row_answer(exc, f"GET /api/plan-watch row {sid}")
-                items.append({"strategy_id": sid, "state": "refused", "refusal": message, "status": status})
-            rollback = getattr(db, "rollback", None)
-            if rollback is not None:  # a failed statement leaves the shared session unusable for the next row
-                await rollback()
-        await asyncio.sleep(0)  # let the loop serve a stop, an alert or another request between two checks
-    as_of = max((i["watch"].as_of for i in items if i["state"] == "ok"), default=None)
+                continue
+            try:
+                watch = await asyncio.wait_for(
+                    watch_of(sid, db=db, user_ref=user_ref, tracked_reader=tracked_reader, market_reader=market_reader,
+                             rest_reader=rest_reader, margin_of=margin_of, ctx=ctx, rates=rates, prefs=prefs,
+                             user_values=user_values, reads=reads), left)
+                items.append({"strategy_id": sid, "state": "ok", "watch": watch})
+            except asyncio.CancelledError:
+                raise
+            except Exception as exc:  # noqa: BLE001 - one row's failure is that row's refusal, never the whole reply
+                if isinstance(exc, TimeoutError) and time.monotonic() >= deadline:  # cut by the one budget
+                    items.append({"strategy_id": sid, "state": "not_read"})
+                else:
+                    message, status = row_answer(exc, f"GET /api/plan-watch row {sid}")
+                    items.append({"strategy_id": sid, "state": "refused", "refusal": message, "status": status})
+                rollback = getattr(db, "rollback", None)
+                if rollback is not None:  # a failed statement leaves the shared session unusable for the next row
+                    await rollback()
+            await asyncio.sleep(0)  # let the loop serve a stop, an alert or another request between two checks
+        as_of = max((i["watch"].as_of for i in items if i["state"] == "ok"), default=None)
+    finally:
+        reads.restore()  # the request's session answers from the database again (nothing else uses it after this)
     return PlanWatchBatchOut.model_validate({"as_of": as_of, "items": items})
