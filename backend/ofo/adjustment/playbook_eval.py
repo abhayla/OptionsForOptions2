@@ -620,7 +620,8 @@ def _t10b(c: _Ctx) -> Hit:
     parts = time_exit_parts(c.body.get("guards", {}).get("time_exit"))
     if parts is not None:  # ADR-330 (7): the plan's own time always; its date only picks the day (blank = expiry)
         if parts[1] == ON_EXPIRY:
-            _limit(c, "T-10b")  # a stage with no T-10b value does not apply the rule (not checked)
+            if c.state.days_left is not None:  # #860: the plan's own time is the limit; an unknown kind (no days left)
+                _limit(c, "T-10b")  # must not hold it back. A stage with no T-10b value does not apply the rule
             if not is_expiry_day(today, expiry):  # ADR-310 (2)
                 raise _Missing(f"{P}waits_expiry_day", day=expiry)
         return Hit("T-10b", hhmm, parts[0], "ge", time_exit_due(today, hhmm, resolve_on(parts[1], expiry), parts[0]))
@@ -1115,6 +1116,8 @@ def _stop_answer(c: _Ctx, tid: str) -> Hit | _Missing:  # noqa: PLR0911 - one an
     if t.get("data", "ok") != "ok":
         return _Missing(f"{P}data_unavailable")
     if c.state.stops is None:
+        if c.state.days_left is None:  # #861: no days left = the expiry kind is not known (state_of): name THAT fact
+            return _Missing(sl.not_checked_code(sl.EXPIRY_KIND_UNKNOWN))
         return _Missing(sl.STOPS_NOT_SUPPLIED)
     line = _line(c.state, tid)
     if line is None or not line.active:

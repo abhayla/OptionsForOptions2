@@ -2242,7 +2242,7 @@ def listable(marker: str | None, mode: str | None) -> bool:
 #: FE2 item 7 (#864): True once ``adjustment_readers.read_tracked`` takes the keyword ``kinds`` (the owner lane's half:
 #: RESULTS-lane-fe2 "For the owner lane" 2). Until then the lister calls the reader exactly as before: a keyword the
 #: reader does not know would fail every strategy's read. (No reflection on the reader: the door-names guard forbids)
-READER_TAKES_KINDS: Final = False
+READER_TAKES_KINDS: Final = True
 
 
 def reader_kinds_kwargs(kinds: Mapping | None, takes: bool = READER_TAKES_KINDS) -> dict[str, Any]:

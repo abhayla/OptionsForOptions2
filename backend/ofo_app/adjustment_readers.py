@@ -133,18 +133,21 @@ def index_name(underlying: str) -> str | None:
 
 # ---- strategy ---------------------------------------------------------------------------------------------------
 
-async def read_tracked(strategy_id: int, rates: ChargeRates | None, db: Any = None) -> Tracked | None:
+async def read_tracked(strategy_id: int, rates: ChargeRates | None, db: Any = None,
+                       kinds: Mapping[tuple[str, datetime.date], str] | None = None) -> Tracked | None:
     """``db``: the request's own session (a request uses ONE connection, #682); None for the worker, which has no
-    request and reads on a session of its own."""
+    request and reads on a session of its own. ``kinds`` (#864): the worker's record of the expiry kind it read for
+    (underlying, nearest expiry); a recorded kind spares the catalogue read, an absent or empty one reads it."""
     if db is not None:
-        return await _tracked_on(db, strategy_id, rates)
+        return await _tracked_on(db, strategy_id, rates, kinds)
     async with get_sessionmaker()() as own:
-        found = await _tracked_on(own, strategy_id, rates)
+        found = await _tracked_on(own, strategy_id, rates, kinds)
         await own.commit()  # the worker's own session: keeps a stop base stored once (ADR-330), nothing else is written
         return found
 
 
-async def _tracked_on(db: Any, strategy_id: int, rates: ChargeRates | None) -> Tracked | None:
+async def _tracked_on(db: Any, strategy_id: int, rates: ChargeRates | None,
+                      kinds: Mapping[tuple[str, datetime.date], str] | None = None) -> Tracked | None:
     paper = await paper_book.load_owned(db, current_user_ref(), strategy_id)  # owner check in the query
     real = not paper  # ADR-276: no paper order -> the real Zerodha book (fills + adopted holdings), same netter
     orders: Any = paper or await _real_rows(db, strategy_id)
@@ -157,7 +160,7 @@ async def _tracked_on(db: Any, strategy_id: int, rates: ChargeRates | None) -> T
     if not legs or underlying is None or lot is None:
         raise TrackedExited("no open option leg", closed_at=closed_at_of(orders))
     fresh = entry_stop_base(orders, found, _ENTRY_SOURCE)  # ADR-330 (1): from the entry orders only
-    kind = await _stored_kind_or_empty(db, underlying, legs)  # R3: "" = not known; read BEFORE the backfill write
+    kind = await _stored_kind_or_empty(db, underlying, legs, kinds)  # R3: "" = not known; read BEFORE the backfill
     base = await stop_base_in_force(db, strategy_id, fresh)  # (a failed catalogue read rolls the session back)
     if real:  # paid charges and adjustments used before the app saw it: not readable yet ("not checked", ADR-276 (4))
         return Tracked(Position(underlying, lot, kind, datetime.date.min, tuple(legs)), book.booked, None,
@@ -175,11 +178,16 @@ async def _tracked_on(db: Any, strategy_id: int, rates: ChargeRates | None) -> T
                    entry_position=entry_position_of(orders, found), stop_base=base, entry_stop_base=fresh)
 
 
-async def _stored_kind_or_empty(db: Any, underlying: str, legs: Any) -> str:
-    """The position's expiry kind from the stored catalogue (``stored_kind``), "" when it cannot be known or read
-    (the live check then checks no stop: never the weekly row by default)."""
+async def _stored_kind_or_empty(db: Any, underlying: str, legs: Any,
+                                kinds: Mapping[tuple[str, datetime.date], str] | None = None) -> str:
+    """The position's expiry kind from the worker's record when it has one for the nearest leg (``kinds``, #864: the
+    worker records only a non-empty kind), else from the stored catalogue (``stored_kind``), "" when it cannot be
+    known or read (the live check then checks no stop: never the weekly row by default)."""
+    nearest = min(x.expiry for x in legs)  # the check's own day: the nearest leg
+    if kinds is not None and (kind := kinds.get((underlying, nearest))):
+        return kind
     try:
-        return await stored_kind(db, underlying, min(x.expiry for x in legs))  # the check's own day: the nearest leg
+        return await stored_kind(db, underlying, nearest)
     except CatalogueUnreadable:
         return ""
 
@@ -719,11 +727,11 @@ async def read_market(tracked: Tracked, ctx: Any, *, extra_ids: Iterable[str] = 
                             SourceReading(SourceState.ABSENT), now, prices_stale=True)
     now = ctx.clock()
     position = tracked.position
-    underlying, expiry = position.underlying, position.legs[0].expiry
+    underlying, expiry = position.underlying, min(x.expiry for x in position.legs)  # the worker's primary_expiry (#863)
     provider = ctx.provider
     listed = listed_options(provider, underlying)
     scn = _scenario()
-    expiry_kind = _expiry_kind(provider, underlying, min(x.expiry for x in position.legs), listed, scn)  # nearest leg
+    expiry_kind = _expiry_kind(provider, underlying, expiry, listed, scn)  # the nearest leg's
     live = live_market.current_feed()  # F-92: the position's own legs are held for the read, like the paper book's
     first_index = provider.underlying_quote(underlying)  # only to centre the window; never used after the hold
     window_spot = await _window_spot(ctx, underlying, first_index, now)
@@ -906,19 +914,23 @@ async def atm_iv_now(ctx: Any, underlying: str, expiry: datetime.date, spot: Dec
     return _atm_vol(list(rows), ids, model.greeks, forward)
 
 
-async def entry_facts_now(ctx: Any, underlying: str, sold: Iterable[Any], confirmed: bool = False) -> EntryFacts | None:
+async def entry_facts_now(ctx: Any, underlying: str, sold: Iterable[Any], confirmed: bool = False,
+                          feed: Any = None) -> EntryFacts | None:
     """ADR-243 + ADR-270 (1): the entry facts a FIRST fill stores (paper and real alike), from the SOLD legs' listed
     contracts ``sold`` (``.instrument_type``, ``.strike``, ``.expiry``): the index's live spot now, each side's short
     distance (``entry_facts_of``) and the entry ATM IV of the nearest sold option expiry (``atm_iv_now``). Answer
-    states: not connected / no quote / a quote that is not a positive price -> None (nothing stored, never a guessed
+    states: no context / no quote / a quote that is not a positive price -> None (nothing stored, never a guessed
     spot); the IV not readable (no forward, unpriced chain, a read that fails) -> the facts with ``entry_atm_iv``
     None. ADR-330 (39): the spot is the index's LIVE price (``priced``: AVAILABLE and above 0), the one rule a leg's
-    price follows; a not-live value (old, flagged) is stored only when the user confirmed the not-live line
-    (``confirmed``, ``_index_value_not_live``: its own flag rule), never silently."""
-    if ctx is None or not ctx.provider.status().connected:
+    price follows; a not-live value (old, or the feed not connected; never a flagged quote) is stored only when the
+    user confirmed the not-live line (``confirmed``, ``_index_value_not_live``: its own flag rule), never
+    silently (K2 F1: a ticked first fill with the feed down stores the held value, as ``record_basket_facts``
+    does). ``feed``: when given, an index nobody holds yet is held on the shared fan-out until its first quote
+    (``_index_quote_held``); None = the caller's book as it is."""
+    if ctx is None:
         return None
-    quote = ctx.provider.underlying_quote(underlying)
-    ltp = quote.ltp if priced(quote) else None
+    quote = await _index_quote_held(ctx, feed, underlying) if ctx.provider.status().connected else None
+    ltp = quote.ltp if quote is not None and priced(quote) else None
     if ltp is None and confirmed:
         held = _index_value_not_live(ctx, underlying)
         ltp = None if held is None else held[0]
@@ -979,6 +991,25 @@ def _index_not_held_reason(ctx: Any, quote: Any) -> str:
     return index_hold_refusal(quote) or "not_live_not_confirmed"
 
 
+async def _index_quote_held(ctx: Any, feed: Any, underlying: str) -> Any:
+    """The index quote now. The API process holds only what a page socket subscribed, so an index nobody holds is held
+    on the shared fan-out until its first quote or ``LEG_WAIT_S`` passes (``read_door.read_quotes``); ``feed`` None =
+    no hold (the book as it is). The caller has checked the feed is connected."""
+    from ofo_app.chain_push import index_id_of  # noqa: PLC0415 - chain_push imports the app layer
+
+    provider = ctx.provider
+    index_id = index_id_of(ctx, underlying)
+
+    def read() -> Any:
+        return provider.underlying_quote(underlying)
+    quote = read()
+    if quote is None and feed is not None and index_id is not None:
+        held = await read_quotes(feed, [index_id], read, lambda q: q is not None,
+                                 lambda: provider.status().connected, LEG_WAIT_S, LEG_POLL_S)
+        quote = quote if held is NO_TOKEN else held
+    return quote
+
+
 async def _index_spot_held(ctx: Any, feed: Any, underlying: str, confirmed: bool = False) -> Decimal:
     """The index's live spot for the fill's starting point (ADR-283 (1)). The API process holds only what a page
     socket subscribed, so an index nobody holds is held on the shared fan-out until its first quote or ``LEG_WAIT_S``
@@ -986,21 +1017,11 @@ async def _index_spot_held(ctx: Any, feed: Any, underlying: str, confirmed: bool
     context / not connected / never quoted / not a positive price -> ``StrategyRefused`` (nothing stored), unless the
     user confirmed the not-live line (``confirmed``, ADR-330 (28)): then the last held value
     (``_index_value_not_live``)."""
-    from ofo_app.chain_push import index_id_of  # noqa: PLC0415 - chain_push imports the app layer
     from ofo_app.strategy_refused import StrategyRefused  # noqa: PLC0415 - write path only
 
     spot = quote = None
     if ctx is not None and ctx.provider.status().connected:
-        provider = ctx.provider
-        index_id = index_id_of(ctx, underlying)
-
-        def read() -> Any:
-            return provider.underlying_quote(underlying)
-        quote = read()
-        if quote is None and feed is not None and index_id is not None:
-            held = await read_quotes(feed, [index_id], read, lambda q: q is not None,
-                                       lambda: provider.status().connected, LEG_WAIT_S, LEG_POLL_S)
-            quote = quote if held is NO_TOKEN else held
+        quote = await _index_quote_held(ctx, feed, underlying)
         # ADR-330 (39): the quote's own health carries the one index age rule (``FeedState.quote_health``); a value
         # that rule calls not live is not a live spot, whatever the feed as a whole says: it needs the user's tick
         live = quote is not None and quote.health is DataHealth.AVAILABLE

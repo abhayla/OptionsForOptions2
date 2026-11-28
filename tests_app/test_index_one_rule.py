@@ -66,3 +66,43 @@ async def test_entry_facts_take_a_live_quote_without_confirmation():
     sold = [SimpleNamespace(instrument_type="CE", strike=D("24100"), expiry=None)]
     facts = await readers.entry_facts_now(_ctx(_quote(D("24100.55"))), "NIFTY", sold)
     assert facts is not None and facts.entry_spot == D("24100.55")
+
+
+# ---- Lane FR item 6 (K2 F1): a ticked first fill with the feed down still stores its entry facts ---------------
+def _down(quote):
+    ctx = _ctx(quote)
+    ctx.provider.status = lambda: SimpleNamespace(connected=False)
+    return ctx
+
+
+async def test_a_ticked_first_fill_with_the_feed_down_stores_the_held_index_value():
+    sold = [SimpleNamespace(instrument_type="CE", strike=D("24100"), expiry=None)]
+    facts = await readers.entry_facts_now(_down(OLD), "NIFTY", sold, confirmed=True)
+    print("FEED DOWN, TICKED", facts)
+    assert facts is not None and facts.entry_spot == D("24087.30")
+
+
+async def test_with_the_feed_down_and_no_tick_nothing_is_stored_and_a_flagged_quote_never_is():
+    sold = [SimpleNamespace(instrument_type="CE", strike=D("24100"), expiry=None)]
+    assert await readers.entry_facts_now(_down(OLD), "NIFTY", sold) is None
+    assert await readers.entry_facts_now(_down(CROSSED), "NIFTY", sold, confirmed=True) is None
+    assert await readers.entry_facts_now(None, "NIFTY", sold, confirmed=True) is None
+
+
+async def test_the_first_fill_reader_holds_an_index_nobody_subscribed_yet(monkeypatch):
+    """The index not yet on the book (quote None) is held on the shared fan-out, as ``_index_spot_held`` does."""
+    sold = [SimpleNamespace(instrument_type="CE", strike=D("24100"), expiry=None)]
+    book: list = []
+    provider = SimpleNamespace(status=lambda: SimpleNamespace(connected=True),
+                               underlying_quote=lambda _u: book[0] if book else None)
+    ctx = SimpleNamespace(provider=provider, clock=lambda: NOW)
+    monkeypatch.setattr("ofo_app.chain_push.index_id_of", lambda _c, _u: "256265")
+    held: list = []
+
+    async def read_quotes(feed, ids, read, *_rest):
+        held.append(ids)
+        book.append(_quote(D("24100.55")))
+        return read()
+    monkeypatch.setattr(readers, "read_quotes", read_quotes)
+    facts = await readers.entry_facts_now(ctx, "NIFTY", sold, feed=object())
+    assert held == [["256265"]] and facts is not None and facts.entry_spot == D("24100.55")

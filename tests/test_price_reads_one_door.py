@@ -88,10 +88,6 @@ EXEMPT: dict[Key, tuple[str, str]] = {
     **_entries("real_path", "replay of a real order frame", "execute_replay.py", {"frame_quote": "latest_depth"}),
     **_entries("real_path", "the depth reader the real-order leg quote asks for (getattr: a provider may lack depth)",
                "live_market.py", {"latest_depth": "latest_depth"}),
-    # decision read not yet moved
-    **_entries("awaiting_phase_8", "first-fill entry facts are a decision read outside read_market (deferred issue: "
-                                   "plan section 6 row 13 (entry_facts_now decision read))",
-               "adjustment_readers.py", {"entry_facts_now": "underlying_quote"}),
     **_entries("own_process", "ADR-330 (28): a confirmed not-live entry needs the last held index value at any age, "
                               "which read_market does not return (it reads live only)",
                "adjustment_readers.py", {"_index_value_not_live": "underlying_quote"}),
@@ -166,13 +162,10 @@ def test_exemptions_carry_a_category_and_a_reason():
     assert bad == []
 
 
-def test_the_shared_tracking_snapshot_is_display_and_the_open_decision_read_names_its_issue():
+def test_the_shared_tracking_snapshot_is_display():
     category, reason = EXEMPT[("ofo_app/routes/tracking.py", "_snapshot", "read_snapshot")]
     assert category == "display"
     assert "paper_exit.live_exit_prices" in reason
-    category, reason = EXEMPT[("ofo_app/adjustment_readers.py", "entry_facts_now", "underlying_quote")]
-    assert category == "awaiting_phase_8"
-    assert "plan section 6 row 13" in reason
 
 
 def test_the_door_itself_is_not_an_exemption():
