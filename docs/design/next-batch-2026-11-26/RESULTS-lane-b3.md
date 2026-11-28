@@ -1,4 +1,4 @@
-STATUS 21:05 | PUSH 3 (item 1 cut 2, coordinator's permission for adjustment_readers.py): 9 rows 219 -> 162 -> 136 statements, orders and traded contracts read once; check next | queue otherwise done | blocker: send_message to @parent refused (elevated_session_untrusted_device); this line is the report
+STATUS 21:50 | PUSH 4 pending check: rig now seeds ten DISTINCT strategies (was one id ten times); in-row duplicates (8 of 27) are in files not mine: call sites under 'For the owner lane' | O-P-03 FRONTEND FIELD: `paper_strategy_id` on the outcome request body (the builder sends it via bookedFields; any other surface that shows the heading must send it) | blocker: send_message to @parent refused; this line is the report
 
 # Lane B3 results (28 Nov 2026)
 
@@ -117,6 +117,25 @@ stop line; another user's strategy is refused exactly as the single route refuse
 start) and M3 (prefetch outside the 15 s `wait_for`) stay open, display only, listed here for the next pass.
 
 ## For the owner lane
+- In-row duplicate reads of the plan-watch/adjustment-check path (RA2's 8 of 27, mapped to call sites this session; none is
+  in a file this lane may edit; each is "pass the value already read", output unchanged, statement count pinned by
+  `test_query_ceiling` and `BATCH9_CEILING`):
+  1. entry facts read twice: `routes/adjustment_check.py:528` (`entry_facts_in(db, id)`) and `adjustment_check.py:731`
+     (`evaluate_stored` reads them again): let `evaluate_stored` take `entry_facts=`.
+  2. the plan row twice: `adjustment_check.py:219` (`plan_for`) and `plan_saved_before_adr247` right after it: pass `plan`.
+  3. the suggestion records twice: `routes/adjustment_check.py:357-359` (`open_suggestions` then `dismissed_holding`, same
+     table): one read for both.
+  4. the strategy ownership check twice or more (`playbook_store.require_owned`: `rule_states`, `pause_in_force`,
+     `open_suggestions`, ... each runs `SELECT 1 FROM strategies`): the check ran once in `run_check` already.
+  5. contract rows by id x3 and the token list x2: two of the three now come once for the batch (cut 2); the single route
+     still resolves per row (the armed lines and the tracked read each call `resolve`).
+- The latency rig: fixed in this lane (`test_route_latency_budget.py` now seeds ten distinct strategies through `seed_rows`;
+  before, all ten were id 1). Ceilings were not raised; the 10-concurrent wall budget still holds with ten real rows.
+- Frontend (O-P-03, Lane FJ2 or whoever takes it): the label is chosen from the outcome request's `paper_strategy_id`
+  (`ofo_app/routes/outcome.py::get_booked`, the strategy has an open position). The builder sends it (`bookedFields`,
+  `frontend/src/lib/targetBlock.js`); a page that shows the "Draft - Live data not connected" heading for a running trade
+  must send `paper_strategy_id` in its outcome request, else it still gets the draft label. [Guessing] which page that is;
+  I did not trace it in the frontend (not my files).
 - (DONE in cut 2 for `read_tracked`; the plan, facts and records reads in `run_check` remain) Whoever owns `routes/adjustment_check.py`: give `read_tracked` an optional
   `prefetched` argument (orders by strategy from `paper_book.load_owned_many`, contracts from one
   `tracked_contracts.resolve` of all rows' order contract ids), and let `run_check` take the plan and facts reads for

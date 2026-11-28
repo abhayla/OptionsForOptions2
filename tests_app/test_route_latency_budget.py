@@ -24,8 +24,8 @@ from ofo_app import db as app_db
 from ofo_app import scenario_mode
 from ofo_app.routes import outcome
 from sqlalchemy import event
-from test_adjustment_check import _reset_engine, _seeded, app_db_url  # noqa: F401
-from test_plan_watch import _arm
+from test_adjustment_check import _reset_engine, app_db_url  # noqa: F401
+from test_plan_watch_batch_b3_1128 import seed_rows
 
 BROKER_ROUND_TRIP = 0.3  # seconds per Zerodha call (funds, basket), a stub
 COLD_MARGIN_MAX_MS = 450.0  # one round trip plus slack; two serial calls are ~600
@@ -96,10 +96,11 @@ class _Rig:
 @pytest.fixture
 async def rig(app_db_url, monkeypatch):  # noqa: F811
     r = _Rig()
-    for _ in range(10):  # ten strategies of the ONE active scenario (another scenario's strategy is refused)
-        r.ids.append(await _seeded(app_db_url, monkeypatch, "ADJ-01"))
-    for sid in r.ids:
-        await _arm(app_db_url, sid)
+    # Lane B3 (I-48): TEN DISTINCT strategies of the ONE active scenario (another scenario's strategy is refused). The
+    # old loop called ``_seeded`` ten times, but the seed is idempotent per name: all ten ids were one strategy, so a
+    # batch of nine asked one row nine times. Each row has its own plan and armed triggers (``seed_rows``).
+    r.ids = await seed_rows(app_db_url, monkeypatch, 10)
+    assert len(set(r.ids)) == len(r.ids)
     real_transport = scenario_mode.Scenario.margin_transport
 
     def slow_transport(self, method, url, headers, body):
