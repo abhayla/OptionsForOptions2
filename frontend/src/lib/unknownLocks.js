@@ -48,7 +48,7 @@ export function monoAgeOfAt(at) {
   const m = monoNow()
   if (m === null || !Number.isFinite(at)) return null
   let best = null
-  for (const [k, v] of stamps) { if (k.endsWith(`|${at}`) && Number.isFinite(v)) best = best === null ? v : Math.min(best, v) }
+  for (const [k, v] of stamps) { if (k.endsWith(`|${at}`) && Number.isFinite(v)) best = best === null || v < best ? v : best }
   return best === null ? null : m - best
 }
 const stampKey = (name, id, at) => `${name}|${id}|${at ?? ''}`
