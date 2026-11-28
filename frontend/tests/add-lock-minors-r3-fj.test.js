@@ -8,9 +8,9 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
 import { flushPromises, mount } from '@vue/test-utils'
 import { createMemoryHistory, createRouter } from 'vue-router'
-import SaveDraftBar, { addUnknownStore } from '@/components/strategy/SaveDraftBar.vue'
+import SaveDraftBar from '@/components/strategy/SaveDraftBar.vue'
 import PaperConfirmDialog from '@/components/strategy/PaperConfirmDialog.vue'
-import { resetExitLocks } from '@/lib/unknownLocks'
+import { resetExitLocks, saveAddLock } from '@/lib/unknownLocks'
 
 const calls = []
 let answers = {}
@@ -40,7 +40,7 @@ async function bar(props = {}) {
   await flushPromises()
   return w
 }
-beforeEach(() => { calls.length = 0; globalThis.localStorage?.clear(); resetExitLocks(); for (const k of Object.keys(addUnknownStore)) delete addUnknownStore[k]; answers = { 'GET /strategies': { strategies: [] } } })
+beforeEach(() => { calls.length = 0; globalThis.localStorage?.clear(); resetExitLocks(); answers = { 'GET /strategies': { strategies: [] } } })
 afterEach(() => { while (mounted.length) mounted.pop().unmount(); document.body.innerHTML = '' })
 const confirmOff = (w) => t(w, 'paper-confirm-button').element.disabled
 const press = async (w) => { await t(w, 'paper-confirm-button').trigger('click'); await flushPromises() }
@@ -128,7 +128,7 @@ describe('F9: Save As of a strategy whose add has no answer', () => {
     expect(t(free, 'name-input').exists()).toBe(false)
   })
   it('the lock of another strategy does not block this one', async () => {
-    addUnknownStore[99] = { at: Date.now(), id: 99 }
+    saveAddLock(99, { at: Date.now(), before: '' })
     const w = await bar()
     expect(t(w, 'save-as').attributes('disabled')).toBeUndefined()
   })

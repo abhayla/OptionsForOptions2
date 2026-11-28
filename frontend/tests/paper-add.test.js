@@ -1,11 +1,11 @@
 // GC-TP step 2 (ADR-207 (1), REQ-109 AC-1; Sensibull Add to Drafts 166-173): "Add to Paper" in the builder's action row, the
 // confirm list, the toast. The core: Confirm records ONE POST /paper/strategies/{id}/orders with one `open` order per ticked
 // leg at the price shown in the list (the leg's entry price, or the one typed), and nothing else records a paper order.
-import { addUnknownStore } from '@/components/strategy/SaveDraftBar.vue'
 import { beforeEach, describe, it, expect, vi } from 'vitest'
 import { flushPromises, mount } from '@vue/test-utils'
 import { createMemoryHistory, createRouter } from 'vue-router'
 import SaveDraftBar from '@/components/strategy/SaveDraftBar.vue'
+import { resetExitLocks } from '@/lib/unknownLocks'
 import PaperConfirmDialog from '@/components/strategy/PaperConfirmDialog.vue'
 import * as tracking from '@/lib/tracking'
 import { confirmPaperName } from './helpers/paperName'
@@ -56,7 +56,7 @@ async function openList(w) {
 }
 
 beforeEach(() => {
-  for (const k of Object.keys(addUnknownStore)) delete addUnknownStore[k] // Lane FB2: the add-unknown lock is kept per tab: each test starts without one
+  resetExitLocks() // Lane FB2: the add-unknown lock is kept per browser (lib/unknownLocks.js): each test starts without one
   globalThis.sessionStorage?.clear()
   calls.length = 0
   answers = { 'GET /strategies': { strategies: [] }, 'POST /paper/strategies/7/orders': BOOK }

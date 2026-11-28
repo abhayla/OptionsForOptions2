@@ -4,7 +4,7 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
 import { flushPromises, mount } from '@vue/test-utils'
 import { createMemoryHistory, createRouter } from 'vue-router'
-import SaveDraftBar, { addUnknownStore } from '@/components/strategy/SaveDraftBar.vue'
+import SaveDraftBar from '@/components/strategy/SaveDraftBar.vue'
 import { ADD_UNKNOWN_TEXT, UNKNOWN_EXIT_WINDOW_MS } from '@/lib/sharedStateText'
 import { resetExitLocks } from '@/lib/unknownLocks'
 
@@ -55,7 +55,7 @@ async function cancel() {
   dom('paper-cancel').click()
   await flushPromises()
 }
-beforeEach(() => { for (const k of Object.keys(addUnknownStore)) delete addUnknownStore[k]; globalThis.sessionStorage?.clear(); globalThis.localStorage?.clear(); resetExitLocks(); calls.length = 0; document.body.innerHTML = ''; postMode = 'unknown'; bookMode = 'plan'; vi.useFakeTimers({ toFake: ['Date', 'setTimeout', 'clearTimeout', 'setInterval', 'clearInterval'] }) })
+beforeEach(() => { globalThis.sessionStorage?.clear(); globalThis.localStorage?.clear(); resetExitLocks(); calls.length = 0; document.body.innerHTML = ''; postMode = 'unknown'; bookMode = 'plan'; vi.useFakeTimers({ toFake: ['Date', 'setTimeout', 'clearTimeout', 'setInterval', 'clearInterval'] }) })
 afterEach(() => { vi.useRealTimers() })
 
 describe('item 1: unknown add, Cancel, reopen', () => {

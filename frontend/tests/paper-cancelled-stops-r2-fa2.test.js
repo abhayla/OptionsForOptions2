@@ -35,10 +35,14 @@ describe('F3 dialog half: cancelled stops from the reply alone', () => {
     expect(lines(w)).toEqual([])
     w.unmount()
   })
-  it('an entry without a leg name falls back to the contract text, an unusable entry is skipped', async () => {
+  it('an entry without a leg name falls back to the contract text; one with no readable name at all is printed as "a leg", never dropped', async () => {
     const w = mountWith({ cancelledStops: [{ leg: '', contract_text: 'NIFTY 22650 PE', level: '120.00' }, { level: '5' }, null] })
     await flushPromises()
-    expect(lines(w)).toEqual(['The stop on NIFTY 22650 PE (level 120.00) was removed with the move; set a new one on the new leg.'])
+    expect(lines(w)).toEqual([
+      'The stop on NIFTY 22650 PE (level 120.00) was removed with the move; set a new one on the new leg.',
+      'The stop on a leg (level 5) was removed with the move; set a new one on the new leg.',
+      'The stop on a leg was removed with the move; set a new one on the new leg.',
+    ])
     w.unmount()
   })
   it('reply unreadable: the plain may-have-been-cancelled sentence shows', async () => {

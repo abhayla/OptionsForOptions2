@@ -70,9 +70,9 @@ export function cancelledStopLines(list) {
   if (!Array.isArray(list)) return [] // absent on an old reply: nothing is claimed
   const text = (v) => (typeof v === 'string' ? v.trim() : '')
   return list.map((e) => {
-    const leg = text(e?.leg) || text(e?.contract_text) || text(e?.contract)
-    return leg ? STOP_CANCELLED_LINE({ leg, level: text(e?.level) }) : ''
-  }).filter(Boolean)
+    const leg = text(e?.leg) || text(e?.contract_text) || text(e?.contract) || 'a leg' // an entry with no readable name is still printed (never dropped silently)
+    return STOP_CANCELLED_LINE({ leg, level: text(e?.level) })
+  })
 }
 export const PAPER_UNKNOWN_HOLD_MS = 5000
 /** The dialog states after Confirm: '' (ready), 'refused', 'unknown', 'placed'. */
