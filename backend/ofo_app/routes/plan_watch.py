@@ -24,8 +24,10 @@ not found or another user's -> its 404. Writes nothing. Suggest-only (ADR-003): 
 """
 from __future__ import annotations
 
+import dataclasses
 import datetime
 import logging
+from collections.abc import Mapping
 from decimal import ROUND_HALF_UP, Decimal
 from typing import Annotated, Any, Literal
 
@@ -72,6 +74,45 @@ _PCT_UNIT = "%"
 LineKind = Literal["target", "stop", "credit_stop", "rule", "index_exit", "leg_stop"]
 LineState = Literal["watching", "fired", "not_applicable", "not_computable", "paused"]
 LineUnit = Literal["pnl_rupees", "index_points", "option_price", "percent", "rule_unit"]
+
+
+@dataclasses.dataclass
+class BatchReads:
+    """What the batch route read ONCE for all its rows (Lane B3, I-48), keyed by strategy id or contract id, so a row
+    never takes another row's entry: ``triggers`` (each row's own stored triggers), ``contracts`` (the stored answer
+    of every contract those triggers name, one ``tracked_contracts.resolve``), ``kinds`` (each row's position kind,
+    one ``kinds_of``) and ``expiry_kinds`` ((underlying, nearest expiry) -> expiry kind, the memo ``read_tracked``
+    takes as ``kinds``; filled by the first row that reads it). A key that is absent is read by the row itself, as the
+    single route reads it: the prefetch is never a reason to answer less."""
+
+    triggers: Mapping[int, list[paper_trigger_store.TriggerRow]] = dataclasses.field(default_factory=dict)
+    contracts: Mapping[int, tracked_contracts.TrackedContract] = dataclasses.field(default_factory=dict)
+    kinds: Mapping[int, str] = dataclasses.field(default_factory=dict)
+    expiry_kinds: dict[tuple[str, datetime.date], str] = dataclasses.field(default_factory=dict)
+
+
+async def prefetch(db: Any, strategy_ids: list[int]) -> BatchReads:
+    """The batch's shared reads: each row's triggers, then ONE contract resolve and ONE kind read for all of them.
+    A failed read leaves the rows to read for themselves (their own refusal); the session is rolled back first."""
+    from ofo_app import strategy_store  # noqa: PLC0415 - late: strategy_store reaches the order modules
+    reads = BatchReads()
+    try:
+        triggers = {}
+        for sid in strategy_ids:
+            triggers[sid] = [r for r in reversed(await paper_trigger_store.list_for(db, sid)) if r.cancelled_at is None]
+        ids = sorted({r.trigger.contract_id for rows in triggers.values() for r in rows
+                      if r.trigger.contract_id is not None})
+        found = {c.contract_id: c for c in await tracked_contracts.resolve(db, ids)} if ids else {}
+        with_rows = [sid for sid, rows in triggers.items() if rows]
+        kinds = await strategy_store.kinds_of(db, with_rows) if with_rows else {}
+    except Exception as exc:  # noqa: BLE001 - the prefetch is only a saving: any failure, each row reads for itself
+        log.warning("plan watch batch: shared reads failed, each row reads for itself: %s", type(exc).__name__)
+        rollback = getattr(db, "rollback", None)
+        if rollback is not None and isinstance(exc, SQLAlchemyError):  # a failed statement leaves the session unusable
+            await rollback()
+        return reads
+    reads.triggers, reads.contracts, reads.kinds = triggers, found, kinds
+    return reads
 
 
 class WatchLineOut(ApiModel):
@@ -231,14 +272,31 @@ async def _is_own(db: Any, user_ref: str, strategy_id: int) -> bool:
     return True
 
 
-async def _armed_lines(db: Any, strategy_id: int, run: CheckRun, live: bool) -> list[dict]:
+async def _armed_reads(db: Any, strategy_id: int, reads: BatchReads | None) -> tuple[list, dict, str]:
+    """(the row's live trigger rows, their contracts by id, the position kind): from the batch's shared read of THIS
+    row when it has one, else read here, as the single route does; a key the batch did not read is read here."""
     from ofo_app import position_kind, strategy_store  # noqa: PLC0415 - late: strategy_store reaches the order modules
+    mine = reads.triggers.get(strategy_id) if reads is not None else None
+    rows = mine if mine is not None else [
+        r for r in reversed(await paper_trigger_store.list_for(db, strategy_id)) if r.cancelled_at is None]
+    ids = sorted({r.trigger.contract_id for r in rows if r.trigger.contract_id is not None})
+    shared = reads.contracts if reads is not None else {}
+    found = {cid: shared[cid] for cid in ids if cid in shared}
+    missing = [cid for cid in ids if cid not in found]
+    if missing:
+        found |= {c.contract_id: c for c in await tracked_contracts.resolve(db, missing)}
+    if not rows:
+        return rows, found, position_kind.UNKNOWN
+    if reads is not None and strategy_id in reads.kinds:
+        return rows, found, reads.kinds[strategy_id]
+    return rows, found, (await strategy_store.kinds_of(db, [strategy_id])).get(strategy_id, position_kind.UNKNOWN)
+
+
+async def _armed_lines(db: Any, strategy_id: int, run: CheckRun, live: bool,
+                       reads: BatchReads | None = None) -> list[dict]:
+    from ofo_app import position_kind  # noqa: PLC0415 - late: position_kind reaches the order modules
     try:
-        rows = [r for r in reversed(await paper_trigger_store.list_for(db, strategy_id)) if r.cancelled_at is None]
-        ids = sorted({r.trigger.contract_id for r in rows if r.trigger.contract_id is not None})
-        found = {c.contract_id: c for c in await tracked_contracts.resolve(db, ids)}
-        kinds = await strategy_store.kinds_of(db, [strategy_id]) if rows else {}
-        kind = kinds.get(strategy_id, position_kind.UNKNOWN)
+        rows, found, kind = await _armed_reads(db, strategy_id, reads)
     except SQLAlchemyError as exc:
         log.warning("plan watch: triggers of strategy %s unreadable: %s", strategy_id, type(exc).__name__)
         raise StrategyRefused(_NOT_AVAILABLE, Failure.UPSTREAM_BUSY) from None
@@ -289,14 +347,24 @@ def _leg_marks(run: CheckRun) -> dict[tuple[str, Decimal], Decimal | None]:
     return {(x.type, x.strike): check.mark_of(rows.get(x.tradingsymbol)) for x in run.tracked.position.legs}
 
 
+def _remember_kind(reads: BatchReads, run: CheckRun) -> None:
+    """Record the row's non-empty expiry kind under (underlying, nearest open expiry), the key ``read_tracked`` looks
+    up (``_stored_kind_or_empty``); an empty (not known) kind is never recorded, so the next row reads it itself."""
+    position = getattr(run.tracked, "position", None)
+    legs = getattr(position, "legs", None)
+    kind = getattr(position, "expiry_kind", "")
+    if position is not None and legs and kind:
+        reads.expiry_kinds.setdefault((position.underlying, min(x.expiry for x in legs)), kind)
+
+
 async def watch_of(  # noqa: PLR0913 - the route's inputs, passed on
         strategy_id: int, *, db: Any, user_ref: str, tracked_reader: TrackedReader, market_reader: MarketReader,
         rest_reader: RestSpotReader, margin_of: ApproachMargin, ctx: MarketContext | None,
-        rates: ChargeRates | None, prefs: Any, user_values: Any) -> PlanWatchOut:
+        rates: ChargeRates | None, prefs: Any, user_values: Any, reads: BatchReads | None = None) -> PlanWatchOut:
     """ONE strategy's Plan watch: the single route's whole answer, also what the batch route answers per row (same code,
-    so the same lines, wording and refusals; ADR-008)."""
-    from ofo_app.scenario_guard import check_screen_isolation  # noqa: PLC0415 - imports routes.broker
-    await check_screen_isolation(db, user_ref, strategy_id)
+    so the same lines, wording and refusals; ADR-008). ``reads``: what the batch read once for all its rows; None
+    (the single route) reads everything here. The screen-isolation check runs once, first in ``run_check`` (I-48: it
+    used to run here as well, a second identical statement per row)."""
     from ofo_app.adjustment_readers import read_market  # noqa: PLC0415 - imports routes.adjustment
     # Lane J2: the one price budget (ofo_app/price_budget.py), the same wrapper the adjustment-check route uses
     market_reader, rest_reader = price_budget.budgeted(market_reader, rest_reader, not_live_market=read_market)
@@ -313,12 +381,14 @@ async def watch_of(  # noqa: PLR0913 - the route's inputs, passed on
             "strategy_id": strategy_id, "as_of": now, "as_of_text": render_explanation("check_as_of", time=now),
             "plan_state": "no_plan", "no_plan_text": render_explanation("plan_sheet_no_plan"),
             "armed_heading": None, "paused": None, "lines": []})
+    if reads is not None:  # hand the expiry kind this row read to the next rows of the batch (same rule, same request)
+        _remember_kind(reads, run)
     live = run.fresh is not False and run.spot is not None  # unknown health with a spot is read as the check reads it
     out = run.out
     plan = out.playbook.source != "none"
     pause = out.paused
     plan_lines = [] if not plan or pause is not None else _plan_lines(run, live)
-    armed = await _armed_lines(db, strategy_id, run, live and pause is None)
+    armed = await _armed_lines(db, strategy_id, run, live and pause is None, reads)
     return PlanWatchOut.model_validate({
         "strategy_id": strategy_id, "as_of": out.as_of, "as_of_text": out.as_of_text,
         "plan_state": "paused" if plan and pause is not None else "planned" if plan else "no_plan",

@@ -12,6 +12,7 @@ from __future__ import annotations
 
 import asyncio
 import datetime
+import functools
 import time
 from typing import Annotated, Any, Literal
 
@@ -34,7 +35,7 @@ from ofo_app.routes.adjustment import (
 from ofo_app.routes.adjustment_preferences import UserPreferences, UserValuesIn
 from ofo_app.routes.broker import current_user_ref
 from ofo_app.routes.outcome import MarketContext, get_market_context, load_charge_rates
-from ofo_app.routes.plan_watch import PlanWatchOut, watch_of
+from ofo_app.routes.plan_watch import PlanWatchOut, prefetch, watch_of
 
 router = APIRouter(route_class=ClosedRoute)
 MAX_ROWS = 20
@@ -72,6 +73,16 @@ def _ids_of(raw: str) -> list[int]:
     return ids
 
 
+def _with_kind_memo(tracked_reader: TrackedReader, memo: dict) -> TrackedReader:
+    """The default reader (``read_tracked`` on the request's session) with the batch's expiry-kind memo as its
+    ``kinds``: the first row reads the stored catalogue, the rows after it with the same underlying and nearest expiry
+    reuse that answer (the worker does the same, #864). Any other reader (a test's own) is left as it is."""
+    from ofo_app.adjustment_readers import read_tracked  # noqa: PLC0415 - it imports routes.adjustment
+    if isinstance(tracked_reader, functools.partial) and tracked_reader.func is read_tracked:
+        return functools.partial(tracked_reader, kinds=memo)
+    return tracked_reader
+
+
 @router.get("/api/plan-watch", response_model=PlanWatchBatchOut)
 async def plan_watch_batch(  # noqa: PLR0913 - FastAPI dependencies, one per input
         strategy_ids: Annotated[str, Query(max_length=200)], *,
@@ -85,7 +96,10 @@ async def plan_watch_batch(  # noqa: PLR0913 - FastAPI dependencies, one per inp
         prefs: UserPreferences, user_values: UserValuesIn) -> PlanWatchBatchOut:
     items: list[dict] = []
     deadline = time.monotonic() + BATCH_BUDGET_S
-    for sid in _ids_of(strategy_ids):
+    ids = _ids_of(strategy_ids)
+    reads = await prefetch(db, ids)  # I-48: the reads every row shares, once (a failed one: each row reads its own)
+    tracked_reader = _with_kind_memo(tracked_reader, reads.expiry_kinds)
+    for sid in ids:
         left = deadline - time.monotonic()
         if left <= 0:  # the budget is spent: this row is not read (never guessed, never waited for)
             items.append({"strategy_id": sid, "state": "not_read"})
@@ -94,7 +108,7 @@ async def plan_watch_batch(  # noqa: PLR0913 - FastAPI dependencies, one per inp
             watch = await asyncio.wait_for(
                 watch_of(sid, db=db, user_ref=user_ref, tracked_reader=tracked_reader, market_reader=market_reader,
                          rest_reader=rest_reader, margin_of=margin_of, ctx=ctx, rates=rates, prefs=prefs,
-                         user_values=user_values), left)
+                         user_values=user_values, reads=reads), left)
             items.append({"strategy_id": sid, "state": "ok", "watch": watch})
         except asyncio.CancelledError:
             raise

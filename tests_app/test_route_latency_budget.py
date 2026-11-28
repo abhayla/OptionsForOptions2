@@ -47,8 +47,11 @@ LINE = re.compile(r"request (\w+) (\S+) (\d+) ([\d.]+)ms(?: db=([\d.]+)ms/(\d+)q
 # read runs in a SAVEPOINT (``stored_kind``: ``begin_nested`` = SAVEPOINT + RELEASE) so a failed catalogue read can no
 # longer ``rollback()`` the caller's order-key claim and strategy lock (review F1 / N6). MEASURED: the paper book route
 # (no kind read) stays at 11. A deliberate price of correctness, not a second read: one more statement still fails.
+# Lane B3 (I-48): plan-watch 27 -> 26: the screen-isolation read ran twice per request (``watch_of`` and ``run_check``);
+# it now runs once, in ``run_check``. The batch of NINE rows has its own ceiling in test_plan_watch_batch_b3_1128.py
+# (219 -> 162 statements).
 CEILINGS = {  # route -> most statements one request may run: today's counts, an N+1 regression guard
-    "plan-watch": 27,
+    "plan-watch": 26,
     "adjustment-check": 22,
     "adjustment-plan": 21,
     "paper/strategies/{id}": 11,
