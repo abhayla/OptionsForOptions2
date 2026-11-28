@@ -84,3 +84,21 @@ def test_asked_ids_are_cleaned_and_capped():
     assert route.parse_ids("3, 1,x,-2,0,1,\u0663,") == [1, 3]
     assert route.parse_ids("") == []
     assert len(route.parse_ids(",".join(str(i) for i in range(1, 80)))) == route.MAX_IDS
+
+
+WORKER_CODES = ("index_not_live", "leg_not_live", "exit_not_priced", "index_exits_not_run", "exits_not_checked_yet",
+                "expiry_kind_unknown")
+
+
+def test_every_why_code_the_worker_now_sends_is_a_known_reason_with_a_sentence_never_a_blank_badge():
+    """FD4 (coordinator 10:25): the six codes the worker sends are in the reason map; the sentence comes from the
+    catalogue by key (``monitoring_why_<code>``); a code whose sentence the catalogue does not hold yet answers the
+    plain "reason is not known" line, never an empty badge (the code itself is still served in ``reason``)."""
+    from ofo.errors.explanations import EXPLANATIONS  # noqa: PLC0415
+    for code in WORKER_CODES:
+        assert code in route._WHY, code
+        (o,) = route.compose({5: ms.Entry(5, ms.PAUSED, code, "", None)}, [5], NOW)
+        assert (o.watch_state, o.reason, o.badge_text) == ("paused", code, "Monitoring paused"), code
+        key = f"monitoring_why_{code}" if f"monitoring_why_{code}" in EXPLANATIONS else "monitoring_why_unknown"
+        from ofo.errors.explanations import render_explanation  # noqa: PLC0415
+        assert o.reason_text == render_explanation(key) and str(o.reason_text).strip(), code
