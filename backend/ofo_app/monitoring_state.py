@@ -518,6 +518,14 @@ def decode_exits(raw: Any, now: datetime.datetime) -> dict[int, str] | None:
         return None
 
 
+#: Lane RA2 item 3 (F7): HDEL each (field, text) pair only when the field still holds that exact text (one atomic step)
+_DELETE_IF_UNCHANGED = (
+    "local n = 0 "
+    "for i = 1, #ARGV, 2 do "
+    "if redis.call('HGET', KEYS[1], ARGV[i]) == ARGV[i + 1] then n = n + redis.call('HDEL', KEYS[1], ARGV[i]) end "
+    "end return n")
+
+
 class ExitsPublisher:
     """The paper monitor's one write path of the index-exit report: which strategies have an armed index exit being
     evaluated (``watching``) and which do not (``not_run``, with the why). Every monitor (every API worker process)
@@ -587,8 +595,20 @@ class ExitsPublisher:
             if at is None or abs((now - at).total_seconds()) > OWNER_KEEP_S:
                 gone.append(owner)
         if gone:
-            await self._client.hdel(exit_slots_key(), *gone)
+            await self._remove_dead(gone, fields)
         return mine == text
+
+    async def _remove_dead(self, gone: list[Any], fields: Mapping[Any, Any]) -> None:
+        """Lane RA2 item 3 (F7): one atomic step when the client runs scripts: a field is deleted only if it still holds
+        the exact text that was judged long dead, so a monitor that wrote a fresh slot between our read and this delete
+        keeps it. A client with no ``eval`` (the bare test doubles) keeps the two-step delete."""
+        if not hasattr(self._client, "eval"):
+            await self._client.hdel(exit_slots_key(), *gone)
+            return
+        args: list[Any] = []
+        for owner in gone:
+            args.extend((owner, fields[owner]))
+        await self._client.eval(_DELETE_IF_UNCHANGED, 1, exit_slots_key(), *args)
 
     async def _has_slot(self, at_text: str) -> bool:
         """Whether the stored report holds this monitor's slot as just written."""
