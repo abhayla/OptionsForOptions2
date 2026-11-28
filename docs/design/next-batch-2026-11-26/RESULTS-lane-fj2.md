@@ -1,4 +1,4 @@
-STATUS 19:15 | Lane F1 (was FJ2), batch 1 ready to push: items 1-2 on origin (68a46dd62); local: I-206 leg-expiry Review dialog, closed-market / blocked Exit line, O-P-01, F5 text A, group A review fixes F-A F-B F-C F-D | gate before push: merge integration/weekend-r3-1129, full check jobs 4 | not started: I-139, I-14 (definitions asked from the coordinator), browser walk | link to coordinator works (was refused with elevated_session_untrusted_device until the owner approved trust)
+STATUS 20:05 | Lane F1 batch 1 ready for the final check: items 1-2 on origin (68a46dd62); local on top (merged with integration/weekend-r3-1129, frontend 405 files / 4293 tests green before the last pins): I-206, F5, closed-market and blocked Exit line, group A review fixes F-A F-B F-C F-D, I-139 + I-14 page-wiring pins (builder and Positions), hand-off branch pushed (fix/r3-frontend-f23-handoff-1128, 4297f7065, TOTAL PASS) | next: full check jobs 4, push | blocker: none
 
 # RESULTS Lane F1 (was FJ2), branch fix/r3-frontend-2-1128, base origin/fix/r3-frontend-joins-1128 (ddd656805)
 
@@ -50,15 +50,19 @@ LiveStrategyCard: the card itself is correct and pinned (Exit and Stops only whe
 - NOT_CONNECTED strategies count with PAUSED ones for the one-sentence rule (pushed 68a46dd62).
 
 ## Question for the owner
+2. I-14 wording: the unknown-result line is two sentences ("We could not confirm the order. Check Orderbook before trying again."); the coordinator asked for "one sentence". Recommendation: keep, it says the one thing (unknown) and what to do. I-101: after Exit all is Cancelled, should the exits stay staged? As built they do not.
 1. Is a permanent block on unreadable lock storage acceptable, or a release such as "I checked the Orderbook"? Recommendation: no release in the app; the Orderbook is the authority (ADR-016).
 
 ## New wording for the owner to read
 - `The stop on the old leg may have been cancelled, and the new leg has no stop until you set one.` (F5 text A, shown after an unknown move when a stop was armed)
 - (pushed earlier) `Paper P&L paused - prices not live, as of <time> IST` on Home and the totals strip.
 
+## I-139, I-14, I-101 (coordinator's definitions, 19:45 IST)
+- I-139 page wiring (GitHub 870, 873): ALREADY BUILT on both pages (lock kept in localStorage, `locked` prop, decideLock); pinned with new tests: exit-lock-builder-wiring-fj2-1128 (Cancel does not release; failing reads plus 10 minutes of timers do not release; a second tab is locked) and exit-lock-positions-wiring-fj2-1128 (the same, on the Positions list). Green on first run: no defect found. Mutation note: removing the doExit lock check AND the dialog's `locked` term together leaves the tests green because further layers (ask(), the not-live gate, the 5 s hold) also stop the post; the tests pin the outcome (no second POST), not one line.
+- I-14 unknown-result sentence: pinned on both dialogs: the dialog says `We could not confirm the order. Check Orderbook before trying again.` (one message, the shared constant PAPER_UNKNOWN_TEXT) with only the "Open Orderbook" button beside it (a re-read, not a retry), no "placed" / "failed" text, Confirm off; the stored case never says "could not confirm". The text is the owner's earlier wording: not changed. If "exactly one sentence" means a single sentence with one full stop, that is a wording change for the owner (Question 2).
+- I-101 Exit all with a change staged (decision (59)): ALREADY BUILT in StrategyBuilderPage (DISCARD_WARNING, DISCARDED_TEXT, KEPT_UNTIL_KNOWN_TEXT, BACK_UNCHANGED_TEXT); 7 tests in exit-all-staged-adr330-59 pass, Lane TE recorded PASS. Not changed. The "nothing staged: does Cancel leave the exits staged?" half is the open owner question: as built, Cancel leaves NO exit staged (the staged change comes back exactly); not decided here.
+
 ## Not done
-- I-139 (exit lock window, page half) and I-14 (unknown-result sentence test): definitions asked from the coordinator at 19:00 IST, no answer yet; nothing built.
-- I-101 (Exit all with a change staged, decision (59)): already built; Lane TE records PASS (fe/exit-all-staged-adr330-59, 7 tests); not re-opened.
 - W-25 (Exit all text cut off at 1366 by 768) and the browser walk (item 13): not run; the layout needs a browser.
 - Moved to F2 / F3 (built locally, red-first, kept on the local branch `fj2-f23-handoff` at 218dbc3ab; NOT pushed): D-TG-3 Positions raw 409 JSON, D-TG-4 stale Stop box, plan card Target/Stop (O-R-09), My Strategies empty state (T2-17), Retry on the Positions Paper list (T3-10).
 - Not reproduced: T3-09 (a dismissed row's reason word): the Opportunities row prints the server's `detail`; a dismissal with no reason carries none by the server's design (adjustment_opportunities.py:158).
