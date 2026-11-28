@@ -92,3 +92,13 @@ async def test_no_session_with_the_market_open_never_serves_a_stored_figure(db):
     async with _client(app) as c:
         body = (await c.get(f"/paper/strategies/{stored.id}")).json()
     assert (body["state"], body["unbooked"]) == ("NOT_CONNECTED", None)
+
+
+def test_the_book_day_follows_the_answers_date_when_there_is_no_session():
+    """Opus review F3: a stored close's snapshot carries the close's own date (a stale store: Thursday's); the book day
+    and the Today total must follow today's date, so with no session the snapshot is not used for the day."""
+    from ofo_app.routes import paper as paper_routes  # noqa: PLC0415
+
+    marker = object()
+    assert paper_routes._day_snapshot(marker, connected=False) is None
+    assert paper_routes._day_snapshot(marker, connected=True) is marker

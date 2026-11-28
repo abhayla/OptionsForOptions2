@@ -756,6 +756,12 @@ def _today(snapshot: Any) -> datetime.date | None:
     return None if snapshot is None else snapshot.valuation.astimezone(paper.IST).date()
 
 
+def _day_snapshot(snapshot: Any, connected: bool) -> Any:
+    """RA2 item 1 (Opus review F3): the snapshot a stored close came from carries the close's own date, never today's;
+    with no session the book day and the Today total follow the answer's own date."""
+    return snapshot if connected else None
+
+
 def _book_day(snapshot: Any, answered_at: datetime.datetime) -> datetime.date:
     """D-40: the India date an expiry is judged against: the snapshot's, else the answer's own (no snapshot)."""
     return _today(snapshot) or answered_at.astimezone(paper.IST).date()
@@ -1089,13 +1095,14 @@ async def _book(db: Any, stored: Any, orders: Sequence[paper_store.StoredOrder],
         snapshot = await _stored_close_snapshot(ctx, underlying, keys)  # RA2 item 1: no session, the stored close
     prices = _prices(open_ids, found, snapshot)
     served = _served(connected, snapshot, prices)
-    base = _figures(orders, found, prices, served, _book_day(snapshot, answered_at),
+    base = _figures(orders, found, prices, served, _book_day(_day_snapshot(snapshot, connected), answered_at),
                     stored_close=served and not connected)
     charges = _charges(orders, found, underlying, rates)
     figures = (base | _summary(orders, found, prices, base, snapshot, underlying, exited_absent=False, rates=rates)
                | charges | _after(orders, found, prices, charges, underlying, rates))
     figures |= await settle_line_after_close(db, answered_at, figures)
-    figures["plan_final_text"] = await _plan_final(db, stored, orders, figures, _book_day(snapshot, answered_at))
+    figures["plan_final_text"] = await _plan_final(db, stored, orders, figures,
+                                                       _book_day(_day_snapshot(snapshot, connected), answered_at))
     return PaperBookOut.model_validate(figures | {
         "strategy_id": stored.id, "name": sf.shown_name(stored.name), "underlying": underlying,
         "answered_at": answered_at, "orders": _order_rows(orders, found),
@@ -1168,7 +1175,7 @@ async def list_paper_strategies(db: Annotated[Any, Depends(get_db)],  # noqa: PL
         snapshot = snapshots.get(b.underlying)
         prices = _prices(_open_ids(b.orders), found, snapshot)
         served = _served(connected, snapshot, prices)
-        figures = _figures(b.orders, found, prices, served, _book_day(snapshot, answered),
+        figures = _figures(b.orders, found, prices, served, _book_day(_day_snapshot(snapshot, connected), answered),
                            stored_close=served and not connected)
         summary = _summary(b.orders, found, prices, figures, snapshot, b.underlying, exited_absent=True, rates=rates)
         decays.append(_decay(figures, found, snapshot, b.underlying))
@@ -1186,7 +1193,7 @@ async def list_paper_strategies(db: Annotated[Any, Depends(get_db)],  # noqa: PL
     totals = _totals([out[i] for i in kept], [decays[i] for i in kept], expired, len(live) - len(kept),
                      sum(1 for s in out if s["open_count"] == 0 or s["state"] == "EXITED"))  # ADR-330 (15)
     sorted_books = sorted(books, key=_newest_first, reverse=True)
-    day = today_day([snapshots.get(b.underlying) for b in sorted_books], answered)
+    day = today_day([_day_snapshot(snapshots.get(b.underlying), connected) for b in sorted_books], answered)
     today = today_totals([_today_item(out[i], decays[i], sorted_books[i]) for i in live], day)
     return PaperListOut.model_validate({"strategies": out, "totals": totals, "today": today, "answered_at": now(),
                                        "shown_date": shown_date})

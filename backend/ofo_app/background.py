@@ -1136,6 +1136,7 @@ class Worker:
                 # its expiry does); the gate memory and queued events of the old position are dropped and the gate
                 # restores from the store (open records included) at the next check
                 self._gate.pop(w.strategy_id, None)
+                self._forget_silence(w.strategy_id)
                 self._gate_events.pop(w.strategy_id, None)
         self._drop_stale_writes(monitors)
         for user in dict.fromkeys(w.user_ref for w in monitors):  # once per user, never per check (finding 3)
@@ -1234,6 +1235,7 @@ class Worker:
             self._gate_load[sid] = load
             if sid in self._gate and self._gate_body.get(sid) != w.body:
                 self._gate.pop(sid, None)  # plan change: restored at the next check against the new ladder
+                self._forget_silence(sid)
             state = self._gate.get(sid)
             if state is None:
                 continue
@@ -1885,32 +1887,44 @@ class Worker:
         hold = alert_gate.entry_period_end(getattr(w.tracked, "entered_at", None))  # ADR-330 (47)
         new, events = alert_gate.step(state, now=now, preset=preset, readings=readings, entry_hold_until=hold)
         self._gate[sid] = new
-        self._note_silent_loss_rules(w, new, events, readings, now, hold)
         if events:  # #636 r6: queued in step order for the ONE writer; the check never waits for the database
             self._gate_events.setdefault(sid, collections.deque()).append(
                 GateBatch(w, tuple(events), now))
             self._write_wake.set()
+        try:  # the log line never affects an alert: after the events are queued, and never raises into the check
+            self._note_silent_loss_rules(w, new, events, readings, now, hold, preset.cooldown)
+        except Exception as exc:  # noqa: BLE001 - a log helper
+            log.warning("background: the silence note of strategy %s failed: %s", sid, type(exc).__name__)
+
+    _silence_told: dict[int, dict[str, str]] | None = None  # strategy -> rule -> the reason already logged
+
+    def _forget_silence(self, sid: int) -> None:
+        """The gate of ``sid`` was reset (position or plan changed): its next silence is told afresh."""
+        if self._silence_told is not None:
+            self._silence_told.pop(sid, None)
 
     #: loss rules the silence log names besides the plan's own loss stops: T-14 (the repricing loss risk, ic-e2e-paper)
     _SILENCE_EXTRA_RULES: Final = frozenset({"T-14"})
 
     def _note_silent_loss_rules(self, w: Watched, state: alert_gate.GateState, events: Sequence[Any],  # noqa: PLR0913
                                 readings: Mapping[str, gate_readings.Reading], now: datetime.datetime,
-                                hold: datetime.datetime | None) -> None:
+                                hold: datetime.datetime | None,
+                                cooldown: datetime.timedelta | None = None) -> None:
         """Lane RA2 item 2 (issue 876: a loss past its line for 22 minutes and no alert, and the log said nothing
         per strategy and rule): whenever a loss rule or guard is past its line at this check and this step raised
         nothing for it, ONE line names the strategy, the rule and why (``alert_gate.silent_reason``). Said again only
         when the reason changes; said afresh once the rule is back inside its line. No price and no figure of a feed
         is in it."""
         sid = w.strategy_id
-        # strategy -> rule -> the silence reason already logged (lazy: some tests build the worker without __init__)
-        told = self.__dict__.setdefault("_silence_told", {}).setdefault(sid, {})
+        if self._silence_told is None:  # lazy: some tests build the worker without __init__
+            self._silence_told = {}
+        told = self._silence_told.setdefault(sid, {})  # rule -> the reason already logged
         loss = sl.loss_stop_rule_ids(w.body) | self._SILENCE_EXTRA_RULES
         spoken = {e.rule_id for e in events if hasattr(e, "rule_id")}
         for rule_id in sorted(loss & readings.keys()):
             spec, value = readings[rule_id]
-            why = None if rule_id in spoken else alert_gate.silent_reason(state, rule_id, spec, value, now=now,
-                                                                          entry_hold_until=hold)
+            why = None if rule_id in spoken else alert_gate.silent_reason(
+                state, rule_id, spec, value, now=now, cooldown=cooldown, entry_hold_until=hold)
             if why is None:
                 told.pop(rule_id, None)
             elif told.get(rule_id) != why:
