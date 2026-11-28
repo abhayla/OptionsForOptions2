@@ -1,4 +1,4 @@
-STATUS 21:30 | all items done or answered; batch 2 gate TOTAL PASS 1132.9s on head bbef7d220 (FJ2 f23 4297f7065 and integration a1d70422 merged) | queue empty | blocker: none (send_message to the coordinator refused: elevated_session_untrusted_device; this line is the report)
+STATUS 22:10 | extra item I-66 (coordinator 20:26 IST, Lane W2 D-W2-2) built: Home Running strategies re-read; third push after its gate | all other items pushed (3b3f97f63) | blocker: none (send_message to the coordinator refused: elevated_session_untrusted_device; this line is the report)
 
 # RESULTS Lane F3 (frontend tail), branch fix/r3-frontend-f3-1128, base origin/integration/weekend-r3-1129 + FJ2 68a46dd62 + RA2 (fix/r3-leftovers-2-1128)
 
@@ -22,6 +22,9 @@ Item 3 cause: with a refused read and the connection read saying disconnected, t
 
 ## Merge with FJ2's hand-over (f23, 4297f7065)
 FJ2 built the same defects as my items 3 (D-TG-3), 5 (T2-17) and the Retry of item 7. Merged, both intents kept. Conflict in PositionsPage.vue: FJ2's `plain` filter (a JSON-looking string is dropped) is used by my `looksRaw` and `brokerOffLine`; my one-sentence + Retry block (shared LoadFailed) stays; FJ2's tests positions-409-json-fj2-1128 and failed-load-retry-fj2-1128 and my positions-not-connected-409-f3-1128 are green together (106 tests, 17 files with the FJ2 and Exit guards). One fix in the merge: with `broker_connected:false` my I-113 branch repeated the block's sentence in the Real card (FJ2's test red, 2 instead of 1); the card now keeps only its dash. MyStrategiesPage.vue merged without a conflict (FJ2's empty-state text and my pointer both stay). AdjustPlanSheet.vue and PlanEntry.vue are as the merge gave them.
+
+## Extra item I-66 / D-W2-2 (coordinator message 20:26 IST; after batch 1, so pushed as a third, small push on the coordinator's ask)
+Finding: summary cards keep the previous numbers after the data is no longer current, with no "old" tag. Cards read in my pages: Positions Real (hidden after 90 s since the last good read, OLD_FIGURE_TEXT, item 1) and Positions Paper (paused sentence with its time when the refresh fails: already fail closed); Home P&L (paused, as-of); Home Unread (dash plus "Could not be read right now." on a failed read). The gap was Home "Running strategies": read once at mount and never again. Fix, test first (home-reread-f3-1128, 3 of 4 red on the base): re-read every 30 s and on focus; a failed re-read shows a dash and the existing note on that card only. No new wording, no browser clock. Files: HomeOverviewPage.vue only (mine). If W2 saw other cards (a layout price notice, the Live card), tell me the screen: their files are not mine.
 
 ## For the owner lane
 - Lane F1/FJ2, `PaperStrategies.vue` row `paper-closed-leg`: the cells `paper-closed-unbooked` and `paper-closed-pnl` are `pnlText(null)` (a dash). Print `c.unbooked` and `c.pnl` (new fields of readPaperList's closed row), else `c.pnlReason`, when present.
