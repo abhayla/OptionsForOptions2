@@ -538,12 +538,25 @@ function adoptLock(id, seq, now) {
   return true
 }
 function adoptLocks(now, seq) { for (const id of new Set([...exitLockIds(), ...(now ?? []).map((g) => String(g.id))])) adoptLock(id, seq, now) } // every listed strategy too: an unreadable store locks them all
+// Lane W2 (I-139): another tab DECIDED a lock this page was holding (its POST answered, or its read decided it) and removed it from the store: the store is the authority, so the record this page
+// kept for it ends too, at once and not after the window. What is on screen is old (the exit may have been stored), so an open dialog of that strategy closes with the changed-elsewhere note and the
+// list is read again before anything is offered. A page's own decisions never come here (the storage event reaches only OTHER tabs).
+function releaseForeignDecided() {
+  const gone = (items.value ?? []).map((g) => String(g.id)).filter((id) => exitRec.cur(id)?.state === 'unknown' && !exitLockFor(id))
+  if (!gone.length) return
+  for (const id of gone) {
+    if (confirm.value && String(confirm.value.id) === id) endExit('changed', confirm.value.names, null, id)
+    else exitRec.drop(id)
+  }
+  try { refreshNow() } catch { /* the list says its own read failed */ }
+}
 let offLocks = null
 onMounted(() => {
   offLocks = onExitLocksChanged(() => { // another tab of this browser wrote a lock: it holds here too, an open dialog of that strategy turns to the unknown sentence at once
     if (!items.value) return
     adoptLocks(items.value, readSeq + 1)
     if (confirm.value && isUnknown(confirm.value.id)) dialogState.value = PAPER_STATE.UNKNOWN
+    releaseForeignDecided()
   })
 })
 onBeforeUnmount(() => { offLocks?.() })

@@ -542,7 +542,23 @@ function takeNewerGiveUp() {
 }
 function adoptForeignLock() {
   if (!paper.value) return
-  if (exitUnknown.value) { takeNewerGiveUp(); return }
+  if (exitUnknown.value) {
+    const u = exitUnknown.value
+    if (!exitLockFor(u.id)) { // Lane W2 (I-139): another tab DECIDED this lock (its POST answered, or its read decided it) and removed it: the store is the authority, so this tab's unknown state ends at once, not after the window.
+      // What is on screen is old (the exit may have been stored): the dialog closes and the book is read again before anything is offered or sent.
+      exitUnknown.value = null
+      exitRec.clear(EXIT_KEY)
+      paperDialog.value = false
+      paperState.value = PAPER_STATE.READY
+      exitOrigin.value = false
+      legsBeforeExit = null
+      paperStale.value = true
+      void rereadAfterPlace(u.id, () => {})
+      return
+    }
+    takeNewerGiveUp()
+    return
+  }
   if (paperBusy.value || !exitLockFor(paper.value.id)) return
   const rec = adoptedExitLock(paper.value.id, Date.now())
   const attempt = exitRec.begin(EXIT_KEY, rec.names)
