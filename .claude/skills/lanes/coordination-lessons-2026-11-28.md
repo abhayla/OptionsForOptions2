@@ -91,3 +91,42 @@ and rehearses the merge into main.
 Comparison of CI runs for the weekend: 0 (the plan before the owner's order), about 12 (one per lane), 4 (one per wave:
 22:45, 01:45, 08:00 and the 10:00 freeze).
 On a draft pull request the workflows behave so: `ci.yml` job `lint-and-test` is skipped (`if: github.event_name != 'pull_request' || github.event.pull_request.draft == false`; the local check covers it). `domain-tests.yml` (domain-tests) and `coverage.yml` (coverage) have no draft condition and run. `app-tests.yml` runs when the changed paths match its list, and then its `changes` job picks the jobs: api, frontend and execute-screen-e2e (the Execute-screen click-through) have no draft condition.
+
+## 14. A message reaches a lane only when its turn ends
+Case: the coordinator's messages to RA2 from 17:37 to 19:44, including a "now" interrupt, reached it as one queued batch
+when its long turn ended (21:42). It was deaf for four hours and looked like it was ignoring the plan. "Delivered" means
+queued. An instruction counts only once the lane's next line (message or STATUS) acknowledges it. Every hold is placed at
+the build lane, never only at the lane.
+
+## 15. List every lane's new migration before a wave
+Case: RA2 (0063_basket_facts_spot_at), B2 (0063_order_attempts) and R1 (0063_position_tags) all numbered 0063 on parent
+0062. Two of them make two alembic heads and `upgrade head` fails. The independent review found it before wave 1. The
+build lane chains them (0063, then 0064_order_attempts, R1 later 0065) and the lanes adopt the build's numbering.
+
+## 16. A cloud speed proof needs the real link's per-query delay
+Case: B3's plan watch ran in 0.2 s in the cloud and took 16 to 19 s on the PC: 88 queries at about 134 ms each. A 38
+percent cut in statements could not explain the PC's 14.4 s to 7.3 s. Pin the query COUNT (target 10 or fewer for nine
+strategies), not the statement text, and add a per-query delay to the cloud rig.
+
+## 17. Run the whole browser suite before a wave; CI time sets the last code wave
+Case: the browser suite had grown from 282 to 1,956 tests with 75 failing twice, and nobody had run it whole; the CI
+frontend job was cancelled at 25 minutes. CI's server job takes 80 minutes and a newer push cancels a running run, so an
+08:00 last wave could not give green CI by a 10:00 freeze. The last code wave is set by CI time (05:30), not by the freeze
+time.
+
+## 18. Two proof columns
+"Walked on a lane branch" and "proven on the build" (walked on the build commit, plus green CI on that exact commit).
+A branch walk never counts as proven. Case: wave 0's merge showed three CI failures that no lane had seen. Every money
+path (stop, exit, order, P&L) is re-walked on the build. Cost of honesty: a lower number at 04:00; at 21:33 it was 8 MUST
+proven on the build.
+
+## 19. Read commit times before calling a lane silent
+Case: F3's STATUS line read 23:20 at 22:40; lanes' own clocks drift. A lane in a 24-minute check or a long review looks
+silent. Use the commit time on origin (`git ls-remote`, `git log`) and the coordinator's own `TZ=Asia/Kolkata date`.
+Heartbeat = ls-remote of all heads every 30 minutes plus messages; no hourly documentation pushes.
+
+## 20. After each plan, an independent reviewer
+Case: the 22:38 plan was reviewed against origin before the owner saw it. It found a wave-blocking collision (lesson 15),
+four wrong rows (R1 had pushed stage 1; TG2 was closed, not handing over; RA2's head was a merge commit; two "check
+running" states were not on origin) and times that did not add up (08:00 wave, 10:00 green CI). The commitments were
+restated: MUST central 06:00 to 07:00 Sunday, last code wave 05:30, freeze = last commit with green CI.

@@ -156,6 +156,15 @@ Each point has its measured case in
     main, cost a run of one to two hours each and say nothing about the joined build (5 of 8 joins had conflicts on
     28 Nov); one run per wave checks the build that will be traded on and rehearses the merge into main. On a draft pull request the workflows behave so: `ci.yml` job `lint-and-test` is skipped (`if: github.event_name != 'pull_request' || github.event.pull_request.draft == false`; the local check covers it). `domain-tests.yml` (domain-tests) and `coverage.yml` (coverage) have no draft condition and run. `app-tests.yml` runs when the changed paths match its list, and then its `changes` job picks the jobs: api, frontend and execute-screen-e2e (the Execute-screen click-through) have no draft condition.
 
+14. **A message reaches a lane only when its turn ends.** Count an instruction only once the lane's next line acknowledges it; place every hold at the build lane.
+15. **Before a wave, list every lane's new migration number;** the build lane chains them and the lanes adopt its numbering.
+16. **A cloud speed proof needs the real link's per-query delay;** pin the query COUNT, not the statement text.
+17. **Run the whole browser suite before a wave;** CI's server job takes 80 minutes, so the last code wave is set by CI time, not by the freeze time.
+18. **Two proof columns: "walked on a lane branch" and "proven on the build";** a branch walk never counts as proven.
+19. **Read commit times, not the time of your last look,** before calling a lane silent; lane clocks drift.
+20. **After each plan an independent reviewer checks the facts against origin and the finish-time arithmetic** before the owner sees it.
+Detail and cases for 14 to 20: `coordination-lessons-2026-11-28.md`.
+
 ## Before every pre-push check
 1. Once per container: `git fetch --unshallow origin; git fetch origin main` (a cloud clone is shallow; two stages fail late without it).
 2. Cheap rules first, with `PATH=/usr/local/bin:$PATH`: `ruff check <changed files>`; `python scripts/ruff_ratchet.py`; `python -m pytest tests -m repo_scan -q`; `python -m pytest tests/orchestrator/test_select_app_tests.py tests/test_no_broker_name_in_feature_code.py tests/test_scenario_one_reader.py -q`; for a changed route also `python -m pytest -c pytest-app.ini tests_app/test_reply_inventory.py tests_app/test_openapi_drift.py -q`. A new tests_app file is listed in PR241_SELECTION; a database test reading market data uses `scenario_on`.

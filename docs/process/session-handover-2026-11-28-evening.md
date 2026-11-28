@@ -1,81 +1,118 @@
 # Session handover, 28 Nov 2026 evening (coordinator)
 
-- DONE: round 2 build 829ff65f handed to the PC; plan version 6b; the cloud-first rule; draft pull request 881 for the build, CI per wave (owner's order about 20:00 IST; lesson 13 in the lanes skill).
-- PENDING: the 72 workable items, in batches and waves (two pushes per lane, one combined check per wave, CI on pull 881 after each wave).
-- BLOCKED: nothing.
-- PARKED: the real-same-screens change (ADR-330 (73)) joins the build only when proven.
-- NEXT: sweeps every half hour; PC round 2 at 21:00 IST Saturday; freeze 10:00 IST Sunday, which needs green CI on the frozen commit.
+- DONE: wave 0 on the build (a1d70422); batch 1 of every fix lane on origin by 22:05; PC round 2 done 22:50 on 829ff65f; draft pull request 881 for the build with CI per wave; independent review of the plan (22:39) accepted and the commitments restated; wave 1 merged locally (7ee93381); R1 stages 1 and 2+3 on origin.
+- PENDING: wave 1 push and its CI; wave 2 at 01:45; last code wave 05:30; MUST items proven on the build (central 06:00 to 07:00 Sunday, 3 to 6 may stay unproven); R1 renumber to 0065 and R2 walk by 04:30; the 75 failing browser specs; successors F1c and Z4; the Monday 09:15 checklist; the pull order naming each migration.
+- BLOCKED: the owner's answers (14 questions in section 6, first the browser spec question); device trust for lanes that cannot message.
+- PARKED: issue 876 (not reproduced after six attempts; the stop in that case is not proven); the merge into main (after Monday); the real-same-screens change unless the 04:30 conditions are met.
+- NEXT: heartbeat every 30 minutes; freeze = last commit with green CI on pull 881 by 10:00 Sunday; PC round 3 at 12:00; live market Monday 30 Nov 09:15.
 
-The master plan below is the current content of the git-ignored `docs/process/.run/MASTER-PLAN-2026-11-28.md` (live copy as of 20:01 IST), copied so a new session can read it.
+The text below is the current master plan (copy of the git-ignored `docs/process/.run/MASTER-PLAN-2026-11-28.md`), so a new session can read it. Its top is the current truth; the log at the bottom is newest last.
 
 ---
 
-# MASTER PLAN, weekend of 28 to 30 Nov 2026 (coordinator = release manager). READ THIS FIRST after any restart, summary or new session, and at every sweep.
-Saved 28 Nov 19:14 IST. Owner approved it at about 18:40 IST. Update this file whenever the plan changes; never let chat be the only copy.
+# MASTER PLAN, weekend of 28 to 30 Nov 2026 (coordinator = release manager)
+READ THIS FIRST after any restart, summary or new session, and at every sweep. Read the log at the bottom, newest entry wins.
+Top rewritten at 23:07 IST Sat 28 Nov (clock from `TZ=Asia/Kolkata date`). The top is the current truth. The log below is unchanged.
+Update the top whenever the plan changes. Chat is never the only copy.
 
-## Goal and finish line
-- All 72 workable items fixed, merged into the round 3 build (integration/weekend-r3-1129) and proven in the cloud. Only items that truly need the live market wait for Monday 30 Nov 09:15 IST.
-- Classes: MUST 30 (stop, exit, order, P&L, missing alerts, misleading text), SHOULD 17, LATER 25, OWNER 4. Item lists: finish-line-2026-11-28.md; item-to-lane table: completion-plan-2026-11-28.md; measured review: plan-review-2026-11-28.md.
-- Committed times (padded): MUST merged and browser-proven by 04:00 Sun; all 72 by 07:00 Sun; build freeze 10:00 Sun; PC round 3 at 12:00 Sun; P0-only fixes 16:00 to 19:00 Sun; no pull or migration Monday morning.
+## 1. Goal and finish line
+- Goal: fix the workable items, merge them into the round 3 build (integration/weekend-r3-1129), prove them, and trade on that build Monday 30 Nov 09:15 IST. Only checks that need the live market wait for Monday.
+- Classes: MUST 31 (stop, exit, order, P&L, missing alerts, misleading text), SHOULD, LATER, OWNER. All items: about 77 open at 23:02, 10 proven.
+- Commitments, restated after the independent review of 22:39 (they replace the old ones):
+  - MUST (money-path) items proven on the build, central estimate 06:00 to 07:00 IST Sunday 29 Nov. Three to six MUST items may stay unproven.
+  - All items: no promise for 07:00. About 10 to 15 may be unproven at the freeze.
+  - LAST CODE WAVE 05:30 Sunday. After it, no push until that wave's CI on pull 881 is read.
+  - FREEZE = the last commit with green CI on pull 881, by 10:00 Sunday at the latest. No extra push after it.
+  - PC round 3 at 12:00 Sunday, if CI is green. Live market Monday 30 Nov 09:15 IST.
+  - P0-only fixes 16:00 to 19:00 Sunday. No pull and no migration Monday morning.
+- Two proof columns. Only the second counts as proven.
+  - Walked on a lane branch: a walker saw it work on that lane's branch.
+  - Proven on the build: walked on the build commit, plus green CI on that exact commit. Every MUST money path is re-walked on the build.
+  - Now: 8 MUST proven on the build (21:33). Fixes for about 20 more MUST are in wave 1 (not yet proven on the build).
 - Every report to the owner starts with the burn-down: MUST open / proven since last report / net; then all items open / proven / added.
 
-## How the work runs (owner approved)
-- Targeted tests per item, local commits; TWO pushes per lane: batch 1 = MUST items on origin by 22:30 IST Sat; batch 2 = the rest by 01:30 IST Sun. One full pre-push check per push (23.6 min median, about 30 percent fail once). Never a bypass, never a skipped test.
-- Build lane Z3 merges in waves, one combined check each: wave 0 at 19:00 Sat (RA 951aa698c, FJ 4aeb42652, FJ2 68a46dd62), wave 1 at 22:45, wave 2 at 01:45 Sun, final 08:00 Sun, freeze 10:00, then one Opus review and the pull order.
-- Walkers prove each fix in a cloud browser as soon as it is pushed; the PC runs PC ONLY checks plus a sample of at most ten (plan version 6b on docs/test-plan-weekend-1127).
-- Lanes report by message at every push, when blocked, at 55 percent of context (then start a successor on the pushed head). The coordinator cannot read lane events since the owner approved device trust; messages and origin are the only signals. The PC session speaks only through PR 722 comments.
-- A new finding goes on the list with its class and is counted as "added". A new lane needs one line of justification to the owner.
-- Reviews (Opus) on money paths only, two rounds at most; when reviews keep finding holes, move the guarantee to one server code path.
-- Standing limits: PR 722 never merged, never marked ready; paper only, never a broker order endpoint; no artifact link in the repo; a clash between two of the owner's rules is asked, not decided; clock from `TZ=Asia/Kolkata date` every time.
+## 2. How the work runs
+- Two pushes per lane. Batch 1 = MUST items (done, 22:05). Batch 2 and later fixes as each lane's next-work list says. One full pre-push check per push. Never a bypass, never a skipped test. Rules sent to every lane: WORKING-RULES-1128.md.
+- Waves, one combined check each, built by the build lane. Wave 0 done (a1d70422). Wave 1 merged locally 7ee93381, check running, push follows. Wave 2 at 01:45. The last wave at 05:30. Z4 takes over the build at wave 1's push.
+- CI rule. One draft pull request, pull 881, for the build branch into main. CI only. One push per wave, because a newer push cancels the older run. The server job takes 80 minutes, so a wave's CI result comes about 1.5 hours after the push. A red job goes the same sweep to the lane that owns the failing file (money path = MUST). The freeze needs green CI on the frozen commit, the local check and the Opus review.
+- Walkers. W2 proves the lanes' branches before a wave. W3 re-walks every MUST money path on the build commit, then TG2's unwalked rows, then every walker defect.
+- The PC is used only for PC ONLY checks. A cloud speed check is not valid without a per-query link delay (the PC link costs about 134 ms per query; the cloud about 0.2 s for a whole plan watch against 16 to 19 s on the PC).
+- Messages reach a lane only when its current turn ends (RA2 was deaf for four hours; "delivered" means queued). An instruction counts only once the lane's next line acknowledges it. Every hold is placed at the build lane, never only at the lane.
+- Lane clocks are unreliable (F3 wrote 23:20 at 22:40). Use commit times and `TZ=Asia/Kolkata date`.
+- Heartbeat = `git ls-remote` of all heads every 30 minutes, plus lane messages. No hourly documentation pushes. W2, X2, F3, Z3, FJ2 and RA2 messages get through; the others need the owner's device trust.
+- A new lane needs one line of justification to the owner (what it finishes that a running lane cannot).
+- Reviews (Opus) on money paths only, two rounds at most. When reviews keep finding holes, move the guarantee to one server code path.
+- A new finding goes on the list with its class and counts as "added".
+- Standing limits: PR 722 and pull 881 are never merged and never marked ready; paper only, never a broker order endpoint; no artifact link in the repo; a clash between two of the owner's rules is asked, not decided; never skip a test.
+- Status answers to the owner (his order, 28 Nov 19:48): after the lane table, in simple words, give the approach, the basis for the work given, how waste is avoided, how things merge, how screens are tested, how money calculations are built and tested. No jargon, no ids unless he asks.
 
-## How to answer the owner's "status of all lanes" (his order, 28 Nov 19:48 IST)
-Every status answer has, in simple words and few of them (as to a child with basic knowledge), after the lane table: (1) the approach in one or two lines; (2) on what basis work was given to lanes; (3) how wasted time after the work is avoided (checks, pushes; no PRs or CI on lane branches); (4) how things are merged; (5) how screens are tested; (6) how money calculations are built and tested. No jargon, no ids unless he asks.
+## 3. Lane table (as of 23:06 IST)
+Closed and safe to archive: RA, FJ, TG, Z2, FD5, FE4, RA2 (closed at 287c9fc3e), FJ2 (closed at d93fce449), TG2.
+Working lanes:
+| Lane | Session | Branch | Owns | State |
+|---|---|---|---|---|
+| B1b | session_01QaT8YLAkp9eG2HKG2ZpPGw | fix/r3-backend-b1b-1128 | RA2's unowned items: stored stop reported failed, unreadable slot, adx error, unknown calendar must read NOT_CONNECTED, history screen, market-open clock; W-34; token-in-log hole fixed here | working, push due |
+| B2 | session_01QaT8YG7nc63xpT4Wha4YZf | fix/r3-backend-b2-1128 | other routes, stores, request key, unknown-outcome block, Execute door, migration 0064_order_attempts | working, batch 1 on origin (b2e8e29c3) |
+| B3 | session_01QaT8YHcJsYhiQ9MTSpCUp3 | fix/r3-backend-b3-1128 | plan-watch speed, outcome wording | working, batch 1 on origin (ecf8e8f99) |
+| F1b | session_01QaT8YKfQUB6LP9fmiWRxqd | fix/r3-frontend-f1b-1128 | successor of FJ2: Exit dialog, locks, builder page, two lock release paths, review findings, W-25 walk | working, about 60 percent of its context: one more push, then successor F1c |
+| F2 | session_01QaT8YHowsRYRpSxJJrcCLJ | fix/r3-frontend-f2-1128 | plan screens, Execute page | working, batch 1 on origin (4e8074a07) |
+| F3 | session_01QaT8YFYnFG8sqbkiPDAuBc | fix/r3-frontend-f3-1128 | Positions, Home, list pages; the 75 failing browser specs | working, as-of with date on origin (505542d80) |
+| T | session_01QaT8YGrRAPFNpXkAat7khm | test/r3-tests-t-1128 | test-only and tooling, CI jobs | working |
+| W2 | session_01QaT8YHvwJDJkiBcmcrVHUY | test/r3-proof-w2-1128 | cloud proof of each lane's branch before a wave | working |
+| W3 | session_01QaT8YH4kLB6y4RxFdVSfX8 | test/r3-plan-walk-3-1128 | plan walker, successor of TG2 | working, started 22:44 |
+| Z3 | session_01QaT8YGJntZzKU9jAqYfTot | integration/weekend-r3-1129 | build, waves | working, budget ends about 00:40; successor Z4 starts at wave 1's push, brief S/briefs/brief-Z4.md (S = the scratchpad folder) |
+| X2 | session_01QaT8YJFCQRTmhBxycpERGg | docs/test-plan-weekend-1127 | PC lists, owner-questions file | working |
+| R1 | session_01QaT8YGXMT6KVQFLLEe5sRx | feat/real-same-screens-be-1128 | real = paper backend; stages 1 and 2+3 on origin (09efab8df) | working, held, see section 4 |
+| R2 | session_01QaT8YKyMiG1dUJvqqhkykR | feat/real-same-screens-fe-1128 | real = paper frontend | working, held, see section 4 |
+| PC | session_01QaT8YGvTk8cS2G7qtuoCeb | none | PC ONLY checks; speaks only through PR 722 comments | working, round 2 done 22:50 on 829ff65f |
+Ids of the closed lanes are not recorded here; they need only archiving.
 
-## CI on the build (owner's order, 28 Nov 20:01 IST: "Proceed with these three changes")
-1. One draft pull request for the build branch into main: abhayla/OptionsForOptions2 pull 881 (integration/weekend-r3-1129). For CI only. NEVER merged, NEVER marked ready before Monday's live test (same rule as PR 722). This session is subscribed to its activity.
-2. CI runs on it after every wave push (22:45, 01:45, 08:00, the 10:00 freeze). Lanes do not wait. At every sweep read pull 881's check runs for the newest build commit; a red job goes the same sweep to the lane that owns the failing file (money path = MUST). Z3 pushes once per wave (a newer push cancels the older run).
-3. The freeze needs GREEN CI on the frozen commit, plus the local check and the Opus review, before the round 3 pull note goes to the PC. Still running at 10:00: the PC round waits. Red on something that cannot touch money: tell the owner what failed; he decides.
-Fact: on a draft pull request the test workflows run (api, frontend, domain-tests, coverage, the Execute-screen click-through); only ci.yml's lint-and-test job is skipped, and the local check covers it.
-Unchanged: no pull request per lane; two local checks and two pushes per lane.
+## 4. Holds and conditions in force
+- RA2's later work enters the build only through B1b's branch. B1b fixed the token-in-log hole that RA2's 1f8e0018c had. The build takes RA2's dc1aeebd8 only (in wave 1).
+- feat/real-same-screens-be-1128 and -fe-1128 enter the LAST wave (05:30) only if all hold by 04:30: R1 renumbered to 0065 on the build head and pushed; R2's browser walk PASS and pushed (by 03:30); one independent Opus review of both branches passed (the coordinator starts it when R1's renumbered head is on origin). Else they land after Monday. Until then Monday runs on the 27 Nov rule, ADR-330 (64), with the interim written in the handover. Owner decision 28 Nov 18:55 stands: real and paper are the same screens, only a tag differs.
+- Migration chain on the build: 0062, 0063_basket_facts_spot_at, 0064_order_attempts. One head. Z4 checks `alembic heads` and times up, down to 0062, up at every merge.
+- The 75 failing Playwright specs (1,956 run in CI against 282 on main): F3 sorts them (expected-fail, stale, environment, real defect). Nothing is skipped. The owner decides what may stay red. T's frontend job timeout is 40 minutes; with failures left the job needs about 42.
+- Issue 876 is parked for Monday only with the minimums in section 8.
 
-## Open holds and decisions
-- HOLD: RA2's commit 77315690e stays out of the build until RA2 states that a stored close keeps a non-live price state (option a) or proves with named tests that nothing live follows (option b).
-- HOLD: feat/real-same-screens-be-1128 and -fe-1128 join the build only when proven (database test with worker as a separate process, browser walk, Opus review) by Sun 10:00; otherwise Monday runs on the 27 Nov rule (ADR-330 (64)) and the change lands after the live test.
-- Owner decision 28 Nov 18:55: "Paper and real trades are same now... no difference other than a tag"; Exit on a real position: same screens, nothing sent, stored with the real tag and the line "Not sent to Zerodha. Place it in Kite."; ADR-281 hold stays; ADR-330 (64) withdrawn. Decision row being written on fix/ic-live-test-1123 as the next ADR-330 point (confirm it is pushed). Design: design-real-same-screens-2026-11-28.md. Its four follow-up questions have fail-closed interims.
-- Server-side block against a second order after an unknown outcome: Lane B2, top of batch 1 (the browser lock could not be made complete in five reviews).
-- Owner questions still open (lanes built the fail-closed side): armed rows on a real position (now covered by the 18:55 decision), Execute-page lock on a repeat press, table total versus booked P&L switch, paused-badge wording, Cancel after Exit all with nothing staged, held position recorded by hand (ADR-292 (4)), unsent prepared order form reading as real, rupee and percent stop wording, about 30 new sentences to read.
-- After Monday: the merge into main (main is 11 days old, about 1,700 commits behind; 3 hours to 2 days), which also removes about 15 minutes of waste per check.
+## 5. Open work by lane (newest log entries win)
+- B3: plan watch to a fixed small query count (10 or fewer for nine strategies) and a per-query delay rig in the cloud; fires_at for not-checked rows. The PC measures time per statement before any reader is rewritten. Due: for wave 2 (01:45).
+- B1b: push its batch now; W-34 badge delay after a worker restart (2.5 min on the PC); monitoring-state must not answer an empty list while the worker monitors rows (O-R2-01); backstop tests c and d for RA2's work. Money-path items by 01:30, the rest before the last wave at 05:30.
+- B2: batch 2 by 01:30; the 120-second close of an open attempt must never apply to the real door; a second-strategy test; adopt 0064 numbering; the execute-screen-e2e CI step.
+- F1b: one more push (lock release paths, review findings, W-25 walk, the unknown-result sentence), then successor F1c.
+- F3: the 75-spec table (within 60 minutes of the order, then fixes by 01:30); Positions as-of; check W-25 D belongs to the builder panel (F1b's file).
+- F2: batch 2 or spec fixes; keep I-197 and I-208.
+- T: flaky feed-control test; two test_exit_door tests (no_deadlock cases) that alter a table that no longer exists; the CI frontend job; the alembic import in domain-tests.
+- W2: walk lanes' branches before each wave. W3: re-walk every MUST money path on the build commit, then TG2's unwalked rows.
+- X2: fold PC round 2 into the lists; the round 3 page; owner-questions file.
+- Z3 and Z4: waves 1, 2 and 5:30; freeze review; the pull order naming each migration for the LIVE database (the db_run.py line that targets the test database must not appear in it); rehearse on a copy first.
+- R1: renumber to 0065 on the build head. R2: browser walk by 03:30.
+- PC: round 3 PC ONLY list at 12:00.
 
-# Live lanes after the 18:40 IST replan (28 Nov). Coordinator cannot read lane events; lanes report by message.
-| Lane | Session | Branch | Owns |
-| B1 = RA2 | session_01QaT8YK2edaCm2CbTjXXNuT | fix/r3-leftovers-2-1128 | worker, monitor, alerts, routes/paper.py, paper P&L. HOLD 77315690e out of build until stored-close state corrected |
-| B2 | session_01QaT8YG7nc63xpT4Wha4YZf | fix/r3-backend-b2-1128 | other routes, stores, request key, server unknown-outcome block (top), Execute door |
-| B3 | session_01QaT8YHcJsYhiQ9MTSpCUp3 | fix/r3-backend-b3-1128 | plan-watch speed, outcome wording |
-| F1 = FJ2 | session_01QaT8YGWMBDftMQxLas7F94 | fix/r3-frontend-2-1128 | Exit dialog, locks, builder page |
-| F2 | session_01QaT8YHowsRYRpSxJJrcCLJ | fix/r3-frontend-f2-1128 | plan screens, Execute page |
-| F3 | session_01QaT8YFYnFG8sqbkiPDAuBc | fix/r3-frontend-f3-1128 | Positions, Home, list pages |
-| T | session_01QaT8YGrRAPFNpXkAat7khm | test/r3-tests-t-1128 | test-only and tooling; then third walker |
-| W1 = TG2 | session_01QaT8YJkdxuCuLg82y5eG6A | test/r3-plan-walk-2-1128 | cloud walk of the plan |
-| W2 | session_01QaT8YHvwJDJkiBcmcrVHUY | test/r3-proof-w2-1128 | cloud proof of each merged fix |
-| Z3 | session_01QaT8YGJntZzKU9jAqYfTot | integration/weekend-r3-1129 | build; waves: 0 now, 22:45, 01:45 Sun, 08:00 Sun; freeze 10:00 Sun |
-| X2 | session_01QaT8YJFCQRTmhBxycpERGg | docs/test-plan-weekend-1127 | PC lists |
-| R1 | session_01QaT8YGXMT6KVQFLLEe5sRx | feat/real-same-screens-be-1128 | real = paper backend (owner decision 18:55; merged only on coordinator's word, proven by Sun 10:00 or after Monday) |
-| R2 | session_01QaT8YKyMiG1dUJvqqhkykR | feat/real-same-screens-fe-1128 | real = paper frontend |
-| PC | session_01QaT8YGvTk8cS2G7qtuoCeb | - | round 2 at 21:00 on 829ff65f, plan v6b; PR 722 comments only |
-Closed, safe to archive: RA, FJ, TG, Z2, FD5, FE4 and earlier.
-Batches: batch 1 (MUST) on origin by 22:30 IST; batch 2 by 01:30 Sun. Files: completion-plan-2026-11-28.md, plan-review-2026-11-28.md, finish-line-2026-11-28.md, design-real-same-screens-2026-11-28.md, WORKING-RULES-1128.md.
-Owner decision 18:55: real = paper except the tag; same screens, nothing sent; ADR-330 (64) withdrawn; row being written by the lessons helper on the fix branch.
+## 6. Questions waiting for the owner (one numbered list; each has a fail-closed default built)
+1. Alert answered before the Exit dialog, then Cancel leaves it gone (ADR-330 (3)). Recommendation: store the answer only when the exit is accepted.
+2. W-10 word: "Completed" (REQ-112 AC-2) against "Acted on" (decision (53)).
+3. The builder book panel greys Exit after a failed read: rule D-05 against ADR-330 (60). Both texts to be quoted.
+4. Leg price_state "live" for a stored close (as-of with date now shown; confirm the word).
+5. The 130-second lock release after a reload (I-188): is it acceptable?
+6. Held position recorded by hand (ADR-292 (4)).
+7. Unsent prepared order form reading as real.
+8. Execute page lock on a repeat press.
+9. Table total against booked P&L: which one leads.
+10. Rupee and percent stop wording.
+11. Cancel after Exit all with nothing staged.
+12. The doubled "market is closed" line.
+13. About 30 new sentences to read.
+14. May any browser spec stay red at the freeze? His rule is never skip a test; without his answer the freeze has no green CI.
+Also first line of the next report: device trust for the lanes that still cannot message (F1b, R1, R2, F2, F3, T, B3).
 
-## Working rules sent to every lane
-Working rules from 28 Nov 19:00 IST (owner approved; they replace "one push per item" in older briefs):
-1. Per item: failing test first, the fix, that item's targeted tests green, one local commit. No full pre-push check per item.
-2. Exactly two pushes per lane. BATCH 1 = your MUST items (stop, exit, order and money paths first), due on origin by 22:30 IST Saturday. BATCH 2 = everything else, due by 01:30 IST Sunday. A lane may commit locally as often as it likes; one check covers all commits of the pushed head.
-3. Before each push: `git fetch origin && git merge --no-edit origin/integration/weekend-r3-1129` (the round 3 build; on a conflict keep both intents, on a stop, exit, order or money path take the stricter, fail-closed side and name it), the pre-check list, then the full check once: `python scripts/orchestrator/prepush.py --jobs N` in the background with a 7200000 ms limit, N = 4 only if `nproc` is 4 or more and `free -g` shows 6 GB or more free, else 2. Never an override, never a skipped test. Read only the failing stage's log on a red run.
-4. While the check runs, do not change that tree. Build the next item in a second worktree (`git worktree add ../wt-next -b <your-branch>-next`, purpose written in RESULTS, removed with plain `git worktree remove` when merged back, never --force). If unsure, wait for the check instead.
-5. The Opus review of a batch's money-path diff runs while the check runs. A finding that can cost money is fixed before the push; every other finding goes into the next batch. Two review rounds at most, then list what is open.
-6. One line to the coordinator by send_message (session_id "@parent") at: start, each push (commit, items done, the TOTAL PASS line), when blocked, when a question needs an answer, and at 55 percent of your context with the hand-over list. The coordinator cannot read your events.
-7. A new defect you find outside your items: one line to the coordinator with file and evidence; do not start it.
-8. Paper only, never a broker order endpoint; money exact Decimal; never wait for the owner: build the spec-conformant, fail-closed side and record it under "Decided for the owner"; a clash between two of his rules is written under "Question for the owner", not decided.
+## 7. For Monday
+- Issue 876 is NOT reproduced after six attempts. Parked with the worker log line (one line per cycle, with strategy id, price source and reason, when a leg cannot be priced). Cloud attempts stop: the cause needs the live feed.
+- A Monday 09:15 checklist is still to be written: who watches which log line in the first 15 minutes, the Execute door (B2), the 876 case, the real-same-screens decision.
+- The stop in that one case is NOT proven. The owner is told in plain words.
+- After Monday: the merge into main (main is about 1,800 commits behind; 3 hours to 2 days), which also removes about 15 minutes of waste per check.
+
+## 8. Pointers (same folder, S)
+final-plan-2026-11-28-2300.md (restated plan, ten accepted changes); improvement-plan-review-2238.md (the independent review with the arithmetic); WORKING-RULES-1128.md (rules sent to every lane); finish-line-2026-11-28.md (item lists); completion-plan-2026-11-28.md (item to lane table); design-real-same-screens-2026-11-28.md; briefs/ (lane briefs, brief-Z4.md); docs/process/owner-questions-2026-11-28.md (in the repo); bak/MASTER-PLAN-before-rewrite.md (the old top).
 
 ## Log of changes (newest last)
 - 19:15 IST: wave 0 pushed by Z3 at 19:13: build head a1d70422 (RA 951aa698c, FJ 4aeb42652, FJ2 68a46dd62 merged clean; alembic head 0062; check 955 s with --jobs 4; database proofs 716 passed, 1 failed: test_exit_door_real_fd3.py test_n7, given to R1 which rewrites that file). W1, W2, R1, F2, F3 told the new head.
@@ -88,3 +125,23 @@ Working rules from 28 Nov 19:00 IST (owner approved; they replace "one push per 
 - 19:33 IST walker results (on 4d975129f): W-09 PASS with PATH-10 (rupee stop fires once, alert within 35 s). FAIL D-TG2-1 raw key "triggers.T-01" after Reset to playbook (to F2); W-30 stop shown with no figure (F2); W-29 step 57 empty Plan watch heading on a closed trade (F2); D-TG2-2 T-09 title without amount (RA2); D-TG-5 and W-25 D to be re-walked on a1d70422; six plan faults to X2.
 - 19:33 IST burn-down: MUST open 31 (30, 1 proven: I-210; 2 added: server unknown-outcome block, T2 missing row); all open 77 of 79 (2 proven; 7 added). Board 217 items, published.
 - 20:01 IST: draft pull request 881 opened for the build; Z3 told; a helper is writing the rule into the lanes skill, runbook, harvest file, friction log and the tracked handover (push after its check).
+- 20:05 IST: FIRST CI RUN on pull 881 (wave 0, a1d70422): execute-screen-e2e FAILED: Execute door answers 503 code 583 (request key store unavailable) because that CI job has no Redis (or the durable claim fails for the app role). Failed closed. Given to Lane B2 for batch 1: the durable table decides, Redis only a fast path; B2 may edit only that step of app-tests.yml if Redis must stay mandatory. One comment posted on pull 881. coverage and close-keywords passed; api, frontend, domain-tests were running.
+- 20:11 IST: CI on pull 881 (a1d70422): domain-tests FAILED with one test: tests/test_alert_kinds.py::test_the_migration_copies_the_table (No module named alembic: CI's domain job installs no alembic; passes on lane machines). Given to Lane T, front of queue: read the migration's literals without importing alembic, prove in a CI-like clean environment, fix the whole class, early push for the 22:45 wave. Not a money path. api and frontend jobs still running.
+- 20:26 IST: W2 walked group A on a1d70422 (push follows): PASS I-181, I-14 (stored then cut), I-138 (resend), I-132, I-26, I-27, I-10, I-08 page half, I-187. FAIL D-W2-1 (I-188: a forward clock jump releases the lock on reload; same key so server de-dupes) and second tab locked 2 min after a stored exit: to FJ2. FAIL D-W2-2 (I-66: no old-figure tag on summary cards): to F3. W2 can message the coordinator. W2 next: group B on lanes' branches, RA2 4ec19fdd6 first (what state a stored close shows). X2 pushed 03df6c6fa (six plan faults corrected). Owner question added: W-10 word, REQ-112 AC-2 'Completed' against decision (53) 'Acted on'.
+- 20:53 IST sweep (by hand; the half-hourly job did not fire while the session was busy): fix branch at a0e6fee18 (CI rule in the skill, runbook, harvest, handover). Heads: RA2 88500c2a9, B3 02d62e3a3, F2 28c0e7be6, F3 937e80bbe (all items pushed, I-66 built), T 928eba42c, TG2 4ac09a4ec, R1 f9b2a0f14 (stage 1 built, check running), R2 39f91ce48 (items 1 to 5 built), X2 c565502e3 (I-96, I-109, I-110 evidence; W-10 owner question Q1 in docs/process/owner-questions-2026-11-28.md). NOT on origin: B2, W2 (results), FJ2 batch 1.
+- 20:53 IST: RA2 does NOT act on coordinator messages since 18:40 (five messages and one interrupt unanswered; its STATUS says "blocker: none"); it works its old queue and pushed migration 0063 (spot_at) against the plan. Decision: not replaced (it is productive and its checks pass); no more work is sent to it; its branch enters a wave only on an independent Opus review (running) of: stored close reads LIVE, migration 0063, the missing-row fix. Its remaining B1 items go to a successor lane when the review returns.
+- 20:53 IST: messages to the coordinator are still refused for B3, F2, F3, T, TG2, R1, R2 (device trust); W2, X2, FJ2, RA2, Z3 get through.
+- 21:05 IST: W2 walked RA2 4ec19fdd6: stop past the stored close did not fire, Confirm greyed, API says book and legs live, as-of beside P&L only on the builder. W2 FAIL on F2 28c0e7be6: I-197 plan block shows no figure (cause in PlanEntry.vue printed), back to F2; I-208 PASS. B3 plan watch: nine rows median 0.56 s, 9 of 9 equal. As-of item sent to F3 as MUST; Z3 and FJ2 told.
+- 21:20 IST: FJ2 pushed batch 1 (4201d3af2, check passed, 21:08) and closed (d93fce449, SAFE TO CLOSE). Successors started: F1b and B1b (rows in the lane table). Their pushes: money-path items by 01:30 Sun (wave 2), rest by 07:30 (final wave 08:00). W2 walking FJ2's batch on six points. F2 may start the Execute page lock. RA2 push 3 = 88500c2a9 (reviewed).
+- 21:26 IST: CI on pull 881 wave 0 complete: api 1 failed of 8548 (test_exit_door_real_fd3 test_n7, known, with R1; the api job takes 80 minutes, so a wave's CI result comes about 1.5 hours after the push); domain-tests 1 failed (alembic import, Lane T); execute-screen-e2e failed (order door without a cache, Lane B2); frontend CANCELLED at 25 min, cause unknown (Lane T to find: time limit or hung test); coverage and close-keywords passed. Second comment posted on pull 881. W2 on FJ2 4201d3af2: clock and reload PASS, second tab PASS, leg-expiry dialog PASS, unknown-result sentence PARTIAL (wording to F1b).
+- 21:42 IST: CORRECTION: RA2 was NOT ignoring messages. Root cause (its own ACK, 21:42): every coordinator message from 17:37 to 19:44, including the "now" interrupt, reached it only as one queued batch when its long turn ended. LESSON: a message to a lane is read only when the lane's current turn ends (a lane in a long autonomous turn with background waits can be deaf for hours; priority "now" did not interrupt here); a changed instruction is not in force until the lane's next message or STATUS line acknowledges it; holds are placed at the build lane, never only at the lane. RA2 closed at 940fb2240 and makes one last tests-only push (stored-close backstop tests); migration 0063 stays; its not-done items are B1b's.
+- 21:42 IST: PC round 2 set-up done 21:25 on 829ff65f (backup verified, 0060 and 0061 in five minutes, counts equal, restarts incl. the screen server, 5.6 GB free). Observation O-R2-01: monitoring-state answers an empty list while the worker monitors 5 (to B1b). Plan watch on the real link: 14.4 s then 7.3 s for one strategy (target for B3). Pull order fault: db_run.py line targets the test database (Z3 to write the round 3 step unmistakably).
+- 21:42 IST: W2 results on origin (c75f85d1d). Burn-down: MUST 31 open, 8 proven; all 77 open, 10 proven.
+- 22:05 IST: batch 1 on origin from every fix lane before 22:30: B2 b2e8e29c3 (unknown-outcome block, Execute door without a cache, items 1 to 3; two Opus reviews), B3 ecf8e8f99 (219 to 136 statements), FJ2 d93fce449 (closed), F2 4e8074a07 (I-197 re-fixed, D-TG2-1, W-29, W-30, Execute page lock), F3 505542d80 (as-of with date: hold on RA2 lifted), RA2 940fb2240 (one tests-only push to come), T 5342dcb2c. Wave 1 list sent to Z3. TG2 hands over at 55 percent to Lane T (third walker). W2 pushed af4a50fec and walks B2's block before the wave. F1b and B1b started 21:15, nothing on origin yet (expected).
+- 22:43 IST: INDEPENDENT REVIEW of the plan (improvement-plan-review-2238.md): sound with changes. ACCEPTED CHANGES: (1) BLOCKER found: three migrations numbered 0063 on parent 0062 (RA2 spot_at, B2 order_attempts, R1 position_tags): Z3 chains B2's as 0064 after RA2's in wave 1; R1 renumbers after wave 1. (2) COMMITMENTS RESTATED: MUST proven central 06:00 to 07:00 Sun (3 to 6 may stay unproven); all items NOT by 07:00 (about 10 to 15 unproven at the freeze); LAST CODE WAVE 05:30 (not 08:00: CI's server job takes 80 minutes and a newer push cancels a run); freeze = the last commit with green CI, by 10:00. (3) real = paper (R1, R2) is OUT of Monday's build unless R1's stage 2 is on origin by 02:00 Sun with its check passed. (4) F1b silent: replaced at 23:15 if nothing is on origin. (5) 75 failing Playwright specs (1,956 run in CI, 282 on main): F3 classifies (expected-fail, stale, environment, real defect), table within 60 minutes, fixes by 01:30; no test is skipped; the owner decides anything that must stay red. (6) Heartbeat = ls-remote every 30 minutes + lane messages + device trust; no hourly documentation pushes; lane clocks are unreliable. (7) Two proof columns: walked on a lane branch / proven on the build; MUST money paths re-walked on the build commit. (8) Z4 (build successor) and W3 (plan walker) briefs being written; start at wave 1's push. (9) B3: PC measures time per statement over the real link before any reader rewrite. (10) Issue 876 parked for Monday only with: the worker log line, the monitoring list answer, a Monday 09:15 checklist, and the owner told in plain words that the stop in that case is not proven.
+- 22:43 IST: RA2 batch 2 pushed 1f8e0018c (HELD at the build lane; B1b verifies F1 by an injection test and F2, and writes backstop tests c and d). RA2 final push is RESULTS-only, then closed. TG2 closed (SAFE TO CLOSE). R1 stage 1 was pushed at 19:58 (f9b2a0f14).
+- 22:44 IST: W3 started (row in the lane table). Briefs ready: brief-Z4.md (build successor: start at wave 1's push; waves 01:45 and LAST at 05:30; freeze = last green CI commit). Final plan file: final-plan-2026-11-28-2300.md. F1b: replace at 23:15 if nothing on origin. Wave 1 not on origin yet at 22:44 (Z3 resolving the 0063 collision).
+- 22:54 IST: PC ROUND 2 DONE 22:50 on 829ff65f: 18 rows: PASS 7, FAIL 2, PARTIAL 8, BLOCKED 1. FAIL W-02 (NEW, cloud method fault): plan watch 16.4 to 19.3 s per batch on the real link: 88 queries at about 134 ms each; no rule rows in 3 minutes: Lane B3 MUST: fixed small query count (set-based, target 10 or fewer for nine strategies) and a per-query delay in the cloud rig. FAIL W-32 (known: Review dialog lacks the stop sentence; fixed on FJ2's branch, in wave 1). PARTIAL W-34 (NEW): badges back 2.5 min after a worker restart (cloud 3 s): Lane B1b. W-25 D: Positions greys every Exit behind an error block on a slow read: Lane F3. Extra hand check PASS (Exit with the market closed: dialog, sentence, Confirm grey, nothing sent). PC ONLY: W-21 PASS, D-1 PASS (strategy 207: 0 orders, 0 suggestions, 0 alerts in the window), W-04, D-2, TC-5, R2-FD partial (halves not run). Owner notes (a) to (d) to the owner-questions file via X2. RA2 closed (287c9fc3e); B1b: RA2's 1f8e0018c has no silent-rollback hole (5 tests) but HAD the token-in-log hole, fixed on B1b's branch; the build takes RA2's later work only through B1b's branch.
+- 23:02 IST: WAVE 1 merged locally by Z3 at 7ee93381, check running: RA2 dc1aeebd8 only, B2 b2e8e29c3, B3 ecf8e8f99, FJ2 d93fce449, F2 4e8074a07, F3 505542d80, T 5342dcb2c. Migration chain: 0062, 0063_basket_facts_spot_at, 0064_order_attempts (B2 renumbered), one head; up 81 s, down 59 s, up 59 s. Start Z4 at its push.
+- 23:02 IST: R1 CORRECTION: stages 1 and 2+3 are on origin (feat/real-same-screens-be-1128 09efab8df, checks passed, Opus-reviewed, one money finding fixed: stops left armed after a stored exit). The 02:00 gate is MET. New conditions to enter the LAST wave (05:30): R1 renumbered to 0065 on the build head and pushed; R2 browser walk PASS and pushed by 03:30; ONE independent Opus review of both branches (coordinator starts it when R1's renumbered head is on origin); all by 04:30. Else after Monday.
+- 23:02 IST: F3 can message. W-25 D is NOT Positions (5 tests) but the builder's PaperBookPanel (F1b's file): rule clash D-05 against ADR-330 (60): owner question, both texts to be quoted. PC parked owner question: alert answered before the Exit dialog, Cancel leaves it gone (ADR-330 (3)); recommendation: store the answer only when the exit is accepted. Two tests failing on the build head (test_exit_door.py no_deadlock cases alter a table that no longer exists): Lane T. F1b still silent: replace at 23:15.

@@ -42,3 +42,19 @@ measured that day unless marked E (estimate). Proposed home: the kit's lanes or 
     had conflicts); one run per wave checks what will be traded on and rehearses the merge. Runs for the weekend: 0
     (no CI), about 12 (per lane), 4 (per wave). Note for your own workflows: a job guarded by "not a draft" is skipped on
     a draft pull request; check which jobs carry that guard.
+
+14. **A message reaches a lane only when its current turn ends.** A lane in a long autonomous turn was deaf for four
+    hours; "delivered" means queued, and a priority flag did not interrupt. An instruction counts only once the lane's
+    next line acknowledges it. Place every hold at the build lane.
+15. **Before a wave, list every lane's new migration.** Three lanes used the same number on one parent; two make two
+    heads and the upgrade fails. The build lane chains them and the lanes adopt its numbering.
+16. **A speed proof in a fast environment needs the real link's per-query delay.** A report ran in 0.2 s in the cloud and
+    16 to 19 s on the real link (88 queries at 134 ms). Pin the query count, not the statement text.
+17. **Run the whole browser suite before a wave.** It had grown from 282 to 1,956 tests with 75 failing and nobody had
+    run it whole. CI's server job takes 80 minutes and a newer push cancels a run, so the last code wave is set by CI
+    time, not by the freeze time.
+18. **Two proof columns:** "walked on a lane branch" and "proven on the build" (walked on the build commit plus green CI
+    on that exact commit). A branch walk never counts as proven.
+19. **Read commit times, not the time of your last look,** before calling a lane silent; the lanes' own clocks drift.
+20. **After each plan an independent reviewer checks the facts against the remote and the arithmetic of the finish
+    times** before the owner sees it. It found a wave-blocking collision and four wrong rows.
