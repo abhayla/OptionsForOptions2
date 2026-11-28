@@ -1,4 +1,4 @@
-STATUS 09:40 | item 1: fixed, not tested (gate pending) ; item 2: done | next push: none | blocker: none
+STATUS 10:55 | item 1: fixed, not tested; item 2: done | next push: NOT PUSHED, gate cannot pass in this container | blocker: environment (see Gate)
 
 # Lane FK: chart teardown
 
@@ -19,6 +19,14 @@ against whichever file is running. Both paths are now guarded.
 - `charges-dialog-drafts-d13-d14.test.js` x20: 20/20 `6 passed`, zero errors.
 - Whole frontend unit suite x3: each 331 files, 3837 tests passed, no Errors/Unhandled lines.
 - eslint --max-warnings 0 on the 3 components and the test: clean.
+
+## Gate (3 runs, not TOTAL PASS; none of the failures is in the changed files)
+Run 3 (after installing requirements-dev/app and ruff on PATH): ruff_ratchet, coverage, alembic_guard, frontend_lint,
+frontend_build PASS. FAIL: app_tests (`git diff` rc 128: no base ref in this clone), ci_checks (1 of 19:
+`git merge-base origin/main HEAD` failed, same missing ref), frontend_unit (log full of `ECONNREFUSED 127.0.0.1:3000`,
+a local test server not reachable here; my 3 direct runs of the whole suite passed). Parked after two rounds.
+Next command on a machine with full history and the local servers: `python scripts/orchestrator/prepush.py`, then
+`git push -u origin fix/r3-chart-teardown-1128`.
 
 ## Item 2: other chart components
 Grep: `new Chart(`, `createChart`, `nextTick`, `onMounted`, `onBeforeUnmount` under frontend/src/components.
