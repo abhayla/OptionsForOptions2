@@ -356,8 +356,15 @@ def catalogue_of(provider: Any, underlying: str) -> tuple[tuple, frozenset]:
     return tuple(listed_options(provider, underlying)), future_expiries(provider, underlying)
 
 
+def primary_expiry(position: Any) -> datetime.date:
+    """The ONE expiry a trade's chain, forward, ATM IV and expiry kind are read for: its NEAREST leg (FE2 item 2, issue
+    #863; the kind was always read for the nearest leg, the chain for the first listed one: a calendar trade listed far
+    leg first priced its market from the far chain)."""
+    return min(x.expiry for x in position.legs)
+
+
 def _snapshot_instant(read: PriceRead, expiry: datetime.date) -> datetime.datetime:
-    return max([read.spot.timestamp, *(q.timestamp for q in read.chains[expiry])])
+    return max([read.spot.timestamp, *(q.timestamp for q in read.chains.get(expiry, ()))])
 
 
 def _option_greeks(em: Any, kind: Instrument, strike: Decimal, iv: Decimal) -> Greeks | None:
@@ -410,7 +417,7 @@ def feed_spot(read: PriceRead, now: datetime.datetime) -> SourceReading:
 def market_inputs(watched: Watched, read: PriceRead, shared: FeedScope, now: datetime.datetime,
                   values: Mapping[str, Decimal]) -> MarketInputs:
     """The screen's ``MarketInputs`` (``adjustment_readers.read_market``) from a fresh price read, every per-option
-    figure from the shared cache instead of a whole-chain model: the first leg's expiry, the legs' rows, the same ATM
+    figure from the shared cache instead of a whole-chain model: the nearest leg's expiry, the legs' rows, the same ATM
     IV rule (the IV of the call nearest the forward that the model prices), the same last close. Valued at the
     snapshot instant (the price's own time), so a figure is shared per price update; the screen values at its clock,
     so the two agree exactly when the clock reads the price's time (named in the module docstring).
@@ -422,8 +429,8 @@ def market_inputs(watched: Watched, read: PriceRead, shared: FeedScope, now: dat
         read_last_close,
     )
     position = watched.tracked.position
-    expiry = position.legs[0].expiry
-    chain = tuple(sorted(read.chains[expiry], key=lambda q: q.instrument_id))
+    expiry = primary_expiry(position)
+    chain = tuple(sorted(read.chains.get(expiry, ()), key=lambda q: q.instrument_id))
     instant = _snapshot_instant(read, expiry)
     em = fwd = None
     rate, quality = value_of(values, RISK_FREE_RATE), settings_calc.forward_quality(values)  # the settings in force
@@ -437,7 +444,7 @@ def market_inputs(watched: Watched, read: PriceRead, shared: FeedScope, now: dat
 
     def shared_greeks(_iid: str, q: Any) -> Greeks | None:  # the shared per-option figures (REQ-166 AC-2)
         return None if em is None or q is None else _figures(shared, at, q, em)[1]
-    # the screen's own row builder over every listed contract of the expiry (the screen reads the first leg's expiry)
+    # the screen's own row builder over every listed contract of the expiry (the screen: see RESULTS-lane-fe2)
     rows, ids, leg_greeks = chain_rows(read.listed, expiry, {q.instrument_id: q for q in chain}, shared_greeks,
                                        scenario_mode.current())
     vol = None
@@ -463,7 +470,7 @@ def market_inputs(watched: Watched, read: PriceRead, shared: FeedScope, now: dat
             if sym in own and iid in by_id and (iv := _figures(shared, at, by_id[iid], em)[0]) is not None:
                 leg_ivs[sym] = iv
     return MarketInputs(tuple(rows), ids, None if fwd is None else fwd.forward, years, vol, feed, last, now,
-                        expiry_kind_of(min(x.expiry for x in position.legs), read.listed, read.futures,
+                        expiry_kind_of(expiry, read.listed, read.futures,
                                        scenario_mode.current()), leg_greeks,
                         fwd, leg_ivs, index_day_open(read.day, now),
                         carry_gap_pct=values.get(settings_calc.CARRY_GAP_PERCENT),  # absent -> no figures, named reason
@@ -967,7 +974,7 @@ def daily_iv_of(w: Watched, read: PriceRead, market: MarketInputs,
         return None
     day = now.astimezone(IST).date()
     position = w.tracked.position
-    expiry = position.legs[0].expiry
+    expiry = primary_expiry(position)
     listed = [lc.contract.expiry for lc in read.listed
               if lc.contract.expiry is not None and lc.contract.expiry >= day]
     if not listed or expiry != min(listed):
@@ -996,7 +1003,8 @@ class Worker:
                  margin_of: MarginOf | None = None,
                  before_cycle: Callable[[], Awaitable[None]] | None = None,
                  daily_iv: DailyIvRecorder | None = None,
-                 rest_spot: Callable[[str], Awaitable[SourceReading]] | None = None) -> None:
+                 rest_spot: Callable[[str], Awaitable[SourceReading]] | None = None,
+                 kinds: dict[tuple[str, datetime.date], Any] | None = None) -> None:
         if max_per_cycle < 1:
             raise ValueError("max_per_cycle must be at least 1")
         self._provider_for, self._lister, self._clock = provider_for, lister, clock
@@ -1022,6 +1030,9 @@ class Worker:
         self._signature: dict[int, tuple] = {}
         self._last_check: dict[int, datetime.datetime] = {}
         self._checked_body: dict[int, Any] = {}  # J3: the plan body each strategy's last check ran with
+        #: FE2 item 7 (#864): the expiry kind of each (underlying, nearest expiry) the checks use; the lister gives it
+        #: the reader (``reader_kinds_kwargs``) so the catalogue is not read per strategy on every re-read
+        self.kinds: dict[tuple[str, datetime.date], Any] = {} if kinds is None else kinds
         self._cursor = 0
         self._rebuilt_at: datetime.datetime | None = None
         self._stop = False
@@ -1104,6 +1115,8 @@ class Worker:
                 # must not hold the first check with the NEW plan: a stop saved already crossed alerts at once (47)
         old = {w.strategy_id: w for w in self.monitors}
         today = self._clock().astimezone(IST).date()
+        for past in [k for k in self.kinds if k[1] < today]:  # FE2 item 7: no record of an expiry that has gone by
+            del self.kinds[past]
         await self._lapse_expired_all(monitors, today)
         await self._raise_side_closed_all(monitors)
         for w in monitors:
@@ -1170,6 +1183,12 @@ class Worker:
             log.info("background: the queued write of strategy %s was dropped (%s)", sid,
                      "no longer listed" if sid not in body else "plan changed")
         unread = getattr(monitors, "unread", frozenset())  # a failed read is not a strategy leaving (r6 review)
+        for sid in [k for k in self._checked_body if k not in body and k not in unread]:  # FE2 #867: no entry for ever
+            del self._checked_body[sid]
+        for sid in [k for k in self.status if k not in body and k not in unread]:
+            # FE2 #878: a strategy that left the list is not watched: no ACTIVE entry stays published for it
+            for kept in (self.status, self.paused_reason, self.paused_why, self.user_paused_until):
+                kept.pop(sid, None)
         for sid in [k for k in self._gate_events if k not in body and k not in unread]:  # a plan change keeps them
             gone = self._gate_events.pop(sid)
             self.gate_events_dropped += len(gone)
@@ -1309,8 +1328,9 @@ class Worker:
             return set()
 
     def _window_tokens_of(self, w: Watched) -> set[int]:
-        """The calls and puts of the SCREEN's strike window of the strategy's first leg expiry (the expiry the
-        forward and ATM IV are read from, ``adjustment_readers.read_market``): ``chain_push.strike_window`` around
+        """The calls and puts of the strike window of the strategy's nearest leg expiry (``primary_expiry``, the expiry
+        the forward and ATM IV are read from; the SCREEN's ``read_market`` reads the first leg's until the owner lane
+        makes it the same, RESULTS-lane-fe2): ``chain_push.strike_window`` around
         ``chain_push.atm_strike`` of the live spot, ``limits.chain_strikes_each_side`` (the chain screen's default)
         each side (finding 2). Empty when not known: no settings read yet, no live spot, the expiry not listed."""
         from ofo_app.chain_push import window_strikes  # noqa: PLC0415 - the ONE window rule, shared with the screen
@@ -1319,7 +1339,7 @@ class Worker:
         provider = self._provider_for(w.feed_owner)
         options, _by_id = self._tokens_of(provider)
         position = w.tracked.position
-        expiry = position.legs[0].expiry
+        expiry = primary_expiry(position)
         spot = provider.underlying_quote(position.underlying)
         grid = self._grid_of(provider, options, position.underlying, expiry)
         each = settings_calc.chain_strikes_each_side(self._values)
@@ -1473,6 +1493,13 @@ class Worker:
         """A check ran for ``sid``: forget its last skip reason, so the next skip is logged."""
         self._last_skip.pop(sid, None)
 
+    def _record_kind(self, w: Watched, market: MarketInputs) -> None:
+        """FE2 item 7: the kind this check uses (``state_of``'s rule) is kept for the lister; a kind that is not known
+        ("") is never recorded (the reader then reads the catalogue)."""
+        known = market.expiry_kind or w.tracked.position.expiry_kind
+        if known:
+            self.kinds[(w.tracked.position.underlying, primary_expiry(w.tracked.position))] = known
+
     def _plan_changed(self, w: Watched) -> bool:
         """J3 item 3: the plan in the list is not the one this strategy's last check ran with (saved since). Such a
         strategy's first check with the new plan is never held by the tick, signature or style interval holds, whatever
@@ -1530,6 +1557,7 @@ class Worker:
             self._pause(sid, PriceState.CHECK_FAILED, now)
             return self._skipped(sid, "no_gate_read" if load is None else "no_alert_values")
         market = market_inputs(w, read, FeedScope(self.cache, w.feed_owner), now, self._values)
+        self._record_kind(w, market)
         self._queue_daily_iv(daily_iv_of(w, read, market, now))
         # ADR-245: the carry gap in force (plan, else the user's own, else the admin default) is resolved inside
         # state_of; with no user read path there is no user layer (None), never the admin values posing as the user's
@@ -2010,7 +2038,9 @@ class Worker:
             slowest = max(slowest, _seconds(self._clock() - started))
         self._cursor = (self._cursor + visited) % n if n else 0
         await self._close_pass(checked)
-        await self._monitoring.publish(self.status, self.paused_reason, self.paused_why, self._clock(),
+        monitored = {w.strategy_id for w in self.monitors}  # FE2 review F2: what is not monitored is never published
+        await self._monitoring.publish({k: v for k, v in self.status.items() if k in monitored},
+                                       self.paused_reason, self.paused_why, self._clock(),
                                        self._readings)  # never raises
         if self._steps is not None:
             self.valve.observe(self._clock(), slowest, n - visited, self._steps)
@@ -2019,6 +2049,7 @@ class Worker:
         self._stop = True
 
     async def run(self) -> None:
+        await self._monitoring.restore(self._clock())  # FE2 item 4: a restart leaves no old "watched" standing
         if not self._rebuild_tried:
             await self._rebuild_safely()
         rebuilder = asyncio.create_task(self._rebuild_loop(), name="background-rebuild")
@@ -2126,8 +2157,20 @@ def listable(marker: str | None, mode: str | None) -> bool:
     return scenario_mode.in_scope(marker, mode)
 
 
+#: FE2 item 7 (#864): True once ``adjustment_readers.read_tracked`` takes the keyword ``kinds`` (the owner lane's half:
+#: RESULTS-lane-fe2 "For the owner lane" 2). Until then the lister calls the reader exactly as before: a keyword the
+#: reader does not know would fail every strategy's read. (No reflection on the reader: the door-names guard forbids)
+READER_TAKES_KINDS: Final = False
+
+
+def reader_kinds_kwargs(kinds: Mapping | None, takes: bool = READER_TAKES_KINDS) -> dict[str, Any]:
+    """FE2 item 7 (#864): the worker's record of expiry kinds as the reader's keyword, only when the reader takes it."""
+    return {"kinds": kinds} if takes and kinds is not None else {}
+
+
 async def owner_lister(provider: Any, gate: Any = None,
-                       rates_of: Callable[[], Awaitable[Any]] | None = None) -> Listed:
+                       rates_of: Callable[[], Awaitable[Any]] | None = None,
+                       kinds: Mapping | None = None) -> Listed:
     """Every strategy of the V1 owner (ADR-051) that is tracked (open paper legs, or real Zerodha trades and adopted
     holdings when it has no paper order: ADR-276) and has a playbook; its type is read
     against the provider's instrument list and spot (as the screen's check). ``gate`` (the role's ``db_gate``) is held
@@ -2163,7 +2206,7 @@ async def owner_lister(provider: Any, gate: Any = None,
             continue  # IC e2e decision 4: a live worker never checks a scenario strategy, and the reverse
         try:
             async with held(gate, GATE_REBUILD):  # one strategy's reads per hold
-                tracked = await read_tracked(s.id, rates)
+                tracked = await read_tracked(s.id, rates, **reader_kinds_kwargs(kinds))
                 if tracked is None:  # nothing traded: a definite answer, not a failed read (those raise below)
                     raise _NothingTraded  # handled outside the hold (the lapse takes its own)
                 stype = check.entry_type(tracked, provider.instrument_master())  # D-04
@@ -2262,8 +2305,9 @@ async def _serve_scenario() -> int:  # pragma: no cover - the process wiring; ea
     if not await cache.refresh():
         log.error("background: the first settings load failed; no check runs until a poll loads them")
     log.info("background: scenario %s (test data, no Kite) for %s", scn.scenario_id, OWNER_REF)
-    lister = functools.partial(owner_lister, provider, gate=gate, rates_of=load_charge_rates)  # #661 item 1
-    worker = Worker(provider_for=lambda _owner: provider, lister=lister,
+    kinds: dict[tuple[str, datetime.date], Any] = {}  # the worker's record of expiry kinds, shared with its lister
+    lister = functools.partial(owner_lister, provider, gate=gate, rates_of=load_charge_rates, kinds=kinds)
+    worker = Worker(kinds=kinds, provider_for=lambda _owner: provider, lister=lister,
                     clock=scn.clock, settings=cache.at, preferences=preferences, db_gate=gate,
                     side_tasks=(cache.poll_loop,), user_values=user_values, before_cycle=before_cycle)
     await worker.run()
@@ -2311,8 +2355,9 @@ async def _serve_live() -> int:  # pragma: no cover - the process wiring; each p
     cache = settings_cache.SettingsCache(lambda: get_engine().connect(), gate=gate)
     if not await cache.refresh():  # the first load; a failure leaves the worker refusing to check until a poll loads
         log.error("background: the first settings load failed; no check runs until a poll loads them")
-    lister = functools.partial(owner_lister, provider, gate=gate, rates_of=load_charge_rates)  # #661 item 1
-    worker = Worker(provider_for=lambda _owner: provider, lister=lister,
+    kinds: dict[tuple[str, datetime.date], Any] = {}  # the worker's record of expiry kinds, shared with its lister
+    lister = functools.partial(owner_lister, provider, gate=gate, rates_of=load_charge_rates, kinds=kinds)
+    worker = Worker(kinds=kinds, provider_for=lambda _owner: provider, lister=lister,
                     clock=clock, settings=cache.at, preferences=preferences, want_client=bus, db_gate=gate,
                     side_tasks=(cache.poll_loop,), user_values=user_values,
                     margin_of=worker_margin_of(login, margin_ctx, margin_source),
